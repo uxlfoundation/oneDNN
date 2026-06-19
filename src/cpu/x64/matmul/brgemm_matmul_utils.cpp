@@ -17,6 +17,7 @@
 #include <unordered_set>
 
 #include "common/dnnl_thread.hpp"
+#include "common/math_utils.hpp"
 #include "cpu/binary_injector_utils.hpp"
 #include "cpu/matmul/gemm_based_common.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
@@ -24,6 +25,7 @@
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/matmul/amx_blocking_heuristics.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
+#include "cpu/x64/matmul/jit_brgemm_matmul_per_mn_comp.hpp"
 #include "cpu/x64/matmul/postops_estimator.hpp"
 #include "oneapi/dnnl/dnnl_debug.h"
 
@@ -243,7 +245,8 @@ status_t check_isa_with_datatype(
             = IMPLICATION(bm_conf_utils.is_f32(),
                       one_of(isa, avx512_core, avx2) || bm_conf_utils.is_bf32()
                               || bm_conf_utils.is_tf32())
-            && IMPLICATION(bm_conf_utils.is_int8(),
+            && IMPLICATION(bm_conf_utils.is_int8()
+                            || bm_conf_utils.with_int8_grouped_quantization(),
                     is_superset(isa, avx512_core)
                             || is_superset(isa, avx2_vnni))
             && IMPLICATION(bm_conf_utils.is_bf16(),
@@ -315,7 +318,8 @@ status_t check_datatype_cfg(const brgemm_matmul_conf_utils_t &bm_conf_utils) {
                       bm_conf_utils.is_bf16_with_int_wei(),
                       bm_conf_utils.is_bf16_fp8(), bm_conf_utils.is_f16_fp8(),
                       bm_conf_utils.is_f16_with_int_wei(),
-                      bm_conf_utils.is_f32_with_int_wei())
+                      bm_conf_utils.is_f32_with_int_wei(),
+                      bm_conf_utils.with_int8_grouped_quantization())
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei()
                             || bm_conf_utils.is_f16_with_int_wei(),
                     bm_conf_utils.with_weights_decompression());
@@ -376,8 +380,24 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     , f16_fp8_dt(bgmmc.src_dt == f16 && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
-    , int8_grouped_quantization_dt(
-              false) // will be enabled in last commit in the PR
+    // int8 grouped quantization: any grouped scales/ZP attribute on
+    // int8 src x {s4,u4,s8} wei, dst in {f16,bf16,f32,s8,u8}.
+    , int8_grouped_quantization_dt(one_of(bgmmc.src_dt, u8, s8)
+              && one_of(bgmmc.wei_dt, s4, u4, s8)
+              && one_of(bgmmc.dst_dt, f16, bf16, f32, s8, u8)
+              && (!attr.zero_points_.get(DNNL_ARG_SRC).has_default_values()
+                      || !attr.zero_points_.get(DNNL_ARG_WEIGHTS)
+                                  .has_default_values())
+              && (utils::one_of(bgmmc.wei_dt, s4, u4)
+                      || !attr.scales_.get(DNNL_ARG_SRC).has_default_groups()
+                      || !attr.scales_.get(DNNL_ARG_WEIGHTS)
+                                  .has_default_groups()
+                      || !attr.zero_points_.get(DNNL_ARG_SRC)
+                                  .has_default_groups()
+                      || !attr.zero_points_.get(DNNL_ARG_WEIGHTS)
+                                  .has_default_groups())
+              && bgmmc.ndims
+                      == 2) // 3D/4D cases will be enabled in separate PRs.
     , A_any_layout(A_any_layout)
     , B_any_layout(B_any_layout)
     , C_any_layout(C_any_layout)
@@ -829,7 +849,8 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 
     if (bgmmc.ndims > 3) return format_tag::undef;
 
-    if (is_int8() || is_f8() || is_bf16_fp8() || is_f16_fp8()) {
+    if (is_int8() || is_f8() || is_bf16_fp8() || is_f16_fp8()
+            || with_int8_grouped_quantization()) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c4b : BA16a48b4a;
@@ -1714,6 +1735,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.with_wei_decompression = bm_conf_utils.with_weights_decompression();
     bgmmc.is_int4_weights = one_of(bgmmc.wei_dt, data_type::s4, data_type::u4);
     bgmmc.is_f4_via_convert = bm_conf_utils.is_f4_via_convert();
+    bgmmc.with_int8_grouped_quantization
+            = bm_conf_utils.with_int8_grouped_quantization();
 
     if (bgmmc.is_f4_via_convert) {
         bgmmc.wei_dt = f32;
@@ -1757,9 +1780,27 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     } else if (bgmmc.is_xf16_fp8) {
         bgmmc.wei_dt = bgmmc.src_dt;
         bgmmc.tr_b_dt_sz = types::data_type_size(bgmmc.wei_dt);
+    } else if (bgmmc.with_int8_grouped_quantization) {
+
+        bgmmc.wei_dt = one_of(bgmmc.wei_dt, s8, u8) ? bgmmc.wei_dt : s8;
+        const bool has_src_zp
+                = !attr.zero_points_.get(DNNL_ARG_SRC).has_default_values();
+        bgmmc.src_dt = one_of(bgmmc.src_dt, s8, u8)   ? bgmmc.src_dt
+                : (bgmmc.src_dt == u4 && !has_src_zp) ? u8
+                                                      : s8;
+        bgmmc.tr_a_dt_sz = types::data_type_size(bgmmc.src_dt);
+        bgmmc.tr_b_dt_sz = types::data_type_size(bgmmc.wei_dt);
+        bgmmc.s8s8_compensation_required
+                = bgmmc.src_dt == s8 && !isa_has_s8s8(isa);
     }
 
-    bgmmc.acc_dt = bm_conf_utils.is_int8() ? s32 : f32;
+    // Grouped int8 quantization accumulates in f32: per-K scale/ZP
+    // application happens between brgemm calls and requires float
+    // accumulation (per-MN comp subtracts a float delta each K-group).
+    bgmmc.acc_dt
+            = (bm_conf_utils.is_int8() && !bgmmc.with_int8_grouped_quantization)
+            ? s32
+            : f32;
 
     bgmmc.c_dt_sz = types::data_type_size(bgmmc.dst_dt);
     bgmmc.acc_dt_sz = types::data_type_size(bgmmc.acc_dt);
@@ -1777,6 +1818,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.is_src_scale_per_k
                 = (src_scale_mask & (1 << (bgmmc.ndims - 1))) != 0
                 && !src_scales.has_default_groups();
+        // src per-m scales: mask has M bit set (last-but-one src dim).
+        bgmmc.is_src_scale_per_m
+                = (src_scale_mask & (1 << (bgmmc.ndims - 2))) != 0;
         bgmmc.src_scales_dt = src_scales.get_data_type();
         bgmmc.src_scales_dt_sz = types::data_type_size(bgmmc.src_scales_dt);
         if (bgmmc.is_src_scale_per_k) {
@@ -1816,7 +1860,19 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const auto &src_zp = attr.zero_points_.get(DNNL_ARG_SRC);
     const auto has_src_zp = !src_zp.has_default_values();
-    if (has_src_zp) { bgmmc.src_zp_dt = src_zp.get_data_type(); }
+    if (has_src_zp) {
+        bgmmc.src_zp_dt = src_zp.get_data_type();
+        const auto src_zp_mask = src_zp.get_mask();
+        // src per-K grouped ZP: K bit set (the last dim for src is K) and
+        // an explicit group size. Only meaningful for grouped int8 paths.
+        bgmmc.is_src_zp_per_k = (src_zp_mask & (1 << (bgmmc.ndims - 1))) != 0
+                && !src_zp.has_default_groups();
+        // src per-M zp: M bit set (last-but-one src dim).
+        bgmmc.is_src_zp_per_m = (src_zp_mask & (1 << (bgmmc.ndims - 2))) != 0;
+        if (bgmmc.is_src_zp_per_k) bgmmc.src_zp_k_gsize = src_zp.get_group(1);
+        VCONDCHECK_BG(IMPLICATION(bgmmc.is_src_zp_per_k, bgmmc.is_int4_weights),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+    }
 
     const auto &wei_zp = attr.zero_points_.get(DNNL_ARG_WEIGHTS);
     const auto has_wei_zp = !wei_zp.has_default_values();
@@ -1852,9 +1908,21 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.wei_zp_type = get_zp_type(attr, DNNL_ARG_WEIGHTS);
     bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST);
 
+    // Non-default src zero points (per-tensor, common, host_scalar) with
+    // int8 grouped quantization: the per-(M,N) compensation tile (set via
+    // bgmmc.with_per_mn_compensation later in init) covers the remaining
+    // cases. The legacy restrictions below are kept only for paths that the
+    // per-(M,N) compensation does not yet cover.
+
+    // Wei zero points with int8 grouped quantization are now supported for
+    // any mask (common, per_n, per_k) — the post-brgemm per-(M,N)
+    // compensation handles non-per-K cases that the existing copy_b path
+    // does not.
     VCONDCHECK_BG(
-            IMPLICATION(!(bm_conf_utils.is_int8()
-                                || bm_conf_utils.with_weights_decompression()),
+            IMPLICATION(
+                    !(bm_conf_utils.is_int8()
+                            || bm_conf_utils.with_weights_decompression()
+                            || bm_conf_utils.with_int8_grouped_quantization()),
                     everyone_is(brgemm_broadcast_t::none, bgmmc.src_zp_type,
                             bgmmc.wei_zp_type, bgmmc.dst_zp_type)),
             VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -2129,6 +2197,43 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // - nthr_K
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
             VERBOSE_BLOCKING_FAIL, "");
+
+    // Per-K (grouped) scales/ZP applied at kernel time (i.e. not folded into
+    // buffer B) require each brgemm call to cover at most a single K-group
+    // of every active per-K axis.
+    if (!bgmmc.is_runtime_K) {
+        dim_t k_group = 0;
+        auto fold_group = [&](bool active, dim_t g) {
+            if (!active || g <= 0) return;
+            k_group = (k_group == 0) ? g : math::gcd(k_group, g);
+        };
+        fold_group(bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b,
+                bgmmc.wei_scales_k_gsize);
+        fold_group(bgmmc.is_src_scale_per_k, bgmmc.src_scales_k_gsize);
+
+        const bool wei_zp_folded_into_buffer_b = bgmmc.with_wei_decompression
+                && !bgmmc.with_int8_grouped_quantization;
+        fold_group(bgmmc.is_wei_zp_per_k && !wei_zp_folded_into_buffer_b,
+                bgmmc.wei_zp_k_gsize);
+        fold_group(bgmmc.is_src_zp_per_k, bgmmc.src_zp_k_gsize);
+        if (k_group > 0) {
+            const dim_t prev_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
+            if (bgmmc.K_blk > k_group) {
+                bgmmc.K_blk = rnd_up(nstl::min(bgmmc.K, k_group),
+                        bgmmc.required_k_granularity);
+                bgmmc.brgemm_batch_size = 1;
+            } else {
+                const dim_t max_bs = nstl::max<dim_t>(1, k_group / bgmmc.K_blk);
+                if (bgmmc.brgemm_batch_size > max_bs)
+                    bgmmc.brgemm_batch_size = max_bs;
+            }
+
+            const dim_t new_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
+            if (new_chunk_K < prev_chunk_K && new_chunk_K < bgmmc.K) {
+                bgmmc.use_buffer_c = true;
+            }
+        }
+    }
 
     if (bgmmc.wei_n_blk > bgmmc.N_blk && bgmmc.N != bgmmc.N_blk) {
         assert(!bgmmc.is_runtime_N
@@ -2583,6 +2688,8 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.has_zero_point_a = bgmmc.src_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
+    bgmmc.with_per_mn_compensation = bgmmc.with_int8_grouped_quantization
+            && (bgmmc.has_zero_point_a || bgmmc.has_zero_point_b);
     bgmmc.post_ops_applicable = one_of(true, bgmmc.with_sum, bgmmc.with_bias,
             bgmmc.with_src_scales,
             bgmmc.with_wei_scales && !bgmmc.apply_scales_in_buffer_b,
@@ -2594,6 +2701,11 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.zp_a_comp_shift_n = bgmmc.wei_n_blk;
     bgmmc.zp_a_comp_elems_per_thr
             = bgmmc.N_chunk_size * bgmmc.zp_a_comp_shift_n;
+
+    if (bgmmc.is_src_zp_per_k && bgmmc.src_zp_k_gsize > 0) {
+        const dim_t num_k_groups = utils::div_up(bgmmc.K, bgmmc.src_zp_k_gsize);
+        bgmmc.zp_a_comp_elems_per_thr *= num_k_groups;
+    }
 
     const int s32_elems_in_cacheline = 16;
     bgmmc.zp_b_comp_result_shift_m = bgmmc.M_blk;
@@ -2651,6 +2763,15 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         scratchpad.book(key_brgemm_primitive_zp_comp_b,
                 bgmmc.nthr * bgmmc.zp_b_comp_elems_per_thr,
                 types::data_type_size(s32));
+
+    if (bgmmc.with_per_mn_compensation) {
+        // f32 tile that mirrors buffer_c's stripe layout
+        const size_t per_thr_elems = static_cast<size_t>(bgmmc.M_blk)
+                * static_cast<size_t>(rnd_up(bgmmc.N_blk, bgmmc.LDC));
+        scratchpad.book(key_brgemm_primitive_per_mn_comp,
+                static_cast<size_t>(bgmmc.nthr) * per_thr_elems,
+                types::data_type_size(f32));
+    }
 
     if (is_superset(bgmmc.isa, avx512_core_amx))
         scratchpad.book(key_conv_amx_tile_buffer,

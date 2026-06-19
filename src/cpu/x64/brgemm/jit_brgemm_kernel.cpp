@@ -242,6 +242,11 @@ private:
     const reg64_savable_backup_t reg_buf_aux_backup {reg_buf_aux};
     const reg64_savable_t reg_aux_compensation {regscratchpad_, rbx, r29};
 
+    // Base / working pointers for the per-(M,N) f32 compensation buffer used
+    // by apply_per_mn_compensation. Lifecycle mirrors reg_C / reg_aux_C.
+    const reg64_savable_t reg_per_mn_comp {regscratchpad_, rbx};
+    const reg64_savable_t reg_aux_per_mn_comp {regscratchpad_, rbx};
+
     const reg64_savable_t reg_D {regscratchpad_, r11};
     const reg64_savable_t reg_aux_D {regscratchpad_, rax, r27};
     const reg64_savable_backup_t reg_aux_D_backup {reg_aux_D, r28};
@@ -436,7 +441,10 @@ private:
             dim_t bd_block, dim_t ld_block, bool is_ld_tail, bool is_bdb_tail);
     void store_accumulators_apply_post_ops(dim_t bd_block, dim_t ld_block,
             dim_t ldb_and_bdb_offset, bool is_ld_tail, bool is_bdb_tail);
-    void apply_compensation(dim_t bd_block, dim_t ld_block, bool is_ld_tail);
+    void apply_zp_s8s8_compensation(
+            dim_t bd_block, dim_t ld_block, bool is_ld_tail);
+    void apply_per_mn_compensation(
+            dim_t bd_block, dim_t ld_block, bool is_ld_tail);
     void apply_alpha_beta(
             dim_t bd_block, dim_t ld_block, bool is_ld_tail, bool is_bdb_tail);
     void apply_wei_scales(dim_t bd_block, dim_t ld_block2, bool is_ld_tail,
@@ -521,6 +529,13 @@ private:
     dim_t zp_comp_b_offset(dim_t bd) const noexcept;
     dim_t bdb_zp_comp_b_offset(dim_t bd_block2) const noexcept;
     dim_t zp_c_values_offset(dim_t ld, bool is_tail = false) const noexcept;
+
+    // Offsets into the per-(M,N) f32 compensation buffer. The buffer mirrors
+    // buf_C layout but with f32 stride (= brg.LDC elements).
+    dim_t per_mn_comp_offset(dim_t bd, dim_t ld) const noexcept;
+    dim_t ldb_per_mn_comp_offset(
+            dim_t ld_block2, bool is_tail = false) const noexcept;
+    dim_t bdb_per_mn_comp_offset(dim_t bd_block2) const noexcept;
 
     bool vpad_exist = false;
     bool need_comp_pads = false;
@@ -765,6 +780,25 @@ dim_t jit_brgemm_kernel_t<Wmm>::zp_c_values_offset(
 
     return 0;
 }
+
+template <typename Wmm>
+dim_t jit_brgemm_kernel_t<Wmm>::per_mn_comp_offset(
+        dim_t bd, dim_t ld) const noexcept {
+    return sizeof(float) * (bd * brg.LDC + ld * brg.ld_block);
+}
+
+template <typename Wmm>
+dim_t jit_brgemm_kernel_t<Wmm>::ldb_per_mn_comp_offset(
+        dim_t ld_block2, bool is_tail) const noexcept {
+    return (is_tail) ? sizeof(float) * brg.ldb_tail
+                     : sizeof(float) * ld_block2 * brg.ld_block;
+}
+
+template <typename Wmm>
+dim_t jit_brgemm_kernel_t<Wmm>::bdb_per_mn_comp_offset(
+        dim_t bd_block2) const noexcept {
+    return sizeof(float) * bd_block2 * brg.bd_block * brg.LDC;
+}
 template <typename Wmm>
 template <typename U>
 U jit_brgemm_kernel_t<Wmm>::vmm_mask(const U vmm_in, bool mask_flag, bool store,
@@ -838,6 +872,11 @@ void jit_brgemm_kernel_t<Wmm>::advance_ldb_post_op_regs() {
         add(reg_aux_zp_c_values, zp_c_values_offset(1));
         reg_aux_zp_c_values.save();
     }
+    if (brg.with_per_mn_compensation) {
+        reg_aux_per_mn_comp.restore();
+        add(reg_aux_per_mn_comp, ldb_per_mn_comp_offset(1));
+        reg_aux_per_mn_comp.save();
+    }
 }
 
 template <typename Wmm>
@@ -861,6 +900,11 @@ void jit_brgemm_kernel_t<Wmm>::restore_ldb_post_op_regs(dim_t ld_block2) {
         reg_aux_zp_c_values.restore();
         sub(reg_aux_zp_c_values, zp_c_values_offset(ld_block2 - 1));
         reg_aux_zp_c_values.save();
+    }
+    if (brg.with_per_mn_compensation) {
+        reg_aux_per_mn_comp.restore();
+        sub(reg_aux_per_mn_comp, ldb_per_mn_comp_offset(ld_block2 - 1));
+        reg_aux_per_mn_comp.save();
     }
 }
 
@@ -945,6 +989,13 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(dim_t ld_block2, bool is_tail) {
                           : zp_c_values_offset(ld_block2));
         reg_aux_zp_c_values.save();
     }
+    if (brg.with_per_mn_compensation) {
+        reg_aux_per_mn_comp.restore();
+        add(reg_aux_per_mn_comp,
+                (is_tail) ? ldb_per_mn_comp_offset(1, true)
+                          : ldb_per_mn_comp_offset(ld_block2));
+        reg_aux_per_mn_comp.save();
+    }
 }
 
 template <typename Wmm>
@@ -966,6 +1017,11 @@ void jit_brgemm_kernel_t<Wmm>::advance_bd_block2_post_op_regs(dim_t bd_block2) {
         reg_zp_comp_b.restore();
         add(reg_zp_comp_b, bdb_zp_comp_b_offset(bd_block2));
         reg_zp_comp_b.save();
+    }
+    if (brg.with_per_mn_compensation) {
+        reg_per_mn_comp.restore();
+        add(reg_per_mn_comp, bdb_per_mn_comp_offset(bd_block2));
+        reg_per_mn_comp.save();
     }
 }
 
@@ -997,6 +1053,10 @@ void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
         if (brg.zp_type_c != brgemm_broadcast_t::none) {
             reg_zp_c_values.restore();
             reg_zp_c_values.saveTo(reg_aux_zp_c_values);
+        }
+        if (brg.with_per_mn_compensation) {
+            reg_per_mn_comp.restore();
+            reg_per_mn_comp.saveTo(reg_aux_per_mn_comp);
         }
     }
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
@@ -1061,6 +1121,11 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
     if (brg.zp_type_c != brgemm_broadcast_t::none) {
         mov(reg_zp_c_values, ptr[param1 + GET_OFF(c_zp_values)]);
         reg_zp_c_values.save();
+    }
+
+    if (brg.with_per_mn_compensation) {
+        mov(reg_per_mn_comp, ptr[param1 + GET_OFF(ptr_per_mn_compensation)]);
+        reg_per_mn_comp.save();
     }
 
     if (brg.with_dst_scales) {
@@ -1805,7 +1870,9 @@ void jit_brgemm_kernel_t<Wmm>::apply_scales(
         dim_t bd_block, dim_t ld_block2, bool is_ld_tail) {
     assert(brg.has_per_k_scales());
     const bool dq2ps_required = brg.is_int8;
-    bool dq2ps_cvt_done = false;
+    // When per-MN compensation was applied before this call, dq2ps is
+    // already done by apply_per_mn_compensation.
+    bool dq2ps_cvt_done = brg.with_per_mn_compensation;
 
     if (brg.is_per_k_wei_scales)
         apply_wei_scales(bd_block, ld_block2, is_ld_tail, dq2ps_required,
@@ -1827,6 +1894,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
         dim_t ld_block2, dim_t ldb_and_bdb_offset, bool is_ld_tail,
         bool is_bdb_tail) {
     auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
+
     // if (brg.is_int8 && alpha_or_beta_applicable && !beta_uses_vadd) ->
     // accumulated values are already converted to ps in apply_alpha_beta()
     const bool alpha_or_beta_applicable = brg.alpha != 1.0f || brg.beta != 0.f;
@@ -1843,8 +1911,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
     // done only once despite all scales and bias applications requiring it.
     // TODO: perform conversion in a dedicated loop if it is required as it is
     // done in brgemm_post_ops kernel?
-    // Pre-set when apply_scales() already did the int->f32 conversion.
-    bool dq2ps_cvt_done = brg.has_per_k_scales();
+    bool dq2ps_cvt_done
+            = brg.has_per_k_scales() || brg.with_per_mn_compensation;
 
     if (brg.with_src_scales && !brg.is_per_k_src_scales) {
         reg_src_scales.restoreTo(reg_aux_src_scales);
@@ -2100,7 +2168,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(dim_t bd_block,
 }
 
 template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::apply_compensation(
+void jit_brgemm_kernel_t<Wmm>::apply_zp_s8s8_compensation(
         dim_t bd_block, dim_t ld_block2, bool is_ld_tail) {
     assert(!brg.is_gemv && "compensation is not supported for gemv");
     // apply compensation to accumulated values
@@ -2181,6 +2249,42 @@ void jit_brgemm_kernel_t<Wmm>::apply_compensation(
             }
         }
     }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::apply_per_mn_compensation(
+        dim_t bd_block, dim_t ld_block2, bool is_ld_tail) {
+    assert(brg.with_per_mn_compensation);
+    assert(!brg.is_gemv && "per-(M,N) compensation is not supported for gemv");
+    assert(!brg.is_integer_acc()
+            && "per-(M,N) compensation is not supported for int accumulation");
+
+    if (brg.is_int8) {
+        for_(dim_t bd = 0; bd < bd_block; bd++)
+        for (dim_t ld = 0; ld < ld_block2; ld++) {
+            auto vmm = accm(ld_block2, bd, ld);
+            uni_vcvtdq2ps(vmm, vmm);
+        }
+    }
+
+    const auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
+    reg_aux_per_mn_comp.restore();
+    const auto vmm_delta = vmm_tmp(0);
+    for_(dim_t bd = 0; bd < bd_block; bd++)
+    for (dim_t ld = 0; ld < ld_block2; ld++) {
+        const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
+        const auto delta_addr
+                = ptr[reg_aux_per_mn_comp + per_mn_comp_offset(bd, ld)];
+        if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
+            auto vmm_delta_masked = vmm_mask(vmm_delta, is_tail, false, k_mask);
+            uni_vmovups(vmm_delta_masked, delta_addr);
+        } else {
+            vmaskmovps(vmm_delta, vmm_tail_mask(), delta_addr);
+        }
+        auto vmm = accm(ld_block2, bd, ld);
+        uni_vsubps(vmm, vmm, vmm_delta);
+    }
+    maybe_set_avx_mask(is_ld_tail);
 }
 
 template <typename Wmm>
@@ -2350,7 +2454,8 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                         }
 
                         if (apply_zp_a_compensation)
-                            apply_compensation(adj_bd_block, 1, is_ld_tail);
+                            apply_zp_s8s8_compensation(
+                                    adj_bd_block, 1, is_ld_tail);
 
                         if (need_to_apply_alpha_beta)
                             apply_alpha_beta(
@@ -2472,11 +2577,13 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
             reg_do_comp.restore();
             cmp(reg_do_comp, 0);
             jz(label_store_without_comp, T_NEAR);
-            apply_compensation(bd_block, ld_block2, is_ld_tail);
+            apply_zp_s8s8_compensation(bd_block, ld_block2, is_ld_tail);
 
             L_aligned(label_store_without_comp);
         }
 
+        if (brg.with_per_mn_compensation)
+            apply_per_mn_compensation(bd_block, ld_block2, is_ld_tail);
         if (brg.has_per_k_scales())
             apply_scales(bd_block, ld_block2, is_ld_tail);
 

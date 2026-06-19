@@ -166,6 +166,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.a_zp_compensations = post_ops_data.a_zp_compensations;
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
+    brgemm_p.ptr_per_mn_compensation = post_ops_data.per_mn_compensation;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -210,6 +211,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.a_zp_values = post_ops_data.a_zp_values;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
+    brgemm_p.ptr_per_mn_compensation = post_ops_data.per_mn_compensation;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -529,7 +531,8 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         zp_type = brgemm_broadcast_t::none;
 
         const bool skip_zero_point
-                = mem_arg == DNNL_ARG_WEIGHTS && brg->skip_zp_b_compensation;
+                = (mem_arg == DNNL_ARG_WEIGHTS && brg->skip_zp_b_compensation)
+                || (mem_arg == DNNL_ARG_SRC && brg->skip_zp_a_compensation);
         if (skip_zero_point) return status::success;
 
         if (!zp.has_default_values(mem_arg)) {

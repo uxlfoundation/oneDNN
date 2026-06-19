@@ -166,6 +166,9 @@ enum {
     key_brgemm_primitive_buffer_d,
     key_brgemm_primitive_zp_comp_a,
     key_brgemm_primitive_zp_comp_b,
+    // Per-(M,N) f32 compensation tile for int8 grouped quantization with
+    // src and/or wei zero points (consumed by apply_per_mn_compensation).
+    key_brgemm_primitive_per_mn_comp,
     key_brgemm_primitive_buffer_reduce,
     key_concat_iptrs,
     key_concat_istrides,

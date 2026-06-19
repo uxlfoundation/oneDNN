@@ -408,6 +408,15 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             brg.is_per_k_wei_scales = bgmmc_.is_wei_scale_per_k;
             brg.dt_wei_scales = bgmmc_.wei_scales_dt;
         }
+        if (bgmmc_.with_src_scales) {
+            brg.dt_src_scales = bgmmc_.src_scales_dt;
+            if (bgmmc_.is_src_scale_per_k) {
+                brg.is_per_k_src_scales = true;
+                const auto num_k_groups
+                        = utils::div_up(bgmmc_.K, bgmmc_.src_scales_k_gsize);
+                brg.src_scale_m_stride = num_k_groups * bgmmc_.src_scales_dt_sz;
+            }
+        }
         CHECK(brgemm_desc_set_postops(
                 &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
 
@@ -805,8 +814,9 @@ void brgemm_matmul_t<isa>::compute_kernel(
                         scratch, &leading_dimensions);
                 return;
             }
-            const void *src_scales
-                    = nullptr; // Will be introduced on next commit
+            const void *src_scales = bgmmc.is_src_scale_per_k
+                    ? brgmm_ctx.get_src_scales_ptr(m, k)
+                    : nullptr;
             const void *wei_scales = bgmmc.is_wei_scale_per_k
                             && !bgmmc.apply_scales_in_buffer_b
                     ? brgmm_ctx.get_wei_scales_ptr(n, k)
@@ -829,7 +839,9 @@ void brgemm_matmul_t<isa>::compute_kernel(
 
         // Final K-block: apply scales, compensation and post-ops. Per-K scales
         // take precedence over the common ones.
-        const void *src_scales = brgmm_ctx.get_src_scales_ptr();
+        const void *src_scales = bgmmc.is_src_scale_per_k
+                ? brgmm_ctx.get_src_scales_ptr(m, k)
+                : brgmm_ctx.get_src_scales_ptr();
         const void *wei_scales
                 = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b
                 ? brgmm_ctx.get_wei_scales_ptr(n, k)
@@ -2162,7 +2174,15 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 + n_blk_local * bgmmc_.s8s8_comp_n_str;
     }
 
-    const void *get_src_scales_ptr() const { return src_scales_; }
+    const void *get_src_scales_ptr(dim_t m = 0, dim_t k = 0) const {
+        if (!bgmmc_.is_src_scale_per_k) return src_scales_;
+
+        const auto &k_group_sz = bgmmc_.src_scales_k_gsize;
+        const auto k_idx = k / k_group_sz;
+        const auto num_k_groups = utils::div_up(bgmmc_.K, k_group_sz);
+        auto offset = (m * num_k_groups + k_idx) * bgmmc_.src_scales_dt_sz;
+        return ((const char *)src_scales_ + offset);
+    }
 
     // Returns a pointer to the weights scales for the correspondent block based
     // on @p n and @p k.

@@ -265,6 +265,12 @@ struct brgemm_matmul_conf_t {
     dim_t wei_scales_k_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
 
+    // Src scales per-K
+    bool is_src_scale_per_k = false;
+    dim_t src_scales_k_gsize = 0;
+    data_type_t src_scales_dt = data_type::undef;
+    size_t src_scales_dt_sz = 0;
+
     // Zero points
     bool has_zero_point_a;
     bool has_zero_point_b;

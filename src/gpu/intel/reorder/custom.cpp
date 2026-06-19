@@ -342,6 +342,12 @@ custom_kernel_t select_kernel(const conf_t &conf,
         return custom_kernel_t::none;
     }
 
+    // This kernel fails to compile with f8 data types
+    if (utils::one_of(src_mdw.data_type(), dnnl_f8_e4m3, dnnl_f8_e5m2)
+            || utils::one_of(dst_mdw.data_type(), dnnl_f8_e4m3, dnnl_f8_e5m2)) {
+        return custom_kernel_t::none;
+    }
+
     int mask = conf.src_quant.scale_mask() | conf.src_quant.zp_mask()
             | conf.dst_quant.scale_mask() | conf.dst_quant.zp_mask();
 

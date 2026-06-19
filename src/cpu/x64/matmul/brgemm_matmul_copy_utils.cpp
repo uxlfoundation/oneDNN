@@ -64,7 +64,9 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
                           : avx512_core_dot_product_ ? 27
                                                      : 29) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
     }
@@ -557,7 +559,9 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
                   && conf_->orig_src_dt == data_type::f16
                   && conf_->src_dt == data_type::f32) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
     }
@@ -1580,7 +1584,9 @@ struct jit_brgemm_matmul_copy_a_transposed_int8_impl_t
         , last_m_block_tail_(conf_->M_tail % columns_step_)
         , do_compute_compensation_(conf_->has_zero_point_b) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
     }
@@ -2838,7 +2844,9 @@ struct jit_brgemm_matmul_copy_b_int8_t : public jit_brgemm_matmul_copy_b_t,
                           : avx512_core_dot_product_ ? 23
                                                      : 25) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
     }
@@ -3668,7 +3676,9 @@ struct jit_brgemm_matmul_copy_b_bf16_t
                   conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k)
         , elems_per_byte(is_src_int4 ? 2 : 1) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
     }
@@ -4211,7 +4221,9 @@ struct jit_brgemm_matmul_copy_b_f32_t
         , src_stride_(conf_->copy_B_wei_stride)
         , tr_src_stride_(conf_->LDB * typesize_out_) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
     }
@@ -4517,7 +4529,9 @@ struct jit_brgemm_matmul_copy_b_transposed_t
         , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
         , is_dynamic_N_(conf->is_runtime_N) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
     }
@@ -5580,7 +5594,9 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
         , is_wei_grouped_over_k_(
                   conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
     }

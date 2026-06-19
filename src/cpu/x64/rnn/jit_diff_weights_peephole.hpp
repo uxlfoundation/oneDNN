@@ -39,7 +39,8 @@ public:
         void *dst = nullptr;
     };
 
-    void operator()(jit_diff_weights_peephole_t::call_params_t *params) const {
+    void operator()(
+            const jit_diff_weights_peephole_t::call_params_t *params) const {
         jit_generator_t::operator()(params);
     }
 

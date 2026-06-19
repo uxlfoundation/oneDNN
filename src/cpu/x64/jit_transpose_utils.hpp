@@ -34,7 +34,7 @@ struct jit_trans_src_t {
         int ch_work;
     };
 
-    virtual void operator()(ctx_t *ctx) = 0;
+    virtual void operator()(const ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
 
     jit_trans_src_t(const jit_conv_conf_t *conf) : conf_(conf) {}
@@ -63,7 +63,7 @@ struct jit_trans_dst_t {
     jit_trans_dst_t(const jit_conv_conf_t *conf) : conf_(conf) {}
     virtual ~jit_trans_dst_t() = default;
 
-    virtual void operator()(ctx_t *ctx) = 0;
+    virtual void operator()(const ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
     const jit_conv_conf_t *conf_;
 };

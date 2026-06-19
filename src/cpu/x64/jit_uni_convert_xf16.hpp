@@ -145,7 +145,7 @@ struct jit_cvt_ps_to_xf16_t {
         kernel_->create_kernel();
     }
 
-    void operator()(cvt_xf16_support::jit_call_t *params) const {
+    void operator()(const cvt_xf16_support::jit_call_t *params) const {
         (*kernel_)(params);
         msan_unpoison(params->out,
                 (nelems_ ? nelems_ : params->nelems) * sizeof(float16_t));

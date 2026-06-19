@@ -3820,7 +3820,7 @@ status_t brgemm_kernel_common_t<Wmm>::create_kernel() {
 
 template <typename Wmm>
 void brgemm_kernel_common_t<Wmm>::operator()(
-        brgemm_kernel_params_t *params) const {
+        const brgemm_kernel_params_t *params) const {
     (*brgemm_kernel_)(params);
 }
 

@@ -1511,7 +1511,8 @@ status_t brdgmm_kernel_t<Wmm>::create_kernel() {
 }
 
 template <typename Wmm>
-void brdgmm_kernel_t<Wmm>::operator()(brgemm_kernel_params_t *params) const {
+void brdgmm_kernel_t<Wmm>::operator()(
+        const brgemm_kernel_params_t *params) const {
     (*brgemm_kernel_)(params);
 }
 

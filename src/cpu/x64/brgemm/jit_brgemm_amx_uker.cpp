@@ -3108,7 +3108,7 @@ status_t brgemm_amx_uker_t::create_kernel() {
     return brgemm_kernel_->create_kernel();
 }
 
-void brgemm_amx_uker_t::operator()(brgemm_kernel_params_t *params) const {
+void brgemm_amx_uker_t::operator()(const brgemm_kernel_params_t *params) const {
     (*brgemm_kernel_)(params);
 }
 

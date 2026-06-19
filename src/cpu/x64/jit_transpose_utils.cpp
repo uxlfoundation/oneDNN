@@ -45,7 +45,9 @@ struct jit_trans_iw_ic_t : public jit_trans_src_t, public jit_generator_t {
         , is_layout_nxc(utils::one_of(conf_->src_tag, format_tag::ndhwc,
                   format_tag::nhwc, format_tag::nwc)) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
 
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
@@ -698,7 +700,9 @@ struct jit_trans_ow_oc_t : public jit_trans_dst_t, public jit_generator_t {
                           ? 2
                           : data_type_vnni_granularity(conf->dst_dt)) {}
 
-    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) override {
+        jit_generator_t::operator()(ctx);
+    }
 
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();

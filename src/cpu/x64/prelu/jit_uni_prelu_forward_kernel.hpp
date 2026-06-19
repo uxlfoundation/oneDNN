@@ -40,7 +40,7 @@ public:
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_prelu_forward_kernel_t)
 
-    void operator()(jit_prelu_forward_kernel_t::call_params_t *params) {
+    void operator()(const jit_prelu_forward_kernel_t::call_params_t *params) {
         jit_generator_t::operator()(params);
     }
 

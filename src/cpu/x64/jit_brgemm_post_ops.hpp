@@ -146,7 +146,8 @@ struct jit_brgemm_kernel_post_ops_base_t {
 
     virtual status_t generate_kernel() = 0;
 
-    virtual void operator()(brgemm_kernel_post_ops_args_t *args) const = 0;
+    virtual void operator()(const brgemm_kernel_post_ops_args_t *args) const
+            = 0;
 
     virtual int get_bcast_dim() const = 0;
 };
@@ -170,7 +171,7 @@ struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
     status_t generate_kernel() override {
         return jit_generator_t::create_kernel();
     }
-    void operator()(brgemm_kernel_post_ops_args_t *args) const override {
+    void operator()(const brgemm_kernel_post_ops_args_t *args) const override {
         return jit_generator_t::operator()(args);
     }
 

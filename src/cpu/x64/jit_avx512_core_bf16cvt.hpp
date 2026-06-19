@@ -252,7 +252,7 @@ struct jit_avx512_core_add_cvt_ps_to_bf16_t : public jit_generator_t {
         postamble();
     }
 
-    void operator()(bf16_support::jit_call_t *params) const {
+    void operator()(const bf16_support::jit_call_t *params) const {
         jit_generator_t::operator()(params);
         msan_unpoison(params->out, params->nelems * sizeof(bfloat16_t));
     }
@@ -379,7 +379,7 @@ struct jit_avx512_core_bf16_reorder_s16c_to_S16c2s_t : public jit_generator_t {
             dw(dst_prm_array[i]);
     }
 
-    void operator()(bf16_support::jit_call_t *params) const {
+    void operator()(const bf16_support::jit_call_t *params) const {
         jit_generator_t::operator()(params);
         msan_unpoison(params->out, params->nelems * sizeof(bfloat16_t));
     }

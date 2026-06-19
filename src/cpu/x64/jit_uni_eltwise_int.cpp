@@ -44,7 +44,9 @@ struct jit_uni_eltwise_int_kernel_t : public jit_generator_t {
             const eltwise_pd_t *pd, const cpu_isa_t isa, const char *name)
         : jit_generator_t(name, isa), pd_(pd) {}
 
-    void operator()(jit_args_int8_t *p) { jit_generator_t::operator()(p); }
+    void operator()(const jit_args_int8_t *p) {
+        jit_generator_t::operator()(p);
+    }
 
 protected:
     data_type_t data_type() const { return pd_->src_md()->data_type; }

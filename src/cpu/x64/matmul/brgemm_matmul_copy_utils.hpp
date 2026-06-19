@@ -43,7 +43,7 @@ struct jit_brgemm_matmul_copy_b_t {
         dim_t dynamic_src_stride = 0;
     };
 
-    virtual void operator()(ctx_t *ctx) = 0;
+    virtual void operator()(const ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
 
     jit_brgemm_matmul_copy_b_t(const brgemm_matmul_conf_t *conf)
@@ -68,7 +68,7 @@ struct jit_brgemm_matmul_copy_a_t {
         dim_t dynamic_src_ld = 0;
     };
 
-    virtual void operator()(ctx_t *ctx) = 0;
+    virtual void operator()(const ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
 
     jit_brgemm_matmul_copy_a_t(const brgemm_matmul_conf_t *conf)

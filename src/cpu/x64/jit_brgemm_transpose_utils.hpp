@@ -34,7 +34,7 @@ struct jit_brgemm_trans_src_t {
         dim_t current_M, current_K;
     };
 
-    virtual void operator()(ctx_t *ctx) = 0;
+    virtual void operator()(const ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
 
     jit_brgemm_trans_src_t(const jit_brgemm_primitive_conf_t *conf)
@@ -55,7 +55,7 @@ struct jit_brgemm_copy_to_coarse_t : public jit_generator_t {
         dim_t last_row_blk;
     };
 
-    void operator()(ctx_t *ctx) { jit_generator_t::operator()(ctx); }
+    void operator()(const ctx_t *ctx) { jit_generator_t::operator()(ctx); }
     status_t create_kernel() override {
         return jit_generator_t::create_kernel();
     }
@@ -150,7 +150,7 @@ struct jit_brgemm_trans_to_vnni_t {
         matrix_C,
     };
 
-    virtual void operator()(ctx_t *ctx) = 0;
+    virtual void operator()(const ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
 
     jit_brgemm_trans_to_vnni_t(const jit_brgemm_primitive_conf_t *conf,
@@ -172,7 +172,7 @@ struct jit_brgemm_trans_wei_t {
         dim_t current_N, current_K;
     };
 
-    virtual void operator()(ctx_t *ctx) = 0;
+    virtual void operator()(const ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
 
     jit_brgemm_trans_wei_t(const jit_brgemm_primitive_conf_t *conf)
@@ -234,7 +234,7 @@ struct jit_amx_ip_trans_diff_wei_t {
         size_t last_ic_block;
     };
 
-    virtual void operator()(ctx_t *ctx) = 0;
+    virtual void operator()(const ctx_t *ctx) = 0;
     virtual status_t create_kernel() = 0;
 
     jit_amx_ip_trans_diff_wei_t(const jit_brgemm_primitive_conf_t *jbgp,

@@ -47,7 +47,7 @@ struct binary_kernel_t : public jit_generator_t {
             bool tail_kernel = false);
     ~binary_kernel_t() override = default;
 
-    void operator()(jit_uni_binary_args_t *p) {
+    void operator()(const jit_uni_binary_args_t *p) {
         jit_generator_t::operator()(p);
     }
 

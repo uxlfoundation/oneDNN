@@ -55,7 +55,7 @@ struct jit_avx512_core_fp16_add_cvt_ps_to_f16_t : public jit_generator_t {
 
     void generate() override;
 
-    void operator()(f16_support::jit_call_t *params) const {
+    void operator()(const f16_support::jit_call_t *params) const {
         jit_generator_t::operator()(params);
         msan_unpoison(params->out, params->nelems * sizeof(float16_t));
     }

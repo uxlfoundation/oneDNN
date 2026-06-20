@@ -68,10 +68,9 @@ struct jit_uni_postops_kernel_t::impl_t : public jit_generator_t {
         ld(reg_rhs, reg_param, GET_OFF(rhs));
         ld(reg_len, reg_param, GET_OFF(len));
 
-        // Accumulator group v0 (m4). No masks are used by the injectors, so v0
-        // is safe as the data register. Aux groups follow at the m4 stride;
-        // v20 is the per-element bias staging group.
-        const VReg v_data(0);
+        // Accumulator group v24 (m4). The injectors may use v0 as a mask
+        // register, so the data register group must not overlap it.
+        const VReg v_data(24);
         const VReg v_bias(20);
         const FReg f_bias = fa3;
         eltwise_injector::static_params_t esp(

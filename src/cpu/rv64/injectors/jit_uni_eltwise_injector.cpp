@@ -59,13 +59,17 @@ void jit_uni_eltwise_injector_t<isa>::load_f32_const(const FReg &f, float val) {
     h_->fmv_w_x(f, gpr_aux0_);
 }
 
-// mask-free clamp(v, lo, hi) = min(max(v, lo), hi)
+// NaN-preserving clamp(v, lo, hi). Comparisons with NaN are false, so NaN lanes
+// keep their original value instead of being replaced by the clamp bound.
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::clamp(const Vmm &v, float lo, float hi) {
+    const Xbyak_riscv::VReg v_mask(0);
     load_f32_const(f_aux0_, lo);
-    h_->vfmax_vf(v, v, f_aux0_);
+    h_->vmflt_vf(v_mask, v, f_aux0_);
+    h_->vfmerge_vfm(v, v, f_aux0_);
     load_f32_const(f_aux1_, hi);
-    h_->vfmin_vf(v, v, f_aux1_);
+    h_->vmfgt_vf(v_mask, v, f_aux1_);
+    h_->vfmerge_vfm(v, v, f_aux1_);
 }
 
 // exp(x) via base-2 range reduction + degree-5 minimax polynomial (the classic
@@ -84,10 +88,7 @@ void jit_uni_eltwise_injector_t<isa>::exp_compute_vector(const Vmm &v) {
     // -126) come out as exactly 0: (n-1)+127 == 0 builds +0.0, not subnormal
     // 2^-127. This matches x64 (which masks the < ln(FLT_MIN) lanes to 0); the
     // error vs the true value (~1e-38) is negligible.
-    load_f32_const(f_aux0_, 88.72283905f); // MAXLOGF
-    h_->vfmin_vf(v, v, f_aux0_);
-    load_f32_const(f_aux0_, -87.33654475f); // MINLOGF
-    h_->vfmax_vf(v, v, f_aux0_);
+    clamp(v, -87.33654475f, 88.72283905f); // MINLOGF, MAXLOGF
 
     // n = round(x * log2e); z = (float)n
     load_f32_const(f_aux0_, 1.44269504088896341f); // log2e
@@ -272,22 +273,20 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(const Vmm &v) {
     switch (alg_) {
         case eltwise_relu:
             if (alpha_ == 0.f) {
-                // relu(x) = max(x, 0)
+                // relu(x) = x < 0 ? 0 : x. Keep NaN lanes unchanged.
+                const Xbyak_riscv::VReg v_mask(0);
                 load_f32_const(f_aux0_, 0.f);
-                h_->vfmax_vf(v, v, f_aux0_);
+                h_->vmflt_vf(v_mask, v, f_aux0_);
+                h_->vfmerge_vfm(v, v, f_aux0_);
             } else {
-                // leaky relu = x>0 ? x : alpha*x, computed mask-free as
-                //   max(x,0) + alpha*min(x,0).
-                // Correct for ANY alpha (the old max(x,alpha*x) only held for
-                // alpha<=1) and leaves v0 untouched, which the fused post-op
-                // path requires (v0 is the accumulator there, so a v0
-                // compare-mask is unavailable). Mirrors the elu identity below.
+                // leaky relu = x>0 ? x : alpha*x. NaN takes the false branch,
+                // but alpha*NaN is still NaN.
+                const Xbyak_riscv::VReg v_mask(0);
                 load_f32_const(f_aux0_, 0.f);
                 load_f32_const(f_aux1_, alpha_);
-                h_->vfmin_vf(v_aux0_, v, f_aux0_); // min(x,0)
-                h_->vfmul_vf(v_aux0_, v_aux0_, f_aux1_); // alpha*min(x,0)
-                h_->vfmax_vf(v, v, f_aux0_); // max(x,0)
-                h_->vfadd_vv(v, v, v_aux0_); // max(x,0) + alpha*min(x,0)
+                h_->vfmul_vf(v_aux0_, v, f_aux1_);
+                h_->vmfgt_vf(v_mask, v, f_aux0_);
+                h_->vmerge_vvm(v, v_aux0_, v);
             }
             break;
 
@@ -378,18 +377,18 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(const Vmm &v) {
         }
 
         case eltwise_elu:
-            // x>0 ? x : alpha*(exp(x)-1)
-            //   = max(x,0) + alpha*(exp(min(x,0)) - 1)   [mask-free]
+            // x>0 ? x : alpha*(exp(x)-1). NaN takes the false branch and
+            // remains NaN through exp/sub/mul.
+            const Xbyak_riscv::VReg v_mask(0);
+            h_->vmv_v_v(v_aux1_, v); // save x
             load_f32_const(f_aux0_, 0.f);
-            h_->vfmax_vf(v_aux1_, v, f_aux0_); // max(x,0)  (kept in aux1)
-            load_f32_const(f_aux0_, 0.f);
-            h_->vfmin_vf(v, v, f_aux0_); // min(x,0)
-            exp_compute_vector(v); // exp(min(x,0))
+            h_->vmfgt_vf(v_mask, v_aux1_, f_aux0_);
+            exp_compute_vector(v); // exp(x)
             load_f32_const(f_aux0_, 1.f);
             h_->vfsub_vf(v, v, f_aux0_); // exp(...) - 1
             load_f32_const(f_aux0_, alpha_);
             h_->vfmul_vf(v, v, f_aux0_); // alpha*(...)
-            h_->vfadd_vv(v, v, v_aux1_); // + max(x,0)
+            h_->vmerge_vvm(v, v, v_aux1_);
             break;
 
         case eltwise_swish:

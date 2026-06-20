@@ -35,9 +35,8 @@ namespace eltwise_injector {
 // compute_vector(). The host kernel guarantees these registers are dead during
 // post-op application. RVV vector length is a run-time quantity, so the host
 // (which owns the vsetvli state and the accumulator allocation) supplies free
-// vector scratch rather than the injector spilling — this also keeps the v0
-// mask register untouched, which matters for kernels whose accumulators land on
-// v0 (e.g. the brgemm kernel).
+// vector scratch rather than the injector spilling. The injector may use v0 as
+// a mask register, so hosts must keep accumulator groups away from v0.
 struct static_params_t {
     static_params_t(const Xbyak_riscv::VReg &v_aux0,
             const Xbyak_riscv::VReg &v_aux1, const Xbyak_riscv::VReg &v_aux2,
@@ -53,14 +52,12 @@ struct static_params_t {
 
     // Up to three vector scratch groups (same LMUL as the host accumulator).
     // Forward arithmetic algorithms use at most v_aux0; exp/logistic use
-    // v_aux0 and v_aux2; tanh/elu/swish/gelu_tanh use all three. Backward
-    // derivatives may use v_aux0 and v_aux1 plus v0 as a mask.
+    // v_aux0 and v_aux2; tanh/elu/swish/gelu_tanh use all three. Forward and
+    // backward may use v0 as a mask.
     Xbyak_riscv::VReg v_aux0, v_aux1, v_aux2;
     Xbyak_riscv::FReg f_aux0, f_aux1; // two FP scratch regs for constants
     Xbyak_riscv::Reg gpr_aux0; // one GPR scratch for constant materialization
-    // Forward (d = alg(s)) or backward (ds = alg'(s)). Backward is used by the
-    // standalone eltwise primitive, where v0 is free and used as the mask
-    // register; the forward post-op path stays mask-free and leaves v0 alone.
+    // Forward (d = alg(s)) or backward (ds = alg'(s)).
     bool is_fwd;
 };
 
@@ -120,7 +117,7 @@ private:
     void compute_body(const Vmm &v);
     void compute_vector_bwd(const Vmm &v);
     void load_f32_const(const Xbyak_riscv::FReg &f, float val);
-    // mask-free clamp(v, lo, hi); reuses f_aux0_/f_aux1_.
+    // NaN-preserving clamp(v, lo, hi); reuses f_aux0_/f_aux1_ and v0.
     void clamp(const Vmm &v, float lo, float hi);
     // exp(v) in place: range-reduce + Horner poly + 2^n scale. Uses v_aux0
     // and v_aux2; leaves v_aux1 free for callers. Building block for the

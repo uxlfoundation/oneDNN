@@ -19,6 +19,7 @@
 
 #include <assert.h>
 
+#include "common/dnnl_thread.hpp"
 #include "common/c_types_map.hpp"
 #include "common/reorder_pd.hpp"
 #include "common/utils.hpp"

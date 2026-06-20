@@ -152,6 +152,7 @@ template <cpu_isa_t isa, data_type_t d_type>
 void jit_uni_pool_kernel_t<isa, d_type>::generate_f32() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
+    const VReg v_mask(0);
     const VReg v_acc(4), v_tmp(8);
 
     // Classify a fused binary post-op (if any) to pick the rhs load form. The
@@ -275,7 +276,10 @@ void jit_uni_pool_kernel_t<isa, d_type>::generate_f32() {
         L(src_ld_done);
     }
     if (is_max_pool_) {
-        vfmax_vv(v_acc, v_acc, v_tmp);
+        vmflt_vv(v_mask, v_acc, v_tmp);
+        vmerge_vvm(v_acc, v_acc, v_tmp);
+        vmfne_vv(v_mask, v_tmp, v_tmp);
+        vmerge_vvm(v_acc, v_acc, v_tmp);
     } else {
         vfadd_vv(v_acc, v_acc, v_tmp);
     }
@@ -386,6 +390,7 @@ template <cpu_isa_t isa, data_type_t d_type>
 void jit_uni_pool_kernel_t<isa, d_type>::generate_f16() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
+    const VReg v_mask(0);
     // max: v_acc(f16m1)=v4, v_tmp(f16m1)=v8.
     // avg: v_acc(f32m2)=v4-v5, v_tmp(f16m1)=v8 (load buffer + narrowed result).
     const VReg v_acc(4), v_tmp(8);
@@ -500,7 +505,10 @@ void jit_uni_pool_kernel_t<isa, d_type>::generate_f16() {
         L(src_ld_done);
     }
     if (is_max_pool_) {
-        vfmax_vv(v_acc, v_acc, v_tmp);
+        vmflt_vv(v_mask, v_acc, v_tmp);
+        vmerge_vvm(v_acc, v_acc, v_tmp);
+        vmfne_vv(v_mask, v_tmp, v_tmp);
+        vmerge_vvm(v_acc, v_acc, v_tmp);
     } else {
         // f32m2 += widen(f16m1), evaluated under the e16 vtype.
         vfwadd_wv(v_acc, v_acc, v_tmp);
@@ -637,6 +645,7 @@ void jit_uni_pool_interior_kernel_t<isa, d_type>::generate_nspc() {
     };
 
     const bool is_max = jpp_.alg == alg_kind::pooling_max;
+    const VReg v_mask(0);
     const bool is_avg_exclude
             = jpp_.alg == alg_kind::pooling_avg_exclude_padding;
     const int kw = jpp_.kw;
@@ -742,9 +751,12 @@ void jit_uni_pool_interior_kernel_t<isa, d_type>::generate_nspc() {
         vle32_v(v_tmp, t5);
         for (int j = 0; j < ur_w; j++) {
             if (j * sw <= p && p < j * sw + kw) {
-                if (is_max)
-                    vfmax_vv(acc(j), acc(j), v_tmp);
-                else
+                if (is_max) {
+                    vmflt_vv(v_mask, acc(j), v_tmp);
+                    vmerge_vvm(acc(j), acc(j), v_tmp);
+                    vmfne_vv(v_mask, v_tmp, v_tmp);
+                    vmerge_vvm(acc(j), acc(j), v_tmp);
+                } else
                     vfadd_vv(acc(j), acc(j), v_tmp);
             }
         }

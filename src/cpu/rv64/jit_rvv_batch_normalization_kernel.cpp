@@ -79,6 +79,7 @@ void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
     const FReg f_sv = fa2;
     const FReg f_zero = fa3;
 
+    const VReg v_mask(0);
     const VReg v_src(4);
     const VReg v_mean(8);
     const VReg v_sm(12);
@@ -115,7 +116,10 @@ void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
         vfmul_vf(v_src, v_src, f_sm);
         vfadd_vf(v_src, v_src, f_sv);
     }
-    if (with_relu_) vfmax_vf(v_src, v_src, f_zero);
+    if (with_relu_) {
+        vmflt_vf(v_mask, v_src, f_zero);
+        vfmerge_vfm(v_src, v_src, f_zero);
+    }
     vse32_v(v_src, reg_dst);
 
     slli(reg_bytes, reg_vl, 2);

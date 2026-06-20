@@ -72,7 +72,7 @@ data_t empty_window_value(const jit_pool_conf_t &jpp) {
         float v = (float)nstl::numeric_limits<data_t>::lowest();
         if (jpp.with_relu) { // fused only for f32
             if (jpp.relu_alpha == 0.0f)
-                v = std::max(v, 0.0f);
+                v = v < 0.0f ? 0.0f : v;
             else if (v <= 0.0f)
                 v *= jpp.relu_alpha;
         }

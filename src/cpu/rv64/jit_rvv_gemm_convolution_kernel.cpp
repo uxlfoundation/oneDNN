@@ -158,7 +158,7 @@ void jit_rvv_gemm_convolution_apply_scalar_bias_relu(
     for (dim_t i = 0; i < len; ++i) {
         float value = dst[i] + bias;
         if (relu_alpha == 0.0f)
-            value = value > 0.0f ? value : 0.0f;
+            value = value < 0.0f ? 0.0f : value;
         else if (value < 0.0f)
             value *= relu_alpha;
         dst[i] = value * scale;
@@ -209,7 +209,8 @@ void jit_rvv_gemm_convolution_post_kernel_t::generate() {
 
     if (with_relu_) {
         if (relu_alpha_zero_) {
-            vfmax_vf(v_dst, v_dst, f_zero);
+            vmflt_vf(v_mask, v_dst, f_zero);
+            vfmerge_vfm(v_dst, v_dst, f_zero);
         } else {
             vmflt_vf(v_mask, v_dst, f_zero);
             vfmul_vf(v_tmp, v_dst, f_alpha);

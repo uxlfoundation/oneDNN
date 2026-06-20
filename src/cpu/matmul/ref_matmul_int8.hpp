@@ -122,6 +122,11 @@ struct ref_matmul_int8_t : public primitive_t {
                     // Only one non-unit group is supported.
                     VDISPATCH_MATMUL(utils::one_of(1, gK, gN),
                             VERBOSE_UNSUPPORTED_ZP_CFG);
+
+                    const auto gB = zp.get_group(DNNL_ARG_WEIGHTS, 2);
+                    VDISPATCH_MATMUL(
+                            IMPLICATION(gB > 1, batched() && batch() % gB == 0),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
                 }
             }
             if (!zp.has_default_values(DNNL_ARG_DST)) {

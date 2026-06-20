@@ -153,7 +153,7 @@ struct matmul_helper_t {
 
     static dim_t get_quant_off(const dims_t &input_idx, const int ndims,
             const int quant_mask, const dim_t g0, const dim_t g1,
-            const memory_desc_t &quant_md) {
+            const memory_desc_t &quant_md, const dim_t g2 = 1) {
         if (types::is_zero_md(&quant_md)) return 0;
 
         dims_t quant_idx {};
@@ -167,6 +167,7 @@ struct matmul_helper_t {
             quant_idx[ndims - 1] /= g1;
             quant_idx[ndims - 2] /= g0;
         }
+        if (ndims >= 3 && g2 > 1) { quant_idx[ndims - 3] /= g2; }
 
         const memory_desc_wrapper q_mdw(quant_md);
         return q_mdw.off_v(quant_idx);

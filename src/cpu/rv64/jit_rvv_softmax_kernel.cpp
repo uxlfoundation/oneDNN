@@ -307,6 +307,7 @@ void jit_rvv_softmax_f16_exp_sub_sum_kernel_t::generate() {
     const VReg v_tmpv(20);
     const VReg v_acc(24);
     const VReg v_red(28);
+    const VReg v_mask(0);
 
     auto load_f32_bits = [&](const FReg &freg, uint32_t bits) {
         li(reg_imm, static_cast<int64_t>(bits));
@@ -350,8 +351,10 @@ void jit_rvv_softmax_f16_exp_sub_sum_kernel_t::generate() {
     vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4);
     vfsub_vf(v_x, v_x, f_sub);
     vfmv_v_f(v_bias, f_round);
-    vfmax_vf(v_x, v_x, f_lower);
-    vfmin_vf(v_x, v_x, f_upper);
+    vmflt_vf(v_mask, v_x, f_lower);
+    vfmerge_vfm(v_x, v_x, f_lower);
+    vmfgt_vf(v_mask, v_x, f_upper);
+    vfmerge_vfm(v_x, v_x, f_upper);
     vfmacc_vf(v_bias, f_log2_recip, v_x);
     vfsub_vf(v_tmpv, v_bias, f_round);
     vfmacc_vf(v_x, f_log2_high, v_tmpv);

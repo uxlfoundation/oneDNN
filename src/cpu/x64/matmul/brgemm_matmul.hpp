@@ -93,7 +93,7 @@ private:
             int ithr, int b_idx, int m_blk_idx, int n_blk_idx, int k_blk_idx,
             bool do_init, int &prev_ker_idx, bool prefetch) const;
     void fill_per_mn_compensation(const brg_matmul_exec_ctx_t &brgmm_ctx,
-            int ithr, int m_blk_idx, int n_blk_idx,
+            int ithr, int b_idx, int m_blk_idx, int n_blk_idx,
             const char *A_data_batch_ptr, const char *B_data_batch_ptr,
             int m_kernel_size, int n_kernel_size, int k_blk_idx,
             bool is_tail) const;

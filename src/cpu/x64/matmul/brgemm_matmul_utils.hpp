@@ -299,6 +299,13 @@ struct brgemm_matmul_conf_t {
     bool is_wei_zp_common = false;
     data_type_t wei_zp_dt = data_type::undef;
 
+    // Batched (3D/4D) per-batch scales/ZP plane stride (in elements).
+    // Populated when the scales/ZP mask carries batch bits.
+    dim_t src_scales_batch_stride = 0;
+    dim_t src_zp_batch_stride = 0;
+    dim_t wei_scales_batch_stride = 0;
+    dim_t wei_zp_batch_stride = 0;
+
     dim_t zp_a_comp_shift_n;
     dim_t zp_a_comp_elems_per_thr;
 

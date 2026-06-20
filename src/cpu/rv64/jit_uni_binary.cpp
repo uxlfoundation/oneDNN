@@ -141,8 +141,20 @@ void emit_binary_loop(jit_generator_t *h, alg_kind_t alg, bool scalar_src1,
             case binary_sub: h->vfsub_vf(vd, vd, f); break;
             case binary_mul: h->vfmul_vf(vd, vd, f); break;
             case binary_div: h->vfdiv_vf(vd, vd, f); break;
-            case binary_max: h->vfmax_vf(vd, vd, f); break;
-            case binary_min: h->vfmin_vf(vd, vd, f); break;
+            case binary_max:
+                h->vfmv_v_f(vs1, f);
+                h->vmflt_vv(VReg(0), vd, vs1);
+                h->vmerge_vvm(vd, vd, vs1);
+                h->vmfne_vv(VReg(0), vs1, vs1);
+                h->vmerge_vvm(vd, vd, vs1);
+                break;
+            case binary_min:
+                h->vfmv_v_f(vs1, f);
+                h->vmflt_vv(VReg(0), vs1, vd);
+                h->vmerge_vvm(vd, vd, vs1);
+                h->vmfne_vv(VReg(0), vs1, vs1);
+                h->vmerge_vvm(vd, vd, vs1);
+                break;
             // Comparison: dst = (dst OP src1) ? 1 : 0 (vf form has gt/ge).
             case binary_ge:
                 h->vmfge_vf(VReg(0), vd, f);
@@ -177,8 +189,18 @@ void emit_binary_loop(jit_generator_t *h, alg_kind_t alg, bool scalar_src1,
             case binary_sub: h->vfsub_vv(vd, vd, v1); break;
             case binary_mul: h->vfmul_vv(vd, vd, v1); break;
             case binary_div: h->vfdiv_vv(vd, vd, v1); break;
-            case binary_max: h->vfmax_vv(vd, vd, v1); break;
-            case binary_min: h->vfmin_vv(vd, vd, v1); break;
+            case binary_max:
+                h->vmflt_vv(VReg(0), vd, v1);
+                h->vmerge_vvm(vd, vd, v1);
+                h->vmfne_vv(VReg(0), v1, v1);
+                h->vmerge_vvm(vd, vd, v1);
+                break;
+            case binary_min:
+                h->vmflt_vv(VReg(0), v1, vd);
+                h->vmerge_vvm(vd, vd, v1);
+                h->vmfne_vv(VReg(0), v1, v1);
+                h->vmerge_vvm(vd, vd, v1);
+                break;
             // Comparison: vmfgt/vmfge have no vv form, so swap operands
             // (dst > v1 == v1 < dst, dst >= v1 == v1 <= dst).
             case binary_ge:

@@ -97,16 +97,18 @@ void jit_uni_binary_injector_t<isa>::compute_body(const Vmm &dst) {
                 h_->vfdiv_vv(dst, dst, v_rhs_);
             break;
         case binary_max:
-            if (scalar)
-                h_->vfmax_vf(dst, dst, f_rhs_);
-            else
-                h_->vfmax_vv(dst, dst, v_rhs_);
+            if (scalar) h_->vfmv_v_f(v_rhs_, f_rhs_);
+            h_->vmflt_vv(VReg(0), dst, v_rhs_);
+            h_->vmerge_vvm(dst, dst, v_rhs_);
+            h_->vmfne_vv(VReg(0), v_rhs_, v_rhs_);
+            h_->vmerge_vvm(dst, dst, v_rhs_);
             break;
         case binary_min:
-            if (scalar)
-                h_->vfmin_vf(dst, dst, f_rhs_);
-            else
-                h_->vfmin_vv(dst, dst, v_rhs_);
+            if (scalar) h_->vfmv_v_f(v_rhs_, f_rhs_);
+            h_->vmflt_vv(VReg(0), v_rhs_, dst);
+            h_->vmerge_vvm(dst, dst, v_rhs_);
+            h_->vmfne_vv(VReg(0), v_rhs_, v_rhs_);
+            h_->vmerge_vvm(dst, dst, v_rhs_);
             break;
         default: assert(!"unsupported binary alg"); break;
     }

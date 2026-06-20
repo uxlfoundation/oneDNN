@@ -388,9 +388,7 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
                       || !attr.zero_points_.get(DNNL_ARG_SRC)
                                   .has_default_groups()
                       || !attr.zero_points_.get(DNNL_ARG_WEIGHTS)
-                                  .has_default_groups())
-              && bgmmc.ndims
-                      == 2) // 3D/4D cases will be enabled in separate PRs.
+                                  .has_default_groups()))
     , bf16_fp8_dt(bgmmc.src_dt == bf16 && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     , f16_fp8_dt(bgmmc.src_dt == f16 && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
@@ -1938,6 +1936,52 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     if (bgmmc.is_wei_scale_per_k && !bgmmc.is_runtime_K
             && bgmmc.wei_scales_k_gsize >= bgmmc.K) {
         bgmmc.is_wei_scale_per_k = false;
+    }
+
+    // Batched (3D/4D) per-batch scales/ZP have batch bits set in the mask.
+    // Compute the stride (in elements) between consecutive per-batch planes
+    // so the matmul driver can offset the scales/ZP pointer per batch index.
+    if (bgmmc.batch > 1) {
+        const int kn_mask = (1 << (bgmmc.ndims - 1)) | (1 << (bgmmc.ndims - 2));
+        const int &mk_mask = kn_mask; // just a naming alias
+        if (bgmmc.with_src_scales) {
+            const bool has_batch_bits = (src_scales.get_mask() & ~mk_mask) != 0;
+            if (has_batch_bits) {
+                const dim_t num_k_groups = bgmmc.is_src_scale_per_k
+                                && bgmmc.src_scales_k_gsize > 0
+                        ? utils::div_up(bgmmc.K, bgmmc.src_scales_k_gsize)
+                        : 1;
+                bgmmc.src_scales_batch_stride = num_k_groups * bgmmc.M;
+            }
+        }
+        if (bgmmc.with_wei_scales) {
+            const bool has_batch_bits = (wei_scales.get_mask() & ~kn_mask) != 0;
+            if (has_batch_bits) {
+                const dim_t num_k_groups = bgmmc.is_wei_scale_per_k
+                        ? utils::div_up(bgmmc.K, bgmmc.wei_scales_k_gsize)
+                        : 1;
+                bgmmc.wei_scales_batch_stride = num_k_groups * bgmmc.N;
+            }
+        }
+        if (has_src_zp) {
+            const bool has_batch_bits = (src_zp.get_mask() & ~mk_mask) != 0;
+            if (has_batch_bits) {
+                const dim_t num_k_groups
+                        = bgmmc.is_src_zp_per_k && bgmmc.src_zp_k_gsize > 0
+                        ? utils::div_up(bgmmc.K, bgmmc.src_zp_k_gsize)
+                        : 1;
+                bgmmc.src_zp_batch_stride = num_k_groups * bgmmc.M;
+            }
+        }
+        if (has_wei_zp) {
+            const bool has_batch_bits = (wei_zp.get_mask() & ~kn_mask) != 0;
+            if (has_batch_bits) {
+                const dim_t num_k_groups = bgmmc.is_wei_zp_per_k
+                        ? utils::div_up(bgmmc.K, bgmmc.wei_zp_k_gsize)
+                        : 1;
+                bgmmc.wei_zp_batch_stride = num_k_groups * bgmmc.N;
+            }
+        }
     }
 
     bgmmc.is_gemv = is_gemv_applicable(

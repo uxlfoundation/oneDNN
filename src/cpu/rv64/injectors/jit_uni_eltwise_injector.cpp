@@ -376,7 +376,7 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(const Vmm &v) {
             break;
         }
 
-        case eltwise_elu:
+        case eltwise_elu: {
             // x>0 ? x : alpha*(exp(x)-1). NaN takes the false branch and
             // remains NaN through exp/sub/mul.
             const Xbyak_riscv::VReg v_mask(0);
@@ -390,6 +390,7 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(const Vmm &v) {
             h_->vfmul_vf(v, v, f_aux0_); // alpha*(...)
             h_->vmerge_vvm(v, v, v_aux1_);
             break;
+        }
 
         case eltwise_swish:
             // x * sigmoid(alpha * x)

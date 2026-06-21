@@ -266,13 +266,9 @@ void jit_uni_reduction_kernel_t::emit_finalize_f16_widen_sum_or_mean() {
         emit_mean_scale_if_needed();
         fsw(f_tmp, reg_dst, 0);
     } else {
-        vsetvli(reg_tmp, x0, SEW::e16, LMUL::m4, VTA::tu, VMA::mu);
-        vfncvt_f_f_w(v_data, v_red);
-        vfmv_f_s(f_tmp, v_data);
-        fcvt_s_h(Reg(f_tmp.getIdx()), Reg(f_tmp.getIdx()));
+        vfmv_f_s(f_tmp, v_red);
         emit_mean_scale_if_needed();
-        fcvt_h_s(Reg(f_tmp.getIdx()), Reg(f_tmp.getIdx()));
-        fsh(f_tmp, reg_dst, 0);
+        emit_store_scalar(scalar_kind_t::f32);
     }
 }
 

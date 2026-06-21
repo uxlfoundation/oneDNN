@@ -388,6 +388,8 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(const Vmm &v) {
             h_->vfsub_vf(v, v, f_aux0_); // exp(...) - 1
             load_f32_const(f_aux0_, alpha_);
             h_->vfmul_vf(v, v, f_aux0_); // alpha*(...)
+            load_f32_const(f_aux0_, 0.f);
+            h_->vmfgt_vf(v_mask, v_aux1_, f_aux0_);
             h_->vmerge_vvm(v, v, v_aux1_);
             break;
         }

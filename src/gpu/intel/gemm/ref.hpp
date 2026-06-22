@@ -155,7 +155,7 @@ struct ref_t : public primitive_t {
                     ((utils::everyone_is(f32, a_dt, b_dt, c_dt)
                              && IMPLICATION(with_bias(), bia_dt == f32))
                             || (utils::everyone_is(f16, a_dt, b_dt)
-                                    && utils::one_of(c_dt, u8, s8, f16)
+                                    && utils::one_of(c_dt, u8, s8, f16, f32)
                                     && IMPLICATION(with_bias(),
                                             utils::one_of(bia_dt, f16, f32)))
                             || (utils::everyone_is(bf16, a_dt, b_dt)

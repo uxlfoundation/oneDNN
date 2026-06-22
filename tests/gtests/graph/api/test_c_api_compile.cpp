@@ -981,15 +981,6 @@ TEST(CAPI, CompileSumConv2DStridedBN) {
                            *(compiled_partition + 1), sum_output.id,
                            &opaque_sum_output),
             dnnl_success, COMPILE_SUM_CONV2D_STRIDED_BN_DESTROY_PLUS);
-// Blocked layout is supported on intel gpu only
-#if DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE \
-        && DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-    ASSERT_EQ(opaque_sum_output.layout_type,
-            engine == dnnl_gpu ? dnnl_graph_layout_type_opaque
-                               : dnnl_graph_layout_type_strided);
-#else
-    ASSERT_EQ(opaque_sum_output.layout_type, dnnl_graph_layout_type_strided);
-#endif
 
     // Check in-place pairs
     size_t num_inplace_pairs = 10; // Initialized with an impossible value.

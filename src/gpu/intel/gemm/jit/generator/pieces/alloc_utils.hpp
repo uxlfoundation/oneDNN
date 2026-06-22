@@ -97,12 +97,12 @@ GRFMultirange tryChunkAlloc(int nreg, int chunk, ngen::BundleGroup hint, ngen::B
 
 // Attempt to allocate data registers for a layout, using one contiguous allocation per block.
 // Returns an empty GRFMultirange on failure.
-GRFMultirange trySplitAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, std::array<ngen::BundleGroup, 2> hints,
-                            ngen::BundleGroup mask, CommonState &state, int copies = 1);
+GRFMultirange trySplitAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, const std::array<ngen::BundleGroup, 2> &hints,
+                            const ngen::BundleGroup &mask, CommonState &state, int copies = 1);
 
 // Split allocate if possible, otherwise chunk allocate.
-GRFMultirange splitOrChunkAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, int chunk, std::array<ngen::BundleGroup, 2> hints,
-                                ngen::BundleGroup mask, CommonState &state, bool forceChunk = false);
+GRFMultirange splitOrChunkAlloc(ngen::HW hw, Type T, const RegisterLayout &layout, int chunk, const std::array<ngen::BundleGroup, 2> &hints,
+                                const ngen::BundleGroup &mask, CommonState &state, bool forceChunk = false);
 
 GEMMSTONE_NAMESPACE_END
 

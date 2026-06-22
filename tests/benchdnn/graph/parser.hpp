@@ -51,6 +51,10 @@ bool parse_dt(std::vector<dnnl_data_type_t> &dt,
 bool parse_op_kind(std::vector<std::map<size_t, std::string>> &op_kind_map,
         const char *str, const std::string &option_name = "op-kind");
 
+bool parse_tensor_property(
+        std::vector<std::map<size_t, std::string>> &tensor_property_vec,
+        const char *str, const std::string &option_name = "tensor-property");
+
 std::map<std::string, std::string> parse_attrs(const std::string &attrs_str);
 
 // Convert f32 vec attrs string into f32 vec

@@ -55,6 +55,8 @@ struct settings_t : public base_settings_t {
             {{SIZE_MAX, dnnl_data_type_undef}}};
     std::vector<std::map<size_t, std::string>> op_kind_map {
             {{SIZE_MAX, "default"}}};
+    std::vector<std::map<size_t, std::string>> tensor_property_vec {
+            {{SIZE_MAX, "default"}}};
 
     const char *perf_template_csv = "perf,%engine%,%desc%,%-time%,%0time%";
     static constexpr const char *perf_template_def
@@ -79,7 +81,8 @@ std::string case_to_str(const std::string &json_file,
         const size_t expected_n_partitions, const int64_t mb,
         const dnnl_data_type_t dt,
         const std::map<size_t, dnnl_data_type_t> &dt_map,
-        const std::map<size_t, std::string> &op_kind_map);
+        const std::map<size_t, std::string> &op_kind_map,
+        const std::map<size_t, std::string> &tensor_property);
 
 struct perf_report_t : public base_perf_report_t {
     perf_report_t(const std::string &case_str, const char *perf_template)

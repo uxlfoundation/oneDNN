@@ -133,6 +133,22 @@ bool parse_op_kind(std::vector<std::map<size_t, std::string>> &op_kind_map,
     return true;
 }
 
+bool parse_tensor_property(
+        std::vector<std::map<size_t, std::string>> &tensor_property_vec,
+        const char *str, const std::string &option_name) {
+    std::string s;
+    if (!parse_string(s, str, option_name)) return false;
+
+    if (s.find(":") == std::string::npos) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "Error: --tensor-property is not correctly specified with a "
+                "pair of tensor id and target property type.");
+        SAFE_V(FAIL);
+    }
+    parse_key_value(tensor_property_vec, s, option_name);
+    return true;
+}
+
 bool parse_dt(std::vector<dnnl_data_type_t> &dt,
         std::vector<std::map<size_t, dnnl_data_type_t>> &dt_map,
         const char *str, const std::string &option_name) {

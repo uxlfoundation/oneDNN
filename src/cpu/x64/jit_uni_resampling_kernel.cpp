@@ -220,7 +220,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::preserve_zero_padding_in_post_ops(
     const Vmm vmm_zeros(vmm_tmp_.getIdx());
 
     uni_vxorps(vmm_zeros, vmm_zeros, vmm_zeros);
-    if (is_superset(conf_.isa, avx512_core))
+    if (isa_has_evex(conf_.isa))
         vblendmps(vmm_data | k_tail_mask_, vmm_zeros, vmm_data);
     else {
         std::bitset<8> tail_mask((1 << tail_size_) - 1);

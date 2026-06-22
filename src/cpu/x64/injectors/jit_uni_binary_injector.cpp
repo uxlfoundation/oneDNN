@@ -2903,7 +2903,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary(
     const bool scalar_f32
             = rhs_addr.isBroadcast() && rhs_arg_data_type == data_type::f32;
     const bool with_tail_not_fusable_to_binary_op
-            = with_tail && !isa_has_masks(isa);
+            = with_tail && !isa_has_evex(isa);
     const bool process_rhs_arg_using_tmp_vmm
             = rhs_arg_data_type != data_type::f32 || (scalar_f32 && !is_avx512_)
             || with_tail_not_fusable_to_binary_op
@@ -2930,7 +2930,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary(
     } else {
         const auto lhs = dst;
         if (with_tail) {
-            assert(isa_has_masks(isa));
+            assert(isa_has_evex(isa));
             assert(rhs_arg_static_params_.is_opmask_set()
                     && "Opmask is not set for tail loading avx512");
             const auto &tail_opmask = rhs_arg_static_params_.tail_opmask;
@@ -2960,7 +2960,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary_with_ternary_op(
         // While a more direct implementation can be obtained by
         // blending the tensors, the current approach reserves
         // fewer registers for operation.
-        if (is_superset(isa, avx512_core)) {
+        if (isa_has_evex(isa)) {
             const auto &cmp_mask = rhs_arg_static_params_.tail_opmask;
             push_opmask(host_, cmp_mask);
             push_vmm(host_, dst);
@@ -4046,7 +4046,7 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::execute_prelu(
         const Vmm &dst, const Xbyak::Operand &rhs) const {
     Vmm tmp_vmm = Vmm(rhs_arg_static_params_.rhs_dt_helper_vmm_idx);
-    if (is_superset(isa, avx512_core)) {
+    if (isa_has_evex(isa)) {
         assert(rhs.isMEM());
         Vmm dst_vmm = Vmm(dst.getIdx());
         Xbyak::Opmask maybe_tail_kmask = Xbyak::Opmask(dst.getOpmaskIdx());

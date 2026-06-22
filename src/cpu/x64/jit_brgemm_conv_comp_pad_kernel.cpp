@@ -90,7 +90,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::store_accumulators(
 
             for (int w = ow_b; w < ow_e; w++) {
                 const auto offset = out_oc_offset(n, w);
-                auto zp_addr = is_superset(jcp_.isa, avx512_core)
+                auto zp_addr = isa_has_evex(jcp_.isa)
                         ? EVEX_compress_addr(reg_zp_comp_out, offset)
                         : ptr[reg_zp_comp_out + offset];
 
@@ -110,7 +110,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::store_accumulators(
 
             for (int w = ow_b; w < ow_e; w++) {
                 const auto offset = out_oc_offset(n, w);
-                auto cp_addr = is_superset(jcp_.isa, avx512_core)
+                auto cp_addr = isa_has_evex(jcp_.isa)
                         ? EVEX_compress_addr(reg_comp_out, offset)
                         : ptr[reg_comp_out + offset];
 
@@ -199,7 +199,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::compute(const int ic_step,
         for (int n = 0; n < n_block; ++n) {
             auto vmm = accum(n_block, m, n);
             const auto oc_offset = inp_ic_offset(m_block, ic, m, n);
-            auto addr = is_superset(jcp_.isa, avx512_core)
+            auto addr = isa_has_evex(jcp_.isa)
                     ? EVEX_compress_addr(reg_aux_in, oc_offset)
                     : ptr[reg_aux_in + oc_offset];
             if (jcp_.has_int8_vnni) {

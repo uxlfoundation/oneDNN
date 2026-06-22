@@ -507,7 +507,7 @@ void jit_io_helper_t<Vmm>::prepare_tail_mask() {
 
     if (!tail_conf_->tail_size_) return;
 
-    if (is_superset(isa_, avx512_core))
+    if (isa_has_evex(isa_))
         prepare_opmask(tail_conf_->tail_size_, tail_conf_->reg_tmp_,
                 tail_conf_->tail_opmask_);
     else if (is_superset(isa_, sse41))
@@ -524,7 +524,7 @@ void jit_io_helper_t<Vmm>::prepare_full_mask() {
                 data_type::f8_e5m2))
         return;
 
-    if (is_superset(isa_, avx512_core))
+    if (isa_has_evex(isa_))
         prepare_opmask(gather_conf_->simd_w_, gather_conf_->reg_tmp_,
                 gather_conf_->full_opmask_);
     else if (is_superset(isa_, avx2))
@@ -658,7 +658,7 @@ void jit_io_helper_t<Vmm>::load_byte_by_byte(const Xbyak::Address &src_addr,
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::load_f32(
         const Xbyak::Address &src_addr, const Vmm &dst_vmm, const bool tail) {
-    if (tail && !is_superset(isa_, avx512_core))
+    if (tail && !isa_has_evex(isa_))
         host_->vmaskmovps(
                 dst_vmm, Vmm(tail_conf_->tail_vmm_mask_idx_), src_addr);
     else
@@ -668,7 +668,7 @@ void jit_io_helper_t<Vmm>::load_f32(
 template <typename Vmm>
 void jit_io_helper_t<Vmm>::load_s32(
         const Xbyak::Address &src_addr, const Vmm &dst_vmm, const bool tail) {
-    if (is_superset(isa_, avx512_core))
+    if (isa_has_evex(isa_))
         host_->uni_vcvtdq2ps(dst_vmm, src_addr);
     else {
         load_f32(src_addr, dst_vmm, tail);
@@ -837,7 +837,7 @@ void jit_io_helper_t<Vmm>::store_f32(
         const Vmm &src_vmm, const Xbyak::Address &dst_addr, const bool tail) {
     if (io_conf_.nt_stores_enabled_)
         host_->uni_vmovntps(dst_addr, src_vmm);
-    else if (!is_superset(isa_, avx512_core) && tail)
+    else if (!isa_has_evex(isa_) && tail)
         host_->vmaskmovps(
                 dst_addr, Vmm(tail_conf_->tail_vmm_mask_idx_), src_vmm);
     else
@@ -992,7 +992,7 @@ void jit_io_helper_t<Vmm>::broadcast(
                         dst_vmm, host_->ptr_b[src_addr.getRegExp()]);
             break;
         case data_type::s32: {
-            if (is_superset(isa_, avx512_core)) {
+            if (isa_has_evex(isa_)) {
                 host_->uni_vcvtdq2ps(
                         dst_vmm, host_->ptr_b[src_addr.getRegExp()]);
             } else {

@@ -246,7 +246,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::cvt2ps(data_type_t type_in,
     const bool is_load_tail = op.isMEM() && mask_flag && tail_size > 0
             && (tail_size < static_cast<int>(
                         vreg_traits_t<Vmm>::vlen / sizeof(float)));
-    if (IMPLICATION(is_load_tail, isa_has_masks(brg.isa_impl))) {
+    if (IMPLICATION(is_load_tail, isa_has_evex(brg.isa_impl))) {
         const Vmm vmm = maybe_mask(vmm_in, is_load_tail, store);
         switch (type_in) {
             case data_type::f32:
@@ -324,7 +324,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
         auto vmm_sum_zp = vmm_tmp(0);
         if (p_sum_zp_reg_set) {
             mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-            if (is_superset(brg.isa_impl, avx512_core)) {
+            if (isa_has_evex(brg.isa_impl)) {
                 vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
             } else {
                 uni_vpbroadcastd(vmm_sum_zp, ptr[reg_ptr_sum_zp]);
@@ -346,7 +346,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
             if (!p_sum_scale_reg_set)
                 vaddps(vmm, vmm_prev_dst);
             else {
-                if (is_superset(brg.isa_impl, avx512_core)) {
+                if (isa_has_evex(brg.isa_impl)) {
                     vfmadd231ps(vmm, vmm_prev_dst, ptr_b[reg_ptr_sum_scale]);
                 } else {
                     auto vmm_scale = vmm_bcast();
@@ -432,7 +432,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
                     vmulps(vmm, vmm, vmm_wei_scales);
                 }
             } else {
-                if (IMPLICATION(mask_flag, isa_has_masks(brg.isa_impl))) {
+                if (IMPLICATION(mask_flag, isa_has_evex(brg.isa_impl))) {
                     const Vmm vmm_wei_scales_masked
                             = maybe_mask(vmm_wei_scales, mask_flag, false);
                     switch (brg.dt_wei_scales) {
@@ -508,7 +508,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
     if (compute_dst_zp_) {
         auto vmm_dst_zp = vmm_tmp(0);
         reg_dst_zero_point.restore();
-        if (is_superset(brg.isa_impl, avx512_core)) {
+        if (isa_has_evex(brg.isa_impl)) {
             vcvtdq2ps(vmm_dst_zp,
                     EVEX_compress_addr(reg_dst_zero_point, 0, true));
         } else {
@@ -573,7 +573,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
                 vmovdqu8(addr, r_xmm);
                 continue;
             }
-            if (IMPLICATION(mask_flag, isa_has_masks(brg.isa_impl))) {
+            if (IMPLICATION(mask_flag, isa_has_evex(brg.isa_impl))) {
                 switch (brg.dt_d) {
                     case data_type::f32:
                     case data_type::s32: vmovups(addr, r_vmm); break;
@@ -591,14 +591,14 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
                         vcvtps2ph(addr, r_vmm, _op_mxcsr);
                         break;
                     case data_type::s8:
-                        if (is_superset(brg.isa_impl, avx512_core))
+                        if (isa_has_evex(brg.isa_impl))
                             vpmovsdb(addr, r_vmm);
                         else
                             store_data(brg.dt_d, vmm, reg_aux_D, offset,
                                     substep_simd);
                         break;
                     case data_type::u8:
-                        if (is_superset(brg.isa_impl, avx512_core))
+                        if (isa_has_evex(brg.isa_impl))
                             vpmovusdb(addr, r_vmm);
                         else
                             store_data(brg.dt_d, vmm, reg_aux_D, offset,
@@ -644,7 +644,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_without_post_ops(
                     use_sat_cvt);
         }
         const auto offset = C_offset(m, n, v_i);
-        if (IMPLICATION(mask_flag, isa_has_masks(brg.isa_impl))) {
+        if (IMPLICATION(mask_flag, isa_has_evex(brg.isa_impl))) {
             auto vmm_acc_masked = maybe_mask(vmm_acc, mask_flag, true);
             vmovups(ptr[reg_aux_C + offset], vmm_acc_masked);
         } else {
@@ -721,14 +721,14 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
             // zero_point: conv(src_x8, wei_s8) - src_shift_s32 * compensation_s32
             const bool is_tail
                     = n + 1 == n_blocks && has_n_tail && substep_simd < simd_w_;
-            const Vmm vmm_zp = isa_has_masks(brg.isa_impl)
+            const Vmm vmm_zp = isa_has_evex(brg.isa_impl)
                     ? maybe_mask(vmm_zp_comp(), is_tail, false)
                     : vmm_zp_comp();
-            if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
+            if (IMPLICATION(is_tail, isa_has_evex(brg.isa_impl))) {
                 vmovups(vmm_zp,
                         maybe_EVEX_compress_addr(reg_aux_zp_comp, offset));
                 if (is_src_zp_bcast_) {
-                    if (is_superset(brg.isa_impl, avx512_core))
+                    if (isa_has_evex(brg.isa_impl))
                         vpmulld(vmm_zp, vmm_zp,
                                 maybe_EVEX_compress_addr(
                                         reg_aux_src_zp, 0, true));
@@ -797,7 +797,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_a(
     const bool mask_flag = substep_simd < simd_w_;
     const auto addr = ptr[reg_aux_A + A_offset(m_i, n_i)
             + is_tail_block * v_i * simd_w_ * brg.typesize_A];
-    if (IMPLICATION(mask_flag, isa_has_masks(brg.isa_impl))) {
+    if (IMPLICATION(mask_flag, isa_has_evex(brg.isa_impl))) {
         vmma = maybe_mask(vmma, mask_flag, false);
         if (brg.dt_a == data_type::f32) {
             vmovups(vmma, addr);
@@ -900,13 +900,13 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
             vpdpbusd(vmm_acc, vmm_shift(), vmmb, get_encoding());
             break;
         case compute_pad_kernel_t::zero_point_kernel: {
-            const Vmm vmm_zp = isa_has_masks(brg.isa_impl)
+            const Vmm vmm_zp = isa_has_evex(brg.isa_impl)
                     ? maybe_mask(vmm_zp_comp(), is_tail_block, false)
                     : vmm_zp_comp();
             const size_t offset = comp_offset(n);
-            if (IMPLICATION(is_tail_block, isa_has_masks(brg.isa_impl))) {
+            if (IMPLICATION(is_tail_block, isa_has_evex(brg.isa_impl))) {
                 if (is_src_zp_bcast_) {
-                    if (is_superset(brg.isa_impl, avx512_core))
+                    if (isa_has_evex(brg.isa_impl))
                         vpmulld(vmm_zp, vmmb,
                                 maybe_EVEX_compress_addr(
                                         reg_aux_src_zp, 0, true));
@@ -1347,7 +1347,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
     const bool has_n_block2_tail = n_block2_tail() > 0;
     const bool need_separate_n_block1_tail_block = n_block1_tail() != 0
             && !has_n_block2_tail && nb_n_block2() > 1
-            && !isa_has_masks(brg.isa_impl);
+            && !isa_has_evex(brg.isa_impl);
     const int loop_n = nb_n_block2() - has_n_block2_tail
             - need_separate_n_block1_tail_block;
     const bool do_loop_n = loop_n > 1;
@@ -1367,7 +1367,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
         {
             if (do_loop_n) {
                 if (vlen_tail_in_loop) {
-                    assert(isa_has_masks(brg.isa_impl));
+                    assert(isa_has_evex(brg.isa_impl));
                     Label done_k_mask;
                     cmp(reg_aux_N, n_loop_work - n_loop_step);
                     jl(done_k_mask, T_NEAR);
@@ -1406,7 +1406,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
     auto m_loop = [&]() {
         Label m_loop_label;
         const int m_blocks = m_block2();
-        const bool reset_mask = isa_has_masks(brg.isa_impl)
+        const bool reset_mask = isa_has_evex(brg.isa_impl)
                 && n_block1_tail() != 0 && do_loop_n && !has_n_block2_tail;
 
         xor_(reg_aux_M, reg_aux_M);
@@ -1446,7 +1446,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::init_masks() {
-    if (!isa_has_masks(brg.isa_impl)) return;
+    if (!isa_has_evex(brg.isa_impl)) return;
 
     if (is_fast_vnni_int8()) {
         mov(reg_tmp, 0x8888444422221111);

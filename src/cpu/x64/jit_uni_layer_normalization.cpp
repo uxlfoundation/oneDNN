@@ -268,7 +268,7 @@ protected:
         if (!tail)
             uni_vsubps(x1, x1, x2);
         else {
-            if (is_superset(isa, avx512_core))
+            if (isa_has_evex(isa))
                 uni_vsubps(x1 | Opmask(tail_opmask_idx) | T_z, x1, x2);
             else if (is_superset(isa, sse41)) {
                 // We need to call tail version once, it's fine to use vmm_tmp

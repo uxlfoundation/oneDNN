@@ -71,6 +71,7 @@ status_t ref_t::execute(const exec_ctx_t &ctx) const {
 
     const int tra = exec_d->transa() == transpose::trans;
     const int trb = exec_d->transb() == transpose::trans;
+    const int trc = exec_d->transc() == transpose::trans;
 
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, a);
@@ -83,25 +84,26 @@ status_t ref_t::execute(const exec_ctx_t &ctx) const {
     arg_list.set(7, off_bias0);
     arg_list.set(8, tra);
     arg_list.set(9, trb);
-    arg_list.set(10, MB);
-    arg_list.set(11, M);
-    arg_list.set(12, N);
-    arg_list.set(13, K);
-    arg_list.set(14, stride_a);
-    arg_list.set(15, stride_b);
-    arg_list.set(16, stride_c);
-    arg_list.set(17, lda);
-    arg_list.set(18, ldb);
-    arg_list.set(19, ldc);
-    arg_list.set(20, eltwise_alpha);
-    arg_list.set(21, eltwise_beta);
-    arg_list.set(22, eltwise_scale);
-    arg_list.set(23, bias_mask);
-    arg_list.set(24, a0);
-    arg_list.set(25, b0);
-    arg_list.set(26, c0);
-    arg_list.set(27, c0_mask);
-    arg_list.set(28, beta);
+    arg_list.set(10, trc);
+    arg_list.set(11, MB);
+    arg_list.set(12, M);
+    arg_list.set(13, N);
+    arg_list.set(14, K);
+    arg_list.set(15, stride_a);
+    arg_list.set(16, stride_b);
+    arg_list.set(17, stride_c);
+    arg_list.set(18, lda);
+    arg_list.set(19, ldb);
+    arg_list.set(20, ldc);
+    arg_list.set(21, eltwise_alpha);
+    arg_list.set(22, eltwise_beta);
+    arg_list.set(23, eltwise_scale);
+    arg_list.set(24, bias_mask);
+    arg_list.set(25, a0);
+    arg_list.set(26, b0);
+    arg_list.set(27, c0);
+    arg_list.set(28, c0_mask);
+    arg_list.set(29, beta);
 
     const compute::range_t gws = {(size_t)N, (size_t)M, (size_t)MB};
     const auto nd_range = compute::nd_range_t(gws);

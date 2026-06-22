@@ -51,8 +51,8 @@ GRFMultirange chunkAlloc(int nreg, int chunk, BundleGroup hint, BundleGroup mask
     return r;
 }
 
-GRFMultirange trySplitAlloc(HW hw, Type T, const RegisterLayout &layout, std::array<BundleGroup, 2> hints,
-                            BundleGroup mask, CommonState &state, int copies)
+GRFMultirange trySplitAlloc(HW hw, Type T, const RegisterLayout &layout, const std::array<BundleGroup, 2> &hints,
+                            const BundleGroup &mask, CommonState &state, int copies)
 {
     auto oddHint = Bundle(0, 0).group_size(hw) * elementsPerGRF(hw, T);
 
@@ -114,8 +114,8 @@ GRFMultirange trySplitAlloc(HW hw, Type T, const RegisterLayout &layout, std::ar
     return r;
 }
 
-GRFMultirange splitOrChunkAlloc(HW hw, Type T, const RegisterLayout &layout, int chunk, std::array<BundleGroup, 2> hints,
-                                BundleGroup mask, CommonState &state, bool forceChunk)
+GRFMultirange splitOrChunkAlloc(HW hw, Type T, const RegisterLayout &layout, int chunk, const std::array<BundleGroup, 2> &hints,
+                                const BundleGroup &mask, CommonState &state, bool forceChunk)
 {
     if (!forceChunk) {
         auto r = trySplitAlloc(hw, T, layout, hints, mask, state);

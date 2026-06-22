@@ -647,7 +647,9 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                     maxYBlock = 8;
                 } else {
                     Tblock = Type::u32;
-                    maxW = 8;
+                    maxW = (hw == HW::Xe3p) ? 16 : 8;
+                    // 1-8, 16 supported on Xe3p
+                    if (maxXBlock < (maxW * Tblock) / T) maxW = 8;
                 }
                 maxXBlock = std::min(maxXBlock, (maxW * Tblock) / T);
             } else if (vnni) {

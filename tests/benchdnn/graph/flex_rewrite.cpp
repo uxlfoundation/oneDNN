@@ -248,6 +248,9 @@ int flex_rewrite_t::rewrite(deserialized_graph_t &dgraph) {
     SAFE(dt_rewrite(dgraph), WARN);
     SAFE(dt_map_rewrite(dgraph), WARN);
 
+    // rewrite tensor property types in the graph.
+    SAFE(tensor_property_rewrite(dgraph), WARN);
+
     return OK;
 }
 
@@ -1507,6 +1510,56 @@ int flex_rewrite_t::op_kind_rewrite(deserialized_graph_t &dgraph) {
                     "graph: rewrite: target op kind `%s` does not "
                     "match the op kind `%s` in the graph\n",
                     v.second.c_str(), aop.kind_.c_str());
+            SAFE(FAIL, WARN);
+        }
+    }
+
+    return OK;
+}
+
+int flex_rewrite_t::tensor_property_rewrite(deserialized_graph_t &dgraph) {
+    if (tensor_property_.size() == 1
+            && tensor_property_.begin()->second == "default")
+        return OK;
+
+    static const std::vector<std::string> valid_properties
+            = {"undef", "variable", "constant", "host_scalar"};
+
+    for (const auto &v : tensor_property_) {
+        // Validate the property value.
+        const auto &prop = v.second;
+        if (std::find(valid_properties.begin(), valid_properties.end(), prop)
+                == valid_properties.end()) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: invalid property type `%s` for tensor ID "
+                    "`%zd`. Valid values are: undef, variable, constant, "
+                    "host_scalar.\n",
+                    prop.c_str(), v.first);
+            SAFE(FAIL, WARN);
+        }
+
+        // Find the tensor with the matched ID and rewrite its property.
+        bool found_id = false;
+        for (auto &aop : dgraph.ops_) {
+            for (auto &lt : aop.in_lts_) {
+                if (lt.id_ == v.first) {
+                    lt.property_type_ = prop;
+                    found_id = true;
+                }
+            }
+            for (auto &lt : aop.out_lts_) {
+                if (lt.id_ == v.first) {
+                    lt.property_type_ = prop;
+                    found_id = true;
+                }
+            }
+        }
+
+        if (!found_id) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: tensor ID `%zd` is not found in the "
+                    "graph\n",
+                    v.first);
             SAFE(FAIL, WARN);
         }
     }

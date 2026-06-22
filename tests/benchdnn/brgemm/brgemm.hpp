@@ -44,6 +44,7 @@
 #include "dnnl_common.hpp"
 #include "utils/cfg.hpp"
 #include "utils/perf_report.hpp"
+#include "utils/prb.hpp"
 #include "utils/settings.hpp"
 
 namespace brgemm {
@@ -71,7 +72,7 @@ struct settings_t : public base_settings_t {
     void reset() { *this = settings_t(perf_template); }
 };
 
-struct prb_t : public prb_vdims_t {
+struct prb_t : public prb_vdims_t, public base_prb_t {
     prb_t(const prb_vdims_t &prb_vdims, const std::vector<dnnl_data_type_t> &dt,
             const std::string &stag, const std::string &wtag,
             const std::string &dtag, const vdims_t &strides,
@@ -81,6 +82,7 @@ struct prb_t : public prb_vdims_t {
             const attr_t &attr, const thr_ctx_t &ctx_init,
             const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
+        , base_prb_t(FWD_I, false, attr, impl_filter)
         , dt(dt)
         , stag(stag)
         , wtag(wtag)
@@ -93,10 +95,8 @@ struct prb_t : public prb_vdims_t {
         , batch_size(batch_size)
         , brgemm_attr(brgemm_attr)
         , batch_kind(batch_kind)
-        , attr(attr)
         , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , ctx_exe(ctx_exe) {
 
         // Broadcast data types if needed
         if (dt.size() == 1) {
@@ -124,7 +124,6 @@ struct prb_t : public prb_vdims_t {
     int64_t m, n, k;
     // brgemm does not have any propagation kind. Treat as forward inference to
     // have correct check for data type support.
-    dir_t dir = FWD_I;
     std::vector<dnnl_data_type_t> dt;
     std::string stag, wtag, dtag;
     vdims_t strides;
@@ -134,11 +133,7 @@ struct prb_t : public prb_vdims_t {
     int64_t batch_size;
     std::string brgemm_attr;
     std::string batch_kind;
-
-    attr_t attr;
     thr_ctx_t ctx_init, ctx_exe;
-    impl_filter_t impl_filter;
-
     double ops;
 
     const dims_t &src_dims() const { return vdims[0]; }
@@ -195,19 +190,8 @@ struct prb_t : public prb_vdims_t {
         return false;
     }
 
-    // Used to construct memory desc when dimensions are runtime since such mds
-    // can't be used directly from query and memory objects can't be constructed.
-    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const {
-        assert(!"No runtime dimensions support for this driver!");
-        return make_benchdnn_dnnl_wrapper<dnnl_memory_desc_t>(nullptr);
-    }
-
-    const char *str() const { return repro.c_str(); }
-
 private:
-    std::string repro;
-
-    std::string set_repro_line();
+    std::string set_repro_line() override;
 
     void check_block_size() const;
 };

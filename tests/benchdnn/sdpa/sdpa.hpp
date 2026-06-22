@@ -25,6 +25,7 @@
 #include "dnnl_common.hpp"
 #include "utils/cfg.hpp"
 #include "utils/perf_report.hpp"
+#include "utils/prb.hpp"
 #include "utils/settings.hpp"
 
 // C API for SDPA primitive creation (forward and backward overloads).
@@ -94,7 +95,7 @@ struct settings_t : public base_settings_t {
     }
 };
 
-struct prb_t : public prb_vdims_t {
+struct prb_t : public prb_vdims_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.prb_vdims, s.dir[0], s.dt[0], s.qtag[0], s.ktag[0], s.vtag[0],
@@ -112,7 +113,7 @@ struct prb_t : public prb_vdims_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
-        , dir(dir)
+        , base_prb_t(dir, false, attr, impl_filter)
         , dt(dt)
         , qtag(qtag)
         , ktag(ktag)
@@ -121,10 +122,8 @@ struct prb_t : public prb_vdims_t {
         , mdt(mdt)
         , mask_type(mask_type)
         , scale_type(scale_type)
-        , attr(attr)
         , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , ctx_exe(ctx_exe) {
 
         // Broadcast data types if needed: Q,K,V,DST
         if (this->dt.size() == 1) {
@@ -183,17 +182,13 @@ struct prb_t : public prb_vdims_t {
     }
 
     int64_t n_queries, head_size, n_keys, n_values, mb;
-    dir_t dir;
     std::vector<dnnl_data_type_t> dt;
     std::string qtag, ktag, vtag, dtag;
     dnnl_data_type_t mdt;
     mask_type_t mask_type;
     scale_type_t scale_type;
 
-    bool inplace = false;
-    attr_t attr;
     thr_ctx_t ctx_init, ctx_exe;
-    impl_filter_t impl_filter;
 
     double ops;
     dims_t dst_dims;
@@ -222,13 +217,10 @@ struct prb_t : public prb_vdims_t {
     dnnl_data_type_t get_dt(data_kind_t data_kind) const;
 
     // Required by init_memory_args template (for runtime dims support).
-    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const;
-
-    const char *str() const { return repro.c_str(); }
+    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const override;
 
 private:
-    std::string repro;
-    std::string set_repro_line();
+    std::string set_repro_line() override;
 };
 
 struct perf_report_t : public base_perf_report_t {

@@ -26,6 +26,7 @@
 #include "dnn_types.hpp"
 #include "dnnl_common.hpp"
 #include "utils/perf_report.hpp"
+#include "utils/prb.hpp"
 #include "utils/settings.hpp"
 
 namespace reorder {
@@ -80,7 +81,7 @@ struct settings_t : public base_settings_t {
     }
 };
 
-struct prb_t : public prb_dims_t {
+struct prb_t : public prb_dims_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.prb_dims, s.sdt[0], s.ddt[0], s.stag[0], s.dtag[0],
@@ -98,6 +99,7 @@ struct prb_t : public prb_dims_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
+        , base_prb_t(FLAG_FWD, false, attr, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
@@ -106,25 +108,17 @@ struct prb_t : public prb_dims_t {
         , oflag(oflag)
         , cross_engine(cross_engine)
         , runtime_dim_mask(runtime_dim_mask)
-        , attr(attr)
         , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , ctx_exe(ctx_exe) {
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
-
-    dir_t dir = FLAG_FWD; // Lack of prop_kind, always considered as forward.
     dnnl_data_type_t sdt, ddt;
     std::string stag, dtag;
     vdims_t strides;
     std::vector<flag_t> oflag;
     cross_engine_t cross_engine;
     unsigned runtime_dim_mask;
-    bool inplace = false; // Lacks placement, always considered `false`.
-    attr_t attr;
     thr_ctx_t ctx_init, ctx_exe;
-    impl_filter_t impl_filter;
-
     bool is_reorder_with_compensation(flag_bit_t flag) const;
     dims_t get_compensation_dims(flag_bit_t flag) const;
     int get_compensation_mask(flag_bit_t flag) const;
@@ -132,14 +126,10 @@ struct prb_t : public prb_dims_t {
 
     // Used to construct memory desc when dimensions are runtime since such mds
     // can't be used directly from query and memory objects can't be constructed.
-    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const;
-
-    const char *str() const { return repro.c_str(); }
+    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const override;
 
 private:
-    std::string repro;
-
-    std::string set_repro_line();
+    std::string set_repro_line() override;
 
     void get_compensation_parameters(
             dims_t &comp_dims, int &mask, flag_bit_t flag) const;

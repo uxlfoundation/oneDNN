@@ -26,6 +26,7 @@
 #include "dnn_types.hpp"
 #include "dnnl_common.hpp"
 #include "utils/perf_report.hpp"
+#include "utils/prb.hpp"
 #include "utils/settings.hpp"
 
 namespace sum {
@@ -55,7 +56,7 @@ struct settings_t : public base_settings_t {
     }
 };
 
-struct prb_t : public prb_dims_t {
+struct prb_t : public prb_dims_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.prb_dims, s.sdt[0], s.ddt[0], s.stag[0], s.dtag[0],
@@ -70,16 +71,14 @@ struct prb_t : public prb_dims_t {
             bool inplace, const attr_t &attr, const thr_ctx_t &ctx_init,
             const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
+        , base_prb_t(FLAG_FWD, inplace, attr, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
         , dtag(dtag)
         , input_scales(input_scales)
-        , inplace(inplace)
-        , attr(attr)
         , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , ctx_exe(ctx_exe) {
 
         broadcast_vector(this->stag, n_inputs());
 
@@ -92,32 +91,17 @@ struct prb_t : public prb_dims_t {
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
 
-    dir_t dir = FLAG_FWD; // Lack of prop_kind, always considered as forward.
     std::vector<dnnl_data_type_t> sdt;
     dnnl_data_type_t ddt;
     std::vector<std::string> stag;
     std::string dtag;
     std::vector<float> input_scales;
-    bool inplace;
-    attr_t attr;
     thr_ctx_t ctx_init, ctx_exe;
-    impl_filter_t impl_filter;
 
     int n_inputs() const { return (int)sdt.size(); }
 
-    // Used to construct memory desc when dimensions are runtime since such mds
-    // can't be used directly from query and memory objects can't be constructed.
-    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const {
-        assert(!"No runtime dimensions support for this driver!");
-        return make_benchdnn_dnnl_wrapper<dnnl_memory_desc_t>(nullptr);
-    }
-
-    const char *str() const { return repro.c_str(); }
-
 private:
-    std::string repro;
-
-    std::string set_repro_line();
+    std::string set_repro_line() override;
 };
 
 struct perf_report_t : public base_perf_report_t {

@@ -29,6 +29,7 @@
 #include "dnnl_common.hpp"
 #include "dnnl_debug.hpp"
 #include "utils/perf_report.hpp"
+#include "utils/prb.hpp"
 #include "utils/settings.hpp"
 
 namespace lrn {
@@ -71,7 +72,7 @@ struct settings_t : public base_settings_t {
     }
 };
 
-struct prb_t : public desc_t {
+struct prb_t : public desc_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.desc, s.dir[0], s.dt[0], s.tag[0], s.alg[0], s.mb[0],
@@ -85,42 +86,24 @@ struct prb_t : public desc_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : desc_t(desc)
-        , dir(dir)
+        , base_prb_t(dir, false, attr, impl_filter)
         , dt(dt)
         , tag(tag)
         , alg(alg)
         , user_mb(mb)
-        , attr(attr)
         , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , ctx_exe(ctx_exe) {
         if (mb) this->mb = mb;
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
-
-    dir_t dir;
     dnnl_data_type_t dt;
     std::string tag;
     alg_t alg;
     int64_t user_mb;
-    bool inplace = false; // Lacks placement, always considered `false`.
-    attr_t attr;
     thr_ctx_t ctx_init, ctx_exe;
-    impl_filter_t impl_filter;
-
-    // Used to construct memory desc when dimensions are runtime since such mds
-    // can't be used directly from query and memory objects can't be constructed.
-    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const {
-        assert(!"No runtime dimensions support for this driver!");
-        return make_benchdnn_dnnl_wrapper<dnnl_memory_desc_t>(nullptr);
-    }
-
-    const char *str() const { return repro.c_str(); }
 
 private:
-    std::string repro;
-
-    std::string set_repro_line();
+    std::string set_repro_line() override;
 };
 
 struct perf_report_t : public base_perf_report_t {

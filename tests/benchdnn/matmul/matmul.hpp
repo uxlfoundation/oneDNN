@@ -30,6 +30,7 @@
 #include "dnnl_common.hpp"
 #include "utils/cfg.hpp"
 #include "utils/perf_report.hpp"
+#include "utils/prb.hpp"
 #include "utils/settings.hpp"
 
 namespace matmul {
@@ -65,7 +66,7 @@ struct settings_t : public base_settings_t {
     }
 };
 
-struct prb_t : public prb_vdims_t {
+struct prb_t : public prb_vdims_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.prb_vdims, s.dt[0], s.stag[0], s.wtag[0], s.dtag[0],
@@ -84,6 +85,7 @@ struct prb_t : public prb_vdims_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
+        , base_prb_t(FLAG_FWD, false, attr, impl_filter)
         , dt(dt)
         , stag(stag)
         , wtag(wtag)
@@ -93,10 +95,8 @@ struct prb_t : public prb_vdims_t {
         , bia_mask(bia_mask)
         , rt_dims_masks(rt_dims_masks)
         , sparse_options(sparse_options)
-        , attr(attr)
         , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , ctx_exe(ctx_exe) {
 
         // Broadcast data types if needed
         if (dt.size() == 1) {
@@ -124,7 +124,6 @@ struct prb_t : public prb_vdims_t {
     }
 
     int64_t m, n, k, mb;
-    dir_t dir = FLAG_FWD; // Lack of prop_kind, always considered as forward.
     std::vector<dnnl_data_type_t> dt;
     std::string stag, wtag, dtag;
     vdims_t strides;
@@ -132,12 +131,7 @@ struct prb_t : public prb_vdims_t {
     int bia_mask;
     std::vector<dims_mask_t> rt_dims_masks;
     sparse_options_t sparse_options;
-
-    bool inplace = false; // Lacks placement, always considered `false`.
-    attr_t attr;
     thr_ctx_t ctx_init, ctx_exe;
-    impl_filter_t impl_filter;
-
     double ops;
 
     const dims_t &src_dims() const { return vdims[0]; }
@@ -181,14 +175,10 @@ struct prb_t : public prb_vdims_t {
 
     // Used to construct memory desc when dimensions are runtime since such mds
     // can't be used directly from query and memory objects can't be constructed.
-    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const;
-
-    const char *str() const { return repro.c_str(); }
+    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const override;
 
 private:
-    std::string repro;
-
-    std::string set_repro_line();
+    std::string set_repro_line() override;
 
     void init_dst_rt_dims_mask() {
         if (rt_dims_masks.size() > 2) return;

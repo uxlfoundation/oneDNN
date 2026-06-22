@@ -26,6 +26,7 @@
 #include "dnn_types.hpp"
 #include "dnnl_common.hpp"
 #include "utils/perf_report.hpp"
+#include "utils/prb.hpp"
 #include "utils/settings.hpp"
 
 namespace concat {
@@ -54,7 +55,7 @@ struct settings_t : public base_settings_t {
     }
 };
 
-struct prb_t : public prb_vdims_t {
+struct prb_t : public prb_vdims_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
         : prb_t(s.prb_vdims, s.sdt[0], s.ddt[0], s.stag[0], s.dtag[0],
@@ -69,15 +70,14 @@ struct prb_t : public prb_vdims_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
+        , base_prb_t(FLAG_FWD, false, attr, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
         , dtag(dtag)
         , axis(axis)
-        , attr(attr)
         , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
-        , impl_filter(impl_filter) {
+        , ctx_exe(ctx_exe) {
         // If dst is omitted by `dtag = tag::undef`, omit `ddt` as well.
         if (dtag == tag::undef) this->ddt = dnnl_data_type_undef;
 
@@ -86,17 +86,11 @@ struct prb_t : public prb_vdims_t {
         dst_dims[axis] = axis_size();
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
-
-    dir_t dir = FLAG_FWD; // Lack of prop_kind, always considered as forward.
     dnnl_data_type_t sdt, ddt;
     std::vector<std::string> stag;
     std::string dtag;
     int axis;
-    bool inplace = false; // Lacks placement, always considered `false`.
-    attr_t attr;
     thr_ctx_t ctx_init, ctx_exe;
-    impl_filter_t impl_filter;
-
     int64_t axis_size() const {
         int64_t as = 0;
         for (int i = 0; i < n_inputs(); ++i)
@@ -104,19 +98,8 @@ struct prb_t : public prb_vdims_t {
         return as;
     }
 
-    // Used to construct memory desc when dimensions are runtime since such mds
-    // can't be used directly from query and memory objects can't be constructed.
-    benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const {
-        assert(!"No runtime dimensions support for this driver!");
-        return make_benchdnn_dnnl_wrapper<dnnl_memory_desc_t>(nullptr);
-    }
-
-    const char *str() const { return repro.c_str(); }
-
 private:
-    std::string repro;
-
-    std::string set_repro_line();
+    std::string set_repro_line() override;
 };
 
 struct perf_report_t : public base_perf_report_t {

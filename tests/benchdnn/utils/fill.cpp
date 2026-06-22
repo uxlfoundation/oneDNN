@@ -243,8 +243,14 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
         std::minstd_rand int_seed(nelems + idx_start + 1);
         int_seed.discard(1);
 
-        std::uniform_real_distribution<float> gen_real(
-                fill_cfg.range_min_val_, fill_cfg.range_max_val_);
+        std::uniform_real_distribution<float> gen_real;
+        if (fill_cfg.predefined_set_.empty()) {
+            // Keep `gen_real` empty for predefined set as unneeded.
+            // Note: Windows also throws an assert as it can't operate on
+            // default range_min and range_max values.
+            gen_real = std::uniform_real_distribution<float>(
+                    fill_cfg.range_min_val_, fill_cfg.range_max_val_);
+        }
         // For `predefined_set_` use indices for uniform distribution.
         std::uniform_int_distribution<> gen_int
                 = !fill_cfg.predefined_set_.empty()

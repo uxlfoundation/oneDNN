@@ -930,6 +930,13 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
 #if WITH_DROPOUT
+            /* Fence: prevent IGC from reordering the S2_f32_slm store (un-dropped P)
+             * with the in-place dropout modification below. apply_dropout_s_tile is
+             * inlined, so without this fence the compiler may schedule the store
+             * after the dropout call, storing dropped P into S2_f32_slm instead. */
+            atomic_work_item_fence(
+                    CLK_LOCAL_MEM_FENCE, memory_order_release, memory_scope_work_group);
+
             /* P_dropped = P (dot) Z, used for dV GEMM */
             apply_dropout_s_tile(&S_tile, k0 + sg_i0_kq, q0 + sg_j0_kq, k, q,
                     dropout_batch_head_base, k, use_dropout_offset,

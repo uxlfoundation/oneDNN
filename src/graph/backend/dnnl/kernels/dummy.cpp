@@ -62,14 +62,12 @@ status_t dummy_kernel_t::execute_impl(const stream_t *stream,
 }
 
 #ifdef DNNL_WITH_SYCL
+#include "xpu/sycl/stream_impl.hpp"
 status_t dummy_kernel_t::sycl_execute_impl(const stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
-
-    dnnl::stream p_stream = make_dnnl_stream(*stream);
-
     if (sycl_event) {
         // Fast path: if only one event, return it.
         if (sycl_deps.size() == 1) {
@@ -78,7 +76,10 @@ status_t dummy_kernel_t::sycl_execute_impl(const stream_t *stream,
             // Otherwise, we run a trivial kernel to gather all deps. The
             // dummy task is needed to not get an error related to empty
             // kernel.
-            auto q = dnnl::sycl_interop::get_queue(p_stream);
+            auto *sycl_stream_impl
+                    = dnnl::impl::utils::downcast<xpu::sycl::stream_impl_t *>(
+                            stream->impl());
+            auto &q = *sycl_stream_impl->queue();
             *sycl_event = q.submit([&](::sycl::handler &cgh) {
                 cgh.depends_on(sycl_deps);
                 cgh.single_task<class dnnl_graph_fake_kernel>([]() {});
@@ -91,20 +92,21 @@ status_t dummy_kernel_t::sycl_execute_impl(const stream_t *stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "xpu/ocl/stream_impl.hpp"
 status_t dummy_kernel_t::ocl_execute_impl(const stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
-
-    dnnl::stream p_stream = make_dnnl_stream(*stream);
-
     if (ret_event) {
         // Fast path: if only one event, return it.
         if (cl_deps.size() == 1) {
             *ret_event = cl_deps[0];
         } else {
             // Otherwise, gather all dependencies.
-            auto q = dnnl::ocl_interop::get_command_queue(p_stream);
+            const auto *ocl_stream_impl = dnnl::impl::utils::downcast<
+                    const xpu::ocl::stream_impl_t *>(stream->impl());
+            auto q = const_cast<xpu::ocl::stream_impl_t *>(ocl_stream_impl)
+                             ->queue();
             auto err = xpu::ocl::clEnqueueMarkerWithWaitList(q,
                     static_cast<cl_uint>(cl_deps.size()), cl_deps.data(),
                     ret_event);

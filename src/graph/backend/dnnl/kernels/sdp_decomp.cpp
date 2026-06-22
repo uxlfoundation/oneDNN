@@ -109,7 +109,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
 
     // Initialize and construct kernel params
     return sdp_cfg_.construct_params<quantized, dt>(
-            subgraph_, sdp_registry_, make_dnnl_engine(*engine_), inputs);
+            subgraph_, sdp_registry_, *engine_, inputs);
 }
 
 template <bool quantized, memory::data_type dt>
@@ -160,10 +160,9 @@ template <bool quantized, memory::data_type dt>
 status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         const stream_t *stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream strm = make_dnnl_stream(*stream);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    auto *tp_stream
+    auto *tstream
             = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
                     const_cast<stream_t *>(stream));
 #endif
@@ -373,34 +372,34 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
         }
 
         // in parallel region - these primitives should use single thread.
-        sdp_cfg_.sub_reorder0.execute(strm, res->sub_reorder0_args[tid]);
-        sdp_cfg_.sub_reorder1.execute(strm, res->sub_reorder1_args[tid]);
+        sdp_cfg_.sub_reorder0.execute(stream, res->sub_reorder0_args[tid]);
+        sdp_cfg_.sub_reorder1.execute(stream, res->sub_reorder1_args[tid]);
         dnnl_primitive_execute_without_tp_hook(
-                sdp_cfg_.sub_mm1_prim, strm, res->sub_mm1_args[tid]);
+                sdp_cfg_.sub_mm1_prim, stream, res->sub_mm1_args[tid]);
         if (sdp_cfg_.has_select && !sdp_cfg_.select_fusiable)
-            dnnl_primitive_execute_without_tp_hook(
-                    sdp_cfg_.sub_select_prim, strm, res->sub_select_args[tid]);
+            dnnl_primitive_execute_without_tp_hook(sdp_cfg_.sub_select_prim,
+                    stream, res->sub_select_args[tid]);
         dnnl_primitive_execute_without_tp_hook(
-                sdp_cfg_.sub_softmax_prim, strm, res->sub_softmax_args[tid]);
+                sdp_cfg_.sub_softmax_prim, stream, res->sub_softmax_args[tid]);
 
-        sdp_cfg_.sub_reorder2.execute(strm, res->sub_reorder2_args[tid]);
+        sdp_cfg_.sub_reorder2.execute(stream, res->sub_reorder2_args[tid]);
 
         dnnl_primitive_execute_without_tp_hook(
-                sdp_cfg_.sub_mm2_prim, strm, res->sub_mm2_args[tid]);
-        sdp_cfg_.sub_reorder3.execute(strm, res->sub_reorder3_args[tid]);
+                sdp_cfg_.sub_mm2_prim, stream, res->sub_mm2_args[tid]);
+        sdp_cfg_.sub_reorder3.execute(stream, res->sub_reorder3_args[tid]);
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
         auto tp = threadpool_utils::get_active_threadpool();
         threadpool_utils::activate_threadpool(tp);
 #endif
     };
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    tp_stream->before_exec_hook();
+    tstream->before_exec_hook();
 #endif
 
     parallel_nd_ext(sdp_cfg_.nthr, MBO, MBI, loop);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    tp_stream->after_exec_hook();
+    tstream->after_exec_hook();
 #endif
 
     prolong_scratchpad_lifetime(stream, scratchpad);

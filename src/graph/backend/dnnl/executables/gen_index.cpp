@@ -65,7 +65,7 @@ genindex_executable_t::genindex_executable_t(std::shared_ptr<op_t> &op,
 #endif
 }
 
-void genindex_executable_t::execute_impl(const stream &stream,
+void genindex_executable_t::execute_impl(const stream_t *stream,
         const std::unordered_map<int, memory> &args) const {
     const auto &it_dst = args.find(DNNL_ARG_DST);
     if (it_dst == args.end()) return;
@@ -73,7 +73,7 @@ void genindex_executable_t::execute_impl(const stream &stream,
     auto &output = it_dst->second;
     auto output_ptr = static_cast<int32_t *>(output.get_data_handle());
 
-    stream.get()->before_exec_hook();
+    const_cast<stream_t *>(stream)->before_exec_hook();
     dnnl::impl::parallel_nd(nelems_, [= COMPAT_THIS_CAPTURE](dim_t i) {
         dims_t input_dims; // decomposition for physical offsets
         dnnl::impl::utils::l_dims_by_l_offset(
@@ -82,17 +82,17 @@ void genindex_executable_t::execute_impl(const stream &stream,
                 = utils::offset_compute(output_strides_, input_dims, ndims_);
         output_ptr[offset] = static_cast<int32_t>(input_dims[axis_]);
     });
-    stream.get()->after_exec_hook();
+    const_cast<stream_t *>(stream)->after_exec_hook();
 }
 
-void genindex_executable_t::execute(const stream &stream,
+void genindex_executable_t::execute(const stream_t *stream,
         const std::unordered_map<int, memory> &args) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream.get()->wait();
+        const_cast<stream_t *>(stream)->wait();
         double start_ms = dnnl::impl::get_msec();
         execute_impl(stream, args);
-        stream.get()->wait();
+        const_cast<stream_t *>(stream)->wait();
         double duration_ms = dnnl::impl::get_msec() - start_ms;
         VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
                 duration_ms);
@@ -103,10 +103,11 @@ void genindex_executable_t::execute(const stream &stream,
 
 #ifdef DNNL_WITH_SYCL
 std::optional<::sycl::event> genindex_executable_t::execute_sycl_impl(
-        const stream &stream, const std::unordered_map<int, memory> &args,
+        const stream_t *stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
-    if (stream.get_engine().get_kind() == engine::kind::cpu) {
-        auto strm_t = stream.get();
+    if (make_dnnl_stream(*stream).get_engine().get_kind()
+            == engine::kind::cpu) {
+        auto strm_t = const_cast<stream_t *>(stream);
         auto *sycl_stream_impl = dnnl::impl::utils::downcast<
                 dnnl::impl::xpu::sycl::stream_impl_t *>(strm_t->impl());
 
@@ -123,8 +124,8 @@ std::optional<::sycl::event> genindex_executable_t::execute_sycl_impl(
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
     double start_ms = dnnl::impl::get_msec();
-    auto compute_stream
-            = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(stream.get());
+    auto compute_stream = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(
+            const_cast<stream_t *>(stream));
     compute::range_t gws = {static_cast<size_t>(nelems_)};
     auto nd_range = compute::nd_range_t(gws);
     compute::kernel_arg_list_t arg_list;
@@ -153,15 +154,15 @@ std::optional<::sycl::event> genindex_executable_t::execute_sycl_impl(
 }
 
 std::optional<::sycl::event> genindex_executable_t::execute_sycl(
-        const stream &stream, const std::unordered_map<int, memory> &args,
+        const stream_t *stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        if (!stream.get()->is_verbose_profiler_enabled()) {
-            stream.get()->wait();
+        if (!stream->is_verbose_profiler_enabled()) {
+            const_cast<stream_t *>(stream)->wait();
             double start_ms = dnnl::impl::get_msec();
             execute_sycl_impl(stream, args, deps);
-            stream.get()->wait();
+            const_cast<stream_t *>(stream)->wait();
             double duration_ms = dnnl::impl::get_msec() - start_ms;
             VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
                     duration_ms);
@@ -177,13 +178,13 @@ std::optional<::sycl::event> genindex_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
+cl_event genindex_executable_t::execute_ocl_impl(const stream_t *stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     double start_ms = dnnl::impl::get_msec();
-    auto compute_stream
-            = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(stream.get());
+    auto compute_stream = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(
+            const_cast<stream_t *>(stream));
 
     compute::range_t gws = {static_cast<size_t>(nelems_)};
 
@@ -224,22 +225,23 @@ cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
 #endif
 }
 
-cl_event genindex_executable_t::execute_ocl(const stream &stream,
+cl_event genindex_executable_t::execute_ocl(const stream_t *stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        if (!stream.get()->is_verbose_profiler_enabled()) {
-            stream.get()->wait();
+        if (!stream->is_verbose_profiler_enabled()) {
+            const_cast<stream_t *>(stream)->wait();
             double start_ms = dnnl::impl::get_msec();
             execute_ocl_impl(stream, args, deps);
-            stream.get()->wait();
+            const_cast<stream_t *>(stream)->wait();
             double duration_ms = dnnl::impl::get_msec() - start_ms;
             VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
                     duration_ms);
         } else {
             execute_ocl_impl(stream, args, deps);
         }
+
         return nullptr; // no event returned in profiling mode
     } else {
         return execute_ocl_impl(stream, args, deps);

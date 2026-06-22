@@ -554,7 +554,7 @@ dnnl::accumulation_mode str2accumulation_mode(
 }
 
 status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
-        const stream &astream,
+        const stream_t *astream,
         const std::unordered_map<int, memory> &exec_args) {
     std::vector<dnnl_exec_arg_t> vec_args;
     vec_args.reserve(exec_args.size());
@@ -562,7 +562,7 @@ status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
         vec_args.push_back({a.first, a.second.get(true)});
 
     const primitive_iface_t *primitive_iface = prim.get();
-    stream_t *stream = astream.get();
+    stream_t *stream = const_cast<stream_t *>(astream);
     int nargs = static_cast<int>(vec_args.size());
     const dnnl_exec_arg_t *c_args = vec_args.data();
 

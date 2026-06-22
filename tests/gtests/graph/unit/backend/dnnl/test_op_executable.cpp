@@ -60,16 +60,15 @@ TEST(test_op_executable, DummyImpl) {
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
     dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(*engine);
-    dnnl::stream p_stream = dnnl_impl::make_dnnl_stream(*strm);
     auto op_exec = std::make_shared<dnnl_impl::dummy_impl_t>();
 
     // test empty input events
-    auto returned_event0 = op_exec->execute_sycl(p_stream, {}, {});
+    auto returned_event0 = op_exec->execute_sycl(strm, {}, {});
     ASSERT_FALSE(returned_event0.has_value());
 
     // test one input event
     ::sycl::event input_event0;
-    auto returned_event1 = op_exec->execute_sycl(p_stream, {}, {input_event0});
+    auto returned_event1 = op_exec->execute_sycl(strm, {}, {input_event0});
     ASSERT_TRUE(returned_event1.has_value());
     ASSERT_EQ(*returned_event1, input_event0);
     ASSERT_EQ(
@@ -80,7 +79,7 @@ TEST(test_op_executable, DummyImpl) {
     // test two input events
     ::sycl::event input_event1;
     auto returned_event2 = op_exec->execute_sycl(
-            p_stream, {}, {std::move(input_event0), std::move(input_event1)});
+            strm, {}, {std::move(input_event0), std::move(input_event1)});
     ASSERT_TRUE(returned_event2.has_value());
     const auto &event_list2 = returned_event2->get_wait_list();
     ASSERT_LE(event_list2.size(), 2U);

@@ -76,7 +76,7 @@ gated_mlp_executable_t::desc_t gated_mlp_executable_t::create_desc(
     return {apd, false};
 }
 
-void gated_mlp_executable_t::execute(const stream &stream,
+void gated_mlp_executable_t::execute(const stream_t *stream,
         const std::unordered_map<int, memory> &args) const {
     UNUSED(stream);
     UNUSED(args);
@@ -85,7 +85,7 @@ void gated_mlp_executable_t::execute(const stream &stream,
 
 #ifdef DNNL_WITH_SYCL
 std::optional<::sycl::event> gated_mlp_executable_t::execute_sycl(
-        const stream &stream, const std::unordered_map<int, memory> &args,
+        const stream_t *stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     std::vector<dnnl_exec_arg_t> c_args;
     c_args.reserve(args.size());
@@ -93,8 +93,9 @@ std::optional<::sycl::event> gated_mlp_executable_t::execute_sycl(
         c_args.push_back({a.first, a.second.get()});
 
     sycl::event return_event;
-    auto ret = dnnl_sycl_interop_primitive_execute(prim_.get(), stream.get(),
-            c_args.size(), c_args.data(), &deps, &return_event);
+    auto ret = dnnl_sycl_interop_primitive_execute(prim_.get(),
+            const_cast<stream_t *>(stream), c_args.size(), c_args.data(), &deps,
+            &return_event);
     dnnl::error::wrap_c_api(
             ret, "could not execute gated mlp primitive with sycl runtime");
 
@@ -103,7 +104,7 @@ std::optional<::sycl::event> gated_mlp_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event gated_mlp_executable_t::execute_ocl(const stream &stream,
+cl_event gated_mlp_executable_t::execute_ocl(const stream_t *stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
     std::vector<dnnl_exec_arg_t> c_args;
@@ -114,9 +115,10 @@ cl_event gated_mlp_executable_t::execute_ocl(const stream &stream,
     const cl_event *c_deps = deps.empty() ? nullptr : deps.data();
 
     cl_event return_event = nullptr;
-    auto ret = dnnl_ocl_interop_primitive_execute(prim_.get(), stream.get(),
-            static_cast<int>(c_args.size()), c_args.data(), c_deps,
-            static_cast<int>(deps.size()), &return_event);
+    auto ret = dnnl_ocl_interop_primitive_execute(prim_.get(),
+            const_cast<stream_t *>(stream), static_cast<int>(c_args.size()),
+            c_args.data(), c_deps, static_cast<int>(deps.size()),
+            &return_event);
     dnnl::error::wrap_c_api(
             ret, "could not execute gated mlp primitive with ocl runtime");
 

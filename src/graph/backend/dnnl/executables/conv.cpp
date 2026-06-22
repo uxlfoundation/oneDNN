@@ -22,7 +22,7 @@ namespace graph {
 namespace dnnl_impl {
 
 // conv_fwd_executable_t implementations
-void conv_fwd_executable_t::execute(const stream &stream,
+void conv_fwd_executable_t::execute(const stream_t *stream,
         const std::unordered_map<int, memory> &args) const {
     if (with_sum_) {
         const memory &psrc_mem = args.find(DNNL_GRAPH_ARG_POST_SRC)->second;
@@ -50,22 +50,24 @@ void conv_fwd_executable_t::execute(const stream &stream,
                         = dnnl::memory(new_to_desc, psrc_mem.get_engine());
                 to_mem.set_data_handle(dst_mem.get_data_handle());
                 dnnl::reorder(psrc_mem, to_mem)
-                        .execute(stream, const_cast<memory &>(psrc_mem),
+                        .execute(make_dnnl_stream(*stream),
+                                const_cast<memory &>(psrc_mem),
                                 const_cast<memory &>(to_mem));
             } else {
                 dnnl::reorder(psrc_mem, dst_mem)
-                        .execute(stream, const_cast<memory &>(psrc_mem),
+                        .execute(make_dnnl_stream(*stream),
+                                const_cast<memory &>(psrc_mem),
                                 const_cast<memory &>(dst_mem));
             }
         }
     }
 
-    prim_.execute(stream, args);
+    prim_.execute(make_dnnl_stream(*stream), args);
 }
 
 #ifdef DNNL_WITH_SYCL
 std::optional<::sycl::event> conv_fwd_executable_t::execute_sycl(
-        const stream &stream, const std::unordered_map<int, memory> &args,
+        const stream_t *stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     auto sycl_deps = deps;
     if (with_sum_) {
@@ -94,16 +96,19 @@ std::optional<::sycl::event> conv_fwd_executable_t::execute_sycl(
                         = dnnl::memory(new_to_desc, psrc_mem.get_engine());
                 to_mem.set_data_handle(dst_mem.get_data_handle());
                 auto prim = dnnl::reorder(psrc_mem, to_mem);
-                auto e = dnnl::sycl_interop::execute(prim, stream,
+                auto e = dnnl::sycl_interop::execute(prim,
+                        make_dnnl_stream(*stream),
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
                                 {DNNL_ARG_TO, const_cast<memory &>(to_mem)}},
                         sycl_deps);
                 sycl_deps = {e};
-                if (stream.get_engine().get_kind() == engine::kind::cpu)
+                if (make_dnnl_stream(*stream).get_engine().get_kind()
+                        == engine::kind::cpu)
                     e.wait();
             } else {
                 auto prim = dnnl::reorder(psrc_mem, dst_mem);
-                auto e = dnnl::sycl_interop::execute(prim, stream,
+                auto e = dnnl::sycl_interop::execute(prim,
+                        make_dnnl_stream(*stream),
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
                                 {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
                         sycl_deps);
@@ -111,14 +116,16 @@ std::optional<::sycl::event> conv_fwd_executable_t::execute_sycl(
             }
         }
     }
-    auto e = dnnl::sycl_interop::execute(prim_, stream, args, sycl_deps);
-    if (stream.get_engine().get_kind() == engine::kind::cpu) e.wait();
+    auto e = dnnl::sycl_interop::execute(
+            prim_, make_dnnl_stream(*stream), args, sycl_deps);
+    if (make_dnnl_stream(*stream).get_engine().get_kind() == engine::kind::cpu)
+        e.wait();
     return e;
 }
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event conv_fwd_executable_t::execute_ocl(const stream &stream,
+cl_event conv_fwd_executable_t::execute_ocl(const stream_t *stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
     auto ocl_deps = deps;
@@ -158,14 +165,16 @@ cl_event conv_fwd_executable_t::execute_ocl(const stream &stream,
                                           dst_mem.get_data_handle()));
 
                 auto prim = dnnl::reorder(psrc_mem, to_mem);
-                auto e = dnnl::ocl_interop::execute(prim, stream,
+                auto e = dnnl::ocl_interop::execute(prim,
+                        make_dnnl_stream(*stream),
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
                                 {DNNL_ARG_TO, const_cast<memory &>(to_mem)}},
                         ocl_deps);
                 ocl_deps = {e};
             } else {
                 auto prim = dnnl::reorder(psrc_mem, dst_mem);
-                auto e = dnnl::ocl_interop::execute(prim, stream,
+                auto e = dnnl::ocl_interop::execute(prim,
+                        make_dnnl_stream(*stream),
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
                                 {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
                         ocl_deps);
@@ -173,7 +182,8 @@ cl_event conv_fwd_executable_t::execute_ocl(const stream &stream,
             }
         }
     }
-    auto e = dnnl::ocl_interop::execute(prim_, stream, args, ocl_deps);
+    auto e = dnnl::ocl_interop::execute(
+            prim_, make_dnnl_stream(*stream), args, ocl_deps);
     return e;
 }
 #endif

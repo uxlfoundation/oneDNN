@@ -47,7 +47,7 @@ struct const_memory_filler_t : public op_executable_t {
                         std::is_same<attr_dt, target_dt>());
     }
 
-    void execute(const stream &stream,
+    void execute(const stream_t *stream,
             const std::unordered_map<int, memory> &args) const override {
         void *data_handle = static_cast<void *>(
                 const_cast<target_dt *>(attr_data_.data()));
@@ -67,18 +67,20 @@ struct const_memory_filler_t : public op_executable_t {
         const memory src_mem
                 = make_dnnl_memory(dst_mem.get_desc(), src_eng, data_handle);
         dnnl::reorder(src_mem, dst_mem)
-                .execute(stream, const_cast<memory &>(src_mem),
+                .execute(make_dnnl_stream(*stream),
+                        const_cast<memory &>(src_mem),
                         const_cast<memory &>(dst_mem));
     }
 
 #ifdef DNNL_WITH_SYCL
-    std::optional<::sycl::event> execute_sycl(const stream &stream,
+    std::optional<::sycl::event> execute_sycl(const stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
         void *data_handle = static_cast<void *>(
                 const_cast<target_dt *>(attr_data_.data()));
         const memory &dst_mem = args.find(DNNL_ARG_TO)->second;
-        auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
+        auto sycl_queue
+                = dnnl::sycl_interop::get_queue(make_dnnl_stream(*stream));
         auto e = sycl_queue.memcpy(dst_mem.get_data_handle(), data_handle,
                 dst_mem.get_desc().get_size());
         return e;
@@ -86,7 +88,7 @@ struct const_memory_filler_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream &stream,
+    cl_event execute_ocl(const stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override {
         void *data_handle = static_cast<void *>(
@@ -97,10 +99,10 @@ struct const_memory_filler_t : public op_executable_t {
         const bool empty = deps.empty() || deps[0] == nullptr;
         const cl_uint num = empty ? 0 : static_cast<cl_uint>(deps.size());
         cl_event e;
-        UNUSED_STATUS(
-                xpu::ocl::usm::memcpy(stream.get(), dst_mem.get_data_handle(),
-                        data_handle, dst_mem.get_desc().get_size(), num,
-                        empty ? nullptr : deps.data(), &e));
+        UNUSED_STATUS(xpu::ocl::usm::memcpy(const_cast<stream_t *>(stream),
+                dst_mem.get_data_handle(), data_handle,
+                dst_mem.get_desc().get_size(), num,
+                empty ? nullptr : deps.data(), &e));
         return e;
     }
 #endif

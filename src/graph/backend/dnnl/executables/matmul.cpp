@@ -182,11 +182,11 @@ matmul_executable_t::desc_t matmul_executable_t::create_desc(
     // For non-constant activation and weight, create primitive desc with
     // strided layout
     bool const_activation = ltw(op->get_input_logical_tensor(0)).is_constant()
-            && is_constant_cache_enabled(p_engine);
+            && is_constant_cache_enabled(*(p_engine.get()));
     if (use_block_layout && const_activation) { src = to_format_any(src); }
     auto wei = make_dnnl_memory_desc(op->get_input_logical_tensor(1));
     bool const_weight = ltw(op->get_input_logical_tensor(1)).is_constant()
-            && is_constant_cache_enabled(p_engine);
+            && is_constant_cache_enabled(*(p_engine.get()));
     if (use_block_layout && const_weight) { wei = to_format_any(wei); }
     auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
     const bool keep_dst_layout = op->has_attr(op_attr::keep_dst_layout)

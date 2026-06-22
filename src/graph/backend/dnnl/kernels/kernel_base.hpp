@@ -24,12 +24,7 @@
 #include "graph/interface/c_types_map.hpp"
 #include "graph/interface/logical_tensor.hpp"
 
-// required for dnnl::engine
-#include "oneapi/dnnl/dnnl.hpp"
-
-#ifdef DNNL_WITH_SYCL
-#include "oneapi/dnnl/dnnl_sycl.hpp"
-#endif
+#include "common/engine.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -120,7 +115,7 @@ struct kernel_base_t {
 
 protected:
     std::vector<inplace_pair_t> inplace_pairs_;
-    dnnl::engine p_engine_;
+    const engine_t *engine_ = nullptr;
 };
 
 using kernel_ptr = std::shared_ptr<kernel_base_t>;

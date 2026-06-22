@@ -42,11 +42,11 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
         const dnnl_partition_impl_t *part, const engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*eng);
+    engine_ = eng;
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(
-            part->get_ops(), p_engine_, part->get_fpmath_mode(), false, true);
+            part->get_ops(), *engine_, part->get_fpmath_mode(), false, true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
     // Check if it's supported by decomposition kernel
@@ -109,7 +109,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
 
     // Initialize and construct kernel params
     return sdp_cfg_.construct_params<quantized, dt>(
-            subgraph_, sdp_registry_, p_engine_, inputs);
+            subgraph_, sdp_registry_, make_dnnl_engine(*engine_), inputs);
 }
 
 template <bool quantized, memory::data_type dt>
@@ -187,7 +187,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(
 
     size_t block_size = sdp_registry_.size();
     auto scratchpad = std::make_shared<scratchpad_t>(
-            scratchpad_buf, block_size * sdp_cfg_.nthr, p_engine_);
+            scratchpad_buf, block_size * sdp_cfg_.nthr, *engine_);
     grantor_t var_grantor = sdp_registry_.grantor(scratchpad->get_buffer());
 
     const auto get_mem_dt_size = [](const memory &m) -> size_t {

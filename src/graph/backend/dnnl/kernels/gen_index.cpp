@@ -38,13 +38,13 @@ namespace dnnl_impl {
 status_t genindex_t::compile_impl(const dnnl_partition_impl_t *part,
         const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*eng);
+    engine_ = eng;
 
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
-    if (p_engine_.get_kind() == engine::kind::gpu) {
+    if (engine_->kind() == engine_kind::gpu) {
 #if (DNNL_GPU_RUNTIME != DNNL_RUNTIME_NONE) \
         && (DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL)
         int ndims = inputs[0].ndims;
@@ -137,7 +137,7 @@ status_t genindex_t::sycl_execute_impl(const stream_t *stream,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
-    if (p_engine_.get_kind() == engine::kind::gpu) {
+    if (engine_->kind() == engine_kind::gpu) {
         auto deps = sycl_deps;
         std::optional<::sycl::event> returned_event;
         dnnl::stream p_stream = make_dnnl_stream(*stream);

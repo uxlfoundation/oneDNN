@@ -301,8 +301,7 @@ The binary post-op thus becomes:
     \dst[:] = \operatorname{binary}(\operatorname{Op}(...), Source\_1[:], Source\_2[:])
 \f]
 
-There is no broadcasting support for the conditional tensor. The select op is only
-supported for CPU implementations.
+There is no broadcasting support for the conditional tensor.
 
 @anchor dev_guide_attributes_post_ops_prelu
 ### Prelu Post-op

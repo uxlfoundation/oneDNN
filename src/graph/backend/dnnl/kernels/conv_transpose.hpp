@@ -42,8 +42,7 @@ template <bool quantized>
 struct conv_transpose_fwd_t : public conv_base_t {
 public:
     status_t compile_impl(const dnnl_partition_impl_t *part,
-            const engine_t *g_engine,
-            const std::vector<logical_tensor_t> &inputs,
+            const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 
     status_t prepare_inplace_pairs_impl() override;
@@ -59,8 +58,7 @@ using quantized_convtranspose = conv_transpose_fwd_t</* quantized */ true>;
 struct conv_transpose_bwd_data_t : public conv_base_t {
 public:
     status_t compile_impl(const dnnl_partition_impl_t *part,
-            const engine_t *g_engine,
-            const std::vector<logical_tensor_t> &inputs,
+            const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 
     DEF_KERNEL_METHOD_STR(conv_transpose_bwd_data_t)
@@ -70,8 +68,7 @@ public:
 struct conv_transpose_bwd_weights_t : public conv_base_t {
 public:
     status_t compile_impl(const dnnl_partition_impl_t *part,
-            const engine_t *g_engine,
-            const std::vector<logical_tensor_t> &inputs,
+            const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 
     DEF_KERNEL_METHOD_STR(conv_transpose_bwd_weights_t)

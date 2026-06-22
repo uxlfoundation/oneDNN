@@ -40,10 +40,10 @@ namespace dnnl_impl {
 
 template <bool quantized, memory::data_type dt>
 status_t mqa_decomp_kernel_t<quantized, dt>::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *g_engine,
+        const dnnl_partition_impl_t *part, const engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*g_engine);
+    p_engine_ = make_dnnl_engine(*eng);
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
@@ -153,14 +153,14 @@ void mqa_decomp_kernel_t<quantized, dt>::prepare_sub_args(
 
 template <bool quantized, memory::data_type dt>
 status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
-        const stream_t *g_stream, const std::vector<tensor_t> &inputs,
+        const stream_t *stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream strm = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream strm = make_dnnl_stream(*stream);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     auto *tp_stream
             = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
-                    const_cast<stream_t *>(g_stream));
+                    const_cast<stream_t *>(stream));
 #endif
 
     // each thread's own local resource
@@ -279,7 +279,7 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
     tp_stream->after_exec_hook();
 #endif
 
-    prolong_scratchpad_lifetime(g_stream, scratchpad);
+    prolong_scratchpad_lifetime(stream, scratchpad);
 
     return status::success;
 }

@@ -69,6 +69,10 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
         uint threshold, float inv_q) {
 
     s_tile_type scale_tile;
+    // s_tile is K×Q (Bc rows = K, Br cols = Q) in non-transposed layout.
+    // tile_predicated_select (non-_t): offset_r = K_base+i_K, offset_c = Q_base+j_Q
+    // → goff = batch + (Q_base+j_Q)*k + (K_base+i_K) = batch + Q*k + K
+    // This matches the forward kernel's tile_predicated_select_t on its Q×K tile.
     tile_predicated_select(scale_tile, tile_offset_r, tile_offset_c,
             dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
             ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
@@ -87,6 +91,11 @@ inline void apply_dropout_dP_tile(p_tile_type *tile, int tile_offset_r,
         uint threshold, float inv_q) {
 
     p_tile_type scale_p_tile;
+    // dP tile from ugemm_vtdA is K×Q (M=K=block0, N=Q=block1), same layout
+    // as the backward S tile. Use non-_t (matching S tile convention):
+    // offset_r = K_base + i_K, offset_c = Q_base + j_Q
+    // → goff = batch + (Q_base+j_Q)*k + (K_base+i_K) = batch + Q*k + K
+    // This matches the forward's tile_predicated_select_t on its Q×K tile.
     tile_predicated_select(scale_p_tile, tile_offset_r, tile_offset_c,
             dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
             ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1,
@@ -485,18 +494,18 @@ inline void tile_store_k_slm(
 #endif
 
 // SLM always accumulates in f32 for dK and dV.
-// For f16 GQA (REDUCE_DKDV_F16), each per-iteration matmul contribution is
-// first quantized to f16 precision (round-trip f32->f16->f32) before being
-// added to the f32 SLM accumulator. This matches graph semantics where each
-// GEMM output is an f16 tensor, while keeping the cross-iteration accumulation
-// in f32 to avoid overflow and loss of precision from f16+f16 reduction.
-// The global scratch (DST_DATA_T_DKDV=float for GQA) is updated via f32 atomic add.
+// For GQA (IS_GQA=1), DST_DATA_T_DKDV=float so the global scratch and all
+// intermediate reduction steps are f32. No per-iteration f16 quantization is
+// applied: the GEMM output (f32) is added directly into f32 SLM, then written
+// via f32 atomic add. This matches the f32 reference and avoids accumulated
+// f16 rounding error being amplified by the 8:1 cross-head GQA cancellation.
+// For non-GQA MHA, DST_DATA_T_DKDV=DST_DATA_T (f16/bf16); round_to_dst is
+// applied once at store time before the direct (non-atomic) global write.
 #define SLM_DKDV_DATA_T float
 typedef dv_tile_type dv_acc_tile_type;
 typedef a_tile_type dk_acc_tile_type;
-// Quantizes a float value to destination precision (f16 for DST_DATA_T=half).
-// For REDUCE_DKDV_F16: applied per-iteration before SLM add to match graph f16 tensor semantics.
-// For non-GQA/f32: identity (CONVERT_DATA_T(float)->float is a no-op).
+// round_to_dst: quantizes f32 to destination type precision.
+// Used only in non-GQA MHA store path (once, at the final direct store).
 inline float round_to_dst(float v) {
     return CONVERT_FLOAT_T(CONVERT_DATA_T(v));
 }
@@ -998,18 +1007,14 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             if (sg_ij < sg_per_wg_BcD) {
                 dv_acc_tile_type dV_tile1_store;
                 tile_copy(dV_tile1, dV_tile1_store);
-#if REDUCE_DKDV_F16
-                // Quantize to f16 precision before f32 SLM accumulation.
                 DBG_PRINT_TILE_ELEM(dV_tile1_store,
                         ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
                         ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
                         "dV pre-quant");
-                tile_elementwise_s(dV_tile1_store, round_to_dst);
                 DBG_PRINT_TILE_ELEM(dV_tile1_store,
                         ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
                         ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
                         "dV post-quant");
-#endif
                 tile_slm_add(dV_tile1_store, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
             }
         }
@@ -1111,18 +1116,14 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             if (sg_ij < sg_per_wg_BcD) {
                 dk_acc_tile_type dK_tile1_store;
                 tile_copy(dK_tile1, dK_tile1_store);
-#if REDUCE_DKDV_F16
-                // Quantize to f16 precision before f32 SLM accumulation.
                 DBG_PRINT_TILE_ELEM(dK_tile1_store,
                         ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
                         ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1,
                         "dK pre-quant");
-                tile_elementwise_s(dK_tile1_store, round_to_dst);
                 DBG_PRINT_TILE_ELEM(dK_tile1_store,
                         ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
                         ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1,
                         "dK post-quant");
-#endif
 #if TRANSPOSE_K
                 tile_slm_add_t(
                         dK_tile1_store, dK_slm, D_MAX, sg_i0_dk, sg_j0_dk);

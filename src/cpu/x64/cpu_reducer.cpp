@@ -565,6 +565,33 @@ void cpu_reducer_2d_t<data_type>::reduce_nolock(int ithr, data_t *dst,
 template struct cpu_reducer_2d_t<data_type::f32>;
 template struct cpu_reducer_2d_t<data_type::s32>;
 
+/* batched 2d accumulator section */
+
+template <impl::data_type_t data_type>
+cpu_accumulator_2d_batched_t<data_type>::cpu_accumulator_2d_batched_t(
+        int n_src, size_t src_ld, size_t row_step)
+    : drv_(create_reduce_2d_drv<data_type>(
+              n_src, src_ld, row_step, row_step, false)) {}
+
+template <impl::data_type_t data_type>
+cpu_accumulator_2d_batched_t<data_type>::~cpu_accumulator_2d_batched_t() {
+    delete drv_;
+}
+
+template <impl::data_type_t data_type>
+status_t cpu_accumulator_2d_batched_t<data_type>::create_kernel() {
+    return drv_->create_kernel();
+}
+
+template <impl::data_type_t data_type>
+void cpu_accumulator_2d_batched_t<data_type>::accumulate(
+        data_t *dst, const data_t *src, size_t ny, size_t nx) {
+    (*drv_)(dst, src, ny, nx);
+}
+
+template struct cpu_accumulator_2d_batched_t<data_type::f32>;
+template struct cpu_accumulator_2d_batched_t<data_type::s32>;
+
 /* accumulator section */
 
 template <impl::data_type_t data_type>

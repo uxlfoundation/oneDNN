@@ -90,7 +90,8 @@ private:
     void compute_kernel(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *A_data_batch_ptr, const char *B_data_batch_ptr,
             int ithr, int b_idx, int m_blk_idx, int n_blk_idx, int k_blk_idx,
-            bool do_init, int &prev_ker_idx, bool prefetch) const;
+            bool do_init, int &prev_ker_idx, bool prefetch, int wi_idx = 0,
+            int ithr_bmn = 0) const;
 
     bool determine_prefetch(const int mc, const int m_end, const int nc,
             const int n_end, const brgemm_matmul_conf_t &bgmmc,
@@ -111,6 +112,8 @@ private:
             const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const;
     void accumulate(
             char *result_ptr, const char *reduce_ptr, size_t size) const;
+    void accumulate_batched(char *result_ptr, const char *reduce_ptr, size_t ny,
+            size_t nx) const;
 
     std::unique_ptr<brgemm_kernel_t> brg_kernels_[max_num_brg_kernels_matmul];
     brgemm_containers::brgemm_palette_container_t brgemm_palettes_ {
@@ -120,6 +123,10 @@ private:
     std::unique_ptr<jit_brgemm_matmul_copy_a_t> copy_A_kernel_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::f32>> acc_ker_f32_;
     std::unique_ptr<cpu_accumulator_1d_t<data_type::s32>> acc_ker_s32_;
+    std::unique_ptr<cpu_accumulator_2d_batched_t<data_type::f32>>
+            acc_ker_batched_f32_;
+    std::unique_ptr<cpu_accumulator_2d_batched_t<data_type::s32>>
+            acc_ker_batched_s32_;
     std::unique_ptr<jit_avx512_sparse_decompress_kernel_t>
             sparse_decompress_kernel_;
 

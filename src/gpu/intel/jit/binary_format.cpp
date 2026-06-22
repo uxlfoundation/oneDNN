@@ -394,16 +394,11 @@ status_t init_mayiuse_ngen_kernels(impl::engine_t *engine,
     }
     if (!arch_enabled) return status::success;
 
-    if (arch <= compute::gpu_arch_t::xe3p) {
-        auto status = gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
-        if (status != status::success) {
-            VWARN(common, runtime,
-                    "nGEN fallback (gpu does not support binary format "
-                    "kernels)");
-            mayiuse_ngen_kernels = false;
-        }
-    } else {
-        mayiuse_ngen_kernels = true;
+    auto status = gpu_supports_binary_format(&mayiuse_ngen_kernels, engine);
+    if (status != status::success) {
+        VWARN(common, runtime,
+                "nGEN fallback (gpu does not support binary format kernels)");
+        mayiuse_ngen_kernels = false;
     }
     return status::success;
 }

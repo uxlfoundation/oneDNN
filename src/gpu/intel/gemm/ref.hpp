@@ -126,7 +126,8 @@ struct ref_t : public primitive_t {
             VDISPATCH_GEMM(
                     (b_strides[ndims - 1] == 1 || b_strides[ndims - 2] == 1),
                     VERBOSE_UNSUPPORTED_MEM_STRIDE);
-            VDISPATCH_GEMM((c_strides[ndims - 1] == 1),
+            VDISPATCH_GEMM(
+                    (c_strides[ndims - 1] == 1 || c_strides[ndims - 2] == 1),
                     VERBOSE_UNSUPPORTED_MEM_STRIDE);
             VDISPATCH_GEMM(
                     IMPLICATION(desc()->is_batched(),

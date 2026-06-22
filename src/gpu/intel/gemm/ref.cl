@@ -33,9 +33,9 @@ void get_strides(int mask, long dim0, long dim1, long dim2, long *str0,
 __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
         __global C_DATA_T *c, __global BIA_DATA_T *bias, long offset_a0,
         long offset_b0, long offset_c0, long offset_bias0, int transa,
-        int transb, long MB, long M, long N, long K, long stride_a_mb,
-        long stride_b_mb, long stride_c, long lda, long ldb, long ldc,
-        float eltwise_alpha, float eltwise_beta, float eltwise_scale,
+        int transb, int transc, long MB, long M, long N, long K,
+        long stride_a_mb, long stride_b_mb, long stride_c, long lda, long ldb,
+        long ldc, float eltwise_alpha, float eltwise_beta, float eltwise_scale,
         int bias_mask,
 #if WITH_HOST_WEI_ZP
         int ao_value,
@@ -103,6 +103,8 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
     long stride_a_k = transa ? 1 : lda;
     long stride_b_k = transb ? ldb : 1;
     long stride_b_n = transb ? 1 : ldb;
+    long stride_c_m = transc ? ldc : 1;
+    long stride_c_n = transc ? 1 : ldc;
 
     ACC_DATA_T acc = 0;
     for (long k = 0; k < K; ++k) {
@@ -112,7 +114,7 @@ __kernel void ref_gemm(__global A_DATA_T *a, __global B_DATA_T *b,
                 * TO_ACC(B_TO_REF(b[off_b]) - ATTR_B0);
     }
 
-    long off_c = mb * stride_c + n * ldc + m;
+    long off_c = mb * stride_c + n * stride_c_n + m * stride_c_m;
 #if WITH_BIAS || NON_DEFAULT_ATTRS
     POST_OP_DATA_T temp = (POST_OP_DATA_T)acc;
 #if WITH_BIAS

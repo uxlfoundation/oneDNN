@@ -79,7 +79,7 @@ private:
     reg64_t reg_output_stack = x27;
     reg64_t reg_bias_stack = x19;
     reg64_t reg_tmp_addr = x20;
-    reg64_t reg_tmp2_addr = x18;
+    reg64_t reg_tmp2_addr = x21;
 
     inline void load_src(int ur_ch_blocks, int ur_w);
     inline void compute_loop(int ur_w, int ur_ch_blocks, int pad_l, int pad_r);

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -103,6 +103,8 @@ using jit_sve_512_dw_convolution_fwd_t
         = jit_uni_dw_convolution_fwd_t<sve_512, data_type::f32>;
 using jit_sve_256_dw_convolution_fwd_t
         = jit_uni_dw_convolution_fwd_t<sve_256, data_type::f32>;
+using jit_sve_asimd_dw_convolution_fwd_t
+        = jit_uni_dw_convolution_fwd_t<asimd, data_type::f32>;
 using jit_sve_256_dw_convolution_bf16_fwd_t
         = jit_uni_dw_convolution_fwd_t<sve_256, data_type::bf16>;
 using jit_sve_128_dw_convolution_bf16_fwd_t

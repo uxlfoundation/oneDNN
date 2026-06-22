@@ -84,6 +84,48 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::load_src(
     }
 }
 
+template <>
+void jit_uni_dw_conv_fwd_kernel_f32_t<asimd>::load_src(
+        int ur_ch_blocks, int ur_w) {
+
+    const auto dst_layout_nxc = is_dst_layout_nxc();
+    const auto ch_blk = jcp.ch_block;
+    const auto ocb_stride = dst_layout_nxc ? ch_blk : jcp.oh * jcp.ow * ch_blk;
+    const auto ow_stride = dst_layout_nxc ? jcp.ngroups : ch_blk;
+
+    for (int ch = 0; ch < ur_ch_blocks; ch++) {
+        if (this->jcp.with_sum) {
+            add_imm(reg_tmp_addr, reg_output,
+                    (ch * ocb_stride) * jcp.typesize_out, reg_tmp_imm);
+        }
+        int b_off = ch * ch_blk;
+        if (this->jcp.with_bias) {
+            ldr(QReg(1),
+                    ptr(addr_off(reg_bias, b_off * sizeof(float),
+                            X_DEFAULT_ADDR, reg_tmp_imm)));
+        }
+        for (int ow = 0; ow < ur_w; ow++) {
+            const int acc_idx = get_acc_reg(ch * ur_w + ow).getIdx();
+
+            if (this->jcp.with_bias && acc_idx != 1) {
+                mov(VReg16B(acc_idx), VReg16B(1));
+            } else {
+                uni_clear(VReg(acc_idx));
+            }
+
+            int o_off = ow * ow_stride;
+            if (this->jcp.with_sum) {
+                auto z_tmp = QReg(0);
+                assert(jcp.dst_dt == data_type::f32);
+                ldr(z_tmp,
+                        ptr(addr_off(reg_tmp_addr, o_off * jcp.typesize_out,
+                                X_DEFAULT_ADDR, reg_tmp_imm)));
+                fadd(VReg4S(acc_idx), VReg4S(acc_idx), VReg4S(0));
+            }
+        }
+    }
+}
+
 template <cpu_isa_t isa>
 void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
         int ur_ch_blocks, int ur_w, int pad_l, int pad_r) {
@@ -123,15 +165,24 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
                     reg_tmp_imm);
             for (int kw = 0; kw < jcp.kw; kw++) {
                 int ker_off = kw * ch_blk;
-                ZReg zregs_ker = get_ker_reg(0);
-                if (jcp.dst_dt == data_type::f32) {
-                    LD_MUL_VL(ld1w, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
-                            ker_off * jcp.typesize_in, jcp.typesize_in);
-                } else if (jcp.dst_dt == data_type::bf16) {
-                    LD_MUL_VL(ld1h, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
-                            ker_off * jcp.typesize_in, jcp.typesize_in);
+                if (isa == asimd) {
+                    QReg zregs_ker = QReg(0);
+                    assert(jcp.dst_dt == data_type::f32);
+                    ldr(zregs_ker,
+                            ptr(addr_off(reg_tmp2_addr,
+                                    ker_off * jcp.typesize_in, X_DEFAULT_ADDR,
+                                    reg_tmp_imm)));
                 } else {
-                    assert(!"Unsupported: data type");
+                    ZReg zregs_ker = get_ker_reg(0);
+                    if (jcp.dst_dt == data_type::f32) {
+                        LD_MUL_VL(ld1w, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
+                                ker_off * jcp.typesize_in, jcp.typesize_in);
+                    } else if (jcp.dst_dt == data_type::bf16) {
+                        LD_MUL_VL(ld1h, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
+                                ker_off * jcp.typesize_in, jcp.typesize_in);
+                    } else {
+                        assert(!"Unsupported: data type");
+                    }
                 }
 
                 int ow_start = get_ow_start(kw, pad_l);
@@ -139,19 +190,34 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
                 for (int ow = ow_start; ow < ow_end; ow++) {
                     int inp_off = (ow * stride_w - pad_l) * iw_stride
                             + kw * dilate_w * iw_stride;
-                    ZReg zregs_src = get_src_reg(0);
-                    if (jcp.dst_dt == data_type::f32) {
-                        LD_MUL_VL(ld1w, zregs_src.s, P_ALL_ONE, reg_tmp_addr,
-                                inp_off * jcp.typesize_in, jcp.typesize_in);
-                        ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
-                        fmla(zregs_acc, P_ALL_ONE, zregs_src.s, zregs_ker.s);
-                    } else if (jcp.dst_dt == data_type::bf16) {
-                        LD_MUL_VL(ld1h, zregs_src.s, P_ALL_ONE, reg_tmp_addr,
-                                inp_off * jcp.typesize_in, jcp.typesize_in);
-                        ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
-                        bfmlalb(zregs_acc, zregs_src.h, zregs_ker.h);
+                    if (isa == asimd) {
+                        QReg zregs_src = QReg(1);
+                        ldr(zregs_src,
+                                ptr(addr_off(reg_tmp_addr,
+                                        inp_off * jcp.typesize_in,
+                                        X_DEFAULT_ADDR, reg_tmp_imm)));
+                        const int acc_idx
+                                = get_acc_reg(ch * ur_w + ow).getIdx();
+                        fmla(VReg4S(acc_idx), VReg4S(1), VReg4S(0));
                     } else {
-                        assert(!"Unsupported: data type");
+                        ZReg zregs_ker = get_ker_reg(0);
+                        ZReg zregs_src = get_src_reg(1);
+                        if (jcp.dst_dt == data_type::f32) {
+                            LD_MUL_VL(ld1w, zregs_src.s, P_ALL_ONE,
+                                    reg_tmp_addr, inp_off * jcp.typesize_in,
+                                    jcp.typesize_in);
+                            ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
+                            fmla(zregs_acc, P_ALL_ONE, zregs_src.s,
+                                    zregs_ker.s);
+                        } else if (jcp.dst_dt == data_type::bf16) {
+                            LD_MUL_VL(ld1h, zregs_src.s, P_ALL_ONE,
+                                    reg_tmp_addr, inp_off * jcp.typesize_in,
+                                    jcp.typesize_in);
+                            ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
+                            bfmlalb(zregs_acc, zregs_src.h, zregs_ker.h);
+                        } else {
+                            assert(!"Unsupported: data type");
+                        }
                     }
                 }
             }
@@ -183,6 +249,7 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_activation(
         eltwise_injector_->compute_vector_range(4, ur_w * ur_ch_blocks + 4);
     }
 }
+
 template <cpu_isa_t isa>
 void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_dst(
         int ur_ch_blocks, int ur_w) {
@@ -212,6 +279,29 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_dst(
             } else {
                 assert(!"Unsupported: data type");
             }
+        }
+    }
+}
+
+template <>
+void jit_uni_dw_conv_fwd_kernel_f32_t<asimd>::store_dst(
+        int ur_ch_blocks, int ur_w) {
+
+    const auto dst_layout_nxc = is_dst_layout_nxc();
+    const auto ch_blk = jcp.ch_block;
+    const auto ocb_stride = dst_layout_nxc ? ch_blk : jcp.oh * jcp.ow * ch_blk;
+    const auto ow_stride = dst_layout_nxc ? jcp.ngroups : ch_blk;
+
+    for (int ch = 0; ch < ur_ch_blocks; ch++) {
+        add_imm(reg_tmp_addr, reg_output, (ch * ocb_stride) * jcp.typesize_out,
+                reg_tmp_imm);
+        for (int ow = 0; ow < ur_w; ow++) {
+            const int o_off = ow * ow_stride;
+            assert(jcp.dst_dt == data_type::f32);
+            const int acc_idx = get_acc_reg(ch * ur_w + ow).getIdx();
+            str(QReg(acc_idx),
+                    ptr(addr_off(reg_tmp_addr, o_off * jcp.typesize_out,
+                            X_DEFAULT_ADDR, reg_tmp_imm)));
         }
     }
 }
@@ -368,7 +458,7 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::generate() {
     const int simd_w_ = cpu_isa_traits<isa>::vlen / sizeof(float);
     this->preamble();
     //TO DO : renaming predicate register (P_ALL_ONE)
-    if (simd_w_ != cpu_sveLen / sizeof(float))
+    if (isa != asimd && simd_w_ != cpu_sveLen / sizeof(float))
         set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
     if (jcp.is_fused_conv) {
         ldr(reg_input_buffer_ptr, ptr(abi_param1, GET_OFF(src)));
@@ -414,6 +504,7 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::generate() {
 template struct jit_uni_dw_conv_fwd_kernel_f32_t<sve_512>;
 template struct jit_uni_dw_conv_fwd_kernel_f32_t<sve_256>;
 template struct jit_uni_dw_conv_fwd_kernel_f32_t<sve_128>;
+template struct jit_uni_dw_conv_fwd_kernel_f32_t<asimd>;
 
 template <cpu_isa_t isa>
 inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::load_ddst(

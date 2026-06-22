@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -123,6 +123,7 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
             jcp.nb_ch_blocking = 3;
             break;
         case sve_128:
+        case asimd:
             blocked_tag = nChw4c;
             wei_tag = Goihw4g;
             jcp.ur_w = 8;
@@ -317,6 +318,7 @@ void jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_scratchpad(
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f32>;
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f32>;
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::f32>;
+template struct jit_uni_dw_conv_fwd_kernel_t<asimd, data_type::f32>;
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::bf16>;
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::bf16>;
 

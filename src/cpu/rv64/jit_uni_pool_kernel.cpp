@@ -278,8 +278,6 @@ void jit_uni_pool_kernel_t<isa, d_type>::generate_f32() {
     if (is_max_pool_) {
         vmflt_vv(v_mask, v_acc, v_tmp);
         vmerge_vvm(v_acc, v_acc, v_tmp);
-        vmfne_vv(v_mask, v_tmp, v_tmp);
-        vmerge_vvm(v_acc, v_acc, v_tmp);
     } else {
         vfadd_vv(v_acc, v_acc, v_tmp);
     }
@@ -506,8 +504,6 @@ void jit_uni_pool_kernel_t<isa, d_type>::generate_f16() {
     }
     if (is_max_pool_) {
         vmflt_vv(v_mask, v_acc, v_tmp);
-        vmerge_vvm(v_acc, v_acc, v_tmp);
-        vmfne_vv(v_mask, v_tmp, v_tmp);
         vmerge_vvm(v_acc, v_acc, v_tmp);
     } else {
         // f32m2 += widen(f16m1), evaluated under the e16 vtype.
@@ -753,8 +749,6 @@ void jit_uni_pool_interior_kernel_t<isa, d_type>::generate_nspc() {
             if (j * sw <= p && p < j * sw + kw) {
                 if (is_max) {
                     vmflt_vv(v_mask, acc(j), v_tmp);
-                    vmerge_vvm(acc(j), acc(j), v_tmp);
-                    vmfne_vv(v_mask, v_tmp, v_tmp);
                     vmerge_vvm(acc(j), acc(j), v_tmp);
                 } else
                     vfadd_vv(acc(j), acc(j), v_tmp);

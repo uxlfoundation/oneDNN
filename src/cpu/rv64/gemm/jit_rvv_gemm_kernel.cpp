@@ -56,7 +56,6 @@ void jit_rvv_gemm_kernel_t::generate() {
     const Reg reg_beta_bits = t5;
 
     const Reg reg_k = a4; // current k counter
-    const Reg reg_K_main = a5; // (K / 4) * 4
     const Reg reg_B0_ptr = a6; // running pointer into B
     const Reg reg_tmp0 = a7;
     const FReg freg_alpha = fa0;
@@ -65,7 +64,9 @@ void jit_rvv_gemm_kernel_t::generate() {
 
     const VReg v_c[7] = {
             VReg(0), VReg(4), VReg(8), VReg(12), VReg(16), VReg(20), VReg(24)};
-    const VReg v_a(28);
+    const VReg v_a0(24);
+    const VReg v_a1(28);
+    const VReg v_tmp = v_a0;
 
     // Layout of call_params_t:
     //   0  : const float *A
@@ -107,42 +108,73 @@ void jit_rvv_gemm_kernel_t::generate() {
     for (dim_t c = 0; c < n_cols_; c++)
         vmv_v_i(v_c[c], 0);
 
-    mv(reg_K_main, reg_K);
-    srli(reg_tmp3, reg_K_main, 2);
-    slli(reg_K_main, reg_tmp3, 2);
-
-    auto emit_k_step = [&]() {
+    auto emit_load_a = [&](const VReg &v_a) {
         if (isTransA_) {
             vlse32_v(v_a, reg_A_ptr, reg_lda_bytes);
         } else {
             vle32_v(v_a, reg_A_ptr);
         }
+    };
 
+    auto emit_load_b_to = [&](const FReg *freg_dst) {
         if (isTransB_) {
             for (dim_t c = 0; c < n_cols_; c++) {
-                flw(freg_b[c], reg_B0_ptr, static_cast<int32_t>(c * 4));
+                flw(freg_dst[c], reg_B0_ptr, static_cast<int32_t>(c * 4));
             }
         } else {
-            flw(freg_b[0], reg_B0_ptr, 0);
+            flw(freg_dst[0], reg_B0_ptr, 0);
             if (n_cols_ > 1) {
                 add(reg_tmp0, reg_B0_ptr, reg_ldb_bytes);
-                flw(freg_b[1], reg_tmp0, 0);
+                flw(freg_dst[1], reg_tmp0, 0);
                 for (dim_t c = 2; c < n_cols_; c++) {
                     add(reg_tmp0, reg_tmp0, reg_ldb_bytes);
-                    flw(freg_b[c], reg_tmp0, 0);
+                    flw(freg_dst[c], reg_tmp0, 0);
                 }
             }
         }
+    };
 
+    auto emit_load_b = [&]() { emit_load_b_to(freg_b); };
+
+    auto emit_compute_from = [&](const FReg *freg_src, const VReg &v_a) {
         for (dim_t c = 0; c < n_cols_; c++)
-            vfmacc_vf(v_c[c], freg_b[c], v_a);
+            vfmacc_vf(v_c[c], freg_src[c], v_a);
+    };
 
+    auto emit_compute
+            = [&](const VReg &v_a) { emit_compute_from(freg_b, v_a); };
+
+    auto emit_load_b_scattered_compute = [&](const VReg &v_a) {
+        if (isTransB_) {
+            emit_load_b();
+            emit_compute(v_a);
+        } else {
+            flw(freg_b[0], reg_B0_ptr, 0);
+            if (n_cols_ == 1) {
+                vfmacc_vf(v_c[0], freg_b[0], v_a);
+            } else {
+                add(reg_tmp0, reg_B0_ptr, reg_ldb_bytes);
+                flw(freg_b[1], reg_tmp0, 0);
+                vfmacc_vf(v_c[0], freg_b[0], v_a);
+                for (dim_t c = 2; c < n_cols_; c++) {
+                    add(reg_tmp0, reg_tmp0, reg_ldb_bytes);
+                    flw(freg_b[c], reg_tmp0, 0);
+                    vfmacc_vf(v_c[c - 1], freg_b[c - 1], v_a);
+                }
+                vfmacc_vf(v_c[n_cols_ - 1], freg_b[n_cols_ - 1], v_a);
+            }
+        }
+    };
+
+    auto emit_advance_a = [&]() {
         if (isTransA_) {
             addi(reg_A_ptr, reg_A_ptr, 4);
         } else {
             add(reg_A_ptr, reg_A_ptr, reg_lda_bytes);
         }
+    };
 
+    auto emit_advance_b = [&]() {
         if (isTransB_) {
             add(reg_B0_ptr, reg_B0_ptr, reg_ldb_bytes);
         } else {
@@ -152,32 +184,84 @@ void jit_rvv_gemm_kernel_t::generate() {
 
     mv(reg_k, x0);
 
-    Label label_k_main_loop, label_k_main_end;
-    Label label_k_tail_loop, label_k_tail_end;
+    if (!isTransB_) {
+        Label label_k_done;
+        Label label_loop_a0, label_loop_a1;
+        Label label_drain_a0, label_drain_a1;
 
-    L(label_k_main_loop);
-    bge(reg_k, reg_K_main, label_k_main_end);
+        bge(reg_k, reg_K, label_k_done);
 
-    emit_k_step();
-    emit_k_step();
-    emit_k_step();
-    emit_k_step();
+        emit_load_a(v_a0);
+        addi(reg_k, reg_k, 1);
+        bge(reg_k, reg_K, label_drain_a0);
 
-    addi(reg_k, reg_k, 4);
-    j_(label_k_main_loop);
+        L(label_loop_a0);
+        emit_advance_a();
+        emit_load_a(v_a1);
+        emit_load_b_scattered_compute(v_a0);
+        emit_advance_b();
+        addi(reg_k, reg_k, 1);
+        bge(reg_k, reg_K, label_drain_a1);
 
-    L(label_k_main_end);
+        L(label_loop_a1);
+        emit_advance_a();
+        emit_load_a(v_a0);
+        emit_load_b_scattered_compute(v_a1);
+        emit_advance_b();
+        addi(reg_k, reg_k, 1);
+        bge(reg_k, reg_K, label_drain_a0);
+        j_(label_loop_a0);
 
-    // Tail K loop for K % 4
-    L(label_k_tail_loop);
-    bge(reg_k, reg_K, label_k_tail_end);
+        L(label_drain_a0);
+        emit_load_b_scattered_compute(v_a0);
+        j_(label_k_done);
 
-    emit_k_step();
+        L(label_drain_a1);
+        emit_load_b_scattered_compute(v_a1);
+        j_(label_k_done);
 
-    addi(reg_k, reg_k, 1);
-    j_(label_k_tail_loop);
+        L(label_k_done);
+    } else {
+        Label label_k_done;
+        Label label_loop_a0, label_loop_a1;
+        Label label_drain_a0, label_drain_a1;
 
-    L(label_k_tail_end);
+        bge(reg_k, reg_K, label_k_done);
+
+        emit_load_a(v_a0);
+        emit_load_b();
+        addi(reg_k, reg_k, 1);
+        bge(reg_k, reg_K, label_drain_a0);
+
+        L(label_loop_a0);
+        emit_advance_a();
+        emit_advance_b();
+        emit_load_a(v_a1);
+        emit_compute(v_a0);
+        emit_load_b();
+        addi(reg_k, reg_k, 1);
+        bge(reg_k, reg_K, label_drain_a1);
+
+        L(label_loop_a1);
+        emit_advance_a();
+        emit_advance_b();
+        emit_load_a(v_a0);
+        emit_compute(v_a1);
+        emit_load_b();
+        addi(reg_k, reg_k, 1);
+        bge(reg_k, reg_K, label_drain_a0);
+        j_(label_loop_a0);
+
+        L(label_drain_a0);
+        emit_compute(v_a0);
+        j_(label_k_done);
+
+        L(label_drain_a1);
+        emit_compute(v_a1);
+        j_(label_k_done);
+
+        L(label_k_done);
+    }
 
     if (has_bias_) {
         // C-update with fused bias: result = alpha*acc + beta*C + bias
@@ -195,25 +279,25 @@ void jit_rvv_gemm_kernel_t::generate() {
 
             beq(reg_beta_bits, x0, label_beta_zero);
 
-            vle32_v(v_a, reg_tmp3);
-            vfmul_vf(v_a, v_a, freg_beta);
+            vle32_v(v_tmp, reg_tmp3);
+            vfmul_vf(v_tmp, v_tmp, freg_beta);
             vfmul_vf(v_c[col_idx], v_c[col_idx], freg_alpha);
-            vfadd_vv(v_a, v_a, v_c[col_idx]);
+            vfadd_vv(v_tmp, v_tmp, v_c[col_idx]);
 
             beq(reg_bias_ptr, x0, label_skip_bias);
             vle32_v(v_c[col_idx], reg_bias_ptr);
-            vfadd_vv(v_a, v_a, v_c[col_idx]);
+            vfadd_vv(v_tmp, v_tmp, v_c[col_idx]);
             L(label_skip_bias);
 
-            vse32_v(v_a, reg_tmp3);
+            vse32_v(v_tmp, reg_tmp3);
             j_(label_done);
 
             L(label_beta_zero);
             vfmul_vf(v_c[col_idx], v_c[col_idx], freg_alpha);
 
             beq(reg_bias_ptr, x0, label_c_store);
-            vle32_v(v_a, reg_bias_ptr);
-            vfadd_vv(v_c[col_idx], v_c[col_idx], v_a);
+            vle32_v(v_tmp, reg_bias_ptr);
+            vfadd_vv(v_c[col_idx], v_c[col_idx], v_tmp);
 
             L(label_c_store);
             vse32_v(v_c[col_idx], reg_tmp3);
@@ -238,11 +322,11 @@ void jit_rvv_gemm_kernel_t::generate() {
 
             beq(reg_beta_bits, x0, label_beta_zero);
 
-            vle32_v(v_a, reg_tmp3);
-            vfmul_vf(v_a, v_a, freg_beta);
+            vle32_v(v_tmp, reg_tmp3);
+            vfmul_vf(v_tmp, v_tmp, freg_beta);
             vfmul_vf(v_c[col_idx], v_c[col_idx], freg_alpha);
-            vfadd_vv(v_a, v_a, v_c[col_idx]);
-            vse32_v(v_a, reg_tmp3);
+            vfadd_vv(v_tmp, v_tmp, v_c[col_idx]);
+            vse32_v(v_tmp, reg_tmp3);
             j_(label_done);
 
             L(label_beta_zero);
@@ -278,7 +362,7 @@ get_jit_rvv_gemm_kernel_storage() {
     static std::once_flag initialized;
 
     std::call_once(initialized, [] {
-        for (dim_t n_cols = 1; n_cols <= 7; n_cols++) {
+        for (dim_t n_cols = 1; n_cols <= 6; n_cols++) {
             storage.nb[n_cols].reset(new jit_rvv_gemm_kernel_t(
                     n_cols, isTransA, isTransB, false));
             storage.b[n_cols].reset(new jit_rvv_gemm_kernel_t(
@@ -289,38 +373,6 @@ get_jit_rvv_gemm_kernel_storage() {
     });
 
     return storage;
-}
-
-template <bool isTransA, bool isTransB>
-void jit_rvv_gemm_kernel_dispatch(const float *A, const float *B, float *C,
-        dim_t lda, dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta,
-        dim_t m, dim_t n_cols, const float *bias) {
-    const auto &table
-            = get_jit_rvv_gemm_kernel_storage<isTransA, isTransB>().table;
-
-    static bool verbose_printed = false;
-    if (!verbose_printed) {
-        VINFO(primitive, create, dispatch, rvv_gemm_jit,
-                "JIT gemm kernel taking over: m=%d, n=%d", (int)m, (int)n_cols);
-        verbose_printed = true;
-    }
-
-    jit_rvv_gemm_kernel_t::call_params_t p;
-    p.A = A;
-    p.B = B;
-    p.C = C;
-    p.lda = lda;
-    p.ldb = ldb;
-    p.ldc = ldc;
-    p.K = K;
-    p.m = m;
-    p.alpha = alpha;
-    p.beta = beta;
-    p.bias = bias;
-
-    const jit_rvv_gemm_kernel_t *kernel
-            = bias ? table.b[n_cols] : table.nb[n_cols];
-    (*kernel)(&p);
 }
 
 } // namespace
@@ -335,24 +387,6 @@ const jit_rvv_gemm_kernel_table_t &get_jit_rvv_gemm_kernel_table(
         return get_jit_rvv_gemm_kernel_storage<false, true>().table;
     } else {
         return get_jit_rvv_gemm_kernel_storage<true, true>().table;
-    }
-}
-
-void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
-        dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta, dim_t m,
-        dim_t n_cols, bool isTransA, bool isTransB, const float *bias) {
-    if (!isTransA && !isTransB) {
-        jit_rvv_gemm_kernel_dispatch<false, false>(
-                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols, bias);
-    } else if (isTransA && !isTransB) {
-        jit_rvv_gemm_kernel_dispatch<true, false>(
-                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols, bias);
-    } else if (!isTransA && isTransB) {
-        jit_rvv_gemm_kernel_dispatch<false, true>(
-                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols, bias);
-    } else {
-        jit_rvv_gemm_kernel_dispatch<true, true>(
-                A, B, C, lda, ldb, ldc, K, alpha, beta, m, n_cols, bias);
     }
 }
 

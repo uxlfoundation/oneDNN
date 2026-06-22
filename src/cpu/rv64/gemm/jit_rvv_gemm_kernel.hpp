@@ -35,23 +35,24 @@ namespace gemm_utils {
 //
 // Design choices:
 //   - LMUL is fixed to m4 (4 vector registers per group)
-//   - n_cols is fixed at JIT compile time (1..7), determining the number
+//   - n_cols is fixed at JIT compile time (1..6), determining the number
 //     of accumulator register groups emitted
 //   - m (tile height) is a runtime parameter; the JIT code uses vsetvli
 //     to set VL accordingly, so any m <= VLEN/32*4 is supported
 //   - isTransA/isTransB determine A/B memory access patterns
 //
-// Vector register layout (LMUL=m4, 8 groups of 4 regs):
+// Vector register layout (LMUL=m4):
 //   v0..v3   : accumulator c0 (column 0)
 //   v4..v7   : accumulator c1 (column 1)
 //   v8..v11  : accumulator c2 (column 2)
 //   v12..v15 : accumulator c3 (column 3)
 //   v16..v19 : accumulator c4 (column 4)
 //   v20..v23 : accumulator c5 (column 5)
-//   v24..v27 : accumulator c6 (column 6)
-//   v28..v31 : temporary for A loads and C update
+//   v24..v27 : A double-buffer 0 (also reused as C-update temporary)
+//   v28..v31 : A double-buffer 1
 //
-// When n_cols < 7, only the first n_cols accumulator groups are used.
+// The kernel uses n_cols in 1..6 with two LMUL=m4 A buffers to overlap
+// vle32.v on A with vfmacc.vf across consecutive K iterations.
 struct jit_rvv_gemm_kernel_t : public jit_generator_t {
     struct call_params_t {
         const float *A;
@@ -69,7 +70,7 @@ struct jit_rvv_gemm_kernel_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_gemm_kernel_t)
 
-    // Construct a JIT kernel for a specific n_cols (1..7), transpose modes,
+    // Construct a JIT kernel for a specific n_cols (1..6), transpose modes,
     // and optional fused-bias support.
     jit_rvv_gemm_kernel_t(
             dim_t n_cols, bool isTransA, bool isTransB, bool has_bias);

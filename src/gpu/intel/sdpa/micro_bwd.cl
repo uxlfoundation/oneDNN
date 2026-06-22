@@ -18,6 +18,7 @@
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
+#define DBG_DKDV_PRINTS 1
 #ifdef DBG_DKDV_PRINTS
 #pragma OPENCL EXTENSION cl_intel_printf : enable
 #endif
@@ -651,6 +652,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #if WITH_ATTN_MASK
     BWD_UNPACK_MSK_PARAMS(stride_params)
 #endif
+#ifdef DBG_DKDV_PRINTS
+    if (get_group_id(0) == 0 && get_group_id(1) == 0 && get_group_id(2) == 0
+            && get_local_id(1) == 0 && get_sub_group_local_id() == 0)
+        printf("[DBG] micro_sdpa_bwd kernel entry\n");
+#endif
 
     uint wg_k = get_group_id(0);
 
@@ -956,6 +962,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define scaled_exp(x) native_vexp2(x * 1.44269504089f)
         tile_elementwise(S_tile, scaled_exp);
 #undef scaled_exp
+        DBG_PRINT_TILE_ELEM(S_tile,
+                ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
+                ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1,
+                "S (softmax P, pre-dropout)");
 
         barrier(CLK_LOCAL_MEM_FENCE);
         {
@@ -971,6 +981,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     dropout_batch_head_base, k, use_dropout_offset,
                     dropout_seed, dropout_offset, dropout_threshold,
                     dropout_inv_q);
+            DBG_PRINT_TILE_ELEM(S_tile,
+                    ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
+                    ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1,
+                    "S (P_dropped, after dropout)");
 #endif
 
             // Store softmax for ugemm_vs B-operand
@@ -1026,12 +1040,20 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #else
         p_tile_type dP_tile;
 #endif
+        DBG_PRINT_TILE_ELEM(dP_tile,
+                ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1,
+                ugemm_vtdA_c_type_nblock0, ugemm_vtdA_c_type_nblock1,
+                "dP_raw (pre-dropout)");
 
 #if WITH_DROPOUT
         /* Backprop through dropout Jacobian: dP = dP_raw * Z / q. */
         apply_dropout_dP_tile(&dP_tile, k0 + sg_i0_kq, q0 + sg_j0_kq, k, q,
                 dropout_batch_head_base, k, use_dropout_offset, dropout_seed,
                 dropout_offset, dropout_threshold, dropout_inv_q);
+        DBG_PRINT_TILE_ELEM(dP_tile,
+                ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1,
+                ugemm_vtdA_c_type_nblock0, ugemm_vtdA_c_type_nblock1,
+                "dP (after dropout)");
 #endif
 
         p_sum_tile_type D_i;
@@ -1059,6 +1081,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define binary_mul_scale(x, y) ((x) * (y) * scale)
             tile_binary(dP_tile, S2_tile, binary_mul_scale);
         }
+        DBG_PRINT_TILE_ELEM(dP_tile,
+                ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1,
+                ugemm_vtdA_c_type_nblock0, ugemm_vtdA_c_type_nblock1,
+                "dP_final (dS, post D_i+scale)");
 
         if (remainder_k) {
 #define gte_k(offset_k, offset_q) (offset_k >= k)

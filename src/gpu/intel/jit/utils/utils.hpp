@@ -1245,7 +1245,6 @@ void deserialize_from_hex(T &t, const std::string &s_hex) {
     }
 #define GPU_HW_SWITCH(hw) \
     switch (hw) { \
-        REG_XEHP_ISA(GPU_HW_CASE_(XeHP)); \
         REG_XEHPG_ISA(GPU_HW_CASE_(XeHPG)); \
         REG_XEHPC_ISA(GPU_HW_CASE_(XeHPC)); \
         REG_XE2_ISA(GPU_HW_CASE_(Xe2)); \

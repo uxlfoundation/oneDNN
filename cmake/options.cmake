@@ -406,7 +406,8 @@ onednn_option(ENABLE_PRIMITIVE_GPU_ISA "ALL"
     implementations will always be available. Valid values:
     - ALL (the default). Includes all ISA to be enabled.
     - <ISA_NAME>;<ISA_NAME>;... Includes only selected ISA to be enabled.
-      Possible values are: XEHP, XEHPG, XEHPC, XE2, XE3, XE3P.")
+      Possible values are: XEHPG, XEHPC, XE2, XE3, XE3P.")
+
 
 custom_option(OPENCLROOT ""
     "Path to OpenCL SDK.

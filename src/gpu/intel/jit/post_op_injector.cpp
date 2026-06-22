@@ -63,7 +63,6 @@ void post_op_injector_t<ngen_generator_t>::compute(const ngen::GRFRange &regs) {
 
 template <ngen::HW hw>
 using code_gen = ngen::BinaryCodeGenerator<hw>;
-REG_XEHP_ISA(template struct post_op_injector_t<code_gen<gpu_xe_hp>>);
 REG_XEHPG_ISA(template struct post_op_injector_t<code_gen<gpu_xe_hpg>>);
 REG_XEHPC_ISA(template struct post_op_injector_t<code_gen<gpu_xe_hpc>>);
 REG_XE2_ISA(template struct post_op_injector_t<code_gen<gpu_xe2>>);

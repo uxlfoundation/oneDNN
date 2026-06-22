@@ -32,9 +32,6 @@ template <ngen::HW hw>
 using gen_t = ir_to_ngen_generator_t<
         dnnl::impl::gpu::intel::jit::ngen_code_generator_t<hw>>;
 
-REG_XEHP_ISA(extern template void convert_ir_to_ngen<gen_t<ngen::HW::XeHP>>(
-        const stmt_t &body, gen_t<ngen::HW::XeHP> &host,
-        const walk_order_t *kernel_grid_walk_order));
 REG_XEHPG_ISA(extern template void convert_ir_to_ngen<gen_t<ngen::HW::XeHPG>>(
         const stmt_t &body, gen_t<ngen::HW::XeHPG> &host,
         const walk_order_t *kernel_grid_walk_order));

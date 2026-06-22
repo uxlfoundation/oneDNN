@@ -17,6 +17,10 @@
 #include "cpu/rv64/gemm/jit_rvv_gemm_kernel.hpp"
 #include "common/verbose.hpp"
 
+#include <array>
+#include <memory>
+#include <mutex>
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -261,32 +265,38 @@ void jit_rvv_gemm_kernel_t::generate() {
 namespace {
 
 template <bool isTransA, bool isTransB>
+struct jit_rvv_gemm_kernel_storage_t {
+    std::array<std::unique_ptr<jit_rvv_gemm_kernel_t>, 8> nb;
+    std::array<std::unique_ptr<jit_rvv_gemm_kernel_t>, 8> b;
+    jit_rvv_gemm_kernel_table_t table;
+};
+
+template <bool isTransA, bool isTransB>
+jit_rvv_gemm_kernel_storage_t<isTransA, isTransB> &
+get_jit_rvv_gemm_kernel_storage() {
+    static jit_rvv_gemm_kernel_storage_t<isTransA, isTransB> storage;
+    static std::once_flag initialized;
+
+    std::call_once(initialized, [] {
+        for (dim_t n_cols = 1; n_cols <= 7; n_cols++) {
+            storage.nb[n_cols].reset(new jit_rvv_gemm_kernel_t(
+                    n_cols, isTransA, isTransB, false));
+            storage.b[n_cols].reset(new jit_rvv_gemm_kernel_t(
+                    n_cols, isTransA, isTransB, true));
+            storage.table.nb[n_cols] = storage.nb[n_cols].get();
+            storage.table.b[n_cols] = storage.b[n_cols].get();
+        }
+    });
+
+    return storage;
+}
+
+template <bool isTransA, bool isTransB>
 void jit_rvv_gemm_kernel_dispatch(const float *A, const float *B, float *C,
         dim_t lda, dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta,
         dim_t m, dim_t n_cols, const float *bias) {
-    // Kernels without fused bias (same code size as upstream)
-    static jit_rvv_gemm_kernel_t nb1(1, isTransA, isTransB, false);
-    static jit_rvv_gemm_kernel_t nb2(2, isTransA, isTransB, false);
-    static jit_rvv_gemm_kernel_t nb3(3, isTransA, isTransB, false);
-    static jit_rvv_gemm_kernel_t nb4(4, isTransA, isTransB, false);
-    static jit_rvv_gemm_kernel_t nb5(5, isTransA, isTransB, false);
-    static jit_rvv_gemm_kernel_t nb6(6, isTransA, isTransB, false);
-    static jit_rvv_gemm_kernel_t nb7(7, isTransA, isTransB, false);
-
-    static jit_rvv_gemm_kernel_t *arr_nb[]
-            = {nullptr, &nb1, &nb2, &nb3, &nb4, &nb5, &nb6, &nb7};
-
-    // Kernels with fused bias
-    static jit_rvv_gemm_kernel_t b1(1, isTransA, isTransB, true);
-    static jit_rvv_gemm_kernel_t b2(2, isTransA, isTransB, true);
-    static jit_rvv_gemm_kernel_t b3(3, isTransA, isTransB, true);
-    static jit_rvv_gemm_kernel_t b4(4, isTransA, isTransB, true);
-    static jit_rvv_gemm_kernel_t b5(5, isTransA, isTransB, true);
-    static jit_rvv_gemm_kernel_t b6(6, isTransA, isTransB, true);
-    static jit_rvv_gemm_kernel_t b7(7, isTransA, isTransB, true);
-
-    static jit_rvv_gemm_kernel_t *arr_b[]
-            = {nullptr, &b1, &b2, &b3, &b4, &b5, &b6, &b7};
+    const auto &table
+            = get_jit_rvv_gemm_kernel_storage<isTransA, isTransB>().table;
 
     static bool verbose_printed = false;
     if (!verbose_printed) {
@@ -308,11 +318,25 @@ void jit_rvv_gemm_kernel_dispatch(const float *A, const float *B, float *C,
     p.beta = beta;
     p.bias = bias;
 
-    jit_rvv_gemm_kernel_t **arr = bias ? arr_b : arr_nb;
-    (*arr[n_cols])(&p);
+    const jit_rvv_gemm_kernel_t *kernel
+            = bias ? table.b[n_cols] : table.nb[n_cols];
+    (*kernel)(&p);
 }
 
 } // namespace
+
+const jit_rvv_gemm_kernel_table_t &get_jit_rvv_gemm_kernel_table(
+        bool isTransA, bool isTransB) {
+    if (!isTransA && !isTransB) {
+        return get_jit_rvv_gemm_kernel_storage<false, false>().table;
+    } else if (isTransA && !isTransB) {
+        return get_jit_rvv_gemm_kernel_storage<true, false>().table;
+    } else if (!isTransA && isTransB) {
+        return get_jit_rvv_gemm_kernel_storage<false, true>().table;
+    } else {
+        return get_jit_rvv_gemm_kernel_storage<true, true>().table;
+    }
+}
 
 void jit_rvv_gemm_kernel(const float *A, const float *B, float *C, dim_t lda,
         dim_t ldb, dim_t ldc, dim_t K, float alpha, float beta, dim_t m,

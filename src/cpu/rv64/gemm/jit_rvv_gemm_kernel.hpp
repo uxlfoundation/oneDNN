@@ -19,6 +19,8 @@
 
 #include "cpu/rv64/jit_generator.hpp"
 
+#include <array>
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -85,6 +87,14 @@ private:
     bool isTransB_;
     bool has_bias_;
 };
+
+struct jit_rvv_gemm_kernel_table_t {
+    std::array<const jit_rvv_gemm_kernel_t *, 8> nb {};
+    std::array<const jit_rvv_gemm_kernel_t *, 8> b {};
+};
+
+const jit_rvv_gemm_kernel_table_t &get_jit_rvv_gemm_kernel_table(
+        bool isTransA, bool isTransB);
 
 } // namespace gemm_utils
 } // namespace rv64

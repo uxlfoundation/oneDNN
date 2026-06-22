@@ -29,7 +29,7 @@ namespace eltwise_injector {
 bool is_alg_supported(alg_kind_t alg) {
     using namespace alg_kind;
     switch (alg) {
-        // arithmetic, table-free, mask-free
+        // arithmetic, table-free
         case eltwise_relu:
         case eltwise_square:
         case eltwise_abs:
@@ -351,11 +351,10 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(const Vmm &v) {
             // is tiny, yet it is built as 2*sigmoid(2x)-1 ~= 2*0.5 - 1, so the
             // exp polynomial's ~1e-7 absolute error becomes a large *relative*
             // error (catastrophic cancellation). Blend in the linear approx
-            // tanh(x) ~= x for small |x| (where the x^3/3 error is negligible),
-            // mask-free so the forward path never touches v0: result =
-            // t + w*(x - t), with w a clamped ramp 1->0 over T1<|x|<T2. Inside
-            // the ramp both x and t already match tanh to <2e-5, so the convex
-            // blend is accurate regardless of w.
+            // tanh(x) ~= x for small |x| (where the x^3/3 error is negligible):
+            // result = t + w*(x - t), with w a clamped ramp 1->0 over
+            // T1<|x|<T2. Inside the ramp both x and t already match tanh to
+            // <2e-5, so the convex blend is accurate regardless of w.
             constexpr float t1 = 0.002f, t2 = 0.008f; // blend band (in |x|)
             h_->vmv_v_v(v_aux1_, v); // save x
             load_f32_const(f_aux0_, 2.f);
@@ -383,6 +382,7 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(const Vmm &v) {
             h_->vmv_v_v(v_aux1_, v); // save x
             load_f32_const(f_aux0_, 0.f);
             h_->vmfgt_vf(v_mask, v_aux1_, f_aux0_);
+            h_->vfmerge_vfm(v, v, f_aux0_); // positive lanes use exp(0)
             exp_compute_vector(v); // exp(x)
             load_f32_const(f_aux0_, 1.f);
             h_->vfsub_vf(v, v, f_aux0_); // exp(...) - 1

@@ -61,9 +61,9 @@ struct static_params_t {
     bool is_fwd;
 };
 
-// Whether the JIT eltwise injector can emit this algorithm. Covers the
-// mask-free arithmetic forward algorithms plus the transcendentals built on the
-// inline-coefficient exp() primitive (exp/logistic/tanh/elu/swish/gelu_tanh).
+// Whether the JIT eltwise injector can emit this algorithm. Covers arithmetic
+// forward algorithms plus the transcendentals built on the inline-coefficient
+// exp() primitive (exp/logistic/tanh/elu/swish/gelu_tanh).
 // Algorithms still needing log/erf (mish, gelu_erf, soft_relu, pow) are not yet
 // supported and fall back to a reference impl (the consumer pd rejects them).
 bool is_alg_supported(alg_kind_t alg);

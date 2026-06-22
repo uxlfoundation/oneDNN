@@ -124,8 +124,8 @@ void emit_binary_loop(jit_generator_t *h, alg_kind_t alg, bool scalar_src1,
     }
 
     // Turn the comparison mask in v0 into a 0.0/1.0 result in vd (in the active
-    // f32 compute vtype). v0 is free here (the fwd eltwise post-op chain that
-    // runs afterwards is mask-free), as is fa5/fa6.
+    // f32 compute vtype). The data/aux groups stay away from v0 so later
+    // post-op injectors can also use it as a mask; fa5/fa6 are free here.
     auto cmp_to_01 = [&]() {
         const FReg f_zero = fa5, f_one = fa6;
         h->fmv_w_x(f_zero, x0); // 0.0

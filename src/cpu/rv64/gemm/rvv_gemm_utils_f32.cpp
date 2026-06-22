@@ -26,6 +26,9 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 namespace gemm_utils {
+
+std::atomic<dim_t> rvv_gemm_f32_m_unroll {0};
+
 #define BM_NOCOPY_RVV 64
 #define BN_NOCOPY_RVV 48
 #define BK_NOCOPY_RVV 384

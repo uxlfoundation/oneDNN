@@ -20,6 +20,7 @@
 
 #include "common/c_types_map.hpp"
 
+#include <atomic>
 #include <cstddef>
 
 #include "xbyak_riscv/xbyak_riscv_util.hpp"
@@ -29,6 +30,8 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 namespace gemm_utils {
+
+extern std::atomic<dim_t> rvv_gemm_f32_m_unroll;
 
 template <typename T, bool isTransA, bool isTransB>
 struct gemm_traits_t {};
@@ -49,10 +52,12 @@ struct gemm_utils_traits<float> {
     // m = VLEN / 32 * LMUL, where LMUL = 4 for f32
     // VLEN=128 -> m=16, VLEN=256 -> m=32, VLEN=512 -> m=64
     static dim_t get_m_unroll_factor() {
-        static const dim_t m = []() -> dim_t {
+        dim_t m = rvv_gemm_f32_m_unroll.load(std::memory_order_relaxed);
+        if (m == 0) {
             const uint32_t vlen = Xbyak_riscv::CPU::getInstance().getVlen();
-            return static_cast<dim_t>(vlen / 32 * 4);
-        }();
+            m = static_cast<dim_t>(vlen / 32 * 4);
+            rvv_gemm_f32_m_unroll.store(m, std::memory_order_relaxed);
+        }
         return m;
     }
 

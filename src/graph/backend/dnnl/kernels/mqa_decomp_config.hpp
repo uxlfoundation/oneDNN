@@ -51,7 +51,7 @@ public:
 
     bool get_inplace() const { return is_inplace_; }
 
-    status_t execute(const dnnl::stream &astream,
+    status_t execute(const stream_t *astream,
             const std::unordered_map<int, dnnl::memory> &args) const {
         // If the src and dst are the same, we just set the src arg to dst
         // directly instead of the real execution.
@@ -133,7 +133,7 @@ public:
     template <bool quantized = false,
             memory::data_type dt = memory::data_type::f32>
     status_t construct_params(std::shared_ptr<subgraph_t> &sg,
-            registry_t &mqa_registry, const dnnl::engine &p_engine,
+            registry_t &mqa_registry, const engine_t &engine,
             const std::vector<logical_tensor_t> &inputs);
 
 private:

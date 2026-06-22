@@ -129,7 +129,7 @@ size_t generate_constant_md_hash(
 // Besides, non-shared part of the code includes objects conversion from C++ to
 // C since the original call requires C them.
 status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
-        const stream &astream,
+        const stream_t *astream,
         const std::unordered_map<int, memory> &exec_args);
 
 #define BACKEND_DNNL_CHECK(statement) \

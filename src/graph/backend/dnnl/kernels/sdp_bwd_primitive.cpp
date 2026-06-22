@@ -155,7 +155,6 @@ void sdp_bwd_primitive_kernel_t::prepare_args_set(
 status_t sdp_bwd_primitive_kernel_t::execute_impl(const stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream p_stream = make_dnnl_stream(*stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
@@ -166,7 +165,7 @@ status_t sdp_bwd_primitive_kernel_t::execute_impl(const stream_t *stream,
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
-        subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
+        subgraph_->execs_[i]->execute(stream, res->get_exec_args()[i]);
     }
 
     return status::success;
@@ -184,7 +183,6 @@ status_t sdp_bwd_primitive_kernel_t::sycl_execute_impl(const stream_t *stream,
 #endif
     auto deps = sycl_deps;
     std::optional<::sycl::event> returned_event;
-    dnnl::stream p_stream = make_dnnl_stream(*stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
@@ -197,7 +195,7 @@ status_t sdp_bwd_primitive_kernel_t::sycl_execute_impl(const stream_t *stream,
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         if (subgraph_->is_constant_[i]) continue;
         returned_event = subgraph_->execs_[i]->execute_sycl(
-                p_stream, res->get_exec_args()[i], deps);
+                stream, res->get_exec_args()[i], deps);
         if (returned_event) deps = {*returned_event};
     }
 
@@ -217,7 +215,6 @@ status_t sdp_bwd_primitive_kernel_t::ocl_execute_impl(const stream_t *stream,
     auto deps = cl_deps;
     cl_event returned_event {};
 
-    dnnl::stream p_stream = make_dnnl_stream(*stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
@@ -230,7 +227,7 @@ status_t sdp_bwd_primitive_kernel_t::ocl_execute_impl(const stream_t *stream,
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
         if (subgraph_->is_constant_[i]) continue;
         returned_event = subgraph_->execs_[i]->execute_ocl(
-                p_stream, res->get_exec_args()[i], deps);
+                stream, res->get_exec_args()[i], deps);
         deps.assign(1, returned_event);
     }
 

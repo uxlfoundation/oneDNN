@@ -79,9 +79,9 @@ dims group_dims(const dims &adims, dim groups) {
     return new_dims;
 }
 
-dnnl::engine make_dnnl_engine(const engine_t &g_engine) {
+dnnl::engine make_dnnl_engine(const engine_t &eng) {
     dnnl::engine engine;
-    engine.reset(const_cast<engine_t *>(&g_engine), true); // not own
+    engine.reset(const_cast<engine_t *>(&eng), true); // not own
     return engine;
 }
 
@@ -90,11 +90,9 @@ dnnl::engine make_host_engine() {
     return dnnl::engine(dnnl::engine::kind::cpu, 0);
 }
 
-dnnl::stream make_dnnl_stream(
-        const dnnl::engine &p_engine, const stream_t &g_stream) {
-    UNUSED(p_engine);
+dnnl::stream make_dnnl_stream(const stream_t &stream) {
     dnnl::stream strm;
-    strm.reset(const_cast<stream_t *>(&g_stream), true); // not own
+    strm.reset(const_cast<stream_t *>(&stream), true); // not own
     return strm;
 }
 

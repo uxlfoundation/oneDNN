@@ -162,9 +162,9 @@ void jit_uni_reduction_kernel_t::emit_init(src_kind_t src_kind) {
 
     const acc_kind_t acc = acc_kind(src_kind);
     if (acc == acc_kind_t::f32)
-        vsetvli(reg_tmp, x0, SEW::e32, LMUL::m8, VTA::tu, VMA::mu);
+        vsetvli(reg_tmp, x0, SEW::e32, LMUL::m8, VTA::ta, VMA::ma);
     else
-        vsetvli(reg_tmp, x0, SEW::e16, LMUL::m8, VTA::tu, VMA::mu);
+        vsetvli(reg_tmp, x0, SEW::e16, LMUL::m8, VTA::ta, VMA::ma);
 
     if (op == reduce_op_t::sum
             || (src_kind == src_kind_t::f16 && is_f16_widen_acc())) {
@@ -197,15 +197,15 @@ void jit_uni_reduction_kernel_t::emit_loop(src_kind_t src_kind) {
 
     L(loop);
     if (src_kind == src_kind_t::f32) {
-        vsetvli(reg_tmp, reg_n, SEW::e32, LMUL::m8, VTA::tu, VMA::mu);
+        vsetvli(reg_tmp, reg_n, SEW::e32, LMUL::m8, VTA::ta, VMA::ma);
         sub(reg_n, reg_n, reg_tmp);
         vle32_v(v_data, reg_src);
         advance_src(2);
     } else {
         if (is_f16_widen_acc())
-            vsetvli(reg_tmp, reg_n, SEW::e16, LMUL::m4, VTA::tu, VMA::mu);
+            vsetvli(reg_tmp, reg_n, SEW::e16, LMUL::m4, VTA::ta, VMA::ma);
         else
-            vsetvli(reg_tmp, reg_n, SEW::e16, LMUL::m8, VTA::tu, VMA::mu);
+            vsetvli(reg_tmp, reg_n, SEW::e16, LMUL::m8, VTA::ta, VMA::ma);
         sub(reg_n, reg_n, reg_tmp);
         vle16_v(v_data, reg_src);
         advance_src(1);
@@ -219,7 +219,7 @@ void jit_uni_reduction_kernel_t::emit_horizontal_reduce(src_kind_t src_kind) {
     const acc_kind_t acc = acc_kind(src_kind);
 
     if (acc == acc_kind_t::f32) {
-        vsetvli(reg_tmp, x0, SEW::e32, LMUL::m8, VTA::tu, VMA::mu);
+        vsetvli(reg_tmp, x0, SEW::e32, LMUL::m8, VTA::ta, VMA::ma);
         if (op == reduce_op_t::max)
             vfredmax_vs(v_red, v_acc, v_red);
         else if (op == reduce_op_t::min)
@@ -229,7 +229,7 @@ void jit_uni_reduction_kernel_t::emit_horizontal_reduce(src_kind_t src_kind) {
         else
             vfredosum_vs(v_red, v_acc, v_red);
     } else {
-        vsetvli(reg_tmp, x0, SEW::e16, LMUL::m8, VTA::tu, VMA::mu);
+        vsetvli(reg_tmp, x0, SEW::e16, LMUL::m8, VTA::ta, VMA::ma);
         if (op == reduce_op_t::max)
             vfredmax_vs(v_red, v_acc, v_red);
         else if (op == reduce_op_t::min)
@@ -256,7 +256,7 @@ void jit_uni_reduction_kernel_t::emit_finalize_f16_widen_sum_or_mean() {
             vfmv_f_s(f_tmp, v_red);
             fsw(f_tmp, reg_dst, 0);
         } else {
-            vsetvli(reg_tmp, x0, SEW::e16, LMUL::m4, VTA::tu, VMA::mu);
+            vsetvli(reg_tmp, x0, SEW::e16, LMUL::m4, VTA::ta, VMA::ma);
             vfncvt_f_f_w(v_data, v_red);
             vfmv_f_s(f_tmp, v_data);
             fsh(f_tmp, reg_dst, 0);

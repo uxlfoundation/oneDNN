@@ -76,15 +76,18 @@
     occur if `ID` is not contained in the JSON file. Currently, this override
     behavior is only allowed for binary and eltwise operations. 
 
+  - `--tensor-property=ID:PROPERTY[+ID:PROPERTY+...]` -- Override the property
+    type of a logical tensor with `ID` in the graph with `PROPERTY` value.
+    `PROPERTY` must be one of: `undef`, `variable`, `constant`, `host_scalar`.
+    Multiple tensor property changes may be specified using the `+` delimiter.
+    An error will occur if `ID` is not contained in the JSON file.
+
 * [graph-case] is a JSON file which is dumped by a library or created from
   scratch. It must be passed to the graph driver as `--case=JSON_FILE`. Refer to
   the JSON file example at the end of this document.
 
-The oneDNN Graph serialization feature to dump JSON files at runtime may be enabled
-by using the `-DONEDNN_ENABLE_GRAPH_DUMP=ON` build time switch. By default, dump is
-disabled. When the build option is on, and the `ONEDNN_GRAPH_DUMP=subgraph` environment
-variable is specified, the library generates JSON files with partitions
-returned.
+Refer to @ref dev_guide_graph_dump about oneDNN Graph serialization to dump JSON
+files at runtime.
 
 ## Limitations
 
@@ -163,137 +166,3 @@ Use `--mode=C` or `--mode=c` for correctness testing:
 ```shell
 ./benchdnn --mode=C --graph --case=op/f32/conv_2d.json
 ```
-
-## Demo Cases
-
-Demo JSON files are located in [inputs/graph](../inputs/graph), including
-partitions (FP32 MLP partition) and single op (Convolution). Different
-data type folders for ops and patterns are available. In general, a JSON file is named as
-`workload-pattern_name-additional_info.json`. In this scheme, `workload` stands
-for workload name, `pattern_name` stands for the fusion pattern returned by the
-library, and `additional_info` differentiates cases based on other settings.
-A single op JSON file was named with the op name directly.
-
-## JSON File Example
-<details>
-    <summary>Conv JSON</summary>
-
-~~~json
-{
-  "version": "0.5.0",
-  "engine_kind": "cpu",
-  "fpmath_mode": "strict",
-  "graph": [
-    {
-      "id": 0,
-      "name": "Convolution",
-      "kind": "Convolution",
-      "attrs": {
-        "strides": {
-          "type": "s64[]",
-          "value": [
-            2,
-            2
-          ]
-        },
-        "pads_begin": {
-          "type": "s64[]",
-          "value": [
-            0,
-            0
-          ]
-        },
-        "auto_pad": {
-          "type": "string",
-          "value": "None"
-        },
-        "data_format": {
-          "type": "string",
-          "value": "NCX"
-        },
-        "pads_end": {
-          "type": "s64[]",
-          "value": [
-            -1,
-            -1
-          ]
-        },
-        "groups": {
-          "type": "s64",
-          "value": 1
-        },
-        "dilations": {
-          "type": "s64[]",
-          "value": [
-            1,
-            1
-          ]
-        },
-        "weights_format": {
-          "type": "string",
-          "value": "OIX"
-        }
-      },
-      "inputs": [
-        {
-          "id": 0,
-          "dtype": "f32",
-          "shape": [
-            28,
-            512,
-            28,
-            28
-          ],
-          "stride": [
-            401408,
-            1,
-            14336,
-            512
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        },
-        {
-          "id": 1,
-          "dtype": "f32",
-          "shape": [
-            1024,
-            512,
-            1,
-            1
-          ],
-          "stride": [
-            512,
-            1,
-            1,
-            1
-          ],
-          "layout_type": "strided",
-          "property_type": "constant"
-        }
-      ],
-      "outputs": [
-        {
-          "id": 2,
-          "dtype": "f32",
-          "shape": [
-            28,
-            1024,
-            14,
-            14
-          ],
-          "stride": [
-            200704,
-            1,
-            14336,
-            1024
-          ],
-          "layout_type": "strided",
-          "property_type": "undef"
-        }
-      ]
-    }
-  ]
-}
-~~~
-</details>

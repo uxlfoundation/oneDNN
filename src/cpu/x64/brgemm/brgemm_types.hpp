@@ -317,6 +317,10 @@ struct brgemm_desc_t {
     // parallel task.
     bool with_dst_scales = false;
     data_type_t dt_wei_scales = data_type::undef;
+
+    bool is_f4_fused_decompress = false;
+    int wei_scales_k_group_size = 0;
+
     // Grouping in batch used by brdgmm kernel
     int bs_group {0};
 
@@ -485,6 +489,10 @@ struct brgemm_desc_t {
 
     bool is_fp8_via_convert_non_amx() const {
         return is_fp8_via_convert() && isa_impl == avx10_2;
+    }
+
+    bool is_f4_fused_decompress_non_amx() const {
+        return is_f4_fused_decompress && is_zmm;
     }
 
     bool is_input_convert() const { return is_bf32 || is_fp8_via_convert(); }

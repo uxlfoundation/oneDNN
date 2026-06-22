@@ -254,7 +254,15 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     // see vmm_fp8_emu_aux* in brgemm kernel
     const int fp8_emu_regs = brg->is_fp8_via_convert_non_amx() ? 5 : 0;
 
-    max_isa_regs -= b_vnni_regs + non_int8_vnni_regs + fp8_emu_regs;
+    // non-AMX f4 fused decompression reserves: one Vmm for the f4_e2m1 LUT,
+    // one for the byte-duplicate permute table, and ld_block2 Vmms for the
+    // hoisted per-ld scales (constant across rd_block). See vmm_f4_*() helpers
+    // in brgemm kernel.
+    const int f4_fused_decompress_regs
+            = brg->is_f4_fused_decompress_non_amx() ? 2 + brg->ld_block2 : 0;
+
+    max_isa_regs -= b_vnni_regs + non_int8_vnni_regs + fp8_emu_regs
+            + f4_fused_decompress_regs;
 
     // --------------- microkernel ---------------
     // see vmm_inp_shift() in brgemm kernel
@@ -901,9 +909,11 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     brg->bdb = brg->bcast_dim / brg->bd_block;
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
 
-    const int rd_unroll = 4;
-    const data_type_t rd_block_dt = get_mac_emu_data_type(
-            brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
+    const int rd_unroll = brg->is_f4_fused_decompress_non_amx() ? 32 : 4;
+    const data_type_t rd_block_dt = brg->is_f4_fused_decompress_non_amx()
+            ? data_type::f32
+            : get_mac_emu_data_type(
+                      brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
     if (rd_block_dt == dnnl_data_type_undef) return status::unimplemented;
     const int vnni_granularity = data_type_vnni_granularity(rd_block_dt);
     brg->rd_block = rd_unroll * vnni_granularity;
@@ -928,6 +938,14 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
     const data_type_t rd_step_compute_dt
             = get_mac_emu_data_type(brg->dt_b, brg->isa_impl);
     brg->rd_step = data_type_vnni_granularity(rd_step_compute_dt);
+
+    if (brg->is_f4_fused_decompress_non_amx()) {
+        // Fused f4 path: weights are stored as plain `ab` with 2 nibbles
+        // per byte packed along the fastest (N) dimension. Load+decompress
+        // operates on a single K row at a time, so no vnni packing along K.
+        brg->ld_step = 1;
+        brg->rd_step = 1;
+    }
 
     set_isa_impl(brg);
     if (brg->isa_impl == isa_undef) return status::unimplemented;

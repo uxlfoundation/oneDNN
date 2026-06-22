@@ -236,15 +236,19 @@ struct matmul_pd_t : public primitive_desc_t {
 
                 ok = ok && wei_k_group_ok && wei_n_group_ok;
 
-                // Mask over K dim is allowed for fp types or weights decompression only.
-                if (types::is_integral_dt(weights_md(0)->data_type)) {
+                // K-dimension mask is always allowed for fp weights.
+                // For integral weights, it requires decompression.
+                const bool is_wei_integral
+                        = types::is_integral_dt(weights_md(0)->data_type);
+                if (is_wei_integral) {
+                    const bool is_src_fp
+                            = !types::is_integral_dt(src_md()->data_type);
                     const bool is_decompression
                             = utils::one_of(weights_md(0)->data_type,
                                       data_type::s8, data_type::u8,
                                       data_type::s4, data_type::u4)
                             && IMPLICATION(
-                                    !types::is_integral_dt(src_md()->data_type),
-                                    attr()->fpmath_.apply_to_int_);
+                                    is_src_fp, attr()->fpmath_.apply_to_int_);
                     ok = ok
                             && IMPLICATION(
                                     (mask & wei_qmask_K()), is_decompression);

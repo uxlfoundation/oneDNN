@@ -81,7 +81,8 @@ void brgemm_desc_t::cleanup_dst_md() {
 
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
-        const brgemm_dynamic_values_t *dynamic_values) {
+        const brgemm_dynamic_values_t *dynamic_values,
+        const void *ptr_wei_scales) {
     brgemm_kernel_params_t brgemm_p;
 
     brgemm_p.batch = batch;
@@ -95,6 +96,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.do_apply_comp = 0;
     brgemm_p.skip_accm = 0;
     brgemm_p.BS = bs;
+    brgemm_p.ptr_wei_scales = ptr_wei_scales;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -110,7 +112,8 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
         const void *addr_A, const void *addr_B,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
-        const brgemm_dynamic_values_t *dynamic_values) {
+        const brgemm_dynamic_values_t *dynamic_values,
+        const void *ptr_wei_scales) {
     brgemm_kernel_params_t brgemm_p;
 
     brgemm_p.batch = batch;
@@ -124,6 +127,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.do_apply_comp = 0;
     brgemm_p.skip_accm = 0;
     brgemm_p.BS = bs;
+    brgemm_p.ptr_wei_scales = ptr_wei_scales;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -390,10 +394,13 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
             && (!one_of(dt_bias, data_type::undef, data_type::bf16,
                     data_type::f32)))
         return status::unimplemented;
+    // Weights decompression (e.g. f16:f4 on avx512_core_fp16) runs the brgemm
+    // as f32:f32 while the destination keeps its original f16/bf16 type and is
+    // down-converted on store, so allow those dst types here as well.
     if ((brg->dt_a == data_type::f32 && brg->dt_b == data_type::f32)
-            && (!one_of(dt_d, data_type::f32)
-                    || !one_of(
-                            dt_bias, data_type::undef, data_type::f32, dt_d)))
+            && (!one_of(dt_d, data_type::f32, data_type::f16, data_type::bf16)
+                    || !one_of(dt_bias, data_type::undef, data_type::f32,
+                            data_type::f16, data_type::bf16, dt_d)))
         return status::unimplemented;
     if (!IMPLICATION(brg->is_bf16,
                 one_of(dt_d, data_type::f32, data_type::bf16, data_type::f16,

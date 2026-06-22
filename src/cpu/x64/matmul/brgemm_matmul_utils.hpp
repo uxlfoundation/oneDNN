@@ -236,12 +236,16 @@ struct brgemm_matmul_conf_t {
     int required_k_granularity;
     bool is_bf32 = false;
     bool is_bf16_with_int_wei = false;
+    bool is_bf16_with_f4_wei = false;
     bool is_f16_with_int_wei = false;
+    bool is_f16_with_f4_wei = false;
     bool is_f32_with_int_wei = false;
+    bool is_f32_with_f4_wei = false;
     bool is_f32_f16 = false;
     bool is_f32_bf16 = false;
-    bool is_int4_weights = false;
+    int wei_packed_elems_per_byte = 1;
     bool is_f4_via_convert = false;
+    bool is_f4_fused_decompress = false;
     bool is_tf32 = false;
     bool req_wei_vnni_downconvert = false;
     bool is_runtime_M = false;
@@ -326,6 +330,22 @@ struct brgemm_matmul_conf_utils_t {
     inline bool use_buffer_b(bool use_heuristic = true) const {
         if (bgmmc.is_runtime_N) return true;
         if (bgmmc.is_bf16_with_int_wei) return true;
+        if (bgmmc.is_f32_with_f4_wei || bgmmc.is_bf16_with_f4_wei
+                || bgmmc.is_f16_with_f4_wei) {
+            // Fused inline decompression wins on small M (decode-style,
+            // memory-bound on B); for large M, copy_b pre-decompression
+            // into a scratchpad lets brgemm run as native f32 GEMM at near
+            // peak.
+            constexpr dim_t fused_M_threshold = 4;
+            const bool use_fused_f4 = !bgmmc.is_amx
+                    && is_superset(bgmmc.isa, avx512_core) && bgmmc.N % 2 == 0
+                    && bgmmc.wei_scales_k_gsize == 32
+                    && !check_is_transposed(bgmmc.wei_tag)
+                    && bgmmc.wei_tag != format_tag::adbc
+                    && bgmmc.M <= fused_M_threshold;
+            if (use_fused_f4) return false;
+            return true;
+        }
         if (bgmmc.is_f16_with_int_wei) return true;
         if (bgmmc.is_f32_with_int_wei) return true;
         if (bgmmc.apply_scales_in_buffer_b) return true;
@@ -411,13 +431,19 @@ struct brgemm_matmul_conf_utils_t {
 
     inline bool is_bf16_with_int_wei() const { return bf16_with_int_wei_dt; }
 
+    inline bool is_bf16_with_f4_wei() const { return bf16_with_f4_wei_dt; }
+
     inline bool is_f32_f16() const { return f32_f16_dt; }
 
     inline bool is_f32_bf16() const { return f32_bf16_dt; }
 
     inline bool is_f16_with_int_wei() const { return f16_with_int_wei_dt; }
 
+    inline bool is_f16_with_f4_wei() const { return f16_with_f4_wei_dt; }
+
     inline bool is_f32_with_int_wei() const { return f32_with_int_wei_dt; }
+
+    inline bool is_f32_with_f4_wei() const { return f32_with_f4_wei_dt; }
 
     inline bool with_weights_decompression() const {
         return !utils::one_of(bgmmc.src_dt, data_type::s8, data_type::u8,
@@ -430,8 +456,8 @@ struct brgemm_matmul_conf_utils_t {
     }
 
     inline bool wei_down_convert_to_vnni() const {
-        return (bf32_dt || tf32_dt || f16_with_int_wei_dt
-                       || bf16_with_int_wei_dt)
+        return (bf32_dt || tf32_dt || f16_with_int_wei_dt || f16_with_f4_wei_dt
+                       || bf16_with_int_wei_dt || bf16_with_f4_wei_dt)
                 && get_blocked_B();
     }
 
@@ -460,10 +486,12 @@ struct brgemm_matmul_conf_utils_t {
 private:
     brgemm_matmul_conf_t &bgmmc;
 
-    const bool f32_dt, bf16_dt, f16_dt, f4_via_convert_dt, f8_dt, bf8_dt,
-            int8_dt, bf32_dt, tf32_dt;
+    const bool f32_dt, bf16_dt, f16_dt, f8_dt, bf8_dt, int8_dt, bf32_dt,
+            tf32_dt;
+    const bool bf16_with_f4_wei_dt, f16_with_f4_wei_dt, f32_with_f4_wei_dt;
     const bool weights_decompression_support, bf16_with_int_wei_dt, f32_f16_dt,
-            f32_bf16_dt, f16_with_int_wei_dt, f32_with_int_wei_dt;
+            f32_bf16_dt, f16_with_int_wei_dt, f32_with_int_wei_dt,
+            f4_via_convert_dt;
     const bool A_any_layout;
     const bool B_any_layout;
     const bool C_any_layout;

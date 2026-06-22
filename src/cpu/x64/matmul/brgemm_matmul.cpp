@@ -154,12 +154,16 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             = src_dt == f32 && wei_dt == bf16 && one_of(dst_dt, bf16, f32);
     const bool is_bf16_with_int_wei = src_dt == bf16
             && one_of(wei_dt, s8, u8, s4, u4) && one_of(dst_dt, bf16, f32);
+    const bool is_bf16_with_f4_wei = src_dt == bf16
+            && wei_dt == data_type::f4_e2m1 && one_of(dst_dt, bf16, f32);
     const bool is_f16_with_int_wei = src_dt == f16
             && one_of(wei_dt, s8, u8, s4, u4) && one_of(dst_dt, f16, f32);
-    const bool is_f4
-            = utils::one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool is_f16_with_f4_wei = src_dt == f16
+            && wei_dt == data_type::f4_e2m1 && one_of(dst_dt, f16, f32);
     const bool is_f32_with_int_wei
             = src_dt == f32 && one_of(wei_dt, s8, u8, s4, u4) && dst_dt == f32;
+    const bool is_f32_with_f4_wei
+            = src_dt == f32 && wei_dt == data_type::f4_e2m1 && dst_dt == f32;
 
     auto check_bias = [&]() -> bool {
         const auto bia_dt = weights_md(1)->data_type;
@@ -203,9 +207,10 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             // This case requires scratchpad
             if (is_runtime_value(N())) ok = false;
         }
-        // Impl suppports f32 scales only for non-weight decompression
-        if (!(is_bf16_with_int_wei || is_f16_with_int_wei
-                    || is_f32_with_int_wei)) {
+        // Impl supports f32 scales only for non-weight decompression
+        if (!(is_bf16_with_int_wei || is_bf16_with_f4_wei || is_f16_with_int_wei
+                    || is_f16_with_f4_wei || is_f32_with_int_wei
+                    || is_f32_with_f4_wei)) {
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32);
             ok = ok && one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32);
@@ -259,9 +264,10 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         }
         return true;
     };
-    const bool problem_dt_correct = one_of(true, is_f4, is_int8, is_f8, is_bf16,
+    const bool problem_dt_correct = one_of(true, is_int8, is_f8, is_bf16,
             is_f32, is_f16, is_f32_f16, is_f32_bf16, is_bf16_with_int_wei,
-            is_f16_with_int_wei, is_f32_with_int_wei);
+            is_bf16_with_f4_wei, is_f16_with_int_wei, is_f16_with_f4_wei,
+            is_f32_with_int_wei, is_f32_with_f4_wei);
 
     auto src_d = memory_desc_wrapper(src_md_);
     auto weights_d = memory_desc_wrapper(weights_md_);
@@ -393,6 +399,12 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
             brg.skip_zp_b_compensation = true;
         if (bgmmc_.apply_scales_in_buffer_b) brg.skip_wei_scales = true;
+        if (bgmmc_.is_f4_fused_decompress) {
+            brg.is_f4_fused_decompress = true;
+            brg.skip_wei_scales = true;
+            brg.wei_scales_k_group_size = bgmmc_.wei_scales_k_gsize;
+            brg.dt_wei_scales = bgmmc_.wei_scales_dt;
+        }
         CHECK(brgemm_desc_set_postops(
                 &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
 
@@ -789,6 +801,12 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     = batch_first_dim_idx * (M * N)
                     + (dst_row_logical_off * N + n);
             const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
+            const void *wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n);
+            if (bgmmc.is_f4_fused_decompress) {
+                const dim_t k_start
+                        = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size;
+                wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k_start);
+            }
             const brgemm_post_ops_data_t post_ops_data {
                     static_cast<const void *>(ptr_bias),
                     post_ops_binary_rhs_arg_vec.data(), static_cast<size_t>(n),
@@ -797,16 +815,21 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     static_cast<const void *>(zp_comp_a),
                     static_cast<const void *>(zp_comp_b),
                     brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
-                    brgmm_ctx.get_src_scales_ptr(),
-                    brgmm_ctx.get_wei_scales_ptr(n),
+                    brgmm_ctx.get_src_scales_ptr(), wei_scales_ptr,
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
             brgemm_kernel_execute_postops(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
                     &leading_dimensions);
         } else {
+            const void *wei_scales = nullptr;
+            if (bgmmc.is_f4_fused_decompress) {
+                const dim_t k_start
+                        = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size;
+                wei_scales = brgmm_ctx.get_wei_scales_ptr(n, k_start);
+            }
             brgemm_kernel_execute(brg_kernel, gemm_batch, addr_batch,
                     (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr,
-                    &leading_dimensions);
+                    &leading_dimensions, wei_scales);
         }
 
         maybe_reduce_A(brgmm_ctx, ithr, gemm_batch, m_blk_idx, n_blk_idx,
@@ -845,6 +868,13 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     = batch_first_dim_idx * (M * N)
                     + (dst_row_logical_off * N + n);
             const char *dst_anchor_point = brgmm_ctx.get_data_C_ptr(0, 0, 0);
+            const void *wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n);
+            if (bgmmc.is_f4_fused_decompress) {
+                const dim_t k_start
+                        = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size
+                        + gemm_batch * bgmmc.K_blk;
+                wei_scales_ptr = brgmm_ctx.get_wei_scales_ptr(n, k_start);
+            }
             const brgemm_post_ops_data_t post_ops_data {
                     static_cast<const void *>(ptr_bias),
                     post_ops_binary_rhs_arg_vec.data(), static_cast<size_t>(n),
@@ -853,17 +883,23 @@ void brgemm_matmul_t<isa>::compute_kernel(
                     static_cast<const void *>(zp_comp_a),
                     static_cast<const void *>(zp_comp_b),
                     brgmm_ctx.get_zp_c_ptr(), false, 1, false, false,
-                    brgmm_ctx.get_src_scales_ptr(),
-                    brgmm_ctx.get_wei_scales_ptr(n),
+                    brgmm_ctx.get_src_scales_ptr(), wei_scales_ptr,
                     brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
 
             brgemm_kernel_execute_postops(brg_kernel_k_tail, 1, addr_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch,
                     &leading_dimensions);
         } else {
+            const void *wei_scales = nullptr;
+            if (bgmmc.is_f4_fused_decompress) {
+                const dim_t k_start
+                        = k_blk_idx * bgmmc.K_blk * bgmmc.brgemm_batch_size
+                        + gemm_batch * bgmmc.K_blk;
+                wei_scales = brgmm_ctx.get_wei_scales_ptr(n, k_start);
+            }
             brgemm_kernel_execute(brg_kernel_k_tail, 1, addr_batch,
                     (void *)ptr_C, is_amx ? (void *)wsp_tile : nullptr,
-                    &leading_dimensions);
+                    &leading_dimensions, wei_scales);
         }
 
         maybe_reduce_A(brgmm_ctx, ithr, gemm_batch, m_blk_idx, n_blk_idx,
@@ -1813,14 +1849,13 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
-        const int wei_k_blk
+        const dim_t wei_k_blk
                 = bgmmc_.is_bf32 ? get_wei_k_blk(f32) : bgmmc_.wei_k_blk;
-        const int k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
-        const int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
-        const int int4_fac = bgmmc_.is_int4_weights ? 2 : 1;
+        const dim_t k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
+        const dim_t n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
         return (B_strides_[1] * k_idx + B_strides_[0] * n_idx
                        + get_data_B_off_within_block(k, n))
-                / int4_fac;
+                / bgmmc_.wei_packed_elems_per_byte;
     }
 
     const char *get_data_B_kn_ptr(
@@ -1855,7 +1890,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         } else {
             b_off = wei_d_.off_l(b * bgmmc_.K * bgmmc_.N) * bgmmc_.b_dt_sz;
         }
-        if (bgmmc_.is_int4_weights) b_off = b_off / 2;
+        const auto elems_per_byte = bgmmc_.wei_packed_elems_per_byte;
+        if (elems_per_byte > 1) b_off /= elems_per_byte;
         return b_off;
     }
 
@@ -2050,7 +2086,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         dim_t x1 = n % bgmmc_.wei_n_blk;
         dim_t offset = (x0 / vnni_factor) * vnni_factor * bgmmc_.wei_n_blk
                 + x1 * vnni_factor + x0 % vnni_factor;
-        return bgmmc_.b_dt_sz * offset;
+        return bgmmc_.b_dt_sz * offset / bgmmc_.wei_packed_elems_per_byte;
     }
 
     dim_t get_data_C_off(int b, dim_t m, dim_t n) const {

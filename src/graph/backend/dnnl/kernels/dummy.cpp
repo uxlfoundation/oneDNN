@@ -28,9 +28,9 @@ namespace dnnl_impl {
 status_t dummy_kernel_t::compile_impl(const dnnl_partition_impl_t *part,
         const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*eng);
+    engine_ = eng;
 
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
     subgraph_->infer_shape();

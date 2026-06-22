@@ -32,11 +32,11 @@ namespace graph {
 namespace dnnl_impl {
 
 scratchpad_t::scratchpad_t(
-        const tensor_t *user_buf, size_t size, const dnnl::engine &eng)
+        const tensor_t *user_buf, size_t size, const engine_t &eng)
     : buffer_(nullptr)
     , size_(size)
     , user_managed_(user_buf != nullptr)
-    , eng_(eng.get())
+    , eng_(&eng)
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     , ocl_e_(nullptr)
 #endif

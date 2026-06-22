@@ -50,12 +50,12 @@ status_t sdp_primitive_kernel_t<quantized>::compile_impl(
     return status::unimplemented;
 #endif
 
-    p_engine_ = make_dnnl_engine(*eng);
+    engine_ = eng;
 
     // First, dry run on a deep copy
     subgraph_
             = std::make_shared<subgraph_t>(graph_t::deep_copy(part->get_ops()),
-                    p_engine_, part->get_fpmath_mode(), false, true);
+                    *engine_, part->get_fpmath_mode(), false, true);
     CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
     CHECK(cfg_.initial_check(subgraph_, inputs, outputs));
@@ -170,7 +170,7 @@ status_t sdp_primitive_kernel_t<quantized>::execute_impl(const stream_t *stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_);
+            memory_planner_.total_internal_temporary_size(), *engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -200,7 +200,7 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_);
+            memory_planner_.total_internal_temporary_size(), *engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -234,7 +234,7 @@ status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_);
+            memory_planner_.total_internal_temporary_size(), *engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {

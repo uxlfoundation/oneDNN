@@ -35,9 +35,9 @@ namespace dnnl_impl {
 status_t sum_t::compile_impl(const dnnl_partition_impl_t *part,
         const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*eng);
+    engine_ = eng;
 
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
@@ -117,7 +117,7 @@ status_t sum_t::execute_impl(const stream_t *stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_);
+            memory_planner_.total_internal_temporary_size(), *engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -146,7 +146,7 @@ status_t sum_t::sycl_execute_impl(const stream_t *stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_);
+            memory_planner_.total_internal_temporary_size(), *engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -179,7 +179,7 @@ status_t sum_t::ocl_execute_impl(const stream_t *stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_);
+            memory_planner_.total_internal_temporary_size(), *engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {

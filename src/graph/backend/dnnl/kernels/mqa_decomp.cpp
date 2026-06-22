@@ -43,10 +43,10 @@ status_t mqa_decomp_kernel_t<quantized, dt>::compile_impl(
         const dnnl_partition_impl_t *part, const engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*eng);
+    engine_ = eng;
 
     // get subgraph from the deep copied partition
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
@@ -109,7 +109,7 @@ status_t mqa_decomp_kernel_t<quantized, dt>::compile_impl(
 
     // Initialize and construct kernel params
     mqa_cfg_.construct_params<quantized, dt>(
-            subgraph_, mqa_registry_, p_engine_, inputs);
+            subgraph_, mqa_registry_, make_dnnl_engine(*engine_), inputs);
 
     return status::success;
 }
@@ -186,7 +186,7 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
     // allocate the internal memory
     size_t block_size = mqa_registry_.size();
     auto scratchpad = std::make_shared<scratchpad_t>(
-            scratchpad_buf, block_size * mqa_cfg_.nthr, p_engine_);
+            scratchpad_buf, block_size * mqa_cfg_.nthr, *engine_);
     grantor_t var_grantor = mqa_registry_.grantor(scratchpad->get_buffer());
 
     const auto get_mem_dt_size = [](const memory &m) -> size_t {

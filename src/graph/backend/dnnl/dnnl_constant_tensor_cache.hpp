@@ -31,8 +31,9 @@ namespace graph {
 namespace dnnl_impl {
 
 struct dnnl_constant_buffer_t : public graph::constant_buffer_t {
-    dnnl_constant_buffer_t(size_t size, engine_t &engine)
-        : graph::constant_buffer_t(size, &engine, malloc_func, free_func) {}
+    dnnl_constant_buffer_t(size_t size, const engine_t &engine)
+        : graph::constant_buffer_t(size, const_cast<engine_t *>(&engine),
+                  malloc_func, free_func) {}
 
     static void *malloc_func(size_t size, engine_t *eng) {
         return dnnl_allocator_t::malloc(
@@ -56,17 +57,15 @@ struct dnnl_constant_buffer_t : public graph::constant_buffer_t {
     }
 };
 
-inline bool is_constant_cache_enabled(const dnnl::engine &eng) {
-    auto cache = graph::get_constant_tensor_cache(
-            eng.get()->kind(), eng.get()->index());
+inline bool is_constant_cache_enabled(const engine_t &eng) {
+    auto cache = graph::get_constant_tensor_cache(eng.kind(), eng.index());
     return cache && cache->get_capacity() != 0;
 }
 
 inline graph::constant_tensor_cache_t::value_t dnnl_constant_cache_get_or_add(
-        const dnnl::engine &eng, graph::constant_tensor_cache_t::key_t key,
+        const engine_t &eng, graph::constant_tensor_cache_t::key_t key,
         size_t size, const graph::constant_tensor_cache_t::value_t &value) {
-    auto cache = graph::get_constant_tensor_cache(
-            eng.get()->kind(), eng.get()->index());
+    auto cache = graph::get_constant_tensor_cache(eng.kind(), eng.index());
     assertm(cache,
             "no available constant cache for specified engine kind and index");
     return cache->get_or_add(
@@ -79,23 +78,20 @@ inline graph::constant_tensor_cache_t::value_t dnnl_constant_cache_get_or_add(
 // retain/release/remove_if_exist wrappers below are provided for potential
 // future use but are currently not called by any backend code.
 inline void dnnl_constant_cache_remove_if_exist(
-        const dnnl::engine &eng, graph::constant_tensor_cache_t::key_t key) {
-    auto cache = graph::get_constant_tensor_cache(
-            eng.get()->kind(), eng.get()->index());
+        const engine_t &eng, graph::constant_tensor_cache_t::key_t key) {
+    auto cache = graph::get_constant_tensor_cache(eng.kind(), eng.index());
     assertm(cache,
             "no available constant cache for specified engine kind and index");
     cache->remove_if_exist(dnnl_backend_t::get_singleton().get_id(), key);
 }
 
-inline void dnnl_constant_cache_retain(const dnnl::engine &eng) {
-    auto cache = graph::get_constant_tensor_cache(
-            eng.get()->kind(), eng.get()->index());
+inline void dnnl_constant_cache_retain(const engine_t &eng) {
+    auto cache = graph::get_constant_tensor_cache(eng.kind(), eng.index());
     cache->retain();
 }
 
-inline void dnnl_constant_cache_release(const dnnl::engine &eng) {
-    auto cache = graph::get_constant_tensor_cache(
-            eng.get()->kind(), eng.get()->index());
+inline void dnnl_constant_cache_release(const engine_t &eng) {
+    auto cache = graph::get_constant_tensor_cache(eng.kind(), eng.index());
     cache->release();
 }
 

@@ -15,6 +15,7 @@
  *******************************************************************************/
 
 #include "graph/backend/dnnl/kernels/kernel_base.hpp"
+#include "graph/backend/dnnl/common.hpp"
 #include "graph/backend/dnnl/dnnl_constant_tensor_cache.hpp"
 
 namespace dnnl {
@@ -37,9 +38,8 @@ status_t kernel_base_t::execute(const stream_t *astream,
 }
 
 bool kernel_base_t::enabled_constant_cache() const {
-    if (!p_engine_.get(true)) { return false; }
-
-    const bool enabled = is_constant_cache_enabled(p_engine_);
+    if (!engine_) { return false; }
+    const bool enabled = is_constant_cache_enabled(*engine_);
     return enabled;
 }
 

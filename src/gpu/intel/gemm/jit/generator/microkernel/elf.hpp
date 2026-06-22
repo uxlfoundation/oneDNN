@@ -69,6 +69,7 @@ struct SectionHeader {
         StringTable = 3,
         Note = 7,
         Relocation = 9,
+        ZebinSpirv = 0xFF000009,
         ZeInfo = 0xFF000011
     } type;
     uint64_t flags;

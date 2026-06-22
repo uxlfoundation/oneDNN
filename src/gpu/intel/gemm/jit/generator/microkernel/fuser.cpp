@@ -177,6 +177,27 @@ void fuse(std::vector<uint8_t> &binary,
     }
 }
 
+// Drop the zebin SPIR-V section (ZebinSpirv -> Null) so the runtime can't
+// rebuild the program from stale IR and lose the spliced-in microkernels.
+static void stripIntermediateRepresentation(std::vector<uint8_t> &binary) {
+    auto base = binary.data();
+    auto bytes = binary.size();
+    auto fheaderPtr = reinterpret_cast<FileHeader *>(base);
+
+    bool ok = bytes >= sizeof(FileHeader) && fheaderPtr->magic == ELFMagic
+            && fheaderPtr->elfClass == ELFClass64
+            && fheaderPtr->sectionHeaderSize == sizeof(SectionHeader)
+            && bytes >= fheaderPtr->sectionTableOff
+                            + sizeof(SectionHeader) * fheaderPtr->sectionCount;
+    if (!ok) return;
+
+    auto *sheaders = reinterpret_cast<SectionHeader *>(
+            base + fheaderPtr->sectionTableOff);
+    for (int s = 0; s < fheaderPtr->sectionCount; s++)
+        if (sheaders[s].type == SectionHeader::ZebinSpirv)
+            sheaders[s].type = SectionHeader::Null;
+}
+
 void fuse(std::vector<uint8_t> &binary, const char *source) {
     std::vector<uint8_t> microkernel;
     const auto sigilLen = strlen(sigilBinary);
@@ -198,6 +219,7 @@ void fuse(std::vector<uint8_t> &binary, const char *source) {
         }
         fuse(binary, microkernel, id);
     }
+    stripIntermediateRepresentation(binary);
 }
 
 static void fixupJumpTargets(uint8_t *start, size_t len, ptrdiff_t adjust) {

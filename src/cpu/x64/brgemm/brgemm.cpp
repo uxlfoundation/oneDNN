@@ -26,6 +26,8 @@
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 
+#include "cpu/x64/brgemm/brgemv_ir.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -659,6 +661,21 @@ status_t brgemm_kernel_create(
     if (utils::one_of(data_type::f64, brg.dt_a, brg.dt_b, brg.dt_c, brg.dt_d,
                 brg.dt_bias, brg.sum_dt))
         return status::unimplemented;
+
+    // Try IR-based GEMV kernel first.
+    if (brg.is_gemv && brgemv_ir_supported(brg)) {
+        brgemm_kernel_t *ir_kernel = new_brgemv_ir_kernel(brg);
+        if (ir_kernel) {
+            *brg_kernel = ir_kernel;
+            status_t st = (*brg_kernel)->create_kernel();
+            if (st != status::success) {
+                delete *brg_kernel;
+                *brg_kernel = nullptr;
+                return st;
+            }
+            return status::success;
+        }
+    }
 
     if (brg.is_dgmm) {
         if (brg.type == brgemm_static_offs) return status::unimplemented;

@@ -19,7 +19,6 @@
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
-#define DBG_FWD_PRINTS 1
 
 /* Microkernel headers -- generated at runtime */
 #include "gemm_kq.h"

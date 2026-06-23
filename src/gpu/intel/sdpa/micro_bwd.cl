@@ -1082,6 +1082,28 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         {
             p_tile_type_reblock P_tile_reblock;
             tile_copy_reblock(dP_tile, &P_tile_reblock);
+#ifdef DBG_DKDV_PRINTS
+            /* Print f32 accumulator vs. f16-rounded value to quantify
+             * per-element precision loss before the dK GEMM. */
+            if (get_group_id(0) == 0 && get_group_id(1) == 0
+                    && get_group_id(2) == 0 && b0 == 0 && b1 == 0
+                    && sg_i0_kq == 0 && sg_j0_kq == 0
+                    && get_local_id(1) == 0) {
+                float _ds_f32 = convert_float(
+                        tile_access(dP_tile, 0, 0, SUBGROUP_SIZE,
+                                ugemm_vtdA_c_type_block0,
+                                ugemm_vtdA_c_type_block1,
+                                ugemm_vtdA_c_type_nblock0));
+                float _ds_f16 = convert_float(
+                        tile_access(P_tile_reblock, 0, 0, SUBGROUP_SIZE,
+                                ugemm_vtdA_c_type_block0, 1,
+                                ugemm_vtdA_c_type_nblock0));
+                printf("[DS_CONV] lane%u k0=%d q0=%d f32=%.6f f16=%.6f"
+                       " diff=%.6f\n",
+                        get_sub_group_local_id(), k0, q0, _ds_f32, _ds_f16,
+                        _ds_f32 - _ds_f16);
+            }
+#endif
 #if WITH_DS
             tile_store(P_tile_reblock, dS, k_chunk, q_nchunk, k, k0 + sg_i0_kq,
                     q0 + sg_j0_kq);

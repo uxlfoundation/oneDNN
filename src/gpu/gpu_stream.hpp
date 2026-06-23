@@ -19,6 +19,7 @@
 
 #include "common/memory_storage.hpp"
 #include "common/stream.hpp"
+#include "common/thread_local_storage.hpp"
 
 #include "xpu/context.hpp"
 #include "xpu/stream_profiler.hpp"
@@ -50,10 +51,33 @@ public:
     }
     xpu::stream_profiler_t &profiler() { return *profiler_; }
 
+    virtual const xpu::verbose_profiler_t *verbose_profiler() const {
+        return (is_verbose_profiler_enabled() && verbose_profiler_.is_set())
+                ? verbose_profiler_.get().get()
+                : nullptr;
+    }
+
+    xpu::verbose_profiler_t *verbose_profiler() {
+        return (is_verbose_profiler_enabled() && verbose_profiler_.is_set())
+                ? verbose_profiler_.get().get()
+                : nullptr;
+    }
+
     virtual double get_freq(const xpu::event_t &event) const { return 0.0; }
 
 protected:
     std::unique_ptr<xpu::stream_profiler_t> profiler_;
+    // A mutable declaration is required due to thread_local_storage_t API
+    // design constraints - the thread_local_storage_t access methods are
+    // declared non-const but must be accessible from a const
+    // verbose_profiler() accessor) to maintain interface const-correctness.
+    // TODO: Update thread_local_storage_t::is_set(), get(), and get(factory)
+    // methods to be const-qualified to eliminate need for mutable specifier.
+    // Lazy initialization should be considered implementation detail, not
+    // logical state modification.
+    mutable utils::thread_local_storage_t<
+            std::unique_ptr<xpu::verbose_profiler_t>>
+            verbose_profiler_;
 };
 
 } // namespace gpu

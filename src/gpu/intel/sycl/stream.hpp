@@ -59,7 +59,12 @@ struct stream_t : public gpu::intel::stream_t {
         return status::success;
     }
 
-    status_t wait() override { return impl()->wait(); }
+    status_t wait() override {
+        auto status = impl()->wait();
+        // processes and logs any pending primitives after the blocking wait
+        if (auto *vp = verbose_profiler()) vp->check_for_completed_primitives();
+        return status;
+    }
 
     void before_exec_hook() override;
     void after_exec_hook() override;
@@ -75,6 +80,9 @@ struct stream_t : public gpu::intel::stream_t {
         if (!is_profiling_enabled()) return status::invalid_arguments;
         return profiler_->get_info(data_kind, num_entries, data);
     }
+
+    status_t run_verbose_profiler(
+            const std::string &pd_info, double start_ms) override;
 
     ::sycl::queue &queue() const { return *impl()->queue(); }
 

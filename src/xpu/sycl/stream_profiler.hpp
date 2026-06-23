@@ -34,6 +34,33 @@ struct stream_profiler_t : public xpu::stream_profiler_t {
             uint64_t *data) const override;
 };
 
+struct verbose_profiler_t : public xpu::verbose_profiler_t {
+    verbose_profiler_t(const impl::stream_t *stream)
+        : xpu::verbose_profiler_t(stream), active_(true) {}
+
+    ~verbose_profiler_t() override { cleanup(); }
+
+    status_t get_aggregate_exec_time(
+            size_t index, double &duration_ms) const override;
+
+    bool is_event_complete(
+            const std::shared_ptr<xpu::event_t> &event) const override;
+
+    void wait_for_event_completion(
+            const std::shared_ptr<xpu::event_t> &event) const override;
+
+    // pausing capabilities are added to allow skipping event profiling
+    // queires when they are temporarily unvaiable
+    // (sycl graph execution) -pausing action is localized to each
+    // thread for multi-threaded execution
+    bool is_active() const override { return active_; }
+    void start_profiling() { active_ = true; }
+    void pause_profiling() { active_ = false; }
+
+protected:
+    bool active_;
+};
+
 } // namespace sycl
 } // namespace xpu
 } // namespace impl

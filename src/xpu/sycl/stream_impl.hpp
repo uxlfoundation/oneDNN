@@ -75,6 +75,8 @@ public:
 
     void register_deps(::sycl::handler &cgh) const;
 
+    status_t init_verbose_profiler(engine_kind_t kind) override;
+
     static status_t init_flags(unsigned *flags, ::sycl::queue &queue) {
         *flags = queue.is_in_order() ? stream_flags::in_order
                                      : stream_flags::out_of_order;

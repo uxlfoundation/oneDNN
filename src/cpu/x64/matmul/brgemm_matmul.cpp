@@ -256,34 +256,39 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     auto check_attr_zero_points
             = [&](bool allow_multiple_wei_zp,
                       bool allow_grouped_src_zp = false) -> bool {
+        bool ok = true;
         const auto &zp = attr()->zero_points_;
-        if (!zp.has_default_values(DNNL_ARG_DST)) {
-            const int mask = zp.get_mask(DNNL_ARG_DST);
-            if (mask > 0) return false;
-        }
+        // Destination zero-points support a common value only.
+        if (!zp.has_default_values(DNNL_ARG_DST))
+            ok = ok && zp.get_mask(DNNL_ARG_DST) == 0;
+        // Source zero-points support a common value only, unless grouping is
+        // allowed; then only grouping over M/K (not batch) is supported.
         if (!zp.has_default_values(DNNL_ARG_SRC)) {
             const auto mask = zp.get_mask(DNNL_ARG_SRC);
             if (allow_grouped_src_zp) {
                 const int mk_mask = src_qmask_M() + src_qmask_K();
                 const bool zp_over_batch = (mask & mk_mask) != mask;
-                const bool mask_ok = (mask & ~mk_mask) == 0;
-                return !(zp_over_batch && batch() > 1) && mask_ok;
+                ok = ok && (mask & ~mk_mask) == 0;
+                ok = ok && !(zp_over_batch && batch() > 1);
             } else {
-                return mask == 0;
+                ok = ok && mask == 0;
             }
         }
+        // Weights zero-points support a common value only, unless multiple
+        // values are allowed; then only grouping over K/N (not batch) is
+        // supported.
         if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
             const auto mask = zp.get_mask(DNNL_ARG_WEIGHTS);
             if (allow_multiple_wei_zp) {
                 const auto kn_mask = wei_qmask_N() + wei_qmask_K();
                 const bool zp_over_batch = (mask & kn_mask) != mask;
-                const bool mask_ok = (mask & ~kn_mask) == 0;
-                return !(zp_over_batch && batch() > 1) && mask_ok;
+                ok = ok && (mask & ~kn_mask) == 0;
+                ok = ok && !(zp_over_batch && batch() > 1);
             } else {
-                return mask == 0;
+                ok = ok && mask == 0;
             }
         }
-        return true;
+        return ok;
     };
     const bool problem_dt_correct = one_of(true, is_f4, is_int8, is_f8, is_bf16,
             is_f32, is_f16, is_f32_f16, is_f32_bf16, is_bf16_with_int_wei,

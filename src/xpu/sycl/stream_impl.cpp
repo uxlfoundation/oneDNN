@@ -197,6 +197,26 @@ status_t stream_impl_t::barrier() {
     return status::success;
 }
 
+status_t stream_impl_t::init_verbose_profiler(engine_kind_t kind) {
+    use_verbose_profiler_ = false;
+    if (!get_verbose(verbose_t::exec_profile)) return status::success;
+    if (kind != engine_kind::gpu) return status::success;
+    // verbose profiling support is only for in-order queues
+    if (flags() & stream_flags::out_of_order) return status::success;
+    use_verbose_profiler_ = true;
+
+    // if the queue is set, verbose profiling is disabled for
+    // unsupported backends
+    if (!queue_) return status::success;
+
+    const auto backend = queue_->get_backend();
+    if (!utils::one_of(backend, ::sycl::backend::ext_oneapi_level_zero,
+                ::sycl::backend::opencl))
+        use_verbose_profiler_ = false;
+
+    return status::success;
+}
+
 const xpu::sycl::context_t &stream_impl_t::sycl_ctx() const {
     static xpu::sycl::context_t empty_ctx {};
     return ctx_.get(empty_ctx);

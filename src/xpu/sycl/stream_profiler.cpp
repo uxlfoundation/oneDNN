@@ -49,8 +49,7 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     std::map<uint64_t, stream_profiler_t::entry_t> stamp2entry;
     int idx = 0;
     for (auto &ev : events_) {
-        const xpu::sycl::event_t &sycl_event
-                = *utils::downcast<xpu::sycl::event_t *>(ev.event.get());
+        const auto &sycl_event = xpu::sycl::event_t::from(*ev.event);
         assert(sycl_event.size() == 1);
         auto beg
                 = sycl_event[0]
@@ -68,6 +67,91 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
     }
     if (is_per_kernel) return status::success;
     return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
+}
+
+status_t verbose_profiler_t::get_aggregate_exec_time(
+        size_t index, double &duration_ms) const {
+    if (!is_active()) return status::success;
+
+    using namespace ::sycl::info;
+    if (index >= profiling_data_.size()) {
+        VERROR(primitive, exec,
+                "profiling error: invalid index %zu, profiling_data size is "
+                "%zu",
+                index, profiling_data_.size());
+        return status::success;
+    }
+    const auto &prof_data = profiling_data_[index];
+
+    const auto &evts = prof_data.prim_events_;
+    if (evts.empty()) {
+        duration_ms = 0.0;
+        return status::success;
+    }
+
+    uint64_t agg_start = UINT64_MAX;
+    uint64_t agg_end = 0;
+
+    // For verbose logging, aggregate execution time for a primitive is
+    // determined from the start time of the first queued primitive event
+    // and the end time of the last primitive event
+    for (const auto &ev : evts) {
+        if (!ev) continue;
+
+        const auto &sycl_event = xpu::sycl::event_t::from(*ev);
+        size_t last_idx = sycl_event.size() - 1;
+        assert(last_idx >= 0);
+
+        auto evbeg
+                = sycl_event[0]
+                          .get_profiling_info<event_profiling::command_start>();
+        auto evend
+                = sycl_event[last_idx]
+                          .get_profiling_info<event_profiling::command_end>();
+        agg_start = std::min(agg_start, evbeg);
+        agg_end = std::max(agg_end, evend);
+    }
+
+    // TODO: Consolidate timing calculation calls between different
+    // profilers to avoid code duplication and ensure consistent time
+    // conversion logic
+    duration_ms = static_cast<double>(agg_end - agg_start) * 1e-6;
+    return status::success;
+}
+
+bool verbose_profiler_t::is_event_complete(
+        const std::shared_ptr<xpu::event_t> &event) const {
+    if (!is_active()) return true;
+    if (!event) return true;
+
+    const auto &sycl_event = xpu::sycl::event_t::from(*event);
+    size_t last_idx = sycl_event.size() - 1;
+    assert(last_idx >= 0);
+
+    auto status
+            = sycl_event[last_idx]
+                      .get_info<
+                              ::sycl::info::event::command_execution_status>();
+    return (status == ::sycl::info::event_command_status::complete);
+}
+
+void verbose_profiler_t::wait_for_event_completion(
+        const std::shared_ptr<xpu::event_t> &event) const {
+    if (!is_active()) return;
+    if (!event) return;
+
+    const auto &sycl_event = xpu::sycl::event_t::from(*event);
+    size_t last_idx = sycl_event.size() - 1;
+    assert(last_idx >= 0);
+
+    try {
+        ::sycl::event::wait({sycl_event[last_idx]});
+    } catch (const ::sycl::exception &e) {
+        // Note: Cannot throw from destructor context, so just
+        // logging error
+        VERROR(primitive, exec, "failed to wait for event completion: %s",
+                e.what());
+    }
 }
 
 } // namespace sycl

@@ -493,17 +493,23 @@ inline void tile_store_k_slm(
 
 // SLM always accumulates in f32 for dK and dV.
 // For GQA (IS_GQA=1), DST_DATA_T_DKDV=float so the global scratch and all
-// intermediate reduction steps are f32. No per-iteration f16 quantization is
-// applied: the GEMM output (f32) is added directly into f32 SLM, then written
-// via f32 atomic add. This matches the f32 reference and avoids accumulated
-// f16 rounding error being amplified by the 8:1 cross-head GQA cancellation.
-// For non-GQA MHA, DST_DATA_T_DKDV=DST_DATA_T (f16/bf16); round_to_dst is
-// applied once at store time before the direct (non-atomic) global write.
+// intermediate reduction steps are f32.
+// For REDUCE_DKDV_F16 (f16 dst + GQA): the reference path (larger_partition
+// or unfused primitives) uses a per-head f16 GEMM output (bmm_dk outputs f16),
+// then sums the f16 per-head results in f32. To match this, each per-head dK
+// result is rounded to f16 before SLM accumulation (see the accumulation loop
+// below). tile_store_dK/tile_store_dK_t skip round_to_dst for REDUCE_DKDV_F16
+// since the rounding was already done per iteration here.
+// For dV, the equivalent f16 rounding is achieved implicitly because
+// problem_vs.Tc=f16 makes ugemm_vs output f16 natively.
+// For REDUCE_DKDV_F16=0 (bf16 dst, or non-GQA MHA): round_to_dst is applied
+// once at store time before the global write.
 #define SLM_DKDV_DATA_T float
 typedef dv_tile_type dv_acc_tile_type;
 typedef a_tile_type dk_acc_tile_type;
 // round_to_dst: quantizes f32 to destination type precision.
-// Used only in non-GQA MHA store path (once, at the final direct store).
+// Used in the per-iteration dK rounding (REDUCE_DKDV_F16=1) and in the
+// non-GQA/bf16-GQA store path (once, at the final direct/atomic store).
 inline float round_to_dst(float v) {
     return CONVERT_FLOAT_T(CONVERT_DATA_T(v));
 }
@@ -1145,6 +1151,14 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             if (sg_ij < sg_per_wg_BcD) {
                 dk_acc_tile_type dK_tile1_store;
                 tile_copy(dK_tile1, dK_tile1_store);
+#if REDUCE_DKDV_F16
+                // Round per-head dK to f16 before SLM accumulation to match
+                // the reference path's per-head f16 GEMM output (bmm_dk
+                // outputs f16, then reduce_dk sums f16 values in f32).
+                // tile_store_dK skips round_to_dst for REDUCE_DKDV_F16=1,
+                // relying on this per-iteration rounding.
+                tile_elementwise_s(dK_tile1_store, round_to_dst);
+#endif
 #if TRANSPOSE_K
                 tile_slm_add_t(
                         dK_tile1_store, dK_slm, D_MAX, sg_i0_dk, sg_j0_dk);

@@ -853,15 +853,6 @@ void skip_unimplemented_binary_po(const attr_t &attr, res_t *res) {
     const auto &po = attr.post_ops;
     if (po.is_def()) return;
 
-    if (is_gpu()) {
-        const int select_idx = po.find(attr_t::post_ops_t::kind_t::SELECT);
-        if (select_idx != -1) {
-            res->state = SKIPPED;
-            res->reason = reason_t::skip_not_supported;
-            return;
-        }
-    }
-
     std::vector<dnnl_data_type_t> dts;
     for (int i = 0; i < po.len(); i++) {
         const auto &e = po.entry[i];

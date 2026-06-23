@@ -70,6 +70,8 @@ struct jit_uni_dwconv_fwd_t : public primitive_t {
             VDISPATCH_CONV(IMPLICATION(with_bias(),
                                    utils::one_of(bia_d.data_type(), f16, f32)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
+            VDISPATCH_CONV(
+                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_CONV(i == 1, VERBOSE_BAD_DIM, "weights", gr_shift + 1);
             VDISPATCH_CONV(kh == 3 && kw == 3, VERBOSE_BAD_DIM, "weights",
                     gr_shift + 2);

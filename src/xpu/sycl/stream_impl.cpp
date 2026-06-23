@@ -28,7 +28,8 @@ namespace sycl {
 status_t stream_impl_t::copy(impl::stream_t *stream,
         const memory_storage_t &src, const memory_storage_t &dst, size_t size,
         const xpu::event_t &deps, xpu::event_t &out_dep,
-        xpu::stream_profiler_t *stream_profiler) {
+        xpu::stream_profiler_t *stream_profiler,
+        xpu::verbose_profiler_t *verbose_profiler) {
 
     if (size == 0) return status::success;
     // TODO: add src and dst sizes check
@@ -136,10 +137,19 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
         });
     }
 
+    // Event registration for profilers is managed to allow the
+    // verbose_profiler_t operate independently from other profilers without
+    // forced profiling flags or double-move issues.
     if (is_profiling_enabled()) {
-        auto sycl_event = utils::make_unique<xpu::sycl::event_t>(
+        auto profiler_event = utils::make_unique<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {e});
-        stream_profiler->register_event(std::move(sycl_event));
+        stream_profiler->register_event(std::move(profiler_event));
+    }
+
+    if (verbose_profiler) {
+        auto verbose_event = std::make_shared<xpu::sycl::event_t>(
+                std::vector<::sycl::event> {e});
+        verbose_profiler->register_event(verbose_event);
     }
 
     xpu::sycl::event_t::from(out_dep).events = {e};
@@ -149,7 +159,8 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
 
 status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
         size_t size, const xpu::event_t &deps, xpu::event_t &out_dep,
-        xpu::stream_profiler_t *stream_profiler) {
+        xpu::stream_profiler_t *stream_profiler,
+        xpu::verbose_profiler_t *verbose_profiler) {
     auto *sycl_dst
             = utils::downcast<const xpu::sycl::memory_storage_base_t *>(&dst);
     bool usm = sycl_dst->memory_kind() == xpu::sycl::memory_kind::usm;
@@ -182,12 +193,20 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
         });
     }
 
+    // Event registration for profilers is managed to allow the
+    // verbose_profiler_t operate independently from other profilers without
+    // forced profiling flags or double-move issues.
     if (is_profiling_enabled()) {
-        auto sycl_event = utils::make_unique<xpu::sycl::event_t>(
+        auto profiler_event = utils::make_unique<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {out_event});
-        stream_profiler->register_event(std::move(sycl_event));
+        stream_profiler->register_event(std::move(profiler_event));
     }
 
+    if (verbose_profiler) {
+        auto verbose_event = std::make_shared<xpu::sycl::event_t>(
+                std::vector<::sycl::event> {out_event});
+        verbose_profiler->register_event(verbose_event);
+    }
     xpu::sycl::event_t::from(out_dep).events = {out_event};
     return status::success;
 }

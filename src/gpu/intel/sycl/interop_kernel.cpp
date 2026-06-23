@@ -174,10 +174,18 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
         }
     });
 
+    // Event registration for profilers - carried out separately for each
+    // profiler
     if (stream.is_profiling_enabled()) {
-        auto sycl_event = utils::make_unique<xpu::sycl::event_t>(
-                std::vector<::sycl::event> {event});
-        gpu_stream->profiler().register_event(std::move(sycl_event));
+        gpu_stream->profiler().register_event(
+                utils::make_unique<xpu::sycl::event_t>(
+                        std::vector<::sycl::event> {event}));
+    }
+
+    if (stream.is_verbose_profiler_enabled()) {
+        gpu_stream->verbose_profiler()->register_event(
+                std::make_shared<xpu::sycl::event_t>(
+                        std::vector<::sycl::event> {event}));
     }
 
     xpu::sycl::event_t::from(out_dep).events = {std::move(event)};

@@ -2880,7 +2880,8 @@ protected:
     constexpr static int reg_src_offs_ = 0;
     constexpr static int reg_tr_src_offs_ = 8;
     constexpr static int reg_current_K_pad_offs_ = 16;
-    constexpr static int stack_space_needed_ = 24;
+    constexpr static int reg_n_offs_ = 24;
+    constexpr static int stack_space_needed_ = 32;
 
     reg64_t reg_src = rax;
     reg64_t reg_tr_src = rbx;
@@ -3165,12 +3166,9 @@ struct jit_amx_brgemm_matmul_copy_b_int8_t
     : public jit_brgemm_matmul_copy_b_int8_t<Xbyak::Zmm> {
 
     jit_amx_brgemm_matmul_copy_b_int8_t(const brgemm_matmul_conf_t *conf)
-        : jit_brgemm_matmul_copy_b_int8_t<Xbyak::Zmm>(conf)
-        , do_N_loop_(conf->LDB < conf->N_blk) {}
+        : jit_brgemm_matmul_copy_b_int8_t<Xbyak::Zmm>(conf) {}
 
 private:
-    const bool do_N_loop_;
-
     void init_permute() override {
         alignas(64) static constexpr const uint8_t idx_lo_16[64] = {0, 1, 64,
                 65, 4, 5, 68, 69, 2, 3, 66, 67, 6, 7, 70, 71, 8, 9, 72, 73, 12,
@@ -3222,9 +3220,9 @@ private:
     }
 
     void copy_block(
-            int nrows, int ncolumns, bool n_tail, bool zeropad) override {
+            int nrows, int ncolumns, bool n_rem, bool zeropad) override {
 
-        if (!do_N_loop_ && (!is_dynamic_N_ || !n_tail)) {
+        if (!is_dynamic_N_ || !n_rem) {
             copy_4x64(nrows, ncolumns, zeropad);
             return;
         }
@@ -3252,12 +3250,7 @@ private:
                     n_blk_step_ * typesize / src_elems_per_byte_);
             add(reg_src, n_blk_step_ * typesize / src_elems_per_byte_);
 
-            if (do_N_loop_)
-                // (n_blk_step_ /conf_->LDB) --> # of LDBs handled by copy_4x64
-                add(reg_tr_src,
-                        (n_blk_step_ / conf_->LDB) * conf_->LDB2 * typesize);
-            else
-                add(reg_tr_src, n_blk_step_ * k_blk_step_ * typesize);
+            add(reg_tr_src, n_blk_step_ * k_blk_step_ * typesize);
 
             sub(reg_dynamic_tail, n_blk_step_);
 
@@ -3278,10 +3271,7 @@ private:
             jle(loop_row_done, T_NEAR);
 
             add(reg_src, reg_copy_block_n_shift);
-            if (do_N_loop_ && !is_dynamic_N_)
-                copy_4x64(nrows, ncolumns % n_blk_step_, zeropad);
-            else
-                copy_4x64(nrows, 1 /* to force tail case */, zeropad);
+            copy_4x64(nrows, 1 /* to force tail case */, zeropad);
         }
         L(loop_row_done);
 
@@ -3680,23 +3670,15 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
 
     init_permute();
 
-    if (do_compute_compensation_) {
-        int n_iters = div_up(conf_->wei_n_blk, 16) * (is_ymm_ ? 2 : 1);
-        for (int i = 0; i < n_iters; i++)
-            uni_vpxor(get_comp_acc(i), get_comp_acc(i), get_comp_acc(i));
-        mov(reg_tmp, 1);
-        uni_vpbroadcastb(vmm_comp_mul, reg_tmp.cvt8());
-    }
-
     auto compute_K_loop_body = [&](const reg64_t &reg_K, int ncolumns,
-                                       bool is_N_tail, bool zeropad) {
+                                       bool is_N_rem, bool zeropad) {
         const int k_unroll = 4;
         Label K_loop_unrolled, K_loop_single, K_loop_tail_or_done;
         cmp(reg_K, k_unroll * k_blk_step_);
         jl(K_loop_single, T_NEAR);
 
         L(K_loop_unrolled);
-        copy_block(k_unroll * k_blk_step_, ncolumns, is_N_tail, zeropad);
+        copy_block(k_unroll * k_blk_step_, ncolumns, is_N_rem, zeropad);
         if (!zeropad && !is_dynamic_stride_)
             add(reg_src,
                     k_unroll * k_blk_step_ * src_stride_ / src_elems_per_byte_);
@@ -3710,7 +3692,7 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
         cmp(reg_K, k_blk_step_);
         jl(K_loop_tail_or_done, T_NEAR);
 
-        copy_block(k_blk_step_, ncolumns, is_N_tail, zeropad);
+        copy_block(k_blk_step_, ncolumns, is_N_rem, zeropad);
         if (!zeropad && !is_dynamic_stride_)
             add(reg_src, k_blk_step_ * src_stride_ / src_elems_per_byte_);
         add(reg_tr_src, tr_src_stride_);
@@ -3726,159 +3708,250 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
             cmp(reg_K, 0);
             jle(K_loop_done, T_NEAR);
 
-            copy_block(k_blk_tail, ncolumns, is_N_tail, zeropad);
+            copy_block(k_blk_tail, ncolumns, is_N_rem, zeropad);
             add(reg_tr_src, tr_src_stride_);
             sub(reg_K, k_blk_tail);
             L(K_loop_done);
         }
     };
 
-    auto compute_K_loop = [&](bool is_N_tail) {
-        int ncolumns = is_N_tail ? conf_->N_tail : conf_->N_blk;
+    auto compute_K_loop = [&](bool is_N_rem, int ncolumns) {
         // 'param1' register (rcx on Windows) re-written in compute_K_loop_body
         // so we need to read and keep 'current_K_pad' parameter in stack before
         // the call
         mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_pad)]);
         mov(ptr[rsp + reg_current_K_pad_offs_], reg_K_iters);
         mov(reg_K_iters, ptr[param1 + GET_OFF(current_K_iters)]);
-        compute_K_loop_body(reg_K_iters, ncolumns, is_N_tail, false);
+        compute_K_loop_body(reg_K_iters, ncolumns, is_N_rem, false);
         mov(reg_K_iters, ptr[rsp + reg_current_K_pad_offs_]);
-        compute_K_loop_body(reg_K_iters, ncolumns, is_N_tail, true);
+        compute_K_loop_body(reg_K_iters, ncolumns, is_N_rem, true);
     };
 
-    Label done;
-    cmp(reg_N_blk, 0);
-    jle(done, T_NEAR);
+    const int wei_n_blk = static_cast<int>(conf_->wei_n_blk);
 
-    if (conf_->N_tail > 0 || is_dynamic_N_) {
-        Label main_N_blk;
-        cmp(reg_N_blk, conf_->N_blk);
-        je(main_N_blk, T_NEAR);
-        compute_K_loop(true);
-        jmp(done, T_NEAR);
+    auto compute_N_loop_body = [&](int ncolumns) {
+        mov(reg_tmp, ptr[rsp + reg_n_offs_]);
 
-        L(main_N_blk);
-    }
+        mov(reg_src, ptr[param1 + GET_OFF(src)]);
+        add(reg_src, reg_tmp);
+        mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
 
-    compute_K_loop(false);
-    L(done);
+        const int tr_src_scale = static_cast<int>(conf_->LDB2) / wei_n_blk;
+        imul(reg_tmp, reg_tmp, tr_src_scale);
+        add(reg_tr_src, reg_tmp);
 
-    if (do_compute_compensation_) {
-        const bool req_s8s8_comp = conf_->s8s8_compensation_required;
-        const bool req_zp_comp = conf_->has_zero_point_a;
-        int n_iters = div_up(conf_->wei_n_blk, 16);
-        assert(IMPLICATION(req_zp_comp,
-                conf_->src_zp_type == brgemm_broadcast_t::per_tensor));
+        if (!is_dynamic_N_) mov(reg_N_blk, ncolumns);
 
-        if (req_s8s8_comp)
-            mov(reg_comp_ptr, ptr[param1 + GET_OFF(compensation_ptr)]);
-        if (req_zp_comp)
-            mov(reg_zp_comp_ptr, ptr[param1 + GET_OFF(zp_a_compensation_ptr)]);
-        mov(reg_K_start, ptr[param1 + GET_OFF(current_K_start)]);
+        if (do_compute_compensation_) {
+            int n_iters = div_up(conf_->wei_n_blk, 16) * (is_ymm_ ? 2 : 1);
+            for (int i = 0; i < n_iters; i++)
+                uni_vpxor(get_comp_acc(i), get_comp_acc(i), get_comp_acc(i));
+            mov(reg_tmp, 1);
+            uni_vpbroadcastb(vmm_comp_mul, reg_tmp.cvt8());
+        }
 
-        // YMM Note: 16 vmm registers would be needed, so only compute by halves
-        const bool do_outer_unroll = req_s8s8_comp;
-        const int outer_unroll = is_ymm_ && do_outer_unroll ? 2 : 1;
-        const int inner_unroll = is_ymm_ && (!do_outer_unroll) ? 2 : 1;
-        for (int out_ur = 0; out_ur < outer_unroll; ++out_ur) {
+        Label done;
+        mov(reg_tmp, ptr[param1 + GET_OFF(current_N_blk)]);
+        cmp(reg_tmp, 0);
+        jle(done, T_NEAR);
 
-            // copy 'comp_acc' into s8s8_comp accumulator
-            if (req_s8s8_comp) {
-                for (int i = 0; i < n_iters; i++) {
-                    const int accum_idx = i + out_ur * n_iters;
-                    uni_vmovups(get_vmm_wei_scale_comp_res(i),
-                            get_comp_acc(accum_idx));
-                }
-            }
+        if (is_dynamic_N_) {
+            Label main_N_blk;
+            cmp(reg_N_blk, conf_->N_blk);
+            je(main_N_blk, T_NEAR);
+            compute_K_loop(true, ncolumns);
+            jmp(done, T_NEAR);
 
-            Label skip_acc, store;
-            cmp(reg_K_start, 0);
-            je(skip_acc, T_NEAR);
-            if (req_s8s8_comp) {
-                for (int i = 0; i < n_iters; i++) {
-                    const int idx = i + out_ur * n_iters;
-                    const auto vmm_acc = get_comp_acc(idx);
-                    const auto vmm_res = get_vmm_wei_scale_comp_res(i);
-                    const auto addr = !is_ymm_
-                            ? EVEX_compress_addr(reg_comp_ptr, idx * simd_w_)
-                            : ptr[reg_comp_ptr + idx * simd_w_];
-                    uni_vpaddd(vmm_res, vmm_acc, addr);
-                }
-            }
+            L(main_N_blk);
+        }
 
-            if (req_zp_comp) {
-                for_(int i = 0; i < n_iters; i++)
-                for (int in_ur = 0; in_ur < inner_unroll; ++in_ur) {
-                    const int idx = i * inner_unroll + in_ur + out_ur * n_iters;
-                    const auto vmm_acc = get_comp_acc(idx);
-                    const auto vmm_res = get_vmm_zp_comp_res(idx);
-                    const auto addr = !is_ymm_
-                            ? EVEX_compress_addr(reg_zp_comp_ptr, idx * simd_w_)
-                            : ptr[reg_zp_comp_ptr + idx * simd_w_];
-                    uni_vpaddd(vmm_res, vmm_acc, addr);
-                }
-            }
+        compute_K_loop(false, ncolumns);
+        L(done);
 
-            L(skip_acc);
-            cmp(reg_K_start, rnd_up(conf_->K, conf_->K_blk) - conf_->K_blk);
-            jl(store, T_NEAR);
+        if (do_compute_compensation_) {
+            const bool req_s8s8_comp = conf_->s8s8_compensation_required;
+            const bool req_zp_comp = conf_->has_zero_point_a;
+            int n_iters = div_up(conf_->wei_n_blk, 16);
+            assert(IMPLICATION(req_zp_comp,
+                    conf_->src_zp_type == brgemm_broadcast_t::per_tensor));
 
             if (req_s8s8_comp) {
-                mov(reg_tmp, 0xffffffff);
-                const auto vmm_all_bits_1 = vmm_comp_mul;
-                uni_vpbroadcastd(vmm_all_bits_1, reg_tmp.cvt32());
-                mov(reg_tmp, 0x1);
-                const auto vmm_one_s32 = vmm_zero;
-                uni_vpbroadcastd(vmm_one_s32, reg_tmp.cvt32());
-
-                for (int i = 0; i < n_iters; i++) {
-                    const auto vmm_res = get_vmm_wei_scale_comp_res(i);
-                    // multiply by 128
-                    uni_vpslld(vmm_res, vmm_res, 7);
-                    // change sign
-                    uni_vpandnd(vmm_res, vmm_res, vmm_all_bits_1);
-                    uni_vpaddd(vmm_res, vmm_res, vmm_one_s32);
-                }
-            }
-
-            if (req_zp_comp) {
-                mov(reg_zp_a_neg_val_ptr,
-                        ptr[param1 + GET_OFF(zp_a_neg_value_ptr)]);
-                const auto vmm_zp_a_neg_val = vmm_zero;
-                uni_vbroadcastss(vmm_zp_a_neg_val, ptr[reg_zp_a_neg_val_ptr]);
-
-                for_(int i = 0; i < n_iters; i++)
-                for (int in_ur = 0; in_ur < inner_unroll; ++in_ur) {
-                    const int idx = i * inner_unroll + in_ur + out_ur * n_iters;
-                    const auto vmm_res = get_vmm_zp_comp_res(idx);
-                    uni_vpmulld(vmm_res, vmm_res, vmm_zp_a_neg_val);
-                }
-            }
-
-            L(store);
-            if (req_s8s8_comp) {
-                for (int i = 0; i < n_iters; i++) {
-                    const auto vmm_res = get_vmm_wei_scale_comp_res(i);
-                    const int idx_offset = i + out_ur * n_iters;
-                    const auto addr = !is_ymm_
-                            ? EVEX_compress_addr(
-                                      reg_comp_ptr, idx_offset * simd_w_)
-                            : ptr[reg_comp_ptr + idx_offset * simd_w_];
-                    uni_vmovups(addr, vmm_res);
-                }
+                mov(reg_comp_ptr, ptr[param1 + GET_OFF(compensation_ptr)]);
+                // Runtime offset: reg_comp_ptr += n * sizeof(int32_t)
+                // (n is the outer-N counter spilled to [rsp + reg_n_offs_]).
+                mov(reg_tmp, ptr[rsp + reg_n_offs_]);
+                shl(reg_tmp, 2); // * sizeof(int32_t) == * 4
+                add(reg_comp_ptr, reg_tmp);
             }
             if (req_zp_comp) {
-                for_(int i = 0; i < n_iters; i++)
-                for (int in_ur = 0; in_ur < inner_unroll; ++in_ur) {
-                    const int idx = i * inner_unroll + in_ur + out_ur * n_iters;
-                    const auto vmm_res = get_vmm_zp_comp_res(idx);
-                    const auto addr = !is_ymm_
-                            ? EVEX_compress_addr(reg_zp_comp_ptr, idx * simd_w_)
-                            : ptr[reg_zp_comp_ptr + idx * simd_w_];
-                    uni_vmovups(addr, vmm_res);
+                mov(reg_zp_comp_ptr,
+                        ptr[param1 + GET_OFF(zp_a_compensation_ptr)]);
+                // Runtime offset: reg_zp_comp_ptr += n * sizeof(int32_t).
+                mov(reg_tmp, ptr[rsp + reg_n_offs_]);
+                shl(reg_tmp, 2);
+                add(reg_zp_comp_ptr, reg_tmp);
+            }
+            mov(reg_K_start, ptr[param1 + GET_OFF(current_K_start)]);
+
+            // YMM Note: 16 vmm registers would be needed, so only compute by halves
+            const bool do_outer_unroll = req_s8s8_comp;
+            const int outer_unroll = is_ymm_ && do_outer_unroll ? 2 : 1;
+            const int inner_unroll = is_ymm_ && (!do_outer_unroll) ? 2 : 1;
+            for (int out_ur = 0; out_ur < outer_unroll; ++out_ur) {
+
+                // copy 'comp_acc' into s8s8_comp accumulator
+                if (req_s8s8_comp) {
+                    for (int i = 0; i < n_iters; i++) {
+                        const int accum_idx = i + out_ur * n_iters;
+                        uni_vmovups(get_vmm_wei_scale_comp_res(i),
+                                get_comp_acc(accum_idx));
+                    }
+                }
+
+                Label skip_acc, store;
+                cmp(reg_K_start, 0);
+                je(skip_acc, T_NEAR);
+                if (req_s8s8_comp) {
+                    for (int i = 0; i < n_iters; i++) {
+                        const int idx = i + out_ur * n_iters;
+                        const auto vmm_acc = get_comp_acc(idx);
+                        const auto vmm_res = get_vmm_wei_scale_comp_res(i);
+                        const auto addr = !is_ymm_
+                                ? EVEX_compress_addr(
+                                          reg_comp_ptr, idx * simd_w_)
+                                : ptr[reg_comp_ptr + idx * simd_w_];
+                        uni_vpaddd(vmm_res, vmm_acc, addr);
+                    }
+                }
+
+                if (req_zp_comp) {
+                    for_(int i = 0; i < n_iters; i++)
+                    for (int in_ur = 0; in_ur < inner_unroll; ++in_ur) {
+                        const int idx
+                                = i * inner_unroll + in_ur + out_ur * n_iters;
+                        const auto vmm_acc = get_comp_acc(idx);
+                        const auto vmm_res = get_vmm_zp_comp_res(idx);
+                        const auto addr = !is_ymm_
+                                ? EVEX_compress_addr(
+                                          reg_zp_comp_ptr, idx * simd_w_)
+                                : ptr[reg_zp_comp_ptr + idx * simd_w_];
+                        uni_vpaddd(vmm_res, vmm_acc, addr);
+                    }
+                }
+
+                L(skip_acc);
+                cmp(reg_K_start, rnd_up(conf_->K, conf_->K_blk) - conf_->K_blk);
+                jl(store, T_NEAR);
+
+                if (req_s8s8_comp) {
+                    mov(reg_tmp, 0xffffffff);
+                    const auto vmm_all_bits_1 = vmm_comp_mul;
+                    uni_vpbroadcastd(vmm_all_bits_1, reg_tmp.cvt32());
+                    mov(reg_tmp, 0x1);
+                    const auto vmm_one_s32 = vmm_zero;
+                    uni_vpbroadcastd(vmm_one_s32, reg_tmp.cvt32());
+
+                    for (int i = 0; i < n_iters; i++) {
+                        const auto vmm_res = get_vmm_wei_scale_comp_res(i);
+                        // multiply by 128
+                        uni_vpslld(vmm_res, vmm_res, 7);
+                        // change sign
+                        uni_vpandnd(vmm_res, vmm_res, vmm_all_bits_1);
+                        uni_vpaddd(vmm_res, vmm_res, vmm_one_s32);
+                    }
+                }
+
+                if (req_zp_comp) {
+                    mov(reg_zp_a_neg_val_ptr,
+                            ptr[param1 + GET_OFF(zp_a_neg_value_ptr)]);
+                    const auto vmm_zp_a_neg_val = vmm_zero;
+                    uni_vbroadcastss(
+                            vmm_zp_a_neg_val, ptr[reg_zp_a_neg_val_ptr]);
+
+                    for_(int i = 0; i < n_iters; i++)
+                    for (int in_ur = 0; in_ur < inner_unroll; ++in_ur) {
+                        const int idx
+                                = i * inner_unroll + in_ur + out_ur * n_iters;
+                        const auto vmm_res = get_vmm_zp_comp_res(idx);
+                        uni_vpmulld(vmm_res, vmm_res, vmm_zp_a_neg_val);
+                    }
+                }
+
+                L(store);
+                if (req_s8s8_comp) {
+                    for (int i = 0; i < n_iters; i++) {
+                        const auto vmm_res = get_vmm_wei_scale_comp_res(i);
+                        const int idx_offset = i + out_ur * n_iters;
+                        const auto addr = !is_ymm_
+                                ? EVEX_compress_addr(
+                                          reg_comp_ptr, idx_offset * simd_w_)
+                                : ptr[reg_comp_ptr + idx_offset * simd_w_];
+                        uni_vmovups(addr, vmm_res);
+                    }
+                }
+                if (req_zp_comp) {
+                    for_(int i = 0; i < n_iters; i++)
+                    for (int in_ur = 0; in_ur < inner_unroll; ++in_ur) {
+                        const int idx
+                                = i * inner_unroll + in_ur + out_ur * n_iters;
+                        const auto vmm_res = get_vmm_zp_comp_res(idx);
+                        const auto addr = !is_ymm_
+                                ? EVEX_compress_addr(
+                                          reg_zp_comp_ptr, idx * simd_w_)
+                                : ptr[reg_zp_comp_ptr + idx * simd_w_];
+                        uni_vmovups(addr, vmm_res);
+                    }
                 }
             }
         }
+    };
+
+    mov(reg_tmp, 0);
+    mov(ptr[rsp + reg_n_offs_], reg_tmp);
+
+    if (!is_dynamic_N_) {
+        // It is a hard invariant that at most one of {N_blk, N_tail} is a
+        // non-multiple of wei_n_blk; otherwise the driver below cannot
+        // express the trailing partial block with a single emission.
+        const int n_tail_rem = conf_->N_tail % wei_n_blk;
+        const int n_blk_rem = conf_->N_blk % wei_n_blk;
+        assert(!(n_tail_rem != 0 && n_blk_rem != 0)
+                && "N_blk and N_tail can't both be non-multiples of "
+                   "wei_n_blk");
+        const int n_rem_block = n_tail_rem != 0 ? n_tail_rem : n_blk_rem;
+
+        // Main outer-N loop: emit one wei_n_blk-wide block per iteration
+        // while (n + wei_n_blk) <= current_N_blk.
+        Label skip_N_loop;
+        mov(reg_tmp, wei_n_blk);
+        cmp(reg_tmp, ptr[param1 + GET_OFF(current_N_blk)]);
+        jg(skip_N_loop, T_NEAR);
+
+        Label n_loop;
+        L(n_loop);
+        compute_N_loop_body(wei_n_blk);
+
+        mov(reg_tmp, ptr[rsp + reg_n_offs_]);
+        add(reg_tmp, wei_n_blk);
+        mov(ptr[rsp + reg_n_offs_], reg_tmp);
+
+        add(reg_tmp, wei_n_blk);
+        cmp(reg_tmp, ptr[param1 + GET_OFF(current_N_blk)]);
+        jle(n_loop, T_NEAR);
+
+        L(skip_N_loop);
+
+        // Trailing partial block (size = n_tail_block < wei_n_blk).
+        if (n_rem_block > 0) {
+            mov(reg_tmp, ptr[rsp + reg_n_offs_]);
+            cmp(reg_tmp, ptr[param1 + GET_OFF(current_N_blk)]);
+            Label tail_not_needed;
+            jge(tail_not_needed, T_NEAR);
+            compute_N_loop_body(n_rem_block);
+            L(tail_not_needed);
+        }
+    } else {
+        compute_N_loop_body(wei_n_blk);
     }
 
     add(rsp, stack_space_needed_);

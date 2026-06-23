@@ -430,8 +430,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     dnn_mem_map_t mem_map, ref_mem_map;
 
-    init_memory_args<prb_t>(
-            mem_map, prb, v_prim[0], supported_exec_args(FLAG_FWD));
+    init_memory_args(mem_map, prb, v_prim[0], supported_exec_args(FLAG_FWD));
 
     {
         auto scale_md = dnn_mem_t::init_host_scalar_md(dnnl_f32);
@@ -454,7 +453,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     if (prb->dir & FLAG_BWD) {
         // Extend memory map with backward args.
-        init_memory_args<prb_t>(
+        init_memory_args(
                 mem_map, prb, v_prim[1], supported_exec_args(FLAG_BWD));
 
         // Re-add scale (pruned by init_memory_args since SCALE is not in

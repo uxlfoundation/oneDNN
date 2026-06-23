@@ -653,8 +653,7 @@ dnnl_data_type_t deduce_cfg_data_type(
 // references once the object emplaced due to memory re-allocations happening
 // internally, while map doesn't not invalidate its references when adding a new
 // element which simplifies an implementation.
-template <typename prb_t>
-void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
+inline void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
         dnnl_primitive_t prim, const std::vector<int> &supported_exec_args,
         const engine_t &test_engine = get_test_engine()) {
     // Backward case when forward is required will have mem_map not empty.
@@ -706,10 +705,10 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         const auto &dst_md = query_md(const_pd, DNNL_ARG_TO);
         if (has_runtime_dims(src_md)) {
             mem_map.emplace(DNNL_ARG_FROM,
-                    dnn_mem_t(prb->get_md(DNNL_ARG_FROM), src_engine,
+                    dnn_mem_t(base_prb->get_md(DNNL_ARG_FROM), src_engine,
                             /* prefill = */ true));
             mem_map.emplace(DNNL_ARG_TO,
-                    dnn_mem_t(prb->get_md(DNNL_ARG_TO), dst_engine,
+                    dnn_mem_t(base_prb->get_md(DNNL_ARG_TO), dst_engine,
                             /* prefill = */ true));
         } else {
             mem_map.emplace(DNNL_ARG_FROM,
@@ -757,7 +756,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
                 } else {
                     if (has_runtime_dims(md)) {
                         mem_map.emplace(exec_arg,
-                                dnn_mem_t(prb->get_md(exec_arg), test_engine,
+                                dnn_mem_t(base_prb->get_md(exec_arg),
+                                        test_engine,
                                         /* prefill = */ true));
                     } else {
                         // In case when arguments get updated on backward when
@@ -779,13 +779,14 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     // setting proper pointers to make in-place mode happen.
     // Note: must precede bitwise stash memory insertion to keep numbers
     // estimated by memory checker correct.
-    if (prb->inplace) {
-        const bool inplace_fwd = (prb->dir & FLAG_FWD);
+    if (base_prb->inplace) {
+        const bool inplace_fwd = (base_prb->dir & FLAG_FWD);
         const bool inplace_bwd
-                = (prb->dir & FLAG_BWD) && !is_fwd_prop_kind(prop_kind);
+                = (base_prb->dir & FLAG_BWD) && !is_fwd_prop_kind(prop_kind);
         if (inplace_fwd || inplace_bwd) {
-            const int inplace_dst_arg
-                    = (prb->dir & FLAG_FWD) ? DNNL_ARG_DST : DNNL_ARG_DIFF_SRC;
+            const int inplace_dst_arg = (base_prb->dir & FLAG_FWD)
+                    ? DNNL_ARG_DST
+                    : DNNL_ARG_DIFF_SRC;
             mem_map[inplace_dst_arg] = dnn_mem_t();
         }
     }
@@ -809,7 +810,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             const auto &md = query_md(const_pd, query_arg);
             if (has_runtime_dims(md)) {
                 mem_map.emplace(insert_arg,
-                        dnn_mem_t(prb->get_md(query_arg), test_engine,
+                        dnn_mem_t(base_prb->get_md(query_arg), test_engine,
                                 /* prefill = */ true));
             } else {
                 mem_map.emplace(insert_arg,
@@ -819,7 +820,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
 
         // An inplace mode uses the source memory object as the destination one.
         // It results in the source is overwritten after the operation is done.
-        if (prb->inplace) {
+        if (base_prb->inplace) {
             const bool has_multiple_args = std::any_of(
                     supported_exec_args.begin(), supported_exec_args.end(),
                     [](int arg) { return arg == DNNL_ARG_MULTIPLE_SRC; });
@@ -830,7 +831,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             const auto &md = query_md(const_pd, query_arg);
             if (has_runtime_dims(md)) {
                 mem_map.emplace(insert_arg,
-                        dnn_mem_t(prb->get_md(query_arg), test_engine,
+                        dnn_mem_t(base_prb->get_md(query_arg), test_engine,
                                 /* prefill = */ true));
             } else {
                 mem_map.emplace(insert_arg,
@@ -878,7 +879,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
         const auto &orig_dst_md = query_md(const_pd, DNNL_ARG_DST);
         benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> prb_dst_md;
         if (has_runtime_dims(orig_dst_md)) {
-            prb_dst_md = prb->get_md(DNNL_ARG_DST);
+            prb_dst_md = base_prb->get_md(DNNL_ARG_DST);
         }
         const auto &dst_md = prb_dst_md ? prb_dst_md : orig_dst_md;
 
@@ -896,18 +897,18 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     }
 
     // Dropout
-    if (is_fwd_training(prop_kind) && !prb->attr.dropout.is_def()) {
+    if (is_fwd_training(prop_kind) && !base_prb->attr.dropout.is_def()) {
         const auto &dropout_md = query_md(const_pd, DNNL_ARG_ATTR_DROPOUT_MASK);
         mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_MASK,
                 dnn_mem_t(dropout_md, test_engine, /* prefill = */ true));
 
-        if (prb->attr.dropout.use_host_scalars) {
+        if (base_prb->attr.dropout.use_host_scalars) {
             auto prob_md = dnn_mem_t::init_host_scalar_md(dnnl_f32);
             mem_map.emplace(
                     DNNL_ARG_ATTR_DROPOUT_PROBABILITY, dnn_mem_t(prob_md));
             auto seed_md = dnn_mem_t::init_host_scalar_md(dnnl_s64);
             mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_SEED, dnn_mem_t(seed_md));
-            if (prb->attr.dropout.offset != 0) {
+            if (base_prb->attr.dropout.offset != 0) {
                 auto offset_md = dnn_mem_t::init_host_scalar_md(dnnl_s64);
                 mem_map.emplace(
                         DNNL_ARG_ATTR_DROPOUT_OFFSET, dnn_mem_t(offset_md));
@@ -920,7 +921,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             auto seed_md = dnn_mem_t::init_md(1, &count, dnnl_s64, tag::abx);
             mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_SEED,
                     dnn_mem_t(seed_md, test_engine, /* prefill = */ true));
-            if (prb->attr.dropout.offset != 0) {
+            if (base_prb->attr.dropout.offset != 0) {
                 auto offset_md
                         = dnn_mem_t::init_md(1, &count, dnnl_s64, tag::abx);
                 mem_map.emplace(DNNL_ARG_ATTR_DROPOUT_OFFSET,
@@ -931,8 +932,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     }
 
     // Scales.
-    if (!prb->attr.scales.is_def()) {
-        const auto &sc = prb->attr.scales;
+    if (!base_prb->attr.scales.is_def()) {
+        const auto &sc = base_prb->attr.scales;
 
         const auto &src_md = query_md(const_pd, DNNL_ARG_SRC);
         const auto &wei_md = query_md(const_pd, DNNL_ARG_WEIGHTS);
@@ -951,7 +952,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             if (mask > 0) {
                 const auto &md = query_md(const_pd, exec_arg);
                 if (has_runtime_dims(md)) {
-                    const auto prb_md = prb->get_md(exec_arg);
+                    const auto prb_md = base_prb->get_md(exec_arg);
                     dims = md2dims(prb_md, mask, false, groups);
                     ndims = static_cast<int>(dims.size());
                 } else {
@@ -993,8 +994,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     }
 
     // Zero points.
-    if (!prb->attr.zero_points.is_def()) {
-        const auto &zp = prb->attr.zero_points;
+    if (!base_prb->attr.zero_points.is_def()) {
+        const auto &zp = base_prb->attr.zero_points;
 
         const auto append_zero_points = [&](int exec_arg) {
             const int exec_zp_arg = DNNL_ARG_ATTR_ZERO_POINTS | exec_arg;
@@ -1009,7 +1010,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             if (mask > 0) {
                 const auto &md = query_md(const_pd, exec_arg);
                 if (has_runtime_dims(md)) {
-                    const auto prb_md = prb->get_md(exec_arg);
+                    const auto prb_md = base_prb->get_md(exec_arg);
                     dims = md2dims(prb_md, mask, false, groups);
                     ndims = static_cast<int>(dims.size());
                 } else {
@@ -1047,8 +1048,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     }
 
     // Precomputed reductions.
-    if (!prb->attr.precomputed_reductions.is_def()) {
-        const auto &pr = prb->attr.precomputed_reductions;
+    if (!base_prb->attr.precomputed_reductions.is_def()) {
+        const auto &pr = base_prb->attr.precomputed_reductions;
 
         const auto append_precomputed_reductions = [&](int exec_arg) {
             const int exec_pr_arg
@@ -1064,7 +1065,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
             if (mask > 0) {
                 const auto &md = query_md(const_pd, exec_arg);
                 if (has_runtime_dims(md)) {
-                    const auto prb_md = prb->get_md(exec_arg);
+                    const auto prb_md = base_prb->get_md(exec_arg);
                     dims = md2dims(prb_md, mask, false, groups);
                     ndims = static_cast<int>(dims.size());
                 } else {
@@ -1097,7 +1098,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
     }
 
     // rounding mode
-    if (!prb->attr.rounding_mode.is_def()) {
+    if (!base_prb->attr.rounding_mode.is_def()) {
         int64_t count = 1;
         auto seed_md = dnn_mem_t::init_md(1, &count, dnnl_s32, tag::abx);
         mem_map.emplace(DNNL_ARG_ATTR_ROUNDING_SEED,

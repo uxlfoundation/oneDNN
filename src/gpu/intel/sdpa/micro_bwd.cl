@@ -18,7 +18,6 @@
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
-#define DBG_DKDV_PRINTS 1
 #ifdef DBG_DKDV_PRINTS
 #pragma OPENCL EXTENSION cl_intel_printf : enable
 #endif
@@ -527,10 +526,6 @@ inline void tile_store_dV(dv_acc_tile_type *dV_tile_slm,
     tile_elementwise_s(dV_tile_f32, round_to_dst);
 #endif
     tile_atomic_add(dV_tile_f32, dV, m, n, ld, offset_r, offset_c);
-    DBG_PRINT_TILE_ELEM(dV_tile_f32,
-            ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
-            ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
-            "dV after atomic_add");
 
 #else // MHA update
 
@@ -560,10 +555,6 @@ inline void tile_store_dK_t(dv_acc_tile_type *dK_tile,
     tile_elementwise_s(dK_tile_f32, round_to_dst);
 #endif
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
-    DBG_PRINT_TILE_ELEM(dK_tile_f32,
-            ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
-            ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
-            "dK_t after atomic_add");
 #else // MHA update
     dv_tile_type_dst dK_tile_dst;
     tile_copy_reblock(*dK_tile, &dK_tile_dst);
@@ -591,10 +582,6 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
     tile_elementwise_s(dK_tile_f32, round_to_dst);
 #endif
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
-    DBG_PRINT_TILE_ELEM(dK_tile_f32,
-            ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
-            ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1,
-            "dK after atomic_add");
 #else // MHA update
 
     a_tile_type_dst dK_tile_dst;
@@ -651,11 +638,6 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     BWD_UNPACK_STRIDE_PARAMS(stride_params)
 #if WITH_ATTN_MASK
     BWD_UNPACK_MSK_PARAMS(stride_params)
-#endif
-#ifdef DBG_DKDV_PRINTS
-    if (get_group_id(0) == 0 && get_group_id(1) == 0 && get_group_id(2) == 0
-            && get_local_id(1) == 0 && get_sub_group_local_id() == 0)
-        printf("[DBG] micro_sdpa_bwd kernel entry\n");
 #endif
 
     uint wg_k = get_group_id(0);
@@ -976,8 +958,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
              * with the in-place dropout modification below. apply_dropout_s_tile is
              * inlined, so without this fence the compiler may schedule the store
              * after the dropout call, storing dropped P into S2_f32_slm instead. */
-            atomic_work_item_fence(
-                    CLK_LOCAL_MEM_FENCE, memory_order_release, memory_scope_work_group);
+            mem_fence(CLK_LOCAL_MEM_FENCE);
 
             /* P_dropped = P (dot) Z, used for dV GEMM */
             apply_dropout_s_tile(&S_tile, k0 + sg_i0_kq, q0 + sg_j0_kq, k, q,
@@ -1020,14 +1001,6 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             if (sg_ij < sg_per_wg_BcD) {
                 dv_acc_tile_type dV_tile1_store;
                 tile_copy(dV_tile1, dV_tile1_store);
-                DBG_PRINT_TILE_ELEM(dV_tile1_store,
-                        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
-                        ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
-                        "dV pre-quant");
-                DBG_PRINT_TILE_ELEM(dV_tile1_store,
-                        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
-                        ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1,
-                        "dV post-quant");
                 tile_slm_add(dV_tile1_store, dV_slm, D_MAX, sg_i0_vs, sg_j0_vs);
             }
         }
@@ -1129,14 +1102,6 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             if (sg_ij < sg_per_wg_BcD) {
                 dk_acc_tile_type dK_tile1_store;
                 tile_copy(dK_tile1, dK_tile1_store);
-                DBG_PRINT_TILE_ELEM(dK_tile1_store,
-                        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
-                        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1,
-                        "dK pre-quant");
-                DBG_PRINT_TILE_ELEM(dK_tile1_store,
-                        ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
-                        ugemm_qdSt_c_type_nblock0, ugemm_qdSt_c_type_nblock1,
-                        "dK post-quant");
 #if TRANSPOSE_K
                 tile_slm_add_t(
                         dK_tile1_store, dK_slm, D_MAX, sg_i0_dk, sg_j0_dk);

@@ -28,7 +28,8 @@ namespace impl {
 class stream_impl_t {
 public:
     stream_impl_t() = delete;
-    stream_impl_t(unsigned flags) : flags_(flags) {}
+    stream_impl_t(unsigned flags)
+        : use_verbose_profiler_(false), flags_(flags) {}
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     stream_impl_t(threadpool_interop::threadpool_iface *threadpool)
         : flags_(stream_flags::in_order), threadpool_(threadpool) {}
@@ -42,6 +43,14 @@ public:
         return (flags() & dnnl::impl::stream_flags::profiling);
     }
 
+    bool is_verbose_profiler_enabled() const { return use_verbose_profiler_; }
+
+    // Checks and initializes profiler for supported runtime configs
+    virtual status_t init_verbose_profiler(engine_kind_t) {
+        use_verbose_profiler_ = false;
+        return status::success;
+    }
+
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     status_t get_threadpool(
             threadpool_interop::threadpool_iface **threadpool) const {
@@ -49,6 +58,9 @@ public:
         return status::success;
     }
 #endif
+
+protected:
+    bool use_verbose_profiler_;
 
 private:
     DNNL_DISALLOW_COPY_AND_ASSIGN(stream_impl_t)

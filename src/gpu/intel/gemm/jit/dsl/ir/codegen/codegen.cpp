@@ -1814,6 +1814,7 @@ std::vector<uint8_t> make_binary(const kernel_t &ir_kernel) {
     auto &options = ir_kernel.options;
     auto &body = ir_kernel.body;
     auto &debug_cfg = ir_kernel.debug_cfg;
+    maybe_unused(debug_cfg);
 
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
             iface, options, body);
@@ -1870,6 +1871,7 @@ GEMMSTONE_XE3P_ISA(
     auto &options = ir_kernel.options;
     auto &body = ir_kernel.body;
     auto &debug_cfg = ir_kernel.debug_cfg;
+    maybe_unused(debug_cfg);
 
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
             iface, options, body);
@@ -1925,6 +1927,7 @@ cl_kernel make_kernel(
     auto &options = ir_kernel.options;
     auto &body = ir_kernel.body;
     auto &debug_cfg = ir_kernel.debug_cfg;
+    maybe_unused(debug_cfg);
 
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
             iface, options, body);
@@ -1972,6 +1975,7 @@ LevelZeroKernelAndModule make_kernel(const kernel_t &ir_kernel,
     auto &options = ir_kernel.options;
     auto &body = ir_kernel.body;
     auto &debug_cfg = ir_kernel.debug_cfg;
+    maybe_unused(debug_cfg);
 
     ngen::NEOInterfaceHandler interface = generate_ngen_interface(
             iface, options, body);

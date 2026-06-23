@@ -74,6 +74,7 @@ public:
         , options_(desc.options(engine))
         , local_range_(desc.local_range())
         , debug_config_(debug_config) {
+        MAYBE_UNUSED(debug_config_);
         desc.init_kernel_iface(kernel_iface_);
     }
 
@@ -84,7 +85,9 @@ public:
         : kernel_iface_(kernel_iface)
         , options_(options)
         , local_range_(local_range)
-        , debug_config_(debug_config) {}
+        , debug_config_(debug_config) {
+        MAYBE_UNUSED(debug_config_);
+    }
 
     const dsl::kernel::options_t &options() const { return options_; }
     const dsl::kernel::iface_t &kernel_iface() const { return kernel_iface_; }

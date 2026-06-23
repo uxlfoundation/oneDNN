@@ -98,6 +98,10 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
         return as;
     }
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 };

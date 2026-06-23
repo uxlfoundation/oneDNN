@@ -126,6 +126,10 @@ struct prb_t : public desc_t, public base_prb_t {
     dnnl_data_type_t dst_dt() const { return dt[2]; }
     dnnl_data_type_t get_dt(data_kind_t data_kind) const;
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 };

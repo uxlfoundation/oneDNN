@@ -65,6 +65,10 @@ struct prb_t : public prb_dims_t, public base_prb_t {
     dnnl_data_type_t dt;
     std::string tag;
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 };

@@ -142,6 +142,10 @@ struct prb_t : public desc_t, public base_prb_t {
     }
     bool fuse_add_relu() const { return flags & FUSE_NORM_ADD_RELU; }
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 };

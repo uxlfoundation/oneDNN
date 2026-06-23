@@ -133,6 +133,10 @@ struct prb_t : public prb_dims_t, public base_prb_t {
     bool use_sh() const { return flags & USE_SHIFT; }
     bool skip_mean() const { return flags & USE_RMS_NORM; }
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 };

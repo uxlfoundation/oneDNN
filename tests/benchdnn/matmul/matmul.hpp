@@ -177,6 +177,10 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
     // can't be used directly from query and memory objects can't be constructed.
     benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> get_md(int arg) const override;
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 

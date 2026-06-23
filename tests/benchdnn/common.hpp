@@ -250,4 +250,12 @@ int benchdnn_getenv_int(const char *name, int default_value);
 std::string benchdnn_getenv_string(const char *name);
 
 std::string smart_bytes(double bytes);
+
+// Note: copied from src/common/utils.hpp
+template <typename derived_type, typename base_type>
+inline derived_type downcast(base_type *base) {
+    assert(dynamic_cast<derived_type>(base) == base);
+    return static_cast<derived_type>(base);
+}
+
 #endif

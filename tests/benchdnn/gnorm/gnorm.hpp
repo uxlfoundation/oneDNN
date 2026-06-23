@@ -123,6 +123,10 @@ struct prb_t : public desc_t, public base_prb_t {
 
     int64_t get_c_start(int64_t _g) const { return _g * this->ic / this->g; }
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 };

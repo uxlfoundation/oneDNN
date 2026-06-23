@@ -111,6 +111,10 @@ struct prb_t : public prb_dims_t, public base_prb_t {
     int64_t user_mb;
     thr_ctx_t ctx_init, ctx_exe;
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 };

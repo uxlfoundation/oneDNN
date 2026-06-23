@@ -83,6 +83,10 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
     std::vector<std::string> stag;
     thr_ctx_t ctx_init, ctx_exe;
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 };

@@ -536,6 +536,10 @@ struct prb_t : public desc_t, public base_prb_t {
 
     float *linear_scales;
 
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
 private:
     std::string set_repro_line() override;
 

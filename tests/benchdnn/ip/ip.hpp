@@ -131,6 +131,7 @@ struct prb_t : public desc_t, public base_prb_t {
     }
 
     void skip_unimplemented(res_t *res) const override;
+    void skip_invalid(res_t *res) const override;
 
 private:
     std::string set_repro_line() override;
@@ -202,7 +203,6 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const prb_t *prb, res_t *res,
         dnnl_primitive_t prim_ref = nullptr);
 
-void skip_invalid_prb(const prb_t *prb, res_t *res);
 void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 

@@ -53,6 +53,7 @@ struct base_prb_t {
     // Checks driver-specific cases of unimplemented functionality post pd
     // creation. Each driver overrides it with its own logic.
     virtual void skip_unimplemented(res_t *res) const {}
+    virtual void skip_invalid(res_t *res) const {}
 
     const char *str() const { return repro.c_str(); }
 

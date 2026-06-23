@@ -214,7 +214,8 @@ void prb_t::skip_unimplemented(res_t *res) const {
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_reduction);
 }
 
-void skip_invalid_prb(const prb_t *prb, res_t *res) {
+void prb_t::skip_invalid(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
     // Normalization algorithms don't make sense for integer data type.
     // They also can't have `p` parameter less than one.
     const bool is_invalid = is_norm_alg(prb->alg)

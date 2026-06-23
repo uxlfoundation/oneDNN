@@ -195,6 +195,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
     }
 
     void skip_unimplemented(res_t *res) const override;
+    void skip_invalid(res_t *res) const override;
 
 private:
     std::string set_repro_line() override;
@@ -243,7 +244,6 @@ struct cfg_t : public base_cfg_t {
 // See the description next to the definition.
 int brgemm_finalize();
 
-void skip_invalid_prb(const prb_t *prb, res_t *res);
 void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref = nullptr);
 

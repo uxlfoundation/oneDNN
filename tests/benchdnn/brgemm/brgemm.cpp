@@ -489,117 +489,6 @@ int init_kernel(kernel_args_t &kernel_args) {
     return OK;
 }
 
-void skip_invalid_prb(const prb_t *prb, res_t *res) {
-#if !defined(DNNL_EXPERIMENTAL_UKERNEL)
-    // Reorder does not support s8 and zp compensations for arbitrary shapes,
-    // so skip unsupported cases.
-    // Note: this check must be done here to avoid runtime error in benchdnn due
-    // to failed reorder creation.
-    // TODO: enable this support and remove this check.
-    const bool is_bad_ldb = prb->get_ldb() % 16 > 0 || prb->get_ldb() > 64;
-    const bool req_s8_comp = prb->src_dt() == dnnl_s8;
-    const bool req_zp_comp = !prb->attr.zero_points.is_def(DNNL_ARG_SRC);
-    if (is_bad_ldb && (req_s8_comp || req_zp_comp)) {
-        BENCHDNN_PRINT(2, "%s\n",
-                "Reorder with compensation is not supported for a given LDB");
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
-
-    if (!prb->attr.zero_points.is_def(DNNL_ARG_WEIGHTS)) {
-        // TODO: weights zero point is not supported yet.
-        // It requires enabling f32 -> u8 reorder with compensation on the
-        // library side. When enabled, it produces incorrect results for cases
-        // with K=1. Likely there's a bug inside. Postpone supporting it.
-        BENCHDNN_PRINT(2, "%s\n",
-                "Reorder with compensation is not supported for u8 destination "
-                "data type");
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
-
-    if (prb->wtag != tag::abx) {
-        BENCHDNN_PRINT(
-                2, "%s\n", "`wtag` option is supported for ukernel API only.");
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
-
-    if (!prb->strides[STRIDES_WEI].empty()) {
-        BENCHDNN_PRINT(2, "%s\n",
-                "`strides` option for weights is supported for ukernel API "
-                "only.");
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
-#else
-    if (!prb->attr.is_def()) {
-        bool non_def_zps = !prb->attr.zero_points.is_def();
-        bool non_def_fpmath = !prb->attr.fpmath_mode.is_def();
-        if (non_def_zps || non_def_fpmath) {
-            BENCHDNN_PRINT(2, "%s\n",
-                    "Non-default scales/zero-points/fpmath attributes are not "
-                    "supported");
-            res->state = SKIPPED;
-            res->reason = reason_t::skip_not_supported;
-            return;
-        }
-
-        bool non_def_po = !prb->attr.post_ops.is_def();
-        if (non_def_po) {
-            const auto &po = prb->attr.post_ops;
-            bool has_sum = po.find(attr_t::post_ops_t::kind_t::SUM) != -1;
-            if (has_sum) {
-                BENCHDNN_PRINT(2, "%s\n", "Sum post-op is not supported");
-                res->state = SKIPPED;
-                res->reason = reason_t::skip_not_supported;
-                return;
-            }
-        }
-    }
-
-    const bool ldb_ok = prb->get_ldb() == 16 || prb->get_ldb() == 32
-            || prb->get_ldb() == 48 || prb->get_ldb() == 64;
-    if (!ldb_ok) {
-        BENCHDNN_PRINT(2,
-                "Unsupported leading B dimension. Only 16, 32, 48, and 64 are "
-                "supported. Actual value is \'%zu\'.\n",
-                (size_t)prb->get_ldb());
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
-
-    if (prb->bia_dt != dnnl_data_type_undef) {
-        BENCHDNN_PRINT(2, "%s\n", "Bias is not supported");
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
-
-    if (prb->src_dt() == dnnl_s8 && prb->wei_dt() == dnnl_s8) {
-        // Pre-AMX ISAs require s8s8 compensation buffer passed. The internals
-        // should check if it was supplied and don't blow up if it wasn't
-        // provided.
-        BENCHDNN_PRINT(2, "%s\n", "s8s8 support is temporary disabled");
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
-
-    if (prb->alpha != 1.f) {
-        BENCHDNN_PRINT(2, "%s\n", "Alpha is purposely not supported");
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
-#endif
-}
-
 void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
         data_kind_t kind, const args_t &ref_args) {
     const prb_t *prb = prb_t::from(base_prb);
@@ -1133,7 +1022,7 @@ int doit(const prb_t *prb, res_t *res) {
     if (res->state == SKIPPED) return OK;
 
     // Need this here as brgemm has no primitive creation step
-    skip_invalid_prb(prb, res);
+    prb->skip_invalid(res);
     if (res->state == SKIPPED) return OK;
 
     kernel_args_t kernel_args(prb, res);

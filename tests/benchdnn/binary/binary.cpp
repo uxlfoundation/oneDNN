@@ -160,7 +160,8 @@ void prb_t::skip_unimplemented(res_t *res) const {
     }
 }
 
-void skip_invalid_prb(const prb_t *prb, res_t *res) {
+void prb_t::skip_invalid(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
     const bool is_sum = prb->attr.post_ops.find(alg_t::SUM) >= 0;
     bool bcast_src0 = false;
     for (int d = 0; d < prb->ndims; ++d)

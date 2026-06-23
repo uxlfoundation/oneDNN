@@ -416,7 +416,7 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
     // This function MUST NOT take care of cases that return `invalid_arguments`
     // status. The library must return this status for all incorrect API calls
     // and such cases must be updated on the user side.
-    skip_invalid_prb(prb, res);
+    prb->skip_invalid(res);
     if (res->state == SKIPPED) return OK;
 #ifndef DNNL_DISABLE_PRIMITIVE_CACHE
 

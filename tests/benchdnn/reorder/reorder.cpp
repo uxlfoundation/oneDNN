@@ -448,7 +448,8 @@ void prb_t::skip_unimplemented(res_t *res) const {
     }
 }
 
-void skip_invalid_prb(const prb_t *prb, res_t *res) {
+void prb_t::skip_invalid(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_NONE \
         || DNNL_GPU_RUNTIME == DNNL_RUNTIME_NONE
     auto cross_engine = prb->cross_engine;

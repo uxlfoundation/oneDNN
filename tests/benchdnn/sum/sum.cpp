@@ -106,7 +106,8 @@ void prb_t::skip_unimplemented(res_t *res) const {
     skip_unimplemented_prelu_po(prb->attr, res, dnnl_sum);
 }
 
-void skip_invalid_prb(const prb_t *prb, res_t *res) {
+void prb_t::skip_invalid(res_t *res) const {
+    const prb_t *prb = this; // Kept to avoid mass update
     // See `skip_invalid_inplace` for details.
     if (prb->inplace) {
         skip_invalid_inplace(

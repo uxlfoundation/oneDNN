@@ -141,7 +141,7 @@ void prb_t::skip_unimplemented(res_t *res) const {
     }
 }
 
-void skip_invalid_prb(const prb_t *prb, res_t *res) {}
+void prb_t::skip_invalid(res_t *res) const {}
 
 void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
         data_kind_t kind, const args_t &ref_args) {}

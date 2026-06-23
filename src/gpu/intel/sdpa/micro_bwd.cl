@@ -18,9 +18,6 @@
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
-#ifdef DBG_DKDV_PRINTS
-#pragma OPENCL EXTENSION cl_intel_printf : enable
-#endif
 
 /* Microkernel headers -- generated at runtime */
 #include "gemm_kq.h"
@@ -312,6 +309,7 @@ DECLARE_2D_TILE_COPY_REBLOCK(ktq_tile_type, SUBGROUP_SIZE,
  * its row index mod SUBGROUP_SIZE, so lane k prints the element it holds
  * at tile row k, col 0. This gives a correct per-lane sample for distributed
  * (SIMD-interleaved) tile storage, without needing a cross-lane reduction. */
+#define DBG_DKDV_PRINTS 1
 #ifdef DBG_DKDV_PRINTS
 #define DBG_PRINT_TILE_ELEM(tile, br, bc, nbr, nbc, label) \
     do { \
@@ -935,6 +933,20 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_fill(S_logsumexp_tile, 0.f);
         tile_load(&S_logsumexp_tile, ws_logsumexp, q, 1, ugemm_kq_wg_tile_n,
                 sg_j0_kq + q0, 0);
+#ifdef DBG_DKDV_PRINTS
+        if (b0 == 0 && b1 == 0 && sg_i_kq == 0 && sg_j_kq == 0
+                && get_sub_group_local_id() == 0) {
+            for (int _j = 0; _j < ugemm_kq_sg_tile_n; _j++) {
+                int _q = q0 + sg_j0_kq + _j;
+                if (_q < q) {
+                    float _ws = xlane_tile_access(S_logsumexp_tile, _j, 0,
+                            SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1);
+                    printf("[BWD_WS] b0=%d b1=%d q=%d ws=%.6f\n",
+                            b0, b1, _q, _ws);
+                }
+            }
+        }
+#endif
 #define mulscale(x) (x * scale)
         tile_elementwise(S_tile, mulscale);
 #undef mulscale
@@ -944,6 +956,14 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define scaled_exp(x) native_vexp2(x * 1.44269504089f)
         tile_elementwise(S_tile, scaled_exp);
 #undef scaled_exp
+#ifdef DBG_DKDV_PRINTS
+        /* Print P tile: each lane at position [k][q0+j] — should sum ~1 per q-col */
+        if (b0 == 0 && b1 == 0 && q0 == 0 && get_local_id(1) == 0) {
+            DBG_PRINT_TILE_ELEM(S_tile, ugemm_kq_c_type_block0,
+                    ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+                    ugemm_kq_c_type_nblock1, "[BWD_P]");
+        }
+#endif
 
         barrier(CLK_LOCAL_MEM_FENCE);
         {

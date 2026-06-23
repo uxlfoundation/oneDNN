@@ -19,6 +19,7 @@
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
+#define DBG_FWD_PRINTS 1
 
 /* Microkernel headers -- generated at runtime */
 #include "gemm_kq.h"
@@ -1176,6 +1177,20 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_store(S_max_tile_old, ws_logsumexp, q_group_size, 1, q_group_size,
                 sg_j0_kq + wg_j0, sg_i0_kq);
         // sg_i0 specified to avoid OOB subgroups from aliasing
+#ifdef DBG_FWD_PRINTS
+        if (b0 == 0 && b1 == 0 && sg_i_kq == 0 && sg_j_kq == 0
+                && get_sub_group_local_id() == 0) {
+            for (int _j = 0; _j < ugemm_kq_sg_tile_n; _j++) {
+                int _q = wg_j0 + sg_j0_kq + _j;
+                if (_q < q) {
+                    float _ws = xlane_tile_access(S_max_tile_old, _j, 0,
+                            SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1);
+                    printf("[FWD_WS] b0=%d b1=%d q=%d ws=%.6f\n",
+                            b0, b1, _q, _ws);
+                }
+            }
+        }
+#endif
 #endif
 
         /* Load column sums from SLM + reduce in registers */

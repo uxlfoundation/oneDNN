@@ -164,7 +164,7 @@ __kernel void ref_convolution_fwd(
 
     POST_OP_DATA_T sum_src;
 #if WITH_SUM
-    sum_src = load(tmp, dst + DST_OFF(n, g * OC + oc, od, oh, ow));
+    sum_src = SUM_TO_REF(dst[DST_OFF(n, g * OC + oc, od, oh, ow)]);
 #endif
 
 #if NDIMS == 3

@@ -40,7 +40,7 @@ where *matmul-knobs* are:
             default. Refer to [encodings](knobs_encoding.md) for details.
  - `--grouped=DIM_IDX:NUM_GROUPS:size0+size1+...+sizeN[:max_size]` -- specifies
             grouped encoding for a given dimension to execute grouped GEMM.
-            `DIM_IDX` is the dimension index (`0` is `M`, `1` is `K`, `2` is `N`),
+            `DIM_IDX` is the dimension index (`0` is `M`, `1` is `K`),
             `NUM_GROUPS` is the number of tensors in a group or number of experts,
             `size0+size1+...+sizeN` are `+`-separated sizes or resolved variable
             dimensions, and optional `max_size` is the max variable dim hint for

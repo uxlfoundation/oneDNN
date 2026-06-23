@@ -696,8 +696,32 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     opts_vtdA.slmPtr = true;
     ukernel_params.opts_vtdA = {opts_vtdA};
 
+    printf("[DBG_PROBLEM] vtdA:"
+           " Ta=%c Ta_ext=%c Tb=%c Tb_ext=%c Tc=%c Ts=%c"
+           " A.layout=%c A.align=%d A.crosspack=%d A.tileR=%d A.tileC=%d"
+           " B.layout=%c B.align=%d B.crosspack=%d B.tileR=%d B.tileC=%d"
+           " C.layout=%c\n",
+            typeToChar(problem_vtdA.Ta), typeToChar(problem_vtdA.Ta_ext),
+            typeToChar(problem_vtdA.Tb), typeToChar(problem_vtdA.Tb_ext),
+            typeToChar(problem_vtdA.Tc), typeToChar(problem_vtdA.Ts),
+            layoutChar(problem_vtdA.A.layout), problem_vtdA.A.alignment,
+            (int)problem_vtdA.A.crosspack, (int)problem_vtdA.A.tileR,
+            (int)problem_vtdA.A.tileC,
+            layoutChar(problem_vtdA.B.layout), problem_vtdA.B.alignment,
+            (int)problem_vtdA.B.crosspack, (int)problem_vtdA.B.tileR,
+            (int)problem_vtdA.B.tileC,
+            layoutChar(problem_vtdA.C.layout));
+    printf("[DBG_OPTS]    vtdA:"
+           " localA=%d localB=%d slmPtr=%d addToC=%d offsetA=%d offsetB=%d"
+           " scaleA=%d scaleB=%d kParallelLocal=%d\n",
+            opts_vtdA.localA, opts_vtdA.localB, opts_vtdA.slmPtr,
+            opts_vtdA.addToC, opts_vtdA.offsetA, opts_vtdA.offsetB,
+            opts_vtdA.scaleA, opts_vtdA.scaleB, opts_vtdA.kParallelLocal);
+
     //////// Q * dS^t
     auto problem_qdSt = problem;
+    problem_qdSt.Tc = problem_qdSt.Ts
+            = (vs_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
     problem_qdSt.Ta_ext
             = convert_dnnl_to_kernel_type(desc()->qry_md()->data_type);
     problem_qdSt.A.layout = MatrixLayout::Pc;
@@ -728,6 +752,28 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     opts_qdSt.localB = false;
     opts_qdSt.slmPtr = true;
     ukernel_params.opts_qdSt = {opts_qdSt};
+
+    printf("[DBG_PROBLEM] qdSt:"
+           " Ta=%c Ta_ext=%c Tb=%c Tb_ext=%c Tc=%c Ts=%c"
+           " A.layout=%c A.align=%d A.crosspack=%d A.tileR=%d A.tileC=%d"
+           " B.layout=%c B.align=%d B.crosspack=%d B.tileR=%d B.tileC=%d"
+           " C.layout=%c\n",
+            typeToChar(problem_qdSt.Ta), typeToChar(problem_qdSt.Ta_ext),
+            typeToChar(problem_qdSt.Tb), typeToChar(problem_qdSt.Tb_ext),
+            typeToChar(problem_qdSt.Tc), typeToChar(problem_qdSt.Ts),
+            layoutChar(problem_qdSt.A.layout), problem_qdSt.A.alignment,
+            (int)problem_qdSt.A.crosspack, (int)problem_qdSt.A.tileR,
+            (int)problem_qdSt.A.tileC,
+            layoutChar(problem_qdSt.B.layout), problem_qdSt.B.alignment,
+            (int)problem_qdSt.B.crosspack, (int)problem_qdSt.B.tileR,
+            (int)problem_qdSt.B.tileC,
+            layoutChar(problem_qdSt.C.layout));
+    printf("[DBG_OPTS]    qdSt:"
+           " localA=%d localB=%d slmPtr=%d addToC=%d offsetA=%d offsetB=%d"
+           " scaleA=%d scaleB=%d kParallelLocal=%d\n",
+            opts_qdSt.localA, opts_qdSt.localB, opts_qdSt.slmPtr,
+            opts_qdSt.addToC, opts_qdSt.offsetA, opts_qdSt.offsetB,
+            opts_qdSt.scaleA, opts_qdSt.scaleB, opts_qdSt.kParallelLocal);
 
     // dS * K
     auto problem_ktq = std::move(problem);

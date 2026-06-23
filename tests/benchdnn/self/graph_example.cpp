@@ -142,7 +142,7 @@ int init_op(std::unordered_map<int, graph_link_t> &op_graph,
     auto &mems = std::get<1>(op_graph[op_idx]);
     auto &ref_mems = std::get<2>(op_graph[op_idx]);
 
-    init_memory_args<prb_t>(mems, prb, prim, supported_exec_args(prb->dir));
+    init_memory_args(mems, prb, prim, supported_exec_args(prb->dir));
 
     // Initialize reference memories and fill the library memories.
     TIME_FILL(SAFE(init_ref_memory_args(ref_mems, mems, prim, prb, res), WARN));

@@ -538,8 +538,8 @@ void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
         compute_ref_bwd(prb_, args);
 }
 
-dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args) {
-    const prb_t &prb = *init_pd_args.prb;
+dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
+    const prb_t &prb = *prb_t::from(init_pd_args.base_prb);
     const dir_t dir = init_pd_args.dir;
     res_t *res = init_pd_args.res;
 

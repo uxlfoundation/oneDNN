@@ -135,7 +135,7 @@ float get_eltwise_threshold(dnnl_data_type_t dt, alg_t alg, bool is_fwd = true);
 bool eltwise_alg_returns_nan_or_inf(alg_t alg);
 bool eltwise_alg_returns_nan_or_inf(const attr_t &attr);
 
-dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args);
+dnnl_status_t init_pd(init_pd_args_t &init_pd_args);
 void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
         const args_t &ref_args);
 std::vector<int> supported_exec_args(dir_t dir);

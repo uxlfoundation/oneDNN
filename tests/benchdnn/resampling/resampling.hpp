@@ -161,7 +161,7 @@ inline int64_t dst_off_f(const prb_t *prb, int64_t mb, int64_t ic, int64_t od,
     return (((mb * prb->ic + ic) * prb->od + od) * prb->oh + oh) * prb->ow + ow;
 }
 
-dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args);
+dnnl_status_t init_pd(init_pd_args_t &init_pd_args);
 void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
         const args_t &ref_args);
 std::vector<int> supported_exec_args(dir_t dir);

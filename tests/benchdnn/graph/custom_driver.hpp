@@ -65,7 +65,7 @@ struct prb_t {
     alg_t alg = ALG_UNKNOWN;
 };
 
-dnnl_status_t init_pd(init_pd_args_t<prb_t> &init_pd_args);
+dnnl_status_t init_pd(init_pd_args_t &init_pd_args);
 std::vector<int> supported_exec_args(const prb_t *prb);
 
 int fill_mem(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max);

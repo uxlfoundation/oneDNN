@@ -414,3 +414,30 @@
 --attr-scales=wei:common:2,wei:per_oc,src:common:0.25+wei:per_oc+dst:common:4
 3x30x256:3x256x64
 2x10x97:2x97x64
+
+## Batched (3D) per-tensor scales/zero-points
+--reset
+--dt=bf16:s8:bf16
+--wtag=any,abc,acb
+--attr-scales=wei:per_tensor:bf16:128x1
+--attr-zero-points=,wei:per_tensor:s8:128x1
+--attr-fpmath=bf16:true
+6x5x256:6x256x64
+9x8x384:9x384x64
+
+## Batched (4D) per-tensor scales/zero-points
+--reset
+--dt=bf16:s8:bf16
+--wtag=any,abcd,abdc
+--attr-scales=wei:per_tensor:bf16:128x1
+--attr-zero-points=,wei:per_tensor:s8:128x1
+--attr-fpmath=bf16:true
+2x3x5x256:2x3x256x64
+2x4x6x384:2x4x384x64
+
+## Regression test(bf16 + int4 ZP + 3D shape):
+--reset
+ --dt=bf16:s8:f32
+ --attr-zero-points=wei:per_tensor:s8:64x1
+ --attr-fpmath=bf16:true
+ 4x208x512:4x512x748

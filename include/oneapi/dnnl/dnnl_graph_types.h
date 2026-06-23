@@ -66,7 +66,9 @@ typedef enum {
 
 /// Logical tensor property
 typedef enum {
-    /// Undefined tensor property
+    /// Default tensor property. It has the same effect as `variable`.
+    /// TODO(lvtao): remove `undef` and make `variable` the default property
+    /// type in a future release.
     dnnl_graph_tensor_property_undef = 0,
     /// Variable means the tensor may be changed during computation or between
     /// different iterations.

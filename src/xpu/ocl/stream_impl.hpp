@@ -69,6 +69,8 @@ public:
 
     status_t barrier();
 
+    status_t init_verbose_profiler(engine_kind_t kind) override;
+
     const xpu::ocl::context_t &ocl_ctx() const;
     xpu::ocl::context_t &ocl_ctx();
     xpu::context_t &ctx();

@@ -56,10 +56,12 @@ struct jit_pack_a_tile_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_pack_a_tile_t)
 
-    // input_typesize: 4 for f32, 2 for bf16/f16.
+    // input_typesize: 4 for f32, 2 for bf16/f16, 1 for int8 (widened to s32
+    // during packing so the brgemm kernel can use plain e32 ops).
     explicit jit_pack_a_tile_t(int input_typesize)
         : jit_generator_t("jit_pack_a_tile"), input_typesize_(input_typesize) {
-        assert(input_typesize == 2 || input_typesize == 4);
+        assert(input_typesize == 1 || input_typesize == 2
+                || input_typesize == 4);
         create_kernel();
     }
 
@@ -88,22 +90,53 @@ protected:
 
         const VReg v_tmp(0);
 
-        const int elem_shift = (input_typesize_ == 4) ? 2 : 1;
+        const int elem_shift = (input_typesize_ == 4) ? 2
+                : (input_typesize_ == 2)              ? 1
+                                                      : 0;
 
-        // Load parameters
+        // Load parameters.
         ld(reg_ws, reg_param, 0);
         ld(reg_A, reg_param, 8);
         ld(reg_LDA, reg_param, 16);
         ld(reg_bd, reg_param, 24);
-        ld(reg_rows_remaining, reg_param, 32); // reuse as valid_rows temp
         ld(reg_K, reg_param, 40);
 
         slli(reg_LDA, reg_LDA, elem_shift);
         slli(reg_bd, reg_bd, elem_shift);
 
-        // Save valid_rows for reuse in each k iteration
         const Reg reg_valid_rows = a6;
         ld(reg_valid_rows, reg_param, 32);
+
+        if (input_typesize_ == 1) {
+            const Reg reg_bidx = a7;
+            xor_(reg_k, reg_k, reg_k);
+            Label k_loop_i8, k_done_i8;
+            L(k_loop_i8);
+            beq(reg_k, reg_K, k_done_i8);
+
+            mul(reg_tmp, reg_k, reg_LDA);
+            add(reg_src, reg_A, reg_tmp);
+            mul(reg_tmp, reg_k, reg_bd);
+            slli(reg_tmp, reg_tmp, 2); // ×4 for s32 stride
+            add(reg_dst, reg_ws, reg_tmp);
+
+            xor_(reg_bidx, reg_bidx, reg_bidx);
+            Label row_loop, row_done;
+            L(row_loop);
+            beq(reg_bidx, reg_valid_rows, row_done);
+            lb(reg_tmp, reg_src, 0);
+            sw(reg_tmp, reg_dst, 0);
+            addi(reg_src, reg_src, 1);
+            addi(reg_dst, reg_dst, 4);
+            addi(reg_bidx, reg_bidx, 1);
+            j_(row_loop);
+            L(row_done);
+
+            addi(reg_k, reg_k, 1);
+            j_(k_loop_i8);
+            L(k_done_i8);
+            ret();
+        }
 
         xor_(reg_k, reg_k, reg_k); // k = 0
 
@@ -127,6 +160,7 @@ protected:
             vle32_v(v_tmp, reg_src);
             vse32_v(v_tmp, reg_dst);
         } else {
+            // bf16/f16 (int8 takes the early-return path above).
             vsetvli(reg_vl, reg_rows_remaining, SEW::e16, LMUL::m4);
             vle16_v(v_tmp, reg_src);
             vse16_v(v_tmp, reg_dst);
@@ -175,22 +209,41 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
                     && !bias_mdw.has_runtime_dims_or_strides(),
             VERBOSE_UNSUPPORTED_TAG);
 
-    // Accepted: f32/f32/f32, bf16/bf16/f32 (Zvfbfwma), f16/f16/f32 (Zvfh).
+    // Accepted: f32/f32/f32, bf16/bf16/f32 (Zvfbfwma), f16/f16/f32 (Zvfh),
+    //           s8/s8/s32. u8 / mixed-sign are rejected at brgemm_desc_init.
     const auto src_dt = src_mdw.data_type();
     const auto wei_dt = wei_mdw.data_type();
     const bool same_in_dt = src_dt == wei_dt;
     const bool in_dt_ok = same_in_dt
             && (src_dt == f32 || (src_dt == bf16 && mayiuse(zvfbfwma))
                     || (src_dt == f16 && mayiuse(zvfh)));
-    const bool types_ok = in_dt_ok && dst_mdw.data_type() == f32
-            && IMPLICATION(!bias_mdw.is_zero(), bias_mdw.data_type() == f32)
-            && desc()->accum_data_type == f32;
+    const bool in_dt_ok_int8 = (src_dt == s8 && wei_dt == s8);
+    const bool types_ok = (in_dt_ok || in_dt_ok_int8)
+            && IMPLICATION(in_dt_ok,
+                    dst_mdw.data_type() == f32
+                            && desc()->accum_data_type == f32)
+            && IMPLICATION(in_dt_ok_int8,
+                    dst_mdw.data_type() == s32
+                            && desc()->accum_data_type == s32)
+            // int8 path rejects any bias explicitly below.
+            && IMPLICATION(in_dt_ok && !bias_mdw.is_zero(),
+                    bias_mdw.data_type() == f32);
     VDISPATCH_MATMUL(types_ok, VERBOSE_UNSUPPORTED_DT);
 
     input_typesize_ = static_cast<int>(types::data_type_size(src_dt));
 
-    VDISPATCH_MATMUL(attr()->has_default_values(smask_t::post_ops, f32),
-            VERBOSE_UNSUPPORTED_ATTR);
+    // int8 path supports no bias / post-ops / scales / zero-points yet.
+    if (in_dt_ok_int8) {
+        VDISPATCH_MATMUL(bias_mdw.is_zero(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+        VDISPATCH_MATMUL(
+                attr()->has_default_values(smask_t::post_ops | smask_t::scales
+                                | smask_t::zero_points,
+                        s32),
+                VERBOSE_UNSUPPORTED_ATTR);
+    } else {
+        VDISPATCH_MATMUL(attr()->has_default_values(smask_t::post_ops, f32),
+                VERBOSE_UNSUPPORTED_ATTR);
+    }
 
     // Resolve primary + post-op binary src1 formats before the post-op check:
     // a post-op binary src1 may be format_any and must be matched to dst before
@@ -279,13 +332,14 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(
             N_ >= 16, VERBOSE_IMPL_HEURISTIC_FAIL, "N too small for brgemm");
 
-    // f32 keeps the K/A_bytes thresholds; bf16/f16 only require batch*M.
+    // f32 keeps the K/A_bytes thresholds; bf16/f16/int8 only require batch*M.
     const bool is_low_prec
             = (src_dt == data_type::bf16 || src_dt == data_type::f16);
-    if (is_low_prec) {
+    const bool is_int8 = (src_dt == s8);
+    if (is_low_prec || is_int8) {
         VDISPATCH_MATMUL(K_ >= BRGEMM_BK && batch_ * M_ >= 128,
                 VERBOSE_IMPL_HEURISTIC_FAIL,
-                "shape too small for bf16/f16 brgemm matmul");
+                "shape too small for bf16/f16/int8 brgemm matmul");
     } else {
         const dim_t A_bytes = N_ * K_ * (dim_t)input_typesize_;
         const auto L2_bytes = platform::get_per_core_cache_size(3);
@@ -307,18 +361,17 @@ status_t rvv_brgemm_matmul_t::pd_t::init(engine_t *engine) {
     cpu_isa_t brg_isa = src_dt == bf16 ? zvfbfwma : (src_dt == f16 ? zvfh : v);
 
     brgemm_desc_t brg_desc;
-    CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, src_dt, src_dt,
+    CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, src_dt, wei_dt,
             brgemm_col_major, 1.0f, 0.0f, LDA, LDB, LDC, M_brg, N_brg, K_brg));
 
     brgemm_kernel_t *kernel = nullptr;
     CHECK(brgemm_kernel_create(&kernel, brg_desc));
     brg_kernel_.reset(kernel);
 
-    // Create JIT kernels for pack_a_tile and the per-row bias + post-op chain
-    // (the latter replaces the bespoke jit_bias_postops_row_t).
-    // pack_a_tile is dtype-aware; bias+postops touch only the f32 dst.
+    // pack_a_tile is dtype-aware; the bias+postops chain touches the dst and
+    // is only built for the non-int8 path (int8 has no bias/postops yet).
     pack_kernel_.reset(new jit_pack_a_tile_t(input_typesize_));
-    {
+    if (!in_dt_ok_int8) {
         const memory_desc_wrapper bias_d(desc()->bias_desc);
         jit_uni_postops_kernel_t::conf_t conf;
         conf.dst_dt = f32;
@@ -341,21 +394,24 @@ void rvv_brgemm_matmul_t::pd_t::init_scratchpad() {
     using namespace memory_tracking::names;
     const auto &brg = brg_kernel_->get_brg();
     auto scratchpad = scratchpad_registry().registrar();
-    const size_t ws_bytes = (size_t)brg.bd_block * K_ * input_typesize_;
+    // int8 A is pre-widened to s32 during packing (4 bytes/elem).
+    const int ws_typesize = (input_typesize_ == 1) ? 4 : input_typesize_;
+    const size_t ws_bytes = (size_t)brg.bd_block * K_ * ws_typesize;
     scratchpad.template book<char>(key_brgemm_primitive_buffer_a, ws_bytes);
 }
 
 status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
-    // Byte arithmetic so one code path handles f32/bf16/f16.
+    // Byte arithmetic so one code path handles f32/bf16/f16/int8.
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
-    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
+    auto dst_char = CTX_OUT_MEM(char *, DNNL_ARG_DST);
 
     const dim_t M = pd()->M_;
     const dim_t N = pd()->N_;
     const dim_t K = pd()->K_;
     const dim_t batch = pd()->batch_;
     const int in_ts = pd()->input_typesize_;
+    const bool is_int8 = pd()->brg_kernel_->get_brg().is_int8;
 
     const auto &brg = pd()->brg_kernel_->get_brg();
     const int bd = brg.bd_block;
@@ -376,9 +432,13 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
             memory_tracking::names::key_brgemm_primitive_buffer_a);
 
     const int num_tiles = bdb + (bdb_tail > 0 ? 1 : 0);
+    // int8 A is pre-widened to s32 inside the packing kernel (4 bytes/elem).
+    const int ws_typesize = (in_ts == 1) ? 4 : in_ts;
+    const int dst_typesize = brg.typesize_C; // 4 for both f32 and s32 dst
     for (int t = 0; t < num_tiles; t++) {
         const bool is_tail = (t == bdb);
         const int rows = is_tail ? bdb_tail : bd;
+        // Tile start in the unpacked weights tensor (in_ts bytes/elem).
         const char *A_tile = weights + (dim_t)t * bd * in_ts;
 
         jit_pack_a_tile_t::call_params_t pack_p;
@@ -395,9 +455,9 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
             const float beta_kb = (kb == 0) ? 0.0f : 1.0f;
 
             brgemm_kernel_params_t p;
-            p.ptr_A = ws + kb * bd * in_ts;
+            p.ptr_A = ws + kb * bd * ws_typesize;
             p.ptr_B = src + kb * in_ts;
-            p.ptr_C = dst + t * bd; // dst stays f32
+            p.ptr_C = dst_char + (dim_t)t * bd * dst_typesize;
             p.N = total_N;
             p.M = rows;
             p.K = K_inner;
@@ -406,6 +466,12 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
             (*brg_kernel)(&p);
         }
     }
+
+    // int8 path: no bias/post-ops yet.
+    if (is_int8) return status::success;
+
+    // Beyond here dst is f32.
+    auto dst = reinterpret_cast<float *>(dst_char);
 
     // Apply bias + post-ops using JIT kernel
     const memory_desc_wrapper dst_d(pd()->dst_md());

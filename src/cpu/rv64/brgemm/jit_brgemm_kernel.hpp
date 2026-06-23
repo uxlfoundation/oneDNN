@@ -28,6 +28,7 @@ namespace rv64 {
 struct jit_brgemm_kernel_t;
 struct jit_brgemm_bf16_kernel_t;
 struct jit_brgemm_f16_kernel_t;
+struct jit_brgemm_s8_kernel_t;
 
 struct brgemm_kernel_common_t : public brgemm_kernel_t {
     brgemm_kernel_common_t(const brgemm_desc_t &brg);
@@ -66,6 +67,19 @@ struct brgemm_kernel_f16_t : public brgemm_kernel_t {
 private:
     brgemm_desc_t brg_;
     jit_brgemm_f16_kernel_t *jit_kernel_ = nullptr;
+};
+
+struct brgemm_kernel_s8_t : public brgemm_kernel_t {
+    brgemm_kernel_s8_t(const brgemm_desc_t &brg);
+    ~brgemm_kernel_s8_t() override;
+
+    status_t create_kernel() override;
+    void operator()(brgemm_kernel_params_t *) const override;
+    const brgemm_desc_t &get_brg() const override { return brg_; }
+
+private:
+    brgemm_desc_t brg_;
+    jit_brgemm_s8_kernel_t *jit_kernel_ = nullptr;
 };
 
 } // namespace rv64

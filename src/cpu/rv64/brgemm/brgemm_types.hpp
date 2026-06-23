@@ -73,6 +73,7 @@ struct brgemm_desc_t {
 
     cpu_isa_t isa_impl;
     data_type_t dt_a, dt_b, dt_c;
+
     int typesize_A, typesize_B, typesize_C;
 
     brgemm_batch_kind_t type;
@@ -90,6 +91,7 @@ struct brgemm_desc_t {
     int rdb_tail; // K % rd_block
 
     bool is_f32;
+    bool is_int8;
 };
 
 // Runtime parameters passed to the JIT micro-kernel for one M-tile.

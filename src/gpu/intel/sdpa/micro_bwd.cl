@@ -934,13 +934,12 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_load(&S_logsumexp_tile, ws_logsumexp, q, 1, ugemm_kq_wg_tile_n,
                 sg_j0_kq + q0, 0);
 #ifdef DBG_DKDV_PRINTS
-        if (b0 == 0 && b1 == 0 && sg_i_kq == 0 && sg_j_kq == 0
-                && get_sub_group_local_id() == 0) {
+        if (b0 == 0 && b1 == 0 && sg_i_kq == 0 && sg_j_kq == 0) {
             for (int _j = 0; _j < ugemm_kq_sg_tile_n; _j++) {
                 int _q = q0 + sg_j0_kq + _j;
-                if (_q < q) {
-                    float _ws = xlane_tile_access(S_logsumexp_tile, _j, 0,
-                            SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1);
+                float _ws = xlane_tile_access(S_logsumexp_tile, _j, 0,
+                        SUBGROUP_SIZE, ugemm_kq_sg_tile_n, 1, 1);
+                if (get_sub_group_local_id() == 0 && _q < q) {
                     printf("[BWD_WS] b0=%d b1=%d q=%d ws=%.6f\n",
                             b0, b1, _q, _ws);
                 }

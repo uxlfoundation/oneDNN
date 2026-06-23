@@ -210,6 +210,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     if (range.is_zero()) { return status::success; }
 
     xpu::ocl::wrapper_t<cl_event> event;
+
     if (ocl_stream->flags() & stream_flags::out_of_order) {
         const auto &event_wrappers = xpu::ocl::event_t::from(deps).events;
         std::vector<cl_event> events(
@@ -224,7 +225,8 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
         OCL_CHECK(err);
         xpu::ocl::event_t::from(out_dep).events = {event};
     } else {
-        bool save_event = save_events_ || stream.is_profiling_enabled();
+        bool save_event = save_events_ || stream.is_profiling_enabled()
+                || stream.is_verbose_profiler_enabled();
         cl_int err = xpu::ocl::clEnqueueNDRangeKernel(queue, *kernel, ndims,
                 nullptr, range.global_range().data(),
                 range.local_range() ? range.local_range().data() : nullptr, 0,
@@ -232,9 +234,18 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
         OCL_CHECK(err);
     }
 
+    // Event registration for profilers - carried out separately for each
+    // profiler
     if (stream.is_profiling_enabled()) {
         ocl_stream->profiler().register_event(
-                utils::make_unique<xpu::ocl::event_t>(std::move(event)));
+                utils::make_unique<xpu::ocl::event_t>(
+                        std::vector<xpu::ocl::wrapper_t<cl_event>> {event}));
+    }
+
+    if (stream.is_verbose_profiler_enabled()) {
+        ocl_stream->verbose_profiler()->register_event(
+                std::make_shared<xpu::ocl::event_t>(
+                        std::vector<xpu::ocl::wrapper_t<cl_event>> {event}));
     }
 
     return status::success;

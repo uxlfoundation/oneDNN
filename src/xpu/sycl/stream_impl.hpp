@@ -57,11 +57,13 @@ public:
     status_t copy(impl::stream_t *stream, const memory_storage_t &src,
             const memory_storage_t &dst, size_t size, const xpu::event_t &deps,
             xpu::event_t &out_dep,
-            xpu::stream_profiler_t *stream_profiler = nullptr);
+            xpu::stream_profiler_t *stream_profiler = nullptr,
+            xpu::verbose_profiler_t *verbose_profiler = nullptr);
 
     status_t fill(const memory_storage_t &dst, uint8_t pattern, size_t size,
             const xpu::event_t &deps, xpu::event_t &out_dep,
-            xpu::stream_profiler_t *stream_profiler = nullptr);
+            xpu::stream_profiler_t *stream_profiler = nullptr,
+            xpu::verbose_profiler_t *verbose_profiler = nullptr);
 
     status_t barrier();
 

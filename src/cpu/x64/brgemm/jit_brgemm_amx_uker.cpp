@@ -3187,7 +3187,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
             && IMPLICATION(brg.is_input_convert(), brg.is_fp8_via_convert())
             && IMPLICATION(
                     brg.is_f32 || brg.is_bf16, brg.dt_c == data_type::f32)
-            && IMPLICATION(brg.is_int8, brg.dt_c == data_type::s32)
+            && IMPLICATION(brg.is_int8, brg.is_integer_acc())
             && brg.brgattr.bd_mask_level == 0;
     need_to_apply_alpha_beta_
             = (brg.beta != 0.f && !may_load_accumulators_) || brg.alpha != 1.f;

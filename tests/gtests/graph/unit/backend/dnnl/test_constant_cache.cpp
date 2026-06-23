@@ -64,7 +64,7 @@ TEST(test_constant_cache, CombineKey) {
 
 TEST(test_constant_cache, NoEvictWhenCacheFull) {
     graph::engine_t &engine = *get_engine();
-    auto engine_ = dnnl_impl::make_dnnl_engine(engine);
+    auto engine_ = dnnl_impl::make_dnnl_engine(&engine);
 
     graph::constant_tensor_cache_t cache(0);
     ASSERT_EQ(cache.set_capacity(0), graph::status::success);

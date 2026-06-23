@@ -21,8 +21,8 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
-void memory_reparser_t::execute(const stream_t *stream,
-        const std::unordered_map<int, memory> &args) const {
+void memory_reparser_t::execute(
+        stream_t *stream, const std::unordered_map<int, memory> &args) const {
     auto from = args.find(DNNL_ARG_FROM);
     auto to = args.find(DNNL_ARG_TO);
     if (from == args.end() || to == args.end()) return;
@@ -35,15 +35,15 @@ void memory_reparser_t::execute(const stream_t *stream,
         const memory temp_mem = make_dnnl_memory(dst_mem.get_desc(),
                 src_mem.get_engine(), src_mem.get_data_handle());
         dnnl::reorder(temp_mem, dst_mem)
-                .execute(make_dnnl_stream(*stream),
+                .execute(make_dnnl_stream(stream),
                         const_cast<memory &>(temp_mem),
                         const_cast<memory &>(dst_mem));
     }
 }
 
 #ifdef DNNL_WITH_SYCL
-std::optional<::sycl::event> memory_reparser_t::execute_sycl(
-        const stream_t *stream, const std::unordered_map<int, memory> &args,
+std::optional<::sycl::event> memory_reparser_t::execute_sycl(stream_t *stream,
+        const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     auto from = args.find(DNNL_ARG_FROM);
     auto to = args.find(DNNL_ARG_TO);
@@ -60,7 +60,7 @@ std::optional<::sycl::event> memory_reparser_t::execute_sycl(
         const memory &src_mem = from->second;
         const memory &dst_mem = to->second;
         auto sycl_queue
-                = dnnl::sycl_interop::get_queue(make_dnnl_stream(*stream));
+                = dnnl::sycl_interop::get_queue(make_dnnl_stream(stream));
         auto e = sycl_queue.memcpy(dst_mem.get_data_handle(),
                 src_mem.get_data_handle(), dst_mem.get_desc().get_size());
         return e;
@@ -69,7 +69,7 @@ std::optional<::sycl::event> memory_reparser_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event memory_reparser_t::execute_ocl(const stream_t *stream,
+cl_event memory_reparser_t::execute_ocl(stream_t *stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
     auto from = args.find(DNNL_ARG_FROM);
@@ -86,9 +86,8 @@ cl_event memory_reparser_t::execute_ocl(const stream_t *stream,
         const bool empty = deps.empty() || deps[0] == nullptr;
         const cl_uint num = empty ? 0 : static_cast<cl_uint>(deps.size());
         cl_event e;
-        UNUSED_STATUS(xpu::ocl::usm::memcpy(const_cast<stream_t *>(stream),
-                dst_mem.get_data_handle(), src_mem.get_data_handle(),
-                dst_mem.get_desc().get_size(), num,
+        UNUSED_STATUS(xpu::ocl::usm::memcpy(stream, dst_mem.get_data_handle(),
+                src_mem.get_data_handle(), dst_mem.get_desc().get_size(), num,
                 empty ? nullptr : deps.data(), &e));
         return e;
     }

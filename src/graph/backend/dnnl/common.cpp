@@ -79,9 +79,9 @@ dims group_dims(const dims &adims, dim groups) {
     return new_dims;
 }
 
-dnnl::engine make_dnnl_engine(const engine_t &eng) {
+dnnl::engine make_dnnl_engine(engine_t *aengine) {
     dnnl::engine engine;
-    engine.reset(const_cast<engine_t *>(&eng), true); // not own
+    engine.reset(aengine, true); // not own
     return engine;
 }
 
@@ -90,9 +90,9 @@ dnnl::engine make_host_engine() {
     return dnnl::engine(dnnl::engine::kind::cpu, 0);
 }
 
-dnnl::stream make_dnnl_stream(const stream_t &stream) {
+dnnl::stream make_dnnl_stream(stream_t *astream) {
     dnnl::stream strm;
-    strm.reset(const_cast<stream_t *>(&stream), true); // not own
+    strm.reset(astream, true); // not own
     return strm;
 }
 
@@ -554,20 +554,18 @@ dnnl::accumulation_mode str2accumulation_mode(
 }
 
 status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
-        const stream_t *astream,
-        const std::unordered_map<int, memory> &exec_args) {
+        stream_t *astream, const std::unordered_map<int, memory> &exec_args) {
     std::vector<dnnl_exec_arg_t> vec_args;
     vec_args.reserve(exec_args.size());
     for (const auto &a : exec_args)
         vec_args.push_back({a.first, a.second.get(true)});
 
     const primitive_iface_t *primitive_iface = prim.get();
-    stream_t *stream = const_cast<stream_t *>(astream);
     int nargs = static_cast<int>(vec_args.size());
     const dnnl_exec_arg_t *c_args = vec_args.data();
 
-    bool ok = true && !dnnl::impl::utils::any_null(primitive_iface, stream)
-            && primitive_iface->engine() == stream->engine()
+    bool ok = true && !dnnl::impl::utils::any_null(primitive_iface, astream)
+            && primitive_iface->engine() == astream->engine()
             && IMPLICATION(nargs > 0, c_args != nullptr);
     if (!ok) return status::invalid_arguments;
 
@@ -576,7 +574,7 @@ status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
             primitive_iface->pd()->impl().get(), nargs, c_args, args);
     if (status != status::success) return status;
 
-    exec_ctx_t ctx(stream, std::move(args));
+    exec_ctx_t ctx(astream, std::move(args));
     status = dnnl::impl::primitive_execute(primitive_iface, ctx);
 
     return status;

@@ -33,11 +33,11 @@ namespace graph {
 namespace dnnl_impl {
 
 status_t layer_norm_fwd_t::compile_impl(const dnnl_partition_impl_t *part,
-        const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
+        engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     engine_ = eng;
 
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
@@ -118,7 +118,7 @@ void layer_norm_fwd_t::prepare_args_set(const execution_args_set_t *res,
     }
 }
 
-status_t layer_norm_fwd_t::execute_impl(const stream_t *stream,
+status_t layer_norm_fwd_t::execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
 
@@ -179,7 +179,7 @@ status_t layer_norm_fwd_t::execute_impl(const stream_t *stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-status_t layer_norm_fwd_t::sycl_execute_impl(const stream_t *stream,
+status_t layer_norm_fwd_t::sycl_execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
@@ -252,7 +252,7 @@ status_t layer_norm_fwd_t::sycl_execute_impl(const stream_t *stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-status_t layer_norm_fwd_t::ocl_execute_impl(const stream_t *stream,
+status_t layer_norm_fwd_t::ocl_execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
@@ -324,11 +324,11 @@ status_t layer_norm_fwd_t::ocl_execute_impl(const stream_t *stream,
 
 #if BUILD_TRAINING
 status_t layer_norm_bwd_t::compile_impl(const dnnl_partition_impl_t *part,
-        const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
+        engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     engine_ = eng;
 
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
@@ -383,7 +383,7 @@ void layer_norm_bwd_t::prepare_args_set(const execution_args_set_t *res,
     }
 }
 
-status_t layer_norm_bwd_t::execute_impl(const stream_t *stream,
+status_t layer_norm_bwd_t::execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
 
@@ -405,7 +405,7 @@ status_t layer_norm_bwd_t::execute_impl(const stream_t *stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-status_t layer_norm_bwd_t::sycl_execute_impl(const stream_t *stream,
+status_t layer_norm_bwd_t::sycl_execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
@@ -437,7 +437,7 @@ status_t layer_norm_bwd_t::sycl_execute_impl(const stream_t *stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-status_t layer_norm_bwd_t::ocl_execute_impl(const stream_t *stream,
+status_t layer_norm_bwd_t::ocl_execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {

@@ -58,7 +58,7 @@ bool need_prop_once_more(const std::shared_ptr<subgraph_t> &sg) {
 }
 
 void force_partition_output_plain_layout(std::shared_ptr<subgraph_t> &sg) {
-    const auto p_engine = make_dnnl_engine(*sg->engine_);
+    const auto p_engine = make_dnnl_engine(sg->engine_);
     auto &pd_cache = sg->pd_cache_;
     const auto &fpm = sg->get_fpmath_mode();
     bool use_block_layout = sg->can_use_blocked_layout_;
@@ -105,7 +105,7 @@ void force_partition_output_plain_layout(std::shared_ptr<subgraph_t> &sg) {
 /// support propagating layout both from inputs to outputs and from outputs to
 /// inputs.
 status_t layout_propagation(std::shared_ptr<subgraph_t> &sg) {
-    const auto p_engine = make_dnnl_engine(*sg->engine_);
+    const auto p_engine = make_dnnl_engine(sg->engine_);
     auto &pd_cache = sg->pd_cache_;
     auto &fpm = sg->get_fpmath_mode();
     bool use_block_layout = sg->can_use_blocked_layout_;

@@ -41,12 +41,12 @@ TEST(test_layout_propagator, LayoutPropagatorForPermute) {
     op->add_output(lt_out);
 
     graph::engine_t &eng = *get_engine();
-    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
+    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(&eng);
     dnnl_impl::pd_cache_t pd_cache;
     bool use_block_layout = false;
     const graph::fpmath_t fpm {graph::fpmath_mode::any, false};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
-            std::vector<std::shared_ptr<graph::op_t>> {op}, eng, fpm, false,
+            std::vector<std::shared_ptr<graph::op_t>> {op}, &eng, fpm, false,
             false);
     dnnl_impl::subgraph_rewriter_t rewriter {sg};
     ASSERT_EQ(dnnl_impl::layout_propagator_for_permute(
@@ -66,12 +66,12 @@ TEST(test_layout_propagator, LayoutPropagatorForReorder) {
     op->add_output(lt_out);
 
     graph::engine_t &eng = *get_engine();
-    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
+    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(&eng);
     dnnl_impl::pd_cache_t pd_cache;
     bool use_block_layout = false;
     const graph::fpmath_t fpm {graph::fpmath_mode::any, false};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
-            std::vector<std::shared_ptr<graph::op_t>> {op}, eng, fpm, false,
+            std::vector<std::shared_ptr<graph::op_t>> {op}, &eng, fpm, false,
             false);
     dnnl_impl::subgraph_rewriter_t rewriter {sg};
     ASSERT_EQ(layout_propagator_for_reorder(
@@ -83,7 +83,7 @@ TEST(test_layout_propagator, LayoutPropagatorForReorder) {
 
 TEST(test_layout_propagator, LayoutPropagatorForSumDeathTest) {
     graph::engine_t &eng = *get_engine();
-    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
+    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(&eng);
     dnnl_impl::pd_cache_t pd_cache;
     bool use_block_layout = false;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
@@ -96,7 +96,7 @@ TEST(test_layout_propagator, LayoutPropagatorForSumDeathTest) {
     op->add_output(lt_out);
     const graph::fpmath_t fpm {graph::fpmath_mode::any, false};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
-            std::vector<std::shared_ptr<graph::op_t>> {op}, eng, fpm, false,
+            std::vector<std::shared_ptr<graph::op_t>> {op}, &eng, fpm, false,
             false);
     dnnl_impl::subgraph_rewriter_t rewriter {sg};
     ASSERT_EQ(layout_propagator_for_sum(
@@ -127,13 +127,13 @@ TEST(test_layout_propagator, LayoutPropagatorForSumFailDeathTest) {
 
 TEST(test_layout_propagator, LayoutPropagatorForSubZpsDeathTest) {
     graph::engine_t &eng = *get_engine();
-    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
+    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(&eng);
     dnnl_impl::pd_cache_t pd_cache;
     bool use_block_layout = false;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
     const graph::fpmath_t fpm {graph::fpmath_mode::any, false};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
-            std::vector<std::shared_ptr<graph::op_t>> {op}, eng, fpm, false,
+            std::vector<std::shared_ptr<graph::op_t>> {op}, &eng, fpm, false,
             false);
     dnnl_impl::subgraph_rewriter_t rewriter {sg};
 #ifndef NDEBUG
@@ -149,13 +149,13 @@ TEST(test_layout_propagator, LayoutPropagatorForSubZpsDeathTest) {
 
 TEST(test_layout_propagator, LayoutPropagatorForAddZpsDeathTest) {
     graph::engine_t &eng = *get_engine();
-    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(eng);
+    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(&eng);
     dnnl_impl::pd_cache_t pd_cache;
     bool use_block_layout = false;
     auto op = std::make_shared<graph::op_t>(0, graph::op_kind::Wildcard, "op");
     const graph::fpmath_t fpm {graph::fpmath_mode::any, false};
     auto sg = std::make_shared<dnnl_impl::subgraph_t>(
-            std::vector<std::shared_ptr<graph::op_t>> {op}, eng, fpm, false,
+            std::vector<std::shared_ptr<graph::op_t>> {op}, &eng, fpm, false,
             false);
     dnnl_impl::subgraph_rewriter_t rewriter {sg};
 #ifndef NDEBUG

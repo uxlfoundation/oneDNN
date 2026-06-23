@@ -119,8 +119,8 @@ bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 template <bool quantized, memory::data_type dt>
 impl::status_t sdp_decomp_config_t::construct_params(
         std::shared_ptr<subgraph_t> &sg, registry_t &sdp_registry,
-        const engine_t &engine, const std::vector<logical_tensor_t> &inputs) {
-    auto p_engine = make_dnnl_engine(engine);
+        engine_t *engine, const std::vector<logical_tensor_t> &inputs) {
+    auto p_engine = make_dnnl_engine(const_cast<engine_t *>(engine));
     // Record the ops inside of SDP pattern for later usage
     CHECK(record_sdp_ops(sg, quantized));
     const dim_t last_dim = ndims - 1, second_last_dim = ndims - 2;
@@ -903,15 +903,15 @@ dnnl::primitive_attr sdp_decomp_config_t::make_primitive_attr(
 template status_t
 sdp_decomp_config_t::construct_params<false, dnnl::memory::data_type::f32>(
         std::shared_ptr<subgraph_t> &sg, registry_t &mqa_registry,
-        const engine_t &engine, const std::vector<logical_tensor_t> &inputs);
+        engine_t *engine, const std::vector<logical_tensor_t> &inputs);
 template status_t
 sdp_decomp_config_t::construct_params<true, dnnl::memory::data_type::f32>(
         std::shared_ptr<subgraph_t> &sg, registry_t &mqa_registry,
-        const engine_t &engine, const std::vector<logical_tensor_t> &inputs);
+        engine_t *engine, const std::vector<logical_tensor_t> &inputs);
 template status_t
 sdp_decomp_config_t::construct_params<true, dnnl::memory::data_type::bf16>(
         std::shared_ptr<subgraph_t> &sg, registry_t &mqa_registry,
-        const engine_t &engine, const std::vector<logical_tensor_t> &inputs);
+        engine_t *engine, const std::vector<logical_tensor_t> &inputs);
 
 } // namespace dnnl_impl
 } // namespace graph

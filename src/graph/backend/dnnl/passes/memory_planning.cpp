@@ -852,7 +852,7 @@ status_t memory_planner_t::prepare_execution_args_set(
 // - Assign internal allocated persistent buffer to corresponding edges.
 // - Prepare the memory objects which will be used in execution.
 status_t memory_planner_t::run(std::shared_ptr<subgraph_t> &sg) {
-    const auto p_engine = make_dnnl_engine(*sg->engine_);
+    const auto p_engine = make_dnnl_engine(sg->engine_);
     const auto &inputs = sg->ins_;
     const auto &outputs = sg->outs_;
 

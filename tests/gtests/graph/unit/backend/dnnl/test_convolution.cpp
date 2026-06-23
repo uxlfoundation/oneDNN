@@ -5259,7 +5259,7 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionSwishU8s8u8MixBf16) {
 
     SKIP_IF(unsupported_data_type(static_cast<dnnl::memory::data_type>(
                                           graph::data_type::bf16),
-                    graph::dnnl_impl::make_dnnl_engine(*engine)),
+                    graph::dnnl_impl::make_dnnl_engine(engine)),
             "Skip bf16 examples for systems that do not support avx512_core.");
 
     std::string qtype = "per_channel";
@@ -5730,7 +5730,7 @@ TEST(test_convolution_execute_subgraph_int8, ConvolutionAddU8s8u8MixBf16) {
 
     SKIP_IF(unsupported_data_type(static_cast<dnnl::memory::data_type>(
                                           graph::data_type::bf16),
-                    graph::dnnl_impl::make_dnnl_engine(*engine)),
+                    graph::dnnl_impl::make_dnnl_engine(engine)),
             "Skip bf16 examples for systems that do not support avx512_core.");
 
     std::string qtype = "per_channel";

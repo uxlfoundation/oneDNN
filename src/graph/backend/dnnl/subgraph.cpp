@@ -49,11 +49,11 @@ using op_ptr = std::shared_ptr<op_t>;
 using value_ptr = std::shared_ptr<value_t>;
 using ltw = logical_tensor_wrapper_t;
 
-subgraph_t::subgraph_t(const std::vector<op_ptr> &ops, const engine_t &eng,
+subgraph_t::subgraph_t(const std::vector<op_ptr> &ops, engine_t *eng,
         const graph::fpmath_t &fpm_mode, bool can_use_blocked_layout,
         bool reset_layout)
-    : graph_t(ops, eng.kind())
-    , engine_(&eng)
+    : graph_t(ops, eng->kind())
+    , engine_(eng)
     , can_use_blocked_layout_(can_use_blocked_layout) {
     set_fpmath_mode(fpm_mode.mode_, fpm_mode.apply_to_int_);
     if (reset_layout) { set_all_layout_to_any(get_mutable_ops()); }

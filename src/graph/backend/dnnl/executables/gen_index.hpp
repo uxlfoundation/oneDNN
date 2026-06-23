@@ -36,25 +36,25 @@ struct genindex_executable_t : public op_executable_t {
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
             const fpmath_t &fpmath, bool use_block_layout);
 
-    void execute(const stream_t *stream,
+    void execute(stream_t *stream,
             const std::unordered_map<int, memory> &args) const override;
-    void execute_impl(const stream_t *stream,
+    void execute_impl(stream_t *stream,
             const std::unordered_map<int, memory> &args) const;
 
 #ifdef DNNL_WITH_SYCL
-    std::optional<::sycl::event> execute_sycl(const stream_t *stream,
+    std::optional<::sycl::event> execute_sycl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override;
-    std::optional<::sycl::event> execute_sycl_impl(const stream_t *stream,
+    std::optional<::sycl::event> execute_sycl_impl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const;
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream_t *stream,
+    cl_event execute_ocl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override;
-    cl_event execute_ocl_impl(const stream_t *stream,
+    cl_event execute_ocl_impl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const;
 #endif

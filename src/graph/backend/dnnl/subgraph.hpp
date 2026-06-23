@@ -64,7 +64,7 @@ private:
     }
 
 public:
-    subgraph_t(const std::vector<op_ptr> &ops, const engine_t &eng,
+    subgraph_t(const std::vector<op_ptr> &ops, engine_t *eng,
             const graph::fpmath_t &fpm_mode, bool can_use_blocked_layout,
             bool reset_layout);
 
@@ -76,7 +76,7 @@ public:
     std::vector<logical_tensor_t> outs_;
 
     // The engine that the subgraph is compiled for
-    const engine_t *engine_;
+    engine_t *engine_;
 
     bool can_use_blocked_layout_;
 

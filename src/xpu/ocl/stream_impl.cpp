@@ -247,6 +247,16 @@ status_t stream_impl_t::barrier() {
     return status::success;
 }
 
+status_t stream_impl_t::init_verbose_profiler(engine_kind_t kind) {
+    use_verbose_profiler_ = false;
+    if (!get_verbose(verbose_t::exec_profile)) return status::success;
+    if (kind != engine_kind::gpu) return status::success;
+    // verbose profiling support is only for in-order queues
+    if (flags() & stream_flags::out_of_order) return status::success;
+    use_verbose_profiler_ = true;
+    return status::success;
+}
+
 const xpu::ocl::context_t &stream_impl_t::ocl_ctx() const {
     static xpu::ocl::context_t empty_ctx {};
     return ctx_.get(empty_ctx);

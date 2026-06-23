@@ -951,15 +951,17 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             // store softmax in f32 for S2 reload (systolic only)
             tile_store(S_tile, S2_f32_slm, ugemm_kq_wg_tile_m,
                     ugemm_kq_wg_tile_n, ugemm_kq_wg_tile_m, sg_i0_kq, sg_j0_kq);
+            /* Fence: prevent IGC from reordering the S2_f32_slm store with any
+             * subsequent in-place modification of S_tile registers. Two cases:
+             * 1. WITH_DROPOUT: apply_dropout_s_tile() (inlined) mutates S_tile
+             *    in-place, so IGC may store dropped P into S2_f32_slm.
+             * 2. USE_SYSTOLIC_UKERNEL (no dropout): tile_copy_to_vec2_cvt() reads
+             *    S_tile to produce packed f16; IGC may schedule the SLM write after
+             *    the conversion, storing f16-corrupted values into S2_f32_slm. */
+            mem_fence(CLK_LOCAL_MEM_FENCE);
 #endif
 
 #if WITH_DROPOUT
-            /* Fence: prevent IGC from reordering the S2_f32_slm store (un-dropped P)
-             * with the in-place dropout modification below. apply_dropout_s_tile is
-             * inlined, so without this fence the compiler may schedule the store
-             * after the dropout call, storing dropped P into S2_f32_slm instead. */
-            mem_fence(CLK_LOCAL_MEM_FENCE);
-
             /* P_dropped = P (dot) Z, used for dV GEMM */
             apply_dropout_s_tile(&S_tile, k0 + sg_i0_kq, q0 + sg_j0_kq, k, q,
                     dropout_batch_head_base, k, use_dropout_offset,

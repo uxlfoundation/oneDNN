@@ -114,8 +114,8 @@ inline arg_indices_t dummy_arg_indices_getter(const op_t *op) {
 
 struct op_executable_t {
     virtual ~op_executable_t() = default;
-    virtual void execute(const stream_t *stream,
-            const std::unordered_map<int, memory> &args) const
+    virtual void execute(
+            stream_t *stream, const std::unordered_map<int, memory> &args) const
             = 0;
     virtual bool is_initialized() const = 0;
 #ifdef DNNL_WITH_SYCL
@@ -127,14 +127,14 @@ struct op_executable_t {
     // std::optional here to indicate whether the returned event is valid or
     // not. std::optional is available since C++17 which is required to build
     // with SYCL support.
-    virtual std::optional<::sycl::event> execute_sycl(const stream_t *stream,
+    virtual std::optional<::sycl::event> execute_sycl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const
             = 0;
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    virtual cl_event execute_ocl(const stream_t *stream,
+    virtual cl_event execute_ocl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const
             = 0;
@@ -196,14 +196,14 @@ inline std::shared_ptr<op_executable_t> executable_creator(
 // In the execute_sycl function, we will run a dummy sycl kernel to gather all
 // the input events
 struct dummy_impl_t : public op_executable_t {
-    void execute(const stream_t *stream,
+    void execute(stream_t *stream,
             const std::unordered_map<int, memory> &args) const override {
         UNUSED(stream);
         UNUSED(args);
     }
 
 #ifdef DNNL_WITH_SYCL
-    std::optional<::sycl::event> execute_sycl(const stream_t *stream,
+    std::optional<::sycl::event> execute_sycl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
         UNUSED(args);
@@ -217,7 +217,7 @@ struct dummy_impl_t : public op_executable_t {
         // Otherwise, we run a trivial kernel to gather all deps. The
         // dummy task is needed to not get an error related to empty
         // kernel.
-        dnnl::stream s = make_dnnl_stream(*stream);
+        dnnl::stream s = make_dnnl_stream(stream);
         auto q = dnnl::sycl_interop::get_queue(s);
         auto e = q.submit([&](::sycl::handler &cgh) {
             cgh.depends_on(deps);
@@ -228,7 +228,7 @@ struct dummy_impl_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream_t *stream,
+    cl_event execute_ocl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override {
         UNUSED(args);
@@ -240,7 +240,7 @@ struct dummy_impl_t : public op_executable_t {
         if (deps.size() == 1) return deps[0];
 
         // Otherwise, gather all dependencies.
-        dnnl::stream s = make_dnnl_stream(*stream);
+        dnnl::stream s = make_dnnl_stream(stream);
         auto q = dnnl::ocl_interop::get_command_queue(s);
         cl_event e;
         auto err = xpu::ocl::clEnqueueMarkerWithWaitList(

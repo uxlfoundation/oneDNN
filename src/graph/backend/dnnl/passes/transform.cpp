@@ -2660,7 +2660,7 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
     const static std::set<op_kind_t> reorder_op_set = {op_kind::_reorder};
 
     auto fuse_two_adjacent_reorders = [&](bool &changed) -> status_t {
-        auto p_engine = make_dnnl_engine(*sg->engine_);
+        auto p_engine = make_dnnl_engine(sg->engine_);
         auto &pd_cache = sg->pd_cache_;
         auto &fpm = sg->get_fpmath_mode();
         bool use_block_layout = sg->can_use_blocked_layout_;

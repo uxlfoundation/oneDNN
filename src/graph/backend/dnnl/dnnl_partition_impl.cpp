@@ -118,8 +118,7 @@ const backend_t *dnnl_partition_impl_t::get_assigned_backend() const {
 status_t dnnl_partition_impl_t::compile(
         compiled_partition_t *compiled_partition,
         const std::vector<logical_tensor_t> &inputs,
-        const std::vector<logical_tensor_t> &outputs,
-        const engine_t *eng) const {
+        const std::vector<logical_tensor_t> &outputs, engine_t *eng) const {
     // compile will transform the subgraph in partition, so we make
     // a copy
     auto part = std::dynamic_pointer_cast<dnnl_partition_impl_t>(this->clone());
@@ -170,7 +169,7 @@ status_t dnnl_partition_impl_t::compile(
 
     // wrapper kernel to dnnl_compiled_partition_impl_t
     auto pimpl = std::make_shared<dnnl_compiled_partition_impl_t>(
-            *eng, ordered_inputs, ordered_outputs, kernel);
+            eng, ordered_inputs, ordered_outputs, kernel);
     compiled_partition->init(pimpl);
 
     return status::success;

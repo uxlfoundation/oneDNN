@@ -39,17 +39,17 @@ struct reduction_executable_t : public op_executable_t {
             with_sum_ = op->get_attr<bool>(op_attr::with_sum);
     }
 
-    void execute(const stream_t *stream,
+    void execute(stream_t *stream,
             const std::unordered_map<int, memory> &args) const override;
 
 #ifdef DNNL_WITH_SYCL
-    std::optional<::sycl::event> execute_sycl(const stream_t *stream,
+    std::optional<::sycl::event> execute_sycl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override;
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream_t *stream,
+    cl_event execute_ocl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override;
 #endif

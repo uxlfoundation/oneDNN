@@ -35,16 +35,16 @@ struct eltwise_executable_t : public op_executable_t {
         prim_ = dnnl::eltwise_forward(desc);
     }
 
-    void execute(const stream_t *stream,
+    void execute(stream_t *stream,
             const std::unordered_map<int, memory> &args) const override {
-        prim_.execute(make_dnnl_stream(*stream), args);
+        prim_.execute(make_dnnl_stream(stream), args);
     }
 
 #ifdef DNNL_WITH_SYCL
-    std::optional<::sycl::event> execute_sycl(const stream_t *stream,
+    std::optional<::sycl::event> execute_sycl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
-        dnnl::stream s = make_dnnl_stream(*stream);
+        dnnl::stream s = make_dnnl_stream(stream);
         auto e = dnnl::sycl_interop::execute(prim_, s, args, deps);
         if (s.get_engine().get_kind() == engine::kind::cpu) e.wait();
         return e;
@@ -52,11 +52,11 @@ struct eltwise_executable_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream_t *stream,
+    cl_event execute_ocl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override {
         auto e = dnnl::ocl_interop::execute(
-                prim_, make_dnnl_stream(*stream), args, deps);
+                prim_, make_dnnl_stream(stream), args, deps);
         return e;
     }
 #endif
@@ -79,16 +79,16 @@ struct eltwise_bwd_executable_t : public op_executable_t {
         prim_ = dnnl::eltwise_backward(desc);
     }
 
-    void execute(const stream_t *stream,
+    void execute(stream_t *stream,
             const std::unordered_map<int, memory> &args) const override {
-        prim_.execute(make_dnnl_stream(*stream), args);
+        prim_.execute(make_dnnl_stream(stream), args);
     }
 
 #ifdef DNNL_WITH_SYCL
-    std::optional<::sycl::event> execute_sycl(const stream_t *stream,
+    std::optional<::sycl::event> execute_sycl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
-        dnnl::stream s = make_dnnl_stream(*stream);
+        dnnl::stream s = make_dnnl_stream(stream);
         auto e = dnnl::sycl_interop::execute(prim_, s, args, deps);
         if (s.get_engine().get_kind() == engine::kind::cpu) e.wait();
         return e;
@@ -96,11 +96,11 @@ struct eltwise_bwd_executable_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream_t *stream,
+    cl_event execute_ocl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override {
         auto e = dnnl::ocl_interop::execute(
-                prim_, make_dnnl_stream(*stream), args, deps);
+                prim_, make_dnnl_stream(stream), args, deps);
         return e;
     }
 #endif
@@ -135,17 +135,17 @@ struct binary_executable_t : public op_executable_t {
             with_sum_ = op->get_attr<bool>(op_attr::with_sum);
     }
 
-    void execute(const stream_t *stream,
+    void execute(stream_t *stream,
             const std::unordered_map<int, memory> &args) const override;
 
 #ifdef DNNL_WITH_SYCL
-    std::optional<::sycl::event> execute_sycl(const stream_t *stream,
+    std::optional<::sycl::event> execute_sycl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override;
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream_t *stream,
+    cl_event execute_ocl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override;
 #endif
@@ -171,16 +171,16 @@ struct prelu_executable_t : public op_executable_t {
         prim_ = dnnl::prelu_forward(desc);
     }
 
-    void execute(const stream_t *stream,
+    void execute(stream_t *stream,
             const std::unordered_map<int, memory> &args) const override {
-        prim_.execute(make_dnnl_stream(*stream), args);
+        prim_.execute(make_dnnl_stream(stream), args);
     }
 
 #ifdef DNNL_WITH_SYCL
-    std::optional<::sycl::event> execute_sycl(const stream_t *stream,
+    std::optional<::sycl::event> execute_sycl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
-        dnnl::stream s = make_dnnl_stream(*stream);
+        dnnl::stream s = make_dnnl_stream(stream);
         auto e = dnnl::sycl_interop::execute(prim_, s, args, deps);
         if (s.get_engine().get_kind() == engine::kind::cpu) e.wait();
         return e;
@@ -188,11 +188,11 @@ struct prelu_executable_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream_t *stream,
+    cl_event execute_ocl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override {
         auto e = dnnl::ocl_interop::execute(
-                prim_, make_dnnl_stream(*stream), args, deps);
+                prim_, make_dnnl_stream(stream), args, deps);
         return e;
     }
 #endif
@@ -215,16 +215,16 @@ struct prelu_bwd_executable_t : public op_executable_t {
         prim_ = dnnl::prelu_backward(desc);
     }
 
-    void execute(const stream_t *stream,
+    void execute(stream_t *stream,
             const std::unordered_map<int, memory> &args) const override {
-        prim_.execute(make_dnnl_stream(*stream), args);
+        prim_.execute(make_dnnl_stream(stream), args);
     }
 
 #ifdef DNNL_WITH_SYCL
-    std::optional<::sycl::event> execute_sycl(const stream_t *stream,
+    std::optional<::sycl::event> execute_sycl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override {
-        dnnl::stream s = make_dnnl_stream(*stream);
+        dnnl::stream s = make_dnnl_stream(stream);
         auto e = dnnl::sycl_interop::execute(prim_, s, args, deps);
         if (s.get_engine().get_kind() == engine::kind::cpu) e.wait();
         return e;
@@ -232,11 +232,11 @@ struct prelu_bwd_executable_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream_t *stream,
+    cl_event execute_ocl(stream_t *stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override {
         auto e = dnnl::ocl_interop::execute(
-                prim_, make_dnnl_stream(*stream), args, deps);
+                prim_, make_dnnl_stream(stream), args, deps);
         return e;
     }
 #endif

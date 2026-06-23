@@ -623,7 +623,7 @@ bool dnnl_graph_partition::is_supported() const {
 status_t dnnl_graph_partition::compile(compiled_partition_t *cp,
         std::vector<const logical_tensor_t *> &inputs,
         std::vector<const logical_tensor_t *> &outputs,
-        const engine_t *aengine) const {
+        engine_t *aengine) const {
     status_t ret;
 
     if (!aengine || aengine->kind() != pimpl_->get_engine_kind())
@@ -707,7 +707,7 @@ status_t dnnl_graph_partition::compile(
         std::pair<compiled_partition_t *, cache_state_t> &compiled_partition,
         std::vector<const logical_tensor_t *> &inputs,
         std::vector<const logical_tensor_t *> &outputs,
-        const engine_t *aengine) const {
+        engine_t *aengine) const {
     namespace partition_hashing = partition_hashing;
     auto &global_compiled_partition_cache = compiled_partition_cache();
     partition_hashing::key_t key(this, aengine, inputs, outputs);
@@ -716,7 +716,7 @@ status_t dnnl_graph_partition::compile(
         const partition_t *partition;
         std::vector<const logical_tensor_t *> &inputs;
         std::vector<const logical_tensor_t *> &outputs;
-        const engine_t *engine;
+        engine_t *engine;
         cache_state_t cache_status;
     };
     create_context_t context {this, inputs, outputs, aengine,
@@ -743,7 +743,7 @@ status_t dnnl_graph_partition::compile(
     return result.status;
 }
 
-status_t dnnl_graph_compiled_partition::execute(const stream_t *astream,
+status_t dnnl_graph_compiled_partition::execute(stream_t *astream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs,
         const tensor_t *scratchpad) const {
@@ -782,7 +782,7 @@ status_t dnnl_graph_compiled_partition::execute(const stream_t *astream,
 }
 
 #ifdef DNNL_WITH_SYCL
-status_t dnnl_graph_compiled_partition::execute_sycl(const stream_t *astream,
+status_t dnnl_graph_compiled_partition::execute_sycl(stream_t *astream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad,
         const std::vector<::sycl::event> &sycl_deps,
@@ -810,8 +810,7 @@ status_t dnnl_graph_compiled_partition::execute_sycl(const stream_t *astream,
 // It looks very similar to execute_sycl(). Consider to merge them in the
 // future.
 graph::status_t dnnl_graph_compiled_partition::execute_ocl(
-        const graph::stream_t *astream,
-        const std::vector<graph::tensor_t> &inputs,
+        graph::stream_t *astream, const std::vector<graph::tensor_t> &inputs,
         const std::vector<graph::tensor_t> &outputs,
         const graph::tensor_t *scratchpad,
         const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) const {

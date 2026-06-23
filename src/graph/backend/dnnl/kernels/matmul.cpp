@@ -34,12 +34,12 @@ namespace dnnl_impl {
 
 template <bool quantized>
 status_t matmul_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
-        const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
+        engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     engine_ = eng;
 
     subgraph_ = std::make_shared<subgraph_t>(
-            part->get_ops(), *engine_, part->get_fpmath_mode(), true, true);
+            part->get_ops(), engine_, part->get_fpmath_mode(), true, true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
     subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {
@@ -189,7 +189,7 @@ void matmul_t<quantized>::prepare_args_set(const execution_args_set_t *res,
 }
 
 template <bool quantized>
-status_t matmul_t<quantized>::execute_impl(const stream_t *stream,
+status_t matmul_t<quantized>::execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
 
@@ -251,7 +251,7 @@ status_t matmul_t<quantized>::execute_impl(const stream_t *stream,
 
 #ifdef DNNL_WITH_SYCL
 template <bool quantized>
-status_t matmul_t<quantized>::sycl_execute_impl(const stream_t *stream,
+status_t matmul_t<quantized>::sycl_execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
@@ -325,7 +325,7 @@ status_t matmul_t<quantized>::sycl_execute_impl(const stream_t *stream,
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 template <bool quantized>
-status_t matmul_t<quantized>::ocl_execute_impl(const stream_t *stream,
+status_t matmul_t<quantized>::ocl_execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {

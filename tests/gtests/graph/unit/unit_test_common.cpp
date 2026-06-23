@@ -137,6 +137,7 @@ void set_test_engine_kind(graph::engine_kind_t kind) {
 }
 
 dnnl::memory make_memory_from_tensor(const graph::tensor_t &t) {
-    auto eng = graph::dnnl_impl::make_dnnl_engine(*(t.get_engine()));
+    auto eng = graph::dnnl_impl::make_dnnl_engine(
+            const_cast<graph::engine_t *>(t.get_engine()));
     return graph::dnnl_impl::make_dnnl_memory(t, eng);
 }

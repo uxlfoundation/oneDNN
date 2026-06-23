@@ -40,13 +40,13 @@ namespace dnnl_impl {
 
 template <bool quantized, memory::data_type dt>
 status_t mqa_decomp_kernel_t<quantized, dt>::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *eng,
+        const dnnl_partition_impl_t *part, engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     engine_ = eng;
 
     // get subgraph from the deep copied partition
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
@@ -109,7 +109,7 @@ status_t mqa_decomp_kernel_t<quantized, dt>::compile_impl(
 
     // Initialize and construct kernel params
     mqa_cfg_.construct_params<quantized, dt>(
-            subgraph_, mqa_registry_, *engine_, inputs);
+            subgraph_, mqa_registry_, engine_, inputs);
 
     return status::success;
 }
@@ -152,14 +152,13 @@ void mqa_decomp_kernel_t<quantized, dt>::prepare_sub_args(
 }
 
 template <bool quantized, memory::data_type dt>
-status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
-        const stream_t *stream, const std::vector<tensor_t> &inputs,
+status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(stream_t *stream,
+        const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     auto *tstream
-            = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
-                    const_cast<stream_t *>(stream));
+            = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(stream);
 #endif
 
     // each thread's own local resource

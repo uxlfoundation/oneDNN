@@ -42,7 +42,7 @@ namespace dnnl_impl {
 
 template <bool quantized>
 status_t sdp_primitive_kernel_t<quantized>::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *eng,
+        const dnnl_partition_impl_t *part, engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
 // sdp_primitive_kernel_t only supports Intel GPU.
@@ -55,7 +55,7 @@ status_t sdp_primitive_kernel_t<quantized>::compile_impl(
     // First, dry run on a deep copy
     subgraph_
             = std::make_shared<subgraph_t>(graph_t::deep_copy(part->get_ops()),
-                    *engine_, part->get_fpmath_mode(), false, true);
+                    engine_, part->get_fpmath_mode(), false, true);
     CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
     CHECK(cfg_.initial_check(subgraph_, inputs, outputs));
@@ -160,7 +160,7 @@ void sdp_primitive_kernel_t<quantized>::prepare_args_set(
 }
 
 template <bool quantized>
-status_t sdp_primitive_kernel_t<quantized>::execute_impl(const stream_t *stream,
+status_t sdp_primitive_kernel_t<quantized>::execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
 
@@ -181,8 +181,8 @@ status_t sdp_primitive_kernel_t<quantized>::execute_impl(const stream_t *stream,
 
 #ifdef DNNL_WITH_SYCL
 template <bool quantized>
-status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
-        const stream_t *stream, const std::vector<tensor_t> &inputs,
+status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(stream_t *stream,
+        const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
@@ -218,8 +218,8 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 template <bool quantized>
-status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
-        const stream_t *stream, const std::vector<tensor_t> &inputs,
+status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(stream_t *stream,
+        const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
     auto deps = cl_deps;

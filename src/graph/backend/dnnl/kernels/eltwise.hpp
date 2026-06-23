@@ -68,8 +68,8 @@ public:
         return status::success;
     }
 
-    status_t compile_impl(const dnnl_partition_impl_t *part,
-            const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
+    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *eng,
+            const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 
     void prepare_args_set(const execution_args_set_t *res,
@@ -77,13 +77,12 @@ public:
             const std::vector<tensor_t> &outputs,
             const scratchpad_t &scratchpad);
 
-    status_t execute_impl(const stream_t *stream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute_impl(stream_t *stream, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf) override;
 
 #ifdef DNNL_WITH_SYCL
-    status_t sycl_execute_impl(const stream_t *stream,
+    status_t sycl_execute_impl(stream_t *stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -92,7 +91,7 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    status_t ocl_execute_impl(const stream_t *stream,
+    status_t ocl_execute_impl(stream_t *stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -127,8 +126,8 @@ public:
         res_cache.release();
     }
 
-    status_t compile_impl(const dnnl_partition_impl_t *part,
-            const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
+    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *eng,
+            const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 
     void prepare_args_set(const execution_args_set_t *res,
@@ -136,13 +135,12 @@ public:
             const std::vector<tensor_t> &outputs,
             const scratchpad_t &scratchpad);
 
-    status_t execute_impl(const stream_t *stream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute_impl(stream_t *stream, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf) override;
 
 #ifdef DNNL_WITH_SYCL
-    status_t sycl_execute_impl(const stream_t *stream,
+    status_t sycl_execute_impl(stream_t *stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -151,7 +149,7 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    status_t ocl_execute_impl(const stream_t *stream,
+    status_t ocl_execute_impl(stream_t *stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,

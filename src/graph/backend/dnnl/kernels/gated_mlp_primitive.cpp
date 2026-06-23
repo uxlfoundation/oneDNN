@@ -40,7 +40,7 @@ namespace dnnl_impl {
 
 template <bool quantized>
 status_t gated_mlp_primitive_kernel_t<quantized>::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *eng,
+        const dnnl_partition_impl_t *part, engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
 // gated_mlp_primitive_kernel_t only supports Intel GPU.
@@ -53,7 +53,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::compile_impl(
     // First, dry run on a deep copy
     subgraph_
             = std::make_shared<subgraph_t>(graph_t::deep_copy(part->get_ops()),
-                    *engine_, part->get_fpmath_mode(), false, true);
+                    engine_, part->get_fpmath_mode(), false, true);
     CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
     subgraph_visualizer_t vis(part->id(), [this](const value_t *val) {
@@ -141,8 +141,8 @@ void gated_mlp_primitive_kernel_t<quantized>::prepare_args_set(
 }
 
 template <bool quantized>
-status_t gated_mlp_primitive_kernel_t<quantized>::execute_impl(
-        const stream_t *stream, const std::vector<tensor_t> &inputs,
+status_t gated_mlp_primitive_kernel_t<quantized>::execute_impl(stream_t *stream,
+        const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
 
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -163,7 +163,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::execute_impl(
 #ifdef DNNL_WITH_SYCL
 template <bool quantized>
 status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
-        const stream_t *stream, const std::vector<tensor_t> &inputs,
+        stream_t *stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps, ::sycl::event *ret_event) {
 // gated_mlp_primitive_kernel_t only supports Intel GPU.
@@ -200,7 +200,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 template <bool quantized>
 status_t gated_mlp_primitive_kernel_t<quantized>::ocl_execute_impl(
-        const stream_t *stream, const std::vector<tensor_t> &inputs,
+        stream_t *stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &ocl_deps, cl_event *ret_event) {
     auto deps = ocl_deps;

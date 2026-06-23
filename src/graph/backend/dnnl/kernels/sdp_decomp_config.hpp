@@ -54,7 +54,7 @@ public:
 
     bool get_inplace() const { return is_inplace_; }
 
-    status_t execute(const stream_t *astream,
+    status_t execute(stream_t *astream,
             const std::unordered_map<int, dnnl::memory> &args) const {
         if (is_inplace_) {
             void *handle = args.at(DNNL_ARG_SRC).get_data_handle();
@@ -163,7 +163,7 @@ public:
     template <bool quantized = false,
             memory::data_type dt = memory::data_type::f32>
     impl::status_t construct_params(std::shared_ptr<subgraph_t> &sg,
-            registry_t &sdp_registry, const engine_t &engine,
+            registry_t &sdp_registry, engine_t *engine,
             const std::vector<logical_tensor_t> &inputs);
 
 private:

@@ -649,7 +649,7 @@ TEST(test_bmm_execute_subgraph_int8, BmmDivX8x8bf16_CPU) {
 
     SKIP_IF(unsupported_data_type(static_cast<dnnl::memory::data_type>(
                                           graph::data_type::bf16),
-                    graph::dnnl_impl::make_dnnl_engine(*engine)),
+                    graph::dnnl_impl::make_dnnl_engine(engine)),
             "Skip bf16 examples for systems that do not support avx512_core.");
 
     std::vector<std::string> dtypes = {"uint8", "int8"};
@@ -804,7 +804,7 @@ TEST(test_bmm_execute_subgraph_int8, BmmDivBlockedX8x8bf16_CPU) {
 
     SKIP_IF(unsupported_data_type(static_cast<dnnl::memory::data_type>(
                                           graph::data_type::bf16),
-                    graph::dnnl_impl::make_dnnl_engine(*engine)),
+                    graph::dnnl_impl::make_dnnl_engine(engine)),
             "Skip bf16 examples for systems that do not support avx512_core.");
 
     std::vector<std::string> dtypes = {"uint8", "int8"};

@@ -83,9 +83,9 @@ bool mqa_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
 
 template <bool quantized, memory::data_type dt>
 status_t mqa_decomp_config_t::construct_params(std::shared_ptr<subgraph_t> &sg,
-        registry_t &mqa_registry, const engine_t &engine,
+        registry_t &mqa_registry, engine_t *engine,
         const std::vector<logical_tensor_t> &inputs) {
-    auto p_engine = make_dnnl_engine(engine);
+    auto p_engine = make_dnnl_engine(const_cast<engine_t *>(engine));
     // Record the ops inside of MQA pattern in a specific order.
     status_t sta = record_mqa_ops(sg);
     if (sta != status::success) return sta;
@@ -479,7 +479,7 @@ dnnl::primitive_attr mqa_decomp_config_t::make_primitive_attr(
 template status_t
 mqa_decomp_config_t::construct_params<false, dnnl::memory::data_type::f32>(
         std::shared_ptr<subgraph_t> &sg, registry_t &mqa_registry,
-        const engine_t &engine, const std::vector<logical_tensor_t> &inputs);
+        engine_t *engine, const std::vector<logical_tensor_t> &inputs);
 
 } // namespace dnnl_impl
 } // namespace graph

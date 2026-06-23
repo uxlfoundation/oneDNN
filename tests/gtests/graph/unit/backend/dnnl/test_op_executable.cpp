@@ -59,7 +59,7 @@ TEST(test_op_executable, DummyImpl) {
 #endif
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
-    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(*engine);
+    dnnl::engine p_engine = dnnl_impl::make_dnnl_engine(engine);
     auto op_exec = std::make_shared<dnnl_impl::dummy_impl_t>();
 
     // test empty input events

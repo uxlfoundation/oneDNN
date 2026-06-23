@@ -58,11 +58,11 @@ dims get_compatible_dilates(const dims &dilates, size_t input_size = 4);
 
 dims group_dims(const dims &adims, dim groups);
 
-engine make_dnnl_engine(const engine_t &eng);
+engine make_dnnl_engine(engine_t *aengine);
 
 engine make_host_engine();
 
-stream make_dnnl_stream(const stream_t &stream);
+stream make_dnnl_stream(stream_t *astream);
 
 memory::desc make_dnnl_memory_desc(const logical_tensor_t &lt);
 
@@ -129,8 +129,7 @@ size_t generate_constant_md_hash(
 // Besides, non-shared part of the code includes objects conversion from C++ to
 // C since the original call requires C them.
 status_t dnnl_primitive_execute_without_tp_hook(const primitive &prim,
-        const stream_t *astream,
-        const std::unordered_map<int, memory> &exec_args);
+        stream_t *astream, const std::unordered_map<int, memory> &exec_args);
 
 #define BACKEND_DNNL_CHECK(statement) \
     do { \

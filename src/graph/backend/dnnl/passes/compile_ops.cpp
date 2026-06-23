@@ -39,7 +39,7 @@ namespace dnnl_impl {
 /// complete shape/dtype/layout information. We can create executable for these
 /// ops.
 status_t compile_ops(std::shared_ptr<subgraph_t> &sg) {
-    const auto p_engine = make_dnnl_engine(*sg->engine_);
+    const auto p_engine = make_dnnl_engine(sg->engine_);
     auto &pd_cache = sg->pd_cache_;
     auto &fpm = sg->get_fpmath_mode();
     bool use_block_layout = sg->can_use_blocked_layout_;

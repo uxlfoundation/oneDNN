@@ -21,8 +21,8 @@ namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
-void host_scalar_executable_t::execute(const stream_t *stream,
-        const std::unordered_map<int, memory> &args) const {
+void host_scalar_executable_t::execute(
+        stream_t *stream, const std::unordered_map<int, memory> &args) const {
     auto it_src = args.find(DNNL_ARG_FROM);
     auto it_dst = args.find(DNNL_ARG_TO);
 
@@ -41,7 +41,7 @@ void host_scalar_executable_t::execute(const stream_t *stream,
 
 #ifdef DNNL_WITH_SYCL
 std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
-        const stream_t *stream, const std::unordered_map<int, memory> &args,
+        stream_t *stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     auto it_src = args.find(DNNL_ARG_FROM);
     auto it_dst = args.find(DNNL_ARG_TO);
@@ -63,7 +63,7 @@ std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
                             ->data_handle();
     void *dst_ptr = dst_mem.get_data_handle();
     const size_t size = src_mem.get_desc().get_size();
-    auto sycl_queue = dnnl::sycl_interop::get_queue(make_dnnl_stream(*stream));
+    auto sycl_queue = dnnl::sycl_interop::get_queue(make_dnnl_stream(stream));
     return sycl_queue.submit([&](::sycl::handler &cgh) {
         cgh.depends_on(deps);
         cgh.memcpy(dst_ptr, src_ptr, size);
@@ -72,7 +72,7 @@ std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event host_scalar_executable_t::execute_ocl(const stream_t *stream,
+cl_event host_scalar_executable_t::execute_ocl(stream_t *stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
     auto it_src = args.find(DNNL_ARG_FROM);
@@ -96,9 +96,9 @@ cl_event host_scalar_executable_t::execute_ocl(const stream_t *stream,
     cl_event e = nullptr;
     DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
         const DType val = src_mem.get_host_scalar_value<DType>();
-        UNUSED_STATUS(xpu::ocl::usm::memcpy(const_cast<stream_t *>(stream),
-                dst_mem.get_data_handle(), static_cast<const void *>(&val),
-                size, num, empty ? nullptr : deps.data(), &e));
+        UNUSED_STATUS(xpu::ocl::usm::memcpy(stream, dst_mem.get_data_handle(),
+                static_cast<const void *>(&val), size, num,
+                empty ? nullptr : deps.data(), &e));
         xpu::ocl::clWaitForEvents(1, &e);
         xpu::ocl::clReleaseEvent(e);
     });

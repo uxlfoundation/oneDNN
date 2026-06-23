@@ -34,12 +34,12 @@ namespace dnnl_impl {
 
 template <bool quantized>
 status_t conv_fwd_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
-        const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
+        engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     engine_ = eng;
 
     // get subgraph from the deep copied partition
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
@@ -146,12 +146,12 @@ status_t conv_fwd_t<quantized>::prepare_inplace_pairs_impl() {
 
 #if BUILD_TRAINING
 status_t conv_bwd_data_t::compile_impl(const dnnl_partition_impl_t *part,
-        const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
+        engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     engine_ = eng;
 
     // get subgraph from the deep copied partition
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 
@@ -205,12 +205,12 @@ status_t conv_bwd_data_t::compile_impl(const dnnl_partition_impl_t *part,
 }
 
 status_t conv_bwd_weights_t::compile_impl(const dnnl_partition_impl_t *part,
-        const engine_t *eng, const std::vector<logical_tensor_t> &inputs,
+        engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     engine_ = eng;
 
     // get subgraph from the deep copied partition
-    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), *engine_,
+    subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
     BACKEND_DNNL_CHECK(set_given_inputs_outputs(subgraph_, inputs, outputs));
 

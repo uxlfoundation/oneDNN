@@ -124,14 +124,14 @@ public:
     graph::status_t compile(graph::compiled_partition_t *compiled_partition,
             std::vector<const graph::logical_tensor_t *> &inputs,
             std::vector<const graph::logical_tensor_t *> &outputs,
-            const graph::engine_t *e = nullptr) const;
+            graph::engine_t *e = nullptr) const;
 
     graph::status_t compile(
             std::pair<graph::compiled_partition_t *, dnnl::impl::cache_state_t>
                     &compiled_partition,
             std::vector<const graph::logical_tensor_t *> &inputs,
             std::vector<const graph::logical_tensor_t *> &outputs,
-            const graph::engine_t *aengine) const;
+            graph::engine_t *aengine) const;
 
     graph::status_t infer_shape(
             std::vector<const graph::logical_tensor_t *> &inputs,
@@ -176,13 +176,13 @@ public:
         return pimpl_->get_inplace_pairs();
     }
 
-    graph::status_t execute(const graph::stream_t *astream,
+    graph::status_t execute(graph::stream_t *astream,
             const std::vector<graph::tensor_t> &inputs,
             const std::vector<graph::tensor_t> &outputs,
             const graph::tensor_t *scratchpad = nullptr) const;
 
 #ifdef DNNL_WITH_SYCL
-    graph::status_t execute_sycl(const graph::stream_t *astream,
+    graph::status_t execute_sycl(graph::stream_t *astream,
             const std::vector<graph::tensor_t> &inputs,
             const std::vector<graph::tensor_t> &outputs,
             const graph::tensor_t *scratchpad,
@@ -191,7 +191,7 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    graph::status_t execute_ocl(const graph::stream_t *astream,
+    graph::status_t execute_ocl(graph::stream_t *astream,
             const std::vector<graph::tensor_t> &inputs,
             const std::vector<graph::tensor_t> &outputs,
             const graph::tensor_t *scratchpad,

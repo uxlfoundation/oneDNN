@@ -157,13 +157,14 @@ status_t stream_t::run_verbose_profiler(
 status_t stream_t::copy(const memory_storage_t &src,
         const memory_storage_t &dst, size_t size, const xpu::event_t &deps,
         xpu::event_t &out_dep) {
-    return impl()->copy(this, src, dst, size, deps, out_dep, profiler_.get());
+    return impl()->copy(this, src, dst, size, deps, out_dep, profiler_.get(),
+            verbose_profiler());
 }
 
 status_t stream_t::fill(const memory_storage_t &dst, uint8_t pattern,
         size_t size, const xpu::event_t &deps, xpu::event_t &out_dep) {
-    return impl()->fill(
-            this, dst, pattern, size, deps, out_dep, profiler_.get());
+    return impl()->fill(this, dst, pattern, size, deps, out_dep,
+            profiler_.get(), verbose_profiler());
 }
 
 status_t stream_t::barrier() {

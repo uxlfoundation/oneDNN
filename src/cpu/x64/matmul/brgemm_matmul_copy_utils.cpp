@@ -6882,7 +6882,13 @@ private:
 
         L(main_N_loop);
         compute_K_loop(conf_->LDB);
-        add(reg_src, conf_->LDB2 * typesize_);
+
+        // Advance to the next N-block (a column-block of the weights, LDB cols
+        // wide). Weights are logical [K, N], so their N stride is B_strides[0]
+        // (= b_dt_sz * weights strides[ndims - 1]); each N-block spans the whole
+        // K, so src steps by it. Buffer B holds only the K_blk rows copied here,
+        // so tr_src steps by the N-tile stride LDB2.
+        add(reg_src, conf_->B_strides[0]);
         add(reg_tr_src, conf_->LDB2 * tr_typesize_);
 
         sub(reg_N_blk, conf_->LDB);

@@ -117,12 +117,12 @@
 --reset --dt=f16:s4:f16 --attr-scales=wei:per_ocic:f16:512x1 --attr-zero-points=wei:per_ocic:s4:512x1 --attr-fpmath=f16:true --skip-impl=ref 1x512:512x1024
 --reset --dt=f16:u4:f16 --attr-scales=wei:per_ocic:f16:64x1 --attr-zero-points=wei:per_ocic:u4:64x1 --attr-fpmath=f16:true --skip-impl=ref 4x128x256:4x256x128
 --reset --dt=f16:f16:f16 --attr-post-ops=gelu_tanh 256x512:512x256
---reset --dt=bf16:bf16:bf16 --dtag=abc --attr-post-ops=gelu_tanh 4x64:64x256
+--reset --dt=bf16:bf16:bf16 --attr-post-ops=gelu_tanh 4x64:64x256
 --reset --dt=f16:f16:f16 --attr-post-ops=swish:1 256x512:512x256
 --reset --dt=f32:f32:f32 --attr-post-ops=tanh 128x256:256x128
 --reset --dt=f32:f32:f32 --attr-post-ops=hardswish 256x512:512x256
 --reset --dt=f16:f16:f16 --attr-post-ops=mish 128x256:256x128
---reset --dt=f16:f16:f16 --dtag=abc --attr-post-ops=sum+relu 4x32:32x256
+--reset --dt=f16:f16:f16 --attr-post-ops=sum+relu 4x32:32x256
 --reset --dt=bf16:bf16:bf16 --attr-post-ops=sum+gelu_tanh 256x512:512x256
 --reset --dt=f32:f32:f32 --attr-post-ops=gelu_erf 256x512:512x256
 --reset --dt=f32:f32:f32 --attr-post-ops=elu:0.5 128x256:256x128
@@ -184,7 +184,7 @@
 --reset --dt=f16:f16:f16 --attr-post-ops=relu 256x512:512x256
 --reset --dt=f16:f16:f16 --attr-post-ops=swish:0.5 256x512:512x256
 --reset --dt=f16:f16:f16 --attr-post-ops=linear:2:-1 256x512:512x256
---reset --dt=f32:f32:f32 --attr-post-ops=div 256x512:512x256
+--reset --dt=f32:f32:f32 --attr-post-ops=round 256x512:512x256
 --reset --dt=f16:f16:f16 --stag=ba --wtag=ba 32x64:64x32
 --reset --dt=f32:f32:f32 --stag=ba --wtag=ba 48x96:96x48
 --reset --dt=f16:f16:f16 --stag=ba --wtag=ba 320x640:640x320

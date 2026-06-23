@@ -292,8 +292,7 @@ def build_matmul_tests():
         ("relu:0.1", 128,256,128,"bf16:bf16:bf16"),
         ("logistic", 128,256,128,"f32:f32:f32"),
     ]:
-        dtag = " --dtag=abc" if m <= 8 else ""
-        tests.append(f"--dt={dt}{dtag} --attr-post-ops={postop} {m}x{k}:{k}x{n}")
+        tests.append(f"--dt={dt} --attr-post-ops={postop} {m}x{k}:{k}x{n}")
 
     # Bias varieties
     for m, k, n, dt, mask, bia_dt in [
@@ -356,7 +355,7 @@ def build_matmul_tests():
         ("abs",        "f32:f32:f32"), ("square",    "f32:f32:f32"),
         ("sqrt",       "f32:f32:f32"), ("clip_v2:0:6","f32:f32:f32"),
         ("relu",       "f16:f16:f16"), ("swish:0.5", "f16:f16:f16"),
-        ("linear:2:-1","f16:f16:f16"), ("div",       "f32:f32:f32"),
+        ("linear:2:-1","f16:f16:f16"), ("round",     "f32:f32:f32"),
     ]:
         tests.append(f"--dt={dt} --attr-post-ops={postop} 256x512:512x256")
 

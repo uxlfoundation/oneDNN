@@ -499,6 +499,9 @@ int init_prim(const thr_ctx_t &thr_ctx,
 using setup_cmp_func_t = std::function<void(
         compare::compare_t &, const base_prb_t *, data_kind_t, const args_t &)>;
 
+using compute_ref_func_t = std::function<void(
+        const base_prb_t *, dir_t, const args_t &, dnnl_primitive_t)>;
+
 // `check_correctness` function is designed to be called from every driver where
 // correctness validation is needed. It takes:
 // * A pointer to a `prb_t` problem.
@@ -526,9 +529,9 @@ using setup_cmp_func_t = std::function<void(
 //   - Finds correspondent memory arguments from backend and reference and
 //     compares them.
 //   - Result of comparison is saved into `res` object.
-template <typename prb_t>
-void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
-        const args_t &args, const args_t &ref_args,
+inline void check_correctness(const base_prb_t *base_prb,
+        const std::vector<data_kind_t> &kinds, const args_t &args,
+        const args_t &ref_args, const compute_ref_func_t &compute_ref_func,
         const setup_cmp_func_t &setup_cmp_func, res_t *res, dir_t dir,
         dnnl_primitive_t prim_ref = nullptr) {
     // Fast exit for any modes but correctness.
@@ -542,7 +545,7 @@ void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
         BENCHDNN_PRINT(8, "%s\n", "[NAIVE_REF]: Start");
     }
 
-    TIME_REF(compute_ref(prb, dir, ref_args, prim_ref));
+    TIME_REF(compute_ref_func(base_prb, dir, ref_args, prim_ref));
 
     // Forward-for-backward service primitives define `kinds` as empty to skip
     // validation. This is to avoid extra checks on higher level.
@@ -557,7 +560,7 @@ void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
         compare::compare_t cmp;
         cmp.set_data_kind(kind);
         cmp.set_has_prim_ref(bool(prim_ref));
-        setup_cmp_func(cmp, prb, kind, ref_args);
+        setup_cmp_func(cmp, base_prb, kind, ref_args);
 
         int arg = data_kind2exec_arg(kind);
         assert(arg > 0);
@@ -565,7 +568,7 @@ void check_correctness(const prb_t *prb, const std::vector<data_kind_t> &kinds,
         const auto &mem_dt = args.find(arg);
         const auto &mem_fp = ref_args.find(arg);
 
-        TIME_COMPARE(cmp.compare(mem_fp, mem_dt, prb->attr, res));
+        TIME_COMPARE(cmp.compare(mem_fp, mem_dt, base_prb->attr, res));
     }
 
     if (prim_ref && res->state == FAILED) {

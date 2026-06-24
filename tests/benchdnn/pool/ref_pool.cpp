@@ -139,8 +139,9 @@ void compute_ref_bwd(const prb_t *prb, const args_t &args) {
     });
 }
 
-void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref) {
+    const prb_t *prb = prb_t::from(base_prb);
     if (dir & FLAG_FWD)
         compute_ref_fwd(prb, args);
     else

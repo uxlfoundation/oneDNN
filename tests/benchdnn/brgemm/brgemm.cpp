@@ -1349,7 +1349,8 @@ int doit(const prb_t *prb, res_t *res) {
                 WARN);
 #endif
         res->state = EXECUTED;
-        check_correctness(prb, {DST}, args, ref_args, setup_cmp, res, prb->dir);
+        check_correctness(prb, {DST}, args, ref_args, compute_ref, setup_cmp,
+                res, prb->dir);
     }
 
     // Create a bind to match internals to run performance measurements.

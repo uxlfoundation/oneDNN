@@ -20,8 +20,9 @@
 
 namespace binary {
 
-void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref) {
+    const prb_t *prb = prb_t::from(base_prb);
 
     const dnn_mem_t &src0 = args.find(DNNL_ARG_SRC_0);
     const dnn_mem_t &src1 = args.find(DNNL_ARG_SRC_1);

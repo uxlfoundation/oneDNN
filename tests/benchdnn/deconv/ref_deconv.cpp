@@ -519,8 +519,9 @@ void compute_ref_bwd_w(
     }
 }
 
-void compute_ref(const prb_t *prb, dir_t dir, const args_t &args,
+void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         dnnl_primitive_t prim_ref) {
+    const prb_t *prb = prb_t::from(base_prb);
     // Update prb descriptor to re-use convolution reference.
     prb_t prb_tr((desc_t)*prb, prb->dir, prb->dt, prb->bia_dt(), prb->stag,
             prb->wtag, prb->dtag, prb->alg, prb->mb, prb->attr, prb->ctx_init,

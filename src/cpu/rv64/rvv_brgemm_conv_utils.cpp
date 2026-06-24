@@ -94,14 +94,17 @@ status_t init_conf(brgemm_conv_conf_t &jcp, const convolution_desc_t &cd,
     jcp.b_pad = (ndims >= 4) ? cd.padding[1][ndims - 4] : 0;
     jcp.r_pad = cd.padding[1][ndims - 3];
 
-    // Data types — only f32 supported.
+    // Data types — f32, or low-precision in×in→f32 via widening FMA:
+    //   bf16×bf16→f32 (Zvfbfwma), f16×f16→f32 (Zvfh). dst stays f32.
     jcp.src_dt = src_d.data_type();
     jcp.wei_dt = weights_d.data_type();
     jcp.dst_dt = dst_d.data_type();
     jcp.bia_dt = bias_d.ndims() ? bias_d.data_type() : data_type::undef;
 
-    if (!everyone_is(f32, jcp.src_dt, jcp.wei_dt, jcp.dst_dt))
-        return status::unimplemented;
+    const bool in_dt_ok = jcp.src_dt == jcp.wei_dt
+            && (jcp.src_dt == f32 || (jcp.src_dt == bf16 && mayiuse(zvfbfwma))
+                    || (jcp.src_dt == f16 && mayiuse(zvfh)));
+    if (!in_dt_ok || jcp.dst_dt != f32) return status::unimplemented;
     if (jcp.bia_dt != data_type::undef && jcp.bia_dt != f32)
         return status::unimplemented;
 

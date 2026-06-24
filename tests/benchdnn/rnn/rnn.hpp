@@ -377,7 +377,7 @@ struct prb_t : public desc_t, public base_prb_t {
         set_qparams(-1., 1.);
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
-    ~prb_t() {
+    ~prb_t() override {
         zfree(wei_scales);
         zfree(wei_proj_scales);
         zfree(linear_scales);

@@ -58,7 +58,7 @@ struct prb_t : public prb_dims_t, public base_prb_t {
 
     prb_t(const prb_dims_t &prb_dims, dnnl_data_type_t dt,
             const std::string &tag)
-        : prb_dims_t(prb_dims), base_prb_t(), dt(dt), tag(tag) {
+        : prb_dims_t(prb_dims), dt(dt), tag(tag) {
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
 

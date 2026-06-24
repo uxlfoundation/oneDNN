@@ -1790,8 +1790,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                                                       : s8;
         bgmmc.tr_a_dt_sz = types::data_type_size(bgmmc.src_dt);
         bgmmc.tr_b_dt_sz = types::data_type_size(bgmmc.wei_dt);
-        bgmmc.s8s8_compensation_required
-                = bgmmc.src_dt == s8 && !isa_has_s8s8(isa);
     }
 
     // Grouped int8 quantization accumulates in f32: per-K scale/ZP

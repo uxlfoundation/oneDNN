@@ -72,6 +72,12 @@ struct jit_per_mn_comp_kernel_t : public per_mn_comp_kernel_t,
                   bgmmc->orig_wei_dt, data_type::s4, data_type::u4))
         , has_vnni_(is_superset(bgmmc->isa, avx512_core_vnni)
                   || is_superset(bgmmc->isa, avx2_vnni))
+        // When per-mn-compensation is applied, buffer C is f32 dt required
+        // and to avoid f32=>s32=>apply_s8s8_comp=>dst_dt conversion
+        // per-mn-compensation kernel should handle the shift
+        // brgemm kernel's req_s8s8_compensation flag is
+        // suppressed to avoid double compensation.
+        , need_s8s8_shift_(bgmmc->s8s8_compensation_required)
         , src_m_stride_bytes_(bgmmc->A_strides[1])
         , src_k_stride_bytes_(bgmmc->A_strides[0])
         , wei_k_stride_bytes_(wei_is_subbyte_ ? bgmmc->B_strides[1] / 2
@@ -100,6 +106,7 @@ private:
     const bool wei_is_signed_;
     const bool wei_is_subbyte_;
     const bool has_vnni_;
+    const bool need_s8s8_shift_;
     const dim_t src_m_stride_bytes_;
     const dim_t src_k_stride_bytes_;
     const dim_t wei_k_stride_bytes_;
@@ -287,6 +294,20 @@ private:
     // Broadcast f32 scalar from call_params field
     void bcast_f32_param(Vmm dst, int off) {
         vbroadcastss(dst, ptr[reg_param + off]);
+    }
+
+    // dst += 128.0f (broadcast). Uses reg_tmp + vmm_term() as scratch; only
+    // called at persistent-load time where vmm_term() is free.
+    void add_128_f32(Vmm dst) {
+        const auto vmm_c = vmm_term();
+        mov(reg_tmp.cvt32(), 0x43000000); // 128.0f
+        if (isa_has_masks(isa_)) {
+            vpbroadcastd(vmm_c, reg_tmp.cvt32());
+        } else {
+            vmovd(Xbyak::Xmm(vmm_c.getIdx()), reg_tmp.cvt32());
+            vpbroadcastd(vmm_c, Xbyak::Xmm(vmm_c.getIdx()));
+        }
+        vaddps(dst, dst, vmm_c);
     }
 
     // Loads simd_w int values (zps) of dt from addr, converts to f32.
@@ -631,13 +652,14 @@ private:
                 }
             }
 
-            // term = zs*S[c] + T_eff*zw          (both zps)
-            //      = zs*S[c]                     (src zp only)
-            //      = T_eff*zw                    (wei zp only)
-            if (has_src_zp_ && has_wei_zp_) {
+            // term = zs_shifted*S[c] + T_eff*zw      (S-term and/or wei-zp term)
+            //   zs_shifted = zs (+128 if s8s8 shift folded in); the S-term is also
+            //   emitted on the s8s8-shift path even without src zp.
+            const bool emit_S_term = has_src_zp_ || need_s8s8_shift_;
+            if (emit_S_term && has_wei_zp_) {
                 vmulps(vmm_term(), vmm_zs_bc(), vmm_S(c));
                 vfmadd231ps(vmm_term(), vmm_T_bc(), vmm_zw());
-            } else if (has_src_zp_) {
+            } else if (emit_S_term) {
                 vmulps(vmm_term(), vmm_zs_bc(), vmm_S(c));
             } else { // has_wei_zp_ only
                 vmulps(vmm_term(), vmm_T_bc(), vmm_zw());
@@ -665,10 +687,22 @@ private:
 
         // (B) S-reduce (lives across the m-loop). Uses slots chunks_+0..+5
         //     as scratch; persistents loaded AFTER S-reduce.
-        if (has_src_zp_) emit_s_reduce();
+        //     S[n]=Sum_K wei is needed for the src-zp term and, on non-AMX s8
+        //     src, for the +128*S s8->u8 shift correction added into delta.
+        const bool emit_S = has_src_zp_ || need_s8s8_shift_;
+        if (emit_S) emit_s_reduce();
 
         // Persistent f32 broadcasts loaded once for the whole call.
-        if (has_src_zp_) bcast_f32_param(vmm_zs_bc(), GET_OFF(src_zp_f32));
+        // Shifted src-zp = src_zp (if any) + 128 (if s8s8 shift is active),
+        // so zs_shifted*S = zs*S + 128*S. The G*zs*zw cross-term uses the real zs
+        // via the separate g_sz_f32 param and is unaffected by the +128.
+        if (emit_S) {
+            if (has_src_zp_)
+                bcast_f32_param(vmm_zs_bc(), GET_OFF(src_zp_f32));
+            else
+                uni_vpxor(vmm_zs_bc(), vmm_zs_bc(), vmm_zs_bc());
+            if (need_s8s8_shift_) add_128_f32(vmm_zs_bc());
+        }
         if (has_src_zp_ && has_wei_zp_)
             bcast_f32_param(vmm_g_sz_bc(), GET_OFF(g_sz_f32));
         if (has_wei_zp_ && !wei_zp_per_n_)

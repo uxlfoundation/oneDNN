@@ -12,7 +12,9 @@
 TBD
 
 ## RISC-V Processors
-TBD
+* Improved `f32` convolution, matmul, inner product, binary, eltwise, pooling, batch normalization, and group normalization primitive performance on processors with `V` extension support.
+* Improved `f16` matmul, binary, eltwise, pooling, softmax, and layer normalization primitive performance on processors with `Zvfh` extension support.
+* Improved `bf16` matmul primitive performance on processors with `Zvfbfwma` extension support.
 
 # Functionality
 
@@ -35,11 +37,11 @@ TBD
 [user-managed scratchpad]: https://uxlfoundation.github.io/oneDNN/v3.13/dev_guide_graph_scratchpad.html
 
 ## Intel Graphics
-* Refactored verbose profiling on Intel GPUs to avoid spurious synchronizations with SYCL or OpenCL runtimes. New implementation reports device-time instead of host time and compatible with SYCL Graph record/replay mode. 
+* Refactored verbose profiling on Intel GPUs to avoid spurious synchronizations with SYCL or OpenCL runtimes. The new implementation reports device time instead of host time and is compatible with SYCL Graph record/replay mode. 
 * Reduced memory consumption of [Gated MLP subgraph] with Graph API.
 * Enabled interoperability with SYCL Graph native recording mode for Intel GPUs.
-* Introduced `ONEDNN_ZE_INCLUDE_DIR` and `ONEDNN_OCL_INCLUDE_DIR` build knobs to use Level Zero or OpenCL headers from a user defined location instead of vendored in version.
-* **[Experimental]** Introduced  support for [persistent cache] with Level Zero runtime on GPU. Level Zero support is experimental.
+* Introduced `ONEDNN_ZE_INCLUDE_DIR` and `ONEDNN_OCL_INCLUDE_DIR` build knobs to use Level Zero or OpenCL headers from a user-defined location instead of the vendored headers.
+* **[experimental]** Introduced support for [persistent cache] with Level Zero runtime on GPU. Level Zero support is experimental.
 
 [Gated MLP subgraph]: https://uxlfoundation.github.io/oneDNN/v3.13/dev_guide_graph_gated_mlp.html
 [persistent cache]: https://uxlfoundation.github.io/oneDNN/v3.13/dev_guide_persistent_cache.html
@@ -48,13 +50,13 @@ TBD
 * Extended SYCL Graph validation mode in benchdnn with support for native recording mode. This mode is enabled using `--execution-mode=native_graph` knob.
 * Enabled SYCL recording mode validation `--execution-mode=graph` for benchdnn `--graph` driver.
 * Introduced benchdnn knob `--mode=S` to improve performance validation speed in simulation or emulation environments.
-* Improved GPU performance reporting for mode=F by stabilizing measurement methodology and reducing inaccuracies caused by cache effects and run‑to‑run variability.
+* Improved GPU performance reporting for `--mode=F` by stabilizing measurement methodology and reducing inaccuracies caused by cache effects and run-to-run variability.
 
 # Deprecated Functionality
-* [BLAS-like API] including `dnnl::sgemm`, `dnnl::gemm_u8s8s32`, and `dnnl::gemm_s8s8s32` functions is deprecated
-  and will be removed in future releases. If you are using this API consider switching to [matmul primitive].
+* The [BLAS-like API], including `dnnl::sgemm`, `dnnl::gemm_u8s8s32`, and `dnnl::gemm_s8s8s32`, is deprecated
+  and will be removed in future releases. If you are using this API, consider switching to the [matmul primitive].
 * `f4_e3m0` data type is deprecated and will be removed in future releases.
-* Optimizations for Intel Iris Xe MAX Graphics and Intel Graphics included with 11th-14th Generation Intel Core Processors are deprecated and will be removed in the future releases.
+* Optimizations for Intel Iris Xe MAX Graphics and Intel Graphics included with 11th-14th Generation Intel Core Processors are deprecated and will be removed in future releases.
 
 
 [BLAS-like API]: https://uxlfoundation.github.io/oneDNN/v3.13/group_dnnl_api_blas.html

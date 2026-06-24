@@ -49,6 +49,7 @@ const char *dnnl_fmt_kind2str(dnnl_format_kind_t v) {
     if (v == format_kind::wino || v == format_kind::rnn_packed
             || v == format_kind::cublaslt_blocked)
         return "opaque";
+    if (v == dnnl_format_kind_host_scalar) return "host_scalar";
     if (v == dnnl_format_kind_max) return "max";
     assert(!"unknown fmt_kind");
     return "unknown fmt_kind";

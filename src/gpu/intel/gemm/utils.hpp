@@ -102,8 +102,7 @@ static inline status_t create_2d_desc(memory_desc_t *md_2d, int d0, int d1,
 static inline status_t create_gemm_desc(gemm_desc_t *_gemm_desc,
         const memory_desc_t *a_md, const memory_desc_t *b_md,
         const memory_desc_t *c_md, const memory_desc_t *bias_md,
-        data_type_t acc_dt, engine_t *engine,
-        sum_ab_t sum_ab = sum_ab::sum_none,
+        data_type_t acc_dt, sum_ab_t sum_ab = sum_ab::sum_none,
         data_type_t sum_ab_dt = data_type::undef) {
     auto gemm_desc = gemm_desc_t();
     gemm_desc.primitive_kind = primitive_kind::gemm;
@@ -114,12 +113,6 @@ static inline status_t create_gemm_desc(gemm_desc_t *_gemm_desc,
     gemm_desc.acc_type = acc_dt;
     gemm_desc.sum_ab = sum_ab;
     gemm_desc.sum_ab_type = sum_ab_dt;
-    // Downgrade accumulation type for f16 if allowed.
-    if (engine->mayiuse_f16_accumulator_with_f16()
-            && utils::everyone_is(
-                    data_type::f16, a_md->data_type, b_md->data_type)) {
-        gemm_desc.acc_type = data_type::f16;
-    }
     *_gemm_desc = gemm_desc;
     return status::success;
 }
@@ -132,8 +125,8 @@ static inline status_t create_gemm_pd(
         sum_ab_t sum_ab = sum_ab::sum_none,
         data_type_t sum_ab_dt = data_type::undef) {
     gemm_desc_t gemm_desc;
-    CHECK(create_gemm_desc(&gemm_desc, a_md, b_md, c_md, bias_md, acc_dt,
-            engine, sum_ab, sum_ab_dt));
+    CHECK(create_gemm_desc(
+            &gemm_desc, a_md, b_md, c_md, bias_md, acc_dt, sum_ab, sum_ab_dt));
 
     primitive_attr_t gemm_attr = *attr;
 

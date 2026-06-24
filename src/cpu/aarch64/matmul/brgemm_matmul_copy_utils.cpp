@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -498,6 +498,169 @@ template <cpu_isa_t isa>
 void jit_brgemm_matmul_copy_b_int8_t<isa>::generate() {
     preamble();
     assert(!"under construction");
+    postamble();
+}
+
+struct jit_brgemm_matmul_copy_b_bf16_t : public jit_brgemm_matmul_copy_b_t,
+                                         public jit_generator_t {
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_matmul_copy_b_bf16_t)
+
+    jit_brgemm_matmul_copy_b_bf16_t(const brgemm_matmul_conf_t *conf)
+        : jit_brgemm_matmul_copy_b_t(conf)
+        , typesize_((size_t)conf->b_dt_sz)
+        , k_blk_step_(data_type_vnni_granularity(data_type::bf16)) // = 2
+        , n_blk_step_(get_sve_length() / (k_blk_step_ * typesize_))
+        , tr_store_step(k_blk_step_ * typesize_)
+        , src_stride_(conf->wei_tag == format_tag::acbd
+                          ? conf->copy_B_wei_stride
+                          : conf->N * typesize_)
+        , tr_src_stride_(conf->LDB * k_blk_step_ * typesize_) {}
+
+    void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
+    status_t create_kernel() override {
+        return jit_generator_t::create_kernel();
+    }
+
+private:
+    const size_t typesize_;
+    const int k_blk_step_;
+    const int n_blk_step_;
+    const int tr_store_step;
+    const dim_t src_stride_;
+    const dim_t tr_src_stride_;
+
+    PReg p_2nblock_h = p1;
+    PReg p_nblock_h = p2;
+    PReg p_ntail_h = p3;
+    PReg p_nblock_s = p4;
+    PReg p_ntail_s = p5;
+
+    XReg x_src_addr = x1;
+    XReg x_tr_src_addr = x2;
+    XReg x_src_off_addr = x3;
+    XReg x_K_iters = x4;
+    XReg x_N_blk = x5;
+
+    ZReg z_row_0 = z0;
+    ZReg z_row_1 = z1;
+    ZReg z_inter1 = z2;
+    ZReg z_inter2 = z3;
+
+    inline void load_h(const ZReg z_dst, const PReg p_mask_h, const XReg x_addr,
+            const int offset, const XReg x_tmp) {
+        add_imm(x_tmp, x_addr, offset * typesize_, X_TMP_4);
+        ld1h(z_dst.h, p_mask_h / T_z, ptr(x_tmp));
+    }
+
+    inline void store_s(const ZReg z_src, const PReg p_mask_s,
+            const XReg x_addr, const int offset, const XReg x_tmp) {
+        add_imm(x_tmp, x_addr, offset, X_TMP_4);
+        st1w(z_src.s, p_mask_s / T_z, ptr(x_tmp));
+    }
+
+    void copy_2xn_block(const int ncolumns, const bool is_k_tail);
+    void compute_k_loop(const int ncolumns);
+    void generate() override;
+};
+
+void jit_brgemm_matmul_copy_b_bf16_t::copy_2xn_block(
+        const int ncolumns, const bool is_k_tail) {
+    const int columns_tail = ncolumns % n_blk_step_;
+    if (columns_tail > 0) {
+        set_preg(p_ntail_s.s, columns_tail, X_TMP_0, X_TMP_1);
+        set_preg(p_ntail_h.h, columns_tail, X_TMP_0, X_TMP_1);
+    }
+
+    if (is_k_tail) {
+        eor(z_row_1.s, P_ALL_ONE / T_m, z_row_1.s);
+    } else {
+        add_imm(x_src_off_addr, x_src_addr, src_stride_, X_TMP_0);
+    }
+
+    const int tr_offset = n_blk_step_ * tr_store_step;
+
+    int n = 0;
+    for (; n + 2 * n_blk_step_ <= ncolumns; n += 2 * n_blk_step_) {
+        load_h(z_row_0, p_2nblock_h, x_src_addr, n, X_TMP_0);
+        if (!is_k_tail)
+            load_h(z_row_1, p_2nblock_h, x_src_off_addr, n, X_TMP_1);
+
+        // first block: lower componenet of z_row
+        zip1(z_inter1.h, z_row_0.h, z_row_1.h);
+        store_s(z_inter1, p_nblock_s, x_tr_src_addr, n * tr_store_step,
+                X_TMP_0);
+
+        // second block: upper componenet of z_row
+        zip2(z_inter2.h, z_row_0.h, z_row_1.h);
+        store_s(z_inter2, p_nblock_s, x_tr_src_addr,
+                n * tr_store_step + tr_offset, X_TMP_1);
+    }
+
+    for (; n < ncolumns; n += n_blk_step_) {
+        const bool is_n_tail = (ncolumns - n) < n_blk_step_;
+        const PReg p_mask_h = is_n_tail ? p_ntail_h : p_nblock_h;
+        const PReg p_mask_s = is_n_tail ? p_ntail_s : p_nblock_s;
+
+        load_h(z_row_0, p_mask_h, x_src_addr, n, X_TMP_0);
+        if (!is_k_tail) load_h(z_row_1, p_mask_h, x_src_off_addr, n, X_TMP_1);
+
+        zip1(z_inter1.h, z_row_0.h, z_row_1.h);
+        store_s(z_inter1, p_mask_s, x_tr_src_addr, n * tr_store_step, X_TMP_0);
+    }
+}
+
+void jit_brgemm_matmul_copy_b_bf16_t::compute_k_loop(const int ncolumns) {
+    Label K_loop_body, K_loop_tail, K_done;
+
+    // loop over pairs of K rows
+    L(K_loop_body);
+    cmp_imm(x_K_iters, 2, X_TMP_0);
+    b(LT, K_loop_tail);
+
+    // copy blocks
+    copy_2xn_block(ncolumns, false);
+
+    add_imm(x_src_addr, x_src_addr, 2 * src_stride_, X_TMP_0);
+    add_imm(x_tr_src_addr, x_tr_src_addr, tr_src_stride_, X_TMP_0);
+    sub_imm(x_K_iters, x_K_iters, 2, X_TMP_0);
+    b(K_loop_body);
+
+    // tail: check for tail block
+    L(K_loop_tail);
+    cmp_imm(x_K_iters, 0, X_TMP_0);
+    b(EQ, K_done);
+
+    // tail: copy the half-block
+    copy_2xn_block(ncolumns, true);
+
+    L(K_done);
+}
+
+void jit_brgemm_matmul_copy_b_bf16_t::generate() {
+    preamble();
+
+    LDR_IMM(x_src_addr, param1, GET_OFF(src));
+    LDR_IMM(x_tr_src_addr, param1, GET_OFF(tr_src));
+    LDR_IMM(x_K_iters, param1, GET_OFF(current_K_iters));
+    LDR_IMM(x_N_blk, param1, GET_OFF(current_N_blk));
+
+    set_preg(p_nblock_s.s, n_blk_step_, X_TMP_0, X_TMP_1);
+    set_preg(p_nblock_h.h, n_blk_step_, X_TMP_0, X_TMP_1);
+    set_preg(p_2nblock_h.h, 2 * n_blk_step_, X_TMP_0, X_TMP_1);
+
+    Label done;
+    if (conf_->N_tail > 0) {
+        Label not_N_tail;
+        cmp_imm(x_N_blk, conf_->N_tail, X_TMP_0);
+        b(NE, not_N_tail);
+        compute_k_loop(conf_->N_tail);
+        b(done);
+
+        L(not_N_tail);
+    }
+    compute_k_loop(conf_->N_blk);
+    L(done);
+
     postamble();
 }
 
@@ -1101,8 +1264,6 @@ status_t create_brgemm_matmul_copy_b(
     const bool is_f32 = everyone_is(data_type::f32, conf->src_dt, conf->wei_dt);
 
     const bool is_f16 = everyone_is(data_type::f16, conf->src_dt, conf->wei_dt);
-    assert(is_f32);
-    assert(!(is_bf16 || is_f16));
 
     if (is_B_transposed) {
         if (is_superset(conf->isa, sve_512))
@@ -1114,11 +1275,14 @@ status_t create_brgemm_matmul_copy_b(
                     new jit_brgemm_matmul_copy_b_transposed_t<sve_256>(conf)));
         }
     } else {
-        if (is_bf16 || is_f16 || conf->is_bf32) {
-            assert(!"unreacable");
+        if (is_f16 || conf->is_bf32) {
+            assert(!"unreachable");
         } else if (is_f32) {
             CHECK(safe_ptr_assign(
                     copy_ker, new jit_brgemm_matmul_copy_b_f32_t(conf)));
+        } else if (is_bf16) {
+            CHECK(safe_ptr_assign(
+                    copy_ker, new jit_brgemm_matmul_copy_b_bf16_t(conf)));
         } else {
             if (is_superset(conf->isa, sve_512))
                 CHECK(safe_ptr_assign(copy_ker,

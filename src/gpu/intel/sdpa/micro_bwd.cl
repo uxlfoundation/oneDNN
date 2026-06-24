@@ -18,6 +18,7 @@
 #include "gpu/intel/include/tile_ops.h"
 #include "gpu/intel/include/types_interop.h"
 #include "gpu/intel/sdpa/utils.h"
+#define DBG_DKDV_PRINTS 1
 
 /* Microkernel headers -- generated at runtime */
 #include "gemm_kq.h"
@@ -66,10 +67,6 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
         uint threshold, float inv_q) {
 
     s_tile_type scale_tile;
-    // s_tile is K×Q (Bc rows = K, Br cols = Q) in non-transposed layout.
-    // tile_predicated_select (non-_t): offset_r = K_base+i_K, offset_c = Q_base+j_Q
-    // → goff = batch + (Q_base+j_Q)*k + (K_base+i_K) = batch + Q*k + K
-    // This matches the forward kernel's tile_predicated_select_t on its Q×K tile.
     tile_predicated_select(scale_tile, tile_offset_r, tile_offset_c,
             dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
             ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
@@ -88,11 +85,6 @@ inline void apply_dropout_dP_tile(p_tile_type *tile, int tile_offset_r,
         uint threshold, float inv_q) {
 
     p_tile_type scale_p_tile;
-    // dP tile from ugemm_vtdA is K×Q (M=K=block0, N=Q=block1), same layout
-    // as the backward S tile. Use non-_t (matching S tile convention):
-    // offset_r = K_base + i_K, offset_c = Q_base + j_Q
-    // → goff = batch + (Q_base+j_Q)*k + (K_base+i_K) = batch + Q*k + K
-    // This matches the forward's tile_predicated_select_t on its Q×K tile.
     tile_predicated_select(scale_p_tile, tile_offset_r, tile_offset_c,
             dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
             ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1,
@@ -469,11 +461,6 @@ inline void tile_store_k_slm(
 
 #if KV_GROUP_SIZE > 1
 #define IS_GQA 1
-#if defined(DST_DT_F16)
-#define REDUCE_DKDV_F16 1
-#else
-#define REDUCE_DKDV_F16 0
-#endif
 #if DST_DATA_T != float
 #define NEEDS_INTERMEDIATE_DKV 1
 #else
@@ -491,25 +478,19 @@ inline void tile_store_k_slm(
 #define DST_DATA_T_DKDV DST_DATA_T
 #endif
 
-// SLM always accumulates in f32 for dK and dV.
-// For GQA (IS_GQA=1), DST_DATA_T_DKDV=float so the global scratch and all
-// intermediate reduction steps are f32.
-// For REDUCE_DKDV_F16 (f16 dst + GQA): the reference path (larger_partition
-// or unfused primitives) uses a per-head f16 GEMM output (bmm_dk outputs f16),
-// then sums the f16 per-head results in f32. To match this, each per-head dK
-// result is rounded to f16 before SLM accumulation (see the accumulation loop
-// below). tile_store_dK/tile_store_dK_t skip round_to_dst for REDUCE_DKDV_F16
-// since the rounding was already done per iteration here.
-// For dV, the equivalent f16 rounding is achieved implicitly because
-// problem_vs.Tc=f16 makes ugemm_vs output f16 natively.
-// For REDUCE_DKDV_F16=0 (bf16 dst, or non-GQA MHA): round_to_dst is applied
-// once at store time before the global write.
+// SLM always accumulates dK and dV in f32. For the GQA f16 path, round_to_dst
+// (f32->f16) is applied once at global store time in tile_store_dK/dV, after
+// all q-chunks for this WG's head have been accumulated. This matches the
+// reference path (per-head f16 matmul output, then f32 reduce across heads).
+// Accumulating the raw f32 GEMM output into f32 SLM and rounding once avoids
+// the error of rounding each partial sum separately (which would compound on
+// architectures like xe2/BMG where tile_n < total Q per head).
 #define SLM_DKDV_DATA_T float
 typedef dv_tile_type dv_acc_tile_type;
 typedef a_tile_type dk_acc_tile_type;
-// round_to_dst: quantizes f32 to destination type precision.
-// Used in the per-iteration dK rounding (REDUCE_DKDV_F16=1) and in the
-// non-GQA/bf16-GQA store path (once, at the final direct/atomic store).
+
+// Quantize f32 to destination type precision (f16 or bf16), then back to f32.
+// Applied once per head at global store time in tile_store_dK/tile_store_dV.
 inline float round_to_dst(float v) {
     return CONVERT_FLOAT_T(CONVERT_DATA_T(v));
 }
@@ -519,16 +500,13 @@ inline void tile_store_dV(dv_acc_tile_type *dV_tile_slm,
         int offset_c, int rem) {
 
 #if IS_GQA
-    // SLM holds f32-accumulated sum. For REDUCE_DKDV_F16, each iteration was
-    // already quantized to f16 precision before the SLM add, so no further
-    // quantization is needed here. For bf16 (REDUCE_DKDV_F16=0), apply
-    // round_to_dst once at this point to match unfused-path bf16 semantics.
+    // f32 SLM -> f32 copy -> round once to dst precision -> atomic add to
+    // global f32 scratch. Rounding once here (after full per-head accumulation)
+    // matches the reference path's per-head f16/bf16 matmul output semantics.
     dv_acc_tile_type dV_tile_slm_copy = *dV_tile_slm;
     dv_tile_type dV_tile_f32;
     tile_copy(dV_tile_slm_copy, dV_tile_f32);
-#if !REDUCE_DKDV_F16
     tile_elementwise_s(dV_tile_f32, round_to_dst);
-#endif
     tile_atomic_add(dV_tile_f32, dV, m, n, ld, offset_r, offset_c);
 
 #else // MHA update
@@ -555,9 +533,7 @@ inline void tile_store_dK_t(dv_acc_tile_type *dK_tile,
     dv_acc_tile_type dK_tile_slm_copy_t = *dK_tile;
     dv_tile_type dK_tile_f32;
     tile_copy(dK_tile_slm_copy_t, dK_tile_f32);
-#if !REDUCE_DKDV_F16
     tile_elementwise_s(dK_tile_f32, round_to_dst);
-#endif
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
     dv_tile_type_dst dK_tile_dst;
@@ -582,9 +558,7 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
     dk_acc_tile_type dK_tile_slm_copy = *dK_tile;
     a_tile_type dK_tile_f32;
     tile_copy(dK_tile_slm_copy, dK_tile_f32);
-#if !REDUCE_DKDV_F16
     tile_elementwise_s(dK_tile_f32, round_to_dst);
-#endif
     tile_atomic_add(dK_tile_f32, dK, m, n, ld, offset_r, offset_c);
 #else // MHA update
 
@@ -1151,14 +1125,16 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             if (sg_ij < sg_per_wg_BcD) {
                 dk_acc_tile_type dK_tile1_store;
                 tile_copy(dK_tile1, dK_tile1_store);
-#if REDUCE_DKDV_F16
-                // Round per-head dK to f16 before SLM accumulation to match
-                // the reference path's per-head f16 GEMM output (bmm_dk
-                // outputs f16, then reduce_dk sums f16 values in f32).
-                // tile_store_dK skips round_to_dst for REDUCE_DKDV_F16=1,
-                // relying on this per-iteration rounding.
-                tile_elementwise_s(dK_tile1_store, round_to_dst);
-#endif
+                // Accumulate f32 dK contribution for this q-chunk into SLM.
+                // round_to_dst is applied once at global store time in
+                // tile_store_dK/tile_store_dK_t, after all q-chunks for this
+                // head have been accumulated, matching the reference path's
+                // per-head f16/bf16 rounding (bmm_dk outputs f16, then
+                // reduce_dk sums the f16 per-head values in f32).
+                // Per-iteration rounding here would be wrong for configs where
+                // ugemm_kq_wg_tile_n < full Q sequence length per head (e.g.
+                // BMG xe2 uses tile_n=64 for 256 Q positions, requiring 4
+                // iterations per head).
 #if TRANSPOSE_K
                 tile_slm_add_t(
                         dK_tile1_store, dK_slm, D_MAX, sg_i0_dk, sg_j0_dk);

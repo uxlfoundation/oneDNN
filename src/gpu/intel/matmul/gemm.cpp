@@ -74,7 +74,7 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
     args.exec_args = ctx.args();
     gemm::desc_t desc;
     CHECK(create_gemm_desc(&desc, src_d.md_, weights_d.md_, dst_d.md_,
-            bia_d.md_, pd()->desc()->accum_data_type, ctx.stream()->engine()));
+            bia_d.md_, pd()->desc()->accum_data_type));
 
     gemm::exec_ctx_t gemm_ctx(ctx, args, &desc);
 

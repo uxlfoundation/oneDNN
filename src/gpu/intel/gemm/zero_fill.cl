@@ -15,6 +15,5 @@
 *******************************************************************************/
 
 __kernel void gemm_zero_fill(__global uint *buf, uint n) {
-    uint id = get_global_id(0);
-    buf[id] = 0;
+    buf[get_global_id(0)] = 0;
 }

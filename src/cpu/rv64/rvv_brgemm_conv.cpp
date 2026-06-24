@@ -36,6 +36,10 @@ using namespace data_type;
 status_t rvv_brgemm_convolution_fwd_t::pd_t::init(engine_t *engine) {
     using namespace data_type;
 
+    // Drive the impl name by input dtype (set before any rejection below).
+    const auto name_src_dt = src_md(0)->data_type;
+    isa_ = name_src_dt == bf16 ? zvfbfwma : (name_src_dt == f16 ? zvfh : v);
+
     VDISPATCH_CONV(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),

@@ -45,6 +45,8 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(engine_t *engine) {
     const auto wei_type = weights_md(0)->data_type;
     const auto dst_type = dst_md(0)->data_type;
     const auto bia_type = weights_md(1)->data_type;
+    // Drive the impl name by input dtype (set before any rejection below).
+    isa_ = src_type == bf16 ? zvfbfwma : (src_type == f16 ? zvfh : v);
     const bool in_dt_ok = src_type == wei_type
             && (src_type == f32 || (src_type == bf16 && mayiuse(zvfbfwma))
                     || (src_type == f16 && mayiuse(zvfh)));
@@ -131,9 +133,8 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(engine_t *engine) {
     const dim_t LDB = K; // src row-major: stride[0] = IC
     const dim_t LDC = M; // dst row-major: stride[0] = OC
 
-    const cpu_isa_t brg_isa = src_type == bf16
-            ? zvfbfwma
-            : (src_type == f16 ? zvfh : v);
+    const cpu_isa_t brg_isa
+            = src_type == bf16 ? zvfbfwma : (src_type == f16 ? zvfh : v);
 
     brgemm_desc_t brg_desc;
     CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, src_type, src_type,

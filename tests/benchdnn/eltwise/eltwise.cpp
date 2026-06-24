@@ -432,8 +432,9 @@ std::vector<int> supported_exec_args(dir_t dir) {
 }
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
-        dnnl_primitive_t prim, const prb_t *prb, res_t *res,
+        dnnl_primitive_t prim, const base_prb_t *base_prb, res_t *res,
         dnnl_primitive_t prim_ref) {
+    const auto *prb = prb_t::from(base_prb);
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
 
     if (!ref_mem_map.empty()) { erase_unused_args(ref_mem_map, mem_map); }

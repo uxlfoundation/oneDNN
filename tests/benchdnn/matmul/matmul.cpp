@@ -906,8 +906,9 @@ std::vector<int> supported_exec_args(dir_t dir) {
 }
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
-        dnnl_primitive_t prim, const prb_t *prb, res_t *res,
+        dnnl_primitive_t prim, const base_prb_t *base_prb, res_t *res,
         dnnl_primitive_t prim_ref) {
+    const auto *prb = prb_t::from(base_prb);
     // Both sparse and grouped functionality relies on indirect mnemory access.
     // While the data itself can be anything for `no_ref_memory` modifier,
     // metadata (indices/pointers for sparse; offsets for grouped) must be

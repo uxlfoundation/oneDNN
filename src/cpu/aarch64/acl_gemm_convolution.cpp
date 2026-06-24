@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2020-2025 Arm Ltd. and affiliates
+* Copyright 2020-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 #include "acl_gemm_convolution.hpp"
 #include "acl_convolution_utils.hpp"
 #include "common/memory_tracking.hpp"
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -63,6 +64,9 @@ status_t acl_gemm_convolution_fwd_t<src_t, wei_t, dst_t, bia_t>::pd_t::init(
     if (!ok) return status::unimplemented;
 
     if (weights_md_.ndims != 4) return status::unimplemented;
+
+    VDISPATCH_CONV(!(mayiuse(sve) && OC() * IC() <= 2048),
+            "brgconv:sve is faster for small OC * IC");
 
     // General Compute Library checks, memory tags are also set there
     CHECK(acl_convolution_utils::acl_init_conf(

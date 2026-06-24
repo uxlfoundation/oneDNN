@@ -514,6 +514,24 @@ template <typename data_t>
 static void fill_data(const memory::dim nelems, const memory &mem,
         double sparsity = 1., bool init_negs = false) {
     auto data_ptr = map_memory<data_t>(mem);
+#if !defined(TEST_DNNL_DPCPP_BUFFER)
+    // Workaround for PVC/ATSM gtest hangs:
+    // On GPU USM memory (i915), concurrent first write from many threads into a
+    // freshly mapped buffer can hit a page-fault race.
+    // To avoid this race, wa touches every page sequentially from a single
+    // thread before what serialized the faults.
+    // The time overhead is close to the noise level.
+    if (data_ptr && nelems > 0
+            && mem.get_engine().get_kind() == dnnl::engine::kind::gpu) {
+        const size_t page = 4096;
+        const size_t nbytes = (size_t)nelems * sizeof(data_t);
+        volatile char *p = reinterpret_cast<volatile char *>(
+                static_cast<data_t *>(data_ptr));
+        for (size_t off = 0; off < nbytes; off += page)
+            p[off] = 0;
+        p[nbytes - 1] = 0; // touch last page too
+    }
+#endif
     fill_data<data_t>(nelems, data_ptr, sparsity, init_negs);
     synchronize_threadpool(mem.get_engine().get_kind());
 }

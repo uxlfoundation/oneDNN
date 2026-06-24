@@ -1274,11 +1274,18 @@ public:
     }
     template <typename DT = void>
     void shr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const RegData &src1, SourceLocation loc = {}) {
-        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, getDataType<DT>(), mod, dst, src0, src1, loc);
+        // shr is always zero-extend; force unsigned operand types.
+        auto udst = dst, usrc0 = src0;
+        udst.setType(unsignedType(dst.getType()));
+        usrc0.setType(unsignedType(src0.getType()));
+        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, unsignedType(getDataType<DT>()), mod, udst, usrc0, src1, loc);
     }
     template <typename DT = void>
     void shr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
-        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, getDataType<DT>(), mod, dst, src0, src1, loc);
+        auto udst = dst, usrc0 = src0;
+        udst.setType(unsignedType(dst.getType()));
+        usrc0.setType(unsignedType(src0.getType()));
+        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, unsignedType(getDataType<DT>()), mod, udst, usrc0, src1, loc);
     }
     template <typename DT = void>
     void smov(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {

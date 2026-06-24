@@ -442,6 +442,13 @@ static inline constexpr bool isSigned(DataType type)
           || type == DataType::uw || type == DataType::ud || type == DataType::uq);
 }
 
+static inline constexpr DataType unsignedType(DataType type)
+{
+    return (type == DataType::b || type == DataType::w || type == DataType::d
+         || type == DataType::q || type == DataType::s2 || type == DataType::s4)
+        ? static_cast<DataType>(static_cast<uint8_t>(type) & ~1) : type;
+}
+
 template <typename T> static inline DataType getDataType() { return DataType::invalid; }
 
 template <> inline DataType getDataType<uint64_t>() { return DataType::uq; }

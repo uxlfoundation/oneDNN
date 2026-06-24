@@ -225,7 +225,7 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
     cmp.set_driver_check_function(pooling_add_check);
 }
 
-std::vector<int> supported_exec_args(dir_t dir) {
+std::vector<int> prb_t::supported_exec_args(bool override_dir_with_fwd) const {
     static const std::vector<int> exec_fwd_args = {
             DNNL_ARG_SRC,
             DNNL_ARG_DST,
@@ -242,9 +242,9 @@ std::vector<int> supported_exec_args(dir_t dir) {
             DNNL_ARG_DIFF_SRC,
             DNNL_ARG_WORKSPACE,
     };
-    return (dir & FLAG_FWD)            ? exec_fwd_args
-            : (driver_name == "graph") ? exec_bwd_args_graph
-                                       : exec_bwd_args;
+    return (override_dir_with_fwd || (dir & FLAG_FWD)) ? exec_fwd_args
+            : (driver_name == "graph")                 ? exec_bwd_args_graph
+                                                       : exec_bwd_args;
 }
 
 void binary_po_fill_cfg(std::unordered_map<int, fill_cfg_t> &fill_cfg_map,
@@ -390,7 +390,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = prb->dir & FLAG_FWD ? v_prim[0] : v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, v_prim[0], supported_exec_args(FLAG_FWD));
+    init_memory_args(mem_map, prb, v_prim[0],
+            prb->supported_exec_args(/*override_dir_with_fwd=*/true));
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
@@ -408,8 +409,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     if (prb->dir & FLAG_BWD) {
         // Pass same memory map as we need data from forward on backward.
-        init_memory_args(
-                mem_map, prb, v_prim[1], supported_exec_args(FLAG_BWD));
+        init_memory_args(mem_map, prb, v_prim[1],
+                prb->supported_exec_args(/*override_dir_with_fwd=*/false));
         TIME_FILL(SAFE(
                 init_ref_memory_args(ref_mem_map, mem_map, v_prim[1], prb, res),
                 WARN));

@@ -396,7 +396,7 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
     cmp.set_driver_check_function(eltwise_add_check);
 }
 
-std::vector<int> supported_exec_args(dir_t dir) {
+std::vector<int> prb_t::supported_exec_args(bool override_dir_with_fwd) const {
     static const std::vector<int> exec_fwd_args = {
             DNNL_ARG_SRC,
             DNNL_ARG_DST,
@@ -406,29 +406,15 @@ std::vector<int> supported_exec_args(dir_t dir) {
             DNNL_ARG_DIFF_DST,
             DNNL_ARG_DIFF_SRC,
     };
-    // Use these args when `dir & FLAG_WEI` or `dir == BWD_W` indicating its
-    // `use_dst` case.
+    // Use these args for the `use_dst` case on backward.
     static const std::vector<int> exec_bwd_use_dst_args = {
             DNNL_ARG_DST,
             DNNL_ARG_DIFF_DST,
             DNNL_ARG_DIFF_SRC,
     };
-    // Since it costs much to enable a work around for `use_dst` at graph
-    // driver, just pass all of args there.
-    static const std::vector<int> exec_bwd_args_graph = {
-            DNNL_ARG_SRC,
-            DNNL_ARG_DST,
-            DNNL_ARG_DIFF_DST,
-            DNNL_ARG_DIFF_SRC,
-    };
-    // This driver uses additional information coming only from `prb` through
-    // the `dir` variable, which is not a clean solution, but the alternative
-    // is to modify the `supported_exec_args` signature and introduce a `param`
-    // struct to pass it to the call and fill according driver needs.
-    return (dir & FLAG_FWD)            ? exec_fwd_args
-            : (driver_name == "graph") ? exec_bwd_args_graph
-            : (dir & FLAG_WEI)         ? exec_bwd_use_dst_args
-                                       : exec_bwd_args;
+    return (override_dir_with_fwd || (dir & FLAG_FWD)) ? exec_fwd_args
+            : use_dst()                                ? exec_bwd_use_dst_args
+                                                       : exec_bwd_args;
 }
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
@@ -553,7 +539,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = prb->dir & FLAG_FWD ? v_prim[0] : v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, v_prim[0], supported_exec_args(FLAG_FWD));
+    init_memory_args(mem_map, prb, v_prim[0],
+            prb->supported_exec_args(/*override_dir_with_fwd=*/true));
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
@@ -571,7 +558,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     if (prb->dir & FLAG_BWD) {
         // Pass same memory map as we need data from forward on backward.
         init_memory_args(mem_map, prb, v_prim[1],
-                supported_exec_args(prb->use_dst() ? FLAG_WEI : FLAG_BWD));
+                prb->supported_exec_args(/*override_dir_with_fwd=*/false));
         TIME_FILL(SAFE(
                 init_ref_memory_args(ref_mem_map, mem_map, v_prim[1], prb, res),
                 WARN));

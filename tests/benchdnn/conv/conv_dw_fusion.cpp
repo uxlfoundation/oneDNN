@@ -344,23 +344,24 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim1 = v_prim[2];
 
     dnn_mem_map_t mem_map;
-    init_memory_args(mem_map, prb, prim, conv::supported_exec_args(prb->dir));
+    init_memory_args(mem_map, prb, prim,
+            prb->supported_exec_args(/*override_dir_with_fwd=*/false));
 
     // Fill first convolution
     std::unique_ptr<prb_t> prb0 = get_first_conv_prb(prb);
     if (!prb0) SAFE(FAIL, WARN);
 
     dnn_mem_map_t mem_map0;
-    init_memory_args(
-            mem_map0, prb0.get(), prim0, conv::supported_exec_args(prb->dir));
+    init_memory_args(mem_map0, prb0.get(), prim0,
+            prb->supported_exec_args(/*override_dir_with_fwd=*/false));
 
     // Fill next convolution
     std::unique_ptr<prb_t> prb1 = get_fused_conv_prb(prb);
     if (!prb1) SAFE(FAIL, WARN);
 
     dnn_mem_map_t mem_map1;
-    init_memory_args(
-            mem_map1, prb1.get(), prim1, conv::supported_exec_args(prb->dir));
+    init_memory_args(mem_map1, prb1.get(), prim1,
+            prb->supported_exec_args(/*override_dir_with_fwd=*/false));
 
     TIME_FILL(SAFE(init_ref_memory_args(mem_map0, mem_map1, mem_map, prim0,
                            prb0.get(), prb1.get(), prb, res, prb->dir),

@@ -514,7 +514,7 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
     cmp.set_driver_check_function(reorder_add_check);
 }
 
-std::vector<int> supported_exec_args(dir_t dir) {
+std::vector<int> prb_t::supported_exec_args(bool) const {
     static const std::vector<int> exec_args = {
             DNNL_ARG_FROM,
             DNNL_ARG_TO,
@@ -609,7 +609,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = v_prim[0];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, prim, supported_exec_args(prb->dir));
+    init_memory_args(mem_map, prb, prim,
+            prb->supported_exec_args(/*override_dir_with_fwd=*/false));
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, prim, prb, res), WARN));
 

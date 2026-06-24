@@ -281,7 +281,7 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
     cmp.set_zero_trust_percent(is_bwd ? 70.f : 90.f);
 }
 
-std::vector<int> supported_exec_args(dir_t dir) {
+std::vector<int> prb_t::supported_exec_args(bool override_dir_with_fwd) const {
     static const std::vector<int> exec_fwd_args = {
             DNNL_ARG_QUERIES,
             DNNL_ARG_KEYS,
@@ -303,7 +303,8 @@ std::vector<int> supported_exec_args(dir_t dir) {
             DNNL_ARG_DS,
             DNNL_ARG_WORKSPACE,
     };
-    return (dir & FLAG_FWD) ? exec_fwd_args : exec_bwd_args;
+    return (override_dir_with_fwd || (dir & FLAG_FWD)) ? exec_fwd_args
+                                                       : exec_bwd_args;
 }
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
@@ -436,7 +437,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     dnn_mem_map_t mem_map, ref_mem_map;
 
-    init_memory_args(mem_map, prb, v_prim[0], supported_exec_args(FLAG_FWD));
+    init_memory_args(mem_map, prb, v_prim[0],
+            prb->supported_exec_args(/*override_dir_with_fwd=*/true));
 
     {
         auto scale_md = dnn_mem_t::init_host_scalar_md(dnnl_f32);
@@ -459,8 +461,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     if (prb->dir & FLAG_BWD) {
         // Extend memory map with backward args.
-        init_memory_args(
-                mem_map, prb, v_prim[1], supported_exec_args(FLAG_BWD));
+        init_memory_args(mem_map, prb, v_prim[1],
+                prb->supported_exec_args(/*override_dir_with_fwd=*/false));
 
         // Re-add scale (pruned by init_memory_args since SCALE is not in
         // exec_bwd_args; init_ref_memory_args will fill the value).

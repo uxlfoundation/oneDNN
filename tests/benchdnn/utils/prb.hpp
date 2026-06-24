@@ -24,6 +24,7 @@
 
 #include <cassert>
 #include <string>
+#include <vector>
 
 // A base class for all driver-specific `prb_t` problem descriptors. It holds
 // the members that are common across **every** driver and exposes a polymorphic
@@ -54,6 +55,17 @@ struct base_prb_t {
     // creation. Each driver overrides it with its own logic.
     virtual void skip_unimplemented(res_t *res) const {}
     virtual void skip_invalid(res_t *res) const {}
+
+    // Returns the list of execution arguments supported by the driver. When
+    // `override_dir_with_fwd` is set, the forward set is returned regardless of
+    // the problem direction; this covers drivers that prepare a forward
+    // primitive prior to the backward one. The direction is taken from the
+    // `dir` member of this object. Drivers relying on the common memory args
+    // machinery override it; the rest use the empty default.
+    virtual std::vector<int> supported_exec_args(
+            bool override_dir_with_fwd) const {
+        return {};
+    }
 
     const char *str() const { return repro.c_str(); }
 

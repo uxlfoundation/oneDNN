@@ -132,6 +132,8 @@ struct prb_t : public desc_t, public base_prb_t {
 
     void skip_unimplemented(res_t *res) const override;
     void skip_invalid(res_t *res) const override;
+    std::vector<int> supported_exec_args(
+            bool override_dir_with_fwd) const override;
 
 private:
     std::string set_repro_line() override;
@@ -198,7 +200,6 @@ inline size_t dst_off_f(const prb_t *prb, int64_t mb, int64_t oc) {
 dnnl_status_t init_pd(init_pd_args_t &init_pd_args);
 void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
         data_kind_t kind, const args_t &ref_args);
-std::vector<int> supported_exec_args(dir_t dir);
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const base_prb_t *base_prb, res_t *res,
         dnnl_primitive_t prim_ref = nullptr);

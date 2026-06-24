@@ -333,10 +333,10 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
 
     // only supported dt for now
     VDISPATCH_MATMUL(utils::one_of(src_dt, f32, f16, bf16, u8, s8, s4, u4,
-                             f8_e5m2, f8_e4m3, e8m0, f4_e2m1, f4_e3m0),
+                             f8_e5m2, f8_e4m3, f4_e2m1),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(utils::one_of(wei_dt, f32, f16, bf16, u8, s8, s4, u4,
-                             f8_e5m2, f8_e4m3, e8m0, f4_e2m1, f4_e3m0),
+                             f8_e5m2, f8_e4m3, f4_e2m1),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(
             utils::one_of(dst_dt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT_CFG);
@@ -375,10 +375,22 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_MATMUL(compute::mayiuse_microkernels(intel_engine),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "microkernels");
 
+    // Check for platforms supports dts
+    const auto gpu_arch = dev_info->gpu_arch();
+    const bool with_f8 = utils::one_of(src_dt, f8_e5m2, f8_e4m3)
+            || utils::one_of(wei_dt, f8_e5m2, f8_e4m3);
+    const bool with_f4 = src_dt == f4_e2m1 || wei_dt == f4_e2m1;
+    VDISPATCH_MATMUL(IMPLICATION(with_f8 || src_subbyte || wei_subbyte,
+                             gpu_arch >= compute::gpu_arch_t::xe_hpg),
+            VERBOSE_ISA_DT_MISMATCH);
+    VDISPATCH_MATMUL(
+            IMPLICATION(with_f4, gpu_arch >= compute::gpu_arch_t::xe_hpc),
+            VERBOSE_ISA_DT_MISMATCH);
+
     // Check for supported quantization schemes
     if (src_quant_.with_scale()) {
         VDISPATCH_MATMUL(utils::one_of(src_quant_.scale_dt(), f32, f16, bf16,
-                                 f8_e5m2, f8_e4m3, e8m0, f4_e2m1, f4_e3m0),
+                                 f8_e5m2, f8_e4m3, e8m0, f4_e2m1),
                 VERBOSE_UNSUPPORTED_SCALES_CFG ": src scales dt(%s)",
                 dnnl_dt2str(src_quant_.scale_dt()));
     }
@@ -409,7 +421,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
         VDISPATCH_MATMUL(
                 utils::one_of(wei_mask, 7, 5), VERBOSE_UNSUPPORTED_SCALES_CFG);
         VDISPATCH_MATMUL(utils::one_of(wei_quant_.scale_dt(), f32, f16, bf16,
-                                 f8_e5m2, f8_e4m3, e8m0, f4_e2m1, f4_e3m0),
+                                 f8_e5m2, f8_e4m3, e8m0, f4_e2m1),
                 VERBOSE_UNSUPPORTED_SCALES_CFG ": wei scales dt(%s)",
                 dnnl_dt2str(wei_quant_.scale_dt()));
     }

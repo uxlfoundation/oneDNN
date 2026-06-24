@@ -202,8 +202,7 @@ int ref_primitive_t::init_prim(
             if (res->state == SKIPPED || res->state == UNIMPLEMENTED) \
                 return OK; \
             ::init_memory_args(mems_, prb, fwd_prim_, \
-                    prb->supported_exec_args(/*override_dir_with_fwd=*/true), \
-                    ref_eng); \
+                    /*override_dir_with_fwd=*/true, ref_eng); \
             SAFE(::driver::init_ref_memory_args( \
                          ref_mems, mems_, fwd_prim_, prb, res), \
                     WARN); \
@@ -236,9 +235,7 @@ void ref_primitive_t::init_memory_args(const engine_t &ref_eng) {
             const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
             if (prim_) { \
                 ::init_memory_args(mems_, prb, prim_, \
-                        prb->supported_exec_args( \
-                                /*override_dir_with_fwd=*/false), \
-                        ref_eng); \
+                        /*override_dir_with_fwd=*/false, ref_eng); \
             } else { \
                 /* handle an empty primitive through a driver's reference */ \
                 driver::init_memory_args_native(prb, op_, mems_, ref_eng); \

@@ -653,8 +653,10 @@ dnnl_data_type_t deduce_cfg_data_type(
 // internally, while map doesn't not invalidate its references when adding a new
 // element which simplifies an implementation.
 inline void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
-        dnnl_primitive_t prim, const std::vector<int> &supported_exec_args,
+        dnnl_primitive_t prim, bool override_dir_with_fwd = false,
         const engine_t &test_engine = get_test_engine()) {
+    const std::vector<int> supported_exec_args
+            = base_prb->supported_exec_args(override_dir_with_fwd);
     // Backward case when forward is required will have mem_map not empty.
     // Remove all memories that are not in `supported_exec_args` to save on
     // initializing reference memories.

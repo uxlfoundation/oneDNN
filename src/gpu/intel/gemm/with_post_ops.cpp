@@ -120,11 +120,9 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
             VERBOSE_SKIP_PRIMITIVE_IMPL);
     auto desc = *this->desc();
     dst_type_ = desc.c_desc.data_type;
-    desc.c_desc.data_type = engine->mayiuse_f16_accumulator_with_f16()
-                    && utils::one_of(data_type::f16, desc.a_desc.data_type,
-                            desc.b_desc.data_type)
-            ? data_type::f32
-            : desc.acc_type;
+    // Force f32 destination even if f16 accumulation mode is used.
+    desc.c_desc.data_type
+            = desc.acc_type == data_type::f16 ? data_type::f32 : desc.acc_type;
     acc_type_ = desc.c_desc.data_type;
     use_reorder = dst_md(0)->data_type != desc.c_desc.data_type;
     desc.bias_desc = glob_zero_md;

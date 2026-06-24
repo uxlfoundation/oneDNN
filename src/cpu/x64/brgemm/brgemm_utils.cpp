@@ -1101,8 +1101,11 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->has_int8_vnni = isa_has_int8_vnni(brg->isa_impl);
 
     set_brg_vmm(brg); // TODO: Investigate if it is really needed here.
+    // s8s8 compensation could be applied in per_mn_compensation kernel,
+    // in that case brgemm kernel should supress this flag
+    // to avoid double compensation.
     brg->req_s8s8_compensation = brg->is_int8 && brg->dt_a == data_type::s8
-            && !isa_has_s8s8(brg->isa_impl);
+            && !isa_has_s8s8(brg->isa_impl) && !brg->with_per_mn_compensation;
 
     CHECK(safe_dim_to_int(brg->LDA, (brg->is_row_major()) ? LDA : LDB));
     brg->is_runtime_lda = (brg->is_row_major()) ? is_runtime_value(LDA)

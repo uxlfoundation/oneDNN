@@ -1,0 +1,4 @@
+--reset --allow-enum-tags-only=0 --dir=FWD_D --alg=direct --dt=bf16:bf16:bf16 --bia-dt=undef --stag=acdb --wtag=any --dtag=acdb mb1_ic16oc512_ih128oh128kh3sh1dh0ph1_iw128ow128kw3sw1dw0pw1_n"0fd5b2b16934f4fca652f4d9a54ca320"
+--reset --allow-enum-tags-only=0 --dir=FWD_D --alg=direct --dt=bf16:bf16:bf16 --bia-dt=undef --stag=acdb --wtag=any --dtag=acdb mb1_ic512oc512_ih512oh512kh3sh1dh0ph1_iw512ow512kw3sw1dw0pw1_n"e63e56a508783f042c4b071dcafd5b9d"
+--reset --allow-enum-tags-only=0 --dir=FWD_D --alg=direct --dt=bf16:bf16:bf16 --bia-dt=undef --stag=acdb --wtag=any --dtag=acdb mb1_ic512oc256_ih512oh512kh1sh1dh0ph0_iw512ow512kw1sw1dw0pw0_n"364ff1106fd604da8cc7cd85d94c4ac9"
+--reset --allow-enum-tags-only=0 --dir=FWD_D --alg=direct --dt=bf16:bf16:bf16 --bia-dt=undef --stag=acdb --wtag=any --dtag=acdb mb1_ic256oc128_ih1024oh1024kh1sh1dh0ph0_iw1024ow1024kw1sw1dw0pw0_n"cfb6b4b009e67a305f941d66be3bce14"

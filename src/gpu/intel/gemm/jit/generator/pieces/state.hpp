@@ -424,6 +424,7 @@ struct GEMMState : public CommonState {
     ngen::GRF emulate64TempSave[2];
     bool simd32KMasks = false;
     int lastThresh = 0;
+    ngen::Opcode cUpdateOp = ngen::Opcode::add; // implicit binary post-op, if requested
     ngen::Subregister nextGroupIDM, nextGroupIDN;
     ngen::Subregister nextFlagL3PFA, nextFlagL3PFB;
     ngen::FlagRegister flagL3PFA, flagL3PFB;

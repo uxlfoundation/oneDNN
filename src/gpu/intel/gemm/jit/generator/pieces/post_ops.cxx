@@ -568,7 +568,7 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
 
 #define FOR_EACH_BINARY \
     for (size_t i = 0; i < poCount; i++) \
-        if (postOps[i].is_binary())
+        if (postOps[i].is_binary() && !is_implicit_binary(postOps[i]))
 
         FOR_EACH_BINARY {
             const auto &ld = state.inputs.binaryLDs[i];
@@ -623,7 +623,7 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
 
     for (size_t i = poMin; i < poMax; i++) {
         auto &entry = problem.postOps[i];
-        if(entry.is_binary()) {
+        if (entry.is_binary() && !is_implicit_binary(entry)) {
             auto &ld = state.inputs.binaryLDs[i];
             auto &eff = state.effBinary[i];
             auto op = PostOpsProblem::toBinaryOp(entry);

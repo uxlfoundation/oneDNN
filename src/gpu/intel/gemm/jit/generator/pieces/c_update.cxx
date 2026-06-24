@@ -37,7 +37,7 @@ using std::vector;
 // Needed if we can't convert C to f32 in-place, but doesn't support binary post-ops.
 static inline bool useEltwiseInjector(const GEMMProblem &problem)
 {
-    return problem.hasNonSum1PostOp() && (problem.Tc.paddedSize() < 4);
+    return problem.hasNonIB1PostOp() && (problem.Tc.paddedSize() < 4);
 }
 
 // Main entrypoint for the C matrix update step.
@@ -190,15 +190,16 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
 
     bool splitUpdateStore = (problem.cOffset == COffset::Post);
 
-    // New post-op path: do all post-ops up to sum, if any.
-    size_t poSum = 0;
+    // New post-op path: do all post-ops up to implicit binary, if any.
+    size_t poImpBin = 0;
     bool newPostOps = !useEltwiseInjector(problem);
     if (op == COperation::UpdateStore && newPostOps) {
-        for (poSum = 0; poSum < problem.postOps.len(); poSum++)
-            if (problem.postOps[poSum].is_sum())
-                break;
-        gemmApplyPostOps(0, poSum, problem, strategy, state);
-        splitUpdateStore |= (poSum + 1 < problem.postOps.len());
+        for (poImpBin = 0; poImpBin < problem.postOps.len(); poImpBin++) {
+            const auto &po = problem.postOps[poImpBin];
+            if (po.is_sum() || is_implicit_binary(po)) break;
+        }
+        gemmApplyPostOps(0, poImpBin, problem, strategy, state);
+        splitUpdateStore |= (poImpBin + 1 < problem.postOps.len());
     }
 
     if (op == COperation::UpdateStore && splitUpdateStore) {
@@ -215,9 +216,9 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
         storeProblem.alpha = 1;
         storeProblem.beta = 0;
 
-        // Do any post-sum post-ops.
+        // Do any post-ops after implicit binary.
         if (newPostOps)
-            gemmApplyPostOps(poSum + 1, problem.postOps.len(), problem, strategy, state);
+            gemmApplyPostOps(poImpBin + 1, problem.postOps.len(), problem, strategy, state);
         storeProblem.postOps = PostOps{};
 
         if (problem.cOffset == COffset::Post)
@@ -657,6 +658,8 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
             if (subproblem.postOps.len() > 0) {
                 auto &lastPO = subproblem.postOps[subproblem.postOps.len() - 1];
                 if (lastPO.is_sum()) lastPO.set_scale(1.0f);
+                // no need to rescale implicit binaries: no scales there
+                //if (is_implicit_binary(lastPO)) {}
             }
 
             if (!gemmUpdateC(subproblem, strategy, substate)) return false;
@@ -677,7 +680,7 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
             auto substate = state;
 
             subproblem.beta = 0;
-            subproblem.removeFinalSumPostOp();
+            subproblem.removeFinalIBPostOp();
             if (checkUC) {
                 substrategy.C.cachingW = C_l1UCW;
                 substate.Cext_strategy.cachingW = Ce_l1UCW;
@@ -720,7 +723,7 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
                 auto substate = state;
 
                 subproblem.beta = 0;
-                subproblem.removeFinalSumPostOp();
+                subproblem.removeFinalIBPostOp();
                 substrategy.C.atomic = substrategy.CO.atomic = false;
                 substate.Cext_strategy.atomic = false;
 
@@ -770,16 +773,30 @@ void Generator<hw>::updateC(const GRFMultirange &C_acc, const GRFMultirange &C_a
 
     if (!beta0) {
         if (alpha1 || alphaM1) {
-            if (beta1)
-                FOR_EACH_C(add(esize, acc, loaded, alpha1 ? acc : -acc));
-            else if (betaM1)
-                FOR_EACH_C(add(esize, acc, -loaded, alpha1 ? acc : -acc));
-            else if (beta.fixed())
+            if (beta1) {
+                if (state.cUpdateOp == ngen::Opcode::add) {
+                    FOR_EACH_C(add(esize, acc, loaded, alpha1 ? acc : -acc));
+                } else if (state.cUpdateOp == ngen::Opcode::mul) {
+                    FOR_EACH_C(mul(esize, acc, loaded, alpha1 ? acc : -acc));
+                } else {
+                    stub();
+                }
+            } else if (betaM1) {
+                if (state.cUpdateOp == ngen::Opcode::add) {
+                    FOR_EACH_C(add(esize, acc, -loaded, alpha1 ? acc : -acc));
+                } else if (state.cUpdateOp == ngen::Opcode::mul) {
+                    FOR_EACH_C(mul(esize, acc, -loaded, alpha1 ? acc : -acc));
+                } else {
+                    stub();
+                }
+            } else if (beta.fixed()) {
                 stub();                                                                     // beta should be put in a register first.
-            else {
+            } else {
+                if (state.cUpdateOp != ngen::Opcode::add) stub();
                 FOR_EACH_C(mad(esize, acc, alpha1 ? acc : -acc, loaded, vbetar.getRegAvoiding(hw, loaded)));
             }
         } else {
+            if (state.cUpdateOp != ngen::Opcode::add) stub();
             bool neg = false;
             if (!beta1) {
                 if (betaM1)

@@ -204,21 +204,23 @@ struct GEMMProblem : public CommonProblem {
     std::vector<Type> Tbinary;                              // Binary types
 
     bool hasPostOp() const { return !postOps.empty(); }
-    bool hasNonSum1PostOp() const {
+    bool hasNonIB1PostOp() const {
         for (const auto &e : postOps.ops)
-            if (!e.is_sum()) return true;
+            if (!e.is_sum() && !is_implicit_binary(e)) return true;
         return false;
     }
     bool hasBinaryPostOp() const {
         for (auto &e : postOps.ops)
-            if (e.is_binary()) return true;
+            if (e.is_binary() && !is_implicit_binary(e)) return true;
         return false;
     }
-    bool hasSum1PostOpAtEnd() const {
-        return !postOps.empty() && postOps.ops.back().is_sum();
+    bool hasIB1PostOpAtEnd() const {
+        if (postOps.empty()) return false;
+        const auto &lastPO = postOps.ops.back();
+        return lastPO.is_sum() || is_implicit_binary(lastPO);
     }
-    void removeFinalSumPostOp() {
-        if (hasSum1PostOpAtEnd())
+    void removeFinalIBPostOp() {
+        if (hasIB1PostOpAtEnd())
             postOps.ops.pop_back();
     }
     bool binaryPostProcess() const { return postOps.cStochasticRound || hasCScale(); }
@@ -234,7 +236,7 @@ struct GEMMProblem : public CommonProblem {
         if (!(beta0() || beta1())) return true;
         if (beta1() && !Tc_ext.isSubsetOf(Tc)) return true;
         if ((Tc == Type::s32 || Tc == Type::u32) && Tc_ext == Type::bf16) return true;
-        if (hasNonSum1PostOp()) return true;
+        if (hasNonIB1PostOp()) return true;
         return false;
     }
 

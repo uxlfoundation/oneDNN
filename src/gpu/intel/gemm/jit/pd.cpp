@@ -85,17 +85,29 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
         const auto &e = post_ops_.entry_[i];
         switch (e.kind) {
             case binary:
-                ok &= supported_binary_op(e.binary.alg)
-                        && is_md_gemm_compatible_plain_format(
-                                &e.binary.src1_desc);
-                binary_srcs_.push_back(
-                        binary_src_t {binary_src_t::binary, int(i)});
+                if (is_implicit_binary(e)) {
+                    // implicit binary; an extension of Sum to other binary ops
+                    ok &= (e.binary.alg == alg_kind::binary_add)
+                            || (e.binary.alg == alg_kind::binary_mul);
+                    ok &= !with_implicit_bin_;
+                    with_implicit_bin_ = true;
+                    implicit_bin_at_begin_ = (i == 0);
+                    binary_srcs_.push_back(
+                            binary_src_t {binary_src_t::none, 0});
+                    beta_ = 1.f;
+                } else {
+                    ok &= supported_binary_op(e.binary.alg)
+                            && is_md_gemm_compatible_plain_format(
+                                    &e.binary.src1_desc);
+                    binary_srcs_.push_back(
+                            binary_src_t {binary_src_t::binary, int(i)});
+                }
                 non_scale_po_ = true;
                 break;
             case sum:
-                ok &= !with_sum_;
-                with_sum_ = true;
-                sum_at_begin_ = (i == 0);
+                ok &= !with_implicit_bin_;
+                with_implicit_bin_ = true;
+                implicit_bin_at_begin_ = (i == 0);
                 binary_srcs_.push_back(binary_src_t {binary_src_t::none, 0});
                 beta_ = e.sum.scale;
                 break;
@@ -525,7 +537,7 @@ status_t transfer_post_ops(
 
         for (size_t i = 0; i < po_count; i++) {
             const auto &entry = post_ops[i];
-            if (!entry.is_binary()) {
+            if (!entry.is_binary() || is_implicit_binary(entry)) {
                 problem.Tbinary.push_back(Type::invalid);
                 problem.binary.push_back(MatrixAddressing {});
                 continue;
@@ -625,11 +637,14 @@ status_t pd_t::init_GEMMProblem(
             ? data_type::s32
             : (utils::one_of(data_type::f64, a_type, b_type) ? data_type::f64
                                                              : data_type::f32);
-
-    bool with_binary = (post_ops_.find(primitive_kind::binary) != -1)
-            || (post_ops_.find(primitive_kind::prelu) != -1);
-
-    bool need_x32_acc = with_binary || !IMPLICATION(with_sum_, sum_at_begin_);
+    bool with_binary = false;
+    for (int i = 0, il = post_ops_.len(); !with_binary && (i < il); i++) {
+        const auto &po = post_ops_.entry_[i];
+        with_binary |= po.is_prelu();
+        with_binary |= po.is_binary() && !is_implicit_binary(po);
+    }
+    bool need_x32_acc = with_binary
+            || !IMPLICATION(with_implicit_bin_, implicit_bin_at_begin_);
     auto acc_mode = attr()->acc_mode_;
 
     // Strict acc mode default.

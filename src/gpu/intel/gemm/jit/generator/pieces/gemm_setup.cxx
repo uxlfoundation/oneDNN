@@ -476,8 +476,22 @@ void Generator<hw>::gemmOffsetABC(bool initial, Subregister i0, Subregister j0, 
         if (problem.allowMatrixOffset())
             mark(lDone);
     }
+    for (size_t i = 0; i < problem.postOps.len(); i++) {
+        if (!is_implicit_binary(problem.postOps[i])) continue;
+        switch (problem.postOps[i].as_binary().alg) {
+            case dnnl::impl::alg_kind::binary_add:
+                state.cUpdateOp = ngen::Opcode::add;
+                break;
+            case dnnl::impl::alg_kind::binary_mul:
+                state.cUpdateOp = ngen::Opcode::mul;
+                break;
+            default: stub();
+        }
+        break;
+    }
     if (doBinary) for (size_t i = 0; i < problem.postOps.len(); i++) {
         if (!problem.postOps[i].is_binary()) continue;
+        if (is_implicit_binary(problem.postOps[i])) continue;
         bool row = problem.postOps.binaryRow[i],
              col = problem.postOps.binaryCol[i];
         auto T = problem.Tbinary[i];

@@ -88,7 +88,7 @@ bool useAutoAtomic(HW hw, const GEMMProblem &problem, const GEMMStrategy &strate
             && hasNativeAtomicAdd(hw, problem.Tc_ext.real(), problem.C, strategy.C)
             && (problem.Tacc_min == Type::invalid || problem.Tacc_min.isSubsetOf(problem.Tc_ext))
             && !strategy.cLoadAhead
-            && (problem.postOps.len() == 0 || problem.hasSum1PostOpAtEnd())
+            && (problem.postOps.len() == 0 || problem.hasIB1PostOpAtEnd())
             && (problem.cOffset != COffset::Post)
             && !isBlock2D(strategy.C.accessType);
 }
@@ -141,8 +141,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     needsFusedPostOps |= (problem.cOffset == COffset::Post);
     if (!relaxedAccumulation)
         needsFusedPostOps |= (Tc.bits() != Tc_ext.bits());
-    for (size_t i = 0; i < problem.postOps.len(); i++)
-        needsFusedPostOps |= (!problem.postOps[i].is_sum());
+    for (size_t i = 0; i < problem.postOps.len(); i++) {
+        const auto &po = problem.postOps[i];
+        needsFusedPostOps |= !(po.is_sum() || is_implicit_binary(po));
+    }
     if (problem.Ts != problem.Tc) {
         needsFusedPostOps |= !(problem.alpha1() || problem.alphaM1());
         needsFusedPostOps |= !(problem.beta0()  || problem.beta1());
@@ -570,9 +572,10 @@ bool GEMMStrategy::needsTempC(const GEMMProblem &problem) const
     }
     if (problem.Tc.bits() != problem.Tc_ext.bits()) return true;
     if (!problem.beta0() && !problem.beta1() && altFusedBeta) return true;
-    for (size_t i = 1; i < problem.postOps.len(); i++)
-        if (problem.postOps[i].is_sum())
-            return true;
+    for (size_t i = 1; i < problem.postOps.len(); i++) {
+        const auto &po = problem.postOps[i];
+        if (po.is_sum() || is_implicit_binary(po)) return true;
+    }
     return false;
 }
 

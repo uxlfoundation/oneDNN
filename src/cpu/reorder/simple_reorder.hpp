@@ -2180,9 +2180,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
         VDISPATCH_REORDER_IC(
                 input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-        VDISPATCH_REORDER_IC(
-                IMPLICATION(!output_d.is_dense(), output_d.is_plain()),
-                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         return status::success;
     }
@@ -2295,10 +2292,6 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         VDISPATCH_REORDER_IC(
                 input_d.nelems() % 2 == 0, "Unsupported dimensions");
-        VDISPATCH_REORDER_IC(
-                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
-        VDISPATCH_REORDER_IC(
-                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
         using smask_t = primitive_attr_t::skip_mask_t;
         smask_t skip_mask = smask_t::scales_data_type | smask_t::scales_groups
@@ -2310,9 +2303,22 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         return status::success;
     }
 
+    // Scratchpad is for two-phased algorithm which separates data and format
+    // conversions.
+    // The final size is defined by int4 input which might have blocked format
+    // which in turn might require more space when converted to f32 compared to
+    // original output.
     static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d) {
-        return output_d.size();
+        memory_desc_t input_f32_md;
+        auto st = memory_desc_init_by_md_and_dt(
+                input_f32_md, *input_d.md_, data_type::f32);
+        if (st != status::success) {
+            assert(!"unexpected unsuccessful status");
+            return output_d.size();
+        }
+        return std::max(
+                output_d.size(), memory_desc_wrapper(input_f32_md).size());
     }
 
     static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
@@ -2342,8 +2348,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         wspace = need_second_pass ? wspace : output;
 
         // To avoid clashes between threads each byte (or 2 elements)
-        // is handled by a single thread
-        const dim_t work_amount = input_d.nelems() / 2;
+        // is handled by a single thread.
+        const dim_t work_amount = input_d.nelems(true) / 2;
 
         parallel(0, [=](const int ithr, const int nthr) {
             auto u8_input = reinterpret_cast<const uint8_t *>(input);
@@ -2422,6 +2428,74 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
             const auto i_off = input_d.off_l(idx);
             const auto o_off = output_d.off_l(idx);
             output[o_off] = src_scale * (wspace[i_off] - src_zp_val);
+        });
+
+        return status::success;
+    }
+};
+
+// Sub-byte to same sub-byte reorder (e.g., u4->u4, s4->s4 with format change).
+// Decompresses to f32 in scratchpad, then compresses back.
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
+        typename utils::enable_if<tag_i == format_tag::any
+                        && tag_o == format_tag::any
+                        && utils::one_of(type_i, data_type::s4, data_type::u4,
+                                data_type::f4_e2m1, data_type::f4_e3m0)
+                        && type_i == type_o,
+                spec::reference>::type> {
+    static status_t is_applicable(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
+        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VDISPATCH_REORDER_IC(input_d.is_blocking_desc(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(output_d.is_blocking_desc(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        VDISPATCH_REORDER_IC(
+                simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
+        return status::success;
+    }
+
+    static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d) {
+        return output_d.nelems(true) * sizeof(float);
+    }
+
+    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+        DECLARE_COMMON_PARAMS();
+        using namespace utils;
+
+        input += input_d.blk_off(0);
+        output += output_d.blk_off(0);
+
+        float *wspace = scratchpad.template get<float>(
+                memory_tracking::names::key_reorder_space);
+
+        // Pass 1: Decompress sub-byte input to f32 in output layout.
+        const dim_t nelems = input_d.nelems();
+        parallel_nd(nelems, [=](dim_t idx) {
+            auto u8_input = reinterpret_cast<const uint8_t *>(input);
+            const auto i_off = input_d.off_l(idx);
+            const nibble2_t in_nibble(u8_input[i_off / 2]);
+            data_t<type_i> src_val(in_nibble.get(i_off % 2));
+            const auto o_off = output_d.off_l(idx);
+            wspace[o_off] = static_cast<float>(src_val);
+        });
+
+        // Pass 2: Compress f32 scratchpad to sub-byte output.
+        const dim_t work_amount = output_d.nelems(true) / 2;
+        parallel(0, [=](const int ithr, const int nthr) {
+            dim_t start {0}, end {0};
+            balance211(work_amount, nthr, ithr, start, end);
+            PRAGMA_OMP_SIMD()
+            for (dim_t j = start; j < end; j++) {
+                const auto idx = 2 * j;
+                auto val0 = _qz_a1b0<data_type::f32, type_o>()(wspace[idx]);
+                auto val1 = _qz_a1b0<data_type::f32, type_o>()(wspace[idx + 1]);
+                nibble2_t o_val(val0.raw_bits_, val1.raw_bits_);
+                reinterpret_cast<uint8_t *>(output)[idx / 2] = o_val.get();
+            }
         });
 
         return status::success;

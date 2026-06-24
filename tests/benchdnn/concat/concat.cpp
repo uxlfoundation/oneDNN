@@ -117,27 +117,6 @@ int fill_src(int exec_arg, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
 
 void skip_unimplemented_prb(const prb_t *prb, res_t *res) {
     skip_unimplemented_data_type({prb->sdt, prb->ddt}, prb->dir, res);
-    skip_unimplemented_sum_po(prb->attr, res, dnnl_concat, prb->sdt);
-    skip_unimplemented_binary_po(prb->attr, res);
-    skip_unimplemented_prelu_po(prb->attr, res, dnnl_concat);
-    skip_unimplemented_arg_scale(prb->attr, res);
-
-    // ref concat is reorder-based, hence, inherits some reorder limitations.
-    // bf16, f16 reorders on cpu supports only [bf16, f16]<->f32
-    bool valid_xf16_input
-            = IMPLICATION(prb->sdt == dnnl_bf16 || prb->sdt == dnnl_f16,
-                    prb->dtag == tag::undef || prb->ddt == dnnl_f32
-                            || prb->ddt == prb->sdt);
-    bool valid_xf16_output
-            = IMPLICATION((prb->ddt == dnnl_bf16 || prb->ddt == dnnl_f16)
-                            && prb->dtag != tag::undef,
-                    (prb->sdt == dnnl_f32 || prb->sdt == prb->ddt));
-
-    if (is_cpu() && (!valid_xf16_input || !valid_xf16_output)) {
-        res->state = SKIPPED;
-        res->reason = reason_t::skip_not_supported;
-        return;
-    }
 }
 
 void skip_invalid_prb(const prb_t *prb, res_t *res) {}

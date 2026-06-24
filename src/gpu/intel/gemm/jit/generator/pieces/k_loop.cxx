@@ -1050,22 +1050,20 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             return;
 
         int ka = ka_repack(h), kb = kb_load(h);
-        int ha = h % ka;
-        int hb = h % kb;
-        if (problem.backward()) {
-            ha = ka - 1 - ha;
-            hb = kb - 1 - hb;
-        }
 
         auto &layoutA = Ar_layout(h);
         auto &layoutB = Br_layout(h);
         auto &regsA = Ar_regs(h);
         auto &regsB = Br_regs(h);
 
-            outerProduct(h, ha, hb, oc, opRemActive(h), layoutA, layoutB, regsA, regsB, problem, strategy, state);
+            outerProduct(h, ka, kb, oc, opRemActive(h), layoutA, layoutB, regsA, regsB, problem, strategy, state);
 
         if (calcASums && !slmASums && !state.systolicSumA) {
             int ka_sum = (curPhase == LoopSequencer::PhaseMainLoop) ? ka_sumMain : oc;
+            int ha = h % ka;
+            if (problem.backward()) {
+                ha = ka - 1 - ha;
+            }
             int ha0 = ha - oc + minOPCount;
             if (ha0 % ka_sum == 0)
                 accumulateSum(false, regsA, layoutA, state.As_regs, state.As_layout, strategy, state, ha0, ha0 + ka_sum);
@@ -1073,6 +1071,10 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
 
         if (calcBSums && !slmBSums && !state.systolicSumB) {
             int kb_sum = (curPhase == LoopSequencer::PhaseMainLoop) ? kb_sumMain : oc;
+            int hb = h % kb;
+            if (problem.backward()) {
+                hb = kb - 1 - hb;
+            }
             int hb0 = hb - oc + minOPCount;
             if (hb0 % kb_sum == 0)
                 accumulateSum(true, regsB, layoutB, state.Bs_regs, state.Bs_layout, strategy, state, hb0, hb0 + kb_sum);

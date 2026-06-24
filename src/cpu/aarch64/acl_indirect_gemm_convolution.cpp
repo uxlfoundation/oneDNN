@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022, 2024 Arm Ltd. and affiliates
+* Copyright 2021-2022, 2024, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #include "acl_convolution_utils.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/utils.hpp"
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -101,6 +102,11 @@ status_t acl_indirect_gemm_convolution_fwd_t::pd_t::init(engine_t *engine) {
             && !has_zero_dim_memory()
             && impl::is_dense_format_kind({src_md(), weights_md(), dst_md()});
     if (!ok) return status::unimplemented;
+
+    // Indirect is slower than brgconv sve for small OC * IC, which makes sense because
+    // this is the amount of work per pointer indirection.
+    VDISPATCH_CONV(!(mayiuse(sve) && OC() * IC() <= 2048),
+            "brgconv:sve is faster for small OC * IC");
 
     CHECK(init_conf());
 

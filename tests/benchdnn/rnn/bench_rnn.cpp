@@ -18,12 +18,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <sstream>
-
 #include "oneapi/dnnl/dnnl.h"
 
 #include "dnnl_common.hpp"
 #include "utils/parser.hpp"
+#include "utils/stringstream.hpp"
 
 #include "rnn/rnn.hpp"
 
@@ -73,7 +72,7 @@ int verify_input(const settings_t &s) {
     for (const auto &i_scale_policy : s.scale_policy) {
         if (!(i_scale_policy == policy_t::COMMON
                     || i_scale_policy == policy_t::PER_OC)) {
-            dnnl::impl::stringstream_t ss;
+            stringstream_t ss;
             ss << i_scale_policy;
             const std::string cpp_pstr = ss.str();
             const char *policy_s = cpp_pstr.c_str();

@@ -14,10 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <sstream>
-
 #include "dnnl_common.hpp"
 #include "dnnl_debug.hpp"
+#include "utils/stringstream.hpp"
 
 #include "softmax/softmax.hpp"
 
@@ -46,7 +45,7 @@ const char *alg2str(alg_t alg) {
 }
 
 std::string prb_t::set_repro_line() {
-    dnnl::impl::stringstream_t s;
+    stringstream_t s;
     dump_global_params(s);
     settings_t def;
 

@@ -14,8 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <sstream>
-
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +23,7 @@
 
 #include "dnnl_common.hpp"
 #include "dnnl_debug.hpp"
+#include "utils/stringstream.hpp"
 
 #include "brgemm/brgemm.hpp"
 
@@ -205,7 +204,7 @@ void prb_t::skip_invalid(res_t *res) const {
 }
 
 std::string prb_t::set_repro_line() {
-    dnnl::impl::stringstream_t s;
+    stringstream_t s;
     dump_global_params(s);
     settings_t def;
 

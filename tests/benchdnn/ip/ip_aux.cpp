@@ -14,8 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <sstream>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +22,7 @@
 
 #include "dnnl_common.hpp"
 #include "dnnl_debug.hpp"
+#include "utils/stringstream.hpp"
 
 #include "ip/ip.hpp"
 
@@ -146,7 +145,7 @@ std::ostream &operator<<(std::ostream &s, const desc_t &d) {
 }
 
 std::string prb_t::set_repro_line() {
-    dnnl::impl::stringstream_t s;
+    stringstream_t s;
     dump_global_params(s);
     settings_t def;
 

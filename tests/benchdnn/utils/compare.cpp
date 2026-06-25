@@ -25,6 +25,7 @@
 #include "common.hpp"
 #include "utils/compare.hpp"
 #include "utils/norm.hpp"
+#include "utils/stringstream.hpp"
 
 #include "eltwise/eltwise.hpp"
 
@@ -33,7 +34,7 @@ namespace compare {
 namespace {
 void dump_point_values(
         const std::string &kind_str, const compare_t::dump_point_ctx_t &ctx) {
-    dnnl::impl::stringstream_t ss;
+    stringstream_t ss;
     dims_t l_dims = md2dims(ctx.md);
     dims_t dims_idx = off2dims_idx(l_dims, ctx.l_offset);
     ss << dims_idx;

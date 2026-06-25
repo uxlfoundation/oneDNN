@@ -14,8 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <sstream>
-
 #include <float.h>
 #include <math.h>
 #include <stdio.h>
@@ -27,6 +25,7 @@
 #include "dnnl_common.hpp"
 #include "dnnl_debug.hpp"
 #include "pool/pool.hpp"
+#include "utils/stringstream.hpp"
 
 namespace pool {
 
@@ -321,7 +320,7 @@ std::ostream &operator<<(std::ostream &s, const desc_t &d) {
 }
 
 std::string prb_t::set_repro_line() {
-    dnnl::impl::stringstream_t s;
+    stringstream_t s;
     dump_global_params(s);
     settings_t def;
 

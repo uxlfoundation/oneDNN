@@ -14,9 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <sstream>
-
 #include "dnnl_debug.hpp"
+#include "utils/stringstream.hpp"
 
 #include "binary/binary.hpp"
 
@@ -25,7 +24,7 @@ namespace binary {
 std::string prb_t::set_repro_line() {
     using ::operator<<;
 
-    dnnl::impl::stringstream_t s;
+    stringstream_t s;
     dump_global_params(s);
     settings_t def;
 

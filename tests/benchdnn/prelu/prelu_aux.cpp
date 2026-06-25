@@ -14,17 +14,16 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <sstream>
-
 #include "dnnl_common.hpp"
 #include "dnnl_debug.hpp"
+#include "utils/stringstream.hpp"
 
 #include "prelu/prelu.hpp"
 
 namespace prelu {
 
 std::string prb_t::set_repro_line() {
-    dnnl::impl::stringstream_t s;
+    stringstream_t s;
     using ::operator<<;
 
     dump_global_params(s);

@@ -606,15 +606,15 @@ dim_t jit_brgemm_kernel_t<Wmm>::D_offset(dim_t bd, dim_t ld) const noexcept {
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_A_offset() const noexcept {
     if (brg.is_gemv && brg.gemv_acc_is_vector())
-        return brg.rd_block * brg.LDA * brg.typesize_A;
-    return brg.typesize_A * brg.rd_block;
+        return static_cast<dim_t>(brg.rd_block) * brg.LDA * brg.typesize_A;
+    return static_cast<dim_t>(brg.typesize_A) * brg.rd_block;
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_B_offset() const noexcept {
     if (brg.is_gemv && brg.gemv_acc_is_vector())
-        return brg.rd_block * brg.typesize_B;
-    return brg.typesize_B * brg.rd_block * brg.LDB;
+        return static_cast<dim_t>(brg.rd_block) * brg.typesize_B;
+    return static_cast<dim_t>(brg.typesize_B) * brg.rd_block * brg.LDB;
 }
 
 template <typename Wmm>

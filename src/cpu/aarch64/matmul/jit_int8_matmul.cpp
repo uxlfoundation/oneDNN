@@ -126,13 +126,6 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                 eor(acc(a, b).d, acc(a, b).d, acc(a, b).d);
     }
     void store_regs(int bdb, int ldb, int tail) {
-        // temporary vector registers used by the epilogue / zero-point paths.
-        // these overlap with some B-load registers in the compute loop
-        // but are only used after the compute loop is done.
-        const ZReg zp_b_val = ZReg(6);
-        const ZReg zp_b_prod0 = ZReg(4);
-        const ZReg zp_b_prod1 = ZReg(5);
-
         // Plain s32 dst stores the accumulators directly
         // Convert to f32 when zero-point compensation, scales, bias addition, or eltwise post-op
         // and then convert back to s32 when dst is s32
@@ -181,31 +174,31 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
         if (brg_.zp_type_b != jit_int8_broadcast_t::none) {
             int ao = 0;
+            const ZReg zp_b_val = ZReg(1);
             if (brg_.is_zp_b_int8) {
-                // Weights zero-point is per-tensor; when provided as an int8/u8
-                // runtime buffer, it contains a single scalar value.
-                ldrb(W_TMP_0, ptr(reg_zp_aux_b_buf));
-                if (brg_.zp_b_dt == data_type::s8) sxtb(W_TMP_0, W_TMP_0);
-                dup(zp_b_val.s, W_TMP_0);
+                // Common int8/u8 weights zero-point is provided as a single
+                // scalar runtime value.
                 if (brg_.zp_b_dt == data_type::u8) {
+                    ld1rb(zp_b_val.s, P_ALL_ONE, ptr(reg_zp_aux_b_buf));
                     ucvtf(zp_b_val.s, P_ALL_ONE, zp_b_val.s);
                 } else {
+                    ld1rsb(zp_b_val.s, P_ALL_ONE, ptr(reg_zp_aux_b_buf));
                     scvtf(zp_b_val.s, P_ALL_ONE, zp_b_val.s);
                 }
             }
             for (int a = 0; a < bdb; a++) {
+                // Fetch row-wise src reduction
                 ld1rw(z31.s, P_ALL_ONE, ptr(reg_zp_aux_b, ao * 4));
                 ld1rw(z0.s, P_ALL_ONE, ptr(reg_zp_aux_b, (ao + 1) * 4));
+
+                if (brg_.is_zp_b_int8) {
+                    fmul(z31.s, z31.s, zp_b_val.s);
+                    fmul(z0.s, z0.s, zp_b_val.s);
+                }
+
                 for (int b = 0; b < ldb; b += 2) {
-                    if (brg_.is_zp_b_int8) {
-                        fmul(zp_b_prod0.s, z31.s, zp_b_val.s);
-                        fmul(zp_b_prod1.s, z0.s, zp_b_val.s);
-                        fsub(acc(a, b).s, acc(a, b).s, zp_b_prod0.s);
-                        fsub(acc(a, b + 1).s, acc(a, b + 1).s, zp_b_prod1.s);
-                    } else {
-                        fsub(acc(a, b).s, acc(a, b).s, z31.s);
-                        fsub(acc(a, b + 1).s, acc(a, b + 1).s, z0.s);
-                    }
+                    fsub(acc(a, b).s, acc(a, b).s, z31.s);
+                    fsub(acc(a, b + 1).s, acc(a, b + 1).s, z0.s);
                 }
                 ao += 2;
             }
@@ -944,22 +937,20 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
         if (zero_points.get_mask(DNNL_ARG_SRC) > 0
                 || zero_points.get_mask(DNNL_ARG_DST) > 0
-                || (zero_points.get_mask(DNNL_ARG_WEIGHTS) > 0
-                        && (zero_points.get_mask(DNNL_ARG_WEIGHTS))
-                                != (3 << (dims - 2))))
+                || zero_points.get_mask(DNNL_ARG_WEIGHTS) > 0)
             return false;
 
         brg_->zp_type_a = zero_points.has_default_values(DNNL_ARG_SRC)
                 ? jit_int8_broadcast_t::none
-                : jit_int8_broadcast_t::per_tensor;
+                : jit_int8_broadcast_t::common;
 
         brg_->zp_type_b = zero_points.has_default_values(DNNL_ARG_WEIGHTS)
                 ? jit_int8_broadcast_t::none
-                : jit_int8_broadcast_t::per_tensor;
+                : jit_int8_broadcast_t::common;
 
         brg_->zp_type_c = zero_points.has_default_values(DNNL_ARG_DST)
                 ? jit_int8_broadcast_t::none
-                : jit_int8_broadcast_t::per_tensor;
+                : jit_int8_broadcast_t::common;
 
         return true;
     };

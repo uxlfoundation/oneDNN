@@ -20,6 +20,8 @@
 
 #include "utils/impl_filter.hpp"
 
+#include "tests/thread_context.hpp"
+
 struct base_settings_t {
     struct settings_attributes_t {
         void clear() { attrs_.clear(); }

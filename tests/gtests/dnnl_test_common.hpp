@@ -64,7 +64,10 @@
 #include "src/common/nstl.hpp"
 #include "src/common/primitive_cache_test_api.hpp"
 #include "tests/gtests/test_malloc.hpp"
+
+// Explicit dependency on dnnl::impl::parallel calls.
 #include "tests/test_thread.hpp"
+#include "tests/test_thread_decl.hpp"
 
 #include "src/cpu/platform.hpp"
 

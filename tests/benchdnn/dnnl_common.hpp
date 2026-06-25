@@ -40,7 +40,7 @@
 #include "utils/prb.hpp"
 #include "utils/stream_kind.hpp"
 
-#include "tests/test_thread.hpp"
+#include "tests/test_thread_decl.hpp"
 
 #define for_ for
 

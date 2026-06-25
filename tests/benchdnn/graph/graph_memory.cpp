@@ -19,6 +19,8 @@
 
 #include "oneapi/dnnl/dnnl_graph.hpp"
 
+#include <cstring>
+
 // 0.75f is taken randomly and is subject to change in future.
 static constexpr float capacity_factor = 0.75f;
 

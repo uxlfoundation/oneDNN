@@ -45,8 +45,6 @@
 
 #include "cpu/platform.hpp"
 
-#include "tests/test_thread.hpp"
-
 #include "dnnl_common.hpp"
 #include "dnnl_memory.hpp"
 

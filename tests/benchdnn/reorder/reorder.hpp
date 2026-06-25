@@ -99,7 +99,7 @@ struct prb_t : public prb_dims_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
-        , base_prb_t(FLAG_FWD, false, attr, impl_filter)
+        , base_prb_t(FLAG_FWD, false, attr, ctx_init, ctx_exe, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
@@ -107,9 +107,7 @@ struct prb_t : public prb_dims_t, public base_prb_t {
         , strides(strides)
         , oflag(oflag)
         , cross_engine(cross_engine)
-        , runtime_dim_mask(runtime_dim_mask)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , runtime_dim_mask(runtime_dim_mask) {
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
     dnnl_data_type_t sdt, ddt;
@@ -118,7 +116,6 @@ struct prb_t : public prb_dims_t, public base_prb_t {
     std::vector<flag_t> oflag;
     cross_engine_t cross_engine;
     unsigned runtime_dim_mask;
-    thr_ctx_t ctx_init, ctx_exe;
     bool is_reorder_with_compensation(flag_bit_t flag) const;
     dims_t get_compensation_dims(flag_bit_t flag) const;
     int get_compensation_mask(flag_bit_t flag) const;

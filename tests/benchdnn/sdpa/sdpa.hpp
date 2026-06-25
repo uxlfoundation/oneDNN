@@ -113,7 +113,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
-        , base_prb_t(dir, false, attr, impl_filter)
+        , base_prb_t(dir, false, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , qtag(qtag)
         , ktag(ktag)
@@ -121,9 +121,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
         , dtag(dtag)
         , mdt(mdt)
         , mask_type(mask_type)
-        , scale_type(scale_type)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , scale_type(scale_type) {
 
         // Broadcast data types if needed: Q,K,V,DST
         if (this->dt.size() == 1) {
@@ -187,8 +185,6 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
     dnnl_data_type_t mdt;
     mask_type_t mask_type;
     scale_type_t scale_type;
-
-    thr_ctx_t ctx_init, ctx_exe;
 
     double ops;
     dims_t dst_dims;

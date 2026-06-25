@@ -82,7 +82,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
             const attr_t &attr, const thr_ctx_t &ctx_init,
             const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
-        , base_prb_t(FWD_I, false, attr, impl_filter)
+        , base_prb_t(FWD_I, false, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , stag(stag)
         , wtag(wtag)
@@ -94,9 +94,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
         , beta(beta)
         , batch_size(batch_size)
         , brgemm_attr(brgemm_attr)
-        , batch_kind(batch_kind)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , batch_kind(batch_kind) {
 
         // Broadcast data types if needed
         if (dt.size() == 1) {
@@ -133,7 +131,6 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
     int64_t batch_size;
     std::string brgemm_attr;
     std::string batch_kind;
-    thr_ctx_t ctx_init, ctx_exe;
     double ops;
 
     const dims_t &src_dims() const { return vdims[0]; }

@@ -135,7 +135,7 @@ struct prb_t : public desc_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : desc_t(desc)
-        , base_prb_t(dir, false, attr, impl_filter)
+        , base_prb_t(dir, false, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , bia_dt_(bia_dt)
         , stag(stag)
@@ -143,9 +143,7 @@ struct prb_t : public desc_t, public base_prb_t {
         , dtag(dtag)
         , alg(alg)
         , user_mb(mb)
-        , ops(0)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , ops(0) {
         if (mb) this->mb = mb;
 
         // Broadcast data types if needed
@@ -163,7 +161,6 @@ struct prb_t : public desc_t, public base_prb_t {
     alg_t alg;
     int64_t user_mb;
     double ops;
-    thr_ctx_t ctx_init, ctx_exe;
     void count_ops();
     int64_t count_n_acc() const {
         return (dir & FLAG_FWD)    ? kd * kh * kw * ic / g

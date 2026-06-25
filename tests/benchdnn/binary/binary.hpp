@@ -75,15 +75,13 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
-        , base_prb_t(FLAG_FWD, inplace, attr, impl_filter)
+        , base_prb_t(FLAG_FWD, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
         , dtag(dtag)
         , strides(strides)
-        , alg(alg)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , alg(alg) {
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
     std::vector<dnnl_data_type_t> sdt;
@@ -92,7 +90,6 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
     std::string dtag;
     vdims_t strides;
     alg_t alg;
-    thr_ctx_t ctx_init, ctx_exe;
 
     bool is_ternary_op() const { return alg == alg_t::SELECT; }
 

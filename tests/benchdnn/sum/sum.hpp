@@ -71,14 +71,12 @@ struct prb_t : public prb_dims_t, public base_prb_t {
             bool inplace, const attr_t &attr, const thr_ctx_t &ctx_init,
             const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
-        , base_prb_t(FLAG_FWD, inplace, attr, impl_filter)
+        , base_prb_t(FLAG_FWD, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
         , dtag(dtag)
-        , input_scales(input_scales)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , input_scales(input_scales) {
 
         broadcast_vector(this->stag, n_inputs());
 
@@ -96,7 +94,6 @@ struct prb_t : public prb_dims_t, public base_prb_t {
     std::vector<std::string> stag;
     std::string dtag;
     std::vector<float> input_scales;
-    thr_ctx_t ctx_init, ctx_exe;
 
     int n_inputs() const { return (int)sdt.size(); }
 

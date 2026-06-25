@@ -1856,6 +1856,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     if (has_src_zp) {
         bgmmc.src_zp_dt = src_zp.get_data_type();
         const auto src_zp_mask = src_zp.get_mask();
+
+        // Zero point and SRC should be the same data type for int8 grouped quantization.
+        VCONDCHECK_BG(IMPLICATION(bgmmc.with_int8_grouped_quantization,
+                              bgmmc.src_zp_dt == bgmmc.orig_src_dt),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
         // src per-K grouped ZP: K bit set (the last dim for src is K) and
         // an explicit group size. Only meaningful for grouped int8 paths.
         bgmmc.is_src_zp_per_k = (src_zp_mask & (1 << (bgmmc.ndims - 1))) != 0
@@ -1877,6 +1882,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.is_wei_zp_per_n = wei_zp_mask & (1 << (bgmmc.ndims - 1));
         bgmmc.wei_zp_dt = wei_zp.get_data_type();
         bgmmc.wei_zp_k_gsize = wei_zp.get_group(0);
+
+        // Zero point and WEI should be the same data type for int8 grouped quantization.
+        VCONDCHECK_BG(IMPLICATION(bgmmc.with_int8_grouped_quantization,
+                              bgmmc.wei_zp_dt == bgmmc.orig_wei_dt),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
 
         VCONDCHECK_BG(wei_zp_mask == 0 || bgmmc.is_wei_zp_per_k
                         || bgmmc.is_wei_zp_per_n,

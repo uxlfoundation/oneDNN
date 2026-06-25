@@ -21,10 +21,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <sstream>
-
 #include "common.hpp"
 #include "dnnl_common.hpp"
+#include "utils/stringstream.hpp"
 
 namespace self {
 
@@ -53,7 +52,7 @@ namespace self {
     SELF_CHECK(strcasecmp((a).c_str(), b), "'%s' == '%s'", (a).c_str(), b)
 #define SELF_CHECK_PRINT_EQ2(obj, expect_str1, expect_str2) \
     do { \
-        dnnl::impl::stringstream_t ss; \
+        stringstream_t ss; \
         ss << (obj); \
         std::string obj_str = ss.str(); \
         if (std::string(expect_str1) == std::string(expect_str2) \

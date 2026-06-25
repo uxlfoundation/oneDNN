@@ -23,6 +23,7 @@
 #include "utils/fill.hpp"
 #include "utils/parser.hpp"
 #include "utils/stream_kind.hpp"
+#include "utils/stringstream.hpp"
 #include "utils/summary.hpp"
 
 #include "dnnl_common.hpp"
@@ -30,7 +31,7 @@
 namespace parser {
 
 bool last_parsed_is_problem = false;
-dnnl::impl::stringstream_t help_ss;
+stringstream_t help_ss;
 
 static const std::string benchdnn_url
         = "https://github.com/uxlfoundation/oneDNN/blob/main/tests/benchdnn";

@@ -17,13 +17,14 @@
 
 #include "dnn_types.hpp"
 #include "dnnl_common.hpp"
+#include "utils/stringstream.hpp"
 
 #include "utils/perf_report.hpp"
 
 void base_perf_report_t::report(res_t *res, const char *prb_str) const {
     dump_perf_header();
 
-    dnnl::impl::stringstream_t ss;
+    stringstream_t ss;
 
     const char *pt = pt_;
     char c;
@@ -168,7 +169,7 @@ void base_perf_report_t::dump_perf_header() const {
     // dataframe (i.e. no symbols other than _ and not starting with a number)
     const char *pt = pt_;
     char c;
-    dnnl::impl::stringstream_t ss;
+    stringstream_t ss;
     while ((c = *pt++) != '\0') {
         // Print anything that isn't %
         if (c != '%') {

@@ -20,6 +20,7 @@
 
 #include "dnnl_common.hpp"
 #include "utils/parser.hpp"
+#include "utils/stringstream.hpp"
 #include "utils/task_executor.hpp"
 
 #include "matmul/matmul.hpp"
@@ -78,7 +79,7 @@ int verify_input(const settings_t &s, const settings_t &def) {
 
     for (const auto &i_strides : s.strides) {
         if (i_strides.size() != n_inputs) {
-            dnnl::impl::stringstream_t ss;
+            stringstream_t ss;
             ss << i_strides;
             fprintf(stderr,
                     "ERROR: matmul driver: `strides` option expects three "

@@ -20,7 +20,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -33,11 +32,12 @@
 #include "utils/execution_mode.hpp"
 #include "utils/impl_filter.hpp"
 #include "utils/settings.hpp"
+#include "utils/stringstream.hpp"
 
 namespace parser {
 
 extern bool last_parsed_is_problem;
-extern dnnl::impl::stringstream_t help_ss;
+extern stringstream_t help_ss;
 
 namespace utils {
 

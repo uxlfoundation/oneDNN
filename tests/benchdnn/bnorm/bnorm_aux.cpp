@@ -14,12 +14,11 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <sstream>
-
 #include <assert.h>
 #include <stdlib.h>
 
 #include "bnorm/bnorm.hpp"
+#include "utils/stringstream.hpp"
 
 namespace bnorm {
 
@@ -195,7 +194,7 @@ std::ostream &operator<<(std::ostream &s, const desc_t &d) {
 }
 
 std::string prb_t::set_repro_line() {
-    dnnl::impl::stringstream_t s;
+    stringstream_t s;
     dump_global_params(s);
     settings_t def;
 

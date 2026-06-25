@@ -14,11 +14,10 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <sstream>
-
 #include <assert.h>
 #include <stdlib.h>
 #include "lnorm/lnorm.hpp"
+#include "utils/stringstream.hpp"
 
 namespace lnorm {
 
@@ -44,7 +43,7 @@ flags_t str2flags(const char *str) {
 }
 
 std::string prb_t::set_repro_line() {
-    dnnl::impl::stringstream_t s;
+    stringstream_t s;
     dump_global_params(s);
     settings_t def;
 

@@ -17,10 +17,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <sstream>
-
 #include "dnnl_common.hpp"
 #include "utils/parser.hpp"
+#include "utils/stringstream.hpp"
 #include "utils/task_executor.hpp"
 
 #include "eltwise/eltwise.hpp"
@@ -55,7 +54,7 @@ int verify_input(const settings_t &s) {
     for (const auto &i_alg : s.alg) {
         bool ok = i_alg > alg_t::ELTWISE_START && i_alg < alg_t::ELTWISE_END;
         if (!ok) {
-            dnnl::impl::stringstream_t ss;
+            stringstream_t ss;
             ss << i_alg;
             BENCHDNN_PRINT(0, "%s%s%s\n", "ERROR: unknown algorithm `",
                     ss.str().c_str(), "`.");

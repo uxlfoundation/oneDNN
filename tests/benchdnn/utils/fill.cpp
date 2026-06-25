@@ -16,7 +16,6 @@
 
 #include <cstring>
 #include <random>
-#include <sstream>
 #include <unordered_map>
 
 #include "dnnl_debug.hpp"
@@ -24,6 +23,7 @@
 #include "utils/fill.hpp"
 #include "utils/numeric.hpp"
 #include "utils/parallel.hpp"
+#include "utils/stringstream.hpp"
 
 fill_cfg_t::fill_cfg_t(dnnl_data_type_t dt, float range_min_val,
         float range_max_val, bool only_integer, attr_t::post_ops_t::kind_t alg,
@@ -70,7 +70,7 @@ fill_cfg_t::fill_cfg_t(const std::vector<float> &user_set, float density,
 }
 
 std::string fill_cfg_t::print_verbose() const {
-    std::stringstream ss;
+    stringstream_t ss;
 
     ss << "[FILL_CFG]";
     if (!name_.empty()) ss << " name:\'" << name_ << "\';";
@@ -464,7 +464,7 @@ std::string execarg2str(int exec_arg) {
         auto it = map.find(i);
         if (it != map.end()) return SPACE + it->second;
         if (!i) return std::string();
-        std::ostringstream oss;
+        ostringstream_t oss;
         oss << std::hex << i;
         return SPACE "0x" + oss.str();
     };

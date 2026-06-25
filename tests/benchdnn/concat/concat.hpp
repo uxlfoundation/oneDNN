@@ -70,14 +70,12 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
-        , base_prb_t(FLAG_FWD, false, attr, impl_filter)
+        , base_prb_t(FLAG_FWD, false, attr, ctx_init, ctx_exe, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
         , dtag(dtag)
-        , axis(axis)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , axis(axis) {
         // If dst is omitted by `dtag = tag::undef`, omit `ddt` as well.
         if (dtag == tag::undef) this->ddt = dnnl_data_type_undef;
 
@@ -90,7 +88,6 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
     std::vector<std::string> stag;
     std::string dtag;
     int axis;
-    thr_ctx_t ctx_init, ctx_exe;
     int64_t axis_size() const {
         int64_t as = 0;
         for (int i = 0; i < n_inputs(); ++i)

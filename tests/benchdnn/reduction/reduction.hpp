@@ -95,23 +95,20 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
             const attr_t &attr, const thr_ctx_t &ctx_init,
             const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
-        , base_prb_t(FLAG_FWD, false, attr, impl_filter)
+        , base_prb_t(FLAG_FWD, false, attr, ctx_init, ctx_exe, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
         , dtag(dtag)
         , alg(alg)
         , p(p)
-        , eps(eps)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , eps(eps) {
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
     dnnl_data_type_t sdt, ddt;
     std::string stag, dtag;
     alg_t alg;
     float p, eps;
-    thr_ctx_t ctx_init, ctx_exe;
 
     static const prb_t *from(const base_prb_t *base_prb) {
         return downcast<const prb_t *>(base_prb);

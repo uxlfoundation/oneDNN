@@ -302,7 +302,7 @@ struct prb_t : public desc_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : desc_t(desc)
-        , base_prb_t(prop, false, attr, impl_filter)
+        , base_prb_t(prop, false, attr, ctx_init, ctx_exe, impl_filter)
         , cfg(cfg)
         , tag(tag)
         , prop(prop2prop_kind(prop))
@@ -321,8 +321,6 @@ struct prb_t : public desc_t, public base_prb_t {
         , user_mb(mb)
         , ops(0.0)
         , linear_cscale(0.0f)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
         , wei_nscales(0)
         , wei_scales_mask(0x0)
         , wei_proj_nscales(0)
@@ -522,7 +520,6 @@ struct prb_t : public desc_t, public base_prb_t {
     int64_t user_mb;
     double ops;
     float linear_cscale;
-    thr_ctx_t ctx_init, ctx_exe;
 
     float data_scale, data_shift;
 

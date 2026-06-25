@@ -108,16 +108,14 @@ struct prb_t : public desc_t, public base_prb_t {
             bool inplace, const attr_t &attr, const thr_ctx_t &ctx_init,
             const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : desc_t(desc)
-        , base_prb_t(dir, inplace, attr, impl_filter)
+        , base_prb_t(dir, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , tag(tag)
         , strides(strides)
         , flags(flags)
         , check_alg(check_alg)
         , debug_check_ws(debug_check_ws)
-        , user_mb(mb)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , user_mb(mb) {
         if (mb) this->mb = mb;
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
@@ -128,7 +126,6 @@ struct prb_t : public desc_t, public base_prb_t {
     check_alg_t check_alg;
     bool debug_check_ws;
     int64_t user_mb;
-    thr_ctx_t ctx_init, ctx_exe;
     bool need_ws() const {
         return (flags & (FUSE_NORM_RELU | FUSE_NORM_ADD_RELU))
                 && !(dir & FLAG_INF);

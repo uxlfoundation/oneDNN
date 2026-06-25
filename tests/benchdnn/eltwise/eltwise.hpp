@@ -73,15 +73,13 @@ struct prb_t : public prb_dims_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
-        , base_prb_t(dir, inplace, attr, impl_filter)
+        , base_prb_t(dir, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , tag(tag)
         , alg(alg)
         , alpha(alpha)
         , beta(beta)
-        , user_mb(mb)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , user_mb(mb) {
         if (mb) dims[0] = mb;
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
@@ -90,7 +88,6 @@ struct prb_t : public prb_dims_t, public base_prb_t {
     alg_t alg;
     float alpha, beta;
     int64_t user_mb;
-    thr_ctx_t ctx_init, ctx_exe;
     bool use_dst() const {
         return alg == alg_t::RELU_DST || alg == alg_t::TANH_DST
                 || alg == alg_t::ELU_DST || alg == alg_t::SQRT_DST

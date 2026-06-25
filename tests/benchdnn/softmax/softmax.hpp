@@ -89,7 +89,7 @@ struct prb_t : public prb_dims_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
-        , base_prb_t(dir, inplace, attr, impl_filter)
+        , base_prb_t(dir, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , sdt(sdt)
         , ddt(ddt)
         , stag(stag)
@@ -97,9 +97,7 @@ struct prb_t : public prb_dims_t, public base_prb_t {
         , alg(alg)
         , axis(axis)
         , has_stats(has_stats)
-        , user_mb(mb)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , user_mb(mb) {
         if (mb) dims[0] = mb;
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
@@ -109,7 +107,6 @@ struct prb_t : public prb_dims_t, public base_prb_t {
     int axis;
     bool has_stats;
     int64_t user_mb;
-    thr_ctx_t ctx_init, ctx_exe;
 
     static const prb_t *from(const base_prb_t *base_prb) {
         return downcast<const prb_t *>(base_prb);

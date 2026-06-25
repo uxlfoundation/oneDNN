@@ -85,7 +85,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_vdims_t(prb_vdims)
-        , base_prb_t(FLAG_FWD, false, attr, impl_filter)
+        , base_prb_t(FLAG_FWD, false, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , stag(stag)
         , wtag(wtag)
@@ -94,9 +94,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
         , bia_dt(bia_dt)
         , bia_mask(bia_mask)
         , rt_dims_masks(rt_dims_masks)
-        , sparse_options(sparse_options)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , sparse_options(sparse_options) {
 
         // Broadcast data types if needed
         if (dt.size() == 1) {
@@ -131,7 +129,6 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
     int bia_mask;
     std::vector<dims_mask_t> rt_dims_masks;
     sparse_options_t sparse_options;
-    thr_ctx_t ctx_init, ctx_exe;
     double ops;
 
     const dims_t &src_dims() const { return vdims[0]; }

@@ -22,6 +22,8 @@
 #include "utils/res.hpp"
 #include "utils/wrapper.hpp"
 
+#include "tests/thread_context.hpp"
+
 #include <cassert>
 #include <string>
 #include <vector>
@@ -32,14 +34,21 @@
 struct base_prb_t {
     base_prb_t() = default;
     base_prb_t(dir_t dir, bool inplace, const attr_t &attr,
+            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
-        : dir(dir), inplace(inplace), attr(attr), impl_filter(impl_filter) {}
+        : dir(dir)
+        , inplace(inplace)
+        , attr(attr)
+        , ctx_init(ctx_init)
+        , ctx_exe(ctx_exe)
+        , impl_filter(impl_filter) {}
 
     virtual ~base_prb_t() = default;
 
     dir_t dir = FLAG_FWD;
     bool inplace = false;
     attr_t attr;
+    thr_ctx_t ctx_init, ctx_exe;
     impl_filter_t impl_filter;
 
     // Use to construct memory descriptor when dimensions are runtime since such

@@ -124,13 +124,11 @@ struct prb_t : public desc_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : desc_t(desc)
-        , base_prb_t(dir, false, attr, impl_filter)
+        , base_prb_t(dir, false, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , tag(tag)
         , alg(alg)
-        , user_mb(mb)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , user_mb(mb) {
         if (mb) this->mb = mb;
 
         // Broadcast data types if needed
@@ -145,7 +143,6 @@ struct prb_t : public desc_t, public base_prb_t {
     std::string tag;
     alg_t alg;
     int64_t user_mb;
-    thr_ctx_t ctx_init, ctx_exe;
     int64_t kernel_size() const { return kd * kh * kw; }
     bool has_ker_in_pad() const {
         bool ker_in_pad_d = pd >= kd || pd_r >= kd;

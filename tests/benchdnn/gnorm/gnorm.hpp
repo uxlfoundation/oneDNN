@@ -93,14 +93,12 @@ struct prb_t : public desc_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : desc_t(desc)
-        , base_prb_t(dir, inplace, attr, impl_filter)
+        , base_prb_t(dir, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , dt(dt)
         , tag(tag)
         , flags(flags)
         , check_alg(check_alg)
-        , user_mb(mb)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe) {
+        , user_mb(mb) {
 
         if (mb) this->mb = mb;
 
@@ -116,7 +114,6 @@ struct prb_t : public desc_t, public base_prb_t {
     flags_t flags;
     check_alg_t check_alg;
     int64_t user_mb;
-    thr_ctx_t ctx_init, ctx_exe;
     bool use_stats() const { return flags & GLOB_STATS; }
     bool use_sc() const { return flags & USE_SCALE; }
     bool use_sh() const { return flags & USE_SHIFT; }

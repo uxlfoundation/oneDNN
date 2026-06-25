@@ -94,15 +94,13 @@ struct prb_t : public prb_dims_t, public base_prb_t {
             const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
             const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
-        , base_prb_t(dir, inplace, attr, impl_filter)
+        , base_prb_t(dir, inplace, attr, ctx_init, ctx_exe, impl_filter)
         , check_alg(check_alg)
         , tag(tag)
         , stat_tag(stat_tag)
         , ss_dt(ss_dt)
         , dt(dt)
         , flags(flags)
-        , ctx_init(ctx_init)
-        , ctx_exe(ctx_exe)
         , n(1)
         , c(dims[ndims - 1])
         , eps(eps) {
@@ -124,7 +122,6 @@ struct prb_t : public prb_dims_t, public base_prb_t {
     dnnl_data_type_t ss_dt;
     std::vector<dnnl_data_type_t> dt;
     flags_t flags;
-    thr_ctx_t ctx_init, ctx_exe;
     int64_t n, c;
     float eps;
 

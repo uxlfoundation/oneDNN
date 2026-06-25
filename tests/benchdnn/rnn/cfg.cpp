@@ -334,8 +334,8 @@ CFG(f32s8f32f32) {
 
 const dt_conf_t &dt_conf_t::create(const std::string &str, const attr_t &attr) {
     if (str == "f32") {
-        if (dnnl::impl::utils::one_of(attr.fpmath_mode.mode,
-                    dnnl_fpmath_mode_bf16, dnnl_fpmath_mode_tf32))
+        if (attr.fpmath_mode.mode == dnnl_fpmath_mode_bf16
+                || attr.fpmath_mode.mode == dnnl_fpmath_mode_tf32)
             return conf_bf32;
         if (attr.fpmath_mode.mode == dnnl_fpmath_mode_f16) return conf_f16_math;
     }

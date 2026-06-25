@@ -27,12 +27,13 @@
 
 #include "dnn_types.hpp"
 #include "dnnl_debug.hpp"
-#include "tests/test_thread.hpp"
 #include "utils/dims.hpp"
 #include "utils/execution_mode.hpp"
 #include "utils/impl_filter.hpp"
 #include "utils/settings.hpp"
 #include "utils/stringstream.hpp"
+
+#include "tests/thread_context.hpp"
 
 namespace parser {
 

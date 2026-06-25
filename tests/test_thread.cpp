@@ -16,6 +16,7 @@
 #include <tuple>
 
 #include "tests/test_thread.hpp"
+#include "tests/test_thread_decl.hpp"
 
 std::ostream &operator<<(std::ostream &os, const thr_ctx_t &ctx) {
     if (ctx.max_concurrency == get_default_thr_ctx().max_concurrency)
@@ -463,6 +464,16 @@ thread_local threadpool_t::worker_data_t *threadpool_t::worker_self_ = nullptr;
 
 namespace dnnl {
 
+// Original threadpool utils are used by the scoped_tp_activation_t and thus
+// need to be re-declared because of the hack above.
+namespace impl {
+namespace threadpool_utils {
+void activate_threadpool(dnnl::threadpool_interop::threadpool_iface *tp);
+void deactivate_threadpool();
+dnnl::threadpool_interop::threadpool_iface *get_active_threadpool();
+} // namespace threadpool_utils
+} // namespace impl
+
 namespace testing {
 // Threadpool singleton
 dnnl::threadpool_interop::threadpool_iface *get_threadpool(
@@ -480,6 +491,24 @@ dnnl::threadpool_interop::threadpool_iface *get_threadpool(
         exit(1);
     }
     return &(res.first->second);
+}
+
+scoped_tp_activation_t::scoped_tp_activation_t(
+        dnnl::threadpool_interop::threadpool_iface *tp) {
+    impl::threadpool_utils::activate_threadpool(tp);
+}
+
+scoped_tp_activation_t::~scoped_tp_activation_t() {
+    impl::threadpool_utils::deactivate_threadpool();
+}
+
+scoped_tp_deactivation_t::scoped_tp_deactivation_t() {
+    impl::threadpool_utils::deactivate_threadpool();
+}
+
+scoped_tp_deactivation_t::~scoped_tp_deactivation_t() {
+    // we always use the same threadpool that is returned by `get_threadpool()`
+    impl::threadpool_utils::activate_threadpool(get_threadpool());
 }
 
 } // namespace testing

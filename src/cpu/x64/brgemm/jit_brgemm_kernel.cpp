@@ -539,7 +539,7 @@ private:
 
     bool vpad_exist = false;
     bool need_comp_pads = false;
-    palette_config_t palette_;
+    palette_config_t palette_ {};
 };
 
 /**

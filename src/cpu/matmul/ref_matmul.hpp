@@ -122,8 +122,8 @@ struct ref_matmul_t : public primitive_t {
             return status::success;
         }
 
-        int nthr_;
-        int ntasks_;
+        int nthr_ = 0;
+        int ntasks_ = 0;
 
     private:
         void init_scratchpad();

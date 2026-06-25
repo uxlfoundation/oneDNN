@@ -137,7 +137,7 @@ private:
     bool sse_high_half = false;
     bool disable_postops_when_sse_high_half_processed_ = false;
 
-    int prev_kw;
+    int prev_kw = 0;
 
     void put_one_in_vmm();
     void uni_broadcast_reg_val(const int reg_idx, const int vmm_idx);

@@ -157,8 +157,8 @@ struct jit_1x1_conv_conf_t {
     bool with_binary;
     bool with_dw_conv;
 
-    data_type_t
-            src_dt; // src/weights dtype: f32, bf16 (Zvfbfwma), or f16 (Zvfh)
+    // src/weights dtype: f32, bf16 (Zvfbfwma), or f16 (Zvfh).
+    data_type_t src_dt;
 
     int typesize_in;
     int typesize_out;

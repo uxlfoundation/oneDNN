@@ -150,7 +150,7 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
             using namespace format_tag;
             // Block index is set by the OC lane count (oc_block), which is
             // derived from the f32 vector width regardless of input dtype; do
-            // not scale by typesize_in (it would mis-pick the tag for bf16/f16).
+            // not scale by typesize_in (it mis-picks the tag for bf16/f16).
             const int vlen
                     = jcp_.oc_block * static_cast<int>(sizeof(float)) * 8;
             const int v = get_vlen_implementation_id(vlen);

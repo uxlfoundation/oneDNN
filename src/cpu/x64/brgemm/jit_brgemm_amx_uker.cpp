@@ -217,7 +217,7 @@ private:
     const char *bd_mask_buffer_ptr_ = nullptr;
     std::vector<dim_t> adj_bd_mask_buffer_;
     std::vector<dim_t> skipped_bd_mask_buffer_;
-    palette_config_t palette_;
+    palette_config_t palette_ {};
     // used to store offsets within wsp buffer where the data is
     // transformed(downconverted), to reuse when needed.
     std::unordered_map<std::string, dim_t> transform_buf_map_A_;

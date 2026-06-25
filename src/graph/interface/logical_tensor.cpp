@@ -191,9 +191,10 @@ size_t logical_tensor_wrapper_t::hash() const noexcept {
 status_t DNNL_API dnnl_graph_logical_tensor_init(
         logical_tensor_t *logical_tensor, size_t tid, data_type_t dtype,
         int32_t ndims, layout_type_t ltype, property_type_t ptype) {
-    if (logical_tensor == nullptr || ndims > DNNL_MAX_NDIMS) {
-        return status::invalid_arguments;
-    }
+    VCHECK_LOGICAL_TENSOR(logical_tensor != nullptr, status::invalid_arguments,
+            "%s (logical_tensor)", VERBOSE_NULL_ARG);
+    VCHECK_LOGICAL_TENSOR(ndims <= DNNL_MAX_NDIMS, status::invalid_arguments,
+            VERBOSE_BAD_NDIMS, "logical_tensor", ndims);
 
     // currently only supports s32 and f32 host scalar.
     if (ptype == property_type::host_scalar) {
@@ -231,7 +232,11 @@ status_t DNNL_API dnnl_graph_logical_tensor_init_with_dims(
         logical_tensor_t *logical_tensor, size_t tid, data_type_t dtype,
         int32_t ndims, const dims_t dims, layout_type_t ltype,
         property_type_t ptype) {
-    if (!logical_tensor || ndims < 0) return status::invalid_arguments;
+    VCHECK_LOGICAL_TENSOR(logical_tensor != nullptr, status::invalid_arguments,
+            "%s (logical_tensor)", VERBOSE_NULL_ARG);
+    VCHECK_LOGICAL_TENSOR(ndims >= 0 && ndims <= DNNL_MAX_NDIMS,
+            status::invalid_arguments, VERBOSE_BAD_NDIMS, "logical_tensor",
+            ndims);
 
     // currently only supports s32 and f32 host scalar.
     if (ptype == property_type::host_scalar) {
@@ -283,7 +288,11 @@ status_t DNNL_API dnnl_graph_logical_tensor_init_with_strides(
         logical_tensor_t *logical_tensor, size_t tid, data_type_t dtype,
         int32_t ndims, const dims_t dims, const dims_t strides,
         property_type_t ptype) {
-    if (!logical_tensor || ndims < 0) return status::invalid_arguments;
+    VCHECK_LOGICAL_TENSOR(logical_tensor != nullptr, status::invalid_arguments,
+            "%s (logical_tensor)", VERBOSE_NULL_ARG);
+    VCHECK_LOGICAL_TENSOR(ndims >= 0 && ndims <= DNNL_MAX_NDIMS,
+            status::invalid_arguments, VERBOSE_BAD_NDIMS, "logical_tensor",
+            ndims);
 
     // currently only supports s32 and f32 host scalar.
     if (ptype == property_type::host_scalar) {

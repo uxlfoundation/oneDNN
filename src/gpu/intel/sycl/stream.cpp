@@ -108,8 +108,8 @@ void stream_t::before_exec_hook() {
     if (is_verbose_profiler_enabled()) {
         auto *profiler = static_cast<xpu::sycl::verbose_profiler_t *>(
                 verbose_profiler_
-                        .get(utils::make_unique<xpu::sycl::verbose_profiler_t>(
-                                this))
+                        .get_or_set(utils::make_unique<
+                                xpu::sycl::verbose_profiler_t>(this))
                         .get());
         // Device event profiling and SYCL graph recording are incompatible
         // because the graph execution creates a different execution context

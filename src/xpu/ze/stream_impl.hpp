@@ -86,7 +86,7 @@ private:
     // (if this mode will ever be supported).
     std::list<xpu::ze::wrapper_t<ze_event_handle_t>> events_;
 
-    mutable utils::thread_local_storage_t<context_t> ctx_;
+    utils::thread_local_storage_t<context_t> ctx_;
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(stream_impl_t);
 };

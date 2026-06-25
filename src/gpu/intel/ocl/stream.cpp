@@ -129,7 +129,7 @@ cl_command_queue stream_t::create_queue(
 void stream_t::before_exec_hook() {
     if (is_profiling_enabled()) profiler_->start_profiling();
     if (is_verbose_profiler_enabled()) {
-        auto &verbose_profiler = verbose_profiler_.get(
+        auto &verbose_profiler = verbose_profiler_.get_or_set(
                 utils::make_unique<xpu::ocl::verbose_profiler_t>(this));
         verbose_profiler->update_event_list();
     }

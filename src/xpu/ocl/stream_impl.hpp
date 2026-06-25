@@ -99,7 +99,7 @@ public:
 private:
     cl_command_queue queue_;
 
-    mutable utils::thread_local_storage_t<xpu::ocl::context_t> ctx_;
+    utils::thread_local_storage_t<xpu::ocl::context_t> ctx_;
 };
 
 } // namespace ocl

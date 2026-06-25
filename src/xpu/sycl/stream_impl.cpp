@@ -238,7 +238,7 @@ status_t stream_impl_t::init_verbose_profiler(engine_kind_t kind) {
 
 xpu::sycl::context_t &stream_impl_t::sycl_ctx() {
     static xpu::sycl::context_t empty_ctx {};
-    return ctx_.get(empty_ctx);
+    return ctx_.get_or_set(empty_ctx);
 }
 
 xpu::context_t &stream_impl_t::ctx() {

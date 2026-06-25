@@ -65,14 +65,12 @@ status_t stream_impl_t::init(
 }
 
 const xpu::ze::context_t &stream_impl_t::ze_ctx() const {
-    static xpu::ze::context_t empty_ctx {};
-    return ctx_.get(empty_ctx);
+    return ctx_.get();
 }
 
 xpu::ze::context_t &stream_impl_t::ze_ctx() {
-    const xpu::ze::context_t &ctx
-            = const_cast<const stream_impl_t *>(this)->ze_ctx();
-    return *const_cast<xpu::ze::context_t *>(&ctx);
+    static xpu::ze::context_t empty_ctx {};
+    return ctx_.get_or_set(empty_ctx);
 }
 
 xpu::context_t &stream_impl_t::ctx() {

@@ -280,14 +280,12 @@ status_t stream_impl_t::init_verbose_profiler(engine_kind_t kind) {
 }
 
 const xpu::ocl::context_t &stream_impl_t::ocl_ctx() const {
-    static xpu::ocl::context_t empty_ctx {};
-    return ctx_.get(empty_ctx);
+    return ctx_.get();
 }
 
 xpu::ocl::context_t &stream_impl_t::ocl_ctx() {
-    const xpu::ocl::context_t &ctx
-            = const_cast<const stream_impl_t *>(this)->ocl_ctx();
-    return *const_cast<xpu::ocl::context_t *>(&ctx);
+    static xpu::ocl::context_t empty_ctx {};
+    return ctx_.get_or_set(empty_ctx);
 }
 
 xpu::context_t &stream_impl_t::ctx() {

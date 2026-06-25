@@ -66,16 +66,7 @@ public:
 
 protected:
     std::unique_ptr<xpu::stream_profiler_t> profiler_;
-    // A mutable declaration is required due to thread_local_storage_t API
-    // design constraints - the thread_local_storage_t access methods are
-    // declared non-const but must be accessible from a const
-    // verbose_profiler() accessor) to maintain interface const-correctness.
-    // TODO: Update thread_local_storage_t::is_set(), get(), and get(factory)
-    // methods to be const-qualified to eliminate need for mutable specifier.
-    // Lazy initialization should be considered implementation detail, not
-    // logical state modification.
-    mutable utils::thread_local_storage_t<
-            std::unique_ptr<xpu::verbose_profiler_t>>
+    utils::thread_local_storage_t<std::unique_ptr<xpu::verbose_profiler_t>>
             verbose_profiler_;
 };
 

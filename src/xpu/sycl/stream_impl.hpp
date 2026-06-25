@@ -94,7 +94,7 @@ public:
 private:
     std::unique_ptr<::sycl::queue> queue_;
 
-    mutable utils::thread_local_storage_t<xpu::sycl::context_t> ctx_;
+    utils::thread_local_storage_t<xpu::sycl::context_t> ctx_;
 
     // XXX: this is a temporary solution to make sycl_memory_arg_t
     // default constructible.

@@ -46,18 +46,18 @@ struct thread_local_storage_t {
         return it.first->second;
     }
 
-    bool is_set() {
+    bool is_set() const {
         utils::lock_read_t lock_r(mutex_);
         return storage_.find(std::this_thread::get_id()) != storage_.end();
     }
 
-    T &get() {
+    const T &get() const {
         utils::lock_read_t lock_r(mutex_);
         return storage_.at(std::this_thread::get_id());
     }
 
     template <typename U>
-    T &get(U &&def_value) {
+    T &get_or_set(U &&def_value) {
         {
             utils::lock_read_t lock_r(mutex_);
             auto it = storage_.find(std::this_thread::get_id());
@@ -68,7 +68,7 @@ struct thread_local_storage_t {
 
 private:
     std::unordered_map<std::thread::id, T> storage_;
-    utils::rw_mutex_t mutex_;
+    mutable utils::rw_mutex_t mutex_;
 };
 
 } // namespace utils

@@ -74,14 +74,25 @@ public:
             size_t offset, size_t size) const override {
         void *sub_ptr = reinterpret_cast<uint8_t *>(data_.get()) + offset;
         auto sub_storage = new cpu_memory_storage_t(this->engine());
-        sub_storage->init(memory_flags_t::use_runtime_ptr, size, sub_ptr);
+        if (sub_storage
+                && sub_storage->init(
+                           memory_flags_t::use_runtime_ptr, size, sub_ptr)
+                        != status::success) {
+            delete sub_storage;
+            return nullptr;
+        }
         return std::unique_ptr<memory_storage_t>(sub_storage);
     }
 
     std::unique_ptr<memory_storage_t> clone() const override {
         auto storage = new cpu_memory_storage_t(engine());
-        if (storage)
-            storage->init(memory_flags_t::use_runtime_ptr, 0, data_.get());
+        if (storage
+                && storage->init(
+                           memory_flags_t::use_runtime_ptr, 0, data_.get())
+                        != status::success) {
+            delete storage;
+            return nullptr;
+        }
         return std::unique_ptr<memory_storage_t>(storage);
     }
 

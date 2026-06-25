@@ -63,7 +63,7 @@ brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
     , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn.nthr))
     , n_blocking_(rnn.diff_src_brgemm.N_blocks)
     , m_blocking_(rnn.diff_src_brgemm.M_blocks)
-    , work_amount_(n_blocking_ * m_blocking_)
+    , work_amount_(static_cast<int>(n_blocking_ * m_blocking_))
     , max_n_layer_blocks_(rnn.diff_src_brgemm.N_layer_blocks)
     , max_n_iter_blocks_(rnn.diff_src_brgemm.N_iter_blocks)
     , gemm_layer_needed_(rnn.need_gemm_layer(cell_position))
@@ -115,8 +115,8 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
         const int n_block_id, const int gates_start, const int gates_end,
         thread_exec_ctx_t &ctx) const {
 
-    const int m = m_block_id * rnn_.diff_src_brgemm.m_block;
-    const int n = n_block_id * rnn_.diff_src_brgemm.n_block;
+    const int m = static_cast<int>(m_block_id * rnn_.diff_src_brgemm.m_block);
+    const int n = static_cast<int>(n_block_id * rnn_.diff_src_brgemm.n_block);
     const int num_gates = gates_end - gates_start;
     const scratch_t *const A_m = A_ + m * LDA_;
     const auto B_n_offset = n_block_id * B_nb_offset_;
@@ -314,8 +314,10 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
     const auto n_gates = rnn_.n_gates;
 
     while (start < end) {
-        const int m = m_block_id * rnn_.diff_src_brgemm.m_block;
-        const int n = n_block_id * rnn_.diff_src_brgemm.n_block;
+        const int m
+                = static_cast<int>(m_block_id * rnn_.diff_src_brgemm.m_block);
+        const int n
+                = static_cast<int>(n_block_id * rnn_.diff_src_brgemm.n_block);
         const scratch_t *const A_m = A_ + m * LDA_;
         const auto B_n_offset = n_block_id * B_nb_offset_;
         const weights_t *const B_wei_iter_n = B_wei_iter_ + B_n_offset;
@@ -462,7 +464,7 @@ brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
     , B_k_tail_offset_(k_blocks_ * k_block_ * rnn.scratch_gates_ld)
     , B_k_tail_offset_blocked_(
               k_blocks_ * k_block_ * rnn.diff_wei_brgemm.n_block)
-    , work_amount_(n_blocking_ * m_blocking_)
+    , work_amount_(static_cast<int>(n_blocking_ * m_blocking_))
     , kernel_iter_full_blocks_(rnn_brgemm.diff_wei_.kernel_iter_beta1_.get())
     , kernel_iter_n_tail_(rnn_brgemm.diff_wei_.kernel_iter_N_tail_beta1_.get())
     , kernel_iter_k_tail_(rnn_brgemm.diff_wei_.kernel_iter_K_tail_beta1_.get())
@@ -573,7 +575,8 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
                 ? const_cast<src_layer_t *>(A_layer_m)
                 : A_layer_transposed_ithr;
 
-        const int n = n_block_id * rnn_.diff_wei_brgemm.n_block;
+        const int n
+                = static_cast<int>(n_block_id * rnn_.diff_wei_brgemm.n_block);
         const scratch_t *const B_n = B_ + n;
         const auto C_iter_offset = m_iter * LDC_iter_ + n;
         const auto C_layer_offset = m_layer * LDC_layer_ + n;
@@ -729,7 +732,8 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
                 ? const_cast<src_layer_t *>(A_layer_m)
                 : A_layer_transposed_ithr;
 
-        const int n = n_block_id * rnn_.diff_wei_brgemm.n_block;
+        const int n
+                = static_cast<int>(n_block_id * rnn_.diff_wei_brgemm.n_block);
         const scratch_t *const B_n = B_ + n;
         const auto C_iter_offset = m_iter * LDC_iter_ + n;
         const auto C_layer_offset = m_layer * LDC_layer_ + n;
@@ -869,8 +873,8 @@ brgemm_diff_wei_peep_t<scratch_t>::brgemm_diff_wei_peep_t(
     , dst_iter_c_(dst_iter_c)
     , diff_weights_peephole_(diff_weights_peephole)
     , work_amount_(n_gates_ * rnn_.dhc_blocks_peephole)
-    , dst_iter_c_ld_(rnn.dst_iter_c_ld(cell_position))
-    , src_iter_c_ld_(rnn.src_iter_c_ld(cell_position))
+    , dst_iter_c_ld_(static_cast<int>(rnn.dst_iter_c_ld(cell_position)))
+    , src_iter_c_ld_(static_cast<int>(rnn.src_iter_c_ld(cell_position)))
     , kernel_(rnn_brgemm.kernel_peephole_.get())
     , kernel_tail_(rnn_brgemm.kernel_peephole_tail_.get()) {}
 

@@ -69,13 +69,14 @@ rnn_postgemm_sig(rnn_postgemm_fwd_f32_t::lstm_projection_postgemm) {
 template <data_type_t src_type, data_type_t scratch_type, data_type_t acc_type>
 rnn_postgemm_sig((rnn_postgemm_fwd_t<src_type, scratch_type,
         acc_type>::lstm_projection_postgemm)) {
-    const auto dst_layer_ld = rnn.dst_layer_ld(cell_position, true);
+    const int dst_layer_ld
+            = static_cast<int>(rnn.dst_layer_ld(cell_position, true));
 
     // Currently, scratch_gates_ contains the output of the projection
     const int n_elem = block_step / (int)sizeof(dst_layer_t);
 
-    const int m_block
-            = (rnn.is_brgemm && !rnn.unfused_post_gemm) ? rnn.m_block : rnn.mb;
+    const int m_block = static_cast<int>(
+            (rnn.is_brgemm && !rnn.unfused_post_gemm) ? rnn.m_block : rnn.mb);
 
     for (int i = 0; i < m_block; i++)
         types::cvt_from_float(dst_layer_ + i * dst_layer_ld,
@@ -94,7 +95,8 @@ rnn_postgemm_sig(rnn_postgemm_fwd_u8_t::lstm_projection_postgemm) {
     // - scratch_gates to pass the s32 output of the projection
     // - src_iter_c to pass the projection compensation
 
-    const auto dst_layer_ld = rnn.dst_layer_ld(cell_position, true);
+    const int dst_layer_ld
+            = static_cast<int>(rnn.dst_layer_ld(cell_position, true));
     const auto w_proj_comp = static_cast<const float *>(src_iter_c_);
 
     const float data_shift = pd_->attr()->rnn_data_qparams_.shift_;
@@ -132,7 +134,8 @@ rnn_postgemm_sig(rnn_postgemm_fwd_u8_t::lstm_projection_postgemm) {
         for (int i = 0; i < rnn.m_block; i++)
             postgemm_call(i);
     } else {
-        parallel_nd(rnn.mb, [&](dim_t i) { postgemm_call(i); });
+        parallel_nd(
+                rnn.mb, [&](dim_t i) { postgemm_call(static_cast<int>(i)); });
     }
     proj_dst_copy(rnn, cell_position, dst_iter_, dst_layer_, block_step);
 }
@@ -142,7 +145,8 @@ rnn_postgemm_sig(rnn_postgemm_fwd_s8_t::lstm_projection_postgemm) {
     // Here, we use
     // - scratch_gates to pass the s32 output of the projection
     // - no need to pass the projection compensation for s8s8 amx
-    const auto dst_layer_ld = rnn.dst_layer_ld(cell_position, true);
+    const int dst_layer_ld
+            = static_cast<int>(rnn.dst_layer_ld(cell_position, true));
 
     const float data_shift = pd_->attr()->rnn_data_qparams_.shift_;
     const float data_scale = pd_->attr()->rnn_data_qparams_.scale_;
@@ -161,7 +165,8 @@ rnn_postgemm_sig(rnn_postgemm_fwd_s8_t::lstm_projection_postgemm) {
         return (q10n::saturate<float>(s)) / (wscale * data_scale);
     };
 
-    const auto postgemm_call = [&](dim_t i) {
+    const auto postgemm_call = [&](dim_t i_) {
+        const int i = static_cast<int>(i_);
         const int n_elem = block_step / (int)sizeof(dst_layer_t);
         PRAGMA_OMP_SIMD()
         for (int j = 0; j < n_elem; j++) {

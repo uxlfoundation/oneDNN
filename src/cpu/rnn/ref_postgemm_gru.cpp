@@ -53,9 +53,9 @@ void gru_fwd_part1_postgemm_template(T1 func1, T2 to_src, T3 acc_to_float,
         return to_float(bias_aoc(gate_id, dhc_id), rnn.bias_dt);
     };
 
-    const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
-    const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
-    const auto src_iter_ld = rnn.src_iter_ld(cell_position);
+    const int dst_iter_ld = static_cast<int>(rnn.dst_iter_ld(cell_position));
+    const int dst_layer_ld = static_cast<int>(rnn.dst_layer_ld(cell_position));
+    const int src_iter_ld = static_cast<int>(rnn.src_iter_ld(cell_position));
 
     const ws_states_layer_aoc_t<src_data_t> dst_layer(
             rnn, dst_layer_, dst_layer_ld);
@@ -95,7 +95,8 @@ void gru_fwd_part1_postgemm_template(T1 func1, T2 to_src, T3 acc_to_float,
         for (int i = 0; i < rnn.m_block; i++)
             postgemm_call(i);
     } else {
-        parallel_nd(rnn.mb, [&](dim_t i) { postgemm_call(i); });
+        parallel_nd(
+                rnn.mb, [&](dim_t i) { postgemm_call(static_cast<int>(i)); });
     }
 }
 
@@ -117,9 +118,9 @@ void gru_fwd_part2_postgemm_template(T1 func1, T2 to_src, T3 acc_to_float,
         return to_float(bias_aoc(gate_id, dhc_id), rnn.bias_dt);
     };
 
-    const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
-    const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
-    const auto src_iter_ld = rnn.src_iter_ld(cell_position);
+    const int dst_layer_ld = static_cast<int>(rnn.dst_layer_ld(cell_position));
+    const int dst_iter_ld = static_cast<int>(rnn.dst_iter_ld(cell_position));
+    const int src_iter_ld = static_cast<int>(rnn.src_iter_ld(cell_position));
     const augru_attention_aoc_t<const src_data_t> augru_attention(
             rnn, augru_attention_);
     const ws_states_layer_aoc_t<src_data_t> dst_layer(
@@ -159,7 +160,8 @@ void gru_fwd_part2_postgemm_template(T1 func1, T2 to_src, T3 acc_to_float,
         for (int i = 0; i < rnn.m_block; i++)
             postgemm_call(i);
     } else {
-        parallel_nd(rnn.mb, [&](dim_t i) { postgemm_call(i); });
+        parallel_nd(
+                rnn.mb, [&](dim_t i) { postgemm_call(static_cast<int>(i)); });
     }
 }
 
@@ -334,7 +336,7 @@ void gru_bwd_part1_postgemm_template(T to_src, const rnn_utils::rnn_conf_t &rnn,
         src_data_t *dst_layer_, const src_data_t *src_iter_,
         acc_data_t *diff_src_iter_, acc_data_t *diff_dst_iter_,
         acc_data_t *diff_augru_attention_, acc_data_t *diff_dst_layer_) {
-    const auto src_iter_ld = rnn.src_iter_ld(cell_position);
+    const int src_iter_ld = static_cast<int>(rnn.src_iter_ld(cell_position));
 
     const augru_attention_aoc_t<const src_data_t> augru_attention(
             rnn, augru_attention_);
@@ -356,7 +358,8 @@ void gru_bwd_part1_postgemm_template(T to_src, const rnn_utils::rnn_conf_t &rnn,
     // dG2^ = dh * (1 - G0) * (1 - G2^2)
     // dG0^ = dh * (ht-1 - G2) * u * (1 - G0)
     // dht-1 (part) = dh * G0
-    parallel_nd(rnn.mb, [&](dim_t i) {
+    parallel_nd(rnn.mb, [&](dim_t i_) {
+        const int i = static_cast<int>(i_);
         acc_data_t diff_attention = 0.0f;
         PRAGMA_OMP_SIMD(reduction(+ : diff_attention))
         for (int j = 0; j < rnn.dhc; j++) {
@@ -388,7 +391,7 @@ void gru_bwd_part2_postgemm_template(T to_src, const rnn_utils::rnn_conf_t &rnn,
         const src_data_t *src_iter_, acc_data_t *diff_src_layer_,
         acc_data_t *diff_src_iter_, acc_data_t *diff_dst_iter_,
         acc_data_t *diff_dst_layer_, scratch_data_t *scratch_cell_) {
-    const auto src_iter_ld = rnn.src_iter_ld(cell_position);
+    const int src_iter_ld = static_cast<int>(rnn.src_iter_ld(cell_position));
     // auto dst_ld = rnn.dst_ld(cell_position);
     // ws_states_layer_aoc_t<src_data_t> dst_layer(rnn, dst_layer_, dst_ld);
     const ws_states_iter_aoc_t<const src_data_t> src_iter(
@@ -410,7 +413,8 @@ void gru_bwd_part2_postgemm_template(T to_src, const rnn_utils::rnn_conf_t &rnn,
     // dG1^ = d(hG1) * h * G1 * (1 - G1)
     // dht-1 (part) += d(hG1) * G1
     // h * G1 (required for dWh)
-    parallel_nd(rnn.mb, [&](dim_t i) {
+    parallel_nd(rnn.mb, [&](dim_t i_) {
+        const int i = static_cast<int>(i_);
         PRAGMA_OMP_SIMD()
         for (int j = 0; j < rnn.dhc; j++) {
             const float h = src_iter(i, j);

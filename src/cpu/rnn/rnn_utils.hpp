@@ -768,17 +768,18 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
         return false;
 
     // Set problem members defining problem sizes
-    rnn.n_layer = weights_layer_d.dims()[0];
-    rnn.n_iter = src_layer_d.dims()[0];
-    rnn.n_dir = weights_layer_d.dims()[1];
-    rnn.n_gates = weights_layer_d.dims()[3];
+    rnn.n_layer = static_cast<int>(weights_layer_d.dims()[0]);
+    rnn.n_iter = static_cast<int>(src_layer_d.dims()[0]);
+    rnn.n_dir = static_cast<int>(weights_layer_d.dims()[1]);
+    rnn.n_gates = static_cast<int>(weights_layer_d.dims()[3]);
     rnn.n_states = rd.cell_kind == dnnl_vanilla_lstm ? 2 : 1;
     rnn.n_bias = rnn.n_gates + rnn.is_lbr;
-    rnn.mb = src_layer_d.dims()[1];
-    rnn.sic = weights_iter_d.dims()[2];
-    rnn.slc = weights_layer_d.dims()[2];
-    rnn.dhc = weights_layer_d.dims()[4];
-    rnn.dlc = rnn.is_lstm_projection ? weights_projection_d.dims()[3] : rnn.dhc;
+    rnn.mb = static_cast<int>(src_layer_d.dims()[1]);
+    rnn.sic = static_cast<int>(weights_iter_d.dims()[2]);
+    rnn.slc = static_cast<int>(weights_layer_d.dims()[2]);
+    rnn.dhc = static_cast<int>(weights_layer_d.dims()[4]);
+    rnn.dlc = static_cast<int>(
+            rnn.is_lstm_projection ? weights_projection_d.dims()[3] : rnn.dhc);
     // All supported cells have dic == dlc
     rnn.dic = rnn.dlc;
 
@@ -847,20 +848,22 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
             = get_good_ld(rnn.dlc, sizeof(typename T::gemm_acc_t));
 
     // Assumption: {src,dst}_layer has tnc layout, {src,dst}_iter has ldnc,
-    rnn.src_layer_ld_ = src_layer_d.blocking_desc().strides[1];
-    rnn.dst_layer_ld_ = dst_layer_d.blocking_desc().strides[1];
+    rnn.src_layer_ld_
+            = static_cast<int>(src_layer_d.blocking_desc().strides[1]);
+    rnn.dst_layer_ld_
+            = static_cast<int>(dst_layer_d.blocking_desc().strides[1]);
     rnn.src_iter_ld_ = types::is_zero_md(src_iter_d.md_)
             ? 0
-            : src_iter_d.blocking_desc().strides[2];
+            : static_cast<int>(src_iter_d.blocking_desc().strides[2]);
     rnn.dst_iter_ld_ = types::is_zero_md(dst_iter_d.md_)
             ? 0
-            : dst_iter_d.blocking_desc().strides[2];
+            : static_cast<int>(dst_iter_d.blocking_desc().strides[2]);
     rnn.src_iter_c_ld_ = types::is_zero_md(src_iter_c_d.md_)
             ? 0
-            : src_iter_c_d.blocking_desc().strides[2];
+            : static_cast<int>(src_iter_c_d.blocking_desc().strides[2]);
     rnn.dst_iter_c_ld_ = types::is_zero_md(dst_iter_c_d.md_)
             ? 0
-            : dst_iter_c_d.blocking_desc().strides[2];
+            : static_cast<int>(dst_iter_c_d.blocking_desc().strides[2]);
 
     /* Set the correct number of weights parts */
     rnn.is_orig_gru = utils::one_of(
@@ -1081,16 +1084,16 @@ void set_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
         if (md.is_blocking_desc()) {
             if (is_ldigo(md)) {
                 ld = (int)md.blocking_desc().strides[2];
-                nld = md.dims()[2];
+                nld = static_cast<int>(md.dims()[2]);
             } else if (is_ldgoi(md)) {
                 ld = (int)md.blocking_desc().strides[4];
-                nld = md.dims()[3] * md.dims()[4];
+                nld = static_cast<int>(md.dims()[3] * md.dims()[4]);
             } else if (is_ldoi(md)) {
                 ld = (int)md.blocking_desc().strides[3];
-                nld = md.dims()[3];
+                nld = static_cast<int>(md.dims()[3]);
             } else if (is_ldio(md)) {
                 ld = (int)md.blocking_desc().strides[2];
-                nld = md.dims()[2];
+                nld = static_cast<int>(md.dims()[2]);
             } else
                 assert(!"unsupported weights format");
         }

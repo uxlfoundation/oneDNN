@@ -72,7 +72,8 @@ rnn_cell_execution_sig(
             dst_iter_postgemm, weights_scales, rnn.dhc * sizeof(scratch_t));
 
     if (rnn.is_lstm_projection) {
-        const auto dst_layer_ld = rnn.dst_layer_ld(cell_position, true);
+        const int dst_layer_ld
+                = static_cast<int>(rnn.dst_layer_ld(cell_position, true));
 
         // Here, because the accumulation type is different
         // than dst_layer, we have to use scratch to hold temporary
@@ -109,8 +110,10 @@ void lstm_bwd_weights_peephole_and_bias(const rnn_utils::rnn_conf_t &rnn,
         cell_position_t cell_position, const void *src_iter_c_,
         const void *dst_iter_c_, const scratch_data_t *scratch_gates_,
         float *diff_weights_peephole_, acc_data_t *diff_bias_) {
-    const int dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
-    const int src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
+    const int dst_iter_c_ld
+            = static_cast<int>(rnn.dst_iter_c_ld(cell_position));
+    const int src_iter_c_ld
+            = static_cast<int>(rnn.src_iter_c_ld(cell_position));
 
     const auto dst_iter_c = rnn_utils::make_raw_aoc(dst_iter_c_,
             types::data_type_size(rnn.dst_iter_c_dt), rnn.ws_states_iter_c_nld,

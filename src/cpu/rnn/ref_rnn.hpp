@@ -71,7 +71,8 @@ void gates_reduction(const rnn_utils::rnn_conf_t &rnn,
             body_loop(i, k, ws_gates_, diff_bias_, rnn, cell_position);
 #else
     parallel_nd(rnn.n_gates, rnn.dhc, [&](dim_t i, dim_t k) {
-        body_loop(i, k, ws_gates_, diff_bias_, rnn, cell_position);
+        body_loop(static_cast<int>(i), static_cast<int>(k), ws_gates_,
+                diff_bias_, rnn, cell_position);
     });
 #endif
 }

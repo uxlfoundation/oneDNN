@@ -119,10 +119,10 @@ dnnl_status_t gru_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
     const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
             rnn, scratch_gates_);
 
-    const auto src_layer_ld = rnn.src_layer_ld(cell_position);
-    const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
-    const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
-    const auto src_iter_ld = rnn.src_iter_ld(cell_position);
+    const int src_layer_ld = static_cast<int>(rnn.src_layer_ld(cell_position));
+    const int dst_iter_ld = static_cast<int>(rnn.dst_iter_ld(cell_position));
+    const int dst_layer_ld = static_cast<int>(rnn.dst_layer_ld(cell_position));
+    const int src_iter_ld = static_cast<int>(rnn.src_iter_ld(cell_position));
     const ws_states_layer_aoc_t<src_data_t> dst_layer(rnn, dst_layer_,
             (cell_position & last_layer) ? dst_layer_ld : dst_iter_ld);
     const ws_states_iter_aoc_t<const src_data_t> src_iter(

@@ -36,8 +36,8 @@ using namespace rnn_utils;
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         acc_type>::cell_execution_gru_lbr)) {
-    const auto src_layer_ld = rnn.src_layer_ld(cell_position);
-    const auto src_iter_ld = rnn.src_iter_ld(cell_position);
+    const int src_layer_ld = static_cast<int>(rnn.src_layer_ld(cell_position));
+    const int src_iter_ld = static_cast<int>(rnn.src_iter_ld(cell_position));
 
     if (rnn.need_gemm_layer(cell_position)) {
         if (rnn.use_matmul) {
@@ -99,8 +99,8 @@ dnnl_status_t common_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
         acc_data_t *diff_w_iter_, acc_data_t *diff_bias_, src_data_t *ws_gates_,
         src_data_t *ws_grid_, scratch_data_t *scratch_gates_,
         scratch_data_t *scratch_cell_, src_data_t *dst_iter_) {
-    const auto src_layer_ld = rnn.src_layer_ld(cell_position);
-    const auto src_iter_ld = rnn.src_iter_ld(cell_position);
+    const int src_layer_ld = static_cast<int>(rnn.src_layer_ld(cell_position));
+    const int src_iter_ld = static_cast<int>(rnn.src_iter_ld(cell_position));
 
     const scratch_gates_aoc_t<scratch_data_t> scratch_gates_r(
             rnn, scratch_cell_);

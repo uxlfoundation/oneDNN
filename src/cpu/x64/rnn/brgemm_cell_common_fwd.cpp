@@ -54,7 +54,7 @@ brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     , n_blocking_((rnn_.unfused_post_gemm) ? rnn_.N_blocks * rnn_.n_gates
                                            : rnn_.N_blocks)
     , m_blocking_(rnn_.M_blocks)
-    , work_amount_(n_blocking_ * m_blocking_)
+    , work_amount_(static_cast<int>(n_blocking_ * m_blocking_))
     , Bl_n_offset_(rnn_.K1padded * rnn_.n_block)
     , Bi_n_offset_(rnn_.K2padded * rnn_.n_block)
     , Bl_g_offset_(rnn_.N_blocks * Bl_n_offset_)
@@ -165,8 +165,8 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
     gemm_acc_t *const amx_buffer = is_amx
             ? amx_scratchpad_ + rnn_.m_block * rnn_.n_block * ithr
             : nullptr;
-    const int max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
-            nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
+    const int max_K_Block = static_cast<int>(nstl::max(rnn_.KB1_blocks + 1,
+            nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1)));
     brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * max_K_Block;
 
@@ -333,9 +333,9 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
     gemm_acc_t *const amx_buffer = is_amx
             ? amx_scratchpad_ + rnn_.m_block * rnn_.n_block * ithr
             : nullptr;
-    const int max_K_Block = 2
+    const int max_K_Block = static_cast<int>(2
             * nstl::max(rnn_.KB1_blocks + 1,
-                    nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
+                    nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1)));
     brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * max_K_Block;
 
@@ -514,8 +514,8 @@ void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::kernel(
     int start = 0, end = 0;
     balance211(work_amount_proj_, nthr, ithr, start, end);
     const bool is_amx = is_superset(rnn_.brgemm_isa, x64::avx512_core_amx);
-    const int max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
-            nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
+    const int max_K_Block = static_cast<int>(nstl::max(rnn_.KB1_blocks + 1,
+            nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1)));
     auto *const amx_buffer = is_amx
             ? amx_scratchpad_ + rnn_.m_block * rnn_.n_block * ithr
             : nullptr;
@@ -537,11 +537,11 @@ void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::kernel(
     }
 
     while (start < end) {
-        const int n = nb * rnn_.n_block;
-        const int m = mb * rnn_.m_block;
+        const int n = static_cast<int>(nb * rnn_.n_block);
+        const int m = static_cast<int>(mb * rnn_.m_block);
         const bool do_n_tail = (n + rnn_.n_block) > rnn_.Nproj;
-        const int block_step = ((do_n_tail) ? rnn_.nproj_tail : rnn_.n_block)
-                * sizeof(src_t);
+        const int block_step = static_cast<int>(
+                ((do_n_tail) ? rnn_.nproj_tail : rnn_.n_block) * sizeof(src_t));
 
         const auto *const Ap_m = A_ + m * rnn_.LDAproj;
         const auto *const Bp_n = B_ + nb * B_n_offset_;
@@ -637,7 +637,7 @@ brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::brgemm_gru_t(
     , n_blocking_((rnn_.unfused_post_gemm) ? rnn_.N_blocks * rnn_.n_gates
                                            : rnn_.N_blocks)
     , m_blocking_(rnn_.M_blocks)
-    , work_amount_(m_blocking_)
+    , work_amount_(static_cast<int>(m_blocking_))
     , Bl_n_offset_(rnn_.K1padded * rnn_.n_block)
     , Bi_n_offset_(rnn_.K2padded * rnn_.n_block)
     , Bl_g_offset_(rnn_.N_blocks * Bl_n_offset_)
@@ -720,8 +720,8 @@ void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
     gemm_acc_t *const amx_buffer = is_amx
             ? amx_scratchpad_ + rnn_.m_block * rnn_.n_block * ithr
             : nullptr;
-    const int max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
-            nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
+    const int max_K_Block = static_cast<int>(nstl::max(rnn_.KB1_blocks + 1,
+            nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1)));
     brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * max_K_Block;
 
@@ -947,7 +947,7 @@ brgemm_merged_layer_t<src_t, weights_t, scratch_t,
     , max_nthr_(nstl::min(dnnl_get_current_num_threads(), rnn_.nthr))
     , n_blocking_(rnn_.N_blocks * rnn_.n_gates)
     , m_blocking_(rnn_.Mlayermerged_blocks)
-    , work_amount_(n_blocking_ * m_blocking_)
+    , work_amount_(static_cast<int>(n_blocking_ * m_blocking_))
     , Bl_n_offset_(rnn_.K1padded * rnn_.n_block)
     , Bl_g_offset_(rnn_.N_blocks * Bl_n_offset_)
     , Al_k_tail_offset_(rnn_.KB1_blocks * rnn_.k1_block)
@@ -993,7 +993,7 @@ void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
     gemm_acc_t *const amx_buffer = is_amx
             ? amx_scratchpad_ + m_block * rnn_.n_block * ithr
             : nullptr;
-    const int max_K_Block = rnn_.KB1_blocks + 1;
+    const int max_K_Block = static_cast<int>(rnn_.KB1_blocks + 1);
     brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * max_K_Block;
 

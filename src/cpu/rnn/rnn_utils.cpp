@@ -279,7 +279,7 @@ status_t rnn_utils::set_expected_desc(rnn_conf_t &rnn,
     } else {
         using namespace format_tag;
         if (rnn.is_brgemm) {
-            const int n_block = rnn.n_block;
+            const int n_block = static_cast<int>(rnn.n_block);
             format_tag_t tag = format_tag::undef;
 
             if (weights_type == weights_type_t::projection) {

@@ -42,9 +42,9 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
         const src_data_t *src_iter_, const void *bias_, src_data_t *ws_grid_,
         scratch_data_t *scratch_cell_, int block_step) {
 
-    const auto src_iter_ld = rnn.src_iter_ld(cell_position);
-    const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
-    const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
+    const int src_iter_ld = static_cast<int>(rnn.src_iter_ld(cell_position));
+    const int dst_layer_ld = static_cast<int>(rnn.dst_layer_ld(cell_position));
+    const int dst_iter_ld = static_cast<int>(rnn.dst_iter_ld(cell_position));
 
     const augru_attention_aoc_t<const src_data_t> augru_attention(
             rnn, augru_attention_);
@@ -72,7 +72,8 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
     const float *scales_G1 = get_scales(scales, 1);
     const float *scales_G2 = get_scales(scales, 2);
 
-    const auto postgemm = [&](dim_t i) {
+    const auto postgemm = [&](dim_t i_) {
+        const int i = static_cast<int>(i_);
         PRAGMA_OMP_SIMD()
         for (int j = 0; j < rnn.dhc; j++) {
             const float Wh_b = scratch_cell(i, 2, j) + bias(3, j);
@@ -100,7 +101,8 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
         }
     };
 
-    const auto postgemm_brgemm = [&](dim_t i) {
+    const auto postgemm_brgemm = [&](dim_t i_) {
+        const int i = static_cast<int>(i_);
         const int n_elem = block_step;
         PRAGMA_OMP_SIMD()
         for (int j = 0; j < n_elem; j++) {
@@ -184,7 +186,7 @@ void gru_lbr_bwd_postgemm_template(T1 to_src, const rnn_utils::rnn_conf_t &rnn,
         acc_data_t *diff_dst_iter_, acc_data_t *diff_augru_attention_,
         acc_data_t *diff_dst_layer_, scratch_data_t *scratch_cell_,
         src_data_t *ws_grid_) {
-    const auto src_iter_ld = rnn.src_iter_ld(cell_position);
+    const int src_iter_ld = static_cast<int>(rnn.src_iter_ld(cell_position));
 
     const augru_attention_aoc_t<const src_data_t> augru_attention(
             rnn, augru_attention_);
@@ -210,7 +212,8 @@ void gru_lbr_bwd_postgemm_template(T1 to_src, const rnn_utils::rnn_conf_t &rnn,
     // dG0 = (dht - G2) * dht * (1 - G0) * G0
     // dG1 = (W*h + b) * dG2 * (1 - G1) * G1
     // dG2 = (1 - G0) * dht * (1 - G2*G2)
-    parallel_nd(rnn.mb, [&](dim_t i) {
+    parallel_nd(rnn.mb, [&](dim_t i_) {
+        const int i = static_cast<int>(i_);
         acc_data_t diff_attention = 0.0f;
         PRAGMA_OMP_SIMD(reduction(+ : diff_attention))
         for (int j = 0; j < rnn.dhc; j++) {

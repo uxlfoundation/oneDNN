@@ -115,8 +115,8 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
             // Todo: add parallelization on dhc for the batch 1 case
             // Assumption: the kernel runs a loop on dhc elements
             parallel_nd(rnn.mb, [&](dim_t i) {
-                postgemm_fwd_call(i, rnn, cell_position, ws_gates_,
-                        scratch_gates_, augru_attention_, dst_layer_,
+                postgemm_fwd_call(static_cast<int>(i), rnn, cell_position,
+                        ws_gates_, scratch_gates_, augru_attention_, dst_layer_,
                         dst_iter_c_, src_iter_, src_iter_c_, weights_peephole_,
                         bias_, ws_grid_, scratch_cell_, dst_iter_,
                         weights_scales_, 0);
@@ -142,12 +142,16 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
         const auto bias = rnn_utils::make_raw_aoc(
                 bias_, types::data_type_size(rnn.bias_dt), rnn.n_bias, rnn.dhc);
 
-        const auto src_iter_ld = rnn.src_iter_ld(cell_position);
-        const int dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
-        const auto dst_layer_ld
-                = rnn.dst_layer_ld(cell_position, is_projection());
-        const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
-        const int src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
+        const int src_iter_ld
+                = static_cast<int>(rnn.src_iter_ld(cell_position));
+        const int dst_iter_c_ld
+                = static_cast<int>(rnn.dst_iter_c_ld(cell_position));
+        const int dst_layer_ld = static_cast<int>(
+                rnn.dst_layer_ld(cell_position, is_projection()));
+        const int dst_iter_ld
+                = static_cast<int>(rnn.dst_iter_ld(cell_position));
+        const int src_iter_c_ld
+                = static_cast<int>(rnn.src_iter_c_ld(cell_position));
 
         const rnn_utils::ws_states_layer_aoc_t<dst_layer_t> dst_layer(
                 rnn, dst_layer_, dst_layer_ld);
@@ -227,9 +231,12 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
             typename gemm_acc_t, typename gates_t, typename scratch_t>
     rnn_postgemm_sig(execute_bwd) {
         using namespace rnn_utils;
-        const int dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
-        const int src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
-        const auto src_iter_ld = rnn.src_iter_ld(cell_position);
+        const int dst_iter_c_ld
+                = static_cast<int>(rnn.dst_iter_c_ld(cell_position));
+        const int src_iter_c_ld
+                = static_cast<int>(rnn.src_iter_c_ld(cell_position));
+        const int src_iter_ld
+                = static_cast<int>(rnn.src_iter_ld(cell_position));
 
         const rnn_utils::weights_peephole_aoc_t<const float> weights_peephole(
                 rnn, weights_peephole_);
@@ -270,7 +277,8 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
 #define SAFE_PTR(F, ...) (CONCAT2(F, _) ? &(F(__VA_ARGS__)) : nullptr)
         // Todo: add parallelization on dhc for the batch 1 case
         // Assumption: the kernel runs a loop on dhc elements
-        parallel_nd(rnn.mb, [&](dim_t i) {
+        parallel_nd(rnn.mb, [&](dim_t i_) {
+            const int i = static_cast<int>(i_);
             void *param1_, *param2_, *param4_, *param5_, *param7_, *param8_,
                     *param9_;
             const void *param3_, *param6_;

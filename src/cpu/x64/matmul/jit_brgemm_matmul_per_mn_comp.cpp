@@ -433,8 +433,9 @@ private:
                     const Xbyak::Xmm xmm_data(vmm_data_sr().getIdx());
                     load_bytes(xmm_data, addr, rem);
                 }
+                const Vmm src_vmm = vmm_data_sr();
                 const auto &src_op = need_preload
-                        ? static_cast<const Xbyak::Operand &>(vmm_data_sr())
+                        ? static_cast<const Xbyak::Operand &>(src_vmm)
                         : static_cast<const Xbyak::Operand &>(addr);
                 if (wei_is_signed_)
                     vpmovsxbd(vmm_data_sr(), src_op);

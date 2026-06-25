@@ -1201,8 +1201,12 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
     const check_mem_size_args_t &check_mem_size_args = res->mem_size_args;
 
     if (is_gpu()) {
-        const bool fits_device_ram = check_mem_size_args.total_size_device
-                <= benchdnn_device_limit;
+        // Mapped host buffers are live together with device allocations at peak
+        // (and on some runtimes become device-resident while accessed), so
+        // account for them in the device peak used for the device RAM fit check.
+        const size_t device_peak_size = check_mem_size_args.total_size_device
+                + check_mem_size_args.total_size_mapped;
+        const bool fits_device_ram = device_peak_size <= benchdnn_device_limit;
         if (!fits_device_ram) {
             BENCHDNN_PRINT(1,
                     "[CHECK_MEM][%s]: Not enough device RAM for a problem.\n",
@@ -1230,10 +1234,12 @@ int check_total_size(res_t *res, dnnl_primitive_t prim_ref) {
         }
 
         BENCHDNN_PRINT((!fits_device_ram ? 1 : 6),
-                "[CHECK_MEM][%s]: Requested: %s; benchdnn_device_limit: %s; "
-                "device_RAM_capacity: %s; gpu_max_alloc: %s;\n",
-                dir_c_str(),
+                "[CHECK_MEM][%s]: Requested: %s (device: %s; mapped: %s); "
+                "benchdnn_device_limit: %s; device_RAM_capacity: %s; "
+                "gpu_max_alloc: %s;\n",
+                dir_c_str(), smart_bytes(device_peak_size).c_str(),
                 smart_bytes(check_mem_size_args.total_size_device).c_str(),
+                smart_bytes(check_mem_size_args.total_size_mapped).c_str(),
                 smart_bytes(benchdnn_device_limit).c_str(),
                 smart_bytes(gpu_device_capacity).c_str(),
                 smart_bytes(gpu_max_alloc_capacity).c_str());

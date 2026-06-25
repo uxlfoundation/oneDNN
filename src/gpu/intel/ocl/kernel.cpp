@@ -68,7 +68,13 @@ public:
 
     ~kernel_cache_t() {
         for (auto &kv : kernels_) {
-            OCL_CHECK_V(xpu::ocl::clReleaseKernel(kv.second));
+            // See the comment in 'src/xpu/ocl/utils.hpp' next to
+            // `xpu::ocl::clReleaseKernel(t)` call. It explains the logic behind
+            // such handling.
+            auto cl_st = xpu::ocl::clReleaseKernel(kv.second);
+            if (cl_st != CL_SUCCESS && cl_st != CL_INVALID_OPERATION) {
+                OCL_CHECK_V(cl_st);
+            }
         }
     }
 

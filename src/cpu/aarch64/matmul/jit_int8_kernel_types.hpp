@@ -26,7 +26,7 @@ namespace matmul {
 
 enum jit_int8_broadcast_t {
     none = 0,
-    per_tensor = 1,
+    common = 1,
     per_m = 2,
     per_n = 3,
     per_k = 4,

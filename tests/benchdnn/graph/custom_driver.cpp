@@ -282,6 +282,12 @@ void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
     }
 }
 
+void init_memory_args_native(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
+        const graph::deserialized_op_t &, const engine_t &ref_eng) {
+    init_memory_args(
+            mem_map, base_prb, /*override_dir_with_fwd=*/false, ref_eng);
+}
+
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t, const base_prb_t *base_prb, res_t *res,
         dnnl_primitive_t) {

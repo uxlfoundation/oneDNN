@@ -86,6 +86,9 @@ void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
         bool override_dir_with_fwd = false,
         const engine_t &test_engine = get_test_engine());
 
+void init_memory_args_native(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
+        const graph::deserialized_op_t &base_op_ref, const engine_t &ref_eng);
+
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const base_prb_t *base_prb, res_t *res,
         dnnl_primitive_t prim_ref = nullptr);

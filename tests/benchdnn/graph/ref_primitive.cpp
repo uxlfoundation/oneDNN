@@ -17,14 +17,11 @@
 #include "ref_primitive.hpp"
 #include "setting_handler.hpp"
 
-namespace graph {
-
 #define DEFINE_REF_PRIM_HELPER_FUNCS(driver) \
     namespace driver { \
-    void init_memory_args_native(const ::driver::prb_t *prb, \
-            const deserialized_op_t &base_op_ref, dnn_mem_map_t &mem_map, \
-            const engine_t &ref_eng) {} \
-    int execute(const ::driver::prb_t *prb, const args_t &args, res_t *res) { \
+    void init_memory_args_native(dnn_mem_map_t &, const base_prb_t *, \
+            const graph::deserialized_op_t &, const engine_t &) {} \
+    int execute(const base_prb_t *, const args_t &, res_t *res) { \
         res->state = UNIMPLEMENTED; \
         return FAIL; \
     } \
@@ -37,7 +34,6 @@ DEFINE_REF_PRIM_HELPER_FUNCS(binary);
 DEFINE_REF_PRIM_HELPER_FUNCS(bnorm);
 DEFINE_REF_PRIM_HELPER_FUNCS(concat);
 DEFINE_REF_PRIM_HELPER_FUNCS(conv);
-DEFINE_REF_PRIM_HELPER_FUNCS(custom);
 DEFINE_REF_PRIM_HELPER_FUNCS(deconv);
 DEFINE_REF_PRIM_HELPER_FUNCS(eltwise);
 DEFINE_REF_PRIM_HELPER_FUNCS(gnorm);
@@ -52,9 +48,9 @@ DEFINE_REF_PRIM_HELPER_FUNCS(resampling);
 
 namespace softmax {
 
-void init_memory_args_native(const ::softmax::prb_t *prb,
-        const deserialized_op_t &base_op_ref, dnn_mem_map_t &mem_map,
-        const engine_t &ref_eng) {
+void init_memory_args_native(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
+        const graph::deserialized_op_t &base_op_ref, const engine_t &ref_eng) {
+    const auto *prb = ::softmax::prb_t::from(base_prb);
     if (base_op_ref.out_lts_.size() != 2) {
         assert(!"softmax should have two outputs to run into "
                 "init_memory_args_native");
@@ -75,7 +71,8 @@ void init_memory_args_native(const ::softmax::prb_t *prb,
                     stats_strides.data(), ref_eng, /* prefill = */ true));
 }
 
-int execute(const ::softmax::prb_t *prb, const args_t &args, res_t *res) {
+int execute(const base_prb_t *base_prb, const args_t &args, res_t *res) {
+    const auto *prb = ::softmax::prb_t::from(base_prb);
     assert(args.find(DNNL_ARG_DST_1).size() != 0);
     // in order to run with ::softmax::compute_ref, we need to
     // construct all memory with abx tag and f32 dt
@@ -106,6 +103,8 @@ int execute(const ::softmax::prb_t *prb, const args_t &args, res_t *res) {
 }
 } // namespace softmax
 
+namespace graph {
+
 ref_primitive_t::ref_primitive_t(const deserialized_op_t &op)
     : op_(op), kind_(opstr2kind(op_.kind_)), driver_(op_.opkind2driver()) {
 
@@ -133,33 +132,6 @@ ref_primitive_t::ref_primitive_t(const deserialized_op_t &op)
             = special_backward_op.find(op_.kind_) != special_backward_op.end();
 }
 
-// a switch skeleton to handle thing for each driver and template code
-// CASE_DRIVER is for primitive driver and CASE_CUSTOM is for custom driver
-// caller should define the behavior for both situation
-#define SWITCH_DRIVER(CASE_DRIVER, CASE_CUSTOM) \
-    switch (driver_) { \
-        CASE_CUSTOM; \
-        CASE_DRIVER(binary); \
-        CASE_DRIVER(bnorm); \
-        CASE_DRIVER(concat); \
-        CASE_DRIVER(conv); \
-        CASE_DRIVER(deconv); \
-        CASE_DRIVER(eltwise); \
-        CASE_DRIVER(gnorm); \
-        CASE_DRIVER(lnorm); \
-        CASE_DRIVER(matmul); \
-        CASE_DRIVER(pool); \
-        CASE_DRIVER(prelu); \
-        CASE_DRIVER(reduction); \
-        CASE_DRIVER(reorder); \
-        CASE_DRIVER(resampling); \
-        CASE_DRIVER(softmax); \
-        default: { \
-            SAFE_V(FAIL); \
-            break; \
-        } \
-    }
-
 int ref_primitive_t::init_prb(res_t *res) {
 #define CASE_INIT_PRB(driver) \
     case dnnl_driver_t::driver: { \
@@ -167,21 +139,46 @@ int ref_primitive_t::init_prb(res_t *res) {
                 = get_setting<::driver::settings_t>(op_, res); \
         if (res->state == INVALID_ARGUMENTS) return FAIL; \
         setting.finalize(); \
-        auto pprb = ::std::make_shared<::driver::prb_t>(setting); \
-        prb_wrapper_ \
-                = ::std::make_shared<prb_wrapper_t<::driver::prb_t>>(pprb); \
+        prb_ = std::make_shared<::driver::prb_t>(setting); \
+        setup_cmp_func_ = ::driver::setup_cmp; \
+        execute_func_ = ::driver::execute; \
+        init_ref_memory_args_func_ = ::driver::init_ref_memory_args; \
+        init_memory_args_native_func_ = ::driver::init_memory_args_native; \
+        init_pd_func_ = ::driver::init_pd; \
         break; \
     }
 
-#define CASE_INIT_CUSTOM_PRB CASE_INIT_PRB(custom);
-
-    SWITCH_DRIVER(CASE_INIT_PRB, CASE_INIT_CUSTOM_PRB);
+    switch (driver_) {
+        CASE_INIT_PRB(custom);
+        CASE_INIT_PRB(binary);
+        CASE_INIT_PRB(bnorm);
+        CASE_INIT_PRB(concat);
+        CASE_INIT_PRB(conv);
+        CASE_INIT_PRB(deconv);
+        CASE_INIT_PRB(eltwise);
+        CASE_INIT_PRB(gnorm);
+        CASE_INIT_PRB(lnorm);
+        CASE_INIT_PRB(matmul);
+        CASE_INIT_PRB(pool);
+        CASE_INIT_PRB(prelu);
+        CASE_INIT_PRB(reduction);
+        CASE_INIT_PRB(reorder);
+        CASE_INIT_PRB(resampling);
+        CASE_INIT_PRB(softmax);
+        default: {
+            SAFE_V(FAIL);
+            break;
+        }
+    }
 
     return OK;
 }
 
 int ref_primitive_t::init_prim(
         const engine_t &ref_eng, res_t *res, bool force_override) {
+    // The custom driver does not contain a primitive, skip this step.
+    if (driver_ == dnnl_driver_t::custom) return OK;
+
     const bool is_quant_or_dequant = kind_ == dnnl::graph::op::kind::Dequantize
             || kind_ == dnnl::graph::op::kind::Quantize
             || kind_ == dnnl::graph::op::kind::DynamicDequantize
@@ -190,126 +187,62 @@ int ref_primitive_t::init_prim(
     // zero-points attribute. Thus, skip them for forcing.
     const bool force_f32_prim_dt = !force_override && !is_quant_or_dequant;
 
-#define CASE_INIT_PRIM(driver) \
-    case dnnl_driver_t::driver: { \
-        const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
-        dnn_mem_map_t ref_mems; \
-        if (is_special_backward_op_) { \
-            SAFE(create_primitive(fwd_prim_, ref_eng, ::driver::init_pd, prb, \
-                         res, FLAG_FWD, nullptr, prb->dir &FLAG_BWD, nullptr, \
-                         force_f32_prim_dt, /*is_graph_ref=*/true), \
-                    WARN); \
-            if (res->state == SKIPPED || res->state == UNIMPLEMENTED) \
-                return OK; \
-            ::init_memory_args(mems_, prb, fwd_prim_, \
-                    /*override_dir_with_fwd=*/true, ref_eng); \
-            SAFE(::driver::init_ref_memory_args( \
-                         ref_mems, mems_, fwd_prim_, prb, res), \
-                    WARN); \
-            args_ = args_t(mems_); \
-            SAFE(execute_and_wait(fwd_prim_, args_, res), WARN); \
-        } \
-        SAFE(create_primitive(prim_, ref_eng, ::driver::init_pd, prb, res, \
-                     prb->dir, \
-                     is_special_backward_op_ ? query_pd(fwd_prim_) : nullptr, \
-                     false, nullptr, force_f32_prim_dt, \
-                     /*is_graph_ref=*/true), \
-                WARN); \
-        if (res->state == SKIPPED || res->state == UNIMPLEMENTED \
-                || res->state == DEFERRED) \
-            return OK; \
-        break; \
+    const base_prb_t *prb = prb_.get();
+    dnn_mem_map_t ref_mems;
+    if (is_special_backward_op_) {
+        SAFE(create_primitive(fwd_prim_, ref_eng, init_pd_func_, prb, res,
+                     FLAG_FWD, nullptr, prb->dir & FLAG_BWD, nullptr,
+                     force_f32_prim_dt, /*is_graph_ref=*/true),
+                WARN);
+        if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
+        ::init_memory_args(mems_, prb, fwd_prim_,
+                /*override_dir_with_fwd=*/true, ref_eng);
+        SAFE(init_ref_memory_args_func_(
+                     ref_mems, mems_, fwd_prim_, prb, res, nullptr),
+                WARN);
+        args_ = args_t(mems_);
+        SAFE(execute_and_wait(fwd_prim_, args_, res), WARN);
     }
-// custom driver does not contain primitive, skip this step
-#define CASE_INIT_CUSTOM_PRIM \
-    case dnnl_driver_t::custom: break;
+    SAFE(create_primitive(prim_, ref_eng, init_pd_func_, prb, res, prb->dir,
+                 is_special_backward_op_ ? query_pd(fwd_prim_) : nullptr, false,
+                 nullptr, force_f32_prim_dt, /*is_graph_ref=*/true),
+            WARN);
+    if (res->state == SKIPPED || res->state == UNIMPLEMENTED
+            || res->state == DEFERRED)
+        return OK;
 
-    SWITCH_DRIVER(CASE_INIT_PRIM, CASE_INIT_CUSTOM_PRIM);
     return OK;
 }
 
 void ref_primitive_t::init_memory_args(const engine_t &ref_eng) {
-#define CASE_INIT_MEMORY_ARGS(driver) \
-    case dnnl_driver_t::driver: { \
-        if (prb_wrapper_) { \
-            const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
-            if (prim_) { \
-                ::init_memory_args(mems_, prb, prim_, \
-                        /*override_dir_with_fwd=*/false, ref_eng); \
-            } else { \
-                /* handle an empty primitive through a driver's reference */ \
-                driver::init_memory_args_native(prb, op_, mems_, ref_eng); \
-            } \
-        } \
-        break; \
-    }
+    if (!prb_) return;
 
-#define CASE_INIT_CUSTOM_MEMORY_ARGS \
-    case dnnl_driver_t::custom: { \
-        if (prb_wrapper_) { \
-            const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>(); \
-            ::custom::init_memory_args( \
-                    mems_, prb, /*override_dir_with_fwd=*/false, ref_eng); \
-        } \
-        break; \
+    if (prim_) {
+        ::init_memory_args(mems_, prb_.get(), prim_,
+                /*override_dir_with_fwd=*/false, ref_eng);
+    } else {
+        // handle an empty primitive through a driver's reference
+        init_memory_args_native_func_(mems_, prb_.get(), op_, ref_eng);
     }
-
-    SWITCH_DRIVER(CASE_INIT_MEMORY_ARGS, CASE_INIT_CUSTOM_MEMORY_ARGS);
 }
 
 int ref_primitive_t::init_ref_memory_args(const engine_t &ref_eng, res_t *res) {
-#define CASE_INIT_REF_MEMORY_ARGS(driver) \
-    case dnnl_driver_t::driver: { \
-        dnn_mem_map_t ref_mems; \
-        if (prb_wrapper_) { \
-            const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
-            SAFE(::driver::init_ref_memory_args( \
-                         ref_mems, mems_, prim_, prb, res), \
-                    WARN); \
-            args_ = args_t(mems_); \
-        } \
-        break; \
+    dnn_mem_map_t ref_mems;
+    if (prb_) {
+        SAFE(init_ref_memory_args_func_(
+                     ref_mems, mems_, prim_, prb_.get(), res, nullptr),
+                WARN);
+        args_ = args_t(mems_);
     }
-
-#define CASE_INIT_CUSTOM_REF_MEMORY_ARGS \
-    case dnnl_driver_t::custom: { \
-        dnn_mem_map_t ref_mems; \
-        if (prb_wrapper_) { \
-            const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>(); \
-            SAFE(::custom::init_ref_memory_args( \
-                         ref_mems, mems_, nullptr, prb, res), \
-                    WARN); \
-            args_ = args_t(mems_); \
-        } \
-        break; \
-    }
-
-    SWITCH_DRIVER(CASE_INIT_REF_MEMORY_ARGS, CASE_INIT_CUSTOM_REF_MEMORY_ARGS);
     return OK;
 }
 
 int ref_primitive_t::execute_prim(res_t *res) const {
-#define CASE_EXECUTE(driver) \
-    case dnnl_driver_t::driver: { \
-        if (prim_) { \
-            SAFE(execute_and_wait(prim_, args_, res), WARN); \
-        } else if (prb_wrapper_) { \
-            const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
-            SAFE(driver::execute(prb, args_, res), WARN); \
-        } \
-        break; \
+    if (prim_) {
+        SAFE(execute_and_wait(prim_, args_, res), WARN);
+    } else if (prb_) {
+        SAFE(execute_func_(prb_.get(), args_, res), WARN);
     }
-
-#define CASE_CUSTOM_EXECUTE \
-    case dnnl_driver_t::custom: { \
-        if (prb_wrapper_) { \
-            const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>(); \
-            SAFE(::custom::execute(prb, args_, res), WARN); \
-        } \
-        break; \
-    }
-
-    SWITCH_DRIVER(CASE_EXECUTE, CASE_CUSTOM_EXECUTE);
     return OK;
 }
 
@@ -335,16 +268,6 @@ void ref_primitive_t::check_correctness(
                     {DNNL_ARG_DIFF_SHIFT, SH},
             };
 
-#define CASE_CHECK_CORRECTNESS(driver) \
-    case dnnl_driver_t::driver: { \
-        const ::driver::prb_t *prb = prb_wrapper_->get<::driver::prb_t>(); \
-        setup_cmp(cmp, prb, dnnl_arg_2_data_kind_map.at(arg), args_); \
-        attr = prb->attr; \
-        break; \
-    }
-
-#define CASE_CUSTOM_CHECK_CORRECTNESS CASE_CHECK_CORRECTNESS(custom)
-
     // args is the result from graph side
     // args_ is the reference result under this context
     // only check the arg contained in args, compare args with args_
@@ -363,8 +286,8 @@ void ref_primitive_t::check_correctness(
             return;
         }
         compare::compare_t cmp;
-        attr_t attr;
-        SWITCH_DRIVER(CASE_CHECK_CORRECTNESS, CASE_CUSTOM_CHECK_CORRECTNESS);
+        setup_cmp_func_(cmp, prb_.get(), it->second, args_);
+        const attr_t &attr = prb_->attr;
 
         cmp.set_data_kind(it->second);
         cmp.set_has_eltwise_post_op(has_eltwise);

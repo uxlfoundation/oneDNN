@@ -23,43 +23,25 @@
 
 namespace graph {
 
-// `prb_wrapper_base_t` and `prb_wrapper_t` defined to wrap `prb_t` object
-// because C++11 doesn't support templated member variables, and there is no
-// common base type for `prb_t` types, thus, it's impossible to put a shared
-// pointer of `prb_t` or its base object directly into `ref_prims_` member of
-// `ref_partition_t` object. Shared pointer of wrapper base object will be put
-// into `ref_prims_`. These wrappers could be removed after moving to C++14.
-class prb_wrapper_base_t {
-public:
-    virtual ~prb_wrapper_base_t() = default;
-    template <typename prb_t>
-    const prb_t *get() const;
-};
+// A function that executes a graph reference path for a driver that has no
+// primitive (or a custom driver).
+using execute_func_t
+        = std::function<int(const base_prb_t *, const args_t &, res_t *)>;
 
-// A template class to wrap shared pointer of prb obj
-template <typename prb_t>
-class prb_wrapper_t : public prb_wrapper_base_t {
-public:
-    prb_wrapper_t(const std::shared_ptr<prb_t> &prb) : prb_(prb) {}
-    // get raw pointer of prb object
-    const prb_t *get() const { return prb_.get(); }
+// A function that initializes the reference memory arguments for a driver
+// that runs through its own reference (an empty primitive or a custom driver).
+using init_memory_args_native_func_t = std::function<void(dnn_mem_map_t &,
+        const base_prb_t *, const deserialized_op_t &, const engine_t &)>;
 
-private:
-    std::shared_ptr<prb_t> prb_;
-};
-
-// A template function in base wrapper, which dynamic cast from base object to
-// derived object and return raw pointer of prb obj
-template <typename prb_t>
-inline const prb_t *prb_wrapper_base_t::get() const {
-    return dynamic_cast<const prb_wrapper_t<prb_t> &>(*this).get();
-}
+// A function that initializes the reference memory arguments for a driver.
+using init_ref_memory_args_func_t
+        = std::function<int(dnn_mem_map_t &, dnn_mem_map_t &, dnnl_primitive_t,
+                const base_prb_t *, res_t *, dnnl_primitive_t)>;
 
 // `ref_primitive_t` is an abstraction to connect a graph op and a primitive
 // driver. Its purpose is to translate a graph op into a primitive and execute
 // it. Any primitive driver with template programming work should be done
 // through this class.
-// Note: non-templated functions are exposed to simplify the logic.
 class ref_primitive_t {
 public:
     ref_primitive_t() = default;
@@ -102,10 +84,23 @@ private:
     BENCHDNN_DISALLOW_COPY_AND_ASSIGN(ref_primitive_t);
 
     deserialized_op_t op_;
-    ::dnnl::graph::op::kind kind_;
+    dnnl::graph::op::kind kind_;
     dnnl_driver_t driver_;
     bool is_special_backward_op_;
-    ::std::shared_ptr<prb_wrapper_base_t> prb_wrapper_;
+    std::shared_ptr<const base_prb_t> prb_;
+    // Driver-specific compare object setup function, assigned in `init_prb`.
+    setup_cmp_func_t setup_cmp_func_ = nullptr;
+    // Driver-specific reference execute function, assigned in `init_prb`.
+    execute_func_t execute_func_ = nullptr;
+    // Driver-specific reference memory args init function, assigned in
+    // `init_prb`.
+    init_ref_memory_args_func_t init_ref_memory_args_func_ = nullptr;
+    // Driver-specific native memory args init function (used when there's no
+    // primitive), assigned in `init_prb`.
+    init_memory_args_native_func_t init_memory_args_native_func_ = nullptr;
+    // Driver-specific primitive descriptor init function, assigned in
+    // `init_prb`. Not used for the custom driver as it has no primitive.
+    init_pd_func_t init_pd_func_ = nullptr;
     benchdnn_dnnl_wrapper_t<dnnl_primitive_t> fwd_prim_, prim_;
     dnn_mem_map_t mems_;
     args_t args_;

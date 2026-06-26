@@ -37,7 +37,7 @@ const impl_list_map_t &regular_f32_fp8_impl_list_map() {
 
             REG_SR(f32, any, f8_e5m2, any, fmt_order::any, spec::reference)
 
-            CPU_REORDER_INSTANCE_GROUPED(simple_grouped_reorder_t<f32, impl::format_tag_t, any, f8_e5m2, impl::format_tag_t, any>)
+            REG_GROUPED_SR(f32, f8_e5m2)
 
             nullptr,
         }},
@@ -49,7 +49,7 @@ const impl_list_map_t &regular_f32_fp8_impl_list_map() {
 
             REG_SR(f32, any, f8_e4m3, any, fmt_order::any, spec::reference)
 
-            CPU_REORDER_INSTANCE_GROUPED(simple_grouped_reorder_t<f32, impl::format_tag_t, any, f8_e4m3, impl::format_tag_t, any>)
+            REG_GROUPED_SR(f32, f8_e4m3)
 
             nullptr,
         }},

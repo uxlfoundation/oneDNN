@@ -833,9 +833,7 @@ int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
     if (handle_info.is_host_ptr) {
         // Ignore memory_kind with host pointers and force USM.
         const int nhandles = query_md_num_handles(md_);
-        std::vector<void *> handles = (int)handle_info.ptrs.size() == nhandles
-                ? handle_info.ptrs
-                : std::vector<void *>(nhandles, handle_info.ptrs[0]);
+        std::vector<void *> handles = handle_info.get_handles(nhandles);
         DNN_SAFE(dnnl_sycl_interop_memory_create_v2(&m_, md_, engine_,
                          dnnl_sycl_interop_usm, (int)handles.size(),
                          handles.data()),
@@ -915,9 +913,7 @@ int dnn_mem_t::initialize_memory_create_opencl(
     if (handle_info.is_host_ptr) {
         // Ignore memory_kind with host pointers and force USM.
         const int nhandles = query_md_num_handles(md_);
-        std::vector<void *> handles = (int)handle_info.ptrs.size() == nhandles
-                ? handle_info.ptrs
-                : std::vector<void *>(nhandles, handle_info.ptrs[0]);
+        std::vector<void *> handles = handle_info.get_handles(nhandles);
         DNN_SAFE(dnnl_ocl_interop_memory_create_v2(&m_, md_, engine_,
                          dnnl_ocl_interop_usm, (int)handles.size(),
                          handles.data()),
@@ -987,9 +983,7 @@ int dnn_mem_t::initialize_memory_create_ze(const handle_info_t &handle_info) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     if (handle_info.is_host_ptr) {
         const int nhandles = query_md_num_handles(md_);
-        std::vector<void *> handles = (int)handle_info.ptrs.size() == nhandles
-                ? handle_info.ptrs
-                : std::vector<void *>(nhandles, handle_info.ptrs[0]);
+        std::vector<void *> handles = handle_info.get_handles(nhandles);
         DNN_SAFE(dnnl_ze_interop_memory_create(&m_, md_, engine_,
                          (int)handles.size(), handles.data()),
                 CRIT);
@@ -1090,9 +1084,7 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
         SAFE(initialize_memory_create_ze(handle_info), CRIT);
     } else {
         is_data_owner_ = false;
-        std::vector<void *> handles = (int)handle_info.ptrs.size() == nhandles
-                ? handle_info.ptrs
-                : std::vector<void *>(nhandles, handle_info.ptrs[0]);
+        std::vector<void *> handles = handle_info.get_handles(nhandles);
         DNN_SAFE(dnnl_memory_create_v2(&m_, md_, engine_, (int)handles.size(),
                          handles.data()),
                 CRIT);

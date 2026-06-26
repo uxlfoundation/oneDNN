@@ -150,6 +150,10 @@ extern const impl_list_map_t &comp_s8_s8_impl_list_map();
 #define CPU_REORDER_INSTANCE_GROUPED(...)
 #endif
 
+#define REG_GROUPED_SR(idt, odt) \
+    CPU_REORDER_INSTANCE_GROUPED(simple_grouped_reorder_t<idt, \
+            impl::format_tag_t, any, odt, impl::format_tag_t, any>)
+
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

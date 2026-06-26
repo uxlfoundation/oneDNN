@@ -41,6 +41,14 @@ struct dnn_mem_t {
         static handle_info_t allocate() {
             return {false, {DNNL_MEMORY_ALLOCATE}};
         }
+
+        // Use all provided pointers when their count matches the memory's
+        // handle count, otherwise broadcast the first pointer to all handles.
+        std::vector<void *> get_handles(int nhandles) const {
+            return (int)ptrs.size() == nhandles
+                    ? ptrs
+                    : std::vector<void *>(nhandles, ptrs[0]);
+        }
     };
 
     dnn_mem_t() { map(); }

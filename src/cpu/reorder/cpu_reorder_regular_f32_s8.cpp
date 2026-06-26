@@ -51,7 +51,7 @@ const impl_list_map_t &regular_f32_s8_impl_list_map() {
 
             DNNL_X64_ONLY(CPU_REORDER_INSTANCE(simple_sparse_reorder_t<f32, impl::format_tag_t, any, s8, impl::format_tag_t, any>))
 
-            CPU_REORDER_INSTANCE_GROUPED(simple_grouped_reorder_t<f32, impl::format_tag_t, any, s8, impl::format_tag_t, any>)
+            REG_GROUPED_SR(f32, s8)
 
             nullptr,
         }},

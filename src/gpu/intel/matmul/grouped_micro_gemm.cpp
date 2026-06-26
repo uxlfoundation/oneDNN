@@ -58,7 +58,6 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
     hw_info.euCount = dev_info->eu_count();
     hw_info.gmdid = dev_info->ip_version();
     hw_info.systolicAvailable = use_systolic_ukernel;
-    hw_info.isEfficient64Bit = dev_info->is_efficient_64bit();
 
     if (hw_info.gmdid == 0) return status::unimplemented;
 

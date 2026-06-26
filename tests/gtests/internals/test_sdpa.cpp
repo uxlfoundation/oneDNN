@@ -1502,7 +1502,8 @@ std::vector<std::chrono::nanoseconds> timeit(
 // Forward declaration — full definition appears after prim_sdpa_quant_bwd.
 template <typename T>
 void check_memory(dnnl::stream &strm, memory &gold, memory &test,
-        float max_diff_threshold = 0.03f, float fthreshold = 0.001466);
+        float max_diff_threshold = 0.003f, float fthreshold = 0.001466,
+        const char *name = "");
 
 std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         const sdpa_tensors_t &t, dnnl::engine &eng, dnnl::stream &strm,
@@ -1714,13 +1715,17 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                "kernel dS: thresh=%.4f max_diff_thresh=0.1\n",
                 s_thresh);
         if (p.dt.dt == mdt::f16) {
-            check_memory<float16_t>(
-                    strm, score2_4d, const_cast<memory &>(t.m_dS), 0.1f, s_thresh);
+            check_memory<float16_t>(strm, score2_4d,
+                    const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
+                    "P = softmax(scale*Q*K^T)  [ref:score2 vs kernel:dS]");
         } else if (p.dt.dt == mdt::bf16) {
-            check_memory<bfloat16_t>(
-                    strm, score2_4d, const_cast<memory &>(t.m_dS), 0.1f, s_thresh);
+            check_memory<bfloat16_t>(strm, score2_4d,
+                    const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
+                    "P = softmax(scale*Q*K^T)  [ref:score2 vs kernel:dS]");
         } else {
-            check_memory<float_t>(strm, score2_4d, const_cast<memory &>(t.m_dS), 0.1f, s_thresh);
+            check_memory<float_t>(strm, score2_4d,
+                    const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
+                    "P = softmax(scale*Q*K^T)  [ref:score2 vs kernel:dS]");
         }
         printf("[DEBUG] P comparison done.\n");
     }
@@ -2015,9 +2020,18 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
 template <typename T>
 void check_memory(dnnl::stream &strm, memory &gold, memory &test,
-        float max_diff_threshold, float fthreshold) {
+        float max_diff_threshold, float fthreshold, const char *name) {
     T *mapped_ptr_gold = nullptr;
     T *mapped_ptr_test = nullptr;
+    printf("\n[CHECK] %s  (fthreshold=%.4f  max_diff_threshold=%.4f)\n",
+            *name ? name : "(unnamed)", fthreshold, max_diff_threshold);
+    auto gold_dims = gold.get_desc().get_dims();
+    auto test_dims = test.get_desc().get_dims();
+    printf("  gold shape:");
+    for (auto d : gold_dims) printf(" %lld", (long long)d);
+    printf("  test shape:");
+    for (auto d : test_dims) printf(" %lld", (long long)d);
+    printf("\n");
     mapped_ptr_gold = (T *)gold.map_data();
     mapped_ptr_test = (T *)test.map_data();
     strm.wait();
@@ -2077,9 +2091,10 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
     test.unmap_data(mapped_ptr_test);
 
     int threshold = total * 0.002;
-    printf("check_memory: total=%d mismatches=%d (allowed<=%d) max_diff=%f "
+    printf("[CHECK] %s: total=%d mismatches=%d (allowed<=%d) max_diff=%f "
            "(allowed<=%.4f)\n",
-            total, mismatches, threshold, max_diff, max_diff_threshold);
+            *name ? name : "(unnamed)", total, mismatches, threshold, max_diff,
+            max_diff_threshold);
 
     ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
     ASSERT_LE(max_diff, max_diff_threshold);
@@ -2536,15 +2551,16 @@ public:
                 /*compare_with_ds=*/dS_ptr != nullptr,
                 /*with_timing=*/false);
 
-        float max_diff_threshold = 0.3f;
         // backward thresholds are higher than forward due to chained matmuls
         // softmax backward potential catastrophic cancellation S*(dP - Di)
         // and atomic adds across dQ accumulation
+        float max_diff_threshold = 0.3f;
         float fthreshold = 0.f;
         if (p.dt.dt == mdt::bf16) {
             fthreshold = 0.1f;
         } else if (p.dt.dt == mdt::f16) {
             fthreshold = 0.005f;
+            max_diff_threshold = 0.005f;
         } else {
             fthreshold = 0.002f;
         }
@@ -2552,43 +2568,61 @@ public:
         strm.wait();
 
         // GQA atomic adds across kv_group_size Q-heads introduce
-        // nondeterministic rounding in dK/dV. Relax threshold by sqrt(group)
+        // nondeterministic rounding in dK/dV. For f16 keep strict 0.005;
+        // for other types relax by sqrt(group).
         const int kv_group_size = static_cast<int>(p.heads.q / p.heads.kv);
-        const float gqa_fthreshold
-                = fthreshold * std::sqrt(static_cast<float>(kv_group_size));
+        const float gqa_fthreshold = (p.dt.dt == mdt::f16)
+                ? fthreshold
+                : fthreshold * std::sqrt(static_cast<float>(kv_group_size));
+
+        printf("\n[COMPARE_BWD] fthreshold=%.4f  gqa_fthreshold=%.4f  "
+               "max_diff_threshold=%.4f  kv_group_size=%d\n",
+                fthreshold, gqa_fthreshold, max_diff_threshold, kv_group_size);
 
         if (t.m_output.get_desc().get_data_type() == mdt::f16) {
             check_memory<float16_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, fthreshold,
+                    "O (forward output)  [ref:m_output vs kernel:m_output_quantized]");
             check_memory<float16_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
+                    "dQ  [ref:m_diff_query vs kernel:m_diff_query_quantized]");
             check_memory<float16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold);
+                    max_diff_threshold, gqa_fthreshold,
+                    "dK  [ref:m_diff_key vs kernel:m_diff_key_quantized]");
             check_memory<float16_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold);
+                    gqa_fthreshold,
+                    "dV  [ref:m_diff_value vs kernel:m_diff_value_quantized]");
 
         } else if (t.m_output.get_desc().get_data_type() == mdt::bf16) {
             check_memory<bfloat16_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, fthreshold,
+                    "O (forward output)  [ref:m_output vs kernel:m_output_quantized]");
             check_memory<bfloat16_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
-            check_memory<bfloat16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold);
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
+                    "dQ  [ref:m_diff_query vs kernel:m_diff_query_quantized]");
+            check_memory<bfloat16_t>(strm, t.m_diff_key,
+                    t.m_diff_key_quantized, max_diff_threshold, gqa_fthreshold,
+                    "dK  [ref:m_diff_key vs kernel:m_diff_key_quantized]");
             check_memory<bfloat16_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold);
+                    gqa_fthreshold,
+                    "dV  [ref:m_diff_value vs kernel:m_diff_value_quantized]");
 
         } else if (t.m_output.get_desc().get_data_type() == mdt::f32) {
             check_memory<float_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, fthreshold,
+                    "O (forward output)  [ref:m_output vs kernel:m_output_quantized]");
             check_memory<float_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
+                    "dQ  [ref:m_diff_query vs kernel:m_diff_query_quantized]");
             check_memory<float_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold);
+                    max_diff_threshold, gqa_fthreshold,
+                    "dK  [ref:m_diff_key vs kernel:m_diff_key_quantized]");
             check_memory<float_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold);
+                    gqa_fthreshold,
+                    "dV  [ref:m_diff_value vs kernel:m_diff_value_quantized]");
         }
 
 #if DEBUG_PRINT_MEM

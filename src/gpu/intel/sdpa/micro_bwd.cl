@@ -577,6 +577,15 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
 
 #define DO_MM 1
 
+// DEBUG_STAGE controls which intermediate value is written to dS (WITH_DS=1):
+//   1 = raw K^T*Q (after matmul, before scale)
+//   2 = S * scale (after mulscale, before logsumexp subtraction)
+//   3 = S * scale - logsumexp (pre-exp logits -- most likely to differ)
+//   4 = P = softmax output (default, same as before)
+#ifndef DEBUG_STAGE
+#define DEBUG_STAGE 4
+#endif
+
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global VAL_DATA_T *V, const global float *ws,
@@ -911,11 +920,42 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_fill(S_logsumexp_tile, 0.f);
         tile_load(&S_logsumexp_tile, ws_logsumexp, q, 1, ugemm_kq_wg_tile_n,
                 sg_j0_kq + q0, 0);
-        
+
+#if WITH_DS && DEBUG_STAGE == 1
+        // Stage 1: raw K^T*Q, before scale
+        {
+            s_tile_type_reblock S_dbg;
+            tile_copy_reblock(S_tile, &S_dbg);
+            tile_store(S_dbg, dS, k_chunk, q_nchunk, k,
+                    k0 + sg_i0_kq, q0 + sg_j0_kq);
+        }
+#endif
+
 #define mulscale(x) (x * scale)
         tile_elementwise(S_tile, mulscale);
 #undef mulscale
+
+#if WITH_DS && DEBUG_STAGE == 2
+        // Stage 2: S * scale, before logsumexp subtraction
+        {
+            s_tile_type_reblock S_dbg;
+            tile_copy_reblock(S_tile, &S_dbg);
+            tile_store(S_dbg, dS, k_chunk, q_nchunk, k,
+                    k0 + sg_i0_kq, q0 + sg_j0_kq);
+        }
+#endif
+
         tile_hbroadcast_sub(&S_tile, S_logsumexp_tile); //layout.N
+
+#if WITH_DS && DEBUG_STAGE == 3
+        // Stage 3: S*scale - logsumexp (pre-exp logits)
+        {
+            s_tile_type_reblock S_dbg;
+            tile_copy_reblock(S_tile, &S_dbg);
+            tile_store(S_dbg, dS, k_chunk, q_nchunk, k,
+                    k0 + sg_i0_kq, q0 + sg_j0_kq);
+        }
+#endif
 
         /* Scale + exponentiate */
 #define scaled_exp(x) native_vexp2(x * 1.44269504089f)
@@ -998,7 +1038,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 D_i); // needs output to be transposed from vtdA layout.C = N
 
         // reload softmax since ugemm_vtdA() clobbers registers
-#if WITH_DS
+#if WITH_DS && DEBUG_STAGE == 4
         p_tile_type_reblock P_tile_for_ds; // saved forward P for debug dS output
 #endif
         {
@@ -1016,7 +1056,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
             intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
 
-#if WITH_DS
+#if WITH_DS && DEBUG_STAGE == 4
             // Save P = softmax(scale*QK^T) before it gets scaled into dP.
             tile_copy_reblock(S2_tile, &P_tile_for_ds);
 #endif
@@ -1040,7 +1080,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         {
             p_tile_type_reblock P_tile_reblock;
             tile_copy_reblock(dP_tile, &P_tile_reblock);
-#if WITH_DS
+#if WITH_DS && DEBUG_STAGE == 4
             // Store forward P = softmax(scale*QK^T) — saved before dP scaling.
             tile_store(P_tile_for_ds, dS, k_chunk, q_nchunk, k,
                     k0 + sg_i0_kq, q0 + sg_j0_kq);

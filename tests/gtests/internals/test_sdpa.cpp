@@ -30,6 +30,13 @@
 
 #define DEBUG_PRINT_MEM 1
 
+// Mirror of kernel DEBUG_STAGE: controls which dS comparison runs.
+// 4 = P = softmax output (forward, default)
+// 5 = dS_bwd = P*(dP-Di)*scale (softmax backward, common to dQ and dK)
+#ifndef DEBUG_STAGE_TEST
+#define DEBUG_STAGE_TEST 4
+#endif
+
 using mdt = memory::data_type;
 using dnnl::accumulation_mode;
 
@@ -1700,9 +1707,9 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
     strm.wait();
 
-    if (compare_with_ds) {
-        // Compare reference P = softmax(scale*Q*K^T) (score2, f32 5D) vs
-        // kernel dS (t.m_dS, p.dt.dt 4D).
+    if (compare_with_ds && DEBUG_STAGE_TEST == 4) {
+        // Stage 4: compare P = softmax(scale*Q*K^T).
+        // Compare reference P (score2, f32 5D) vs kernel dS (t.m_dS, p.dt.dt 4D).
         const int hq = head_group_batches * head_q_group_size;
         memory::dims s4d {p.mb, hq, p.seq_len.q, p.seq_len.kv};
         auto score2_cast = as(strm, score2, p.dt.dt);
@@ -1711,9 +1718,6 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         const float s_thresh = (p.dt.dt == mdt::bf16) ? 0.01f
                 : (p.dt.dt == mdt::f16)               ? 0.005f
                                                       : 0.001f;
-        printf("[DEBUG] Comparing P = softmax(scale*Q*K^T) (reference) vs "
-               "kernel dS: thresh=%.4f max_diff_thresh=0.1\n",
-                s_thresh);
         if (p.dt.dt == mdt::f16) {
             check_memory<float16_t>(strm, score2_4d,
                     const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
@@ -1727,7 +1731,6 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                     const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
                     "P = softmax(scale*Q*K^T)  [ref:score2 vs kernel:dS]");
         }
-        printf("[DEBUG] P comparison done.\n");
     }
 
     // end forward portion
@@ -1863,6 +1866,31 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 #if DEBUG_PRINT_MEM
     print_mem(diff_score_mem, "BWD dS");
 #endif
+
+    // Stage 5: compare dS_bwd = P*(dP-Di)*scale — common input to dQ and dK.
+    // diff_score_mem is [mb, groups, hq_group, seq_q, seq_kv] in p.dt.dt.
+    if (compare_with_ds && DEBUG_STAGE_TEST == 5) {
+        const int hq = head_group_batches * head_q_group_size;
+        memory::dims s4d {p.mb, hq, p.seq_len.q, p.seq_len.kv};
+        auto ds_4d = reshape(strm, diff_score_mem,
+                memory::desc(s4d, p.dt.dt, memory::format_tag::abcd));
+        const float s_thresh = (p.dt.dt == mdt::bf16) ? 0.01f
+                : (p.dt.dt == mdt::f16)               ? 0.005f
+                                                      : 0.001f;
+        if (p.dt.dt == mdt::f16) {
+            check_memory<float16_t>(strm, ds_4d,
+                    const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
+                    "dS_bwd = P*(dP-Di)*scale  [ref:diff_score_mem vs kernel:dS]");
+        } else if (p.dt.dt == mdt::bf16) {
+            check_memory<bfloat16_t>(strm, ds_4d,
+                    const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
+                    "dS_bwd = P*(dP-Di)*scale  [ref:diff_score_mem vs kernel:dS]");
+        } else {
+            check_memory<float_t>(strm, ds_4d,
+                    const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
+                    "dS_bwd = P*(dP-Di)*scale  [ref:diff_score_mem vs kernel:dS]");
+        }
+    }
 
     ///////// first MM
     // matmul forward, s = q * k

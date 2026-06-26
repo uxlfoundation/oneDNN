@@ -1731,8 +1731,8 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                     const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
                     "P = softmax(scale*Q*K^T)  [ref:score2 vs kernel:dS]");
         } else {
-            check_memory<float_t>(strm, score2_4d,
-                    const_cast<memory &>(t.m_dS), 0.1f, s_thresh,
+            check_memory<float_t>(strm, score2_4d, const_cast<memory &>(t.m_dS),
+                    0.1f, s_thresh,
                     "P = softmax(scale*Q*K^T)  [ref:score2 vs kernel:dS]");
         }
     }
@@ -2301,6 +2301,7 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
     for (auto d : gold_dims) printf(" %lld", (long long)d);
     printf("  test shape:");
     for (auto d : test_dims) printf(" %lld", (long long)d);
+
     printf("\n");
     mapped_ptr_gold = (T *)gold.map_data();
     mapped_ptr_test = (T *)test.map_data();

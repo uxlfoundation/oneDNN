@@ -54,6 +54,8 @@ struct ref_t : public primitive_t {
 
             auto dev_info_ = intel_engine->device_info();
 
+            VDISPATCH_MATMUL(!desc()->postop_reads_dst,
+                    VERBOSE_UNSUPPORTED_FEATURE, "dst-aliasing post-op");
             VDISPATCH_MATMUL(
                     is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
             VDISPATCH_MATMUL(

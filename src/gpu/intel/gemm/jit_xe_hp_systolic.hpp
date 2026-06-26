@@ -135,10 +135,9 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         bool with_c_zero_points() const { return c_zp_; }
 
         bool allow_k_blocking() const {
-            if (desc()->acc_type != desc()->c_type()) return false;
-            if (post_ops()->len() == 0) return true;
-            const auto &first = post_ops()->entry_[0];
-            return first.is_sum(false, false) || is_implicit_binary(first);
+            return (desc()->acc_type == desc()->c_type())
+                    && IMPLICATION(post_ops()->len() > 0,
+                            post_ops()->entry_[0].kind == primitive_kind::sum);
         }
 
         int unroll_m() const { return unroll_m_; }

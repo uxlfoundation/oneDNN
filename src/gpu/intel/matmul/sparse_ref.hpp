@@ -49,6 +49,8 @@ struct ref_sparse_t : public primitive_t {
             memory_desc_wrapper src_d(src_md());
             memory_desc_wrapper wei_d(weights_md(0));
 
+            VDISPATCH_MATMUL(!desc()->postop_reads_dst,
+                    VERBOSE_UNSUPPORTED_FEATURE, "dst-aliasing post-op");
             bool is_f16_dt = utils::everyone_is(f16, src_dt_, wei_dt_, dst_dt_);
             bool is_f32_dt = utils::everyone_is(f32, src_dt_, wei_dt_, dst_dt_);
             VDISPATCH_MATMUL(

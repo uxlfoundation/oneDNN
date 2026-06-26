@@ -436,7 +436,7 @@ struct binary_t {
     static status_t make(binary_t &b, const post_ops_t::entry_t::binary_t &op,
             const specializations_t::binary_t &s,
             const post_op::ndim_normalizer_t &ndim_normalizer) {
-        if (s.src1_desc_layout.is_inlined() && (op.src1_desc.ndims > 0))
+        if (s.src1_desc_layout.is_inlined())
             CHECK(relative_md_t::make(
                     b.src1_desc, op.src1_desc, ndim_normalizer));
         else
@@ -694,16 +694,6 @@ struct gpu_post_ops_t {
 private:
     std::vector<entry_t> ops_;
 };
-
-inline bool is_implicit_binary(const dnnl_post_ops::entry_t &entry) {
-    return entry.is_binary()
-            && (entry.binary.src1_desc.data_type == dnnl_data_type_undef);
-}
-
-inline bool is_implicit_binary(const gpu_post_ops_t::entry_t &entry) {
-    return entry.is_binary()
-            && (entry.as_binary().src1_desc.dt == dnnl_data_type_undef);
-}
 
 } // namespace intel
 } // namespace gpu

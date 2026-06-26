@@ -103,7 +103,8 @@ static inline status_t create_gemm_desc(gemm_desc_t *_gemm_desc,
         const memory_desc_t *a_md, const memory_desc_t *b_md,
         const memory_desc_t *c_md, const memory_desc_t *bias_md,
         data_type_t acc_dt, sum_ab_t sum_ab = sum_ab::sum_none,
-        data_type_t sum_ab_dt = data_type::undef) {
+        data_type_t sum_ab_dt = data_type::undef,
+        bool postop_reads_dst = false) {
     auto gemm_desc = gemm_desc_t();
     gemm_desc.primitive_kind = primitive_kind::gemm;
     gemm_desc.a_desc = *a_md;
@@ -113,6 +114,7 @@ static inline status_t create_gemm_desc(gemm_desc_t *_gemm_desc,
     gemm_desc.acc_type = acc_dt;
     gemm_desc.sum_ab = sum_ab;
     gemm_desc.sum_ab_type = sum_ab_dt;
+    gemm_desc.postop_reads_dst = postop_reads_dst;
     *_gemm_desc = gemm_desc;
     return status::success;
 }
@@ -123,10 +125,11 @@ static inline status_t create_gemm_pd(
         const memory_desc_t *c_md, const memory_desc_t *bias_md,
         data_type_t acc_dt, const primitive_attr_t *attr, bool skip_ref = false,
         sum_ab_t sum_ab = sum_ab::sum_none,
-        data_type_t sum_ab_dt = data_type::undef) {
+        data_type_t sum_ab_dt = data_type::undef,
+        bool postop_reads_dst = false) {
     gemm_desc_t gemm_desc;
-    CHECK(create_gemm_desc(
-            &gemm_desc, a_md, b_md, c_md, bias_md, acc_dt, sum_ab, sum_ab_dt));
+    CHECK(create_gemm_desc(&gemm_desc, a_md, b_md, c_md, bias_md, acc_dt,
+            sum_ab, sum_ab_dt, postop_reads_dst));
 
     primitive_attr_t gemm_attr = *attr;
 

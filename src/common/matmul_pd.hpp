@@ -57,7 +57,7 @@ status_t create_matmul_pd(std::shared_ptr<primitive_desc_t> &matmul_pd,
         const memory_desc_t *dst_md, const primitive_attr_t *attr,
         const memory_desc_t *reduce_md = nullptr,
         matmul_reduce_kind_t reduce_kind = matmul_reduce_kind::undef,
-        data_type_t acc_dt = data_type::undef);
+        data_type_t acc_dt = data_type::undef, bool postop_reads_dst = false);
 
 // NOLINTBEGIN(google-default-arguments)
 struct matmul_pd_t : public primitive_desc_t {

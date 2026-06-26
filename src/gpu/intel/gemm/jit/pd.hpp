@@ -116,8 +116,8 @@ struct pd_t : public gemm::pd_t {
 
     float beta_ = 0.0f;
 
-    bool with_implicit_bin_ = false;
-    bool implicit_bin_at_begin_ = false;
+    bool with_sum_ = false;
+    bool sum_at_begin_ = false;
 
     bool bias_via_binary_ = false;
     bool wei_decomp_ = false;

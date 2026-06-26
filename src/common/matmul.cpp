@@ -736,12 +736,13 @@ status_t create_matmul_pd(std::shared_ptr<primitive_desc_t> &matmul_pd,
         const memory_desc_t *wei_md, const memory_desc_t *bias_md,
         const memory_desc_t *dst_md, const primitive_attr_t *attr,
         const memory_desc_t *reduce_md, matmul_reduce_kind_t reduce_kind,
-        data_type_t acc_dt) {
+        data_type_t acc_dt, bool postop_reads_dst) {
     matmul_pd = nullptr;
     matmul_desc_t matmul_desc;
     CHECK(matmul_desc_init(&matmul_desc, src_md, wei_md, bias_md, dst_md,
             reduce_md, reduce_kind));
     if (acc_dt != data_type::undef) matmul_desc.accum_data_type = acc_dt;
+    matmul_desc.postop_reads_dst = postop_reads_dst;
 
     primitive_attr_t matmul_attr = *attr;
 

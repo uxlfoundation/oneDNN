@@ -194,6 +194,7 @@ struct GEMMProblem : public CommonProblem {
     bool forceGroupSumsB = false;
     bool bdpasEnabled = false;                             // bdpas enabled for problem.
     bool cMXScale = false;
+    bool postOpReadsC = false;                      // C must be written exactly once.
     MatrixAddressing sroundSeed;
     PostOpsProblem postOps;                         // Fused post operations to apply
     ngen::Product product;
@@ -204,23 +205,21 @@ struct GEMMProblem : public CommonProblem {
     std::vector<Type> Tbinary;                              // Binary types
 
     bool hasPostOp() const { return !postOps.empty(); }
-    bool hasNonIB1PostOp() const {
+    bool hasNonSum1PostOp() const {
         for (const auto &e : postOps.ops)
-            if (!e.is_sum() && !is_implicit_binary(e)) return true;
+            if (!e.is_sum()) return true;
         return false;
     }
     bool hasBinaryPostOp() const {
         for (auto &e : postOps.ops)
-            if (e.is_binary() && !is_implicit_binary(e)) return true;
+            if (e.is_binary()) return true;
         return false;
     }
-    bool hasIB1PostOpAtEnd() const {
-        if (postOps.empty()) return false;
-        const auto &lastPO = postOps.ops.back();
-        return lastPO.is_sum() || is_implicit_binary(lastPO);
+    bool hasSum1PostOpAtEnd() const {
+        return !postOps.empty() && postOps.ops.back().is_sum();
     }
-    void removeFinalIBPostOp() {
-        if (hasIB1PostOpAtEnd())
+    void removeFinalSumPostOp() {
+        if (hasSum1PostOpAtEnd())
             postOps.ops.pop_back();
     }
     bool binaryPostProcess() const { return postOps.cStochasticRound || hasCScale(); }
@@ -236,7 +235,7 @@ struct GEMMProblem : public CommonProblem {
         if (!(beta0() || beta1())) return true;
         if (beta1() && !Tc_ext.isSubsetOf(Tc)) return true;
         if ((Tc == Type::s32 || Tc == Type::u32) && Tc_ext == Type::bf16) return true;
-        if (hasNonIB1PostOp()) return true;
+        if (hasNonSum1PostOp()) return true;
         return false;
     }
 

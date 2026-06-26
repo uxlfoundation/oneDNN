@@ -231,13 +231,8 @@ struct gen_t : public primitive_t {
                         VERBOSE_SHAPE_RESTRICTION);
             }
 
-            bool with_binary = false;
-            for (int i = 0, il = post_ops_.len(); !with_binary && (i < il);
-                    i++) {
-                with_binary |= post_ops_.entry_[i].is_prelu();
-                with_binary |= post_ops_.entry_[i].is_binary()
-                        && !is_implicit_binary(post_ops_.entry_[i]);
-            }
+            bool with_binary = (post_ops_.find(binary) != -1)
+                    || (post_ops_.find(prelu) != -1);
             bool with_eltwise = (post_ops_.find(eltwise) != -1);
 
             // Check GPU architecture.
@@ -329,7 +324,7 @@ struct gen_t : public primitive_t {
                 if (kernel_desc_.driver_info()->kParallel()
                         && !kernel_desc_.driver_info()->fusedPostOps()) {
                     bool po_valid = !non_scale_po_
-                            && !(with_implicit_bin_ && with_c_scales())
+                            && !(with_sum_ && with_c_scales())
                             && utils::one_of(d->c_type(), f32, s32);
                     if (!po_valid && print_verbose)
                         dnnl::impl::verbose_printf(
@@ -340,8 +335,7 @@ struct gen_t : public primitive_t {
                 // Limited post-op support for low-precision accumulation.
                 if (kernel_desc_.problem()->Tc.size() < 4) {
                     bool need_x32_acc = with_binary
-                            || !IMPLICATION(
-                                    with_implicit_bin_, implicit_bin_at_begin_);
+                            || !IMPLICATION(with_sum_, sum_at_begin_);
                     valid &= !need_x32_acc;
                     if (need_x32_acc && print_verbose)
                         dnnl::impl::verbose_printf(

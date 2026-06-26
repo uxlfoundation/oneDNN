@@ -37,6 +37,8 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
                               && utils::one_of(d->a_type(), u8, s8, u4, s4)
                               && utils::one_of(d->b_type(), f16, f32, bf16))
             && attr()->mayiconvert(d->a_type(), f32);
+    VDISPATCH_GEMM(!d->postop_reads_dst, VERBOSE_UNSUPPORTED_FEATURE,
+            "dst-aliasing post-op");
     VDISPATCH_GEMM(
             d->c_desc.ndims <= 6, VERBOSE_UNSUPPORTED_MD_FLAG, "c_desc.ndims");
     VDISPATCH_GEMM(!utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k()),

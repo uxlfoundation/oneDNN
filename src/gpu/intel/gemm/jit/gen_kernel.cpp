@@ -309,6 +309,15 @@ status_t gen_desc_t::finalize(const char *tags) {
         strategy_.preflight(hw_, problem_);
     } catch (...) { return status::unimplemented; }
 
+    // A post-op that reads C in place needs a single non-atomic C write. Reject
+    // strategies that update C via k-parallel reduction or atomics so a
+    // single-write strategy is selected instead.
+    if (problem_.postOpReadsC
+            && (strategy_.kParallel || strategy_.kParallelVariable
+                    || strategy_.C.atomic || strategy_.fuseBeta
+                    || strategy_.fusePostOps))
+        return status::unimplemented;
+
     // Check for legal 2D quantization group size.
     if (problem_.aOffset2D() || problem_.aScale2D())
         if (problem_.aqGroupK % strategy_.aqGroupKGranularity())
@@ -869,7 +878,6 @@ void gen_kernel_t::init_interface() {
         interface_.newArgument("k0", DataType::d);
     for (size_t i = 0; i < problem.postOps.len(); i++) {
         if (!problem.postOps[i].is_binary()) continue;
-        if (is_implicit_binary(problem.postOps[i])) continue;
         auto bname = "binary" + std::to_string(i);
         interface_.newArgument(bname, ExternalArgumentType::GlobalPtr,
                 strategy.binary[i].getGlobalAccessType());
@@ -913,7 +921,6 @@ void gen_kernel_t::init_interface() {
         }
         for (size_t i = 0; i < problem.postOps.len(); i++) {
             if (problem.postOps[i].is_binary()
-                    && !is_implicit_binary(problem.postOps[i])
                     && problem.postOps.binaryBatch[i]) {
                 for (int b = 0; b < problem.batchDims; b++) {
                     interface_.newArgument("stride" + std::to_string(b)

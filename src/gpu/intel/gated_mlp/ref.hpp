@@ -50,15 +50,16 @@ struct ref_t : public primitive_t {
                     gate_attr, DNNL_ARG_WEIGHTS_GATE, DNNL_ARG_WEIGHTS));
             CHECK(gate_attr.post_ops_.append_eltwise(
                     1.f, activation(), 1.f, 0.f));
-            // This is the so-called implicit binary - the one that takes its
-            // argument from DNNL_ARG_DST instead of POST_OP_N(DNNL_ARG_SRC1)
-            memory_desc_t null_md = {};
+            // Binary mul reads src1 from dst (the in-place Up result); see
+            // postop_reads_dst below.
             CHECK(gate_attr.post_ops_.append_binary(
-                    alg_kind::binary_mul, &null_md));
+                    alg_kind::binary_mul, &gate_dst_md));
             VDISPATCH_GATED_MLP_SC(
                     impl::create_matmul_pd(gemm_gate_pd_, engine,
                             arg_md(DNNL_ARG_SRC), arg_md(DNNL_ARG_WEIGHTS_GATE),
-                            nullptr, &gate_dst_md, &gate_attr),
+                            nullptr, &gate_dst_md, &gate_attr, nullptr,
+                            matmul_reduce_kind::undef, data_type::undef,
+                            /* postop_reads_dst = */ true),
                     "internal error in gemm_gate_pd");
 
             primitive_attr_t up_attr;
@@ -220,6 +221,9 @@ struct ref_t : public primitive_t {
             exec_args_t args;
             args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_SRC);
             args[DNNL_ARG_DST] = memory_arg_t {inter_src_mem.get(), false};
+            // Post-op 1 (binary mul) reads src1 from dst.
+            args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1]
+                    = memory_arg_t {inter_src_mem.get(), true};
             CHECK(prep_quant_and_run(std::move(args), DNNL_ARG_SRC,
                     DNNL_ARG_WEIGHTS_GATE, gemm_gate_));
         } while (false);

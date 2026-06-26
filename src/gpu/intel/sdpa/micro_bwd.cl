@@ -576,7 +576,6 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
 #endif
 
 #define DO_MM 1
-#define WITH_DS 1
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
@@ -849,18 +848,6 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         uint sg_i0_s2 = sg_i_kq * ugemm_kq_sg_tile_m + k0;
         uint sg_j0_s2 = sg_j_kq * ugemm_kq_sg_tile_n + q0;
 
-#if WITH_DS
-        // Debug: dump raw S = K^T * Q tile and return for step-by-step comparison.
-        {
-            s_tile_type_reblock S_tile_dbg;
-            tile_copy_reblock(S_tile, &S_tile_dbg);
-            tile_store(S_tile_dbg, dS, k_chunk, q_nchunk, k, k0 + sg_i0_kq,
-                    q0 + sg_j0_kq);
-        }
-        return;
-#endif
-        sg_j0_s2 = sg_j_kq * ugemm_kq_sg_tile_n + q0;
-
         /* Apply attention mask */
 #if WITH_ATTN_MASK
         mask_tile_type mask_tile;
@@ -924,6 +911,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_fill(S_logsumexp_tile, 0.f);
         tile_load(&S_logsumexp_tile, ws_logsumexp, q, 1, ugemm_kq_wg_tile_n,
                 sg_j0_kq + q0, 0);
+        
 #define mulscale(x) (x * scale)
         tile_elementwise(S_tile, mulscale);
 #undef mulscale
@@ -1010,6 +998,9 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 D_i); // needs output to be transposed from vtdA layout.C = N
 
         // reload softmax since ugemm_vtdA() clobbers registers
+#if WITH_DS
+        p_tile_type_reblock P_tile_for_ds; // saved forward P for debug dS output
+#endif
         {
             p_tile_type S2_tile;
 #if USE_SYSTOLIC_UKERNEL || WITH_DROPOUT
@@ -1024,6 +1015,11 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             tile_copy_reblock(S2_tile_reblock, &S2_tile);
 #endif
             intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
+
+#if WITH_DS
+            // Save P = softmax(scale*QK^T) before it gets scaled into dP.
+            tile_copy_reblock(S2_tile, &P_tile_for_ds);
+#endif
 
 #define binary_mul_scale(x, y) ((x) * (y) * scale)
             tile_binary(dP_tile, S2_tile, binary_mul_scale);
@@ -1045,8 +1041,9 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             p_tile_type_reblock P_tile_reblock;
             tile_copy_reblock(dP_tile, &P_tile_reblock);
 #if WITH_DS
-            tile_store(P_tile_reblock, dS, k_chunk, q_nchunk, k, k0 + sg_i0_kq,
-                    q0 + sg_j0_kq);
+            // Store forward P = softmax(scale*QK^T) — saved before dP scaling.
+            tile_store(P_tile_for_ds, dS, k_chunk, q_nchunk, k,
+                    k0 + sg_i0_kq, q0 + sg_j0_kq);
 #endif
 
             intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);

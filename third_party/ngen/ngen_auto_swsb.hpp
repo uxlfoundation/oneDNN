@@ -123,8 +123,9 @@ struct DependencyRegion {
     HW hw;
     std::array<uint32_t, 32> masks;
 
+    static const uint16_t invalidBase = 0xffff;
     DependencyRegion() : DependencyRegion(HW::Unknown) {}
-    explicit DependencyRegion(HW hw_) : base(0), size(0), unspecified{true}, checkWAW{false}, rf{RegFileGRF}, hw{hw_} {
+    explicit DependencyRegion(HW hw_) : base(invalidBase), size(0), unspecified{true}, checkWAW{false}, rf{RegFileGRF}, hw{hw_} {
         for (auto &m: masks) m = 0;
     }
     inline DependencyRegion(HW hw, RegisterRange r);
@@ -148,6 +149,7 @@ struct DependencyRegion {
             masks[size + i] = masks[i];
         size *= 2;
     }
+    bool isValid() const { return base != invalidBase; };
 
 #ifdef NGEN_DEBUG
     inline void dump() const;
@@ -1785,7 +1787,8 @@ PVCWARWA analyzePVCWARWA(HW hw, Program &program, BasicBlock &bb, int phase,
 
         // Check if we can move the dependency further down the pipe.
         if (srcN >= 0) {
-            int after = std::max(0, dep.region.base + dep.region.size - regions[0].base - 1);
+            int depEnd = dep.region.unspecified ? 0 : dep.region.base + dep.region.size;
+            int after = std::max(0, depEnd - regions[0].base - 1);
             bool higherPri = false;
             switch (consumeOp.pipe.type()) {
                 case GeneralizedPipe::vInOrder:

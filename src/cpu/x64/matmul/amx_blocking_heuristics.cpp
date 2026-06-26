@@ -382,7 +382,17 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     bool strip1_b_in_mlc_h = strip1_b_tranform_h && b_transform_fits_in_l2();
 
     size_t a_size = m_per_thread * k_per_thread * gemm_dt_sz;
-    size_t b_size = n_per_thread * k_per_thread * gemm_dt_sz;
+    // B plays two distinct roles whose byte sizes differ when the weights are
+    // converted into the B buffer (e.g. xf16_fp8: fp8 in memory, xf16 in the
+    // buffer). For non-converting cases b_dt_sz == tr_b_dt_sz so the split is a
+    // no-op. Note both sizes are B-specific: b_dt_sz / tr_b_dt_sz, not the
+    // A-derived gemm_dt_sz (== tr_a_dt_sz).
+    //   - b_mem_size: original B read from memory (DRAM) and consumed by the B
+    //     transform; uses the in-memory weights size b_dt_sz.
+    //   - b_buf_size: converted B buffer read back from cache for compute; uses
+    //     the buffer/compute size tr_b_dt_sz.
+    size_t b_mem_size = n_per_thread * k_per_thread * b_dt_sz;
+    size_t b_buf_size = n_per_thread * k_per_thread * tr_b_dt_sz;
     size_t d_size = m_per_thread * n_per_thread * c_dt_sz;
 
     bw_map_t bw_interpulator;
@@ -401,6 +411,9 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     float num_tmuls_per_strip, strip_mid_share_coef, num_strip, nt_mat_l1_miss;
     float l1_reuse;
     float num_postop_cache_lines;
+    // Bytes of original B consumed by the B transform (MEM role). Sized per the
+    // active traversal below; stays 0 when there is no B transform.
+    float b_transform_in_size = 0;
 
     if (is_horizontal) {
         // Amount of C/D bytes that are written per core
@@ -411,13 +424,16 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
                 / (m_tmul * k_tmul * n_tmul);
         // Amount of strips in the execution
         num_strip = div_up(m_per_thread, m_decomposition);
-        // B is blocked to the L2 in horizontal traversal, its loads are NT
-        nt_mat_l1_miss = b_size;
+        // B is blocked to the L2 in horizontal traversal, its loads are NT.
+        // Compute reads the converted B buffer back from cache (BUF role).
+        nt_mat_l1_miss = b_buf_size;
         // Number of times A is reused from L1 in a strip
         l1_reuse = div_up(n_blk_, n_decomposition);
 
-        // In horizontal multiple cores load the same B to L2
-        strip_1_size_shared = b_size;
+        // In horizontal multiple cores load the same B buffer to L2 (BUF role)
+        strip_1_size_shared = b_buf_size;
+        // The B transform reads the original B from memory (MEM role)
+        b_transform_in_size = b_mem_size;
         // In strip 1 there is no sharing of A since there are no prefetches
         size_t strip_1_size_private_a
                 = m_decomposition * k_per_thread * gemm_dt_sz;
@@ -453,17 +469,21 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
 
         // In vertical multiple cores load the same A to L2
         strip_1_size_shared = a_size;
-        // In strip 1 there is no sharing of B since there are no prefetches
+        // In strip 1 there is no sharing of B since there are no prefetches.
+        // The original B is loaded from memory here (MEM role).
         size_t strip_1_size_private_b
-                = n_decomposition * k_per_thread * gemm_dt_sz;
+                = n_decomposition * k_per_thread * b_dt_sz;
         strip_1_size_private = strip_1_size_private_b + strip_dst_size;
         // The cores that share A
         strip_1_share_coef = nthr_n_;
 
         // In the mid strips A is reused from L2 and
-        // B is prefetched by multiple cores.
+        // B is prefetched by multiple cores. The temporal B is read back from
+        // cache for compute (BUF role).
         strip_mid_size_shared = n_decomposition * k_per_thread
-                * gemm_dt_sz; // B size per strip
+                * tr_b_dt_sz; // B buffer per strip
+        // The B transform reads the original B from memory (MEM role)
+        b_transform_in_size = n_decomposition * k_per_thread * b_dt_sz;
         // C is private to a core, since each core writes to a distinct buffer
         strip_mid_size_private = strip_dst_size;
         // share_coeff - the cores that share B
@@ -508,13 +528,15 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
             + temporal_matrix_l1_hit / bw_interpulator.l1_load_hit_bw
             + nt_mat_l1_miss / bw_interpulator.l1_load_miss_bw + c_l1_cycles;
 
+    // The B transform consumes the original (in-memory) B, sized by b_dt_sz via
+    // b_transform_in_size, independent of the buffer/compute size used above.
     float b_transform_cycles_h = strip1_b_tranform_h
-            ? strip_1_size_shared / bw_interpulator.get_bw(strip_1_share_coef)
+            ? b_transform_in_size / bw_interpulator.get_bw(strip_1_share_coef)
             : 0;
 
-    float b_transform_cycles_v = strips_b_tranform_v ? strip_mid_size_shared
-                    / bw_interpulator.get_bw(strip_mid_share_coef)
-                                                     : 0;
+    float b_transform_cycles_v = strips_b_tranform_v
+            ? b_transform_in_size / bw_interpulator.get_bw(strip_mid_share_coef)
+            : 0;
 
     float strip_mid_dram;
     float strip_mid_llc;
@@ -561,7 +583,7 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
             float reduction_read_bytes = (M * rnd_up(N, 16) * acc_dt_sz)
                     * ((nthr_k_ - 1)) / (nthr_m_ * nthr_n_);
             float reduction_read_cycles;
-            if (a_size + b_size + d_size < L2_threshold()) {
+            if (a_size + b_buf_size + d_size < L2_threshold()) {
                 reduction_read_cycles
                         = reduction_read_bytes / bw_interpulator.get_bw(2);
             } else {

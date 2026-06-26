@@ -21,6 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_traits.hpp"
+#include "common/nibble.hpp"
 #include "common/type_helpers.hpp"
 
 #include "cpu/simple_q10n.hpp"

@@ -1095,6 +1095,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("A_ALIGN", a_align);
 
     kernel_ctx.define_int("TRANSPOSE_K", transpose_k);
+    printf("transpose_k: %d\n", transpose_k);
 
     kernel_ctx.define_int("KEY_SCALES", kq_scale_mask);
     kernel_ctx.define_int("VAL_SCALES", vs_scale_mask);

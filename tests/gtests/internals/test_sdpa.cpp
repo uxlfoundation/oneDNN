@@ -1998,7 +1998,7 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
 
     float max_diff = std::numeric_limits<float>::min();
     std::map<int, std::map<int, int>> hist;
-    const bool verbose = false;
+    const bool verbose = true;
     for_(int l = 0; l < dims[0]; l++)
     for_(int k = 0; k < dims[1]; k++)
     for_(int j = 0; j < dims[2]; j++)
@@ -2508,7 +2508,7 @@ public:
         if (p.dt.dt == mdt::bf16) {
             fthreshold = 0.1f;
         } else if (p.dt.dt == mdt::f16) {
-            fthreshold = 0.035f;
+            fthreshold = 0.005f;
         } else {
             fthreshold = 0.002f;
         }
@@ -3291,7 +3291,7 @@ GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
             mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
             accumulation_mode::f32
 #define SDPA_DIMS_DROPOUT_SHARED_GQA \
-    2, 4, 2, 128, 128, 64, 64, 64, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
+    1, 16, 2, 64, 64, 32, 32, 32, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
             mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
             quantize_type::no_quantization, no_key_transposed, \
             mask_type::no_mask, default_scale_type, accumulation_mode::f32, \

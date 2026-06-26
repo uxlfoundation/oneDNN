@@ -800,10 +800,10 @@ bwd_config_t *choose_bwd_config(compute::gpu_arch_t arch, dim_t head_size,
     // limit configs to tuned architectures and problem sizes
     if (arch >= compute::gpu_arch_t::xe3) return nullptr;
     if (compute::gpu_arch_t::xe2 == arch && is_integrated) return nullptr;
-    if (compute::gpu_arch_t::xe2 == arch
-            && (seq == qry && seq <= 128 && head_size >= 64)) {
-        return nullptr;
-    }
+    //if (compute::gpu_arch_t::xe2 == arch
+    //        && (seq == qry && seq <= 128 && head_size >= 64)) {
+    //    return nullptr;
+    //}
     if (arch == compute::gpu_arch_t::xe_hpc && (qry < 256 && head_size > 32)) {
         return nullptr;
     }

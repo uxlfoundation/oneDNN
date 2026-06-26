@@ -205,6 +205,8 @@ void serialize(serialization_stream_t &sstream, const primitive_attr_t &attr) {
     sstream.append(attr.fpmath_.apply_to_int_);
     // deterministic
     sstream.append(attr.deterministic_);
+    // postop_reads_dst
+    sstream.append(attr.postop_reads_dst_);
     // acc_mode
     sstream.append(attr.acc_mode_);
 

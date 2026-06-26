@@ -41,8 +41,6 @@ struct conv_t : public primitive_t {
             bool enabled = gpu_utils::dev_getenv("enable_conv_gemm", false);
             VDISPATCH_GEMM(
                     enabled, VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "gemm::conv");
-            VDISPATCH_GEMM(!desc()->postop_reads_dst,
-                    VERBOSE_UNSUPPORTED_FEATURE, "dst-aliasing post-op");
 
             VDISPATCH_GEMM(attr()->has_default_values(
                                    primitive_attr_t::skip_mask_t::gpu_attr),

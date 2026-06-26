@@ -680,7 +680,7 @@ status_t pd_t::init_GEMMProblem(
     problem.A.layout = trans_a ? MatrixLayout::T : MatrixLayout::N;
     problem.B.layout = trans_b ? MatrixLayout::T : MatrixLayout::N;
     problem.C.layout = MatrixLayout::N;
-    problem.postOpReadsC = desc()->postop_reads_dst;
+    problem.postOpReadsC = attr()->postop_reads_dst_;
     problem.A.crosspack = problem.B.crosspack = problem.C.crosspack = 1;
     problem.A.packSize = problem.B.packSize = problem.C.packSize = 0;
     problem.A.setAlignment(align_a);

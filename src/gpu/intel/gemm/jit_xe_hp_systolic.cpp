@@ -53,9 +53,6 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     CHECK(init_attrs(engine));
     const auto &d = desc();
 
-    VDISPATCH_GEMM(!d->postop_reads_dst, VERBOSE_UNSUPPORTED_FEATURE,
-            "dst-aliasing post-op");
-
     bool dt_float_ok = (d->a_type() == d->b_type()
             && utils::one_of(d->a_type(), bf16, f16)
             && utils::one_of(d->c_type(), f32, d->a_type()));

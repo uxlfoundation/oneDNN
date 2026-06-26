@@ -50,16 +50,14 @@ struct ref_t : public primitive_t {
                     gate_attr, DNNL_ARG_WEIGHTS_GATE, DNNL_ARG_WEIGHTS));
             CHECK(gate_attr.post_ops_.append_eltwise(
                     1.f, activation(), 1.f, 0.f));
-            // Binary mul reads src1 from dst (the in-place Up result); see
-            // postop_reads_dst below.
+            // Binary mul reads src1 from dst (the in-place Up result).
+            gate_attr.postop_reads_dst_ = true;
             CHECK(gate_attr.post_ops_.append_binary(
                     alg_kind::binary_mul, &gate_dst_md));
             VDISPATCH_GATED_MLP_SC(
                     impl::create_matmul_pd(gemm_gate_pd_, engine,
                             arg_md(DNNL_ARG_SRC), arg_md(DNNL_ARG_WEIGHTS_GATE),
-                            nullptr, &gate_dst_md, &gate_attr, nullptr,
-                            matmul_reduce_kind::undef, data_type::undef,
-                            /* postop_reads_dst = */ true),
+                            nullptr, &gate_dst_md, &gate_attr),
                     "internal error in gemm_gate_pd");
 
             primitive_attr_t up_attr;

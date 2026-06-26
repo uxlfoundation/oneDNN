@@ -67,8 +67,6 @@ struct gemm_desc_t : public op_desc_t {
     // and output to sum_ab tensor.
     sum_ab_t sum_ab {};
     dnnl_data_type_t sum_ab_type {};
-    // A binary post-op reads its src1 from the dst buffer (alias).
-    bool postop_reads_dst = false;
 
     // These accessors are to be used by the GEMM implementation. Because the
     // GEMM implementation currently assumes column major. These accessors

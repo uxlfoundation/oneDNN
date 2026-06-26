@@ -48,6 +48,7 @@ struct gemm_t : public primitive_t {
             gemm_attr.fpmath_ = attr()->fpmath_;
             gemm_attr.acc_mode_ = attr()->acc_mode_;
             gemm_attr.deterministic_ = attr()->deterministic_;
+            gemm_attr.postop_reads_dst_ = attr()->postop_reads_dst_;
             gemm_attr.rounding_mode_ = attr()->rounding_mode_;
             gemm_attr.scales_ = attr()->scales_;
             gemm_attr.precomputed_reductions_ = attr()->precomputed_reductions_;
@@ -373,8 +374,7 @@ struct gemm_t : public primitive_t {
             // We create a gemm_pd and resolve 'any' desc by querying gemm_pd
             VDISPATCH_MATMUL_SC(
                     create_gemm_pd(gemm_pd_, engine, a_md, b_md, c_md, bias_md,
-                            acc_dt, &gemm_attr, false, sum_ab_, sum_ab_type_,
-                            desc()->postop_reads_dst),
+                            acc_dt, &gemm_attr, false, sum_ab_, sum_ab_type_),
                     VERBOSE_PRIMITIVE_CREATION_FAIL, "gemm");
             VDISPATCH_MATMUL_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_MATMUL_SC(attr_.set_default_formats(dst_md(0)),

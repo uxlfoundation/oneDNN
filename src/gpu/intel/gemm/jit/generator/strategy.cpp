@@ -567,6 +567,8 @@ int GEMMStrategy::kAlign(const GEMMProblem &problem) const
 bool GEMMStrategy::needsTempC(const GEMMProblem &problem) const
 {
     if (!fusePostOps) return false;
+    // C read in place: accumulate into temp C so the original C survives.
+    if (problem.postOpReadsC) return true;
     if (problem.Ts != problem.Tc) {
         if (!problem.alpha1() && !problem.alphaM1()) return true;
         if (!problem.beta0() && !problem.beta1()) return true;

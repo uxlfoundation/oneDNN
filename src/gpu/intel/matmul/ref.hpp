@@ -54,8 +54,6 @@ struct ref_t : public primitive_t {
 
             auto dev_info_ = intel_engine->device_info();
 
-            VDISPATCH_MATMUL(!desc()->postop_reads_dst,
-                    VERBOSE_UNSUPPORTED_FEATURE, "dst-aliasing post-op");
             VDISPATCH_MATMUL(
                     is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
             VDISPATCH_MATMUL(
@@ -67,7 +65,8 @@ struct ref_t : public primitive_t {
                             | smask_t::zero_points_groups | smask_t::post_ops
                             | smask_t::sum_dt | smask_t::accumulation_mode
                             | smask_t::fpmath_mode | smask_t::rounding_mode
-                            | smask_t::precomputed_reductions),
+                            | smask_t::precomputed_reductions
+                            | smask_t::postop_reads_dst),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_MATMUL(attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS,
                                                     DNNL_ARG_DST},

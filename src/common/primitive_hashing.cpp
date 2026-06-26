@@ -235,6 +235,8 @@ size_t get_attr_hash(const primitive_attr_t &attr) {
     seed = hash_combine(seed, static_cast<size_t>(attr.fpmath_.apply_to_int_));
     // deterministic
     seed = hash_combine(seed, static_cast<size_t>(attr.deterministic_));
+    // postop_reads_dst
+    seed = hash_combine(seed, static_cast<size_t>(attr.postop_reads_dst_));
     // acc_mode
     seed = hash_combine(seed, static_cast<size_t>(attr.acc_mode_));
     // rounding_mode

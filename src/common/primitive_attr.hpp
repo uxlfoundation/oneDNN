@@ -579,6 +579,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         fpmath_ = other.fpmath_;
         acc_mode_ = other.acc_mode_;
         deterministic_ = other.deterministic_;
+        postop_reads_dst_ = other.postop_reads_dst_;
         post_ops_ = other.post_ops_;
         rnn_data_qparams_ = other.rnn_data_qparams_;
         CHECK(rnn_weights_qparams_.copy_from(other.rnn_weights_qparams_));
@@ -647,6 +648,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         dropout = 1u << 16,
         rounding_mode = 1u << 17,
         precomputed_reductions = 1u << 18,
+        postop_reads_dst = 1u << 19,
     };
 
     /** Returns true if the attributes have default values.
@@ -662,6 +664,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         bool ret = scratchpad_mode_ == rhs.scratchpad_mode_
                 && fpmath_ == rhs.fpmath_ && acc_mode_ == rhs.acc_mode_
                 && deterministic_ == rhs.deterministic_
+                && postop_reads_dst_ == rhs.postop_reads_dst_
                 && scales_ == rhs.scales_ && zero_points_ == rhs.zero_points_
                 && precomputed_reductions_ == rhs.precomputed_reductions_
                 && post_ops_ == rhs.post_ops_
@@ -746,6 +749,8 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
     dnnl::impl::fpmath_t fpmath_;
     dnnl::impl::accumulation_mode_t acc_mode_;
     bool deterministic_;
+    // Internal: a binary post-op reads src1 from the dst buffer (in place).
+    bool postop_reads_dst_ = false;
     dnnl::impl::post_ops_t post_ops_;
     dnnl::impl::rnn_data_qparams_t rnn_data_qparams_;
     dnnl::impl::rnn_create_time_scales_t rnn_weights_qparams_;

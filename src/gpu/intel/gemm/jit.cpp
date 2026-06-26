@@ -601,8 +601,8 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->post_ops()->len() > 0
             && pd()->post_ops()->entry_[0].kind != primitive_kind::sum)
         block_k = k;
-    // A dst-aliasing binary post-op must be applied inline (no k splitting).
-    if (pd()->desc()->postop_reads_dst) block_k = k;
+    // Dst-aliasing post-op: C must be written once, so no driver k-blocking.
+    if (pd()->attr()->postop_reads_dst_) block_k = k;
 
     if (k_parallel_fixed)
         block_k = into<int32_t>(pd()->kernel_desc()->aux_params()->k0);

@@ -101,8 +101,6 @@ struct ref_t : public primitive_t {
             using smask_t = primitive_attr_t::skip_mask_t;
 
             VDISPATCH_GEMM(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_GEMM(!desc()->postop_reads_dst,
-                    VERBOSE_UNSUPPORTED_FEATURE, "dst-aliasing post-op");
 
             const auto a_dt = desc()->a_type();
             const auto b_dt = desc()->b_type();

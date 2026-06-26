@@ -309,15 +309,6 @@ status_t gen_desc_t::finalize(const char *tags) {
         strategy_.preflight(hw_, problem_);
     } catch (...) { return status::unimplemented; }
 
-    // A post-op that reads C in place needs a single non-atomic C write. Reject
-    // strategies that update C via k-parallel reduction or atomics so a
-    // single-write strategy is selected instead.
-    if (problem_.postOpReadsC
-            && (strategy_.kParallel || strategy_.kParallelVariable
-                    || strategy_.C.atomic || strategy_.fuseBeta
-                    || strategy_.fusePostOps))
-        return status::unimplemented;
-
     // Check for legal 2D quantization group size.
     if (problem_.aOffset2D() || problem_.aScale2D())
         if (problem_.aqGroupK % strategy_.aqGroupKGranularity())

@@ -279,8 +279,6 @@ struct matmul_desc_t : public op_desc_t {
     matmul_reduce_kind_t reduce_kind {};
     // The accumulator data type. Initialized automatically.
     data_type_t accum_data_type {};
-    // A binary post-op reads its src1 from the dst buffer (alias).
-    bool postop_reads_dst = false;
 };
 
 // A descriptor of a element-wise operation.

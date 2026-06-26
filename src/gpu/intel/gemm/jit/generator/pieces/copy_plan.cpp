@@ -274,6 +274,7 @@ void CopyPlan::transform()
 
     legalizeRegions();
     legalizeNegation();
+    legalizeSIMD();
     optimizeSaturate();
 
     sort(SortType::SourceOrder);

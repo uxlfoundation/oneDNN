@@ -47,8 +47,6 @@
 #include "utils/memory.hpp"
 #include "utils/parallel.hpp"
 
-#include "src/common/nibble.hpp"
-
 extern "C" dnnl_status_t dnnl_memory_desc_create_with_string_tag(
         dnnl_memory_desc_t *, int, const dnnl_dims_t, dnnl_data_type_t,
         const char *);
@@ -336,92 +334,12 @@ size_t dnn_mem_t::sizeof_dt() const {
 
 float dnn_mem_t::get_elem(int64_t idx, int buffer_index) const {
     void *data = get_mapped_pointer<void>(buffer_index);
-    float elem = 0.0;
-
-    switch (dt(buffer_index)) {
-        case dnnl_s8: elem = static_cast<int8_t *>(data)[idx]; break;
-        case dnnl_u8: elem = static_cast<uint8_t *>(data)[idx]; break;
-        case dnnl_s32: elem = static_cast<int32_t *>(data)[idx]; break;
-        case dnnl_s64: elem = static_cast<int64_t *>(data)[idx]; break;
-        case dnnl_f32: elem = static_cast<float *>(data)[idx]; break;
-        case dnnl_f64: elem = static_cast<double *>(data)[idx]; break;
-        case dnnl_f16:
-            elem = static_cast<dnnl::impl::float16_t *>(data)[idx];
-            break;
-        case dnnl_bf16:
-            elem = static_cast<dnnl::impl::bfloat16_t *>(data)[idx];
-            break;
-        case dnnl_e8m0:
-            elem = static_cast<dnnl::impl::float8_e8m0_t *>(data)[idx];
-            break;
-        case dnnl_f8_e5m2:
-            elem = static_cast<dnnl::impl::float8_e5m2_t *>(data)[idx];
-            break;
-        case dnnl_f8_e4m3:
-            elem = static_cast<dnnl::impl::float8_e4m3_t *>(data)[idx];
-            break;
-        case dnnl_s4: {
-            dnnl::impl::nibble2_t nibble_pair(
-                    reinterpret_cast<uint8_t *>(data)[idx / 2]);
-            elem = dnnl::impl::int4_t(nibble_pair.get(idx % 2));
-            break;
-        }
-        case dnnl_u4: {
-            dnnl::impl::nibble2_t nibble_pair(
-                    reinterpret_cast<uint8_t *>(data)[idx / 2]);
-            elem = dnnl::impl::uint4_t(nibble_pair.get(idx % 2));
-            break;
-        }
-        case dnnl_f4_e2m1: {
-            dnnl::impl::nibble2_t nibble_pair(
-                    reinterpret_cast<uint8_t *>(data)[idx / 2]);
-            elem = dnnl::impl::float4_e2m1_t(nibble_pair.get(idx % 2));
-            break;
-        }
-        default: assert(!"bad data type");
-    }
-    return elem;
+    return get_element(dt(buffer_index), idx, data);
 }
 
 void dnn_mem_t::set_elem(int64_t idx, float value, int buffer_index) const {
     void *data = get_mapped_pointer<void>(buffer_index);
-
-    switch (dt(buffer_index)) {
-        case dnnl_s8: ((int8_t *)data)[idx] = value; break;
-        case dnnl_u8: ((uint8_t *)data)[idx] = value; break;
-        case dnnl_s32: ((int32_t *)data)[idx] = value; break;
-        case dnnl_s64: ((int64_t *)data)[idx] = value; break;
-        case dnnl_f32: ((float *)data)[idx] = value; break;
-        case dnnl_f64: ((double *)data)[idx] = value; break;
-        case dnnl_f16: ((dnnl::impl::float16_t *)data)[idx] = value; break;
-        case dnnl_bf16: ((dnnl::impl::bfloat16_t *)data)[idx] = value; break;
-        case dnnl_e8m0: ((dnnl::impl::float8_e8m0_t *)data)[idx] = value; break;
-        case dnnl_f8_e5m2:
-            ((dnnl::impl::float8_e5m2_t *)data)[idx] = value;
-            break;
-        case dnnl_f8_e4m3:
-            ((dnnl::impl::float8_e4m3_t *)data)[idx] = value;
-            break;
-        case dnnl_s4: {
-            auto dst_val = ((dnnl::impl::nibble2_t *)data)[idx / 2];
-            dst_val.set(dnnl::impl::int4_t(value).raw_bits_, idx % 2);
-            ((dnnl::impl::nibble2_t *)data)[idx / 2] = dst_val;
-            break;
-        }
-        case dnnl_u4: {
-            auto dst_val = ((dnnl::impl::nibble2_t *)data)[idx / 2];
-            dst_val.set(dnnl::impl::uint4_t(value).raw_bits_, idx % 2);
-            ((dnnl::impl::nibble2_t *)data)[idx / 2] = dst_val;
-            break;
-        }
-        case dnnl_f4_e2m1: {
-            auto dst_val = ((dnnl::impl::nibble2_t *)data)[idx / 2];
-            dst_val.set(dnnl::impl::float4_e2m1_t(value).raw_bits_, idx % 2);
-            ((dnnl::impl::nibble2_t *)data)[idx / 2] = dst_val;
-            break;
-        }
-        default: assert(!"bad data type");
-    }
+    set_element(dt(buffer_index), idx, data, value);
 }
 
 // Returns an updated logical index based on input `logical_index` and
@@ -1328,8 +1246,7 @@ static dnnl_dim_t md_off_l(dnnl_dims_t _pos, const dnn_mem_t &mem,
     return md_off_v(mem, pos, is_pos_padded);
 }
 
-template <typename T>
-static int check_zero_padding_impl(
+int check_zero_padding(
         const dnn_mem_t &mem, int arg, res_t *res, int *error_count) {
     const int ndims = mem.ndims();
     const auto &dims = mem.dims();
@@ -1403,36 +1320,6 @@ static int check_zero_padding_impl(
     if (error_count != nullptr) *error_count = errors;
 
     return ok ? OK : FAIL;
-}
-
-int check_zero_padding(
-        const dnn_mem_t &mem, int arg, res_t *res, int *error_count) {
-#define CASE(dt, type) \
-    case dt: return check_zero_padding_impl<type>(mem, arg, res, error_count);
-
-    switch (mem.dt()) {
-        case dnnl_data_type_undef:
-            return OK;
-
-            CASE(dnnl_e8m0, dnnl::impl::float8_e8m0_t);
-            CASE(dnnl_f8_e5m2, dnnl::impl::float8_e5m2_t);
-            CASE(dnnl_f8_e4m3, dnnl::impl::float8_e4m3_t);
-            CASE(dnnl_bf16, dnnl::impl::bfloat16_t);
-            CASE(dnnl_f16, dnnl::impl::float16_t);
-            CASE(dnnl_f32, float);
-            CASE(dnnl_f64, double);
-            CASE(dnnl_s32, int32_t);
-            CASE(dnnl_s64, int64_t);
-            CASE(dnnl_s8, int8_t);
-            CASE(dnnl_u8, uint8_t);
-            CASE(dnnl_s4, dnnl::impl::int4_t);
-            CASE(dnnl_u4, dnnl::impl::uint4_t);
-            CASE(dnnl_f4_e2m1, dnnl::impl::float4_e2m1_t);
-        default: assert(!"bad data_type");
-    };
-#undef CASE
-
-    return FAIL;
 }
 
 int check_buffer_overwrite(const dnn_mem_t &mem, int arg, res_t *res) {

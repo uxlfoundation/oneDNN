@@ -25,12 +25,16 @@ using namespace ngen;
 Package::Status Package::finalize(const ClobberSet &knownClobbers) {
     using namespace ngen;
 
-    auto status = Status::Success;
+    auto &status = this->status;
+    status = Status::Success;
 
     auto product = npack::decodeHWIPVersion(gmdidCompat);
     auto hw = getCore(product.family);
 
-    if (hw == HW::Unknown) return Status::UnsupportedHW;
+    if (hw == HW::Unknown) {
+        status = Status::UnsupportedHW;
+        return status;
+    }
 
     Decoder decoder(hw, binary);
     DependencyRegion dstRegion;

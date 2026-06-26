@@ -776,7 +776,10 @@ status_t per_mn_comp_kernel_t::is_applicable(
     const int chunks_cap = zmm_path ? 24 : 6;
     if (chunks > chunks_cap) return status::unimplemented;
 
-    if (!bgmmc->has_zero_point_a && !bgmmc->has_zero_point_b)
+    // per-mn compensation is only needed when ZP is present or s8s8 compensation
+    // is required for each K-block(grouped scales are present).
+    if (!bgmmc->has_zero_point_a && !bgmmc->has_zero_point_b
+            && !bgmmc->s8s8_compensation_required)
         return status::unimplemented;
 
     // Per-axis activation:

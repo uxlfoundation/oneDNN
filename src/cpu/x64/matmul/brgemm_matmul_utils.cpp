@@ -381,13 +381,10 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , f16_fp8_dt(bgmmc.src_dt == f16 && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     // int8 grouped quantization: any grouped scales/ZP attribute on
-    // int8 src x {s4,u4,s8} wei, dst in {f16,bf16,f32,s8,u8,s32}.
+    // int8 src x {s4,u4,s8,u8} wei, dst in {f16,bf16,f32,s8,u8,s32}.
     , int8_grouped_quantization_dt(one_of(bgmmc.src_dt, u8, s8)
-              && one_of(bgmmc.wei_dt, s4, u4, s8)
+              && one_of(bgmmc.wei_dt, s4, u4, s8, u8)
               && one_of(bgmmc.dst_dt, f16, bf16, f32, s8, u8, s32)
-              && (!attr.zero_points_.get(DNNL_ARG_SRC).has_default_values()
-                      || !attr.zero_points_.get(DNNL_ARG_WEIGHTS)
-                                  .has_default_values())
               && (utils::one_of(bgmmc.wei_dt, s4, u4)
                       || !attr.scales_.get(DNNL_ARG_SRC).has_default_groups()
                       || !attr.scales_.get(DNNL_ARG_WEIGHTS)
@@ -2687,7 +2684,8 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
     bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
     bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
     bgmmc.with_per_mn_compensation = bgmmc.with_int8_grouped_quantization
-            && (bgmmc.has_zero_point_a || bgmmc.has_zero_point_b);
+            && (bgmmc.has_zero_point_a || bgmmc.has_zero_point_b
+                    || bgmmc.s8s8_compensation_required);
     bgmmc.post_ops_applicable = one_of(true, bgmmc.with_sum, bgmmc.with_bias,
             bgmmc.with_src_scales,
             bgmmc.with_wei_scales && !bgmmc.apply_scales_in_buffer_b,

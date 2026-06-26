@@ -175,7 +175,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             || !attr_zps.get(DNNL_ARG_SRC).has_default_groups()
             || !attr_zps.get(DNNL_ARG_WEIGHTS).has_default_groups();
     const bool with_int8_grouped_quantization = one_of(src_dt, u8, s8)
-            && one_of(wei_dt, s4, u4, s8) && one_of(dst_dt, f16, bf16, f32)
+            && one_of(wei_dt, s4, u4, s8, u8) && one_of(dst_dt, f16, bf16, f32)
             && has_grouped_quant_attrs;
 
     auto check_bias = [&]() -> bool {

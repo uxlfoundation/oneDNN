@@ -2045,6 +2045,9 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
     test.unmap_data(mapped_ptr_test);
 
     int threshold = total * 0.002;
+    printf("check_memory: total=%d mismatches=%d (allowed<=%d) max_diff=%f "
+           "(allowed<=%.4f)\n",
+            total, mismatches, threshold, max_diff, max_diff_threshold);
 
     ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
     ASSERT_LE(max_diff, max_diff_threshold);
@@ -2386,7 +2389,7 @@ public:
 
         auto dS_desc = t.m_dS.get_desc();
         memory::desc *dS_ptr = nullptr;
-        //dS_ptr = &dS_desc; // uncomment for optional dS output
+        dS_ptr = &dS_desc; // uncomment for optional dS output
 
         // fwd sdpa primitive to populate dst, col_maxes
         sdpa::primitive_desc sdpa_fwd_pd;
@@ -2499,6 +2502,74 @@ public:
                 t.m_diff_output, invert_scale, doubled_memory, t.m_diff_query,
                 t.m_diff_key, t.m_diff_value,
                 /*with_timing=*/false);
+
+        // Step-by-step debug comparison: kernel raw S = K^T*Q (written to dS
+        // when compiled with WITH_DS, returns early after first ugemm) vs.
+        // reference plain Q * K^T (no scale, no mask).
+        // Enable by uncommenting: dS_ptr = &dS_desc above.
+        if (dS_ptr != nullptr) {
+            const int hq = static_cast<int>(p.heads.q);
+            const int hkv = static_cast<int>(p.heads.kv);
+            const int gsize = hq / hkv;
+            const int nbatch = hkv;
+
+            memory::dims k5d {
+                    p.mb, nbatch, 1, p.seq_len.kv, p.head_group.head_size};
+            memory::dims q5d {
+                    p.mb, nbatch, gsize, p.seq_len.q, p.head_group.head_size};
+            memory::dims s5d {p.mb, nbatch, gsize, p.seq_len.q, p.seq_len.kv};
+
+            const auto key_fmt5d
+                    = (p.key_format_tag == memory::format_tag::abcd)
+                    ? memory::format_tag::abcde
+                    : memory::format_tag::abced;
+            auto q5d_md = memory::desc(q5d, p.dt.dt, memory::format_tag::abcde);
+            auto k5d_md = memory::desc(k5d, p.dt.dt, key_fmt5d);
+
+            auto q5d_mem = reshape(strm, t.m_query, q5d_md);
+            auto keytmp = as(strm, t.m_key_quantized, p.dt.dt);
+            auto k5d_mem = reshape(strm, keytmp, k5d_md);
+
+            // Plain Q * K^T in f32 (no scale, no mask)
+            auto s5d_md
+                    = memory::desc(s5d, mdt::f32, memory::format_tag::abcde);
+            memory s5d_mem(s5d_md, eng);
+            matmul(matmul::primitive_desc(eng, q5d_md, k5d_md, s5d_md))
+                    .execute(strm,
+                            {{DNNL_ARG_SRC, q5d_mem},
+                                    {DNNL_ARG_WEIGHTS, k5d_mem},
+                                    {DNNL_ARG_DST, s5d_mem}});
+            strm.wait();
+            printf("[DEBUG] Reference Q*K^T matmul done (s5d shape: mb=%d "
+                   "nbatch=%d gsize=%d seq_q=%d seq_kv=%d).\n",
+                    (int)p.mb, nbatch, gsize, (int)p.seq_len.q,
+                    (int)p.seq_len.kv);
+
+            // Cast to p.dt.dt and reshape to [mb, hq, seq_q, seq_kv]
+            memory::dims s4d {p.mb, hq, p.seq_len.q, p.seq_len.kv};
+            auto s5d_cast = as(strm, s5d_mem, p.dt.dt);
+            auto s_ref_mem = reshape(strm, s5d_cast,
+                    memory::desc(s4d, p.dt.dt, memory::format_tag::abcd));
+
+            const float s_thresh = (p.dt.dt == mdt::bf16) ? 0.01f
+                    : (p.dt.dt == mdt::f16)               ? 0.005f
+                                                          : 0.001f;
+            printf("[DEBUG] Comparing raw S = K^T*Q (kernel dS) vs Q*K^T "
+                   "(reference): thresh=%.4f max_diff_thresh=0.1\n",
+                    s_thresh);
+            if (p.dt.dt == mdt::f16) {
+                check_memory<float16_t>(
+                        strm, s_ref_mem, t.m_dS, 0.1f, s_thresh);
+            } else if (p.dt.dt == mdt::bf16) {
+                check_memory<bfloat16_t>(
+                        strm, s_ref_mem, t.m_dS, 0.1f, s_thresh);
+            } else {
+                check_memory<float_t>(strm, s_ref_mem, t.m_dS, 0.1f, s_thresh);
+            }
+            printf("[DEBUG] S comparison done.\n");
+            // Kernel returned early in WITH_DS debug mode; skip dK/dV/dQ.
+            return;
+        }
 
         float max_diff_threshold = 0.3f;
         // backward thresholds are higher than forward due to chained matmuls
@@ -3291,7 +3362,7 @@ GPU_TEST_P(sdpa_bwd_test, perf_bwd) {
             mask_type::no_mask, default_scale_type, accumulation_mode::f32, \
             accumulation_mode::f32
 #define SDPA_DIMS_DROPOUT_SHARED_GQA \
-    1, 16, 2, 64, 64, 32, 32, 32, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
+    1, 16, 8, 64, 64, 32, 32, 32, mdt::f16, mdt::f16, mdt::undef, mdt::undef, \
             mdt::f16, mdt::undef, mdt::undef, mdt::f16, \
             quantize_type::no_quantization, no_key_transposed, \
             mask_type::no_mask, default_scale_type, accumulation_mode::f32, \

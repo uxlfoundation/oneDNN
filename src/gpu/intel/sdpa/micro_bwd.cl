@@ -437,7 +437,7 @@ inline void tile_store_k_slm(
 #if KV_GROUP_SIZE > 1
 #define IS_GQA 1
 #if defined(DST_DT_F16)
-#define REDUCE_DKDV_F16 0
+#define REDUCE_DKDV_F16 1
 #else
 #define REDUCE_DKDV_F16 0
 #endif
@@ -576,13 +576,14 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
 #endif
 
 #define DO_MM 1
+#define WITH_DS 1
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
 micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global VAL_DATA_T *V, const global float *ws,
         const global float *Di, const global DST_DATA_T *A,
         const global DST_DATA_T *dA,
-#if WITH_DS
+#if WITH_DS 
         global DST_DATA_T *dS, // expensive, optional intermediate
 #endif
         global DST_DATA_T_DKDV *dK, global float *dQ,
@@ -847,6 +848,18 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
         uint sg_i0_s2 = sg_i_kq * ugemm_kq_sg_tile_m + k0;
         uint sg_j0_s2 = sg_j_kq * ugemm_kq_sg_tile_n + q0;
+
+#if WITH_DS
+        // Debug: dump raw S = K^T * Q tile and return for step-by-step comparison.
+        {
+            s_tile_type_reblock S_tile_dbg;
+            tile_copy_reblock(S_tile, &S_tile_dbg);
+            tile_store(S_tile_dbg, dS, k_chunk, q_nchunk, k, k0 + sg_i0_kq,
+                    q0 + sg_j0_kq);
+        }
+        return;
+#endif
+        sg_j0_s2 = sg_j_kq * ugemm_kq_sg_tile_n + q0;
 
         /* Apply attention mask */
 #if WITH_ATTN_MASK

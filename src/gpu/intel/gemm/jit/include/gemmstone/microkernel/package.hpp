@@ -17,6 +17,10 @@
 #ifndef GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_PACKAGE_HPP
 #define GEMMSTONE_INCLUDE_GEMMSTONE_MICROKERNEL_PACKAGE_HPP
 
+#include <algorithm>
+#include <array>
+#include <string>
+
 #include "gemmstone/microkernel/protocol.hpp"
 
 GEMMSTONE_NAMESPACE_START
@@ -25,6 +29,38 @@ namespace microkernel {
 struct Argument;
 struct RegisterRange;
 struct Setting;
+
+struct ClobberSet {
+    static constexpr int maxRegs = 512;
+    std::array<bool, maxRegs> clobbered = {};
+
+    void clear() { clobbered.fill(false); }
+    bool empty() const { return std::none_of(clobbered.begin(), clobbered.end(), [](bool b) { return b; }); }
+    size_t size() const { return clobbered.size(); }
+    bool operator[](uint32_t reg) const { return clobbered[reg]; }
+    bool &operator[](uint32_t reg) { return clobbered[reg]; }
+
+    std::string str() const {
+        std::string out = "{";
+        int i = 0;
+        while (i < maxRegs) {
+            int start = i;
+            while (i < maxRegs && clobbered[i]) i++;
+            i++;
+            if(i == start + 1) continue;
+            if (out.size() > 1) out += ", ";
+            out += "r" + std::to_string(start);
+            if (i - 2 > start) out += "-r" + std::to_string(i - 2);
+        }
+        out += "}";
+        return out;
+    }
+
+    void add(uint32_t regStart, uint32_t regLen) {
+        for (uint32_t i = regStart; i < regStart + regLen && i < maxRegs; i++)
+            clobbered[i] = true;
+    }
+};
 
 // Microkernel package.
 // Fields marked [*] are automatically filled in by finalize().
@@ -73,7 +109,7 @@ struct Package {
     };
 
     // Analyzes the package and deduces information from the raw microkernel binary.
-    Status finalize();
+    Status finalize(const ClobberSet &knownClobbers = {});
 };
 
 // Contiguous span of register space.

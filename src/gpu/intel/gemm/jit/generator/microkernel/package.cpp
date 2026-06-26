@@ -22,7 +22,7 @@ namespace microkernel {
 
 using namespace ngen;
 
-Package::Status Package::finalize() {
+Package::Status Package::finalize(const ClobberSet &knownClobbers) {
     using namespace ngen;
 
     auto status = Status::Success;
@@ -35,19 +35,20 @@ Package::Status Package::finalize() {
     Decoder decoder(hw, binary);
     DependencyRegion dstRegion;
 
-    /* Track clobbered registers at full register granularity for simplicity. */
-    std::array<bool, GRF::maxRegs() + 1> clobbered = {false};
+    auto clobbered = knownClobbers;
 
     for (; !decoder.done(); decoder.advance()) {
         // Check for systolic usage.
         auto op = decoder.opcode();
         systolic |= (op == Opcode::dpas || op == Opcode::dpasw);
 
-        // Get destination region and add to clobbers.
+        // Get destination region and add to clobbers. This indeterminate for
+        // indirect or variable sized destinations. In this case, rely on
+        // knownClobbers.
         if (decoder.getOperandRegion(dstRegion, -1)) {
-            if (dstRegion.unspecified) {
-                // Indirect destination -- cannot reliably detect clobbers.
-                status = Status::UncertainClobbers;
+            if (dstRegion.unspecified
+                && !(dstRegion.isValid() && knownClobbers[dstRegion.base])) {
+                    status = Status::UncertainClobbers;
             } else
                 for (int j = 0; j < dstRegion.size; j++)
                     clobbered[dstRegion.base + j] = true;
@@ -71,6 +72,8 @@ Package::Status Package::finalize() {
             len = 0;
         }
     }
+    if (len > 0)
+        clobbers.emplace_back(RegisterRange(base * regBytes, len * regBytes));
 
     // Capture GRF usage from clobbers and arguments.
     uint32_t last = 0;

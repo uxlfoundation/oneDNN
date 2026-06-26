@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024-2026 FUJITSU LIMITED
-* Copyright 2024-2025 Arm Ltd. and affiliates
+* Copyright 2024-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1850,6 +1850,11 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         best_brgb.oc_block = min_oc_block;
         auto start_ocb = 4;
         start_ocb = nstl::min(div_up(jcp.oc, jcp.acc_simd_w), start_ocb);
+        // Start at oc_block=16 for sve_128 so that we always consider at least one case
+        // This is tied to the early break in the below loop.
+        // TODO: remove this heuristic
+        if (isa == sve_128)
+            start_ocb = nstl::max(start_ocb, div_up(16, jcp.acc_simd_w));
 
         auto finish_ocb = 1;
         for (auto ocb = start_ocb; ocb >= finish_ocb; ocb--) {

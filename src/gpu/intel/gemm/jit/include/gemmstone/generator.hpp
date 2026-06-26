@@ -83,6 +83,7 @@ protected:
     std::exception_ptr lastException;
     GRFMultirange outputCRange;
     RegisterLayout outputCLayout;
+    microkernel::ClobberSet knownClobbers;
 
     using Injector = PostOpsProblem::Injector<hw>;
     std::unique_ptr<Injector> postOpInjector;

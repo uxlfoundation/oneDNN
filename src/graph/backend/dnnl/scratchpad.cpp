@@ -51,20 +51,24 @@ scratchpad_t::scratchpad_t(const tensor_t *user_buf, size_t size,
 
 scratchpad_t::~scratchpad_t() {
     if (user_managed_) return;
-    if (eng_->get_kind() == dnnl::engine::kind::cpu) {
+    if (bool(*eng_) == false) return;
+    const auto ekind = eng_->get_kind();
+    if (ekind == dnnl::engine::kind::cpu) {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
         dnnl_allocator_t::free(buffer_, *eng_, alloc_, e_);
 #else
         dnnl_allocator_t::free(buffer_, *eng_, alloc_);
 #endif
-    } else if (eng_->get_kind() == dnnl::engine::kind::gpu) {
+    } else if (ekind == dnnl::engine::kind::gpu) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         dnnl_allocator_t::free(buffer_, *eng_, alloc_, ocl_e_);
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         dnnl_allocator_t::free(buffer_, *eng_, alloc_, e_);
 #else
-        assert(!"unsupport gpu runtime");
+        assert(!"unsupported gpu runtime");
 #endif
+    } else {
+        assert(!"unsupported engine kind");
     }
 }
 

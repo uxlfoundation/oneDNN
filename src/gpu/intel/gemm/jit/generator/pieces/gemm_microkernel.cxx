@@ -37,6 +37,7 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
 
     outputCRange = GRFMultirange();
     outputCLayout.clear();
+    knownClobbers.clear();
 
     strategy.forceWGUpdate = WGFixed;
     strategy.forceFixedWGK = true;
@@ -324,7 +325,7 @@ microkernel::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &pr
 
     package.barrierCount = interface.getBarrierCount();
 
-    package.finalize();
+    package.finalize(knownClobbers);
 
     return package;
 }

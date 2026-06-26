@@ -492,6 +492,18 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
         }
     }
 
+    // Track clobbers which cannot be determined from decoded assembly.
+    auto addClobbers = [&](const std::vector<GRFMultirange> &regs) {
+        for (const auto &reg : regs) {
+            for (auto &r : reg.ranges) {
+                knownClobbers.add(r.getBase(), r.getLen());
+            }
+        }
+    };
+
+    if (strategy.A.base.getModel() != ngen::ModelInvalid) { addClobbers(state.A_regs); }
+    if (strategy.B.base.getModel() != ngen::ModelInvalid) { addClobbers(state.B_regs); }
+
     if (repackC) {
         state.Cr_regs = C_regs;
         C_regCountPerBuffer = state.C_layout.regs();
@@ -521,10 +533,16 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
     // Allocate registers for SLM copies.
     state.Ai_regs.resize(strategy.slmCopies);
     state.Bi_regs.resize(strategy.slmCopies);
-    if (strategy.slmA) for (int q = 0; q < strategy.slmCopies; q++)
-        state.Ai_regs[q] = state.ra.alloc_range(state.Ai_regCount);
-    if (strategy.slmB) for (int q = 0; q < strategy.slmCopies; q++)
-        state.Bi_regs[q] = state.ra.alloc_range(state.Bi_regCount);
+    if (strategy.slmA) {
+        for (int q = 0; q < strategy.slmCopies; q++)
+            state.Ai_regs[q] = state.ra.alloc_range(state.Ai_regCount);
+        addClobbers(state.Ai_regs);
+    }
+    if (strategy.slmB) {
+        for (int q = 0; q < strategy.slmCopies; q++)
+            state.Bi_regs[q] = state.ra.alloc_range(state.Bi_regCount);
+        addClobbers(state.Bi_regs);
+    }
 
     // Allocate registers for A/B sums.
     state.Asr_regs = state.ra.alloc_range(state.Asr_layout.regs());

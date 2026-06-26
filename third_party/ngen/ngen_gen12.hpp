@@ -1312,9 +1312,10 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
 
             if (len == 0)
                 return false;
-            else if (len == -1)
+            else if (len == -1) {
                 region = DependencyRegion(hw);
-            else
+                region.base = base;
+            } else
                 region = DependencyRegion(hw, GRFRange(base, len));
             return true;
         }
@@ -1335,9 +1336,10 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                 case -1: {
                     if (sendg.dstRegFile == RegFileARF) return false;
                     int dstLen = getSendgDesc().dstLen(hw, 1 << common.execSize, static_cast<SharedFunction>(sendg.sfid));
-                    if (dstLen == -1)
+                    if (dstLen == -1) {
                         region = DependencyRegion(hw);
-                    else
+                        region.base = sendg.dstReg;
+                    } else
                         region = DependencyRegion(hw, GRFRange(sendg.dstReg, dstLen));
                     break;
                 }
@@ -1392,9 +1394,10 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
             }
             if (regNum == 0x1FF)
                 return false;
-            else if (len == -1)
+            else if (len == -1) {
                 region = DependencyRegion(hw);
-            else
+                region.base = regNum;
+            } else
                 region = DependencyRegion(hw, GRFRange(regNum, len));
             return true;
         }

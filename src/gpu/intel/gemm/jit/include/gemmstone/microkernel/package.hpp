@@ -103,10 +103,13 @@ struct Package {
     }
 
     enum class Status {
+        Pending,
         Success,
         UncertainClobbers,
         UnsupportedHW,
     };
+
+    Status status = Status::Pending;
 
     // Analyzes the package and deduces information from the raw microkernel binary.
     Status finalize(const ClobberSet &knownClobbers = {});

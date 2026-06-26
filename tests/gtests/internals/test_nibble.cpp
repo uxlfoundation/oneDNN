@@ -19,6 +19,7 @@
 
 #include "src/common/float4.hpp"
 #include "src/common/int4.hpp"
+#include "src/common/nibble.hpp"
 #include "src/common/nstl.hpp"
 
 namespace dnnl {

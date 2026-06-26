@@ -47,6 +47,8 @@
 #include "utils/memory.hpp"
 #include "utils/parallel.hpp"
 
+#include "src/common/nibble.hpp"
+
 extern "C" dnnl_status_t dnnl_memory_desc_create_with_string_tag(
         dnnl_memory_desc_t *, int, const dnnl_dims_t, dnnl_data_type_t,
         const char *);

@@ -249,7 +249,7 @@ void ref_primitive_t::init_memory_args(const engine_t &ref_eng) {
         if (prb_wrapper_) { \
             const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>(); \
             ::custom::init_memory_args( \
-                    mems_, prb, ::custom::supported_exec_args(prb), ref_eng); \
+                    mems_, prb, /*override_dir_with_fwd=*/false, ref_eng); \
         } \
         break; \
     }
@@ -276,7 +276,8 @@ int ref_primitive_t::init_ref_memory_args(const engine_t &ref_eng, res_t *res) {
         dnn_mem_map_t ref_mems; \
         if (prb_wrapper_) { \
             const ::custom::prb_t *prb = prb_wrapper_->get<::custom::prb_t>(); \
-            SAFE(::custom::init_ref_memory_args(ref_mems, mems_, prb, res), \
+            SAFE(::custom::init_ref_memory_args( \
+                         ref_mems, mems_, nullptr, prb, res), \
                     WARN); \
             args_ = args_t(mems_); \
         } \

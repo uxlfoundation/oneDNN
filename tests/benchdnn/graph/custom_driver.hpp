@@ -23,6 +23,7 @@
 #include "deserialize.hpp"
 #include "dnn_types.hpp"
 #include "dnnl_common.hpp"
+#include "utils/prb.hpp"
 #include "utils/settings.hpp"
 
 namespace custom {
@@ -49,7 +50,7 @@ struct settings_t {
     void finalize() {};
 };
 
-struct prb_t {
+struct prb_t : public base_prb_t {
     prb_t(const settings_t &s) : arg_mds_(s.arg_mds_), alg(s.alg) {
         switch (alg) {
             case GENINDEX: axis = s.axis; break;
@@ -61,27 +62,35 @@ struct prb_t {
     ::std::unordered_map<int, arg_md_t> arg_mds_;
     ::std::vector<int64_t> order;
     int64_t axis = -1;
-    attr_t attr;
     alg_t alg = ALG_UNKNOWN;
+
+    static const prb_t *from(const base_prb_t *base_prb) {
+        return downcast<const prb_t *>(base_prb);
+    }
+
+    void skip_unimplemented(res_t *res) const override;
+    std::vector<int> supported_exec_args(
+            bool override_dir_with_fwd) const override;
+
+private:
+    std::string set_repro_line() override { return std::string(); }
 };
 
 dnnl_status_t init_pd(init_pd_args_t &init_pd_args);
-std::vector<int> supported_exec_args(const prb_t *prb);
 
 int fill_mem(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max);
-void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
+void setup_cmp(compare::compare_t &cmp, const base_prb_t *prb, data_kind_t kind,
         const args_t &ref_args);
 
-void init_memory_args(dnn_mem_map_t &mem_map, const prb_t *prb,
-        const std::vector<int> &supported_exec_args,
+void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
+        bool override_dir_with_fwd = false,
         const engine_t &test_engine = get_test_engine());
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
-        const prb_t *prb, res_t *res);
+        dnnl_primitive_t prim, const base_prb_t *base_prb, res_t *res,
+        dnnl_primitive_t prim_ref = nullptr);
 
-void skip_unimplemented_prb(const prb_t *prb, res_t *res);
-
-int execute(const prb_t *prb, const args_t &args, res_t *res);
+int execute(const base_prb_t *prb, const args_t &args, res_t *res);
 
 } // namespace custom
 #endif

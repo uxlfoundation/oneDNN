@@ -38,6 +38,8 @@ float round_to_nearest_representable(dnnl_data_type_t dt, float value);
 bool is_subbyte_type(dnnl_data_type_t type);
 size_t bits_dt(dnnl_data_type_t dt);
 bool is_fp8_dt(dnnl_data_type_t dt);
+float get_element(dnnl_data_type_t dt, int64_t idx, void *ptr);
+void set_element(dnnl_data_type_t dt, int64_t idx, void *ptr, float value);
 
 template <class T>
 T gcd(std::initializer_list<T> ilist) {

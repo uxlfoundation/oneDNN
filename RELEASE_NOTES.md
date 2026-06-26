@@ -1,7 +1,10 @@
 # Performance Optimizations
 ## Intel 64/AMD64 Processors
 * Improved performance on future Intel Core Ultra processors with Intel AVX10.2 instruction set support (codename Nova Lake).
-* Improved performance of `f8` Scaled Dot Product Attention (SDPA) subgraph with Graph API.
+* Improved performance of `f8` [quantized Scaled Dot Product Attention (SDPA)] subgraph with Graph API.
+* 
+
+[quantized Scaled Dot Product Attention (SDPA)]: https://uxlfoundation.github.io/oneDNN/v3.13/dev_guide_graph_sdpa_quantized.html
 
 ## Intel Graphics
 * Improved performance for future integrated GPUs based on Xe3p-LPG architecture (codename Nova Lake P).

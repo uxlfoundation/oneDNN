@@ -425,8 +425,10 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
         }
         if (len == 0)
             return false;
-        else if (len == -1)
-            region = DependencyRegion();
+        else if (len == -1) {
+            region = DependencyRegion(hw);
+            region.base = rd.getBase();
+        }
         else
             region = DependencyRegion(hw, GRFRange(rd.getBase(), len));
     } else if (op == Opcode::sendg || op == Opcode::sendgc || op == Opcode::sendgx || op == Opcode::sendgxc) {
@@ -435,8 +437,10 @@ bool AsmInstruction::getOperandRegion(autoswsb::DependencyRegion &region, int op
             desc.all = static_cast<uint64_t>(src[4].imm);
             int execSize = mod.getExecSize();
             int len = desc.dstLen(hw, execSize, static_cast<SharedFunction>(ext & 0xF));
-            if (len == -1)
-                region = DependencyRegion();
+            if (len == -1) {
+                region = DependencyRegion(hw);
+                region.base = rd.getBase();
+            }
             else
                 region = DependencyRegion(hw, GRFRange(rd.getBase(), len));
         } else

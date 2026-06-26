@@ -190,6 +190,7 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
             });
             return OK;
         }
+        BENCHDNN_PRINT(0, "%s\n", "Error: failed to create a reorder.");
         return FAIL;
     }
 

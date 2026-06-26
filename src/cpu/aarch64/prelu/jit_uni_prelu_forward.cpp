@@ -186,10 +186,8 @@ private:
     void store_vector(const XReg &addr, const ZRegS &src);
     void broadcast_weight(const VReg4S &dst, const XReg &addr);
     void broadcast_weight(const ZRegS &dst, const XReg &addr);
-    void compute_vector(
-            const VReg4S &src, const VReg4S &weights, const VReg4S &dst);
-    void compute_vector(
-            const ZRegS &src, const ZRegS &weights, const ZRegS &dst);
+    void compute_vector(const VReg4S &src, const VReg4S &weights);
+    void compute_vector(const ZRegS &src, const ZRegS &weights);
     void load_data_vector(const VReg4S &dst, const XReg &addr);
     void load_data_vector(const ZRegS &dst, const XReg &addr);
     void store_data_vector(const XReg &addr, const VReg4S &src);
@@ -212,7 +210,6 @@ private:
 
     // Vector/SVE registers. TRegS maps to VReg4S for ASIMD and ZRegS for SVE.
     const TRegS v_src_ = TRegS(0);
-    const TRegS v_max_ = TRegS(1);
     const TRegS v_min_ = TRegS(2);
     const TRegS v_weights_ = TRegS(3);
     const TRegS v_zero_ = TRegS(4);
@@ -363,25 +360,20 @@ void jit_uni_prelu_forward_kernel_t<isa>::broadcast_weight(
 
 template <cpu_isa_t isa>
 void jit_uni_prelu_forward_kernel_t<isa>::compute_vector(
-        const VReg4S &src, const VReg4S &weights, const VReg4S &dst) {
-    UNUSED(dst);
-    const VReg4S v_max(v_max_.getIdx());
+        const VReg4S &src, const VReg4S &weights) {
     const VReg4S v_min(v_min_.getIdx());
     const VReg4S v_zero(v_zero_.getIdx());
 
-    assert(dst.getIdx() == v_max.getIdx());
-
     // PReLU: positive part passes through, negative part is multiplied by
     // weights. Algebraically: max(src, 0) + weights * min(src, 0).
-    fmax(v_max, src, v_zero);
     fmin(v_min, src, v_zero);
-    fmla(v_max, v_min, weights);
+    fmax(src, src, v_zero);
+    fmla(src, v_min, weights);
 }
 
 template <cpu_isa_t isa>
 void jit_uni_prelu_forward_kernel_t<isa>::compute_vector(
-        const ZRegS &src, const ZRegS &weights, const ZRegS &dst) {
-    UNUSED(dst);
+        const ZRegS &src, const ZRegS &weights) {
     const ZRegS v_min(v_min_.getIdx());
 
     // Same math as the ASIMD version. The SVE immediate fmin/fmax forms are
@@ -418,70 +410,62 @@ void jit_uni_prelu_forward_kernel_t<isa>::prepare_const_registers() {
 
 template <cpu_isa_t isa>
 void jit_uni_prelu_forward_kernel_t<isa>::vector_loop() {
-    Label loop, end;
 
-    cmp(reg_work_, simd_w_);
-    b(LT, end);
+    asm_for_step(reg_work_, reg_work_, simd_w_, [&]() {
+        load_data_vector(v_src_, reg_src_);
+        // weights are either constant or loaded in the loop, depending on the
+        // broadcast mode.
+        if (!weights_are_const()) load_data_vector(v_weights_, reg_weights_);
+        compute_vector(v_src_, v_weights_);
+        store_data_vector(reg_dst_, v_src_);
 
-    L(loop);
-    load_data_vector(v_src_, reg_src_);
-    if (!weights_are_const()) load_data_vector(v_weights_, reg_weights_);
-    compute_vector(v_src_, v_weights_, v_max_);
-    store_data_vector(reg_dst_, isa == sve ? v_src_ : v_max_);
+        add_imm(reg_src_, reg_src_, simd_bytes_, X_TMP_0);
+        add_imm(reg_dst_, reg_dst_, simd_bytes_, X_TMP_0);
+        if (!weights_are_const())
+            add_imm(reg_weights_, reg_weights_, simd_bytes_, X_TMP_0);
+    });
 
-    add_imm(reg_src_, reg_src_, simd_bytes_, X_TMP_0);
-    add_imm(reg_dst_, reg_dst_, simd_bytes_, X_TMP_0);
-    if (!weights_are_const())
-        add_imm(reg_weights_, reg_weights_, simd_bytes_, X_TMP_0);
-
-    sub_imm(reg_work_, reg_work_, simd_w_, X_TMP_0);
-    cmp(reg_work_, simd_w_);
-    b(GE, loop);
-
-    L(end);
+    // The vector loop may leave a small number of elements unprocessed. The
+    // scalar loop handles the remainder. The vector loop is guaranteed to
+    // terminate with reg_work_ < simd_w_.
+    Label tail_ready;
+    cmp(reg_work_, 0);
+    bge(tail_ready);
+    add_imm(reg_work_, reg_work_, simd_w_, X_TMP_0);
+    L(tail_ready);
 }
 
 template <cpu_isa_t isa>
 void jit_uni_prelu_forward_kernel_t<isa>::scalar_loop() {
-    Label loop, end;
+    asm_for(reg_work_, reg_work_, [&]() {
+        if (data_type_ == data_type::f32) {
+            ldr(s_src_, ptr(reg_src_));
+            ldr(s_weights_, ptr(reg_weights_));
+        } else if (data_type_ == data_type::f16) {
+            ldr(HReg(s_src_.getIdx()), ptr(reg_src_));
+            ldr(HReg(s_weights_.getIdx()), ptr(reg_weights_));
+            fcvt(s_src_, HReg(s_src_.getIdx()));
+            fcvt(s_weights_, HReg(s_weights_.getIdx()));
+        } else {
+            assert(!"unsupported PReLU data type");
+        }
+        // Scalar cleanup mirrors the vector formula for plain-layout tails.
+        fmax(s_max_, s_src_, s_zero_);
+        fmin(s_min_, s_src_, s_zero_);
+        fmul(s_min_, s_min_, s_weights_);
+        fadd(s_max_, s_max_, s_min_);
+        if (data_type_ == data_type::f32) {
+            str(s_max_, ptr(reg_dst_));
+        } else if (data_type_ == data_type::f16) {
+            fcvt(HReg(s_max_.getIdx()), s_max_);
+            str(HReg(s_max_.getIdx()), ptr(reg_dst_));
+        }
 
-    cmp(reg_work_, 0);
-    b(LE, end);
-
-    L(loop);
-    if (data_type_ == data_type::f32) {
-        ldr(s_src_, ptr(reg_src_));
-        ldr(s_weights_, ptr(reg_weights_));
-    } else if (data_type_ == data_type::f16) {
-        ldr(HReg(s_src_.getIdx()), ptr(reg_src_));
-        ldr(HReg(s_weights_.getIdx()), ptr(reg_weights_));
-        fcvt(s_src_, HReg(s_src_.getIdx()));
-        fcvt(s_weights_, HReg(s_weights_.getIdx()));
-    } else {
-        assert(!"unsupported PReLU data type");
-    }
-    // Scalar cleanup mirrors the vector formula for plain-layout tails.
-    fmax(s_max_, s_src_, s_zero_);
-    fmin(s_min_, s_src_, s_zero_);
-    fmul(s_min_, s_min_, s_weights_);
-    fadd(s_max_, s_max_, s_min_);
-    if (data_type_ == data_type::f32) {
-        str(s_max_, ptr(reg_dst_));
-    } else if (data_type_ == data_type::f16) {
-        fcvt(HReg(s_max_.getIdx()), s_max_);
-        str(HReg(s_max_.getIdx()), ptr(reg_dst_));
-    }
-
-    add_imm(reg_src_, reg_src_, data_type_size(), X_TMP_0);
-    add_imm(reg_dst_, reg_dst_, data_type_size(), X_TMP_0);
-    if (!weights_are_const())
-        add_imm(reg_weights_, reg_weights_, data_type_size(), X_TMP_0);
-
-    sub_imm(reg_work_, reg_work_, 1, X_TMP_0);
-    cmp(reg_work_, 0);
-    b(GT, loop);
-
-    L(end);
+        add_imm(reg_src_, reg_src_, data_type_size(), X_TMP_0);
+        add_imm(reg_dst_, reg_dst_, data_type_size(), X_TMP_0);
+        if (!weights_are_const())
+            add_imm(reg_weights_, reg_weights_, data_type_size(), X_TMP_0);
+    });
 }
 
 template <cpu_isa_t isa>

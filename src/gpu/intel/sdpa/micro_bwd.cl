@@ -583,8 +583,10 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
 //   3 = S * scale - logsumexp (pre-exp logits)
 //   4 = P = softmax output (default)
 //   5 = dS_bwd = P * (dP - Di) * scale  [softmax backward, feeds dQ and dK]
+//   6 = output of ugemm_qdSt(dS_bwd, Q) per subgroup tile [partial dK, last q0]
+//   7 = accumulated dK_slm after q-loop (non-TRANSPOSE_K path)
 #ifndef DEBUG_STAGE
-#define DEBUG_STAGE 4
+#define DEBUG_STAGE 7
 #endif
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void
@@ -1125,7 +1127,31 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
             uint sg_i0_dk = sg_i_qdSt * ugemm_qdSt_sg_tile_m;
             uint sg_j0_dk = sg_j_qdSt * ugemm_qdSt_sg_tile_n;
-
+#if WITH_DS && DEBUG_STAGE == 6
+            // Stage 6: capture ugemm_qdSt output (partial dK for this q0 tile).
+            // Last q0 iteration wins.
+#if TRANSPOSE_K
+            // TRANSPOSE_K: dK is D*Bc in SLM (tile_slm_add_t transposes Bc*D→D*Bc).
+            // Store transposed (D*Bc) into dS at [d x k_chunk] with ld=k_chunk,
+            // using vs-layout offsets to match how TRANSPOSE_K reads dK_slm.
+            if (sg_ij < sg_per_wg_BcD) {
+                uint sg_i0_vs_dbg = sg_i_vs * ugemm_vs_sg_tile_m;
+                uint sg_j0_vs_dbg = sg_j_vs * ugemm_vs_sg_tile_n;
+                a_tile_type_dst dK_debug;
+                tile_copy_reblock(dK_tile1, &dK_debug);
+                tile_store(dK_debug, (global DST_TILE_DATA_T *)dS,
+                        k_chunk, d, k_chunk, sg_i0_vs_dbg, wg_i0 + sg_j0_vs_dbg);
+            }
+#else
+            // Non-TRANSPOSE_K: dK is Bc*D. Layout: [k_chunk x d] with ld=d.
+            if (sg_ij < sg_per_wg_BcD) {
+                a_tile_type_dst dK_debug;
+                tile_copy_reblock(dK_tile1, &dK_debug);
+                tile_store(dK_debug, (global DST_TILE_DATA_T *)dS,
+                        k_chunk, d, d, wg_i0 + sg_i0_dk, sg_j0_dk);
+            }
+#endif
+#endif
             // dk slm tile
             if (sg_ij < sg_per_wg_BcD) {
                 dk_acc_tile_type dK_tile1_store;
@@ -1215,6 +1241,16 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     if (sg_ij < sg_per_wg_BcD) {
         tile_load(&dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, D_MAX,
                 ugemm_kq_wg_tile_m, sg_i0_dk, sg_j0_dk);
+#if WITH_DS && DEBUG_STAGE == 7
+        // Stage 7: capture accumulated dK_slm after all q0 iterations.
+        // This is apples-to-apples with dK_full pre-reduction reference.
+        {
+            a_tile_type_dst dK_acc_debug;
+            tile_copy_reblock(dK_tile_slm, &dK_acc_debug);
+            tile_store(dK_acc_debug, (global DST_TILE_DATA_T *)dS,
+                    wg_k_chunk, d, d, wg_i0 + sg_i0_dk, sg_j0_dk);
+        }
+#endif
         tile_store_dK(&dK_tile_slm, dK + wg_i0, wg_k_chunk, d, lddk, sg_i0_dk,
                 sg_j0_dk);
     }

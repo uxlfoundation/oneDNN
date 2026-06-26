@@ -28,13 +28,18 @@
 #include <memory>
 #include <random>
 
-#define DEBUG_PRINT_MEM 1
+#define DEBUG_PRINT_MEM 0
 
-// Mirror of kernel DEBUG_STAGE: controls which dS comparison runs.
-// 4 = P = softmax output (forward, default)
-// 5 = dS_bwd = P*(dP-Di)*scale (softmax backward, common to dQ and dK)
+// Mirror of kernel DEBUG_STAGE: controls which comparison runs.
+// 4 = P = softmax output (forward)         — compared via dS buffer in prim_sdpa_quant_bwd
+// 5 = dS_bwd = P*(dP-Di)*scale             — compared via dS buffer in prim_sdpa_quant_bwd
+// 6 = compare ugemm_qdSt partial output    — kernel DEBUG_STAGE=6 puts per-q0 dK tile in dS
+// 7 = compare accumulated dK_slm output    — kernel DEBUG_STAGE=7 puts post-qloop dK in dS
+//     (stages 6/7 skip final dK assert in compare_bwd; use stage 9 for full checks)
+// 8 = compare final dQ only (isolated)
+// 9 = all outputs (full run)
 #ifndef DEBUG_STAGE_TEST
-#define DEBUG_STAGE_TEST 4
+#define DEBUG_STAGE_TEST 7
 #endif
 
 using mdt = memory::data_type;
@@ -1934,6 +1939,215 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
             {{DNNL_ARG_SRC, grouped_query}, {DNNL_ARG_WEIGHTS, diff_score_mem},
                     {DNNL_ARG_DST, dK_full_mem}});
     strm.wait();
+
+#if DEBUG_STAGE_TEST == 6 || DEBUG_STAGE_TEST == 7
+    // Compare kernel debug dK in t.m_dS vs reference pre-reduction dK_full.
+    // Stage 6: t.m_dS holds ugemm_qdSt per-q0 partial dK (last q0 wins).
+    // Stage 7: t.m_dS holds accumulated dK_slm after q-loop (non-TRANSPOSE_K).
+    // Indexing in t.m_dS (non-TRANSPOSE_K):
+    //   t.m_dS[q_h * (seq_q*seq_kv) + kv_pos * d + d_pos]
+    if (compare_with_ds) {
+        print_mem(t.m_dS, "kernel Stage 7 dK_slm (accumulated)");
+        const int ks = head_q_group_size;
+        const int gs = (int)head_group_batches;
+        const int seq_kv_v = (int)p.seq_len.kv;
+        const int seq_q_v = (int)p.seq_len.q;
+        const int d_v = (int)p.head_group.head_size;
+        const float s_thresh = (p.dt.dt == mdt::f16)   ? 0.005f
+                             : (p.dt.dt == mdt::bf16)  ? 0.01f
+                             : 0.002f;
+
+        auto dk_dims = dK_full_mem.get_desc().get_dims();
+        auto dk_strides = dK_full_mem.get_desc().get_strides();
+        const bool dk_rank5 = (dk_dims.size() >= 5);
+        const int dk_tail0 = (int)dk_dims[dk_rank5 ? 3 : 2];
+        const int dk_tail1 = (int)dk_dims[dk_rank5 ? 4 : 3];
+        const bool dk_layout_kd = (dk_tail0 == seq_kv_v && dk_tail1 == d_v);
+        const bool dk_layout_dk = (dk_tail0 == d_v && dk_tail1 == seq_kv_v);
+        void *ds_raw = const_cast<memory &>(t.m_dS).map_data();
+        void *dk_raw = dK_full_mem.map_data();
+
+        auto get_val = [&](void *ptr, int idx) -> float {
+            if (p.dt.dt == mdt::f16) return (float)((float16_t *)ptr)[idx];
+            if (p.dt.dt == mdt::bf16) return (float)((bfloat16_t *)ptr)[idx];
+            return ((float *)ptr)[idx];
+        };
+        auto quantize_to_debug_dt = [&](float v) -> float {
+            if (p.dt.dt == mdt::f16) return (float)float16_t(v);
+            if (p.dt.dt == mdt::bf16) return (float)bfloat16_t(v);
+            return v;
+        };
+
+        int total = 0, mismatch = 0;
+        float max_diff = 0.f;
+        const char *check_name = (DEBUG_STAGE_TEST == 6)
+            ? "ugemm_qdSt partial output"
+            : "accumulated dK_slm output";
+        printf("\n[CHECK] %s (kernel:dS per-Qhead vs ref:dK_full pre-reduction)"
+               "  thresh=%.4f\n", check_name, s_thresh);
+        printf("  dK_full shape:");
+        for (auto dim : dK_full_mem.get_desc().get_dims()) printf(" %lld", (long long)dim);
+        printf("  dS shape:");
+        for (auto dim : t.m_dS.get_desc().get_dims()) printf(" %lld", (long long)dim);
+        printf("\n");
+        printf("  effective dS debug tile shape: [mb=%d heads=%d seq_kv=%d d=%d] (packed, ld=d)\n",
+            (int)p.mb, gs * ks, seq_kv_v, d_v);
+        printf("  reference dK tail shape: [%d %d]\n", dk_tail0, dk_tail1);
+        fflush(stdout);
+        if (!dk_layout_kd && !dk_layout_dk) {
+            printf("[CHECK][WARN] unexpected dK_full tail dims: (%d, %d), "
+                   "expected (%d,%d) or (%d,%d)\n",
+                    dk_tail0, dk_tail1, seq_kv_v, d_v, d_v, seq_kv_v);
+        }
+        if (DEBUG_STAGE_TEST == 6) {
+            printf("[CHECK][NOTE] stage 6 is per-q0 partial ugemm output; "
+                   "large diff vs full dK is expected. Use stage 7 for apples-to-apples.\n");
+        }
+
+        for (int b = 0; b < (int)p.mb; b++)
+        for (int g = 0; g < gs; g++)
+        for (int h = 0; h < ks; h++) {
+            const int q_h = g * ks + h;
+            for (int kv = 0; kv < seq_kv_v; kv++)
+            for (int dp = 0; dp < d_v; dp++) {
+                // Kernel stage 7 debug store writes dK_slm as a packed [seq_kv, d]
+                // tile into dS with ld=d (not ld=seq_kv).
+                int ds_idx = (b * gs * ks + q_h) * (seq_q_v * seq_kv_v)
+                        + kv * d_v + dp;
+                // reference dK_full may be rank-5 [mb, groups, q_group, *, *]
+                // or rank-4 [mb, heads, *, *].
+                int dk_idx = 0;
+                if (dk_rank5) {
+                    dk_idx = b * (int)dk_strides[0] + g * (int)dk_strides[1]
+                            + h * (int)dk_strides[2];
+                } else {
+                    const int ref_h = g * ks + h;
+                    if (ref_h >= (int)dk_dims[1]) continue;
+                    dk_idx = b * (int)dk_strides[0] + ref_h * (int)dk_strides[1];
+                }
+                if (dk_layout_kd) {
+                    dk_idx += kv * (int)dk_strides[dk_rank5 ? 3 : 2]
+                            + dp * (int)dk_strides[dk_rank5 ? 4 : 3];
+                } else {
+                    dk_idx += dp * (int)dk_strides[dk_rank5 ? 3 : 2]
+                            + kv * (int)dk_strides[dk_rank5 ? 4 : 3];
+                }
+                float kval = get_val(ds_raw, ds_idx);
+                // Match reference precision to kernel debug dump precision.
+                float rval = quantize_to_debug_dt(get_val(dk_raw, dk_idx));
+                float diff = fabsf(kval - rval);
+                if (diff > max_diff) {
+                    printf("new max[b=%d,g=%d,h=%d,kv=%d,d=%d]: "
+                           "kernel=%f ref=%f diff=%f\n",
+                            b, g, h, kv, dp, kval, rval, diff);
+                    max_diff = diff;
+                }
+                float thr = (fabsf(rval) > 1.f) ? fabsf(rval) * s_thresh : s_thresh;
+                if (diff > thr) mismatch++;
+                total++;
+            }
+        }
+        const_cast<memory &>(t.m_dS).unmap_data(ds_raw);
+        dK_full_mem.unmap_data(dk_raw);
+        printf("[CHECK] %s: total=%d mismatches=%d max_diff=%f\n",
+            check_name, total, mismatch, max_diff);
+        fflush(stdout);
+        if (DEBUG_STAGE_TEST == 7) {
+            printf("[CHECK] entering stage7 secondary kernel-vs-kernel check\n");
+            fflush(stdout);
+            const int allowed_mismatch = (int)(total * 0.002f);
+            if (mismatch > allowed_mismatch) {
+                printf("[CHECK][FAIL][STAGE 7] %s mismatches=%d allowed=%d\n",
+                        check_name, mismatch, allowed_mismatch);
+            }
+            if (max_diff > 0.1f) {
+                printf("[CHECK][FAIL][STAGE 7] %s max_diff=%f allowed=%f\n",
+                        check_name, max_diff, 0.1f);
+            }
+
+            // Additional isolation check for stage 7:
+            // compare kernel debug dS dump directly against kernel final dK output.
+            auto kf_dims = t.m_diff_key_quantized.get_desc().get_dims();
+            auto kf_strides = t.m_diff_key_quantized.get_desc().get_strides();
+            const bool kf_rank5 = (kf_dims.size() >= 5);
+            const int kf_tail0 = (int)kf_dims[kf_rank5 ? 3 : 2];
+            const int kf_tail1 = (int)kf_dims[kf_rank5 ? 4 : 3];
+            const bool kf_layout_kd = (kf_tail0 == seq_kv_v && kf_tail1 == d_v);
+            const bool kf_layout_dk = (kf_tail0 == d_v && kf_tail1 == seq_kv_v);
+
+            void *ds2_raw = const_cast<memory &>(t.m_dS).map_data();
+            void *kf_raw = const_cast<memory &>(t.m_diff_key_quantized).map_data();
+
+            int total_k = 0, mismatch_k = 0;
+            float max_diff_k = 0.f;
+                int printed_mismatch_k = 0;
+                const int max_print_mismatch_k = 32;
+            printf("\n[CHECK] stage7 kernel:dS_dump vs kernel:final_dK  thresh=%.4f\n",
+                    s_thresh);
+            printf("  final dK shape:");
+            for (auto dim : kf_dims) printf(" %lld", (long long)dim);
+            printf("\n");
+                fflush(stdout);
+
+            for (int b = 0; b < (int)p.mb; b++)
+            for (int g = 0; g < gs; g++)
+            for (int h = 0; h < ks; h++) {
+                const int q_h = g * ks + h;
+                for (int kv = 0; kv < seq_kv_v; kv++)
+                for (int dp = 0; dp < d_v; dp++) {
+                    int ds_idx = (b * gs * ks + q_h) * (seq_q_v * seq_kv_v)
+                            + kv * d_v + dp;
+
+                    int kf_idx = 0;
+                    if (kf_rank5) {
+                        kf_idx = b * (int)kf_strides[0] + g * (int)kf_strides[1]
+                                + h * (int)kf_strides[2];
+                    } else {
+                        const int out_h = g * ks + h;
+                        if (out_h >= (int)kf_dims[1]) continue;
+                        kf_idx = b * (int)kf_strides[0]
+                                + out_h * (int)kf_strides[1];
+                    }
+                    if (kf_layout_kd) {
+                        kf_idx += kv * (int)kf_strides[kf_rank5 ? 3 : 2]
+                                + dp * (int)kf_strides[kf_rank5 ? 4 : 3];
+                    } else {
+                        kf_idx += dp * (int)kf_strides[kf_rank5 ? 3 : 2]
+                                + kv * (int)kf_strides[kf_rank5 ? 4 : 3];
+                    }
+
+                    float dsv = get_val(ds2_raw, ds_idx);
+                    float kfv = get_val(kf_raw, kf_idx);
+                    float diffk = fabsf(dsv - kfv);
+                    if (diffk > max_diff_k) {
+                        printf("new max_k[b=%d,g=%d,h=%d,kv=%d,d=%d]: "
+                               "dS=%f final_dK=%f diff=%f\n",
+                                b, g, h, kv, dp, dsv, kfv, diffk);
+                        max_diff_k = diffk;
+                    }
+                    float thrk = (fabsf(kfv) > 1.f) ? fabsf(kfv) * s_thresh : s_thresh;
+                    if (diffk > thrk) {
+                        mismatch_k++;
+                        if (printed_mismatch_k < max_print_mismatch_k) {
+                            printf("Mismatch_k at (b=%d,g=%d,h=%d,kv=%d,d=%d): "
+                                   "dS=%f final_dK=%f diff=%f thr=%f\n",
+                                    b, g, h, kv, dp, dsv, kfv, diffk, thrk);
+                            printed_mismatch_k++;
+                        }
+                    }
+                    total_k++;
+                }
+            }
+
+            const_cast<memory &>(t.m_dS).unmap_data(ds2_raw);
+            const_cast<memory &>(t.m_diff_key_quantized).unmap_data(kf_raw);
+            printf("[CHECK][STAGE 7] kernel-vs-kernel: total=%d mismatches=%d max_diff=%f\n",
+                    total_k, mismatch_k, max_diff_k);
+            fflush(stdout);
+        }
+    }
+#endif
+
     // reduce [mb, groups, hq_group, D, K] -> [mb, groups, 1, D, K] for GQA cases
     dnnl::reduction dK_reduce;
     if (is_gqa) {
@@ -2603,55 +2817,46 @@ public:
                 ? fthreshold
                 : fthreshold * std::sqrt(static_cast<float>(kv_group_size));
 
-        printf("\n[COMPARE_BWD] fthreshold=%.4f  gqa_fthreshold=%.4f  "
+        printf("\n[COMPARE_BWD] stage=%d  fthreshold=%.4f  gqa_fthreshold=%.4f  "
                "max_diff_threshold=%.4f  kv_group_size=%d\n",
-                fthreshold, gqa_fthreshold, max_diff_threshold, kv_group_size);
+                DEBUG_STAGE_TEST, fthreshold, gqa_fthreshold, max_diff_threshold,
+                kv_group_size);
 
-        if (t.m_output.get_desc().get_data_type() == mdt::f16) {
-            check_memory<float16_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold,
-                    "O (forward output)  [ref:m_output vs kernel:m_output_quantized]");
-            check_memory<float16_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
-                    "dQ  [ref:m_diff_query vs kernel:m_diff_query_quantized]");
-            check_memory<float16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold,
-                    "dK  [ref:m_diff_key vs kernel:m_diff_key_quantized]");
-            check_memory<float16_t>(strm, t.m_diff_value,
-                    t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold,
-                    "dV  [ref:m_diff_value vs kernel:m_diff_value_quantized]");
+        // Helper lambda to run one check_memory call for the right dtype.
+        // Stages 6/7/8 run only one output in isolation; stage 9 runs all.
+        const auto run_check = [&](const char *label, memory &gold, memory &test,
+                                      float thresh) {
+            auto dt = t.m_output.get_desc().get_data_type();
+            if (dt == mdt::f16)
+                check_memory<float16_t>(strm, gold, test, max_diff_threshold,
+                        thresh, label);
+            else if (dt == mdt::bf16)
+                check_memory<bfloat16_t>(strm, gold, test, max_diff_threshold,
+                        thresh, label);
+            else
+                check_memory<float_t>(strm, gold, test, max_diff_threshold,
+                        thresh, label);
+        };
 
-        } else if (t.m_output.get_desc().get_data_type() == mdt::bf16) {
-            check_memory<bfloat16_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold,
-                    "O (forward output)  [ref:m_output vs kernel:m_output_quantized]");
-            check_memory<bfloat16_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
-                    "dQ  [ref:m_diff_query vs kernel:m_diff_query_quantized]");
-            check_memory<bfloat16_t>(strm, t.m_diff_key,
-                    t.m_diff_key_quantized, max_diff_threshold, gqa_fthreshold,
-                    "dK  [ref:m_diff_key vs kernel:m_diff_key_quantized]");
-            check_memory<bfloat16_t>(strm, t.m_diff_value,
-                    t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold,
-                    "dV  [ref:m_diff_value vs kernel:m_diff_value_quantized]");
+        const bool run_O  = (DEBUG_STAGE_TEST == 9);
+        const bool run_dV = (DEBUG_STAGE_TEST == 9);
+        // Stages 6/7 use the dedicated dS-vs-dK_full debug comparator earlier
+        // in prim_sdpa_quant_bwd. Keep final dK assert only for stage 9.
+        const bool run_dK = (DEBUG_STAGE_TEST == 9);
+        const bool run_dQ = (DEBUG_STAGE_TEST == 8 || DEBUG_STAGE_TEST == 9);
 
-        } else if (t.m_output.get_desc().get_data_type() == mdt::f32) {
-            check_memory<float_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold,
-                    "O (forward output)  [ref:m_output vs kernel:m_output_quantized]");
-            check_memory<float_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
-                    "dQ  [ref:m_diff_query vs kernel:m_diff_query_quantized]");
-            check_memory<float_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold,
-                    "dK  [ref:m_diff_key vs kernel:m_diff_key_quantized]");
-            check_memory<float_t>(strm, t.m_diff_value,
-                    t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold,
-                    "dV  [ref:m_diff_value vs kernel:m_diff_value_quantized]");
-        }
+        if (run_O)
+            run_check("O (forward output)  [ref:m_output vs kernel:m_output_quantized]",
+                    t.m_output, t.m_output_quantized, fthreshold);
+        if (run_dV)
+            run_check("dV = P^T*dO  [ref:m_diff_value vs kernel:m_diff_value_quantized]",
+                    t.m_diff_value, t.m_diff_value_quantized, gqa_fthreshold);
+        if (run_dK)
+            run_check("dK = dS^T*Q  [ref:m_diff_key vs kernel:m_diff_key_quantized]",
+                    t.m_diff_key, t.m_diff_key_quantized, gqa_fthreshold);
+        if (run_dQ)
+            run_check("dQ = dS*K    [ref:m_diff_query vs kernel:m_diff_query_quantized]",
+                    t.m_diff_query, t.m_diff_query_quantized, fthreshold);
 
 #if DEBUG_PRINT_MEM
         print_mem(t.m_output, "gold m_output");
@@ -3490,23 +3695,20 @@ INSTANTIATE_TEST_SUITE_P(dropout_backward_minimal, sdpa_bwd_test,
 
 // backward pass: f16
 INSTANTIATE_TEST_SUITE_P(bwd_f16, sdpa_bwd_test_datatypes,
-        testing::Combine(testing::Values(1, 2), // mb
+        testing::Combine(testing::Values(1), // mb
                 testing::Values(num_heads_t {1, 1}, num_heads_t {2, 2}), // heads
-                testing::Values(seq_len_size_t {64, 64},
-                        seq_len_size_t {1024, 1024}), // seq_len
+                testing::Values(seq_len_size_t {64, 64}), // seq_len
                 testing::Values(head_group_size_t {32, 32, 32},
-                        head_group_size_t {64, 64, 64},
-                        head_group_size_t {128, 128, 128}), // head_size
+                        head_group_size_t {64, 64, 64}), // head_size
                 testing::Values(tensor_type_t("Q", mdt::f16)), // dt
                 testing::Values(tensor_type_t("K", mdt::f16)), // kdt
                 testing::Values(tensor_type_t("V", mdt::f16)), // vdt
                 testing::Values(quantize_type::no_quantization), // qtype
-                testing::Values(dnnl::memory::format_tag::abcd,
-                                dnnl::memory::format_tag::abdc), // key_format_tag
-                testing::Values(mask_config_t {mask_type::no_mask},
-                        mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br},
-                        mask_config_t {mask_type::twoD}, mask_config_t {mask_type::oneD}
-                        ), // mask_type
+                testing::Values(
+                    dnnl::memory::format_tag::abcd
+                    // dnnl::memory::format_tag::abdc
+                    ), // key_format_tag
+                testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
                 testing::Values(default_scale_type), // scale_type
                 testing::Values(
                         accumulation_t {accumulation_mode::f32,

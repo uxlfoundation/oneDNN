@@ -42,9 +42,8 @@ struct ref_t : public primitive_t {
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
         status_t init(impl::engine_t *engine) {
-            memory_desc_t gate_dst_md, up_dst_md;
+            memory_desc_t gate_dst_md;
             CHECK(get_gate_dst_md(gate_dst_md));
-            CHECK(get_up_dst_md(up_dst_md));
 
             primitive_attr_t gate_attr;
             CHECK(move_attr(
@@ -52,37 +51,36 @@ struct ref_t : public primitive_t {
             CHECK(gate_attr.post_ops_.append_eltwise(
                     1.f, activation(), 1.f, 0.f));
             CHECK(gate_attr.post_ops_.append_binary(
-                    alg_kind::binary_mul, &up_dst_md));
+                    alg_kind::binary_mul, &gate_dst_md));
+            // Binary mul reads src1 from dst (the in-place Up result).
+            gate_attr.post_ops_.entry_.back().binary.reads_dst_buffer = true;
             VDISPATCH_GATED_MLP_SC(
-                    create_matmul(gemm_gate_pd_, engine, gate_attr,
-                            arg_md(DNNL_ARG_SRC), arg_md(DNNL_ARG_WEIGHTS_GATE),
-                            &gate_dst_md),
+                    create_matmul(gemm_gate_pd_, engine, arg_md(DNNL_ARG_SRC),
+                            arg_md(DNNL_ARG_WEIGHTS_GATE), &gate_dst_md,
+                            &gate_attr),
                     "internal error in gemm_gate_pd");
 
             primitive_attr_t up_attr;
             CHECK(move_attr(up_attr, DNNL_ARG_WEIGHTS_UP, DNNL_ARG_WEIGHTS));
             VDISPATCH_GATED_MLP_SC(
-                    create_matmul(gemm_up_pd_, engine, up_attr,
-                            arg_md(DNNL_ARG_SRC), arg_md(DNNL_ARG_WEIGHTS_UP),
-                            &up_dst_md),
+                    create_matmul(gemm_up_pd_, engine, arg_md(DNNL_ARG_SRC),
+                            arg_md(DNNL_ARG_WEIGHTS_UP), &gate_dst_md,
+                            &up_attr),
                     "internal error in gemm_up_pd");
 
             primitive_attr_t down_attr;
             CHECK(move_attr(
                     down_attr, DNNL_ARG_WEIGHTS_DOWN, DNNL_ARG_WEIGHTS));
             VDISPATCH_GATED_MLP_SC(
-                    create_matmul(gemm_down_pd_, engine, down_attr,
-                            &gate_dst_md, arg_md(DNNL_ARG_WEIGHTS_DOWN),
-                            arg_md(DNNL_ARG_DST)),
+                    create_matmul(gemm_down_pd_, engine, &gate_dst_md,
+                            arg_md(DNNL_ARG_WEIGHTS_DOWN), arg_md(DNNL_ARG_DST),
+                            &down_attr),
                     "internal error in gemm_down_pd");
 
             using namespace memory_tracking::names;
             auto scratchpad = scratchpad_registry().registrar();
-            scratchpad.book(key_matmul_wei_trans,
-                    memory_desc_wrapper(gate_dst_md).size(), 1,
-                    OCL_BUFFER_ALIGNMENT);
             scratchpad.book(key_matmul_src_trans,
-                    memory_desc_wrapper(up_dst_md).size(), 1,
+                    memory_desc_wrapper(gate_dst_md).size(), 1,
                     OCL_BUFFER_ALIGNMENT);
             scratchpad.book(key_nested_multiple + DNNL_ARG_WEIGHTS_GATE,
                     gemm_gate_pd_->scratchpad_registry());
@@ -110,10 +108,6 @@ struct ref_t : public primitive_t {
                 default: return status::unimplemented;
             }
             return get_gate_up_dst_md(retn, dt);
-        }
-
-        status_t get_up_dst_md(memory_desc_t &retn) const {
-            return get_gate_up_dst_md(retn, data_type::f32);
         }
 
         std::shared_ptr<primitive_desc_t> gemm_gate_pd_, gemm_up_pd_,
@@ -165,13 +159,13 @@ struct ref_t : public primitive_t {
         }
 
         status_t create_matmul(std::shared_ptr<primitive_desc_t> &retn,
-                impl::engine_t *e, const primitive_attr_t &attr,
-                const memory_desc_t *src_desc, const memory_desc_t *wei_desc,
-                const memory_desc_t *dst_desc) const {
+                impl::engine_t *e, const memory_desc_t *src_desc,
+                const memory_desc_t *wei_desc, const memory_desc_t *dst_desc,
+                const primitive_attr_t *attr) const {
             auto desc = matmul_desc_t();
             CHECK(impl::matmul_desc_init(
                     &desc, src_desc, wei_desc, nullptr, dst_desc));
-            primitive_desc_iterator_t it(e, (op_desc_t *)&desc, &attr, nullptr);
+            primitive_desc_iterator_t it(e, (op_desc_t *)&desc, attr, nullptr);
             if (!it.is_initialized()) return status::out_of_memory;
             retn = *(++it);
             return (retn) ? status::success : status::unimplemented;
@@ -217,23 +211,15 @@ struct ref_t : public primitive_t {
             CHECK(prim->execute(nested_ctx));
             return status::success;
         };
-        memory_desc_t gate_dst_md, up_dst_md;
+        memory_desc_t gate_dst_md;
         CHECK(pd()->get_gate_dst_md(gate_dst_md));
-        CHECK(pd()->get_up_dst_md(up_dst_md));
 
         std::unique_ptr<memory_t, memory_deleter_t> inter_src_mem;
         auto inter_src_stor = ctx.get_scratchpad_grantor().get_memory_storage(
                 memory_tracking::names::key_matmul_src_trans);
         CHECK(safe_ptr_assign(inter_src_mem,
-                new memory_t(ctx.stream()->engine(), &up_dst_md,
-                        std::move(inter_src_stor))));
-
-        std::unique_ptr<memory_t, memory_deleter_t> inter_wei_mem;
-        auto inter_wei_stor = ctx.get_scratchpad_grantor().get_memory_storage(
-                memory_tracking::names::key_matmul_wei_trans);
-        CHECK(safe_ptr_assign(inter_wei_mem,
                 new memory_t(ctx.stream()->engine(), &gate_dst_md,
-                        std::move(inter_wei_stor))));
+                        std::move(inter_src_stor))));
 
         do {
             exec_args_t args;
@@ -245,8 +231,8 @@ struct ref_t : public primitive_t {
         do {
             exec_args_t args;
             args[DNNL_ARG_SRC] = ctx.args().at(DNNL_ARG_SRC);
-            args[DNNL_ARG_DST] = memory_arg_t {inter_wei_mem.get(), false};
-            // N.B.: not POST_OP(0), since POST_OP(0) is occupied by activation
+            args[DNNL_ARG_DST] = memory_arg_t {inter_src_mem.get(), false};
+            // Post-op 1 (binary mul) reads src1 from dst.
             args[DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1]
                     = memory_arg_t {inter_src_mem.get(), true};
             CHECK(prep_quant_and_run(std::move(args), DNNL_ARG_SRC,
@@ -254,7 +240,7 @@ struct ref_t : public primitive_t {
         } while (false);
         do {
             exec_args_t args;
-            args[DNNL_ARG_SRC] = memory_arg_t {inter_wei_mem.get(), true};
+            args[DNNL_ARG_SRC] = memory_arg_t {inter_src_mem.get(), true};
             args[DNNL_ARG_DST] = ctx.args().at(DNNL_ARG_DST);
             const auto &post_ops = pd()->attr()->post_ops_;
             for (int p = 0, pl = post_ops.len(); p < pl; p++) {

@@ -189,6 +189,7 @@ void serialize(serialization_stream_t &sstream, const post_ops_t &post_ops) {
                 break;
             case primitive_kind::binary:
                 sstream.append(entry.binary.alg);
+                sstream.append(entry.binary.reads_dst_buffer);
                 serialize(sstream, entry.binary.user_src1_desc);
                 break;
             case primitive_kind::prelu: sstream.append(entry.prelu.mask); break;

@@ -61,6 +61,9 @@ struct ref_grouped_t : public primitive_t {
             memory_desc_wrapper wei_d(weights_md(0));
             memory_desc_wrapper dst_d(dst_md());
 
+            VDISPATCH_MATMUL(!attr()->post_ops_.has_reads_from_dst(),
+                    VERBOSE_UNSUPPORTED_FEATURE, "dst-aliasing post-op");
+
             // Supported configurations: grouped src/dst, dense 3D weights
             VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);

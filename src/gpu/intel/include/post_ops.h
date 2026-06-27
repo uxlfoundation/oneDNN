@@ -44,6 +44,7 @@ float fwd_binary(unsigned algorithm, POST_OP_DATA_T x, POST_OP_DATA_T y) {
         case binary_lt: return x < y; break;
         case binary_eq: return x == y; break;
         case binary_ne: return x != y; break;
+        case binary_mul_inplace: return x * y; break;
         case eltwise_relu: // binary && relu = prelu
             return fwd_eltwise_common(eltwise_relu, x, y, 0.0f, 1.0f);
             break;

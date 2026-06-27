@@ -284,7 +284,9 @@ bool post_op_context_t::init_need_to_restore_zero_padding(
             for (dim_idx_t j = 0; j < cp_ndims(); j++) {
                 if (!is_cp_dim_zero_padded(j)) continue;
                 // Check if binary preserves zeros: (0 op X == 0) or (0 op 0 == 0).
-                bool zero_op_x_ok = (po.binary.alg == alg_kind::binary_mul);
+                bool zero_op_x_ok = utils::one_of(po.binary.alg,
+                        alg_kind::binary_mul_inplace, alg_kind::binary_mul,
+                        alg_kind::binary_div);
                 bool zero_op_zero_ok = zero_op_x_ok
                         || utils::one_of(po.binary.alg, alg_kind::binary_add,
                                 alg_kind::binary_sub, alg_kind::binary_min,

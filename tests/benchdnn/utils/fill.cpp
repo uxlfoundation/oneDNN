@@ -495,7 +495,7 @@ bool fill_from_file(
     if (prefix.empty()) return false;
 
     // `mem` is not supposed to be filled.
-    if (mem.nelems() == 0) return false;
+    if (!mem || (mem.nelems() == 0)) return false;
 
     prefix += "." + std::to_string(exec_arg) + ".bin";
 

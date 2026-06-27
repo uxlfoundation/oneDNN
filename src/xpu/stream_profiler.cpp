@@ -67,12 +67,6 @@ void verbose_profiler_t::check_for_completed_primitives() {
             continue;
         }
 
-        // TODO: Fix pd_info generation to ensure it's never empty when
-        // profiling occurs. Remove this safeguard once pd_info is guaranteed
-        // to be populated. This was observed in graph test cases
-        // (genindex.json with DNNL_VERBOSE=profile_exec).
-        if (prof_data.pd_info_.empty()) { continue; }
-
         // Check if the current primitive has finished executing and break
         // the loop if it is pending completion
         if (!is_event_complete(evts.back())) {
@@ -118,8 +112,6 @@ void verbose_profiler_t::wait_for_pending_primitives() {
     if (!profiling_data_.empty())
         VERROR(primitive, runtime,
                 "profiling error: failed to log all pending primitives");
-
-    reset();
 }
 
 } // namespace xpu

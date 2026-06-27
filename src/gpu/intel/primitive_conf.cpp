@@ -696,8 +696,9 @@ bool post_ops_preserves_zeroes(
         const post_ops_t::entry_t &po_entry = post_ops.entry_[idx];
         if (po_entry.is_binary()) {
             // only binary mul is preserving zeroes
-            preserve_zeroes &= po_entry.binary.alg
-                    == dnnl::impl::alg_kind_t::dnnl_binary_mul;
+            preserve_zeroes &= utils::one_of(po_entry.binary.alg,
+                    dnnl::impl::alg_kind_t::dnnl_binary_mul,
+                    dnnl::impl::alg_kind_t::dnnl_binary_mul_inplace);
         }
         if (po_entry.is_eltwise(false)) {
             preserve_zeroes &= gpu_eltwise_fwd_pd_t::eltwise_preserves_zero(

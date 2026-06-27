@@ -70,6 +70,7 @@ enum dnnl_ocl_alg_kind_t {
     binary_eq = 0x1fffa,
     binary_ne = 0x1fffb,
     binary_select = 0x1fffc,
+    binary_mul_inplace = 0x1fffd,
 };
 
 #ifndef __OPENCL_VERSION__
@@ -135,6 +136,8 @@ static_assert((int)binary_lt == dnnl_binary_lt, "dnnl API mismatch");
 static_assert((int)binary_eq == dnnl_binary_eq, "dnnl API mismatch");
 static_assert((int)binary_ne == dnnl_binary_ne, "dnnl API mismatch");
 static_assert((int)binary_select == dnnl_binary_select, "dnnl API mismatch");
+static_assert((int)binary_mul_inplace == dnnl_binary_mul_inplace,
+        "dnnl API mismatch");
 
 #endif
 

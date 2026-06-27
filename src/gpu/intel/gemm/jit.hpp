@@ -115,7 +115,7 @@ struct gen_t : public primitive_t {
                     | smask_t::scales | smask_t::scales_data_type
                     | smask_t::scales_groups | smask_t::precomputed_reductions
                     | smask_t::zero_points | smask_t::zero_points_data_type
-                    | smask_t::zero_points_groups;
+                    | smask_t::zero_points_groups | smask_t::post_ops_inplace;
             VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(
@@ -329,6 +329,19 @@ struct gen_t : public primitive_t {
                         gpu_debug() << "skipping:" << entry->str()
                                     << ",Invalid post op.";
                     valid &= po_valid;
+                }
+                // An in-place binary post-op reads C as its right-hand side,
+                // thus C must still hold the data it came in with by the time
+                // post-ops run. Kernels splitting k between workgroups write
+                // partial sums into C - or zero it out beforehand - long before
+                // that, leaving the post-op nothing to read.
+                if (post_ops_.has_inplace_binary()) {
+                    bool c_intact = !kernel_desc_.driver_info()->kParallel()
+                            && !kernel_desc_.driver_info()->kParallelVariable();
+                    if (!c_intact)
+                        gpu_debug() << "skipping:" << entry->str()
+                                    << ",In-place post op over k-parallel C.";
+                    valid &= c_intact;
                 }
                 // Limited post-op support for low-precision accumulation.
                 if (kernel_desc_.problem()->Tc.size() < 4) {

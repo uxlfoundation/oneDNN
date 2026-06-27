@@ -129,6 +129,7 @@ const alg_kind_t binary_lt = dnnl_binary_lt;
 const alg_kind_t binary_eq = dnnl_binary_eq;
 const alg_kind_t binary_ne = dnnl_binary_ne;
 const alg_kind_t binary_select = dnnl_binary_select;
+const alg_kind_t binary_mul_inplace = dnnl_binary_mul_inplace;
 const alg_kind_t resampling_nearest = dnnl_resampling_nearest;
 const alg_kind_t resampling_linear = dnnl_resampling_linear;
 const alg_kind_t reduction_max = dnnl_reduction_max;

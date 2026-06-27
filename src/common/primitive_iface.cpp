@@ -69,6 +69,11 @@ status_t primitive_create(primitive_iface_t **primitive_iface,
                 primitive_desc_iface->impl()->kind(), VERBOSE_create);
     }
 
+    if (get_verbose(verbose_t::debuginfo) >= 1) {
+        VFORMAT(get_msec(), verbose_t::debuginfo, primitive, create, ":start",
+                "%s", primitive_desc_iface->info());
+    }
+
     if (get_verbose(verbose_t::create_profile,
                 prim_kind2_comp_kind(primitive_desc_iface->impl()->kind()))) {
         double start_ms = get_msec();
@@ -139,6 +144,11 @@ status_t primitive_execute(
             itt::primitive_add_metadata_and_id(pd_info, VERBOSE_exec, &task_id);
 #endif
         }
+    }
+
+    if (get_verbose(verbose_t::debuginfo) >= 1) {
+        VFORMAT(get_msec(), verbose_t::debuginfo, primitive, exec, ":start",
+                "%s", pd->info());
     }
 
     if (get_verbose(verbose_t::exec_profile,

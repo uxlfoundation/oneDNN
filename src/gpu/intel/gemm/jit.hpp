@@ -115,7 +115,7 @@ struct gen_t : public primitive_t {
                     | smask_t::scales | smask_t::scales_data_type
                     | smask_t::scales_groups | smask_t::precomputed_reductions
                     | smask_t::zero_points | smask_t::zero_points_data_type
-                    | smask_t::zero_points_groups;
+                    | smask_t::zero_points_groups | smask_t::post_ops_inplace;
             VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(

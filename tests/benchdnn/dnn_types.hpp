@@ -369,6 +369,7 @@ struct attr_t {
             MAX,
             MIN,
             MUL,
+            MUL_INPLACE,
             NE,
             SELECT,
             SUB,
@@ -439,6 +440,7 @@ struct attr_t {
             bool is_eltwise_kind() const;
             bool is_binary_kind() const;
             bool is_binary_kind_with_ternary_op() const;
+            bool is_binary_kind_inplace() const;
             bool is_prelu_kind() const;
         };
 

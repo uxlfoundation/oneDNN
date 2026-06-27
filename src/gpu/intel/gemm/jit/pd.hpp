@@ -93,7 +93,7 @@ struct pd_t : public gemm::pd_t {
     static constexpr bool supported_binary_op(alg_kind_t alg) {
         using namespace alg_kind;
         return utils::one_of(alg, binary_add, binary_sub, binary_mul,
-                binary_div, binary_min, binary_max);
+                binary_mul_inplace, binary_div, binary_min, binary_max);
     }
 
     status_t init_post_ops(const impl::engine_t *engine);

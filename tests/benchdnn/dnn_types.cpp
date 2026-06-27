@@ -685,6 +685,8 @@ static po_table_entry_t kind_table[] = {
         {pk_t::MAX, {"max", "binary_max"}, dnnl_binary_max},
         {pk_t::MIN, {"min", "binary_min"}, dnnl_binary_min},
         {pk_t::MUL, {"mul", "binary_mul"}, dnnl_binary_mul},
+        {pk_t::MUL_INPLACE, {"mul_inplace", "binary_mul_inplace"},
+                dnnl_binary_mul_inplace},
         {pk_t::NE, {"ne", "binary_ne"}, dnnl_binary_ne},
         {pk_t::SELECT, {"select", "binary_select"}, dnnl_binary_select},
         {pk_t::SUB, {"sub", "binary_sub"}, dnnl_binary_sub},
@@ -734,7 +736,11 @@ std::vector<std::pair<int, int>> attr_t::post_ops_t::get_po_masks(
         const auto &e = this->entry[idx];
         int mask = INT_MIN;
         int arg = DNNL_ARG_UNDEF;
-        if (e.is_binary_kind()) {
+        if (e.is_binary_kind_inplace()) {
+            // No values to prepare: `maybe_post_ops` takes the right-hand side
+            // straight from the destination.
+            continue;
+        } else if (e.is_binary_kind()) {
             switch (e.binary.mask_input) {
                 // `none` is treated as `policy_t::COMMON` for convenience of
                 // calling reference compute paths.
@@ -823,6 +829,9 @@ bool attr_t::post_ops_t::entry_t::is_binary_kind() const {
 }
 bool attr_t::post_ops_t::entry_t::is_binary_kind_with_ternary_op() const {
     return kind == pk_t::SELECT;
+}
+bool attr_t::post_ops_t::entry_t::is_binary_kind_inplace() const {
+    return kind == pk_t::MUL_INPLACE;
 }
 bool attr_t::post_ops_t::entry_t::is_prelu_kind() const {
     return kind == PRELU;
@@ -1352,6 +1361,13 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
         }
         return {dnnl_f32, mask, tag::axb, dims_t(), DNNL_ARG_WEIGHTS};
     } else if (entry.is_binary_kind()) {
+        if (entry.is_binary_kind_inplace()) {
+            // An in-place post-op aliases the destination, so its descriptor
+            // spans the whole dst - no broadcasting - and spells no layout,
+            // letting it resolve to whatever the primitive picks for dst.
+            return {entry.binary.src1_dt, (1 << ndims) - 1, tag::any, dims_t(),
+                    DNNL_ARG_SRC_1};
+        }
         const auto &binary = entry.binary;
         int mask = INT_MIN;
         switch (binary.mask_input) {
@@ -2049,7 +2065,7 @@ float compute_binary(pk_t kind, float src0, float src1, bool src2) {
 
     if (kind == pk_t::ADD) {
         return src0 + src1;
-    } else if (kind == pk_t::MUL) {
+    } else if (kind == pk_t::MUL || kind == pk_t::MUL_INPLACE) {
         return src0 * src1;
     } else if (kind == pk_t::MAX) {
         return MAX2(src0, src1);
@@ -2136,8 +2152,8 @@ void maybe_post_ops(const attr_t &attr, float &val, float sum_val,
             const auto &b = e.eltwise.beta;
             val = compute_eltwise_fwd(e.kind, val, a, b);
         } else if (e.is_binary_kind()) {
-
-            auto src1_val = *it_po;
+            bool is_inplace = e.is_binary_kind_inplace();
+            auto src1_val = (!is_inplace) ? *it_po : sum_val;
             bool src2_val = false;
 
             if (e.is_binary_kind_with_ternary_op()) {
@@ -2145,7 +2161,7 @@ void maybe_post_ops(const attr_t &attr, float &val, float sum_val,
                 src2_val = static_cast<bool>(*it_po);
             }
             val = compute_binary(e.kind, val, src1_val, src2_val);
-            it_po++;
+            if (!is_inplace) it_po++;
         } else if (e.is_prelu_kind()) {
             val = val > 0 ? val : val * (*it_po);
             it_po++;

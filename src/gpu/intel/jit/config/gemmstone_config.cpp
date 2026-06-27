@@ -29,6 +29,7 @@ BinaryOp PostOpsProblem::toBinaryOp(const PostOps::entry_t &e) {
         case alg_kind::binary_min: return BinaryOp::Min;
         case alg_kind::binary_max: return BinaryOp::Max;
         case alg_kind::binary_prelu: return BinaryOp::Prelu;
+        case alg_kind::binary_mul_inplace: return BinaryOp::Mul;
         default: gpu_error_not_expected();
     }
     return BinaryOp::Add;

@@ -141,6 +141,8 @@ bool primitive_attr_t::has_default_values(dnnl_primitive_attr::skip_mask_t mask,
             (bool)(~mask & smask_t::dropout), dropout_.has_default_values()));
     CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::rounding_mode),
             rounding_mode_.has_default_values()));
+    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::post_ops_inplace),
+            !post_ops_.has_inplace_binary()));
     CHECK_ARG(this->defined(smask_t::none));
     bool fpmath_mode_ok = IMPLICATION(
             (bool)(~mask & smask_t::fpmath_mode) && fpmath_.apply_to_int_,
@@ -233,7 +235,7 @@ status_t post_ops_t::validate_binary(alg_kind_t alg,
     using namespace alg_kind;
     bool alg_ok = one_of(alg, binary_add, binary_mul, binary_max, binary_min,
             binary_div, binary_sub, binary_ge, binary_gt, binary_le, binary_lt,
-            binary_eq, binary_ne, binary_select);
+            binary_eq, binary_ne, binary_select, binary_mul_inplace);
     bool is_ternary_op = (alg == binary_select);
 
     VCHECK_ATTR(alg_ok, VERBOSE_BAD_ALGORITHM);
@@ -408,6 +410,18 @@ status_t post_ops_t::entry_t::validate_binary(
                 VERBOSE_INVALID_DATATYPE, "bin_po src2");
     }
 
+    if (is_inplace_binary()) {
+        const memory_desc_wrapper dst_d(dst_md);
+        const memory_desc_wrapper src1_d(binary.user_src1_desc);
+        VCHECK_ATTR(dst_d.data_type() == src1_d.data_type(),
+                VERBOSE_INCONSISTENT_DT, "dst", "bin_po src1");
+        VCHECK_ATTR(
+                utils::array_cmp(dst_d.dims(), src1_d.dims(), src1_d.ndims()),
+                VERBOSE_INCONSISTENT_MDS, "dst", "bin_po src1");
+        VCHECK_ATTR(IMPLICATION(!src1_d.format_any(),
+                            !dst_d.format_any() && dst_d.similar_to(src1_d)),
+                VERBOSE_INCONSISTENT_MDS, "dst", "bin_po src1");
+    }
     return status::success;
 }
 

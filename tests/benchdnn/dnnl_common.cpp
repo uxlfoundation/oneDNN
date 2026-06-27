@@ -385,31 +385,39 @@ void init_isa_settings() {
 // for SRC and DST while `args` is a proxy with pointers to memories and may
 // easily change what to pick for a specific arg.
 args_t::args_t(const dnn_mem_map_t &mem_map) {
+    // Tells which arg's memory object serves `arg` when the latter was dropped
+    // from the map, or `DNNL_ARG_UNDEF` when `arg` isn't one of those.
+    const auto inplace_donor_arg = [](int arg) {
+        if (arg == DNNL_ARG_DST) return DNNL_ARG_SRC;
+        if (arg == DNNL_ARG_DIFF_SRC) return DNNL_ARG_DIFF_DST;
+        // An in-place binary post-op reads the destination as its right-hand
+        // side. Note that post-op args start past `..._POST_OP_BASE` while the
+        // remainder tells which of the post-op inputs the arg stands for.
+        if (arg >= DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE
+                && arg % DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE == DNNL_ARG_SRC_1)
+            return DNNL_ARG_DST;
+        return DNNL_ARG_UNDEF;
+    };
+
     for (const auto &map_entry : mem_map) {
         const dnn_mem_t *mem_ptr = &map_entry.second;
-        for (int inplace_arg : {DNNL_ARG_DST, DNNL_ARG_DIFF_SRC}) {
-            if (map_entry.first != inplace_arg || map_entry.second) continue;
+        // Follow the chain of substitutions, as the arg serving a dropped one
+        // may have been dropped itself.
+        for (int arg = map_entry.first; !*mem_ptr;) {
+            arg = inplace_donor_arg(arg);
+            // Not an arg subject to the substitution, keep it as it is.
+            if (arg == DNNL_ARG_UNDEF) break;
 
-            auto it = mem_map.begin();
-            switch (inplace_arg) {
-                case DNNL_ARG_DST:
-                    it = mem_map.find(DNNL_ARG_SRC);
-                    // May happen that source argument is different.
-                    if (it == mem_map.end())
-                        it = mem_map.find(DNNL_ARG_MULTIPLE_SRC);
-                    break;
-                case DNNL_ARG_DIFF_SRC:
-                    it = mem_map.find(DNNL_ARG_DIFF_DST);
-                    break;
-                default: assert(!"unsupported arg"); break;
-            }
+            auto it = mem_map.find(arg);
+            // May happen that source argument is different.
+            if (it == mem_map.end() && arg == DNNL_ARG_SRC)
+                it = mem_map.find(DNNL_ARG_MULTIPLE_SRC);
             if (it == mem_map.end()) {
                 BENCHDNN_PRINT(0, "%s\n", "Inplace substitution failed.");
                 SAFE_V(FAIL);
             }
 
             mem_ptr = &((*it).second); // Update reference with in-place memory.
-            break;
         }
 
         args_.emplace_back(map_entry.first, mem_ptr);
@@ -1565,7 +1573,7 @@ void get_memory_bytes(check_mem_size_args_t &check_mem_size_args) {
                 add_md_size(po_md, check_mem_size_args);
 
                 if (query_post_ops_has_binary_alg_kind(
-                            const_attr_po, idx, dnnl_binary_select)) {
+                            const_attr_po, dnnl_binary_select, idx)) {
                     int po_arg_src2 = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
                             | DNNL_ARG_SRC_2;
                     const auto &po_md_src2 = query_md(const_pd, po_arg_src2);
@@ -1974,6 +1982,12 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
                         | DNNL_ARG_SRC_2));
 
         if (exact_match_for_src1_arg) {
+            // The right-hand side of an in-place Binary has no dedicated memory
+            // to fill; whatever serves it is filled under its own arg.
+            if (attr.post_ops.entry[bin_po_idx].is_binary_kind_inplace()
+                    && !mem)
+                return OK;
+
             const auto alg = attr.post_ops.entry[bin_po_idx].kind;
             // Binary post-op filling for src1 tensor
             fill_cfg_t def_binary_cfg(mem.dt(), -16.f, 16.f,
@@ -2087,8 +2101,10 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
         SAFE(run1_mem_map.at(arg).reorder(mem, res), WARN);
     }
 
-    // Put original data into DST tensor if sum post-op is present.
-    if (query_post_ops_has_kind(prim, dnnl_sum)) {
+    // Put original data into DST tensor if a post-op reading it is present.
+    if (query_post_ops_has_kind(prim, dnnl_sum)
+            || query_post_ops_has_binary_alg_kind(
+                    prim, dnnl_binary_mul_inplace)) {
         const int query_arg = DNNL_ARG_DST;
         auto &dst_mem = const_cast<dnn_mem_t &>(args.find(query_arg));
         const auto &orig_dst_mem = args.find(-query_arg);
@@ -2569,8 +2585,11 @@ void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
     // used by the library.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
         // A sum post-op has the destination memory data overwritten by the
-        // accumulation memory.
-        if (query_post_ops_has_kind(const_po, dnnl_sum)) {
+        // accumulation memory. An in-place binary post-op reads the destination
+        // as its right-hand side, thus it's affected the very same way.
+        if (query_post_ops_has_kind(const_po, dnnl_sum)
+                || query_post_ops_has_binary_alg_kind(
+                        const_po, dnnl_binary_mul_inplace)) {
             const int query_arg = DNNL_ARG_DST;
             const int insert_arg = -query_arg;
             const auto &md = query_md(const_pd, query_arg);
@@ -2625,12 +2644,22 @@ void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
         if (dnnl_post_ops_get_kind(const_po, idx) != dnnl_binary) continue;
 
         int po_arg1 = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1;
+
+        // An in-place post-op reads the destination as its right-hand side.
+        // Drop its "source" memory the same way the in-place mode drops the
+        // destination one; `args` will take care of setting proper pointers.
+        if (query_post_ops_has_binary_alg_kind(
+                    const_po, dnnl_binary_mul_inplace, idx)) {
+            mem_map[po_arg1] = dnn_mem_t();
+            continue;
+        }
+
         const auto &po_md1 = query_md(const_pd, po_arg1);
         mem_map.emplace(
                 po_arg1, dnn_mem_t(po_md1, test_engine, /* prefill = */ true));
 
         if (!query_post_ops_has_binary_alg_kind(
-                    const_po, idx, dnnl_binary_select))
+                    const_po, dnnl_binary_select, idx))
             continue;
         int po_arg2 = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2;
         const auto &po_md2 = query_md(const_pd, po_arg2);

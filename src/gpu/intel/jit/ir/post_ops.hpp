@@ -334,6 +334,7 @@ inline op_kind_t alg_kind_to_op_kind(alg_kind_t alg) {
         case alg_kind::binary_lt: return op_kind_t::_lt;
         case alg_kind::binary_eq: return op_kind_t::_eq;
         case alg_kind::binary_ne: return op_kind_t::_ne;
+        case alg_kind::binary_mul_inplace: return op_kind_t::_mul;
         default: gpu_error_not_expected();
     }
     return op_kind_t::undef;

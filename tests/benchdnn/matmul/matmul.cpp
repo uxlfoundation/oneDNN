@@ -929,11 +929,12 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
                 const auto &po = prb->attr.post_ops;
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
-                if (sum_idx >= 0) {
+                if ((sum_idx >= 0) || po.has_inplace_binary()) {
                     SAFE(fill_data(DST, exec_arg, prb, cfg, mem, ref_mem, res),
                             WARN);
-                    // Bitwise mode for sum requires a copy due to data for
-                    // post-op will be overwritten and it must be refreshed.
+                    // Bitwise mode for sum and in-place binary post-ops
+                    // requires a copy due to data for post-op will be
+                    // overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
                         SAFE(mem_map.at(-exec_arg).reorder(ref_mem, res), WARN);
                     }

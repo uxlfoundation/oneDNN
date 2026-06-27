@@ -336,6 +336,17 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
 
                 if (src_subpos == std::string::npos) return;
 
+                // an in-place post-op aliases the destination, which settles
+                // both the mask and the layout, leaving the data type as the
+                // only thing to spell out
+                if (e.is_binary_kind_inplace()) {
+                    BENCHDNN_PRINT(0, "%s \'%s\'.\n",
+                            "Error: an in-place binary post-op takes no "
+                            "specification besides the data type. Provided:",
+                            s.substr(src_subpos).c_str());
+                    SAFE_V(FAIL);
+                }
+
                 // parse mask input - processed for both src1/src2 tensors.
                 const auto mask_input_str = get_substr(s, src_subpos, delim);
                 if (utils::has_only_digits(mask_input_str)) {

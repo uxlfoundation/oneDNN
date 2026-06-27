@@ -765,6 +765,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         auto &mem = entry.second; // `mem` is modified by filler (reorder).
 
+        // Binary post-op src1 aliased to dst (postop_reads_dst): the device
+        // memory is empty; the destination is preloaded after the loop.
+        const bool aliased_po_src1 = !mem
+                && exec_arg >= DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE
+                && (exec_arg % DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE)
+                        == DNNL_ARG_SRC_1;
+        if (aliased_po_src1) continue;
+
         // Route grouped to the generic else branch below
         const bool is_sparse_src = exec_arg == DNNL_ARG_SRC
                 && !prb->sparse_options.is_encoding_def(DNNL_ARG_SRC)
@@ -953,6 +961,31 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
 
         SAFE(mem.reorder(ref_mem), WARN);
+    }
+
+    // Postop-reads-dst: binary post-op src1 is aliased to dst. Fill the f32
+    // reference src1 (used by the reference path) and preload the device dst
+    // with the same data so the in-place read observes it before execution.
+    if (prb->attr.postop_reads_dst.enabled
+            && has_bench_mode_bit(mode_bit_t::corr)) {
+        const auto &po = prb->attr.post_ops;
+        for (int idx = 0; idx < po.len(); ++idx) {
+            if (!po.entry[idx].is_binary_kind()) continue;
+            const int po_arg1
+                    = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1;
+            auto it = mem_map.find(po_arg1);
+            // Only aliased (empty device memory) src1 args are handled here.
+            if (it == mem_map.end() || it->second) continue;
+
+            auto &dst_mem = mem_map.at(DNNL_ARG_DST);
+            ref_mem_map.emplace(po_arg1,
+                    dnn_mem_t(dst_mem.md_, dnnl_f32, tag::abx, ref_engine,
+                            /* prefill = */ false));
+            auto &ref_mem = ref_mem_map.at(po_arg1);
+            SAFE(init_ref_memory_args_default_case(
+                         po_arg1, dst_mem, ref_mem, prb->attr, res),
+                    WARN);
+        }
     }
 
     return OK;

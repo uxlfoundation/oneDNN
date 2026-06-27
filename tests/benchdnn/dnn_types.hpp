@@ -485,6 +485,12 @@ struct attr_t {
         bool enabled;
     };
 
+    struct postop_reads_dst_t {
+        bool is_def() const { return !enabled; }
+
+        bool enabled = false;
+    };
+
     struct fpmath_mode_t {
         fpmath_mode_t() = default;
 
@@ -532,6 +538,7 @@ struct attr_t {
     void insert(const fpmath_mode_t &fpm) { this->fpmath_mode = fpm; }
     void insert(dnnl_accumulation_mode_t am) { this->acc_mode = am; }
     void insert(const deterministic_t &d) { this->deterministic = d; }
+    void insert(const postop_reads_dst_t &p) { this->postop_reads_dst = p; }
     void insert(const dropout_t &d) { this->dropout = d; }
     void insert(const rounding_mode_t &rm) { this->rounding_mode = rm; }
 
@@ -552,6 +559,7 @@ struct attr_t {
     fpmath_mode_t fpmath_mode;
     dnnl_accumulation_mode_t acc_mode;
     deterministic_t deterministic;
+    postop_reads_dst_t postop_reads_dst;
     dropout_t dropout;
     rounding_mode_t rounding_mode;
 

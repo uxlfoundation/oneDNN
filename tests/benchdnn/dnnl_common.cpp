@@ -331,6 +331,20 @@ args_t::args_t(const dnn_mem_map_t &mem_map) {
             break;
         }
 
+        // Binary post-op reading src1 in place from dst: an empty post-op src1
+        // memory is repointed to the destination buffer.
+        const int arg = map_entry.first;
+        const bool is_po_src1 = arg >= DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE
+                && (arg % DNNL_ARG_ATTR_MULTIPLE_POST_OP_BASE) == DNNL_ARG_SRC_1;
+        if (is_po_src1 && !map_entry.second) {
+            auto it = mem_map.find(DNNL_ARG_DST);
+            if (it == mem_map.end()) {
+                BENCHDNN_PRINT(0, "%s\n", "Post-op src1 aliasing failed.");
+                SAFE_V(FAIL);
+            }
+            mem_ptr = &((*it).second);
+        }
+
         args_.emplace_back(map_entry.first, mem_ptr);
     }
 }

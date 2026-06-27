@@ -780,7 +780,7 @@ bool attr_t::is_def(bool skip_fpmath, bool skip_acc_mode) const {
             && IMPLICATION(
                     !skip_acc_mode, acc_mode == dnnl_accumulation_mode_strict)
             && rounding_mode.is_def() && deterministic.is_def()
-            && dropout.is_def();
+            && postop_reads_dst.is_def() && dropout.is_def();
 }
 
 int attr_t::post_ops_t::find(pk_t kind, int start, int stop) const {
@@ -1086,6 +1086,9 @@ std::ostream &operator<<(std::ostream &s, const attr_t &attr) {
             s << "--attr-rounding-mode=" << attr.rounding_mode << " ";
         if (!attr.deterministic.is_def())
             s << "--attr-deterministic=" << attr.deterministic << " ";
+        if (!attr.postop_reads_dst.is_def())
+            s << "--attr-postop-reads-dst="
+              << bool2str(attr.postop_reads_dst.enabled) << " ";
         if (!attr.dropout.is_def())
             s << "--attr-dropout=" << attr.dropout << " ";
     }
@@ -1588,6 +1591,9 @@ dnnl_primitive_attr_t create_dnnl_attr(
 
     DNN_SAFE_V(dnnl_primitive_attr_set_deterministic(
             dnnl_attr, attr.deterministic.enabled));
+
+    DNN_SAFE_V(dnnl_primitive_attr_set_postop_reads_dst(
+            dnnl_attr, attr.postop_reads_dst.enabled));
 
     if (!attr.dropout.is_def()) {
         const auto &drop_mask_md = attr_args.get_md(DNNL_ARG_ATTR_DROPOUT_MASK);
@@ -2107,6 +2113,9 @@ void maybe_post_ops(const attr_t &attr, float &val, float sum_val,
 // `dst_dt` helps to decide on sum_dt. When it's not f32, `sum.dt` must be
 // preserved, otherwise, updated.
 void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t dst_dt) {
+    // The CPU reference uses separate (non-aliased) post-op src1 memory, so the
+    // in-place hint does not apply and would only prevent dispatch.
+    attr.postop_reads_dst.enabled = false;
     auto &po = attr.post_ops;
     for (int idx = 0; idx < po.len(); ++idx) {
         auto &e = po.entry[idx];

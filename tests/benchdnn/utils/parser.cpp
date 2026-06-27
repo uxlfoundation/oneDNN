@@ -471,6 +471,14 @@ attr_t::deterministic_t str2attr_deterministic(const std::string &s) {
     return v;
 }
 
+attr_t::postop_reads_dst_t str2attr_postop_reads_dst(const std::string &s) {
+    attr_t::postop_reads_dst_t v;
+    if (s.empty()) return v;
+
+    v.enabled = parsers::str2bool(s);
+    return v;
+}
+
 attr_t::fpmath_mode_t str2attr_fpmath_mode(const std::string &s) {
     attr_t::fpmath_mode_t v;
     if (s.empty()) return v;
@@ -1093,6 +1101,19 @@ bool parse_attr_deterministic(
             parsers::str2attr_deterministic, str, option_name, help);
 }
 
+bool parse_attr_postop_reads_dst(
+        std::vector<attr_t::postop_reads_dst_t> &postop_reads_dst,
+        const std::vector<attr_t::postop_reads_dst_t> &def_postop_reads_dst,
+        const char *str,
+        const std::string &option_name = "attr-postop-reads-dst") {
+    static const std::string help
+            = "MODE    (Default: `false`)\n    Specifies that binary post-ops "
+              "read src1 in place from dst. `MODE` values can be `true`, or "
+              "`false`.\n";
+    return parse_vector_option(postop_reads_dst, def_postop_reads_dst,
+            parsers::str2attr_postop_reads_dst, str, option_name, help);
+}
+
 bool parse_attributes(
         base_settings_t &s, const base_settings_t &def, const char *str) {
     const bool parsed_attrs = parse_attr_scales(s.scales, str)
@@ -1105,6 +1126,8 @@ bool parse_attributes(
             || parse_attr_fpmath_mode(s.fpmath_mode, def.fpmath_mode, str)
             || parse_attr_acc_mode(s.acc_mode, def.acc_mode, str)
             || parse_attr_deterministic(s.deterministic, def.deterministic, str)
+            || parse_attr_postop_reads_dst(
+                    s.postop_reads_dst, def.postop_reads_dst, str)
             || parse_attr_rounding_mode(s.rounding_mode, str);
     return parsed_attrs;
 }

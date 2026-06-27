@@ -33,6 +33,7 @@ struct base_settings_t {
                 const std::vector<attr_t::fpmath_mode_t> &fpmath_mode,
                 const std::vector<dnnl_accumulation_mode_t> &acc_mode,
                 const std::vector<attr_t::deterministic_t> &deterministic,
+                const std::vector<attr_t::postop_reads_dst_t> &postop_reads_dst,
                 const std::vector<attr_t::dropout_t> &dropout,
                 const std::vector<attr_t::rounding_mode_t> &rounding_mode) {
             for_(const auto &s : scales)
@@ -43,10 +44,11 @@ struct base_settings_t {
             for_(const auto &fm : fpmath_mode)
             for_(const auto &am : acc_mode)
             for_(const auto &d : deterministic)
+            for_(const auto &prd : postop_reads_dst)
             for_(const auto &dr : dropout)
             for (const auto &rm : rounding_mode)
                 attrs_.push_back(
-                        get_attr(s, zp, pr, po, sm, fm, am, d, dr, rm));
+                        get_attr(s, zp, pr, po, sm, fm, am, d, prd, dr, rm));
         }
 
         using vector_type = std::vector<attr_t>;
@@ -97,6 +99,8 @@ struct base_settings_t {
             dnnl_accumulation_mode_strict};
     std::vector<attr_t::deterministic_t> deterministic {
             attr_t::deterministic_t()};
+    std::vector<attr_t::postop_reads_dst_t> postop_reads_dst {
+            attr_t::postop_reads_dst_t()};
     std::vector<attr_t::dropout_t> dropout {attr_t::dropout_t()};
     std::vector<attr_t::rounding_mode_t> rounding_mode {
             attr_t::rounding_mode_t()};
@@ -128,15 +132,15 @@ struct base_settings_t {
                 && zero_points.size() == 1 && precomputed_reductions.size() == 1
                 && post_ops.size() == 1 && scratchpad_mode.size() == 1
                 && fpmath_mode.size() == 1 && acc_mode.size() == 1
-                && deterministic.size() == 1 && ctx_init.size() == 1
-                && ctx_exe.size() == 1;
+                && deterministic.size() == 1 && postop_reads_dst.size() == 1
+                && ctx_init.size() == 1 && ctx_exe.size() == 1;
     }
 
     virtual void finalize() {
         attributes.clear();
         attributes.init(scales, zero_points, precomputed_reductions, post_ops,
-                scratchpad_mode, fpmath_mode, acc_mode, deterministic, dropout,
-                rounding_mode);
+                scratchpad_mode, fpmath_mode, acc_mode, deterministic,
+                postop_reads_dst, dropout, rounding_mode);
     }
 };
 

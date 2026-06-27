@@ -861,8 +861,17 @@ inline void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
 
         int po_arg1 = DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1;
         const auto &po_md1 = query_md(const_pd, po_arg1);
-        mem_map.emplace(
-                po_arg1, dnn_mem_t(po_md1, test_engine, /* prefill = */ true));
+        // When a binary post-op reads src1 in place from dst, alias the src1
+        // argument to the destination buffer instead of allocating a separate
+        // one. The empty memory is repointed to DNNL_ARG_DST by `args`.
+        const auto &dst_md = query_md(const_pd, DNNL_ARG_DST);
+        if (base_prb->attr.postop_reads_dst.enabled
+                && dnnl_memory_desc_equal(po_md1, dst_md)) {
+            mem_map.emplace(po_arg1, dnn_mem_t());
+        } else {
+            mem_map.emplace(po_arg1,
+                    dnn_mem_t(po_md1, test_engine, /* prefill = */ true));
+        }
 
         if (!query_post_ops_has_binary_alg_kind(
                     const_po, idx, dnnl_binary_select))

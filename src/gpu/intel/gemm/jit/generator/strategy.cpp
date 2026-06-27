@@ -164,6 +164,12 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     altFusedBeta &= fuseBeta;
 
+    // In-place C read (dst-aliasing binary post-op) requires a single,
+    // non-atomic write to C. Reject any strategy that would still accumulate
+    // atomically into the real C, so a single-write kernel is selected instead.
+    if (problem.postOpReadsC && C.atomic && !needsTempC(problem))
+        stub("postop_reads_dst requires a single non-atomic C write");
+
     if (!(kParallelVariable || (kParallel && altFusedBeta)))
         kPadding = 0;
 

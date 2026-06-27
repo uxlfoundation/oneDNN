@@ -67,15 +67,10 @@ public:
 
     status_t barrier();
 
-    const xpu::sycl::context_t &sycl_ctx() const;
     xpu::sycl::context_t &sycl_ctx();
-
     xpu::context_t &ctx();
-    const xpu::context_t &ctx() const;
 
     ::sycl::event get_output_event();
-
-    void register_deps(::sycl::handler &cgh) const;
 
     status_t init_verbose_profiler(engine_kind_t kind) override;
 

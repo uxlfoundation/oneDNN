@@ -104,10 +104,8 @@ struct stream_t : public intel::stream_t {
 
     ~stream_t() override = default;
 
-    const xpu::ocl::context_t &ocl_ctx() const { return impl()->ocl_ctx(); }
     xpu::ocl::context_t &ocl_ctx() { return impl()->ocl_ctx(); }
     xpu::context_t &ctx() override { return impl()->ocl_ctx(); }
-    const xpu::context_t &ctx() const override { return impl()->ocl_ctx(); }
 
     const xpu::ocl::wrapper_t<cl_event> &get_output_event() const {
         return impl()->get_output_event();

@@ -110,18 +110,11 @@ struct stream_t : public gpu::intel::stream_t {
 
     status_t barrier() override { return impl()->barrier(); }
 
-    const xpu::sycl::context_t &sycl_ctx() const { return impl()->sycl_ctx(); }
     xpu::sycl::context_t &sycl_ctx() { return impl()->sycl_ctx(); }
-
     xpu::context_t &ctx() override { return impl()->sycl_ctx(); }
-    const xpu::context_t &ctx() const override { return impl()->sycl_ctx(); }
 
     ::sycl::event get_output_event() const {
         return impl()->get_output_event();
-    }
-
-    void register_deps(::sycl::handler &cgh) const {
-        return impl()->register_deps(cgh);
     }
 
     bool recording() const;

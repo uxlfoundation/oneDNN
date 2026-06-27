@@ -35,9 +35,7 @@ public:
             impl::engine_t *engine, impl::stream_impl_t *stream_impl);
 
     xpu::ze::context_t &ze_ctx() { return impl()->ze_ctx(); }
-    const xpu::ze::context_t &ze_ctx() const { return impl()->ze_ctx(); }
     xpu::context_t &ctx() override { return impl()->ze_ctx(); }
-    const xpu::context_t &ctx() const override { return impl()->ze_ctx(); }
 
     ze_event_handle_t get_output_event() const {
         return impl()->get_output_event();

@@ -65,22 +65,17 @@ struct stream_t : public cpu::cpu_stream_t {
             exec_ctx_t &exec_ctx) override {
         assert(engine()->kind() == engine_kind::cpu);
         auto event = queue().submit([&](::sycl::handler &cgh) {
-            register_deps(cgh);
+            cgh.depends_on(sycl_ctx().get_sycl_deps().events);
             submit_cpu_primitive(this, prim_iface, exec_ctx, cgh);
         });
         sycl_ctx().set_deps({event});
         return status::success;
     }
 
-    const xpu::sycl::context_t &sycl_ctx() const { return impl()->sycl_ctx(); }
     xpu::sycl::context_t &sycl_ctx() { return impl()->sycl_ctx(); }
 
     ::sycl::event get_output_event() const {
         return impl()->get_output_event();
-    }
-
-    void register_deps(::sycl::handler &cgh) const {
-        return impl()->register_deps(cgh);
     }
 
     void after_exec_hook() override;

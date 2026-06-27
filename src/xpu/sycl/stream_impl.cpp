@@ -236,21 +236,12 @@ status_t stream_impl_t::init_verbose_profiler(engine_kind_t kind) {
     return status::success;
 }
 
-const xpu::sycl::context_t &stream_impl_t::sycl_ctx() const {
+xpu::sycl::context_t &stream_impl_t::sycl_ctx() {
     static xpu::sycl::context_t empty_ctx {};
     return ctx_.get(empty_ctx);
 }
 
-xpu::sycl::context_t &stream_impl_t::sycl_ctx() {
-    const xpu::sycl::context_t &ctx
-            = const_cast<const stream_impl_t *>(this)->sycl_ctx();
-    return *const_cast<xpu::sycl::context_t *>(&ctx);
-}
-
 xpu::context_t &stream_impl_t::ctx() {
-    return sycl_ctx();
-}
-const xpu::context_t &stream_impl_t::ctx() const {
     return sycl_ctx();
 }
 
@@ -263,14 +254,10 @@ const xpu::context_t &stream_impl_t::ctx() const {
     // dummy task is needed to not get an error related to empty
     // kernel.
     auto e = queue()->submit([&](::sycl::handler &cgh) {
-        register_deps(cgh);
+        cgh.depends_on(sycl_ctx().get_sycl_deps().events);
         cgh.single_task<class dnnl_dummy_kernel>([]() {});
     });
     return e;
-}
-
-void stream_impl_t::register_deps(::sycl::handler &cgh) const {
-    cgh.depends_on(sycl_ctx().get_sycl_deps().events);
 }
 
 } // namespace sycl

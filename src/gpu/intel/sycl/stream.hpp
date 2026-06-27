@@ -61,8 +61,13 @@ struct stream_t : public gpu::intel::stream_t {
 
     status_t wait() override {
         auto status = impl()->wait();
-        // processes and logs any pending primitives after the blocking wait
-        if (auto *vp = verbose_profiler()) vp->check_for_completed_primitives();
+        // A verbose profiler polling call cannot be added here since sporadic
+        // wait() calls outside the normal primitive execution flow may
+        // interrupt in-flight primitives before all their events are complete.
+        // This causes the profiler to incorrectly log incomplete execution
+        // times and invalidate event storage for pending operations. Unlogged
+        // primitives are instead captured at the next after_exec_hook()
+        // polling cycle or during profiler destruction.
         return status;
     }
 

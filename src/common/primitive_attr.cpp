@@ -598,6 +598,20 @@ status_t dnnl_primitive_attr_set_deterministic(primitive_attr_t *attr, int d) {
     return success;
 }
 
+status_t dnnl_primitive_attr_get_postop_reads_dst(
+        const primitive_attr_t *attr, int *v) {
+    if (any_null(attr, v)) return invalid_arguments;
+    *v = attr->postop_reads_dst_;
+    return success;
+}
+
+status_t dnnl_primitive_attr_set_postop_reads_dst(
+        primitive_attr_t *attr, int v) {
+    if (any_null(attr)) return invalid_arguments;
+    attr->postop_reads_dst_ = v;
+    return success;
+}
+
 status_t dnnl_primitive_attr_get_scratchpad_mode(
         const primitive_attr_t *attr, scratchpad_mode_t *scratchpad_mode) {
     if (any_null(attr, scratchpad_mode)) return invalid_arguments;

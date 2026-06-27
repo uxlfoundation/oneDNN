@@ -288,6 +288,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
     // Matmul supports fpmath mode and accumulation mode
     attr_mask |= smask_t::fpmath_mode | smask_t::accumulation_mode;
 
+    // A binary post-op may read src1 in place from dst; impls that don't
+    // support it reject it during dispatch.
+    attr_mask |= smask_t::postop_reads_dst;
+
     VCHECK_MATMUL_UNIMPL(attr->has_default_values(attr_mask, dst_dt),
             VERBOSE_UNSUPPORTED_ATTR);
 

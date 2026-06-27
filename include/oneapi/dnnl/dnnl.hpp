@@ -4286,6 +4286,27 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
                 "could not set deterministic primitive attribute");
     }
 
+    /// Returns the postop-reads-dst attribute value
+    bool get_postop_reads_dst() const {
+        int result;
+        error::wrap_c_api(
+                dnnl_primitive_attr_get_postop_reads_dst(get(), &result),
+                "could not get postop-reads-dst primitive attribute");
+        return static_cast<bool>(result);
+    }
+
+    /// Sets postop-reads-dst attribute value
+    ///
+    /// When set, a binary post-op may read its second source in place from the
+    /// destination buffer.
+    ///
+    /// @param value Specified postop-reads-dst mode.
+    void set_postop_reads_dst(bool value) {
+        error::wrap_c_api(dnnl_primitive_attr_set_postop_reads_dst(
+                                  get(), static_cast<int>(value)),
+                "could not set postop-reads-dst primitive attribute");
+    }
+
     /// Returns the rounding mode attribute value
     ///
     /// @param arg Argument for which rounding mode query applies.

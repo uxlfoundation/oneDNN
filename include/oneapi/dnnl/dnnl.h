@@ -394,6 +394,28 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_get_deterministic(
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_deterministic(
         dnnl_primitive_attr_t attr, int value);
 
+/// Returns the postop-reads-dst primitive attribute value.
+///
+/// @param attr Primitive attributes.
+/// @param value Output postop-reads-dst attribute value
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_get_postop_reads_dst(
+        const_dnnl_primitive_attr_t attr, int *value);
+
+/// Sets the postop-reads-dst primitive attribute value.
+///
+/// When set, a binary post-op may read its second source (src1) in place from
+/// the destination buffer. The implementation guarantees the destination is
+/// written exactly once so the in-place read observes the pre-op value.
+///
+/// @param attr Primitive attributes.
+/// @param value Boolean value to set postop-reads-dst attribute.
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_primitive_attr_set_postop_reads_dst(
+        dnnl_primitive_attr_t attr, int value);
+
 /// Returns the accumulation mode primitive attribute.
 ///
 /// @param attr Primitive attributes.

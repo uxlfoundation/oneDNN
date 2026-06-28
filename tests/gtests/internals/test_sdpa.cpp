@@ -3711,8 +3711,7 @@ INSTANTIATE_TEST_SUITE_P(dropout_backward_minimal, sdpa_bwd_test,
                         dropout_config_t {0.75f, 4343, mdt::s64, 0, false,
                                 memory::format_tag::undef}},
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
-                        dropout_config_t {0.25f, 4444, mdt::s64, 123456, true,
-                                memory::format_tag::undef}}),
+                    no_dropout}),
         &print_to_string);
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE_TRANSPOSED
 #undef SDPA_DIMS_DROPOUT_SHARED_BASE

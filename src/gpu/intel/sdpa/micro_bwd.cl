@@ -1229,7 +1229,13 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         // This is apples-to-apples with dK_full pre-reduction reference.
         {
             a_tile_type_dst dK_acc_debug;
+#if IS_GQA
+            a_tile_type dK_acc_f32;
+            tile_copy(dK_tile_slm, dK_acc_f32);
+            tile_copy_reblock(dK_acc_f32, &dK_acc_debug);
+#else
             tile_copy_reblock(dK_tile_slm, &dK_acc_debug);
+#endif
             tile_store(dK_acc_debug, (global DST_TILE_DATA_T *)dS,
                     wg_k_chunk, d, d, wg_i0 + sg_i0_dk, sg_j0_dk);
         }

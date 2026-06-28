@@ -1960,10 +1960,23 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         auto dk_dims = dK_full_mem.get_desc().get_dims();
         auto dk_strides = dK_full_mem.get_desc().get_strides();
         const bool dk_rank5 = (dk_dims.size() >= 5);
-        const int dk_tail0 = (int)dk_dims[dk_rank5 ? 3 : 2];
-        const int dk_tail1 = (int)dk_dims[dk_rank5 ? 4 : 3];
-        const bool dk_layout_kd = (dk_tail0 == seq_kv_v && dk_tail1 == d_v);
-        const bool dk_layout_dk = (dk_tail0 == d_v && dk_tail1 == seq_kv_v);
+        const int dk_a = dk_rank5 ? 3 : 2;
+        const int dk_b = dk_rank5 ? 4 : 3;
+        const int dk_tail0 = (int)dk_dims[dk_a];
+        const int dk_tail1 = (int)dk_dims[dk_b];
+        const int dk_stride0 = (int)dk_strides[dk_a];
+        const int dk_stride1 = (int)dk_strides[dk_b];
+        bool dk_layout_kd = false;
+        bool dk_layout_dk = false;
+        if (dk_tail0 != dk_tail1) {
+            dk_layout_kd = (dk_tail0 == seq_kv_v && dk_tail1 == d_v);
+            dk_layout_dk = (dk_tail0 == d_v && dk_tail1 == seq_kv_v);
+        } else {
+            // Ambiguous by dims when seq_kv == d; infer by contiguous tail axis.
+            // [kv, d] => stride(kv) >= stride(d), [d, kv] => stride(d) >= stride(kv).
+            dk_layout_kd = (dk_stride0 >= dk_stride1);
+            dk_layout_dk = !dk_layout_kd;
+        }
         void *ds_raw = const_cast<memory &>(t.m_dS).map_data();
         void *dk_raw = dK_full_mem.map_data();
 
@@ -1993,12 +2006,18 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         printf("  effective dS debug tile shape: [mb=%d heads=%d seq_kv=%d d=%d] (packed, ld=d)\n",
             (int)p.mb, gs * ks, seq_kv_v, d_v);
         printf("  reference dK tail shape: [%d %d]\n", dk_tail0, dk_tail1);
+        printf("  reference dK tail strides: [%d %d]\n", dk_stride0, dk_stride1);
         fflush(stdout);
         if (!dk_layout_kd && !dk_layout_dk) {
             printf("[CHECK][WARN] unexpected dK_full tail dims: (%d, %d), "
                    "expected (%d,%d) or (%d,%d)\n",
                     dk_tail0, dk_tail1, seq_kv_v, d_v, d_v, seq_kv_v);
         }
+        const int dk_kv_extent = dk_layout_kd ? dk_tail0 : dk_tail1;
+        const int dk_d_extent = dk_layout_kd ? dk_tail1 : dk_tail0;
+        const int kv_cmp = std::min(seq_kv_v, dk_kv_extent);
+        const int d_cmp = std::min(d_v, dk_d_extent);
+        printf("  compare extents: kv=%d d=%d\n", kv_cmp, d_cmp);
         if (DEBUG_STAGE_TEST == 6) {
             printf("[CHECK][NOTE] stage 6 is per-q0 partial ugemm output; "
                    "large diff vs full dK is expected. Use stage 7 for apples-to-apples.\n");
@@ -2008,8 +2027,8 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         for (int g = 0; g < gs; g++)
         for (int h = 0; h < ks; h++) {
             const int q_h = g * ks + h;
-            for (int kv = 0; kv < seq_kv_v; kv++)
-            for (int dp = 0; dp < d_v; dp++) {
+            for (int kv = 0; kv < kv_cmp; kv++)
+            for (int dp = 0; dp < d_cmp; dp++) {
                 // Kernel stage 7 debug store writes dK_slm as a packed [seq_kv, d]
                 // tile into dS with ld=d (not ld=seq_kv).
                 int ds_idx = (b * gs * ks + q_h) * (seq_q_v * seq_kv_v)
@@ -2070,10 +2089,26 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
             auto kf_dims = t.m_diff_key_quantized.get_desc().get_dims();
             auto kf_strides = t.m_diff_key_quantized.get_desc().get_strides();
             const bool kf_rank5 = (kf_dims.size() >= 5);
-            const int kf_tail0 = (int)kf_dims[kf_rank5 ? 3 : 2];
-            const int kf_tail1 = (int)kf_dims[kf_rank5 ? 4 : 3];
-            const bool kf_layout_kd = (kf_tail0 == seq_kv_v && kf_tail1 == d_v);
-            const bool kf_layout_dk = (kf_tail0 == d_v && kf_tail1 == seq_kv_v);
+            const int kf_a = kf_rank5 ? 3 : 2;
+            const int kf_b = kf_rank5 ? 4 : 3;
+            const int kf_tail0 = (int)kf_dims[kf_a];
+            const int kf_tail1 = (int)kf_dims[kf_b];
+            const int kf_stride0 = (int)kf_strides[kf_a];
+            const int kf_stride1 = (int)kf_strides[kf_b];
+            bool kf_layout_kd = false;
+            bool kf_layout_dk = false;
+            if (kf_tail0 != kf_tail1) {
+                kf_layout_kd = (kf_tail0 == seq_kv_v && kf_tail1 == d_v);
+                kf_layout_dk = (kf_tail0 == d_v && kf_tail1 == seq_kv_v);
+            } else {
+                // Ambiguous by dims when seq_kv == d; infer from tail strides.
+                kf_layout_kd = (kf_stride0 >= kf_stride1);
+                kf_layout_dk = !kf_layout_kd;
+            }
+            const int kf_kv_extent = kf_layout_kd ? kf_tail0 : kf_tail1;
+            const int kf_d_extent = kf_layout_kd ? kf_tail1 : kf_tail0;
+            const int kv_cmp_k = std::min(seq_kv_v, kf_kv_extent);
+            const int d_cmp_k = std::min(d_v, kf_d_extent);
 
             void *ds2_raw = const_cast<memory &>(t.m_dS).map_data();
             void *kf_raw = const_cast<memory &>(t.m_diff_key_quantized).map_data();
@@ -2087,14 +2122,17 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
             printf("  final dK shape:");
             for (auto dim : kf_dims) printf(" %lld", (long long)dim);
             printf("\n");
+            printf("  final dK tail strides: [%d %d]\n", kf_stride0, kf_stride1);
+                printf("  kernel-vs-kernel compare extents: kv=%d d=%d\n", kv_cmp_k,
+                    d_cmp_k);
                 fflush(stdout);
 
             for (int b = 0; b < (int)p.mb; b++)
             for (int g = 0; g < gs; g++)
             for (int h = 0; h < ks; h++) {
                 const int q_h = g * ks + h;
-                for (int kv = 0; kv < seq_kv_v; kv++)
-                for (int dp = 0; dp < d_v; dp++) {
+                for (int kv = 0; kv < kv_cmp_k; kv++)
+                for (int dp = 0; dp < d_cmp_k; dp++) {
                     int ds_idx = (b * gs * ks + q_h) * (seq_q_v * seq_kv_v)
                             + kv * d_v + dp;
 

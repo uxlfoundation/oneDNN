@@ -696,14 +696,22 @@ void prb_t::skip_invalid(res_t *res) const {
     // Note: runtime_dims get initialized when prb is created which is past
     // input verification point, that's why this and the check below live here,
     // but not there.
-    if ((src_rt_mask.any() && prb->stag == "any")
-            || (wei_rt_mask.any() && prb->wtag == "any")
-            || (dst_rt_mask.any() && prb->dtag == "any")) {
-        BENCHDNN_PRINT(1,
-                "[INVALID][%s:%d]: Runtime dimensions require user to specify "
-                "a memory format for affected arguments. Consider specifying "
-                "`--stag`, `--wtag`, and/or `--dtag`.\n",
-                __FILE__, __LINE__);
+    const auto &rt_dims_are_consistent
+            = [](const dims_mask_t &rt_dims, const std::string &tag,
+                      const dims_t &strides) {
+        if (rt_dims.none()) return true;
+        return tag != tag::any || !strides.empty();
+    };
+
+    if (!rt_dims_are_consistent(src_rt_mask, stag, strides[STRIDES_SRC])
+            || !rt_dims_are_consistent(wei_rt_mask, wtag, strides[STRIDES_WEI])
+            || !rt_dims_are_consistent(
+                    dst_rt_mask, dtag, strides[STRIDES_DST])) {
+        BENCHDNN_PRINTF(1, "%s",
+                "[INVALID]: Runtime dimensions require user to specify a "
+                "memory format for affected arguments. Consider specifying "
+                "`--stag`, `--wtag`, and/or `--dtag` or correspondent "
+                "`--strides` values.");
         res->state = SKIPPED;
         res->reason = reason_t::invalid;
         return;

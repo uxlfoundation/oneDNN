@@ -44,17 +44,19 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> prb_t::get_md(int arg) const {
     switch (arg) {
         case DNNL_ARG_SRC:
             assert(src_runtime_dim_mask().any());
-            return dnn_mem_t::init_md(ndims, src_dims().data(), src_dt(), stag);
+            return dnn_mem_t::init_md(ndims, src_dims().data(), src_dt(), stag,
+                    strides[STRIDES_SRC]);
         case DNNL_ARG_WEIGHTS:
             assert(weights_runtime_dim_mask().any());
-            return dnn_mem_t::init_md(
-                    ndims, weights_dims().data(), wei_dt(), wtag);
+            return dnn_mem_t::init_md(ndims, weights_dims().data(), wei_dt(),
+                    wtag, strides[STRIDES_WEI]);
         case DNNL_ARG_BIAS:
             return dnn_mem_t::init_md(
                     ndims, bia_dims().data(), bia_dt, tag::abx);
         case DNNL_ARG_DST:
             assert(dst_runtime_dim_mask().any());
-            return dnn_mem_t::init_md(ndims, dst_dims.data(), dst_dt(), dtag);
+            return dnn_mem_t::init_md(ndims, dst_dims.data(), dst_dt(), dtag,
+                    strides[STRIDES_DST]);
         case DNNL_ARG_ATTR_DROPOUT_MASK:
             return dnn_mem_t::init_md(ndims, dst_dims.data(),
                     get_dt(DROPOUT_MASK), attr.dropout.tag);

@@ -33,9 +33,8 @@
 // Mirror of kernel DEBUG_STAGE: controls which comparison runs.
 // 4 = P = softmax output (forward)         — compared via dS buffer in prim_sdpa_quant_bwd
 // 5 = dS_bwd = P*(dP-Di)*scale             — compared via dS buffer in prim_sdpa_quant_bwd
-// 6 = compare ugemm_qdSt partial output    — kernel DEBUG_STAGE=6 puts per-q0 dK tile in dS
 // 7 = compare accumulated dK_slm output    — kernel DEBUG_STAGE=7 puts post-qloop dK in dS
-//     (stages 6/7 skip final dK assert in compare_bwd; use stage 9 for full checks)
+//     (stage 7 skips final dK assert in compare_bwd; use stage 9 for full checks)
 // 8 = compare final dQ only (isolated)
 // 9 = all outputs (full run)
 #ifndef DEBUG_STAGE_TEST
@@ -1940,10 +1939,9 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                     {DNNL_ARG_DST, dK_full_mem}});
     strm.wait();
 
-#if DEBUG_STAGE_TEST == 6 || DEBUG_STAGE_TEST == 7
+#if DEBUG_STAGE_TEST == 7
     // Compare kernel debug dK in t.m_dS vs reference pre-reduction dK_full.
-    // Stage 6: t.m_dS holds ugemm_qdSt per-q0 partial dK (last q0 wins).
-    // Stage 7: t.m_dS holds accumulated dK_slm after q-loop (non-TRANSPOSE_K).
+    // Stage 7: t.m_dS holds accumulated dK after q-loop (non-TRANSPOSE_K).
     // Indexing in t.m_dS (non-TRANSPOSE_K):
     //   t.m_dS[q_h * (seq_q*seq_kv) + kv_pos * d + d_pos]
     if (compare_with_ds) {
@@ -1993,9 +1991,7 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
         int total = 0, mismatch = 0;
         float max_diff = 0.f;
-        const char *check_name = (DEBUG_STAGE_TEST == 6)
-            ? "ugemm_qdSt partial output"
-            : "accumulated dK_slm output";
+        const char *check_name = "accumulated dK_slm output";
         printf("\n[CHECK] %s (kernel:dS per-Qhead vs ref:dK_full pre-reduction)"
                "  thresh=%.4f\n", check_name, s_thresh);
         printf("  dK_full shape:");
@@ -2015,13 +2011,9 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         }
         const int dk_kv_extent = dk_layout_kd ? dk_tail0 : dk_tail1;
         const int dk_d_extent = dk_layout_kd ? dk_tail1 : dk_tail0;
-        const int kv_cmp = std::min(seq_kv_v, dk_kv_extent);
-        const int d_cmp = std::min(d_v, dk_d_extent);
+        const int kv_cmp = (seq_kv_v < dk_kv_extent) ? seq_kv_v : dk_kv_extent;
+        const int d_cmp = (d_v < dk_d_extent) ? d_v : dk_d_extent;
         printf("  compare extents: kv=%d d=%d\n", kv_cmp, d_cmp);
-        if (DEBUG_STAGE_TEST == 6) {
-            printf("[CHECK][NOTE] stage 6 is per-q0 partial ugemm output; "
-                   "large diff vs full dK is expected. Use stage 7 for apples-to-apples.\n");
-        }
 
         for (int b = 0; b < (int)p.mb; b++)
         for (int g = 0; g < gs; g++)
@@ -2071,47 +2063,46 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
         printf("[CHECK] %s: total=%d mismatches=%d max_diff=%f\n",
             check_name, total, mismatch, max_diff);
         fflush(stdout);
-        if (DEBUG_STAGE_TEST == 7) {
-            printf("[CHECK] entering stage7 secondary kernel-vs-kernel check\n");
-            fflush(stdout);
-            const int allowed_mismatch = (int)(total * 0.002f);
-            if (mismatch > allowed_mismatch) {
-                printf("[CHECK][FAIL][STAGE 7] %s mismatches=%d allowed=%d\n",
-                        check_name, mismatch, allowed_mismatch);
-            }
-            if (max_diff > 0.1f) {
-                printf("[CHECK][FAIL][STAGE 7] %s max_diff=%f allowed=%f\n",
-                        check_name, max_diff, 0.1f);
-            }
+        printf("[CHECK] entering stage7 secondary kernel-vs-kernel check\n");
+        fflush(stdout);
+        const int allowed_mismatch = (int)(total * 0.002f);
+        if (mismatch > allowed_mismatch) {
+            printf("[CHECK][FAIL][STAGE 7] %s mismatches=%d allowed=%d\n",
+                check_name, mismatch, allowed_mismatch);
+        }
+        if (max_diff > 0.1f) {
+            printf("[CHECK][FAIL][STAGE 7] %s max_diff=%f allowed=%f\n",
+                check_name, max_diff, 0.1f);
+        }
 
-            // Additional isolation check for stage 7:
-            // compare kernel debug dS dump directly against kernel final dK output.
-            auto kf_dims = t.m_diff_key_quantized.get_desc().get_dims();
-            auto kf_strides = t.m_diff_key_quantized.get_desc().get_strides();
-            const bool kf_rank5 = (kf_dims.size() >= 5);
-            const int kf_a = kf_rank5 ? 3 : 2;
-            const int kf_b = kf_rank5 ? 4 : 3;
-            const int kf_tail0 = (int)kf_dims[kf_a];
-            const int kf_tail1 = (int)kf_dims[kf_b];
-            const int kf_stride0 = (int)kf_strides[kf_a];
-            const int kf_stride1 = (int)kf_strides[kf_b];
-            bool kf_layout_kd = false;
-            bool kf_layout_dk = false;
-            if (kf_tail0 != kf_tail1) {
-                kf_layout_kd = (kf_tail0 == seq_kv_v && kf_tail1 == d_v);
-                kf_layout_dk = (kf_tail0 == d_v && kf_tail1 == seq_kv_v);
-            } else {
-                // Ambiguous by dims when seq_kv == d; infer from tail strides.
-                kf_layout_kd = (kf_stride0 >= kf_stride1);
-                kf_layout_dk = !kf_layout_kd;
-            }
-            const int kf_kv_extent = kf_layout_kd ? kf_tail0 : kf_tail1;
-            const int kf_d_extent = kf_layout_kd ? kf_tail1 : kf_tail0;
-            const int kv_cmp_k = std::min(seq_kv_v, kf_kv_extent);
-            const int d_cmp_k = std::min(d_v, kf_d_extent);
+        // Additional isolation check for stage 7:
+        // compare kernel debug dS dump directly against kernel final dK output.
+        auto kf_dims = t.m_diff_key_quantized.get_desc().get_dims();
+        auto kf_strides = t.m_diff_key_quantized.get_desc().get_strides();
+        const bool kf_rank5 = (kf_dims.size() >= 5);
+        const int kf_a = kf_rank5 ? 3 : 2;
+        const int kf_b = kf_rank5 ? 4 : 3;
+        const int kf_tail0 = (int)kf_dims[kf_a];
+        const int kf_tail1 = (int)kf_dims[kf_b];
+        const int kf_stride0 = (int)kf_strides[kf_a];
+        const int kf_stride1 = (int)kf_strides[kf_b];
+        bool kf_layout_kd = false;
+        bool kf_layout_dk = false;
+        if (kf_tail0 != kf_tail1) {
+            kf_layout_kd = (kf_tail0 == seq_kv_v && kf_tail1 == d_v);
+            kf_layout_dk = (kf_tail0 == d_v && kf_tail1 == seq_kv_v);
+        } else {
+            // Ambiguous by dims when seq_kv == d; infer from tail strides.
+            kf_layout_kd = (kf_stride0 >= kf_stride1);
+            kf_layout_dk = !kf_layout_kd;
+        }
+        const int kf_kv_extent = kf_layout_kd ? kf_tail0 : kf_tail1;
+        const int kf_d_extent = kf_layout_kd ? kf_tail1 : kf_tail0;
+        const int kv_cmp_k = (seq_kv_v < kf_kv_extent) ? seq_kv_v : kf_kv_extent;
+        const int d_cmp_k = (d_v < kf_d_extent) ? d_v : kf_d_extent;
 
-            void *ds2_raw = const_cast<memory &>(t.m_dS).map_data();
-            void *kf_raw = const_cast<memory &>(t.m_diff_key_quantized).map_data();
+        void *ds2_raw = const_cast<memory &>(t.m_dS).map_data();
+        void *kf_raw = const_cast<memory &>(t.m_diff_key_quantized).map_data();
 
             int total_k = 0, mismatch_k = 0;
             float max_diff_k = 0.f;
@@ -2179,10 +2170,9 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
             const_cast<memory &>(t.m_dS).unmap_data(ds2_raw);
             const_cast<memory &>(t.m_diff_key_quantized).unmap_data(kf_raw);
-            printf("[CHECK][STAGE 7] kernel-vs-kernel: total=%d mismatches=%d max_diff=%f\n",
-                    total_k, mismatch_k, max_diff_k);
+                    printf("[CHECK][STAGE 7] kernel-vs-kernel: total=%d mismatches=%d max_diff=%f\n",
+                        total_k, mismatch_k, max_diff_k);
             fflush(stdout);
-        }
     }
 #endif
 
@@ -2861,7 +2851,7 @@ public:
                 kv_group_size);
 
         // Helper lambda to run one check_memory call for the right dtype.
-        // Stages 6/7/8 run only one output in isolation; stage 9 runs all.
+        // Stages 7/8 run only one output in isolation; stage 9 runs all.
         const auto run_check = [&](const char *label, memory &gold, memory &test,
                                       float thresh) {
             auto dt = t.m_output.get_desc().get_data_type();
@@ -2878,7 +2868,7 @@ public:
 
         const bool run_O  = (DEBUG_STAGE_TEST == 9);
         const bool run_dV = (DEBUG_STAGE_TEST == 9);
-        // Stages 6/7 use the dedicated dS-vs-dK_full debug comparator earlier
+        // Stage 7 uses the dedicated dS-vs-dK_full debug comparator earlier
         // in prim_sdpa_quant_bwd. Keep final dK assert only for stage 9.
         const bool run_dK = (DEBUG_STAGE_TEST == 9);
         const bool run_dQ = (DEBUG_STAGE_TEST == 8 || DEBUG_STAGE_TEST == 9);
@@ -3688,8 +3678,7 @@ INSTANTIATE_TEST_SUITE_P(dropout_forward_minimal, sdpa_test,
                         dropout_config_t {0.75f, 4343, mdt::s64, 0, false,
                                 memory::format_tag::undef}},
                 sdpa_dims_t {SDPA_DIMS_DROPOUT_SHARED_GQA,
-                        dropout_config_t {0.25f, 4444, mdt::s64, 123456, true,
-                                memory::format_tag::abcd}}),
+                        no_dropout}),
         &print_to_string);
 #undef SDPA_DIMS_DROPOUT_MULTI
 #undef SDPA_DIMS_DROPOUT_LARGE

@@ -32,9 +32,12 @@
 #define sg_per_wg_BcBr \
     (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n) // same for kq, vtdA
 #define sg_per_wg_BcD \
-    (ugemm_vs_sg_per_wg_m * ugemm_vs_sg_per_wg_n) // same for qdSt and vs
+        (ugemm_vs_sg_per_wg_m * ugemm_vs_sg_per_wg_n) // used by vs layout
+#define sg_per_wg_qdSt \
+        (ugemm_qdSt_sg_per_wg_m * ugemm_qdSt_sg_per_wg_n)
 #define sg_per_wg_BrD (ugemm_ktq_sg_per_wg_m * ugemm_ktq_sg_per_wg_n)
-#define sg_per_wg MAX(sg_per_wg_BcBr, MAX(sg_per_wg_BcD, sg_per_wg_BrD))
+#define sg_per_wg \
+        MAX(sg_per_wg_BcBr, MAX(sg_per_wg_qdSt, MAX(sg_per_wg_BcD, sg_per_wg_BrD)))
 
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
 
@@ -1144,7 +1147,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             }
 #else
             // Non-TRANSPOSE_K: dK is Bc*D. Layout: [k_chunk x d] with ld=d.
-            if (sg_ij < sg_per_wg_BcD) {
+                        if (sg_ij < sg_per_wg_qdSt) {
                 a_tile_type_dst dK_debug;
                 tile_copy_reblock(dK_tile1, &dK_debug);
                 tile_store(dK_debug, (global DST_TILE_DATA_T *)dS,
@@ -1153,7 +1156,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 #endif
             // dk slm tile
-            if (sg_ij < sg_per_wg_BcD) {
+                        if (sg_ij < sg_per_wg_qdSt) {
                 dk_acc_tile_type dK_tile1_store;
                 tile_copy(dK_tile1, dK_tile1_store);
 #if TRANSPOSE_K
@@ -1238,7 +1241,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
     dk_acc_tile_type dK_tile_slm;
     int wg_k_chunk = min(k - k0, ugemm_kq_wg_tile_m);
-    if (sg_ij < sg_per_wg_BcD) {
+        if (sg_ij < sg_per_wg_qdSt) {
         tile_load(&dK_tile_slm, dK_slm, ugemm_kq_wg_tile_m, D_MAX,
                 ugemm_kq_wg_tile_m, sg_i0_dk, sg_j0_dk);
 #if WITH_DS && DEBUG_STAGE == 7

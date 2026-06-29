@@ -121,6 +121,7 @@ status_t brgemm_t::finalize() {
     // Note: API can't take a compensation buffer externally. Users must add
     // compensation on their own as a binary post-op.
     brgemm_desc_.req_s8s8_compensation = false;
+    brgemm_desc_.req_src_s8_shift = false;
 
     // Precompute the pallette
     // If status isn't successful, it means tiles configuration is not required.

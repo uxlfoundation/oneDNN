@@ -1503,6 +1503,31 @@ void brgemm_matmul_t<isa>::copy_a_chunk_in_buffer(
 }
 
 template <cpu_isa_t isa>
+void brgemm_matmul_t<isa>::copy_blocked_xf16_B_to_buffer(
+        const brg_matmul_exec_ctx_t &brgmm_ctx, const char *B_data_batch_ptr,
+        char *tr_src, dim_t n, dim_t k, int current_N_blk, int k_iters) const {
+    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+    // The blocked bf16/f16 (xf16) source already matches the buffer's VNNI
+    // layout and data type, so compaction is a plain block copy. Buffer panel
+    // layout:
+    //   [n_blk/wei_n_blk][k_blk/wei_k_blk][wei_k_blk/vnni][wei_n_blk][vnni]
+    // For a fixed wei_n_blk-wide N-sub-block the K-blocks are stored
+    // contiguously in the source, so each N-sub-block maps to a single memcpy;
+    // successive N-sub-blocks are separated by the full-K stride and are copied
+    // independently.
+    const dim_t n_sub_blocks = utils::div_up(current_N_blk, bgmmc.wei_n_blk);
+    const dim_t buf_nblk_stride = (dim_t)bgmmc.wei_n_blk
+            * rnd_up(bgmmc.K_blk, bgmmc.wei_k_blk) * bgmmc.tr_b_dt_sz;
+    const dim_t copy_bytes = (dim_t)bgmmc.wei_n_blk
+            * rnd_up(k_iters, bgmmc.wei_k_blk) * bgmmc.tr_b_dt_sz;
+    for (dim_t nbl = 0; nbl < n_sub_blocks; ++nbl) {
+        const char *src = brgmm_ctx.get_data_B_kn_ptr(
+                B_data_batch_ptr, k, n + nbl * bgmmc.wei_n_blk);
+        std::memcpy(tr_src + nbl * buf_nblk_stride, src, copy_bytes);
+    }
+}
+
+template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
         const brg_matmul_exec_ctx_t &brgmm_ctx, const char *B_data_batch_ptr,
         int ithr, int b_idx, int n_blk_idx, int k_blk_idx) const {
@@ -1570,6 +1595,14 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
                 && isa == avx512_core_fp16) {
             cvt_float16_to_float((float *)ctx.tr_src, (float16_t *)ctx.src,
                     bgmmc.wei_n_blk * ctx.current_K_iters);
+        } else if (!bgmmc.is_xf16_fp8 && bgmmc.is_amx && bgmmc.blocked_B
+                && bgmmc.use_buffer_b && bgmmc.src_dt == bgmmc.wei_dt
+                && utils::one_of(
+                        bgmmc.src_dt, data_type::bf16, data_type::f16)) {
+            // Blocked bf16/f16 source: the buffer is filled by a plain block
+            // copy (the source is already VNNI-laid-out, no kernel needed).
+            copy_blocked_xf16_B_to_buffer(brgmm_ctx, B_data_batch_ptr,
+                    (char *)ctx.tr_src, n, k, ctx.current_N_blk, k_iters);
         } else {
             (*copy_B_kernel_)(&ctx);
         }

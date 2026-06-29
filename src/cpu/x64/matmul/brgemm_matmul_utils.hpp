@@ -23,6 +23,7 @@
 
 #include "common/verbose.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
+#include "cpu/platform.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
 
 namespace dnnl {
@@ -342,6 +343,29 @@ struct brgemm_matmul_conf_utils_t {
                 && check_b_layout_blocked_by_n(bgmmc.wei_tag);
     }
 
+    // Decide whether to compact a blocked bf16/f16 B source into the B buffer.
+    // The buffer makes the per-thread B panel cache-resident so it is reused
+    // across the M dimension instead of being re-streamed from DRAM for every
+    // AMX M sub-block. Two conditions must hold for it to pay off:
+    //   1) enough M sub-blocks to amortize the one-time compaction copy
+    //      (measured plain/blocked crossover is ~16 sub-blocks of 32 rows);
+    //   2) the per-thread B panel must spill L2 - otherwise it stays cache
+    //      resident without explicit packing and the copy is pure overhead.
+    // The split of work across threads is not known yet here; the per-thread B
+    // estimate assumes an N-parallel split (the common case), which keeps the
+    // gate conservative (it never enables buffering for a panel that would fit
+    // L2 under that split, avoiding regressions on small-N shapes).
+    inline bool use_blocked_B_buffer_heuristic() const {
+        const dim_t m_subblock = 32;
+        if (bgmmc.M < 16 * m_subblock) return false;
+        const dim_t nthr = nstl::max((dim_t)1, (dim_t)bgmmc.nthr);
+        // B is bf16/f16 here, so 2 bytes per element.
+        const size_t per_thread_b_size = (size_t)bgmmc.N * bgmmc.K * 2 / nthr;
+        const size_t l2_threshold
+                = 3 * platform::get_per_core_cache_size(2) / 4;
+        return per_thread_b_size > l2_threshold;
+    }
+
     inline bool use_buffer_b(bool use_heuristic = true) const {
         if (bgmmc.is_runtime_N) return true;
         if (bgmmc.is_xf16_fp8) return true;
@@ -355,13 +379,20 @@ struct brgemm_matmul_conf_utils_t {
         if (bgmmc.apply_scales_in_buffer_b) return true;
         if (bgmmc.is_gemv) return false;
 
-        if (bgmmc.is_amx)
+        if (bgmmc.is_amx) {
+            // Buffer a blocked bf16/f16 B source by compacting the per-thread
+            // B panel into cache so it is reused across the M dimension instead
+            // of being re-streamed from DRAM for every M sub-block.
+            if ((this->is_bf16() || this->is_f16()) && bgmmc.blocked_B
+                    && use_blocked_B_buffer_heuristic())
+                return true;
             // use b_buffer for AMX when:
             // - not bf32 && using non-blocked weights
             // - is bf32
             // - is tf32
             return IMPLICATION(!wei_down_convert_to_vnni(), !bgmmc.blocked_B)
                     || bgmmc.packed_sparse_weights;
+        }
 
         // Values based on measured performance difference
         // between plain and copy-to-blocked routine.

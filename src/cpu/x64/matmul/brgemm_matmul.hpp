@@ -108,6 +108,11 @@ private:
     void copy_b_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *B_data_batch_ptr, int ithr, int b_idx, int n_blk_idx,
             int k_blk_idx) const;
+    // Compact an already-VNNI-laid-out blocked bf16/f16 (xf16) B chunk into
+    // the B buffer with a plain block copy (no layout/type transform needed).
+    void copy_blocked_xf16_B_to_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
+            const char *B_data_batch_ptr, char *tr_src, dim_t n, dim_t k,
+            int current_N_blk, int k_iters) const;
     void maybe_reduce_partial_results_and_apply_postops(
             const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const;
     void maybe_reduce_A(const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr,

@@ -117,6 +117,26 @@ static bool data_format_supported(
             || (is_superset(isa, sse41) && blk_size == 4);
 }
 
+// Removes all unit (size-1) dims from a plain layout, producing an equivalent
+// lower-rank descriptor. Unit dims don't affect addressing, so a permuted
+// plain layout (e.g. `acbd` with H == 1) maps to a canonical nxc/ncx layout
+// once they are gone. Returns false (leaving `squeezed_md` untouched) for a
+// non-plain layout, when nothing is squeezed, or when fewer than 2 dims
+// remain. Mirrors the pattern in brgemm_matmul_reorders.cpp.
+static bool squeeze_unit_dims(
+        const memory_desc_wrapper &mdw, memory_desc_t &squeezed_md) {
+    if (!mdw.is_plain()) return false;
+    const auto &dims = mdw.dims();
+    const int ndims = mdw.ndims();
+    dims_t squeezed_dims {};
+    int ndims_out = 0;
+    for (int i = 0; i < ndims; ++i)
+        if (dims[i] != 1) squeezed_dims[ndims_out++] = dims[i];
+    if (ndims_out < 2 || ndims_out >= ndims) return false;
+    return memory_desc_reshape(squeezed_md, *mdw.md_, ndims_out, squeezed_dims)
+            == status::success;
+}
+
 status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     using sm = primitive_attr_t::skip_mask_t;
 
@@ -270,26 +290,6 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     init_scratchpad();
 
     return status::success;
-}
-
-// Removes all unit (size-1) dims from a plain layout, producing an equivalent
-// lower-rank descriptor. Unit dims don't affect addressing, so a permuted
-// plain layout (e.g. `acbd` with H == 1) maps to a canonical nxc/ncx layout
-// once they are gone. Returns false (leaving `squeezed_md` untouched) for a
-// non-plain layout, when nothing is squeezed, or when fewer than 2 dims
-// remain. Mirrors the pattern in brgemm_matmul_reorders.cpp.
-static bool squeeze_unit_dims(
-        const memory_desc_wrapper &mdw, memory_desc_t &squeezed_md) {
-    if (!mdw.is_plain()) return false;
-    const auto &dims = mdw.dims();
-    const int ndims = mdw.ndims();
-    dims_t squeezed_dims {};
-    int ndims_out = 0;
-    for (int i = 0; i < ndims; ++i)
-        if (dims[i] != 1) squeezed_dims[ndims_out++] = dims[i];
-    if (ndims_out < 2 || ndims_out >= ndims) return false;
-    return memory_desc_reshape(squeezed_md, *mdw.md_, ndims_out, squeezed_dims)
-            == status::success;
 }
 
 op_t jit_uni_binary_t::pd_t::get_op_type(const memory_desc_wrapper &src0_d) {

@@ -12,7 +12,15 @@
 * Improved `f16` and `u8`/`s8` matmul performance with `u8`/`s8` and `u4`/`s4` weights in non-transposed layout.
 
 ## AArch64 Processors
-TBD
+* Improved `u8/s8` matmuls with `u8/s8/f16/s32` outputs
+* Improved `u8/s8` convolutions with `bf16/f32` outputs
+* Improved `u8/s8` lnorm performance
+* Improved performance of convolution training on platforms with 128-bit SVE
+* Improved performance of pooling on platforms with 128-bit SVE
+* Improved performance of `bf16` inner-product
+* Improved multi-threaded bnorm performance
+* Improved binary operator, and post-op performance
+* Improved performance of `gelu_erf` activations
 
 ## RISC-V Processors
 * Improved `f32` convolution, matmul, inner product, binary, eltwise, pooling, batch normalization, and group normalization primitive performance on processors with `V` extension support.
@@ -46,6 +54,11 @@ TBD
 * Introduced `ONEDNN_ZE_INCLUDE_DIR` and `ONEDNN_OCL_INCLUDE_DIR` build knobs to use Level Zero or OpenCL headers from a user-defined location instead of the vendored headers.
 * **[experimental]** Introduced support for [persistent cache] with Level Zero runtime on GPU. Level Zero support is experimental.
 
+## AArch64 Processors
+* Fixed a correctness issue with leaky ReLU with alpha > 1
+* Fixed an issue where convolutions could be accumulated in a lower precision than intended
+* Reduced baseline stack-space usage across all operators
+
 [Gated MLP subgraph]: https://uxlfoundation.github.io/oneDNN/v3.13/dev_guide_graph_gated_mlp.html
 [persistent cache]: https://uxlfoundation.github.io/oneDNN/v3.13/dev_guide_persistent_cache.html
 
@@ -64,6 +77,9 @@ TBD
 
 [BLAS-like API]: https://uxlfoundation.github.io/oneDNN/v3.13/group_dnnl_api_blas.html
 [matmul primitive]: https://uxlfoundation.github.io/oneDNN/v3.13/dev_guide_matmul.html
+
+# Breaking Changes
+* The minimum version of Arm® Compute Library is now v53.1.0
 
 # Thanks to our Contributors
 This release contains contributions from the [project core team] as well as Alexandre de Limas Santana @alexandrelimassantana, Andrei Hutu @Anndrey24, Anna Sztukowska @asztukow, @bhanuprasad14, Fadi Arafeh @fadara01, George Nash @georgen117, Georgii Zagoruiko @AstonMartin-one-77, Henry Gardiner @henry-gar, Kamil Wieloch @kwieloch-intel, Keanu Czirjak @keanucz, Michał Patronik @mikita12, Qize Li @Ga1axy0, Rohan @Rohanjames1997, velonica0 @velonica0 and Xiuchuan Zhai @azhai219.

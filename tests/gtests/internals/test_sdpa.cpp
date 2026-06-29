@@ -38,7 +38,7 @@
 //     (stages 7/8 skip final dK assert in compare_bwd; use stage 9 for full checks)
 // 9 = all outputs (full run)
 #ifndef DEBUG_STAGE_TEST
-#define DEBUG_STAGE_TEST 7
+#define DEBUG_STAGE_TEST 0
 #endif
 
 using mdt = memory::data_type;
@@ -3812,6 +3812,30 @@ INSTANTIATE_TEST_SUITE_P(bwd_f16, sdpa_bwd_test_datatypes,
                 testing::Values(no_dropout) // dropout
                 ),
         &print_to_string2);
+
+        // backward pass: D sweep at fixed seq/head settings, with transpose-K on/off
+        INSTANTIATE_TEST_SUITE_P(bwd_f16_seq64, sdpa_bwd_test_datatypes,
+            testing::Combine(testing::Values(1), // mb
+                testing::Values(num_heads_t {4, 2}, num_heads_t {8, 2},
+                    num_heads_t {16, 4}), // heads (GQA: q_heads > kv_heads)
+                testing::Values(seq_len_size_t {32, 32}, seq_len_size_t {64, 64},
+                    seq_len_size_t {128, 128}, seq_len_size_t {256, 256}), // seq_len
+                testing::Values(head_group_size_t {32, 32, 32},
+                    head_group_size_t {64, 64, 64},
+                    head_group_size_t {128, 128, 128}), // D (head_size)
+                testing::Values(tensor_type_t("Q", mdt::f16)), // dt
+                testing::Values(tensor_type_t("K", mdt::f16)), // kdt
+                testing::Values(tensor_type_t("V", mdt::f16)), // vdt
+                testing::Values(quantize_type::no_quantization), // qtype
+                testing::Values(dnnl::memory::format_tag::abcd,
+                    dnnl::memory::format_tag::abdc), // key_format_tag
+                testing::Values(mask_config_t {mask_type::no_mask}), // mask_type
+                testing::Values(default_scale_type), // scale_type
+                testing::Values(accumulation_t {accumulation_mode::f32,
+                    accumulation_mode::f32}), // accumulation_mode
+                testing::Values(no_dropout) // dropout
+                ),
+            &print_to_string2);
 
 // backward pass: bf16
 INSTANTIATE_TEST_SUITE_P(bwd_bf16, sdpa_bwd_test_datatypes,

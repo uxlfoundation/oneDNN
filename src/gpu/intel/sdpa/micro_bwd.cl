@@ -589,7 +589,7 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
 //   7 = accumulated dK_slm after q-loop (non-TRANSPOSE_K path)
 //   8 = dK output tile after tile_store_dK (non-TRANSPOSE_K path)
 #ifndef DEBUG_STAGE
-#define DEBUG_STAGE 7
+#define DEBUG_STAGE 0
 #endif
 
 __attribute__((intel_reqd_sub_group_size(SUBGROUP_SIZE))) kernel void

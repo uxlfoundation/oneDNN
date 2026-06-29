@@ -466,6 +466,19 @@ void mem_advice_init(brgemm_matmul_conf_t &bgmmc);
 
 bool is_batch_layout_trivial(const memory_desc_wrapper &mdw, const dim_t batch);
 
+/**
+ * Returns the total block size along the K dimension, as the product of
+ * the fixed outer block size and the VNNI granularity.
+ *
+ * Example: For format tag BA16a16b4a, the block size is
+ * 16 (outer) * 4 (VNNI granularity) = 64.
+ *
+ * @param wei_dt Weights data type.
+ *
+ * @return The total K dimension block size.
+ */
+int get_wei_k_blk(data_type_t wei_dt);
+
 } // namespace matmul
 } // namespace x64
 } // namespace cpu

@@ -85,6 +85,16 @@ int get_n_block_from_tag(format_tag_t matrix_b_tag) {
     }
 }
 
+int get_wei_k_blk(data_type_t wei_dt) {
+    // Fixed outer block size.
+    const int k_outer_block = 16;
+
+    // VNNI granularity determines the inner block size along K.
+    const int k_inner_block = data_type_vnni_granularity(wei_dt);
+
+    return k_outer_block * k_inner_block;
+}
+
 void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
 
     dim_t parallel_work_amount = bgmmc.batch * bgmmc.M_chunks * bgmmc.N_chunks;
@@ -247,9 +257,10 @@ status_t check_isa_with_datatype(
             && IMPLICATION(bm_conf_utils.is_f32_with_int_wei(),
                     one_of(isa, avx512_core, avx2))
             && IMPLICATION(bm_conf_utils.is_bf16_fp8(),
-                    one_of(isa, avx512_core_amx, avx512_core_amx_fp16, avx10_2))
+                    one_of(isa, avx512_core_amx, avx512_core_amx_fp16,
+                            avx10_2_512))
             && IMPLICATION(bm_conf_utils.is_f16_fp8(),
-                    one_of(isa, avx512_core_amx_fp16, avx10_2))
+                    one_of(isa, avx512_core_amx_fp16, avx10_2_512))
             && IMPLICATION(bm_conf_utils.is_f8(),
                     is_superset(isa, avx512_core_amx_fp16)
                             || is_superset(isa, avx10_2_512))
@@ -678,6 +689,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             case 16: return bgmmc.ndims == 3 ? aCB16b16c4b : BA16a16b4a;
             default: return format_tag::undef;
         }
+    }
 
     if (this->is_bf16() || this->is_bf16_with_int_wei()
             || ((this->is_f16() || this->is_f32_f16() || this->is_f32_bf16()
@@ -711,7 +723,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             default: return format_tag::undef;
         }
     return format_tag::undef;
-    }
+}
 
 brgemm_broadcast_t get_zp_type(const primitive_attr_t &attr, int arg) {
     return attr.zero_points_.has_default_values(arg)

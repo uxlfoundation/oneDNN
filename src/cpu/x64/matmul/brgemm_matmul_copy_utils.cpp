@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -5802,8 +5802,8 @@ private:
         mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
         mov(reg_N_blk, ptr[param1 + GET_OFF(current_N_blk)]);
 
-        auto compute_K_loop_body
-                = [&](const reg64_t &reg_K, int ncolumns, bool zeropad) {
+        auto compute_K_loop_body = [&](const reg64_t &reg_K, int ncolumns,
+                                           bool zeropad) {
             constexpr int k_step = k_blk_step;
             constexpr int k_unroll = 8;
             constexpr int k_unroll_rows = k_unroll * k_step;
@@ -5984,12 +5984,12 @@ status_t create_brgemm_matmul_copy_b(
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_brgemm_matmul_copy_b_f32_t<Ymm>(conf)));
         } else if (conf->is_xf16_fp8) {
-            assert((is_superset(conf->isa, avx10_2)
+            assert((is_superset(conf->isa, avx10_2_512)
                            || (conf->wei_dt == data_type::f16
                                            ? is_superset(conf->isa,
-                                                     avx10_1_512_amx_fp16)
-                                           : is_superset(conf->isa,
-                                                     avx512_core_amx)))
+                                                   avx10_1_512_amx_fp16)
+                                           : is_superset(
+                                                   conf->isa, avx512_core_amx)))
                     && "Unsupported isa for xf16_fp8");
             CHECK(safe_ptr_assign(copy_ker,
                     new jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t(conf)));

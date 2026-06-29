@@ -65,6 +65,7 @@ namespace {
 //   k_tail       - remaining K elements after the full blocks
 //   mblk_*_off   - byte offset to advance A/y pointers between M blocks
 //   kblk_*_off   - byte offset to advance A/x pointers between K blocks
+//   beta         - beta parameter
 struct brgemv_ir_conf_t {
     dim_t m, k, lda, incy;
     int max_bs;
@@ -74,6 +75,7 @@ struct brgemv_ir_conf_t {
     dim_t m_blocks, m_tail, k_blocks, k_tail;
     dim_t mblk_a_off, mblk_y_off;
     dim_t kblk_a_off, kblk_x_off;
+    float beta;
 };
 
 // Creates and initializes `brgemv_ir_conf_t`.
@@ -98,6 +100,8 @@ brgemv_ir_conf_t make_brgemv_ir_conf(const brgemm_desc_t &brg) {
     cfg.dt_y = brg.dt_c;
 
     cfg.dt_acc = data_type::f32;
+
+    cfg.beta = brg.beta;
 
     cfg.m_blocks = cfg.m / cfg.m_block;
     cfg.m_tail = cfg.m % cfg.m_block;
@@ -274,7 +278,11 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     std::vector<int> acc(m_block);
     for (int r = 0; r < m_block; r++) {
         acc[r] = ir.new_vec(cfg.dt_acc);
-        ir.vzero(acc[r]);
+        if (cfg.beta == 0.0f)
+            ir.vzero(acc[r]);
+        else
+            ir.vload_masked(acc[r], regs.advancing.y_ptr,
+                    cfg.dt_sz_y * (dim_t)r * cfg.incy, -1, 1);
     }
 
     // Batch reduction over bs dimension
@@ -437,7 +445,7 @@ bool brgemv_ir_supported(const brgemm_desc_t &brg) {
 
     if (brg.are_post_ops_applicable()) return false;
     if (brg.alpha != 1.0f) return false;
-    if (brg.beta != 0.0f) return false;
+    if (brg.beta != 0.0f && brg.beta != 1.0f) return false;
 
     if (brg.is_runtime_lda || brg.is_runtime_ldb || brg.is_runtime_ldc
             || brg.is_runtime_ldd)

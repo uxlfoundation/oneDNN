@@ -2101,7 +2101,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_A_data(
     const auto rd_block = zmm_width_in_bytes_ / typesize;
     const auto rdb = brg.reduce_dim / rd_block;
     const auto rd_tail = brg.reduce_dim % rd_block;
-    reg64_savable_guard_t reg_fp8_buf_guard({&reg64_fp8_aux, &reg_buf_aux_A});
+//    reg64_savable_guard_t reg_fp8_buf_guard({&reg64_fp8_aux, &reg_buf_aux_A});
     reg_buf_aux_A.restore();
 //    reg_buf_A.restoreTo(reg_buf_aux_A);
 
@@ -2114,9 +2114,10 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_A_data(
     const auto vmm_masked = rd_tail ? vmm | fp8_col_mask | T_z : vmm;
 
     for (int bd = bd_b; bd < bd_e; bd++) {
-        const auto buf_offset = buf_A_offset(typesize, bd, 0);
+//        const auto buf_offset = buf_A_offset(typesize, bd, 0);
         for (int rd = 0; rd < rdb; rd++) {
             const auto offset = A_offset(bd, rd);
+            const auto buf_offset = buf_A_offset(typesize, bd, rd);
             if (brg.dt_a == data_type::f8_e4m3)
                 f8_e4m3_cvt_->vcvt_f8_to_f16(
                         vmm_masked, ptr[reg_base + offset]);
@@ -2126,9 +2127,9 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_A_data(
             else
                 assert(!"unsupported data type");
 
-            vmovups(ptr[reg_buf_aux_A + rd * zmm_width_in_bytes_], vmm);
+            vmovups(ptr[reg_buf_aux_A + buf_offset], vmm);
         }
-        add(reg_buf_aux_A, buf_offset); 
+//        add(reg_buf_aux_A, buf_offset); 
     }
 }
 
@@ -2711,7 +2712,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
     if (max_prefetch_offset > INT_MAX) reg_aux_C.save();
 
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.save();
-
+/*
     reg_buf_aux_A.restore();
     for (dim_t bd = bd_b; bd < bd_e; bd++) {
         const auto offset = A_offset(bd, 0);
@@ -2722,7 +2723,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         f8_e4m3_cvt_->vcvt_f8_to_f16(vmm, xmm_tmp);
         vmovdqu16(ptr[reg_buf_aux_A + buf_offset], vmm);
     }
-
+*/
     for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step) {
         if (brg.n_bcast_1_load) {
             for (dim_t bd = bd_b; bd < bd_e && !is_emdbd; bd++)
@@ -2803,7 +2804,7 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
             gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
                     is_ld_tail, last_bdb);
         } else {
-            //maybe_pre_process_A_data(reg_aux_A, bd_b, bd_e, brg.rd_block);
+            maybe_pre_process_A_data(reg_aux_A, bd_b, bd_e, brg.rd_block);
             if (brg.rdb > 0) {
                 Label rdb_loop_label;
                 mov(reg_rdb_loop, brg.rdb);

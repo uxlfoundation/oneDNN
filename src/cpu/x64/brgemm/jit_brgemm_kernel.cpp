@@ -3166,7 +3166,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
     } else
         rd_loop = brg.rd_block;
 
-    if (brg.req_s8s8_compensation) {
+    if (brg.req_src_s8_shift) {
         reg_bdb_loop.save();
         mov(reg_s8_input_shift, 128);
         uni_vpbroadcastb(vmm_inp_shift(), reg_s8_input_shift.cvt8());
@@ -3217,7 +3217,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             }
         }
 
-        if (brg.req_s8s8_compensation)
+        if (brg.req_src_s8_shift)
             uni_vpaddb(vmm_bcast, vmm_bcast, vmm_inp_shift());
     };
 

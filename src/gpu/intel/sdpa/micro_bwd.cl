@@ -587,6 +587,7 @@ inline void tile_store_dK(dk_acc_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
 //   4 = P = softmax output (default)
 //   5 = dS_bwd = P * (dP - Di) * scale  [softmax backward, feeds dQ and dK]
 //   7 = accumulated dK_slm after q-loop (non-TRANSPOSE_K path)
+//   8 = dK output tile after tile_store_dK (non-TRANSPOSE_K path)
 #ifndef DEBUG_STAGE
 #define DEBUG_STAGE 7
 #endif
@@ -928,7 +929,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #if WITH_DS && DEBUG_STAGE == 1
         // Stage 1: raw K^T*Q, before scale
-        {
+        if (sg_ij < sg_per_wg_BcBr) {
             s_tile_type_reblock S_dbg;
             tile_copy_reblock(S_tile, &S_dbg);
             tile_store(S_dbg, dS, k_chunk, q_nchunk, k,
@@ -942,7 +943,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #if WITH_DS && DEBUG_STAGE == 2
         // Stage 2: S * scale, before logsumexp subtraction
-        {
+        if (sg_ij < sg_per_wg_BcBr) {
             s_tile_type_reblock S_dbg;
             tile_copy_reblock(S_tile, &S_dbg);
             tile_store(S_dbg, dS, k_chunk, q_nchunk, k,
@@ -954,7 +955,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 
 #if WITH_DS && DEBUG_STAGE == 3
         // Stage 3: S*scale - logsumexp (pre-exp logits)
-        {
+        if (sg_ij < sg_per_wg_BcBr) {
             s_tile_type_reblock S_dbg;
             tile_copy_reblock(S_tile, &S_dbg);
             tile_store(S_dbg, dS, k_chunk, q_nchunk, k,
@@ -1087,15 +1088,19 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             tile_copy_reblock(dP_tile, &P_tile_reblock);
 #if WITH_DS && DEBUG_STAGE == 4
             // Store forward P = softmax(scale*QK^T) — saved before dP scaling.
-            tile_store(P_tile_for_ds, dS, k_chunk, q_nchunk, k,
-                    k0 + sg_i0_kq, q0 + sg_j0_kq);
+            if (sg_ij < sg_per_wg_BcBr) {
+                tile_store(P_tile_for_ds, dS, k_chunk, q_nchunk, k,
+                        k0 + sg_i0_kq, q0 + sg_j0_kq);
+            }
 #endif
 #if WITH_DS && DEBUG_STAGE == 5
             // Stage 5: dS_bwd = P * (dP - Di) * scale — feeds both dQ and dK.
             // At this point dP_tile has been through binary_mul_scale so
             // P_tile_reblock contains exactly dS_bwd.
-            tile_store(P_tile_reblock, dS, k_chunk, q_nchunk, k,
-                    k0 + sg_i0_kq, q0 + sg_j0_kq);
+            if (sg_ij < sg_per_wg_BcBr) {
+                tile_store(P_tile_reblock, dS, k_chunk, q_nchunk, k,
+                        k0 + sg_i0_kq, q0 + sg_j0_kq);
+            }
 #endif
 
             intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
@@ -1242,6 +1247,18 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
         tile_store_dK(&dK_tile_slm, dK + wg_i0, wg_k_chunk, d, lddk, sg_i0_dk,
                 sg_j0_dk);
+#if WITH_DS && DEBUG_STAGE == 8
+        // Stage 8: capture the same tile that is written to dK output.
+        // Store into dS as packed [k_chunk, d] with ld=d for test-side compare.
+        {
+            a_tile_type dK_out_f32;
+            a_tile_type_dst dK_out_debug;
+            tile_copy(dK_tile_slm, dK_out_f32);
+            tile_copy_reblock(dK_out_f32, &dK_out_debug);
+            tile_store(dK_out_debug, (global DST_TILE_DATA_T *)dS,
+                    wg_k_chunk, d, d, wg_i0 + sg_i0_dk, sg_j0_dk);
+        }
+#endif
     }
 #endif
     // /update dK

@@ -34,8 +34,8 @@
 // 4 = P = softmax output (forward)         — compared via dS buffer in prim_sdpa_quant_bwd
 // 5 = dS_bwd = P*(dP-Di)*scale             — compared via dS buffer in prim_sdpa_quant_bwd
 // 7 = compare accumulated dK_slm output    — kernel DEBUG_STAGE=7 puts post-qloop dK in dS
-//     (stage 7 skips final dK assert in compare_bwd; use stage 9 for full checks)
-// 8 = compare final dQ only (isolated)
+// 8 = compare dK output tile dump          — kernel DEBUG_STAGE=8 writes post-store dK tile into dS
+//     (stages 7/8 skip final dK assert in compare_bwd; use stage 9 for full checks)
 // 9 = all outputs (full run)
 #ifndef DEBUG_STAGE_TEST
 #define DEBUG_STAGE_TEST 7
@@ -1939,13 +1939,18 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                     {DNNL_ARG_DST, dK_full_mem}});
     strm.wait();
 
-#if DEBUG_STAGE_TEST == 7
-    // Compare kernel debug dK in t.m_dS vs reference pre-reduction dK_full.
-    // Stage 7: t.m_dS holds accumulated dK after q-loop (non-TRANSPOSE_K).
+#if DEBUG_STAGE_TEST == 7 || DEBUG_STAGE_TEST == 8
+    // Compare kernel debug dK in t.m_dS against an aligned reference domain.
+    // Stage 7: reference is pre-reduction dK_full (matmul path).
+    // Stage 8: reference is kernel final dK output (post-store path).
+    // Stage 7/8: t.m_dS holds debug dK after q-loop/store (non-TRANSPOSE_K).
     // Indexing in t.m_dS (non-TRANSPOSE_K):
     //   t.m_dS[q_h * (seq_q*seq_kv) + kv_pos * d + d_pos]
     if (compare_with_ds) {
-        print_mem(t.m_dS, "kernel Stage 7 dK_slm (accumulated)");
+        const char *ds_stage_name = (DEBUG_STAGE_TEST == 7)
+            ? "kernel Stage 7 dK_slm (accumulated)"
+            : "kernel Stage 8 dK output tile (post-store)";
+        print_mem(t.m_dS, ds_stage_name);
         const int ks = head_q_group_size;
         const int gs = (int)head_group_batches;
         const int seq_kv_v = (int)p.seq_len.kv;
@@ -1955,8 +1960,11 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                              : (p.dt.dt == mdt::bf16)  ? 0.01f
                              : 0.002f;
 
-        auto dk_dims = dK_full_mem.get_desc().get_dims();
-        auto dk_strides = dK_full_mem.get_desc().get_strides();
+        const memory &dk_ref_mem = (DEBUG_STAGE_TEST == 8)
+            ? t.m_diff_key_quantized
+            : dK_full_mem;
+        auto dk_dims = dk_ref_mem.get_desc().get_dims();
+        auto dk_strides = dk_ref_mem.get_desc().get_strides();
         const bool dk_rank5 = (dk_dims.size() >= 5);
         const int dk_a = dk_rank5 ? 3 : 2;
         const int dk_b = dk_rank5 ? 4 : 3;
@@ -1976,7 +1984,7 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
             dk_layout_dk = !dk_layout_kd;
         }
         void *ds_raw = const_cast<memory &>(t.m_dS).map_data();
-        void *dk_raw = dK_full_mem.map_data();
+        void *dk_raw = const_cast<memory &>(dk_ref_mem).map_data();
 
         auto get_val = [&](void *ptr, int idx) -> float {
             if (p.dt.dt == mdt::f16) return (float)((float16_t *)ptr)[idx];
@@ -1991,11 +1999,16 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
         int total = 0, mismatch = 0;
         float max_diff = 0.f;
-        const char *check_name = "accumulated dK_slm output";
-        printf("\n[CHECK] %s (kernel:dS per-Qhead vs ref:dK_full pre-reduction)"
-               "  thresh=%.4f\n", check_name, s_thresh);
-        printf("  dK_full shape:");
-        for (auto dim : dK_full_mem.get_desc().get_dims()) printf(" %lld", (long long)dim);
+        const char *check_name = (DEBUG_STAGE_TEST == 7)
+            ? "accumulated dK_slm output"
+            : "dK output tile dump";
+        printf("\n[CHECK] %s  thresh=%.4f\n", check_name, s_thresh);
+        if (DEBUG_STAGE_TEST == 8)
+            printf("  compare domain: kernel dS dump vs kernel final dK\n");
+        else
+            printf("  compare domain: kernel dS dump vs reference dK_full pre-reduction\n");
+        printf("  reference shape:");
+        for (auto dim : dk_ref_mem.get_desc().get_dims()) printf(" %lld", (long long)dim);
         printf("  dS shape:");
         for (auto dim : t.m_dS.get_desc().get_dims()) printf(" %lld", (long long)dim);
         printf("\n");
@@ -2025,7 +2038,7 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                 // tile into dS with ld=d (not ld=seq_kv).
                 int ds_idx = (b * gs * ks + q_h) * (seq_q_v * seq_kv_v)
                         + kv * d_v + dp;
-                // reference dK_full may be rank-5 [mb, groups, q_group, *, *]
+                // reference dK may be rank-5 [mb, groups, q_group, *, *]
                 // or rank-4 [mb, heads, *, *].
                 int dk_idx = 0;
                 if (dk_rank5) {
@@ -2044,8 +2057,10 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                             + kv * (int)dk_strides[dk_rank5 ? 4 : 3];
                 }
                 float kval = get_val(ds_raw, ds_idx);
-                // Match reference precision to kernel debug dump precision.
-                float rval = quantize_to_debug_dt(get_val(dk_raw, dk_idx));
+                // Stage 7 compares against f32 matmul reference (quantize to debug dtype).
+                // Stage 8 compares against kernel final dK output (already debug dtype).
+                float rval = get_val(dk_raw, dk_idx);
+                if (DEBUG_STAGE_TEST == 7) rval = quantize_to_debug_dt(rval);
                 float diff = fabsf(kval - rval);
                 if (diff > max_diff) {
                     printf("new max[b=%d,g=%d,h=%d,kv=%d,d=%d]: "
@@ -2059,23 +2074,24 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
             }
         }
         const_cast<memory &>(t.m_dS).unmap_data(ds_raw);
-        dK_full_mem.unmap_data(dk_raw);
+        const_cast<memory &>(dk_ref_mem).unmap_data(dk_raw);
         printf("[CHECK] %s: total=%d mismatches=%d max_diff=%f\n",
             check_name, total, mismatch, max_diff);
         fflush(stdout);
-        printf("[CHECK] entering stage7 secondary kernel-vs-kernel check\n");
+        printf("[CHECK] entering stage%d secondary kernel-vs-kernel check\n",
+            DEBUG_STAGE_TEST);
         fflush(stdout);
         const int allowed_mismatch = (int)(total * 0.002f);
         if (mismatch > allowed_mismatch) {
-            printf("[CHECK][FAIL][STAGE 7] %s mismatches=%d allowed=%d\n",
-                check_name, mismatch, allowed_mismatch);
+            printf("[CHECK][FAIL][STAGE %d] %s mismatches=%d allowed=%d\n",
+                DEBUG_STAGE_TEST, check_name, mismatch, allowed_mismatch);
         }
         if (max_diff > 0.1f) {
-            printf("[CHECK][FAIL][STAGE 7] %s max_diff=%f allowed=%f\n",
-                check_name, max_diff, 0.1f);
+            printf("[CHECK][FAIL][STAGE %d] %s max_diff=%f allowed=%f\n",
+                DEBUG_STAGE_TEST, check_name, max_diff, 0.1f);
         }
 
-        // Additional isolation check for stage 7:
+        // Additional isolation check for stage 7/8:
         // compare kernel debug dS dump directly against kernel final dK output.
         auto kf_dims = t.m_diff_key_quantized.get_desc().get_dims();
         auto kf_strides = t.m_diff_key_quantized.get_desc().get_strides();
@@ -2108,8 +2124,8 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
             float max_diff_k = 0.f;
                 int printed_mismatch_k = 0;
                 const int max_print_mismatch_k = 32;
-            printf("\n[CHECK] stage7 kernel:dS_dump vs kernel:final_dK  thresh=%.4f\n",
-                    s_thresh);
+                printf("\n[CHECK] stage%d kernel:dS_dump vs kernel:final_dK  thresh=%.4f\n",
+                    DEBUG_STAGE_TEST, s_thresh);
             printf("  final dK shape:");
             for (auto dim : kf_dims) printf(" %lld", (long long)dim);
             printf("\n");
@@ -2118,21 +2134,25 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                     d_cmp_k);
                 fflush(stdout);
 
-            for (int b = 0; b < (int)p.mb; b++)
-            for (int g = 0; g < gs; g++)
-            for (int h = 0; h < ks; h++) {
-                const int q_h = g * ks + h;
+            if (is_gqa) {
+                // dS dump is per q-head group; final dK is accumulated across those heads.
+                for (int b = 0; b < (int)p.mb; b++)
+                for (int g = 0; g < gs; g++)
                 for (int kv = 0; kv < kv_cmp_k; kv++)
                 for (int dp = 0; dp < d_cmp_k; dp++) {
-                    int ds_idx = (b * gs * ks + q_h) * (seq_q_v * seq_kv_v)
-                            + kv * d_v + dp;
+                    float dsv_sum = 0.f;
+                    for (int h = 0; h < ks; h++) {
+                        const int q_h = g * ks + h;
+                        int ds_idx = (b * gs * ks + q_h) * (seq_q_v * seq_kv_v)
+                                + kv * d_v + dp;
+                        dsv_sum += get_val(ds2_raw, ds_idx);
+                    }
 
                     int kf_idx = 0;
                     if (kf_rank5) {
-                        kf_idx = b * (int)kf_strides[0] + g * (int)kf_strides[1]
-                                + h * (int)kf_strides[2];
+                        kf_idx = b * (int)kf_strides[0] + g * (int)kf_strides[1];
                     } else {
-                        const int out_h = g * ks + h;
+                        const int out_h = g;
                         if (out_h >= (int)kf_dims[1]) continue;
                         kf_idx = b * (int)kf_strides[0]
                                 + out_h * (int)kf_strides[1];
@@ -2145,33 +2165,82 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
                                 + kv * (int)kf_strides[kf_rank5 ? 4 : 3];
                     }
 
-                    float dsv = get_val(ds2_raw, ds_idx);
                     float kfv = get_val(kf_raw, kf_idx);
-                    float diffk = fabsf(dsv - kfv);
+                    float diffk = fabsf(dsv_sum - kfv);
                     if (diffk > max_diff_k) {
-                        printf("new max_k[b=%d,g=%d,h=%d,kv=%d,d=%d]: "
-                               "dS=%f final_dK=%f diff=%f\n",
-                                b, g, h, kv, dp, dsv, kfv, diffk);
+                        printf("new max_k[b=%d,g=%d,h=sum,kv=%d,d=%d]: "
+                               "dS_sum=%f final_dK=%f diff=%f\n",
+                                b, g, kv, dp, dsv_sum, kfv, diffk);
                         max_diff_k = diffk;
                     }
                     float thrk = (fabsf(kfv) > 1.f) ? fabsf(kfv) * s_thresh : s_thresh;
                     if (diffk > thrk) {
                         mismatch_k++;
                         if (printed_mismatch_k < max_print_mismatch_k) {
-                            printf("Mismatch_k at (b=%d,g=%d,h=%d,kv=%d,d=%d): "
-                                   "dS=%f final_dK=%f diff=%f thr=%f\n",
-                                    b, g, h, kv, dp, dsv, kfv, diffk, thrk);
+                            printf("Mismatch_k at (b=%d,g=%d,h=sum,kv=%d,d=%d): "
+                                   "dS_sum=%f final_dK=%f diff=%f thr=%f\n",
+                                    b, g, kv, dp, dsv_sum, kfv, diffk, thrk);
                             printed_mismatch_k++;
                         }
                     }
                     total_k++;
                 }
+            } else {
+                for (int b = 0; b < (int)p.mb; b++)
+                for (int g = 0; g < gs; g++)
+                for (int h = 0; h < ks; h++) {
+                    const int q_h = g * ks + h;
+                    for (int kv = 0; kv < kv_cmp_k; kv++)
+                    for (int dp = 0; dp < d_cmp_k; dp++) {
+                        int ds_idx = (b * gs * ks + q_h) * (seq_q_v * seq_kv_v)
+                                + kv * d_v + dp;
+
+                        int kf_idx = 0;
+                        if (kf_rank5) {
+                            kf_idx = b * (int)kf_strides[0] + g * (int)kf_strides[1]
+                                    + h * (int)kf_strides[2];
+                        } else {
+                            const int out_h = g * ks + h;
+                            if (out_h >= (int)kf_dims[1]) continue;
+                            kf_idx = b * (int)kf_strides[0]
+                                    + out_h * (int)kf_strides[1];
+                        }
+                        if (kf_layout_kd) {
+                            kf_idx += kv * (int)kf_strides[kf_rank5 ? 3 : 2]
+                                    + dp * (int)kf_strides[kf_rank5 ? 4 : 3];
+                        } else {
+                            kf_idx += dp * (int)kf_strides[kf_rank5 ? 3 : 2]
+                                    + kv * (int)kf_strides[kf_rank5 ? 4 : 3];
+                        }
+
+                        float dsv = get_val(ds2_raw, ds_idx);
+                        float kfv = get_val(kf_raw, kf_idx);
+                        float diffk = fabsf(dsv - kfv);
+                        if (diffk > max_diff_k) {
+                            printf("new max_k[b=%d,g=%d,h=%d,kv=%d,d=%d]: "
+                                   "dS=%f final_dK=%f diff=%f\n",
+                                    b, g, h, kv, dp, dsv, kfv, diffk);
+                            max_diff_k = diffk;
+                        }
+                        float thrk = (fabsf(kfv) > 1.f) ? fabsf(kfv) * s_thresh : s_thresh;
+                        if (diffk > thrk) {
+                            mismatch_k++;
+                            if (printed_mismatch_k < max_print_mismatch_k) {
+                                printf("Mismatch_k at (b=%d,g=%d,h=%d,kv=%d,d=%d): "
+                                       "dS=%f final_dK=%f diff=%f thr=%f\n",
+                                        b, g, h, kv, dp, dsv, kfv, diffk, thrk);
+                                printed_mismatch_k++;
+                            }
+                        }
+                        total_k++;
+                    }
+                }
             }
 
             const_cast<memory &>(t.m_dS).unmap_data(ds2_raw);
             const_cast<memory &>(t.m_diff_key_quantized).unmap_data(kf_raw);
-                    printf("[CHECK][STAGE 7] kernel-vs-kernel: total=%d mismatches=%d max_diff=%f\n",
-                        total_k, mismatch_k, max_diff_k);
+            printf("[CHECK][STAGE %d] kernel-vs-kernel: total=%d mismatches=%d max_diff=%f\n",
+                    DEBUG_STAGE_TEST, total_k, mismatch_k, max_diff_k);
             fflush(stdout);
     }
 #endif
@@ -2869,10 +2938,10 @@ public:
 
         const bool run_O  = (DEBUG_STAGE_TEST == 9);
         const bool run_dV = (DEBUG_STAGE_TEST == 9);
-        // Stage 7 uses the dedicated dS-vs-dK_full debug comparator earlier
+        // Stages 7/8 use the dedicated dS-vs-dK_full debug comparator earlier
         // in prim_sdpa_quant_bwd. Keep final dK assert only for stage 9.
         const bool run_dK = (DEBUG_STAGE_TEST == 9);
-        const bool run_dQ = (DEBUG_STAGE_TEST == 8 || DEBUG_STAGE_TEST == 9);
+        const bool run_dQ = (DEBUG_STAGE_TEST == 9);
 
         if (run_O)
             run_check("O (forward output)  [ref:m_output vs kernel:m_output_quantized]",

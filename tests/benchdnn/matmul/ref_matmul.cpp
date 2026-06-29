@@ -324,24 +324,23 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
 // Reference implementation for grouped matmul
 // Computes per-group matmuls: for each group g, dst[g] = src[g] * wei[g]
 //
-// src and dst are in grouped format, stored as concatenated
-// 2D [total_M, K] / [total_M, N] reference buffers
+// src/dst is grouped f32 reference memory:
+//   buffer 0: f32 data [total_M, K] / [total_M, N]
+//   buffer 1: s32 cumulative offsets [group_count]
 // wei ref is always stored in acb layout [G, N, K], since init_ref_memory_args
 // creates the ref buffer with strides [N*K, 1, K]
-//
-// Note, that per-group ranges are read from the grouped memory
-// descriptor offsets
 void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
-    // Start of each group in reference buffers
     const int64_t group_count = prb->sparse_options.get_group_count();
-    const auto &M_dims = prb->sparse_options.get_group_sizes();
+    const dnn_mem_t &src_m = args.find(DNNL_ARG_SRC);
 
+    // Read cumulative offsets from the ref src memory
     std::vector<int64_t> group_offsets(group_count + 1);
     group_offsets[0] = 0;
     int64_t max_M_g = 0;
     for (int64_t g = 0; g < group_count; g++) {
-        group_offsets[g + 1] = group_offsets[g] + M_dims[g];
-        max_M_g = MAX2(max_M_g, M_dims[g]);
+        group_offsets[g + 1] = static_cast<int64_t>(src_m.get_elem(
+                g, sparse_options_t::grouped_data_t::grouped_offsets_idx));
+        max_M_g = MAX2(max_M_g, group_offsets[g + 1] - group_offsets[g]);
     }
 
     // Precompute common parameters for the different chunks computations
@@ -357,7 +356,7 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
     // Parallelize over groups and (mc, nc) chunks within each group
     benchdnn_parallel_nd(group_count, max_M_chunks, N_chunks,
             [&](int64_t g, int64_t mc, int64_t nc) {
-        const int64_t M_g = M_dims[g];
+        const int64_t M_g = group_offsets[g + 1] - group_offsets[g];
         if (M_g == 0) return;
         if (mc * params.dst_M_group >= M_g) return;
 

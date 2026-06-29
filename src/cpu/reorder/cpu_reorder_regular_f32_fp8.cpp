@@ -37,6 +37,8 @@ const impl_list_map_t &regular_f32_fp8_impl_list_map() {
 
             REG_SR(f32, any, f8_e5m2, any, fmt_order::any, spec::reference)
 
+            REG_GROUPED_SR(f32, f8_e5m2)
+
             nullptr,
         }},
         // f32 -> f8_e4m3
@@ -46,6 +48,8 @@ const impl_list_map_t &regular_f32_fp8_impl_list_map() {
             DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::jit_uni_reorder_t))
 
             REG_SR(f32, any, f8_e4m3, any, fmt_order::any, spec::reference)
+
+            REG_GROUPED_SR(f32, f8_e4m3)
 
             nullptr,
         }},

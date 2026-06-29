@@ -154,10 +154,10 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
         if (status == dnnl_success) {
             // Create CPU memory objects wrapping mapped pointers of source and
             // destination
-            r_src = std::make_shared<dnn_mem_t>(dnn_mem_t::create_from_host_ptr(
-                    src.md_, cpu_engine, (void *)src));
-            r_dst = std::make_shared<dnn_mem_t>(dnn_mem_t::create_from_host_ptr(
-                    dst.md_, cpu_engine, (void *)dst));
+            r_src = std::make_shared<dnn_mem_t>(
+                    dnn_mem_t::create_from_host_ptr(src.md_, cpu_engine, src));
+            r_dst = std::make_shared<dnn_mem_t>(
+                    dnn_mem_t::create_from_host_ptr(dst.md_, cpu_engine, dst));
         }
     }
 #endif
@@ -622,10 +622,17 @@ int dnn_mem_t::gpu_fill_random(size_t size, int buffer_index) const {
 }
 #endif
 
-dnn_mem_t dnn_mem_t::create_from_host_ptr(
-        const dnnl_memory_desc_t &md, const engine_t &engine, void *host_ptr) {
+dnn_mem_t dnn_mem_t::create_from_host_ptr(const dnnl_memory_desc_t &md,
+        const engine_t &engine, const dnn_mem_t &mem) {
+    const int nhandles = query_md_num_handles(md);
+    std::vector<void *> host_ptrs(nhandles);
+    for (int i = 0; i < nhandles; i++)
+        host_ptrs[i] = mem.get_mapped_pointer<void>(i);
     // Pre-allocated handle_info won't use prefill no matter what.
-    return dnn_mem_t(md, engine, /* prefill = */ false, {true, host_ptr});
+    handle_info_t hi;
+    hi.is_host_ptr = true;
+    hi.ptrs = std::move(host_ptrs);
+    return dnn_mem_t(md, engine, /* prefill = */ false, hi);
 }
 
 size_t dnn_mem_t::pad_memory_size(size_t sz, bool *was_padded) const {
@@ -746,7 +753,7 @@ int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
     if (handle_info.is_host_ptr) {
         // Ignore memory_kind with host pointers and force USM.
         const int nhandles = query_md_num_handles(md_);
-        std::vector<void *> handles(nhandles, handle_info.ptr);
+        std::vector<void *> handles = handle_info.get_handles(nhandles);
         DNN_SAFE(dnnl_sycl_interop_memory_create_v2(&m_, md_, engine_,
                          dnnl_sycl_interop_usm, (int)handles.size(),
                          handles.data()),
@@ -773,7 +780,7 @@ int dnn_mem_t::initialize_memory_create_sycl(const handle_info_t &handle_info) {
                                     ? dnnl_sycl_interop_usm
                                     : dnnl_sycl_interop_buffer);
             const int nhandles = query_md_num_handles(md_);
-            std::vector<void *> handles(nhandles, handle_info.ptr);
+            std::vector<void *> handles(nhandles, handle_info.ptrs[0]);
             DNN_SAFE(dnnl_sycl_interop_memory_create_v2(&m_padded_, md_padded,
                              engine_, mem_kind, (int)handles.size(),
                              handles.data()),
@@ -826,7 +833,7 @@ int dnn_mem_t::initialize_memory_create_opencl(
     if (handle_info.is_host_ptr) {
         // Ignore memory_kind with host pointers and force USM.
         const int nhandles = query_md_num_handles(md_);
-        std::vector<void *> handles(nhandles, handle_info.ptr);
+        std::vector<void *> handles = handle_info.get_handles(nhandles);
         DNN_SAFE(dnnl_ocl_interop_memory_create_v2(&m_, md_, engine_,
                          dnnl_ocl_interop_usm, (int)handles.size(),
                          handles.data()),
@@ -847,7 +854,7 @@ int dnn_mem_t::initialize_memory_create_opencl(
                                     ? dnnl_ocl_interop_usm
                                     : dnnl_ocl_interop_buffer);
             const int nhandles = query_md_num_handles(md_);
-            std::vector<void *> handles(nhandles, handle_info.ptr);
+            std::vector<void *> handles(nhandles, handle_info.ptrs[0]);
             DNN_SAFE(dnnl_ocl_interop_memory_create_v2(&m_padded_, md_padded,
                              engine_, mem_kind, (int)handles.size(),
                              handles.data()),
@@ -896,7 +903,7 @@ int dnn_mem_t::initialize_memory_create_ze(const handle_info_t &handle_info) {
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     if (handle_info.is_host_ptr) {
         const int nhandles = query_md_num_handles(md_);
-        std::vector<void *> handles(nhandles, handle_info.ptr);
+        std::vector<void *> handles = handle_info.get_handles(nhandles);
         DNN_SAFE(dnnl_ze_interop_memory_create(&m_, md_, engine_,
                          (int)handles.size(), handles.data()),
                 CRIT);
@@ -911,7 +918,7 @@ int dnn_mem_t::initialize_memory_create_ze(const handle_info_t &handle_info) {
     switch (memory_kind) {
         case memory_kind_ext_t::usm: {
             const int nhandles = query_md_num_handles(md_);
-            std::vector<void *> handles(nhandles, handle_info.ptr);
+            std::vector<void *> handles(nhandles, handle_info.ptrs[0]);
             DNN_SAFE(dnnl_ze_interop_memory_create(&m_padded_, md_padded,
                              engine_, (int)handles.size(), handles.data()),
                     CRIT);
@@ -997,7 +1004,7 @@ int dnn_mem_t::initialize_memory_create(const handle_info_t &handle_info) {
         SAFE(initialize_memory_create_ze(handle_info), CRIT);
     } else {
         is_data_owner_ = false;
-        std::vector<void *> handles(nhandles, handle_info.ptr);
+        std::vector<void *> handles = handle_info.get_handles(nhandles);
         DNN_SAFE(dnnl_memory_create_v2(&m_, md_, engine_, (int)handles.size(),
                          handles.data()),
                 CRIT);

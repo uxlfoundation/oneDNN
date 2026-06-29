@@ -45,6 +45,8 @@ const impl_list_map_t &regular_f32_f32_impl_list_map() {
 
             REG_SR(f32, any, f32, any, fmt_order::any, spec::reference)
 
+            REG_GROUPED_SR(f32, f32)
+
             nullptr,
         }},
         {{f32, f32, 3}, {

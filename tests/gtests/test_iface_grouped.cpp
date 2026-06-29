@@ -666,6 +666,64 @@ TEST(iface_grouped_test_t, TestBinaryPostOpDenseShapes) {
     }
 }
 
+HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestGroupedReorder) {
+    engine eng = get_test_engine();
+
+    SKIP_IF(eng.get_kind() == engine::kind::gpu
+                    || DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL,
+            "Test requires host-allocated memory.");
+
+    const int ngroups = 3;
+    const int total_M = 9;
+    const int K = 4;
+
+    auto src_md = memory::desc::grouped({total_M, K}, dt::f32, 0, ngroups);
+    auto dst_md = memory::desc::grouped({total_M, K}, dt::bf16, 0, ngroups);
+
+    reorder::primitive_desc r_pd(eng, src_md, eng, dst_md);
+    reorder r(r_pd);
+
+    const int total_elems = total_M * K;
+    std::vector<float> src_vals(total_elems);
+    for (int i = 0; i < total_elems; i++)
+        src_vals[i] = static_cast<float>(i) * 0.5f;
+    std::vector<int32_t> offsets = {2, 5, 9};
+
+    memory src_mem(src_md, eng, {src_vals.data(), offsets.data()});
+    memory dst_mem(dst_md, eng);
+
+    stream strm(eng);
+    r.execute(strm, src_mem, dst_mem);
+    strm.wait();
+
+    // Validate values
+    auto *dst_vals = dst_mem.map_data<bfloat16_t>(0);
+    for (int i = 0; i < total_elems; i++) {
+        float expected = static_cast<float>(bfloat16_t(src_vals[i]));
+        float actual = static_cast<float>(dst_vals[i]);
+        ASSERT_EQ(expected, actual);
+    }
+    dst_mem.unmap_data(dst_vals, 0);
+
+    // Validate offsets copied
+    auto *dst_off = dst_mem.map_data<int32_t>(1);
+    for (int i = 0; i < ngroups; i++)
+        ASSERT_EQ(offsets[i], dst_off[i]);
+    dst_mem.unmap_data(dst_off, 1);
+}
+
+TEST(iface_grouped_test_t, TestGroupedReorderMismatchedGroups) {
+    engine eng = get_test_engine();
+
+    const int K = 4;
+
+    auto src_md = memory::desc::grouped({9, K}, dt::f32, 0, 3);
+    auto dst_md = memory::desc::grouped({9, K}, dt::f32, 0, 2);
+
+    EXPECT_THROW(
+            reorder::primitive_desc(eng, src_md, eng, dst_md), dnnl::error);
+}
+
 } // namespace dnnl
 
 #endif // DNNL_EXPERIMENTAL_GROUPED_MEMORY

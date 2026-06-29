@@ -36,6 +36,8 @@ const impl_list_map_t &regular_f32_f16_impl_list_map() {
 
             REG_SR(f32, any, f16, any, fmt_order::any, spec::reference)
 
+            REG_GROUPED_SR(f32, f16)
+
             nullptr,
         }},
     });

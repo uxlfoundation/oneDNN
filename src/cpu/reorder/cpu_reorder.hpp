@@ -24,6 +24,10 @@
 #include "cpu/reorder/simple_reorder.hpp"
 #include "cpu/reorder/simple_sparse_reorder.hpp"
 
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+#include "cpu/reorder/simple_grouped_reorder.hpp"
+#endif
+
 #include "common/impl_list_item.hpp"
 #include "common/memory.hpp"
 #include "common/type_helpers.hpp"
@@ -139,6 +143,16 @@ extern const impl_list_map_t &comp_s8_s8_impl_list_map();
 #define CPU_REORDER_INSTANCE(...) \
     impl_list_item_t(impl_list_item_t::reorder_type_deduction_helper_t< \
             __VA_ARGS__::pd_t>()),
+
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+#define CPU_REORDER_INSTANCE_GROUPED(...) CPU_REORDER_INSTANCE(__VA_ARGS__)
+#else
+#define CPU_REORDER_INSTANCE_GROUPED(...)
+#endif
+
+#define REG_GROUPED_SR(idt, odt) \
+    CPU_REORDER_INSTANCE_GROUPED(simple_grouped_reorder_t<idt, \
+            impl::format_tag_t, any, odt, impl::format_tag_t, any>)
 
 } // namespace cpu
 } // namespace impl

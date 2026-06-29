@@ -340,9 +340,10 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
                     exp_f32, got_f32, i, dt, trh_, kind_);
 
             if (std::isnan(args.exp_f32) && is_integral_dt(dt)) {
-                // Relax output requirements for this case, since different
-                // backends may implement NaN fp32 -> int32 conversion in a
-                // different manner.
+                // There's no single spec to coomply with when it comes to the
+                // implementation of NaN fp32 to int conversion. CPU backend
+                // saturates the value to INT32_MAX, UINT8_MAX, INT8_MIN, while
+                // GPU converts it to 0.
                 ok = true;
                 break;
             }
@@ -444,11 +445,6 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             // may result in sporadic order of operations. This may cause a
             // difference around `x.5f` value, and can be rounded either way to
             // `x` or `x + 1` which can't be fixed by filling.
-            //
-            // Another class of `off-by-1` issues coming from optimized
-            // reference when transcendental operation present in the chain. In
-            // such cases, there's no way to test original output as both
-            // outputs would be rounded to integer number.
             const auto is_int8_round_good = [&]() -> bool {
                 // Check that original value is close to x.5f.
                 static constexpr float small_eps = 9e-6f;
@@ -465,15 +461,40 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
                 }
                 return false;
             };
+            // Another class of `off-by-1` issues coming from optimized
+            // reference when transcendental operation present in the chain. In
+            // such cases, there's no way to test original output as both
+            // outputs would be rounded to integer number.
             const auto is_int8_prim_ref_and_transcedental = [&]() -> bool {
                 if (!has_prim_ref_) return false;
                 if (fabsf(args.exp_f32 - got_val) != 1) return false;
                 // TODO: update with transcendental eltwise ops only.
                 return has_eltwise;
             };
+            // There's a class of rounding issues happening around conversion
+            // of NaN values into integer data type (see the first check with
+            // NaNs) with optimized reference involved since it's impossible to
+            // verify the original value against NaN.
+            const auto is_nan_to_int8_good = [&]() -> bool {
+                if (!has_prim_ref_) return false;
+                // CPU has prim_ref as well, but it's expected to return same
+                // values.
+                if (got_val != 0) return false;
+                int exp_sat_value = 0;
+                switch (args.dt) {
+                    case dnnl_s32: exp_sat_value = INT_MAX; break;
+                    case dnnl_s8: exp_sat_value = INT8_MIN; break;
+                    case dnnl_u8: exp_sat_value = UINT8_MAX; break;
+                    default: // Gated behind is_integral_dt(args.dt).
+                        assert(!"unexpected data type");
+                }
+                if (fabsf(args.exp_f32 - exp_sat_value) != 0) return false;
+                return true;
+            };
             ok = is_integral_dt(args.dt)
                     && (is_int8_round_good()
-                            || is_int8_prim_ref_and_transcedental());
+                            || is_int8_prim_ref_and_transcedental()
+                            || is_nan_to_int8_good());
             if (ok) break;
 
             // Nvidia backend with fpmath mode enabled returns not exact output

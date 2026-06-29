@@ -369,6 +369,7 @@ struct brgemm_desc_t {
     bool embd_bcst = false;
     bool with_bias = false;
     bool req_s8s8_compensation = false;
+    bool req_src_s8_shift = false;
     // `with_weights_scale_adjust` is controlled by the implementation and not
     // by kernel API.
     bool with_weights_scale_adjust = false;

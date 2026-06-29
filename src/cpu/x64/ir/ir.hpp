@@ -89,6 +89,8 @@ enum class op_kind_t {
     vload,
     // dst += s0 * s1 (fused multiply-add, e.g., vfmadd231ps)
     vfma,
+    // dst += s0 (vector add, e.g., vaddps)
+    vadd,
     // horizontal reduction of dst (uses s0 as workspace), result in element 0
     vhreduce,
 
@@ -224,6 +226,7 @@ struct ir_t {
     void vzero(int dst);
     void vload(int dst, int base, dim_t disp);
     void vfma(int dst, int a, int b);
+    void vadd(int dst, int src);
     void vhreduce(int dst, int workspace);
 
     // vec (masked)
@@ -237,6 +240,7 @@ struct ir_t {
     int loop_begin_imm(int counter, dim_t count);
     int loop_begin_reg(int counter, int init);
     void loop_end(int counter, int begin_idx);
+    void label(int label_id);
     void jmp(int label_id);
     void jz(int cond, int label_id);
 

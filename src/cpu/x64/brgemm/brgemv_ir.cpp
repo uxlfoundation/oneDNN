@@ -66,6 +66,10 @@ namespace {
 //   mblk_*_off   - byte offset to advance A/y pointers between M blocks
 //   kblk_*_off   - byte offset to advance A/x pointers between K blocks
 //   beta         - beta parameter
+//   with_bias    - whether a bias is added to the output
+//   treat_y_as_row - specifies how output layout is defined
+//   dt_sz_bias   - element size in bytes of the bias
+//   mblk_bias_off - byte offset to advance the bias pointer between M blocks
 struct brgemv_ir_conf_t {
     dim_t m, k, lda, incy;
     int max_bs;
@@ -76,6 +80,9 @@ struct brgemv_ir_conf_t {
     dim_t mblk_a_off, mblk_y_off;
     dim_t kblk_a_off, kblk_x_off;
     float beta;
+    bool with_bias, treat_y_as_row;
+    int dt_sz_bias;
+    dim_t mblk_bias_off;
 };
 
 // Creates and initializes `brgemv_ir_conf_t`.
@@ -112,6 +119,11 @@ brgemv_ir_conf_t make_brgemv_ir_conf(const brgemm_desc_t &brg) {
     cfg.kblk_a_off = cfg.dt_sz_a * cfg.k_block;
     cfg.kblk_x_off = cfg.dt_sz_x * cfg.k_block;
 
+    cfg.with_bias = brg.with_bias;
+    cfg.treat_y_as_row = brg.treat_y_as_row;
+    cfg.dt_sz_bias = brg.typesize_bias;
+    cfg.mblk_bias_off = cfg.dt_sz_bias * cfg.m_block;
+
     return cfg;
 }
 
@@ -135,6 +147,10 @@ struct advancing_regs_t {
     // Byte offset into A for the current M-block. Starts at 0 and advances by
     // `mblk_a_off` each iteration.
     int a_off = -1;
+    // Bias base pointer. When `treat_y_as_row = true` it advances by
+    // `mblk_bias_off` per M-block otherwise it stays at bias[0]. Set only when
+    // `with_bias`, else -1.
+    int bias_ptr = -1;
 };
 
 // Registers that remain constant for the entire M-loop.
@@ -146,6 +162,10 @@ struct invariant_regs_t {
     // K-tail mask, shared by every masked tail load. It's only required when
     // `k_tail` is greater than 1.
     int k_tail_mask = -1;
+    // Post-ops flag (params.do_post_ops). Non-zero means apply post-ops,
+    // zero means store the raw accumulator. Loaded only when the kernel has a
+    // post-op to apply (currently bias), else -1.
+    int do_post_ops = -1;
 };
 
 // Complete input register set for the M-loop, partitioned by whether values
@@ -185,6 +205,14 @@ m_loop_input_regs_t init_m_loop_input_regs(
         // managed automatically by the allocator.
         regs.invariant.k_tail_mask = ir.new_mask();
         ir.set_mask_imm(regs.invariant.k_tail_mask, (int)cfg.k_tail);
+    }
+
+    if (cfg.with_bias) {
+        regs.advancing.bias_ptr = ir.new_gpr();
+        ir.load_param(regs.advancing.bias_ptr, GET_OFF(ptr_bias));
+
+        regs.invariant.do_post_ops = ir.new_gpr();
+        ir.load_param(regs.invariant.do_post_ops, GET_OFF(do_post_ops));
     }
 
     return regs;
@@ -306,6 +334,19 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     for (int r = 0; r < m_block; r++)
         ir.vhreduce(acc[r], ws);
 
+    if (cfg.with_bias) {
+        const int skip_bias = ir.new_label();
+        ir.jz(regs.invariant.do_post_ops, skip_bias);
+        const int bias = ir.new_vec(cfg.dt_acc);
+        for (int r = 0; r < m_block; r++) {
+            const dim_t bias_disp
+                    = cfg.treat_y_as_row ? cfg.dt_sz_bias * (dim_t)r : 0;
+            ir.vload_masked(bias, regs.advancing.bias_ptr, bias_disp, -1, 1);
+            ir.vadd(acc[r], bias);
+        }
+        ir.label(skip_bias);
+    }
+
     for (int r = 0; r < m_block; r++)
         ir.vstore_masked(regs.advancing.y_ptr,
                 cfg.dt_sz_y * (dim_t)r * cfg.incy, acc[r], -1, 1);
@@ -313,6 +354,8 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     // Advance to next M block
     ir.add_imm(regs.advancing.a_off, cfg.mblk_a_off);
     ir.add_imm(regs.advancing.y_ptr, cfg.mblk_y_off);
+    if (cfg.with_bias && cfg.treat_y_as_row)
+        ir.add_imm(regs.advancing.bias_ptr, cfg.mblk_bias_off);
 }
 
 // Builds IR for GEMV with a non-transposed A matrix.
@@ -441,9 +484,17 @@ bool brgemv_ir_supported(const brgemm_desc_t &brg) {
         return false;
     if (brg.isa_impl != avx2) return false;
     if (brg.transA) return false;
-    if (brg.treat_y_as_row) return false;
 
-    if (brg.are_post_ops_applicable()) return false;
+    if (brg.with_eltwise || brg.with_binary || brg.with_sum) return false;
+    if (brg.with_src_scales || brg.with_wei_scales || brg.with_dst_scales)
+        return false;
+    if (brg.req_s8s8_compensation) return false;
+    if (!utils::everyone_is(brgemm_broadcast_t::none, brg.zp_type_a,
+                brg.zp_type_b, brg.zp_type_c))
+        return false;
+
+    if (brg.with_bias && brg.dt_bias != f32) return false;
+
     if (brg.alpha != 1.0f) return false;
     if (brg.beta != 0.0f && brg.beta != 1.0f) return false;
 

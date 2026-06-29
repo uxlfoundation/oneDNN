@@ -205,6 +205,18 @@ void emit_avx2(jit_generator_t &host, const ir_t &ir,
                 if (spilled(in.dst)) host.vmovups(slot(in.dst), d);
                 break;
             }
+            case op_kind_t::vadd: {
+                Xbyak::Ymm d = spilled(in.dst) ? vec_scratch0
+                                               : Xbyak::Ymm(phys(in.dst));
+                if (spilled(in.dst)) host.vmovups(d, slot(in.dst));
+                Xbyak::Ymm s = vec_use(in.s0, vec_scratch1);
+                if (is_f32(in.dst) && is_f32(in.s0))
+                    host.vaddps(d, d, s);
+                else
+                    assert(!"vadd: dtype not implemented");
+                if (spilled(in.dst)) host.vmovups(slot(in.dst), d);
+                break;
+            }
             case op_kind_t::vhreduce: {
                 Xbyak::Ymm d = spilled(in.dst) ? vec_scratch0
                                                : Xbyak::Ymm(phys(in.dst));

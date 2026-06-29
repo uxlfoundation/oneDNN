@@ -106,6 +106,14 @@ void ir_t::vfma(int dst, int a, int b) {
     instrs.push_back(in);
 }
 
+void ir_t::vadd(int dst, int src) {
+    instr_t in;
+    in.op = op_kind_t::vadd;
+    in.dst = dst;
+    in.s0 = src;
+    instrs.push_back(in);
+}
+
 void ir_t::vhreduce(int dst, int workspace) {
     instr_t in;
     in.op = op_kind_t::vhreduce;
@@ -170,6 +178,13 @@ void ir_t::loop_end(int counter, int begin_idx) {
     in.op = op_kind_t::loop_end;
     in.dst = counter;
     in.match = begin_idx;
+    instrs.push_back(in);
+}
+
+void ir_t::label(int label_id) {
+    instr_t in;
+    in.op = op_kind_t::label;
+    in.imm = label_id;
     instrs.push_back(in);
 }
 
@@ -241,6 +256,11 @@ void ir_t::def_use(const instr_t &in, std::vector<int> &defs,
             u(in.dst);
             u(in.s0);
             u(in.s1);
+            d(in.dst);
+            break;
+        case op_kind_t::vadd:
+            u(in.dst);
+            u(in.s0);
             d(in.dst);
             break;
         case op_kind_t::vhreduce: // dst and workspace are both read and written

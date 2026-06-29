@@ -37,6 +37,7 @@
 --reset --dt=100:f16+101:f16+102:f16+103:f16+12:f16+105:f16+13:f16+15:f16+104:f16+10:f16+30:f16+33:f16+31:f16+35:f16 --case=complex_fusion/mha/gqa-plain-training-backward-w-dmask-bf16-f32.json
 --reset --dt=200:f16+201:f16+202:f16+203:f16+204:f16+11:f16+12:f16 --case=complex_fusion/mha/gqa-plain-training-fwd-w-dropout-bf16-f32.json
 --reset --dt=100:f16+101:f16+102:f16+103:f16+12:f16+105:f16+13:f16+15:f16+104:f16+10:f16+30:f16+33:f16+31:f16+35:f16 --case=complex_fusion/mha/gqa-plain-training-bwd-w-dropout-bf16-f32.json
+--reset --dt=100:f16+101:f16+102:f16+103:f16+12:f16+105:f16+13:f16+15:f16+104:f16+10:f16+131:f16+135:f16+115:f16 --case=complex_fusion/mha/gqa-plain-training-bwd-w-dropout-f32-internal-bf16-out.json
 
 # bf16 inputs + f32 intermediates + bf16 outputs
 --reset --op-kind=1:Multiply,1:Divide --dt=1:bf16+2:bf16+3:bf16+4:bf16+5:bf16+6:bf16+104:bf16 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json

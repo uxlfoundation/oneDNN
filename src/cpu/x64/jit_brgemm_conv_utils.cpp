@@ -1766,6 +1766,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = everyone_is(f32, jcp.src_dt, jcp.dst_dt) && jcp.wei_dt == f16;
     jcp.is_f32_bf16
             = everyone_is(f32, jcp.src_dt, jcp.dst_dt) && jcp.wei_dt == bf16;
+    jcp.req_fp8_convert_wsp = jcp.is_fp8_convert && !is_amx(isa);
     jcp.src_dsz = types::data_type_size(jcp.src_dt);
     jcp.wei_dsz = types::data_type_size(jcp.wei_dt);
     jcp.dst_dsz = types::data_type_size(jcp.dst_dt);
@@ -2476,6 +2477,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = static_cast<dim_t>(jcp.M) * jcp.N * (jcp.is_bf32 ? 1 : 2)
             > 8 * 1024;
 
+    jcp.fp8_convert_wsp_size = static_cast<dim_t>(jcp.N) * rnd_up(jcp.N, 32) * 2 + jcp.M * jcp.K;
+
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
 printf("K: %d, %d, is relo: %d\n", jcp.K, jcp.K_tail, jcp.is_relo());
@@ -2782,6 +2785,11 @@ status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
         // See brgemm_types.hpp comment for `with_dst_scales`.
         scratchpad.book(key_conv_dst_scales,
                 static_cast<size_t>(jcp.nthr) * sizeof(float), P4K);
+    }
+
+    if (jcp.req_fp8_convert_wsp) {
+        scratchpad.book(key_brgemm_primitive_fp8_convert_wsp,
+                static_cast<size_t>(jcp.nthr) * jcp.fp8_convert_wsp_size, P4K);
     }
 
     // Check scratchpad size to avoid allocating huge buffers

@@ -1,5 +1,5 @@
 # *******************************************************************************
-# Copyright 2024-2025 Arm Limited and affiliates.
+# Copyright 2024-2026 Arm Limited and affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -104,6 +104,14 @@ jobs:
     name: ${{ matrix.config.name }}, ${{ matrix.config.toolset }}, ${{ matrix.config.threading }}, ${{ matrix.config.build }}
     runs-on: ${{ matrix.config.label }}
     steps:
+      - if: ${{ (contains(matrix.config.label,'ubuntu')) }}
+        name: Print system info (lscpu)
+        run: lscpu
+
+      - if: ${{ (contains(matrix.config.label,'macos')) }}
+        name: Print system info (sysctl)
+        run: sysctl -a | grep 'hw\.'
+
       - name: Checkout oneDNN
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -311,6 +319,10 @@ jobs:
     name: build windows-msvc 
     runs-on: windows-11-arm
     steps:
+      - name: Print system info
+        shell: pwsh
+        run: Get-CimInstance -ClassName Win32_Processor | Format-List *
+
       - name: Checkout oneDNN
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:

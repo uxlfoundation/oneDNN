@@ -28,6 +28,16 @@ using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
 
+inline namespace {
+int local_k_index(int h, int opCount, int period, const GEMMProblem &problem) {
+    int out = align_down(h, opCount) % period;
+    if (problem.backward()) {
+        if (period % opCount) stub();
+        return period - opCount - out;
+    }
+    return out;
+}
+} // anonymous namespace
 
 // Do one or more outer products (k = 1 slices) of A*B, updating C.
 //  ha and hb are the k indices within the A and B chunks, respectively.
@@ -75,7 +85,7 @@ void Generator<hw>::outerProductFMA(int h, int ha_period, int hb_period, int opC
     int Cr_unrollM = state.Cr_layout.rows(), Cr_unrollN = state.Cr_layout.cols();
     int Cr_unrollX = globalCM ? Cr_unrollM : Cr_unrollN;
     if (repackC) {
-        auto rphase = align_down(h, opCount) % state.cRepackPeriod;
+        auto rphase = local_k_index(h, opCount, state.cRepackPeriod, problem);
         startRepackC = rem || (rphase == 0);
         endRepackC = rem || (rphase + opCount >= state.cRepackPeriod);
     }
@@ -125,14 +135,8 @@ void Generator<hw>::outerProductFMA(int h, int ha_period, int hb_period, int opC
             setDefaultAutoSWSB(true);
     };
 
-    int ha = align_down(h, opCount) % ha_period;
-    int hb = align_down(h, opCount) % hb_period;
-    if (problem.backward()) {
-        if (ha_period % opCount) stub();
-        if (hb_period % opCount) stub();
-        ha = ha_period - opCount - ha;
-        hb = hb_period - opCount - hb;
-    }
+    int ha = local_k_index(h, opCount, ha_period, problem);
+    int hb = local_k_index(h, opCount, hb_period, problem);
 
     if (atomicFMA && hw >= HW::XeHPC) {
         // PVC onward can't use {Atomic} on float pipes.
@@ -323,7 +327,7 @@ void Generator<hw>::innerProductFMA(int h, int ha_period, int hb_period, int opC
     if (repackC) {
         if (state.Cr_layout.rows() != state.C_layout.rows()) stub();
         if (state.Cr_layout.cols() != state.C_layout.cols()) stub();
-        auto rphase = align_down(h, opCount) % state.cRepackPeriod;
+        auto rphase = local_k_index(h, opCount, state.cRepackPeriod, problem);
         startRepackC = rem || (rphase == 0);
         endRepackC = rem || (rphase + opCount >= state.cRepackPeriod);
     }
@@ -333,14 +337,8 @@ void Generator<hw>::innerProductFMA(int h, int ha_period, int hb_period, int opC
     const auto &C_regs   = repackC ? state.Cr_regs   : state.C_regs[0];
 
     bool globalCM = C_layout.colMajor();
-    int ha = align_down(h, opCount) % ha_period;
-    int hb = align_down(h, opCount) % hb_period;
-    if (problem.backward()) {
-        if (ha_period % opCount) stub();
-        if (hb_period % opCount) stub();
-        ha = ha_period - opCount - ha;
-        hb = hb_period - opCount - hb;
-    }
+    int ha = local_k_index(h, opCount, ha_period, problem);
+    int hb = local_k_index(h, opCount, hb_period, problem);
 
     int nx = globalCM ? strategy.unroll[LoopM] : strategy.unroll[LoopN];
     int ny = globalCM ? strategy.unroll[LoopN] : strategy.unroll[LoopM];
@@ -406,7 +404,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha_period, int hb_period, in
     int Cr_unrollM = state.Cr_layout.rows(), Cr_unrollN = state.Cr_layout.cols();
     int Cr_unrollX = globalCM ? Cr_unrollM : Cr_unrollN;
     if (repackC) {
-        auto rphase = align_down(h, opCount) % state.cRepackPeriod;
+        auto rphase = local_k_index(h, opCount, state.cRepackPeriod, problem);
         startRepackC = rem || (rphase == 0);
         endRepackC = rem || (rphase + opCount >= state.cRepackPeriod);
     }
@@ -415,14 +413,8 @@ void Generator<hw>::outerProductSystolic(int h, int ha_period, int hb_period, in
     sumBlock.colMajor = globalCM;
     sumBlock.crosspack = 1;
 
-    int ha = align_down(h, opCount) % ha_period;
-    int hb = align_down(h, opCount) % hb_period;
-    if (problem.backward()) {
-        if (ha_period % opCount) stub();
-        if (hb_period % opCount) stub();
-        ha = ha_period - opCount - ha;
-        hb = hb_period - opCount - hb;
-    }
+    int ha = local_k_index(h, opCount, ha_period, problem);
+    int hb = local_k_index(h, opCount, hb_period, problem);
 
     // Decide whether to loop in column or row major order, to facilitate macro sequences.
     //  x is the non-accumulating dimension of dpas src1 (V matrix)
@@ -505,11 +497,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha_period, int hb_period, in
                         int xqGroupK = isA ? problem.aqGroupK : problem.bqGroupK;
                         int kxq = isA ? state.kaq : state.kbq;
                         int kxq_load = xqGroupK * kxq;
-                        int hq = align_down(h, opCount) % kxq_load;
-                        if (problem.backward()) {
-                            if (kxq_load % opCount) stub();
-                            hq = kxq_load - opCount - hq;
-                        }
+                        int hq = local_k_index(h, opCount, kxq_load, problem);
                         hq = (hq + hh) % kxq_load;
                         int k = hq / xqGroupK;
 

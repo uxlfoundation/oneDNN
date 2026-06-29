@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -157,6 +157,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     const bool is_f8 = one_of(src_dt, f8_e5m2, f8_e4m3)
             && one_of(wei_dt, f8_e5m2, f8_e4m3)
             && one_of(dst_dt, f32, f16, bf16, f8_e5m2, f8_e4m3);
+    const bool is_xf16_fp8 = one_of(src_dt, bf16, f16)
+            && one_of(wei_dt, f8_e5m2, f8_e4m3)
+            && one_of(dst_dt, f32, f16, bf16, f8_e5m2, f8_e4m3);
     const bool is_bf16
             = everyone_is(bf16, src_dt, wei_dt) && one_of(dst_dt, bf16, f32);
     const bool is_f16
@@ -179,10 +182,10 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         const bool is_bia_dt_correct
                 = IMPLICATION(is_int8 == true,
                           one_of(bia_dt, f32, s32, s8, u8, f16, bf16))
-                && IMPLICATION(
-                        is_f8 == true, one_of(bia_dt, f32, f16, bf16, src_dt))
-                && IMPLICATION(
-                        !(is_int8 || is_f8), one_of(bia_dt, f32, src_dt));
+                && IMPLICATION((is_f8 || is_xf16_fp8),
+                        one_of(bia_dt, f32, f16, bf16, src_dt))
+                && IMPLICATION(!(is_int8 || is_f8 || is_xf16_fp8),
+                        one_of(bia_dt, f32, src_dt));
         return IMPLICATION(with_bias(), is_bia_dt_correct && is_bias_1xN());
     };
 
@@ -268,7 +271,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     };
     const bool problem_dt_correct = one_of(true, is_int8, is_f8, is_bf16,
             is_f32, is_f16, is_f32_f16, is_f32_bf16, is_bf16_with_int_wei,
-            is_f16_with_int_wei, is_f32_with_int_wei);
+            is_f16_with_int_wei, is_f32_with_int_wei, is_xf16_fp8);
 
     auto src_d = memory_desc_wrapper(src_md_);
     auto weights_d = memory_desc_wrapper(weights_md_);
@@ -1753,12 +1756,12 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return batch_ptr + A_strides_[1] * m + A_strides_[0] * k;
     }
 
-    dim_t get_data_B_kn_off(int k, int n) const {
-        int dt_b_k_blk = bgmmc_.is_bf32
-                ? data_type_vnni_simd_elems(f32, bgmmc_.isa)
+    dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
+        const int wei_k_blk = bgmmc_.is_bf32 || bgmmc_.is_xf16_fp8
+                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
                 : bgmmc_.wei_k_blk;
-        int k_idx = bgmmc_.blocked_B ? k / dt_b_k_blk : k;
-        int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
+        const int k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
+        const int n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
         const int int4_fac = bgmmc_.is_int4_weights ? 2 : 1;
         return (B_strides_[1] * k_idx + B_strides_[0] * n_idx
                        + get_data_B_off_within_block(k, n))
@@ -1984,11 +1987,17 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         if (!bgmmc_.blocked_B) return 0;
 
-        int x0 = k % bgmmc_.wei_k_blk;
-        int x1 = n % bgmmc_.wei_n_blk;
-        dim_t offset = static_cast<dim_t>(x0 / vnni_factor) * vnni_factor
-                        * bgmmc_.wei_n_blk
-                + x1 * vnni_factor + x0 % vnni_factor;
+        const int orig_wei_k_blk = bgmmc_.is_xf16_fp8
+                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
+                : bgmmc_.wei_k_blk;
+        dim_t x0 = k % orig_wei_k_blk;
+        dim_t x1 = n % bgmmc_.wei_n_blk;
+        const int orig_vnni_factor = bgmmc_.is_xf16_fp8
+                ? data_type_vnni_granularity(bgmmc_.orig_wei_dt)
+                : vnni_factor;
+        dim_t offset
+                = (x0 / orig_vnni_factor) * orig_vnni_factor * bgmmc_.wei_n_blk
+                + x1 * orig_vnni_factor + x0 % orig_vnni_factor;
         return bgmmc_.b_dt_sz * offset;
     }
 

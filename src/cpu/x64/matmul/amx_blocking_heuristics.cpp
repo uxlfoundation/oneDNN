@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2025 Intel Corporation
+* Copyright 2021 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -102,7 +102,8 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
     bool a_dt_ok
             = one_of(bgmmc.orig_src_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16);
     bool b_dt_ok
-            = one_of(bgmmc.orig_wei_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16);
+            = one_of(bgmmc.orig_wei_dt, dnnl_s8, dnnl_u8, dnnl_bf16, dnnl_f16)
+            || bgmmc.is_xf16_fp8;
 
     bool a_tag_ok = bgmmc.src_tag == dnnl_format_tag_any
             || bm_conf_utils.check_is_plain(bgmmc.src_tag);
@@ -114,8 +115,9 @@ bool matmul_amx_blocking_params_macro_t::is_supported(
             || bgmmc.dst_zp_type != brgemm_broadcast_t::none;
 
     return bgmmc.orig_src_dt == bgmmc.src_dt
-            && bgmmc.orig_wei_dt == bgmmc.wei_dt && bgmmc.is_amx
-            && !bgmmc.is_runtime_N && !bgmmc.is_runtime_M && a_dt_ok && a_tag_ok
+            && (bgmmc.orig_wei_dt == bgmmc.wei_dt || bgmmc.is_xf16_fp8)
+            && bgmmc.is_amx && !bgmmc.is_runtime_N && !bgmmc.is_runtime_M
+            && a_dt_ok && a_tag_ok
             && (bgmmc.reduce_kind == matmul_reduce_kind::undef) && b_tag_ok
             && b_dt_ok && !has_zp && !bgmmc.packed_sparse_weights;
 }
@@ -893,7 +895,9 @@ void matmul_amx_blocking_params_micro_t::find_best_blocking(
                     || bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16()
                     || bm_conf_utils.is_bf32()
                     || bm_conf_utils.is_bf16_with_int_wei()
-                    || bm_conf_utils.is_f16_with_int_wei());
+                    || bm_conf_utils.is_f16_with_int_wei()
+                    || bm_conf_utils.is_bf16_fp8()
+                    || bm_conf_utils.is_f16_fp8());
     const bool is_amx_int8 = bgmmc.is_amx && bm_conf_utils.is_int8();
 
     const bool runtime_dims

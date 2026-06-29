@@ -356,3 +356,46 @@
 --attr-zero-points=,wei:common:2,wei:per_oc:s4,wei:per_ocic:s4:192x1
 --attr-fpmath=strict:true
 12x4x576:12x576x192
+
+
+# xf16:fp8:*
+--reset
+--skip-impl=ref
+--dt=bf16:f8_e4m3:bf16,bf16:f8_e5m2:bf16,f16:f8_e4m3:f16,f16:f8_e5m2:f16
+--stag=ab,ba,any --wtag=any --dtag=ab,any
+--batch=shapes_2d
+64x1184:1184x64
+
+--reset
+--skip-impl=ref
+--dt=bf16:f8_e4m3:bf16,bf16:f8_e5m2:bf16,f16:f8_e4m3:f16,f16:f8_e5m2:f16
+--stag=any --wtag=any --dtag=abx,any
+--batch=shapes_3d
+
+# xf16:fp8:* src/weight/dst scales.
+--reset
+--skip-impl=ref
+--stag=any --wtag=any --dtag=any
+--dt=bf16:f8_e4m3:f32,bf16:f8_e5m2:bf16,bf16:f8_e4m3:f16
+--attr-scales=wei:common:2,wei:per_oc,src:common:0.25+wei:common:0.5+dst:common:4,src:common:0.25+wei:per_oc+dst:common:4
+64x1184:1184x64
+64x97:97x64
+64x33:33x64
+
+--reset
+--skip-impl=ref
+--stag=any --wtag=any --dtag=any
+--dt=f16:f8_e4m3:f32,f16:f8_e5m2:f16
+--attr-scales=wei:common:2,wei:per_oc,src:common:0.25+wei:common:0.5+dst:common:4,src:common:0.25+wei:per_oc+dst:common:4
+64x1184:1184x64
+64x97:97x64
+64x33:33x64
+
+# 3D (batched) with scales.
+--reset
+--skip-impl=ref
+--stag=any --wtag=any --dtag=abc,any
+--dt=bf16:f8_e4m3:f32,f16:f8_e5m2:f16
+--attr-scales=wei:common:2,wei:per_oc,src:common:0.25+wei:per_oc+dst:common:4
+3x30x256:3x256x64
+2x10x97:2x97x64

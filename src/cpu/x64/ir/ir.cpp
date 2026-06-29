@@ -154,6 +154,18 @@ void ir_t::vstore_masked(int base, dim_t disp, int src, int mask, int elems) {
     instrs.push_back(in);
 }
 
+void ir_t::inject_postops(const std::vector<int> &acc, int base_ptr) {
+    inject_postops_args_t args;
+    args.acc = acc;
+    args.base_ptr = base_ptr;
+    inject_postops_args.push_back(args);
+
+    instr_t in;
+    in.op = op_kind_t::inject_postops;
+    in.imm = (dim_t)inject_postops_args.size() - 1;
+    instrs.push_back(in);
+}
+
 int ir_t::loop_begin_imm(int counter, dim_t count) {
     instr_t in;
     in.op = op_kind_t::loop_begin;
@@ -269,6 +281,17 @@ void ir_t::def_use(const instr_t &in, std::vector<int> &defs,
             d(in.dst);
             d(in.s0);
             break;
+        case op_kind_t::inject_postops: {
+            // The accumulators are read and written in place. The base pointer
+            // is read. Operands live in the side table, not in `instr_t`.
+            const auto &args = inject_postops_args[(int)in.imm];
+            for (int v : args.acc) {
+                u(v);
+                d(v);
+            }
+            u(args.base_ptr);
+            break;
+        }
         case op_kind_t::set_mask_imm: d(in.dst); break;
         case op_kind_t::vload_masked:
             u(in.mem.base);

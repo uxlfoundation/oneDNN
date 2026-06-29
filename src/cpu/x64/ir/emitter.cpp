@@ -27,19 +27,21 @@ namespace ir {
 
 void emit(jit_generator_t &host, const ir_t &ir,
         const reg_alloc_result_t &alloc, const reg_config_t &reg_cfg,
-        cpu_isa_t isa, data_section_t &data) {
+        cpu_isa_t isa, data_section_t &data,
+        const inject_postops_fn_t &inject) {
     if (is_superset(isa, avx512_core)) {
-        // TODO: emit_avx512(host, ir, alloc, reg_cfg, isa, data);
+        // TODO: emit_avx512(host, ir, alloc, reg_cfg, isa, data, inject);
         assert(!"avx512 IR emitter is not implemented yet");
     } else {
-        emit_avx2(host, ir, alloc, reg_cfg, isa, data);
+        emit_avx2(host, ir, alloc, reg_cfg, isa, data, inject);
     }
 }
 
 // TODO: consider moving ISA-specific emitters to separate files.
 void emit_avx2(jit_generator_t &host, const ir_t &ir,
         const reg_alloc_result_t &alloc, const reg_config_t &reg_cfg,
-        cpu_isa_t isa, data_section_t &data) {
+        cpu_isa_t isa, data_section_t &data,
+        const inject_postops_fn_t &inject) {
     // `isa` is forwarded for future extension-specific instruction selection
     // (e.g. avx2_vnni_2). The current f32 path does not need it yet.
     MAYBE_UNUSED(isa);
@@ -227,6 +229,26 @@ void emit_avx2(jit_generator_t &host, const ir_t &ir,
                 else
                     assert(!"vhreduce: dtype not implemented");
                 if (spilled(in.dst)) host.vmovups(slot(in.dst), d);
+                break;
+            }
+            case op_kind_t::inject_postops: {
+                // The `inject_postops` instruction lowers to a JIT-based
+                // external injector. The physical argument registers must
+                // be live in registers, not spilled to the stack. We then pass
+                // them to the callback received from the builder, which emits
+                // the injector code.
+                const auto &args = ir.inject_postops_args[(int)in.imm];
+                std::vector<int> acc_phys;
+                acc_phys.reserve(args.acc.size());
+                for (int v : args.acc) {
+                    assert(!spilled(v)
+                            && "inject_postops: accumulator spilled");
+                    acc_phys.push_back(phys(v));
+                }
+                assert(!spilled(args.base_ptr)
+                        && "inject_postops: base pointer spilled");
+                assert(inject && "inject_postops: missing injector callback");
+                inject(acc_phys, phys(args.base_ptr));
                 break;
             }
             case op_kind_t::set_mask_imm: {

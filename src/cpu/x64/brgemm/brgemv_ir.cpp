@@ -25,6 +25,7 @@
 // current requirements.
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 #include "common/c_types_map.hpp"
@@ -35,6 +36,7 @@
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/ir/emitter.hpp"
 #include "cpu/x64/ir/ir.hpp"
+#include "cpu/x64/ir/postops_injector.hpp"
 #include "cpu/x64/ir/reg_alloc.hpp"
 #include "cpu/x64/jit_generator.hpp"
 
@@ -70,6 +72,7 @@ namespace {
 //   treat_y_as_row - specifies how output layout is defined
 //   dt_sz_bias   - element size in bytes of the bias
 //   mblk_bias_off - byte offset to advance the bias pointer between M blocks
+//   with_postops - whether attribute post-ops (eltwise/binary) are requested
 struct brgemv_ir_conf_t {
     dim_t m, k, lda, incy;
     int max_bs;
@@ -83,6 +86,7 @@ struct brgemv_ir_conf_t {
     bool with_bias, treat_y_as_row;
     int dt_sz_bias;
     dim_t mblk_bias_off;
+    bool with_postops;
 };
 
 // Creates and initializes `brgemv_ir_conf_t`.
@@ -124,6 +128,8 @@ brgemv_ir_conf_t make_brgemv_ir_conf(const brgemm_desc_t &brg) {
     cfg.dt_sz_bias = brg.typesize_bias;
     cfg.mblk_bias_off = cfg.dt_sz_bias * cfg.m_block;
 
+    cfg.with_postops = brg.with_eltwise || brg.with_binary;
+
     return cfg;
 }
 
@@ -164,7 +170,7 @@ struct invariant_regs_t {
     int k_tail_mask = -1;
     // Post-ops flag (params.do_post_ops). Non-zero means apply post-ops,
     // zero means store the raw accumulator. Loaded only when the kernel has a
-    // post-op to apply (currently bias), else -1.
+    // post-op to apply (bias or injector post-ops), else -1.
     int do_post_ops = -1;
 };
 
@@ -210,7 +216,11 @@ m_loop_input_regs_t init_m_loop_input_regs(
     if (cfg.with_bias) {
         regs.advancing.bias_ptr = ir.new_gpr();
         ir.load_param(regs.advancing.bias_ptr, GET_OFF(ptr_bias));
+    }
 
+    // The `do_post_ops` runtime flag is applied to both the biasi and the
+    // injector-based post-ops.
+    if (cfg.with_bias || cfg.with_postops) {
         regs.invariant.do_post_ops = ir.new_gpr();
         ir.load_param(regs.invariant.do_post_ops, GET_OFF(do_post_ops));
     }
@@ -334,17 +344,24 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     for (int r = 0; r < m_block; r++)
         ir.vhreduce(acc[r], ws);
 
-    if (cfg.with_bias) {
-        const int skip_bias = ir.new_label();
-        ir.jz(regs.invariant.do_post_ops, skip_bias);
-        const int bias = ir.new_vec(cfg.dt_acc);
-        for (int r = 0; r < m_block; r++) {
-            const dim_t bias_disp
-                    = cfg.treat_y_as_row ? cfg.dt_sz_bias * (dim_t)r : 0;
-            ir.vload_masked(bias, regs.advancing.bias_ptr, bias_disp, -1, 1);
-            ir.vadd(acc[r], bias);
+    if (cfg.with_bias || cfg.with_postops) {
+        const int skip_post_ops = ir.new_label();
+        ir.jz(regs.invariant.do_post_ops, skip_post_ops);
+
+        if (cfg.with_bias) {
+            const int bias = ir.new_vec(cfg.dt_acc);
+            for (int r = 0; r < m_block; r++) {
+                const dim_t bias_disp
+                        = cfg.treat_y_as_row ? cfg.dt_sz_bias * (dim_t)r : 0;
+                ir.vload_masked(
+                        bias, regs.advancing.bias_ptr, bias_disp, -1, 1);
+                ir.vadd(acc[r], bias);
+            }
         }
-        ir.label(skip_bias);
+
+        if (cfg.with_postops) ir.inject_postops(acc, regs.advancing.y_ptr);
+
+        ir.label(skip_post_ops);
     }
 
     for (int r = 0; r < m_block; r++)
@@ -425,6 +442,28 @@ struct jit_brgemv_ir_t : public jit_base_brgemm_kernel_t {
         // Register allocation
         ir::reg_alloc_result_t alloc = allocate_registers(ir, reg_cfg.pools);
 
+        // The injector-based post-ops are injected through the IR
+        // `inject_postops` IR instruction that uses the emit callback below.
+        // The injector is created here, rather than in the emitter, because it
+        // lives across the full codegen flow (emits in `emit()`, writes its
+        // constant table in `prepare_table()`) and requires descriptor-specific
+        // inputs (post-ops attributes, destination md, and parameter struct)
+        // that the generic emitter does not have.
+        //
+        // Results are written to ptr_C.
+        // TODO: enable binary post-op.
+        std::unique_ptr<ir::postops_injector_t> postops_injector;
+        ir::inject_postops_fn_t emit_injector;
+        if (brg.with_eltwise || brg.with_binary) {
+            postops_injector.reset(
+                    new ir::postops_injector_t(this, brg.isa_impl,
+                            brg.attr()->post_ops_, *brg.dst_md(), abi_param1));
+            emit_injector
+                    = [&](const std::vector<int> &acc_phys, int /*base_phys*/) {
+                postops_injector->apply(acc_phys);
+            };
+        }
+
         preamble();
 
         // Stack frame setup
@@ -436,7 +475,7 @@ struct jit_brgemv_ir_t : public jit_base_brgemm_kernel_t {
         // The emitter may accumulate static data (e.g. the mask table) that we
         // need to write down after the postamble.
         ir::data_section_t data;
-        ir::emit(*this, ir, alloc, reg_cfg, brg.isa_impl, data);
+        ir::emit(*this, ir, alloc, reg_cfg, brg.isa_impl, data, emit_injector);
 
         // Stack cleanup
         if (frame > 0) add(rsp, frame);
@@ -445,6 +484,9 @@ struct jit_brgemv_ir_t : public jit_base_brgemm_kernel_t {
 
         // Emit any static data the emitter accumulated.
         ir::emit_data_section(*this, data);
+
+        // Emmit static data used by the eltwise post-op.
+        if (postops_injector) postops_injector->maybe_prepare_table();
     }
 
 private:
@@ -485,7 +527,7 @@ bool brgemv_ir_supported(const brgemm_desc_t &brg) {
     if (brg.isa_impl != avx2) return false;
     if (brg.transA) return false;
 
-    if (brg.with_eltwise || brg.with_binary || brg.with_sum) return false;
+    if (brg.with_binary || brg.with_sum) return false;
     if (brg.with_src_scales || brg.with_wei_scales || brg.with_dst_scales)
         return false;
     if (brg.req_s8s8_compensation) return false;

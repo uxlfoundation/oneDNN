@@ -21,6 +21,7 @@
 // using a `jit_generator`.
 
 #include <deque>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -48,6 +49,18 @@ struct data_section_t {
     int align = 32;
 };
 
+// Callback that emits post-ops code. Invoked once per operation. The emitter
+// passes the physical accumulator and base pointer registers so that the
+// non-IR-based injector can use them. This callback serves as an
+// interoperability layer between the JIT-based injector and the IR-based
+// kernel.
+//
+//   acc_phys  - Physical vector register indices of the accumulators, in the
+//               order passed to `ir_t::inject_postops()`.
+//   base_phys - Physical GPR index of the base (output) pointer.
+using inject_postops_fn_t
+        = std::function<void(const std::vector<int> &acc_phys, int base_phys)>;
+
 // Lowering/code emission pass. Walks the IR once and turns each abstract
 // operation into target-specific instructions, using the physical registers
 // chosen by the allocator.
@@ -69,12 +82,13 @@ struct data_section_t {
 // emitter.
 void emit(jit_generator_t &host, const ir_t &ir,
         const reg_alloc_result_t &alloc, const reg_config_t &reg_cfg,
-        cpu_isa_t isa, data_section_t &data);
+        cpu_isa_t isa, data_section_t &data,
+        const inject_postops_fn_t &inject = {});
 
 // AVX2 family-specific lowering. It includes all AVX2 extensions too.
 void emit_avx2(jit_generator_t &host, const ir_t &ir,
         const reg_alloc_result_t &alloc, const reg_config_t &reg_cfg,
-        cpu_isa_t isa, data_section_t &data);
+        cpu_isa_t isa, data_section_t &data, const inject_postops_fn_t &inject);
 
 // Emit the accumulated static data after the kernel's postamble. It aligns,
 // binds each label and then write the data bytes with `db`.

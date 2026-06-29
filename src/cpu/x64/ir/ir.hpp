@@ -94,6 +94,15 @@ enum class op_kind_t {
     // horizontal reduction of dst (uses s0 as workspace), result in element 0
     vhreduce,
 
+    // Post-ops
+    //
+    // Apply post-ops via an injector to a set of accumulators. The injector is
+    // not IR-based, and therefore lowering to it requires certain
+    // interoperability-related code (see the emitter's `inject_postops_fn`).
+    // `imm` indexes `inject_postops_args`, which holds the variadic operand
+    // `acc` (`instr_t` has a fixed-size parameter list).
+    inject_postops,
+
     // Mask operations
     //
     // set_mask_imm creates a mask for `imm` active elements.
@@ -179,6 +188,20 @@ struct vreg_info_t {
     data_type_t dt = data_type::undef;
 };
 
+// Arguments of an `inject_postops` instruction that holds the variadic argument
+// `acc`. The argument structure is stored in `ir_t`. Each `inject_postops`
+// instruction stores only the index of its argument structure in its `imm`
+// field.
+//
+//   acc      - Variadic list of accumulators transformed in place by the
+//              post-ops.
+//   base_ptr - GPR holding the output base pointer. Used by binary post-ops to
+//              address their right-hand-side argument.
+struct inject_postops_args_t {
+    std::vector<int> acc;
+    int base_ptr = -1;
+};
+
 // An `ir_t` is the instruction list plus, for each virtual register, its info
 // (kind and for a vec its element data type) so the allocator knows which
 // physical registers it can use and the emitter knows which dtype-specific
@@ -191,6 +214,10 @@ struct ir_t {
     std::vector<vreg_info_t> vreg_info;
     // All instructions, in order
     std::vector<instr_t> instrs;
+
+    // Arguments of each `inject_postops` instruction, indexed by the `imm` that
+    // instruction carries.
+    std::vector<inject_postops_args_t> inject_postops_args;
 
     // Label counter.
     int n_labels = 0;
@@ -235,6 +262,9 @@ struct ir_t {
 
     // mask
     void set_mask_imm(int mask, int n_elems);
+
+    // post-ops
+    void inject_postops(const std::vector<int> &acc, int base_ptr);
 
     // control flow
     int loop_begin_imm(int counter, dim_t count);

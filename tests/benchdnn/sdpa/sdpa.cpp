@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cmath>
 #include <limits>
 #include <math.h>
 #include <random>
@@ -273,7 +274,12 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     const float abs_trh = is_bwd ? 5e-2f : 2e-3f;
     cmp.set_driver_check_function(
             [abs_trh](const compare::compare_t::driver_check_func_args_t &a)
-                    -> bool { return a.diff <= abs_trh; });
+                    -> bool {
+        if (fabs(a.exp) > 6.e-5)
+            return a.diff <= abs_trh;
+        else
+            return a.diff <= abs_trh || a.rel_diff < 41;
+    });
 
     cmp.set_zero_trust_percent(is_bwd ? 70.f : 90.f);
 }

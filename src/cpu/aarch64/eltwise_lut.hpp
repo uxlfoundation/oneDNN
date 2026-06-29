@@ -22,7 +22,6 @@
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/cpu_eltwise_pd.hpp"
@@ -30,10 +29,10 @@
 namespace dnnl {
 namespace impl {
 namespace cpu {
+namespace aarch64 {
 
-template <::dnnl::impl::data_type_t data_type>
 struct eltwise_lut_fwd_t : public primitive_t {
-    using data_t = typename ::dnnl::impl::prec_traits_t<data_type>::type;
+    using data_t = ::dnnl::impl::bfloat16_t;
 
     struct pd_t : public cpu_eltwise_fwd_pd_t {
         using cpu_eltwise_fwd_pd_t::cpu_eltwise_fwd_pd_t;
@@ -47,7 +46,7 @@ struct eltwise_lut_fwd_t : public primitive_t {
             const memory_desc_wrapper dst_d(dst_md());
 
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_ELTWISE(everyone_is(data_type, src_md()->data_type,
+            VDISPATCH_ELTWISE(everyone_is(data_type::bf16, src_md()->data_type,
                                       dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
@@ -73,17 +72,16 @@ struct eltwise_lut_fwd_t : public primitive_t {
     };
 
     eltwise_lut_fwd_t(const pd_t *apd) : primitive_t(apd) {}
-    status_t init(engine_t * /*engine*/) override { return status::success; }
+    status_t init(engine_t *engine) override;
 
-    status_t execute(const exec_ctx_t & /*ctx*/) const override {
-        return status::unimplemented;
-    }
+    status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::vector<data_t> lut_;
 };
 
+} // namespace aarch64
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

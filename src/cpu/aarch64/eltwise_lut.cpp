@@ -25,12 +25,9 @@
 namespace dnnl {
 namespace impl {
 namespace cpu {
+namespace aarch64 {
 
-// bf16 specialization
-
-template <>
-status_t eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>::init(
-        engine_t * /*engine*/) {
+status_t eltwise_lut_fwd_t::init(engine_t * /*engine*/) {
     using namespace ::dnnl::impl;
 
     constexpr uint32_t lut_size = 1u << 16;
@@ -48,9 +45,7 @@ status_t eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>::init(
     return status::success;
 }
 
-template <>
-status_t eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>::execute(
-        const exec_ctx_t &ctx) const {
+status_t eltwise_lut_fwd_t::execute(const exec_ctx_t &ctx) const {
     using namespace ::dnnl::impl;
 
     if (lut_.empty()) return status::runtime_error;
@@ -79,9 +74,7 @@ status_t eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>::execute(
     return status::success;
 }
 
-// Explicit instantiation for bf16 data type.
-template struct eltwise_lut_fwd_t<::dnnl::impl::data_type::bf16>;
-
+} // namespace aarch64
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

@@ -16,4 +16,4 @@
 
 # Permuted plain layouts with unit dims (e.g. acbd with H=1): jit:uni must
 # accept these after squeezing the unit dim out, not fall back to ref:any.
---reset --batch=test_binary_permuted_unit_dims
+--reset --batch=harness_binary_permuted_unit_dims

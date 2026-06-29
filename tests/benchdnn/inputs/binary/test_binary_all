@@ -8,3 +8,4 @@
 --batch=harness_binary_different_dt
 --batch=harness_binary_bcast4d
 --batch=harness_binary_regression
+--batch=harness_binary_permuted_unit_dims

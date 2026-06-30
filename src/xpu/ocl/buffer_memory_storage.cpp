@@ -163,16 +163,27 @@ std::unique_ptr<memory_storage_t> buffer_memory_storage_t::get_sub_storage(
 
     auto sub_storage
             = new buffer_memory_storage_t(this->engine(), root_storage());
-    if (sub_storage) {
-        sub_storage->init(memory_flags_t::use_runtime_ptr, size, sub_buffer);
-        sub_storage->base_offset_ = base_offset_ + offset;
+    if (!sub_storage) return nullptr;
+
+    status_t status = sub_storage->init(
+            memory_flags_t::use_runtime_ptr, size, sub_buffer);
+    if (status != status::success) {
+        delete sub_storage;
+        return nullptr;
     }
+    sub_storage->base_offset_ = base_offset_ + offset;
     return std::unique_ptr<memory_storage_t>(sub_storage);
 }
 
 std::unique_ptr<memory_storage_t> buffer_memory_storage_t::clone() const {
     auto storage = new buffer_memory_storage_t(engine());
-    if (storage) storage->init(memory_flags_t::use_runtime_ptr, 0, mem_object_);
+    if (!storage) return nullptr;
+    status_t status
+            = storage->init(memory_flags_t::use_runtime_ptr, 0, mem_object_);
+    if (status != status::success) {
+        delete storage;
+        return nullptr;
+    }
     return std::unique_ptr<memory_storage_t>(storage);
 }
 

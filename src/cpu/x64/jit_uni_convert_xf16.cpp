@@ -82,7 +82,7 @@ void jit_uni_cvt_ps_to_xf16_t<isa>::generate() {
             mov(reg_nelems, number_of_loops);
             L(l_number_of_loops);
             for (size_t i = 0; i < unroll_length; i += simd_w_)
-                cvt_ps_to_xf16(i, false);
+                cvt_ps_to_xf16(into<int>(i), false);
             add(reg_input, sizeof(float) * unroll_length);
             add(reg_output, sizeof(float16_t) * unroll_length);
 
@@ -92,9 +92,9 @@ void jit_uni_cvt_ps_to_xf16_t<isa>::generate() {
         }
         if (loop_tail > 0) {
             for (size_t i = 0; i < loop_tail; i += simd_w_)
-                cvt_ps_to_xf16(i, false);
-            add(reg_input, sizeof(float) * loop_tail);
-            add(reg_output, sizeof(float16_t) * loop_tail);
+                cvt_ps_to_xf16(into<int>(i), false);
+            add(reg_input, into<uint32_t>(sizeof(float) * loop_tail));
+            add(reg_output, into<uint32_t>(sizeof(float16_t) * loop_tail));
         }
         if (tail_size_ != 0) {
             setup_mask();

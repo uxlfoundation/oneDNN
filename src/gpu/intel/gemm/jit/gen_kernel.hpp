@@ -17,6 +17,8 @@
 #ifndef GPU_INTEL_GEMM_JIT_GEN_KERNEL_HPP
 #define GPU_INTEL_GEMM_JIT_GEN_KERNEL_HPP
 
+#include <string>
+
 #include "common/c_types_map.hpp"
 #include "gemmstone/driver_info.hpp"
 #include "gemmstone/kernel_catalog.hpp"
@@ -100,6 +102,10 @@ struct gen_desc_t {
         efficient_64b_ = efficient_64b;
     }
 
+    void set_kernel_override(const std::string &kernel) {
+        kernel_override_ = kernel;
+    }
+
 protected:
     compute::gpu_arch_t arch_;
     ngen::HW hw_ = ngen::HW::Unknown;
@@ -113,6 +119,8 @@ protected:
 
     bool efficient_64b_ = false;
 
+    std::string kernel_override_;
+
     /* optional information to fine-tune kernel */
     int m_ = -1, n_ = -1, k_ = -1;
     int eu_count_ = -1;
@@ -120,6 +128,9 @@ protected:
     bool relaxed_acc_ = false;
 
     status_t finalize(const char *tags);
+#ifdef DNNL_DEV_MODE
+    status_t apply_kernel_override(std::string ovr_strategy);
+#endif
     void update_driver_info();
 };
 

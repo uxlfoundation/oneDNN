@@ -31,13 +31,15 @@ using namespace ngen::utils;
 template <HW hw>
 void Generator<hw>::prologue(const CommonStrategy &strategy, int internalSIMD)
 {
-    uint16_t cr0Enable;
+    uint32_t cr0Enable;
 
     interface.generatePrologue(*this);
 
-    cr0Enable = 0x1000;                                // IEEE float->int rounding.
-    if (strategy.ieeeDenormals) cr0Enable |= 0x4C0;    // Enable hf|f|df denormals.
-    if (strategy.spf)           cr0Enable |= 0x4;      // Enable single program flow.
+    bool denorm = strategy.ieeeDenormals;
+    cr0Enable = 0x1000;                                     // IEEE float->int rounding.
+    if (denorm)                   cr0Enable |= 0x4C0;       // Enable hf|f|df denormals.
+    if (hw >= HW::Xe2 && denorm)  cr0Enable |= 0x40000000;  // Enable bf|tf|f8|f4 denormals.
+    if (strategy.spf)             cr0Enable |= 0x4;         // Enable single program flow.
 
     or_(1, cr0, cr0, cr0Enable);
 

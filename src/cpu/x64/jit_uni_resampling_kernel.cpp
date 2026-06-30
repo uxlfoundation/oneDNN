@@ -225,7 +225,8 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::preserve_zero_padding_in_post_ops(
     else {
         std::bitset<8> tail_mask((1 << tail_size_) - 1);
         tail_mask.flip();
-        uni_vblendps(vmm_data, vmm_data, vmm_zeros, tail_mask.to_ulong());
+        uni_vblendps(
+                vmm_data, vmm_data, vmm_zeros, into<int>(tail_mask.to_ulong()));
     }
 }
 
@@ -303,7 +304,7 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa, Vmm>::preserve_zero_padding(
         const int c_to_compute_without_tail, const bool is_tail) {
     const int c_to_compute_with_tail
-            = is_tail ? utils::rnd_up(tail_size_, simd_w_) : 0;
+            = into<int>(is_tail ? utils::rnd_up(tail_size_, simd_w_) : 0);
     const int c_to_zeroing = conf_.inner_stride - c_to_compute_without_tail
             - c_to_compute_with_tail;
 
@@ -317,7 +318,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::preserve_zero_padding(
             io_.at(conf_.dst_data_type)->store(vmm_zeros, dst_address, false);
         }
 
-        add(reg_dst_, c_to_zeroing * conf_.dst_dt_size);
+        add(reg_dst_, into<uint32_t>(c_to_zeroing * conf_.dst_dt_size));
     }
 }
 
@@ -359,7 +360,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::nearest_ncsp_format() {
 
     mov(reg_indices_h, reg_indices_);
     mov(reg_indices_w, reg_indices_);
-    add(reg_indices_w, conf_.oh * conf_.el_size_of_indices);
+    add(reg_indices_w, into<uint32_t>(conf_.oh * conf_.el_size_of_indices));
 
     Label oh_loop_begin, oh_loop_end;
     Label ow_loop_begin, ow_loop_end;
@@ -386,8 +387,9 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::nearest_ncsp_format() {
 
             nearest_interpolation(false);
 
-            add(reg_dst_, simd_w_ * conf_.dst_dt_size);
-            add(reg_indices_w, simd_w_ * conf_.el_size_of_indices);
+            add(reg_dst_, into<uint32_t>(simd_w_ * conf_.dst_dt_size));
+            add(reg_indices_w,
+                    into<uint32_t>(simd_w_ * conf_.el_size_of_indices));
             sub(reg_work_, simd_w_);
 
             jmp(ow_loop_begin, T_NEAR);
@@ -396,10 +398,10 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::nearest_ncsp_format() {
 
         if (tail_size_ > 0) {
             nearest_interpolation(true);
-            add(reg_dst_, tail_size_ * conf_.dst_dt_size);
+            add(reg_dst_, into<uint32_t>(tail_size_ * conf_.dst_dt_size));
         }
 
-        add(reg_indices_h, conf_.el_size_of_indices);
+        add(reg_indices_h, into<uint32_t>(conf_.el_size_of_indices));
         pop(reg_indices_w);
         pop(reg_oh);
         add(reg_oh, 1);
@@ -435,8 +437,8 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::compute_nearest_c_interpolate(
 
         nearest_interpolation(false);
 
-        add(reg_src_shifted, simd_w_ * conf_.src_dt_size);
-        add(reg_dst_, simd_w_ * conf_.dst_dt_size);
+        add(reg_src_shifted, into<uint32_t>(simd_w_ * conf_.src_dt_size));
+        add(reg_dst_, into<uint32_t>(simd_w_ * conf_.dst_dt_size));
 
         add(reg_c, simd_w_);
         jmp(c_loop_begin, T_NEAR);
@@ -446,9 +448,9 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::compute_nearest_c_interpolate(
     if (is_tail) {
         nearest_interpolation(true);
         if (conf_.tag_kind == tag_kind::nspc)
-            add(reg_dst_, tail_size_ * conf_.dst_dt_size);
+            add(reg_dst_, into<uint32_t>(tail_size_ * conf_.dst_dt_size));
         else if (conf_.tag_kind == tag_kind::blocked)
-            add(reg_dst_, simd_w_ * conf_.dst_dt_size);
+            add(reg_dst_, into<uint32_t>(simd_w_ * conf_.dst_dt_size));
     }
 }
 
@@ -486,8 +488,8 @@ void jit_uni_resampling_kernel_t<isa,
 
         nearest_ne_xf16_interpolation(false);
 
-        add(reg_src_shifted, 2 * simd_w_ * conf_.src_dt_size);
-        add(reg_dst_, 2 * simd_w_ * conf_.dst_dt_size);
+        add(reg_src_shifted, into<uint32_t>(2 * simd_w_ * conf_.src_dt_size));
+        add(reg_dst_, into<uint32_t>(2 * simd_w_ * conf_.dst_dt_size));
 
         add(reg_c, 2 * simd_w_);
         jmp(c_loop_begin, T_NEAR);
@@ -539,7 +541,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::nearest_c_oriented_format(
                         is_tail_in_blocked_format);
         }
 
-        add(reg_indices_, conf_.el_size_of_indices);
+        add(reg_indices_, into<uint32_t>(conf_.el_size_of_indices));
 
         dec(reg_work_);
         jmp(loop_begin, T_NEAR);
@@ -549,8 +551,8 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::nearest_c_oriented_format(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa, Vmm>::linear_ncsp_format() {
-    const unsigned indices_stride
-            = conf_.ow * conf_.oh * conf_.od * conf_.el_size_of_indices;
+    const unsigned indices_stride = into<unsigned int>(
+            conf_.ow * conf_.oh * conf_.od * conf_.el_size_of_indices);
     const unsigned weights_stride
             = conf_.ow * conf_.oh * conf_.od * sizeof(float);
 
@@ -594,9 +596,9 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::linear_ncsp_format() {
 
         linear_interpolation(false);
 
-        add(reg_dst_, simd_w_ * conf_.dst_dt_size);
+        add(reg_dst_, into<uint32_t>(simd_w_ * conf_.dst_dt_size));
         add(reg_weights, simd_w_ * sizeof(float));
-        add(reg_indices_, simd_w_ * conf_.el_size_of_indices);
+        add(reg_indices_, into<uint32_t>(simd_w_ * conf_.el_size_of_indices));
         sub(reg_work_, simd_w_);
 
         jmp(loop_begin, T_NEAR);
@@ -679,10 +681,10 @@ void jit_uni_resampling_kernel_t<isa,
         je(c_loop_end, T_NEAR);
 
         linear_interpolation(reg_c, false);
-        add(reg_dst_, 2 * simd_w_ * conf_.dst_dt_size);
+        add(reg_dst_, into<uint32_t>(2 * simd_w_ * conf_.dst_dt_size));
 
         for (unsigned i = 0; i < conf_.number_of_corners; i++)
-            add(src_regs_[i], 2 * simd_w_ * conf_.src_dt_size);
+            add(src_regs_[i], into<uint32_t>(2 * simd_w_ * conf_.src_dt_size));
 
         add(reg_c, 2 * simd_w_);
         jmp(c_loop_begin, T_NEAR);
@@ -759,10 +761,10 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::compute_linear_c_interpolate(
         je(c_loop_end, T_NEAR);
 
         linear_interpolation(reg_c, false);
-        add(reg_dst_, simd_w_ * conf_.dst_dt_size);
+        add(reg_dst_, into<uint32_t>(simd_w_ * conf_.dst_dt_size));
 
         for (unsigned i = 0; i < conf_.number_of_corners; i++)
-            add(src_regs_[i], simd_w_ * conf_.src_dt_size);
+            add(src_regs_[i], into<uint32_t>(simd_w_ * conf_.src_dt_size));
 
         add(reg_c, simd_w_);
         jmp(c_loop_begin, T_NEAR);
@@ -772,9 +774,9 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::compute_linear_c_interpolate(
     if (is_tail) {
         linear_interpolation(reg_c, true);
         if (conf_.tag_kind == tag_kind::nspc)
-            add(reg_dst_, tail_size_ * conf_.dst_dt_size);
+            add(reg_dst_, into<uint32_t>(tail_size_ * conf_.dst_dt_size));
         else if (conf_.tag_kind == tag_kind::blocked)
-            add(reg_dst_, simd_w_ * conf_.dst_dt_size);
+            add(reg_dst_, into<uint32_t>(simd_w_ * conf_.dst_dt_size));
     }
 }
 
@@ -845,7 +847,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::linear_c_oriented_format(
         // right corners from both the weights and indices tables.
         // These two values occurs one after the other in memory,
         // so the address should be shifted by two elements.
-        add(reg_indices_, 2 * conf_.el_size_of_indices);
+        add(reg_indices_, into<uint32_t>(2 * conf_.el_size_of_indices));
         add(reg_weights, 2 * sizeof(float));
 
         for (unsigned i = 0; i < conf_.number_of_corners; i++) {

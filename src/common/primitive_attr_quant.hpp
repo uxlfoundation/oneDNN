@@ -252,7 +252,12 @@ struct quant_entries_t : public c_compatible {
     data_type_t get_data_type(int arg) const {
         return get(arg).get_data_type();
     }
-    dim_t get_group(int arg, int d) const { return get(arg).get_group(d); }
+
+    dim_t get_group(int arg, int d) const {
+        dim_t group = get(arg).get_group(d);
+        assert(group != 0 && "wrong dimension used");
+        return group;
+    }
 
     bool has_host_scalars() const {
         for (const auto &e : entries_) {

@@ -249,6 +249,15 @@ status_t check_isa_with_datatype(
                             || bm_conf_utils.with_int8_grouped_quantization(),
                     is_superset(isa, avx512_core)
                             || is_superset(isa, avx2_vnni))
+            // TODO: int8 grouped quantization is not yet supported on
+            // avx10_2. The brgemm post-ops takes the
+            // extended-register path whenever the machine supports
+            // avx10_2 (see registry_scratchpad_t::ExtendedRegisters()), and
+            // the per-K src-scale store path corrupts the kernel-params
+            // scratchpad slot there, leading to a segfault.
+            // Disabled on avx10_2*.
+            && IMPLICATION(bm_conf_utils.with_int8_grouped_quantization(),
+                    !mayiuse(avx10_2) && !mayiuse(avx10_2_amx_2))
             && IMPLICATION(bm_conf_utils.is_bf16(),
                     one_of(isa, avx512_core_amx, avx512_core_bf16, avx2_vnni_2))
             && IMPLICATION(bm_conf_utils.is_f16(),

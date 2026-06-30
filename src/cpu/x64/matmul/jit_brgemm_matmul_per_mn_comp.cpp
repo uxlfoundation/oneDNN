@@ -83,8 +83,11 @@ struct jit_per_mn_comp_kernel_t : public per_mn_comp_kernel_t,
         , wei_k_stride_bytes_(wei_is_subbyte_ ? bgmmc->B_strides[1] / 2
                                               : bgmmc->B_strides[1])
         , LDC_(bgmmc->LDC)
-        , stripe_w_(
-                  static_cast<int>(nstl::min<dim_t>(bgmmc->LDC, bgmmc->N_blk)))
+        , n_blk_w_(static_cast<int>(nstl::min<dim_t>(bgmmc->LDC, bgmmc->N_blk)))
+        , n_tail_w_(bgmmc->N_tail > 0 ? static_cast<int>(nstl::min<dim_t>(
+                                                bgmmc->LDC, bgmmc->N_tail))
+                                      : 0)
+        , stripe_w_(n_blk_w_)
         , chunks_(static_cast<int>(utils::div_up(stripe_w_, simd_w))) {}
 
     status_t create_kernel() override {
@@ -111,8 +114,10 @@ private:
     const dim_t src_k_stride_bytes_;
     const dim_t wei_k_stride_bytes_;
     const dim_t LDC_;
-    const int stripe_w_;
-    const int chunks_;
+    const int n_blk_w_; // full block width  = min(LDC, N_blk)
+    const int n_tail_w_; // N-tail block width = min(LDC, N_tail), 0 if none
+    int stripe_w_;
+    int chunks_;
 
     static constexpr int f32_sz = sizeof(float);
     static constexpr int i32_sz = sizeof(int32_t);
@@ -539,10 +544,13 @@ private:
         jmp(k_bulk, T_NEAR);
         L(k_bulk_done);
 
+        const bool scalar_tail = !(has_vnni_ && isa_has_masks(isa_));
+        if (scalar_tail) xor_(reg_iter, reg_iter);
+
         Label k_tail_done;
         test(reg_k_iter, reg_k_iter);
         jz(k_tail_done, T_NEAR);
-        if (has_vnni_ && isa_has_masks(isa_)) {
+        if (!scalar_tail) {
             push(reg_tmp);
             build_low_bits_mask(reg_k_iter);
             pop(reg_tmp);
@@ -550,7 +558,6 @@ private:
                     ptr[reg_tmp]);
             vpdpbusd_ones(vmm_acc_tr(), vmm_data_tr(), src_is_signed_);
         } else {
-            const Xbyak::Xmm acc_x(vmm_acc_tr().getIdx());
             xor_(reg_n, reg_n);
             Label scalar_loop;
             L(scalar_loop);
@@ -558,8 +565,7 @@ private:
                 movsx(reg_b.cvt32(), byte[reg_tmp + reg_n]);
             else
                 movzx(reg_b.cvt32(), byte[reg_tmp + reg_n]);
-            vmovd(Xbyak::Xmm(vmm_data_tr().getIdx()), reg_b.cvt32());
-            vpaddd(acc_x, acc_x, Xbyak::Xmm(vmm_data_tr().getIdx()));
+            add(reg_iter.cvt32(), reg_b.cvt32());
             inc(reg_n);
             cmp(reg_n, reg_k_iter);
             jl(scalar_loop, T_NEAR);
@@ -568,6 +574,7 @@ private:
 
         hreduce_dword(vmm_acc_tr());
         vmovd(reg_T.cvt32(), Xmm(vmm_acc_tr().getIdx()));
+        if (scalar_tail) add(reg_T.cvt32(), reg_iter.cvt32());
 
         // Broadcast int32 -> vmm_T_bc; convert to f32.
         if (isa_has_masks(isa_)) {
@@ -677,15 +684,7 @@ private:
         L(m_done);
     }
 
-    void generate() override {
-        preamble();
-
-        load_param(reg_M_blk, GET_OFF(M_blk));
-        load_param(reg_stripe_w, GET_OFF(stripe_w));
-        load_param(reg_k_len, GET_OFF(k_len));
-
-        if (!isa_has_masks(isa_)) { vmovups(vmm_idx_, ptr[rip + idx_table_]); }
-
+    void emit_compute() {
         // (B) S-reduce (lives across the m-loop). Uses slots chunks_+0..+5
         //     as scratch; persistents loaded AFTER S-reduce.
         //     S[n]=Sum_K wei is needed for the src-zp term and, on non-AMX s8
@@ -714,6 +713,35 @@ private:
 
         // (C) m-loop with per-m T-reduce and combine.
         emit_m_combine_loop();
+    }
+
+    // Select and emit the compute body for a given N-block width.
+    void emit_body_for_width(int width) {
+        stripe_w_ = width;
+        chunks_ = static_cast<int>(utils::div_up(width, simd_w));
+        emit_compute();
+    }
+
+    void generate() override {
+        preamble();
+
+        load_param(reg_M_blk, GET_OFF(M_blk));
+        load_param(reg_stripe_w, GET_OFF(stripe_w));
+        load_param(reg_k_len, GET_OFF(k_len));
+
+        if (!isa_has_masks(isa_)) { vmovups(vmm_idx_, ptr[rip + idx_table_]); }
+        if (!isa_has_masks(isa_) && n_tail_w_ > 0) {
+            Label main_blk, done;
+            cmp(reg_stripe_w, n_blk_w_);
+            je(main_blk, T_NEAR);
+            emit_body_for_width(n_tail_w_); // N-tail block
+            jmp(done, T_NEAR);
+            L(main_blk);
+            emit_body_for_width(n_blk_w_); // full N_blk block
+            L(done);
+        } else {
+            emit_body_for_width(n_blk_w_);
+        }
 
         postamble();
 

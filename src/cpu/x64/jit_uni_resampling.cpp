@@ -99,17 +99,17 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     conf_.alg = desc()->alg_kind;
-    conf_.c = C();
-    conf_.od = OD();
-    conf_.oh = OH();
-    conf_.ow = OW();
-    conf_.id = ID();
-    conf_.ih = IH();
-    conf_.iw = IW();
+    conf_.c = into<unsigned int>(C());
+    conf_.od = into<unsigned int>(OD());
+    conf_.oh = into<unsigned int>(OH());
+    conf_.ow = into<unsigned int>(OW());
+    conf_.id = into<unsigned int>(ID());
+    conf_.ih = into<unsigned int>(IH());
+    conf_.iw = into<unsigned int>(IW());
     conf_.ndims = ndims();
 
     if (conf_.alg == alg_kind::resampling_linear)
-        conf_.number_of_corners = pow(2, conf_.ndims - 2);
+        conf_.number_of_corners = into<unsigned int>(pow(2, conf_.ndims - 2));
 
     conf_.src_dt_size = types::data_type_size(conf_.src_data_type);
     conf_.dst_dt_size = types::data_type_size(conf_.dst_data_type);
@@ -128,10 +128,13 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(engine_t *engine) {
 
     conf_.el_size_of_indices = sizeof(unsigned);
 
-    conf_.inner_stride = src_d.blocking_desc().strides[ndims() - 1];
-    conf_.stride_d = IH() * IW() * conf_.inner_stride * conf_.src_dt_size;
-    conf_.stride_h = IW() * conf_.inner_stride * conf_.src_dt_size;
-    conf_.stride_w = conf_.inner_stride * conf_.src_dt_size;
+    conf_.inner_stride
+            = into<unsigned int>(src_d.blocking_desc().strides[ndims() - 1]);
+    conf_.stride_d = into<unsigned int>(
+            IH() * IW() * conf_.inner_stride * conf_.src_dt_size);
+    conf_.stride_h
+            = into<unsigned int>(IW() * conf_.inner_stride * conf_.src_dt_size);
+    conf_.stride_w = into<unsigned int>(conf_.inner_stride * conf_.src_dt_size);
 
     const std::vector<injector::post_op_type> accepted_post_ops
             = {injector::sum, injector::eltwise, injector::binary};
@@ -301,18 +304,18 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_nearest() {
             + utils::rnd_up(pd()->OW(), kernel_->get_simd_w()));
 
     for (dim_t od = 0; od < pd()->OD(); od++) {
-        const int offset_id = nearest_idx(od, pd()->OD(), pd()->ID())
-                * pd()->get_conf().stride_d;
+        const int offset_id = into<int>(nearest_idx(od, pd()->OD(), pd()->ID())
+                * pd()->get_conf().stride_d);
         indices_.emplace_back(offset_id);
     }
     for (dim_t oh = 0; oh < pd()->OH(); oh++) {
-        const int offset_ih = nearest_idx(oh, pd()->OH(), pd()->IH())
-                * pd()->get_conf().stride_h;
+        const int offset_ih = into<int>(nearest_idx(oh, pd()->OH(), pd()->IH())
+                * pd()->get_conf().stride_h);
         indices_.emplace_back(offset_ih);
     }
     for (dim_t ow = 0; ow < pd()->OW(); ow++) {
-        const int offset_iw = nearest_idx(ow, pd()->OW(), pd()->IW())
-                * pd()->get_conf().stride_w;
+        const int offset_iw = into<int>(nearest_idx(ow, pd()->OW(), pd()->IW())
+                * pd()->get_conf().stride_w);
         indices_.emplace_back(offset_iw);
     }
 
@@ -333,9 +336,9 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
         // tail processing possibilities on sse41 and avx. To avoid problems
         // with that, number of spatial points is aligned to simd width, because
         // all of them are read in the kernel.
-        num_of_elements = number_of_corners
+        num_of_elements = into<unsigned int>(number_of_corners
                 * utils::rnd_up(pd()->OD() * pd()->OH() * pd()->OW(),
-                        kernel_->get_simd_w());
+                        kernel_->get_simd_w()));
 
         indices_.resize(num_of_elements);
         weights_.resize(num_of_elements);
@@ -356,10 +359,10 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
 
                 for (unsigned i = 0; i < number_of_corners; i++) {
                     std::bitset<3> corners(i);
-                    indices_[i * indices_stride + offset]
-                            = coeffs_id.idx[corners.test(2)] * stride_d
+                    indices_[i * indices_stride + offset] = into<unsigned>(
+                            coeffs_id.idx[corners.test(2)] * stride_d
                             + coeffs_ih.idx[corners.test(1)] * stride_h
-                            + coeffs_iw.idx[corners.test(0)] * stride_w;
+                            + coeffs_iw.idx[corners.test(0)] * stride_w);
                     weights_[i * weights_stride + offset]
                             = coeffs_id.wei[corners.test(2)]
                             * coeffs_ih.wei[corners.test(1)]
@@ -369,7 +372,8 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
         });
     } else if (pd()->get_conf().tag_kind == jit_memory_tag_kind_t::nspc
             || pd()->get_conf().tag_kind == jit_memory_tag_kind_t::blocked) {
-        num_of_elements = 2 * (pd()->OD() + pd()->OH() + pd()->OW());
+        num_of_elements = into<unsigned int>(
+                2 * (pd()->OD() + pd()->OH() + pd()->OW()));
 
         indices_.resize(num_of_elements);
         weights_.resize(num_of_elements);
@@ -390,8 +394,9 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
             // to read and makes the operation faster.
             weights_w[2 * ow] = coeffs_iw.wei[0];
             weights_w[2 * ow + 1] = coeffs_iw.wei[1];
-            indices_w[2 * ow] = coeffs_iw.idx[0] * stride_w;
-            indices_w[2 * ow + 1] = coeffs_iw.idx[1] * stride_w;
+            indices_w[2 * ow] = into<unsigned int>(coeffs_iw.idx[0] * stride_w);
+            indices_w[2 * ow + 1]
+                    = into<unsigned int>(coeffs_iw.idx[1] * stride_w);
         }
 
         for (dim_t oh = 0; oh < pd()->OH(); oh++) {
@@ -399,8 +404,9 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
 
             weights_h[oh] = coeffs_ih.wei[0];
             weights_h[pd()->OH() + oh] = coeffs_ih.wei[1];
-            indices_h[oh] = coeffs_ih.idx[0] * stride_h;
-            indices_h[pd()->OH() + oh] = coeffs_ih.idx[1] * stride_h;
+            indices_h[oh] = into<unsigned int>(coeffs_ih.idx[0] * stride_h);
+            indices_h[pd()->OH() + oh]
+                    = into<unsigned int>(coeffs_ih.idx[1] * stride_h);
         }
 
         for (dim_t od = 0; od < pd()->OD(); od++) {
@@ -408,8 +414,9 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
 
             weights_d[od] = coeffs_id.wei[0];
             weights_d[pd()->OD() + od] = coeffs_id.wei[1];
-            indices_d[od] = coeffs_id.idx[0] * stride_d;
-            indices_d[pd()->OD() + od] = coeffs_id.idx[1] * stride_d;
+            indices_d[od] = into<unsigned int>(coeffs_id.idx[0] * stride_d);
+            indices_d[pd()->OD() + od]
+                    = into<unsigned int>(coeffs_id.idx[1] * stride_d);
         }
     } else {
         assert(!"Invalid memory format kind.");

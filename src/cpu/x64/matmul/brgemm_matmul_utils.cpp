@@ -2193,6 +2193,12 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
             VERBOSE_BLOCKING_FAIL, "");
 
+    auto get_actual_ldd = [&]() {
+        return dst_d.ndims() == 2 && bgmmc.M == 1
+                ? bgmmc.N
+                : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
+    };
+
     // Per-K (grouped) scales/ZP applied at kernel time (i.e. not folded into
     // buffer B) require each brgemm call to cover at most a single K-group
     // of every active per-K axis.
@@ -2224,7 +2230,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             }
 
             const dim_t new_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
-            if (new_chunk_K < prev_chunk_K && new_chunk_K < bgmmc.K) {
+            if ((new_chunk_K < prev_chunk_K && new_chunk_K < bgmmc.K)
+                    || get_actual_ldd() != bgmmc.N) {
                 bgmmc.use_buffer_c = true;
             }
         }
@@ -2273,9 +2280,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     if (bgmmc.is_gemv && bgmmc.gemv_swap_a_b) {
         bgmmc.LDC = bgmmc.LDD = 1;
     } else {
-        bgmmc.LDD = dst_d.ndims() == 2 && bgmmc.M == 1
-                ? bgmmc.N
-                : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
+        bgmmc.LDD = get_actual_ldd();
         bgmmc.LDC = bgmmc.use_buffer_c && bgmmc.nthr_k <= 1
                 ? (bgmmc.is_amx ? nstl::min((dim_t)32, bgmmc.N_blk)
                                 : bgmmc.N_blk)

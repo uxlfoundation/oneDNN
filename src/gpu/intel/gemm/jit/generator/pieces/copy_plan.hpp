@@ -308,7 +308,7 @@ protected:
     void optimizeMoveToIntPipe();
 
     CopyOperand bfImmediate(uint16_t bits, bool ternary);
-    CopyOperand zipImmediates(const CopyOperand &o1, const CopyOperand &o2);
+    CopyOperand zipImmediates(const CopyOperand &o1, const CopyOperand &o2, uint8_t stride);
 
     bool bfArithmeticOK(const CopyInstruction &i) const;
 };

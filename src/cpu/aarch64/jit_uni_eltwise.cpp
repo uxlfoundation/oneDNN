@@ -117,7 +117,67 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         add_imm(X_TMP_0, param, GET_OFF(work_amount), X_TMP_1);
         ldr(reg_work_amount, ptr(X_TMP_0));
         eltwise_injector_->load_table_addr();
-        Label vectorized_loop_start, remainder_loop_start, remainder_loop_end;
+        Label vectorized_unrolled_loop_start, vectorized_loop_check,
+                vectorized_loop_start, remainder_loop_start, remainder_loop_end;
+        static constexpr int unroll_factor = 4;
+        const auto unrolled_simd_elems = unroll_factor * simd_elems_per_load;
+        const auto unrolled_simd_bytes = unroll_factor * simd_bytes(isa);
+        TReg src_vmm[unroll_factor] = {
+                vmm_src, vmm_src_unroll_0, vmm_src_unroll_1, vmm_src_unroll_2};
+        TReg aux_vmm[unroll_factor]
+                = {tmp0, tmp_unroll_0, tmp_unroll_1, tmp_unroll_2};
+        if (is_fwd) {
+            cmp(reg_work_amount, unrolled_simd_elems);
+            b(LT, vectorized_loop_check);
+            L(vectorized_unrolled_loop_start);
+            injector_utils::vmm_index_set_t vmm_idxs;
+            // Unrolled load
+            for (int i = 0; i < unroll_factor; ++i) {
+                auto src_s = TRegS(src_vmm[i].getIdx());
+                load_vector(src_s, reg_src, i);
+            }
+
+            if (can_compute_as_f16()) {
+                for (int i = 0; i < unroll_factor; ++i)
+                    vmm_idxs.emplace(src_vmm[i].getIdx());
+                eltwise_injector_->compute_vector_range(vmm_idxs);
+            } else if (is_bf16()) {
+                for (int i = 0; i < unroll_factor; ++i) {
+                    unpack_bf16(src_vmm[i], aux_vmm[i]);
+                    vmm_idxs.emplace(src_vmm[i].getIdx());
+                    vmm_idxs.emplace(aux_vmm[i].getIdx());
+                }
+                eltwise_injector_->compute_vector_range(vmm_idxs);
+                for (int i = 0; i < unroll_factor; ++i)
+                    pack_bf16(src_vmm[i], aux_vmm[i]);
+            } else if (is_f16()) {
+                for (int i = 0; i < unroll_factor; ++i) {
+                    unpack_fp16(src_vmm[i], aux_vmm[i]);
+                    vmm_idxs.emplace(src_vmm[i].getIdx());
+                    vmm_idxs.emplace(aux_vmm[i].getIdx());
+                }
+                eltwise_injector_->compute_vector_range(vmm_idxs);
+                for (int i = 0; i < unroll_factor; ++i)
+                    pack_fp16(src_vmm[i], aux_vmm[i]);
+            } else { // F32
+                for (int i = 0; i < unroll_factor; ++i)
+                    vmm_idxs.emplace(src_vmm[i].getIdx());
+                eltwise_injector_->compute_vector_range(vmm_idxs);
+            }
+            // Unrolled store
+            for (int i = 0; i < unroll_factor; ++i) {
+                auto src_s = TRegS(src_vmm[i].getIdx());
+                store_vector(reg_dst, src_s, i);
+            }
+
+            add_imm(reg_src, reg_src, unrolled_simd_bytes, X_TMP_0);
+            add_imm(reg_dst, reg_dst, unrolled_simd_bytes, X_TMP_0);
+            sub_imm(reg_work_amount, reg_work_amount, unrolled_simd_elems,
+                    X_TMP_0);
+            cmp(reg_work_amount, unrolled_simd_elems);
+            b(GE, vectorized_unrolled_loop_start);
+        }
+        L(vectorized_loop_check);
         cmp(reg_work_amount, simd_elems_per_load);
         b(LT, remainder_loop_start);
         L(vectorized_loop_start);
@@ -245,10 +305,18 @@ private:
     VReg4S xmm_src {1};
     VReg8H v_bf16 {1};
     VReg8H v_f16 {1};
-    TReg vmm_src {1};
     VReg4S xmm_diff_dst {2};
     TRegS vmm_diff_dst {2};
+    TReg vmm_src {1};
     TReg tmp0 {2};
+    // Use explicit vector registers for src/tmp values because they will are all live at the same time
+    // Avoid register 7 since it's already in used by tmp1
+    TReg vmm_src_unroll_0 {3};
+    TReg tmp_unroll_0 {4};
+    TReg vmm_src_unroll_1 {5};
+    TReg tmp_unroll_1 {6};
+    TReg vmm_src_unroll_2 {8};
+    TReg tmp_unroll_2 {9};
     TReg tmp1 {7};
     std::unique_ptr<jit_uni_eltwise_injector_t<isa>> eltwise_injector_;
 
@@ -266,7 +334,7 @@ private:
      * @param dst  Destination SIMD/SVE register to receive the data.
      * @param addr Source memory address (base register) with aligned vector data.
      */
-    void load_vector(TRegS &dst, const XReg addr);
+    void load_vector(TRegS &dst, const XReg addr, int vl_offset = 0);
 
     /**
      * @brief Store a SIMD/SVE vector register to memory.
@@ -280,7 +348,7 @@ private:
      * @param addr Destination memory address (base register) where data will be stored.
      * @param src  Source SIMD/SVE register providing the data.
      */
-    void store_vector(const XReg &addr, const TRegS src);
+    void store_vector(const XReg &addr, const TRegS src, int vl_offset = 0);
 
     /**
      * @brief Unpack two BFloat16 values from a single register into two target registers.
@@ -330,27 +398,41 @@ private:
 // Template specializations for load_vector
 template <>
 inline void jit_uni_kernel_t<cpu_isa_t::asimd>::load_vector(
-        TRegS &dst, const XReg addr) {
-    ld1(dst, ptr(addr));
+        TRegS &dst, const XReg addr, int vl_offset) {
+    if (vl_offset == 0) {
+        ld1(dst, ptr(addr));
+    } else {
+        add_imm(X_TMP_0, addr,
+                vl_offset * static_cast<int32_t>(simd_bytes(cpu_isa_t::asimd)),
+                X_TMP_1);
+        ld1(dst, ptr(X_TMP_0));
+    }
 }
 
 template <>
 inline void jit_uni_kernel_t<cpu_isa_t::sve>::load_vector(
-        TRegS &dst, const XReg addr) {
-    ld1w(dst, P_ALL_ONE / T_z, ptr(addr));
+        TRegS &dst, const XReg addr, int vl_offset) {
+    ld1w(dst, P_ALL_ONE / T_z, ptr(addr, vl_offset, MUL_VL));
 }
 
 // Template specializations for store_vector
 template <>
 inline void jit_uni_kernel_t<cpu_isa_t::asimd>::store_vector(
-        const XReg &addr, const TRegS src) {
-    st1(src, ptr(addr));
+        const XReg &addr, const TRegS src, int vl_offset) {
+    if (vl_offset == 0) {
+        st1(src, ptr(addr));
+    } else {
+        add_imm(X_TMP_0, addr,
+                vl_offset * static_cast<int32_t>(simd_bytes(cpu_isa_t::asimd)),
+                X_TMP_1);
+        st1(src, ptr(X_TMP_0));
+    }
 }
 
 template <>
 inline void jit_uni_kernel_t<cpu_isa_t::sve>::store_vector(
-        const XReg &addr, const TRegS src) {
-    st1w(src, P_ALL_ONE / T_z, ptr(addr));
+        const XReg &addr, const TRegS src, int vl_offset) {
+    st1w(src, P_ALL_ONE / T_z, ptr(addr, vl_offset, MUL_VL));
 }
 
 // Template specializations for unpack_bf16

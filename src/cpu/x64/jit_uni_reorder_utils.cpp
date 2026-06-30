@@ -370,7 +370,7 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
 
         if (ild.dims[i_pos] == old.dims[o_pos]) {
             p.nodes[ndims].n = ild.dims[i_pos];
-            p.nodes[ndims].dim_id = old.id[o_pos];
+            p.nodes[ndims].dim_id = into<int>(old.id[o_pos]);
             p.nodes[ndims].tail_size = old.tails[o_pos];
             p.nodes[ndims].is_zero_pad_needed
                     = old.is_blk[o_pos] && old.tails[o_pos] > 0;
@@ -396,7 +396,7 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
             const size_t tail_of_lower_dim = old.tails[o_pos] % factor;
 
             p.nodes[ndims].n = ild.dims[i_pos];
-            p.nodes[ndims].dim_id = old.id[o_pos];
+            p.nodes[ndims].dim_id = into<int>(old.id[o_pos]);
             p.nodes[ndims].tail_size = tail_of_upper_dim;
             p.nodes[ndims].is_zero_pad_needed
                     = old.is_blk[o_pos] && tail_of_upper_dim > 0;
@@ -416,7 +416,7 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
 
             dim_t factor = ild.dims[i_pos] / old.dims[o_pos];
             p.nodes[ndims].n = old.dims[o_pos];
-            p.nodes[ndims].dim_id = old.id[o_pos];
+            p.nodes[ndims].dim_id = into<int>(old.id[o_pos]);
             p.nodes[ndims].tail_size = old.tails[o_pos];
             p.nodes[ndims].is_zero_pad_needed
                     = old.is_blk[o_pos] && old.tails[o_pos] > 0;

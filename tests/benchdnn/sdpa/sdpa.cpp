@@ -270,16 +270,76 @@ void setup_cmp(compare::compare_t &cmp, const prb_t *prb, data_kind_t kind,
     const float trh = trh_coeff * (1 + prb->n_keys) * epsilon_dt(prb->dst_dt());
     cmp.set_threshold(trh);
 
-    // bf16 backward produces element diffs up to ~3e-2 for near-zero values.
-    const float abs_trh = is_bwd ? 5e-2f : 2e-3f;
-    cmp.set_driver_check_function(
-            [abs_trh](const compare::compare_t::driver_check_func_args_t &a)
-                    -> bool {
-        if (fabs(a.exp) > 6.e-5)
-            return a.diff <= abs_trh;
-        else
-            return a.diff <= abs_trh || a.rel_diff < 41;
-    });
+    // The standard point-to-point check (see compare.cpp) validates any point
+    // with |exp| > 1e-5 against the *relative* threshold above. That alone is
+    // not sufficent SDPA's forward pass: it is a convex combination
+    //     O = sum(prob_k * V_k),   sum(prob_k) = 1,
+    // so catastrophic cancellation can drive |O| -> 0 (observed ~5e-5) while
+    // the absolute error stays pinned at the rounding floor, making
+    // rel_diff = diff/|exp| blow up for a perfectly healthy kernel. Those
+    // small-magnitude points are instead validated against an absolute floor
+    // (the driver check below). The relative threshold is still required for
+    // well-conditioned points -- the two are complementary, not redundant.
+    //
+    // The absolute floor has two physical sources, both scaled by the value
+    // magnitude (max|V| bounds sum(prob_k*|V_k|)), taken from the V fill range
+    // (kind WEI) so it tracks dtype/fill changes. Both are independent of
+    // n_keys/n_values and head_size: the output is a convex combination
+    // (sum(prob_k) = 1), so the P*V reduction's error stays bounded regardless
+    // of the reduction length. This was verified empirically -- the worst-case
+    // element diff is flat across a 22x sweep of n_keys (384..8192) and a 4x
+    // sweep of head_size.
+    const cfg_t cfg(prb, {SRC, WEI, DST});
+    // K and V both use the WEI fill range.
+    const float v_max_abs
+            = MAX2(abs(cfg.get_range_min(WEI)), abs(cfg.get_range_max(WEI)));
+
+    // Headroom over the measured f32 floor: the worst-case element diff is
+    // empirically ~19 * eps(f32) * max|V| (flat across the sweeps above);
+    // nextpow2(3 * 19) = 64 gives a ~3.4x safety margin for seed/config
+    // variation while staying far tighter than a reduction-length-scaled floor.
+    static const float acc_coeff = 64.f;
+
+    // quantization of the output / the softmax probs (which the kernel rounds
+    // to dst dt before the P*V product): ~eps(dst) * max|V|. Dominant for
+    // bf16/f16, whose P*V product accumulates in f32.
+    const float quant_floor = epsilon_dt(prb->dst_dt()) * v_max_abs;
+
+    // the f32 floor from the softmax exp approximation (native_vexp2) plus f32
+    // accumulation. Dominant for f32 dst
+    const float acc_floor = acc_coeff * epsilon_dt(dnnl_f32) * v_max_abs;
+
+    // Backward chains more matmuls/softmax_bwd and produces element diffs up
+    // to ~3e-2 for near-zero values; keep its looser empirical floor.
+    const float abs_trh = is_bwd ? 5e-2f : (quant_floor + acc_floor);
+
+    // Tighter per-element floor: the quant_floor above uses max|V| (the loosest
+    // bound on sum(prob_k*|V_k|)), but that conditioning magnitude is available
+    // per output element from the reference (SDPA_REF_ARG_OUT_ABSMAG). Using it
+    // replaces eps(dst)*max|V| with eps(dst)*sum(prob_k*|V_k|) per element --
+    // ~|out| for well-conditioned points (much tighter), relaxing only where
+    // cancellation genuinely inflates the sum. The constant acc_floor stays
+    // (softmax-exp/accumulation floor + tiny-value protection). Only applies to
+    // the non-quantized forward DST: quantization error is per-V-element dequant
+    // noise, not proportional to the conditioning magnitude, so it keeps the
+    // flat floor.
+    const bool quantized
+            = is_integral_dt(prb->k_dt()) || is_integral_dt(prb->v_dt());
+    const dnn_mem_t &absmag = ref_args.find(SDPA_REF_ARG_OUT_ABSMAG);
+    if (!is_bwd && !quantized && absmag.nelems() > 0) {
+        const float eps_dst = epsilon_dt(prb->dst_dt());
+        const dnn_mem_t *mag = &absmag;
+        cmp.set_driver_check_function(
+                [eps_dst, acc_floor, mag](
+                        const compare::compare_t::driver_check_func_args_t &a)
+                        -> bool {
+            return a.diff <= eps_dst * mag->get_f32_elem(a.idx) + acc_floor;
+        });
+    } else {
+        cmp.set_driver_check_function(
+                [abs_trh](const compare::compare_t::driver_check_func_args_t &a)
+                        -> bool { return a.diff <= abs_trh; });
+    }
 
     cmp.set_zero_trust_percent(is_bwd ? 70.f : 90.f);
 }
@@ -447,6 +507,16 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
+
+    // Reference-only buffer holding the per-element conditioning magnitude
+    // sum_k prob_k*|V_k| (same layout as the reference DST). compute_ref fills
+    // it; setup_cmp reads it to size a per-element DST threshold. Forward only.
+    if (ref_mem_map.count(DNNL_ARG_DST)) {
+        const auto &ref_dst = ref_mem_map.at(DNNL_ARG_DST);
+        ref_mem_map.emplace(SDPA_REF_ARG_OUT_ABSMAG,
+                dnn_mem_t(
+                        ref_dst.md_, get_cpu_engine(), /* prefill = */ false));
+    }
 
     args_t args(mem_map), ref_args(ref_mem_map);
 

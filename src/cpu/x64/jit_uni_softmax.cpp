@@ -284,24 +284,31 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         const auto max_body_unroll = n_loops_ ? unroll_regs_
                 : loop_tail_                  ? loop_tail_
                                               : 1;
-        pre_body(max_body_unroll);
+        pre_body(into<int>(max_body_unroll));
 
         L(body_unroll_loop);
         {
             if (n_loops_) {
-                cmp(reg_reverse_n_elems, unroll_regs_ * process_n_elems_);
+                cmp(reg_reverse_n_elems,
+                        into<uint32_t>(unroll_regs_ * process_n_elems_));
                 jl(body_unroll_tail_loop, T_NEAR);
 
-                body(unroll_regs_, max_body_unroll, false);
-                sub(reg_reverse_n_elems, unroll_regs_ * process_n_elems_);
-                add(reg_src_spat_offt, unroll_regs_ * src_next_vreg_stride_);
-                add(reg_dst_spat_offt, unroll_regs_ * dst_next_vreg_stride_);
+                body(into<int>(unroll_regs_), into<int>(max_body_unroll),
+                        false);
+                sub(reg_reverse_n_elems,
+                        into<uint32_t>(unroll_regs_ * process_n_elems_));
+                add(reg_src_spat_offt,
+                        into<uint32_t>(unroll_regs_ * src_next_vreg_stride_));
+                add(reg_dst_spat_offt,
+                        into<uint32_t>(unroll_regs_ * dst_next_vreg_stride_));
                 if (need_scratchpad_)
                     add(reg_interim_spat_offt,
-                            unroll_regs_ * interim_next_vreg_stride_);
+                            into<uint32_t>(
+                                    unroll_regs_ * interim_next_vreg_stride_));
                 if (!pd_->is_fwd())
                     add(reg_diff_dst_spat_offt,
-                            unroll_regs_ * diff_dst_next_vreg_stride_);
+                            into<uint32_t>(
+                                    unroll_regs_ * diff_dst_next_vreg_stride_));
                 jmp(body_unroll_loop);
             }
         }
@@ -309,19 +316,25 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         L(body_unroll_tail_loop);
         {
             if (loop_tail_) {
-                cmp(reg_reverse_n_elems, loop_tail_ * process_n_elems_);
+                cmp(reg_reverse_n_elems,
+                        into<uint32_t>(loop_tail_ * process_n_elems_));
                 jl(tail_axis, T_NEAR);
 
-                body(loop_tail_, max_body_unroll, false);
-                sub(reg_reverse_n_elems, loop_tail_ * process_n_elems_);
-                add(reg_src_spat_offt, loop_tail_ * src_next_vreg_stride_);
-                add(reg_dst_spat_offt, loop_tail_ * dst_next_vreg_stride_);
+                body(into<int>(loop_tail_), into<int>(max_body_unroll), false);
+                sub(reg_reverse_n_elems,
+                        into<uint32_t>(loop_tail_ * process_n_elems_));
+                add(reg_src_spat_offt,
+                        into<uint32_t>(loop_tail_ * src_next_vreg_stride_));
+                add(reg_dst_spat_offt,
+                        into<uint32_t>(loop_tail_ * dst_next_vreg_stride_));
                 if (need_scratchpad_)
                     add(reg_interim_spat_offt,
-                            loop_tail_ * interim_next_vreg_stride_);
+                            into<uint32_t>(
+                                    loop_tail_ * interim_next_vreg_stride_));
                 if (!pd_->is_fwd())
                     add(reg_diff_dst_spat_offt,
-                            loop_tail_ * diff_dst_next_vreg_stride_);
+                            into<uint32_t>(
+                                    loop_tail_ * diff_dst_next_vreg_stride_));
             }
         }
 
@@ -331,13 +344,13 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                 cmp(reg_reverse_n_elems, 1);
                 jl(loop_end, T_NEAR);
 
-                body(1, max_body_unroll, true);
+                body(1, into<int>(max_body_unroll), true);
             }
         }
 
         L(loop_end);
 
-        post_body(max_body_unroll);
+        post_body(into<int>(max_body_unroll));
     }
 
     void uni_vaddps_maybe_tail(
@@ -639,9 +652,9 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                                     alg_kind::eltwise_exp, pd_->is_fwd(), 0.f);
                     for (size_t j = 0; j < exp_vmm_aux_count; j++) {
                         // Insert the next idx starting after `vreg_tmp_sum`.
-                        exp_aux_indices.insert(static_cast<size_t>(
-                                get_aux_vmm(vreg_tmp_sum, (j + 1) * max_unroll)
-                                        .getIdx()));
+                        exp_aux_indices.insert(into<size_t>(get_aux_vmm(
+                                vreg_tmp_sum, into<int>((j + 1) * max_unroll))
+                                                                    .getIdx()));
                     }
                     exp_injector_->compute_vector(
                             vreg_tmp_src.getIdx(), exp_aux_indices);
@@ -1251,19 +1264,22 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         L(axis_size_body);
         {
             if (axis_size_ >= unroll_axis_size_) {
-                cmp(reg_reverse_axis_elems, unroll_axis_size_);
+                cmp(reg_reverse_axis_elems, into<uint32_t>(unroll_axis_size_));
                 jl(axis_size_tail, T_NEAR);
 
-                body(unroll_axis_size_, inner_unroll, tail);
+                body(into<int>(unroll_axis_size_), inner_unroll, tail);
 
                 add(reg_src_spat_offt,
-                        unroll_axis_size_ * src_next_vreg_stride_);
+                        into<uint32_t>(
+                                unroll_axis_size_ * src_next_vreg_stride_));
                 add(reg_interim_spat_offt,
-                        unroll_axis_size_ * interim_next_vreg_stride_);
+                        into<uint32_t>(
+                                unroll_axis_size_ * interim_next_vreg_stride_));
                 add(reg_dst_spat_offt,
-                        unroll_axis_size_ * dst_next_vreg_stride_);
+                        into<uint32_t>(
+                                unroll_axis_size_ * dst_next_vreg_stride_));
 
-                sub(reg_reverse_axis_elems, unroll_axis_size_);
+                sub(reg_reverse_axis_elems, into<uint32_t>(unroll_axis_size_));
                 jmp(axis_size_body);
             }
         }
@@ -1271,20 +1287,26 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         L(axis_size_tail);
         {
             if (axis_size_unroll_tail_) {
-                body(axis_size_unroll_tail_, inner_unroll, tail);
+                body(into<int>(axis_size_unroll_tail_), inner_unroll, tail);
 
                 add(reg_src_spat_offt,
-                        axis_size_unroll_tail_ * src_next_vreg_stride_);
+                        into<uint32_t>(axis_size_unroll_tail_
+                                * src_next_vreg_stride_));
                 add(reg_interim_spat_offt,
-                        axis_size_unroll_tail_ * interim_next_vreg_stride_);
+                        into<uint32_t>(axis_size_unroll_tail_
+                                * interim_next_vreg_stride_));
                 add(reg_dst_spat_offt,
-                        axis_size_unroll_tail_ * dst_next_vreg_stride_);
+                        into<uint32_t>(axis_size_unroll_tail_
+                                * dst_next_vreg_stride_));
             }
         }
         // Restore initial offsets for the next round.
-        sub(reg_src_spat_offt, axis_size_ * src_next_vreg_stride_);
-        sub(reg_interim_spat_offt, axis_size_ * interim_next_vreg_stride_);
-        sub(reg_dst_spat_offt, axis_size_ * dst_next_vreg_stride_);
+        sub(reg_src_spat_offt,
+                into<uint32_t>(axis_size_ * src_next_vreg_stride_));
+        sub(reg_interim_spat_offt,
+                into<uint32_t>(axis_size_ * interim_next_vreg_stride_));
+        sub(reg_dst_spat_offt,
+                into<uint32_t>(axis_size_ * dst_next_vreg_stride_));
     }
 
     // The function provides complete softmax algorithm over axis_size_. Stages:
@@ -1442,9 +1464,11 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         axis_size_loop_unroll(store_body, unroll_inner, tail);
 
         add(reg_src_spat_offt,
-                unroll_inner * simd_w_ * src_d_.data_type_size());
+                into<uint32_t>(
+                        unroll_inner * simd_w_ * src_d_.data_type_size()));
         add(reg_dst_spat_offt,
-                unroll_inner * simd_w_ * dst_d_.data_type_size());
+                into<uint32_t>(
+                        unroll_inner * simd_w_ * dst_d_.data_type_size()));
     }
 
     // The function provides unrolling over inner size. A single compute block
@@ -1462,12 +1486,14 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         L(unroll_loop);
         {
             if (n_loops_) {
-                cmp(reg_reverse_n_elems, unroll_inner_size_ * simd_w_);
+                cmp(reg_reverse_n_elems,
+                        into<uint32_t>(unroll_inner_size_ * simd_w_));
                 jl(unroll_tail_loop, T_NEAR);
 
-                axis_full_cycle(unroll_inner_size_, false);
+                axis_full_cycle(into<int>(unroll_inner_size_), false);
 
-                sub(reg_reverse_n_elems, unroll_inner_size_ * simd_w_);
+                sub(reg_reverse_n_elems,
+                        into<uint32_t>(unroll_inner_size_ * simd_w_));
                 jmp(unroll_loop);
             }
         }
@@ -1475,12 +1501,12 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         L(unroll_tail_loop);
         {
             if (loop_tail_) {
-                cmp(reg_reverse_n_elems, loop_tail_ * simd_w_);
+                cmp(reg_reverse_n_elems, into<uint32_t>(loop_tail_ * simd_w_));
                 jl(tail_loop, T_NEAR);
 
-                axis_full_cycle(loop_tail_, false);
+                axis_full_cycle(into<int>(loop_tail_), false);
 
-                sub(reg_reverse_n_elems, loop_tail_ * simd_w_);
+                sub(reg_reverse_n_elems, into<uint32_t>(loop_tail_ * simd_w_));
                 // No jump, unroll_tail run once.
             }
         }

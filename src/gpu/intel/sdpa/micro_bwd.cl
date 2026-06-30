@@ -436,12 +436,8 @@ inline void tile_store_k_slm(
 
 #if KV_GROUP_SIZE > 1
 #define IS_GQA 1
-#if defined(DST_DT_F16)
-#define REDUCE_DKDV_F16 1
-#else
 #define REDUCE_DKDV_F16 0
-#endif
-#if DST_DATA_T != float
+#if defined(DST_DT_F16) || defined(DST_DT_BF16)
 #define NEEDS_INTERMEDIATE_DKV 1
 #else
 #define NEEDS_INTERMEDIATE_DKV 0
@@ -487,8 +483,14 @@ inline float round_to_dst(float v) {
 #define SLM_DKDV_DATA_T float
 typedef dv_tile_type dv_acc_tile_type;
 typedef a_tile_type dk_acc_tile_type;
+// Round an f32 value to the destination precision (returned as f32) for the
+// GQA per-head dK/dV partials before they are summed across heads in f32
+// The natural form CONVERT_FLOAT_T(CONVERT_DATA_T(v)) is folded to the identity
+// by IGC, silently dropping the per-head rounding. Routing the rounded value
+// through a volatile forces the conversion to materialize
 inline float round_to_dst(float v) {
-    return CONVERT_FLOAT_T(CONVERT_DATA_T(v));
+    volatile DST_DATA_T tmp = CONVERT_DATA_T(v);
+    return CONVERT_FLOAT_T(tmp);
 }
 #endif
 

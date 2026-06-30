@@ -31,7 +31,6 @@ struct HWInformation {
     uint32_t gmdid;
     int euCount;
     bool systolicAvailable;
-    bool isEfficient64Bit;
 };
 
 struct GEMMOptions {

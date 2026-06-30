@@ -2099,25 +2099,31 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_A_data(
 
     const auto typesize = sizeof(float16_t);
     const auto rd_block = zmm_width_in_bytes_ / typesize;
-    const auto rdb = brg.reduce_dim / rd_block;
+    const auto rdb = utils::div_up(brg.reduce_dim, rd_block);
     const auto rd_tail = brg.reduce_dim % rd_block;
 //    reg64_savable_guard_t reg_fp8_buf_guard({&reg64_fp8_aux, &reg_buf_aux_A});
-    reg_buf_aux_A.restore();
+//    reg_buf_aux_A.restore();
 //    reg_buf_A.restoreTo(reg_buf_aux_A);
 
     if (rd_tail) {
         const auto tail_mask = (static_cast<size_t>(1) << rd_tail) - 1;
-        mov(reg_tmp_gpr.cvt32(), tail_mask);
-        kmovd(fp8_col_mask, reg_tmp_gpr.cvt32());
+        mov(reg_tmp_gpr, tail_mask);
+        kmovq(fp8_col_mask, reg_tmp_gpr);
     }
     const auto vmm = vmm_tmp(0);
-    const auto vmm_masked = rd_tail ? vmm | fp8_col_mask | T_z : vmm;
+//    const auto vmm_masked = rd_tail ? vmm | fp8_col_mask | T_z : vmm;
+
+    reg_buf_aux_A.restore();
 
     for (int bd = bd_b; bd < bd_e; bd++) {
 //        const auto buf_offset = buf_A_offset(typesize, bd, 0);
         for (int rd = 0; rd < rdb; rd++) {
-            const auto offset = A_offset(bd, rd);
-            const auto buf_offset = buf_A_offset(typesize, bd, rd);
+            const auto r = rd * rd_block;
+            const auto offset = A_offset(bd, r);
+            const auto buf_offset = buf_A_offset(typesize, bd, r);
+            const auto is_rd_tail = rd_tail && rd == rdb - 1;
+            const auto vmm_masked = is_rd_tail ? vmm | fp8_col_mask | T_z : vmm;
+
             if (brg.dt_a == data_type::f8_e4m3)
                 f8_e4m3_cvt_->vcvt_f8_to_f16(
                         vmm_masked, ptr[reg_base + offset]);
@@ -2584,14 +2590,21 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
         const auto bd_by_load_bytes = (bd >= bd_e - rows_by_load_bytes
                 || brg.brgattr.wary_A_k_tail_read);
         const auto is_tail = have_to_load_bytes && bd_by_load_bytes;
+//printf("is tail: %d, have_to_load_bytes: %d, bd_by_load_bytes: %d, rows_for_rd_tail: %d\n", is_tail, have_to_load_bytes, bd_by_load_bytes, rows_for_rd_tail);
         if (is_tail) {
             Xmm xmm_tmp = Xmm(vmm_bcast.getIdx());
+            if (brg.is_fp8_via_convert_non_amx()) {
+                const auto buf_offset = buf_A_offset(2, bd, rd);
+                reg_buf_aux_A.restore();
+                load_bytes(
+                        xmm_tmp, reg_buf_aux_A, buf_offset, rd_tail_size * 2);
+            } else
             load_bytes(
                     xmm_tmp, reg_aux_A, offset, rd_tail_size * brg.typesize_A);
-            if (brg.is_fp8_via_convert_non_amx()) {
-                vpbroadcastw(vmm_bcast, xmm_tmp);
-                f8_e4m3_cvt_->vcvt_f8_to_f16(vmm_bcast, vmm_bcast);
-            } else
+//            if (brg.is_fp8_via_convert_non_amx()) {
+//                vpbroadcastd(vmm_bcast, xmm_tmp);
+//                f8_e4m3_cvt_->vcvt_f8_to_f16(vmm_bcast, vmm_bcast);
+//            } else
                 uni_vpbroadcastd(vmm_bcast, xmm_tmp);
         } else {
             if (dt == data_type::f32) {

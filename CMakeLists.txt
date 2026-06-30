@@ -52,7 +52,7 @@ endif()
 
 set(PROJECT_NAME "oneDNN")
 set(PROJECT_FULL_NAME "oneAPI Deep Neural Network Library (oneDNN)")
-set(PROJECT_VERSION "3.11.3")
+set(PROJECT_VERSION "3.11.4")
 
 project(${PROJECT_NAME} VERSION "${PROJECT_VERSION}" LANGUAGES C CXX)
 

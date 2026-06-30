@@ -62,7 +62,7 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::generate() {
 template <data_type_t d_type>
 void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::reserve_stack_space(
         std::size_t space) {
-    this->sub(rsp, space);
+    this->sub(rsp, into<uint32_t>(space));
     this->uni_vpxor(zmm4, zmm4, zmm4);
     for (unsigned i = 0; i < 2u; ++i)
         this->vmovups(ptr[rsp + i * zmm_size], zmm4);
@@ -71,7 +71,7 @@ void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::reserve_stack_space(
 template <data_type_t d_type>
 void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::unreserve_stack_space(
         std::size_t space) {
-    this->add(rsp, space);
+    this->add(rsp, into<uint32_t>(space));
 }
 
 template <data_type_t d_type>
@@ -166,11 +166,11 @@ template <data_type_t d_type>
 void jit_avx512_common_lrn_kernel_fwd_nhwc_t<d_type>::increment_loop_params(
         std::size_t offset) {
 
-    this->add(this->src_, offset);
-    this->add(this->dst_, offset);
+    this->add(this->src_, into<uint32_t>(offset));
+    this->add(this->dst_, into<uint32_t>(offset));
     if (this->pk_ != prop_kind::forward_inference) {
-        this->add(this->ws0_, offset);
-        this->add(this->ws1_, offset);
+        this->add(this->ws0_, into<uint32_t>(offset));
+        this->add(this->ws1_, into<uint32_t>(offset));
     }
 }
 

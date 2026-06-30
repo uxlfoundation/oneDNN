@@ -215,9 +215,6 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     matchParams.nExtraReqs = int(reqs.size());
     matchParams.extraReqs = reqs.data();
 
-    if (hw == ngen::HW::Xe3p && !hwInfo.isEfficient64Bit)
-        matchParams.selector.hw = kcatalog::HWTagXeHPC;
-
     auto tags = const_cast<char *>(matchParams.tags);
     while (*tags)
         tags++;
@@ -241,7 +238,6 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
 
     /* Generate interface */
     InterfaceHandler interface = effOptions.generateInterface(hw);
-    interface.setEfficient64Bit(hwInfo.isEfficient64Bit);
 
     kcatalog::Catalog catalog = [&]() {
         if (localA)
@@ -315,10 +311,6 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
                     problem.A.setAlignment(std::max<int>(problem.A.alignment, 16));
                 if (block2DB && strategy.legalBAlignment(problem, 16))
                     problem.B.setAlignment(std::max<int>(problem.B.alignment, 16));
-            }
-            if (hw == ngen::HW::Xe3p && !hwInfo.isEfficient64Bit) {
-                // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
-                strategy.raHW = ngen::HW::XeHPC;
             }
         } else if (!reqs.empty() &&
                    !getStrategyByHeuristics(hw, strategy, localA, localB, problem, hwInfo, sizes, reqs))
@@ -564,10 +556,6 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
 
     if (hw == HW::Xe2 || hw == HW::Xe3)
         s.raHW = HW::XeHPC;
-    // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
-    if (hw == ngen::HW::Xe3p && !hwInfo.isEfficient64Bit) {
-        s.raHW = ngen::HW::XeHPC;
-    }
 
     adjustStrategy(hw, problem, strategy);
 

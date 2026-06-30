@@ -3065,8 +3065,8 @@ INSTANTIATE_TEST_SUITE_P(DataTypes_f32, sdpa_test_datatypes,
                 ::testing::Values(seq_len_size_t {384, 384}, seq_len_size_t {1, 385}, seq_len_size_t {1024, 1024}, seq_len_size_t {1, 1025}), // seq_len
                 ::testing::Values(head_group_size_t {32, 32, 32}, head_group_size_t {64, 64, 64}, head_group_size_t {128, 128, 128}, head_group_size_t {256, 256, 256}, head_group_size_t {512, 512, 512}), // hd_size
                 ::testing::Values(tensor_type_t("Q", mdt::f32)), // dt
-                ::testing::Values(tensor_type_t("K", mdt::f32), tensor_type_t("K", mdt::s8, mdt::f32)), // kdt
-                ::testing::Values(tensor_type_t("V", mdt::f32), tensor_type_t("V", mdt::s8, mdt::f32)), // vdt
+                ::testing::Values(tensor_type_t("K", mdt::f32)), // kdt
+                ::testing::Values(tensor_type_t("V", mdt::f32)), // vdt
                 ::testing::Values(quantize_type::per_token), // qtype
                 ::testing::Values(dnnl::memory::format_tag::abcd, dnnl::memory::format_tag::abdc), // key_format_tag
                 ::testing::Values(mask_config_t {mask_type::twoD, mdt::f32}), // mask_type

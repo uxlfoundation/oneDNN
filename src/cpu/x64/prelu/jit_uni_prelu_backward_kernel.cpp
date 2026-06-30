@@ -59,7 +59,8 @@ Xbyak::Address jit_prelu_backward_kernel_t::data_ptr(int arg_num, size_t offt) {
     const auto get_addr
             = [&](const Xbyak::Reg64 &reg_base, const data_type_t dt) {
         const auto dt_size = types::data_type_size(dt);
-        return ptr[reg_base + reg_offset_ * dt_size + offt * dt_size];
+        return ptr[reg_base + reg_offset_ * into<int>(dt_size)
+                + into<int>(offt) * into<int>(dt_size)];
     };
 
     switch (arg_num) {
@@ -212,7 +213,7 @@ void jit_uni_prelu_backward_kernel_t<Xbyak::Zmm>::compute_dst(
     auto get_next_opmask = [opmask_counter]() mutable {
         static constexpr size_t opmask_range_begin = 2;
         static constexpr size_t opmask_range_end = 8;
-        const auto opmask = Xbyak::Opmask(opmask_counter++);
+        const auto opmask = Xbyak::Opmask(into<int>(opmask_counter++));
         if (opmask_counter == opmask_range_end)
             opmask_counter = opmask_range_begin;
         return opmask;

@@ -31,6 +31,9 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+// This implementation precomputes eltwise results for all possible bf16 inputs
+// at primitive creation time. This makes execution a table lookup, but increases
+// initialization time and stores one fixed-size 128 KiB LUT per primitive.
 struct eltwise_lut_fwd_t : public primitive_t {
     using data_t = ::dnnl::impl::bfloat16_t;
 

@@ -35,8 +35,8 @@ static inline std::tuple<int, int> calc_nthr_2d(int nthrs, dim_t m, dim_t n,
         dim_t block_m, dim_t block_n, dim_t small_m, dim_t small_n,
         dim_t &thread_m, dim_t &thread_n) {
 
-    int nthr_m = static_cast<int>(utils::div_up(m, block_m));
-    int nthr_n = static_cast<int>(utils::div_up(n, block_n));
+    dim_t nthr_m = utils::div_up(m, block_m);
+    dim_t nthr_n = utils::div_up(n, block_n);
 
     if (nthr_m < 1) nthr_m = 1;
     if (nthr_n < 1) nthr_n = 1;
@@ -192,7 +192,7 @@ dnnl_status_t pack_no_copy(const T *src, dim_t ld_src, dim_t nrows, dim_t ncols,
             if (is_f32) {
                 PRAGMA_OMP_SIMD()
                 for (dim_t i = 0; i < nrows_dst; i++)
-                    dst_col[i] = alpha * src_col[i];
+                    dst_col[i] = into<T>(alpha * src_col[i]);
             } else {
                 PRAGMA_OMP_SIMD()
                 for (dim_t i = 0; i < nrows_dst; i++)
@@ -208,7 +208,7 @@ dnnl_status_t pack_no_copy(const T *src, dim_t ld_src, dim_t nrows, dim_t ncols,
             if (is_f32) {
                 PRAGMA_OMP_SIMD()
                 for (dim_t i = 0; i < nrows_dst; i++)
-                    dst_col[i] = alpha * src_col[i * ld_src];
+                    dst_col[i] = into<T>(alpha * src_col[i * ld_src]);
             } else {
                 PRAGMA_OMP_SIMD()
                 for (dim_t i = 0; i < nrows_dst; i++)

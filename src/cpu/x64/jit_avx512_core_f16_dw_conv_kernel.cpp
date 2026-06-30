@@ -382,10 +382,10 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::compute_loop(
             L(ch_loop_label);
             {
                 compute(jcp.nb_ch_blocking, false);
-                add(reg_kernel, wei_ch_stride);
-                add(reg_input, inp_ch_stride);
-                add(reg_output, out_ch_stride);
-                if (jcp.with_bias) add(reg_bias, bias_stride);
+                add(reg_kernel, into<uint32_t>(wei_ch_stride));
+                add(reg_input, into<uint32_t>(inp_ch_stride));
+                add(reg_output, into<uint32_t>(out_ch_stride));
+                if (jcp.with_bias) add(reg_bias, into<uint32_t>(bias_stride));
                 sub(aux_reg_ch_blocks, ch_step);
                 cmp(aux_reg_ch_blocks, ch_step);
                 jge(ch_loop_label, T_NEAR);
@@ -444,7 +444,7 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::ow_loop(int ur_ch_blocks) {
         if (n_oi == 0) {
             compute_loop(ur_w, ur_ch_blocks, l_pad, r_pad1);
             add(reg_input, inp_shift_pad);
-            add(reg_output, out_shift);
+            add(reg_output, into<uint32_t>(out_shift));
             if (ur_w_tail != 0) {
                 compute_loop(ur_w_tail, ur_ch_blocks, 0, r_pad);
             }
@@ -452,7 +452,7 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::ow_loop(int ur_ch_blocks) {
             if (l_pad > 0) {
                 compute_loop(ur_w, ur_ch_blocks, l_pad, 0);
                 add(reg_input, inp_shift_pad);
-                add(reg_output, out_shift);
+                add(reg_output, into<uint32_t>(out_shift));
                 inc(reg_oi);
             }
             if ((l_pad <= 0 && n_oi > 0) || (l_pad > 0 && n_oi > 1)) {
@@ -460,8 +460,8 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::ow_loop(int ur_ch_blocks) {
                 L(ow_loop_label);
                 {
                     compute_loop(ur_w, ur_ch_blocks, 0, 0);
-                    add(reg_input, inp_shift);
-                    add(reg_output, out_shift);
+                    add(reg_input, into<uint32_t>(inp_shift));
+                    add(reg_output, into<uint32_t>(out_shift));
 
                     inc(reg_oi);
                     cmp(reg_oi, n_oi);
@@ -470,8 +470,8 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::ow_loop(int ur_ch_blocks) {
             }
             if (r_pad1 > 0) {
                 compute_loop(ur_w, ur_ch_blocks, 0, r_pad1);
-                add(reg_input, inp_shift);
-                add(reg_output, out_shift);
+                add(reg_input, into<uint32_t>(inp_shift));
+                add(reg_output, into<uint32_t>(out_shift));
             }
             if (ur_w_tail != 0) {
                 compute_loop(ur_w_tail, ur_ch_blocks, 0, r_pad);

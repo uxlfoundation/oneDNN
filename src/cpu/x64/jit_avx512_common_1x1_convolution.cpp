@@ -115,7 +115,7 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
 
     auto rp = rtus_driver_t<avx512_core>::call_params_t();
 
-    const int nb_oc = jcp.nb_load;
+    const dim_t nb_oc = jcp.nb_load;
     const int nb_ic = jcp.nb_reduce;
     const int nb_ic_blocking = jcp.nb_reduce_blocking;
 
@@ -387,9 +387,10 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
         row_offset = dw_conv_buffer_size_ / jcp_dw.kh;
         addrs.resize(jcp_dw.kh);
 
-        int bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
-        balance2D(nthr, ithr, jcp.mb * jcp.ngroups * jcp_dw.oh, bcast_start,
-                bcast_end, nb_oc, ocb_start, ocb_end, jcp.load_grp_count);
+        dim_t bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
+        balance2D(nthr, ithr, into<dim_t>(jcp.mb * jcp.ngroups * jcp_dw.oh),
+                bcast_start, bcast_end, nb_oc, ocb_start, ocb_end,
+                dim_t(jcp.load_grp_count));
 
         while (ocb_start < ocb_end) {
             int load_step;

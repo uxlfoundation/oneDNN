@@ -74,13 +74,13 @@ void jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Vmm>::store(
 template <>
 void jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Xbyak::Ymm>::load(
         const Xbyak::Ymm &x, const Xbyak::Address &addr, const int load_size) {
-    load_bytes(x, addr, jcp.dst_dsz * load_size, true);
+    load_bytes(x, addr, into<int>(jcp.dst_dsz * load_size), true);
 }
 
 template <>
 void jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Xbyak::Ymm>::store(
         const Xbyak::Address &addr, const Xbyak::Ymm &x, const int store_size) {
-    store_bytes(x, addr, jcp.dst_dsz * store_size);
+    store_bytes(x, addr, into<int>(jcp.dst_dsz * store_size));
 }
 
 template <typename Vmm>
@@ -117,8 +117,10 @@ void jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Vmm>::generate() {
             const auto iw_off = iw * jcp.ic_without_padding * jcp.dst_dsz;
             auto nvec = is_ic_tail ? n_tail_vec : n_vec;
             for (size_t iv = 0; iv < nvec; iv++) {
-                load(vmm_tmp, ptr[inp_ptr + iw_off + iv * VL], simd_w);
-                store(ptr[dst_ptr + iw_off + iv * VL], vmm_tmp, simd_w);
+                load(vmm_tmp, ptr[inp_ptr + iw_off + iv * VL],
+                        into<int>(simd_w));
+                store(ptr[dst_ptr + iw_off + iv * VL], vmm_tmp,
+                        into<int>(simd_w));
             }
             const auto last_inp_off = inp_ptr + iw_off + nvec * VL;
             const auto last_dst_off = dst_ptr + iw_off + nvec * VL;
@@ -139,8 +141,8 @@ void jit_avx512_core_brgemm_conv_bwd_copy_kernel_t<Vmm>::generate() {
                     load(zmm_tmp_mask, ptr[last_inp_off]);
                     store(ptr[last_dst_off] | kblock_tail_mask, vmm_tmp);
                 } else {
-                    load(vmm_tmp, ptr[last_inp_off], block_tail);
-                    store(ptr[last_dst_off], vmm_tmp, block_tail);
+                    load(vmm_tmp, ptr[last_inp_off], into<int>(block_tail));
+                    store(ptr[last_dst_off], vmm_tmp, into<int>(block_tail));
                 }
             }
         }

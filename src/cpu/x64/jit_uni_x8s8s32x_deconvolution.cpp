@@ -78,12 +78,12 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
     const bool is_3d = ndims == 5;
     const bool is_avx2 = isa == avx2;
 
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
-    jcp.id = is_3d ? src_d.dims()[2] : 1;
-    jcp.oc_without_padding = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic_without_padding = src_d.dims()[1] / jcp.ngroups;
+    jcp.ngroups = into<int>(with_groups ? weights_d.dims()[0] : 1);
+    jcp.oc = into<int>(dst_d.dims()[1] / jcp.ngroups);
+    jcp.ic = into<int>(src_d.dims()[1] / jcp.ngroups);
+    jcp.id = into<int>(is_3d ? src_d.dims()[2] : 1);
+    jcp.oc_without_padding = into<int>(dst_d.dims()[1] / jcp.ngroups);
+    jcp.ic_without_padding = into<int>(src_d.dims()[1] / jcp.ngroups);
     jcp.is_depthwise = true && with_groups
             && utils::everyone_is(
                     1, jcp.ic_without_padding, jcp.oc_without_padding);
@@ -183,21 +183,21 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
     }
 
     jcp.prop_kind = cd.prop_kind;
-    jcp.mb = src_d.dims()[0];
-    jcp.ih = is_1d ? 1 : src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? dst_d.dims()[2] : 1;
-    jcp.oh = is_1d ? 1 : dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = is_3d ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = is_1d ? 1 : weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = is_1d ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = is_1d ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.mb = into<int>(src_d.dims()[0]);
+    jcp.ih = into<int>(is_1d ? 1 : src_d.dims()[ndims - 2]);
+    jcp.iw = into<int>(src_d.dims()[ndims - 1]);
+    jcp.od = into<int>(is_3d ? dst_d.dims()[2] : 1);
+    jcp.oh = into<int>(is_1d ? 1 : dst_d.dims()[ndims - 2]);
+    jcp.ow = into<int>(dst_d.dims()[ndims - 1]);
+    jcp.kd = into<int>(is_3d ? weights_d.dims()[with_groups + 2] : 1);
+    jcp.kh = into<int>(is_1d ? 1 : weights_d.dims()[with_groups + ndims - 2]);
+    jcp.kw = into<int>(weights_d.dims()[with_groups + ndims - 1]);
+    jcp.f_pad = into<int>(is_3d ? cd.padding[0][0] : 0);
+    jcp.t_pad = into<int>(is_1d ? 0 : cd.padding[0][ndims - 4]);
+    jcp.l_pad = into<int>(cd.padding[0][ndims - 3]);
+    jcp.stride_d = into<int>(is_3d ? cd.strides[0] : 1);
+    jcp.stride_h = into<int>(is_1d ? 1 : cd.strides[ndims - 4]);
+    jcp.stride_w = into<int>(cd.strides[ndims - 3]);
 
     if (jcp.is_depthwise) {
         jcp.ch_block = is_avx2 ? 8 : 4;
@@ -228,9 +228,9 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
     VDISPATCH_DECONVOLUTION_IC(
             set_or_check_wei_format(), VERBOSE_UNSUPPORTED_TAG_S, "weights");
 
-    jcp.dilate_d = is_3d ? cd.dilates[0] : 0;
-    jcp.dilate_h = is_1d ? 0 : cd.dilates[ndims - 4];
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    jcp.dilate_d = into<int>(is_3d ? cd.dilates[0] : 0);
+    jcp.dilate_h = into<int>(is_1d ? 0 : cd.dilates[ndims - 4]);
+    jcp.dilate_w = into<int>(cd.dilates[ndims - 3]);
 
     VDISPATCH_DECONVOLUTION_IC(
             !(!IMPLICATION(jcp.dilate_d, jcp.stride_d == 1)
@@ -280,10 +280,10 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
 
     jcp.dst_dt = dst_d.data_type();
     jcp.bia_dt = jcp.with_bias ? bias_d.data_type() : data_type::undef;
-    jcp.typesize_bia
-            = jcp.with_bias ? types::data_type_size(bias_d.data_type()) : 0;
-    jcp.typesize_in = types::data_type_size(src_d.data_type());
-    jcp.typesize_out = types::data_type_size(dst_d.data_type());
+    jcp.typesize_bia = into<int>(
+            jcp.with_bias ? types::data_type_size(bias_d.data_type()) : 0);
+    jcp.typesize_in = into<int>(types::data_type_size(src_d.data_type()));
+    jcp.typesize_out = into<int>(types::data_type_size(dst_d.data_type()));
 
     jcp.nb_ch = div_up(jcp.ngroups, jcp.ch_block);
     jcp.nb_oc = jcp.oc / jcp.oc_block;
@@ -656,7 +656,7 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
         const auto kh_offset = jcp_.kw * jcp_.oc_without_padding * jcp_.ngroups
                 * sizeof(int32_t);
 
-        add(reg_zp_src_pad_comp, kh_offset);
+        add(reg_zp_src_pad_comp, into<uint32_t>(kh_offset));
         mov(zp_src_pad_comp_addr_, reg_zp_src_pad_comp);
     }
 
@@ -756,7 +756,8 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::compute_ker(int ur_w,
                 }
             }
             for (int ocb = 0; ocb < jcp_.nb_oc_blocking; ocb++) {
-                const int aux_filt_off = kernel_offset(ocb, icb1, ki);
+                const int aux_filt_off
+                        = into<int>(kernel_offset(ocb, icb1, ki));
 
                 if (_end - _start > 0) {
                     if (jcp_.is_depthwise) {
@@ -1798,9 +1799,9 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_2d(
                 }
 
                 const int wei_stride
-                        = (!jcp.signed_input && !jcp.src_zero_point)
-                        ? kh_lo * wht_kh_stride
-                        : 0;
+                        = into<int>((!jcp.signed_input && !jcp.src_zero_point)
+                                        ? kh_lo * wht_kh_stride
+                                        : 0);
                 p.src = src_w + ih_max * src_h_stride;
                 p.dst = dst_w + dst_dt_size * oj * dst_h_stride;
                 p.filt = wht_w + wei_stride;
@@ -2029,9 +2030,9 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_3d(
                 }
 
                 const int wei_stride
-                        = (!jcp.signed_input && !jcp.src_zero_point)
-                        ? kh_lo * wht_kh_stride
-                        : 0;
+                        = into<int>((!jcp.signed_input && !jcp.src_zero_point)
+                                        ? kh_lo * wht_kh_stride
+                                        : 0);
                 p.src = src_w + ih_max * src_h_stride;
                 p.dst = dst_w + dst_dt_size * oj * dst_h_stride;
                 p.filt = wht_w + wei_stride;

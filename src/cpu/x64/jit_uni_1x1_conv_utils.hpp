@@ -87,7 +87,7 @@ inline void rtus_prepare(conv_pd_t *self, const convolution_desc_t *&conv_d,
     if (ndims == 4) self->rtus_.conv_d_.strides[1] = 1;
     utils::array_set(self->rtus_.conv_d_.padding[0], 0, 2);
     if (ndims == 4) utils::array_set(self->rtus_.conv_d_.padding[1], 0, 2);
-    const int ic = src_d->dims[1];
+    const int ic = into<int>(src_d->dims[1]);
     if (self->desc()->prop_kind == prop_kind::backward_data) {
         data_type_t data_type = self->rtus_.conv_d_.diff_src_desc.data_type;
         src_d = &(self->rtus_.conv_d_.diff_src_desc = *dst_d);
@@ -235,7 +235,7 @@ struct rtus_driver_t : public jit_generator_t {
         vlen_ = reg_v.getBit() / 8;
         vlen_shift_ = 0;
 
-        int tvlen = is_nspc_ ? typesize_ : vlen_;
+        int tvlen = into<int>(is_nspc_ ? typesize_ : vlen_);
         while (tvlen > 1) {
             tvlen /= 2;
             vlen_shift_++;
@@ -391,23 +391,24 @@ struct rtus_driver_t : public jit_generator_t {
 
             L(ic_loop);
             {
-                cmp(reg_cur_icb, load_store_size);
+                cmp(reg_cur_icb, into<uint32_t>(load_store_size));
                 jl(ic_loop_tail, T_NEAR);
 
                 if (src_to_ws_) {
-                    load_reg(reg_v, reg_cur_src, 0, load_store_size);
-                    store_reg(reg_ws, reg_v, 0, load_store_size);
+                    load_reg(reg_v, reg_cur_src, 0, into<int>(load_store_size));
+                    store_reg(reg_ws, reg_v, 0, into<int>(load_store_size));
                 } else {
-                    load_reg(reg_v, reg_ws, 0, load_store_size);
-                    store_reg(reg_cur_src, reg_v, 0, load_store_size);
+                    load_reg(reg_v, reg_ws, 0, into<int>(load_store_size));
+                    store_reg(
+                            reg_cur_src, reg_v, 0, into<int>(load_store_size));
                     for (int w = 1; w < stride_w_; ++w)
                         store_reg(reg_cur_src, reg_zero, w * w_step_factor,
-                                load_store_size);
+                                into<int>(load_store_size));
                 }
-                add(reg_ws, load_store_size);
-                add(reg_cur_src, load_store_size);
+                add(reg_ws, into<uint32_t>(load_store_size));
+                add(reg_cur_src, into<uint32_t>(load_store_size));
 
-                sub(reg_cur_icb, load_store_size);
+                sub(reg_cur_icb, into<uint32_t>(load_store_size));
                 jmp(ic_loop, T_NEAR);
             }
 
@@ -418,23 +419,24 @@ struct rtus_driver_t : public jit_generator_t {
 
                 if (src_to_ws_) {
                     load_reg(reg_v | tail_mask, reg_cur_src, 0,
-                            load_store_tail_size);
-                    store_reg(
-                            reg_ws, reg_v | tail_mask, 0, load_store_tail_size);
+                            into<int>(load_store_tail_size));
+                    store_reg(reg_ws, reg_v | tail_mask, 0,
+                            into<int>(load_store_tail_size));
                 } else {
-                    load_reg(
-                            reg_v | tail_mask, reg_ws, 0, load_store_tail_size);
+                    load_reg(reg_v | tail_mask, reg_ws, 0,
+                            into<int>(load_store_tail_size));
                     store_reg(reg_cur_src, reg_v | tail_mask, 0,
-                            load_store_tail_size);
+                            into<int>(load_store_tail_size));
                     for (int w = 1; w < stride_w_; ++w)
                         store_reg(reg_cur_src, reg_zero | tail_mask,
-                                w * w_step_factor, load_store_tail_size);
+                                w * w_step_factor,
+                                into<int>(load_store_tail_size));
                 }
             }
             L(ic_loop_finish);
 
-            add(reg_ws_copy, w_step_factor);
-            add(reg_src, stride_w_ * w_step_factor);
+            add(reg_ws_copy, into<uint32_t>(w_step_factor));
+            add(reg_src, into<uint32_t>(stride_w_ * w_step_factor));
 
             // for 1d or stride_h=1 convolutions the loop over h should be skipped
             const bool skip_oh_step = src_step_h_ == iw_;
@@ -446,25 +448,29 @@ struct rtus_driver_t : public jit_generator_t {
                 jl(skip_h_step, T_NEAR);
 
                 if (src_to_ws_) {
-                    add(reg_src, (src_step_h_ - iw_) * w_step_factor);
+                    add(reg_src,
+                            into<uint32_t>(
+                                    (src_step_h_ - iw_) * w_step_factor));
                 } else {
                     mov(reg_cur_src_fin, reg_cur_src);
-                    add(reg_cur_src_fin, (src_step_h_ - iw_) * w_step_factor);
+                    add(reg_cur_src_fin,
+                            into<uint32_t>(
+                                    (src_step_h_ - iw_) * w_step_factor));
                     Label ih_loop_nhwc, ic_ih_loop_nhwc, ic_tail_ih_loop_nhwc,
                             ic_finish_ih_loop_nhwc;
                     L(ih_loop_nhwc);
                     mov(reg_cur_src, reg_src);
                     mov(reg_cur_icb, reg_icb);
                     L(ic_ih_loop_nhwc);
-                    cmp(reg_cur_icb, load_store_size);
+                    cmp(reg_cur_icb, into<uint32_t>(load_store_size));
                     jl(ic_tail_ih_loop_nhwc, T_NEAR);
 
                     for (int w = 0; w < stride_w_; ++w)
                         store_reg(reg_cur_src, reg_zero, w * w_step_factor,
-                                load_store_size);
+                                into<int>(load_store_size));
 
-                    add(reg_cur_src, load_store_size);
-                    sub(reg_cur_icb, load_store_size);
+                    add(reg_cur_src, into<uint32_t>(load_store_size));
+                    sub(reg_cur_icb, into<uint32_t>(load_store_size));
                     jnz(ic_ih_loop_nhwc, T_NEAR);
 
                     L(ic_tail_ih_loop_nhwc);
@@ -473,11 +479,12 @@ struct rtus_driver_t : public jit_generator_t {
 
                     for (int w = 0; w < stride_w_; ++w)
                         store_reg(reg_cur_src, reg_zero | tail_mask,
-                                w * w_step_factor, load_store_tail_size);
+                                w * w_step_factor,
+                                into<int>(load_store_tail_size));
 
                     L(ic_finish_ih_loop_nhwc);
 
-                    add(reg_src, stride_w_ * w_step_factor);
+                    add(reg_src, into<uint32_t>(stride_w_ * w_step_factor));
                     cmp(reg_src, reg_cur_src_fin);
                     jl(ih_loop_nhwc, T_NEAR);
                 }
@@ -551,22 +558,22 @@ inline status_t init_rtus_driver(conv_t *self) {
 
     const auto &cd = *conf.desc();
     const int ndims = conf.ndims();
-    const int stride_h = (conf.ndims() == 3) ? 1 : cd.strides[0];
-    const int stride_w = cd.strides[ndims - 3];
+    const int stride_h = into<int>((conf.ndims() == 3) ? 1 : cd.strides[0]);
+    const int stride_w = into<int>(cd.strides[ndims - 3]);
 
     const bool is_bwd_data = cd.prop_kind == prop_kind::backward_data;
     const auto &src_d = is_bwd_data ? *conf.diff_src_md() : *conf.src_md();
 
-    const int ih = ndims == 3 ? 1 : src_d.dims[2];
-    const int iw = src_d.dims[ndims - 1];
-    const int ic = src_d.dims[1];
+    const int ih = into<int>(ndims == 3 ? 1 : src_d.dims[2]);
+    const int iw = into<int>(src_d.dims[ndims - 1]);
+    const int ic = into<int>(src_d.dims[1]);
 
     const auto src_tag = memory_desc_wrapper(src_d).matches_one_of_tag(
             format_tag::nhwc, format_tag::nwc);
     const bool is_nspc = src_tag != format_tag::undef;
     const int src_step_h = stride_h * iw;
     const int src_step_icb = !is_nspc ? ih * iw : 1;
-    const int ws_step_icb = !is_nspc ? conf.jcp_.is : 1;
+    const int ws_step_icb = into<int>(!is_nspc ? conf.jcp_.is : 1);
     const bool src_to_ws = !is_bwd_data;
     const size_t typesize
             = types::data_type_size(self->pd()->invariant_src_md()->data_type);

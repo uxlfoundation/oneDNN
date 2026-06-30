@@ -287,7 +287,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
             }
         }
     }
-    brgs_sz_ = brgs_->refs_size();
+    brgs_sz_ = into<int>(brgs_->refs_size());
 
     auto scratchpad = scratchpad_registry().registrar();
     brgemm_convolution_bwd_utils::init_scratchpad(scratchpad, jcp_);
@@ -433,8 +433,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::add_po_kernel(
     bcfg->LDD = (is_init && jcp.use_buffer) ? jcp.LDC : jcp.LDD;
     bcfg->dt_c = (!is_init && jcp.use_buffer) ? jcp.acc_dt : jcp.dst_dt;
     bcfg->dt_d = (is_init && jcp.use_buffer) ? jcp.acc_dt : jcp.dst_dt;
-    bcfg->typesize_C = types::data_type_size(bcfg->dt_c);
-    bcfg->typesize_D = types::data_type_size(bcfg->dt_d);
+    bcfg->typesize_C = into<int>(types::data_type_size(bcfg->dt_c));
+    bcfg->typesize_D = into<int>(types::data_type_size(bcfg->dt_d));
     bcfg->alpha
             = (!is_init && IMPLICATION(jcp.with_sum, jcp.use_buffer)) ? 1 : 0;
     bcfg->beta = is_init ? 0 : 1;
@@ -516,9 +516,10 @@ int brgemm_convolution_bwd_strided_t<isa>::get_comp_offset(const int g,
 
     assert(IMPLICATION(jcp.req_cal_comp_pad, comp_idx >= 0));
 
-    return jcp.req_cal_comp_pad ? g * comp_icb_sz + icb * comp_ker_sz
-                    + comp_idx * comp_kw_sz + comp_iw * comp_iw_sz
-                                : (g * jcp.nb_ic + icb) * jcp.ic_block;
+    return into<int>(jcp.req_cal_comp_pad
+                    ? g * comp_icb_sz + icb * comp_ker_sz
+                            + comp_idx * comp_kw_sz + comp_iw * comp_iw_sz
+                    : (g * jcp.nb_ic + icb) * jcp.ic_block);
 }
 
 template <cpu_isa_t isa>
@@ -1356,7 +1357,8 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
             = bias ? bias + (bias_d.blk_off(g_ic) * bia_dsz) : nullptr;
     int kw_s {0}, kw_full_s {0}, kw_f {0}, kw_full_f {0}, kw_b(0), kw_e(0);
     int kd_s_(0), kh_s_(0), kd_f_(0), kh_f_(0);
-    _pd->get_kw_range(iw, iw_raw, kw_s, kw_full_s, kw_full_f, kw_f);
+    _pd->get_kw_range(
+            into<int>(iw), into<int>(iw_raw), kw_s, kw_full_s, kw_full_f, kw_f);
 
     // od = (id + FP - kd * DD) / SD <-- general relation for all sets of (od, id, kd) that overlap
     // for a given index from diff_src, we need to find the appropriate stride sector
@@ -1461,7 +1463,8 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
     const auto kdhw_loop = [&]() {
         if (kw_e - kw_b <= 0 || kw_b >= jcp.kw) return;
         int iw_b {0}, M_without_overflow {0};
-        _pd->get_iw_range(iw, iw_raw, kw_b, iw_b, M_without_overflow);
+        _pd->get_iw_range(into<int>(iw), into<int>(iw_raw), kw_b, iw_b,
+                M_without_overflow);
         const auto iw_e = iw_b + M_without_overflow;
         const auto do_init
                 = btc.occ == 0 && kd_b == kd_s && kh_b == kh_s && kw_b == kw_s;
@@ -1515,11 +1518,11 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
 
         const auto iw_ee = iw_b + (M_without_overflow * SW);
         perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w, btc.id,
-                btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw_b, iw_ee, kd_l, kh_l,
-                post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
-                btc.src_zp_comp_ptr, btc.dst_zp_vals, btc.s8s8_comp_ptr,
-                comp_ker_offs, do_init, do_postwork, false, btc.src_scales,
-                btc.wei_scales, btc.dst_scales);
+                btc.ih, into<int>(iw), into<int>(iw_raw), g_ic, is_ic_tail,
+                iw_b, iw_ee, kd_l, kh_l, post_ops_binary_rhs_arg_vec.data(),
+                btc.src_zp_val, btc.src_zp_comp_ptr, btc.dst_zp_vals,
+                btc.s8s8_comp_ptr, comp_ker_offs, do_init, do_postwork, false,
+                btc.src_scales, btc.wei_scales, btc.dst_scales);
     };
 
     if (kd_f > kd_s && kh_f > kh_s && kw_f > kw_s && kw_s < jcp.kw) {
@@ -1567,8 +1570,9 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
         const auto do_init = btc.occ == 0;
         const auto do_postwork = need_postwork && btc.occ == (oc_chunks - 1);
         perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w, btc.id,
-                btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw, iw, kd_l_full,
-                kh_l_full, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
+                btc.ih, into<int>(iw), into<int>(iw_raw), g_ic, is_ic_tail,
+                into<int>(iw), into<int>(iw), kd_l_full, kh_l_full,
+                post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
                 btc.src_zp_comp_ptr, btc.dst_zp_vals, btc.s8s8_comp_ptr, 0,
                 do_init, do_postwork, false, btc.src_scales, btc.wei_scales,
                 btc.dst_scales);
@@ -1772,9 +1776,10 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
         k_l = kd_l * kh_l * kw_l;
 
         const auto comp_ker_offs = kd_l * kh_l > 0
-                ? get_comp_offset(
-                          btc.g, btc.icb, iw, kd_s, kd_f, kh_s, kh_f, 0, KW)
-                : get_comp_offset(btc.g, btc.icb, iw, 0, 0, 0, 0, 0, 0);
+                ? get_comp_offset(btc.g, btc.icb, into<int>(iw), kd_s, kd_f,
+                          kh_s, kh_f, 0, KW)
+                : get_comp_offset(
+                          btc.g, btc.icb, into<int>(iw), 0, 0, 0, 0, 0, 0);
 
         if (nb_oc_b > 0) {
             const auto do_postops_here = do_postwork && !is_oc_tail;
@@ -1852,8 +1857,9 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_trans(
             if (!need_out_buffer) {
                 const dim_t iw_raw = static_cast<dim_t>(btc.iwb) * jcp.iw_block;
                 perform_outwork(diff_src_base, diff_src, btc.c_buffer, bias_w,
-                        btc.id, btc.ih, iw, iw_raw, g_ic, is_ic_tail, iw, iw, 0,
-                        0, post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
+                        btc.id, btc.ih, into<int>(iw), into<int>(iw_raw), g_ic,
+                        is_ic_tail, into<int>(iw), into<int>(iw), 0, 0,
+                        post_ops_binary_rhs_arg_vec.data(), btc.src_zp_val,
                         btc.src_zp_comp_ptr, btc.dst_zp_vals, btc.s8s8_comp_ptr,
                         0, do_init, do_postwork, false, btc.src_scales,
                         btc.wei_scales, btc.dst_scales);

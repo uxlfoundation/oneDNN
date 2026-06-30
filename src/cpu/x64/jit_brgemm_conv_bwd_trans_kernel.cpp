@@ -104,13 +104,13 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::store(
 template <>
 void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Xbyak::Ymm>::load(
         const Xbyak::Ymm &x, const Xbyak::Address &addr, const int load_size) {
-    load_bytes(x, addr, jcp.src_dsz * load_size, true);
+    load_bytes(x, addr, into<int>(jcp.src_dsz * load_size), true);
 }
 
 template <>
 void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Xbyak::Ymm>::store(
         const Xbyak::Address &addr, const Xbyak::Ymm &x, const int store_size) {
-    store_bytes(x, addr, jcp.src_dsz * store_size);
+    store_bytes(x, addr, into<int>(jcp.src_dsz * store_size));
 }
 
 template <typename Vmm>
@@ -227,7 +227,7 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::generate() {
             // TODO: adjust step to improve zeroing efficiency for small oc
             for (dim_t ow = 0; ow < dst_w_block; ow++)
                 zero_oc_block(is_oc_tail, ow * dst_w_offset);
-            add(aux_dst_ptr, dst_h_offset);
+            add(aux_dst_ptr, into<uint32_t>(dst_h_offset));
 
             dec(kh_over);
             jnz(kh_tover_label, T_NEAR);
@@ -243,8 +243,8 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::generate() {
             copy_iw_block(is_oc_tail);
             auto inp_h_offset = jcp.ow * ow_size;
 
-            add(aux_inp_ptr, inp_h_offset);
-            add(aux_dst_ptr, dst_h_offset);
+            add(aux_inp_ptr, into<uint32_t>(inp_h_offset));
+            add(aux_dst_ptr, into<uint32_t>(dst_h_offset));
 
             dec(reg_hc);
             cmp(reg_hc, reg_b_pad);
@@ -260,7 +260,7 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::generate() {
             // TODO: adjust step to improve zeroing efficiency for small oc
             for (dim_t ow = 0; ow < dst_w_block; ow++)
                 zero_oc_block(is_oc_tail, ow * dst_w_offset);
-            add(aux_dst_ptr, dst_h_offset);
+            add(aux_dst_ptr, into<uint32_t>(dst_h_offset));
 
             dec(reg_hc);
             jnz(kh_bover_label, T_NEAR);
@@ -271,8 +271,8 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::generate() {
         auto inp_cb_offset = oc_block_sz;
         auto dst_cb_offset = jcp.ohp * dst_h_offset;
 
-        add(inp_ptr, inp_cb_offset);
-        add(dst_ptr, dst_cb_offset);
+        add(inp_ptr, into<uint32_t>(inp_cb_offset));
+        add(dst_ptr, into<uint32_t>(dst_cb_offset));
     };
 
     for (int ocb = 0; ocb < jcp.nb_oc_blocking; ocb++) {

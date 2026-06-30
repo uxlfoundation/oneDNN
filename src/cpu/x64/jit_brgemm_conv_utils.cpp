@@ -570,7 +570,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
         const size_t ic_stride = exec_type == exec_trans
                 ? inp_ic_block
                 : ngroups * ic_without_padding;
-        LDA = kh_koef * stride_w * ic_stride;
+        LDA = into<int>(kh_koef * stride_w * ic_stride);
     }
     bool reduce_kw = ow == 1 && !is_reduced_rtus;
     if (reduce_kw) { LDA *= ext_kw; }
@@ -970,11 +970,13 @@ float brg_blocking_t::est_eff() {
     int nb_oh_thr {1}, oh_thr {1}, nb_od_thr {1}, od_thr {1};
     if (!is_os_blocking) {
         const auto dim_oh = nb_sp * dim_sp;
-        nb_oh_thr = nstl::min(static_cast<dim_t>(nb_oh), div_up(job, dim_oh));
+        nb_oh_thr
+                = into<int>(nstl::min(into<dim_t>(nb_oh), div_up(job, dim_oh)));
         oh_thr = nstl::min(oh, nb_oh_thr * oh_block);
 
         const auto dim_od = nb_oh * dim_oh;
-        nb_od_thr = nstl::min(static_cast<dim_t>(nb_od), div_up(job, dim_od));
+        nb_od_thr
+                = into<int>(nstl::min(into<dim_t>(nb_od), div_up(job, dim_od)));
         od_thr = nstl::min(od, nb_od_thr * od_block);
     }
 
@@ -1001,7 +1003,7 @@ float brg_blocking_t::est_eff() {
     // oh_block almost all is 1. TODO: manage oh_block != 1
     // -- harness: loop by oh_blocks --
     l++;
-    src_is = kd * kh * rnd_inp_simd(sp_thr, kw, ic);
+    src_is = kd * kh * rnd_inp_simd(into<int>(sp_thr), kw, ic);
     loop[l].src.set(oh_block * src_is, 1);
     loop[l].dst.set(sp_thr * rnd_oc_for_sp, 1);
     loop[l].wei.set(wei_op * simd_w, nb_oh_thr);
@@ -1087,7 +1089,7 @@ float brg_blocking_t::est_eff() {
 void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
         int kh_block_, bool maybe_use_buffer, int max_ow_block_thr) {
 
-    unsigned est_k_amount = ic * oc_block * wei_dsz;
+    unsigned est_k_amount = into<unsigned int>(ic * oc_block * wei_dsz);
 
     kd_block = kd_block_;
     kh_block = kh_block_;
@@ -1432,7 +1434,7 @@ float brg_blocking_t::est_eff_1x1() {
         loop[l].src.set(sp_block * rnd_simd(ic), nb_oc_thr);
         loop[l].dst.set(sp_block * oc_block, 1);
         wei_is = oc_block * ic;
-        wei_op = nsimd_oc_thr * ic;
+        wei_op = into<int>(nsimd_oc_thr * ic);
         loop[l].wei.set(wei_is, 1);
     }
 
@@ -1466,7 +1468,8 @@ float brg_blocking_t::est_eff_1x1() {
     if (loop_order != loop_ndhwgc) {
         // -- harness: loop by oc_block --
         l++;
-        loop[l].src.set(od_thr * oh_thr * rnd_simd(sp_thr * ic_blocking_size),
+        loop[l].src.set(od_thr * oh_thr
+                        * rnd_simd(into<int>(sp_thr * ic_blocking_size)),
                 nb_oc_thr);
         loop[l].dst.set(oc_block * od_thr * oh_thr * sp_thr, 1);
         loop[l].wei.set(oc_block * ic, 1);
@@ -1484,7 +1487,7 @@ float brg_blocking_t::est_eff_1x1() {
             * ic_blocking_size;
     const auto dst_op = static_cast<dim_t>(mb_thr) * nsimd_oc_thr * od_thr
             * oh_thr * sp_thr;
-    wei_op = nsimd_oc_thr * ic;
+    wei_op = into<int>(nsimd_oc_thr * ic);
 
     // for "real" application set bench_iterations to 1
     const auto iterations = bench_iterations;
@@ -1697,31 +1700,32 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
-    jcp.oc_without_padding = dst_d.dims()[1];
+    jcp.ngroups = into<int>(with_groups ? weights_d.dims()[0] : 1);
+    jcp.mb = into<int>(src_d.dims()[0]);
+    jcp.oc_without_padding = into<int>(dst_d.dims()[1]);
     jcp.oc = jcp.oc_without_padding / jcp.ngroups;
-    jcp.ic_without_padding = src_d.dims()[1] / jcp.ngroups;
+    jcp.ic_without_padding = into<int>(src_d.dims()[1] / jcp.ngroups);
     jcp.ic = jcp.ic_without_padding;
-    jcp.id = (ndims == 5) ? src_d.dims()[2] : 1;
-    jcp.ih = (ndims == 3) ? 1 : src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = (ndims == 5) ? dst_d.dims()[2] : 1;
-    jcp.oh = (ndims == 3) ? 1 : dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = (ndims == 5) ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = (ndims == 3) ? 1 : weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = (ndims == 5) ? cd.padding[0][0] : 0;
-    jcp.t_pad = (ndims == 3) ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = (ndims == 5) ? cd.strides[0] : 1;
-    jcp.stride_h = (ndims == 3) ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.id = into<int>((ndims == 5) ? src_d.dims()[2] : 1);
+    jcp.ih = into<int>((ndims == 3) ? 1 : src_d.dims()[ndims - 2]);
+    jcp.iw = into<int>(src_d.dims()[ndims - 1]);
+    jcp.od = into<int>((ndims == 5) ? dst_d.dims()[2] : 1);
+    jcp.oh = into<int>((ndims == 3) ? 1 : dst_d.dims()[ndims - 2]);
+    jcp.ow = into<int>(dst_d.dims()[ndims - 1]);
+    jcp.kd = into<int>((ndims == 5) ? weights_d.dims()[with_groups + 2] : 1);
+    jcp.kh = into<int>(
+            (ndims == 3) ? 1 : weights_d.dims()[with_groups + ndims - 2]);
+    jcp.kw = into<int>(weights_d.dims()[with_groups + ndims - 1]);
+    jcp.f_pad = into<int>((ndims == 5) ? cd.padding[0][0] : 0);
+    jcp.t_pad = into<int>((ndims == 3) ? 0 : cd.padding[0][ndims - 4]);
+    jcp.l_pad = into<int>(cd.padding[0][ndims - 3]);
+    jcp.stride_d = into<int>((ndims == 5) ? cd.strides[0] : 1);
+    jcp.stride_h = into<int>((ndims == 3) ? 1 : cd.strides[ndims - 4]);
+    jcp.stride_w = into<int>(cd.strides[ndims - 3]);
 
-    jcp.dilate_d = (ndims == 5) ? cd.dilates[0] : 0;
-    jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    jcp.dilate_d = into<int>((ndims == 5) ? cd.dilates[0] : 0);
+    jcp.dilate_h = into<int>((ndims == 3) ? 0 : cd.dilates[ndims - 4]);
+    jcp.dilate_w = into<int>(cd.dilates[ndims - 3]);
 
     jcp.os = jcp.od * jcp.oh * jcp.ow;
 
@@ -1787,7 +1791,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                                                                    : jcp.wei_dt;
     const data_type_t vnni_block_dt
             = get_mac_emu_data_type(vnni_dt, isa, isa == avx10_1_512);
-    jcp.vnni_block = data_type_vnni_granularity(vnni_block_dt);
+    jcp.vnni_block = into<int>(data_type_vnni_granularity(vnni_block_dt));
 
     if (one_of(jcp.prop_kind, prop_kind::forward_training,
                 prop_kind::forward_inference)
@@ -2354,8 +2358,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     // to avoid cache concurrent write access from different threads
     size_t sc_size = sizeof(brgemm_batch_element_t);
-    jcp.adjusted_batch_size
-            = div_up(rnd_up(jcp.gemm_batch_size * sc_size, P4K), sc_size);
+    jcp.adjusted_batch_size = into<int>(
+            div_up(rnd_up(jcp.gemm_batch_size * sc_size, P4K), sc_size));
 
     if (!jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
@@ -2603,8 +2607,8 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.gemm_batch_size = jcp.nb_ic_blocking;
     // to avoid cache concurrent access from different threads
     size_t sc_size = sizeof(brgemm_batch_element_t);
-    jcp.adjusted_batch_size
-            = div_up(rnd_up(jcp.gemm_batch_size * sc_size, P4K), sc_size);
+    jcp.adjusted_batch_size = into<int>(
+            div_up(rnd_up(jcp.gemm_batch_size * sc_size, P4K), sc_size));
 
     if (is_amx(isa)) {
         // heuristic for small mb
@@ -3179,7 +3183,7 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
             && everyone_is(0, jcp.f_pad, jcp.back_pad, jcp.t_pad, jcp.b_pad))
         jcp.var_bs = false;
 
-    jcp.typesize_in = jcp.src_dsz;
+    jcp.typesize_in = into<int>(jcp.src_dsz);
     jcp.typesize_out = sizeof(float);
 
     bool ok = true
@@ -3372,15 +3376,15 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     jcp.tr_ocb_chunk = tr_ocb_chunk_allowed && (jcp.oh * jcp.ow > 38 * 38);
     jcp.tr_icb_chunk = false;
 
-    const int irow_size = jcp.src_dsz * jcp.tr_iw * jcp.ic_block
+    const int irow_size = into<int>(jcp.src_dsz * jcp.tr_iw * jcp.ic_block
             * div_up(jcp.nb_ic, jcp.nthr_ic_b)
-            * 2 /*we have real and transposed input */;
-    const int orow_size = jcp.dst_dsz * jcp.tr_ow * jcp.oc_block
+            * 2 /*we have real and transposed input */);
+    const int orow_size = into<int>(jcp.dst_dsz * jcp.tr_ow * jcp.oc_block
             * div_up(jcp.nb_oc, jcp.nthr_oc_b)
-            * 2 /*we have real and transposed diff_dst*/;
-    int oh_block_limit = nstl::max(1.f,
+            * 2 /*we have real and transposed diff_dst*/);
+    int oh_block_limit = into<int>(nstl::max(1.f,
             nstl::max(0.f, 0.8f * brg_blocking_t::L2 - jcp.kh * irow_size)
-                    / (irow_size + orow_size));
+                    / (irow_size + orow_size)));
     // try to split oh by equal oh blocks
     oh_block_limit = div_up(jcp.oh, div_up(jcp.oh, oh_block_limit));
     jcp.oh_block = utils::saturate(1, jcp.oh, oh_block_limit);
@@ -3430,9 +3434,9 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
 
     const int iframe_size = irow_size * jcp.id;
     const int oframe_size = orow_size * jcp.od;
-    int od_block_limit = nstl::max(1.f,
+    int od_block_limit = into<int>(nstl::max(1.f,
             nstl::max(0.f, 0.8f * brg_blocking_t::L2 - jcp.kd * iframe_size)
-                    / (iframe_size + oframe_size));
+                    / (iframe_size + oframe_size)));
     // try to split od by equal od blocks
     od_block_limit = div_up(jcp.od, div_up(jcp.od, od_block_limit));
     jcp.od_block = utils::saturate(1, jcp.od, od_block_limit);
@@ -3450,8 +3454,8 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     jcp.gemm_batch_size = jcp.max_batch;
     // to avoid cache concurrent access from different threads
     size_t sc_size = sizeof(brgemm_batch_element_t);
-    jcp.adjusted_batch_size
-            = div_up(rnd_up(jcp.gemm_batch_size * sc_size, P4K), sc_size);
+    jcp.adjusted_batch_size = into<int>(
+            div_up(rnd_up(jcp.gemm_batch_size * sc_size, P4K), sc_size));
 
     return status::success;
 }

@@ -76,13 +76,13 @@ void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             nd_iterator_init(start, n, jcp.mb, g, jcp.ngroups, ocbb, ocb_work,
                     oh, jcp.oh);
             for (size_t iwork = start; iwork < end; ++iwork) {
-                int ocb = ocbb * jcp.nb_oc_blocking;
+                int ocb = into<int>(ocbb * jcp.nb_oc_blocking);
                 int ocb_num = jcp.nb_oc_blocking;
 
                 for (int icb = icbb; icb < icbb + icb_step; ++icb) {
                     auto par_conv = jit_conv_args_t();
 
-                    const int ij = oh * jcp.stride_h;
+                    const int ij = into<int>(oh * jcp.stride_h);
                     const int i_t_overflow = nstl::max(0, jcp.t_pad - ij);
                     const int i_b_overflow
                             = nstl::max(jcp.ih,

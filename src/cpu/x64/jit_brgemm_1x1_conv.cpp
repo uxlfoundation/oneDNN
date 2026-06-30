@@ -121,9 +121,9 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
                     && jcp_.M_tail > 0 && vM == jcp_.M && is_accum_kernel;
             if (skip_rtus_M_blk) continue;
 
-            const int rtus_k = is_accum_kernel
-                    ? jcp_.rtus_ic_size
-                    : jcp_.ic_without_padding - jcp_.rtus_ic_size;
+            const int rtus_k = into<int>(is_accum_kernel
+                            ? jcp_.rtus_ic_size
+                            : jcp_.ic_without_padding - jcp_.rtus_ic_size);
             const bool is_last_m_kernel = vM == jcp_.M_tail || jcp_.nb_os == 1;
             const bool use_rtus_K = rtus_compute_partial_k && is_last_m_kernel;
             const auto brgemm_K = use_rtus_K ? rtus_k : vK;
@@ -176,7 +176,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init_brgemm_desc() {
         const auto vM = params.M_;
         const auto vN = params.N_;
         const auto vK = params.K_;
-        const int LDA = params.LDA_;
+        const dim_t LDA = params.LDA_;
 
         const int k_accum_idx = params.k_accum_idx_;
         const bool req_k_accum = one_of(k_accum_idx, 0, 2);

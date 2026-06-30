@@ -184,7 +184,7 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::check_bound(
         const Xbyak::Reg64 &reg_dim, const Xbyak::Address &result_addr,
         const dim_t bound_value, const bound bound_kind) {
 
-    host_->cmp(reg_dim, bound_value);
+    host_->cmp(reg_dim, into<uint32_t>(bound_value));
     if (bound_kind == lower)
         host_->setl(result_addr);
     else
@@ -232,8 +232,8 @@ void jit_gemm_x8s8s32x_zp_pad_comp_helper_t::
         host_->mov(reg_zp_pad_comp_tmp_, zp_pad_com_w_);
     }
 
-    host_->imul(
-            reg_zp_pad_comp_tmp_, reg_zp_pad_comp_tmp_, jcp_.oc * jcp_.ngroups);
+    host_->imul(reg_zp_pad_comp_tmp_, reg_zp_pad_comp_tmp_,
+            into<int>(jcp_.oc * jcp_.ngroups));
     host_->add(reg_zp_pad_comp_tmp_, g_oc_offset);
     host_->imul(reg_zp_pad_comp_tmp_, reg_zp_pad_comp_tmp_, sizeof(int32_t));
     host_->mov(reg_zp_pad_comp_, zp_pad_com_base_);

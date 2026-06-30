@@ -1173,10 +1173,10 @@ struct jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     int ithr_but_oc;
     int ithr_but_ic;
 
-    int img_work, img_start = 0, img_end = 0;
-    int g_work, g_start = 0, g_end = 0;
-    int oc_b_work, oc_b_start = 0, oc_b_end = 0;
-    int ic_b_work, ic_b_start = 0, ic_b_end = 0;
+    dim_t img_work, img_start = 0, img_end = 0;
+    dim_t g_work, g_start = 0, g_end = 0;
+    dim_t oc_b_work, oc_b_start = 0, oc_b_end = 0;
+    dim_t ic_b_work, ic_b_start = 0, ic_b_end = 0;
 
     thread_info_t(const jit_avx512_common_convolution_bwd_weights_t *self,
             const exec_ctx_t &ctx, int ithr)
@@ -1213,20 +1213,21 @@ struct jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
 
         /* reduction dimension */
         int oh_reduce = jcp.harness == harness_2d_reduction ? jcp.oh : 1;
-        balance211(jcp.mb * jcp.od * oh_reduce, self->nthr_mb_, ithr_mb,
-                img_start, img_end);
+        balance211(into<dim_t>(jcp.mb * jcp.od * oh_reduce), self->nthr_mb_,
+                ithr_mb, img_start, img_end);
         img_work = img_end - img_start;
 
         /* independent dimensions */
-        balance211(jcp.ngroups, self->nthr_g_, ithr_g, g_start, g_end);
+        balance211(into<dim_t>(jcp.ngroups), self->nthr_g_, ithr_g, g_start,
+                g_end);
         g_work = g_end - g_start;
 
-        balance211(
-                jcp.nb_oc, self->nthr_oc_b_, ithr_oc_b, oc_b_start, oc_b_end);
+        balance211(into<dim_t>(jcp.nb_oc), self->nthr_oc_b_, ithr_oc_b,
+                oc_b_start, oc_b_end);
         oc_b_work = oc_b_end - oc_b_start;
 
-        balance211(
-                jcp.nb_ic, self->nthr_ic_b_, ithr_ic_b, ic_b_start, ic_b_end);
+        balance211(into<dim_t>(jcp.nb_ic), self->nthr_ic_b_, ithr_ic_b,
+                ic_b_start, ic_b_end);
         ic_b_work = ic_b_end - ic_b_start;
     }
 };
@@ -1720,8 +1721,8 @@ void jit_avx512_common_convolution_bwd_weights_t<src_type, diff_dst_type,
     if (b_njobs == 0) return;
 
     /* reduction dimension */
-    int img_start {0}, img_end {0};
-    balance211(jcp.mb, rb->balancer().nthr_per_group_,
+    dim_t img_start {0}, img_end {0};
+    balance211(into<dim_t>(jcp.mb), rb->balancer().nthr_per_group_,
             rb->balancer().id_in_group(ti->ithr), img_start, img_end);
 
     /* jobs */

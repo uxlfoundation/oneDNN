@@ -1,4 +1,4 @@
-const char *getVersionString() const { return "1.01"; }
+const char *getVersionString() const { return "1.31"; }
 void add(const Reg& rd, const Reg& rs1, const Reg& rs2) { if (supportRVC_ && rd == rs1 && c_mv(rd, rs2, 1)) return; Rtype(0x33, 0, 0x0, rd, rs1, rs2); }
 void sub(const Reg& rd, const Reg& rs1, const Reg& rs2) { if (supportRVC_ && c_noimm(rd, rs1, rs2, 0x23, 0)) return; Rtype(0x33, 0, 0x20, rd, rs1, rs2); }
 void sll(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 1, 0x0, rd, rs1, rs2); }
@@ -107,6 +107,50 @@ void csrrc(const Reg& rd, CSR csr, const Reg& rs1) { opCSR(0x3073, csr, rs1, rd)
 void csrrwi(const Reg& rd, CSR csr, uint32_t imm) { opCSR(0x5073, csr, imm, rd); }
 void csrrsi(const Reg& rd, CSR csr, uint32_t imm) { opCSR(0x6073, csr, imm, rd); }
 void csrrci(const Reg& rd, CSR csr, uint32_t imm) { opCSR(0x7073, csr, imm, rd); }
+void sh1add(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 2, 0x10, rd, rs1, rs2); }
+void sh2add(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 4, 0x10, rd, rs1, rs2); }
+void sh3add(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 6, 0x10, rd, rs1, rs2); }
+void add_uw(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x3b, 0, 0x4, rd, rs1, rs2); }
+void sh1add_uw(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x3b, 2, 0x10, rd, rs1, rs2); }
+void sh2add_uw(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x3b, 4, 0x10, rd, rs1, rs2); }
+void sh3add_uw(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x3b, 6, 0x10, rd, rs1, rs2); }
+void andn(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 7, 0x20, rd, rs1, rs2); }
+void orn(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 6, 0x20, rd, rs1, rs2); }
+void xnor(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 4, 0x20, rd, rs1, rs2); }
+void min(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 4, 0x5, rd, rs1, rs2); }
+void minu(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 5, 0x5, rd, rs1, rs2); }
+void max(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 6, 0x5, rd, rs1, rs2); }
+void maxu(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 7, 0x5, rd, rs1, rs2); }
+void rol(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 1, 0x30, rd, rs1, rs2); }
+void ror(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 5, 0x30, rd, rs1, rs2); }
+void rolw(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x3b, 1, 0x30, rd, rs1, rs2); }
+void rorw(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x3b, 5, 0x30, rd, rs1, rs2); }
+void clmul(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 1, 0x5, rd, rs1, rs2); }
+void clmulr(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 2, 0x5, rd, rs1, rs2); }
+void clmulh(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 3, 0x5, rd, rs1, rs2); }
+void bclr(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 1, 0x24, rd, rs1, rs2); }
+void bext(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 5, 0x24, rd, rs1, rs2); }
+void binv(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 1, 0x34, rd, rs1, rs2); }
+void bset(const Reg& rd, const Reg& rs1, const Reg& rs2) { Rtype(0x33, 1, 0x14, rd, rs1, rs2); }
+void clz(const Reg& rd, const Reg& rs1) { Itype(0x13, 1, rd, rs1, 0x600); }
+void ctz(const Reg& rd, const Reg& rs1) { Itype(0x13, 1, rd, rs1, 0x601); }
+void cpop(const Reg& rd, const Reg& rs1) { Itype(0x13, 1, rd, rs1, 0x602); }
+void clzw(const Reg& rd, const Reg& rs1) { Itype(0x1b, 1, rd, rs1, 0x600); }
+void ctzw(const Reg& rd, const Reg& rs1) { Itype(0x1b, 1, rd, rs1, 0x601); }
+void cpopw(const Reg& rd, const Reg& rs1) { Itype(0x1b, 1, rd, rs1, 0x602); }
+void orc_b(const Reg& rd, const Reg& rs1) { Itype(0x13, 5, rd, rs1, 0x287); }
+void rev8(const Reg& rd, const Reg& rs1) { Itype(0x13, 5, rd, rs1, isRV32_ ? 0x698 : 0x6b8); }
+void sext_b(const Reg& rd, const Reg& rs) { if (supportBext_) { Itype(0x13, 1, rd, rs, 0x604); return; } slli(rd, rs, XLEN_ - 8); srai(rd, rd, XLEN_ - 8); }
+void sext_h(const Reg& rd, const Reg& rs) { if (supportBext_) { Itype(0x13, 1, rd, rs, 0x605); return; } slli(rd, rs, XLEN_ - 16); srai(rd, rd, XLEN_ - 16); }
+void zext_h(const Reg& rd, const Reg& rs) { if (supportBext_) { Rtype(isRV32_ ? 0x33 : 0x3b, 4, 0x04, rd, rs, x0); return; } slli(rd, rs, XLEN_ - 16); srli(rd, rd, XLEN_ - 16); }
+void zext_w(const Reg& rd, const Reg& rs) { if (supportBext_) { add_uw(rd, rs, x0); return; } slli(rd, rs, XLEN_ - 32); srli(rd, rd, XLEN_ - 32); }
+void rori(const Reg& rd, const Reg& rs1, uint32_t shamt) { opShift(0x30, 5, 0x13, rd, rs1, shamt); }
+void roriw(const Reg& rd, const Reg& rs1, uint32_t shamt) { opShift(0x30, 5, 0x1b, rd, rs1, shamt, 5); }
+void slli_uw(const Reg& rd, const Reg& rs1, uint32_t shamt) { opShift(0x4, 1, 0x1b, rd, rs1, shamt, 6); }
+void bclri(const Reg& rd, const Reg& rs1, uint32_t shamt) { opShift(0x24, 1, 0x13, rd, rs1, shamt); }
+void bexti(const Reg& rd, const Reg& rs1, uint32_t shamt) { opShift(0x24, 5, 0x13, rd, rs1, shamt); }
+void binvi(const Reg& rd, const Reg& rs1, uint32_t shamt) { opShift(0x34, 1, 0x13, rd, rs1, shamt); }
+void bseti(const Reg& rd, const Reg& rs1, uint32_t shamt) { opShift(0x14, 1, 0x13, rd, rs1, shamt); }
 void fadd_s(const FReg& rd, const FReg& rs1, const FReg& rs2, RM rm=RM::dyn) { opFP(0x53, rs2, rs1, rm, rd); }
 void fclass_s(const Reg& rd, const FReg& rs1) { opFP(0xe0001053, 0, rs1, 0, rd); }
 void fcvt_s_w(const FReg& rd, const Reg& rs1, RM rm=RM::dyn) { opFP(0xd0000053, 0, rs1, rm, rd); }
@@ -233,12 +277,8 @@ void mv(const Reg& rd, const Reg& rs) { addi(rd, rs, 0); }
 void not_(const Reg& rd, const Reg& rs) { xori(rd, rs, -1); }
 void neg(const Reg& rd, const Reg& rs) { sub(rd, x0, rs); }
 void negw(const Reg& rd, const Reg& rs) { subw(rd, x0, rs); }
-void sext_b(const Reg& rd, const Reg& rs) { slli(rd, rs, XLEN_ - 8); srai(rd, rd, XLEN_ - 8); }
-void sext_h(const Reg& rd, const Reg& rs) { slli(rd, rs, XLEN_ - 16); srai(rd, rd, XLEN_ - 16); }
 void sext_w(const Reg& rd, const Reg& rs) { addiw(rd, rs, 0); }
 void zext_b(const Reg& rd, const Reg& rs) { andi(rd, rs, 255); }
-void zext_h(const Reg& rd, const Reg& rs) { slli(rd, rs, XLEN_ - 16); srli(rd, rd, XLEN_ - 16); }
-void zext_w(const Reg& rd, const Reg& rs) { slli(rd, rs, XLEN_ - 32); srli(rd, rd, XLEN_ - 32); }
 void seqz(const Reg& rd, const Reg& rs) { sltiu(rd, rs, 1); }
 void snez(const Reg& rd, const Reg& rs) { sltu(rd, x0, rs); }
 void sltz(const Reg& rd, const Reg& rs) { slt(rd, rs, x0); }

@@ -83,11 +83,30 @@
 	#define XBYAK_RISCV_CONSTEXPR
 #endif
 
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+
+#ifndef XBYAK_RISCV_VSETV_DEFAULT_OLD
+	#pragma message "XBYAK_RISCV_VSETV_DEFAULT_OLD is 0 in the future"
+	#define XBYAK_RISCV_VSETV_DEFAULT_OLD 1
+#endif
+#if defined(XBYAK_RISCV_VSETV_DEFAULT_OLD) && XBYAK_RISCV_VSETV_DEFAULT_OLD == 1
+	// for backward compatibility
+	#define XBYAK_RISCV_VSETV_DEFAULT_LMUL =LMUL::m1
+	#define XBYAK_RISCV_VSETV_DEFAULT_VTA =VTA::tu
+	#define XBYAK_RISCV_VSETV_DEFAULT_VMA =VMA::mu
+#else
+	// no default arguments, the same as the assembler
+	#define XBYAK_RISCV_VSETV_DEFAULT_LMUL
+	#define XBYAK_RISCV_VSETV_DEFAULT_VTA
+	#define XBYAK_RISCV_VSETV_DEFAULT_VMA
+#endif
+#endif
+
 namespace Xbyak_riscv {
 
 enum {
 	DEFAULT_MAX_CODE_SIZE = 4096,
-	VERSION = 0x1010 /* 0xABCD = A.BC.D */
+	VERSION = 0x1310 /* 0xABCD = A.BC.D */
 };
 
 inline uint32_t getVersion() { return VERSION; }
@@ -941,6 +960,7 @@ private:
 	int XLEN_;
 	bool isRV32_;
 	bool supportRVC_;
+	bool supportBext_;
 	void opJmp(const Label& label, const Jmp& jmp)
 	{
 		const uint8_t* addr = labelMgr_.getAddr(label);
@@ -1311,6 +1331,7 @@ public:
 		, XLEN_(64)
 		, isRV32_(false)
 		, supportRVC_(false)
+		, supportBext_(false)
 	{
 		labelMgr_.set(this);
 	}
@@ -1323,6 +1344,7 @@ public:
 		XLEN_ = 64;
 		isRV32_ = false;
 		supportRVC_ = false;
+		supportBext_ = false;
 	}
 	void setRV32(bool on = true)
 	{
@@ -1332,6 +1354,10 @@ public:
 	void supportRVC(bool on = true)
 	{
 		supportRVC_ = on;
+	}
+	void supportBext(bool on = true)
+	{
+		supportBext_ = on;
 	}
 	bool hasUndefinedLabel() const { return labelMgr_.hasUndefClabel(); }
 	static inline void clearCache(void *p, size_t n)

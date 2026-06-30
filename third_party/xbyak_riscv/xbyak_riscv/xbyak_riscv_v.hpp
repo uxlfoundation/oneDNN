@@ -58,6 +58,7 @@ void vfmv_f_s(const FReg& rd, const VReg& vs2) { opFVV(0x42001057, 0, vs2, 0, rd
 void vfmv_s_f(const VReg& vd, const FReg& rs1) { opFVF(0x42005057, 0, 0, rs1, vd); }
 void vfmv_v_f(const VReg& vd, const FReg& rs1) { opFVF(0x5e005057, 0, 0, rs1, vd); }
 void vfncvt_f_f_w(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x480a1057, vm, vs2, 0, vd); }
+void vfncvtbf16_f_f_w(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x480e9057, vm, vs2, 0, vd); }
 void vfncvt_f_x_w(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x48099057, vm, vs2, 0, vd); }
 void vfncvt_f_xu_w(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x48091057, vm, vs2, 0, vd); }
 void vfncvt_rod_f_f_w(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x480a9057, vm, vs2, 0, vd); }
@@ -97,6 +98,7 @@ void vfwadd_vv(const VReg& vd, const VReg& vs2, const VReg& vs1, VM vm=VM::unmas
 void vfwadd_wf(const VReg& vd, const VReg& vs2, const FReg& rs1, VM vm=VM::unmasked) { opFVF(0xd0005057, vm, vs2, rs1, vd); }
 void vfwadd_wv(const VReg& vd, const VReg& vs2, const VReg& vs1, VM vm=VM::unmasked) { opFVV(0xd0001057, vm, vs2, vs1, vd); }
 void vfwcvt_f_f_v(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x48061057, vm, vs2, 0, vd); }
+void vfwcvtbf16_f_f_v(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x48069057, vm, vs2, 0, vd); }
 void vfwcvt_f_x_v(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x48059057, vm, vs2, 0, vd); }
 void vfwcvt_f_xu_v(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x48051057, vm, vs2, 0, vd); }
 void vfwcvt_rtz_x_f_v(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opFVV(0x48079057, vm, vs2, 0, vd); }
@@ -127,18 +129,18 @@ void vl1re16_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2805007, 0, 0, r
 void vl1re32_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2806007, 0, 0, rs1, vd); }
 void vl1re64_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2807007, 0, 0, rs1, vd); }
 void vl1re8_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2800007, 0, 0, rs1, vd); }
-void vl2re16_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2805007, 0, 0, rs1, vd); }
-void vl2re32_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2806007, 0, 0, rs1, vd); }
-void vl2re64_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2807007, 0, 0, rs1, vd); }
-void vl2re8_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2800007, 0, 0, rs1, vd); }
-void vl4re16_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2805007, 0, 0, rs1, vd); }
-void vl4re32_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2806007, 0, 0, rs1, vd); }
-void vl4re64_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2807007, 0, 0, rs1, vd); }
-void vl4re8_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2800007, 0, 0, rs1, vd); }
-void vl8re16_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2805007, 0, 0, rs1, vd); }
-void vl8re32_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2806007, 0, 0, rs1, vd); }
-void vl8re64_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2807007, 0, 0, rs1, vd); }
-void vl8re8_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x2800007, 0, 0, rs1, vd); }
+void vl2re16_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x22805007, 0, 0, rs1, vd); }
+void vl2re32_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x22806007, 0, 0, rs1, vd); }
+void vl2re64_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x22807007, 0, 0, rs1, vd); }
+void vl2re8_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x22800007, 0, 0, rs1, vd); }
+void vl4re16_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x62805007, 0, 0, rs1, vd); }
+void vl4re32_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x62806007, 0, 0, rs1, vd); }
+void vl4re64_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x62807007, 0, 0, rs1, vd); }
+void vl4re8_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0x62800007, 0, 0, rs1, vd); }
+void vl8re16_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0xe2805007, 0, 0, rs1, vd); }
+void vl8re32_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0xe2806007, 0, 0, rs1, vd); }
+void vl8re64_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0xe2807007, 0, 0, rs1, vd); }
+void vl8re8_v(const VReg& vd, const Reg& rs1) { opVectorLoad(0xe2800007, 0, 0, rs1, vd); }
 void vlseg1e1024_v(const VReg& vd, const Reg& rs1, VM vm=VM::unmasked) { opVectorLoad(0x10007007, vm, 0, rs1, vd); }
 void vlseg2e1024_v(const VReg& vd, const Reg& rs1, VM vm=VM::unmasked) { opVectorLoad(0x30007007, vm, 0, rs1, vd); }
 void vlseg3e1024_v(const VReg& vd, const Reg& rs1, VM vm=VM::unmasked) { opVectorLoad(0x50007007, vm, 0, rs1, vd); }
@@ -493,9 +495,9 @@ void vrgatherei16_vv(const VReg& vd, const VReg& vs2, const VReg& vs1, VM vm=VM:
 void vrsub_vi(const VReg& vd, const VReg& vs2, int32_t simm5, VM vm=VM::unmasked) { opIVI(0xc003057, vm, vs2, simm5, vd); }
 void vrsub_vx(const VReg& vd, const VReg& vs2, const Reg& rs1, VM vm=VM::unmasked) { opIVX(0xc004057, vm, vs2, rs1, vd); }
 void vs1r_v(VReg vs3, const Reg& rs1) { opVectorStore(0x2800027, 0, 0, rs1, vs3); }
-void vs2r_v(VReg vs3, const Reg& rs1) { opVectorStore(0x2800027, 0, 0, rs1, vs3); }
-void vs4r_v(VReg vs3, const Reg& rs1) { opVectorStore(0x2800027, 0, 0, rs1, vs3); }
-void vs8r_v(VReg vs3, const Reg& rs1) { opVectorStore(0x2800027, 0, 0, rs1, vs3); }
+void vs2r_v(VReg vs3, const Reg& rs1) { opVectorStore(0x22800027, 0, 0, rs1, vs3); }
+void vs4r_v(VReg vs3, const Reg& rs1) { opVectorStore(0x62800027, 0, 0, rs1, vs3); }
+void vs8r_v(VReg vs3, const Reg& rs1) { opVectorStore(0xe2800027, 0, 0, rs1, vs3); }
 void vsadd_vi(const VReg& vd, const VReg& vs2, int32_t simm5, VM vm=VM::unmasked) { opIVI(0x84003057, vm, vs2, simm5, vd); }
 void vsadd_vv(const VReg& vd, const VReg& vs2, const VReg& vs1, VM vm=VM::unmasked) { opIVV(0x84000057, vm, vs2, vs1, vd); }
 void vsadd_vx(const VReg& vd, const VReg& vs2, const Reg& rs1, VM vm=VM::unmasked) { opIVX(0x84004057, vm, vs2, rs1, vd); }
@@ -735,7 +737,7 @@ void vzext_vf2(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opMVV(0x48
 void vzext_vf4(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opMVV(0x48022057, vm, vs2, 0, vd); }
 void vzext_vf8(const VReg& vd, const VReg& vs2, VM vm=VM::unmasked) { opMVV(0x48012057, vm, vs2, 0, vd); }
 
-void vsetivli(const Reg& rd, uint32_t uimm, SEW sew, LMUL lmul=LMUL::m1, VTA vta=VTA::tu, VMA vma=VMA::mu) {
+void vsetivli(const Reg& rd, uint32_t uimm, SEW sew, LMUL lmul XBYAK_RISCV_VSETV_DEFAULT_LMUL, VTA vta XBYAK_RISCV_VSETV_DEFAULT_VTA, VMA vma XBYAK_RISCV_VSETV_DEFAULT_VMA) {
     uint32_t zimm = (static_cast<uint32_t>(vma)<<7) |
                     (static_cast<uint32_t>(vta)<<6) |
                     (static_cast<uint32_t>(sew)<<3) |
@@ -744,7 +746,7 @@ void vsetivli(const Reg& rd, uint32_t uimm, SEW sew, LMUL lmul=LMUL::m1, VTA vta
     append4B(v);
 }
 
-void vsetvli(const Reg& rd, const Reg& rs1, SEW sew, LMUL lmul=LMUL::m1, VTA vta=VTA::tu, VMA vma=VMA::mu) {
+void vsetvli(const Reg& rd, const Reg& rs1, SEW sew, LMUL lmul XBYAK_RISCV_VSETV_DEFAULT_LMUL, VTA vta XBYAK_RISCV_VSETV_DEFAULT_VTA, VMA vma XBYAK_RISCV_VSETV_DEFAULT_VMA) {
     uint32_t zimm = (static_cast<uint32_t>(vma)<<7) |
                     (static_cast<uint32_t>(vta)<<6) |
                     (static_cast<uint32_t>(sew)<<3) |

@@ -81,10 +81,6 @@ struct dnnl_stream : public dnnl::impl::c_compatible {
             const std::string &pd_info, double start_ms) {
         // TODO: Change interface to std::string &&pd_info to allow direct
         // move into primitive profiling data, avoiding string copy overhead
-        if (!is_verbose_profiler_enabled())
-            VWARN(primitive, exec,
-                    "attempting to run verbose profiler when it is not "
-                    "enabled");
         return dnnl::impl::status::unimplemented;
     }
 

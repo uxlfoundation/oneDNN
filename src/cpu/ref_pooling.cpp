@@ -90,9 +90,9 @@ status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                 assert(0 <= value
                         && value <= numeric_limits<typename prec_traits_t<
                                         data_type::u8>::type>::max());
-                ws[off] = value;
+                ws[off] = into<uint8_t>(value);
             } else
-                reinterpret_cast<int *>(ws)[off] = value;
+                reinterpret_cast<int *>(ws)[off] = into<int>(value);
         }
     };
 
@@ -139,7 +139,7 @@ status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         }
         int num_summands;
         if (alg == alg_kind::pooling_avg_include_padding)
-            num_summands = KW * KH * KD;
+            num_summands = into<int>(KW * KH * KD);
         else {
             auto id_start = od * SD - padF;
             auto ih_start = oh * SH - padT;
@@ -161,9 +161,9 @@ status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             auto iw_end_excluded
                     = iw_end > IW ? (iw_end - IW - 1) / (DW + 1) + 1 : 0;
 
-            num_summands = (KD - id_start_excluded - id_end_excluded)
+            num_summands = into<int>((KD - id_start_excluded - id_end_excluded)
                     * (KH - ih_start_excluded - ih_end_excluded)
-                    * (KW - iw_start_excluded - iw_end_excluded);
+                    * (KW - iw_start_excluded - iw_end_excluded));
         }
         d /= num_summands;
     };
@@ -340,7 +340,7 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
         balance211(diff_src_d.nelems(true), nthr, ithr, start, end);
         if (start == end) return;
 
-        for (int i = start; i < end; i++)
+        for (dim_t i = start; i < end; i++)
             io::store_float_value(data_type::f32, 0, diff_src, i);
     });
 

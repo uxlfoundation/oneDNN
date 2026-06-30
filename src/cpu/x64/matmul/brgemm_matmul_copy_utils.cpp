@@ -5576,8 +5576,10 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             // Load packed int4 data into Ymm (half of Zmm), then
             // unpack to full int8 in Zmm and apply ZP shift.
             auto ymm_src = Ymm(src_reg.getIdx());
+            if (is_tail) init_tail_mask(columns_tail, /*use_int4_mask=*/true);
             auto ymm_src_load = maybe_mask(ymm_src, is_tail);
             vmovdqu8(ymm_src_load, addr);
+            if (is_tail) init_tail_mask(columns_tail, /*use_int4_mask=*/false);
             cvt_int4_to_int8_for_transposed(src_reg);
             maybe_apply_int8_grouped_zp(src_reg, i);
         } else {

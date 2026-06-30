@@ -404,8 +404,8 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                                     curr_src_ptr, src_strides[0],
                                     src_strides[1], curr_weights,
                                     weights_strides[0], weights_strides[1],
-                                    curr_acc, acc_ldc, src_zero_point,
-                                    wei_zero_point);
+                                    curr_acc, into<int>(acc_ldc),
+                                    src_zero_point, wei_zero_point);
                         }
 
                     } break;
@@ -430,8 +430,8 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                                     curr_src_ptr, src_strides[0],
                                     src_strides[1], curr_weights,
                                     weights_strides[0], weights_strides[1],
-                                    curr_acc, acc_ldc, src_zero_point,
-                                    wei_zero_point);
+                                    curr_acc, into<int>(acc_ldc),
+                                    src_zero_point, wei_zero_point);
                         }
 
                     } break;
@@ -494,8 +494,8 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                 pp_src_and_weights_zero_points(src_compensation,
                         weights_compensation, M, N, K, src, src_strides[0],
                         src_strides[1], weights, weights_strides[0],
-                        weights_strides[1], acc, acc_ldc, src_zero_point,
-                        wei_zero_point);
+                        weights_strides[1], acc, into<int>(acc_ldc),
+                        src_zero_point, wei_zero_point);
             }
 
             bool postops_in_matmul

@@ -98,8 +98,8 @@ struct direct_copy_kernel_t
                 && (utils::one_of(src_dt_, data_type::bf16, data_type::f16))
                 && (unroll % 2 == 0)) {
             for (size_t i = 0; i < static_cast<size_t>(unroll) / 2; i++) {
-                const Vmm &vmm_src_even = vmm_src(2 * i);
-                const Vmm &vmm_src_odd = vmm_src(2 * i + 1);
+                const Vmm &vmm_src_even = vmm_src(into<int>(2 * i));
+                const Vmm &vmm_src_odd = vmm_src(into<int>(2 * i + 1));
                 Vmm vmm_tmp(vmm_tmp_idx_);
                 io_[src_dt_]->load_two_simdw_xf16(
                         src_ptr(2 * i * types::data_type_size(src_dt_)
@@ -131,8 +131,12 @@ struct direct_copy_kernel_t
 
         if (tail) return;
 
-        add(reg_src, unroll * types::data_type_size(src_dt_) * simd_w_);
-        add(reg_dst, unroll * types::data_type_size(dst_dt_) * simd_w_);
+        add(reg_src,
+                into<uint32_t>(
+                        unroll * types::data_type_size(src_dt_) * simd_w_));
+        add(reg_dst,
+                into<uint32_t>(
+                        unroll * types::data_type_size(dst_dt_) * simd_w_));
         sub(reg_work_amount, unroll * simd_w_);
     }
 

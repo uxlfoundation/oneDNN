@@ -346,11 +346,11 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
 
     brg->with_bias = (dt_bias == data_type::undef) ? false : true;
     brg->dt_bias = dt_bias;
-    brg->typesize_bias = (dt_bias == data_type::undef)
-            ? 0
-            : types::data_type_size(brg->dt_bias);
+    brg->typesize_bias = into<int>((dt_bias == data_type::undef)
+                    ? 0
+                    : types::data_type_size(brg->dt_bias));
 
-    brg->LDD = LDD;
+    brg->LDD = into<int>(LDD);
     brg->is_runtime_ldd = is_runtime_value(LDD);
     const auto dt_d = dst_md->data_type;
 
@@ -424,7 +424,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         return status::unimplemented;
 
     brg->dt_d = dt_d;
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    brg->typesize_D = into<int>(types::data_type_size(brg->dt_d));
 
     if (!IMPLICATION(brg->is_int8 && brg->dt_d == bf16,
                 is_superset(brg->isa_impl, avx512_core)
@@ -782,7 +782,7 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
         }
     }
 
-    buff->palette_id = amx::get_target_palette();
+    buff->palette_id = into<uint8_t>(amx::get_target_palette());
 
     return status::success;
 }

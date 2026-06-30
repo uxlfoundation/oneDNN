@@ -299,7 +299,7 @@ private:
             if (blocks.empty()) return 0;
             auto n = blocks.size();
             // only last block may be different
-            return ((n - 1) * blocks[0].block + blocks[n - 1].block);
+            return into<int>(((n - 1) * blocks[0].block + blocks[n - 1].block));
         }
     };
 
@@ -740,7 +740,7 @@ int jit_brgemm_amx_uker_base_t::skipped_bd_mask(int inp_bd) noexcept {
     if (brg.brgattr.bd_mask_level != 2)
         return inp_bd;
     else
-        return skipped_bd_mask_buffer_[inp_bd];
+        return into<int>(skipped_bd_mask_buffer_[inp_bd]);
 }
 
 dim_t jit_brgemm_amx_uker_base_t::A_offset_wsp(
@@ -893,9 +893,9 @@ int jit_brgemm_amx_uker_base_t::get_out_bd(
     const auto bd = bdi->pos(bdb) + inp_bd;
     if (brg.brgattr.bd_mask_level) {
         assert(bdi->adj_bd_mask[bd - bdi->pos(0)] == adj_bd_mask_buffer_[bd]);
-        return bdi->adj_bd_mask[bd - bdi->pos(0)];
+        return into<int>(bdi->adj_bd_mask[bd - bdi->pos(0)]);
     } else
-        return bd;
+        return into<int>(bd);
 }
 
 template <typename U>
@@ -981,7 +981,8 @@ void jit_brgemm_amx_uker_base_t::load_accumulators(brgemm_iteration_t &bi) {
     for_(int bdb = 0; bdb < bi.bdi->block2(); bdb++)
     for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
         if (may_load_accumulators_) {
-            auto c_offset = C_offset(bi, bdb, 0, bi.ldi->pos(ldb)) + ils_shift;
+            auto c_offset = C_offset(bi, bdb, 0, into<int>(bi.ldi->pos(ldb)))
+                    + ils_shift;
             tileloadd(Tmm(get_C_tensor(bi, bdb, ldb)),
                     ptr[reg_C + c_offset + reg_stride_ld_block]);
         } else {
@@ -1053,7 +1054,7 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
 
                 if (!is_out_bd(bi.bdi, bdb, bd)) continue;
 
-                const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
+                const auto d_offset = D_offset(bi, bdb, bd, into<int>(ldb_pos));
                 rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
                         idx, d_offset);
             }
@@ -1082,7 +1083,8 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
                 dim_t result = 0;
                 for (auto bd = bd_start; bd < bd_finish; bd++) {
                     if (!is_out_bd(bi.bdi, bdb, bd)) continue;
-                    result = nstl::max(result, D_offset(bi, bdb, bd, ldb_pos));
+                    result = nstl::max(
+                            result, D_offset(bi, bdb, bd, into<int>(ldb_pos)));
                 }
                 return result;
             }();
@@ -1093,7 +1095,7 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
                 if (!is_out_bd(bi.bdi, bdb, bd)) continue;
 
                 auto zmm = accm(bd);
-                const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
+                const auto d_offset = D_offset(bi, bdb, bd, into<int>(ldb_pos));
                 auto addr = EVEX_compress_addr_safe(
                         reg_D, d_offset, reg_long_offt);
 
@@ -1138,7 +1140,8 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers_ldb(
         vcvtdq2ps(zmm_zp_a_val, zmm_zp_a_val);
         reg_zp_comp_a.restore();
 
-        const auto zp_comp_a_off = zp_comp_a_offset(bi.ldi->pos(ldb));
+        const auto zp_comp_a_off
+                = zp_comp_a_offset(into<int>(bi.ldi->pos(ldb)));
         const auto zp_comp_a_addr
                 = EVEX_compress_addr(reg_zp_comp_a, zp_comp_a_off);
         cvt2ps(data_type::s32, zmm_zp_comp_a, zp_comp_a_addr, true, false,
@@ -1170,7 +1173,7 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
         mov(reg_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
-                    reg_scales, scales_offset(ldi->pos(ldb)));
+                    reg_scales, scales_offset(into<int>(ldi->pos(ldb))));
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
             if (brg.is_single_wei_scale) {
                 // Broadcast a single scale value — handle non-f32 types.
@@ -1223,8 +1226,8 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
         mov(reg_bias, ptr[param1 + GET_OFF(ptr_bias)]);
 
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
-            auto ptr_bias
-                    = EVEX_compress_addr(reg_bias, bias_offset(ldi->pos(ldb)));
+            auto ptr_bias = EVEX_compress_addr(
+                    reg_bias, bias_offset(into<int>(ldi->pos(ldb))));
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
             cvt2ps(brg.dt_bias, zmm_bias(ldb), ptr_bias, true, false, k_mask);
         }
@@ -1263,7 +1266,7 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
         mov(reg_scales, ptr[param1 + GET_OFF(ptr_wei_scales)]);
         for (int ldb = 0; ldb < ldi->block2(); ldb++) {
             auto scales_ptr = EVEX_compress_addr(
-                    reg_scales, scales_offset(ldi->pos(ldb)));
+                    reg_scales, scales_offset(into<int>(ldi->pos(ldb))));
             auto k_mask = ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
 
             const auto zmm_scale = zmm_scales(ldb);
@@ -1276,7 +1279,8 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
                     assert(brg.dt_wei_scales == data_type::f32);
                     // Src scales are set, need to multiply by their value.
                     auto scales_bcast_ptr = EVEX_compress_addr(reg_scales,
-                            scales_offset(ldi->pos(ldb)), /* bcast = */ true);
+                            scales_offset(into<int>(ldi->pos(ldb))),
+                            /* bcast = */ true);
                     vmulps(zmm_scale_masked, zmm_scale, scales_bcast_ptr);
                 } else {
                     switch (brg.dt_wei_scales) {
@@ -1351,7 +1355,7 @@ void jit_brgemm_amx_uker_base_t::prefetch_CD_range(brgemm_iteration_t &bi,
     for (int bd = bd_start; bd < bd_finish; bd++) {
         if (!is_out_bd(bi.bdi, bdb, bd)) continue;
         if (bi.apply_postops) {
-            const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
+            const auto d_offset = D_offset(bi, bdb, bd, into<int>(ldb_pos));
             auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_tmp_gpr);
             uni_prefetch(ptr_D, pft, true);
         } else if (are_post_ops_applicable_) {
@@ -1364,7 +1368,7 @@ void jit_brgemm_amx_uker_base_t::prefetch_CD_range(brgemm_iteration_t &bi,
             //            auto ptr_C = EVEX_compress_addr(reg_C, c_offset);
             //            uni_prefetch(ptr_C, pft, true);
         } else {
-            const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
+            const auto d_offset = D_offset(bi, bdb, bd, into<int>(ldb_pos));
             auto ptr_D = EVEX_compress_addr(reg_D, d_offset);
             uni_prefetch(ptr_D, pft, true);
         }
@@ -1374,8 +1378,8 @@ void jit_brgemm_amx_uker_base_t::prefetch_CD_range(brgemm_iteration_t &bi,
 int jit_brgemm_amx_uker_base_t::calc_ops_CD(
         brgemm_iteration_t &bi) const noexcept {
     const auto &tloop = imap_[bi.apply_postops];
-    return tloop.rdis.size() * bi.ldi->block2() * bi.bdi->block2()
-            * (brg.brgattr.var_bs ? 1 : brg.brgattr.max_bs);
+    return into<int>(tloop.rdis.size() * bi.ldi->block2() * bi.bdi->block2()
+            * (brg.brgattr.var_bs ? 1 : brg.brgattr.max_bs));
 }
 
 void jit_brgemm_amx_uker_base_t::prefetch_CD(brgemm_iteration_t &bi,
@@ -1516,8 +1520,8 @@ void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
     vpbroadcastd(zmm_zp_a_val, reg_zp_a_values.cvt32());
     vcvtdq2ps(zmm_zp_a_val, zmm_zp_a_val);
     reg_zp_comp_a.restore();
-    const auto comp_pad_offset
-            = zp_comp_pad_a_offset(bi, bdb, inp_bd, bi.ldi->pos(ldb));
+    const auto comp_pad_offset = zp_comp_pad_a_offset(
+            bi, bdb, inp_bd, into<int>(bi.ldi->pos(ldb)));
     const auto zp_comp_pad_a_addr
             = EVEX_compress_addr(reg_zp_comp_pad_a, comp_pad_offset);
     cvt2ps(data_type::s32, zmm_zp_comp_a, zp_comp_pad_a_addr, true, false,
@@ -1566,7 +1570,8 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
 
             reg_per_mn_comp.restore();
             const auto global_ldb = bi.ldi->pos(ldb);
-            const auto delta_off = per_mn_comp_offset(bi, bdb, bd, global_ldb);
+            const auto delta_off
+                    = per_mn_comp_offset(bi, bdb, bd, into<int>(global_ldb));
             const auto delta_ptr = EVEX_compress_addr_safe(
                     reg_per_mn_comp, delta_off, reg_long_offt);
             const auto zmm_delta = zmm_tmp_1();
@@ -1614,7 +1619,8 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
         }
 
         if (need_to_apply_alpha_beta_ || bi.skip_accumulation) {
-            const auto c_offset = C_offset(bi, bdb, bd, bi.ldi->pos(ldb));
+            const auto c_offset
+                    = C_offset(bi, bdb, bd, into<int>(bi.ldi->pos(ldb)));
             const auto ptr_C
                     = EVEX_compress_addr_safe(reg_C, c_offset, reg_long_offt);
             apply_alpha_beta_to_vector(
@@ -1787,8 +1793,8 @@ void jit_brgemm_amx_uker_base_t::store_vector(
 
     auto ldb_pos = bi.ldi->pos(ldb);
     auto is_ld_tail = bi.ldi->is_tail(ldb);
-    const auto c_offset = C_offset(bi, bdb, inp_bd, ldb_pos);
-    const auto d_offset = D_offset(bi, bdb, inp_bd, ldb_pos);
+    const auto c_offset = C_offset(bi, bdb, inp_bd, into<int>(ldb_pos));
+    const auto d_offset = D_offset(bi, bdb, inp_bd, into<int>(ldb_pos));
 
     if (bi.apply_postops) {
         auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_tmp_gpr);
@@ -1912,7 +1918,8 @@ void jit_brgemm_amx_uker_base_t::store_accumulators(brgemm_iteration_t &bi) {
                     store_vector(bi, bdb, bd, ldb);
             }
         } else if (!brg.interleave_tilestores_) {
-            const auto c_offset = C_offset(bi, bdb, 0, bi.ldi->pos(ldb));
+            const auto c_offset
+                    = C_offset(bi, bdb, 0, into<int>(bi.ldi->pos(ldb)));
             tilestored(ptr[reg_C + reg_stride_ld_block + c_offset],
                     Tmm(get_C_tensor(bi, bdb, ldb)));
         }
@@ -2120,8 +2127,8 @@ void jit_brgemm_amx_uker_base_t::maybe_tilestore(brgemm_iteration_t &bi,
     const auto store_tensor_number = current_tensor_number + store_tensor_shift;
 
     const auto &store_bi = do_pre_tilestore ? prev_bi_ : bi;
-    const int max_store_tensor_number
-            = store_bi.bdi->blocks.size() * store_bi.ldi->blocks.size();
+    const int max_store_tensor_number = into<int>(
+            store_bi.bdi->blocks.size() * store_bi.ldi->blocks.size());
     bool perform_store
             = (do_pre_tilestore
                       && (store_tensor_number >= 2
@@ -2144,8 +2151,8 @@ void jit_brgemm_amx_uker_base_t::maybe_tilestore(brgemm_iteration_t &bi,
     } else {
         const auto store_ldb_ind
                 = do_pre_tilestore ? prev_bi_.ldi->pos(0) : bi.ldi->pos(0);
-        const auto c_offset
-                = C_offset(store_bi, bdb_idx, 0, store_ldb_ind + ldb_idx);
+        const auto c_offset = C_offset(
+                store_bi, bdb_idx, 0, into<int>(store_ldb_ind + ldb_idx));
         tilestored(ptr[reg_C + reg_stride_ld_block + c_offset], acc);
     }
     tilezero(acc);
@@ -2343,7 +2350,7 @@ void jit_brgemm_amx_uker_base_t::bf32_downconvert_to_vnni(
 
     const auto rd_block = bi.rdi->block(0);
     const int vnni_granularity
-            = data_type_vnni_granularity(data_type_t::dnnl_bf16);
+            = into<int>(data_type_vnni_granularity(data_type_t::dnnl_bf16));
     const auto r_end
             = nstl::min(utils::div_up(rd_block, vnni_granularity), num_rows);
 
@@ -2397,13 +2404,13 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     const auto transform_offset
             = use_ils_ ? brg.get_num_C_tiles() * brgemm_desc_t::tilesize : 0;
     const auto max_bdb2 = tloop.bdis[0].block2();
-    const auto max_rdb = tloop.rdis.size();
+    const auto max_rdb = into<int>(tloop.rdis.size());
     const auto matrix_a_offset = transform_offset;
-    const auto matrix_b_offset = transform_offset
+    const auto matrix_b_offset = into<int>(transform_offset
             + brgemm_desc_t::tilesize
                     * (nstl::max<int>(should_save_transform(mk),
                             should_save_transform(matrix_A) * brg.brgattr.max_bs
-                                    * max_bdb2 * max_rdb));
+                                    * max_bdb2 * max_rdb)));
     const auto matrix_offset = is_A ? matrix_a_offset : matrix_b_offset;
     const std::string key
             = std::to_string(bi.bsi->pos) + "_" + std::to_string(offset);
@@ -2419,7 +2426,7 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     // save offset of the transformation if required.
     if (should_save_transform(mk)) {
         auto buf_idx = transform_buf.size();
-        buf_offt = matrix_offset + buf_idx * brgemm_desc_t::tilesize;
+        buf_offt = into<int>(matrix_offset + buf_idx * brgemm_desc_t::tilesize);
         transform_buf[key] = buf_idx;
     }
 
@@ -2432,18 +2439,18 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     const auto num_col_bytes = palette_.cols[t1.getIdx()];
     if (is_A) {
         if (brg.is_bf32)
-            bf32_downconvert(bi, num_rows, num_col_bytes, reg_base, offset,
-                    reg_stride, reg_buf);
+            bf32_downconvert(bi, num_rows, num_col_bytes, reg_base,
+                    into<int>(offset), reg_stride, reg_buf);
         else
-            fp8_to_f16_upconvert(bi, num_rows, num_col_bytes, reg_base, offset,
-                    reg_stride, reg_buf, dt);
+            fp8_to_f16_upconvert(bi, num_rows, num_col_bytes, reg_base,
+                    into<int>(offset), reg_stride, reg_buf, dt);
     } else {
         if (brg.is_bf32)
             bf32_downconvert_to_vnni(bi, num_rows, num_col_bytes, reg_base,
-                    offset, reg_stride, reg_buf);
+                    into<int>(offset), reg_stride, reg_buf);
         else
             fp8_to_f16_upconvert_to_vnni(bi, num_rows, num_col_bytes, reg_base,
-                    offset, reg_stride, reg_buf, dt);
+                    into<int>(offset), reg_stride, reg_buf, dt);
     }
 
     // load into tmm from the transformed data.
@@ -2456,9 +2463,9 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
 void jit_brgemm_amx_uker_base_t::pre_process_k_tail_fused_copy_a(
         brgemm_iteration_t &bi, int bdb, const Tmm &t1, reg64_t reg_base,
         dim_t offset_src, dim_t offset_dst, bool mem_advice_A) {
-    if (offset_dst) add(reg_buf, offset_dst);
+    if (offset_dst) add(reg_buf, into<uint32_t>(offset_dst));
     copy_k_tail_to_wsp(t1, reg_base, offset_src, reg_stride_lda, mem_advice_A);
-    if (offset_dst) sub(reg_buf, offset_dst);
+    if (offset_dst) sub(reg_buf, into<uint32_t>(offset_dst));
 }
 
 bool jit_brgemm_amx_uker_base_t::process_k_tail_only_last_tile() {
@@ -2618,7 +2625,7 @@ void jit_brgemm_amx_uker_base_t::bs_loop_body(brgemm_iteration_t &bi) {
         prefetcht0(ptr[reg_aux1_batch]);
         reg_aux1_batch.save();
     } else {
-        set_A_B_matrices(bi.bsi->pos);
+        set_A_B_matrices(into<int>(bi.bsi->pos));
     }
 
     rdb_loop(bi);
@@ -2635,7 +2642,8 @@ void jit_brgemm_amx_uker_base_t::bs_loop(brgemm_iteration_t &bi) {
 
     const auto &tloop = imap_[bi.apply_postops];
     if (ununroll_bd_loop && was_prev_bi_) {
-        if (bi.bdi->idx != prev_bi_.bdi->idx) add(reg_A, bi.bdi->A_shift);
+        if (bi.bdi->idx != prev_bi_.bdi->idx)
+            add(reg_A, into<uint32_t>(bi.bdi->A_shift));
 
         const auto real_ils
                 = actual_ils(bi.apply_postops, bi.skip_accumulation);
@@ -2646,10 +2654,11 @@ void jit_brgemm_amx_uker_base_t::bs_loop(brgemm_iteration_t &bi) {
         else if (real_ils && prev_bi_.bdi->idx > 0 && prev_bi_.ldi->idx == 0)
             bi_shift = &prev_bi_;
         if (bi_shift != nullptr) {
-            add(reg_C, bi_shift->bdi->C_shift);
-            add(reg_D, bi_shift->bdi->D_shift);
+            add(reg_C, into<uint32_t>(bi_shift->bdi->C_shift));
+            add(reg_D, into<uint32_t>(bi_shift->bdi->D_shift));
             if (brg.req_comp_pads_with_bcast)
-                add(reg_zp_comp_pad_a, bi_shift->bdi->zp_comp_pad_a_shift);
+                add(reg_zp_comp_pad_a,
+                        into<uint32_t>(bi_shift->bdi->zp_comp_pad_a_shift));
         }
     }
 
@@ -2842,10 +2851,10 @@ void jit_brgemm_amx_uker_base_t::top_loop(brgemm_iteration_t &bi) {
     if (actual_ils(bi.apply_postops, bi.skip_accumulation) && ununroll_bd_loop
             && tloop.ldis.size() == 1) {
         // update reg_C and reg_D if they they were not updated yet
-        add(reg_C, bi.bdi->C_shift);
-        add(reg_D, bi.bdi->D_shift);
+        add(reg_C, into<uint32_t>(bi.bdi->C_shift));
+        add(reg_D, into<uint32_t>(bi.bdi->D_shift));
         if (brg.req_comp_pads_with_bcast)
-            add(reg_zp_comp_pad_a, bi.bdi->zp_comp_pad_a_shift);
+            add(reg_zp_comp_pad_a, into<uint32_t>(bi.bdi->zp_comp_pad_a_shift));
     }
     interleave_store(bi, true);
 }
@@ -3007,7 +3016,8 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
                     int bd_block_size = bdi_prefetch.blocks[bdb].block;
                     for (int bd = 0; bd < bd_block_size; bd++) {
                         prf_sprinkled_a.prefetch_offsets.push_back(
-                                A_offset_line(bi_prefetch, bdb, rdb, bd));
+                                A_offset_line(bi_prefetch, into<int>(bdb),
+                                        into<int>(rdb), bd));
                     }
                 }
             }
@@ -3023,7 +3033,8 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
                     int rd_block_size = rdi_prefetch.blocks[rdb].block;
                     for (int rd = 0; rd < rd_block_size; rd += brg.rd_step) {
                         prf_sprinkled_b.prefetch_offsets.push_back(
-                                B_offset_line(bi_prefetch, ldb, rdb, rd));
+                                B_offset_line(bi_prefetch, into<int>(ldb),
+                                        into<int>(rdb), rd));
                     }
                 }
             }

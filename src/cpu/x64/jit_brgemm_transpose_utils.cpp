@@ -341,8 +341,8 @@ void jit_brgemm_trans_m_k_f32_t::transpose(int nrows, int ncolumns) {
     L(K_loop);
     if (num_nrows_loop > 0) transpose_ker(transpose_size, ncolumns);
     if (num_nrows_loop > 1 || (num_nrows_loop > 0 && nrows_tail > 0)) {
-        add(reg_src, src_shift);
-        add(reg_tr_src, tr_src_shift);
+        add(reg_src, into<uint32_t>(src_shift));
+        add(reg_tr_src, into<uint32_t>(tr_src_shift));
     }
     if (num_nrows_loop > 1) {
         dec(reg_row_loop);
@@ -353,8 +353,8 @@ void jit_brgemm_trans_m_k_f32_t::transpose(int nrows, int ncolumns) {
 
     if (num_nrows_loop > 1 || nrows_tail > 0) {
         // reset pointers
-        sub(reg_src, src_shift * num_nrows_loop);
-        sub(reg_tr_src, tr_src_shift * num_nrows_loop);
+        sub(reg_src, into<uint32_t>(src_shift * num_nrows_loop));
+        sub(reg_tr_src, into<uint32_t>(tr_src_shift * num_nrows_loop));
     }
 }
 
@@ -414,8 +414,8 @@ void jit_brgemm_trans_m_k_f32_t::generate() {
         L(M_loop);
         transpose(nrows, transpose_size);
         if (conf_->ic_block > transpose_size) {
-            add(reg_src, m_src_shift);
-            add(reg_tr_src, m_tr_src_shift);
+            add(reg_src, into<uint32_t>(m_src_shift));
+            add(reg_tr_src, into<uint32_t>(m_tr_src_shift));
             sub(reg_loop_M, transpose_size);
             cmp(reg_loop_M, transpose_size);
             jge(M_loop, T_NEAR);
@@ -438,8 +438,8 @@ void jit_brgemm_trans_m_k_f32_t::generate() {
         L(batch_loop);
 
         compute_M(is_os_tail);
-        add(reg_src_base, batch_src_shift);
-        add(reg_tr_src_base, batch_tr_src_shift);
+        add(reg_src_base, into<uint32_t>(batch_src_shift));
+        add(reg_tr_src_base, into<uint32_t>(batch_tr_src_shift));
 
         sub(reg_loop_batch, 1);
         jnz(batch_loop, T_NEAR);
@@ -774,7 +774,7 @@ void jit_brgemm_trans_m_k_bf16_t::generate() {
                     is_os_tail ? last_os_block_tail : transpose_size,
                     transpose_size);
             add(reg_m_src, M_src_shift);
-            add(reg_m_tr_src, M_tr_src_shift);
+            add(reg_m_tr_src, into<uint32_t>(M_tr_src_shift));
         }
         sub(reg_loop_M, transpose_size);
         cmp(reg_loop_M, transpose_size);
@@ -805,7 +805,7 @@ void jit_brgemm_trans_m_k_bf16_t::generate() {
         L(K_loop);
         {
             compute_m_loop(reg_k_src, reg_k_tr_src, false);
-            add(reg_k_src, K_src_shift);
+            add(reg_k_src, into<uint32_t>(K_src_shift));
             add(reg_k_tr_src, K_tr_src_shift);
         }
         sub(reg_loop_K, transpose_size);
@@ -831,8 +831,8 @@ void jit_brgemm_trans_m_k_bf16_t::generate() {
     {
         compute_k_loop(reg_batch_src, reg_batch_tr_src);
 
-        add(reg_batch_src, batch_src_shift);
-        add(reg_batch_tr_src, batch_tr_src_shift);
+        add(reg_batch_src, into<uint32_t>(batch_src_shift));
+        add(reg_batch_tr_src, into<uint32_t>(batch_tr_src_shift));
     }
     sub(reg_loop_batch, 1);
     jnz(batch_loop, T_NEAR);
@@ -1079,7 +1079,7 @@ void jit_brgemm_trans_m_k_f16_t::generate() {
         transpose_16x16(nrows, transpose_size);
         if (conf_->ic_block > transpose_size) {
             add(reg_src, m_src_shift);
-            add(reg_tr_src, m_tr_src_shift);
+            add(reg_tr_src, into<uint32_t>(m_tr_src_shift));
             sub(reg_loop_M, transpose_size);
             cmp(reg_loop_M, transpose_size);
             jge(M_loop, T_NEAR);
@@ -1102,8 +1102,8 @@ void jit_brgemm_trans_m_k_f16_t::generate() {
         L(batch_loop);
 
         compute_M(is_os_tail);
-        add(reg_src_base, batch_src_shift);
-        add(reg_tr_src_base, batch_tr_src_shift);
+        add(reg_src_base, into<uint32_t>(batch_src_shift));
+        add(reg_tr_src_base, into<uint32_t>(batch_tr_src_shift));
 
         sub(reg_loop_batch, 1);
         jnz(batch_loop, T_NEAR);
@@ -1252,8 +1252,8 @@ void jit_brgemm_copy_to_coarse_t::copy_os_loop() {
     L(loop_os);
 
     copy_row_loop();
-    add(reg_data, data_stride_);
-    add(reg_tr_data, tr_data_stride_);
+    add(reg_data, into<uint32_t>(data_stride_));
+    add(reg_tr_data, into<uint32_t>(tr_data_stride_));
 
     dec(reg_os_work);
     jnz(loop_os, T_NEAR);
@@ -1407,7 +1407,7 @@ void jit_trans_to_vnni_t::maybe_zero_pad_col(reg64_t dst) {
                     dst, i * tr_src_stride, reg_long_offt);
             vmovups(addr, zmm_zero);
         }
-        add(reg_col_tr_src, tr_src_col_shift);
+        add(reg_col_tr_src, into<uint32_t>(tr_src_col_shift));
     }
 }
 
@@ -1571,8 +1571,8 @@ void jit_trans_to_vnni_t::generate() {
         {
             transpose(reg_col_tr_src, reg_col_src, nrows, transpose_size,
                     pad_by_zeroes);
-            add(reg_col_src, src_col_shift);
-            add(reg_col_tr_src, tr_src_col_shift);
+            add(reg_col_src, into<uint32_t>(src_col_shift));
+            add(reg_col_tr_src, into<uint32_t>(tr_src_col_shift));
         }
         sub(reg_loop_col, transpose_size);
         cmp(reg_loop_col, transpose_size);
@@ -1597,7 +1597,8 @@ void jit_trans_to_vnni_t::generate() {
             mov(reg_loop_col, ptr[param1 + GET_OFF(current_col_size)]);
             cmp(reg_loop_col, conf_->oc_block);
             je(col_pad_done, T_NEAR);
-            if (col_tail > 0) add(reg_col_tr_src, tr_src_col_shift);
+            if (col_tail > 0)
+                add(reg_col_tr_src, into<uint32_t>(tr_src_col_shift));
             maybe_zero_pad_col(reg_col_tr_src);
             L(col_pad_done);
         }
@@ -1617,8 +1618,8 @@ void jit_trans_to_vnni_t::generate() {
         {
             compute_col_loop(reg_row_src, reg_row_tr_src, false);
 
-            add(reg_row_src, src_row_shift);
-            add(reg_row_tr_src, tr_src_row_shift);
+            add(reg_row_src, into<uint32_t>(src_row_shift));
+            add(reg_row_tr_src, into<uint32_t>(tr_src_row_shift));
         }
         sub(reg_loop_row, transpose_size);
         cmp(reg_loop_row, transpose_size);
@@ -1643,8 +1644,8 @@ void jit_trans_to_vnni_t::generate() {
     {
         compute_row_loop(reg_batch_src, reg_batch_tr_src);
 
-        add(reg_batch_src, src_batch_shift);
-        add(reg_batch_tr_src, tr_src_batch_shift);
+        add(reg_batch_src, into<uint32_t>(src_batch_shift));
+        add(reg_batch_tr_src, into<uint32_t>(tr_src_batch_shift));
     }
     sub(reg_loop_batch, 1);
     jnz(batch_loop, T_NEAR);
@@ -1790,8 +1791,8 @@ void jit_copy_f32_t::generate() {
         L(batch_loop);
 
         copy_block(nrows, ncolumns);
-        add(reg_src, src_batch_shift);
-        add(reg_tr_src, tr_src_batch_shift);
+        add(reg_src, into<uint32_t>(src_batch_shift));
+        add(reg_tr_src, into<uint32_t>(tr_src_batch_shift));
 
         sub(reg_loop_batch, 1);
         jnz(batch_loop, T_NEAR);
@@ -1993,8 +1994,8 @@ void jit_copy_f16_t::generate() {
         L(batch_loop);
 
         copy_block(is_row_tail, is_col_tail);
-        add(reg_src, src_batch_shift);
-        add(reg_tr_src, tr_src_batch_shift);
+        add(reg_src, into<uint32_t>(src_batch_shift));
+        add(reg_tr_src, into<uint32_t>(tr_src_batch_shift));
 
         sub(reg_loop_batch, 1);
         jnz(batch_loop, T_NEAR);
@@ -2047,7 +2048,7 @@ void jit_brgemm_relo_copy_to_wbuffer_t::generate() {
 
     preamble();
 
-    const int vnni_width = data_type_vnni_granularity(wjcp.wei_dt);
+    const int vnni_width = into<int>(data_type_vnni_granularity(wjcp.wei_dt));
     const auto wei_dsz = types::data_type_size(wjcp.wei_dt);
     const auto inp_ocb_size = wjcp.inp_oc_block * vnni_width * wei_dsz;
     const auto out_ocb_size = wjcp.out_oc_block * vnni_width * wei_dsz;
@@ -2092,10 +2093,10 @@ void jit_brgemm_relo_copy_to_wbuffer_t::generate() {
                     copy_zmm(false);
 
                 add(aux_reg_src, wjcp.inp_ocb_offs);
-                add(aux_reg_dst, inp_ocb_size);
+                add(aux_reg_dst, into<uint32_t>(inp_ocb_size));
             }
-            add(reg_src, inp_ocb_size);
-            add(reg_dst, out_ocb_size);
+            add(reg_src, into<uint32_t>(inp_ocb_size));
+            add(reg_dst, into<uint32_t>(out_ocb_size));
         }
     };
 
@@ -2404,8 +2405,8 @@ void jit_brgemm_trans_wei_f32_t::generate() {
         L(N_loop);
 
         transpose(transpose_size, is_oc_tail ? oc_tail : transpose_size);
-        add(reg_src, N_src_shift);
-        add(reg_tr_src, N_tr_src_shift);
+        add(reg_src, into<uint32_t>(N_src_shift));
+        add(reg_tr_src, into<uint32_t>(N_tr_src_shift));
 
         sub(reg_loop_N, transpose_size);
         cmp(reg_loop_N, transpose_size);
@@ -2429,8 +2430,8 @@ void jit_brgemm_trans_wei_f32_t::generate() {
 
     L(K_loop);
     compute_N(false);
-    add(reg_src_base, K_src_shift);
-    add(reg_tr_src_base, K_tr_src_shift);
+    add(reg_src_base, into<uint32_t>(K_src_shift));
+    add(reg_tr_src_base, into<uint32_t>(K_tr_src_shift));
 
     sub(reg_loop_K, transpose_size);
     cmp(reg_loop_K, transpose_size);
@@ -2621,8 +2622,8 @@ void jit_brgemm_trans_wei_bf16_t::generate() {
 
         transpose_16x16_vnni(
                 transpose_size, is_oc_tail ? oc_tail : transpose_size);
-        add(reg_src, N_src_shift);
-        add(reg_tr_src, N_tr_src_shift);
+        add(reg_src, into<uint32_t>(N_src_shift));
+        add(reg_tr_src, into<uint32_t>(N_tr_src_shift));
 
         sub(reg_loop_N, transpose_size);
         cmp(reg_loop_N, transpose_size);
@@ -2647,8 +2648,8 @@ void jit_brgemm_trans_wei_bf16_t::generate() {
 
     L(K_loop);
     compute_N(false);
-    add(reg_src_base, K_src_shift);
-    add(reg_tr_src_base, K_tr_src_shift);
+    add(reg_src_base, into<uint32_t>(K_src_shift));
+    add(reg_tr_src_base, into<uint32_t>(K_tr_src_shift));
 
     sub(reg_loop_K, transpose_size);
     cmp(reg_loop_K, transpose_size);
@@ -2901,8 +2902,8 @@ void jit_brgemm_trans_wei_f16_t::generate() {
         L(N_loop);
 
         transpose_16x16(transpose_size, is_oc_tail ? oc_tail : transpose_size);
-        add(reg_src, N_src_shift);
-        add(reg_tr_src, N_tr_src_shift);
+        add(reg_src, into<uint32_t>(N_src_shift));
+        add(reg_tr_src, into<uint32_t>(N_tr_src_shift));
 
         sub(reg_loop_N, transpose_size);
         cmp(reg_loop_N, transpose_size);
@@ -2926,8 +2927,8 @@ void jit_brgemm_trans_wei_f16_t::generate() {
 
     L(K_loop);
     compute_N(false);
-    add(reg_src_base, K_src_shift);
-    add(reg_tr_src_base, K_tr_src_shift);
+    add(reg_src_base, into<uint32_t>(K_src_shift));
+    add(reg_tr_src_base, into<uint32_t>(K_tr_src_shift));
 
     sub(reg_loop_K, transpose_size);
     cmp(reg_loop_K, transpose_size);

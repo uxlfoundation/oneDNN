@@ -38,14 +38,15 @@ namespace rv64 {
 // execute() to pick a kernel + iteration scheme. The two JIT kernels are a flat
 // lockstep loop (weights walk 1:1 with src) and a scalar-broadcast loop (one
 // f32 weight); the per_oc layouts are decomposed in C++ into runs that one of
-// those two kernels handles. `per_oc_blocked` and the more exotic broadcast
-// strategies are left to ref_prelu.
+// those two kernels handles. The more exotic broadcast strategies (shared_axes,
+// per_mb, ...) are left to ref_prelu.
 enum class prelu_bcast_t {
     unsupported,
     full, // weights shape == src shape: flat lockstep over the whole tensor
     scalar, // single weight broadcast over the whole tensor
     per_oc_nhwc, // channel innermost (stride[1]==1): lockstep run of length C
     per_oc_nchw, // channel-major plain: scalar weight per (n, c) spatial plane
+    per_oc_blocked, // nChw{8,16}c: lockstep run of length blk per channel block
 };
 
 // Standalone PReLU forward: dst = max(0, src) + weights * min(0, src). A thin
@@ -81,11 +82,15 @@ struct jit_uni_prelu_fwd_t : public primitive_t {
             VDISPATCH_PRELU(platform::has_data_type_support(dt),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(dst_md(0)->data_type == dt, VERBOSE_UNSUPPORTED_DT);
-            // Lockstep / per_oc_nhwc load weights in-kernel as the src dtype, so
-            // require a matching weights dtype (scalar paths read on the host
-            // and could take any dtype, but keep one rule for simplicity).
+            // Weights may differ from src: the kernel converts per-element to
+            // f32 (lockstep) or on the host (scalar paths). Allow any f32/f16/
+            // bf16 weights; has_data_type_support gates the convert isa (f16 ->
+            // zvfh, bf16 -> zvfbfwma) so we never emit an unavailable convert.
+            const data_type_t wdt = weights_md(0)->data_type;
             VDISPATCH_PRELU(
-                    weights_md(0)->data_type == dt, VERBOSE_UNSUPPORTED_DT);
+                    utils::one_of(wdt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_PRELU(platform::has_data_type_support(wdt),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_PRELU(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -117,8 +122,28 @@ struct jit_uni_prelu_fwd_t : public primitive_t {
             // Flat walks need a dense src (no internal gaps); per_oc walks need
             // a known plain layout to compute channel offsets.
             if (strategy == broadcasting_strategy_t::no_broadcast) {
-                // Identical dense layout guarantees the flat lockstep pairing.
-                if (src_d == weights_d && src_d.is_dense(true))
+                // Same dims + same physical ordering (ignoring dtype) guarantees
+                // the flat lockstep pairing; weights may differ in dtype.
+                auto same_layout = [](const memory_desc_wrapper &a,
+                                           const memory_desc_wrapper &b) {
+                    if (a.ndims() != b.ndims()
+                            || a.format_kind() != b.format_kind())
+                        return false;
+                    if (!utils::array_cmp(a.dims(), b.dims(), a.ndims()))
+                        return false;
+                    if (!a.is_blocking_desc()) return true;
+                    const auto &ab = a.blocking_desc();
+                    const auto &bb = b.blocking_desc();
+                    return ab.inner_nblks == bb.inner_nblks
+                            && utils::array_cmp(
+                                    ab.strides, bb.strides, a.ndims())
+                            && utils::array_cmp(ab.inner_blks, bb.inner_blks,
+                                    ab.inner_nblks)
+                            && utils::array_cmp(ab.inner_idxs, bb.inner_idxs,
+                                    ab.inner_nblks);
+                };
+                if (same_layout(src_d, weights_d) && src_d.is_dense(true)
+                        && weights_d.is_dense(true))
                     return prelu_bcast_t::full;
                 return prelu_bcast_t::unsupported;
             }
@@ -132,12 +157,25 @@ struct jit_uni_prelu_fwd_t : public primitive_t {
             // scheme, so accept both.
             if (utils::one_of(strategy, broadcasting_strategy_t::per_oc,
                         broadcasting_strategy_t::per_oc_spatial)) {
-                // The per_oc offset math (i*C runs / pl*SP planes) assumes a
-                // gapless, unpadded plain layout.
+                if (src_d.ndims() < 2) return prelu_bcast_t::unsupported;
+                // Channel-blocked formats (nChw{8,16}c): exactly one inner block
+                // on the channel dim (idx 1). Require src and weights blocked
+                // alike; padding is expected and handled via padded_dims.
+                auto chan_block = [](const memory_desc_wrapper &md) -> dim_t {
+                    if (!md.is_blocking_desc()) return 0;
+                    const auto &b = md.blocking_desc();
+                    if (b.inner_nblks != 1 || b.inner_idxs[0] != 1) return 0;
+                    return b.inner_blks[0];
+                };
+                const dim_t sblk = chan_block(src_d),
+                            wblk = chan_block(weights_d);
+                if (sblk > 0 && sblk == wblk && src_d.is_dense(true))
+                    return prelu_bcast_t::per_oc_blocked;
+                // Plain layouts: the per_oc offset math (i*C runs / pl*SP planes)
+                // assumes a gapless, unpadded plain layout.
                 const bool no_padding = utils::array_cmp(
                         src_d.dims(), src_d.padded_dims(), src_d.ndims());
-                if (!src_d.is_plain() || !src_d.is_dense() || !no_padding
-                        || src_d.ndims() < 2)
+                if (!src_d.is_plain() || !src_d.is_dense() || !no_padding)
                     return prelu_bcast_t::unsupported;
                 const auto &strides = src_d.blocking_desc().strides;
                 if (strides[1] == 1) return prelu_bcast_t::per_oc_nhwc;

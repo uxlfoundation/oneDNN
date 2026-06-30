@@ -215,6 +215,8 @@ device microarchitecture (uArch). The following uArchs and associated devices
 have specialized optimizations in the library:
  * Xe-LPG
    * Intel Graphics for Intel Core Ultra Series 1 processors (formerly Meteor Lake)
+ * Xe-LPG+
+   * Intel Graphics for Intel Core Ultra Series 2 processors (formerly Arrow Lake)
  * Xe-HPG
    * Intel Arc A-Series Graphics (formerly Achemist)
    * Intel Data Center GPU Flex Series (formerly Arctic Sound)
@@ -238,6 +240,7 @@ The following table indicates the data types support for each uArch supported by
 | ISA      | f64     | f32     | bf16    | f16     | s8/u8   | f8      | f4_e2m1 | s4/u4   |
 | -------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- |
 | Xe-LPG   |         | `+`     | `.`     | `+`(1)  | `+`     |         |         |         |
+| Xe-LPG+  |         | `+`     | `+`     | `+`     | `+`     |         |         |         |
 | Xe-HPG   |         | `+`     | `+`     | `+`     | `+`     | `.`     |         | `.`     |
 | Xe-HPC   | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     | `.`     |
 | Xe2-LPG  | `+`     | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     | `.`     |

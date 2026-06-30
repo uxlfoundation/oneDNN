@@ -1011,7 +1011,9 @@ void brgemm_matmul_t<isa>::fill_per_mn_compensation(
     const dim_t k_start = static_cast<dim_t>(k_blk_idx) * bgmmc.K_blk
                     * bgmmc.brgemm_batch_size
             + (is_tail ? batch_size * bgmmc.K_blk : dim_t {0});
-    const dim_t k_len = is_tail ? bgmmc.K_tail : batch_size * bgmmc.K_blk;
+    const dim_t k_len
+            = nstl::min(is_tail ? bgmmc.K_tail : batch_size * bgmmc.K_blk,
+                    bgmmc.K - k_start);
 
     const dim_t m = brgmm_ctx.get_M_idx(m_blk_idx, true);
     const dim_t n = brgmm_ctx.get_N_idx(n_blk_idx, true);

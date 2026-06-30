@@ -54,7 +54,7 @@ struct eltwise_lut_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_ELTWISE(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_ELTWISE(src_d.is_dense(true), VERBOSE_NONTRIVIAL_STRIDE);
+            VDISPATCH_ELTWISE(src_d.is_dense(false), VERBOSE_NONTRIVIAL_STRIDE);
             VDISPATCH_ELTWISE(
                     src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
             VDISPATCH_ELTWISE(

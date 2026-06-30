@@ -37,6 +37,9 @@
 // uncomment to disable everything except Up
 //#define ENABLE_UP_ONLY
 
+static bool verbose = false; // enable for debug
+static const int min_runs = 4;
+
 namespace dnnl {
 namespace impl {
 
@@ -83,22 +86,23 @@ struct gmlp_t : public dnnl::primitive {
     gmlp_t(const pd_t &pd) : primitive(pd) {}
 };
 
-static bool verbose = false; // enable for debug
-static const int min_runs = 4;
-
 struct mlp_dims_t {
     dim_t mb;
     dim_t ic;
     dim_t oc;
 
+    int src_group_size;
     int gateup_group_size;
     int down_group_size;
 
     quantize_type qtype;
     dnnl_alg_kind_t activation;
 
-    memory::data_type src_dt;
     memory::data_type dst_dt;
+
+    memory::data_type src_dt;
+    memory::data_type src_s_dt;
+    memory::data_type src_zp_dt;
 
     memory::data_type wgu_wt;
     memory::data_type wgu_s_dt;
@@ -111,15 +115,14 @@ struct mlp_dims_t {
 
 struct gmlp_tensors_t {
     memory m_x, m_w_gate, m_w_up, m_w_down;
-    memory m_w_gate_quantized, m_w_up_quantized, m_w_down_quantized;
-    memory m_w_gate_scales, m_w_up_scales, m_w_down_scales;
-    memory m_w_gate_zp, m_w_up_zp, m_w_down_zp;
-    memory m_out, m_out_quantized;
+    memory m_x_quant, m_w_gate_quant, m_w_up_quant, m_w_down_quant;
+    memory m_x_scales, m_w_gate_scales, m_w_up_scales, m_w_down_scales;
+    memory m_x_zp, m_w_gate_zp, m_w_up_zp, m_w_down_zp;
     memory m_fc_gate, m_fc_up, m_fc_down;
     memory m_fc_retn_t;
 
     primitive_attr gateup_attr_quantized, down_attr_quantized;
-    memory::dims wgu_groups, wd_groups;
+    memory::dims src_groups, wgu_groups, wd_groups;
 };
 
 std::ostream &operator<<(std::ostream &ss, const dnnl_alg_kind_t &act) {
@@ -148,12 +151,18 @@ std::ostream &operator<<(std::ostream &ss, const mlp_dims_t &p) {
     ss << ((has_quant) ? "_quant_" : "_noquant_");
     if (has_quant) {
         ss << "_qtype_" << p.qtype;
-        ss << "_gu_group_size_" << p.gateup_group_size;
-        ss << "_gd_group_size_" << p.down_group_size;
+        ss << "_src_gs_" << p.src_group_size;
+        ss << "_gu_gs_" << p.gateup_group_size;
+        ss << "_d_gs_" << p.down_group_size;
     }
 
-    ss << "_src_dt_" << dnnl_dt2str(memory::convert_to_c(p.src_dt));
     ss << "_dst_dt_" << dnnl_dt2str(memory::convert_to_c(p.dst_dt));
+
+    ss << "_src_dt_" << dnnl_dt2str(memory::convert_to_c(p.src_dt));
+    if (has_quant) {
+        ss << "_src_sdt_" << dnnl_dt2str(memory::convert_to_c(p.src_s_dt));
+        ss << "_src_zpdt_" << dnnl_dt2str(memory::convert_to_c(p.src_zp_dt));
+    }
 
     ss << "_wgu_wt_" << dnnl_dt2str(memory::convert_to_c(p.wgu_wt));
     if (has_quant) {
@@ -189,92 +198,79 @@ gmlp_tensors_t get_descriptors(engine &eng, stream &strm, mlp_dims_t p) {
     const memory::dims FC_up_sz = {p.mb, p.oc};
     const memory::dims FC_down_sz = {p.mb, p.ic};
 
-    const memory::dims quant_gateup_sz = [&]() {
+    const memory::dims qnt_src_sz = [&]() {
+        switch (p.qtype) {
+            case quantize_type::no_quantization: return memory::dims {1, 1};
+            case quantize_type::per_token_with_groups:
+                return memory::dims {O_proj_sz[0],
+                        O_proj_sz[1] / std::max(p.src_group_size, 1)};
+            case quantize_type::per_token:
+                return memory::dims {1, O_proj_sz[1]};
+            case quantize_type::per_tensor: return memory::dims {1, 1};
+            default: return memory::dims {0, 0};
+        }
+    }();
+    const memory::dims qnt_gu_sz = [&]() {
         switch (p.qtype) {
             case quantize_type::no_quantization: return memory::dims {1, 1};
             case quantize_type::per_token_with_groups:
                 return memory::dims {
-                        W_gate_sz[0] / p.gateup_group_size, W_gate_sz[1]};
+                        W_gate_sz[0] / std::max(p.gateup_group_size, 1),
+                        W_gate_sz[1]};
             case quantize_type::per_token:
                 return memory::dims {W_gate_sz[0], 1};
             case quantize_type::per_tensor: return memory::dims {1, 1};
             default: return memory::dims {0, 0};
         }
     }();
-    const memory::dims quant_down_sz = [&]() {
+    const memory::dims qnt_d_sz = [&]() {
         switch (p.qtype) {
             case quantize_type::no_quantization: return memory::dims {1, 1};
             case quantize_type::per_token_with_groups:
                 return memory::dims {
-                        W_down_sz[0] / p.down_group_size, W_down_sz[1]};
+                        W_down_sz[0] / std::max(p.down_group_size, 1),
+                        W_down_sz[1]};
             case quantize_type::per_token:
                 return memory::dims {W_down_sz[0], 1};
             case quantize_type::per_tensor: return memory::dims {1, 1};
             default: return memory::dims {0, 0};
         }
     }();
-    auto get_gate_dt = [](mdt src, mdt dst, mdt wgu, mdt wd) {
-        mdt retn = wd;
-        switch (retn) {
-            case mdt::f32:
-            case mdt::bf16:
-            case mdt::f16: break;
-            case mdt::u4:
-            case mdt::s4:
-            case mdt::u8:
-            case mdt::s8:
-                retn = src;
-                if (!utils::one_of(retn, mdt::bf16, mdt::f16)) retn = mdt::f16;
-                break;
-            default: return mdt::undef;
-        }
-        return retn;
+    auto maybe_memory = [](const memory::desc &md, const engine &aengine) {
+        if (md && (md.get_data_type() != mdt::undef))
+            return memory(md, aengine);
+        return memory();
     };
-    auto get_up_dt = [](mdt src, mdt dst, mdt wgu, mdt wd) { return mdt::f32; };
+    auto maybe_product = [](const memory &mem) {
+        if (mem) return product(mem.get_desc().get_padded_dims());
+        return dim_t(0);
+    };
 
-    auto dt = memory::data_type::f16;
-
-    auto src_dt = (p.src_dt == mdt::undef) ? dt : p.src_dt;
-    auto dst_dt = (p.dst_dt == mdt::undef) ? dt : p.dst_dt;
-
-    auto wgu_wt = (p.wgu_wt == mdt::undef) ? dt : p.wgu_wt;
-    auto wgu_s_dt = (p.wgu_s_dt == mdt::undef) ? dt : p.wgu_s_dt;
-    auto wgu_zp_dt = (p.wgu_zp_dt == mdt::undef) ? dt : p.wgu_zp_dt;
-
-    auto wd_wt = (p.wd_wt == mdt::undef) ? dt : p.wd_wt;
-    auto wd_s_dt = (p.wd_s_dt == mdt::undef) ? dt : p.wd_s_dt;
-    auto wd_zp_dt = (p.wd_zp_dt == mdt::undef) ? dt : p.wd_zp_dt;
-
-    auto fc_gate_dt = get_gate_dt(src_dt, dst_dt, wgu_wt, wd_wt);
-    auto fc_up_dt = get_up_dt(src_dt, dst_dt, wgu_wt, wd_wt);
-
-    auto FC_gate_md = memory::desc(FC_gate_sz, fc_gate_dt, tag::ab);
-    auto FC_up_md = memory::desc(FC_up_sz, fc_up_dt, tag::ab);
-    auto FC_down_md = memory::desc(FC_down_sz, dst_dt, tag::ab);
-
-    auto FC_retn_md_t = memory::desc(FC_down_sz, dst_dt, tag::ab);
+    auto FC_gate_md = memory::desc(FC_gate_sz, mdt::f32, tag::ab);
+    auto FC_up_md = memory::desc(FC_up_sz, mdt::f32, tag::ab);
+    auto FC_down_md = memory::desc(FC_down_sz, p.dst_dt, tag::ab);
+    auto FC_retn_md_t = memory::desc(FC_down_sz, p.dst_dt, tag::ab);
 
     // clang-format off
-    auto x_md = memory::desc(O_proj_sz, src_dt, tag::ab);
-
+    auto x_md      = memory::desc(O_proj_sz, mdt::f32, tag::ab);
     auto w_gate_md = memory::desc(W_gate_sz, mdt::f32, tag::ba);
     auto w_up_md   = memory::desc(W_up_sz,   mdt::f32, tag::ba);
     auto w_down_md = memory::desc(W_down_sz, mdt::f32, tag::ba);
 
-    auto w_gate_qnt_md = memory::desc(W_gate_sz, wgu_wt, tag::ba);
-    auto w_up_qnt_md   = memory::desc(W_up_sz,   wgu_wt, tag::ba);
-    auto w_down_qnt_md = memory::desc(W_down_sz,  wd_wt, tag::ba);
+    auto x_qnt_md      = memory::desc(O_proj_sz, p.src_dt, tag::ab);
+    auto w_gate_qnt_md = memory::desc(W_gate_sz, p.wgu_wt, tag::ba);
+    auto w_up_qnt_md   = memory::desc(W_up_sz,   p.wgu_wt, tag::ba);
+    auto w_down_qnt_md = memory::desc(W_down_sz,  p.wd_wt, tag::ba);
 
-    auto w_gate_scales_md = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ab);
-    auto w_up_scales_md   = memory::desc(quant_gateup_sz, wgu_s_dt, tag::ab);
-    auto w_down_scales_md = memory::desc(quant_down_sz,    wd_s_dt, tag::ab);
+    auto x_scales_md      = memory::desc(qnt_src_sz, p.src_s_dt, tag::ab, true);
+    auto w_gate_scales_md = memory::desc(qnt_gu_sz,  p.wgu_s_dt, tag::ab, true);
+    auto w_up_scales_md   = memory::desc(qnt_gu_sz,  p.wgu_s_dt, tag::ab, true);
+    auto w_down_scales_md = memory::desc(qnt_d_sz,    p.wd_s_dt, tag::ab, true);
 
-    auto w_gate_zp_md = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ab);
-    auto w_up_zp_md   = memory::desc(quant_gateup_sz, wgu_zp_dt, tag::ab);
-    auto w_down_zp_md = memory::desc(quant_down_sz,    wd_zp_dt, tag::ab);
-
-    auto output_md     = memory::desc(FC_down_sz, dst_dt, tag::ab);
-    auto output_qnt_md = memory::desc(FC_down_sz, dst_dt, tag::ab);
+    auto x_zp_md      = memory::desc(qnt_src_sz, p.src_zp_dt, tag::ab, true);
+    auto w_gate_zp_md = memory::desc(qnt_gu_sz,  p.wgu_zp_dt, tag::ab, true);
+    auto w_up_zp_md   = memory::desc(qnt_gu_sz,  p.wgu_zp_dt, tag::ab, true);
+    auto w_down_zp_md = memory::desc(qnt_d_sz,    p.wd_zp_dt, tag::ab, true);
     // clang-format on
 
     // Create memory objects
@@ -283,24 +279,24 @@ gmlp_tensors_t get_descriptors(engine &eng, stream &strm, mlp_dims_t p) {
     out.m_w_up = memory(w_up_md, eng);
     out.m_w_down = memory(w_down_md, eng);
 
-    out.m_w_gate_quantized = memory(w_gate_qnt_md, eng);
-    out.m_w_up_quantized = memory(w_up_qnt_md, eng);
-    out.m_w_down_quantized = memory(w_down_qnt_md, eng);
+    out.m_x_quant = memory(x_qnt_md, eng);
+    out.m_w_gate_quant = memory(w_gate_qnt_md, eng);
+    out.m_w_up_quant = memory(w_up_qnt_md, eng);
+    out.m_w_down_quant = memory(w_down_qnt_md, eng);
 
-    out.m_w_gate_scales = memory(w_gate_scales_md, eng);
-    out.m_w_up_scales = memory(w_up_scales_md, eng);
-    out.m_w_down_scales = memory(w_down_scales_md, eng);
+    out.m_x_scales = maybe_memory(x_scales_md, eng);
+    out.m_w_gate_scales = maybe_memory(w_gate_scales_md, eng);
+    out.m_w_up_scales = maybe_memory(w_up_scales_md, eng);
+    out.m_w_down_scales = maybe_memory(w_down_scales_md, eng);
 
-    out.m_w_gate_zp = memory(w_gate_zp_md, eng);
-    out.m_w_up_zp = memory(w_up_zp_md, eng);
-    out.m_w_down_zp = memory(w_down_zp_md, eng);
+    out.m_x_zp = maybe_memory(x_zp_md, eng);
+    out.m_w_gate_zp = maybe_memory(w_gate_zp_md, eng);
+    out.m_w_up_zp = maybe_memory(w_up_zp_md, eng);
+    out.m_w_down_zp = maybe_memory(w_down_zp_md, eng);
 
     out.m_fc_gate = memory(FC_gate_md, eng);
     out.m_fc_up = memory(FC_up_md, eng);
     out.m_fc_down = memory(FC_down_md, eng);
-
-    out.m_out = memory(output_md, eng);
-    out.m_out_quantized = memory(output_qnt_md, eng);
 
     out.m_fc_retn_t = memory(FC_retn_md_t, eng);
 
@@ -310,28 +306,29 @@ gmlp_tensors_t get_descriptors(engine &eng, stream &strm, mlp_dims_t p) {
     std::vector<float> w_up_data(product(W_up_sz));
     std::vector<float> w_down_data(product(W_down_sz));
 
+    std::vector<float> src_quantized_data(product(O_proj_sz), 1.f);
     std::vector<float> w_gate_quantized_data(product(W_gate_sz), 1.f);
     std::vector<float> w_up_quantized_data(product(W_up_sz), 1.f);
     std::vector<float> w_down_quantized_data(product(W_down_sz), 1.f);
 
+    std::vector<float> src_scales_data(maybe_product(out.m_x_scales), 1.f);
     std::vector<float> w_gate_scales_data(
-            product(out.m_w_gate_scales.get_desc().get_padded_dims()), 1.f);
-    std::vector<float> w_up_scales_data(
-            product(out.m_w_up_scales.get_desc().get_padded_dims()), 1.f);
+            maybe_product(out.m_w_gate_scales), 1.f);
+    std::vector<float> w_up_scales_data(maybe_product(out.m_w_up_scales), 1.f);
     std::vector<float> w_down_scales_data(
-            product(out.m_w_down_scales.get_desc().get_padded_dims()), 1.f);
+            maybe_product(out.m_w_down_scales), 1.f);
 
-    std::vector<int> w_gate_zp_data(
-            product(out.m_w_gate_zp.get_desc().get_padded_dims()), 0);
-    std::vector<int> w_up_zp_data(
-            product(out.m_w_up_zp.get_desc().get_padded_dims()), 0);
-    std::vector<int> w_down_zp_data(
-            product(out.m_w_down_zp.get_desc().get_padded_dims()), 0);
+    std::vector<int> src_zp_data(maybe_product(out.m_x_zp), 0);
+    std::vector<int> w_gate_zp_data(maybe_product(out.m_w_gate_zp), 0);
+    std::vector<int> w_up_zp_data(maybe_product(out.m_w_up_zp), 0);
+    std::vector<int> w_down_zp_data(maybe_product(out.m_w_down_zp), 0);
 
+    out.src_groups = {};
     out.wgu_groups = {};
     out.wd_groups = {};
     switch (p.qtype) {
         case quantize_type::per_token_with_groups: {
+            out.src_groups = {1, p.src_group_size};
             out.wgu_groups = {p.gateup_group_size, 1};
             out.wd_groups = {p.down_group_size, 1};
             break;
@@ -347,6 +344,7 @@ gmlp_tensors_t get_descriptors(engine &eng, stream &strm, mlp_dims_t p) {
         default: break;
     }
 
+    int src_group_size = p.src_group_size;
     int wgu_group_size = p.gateup_group_size;
     int wd_group_size = p.down_group_size;
 
@@ -355,56 +353,124 @@ gmlp_tensors_t get_descriptors(engine &eng, stream &strm, mlp_dims_t p) {
     //    wd_group_size = W_down_sz[0] * W_down_sz[1];
     //}
 
-    fill_random(x_data, x_md, -.25f, .25f);
-
     if (p.qtype == quantize_type::no_quantization) {
         if (verbose) printf("no quant init\n");
+        fill_random(x_data, x_md, -.25f, .25f);
         fill_random(w_gate_data, w_gate_md, -1.f, 1.f);
         fill_random(w_up_data, w_up_md, -1.f, 1.f);
         fill_random(w_down_data, w_down_md, -1.f, 1.f);
     } else {
+        fill_random_quantized(src_quantized_data, x_qnt_md,
+                (p.src_dt == mdt::u4 || p.src_dt == mdt::u8));
         fill_random_quantized(w_gate_quantized_data, w_gate_qnt_md,
-                (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
+                (p.wgu_wt == mdt::u4 || p.wgu_wt == mdt::u8));
         fill_random_quantized(w_up_quantized_data, w_up_qnt_md,
-                (wgu_wt == mdt::u4 || wgu_wt == mdt::u8));
+                (p.wgu_wt == mdt::u4 || p.wgu_wt == mdt::u8));
         fill_random_quantized(w_down_quantized_data, w_down_qnt_md,
-                (wd_wt == mdt::u4 || wd_wt == mdt::u8));
+                (p.wd_wt == mdt::u4 || p.wd_wt == mdt::u8));
 
-        fill_random_scales(w_gate_scales_data, w_gate_scales_md);
-        fill_random_scales(w_up_scales_data, w_up_scales_md);
-        fill_random_scales(w_down_scales_data, w_down_scales_md);
+        if (x_scales_md) fill_random_scales(src_scales_data, x_scales_md);
+        if (w_gate_scales_md)
+            fill_random_scales(w_gate_scales_data, w_gate_scales_md);
+        if (w_up_scales_md)
+            fill_random_scales(w_up_scales_data, w_up_scales_md);
+        if (w_down_scales_md)
+            fill_random_scales(w_down_scales_data, w_down_scales_md);
 
-        bool wgu_zp_unsigned = (wgu_zp_dt == mdt::u4 || wgu_zp_dt == mdt::u8);
+        bool src_zp_unsigned
+                = (p.src_zp_dt == mdt::u4 || p.src_zp_dt == mdt::u8);
+        if (verbose) {
+            if (src_zp_unsigned)
+                printf("unsigned src quant init\n");
+            else
+                printf("signed src quant init\n");
+        }
+        if (x_zp_md)
+            fill_random_quantized(src_zp_data, x_zp_md, src_zp_unsigned);
+
+        if (!x_scales_md && x_zp_md) {
+            x_scales_md = x_zp_md;
+            src_scales_data = std::vector<float>(src_zp_data.size(), 1.f);
+        }
+        if (x_scales_md && !x_zp_md) {
+            src_zp_data = std::vector<int>(src_scales_data.size(), 0);
+        }
+        if (x_scales_md) {
+            x_data = dequantize(src_quantized_data, x_md, x_scales_md,
+                    src_zp_data, src_scales_data, src_group_size, p.qtype,
+                    out.src_groups, 1);
+        } else {
+            x_data = src_quantized_data;
+        }
+
+        bool wgu_zp_unsigned
+                = (p.wgu_zp_dt == mdt::u4 || p.wgu_zp_dt == mdt::u8);
         if (verbose) {
             if (wgu_zp_unsigned)
                 printf("unsigned gateup quant init\n");
             else
                 printf("signed gateup quant init\n");
         }
-        fill_random_quantized(w_gate_zp_data, w_gate_zp_md, wgu_zp_unsigned);
+        if (w_gate_zp_md)
+            fill_random_quantized(
+                    w_gate_zp_data, w_gate_zp_md, wgu_zp_unsigned);
+        if (w_up_zp_md)
+            fill_random_quantized(w_up_zp_data, w_up_zp_md, wgu_zp_unsigned);
 
-        fill_random_quantized(w_up_zp_data, w_up_zp_md, wgu_zp_unsigned);
+        if (!w_gate_scales_md && w_gate_zp_md) {
+            w_gate_scales_md = w_gate_zp_md;
+            w_gate_scales_data = std::vector<float>(w_gate_zp_data.size(), 1.f);
+        }
+        if (w_gate_scales_md && !w_gate_zp_md) {
+            w_gate_zp_data = std::vector<int>(w_gate_scales_data.size(), 0);
+        }
+        if (w_gate_scales_md) {
+            w_gate_data = dequantize(w_gate_quantized_data, w_gate_md,
+                    w_gate_scales_md, w_gate_zp_data, w_gate_scales_data,
+                    wgu_group_size, p.qtype, out.wgu_groups, 0);
+        } else {
+            w_gate_data = w_gate_quantized_data;
+        }
 
-        w_gate_data = dequantize(w_gate_quantized_data, w_gate_md,
-                w_gate_scales_md, w_gate_zp_data, w_gate_scales_data,
-                wgu_group_size, p.qtype, out.wgu_groups, 0);
+        if (!w_up_scales_md && w_up_zp_md) {
+            w_up_scales_md = w_up_zp_md;
+            w_up_scales_data = std::vector<float>(w_up_zp_data.size(), 1.f);
+        }
+        if (w_up_scales_md && !w_up_zp_md) {
+            w_up_zp_data = std::vector<int>(w_up_scales_data.size(), 0);
+        }
+        if (w_up_scales_md) {
+            w_up_data = dequantize(w_up_quantized_data, w_up_md, w_up_scales_md,
+                    w_up_zp_data, w_up_scales_data, wgu_group_size, p.qtype,
+                    out.wgu_groups, 0);
+        } else {
+            w_up_data = w_up_quantized_data;
+        }
 
-        w_up_data = dequantize(w_up_quantized_data, w_up_md, w_up_scales_md,
-                w_up_zp_data, w_up_scales_data, wgu_group_size, p.qtype,
-                out.wgu_groups, 0);
-
-        bool wd_zp_unsigned = (wd_zp_dt == mdt::u4 || wd_zp_dt == mdt::u8);
+        bool wd_zp_unsigned = (p.wd_zp_dt == mdt::u4 || p.wd_zp_dt == mdt::u8);
         if (verbose) {
             if (wd_zp_unsigned)
                 printf("unsigned down quant init\n");
             else
                 printf("signed down quant init\n");
         }
-        fill_random_quantized(w_down_zp_data, w_down_zp_md, wd_zp_unsigned);
+        if (w_down_zp_md)
+            fill_random_quantized(w_down_zp_data, w_down_zp_md, wd_zp_unsigned);
 
-        w_down_data = dequantize(w_down_quantized_data, w_down_md,
-                w_down_scales_md, w_down_zp_data, w_down_scales_data,
-                wd_group_size, p.qtype, out.wd_groups, 0);
+        if (!w_down_scales_md && w_down_zp_md) {
+            w_down_scales_md = w_down_zp_md;
+            w_down_scales_data = std::vector<float>(w_down_zp_data.size(), 1.f);
+        }
+        if (w_down_scales_md && !w_down_zp_md) {
+            w_down_zp_data = std::vector<int>(w_down_scales_data.size(), 0);
+        }
+        if (w_down_scales_md) {
+            w_down_data = dequantize(w_down_quantized_data, w_down_md,
+                    w_down_scales_md, w_down_zp_data, w_down_scales_data,
+                    wd_group_size, p.qtype, out.wd_groups, 0);
+        } else {
+            w_down_data = w_down_quantized_data;
+        }
     }
 
     // Write data to tensor object's handle.
@@ -414,36 +480,44 @@ gmlp_tensors_t get_descriptors(engine &eng, stream &strm, mlp_dims_t p) {
     write_to_dnnl_memory(w_down_data.data(), out.m_w_down, eng, strm);
 
     if (p.qtype == quantize_type::no_quantization) {
-        write_to_dnnl_memory(
-                w_gate_data.data(), out.m_w_gate_quantized, eng, strm);
-        write_to_dnnl_memory(w_up_data.data(), out.m_w_up_quantized, eng, strm);
-        write_to_dnnl_memory(
-                w_down_data.data(), out.m_w_down_quantized, eng, strm);
+        write_to_dnnl_memory(x_data.data(), out.m_x_quant, eng, strm);
+        write_to_dnnl_memory(w_gate_data.data(), out.m_w_gate_quant, eng, strm);
+        write_to_dnnl_memory(w_up_data.data(), out.m_w_up_quant, eng, strm);
+        write_to_dnnl_memory(w_down_data.data(), out.m_w_down_quant, eng, strm);
     } else {
-        write_to_dnnl_memory(w_gate_quantized_data.data(),
-                out.m_w_gate_quantized, eng, strm);
         write_to_dnnl_memory(
-                w_up_quantized_data.data(), out.m_w_up_quantized, eng, strm);
-        write_to_dnnl_memory(w_down_quantized_data.data(),
-                out.m_w_down_quantized, eng, strm);
+                src_quantized_data.data(), out.m_x_quant, eng, strm);
+        write_to_dnnl_memory(
+                w_gate_quantized_data.data(), out.m_w_gate_quant, eng, strm);
+        write_to_dnnl_memory(
+                w_up_quantized_data.data(), out.m_w_up_quant, eng, strm);
+        write_to_dnnl_memory(
+                w_down_quantized_data.data(), out.m_w_down_quant, eng, strm);
 
-        write_to_dnnl_memory(w_gate_zp_data.data(), out.m_w_gate_zp, eng, strm);
-        write_to_dnnl_memory(w_up_zp_data.data(), out.m_w_up_zp, eng, strm);
-        write_to_dnnl_memory(w_down_zp_data.data(), out.m_w_down_zp, eng, strm);
+        if (out.m_x_zp)
+            write_to_dnnl_memory(src_zp_data.data(), out.m_x_zp, eng, strm);
+        if (out.m_w_gate_zp)
+            write_to_dnnl_memory(
+                    w_gate_zp_data.data(), out.m_w_gate_zp, eng, strm);
+        if (out.m_w_up_zp)
+            write_to_dnnl_memory(w_up_zp_data.data(), out.m_w_up_zp, eng, strm);
+        if (out.m_w_down_zp)
+            write_to_dnnl_memory(
+                    w_down_zp_data.data(), out.m_w_down_zp, eng, strm);
 
-        write_to_dnnl_memory(
-                w_gate_scales_data.data(), out.m_w_gate_scales, eng, strm);
-        write_to_dnnl_memory(
-                w_up_scales_data.data(), out.m_w_up_scales, eng, strm);
-        write_to_dnnl_memory(
-                w_down_scales_data.data(), out.m_w_down_scales, eng, strm);
+        if (out.m_x_scales)
+            write_to_dnnl_memory(
+                    src_scales_data.data(), out.m_x_scales, eng, strm);
+        if (out.m_w_gate_scales)
+            write_to_dnnl_memory(
+                    w_gate_scales_data.data(), out.m_w_gate_scales, eng, strm);
+        if (out.m_w_up_scales)
+            write_to_dnnl_memory(
+                    w_up_scales_data.data(), out.m_w_up_scales, eng, strm);
+        if (out.m_w_down_scales)
+            write_to_dnnl_memory(
+                    w_down_scales_data.data(), out.m_w_down_scales, eng, strm);
     }
-    if (verbose)
-        printf("memory data types?? %d %d %d\n",
-                int(out.m_w_gate_scales.get_desc().get_data_type()),
-                int(out.m_w_up_scales.get_desc().get_data_type()),
-                int(out.m_w_down_scales.get_desc().get_data_type()));
-
     return out;
 }
 
@@ -580,19 +654,6 @@ void bench_gated_mlp_primitives(std::vector<float> &res, double &avg_time,
         std::cout << "primitive runs: " << runs + 1 << "; ";
         std::cout << "avg_time: " << avg_time << " ms" << std::endl;
     }
-    if (verbose && product(FC_down_md.get_dims()) < (64 * 64) + 1) {
-        const memory::dims FC_down_sz = {p.mb, p.ic};
-        printf("resprim----------[%d %d]\n", int(p.mb), int(p.ic));
-        printf("------inpA\n");
-        print_mem(m_O_proj, "-prim");
-        printf("------inpB\n");
-        print_mem(m_W_gate, "-prim");
-    }
-    if (verbose && product(FC_down_md.get_dims()) < (64 * 64) + 1) {
-        const memory::dims FC_down_sz = {p.mb, p.ic};
-        printf("------tmpres\n");
-        print_mem(m_FC_down, "-prim");
-    }
 
 #ifndef ENABLE_UP_ONLY
     res.resize(product(m_FC_down.get_desc().get_dims()));
@@ -609,43 +670,7 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
     if (verbose) printf("eng?\n");
     const bool quick_test = (time_limit == 0.);
 
-    // Create memory objects
-    auto m_O_proj = t.m_x;
-    auto m_W_gate = t.m_w_gate;
-    auto m_W_up = t.m_w_up;
-    auto m_W_down = t.m_w_down;
-    auto m_FC_gate = t.m_fc_gate;
-    auto m_FC_up = t.m_fc_up;
-    auto m_FC_down = t.m_fc_down;
-
-    auto O_proj_md = t.m_x.get_desc();
-    auto W_gate_md = t.m_w_gate.get_desc();
-    auto W_up_md = t.m_w_up.get_desc();
-    auto W_down_md = t.m_w_down.get_desc();
-    auto FC_gate_md = t.m_fc_gate.get_desc();
-    auto FC_up_md = t.m_fc_up.get_desc();
     auto FC_down_md = t.m_fc_down.get_desc();
-
-    // quantization memory
-    auto m_W_gate_quant = t.m_w_gate_quantized;
-    auto m_W_gate_scales = t.m_w_gate_scales;
-    auto m_W_gate_zp = t.m_w_gate_zp;
-    auto m_W_up_quant = t.m_w_up_quantized;
-    auto m_W_up_scales = t.m_w_up_scales;
-    auto m_W_up_zp = t.m_w_up_zp;
-    auto m_W_down_quant = t.m_w_down_quantized;
-    auto m_W_down_scales = t.m_w_down_scales;
-    auto m_W_down_zp = t.m_w_down_zp;
-
-    auto m_W_gate_quant_md = t.m_w_gate_quantized.get_desc();
-    auto m_W_gate_scales_md = t.m_w_gate_scales.get_desc();
-    auto m_W_gate_zp_md = t.m_w_gate_zp.get_desc();
-    auto m_W_up_quant_md = t.m_w_up_quantized.get_desc();
-    auto m_W_up_scales_md = t.m_w_up_scales.get_desc();
-    auto m_W_up_zp_md = t.m_w_up_zp.get_desc();
-    auto m_W_down_quant_md = t.m_w_down_quantized.get_desc();
-    auto m_W_down_scales_md = t.m_w_down_scales.get_desc();
-    auto m_W_down_zp_md = t.m_w_down_zp.get_desc();
 
 #ifdef ENABLE_UP_ONLY
     const memory::dims FC_retn_sz_t = {p.mb, p.oc};
@@ -663,21 +688,37 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
         case quantize_type::per_tensor: {
             attr.set_fpmath_mode(
                     static_cast<enum fpmath_mode>(fpmath_mode::any), true);
+            // src scale+zp
+            if (t.m_x_scales)
+                attr.set_scales(DNNL_ARG_SRC, mask, t.src_groups,
+                        t.m_x_scales.get_desc().get_data_type());
+            if (t.m_x_zp)
+                attr.set_zero_points(DNNL_ARG_SRC, mask, t.src_groups,
+                        t.m_x_zp.get_desc().get_data_type());
+
             // wts_gate scale+zp
-            attr.set_scales(DNNL_ARG_WEIGHTS_GATE, mask, t.wgu_groups,
-                    m_W_gate_scales_md.get_data_type());
-            attr.set_zero_points(DNNL_ARG_WEIGHTS_GATE, mask, t.wgu_groups,
-                    m_W_gate_zp_md.get_data_type());
+            if (t.m_w_gate_scales)
+                attr.set_scales(DNNL_ARG_WEIGHTS_GATE, mask, t.wgu_groups,
+                        t.m_w_gate_scales.get_desc().get_data_type());
+            if (t.m_w_gate_zp)
+                attr.set_zero_points(DNNL_ARG_WEIGHTS_GATE, mask, t.wgu_groups,
+                        t.m_w_gate_zp.get_desc().get_data_type());
+
             // wts_up scale+zp
-            attr.set_scales(DNNL_ARG_WEIGHTS_UP, mask, t.wgu_groups,
-                    m_W_up_scales_md.get_data_type());
-            attr.set_zero_points(DNNL_ARG_WEIGHTS_UP, mask, t.wgu_groups,
-                    m_W_up_zp_md.get_data_type());
+            if (t.m_w_up_scales)
+                attr.set_scales(DNNL_ARG_WEIGHTS_UP, mask, t.wgu_groups,
+                        t.m_w_up_scales.get_desc().get_data_type());
+            if (t.m_w_up_zp)
+                attr.set_zero_points(DNNL_ARG_WEIGHTS_UP, mask, t.wgu_groups,
+                        t.m_w_up_zp.get_desc().get_data_type());
+
             // wts_down scale+zp
-            attr.set_scales(DNNL_ARG_WEIGHTS_DOWN, mask, t.wd_groups,
-                    m_W_down_scales_md.get_data_type());
-            attr.set_zero_points(DNNL_ARG_WEIGHTS_DOWN, mask, t.wd_groups,
-                    m_W_down_zp_md.get_data_type());
+            if (t.m_w_down_scales)
+                attr.set_scales(DNNL_ARG_WEIGHTS_DOWN, mask, t.wd_groups,
+                        t.m_w_down_scales.get_desc().get_data_type());
+            if (t.m_w_down_zp)
+                attr.set_zero_points(DNNL_ARG_WEIGHTS_DOWN, mask, t.wd_groups,
+                        t.m_w_down_zp.get_desc().get_data_type());
             break;
         }
         default: break;
@@ -690,8 +731,9 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
         //activation = dnnl_alg_kind_t::dnnl_eltwise_gelu_erf;
         //activation = dnnl_alg_kind_t::dnnl_eltwise_gelu_tanh;
         //activation = dnnl_alg_kind_t::dnnl_eltwise_exp; // should fail
-        return gmlp_t::pd_t(eng, O_proj_md, m_W_gate_quant_md, m_W_up_quant_md,
-                m_W_down_quant_md, FC_retn_md_t, activation, attr);
+        return gmlp_t::pd_t(eng, t.m_x_quant.get_desc(),
+                t.m_w_gate_quant.get_desc(), t.m_w_up_quant.get_desc(),
+                t.m_w_down_quant.get_desc(), FC_retn_md_t, activation, attr);
     }();
 
     auto prim_fused_internal = gmlp_t(gmlp_pd);
@@ -705,52 +747,57 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
 #endif
         if (p.qtype == quantize_type::no_quantization) {
             prim_fused_internal.execute(strm,
-                    {{DNNL_ARG_SRC, m_O_proj},
-                            {DNNL_ARG_WEIGHTS_GATE, m_W_gate_quant},
-                            {DNNL_ARG_WEIGHTS_UP, m_W_up_quant},
-                            {DNNL_ARG_WEIGHTS_DOWN, m_W_down_quant},
+                    {{DNNL_ARG_SRC, t.m_x_quant},
+                            {DNNL_ARG_WEIGHTS_GATE, t.m_w_gate_quant},
+                            {DNNL_ARG_WEIGHTS_UP, t.m_w_up_quant},
+                            {DNNL_ARG_WEIGHTS_DOWN, t.m_w_down_quant},
                             {DNNL_ARG_DST, m_FC_gate_t}});
 #ifndef ENABLE_UP_ONLY
-            PRINT_MEM(m_O_proj)
-            PRINT_MEM(m_W_up_quant)
-            PRINT_MEM(m_W_gate_quant)
-            PRINT_MEM(m_W_down_quant)
+            PRINT_MEM(t.m_x_quant)
+            PRINT_MEM(t.m_w_up_quant)
+            PRINT_MEM(t.m_w_gate_quant)
+            PRINT_MEM(t.m_w_down_quant)
 #endif
             PRINT_MEM(m_FC_gate_t)
         } else {
             prim_fused_internal.execute(strm,
-                    {{DNNL_ARG_SRC, m_O_proj},
-                            {DNNL_ARG_WEIGHTS_GATE, m_W_gate_quant},
-                            {DNNL_ARG_WEIGHTS_UP, m_W_up_quant},
-                            {DNNL_ARG_WEIGHTS_DOWN, m_W_down_quant},
+                    {{DNNL_ARG_SRC, t.m_x_quant},
+                            {DNNL_ARG_WEIGHTS_GATE, t.m_w_gate_quant},
+                            {DNNL_ARG_WEIGHTS_UP, t.m_w_up_quant},
+                            {DNNL_ARG_WEIGHTS_DOWN, t.m_w_down_quant},
                             {DNNL_ARG_DST, m_FC_gate_t},
+                            {DNNL_ARG_SRC | DNNL_ARG_ATTR_SCALES, t.m_x_scales},
+                            {DNNL_ARG_SRC | DNNL_ARG_ATTR_ZERO_POINTS,
+                                    t.m_x_zp},
                             {DNNL_ARG_WEIGHTS_GATE | DNNL_ARG_ATTR_SCALES,
-                                    m_W_gate_scales},
+                                    t.m_w_gate_scales},
                             {DNNL_ARG_WEIGHTS_GATE | DNNL_ARG_ATTR_ZERO_POINTS,
-                                    m_W_gate_zp},
+                                    t.m_w_gate_zp},
                             {DNNL_ARG_WEIGHTS_UP | DNNL_ARG_ATTR_SCALES,
-                                    m_W_up_scales},
+                                    t.m_w_up_scales},
                             {DNNL_ARG_WEIGHTS_UP | DNNL_ARG_ATTR_ZERO_POINTS,
-                                    m_W_up_zp},
+                                    t.m_w_up_zp},
                             {DNNL_ARG_WEIGHTS_DOWN | DNNL_ARG_ATTR_SCALES,
-                                    m_W_down_scales},
+                                    t.m_w_down_scales},
                             {DNNL_ARG_WEIGHTS_DOWN | DNNL_ARG_ATTR_ZERO_POINTS,
-                                    m_W_down_zp}});
+                                    t.m_w_down_zp}});
 #ifndef ENABLE_UP_ONLY
-            PRINT_MEM(m_O_proj)
-            PRINT_MEM(m_W_up_quant)
-            PRINT_MEM(m_W_gate_quant)
-            PRINT_MEM(m_W_down_quant)
-            PRINT_MEM(m_W_up_scales)
-            PRINT_MEM(m_W_up_zp)
-            PRINT_MEM(m_W_gate_scales)
-            PRINT_MEM(m_W_gate_zp)
-            PRINT_MEM(m_W_down_scales)
-            PRINT_MEM(m_W_down_zp)
+            PRINT_MEM(t.m_x_quant)
+            PRINT_MEM(t.m_w_up_quant)
+            PRINT_MEM(t.m_w_gate_quant)
+            PRINT_MEM(t.m_w_down_quant)
+            PRINT_MEM(t.m_x_scales)
+            PRINT_MEM(t.m_x_zp)
+            PRINT_MEM(t.m_w_up_scales)
+            PRINT_MEM(t.m_w_up_zp)
+            PRINT_MEM(t.m_w_gate_scales)
+            PRINT_MEM(t.m_w_gate_zp)
+            PRINT_MEM(t.m_w_down_scales)
+            PRINT_MEM(t.m_w_down_zp)
 #else
-            PRINT_MEM(m_W_up_quant)
-            PRINT_MEM(m_W_up_scales)
-            PRINT_MEM(m_W_up_zp)
+            PRINT_MEM(t.m_w_up_quant)
+            PRINT_MEM(t.m_w_up_scales)
+            PRINT_MEM(t.m_w_up_zp)
 #endif
             PRINT_MEM(m_FC_gate_t)
         }
@@ -791,15 +838,6 @@ void bench_gated_mlp_internal(std::vector<float> &res, double &avg_time,
     if (verbose) {
         std::cout << "internal gmlp primitive runs: " << runs + 1 << "; ";
         std::cout << "avg_time: " << avg_time << " ms" << std::endl;
-    }
-    if (verbose && product(FC_down_md.get_dims()) < (64 * 64) + 1) {
-        printf("resint----------[%d %d]\n", int(p.mb), int(p.ic));
-        printf("------inpA\n");
-        print_mem(m_O_proj, "-internal");
-        printf("------inpB\n");
-        print_mem(m_W_gate, "-internal");
-        printf("------tmpres\n");
-        print_mem(m_FC_gate_t, "-internal");
     }
 
     res.resize(product(m_FC_gate_t.get_desc().get_dims()));
@@ -922,321 +960,52 @@ TEST_P(mlp_test_t, compare) {
 
 // clang-format off
 INSTANTIATE_TEST_SUITE_P(VEC, mlp_test_t, ::testing::Values(
-/*
-    // no quantization
-    mlp_dims_t {32, 32, 32, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 1
 
-    mlp_dims_t{1024, 3584, 18944, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 2
-    mlp_dims_t{1024, 3584, 4864, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 3
-    mlp_dims_t{1024, 3584, 14336, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 4
-    mlp_dims_t{1024, 3584, 27392, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 5
-    mlp_dims_t{1024, 896, 18944, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 6
-    mlp_dims_t{1024, 896, 4864, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 7
-    mlp_dims_t{1024, 896, 14336, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 8
-    mlp_dims_t{1024, 896, 27392, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 9
-    mlp_dims_t{1024, 4096, 18944, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 10
-    mlp_dims_t{1024, 4096, 4864, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 11
-    mlp_dims_t{1024, 4096, 14336, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 12
-    mlp_dims_t{1024, 4096, 27392, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 13
+mlp_dims_t{1024, 3584, 18944, 0, 128, 0,
+quantize_type::per_token_with_groups, dnnl_eltwise_swish, mdt::f16,
+mdt::f16,   mdt::undef, mdt::undef,
+mdt::u4,    mdt::f16,   mdt::u8,
+mdt::u4,    mdt::undef, mdt::undef}
+,
+mlp_dims_t{1024, 4096, 14336, 0, 4096, 0,
+quantize_type::per_token_with_groups, dnnl_eltwise_swish, mdt::f16,
+mdt::f16,   mdt::undef, mdt::undef,
+mdt::u8,    mdt::f16,   mdt::u8,
+mdt::u8,    mdt::undef, mdt::undef}
+,
 
-    // B = 1024, quantized w=u8
-    mlp_dims_t{32, 32, 32, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u8, mdt::f16, mdt::u8,
-            mdt::u8, mdt::f16, mdt::u8}
-    , // ^-- 14
-    mlp_dims_t{1024, 3584, 18944, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u8, mdt::f16, mdt::u8,
-            mdt::u8, mdt::f16, mdt::u8}
-    , // ^-- 15
-    mlp_dims_t{1024, 896, 4864, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u8, mdt::f16, mdt::u8,
-            mdt::u8, mdt::f16, mdt::u8}
-    , // ^-- 16
-    mlp_dims_t{1024, 4096, 14336, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u8, mdt::f16, mdt::u8,
-            mdt::u8, mdt::f16, mdt::u8}
-    , // ^-- 17
-    mlp_dims_t{1024, 4096, 27392, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u8, mdt::f16, mdt::u8,
-            mdt::u8, mdt::f16, mdt::u8}
-    , // ^-- 18
+mlp_dims_t{1032, 2560, 6912, 2560, 64, 0,
+quantize_type::per_token_with_groups, dnnl_eltwise_swish, mdt::f16,
+mdt::s8,    mdt::f16,   mdt::undef,
+mdt::s4,    mdt::f16,   mdt::undef,
+mdt::s4,    mdt::undef, mdt::undef}
+,
 
-    mlp_dims_t{1024, 3584, 18944, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u8, mdt::f16, mdt::u8,
-            mdt::u8, mdt::f16, mdt::u8}
-    , // ^-- 19
-    mlp_dims_t{1024, 896, 4864, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u8, mdt::f16, mdt::u8,
-            mdt::u8, mdt::f16, mdt::u8}
-    , // ^-- 20
-    mlp_dims_t{1024, 4096, 14336, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u8, mdt::f16, mdt::u8,
-            mdt::u8, mdt::f16, mdt::u8}
-    , // ^-- 21
-    mlp_dims_t{1024, 4096, 27392, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u8, mdt::f16, mdt::u8,
-            mdt::u8, mdt::f16, mdt::u8}
-    , // ^-- 22
+mlp_dims_t{1086, 1024, 4096, 1024, 128, 0,
+quantize_type::per_token_with_groups, dnnl_eltwise_swish, mdt::f16,
+mdt::s8,    mdt::f16,   mdt::undef,
+mdt::u4,    mdt::f16,   mdt::u8,
+mdt::u4,    mdt::undef, mdt::undef}
+,
+mlp_dims_t{1024, 2048, 11008, 64, 64, 0,
+quantize_type::per_token_with_groups, dnnl_eltwise_swish, mdt::f16,
+mdt::s8,    mdt::f16,   mdt::undef,
+mdt::u4,    mdt::f16,   mdt::u8,
+mdt::u4,    mdt::undef, mdt::undef}
+,
 
-    // B = 1024, quantized w=s8
-    mlp_dims_t{32, 32, 32, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s8, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 23
-    mlp_dims_t{1024, 3584, 18944, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s8, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 24
-    mlp_dims_t{1024, 896, 4864, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s8, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 25
-    mlp_dims_t{1024, 4096, 14336, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s8, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 26
-    mlp_dims_t{1024, 4096, 27392, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s8, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 27
+mlp_dims_t{1086, 1024, 4096, 1024, 1024, 0,
+quantize_type::per_token_with_groups, dnnl_eltwise_swish, mdt::f16,
+mdt::s8,    mdt::f16,   mdt::undef,
+mdt::u8,    mdt::f16,   mdt::u8,
+mdt::u8,    mdt::undef, mdt::undef}
+,
+mlp_dims_t{1024, 2048, 11008, 128, 2048, 0,
+quantize_type::per_token_with_groups, dnnl_eltwise_swish, mdt::f16,
+mdt::s8,    mdt::f16,   mdt::undef,
+mdt::u8,    mdt::f16,   mdt::u8,
+mdt::u8,    mdt::undef, mdt::undef}
 
-    mlp_dims_t{1024, 3584, 18944, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s8, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 28
-    mlp_dims_t{1024, 896, 4864, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s8, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 29
-    mlp_dims_t{1024, 4096, 14336, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s8, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 30
-    mlp_dims_t{1024, 4096, 27392, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s8, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 31
-
-    // B = 1024, quantized w=u4
-    mlp_dims_t{32, 128, 32, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    , // ^-- 32
-    mlp_dims_t{1024, 3584, 18944, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    , // ^-- 33
-    mlp_dims_t{1024, 896, 4864, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    , // ^-- 34
-    mlp_dims_t{1024, 4096, 14336, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    , // ^-- 35
-    mlp_dims_t{1024, 4096, 27392, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    , // ^-- 36
-    mlp_dims_t{1024, 3584, 18944, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    , // ^-- 37
-    mlp_dims_t{1024, 896, 4864, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    , // ^-- 38
-    mlp_dims_t{1024, 4096, 14336, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    , // ^-- 39
-    mlp_dims_t{1024, 4096, 27392, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    , // ^-- 40
-
-    // additional 4bit quant
-    mlp_dims_t{1024, 896, 4864, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s4, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 41
-    mlp_dims_t{1024, 896, 4864, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 42
-    mlp_dims_t{1024, 896, 4864, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::s4, mdt::f16, mdt::u8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 43
-
-    // activatioins
-    mlp_dims_t{32, 32, 32, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_gelu_tanh,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 44
-    mlp_dims_t{32, 32, 32, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_gelu_erf,
-            mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16,
-            mdt::f16, mdt::f16, mdt::f16}
-    , // ^-- 45
-    mlp_dims_t{32, 128, 32, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_gelu_tanh,
-            mdt::f16, mdt::f16,
-            mdt::s4, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 46
-    mlp_dims_t{32, 128, 32, 16, 16,
-            quantize_type::per_token_with_groups, dnnl_eltwise_gelu_erf,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::s8,
-            mdt::s8, mdt::f16, mdt::s8}
-    , // ^-- 47
-//*/
-    mlp_dims_t{1024, 896, 4864, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::bf16, mdt::bf16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    ,
-    mlp_dims_t{1024, 896, 4864, 128, 128,
-            quantize_type::per_token_with_groups, dnnl_eltwise_swish,
-            mdt::f16, mdt::f16,
-            mdt::u4, mdt::f16, mdt::u8,
-            mdt::u4, mdt::f16, mdt::u8}
-    ,
-    mlp_dims_t{1024, 896, 4864, 1, 1,
-            quantize_type::no_quantization, dnnl_eltwise_swish,
-            mdt::f32, mdt::f32,
-            mdt::f32, mdt::f16, mdt::u8,
-            mdt::f32, mdt::f16, mdt::u8}
 ), &PrintToString);
 // clang-format on
 

@@ -2229,7 +2229,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // Disable 'small_shape' heuristic for amx_fp16 until it is validated with
     // performance measurements.
     allow_small_shape_fallback
-            = allow_small_shape_fallback && !bgmmc.packed_sparse_weights;
+            = allow_small_shape_fallback && (bgmmc.isa != avx512_core_amx_fp16);
     // This is the only implementation that support the packed_sparse_weights
     // case therefore there is no fallback for it.
     allow_small_shape_fallback
@@ -2249,13 +2249,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             // empirical observation for performance breakpoint between amx and vnni
             // bf16/f16
             const dim_t buffer_a_chunk_sz_limit = 126;
-            is_small_shapes = is_small_shapes
-                    && bgmmc.buffer_a_gb_stride <= buffer_a_chunk_sz_limit;
+            is_small_shapes
+                    = bgmmc.buffer_a_gb_stride <= buffer_a_chunk_sz_limit;
         } else if (bm_conf_utils.is_f8() || bm_conf_utils.is_bf16_fp8()
                 || bm_conf_utils.is_f16_fp8() || bm_conf_utils.is_bf8()) {
             is_small_shapes = false;
         } else {
-            is_small_shapes = is_small_shapes && bgmmc.ndims < 3
+            is_small_shapes = bgmmc.ndims < 3
                     && ((bgmmc.M == 1 && bgmmc.K == 256)
                             || (bgmmc.M <= 32 && bgmmc.M * bgmmc.N <= 256)
                             || bgmmc.K <= 16);

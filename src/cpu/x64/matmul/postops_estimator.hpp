@@ -46,7 +46,8 @@ public:
         size_t code_size = post_ops_gen.getSize();
         size_t estimated_vec_code_size = (size_t)nstl::max(
                 (int)code_size - (int)mean_none_vec_code_bytes, 0);
-        estimated_vec_insts = estimated_vec_code_size / mean_vec_inst_bytes;
+        estimated_vec_insts
+                = into<int>(estimated_vec_code_size / mean_vec_inst_bytes);
         return status::success;
     }
 

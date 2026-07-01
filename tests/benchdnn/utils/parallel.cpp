@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "tests/test_thread.hpp"
+#include "tests/test_thread_decl.hpp"
 
 #include "utils/parallel.hpp"
 

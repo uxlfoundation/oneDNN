@@ -45,8 +45,6 @@
 
 #include "cpu/platform.hpp"
 
-#include "tests/test_thread.hpp"
-
 #include "dnnl_common.hpp"
 #include "dnnl_memory.hpp"
 
@@ -677,11 +675,15 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
     // For async threadpool CPU: use aggregate as well, similar to DPCPP CPU.
     int ret = OK;
     if (is_async(engine)) {
-        ret = execute_in_thr_ctx(
-                ctx, measure_perf_aggregate, t, v_stream, perf_func, dnnl_args);
+        std::function<int()> measure_perf_aggregate_fn = std::bind(
+                measure_perf_aggregate, std::ref(t), std::cref(v_stream),
+                std::ref(perf_func), std::ref(dnnl_args));
+        ret = execute_in_thr_ctx(ctx, measure_perf_aggregate_fn);
     } else {
-        ret = execute_in_thr_ctx(ctx, measure_perf_individual, t, v_stream[0],
-                perf_func, dnnl_args[0]);
+        std::function<int()> measure_perf_individual_fn = std::bind(
+                measure_perf_individual, std::ref(t), std::ref(v_stream[0]),
+                std::ref(perf_func), std::ref(dnnl_args[0]));
+        ret = execute_in_thr_ctx(ctx, measure_perf_individual_fn);
     }
 
     res->state = (ret == OK ? EXECUTED : FAILED);

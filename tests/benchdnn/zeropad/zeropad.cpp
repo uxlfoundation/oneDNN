@@ -160,7 +160,7 @@ int doit(const prb_t *prb, res_t *res) {
         res->obytes = dnnl_memory_desc_get_size(data_md)
                 - dnnl_memory_desc_get_size(plain_data_md);
     }
-    return measure_perf(default_thr_ctx, res, perf_func_, args);
+    return measure_perf(get_default_thr_ctx(), res, perf_func_, args);
 }
 
 } // namespace zeropad

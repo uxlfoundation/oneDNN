@@ -23,7 +23,7 @@
 
 #include "utils/dnnl_query.hpp"
 
-#include "tests/test_thread.hpp"
+#include "tests/test_thread_decl.hpp"
 
 #include <thread>
 #endif

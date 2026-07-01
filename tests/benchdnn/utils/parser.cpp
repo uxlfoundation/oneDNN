@@ -1517,7 +1517,7 @@ bool parse_ctx(std::vector<thr_ctx_t> &ctx,
                     "(TBB runtime only).\n");
 
     auto str2ctx = [&option_name](const char *str) {
-        thr_ctx_t result = default_thr_ctx;
+        thr_ctx_t result = get_default_thr_ctx();
         try {
             size_t start_pos = 0;
             /* concurrency piece */

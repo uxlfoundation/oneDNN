@@ -40,7 +40,7 @@
 #include "utils/prb.hpp"
 #include "utils/stream_kind.hpp"
 
-#include "tests/test_thread.hpp"
+#include "tests/test_thread_decl.hpp"
 
 #define for_ for
 
@@ -201,10 +201,12 @@ inline int check_caches(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &primw,
     // of infinite cache though.
     if (!has_bench_mode_modifier(mode_modifier_t::par_create)) {
         const_dnnl_primitive_desc_t pd = query_pd(primw);
-        SAFE(create_in_thr_ctx(ctx_init, check_pd_cache, pd, res), WARN);
+        std::function<int()> pd_cache_fn = std::bind(check_pd_cache, pd, res);
+        SAFE(create_in_thr_ctx(ctx_init, pd_cache_fn), WARN);
         // Check primitive is picked up from the cache if applicable.
-        SAFE(create_in_thr_ctx(ctx_init, check_primitive_cache, primw, res),
-                WARN);
+        std::function<int()> prim_cache_fn
+                = std::bind(check_primitive_cache, std::ref(primw), res);
+        SAFE(create_in_thr_ctx(ctx_init, prim_cache_fn), WARN);
     }
 
     // Check primitive is picked up from the persistent cache if applicable.
@@ -483,8 +485,9 @@ inline int init_prim(const thr_ctx_t &thr_ctx,
             const init_pd_func_t &, const base_prb_t *, res_t *, dir_t,
             const_dnnl_primitive_desc_t, bool)
             = init_prim;
-    return create_in_thr_ctx(thr_ctx, f, user_prim, init_pd_func, base_prb, res,
-            dir, hint, is_service_prim);
+    std::function<int()> call_fn = std::bind(f, std::ref(user_prim),
+            init_pd_func, base_prb, res, dir, hint, is_service_prim);
+    return create_in_thr_ctx(thr_ctx, call_fn);
 }
 
 // `setup_cmp_func` function is defined in every driver.

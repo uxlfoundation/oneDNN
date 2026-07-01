@@ -37,8 +37,6 @@
 #include "src/xpu/ze/usm_utils.hpp"
 #endif
 
-#include "tests/test_thread.hpp"
-
 #include "dnn_types.hpp"
 #include "dnnl_common.hpp"
 #include "dnnl_memory.hpp"

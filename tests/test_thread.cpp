@@ -16,19 +16,20 @@
 #include <tuple>
 
 #include "tests/test_thread.hpp"
+#include "tests/test_thread_decl.hpp"
 
 std::ostream &operator<<(std::ostream &os, const thr_ctx_t &ctx) {
-    if (ctx.max_concurrency == default_thr_ctx.max_concurrency)
+    if (ctx.max_concurrency == get_default_thr_ctx().max_concurrency)
         os << "auto:";
     else
         os << ctx.max_concurrency << ":";
 
-    if (ctx.core_type == default_thr_ctx.core_type)
+    if (ctx.core_type == get_default_thr_ctx().core_type)
         os << "auto:";
     else
         os << ctx.core_type << ":";
 
-    if (ctx.nthr_per_core == default_thr_ctx.nthr_per_core)
+    if (ctx.nthr_per_core == get_default_thr_ctx().nthr_per_core)
         os << "auto";
     else
         os << ctx.nthr_per_core;
@@ -463,6 +464,16 @@ thread_local threadpool_t::worker_data_t *threadpool_t::worker_self_ = nullptr;
 
 namespace dnnl {
 
+// Original threadpool utils are used by the scoped_tp_activation_t and thus
+// need to be re-declared because of the hack above.
+namespace impl {
+namespace threadpool_utils {
+void activate_threadpool(dnnl::threadpool_interop::threadpool_iface *tp);
+void deactivate_threadpool();
+dnnl::threadpool_interop::threadpool_iface *get_active_threadpool();
+} // namespace threadpool_utils
+} // namespace impl
+
 namespace testing {
 // Threadpool singleton
 dnnl::threadpool_interop::threadpool_iface *get_threadpool(
@@ -480,6 +491,24 @@ dnnl::threadpool_interop::threadpool_iface *get_threadpool(
         exit(1);
     }
     return &(res.first->second);
+}
+
+scoped_tp_activation_t::scoped_tp_activation_t(
+        dnnl::threadpool_interop::threadpool_iface *tp) {
+    impl::threadpool_utils::activate_threadpool(tp);
+}
+
+scoped_tp_activation_t::~scoped_tp_activation_t() {
+    impl::threadpool_utils::deactivate_threadpool();
+}
+
+scoped_tp_deactivation_t::scoped_tp_deactivation_t() {
+    impl::threadpool_utils::deactivate_threadpool();
+}
+
+scoped_tp_deactivation_t::~scoped_tp_deactivation_t() {
+    // we always use the same threadpool that is returned by `get_threadpool()`
+    impl::threadpool_utils::activate_threadpool(get_threadpool());
 }
 
 } // namespace testing
@@ -506,3 +535,164 @@ int get_max_concurrency() {
 } // namespace dnnl
 
 #endif
+
+#ifdef TBB_INTERFACE_VERSION
+// tbb constraints on core type appear in 2021.2
+// tbb constraints on max_concurrency appear in 2020
+// we check only for 2021.2 to enable thread context knobs
+#define DNNL_TBB_CONSTRAINTS_ENABLED (TBB_INTERFACE_VERSION >= 12020)
+// API to do explicit finalization was introduced in 2021.6.
+#define DNNL_TBB_NEED_EXPLICIT_FINALIZE (TBB_INTERFACE_VERSION >= 12060)
+#else
+#define DNNL_TBB_CONSTRAINTS_ENABLED 0
+#define DNNL_TBB_NEED_EXPLICIT_FINALIZE 0
+#endif
+
+#define DNNL_TBB_THREADING_WITH_CONSTRAINTS \
+    (DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB) \
+            && DNNL_TBB_CONSTRAINTS_ENABLED
+#define DNNL_TBB_THREADING_WITHOUT_CONSTRAINTS \
+    (DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB) \
+            && !DNNL_TBB_CONSTRAINTS_ENABLED
+
+#if DNNL_TBB_THREADING_WITH_CONSTRAINTS
+#include "oneapi/tbb/info.h"
+#endif
+
+void finalize_tbb() {
+#if DNNL_TBB_NEED_EXPLICIT_FINALIZE
+    oneapi::tbb::task_scheduler_handle handle
+            = oneapi::tbb::task_scheduler_handle {oneapi::tbb::attach {}};
+    oneapi::tbb::finalize(handle, std::nothrow);
+#endif
+}
+
+const thr_ctx_t &get_default_thr_ctx() {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_SEQ \
+        || DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL \
+        || DNNL_TBB_THREADING_WITHOUT_CONSTRAINTS
+    static const thr_ctx_t default_thr_ctx = {0, -1, 0};
+#elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    static const thr_ctx_t default_thr_ctx = {omp_get_max_threads(), -1, 0};
+#elif DNNL_TBB_THREADING_WITH_CONSTRAINTS
+    static const thr_ctx_t default_thr_ctx = {tbb::task_arena::automatic,
+            tbb::task_arena::automatic, tbb::task_arena::automatic};
+#endif
+    return default_thr_ctx;
+}
+
+#define THR_CTX_ASSERT(check, msg_fmt, ...) \
+    do { \
+        if (!(check)) { \
+            fprintf(stderr, msg_fmt, __VA_ARGS__); \
+            exit(1); \
+        } \
+    } while (0)
+
+// Single version of each function; the runtime-specific logic is handled inside
+// via preprocessor branching.
+int create_in_thr_ctx(const thr_ctx_t &ctx, const std::function<int()> &f) {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_SEQ \
+        || DNNL_TBB_THREADING_WITHOUT_CONSTRAINTS
+    THR_CTX_ASSERT(ctx.core_type == get_default_thr_ctx().core_type
+                    && ctx.max_concurrency
+                            == get_default_thr_ctx().max_concurrency
+                    && ctx.nthr_per_core == get_default_thr_ctx().nthr_per_core,
+            "Threading knobs not supported for this runtime: %s\n",
+            DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_SEQ
+                    ? "sequential runtime has no threading"
+                    : "TBB version is too old (>=2021.2 required)");
+    return f();
+#elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    THR_CTX_ASSERT(ctx.core_type == get_default_thr_ctx().core_type,
+            "core type %d is not supported for OMP runtime\n", ctx.core_type);
+
+    auto max_nthr = omp_get_max_threads();
+    omp_set_num_threads(ctx.max_concurrency);
+    auto st = f();
+    omp_set_num_threads(max_nthr);
+    return st;
+#elif DNNL_TBB_THREADING_WITH_CONSTRAINTS
+    static auto core_types
+            = tbb::info::core_types(); // sorted by the relative strength
+
+    if ((ctx.core_type != get_default_thr_ctx().core_type)
+            && ((size_t)ctx.core_type >= core_types.size()))
+        printf("WARNING: TBB smallest core has index %d. Using this "
+               "instead of %d.\n",
+                (int)core_types.size() - 1, ctx.core_type);
+    size_t core_type_id = (size_t)ctx.core_type < core_types.size()
+            ? ctx.core_type
+            : core_types.size() - 1;
+    auto core_type = ctx.core_type == tbb::task_arena::automatic
+            ? tbb::task_arena::automatic
+            : core_types[core_type_id];
+    auto arena = tbb::task_arena {
+            tbb::task_arena::constraints {}
+                    .set_core_type(core_type)
+                    .set_max_threads_per_core(ctx.nthr_per_core)
+                    .set_max_concurrency(ctx.max_concurrency)};
+    return arena.execute([&] { return f(); });
+#elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    THR_CTX_ASSERT(ctx.core_type == get_default_thr_ctx().core_type,
+            "core type %d is not supported for TP runtime\n", ctx.core_type);
+
+    auto tp = dnnl::testing::get_threadpool(ctx);
+    auto stp = dnnl::testing::scoped_tp_activation_t(tp);
+    return f();
+#else
+#error "unsupported threading runtime!"
+#endif
+}
+
+int execute_in_thr_ctx(const thr_ctx_t &ctx, const std::function<int()> &f) {
+#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_SEQ \
+        || DNNL_TBB_THREADING_WITHOUT_CONSTRAINTS
+    THR_CTX_ASSERT(ctx.core_type == get_default_thr_ctx().core_type
+                    && ctx.max_concurrency
+                            == get_default_thr_ctx().max_concurrency
+                    && ctx.nthr_per_core == get_default_thr_ctx().nthr_per_core,
+            "Threading knobs not supported for this runtime: %s\n",
+            DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_SEQ
+                    ? "sequential runtime has no threading"
+                    : "TBB version is too old (>=2021.2 required)");
+    return f();
+#elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+    THR_CTX_ASSERT(ctx.core_type == get_default_thr_ctx().core_type,
+            "core type %d is not supported for OMP runtime\n", ctx.core_type);
+
+    auto max_nthr = omp_get_max_threads();
+    omp_set_num_threads(ctx.max_concurrency);
+    auto st = f();
+    omp_set_num_threads(max_nthr);
+    return st;
+#elif DNNL_TBB_THREADING_WITH_CONSTRAINTS
+    static auto core_types
+            = tbb::info::core_types(); // sorted by the relative strength
+
+    if ((ctx.core_type != get_default_thr_ctx().core_type)
+            && ((size_t)ctx.core_type >= core_types.size()))
+        printf("WARNING: TBB smallest core has index %d. Using this "
+               "instead of %d.\n",
+                (int)core_types.size() - 1, ctx.core_type);
+    size_t core_type_id = (size_t)ctx.core_type < core_types.size()
+            ? ctx.core_type
+            : core_types.size() - 1;
+    auto core_type = ctx.core_type == tbb::task_arena::automatic
+            ? tbb::task_arena::automatic
+            : core_types[core_type_id];
+    auto arena = tbb::task_arena {
+            tbb::task_arena::constraints {}
+                    .set_core_type(core_type)
+                    .set_max_threads_per_core(ctx.nthr_per_core)
+                    .set_max_concurrency(ctx.max_concurrency)};
+    return arena.execute([&] { return f(); });
+#elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    // The function f shall take an interop obj as last argument.
+    THR_CTX_ASSERT(ctx.core_type == get_default_thr_ctx().core_type,
+            "core type %d is not supported for TP runtime\n", ctx.core_type);
+    return f();
+#else
+#error "unsupported threading runtime!"
+#endif
+}

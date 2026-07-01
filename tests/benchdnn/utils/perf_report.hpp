@@ -32,6 +32,8 @@
 #include "common.hpp"
 #include "utils/timer.hpp"
 
+#include "tests/thread_context.hpp"
+
 struct base_perf_report_t {
     base_perf_report_t(const char *perf_template) : pt_(perf_template) {}
     virtual ~base_perf_report_t() = default;

@@ -31,7 +31,7 @@
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
-#include "tests/test_thread.hpp"
+#include "tests/test_thread_decl.hpp"
 #endif
 
 // Engine kind used to run oneDNN primitives for testing

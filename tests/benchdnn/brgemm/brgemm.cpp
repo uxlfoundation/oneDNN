@@ -384,9 +384,13 @@ int init_kernel(kernel_args_t &kernel_args) {
     // Create BRGeMM kernel, analogous to primitive creation.
     // ctx_init can here be used to select core type on hetero ISA with TBB.
     brgemm_kernel_t **brgemm_kernel_addr = &kernel_args.brgemm_kernel_;
-    DNN_SAFE(create_in_thr_ctx(prb->ctx_init, brgemm_kernel_create,
-                     brgemm_kernel_addr, brgemm_desc),
-            WARN);
+    // The lambda performs the return type conversion (dnnl_status_t -> int)
+    // required by create_in_thr_ctx.
+    std::function<int()> brgemm_kernel_create_fn = [&] {
+        DNN_SAFE(brgemm_kernel_create(brgemm_kernel_addr, brgemm_desc), WARN);
+        return OK;
+    };
+    SAFE(create_in_thr_ctx(prb->ctx_init, brgemm_kernel_create_fn), WARN);
 
 #if defined(brg_x64)
     // Palette configuration is required here to have `kernel_args`

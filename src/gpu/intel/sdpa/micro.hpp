@@ -327,6 +327,14 @@ struct micro_fwd_t : public primitive_t {
                                    with_causal_mask()),
                     "fused f32 SDPA only optimized for causal mask"); //TODO: update when performance improved
 
+            // Xe-HPG: enabling dropout on the systolic micro_sdpa fwd path
+            // triggers an IGC miscompile that yields partial-zero outputs
+            // For now this falls back to large partition graph
+            VDISPATCH_SDPA((arch() == compute::gpu_arch_t::xe_hpg
+                                   && !attr()->dropout_.has_default_values()),
+                    "fused SDPA FWD with device dropout leads to IGC miscompile"
+                    "for xe_hpg");
+
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));
 

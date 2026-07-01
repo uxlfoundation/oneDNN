@@ -325,6 +325,11 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
 
         struct binary_t {
             dnnl::impl::alg_kind_t alg;
+
+            // Binary ops with this flag set use DST as RHS which may interfere
+            // with some writes; declare this to let the parent primitive know.
+            bool reads_dst_buffer;
+
             // This is an unmodifiable user copy of attributes which is used in
             // caching mechanism. Not to be used internally.
             dnnl::impl::memory_desc_t user_src1_desc, user_src2_desc;
@@ -428,6 +433,8 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
                     break;
                 case primitive_kind::binary:
                     ret = binary.alg == rhs.binary.alg
+                            && binary.reads_dst_buffer
+                                    == rhs.binary.reads_dst_buffer
                             && binary.user_src1_desc
                                     == rhs.binary.user_src1_desc;
                     break;
@@ -499,6 +506,12 @@ struct dnnl_post_ops : public dnnl::impl::c_compatible {
             return false;
         }
         return true;
+    }
+
+    bool has_reads_from_dst() const {
+        for (auto &e : entry_)
+            if (e.is_binary() && e.binary.reads_dst_buffer) return true;
+        return false;
     }
 
     dnnl::impl::status_t set_default_formats(
@@ -647,6 +660,7 @@ struct dnnl_primitive_attr : public dnnl::impl::c_compatible {
         dropout = 1u << 16,
         rounding_mode = 1u << 17,
         precomputed_reductions = 1u << 18,
+        post_ops_read_dst = 1u << 19,
     };
 
     /** Returns true if the attributes have default values.

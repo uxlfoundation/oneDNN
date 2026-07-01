@@ -156,9 +156,8 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     // utils
     static int get_inp_size(
             int max_src_size, int dst_size, int k, int stride, int dilate) {
-        auto adj_str = nstl::min(k, stride);
         const auto res = nstl::min(max_src_size,
-                calculate_end_padding(0, dst_size, 0, adj_str,
+                calculate_end_padding(0, dst_size, 0, stride,
                         calculate_extended_filter_size(k, dilate)));
         return res;
     }

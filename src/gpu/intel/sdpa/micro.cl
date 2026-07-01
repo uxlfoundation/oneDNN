@@ -143,15 +143,13 @@ inline void apply_dropout_s_tile(
 }
 #endif
 
-// Tile debugging example for s_tile
-//
-// example: declare print tile function macro for S_tile
-// DECLARE_2D_TILE_PRINT(s_tile_type, float, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
-//                       ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
-//                       ugemm_kq_c_type_nblock1)
-//
-// example: Prints the entire S_tile in the (0, 1, 0) work group
-// print_tile(S_tile, "%7.2f", 0, 1, 0, ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
+// [IGC-REPRO] print_tile for S_tile, declared unconditionally so the call
+// below (after dropout) is available when WITH_DROPOUT=1. See note at the call
+// site: reading the post-dropout S_tile here works around an IGC miscompile on
+// Xe-HPG (partial-zero SDPA output).
+DECLARE_2D_TILE_PRINT(s_tile_type, float, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+        ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1)
 
 #ifdef QRY_DT_F32
 #define FMA_TYPE float
@@ -958,6 +956,15 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                 dropout_mask_buf
 #endif
         );
+        /* [IGC-REPRO] Reading the post-dropout S_tile here makes the kernel
+         * produce CORRECT results on Xe-HPG (DG2). WITHOUT this call, IGC
+         * miscompiles the systolic path and part of the SDPA output is zero.
+         * This read is semantically inert (its value is unused), so it should
+         * not change results -- the fact that it does confirms an IGC codegen
+         * bug (spill/fill under heavy GRF pressure). Remove this line to
+         * reproduce the failure. */
+        print_tile(S_tile, "%7.2f", 0, 0, 0, ugemm_kq_sg_per_wg_m,
+                ugemm_kq_sg_per_wg_n);
 #endif
 
 #if USE_SYSTOLIC_UKERNEL

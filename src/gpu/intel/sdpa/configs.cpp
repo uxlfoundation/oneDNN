@@ -543,6 +543,20 @@ static std::vector<fwd_config_record_t> sorted_configs = []() {
 
         {{compute::gpu_arch_t::xe2, 576}, {16, 32, 32, 32, 32, 1, 32, 1}},
 
+        // SDPA configs for asymmetric heads (QK head_size != V head_size)
+        // These handle forward pass with different D_qk and D_v
+        {{compute::gpu_arch_t::xe2, 32, 384}, {16, 16, 16, 16, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 64, 384}, {16, 16, 16, 16, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe2, 128, 384}, {16, 16, 16, 16, 4, 4, 4, 4}},
+
+        {{compute::gpu_arch_t::xe_hpc, 32, 384}, {16, 16, 16, 16, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 64, 384}, {16, 32, 16, 16, 16, 2, 8, 4}},
+        {{compute::gpu_arch_t::xe_hpc, 128, 384}, {16, 16, 16, 16, 8, 4, 8, 4}},
+
+        {{compute::gpu_arch_t::xe_hpg, 32, 384}, {16, 16, 16, 16, 4, 4, 4, 4}},
+        {{compute::gpu_arch_t::xe_hpg, 64, 384}, {16, 16, 16, 16, 8, 2, 8, 2}},
+        {{compute::gpu_arch_t::xe_hpg, 128, 384}, {16, 16, 16, 16, 8, 4, 8, 4}},
+
 
         {{compute::gpu_arch_t::xe2,  32, 384, fma }, { 32, 16, 16, 16,  2, 4,  2, 4 }},
         {{compute::gpu_arch_t::xe2,  64, 384, fma }, { 16, 16, 16, 16,  4, 4,  4, 4 }},

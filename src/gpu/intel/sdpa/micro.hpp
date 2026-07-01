@@ -82,7 +82,7 @@ struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
     bool invert_scale, with_attn_scale, with_host_scale, with_attn_mask,
             broadcast_mask_q, with_causal_mask;
     uint8_t padding1[2] = {0};
-    int subgroup_size, d_max;
+    int subgroup_size, d_max_kq, d_max_v;
 
     bool d_full, arch_gte_hpc;
     bool block_q, block_a, block_2d_a;
@@ -233,8 +233,6 @@ struct micro_fwd_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SDPA(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_SDPA(desc()->values() == desc()->head_size(),
-                    "values does not match head size");
 
             if (utils::one_of(desc()->key_md()->data_type, u4, s4)) {
                 VDISPATCH_SDPA(desc()->keys() % 2 == 0,
@@ -350,13 +348,22 @@ struct micro_fwd_t : public primitive_t {
         int sg_size() const { return sg_size_; }
         bool use_systolic_ukernel() const { return use_systolic_ukernel_; }
 
-        // Block size for head_size, which must be hard-coded into the kernel.
-        int d_max() const {
+        // Block size for the Q/K head dim, baked into the kernel.
+        int d_max_kq() const {
             int head_size = into<int>(desc()->head_size());
             for (int i = 32; i <= 1024; i *= 2)
                 if (head_size <= i) return i;
             return head_size;
         }
+        // Block size for the V/output head dim, baked into the kernel.
+        int d_max_v() const {
+            int v_size = into<int>(desc()->values());
+            for (int i = 32; i <= 1024; i *= 2)
+                if (v_size <= i) return i;
+            return v_size;
+        }
+        // Alias kept for ukernel tileC/tileR sites that use the KQ dimension.
+        int d_max() const { return d_max_kq(); }
 
         compute::gpu_arch_t arch() const { return arch_; }
         micro_fwd_params_t conf;

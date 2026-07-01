@@ -294,7 +294,10 @@ status_t gemm_x8s8s32x_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const float alpha = params.get_gemm_alpha(scales);
     const float beta = params.gemm_beta_;
-    const dim_t acc_ldc = dst_is_acc ? ldc : N;
+    // `ldc` is the destination row stride. When `M == 1`, a degenerate stride
+    // (e.g. `acb` gives `ldc == 1`) can violate the `ldc >= N` requirement.
+    // Clamp `ldc` to `N`. This is safe for `M == 1` and has no effect for `M > 1`.
+    const dim_t acc_ldc = dst_is_acc ? nstl::max(ldc, N) : N;
     const int scale_idx_mult
             = this->pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS)
             == (1 << (ndims - 1));

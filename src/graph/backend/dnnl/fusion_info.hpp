@@ -117,6 +117,9 @@ public:
             const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
             const attr_type_t attr_type);
 
+    friend status_t make_dnnl_gated_mlp_primitive_attr(
+            const std::shared_ptr<op_t> &op, dnnl::primitive_attr &attr);
+
     fusion_info_t() = default;
 
     bool operator==(const fusion_info_t &other) const {
@@ -350,6 +353,12 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
 dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
         const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
         const attr_type_t attr_type);
+
+// Sets quantization scales/zero_points on the given primitive attr for gated
+// mlp. The fusion info is extracted from the op. Returns status::unimplemented
+// if the configuration is not supported.
+status_t make_dnnl_gated_mlp_primitive_attr(
+        const std::shared_ptr<op_t> &op, dnnl::primitive_attr &attr);
 
 } // namespace dnnl_impl
 } // namespace graph

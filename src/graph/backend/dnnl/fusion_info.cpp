@@ -511,6 +511,106 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
     return attr;
 }
 
+status_t make_dnnl_gated_mlp_primitive_attr(
+        const std::shared_ptr<op_t> &op, dnnl::primitive_attr &attr) {
+    if (!op->has_attr(op_attr::fusion_info)) return status::success;
+    const auto &fusion_info = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+
+    // convert input scales
+    if (!fusion_info.input_scales_.empty()) {
+        for (const auto &in_scales : fusion_info.input_scales_) {
+            size_t in_scales_indices = in_scales.first;
+            const op_t *in_scales_op = in_scales.second->get_op();
+            VCHECK_FUSION_INFO(
+                    fusion_info.with_runtime_scales(true, in_scales_indices),
+                    status::unimplemented,
+                    "failed to set scales for %s since primitive only supports "
+                    "runtime src scales",
+                    op->get_name().c_str());
+            int mask = 0;
+            std::vector<int64_t> groups;
+            if (in_scales_op->has_attr(op_attr::qtype)) {
+                const std::string qtype
+                        = in_scales_op->get_attr<std::string>(op_attr::qtype);
+                const auto scales_dt_
+                        = in_scales_op->has_attr(op_attr::data_type)
+                        ? in_scales_op->get_attr<int64_t>(op_attr::data_type)
+                        : dnnl_f32;
+                // convert to API type
+                const auto scales_dt
+                        = static_cast<dnnl::memory::data_type>(scales_dt_);
+                const int arg_idx = static_cast<int>(in_scales_indices);
+                if (qtype == "per_tensor") {
+                    mask = 0;
+                } else if (qtype == "per_channel") {
+                    int64_t axis = in_scales_op->has_attr(op_attr::axis)
+                            ? in_scales_op->get_attr<int64_t>(op_attr::axis)
+                            : 1;
+                    // handle axis=-1 case, which means the last dimension
+                    axis = axis < 0 ? axis
+                                    + in_scales_op->get_input_logical_tensor(0)
+                                              .ndims
+                                    : axis;
+                    mask = 1 << axis;
+                } else {
+                    // per-group quantization
+                    const auto &group_shape
+                            = in_scales_op->get_attr<std::vector<int64_t>>(
+                                    op_attr::group_shape);
+                    groups = std::vector<int64_t>(
+                            group_shape.end() - 2, group_shape.end());
+                    mask = (1 << group_shape.size()) - 1;
+                }
+                attr.set_scales(arg_idx, mask, groups, scales_dt);
+            }
+        }
+    }
+
+    // convert input zps
+    if (!fusion_info.input_zps_.empty()) {
+        for (const auto &in_zps : fusion_info.input_zps_) {
+            size_t in_zps_indices = in_zps.first;
+            const op_t *in_zps_op = in_zps.second->get_op();
+            VCHECK_FUSION_INFO(
+                    fusion_info.with_runtime_zero_points(true, in_zps_indices),
+                    status::unimplemented,
+                    "failed to set zero points for %s since primitive only "
+                    "supports runtime src zero points",
+                    op->get_name().c_str());
+            int mask = 0;
+            std::vector<int64_t> groups;
+            if (in_zps_op->has_attr(op_attr::qtype)) {
+                const std::string qtype
+                        = in_zps_op->get_attr<std::string>(op_attr::qtype);
+                const auto zps_dt_ = in_zps_op->has_attr(op_attr::data_type)
+                        ? in_zps_op->get_attr<int64_t>(op_attr::data_type)
+                        : dnnl_s32;
+                // convert to API type
+                const auto zps_dt
+                        = static_cast<dnnl::memory::data_type>(zps_dt_);
+                const int arg_idx = static_cast<int>(in_zps_indices);
+                if (qtype == "per_group") {
+                    const auto &group_shape
+                            = in_zps_op->get_attr<std::vector<int64_t>>(
+                                    op_attr::group_shape);
+                    groups = std::vector<int64_t>(
+                            group_shape.end() - 2, group_shape.end());
+                    mask = (1 << group_shape.size()) - 1;
+                } else if (qtype == "per_tensor") {
+                    mask = 0;
+                } else { // per_channel zero points not supported
+                    VCHECK_FUSION_INFO(false, status::unimplemented,
+                            "per_channel zero points are not supported for "
+                            "gated mlp %s",
+                            op->get_name().c_str());
+                }
+                attr.set_zero_points(arg_idx, mask, groups, zps_dt);
+            }
+        }
+    }
+    return status::success;
+}
+
 } // namespace dnnl_impl
 } // namespace graph
 } // namespace impl

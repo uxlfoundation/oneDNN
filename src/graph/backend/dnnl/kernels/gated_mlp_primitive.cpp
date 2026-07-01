@@ -65,12 +65,23 @@ status_t gated_mlp_primitive_kernel_t<quantized>::compile_impl(
     BACKEND_DNNL_ADD_PASS(pipeline, lower_down);
 
     if (quantized) {
+        BACKEND_DNNL_ADD_PASS(pipeline, lift_up_typecast);
+        BACKEND_DNNL_ADD_PASS(pipeline, lift_up_quantize);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_typecast_to_matmul_or_conv);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_post_typecast_to_predecessor);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_src_scales);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_src_zero_points);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_src_zero_points);
+        BACKEND_DNNL_ADD_PASS(pipeline, insert_runtime_u8_to_s8_for_matmul);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_scales);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_scales);
+        BACKEND_DNNL_ADD_PASS(pipeline, convert_to_runtime_dst_zero_points);
         BACKEND_DNNL_ADD_PASS(pipeline, fuse_dst_zero_points);
+    }
+
+    if (quantized) {
+        BACKEND_DNNL_ADD_PASS(pipeline, remove_quant_data_with_no_effect);
     }
 
     pipeline.reset_visualize_arg(true, false);

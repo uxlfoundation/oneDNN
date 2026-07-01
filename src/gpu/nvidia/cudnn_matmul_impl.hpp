@@ -70,6 +70,15 @@ struct cublas_params : cublas_base_params {
             dst_type_ = cudaDataType_t::CUDA_R_32F;
         }
 
+        // cuBLAS does not support f32*f32->f16 directly.
+        // Compute in f32 and reorder the output to f16.
+        if (src_type_ == cudaDataType_t::CUDA_R_32F
+                && weights_type_ == cudaDataType_t::CUDA_R_32F
+                && dst_type_ == cudaDataType_t::CUDA_R_16F) {
+            reorder_required_ = true;
+            dst_type_ = cudaDataType_t::CUDA_R_32F;
+        }
+
         if (with_eltwise(0, attr) || with_eltwise(1, attr)) {
             with_separate_eltwise_ = true;
             CHECK(create_and_set_op_descriptor(attr, act_desc_));

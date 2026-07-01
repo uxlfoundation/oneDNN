@@ -56,6 +56,21 @@ struct cudnn_matmul_t : public gpu::primitive_t {
             bool bf16_case = utils::everyone_is(bf16, src_dt, wei_dt, dst_dt);
             bool s8_case = utils::everyone_is(s8, src_dt, wei_dt)
                     && utils::one_of(dst_dt, s8, f32);
+            // cuBLAS GemmEx supports f16*f16->f32 natively.
+            // f32*f32->f16 is handled via f32 output + reorder.
+            bool f16_src_f32_dst
+                    = utils::everyone_is(f16, src_dt, wei_dt) && dst_dt == f32;
+            bool f32_src_f16_dst
+                    = utils::everyone_is(f32, src_dt, wei_dt) && dst_dt == f16;
+
+            // In the reorder path (reorder_required_) the sum post-op is
+            // applied after eltwise, which does not match the oneDNN post-op
+            // order. f32*f32->f16 always takes the reorder path, so reject it
+            // when both sum and eltwise are present.
+            const bool has_sum
+                    = attr()->post_ops_.find(primitive_kind::sum) != -1;
+            const bool has_eltwise
+                    = attr()->post_ops_.find(primitive_kind::eltwise) != -1;
 
             auto *sycl_engine_impl
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
@@ -68,7 +83,9 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                     && IMPLICATION(bf16_case,
                             has_bf16_support(sycl_engine_impl->device()))
                     && set_default_formats()
-                    && (f32_case || f16_case || bf16_case || s8_case)
+                    && (f32_case || f16_case || bf16_case || s8_case
+                            || f16_src_f32_dst || f32_src_f16_dst)
+                    && IMPLICATION(f32_src_f16_dst, !(has_sum && has_eltwise))
                     && IMPLICATION(with_bias(),
                             (IMPLICATION(f32_case, utils::one_of(bia_dt, f32))
                                     && IMPLICATION(f16_case,
@@ -76,7 +93,19 @@ struct cudnn_matmul_t : public gpu::primitive_t {
                                     && IMPLICATION(bf16_case,
                                             utils::one_of(bia_dt, bf16, f32))
                                     && IMPLICATION(s8_case,
-                                            utils::one_of(bia_dt, s8, f32))))
+                                            utils::one_of(bia_dt, s8, f32))
+                                    // f16*f16->f32 computes in f32. A f16 bias
+                                    // would make the intermediate output f16
+                                    // (bias_dt_mismatch_ sets dst_type_ to the
+                                    // bias type), losing the f32 dst.
+                                    && IMPLICATION(
+                                            f16_src_f32_dst, bia_dt == f32)
+                                    // f32*f32->f16 reorders a f32 scratch to
+                                    // f16. A f16 bias would require a
+                                    // mixed-type cudnnAddTensor into that
+                                    // scratch, so only f32 bias is accepted.
+                                    && IMPLICATION(
+                                            f32_src_f16_dst, bia_dt == f32)))
                     && !(with_bias() && s8_case);
             if (!ok) return status::unimplemented;
 

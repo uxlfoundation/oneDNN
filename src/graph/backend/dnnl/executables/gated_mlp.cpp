@@ -15,6 +15,7 @@
  *******************************************************************************/
 
 #include "graph/backend/dnnl/executables/gated_mlp.hpp"
+#include "graph/backend/dnnl/fusion_info.hpp"
 
 #include "common/gated_mlp_iface.hpp"
 
@@ -55,9 +56,16 @@ gated_mlp_executable_t::desc_t gated_mlp_executable_t::create_desc(
     auto dst_md = make_dnnl_memory_desc(op->get_output_logical_tensor(0));
 
     dnnl::primitive_attr attr;
+    if (op->has_attr(op_attr::fusion_info)) {
+        const fusion_info_t &fusion_info
+                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
+        attr = make_dnnl_gated_mlp_primitive_attr(op, fusion_info);
+    }
+
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
+
     auto act_algo = op->has_attr(op_attr::alg_kind)
             ? static_cast<dnnl::algorithm>(
                       op->get_attr<int64_t>(op_attr::alg_kind))

@@ -117,6 +117,9 @@ public:
             const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
             const attr_type_t attr_type);
 
+    friend dnnl::primitive_attr make_dnnl_gated_mlp_primitive_attr(
+            const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info);
+
     fusion_info_t() = default;
 
     bool operator==(const fusion_info_t &other) const {
@@ -350,6 +353,12 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
 dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
         const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info,
         const attr_type_t attr_type);
+
+// This function is used to make a dnnl::primitive_attr for gated mlp.
+// The fusion info of gated mlp stores scales/zps indexed by the primitive
+// weight arguments (WEIGHTS_0/1/2), which are set directly on the attr.
+dnnl::primitive_attr make_dnnl_gated_mlp_primitive_attr(
+        const std::shared_ptr<op_t> &op, const fusion_info_t &fusion_info);
 
 } // namespace dnnl_impl
 } // namespace graph

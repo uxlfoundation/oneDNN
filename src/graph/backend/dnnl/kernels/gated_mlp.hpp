@@ -53,8 +53,7 @@ public:
 
         status_t ret = status::unimplemented;
 
-        // TODO: quantized fused gated mlp is not supported yet.
-        if (enable_ukernel && !quantized) {
+        if (enable_ukernel) {
             kernel = std::make_shared<
                     gated_mlp_primitive_kernel_t<quantized>>();
             ret = kernel->compile_impl(part, engine, inputs, outputs);

@@ -120,6 +120,22 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
 
     VDISPATCH_GEMM(ok, VERBOSE_UNSUPPORTED_POSTOP);
 
+    if (with_sum_) {
+        const auto idx = post_ops_.find(primitive_kind::sum);
+        const auto &sum = post_ops_.entry_[idx].sum;
+        if (beta_ * sum.zero_point != 0) {
+            post_ops_t::entry_t::eltwise_t linear {
+                    eltwise_linear, 1.0f, 1.0f, -beta_ * sum.zero_point};
+            post_ops_t::entry_t linear_entry;
+            linear_entry.kind = primitive_kind::eltwise;
+            linear_entry.eltwise = linear;
+            post_ops_.entry_.insert(
+                    post_ops_.entry_.begin() + idx, linear_entry);
+            binary_srcs_.insert(binary_srcs_.begin() + idx,
+                    binary_src_t {binary_src_t::none, idx});
+        }
+    }
+
     // If scales are present, convert them and any bias to binary post-ops.
     //   Exception: 2D scales.
     // Also convert bias to binary post-op if dst zp are present.

@@ -1849,6 +1849,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
+    // AMX is not supported src scales with common non-f32 weights scales
+    // combination.
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_amx && bgmmc.with_src_scales
+                                  && bgmmc.is_wei_scale_common,
+                          bgmmc.wei_scales_dt == f32),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+
     const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
     bgmmc.with_dst_scales = !dst_scales.has_default_values();
     // only common scales are supported

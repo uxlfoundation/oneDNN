@@ -470,7 +470,7 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (wg[loopOrder[1]] <= 0) wg[loopOrder[1]] = defaultWGY;
     if (wg[LoopK] <= 0) {
         if (kParallelLocal)
-            wg[LoopK] = (threadsPerEU(hw, *this) * eusPerSubslice(hw)) / (wg[LoopM] * wg[LoopN]);
+            wg[LoopK] = (threadsPerEU(problem.product, *this) * eusPerSubslice(hw)) / (wg[LoopM] * wg[LoopN]);
         else
             wg[LoopK] = 1;
     }

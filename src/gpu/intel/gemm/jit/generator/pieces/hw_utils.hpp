@@ -115,8 +115,9 @@ static inline size_t maxSLMPerWG(ngen::Product p, int grfCount)
     return slmMax;
 }
 
-static inline int GRFPerEU(ngen::HW hw)
+static inline int GRFPerEU(const ngen::Product &product)
 {
+    ngen::HW hw = ngen::getCore(product.family);
     switch (hw) {
         case ngen::HW::XeLP:  return 896; // Equivalent for 128 GRF/thread, 7 threads/EU.
         case ngen::HW::XeHP:
@@ -124,17 +125,22 @@ static inline int GRFPerEU(ngen::HW hw)
         case ngen::HW::XeHPC:
         case ngen::HW::Xe2:
         case ngen::HW::Xe3:
-        case ngen::HW::Xe3p:  return 1024;
+        case ngen::HW::Xe3p:
+            return product.family == ngen::ProductFamily::CRI ? 2048 : 1024;
         default:              return 0;
     }
 }
 
-static inline int threadsPerEU(ngen::HW hw, const CommonStrategy &strategy)
+static inline int threadsPerEU(const ngen::Product &product, const CommonStrategy &strategy)
 {
-    if (hw <= ngen::HW::XeLP)
+    // CRI has an exception: 256 GRF/thread is restricted to 4 threads/EU due to lack of accumulators
+    if (product.family == ngen::ProductFamily::CRI && strategy.GRFs == 256)
+        return 4;
+
+    if (product.family <= ngen::ProductFamily::GenericXeLP)
         return 7;
 
-    return GRFPerEU(hw) / strategy.GRFs;
+    return GRFPerEU(product) / strategy.GRFs;
 }
 
 static inline int eusPerSubslice(ngen::HW hw)

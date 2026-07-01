@@ -550,6 +550,7 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
     eval_params_.sizes = base.sizes;
     eval_params_.alpha = alpha;
     eval_params_.beta = beta;
+    eval_params_.product = product_;
     eval_params_.postOps = !problem.postOps.empty();
     eval_params_.cConvert = (problem.Tc != problem.Tc_ext);
     eval_params_.euCount = dev_info.eu_count();
@@ -723,6 +724,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.sizes = match_params.sizes;
     eval_params.alpha = alpha;
     eval_params.beta = beta;
+    eval_params.product = product_;
     eval_params.euCount = dev_info.eu_count();
     eval_params.postOps = !problem_.postOps.empty();
     eval_params.cConvert = (acc_type != c_type);

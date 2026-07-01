@@ -32,8 +32,8 @@
         "group_shape": {
           "type": "s64[]",
           "value": [
-            1,
-            128
+            128,
+            1
           ]
         },
         "qtype": {
@@ -60,11 +60,11 @@
           "id": 1,
           "dtype": "f16",
           "shape": [
-            4096,
-            112
+            32,
+            14336
           ],
           "stride": [
-            112,
+            14336,
             1
           ],
           "layout_type": "strided",
@@ -74,11 +74,11 @@
           "id": 2,
           "dtype": "u8",
           "shape": [
-            4096,
-            112
+            32,
+            14336
           ],
           "stride": [
-            112,
+            14336,
             1
           ],
           "layout_type": "strided",
@@ -274,8 +274,8 @@
         "group_shape": {
           "type": "s64[]",
           "value": [
-            1,
-            128
+            128,
+            1
           ]
         },
         "qtype": {
@@ -302,11 +302,11 @@
           "id": 9,
           "dtype": "f16",
           "shape": [
-            4096,
-            112
+            32,
+            14336
           ],
           "stride": [
-            112,
+            14336,
             1
           ],
           "layout_type": "strided",
@@ -316,11 +316,11 @@
           "id": 10,
           "dtype": "u8",
           "shape": [
-            4096,
-            112
+            32,
+            14336
           ],
           "stride": [
-            112,
+            14336,
             1
           ],
           "layout_type": "strided",
@@ -516,8 +516,8 @@
         "group_shape": {
           "type": "s64[]",
           "value": [
-            1,
-            128
+            128,
+            1
           ]
         },
         "qtype": {
@@ -544,11 +544,11 @@
           "id": 24,
           "dtype": "f16",
           "shape": [
-            14336,
-            32
+            112,
+            4096
           ],
           "stride": [
-            32,
+            4096,
             1
           ],
           "layout_type": "strided",
@@ -558,11 +558,11 @@
           "id": 25,
           "dtype": "u8",
           "shape": [
-            14336,
-            32
+            112,
+            4096
           ],
           "stride": [
-            32,
+            4096,
             1
           ],
           "layout_type": "strided",

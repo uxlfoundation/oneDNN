@@ -551,8 +551,13 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
     state.Bs_regs = state.ra.alloc_range(state.Bs_layout.regs());
 
     // Allocate registers for A/B prefetch.
-    state.Ap_regs = state.ra.alloc_range(state.Ap_layout.regs());
-    state.Bp_regs = state.ra.alloc_range(state.Bp_layout.regs());
+    auto needsPFRegs = [](const MatrixAddressingStrategy &as) {
+        return as.prefetch && !as.newDP;
+    };
+    if (state.Ap_layout.valid() && needsPFRegs(state.Ap_layout.addressingStrategy()))
+        state.Ap_regs = state.ra.alloc_range(state.Ap_layout.regs());
+    if (state.Bp_layout.valid() && needsPFRegs(state.Bp_layout.addressingStrategy()))
+        state.Bp_regs = state.ra.alloc_range(state.Bp_layout.regs());
 
     // Allocate registers for A/B quantization parameters.
     state.A_offsetRegs = state.ra.alloc_range(state.A_offsetLayout.regs());

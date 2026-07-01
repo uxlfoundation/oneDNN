@@ -81,7 +81,7 @@ void Generator<hw>::adjustSubblockAddrs(const RegisterLayout &sublayout, const v
             auto RegisterBlock::* nh = memCM ? &RegisterBlock::nc : &RegisterBlock::nr;
             bool remW = memCM ? subblock.remainderR : subblock.remainderC;
             bool remH = memCM ? subblock.remainderC : subblock.remainderR;
-            subblock.getBlock2DWH(bw, bh, bcount, atype);
+            subblock.getBlock2DWH(bw, bh, bcount, atype, astrategy.prefetch);
 
             if (!astrategy.address2D) {
                 if (subblock.*nw != block.*nw || subblock.count != block.count) {
@@ -96,17 +96,17 @@ void Generator<hw>::adjustSubblockAddrs(const RegisterLayout &sublayout, const v
                 }
             }
             if (subaddr.isValid())
-                updateBlock2DSizes(subaddr[0], subblock, block, atype);
+                updateBlock2DSizes(subaddr[0], subblock, block, atype, astrategy.prefetch);
         }
     }
 }
 
 // Update block 2D width/height/count parameters as needed after cloning an address register.
 template <HW hw>
-void Generator<hw>::updateBlock2DSizes(GRF addr, const RegisterBlock &dst, const RegisterBlock &src, const MatrixAddressing &atype)
+void Generator<hw>::updateBlock2DSizes(GRF addr, const RegisterBlock &dst, const RegisterBlock &src, const MatrixAddressing &atype, bool prefetch)
 {
     int bw, bh, bcount;
-    dst.getBlock2DWH(bw, bh, bcount, atype);
+    dst.getBlock2DWH(bw, bh, bcount, atype, prefetch);
 
     if (dst.nr != src.nr || dst.nc != src.nc || dst.count != src.count)
         mov(1, addr.ud(7), (bw - 1) | ((bh - 1) << 8) | ((bcount - 1) << 16));

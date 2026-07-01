@@ -36,13 +36,26 @@ void Generator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProblem &problem
     bool doA = strategy.l3PrefetchA;
     bool doB = strategy.l3PrefetchB;
 
+    // L3 prefetch targets global memory. When SLM copies are active,
+    // problem.A/B have been replaced with SLM layouts; use the saved
+    // original global layouts instead. Check strategy.A/B.base rather
+    // than strategy.slmA/B, as the latter is true even before SLM setup
+    // has run (e.g. during warmup).
+    bool slmActiveA = (strategy.A.base.getModel() == AddressModel::ModelSLM);
+    bool slmActiveB = (strategy.B.base.getModel() == AddressModel::ModelSLM);
+    auto globalA = slmActiveA ? state.Ai : problem.A;
+    auto globalB = slmActiveB ? state.Bi : problem.B;
+
     auto &gidMN = state.groupIDMN;
     auto gcMN = state.inputs.groupCountMN;
     Subregister nextGroupID;
 
     if (nextWave) {
         nextGroupID = state.ra.alloc_sub<uint32_t>();
-        add(1, nextGroupID, gidMN, state.inputs.groupStride);
+        if (strategy.persistentLoop())
+            add(1, nextGroupID, gidMN, state.inputs.groupStride);
+        else
+            add(1, nextGroupID, gidMN, 1);
     } else
         nextGroupID = gidMN;
 
@@ -78,8 +91,8 @@ void Generator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProblem &problem
     if (doA) mulConstant(1, nextI0, state.nextGroupIDM, strategy.wgTile(LoopM));
     if (doB) mulConstant(1, nextJ0, state.nextGroupIDN, strategy.wgTile(LoopN));
 
-    auto coopSplitA = naturalSplitA(problem.A.layout);
-    auto coopSplitB = naturalSplitB(problem.B.layout);
+    auto coopSplitA = naturalSplitA(globalA.layout);
+    auto coopSplitB = naturalSplitB(globalB.layout);
 
     auto effApL3 = state.inputs.A;
     auto effBpL3 = state.inputs.B;
@@ -95,28 +108,28 @@ void Generator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProblem &problem
     int ma_prefetchL3, ka_prefetchL3;
     int kb_prefetchL3, nb_prefetchL3;
 
-    if (doA) coopSplit(true,  ma_prefetchL3, ka_prefetchL3, strategy.unroll[LoopM], strategy.ka_prefetchL3, strategy.wgTile(LoopM), coopSplitA, problem.A, strategy);
-    if (doB) coopSplit(false, kb_prefetchL3, nb_prefetchL3, strategy.kb_prefetchL3, strategy.unroll[LoopN], strategy.wgTile(LoopN), coopSplitB, problem.B, strategy);
+    if (doA) coopSplit(true,  ma_prefetchL3, ka_prefetchL3, strategy.unroll[LoopM], strategy.ka_prefetchL3, strategy.wgTile(LoopM), coopSplitA, globalA, strategy);
+    if (doB) coopSplit(false, kb_prefetchL3, nb_prefetchL3, strategy.kb_prefetchL3, strategy.unroll[LoopN], strategy.wgTile(LoopN), coopSplitB, globalB, strategy);
 
     std::swap(state.effCoopA, coopSplitA);  /* Temporarily override A/B splitting */
     std::swap(state.effCoopB, coopSplitB);
 
-    if (doA) gemmApplyWorkshareOffset(true,  effApL3, state.inputs.A, Apl3_params, problem.A, strategy.AB_prefetchL3, ma_prefetchL3, ka_prefetchL3, problem, strategy, state);
-    if (doB) gemmApplyWorkshareOffset(false, effBpL3, state.inputs.B, Bpl3_params, problem.B, strategy.AB_prefetchL3, kb_prefetchL3, nb_prefetchL3, problem, strategy, state);
+    if (doA) gemmApplyWorkshareOffset(true,  effApL3, state.inputs.A, Apl3_params, globalA, strategy.AB_prefetchL3, ma_prefetchL3, ka_prefetchL3, problem, strategy, state);
+    if (doB) gemmApplyWorkshareOffset(false, effBpL3, state.inputs.B, Bpl3_params, globalB, strategy.AB_prefetchL3, kb_prefetchL3, nb_prefetchL3, problem, strategy, state);
 
     std::swap(state.effCoopA, coopSplitA);
     std::swap(state.effCoopB, coopSplitB); /* ... and restore */
 
     if (!strategy.AB_prefetchL3.address2D) {
-        if (doA) gemmOffsetAm(nextI0, effApL3, problem.A, problem, strategy, state);
-        if (doB) gemmOffsetBn(nextJ0, effBpL3, problem.B, problem, strategy, state);
+        if (doA) gemmOffsetAm(nextI0, effApL3, globalA, problem, strategy, state);
+        if (doB) gemmOffsetBn(nextJ0, effBpL3, globalB, problem, strategy, state);
     }
 
     if (strategy.kParallelLocal) stub();
 
     if (doA && state.Apl3_layout.empty()) {
         state.flagL3PFA = state.raVFlag.alloc();
-        state.Apl3_layout = RegisterLayout(hw, Ta_ext, ma_prefetchL3, ka_prefetchL3, problem.A, strategy.AB_prefetchL3);
+        state.Apl3_layout = RegisterLayout(hw, Ta_ext, ma_prefetchL3, ka_prefetchL3, globalA, strategy.AB_prefetchL3);
         for (auto &block: state.Apl3_layout)
             block.flag[0] = state.flagL3PFA;
         allocAddrRegs(state.Apl3_addrs, state.Apl3_layout, state);
@@ -124,7 +137,7 @@ void Generator<hw>::gemmInitL3Prefetch(bool nextWave, const GEMMProblem &problem
 
     if (doB && state.Bpl3_layout.empty()) {
         state.flagL3PFB = state.raVFlag.alloc();
-        state.Bpl3_layout = RegisterLayout(hw, Tb_ext, kb_prefetchL3, nb_prefetchL3, problem.B, strategy.AB_prefetchL3);
+        state.Bpl3_layout = RegisterLayout(hw, Tb_ext, kb_prefetchL3, nb_prefetchL3, globalB, strategy.AB_prefetchL3);
         for (auto &block: state.Bpl3_layout)
             block.flag[0] = state.flagL3PFB;
         allocAddrRegs(state.Bpl3_addrs, state.Bpl3_layout, state);

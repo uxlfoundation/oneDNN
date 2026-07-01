@@ -293,7 +293,7 @@ void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const
             // Assemble some information.
             bool memCM = isColMajor(atype.layout);
             int bw, bh, bcount, multiX;
-            block.getBlock2DWH(bw, bh, bcount, atype, &multiX);
+            block.getBlock2DWH(bw, bh, bcount, atype, astrategy.prefetch, &multiX);
 
             auto iremR = params.remR, iremC = params.remC;
             if (!block.remainderR) iremR.invalidate();
@@ -526,7 +526,7 @@ void Generator<hw>::setupAddrRel(const GRFRange &addrDst, const GRFRange &addrSr
     }
 
     if (isBlock2D(astrategy.accessType))
-        updateBlock2DSizes(addrDst, blockDst, blockSrc, atype);
+        updateBlock2DSizes(addrDst, blockDst, blockSrc, atype, astrategy.prefetch);
 }
 
 static inline int findBaseBlock(const RegisterBlock &block, const RegisterLayout &layout, int start, int end,
@@ -805,7 +805,7 @@ void Generator<hw>::setAddrRemainder(Type T, const GRFRange &addr, const Registe
     auto &remW = memCM ? thisRemR : thisRemC;
     auto &remH = memCM ? thisRemC : thisRemR;
     int bw, bh, bcount, multiX;
-    block.getBlock2DWH(bw, bh, bcount, atype, &multiX);
+    block.getBlock2DWH(bw, bh, bcount, atype, astrategy.prefetch, &multiX);
 
     if (!block.remainderR)                   thisRemR.invalidate();
     if (!block.remainderC)                   thisRemC.invalidate();

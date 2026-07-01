@@ -121,7 +121,7 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
         case AccessType::Block2DTranspose:
         case AccessType::Block2DVNNI: {
             int w = 0, h = 0, count = 0;
-            block.getBlock2DWH(w, h, count, atype);
+            block.getBlock2DWH(w, h, count, atype, astrategy.prefetch);
             auto spec = block_2d(getDataSizeLSC(block.ebytes, false), w, h, count) | astrategy.cachingR;
             if (astrategy.accessType == AccessType::Block2DTranspose) spec |= transpose;
             if (astrategy.accessType == AccessType::Block2DVNNI)      spec |= vnni;
@@ -221,7 +221,7 @@ void Generator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlock &block,
         case AccessType::Block2DTranspose:
         case AccessType::Block2DVNNI: {
             int w = 0, h = 0, count = 0;
-            block.getBlock2DWH(w, h, count, atype);
+            block.getBlock2DWH(w, h, count, atype, astrategy.prefetch);
             auto spec = block_2d(getDataSizeLSC(block.ebytes, false), w, h, count) | astrategy.cachingW;
             if (astrategy.accessType == AccessType::Block2DTranspose) spec |= transpose;
             if (astrategy.accessType == AccessType::Block2DVNNI)      spec |= vnni;

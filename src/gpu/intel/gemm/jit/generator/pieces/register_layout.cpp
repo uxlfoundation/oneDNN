@@ -27,6 +27,10 @@ using namespace ngen;
 using namespace ngen::utils;
 using std::vector;
 
+namespace SendSpec {
+int MaxBlock2DWidthBytes(ngen::HW hw, bool prefetch) { return (hw == HW::Xe3p && prefetch) ? 256 : 64; }
+} // namespace SendSpec
+
 RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
                              bool remainderR_, bool remainderC_, bool writable_, RemainderOptions remOpts,
                              int maxRBlock, int maxCBlock)
@@ -610,7 +614,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
         case AccessType::Block2DTranspose:
         case AccessType::Block2DVNNI: {
             // bytes * array length <= 8
-            // width * array length <= 64 bytes
+            // width * array length <= 64 bytes (or == 256 bytes on Xe3p)
             //  => width <= 1 GRF
             // height <= 32 (load) 8 (store)
             // array length = 1 for store, transpose
@@ -643,7 +647,9 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                     maxYBlock = 8;
                 } else {
                     Tblock = Type::u32;
-                    maxW = 8;
+                    maxW = (hw == HW::Xe3p) ? 16 : 8;
+                    // 1-8, 16 supported on Xe3p
+                    if (maxXBlock < (maxW * Tblock) / T) maxW = 8;
                 }
                 maxXBlock = std::min(maxXBlock, (maxW * Tblock) / T);
             } else if (vnni) {
@@ -664,8 +670,13 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             auto X_logical = X;
             X = (X * T) / Tblock;
 
-            // Carve out a maximal allowed block size.
-            xblock = std::min(X, 64 / Tblock);
+            // Carve out a maximal allowed block size - up to 64 bytes, or exactly 256 byte prefetches
+            int maxBlockBytes = SendSpec::MaxBlock2DWidthBytes(hw, prefetch);
+            if (X * Tblock < maxBlockBytes) {
+                // Max-size prefetches only, or fall back to regular block size limitations
+                maxBlockBytes =  SendSpec::MaxBlock2DWidthBytes(hw, false);
+            }
+            xblock = std::min(X, maxBlockBytes / Tblock);
             xblock = std::max(xblock, 4 / Tblock);
             int yblockLimit = writable ? 8 : 32;
 
@@ -1080,7 +1091,7 @@ bool RegisterBlock::pseudoblockUseChannelScattered(const MatrixAddressing &atype
     return (astrategy.base.getModel() == ModelSLM) && (ebytes == 4) && !astrategy.atomic;
 }
 
-void RegisterBlock::getBlock2DWH(int &w, int &h, int &count, const MatrixAddressing &atype, int *outMultiX) const
+void RegisterBlock::getBlock2DWH(int &w, int &h, int &count, const MatrixAddressing &atype, bool prefetch, int *outMultiX) const
 {
     int multiX = 1;
     bool transpose = (isColMajor(atype.layout) != colMajor);
@@ -1088,7 +1099,12 @@ void RegisterBlock::getBlock2DWH(int &w, int &h, int &count, const MatrixAddress
     h = isColMajor(atype.layout) ? nc : nr;
     w = (w * extra) / (ebytes * 8);     /* extra: #bits in logical data type */
     if (isPacked(atype.layout)) {
-        int maxW = 64 / ebytes;
+        // prefetch: allow max-size or regular max width fallback
+        int maxWBytes = SendSpec::MaxBlock2DWidthBytes(hw, prefetch);
+        if (w * ebytes < maxWBytes) {
+            maxWBytes = SendSpec::MaxBlock2DWidthBytes(hw, false);
+        }
+        int maxW = maxWBytes / ebytes;
         multiX = div_up(w, maxW);
         w /= multiX;
         h *= multiX;

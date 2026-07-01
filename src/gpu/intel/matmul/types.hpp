@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef GPU_INTEL_MATMUL_CONFIG_HPP
-#define GPU_INTEL_MATMUL_CONFIG_HPP
+#ifndef GPU_INTEL_MATMUL_TYPES_HPP
+#define GPU_INTEL_MATMUL_TYPES_HPP
 
 #include "gpu/gpu_matmul_pd.hpp"
 

@@ -39,7 +39,9 @@ void GEMMProblem::transpose()
     std::swap(asPtrDims, bsPtrDims);
     std::swap(aqGroupM, bqGroupN);
     std::swap(aqGroupK, bqGroupK);
+    std::swap(cqGroupM, cqGroupN);
     std::swap(sumA, sumB);
+    std::swap(hasGroupSumsA, hasGroupSumsB);
     postOps.transpose();
     for (auto &bsrc: binary)
         bsrc.transpose();

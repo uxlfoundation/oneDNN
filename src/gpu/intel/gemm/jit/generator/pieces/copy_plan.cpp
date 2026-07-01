@@ -3012,7 +3012,7 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
 
             auto zippable = [&](const CopyOperand &o1, const CopyOperand &o2, bool zip2D = false, bool zipImm = false) {
                 if (o1.kind != o2.kind) return false;
-                if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || (zipImm && !(hw >= ngen::HW::Xe3p)));
+                if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || zipImm);
                 if (o1.kind != CopyOperand::GRF) return true;
                 if (o1.type != o2.type || o1.stride != o2.stride || o1.grf != o2.grf) return false;
                 if (o1.temp != o2.temp) return false;
@@ -3036,7 +3036,9 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
 
             CopyOperand zippedSrc1;
             if (zip && i1.src1.kind == CopyOperand::Immediate && i1.src1.value != i2.src1.value) {
-                zippedSrc1 = zipImmediates(i1.src1, i2.src1);
+                auto offset = std::min(i1.dst.offset, i2.dst.offset);
+                auto stride = (offset * getBits(i1.dst.type)) % 128 ? 0 : i1.dst.stride >> 1;
+                zippedSrc1 = zipImmediates(i1.src1, i2.src1, stride);
                 zip = zip && zippedSrc1;
             }
 
@@ -3070,13 +3072,46 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
 }
 
 // Zip small immediates, converting to <0;2,1>-regioned resource access.
-CopyOperand CopyPlan::zipImmediates(const CopyOperand &o1, const CopyOperand &o2)
+CopyOperand CopyPlan::zipImmediates(const CopyOperand &o1, const CopyOperand &o2, uint8_t stride)
 {
-    if (!isInt(o1.type) || o1.type != o2.type || !isW(o1.type))
+    if (o1.type != o2.type)
         return CopyOperand{};
 
-    auto rkind = CopyResource::makeConstant32(((o2.value & 0xFFFF) << 16)
-                                             | (o1.value & 0xFFFF));
+    if (o1.type == DataType::uv || o1.type == DataType::v) {
+        if (stride <= 0 || stride >= 8)
+            return CopyOperand{};
+        // alternate vector entries for stride = 1, alternate consecutive
+        // pairs of vector entries for stride = 2, etc.
+        uint32_t mask = (1 << (4 * stride)) - 1;
+        for (auto bits = 8 * stride; bits < 32; bits <<= 1)
+            mask |= mask << bits;
+        uint32_t value = (o1.value & mask) | (o2.value & ~mask);
+        return o1.type == DataType::uv ? Immediate::uv(value) : Immediate::v(value);
+    }
+
+    if (!isW(o1.type))
+        return CopyOperand{};
+
+    auto v1 = (uint16_t)o1.value;
+    auto v2 = (uint16_t)o2.value;
+
+    if (stride > 0 && stride < 8) {
+        auto pattern = (v1 & 0xF) | ((v2 & 0xF) << (4 * stride));
+        for (uint8_t i = 1; i < stride; i += 1)
+            pattern |= pattern << (4 * i);
+        auto bits = 8 * stride;
+        for (; bits < 32; bits <<= 1)
+            pattern |= pattern << bits;
+        if (v1 <= 0xF && v2 <= 0xF)
+            return ngen::Immediate::uv(pattern);
+        else if (o1.type == DataType::w && v1 + 8 <= 0xF && v2 + 8 <= 0xF)
+            return ngen::Immediate::v(pattern);
+    }
+
+    if (hw >= HW::Xe3p)
+        return CopyOperand();
+
+    auto rkind = CopyResource::makeConstant32((v2 << 16) | v1);
     auto op = getResource(rkind);
     op.vs = 0;
     op.width = 2;

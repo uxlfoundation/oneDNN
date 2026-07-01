@@ -46,32 +46,6 @@ namespace {
 
 using namespace gemmstone;
 
-status_t validate_microkernel(
-        micro::Package &package, const char *kernel_name) {
-    switch (package.status) {
-        case micro::Package::Status::Pending:
-            VCHECK_SDPA_COND(false,
-                    "%s microkernel package was not finalized before "
-                    "validation.",
-                    kernel_name);
-            break;
-        case micro::Package::Status::Success: return status::success;
-        case micro::Package::Status::UncertainClobbers:
-            VCHECK_SDPA_COND(false,
-                    "%s microkernel has uncertain register clobbers and is "
-                    "not supported by SDPA.",
-                    kernel_name);
-            break;
-        case micro::Package::Status::UnsupportedHW:
-            VCHECK_SDPA_COND(false,
-                    "%s microkernel package is incompatible with the current "
-                    "hardware.",
-                    kernel_name);
-            break;
-    }
-    return status::runtime_error;
-}
-
 /// Returns true if a common quantization value is used for each slice of the
 /// tensor operation. For 4D case it's when the mask's two first bits are on
 /// and two last bits are off.
@@ -1229,7 +1203,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
                 "gemm_kq microkernel generation failure with message: %s",
                 ex.what());
     }
-    CHECK(validate_microkernel(gemm_kq, "gemm_kq"));
+    CHECK(compute::validate_microkernel(gemm_kq, "gemm_kq"));
 
     /* Ask microkernel provider for microkernel */
     auto vs_strat_override = [&](gemmstone::GEMMStrategy &strat) {
@@ -1268,7 +1242,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
                 "gemm_vs microkernel generation failure with message: %s",
                 ex.what());
     }
-    CHECK(validate_microkernel(gemm_vs, "gemm_vs"));
+    CHECK(compute::validate_microkernel(gemm_vs, "gemm_vs"));
 
     VDEBUGINFO(4, primitive, sdpa, "kq_gemm: %s, vs_gemm: %s,",
             problem_kq.toString().c_str(), problem_vs.toString().c_str());
@@ -1413,7 +1387,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
                 "gemm_kq microkernel generation failure with message: %s",
                 ex.what());
     }
-    CHECK(validate_microkernel(gemm_kq, "gemm_kq"));
+    CHECK(compute::validate_microkernel(gemm_kq, "gemm_kq"));
 
     try {
         if (use_systolic_ukernel) {
@@ -1432,7 +1406,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
                 "gemm_vs microkernel generation failure with message: %s",
                 ex.what());
     }
-    CHECK(validate_microkernel(gemm_vs, "gemm_vs"));
+    CHECK(compute::validate_microkernel(gemm_vs, "gemm_vs"));
 
     VDEBUGINFO(4, primitive, sdpa,
             "kq_gemm: %s, vs_gemm: %s, vtdA_gemm: %s, ktq_gemm: %s, qdSt: %s\n",
@@ -1465,7 +1439,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
                 "gemm_vtdA microkernel generation failure with message: %s",
                 ex.what());
     }
-    CHECK(validate_microkernel(gemm_vtdA, "gemm_vtdA"));
+    CHECK(compute::validate_microkernel(gemm_vtdA, "gemm_vtdA"));
 
     shimOptions.microkernelID++;
     shimOptions.decorator = "vtdA";
@@ -1482,7 +1456,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
                 "gemm_ktq microkernel generation failure with message: %s",
                 ex.what());
     }
-    CHECK(validate_microkernel(gemm_ktq, "gemm_ktq"));
+    CHECK(compute::validate_microkernel(gemm_ktq, "gemm_ktq"));
 
     shimOptions.microkernelID++;
     shimOptions.decorator = "ktq";
@@ -1499,7 +1473,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
                 "gemm_qdSt microkernel generation failure with message: %s",
                 ex.what());
     }
-    CHECK(validate_microkernel(gemm_qdSt, "gemm_qdSt"));
+    CHECK(compute::validate_microkernel(gemm_qdSt, "gemm_qdSt"));
 
     shimOptions.microkernelID++;
     shimOptions.decorator = "qdSt";

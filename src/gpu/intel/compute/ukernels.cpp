@@ -16,6 +16,9 @@
 
 #include "gpu/intel/compute/ukernels.hpp"
 
+#include "common/verbose.hpp"
+#include "gemmstone/microkernel/package.hpp"
+
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/utils.hpp"
@@ -88,6 +91,27 @@ bool mayiuse_microkernels(const engine_t *engine) {
     auto it = engine_microkernel_map.find(engine->engine_id());
     if (it != std::end(engine_microkernel_map)) return it->second;
     return engine_microkernel_map[engine->engine_id()] = mayiuse_mk(engine);
+}
+
+status_t validate_microkernel(const gemmstone::microkernel::Package &package,
+        const char *kernel_name) {
+    using Status = gemmstone::microkernel::Package::Status;
+    const char *reason = nullptr;
+    switch (package.status) {
+        case Status::Success: return status::success;
+        case Status::Pending:
+            reason = "was not finalized before validation";
+            break;
+        case Status::UncertainClobbers:
+            reason = "has uncertain register clobbers and is not supported";
+            break;
+        case Status::UnsupportedHW:
+            reason = "is incompatible with the current hardware";
+            break;
+    }
+    VCONDCHECK(primitive, create, check, gpu, reason == nullptr,
+            status::unimplemented, "%s microkernel %s", kernel_name, reason);
+    return status::runtime_error;
 }
 
 } // namespace compute

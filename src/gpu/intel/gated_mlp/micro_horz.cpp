@@ -270,6 +270,9 @@ status_t micro_horz_t::pd_t::init_microkernels(
                 "gemm_gateup microkernel generation failed with message: %s",
                 e.what());
     }
+
+    CHECK(compute::validate_microkernel(gemm_gate_up_pkg_, "gemm_gateup"));
+
     return status::success;
 }
 

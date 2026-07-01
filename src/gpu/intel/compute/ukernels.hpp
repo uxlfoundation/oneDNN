@@ -20,6 +20,12 @@
 #include "common/engine.hpp"
 #include "gpu/intel/engine.hpp"
 
+namespace gemmstone {
+namespace microkernel {
+struct Package; // NOLINT(readability-identifier-naming)
+}
+} // namespace gemmstone
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -28,6 +34,11 @@ namespace compute {
 
 extern const char *cl_microkernels_check_kernel_code;
 bool mayiuse_microkernels(const engine_t *engine);
+
+// Validates a finalized microkernel package, emitting a verbose message and
+// returning a non-success status if it cannot be used.
+status_t validate_microkernel(const gemmstone::microkernel::Package &package,
+        const char *kernel_name);
 
 } // namespace compute
 } // namespace intel

@@ -32,10 +32,6 @@
 #include <stdexcept>
 #include <string>
 
-#define VCHECK_MATMUL(cond, msg, ...) \
-    VCONDCHECK(primitive, create, check, matmul, (cond), \
-            status::unimplemented, msg, ##__VA_ARGS__);
-
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -272,6 +268,8 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
                     ex.what());
         }
     }
+
+    CHECK(compute::validate_microkernel(gemm_, "grouped_gemm"));
 
     /* Generate microkernel shims */
     ShimOptions shimOptions;

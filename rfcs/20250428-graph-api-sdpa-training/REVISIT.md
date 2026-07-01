@@ -139,3 +139,9 @@ Specific calculation steps and overhead:
     implementation will be officially introduced as the standard for SDPA
     training. Get rid of the old pattern as early as possible as frameworks are
     referring to this.
+
+---
+
+### 6. Conclusion
+
+Decide to adopt the GPU implementation.

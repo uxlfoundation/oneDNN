@@ -110,6 +110,9 @@ int max_threads_per_eu(const ngen::Product product) {
 } // namespace
 
 int hw_t::threads_per_eu(int regs) const {
+    // CRI has an exception: 256 GRF/thread is restricted to 4 threads/EU due to lack of accumulators
+    if (product().family == ngen::ProductFamily::CRI && regs == 256) return 4;
+
     int max_threads = max_threads_per_eu(product());
     return std::min(max_threads, grf_per_eu(product()) / regs);
 }

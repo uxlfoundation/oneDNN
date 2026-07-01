@@ -8,6 +8,20 @@
 --attr-fpmath=bf16:true
 --batch=shapes_2d
 
+# Int8 grouped-quantized attrs in 2D, N-tail regression tests (per-MN comp).
+# Per-K grouped wei zero-points activate the AVX2 per-MN compensation JIT
+# kernel. N=3,8,15 exercise the N-tail (sub-register) path that was fixed.
+--reset
+--skip-impl=ref
+--dt=u8:s8:f32
+--stag=ab
+--wtag=ab
+--dtag=ab
+--attr-zero-points=src:common:1+wei:per_ocic:s8:32x1
+32x64:64x3
+32x64:64x8
+32x64:64x15
+
 --reset
 --skip-impl=ref
 --wtag=any,ab,ba
@@ -400,3 +414,30 @@
 --attr-scales=wei:common:2,wei:per_oc,src:common:0.25+wei:per_oc+dst:common:4
 3x30x256:3x256x64
 2x10x97:2x97x64
+
+## Batched (3D) per-tensor scales/zero-points
+--reset
+--dt=bf16:s8:bf16
+--wtag=any,abc,acb
+--attr-scales=wei:per_tensor:bf16:128x1
+--attr-zero-points=,wei:per_tensor:s8:128x1
+--attr-fpmath=bf16:true
+6x5x256:6x256x64
+9x8x384:9x384x64
+
+## Batched (4D) per-tensor scales/zero-points
+--reset
+--dt=bf16:s8:bf16
+--wtag=any,abcd,abdc
+--attr-scales=wei:per_tensor:bf16:128x1
+--attr-zero-points=,wei:per_tensor:s8:128x1
+--attr-fpmath=bf16:true
+2x3x5x256:2x3x256x64
+2x4x6x384:2x4x384x64
+
+## Regression test(bf16 + int4 ZP + 3D shape):
+--reset
+ --dt=bf16:s8:f32
+ --attr-zero-points=wei:per_tensor:s8:64x1
+ --attr-fpmath=bf16:true
+ 4x208x512:4x512x748

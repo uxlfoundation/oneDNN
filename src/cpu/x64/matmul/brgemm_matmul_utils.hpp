@@ -244,6 +244,11 @@ struct brgemm_matmul_conf_t {
     bool is_int4_weights = false;
     bool is_f4_via_convert = false;
     bool is_tf32 = false;
+    bool with_int8_grouped_quantization = false;
+    // Enables the driver-side per-(M, N) f32 compensation tile that captures
+    // the symmetric src/wei zero-point + 128-shift correction in the grouped
+    // int8 quantization path. Mirrors brgemm_desc_t::with_per_mn_compensation.
+    bool with_per_mn_compensation = false;
     bool req_wei_vnni_downconvert = false;
     bool is_runtime_M = false;
     bool is_runtime_N = false;
@@ -265,6 +270,13 @@ struct brgemm_matmul_conf_t {
     dim_t wei_scales_k_gsize = 0;
     data_type_t wei_scales_dt = data_type::undef;
 
+    // Src scales per-K
+    bool is_src_scale_per_k = false;
+    bool is_src_scale_per_m = false;
+    dim_t src_scales_k_gsize = 0;
+    data_type_t src_scales_dt = data_type::undef;
+    size_t src_scales_dt_sz = 0;
+
     // Zero points
     bool has_zero_point_a;
     bool has_zero_point_b;
@@ -275,11 +287,24 @@ struct brgemm_matmul_conf_t {
 
     data_type_t src_zp_dt = data_type::undef;
 
+    // Per-K src zero-points: stride between K-group slots (in
+    // elements). Used by the per-mn compensation src ZP gather.
+    bool is_src_zp_per_k = false;
+    bool is_src_zp_per_m = false;
+    dim_t src_zp_k_gsize = 0;
+
     dim_t wei_zp_k_gsize = 0;
     bool is_wei_zp_per_k = false;
     bool is_wei_zp_per_n = false;
     bool is_wei_zp_common = false;
     data_type_t wei_zp_dt = data_type::undef;
+
+    // Batched (3D/4D) per-batch scales/ZP plane stride (in elements).
+    // Populated when the scales/ZP mask carries batch bits.
+    dim_t src_scales_batch_stride = 0;
+    dim_t src_zp_batch_stride = 0;
+    dim_t wei_scales_batch_stride = 0;
+    dim_t wei_zp_batch_stride = 0;
 
     dim_t zp_a_comp_shift_n;
     dim_t zp_a_comp_elems_per_thr;
@@ -330,6 +355,10 @@ struct brgemm_matmul_conf_utils_t {
         if (bgmmc.is_bf16_with_int_wei) return true;
         if (bgmmc.is_f16_with_int_wei) return true;
         if (bgmmc.is_f32_with_int_wei) return true;
+        if (bgmmc.with_int8_grouped_quantization
+                && (bgmmc.is_int4_weights
+                        || bgmmc.wei_zp_type != brgemm_broadcast_t::none))
+            return true;
         if (bgmmc.apply_scales_in_buffer_b) return true;
         if (bgmmc.is_gemv) return false;
 
@@ -425,6 +454,10 @@ struct brgemm_matmul_conf_utils_t {
 
     inline bool is_f32_with_int_wei() const { return f32_with_int_wei_dt; }
 
+    inline bool with_int8_grouped_quantization() const {
+        return int8_grouped_quantization_dt;
+    }
+
     inline bool with_weights_decompression() const {
         return !utils::one_of(bgmmc.src_dt, data_type::s8, data_type::u8,
                        data_type::s4, data_type::u4)
@@ -470,7 +503,7 @@ private:
             int8_dt, bf32_dt, tf32_dt;
     const bool weights_decompression_support, bf16_with_int_wei_dt, f32_f16_dt,
             f32_bf16_dt, f16_with_int_wei_dt, f32_with_int_wei_dt, bf16_fp8_dt,
-            f16_fp8_dt;
+            f16_fp8_dt, int8_grouped_quantization_dt;
     const bool A_any_layout;
     const bool B_any_layout;
     const bool C_any_layout;

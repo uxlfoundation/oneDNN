@@ -31,6 +31,7 @@
 #include "cpu/x64/jit_brgemm_post_ops.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_copy_utils.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
+#include "cpu/x64/matmul/jit_brgemm_matmul_per_mn_comp.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -91,6 +92,11 @@ private:
             const char *A_data_batch_ptr, const char *B_data_batch_ptr,
             int ithr, int b_idx, int m_blk_idx, int n_blk_idx, int k_blk_idx,
             bool do_init, int &prev_ker_idx, bool prefetch) const;
+    void fill_per_mn_compensation(const brg_matmul_exec_ctx_t &brgmm_ctx,
+            int ithr, int b_idx, int m_blk_idx, int n_blk_idx,
+            const char *A_data_batch_ptr, const char *B_data_batch_ptr,
+            int m_kernel_size, int n_kernel_size, int k_blk_idx,
+            bool is_tail) const;
 
     bool determine_prefetch(const int mc, const int m_end, const int nc,
             const int n_end, const brgemm_matmul_conf_t &bgmmc,
@@ -122,6 +128,9 @@ private:
     std::unique_ptr<cpu_accumulator_1d_t<data_type::s32>> acc_ker_s32_;
     std::unique_ptr<jit_avx512_sparse_decompress_kernel_t>
             sparse_decompress_kernel_;
+
+    // Per-(M, N) compensation kernel
+    std::unique_ptr<per_mn_comp_kernel_t> per_mn_comp_kernel_;
 
     using reducer_t = x64::jit_brgemm_kernel_diff_bias_t<
             typename cpu_isa_traits_t<isa>::Vmm>;

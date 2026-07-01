@@ -398,8 +398,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
 
     if (brg.with_wei_scales) {
         reg_aux_wei_scales.restore();
-        const bool is_single_scale = !brg.is_oc_scale;
-        if (!is_single_scale) {
+        if (!brg.is_single_wei_scale) {
             assert(brg.dt_wei_scales == data_type::f32);
             lea(reg_aux_wei_scales,
                     ptr[reg_aux_wei_scales + reg_aux_N * sizeof(float)]);
@@ -420,7 +419,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
             const Vmm vmm_wei_scales = vmm_tmp(0);
             const auto addr
                     = ptr[reg_aux_wei_scales + wei_scales_offset(n, v_i)];
-            if (is_single_scale) {
+            if (brg.is_single_wei_scale) {
                 if (has_ptr_b_support) {
                     // No need to check for mask support separately, as masks
                     // are supported with the same isa that introduced address

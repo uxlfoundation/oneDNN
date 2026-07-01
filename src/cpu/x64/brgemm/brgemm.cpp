@@ -166,6 +166,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.a_zp_compensations = post_ops_data.a_zp_compensations;
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
+    brgemm_p.ptr_per_mn_compensation = post_ops_data.per_mn_compensation;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -210,6 +211,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.b_zp_compensations = post_ops_data.b_zp_compensations;
     brgemm_p.a_zp_values = post_ops_data.a_zp_values;
     brgemm_p.c_zp_values = post_ops_data.c_zp_values;
+    brgemm_p.ptr_per_mn_compensation = post_ops_data.per_mn_compensation;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -486,9 +488,13 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     const auto &src_scales = attr->scales_.get(DNNL_ARG_SRC);
     const auto &wei_scales = attr->scales_.get(DNNL_ARG_WEIGHTS);
     brg->with_src_scales = !src_scales.has_default_values();
+    if (brg->with_src_scales) brg->dt_src_scales = src_scales.get_data_type();
     brg->with_wei_scales
             = !brg->skip_wei_scales && !wei_scales.has_default_values();
-    if (brg->with_wei_scales) {
+
+    bool wei_scales_are_set = brg->is_single_wei_scale
+            || brg->is_per_n_wei_scales || brg->is_per_k_wei_scales;
+    if (brg->with_wei_scales && !wei_scales_are_set) {
         // Note. the current version supports only two different wei scales
         // types:
         //     1) common (mask = 0)
@@ -500,7 +506,11 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         // So if wei_scales.get_mask() > 0 (not common) it's assumed here that
         // scale type is per_n_dim_scale and driver which calls brgemm kernel
         // checked that mask has correct value for this case
-        brg->is_oc_scale = wei_scales.get_mask() > 0;
+
+        const auto &wei_scales_mask = wei_scales.get_mask();
+        brg->is_single_wei_scale = wei_scales_mask == 0;
+        brg->is_per_n_wei_scales = wei_scales_mask > 0;
+        brg->is_per_k_wei_scales = false;
         brg->dt_wei_scales = wei_scales.get_data_type();
     }
 
@@ -509,7 +519,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     const bool scales_ok = attr->scales_.has_default_values({DNNL_ARG_SRC,
                                    DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
             && IMPLICATION(!src_scales.has_default_values(),
-                    src_scales.get_mask() == 0)
+                    src_scales.get_mask() == 0 || brg->is_per_k_src_scales)
             && IMPLICATION(!dst_scales.has_default_values(),
                     dst_scales.get_mask() == 0);
     if (!scales_ok) return status::unimplemented;
@@ -521,7 +531,8 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         zp_type = brgemm_broadcast_t::none;
 
         const bool skip_zero_point
-                = mem_arg == DNNL_ARG_WEIGHTS && brg->skip_zp_b_compensation;
+                = (mem_arg == DNNL_ARG_WEIGHTS && brg->skip_zp_b_compensation)
+                || (mem_arg == DNNL_ARG_SRC && brg->skip_zp_a_compensation);
         if (skip_zero_point) return status::success;
 
         if (!zp.has_default_values(mem_arg)) {
@@ -828,8 +839,13 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(zp_type_c);
 
     CMP_BRGEMM_FIELD(skip_wei_scales);
-    CMP_BRGEMM_FIELD(is_oc_scale);
+    CMP_BRGEMM_FIELD(is_single_wei_scale);
+    CMP_BRGEMM_FIELD(is_per_n_wei_scales);
+    CMP_BRGEMM_FIELD(is_per_k_wei_scales);
     CMP_BRGEMM_FIELD(with_src_scales);
+    CMP_BRGEMM_FIELD(is_per_k_src_scales);
+    CMP_BRGEMM_FIELD(src_scale_m_stride);
+    CMP_BRGEMM_FIELD(dt_src_scales);
     CMP_BRGEMM_FIELD(with_wei_scales);
     CMP_BRGEMM_FIELD(with_dst_scales);
     CMP_BRGEMM_FIELD(dt_wei_scales);

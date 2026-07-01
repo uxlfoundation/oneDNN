@@ -133,7 +133,7 @@ __kernel void generic_reorder(__global SRC_DATA_T *restrict src,
         const int pad
                 = pad_d0 || pad_d1 || pad_d2 || pad_d3 || pad_d4 || pad_d5;
         if (!pad_sgid) {
-            SRC_DATA_T src_tmp = pad ? 0 : src[src_off];
+            SRC_DATA_T src_tmp = pad ? TO_SRC(0) : src[src_off];
             cache[cache_idx] = src_tmp;
         }
     }

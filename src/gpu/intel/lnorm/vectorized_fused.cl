@@ -122,7 +122,7 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
             VECT_FLOAT_T diff_gamma_vect = 0;
             VECT_FLOAT_T diff_beta_vect = 0;
             for (int n_idx = n_start; n_idx < n_end; n_idx++) {
-                const float mean_vect = mean[n_idx];
+                const float mean_vect = SKIP_MEAN ? 0 : mean[n_idx];
                 const float variance_vect = variance[n_idx];
                 const float inv_sqrt_variance = rsqrt(variance_vect + eps);
 
@@ -220,7 +220,7 @@ __kernel void vectorized_lnorm_bwd_fused(__global DATA_T *src,
     VECT_FLOAT_T v_src[SRC_BUF_SIZE];
     VECT_FLOAT_T v_diff_dst[SRC_BUF_SIZE];
 
-    const float mean_val = mean[s_off];
+    const float mean_val = SKIP_MEAN ? 0 : mean[s_off];
     const float inv_sqrt_variance = rsqrt(variance[s_off] + eps);
 
     for (off_t c = 0; c < SRC_BUF_SIZE; c++) {

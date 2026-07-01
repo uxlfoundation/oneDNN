@@ -289,6 +289,9 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         kb_load_masked = align_up(kb_load_masked, minOPCount);
     }
 
+    if (ka_load == 0 || kb_load == 0)
+        stub("Zero k-load granularity is invalid");
+
     // Systolic handling.
     if (systolic) {
         auto params = systolicParams(problem);

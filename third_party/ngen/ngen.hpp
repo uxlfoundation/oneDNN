@@ -2611,6 +2611,14 @@ void BinaryCodeGenerator<hw>::opDpas(Opcode op, DataType defaultType, const Inst
 {
     if (hw < HW::XeHP) unsupported();
 
+#ifdef NGEN_SAFE
+    auto dpasType = [&](const RegData &r) {
+        return r.getType() == DataType::invalid ? defaultType : r.getType();
+    };
+    if (!dpasSupported(product, dpasType(dst), dpasType(src0), dpasType(src1), dpasType(src2)))
+        unsupported();
+#endif
+
     Instruction12 i{};
     encodeDPAS<hw>(i, op, defaultType, mod | defaultModifier, sdepth, rcount, dst, src0, src1, src2);
     db(i, loc);

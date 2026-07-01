@@ -506,6 +506,71 @@ static inline constexpr14 DataType rawType(DataType dt) {
     }
 }
 
+// Validate a dpas operand precision combination against the per-architecture
+// systolic support matrix. Operands use dpas() order: dst, src0 = Acc,
+// src1 = A, src2 = B.
+static inline constexpr14 bool dpasSupported(const Product &product,
+        DataType dst, DataType src0, DataType src1, DataType src2)
+{
+    using DT = DataType;
+    if (!hasSystolic(product.family)) return false;
+
+    const Core hw = getCore(product.family);
+    if (hw < Core::XeHP) return false;
+
+    const bool a8 = (src1 == DT::ub || src1 == DT::b);
+    const bool b8 = (src2 == DT::ub || src2 == DT::b);
+    const bool a4 = (src1 == DT::u4 || src1 == DT::s4);
+    const bool b4 = (src2 == DT::u4 || src2 == DT::s4);
+    const bool a2 = (src1 == DT::u2 || src1 == DT::s2);
+    const bool b2 = (src2 == DT::u2 || src2 == DT::s2);
+    const bool s32Acc = (dst == DT::ud || dst == DT::d)
+                     && (src0 == DT::ud || src0 == DT::d);
+
+    // Integer: int8/int4/int2 in any combination; Xe3p reduced to int8xint8 or int4xint4.
+    if (s32Acc && (a8 || a4 || a2) && (b8 || b4 || b2)) {
+        if (hw == Core::Xe3p) return (a8 && b8) || (a4 && b4);
+        return true;
+    }
+
+    // bf16/fp16: A == B; f<-f on XeHP/XeHPG, bf/hf-typed out/acc on XeHPC and newer.
+    if ((src1 == DT::bf && src2 == DT::bf) || (src1 == DT::hf && src2 == DT::hf)) {
+        const DT t = src1;
+        const bool fOut = (dst == DT::f) && (src0 == DT::f);
+        const bool tOut = (dst == DT::f || dst == t) && (src0 == DT::f || src0 == t);
+        return (hw < Core::XeHPC) ? fOut : tOut;
+    }
+
+    // tf32: f <- f only; XeHPC and newer.
+    if (src1 == DT::tf32 && src2 == DT::tf32) {
+        if (!(dst == DT::f && src0 == DT::f)) return false;
+        return hw >= Core::XeHPC;
+    }
+
+    // fp8 (NVL-P / CRI only): A,B bf8/hf8, {f,bf} acc.
+    const bool aF8 = (src1 == DT::bf8 || src1 == DT::hf8);
+    const bool bF8 = (src2 == DT::bf8 || src2 == DT::hf8);
+    if (aF8 && bF8) {
+        if (hw != Core::Xe3p) return false;
+        if (!((dst == DT::f || dst == DT::bf) && (src0 == DT::f || src0 == DT::bf)))
+            return false;
+        return product.family == ProductFamily::NVLP
+            || product.family == ProductFamily::CRI;
+    }
+
+    // fp4 (CRI only): {f,bf} acc, e2m1 or e3m0. NVL-P has none.
+    const bool aF4 = (src1 == DT::e2m1 || src1 == DT::e3m0);
+    const bool bF4 = (src2 == DT::e2m1 || src2 == DT::e3m0);
+    if (aF4 && bF4) {
+        if (hw != Core::Xe3p) return false;
+        if (!((dst == DT::f || dst == DT::bf) && (src0 == DT::f || src0 == DT::bf)))
+            return false;
+        return product.family == ProductFamily::CRI;
+    }
+
+    return false;
+}
+
 // Math function codes.
 enum class MathFunction : uint8_t {
     inv   = 0x1,

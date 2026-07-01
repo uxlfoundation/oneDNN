@@ -123,10 +123,13 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                             static_cast<dnnl::memory::data_type>(
                                     scales_data_type));
                 } else { // per-group quantization
-                    // oneDNN only supports weights-decompressed matmul
-                    if (in_scales_indices != 1
-                            || op->get_kind() != op_kind::_matmul)
-                        continue;
+                    const bool matmul_allowed = in_scales_indices == 1
+                            && op->get_kind() == op_kind::_matmul;
+                    const bool mlp_allowed
+                            = impl::utils::one_of(in_scales_indices, size_t(33),
+                                      size_t(34), size_t(35))
+                            && op->get_kind() == op_kind::_gated_mlp;
+                    if (!matmul_allowed && !mlp_allowed) continue;
                     const auto &group_shape
                             = in_scales_op->get_attr<std::vector<int64_t>>(
                                     op_attr::group_shape);
@@ -164,10 +167,13 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                         ? in_zps_op->get_attr<int64_t>(op_attr::data_type)
                         : dnnl_s32;
                 if (qtype == "per_group") {
-                    // oneDNN only supports weights-decompressed matmul
-                    if (in_zps_indices != 1
-                            || op->get_kind() != op_kind::_matmul)
-                        break;
+                    const bool matmul_allowed = in_zps_indices == 1
+                            && op->get_kind() == op_kind::_matmul;
+                    const bool mlp_allowed
+                            = impl::utils::one_of(in_zps_indices, size_t(33),
+                                      size_t(34), size_t(35))
+                            && op->get_kind() == op_kind::_gated_mlp;
+                    if (!matmul_allowed && !mlp_allowed) break;
                     const auto &group_shape
                             = in_zps_op->get_attr<std::vector<int64_t>>(
                                     op_attr::group_shape);

@@ -82,6 +82,8 @@ status_t gemm_t::execute(const exec_ctx_t &ctx) const {
             key_nested, gemm_->pd()->scratchpad_registry());
     gemm_ctx.set_scratchpad_grantor(nested_grantor);
 
+    printf("===== GEMM: %s\n", pd()->info(ctx.stream()->engine()));
+
     status_t gemm_exec_status = gemm::gemm(gemm_)->execute(gemm_ctx);
     if (gemm_exec_status != status::success) return gemm_exec_status;
 

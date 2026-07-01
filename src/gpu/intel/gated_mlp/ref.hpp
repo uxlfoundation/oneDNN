@@ -45,31 +45,30 @@ struct ref_t : public primitive_t {
             memory_desc_t gate_dst_md, up_dst_md;
             CHECK(get_gate_dst_md(gate_dst_md));
             CHECK(get_up_dst_md(up_dst_md));
+            const auto src_md = arg_md(DNNL_ARG_SRC);
 
             primitive_attr_t gate_attr;
             CHECK(move_attr(
-                    gate_attr, DNNL_ARG_WEIGHTS_GATE, DNNL_ARG_WEIGHTS));
+                    gate_attr, src_md->data_type, DNNL_ARG_WEIGHTS_GATE));
             CHECK(gate_attr.post_ops_.append_eltwise(
                     1.f, activation(), 1.f, 0.f));
             CHECK(gate_attr.post_ops_.append_binary(
                     alg_kind::binary_mul, &up_dst_md));
             VDISPATCH_GATED_MLP_SC(
-                    create_matmul(gemm_gate_pd_, engine, gate_attr,
-                            arg_md(DNNL_ARG_SRC), arg_md(DNNL_ARG_WEIGHTS_GATE),
-                            &gate_dst_md),
+                    create_matmul(gemm_gate_pd_, engine, gate_attr, src_md,
+                            arg_md(DNNL_ARG_WEIGHTS_GATE), &gate_dst_md),
                     "internal error in gemm_gate_pd");
 
             primitive_attr_t up_attr;
-            CHECK(move_attr(up_attr, DNNL_ARG_WEIGHTS_UP, DNNL_ARG_WEIGHTS));
+            CHECK(move_attr(up_attr, src_md->data_type, DNNL_ARG_WEIGHTS_UP));
             VDISPATCH_GATED_MLP_SC(
-                    create_matmul(gemm_up_pd_, engine, up_attr,
-                            arg_md(DNNL_ARG_SRC), arg_md(DNNL_ARG_WEIGHTS_UP),
-                            &up_dst_md),
+                    create_matmul(gemm_up_pd_, engine, up_attr, src_md,
+                            arg_md(DNNL_ARG_WEIGHTS_UP), &up_dst_md),
                     "internal error in gemm_up_pd");
 
             primitive_attr_t down_attr;
             CHECK(move_attr(
-                    down_attr, DNNL_ARG_WEIGHTS_DOWN, DNNL_ARG_WEIGHTS));
+                    down_attr, gate_dst_md.data_type, DNNL_ARG_WEIGHTS_DOWN));
             VDISPATCH_GATED_MLP_SC(
                     create_matmul(gemm_down_pd_, engine, down_attr,
                             &gate_dst_md, arg_md(DNNL_ARG_WEIGHTS_DOWN),
@@ -135,19 +134,18 @@ struct ref_t : public primitive_t {
             return status::success;
         }
 
-        status_t move_attr(primitive_attr_t &retn, int w_from, int w_to) const {
+        status_t move_attr(
+                primitive_attr_t &retn, data_type_t src_dt, int w_from) const {
+            const int w_to = DNNL_ARG_WEIGHTS;
+            auto w_dt = arg_md(w_from)->data_type;
+            CHECK((utils::one_of(src_dt, dnnl_f32, dnnl_f16, dnnl_bf16)
+                          == utils::one_of(w_dt, dnnl_f32, dnnl_f16, dnnl_bf16))
+                            ? retn.set_fpmath_mode(fpmath_mode::strict, false)
+                            : retn.set_fpmath_mode(fpmath_mode::any, true));
             if (w_from == DNNL_ARG_WEIGHTS_DOWN) { // Down
-                auto wd_dt = arg_md(w_from)->data_type;
-                // Down SRC is always floating-point, but WEI isn't
-                CHECK((utils::one_of(wd_dt, dnnl_f32, dnnl_f16, dnnl_bf16))
-                                ? retn.set_fpmath_mode(
-                                          fpmath_mode::strict, false)
-                                : retn.set_fpmath_mode(fpmath_mode::any, true));
                 // all per-primitive post-ops are for Down, not for Gate/Up
                 CHECK(retn.set_post_ops(attr()->post_ops_));
             } else { // Gate or Up
-                CHECK(retn.set_fpmath_mode(
-                        attr()->fpmath_.mode_, attr()->fpmath_.apply_to_int_));
                 // Quant on SRC
                 CHECK(retn.scales_.set(
                         DNNL_ARG_SRC, attr()->scales_.get(DNNL_ARG_SRC)));

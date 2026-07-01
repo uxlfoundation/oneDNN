@@ -53,6 +53,33 @@ void entryObserver(
                 entry->str().c_str(), score);
     }
 }
+
+// Trailing " | dispatch k0=.. wgK=.." section with evaluator-derived geometry
+// the strategy string can't encode; '|' is unused by the strategy grammar.
+constexpr char dispatch_divider = '|';
+
+std::string serialize_dispatch(const EvaluateAuxOutput &aux) {
+    return std::string(" ") + dispatch_divider + " dispatch k0="
+            + std::to_string(aux.k0) + " wgK=" + std::to_string(aux.wgK);
+}
+
+#ifdef DNNL_DEV_MODE
+// Parses and trims the dispatch section off `str`; returns whether present.
+bool parse_dispatch(std::string &str, int64_t &k0, int &wgK) {
+    auto pos = str.find(dispatch_divider);
+    if (pos == std::string::npos) return false;
+    std::stringstream ss(str.substr(pos + 1));
+    std::string tok;
+    while (ss >> tok) {
+        if (tok.rfind("k0=", 0) == 0)
+            k0 = std::stoll(tok.substr(3));
+        else if (tok.rfind("wgK=", 0) == 0)
+            wgK = std::stoi(tok.substr(4));
+    }
+    str.resize(pos);
+    return true;
+}
+#endif
 } // anonymous namespace
 
 bool enable_generator_dsl() {
@@ -99,42 +126,17 @@ static gemmstone::Scalar stringToScalar(std::string val) {
         default: return Scalar(std::stoi(val));
     }
 }
-#endif
 
-status_t gen_desc_t::finalize(const char *tags) {
-    // Update problem alignments to match catalog entry.
-    if (!isPacked(problem_.A.layout)
-            && problem_.Ta_ext.paddedSize() >= problem_.Ta.paddedSize()) {
-        problem_.A.setAlignment(std::max(
-                problem_.Ta_ext.paddedSize(), entry_->driverInfo.alignment[0]));
-    }
-
-    if (!isPacked(problem_.B.layout)
-            && problem_.Tb_ext.paddedSize() >= problem_.Tb.paddedSize()) {
-        problem_.B.setAlignment(std::max(
-                problem_.Tb_ext.paddedSize(), entry_->driverInfo.alignment[1]));
-    }
-
-    if (!isPacked(problem_.C.layout)) {
-        problem_.C.setAlignment(std::max(problem_.Tc_ext.paddedSize(),
-                entry_->restrictions.alignment[2]));
-    }
-
-    problem_.CO.setAlignment(problem_.Tco.paddedSize());
-
-    // Parse strategy string.
-    strategy_ = GEMMStrategy(hw_, stepping_);
-#ifdef DNNL_DEV_MODE
-    std::string ovr_strategy;
-    ovr_strategy = gpu_utils::dev_getenv("GEMM_KERNEL", ovr_strategy);
-    if (!ovr_strategy.empty()) {
+status_t gen_desc_t::apply_kernel_override(std::string ovr_strategy) {
+    using namespace gemmstone;
+    try {
         // Warning: will override problem data types (including up/down
         // conversions) - this will cause inaccuracies if precisions/layouts
         // are chosen that are incompatible with the given problem
         std::stringstream ss(ovr_strategy);
         std::string val;
         ss >> val;
-        gpu_assert(val == "gemm");
+        if (val != "gemm") throw std::runtime_error("expected 'gemm' prefix");
         ss >> val;
         const char *pstr = val.c_str();
         pstr = parsePrecisions(pstr, problem_.Ta_ext, problem_.Ta);
@@ -166,13 +168,21 @@ status_t gen_desc_t::finalize(const char *tags) {
         problem_.beta = stringToScalar(val);
 
         ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
+
+        // Strip dispatch section before parseStrategy.
+        int64_t disp_k0 = 0;
+        int disp_wgK = 1;
+        bool have_disp = parse_dispatch(ovr_strategy, disp_k0, disp_wgK);
+
         parseStrategy(ovr_strategy, hw_, problem_, strategy_);
 
-        // TODO: override derived values in aux_params_ in a way that's
-        // consistent with the kernel evaluator (typically requires extra
-        // benchmarking data not supplied with the kernel override string)
-        // Currently: assume the W model because it's simple
-        if (strategy_.kParallelLocal) {
+        // Honor carried dispatch values; else re-derive from the strategy.
+        if (have_disp) {
+            aux_params_.k0 = disp_k0;
+            aux_params_.wgK = disp_wgK;
+        } else if (strategy_.kParallelLocal) {
+            if (strategy_.wg[LoopK] < 1 || strategy_.unroll[LoopK] < 1)
+                throw std::runtime_error("invalid k-parallel-local geometry");
             aux_params_.k0
                     = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
                             strategy_.unroll[LoopK]);
@@ -180,9 +190,49 @@ status_t gen_desc_t::finalize(const char *tags) {
                     std::min(strategy_.wg[LoopK],
                             int(utils::div_up(k_, aux_params_.k0))));
         } else {
-            aux_params_.k0 = EvaluateAuxOutput().k0;
-            aux_params_.wgK = EvaluateAuxOutput().wgK;
+            aux_params_.k0 = 0;
+            aux_params_.wgK = 1;
         }
+        aux_params_.kParallel = strategy_.kParallel;
+        aux_params_.kParallelVariable = strategy_.kParallelVariable;
+    } catch (const std::exception &e) {
+        // Reject invalid overrides instead of aborting.
+        VDEBUGINFO(1, primitive, gpu, "%s,%s", "jit::gemm kernel override",
+                e.what());
+        return status::unimplemented;
+    }
+    return status::success;
+}
+#endif
+
+status_t gen_desc_t::finalize(const char *tags) {
+    // Update problem alignments to match catalog entry.
+    if (!isPacked(problem_.A.layout)
+            && problem_.Ta_ext.paddedSize() >= problem_.Ta.paddedSize()) {
+        problem_.A.setAlignment(std::max(
+                problem_.Ta_ext.paddedSize(), entry_->driverInfo.alignment[0]));
+    }
+
+    if (!isPacked(problem_.B.layout)
+            && problem_.Tb_ext.paddedSize() >= problem_.Tb.paddedSize()) {
+        problem_.B.setAlignment(std::max(
+                problem_.Tb_ext.paddedSize(), entry_->driverInfo.alignment[1]));
+    }
+
+    if (!isPacked(problem_.C.layout)) {
+        problem_.C.setAlignment(std::max(problem_.Tc_ext.paddedSize(),
+                entry_->restrictions.alignment[2]));
+    }
+
+    problem_.CO.setAlignment(problem_.Tco.paddedSize());
+
+    // Parse strategy string.
+    strategy_ = GEMMStrategy(hw_, stepping_);
+#ifdef DNNL_DEV_MODE
+    std::string ovr_strategy
+            = gpu_utils::dev_getenv("GEMM_KERNEL", kernel_override_);
+    if (!ovr_strategy.empty()) {
+        CHECK(apply_kernel_override(std::move(ovr_strategy)));
     } else {
 #endif
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
@@ -985,13 +1035,20 @@ dsl::kernel_t get_dsl_kernel(const GEMMProblem &problem,
 }
 
 std::string dump_kernel(ngen::HW hw, const gemmstone::GEMMProblem &problem,
-        const gemmstone::GEMMStrategy &strategy) {
+        const gemmstone::GEMMStrategy &strategy,
+        const gemmstone::EvaluateAuxOutput *aux = nullptr) {
     auto pstr = problem.toString();
     auto astr = problem.scalarsToString();
     auto sstr = unparseStrategy(hw, problem, strategy);
     if (!astr.empty()) astr += ' ';
-    return pstr + ' ' + std::to_string(strategy.unroll[LoopM]) + ' '
+    auto str = pstr + ' ' + std::to_string(strategy.unroll[LoopM]) + ' '
             + std::to_string(strategy.unroll[LoopN]) + ' ' + astr + sstr;
+    // Append dispatch geometry for k-parallel kernels.
+    if (aux
+            && (aux->kParallel || aux->kParallelVariable || aux->wgK > 1
+                    || aux->k0 > 0))
+        str += serialize_dispatch(*aux);
+    return str;
 }
 
 status_t gen_kernel_t::get_kernel(
@@ -1047,7 +1104,8 @@ void gen_kernel_t::maybe_print_verbose() {
                 desc()->entry().str().c_str());
 
     verbose_printf("info,gpu,gemm,kernel:%s\n",
-            dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_)
+            dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_,
+                    desc()->aux_params())
                     .c_str());
 }
 

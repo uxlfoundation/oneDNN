@@ -237,6 +237,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     evalParams.sizes = matchParams.sizes;
     evalParams.alpha = 1;
     evalParams.beta = 0;
+    evalParams.product = product;
     evalParams.euCount = hwInfo.euCount;
 
     /* Generate interface */

@@ -32,6 +32,7 @@ struct EvaluateParams {
     SizeParams sizes;
     double alpha, beta;
     int euCount;
+    ngen::Product product;
     int tileCount = 1;
     bool effective = false;
     bool cConvert = false;

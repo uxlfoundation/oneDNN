@@ -31,8 +31,8 @@ namespace {
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_GATED_MLP_P({
+        GPU_INSTANCE_INTEL(intel::gated_mlp::micro_horz_t)
         GPU_INSTANCE_INTEL(intel::gated_mlp::ref_t)
-        GPU_INSTANCE_INTEL(intel::gated_mlp::micro_horz_t) // TODO: move up!
         nullptr,
 });
 // clang-format on

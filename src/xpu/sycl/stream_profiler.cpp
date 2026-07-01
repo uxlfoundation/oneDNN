@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <limits>
 #include <map>
 #include <unordered_set>
 
@@ -89,7 +90,7 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
         return status::success;
     }
 
-    uint64_t agg_start = UINT64_MAX;
+    uint64_t agg_start = std::numeric_limits<uint64_t>::max();
     uint64_t agg_end = 0;
 
     // For verbose logging, aggregate execution time for a primitive is
@@ -111,6 +112,8 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
         agg_start = std::min(agg_start, evbeg);
         agg_end = std::max(agg_end, evend);
     }
+
+    if (agg_end < agg_start) { return status::runtime_error; }
 
     // TODO: Consolidate timing calculation calls between different
     // profilers to avoid code duplication and ensure consistent time

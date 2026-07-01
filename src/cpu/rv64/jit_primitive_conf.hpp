@@ -228,6 +228,66 @@ struct jit_uni_pool_bwd_args_t {
     dim_t ws_vec_byte_stride; // ws channel stride (max; ncsp: OD*OH*OW*ind_sz)
 };
 
+// Memory layout family handled by the resampling kernel. The vector always runs
+// along the channel dimension: nspc has channels innermost (unit-stride vector
+// over C); ncsp has channels outermost (vector over C strided by the spatial
+// size); blocked (nCxc) vectorizes over the inner channel block (unit stride),
+// with the driver iterating the outer C-blocks.
+enum class jit_resampling_tag_kind_t { undef, nspc, ncsp, blocked };
+
+// Resampling configuration, populated by jit_uni_resampling_kernel_t::init_conf
+// and consumed by the driver and the kernel. Forward; f32 (isa v) or f16
+// (isa zvfh); nearest and linear (bi/trilinear) interpolation on nspc/ncsp/
+// blocked layouts, with an optional fused post-op chain.
+struct jit_resampling_conf_t {
+    int ndims;
+    int mb, c;
+    int id, ih, iw, od, oh, ow;
+    alg_kind_t alg; // resampling_nearest or resampling_linear
+    data_type_t data_type; // f32 or f16
+    int dt_size;
+    jit_resampling_tag_kind_t tag_kind;
+    int block; // inner channel block for the blocked layout (16 or 8); else 0
+    cpu_isa_t isa;
+    // Source points combined per output point: 1 for nearest; for linear
+    // 1 << (spatial dims) = 2 (1D) / 4 (2D) / 8 (3D).
+    int num_corners;
+    // Post-ops fused in-kernel via the injector (mirrors rv64 pooling): an
+    // eltwise chain (f32 and f16, computed at f32), plus at most one binary
+    // (f32 only, positioned host-side per output point).
+    bool with_postops;
+    bool fuse_eltwise;
+    bool fuse_binary;
+    post_ops_t post_ops;
+};
+
+// Per-output-point kernel arguments. The driver computes the (up to 8) source
+// corner pointers and their interpolation weights on the host (via
+// resampling_utils, the same math as ref_resampling); the kernel combines the
+// corners' channel vectors. The vector runs along C: unit-stride for nspc and
+// blocked, strided by the spatial size for ncsp (one routine serves all three).
+struct jit_resampling_args_t {
+    // Channel-0 pointers of each source corner. Nearest uses src[0] only; linear
+    // uses conf.num_corners of them.
+    const void *src[8];
+    void *dst;
+    // Per-corner interpolation weight (product of the 1D linear weights). Unused
+    // for nearest (num_corners == 1: the single corner is copied verbatim).
+    float weights[8];
+    dim_t channels; // channels to combine (the vector work)
+    dim_t src_vec_byte_stride; // byte stride between consecutive channels in src
+    dim_t dst_vec_byte_stride; // byte stride between consecutive channels in dst
+    // Binary post-op rhs for the injector's indirect mode (same contract as
+    // pooling): post_op_rhs is the base of the per-binary src1 ORIGIN pointer
+    // array (one f32 pointer per binary, in attribute order); post_op_off0 is
+    // the shared byte offset of the first active lane -- 0 for scalar, the
+    // channel-group offset for per-oc, and this output position's channel-0
+    // element offset (* sizeof(f32)) for full-dst. The kernel advances the
+    // offset per channel chunk. Unused when no binary is fused.
+    const void *post_op_rhs = nullptr;
+    dim_t post_op_off0 = 0;
+};
+
 struct jit_1x1_conv_conf_t {
     prop_kind_t prop_kind;
     int mb;

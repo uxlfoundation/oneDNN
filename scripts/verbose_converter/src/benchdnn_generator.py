@@ -15,6 +15,7 @@
 ################################################################################
 
 import logging
+import re
 from collections import defaultdict
 from typing import Dict, List, Mapping, Optional, Set, cast
 
@@ -943,6 +944,48 @@ class SDPAConverter(Converter):
         return " ".join(parts)
 
 
+class GatedMLPConverter(Converter):
+    driver: str = "gated_mlp"
+
+    @property
+    def aux(self):
+        alg = self._get_alg()
+        if alg is not None:
+            activation = alg[len("eltwise_") :]
+            return f"--activation={activation}"
+        return ""
+
+    @property
+    def dts(self):
+        dt_map = {md.arg: md.data_type for md in self.entry.mds}
+        dts = [
+            dt_map.get("src", ""),
+            dt_map.get("wei_gate", ""),
+            dt_map.get("wei_up", ""),
+            dt_map.get("wei_down", ""),
+            dt_map.get("dst", ""),
+        ]
+        return "--dt=" + ":".join(dt for dt in dts if dt)
+
+    @property
+    def tags(self):
+        md_map = {md.arg: md for md in self.entry.mds}
+        tags = []
+        if "src" in md_map:
+            tags.append(f"--stag={maybe_make_any_tag(md_map['src'])}")
+        if "wei_gate" in md_map:
+            tags.append(f"--wtag={maybe_make_any_tag(md_map['wei_gate'])}")
+        if "dst" in md_map:
+            tags.append(f"--dtag={maybe_make_any_tag(md_map['dst'])}")
+        return " ".join(tags)
+
+    @property
+    def shapes(self):
+        # Convert verbose format "mb64ic896oc4864" to "64x896x4864"
+        nums = re.findall(r"\d+", self.entry.shapes)
+        return "x".join(nums)
+
+
 def get_converter(primitive: str) -> ConverterMeta:
     converters: Dict[str, ConverterMeta] = {
         "batch_normalization": BatchNormalizationConverter,
@@ -952,6 +995,7 @@ def get_converter(primitive: str) -> ConverterMeta:
         "convolution": ConvolutionConverter,
         "deconvolution": DeconvolutionConverter,
         "eltwise": EltwiseConverter,
+        "gated_mlp": GatedMLPConverter,
         "group_normalization": GroupNormalizationConverter,
         "inner_product": InnerProductConverter,
         "layer_normalization": LayerNormalizationConverter,

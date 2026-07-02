@@ -22,6 +22,7 @@ conv,test_conv_ci
 conv,harness_conv_fused_depthwise
 deconv,test_deconv_ci
 eltwise,test_eltwise_ci
+gated_mlp,test_gated_mlp_smoke
 ip,test_ip_ci
 gnorm,test_gnorm_ci
 lnorm,test_lnorm_ci

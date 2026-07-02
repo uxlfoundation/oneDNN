@@ -22,6 +22,7 @@ conv,shapes_auto
 conv,shapes_regression_small_spatial
 deconv,shapes_ci
 eltwise,shapes_eltwise
+gated_mlp,test_gated_mlp_smoke
 gnorm,shapes_ci
 ip,shapes_ci
 lnorm,shapes_ci

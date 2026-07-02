@@ -1060,42 +1060,38 @@ void brgemm_convolution_bwd_strided_t<isa>::cal_compensation(
 
                 (*comp_vpad_pbuffer_)(&p);
             }
+
+            // Broadcast center position s8s8 compensation to all positions.
+            // For exec_trans + s8s8, the brgemm adds +128 shift to ALL input
+            // values including zero-padding. Boundary positions need the same
+            // full-range compensation as center. The JIT kernel computes
+            // boundary-limited values; broadcast the center to fix them.
+            if (jcp.exec_type == exec_trans && jcp.s8s8_compensation_required
+                    && s8s8_comp_buffer) {
+                const auto SW = jcp.stride_w;
+                const auto nb_iw = div_up(jcp.iw, SW);
+                const auto ic_block = jcp.ic_block;
+                const auto center_iwb = nb_iw / 2;
+                for (int sw = 0; sw < SW; sw++) {
+                    const auto center_comp_iw = sw * nb_iw + center_iwb;
+                    if (center_comp_iw >= jcp.iw) continue;
+                    const auto center_offs
+                            = buffer_offs + center_comp_iw * ic_block;
+                    for (int iwb = 0; iwb < nb_iw; iwb++) {
+                        const auto comp_iw = sw * nb_iw + iwb;
+                        if (comp_iw >= jcp.iw || iwb == center_iwb) continue;
+                        const auto dst_offs = buffer_offs + comp_iw * ic_block;
+                        std::memcpy(&s8s8_comp_buffer[dst_offs],
+                                &s8s8_comp_buffer[center_offs],
+                                ic_block * sizeof(int32_t));
+                    }
+                }
+            }
+
             nd_iterator_step(
                     g, jcp.ngroups, icb, jcp.nb_ic, k, jcp.ker_ranges_size);
         }
     });
-
-    // For exec_trans + s8s8: the brgemm adds +128 shift to ALL input values
-    // including zero-padding. Boundary positions need the same full-range
-    // s8s8 compensation as center positions. The JIT kernel computes
-    // boundary-limited values (correct for zp but insufficient for s8s8).
-    // Broadcast center position values to all positions in each sw sector.
-    if (jcp.exec_type == exec_trans && jcp.s8s8_compensation_required
-            && s8s8_comp_buffer) {
-        const auto SW = jcp.stride_w;
-        const auto nb_iw = div_up(jcp.iw, SW);
-        const auto ic_block = jcp.ic_block;
-        const auto center_iwb = nb_iw / 2;
-
-        for_(dim_t g = 0; g < jcp.ngroups; g++)
-        for_(int icb = 0; icb < jcp.nb_ic; icb++)
-        for (int k = 0; k < jcp.ker_ranges_size; k++) {
-            const auto base_offs
-                    = g * comp_icb_sz + icb * comp_ker_sz + k * comp_kw_sz;
-            for (int sw = 0; sw < SW; sw++) {
-                const auto center_comp_iw = sw * nb_iw + center_iwb;
-                const auto center_offs = base_offs + center_comp_iw * ic_block;
-                for (int iwb = 0; iwb < nb_iw; iwb++) {
-                    if (iwb == center_iwb) continue;
-                    const auto comp_iw = sw * nb_iw + iwb;
-                    const auto dst_offs = base_offs + comp_iw * ic_block;
-                    std::memcpy(&s8s8_comp_buffer[dst_offs],
-                            &s8s8_comp_buffer[center_offs],
-                            ic_block * sizeof(int32_t));
-                }
-            }
-        }
-    }
 }
 
 template <cpu_isa_t isa>

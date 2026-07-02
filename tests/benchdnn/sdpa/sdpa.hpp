@@ -47,6 +47,12 @@
 
 namespace sdpa {
 
+// Internal (reference-only) arg key for the per-element conditioning magnitude
+// sum_k prob_k*|V_k|, filled by compute_ref and read by setup_cmp to size a
+// tighter per-element DST threshold. Negative so init_ref_memory_args skips it
+// (it only fills positive args) and it is never treated as a compared kind.
+static constexpr int SDPA_REF_ARG_OUT_ABSMAG = -1000;
+
 enum mask_type_t {
     MASK_NONE = 0,
     MASK_BUFFER = 1,

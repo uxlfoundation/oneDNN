@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cmath>
 #include <limits>
 #include <math.h>
 #include <random>
@@ -270,13 +271,38 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
     // accumulated atomic adds.
     const float trh_coeff = is_bwd ? 32.f : 8.f;
     const float trh = trh_coeff * (1 + prb->n_keys) * epsilon_dt(prb->dst_dt());
+
+    // This standard point-to-point check  validates any point above 1e-5 against
+    // the *relative* threshold. This works well for well-conditioned points,
+    // but fails for small-magnitude points
     cmp.set_threshold(trh);
 
-    // bf16 backward produces element diffs up to ~3e-2 for near-zero values.
-    const float abs_trh = is_bwd ? 5e-2f : 2e-3f;
-    cmp.set_driver_check_function(
-            [abs_trh](const compare::compare_t::driver_check_func_args_t &a)
-                    -> bool { return a.diff <= abs_trh; });
+    // That alone is not sufficent SDPA's forward pass: it is a convex combination
+    //     Out = sum(prob_k * V_k),   sum(prob_k) = 1,
+    // so catastrophic cancellation can drive |Out| -> 0.f (observed ~5e-5) while
+    // the absolute error stays pinned at the rounding floor, making
+    // rel_diff = diff/|exp| blow up for a perfectly healthy kernel.
+    //
+    // The small-magnitude points are instead validated against an absolute floor
+    if (!is_bwd) {
+        const dnn_mem_t &absmag = ref_args.find(SDPA_REF_ARG_OUT_ABSMAG);
+        const float eps_dst = epsilon_dt(prb->dst_dt());
+        const dnn_mem_t *mag = &absmag;
+        cmp.set_driver_check_function(
+                [eps_dst, mag](
+                        const compare::compare_t::driver_check_func_args_t &a)
+                        -> bool {
+            return a.diff <= eps_dst * mag->get_f32_elem(a.idx);
+        });
+    } else {
+        // Backward chains more matmuls/softmax_bwd and produces element diffs up
+        // to ~3e-2 for near-zero values; keep its looser empirical floor.
+        const float abs_trh = 5e-2f;
+
+        cmp.set_driver_check_function(
+                [abs_trh](const compare::compare_t::driver_check_func_args_t &a)
+                        -> bool { return a.diff <= abs_trh; });
+    }
 
     cmp.set_zero_trust_percent(is_bwd ? 70.f : 90.f);
 }
@@ -450,6 +476,13 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
+
+    // Reference-only buffer holding the per-element conditioning magnitude
+    // sum_k prob_k*|V_k| (same layout as the reference DST). compute_ref fills
+    // it; setup_cmp reads it to size a per-element DST threshold. Forward only.
+    const auto &ref_dst = ref_mem_map.at(DNNL_ARG_DST);
+    ref_mem_map.emplace(SDPA_REF_ARG_OUT_ABSMAG,
+            dnn_mem_t(ref_dst.md_, get_cpu_engine(), /* prefill = */ false));
 
     args_t args(mem_map), ref_args(ref_mem_map);
 

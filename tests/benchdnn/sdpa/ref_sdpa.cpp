@@ -276,7 +276,7 @@ static void compute_fwd(const prb_t *prb, dnnl_engine_t eng, dnnl_stream_t strm,
             maybe_dropout(prb->attr, sp[i], i, dropout_mask);
     }
 
-    // Step 5 (optional): output = prob_dp x V  (matmul primitive).
+    // Step 5: output = prob_dp x V  (matmul primitive).
     if (out) {
         *out = make_3d(eng, MB, SQ, V);
         exec_matmul(eng, strm, score2_dp, v_ref, *out);
@@ -334,6 +334,25 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
         // Copy result to DST.
         std::memcpy(static_cast<float *>(dst_m), static_cast<float *>(out),
                 MB * SQ * V * sizeof(float));
+
+        // Per-element conditioning magnitude  absmag[q,d] = sum_k prob_k*|V_k,d|
+        // for the tighter per-element DST threshold (see setup_cmp). prob is the
+        // post-dropout softmax. Since prob >= 0, this is matmul(prob, |V|), the
+        // same contraction as the output but with |V|, so
+        // absmag >= |out| and <= max|V|.
+        const dnn_mem_t &absmag_m = args.find(SDPA_REF_ARG_OUT_ABSMAG);
+        if (absmag_m.nelems() > 0) {
+            auto abs_v = make_3d(eng, MB, SK, V);
+            const float *vp = static_cast<float *>(v_ref);
+            float *avp = static_cast<float *>(abs_v);
+            for (int64_t i = 0; i < MB * SK * V; i++)
+                avp[i] = std::fabs(vp[i]);
+
+            auto absmag = make_3d(eng, MB, SQ, V);
+            exec_matmul(eng, strm, score2_dp, abs_v, absmag);
+            std::memcpy(static_cast<float *>(absmag_m),
+                    static_cast<float *>(absmag), MB * SQ * V * sizeof(float));
+        }
     }
 
     if (dir & FLAG_BWD) {

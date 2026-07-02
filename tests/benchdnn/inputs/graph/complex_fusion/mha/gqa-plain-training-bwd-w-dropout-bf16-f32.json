@@ -11,9 +11,6 @@
     8,
     105,
     104,
-    208,
-    209,
-    210,
     10,
     105,
     102,
@@ -490,7 +487,7 @@
           "property_type": "undef"
         },
         {
-          "id": 208,
+          "id": 205,
           "dtype": "s64",
           "shape": [],
           "stride": [],
@@ -498,7 +495,7 @@
           "property_type": "host_scalar"
         },
         {
-          "id": 209,
+          "id": 206,
           "dtype": "s64",
           "shape": [],
           "stride": [],
@@ -506,7 +503,7 @@
           "property_type": "host_scalar"
         },
         {
-          "id": 210,
+          "id": 207,
           "dtype": "f32",
           "shape": [],
           "stride": [],

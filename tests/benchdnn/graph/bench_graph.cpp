@@ -31,6 +31,7 @@ void check_correctness(const settings_t &s) {
     for_(const auto &i_expected_n_partition : s.expected_n_partition_vec)
     for_(const auto &i_fpmath_mode : s.fpmath_mode_vec)
     for_(const auto &i_op_kind_map : s.op_kind_map)
+    for_(const auto &i_tensor_property : s.tensor_property_vec)
     for_(const auto &i_dt : s.dt)
     for_(const auto &i_dt_map : s.dt_map)
     for (const auto &i_mb : s.mb) {
@@ -40,12 +41,12 @@ void check_correctness(const settings_t &s) {
         res_t res {};
         const auto &cpp_pstr = case_to_str(s.json_file, i_in_shapes, i_op_attrs,
                 i_fpmath_mode, i_expected_n_partition, i_mb, i_dt, i_dt_map,
-                i_op_kind_map);
+                i_op_kind_map, i_tensor_property);
         const char *pstr = cpp_pstr.c_str();
 
         // rewrite the graph
         flex_rewrite_t fw(i_in_shapes, i_op_attrs, i_fpmath_mode, i_mb, i_dt,
-                i_dt_map, i_op_kind_map);
+                i_dt_map, i_op_kind_map, i_tensor_property);
         // TODO(zhitao): use const fw as the parameter of rewrite for the dg
         // instead, as all the states should the updated in the ctor.
         if (fw.rewrite(dg) != OK) {
@@ -89,6 +90,7 @@ int bench(int argc, char **argv) {
                 || parse_input_shapes(s.in_shapes_vec, argv[0])
                 || parse_op_attrs(s.op_attrs_vec, argv[0])
                 || parse_op_kind(s.op_kind_map, argv[0])
+                || parse_tensor_property(s.tensor_property_vec, argv[0])
                 || parse_graph_expected_n_partitions(
                         s.expected_n_partition_vec, argv[0])
                 || parse_graph_fpmath_mode(s.fpmath_mode_vec, argv[0])

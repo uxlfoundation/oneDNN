@@ -31,14 +31,16 @@ struct flex_rewrite_t {
             const graph_fpmath_mode_t &fpmath_mode, const int64_t mb,
             const dnnl_data_type_t dt,
             const std::map<size_t, dnnl_data_type_t> &dt_map,
-            const std::map<size_t, std::string> &op_kind_map)
+            const std::map<size_t, std::string> &op_kind_map,
+            const std::map<size_t, std::string> &tensor_property)
         : in_shapes_(in_shapes)
         , op_attrs_(op_attrs)
         , fpmath_mode_(fpmath_mode)
         , mb_(mb)
         , dt_(dt)
         , dt_map_(dt_map)
-        , op_kind_map_(op_kind_map) {}
+        , op_kind_map_(op_kind_map)
+        , tensor_property_(tensor_property) {}
 
     int rewrite(deserialized_graph_t &dgraph);
 
@@ -53,6 +55,7 @@ private:
     std::map<size_t, dnnl_data_type_t>
             dt_map_; // Updates specific LT with selected dt values.
     std::map<size_t, std::string> op_kind_map_;
+    std::map<size_t, std::string> tensor_property_;
 
     int infer_output_shape(deserialized_graph_t &dgraph, bool change_stride);
     int inports_shape_rewrite(
@@ -68,6 +71,7 @@ private:
     int dt_rewrite(deserialized_graph_t &dgraph);
     int dt_map_rewrite(deserialized_graph_t &dgraph);
     int op_kind_rewrite(deserialized_graph_t &dgraph);
+    int tensor_property_rewrite(deserialized_graph_t &dgraph);
     // Rewrite some linked attribute and shapes, such as group-shape and
     // scale/zp shape of dynamic dequantization for per-group quantization, to
     // simplify the cml input of rewriting.

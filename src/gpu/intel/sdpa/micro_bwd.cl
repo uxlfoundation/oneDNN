@@ -65,7 +65,7 @@ inline void apply_dropout_s_tile(s_tile_type *tile, int tile_offset_r,
         int k_stride, int use_dropout_offset, long seed, long offset,
         uint threshold, float inv_q) {
 
-    s_tile_type scale_tile;
+    volatile s_tile_type scale_tile;
     tile_predicated_select(scale_tile, tile_offset_r, tile_offset_c,
             dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
             ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
@@ -83,7 +83,7 @@ inline void apply_dropout_dP_tile(p_tile_type *tile, int tile_offset_r,
         int k_stride, int use_dropout_offset, long seed, long offset,
         uint threshold, float inv_q) {
 
-    p_tile_type scale_p_tile;
+    volatile p_tile_type scale_p_tile;
     tile_predicated_select(scale_p_tile, tile_offset_r, tile_offset_c,
             dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
             ugemm_vtdA_c_type_block0, ugemm_vtdA_c_type_block1,

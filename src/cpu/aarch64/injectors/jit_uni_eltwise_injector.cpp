@@ -16,12 +16,11 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstdint>
+
 #include "common/c_types_map.hpp"
-#include "common/dnnl_thread.hpp"
-#include "common/nstl.hpp"
 #include "common/utils.hpp"
 
-#include <cstdint>
 #include "cpu/aarch64/injectors/jit_uni_eltwise_injector.hpp"
 
 #define IDX(a) static_cast<uint32_t>((a).getIdx())
@@ -96,14 +95,21 @@ void jit_uni_eltwise_injector_t<isa>::injector_preamble(
 
     assert(preserved_vecs_count == vecs_to_preserve);
 
-    // Same logic but to allocate gprs
+    // jit_generator_t provides a collection of temporary gprs we can use.
+    assert(aux_gprs_count() <= h->x_tmp_vec.size());
     size_t preserved_gprs_count = 0;
-    for (size_t gpr_idx = 0; gpr_idx <= 30; ++gpr_idx) {
-        int _idx = 30 - gpr_idx; // we allocate from the end
-        if (preserved_gprs_count < aux_gprs_count()
-                && (((unsigned)_idx) != x_table.getIdx()))
-            preserved_gpr_idxs[preserved_gprs_count++] = _idx;
+    for (const auto &x_tmp : h->x_tmp_vec) {
+        // Already allocated enough gprs, we are done.
+        if (preserved_gprs_count == aux_gprs_count()) { break; }
+
+        const auto gpr_idx = x_tmp.getIdx();
+
+        // Don't overwrite the x_table address, try the next one.
+        if (gpr_idx == x_table.getIdx()) { continue; }
+
+        preserved_gpr_idxs[preserved_gprs_count++] = gpr_idx;
     }
+
     assert(preserved_gprs_count == aux_gprs_count());
 
     if (save_state_) {
@@ -1529,13 +1535,22 @@ void jit_uni_eltwise_injector_t<isa>::hardsigmoid_compute_vector_bwd(
 template <cpu_isa_t isa>
 size_t jit_uni_eltwise_injector_t<isa>::aux_gprs_count() {
     using namespace alg_kind;
+
+    size_t num_gprs_needed = 0;
+
     switch (alg_) {
+        case eltwise_log:
+        case eltwise_exp: num_gprs_needed = 1; break;
         case eltwise_tanh_use_dst_for_bwd:
         case eltwise_tanh:
-        case eltwise_gelu_tanh: return 0;
+        case eltwise_gelu_tanh:
+        case eltwise_gelu_erf: num_gprs_needed = 2; break;
         default: return 0;
     }
-    return 0;
+
+    assert(num_gprs_needed <= preserved_gprs_max);
+
+    return num_gprs_needed;
 }
 
 template <cpu_isa_t isa>

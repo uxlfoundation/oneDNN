@@ -57,40 +57,35 @@ enum class prelu_bcast_t {
 // Zvfbfwma implies). Backward (the diff_weights reduction) is left to ref.
 struct jit_uni_prelu_fwd_kernel_t;
 
-template <cpu_isa_t isa>
 struct jit_uni_prelu_fwd_t : public primitive_t {
     struct pd_t : public cpu_prelu_fwd_pd_t {
         using cpu_prelu_fwd_pd_t::cpu_prelu_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("jit:", isa, ""), jit_uni_prelu_fwd_t);
+        DECLARE_COMMON_PD_T("jit:rvv", jit_uni_prelu_fwd_t);
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
             using namespace dnnl::impl::data_type;
 
             const data_type_t dt = src_md(0)->data_type;
+            const data_type_t wdt = weights_md(0)->data_type;
 
             VDISPATCH_PRELU(is_fwd(), VERBOSE_BAD_PROPKIND);
-            VDISPATCH_PRELU(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
-            // isa drives which dtype this instance claims: zvfh owns f16,
-            // zvfbfwma owns bf16, the base vector isa owns f32.
-            const bool dt_ok = (isa == zvfh) ? (dt == f16)
-                    : (isa == zvfbfwma)      ? (dt == bf16)
-                                             : (dt == f32);
-            VDISPATCH_PRELU(dt_ok, VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_PRELU(platform::has_data_type_support(dt),
-                    VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_PRELU(dst_md(0)->data_type == dt, VERBOSE_UNSUPPORTED_DT);
-            // Weights may differ from src: the kernel converts per-element to
-            // f32 (lockstep) or on the host (scalar paths). Allow any f32/f16/
-            // bf16 weights; has_data_type_support gates the convert isa (f16 ->
-            // zvfh, bf16 -> zvfbfwma) so we never emit an unavailable convert.
-            const data_type_t wdt = weights_md(0)->data_type;
+            // Single JIT impl; the convert ISA is chosen internally from the
+            // data type. The base vector extension is always required; f16/bf16
+            // additionally need their convert ISA (zvfh / zvfbfwma), gated by
+            // has_data_type_support below so we never emit an unavailable
+            // convert. src/dst share a dtype; weights may differ.
+            VDISPATCH_PRELU(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
+            VDISPATCH_PRELU(
+                    utils::one_of(dt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(
                     utils::one_of(wdt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_PRELU(platform::has_data_type_support(dt),
+                    VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(platform::has_data_type_support(wdt),
                     VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_PRELU(dst_md(0)->data_type == dt, VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_PRELU(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_PRELU(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);

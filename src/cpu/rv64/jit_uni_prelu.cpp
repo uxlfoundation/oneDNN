@@ -190,14 +190,10 @@ struct jit_uni_prelu_fwd_kernel_t : public jit_generator_t {
     bool scalar_mode_;
 };
 
-template <cpu_isa_t isa>
-jit_uni_prelu_fwd_t<isa>::jit_uni_prelu_fwd_t(const pd_t *apd)
-    : primitive_t(apd) {}
-template <cpu_isa_t isa>
-jit_uni_prelu_fwd_t<isa>::~jit_uni_prelu_fwd_t() = default;
+jit_uni_prelu_fwd_t::jit_uni_prelu_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+jit_uni_prelu_fwd_t::~jit_uni_prelu_fwd_t() = default;
 
-template <cpu_isa_t isa>
-status_t jit_uni_prelu_fwd_t<isa>::init(engine_t *engine) {
+status_t jit_uni_prelu_fwd_t::init(engine_t *engine) {
     UNUSED(engine);
     const data_type_t dt = pd()->src_md(0)->data_type;
     const data_type_t wei_dt = pd()->weights_md(0)->data_type;
@@ -214,8 +210,7 @@ status_t jit_uni_prelu_fwd_t<isa>::init(engine_t *engine) {
     return status::success;
 }
 
-template <cpu_isa_t isa>
-status_t jit_uni_prelu_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
+status_t jit_uni_prelu_fwd_t::execute(const exec_ctx_t &ctx) const {
     using kparams_t = jit_uni_prelu_fwd_kernel_t::call_params_t;
 
     const auto *src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
@@ -340,10 +335,6 @@ status_t jit_uni_prelu_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     }
     return status::success;
 }
-
-template struct jit_uni_prelu_fwd_t<v>;
-template struct jit_uni_prelu_fwd_t<zvfh>;
-template struct jit_uni_prelu_fwd_t<zvfbfwma>;
 
 } // namespace rv64
 } // namespace cpu

@@ -1169,8 +1169,6 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
             is_b_nt_ = true;
         }
 
-        k_blk_ = k_blk_v;
-        k_chunk_size_ = best_k_v;
         n_blk_ = n_decomposition;
         n_chunk_size_ = div_up(n_per_thread, n_blk_);
         m_blk_ = nstl::min(best_m_v * m_decomposition, M);
@@ -1180,6 +1178,37 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         need_prefetch_a_ = false;
         need_prefetch_b_ = ((n_per_thread / n_blk_) >= 2) && !use_buffer_b;
         use_fused_copy_a_ = false;
+
+        // Collapse to a single K-chunk only when one thread owns the whole K
+        // reduction (nthr_k_ == 1) and the heuristic split K (best_k_v > 1).
+        if (nthr_k_ == 1 && best_k_v > 1) {
+            // Keep C resident in the AMX tiles across the whole K reduction
+            // instead of chunking K, which forces a C read-modify-write
+            // (tilestored/tileloadd of every C tile) at each chunk boundary
+            // that contends with the tmul and B-load ops on the AMX port. Here
+            // C fits in tiles and B is streamed once, so chunking only bounds
+            // the unrolled kernel size -- collapse to one K-chunk while the
+            // full-K working set fits L2 and the unrolled tmul count stays
+            // capped.
+            const dim_t k_tiles_full = k_per_thread / wei_k_blk;
+            const dim_t c_tiles = div_up(m_blk_, 16) * div_up(n_blk_, 16);
+            const size_t full_k_working_set
+                    = (size_t)(m_blk_ + n_blk_) * k_per_thread * gemm_dt_sz;
+            // k_tiles_full * c_tiles = unrolled tmul count, a proxy for code
+            // size (~50 B/op). The collapse saves one C RMW regardless of K,
+            // but this footprint grows with K; past the cap I-cache pressure
+            // outweighs the win. Calibrated on GNR (int8 M=64/K=7168): 896 ops
+            // wins ~2x, >= 1344 neutral. Re-tune per-uarch vs L1i.
+            constexpr dim_t max_unrolled_tmuls = 1024;
+            if (k_tiles_full * c_tiles <= max_unrolled_tmuls
+                    && full_k_working_set <= L2_threshold()) {
+                k_blk_v = k_per_thread;
+                best_k_v = 1;
+            }
+        }
+
+        k_blk_ = k_blk_v;
+        k_chunk_size_ = best_k_v;
 
         extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
     }

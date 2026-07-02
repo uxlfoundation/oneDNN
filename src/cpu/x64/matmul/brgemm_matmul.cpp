@@ -418,6 +418,14 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         brgemm_desc_t &brg = brg_descs_[idx];
         const auto kernel_isa = i_M == max_m_ker_idx - 1 ? backup_isa : isa;
 
+        brg.with_per_mn_compensation = bgmmc_.with_per_mn_compensation;
+        if (bgmmc_.with_per_mn_compensation) {
+            brg.skip_zp_a_compensation = true;
+            brg.skip_zp_b_compensation = true;
+        }
+        if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
+            brg.skip_zp_b_compensation = true;
+
         if (bgmmc_.is_gemv) {
             const bool swap_a_b = bgmmc_.gemv_swap_a_b;
             const dim_t gemv_m = swap_a_b ? vN : vM;
@@ -442,16 +450,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         }
 
         auto LDD = bgmmc_.LDD;
-        if (bgmmc_.with_wei_decompression && bgmmc_.has_zero_point_b)
-            brg.skip_zp_b_compensation = true;
-        // The per-(M, N) compensation tile carries the full src+wei zero
-        // point correction in f32 (post per-K scales). Skip the kernel's
-        // built-in vpaddd-based zp_a path so it isn't applied twice.
-        if (bgmmc_.with_per_mn_compensation) {
-            brg.with_per_mn_compensation = true;
-            brg.skip_zp_a_compensation = true;
-            brg.skip_zp_b_compensation = true;
-        }
         brg.skip_wei_scales = bgmmc_.apply_scales_in_buffer_b;
         // Fill up the scales info in case it's computing in brgemm
         if (!brg.skip_wei_scales && bgmmc_.with_wei_scales) {
@@ -1013,7 +1011,9 @@ void brgemm_matmul_t<isa>::fill_per_mn_compensation(
     const dim_t k_start = static_cast<dim_t>(k_blk_idx) * bgmmc.K_blk
                     * bgmmc.brgemm_batch_size
             + (is_tail ? batch_size * bgmmc.K_blk : dim_t {0});
-    const dim_t k_len = is_tail ? bgmmc.K_tail : batch_size * bgmmc.K_blk;
+    const dim_t k_len
+            = nstl::min(is_tail ? bgmmc.K_tail : batch_size * bgmmc.K_blk,
+                    bgmmc.K - k_start);
 
     const dim_t m = brgmm_ctx.get_M_idx(m_blk_idx, true);
     const dim_t n = brgmm_ctx.get_N_idx(n_blk_idx, true);

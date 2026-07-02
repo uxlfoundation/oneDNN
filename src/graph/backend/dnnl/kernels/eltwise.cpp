@@ -37,8 +37,6 @@ status_t eltwise_fwd_t<quantized>::compile_impl(
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
@@ -142,8 +140,7 @@ status_t eltwise_fwd_t<quantized>::execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     constant_tensor_cache_t::cached_t c_buffer;
@@ -166,8 +163,8 @@ status_t eltwise_fwd_t<quantized>::execute_impl(const stream_t *g_stream,
             }
         } else {
             c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                    memory_planner_.total_internal_persistent_size(), p_engine_,
-                    g_alloc_);
+                    memory_planner_.total_internal_persistent_size(),
+                    *p_engine_.get());
             grantor_t c_grantor = memory_planner_.internal_persistent_grantor(
                     c_buffer->data<char>());
             for (auto &mem_offkey : res->get_mems_use_internal_persistent()) {
@@ -213,8 +210,7 @@ status_t eltwise_fwd_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     constant_tensor_cache_t::cached_t c_buffer;
@@ -237,8 +233,8 @@ status_t eltwise_fwd_t<quantized>::sycl_execute_impl(const stream_t *g_stream,
             }
         } else {
             c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                    memory_planner_.total_internal_persistent_size(), p_engine_,
-                    g_alloc_);
+                    memory_planner_.total_internal_persistent_size(),
+                    *p_engine_.get());
             grantor_t c_grantor = memory_planner_.internal_persistent_grantor(
                     c_buffer->data<char>());
             for (auto &mem_offkey : res->get_mems_use_internal_persistent()) {
@@ -289,8 +285,7 @@ status_t eltwise_fwd_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     constant_tensor_cache_t::cached_t c_buffer;
@@ -313,8 +308,8 @@ status_t eltwise_fwd_t<quantized>::ocl_execute_impl(const stream_t *g_stream,
             }
         } else {
             c_buffer = std::make_shared<dnnl_constant_buffer_t>(
-                    memory_planner_.total_internal_persistent_size(), p_engine_,
-                    g_alloc_);
+                    memory_planner_.total_internal_persistent_size(),
+                    *p_engine_.get());
             grantor_t c_grantor = memory_planner_.internal_persistent_grantor(
                     c_buffer->data<char>());
             for (auto &mem_offkey : res->get_mems_use_internal_persistent()) {
@@ -352,8 +347,6 @@ status_t eltwise_bwd_t::compile_impl(const dnnl_partition_impl_t *part,
         const engine_t *g_engine, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
-    g_alloc_
-            = reinterpret_cast<graph::allocator_t *>(g_engine->get_allocator());
 
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
@@ -421,8 +414,7 @@ status_t eltwise_bwd_t::execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -450,8 +442,7 @@ status_t eltwise_bwd_t::sycl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -483,8 +474,7 @@ status_t eltwise_bwd_t::ocl_execute_impl(const stream_t *g_stream,
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {

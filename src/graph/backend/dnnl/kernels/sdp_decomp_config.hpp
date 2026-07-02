@@ -142,8 +142,7 @@ public:
     // select's 1st input connected to previous matmul.
     bool select_fusiable = false;
 
-private:
-    // Used to record the ops contained in SDP
+private: // Used to record the ops contained in SDP
     // sdp_op = [reorder1, mm1, softmax, reorder2, mm2, binary_select]
     // reorder1 is using mm1 weight u8->s8
     // reorder2 is using mm2 weight u8->s8

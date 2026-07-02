@@ -49,7 +49,6 @@ status_t gated_mlp_primitive_kernel_t<quantized>::compile_impl(
 #endif
 
     p_engine_ = make_dnnl_engine(*eng);
-    g_alloc_ = reinterpret_cast<graph::allocator_t *>(eng->get_allocator());
 
     // First, dry run on a deep copy
     subgraph_
@@ -152,8 +151,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::execute_impl(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -183,8 +181,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {
@@ -218,8 +215,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::ocl_execute_impl(
             reinterpret_cast<size_t>(this), resource_ctor_);
 
     auto scratchpad = std::make_shared<scratchpad_t>(scratchpad_buf,
-            memory_planner_.total_internal_temporary_size(), p_engine_,
-            *g_alloc_);
+            memory_planner_.total_internal_temporary_size(), p_engine_);
     prepare_args_set(res, inputs, outputs, *scratchpad);
 
     for (size_t i = 0; i < subgraph_->execs_.size(); i++) {

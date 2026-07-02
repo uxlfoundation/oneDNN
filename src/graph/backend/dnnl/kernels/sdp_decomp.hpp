@@ -44,9 +44,7 @@ namespace dnnl_impl {
 // int8 sdp pattern. It doesn't take any effect if quantized param is false.
 template <bool quantized = false, memory::data_type dt = memory::data_type::f32>
 struct sdp_decomp_kernel_t : public kernel_base_t {
-private:
-    allocator_t *g_alloc_ = nullptr;
-    // used for sdp internal memory planning
+private: // used for sdp internal memory planning
     registry_t sdp_registry_;
 
     std::shared_ptr<subgraph_t> subgraph_;

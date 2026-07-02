@@ -64,8 +64,6 @@ TEST(test_constant_cache, CombineKey) {
 
 TEST(test_constant_cache, NoEvictWhenCacheFull) {
     graph::engine_t &engine = *get_engine();
-    auto p_engine_ = dnnl_impl::make_dnnl_engine(engine);
-    auto g_alloc_ = static_cast<graph::allocator_t *>(engine.get_allocator());
 
     graph::constant_tensor_cache_t cache(0);
     ASSERT_EQ(cache.set_capacity(0), graph::status::success);
@@ -74,8 +72,7 @@ TEST(test_constant_cache, NoEvictWhenCacheFull) {
     std::promise<graph::constant_tensor_cache_t::cached_t> c_promise1;
     ASSERT_NO_THROW(cache.get_or_add(0, 1, 1, c_promise1.get_future()));
     graph::constant_tensor_cache_t::cached_t c_buffer1
-            = std::make_shared<dnnl_impl::dnnl_constant_buffer_t>(
-                    1, p_engine_, g_alloc_);
+            = std::make_shared<dnnl_impl::dnnl_constant_buffer_t>(1, engine);
     c_promise1.set_value(c_buffer1);
 
     // should cache hit
@@ -85,8 +82,7 @@ TEST(test_constant_cache, NoEvictWhenCacheFull) {
     std::promise<graph::constant_tensor_cache_t::cached_t> c_promise2;
     ASSERT_NO_THROW(cache.get_or_add(0, 2, 2, c_promise2.get_future()));
     graph::constant_tensor_cache_t::cached_t c_buffer2
-            = std::make_shared<dnnl_impl::dnnl_constant_buffer_t>(
-                    2, p_engine_, g_alloc_);
+            = std::make_shared<dnnl_impl::dnnl_constant_buffer_t>(2, engine);
     c_promise2.set_value(c_buffer2);
     ASSERT_EQ(cache.get_size(), 3U); // c_buffer1 + c_buffer2
 
@@ -95,8 +91,7 @@ TEST(test_constant_cache, NoEvictWhenCacheFull) {
     // ignore since we use no_evict policy
     ASSERT_NO_THROW(cache.get_or_add(0, 3, 3, c_promise3.get_future()));
     graph::constant_tensor_cache_t::cached_t c_buffer3
-            = std::make_shared<dnnl_impl::dnnl_constant_buffer_t>(
-                    3, p_engine_, g_alloc_);
+            = std::make_shared<dnnl_impl::dnnl_constant_buffer_t>(3, engine);
     c_promise3.set_value(c_buffer3);
     ASSERT_EQ(cache.get_size(), 3U); // c_buffer1 + c_buffer2
 

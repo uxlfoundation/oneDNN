@@ -5576,8 +5576,10 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::copy_row_x_col(
             // Load packed int4 data into Ymm (half of Zmm), then
             // unpack to full int8 in Zmm and apply ZP shift.
             auto ymm_src = Ymm(src_reg.getIdx());
+            if (is_tail) init_tail_mask(columns_tail, /*use_int4_mask=*/true);
             auto ymm_src_load = maybe_mask(ymm_src, is_tail);
             vmovdqu8(ymm_src_load, addr);
+            if (is_tail) init_tail_mask(columns_tail, /*use_int4_mask=*/false);
             cvt_int4_to_int8_for_transposed(src_reg);
             maybe_apply_int8_grouped_zp(src_reg, i);
         } else {
@@ -6496,6 +6498,14 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         const auto tail_mask = (1 << columns_tail) - 1;
         mov(regw_tmp, tail_mask);
         kmovw(kTail, regw_tmp);
+
+        const bool is_wei_zp_int4 = conf_->is_wei_zp_per_n
+                && one_of(conf_->wei_zp_dt, data_type::s4, data_type::u4);
+        if (is_src_int4_ || is_wei_zp_int4) {
+            const auto tail_mask_4bit = (1 << (columns_tail / 2)) - 1;
+            mov(regw_tmp, tail_mask_4bit);
+            kmovw(kTail_int4, regw_tmp);
+        }
     }
 
     static constexpr int blk_sz = k_blk_step;

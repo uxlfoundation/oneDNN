@@ -3166,7 +3166,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
     } else
         rd_loop = brg.rd_block;
 
-    if (brg.req_s8s8_compensation) {
+    if (brg.req_src_s8_shift) {
         reg_bdb_loop.save();
         mov(reg_s8_input_shift, 128);
         uni_vpbroadcastb(vmm_inp_shift(), reg_s8_input_shift.cvt8());
@@ -3217,7 +3217,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             }
         }
 
-        if (brg.req_s8s8_compensation)
+        if (brg.req_src_s8_shift)
             uni_vpaddb(vmm_bcast, vmm_bcast, vmm_inp_shift());
     };
 
@@ -3629,11 +3629,13 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
 
         if (brg.is_per_k_src_scales) {
             const auto adj_bd_block = is_bdb_tail ? brg.bdb_tail : brg.bd_block;
-            const auto src_scales_stack_ptr
-                    = reg_src_scales.getStoragePtr().getRegExp();
             const auto src_scales_offset
                     = adj_bd_block * bd_block2 * brg.src_scale_m_stride;
-            add(dword[src_scales_stack_ptr], src_scales_offset);
+            if (reg_src_scales.savable())
+                add(qword[reg_src_scales.getStoragePtr().getRegExp()],
+                        src_scales_offset);
+            else
+                add(reg_src_scales, src_scales_offset);
         }
 
         if (brg.is_gemv && brg.treat_y_as_row) {

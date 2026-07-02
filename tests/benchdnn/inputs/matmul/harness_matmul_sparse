@@ -1,15 +1,18 @@
 --reset
---dt=f16:f16:f16,f32:f32:f32
+--dt=f32,f16
+--encoding=csr+0.99::,coo+0.99::
+--wtag=ab,ba
 --dtag=ab
---encoding=csr+0.99::,:csr+0.99:
 --batch=shapes_sparse
 
 --reset
---dt=f16:f16:f16,f32:f32:f32
+--dt=f32,f16
+--encoding=:csr+0.99:,:coo+0.99:
+--stag=ab
 --dtag=ab
---encoding=coo+0.99::,:coo+0.99:
 --batch=shapes_sparse
 
+--reset
 --dt=u8:s8:s32,s8:s8:s32,u8:s8:f32,s8:s8:f32
 --encoding=:packed+0.99:,:packed+0.5:,:packed+0.0:,:packed+1.0:
 --batch=shapes_sparse_packed

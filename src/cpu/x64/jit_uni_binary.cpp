@@ -293,23 +293,24 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
 }
 
 op_t jit_uni_binary_t::pd_t::get_op_type(const memory_desc_wrapper &src0_d) {
-    const auto &strides = src0_d.blocking_desc().strides;
-    const auto ndims = src0_d.ndims();
+    // A permuted plain layout with unit dims is equivalent to a canonical one
+    // once the unit dims are squeezed out; classify on the squeezed layout so
+    // such cases map to nxc/ncx instead of staying unclassified.
+    memory_desc_t squeezed_md {};
+    const memory_desc_wrapper mdw = squeeze_unit_dims(src0_d, squeezed_md)
+            ? memory_desc_wrapper(squeezed_md)
+            : src0_d;
 
-    if (!src0_d.is_plain() && src0_d.blocking_desc().inner_idxs[0] == 1)
+    const auto &strides = mdw.blocking_desc().strides;
+    const auto ndims = mdw.ndims();
+
+    if (!mdw.is_plain() && mdw.blocking_desc().inner_idxs[0] == 1)
         return op_t::c_blocked;
     else if (strides[1] == 1)
         return op_t::n_spatial_c;
     else if (strides[0] >= strides[1]
             && IMPLICATION(ndims >= 3, strides[1] >= strides[2]))
         return op_t::n_c_spatial;
-
-    // A permuted plain layout with unit dims is equivalent to a canonical
-    // one once the unit dims are squeezed out; retry on the squeezed layout.
-    // Anything else (non-plain, non-unit permuted dims) stays unclassified.
-    memory_desc_t squeezed_md {};
-    if (squeeze_unit_dims(src0_d, squeezed_md))
-        return get_op_type(memory_desc_wrapper(squeezed_md));
     return op_t::none;
 }
 

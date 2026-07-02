@@ -325,10 +325,6 @@ bool jit_uni_binary_t::pd_t::is_only_dim0_bcasted(
 // non-blocked: nxc || ncx
 bool jit_uni_binary_t::pd_t::is_format_non_blocked(
         const memory_desc_wrapper &mdw) const {
-    const auto &dims = mdw.dims();
-    const auto &strides = mdw.blocking_desc().strides;
-    const auto &ndims = mdw.ndims();
-
     // Squeeze out unit dims and re-check, so a permuted plain layout is
     // recognized as non-blocked and handled by jit:uni instead of falling
     // back to ref. See squeeze_unit_dims().
@@ -336,29 +332,14 @@ bool jit_uni_binary_t::pd_t::is_format_non_blocked(
     if (squeeze_unit_dims(mdw, squeezed_md))
         return is_format_non_blocked(memory_desc_wrapper(squeezed_md));
 
-    const bool is_ncx
-            = IMPLICATION(strides[0] != 0,
-                      strides[0] >= utils::array_product(dims + 1, ndims - 1))
-            && IMPLICATION(ndims >= 3 && strides[1] != 0,
-                    strides[1] >= utils::array_product(dims + 2, ndims - 2))
-            && IMPLICATION(ndims >= 4 && strides[2] != 0,
-                    strides[2] >= utils::array_product(dims + 3, ndims - 3))
-            && IMPLICATION(ndims >= 5 && strides[3] != 0,
-                    strides[3] >= utils::array_product(dims + 4, ndims - 4))
-            && IMPLICATION(strides[ndims - 1] != 0, strides[ndims - 1] == 1);
-    const bool is_nxc
-            = IMPLICATION(strides[0] != 0,
-                      strides[0] >= utils::array_product(dims + 1, ndims - 1))
-            && IMPLICATION(ndims >= 3 && strides[2] != 0,
-                    strides[2] >= dims[1]
-                                    * utils::array_product(dims + 3, ndims - 3))
-            && IMPLICATION(ndims >= 4 && strides[3] != 0,
-                    strides[3] >= dims[1]
-                                    * utils::array_product(dims + 4, ndims - 4))
-            && IMPLICATION(ndims >= 5 && strides[4] != 0,
-                    strides[4] >= dims[1]
-                                    * utils::array_product(dims + 5, ndims - 5))
-            && IMPLICATION(strides[1] != 0, strides[1] == 1);
+    // A canonical ncx or nxc layout is the only non-blocked form jit:uni
+    // supports. matches_one_of_tag() compares against a dense gold descriptor,
+    // which covers every layout reachable here once unit dims are squeezed.
+    using namespace format_tag;
+    const bool is_ncx = mdw.matches_one_of_tag(ab, abc, abcd, abcde)
+            != format_tag::undef;
+    const bool is_nxc = mdw.matches_one_of_tag(acb, acdb, acdeb)
+            != format_tag::undef;
     return is_nxc || is_ncx;
 }
 

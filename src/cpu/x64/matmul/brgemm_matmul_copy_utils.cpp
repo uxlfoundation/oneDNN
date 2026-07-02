@@ -6496,6 +6496,14 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         const auto tail_mask = (1 << columns_tail) - 1;
         mov(regw_tmp, tail_mask);
         kmovw(kTail, regw_tmp);
+
+        const bool is_wei_zp_int4 = conf_->is_wei_zp_per_n
+                && one_of(conf_->wei_zp_dt, data_type::s4, data_type::u4);
+        if (is_src_int4_ || is_wei_zp_int4) {
+            const auto tail_mask_4bit = (1 << (columns_tail / 2)) - 1;
+            mov(regw_tmp, tail_mask_4bit);
+            kmovw(kTail_int4, regw_tmp);
+        }
     }
 
     static constexpr int blk_sz = k_blk_step;

@@ -758,6 +758,30 @@ public:
         L(loop_end);
     }
 
+    // Roughly equivalent to:
+    // for(index = max - step; index >= 0; index -= step) {
+    //   body();
+    // }
+    template <typename TReg, typename Func>
+    void asm_for_step(const TReg &index_reg, const TReg &max_reg, int64_t step,
+            const Func &body) {
+        Xbyak_aarch64::Label loop_begin, loop_end;
+
+        cmp_imm(max_reg, step, X_TMP_0);
+        blt(loop_end);
+
+        sub_imm(index_reg, max_reg, step, X_TMP_0);
+
+        L(loop_begin);
+
+        body();
+
+        subs(index_reg, index_reg, step);
+        bge(loop_begin);
+
+        L(loop_end);
+    }
+
     // Only providing a 64-bit version so we don't have to worry about bad
     // immediate ranges, and signed vs unsigned concerns
     // (e.g, Using a WReg but providing max_imm > INT32_MAX).

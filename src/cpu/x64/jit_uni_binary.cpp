@@ -336,10 +336,10 @@ bool jit_uni_binary_t::pd_t::is_format_non_blocked(
     // supports. matches_one_of_tag() compares against a dense gold descriptor,
     // which covers every layout reachable here once unit dims are squeezed.
     using namespace format_tag;
-    const bool is_ncx = mdw.matches_one_of_tag(ab, abc, abcd, abcde)
-            != format_tag::undef;
-    const bool is_nxc = mdw.matches_one_of_tag(acb, acdb, acdeb)
-            != format_tag::undef;
+    const bool is_ncx
+            = mdw.matches_one_of_tag(ab, abc, abcd, abcde) != format_tag::undef;
+    const bool is_nxc
+            = mdw.matches_one_of_tag(acb, acdb, acdeb) != format_tag::undef;
     return is_nxc || is_ncx;
 }
 

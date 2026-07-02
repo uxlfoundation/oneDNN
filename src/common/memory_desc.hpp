@@ -235,6 +235,17 @@ struct sparse_desc_t {
         dnnl_dim_t group_count;
         // Index of the dimension with variable size per group
         int variable_dim_idx;
+        // Layout of the values buffer (handle 0):
+        // - strides are to describe element-to-element navigation within
+        // concatenated values buffer
+        // - across groups we use the offsets (handle 1)
+        //
+        // Note, that variable dim is always the outer one:
+        //   variable_dim_idx == 0 -> row-major (ab): strides[0]=dims[1],
+        //                            strides[1]=1
+        //   variable_dim_idx == 1 -> col-major (ba): strides[0]=1,
+        //                            strides[1]=dims[0]
+        dims_t strides;
     } grouped_desc;
 #endif
 };

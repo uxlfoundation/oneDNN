@@ -4,6 +4,8 @@
 #
 # M = B×top-k rows distributed across E experts.
 # Decode: B=1 token (sparse). Prefill: B=256.
+#
+# Note: --reset after batching this file to avoid leaking --grouped
 
 # ── DeepSeek-V3 gate/up projection: K=7168, N=2048 ─────────────────────────
 # decode  (B=1 token)

@@ -8,6 +8,8 @@
 #
 # M = B×top-k rows distributed across E experts.
 # Decode: B=1 token (sparse). Prefill: B=256.
+#
+# Note: --reset after batching this file to avoid leaking --grouped
 
 # ── Llama4 Scout gate/up projection: K=5120, N=8192 (E=16 exact) ────────────
 # decode  (B=1 token)

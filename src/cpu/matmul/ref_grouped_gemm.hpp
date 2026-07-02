@@ -35,31 +35,47 @@ namespace impl {
 namespace cpu {
 namespace matmul {
 
+// Two grouped matmul patterns are supported:
+// 2D grouped src (variable M) x 3D dense wei -> 2D grouped dst (variable M)
+// 2D grouped src (variable K) x 2D grouped wei (variable M) -> dense 3D dst
 struct ref_grouped_t : public primitive_t {
     struct pd_t : public cpu_matmul_pd_t {
         using cpu_matmul_pd_t::cpu_matmul_pd_t;
 
         DECLARE_COMMON_PD_T("ref_grouped:any", ref_grouped_t);
 
-        // Weights are 3D: [G, K, N]
-        // Override masks to include 0th expert dimension
+        // For 3D weights [G, K, N], override masks to include 0th expert dim
         int wei_qmask_K() const { return (1 << 0) | (1 << 1); }
-
         int wei_qmask_N() const { return (1 << 0) | (1 << 2); }
 
+        bool is_2dby2d() const { return is_2dby2d_; }
+
         status_t init(engine_t *engine) {
+            memory_desc_wrapper src_d(src_md());
+            memory_desc_wrapper wei_d(weights_md(0));
+
+            // Detect pattern (2Dx3D vs 2Dx2D) and initialize
+            VDISPATCH_MATMUL(
+                    src_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            is_2dby2d_ = wei_d.is_grouped_desc();
+            return is_2dby2d_ ? init_2dby2d(engine) : init_2dby3d(engine);
+        }
+
+    private:
+        bool is_2dby2d_ = false;
+
+        status_t init_2dby3d(engine_t *engine) {
             using namespace data_type;
             const auto src_type = src_md(0)->data_type;
             const auto wei_type = weights_md(0)->data_type;
             const auto dst_type = dst_md(0)->data_type;
 
-            memory_desc_wrapper src_d(src_md());
             memory_desc_wrapper wei_d(weights_md(0));
             memory_desc_wrapper dst_d(dst_md());
 
             // Supported configurations: grouped src/dst, dense 3D weights
-            VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_MATMUL(
+                    dst_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
             VDISPATCH_MATMUL(wei_d.is_blocking_desc() && wei_d.ndims() == 3,
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
@@ -225,6 +241,34 @@ struct ref_grouped_t : public primitive_t {
                     }
                 }
             }
+
+            return status::success;
+        }
+
+        status_t init_2dby2d(engine_t *engine) {
+            using namespace data_type;
+            const auto src_type = src_md(0)->data_type;
+            const auto wei_type = weights_md(0)->data_type;
+            const auto dst_type = dst_md(0)->data_type;
+
+            memory_desc_wrapper dst_d(dst_md());
+
+            // Resolve format_any to plain dense
+            if (dst_d.format_any())
+                CHECK(memory_desc_init_by_strides(dst_md_, nullptr));
+
+            // Only plain 3D dst is supported
+            VDISPATCH_MATMUL(dst_d.is_plain(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_MATMUL(dst_d.ndims() == 3, VERBOSE_BAD_NDIMS, "dst",
+                    dst_d.ndims());
+
+            VDISPATCH_MATMUL(src_type == wei_type && src_type == dst_type
+                            && utils::one_of(src_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+
+            VDISPATCH_MATMUL(
+                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_MATMUL(!with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
 
             return status::success;
         }

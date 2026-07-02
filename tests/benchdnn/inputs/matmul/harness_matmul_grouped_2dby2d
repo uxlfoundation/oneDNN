@@ -1,0 +1,8 @@
+# Grouped GEMM (2Dx2D variant): variable contraction dim K
+# src[M, total_K] * wei[total_K, N] -> dst[G, M, N] (dense 3D, allows abc, acb)
+# See shapes_grouped_2dby2d for the --grouped/shape format.
+
+--reset
+--dt=f32:f32:f32,f16:f16:f16,bf16:bf16:bf16
+--dtag=any,abc,acb
+--batch=shapes_grouped_2dby2d

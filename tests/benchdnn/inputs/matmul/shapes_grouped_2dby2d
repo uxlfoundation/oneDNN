@@ -1,0 +1,35 @@
+# Grouped GEMM shapes (2Dx2D variant: variable contraction dim K)
+# src[M, total_K] * wei[total_K, N] -> dst[G, M, N]
+#
+# Format: --grouped=1:<num_groups>:<group_sizes> MxK:KxN
+# Where:
+#   1            - variable dim is index 1 of src (the contraction dim)
+#   num_groups   - number of groups/experts
+#   group_sizes  - '+'-separated list of per-group K sizes (sum must == total_K)
+#   M            - output rows
+#   K            - total contraction dim (sum of group_sizes)
+#   N            - output cols
+#
+# Note: --reset after batching this file to avoid leaking --grouped
+
+# uniform per-group K
+--grouped=1:4:8+8+8+8
+64x32:32x32
+--grouped=1:8:8+8+8+8+8+8+8+8
+64x64:64x64
+
+# Unbalanced groups
+--grouped=1:3:2+6+8
+32x16:16x24
+--grouped=1:4:10+20+30+40
+64x100:100x32
+
+# Empty/zero-sized groups
+--grouped=1:6:0+1+2+0+3+0
+24x6:6x20
+--grouped=1:4:8+0+16+8
+32x32:32x32
+
+# Single group
+--grouped=1:1:8
+16x8:8x12

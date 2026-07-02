@@ -37,3 +37,10 @@
 --stag=ab --dtag=ab --wtag=ab
 --attr-scales=wei:common:1.25:f32 --attr-zero-points=wei:common:2:s8
 8x8:8x8
+
+# dst scales + eltwise post-op injection
+--reset
+--dt=s8:s8:f32
+--stag=ab --wtag=ab --dtag=ab
+--attr-scales=dst:common:1 --attr-post-ops=gelu_erf
+8x8:8x8

@@ -52,3 +52,14 @@
 --sdt=bf16:bf16 --ddt=bf16
 --alg=add  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x12x1x256
 --alg=mul  --stag=acbd:acbd --dtag=acbd 128x12x1x256:1x12x1x1
+
+# Blocked layouts with unit dims are NOT squeezed (only plain layouts are);
+# they must fall back to ref:any gracefully -- no assert/crash, correct result.
+# Guards against a regression that would make blocked layouts assert the way
+# plain permuted ones used to. These cases run on ref:any, not jit:uni.
+--reset
+--allow-enum-tags-only=0
+--sdt=f32:f32 --ddt=f32
+--alg=add  --stag=aBcd16b:aBcd16b --dtag=aBcd16b 128x16x1x256:128x16x1x256
+--alg=mul  --stag=aBcd16b:aBcd16b --dtag=aBcd16b 128x16x1x256:1x16x1x1
+--alg=add  --stag=aBcd8b:aBcd8b   --dtag=aBcd8b  2x32x1x8:2x32x1x8

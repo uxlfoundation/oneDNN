@@ -36,6 +36,10 @@ using namespace data_type;
 status_t rvv_brgemm_convolution_fwd_t::pd_t::init(engine_t *engine) {
     using namespace data_type;
 
+    // Drive the impl name by input dtype (set before any rejection below).
+    const auto name_src_dt = src_md(0)->data_type;
+    isa_ = name_src_dt == bf16 ? zvfbfwma : (name_src_dt == f16 ? zvfh : v);
+
     VDISPATCH_CONV(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
@@ -78,9 +82,13 @@ status_t rvv_brgemm_convolution_fwd_t::pd_t::init(engine_t *engine) {
     const dim_t LDB = static_cast<dim_t>(jcp_.stride_w) * IC_all;
     const dim_t LDC = OC_all;
 
+    const cpu_isa_t brg_isa = jcp_.src_dt == data_type::bf16
+            ? zvfbfwma
+            : (jcp_.src_dt == data_type::f16 ? zvfh : v);
+
     brgemm_desc_t brg_desc;
-    CHECK(brgemm_desc_init(&brg_desc, v, brgemm_strd, data_type::f32,
-            data_type::f32, brgemm_col_major, 1.0f, 1.0f, LDA, LDB, LDC, M,
+    CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, jcp_.src_dt,
+            jcp_.src_dt, brgemm_col_major, 1.0f, 1.0f, LDA, LDB, LDC, M,
             jcp_.ow, K));
 
     brgemm_kernel_t *kernel = nullptr;
@@ -93,10 +101,12 @@ status_t rvv_brgemm_convolution_fwd_t::pd_t::init(engine_t *engine) {
 status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     const auto &jcp = pd()->jcp_;
 
-    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
-    auto wei = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto wei = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bia = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
+
+    const int in_ts = types::data_type_size(pd()->jcp_.src_dt);
 
     const int G = jcp.ngroups;
     const int IC = jcp.ic; // per group
@@ -192,12 +202,15 @@ status_t rvv_brgemm_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                             if (valid_ow <= 0) continue;
                             const int iw_start = iw_base + ow_s * SW;
 
-                            const float *A = wei
-                                    + ((kd * KH + kh) * KW + kw) * wei_kpos_str
-                                    + g * OC;
-                            const float *B = src + n * src_mb_str
-                                    + id * src_d_str + ih * src_h_str
-                                    + iw_start * src_w_str + g * IC;
+                            const char *A = wei
+                                    + (((kd * KH + kh) * KW + kw) * wei_kpos_str
+                                              + g * OC)
+                                            * in_ts;
+                            const char *B = src
+                                    + (n * src_mb_str + id * src_d_str
+                                              + ih * src_h_str
+                                              + iw_start * src_w_str + g * IC)
+                                            * in_ts;
                             float *C = dst_row + ow_s * OC_all;
 
                             brgemm_kernel_execute(

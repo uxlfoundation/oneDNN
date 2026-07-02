@@ -38,11 +38,16 @@ struct rvv_brgemm_inner_product_fwd_t : public primitive_t {
     struct pd_t : public cpu_inner_product_fwd_pd_t {
         using cpu_inner_product_fwd_pd_t::cpu_inner_product_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T("brgemm:rvv", rvv_brgemm_inner_product_fwd_t);
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brgemm:", isa_, ""),
+                rvv_brgemm_inner_product_fwd_t);
 
         status_t init(engine_t *engine);
 
+        // ISA that drives the impl name: v (f32), zvfh (f16), or zvfbfwma
+        // (bf16). Set in init() before any dtype/ISA rejection.
+        cpu_isa_t isa_ = v;
         std::shared_ptr<brgemm_kernel_t> brg_kernel_;
+        int input_typesize_ = 4; // 4=f32, 2=bf16/f16; dst always f32
     };
 
     rvv_brgemm_inner_product_fwd_t(const pd_t *apd) : primitive_t(apd) {}

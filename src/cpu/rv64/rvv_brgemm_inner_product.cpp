@@ -45,9 +45,15 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(engine_t *engine) {
     const auto wei_type = weights_md(0)->data_type;
     const auto dst_type = dst_md(0)->data_type;
     const auto bia_type = weights_md(1)->data_type;
-    const bool types_ok = src_type == f32 && wei_type == f32 && dst_type == f32
+    // Drive the impl name by input dtype (set before any rejection below).
+    isa_ = src_type == bf16 ? zvfbfwma : (src_type == f16 ? zvfh : v);
+    const bool in_dt_ok = src_type == wei_type
+            && (src_type == f32 || (src_type == bf16 && mayiuse(zvfbfwma))
+                    || (src_type == f16 && mayiuse(zvfh)));
+    const bool types_ok = in_dt_ok && dst_type == f32
             && IMPLICATION(with_bias(), bia_type == f32);
     VDISPATCH_INNER_PRODUCT(types_ok, VERBOSE_UNSUPPORTED_DT);
+    input_typesize_ = types::data_type_size(src_type);
 
     // No post-ops supported
     VDISPATCH_INNER_PRODUCT(
@@ -127,10 +133,12 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(engine_t *engine) {
     const dim_t LDB = K; // src row-major: stride[0] = IC
     const dim_t LDC = M; // dst row-major: stride[0] = OC
 
+    const cpu_isa_t brg_isa
+            = src_type == bf16 ? zvfbfwma : (src_type == f16 ? zvfh : v);
+
     brgemm_desc_t brg_desc;
-    CHECK(brgemm_desc_init(&brg_desc, v, brgemm_strd, data_type::f32,
-            data_type::f32, brgemm_col_major, 1.0f, 0.0f, LDA, LDB, LDC, M,
-            MB(), K));
+    CHECK(brgemm_desc_init(&brg_desc, brg_isa, brgemm_strd, src_type, src_type,
+            brgemm_col_major, 1.0f, 0.0f, LDA, LDB, LDC, M, MB(), K));
 
     brgemm_kernel_t *kernel = nullptr;
     CHECK(brgemm_kernel_create(&kernel, brg_desc));
@@ -140,10 +148,12 @@ status_t rvv_brgemm_inner_product_fwd_t::pd_t::init(engine_t *engine) {
 }
 
 status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
-    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
-    auto wei = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto wei = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bia = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
+
+    const int in_ts = pd()->input_typesize_;
 
     const dim_t MB = pd()->MB();
     const dim_t OC = pd()->OC();
@@ -166,7 +176,7 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
             const dim_t n_work = n_end - n_start;
             if (n_work <= 0) return;
 
-            brgemm_kernel_execute(brg_kernel, wei, src + n_start * K,
+            brgemm_kernel_execute(brg_kernel, wei, src + (n_start * K) * in_ts,
                     dst + n_start * OC, n_work, 0.0f, bia);
         });
     } else {
@@ -189,8 +199,8 @@ status_t rvv_brgemm_inner_product_fwd_t::execute(const exec_ctx_t &ctx) const {
                     const float beta_kb = (kb == 0) ? 0.0f : 1.0f;
 
                     brgemm_kernel_params_t p;
-                    p.ptr_A = wei + kb * OC + m_offset;
-                    p.ptr_B = src + kb;
+                    p.ptr_A = wei + (kb * OC + m_offset) * in_ts;
+                    p.ptr_B = src + kb * in_ts;
                     p.ptr_C = dst + m_offset;
                     p.N = MB;
                     p.M = m_size;

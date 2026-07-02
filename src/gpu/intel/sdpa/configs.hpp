@@ -158,12 +158,14 @@ struct ukernel_serialized_hwinfo_t
     ukernel_serialized_hwinfo_t(micro::HWInformation &hwInfo)
         : gmdid(static_cast<uint32_t>(hwInfo.gmdid))
         , euCount(static_cast<uint32_t>(hwInfo.euCount))
-        , systolicAvailable(hwInfo.systolicAvailable) {}
+        , systolicAvailable(hwInfo.systolicAvailable)
+        , isEfficient64Bit(hwInfo.isEfficient64Bit) {}
 
     uint32_t gmdid;
     uint32_t euCount;
     bool systolicAvailable;
-    uint8_t padding[7] = {0};
+    bool isEfficient64Bit;
+    uint8_t padding[6] = {0};
 };
 DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(ukernel_serialized_hwinfo_t);
 static_assert(sizeof(ukernel_serialized_hwinfo_t) == 16,

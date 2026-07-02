@@ -88,8 +88,8 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->bdb = static_cast<int>(M) / brg->bd_block;
     brg->bdb_tail = static_cast<int>(M) % brg->bd_block;
 
-    brg->n_step = 4; // process 4 output columns per inner iteration
-    brg->rd_block = 4; // K unroll factor
+    brg->n_step = 6; // number of output columns per inner iteration
+    brg->rd_block = 8; // K unroll factor
     brg->rdb = static_cast<int>(K) / brg->rd_block;
     brg->rdb_tail = static_cast<int>(K) % brg->rd_block;
 
@@ -101,19 +101,9 @@ status_t brgemm_kernel_create(
     if (!brg_kernel) return status::invalid_arguments;
     *brg_kernel = nullptr;
 
-    // Pick the per-dtype kernel class.
-    brgemm_kernel_t *kernel = nullptr;
-    if (brg.is_f32) {
-        kernel = new brgemm_kernel_common_t(brg);
-    } else if (brg.dt_a == data_type::bf16) {
-        kernel = new brgemm_kernel_bf16_t(brg);
-    } else if (brg.dt_a == data_type::f16) {
-        kernel = new brgemm_kernel_f16_t(brg);
-    } else if (brg.is_int8) {
-        kernel = new brgemm_kernel_s8_t(brg);
-    } else {
-        return status::unimplemented;
-    }
+    // jit_brgemm_kernel_t/brgemm_kernel_common_t handle every supported dtype
+    // combination (f32/bf16/f16/int8) generically via rvv_matmul_engine_t.
+    brgemm_kernel_t *kernel = new brgemm_kernel_common_t(brg);
     status_t st = kernel->create_kernel();
     if (st != status::success) {
         delete kernel;
@@ -133,8 +123,8 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, const void *ptr_A,
 
     const auto &brg = brg_kernel->get_brg();
 
-    // int8 A is pre-widened to s32 during packing (4 bytes/elem); dt_c is also
-    // s32, so typesize_C gives the correct packed-A stride.
+    // int8 A is pre-widened to s32 during packing (4 bytes/elem); dt_c is
+    // also s32, so typesize_C gives the correct packed-A stride.
     const int ts_a = brg.is_int8 ? brg.typesize_C : brg.typesize_A;
     const int ts_b = brg.typesize_B;
     const int ts_c = brg.typesize_C;

@@ -1,0 +1,65 @@
+# Targeted tests for jit:uni support of permuted plain layouts with unit dims.
+# These shapes are physically equivalent to canonical layouts once unit dims
+# are squeezed out, e.g. acbd(128,12,1,256) strides=(3072,256,3072,1)
+# is equivalent to acb(128,12,256) n_c_spatial layout.
+# is_format_non_blocked() and get_op_type() both squeeze unit dims, so the
+# same-shape and the broadcast cases below all run on jit:uni (not ref).
+# Regression for: jit_uni_binary false positive in is_format_non_blocked()
+# causing assert/NaN with acbd layout and H=1.
+
+--reset
+--allow-enum-tags-only=0
+--sdt=f32:f32 --ddt=f32
+
+# acbd layout with H=1: unit dim in position 2 (H)
+# per-element (same shape) -- jit:uni execute_no_bcast_strategy
+--alg=add  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x12x1x256
+--alg=mul  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x12x1x256
+--alg=sub  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x12x1x256
+--alg=div  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x12x1x256
+--alg=max  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x12x1x256
+--alg=min  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x12x1x256
+
+# scalar broadcast (src1=1x1x1x1) -- bcast_t::scalar, jit:uni per_c/no_bcast
+--alg=add  --stag=acbd:acbd --dtag=acbd 128x12x1x256:1x1x1x1
+--alg=mul  --stag=acbd:acbd --dtag=acbd 128x12x1x256:1x1x1x1
+
+# per-channel broadcast (src1=1x12x1x1) -- bcast_t::per_c, jit:uni n_c_spatial
+--alg=add  --stag=acbd:abcd --dtag=acbd 128x12x1x256:1x12x1x1
+--alg=mul  --stag=acbd:abcd --dtag=acbd 128x12x1x256:1x12x1x1
+
+# per_w broadcast (src1=128x1x1x256, C broadcast) -- bcast_t::per_w, jit:uni
+--alg=add  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x1x1x256
+--alg=mul  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x1x1x256
+
+# per-tensor broadcast src0 vs non-broadcast src1 (stag=acbd:abcd same dims)
+--alg=add  --stag=acbd:abcd --dtag=acbd 128x12x1x256:128x12x1x256
+--alg=mul  --stag=acbd:abcd --dtag=acbd 128x12x1x256:128x12x1x256
+
+# smaller shapes: squeeze reduces 4D to 3D
+--alg=add  --stag=acbd:acbd --dtag=acbd 2x4x1x8:2x4x1x8
+--alg=mul  --stag=acbd:acbd --dtag=acbd 4x16x1x32:4x16x1x32
+
+# adbc layout with H=1 in position 2 (same acbd squeeze scenario)
+--alg=add  --stag=adbc:adbc --dtag=adbc 128x12x1x256:128x12x1x256
+--alg=mul  --stag=adbc:abdc --dtag=adbc 128x12x1x256:1x12x1x1
+
+# fp16 and bf16 variants (where ISA supports)
+--sdt=f16:f16 --ddt=f16
+--alg=add  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x12x1x256
+--alg=mul  --stag=acbd:acbd --dtag=acbd 128x12x1x256:1x12x1x1
+
+--sdt=bf16:bf16 --ddt=bf16
+--alg=add  --stag=acbd:acbd --dtag=acbd 128x12x1x256:128x12x1x256
+--alg=mul  --stag=acbd:acbd --dtag=acbd 128x12x1x256:1x12x1x1
+
+# Blocked layouts with unit dims are NOT squeezed (only plain layouts are);
+# they must fall back to ref:any gracefully -- no assert/crash, correct result.
+# Guards against a regression that would make blocked layouts assert the way
+# plain permuted ones used to. These cases run on ref:any, not jit:uni.
+--reset
+--allow-enum-tags-only=0
+--sdt=f32:f32 --ddt=f32
+--alg=add  --stag=aBcd16b:aBcd16b --dtag=aBcd16b 128x16x1x256:128x16x1x256
+--alg=mul  --stag=aBcd16b:aBcd16b --dtag=aBcd16b 128x16x1x256:1x16x1x1
+--alg=add  --stag=aBcd8b:aBcd8b   --dtag=aBcd8b  2x32x1x8:2x32x1x8

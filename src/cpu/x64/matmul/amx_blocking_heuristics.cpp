@@ -1173,7 +1173,14 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         n_chunk_size_ = div_up(n_per_thread, n_blk_);
         m_blk_ = nstl::min(best_m_v * m_decomposition, M);
         m_chunk_size_ = 1;
-        is_a_nt_ = true;
+        // In vertical traversal the A panel is reused by every N-block the
+        // thread walks, so an NT stream re-reads it from L3/DRAM each time.
+        // When it is actually reused (n_chunk_size_ >= 2) and fits L2, cache it
+        // (T0) instead. Helps small-M read-once-weight shapes (MoE experts)
+        // where A is tiny and B is the large streamed operand.
+        const bool a_reused_fits_l2 = n_chunk_size_ >= 2
+                && (size_t)m_blk_ * k_per_thread * gemm_dt_sz <= L2_threshold();
+        is_a_nt_ = !a_reused_fits_l2;
         is_b_nt_ = false;
         need_prefetch_a_ = false;
         need_prefetch_b_ = ((n_per_thread / n_blk_) >= 2) && !use_buffer_b;

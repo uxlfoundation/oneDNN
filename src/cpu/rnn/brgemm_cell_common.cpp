@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
+* Copyright 2026 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -21,13 +22,20 @@
 #include "common/bfloat16.hpp"
 #include "cpu/rnn/ref_rnn.hpp"
 
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
 #include <cassert>
 #include <functional>
+#endif
+
+#if DNNL_X64
 #include "cpu/x64/rnn/brgemm_cell_common_bwd.hpp"
 #include "cpu/x64/rnn/brgemm_cell_common_fwd.hpp"
 #include "cpu/x64/rnn/brgemm_cell_common_reorders.hpp"
 #include "cpu/x64/rnn/brgemm_cell_common_utils.hpp"
+#elif DNNL_AARCH64
+#include "cpu/aarch64/rnn/brgemm_cell_common_bwd.hpp"
+#include "cpu/aarch64/rnn/brgemm_cell_common_fwd.hpp"
+#include "cpu/aarch64/rnn/brgemm_cell_common_reorders.hpp"
 #endif
 
 namespace dnnl {
@@ -36,19 +44,16 @@ namespace cpu {
 
 using namespace rnn_utils;
 using namespace dnnl::impl::utils;
-#if DNNL_X64
-using namespace dnnl::impl::cpu::x64;
-#endif
 
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_merged_layer_execution_sig((
         ref_rnn_fwd_t<src_type, weights_type, acc_type>::merged_layer_brgemm)) {
-#if DNNL_X64
-    using brgemm_merged_layer_t = x64::brgemm_merged_layer_t<src_iter_t,
-            weights_t, scratch_t, gemm_acc_t>;
+#if DNNL_X64 || DNNL_AARCH64
+    using brgemm_merged_layer_t = brgemm_merged_layer_t<src_iter_t, weights_t,
+            scratch_t, gemm_acc_t>;
     const brgemm_merged_layer_t layer_calc(this->rnn_brgemm_, rnn,
             cell_position, src_layer_, w_layer_[0], scratch_gates_,
-            amx_scratchpad, addr_batch_global);
+            gemm_acc_scratchpad, addr_batch_global);
 
     layer_calc.execute();
 #endif
@@ -67,7 +72,7 @@ template rnn_merged_layer_execution_sig(
 template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         acc_type>::cell_execution_brgemm)) {
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
 
     const auto weights_scales = this->pd_->attr()->rnn_weights_qparams_.scales_;
     const int mask = this->pd()->attr()->rnn_weights_qparams_.mask_;
@@ -79,7 +84,7 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
     const auto LDDic = rnn.dst_iter_c_ld(cell_position);
     const auto LDAic = rnn.src_iter_c_ld(cell_position);
 
-    using brgemm_dst_layer_iter_t = x64::brgemm_dst_layer_iter_t<src_iter_t,
+    using brgemm_dst_layer_iter_t = brgemm_dst_layer_iter_t<src_iter_t,
             weights_t, scratch_t, gemm_acc_t>;
 
     typename brgemm_dst_layer_iter_t::postgemm_fused_t fused_postgemm;
@@ -117,8 +122,8 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
     }
 
     if (rnn.is_orig_gru) {
-        using brgemm_gru_t = x64::brgemm_gru_t<src_iter_t, weights_t, scratch_t,
-                gemm_acc_t>;
+        using brgemm_gru_t
+                = brgemm_gru_t<src_iter_t, weights_t, scratch_t, gemm_acc_t>;
         typename brgemm_gru_t::postgemm_fused_t fused_postgemm_gru_part1,
                 fused_postgemm_gru_part2;
         if (!rnn.unfused_post_gemm) {
@@ -181,16 +186,16 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
 
         const brgemm_gru_t dst_calc(this->rnn_brgemm_, rnn, cell_position,
                 src_iter_, src_layer_, w_iter_[0], w_iter_[1], w_layer_[0],
-                dst_postgemm, scratch_gates_, scratch_cell_, amx_scratchpad,
-                addr_batch_global, fused_postgemm_gru_part1,
-                fused_postgemm_gru_part2);
+                dst_postgemm, scratch_gates_, scratch_cell_,
+                gemm_acc_scratchpad, addr_batch_global,
+                fused_postgemm_gru_part1, fused_postgemm_gru_part2);
         dst_calc.execute();
     } else {
         // calculate
         // scratch_gates_ = src_layer_ * w_layer_ + src_iter_ * w_iter_
         const brgemm_dst_layer_iter_t dst_calc(this->rnn_brgemm_, rnn,
                 cell_position, src_iter_, src_layer_, w_iter_[0], w_layer_[0],
-                scratch_gates_, scratch_cell_, amx_scratchpad,
+                scratch_gates_, scratch_cell_, gemm_acc_scratchpad,
                 addr_batch_global, fused_postgemm);
         dst_calc.execute();
     }
@@ -219,7 +224,7 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
                 = this->pd_->attr()->rnn_weights_projection_qparams_.mask_;
 
         using brgemm_dst_proj_t
-                = x64::brgemm_dst_proj_t<ht_t, weights_t, gemm_acc_t>;
+                = brgemm_dst_proj_t<ht_t, weights_t, gemm_acc_t>;
         typename brgemm_dst_proj_t::postgemm_fused_t fused_postgemm_proj;
 
         if (!rnn.unfused_post_gemm) {
@@ -245,8 +250,8 @@ rnn_cell_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
         // calculate
         // output = proj_ht_ * w_projection_
         const brgemm_dst_proj_t dst_proj_calc(this->rnn_brgemm_, rnn,
-                cell_position, proj_ht_, w_projection_[0], Cp, amx_scratchpad,
-                addr_batch_global, fused_postgemm_proj);
+                cell_position, proj_ht_, w_projection_[0], Cp,
+                gemm_acc_scratchpad, addr_batch_global, fused_postgemm_proj);
         dst_proj_calc.execute();
 
         if (rnn.unfused_post_gemm) {
@@ -274,7 +279,7 @@ template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
         acc_type>::cell_execution_brgemm)) {
 
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
     this->rnn_postgemm_->execute(rnn, cell_position, ws_gates_, scratch_gates_,
             augru_attention_, dst_layer_, dst_iter_c_, src_iter_, src_iter_c_,
             diff_src_layer_, diff_augru_attention_, diff_src_iter_,
@@ -282,44 +287,46 @@ rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
             weights_peephole_, bias_[0], ws_grid_, scratch_cell_, dst_iter_,
             nullptr, 0);
 
-    using brgemm_diff_src_calc_t = x64::brgemm_diff_src_layer_iter_t<weights_t,
-            scratch_t, gemm_acc_t>;
+    using brgemm_diff_src_calc_t
+            = brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>;
     using brgemm_diff_weights_calc_t
-            = x64::brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t,
+            = brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t,
                     scratch_t, gemm_acc_t>;
 
     const brgemm_diff_src_calc_t diff_src_calc(this->rnn_brgemm_, rnn,
             cell_position, scratch_gates_, w_iter_[0], w_layer_[0],
-            diff_src_iter_, diff_src_layer_, amx_scratchpad, addr_batch_global);
+            diff_src_iter_, diff_src_layer_, gemm_acc_scratchpad,
+            addr_batch_global);
     const brgemm_diff_weights_calc_t diff_weights_calc(this->rnn_brgemm_, rnn,
             cell_position, src_iter_, scratch_src_iter_, src_layer_,
             scratch_src_layer_, scratch_gates_, scratch_gates_blocked_,
-            diff_w_iter_, diff_w_layer_, diff_bias_, amx_scratchpad,
+            diff_w_iter_, diff_w_layer_, diff_bias_, gemm_acc_scratchpad,
             addr_batch_global);
 
     // calculate
     // dff_src_iter = scratch * w_iter
     // dff_src_layer = scratch * w_layer
     diff_src_calc.execute();
-
+#if DNNL_X64
     if (rnn.diff_wei_brgemm.global_transpose) {
         const auto src_layer_ld = rnn.src_layer_ld(cell_position);
         const auto src_iter_ld = rnn.src_iter_ld(cell_position);
         const auto src_layer_ld_nb = rnn.layer_brgemm_desc(cell_position);
         const auto src_iter_ld_nb = rnn.iter_brgemm_desc(cell_position);
-        const auto rnd_up_size = data_type_vnni_granularity(src_type);
+        const auto rnd_up_size = x64::data_type_vnni_granularity(src_type);
         const auto dst_ld = utils::rnd_up(rnn.mb, rnd_up_size);
 
-        const auto layer_transpose = src_layer_iter_transpose_t(src_layer_ld,
-                dst_ld, rnn.mb, rnn.slc,
+        const auto layer_transpose = x64::src_layer_iter_transpose_t(
+                src_layer_ld, dst_ld, rnn.mb, rnn.slc,
                 this->rnn_brgemm_.kernel_transpose_layer_[src_layer_ld_nb]
                         .get());
-        const auto iter_transpose = src_layer_iter_transpose_t(src_iter_ld,
+        const auto iter_transpose = x64::src_layer_iter_transpose_t(src_iter_ld,
                 dst_ld, rnn.mb, rnn.sic,
                 this->rnn_brgemm_.kernel_transpose_iter_[src_iter_ld_nb].get());
         layer_transpose.execute(src_layer_, scratch_src_layer_);
         iter_transpose.execute(src_iter_, scratch_src_iter_);
     }
+#endif
     // calculate
     // dff_weights_layer = src_layer^T * scratch
     // dff_weights_iter = src_iter^T * scratch
@@ -328,7 +335,7 @@ rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
     diff_weights_calc.execute();
 
     if (rnn.is_lstm_peephole) {
-        using brgemm_diff_wei_peep_t = x64::brgemm_diff_wei_peep_t<scratch_t>;
+        using brgemm_diff_wei_peep_t = brgemm_diff_wei_peep_t<scratch_t>;
         const brgemm_diff_wei_peep_t diff_wei_peep_calc(this->rnn_brgemm_, rnn,
                 cell_position, scratch_gates_, src_iter_c_, dst_iter_c_,
                 diff_weights_peephole_);

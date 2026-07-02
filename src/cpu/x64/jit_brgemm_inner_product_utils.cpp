@@ -661,8 +661,8 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
 
     // to avoid cache concurrent write access from different threads
     size_t sc_size = sizeof(brgemm_batch_element_t);
-    jbgp.adjusted_batch_size
-            = div_up(rnd_up(jbgp.gemm_batch_size * sc_size, 4096), sc_size);
+    jbgp.adjusted_batch_size = into<int>(
+            div_up(rnd_up(jbgp.gemm_batch_size * sc_size, 4096), sc_size));
 
     if ((is_amx_xf16 || jbgp.is_bf32) && adjust_thread_balance()) {
         // Adjust oc_block to improve thread balancing
@@ -914,8 +914,8 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
     jbgp.gemm_batch_size = jbgp.nb_oc_blocking;
     // to avoid cache concurrent write access from different threads
     size_t sc_size = sizeof(brgemm_batch_element_t);
-    jbgp.adjusted_batch_size
-            = div_up(rnd_up(jbgp.gemm_batch_size * sc_size, 4096), sc_size);
+    jbgp.adjusted_batch_size = into<int>(
+            div_up(rnd_up(jbgp.gemm_batch_size * sc_size, 4096), sc_size));
 
     jbgp.use_buffer = jbgp.src_dt != jbgp.acc_dt || jbgp.nthr_oc_b > 1;
 
@@ -927,9 +927,9 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
     jbgp.N_tail = jbgp.ic % jbgp.ic_block;
     jbgp.K_tail = jbgp.use_buffer_a ? 0 : jbgp.oc % jbgp.oc_block;
 
-    jbgp.LDA = jbgp.use_buffer_a
-            ? static_cast<dim_t>(jbgp.K) * jbgp.nb_oc_blocking
-            : jbgp.oc_without_padding;
+    jbgp.LDA = into<int>(jbgp.use_buffer_a
+                    ? into<dim_t>(jbgp.K) * jbgp.nb_oc_blocking
+                    : jbgp.oc_without_padding);
     jbgp.LDB = jbgp.N;
     CHECK(safe_dim_to_int(
             jbgp.LDD, static_cast<dim_t>(jbgp.ic_without_padding) * jbgp.ks()));
@@ -1246,8 +1246,8 @@ status_t jit_brgemm_ip_bwd_w_conf_t::init_conf(cpu_isa_t isa,
     jbgp.gemm_batch_size = jbgp.nb_os_blocking;
     // to avoid cache concurrent write access from different threads
     size_t sc_size = sizeof(brgemm_batch_element_t);
-    jbgp.adjusted_batch_size
-            = div_up(rnd_up(jbgp.gemm_batch_size * sc_size, 4096), sc_size);
+    jbgp.adjusted_batch_size = into<int>(
+            div_up(rnd_up(jbgp.gemm_batch_size * sc_size, 4096), sc_size));
 
     jbgp.use_buffer = IMPLICATION(!has_weights_buffer, jbgp.nthr_mb > 1);
 

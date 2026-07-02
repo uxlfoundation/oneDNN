@@ -37,8 +37,8 @@ jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::
                 const jit_brgemm_conv_conf_t &ajcp)
     : jit_generator_t(jit_name())
     , jcp_(ajcp)
-    , inp_dsz_(jcp_.wei_dsz)
-    , out_dsz_(jcp_.acc_dsz)
+    , inp_dsz_(into<int>(jcp_.wei_dsz))
+    , out_dsz_(into<int>(jcp_.acc_dsz))
     , nb_ic_(utils::div_up(
               jcp_.prop_kind == backward_data ? jcp_.oc : jcp_.ic, 4))
     , inp_ic_sz_(static_cast<size_t>(inp_dsz_)
@@ -169,8 +169,10 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::copy_ow(
     {
         cmp(reg_ker_l, 1);
         je(label_ker_end, T_NEAR);
-        if (jcp_.src_zero_point) add(reg_aux_zp_comp_out, out_ker_sz_);
-        if (jcp_.s8s8_compensation_required) add(reg_aux_comp_out, out_ker_sz_);
+        if (jcp_.src_zero_point)
+            add(reg_aux_zp_comp_out, into<uint32_t>(out_ker_sz_));
+        if (jcp_.s8s8_compensation_required)
+            add(reg_aux_comp_out, into<uint32_t>(out_ker_sz_));
         copy_ow_body(n_block, ow_b, ow_e);
         dec(reg_ker_l);
         jmp(label_ker_loop, T_NEAR);
@@ -227,7 +229,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::icb_loop(const int icb,
         cmp(reg_icb, 0);
         je(label_loop_end, T_NEAR);
         compute(ic_step, m_block, n_block, 0, false);
-        add(reg_aux_in, ic_step * m_block * inp_ic_sz_);
+        add(reg_aux_in, into<uint32_t>(ic_step * m_block * inp_ic_sz_));
         dec(reg_icb);
         jmp(label_icb_loop, T_NEAR);
     }
@@ -255,16 +257,18 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::kdh_loop(const int icb,
             je(label_kh_end, T_NEAR);
             icb_loop(icb, icb_tail, ic_step, m_block, mb_tail, n_block);
             add(reg_aux_kh_in,
-                    jcp_.prop_kind == backward_data ? inp_kh_sz_ * jcp_.stride_h
-                                                    : inp_kh_sz_);
+                    into<uint32_t>(jcp_.prop_kind == backward_data
+                                    ? inp_kh_sz_ * jcp_.stride_h
+                                    : inp_kh_sz_));
             dec(reg_kh_l);
             jmp(label_kh_loop, T_NEAR);
         }
         L_aligned(label_kh_end);
 
         add(reg_aux_kd_in,
-                jcp_.prop_kind == backward_data ? inp_kd_sz_ * jcp_.stride_d
-                                                : inp_kd_sz_);
+                into<uint32_t>(jcp_.prop_kind == backward_data
+                                ? inp_kd_sz_ * jcp_.stride_d
+                                : inp_kd_sz_));
         dec(reg_kd_l);
         jmp(label_kd_loop, T_NEAR);
     }
@@ -323,7 +327,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::bwd_kw_iw_loop(const int icb,
                 has_kw_computed = true;
             }
         }
-        add(reg_in, inp_kw_sz_);
+        add(reg_in, into<uint32_t>(inp_kw_sz_));
     }
 }
 
@@ -381,11 +385,12 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::fwd_kw_ow_loop(const int icb,
             store_accumulators(m_block, n_block, ow_b, ow_e);
         }
         add(reg_in,
-                jcp_.prop_kind == backward_data ? inp_kw_sz_ * jcp_.stride_w
-                                                : inp_kw_sz_);
+                into<uint32_t>(jcp_.prop_kind == backward_data
+                                ? inp_kw_sz_ * jcp_.stride_w
+                                : inp_kw_sz_));
     }
 
-    copy_ow(m_block, n_block, 0, comp_ow_l);
+    copy_ow(m_block, n_block, 0, into<int>(comp_ow_l));
 }
 template <typename Vmm>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::kw_loop_base(const int icb,
@@ -402,8 +407,9 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::kw_loop_base(const int icb,
         je(label_loop_end, T_NEAR);
         kdh_loop(icb, icb_tail, ic_step, m_block, mb_tail, n_block);
         add(reg_in,
-                jcp_.prop_kind == backward_data ? inp_kw_sz_ * jcp_.stride_w
-                                                : inp_kw_sz_);
+                into<uint32_t>(jcp_.prop_kind == backward_data
+                                ? inp_kw_sz_ * jcp_.stride_w
+                                : inp_kw_sz_));
         dec(reg_kw_l);
         jmp(label_kw_loop, T_NEAR);
     }
@@ -444,8 +450,8 @@ int jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::compute_ic_step(
     int best_ic_step = 1;
     float best_block_eff = 0.f;
 
-    int max_ic_step
-            = nstl::min(static_cast<size_t>(m_block), div_up(nb_ic_, m_block));
+    int max_ic_step = into<int>(
+            nstl::min(into<size_t>(m_block), div_up(nb_ic_, m_block)));
 
     // Introduce ic_step to increase kernel efficiency
     // Compute the ic_step based on the optimal kernel efficiency
@@ -509,8 +515,9 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::generate() {
     const int n_block = (nb2 == 0) ? nstl::max(1, nb2_tail) : n_max_regs_;
 
     const size_t m_max_regs = max_regs / n_block;
-    const int m_block = nstl::min(m_max_regs, nb_ic_);
-    const int ic_step = compute_ic_step(m_max_regs, m_block, n_block);
+    const int m_block = into<int>(nstl::min(m_max_regs, nb_ic_));
+    const int ic_step
+            = compute_ic_step(into<int>(m_max_regs), m_block, n_block);
 
     assert(m_block * n_block <= max_regs);
 
@@ -524,11 +531,13 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::generate() {
     mov(reg_use_inversion, ptr[param1 + GET_OFF(use_inversion)]);
     cmp(reg_use_inversion, 0);
     jz(label_kw_without_inversion, T_NEAR);
-    kw_loop(icb, icb_tail, ic_step, m_block, mb_tail, n_block, true);
+    kw_loop(into<int>(icb), into<int>(icb_tail), ic_step, m_block,
+            into<int>(mb_tail), n_block, true);
     jmp(label_done, T_NEAR);
 
     L_aligned(label_kw_without_inversion);
-    kw_loop(icb, icb_tail, ic_step, m_block, mb_tail, n_block, false);
+    kw_loop(into<int>(icb), into<int>(icb_tail), ic_step, m_block,
+            into<int>(mb_tail), n_block, false);
 
     L_aligned(label_done);
 
@@ -596,8 +605,10 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::store(
         cmp(reg_ker_l, 0);
         je(label_done, T_NEAR);
         store_accumulators(n_block, ow_b, ow_e);
-        if (jcp_.src_zero_point) add(reg_aux_zp_comp_out, out_ker_sz_);
-        if (jcp_.s8s8_compensation_required) add(reg_aux_comp_out, out_ker_sz_);
+        if (jcp_.src_zero_point)
+            add(reg_aux_zp_comp_out, into<uint32_t>(out_ker_sz_));
+        if (jcp_.s8s8_compensation_required)
+            add(reg_aux_comp_out, into<uint32_t>(out_ker_sz_));
         dec(reg_ker_l);
         jmp(label_ker_loop, T_NEAR);
     }
@@ -661,7 +672,7 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::compute(
             vpmovsxbd(vmm_tmp, addr);
             vpsubd(vmm, vmm, vmm_tmp);
         }
-        add(reg_aux_in, inp_kh_sz_);
+        add(reg_aux_in, into<uint32_t>(inp_kh_sz_));
         dec(reg_kh_l);
         jmp(label_kh_loop, T_NEAR);
     }
@@ -720,8 +731,8 @@ jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::
                 const jit_brgemm_conv_conf_t &ajcp)
     : jit_generator_t(jit_name())
     , jcp_(ajcp)
-    , inp_dsz_(jcp_.wei_dsz)
-    , out_dsz_(jcp_.acc_dsz)
+    , inp_dsz_(into<int>(jcp_.wei_dsz))
+    , out_dsz_(into<int>(jcp_.acc_dsz))
     , inp_oc_block_(static_cast<size_t>(16))
     , inp_ic_sz_(static_cast<size_t>(inp_dsz_) * inp_oc_block_)
     , inp_kw_sz_(static_cast<size_t>(inp_ic_sz_) * jcp_.ic

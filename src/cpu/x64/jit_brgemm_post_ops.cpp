@@ -36,10 +36,10 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::
                       : ajbgp.dst_dt)
     , bia_dt_(ajbgp.bia_dt)
     , acc_dt_(ajbgp.acc_dt)
-    , ddst_typesize_(types::data_type_size(ddst_dt_))
-    , bia_typesize_(types::data_type_size(bia_dt_))
-    , acc_typesize_(types::data_type_size(acc_dt_))
-    , mult_(data_type_vnni_granularity(ddst_dt_)) {}
+    , ddst_typesize_(into<int>(types::data_type_size(ddst_dt_)))
+    , bia_typesize_(into<int>(types::data_type_size(bia_dt_)))
+    , acc_typesize_(into<int>(types::data_type_size(acc_dt_)))
+    , mult_(into<int>(data_type_vnni_granularity(ddst_dt_))) {}
 
 // This version is used from MatMul for src tensor.
 template <typename Vmm>
@@ -56,9 +56,9 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::
     // MatMul `reduce` buffer.
     , bia_dt_(bgmmc.reduce_dt)
     , acc_dt_(bgmmc.acc_dt)
-    , ddst_typesize_(types::data_type_size(ddst_dt_))
-    , bia_typesize_(types::data_type_size(bia_dt_))
-    , acc_typesize_(types::data_type_size(acc_dt_))
+    , ddst_typesize_(into<int>(types::data_type_size(ddst_dt_)))
+    , bia_typesize_(into<int>(types::data_type_size(bia_dt_)))
+    , acc_typesize_(into<int>(types::data_type_size(acc_dt_)))
     // Unused.
     , mult_(0) {
     // This kernel must be called after the copy A routine because it assumes

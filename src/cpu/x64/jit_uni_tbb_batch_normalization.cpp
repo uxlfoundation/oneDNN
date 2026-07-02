@@ -548,7 +548,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
                 jit_tail_.uni_vmovups_maybe_tail(
                         vmmword[reg_ptr_stat_ + reg_off_c_ + vlen / 2], vzero_);
             }
-            add(reg_off_c_, simd_w * acc_type_size_);
+            add(reg_off_c_, into<uint32_t>(simd_w * acc_type_size_));
             dec(reg_C_);
             jnz(label_zeroise);
         }
@@ -557,7 +557,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
     void load_stat(bool compute_mean, const int c_blks_to_unroll = 1) {
         int start_idx = min_idx_to_unroll_;
         int end_idx = c_blks_to_unroll + min_idx_to_unroll_;
-        const int step = simd_w * acc_type_size_;
+        const dim_t step = simd_w * acc_type_size_;
 
         // load mean or variance
         for (int idx = start_idx, off = 0; idx < end_idx; idx++, off += step) {
@@ -583,7 +583,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
     void compute_stat(bool compute_mean, const int c_blks_to_unroll = 1) {
         const int start_idx = min_idx_to_unroll_;
         const int end_idx = c_blks_to_unroll + min_idx_to_unroll_;
-        const int step = simd_w * data_type_size_;
+        const dim_t step = simd_w * data_type_size_;
 
         for (int idx = start_idx, off = 0; idx < end_idx; idx++, off += step) {
             const Vmm vstat = Vmm(idx);
@@ -606,7 +606,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
             bool compute_mean, const int c_blks_to_unroll = 1) {
         const int start_idx = min_idx_to_unroll_;
         const int end_idx = c_blks_to_unroll + min_idx_to_unroll_;
-        const int step = simd_w * data_type_size_;
+        const dim_t step = simd_w * data_type_size_;
 
         for (int idx = start_idx, off = 0; idx < end_idx;
                 idx += 2, off += 2 * step) {
@@ -636,7 +636,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
     void store_stat(const int c_blks_to_unroll = 1) {
         const int start_idx = min_idx_to_unroll_;
         const int end_idx = c_blks_to_unroll + min_idx_to_unroll_;
-        const int step = simd_w * acc_type_size_;
+        const dim_t step = simd_w * acc_type_size_;
 
         for (int idx = start_idx, off = 0; idx < end_idx; idx++, off += step) {
             const Vmm vstat = Vmm(idx);
@@ -660,7 +660,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
             {
                 compute_stat(compute_mean);
 
-                add(reg_off_dat_, stride_S_ * data_type_size_);
+                add(reg_off_dat_, into<uint32_t>(stride_S_ * data_type_size_));
 
                 dec(reg_S_);
                 jnz(label_S);
@@ -668,8 +668,8 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
 
             store_stat();
 
-            add(reg_off_dat_save_, stride_C_ * data_type_size_);
-            add(reg_off_c_, simd_w * acc_type_size_);
+            add(reg_off_dat_save_, into<uint32_t>(stride_C_ * data_type_size_));
+            add(reg_off_c_, into<uint32_t>(simd_w * acc_type_size_));
 
             dec(reg_C_);
             jnz(label_C);
@@ -706,7 +706,8 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
                                       compute_mean, c_blks_to_unroll)
                             : compute_stat(compute_mean, c_blks_to_unroll);
 
-                    add(reg_off_dat_, stride_S_ * data_type_size_);
+                    add(reg_off_dat_,
+                            into<uint32_t>(stride_S_ * data_type_size_));
 
                     dec(reg_S_);
                     jnz(label_S);
@@ -714,9 +715,12 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
 
                 store_stat(c_blks_to_unroll);
 
-                add(reg_off_c_, c_blks_to_unroll * simd_w * acc_type_size_);
+                add(reg_off_c_,
+                        into<uint32_t>(
+                                c_blks_to_unroll * simd_w * acc_type_size_));
                 add(reg_off_dat_save_,
-                        c_blks_to_unroll * stride_C_ * data_type_size_);
+                        into<uint32_t>(c_blks_to_unroll * stride_C_
+                                * data_type_size_));
 
                 sub(reg_C_, c_blks_to_unroll);
                 jmp(c_unroll_label[c_blks_to_unroll], T_NEAR);
@@ -746,7 +750,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
                 compute_blocked(compute_mean);
             }
 
-            add(reg_ptr_src_, stride_N_ * data_type_size_);
+            add(reg_ptr_src_, into<uint32_t>(stride_N_ * data_type_size_));
             dec(reg_N_);
             jnz(label_N);
         }
@@ -757,7 +761,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
         cmp(reg_do_normalise_, 0);
         jz(label_ret);
 
-        const int S = pd_->D() * pd_->H() * pd_->W();
+        const int S = into<int>(pd_->D() * pd_->H() * pd_->W());
         mov(reg_tmp_, float2int(pd_->MB() * S));
         Xmm xtmp = Xmm(vtmp_.getIdx());
         uni_vmovq(xtmp, reg_tmp_);
@@ -781,7 +785,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
                         vmmword[reg_ptr_stat_ + reg_off_c_ + vlen / 2], v_);
             }
 
-            add(reg_off_c_, simd_w * acc_type_size_);
+            add(reg_off_c_, into<uint32_t>(simd_w * acc_type_size_));
             dec(reg_C_);
             jnz(label_normalise);
         }
@@ -1012,7 +1016,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
     }
 
     void load_two_c_mean_sqrtvar() {
-        const int offt = simd_w * acc_type_size_;
+        const dim_t offt = simd_w * acc_type_size_;
         jit_tail_.uni_vmovups_maybe_tail(
                 vmean_even_, vmmword[reg_ptr_mean_ + reg_off_c_]);
         jit_tail_.uni_vmovups_maybe_tail(
@@ -1056,9 +1060,10 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
             compute_bnorm(vsrc_even, vmean_even_, vsqrtvar_even_,
                     stream_store_allowed, true);
 
-            load_c_specifics(true, simd_w * acc_type_size_);
+            load_c_specifics(true, into<int>(simd_w * acc_type_size_));
             compute_bnorm(vsrc_odd, vmean_odd_, vsqrtvar_odd_,
-                    stream_store_allowed, true, stride_C_ * data_type_size_);
+                    stream_store_allowed, true,
+                    into<int>(stride_C_ * data_type_size_));
         }
     }
 
@@ -1078,12 +1083,13 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
             {
                 compute_bnorm_avx2_ne_xf16(false, stream_store_allowed);
 
-                add(reg_off_dat_, stride_S_ * data_type_size_);
+                add(reg_off_dat_, into<uint32_t>(stride_S_ * data_type_size_));
                 dec(reg_S_);
                 jnz(label_S, T_NEAR);
             }
-            add(reg_off_dat_save_, 2 * stride_C_ * data_type_size_);
-            add(reg_off_c_, 2 * simd_w * acc_type_size_);
+            add(reg_off_dat_save_,
+                    into<uint32_t>(2 * stride_C_ * data_type_size_));
+            add(reg_off_c_, into<uint32_t>(2 * simd_w * acc_type_size_));
 
             sub(reg_C_, 2);
             jnz(label_C, T_NEAR);
@@ -1102,7 +1108,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
             {
                 compute_bnorm_avx2_ne_xf16(true, stream_store_allowed);
 
-                add(reg_off_dat_, stride_S_ * data_type_size_);
+                add(reg_off_dat_, into<uint32_t>(stride_S_ * data_type_size_));
                 dec(reg_S_);
                 jnz(label_S_C_tail, T_NEAR);
             }
@@ -1125,14 +1131,14 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
                 compute_bnorm(
                         v_, vmean_, vsqrtvar_, stream_store_allowed, false);
 
-                add(reg_off_dat_, stride_S_ * data_type_size_);
+                add(reg_off_dat_, into<uint32_t>(stride_S_ * data_type_size_));
 
                 dec(reg_S_);
                 jnz(label_S);
             }
 
-            add(reg_off_dat_save_, stride_C_ * data_type_size_);
-            add(reg_off_c_, simd_w * acc_type_size_);
+            add(reg_off_dat_save_, into<uint32_t>(stride_C_ * data_type_size_));
+            add(reg_off_c_, into<uint32_t>(simd_w * acc_type_size_));
 
             dec(reg_C_);
             jnz(label_C);
@@ -1163,8 +1169,8 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
                 compute_blocked(stream_store_allowed);
             }
 
-            add(reg_ptr_src_, stride_N_ * data_type_size_);
-            add(reg_ptr_dst_, stride_N_ * data_type_size_);
+            add(reg_ptr_src_, into<uint32_t>(stride_N_ * data_type_size_));
+            add(reg_ptr_dst_, into<uint32_t>(stride_N_ * data_type_size_));
             if (jit_relu_.with_relu_ && !jit_relu_.with_relu_inf_only_)
                 add(reg_ptr_ws_, stride_N_ / bits_per_byte);
 
@@ -1306,7 +1312,7 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
         uni_vmovq(x, reg_tmp_);
         uni_vbroadcastss(vone_, x);
 
-        const int S = pd_->D() * pd_->H() * pd_->W();
+        const int S = into<int>(pd_->D() * pd_->H() * pd_->W());
         mov(reg_tmp_, float2int(pd_->MB() * S));
         uni_vmovq(x, reg_tmp_);
         uni_vbroadcastss(vNS_, x);
@@ -1387,14 +1393,14 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
             {
                 compute_bnorm(stream_store_allowed);
 
-                add(reg_off_dat_, stride_S_ * data_type_size_);
+                add(reg_off_dat_, into<uint32_t>(stride_S_ * data_type_size_));
 
                 dec(reg_S_);
                 jnz(label_S);
             }
 
-            add(reg_off_dat_save_, stride_C_ * data_type_size_);
-            add(reg_off_c_, simd_w * acc_type_size_);
+            add(reg_off_dat_save_, into<uint32_t>(stride_C_ * data_type_size_));
+            add(reg_off_c_, into<uint32_t>(simd_w * acc_type_size_));
 
             dec(reg_C_);
             jnz(label_C);
@@ -1416,14 +1422,14 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
 
                 compute_bnorm(stream_store_allowed);
 
-                add(reg_off_c_, simd_w * acc_type_size_);
-                add(reg_off_dat_, stride_C_ * data_type_size_);
+                add(reg_off_c_, into<uint32_t>(simd_w * acc_type_size_));
+                add(reg_off_dat_, into<uint32_t>(stride_C_ * data_type_size_));
 
                 dec(reg_C_);
                 jnz(label_C);
             }
 
-            add(reg_off_dat_save_, stride_S_ * data_type_size_);
+            add(reg_off_dat_save_, into<uint32_t>(stride_S_ * data_type_size_));
 
             dec(reg_S_);
             jnz(label_S);
@@ -1451,9 +1457,9 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
                 compute_blocked(stream_store_allowed);
             }
 
-            add(reg_ptr_src_, stride_N_ * data_type_size_);
-            add(reg_ptr_diff_src_, stride_N_ * data_type_size_);
-            add(reg_ptr_diff_dst_, stride_N_ * data_type_size_);
+            add(reg_ptr_src_, into<uint32_t>(stride_N_ * data_type_size_));
+            add(reg_ptr_diff_src_, into<uint32_t>(stride_N_ * data_type_size_));
+            add(reg_ptr_diff_dst_, into<uint32_t>(stride_N_ * data_type_size_));
             add(reg_ptr_ws_, stride_N_ / bits_per_byte);
 
             dec(reg_N_);
@@ -1624,7 +1630,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
                         vmmword[reg_ptr_diff_beta_ + reg_off_c_ + vlen / 2],
                         vzero_);
             }
-            add(reg_off_c_, simd_w * acc_type_size_);
+            add(reg_off_c_, into<uint32_t>(simd_w * acc_type_size_));
             dec(reg_C_);
             jnz(label_zeroise);
         }
@@ -1636,7 +1642,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
         const int start_idx = min_idx_to_unroll_;
         const int end_idx = number_of_unrolled_variables_ * c_blks_to_unroll
                 + min_idx_to_unroll_;
-        const int step = simd_w * acc_type_size_;
+        const dim_t step = simd_w * acc_type_size_;
 
         for (int idx = start_idx, off = 0; idx < end_idx;
                 idx += number_of_unrolled_variables_, off += step) {
@@ -1668,7 +1674,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
         const int start_idx = min_idx_to_unroll_;
         const int end_idx = number_of_unrolled_variables_ * c_blks_to_unroll
                 + min_idx_to_unroll_;
-        const int step = simd_w * acc_type_size_;
+        const dim_t step = simd_w * acc_type_size_;
 
         for (int idx = start_idx, off = 0; idx < end_idx;
                 idx += number_of_unrolled_variables_, off += step) {
@@ -1694,7 +1700,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
         const int start_idx = min_idx_to_unroll_;
         const int end_idx = number_of_unrolled_variables_ * c_blks_to_unroll
                 + min_idx_to_unroll_;
-        const int step = simd_w * data_type_size_;
+        const dim_t step = simd_w * data_type_size_;
 
         for (int idx = start_idx, off = 0; idx < end_idx;
                 idx += number_of_unrolled_variables_, off += step) {
@@ -1724,7 +1730,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
         const int start_idx = min_idx_to_unroll_;
         const int end_idx = number_of_unrolled_variables_ * c_blks_to_unroll
                 + min_idx_to_unroll_;
-        const int step = simd_w * acc_type_size_;
+        const dim_t step = simd_w * acc_type_size_;
 
         for (int idx = start_idx, off = 0; idx < end_idx;
                 idx += number_of_unrolled_variables_, off += step) {
@@ -1769,7 +1775,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
             {
                 compute_diff_beta_and_diff_gamma();
 
-                add(reg_off_dat_, stride_S_ * data_type_size_);
+                add(reg_off_dat_, into<uint32_t>(stride_S_ * data_type_size_));
 
                 dec(reg_S_);
                 jnz(label_S);
@@ -1778,8 +1784,8 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
             load_and_prepare_sqrtvar();
             store_diff_beta_and_diff_gamma();
 
-            add(reg_off_dat_save_, stride_C_ * data_type_size_);
-            add(reg_off_c_, simd_w * acc_type_size_);
+            add(reg_off_dat_save_, into<uint32_t>(stride_C_ * data_type_size_));
+            add(reg_off_c_, into<uint32_t>(simd_w * acc_type_size_));
 
             dec(reg_C_);
             jnz(label_C);
@@ -1812,7 +1818,8 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
                 {
                     compute_diff_beta_and_diff_gamma(c_blks_to_unroll);
 
-                    add(reg_off_dat_, stride_S_ * data_type_size_);
+                    add(reg_off_dat_,
+                            into<uint32_t>(stride_S_ * data_type_size_));
 
                     dec(reg_S_);
                     jnz(label_S);
@@ -1821,9 +1828,12 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
                 load_and_prepare_sqrtvar(c_blks_to_unroll);
                 store_diff_beta_and_diff_gamma(c_blks_to_unroll);
 
-                add(reg_off_c_, c_blks_to_unroll * simd_w * acc_type_size_);
+                add(reg_off_c_,
+                        into<uint32_t>(
+                                c_blks_to_unroll * simd_w * acc_type_size_));
                 add(reg_off_dat_save_,
-                        c_blks_to_unroll * stride_C_ * data_type_size_);
+                        into<uint32_t>(c_blks_to_unroll * stride_C_
+                                * data_type_size_));
 
                 sub(reg_C_, c_blks_to_unroll);
                 jmp(c_unroll_label[c_blks_to_unroll], T_NEAR);
@@ -1852,8 +1862,8 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
                 compute_blocked();
             }
 
-            add(reg_ptr_src_, stride_N_ * data_type_size_);
-            add(reg_ptr_diff_dst_, stride_N_ * data_type_size_);
+            add(reg_ptr_src_, into<uint32_t>(stride_N_ * data_type_size_));
+            add(reg_ptr_diff_dst_, into<uint32_t>(stride_N_ * data_type_size_));
             add(reg_ptr_ws_, stride_N_ / bits_per_byte);
 
             dec(reg_N_);
@@ -1973,7 +1983,7 @@ public:
             const batch_normalization_pd_t *pd) {
 
         int nthrs = dnnl_get_max_threads();
-        int C_PADDED = get_c_padded(pd);
+        dim_t C_PADDED = get_c_padded(pd);
 
         auto sbuf_sz = use_tmp_stats(pd) * 2 * C_PADDED;
         auto pbuf_sz
@@ -1992,7 +2002,7 @@ public:
         std::tie(stride_N, stride_S, stride_C)
                 = get_data_strides<isa>(pd_, tag_kind_);
 
-        const int nthr_NS = nthr.N * nthr.S;
+        const dim_t nthr_NS = nthr.N * nthr.S;
         const bool need_reduction = nthr_NS > 1;
         const dim_t tail_size = blk_has_tail ? C_ % simd_w : simd_w;
 
@@ -2020,7 +2030,7 @@ public:
 
         // find local mean
         acc_data_t *r_mean = need_reduction ? rbuf : mean;
-        parallel(nthr.glob,
+        parallel(into<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
@@ -2035,7 +2045,7 @@ public:
             const size_t d_off = start.N * stride_N + start.C * stride_C
                     + start.S * stride_S;
             c.src = (void *)((char *)src + d_off * dt_size_);
-            const int ithr_NS = ithr.N * nthr.S + ithr.S;
+            const dim_t ithr_NS = ithr.N * nthr.S + ithr.S;
             c.mean = &r_mean[ithr_NS * size_C_stat + start.C * simd_w];
             c.blk_has_tail = blk_has_tail && stop.C == C_blks;
             c.do_normalise = !need_reduction;
@@ -2047,7 +2057,7 @@ public:
 
         // find local var
         acc_data_t *r_var = need_reduction ? rbuf : var;
-        parallel(nthr.glob,
+        parallel(into<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
@@ -2062,7 +2072,7 @@ public:
             const size_t d_off = start.N * stride_N + start.C * stride_C
                     + start.S * stride_S;
             c.src = (void *)((char *)src + d_off * dt_size_);
-            const int ithr_NS = ithr.N * nthr.S + ithr.S;
+            const dim_t ithr_NS = ithr.N * nthr.S + ithr.S;
             c.mean = &mean[start.C * simd_w];
             c.var = &r_var[ithr_NS * size_C_stat + start.C * simd_w];
             c.blk_has_tail = blk_has_tail && stop.C == C_blks;
@@ -2083,7 +2093,7 @@ public:
         std::tie(stride_N, stride_S, stride_C)
                 = get_data_strides<isa>(pd_, tag_kind_);
 
-        parallel(nthr.glob,
+        parallel(into<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
@@ -2161,7 +2171,7 @@ public:
         const dim_t tail_size = blk_has_tail ? C_ % simd_w : simd_w;
         const dim_t size_C_stat = (C_blks - 1) * simd_w + tail_size;
 
-        const int nthr_NS = nthr.N * nthr.S;
+        const dim_t nthr_NS = nthr.N * nthr.S;
         const bool need_reduction = nthr_NS > 1;
 
         acc_data_t *diff_gamma = diff_scale;
@@ -2197,14 +2207,14 @@ public:
             });
         };
 
-        parallel(nthr.glob,
+        parallel(into<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
             bnorm_dims_t start, stop;
             work_distribution(C_blks, ithr, nthr, start, stop);
 
-            const int ithr_NS = ithr.N * nthr.S + ithr.S;
+            const dim_t ithr_NS = ithr.N * nthr.S + ithr.S;
             acc_data_t *loc_diff_gamma = &r_diff_gamma[ithr_NS * size_C_stat];
             acc_data_t *loc_diff_beta = &r_diff_beta[ithr_NS * size_C_stat];
 
@@ -2240,7 +2250,7 @@ public:
         std::tie(stride_N, stride_S, stride_C)
                 = get_data_strides<isa>(pd_, tag_kind_);
 
-        parallel(nthr.glob,
+        parallel(into<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
@@ -2409,7 +2419,7 @@ private:
     bnorm_dims_t map_thread(int ithr_glob, const bnorm_dims_t &nthr) {
         auto ithr = bnorm_dims_t();
         ithr.glob = ithr_glob;
-        ithr.C = map_thread_c(ithr.glob, nthr);
+        ithr.C = map_thread_c(into<int>(ithr.glob), nthr);
         ithr.N = ithr.glob / nthr.S % nthr.N;
         ithr.S = ithr.glob % nthr.S;
         return ithr;
@@ -2422,7 +2432,8 @@ private:
 
     void work_distribution(dim_t C_blks, const bnorm_dims_t &ithr,
             const bnorm_dims_t &nthr, bnorm_dims_t &start, bnorm_dims_t &stop) {
-        work_distribution_c(C_blks, ithr.C, nthr.C, start.C, stop.C);
+        work_distribution_c(
+                C_blks, into<int>(ithr.C), into<int>(nthr.C), start.C, stop.C);
         balance211(N_, nthr.N, ithr.N, start.N, stop.N);
         balance211(S_, nthr.S, ithr.S, start.S, stop.S);
     }

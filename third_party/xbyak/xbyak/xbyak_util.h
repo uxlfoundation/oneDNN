@@ -1591,7 +1591,7 @@ inline CoreType setAffinityAndGetCoreType(uint32_t cpu)
 
 inline bool initCpuTopology(CpuTopology& cpuTopo)
 {
-	const uint32_t logicalCpuNum = sysconf(_SC_NPROCESSORS_ONLN);
+	const uint32_t logicalCpuNum = static_cast<uint32_t>(sysconf(_SC_NPROCESSORS_ONLN));
 
 	if (logicalCpuNum == 0) return false;
 	if (logicalCpuNum >= (1u << XBYAK_CPUMASK_BITN)) return false;

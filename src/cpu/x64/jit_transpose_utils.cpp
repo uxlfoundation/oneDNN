@@ -39,9 +39,9 @@ struct jit_trans_iw_ic_t : public jit_trans_src_t, public jit_generator_t {
     jit_trans_iw_ic_t(const jit_conv_conf_t *conf)
         : jit_trans_src_t(conf)
         , jit_generator_t(jit_name())
-        , typesize(conf->src_dt == data_type::undef
+        , typesize(into<int>(conf->src_dt == data_type::undef
                           ? 2
-                          : types::data_type_size(conf->src_dt))
+                          : types::data_type_size(conf->src_dt)))
         , is_layout_nxc(utils::one_of(conf_->src_tag, format_tag::ndhwc,
                   format_tag::nhwc, format_tag::nwc)) {}
 
@@ -649,19 +649,20 @@ void jit_trans_iw_ic_t::generate() {
         if (str_w > 1) {
             int tr_src_shift = s;
             int src_shift = (str_w - (conf_->l_pad % str_w) + s) % str_w;
-            add(reg_src, src_shift * src_mult * typesize);
+            add(reg_src, into<uint32_t>(src_shift * src_mult * typesize));
             add(reg_tr_src, tr_src_shift * tr_iw_s * typesize);
-            add(reg_src_prf, src_shift * src_mult * typesize);
+            add(reg_src_prf, into<uint32_t>(src_shift * src_mult * typesize));
             add(reg_tr_src_prf, tr_src_shift * tr_iw_s * typesize);
         }
 
         if (left_pad > 0 && loop_iters > 0) {
             loop_iters--;
             transpose(transpose_size, left_pad, 0, nontemporal_stores);
-            add(reg_src, src_step);
-            add(reg_tr_src, tr_src_step + left_pad * typesize);
-            add(reg_src_prf, src_step);
-            add(reg_tr_src_prf, tr_src_step + left_pad * typesize);
+            add(reg_src, into<uint32_t>(src_step));
+            add(reg_tr_src, into<uint32_t>(tr_src_step + left_pad * typesize));
+            add(reg_src_prf, into<uint32_t>(src_step));
+            add(reg_tr_src_prf,
+                    into<uint32_t>(tr_src_step + left_pad * typesize));
         }
 
         if (loop_iters) {
@@ -670,10 +671,10 @@ void jit_trans_iw_ic_t::generate() {
             L(loop);
             {
                 transpose(transpose_size, 0, 0, nontemporal_stores);
-                add(reg_src, src_step);
-                add(reg_tr_src, tr_src_step);
-                add(reg_src_prf, src_step);
-                add(reg_tr_src_prf, tr_src_step);
+                add(reg_src, into<uint32_t>(src_step));
+                add(reg_tr_src, into<uint32_t>(tr_src_step));
+                add(reg_src_prf, into<uint32_t>(src_step));
+                add(reg_tr_src_prf, into<uint32_t>(tr_src_step));
                 sub(reg_loop, 1);
                 jnz(loop);
             }
@@ -691,14 +692,14 @@ struct jit_trans_ow_oc_t : public jit_trans_dst_t, public jit_generator_t {
     jit_trans_ow_oc_t(const jit_conv_conf_t *conf)
         : jit_trans_dst_t(conf)
         , jit_generator_t(jit_name())
-        , typesize(conf->dst_dt == data_type::undef
+        , typesize(into<int>(conf->dst_dt == data_type::undef
                           ? 2
-                          : types::data_type_size(conf->dst_dt))
+                          : types::data_type_size(conf->dst_dt)))
         , is_layout_nxc(utils::one_of(conf_->dst_tag, format_tag::ndhwc,
                   format_tag::nhwc, format_tag::nwc))
-        , vnni_block(conf->dst_dt == data_type::undef
+        , vnni_block(into<int>(conf->dst_dt == data_type::undef
                           ? 2
-                          : data_type_vnni_granularity(conf->dst_dt)) {}
+                          : data_type_vnni_granularity(conf->dst_dt))) {}
 
     void operator()(const ctx_t *ctx) override {
         jit_generator_t::operator()(ctx);
@@ -1037,9 +1038,9 @@ void jit_trans_ow_oc_t::generate() {
         L(loop);
         {
             transpose(transpose_size, nontemporal_stores);
-            add(reg_src, src_step);
-            add(reg_tr_src, tr_src_step);
-            add(reg_src_prf, src_step);
+            add(reg_src, into<uint32_t>(src_step));
+            add(reg_tr_src, into<uint32_t>(tr_src_step));
+            add(reg_src_prf, into<uint32_t>(src_step));
             sub(reg_loop, 1);
             jnz(loop);
         }
@@ -1051,7 +1052,9 @@ void jit_trans_ow_oc_t::generate() {
         const auto zero_tail = zero_tr_ow - zero_loop_iters * transpose_size;
 
         // shift over tail
-        add(reg_tr_src, (size_t)oc_block * rnd_up(tail, vnni_block) * typesize);
+        add(reg_tr_src,
+                into<uint32_t>((size_t)oc_block * rnd_up(tail, vnni_block)
+                        * typesize));
 
         // zero the tr_ow - ow
         if (zero_loop_iters) {
@@ -1060,7 +1063,7 @@ void jit_trans_ow_oc_t::generate() {
             L(zero_loop);
             {
                 transpose(transpose_size, nontemporal_stores, false);
-                add(reg_tr_src, tr_src_step);
+                add(reg_tr_src, into<uint32_t>(tr_src_step));
                 sub(reg_loop, 1);
                 jnz(zero_loop);
             }
@@ -1136,7 +1139,8 @@ void jit_transpose4x16_src_t::transpose(int nrows) {
     }
 
     for (size_t i = nrows; i < 4; i++) {
-        vpxord(src_zmm(i), src_zmm(i), src_zmm(i));
+        vpxord(src_zmm(into<int>(i)), src_zmm(into<int>(i)),
+                src_zmm(into<int>(i)));
     }
 
     vmovupd(tmp0, src0);
@@ -1201,7 +1205,7 @@ void jit_transpose4x16_src_t::generate() {
     preamble();
 
     const int ic_block = params->ic_block;
-    const int is = params->is;
+    const int is = into<int>(params->is);
     int tail = is % transpose_size;
 
     src_stride = ic_block * typesize;
@@ -1275,7 +1279,7 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
     /* Reorder part of F32 weights tensor
        from [VNNI_GRANULARITY][I][kd][kh][kw][16i][16o] to VNNI format [kd][kh][kw][16i][16o][VNNI_GRANULARITY][i]
        and down-convert it to required float. */
-    const int ts_out = types::data_type_size(out_dt_);
+    const dim_t ts_out = types::data_type_size(out_dt_);
     const int ts_inp = 4;
     const int simd_w = 16;
 
@@ -1316,7 +1320,7 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
     auto get_zmm_src = [&](int idx, int ic) { return Zmm(4 * idx + ic); };
     auto get_zmm_bf16 = [&](int ic) { return Zmm(16 + ic); };
 
-    const int vnni_granularity = data_type_vnni_granularity(out_dt_);
+    const int vnni_granularity = into<int>(data_type_vnni_granularity(out_dt_));
 
     Xbyak::Label prm_table, zero_buffer;
     Xbyak::Label kd_loop_label, kh_loop_label;
@@ -1477,10 +1481,10 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
         L(prm_table);
         uint8_t prm_array[64];
         for (size_t i = 0; i < 16; i++) {
-            prm_array[4 * i] = i;
-            prm_array[4 * i + 1] = i + 16;
-            prm_array[4 * i + 2] = i + 32;
-            prm_array[4 * i + 3] = i + 48;
+            prm_array[4 * i] = into<uint8_t>(i);
+            prm_array[4 * i + 1] = into<uint8_t>(i + 16);
+            prm_array[4 * i + 2] = into<uint8_t>(i + 32);
+            prm_array[4 * i + 3] = into<uint8_t>(i + 48);
         }
 
         for (size_t i = 0; i < 64; ++i)

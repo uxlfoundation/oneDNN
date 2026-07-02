@@ -187,8 +187,8 @@ struct kernel_t : public jit_uni_group_normalization_fwd_t::kernel_base_t,
             // calculate dst
             compute_dst();
 
-            add(reg_src, c_src_size);
-            add(reg_dst, c_dst_size);
+            add(reg_src, into<uint32_t>(c_src_size));
+            add(reg_dst, into<uint32_t>(c_dst_size));
 
             jmp(unroll_loop);
         }
@@ -476,14 +476,15 @@ struct kernel_stat_t
             L(c_blk_loop);
             {
 
-                cmp(reg_nc_block, nc_blocks_);
+                cmp(reg_nc_block, into<uint32_t>(nc_blocks_));
                 je(c_blk_loop_end, T_NEAR);
 
                 // calculate mean
                 compute_stat_block(unroll_c_);
 
                 add(reg_src_start,
-                        c_block_ * types::data_type_size(src_d_.data_type()));
+                        into<uint32_t>(c_block_
+                                * types::data_type_size(src_d_.data_type())));
                 add(reg_nc_block, 1);
 
                 jmp(c_blk_loop);
@@ -494,7 +495,8 @@ struct kernel_stat_t
         if (unroll_c_tail_) {
             compute_stat_block(unroll_c_tail_);
             add(reg_src_start,
-                    c_block_tail_ * types::data_type_size(src_d_.data_type()));
+                    into<uint32_t>(c_block_tail_
+                            * types::data_type_size(src_d_.data_type())));
         }
 
         if (axis_simd_tail_) compute_stat_block(1, true);
@@ -648,7 +650,7 @@ protected:
                 uni_vaddps(Vmm_mean(ur), Vmm_mean(ur), Vmm_src(ur));
             }
 
-            add(reg_src, c_src_size);
+            add(reg_src, into<uint32_t>(c_src_size));
             jmp(sp_blk_loop);
         }
         L(sp_blk_loop_end);
@@ -704,7 +706,7 @@ protected:
                 uni_vfmadd231ps(Vmm_var(ur), Vmm_src(ur), Vmm_src(ur));
             }
 
-            add(reg_src, c_src_size);
+            add(reg_src, into<uint32_t>(c_src_size));
             jmp(sp_blk_loop);
         }
         L(sp_blk_loop_end);
@@ -716,9 +718,15 @@ protected:
             compute_mean_block(unroll, tail);
     }
 
-    Vmm Vmm_mean(size_t ur = 0) { return Vmm(1 + 0 * unroll_c_ + ur); }
-    Vmm Vmm_var(size_t ur = 0) { return Vmm(1 + 1 * unroll_c_ + ur); }
-    Vmm Vmm_src(size_t ur = 0) { return Vmm(1 + 2 * unroll_c_ + ur); }
+    Vmm Vmm_mean(size_t ur = 0) {
+        return Vmm(into<int>(1 + 0 * unroll_c_ + ur));
+    }
+    Vmm Vmm_var(size_t ur = 0) {
+        return Vmm(into<int>(1 + 1 * unroll_c_ + ur));
+    }
+    Vmm Vmm_src(size_t ur = 0) {
+        return Vmm(into<int>(1 + 2 * unroll_c_ + ur));
+    }
 
     Xbyak::Address src_ptr(size_t offt = 0) {
         return vmmword[reg_src + offt * src_d_.data_type_size()];

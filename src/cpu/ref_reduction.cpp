@@ -63,7 +63,7 @@ void accumulate(T &acc, const T &src, alg_kind_t alg, float p) {
         case reduction_norm_lp_sum:
         case reduction_norm_lp_power_p_max:
         case reduction_norm_lp_power_p_sum:
-            acc += powf(nstl::abs(src), p);
+            acc += into<T>(powf(nstl::abs(src), p));
             break;
         default: assert(!"unknown alg");
     }

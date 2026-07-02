@@ -309,9 +309,9 @@ void jit_io_helper_t<Xbyak::Zmm>::emu_gather(const Xbyak::Reg64 &src_reg,
     // and in convert_to_f32, they are shifted-left to finally convert to f32
     // For f16 we do not need such interleaving.
     const int xmm_size_elem = (data_type_ == data_type::f16) ? 8 : 4;
-    const int number_of_xmms = tail
-            ? utils::div_up(tail_conf_->tail_size_, xmm_size_elem)
-            : utils::div_up(gather_conf_->simd_w_, xmm_size_elem);
+    const int number_of_xmms = into<int>(tail
+                    ? utils::div_up(tail_conf_->tail_size_, xmm_size_elem)
+                    : utils::div_up(gather_conf_->simd_w_, xmm_size_elem));
     const int num_indices_in_xmm = 16 / sizeof(int);
     for (int i = 0, idx = 0; i < number_of_xmms; i++) {
 
@@ -322,18 +322,21 @@ void jit_io_helper_t<Xbyak::Zmm>::emu_gather(const Xbyak::Reg64 &src_reg,
         for (int j = 0; j < number_of_values_to_load; j++) {
 
             if (j % num_indices_in_xmm == 0)
-                host_->vextractf32x4(xmm_tmp, indices_vmm, idx++);
-            host_->vpextrd(gather_conf_->reg_tmp_.cvt32(), xmm_tmp, j);
+                host_->vextractf32x4(
+                        xmm_tmp, indices_vmm, into<uint8_t>(idx++));
+            host_->vpextrd(
+                    gather_conf_->reg_tmp_.cvt32(), xmm_tmp, into<uint8_t>(j));
             host_->add(src_reg, gather_conf_->reg_tmp_);
             switch (data_type_) {
                 case data_type::f16:
                     assert(f16_supported_ && "Unsupported data type.");
-                    host_->vpinsrw(xmm_dst, xmm_dst, host_->ptr[src_reg], j);
+                    host_->vpinsrw(xmm_dst, xmm_dst, host_->ptr[src_reg],
+                            into<uint8_t>(j));
                     break;
                 case data_type::bf16:
                     assert(bf16_supported_ && "Unsupported data type.");
-                    host_->vpinsrw(
-                            xmm_dst, xmm_dst, host_->ptr[src_reg], j * 2);
+                    host_->vpinsrw(xmm_dst, xmm_dst, host_->ptr[src_reg],
+                            into<uint8_t>(j * 2));
                     break;
                 case data_type::s8:
                 case data_type::u8:
@@ -345,7 +348,7 @@ void jit_io_helper_t<Xbyak::Zmm>::emu_gather(const Xbyak::Reg64 &src_reg,
                                    fp8_supported_)
                             && "Unsupported data type.");
                     host_->vpinsrb(xmm_dst, xmm_dst, host_->ptr[src_reg],
-                            i * xmm_size_elem + j);
+                            into<uint8_t>(i * xmm_size_elem + j));
                     break;
                 }
                 default: assert(!"Unsupported data type.");
@@ -353,10 +356,10 @@ void jit_io_helper_t<Xbyak::Zmm>::emu_gather(const Xbyak::Reg64 &src_reg,
             host_->mov(src_reg, gather_conf_->reg_tmp1_);
         }
         if (data_type_ == data_type::bf16) {
-            host_->vinsertf32x4(dst_vmm, dst_vmm, xmm_dst, i);
+            host_->vinsertf32x4(dst_vmm, dst_vmm, xmm_dst, into<uint8_t>(i));
             host_->vpxord(xmm_dst, xmm_dst, xmm_dst);
         } else if (data_type_ == data_type::f16) {
-            host_->vinsertf32x4(dst_ymm, dst_ymm, xmm_dst, i);
+            host_->vinsertf32x4(dst_ymm, dst_ymm, xmm_dst, into<uint8_t>(i));
             host_->vpxord(xmm_dst, xmm_dst, xmm_dst);
         }
     }
@@ -391,34 +394,36 @@ void jit_io_helper_t<Xbyak::Ymm>::emu_gather(const Xbyak::Reg64 &src_reg,
     // and in convert_to_f32, they are shifted-left to finally convert to f32
     // For f16 we do not need such interleaving.
     const int xmm_size_elem = 4;
-    const int number_of_xmms = tail
-            ? utils::div_up(tail_conf_->tail_size_, xmm_size_elem)
-            : utils::div_up(gather_conf_->simd_w_, xmm_size_elem);
+    const int number_of_xmms = into<int>(tail
+                    ? utils::div_up(tail_conf_->tail_size_, xmm_size_elem)
+                    : utils::div_up(gather_conf_->simd_w_, xmm_size_elem));
     for (int i = 0; i < number_of_xmms; i++) {
-        host_->vextractf128(xmm_tmp, indices_vmm, i);
+        host_->vextractf128(xmm_tmp, indices_vmm, into<uint8_t>(i));
 
         const int number_of_values_to_load = i == number_of_xmms - 1 && tail
                         && tail_conf_->tail_size_ % xmm_size_elem != 0
                 ? tail_conf_->tail_size_ % xmm_size_elem
                 : xmm_size_elem;
         for (int j = 0; j < number_of_values_to_load; j++) {
-            host_->vpextrd(gather_conf_->reg_tmp_.cvt32(), xmm_tmp, j);
+            host_->vpextrd(
+                    gather_conf_->reg_tmp_.cvt32(), xmm_tmp, into<uint8_t>(j));
             host_->add(src_reg, gather_conf_->reg_tmp_);
             switch (data_type_) {
                 case data_type::f32:
                 case data_type::s32: {
-                    host_->vpinsrd(xmm_dst, xmm_dst, host_->ptr[src_reg], j);
+                    host_->vpinsrd(xmm_dst, xmm_dst, host_->ptr[src_reg],
+                            into<uint8_t>(j));
                     break;
                 }
                 case data_type::f16:
                     assert(f16_supported_ && "Unsupported data type.");
                     host_->vpinsrw(xmm_dst, xmm_dst, host_->ptr[src_reg],
-                            i * xmm_size_elem + j);
+                            into<uint8_t>(i * xmm_size_elem + j));
                     break;
                 case data_type::bf16:
                     assert(bf16_supported_ && "Unsupported data type.");
-                    host_->vpinsrw(
-                            xmm_dst, xmm_dst, host_->ptr[src_reg], j * 2);
+                    host_->vpinsrw(xmm_dst, xmm_dst, host_->ptr[src_reg],
+                            into<uint8_t>(j * 2));
                     break;
                 case data_type::s8:
                 case data_type::u8:
@@ -430,7 +435,7 @@ void jit_io_helper_t<Xbyak::Ymm>::emu_gather(const Xbyak::Reg64 &src_reg,
                                    fp8_supported_)
                             && "Unsupported data type.");
                     host_->vpinsrb(xmm_dst, xmm_dst, host_->ptr[src_reg],
-                            i * xmm_size_elem + j);
+                            into<uint8_t>(i * xmm_size_elem + j));
                     break;
                 }
                 default: assert(!"Unsupported data type.");
@@ -440,7 +445,7 @@ void jit_io_helper_t<Xbyak::Ymm>::emu_gather(const Xbyak::Reg64 &src_reg,
 
         if (utils::one_of(data_type_, data_type::f32, data_type::s32,
                     data_type::bf16))
-            host_->vinsertf128(dst_vmm, dst_vmm, xmm_dst, i);
+            host_->vinsertf128(dst_vmm, dst_vmm, xmm_dst, into<uint8_t>(i));
     }
 
     if (data_type_ == data_type::s32 || data_type_ == data_type::bf16)
@@ -463,14 +468,15 @@ void jit_io_helper_t<Xbyak::Xmm>::emu_gather(const Xbyak::Reg64 &src_reg,
 
     const unsigned xmm_size_elem = 4;
     const unsigned number_of_values_to_load
-            = tail ? tail_conf_->tail_size_ : xmm_size_elem;
+            = into<unsigned int>(tail ? tail_conf_->tail_size_ : xmm_size_elem);
     for (unsigned j = 0; j < number_of_values_to_load; j++) {
-        host_->pextrd(gather_conf_->reg_tmp_.cvt32(), indices_vmm, j);
+        host_->pextrd(
+                gather_conf_->reg_tmp_.cvt32(), indices_vmm, into<uint8_t>(j));
         host_->add(src_reg, gather_conf_->reg_tmp_);
         switch (data_type_) {
             case data_type::f32:
             case data_type::s32: {
-                host_->pinsrd(dst_vmm, host_->ptr[src_reg], j);
+                host_->pinsrd(dst_vmm, host_->ptr[src_reg], into<uint8_t>(j));
                 break;
             }
             case data_type::f16:
@@ -489,7 +495,7 @@ void jit_io_helper_t<Xbyak::Xmm>::emu_gather(const Xbyak::Reg64 &src_reg,
                                            data_type::f8_e5m2),
                                fp8_supported_)
                         && "Unsupported data type.");
-                host_->pinsrb(dst_vmm, host_->ptr[src_reg], j);
+                host_->pinsrb(dst_vmm, host_->ptr[src_reg], into<uint8_t>(j));
                 break;
             }
             default: assert(!"Unsupported data type.");
@@ -626,7 +632,7 @@ void jit_io_helper_t<Vmm>::load(const Xbyak::Address &src_addr,
                     || (!is_tail_load_supported && (is_i8 || is_xf16)));
 
     if (can_load_byte_by_byte) {
-        load_byte_by_byte(src_addr, dst_vmm, tail_conf_->tail_size_);
+        load_byte_by_byte(src_addr, dst_vmm, into<int>(tail_conf_->tail_size_));
     } else {
         switch (data_type_) {
             case data_type::f32: load_f32(src_addr, dst_vmm, tail); break;
@@ -785,7 +791,7 @@ void jit_io_helper_t<Vmm>::store(const Vmm &src_raw_vmm,
                 = vreg_traits_t<Xbyak::Xmm>::vlen / sizeof(int32_t);
         const size_t store_size = (tail ? tail_conf_->tail_size_ : xmm_length)
                 * types::data_type_size(data_type_);
-        store_byte_by_byte(src_vmm, dst_addr, store_size);
+        store_byte_by_byte(src_vmm, dst_addr, into<int>(store_size));
     } else {
         switch (data_type_) {
             case data_type::f32:

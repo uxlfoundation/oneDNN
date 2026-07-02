@@ -177,8 +177,8 @@ struct kernel_t : public jit_uni_instance_normalization_fwd_t::kernel_base_t,
             // calculate dst
             compute_dst();
 
-            add(reg_src, c_src_size);
-            add(reg_dst, c_dst_size);
+            add(reg_src, into<uint32_t>(c_src_size));
+            add(reg_dst, into<uint32_t>(c_dst_size));
 
             jmp(unroll_loop);
         }
@@ -428,16 +428,18 @@ struct kernel_stat_t
             L(c_blk_loop);
             {
 
-                cmp(reg_nc_block, nc_blocks_);
+                cmp(reg_nc_block, into<uint32_t>(nc_blocks_));
                 je(c_blk_loop_end, T_NEAR);
 
                 // calculate mean
                 compute_stat_block(unroll_c_);
 
                 add(reg_src_start,
-                        c_block_ * types::data_type_size(src_d_.data_type()));
-                add_mean(c_block_);
-                if (compute_var_) add(reg_var, c_block_ * sizeof(float));
+                        into<uint32_t>(c_block_
+                                * types::data_type_size(src_d_.data_type())));
+                add_mean(into<int>(c_block_));
+                if (compute_var_)
+                    add(reg_var, into<uint32_t>(c_block_ * sizeof(float)));
                 add(reg_nc_block, 1);
 
                 jmp(c_blk_loop);
@@ -448,9 +450,11 @@ struct kernel_stat_t
         if (unroll_c_tail_) {
             compute_stat_block(unroll_c_tail_);
             add(reg_src_start,
-                    c_block_tail_ * types::data_type_size(src_d_.data_type()));
-            add_mean(c_block_tail_);
-            if (compute_var_) add(reg_var, c_block_tail_ * sizeof(float));
+                    into<uint32_t>(c_block_tail_
+                            * types::data_type_size(src_d_.data_type())));
+            add_mean(into<int>(c_block_tail_));
+            if (compute_var_)
+                add(reg_var, into<uint32_t>(c_block_tail_ * sizeof(float)));
         }
 
         if (axis_simd_tail_) compute_stat_block(1, true);
@@ -533,7 +537,7 @@ protected:
                 uni_vaddps(Vmm_mean(ur), Vmm_mean(ur), vmm_src);
             }
 
-            add(reg_src, c_src_size);
+            add(reg_src, into<uint32_t>(c_src_size));
             jmp(sp_blk_loop);
         }
         L(sp_blk_loop_end);
@@ -573,7 +577,7 @@ protected:
                 uni_vfmadd231ps(Vmm_var(ur), vmm_src, vmm_src);
             }
 
-            add(reg_src, c_src_size);
+            add(reg_src, into<uint32_t>(c_src_size));
             jmp(sp_blk_loop);
         }
         L(sp_blk_loop_end);
@@ -591,8 +595,8 @@ protected:
     }
     void add_mean(int c_block) { add(reg_mean, c_block * sizeof(float)); }
 
-    Vmm Vmm_mean(size_t ur = 0) { return Vmm(3 + ur); }
-    Vmm Vmm_var(size_t ur = 0) { return Vmm(9 + ur); }
+    Vmm Vmm_mean(size_t ur = 0) { return Vmm(into<int>(3 + ur)); }
+    Vmm Vmm_var(size_t ur = 0) { return Vmm(into<int>(9 + ur)); }
 
     Xbyak::Address src_ptr(size_t offt = 0) {
         return vmmword[reg_src + offt * src_d_.data_type_size()];
@@ -812,7 +816,7 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
         parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             dim_t SP_start = 0, SP_end = 0;
             balance211(SP, nthr, ithr, SP_start, SP_end);
-            const int block_size = SP_end - SP_start;
+            const dim_t block_size = SP_end - SP_start;
             for (int n = 0; n < N; ++n) {
                 float *local_mean = stat_reduction + n * nthr * C + ithr * C;
                 const size_t s_off

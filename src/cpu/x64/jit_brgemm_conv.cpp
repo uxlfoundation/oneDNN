@@ -223,7 +223,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
                 auto M_mask = (iM >= vM) ? 0 : 1;
                 for (int ww = 0; ww < jcp_.ow_block && ibrgM < sm_size;
                         ww++, ibrgM++, iM += M_mask) {
-                    bd_mask[ibrgM] = M_mask;
+                    bd_mask[ibrgM] = into<char>(M_mask);
                 }
                 for (int kk = 0; kk < jcp_.oskip && ibrgM < sm_size;
                         kk++, ibrgM++) {
@@ -678,7 +678,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             if (kw_f == jcp_.kw && kw_s == 0) break;
         }
     }
-    brgs_sz_ = brgemm_descriptors_->refs_size();
+    brgs_sz_ = into<int>(brgemm_descriptors_->refs_size());
 
     brgemm_convolution_utils::set_amx_wsp_per_thread(jcp_);
     auto scratchpad = scratchpad_registry().registrar();
@@ -730,8 +730,8 @@ status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
     bcfg->LDD = (is_init && jcp.use_buffer) ? jcp.LDC : jcp.LDD;
     bcfg->dt_c = (!is_init && jcp.use_buffer) ? jcp.acc_dt : jcp.dst_dt; // inp
     bcfg->dt_d = (is_init && jcp.use_buffer) ? jcp.acc_dt : jcp.dst_dt; // out
-    bcfg->typesize_C = types::data_type_size(bcfg->dt_c);
-    bcfg->typesize_D = types::data_type_size(bcfg->dt_d);
+    bcfg->typesize_C = into<int>(types::data_type_size(bcfg->dt_c));
+    bcfg->typesize_D = into<int>(types::data_type_size(bcfg->dt_d));
     bcfg->alpha = !is_init && IMPLICATION(jcp.with_sum, jcp.use_buffer);
     bcfg->beta = is_init ? 0 : 1;
     // See the comment in `add_po_kernels` why `*_pd->attr()` is needed so far.
@@ -800,7 +800,7 @@ int brgemm_convolution_fwd_t<isa>::get_comp_oh(const int oh) const {
             || comp_oh_kh_b.empty())
         return 0;
 
-    const int comp_oh_e = comp_oh_kh_b.size();
+    const int comp_oh_e = into<int>(comp_oh_kh_b.size());
     const int oh_block
             = jcp.is_os_blocking ? nstl::min(jcp.oh_block, jcp.oh - oh) : 1;
     for (int comp_oh_b = 0; comp_oh_b < comp_oh_e; comp_oh_b++) {
@@ -854,9 +854,10 @@ inline int brgemm_convolution_fwd_t<isa>::get_comp_offset(const int g,
     const auto comp_idx
             = get_comp_ker_idx(kd_b, kd_e, kh_b, kh_e, kw_b, kw_e, cur_comp_oh);
     assert(IMPLICATION(jcp.req_cal_comp_pad, comp_idx >= 0));
-    return jcp.req_cal_comp_pad ? g * comp_ocb_sz + ocb * comp_ker_sz
-                    + comp_idx * comp_kw_sz + cur_comp_ow * comp_ow_sz
-                                : (g * jcp.nb_oc + ocb) * jcp.oc_block;
+    return into<int>(jcp.req_cal_comp_pad
+                    ? g * comp_ocb_sz + ocb * comp_ker_sz
+                            + comp_idx * comp_kw_sz + cur_comp_ow * comp_ow_sz
+                    : (g * jcp.nb_oc + ocb) * jcp.oc_block);
 }
 
 template <cpu_isa_t isa>
@@ -949,7 +950,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         ajcp.is_nspc = true;
         ajcp.is_bf32 = jcp.is_bf32;
         ajcp.is_tf32 = jcp.is_tf32;
-        ajcp.typesize_in = jcp.src_dsz;
+        ajcp.typesize_in = into<int>(jcp.src_dsz);
         ajcp.ic_block_int = jcp.amx_w;
 
         ajcp.src_dt = jcp.src_dt;
@@ -981,7 +982,8 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         wjcp.inp_oc_block = 16;
         wjcp.rd = _pd->rd;
         wjcp.is_rd_padded_to_block = jcp.is_rd_padded_to_block;
-        wjcp.inp_ocb_offs = KH * KW * jcp.ic * wjcp.inp_oc_block * wei_dsz;
+        wjcp.inp_ocb_offs
+                = into<int>(KH * KW * jcp.ic * wjcp.inp_oc_block * wei_dsz);
 
         const auto oc_chunks = jcp.oc_block / wjcp.inp_oc_block;
         const auto inp_nb_oc = div_up(jcp.oc, wjcp.inp_oc_block);
@@ -1150,8 +1152,8 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                             = oh + comp_oh_kh_b.size() - comp_oh_idx;
                     const auto comp_oh_end
                             = jcp.is_os_blocking ? oh_end : oh + 1;
-                    for (int comp_oh = comp_oh_begin; comp_oh < comp_oh_end;
-                            comp_oh++) {
+                    for (int comp_oh = into<int>(comp_oh_begin);
+                            comp_oh < comp_oh_end; comp_oh++) {
                         comp_oh_kh_b.push_back(oh_kh_b[comp_oh]);
                         comp_oh_kh_e.push_back(oh_kh_e[comp_oh]);
                     }
@@ -1546,7 +1548,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
         vpad_k = vpad_next_k;
     }
 
-    const int max_ker_sz = adjusted_k.size();
+    const int max_ker_sz = into<int>(adjusted_k.size());
     const auto comp_buffer_ow = jcp.exec_type != exec_vpad ? jcp.ow : 1;
     // TODO: revise the thread distribution here because the work_amount may be
     // insufficient
@@ -1573,12 +1575,18 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                     kh_ee {kh_es[k]}, kw_bb {kw_bs[k]}, kw_ee {kw_es[k]};
             assert(kd_ee > kd_bb && kh_ee > kh_bb && kw_ee > kw_bb);
 
-            const auto kd_b = maybe_invert_range(kd_bb, kd_ee, KD);
-            const auto kd_e = maybe_invert_range(kd_ee, kd_bb, KD);
-            const auto kh_b = maybe_invert_range(kh_bb, kh_ee, KH);
-            const auto kh_e = maybe_invert_range(kh_ee, kh_bb, KH);
-            const auto kw_b = maybe_invert_range(kw_bb, kw_ee, KW);
-            const auto kw_e = maybe_invert_range(kw_ee, kw_bb, KW);
+            const auto kd_b = maybe_invert_range(
+                    into<int>(kd_bb), into<int>(kd_ee), KD);
+            const auto kd_e = maybe_invert_range(
+                    into<int>(kd_ee), into<int>(kd_bb), KD);
+            const auto kh_b = maybe_invert_range(
+                    into<int>(kh_bb), into<int>(kh_ee), KH);
+            const auto kh_e = maybe_invert_range(
+                    into<int>(kh_ee), into<int>(kh_bb), KH);
+            const auto kw_b = maybe_invert_range(
+                    into<int>(kw_bb), into<int>(kw_ee), KW);
+            const auto kw_e = maybe_invert_range(
+                    into<int>(kw_ee), into<int>(kw_bb), KW);
 
             const auto inp_oc_block
                     = is_relo_with_relo_weights ? 16 : jcp.oc_block;
@@ -1960,8 +1968,8 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
             const int ih = nstl::max(0, ih_s);
             p.t_overflow = nstl::max(0, -ih_s);
             p.b_overflow = nstl::min<int>(kh_eff, nstl::max(0, ih_e - jcp.ih));
-            p.kh_padding
-                    = nstl::max<int>(0, (kh_eff - p.t_overflow - p.b_overflow));
+            p.kh_padding = nstl::max<int>(
+                    0, (into<int>(kh_eff - p.t_overflow - p.b_overflow)));
             p.kh_offset = kh_eff;
 
             const int iw_s = ow * jcp.stride_w - jcp.l_pad;
@@ -1969,7 +1977,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
             p.f_overflow = nstl::max(0, -iw_s);
             p.back_overflow = nstl::max(0, iw_e - jcp.iw);
             p.kw_padding = nstl::max<int>(
-                    0, jcp.iwp - p.f_overflow - p.back_overflow);
+                    0, into<int>(jcp.iwp - p.f_overflow - p.back_overflow));
 
             const auto first_actual_h = ih;
             inp_offset_start
@@ -2032,8 +2040,8 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
                     int size_to_sero = 0;
                     const auto zero_elem_size
                             = (dim_t)src_dsz * jcp.inp_ic_block;
-                    size_to_sero
-                            = zero_elem_size * (jcp.iw_block - actual_iw_block);
+                    size_to_sero = into<int>(
+                            zero_elem_size * (jcp.iw_block - actual_iw_block));
                     for (size_t iih = 0; iih < cp.h_count; iih++) {
                         void *const __restrict p_zeroing = (char *)cp.dst
                                 + (dim_t)src_dsz * iih * _pd->pbuf_w_sz

@@ -187,25 +187,25 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_FEATURE, "dilations are not supported");
 
     jcp = zero<decltype(jcp)>();
-    jcp.ngroups = weights_d.dims()[0];
-    jcp.mb = src_d.dims()[0];
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
-    jcp.id = is_3d ? src_d.dims()[2] : 1;
-    jcp.ih = src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? dst_d.dims()[2] : 1;
-    jcp.oh = dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = is_3d ? weights_d.dims()[3] : 1;
-    jcp.kh = weights_d.dims()[ndims - 1];
-    jcp.kw = weights_d.dims()[ndims];
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = cd.padding[0][is_3d];
-    jcp.l_pad = cd.padding[0][is_3d + 1];
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = cd.strides[is_3d];
-    jcp.stride_w = cd.strides[is_3d + 1];
+    jcp.ngroups = into<int>(weights_d.dims()[0]);
+    jcp.mb = into<int>(src_d.dims()[0]);
+    jcp.oc = into<int>(dst_d.dims()[1] / jcp.ngroups);
+    jcp.ic = into<int>(src_d.dims()[1] / jcp.ngroups);
+    jcp.id = into<int>(is_3d ? src_d.dims()[2] : 1);
+    jcp.ih = into<int>(src_d.dims()[ndims - 2]);
+    jcp.iw = into<int>(src_d.dims()[ndims - 1]);
+    jcp.od = into<int>(is_3d ? dst_d.dims()[2] : 1);
+    jcp.oh = into<int>(dst_d.dims()[ndims - 2]);
+    jcp.ow = into<int>(dst_d.dims()[ndims - 1]);
+    jcp.kd = into<int>(is_3d ? weights_d.dims()[3] : 1);
+    jcp.kh = into<int>(weights_d.dims()[ndims - 1]);
+    jcp.kw = into<int>(weights_d.dims()[ndims]);
+    jcp.f_pad = into<int>(is_3d ? cd.padding[0][0] : 0);
+    jcp.t_pad = into<int>(cd.padding[0][is_3d]);
+    jcp.l_pad = into<int>(cd.padding[0][is_3d + 1]);
+    jcp.stride_d = into<int>(is_3d ? cd.strides[0] : 1);
+    jcp.stride_h = into<int>(cd.strides[is_3d]);
+    jcp.stride_w = into<int>(cd.strides[is_3d + 1]);
     jcp.back_pad = calculate_end_padding(
             jcp.f_pad, jcp.od, jcp.id, jcp.stride_d, jcp.kd);
     jcp.b_pad = calculate_end_padding(
@@ -279,8 +279,8 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
 
     // to avoid cache concurrent access from different threads
     size_t sc_size = sizeof(brgemm_batch_element_t);
-    jcp.adjusted_batch_size
-            = div_up(rnd_up(jcp.kd * jcp.kh * jcp.kw * sc_size, 4096), sc_size);
+    jcp.adjusted_batch_size = into<int>(
+            div_up(rnd_up(jcp.kd * jcp.kh * jcp.kw * sc_size, 4096), sc_size));
     CHECK(init_brdgmm_conf());
 
     init_batch_elements();
@@ -475,7 +475,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
                 const size_t ow_tail_block
                         = (work_per_thr / jcp.nb_ch) % jcp.ow;
                 if (ow_tail_block && (jcp.ow % ow_tail_block == 0))
-                    jcp.ow_block = ow_tail_block;
+                    jcp.ow_block = into<int>(ow_tail_block);
                 else { jcp.ow_block = jcp.ow; }
             } else {
                 const int max_ow_block = is_superset(jcp.isa, avx512_core)
@@ -495,7 +495,8 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
                 const size_t work_per_thr = div_up(work_amount, jcp.nthr);
                 const size_t ch_tail_block = work_per_thr % jcp.nb_ch;
                 if (ch_tail_block && (jcp.nb_ch % ch_tail_block == 0))
-                    jcp.nb_ch_blocking = ch_tail_block * jcp.ch_block;
+                    jcp.nb_ch_blocking
+                            = into<int>(ch_tail_block * jcp.ch_block);
                 else
                     jcp.nb_ch_blocking = jcp.ngroups;
             } else {
@@ -508,7 +509,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
             jcp.chb_tail = jcp.ngroups % jcp.nb_ch_blocking;
         }
 
-        const int n_owb_kernels = std::ceil(log2(jcp.nb_ow));
+        const int n_owb_kernels = into<int>(std::ceil(log2(jcp.nb_ow)));
         const int num_kernels = 1 /*full ow*/ + n_owb_kernels
                 + (jcp.chb_tail != 0) + (jcp.nb_ch_blocking != jcp.ngroups)
                 + (jcp.ow_tail != 0);
@@ -700,9 +701,9 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                 cur_n_owb = jcp.nb_ow;
             } else {
                 // The ow_tail kernel is processed alone, subtract if it exists.
-                const int log_rem_owb = log2(rem_row_owb
+                const int log_rem_owb = into<int>(log2(rem_row_owb
                         - (owb + rem_row_owb >= jcp.nb_ow)
-                                * (jcp.ow_tail != 0));
+                                * (jcp.ow_tail != 0)));
                 cur_n_owb = (1 << log_rem_owb);
                 ker_idx = log_rem_owb + 1; // add 1 as 0th is full row.
             }

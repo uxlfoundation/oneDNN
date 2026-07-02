@@ -82,13 +82,13 @@ status_t simple_resampling_kernel_t::init() {
 }
 
 status_t simple_resampling_kernel_t::execute(const exec_ctx_t &ctx) const {
-    const int OD = pd_->OD();
-    const int OH = pd_->OH();
-    const int OW = pd_->OW();
-    const int ID = pd_->ID();
-    const int IH = pd_->IH();
-    const int IW = pd_->IW();
-    const int NB_CH = utils::div_up(pd_->C(), inner_stride_);
+    const int OD = into<int>(pd_->OD());
+    const int OH = into<int>(pd_->OH());
+    const int OW = into<int>(pd_->OW());
+    const int ID = into<int>(pd_->ID());
+    const int IH = into<int>(pd_->IH());
+    const int IW = into<int>(pd_->IW());
+    const int NB_CH = into<int>(utils::div_up(pd_->C(), inner_stride_));
 
     if (pd_->is_fwd()) {
         const auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);

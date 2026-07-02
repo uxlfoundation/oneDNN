@@ -50,7 +50,9 @@ struct jit_uni_eltwise_int_kernel_t : public jit_generator_t {
 
 protected:
     data_type_t data_type() const { return pd_->src_md()->data_type; }
-    int dtype_size() const { return types::data_type_size(data_type()); }
+    int dtype_size() const {
+        return into<int>(types::data_type_size(data_type()));
+    }
 
     const eltwise_desc_t &desc() const { return *pd_->desc(); }
 
@@ -114,16 +116,16 @@ struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel_t {
 
         for (int id = 0; id < 2; id++) {
             L(loop_label[id]);
-            cmp(reg_work_amount, uf[id] * loop_dec[id] - 1);
+            cmp(reg_work_amount, into<uint32_t>(uf[id] * loop_dec[id] - 1));
             jle(loop_label[id + 1], T_NEAR);
 
             compute_step(
                     loop_vectorize[id], uf[id], shift[id], desc().alg_kind);
 
-            add(reg_from, uf[id] * shift[id]);
-            add(reg_to, uf[id] * shift[id]);
+            add(reg_from, into<uint32_t>(uf[id] * shift[id]));
+            add(reg_to, into<uint32_t>(uf[id] * shift[id]));
 
-            sub(reg_work_amount, uf[id] * loop_dec[id]);
+            sub(reg_work_amount, into<uint32_t>(uf[id] * loop_dec[id]));
             jmp(loop_label[id]);
         }
 
@@ -235,8 +237,11 @@ private:
     void compute_step(bool vectorize, const size_t uf, const size_t shift,
             const alg_kind_t alg) {
 
-        auto vreg_from = [&](const size_t i) -> Vmm { return Vmm(i + 1); };
-        auto vreg_to = [&](const size_t i) -> Vmm { return Vmm(uf + i + 1); };
+        auto vreg_from
+                = [&](const size_t i) -> Vmm { return Vmm(into<int>(i + 1)); };
+        auto vreg_to = [&](const size_t i) -> Vmm {
+            return Vmm(into<int>(uf + i + 1));
+        };
 
         // 1. Load (vregs <- mem)
         for (size_t i = 0; i < uf; i++)

@@ -438,7 +438,7 @@ inline T nd_iterator_init(T start) {
 template <typename T, typename U, typename W, typename... Args>
 inline T nd_iterator_init(T start, U &x, const W &X, Args &&...tuple) {
     start = nd_iterator_init(start, utils::forward<Args>(tuple)...);
-    x = start % X;
+    x = static_cast<int>(start % X);
     return start / X;
 }
 
@@ -668,6 +668,47 @@ inline bool validate_dims(int ndims, const dims_t dims) {
 }
 
 } // namespace utils
+
+// Checked narrowing cast: wraps static_cast with a dev-mode assertion
+// that the value fits in the target type. Mirrors gpu::intel::into<T>().
+namespace into_impl {
+template <typename out_type, typename in_type>
+inline typename utils::enable_if_t<!std::is_fundamental<out_type>::value
+                || !std::is_fundamental<in_type>::value,
+        bool>
+validate_into(in_type) {
+    return true;
+}
+template <typename out_type, typename in_type>
+inline typename utils::enable_if_t<std::is_fundamental<out_type>::value
+                && std::is_fundamental<in_type>::value,
+        bool>
+validate_into(in_type in) {
+    const double d = static_cast<double>(in);
+    return d <= static_cast<double>(std::numeric_limits<out_type>::max())
+            && d
+            >= static_cast<double>(std::numeric_limits<out_type>::lowest());
+}
+template <typename out_type>
+inline bool validate_into(bool) {
+    return std::is_integral<out_type>::value;
+}
+} // namespace into_impl
+
+template <typename out_type, typename in_type>
+inline out_type into(in_type in) {
+#ifdef DNNL_DEV_MODE
+    assert(into_impl::validate_into<out_type>(in));
+#endif
+    return static_cast<out_type>(in);
+}
+
+// Like into<T>() but skips the dev-mode range check. Use only when
+// wrap-around is intentional (e.g., signed/unsigned reinterpretation).
+template <typename out_type, typename in_type>
+inline out_type relaxed_into(in_type in) {
+    return static_cast<out_type>(in);
+}
 
 int32_t fetch_and_add(int32_t *dst, int32_t val);
 inline void yield_thread() {}

@@ -83,8 +83,8 @@ status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
                         weights_d.metadata_type(0), 0, wei_row_pointers, k);
             });
 
-            cvt_coo_indices_to_csr_pointers(
-                    wei_buffer_1, wei_row_pointers, weights_d.nnz(), K);
+            cvt_coo_indices_to_csr_pointers(wei_buffer_1, wei_row_pointers,
+                    into<int>(weights_d.nnz()), into<int>(K));
 
             wei_pointers = wei_row_pointers;
         }
@@ -128,8 +128,8 @@ status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
                         src_d.metadata_type(0), 0, src_row_pointers, m);
             });
 
-            cvt_coo_indices_to_csr_pointers(
-                    src_buffer_1, src_row_pointers, src_d.nnz(), M);
+            cvt_coo_indices_to_csr_pointers(src_buffer_1, src_row_pointers,
+                    into<int>(src_d.nnz()), into<int>(M));
             src_pointers = src_row_pointers;
         }
 

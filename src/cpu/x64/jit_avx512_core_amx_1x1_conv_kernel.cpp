@@ -117,7 +117,7 @@ size_t jit_avx512_core_amx_1x1_fwd_kernel_t::out_row_offset(
 void jit_avx512_core_amx_1x1_fwd_kernel_t::update_buffer_pointers() {
     auto buffer_offset
             = [this](bool shift) { return ((buf_count_ + shift) % 2); };
-    int wsp_shift = jcp.typesize_acc * (jcp.wsp_buffer_size / 2);
+    int wsp_shift = into<int>(jcp.typesize_acc * (jcp.wsp_buffer_size / 2));
 
     int postop_shift = wsp_shift * buffer_offset(true);
 
@@ -166,7 +166,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::interleave_store() {
             int ow = ((jcp.nb_os_blocking * jcp.tile_width) % jcp.ow);
             size_t out_offset = jcp.typesize_out
                     * (oh * out_h_shift() + ow * out_w_shift());
-            add(out_ptr, out_offset);
+            add(out_ptr, into<uint32_t>(out_offset));
             row_count_ = 0;
             is_store_done_ = true;
         }
@@ -853,12 +853,12 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::osb_loop(int nb_os) {
         if (do_store) {
             size_t out_offset = jcp.typesize_out
                     * (oh * out_h_shift() + ow * out_w_shift());
-            add(out_ptr, out_offset);
+            add(out_ptr, into<uint32_t>(out_offset));
         }
 
         int ih = oh * jcp.stride_h;
         int iw = ow * jcp.stride_w;
-        add(inp_ptr, inp_offset(ih, iw, 0));
+        add(inp_ptr, into<uint32_t>(inp_offset(ih, iw, 0)));
     }
 }
 
@@ -952,7 +952,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::tile_configure(char *tcfg_buff) {
                 tc_configure_tile(buff, get_out_tensor(s, i), Cr, Cc);
             }
 
-        buff->palette_id = amx::get_target_palette();
+        buff->palette_id = into<uint8_t>(amx::get_target_palette());
     };
 
     int Ac = jcp.typesize_in
@@ -1007,27 +1007,27 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.isa = avx512_core_amx;
     jcp.ndims = ndims;
     jcp.prop_kind = cd.prop_kind;
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
+    jcp.ngroups = into<int>(with_groups ? weights_d.dims()[0] : 1);
+    jcp.mb = into<int>(src_d.dims()[0]);
+    jcp.oc = into<int>(dst_d.dims()[1] / jcp.ngroups);
     jcp.oc_without_padding = jcp.oc;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
+    jcp.ic = into<int>(src_d.dims()[1] / jcp.ngroups);
     jcp.ic_without_padding = jcp.ic;
-    jcp.id = is_3d ? src_d.dims()[2] : 1;
-    jcp.ih = !is_1d ? src_d.dims()[ndims - 2] : 1;
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? dst_d.dims()[2] : 1;
-    jcp.oh = !is_1d ? dst_d.dims()[ndims - 2] : 1;
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = is_3d ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = !is_1d ? weights_d.dims()[with_groups + ndims - 2] : 1;
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = !is_1d ? cd.padding[0][ndims - 4] : 0;
-    jcp.l_pad = cd.padding[0][ndims - 3];
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = !is_1d ? cd.strides[ndims - 4] : 1;
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.id = into<int>(is_3d ? src_d.dims()[2] : 1);
+    jcp.ih = into<int>(!is_1d ? src_d.dims()[ndims - 2] : 1);
+    jcp.iw = into<int>(src_d.dims()[ndims - 1]);
+    jcp.od = into<int>(is_3d ? dst_d.dims()[2] : 1);
+    jcp.oh = into<int>(!is_1d ? dst_d.dims()[ndims - 2] : 1);
+    jcp.ow = into<int>(dst_d.dims()[ndims - 1]);
+    jcp.kd = into<int>(is_3d ? weights_d.dims()[with_groups + 2] : 1);
+    jcp.kh = into<int>(!is_1d ? weights_d.dims()[with_groups + ndims - 2] : 1);
+    jcp.kw = into<int>(weights_d.dims()[with_groups + ndims - 1]);
+    jcp.f_pad = into<int>(is_3d ? cd.padding[0][0] : 0);
+    jcp.t_pad = into<int>(!is_1d ? cd.padding[0][ndims - 4] : 0);
+    jcp.l_pad = into<int>(cd.padding[0][ndims - 3]);
+    jcp.stride_d = into<int>(is_3d ? cd.strides[0] : 1);
+    jcp.stride_h = into<int>(!is_1d ? cd.strides[ndims - 4] : 1);
+    jcp.stride_w = into<int>(cd.strides[ndims - 3]);
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
 
     VDISPATCH_CONV_IC((jcp.kd == 1 && jcp.kh == 1 && jcp.kw == 1),
@@ -1035,9 +1035,9 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     VDISPATCH_CONV_IC((jcp.f_pad == 0 && jcp.t_pad == 0 && jcp.l_pad == 0),
             VERBOSE_UNSUPPORTED_FEATURE, "non-zero padding");
 
-    jcp.dilate_d = is_3d ? cd.dilates[0] : 0;
-    jcp.dilate_h = is_1d ? 0 : cd.dilates[ndims - 4];
-    jcp.dilate_w = cd.dilates[ndims - 3];
+    jcp.dilate_d = into<int>(is_3d ? cd.dilates[0] : 0);
+    jcp.dilate_h = into<int>(is_1d ? 0 : cd.dilates[ndims - 4]);
+    jcp.dilate_w = into<int>(cd.dilates[ndims - 3]);
 
     jcp.is_depthwise = true && with_groups && everyone_is(1, jcp.ic, jcp.oc);
 
@@ -1193,10 +1193,10 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                                     p, dst_d));
     VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
-    jcp.typesize_in = types::data_type_size(src_d.data_type());
-    jcp.typesize_out = types::data_type_size(dst_d.data_type());
-    jcp.typesize_bia
-            = jcp.with_bias ? types::data_type_size(bias_d.data_type()) : 0;
+    jcp.typesize_in = into<int>(types::data_type_size(src_d.data_type()));
+    jcp.typesize_out = into<int>(types::data_type_size(dst_d.data_type()));
+    jcp.typesize_bia = into<int>(
+            jcp.with_bias ? types::data_type_size(bias_d.data_type()) : 0);
     jcp.typesize_acc = sizeof(int32_t);
 
     jcp.nb_ic = jcp.ic / jcp.ic_block;

@@ -92,11 +92,11 @@ void jit_prelu_reduction_kernel_t::generate(bool tail) {
     L(unroll_loop);
     {
         const size_t offt = unrolling_factor * scratchpad_c_block_offset_;
-        cmp(reg_reduction_blocks_, unrolling_factor);
+        cmp(reg_reduction_blocks_, into<uint32_t>(unrolling_factor));
         jl(unroll_loop_tail, T_NEAR);
-        compute_dst(unrolling_factor, tail);
-        sub(reg_reduction_blocks_, unrolling_factor);
-        add(reg_offset_, offt);
+        compute_dst(into<int>(unrolling_factor), tail);
+        sub(reg_reduction_blocks_, into<uint32_t>(unrolling_factor));
+        add(reg_offset_, into<uint32_t>(offt));
         jmp(unroll_loop);
     }
 
@@ -106,7 +106,7 @@ void jit_prelu_reduction_kernel_t::generate(bool tail) {
         jle(end, T_NEAR);
         compute_dst(1, tail);
         sub(reg_reduction_blocks_, 1);
-        add(reg_offset_, scratchpad_c_block_offset_);
+        add(reg_offset_, into<uint32_t>(scratchpad_c_block_offset_));
         jmp(unroll_loop_tail);
     }
 
@@ -116,7 +116,7 @@ void jit_prelu_reduction_kernel_t::generate(bool tail) {
 }
 
 int jit_prelu_reduction_kernel_t::reserve_vmm() {
-    return number_reserved_vmms_++;
+    return into<int>(number_reserved_vmms_++);
 }
 
 Xbyak::Address jit_prelu_reduction_kernel_t::diff_scratch_ptr(
@@ -187,7 +187,7 @@ template <typename Vmm>
 void jit_uni_prelu_reduction_kernel_t<Vmm>::compute_dst(
         int unrolling_factor, bool tail) {
 
-    const int vmm_begin = number_reserved_vmms_;
+    const int vmm_begin = into<int>(number_reserved_vmms_);
 
     for (int unrolling_group = 0; unrolling_group < unrolling_factor;
             ++unrolling_group) {

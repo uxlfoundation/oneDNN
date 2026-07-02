@@ -159,7 +159,7 @@ private:
     }
 
     inline dim_t get_src_offset(dim_t ic_idx, dim_t isp) {
-        int icb = ic_idx / jcp.ic_block;
+        dim_t icb = ic_idx / jcp.ic_block;
         int ic = ic_idx % jcp.ic_block;
         dim_t isp_str = is_src_layout_nxc()
                 ? static_cast<dim_t>(jcp.ngroups) * jcp.ic

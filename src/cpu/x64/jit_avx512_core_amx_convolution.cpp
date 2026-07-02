@@ -1079,9 +1079,9 @@ struct jit_avx512_core_amx_convolution_bwd_weights_t::thread_info_t {
     int ithr_but_ic = 0;
 
     int img_start = 0, img_end = 0, img_work = 0;
-    int g_start = 0, g_end = 0, g_work = 0;
-    int oc_b_start = 0, oc_b_end = 0, oc_b_work = 0;
-    int ic_b_start = 0, ic_b_end = 0, ic_b_work = 0;
+    dim_t g_start = 0, g_end = 0, g_work = 0;
+    dim_t oc_b_start = 0, oc_b_end = 0, oc_b_work = 0;
+    dim_t ic_b_start = 0, ic_b_end = 0, ic_b_work = 0;
 
     thread_info_t(const jit_avx512_core_amx_convolution_bwd_weights_t *self,
             const exec_ctx_t &ctx, int ithr)
@@ -1140,15 +1140,16 @@ struct jit_avx512_core_amx_convolution_bwd_weights_t::thread_info_t {
         img_work = img_end - img_start;
 
         /* independent dimensions */
-        balance211(jcp.ngroups, self->nthr_g_, ithr_g, g_start, g_end);
+        balance211(into<dim_t>(jcp.ngroups), self->nthr_g_, ithr_g, g_start,
+                g_end);
         g_work = g_end - g_start;
 
-        balance211(
-                jcp.nb_oc, self->nthr_oc_b_, ithr_oc_b, oc_b_start, oc_b_end);
+        balance211(into<dim_t>(jcp.nb_oc), self->nthr_oc_b_, ithr_oc_b,
+                oc_b_start, oc_b_end);
         oc_b_work = oc_b_end - oc_b_start;
 
-        balance211(
-                jcp.nb_ic, self->nthr_ic_b_, ithr_ic_b, ic_b_start, ic_b_end);
+        balance211(into<dim_t>(jcp.nb_ic), self->nthr_ic_b_, ithr_ic_b,
+                ic_b_start, ic_b_end);
         if (jcp.transform_to_vnni) {
             if (ic_b_start % 2 != 0) ic_b_start++;
             if (ic_b_end != jcp.nb_ic && ic_b_end % 2 != 0) ic_b_end++;
@@ -1951,7 +1952,7 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::store_in_vnni_format(
     const auto icb2_work = div_up(ti->ic_b_work, 2);
     const auto work = ti->g_work * ti->oc_b_work * icb2_work;
 
-    int start {0}, end {0};
+    dim_t start {0}, end {0};
     balance211(work, jcp.nthr_mb, ti->ithr_mb, start, end);
     int sub_g_start {0}, sub_oc_b_start {0}, sub_icb2_start {0};
     nd_iterator_init(start, sub_g_start, ti->g_work, sub_oc_b_start,

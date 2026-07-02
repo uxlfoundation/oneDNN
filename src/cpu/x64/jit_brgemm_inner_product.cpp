@@ -1122,7 +1122,7 @@ struct brgemm_inner_product_bwd_weights_t<isa>::thread_info_t {
                     = div_up(sp_ic_chunks, jbgp.nthr_ic_b);
             const size_t num_sp_ic_chunks_per_thread
                     = thread_local_input_buffers_ ? 1 : sp_ic_chunks_per_thr;
-            sp_ic_chunks_per_thread_ = num_sp_ic_chunks_per_thread;
+            sp_ic_chunks_per_thread_ = into<int>(num_sp_ic_chunks_per_thread);
             const size_t block_A_size = dt_sz * jbgp.LDA * jbgp.M;
             const size_t os_chunk_A_buffer
                     = jbgp.gemm_batch_size * block_A_size;

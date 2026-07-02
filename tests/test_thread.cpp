@@ -464,8 +464,8 @@ thread_local threadpool_t::worker_data_t *threadpool_t::worker_self_ = nullptr;
 
 namespace dnnl {
 
-// Original threadpool utils are used by the scoped_tp_activation_t and thus
-// need to be re-declared because of the hack above.
+// Original threadpool utils are used by the scoped_tp_activation_t and, thus,
+// require re-declaration because of the hack above.
 namespace impl {
 namespace threadpool_utils {
 void activate_threadpool(dnnl::threadpool_interop::threadpool_iface *tp);
@@ -478,8 +478,7 @@ namespace testing {
 // Threadpool singleton
 dnnl::threadpool_interop::threadpool_iface *get_threadpool(
         const thr_ctx_t &ctx) {
-    // global default threadpool is returned when thr context is
-    // default
+    // The default threadpool is returned when `ctx` is default.
     static std::unordered_map<int, dnnl::testing::threadpool_t> tp_map;
     auto ret_val = tp_map.find(ctx.max_concurrency);
     if (ret_val != tp_map.end()) return &(ret_val->second);
@@ -507,14 +506,17 @@ scoped_tp_deactivation_t::scoped_tp_deactivation_t() {
 }
 
 scoped_tp_deactivation_t::~scoped_tp_deactivation_t() {
-    // we always use the same threadpool that is returned by `get_threadpool()`
+    // The same threadpool from `get_threadpool()` is re-used.
     impl::threadpool_utils::activate_threadpool(get_threadpool());
 }
 
 } // namespace testing
 
-// Implement a dummy threadpools_utils protocol here so that it is picked up
-// by parallel*() calls from the tests.
+// `parallel*(...)` calls in tests use `testing_threadpool_utils` namespace
+// when it comes to threadpool validation. It happens in `test_thread.hpp` when
+// the header substitutes the namespace and includes `dnnl_thread.hpp`. Since
+// header declares symbols, they must be defined and they are defined here since
+// this translation unit picks up `test_thread.hpp` as well.
 namespace impl {
 namespace testing_threadpool_utils {
 void activate_threadpool(dnnl::threadpool_interop::threadpool_iface *tp) {}
@@ -589,8 +591,6 @@ const thr_ctx_t &get_default_thr_ctx() {
         } \
     } while (0)
 
-// Single version of each function; the runtime-specific logic is handled inside
-// via preprocessor branching.
 int create_in_thr_ctx(const thr_ctx_t &ctx, const std::function<int()> &f) {
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_SEQ \
         || DNNL_TBB_THREADING_WITHOUT_CONSTRAINTS
@@ -613,8 +613,8 @@ int create_in_thr_ctx(const thr_ctx_t &ctx, const std::function<int()> &f) {
     omp_set_num_threads(max_nthr);
     return st;
 #elif DNNL_TBB_THREADING_WITH_CONSTRAINTS
-    static auto core_types
-            = tbb::info::core_types(); // sorted by the relative strength
+    // sorted by the relative strength
+    static auto core_types = tbb::info::core_types();
 
     if ((ctx.core_type != get_default_thr_ctx().core_type)
             && ((size_t)ctx.core_type >= core_types.size()))
@@ -667,8 +667,8 @@ int execute_in_thr_ctx(const thr_ctx_t &ctx, const std::function<int()> &f) {
     omp_set_num_threads(max_nthr);
     return st;
 #elif DNNL_TBB_THREADING_WITH_CONSTRAINTS
-    static auto core_types
-            = tbb::info::core_types(); // sorted by the relative strength
+    // sorted by the relative strength
+    static auto core_types = tbb::info::core_types();
 
     if ((ctx.core_type != get_default_thr_ctx().core_type)
             && ((size_t)ctx.core_type >= core_types.size()))
@@ -688,7 +688,6 @@ int execute_in_thr_ctx(const thr_ctx_t &ctx, const std::function<int()> &f) {
                     .set_max_concurrency(ctx.max_concurrency)};
     return arena.execute([&] { return f(); });
 #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
-    // The function f shall take an interop obj as last argument.
     THR_CTX_ASSERT(ctx.core_type == get_default_thr_ctx().core_type,
             "core type %d is not supported for TP runtime\n", ctx.core_type);
     return f();

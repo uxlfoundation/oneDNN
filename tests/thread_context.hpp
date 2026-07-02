@@ -41,18 +41,17 @@ const thr_ctx_t &get_default_thr_ctx();
 // These are free functions to allow running a function in a given threading
 // context.
 // A threading context is defined by:
-// - number of threads
-// - type of cores (TBB only)
-// - threads per core (TBB only)
+// - the total number of threads.
+// - the type of cores (TBB only).
+// - the number of threads per core (TBB only).
 
 // Note: we have to differentiate creation and execution in thread context
 // because of threadpool as it uses different mechanisms in both (in execution,
-// tp is passed in stream).
+// threadpool argument is passed into a stream).
 //
 // Definitions live in test_thread.cpp where the runtime-specific logic is
 // handled inside a single version of each function.
 int create_in_thr_ctx(const thr_ctx_t &ctx, const std::function<int()> &f);
-// The function f shall take an interop obj as last argument
 int execute_in_thr_ctx(const thr_ctx_t &ctx, const std::function<int()> &f);
 
 #endif

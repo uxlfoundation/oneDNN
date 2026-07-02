@@ -253,7 +253,7 @@ void jit_rvv_1x1_conv_kernel_t::generate() {
 
     // Set initial VL to oc_block
     li(reg_tmp_imm, jcp.oc_block);
-    vsetvli(reg_tmp_imm, reg_tmp_imm, Xbyak_riscv::SEW::e32, acc_lmul);
+    vsetvli(reg_tmp_imm, reg_tmp_imm, SEW::e32, acc_lmul, VTA::ta, VMA::ma);
 
     // Load parameters
     ld(reg_bcast_data, reg_param, GET_OFF(bcast_data));
@@ -295,7 +295,7 @@ void jit_rvv_1x1_conv_kernel_t::generate() {
 
         // Ensure VL is full
         li(reg_tmp_imm, jcp.oc_block);
-        vsetvli(reg_tmp_imm, reg_tmp_imm, Xbyak_riscv::SEW::e32, acc_lmul);
+        vsetvli(reg_tmp_imm, reg_tmp_imm, SEW::e32, acc_lmul, VTA::ta, VMA::ma);
         mv(reg_blk_vl, reg_tmp_imm); // save VL for bf16/f16 SEW switches
 
         load_loop_body(jcp.load_loop_blk);
@@ -309,8 +309,8 @@ void jit_rvv_1x1_conv_kernel_t::generate() {
         blez(reg_load_loop_work, load_loop_end);
 
         // Last block may be partial, use vsetvli to set VL dynamically
-        vsetvli(reg_tmp_imm, reg_load_loop_work, Xbyak_riscv::SEW::e32,
-                acc_lmul);
+        vsetvli(reg_tmp_imm, reg_load_loop_work, SEW::e32, acc_lmul, VTA::ta,
+                VMA::ma);
         mv(reg_blk_vl, reg_tmp_imm); // save VL for bf16/f16 SEW switches
 
         bcast_loop(1);
@@ -429,13 +429,13 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
     };
     auto sew_compute = [=]() {
         if (is_lowp)
-            vsetvli(reg_tmp_imm, reg_blk_vl, Xbyak_riscv::SEW::e16,
-                    Xbyak_riscv::LMUL::m1);
+            vsetvli(reg_tmp_imm, reg_blk_vl, SEW::e16, LMUL::m1, VTA::ta,
+                    VMA::ma);
     };
     auto sew_accum = [=]() {
         if (is_lowp)
-            vsetvli(reg_tmp_imm, reg_blk_vl, Xbyak_riscv::SEW::e32,
-                    Xbyak_riscv::LMUL::m2);
+            vsetvli(reg_tmp_imm, reg_blk_vl, SEW::e32, LMUL::m2, VTA::ta,
+                    VMA::ma);
     };
 
     auto init = [=]() {

@@ -115,7 +115,7 @@ inline void apply_dropout_s_tile(
     })
 
     /* Build float scale tile: inv_q if keep, 0.f if drop -- same type as s_tile */
-    s_tile_type scale_tile;
+    volatile s_tile_type scale_tile;
     tile_predicated_select_t(scale_tile, tile_offset_r, tile_offset_c,
             dropout_predicate, inv_q, 0.f, SUBGROUP_SIZE,
             ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,

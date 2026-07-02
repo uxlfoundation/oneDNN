@@ -31,3 +31,7 @@ set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
 target_include_directories(${OBJ_LIB} PRIVATE
     ${PROJECT_SOURCE_DIR}/third_party
 )
+
+target_compile_definitions(${OBJ_LIB} PRIVATE
+    $<$<BOOL:${DNNL_DEV_MODE}>:RVJIT_DEBUG>
+)

@@ -1989,6 +1989,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     VCONDCHECK_BG(!(bgmmc.is_runtime_M && !runtime_M_supported),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED)
 
+    // Runtime M combined with grouped per-K quantization scales applied at
+    // accumulation time is not yet supported
+    const bool per_k_scales_at_accumulation = bgmmc.is_src_scale_per_k
+            || (bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b);
+    VCONDCHECK_BG(!(bgmmc.is_runtime_M && per_k_scales_at_accumulation),
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED)
+
     // Runtime N value is supported for 2d AMX int8/bfloat16 problems only.
     const bool runtime_N_supported = bgmmc.is_amx && bgmmc.ndims == 2
             && one_of(true, bm_conf_utils.is_int8(), bm_conf_utils.is_bf16());

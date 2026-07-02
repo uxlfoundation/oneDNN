@@ -31,8 +31,9 @@ using namespace dnnl::impl::utils;
 
 void jit_rvv_1x1_convolution_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
-    auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
+    // src/weights addressed by byte offset (2B for bf16/f16); dst/bias f32.
+    auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
+    auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
 
@@ -44,9 +45,8 @@ void jit_rvv_1x1_convolution_fwd_t::execute_forward(
 }
 
 void jit_rvv_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
-        const int nthr, const float *src, const float *weights,
-        const float *bias, float *dst,
-        const memory_tracking::grantor_t &scratchpad) const {
+        const int nthr, const char *src, const char *weights, const float *bias,
+        float *dst, const memory_tracking::grantor_t &scratchpad) const {
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -88,7 +88,7 @@ void jit_rvv_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
         const size_t wei_off = (size_t)g * jcp.oc * jcp.ic_without_padding
                 + (size_t)ocb * jcp.ic_without_padding * jcp.oc_block
                 + (size_t)icb * jcp.ic_block * jcp.oc_block;
-        p.load_data = &weights[wei_off];
+        p.load_data = weights + wei_off * jcp.typesize_in;
 
         const int ic_off = g * jcp.ic_without_padding + icb * jcp.ic_block;
         const size_t src_off
@@ -96,7 +96,7 @@ void jit_rvv_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
                 + (size_t)osb * jcp.bcast_block * jcp.ngroups
                         * jcp.ic_without_padding
                 + ic_off;
-        p.bcast_data = &src[src_off];
+        p.bcast_data = src + src_off * jcp.typesize_in;
 
         p.bcast_dim = this_block_size(
                 osb * jcp.bcast_block, jcp.os, bcast_step * jcp.bcast_block);

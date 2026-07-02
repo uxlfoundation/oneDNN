@@ -38,7 +38,7 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_1x1:", v, ""),
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_1x1:", isa_, ""),
                 jit_rvv_1x1_convolution_fwd_t);
 
         status_t init(engine_t *engine) {
@@ -52,9 +52,23 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
-            VDISPATCH_CONV(
-                    expect_data_types(data_type::f32, data_type::f32,
-                            data_type::f32, data_type::f32, data_type::undef),
+            // Accepted: f32/f32/f32, bf16/bf16/f32 (Zvfbfwma), f16/f16/f32
+            // (Zvfh). bf16/f16 widen into f32 accumulators; dst stays f32.
+            const auto src_dt = src_d.data_type();
+            const auto wei_dt = weights_d.data_type();
+            const auto dst_dt = dst_d.data_type();
+            // Drive the impl name by input dtype (set before any rejection).
+            isa_ = src_dt == data_type::bf16
+                    ? zvfbfwma
+                    : (src_dt == data_type::f16 ? zvfh : v);
+            const bool in_dt_ok = wei_dt == src_dt
+                    && (src_dt == data_type::f32
+                            || (src_dt == data_type::bf16 && mayiuse(zvfbfwma))
+                            || (src_dt == data_type::f16 && mayiuse(zvfh)));
+            VDISPATCH_CONV(in_dt_ok && dst_dt == data_type::f32,
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_CONV(IMPLICATION(with_bias(),
+                                   weights_md(1)->data_type == data_type::f32),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(attr()->has_default_values(
                                    primitive_attr_t::skip_mask_t::post_ops),
@@ -116,6 +130,9 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
             return status::success;
         }
 
+        // ISA that drives the impl name: v (f32), zvfh (f16), or zvfbfwma
+        // (bf16). Set in init() before any dtype/ISA rejection.
+        cpu_isa_t isa_ = v;
         jit_1x1_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
 
     protected:
@@ -131,7 +148,11 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
 
         inline format_tag_t get_wei_tag() const {
             using namespace format_tag;
-            const int vlen = jcp_.oc_block * jcp_.typesize_in * 8;
+            // Block index is set by the OC lane count (oc_block), which is
+            // derived from the f32 vector width regardless of input dtype; do
+            // not scale by typesize_in (it mis-picks the tag for bf16/f16).
+            const int vlen
+                    = jcp_.oc_block * static_cast<int>(sizeof(float)) * 8;
             const int v = get_vlen_implementation_id(vlen);
             const int n = ndims() - 3;
             const int g = with_groups() ? 1 : 0;
@@ -163,8 +184,8 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
 
 private:
     void execute_forward(const exec_ctx_t &ctx) const;
-    void execute_forward_thr(const int ithr, const int nthr, const float *src,
-            const float *weights, const float *bias, float *dst,
+    void execute_forward_thr(const int ithr, const int nthr, const char *src,
+            const char *weights, const float *bias, float *dst,
             const memory_tracking::grantor_t &scratchpad) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

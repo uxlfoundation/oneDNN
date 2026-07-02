@@ -18,6 +18,8 @@
 
 #include <thread>
 
+#include "common/verbose.hpp"
+
 #include "cpu/platform.hpp"
 
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_THREADPOOL
@@ -283,10 +285,19 @@ unsigned get_per_core_cache_size(int level) {
         const auto &cache_level
                 = static_cast<Xbyak_aarch64::util::Arm64CacheLevel>(level);
 
-        return aarch64::cpu().getDataCacheSize(cache_level)
-                / aarch64::cpu().getCoresSharingDataCache(cache_level);
+        const auto sharing
+                = aarch64::cpu().getCoresSharingDataCache(cache_level);
+        const auto sz = sharing
+                ? aarch64::cpu().getDataCacheSize(cache_level) / sharing
+                : 0;
+        if (sz) return sz;
+        VWARN(common, common,
+                "unable to query L%d data cache size; falling back to a "
+                "guess, which may affect cache-based heuristics",
+                level);
+        return guess(level);
     } else {
-        return 0;
+        return guess(level);
     }
 #else
     return guess(level);

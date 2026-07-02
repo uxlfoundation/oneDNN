@@ -39,8 +39,6 @@ status_t init_conf(brgemm_conv_conf_t &jcp, const convolution_desc_t &cd,
         memory_desc_t &src_md, memory_desc_t &weights_md, memory_desc_t &dst_md,
         memory_desc_t &bias_md, primitive_attr_t &attr, int nthreads) {
 
-    const cpu_isa_t isa = v;
-
     if (!one_of(cd.prop_kind, forward_training, forward_inference))
         return status::unimplemented;
 
@@ -52,7 +50,6 @@ status_t init_conf(brgemm_conv_conf_t &jcp, const convolution_desc_t &cd,
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
     const int ndims = src_d.ndims();
 
-    jcp.isa = isa;
     jcp.prop_kind = cd.prop_kind;
     jcp.ndims = ndims;
     jcp.nthr = nthreads;
@@ -94,17 +91,20 @@ status_t init_conf(brgemm_conv_conf_t &jcp, const convolution_desc_t &cd,
     jcp.b_pad = (ndims >= 4) ? cd.padding[1][ndims - 4] : 0;
     jcp.r_pad = cd.padding[1][ndims - 3];
 
-    // Data types — f32, or low-precision in×in→f32 via widening FMA:
-    //   bf16×bf16→f32 (Zvfbfwma), f16×f16→f32 (Zvfh). dst stays f32.
+    // Data types: f32, bf16 (Zvfbfwma), or f16 (Zvfh) for src/wei, matching
+    // each other; dst and bias always stay f32 (widening accumulation).
     jcp.src_dt = src_d.data_type();
     jcp.wei_dt = weights_d.data_type();
     jcp.dst_dt = dst_d.data_type();
     jcp.bia_dt = bias_d.ndims() ? bias_d.data_type() : data_type::undef;
 
-    const bool in_dt_ok = jcp.src_dt == jcp.wei_dt
+    const bool same_in_dt = jcp.src_dt == jcp.wei_dt;
+    jcp.isa = (jcp.src_dt == f16) ? zvfh : (jcp.src_dt == bf16) ? zvfbfwma : v;
+    const bool in_dt_ok = same_in_dt
             && (jcp.src_dt == f32 || (jcp.src_dt == bf16 && mayiuse(zvfbfwma))
                     || (jcp.src_dt == f16 && mayiuse(zvfh)));
-    if (!in_dt_ok || jcp.dst_dt != f32) return status::unimplemented;
+    if (!in_dt_ok) return status::unimplemented;
+    if (jcp.dst_dt != f32) return status::unimplemented;
     if (jcp.bia_dt != data_type::undef && jcp.bia_dt != f32)
         return status::unimplemented;
 

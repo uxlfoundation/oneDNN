@@ -31,7 +31,6 @@ using namespace dnnl::impl::utils;
 
 void jit_rvv_1x1_convolution_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
-    // src/weights addressed by byte offset (2B for bf16/f16); dst/bias f32.
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
     auto bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
@@ -88,7 +87,7 @@ void jit_rvv_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
         const size_t wei_off = (size_t)g * jcp.oc * jcp.ic_without_padding
                 + (size_t)ocb * jcp.ic_without_padding * jcp.oc_block
                 + (size_t)icb * jcp.ic_block * jcp.oc_block;
-        p.load_data = weights + wei_off * jcp.typesize_wei;
+        p.load_data = weights + wei_off * jcp.typesize_in;
 
         const int ic_off = g * jcp.ic_without_padding + icb * jcp.ic_block;
         const size_t src_off

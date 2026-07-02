@@ -214,8 +214,20 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_thr_nspc(
                             if (n_elems > 0) {
                                 const data_t *b_ptr = bia_arr + start_oc;
                                 data_t *d_ptr = dst_arr + start_oc;
-                                jit_rvv_gemm_convolution_apply_bias(
-                                        d_ptr, b_ptr, n_elems);
+
+                                while (oc < n_elems) {
+                                    size_t vl = __riscv_vsetvl_e32m8(
+                                            n_elems - oc);
+                                    vfloat32m8_t v_dst = __riscv_vle32_v_f32m8(
+                                            d_ptr + oc, vl);
+                                    vfloat32m8_t v_bias = __riscv_vle32_v_f32m8(
+                                            b_ptr + oc, vl);
+                                    v_dst = __riscv_vfadd_vv_f32m8(
+                                            v_dst, v_bias, vl);
+                                    __riscv_vse32_v_f32m8(
+                                            d_ptr + oc, v_dst, vl);
+                                    oc += vl;
+                                }
                             }
                         }
 
@@ -383,8 +395,50 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_ncsp(
                                 data_t b = jcp.with_bias ? bias[oc_start + oc]
                                                          : 0;
                                 data_t *d_ = _dst + oc * M;
-                                jit_rvv_gemm_convolution_apply_scalar_bias_relu(
-                                        d_, m, b, eltwise.alpha, eltwise.scale);
+
+                                if (eltwise.alpha == 0.0f) {
+                                    int oS = 0;
+                                    while (oS < m) {
+                                        size_t vl
+                                                = __riscv_vsetvl_e32m8(m - oS);
+                                        vfloat32m8_t v_d
+                                                = __riscv_vle32_v_f32m8(
+                                                        d_ + oS, vl);
+                                        v_d = __riscv_vfadd_vf_f32m8(
+                                                v_d, b, vl); // Add bias
+
+                                        v_d = __riscv_vfmax_vf_f32m8(
+                                                v_d, 0.0f, vl);
+
+                                        if (eltwise.scale != 1.0f) {
+                                            v_d = __riscv_vfmul_vf_f32m8(
+                                                    v_d, eltwise.scale, vl);
+                                        }
+
+                                        __riscv_vse32_v_f32m8(d_ + oS, v_d, vl);
+                                        oS += vl;
+                                    }
+                                } else {
+                                    int oS = 0;
+                                    while (oS < m) {
+                                        size_t vl
+                                                = __riscv_vsetvl_e32m8(m - oS);
+                                        vfloat32m8_t v_d
+                                                = __riscv_vle32_v_f32m8(
+                                                        d_ + oS, vl);
+                                        v_d = __riscv_vfadd_vf_f32m8(
+                                                v_d, b, vl); // Add bias
+                                        vbool4_t mask
+                                                = __riscv_vmflt_vf_f32m8_b4(
+                                                        v_d, 0.0f, vl);
+                                        v_d = __riscv_vfmul_vf_f32m8_m(
+                                                mask, v_d, eltwise.alpha, vl);
+                                        v_d = __riscv_vfmul_vf_f32m8(
+                                                v_d, eltwise.scale, vl);
+                                        __riscv_vse32_v_f32m8(d_ + oS, v_d, vl);
+                                        oS += vl;
+                                    }
+                                }
                             });
                             fast_relu_done = true;
                         }
@@ -411,7 +465,16 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_ncsp(
                     parallel_nd(step.oc, [&](dim_t oc) {
                         data_t b = bias[oc_start + oc];
                         data_t *d_ = _dst + oc * M;
-                        jit_rvv_gemm_convolution_apply_scalar_bias(d_, m, b);
+
+                        int oS = 0;
+                        while (oS < m) {
+                            size_t vl = __riscv_vsetvl_e32m8(m - oS);
+                            vfloat32m8_t v_d
+                                    = __riscv_vle32_v_f32m8(d_ + oS, vl);
+                            v_d = __riscv_vfadd_vf_f32m8(v_d, b, vl);
+                            __riscv_vse32_v_f32m8(d_ + oS, v_d, vl);
+                            oS += vl;
+                        }
                     });
                 }
             }

@@ -88,15 +88,18 @@ void emit_prelu_loop(jit_generator_t *h, data_type_t dt, data_type_t wei_dt,
     h->L(loop);
     h->beqz(len, done);
 
+    // All vsetvli use the tail/mask-agnostic policy (ta, ma): every iteration
+    // processes exactly vl elements (no masking, no tail reads), so agnostic is
+    // result-equivalent and avoids preserving inactive elements on OoO cores.
     // ---- load + widen src to f32 in vsrc; leaves vtype = e32, clmul ----
     if (!src16) {
-        h->vsetvli(vl, len, SEW::e32, LMUL::m1);
+        h->vsetvli(vl, len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
         h->vle32_v(vsrc, p_in);
     } else {
-        h->vsetvli(vl, len, SEW::e16, LMUL::m1);
+        h->vsetvli(vl, len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         h->vle16_v(vt, p_in);
         emit_widen16(h, vsrc, vt, dt); // e16m1 -> e32m2
-        h->vsetvli(x0, vl, SEW::e32, LMUL::m2);
+        h->vsetvli(x0, vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
     }
 
     // ---- load + widen weights to f32 in vw (lockstep only) ----
@@ -107,10 +110,11 @@ void emit_prelu_loop(jit_generator_t *h, data_type_t dt, data_type_t wei_dt,
         } else {
             // 16-bit weights load at half the compute LMUL, then widen.
             const LMUL wlmul = (clmul == LMUL::m1) ? LMUL::mf2 : LMUL::m1;
-            h->vsetvli(x0, vl, SEW::e16, wlmul);
+            h->vsetvli(x0, vl, SEW::e16, wlmul, VTA::ta, VMA::ma);
             h->vle16_v(vt, p_w);
             emit_widen16(h, vw, vt, wei_dt); // e16(wlmul) -> e32(clmul)
-            h->vsetvli(x0, vl, SEW::e32, clmul); // restore compute vtype
+            h->vsetvli(x0, vl, SEW::e32, clmul, VTA::ta,
+                    VMA::ma); // restore compute vtype
         }
     }
 
@@ -127,7 +131,7 @@ void emit_prelu_loop(jit_generator_t *h, data_type_t dt, data_type_t wei_dt,
     if (!src16) {
         h->vse32_v(vmin, p_out);
     } else { // f16 / bf16: narrow f32 -> 16-bit (e32m2 -> e16m1) and store
-        h->vsetvli(x0, vl, SEW::e16, LMUL::m1);
+        h->vsetvli(x0, vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         if (dt == data_type::bf16)
             h->vfncvtbf16_f_f_w(vt, vmin); // Zvfbfmin, round-to-nearest-even
         else

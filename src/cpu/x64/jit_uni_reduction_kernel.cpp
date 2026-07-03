@@ -275,7 +275,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_ne_convert_xf16() {
         compute_op_(vmm_acc_, vmm_tmp1_);
         compute_op_(vmm_acc_, vmm_tmp2_);
 
-        add(reg_src_, 2 * simd_w_ * conf_.src_dt_size);
+        add(reg_src_, into<uint32_t>(2 * simd_w_ * conf_.src_dt_size));
 
         sub(reg_work_, 2);
         jmp(label_work_begin);
@@ -288,7 +288,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_ne_convert_xf16() {
         io_load_.load(ptr[reg_src_], vmm_tmp1_, false);
         compute_op_(vmm_acc_, vmm_tmp1_);
 
-        add(reg_src_, simd_w_ * conf_.src_dt_size);
+        add(reg_src_, into<uint32_t>(simd_w_ * conf_.src_dt_size));
 
         dec(reg_work_);
         jmp(label_work_tail_begin);
@@ -314,7 +314,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_base() {
         io_load_.load(ptr[reg_src_], vmm_tmp1_, false);
         compute_op_(vmm_acc_, vmm_tmp1_);
 
-        add(reg_src_, simd_w_ * conf_.src_dt_size);
+        add(reg_src_, into<uint32_t>(simd_w_ * conf_.src_dt_size));
 
         dec(reg_work_);
         jmp(label_work_begin);

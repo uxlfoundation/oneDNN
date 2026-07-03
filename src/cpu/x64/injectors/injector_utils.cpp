@@ -50,7 +50,7 @@ register_preserve_guard_t::register_preserve_guard_t(jit_generator_t *host,
         host_->push(reg);
 
     if (!vmm_stack_.empty()) {
-        host_->sub(host_->rsp, vmm_to_preserve_size_bytes_);
+        host_->sub(host_->rsp, into<uint32_t>(vmm_to_preserve_size_bytes_));
 
         auto stack_offset = vmm_to_preserve_size_bytes_;
         for (const auto &vmm : vmm_to_preserve) {
@@ -91,7 +91,7 @@ register_preserve_guard_t::~register_preserve_guard_t() {
     }
 
     if (vmm_to_preserve_size_bytes_)
-        host_->add(host_->rsp, vmm_to_preserve_size_bytes_);
+        host_->add(host_->rsp, into<uint32_t>(vmm_to_preserve_size_bytes_));
 
     while (!reg64_stack_.empty()) {
         host_->pop(reg64_stack_.top());

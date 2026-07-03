@@ -348,7 +348,7 @@ void jit_sse41_1x1_conv_kernel_f32_t::generate_reduce_loop(
     L(reduce_loop);
     {
         fma_block(false);
-        add(aux_reg_bcast_data, jcp.reduce_loop_bcast_step);
+        add(aux_reg_bcast_data, into<uint32_t>(jcp.reduce_loop_bcast_step));
         add(aux_reg_load_data, jcp.reduce_loop_load_step);
         sub(reduce_loop_iter, jcp.reduce_loop_unroll);
         jg(reduce_loop, T_NEAR);
@@ -474,17 +474,19 @@ void jit_sse41_1x1_conv_kernel_f32_t::generate() {
             case forward_inference:
                 add(reg_bias_data,
                         load_loop_blk * jcp.oc_block * sizeof(float));
-                add(reg_output_data, offst_with_dw_conv);
+                add(reg_output_data, into<uint32_t>(offst_with_dw_conv));
                 if (jcp.with_binary && jcp.with_dw_conv) {
                     mov(aux_reg_load_data, ptr[rsp + reg_dw_binary_output_off]);
                     add(aux_reg_load_data,
-                            offst_wo_dw_conv - offst_with_dw_conv);
+                            into<uint32_t>(
+                                    offst_wo_dw_conv - offst_with_dw_conv));
                     mov(ptr[rsp + reg_dw_binary_output_off], aux_reg_load_data);
                 }
                 break;
             case backward_data:
                 add(reg_output_data,
-                        load_loop_blk * jcp.is * jcp.ic_block * sizeof(float));
+                        into<uint32_t>(load_loop_blk * jcp.is * jcp.ic_block
+                                * sizeof(float)));
                 break;
             case backward_weights:
                 for (int i = 0; i < load_loop_blk; i++)
@@ -569,25 +571,25 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
 
     jcp.prop_kind = cd.prop_kind;
 
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
+    jcp.ngroups = into<int>(with_groups ? weights_d.dims()[0] : 1);
+    jcp.mb = into<int>(src_d.dims()[0]);
 
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
+    jcp.oc = into<int>(dst_d.dims()[1] / jcp.ngroups);
+    jcp.ic = into<int>(src_d.dims()[1] / jcp.ngroups);
 
-    jcp.ih = (ndims == 3) ? 1 : src_d.dims()[2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.oh = (ndims == 3) ? 1 : dst_d.dims()[2];
-    jcp.ow = dst_d.dims()[ndims - 1];
+    jcp.ih = into<int>((ndims == 3) ? 1 : src_d.dims()[2]);
+    jcp.iw = into<int>(src_d.dims()[ndims - 1]);
+    jcp.oh = into<int>((ndims == 3) ? 1 : dst_d.dims()[2]);
+    jcp.ow = into<int>(dst_d.dims()[ndims - 1]);
 
-    jcp.kh = (ndims == 3) ? 1 : weights_d.dims()[with_groups + 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
+    jcp.kh = into<int>((ndims == 3) ? 1 : weights_d.dims()[with_groups + 2]);
+    jcp.kw = into<int>(weights_d.dims()[with_groups + ndims - 1]);
 
-    jcp.t_pad = (ndims == 3) ? 0 : cd.padding[0][0];
-    jcp.l_pad = cd.padding[0][ndims - 3];
+    jcp.t_pad = into<int>((ndims == 3) ? 0 : cd.padding[0][0]);
+    jcp.l_pad = into<int>(cd.padding[0][ndims - 3]);
 
-    jcp.stride_h = (ndims == 3) ? 1 : cd.strides[0];
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.stride_h = into<int>((ndims == 3) ? 1 : cd.strides[0]);
+    jcp.stride_w = into<int>(cd.strides[ndims - 3]);
 
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
 
@@ -709,8 +711,9 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         load_blocking_max = is_data_layout_nxc ? jcp.load_dim : 144;
         bcast_blocking = 128; // affects load balancing across threads
         bcast_blocking_max = 192;
-        reduce_blocking = is_data_layout_nxc ? jcp.reduce_dim
-                                             : 128; // affects L1$ utilization
+        reduce_blocking = into<int>(is_data_layout_nxc
+                        ? jcp.reduce_dim
+                        : 128); // affects L1$ utilization
     } else if (jcp.prop_kind == backward_data) {
         jcp.reduce_dim = jcp.oc;
         jcp.reduce_block = jcp.oc_block;
@@ -759,10 +762,12 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         jcp.bcast_loop_output_step
                 = jcp.oc_block * jcp.ic_block * sizeof(float);
         jcp.bcast_loop_output_substep = jcp.oc_block * jcp.ur * sizeof(float);
-        jcp.bcast_loop_bcast_step = jcp.ic_block * jcp.is * sizeof(float);
+        jcp.bcast_loop_bcast_step
+                = into<int>(jcp.ic_block * jcp.is * sizeof(float));
         jcp.bcast_loop_bcast_substep = jcp.ur * sizeof(float);
 
-        jcp.load_loop_load_step = jcp.oc_block * jcp.os * sizeof(float);
+        jcp.load_loop_load_step
+                = into<int>(jcp.oc_block * jcp.os * sizeof(float));
         jcp.load_loop_iter_step = jcp.oc_block;
 
         /* --- */
@@ -782,7 +787,7 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         load_blocking_max = load_blocking;
         assert(jcp.load_dim % load_blocking == 0);
 
-        bcast_blocking = div_up(jcp.bcast_dim, jcp.bcast_block);
+        bcast_blocking = into<int>(div_up(jcp.bcast_dim, jcp.bcast_block));
         while (true) {
             if (bcast_blocking <= 9)
                 break;
@@ -816,9 +821,9 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.nb_load_blocking_max = load_blocking_max / jcp.load_block;
     jcp.nb_reduce_blocking = reduce_blocking / jcp.reduce_block;
 
-    jcp.nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
+    jcp.nb_bcast = into<int>(div_up(jcp.bcast_dim, jcp.bcast_block));
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);
-    jcp.nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
+    jcp.nb_reduce = into<int>(div_up(jcp.reduce_dim, jcp.reduce_block));
 
     return status::success;
 }

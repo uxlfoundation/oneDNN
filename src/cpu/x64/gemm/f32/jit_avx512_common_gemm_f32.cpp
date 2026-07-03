@@ -1455,7 +1455,7 @@ struct xbyak_gemm_t : public jit_generator_t {
         mov(LDA, ARG_LDA);
 #endif
 
-        cmp(K, STACK_K_CAPACITY);
+        cmp(K, into<uint32_t>(STACK_K_CAPACITY));
         jg(buffer_in_ws, T_NEAR);
 
         // Using 4kB aligned buffer on stack as workspace

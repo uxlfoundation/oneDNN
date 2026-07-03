@@ -78,15 +78,16 @@ void jit_uni_shuffle_kernel_t<avx512_core>::emu_gather_data(
     constexpr unsigned xmm_size_elem = 8; //bf16
     constexpr unsigned xmm_size_elem_half = xmm_size_elem / 2;
 
-    const unsigned number_of_xmms = is_tail
-            ? utils::div_up(conf_.simd_tail, xmm_size_elem)
-            : utils::div_up(conf_.simd_w, xmm_size_elem);
+    const unsigned number_of_xmms = into<unsigned int>(is_tail
+                    ? utils::div_up(conf_.simd_tail, xmm_size_elem)
+                    : utils::div_up(conf_.simd_w, xmm_size_elem));
 
     for (unsigned i = 0; i < number_of_xmms; i++) {
-        const unsigned number_of_xmm_halfs = is_tail && i == number_of_xmms - 1
-                ? utils::div_up(conf_.simd_tail,
-                          xmm_size_elem_half + i * xmm_size_elem)
-                : 2;
+        const unsigned number_of_xmm_halfs = into<unsigned int>(
+                is_tail && i == number_of_xmms - 1
+                        ? utils::div_up(conf_.simd_tail,
+                                  xmm_size_elem_half + i * xmm_size_elem)
+                        : 2);
 
         for (unsigned j = 0; j < number_of_xmm_halfs; j++) {
             const unsigned rem = conf_.simd_tail % xmm_size_elem_half;
@@ -96,16 +97,17 @@ void jit_uni_shuffle_kernel_t<avx512_core>::emu_gather_data(
                     ? rem
                     : xmm_size_elem_half;
 
-            vextractf32x4(xmm_tmp, Zmm(indices_idx), j + i * 2);
+            vextractf32x4(xmm_tmp, Zmm(indices_idx), into<uint8_t>(j + i * 2));
             for (unsigned k = 0; k < number_of_values_to_load; k++) {
-                vpextrd(reg_tmp_.cvt32(), xmm_tmp, k + j * xmm_size_elem_half);
+                vpextrd(reg_tmp_.cvt32(), xmm_tmp,
+                        into<uint8_t>(k + j * xmm_size_elem_half));
                 add(reg_src_addr, reg_tmp_);
                 vpinsrw(xmm_dst, xmm_dst, ptr[reg_src_addr],
-                        k + j * xmm_size_elem_half);
+                        into<uint8_t>(k + j * xmm_size_elem_half));
                 mov(reg_src_addr, reg_tmp1_);
             }
         }
-        vinsertf128(Ymm(data_idx), Ymm(data_idx), xmm_dst, i);
+        vinsertf128(Ymm(data_idx), Ymm(data_idx), xmm_dst, into<uint8_t>(i));
     }
 }
 
@@ -120,24 +122,24 @@ void jit_uni_shuffle_kernel_t<avx>::emu_gather_data(const Reg64 &reg_src_addr,
 
     constexpr unsigned xmm_size_elem = 4;
 
-    const unsigned number_of_xmms = is_tail
-            ? utils::div_up(conf_.simd_tail, xmm_size_elem)
-            : utils::div_up(conf_.simd_w, xmm_size_elem);
+    const unsigned number_of_xmms = into<unsigned int>(is_tail
+                    ? utils::div_up(conf_.simd_tail, xmm_size_elem)
+                    : utils::div_up(conf_.simd_w, xmm_size_elem));
     for (unsigned i = 0; i < number_of_xmms; i++) {
-        vextractf128(xmm_tmp, Ymm(indices_idx), i);
+        vextractf128(xmm_tmp, Ymm(indices_idx), into<uint8_t>(i));
 
         const unsigned number_of_values_to_load = i == number_of_xmms - 1
                         && is_tail && conf_.simd_tail % xmm_size_elem != 0
                 ? conf_.simd_tail % xmm_size_elem
                 : xmm_size_elem;
         for (unsigned j = 0; j < number_of_values_to_load; j++) {
-            vpextrd(reg_tmp_.cvt32(), xmm_tmp, j);
+            vpextrd(reg_tmp_.cvt32(), xmm_tmp, into<uint8_t>(j));
             add(reg_src_addr, reg_tmp_);
-            vpinsrd(xmm_dst, xmm_dst, ptr[reg_src_addr], j);
+            vpinsrd(xmm_dst, xmm_dst, ptr[reg_src_addr], into<uint8_t>(j));
             mov(reg_src_addr, reg_tmp1_);
         }
 
-        vinsertf128(Ymm(data_idx), Ymm(data_idx), xmm_dst, i);
+        vinsertf128(Ymm(data_idx), Ymm(data_idx), xmm_dst, into<uint8_t>(i));
     }
 }
 
@@ -150,11 +152,11 @@ void jit_uni_shuffle_kernel_t<sse41>::emu_gather_data(const Reg64 &reg_src_addr,
     constexpr unsigned xmm_size_elem = 4;
 
     const unsigned number_of_values_to_load
-            = is_tail ? conf_.simd_tail : xmm_size_elem;
+            = into<unsigned int>(is_tail ? conf_.simd_tail : xmm_size_elem);
     for (unsigned j = 0; j < number_of_values_to_load; j++) {
-        pextrd(reg_tmp_.cvt32(), Xmm(indices_idx), j);
+        pextrd(reg_tmp_.cvt32(), Xmm(indices_idx), into<uint8_t>(j));
         add(reg_src_addr, reg_tmp_);
-        pinsrd(Xmm(data_idx), ptr[reg_src_addr], j);
+        pinsrd(Xmm(data_idx), ptr[reg_src_addr], into<uint8_t>(j));
         mov(reg_src_addr, reg_tmp1_);
     }
 }
@@ -276,7 +278,7 @@ void jit_uni_shuffle_kernel_t<sse41>::store_data(const int data_idx,
     if (is_tail)
         for (unsigned i = 0; i < conf_.simd_tail; i++) {
             pextrd(ptr[reg_dst_addr + offset + i * conf_.dt_size],
-                    Xmm(data_idx), i);
+                    Xmm(data_idx), into<uint8_t>(i));
         }
     else
         movups(ptr[reg_dst_addr + offset], Vmm(data_idx));
@@ -291,9 +293,9 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
     const Reg64 &reg_cb_loop_size = reg_tmp4_;
     const Reg64 &reg_blk_tail = reg_tmp5_;
     const Reg64 &reg_src_save = reg_tmp6_;
-    const int simd_in_blk = conf_.blk_size / conf_.simd_w;
+    const int simd_in_blk = into<int>(conf_.blk_size / conf_.simd_w);
     const int simd_in_tail_blk
-            = utils::div_up(conf_.c % conf_.blk_size, conf_.simd_w);
+            = into<int>(utils::div_up(conf_.c % conf_.blk_size, conf_.simd_w));
     const Vmm vmm_tmp[4] = {Vmm(5), Vmm(6), Vmm(7), Vmm(8)};
 
     auto load_indices = ([&](bool is_blk_tail) {
@@ -316,7 +318,8 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
                     simd_tail_condition);
 
             store_data(vmm_src_.getIdx(), reg_dst_,
-                    i * conf_.simd_w * conf_.dt_size, simd_tail_condition);
+                    into<int>(i * conf_.simd_w * conf_.dt_size),
+                    simd_tail_condition);
         }
     });
 
@@ -332,7 +335,7 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
 
     xor_(reg_blk_tail, reg_blk_tail);
 
-    cmp(reg_cb_loop_size, conf_.blk_size);
+    cmp(reg_cb_loop_size, into<uint32_t>(conf_.blk_size));
     je(no_tail, T_NEAR);
 
     mov(reg_blk_tail, reg_cb_loop_size);
@@ -353,14 +356,14 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
         xor_(reg_sp, reg_sp);
         L(sp_loop_begin);
         {
-            cmp(reg_sp, conf_.sp_split_size);
+            cmp(reg_sp, into<uint32_t>(conf_.sp_split_size));
             jge(sp_loop_end, T_NEAR);
 
             shuffle(false);
 
             inc(reg_sp);
-            add(reg_src_, conf_.blk_size * conf_.dt_size);
-            add(reg_dst_, conf_.blk_size * conf_.dt_size);
+            add(reg_src_, into<uint32_t>(conf_.blk_size * conf_.dt_size));
+            add(reg_dst_, into<uint32_t>(conf_.blk_size * conf_.dt_size));
 
             jmp(sp_loop_begin);
         }
@@ -368,11 +371,12 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
 
         mov(reg_src_, reg_src_save);
 
-        add(reg_cb, conf_.blk_size);
+        add(reg_cb, into<uint32_t>(conf_.blk_size));
         add(reg_dst_,
-                conf_.blk_size * (conf_.sp - conf_.sp_split_size)
-                        * conf_.dt_size);
-        add(reg_indices_, conf_.blk_size * conf_.el_size_of_indices);
+                into<uint32_t>(conf_.blk_size * (conf_.sp - conf_.sp_split_size)
+                        * conf_.dt_size));
+        add(reg_indices_,
+                into<uint32_t>(conf_.blk_size * conf_.el_size_of_indices));
 
         jmp(cb_loop_begin);
     }
@@ -386,14 +390,14 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
     xor_(reg_sp, reg_sp);
     L(sp_tail_loop_begin);
     {
-        cmp(reg_sp, conf_.sp_split_size);
+        cmp(reg_sp, into<uint32_t>(conf_.sp_split_size));
         jge(sp_tail_loop_end, T_NEAR);
 
         shuffle(true);
 
         inc(reg_sp);
-        add(reg_src_, conf_.blk_size * conf_.dt_size);
-        add(reg_dst_, conf_.blk_size * conf_.dt_size);
+        add(reg_src_, into<uint32_t>(conf_.blk_size * conf_.dt_size));
+        add(reg_dst_, into<uint32_t>(conf_.blk_size * conf_.dt_size));
 
         jmp(sp_tail_loop_begin);
     }

@@ -277,10 +277,10 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     // ----- post-ops and store accumulators -----
     const int beta_regs = !one_of(brg->beta, 1.f, 0.f);
 
-    const int postops_regs = brg->attr()
-            ? injector::aux_vec_count(
-                      brg->attr()->post_ops_, brg->isa_impl, true)
-            : 0;
+    const int postops_regs = into<int>(brg->attr()
+                    ? injector::aux_vec_count(
+                              brg->attr()->post_ops_, brg->isa_impl, true)
+                    : 0);
 
     // Emulators: fp8 emulation are supported for amx only
     // In theory, vmm bf16_emu register indices overlap with other vmm
@@ -538,8 +538,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     if (brg->can_dispatch_uker()) {
         // Blocking heuristics for some shapes
         // TODO: Review these criteria
-        const size_t eff_K
-                = brg->reduce_dim * brg->typesize_A * brg->brgattr.K_koef;
+        const size_t eff_K = into<size_t>(
+                brg->reduce_dim * brg->typesize_A * brg->brgattr.K_koef);
         const auto low_K = (L1 - 4 * 1024) / (6 * 16);
 
         // TODO: if rdb_tail != 0 then we should limit
@@ -905,7 +905,8 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     const data_type_t rd_block_dt = get_mac_emu_data_type(
             brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
     if (rd_block_dt == dnnl_data_type_undef) return status::unimplemented;
-    const int vnni_granularity = data_type_vnni_granularity(rd_block_dt);
+    const int vnni_granularity
+            = into<int>(data_type_vnni_granularity(rd_block_dt));
     brg->rd_block = rd_unroll * vnni_granularity;
     brg->rdb = brg->reduce_dim / brg->rd_block;
     brg->rdb_tail = brg->reduce_dim % brg->rd_block;
@@ -922,12 +923,12 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
 status_t brgemm_blocking(brgemm_desc_t *brg) {
     const data_type_t ld_step_compute_dt = get_mac_emu_data_type(
             brg->dt_b, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
-    brg->ld_step = brg->is_f16_b_non_amx_vnni()
-            ? 2
-            : data_type_vnni_granularity(ld_step_compute_dt);
+    brg->ld_step = into<int>(brg->is_f16_b_non_amx_vnni()
+                    ? 2
+                    : data_type_vnni_granularity(ld_step_compute_dt));
     const data_type_t rd_step_compute_dt
             = get_mac_emu_data_type(brg->dt_b, brg->isa_impl);
-    brg->rd_step = data_type_vnni_granularity(rd_step_compute_dt);
+    brg->rd_step = into<int>(data_type_vnni_granularity(rd_step_compute_dt));
 
     set_isa_impl(brg);
     if (brg->isa_impl == isa_undef) return status::unimplemented;
@@ -1006,10 +1007,10 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     const int compute_vregs
             = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_compute_vmm_count(*brg);
     const int bf16_emu_vregs = brg->is_bf16_emu * 4;
-    const int postops_regs = brg->attr()
-            ? injector::aux_vec_count(
-                      brg->attr()->post_ops_, brg->isa_impl, true)
-            : 0;
+    const int postops_regs = into<int>(brg->attr()
+                    ? injector::aux_vec_count(
+                              brg->attr()->post_ops_, brg->isa_impl, true)
+                    : 0);
 
     const int max_acc_vmms = max_vregs
             - nstl::max(postops_regs,
@@ -1074,10 +1075,10 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->dt_d = brg->dt_c;
     brg->dt_bias = brg->dt_c;
 
-    brg->typesize_A = types::data_type_size(brg->dt_a);
-    brg->typesize_B = types::data_type_size(brg->dt_b);
-    brg->typesize_C = types::data_type_size(brg->dt_c);
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    brg->typesize_A = into<int>(types::data_type_size(brg->dt_a));
+    brg->typesize_B = into<int>(types::data_type_size(brg->dt_b));
+    brg->typesize_C = into<int>(types::data_type_size(brg->dt_c));
+    brg->typesize_D = into<int>(types::data_type_size(brg->dt_d));
 
     brg->isa_user = isa;
 
@@ -1146,10 +1147,10 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->dt_d = brg->dt_c;
     brg->dt_bias = brg->dt_c;
 
-    brg->typesize_A = types::data_type_size(brg->dt_a);
-    brg->typesize_B = types::data_type_size(brg->dt_b);
-    brg->typesize_C = types::data_type_size(brg->dt_c);
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    brg->typesize_A = into<int>(types::data_type_size(brg->dt_a));
+    brg->typesize_B = into<int>(types::data_type_size(brg->dt_b));
+    brg->typesize_C = into<int>(types::data_type_size(brg->dt_c));
+    brg->typesize_D = into<int>(types::data_type_size(brg->dt_d));
 
     brg->isa_user = isa;
     auto is_isa_ok = [&](cpu_isa_t isa) {

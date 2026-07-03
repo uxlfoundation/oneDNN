@@ -253,11 +253,12 @@ void transpose_dt(const conv_gemm_conf_t &jcp, const T *__restrict im,
                 T *__restrict imtr_icb = imtr_w + icb * ic_block * ic_stride;
                 PRAGMA_OMP_SIMD()
                 for (dim_t ic = 0; ic < ic_block; ic++) {
-                    imtr_icb[ic * ic_stride] = im_icb[ic] + shift;
+                    imtr_icb[ic * ic_stride]
+                            = relaxed_into<T>(im_icb[ic] + shift);
                 }
             }
             for (dim_t ic = ic_blocked; ic < jcp.ic; ic++) {
-                imtr_w[ic * ic_stride] = im_w[ic] + shift;
+                imtr_w[ic * ic_stride] = relaxed_into<T>(im_w[ic] + shift);
             }
         }
     });
@@ -647,8 +648,8 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict _im,
                         for (dim_t ow = 0; ow < ow_start; ++ow)
                             col[col_idx_oh + ow] = shift;
                         for (dim_t ow = ow_start; ow < ow_end; ++ow)
-                            col[col_idx_oh + ow]
-                                    = imtr[imtr_idx_oh + ow] + shift;
+                            col[col_idx_oh + ow] = into<col_dt>(
+                                    imtr[imtr_idx_oh + ow] + shift);
                         for (dim_t ow = ow_end; ow < wb; ++ow)
                             col[col_idx_oh + ow] = shift;
                     }
@@ -683,7 +684,7 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const void *__restrict _im,
                 for (dim_t ow = ow_start; ow < ow_end; ow++) {
                     const dim_t iw = iw_base + ow * sw;
                     const ptrdiff_t im_idx = im_idx_base + iw * im_iw_stride;
-                    col[col_idx_base + ow] = im[im_idx] + shift;
+                    col[col_idx_base + ow] = into<col_dt>(im[im_idx] + shift);
                 }
                 for (dim_t ow = ow_end; ow < wb; ow++)
                     col[col_idx_base + ow] = shift;
@@ -1308,7 +1309,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                         < thr_eff_treshold) // we didn't find suitable h_block
                 {
                     h_block = 1;
-                    int nb_h = oh;
+                    dim_t nb_h = oh;
                     do {
                         dim_t nb_w = div_up(ow, w_block);
                         dim_t work_amount = jcp.ngroups * jcp.mb * nb_h * nb_w;
@@ -1717,8 +1718,8 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                             nthr_oc, ocb, osb, oc_per_thr, os_per_thr);
                     // if we don't fit into cache then access to memory is
                     // expensive
-                    dim_t mem_access_cost
-                            = (max_ic_block < 1) ? non_cache_access : 1;
+                    dim_t mem_access_cost = into<dim_t>(
+                            (max_ic_block < 1) ? non_cache_access : 1);
                     max_ic_block = nstl::max(dim_t(1), max_ic_block);
                     // "jcp.ic == 0 ? dim_t(1) : " is to avoid msvc warning 'potential divide by zero'
                     dim_t icb = nstl::max(dim_t(1),
@@ -1743,11 +1744,11 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     if (jcp.im2col_sz) {
                         inp_ops = mem_access_cost * jcp.ks * inp_size;
                         const float col_tail_koeff = (float)osb_caligned / osb;
-                        col_ops = mem_access_cost
+                        col_ops = into<size_t>(mem_access_cost
                                 * (jcp.ks * inp_size * col_tail_koeff
-                                        + jcp.ks * inp_size * col_tail_koeff);
+                                        + jcp.ks * inp_size * col_tail_koeff));
                         if (sw != 1) // im2col with strides is much slower
-                            col_ops *= strided_im2col_k;
+                            col_ops = into<size_t>(col_ops * strided_im2col_k);
                     } else {
                         inp_ops = mem_access_cost * jcp.ks * inp_size;
                     }
@@ -1900,7 +1901,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     }
                 }
                 jcp.outer_threading = true;
-                jcp.nthr_oc = best_nthr_oc;
+                jcp.nthr_oc = into<int>(best_nthr_oc);
                 jcp.oc_block = best_ocb;
                 jcp.os_block = best_osb;
                 jcp.ic_block = best_icb;
@@ -2188,12 +2189,12 @@ void bwd_weights_reduction_par_nspc(int ithr, int nthr, size_t g_start,
             const float *__restrict ws_ptr = ws_base + w * jcp.oc;
             if (tidx == 0) {
                 PRAGMA_OMP_SIMD()
-                for (auto oc = 0; oc < jcp.oc; ++oc) {
+                for (auto oc = 0; oc < into<int>(jcp.oc); ++oc) {
                     dwei_ptr[oc] = ws_ptr[oc];
                 }
             } else {
                 PRAGMA_OMP_SIMD()
-                for (auto oc = 0; oc < jcp.oc; ++oc) {
+                for (auto oc = 0; oc < into<int>(jcp.oc); ++oc) {
                     dwei_ptr[oc] += ws_ptr[oc];
                 }
             }

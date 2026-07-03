@@ -1445,7 +1445,7 @@ struct xbyak_gemm_t : public jit_generator_t {
                             = AO1 + (ld_step + section * 4 - OFFSET) * SIZE;
                     for (int off = 0; off < 4; ++off)
                         pextrd(ptr[dst_addr + unroll_m * off * SIZE],
-                                Xmm(ld_step % 2), off);
+                                Xmm(ld_step % 2), into<uint8_t>(off));
                 };
 
                 el_cp(0, 0);
@@ -1983,7 +1983,7 @@ struct xbyak_gemm_t : public jit_generator_t {
         mov(LDA, ARG_LDA);
 #endif
 
-        cmp(K, STACK_K_CAPACITY);
+        cmp(K, into<uint32_t>(STACK_K_CAPACITY));
         jg(buffer_in_ws, T_NEAR);
 
         // Using 4kB aligned buffer on stack as workspace
@@ -2133,7 +2133,7 @@ private:
 #else
     const Reg64 ARG_A = r8;
     const Reg64 ARG_LDA = r9;
-    const int stackOffset = STACKSIZE;
+    const dim_t stackOffset = STACKSIZE;
     const Reg64 A = ARG_A;
     const Reg64 LDA = ARG_LDA;
 #endif

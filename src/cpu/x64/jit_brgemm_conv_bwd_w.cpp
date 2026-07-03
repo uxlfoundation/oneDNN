@@ -147,14 +147,14 @@ status_t brgemm_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
                 VDISPATCH_CONV_IC(lda2_size <= INT_MAX,
                         VERBOSE_UNSUPPORTED_FEATURE,
                         "lda2_size > INT_MAX is not supported");
-                brgattr.LDA2 = lda2_size;
+                brgattr.LDA2 = into<int>(lda2_size);
 
                 const auto ldb2_size = static_cast<size_t>(jcp_.tr_ow)
                         * jcp_.oc_block * jcp_.oh_block * jcp_.od;
                 VDISPATCH_CONV_IC(ldb2_size <= INT_MAX,
                         VERBOSE_UNSUPPORTED_FEATURE,
                         "ldb2_size > INT_MAX is not supported");
-                brgattr.LDB2 = ldb2_size;
+                brgattr.LDB2 = into<int>(ldb2_size);
 
                 brgattr.LDC2_M = jcp_.oc_block * jcp_.kd * jcp_.kh * jcp_.kw;
                 brgattr.LDC2_N = jcp_.nb_ic * jcp_.ic_block * jcp_.oc_block
@@ -417,7 +417,8 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
         oc_b_work = oc_b_end - oc_b_start;
 
         if (jcp.transform_to_vnni) {
-            const int vnni_granularity = data_type_vnni_granularity(jcp.wei_dt);
+            const int vnni_granularity
+                    = into<int>(data_type_vnni_granularity(jcp.wei_dt));
             if (vnni_granularity == 0) {
                 assert(!"Invalid vnni granularity.");
                 return;
@@ -519,8 +520,10 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
 
     void trans_src_nxc(char *tr_src, const char *src_base, int tr_icb,
             int row_count, int ih_s) const {
-        const int src_stride = jcp.iw * jcp.ngroups * jcp.ic * jcp.src_dsz;
-        const int tr_src_stride = jcp.tr_iw * jcp.ic_block * jcp.src_dsz;
+        const int src_stride
+                = into<int>(jcp.iw * jcp.ngroups * jcp.ic * jcp.src_dsz);
+        const int tr_src_stride
+                = into<int>(jcp.tr_iw * jcp.ic_block * jcp.src_dsz);
 
         int sp_work = row_count;
         const char *src = src_base;
@@ -547,8 +550,10 @@ struct brgemm_convolution_bwd_weights_t::thread_info_t {
     void trans_dst_nxc(char *tr_diff_dst, const char *diff_dst_base,
             int spatial_start, dim_t spatial_start_offset, int ocb_start,
             dim_t chb_stride, int row_count) const {
-        const int diff_dst_stride = jcp.ow * jcp.ngroups * jcp.oc * jcp.dst_dsz;
-        const int tr_diff_dst_stride = jcp.tr_ow * jcp.oc_block * jcp.dst_dsz;
+        const int diff_dst_stride
+                = into<int>(jcp.ow * jcp.ngroups * jcp.oc * jcp.dst_dsz);
+        const int tr_diff_dst_stride
+                = into<int>(jcp.tr_ow * jcp.oc_block * jcp.dst_dsz);
         int work_rest = row_count;
         int max_spatial_work = jcp.od * jcp.oh;
         int sp_work = nstl::min(work_rest, max_spatial_work - spatial_start);
@@ -1248,7 +1253,8 @@ void brgemm_convolution_bwd_weights_t::store_in_vnni_format(
     const auto &jcp = pd()->jcp_;
     if (one_of(0, ti->g_work, ti->oc_b_work, ti->ic_b_work)) return;
 
-    const int vnni_granularity = data_type_vnni_granularity(jcp.wei_dt);
+    const int vnni_granularity
+            = into<int>(data_type_vnni_granularity(jcp.wei_dt));
     if (vnni_granularity == 0) {
         assert(!"Invalid vnni granularity.");
         return;

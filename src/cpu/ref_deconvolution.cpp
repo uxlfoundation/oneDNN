@@ -366,7 +366,7 @@ prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_points,
     const auto get_wei_off
             = [=](dim_t g, dim_t oc, dim_t ic, dim_t kd, dim_t kh, dim_t kw) {
         return get_weights_off(
-                wei_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
+                wei_d, with_groups, into<int>(ndims), g, oc, ic, kd, kh, kw);
     };
 
     return [=](const dim_t g, const dim_t oc, const dim_t od, const dim_t oh,
@@ -452,8 +452,8 @@ static status_t apply_src_zero_point(const exec_ctx_t &ctx,
         const auto oc_off = g * OC + oc;
         const auto dst_off = ref_conv_utils::get_data_off(
                 dst_d, ndims, mb, oc_off, od, oh, ow);
-        int32_t conv_result
-                = conv_output[dst_off] - zp_src_compensation[oc_off];
+        int32_t conv_result = into<int32_t>(
+                conv_output[dst_off] - zp_src_compensation[oc_off]);
 
         if (const auto zp_pad_compensation
                 = zp_pad_comp_ker(g, oc, od, oh, ow)) {

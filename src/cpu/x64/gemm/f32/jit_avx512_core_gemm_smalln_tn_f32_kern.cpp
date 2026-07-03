@@ -735,7 +735,8 @@ dnnl_status_t sgemm_smalln_tn(const dim_t m, const dim_t n, const dim_t k,
             for (float al : {0.0f, 1.0f, 2.0f}) {
                 for (float be : {0.0f, 1.0f, 2.0f}) {
                     auto &kern = kernels[N - 1][(dim_t)al][(dim_t)be];
-                    kern.reset(new xbyak_gemm_smalln_tn_t(N, be, al));
+                    kern.reset(
+                            new xbyak_gemm_smalln_tn_t(into<int>(N), be, al));
                     st = kern->create_kernel();
                     if (st != dnnl_success) return;
                 }
@@ -773,11 +774,11 @@ static dim_t smalln_set_num_threads(dim_t m, dim_t k, dim_t nthr_to_use) {
     if ((m & 15) == 0) { // Special handling if m is multiple of 16
         // nthr_16: number of threads such that each thread works on
         // 2^n * 16 number of rows.
-        nthr_16 = m >> 4;
+        nthr_16 = into<int>(m >> 4);
         while (nthr_16 > nthr_to_use && (nthr_16 & 1) == 0)
             nthr_16 = nthr_16 >> 1;
         // Ideal number of threads is more than what we can use.
-        nthr_16 = (nthr_16 > nthr_to_use) ? nthr_to_use : nthr_16;
+        nthr_16 = into<int>((nthr_16 > nthr_to_use) ? nthr_to_use : nthr_16);
         /**
          * Check if nthr_16 should be used or nthr_to_use
          * If each thread is working on less than MINROWS rows (based on nthr_16)
@@ -816,7 +817,7 @@ dnnl_status_t jit_avx512_core_gemm_smalln_tn_f32(const char *transa,
 
     if (n <= 0 || m <= 0) return dnnl_success;
 
-    max_num_threads = smalln_set_num_threads(m, k, max_num_threads);
+    max_num_threads = into<int>(smalln_set_num_threads(m, k, max_num_threads));
 
     if (max_num_threads == 1) {
         return sgemm_smalln_tn(m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);

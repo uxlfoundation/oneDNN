@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <map>
 #include <vector>
+#include <type_traits>
 
 #include "bfloat16.hpp"
 #include "float16.hpp"
@@ -98,6 +99,18 @@ inline T modulo(const T &dividend, const T &divisor) {
     return result < 0 ? result + divisor : result;
 }
 
+template <typename T, typename U,
+        typename R = typename std::common_type<T, U>::type,
+        typename = typename std::enable_if<!std::is_same<T, U>::value>::type>
+inline R modulo(const T &dividend, const U &divisor) {
+    static_assert(std::is_integral<T>::value && std::is_integral<U>::value,
+            "T and U must be integer types.");
+    R d = static_cast<R>(divisor);
+    assert(d > 0);
+    R result = static_cast<R>(dividend) % d;
+    return result < 0 ? result + d : result;
+}
+
 // Computes the additive inverse modulus and returns the result as the least
 // positive residue when the divisor > 0.
 template <typename T>
@@ -108,14 +121,40 @@ inline T additive_inverse_modulo(const T &dividend, const T &divisor) {
     return result > 0 ? divisor - result : 0;
 }
 
+template <typename T, typename U,
+        typename R = typename std::common_type<T, U>::type,
+        typename = typename std::enable_if<!std::is_same<T, U>::value>::type>
+inline R additive_inverse_modulo(const T &dividend, const U &divisor) {
+    static_assert(std::is_integral<T>::value && std::is_integral<U>::value,
+            "T and U must be integer types.");
+    R result = modulo(dividend, divisor);
+    return result > 0 ? static_cast<R>(divisor) - result : R(0);
+}
+
 template <typename T>
 constexpr const T &max(const T &a, const T &b) {
     return a > b ? a : b;
 }
 
+template <typename T, typename U,
+        typename R = typename std::common_type<T, U>::type,
+        typename = typename std::enable_if<!std::is_same<T, U>::value>::type>
+constexpr R max(const T &a, const U &b) {
+    return static_cast<R>(a) > static_cast<R>(b) ? static_cast<R>(a)
+                                                 : static_cast<R>(b);
+}
+
 template <typename T>
 constexpr const T &min(const T &a, const T &b) {
     return a < b ? a : b;
+}
+
+template <typename T, typename U,
+        typename R = typename std::common_type<T, U>::type,
+        typename = typename std::enable_if<!std::is_same<T, U>::value>::type>
+constexpr R min(const T &a, const U &b) {
+    return static_cast<R>(a) < static_cast<R>(b) ? static_cast<R>(a)
+                                                 : static_cast<R>(b);
 }
 
 template <typename T>

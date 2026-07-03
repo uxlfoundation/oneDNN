@@ -405,7 +405,7 @@ static inline void gemv_threading_driver(const int trans, const dim_t m,
     if (m <= 0 || n <= 0) return;
 
     dim_t nthr_max = dnnl_get_current_num_threads();
-    dim_t nthr_goal = thread_checker<a_t>(nthr_max, m, n, trans);
+    dim_t nthr_goal = thread_checker<a_t>(into<int>(nthr_max), m, n, trans);
 
     if (nthr_goal == 1) {
         gemv_kernel_driver(
@@ -427,8 +427,8 @@ static inline void gemv_threading_driver(const int trans, const dim_t m,
     // occur due to change thread counts.
     auto nthr_spawn = dnnl_thr_syncable() ? nthr_max : nthr_goal;
     int nbufs_used = 0;
-    parallel(nthr_spawn, [&](int ithr, int nthr) {
-        int nthr_eff = nstl::min(nthr_goal, static_cast<dim_t>(nthr));
+    parallel(into<int>(nthr_spawn), [&](int ithr, int nthr) {
+        int nthr_eff = into<int>(nstl::min(nthr_goal, into<dim_t>(nthr)));
 
         dim_t thread_m = m, off_m = 0;
         dim_t thread_n = n, off_n = 0;
@@ -488,7 +488,7 @@ static inline void gemv_threading_driver(const int trans, const dim_t m,
 
     // Reduce on y after each gemv computation is done.
     if (!is_syncable && ybuf) {
-        parallel(nthr_spawn, [&](int ithr, int nthr) {
+        parallel(into<int>(nthr_spawn), [&](int ithr, int nthr) {
             sum_ybufs(ithr, nthr, m, y, incy, ybuf, nbufs_used);
         });
     }

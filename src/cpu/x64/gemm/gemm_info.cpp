@@ -378,7 +378,7 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
     }
 
     // Note: um is fixed for a given set of data types and ISA.
-    const int um = this->um;
+    const int um = into<int>(this->um);
 
     static std::once_flag initialized;
     static std::atomic<dnnl_status_t> st(dnnl_success);

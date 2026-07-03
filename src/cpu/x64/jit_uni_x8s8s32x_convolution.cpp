@@ -429,11 +429,11 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_2d_dw(
         size_t src_h_stride = src_d.blk_off(0, 0, 1);
         size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
 
-        int gb = gg * jcp.nb_ch_blocking;
+        int gb = into<int>(gg * jcp.nb_ch_blocking);
         int g = gb * group_block;
 
-        int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
-        int ow_s = owb * jcp.ow_block;
+        int ih_s = into<int>(-jcp.t_pad + oh_s * jcp.stride_h);
+        int ow_s = into<int>(owb * jcp.ow_block);
         int iw_s = ow_s * jcp.stride_w;
 
         auto bias_w = bias ? bias + (bias_d.blk_off(g) * bia_dt_size) : nullptr;

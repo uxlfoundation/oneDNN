@@ -263,11 +263,11 @@ void jit_pp_ker_t::operator()(void *void_dst, const acc_data_t *acc,
 }
 
 Xbyak::Zmm jit_pp_ker_t::reserve_zmm() {
-    return Xbyak::Zmm(number_of_reserved_zmm_regs_++);
+    return Xbyak::Zmm(into<int>(number_of_reserved_zmm_regs_++));
 }
 
 int jit_pp_ker_t::vreg_dst_idx(const int idx) const noexcept {
-    return (number_of_reserved_zmm_regs_ + idx * zmm_step_);
+    return into<int>((number_of_reserved_zmm_regs_ + idx * zmm_step_));
 }
 
 Xbyak::Zmm jit_pp_ker_t::get_vreg_dst(int idx) const {
@@ -275,11 +275,11 @@ Xbyak::Zmm jit_pp_ker_t::get_vreg_dst(int idx) const {
 }
 
 Xbyak::Zmm jit_pp_ker_t::get_vreg_bias(int idx) const {
-    return Xbyak::Zmm(vreg_dst_idx(idx) + bias_step_factor_);
+    return Xbyak::Zmm(into<int>(vreg_dst_idx(idx) + bias_step_factor_));
 }
 
 Xbyak::Zmm jit_pp_ker_t::get_vreg_prev_dst(int idx) const {
-    return Xbyak::Zmm(vreg_dst_idx(idx) + sum_step_factor_);
+    return Xbyak::Zmm(into<int>(vreg_dst_idx(idx) + sum_step_factor_));
 }
 
 Xbyak::Zmm jit_pp_ker_t::get_masked_vreg_dst(int idx, bool apply_mask) const {
@@ -393,7 +393,7 @@ void jit_pp_ker_t::generate() {
 #undef PARAM_OFF
 
     mov(reg_rem_mask_vlen_, 1);
-    shl(reg_rem_mask_vlen_, vlen);
+    shl(reg_rem_mask_vlen_, into<int>(vlen));
     sub(reg_rem_mask_vlen_, 1);
     kmovq(kreg_rem_mask_vlen_, reg_rem_mask_vlen_);
 
@@ -479,20 +479,22 @@ void jit_pp_ker_t::generate() {
     // Advance all pointers by an immediate
     const auto advance_ptrs_imm
             = [&](const size_t offset, const size_t binary_offset) {
-        add(reg_dst_, offset * dst_data_type_size_);
-        add(reg_acc_, offset * sizeof(acc_data_t));
+        add(reg_dst_, into<uint32_t>(offset * dst_data_type_size_));
+        add(reg_acc_, into<uint32_t>(offset * sizeof(acc_data_t)));
         if (jcp_.scale_idx_mult) {
             assert(jcp_.scale_idx_mult == 1);
-            add(reg_scales_, offset * sizeof(float));
+            add(reg_scales_, into<uint32_t>(offset * sizeof(float)));
         }
-        if (jcp_.with_bias) add(reg_bias_, offset * bias_data_type_size_);
+        if (jcp_.with_bias)
+            add(reg_bias_, into<uint32_t>(offset * bias_data_type_size_));
         if (jcp_.zp.src_exists) {
-            add(reg_zp_src_comp_, offset * sizeof(int32_t));
+            add(reg_zp_src_comp_, into<uint32_t>(offset * sizeof(int32_t)));
 
             if (zp_pad_comp_helper_) {
                 zp_pad_comp_helper_->zp_src_comp_pad_operation(
                         [&](const Xbyak::Reg64 &reg_zp_pad_comp) {
-                    add(reg_zp_pad_comp, offset * sizeof(int32_t));
+                    add(reg_zp_pad_comp,
+                            into<uint32_t>(offset * sizeof(int32_t)));
                 });
             }
         }
@@ -501,14 +503,15 @@ void jit_pp_ker_t::generate() {
     // Advance all pointers by a value stored in a register
     const auto advance_ptrs_reg
             = [&](const Reg64 offset, const Reg64 binary_offset) {
-        lea(reg_dst_, ptr[reg_dst_ + offset * dst_data_type_size_]);
+        lea(reg_dst_, ptr[reg_dst_ + offset * into<int>(dst_data_type_size_)]);
         lea(reg_acc_, ptr[reg_acc_ + offset * sizeof(acc_data_t)]);
         if (jcp_.scale_idx_mult) {
             assert(jcp_.scale_idx_mult == 1);
             lea(reg_scales_, ptr[reg_scales_ + offset * sizeof(float)]);
         }
         if (jcp_.with_bias)
-            lea(reg_bias_, ptr[reg_bias_ + offset * bias_data_type_size_]);
+            lea(reg_bias_,
+                    ptr[reg_bias_ + offset * into<int>(bias_data_type_size_)]);
 
         if (jcp_.zp.src_exists) {
             lea(reg_zp_src_comp_,
@@ -526,18 +529,21 @@ void jit_pp_ker_t::generate() {
     // Rewind pointers that point to data that is indexed by output channel
     // (bias or per-oc scaling factors)
     const auto rewind_ptrs = [&]() {
-        if (jcp_.with_bias) sub(reg_bias_, jcp_.oc * bias_data_type_size_);
+        if (jcp_.with_bias)
+            sub(reg_bias_, into<uint32_t>(jcp_.oc * bias_data_type_size_));
         if (jcp_.zp.src_exists) {
             const auto offset = jcp_.oc * sizeof(int32_t);
-            sub(reg_zp_src_comp_, offset);
+            sub(reg_zp_src_comp_, into<uint32_t>(offset));
             if (zp_pad_comp_helper_)
                 zp_pad_comp_helper_->load_next_point_zp_src_comp_pad_addr();
         }
         if (jcp_.scale_idx_mult) {
             assert(jcp_.scale_idx_mult == 1);
-            sub(reg_scales_, jcp_.oc * sizeof(float));
+            sub(reg_scales_, into<uint32_t>(jcp_.oc * sizeof(float)));
         }
-        add(reg_dst_, (jcp_.dst_os_stride - jcp_.oc) * dst_data_type_size_);
+        add(reg_dst_,
+                into<uint32_t>(
+                        (jcp_.dst_os_stride - jcp_.oc) * dst_data_type_size_));
     };
 
     //                    <--------- OC --------------->
@@ -565,14 +571,14 @@ void jit_pp_ker_t::generate() {
         sub(reg_len_, reg_tmp_);
 
         Label prologue_loop, prologue_loop_tail, prologue_loop_end;
-        cmp(reg_tmp_, vlen);
+        cmp(reg_tmp_, into<uint32_t>(vlen));
         jle(prologue_loop_tail, T_NEAR);
         L(prologue_loop);
         {
-            compute(0, max_unroll_ - 1, false);
+            compute(0, into<int>(max_unroll_ - 1), false);
             advance_ptrs_imm(vlen, vlen);
-            sub(reg_tmp_, vlen);
-            cmp(reg_tmp_, vlen);
+            sub(reg_tmp_, into<uint32_t>(vlen));
+            cmp(reg_tmp_, into<uint32_t>(vlen));
             jge(prologue_loop, T_NEAR);
         }
 
@@ -584,7 +590,7 @@ void jit_pp_ker_t::generate() {
         jz(prologue_loop_end, T_NEAR);
 
         kmovq(kreg_rem_mask_short_, reg_rem_mask_short_);
-        compute(0, max_unroll_ - 1, true);
+        compute(0, into<int>(max_unroll_ - 1), true);
         advance_ptrs_reg(reg_tmp_, reg_tmp_);
 
         L(prologue_loop_end);
@@ -595,7 +601,7 @@ void jit_pp_ker_t::generate() {
     // Main loop
     Label main_loop_end;
     {
-        cmp(reg_len_, jcp_.oc);
+        cmp(reg_len_, into<uint32_t>(jcp_.oc));
         jle(main_loop_end, T_NEAR);
 
         Label main_loop;
@@ -613,7 +619,7 @@ void jit_pp_ker_t::generate() {
 
             assert(!!OC_loop || !!OC_tail);
 
-            const int vlen_tail = OC_tail % vlen;
+            const dim_t vlen_tail = OC_tail % vlen;
             if (vlen_tail) {
                 unsigned tail_mask = (1 << vlen_tail) - 1;
                 mov(reg_tmp_, tail_mask);
@@ -626,9 +632,9 @@ void jit_pp_ker_t::generate() {
                 L(oc_loop);
                 {
                     for (size_t offset = 0; offset < OC_loop; offset += vlen)
-                        compute(offset, offset / vlen, false);
+                        compute(offset, into<int>(offset / vlen), false);
                     advance_ptrs_imm(OC_loop, vlen);
-                    sub(reg_tmp_, OC_loop);
+                    sub(reg_tmp_, into<uint32_t>(OC_loop));
                     jnz(oc_loop);
                 }
             }
@@ -636,7 +642,7 @@ void jit_pp_ker_t::generate() {
             if (OC_tail) {
                 for (size_t offset = 0; offset < OC_tail; offset += vlen) {
                     bool use_mask = (offset + vlen) > OC_tail;
-                    compute(offset, offset / vlen, use_mask);
+                    compute(offset, into<int>(offset / vlen), use_mask);
                 }
                 const size_t oc_tail_rem = OC_tail % vlen;
                 const size_t binary_offset = oc_tail_rem ? oc_tail_rem : vlen;
@@ -644,8 +650,8 @@ void jit_pp_ker_t::generate() {
             }
 
             rewind_ptrs();
-            sub(reg_len_, jcp_.oc);
-            cmp(reg_len_, jcp_.oc);
+            sub(reg_len_, into<uint32_t>(jcp_.oc));
+            cmp(reg_len_, into<uint32_t>(jcp_.oc));
             jge(main_loop, T_NEAR);
         }
     }
@@ -658,14 +664,14 @@ void jit_pp_ker_t::generate() {
         je(epilogue_end, T_NEAR);
 
         Label epilogue_loop, epilogue_loop_tail;
-        cmp(reg_len_, vlen);
+        cmp(reg_len_, into<uint32_t>(vlen));
         jle(epilogue_loop_tail, T_NEAR);
         L(epilogue_loop);
         {
             compute(0, 0, false);
-            sub(reg_len_, vlen);
+            sub(reg_len_, into<uint32_t>(vlen));
             advance_ptrs_imm(vlen, vlen);
-            cmp(reg_len_, vlen);
+            cmp(reg_len_, into<uint32_t>(vlen));
             jge(epilogue_loop, T_NEAR);
         }
 

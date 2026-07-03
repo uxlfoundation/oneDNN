@@ -73,7 +73,7 @@ private:
     float linear_interpolation(
             const std::map<int, float> &points, float x) const {
         // Find the interval [x0, x1] where x0 <= x <= x1
-        auto it = points.lower_bound(x);
+        auto it = points.lower_bound(into<int>(x));
         if (it == points.end()) {
             return points.rbegin()
                     ->second; // x is greater than the largest x in the map
@@ -104,7 +104,7 @@ public:
         , nthr_k_(nstl::max(nthr_k, 1))
         , nthr_b_(nstl::max(nthr_b, 1))
         , nthr_mnb_(nthr / nthr_k_)
-        , nthr_(nthr_mnb_ * nthr_k_)
+        , nthr_(into<int>(nthr_mnb_ * nthr_k_))
         , n_blk_(N_blk)
         , n_chunk_size_(N_chunk_size)
         , n_chunk_elems_(n_blk_ * n_chunk_size_)

@@ -179,7 +179,8 @@ private:
 
     inline dim_t wei_offset_ext(int g, int oc_b, int ic_b) const {
         const auto &jcp = pd()->jcp_;
-        const int vnni_granularity = data_type_vnni_granularity(jcp.wei_dt);
+        const int vnni_granularity
+                = into<int>(data_type_vnni_granularity(jcp.wei_dt));
         if (vnni_granularity == 0) {
             assert(!"Invalid vnni granularity.");
             return 0;

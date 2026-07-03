@@ -427,10 +427,10 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::compute_loop(
             L(ch_loop_label);
             {
                 compute(jcp.nb_ch_blocking);
-                add(reg_kernel, wei_ch_stride);
-                add(reg_input, inp_ch_stride);
-                add(reg_output, out_ch_stride);
-                if (jcp.with_bias) add(reg_bias, bias_stride);
+                add(reg_kernel, into<uint32_t>(wei_ch_stride));
+                add(reg_input, into<uint32_t>(inp_ch_stride));
+                add(reg_output, into<uint32_t>(out_ch_stride));
+                if (jcp.with_bias) add(reg_bias, into<uint32_t>(bias_stride));
                 sub(reg_ch_blocks, ch_step);
                 cmp(reg_ch_blocks, ch_step);
                 jge(ch_loop_label, T_NEAR);
@@ -489,7 +489,7 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::loop_ow(int ur_ch_blocks) {
         if (n_oi == 0) {
             compute_loop(ur_w, ur_ch_blocks, l_pad, r_pad1);
             add(reg_input, inp_shift_pad);
-            add(reg_output, out_shift);
+            add(reg_output, into<uint32_t>(out_shift));
             if (ur_w_tail != 0) {
                 compute_loop(ur_w_tail, ur_ch_blocks, 0, r_pad);
             }
@@ -497,7 +497,7 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::loop_ow(int ur_ch_blocks) {
             if (l_pad > 0) {
                 compute_loop(ur_w, ur_ch_blocks, l_pad, 0);
                 add(reg_input, inp_shift_pad);
-                add(reg_output, out_shift);
+                add(reg_output, into<uint32_t>(out_shift));
                 inc(reg_oi);
             }
             if ((l_pad <= 0 && n_oi > 0) || (l_pad > 0 && n_oi > 1)) {
@@ -505,8 +505,8 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::loop_ow(int ur_ch_blocks) {
                 L(ow_loop_label);
                 {
                     compute_loop(ur_w, ur_ch_blocks, 0, 0);
-                    add(reg_input, inp_shift);
-                    add(reg_output, out_shift);
+                    add(reg_input, into<uint32_t>(inp_shift));
+                    add(reg_output, into<uint32_t>(out_shift));
 
                     inc(reg_oi);
                     cmp(reg_oi, n_oi);
@@ -515,8 +515,8 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::loop_ow(int ur_ch_blocks) {
             }
             if (r_pad1 > 0) {
                 compute_loop(ur_w, ur_ch_blocks, 0, r_pad1);
-                add(reg_input, inp_shift);
-                add(reg_output, out_shift);
+                add(reg_input, into<uint32_t>(inp_shift));
+                add(reg_output, into<uint32_t>(out_shift));
             }
             if (ur_w_tail != 0) {
                 compute_loop(ur_w_tail, ur_ch_blocks, 0, r_pad);
@@ -693,7 +693,7 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::apply_filter(
             }
 
             add(aux1_reg_kernel, ch_blk * stride_w * jcp.typesize_in);
-            sub(aux1_reg_ddst, sp_step * jcp.typesize_in);
+            sub(aux1_reg_ddst, into<uint32_t>(sp_step * jcp.typesize_in));
 
             sub(iter_kw, stride_w);
             cmp(iter_kw, 0);
@@ -701,7 +701,7 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::apply_filter(
         }
 
         add(aux_reg_kernel, kw * ch_blk * stride_h * jcp.typesize_in);
-        sub(aux_reg_ddst, ow * sp_step * jcp.typesize_in);
+        sub(aux_reg_ddst, into<uint32_t>(ow * sp_step * jcp.typesize_in));
 
         sub(iter_kh, stride_h);
         cmp(iter_kh, 0);
@@ -730,7 +730,7 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::store_dsrc(
         for (int w = 0; w < ur_str_w; w++) {
             size_t sp_offset = w * stride_w * sp_step;
             size_t ch_offset = ch * ch_block_step;
-            int dsrc_off = sp_offset + ch_offset;
+            dim_t dsrc_off = sp_offset + ch_offset;
             auto zmm_dsrc = get_acc_reg(ch * ur_str_w + w);
             Zmm mm_zmm_dsrc // mm: maybe masked
                     = mask_flag ? zmm_dsrc | k_ch_tail_mask : zmm_dsrc;
@@ -800,9 +800,11 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::ch_loop_body(
             {
                 call_compute_body(jcp.nb_ch_blocking, unroll_w);
 
-                add(reg_kernel, wei_ch_stride * jcp.typesize_in);
-                add(reg_dsrc, data_ch_stride * jcp.typesize_out);
-                add(reg_ddst, data_ch_stride * jcp.typesize_in);
+                add(reg_kernel,
+                        into<uint32_t>(wei_ch_stride * jcp.typesize_in));
+                add(reg_dsrc,
+                        into<uint32_t>(data_ch_stride * jcp.typesize_out));
+                add(reg_ddst, into<uint32_t>(data_ch_stride * jcp.typesize_in));
 
                 sub(aux_reg_ch_blocks, ch_step);
                 cmp(aux_reg_ch_blocks, ch_step);
@@ -842,8 +844,9 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::unroll_width_body(
 
             ch_loop_body(ur_ch_blocks, unroll_w);
 
-            add(reg_dsrc, jcp.typesize_out * jcp.stride_w * ch_step);
-            add(reg_ddst, jcp.typesize_in * ch_step);
+            add(reg_dsrc,
+                    into<uint32_t>(jcp.typesize_out * jcp.stride_w * ch_step));
+            add(reg_ddst, into<uint32_t>(jcp.typesize_in * ch_step));
 
             sub(reg_ur_str_w, unroll_w);
             jmp(unroll_w_label);
@@ -874,7 +877,7 @@ void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::generate() {
             const size_t channel_step = jcp.nb_ch_blocking * jcp.ch_block;
             kxnorw(k_ch_tail_mask, k_ch_tail_mask,
                     k_ch_tail_mask); // dummy mask all 1's
-            cmp(reg_ch_blocks, channel_step);
+            cmp(reg_ch_blocks, into<uint32_t>(channel_step));
             je(masking_done, T_NEAR);
             // Prepare masks for tail
             Reg32 reg_tmp_32 = reg_tmp.cvt32();
@@ -1069,7 +1072,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_spatial_loop_bias(
         L(ow_blk_label);
         {
             compute_bias_step_unroll(unroll_w, is_last_ch);
-            add(reg_tmp_output, unroll_w * ch_offset);
+            add(reg_tmp_output, into<uint32_t>(unroll_w * ch_offset));
 
             dec(reg_iter_ow_blk);
             cmp(reg_iter_ow_blk, 0);
@@ -1078,7 +1081,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_spatial_loop_bias(
 
         if (tail_w > 0) {
             compute_bias_step_unroll(tail_w, is_last_ch);
-            add(reg_tmp_output, tail_w * ch_offset);
+            add(reg_tmp_output, into<uint32_t>(tail_w * ch_offset));
         }
 
         inc(reg_oh);
@@ -1209,14 +1212,14 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::zero_filter_kh_loop() {
     {
         store_filter();
 
-        add(reg_tmp_filter, filter_offset_kw);
+        add(reg_tmp_filter, into<uint32_t>(filter_offset_kw));
         dec(reg_kh_aux);
         cmp(reg_kh_aux, 0);
         jg(kh_loop_label, T_NEAR);
     }
 
     /* Comeback pointers */
-    sub(reg_tmp_filter, filter_offset_kh);
+    sub(reg_tmp_filter, into<uint32_t>(filter_offset_kh));
 }
 
 void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::deploy_zero_filter() {
@@ -1256,8 +1259,8 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_kh_step(int unroll_w,
                 unroll_w, l_pad, pad_offset, ow_block, is_last_ch);
         store_filter();
 
-        add(reg_tmp_filter, filter_offset);
-        add(reg_tmp_input, input_offset);
+        add(reg_tmp_filter, into<uint32_t>(filter_offset));
+        add(reg_tmp_input, into<uint32_t>(input_offset));
         dec(reg_kh_aux);
         cmp(reg_kh_aux, 0);
         jg(kh_loop_label, T_NEAR);
@@ -1268,8 +1271,8 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_kh_step(int unroll_w,
     mov(reg_kh_aux, reg_kh);
     L(kh_comeback_label);
     {
-        sub(reg_tmp_input, input_offset);
-        sub(reg_tmp_filter, filter_offset);
+        sub(reg_tmp_input, into<uint32_t>(input_offset));
+        sub(reg_tmp_filter, into<uint32_t>(filter_offset));
         dec(reg_kh_aux);
         cmp(reg_kh_aux, 0);
         jg(kh_comeback_label, T_NEAR);
@@ -1348,7 +1351,7 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_h_loop(
         jge(top_padding_end_label, T_NEAR);
 
         /* Increment step counter and adjust filter position */
-        sub(reg_tmp_filter, filter_shift * jcp.stride_h);
+        sub(reg_tmp_filter, into<uint32_t>(filter_shift * jcp.stride_h));
         add(reg_kh, jcp.stride_h);
 
         /* Final number of kernel elements that overlap with input */
@@ -1361,13 +1364,14 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_h_loop(
             /* Filter has moved beyond padding (adjust for stride effects) */
             if (jcp.t_pad % jcp.stride_h != 0) {
                 int inp_corr = jcp.stride_h - jcp.t_pad % jcp.stride_h;
-                add(reg_tmp_filter, filter_shift * inp_corr);
-                add(reg_tmp_input, input_shift * inp_corr);
+                add(reg_tmp_filter, into<uint32_t>(filter_shift * inp_corr));
+                add(reg_tmp_input, into<uint32_t>(input_shift * inp_corr));
             }
         } else {
             /* Filter still overlaps padding (complete reset) */
             sub(reg_tmp_filter,
-                    (jcp.t_pad - jcp.oh * jcp.stride_h) * filter_shift);
+                    into<uint32_t>((jcp.t_pad - jcp.oh * jcp.stride_h)
+                            * filter_shift));
         }
 
         /* Apply correction: reset value of 'reg_kh' to scenario outside of
@@ -1402,11 +1406,11 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_h_loop(
     }
 
     /* Compute middle block */
-    add(reg_tmp_input, input_shift * jcp.stride_h);
+    add(reg_tmp_input, into<uint32_t>(input_shift * jcp.stride_h));
 
     /* Execute common block and loop */
     L(common_block_label);
-    add(reg_tmp_output, output_shift);
+    add(reg_tmp_output, into<uint32_t>(output_shift));
     inc(reg_oh);
     cmp(reg_oh, reg_oh_worksize);
     jl(loop_begin_label, T_NEAR);
@@ -1465,8 +1469,8 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_ow_block_unroll() {
     const bool do_unroll_w = jcp.ow > max_unroll_w_;
     if (l_pad && do_unroll_w) {
         compute_h_loop(unroll_w, l_pad, 0, 0);
-        add(reg_output_baddr, data_offset);
-        add(reg_input_baddr, data_offset * jcp.stride_w);
+        add(reg_output_baddr, into<uint32_t>(data_offset));
+        add(reg_input_baddr, into<uint32_t>(data_offset * jcp.stride_w));
         unroll_trips--;
         pad_offset = l_pad;
         l_pad = 0;
@@ -1481,8 +1485,8 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_ow_block_unroll() {
     }
     if (unroll_trips > 0) {
         compute_h_loop(unroll_w, l_pad, pad_offset, 0);
-        add(reg_output_baddr, data_offset);
-        add(reg_input_baddr, data_offset * jcp.stride_w);
+        add(reg_output_baddr, into<uint32_t>(data_offset));
+        add(reg_input_baddr, into<uint32_t>(data_offset * jcp.stride_w));
     }
     if (do_ow_blk_loop) {
         dec(reg_iter_ow_blk);

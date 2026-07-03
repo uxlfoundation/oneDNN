@@ -318,7 +318,7 @@ protected:
             }
 
             // unrolled loop remainder
-            for (int i = utils::rnd_dn(axis_simd_full_, unroll);
+            for (int i = into<int>(utils::rnd_dn(axis_simd_full_, unroll));
                     i < axis_simd_full_; i += 2) {
                 const bool can_load_two_simdw = axis_simd_full_ - i >= 2;
                 if (!can_load_two_simdw)
@@ -379,7 +379,7 @@ protected:
             }
 
             // unrolled loop remainder
-            for (int i = utils::rnd_dn(axis_simd_full_, unroll);
+            for (int i = into<int>(utils::rnd_dn(axis_simd_full_, unroll));
                     i < axis_simd_full_; i++) {
                 io_[src_d_.data_type()]->load(
                         src_ptr(i * simd_w_), Vmm(base_idx + 1), need_tail);
@@ -632,10 +632,10 @@ protected:
             // calculate dst
             calculate_dst();
 
-            add(reg_src, c_src_size);
-            add(reg_dst, c_dst_size);
-            add(reg_mean, float_size);
-            add(reg_var, float_size);
+            add(reg_src, into<uint32_t>(c_src_size));
+            add(reg_dst, into<uint32_t>(c_dst_size));
+            add(reg_mean, into<uint32_t>(float_size));
+            add(reg_var, into<uint32_t>(float_size));
             jmp(unroll_loop);
         }
         L(end);
@@ -898,10 +898,10 @@ protected:
             if (axis_simd_tail_)
                 calculate_diff_scale_shift(axis_simd_full_ * simd_w_, true);
 
-            add(reg_src, c_src_size);
-            add(reg_diff_dst, c_ddst_size);
-            add(reg_mean, float_size);
-            add(reg_inv_sqrtvar, float_size);
+            add(reg_src, into<uint32_t>(c_src_size));
+            add(reg_diff_dst, into<uint32_t>(c_ddst_size));
+            add(reg_mean, into<uint32_t>(float_size));
+            add(reg_inv_sqrtvar, into<uint32_t>(float_size));
             jmp(unroll_loop);
         }
         L(end);
@@ -1154,11 +1154,12 @@ protected:
             if (axis_simd_tail_)
                 compute_diff_src(axis_simd_full_ * simd_w_, true);
 
-            add(reg_src, c_src_size);
-            add(reg_diff_dst, c_ddst_size);
-            add(reg_diff_src, c_dsrc_size);
-            if (calculate_diff_stats_ && !skip_mean_) add(reg_mean, float_size);
-            add(reg_inv_sqrtvar, float_size);
+            add(reg_src, into<uint32_t>(c_src_size));
+            add(reg_diff_dst, into<uint32_t>(c_ddst_size));
+            add(reg_diff_src, into<uint32_t>(c_dsrc_size));
+            if (calculate_diff_stats_ && !skip_mean_)
+                add(reg_mean, into<uint32_t>(float_size));
+            add(reg_inv_sqrtvar, into<uint32_t>(float_size));
             jmp(unroll_loop);
         }
         L(end);
@@ -1331,7 +1332,7 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
                 + N_start * C_padded * src_d.data_type_size();
         char *const __restrict dst_ptr = reinterpret_cast<char *>(dst)
                 + N_start * C_padded * dst_d.data_type_size();
-        const int block_size = N_end - N_start;
+        const dim_t block_size = N_end - N_start;
         float *mean_ptr = skip_mean ? nullptr : &mean[N_start];
         float *dst_scales_inv_ptr = nullptr;
         if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_DST)) {
@@ -1400,7 +1401,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
     parallel(max_nthr, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
-        const int block_size = N_end - N_start;
+        const dim_t block_size = N_end - N_start;
         const char *const __restrict src_ptr
                 = reinterpret_cast<const char *>(src)
                 + N_start * C_padded * src_d.data_type_size();
@@ -1433,7 +1434,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
     parallel(max_nthr, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
-        const int block_size = N_end - N_start;
+        const dim_t block_size = N_end - N_start;
         const char *const __restrict src_ptr
                 = reinterpret_cast<const char *>(src)
                 + N_start * C_padded * src_d.data_type_size();

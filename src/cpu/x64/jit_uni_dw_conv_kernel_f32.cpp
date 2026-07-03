@@ -483,10 +483,10 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::compute_loop(
             L(ch_loop_label);
             {
                 compute(jcp.nb_ch_blocking, false);
-                add(reg_kernel, wei_ch_stride);
-                add(reg_input, inp_ch_stride);
-                add(reg_output, out_ch_stride);
-                if (jcp.with_bias) add(reg_bias, bias_stride);
+                add(reg_kernel, into<uint32_t>(wei_ch_stride));
+                add(reg_input, into<uint32_t>(inp_ch_stride));
+                add(reg_output, into<uint32_t>(out_ch_stride));
+                if (jcp.with_bias) add(reg_bias, into<uint32_t>(bias_stride));
                 sub(aux_reg_ch_blocks, ch_step);
                 cmp(aux_reg_ch_blocks, ch_step);
                 jge(ch_loop_label, T_NEAR);
@@ -546,7 +546,7 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::ow_loop(int ur_ch_blocks) {
         if (n_oi == 0) {
             compute_loop(ur_w, ur_ch_blocks, l_pad, r_pad1);
             add(reg_input, inp_shift_pad);
-            add(reg_output, out_shift);
+            add(reg_output, into<uint32_t>(out_shift));
             if (ur_w_tail != 0) {
                 compute_loop(ur_w_tail, ur_ch_blocks, 0, r_pad);
             }
@@ -554,7 +554,7 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::ow_loop(int ur_ch_blocks) {
             if (l_pad > 0) {
                 compute_loop(ur_w, ur_ch_blocks, l_pad, 0);
                 add(reg_input, inp_shift_pad);
-                add(reg_output, out_shift);
+                add(reg_output, into<uint32_t>(out_shift));
                 inc(reg_oi);
             }
             if ((l_pad <= 0 && n_oi > 0) || (l_pad > 0 && n_oi > 1)) {
@@ -562,8 +562,8 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::ow_loop(int ur_ch_blocks) {
                 L(ow_loop_label);
                 {
                     compute_loop(ur_w, ur_ch_blocks, 0, 0);
-                    add(reg_input, inp_shift);
-                    add(reg_output, out_shift);
+                    add(reg_input, into<uint32_t>(inp_shift));
+                    add(reg_output, into<uint32_t>(out_shift));
 
                     inc(reg_oi);
                     cmp(reg_oi, n_oi);
@@ -572,8 +572,8 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::ow_loop(int ur_ch_blocks) {
             }
             if (r_pad1 > 0) {
                 compute_loop(ur_w, ur_ch_blocks, 0, r_pad1);
-                add(reg_input, inp_shift);
-                add(reg_output, out_shift);
+                add(reg_input, into<uint32_t>(inp_shift));
+                add(reg_output, into<uint32_t>(out_shift));
             }
             if (ur_w_tail != 0) {
                 compute_loop(ur_w_tail, ur_ch_blocks, 0, r_pad);
@@ -781,7 +781,7 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::apply_filter(
             }
 
             add(aux1_reg_kernel, ch_blk * stride_w * sizeof(float));
-            sub(aux1_reg_ddst, sp_step * sizeof(float));
+            sub(aux1_reg_ddst, into<uint32_t>(sp_step * sizeof(float)));
 
             sub(iter_kw, stride_w);
             cmp(iter_kw, 0);
@@ -789,7 +789,7 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::apply_filter(
         }
 
         add(aux_reg_kernel, kw * ch_blk * stride_h * sizeof(float));
-        sub(aux_reg_ddst, ow * sp_step * sizeof(float));
+        sub(aux_reg_ddst, into<uint32_t>(ow * sp_step * sizeof(float)));
 
         sub(iter_kh, stride_h);
         cmp(iter_kh, 0);
@@ -879,9 +879,9 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::ch_loop_body(
             {
                 call_compute_body(jcp.nb_ch_blocking, unroll_w);
 
-                add(reg_kernel, wei_ch_stride);
-                add(reg_dsrc, data_ch_stride);
-                add(reg_ddst, data_ch_stride);
+                add(reg_kernel, into<uint32_t>(wei_ch_stride));
+                add(reg_dsrc, into<uint32_t>(data_ch_stride));
+                add(reg_ddst, into<uint32_t>(data_ch_stride));
 
                 sub(aux_reg_ch_blocks, ch_step);
                 cmp(aux_reg_ch_blocks, ch_step);
@@ -923,8 +923,8 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::unroll_width_body(
 
             ch_loop_body(ur_ch_blocks, unroll_w);
 
-            add(reg_dsrc, unroll_w * jcp.stride_w * ch_step);
-            add(reg_ddst, unroll_w * ch_step);
+            add(reg_dsrc, into<uint32_t>(unroll_w * jcp.stride_w * ch_step));
+            add(reg_ddst, into<uint32_t>(unroll_w * ch_step));
 
             sub(reg_ur_str_w, unroll_w);
             jmp(unroll_w_label);
@@ -955,7 +955,7 @@ void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::generate() {
             const size_t channel_step = jcp.nb_ch_blocking * jcp.ch_block;
             kxnorw(k_ch_tail_mask, k_ch_tail_mask,
                     k_ch_tail_mask); // dummy mask all 1's
-            cmp(reg_ch_blocks, channel_step);
+            cmp(reg_ch_blocks, into<uint32_t>(channel_step));
             je(masking_done, T_NEAR);
             // Prepare masks for tail
             Reg32 reg_tmp_32 = reg_tmp.cvt32();
@@ -1165,11 +1165,11 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_unroll_ow_step_nxc(
 
     /* LOAD initial input registers, then cascade LOADs and FMAs*/
     for (int i_ur = 0; i_ur < unroll_w; ++i_ur) {
-        int output_sp_offset = i_ur * ch_step;
+        dim_t output_sp_offset = i_ur * ch_step;
         if (i_ur == 0) {
             for (int c = 0; c < input_overlap; ++c) {
                 int input_sp = c - pad_offset;
-                int input_sp_offset = input_sp * ch_step;
+                dim_t input_sp_offset = input_sp * ch_step;
                 if (input_sp_offset < 0 && unroll_w == jcp.ow) continue;
 
                 const bool over_steps_bdry = true && is_last_block
@@ -1190,7 +1190,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_unroll_ow_step_nxc(
             for (int c = 0; c < cascade_input; ++c) {
                 int overlap = (i_ur - 1) * jcp.stride_w + input_overlap;
                 int input_sp = overlap + c - pad_offset;
-                int input_sp_offset = input_sp * ch_step;
+                dim_t input_sp_offset = input_sp * ch_step;
                 if (input_sp_offset < 0 || overlap + c + l_pad > right_border)
                     continue;
 
@@ -1267,9 +1267,9 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_unroll_ow_step(
         bool masked_load
                 = IMPLICATION(isa == sse41, tail_in_first_simd) && is_last_ch;
         for (int i_ur = 0; i_ur < unroll_w; ++i_ur) {
-            int output_sp_offset = nxc_sse41_offset
-                    ? i_ur * ch_step + r * simd_w_
-                    : (i_ur * reg_repeats_ + r) * ch_step;
+            int output_sp_offset = into<int>(nxc_sse41_offset
+                            ? i_ur * ch_step + r * simd_w_
+                            : (i_ur * reg_repeats_ + r) * ch_step);
             size_t output_offset
                     = static_cast<size_t>(output_sp_offset * sizeof(float));
             Vmm vmm_output = get_output_reg(r);
@@ -1278,9 +1278,9 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_unroll_ow_step(
             if (i_ur == 0) {
                 for (int c = 0; c < input_overlap; ++c) {
                     int input_sp = c - pad_offset;
-                    int input_sp_offset = nxc_sse41_offset
-                            ? input_sp * ch_step + r * simd_w_
-                            : (input_sp * reg_repeats_ + r) * ch_step;
+                    int input_sp_offset = into<int>(nxc_sse41_offset
+                                    ? input_sp * ch_step + r * simd_w_
+                                    : (input_sp * reg_repeats_ + r) * ch_step);
                     if (input_sp_offset < 0 && unroll_w == jcp.ow) continue;
 
                     const bool over_steps_bdry = true && is_last_block
@@ -1298,9 +1298,9 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_unroll_ow_step(
                 for (int c = 0; c < cascade_input; ++c) {
                     int overlap = (i_ur - 1) * jcp.stride_w + input_overlap;
                     int input_sp = overlap + c - pad_offset;
-                    int input_sp_offset = nxc_sse41_offset
-                            ? input_sp * ch_step + r * simd_w_
-                            : (input_sp * reg_repeats_ + r) * ch_step;
+                    int input_sp_offset = into<int>(nxc_sse41_offset
+                                    ? input_sp * ch_step + r * simd_w_
+                                    : (input_sp * reg_repeats_ + r) * ch_step);
                     if (input_sp_offset < 0
                             || overlap + c + l_pad > right_border)
                         continue;
@@ -1487,7 +1487,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_spatial_loop_bias(
         L(ow_blk_label);
         {
             compute_bias_step_unroll(unroll_w, nb_ch_blocking, is_last_ch);
-            add(reg_tmp_output, unroll_w * ch_offset);
+            add(reg_tmp_output, into<uint32_t>(unroll_w * ch_offset));
 
             dec(reg_iter_ow_blk);
             cmp(reg_iter_ow_blk, 0);
@@ -1496,7 +1496,7 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_spatial_loop_bias(
 
         if (tail_w > 0) {
             compute_bias_step_unroll(tail_w, nb_ch_blocking, is_last_ch);
-            add(reg_tmp_output, tail_w * ch_offset);
+            add(reg_tmp_output, into<uint32_t>(tail_w * ch_offset));
         }
 
         inc(reg_oh);
@@ -1646,14 +1646,14 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::zero_filter_kh_loop(
     {
         store_filter(nb_ch_blocking);
 
-        add(reg_tmp_filter, filter_offset_kw);
+        add(reg_tmp_filter, into<uint32_t>(filter_offset_kw));
         dec(reg_kh_aux);
         cmp(reg_kh_aux, 0);
         jg(kh_loop_label, T_NEAR);
     }
 
     /* Comeback pointers */
-    sub(reg_tmp_filter, filter_offset_kh);
+    sub(reg_tmp_filter, into<uint32_t>(filter_offset_kh));
 }
 
 template <cpu_isa_t isa>
@@ -1729,8 +1729,8 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_kh_step(
                 nb_ch_blocking, is_last_ch);
         store_filter(nb_ch_blocking, is_last_ch);
 
-        add(reg_tmp_filter, filter_offset);
-        add(reg_tmp_input, input_offset);
+        add(reg_tmp_filter, into<uint32_t>(filter_offset));
+        add(reg_tmp_input, into<uint32_t>(input_offset));
         dec(reg_kh_aux);
         cmp(reg_kh_aux, 0);
         jg(kh_loop_label, T_NEAR);
@@ -1741,8 +1741,8 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_kh_step(
     mov(reg_kh_aux, reg_kh);
     L(kh_comeback_label);
     {
-        sub(reg_tmp_input, input_offset);
-        sub(reg_tmp_filter, filter_offset);
+        sub(reg_tmp_input, into<uint32_t>(input_offset));
+        sub(reg_tmp_filter, into<uint32_t>(filter_offset));
         dec(reg_kh_aux);
         cmp(reg_kh_aux, 0);
         jg(kh_comeback_label, T_NEAR);
@@ -1836,7 +1836,7 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_h_loop(
         jge(top_padding_end_label, T_NEAR);
 
         /* Increment step counter and adjust filter position */
-        sub(reg_tmp_filter, filter_shift * jcp.stride_h);
+        sub(reg_tmp_filter, into<uint32_t>(filter_shift * jcp.stride_h));
         add(reg_kh, jcp.stride_h);
 
         /* Final number of kernel elements that overlap with input */
@@ -1849,13 +1849,14 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_h_loop(
             /* Filter has moved beyond padding (adjust for stride effects) */
             if (jcp.t_pad % jcp.stride_h != 0) {
                 int inp_corr = jcp.stride_h - jcp.t_pad % jcp.stride_h;
-                add(reg_tmp_filter, filter_shift * inp_corr);
-                add(reg_tmp_input, input_shift * inp_corr);
+                add(reg_tmp_filter, into<uint32_t>(filter_shift * inp_corr));
+                add(reg_tmp_input, into<uint32_t>(input_shift * inp_corr));
             }
         } else {
             /* Filter still overlaps padding (complete reset) */
             sub(reg_tmp_filter,
-                    (jcp.t_pad - jcp.oh * jcp.stride_h) * filter_shift);
+                    into<uint32_t>((jcp.t_pad - jcp.oh * jcp.stride_h)
+                            * filter_shift));
         }
 
         /* Apply correction */
@@ -1889,11 +1890,11 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_h_loop(
     }
 
     /* Compute middle block */
-    add(reg_tmp_input, input_shift * jcp.stride_h);
+    add(reg_tmp_input, into<uint32_t>(input_shift * jcp.stride_h));
 
     /* Execute common block and loop */
     L(common_block_label);
-    add(reg_tmp_output, output_shift);
+    add(reg_tmp_output, into<uint32_t>(output_shift));
     inc(reg_oh);
     cmp(reg_oh, reg_oh_worksize);
     jl(loop_begin_label, T_NEAR);
@@ -1955,8 +1956,8 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_ow_block_unroll() {
     const bool do_unroll_w = jcp.ow > max_unroll_w_;
     if (l_pad && do_unroll_w) {
         compute_h_loop(unroll_w, l_pad, 0, 0);
-        add(reg_output_baddr, data_offset);
-        add(reg_input_baddr, data_offset * jcp.stride_w);
+        add(reg_output_baddr, into<uint32_t>(data_offset));
+        add(reg_input_baddr, into<uint32_t>(data_offset * jcp.stride_w));
         unroll_trips--;
         pad_offset = l_pad;
         l_pad = 0;
@@ -1971,8 +1972,8 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_ow_block_unroll() {
     }
     if (unroll_trips > 0) {
         compute_h_loop(unroll_w, l_pad, pad_offset, 0);
-        add(reg_output_baddr, data_offset);
-        add(reg_input_baddr, data_offset * jcp.stride_w);
+        add(reg_output_baddr, into<uint32_t>(data_offset));
+        add(reg_input_baddr, into<uint32_t>(data_offset * jcp.stride_w));
     }
     if (do_ow_blk_loop) {
         dec(reg_iter_ow_blk);

@@ -149,11 +149,11 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
     mov(BackUp1, 0);
     mov(BackUp2, 0);
 
-    sal(LDC, SHIFT_C);
+    sal(LDC, into<int>(SHIFT_C));
 
     /* K needs to be multiple of 4 */
-    add(K, UNROLL_K - 1);
-    and_(K, -UNROLL_K);
+    add(K, into<uint32_t>(UNROLL_K - 1));
+    and_(K, into<uint32_t>(-UNROLL_K));
 
     mov(N, Bn);
     mov(A, rcx);
@@ -162,14 +162,14 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
 
     /* Calculating last value for M loop */
     lea(T0, ptr[Bm - 1]);
-    and_(T0, -UNROLL_MM);
+    and_(T0, into<uint32_t>(-UNROLL_MM));
     lea(T1, ptr[Bm - UNROLL_MM]);
     sub(T1, T0);
     mov(FinalM, T1);
 
     /* Calculating last value for N loop */
     lea(T0, ptr[Bn - 1]);
-    and_(T0, -UNROLL_NN);
+    and_(T0, into<uint32_t>(-UNROLL_NN));
     lea(T1, ptr[Bn - UNROLL_NN]);
     sub(T1, T0);
     mov(FinalN, T1);
@@ -179,16 +179,16 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
     /* Updating C address */
     mov(cc1, C);
     mov(cc2, LDC);
-    sal(cc2, SHIFT_UNROLL_N);
+    sal(cc2, into<int>(SHIFT_UNROLL_N));
     add(cc2, cc1);
-    add(C, UNROLL_MM * SIZE_C);
+    add(C, into<uint32_t>(UNROLL_MM * SIZE_C));
 
     mov(bm, UNROLL_MM);
-    cmp(Bm, UNROLL_MM);
+    cmp(Bm, into<uint32_t>(UNROLL_MM));
     cmovle(bm, Bm);
 
     mov(bm0, UNROLL_M);
-    cmp(bm, UNROLL_M);
+    cmp(bm, into<uint32_t>(UNROLL_M));
     cmovle(bm0, bm);
 
     mov(bm1, bm);
@@ -198,21 +198,21 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
     mov(TILEB(0x30), UNROLL_KK / UNROLL_K);
     mov(TILEB(0x31), UNROLL_KK / UNROLL_K);
 
-    sal(bm0, SHIFT_UNROLL_K + SHIFT_A);
-    sal(bm1, SHIFT_UNROLL_K + SHIFT_A);
+    sal(bm0, into<int>(SHIFT_UNROLL_K + SHIFT_A));
+    sal(bm1, into<int>(SHIFT_UNROLL_K + SHIFT_A));
 
     mov(TILEW(0x10), bm0w);
     mov(TILEW(0x12), bm1w);
 
-    sar(bm0, SHIFT_UNROLL_K + SHIFT_A - SHIFT_C);
-    sar(bm1, SHIFT_UNROLL_K + SHIFT_A - SHIFT_C);
+    sar(bm0, into<int>(SHIFT_UNROLL_K + SHIFT_A - SHIFT_C));
+    sar(bm1, into<int>(SHIFT_UNROLL_K + SHIFT_A - SHIFT_C));
 
     mov(TILEW(0x18), bm0w);
     mov(TILEW(0x1a), bm0w);
     mov(TILEW(0x1c), bm1w);
     mov(TILEW(0x1e), bm1w);
 
-    sal(bm, SHIFT_UNROLL_KK + SHIFT_A);
+    sal(bm, into<int>(SHIFT_UNROLL_KK + SHIFT_A));
 
     xor_(FLAG, FLAG);
     mov(T0, 2);
@@ -225,11 +225,11 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
 
     L(loopN);
     mov(bn, UNROLL_NN);
-    cmp(Bn, UNROLL_NN);
+    cmp(Bn, into<uint32_t>(UNROLL_NN));
     cmovle(bn, Bn);
 
     mov(T0, UNROLL_N);
-    cmp(bn, UNROLL_N);
+    cmp(bn, into<uint32_t>(UNROLL_N));
     cmovle(T0, bn);
 
     mov(T1, bn);
@@ -247,7 +247,7 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
     mov(TILEB(0x36), T0b);
     mov(TILEB(0x37), T1b);
 
-    sal(bn, SHIFT_UNROLL_KK + SHIFT_B);
+    sal(bn, into<int>(SHIFT_UNROLL_KK + SHIFT_B));
 
     /* Disabling unnecessary tile */
     test(FLAG, 2);
@@ -392,7 +392,7 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
 
     add(AO, bm);
     add(BO, bn);
-    sub(I, UNROLL_KK);
+    sub(I, into<uint32_t>(UNROLL_KK));
     jg(loopK);
     align(4);
 
@@ -413,24 +413,24 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
 
     /* Updating C address */
     mov(T0, LDC);
-    sal(T0, SHIFT_UNROLL_NN);
+    sal(T0, into<int>(SHIFT_UNROLL_NN));
     add(cc1, T0);
     add(cc2, T0);
 
     /* Checking end of N loop */
-    sub(Bn, UNROLL_NN);
+    sub(Bn, into<uint32_t>(UNROLL_NN));
     cmp(FinalN, Bn);
     jne(loopN);
     align(4);
 
     /* Updating for next A */
     lea(T0, ptr[K + UNROLL_KK - 1]);
-    and_(T0, -UNROLL_KK);
-    sal(T0, SHIFT_UNROLL_MM + SHIFT_A);
+    and_(T0, into<uint32_t>(-UNROLL_KK));
+    sal(T0, into<int>(SHIFT_UNROLL_MM + SHIFT_A));
     add(A, T0);
 
     /* Checking end of M loop */
-    sub(Bm, UNROLL_MM);
+    sub(Bm, into<uint32_t>(UNROLL_MM));
     cmp(FinalM, Bm);
     jne(loopM);
     align(4);

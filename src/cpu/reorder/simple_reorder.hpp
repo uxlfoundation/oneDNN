@@ -1160,8 +1160,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         ? &dst_scales[dst_scales_mask == 0 ? 0 : _offset]
                         : nullptr;
                 ker(i, o, (order_keep && req_comp) ? &cp[_offset] : nullptr,
-                        zp_ptr, src_scales_ptr, dst_scales_ptr, d0_block,
-                        d1_block);
+                        zp_ptr, src_scales_ptr, dst_scales_ptr,
+                        into<int>(d0_block), into<int>(d1_block));
             }
         });
 
@@ -2416,8 +2416,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
-                src_zp_val = io::load_float_value(
-                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+                src_zp_val = into<int>(io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off));
             }
 
             const auto i_off = input_d.off_l(idx);
@@ -2654,8 +2654,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
-                src_zp_val = io::load_float_value(
-                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+                src_zp_val = into<int>(io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off));
             }
 
             const auto i_off = input_d.off_l(idx);

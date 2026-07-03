@@ -443,7 +443,7 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::compute_ker_dw(int ur_w,
         return (ki * (jcp.dilate_w + 1) + oi * jcp.stride_w - pad_l);
     };
 
-    auto input_offset2 = [this](int ii, int ci) {
+    auto input_offset2 = [this](int ii, int ci) -> dim_t {
         if (jcp.is_fused_conv)
             return jcp.typesize_in
                     * (ii * jcp.dw_conv_buffer_oc + ci * jcp.ch_block);

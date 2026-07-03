@@ -142,9 +142,9 @@ struct ref_softmax_fwd_t : public primitive_t {
     ref_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t init(engine_t *engine) override {
-        outer_size_ = pd()->outer_size();
-        channels_ = pd()->axis_size();
-        inner_size_ = pd()->inner_size();
+        outer_size_ = into<int>(pd()->outer_size());
+        channels_ = into<int>(pd()->axis_size());
+        inner_size_ = into<int>(pd()->inner_size());
 
         const memory_desc_wrapper src_d(pd()->src_md());
         const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -213,9 +213,9 @@ struct ref_softmax_bwd_t : public primitive_t {
     ref_softmax_bwd_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t init(engine_t *engine) override {
-        outer_size_ = pd()->outer_size();
-        channels_ = pd()->axis_size();
-        inner_size_ = pd()->inner_size();
+        outer_size_ = into<int>(pd()->outer_size());
+        channels_ = into<int>(pd()->axis_size());
+        inner_size_ = into<int>(pd()->inner_size());
 
         const memory_desc_wrapper data_d(pd()->dst_md());
         const memory_desc_wrapper diff_d(pd()->diff_dst_md());

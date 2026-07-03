@@ -386,8 +386,8 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         balance211(ch_outer_blocks, jcp.nthr_g, ithr_g, g_start, g_end);
 
         const int ithr_mb = (ithr / jcp.nthr_g) % jcp.nthr_mb;
-        int mb_start {0}, mb_end {0};
-        balance211(jcp.mb, jcp.nthr_mb, ithr_mb, mb_start, mb_end);
+        dim_t mb_start {0}, mb_end {0};
+        balance211(into<dim_t>(jcp.mb), jcp.nthr_mb, ithr_mb, mb_start, mb_end);
 
         const int ithr_oh = (ithr / (jcp.nthr_mb * jcp.nthr_g)) % jcp.nthr_oh;
         const int nb_oh = div_up(jcp.oh, jcp.oh_blk_size);
@@ -548,8 +548,9 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         int g_start {0}, g_end {0};
         balance211(nb_ch, jcp.nthr_g, ithr_g, g_start, g_end);
 
-        int mb_start {0}, mb_end {0};
-        balance211(jcp.mb, jcp.nthr_mb, ithr_mb, mb_start, mb_end);
+        dim_t mb_start {0}, mb_end {0};
+        balance211(into<dim_t>(jcp.mb), jcp.nthr_mb, ithr_mb, mb_start,
+                mb_end);
 
         auto i_mb = diff_weights_type == bf16 ? ithr_mb : ithr_mb - 1;
         f32_data_t *diff_wei = (ithr_mb == 0 && diff_weights_type == f32)

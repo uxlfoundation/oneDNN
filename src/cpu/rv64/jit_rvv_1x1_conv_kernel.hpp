@@ -101,6 +101,11 @@ private:
         return VReg(acc_base() + acc_nregs() * jcp.ur * jcp.load_loop_blk);
     }
 
+    // Scratch for weight compression (f32 src, 16-bit wei): the 16-bit weights
+    // are loaded here as e16/mf2 and widened to the f32 weight register. v0 is
+    // otherwise unused in the f32 accumulator layout (acc_base is 1).
+    VReg vreg_wtmp() const { return VReg(0); }
+
     VReg vreg_load(int i_load, int i_unroll = 0) {
         const int after_acc
                 = acc_base() + acc_nregs() * jcp.ur * jcp.load_loop_blk;

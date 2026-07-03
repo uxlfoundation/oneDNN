@@ -52,20 +52,35 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
-            // Accepted: f32/f32/f32, bf16/bf16/f32 (Zvfbfwma), f16/f16/f32
-            // (Zvfh). bf16/f16 widen into f32 accumulators; dst stays f32.
+            // Accepted input dtype combos (dst always f32; bf16/f16 widen into
+            // f32 accumulators):
+            //   f32 /f32  : plain f32.
+            //   bf16/bf16 : symmetric bf16, widening FMA (Zvfbfwma).
+            //   f16 /f16  : symmetric f16, widening FMA (Zvfh).
+            //   f32 /bf16 : bf16 weight compression, weights widened to f32
+            //               (Zvfbfwma); f32 src, f32 FMA.
+            //   f32 /f16  : f16 weight compression, weights widened to f32
+            //               (Zvfh); f32 src, f32 FMA.
+            // The last two mirror x64 is_f32_bf16 / is_f32_f16.
             const auto src_dt = src_d.data_type();
             const auto wei_dt = weights_d.data_type();
             const auto dst_dt = dst_d.data_type();
-            // Drive the impl name by input dtype (set before any rejection).
-            isa_ = src_dt == data_type::bf16
+            // Drive the impl name by the low-precision operand: src for the
+            // symmetric paths, weights for weight compression (f32 src).
+            const auto name_dt = src_dt == data_type::f32 ? wei_dt : src_dt;
+            isa_ = name_dt == data_type::bf16
                     ? zvfbfwma
-                    : (src_dt == data_type::f16 ? zvfh : v);
-            const bool in_dt_ok = wei_dt == src_dt
-                    && (src_dt == data_type::f32
-                            || (src_dt == data_type::bf16 && mayiuse(zvfbfwma))
+                    : (name_dt == data_type::f16 ? zvfh : v);
+            const bool all_f32
+                    = src_dt == data_type::f32 && wei_dt == data_type::f32;
+            const bool sym_lowp = wei_dt == src_dt
+                    && ((src_dt == data_type::bf16 && mayiuse(zvfbfwma))
                             || (src_dt == data_type::f16 && mayiuse(zvfh)));
-            VDISPATCH_CONV(in_dt_ok && dst_dt == data_type::f32,
+            const bool wei_decomp = src_dt == data_type::f32
+                    && ((wei_dt == data_type::bf16 && mayiuse(zvfbfwma))
+                            || (wei_dt == data_type::f16 && mayiuse(zvfh)));
+            VDISPATCH_CONV((all_f32 || sym_lowp || wei_decomp)
+                            && dst_dt == data_type::f32,
                     VERBOSE_UNSUPPORTED_DT);
             // Bias is added into the f32 accumulators; a bf16/f16 bias (== src)
             // is widened to f32 in-kernel, matching x64/aarch64.

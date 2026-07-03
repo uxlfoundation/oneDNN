@@ -88,7 +88,7 @@ void jit_rvv_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
         const size_t wei_off = (size_t)g * jcp.oc * jcp.ic_without_padding
                 + (size_t)ocb * jcp.ic_without_padding * jcp.oc_block
                 + (size_t)icb * jcp.ic_block * jcp.oc_block;
-        p.load_data = weights + wei_off * jcp.typesize_in;
+        p.load_data = weights + wei_off * jcp.typesize_wei;
 
         const int ic_off = g * jcp.ic_without_padding + icb * jcp.ic_block;
         const size_t src_off

@@ -53,11 +53,12 @@ status_t jit_rvv_1x1_conv_kernel_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.prop_kind = cd.prop_kind;
     jcp.nthr = nthreads;
 
-    // src/weights dtype. f32 multiplies in place; bf16/f16 use widening FMA
-    // (Zvfbfwma/Zvfh) into f32 accumulators, so the OC lane count (simd_w,
-    // computed from f32 below) is unchanged and only the input element size
-    // differs.
+    // src/weights dtype. f32 multiplies in place; a symmetric bf16/f16 src+wei
+    // uses widening FMA (Zvfbfwma/Zvfh) into f32 accumulators. For weight
+    // compression (f32 src, bf16/f16 wei) the weights are widened to f32 and a
+    // plain f32 FMA is used; only the weight element size differs from f32.
     jcp.src_dt = src_d.data_type();
+    jcp.wei_dt = weights_d.data_type();
 
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
     jcp.bia_dt = jcp.with_bias ? cd.bias_desc.data_type : data_type::undef;
@@ -216,6 +217,9 @@ status_t jit_rvv_1x1_conv_kernel_t::init_conf(jit_1x1_conv_conf_t &jcp,
     // Layout-dependent stride parameters (for NHWC). Inputs (src/weights) may
     // be 2-byte (bf16/f16); the destination accumulates/stores in f32.
     jcp.typesize_in = static_cast<int>(types::data_type_size(jcp.src_dt));
+    // Weight element size. Equals typesize_in for f32/f32 and symmetric
+    // bf16/f16; for weight compression the weights are 2 bytes while src is 4.
+    jcp.typesize_wei = static_cast<int>(types::data_type_size(jcp.wei_dt));
     jcp.typesize_out = sizeof(float);
     // bias element size (f32, or 2 bytes for a bf16/f16 bias widened to f32).
     jcp.typesize_bia = jcp.with_bias
@@ -223,7 +227,7 @@ status_t jit_rvv_1x1_conv_kernel_t::init_conf(jit_1x1_conv_conf_t &jcp,
             : 0;
 
     jcp.reduce_loop_bcast_step = jcp.typesize_in;
-    jcp.reduce_loop_load_step = jcp.oc_block * jcp.typesize_in;
+    jcp.reduce_loop_load_step = jcp.oc_block * jcp.typesize_wei;
 
     // Strides within bcast_loop (spatial dimensions)
     jcp.bcast_loop_bcast_step
@@ -233,7 +237,7 @@ status_t jit_rvv_1x1_conv_kernel_t::init_conf(jit_1x1_conv_conf_t &jcp,
 
     // Strides within load_loop (OC dimension)
     jcp.load_loop_load_step
-            = jcp.ic_without_padding * jcp.oc_block * jcp.typesize_in;
+            = jcp.ic_without_padding * jcp.oc_block * jcp.typesize_wei;
     jcp.load_loop_iter_step = jcp.oc_block;
 
     return status::success;
@@ -411,16 +415,46 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
     const bool is_lowp
             = utils::one_of(jcp.src_dt, data_type::bf16, data_type::f16);
     const bool is_bf16 = jcp.src_dt == data_type::bf16;
+    // Weight compression: f32 src with 16-bit weights. The weights are widened
+    // to f32 and a plain f32 FMA runs on the e32/m1 accumulator view, so this
+    // is distinct from the symmetric is_lowp (e32/m2, widening-FMA) path.
+    const bool wei16
+            = utils::one_of(jcp.wei_dt, data_type::bf16, data_type::f16);
+    const bool wei_decomp = !is_lowp && wei16;
+    const bool is_wei_bf16 = jcp.wei_dt == data_type::bf16;
     // A bf16/f16 bias (== src) is loaded 16-bit and widened to f32 (only
     // happens on the is_lowp / e32-m2 path; an f32 bias stays vle32).
     const bool bia16 = jcp.with_bias
             && utils::one_of(jcp.bia_dt, data_type::bf16, data_type::f16);
 
     auto emit_wload = [=](const VReg &vr, const Reg &addr) {
-        if (is_lowp)
+        if (wei_decomp) {
+            // 16-bit weights: load into the scratch and widen to f32. Runs
+            // under the e16/mf2 view set by wsew_load(); the widened result is
+            // e32/m1 (oc_block lanes), ready for the f32 FMA.
+            vle16_v(vreg_wtmp(), addr);
+            if (is_wei_bf16)
+                vfwcvtbf16_f_f_v(vr, vreg_wtmp());
+            else
+                vfwcvt_f_f_v(vr, vreg_wtmp());
+        } else if (is_lowp) {
             vle16_v(vr, addr);
-        else
+        } else {
             vle32_v(vr, addr);
+        }
+    };
+    // Weight compression toggles the SEW view around a batch of weight loads:
+    // e16/mf2 for the vle16 + widening convert, then back to e32/m1 for the
+    // f32 FMA (no-op for the f32 and symmetric bf16/f16 paths).
+    auto wsew_load = [=]() {
+        if (wei_decomp)
+            vsetvli(reg_tmp_imm, reg_blk_vl, SEW::e16, LMUL::mf2, VTA::ta,
+                    VMA::ma);
+    };
+    auto wsew_fma = [=]() {
+        if (wei_decomp)
+            vsetvli(reg_tmp_imm, reg_blk_vl, SEW::e32, LMUL::m1, VTA::ta,
+                    VMA::ma);
     };
     auto emit_bcast = [=](const FReg &fr, const Reg &addr, int off) {
         if (is_lowp)
@@ -562,6 +596,7 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
 
         // Prefetch weights for next iteration
         if (!last_block) {
+            wsew_load();
             for (int i_unroll = 0; i_unroll < jcp.reduce_loop_unroll;
                     ++i_unroll) {
                 for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
@@ -573,6 +608,7 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
                     emit_wload(vreg_load(i_load, i_unroll), reg_tmp_addr);
                 }
             }
+            wsew_fma();
         }
     };
 
@@ -583,6 +619,7 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
     sew_compute();
 
     // Load first round of weights (IC=0..unroll-1)
+    wsew_load();
     for (int i_unroll = 0; i_unroll < jcp.reduce_loop_unroll; ++i_unroll) {
         for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
             size_t weight_off = (size_t)i_unroll * jcp.reduce_loop_load_step
@@ -596,6 +633,7 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
             }
         }
     }
+    wsew_fma();
 
     mv(reduce_loop_iter, reg_reduce_loop_work);
     Label reduce_loop_label, reduce_loop_tail;
@@ -628,6 +666,7 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
         Label tail_loop;
         L(tail_loop);
         {
+            wsew_load();
             for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
                 size_t weight_off = (size_t)i_load * jcp.load_loop_load_step;
                 if (weight_off == 0) {
@@ -638,6 +677,7 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
                     emit_wload(vreg_load(i_load, 0), reg_tmp_addr);
                 }
             }
+            wsew_fma();
 
             emit_bcast(freg_bcast, aux_reg_bcast_data, 0);
             for (int i_ur = 0; i_ur < ur; ++i_ur) {

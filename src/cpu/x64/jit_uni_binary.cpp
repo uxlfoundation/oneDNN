@@ -293,24 +293,27 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
 }
 
 op_t jit_uni_binary_t::pd_t::get_op_type(const memory_desc_wrapper &src0_d) {
-    // A permuted plain layout with unit dims is equivalent to a canonical one
-    // once the unit dims are squeezed out; classify on the squeezed layout so
-    // such cases map to nxc/ncx instead of staying unclassified.
-    memory_desc_t squeezed_md {};
-    const memory_desc_wrapper mdw = squeeze_unit_dims(src0_d, squeezed_md)
-            ? memory_desc_wrapper(squeezed_md)
-            : src0_d;
+    const auto &strides = src0_d.blocking_desc().strides;
+    const auto ndims = src0_d.ndims();
 
-    const auto &strides = mdw.blocking_desc().strides;
-    const auto ndims = mdw.ndims();
-
-    if (!mdw.is_plain() && mdw.blocking_desc().inner_idxs[0] == 1)
+    if (!src0_d.is_plain() && src0_d.blocking_desc().inner_idxs[0] == 1)
         return op_t::c_blocked;
     else if (strides[1] == 1)
         return op_t::n_spatial_c;
     else if (strides[0] >= strides[1]
             && IMPLICATION(ndims >= 3, strides[1] >= strides[2]))
         return op_t::n_c_spatial;
+
+    // op_type is later combined with a bcast_type derived from the original
+    // (un-squeezed) src1/dst shapes, so both must describe the same coordinate
+    // system: squeezing src0 unconditionally up front can flip its op_type
+    // (e.g. n_c_spatial -> n_spatial_c) and desync it from bcast_type. Only
+    // when the original layout can't be classified (e.g. a permuted plain
+    // layout like `acbd` with H == 1) retry on the squeezed layout, where the
+    // unit dims that prevented classification are gone.
+    memory_desc_t squeezed_md {};
+    if (squeeze_unit_dims(src0_d, squeezed_md))
+        return get_op_type(memory_desc_wrapper(squeezed_md));
     return op_t::none;
 }
 

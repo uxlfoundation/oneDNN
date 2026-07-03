@@ -150,7 +150,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     assert(engine->kind() == engine_kind::gpu);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
-    arch_ = dev_info->gpu_arch();
+
     auto *d = desc();
 
     VCHECK_SDPA_COND(compute::mayiuse_microkernels(intel_engine),
@@ -167,15 +167,11 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             || with_value_zp();
     bool is_integrated = intel_engine->device_info()->is_integrated();
     bool is_f32 = (desc()->qry_md()->data_type == data_type::f32);
-    use_systolic_ukernel_
-            = intel_engine->mayiuse(compute::device_ext_t::
-                              intel_subgroup_matrix_multiply_accumulate)
-            && !is_f32; // f32 -> non-systolic kernel only
 
-    bool use_fma_config = !use_systolic_ukernel_;
+    bool use_fma_config = !use_systolic_ukernel();
     bool is_f16_accumulate_gemm = (kq_acc_dt() == data_type::f16)
             || (vs_acc_dt() == data_type::f16);
-    VDISPATCH_SDPA(IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel_),
+    VDISPATCH_SDPA(IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel()),
             "f16 accumulate only available with FMA matmul."); //TODO: update once matmul primitive supports systolic f16 accumulate for testing
     config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
             is_integrated, use_fma_config, is_f32, is_f16_accumulate_gemm);
@@ -234,15 +230,13 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     micro::HWInformation hw_info;
     hw_info.euCount = dev_info->eu_count();
     hw_info.gmdid = dev_info->ip_version();
-    hw_info.systolicAvailable = use_systolic_ukernel_;
+    hw_info.systolicAvailable = use_systolic_ukernel();
     hw_info.isEfficient64Bit = dev_info->is_efficient_64bit();
 
     VDISPATCH_SDPA(
             hw_info.gmdid != 0, "gmdid is 0, microkernels not supported.");
 
     ukernel_params.hwinfo = {hw_info};
-
-    sg_size_ = dev_info->min_subgroup_size();
 
     auto convert_dnnl_to_kernel_layout = [](const memory_desc_t *md) {
         return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T
@@ -320,7 +314,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     if (use_systolic_ukernel()) {
         problem_kq.B.crosspack = 2;
         problem_kq.B.tileR = into<uint16_t>(d_max());
-        problem_kq.B.tileC = into<uint16_t>(sg_size_);
+        problem_kq.B.tileC = into<uint16_t>(sg_size());
     }
 
     ukernel_params.problem_kq = {problem_kq};

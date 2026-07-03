@@ -166,11 +166,23 @@ struct micro_fwd_t : public primitive_t {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
 
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            auto *dev_info = intel_engine->device_info();
+            arch_ = dev_info->gpu_arch();
+            sg_size_ = dev_info->min_subgroup_size();
+
             VDISPATCH_SDPA(is_fwd(), VERBOSE_BAD_PROPKIND);
             memory_desc_wrapper qry_mdw(desc()->qry_md());
             memory_desc_wrapper key_mdw(desc()->key_md());
             memory_desc_wrapper val_mdw(desc()->val_md());
             memory_desc_wrapper dst_mdw(dst_md());
+
+            bool is_f32 = (qry_mdw.data_type() == data_type::f32);
+            use_systolic_ukernel_
+                    = intel_engine->mayiuse(compute::device_ext_t::
+                                      intel_subgroup_matrix_multiply_accumulate)
+                    && !is_f32; // f32 -> non-systolic kernel only
+
             VDISPATCH_SDPA(
                     utils::everyone_is(4, qry_mdw.ndims(), key_mdw.ndims(),
                             val_mdw.ndims(), dst_mdw.ndims()),

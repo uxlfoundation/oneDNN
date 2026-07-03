@@ -125,7 +125,7 @@ public:
     status_t compile(compiled_partition_t *compiled_partition,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs,
-            const engine_t *g_engine) const override {
+            engine_t *g_engine) const override {
         UNUSED(compiled_partition);
         UNUSED(inputs);
         UNUSED(outputs);

@@ -40,22 +40,21 @@ class dnnl_compiled_partition_impl_t : public compiled_partition_impl_t {
     friend class dnnl_partition_impl_t;
 
 public:
-    dnnl_compiled_partition_impl_t(const engine_t &engine,
+    dnnl_compiled_partition_impl_t(engine_t *engine,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs, kernel_ptr &kernel)
         : compiled_partition_impl_t(
                   engine, inputs, outputs, kernel->get_inplace_pairs())
         , kernel_(kernel) {}
 
-    status_t execute(const stream_t *g_stream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute(stream_t *g_stream, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf) override {
         return kernel_->execute(g_stream, inputs, outputs, scratchpad_buf);
     }
 
 #ifdef DNNL_WITH_SYCL
-    status_t execute_sycl(const stream_t *g_stream,
+    status_t execute_sycl(stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -69,7 +68,7 @@ public:
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     // It looks very similar to execute_sycl. Consider to merge them in the
     // future.
-    status_t execute_ocl(const stream_t *g_stream,
+    status_t execute_ocl(stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -121,7 +120,7 @@ public:
     status_t compile(compiled_partition_t *compiled_partition,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs,
-            const engine_t *g_engine) const override;
+            engine_t *g_engine) const override;
 
     status_t infer_shape(std::vector<const logical_tensor_t *> &inputs,
             std::vector<logical_tensor_t *> &outputs) const override;

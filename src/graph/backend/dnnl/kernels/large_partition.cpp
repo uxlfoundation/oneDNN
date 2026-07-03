@@ -202,7 +202,7 @@ void larger_partition_kernel_t::prepare_args_set(
 }
 
 status_t larger_partition_kernel_t::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *g_engine,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
@@ -248,7 +248,7 @@ status_t larger_partition_kernel_t::compile_impl(
     return status::success;
 }
 
-status_t larger_partition_kernel_t::execute_impl(const stream_t *g_stream,
+status_t larger_partition_kernel_t::execute_impl(stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
@@ -312,7 +312,7 @@ status_t larger_partition_kernel_t::execute_impl(const stream_t *g_stream,
 }
 
 #ifdef DNNL_WITH_SYCL
-status_t larger_partition_kernel_t::sycl_execute_impl(const stream_t *g_stream,
+status_t larger_partition_kernel_t::sycl_execute_impl(stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
@@ -386,7 +386,7 @@ status_t larger_partition_kernel_t::sycl_execute_impl(const stream_t *g_stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-status_t larger_partition_kernel_t::ocl_execute_impl(const stream_t *g_stream,
+status_t larger_partition_kernel_t::ocl_execute_impl(stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &ocl_deps, cl_event *event) {

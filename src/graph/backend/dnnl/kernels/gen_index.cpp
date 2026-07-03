@@ -36,7 +36,7 @@ namespace graph {
 namespace dnnl_impl {
 
 status_t genindex_t::compile_impl(const dnnl_partition_impl_t *part,
-        const engine_t *g_engine, const std::vector<logical_tensor_t> &inputs,
+        engine_t *g_engine, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
 
@@ -111,7 +111,7 @@ void genindex_t::prepare_args_set(const execution_args_set_t *res,
     }
 }
 
-status_t genindex_t::execute_impl(const stream_t *g_stream,
+status_t genindex_t::execute_impl(stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
@@ -132,7 +132,7 @@ status_t genindex_t::execute_impl(const stream_t *g_stream,
     return status::success;
 }
 #ifdef DNNL_WITH_SYCL
-status_t genindex_t::sycl_execute_impl(const stream_t *g_stream,
+status_t genindex_t::sycl_execute_impl(stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
@@ -162,7 +162,7 @@ status_t genindex_t::sycl_execute_impl(const stream_t *g_stream,
 }
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-status_t genindex_t::ocl_execute_impl(const stream_t *g_stream,
+status_t genindex_t::ocl_execute_impl(stream_t *g_stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) {

@@ -46,8 +46,7 @@ private:
     std::shared_ptr<kernel_base_t> kernel;
 
 public:
-    status_t compile_impl(const dnnl_partition_impl_t *part,
-            const engine_t *g_engine,
+    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *g_engine,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override {
         const engine_kind_t ekind = g_engine->kind();
@@ -111,7 +110,7 @@ public:
         return force > 0;
     }
 
-    status_t execute_impl(const stream_t *g_stream,
+    status_t execute_impl(stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf) override {
@@ -119,7 +118,7 @@ public:
     }
 
 #ifdef DNNL_WITH_SYCL
-    status_t sycl_execute_impl(const stream_t *g_stream,
+    status_t sycl_execute_impl(stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -131,7 +130,7 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    status_t ocl_execute_impl(const stream_t *g_stream,
+    status_t ocl_execute_impl(stream_t *g_stream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf, const std::vector<cl_event> &deps,

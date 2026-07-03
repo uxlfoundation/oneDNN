@@ -23,14 +23,14 @@ namespace graph {
 namespace dnnl_impl {
 
 status_t kernel_base_t::compile(const dnnl_partition_impl_t *part,
-        const engine_t *aengine, const std::vector<logical_tensor_t> &inputs,
+        engine_t *aengine, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     auto ret = compile_impl(part, aengine, inputs, outputs);
     if (ret != status::success) return ret;
     return prepare_inplace_pairs_impl();
 }
 
-status_t kernel_base_t::execute(const stream_t *astream,
+status_t kernel_base_t::execute(stream_t *astream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     return execute_impl(astream, inputs, outputs, scratchpad_buf);

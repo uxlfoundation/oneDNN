@@ -40,7 +40,7 @@ namespace dnnl_impl {
 
 template <bool quantized, memory::data_type dt>
 status_t mqa_decomp_kernel_t<quantized, dt>::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *g_engine,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
@@ -152,15 +152,15 @@ void mqa_decomp_kernel_t<quantized, dt>::prepare_sub_args(
 }
 
 template <bool quantized, memory::data_type dt>
-status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(
-        const stream_t *g_stream, const std::vector<tensor_t> &inputs,
+status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(stream_t *g_stream,
+        const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     dnnl::stream strm = make_dnnl_stream(p_engine_, *g_stream);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     auto *tp_stream
             = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
-                    const_cast<stream_t *>(g_stream));
+                    g_stream);
 #endif
 
     // each thread's own local resource

@@ -41,31 +41,29 @@ class dnnl_partition_impl_t;
 struct kernel_base_t {
     virtual ~kernel_base_t() = default;
 
-    status_t compile(const dnnl_partition_impl_t *part, const engine_t *aengine,
+    status_t compile(const dnnl_partition_impl_t *part, engine_t *aengine,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs);
 
     // each subclass should implement compile_impl()
     virtual status_t compile_impl(const dnnl_partition_impl_t *part,
-            const engine_t *aengine,
-            const std::vector<logical_tensor_t> &inputs,
+            engine_t *aengine, const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs)
             = 0;
 
-    status_t execute(const stream_t *astream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute(stream_t *astream, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf = nullptr);
 
     // each subclass should implement execute_impl()
-    virtual status_t execute_impl(const stream_t *astream,
+    virtual status_t execute_impl(stream_t *astream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf)
             = 0;
 
 #ifdef DNNL_WITH_SYCL
-    status_t execute_sycl(const stream_t *astream,
+    status_t execute_sycl(stream_t *astream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -75,7 +73,7 @@ struct kernel_base_t {
                 sycl_deps, sycl_event);
     }
 
-    virtual status_t sycl_execute_impl(const stream_t *astream,
+    virtual status_t sycl_execute_impl(stream_t *astream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -85,8 +83,7 @@ struct kernel_base_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    status_t execute_ocl(const stream_t *astream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute_ocl(stream_t *astream, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) {
@@ -94,7 +91,7 @@ struct kernel_base_t {
                 astream, inputs, outputs, scratchpad_buf, ocl_deps, ocl_event);
     }
 
-    virtual status_t ocl_execute_impl(const stream_t *astream,
+    virtual status_t ocl_execute_impl(stream_t *astream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,

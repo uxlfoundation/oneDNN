@@ -42,7 +42,7 @@ namespace dnnl_impl {
 
 template <bool quantized>
 status_t sdp_primitive_kernel_t<quantized>::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *g_engine,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
 // sdp_primitive_kernel_t only supports Intel GPU.
@@ -160,8 +160,8 @@ void sdp_primitive_kernel_t<quantized>::prepare_args_set(
 }
 
 template <bool quantized>
-status_t sdp_primitive_kernel_t<quantized>::execute_impl(
-        const stream_t *g_stream, const std::vector<tensor_t> &inputs,
+status_t sdp_primitive_kernel_t<quantized>::execute_impl(stream_t *g_stream,
+        const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
     dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
 
@@ -183,7 +183,7 @@ status_t sdp_primitive_kernel_t<quantized>::execute_impl(
 #ifdef DNNL_WITH_SYCL
 template <bool quantized>
 status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
-        const stream_t *g_stream, const std::vector<tensor_t> &inputs,
+        stream_t *g_stream, const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
@@ -220,8 +220,8 @@ status_t sdp_primitive_kernel_t<quantized>::sycl_execute_impl(
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 template <bool quantized>
-status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(
-        const stream_t *g_stream, const std::vector<tensor_t> &inputs,
+status_t sdp_primitive_kernel_t<quantized>::ocl_execute_impl(stream_t *g_stream,
+        const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
     auto deps = cl_deps;

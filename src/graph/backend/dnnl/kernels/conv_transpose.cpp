@@ -33,7 +33,7 @@ namespace graph {
 namespace dnnl_impl {
 template <bool quantized>
 status_t conv_transpose_fwd_t<quantized>::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *g_engine,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
@@ -126,7 +126,7 @@ status_t conv_transpose_fwd_t<quantized>::prepare_inplace_pairs_impl() {
 
 #if BUILD_TRAINING
 status_t conv_transpose_bwd_data_t::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *g_engine,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);
@@ -186,7 +186,7 @@ status_t conv_transpose_bwd_data_t::compile_impl(
 }
 
 status_t conv_transpose_bwd_weights_t::compile_impl(
-        const dnnl_partition_impl_t *part, const engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *g_engine,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     p_engine_ = make_dnnl_engine(*g_engine);

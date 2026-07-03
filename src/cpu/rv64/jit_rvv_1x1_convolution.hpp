@@ -67,8 +67,11 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
                             || (src_dt == data_type::f16 && mayiuse(zvfh)));
             VDISPATCH_CONV(in_dt_ok && dst_dt == data_type::f32,
                     VERBOSE_UNSUPPORTED_DT);
+            // Bias is added into the f32 accumulators; a bf16/f16 bias (== src)
+            // is widened to f32 in-kernel, matching x64/aarch64.
             VDISPATCH_CONV(IMPLICATION(with_bias(),
-                                   weights_md(1)->data_type == data_type::f32),
+                                   utils::one_of(weights_md(1)->data_type,
+                                           data_type::f32, src_dt)),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_CONV(attr()->has_default_values(
                                    primitive_attr_t::skip_mask_t::post_ops),

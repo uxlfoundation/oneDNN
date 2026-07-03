@@ -159,6 +159,8 @@ struct jit_1x1_conv_conf_t {
 
     // src/weights dtype: f32, bf16 (Zvfbfwma), or f16 (Zvfh).
     data_type_t src_dt;
+    // bias dtype: f32, or bf16/f16 (== src_dt) widened to f32 in-kernel.
+    data_type_t bia_dt;
 
     int typesize_in;
     int typesize_out;

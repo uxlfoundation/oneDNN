@@ -60,6 +60,7 @@ status_t jit_rvv_1x1_conv_kernel_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.src_dt = src_d.data_type();
 
     jcp.with_bias = cd.bias_desc.format_kind != format_kind::undef;
+    jcp.bia_dt = jcp.with_bias ? cd.bias_desc.data_type : data_type::undef;
 
     // Initialize dimensions
     jcp.mb = src_d.dims()[0];
@@ -216,6 +217,10 @@ status_t jit_rvv_1x1_conv_kernel_t::init_conf(jit_1x1_conv_conf_t &jcp,
     // be 2-byte (bf16/f16); the destination accumulates/stores in f32.
     jcp.typesize_in = static_cast<int>(types::data_type_size(jcp.src_dt));
     jcp.typesize_out = sizeof(float);
+    // bias element size (f32, or 2 bytes for a bf16/f16 bias widened to f32).
+    jcp.typesize_bia = jcp.with_bias
+            ? static_cast<int>(types::data_type_size(jcp.bia_dt))
+            : 0;
 
     jcp.reduce_loop_bcast_step = jcp.typesize_in;
     jcp.reduce_loop_load_step = jcp.oc_block * jcp.typesize_in;
@@ -275,7 +280,7 @@ void jit_rvv_1x1_conv_kernel_t::generate() {
         add(reg_load_data, reg_load_data, reg_tmp_imm);
 
         if (jcp.with_bias) {
-            li(reg_tmp_imm, load_loop_blk * jcp.oc_block * jcp.typesize_out);
+            li(reg_tmp_imm, load_loop_blk * jcp.oc_block * jcp.typesize_bia);
             add(reg_bias_data, reg_bias_data, reg_tmp_imm);
         }
 
@@ -319,7 +324,7 @@ void jit_rvv_1x1_conv_kernel_t::generate() {
         li(reg_tmp_imm, jcp.load_loop_load_step);
         add(reg_load_data, reg_load_data, reg_tmp_imm);
         if (jcp.with_bias) {
-            li(reg_tmp_imm, jcp.oc_block * jcp.typesize_out);
+            li(reg_tmp_imm, jcp.oc_block * jcp.typesize_bia);
             add(reg_bias_data, reg_bias_data, reg_tmp_imm);
         }
         li(reg_tmp_imm, jcp.oc_block * jcp.typesize_out);
@@ -406,6 +411,10 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
     const bool is_lowp
             = utils::one_of(jcp.src_dt, data_type::bf16, data_type::f16);
     const bool is_bf16 = jcp.src_dt == data_type::bf16;
+    // A bf16/f16 bias (== src) is loaded 16-bit and widened to f32 (only
+    // happens on the is_lowp / e32-m2 path; an f32 bias stays vle32).
+    const bool bia16 = jcp.with_bias
+            && utils::one_of(jcp.bia_dt, data_type::bf16, data_type::f16);
 
     auto emit_wload = [=](const VReg &vr, const Reg &addr) {
         if (is_lowp)
@@ -461,16 +470,35 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
         jal(x0, init_done);
 
         L(init_zero);
+        // Load bias[oc_block] into the f32 vreg_bias_tmp. f32 bias loads
+        // directly; a bf16/f16 bias is loaded 16-bit and widened to f32 (the
+        // accumulator view is e32/m2 here, so switch to e16/m1 for the convert
+        // and back). vreg_load(0) is a free scratch (weights not loaded yet).
+        auto load_bias = [&](const Reg &addr) {
+            if (bia16) {
+                vsetvli(reg_tmp_imm, reg_blk_vl, SEW::e16, LMUL::m1, VTA::ta,
+                        VMA::ma);
+                vle16_v(vreg_load(0), addr);
+                if (is_bf16)
+                    vfwcvtbf16_f_f_v(vreg_bias_tmp(), vreg_load(0));
+                else
+                    vfwcvt_f_f_v(vreg_bias_tmp(), vreg_load(0));
+                vsetvli(reg_tmp_imm, reg_blk_vl, SEW::e32, LMUL::m2, VTA::ta,
+                        VMA::ma);
+            } else {
+                vle32_v(vreg_bias_tmp(), addr);
+            }
+        };
         for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
             if (jcp.with_bias) {
                 size_t bias_off
-                        = (size_t)i_load * jcp.oc_block * jcp.typesize_out;
+                        = (size_t)i_load * jcp.oc_block * jcp.typesize_bia;
                 if (bias_off == 0) {
-                    vle32_v(vreg_bias_tmp(), reg_bias_data);
+                    load_bias(reg_bias_data);
                 } else {
                     li(reg_tmp_addr, bias_off);
                     add(reg_tmp_addr, reg_tmp_addr, reg_bias_data);
-                    vle32_v(vreg_bias_tmp(), reg_tmp_addr);
+                    load_bias(reg_tmp_addr);
                 }
             }
             for (int i_ur = 0; i_ur < ur; ++i_ur) {

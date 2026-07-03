@@ -19,6 +19,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
+#include "common/utils.hpp"
 
 #include "cpu/rv64/jit_generator.hpp"
 #include "cpu/rv64/jit_primitive_conf.hpp"
@@ -84,7 +85,7 @@ private:
     // e16/m1 weights, so one widening FMA covers 2x the OC lanes of the f32
     // e32/m1 path. f32 keeps single-register (m1) accumulators from v1.
     bool is_lowp() const {
-        return jcp.src_dt == data_type::bf16 || jcp.src_dt == data_type::f16;
+        return utils::one_of(jcp.src_dt, data_type::bf16, data_type::f16);
     }
     int acc_nregs() const { return is_lowp() ? 2 : 1; }
     int acc_base() const { return is_lowp() ? 2 : 1; }

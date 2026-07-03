@@ -71,6 +71,8 @@ private:
     int dt_rewrite(deserialized_graph_t &dgraph);
     int dt_map_rewrite(deserialized_graph_t &dgraph);
     int op_kind_rewrite(deserialized_graph_t &dgraph);
+    int remove_op(deserialized_graph_t &dgraph,
+            std::vector<deserialized_op_t>::iterator op_it);
     int tensor_property_rewrite(deserialized_graph_t &dgraph);
     // Rewrite some linked attribute and shapes, such as group-shape and
     // scale/zp shape of dynamic dequantization for per-group quantization, to

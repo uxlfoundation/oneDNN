@@ -152,7 +152,7 @@ int dnn_graph_mem_t::fill_mem_with_data(
             = [](dnn_mem_t &graph_mem, const dnn_mem_t &prim_mem) {
         const void *prim_data_handle = static_cast<const void *>(prim_mem);
         void *graph_data_handle = graph_mem.get_mapped_pointer<void>();
-        std::memcpy(graph_data_handle, prim_data_handle, graph_mem.size());
+        std::memcpy(graph_data_handle, prim_data_handle, prim_mem.size());
     };
 
     if (src_dt != dst_dt || src_eng != dst_eng) {

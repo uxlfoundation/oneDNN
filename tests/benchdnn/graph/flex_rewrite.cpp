@@ -1479,6 +1479,12 @@ int flex_rewrite_t::op_kind_rewrite(deserialized_graph_t &dgraph) {
             SAFE(FAIL, WARN);
         }
 
+        // Handle op removal when target kind is "undef".
+        if (v.second == "undef") {
+            SAFE(remove_op(dgraph, it), WARN);
+            continue;
+        }
+
         auto &aop = *it;
         auto op_driver = aop.opkind2driver();
 
@@ -1513,6 +1519,96 @@ int flex_rewrite_t::op_kind_rewrite(deserialized_graph_t &dgraph) {
             SAFE(FAIL, WARN);
         }
     }
+
+    return OK;
+}
+
+int flex_rewrite_t::remove_op(deserialized_graph_t &dgraph,
+        std::vector<deserialized_op_t>::iterator op_it) {
+    auto &aop = *op_it;
+    const auto &kind = aop.kind_;
+
+    const bool is_unary_op = is_unary(kind);
+    const bool is_binary_op = is_binary(kind);
+
+    if (!is_unary_op && !is_binary_op) {
+        BENCHDNN_PRINT(0,
+                "graph: rewrite: removal of op with ID `%zd` (kind `%s`) is "
+                "not supported. Only unary and binary ops can be removed.\n",
+                aop.id_, kind.c_str());
+        SAFE(FAIL, WARN);
+    }
+
+    if (aop.out_lts_.size() != 1) {
+        BENCHDNN_PRINT(0,
+                "graph: rewrite: removal of op with ID `%zd` failed. "
+                "Op must have exactly one output.\n",
+                aop.id_);
+        SAFE(FAIL, WARN);
+    }
+
+    const size_t out_lt_id = aop.out_lts_[0].id_;
+    size_t passthrough_lt_id = SIZE_MAX;
+
+    if (is_unary_op) {
+        // Unary op: single input passes through to the output.
+        if (aop.in_lts_.size() != 1) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: removal of unary op with ID `%zd` "
+                    "failed. Expected exactly one input.\n",
+                    aop.id_);
+            SAFE(FAIL, WARN);
+        }
+        passthrough_lt_id = aop.in_lts_[0].id_;
+    } else {
+        // Binary op: find which input has a producer in the graph.
+        // An input has a producer if its tensor ID is the output of another op.
+        size_t producer_count = 0;
+        for (const auto &in_lt : aop.in_lts_) {
+            bool has_producer = false;
+            for (const auto &other_op : dgraph.ops_) {
+                if (other_op.id_ == aop.id_) continue;
+                for (const auto &other_out : other_op.out_lts_) {
+                    if (other_out.id_ == in_lt.id_) {
+                        has_producer = true;
+                        break;
+                    }
+                }
+                if (has_producer) break;
+            }
+            if (has_producer) {
+                passthrough_lt_id = in_lt.id_;
+                producer_count++;
+            }
+        }
+        if (producer_count == 0) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: removal of binary op with ID `%zd` "
+                    "failed. No input has a producer in the graph.\n",
+                    aop.id_);
+            SAFE(FAIL, WARN);
+        }
+        if (producer_count > 1) {
+            BENCHDNN_PRINT(0,
+                    "graph: rewrite: removal of binary op with ID `%zd` "
+                    "failed. Both inputs have producers; cannot determine "
+                    "which to pass through.\n",
+                    aop.id_);
+            SAFE(FAIL, WARN);
+        }
+    }
+
+    // Rewire: replace all references to the removed op's output tensor with
+    // the passthrough input tensor in downstream ops.
+    for (auto &other_op : dgraph.ops_) {
+        if (other_op.id_ == aop.id_) continue;
+        for (auto &in_lt : other_op.in_lts_) {
+            if (in_lt.id_ == out_lt_id) { in_lt.id_ = passthrough_lt_id; }
+        }
+    }
+
+    // Remove the op from the graph.
+    dgraph.ops_.erase(op_it);
 
     return OK;
 }

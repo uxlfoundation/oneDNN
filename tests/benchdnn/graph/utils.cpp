@@ -376,6 +376,24 @@ bool is_unary(dnnl::graph::op::kind akind) {
             [akind](dnnl::graph::op::kind _kind) { return _kind == akind; });
 }
 
+bool is_binary(const std::string &kind) {
+    return is_binary(opstr2kind(kind));
+}
+bool is_binary(dnnl::graph::op::kind akind) {
+    using namespace dnnl::graph;
+    static const std::vector<op::kind> binary_ops {
+            op::kind::Add,
+            op::kind::BiasAdd,
+            op::kind::Divide,
+            op::kind::Maximum,
+            op::kind::Minimum,
+            op::kind::Multiply,
+            op::kind::Subtract,
+    };
+    return std::any_of(binary_ops.begin(), binary_ops.end(),
+            [akind](dnnl::graph::op::kind _kind) { return _kind == akind; });
+}
+
 bool is_backward(const std::string &kind) {
     return is_backward(opstr2kind(kind));
 }

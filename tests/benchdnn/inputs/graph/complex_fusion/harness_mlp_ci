@@ -10,5 +10,13 @@
 --reset --in-shapes=0:1x128+1:128x256+4:128x256+13:256x128 --op-kind=12:Subtract --case=complex_fusion/mlp/gated-mlp-f32.json
 --reset --op-attrs=8:mode:gelu_tanh,8:mode:gelu_erf --case=complex_fusion/mlp/gated-mlp-gelu-f32.json
 
-# f16-int4 case
---reset --case=complex_fusion/mlp/gated-mlp-int4.json
+# quantizd cases
+--reset --dt=0:u4+8:u4+23:u4,0:u8+8:u8+23:u8 --case=complex_fusion/mlp/gated-mlp-int4.json
+--reset --dt=0:u8+8:u8+23:u8
+        --op-attrs=4:qtype:per_tensor+12:qtype:per_tensor+27:qtype:per_tensor
+        --in-shapes=1:1+2:1+9:1+10:1+24:1+25:1
+        --case=complex_fusion/mlp/gated-mlp-int4.json
+--reset --dt=0:u8+8:u8+23:u8
+        --op-attrs=4:qtype:per_channel*axis:-1+12:qtype:per_channel*axis:-1+27:qtype:per_channel*axis:-1
+        --in-shapes=1:14336+2:14336+9:14336+10:14336+24:4096+25:4096
+        --case=complex_fusion/mlp/gated-mlp-int4.json

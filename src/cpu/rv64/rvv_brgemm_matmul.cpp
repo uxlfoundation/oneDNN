@@ -156,12 +156,13 @@ protected:
         beqz(reg_rows_remaining, copy_done);
 
         if (input_typesize_ == 4) {
-            vsetvli(reg_vl, reg_rows_remaining, SEW::e32, LMUL::m4);
+            vsetvli(reg_vl, reg_rows_remaining, SEW::e32, LMUL::m4, VTA::ta,
+                    VMA::ma);
             vle32_v(v_tmp, reg_src);
             vse32_v(v_tmp, reg_dst);
         } else {
-            // bf16/f16 (int8 takes the early-return path above).
-            vsetvli(reg_vl, reg_rows_remaining, SEW::e16, LMUL::m4);
+            vsetvli(reg_vl, reg_rows_remaining, SEW::e16, LMUL::m4, VTA::ta,
+                    VMA::ma);
             vle16_v(v_tmp, reg_src);
             vse16_v(v_tmp, reg_dst);
         }

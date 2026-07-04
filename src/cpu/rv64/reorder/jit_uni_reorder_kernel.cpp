@@ -209,7 +209,7 @@ void jit_uni_reorder_kernel_f32_t::load_to_f32(const VReg &v, const Reg &addr,
     }
 
     if (dt == data_type::f16 || dt == data_type::bf16) {
-        vsetvli(x0, reg_vl_, SEW::e16, LMUL::mf2);
+        vsetvli(x0, reg_vl_, SEW::e16, LMUL::mf2, VTA::ta, VMA::ma);
         if (unit)
             vle16_v(vreg_stg_, addr);
         else {
@@ -218,10 +218,10 @@ void jit_uni_reorder_kernel_f32_t::load_to_f32(const VReg &v, const Reg &addr,
         }
         if (dt == data_type::f16) {
             vfwcvt_f_f_v(v, vreg_stg_); // e16/mf2 -> e32/m1
-            vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1);
+            vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
         } else {
             // bf16 -> f32 is a left shift by 16 of the zero-extended bits.
-            vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1);
+            vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
             vzext_vf2(v, vreg_stg_);
             li(reg_tmp1_, 16);
             vsll_vx(v, v, reg_tmp1_);
@@ -230,14 +230,14 @@ void jit_uni_reorder_kernel_f32_t::load_to_f32(const VReg &v, const Reg &addr,
     }
 
     // s8 / u8: stage as 8-bit (e8/mf4), widen to e32/m1, convert to f32.
-    vsetvli(x0, reg_vl_, SEW::e8, LMUL::mf4);
+    vsetvli(x0, reg_vl_, SEW::e8, LMUL::mf4, VTA::ta, VMA::ma);
     if (unit)
         vle8_v(vreg_stg_, addr);
     else {
         li(reg_tmp1_, (uint32_t)(stride_elems * sz));
         vlse8_v(vreg_stg_, addr, reg_tmp1_);
     }
-    vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1);
+    vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
     if (dt == data_type::s8) {
         vsext_vf4(v, vreg_stg_);
         vfcvt_f_x_v(v, v);
@@ -284,7 +284,7 @@ void jit_uni_reorder_kernel_f32_t::store_from_f32(const VReg &v,
     }
 
     if (dt == data_type::f16) {
-        vsetvli(x0, reg_vl_, SEW::e16, LMUL::mf2);
+        vsetvli(x0, reg_vl_, SEW::e16, LMUL::mf2, VTA::ta, VMA::ma);
         vfncvt_f_f_w(vreg_stg_, v); // e32/m1 -> e16/mf2 (round-to-nearest-even)
         if (unit)
             vse16_v(vreg_stg_, addr);
@@ -292,7 +292,7 @@ void jit_uni_reorder_kernel_f32_t::store_from_f32(const VReg &v,
             li(reg_tmp1_, (uint32_t)(stride_elems * sz));
             vsse16_v(vreg_stg_, addr, reg_tmp1_);
         }
-        vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1);
+        vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
         return;
     }
 
@@ -304,7 +304,7 @@ void jit_uni_reorder_kernel_f32_t::store_from_f32(const VReg &v,
         li(reg_tmp1_, 0x7FFF);
         vadd_vx(v, v, reg_tmp1_);
         vadd_vv(v, v, vreg_aux_);
-        vsetvli(x0, reg_vl_, SEW::e16, LMUL::mf2);
+        vsetvli(x0, reg_vl_, SEW::e16, LMUL::mf2, VTA::ta, VMA::ma);
         vnsrl_wi(vreg_stg_, v, 16);
         if (unit)
             vse16_v(vreg_stg_, addr);
@@ -312,7 +312,7 @@ void jit_uni_reorder_kernel_f32_t::store_from_f32(const VReg &v,
             li(reg_tmp1_, (uint32_t)(stride_elems * sz));
             vsse16_v(vreg_stg_, addr, reg_tmp1_);
         }
-        vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1);
+        vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
         return;
     }
 
@@ -327,9 +327,9 @@ void jit_uni_reorder_kernel_f32_t::store_from_f32(const VReg &v,
     else
         vfcvt_xu_f_v(v, v);
     // narrow e32/m1 -> e16/mf2 -> e8/mf4 (values pre-clamped, truncation exact)
-    vsetvli(x0, reg_vl_, SEW::e16, LMUL::mf2);
+    vsetvli(x0, reg_vl_, SEW::e16, LMUL::mf2, VTA::ta, VMA::ma);
     vnsrl_wi(vreg_aux_, v, 0);
-    vsetvli(x0, reg_vl_, SEW::e8, LMUL::mf4);
+    vsetvli(x0, reg_vl_, SEW::e8, LMUL::mf4, VTA::ta, VMA::ma);
     vnsrl_wi(vreg_stg_, vreg_aux_, 0);
     if (unit)
         vse8_v(vreg_stg_, addr);
@@ -337,7 +337,8 @@ void jit_uni_reorder_kernel_f32_t::store_from_f32(const VReg &v,
         li(reg_tmp1_, (uint32_t)(stride_elems * sz));
         vsse8_v(vreg_stg_, addr, reg_tmp1_);
     }
-    vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1); // restore vtype for the next iter
+    vsetvli(x0, reg_vl_, SEW::e32, LMUL::m1, VTA::ta,
+            VMA::ma); // restore vtype for the next iter
 }
 
 // Computes the per-call running base addresses from the outer loop counters.
@@ -410,7 +411,7 @@ void jit_uni_reorder_kernel_f32_t::emit_zero_region(const Reg &count) {
     Label zl, ze;
     L(zl);
     beqz(count, ze);
-    vsetvli(reg_vl_, count, sew, LMUL::m1);
+    vsetvli(reg_vl_, count, sew, LMUL::m1, VTA::ta, VMA::ma);
     vmv_v_i(vreg_data_, 0);
     if (otype_sz_ == 4)
         vse32_v(vreg_data_, reg_addr2_);
@@ -447,7 +448,7 @@ void jit_uni_reorder_kernel_f32_t::emit_core() {
     Label vloop, vend;
     L(vloop);
     beqz(reg_rem_, vend);
-    vsetvli(reg_vl_, reg_rem_, SEW::e32, LMUL::m1);
+    vsetvli(reg_vl_, reg_rem_, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
 
     load_to_f32(vreg_data_, reg_addr_, itype, is0);
 
@@ -550,7 +551,7 @@ void jit_uni_reorder_kernel_f32_t::emit_pure_copy_core() {
     Label vloop, vend;
     L(vloop);
     beqz(reg_rem_, vend);
-    vsetvli(reg_vl_, reg_rem_, sew, LMUL::m1);
+    vsetvli(reg_vl_, reg_rem_, sew, LMUL::m1, VTA::ta, VMA::ma);
 
     if (sew == SEW::e32) {
         if (in_unit)

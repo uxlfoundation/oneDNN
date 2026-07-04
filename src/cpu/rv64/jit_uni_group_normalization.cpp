@@ -51,7 +51,7 @@ namespace {
 // Reduces one group to (sum, sum_of_squares) written as doubles. f32 accumulates
 // in f64 (vfwadd.wv / vfwmacc.vv); f16 widens f16->f32->f64 first. Both layouts:
 //   ncsp - the group is one contiguous C_PER_G*SP run, consumed by a VLA loop
-//          (vsetvli defaults to tail-undisturbed, so the partial-vl tail safely
+//          (partial-vl vsetvli passes VTA::tu explicitly so the tail safely
 //          accumulates into the running f64 vector before the final reduction).
 //   nspc - channel chunks (vl fixed per chunk) accumulated across spatial; lanes
 //          are independent partial sums reduced together at the end.
@@ -106,7 +106,8 @@ void stat_kernel_t<isa, d_type>::generate() {
         const VReg v_zero(24), v_red(25);
         const Reg reg_n = a7, reg_p = t3, reg_t = t4;
 
-        vsetvli(reg_vl, x0, SEW::e64, LMUL::m2); // zero accumulators
+        vsetvli(reg_vl, x0, SEW::e64, LMUL::m2, VTA::ta,
+                VMA::ma); // zero accumulators
         vmv_v_x(vS0, x0);
         vmv_v_x(vS1, x0);
         vmv_v_x(vS2, x0);
@@ -117,7 +118,8 @@ void stat_kernel_t<isa, d_type>::generate() {
         vmv_v_x(vQ3, x0);
 
         mul(reg_n, reg_cpg, reg_sp); // group_len = C_PER_G * SP
-        vsetvli(reg_vl, x0, SEW::e32, LMUL::m1); // vtype e32/m1, reg_vl = VLMAX
+        vsetvli(reg_vl, x0, SEW::e32, LMUL::m1, VTA::ta,
+                VMA::ma); // vtype e32/m1, reg_vl = VLMAX
         slli(reg_tmp, reg_vl, 2); // 4*VLMAX (== VLMAX*4 bytes for f32)
         slli(reg_tmp2, reg_tmp, 2); // 16*VLMAX bytes = src advance per iter
 
@@ -146,7 +148,7 @@ void stat_kernel_t<isa, d_type>::generate() {
         L(main_done);
 
         // Combine the four accumulator pairs (under e64/m2).
-        vsetvli(reg_t, x0, SEW::e64, LMUL::m2);
+        vsetvli(reg_t, x0, SEW::e64, LMUL::m2, VTA::ta, VMA::ma);
         vfadd_vv(vS0, vS0, vS1);
         vfadd_vv(vS2, vS2, vS3);
         vfadd_vv(vS0, vS0, vS2);
@@ -158,7 +160,7 @@ void stat_kernel_t<isa, d_type>::generate() {
         Label tail, tail_done;
         L(tail);
         beqz(reg_n, tail_done);
-        vsetvli(reg_vl, reg_n, SEW::e32, LMUL::m1);
+        vsetvli(reg_vl, reg_n, SEW::e32, LMUL::m1, VTA::tu, VMA::ma);
         vle32_v(vx0, reg_src);
         vfwadd_wv(vS0, vS0, vx0);
         vfwmacc_vv(vQ0, vx0, vx0);
@@ -168,9 +170,9 @@ void stat_kernel_t<isa, d_type>::generate() {
         j_(tail);
         L(tail_done);
 
-        vsetvli(reg_t, x0, SEW::e64, LMUL::m1);
+        vsetvli(reg_t, x0, SEW::e64, LMUL::m1, VTA::ta, VMA::ma);
         vmv_v_x(v_zero, x0);
-        vsetvli(reg_t, x0, SEW::e64, LMUL::m2);
+        vsetvli(reg_t, x0, SEW::e64, LMUL::m2, VTA::ta, VMA::ma);
         vfredusum_vs(v_red, vS0, v_zero);
         vfmv_f_s(fa0, v_red);
         fsd(fa0, reg_sum, 0);
@@ -192,7 +194,7 @@ void stat_kernel_t<isa, d_type>::generate() {
     const VReg v_zero = is_f16 ? VReg(16) : VReg(12);
     const VReg v_red = is_f16 ? VReg(17) : VReg(13);
 
-    vsetvli(reg_vl, x0, SEW::e64, acc_lmul);
+    vsetvli(reg_vl, x0, SEW::e64, acc_lmul, VTA::ta, VMA::ma);
     vmv_v_x(v_sum, x0);
     vmv_v_x(v_sq, x0);
 
@@ -205,7 +207,7 @@ void stat_kernel_t<isa, d_type>::generate() {
         } else {
             vle16_v(v_h, reg_src);
             vfwcvt_f_f_v(v_f, v_h); // f16 -> f32 (m2), under e16/m1
-            vsetvli(reg_tmp, reg_vl, SEW::e32, LMUL::m2);
+            vsetvli(reg_tmp, reg_vl, SEW::e32, LMUL::m2, VTA::tu, VMA::ma);
             vfwadd_wv(v_sum, v_sum, v_f); // f32 (m2) -> f64 (m4)
             vfwmacc_vv(v_sq, v_f, v_f);
         }
@@ -220,7 +222,7 @@ void stat_kernel_t<isa, d_type>::generate() {
         Label loop, done;
         L(loop);
         beqz(reg_n, done);
-        vsetvli(reg_vl, reg_n, load_sew, LMUL::m1);
+        vsetvli(reg_vl, reg_n, load_sew, LMUL::m1, VTA::tu, VMA::ma);
         accumulate();
         slli(reg_tmp, reg_vl, dtshift);
         add(reg_src, reg_src, reg_tmp);
@@ -236,7 +238,7 @@ void stat_kernel_t<isa, d_type>::generate() {
         Label cblk, creduce;
         L(cblk);
         beqz(reg_crem, creduce);
-        vsetvli(reg_vl, reg_crem, load_sew, LMUL::m1);
+        vsetvli(reg_vl, reg_crem, load_sew, LMUL::m1, VTA::tu, VMA::ma);
         mv(reg_sprem, reg_sp);
         mv(reg_ptr, reg_cbase);
         Label sp_loop, sp_done;
@@ -245,7 +247,8 @@ void stat_kernel_t<isa, d_type>::generate() {
         mv(reg_src, reg_ptr); // accumulate() reads reg_src
         accumulate();
         if (is_f16)
-            vsetvli(reg_vl, reg_crem, load_sew, LMUL::m1); // restore vtype
+            vsetvli(reg_vl, reg_crem, load_sew, LMUL::m1, VTA::tu,
+                    VMA::ma); // restore vtype
         add(reg_ptr, reg_ptr, reg_tmp2);
         addi(reg_sprem, reg_sprem, -1);
         j_(sp_loop);
@@ -258,9 +261,9 @@ void stat_kernel_t<isa, d_type>::generate() {
     }
 
     // Horizontal reduction of the f64 accumulators -> scalar sum / sumsq.
-    vsetvli(reg_vl, x0, SEW::e64, LMUL::m1);
+    vsetvli(reg_vl, x0, SEW::e64, LMUL::m1, VTA::ta, VMA::ma);
     vmv_v_x(v_zero, x0);
-    vsetvli(reg_vl, x0, SEW::e64, acc_lmul);
+    vsetvli(reg_vl, x0, SEW::e64, acc_lmul, VTA::ta, VMA::ma);
     vfredusum_vs(v_red, v_sum, v_zero);
     vfmv_f_s(fa0, v_red);
     fsd(fa0, reg_sum, 0);
@@ -361,13 +364,13 @@ void norm_kernel_t<isa, d_type>::generate() {
     // vs broadcast (ncsp) scale/shift.
     auto emit_chunk = [&](bool gamma_vec) {
         if (!is_f16) {
-            vsetvli(reg_vl, reg_runrem, SEW::e32, LMUL::m1);
+            vsetvli(reg_vl, reg_runrem, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
             vle32_v(v_dst, reg_rsrc);
         } else {
-            vsetvli(reg_vl, reg_runrem, SEW::e16, LMUL::m1);
+            vsetvli(reg_vl, reg_runrem, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
             vle16_v(v_h, reg_rsrc);
             vfwcvt_f_f_v(v_dst, v_h); // f16 -> f32 (m2)
-            vsetvli(reg_tmp, reg_vl, SEW::e32, LMUL::m2);
+            vsetvli(reg_tmp, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
         }
         vfsub_vf(v_dst, v_dst, ft0); // - mean
         vfmul_vf(v_dst, v_dst, ft1); // * inv_std
@@ -389,7 +392,7 @@ void norm_kernel_t<isa, d_type>::generate() {
         if (!is_f16) {
             vse32_v(v_dst, reg_rdst);
         } else {
-            vsetvli(reg_tmp, reg_vl, SEW::e16, LMUL::m1);
+            vsetvli(reg_tmp, reg_vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
             vfncvt_f_f_w(v_h, v_dst);
             vse16_v(v_h, reg_rdst);
         }

@@ -29,6 +29,18 @@
 #define XBYAK_RISCV_V 1
 #endif
 
+/*
+ * Opt out of Xbyak_riscv's backwards-compat default arguments for
+ * vsetvli/vsetivli (LMUL=m1, VTA=tu, VMA=mu). The upstream #pragma message
+ * literally says "XBYAK_RISCV_VSETV_DEFAULT_OLD is 0 in the future" — we
+ * early-adopt that future, which removes the implicit defaults and forces
+ * every call site to pass LMUL/VTA/VMA explicitly. Most call sites pass
+ * VTA::ta, VMA::ma (tail-agnostic, mask-agnostic) so the microarchitecture
+ * is free to zero inactive lanes instead of preserving them; the small set
+ * of accumulator-tail sites that genuinely need preservation pass VTA::tu.
+ */
+#define XBYAK_RISCV_VSETV_DEFAULT_OLD 0
+
 #include "xbyak_riscv/xbyak_riscv_util.hpp"
 
 namespace dnnl {

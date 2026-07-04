@@ -255,7 +255,7 @@ void jit_single_blk_kernel_t::emit_segment_kernel() {
         mv(t0, a2); // remaining columns
         L(col_loop);
         beqz(t0, col_done);
-        vsetvli(t6, t0, SEW::e32, LMUL::m1);
+        vsetvli(t6, t0, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
         if (plain_to_blocked_)
             emit_plain_to_blocked(full_block);
         else
@@ -317,11 +317,12 @@ void jit_single_blk_kernel_t::emit_transpose_kernel() {
         }
     };
 
-    auto set_vl_cols = [&]() { vsetvli(x0, t6, SEW::e32, LMUL::m1); };
+    auto set_vl_cols
+            = [&]() { vsetvli(x0, t6, SEW::e32, LMUL::m1, VTA::ta, VMA::ma); };
 
     auto set_vl_tile = [&]() {
         li(t4, (uint32_t)tile_cols_);
-        vsetvli(x0, t4, SEW::e32, LMUL::m1);
+        vsetvli(x0, t4, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
     };
 
     auto emit_plain_to_blocked_group = [&](int g, bool full_block) {
@@ -422,7 +423,7 @@ void jit_single_blk_kernel_t::emit_transpose_kernel() {
         L(cols_tail);
         mv(t6, t0);
         L(cols_step_ready);
-        vsetvli(t6, t6, SEW::e32, LMUL::m1);
+        vsetvli(t6, t6, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
 
         for (int g = 0; g < block_sz_; g += tile_cols_) {
             if (plain_to_blocked_)

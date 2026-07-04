@@ -178,7 +178,7 @@ void jit_wino_input_transform_t::generate() {
     bge(reg_ic_base, reg_ic_total, lbl_ic_end);
 
     sub(t0, reg_ic_total, reg_ic_base);
-    vsetvli(reg_vl, t0, SEW::e32, LMUL::m1);
+    vsetvli(reg_vl, t0, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
 
     // src_row_base = src + ic_base * ic_spb
     mul(a0, reg_ic_base, reg_ic_spb);
@@ -468,7 +468,7 @@ void jit_wino_output_transform_t::generate() {
     bge(reg_oc_base, reg_oc_total, lbl_oc_end);
 
     sub(t0, reg_oc_total, reg_oc_base);
-    vsetvli(reg_vl, t0, SEW::e32, LMUL::m1);
+    vsetvli(reg_vl, t0, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
 
     // Load bias once per OC chunk
     if (with_bias_) {

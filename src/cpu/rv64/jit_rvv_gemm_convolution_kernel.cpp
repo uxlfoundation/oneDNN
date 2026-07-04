@@ -89,7 +89,7 @@ void jit_rvv_gemm_convolution_copy_kernel_t::generate() {
     L(loop);
     beqz(reg_len, done);
 
-    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4);
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
     vle32_v(v_data, reg_src);
     vse32_v(v_data, reg_dst);
 
@@ -197,7 +197,7 @@ void jit_rvv_gemm_convolution_post_kernel_t::generate() {
     L(loop);
     beqz(reg_len, done);
 
-    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4);
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
     vle32_v(v_dst, reg_dst);
 
     if (vector_bias_) {

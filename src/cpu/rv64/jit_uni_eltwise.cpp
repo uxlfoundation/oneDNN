@@ -69,11 +69,11 @@ void emit_eltwise_loop(jit_generator_t *h, alg_kind_t alg, float alpha,
 
     // ---- load src (+ diff_dst) and widen to f32 in vd (and vdd) ----
     if (dt == data_type::f32) {
-        h->vsetvli(vl, len, SEW::e32, LMUL::m1);
+        h->vsetvli(vl, len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
         h->vle32_v(vd, p_in);
         if (!is_fwd) h->vle32_v(vdd, p_dd);
     } else if (dt == data_type::s32) {
-        h->vsetvli(vl, len, SEW::e32, LMUL::m1);
+        h->vsetvli(vl, len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
         h->vle32_v(vd, p_in);
         h->vfcvt_f_x_v(vd, vd);
         if (!is_fwd) {
@@ -81,22 +81,22 @@ void emit_eltwise_loop(jit_generator_t *h, alg_kind_t alg, float alpha,
             h->vfcvt_f_x_v(vdd, vdd);
         }
     } else if (dt == data_type::f16) {
-        h->vsetvli(vl, len, SEW::e16, LMUL::m1);
+        h->vsetvli(vl, len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         h->vle16_v(vt, p_in);
         h->vfwcvt_f_f_v(vd, vt); // e16m1 -> e32m2
         if (!is_fwd) {
             h->vle16_v(vt, p_dd);
             h->vfwcvt_f_f_v(vdd, vt);
         }
-        h->vsetvli(x0, vl, SEW::e32, LMUL::m2);
+        h->vsetvli(x0, vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
     } else { // s8 / u8
         const VReg vt2(3); // second 8-bit staging reg (backward diff_dst)
-        h->vsetvli(vl, len, SEW::e8, LMUL::m1);
+        h->vsetvli(vl, len, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
         h->vle8_v(vt, p_in);
         if (!is_fwd) h->vle8_v(vt2, p_dd);
         // vsext/vzext.vf4 operate at the DESTINATION vtype (e32m4) and read the
         // source group as 8-bit, so switch vtype before extending.
-        h->vsetvli(x0, vl, SEW::e32, LMUL::m4);
+        h->vsetvli(x0, vl, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
         if (is_s8) {
             h->vsext_vf4(vd, vt);
             if (!is_fwd) h->vsext_vf4(vdd, vt2);
@@ -125,7 +125,7 @@ void emit_eltwise_loop(jit_generator_t *h, alg_kind_t alg, float alpha,
         h->vfcvt_x_f_v(vd, vd);
         h->vse32_v(vd, p_out);
     } else if (dt == data_type::f16) {
-        h->vsetvli(x0, vl, SEW::e16, LMUL::m1);
+        h->vsetvli(x0, vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         h->vfncvt_f_f_w(vt, vd); // e32m2 -> e16m1
         h->vse16_v(vt, p_out);
     } else { // s8 / u8
@@ -139,9 +139,9 @@ void emit_eltwise_loop(jit_generator_t *h, alg_kind_t alg, float alpha,
             h->vfcvt_xu_f_v(vd, vd);
         // narrow i32(m4) -> i16(m2) -> i8(m1); values pre-clamped so truncation
         // via vnsrl by 0 is exact.
-        h->vsetvli(x0, vl, SEW::e16, LMUL::m2);
+        h->vsetvli(x0, vl, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
         h->vnsrl_wi(vi16, vd, 0);
-        h->vsetvli(x0, vl, SEW::e8, LMUL::m1);
+        h->vsetvli(x0, vl, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
         h->vnsrl_wi(vt, vi16, 0);
         h->vse8_v(vt, p_out);
     }

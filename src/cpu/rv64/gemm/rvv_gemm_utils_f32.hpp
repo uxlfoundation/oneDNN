@@ -23,6 +23,7 @@
 #include <atomic>
 #include <cstddef>
 
+#include "cpu/rv64/cpu_isa_traits.hpp"
 #include "xbyak_riscv/xbyak_riscv_util.hpp"
 
 namespace dnnl {

@@ -893,7 +893,7 @@ void jit_brgemm_bf16_kernel_t::generate() {
     // e32/m4 for C/bias; toggle to e16/m2 around the FMA loop because
     // vfwmaccbf16.vf is defined at SEW=e16. LMUL=m2 chosen so VLMAX
     // matches the outer e32/m4 setting and vl is preserved.
-    vsetvli(x0, reg_M, SEW::e32, LMUL::m4);
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
     li(reg_lda, LDA_bytes);
     li(reg_ldb, LDB_bytes);
@@ -931,7 +931,7 @@ void jit_brgemm_bf16_kernel_t::generate() {
     vmv_v_i(v_c3, 0);
 
     // Switch to e16/m2 for the K loop (vfwmaccbf16.vf requires SEW=e16).
-    vsetvli(x0, reg_M, SEW::e16, LMUL::m2);
+    vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
 
     mv(reg_k, x0);
     Label lbl_k_main_end, lbl_k_tail, lbl_k_tail_end;
@@ -1031,7 +1031,7 @@ void jit_brgemm_bf16_kernel_t::generate() {
     L(lbl_k_tail_end);
 
     // Switch back to e32/m4 for bias add + C store (f32 ops on m4 accums).
-    vsetvli(x0, reg_M, SEW::e32, LMUL::m4);
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
     // Bias is f32 (same as f32 kernel) → vle32_v + vfadd_vv.
     {
@@ -1110,7 +1110,7 @@ void jit_brgemm_bf16_kernel_t::generate() {
     vmv_v_i(v_c0, 0);
 
     // Switch to e16/m2 for single-column FMA loop.
-    vsetvli(x0, reg_M, SEW::e16, LMUL::m2);
+    vsetvli(x0, reg_M, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
 
     mv(reg_k, x0);
     Label lbl_kt2, lbl_kt2_end;
@@ -1129,7 +1129,7 @@ void jit_brgemm_bf16_kernel_t::generate() {
     L(lbl_kt2_end);
 
     // Back to e32/m4 for bias + C store.
-    vsetvli(x0, reg_M, SEW::e32, LMUL::m4);
+    vsetvli(x0, reg_M, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
     {
         Label lbl_no_bias2;

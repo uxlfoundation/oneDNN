@@ -94,7 +94,7 @@ void jit_rvv_softmax_affine_kernel_t::generate() {
     Label loop, done;
     L(loop);
     beqz(reg_len, done);
-    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
     vle32_v(v_src, reg_src);
     vfsub_vf(v_src, v_src, f_sub);
     vfmul_vf(v_src, v_src, f_mul);
@@ -187,18 +187,18 @@ void jit_rvv_softmax_f16_affine_kernel_t::generate() {
     beqz(reg_len, done);
 
     if (src_f32_) {
-        vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m2);
+        vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
         vle32_v(v_f32, reg_src);
     } else {
-        vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1);
+        vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vle16_v(v_src, reg_src);
         vfwcvt_f_f_v(v_f32, v_src);
-        vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m2);
+        vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
     }
 
     vfsub_vf(v_f32, v_f32, f_sub);
     vfmul_vf(v_f32, v_f32, f_mul);
-    vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m1);
+    vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
     vfncvt_f_f_w(v_dst, v_f32);
     vse16_v(v_dst, reg_dst);
 
@@ -241,7 +241,7 @@ void jit_rvv_softmax_f16_strided_kernel_t::generate() {
     L(loop);
     beqz(reg_len, done);
 
-    vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1);
+    vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
     if (gather_) {
         vlse16_v(v_data, reg_src, reg_stride);
         vse16_v(v_data, reg_dst);
@@ -335,20 +335,20 @@ void jit_rvv_softmax_f16_exp_sub_sum_kernel_t::generate() {
     li(reg_minexp, static_cast<int64_t>(0xC1000000u));
     li(reg_maxexp, static_cast<int64_t>(0x3F800000u));
 
-    vsetvli(reg_vl, x0, SEW::e32, LMUL::m4);
+    vsetvli(reg_vl, x0, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
     vfmv_v_f(v_acc, f_zero);
 
     Label loop, finish;
     L(loop);
     beqz(reg_len, finish);
 
-    vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m2);
+    vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
     vle16_v(v_in16, reg_src);
     slli(reg_bytes, reg_vl, 1);
     add(reg_src, reg_src, reg_bytes);
     vfwcvt_f_f_v(v_x, v_in16);
 
-    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4);
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4, VTA::tu, VMA::ma);
     vfsub_vf(v_x, v_x, f_sub);
     vfmv_v_f(v_bias, f_round);
     vmflt_vf(v_mask, v_x, f_lower);
@@ -392,7 +392,7 @@ void jit_rvv_softmax_f16_exp_sub_sum_kernel_t::generate() {
     j_(loop);
 
     L(finish);
-    vsetvli(reg_vl, x0, SEW::e32, LMUL::m4);
+    vsetvli(reg_vl, x0, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
     vfmv_v_f(v_red, f_zero);
     vfredosum_vs(v_red, v_acc, v_red);
     vfmv_f_s(f_sum, v_red);

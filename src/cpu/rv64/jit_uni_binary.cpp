@@ -39,22 +39,22 @@ namespace {
 void set_load_vtype(
         jit_generator_t *h, data_type_t dt, const Reg &vl, const Reg &len) {
     if (dt == data_type::f32 || dt == data_type::s32)
-        h->vsetvli(vl, len, SEW::e32, LMUL::m1);
+        h->vsetvli(vl, len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
     else if (dt == data_type::f16)
-        h->vsetvli(vl, len, SEW::e16, LMUL::m1);
+        h->vsetvli(vl, len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
     else
-        h->vsetvli(vl, len, SEW::e8, LMUL::m1);
+        h->vsetvli(vl, len, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
 }
 
 // Switch to the f32 compute vtype for `dt` (m1 for f32/s32, m2 for f16, m4 for
 // s8/u8), keeping vl.
 void set_compute_vtype(jit_generator_t *h, data_type_t dt, const Reg &vl) {
     if (dt == data_type::f32 || dt == data_type::s32)
-        h->vsetvli(x0, vl, SEW::e32, LMUL::m1);
+        h->vsetvli(x0, vl, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
     else if (dt == data_type::f16)
-        h->vsetvli(x0, vl, SEW::e32, LMUL::m2);
+        h->vsetvli(x0, vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
     else
-        h->vsetvli(x0, vl, SEW::e32, LMUL::m4);
+        h->vsetvli(x0, vl, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 }
 
 // Load one chunk from `ptr` (narrow vtype already set) into `vdst` and widen to
@@ -113,12 +113,12 @@ void emit_binary_loop(jit_generator_t *h, alg_kind_t alg, bool scalar_src1,
             h->fcvt_s_wu(f_s1, gpr);
         } else { // f16: widen via the vector unit, extract lane 0
             h->li(gpr, 1);
-            h->vsetvli(x0, gpr, SEW::e16, LMUL::m1);
+            h->vsetvli(x0, gpr, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
             h->vle16_v(vt, p1);
             h->vfwcvt_f_f_v(vs1, vt); // e16m1 -> e32m2
             // vfmv_f_s reads lane 0 at the CURRENT SEW: switch to e32 first, or
             // it would extract 16 bits of the widened f32 (wrong scalar).
-            h->vsetvli(x0, gpr, SEW::e32, LMUL::m2);
+            h->vsetvli(x0, gpr, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
             h->vfmv_f_s(f_s1, vs1);
         }
     }
@@ -249,13 +249,13 @@ void emit_binary_loop(jit_generator_t *h, alg_kind_t alg, bool scalar_src1,
         Label sloop, sdone;
         h->L(sloop);
         h->beqz(len, sdone);
-        h->vsetvli(vl, len, nsew, LMUL::m1);
+        h->vsetvli(vl, len, nsew, LMUL::m1, VTA::ta, VMA::ma);
         vld(vd, p0);
         vld(vs1, p1);
-        h->vsetvli(x0, vl, SEW::e8, LMUL::m1);
+        h->vsetvli(x0, vl, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
         h->vle8_v(vt, p2);
         h->vmsne_vx(VReg(0), vt, x0); // v0 = (src2 != 0)
-        h->vsetvli(x0, vl, nsew, LMUL::m1);
+        h->vsetvli(x0, vl, nsew, LMUL::m1, VTA::ta, VMA::ma);
         h->vmerge_vvm(vt2, vs1, vd); // v0 ? src0(vd) : src1(vs1)
         if (nsew == SEW::e32)
             h->vse32_v(vt2, pd);
@@ -328,7 +328,7 @@ void emit_binary_loop(jit_generator_t *h, alg_kind_t alg, bool scalar_src1,
         h->vfcvt_x_f_v(vd, vd);
         h->vse32_v(vd, pd);
     } else if (dt == data_type::f16) {
-        h->vsetvli(x0, vl, SEW::e16, LMUL::m1);
+        h->vsetvli(x0, vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         h->vfncvt_f_f_w(vt, vd);
         h->vse16_v(vt, pd);
     } else { // s8 / u8
@@ -340,9 +340,9 @@ void emit_binary_loop(jit_generator_t *h, alg_kind_t alg, bool scalar_src1,
             h->vfcvt_x_f_v(vd, vd);
         else
             h->vfcvt_xu_f_v(vd, vd);
-        h->vsetvli(x0, vl, SEW::e16, LMUL::m2);
+        h->vsetvli(x0, vl, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
         h->vnsrl_wi(vs1, vd, 0); // i32m4 -> i16m2 (vs1 reused as temp)
-        h->vsetvli(x0, vl, SEW::e8, LMUL::m1);
+        h->vsetvli(x0, vl, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
         h->vnsrl_wi(vt, vs1, 0); // i16m2 -> i8m1
         h->vse8_v(vt, pd);
     }

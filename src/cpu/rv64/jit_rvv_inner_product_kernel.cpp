@@ -105,7 +105,7 @@ void jit_rvv_inner_product_kernel_t::generate_x8_s8(bool src_is_u8) {
     L(loop);
     beqz(reg_len, done);
 
-    vsetvli(reg_vl, reg_len, SEW::e8, LMUL::m1);
+    vsetvli(reg_vl, reg_len, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
     vle8_v(v_src, reg_src);
     vle8_v(v_wei, reg_wei);
     if (src_is_u8)
@@ -113,7 +113,7 @@ void jit_rvv_inner_product_kernel_t::generate_x8_s8(bool src_is_u8) {
     else
         vwmul_vv(v_prod, v_src, v_wei);
 
-    vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m2);
+    vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
     vmv_v_x(v_zero, x0);
     vwredsum_vs(v_sum, v_prod, v_zero);
     vmv_x_s(reg_part, v_sum);

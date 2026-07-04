@@ -102,7 +102,7 @@ void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
     Label loop, done;
     L(loop);
     beqz(reg_len, done);
-    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1);
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
     vle32_v(v_src, reg_src);
     if (per_elem_params_) {
         vle32_v(v_mean, reg_mean);

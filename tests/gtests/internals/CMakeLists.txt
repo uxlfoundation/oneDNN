@@ -28,6 +28,7 @@ list(APPEND TEST_SOURCES ${MAIN_SRC_GTEST})
 if(NOT DNNL_TARGET_ARCH STREQUAL "X64" OR DNNL_CPU_RUNTIME STREQUAL "NONE")
     list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_brgemm.cpp)
     list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_float8.cpp)
+    list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_cpu_ir.cpp)
 endif()
 
 if(DNNL_ENABLE_MAX_CPU_ISA)
@@ -61,5 +62,13 @@ register_exe(${TEST_EXE}_sdpa
         "${MAIN_SRC_GTEST};${CMAKE_CURRENT_SOURCE_DIR}/test_sdpa.cpp;${CMAKE_CURRENT_SOURCE_DIR}/test_utils.cpp"
         "test" "dnnl_gtest")
 list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_sdpa.cpp)
+
+# Register CPU IR tests as a separate executable (X64 only)
+if(DNNL_TARGET_ARCH STREQUAL "X64" AND NOT DNNL_CPU_RUNTIME STREQUAL "NONE")
+    register_exe(${TEST_EXE}_cpu_ir
+            "${MAIN_SRC_GTEST};${CMAKE_CURRENT_SOURCE_DIR}/test_cpu_ir.cpp"
+            "test" "dnnl_gtest")
+    list(REMOVE_ITEM TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/test_cpu_ir.cpp)
+endif()
 
 register_exe(${TEST_EXE} "${TEST_SOURCES}" "test" "dnnl_gtest")

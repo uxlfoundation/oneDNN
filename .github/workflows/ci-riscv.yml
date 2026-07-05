@@ -185,7 +185,7 @@ jobs:
           CTEST_PARALLEL_LEVEL: 4
           ONEDNN_THREADING: ${{ matrix.config.threading }}
           ONEDNN_TEST_SET: ${{ matrix.config.testset }}
-          QEMU_CPU: "rv64,v=true,vlen=${{ matrix.config.vlen }},vext_spec=v1.0"
+          QEMU_CPU: "rv64,v=true,zvfh=true,zvfbfwma=true,vlen=${{ matrix.config.vlen }},vext_spec=v1.0"
 
   # This job adds a check named "CI RISC-V" that represents overall
   # workflow status and can be used in branch rulesets

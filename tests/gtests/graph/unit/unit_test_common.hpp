@@ -96,7 +96,7 @@ private:
     using ltw = dnnl::impl::graph::logical_tensor_wrapper_t;
 
     struct deletor_wrapper_t {
-        deletor_wrapper_t(const dnnl::impl::graph::engine_t *eng) : eng_(eng) {}
+        deletor_wrapper_t(dnnl::impl::graph::engine_t *eng) : eng_(eng) {}
         void operator()(void *p) const {
             if (p) {
                 const auto k = eng_->kind();
@@ -126,13 +126,13 @@ private:
                 }
             }
         }
-        const dnnl::impl::graph::engine_t *eng_;
+        dnnl::impl::graph::engine_t *eng_;
     };
 
     /// @brief Alloc memory by engine
     /// @return Alloced memory
     static std::shared_ptr<char> allocate(
-            const dnnl::impl::graph::engine_t *e, size_t size) {
+            dnnl::impl::graph::engine_t *e, size_t size) {
         std::shared_ptr<char> data;
         auto alc = static_cast<dnnl::impl::graph::allocator_t *>(
                 e->get_allocator());
@@ -169,7 +169,7 @@ public:
     test_tensor_t() = default;
 
     test_tensor_t(const dnnl::impl::graph::logical_tensor_t &lt,
-            const dnnl::impl::graph::engine_t *e)
+            dnnl::impl::graph::engine_t *e)
         : num_bytes_(ltw(lt).size()) {
         data_ = allocate(e, num_bytes_);
         ts_ = dnnl::impl::graph::tensor_t(lt, e, data_.get());
@@ -177,7 +177,7 @@ public:
 
     template <typename T>
     test_tensor_t(const dnnl::impl::graph::logical_tensor_t &lt,
-            const dnnl::impl::graph::engine_t *e, const std::vector<T> &data)
+            dnnl::impl::graph::engine_t *e, const std::vector<T> &data)
         : test_tensor_t(lt, e) {
         this->fill(data);
     }

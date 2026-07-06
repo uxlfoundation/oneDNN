@@ -40,15 +40,15 @@ static const size_t DNNL_OCL_MEMALIGNMENT = 0;
 using namespace dnnl::impl::graph;
 
 static void *tensor_malloc(
-        size_t size, const engine_t *eng, allocator_t::mem_type_t type) {
+        size_t size, engine_t *eng, allocator_t::mem_type_t type) {
     const auto *alc = static_cast<dnnl::impl::graph::allocator_t *>(
             eng->get_allocator());
 #ifdef DNNL_WITH_SYCL
     void *dev_ptr {nullptr};
-    dnnl_sycl_interop_engine_get_device(const_cast<engine_t *>(eng), &dev_ptr);
+    dnnl_sycl_interop_engine_get_device(eng, &dev_ptr);
     auto *dev = static_cast<sycl::device *>(dev_ptr);
     void *ctx_ptr {nullptr};
-    dnnl_sycl_interop_engine_get_context(const_cast<engine_t *>(eng), &ctx_ptr);
+    dnnl_sycl_interop_engine_get_context(eng, &ctx_ptr);
     auto *ctx = static_cast<sycl::context *>(ctx_ptr);
 #endif
     if (eng->kind() == engine_kind::cpu) {
@@ -77,15 +77,15 @@ static void *tensor_malloc(
     }
 }
 
-static void tensor_free(void *p, const engine_t *eng) {
+static void tensor_free(void *p, engine_t *eng) {
     const auto *alc = static_cast<dnnl::impl::graph::allocator_t *>(
             eng->get_allocator());
 #ifdef DNNL_WITH_SYCL
     void *dev_ptr {nullptr};
-    dnnl_sycl_interop_engine_get_device(const_cast<engine_t *>(eng), &dev_ptr);
+    dnnl_sycl_interop_engine_get_device(eng, &dev_ptr);
     auto *dev = static_cast<sycl::device *>(dev_ptr);
     void *ctx_ptr {nullptr};
-    dnnl_sycl_interop_engine_get_context(const_cast<engine_t *>(eng), &ctx_ptr);
+    dnnl_sycl_interop_engine_get_context(eng, &ctx_ptr);
     auto *ctx = static_cast<sycl::context *>(ctx_ptr);
 #endif
     if (eng->kind() == engine_kind::cpu) {
@@ -112,7 +112,7 @@ static void tensor_free(void *p, const engine_t *eng) {
 }
 
 dnnl_graph_tensor::dnnl_graph_tensor(
-        const logical_tensor_t &lt, const engine_t *eng, void *handle)
+        const logical_tensor_t &lt, engine_t *eng, void *handle)
     : lt_(lt), eng_(eng) {
     if (handle == DNNL_MEMORY_ALLOCATE) {
         size_t num_bytes = logical_tensor_wrapper_t(lt).size();
@@ -214,7 +214,7 @@ status_t DNNL_API dnnl_graph_tensor_get_engine(
     if (ltw.is_host_scalar()) {
         *engine = nullptr;
     } else {
-        *engine = const_cast<engine_t *>(tensor->get_engine());
+        *engine = tensor->get_engine();
     }
 
     return status::success;

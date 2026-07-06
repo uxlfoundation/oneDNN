@@ -25,7 +25,7 @@ public:
     dnnl_graph_tensor() = default;
 
     dnnl_graph_tensor(const dnnl::impl::graph::logical_tensor_t &lt,
-            const dnnl::impl::graph::engine_t *eng, void *handle);
+            dnnl::impl::graph::engine_t *eng, void *handle);
 
     void *get_data_handle() const { return handle_.get(); }
 
@@ -46,7 +46,7 @@ public:
 
     operator bool() const { return handle_ != nullptr; }
 
-    const dnnl::impl::graph::engine_t *get_engine() const { return eng_; }
+    dnnl::impl::graph::engine_t *get_engine() const { return eng_; }
 
 private:
     static dnnl::impl::graph::status_t dummy_destructor(void *) {
@@ -55,7 +55,7 @@ private:
 
     dnnl::impl::graph::logical_tensor_t lt_
             = dnnl::impl::graph::zero_logical_tensor();
-    const dnnl::impl::graph::engine_t *eng_ {nullptr};
+    dnnl::impl::graph::engine_t *eng_ {nullptr};
 
     std::shared_ptr<void> handle_ {nullptr};
 

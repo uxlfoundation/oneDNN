@@ -64,20 +64,6 @@ TEST(test_common, MakeDnnlMemory) {
     }
 }
 
-TEST(test_common, Is4cBlocked) {
-    {
-        graph::logical_tensor_t lt = utils::logical_tensor_init(
-                0, {1, 2}, graph::data_type::f32, graph::layout_type::any);
-        auto desc = dnnl_impl::make_dnnl_memory_desc(lt);
-        ASSERT_FALSE(dnnl_impl::is_4c_blocked(desc));
-    }
-    {
-        dnnl::memory::desc md3 {{1, 4, 3, 4}, dnnl::memory::data_type::f32,
-                dnnl::memory::format_tag::nChw4c, true};
-        ASSERT_TRUE(dnnl_impl::is_4c_blocked(md3));
-    }
-}
-
 TEST(test_common, FillLayoutInfoDeathTest) {
     {
         graph::logical_tensor_t lt = utils::logical_tensor_init(

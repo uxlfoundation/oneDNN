@@ -40,8 +40,10 @@ struct trans_wrapper_t;
 struct trans_context_t;
 } // namespace jit_uni_pooling_utils
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <cpu_isa_t isa>
 struct jit_uni_pooling_fwd_t : public primitive_t {
+    static constexpr data_type_t d_type = data_type::f32;
+
     struct pd_t : public cpu_pooling_fwd_pd_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
 
@@ -51,8 +53,7 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace utils;
 
-            const bool ok = mayiuse(isa) && is_superset(isa, sve) && is_fwd()
-                    && !has_zero_dim_memory()
+            const bool ok = mayiuse(isa) && is_fwd() && !has_zero_dim_memory()
                     && everyone_is(
                             d_type, src_md()->data_type, dst_md()->data_type)
                     && attr()->has_default_values(
@@ -111,8 +112,10 @@ private:
     static constexpr data_type_t wsp_dt_ = data_type::f32;
 };
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
+template <cpu_isa_t isa>
 struct jit_uni_pooling_bwd_t : public primitive_t {
+    static constexpr data_type_t d_type = data_type::f32;
+
     struct pd_t : public cpu_pooling_bwd_pd_t {
         using cpu_pooling_bwd_pd_t::cpu_pooling_bwd_pd_t;
 
@@ -122,7 +125,7 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
         status_t init(engine_t *engine) {
             using namespace utils;
 
-            const bool ok = mayiuse(isa) && is_superset(isa, sve)
+            const bool ok = mayiuse(isa)
                     && set_default_params() == status::success && !is_fwd()
                     && !has_zero_dim_memory()
                     && everyone_is(d_type, diff_src_md()->data_type,

@@ -1820,14 +1820,14 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                         const int rd_block_quadtail
                                 = brg.rd_block % (16 / brg.typesize_A);
                         if (brg.typesize_A == 1)
-                            set_preg(rd_tail_mask.b, rd_block_quadtail, X_TMP_0,
-                                    X_TMP_1);
+                            set_preg(
+                                    rd_tail_mask.b, rd_block_quadtail, X_TMP_0);
                         if (brg.typesize_A == 2)
-                            set_preg(rd_tail_mask.h, rd_block_quadtail, X_TMP_0,
-                                    X_TMP_1);
+                            set_preg(
+                                    rd_tail_mask.h, rd_block_quadtail, X_TMP_0);
                         if (brg.typesize_A == 4)
-                            set_preg(rd_tail_mask.s, rd_block_quadtail, X_TMP_0,
-                                    X_TMP_1);
+                            set_preg(
+                                    rd_tail_mask.s, rd_block_quadtail, X_TMP_0);
                     }
 
                     gemm_microkernel(bd_block2, is_bdb_tail, ld_block2,
@@ -1850,7 +1850,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                 // GEMV loads whole vector from left hand side
                 const int k_tail
                         = brg.LDA % simd_elems(data_type::f32, brg.isa_impl);
-                set_preg(rd_tail_mask.s, k_tail, X_TMP_0, X_TMP_1);
+                set_preg(rd_tail_mask.s, k_tail, X_TMP_0);
 
                 gemv_microkernel(is_bdb_tail, ld_block2, is_rd_tail, vpad);
             } else {
@@ -1860,28 +1860,22 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                     const int rd_tail_quadtail
                             = brg.rdb_tail == 16 ? 16 : (brg.rdb_tail % 16);
                     if (brg.typesize_A == 1)
-                        set_preg(rd_tail_mask.b, rd_tail_quadtail, X_TMP_0,
-                                X_TMP_1);
+                        set_preg(rd_tail_mask.b, rd_tail_quadtail, X_TMP_0);
                     if (brg.typesize_A == 2)
-                        set_preg(rd_tail_mask.h, rd_tail_quadtail, X_TMP_0,
-                                X_TMP_1);
+                        set_preg(rd_tail_mask.h, rd_tail_quadtail, X_TMP_0);
                     if (brg.typesize_A == 4)
-                        set_preg(rd_tail_mask.s, rd_tail_quadtail, X_TMP_0,
-                                X_TMP_1);
+                        set_preg(rd_tail_mask.s, rd_tail_quadtail, X_TMP_0);
                     // Note that n_bcast_1_load may still need to deal with the tail
                 } else {
                     // n_load_1_bcast loads at most a word, but we may need to predicate the
                     // last word load to avoid overstepping the A buffer
                     const auto rd_tail_size = brg.rdb_tail % brg.rd_step;
                     if (brg.typesize_A == 1)
-                        set_preg(
-                                rd_tail_mask.b, rd_tail_size, X_TMP_0, X_TMP_1);
+                        set_preg(rd_tail_mask.b, rd_tail_size, X_TMP_0);
                     if (brg.typesize_A == 2)
-                        set_preg(
-                                rd_tail_mask.h, rd_tail_size, X_TMP_0, X_TMP_1);
+                        set_preg(rd_tail_mask.h, rd_tail_size, X_TMP_0);
                     if (brg.typesize_A == 4)
-                        set_preg(
-                                rd_tail_mask.s, rd_tail_size, X_TMP_0, X_TMP_1);
+                        set_preg(rd_tail_mask.s, rd_tail_size, X_TMP_0);
                 }
 
                 gemm_microkernel(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
@@ -2225,7 +2219,7 @@ void jit_brgemm_kernel_t::generate() {
 
     // Can we remove this?
     if (simd_w_ != cpu_sveLen / sizeof(float)) {
-        set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
+        set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0);
     }
 
     mov(x7, x0);
@@ -2241,7 +2235,7 @@ void jit_brgemm_kernel_t::generate() {
                              brg.req_s8s8_compensation)
             && IMPLICATION(!vpad_exist, brg.req_cal_comp_pads);
 
-    set_preg(ld_tail_mask.s, brg.ldb_tail, X_TMP_0, X_TMP_1);
+    set_preg(ld_tail_mask.s, brg.ldb_tail, X_TMP_0);
     if (brg.is_int8 && !brg.has_int8_vnni) { assert(!"unsupported\n"); }
 
     read_params();

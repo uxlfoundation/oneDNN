@@ -345,8 +345,8 @@ template <cpu_isa_t isa>
 inline void jit_uni_pool_kernel_t<isa>::prepare_tail_mask() {
     /* PRegS(k_c_tail_mask) keeps flags in the context
            of 8-bit elements. */
-    set_preg(k_c_tail_mask_b.b, jpp.c_tail, X_TMP_0, X_TMP_1);
-    set_preg(k_c_tail_mask_s.s, jpp.c_tail, X_TMP_0, X_TMP_1);
+    set_preg(k_c_tail_mask_b.b, jpp.c_tail, X_TMP_0);
+    set_preg(k_c_tail_mask_s.s, jpp.c_tail, X_TMP_0);
     not_(k_c_tail_mask_s_not.b, P_ALL_ONE / T_z, k_c_tail_mask_s.b);
 }
 
@@ -892,7 +892,7 @@ void jit_uni_pool_kernel_t<isa>::generate() {
     size_t simd_w_ = simd_elems(data_type_t::dnnl_f32, isa);
 
     if (simd_w_ != cpu_sveLen / sizeof(float))
-        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0);
 
     Label idx_table;
 

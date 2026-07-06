@@ -242,7 +242,7 @@ struct jit_bf16_matmul_kernel_t : public jit_generator_t {
                         : (brg.n_tail % brg.n_blk);
             }
         }
-        set_preg(prd_st.s, pred_st, X_TMP_0, X_TMP_1);
+        set_preg(prd_st.s, pred_st, X_TMP_0);
     }
 
     void generate() override {

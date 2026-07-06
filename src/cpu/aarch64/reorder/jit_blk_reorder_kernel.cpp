@@ -116,7 +116,7 @@ void jit_single_blk_kernel_t::generate() {
 
     Label tail_processing;
 
-    set_preg(p_tmp2.s, 4, X_TMP_0, X_TMP_1);
+    set_preg(p_tmp2.s, 4, X_TMP_0);
     rev(p_tmp1.s, p_tmp2.s);
 
     preamble();
@@ -300,7 +300,7 @@ void jit_single_blk_kernel_t::gen_transpose_8x8() {
 // keep order nchw -> nChw()C
 // or nChw()C -> nchw
 void jit_single_blk_kernel_t::gen_setmask(int mask) {
-    set_preg(p_mask.s, mask, x_tmp_0, x_tmp_1);
+    set_preg(p_mask.s, mask, x_tmp_0);
 }
 
 void jit_single_blk_kernel_t::gen_transpose_4x4() {

@@ -462,7 +462,7 @@ struct jit_bnorm_t : public jit_generator_t {
     void prepare_tail_mask() {
         if (!is_c_padded()) return;
         const int tail = pd_->C() % (int)(vlen / sizeof(float));
-        set_preg(ktail_mask.s, tail, X_TMP_0, X_TMP_1);
+        set_preg(ktail_mask.s, tail, X_TMP_0);
     }
 
     void prepare_relu() {

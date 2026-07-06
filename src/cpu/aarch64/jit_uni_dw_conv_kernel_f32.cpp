@@ -459,7 +459,7 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::generate() {
     this->preamble();
     //TO DO : renaming predicate register (P_ALL_ONE)
     if (isa != asimd && simd_w_ != cpu_sveLen / sizeof(float))
-        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0);
     if (jcp.is_fused_conv) {
         ldr(reg_input_buffer_ptr, ptr(abi_param1, GET_OFF(src)));
         mov(reg_iw_offset, 0);
@@ -1240,7 +1240,7 @@ void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::generate() {
     preamble();
     //TO DO : renaming predicate register (P_ALL_ONE)
     if (simd_w_ != cpu_sveLen / sizeof(float)) {
-        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0);
     }
 
     if (simd_w_ != 16 && simd_w_ != 8) {

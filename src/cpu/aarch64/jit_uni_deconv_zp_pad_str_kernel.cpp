@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2022-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -109,7 +109,7 @@ void jit_uni_deconv_zp_pad_str_kernel_t<isa>::init() {
     else
         assert(!"unreachable");
 
-    set_preg(ktail_mask_.s, tail_size_);
+    set_preg(ktail_mask_.s, tail_size_, X_TMP_0);
 
     if (!jcp_.is_depthwise) // fill register byte ones
         dup(vmm_one_bytes_.b, 0x01);

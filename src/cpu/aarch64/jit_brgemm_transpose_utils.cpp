@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -104,7 +104,7 @@ void jit_brgemm_trans_m_k_f32_t::generate() {
 
     auto kmovw = [=](PReg k, unsigned w) {
         mov_imm(regw_tmp, w);
-        set_preg(k.h, w, X_TMP_0, X_TMP_1);
+        set_preg(k.h, w, X_TMP_0);
     };
 
     kmovw(k3333, 0x3333); // 0011001100110011
@@ -310,8 +310,7 @@ void jit_brgemm_copy_to_coarse_t::set_last_row_tail_masks() {
     assert(row_tail > 0 && "kernel is meant to be used with tail processing");
 
     // Set load mask
-    set_preg(
-            reg_m_last_row_tail_load.d, typesize_ * row_tail, X_TMP_0, X_TMP_1);
+    set_preg(reg_m_last_row_tail_load.d, typesize_ * row_tail, X_TMP_0);
 
     // Caution: Since size of ZMM equals 64 bytes therefore we need
     // different masks to store tails with smaller row_block_size_
@@ -329,10 +328,10 @@ void jit_brgemm_copy_to_coarse_t::set_last_row_tail_masks() {
     if (row_tail_store_size >= num_bytes(full_mask)) {
         ptrue(reg_m_last_row_tail_load.b);
     } else if (row_tail_store_size >= num_bytes(half_mask))
-        set_preg(reg_m_last_row_tail_load.b, half_mask, X_TMP_0, X_TMP_1);
+        set_preg(reg_m_last_row_tail_load.b, half_mask, X_TMP_0);
     else {
         assert(row_tail_store_size == num_bytes(quad_mask));
-        set_preg(reg_m_last_row_tail_load.b, quad_mask, X_TMP_0, X_TMP_1);
+        set_preg(reg_m_last_row_tail_load.b, quad_mask, X_TMP_0);
     }
 }
 
@@ -344,8 +343,8 @@ void jit_brgemm_copy_to_coarse_t::set_full_row_tail_masks() {
             ? size_t {0x00000000ffffffff}
             : size_t {0x000000000000ffff};
 
-    set_preg(reg_m_full_row_tail_store.b, tail_mask, X_TMP_0, X_TMP_1);
-    set_preg(reg_m_full_row_tail_load.b, tail_mask, X_TMP_0, X_TMP_1);
+    set_preg(reg_m_full_row_tail_store.b, tail_mask, X_TMP_0);
+    set_preg(reg_m_full_row_tail_load.b, tail_mask, X_TMP_0);
 }
 
 void jit_brgemm_copy_to_coarse_t::generate() {
@@ -647,8 +646,7 @@ void jit_brgemm_trans_wei_f32_t::generate() {
     add_imm(X_DEFAULT_ADDR, param1, GET_OFF(current_K), X_TMP_0);
     ldr(reg_loop_K, ptr(X_DEFAULT_ADDR));
 
-    auto kmovw
-            = [=](PReg k, unsigned w) { set_preg(k.h, w, X_TMP_0, X_TMP_1); };
+    auto kmovw = [=](PReg k, unsigned w) { set_preg(k.h, w, X_TMP_0); };
 
     kmovw(k3333, 0x3333); // 0011001100110011
     kmovw(k5555, 0x5555); // 0101010101010101

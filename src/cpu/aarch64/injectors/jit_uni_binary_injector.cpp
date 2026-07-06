@@ -1753,7 +1753,7 @@ static void load_bytes(jit_generator_t *host, const Xbyak_aarch64::ZReg &vmm,
     if (load_size == 0) {
         return;
     } else {
-        host->set_preg(host->P_TMP.b, load_size);
+        host->set_preg(host->P_TMP.b, load_size, host->X_TMP_3);
         host->ld1b(vmm.b, host->P_TMP / Xbyak_aarch64::T_z,
                 Xbyak_aarch64::ptr(reg_addr));
     }

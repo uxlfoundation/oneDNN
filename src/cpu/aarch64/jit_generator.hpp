@@ -335,13 +335,10 @@ public:
         }
     }
 
-    template <typename PRegBHSD, typename T>
-    void set_preg(const PRegBHSD &p, T tail_size,
-            const Xbyak_aarch64::XReg x_tmp0 = Xbyak_aarch64::XReg(DUMMY_IDX),
-            const Xbyak_aarch64::XReg x_tmp1 = Xbyak_aarch64::XReg(DUMMY_IDX)) {
+    template <typename PRegBHSD>
+    void set_preg(const PRegBHSD &p, size_t tail_size,
+            const Xbyak_aarch64::XReg x_tmp) {
         using namespace Xbyak_aarch64;
-
-        assert(tail_size <= 64); // Implemented only for "SVE size <=  512"
 
         switch (tail_size) {
             case 0: pfalse(PRegB(p.getIdx())); return;
@@ -358,10 +355,8 @@ public:
             case 64: ptrue(p, VL64); return;
         }
 
-        assert(x_tmp0.getIdx() != DUMMY_IDX && x_tmp1.getIdx() != DUMMY_IDX);
-        mov_imm(x_tmp0, 0);
-        mov_imm(x_tmp1, tail_size);
-        whilelt(p, x_tmp0, x_tmp1);
+        mov_imm(x_tmp, tail_size);
+        whilelo(p, xzr, x_tmp);
     }
 
     template <typename T>

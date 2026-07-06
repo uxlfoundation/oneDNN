@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -572,8 +572,7 @@ void jit_brgemm_matmul_copy_b_f32_t::copy_16_8_x_n_block(
 
     const int columns_tail = ncolumns % n_blk_step;
 
-    if (columns_tail < n_blk_step)
-        set_preg(kTail.s, columns_tail, X_TMP_0, X_TMP_1);
+    if (columns_tail < n_blk_step) set_preg(kTail.s, columns_tail, X_TMP_0);
 
     int iter = 0;
     for_(int k = 0; k < nrows; k++) //nrows = unroll
@@ -805,7 +804,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<sve_256>::copy_row_x_col(
         }
         if (columns_tail > 0) {
             add_imm(X_DEFAULT_ADDR, reg_src, i * src_stride_, X_TMP_0);
-            set_preg(P_TMP.b, columns_tail * typesize_, X_TMP_0, X_TMP_1);
+            set_preg(P_TMP.b, columns_tail * typesize_, X_TMP_0);
             ld1b(vmm_src.b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
         } else {
             add_imm(X_DEFAULT_ADDR, reg_src, i * src_stride_, X_TMP_0);
@@ -838,7 +837,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<sve_256>::copy_row_x_col(
         splice(tmp0.s, p_E0, tmp0.s);
 
         if (next_src_idx1 < nrows && load_next) { load(next_src_idx1); }
-        set_preg(p_tmp_0.s, 1, X_TMP_0, X_TMP_1);
+        set_preg(p_tmp_0.s, 1, X_TMP_0);
         mov(tmp1.d, src1.d);
         splice(tmp1.s, p_tmp_0, tmp1.s);
 
@@ -981,9 +980,9 @@ void jit_brgemm_matmul_copy_b_transposed_t<isa>::generate() {
     preamble();
 
     ptrue(p_FF.s);
-    set_preg(p_0F.s, 4, X_TMP_0, X_TMP_1);
+    set_preg(p_0F.s, 4, X_TMP_0);
     rev(p_F0.s, p_0F.s);
-    set_preg(p_33.s, 2, X_TMP_0, X_TMP_1);
+    set_preg(p_33.s, 2, X_TMP_0);
     rev(p_tmp_0.s, p_33.s);
     orr(p_33.b, p_FF, p_33.b, p_F0.b);
     eor(p_33.b, p_FF, p_33.b, p_tmp_0.b);
@@ -992,9 +991,9 @@ void jit_brgemm_matmul_copy_b_transposed_t<isa>::generate() {
     ptrue(p_tmp_0.s);
     trn1(p_AA.s, p_AA.s, p_tmp_0.s);
     rev(p_55.s, p_AA.s);
-    set_preg(p_E0.s, 3, X_TMP_0, X_TMP_1);
+    set_preg(p_E0.s, 3, X_TMP_0);
     rev(p_E0.s, p_E0.s);
-    set_preg(p_02.s, 2, X_TMP_0, X_TMP_1);
+    set_preg(p_02.s, 2, X_TMP_0);
 
     LDR_IMM(reg_src_base, param1, GET_OFF(src));
     LDR_IMM(reg_tr_src_base, param1, GET_OFF(tr_src));

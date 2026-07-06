@@ -118,8 +118,8 @@ void jit_int8_matmul_utils_kernel_t::reo_B_8xN(int lp, int nt) {
 void jit_int8_matmul_utils_kernel_t::gen_reo_a() {
     const int ktl = (dyn_.ktail) ? dyn_.ktail : dyn_.k_blk;
 
-    set_preg(prd_ld.b, ktl, X_TMP_0, X_TMP_1);
-    set_preg(prd_st.b, dyn_.k_blk, X_TMP_0, X_TMP_1);
+    set_preg(prd_ld.b, ktl, X_TMP_0);
+    set_preg(prd_st.b, dyn_.k_blk, X_TMP_0);
 
     ldr_imm(reg_max, reg_param, GET_OFF(nk));
     ldr_imm(reg_min, reg_param, GET_OFF(nm));
@@ -181,8 +181,8 @@ void jit_int8_matmul_utils_kernel_t::gen_reo_a() {
 
 void jit_int8_matmul_utils_kernel_t::gen_reo_b() {
 
-    set_preg(prd_ld.b, dyn_.n_blk, X_TMP_4, X_TMP_1);
-    set_preg(prd_p3.b, dyn_.ntail, X_TMP_4, X_TMP_1);
+    set_preg(prd_ld.b, dyn_.n_blk, X_TMP_4);
+    set_preg(prd_p3.b, dyn_.ntail, X_TMP_4);
 
     ldr_imm(reg_max, reg_param, GET_OFF(nn));
     ldr_imm(reg_min, reg_param, GET_OFF(nk));

@@ -690,8 +690,8 @@ private:
         sub_imm(sp, sp, utils::rnd_up(stack_space_needed_, 16), X_TMP_0);
 
         if (simd_w_ != cpu_sveLen / sizeof(float)) {
-            set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
-            set_preg(k_full_mask.b, simd_w_ * 4, X_TMP_0, X_TMP_1);
+            set_preg(P_ALL_ONE.b, simd_w_ * 4, X_TMP_0);
+            set_preg(k_full_mask.b, simd_w_ * 4, X_TMP_0);
         } else
             ptrue(k_full_mask.b);
 
@@ -716,7 +716,7 @@ private:
         int mb = brg.bcast_dim / m_block;
         int mb_tail = brg.bcast_dim % m_block;
 
-        set_preg(k_tail_mask.s, nb_tail, X_TMP_0, X_TMP_1);
+        set_preg(k_tail_mask.s, nb_tail, X_TMP_0);
 
         if (brg.alpha != 0) {
             add_imm(X_DEFAULT_ADDR, param1, GET_OFF(ptr_in), X_TMP_0);

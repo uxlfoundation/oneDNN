@@ -467,7 +467,7 @@ void jit_softmax_sve_t::load(
 }
 
 void jit_softmax_sve_t::prepare_tail_mask() {
-    set_preg(tail_opmask.s, axis_simd_tail_, X_TMP_0, X_TMP_1);
+    set_preg(tail_opmask.s, axis_simd_tail_, X_TMP_0);
 }
 
 void jit_softmax_sve_t::get_horizontal_op(const ZReg &v, op_t op) {
@@ -652,7 +652,7 @@ void jit_softmax_sve_t::prepare_mask() {
     }
 
     if (simd_w_ != cpu_sveLen / sizeof(float))
-        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0);
 }
 
 void jit_softmax_sve_t::restore_mask() {

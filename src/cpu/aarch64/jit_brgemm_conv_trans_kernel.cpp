@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -207,12 +207,12 @@ void jit_sve_core_brgemm_conv_trans_kernel_t::generate() {
 
     if (jcp.ic_without_padding % jcp.ic_block) {
         int tail_size = (jcp.ic_without_padding % jcp.ic_block) % jcp.simd_w;
-        set_preg(ktail_mask.s, tail_size, X_TMP_0, X_TMP_1);
+        set_preg(ktail_mask.s, tail_size, X_TMP_0);
     }
 
     if (jcp.ic_block % jcp.simd_w) {
         int block_tail_size = jcp.ic_block % jcp.simd_w;
-        set_preg(kblock_tail_mask.s, block_tail_size, X_TMP_0, X_TMP_1);
+        set_preg(kblock_tail_mask.s, block_tail_size, X_TMP_0);
     }
 
     auto icb_loop_body = [&](bool is_ic_tail) {
@@ -457,12 +457,12 @@ void jit_sve_core_brgemm_conv_rtus_kernel_t::generate() {
 
     if (jcp.ic_without_padding % jcp.ic_block) {
         int tail_size = (jcp.ic_without_padding % jcp.ic_block) % jcp.simd_w;
-        set_preg(ktail_mask.s, tail_size, X_TMP_0, X_TMP_1);
+        set_preg(ktail_mask.s, tail_size, X_TMP_0);
     }
 
     if (jcp.ic_block % jcp.simd_w) {
         int block_tail_size = jcp.ic_block % jcp.simd_w;
-        set_preg(kblock_tail_mask.s, block_tail_size, X_TMP_0, X_TMP_1);
+        set_preg(kblock_tail_mask.s, block_tail_size, X_TMP_0);
     }
 
     assert(jcp.nb_ic_blocking == 1 && "TODO: support multi-batch case");

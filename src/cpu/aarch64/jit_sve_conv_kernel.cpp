@@ -624,7 +624,7 @@ void jit_sve_conv_fwd_kernel_t<isa>::generate() {
 
     //TO DO : renaming predicate register (P_ALL_ONE)
     if (simd_w_ != cpu_sveLen / sizeof(float))
-        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0);
 
     ldr(reg_inp, ptr(abi_param1, GET_OFF(src)));
     ldr(reg_out, ptr(abi_param1, GET_OFF(dst)));
@@ -1971,7 +1971,7 @@ void jit_sve_conv_bwd_data_kernel_f32_t<isa>::generate() {
     preamble();
 
     if (simd_w_ != cpu_sveLen / sizeof(float))
-        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0);
     ldr(reg_src, ptr(param, GET_OFF(src)));
     ldr(reg_dst, ptr(param, GET_OFF(dst)));
     ldr(reg_ker, ptr(param, GET_OFF(filt)));
@@ -4055,7 +4055,7 @@ void jit_sve_conv_bwd_weights_kernel_f32_t<isa>::generate_kernel() {
     preamble();
 
     if (simd_w_ != cpu_sveLen / sizeof(float))
-        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0, X_TMP_1);
+        set_preg(P_ALL_ONE.s, simd_w_, X_TMP_0);
 
     ldr(reg_input, ptr(param, GET_OFF(src)));
     ldr(reg_output, ptr(param, GET_OFF(dst)));

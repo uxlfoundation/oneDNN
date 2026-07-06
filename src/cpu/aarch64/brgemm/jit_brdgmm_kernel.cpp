@@ -916,11 +916,11 @@ void jit_brdgmm_kernel_base_t::init_masks() {
         const bool has_n_block2_tail = n_block2_tail() > 0;
         if (has_n_block2_tail || nb_n_block2() <= 1) {
             // The mask can be set only once.
-            set_preg(k_mask.s, n_block1_tail(), X_TMP_0, X_TMP_1);
+            set_preg(k_mask.s, n_block1_tail(), X_TMP_0);
         } else {
             // Need to adjust mask, and set only when needed.
             // So store it temporarily in k_tail_mask.
-            set_preg(k_tail_mask.s, n_block1_tail(), X_TMP_0, X_TMP_1);
+            set_preg(k_tail_mask.s, n_block1_tail(), X_TMP_0);
         }
     } else if (brg.with_binary) {
         // the post-ops injector seems to use mask unconditionally

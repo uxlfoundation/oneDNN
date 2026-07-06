@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2022-2025 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -1287,7 +1287,7 @@ void jit_sve_512_core_x8s8s32x_deconv_fwd_kernel_t<isa>::generate() {
             bne(skip_tail_mask);
         }
         assert(tail_size <= 16);
-        set_preg(ktail_mask.s, tail_size);
+        set_preg(ktail_mask.s, tail_size, X_TMP_0);
         L(skip_tail_mask);
     }
 

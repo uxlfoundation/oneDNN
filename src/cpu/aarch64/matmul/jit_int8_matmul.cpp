@@ -787,8 +787,8 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
 
         const int pred_zp_b_tl
                 = (n_cols % sv_len == 0) ? sv_len : n_cols % sv_len;
-        set_preg(prd_8.b, sv_len, X_TMP_0, X_TMP_1);
-        set_preg(prd_zp_b_tl.b, pred_zp_b_tl, X_TMP_0, X_TMP_1);
+        set_preg(prd_8.b, sv_len, X_TMP_0);
+        set_preg(prd_zp_b_tl.b, pred_zp_b_tl, X_TMP_0);
 
         if (brg_.is_n_tail) {
             pred_b = (brg_.n_tail % sv_len == 0) ? sv_len
@@ -804,9 +804,9 @@ struct jit_int8_matmul_kernel_t : public jit_generator_t {
                         : (brg_.n_tail % brg_.n_blk);
             }
         }
-        set_preg(prd_ld.b, pred_ld, X_TMP_0, X_TMP_1);
-        set_preg(prd_st.s, pred_st, X_TMP_0, X_TMP_1);
-        set_preg(prd_b.s, pred_b, X_TMP_0, X_TMP_1);
+        set_preg(prd_ld.b, pred_ld, X_TMP_0);
+        set_preg(prd_st.s, pred_st, X_TMP_0);
+        set_preg(prd_b.s, pred_b, X_TMP_0);
     }
 
     void generate() override {

@@ -4,6 +4,7 @@ header:
     pattern: >-
       (?:Copyright \d{4} Intel Corporation
       |Copyright \d{4}(?:[,\s-]+\d{4})*\s(IBM Corporation
+      |Advanced Micro Devices, Inc\.?
       |Codeplay Software Limited
       |FUJITSU LIMITED
       |Arm (?:Ltd\.|Limited) and affiliates\.?

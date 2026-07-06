@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
+* Copyright 2026 Advanced Micro Devices, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -117,6 +118,11 @@ void serialize(serialization_stream_t &sstream, const memory_desc_t &md) {
             sstream.append(
                     md.format_desc.cublaslt_blocked_desc.cublaslt_format);
             sstream.append(md.format_desc.cublaslt_blocked_desc.size);
+            break;
+        case format_kind::zen_packed:
+            sstream.append(md.format_desc.zen_packed_desc.size);
+            sstream.append(md.format_desc.zen_packed_desc.per_slice_size);
+            sstream.append(md.format_desc.zen_packed_desc.gemm_src_dt);
             break;
         case format_kind::rnn_packed:
             sstream.append(md.format_desc.rnn_packed_desc.format);

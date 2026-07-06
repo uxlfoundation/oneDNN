@@ -1,5 +1,6 @@
 #===============================================================================
 # Copyright 2018 Intel Corporation
+# Copyright 2026 Advanced Micro Devices, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -80,6 +81,11 @@ endfunction()
 # ---------------------
 # Library configuration
 # ---------------------
+
+# ===== ZenDNN toggles & paths =====
+onednn_option(X64_USE_ZEN OFF
+    "Enable ZenDNN integration (link against zendnnl when available)")
+set(ZENDNNROOT "" CACHE STRING "Path to ZenDNN installation root")
 
 onednn_option(LIBRARY_TYPE "SHARED"
     "Specifies whether oneDNN library should be SHARED or STATIC")

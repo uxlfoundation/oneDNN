@@ -28,7 +28,7 @@ const impl_list_map_t &regular_f32_bf16_impl_list_map() {
         // f32 -> bf16
         {{f32, bf16, 0}, {
             CPU_REORDER_INSTANCE(rnn_weights_reorder_t<f32, bf16>)
-
+            DNNL_X64_ZEN(CPU_REORDER_INSTANCE(x64::zen::reorder::zen_reorder_t))
             DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::jit_uni_reorder_direct_copy_t))
             DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::jit_blk_reorder_t))
             DNNL_X64_ONLY(CPU_REORDER_INSTANCE(x64::jit_uni_reorder_t))

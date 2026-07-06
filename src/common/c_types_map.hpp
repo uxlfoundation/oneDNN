@@ -247,6 +247,7 @@ const format_kind_t internal_only_start = (format_kind_t)(1 << 8);
 const format_kind_t wino = internal_only_start;
 const format_kind_t rnn_packed = (format_kind_t)(internal_only_start + 1);
 const format_kind_t cublaslt_blocked = (format_kind_t)(internal_only_start + 2);
+const format_kind_t zen_packed = (format_kind_t)(internal_only_start + 3);
 } // namespace format_kind
 
 #ifdef DNNL_EXPERIMENTAL_PROFILING

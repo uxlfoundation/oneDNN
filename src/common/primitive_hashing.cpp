@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Advanced Micro Devices, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -156,6 +157,14 @@ size_t get_md_hash(const memory_desc_t &md) {
                                                 .cublaslt_format));
             seed = hash_combine(
                     seed, (md.format_desc.cublaslt_blocked_desc.size));
+            break;
+        case format_kind::zen_packed:
+            seed = hash_combine(seed, md.format_desc.zen_packed_desc.size);
+            seed = hash_combine(
+                    seed, md.format_desc.zen_packed_desc.per_slice_size);
+            seed = hash_combine(seed,
+                    static_cast<size_t>(
+                            md.format_desc.zen_packed_desc.gemm_src_dt));
             break;
         case format_kind::rnn_packed:
             seed = hash_combine(seed,

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2024 Intel Corporation
+* Copyright 2026 Advanced Micro Devices, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -164,6 +165,22 @@ struct rnn_packed_desc_t {
 struct cublaslt_blocked_desc_t {
     cublaslt_memory_format_t cublaslt_format;
     size_t size;
+};
+
+// Description of pre-packed weights for the Zen GEMM backend.
+// The layout is opaque: bytes are produced by the Zen backend packer (via
+// zen_reorder_t) rather than by an oneDNN blocked reorder, and the matmul
+// backend consumes the buffer directly with mem_format_b='r'.
+struct zen_packed_desc_t {
+    // Total size of the packed buffer in bytes (== per_slice_size * batch).
+    size_t size;
+    // Size of one packed K x N slice in bytes (for computing batch offsets;
+    // equals `size` in the non-batched 2D case).
+    size_t per_slice_size;
+    // Source/compute data type of the matmul. Kept so that packed descriptors
+    // for different GEMM source types stay distinct in the primitive cache and
+    // so the reorder can pick the matching packer variant.
+    dnnl_data_type_t gemm_src_dt;
 };
 
 struct sparse_desc_t {
@@ -362,6 +379,8 @@ struct dnnl_memory_desc : public dnnl::impl::c_compatible {
         dnnl::impl::cublaslt_blocked_desc_t cublaslt_blocked_desc;
         // Description of the sparse encodings.
         dnnl::impl::sparse_desc_t sparse_desc;
+        // Pre-packed weights for the Zen GEMM backend.
+        dnnl::impl::zen_packed_desc_t zen_packed_desc;
         // ... other descriptions possible
     } format_desc;
 

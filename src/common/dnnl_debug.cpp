@@ -47,7 +47,8 @@ const char *dnnl_fmt_kind2str(dnnl_format_kind_t v) {
     if (v == dnnl_blocked) return "blocked";
     if (v == dnnl_format_kind_sparse) return "sparse";
     if (v == format_kind::wino || v == format_kind::rnn_packed
-            || v == format_kind::cublaslt_blocked)
+            || v == format_kind::cublaslt_blocked
+            || v == format_kind::zen_packed)
         return "opaque";
     if (v == dnnl_format_kind_max) return "max";
     assert(!"unknown fmt_kind");

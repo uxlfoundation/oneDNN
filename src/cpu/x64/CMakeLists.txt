@@ -1,5 +1,6 @@
 #===============================================================================
 # Copyright 2020 Intel Corporation
+# Copyright 2026 Advanced Micro Devices, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +19,13 @@ file(GLOB_RECURSE SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.[ch]
     ${CMAKE_CURRENT_SOURCE_DIR}/*.[ch]pp
     )
+
+if(NOT DNNL_X64_USE_ZEN)
+    file(GLOB_RECURSE SOURCES_ZENDNN ${CMAKE_CURRENT_SOURCE_DIR}/zen64/*)
+    foreach(f ${SOURCES_ZENDNN})
+        list(REMOVE_ITEM SOURCES "${f}")
+    endforeach()
+endif()
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Intel")
     # to make computations more stable and to align the jitted code
@@ -98,5 +106,23 @@ endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_cpu_x64)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
+
+if (DNNL_X64_USE_ZEN)
+    if(TARGET zendnnl::zendnnl)
+        target_link_libraries(${OBJ_LIB} PRIVATE zendnnl::zendnnl)
+    elseif(TARGET zendnnl::zendnnl_archive)
+        target_link_libraries(${OBJ_LIB} PRIVATE zendnnl::zendnnl_archive)
+    else()
+        message(FATAL_ERROR
+            "DNNL_X64_USE_ZEN is ON but neither zendnnl::zendnnl nor "
+            "zendnnl::zendnnl_archive target is available. Check your "
+            "ZenDNN install at ZENDNNROOT=${ZENDNNROOT}.")
+    endif()
+
+    message(STATUS "Linking ZenDNN to dnnl_cpu_x64")
+    # ZenDNN public headers require C++17. Scoped to this target only.
+    target_compile_features(${OBJ_LIB} PRIVATE cxx_std_17)
+endif()
+
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)

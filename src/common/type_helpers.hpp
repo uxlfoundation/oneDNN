@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
+* Copyright 2026 Advanced Micro Devices, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -668,6 +669,13 @@ inline bool operator==(const memory_desc_t &lhs, const memory_desc_t &rhs) {
     else if (lhs.format_kind == format_kind::sparse)
         return types::sparse_desc_is_equal(
                 lhs.format_desc.sparse_desc, rhs.format_desc.sparse_desc);
+    else if (lhs.format_kind == format_kind::zen_packed)
+        return lhs.format_desc.zen_packed_desc.size
+                == rhs.format_desc.zen_packed_desc.size
+                && lhs.format_desc.zen_packed_desc.per_slice_size
+                == rhs.format_desc.zen_packed_desc.per_slice_size
+                && lhs.format_desc.zen_packed_desc.gemm_src_dt
+                == rhs.format_desc.zen_packed_desc.gemm_src_dt;
     return true;
 }
 

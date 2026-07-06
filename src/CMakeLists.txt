@@ -1,5 +1,6 @@
 #===============================================================================
 # Copyright 2016 Intel Corporation
+# Copyright 2026 Advanced Micro Devices, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -215,6 +216,23 @@ add_library(${LIB_PACKAGE_NAME} ${DNNL_LIBRARY_TYPE}
     ${VERSION_RESOURCE_FILE} ${HEADERS_ROOT} ${HEADERS_SUBDIR} ${LIB_DEPS})
 
 target_link_libraries(${LIB_PACKAGE_NAME} PRIVATE ${STATIC_LIB_DEPS} ${SHARED_LIB_DEPS})
+
+if(DNNL_X64_USE_ZEN)
+    set(_zendnn_link_visibility PRIVATE)
+    if(DNNL_LIBRARY_TYPE STREQUAL "STATIC")
+        set(_zendnn_link_visibility PUBLIC)
+    endif()
+    if(TARGET zendnnl::zendnnl)
+        target_link_libraries(${LIB_PACKAGE_NAME} ${_zendnn_link_visibility} zendnnl::zendnnl)
+    elseif(TARGET zendnnl::zendnnl_archive)
+        target_link_libraries(${LIB_PACKAGE_NAME} ${_zendnn_link_visibility} zendnnl::zendnnl_archive)
+    else()
+        message(FATAL_ERROR
+            "DNNL_X64_USE_ZEN is ON but neither zendnnl::zendnnl nor "
+            "zendnnl::zendnnl_archive target is available. Check your "
+            "ZenDNN install at ZENDNNROOT=${ZENDNNROOT}.")
+    endif()
+endif()
 
 set_property(TARGET ${LIB_PACKAGE_NAME} PROPERTY OUTPUT_NAME ${DNNL_LIBRARY_NAME})
 set_property(TARGET ${LIB_PACKAGE_NAME} PROPERTY VERSION "${DNNL_VERSION_MAJOR}.${DNNL_VERSION_MINOR}")

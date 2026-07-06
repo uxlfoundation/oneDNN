@@ -209,6 +209,40 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
    cmake --build . --parallel $(sysctl -n hw.ncpu)
    ~~~
 
+#### Use GCC or Clang with ZenDNN on AMD64 (x86_64) host
+
+This opt-in path links oneDNN against the [ZenDNN](https://github.com/amd/ZenDNN)
+library to enable AMD (Zen) CPU-tuned kernels. It is `OFF` by default; see
+[ONEDNN_X64_USE_ZEN](@ref opt_x64_use_zen) for the full list of requirements
+(Linux on x86_64, CMake >= 3.26, GCC >= 11.2 or Clang >= 14, and a static
+ZenDNN archive >= 6.0.0; Windows builds are rejected at configure time).
+
+1. Set up the environment for the compiler
+
+   Build (or install) a prebuilt ZenDNN binary as documented in the
+   [ZenDNN repository](https://github.com/amd/ZenDNN) and point `ZENDNNROOT` to
+   the install directory.
+   ~~~sh
+   export ZENDNNROOT=<path/to/zendnnl/install>
+   export CC=gcc
+   export CXX=g++
+   ~~~
+
+2. Generate the build system
+   ~~~sh
+   mkdir -p build ; cd build
+   cmake .. -DONEDNN_X64_USE_ZEN=ON
+   ~~~
+   @note You can also pass the ZenDNN location directly on the command line with
+   `-DZENDNNROOT=<path/to/zendnnl/install>` instead of exporting it. If
+   `ZENDNNROOT` is unset and no ZenDNN install is found, the option is disabled
+   and oneDNN is built without ZenDNN support.
+
+3. Build the library
+   ~~~sh
+   cmake --build . --parallel $(nproc)
+   ~~~
+
 ### Build on Windows
 
 #### Use Microsoft Visual C++ Compiler

@@ -2,6 +2,7 @@
 # Copyright 2019 Intel Corporation
 # Copyright 2020 Arm Ltd. and affiliates
 # Copyright 2021 FUJITSU LIMITED
+# Copyright 2026 Advanced Micro Devices, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -137,6 +138,21 @@ endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_cpu)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
+if (DNNL_X64_USE_ZEN)
+    if(TARGET zendnnl::zendnnl)
+        get_target_property(ZENDNN_INCLUDE_DIRS zendnnl::zendnnl INTERFACE_INCLUDE_DIRECTORIES)
+    elseif(TARGET zendnnl::zendnnl_archive)
+        get_target_property(ZENDNN_INCLUDE_DIRS zendnnl::zendnnl_archive INTERFACE_INCLUDE_DIRECTORIES)
+    else()
+        message(FATAL_ERROR
+            "DNNL_X64_USE_ZEN is ON but neither zendnnl::zendnnl nor "
+            "zendnnl::zendnnl_archive target is available. Check your "
+            "ZenDNN install at ZENDNNROOT=${ZENDNNROOT}.")
+    endif()
+    target_include_directories(${OBJ_LIB} PRIVATE ${ZENDNN_INCLUDE_DIRS})
+    # ZenDNN public headers require C++17. Scoped to this target only.
+    target_compile_features(${OBJ_LIB} PRIVATE cxx_std_17)
+endif()
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
 

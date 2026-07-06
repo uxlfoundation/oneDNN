@@ -1026,6 +1026,7 @@ status_t dnnl_memory_desc_query(
                 case format_kind::rnn_packed:
                 case format_kind::cublaslt_blocked:
                 case format_kind::wino:
+                case format_kind::zen_packed:
                     *(format_kind_t *)result = format_kind::opaque;
                     break;
                 default: *(format_kind_t *)result = md->format_kind;

@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020 Arm Ltd. and affiliates
+* Copyright 2026 Advanced Micro Devices, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -95,6 +96,14 @@
 #define DNNL_AARCH64_ACL_ONLY(...) __VA_ARGS__
 #else
 #define DNNL_AARCH64_ACL_ONLY(...)
+#endif
+
+// Using Zen kernels is optional for x64 builds
+// and can be enabled with the DNNL_X64_USE_ZEN CMake option
+#if DNNL_X64 && DNNL_X64_USE_ZEN
+#define DNNL_X64_ZEN(...) __VA_ARGS__
+#else
+#define DNNL_X64_ZEN(...)
 #endif
 
 // Primitive ISA section for configuring knobs.

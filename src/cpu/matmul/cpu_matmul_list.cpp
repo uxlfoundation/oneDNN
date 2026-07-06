@@ -2,6 +2,7 @@
 * Copyright 2019 Intel Corporation
 * Copyright 2024-2025 FUJITSU LIMITED
 * Copyright 2021-2026 Arm Ltd. and affiliates
+* Copyright 2026 Advanced Micro Devices, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -31,8 +32,14 @@
 #if DNNL_X64
 #include "cpu/x64/matmul/brgemm_matmul.hpp"
 #include "cpu/x64/matmul/jit_uni_sparse_matmul.hpp"
+#if DNNL_X64_USE_ZEN
+#include "cpu/x64/zen64/matmul/zen_matmul.hpp"
+#endif
 using namespace dnnl::impl::cpu::x64::matmul;
 using namespace dnnl::impl::cpu::x64;
+#if DNNL_X64_USE_ZEN
+using namespace dnnl::impl::cpu::x64::zen::matmul;
+#endif
 #elif DNNL_AARCH64
 #include "cpu/aarch64/matmul/brgemm_matmul.hpp"
 #include "cpu/aarch64/matmul/jit_bf16_matmul.hpp"
@@ -70,6 +77,7 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         CPU_INSTANCE_AARCH64(jit_int8_matmul_t<sve>)
         CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_256>)
         CPU_INSTANCE_AARCH64(brgemm_matmul_t<sve_128>)
+        CPU_INSTANCE_X64_ZEN(zen_matmul_t)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx10_2_amx_2>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx_fp16>)
         CPU_INSTANCE_AMX(brgemm_matmul_t<avx512_core_amx>)

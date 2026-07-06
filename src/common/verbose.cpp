@@ -557,6 +557,7 @@ std::string md2fmt_str(
         case format_kind::cublaslt_blocked: ss << cublasltfmt2str(md); break;
         case format_kind::wino:
         case format_kind::rnn_packed:
+        case format_kind::zen_packed:
         case format_kind::opaque: ss << "::"; break;
         case format_kind::sparse: ss << ":" << mdw.encoding() << ":"; break;
         case format_kind::any: ss << ":any:"; break;

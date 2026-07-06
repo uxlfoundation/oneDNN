@@ -40,7 +40,7 @@ struct rvv_brgemm_convolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_convolution_fwd_pd_t {
         using cpu_convolution_fwd_pd_t::cpu_convolution_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brgemm:", isa_, ""),
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brgemm:", jcp_.isa, ""),
                 rvv_brgemm_convolution_fwd_t);
 
         status_t init(engine_t *engine);

@@ -23,6 +23,8 @@
 #include <atomic>
 #include <cstddef>
 
+#include "cpu/rv64/jit_generator.hpp"
+#include "cpu/rv64/rvjit/rvjit_rvv.hpp"
 #include "xbyak_riscv/xbyak_riscv_util.hpp"
 
 namespace dnnl {
@@ -32,6 +34,7 @@ namespace rv64 {
 namespace gemm_utils {
 
 extern std::atomic<dim_t> rvv_gemm_f32_m_unroll;
+extern std::atomic<dim_t> rvv_gemm_f32_n_unroll;
 
 template <typename T, bool isTransA, bool isTransB>
 struct gemm_traits_t {};
@@ -61,8 +64,21 @@ struct gemm_utils_traits<float> {
         return m;
     }
 
-    // Fixed n = 6 for the double-buffered mx6 micro-kernel.
-    static constexpr dim_t get_n_unroll_factor() { return 6; }
+    // n is the JIT kernel's hardware/model-derived N-tile ceiling (the same
+    // formula rvv_matmul_engine_t::configure() uses internally) — the
+    // driver's N-tiling must match it exactly, since the GEMM kernel
+    // dispatches N via a plain switch_ (no internal unroll loop), so it can
+    // only ever process up to this many columns in a single call.
+    static dim_t get_n_unroll_factor() {
+        dim_t n = rvv_gemm_f32_n_unroll.load(std::memory_order_relaxed);
+        if (n == 0) {
+            const auto vpu = rv64_rvjit_model().vpu;
+            n = static_cast<dim_t>(
+                    vpu.max_n_accumulators(rvjit::SEW::e32, rvjit::SEW::e32));
+            rvv_gemm_f32_n_unroll.store(n, std::memory_order_relaxed);
+        }
+        return n;
+    }
 };
 
 // Sum the m*n values from p_src into p_dst, assuming the two-dimensional

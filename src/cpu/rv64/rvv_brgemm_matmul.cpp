@@ -136,6 +136,7 @@ protected:
             j_(k_loop_i8);
             L(k_done_i8);
             ret();
+            return;
         }
 
         xor_(reg_k, reg_k, reg_k); // k = 0

@@ -59,9 +59,7 @@ template <bool isTransA, bool isTransB>
 void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
         const dim_t lda, const float *B, const dim_t ldb, float *C,
         const dim_t ldc, const float alpha, const float beta, float *ws,
-        bool do_copy, int ithr, const float *bias, const dim_t m_unroll,
-        const jit_rvv_gemm_kernel_table_t &trans_a_table,
-        const jit_rvv_gemm_kernel_table_t &nontrans_a_table) {
+        bool do_copy, int ithr, const float *bias, const dim_t m_unroll) {
     MAYBE_UNUSED(ithr);
 
     const dim_t n_unroll = gemm_f32_traits::get_n_unroll_factor();
@@ -71,26 +69,11 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
     const dim_t n_tail = N - Nu;
     const dim_t m_tail = M - Mu;
 
-    auto call_kernel
-            = [&](const jit_rvv_gemm_kernel_table_t &kernel_table,
-                      const float *a, const float *b, float *c, dim_t lda_eff,
-                      dim_t tile_m, dim_t tile_n, const float *bias_tile) {
-        jit_rvv_gemm_kernel_t::call_params_t p;
-        p.A = a;
-        p.B = b;
-        p.C = c;
-        p.lda = lda_eff;
-        p.ldb = ldb;
-        p.ldc = ldc;
-        p.K = K;
-        p.m = tile_m;
-        p.alpha = alpha;
-        p.beta = beta;
-        p.bias = bias_tile;
-
-        const jit_rvv_gemm_kernel_t *kernel
-                = bias_tile ? kernel_table.b[tile_n] : kernel_table.nb[tile_n];
-        (*kernel)(&p);
+    auto call_kernel = [&](const float *a, const float *b, float *c,
+                               dim_t lda_eff, bool trans_a_eff, dim_t tile_m,
+                               dim_t tile_n, const float *bias_tile) {
+        jit_rvv_gemm_kernel(a, b, c, lda_eff, ldb, ldc, K, alpha, beta, tile_m,
+                tile_n, trans_a_eff, isTransB, bias_tile);
     };
 
     auto invoke_kernel
@@ -111,10 +94,8 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
             trans_a_eff = isTransA;
         }
 
-        const auto &kernel_table
-                = trans_a_eff ? trans_a_table : nontrans_a_table;
         call_kernel(
-                kernel_table, a_eff, b, c, lda_eff, tile_m, tile_n, bias_tile);
+                a_eff, b, c, lda_eff, trans_a_eff, tile_m, tile_n, bias_tile);
     };
 
     for (dim_t i = 0; i < Mu; i += m_unroll) {
@@ -139,17 +120,13 @@ void block_ker(const dim_t M, const dim_t N, const dim_t K, const float *A,
 
         for (dim_t j = 0; j < Nu; j += n_unroll) {
             const float *b = isTransB ? &B[j] : &B[j * ldb];
-            const auto &kernel_table
-                    = isTransA ? trans_a_table : nontrans_a_table;
-            call_kernel(kernel_table, a_tail, b, &C[Mu + j * ldc], lda, m_tail,
+            call_kernel(a_tail, b, &C[Mu + j * ldc], lda, isTransA, m_tail,
                     n_unroll, bias_tile);
         }
 
         if (n_tail > 0) {
             const float *b = isTransB ? &B[Nu] : &B[Nu * ldb];
-            const auto &kernel_table
-                    = isTransA ? trans_a_table : nontrans_a_table;
-            call_kernel(kernel_table, a_tail, b, &C[Mu + Nu * ldc], lda, m_tail,
+            call_kernel(a_tail, b, &C[Mu + Nu * ldc], lda, isTransA, m_tail,
                     n_tail, bias_tile);
         }
     }
@@ -159,9 +136,7 @@ template <bool isTransA, bool isTransB>
 void gemm_ithr(const dim_t M, const dim_t N, const dim_t K, const float alpha,
         const float *A, const dim_t lda, const float *B, const dim_t ldb,
         const float beta, float *C, const dim_t ldc, bool do_copy, float *ws,
-        int ithr, const float *bias, const dim_t m_unroll,
-        const jit_rvv_gemm_kernel_table_t &trans_a_table,
-        const jit_rvv_gemm_kernel_table_t &nontrans_a_table) {
+        int ithr, const float *bias, const dim_t m_unroll) {
 
     constexpr dim_t BM = gemm_traits_t<float, isTransA, isTransB>::BM;
     constexpr dim_t BN = gemm_traits_t<float, isTransA, isTransB>::BN;
@@ -204,12 +179,11 @@ void gemm_ithr(const dim_t M, const dim_t N, const dim_t K, const float alpha,
                     const float *bias_block = bias ? bias + Bm : nullptr;
                     block_ker<isTransA, isTransB>(mb, nb, kb, curA, lda, curB,
                             ldb, curC, ldc, alpha, beta, ws, do_copy, ithr,
-                            bias_block, m_unroll, trans_a_table,
-                            nontrans_a_table);
+                            bias_block, m_unroll);
                 } else {
                     block_ker<isTransA, isTransB>(mb, nb, kb, curA, lda, curB,
                             ldb, curC, ldc, alpha, 1.0f, ws, do_copy, ithr,
-                            nullptr, m_unroll, trans_a_table, nontrans_a_table);
+                            nullptr, m_unroll);
                 }
             }
         }
@@ -268,10 +242,6 @@ status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
         if (!ws_buffers) do_copy = false;
     }
 
-    const auto &trans_a_table = get_jit_rvv_gemm_kernel_table(true, isTransB);
-    const auto &nontrans_a_table
-            = get_jit_rvv_gemm_kernel_table(false, isTransB);
-
     auto get_thr_block = [&](dim_t &from, dim_t &to, dim_t &myN, dim_t NB,
                                  dim_t N, int ithr) {
         from = NB * (ithr);
@@ -326,21 +296,21 @@ status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
                 if (!isTransB) {
                     gemm_ithr<false, false>(myM, myN, myK, alpha, myA, lda, myB,
                             ldb, myBeta, myC, ld, do_copy, ws, ithr, myBias,
-                            m_unroll, trans_a_table, nontrans_a_table);
+                            m_unroll);
                 } else {
                     gemm_ithr<false, true>(myM, myN, myK, alpha, myA, lda, myB,
                             ldb, myBeta, myC, ld, do_copy, ws, ithr, myBias,
-                            m_unroll, trans_a_table, nontrans_a_table);
+                            m_unroll);
                 }
             } else {
                 if (!isTransB) {
                     gemm_ithr<true, false>(myM, myN, myK, alpha, myA, lda, myB,
                             ldb, myBeta, myC, ld, do_copy, ws, ithr, myBias,
-                            m_unroll, trans_a_table, nontrans_a_table);
+                            m_unroll);
                 } else {
                     gemm_ithr<true, true>(myM, myN, myK, alpha, myA, lda, myB,
                             ldb, myBeta, myC, ld, do_copy, ws, ithr, myBias,
-                            m_unroll, trans_a_table, nontrans_a_table);
+                            m_unroll);
                 }
             }
         }

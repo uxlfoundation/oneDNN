@@ -24,8 +24,12 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "cpu/jit_utils/jit_utils.hpp"
+#include "cpu/platform.hpp"
 
 #include "cpu/rv64/cpu_isa_traits.hpp"
+#include "cpu/rv64/rvjit/rvjit_rvv.hpp"
+#include "cpu/rv64/rvjit/rvjit_types.hpp"
+#include "cpu/rv64/rvjit/rvjit_utils.hpp"
 #include "xbyak_riscv/xbyak_riscv.hpp"
 
 #define DECLARE_CPU_JIT_AUX_FUNCTIONS(gen_name) \
@@ -59,6 +63,41 @@ inline bool is_subset(cpu_isa_t isa, cpu_isa_t max_isa) {
     using u_t = typename std::underlying_type<cpu_isa_t>::type;
     return (static_cast<u_t>(isa) & static_cast<u_t>(max_isa))
             == static_cast<u_t>(isa);
+}
+
+/// Maps a oneDNN data type to its rvjit operand-type counterpart
+inline rvjit::optype_t to_rvjit_optype(data_type_t dt) {
+    using namespace data_type;
+    switch (dt) {
+        case s8: return rvjit::optype_t::s8;
+        case u8: return rvjit::optype_t::u8;
+        case s32: return rvjit::optype_t::s32;
+        case s64: return rvjit::optype_t::s64;
+        case f16: return rvjit::optype_t::f16;
+        case bf16: return rvjit::optype_t::bf16;
+        case f64: return rvjit::optype_t::f64;
+        case f32:
+        default: return rvjit::optype_t::f32;
+    }
+}
+
+/// Maps a oneDNN data type to the rvjit SEW it occupies
+inline rvjit::SEW to_rvjit_sew(data_type_t dt) {
+    return rvjit::sew_for(to_rvjit_optype(dt));
+}
+
+/// Builds the rvjit RVV hardware model from the current platform
+inline rvjit::rvv_t rv64_rvjit_model() {
+    static constexpr int vlong = 2048;
+    static constexpr int cache_latency = 5;
+
+    const int vlen = static_cast<int>(get_platform_vlen());
+    const int cache_line_size = platform::get_cache_line_size();
+    const int cache_size
+            = platform::get_per_core_cache_size(vlen >= vlong ? 1 : 2);
+
+    return rvjit::rvv_t::from_params(
+            vlen, cache_size, cache_line_size, cache_latency);
 }
 
 // Minimal RV64 JIT generator base class.

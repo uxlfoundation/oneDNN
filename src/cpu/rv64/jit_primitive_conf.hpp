@@ -157,18 +157,11 @@ struct jit_1x1_conv_conf_t {
     bool with_binary;
     bool with_dw_conv;
 
-    // src dtype: f32, bf16 (Zvfbfwma), or f16 (Zvfh).
-    data_type_t src_dt;
-    // weights dtype. Equal to src_dt for f32/f32 and the symmetric bf16/f16
-    // paths; for weight compression it is bf16/f16 while src_dt is f32 and the
-    // weights are widened to f32 in-kernel (like x64 is_f32_bf16/is_f32_f16).
-    data_type_t wei_dt;
-    // bias dtype: f32, or bf16/f16 (== src_dt) widened to f32 in-kernel.
-    data_type_t bia_dt;
+    // src/wei dtype: f32/bf16/f16
+    data_type_t src_dt = data_type::f32;
 
     int typesize_in;
     int typesize_out;
-    int typesize_wei;
     int typesize_bia;
     int typesize_acc;
 

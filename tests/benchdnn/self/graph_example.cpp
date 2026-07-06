@@ -19,6 +19,7 @@
 #include "common.hpp"
 
 #include "utils/compare.hpp"
+#include "utils/dnnl_query.hpp"
 
 #include "self/self.hpp"
 

@@ -19,6 +19,7 @@
 #include <random>
 #include <utility>
 
+#include "utils/dnnl_query.hpp"
 #include "utils/fill.hpp"
 #include "utils/memory.hpp"
 #include "utils/parallel.hpp"

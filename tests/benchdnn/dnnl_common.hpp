@@ -18,8 +18,6 @@
 #define DNNL_COMMON_HPP
 
 #include <functional>
-#include <stddef.h>
-#include <stdint.h>
 #include <vector>
 #include <unordered_map>
 
@@ -27,22 +25,12 @@
 
 #include "common.hpp"
 #include "dnn_types.hpp"
-#include "dnnl_debug.hpp"
 #include "dnnl_memory.hpp"
 #include "utils/compare.hpp"
 #include "utils/dims.hpp"
-#include "utils/dnnl_query.hpp"
 #include "utils/engine.hpp"
 #include "utils/fill.hpp"
-#include "utils/impl_filter.hpp"
-#include "utils/numeric.hpp"
-#include "utils/parallel.hpp"
 #include "utils/prb.hpp"
-#include "utils/stream_kind.hpp"
-
-#include "tests/test_thread_decl.hpp"
-
-#define for_ for
 
 #ifndef DNNL_EXPERIMENTAL_PROFILING
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \

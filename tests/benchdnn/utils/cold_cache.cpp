@@ -17,6 +17,7 @@
 #include "dnnl_common.hpp"
 
 #include "utils/cold_cache.hpp"
+#include "utils/dnnl_query.hpp"
 #include "utils/fill.hpp"
 
 cold_cache_input_t cold_cache_input;

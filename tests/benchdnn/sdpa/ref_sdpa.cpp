@@ -26,6 +26,7 @@
 
 #include "dnnl_common.hpp"
 #include "dnnl_memory.hpp"
+#include "utils/stream_kind.hpp"
 
 #include "sdpa/sdpa.hpp"
 

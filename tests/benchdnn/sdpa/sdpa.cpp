@@ -27,6 +27,7 @@
 // softmax_accurate_inf_as_zero is promoted to a public value.
 #include "src/common/c_types_map.hpp"
 
+#include "utils/dnnl_query.hpp"
 #include "utils/fill.hpp"
 #include "utils/memory.hpp"
 #include "utils/parallel.hpp"

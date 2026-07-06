@@ -23,6 +23,7 @@
 #include "allocator.hpp"
 #include "dnnl_common.hpp"
 #include "utils.hpp"
+#include "utils/stream_kind.hpp"
 #include "utils/stringstream.hpp"
 #include "utils/timer.hpp"
 

@@ -16,6 +16,7 @@
 
 #include <float.h>
 
+#include "utils/dnnl_query.hpp"
 #include "utils/parallel.hpp"
 
 #include "matmul/matmul.hpp"

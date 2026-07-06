@@ -52,7 +52,10 @@
 #include "utils/dnnl_query.hpp"
 #include "utils/execution_mode.hpp"
 #include "utils/fill.hpp"
+#include "utils/parallel.hpp"
 #include "utils/stream_kind.hpp"
+
+#include "tests/test_thread_decl.hpp"
 
 namespace {
 // `fetch_impl` is responsible to provide a valid `pd` under certain conditions:

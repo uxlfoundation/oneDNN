@@ -20,11 +20,11 @@
 #include <string>
 #include <thread>
 
-#include "utils/parallel.hpp"
-
 #include "common.hpp"
 #include "utils/compare.hpp"
+#include "utils/dnnl_query.hpp"
 #include "utils/norm.hpp"
+#include "utils/parallel.hpp"
 #include "utils/stringstream.hpp"
 
 #include "eltwise/eltwise.hpp"

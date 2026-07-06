@@ -20,6 +20,8 @@
 #include "input_displacer.hpp"
 #include "ref_partition.hpp"
 
+#include "utils/parallel.hpp"
+
 namespace graph {
 
 namespace {

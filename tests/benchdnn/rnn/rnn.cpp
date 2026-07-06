@@ -24,6 +24,7 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "tests/test_isa_common.hpp"
+#include "utils/dnnl_query.hpp"
 #include "utils/parallel.hpp"
 
 #include "dnnl_common.hpp"

@@ -15,8 +15,9 @@
 *******************************************************************************/
 
 #include "utils/execution_mode.hpp"
+
 #include "common.hpp"
-#include "dnnl_common.hpp"
+#include "utils/stream_kind.hpp"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_DPCPP
 #include "oneapi/dnnl/dnnl_sycl.hpp"

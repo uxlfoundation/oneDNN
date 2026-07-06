@@ -19,6 +19,8 @@
 
 #include "deserialize.hpp"
 
+#include "utils/dnnl_query.hpp"
+
 namespace graph {
 
 // `prb_wrapper_base_t` and `prb_wrapper_t` defined to wrap `prb_t` object

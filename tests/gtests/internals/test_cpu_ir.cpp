@@ -22,8 +22,11 @@
 
 #include "common/c_types_map.hpp"
 
+#include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/ir/ir.hpp"
 #include "cpu/x64/ir/reg_alloc.hpp"
+#include "cpu/x64/ir/reg_config.hpp"
+#include "cpu/x64/jit_generator.hpp"
 
 namespace dnnl {
 
@@ -31,7 +34,15 @@ using namespace impl;
 using namespace impl::cpu::x64;
 using namespace impl::cpu::x64::ir;
 
+// Tests that require generating a kernel require AVX2.
+#define SKIP_IF_NO_AVX2() \
+    do { \
+        if (!mayiuse(avx2)) GTEST_SKIP() << "IR emitter require AVX2"; \
+    } while (0)
+
 // Helpers shared by the tests
+
+constexpr int simd_w = 8;
 
 // Build a register pool with `n_gpr` GPRs plus all available vector registers.
 reg_pools_t make_pools(int n_gpr) {
@@ -153,6 +164,103 @@ int find_op(const ir_t &ir, op_kind_t op) {
         if (ir.ops()[i].kind == op) return i;
     return -1;
 }
+
+// Reference dot product over `n` f32 elements.
+float ref_dot(const float *a, const float *b, int n) {
+    float acc = 0.f;
+    for (int i = 0; i < n; i++)
+        acc += a[i] * b[i];
+    return acc;
+}
+
+// IR-based kernel.
+class ir_kernel_t : public impl::cpu::x64::jit_generator_t {
+public:
+    ir_kernel_t(ir_t ir, int vec_regs_limit = -1)
+        // Only AVX2 is currently supported.
+        : jit_generator_t("ir_run_kernel", cpu::x64::avx2)
+        , ir_(std::move(ir))
+        , vec_regs_limit_(vec_regs_limit) {}
+
+    const char *name() const override { return "ir_kernel"; }
+    const char *source_file() const override { return __FILE__; }
+
+    // Build and finalize the code. Return false on any Xbyak error.
+    bool run_ir_pipeline() {
+        generate();
+        this->ready();
+        return Xbyak::GetError() == Xbyak::ERR_NONE;
+    }
+
+    // Get generated code.
+    const uint8_t *code_ptr() { return this->Xbyak::CodeGenerator::getCode(); }
+    // Get generated code size.
+    size_t code_size() { return this->Xbyak::CodeGenerator::getSize(); }
+
+    // Calls the generated kernel.
+    template <typename arg_t>
+    void run(const arg_t *args) {
+        auto fn = reinterpret_cast<void (*)(const arg_t *)>(
+                const_cast<uint8_t *>(code_ptr()));
+        fn(args);
+    }
+
+    // Allocation outcome. Becomes valid after `run_ir_pipeline()`.
+    //
+    // True if the generated kernel has any spills.
+    bool spilled() const { return spilled_; }
+    // The stack size required by the allocator for spilling.
+    size_t stack_size() const { return stack_size_; }
+
+protected:
+    void generate() override {
+        const int rsp_idx = Xbyak::Operand::RSP;
+        const int param_idx = abi_param1.getIdx();
+
+        // Scratch registers the emitter reserves for spill handling. They are
+        // not part of the register pool. The indices of the registers are
+        // irrelevant. Should work fine for AVX2 and AVX-512.
+        const int gpr_scratch0 = 10, gpr_scratch1 = 11;
+        const int vec_scratch0 = 13, vec_scratch1 = 14, vec_scratch2 = 15;
+
+        reg_config_t reg_cfg = make_reg_config(avx2, param_idx, rsp_idx,
+                {gpr_scratch0, gpr_scratch1},
+                {vec_scratch0, vec_scratch1, vec_scratch2});
+
+        // Shrink the vector register pool to force spills when requested.
+        if (vec_regs_limit_ >= 0) {
+            const int vec_reg_pool_idx = 1;
+            auto &vec_regs = reg_cfg.pools.files[vec_reg_pool_idx].regs;
+            if ((int)vec_regs.size() > vec_regs_limit_)
+                vec_regs.resize(vec_regs_limit_);
+        }
+
+        // Run allocator.
+        const reg_alloc_result_t alloc = allocate_registers(ir_, reg_cfg.pools);
+        spilled_ = alloc.any_spill;
+        stack_size_ = alloc.frame_bytes;
+
+        preamble();
+
+        const int frame = (int)utils::rnd_up(alloc.frame_bytes, 16);
+        if (frame > 0) sub(rsp, frame);
+
+        data_section_t data;
+        emit(*this, ir_, alloc, reg_cfg, data);
+
+        if (frame > 0) add(rsp, frame);
+
+        postamble();
+
+        emit_data_section(*this, data);
+    }
+
+private:
+    ir_t ir_ {};
+    int vec_regs_limit_ = 0;
+    bool spilled_ = false;
+    size_t stack_size_ = 0;
+};
 
 // IR builder tests
 //
@@ -467,6 +575,322 @@ TEST(AllocatorTests, AllocatesDeterministically) {
         EXPECT_EQ(a.assignments[v].phys, b.assignments[v].phys);
         EXPECT_EQ(a.assignments[v].slot, b.assignments[v].slot);
     }
+}
+
+// Emitter tests
+//
+// Builds a small reduction IR (dot product of one vector pair) used by the
+// emitter and integration tests.
+ir_t build_dot_ir() {
+    ir_t ir {};
+
+    // Load pointers for a, b, c.
+    const int a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, 0);
+
+    const int b_ptr = ir.new_gpr();
+    ir.load_param(b_ptr, sizeof(void *));
+
+    const int c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, 2 * sizeof(void *));
+
+    const int acc = ir.new_vec(data_type::f32);
+    ir.vzero(acc);
+
+    const int a = ir.new_vec(data_type::f32);
+    ir.vload(a, a_ptr, 0);
+
+    const int b = ir.new_vec(data_type::f32);
+    ir.vload(b, b_ptr, 0);
+
+    ir.vfma(acc, a, b);
+
+    const int ws = ir.new_vec(data_type::f32);
+    ir.vhreduce(acc, ws);
+
+    // store the reduced scalar
+    ir.vstore_masked(c_ptr, 0, acc, -1, 1);
+
+    return ir;
+}
+
+// Validates emitter determinism. Emitting the same program twice produces
+// byte-for-byte identical machine code. The encoding is position independent
+// (relative branches, rip-relative constants), so equal bytes is a valid check.
+TEST(EmitterTests, EmitsDeterministicCodeForIdenticalIr) {
+    SKIP_IF_NO_AVX2();
+    ir_kernel_t k1(build_dot_ir());
+    ir_kernel_t k2(build_dot_ir());
+
+    ASSERT_TRUE(k1.run_ir_pipeline());
+    ASSERT_TRUE(k2.run_ir_pipeline());
+
+    ASSERT_GT(k1.code_size(), 0u);
+    ASSERT_EQ(k1.code_size(), k2.code_size());
+    EXPECT_EQ(0, std::memcmp(k1.code_ptr(), k2.code_ptr(), k1.code_size()));
+}
+
+// Validates the emitter's spill path. When the allocation spills, the
+// reload-compute-store sequence must lower with no assembler error, and a stack
+// frame must be reserved for the spilled values.
+TEST(EmitterTests, EmitsValidCodeForSpilledAllocation) {
+    SKIP_IF_NO_AVX2();
+
+    // Six independent accumulators plus temporaries exceed a four-register
+    // vector file, so the allocator must spill.
+    ir_t ir {};
+
+    const int a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, 0);
+
+    const int b_ptr = ir.new_gpr();
+    ir.load_param(b_ptr, sizeof(void *));
+
+    const int b = ir.new_vec(data_type::f32);
+    ir.vload(b, b_ptr, 0);
+
+    std::vector<int> acc(6);
+    for (int r = 0; r < 6; r++) {
+        acc[r] = ir.new_vec(data_type::f32);
+        ir.vzero(acc[r]);
+    }
+
+    for (int r = 0; r < 6; r++) {
+        const int a = ir.new_vec(data_type::f32);
+        ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
+        ir.vfma(acc[r], a, b);
+    }
+
+    ir_kernel_t k(ir, /*vec_regs_limit=*/4);
+    ASSERT_TRUE(k.run_ir_pipeline());
+    EXPECT_TRUE(k.spilled());
+    EXPECT_GT(k.stack_size(), 0u);
+    EXPECT_GT(k.code_size(), 0u);
+}
+
+// Integration tests
+
+// Arguments for the dot-product kernels.
+struct dot_args_t {
+    const float *a;
+    const float *b;
+    float *c;
+};
+
+// Pipeline test. A dot product over sixteen elements, expressed as a
+// two-iteration loop, is built, allocated, emitted, run, and checked against
+// a reference. Passing it means the whole pipeline computes the right number,
+// including loop control flow and values kept live across the back-edge.
+TEST(IntegrationTests, BuildsLoopReduction) {
+    SKIP_IF_NO_AVX2();
+
+    constexpr int k_blocks = 2;
+    constexpr int k = k_blocks * simd_w; // 16 elements
+
+    ir_t ir {};
+
+    const int a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(dot_args_t, a));
+
+    const int b_ptr = ir.new_gpr();
+    ir.load_param(b_ptr, offsetof(dot_args_t, b));
+
+    const int c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(dot_args_t, c));
+
+    const int acc = ir.new_vec(data_type::f32);
+    ir.vzero(acc);
+
+    // Reduce one simd_w-wide chunk per iteration and advance the pointers.
+    emit_loop_imm(ir, k_blocks, [&]() {
+        const int a = ir.new_vec(data_type::f32);
+        ir.vload(a, a_ptr, 0);
+        const int b = ir.new_vec(data_type::f32);
+        ir.vload(b, b_ptr, 0);
+        ir.vfma(acc, a, b);
+    }, [&]() {
+        ir.add_imm(a_ptr, simd_w * (dim_t)sizeof(float));
+        ir.add_imm(b_ptr, simd_w * (dim_t)sizeof(float));
+    });
+
+    const int ws = ir.new_vec(data_type::f32);
+    ir.vhreduce(acc, ws);
+    ir.vstore_masked(c_ptr, 0, acc, -1, 1);
+
+    ir_kernel_t kernel(ir);
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+
+    std::vector<float> a(k), b(k);
+    for (int i = 0; i < k; i++) {
+        a[i] = (float)(i + 1);
+        b[i] = (float)(2 * i - 3);
+    }
+
+    float c = -12345.f;
+    dot_args_t args {a.data(), b.data(), &c};
+    kernel.run(&args);
+
+    EXPECT_FLOAT_EQ(c, ref_dot(a.data(), b.data(), k));
+}
+
+// Computes a dot product where one vector is multiplied by n vectors into
+// n independent accumulators, each of which is reduced and stored.
+ir_t build_shared_vector_dot_ir(int n) {
+    ir_t ir {};
+
+    const int a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(dot_args_t, a));
+
+    const int b_ptr = ir.new_gpr();
+    ir.load_param(b_ptr, offsetof(dot_args_t, b));
+
+    const int c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(dot_args_t, c));
+
+    const int b = ir.new_vec(data_type::f32);
+    // Load shared vector.
+    ir.vload(b, b_ptr, 0);
+
+    std::vector<int> acc(n);
+    for (int r = 0; r < n; r++) {
+        acc[r] = ir.new_vec(data_type::f32);
+        ir.vzero(acc[r]);
+
+        const int a = ir.new_vec(data_type::f32);
+        ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
+
+        ir.vfma(acc[r], a, b);
+    }
+
+    const int ws = ir.new_vec(data_type::f32);
+    for (int r = 0; r < n; r++)
+        ir.vhreduce(acc[r], ws);
+
+    for (int r = 0; r < n; r++)
+        ir.vstore_masked(c_ptr, r * (dim_t)sizeof(float), acc[r], -1, 1);
+
+    return ir;
+}
+
+// Validates that register allocator decisions never change results. The same
+// computation is run with a full register file and with one too small to avoid
+// spills. Both must produce identical results.
+TEST(IntegrationTests, SpillProducesEquivalentResults) {
+    SKIP_IF_NO_AVX2();
+
+    constexpr int n = 6;
+
+    ir_kernel_t full(build_shared_vector_dot_ir(n));
+    ir_kernel_t limited(build_shared_vector_dot_ir(n), /*vec_regs_cap=*/4);
+
+    ASSERT_TRUE(full.run_ir_pipeline());
+    ASSERT_TRUE(limited.run_ir_pipeline());
+
+    // The full file fits everything. The limited file must spill.
+    EXPECT_FALSE(full.spilled());
+    EXPECT_TRUE(limited.spilled());
+
+    std::vector<float> a(n * simd_w), b(simd_w);
+    for (int i = 0; i < n * simd_w; i++)
+        a[i] = (float)(i % 7) - 3.f;
+
+    for (int i = 0; i < simd_w; i++)
+        b[i] = (float)(i - 2);
+
+    std::vector<float> c_full(n, 0.f), c_limited(n, 0.f);
+
+    dot_args_t args_full {a.data(), b.data(), c_full.data()};
+    dot_args_t args_limited {a.data(), b.data(), c_limited.data()};
+
+    full.run(&args_full);
+    limited.run(&args_limited);
+
+    for (int r = 0; r < n; r++) {
+        const float expected = ref_dot(&a[r * simd_w], b.data(), simd_w);
+        EXPECT_FLOAT_EQ(c_full[r], expected) << "row " << r;
+        EXPECT_FLOAT_EQ(c_limited[r], expected) << "row " << r;
+    }
+}
+
+// Arguments for the branch-selection kernel. A runtime flag plus two candidate
+// input vectors and one output vector.
+struct select_args_t {
+    int64_t cond;
+    const float *a;
+    const float *b;
+    float *c;
+};
+
+// Validates forward branches end to end. A runtime flag selects which of two
+// inputs to store, and each flag value produces the expected output. This check
+// that emitted control flow works and both candidates stayed live across the
+// branching.
+TEST(IntegrationTests, BranchSelectsCorrectValue) {
+    SKIP_IF_NO_AVX2();
+
+    ir_t ir {};
+
+    const int cond = ir.new_gpr();
+    ir.load_param(cond, offsetof(select_args_t, cond));
+
+    const int a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(select_args_t, a));
+
+    const int b_ptr = ir.new_gpr();
+    ir.load_param(b_ptr, offsetof(select_args_t, b));
+
+    const int c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(select_args_t, c));
+
+    const int a = ir.new_vec(data_type::f32);
+    ir.vload(a, a_ptr, 0);
+
+    const int b = ir.new_vec(data_type::f32);
+    ir.vload(b, b_ptr, 0);
+
+    const int lbl_else = ir.new_label();
+    const int lbl_end = ir.new_label();
+
+    //     if (cond != 0) { c = a; }  // then block
+    //     else           { c = b; }  // else block
+    //
+    // which lowers to a forward-branch skeleton:
+    //
+    //     jz cond -> else      ; fall through to 'then' when cond != 0
+    //   then:
+    //     store a -> c
+    //     jmp -> end           ; skip the else block
+    //   else:
+    //     store b -> c
+    //   end:
+    ir.jz(cond, lbl_else);
+    ir.vstore_masked(c_ptr, 0, a, -1, simd_w); // then: c = a
+    ir.jmp(lbl_end);
+    ir.label(lbl_else);
+    ir.vstore_masked(c_ptr, 0, b, -1, simd_w); // else: c = b
+    ir.label(lbl_end);
+
+    ir_kernel_t kernel(ir);
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+
+    std::vector<float> a_data(simd_w), b_data(simd_w), c_data(simd_w, 0.f);
+    for (int i = 0; i < simd_w; i++) {
+        a_data[i] = (float)(10 + i);
+        b_data[i] = (float)(100 + i);
+    }
+
+    // cond != 0 selects a.
+    select_args_t args_a {1, a_data.data(), b_data.data(), c_data.data()};
+    kernel.run(&args_a);
+    for (int i = 0; i < simd_w; i++)
+        EXPECT_FLOAT_EQ(c_data[i], a_data[i]) << "lane " << i;
+
+    // cond == 0 selects b.
+    std::fill(c_data.begin(), c_data.end(), 0.f);
+    select_args_t args_b {0, a_data.data(), b_data.data(), c_data.data()};
+    kernel.run(&args_b);
+    for (int i = 0; i < simd_w; i++)
+        EXPECT_FLOAT_EQ(c_data[i], b_data[i]) << "lane " << i;
 }
 
 } // namespace dnnl

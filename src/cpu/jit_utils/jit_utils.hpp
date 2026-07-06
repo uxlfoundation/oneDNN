@@ -24,7 +24,8 @@ namespace impl {
 namespace cpu {
 namespace jit_utils {
 
-void register_jit_code(const void *code, size_t code_size,
+// Add DNNL_API to make test_internals_cpu_ir work.
+void DNNL_API register_jit_code(const void *code, size_t code_size,
         const char *code_name, const char *source_file_name);
 
 } // namespace jit_utils

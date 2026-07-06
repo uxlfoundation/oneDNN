@@ -49,11 +49,11 @@ void DNNL_WEAK *malloc(size_t size, int alignment);
 #define MALLOC(size, alignment) ::malloc(size)
 #define FREE(ptr) ::free(ptr)
 #else
-void *malloc(size_t size, int alignment);
+void DNNL_API *malloc(size_t size, int alignment);
 #define MALLOC(size, alignment) malloc(size, alignment)
 #define FREE(ptr) free(ptr)
 #endif
-void free(void *p);
+void DNNL_API free(void *p);
 
 struct c_compatible { // NOLINT(readability-identifier-naming)
     enum { default_alignment = 64 };

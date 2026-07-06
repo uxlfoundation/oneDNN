@@ -5,150 +5,88 @@
 
 ## Introduction
 
-This RFC proposes promoting **Scaled Dot-Product Attention (SDPA)** to a
-first-class, **public primitive** in oneDNN: a public `dnnl::sdpa` C++ API (with
-its nested `primitive_desc`), backed by a CPU reference implementation
-(`ref_sdpa_fwd_t`), with **attention-mask support** (explicit additive masks and
-causal masks) and **fully stride-driven layout handling** so the real,
-non-contiguous tensors that frameworks produce (fused-QKV, transposed views) are
-computed correctly.
+This RFC adds Scaled Dot-Product Attention (SDPA) as a public oneDNN primitive,
+`dnnl::sdpa`, backed first by a portable CPU reference implementation.
 
-Today **oneDNN has no public SDPA *primitive***. Attention is reachable in two
-ways, but **neither gives a consumer a `dnnl::sdpa` primitive to call**:
+oneDNN already supports SDPA through the Graph API as an MHA fusion pattern, and
+it also has internal SDPA primitive plumbing used by tests and GPU code.
+However, primitive API users do not have a supported CPU entry point comparable
+to `dnnl::matmul`. Frameworks that integrate with oneDNN primitives must either
+build a graph pattern or rely on non-public interfaces.
 
-1. **Graph API** - *public and supported*, but as a **fused graph pattern**, not
-   a primitive. SDPA is assembled as an MHA partition (MatMul to Softmax to
-   MatMul, with optional scale/mask) and validated through the Graph
-   complex-fusion tests. The consumer builds and manages a graph, rather than
-   issuing one primitive call like `dnnl::matmul`.
-2. **An internal SDPA primitive** - a *real primitive*, but **not public**.
-   oneDNN already contains the SDPA primitive descriptor and GPU kernels
-   (`src/common/sdpa_*`, `sdpa_primitive_desc_create`), yet the only way to
-   reach it is a **test-only** wrapper in
-   `tests/gtests/internals/sdpa_internal.hpp`.
-   The primitive plumbing exists but was parked behind the test/internal
-   interface rather than promoted to a supported `dnnl::sdpa` API, and its CPU
-   path is effectively absent.
-
-In short: the supported path (Graph) is not a primitive, and the primitive that
-exists is not public.
-
-This RFC closes that gap by taking the existing internal primitive plumbing and
-adding the missing public and CPU pieces around it. The first PR is
-intentionally foundational: it exposes a public `dnnl::sdpa` C++ primitive,
-adds a portable CPU reference implementation, validates masking and
-stride-aware layout handling, and adds benchdnn coverage. Once this primitive
-entry point exists, oneDNN can register optimized SDPA implementations behind
-the same API without requiring framework-side branching or new integration
-paths.
-
----
-
-## First PR - immediate ask
-
-The first PR is not the final optimized SDPA kernel. It establishes the public
-primitive API, CPU correctness path, and validation infrastructure needed for
-optimized implementations to plug in later.
-
-1. **Public SDPA primitive API** - add `dnnl::sdpa` and its
-   `primitive_desc` to `include/oneapi/dnnl/dnnl.hpp`, forwarding to the
-   existing internal C entry `sdpa_primitive_desc_create`. Forward inference,
-   4D BHSD tensors.
-2. **CPU reference kernel** - `src/cpu/ref_sdpa.{hpp,cpp}` registered in a new
-   `src/cpu/cpu_sdpa_list.cpp`, routed from `cpu_engine.hpp`
-   (`primitive_kind::sdpa`). f32 and bf16, default scale `1/sqrt(head_dim)`,
-   `softmax_accurate`.
-3. **Attention-mask support** - explicit additive masks (f32/bf16, 2D
-   `(Sq,Skv)` or 4D `(N,H,Sq,Skv)` with broadcast) and top-left causal masks;
-   both may apply together.
-4. **Stride-aware layout handling** - every tensor axis addressed through its
-   memory-descriptor stride, so dense, transposed (BHSD/BHDS views) and packed
-   (fused-QKV BSHD) inputs are all read correctly.
-5. **benchdnn SDPA driver** - `tests/benchdnn/sdpa/` with a self-contained f32
-   reference (`ref_sdpa.cpp`) and input sets for correctness validation.
-
-Detailed acceptance criteria are in
-[Section 7](#7-first-pr--scope-and-acceptance-criteria).
-
----
+The first PR promotes the existing primitive plumbing to a public C++ API, adds
+the missing CPU reference implementation, and validates the behavior needed by
+framework tensors: explicit additive and causal masks, plus stride-driven
+handling for non-contiguous layouts such as transposed views and packed
+fused-QKV buffers. Future optimized SDPA implementations can use the same API.
 
 ## 1. Motivation
 
-Attention is the dominant compute pattern in transformer inference. Frameworks
-(PyTorch `scaled_dot_product_attention`, vLLM, ONNX Runtime) want a single,
-fused, well-optimised attention call. oneDNN is the CPU primitive library those
-frameworks depend on, yet it does **not** expose a public attention primitive.
+Attention is a core operation in transformer inference, and frameworks such as
+PyTorch, vLLM, and ONNX Runtime expose SDPA as a single fused operation. A
+public `dnnl::sdpa` primitive lets oneDNN own that operation directly, instead
+of leaving it to be reassembled from smaller ops on the framework side.
 
-**Problem.** A consumer that wants oneDNN to run attention today must either:
-- build the **Graph** (assemble the MHA fusion pattern), which is heavier to
-  integrate and is graph-API-centric; or
-- reach the **internal** SDPA primitive, whose API lives in test/internal
-  headers (`sdpa_internal.hpp` / `sdpa_test_iface.hpp`) and is not part of the
-  public contract and which has no CPU kernel.
+The main reason to own it is performance. There is no single best SDPA
+implementation: Flash Attention-style kernels are better for some shapes, while
+BMM-Softmax-BMM kernels are better for others (BRGEMM on Intel CPUs, Zen-tuned
+BMM on AMD CPUs). The right choice depends on sequence length, head size, mask,
+data type, and hardware. As a primitive, oneDNN can pick the kernel, blocking,
+tiling, and threading in one place, the same way it already does for `matmul`.
+This is CPU-specific tuning, since AMD and Intel differ in cache hierarchy, core
+topology, and memory behavior.
 
-So a framework that already calls oneDNN primitives (`dnnl::matmul`,
-`dnnl::softmax`, etc.) has no `dnnl::sdpa` to call. AMD `zentorch` plugin
-currently routes attention through ZenDNN's existing attention implementation
-for exactly this reason.
+Keeping SDPA in the library then gives:
 
-**Proposal.** Provide a real, public **SDPA primitive** - `dnnl::sdpa` - with a
-CPU reference implementation, masks, and stride-aware layout handling. This
-creates a stable primitive API that can run on both Intel and AMD platforms and
-lets oneDNN dispatch future optimized implementations without framework
-integration changes. The first PR scope is limited to the public API and CPU
-reference implementation; optimized Flash Attention-style and
-BMM-Softmax-BMM-based implementations can be added later. These optimized paths
-have different tradeoffs by sequence length, head size, mask type, data type,
-and hardware: BMM-Softmax-BMM paths can use oneDNN BRGEMM microkernels on Intel
-CPUs and Zen-tuned BMM kernels on AMD CPUs, while Flash Attention-style paths
-can use similar tiling and parallelism with the platform-appropriate
-matrix-multiply microkernel.
+- one set of heuristics for Flash Attention-style and BMM-Softmax-BMM paths;
+- platform-specific tiling and threading behind the same public API;
+- one integration path for PyTorch, vLLM, llama.cpp, and other oneDNN users;
+- support for new ISAs, CPU generations, and customer-tuned paths without
+  framework changes.
 
-- **Performance.** The CPU reference kernel in the first PR is a correctness
-  baseline, not the final performance path. The performance motivation comes
-  from existing ZenDNN SDPA integration: `zentorch` rewrites
-  `aten::scaled_dot_product_attention` to ZenDNN's SDPA path and shows up to
-  15% geomean improvement on Torch Inductor dashboard models on AMD (only SDPA
-  rewrite in `zentorch` is enabled; MatMul overrides are disabled). A public
-  oneDNN SDPA primitive provides the standard API hook for bringing this kind
-  of optimized implementation into oneDNN.
-- **Generality.** Standard primitive API. Any consumer that calls oneDNN
-  benefits with no graph-building work.
+On the PyTorch path, ZenDNN already shows the payoff: `zentorch` rewrites
+`aten::scaled_dot_product_attention` to ZenDNN SDPA and gets up to 15% geomean
+improvement on Torch Inductor dashboard models on AMD, with only the SDPA
+rewrite enabled.
 
-## 2. Goals and Non-Goals
+Operator-level numbers on AMD Turin show why the choice should sit in the
+library. For the same dashboard shapes, Flash Attention wins on some cases and
+the ZenDNN BMM-Softmax-BMM parallel-primitive path wins on others. On geomean
+the BMM-Softmax-BMM path is ahead of ZenDNN Flash Attention by 1.13x on 64
+cores and 1.08x on 128 cores.
 
-### Goals
-- **Public `dnnl::sdpa` primitive** with the usual `primitive_desc` to primitive
-  to `execute()` lifecycle, mirroring every other oneDNN primitive.
-- **Portable CPU reference kernel** - correct, dependency-free, runs on any CPU
-  (all arithmetic in f32; bf16 widened on read, narrowed on write).
-- **Masking** - explicit additive mask (f32/bf16, 2D/4D, broadcast) and
-  top-left causal; both composable.
-- **Stride-aware** - correct on dense, transposed, and packed/fused-QKV layouts.
-- **Validation** - benchdnn correctness against a self-contained reference, plus
-  model-level evidence from Torch Inductor dashboard models, including BERT
-  through `zentorch`.
+vLLM is one concrete consumer. Encoder and encoder-only models (BERT-style
+encoders, sentence-transformer embeddings, rerankers) are heavy CPU workloads,
+and their attention runs as SDPA without a KV cache. vLLM's
+[CPU attention backend][vllm-cpu-attn] already calls native kernels through
+[`vllm._custom_ops`][vllm-custom-ops], so a public `dnnl::sdpa` can be called
+directly with Q/K/V, mask, scale, and causal arguments, without PyTorch SDPA in
+the path.
 
-### Non-Goals
-- **Replacing the Graph API path.** The MHA graph fusion stays; this primitive
-  is complementary.
-- **Quantized / GQA / custom-scale / backward** in the first PR - rejected at
-  dispatch (`unimplemented`) and left to follow-ups.
-- **GPU kernels** - the existing internal GPU SDPA is untouched; this RFC adds
-  the public API + a CPU reference.
+llama.cpp follows the same library-owned model. It treats attention as one
+fused op, `ggml_flash_attn_ext`
+([PR #5021](https://github.com/ggml-org/llama.cpp/pull/5021)), with a dedicated
+CPU implementation in ggml. Rather than rebuilding attention from separate
+MatMul and Softmax calls, it keeps the CPU chunking, tiling, and threading
+inside the library, modeled on ggml's own MatMul chunking
+([PR #16829](https://github.com/ggml-org/llama.cpp/pull/16829)). That is the
+ownership model this RFC proposes for oneDNN.
 
-## 3. Background - How SDPA exists in oneDNN today
+## 2. Non-Goals
 
-As described above, oneDNN currently supports attention either through the Graph
-API's MHA fusion path or through an internal SDPA primitive used for test and
-GPU validation. Neither path gives frameworks a public CPU primitive API
-equivalent to `dnnl::matmul`. This RFC promotes that primitive path by adding
-the missing public C++ wrapper, CPU reference kernel, mask support, and
-stride-aware layout handling.
+- Do not replace the Graph API MHA fusion path.
+- Do not add quantized SDPA, GQA, custom scales, or backward propagation in the
+  first PR.
+- Do not change the existing internal GPU SDPA implementation.
 
-## 4. Proposal - public SDPA primitive
+## 3. Proposal - public SDPA primitive
 
-### 4.1 Architecture overview
+The design reuses the existing SDPA primitive infrastructure instead of defining
+a new operation model. It adds a public header API, a CPU implementation-list
+entry, and the CPU kernel; consumers that do not call `dnnl::sdpa` are
+unaffected.
+
+### 3.1 Architecture overview
 
 ```
 framework (PyTorch SDPA / zentorch / app)
@@ -170,26 +108,24 @@ dnnl::sdpa::primitive_desc(eng, q, k, v, o[, mask, attn_mask_type])
    dst written
 ```
 
-### 4.2 Operation semantics
+### 3.2 Operation semantics
 
-SDPA computes, as a single fused op:
+SDPA computes:
 
 ```
 dst = matmul( softmax( matmul(Q, Kᵀ) * scale + mask ), V )
 ```
 
-Shapes (4D BHSD): Q,O = `(N,H,Sq,D)`, K,V = `(N,H,Skv,D)`; K is presented to the
-primitive as the logical `(N,H,D,Skv)` transpose so scores = Q·K is a plain
-matmul.
+The first PR supports 4D BHSD tensors: Q and dst are `(N,H,Sq,D)`, K and V are
+`(N,H,Skv,D)`. K is passed with the descriptor needed for the logical transpose
+used by `Q * K^T`.
 
-### 4.3 Public C++ API
+### 3.3 Public C++ API
 
 Add `dnnl::sdpa` and its `primitive_desc` to
 `include/oneapi/dnnl/dnnl.hpp`. Both constructors forward to the existing C
-entry `sdpa_primitive_desc_create`. Following oneDNN's own convention for
-optional tensors (e.g. `matmul`'s optional bias), the mask is exposed through
-**two overloads** rather than a defaulted descriptor: a clean no-mask form and
-an explicit mask form:
+entry `sdpa_primitive_desc_create`. Use two constructor forms: one without a
+mask and one with an explicit mask descriptor.
 
 ```cpp
 struct sdpa : public primitive {
@@ -218,16 +154,12 @@ struct sdpa : public primitive {
 };
 ```
 
-- no mask: `sdpa::primitive_desc(eng, q, k, v, o)`
-- explicit additive mask: `... (eng, q, k, v, o, mask_md, /*buffer*/1)`
-- causal: `... (eng, q, k, v, o, {}, /*top_left*/2)`
+`attn_mask_type` follows `dnnl_attn_mask_type_t`. The first PR supports no mask,
+explicit additive masks, and top-left causal masks.
 
-`attn_mask_type` mirrors `dnnl_attn_mask_type_t`: `0` undef/none, `1` explicit
-buffer, `2` causal top-left, `3` causal bottom-right.
+### 3.4 CPU registration and reference kernel
 
-### 4.4 Dispatch registration (CPU)
-
-`cpu_engine.hpp` routes `primitive_kind::sdpa` to a new impl list
+`cpu_engine.hpp` routes `primitive_kind::sdpa` to a new implementation list
 (`src/cpu/cpu_sdpa_list.cpp`) that registers the reference kernel:
 
 ```cpp
@@ -237,82 +169,35 @@ constexpr impl_list_item_t impl_list[] = REG_SDPA_P({
 });
 ```
 
-Before this work the CPU engine returned `empty_list` for `sdpa` (no CPU impl).
-A richer optimized impl (Flash Attention or BMM-Softmax-BMM) can register ahead
-of `ref_sdpa_fwd_t` later, with the reference as a guaranteed fallback.
+`ref_sdpa_fwd_t` supports forward inference for 4D Q/K/V/dst with uniform `f32`
+or `bf16` data types, default scale, and `softmax_accurate`. It computes in
+`f32`; `bf16` is converted at load/store boundaries. Unsupported cases return
+`unimplemented` so later optimized implementations can be registered before the
+reference kernel.
 
-### 4.5 CPU reference kernel (`ref_sdpa_fwd_t`)
+### 3.5 Masking
 
-A single, readable reference that mirrors ZenDNN's own `sdpa_encoder_ref`
-philosophy: **all arithmetic in f32**, typed I/O at the boundary:
+The first PR supports:
 
-- **dispatch gate (`pd_t::init`)** - 4D Q/K/V/dst; uniform f32 or bf16; mask (if
-  present) f32/bf16 and 2D/4D with contiguous inner axis; default scale;
-  `softmax_accurate`; reject quantization / bottom-right / custom scale and
-  return `unimplemented` (caller falls through).
-- **`execute()`** - per `(n,h,sq)`: compute `scores = scale * (q * K)`, apply
-  mask, run stable softmax, then compute `out = probs * V`. bf16 elements are
-  converted to/from f32 on read/write.
+- additive masks: `f32` or `bf16`, 2D `(Sq,Skv)` or 4D `(N,H,Sq,Skv)`, with
+  broadcast through strides;
+- top-left causal masks;
+- additive and causal masks together.
 
-### 4.6 Masking
+### 3.6 Stride-aware layout handling
 
-Two orthogonal channels, both honored, composable:
-- **buffer mask** - additive, read via its descriptor (f32/bf16; 2D `(Sq,Skv)`
-  or 4D `(N,H,Sq,Skv)`; size-1 axes broadcast via 0 stride); applied as
-  `scores += mask`.
-- **causal (top-left)** - keys after the query position set to `-inf`.
+Framework tensors are often non-contiguous because of transposes or fused-QKV
+packing. The implementation uses memory descriptor strides for Q/K/V/dst rather
+than assuming dense layout, so dense, transposed, and packed fused-QKV layouts
+are handled correctly.
 
-A buffer mask and a causal flag may be active simultaneously (the descriptor
-carries the mask md, the enum carries causal); the kernel applies both.
+## 4. PoC - SDPA primitive end-to-end on Torch Inductor dashboard models
 
-### 4.7 Stride-aware layout handling (the correctness core)
+The public primitive was validated end-to-end through the ZenDNN `zentorch`
+plugin by routing PyTorch SDPA to `sdpa_direct`, then to `dnnl::sdpa` and
+`ref_sdpa_fwd_t` on CPU.
 
-Frameworks produce attention tensors that are **logically BHSD but physically
-non-contiguous**, such as `transpose(1,2)` views and, with fused-QKV
-projections, **packed** buffers where K and V sit between Q rows (so Q's
-sequence stride is `3·H·D`, not `H·D`). The reference addresses **every axis of
-every tensor through its memory-descriptor stride**, so dense, transposed
-(BHSD/BHDS), and packed (BSHD/fused-QKV) inputs are all read correctly. A
-dense-layout assumption (the original draft) silently read wrong memory on
-fused-QKV and collapsed model accuracy; stride-driven addressing fixes it.
-
-### 4.8 No disruption to existing paths
-
-The Graph MHA fusion and the internal GPU primitive are untouched. This RFC adds
-a public header surface, a CPU impl-list entry, and the CPU kernel. Consumers
-not using `dnnl::sdpa` are unaffected.
-
-## 5. PoC - SDPA primitive end-to-end on Torch Inductor dashboard models
-
-The public primitive runs end-to-end through ZenDNN's `zentorch` plugin by
-routing `sdpa_direct` to `dnnl::sdpa`.
-
-E2E model validation follows this path:
-
-```
-Torch Inductor dashboard model
-        │
-        ▼
-PyTorch SDPA call
-        │
-        ▼
-zentorch - zenSDPA
-(after graph rewrite of aten::sdpa)
-        │
-        ▼
-ZenDNN sdpa_direct
-        │
-        ▼
-oneDNN `dnnl::sdpa` primitive API
-        │
-        ▼
-ref_sdpa_fwd_t on CPU
-        │
-        ▼
-model output / accuracy compared with baseline
-```
-
-### 5.1 Verbose evidence (masked SDPA, packed-QKV layout)
+### 4.1 Verbose evidence (masked SDPA, packed-QKV layout)
 
 ```
 onednn_verbose,v1,primitive,exec,cpu,sdpa,ref:any,forward_inference,
@@ -326,133 +211,68 @@ The explicit Q/K/V strides (`...x384x1`) are the fused-QKV packing; `msk:` shows
 the additive mask flowing through the primitive. Both are handled by the
 stride-aware kernel.
 
-### 5.2 Accuracy (Torch Inductor dashboard models, including BERT-QA)
+### 4.2 Accuracy (Torch Inductor dashboard models, including BERT-QA)
 
 - **f32:** Torch Inductor dashboard model validation passes.
 - **bf16:** Torch Inductor dashboard model validation passes within the expected
   tolerance.
 
-### 5.3 What is validated
+### 4.3 What is validated
 
 - Public `dnnl::sdpa` builds, dispatches to `ref_sdpa_fwd_t` on CPU, executes.
 - Masked / causal / no-mask, f32 / bf16, self- and cross-attention.
 - Packed/transposed (fused-QKV) layouts produce correct results.
 
-## 6. Framework-Side Changes
+## 5. Framework-Side Changes
 
-Frameworks that want to use this primitive need to route their SDPA operator to
-`dnnl::sdpa` instead of decomposing attention into separate MatMul / Softmax /
-MatMul calls or relying on a framework-specific integration path. The framework
-passes Q/K/V/dst memory descriptors, an optional additive mask descriptor, and
-the attention-mask type to the new primitive descriptor.
+Framework backends can map their existing SDPA operator to `dnnl::sdpa`. They
+pass Q/K/V/dst memory descriptors, an optional additive mask descriptor, and the
+attention-mask type to the primitive descriptor.
 
-Example PyTorch framework-side routing:
+Applications need no source changes: they keep calling the framework SDPA API
+(for example PyTorch `aten::scaled_dot_product_attention`), and only the backend
+mapping changes. Later oneDNN SDPA optimizations reuse the same mapping.
 
-```
-Torch Inductor dashboard model
-        |
-        v
-PyTorch SDPA call
-        |
-        v
-aten::scaled_dot_product_attention
-        |
-        v
-framework oneDNN backend mapping
-        |
-        v
-oneDNN dnnl::sdpa primitive API
-        |
-        v
-ref_sdpa_fwd_t on CPU
-        |
-        v
-model output / accuracy compared with baseline
-```
+## 6. First PR - Scope and Acceptance Criteria
 
-Once this mapping is added, applications do not need source changes. They keep
-calling the framework's existing SDPA API (for example PyTorch
-`aten::scaled_dot_product_attention`), while the framework backend can dispatch
-that call through oneDNN's public primitive API. Future SDPA optimizations can
-then be handled inside oneDNN, with no additional framework-side changes.
+The first PR is complete when the following are in place and passing on CPU:
 
-## 7. First PR - Scope and Acceptance Criteria
+- Public `dnnl::sdpa` construction and execution work through public oneDNN
+  headers only, for both no-mask and masked forms.
+- `ref_sdpa_fwd_t` is registered in the CPU implementation list and appears in
+  verbose output as `cpu,sdpa,ref:any`.
+- Forward inference works for 4D BHSD `f32` and `bf16` tensors with default
+  scale and `softmax_accurate`.
+- Additive masks, top-left causal masks, and combined mask cases match the
+  reference within tolerance.
+- Dense, transposed, and packed fused-QKV layouts produce correct results using
+  memory-descriptor strides.
+- benchdnn `--sdpa` covers the CI input set with an independent `f32`
+  reference.
+- gtests cover descriptor creation, queries, invalid arguments, and execute
+  smoke cases.
 
-The first PR is accepted when the public primitive API, CPU reference path,
-masking behavior, stride-aware layouts, and benchdnn validation below are all in
-place and passing on CPU.
+Follow-up work includes optimized CPU kernels, bottom-right causal masks, GQA,
+custom scales, backward propagation, and additional bf16 numerics tuning.
 
-### 7.1 Public API
-- `dnnl::sdpa` + `primitive_desc` in `include/oneapi/dnnl/dnnl.hpp`, forwarding
-  to `sdpa_primitive_desc_create`; mask optional via defaults.
-- **Acceptance criteria:** no-mask and masked `primitive_desc` construct,
-  build a `dnnl::sdpa`, and execute using public oneDNN headers only.
+## 7. Alternatives Considered
 
-### 7.2 CPU reference kernel
-- `src/cpu/ref_sdpa.{hpp,cpp}` + `src/cpu/cpu_sdpa_list.cpp`; `cpu_engine.hpp`
-  routes `primitive_kind::sdpa`.
-- f32 + bf16; default scale; `softmax_accurate`; forward inference.
-- **Acceptance criteria:** `dnnl::sdpa` shows `cpu,sdpa,ref:any` in verbose.
+- Keep using only the Graph API. This avoids a new primitive API, but still
+  requires graph construction for users that want one SDPA primitive call.
+- Keep SDPA internal. This avoids a public API commitment, but leaves framework
+  users without a supported CPU primitive path.
+- Add a public primitive with a CPU reference implementation. This is the
+  proposed option because it gives frameworks a stable primitive entry point and
+  leaves optimized implementations as follow-up work behind the same API.
 
-### 7.3 Masking
-- Explicit additive (f32/bf16, 2D/4D, broadcast), top-left causal, both
-  together.
-- **Acceptance criteria:** benchdnn mask cases match the reference within
-  tolerance.
+## 8. Open Questions
 
-### 7.4 Stride-aware layouts
-- Per-axis stride addressing for Q/K/V/O.
-- **Acceptance criteria:** packed/transposed (fused-QKV) cases produce correct
-  results (regression guard for the dense-assumption bug).
+- Future optimized dispatch policy: should Intel and AMD CPUs use separate
+  policies for BMM-Softmax-BMM and Flash Attention-style paths, or share one
+  policy where possible?
+- First PR scope: should the first PR stop at the public API and CPU reference
+  path, or also include an optimized BMM-Softmax-BMM implementation?
 
-### 7.5 benchdnn SDPA driver
-- `tests/benchdnn/sdpa/` with self-contained f32 `ref_sdpa.cpp`, problem parser,
-  and input sets (`test_sdpa_smoke` / `_ci` / `_all`).
-- **Acceptance criteria:** benchdnn `--sdpa` passes the CI input set on CPU.
-
-### 7.6 Additional first PR requirements
-- **gtests** - add primitive API tests for descriptor creation, queries, invalid
-  arguments, and execute smoke coverage.
-- **Public API cleanup** - move SDPA API types and arguments to public headers
-  and remove dependency on the test/internal interface.
-- **Docs and upstream prep** - document usage, examples, limitations, and split
-  the patches for internal review and upstream discussion.
-
-### 7.7 Follow-up work
-- AMD-tuned SDPA implementation registered ahead of the reference.
-- bf16 numerics parity options; bottom-right causal; cross-impl tolerances.
-
-## 8. Alternatives Considered
-
-### 8.1 Keep using only the Graph API
-- **Pros:** already supported; no new public surface.
-- **Cons:** graph-building is heavier to integrate than one primitive call;
-  consumers wanting a simple fused attention call still have none. A primitive
-  and the graph path coexist.
-
-### 8.2 Keep the primitive internal
-- **Pros:** no public-API commitment.
-- **Cons:** leaves the primitive unusable by real consumers and untested on CPU
-  - exactly today's state. Promoting it to public with a CPU kernel is the point
-  of this RFC.
-
-### 8.3 Public primitive + CPU reference + masks + strides
-- Smallest change that makes SDPA a usable, validated CPU primitive and opens
-  the path for optimized platform-specific implementations.
-- Many PyTorch Inductor dashboard models already expose SDPA as a fused op/node,
-  so frameworks can map that op directly to `dnnl::sdpa` instead of first
-  constructing a oneDNN Graph pattern. This is simpler for frameworks that
-  already use oneDNN's primitive API.
-
-## 9. Open Questions
-
-- **Future optimized dispatch policy.** For a BMM-Softmax-BMM SDPA path, AMD
-  platforms can use ZenDNN's Zen-tuned BMM kernels while Intel platforms can use
-  oneDNN's optimized BRGEMM path. Similarly, for a Flash Attention-style path,
-  AMD hardware can use ZenDNN kernels while Intel hardware can use oneDNN BRGEMM
-  kernels. The open question is whether this dispatch policy remains optimal on
-  Intel.
-- **First PR implementation scope.** Should the first PR include a
-  BMM-Softmax-BMM SDPA path that calls oneDNN BRGEMM, or is the CPU reference
-  kernel sufficient for the initial public primitive API and validation?
+[vllm-cpu-attn]: https://github.com/vllm-project/vllm/blob/e9f331d7/vllm/v1/attention/backends/cpu_attn.py
+[vllm-custom-ops]: https://github.com/vllm-project/vllm/blob/b00e76ff/vllm/_custom_ops.py
 

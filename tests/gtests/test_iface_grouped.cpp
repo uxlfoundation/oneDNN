@@ -598,7 +598,7 @@ HANDLE_EXCEPTIONS_FOR_TEST(iface_grouped_test_t, TestBinaryPostOpPDCreation) {
             dnnl::error);
 }
 
-TEST(iface_grouped_test_t, TestUnsupportedPostOps) {
+TEST(iface_grouped_test_t, TestPostOps) {
     engine eng = get_test_engine();
 
     SKIP_IF(eng.get_kind() == engine::kind::gpu
@@ -611,6 +611,26 @@ TEST(iface_grouped_test_t, TestUnsupportedPostOps) {
             = memory::desc({ngroups, 4, 4}, dt::f32, memory::format_tag::abc);
     auto dst_md = memory::desc::grouped({6, 4}, dt::f32, 0, ngroups);
     auto bin_md = memory::desc({6, 4}, dt::f32, memory::format_tag::ab);
+
+    // Any eltwise algorithm is accepted as an activation post-op
+    for (auto alg : {algorithm::eltwise_relu, algorithm::eltwise_tanh,
+                 algorithm::eltwise_elu, algorithm::eltwise_square,
+                 algorithm::eltwise_abs, algorithm::eltwise_sqrt,
+                 algorithm::eltwise_linear, algorithm::eltwise_soft_relu,
+                 algorithm::eltwise_logistic, algorithm::eltwise_exp,
+                 algorithm::eltwise_gelu_tanh, algorithm::eltwise_gelu_erf,
+                 algorithm::eltwise_log, algorithm::eltwise_clip,
+                 algorithm::eltwise_clip_v2, algorithm::eltwise_pow,
+                 algorithm::eltwise_round, algorithm::eltwise_mish,
+                 algorithm::eltwise_hardswish,
+                 algorithm::eltwise_hardsigmoid}) {
+        post_ops po;
+        po.append_eltwise(alg, 0.f, 1.f);
+        primitive_attr attr;
+        attr.set_post_ops(po);
+        EXPECT_NO_THROW(
+                matmul::primitive_desc(eng, src_md, wei_md, dst_md, attr));
+    }
 
     // eltwise_swish + binary_mul is accepted
     {

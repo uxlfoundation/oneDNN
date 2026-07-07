@@ -2904,11 +2904,13 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary(
             = rhs_addr.isBroadcast() && rhs_arg_data_type == data_type::f32;
     const bool with_tail_not_fusable_to_binary_op
             = with_tail && !isa_has_masks(isa);
+    const bool cmp_op_with_tail_vector_mem_operand
+            = cmp_op && with_tail && !rhs_addr.isBroadcast();
     const bool process_rhs_arg_using_tmp_vmm
             = rhs_arg_data_type != data_type::f32 || (scalar_f32 && !is_avx512_)
             || with_tail_not_fusable_to_binary_op
             || !binary_op_with_unaligned_mem_operand_allowed_
-            || (cmp_op && !is_avx512_);
+            || (cmp_op && !is_avx512_) || cmp_op_with_tail_vector_mem_operand;
 
     if (process_rhs_arg_using_tmp_vmm) {
 

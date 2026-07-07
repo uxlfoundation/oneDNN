@@ -25,11 +25,29 @@ using namespace Xbyak_riscv;
 
 namespace {
 
-template <bool per_elem_params, bool with_relu>
-void dispatch_jit_batch_normalization_f32(
+template <data_type_t data_type, bool per_elem_params, bool with_relu>
+void dispatch_jit_batch_normalization_fwd(
         const jit_rvv_batch_normalization_fwd_kernel_t::call_params_t *p) {
     static const jit_rvv_batch_normalization_fwd_kernel_t kernel(
-            per_elem_params, with_relu);
+            data_type, per_elem_params, with_relu);
+    kernel(p);
+}
+
+template <data_type_t data_type, bool per_elem_params>
+void dispatch_jit_batch_normalization_bwd_reduce(
+        const jit_rvv_batch_normalization_bwd_reduce_kernel_t::call_params_t
+                *p) {
+    static const jit_rvv_batch_normalization_bwd_reduce_kernel_t kernel(
+            data_type, per_elem_params);
+    kernel(p);
+}
+
+template <data_type_t data_type, bool per_elem_params>
+void dispatch_jit_batch_normalization_bwd_apply(
+        const jit_rvv_batch_normalization_bwd_apply_kernel_t::call_params_t
+                *p) {
+    static const jit_rvv_batch_normalization_bwd_apply_kernel_t kernel(
+            data_type, per_elem_params);
     kernel(p);
 }
 
@@ -37,33 +55,57 @@ void dispatch_jit_batch_normalization_f32(
 
 jit_rvv_batch_normalization_fwd_kernel_t::
         jit_rvv_batch_normalization_fwd_kernel_t(
-                bool per_elem_params, bool with_relu)
+                data_type_t data_type, bool per_elem_params, bool with_relu)
     : jit_generator_t("jit_rvv_batch_normalization_fwd_kernel")
+    , data_type_(data_type)
     , per_elem_params_(per_elem_params)
     , with_relu_(with_relu) {
     create_kernel();
 }
 
-void jit_rvv_batch_normalization_apply_f32(const float *src, float *dst,
-        dim_t len, const float *mean, const float *scale_mul,
-        const float *scale_add, bool per_elem_params, bool with_relu) {
+void jit_rvv_batch_normalization_apply(const void *src, void *dst, dim_t len,
+        const float *mean, const float *scale_mul, const float *scale_add,
+        data_type_t dt, bool per_elem_params, bool with_relu) {
     const jit_rvv_batch_normalization_fwd_kernel_t::call_params_t p {
             src, dst, len, mean, scale_mul, scale_add};
-    if (per_elem_params) {
-        if (with_relu)
-            dispatch_jit_batch_normalization_f32<true, true>(&p);
-        else
-            dispatch_jit_batch_normalization_f32<true, false>(&p);
+    if (dt == data_type::f16) {
+        if (per_elem_params) {
+            if (with_relu)
+                dispatch_jit_batch_normalization_fwd<data_type::f16, true,
+                        true>(&p);
+            else
+                dispatch_jit_batch_normalization_fwd<data_type::f16, true,
+                        false>(&p);
+        } else {
+            if (with_relu)
+                dispatch_jit_batch_normalization_fwd<data_type::f16, false,
+                        true>(&p);
+            else
+                dispatch_jit_batch_normalization_fwd<data_type::f16, false,
+                        false>(&p);
+        }
     } else {
-        if (with_relu)
-            dispatch_jit_batch_normalization_f32<false, true>(&p);
-        else
-            dispatch_jit_batch_normalization_f32<false, false>(&p);
+        if (per_elem_params) {
+            if (with_relu)
+                dispatch_jit_batch_normalization_fwd<data_type::f32, true,
+                        true>(&p);
+            else
+                dispatch_jit_batch_normalization_fwd<data_type::f32, true,
+                        false>(&p);
+        } else {
+            if (with_relu)
+                dispatch_jit_batch_normalization_fwd<data_type::f32, false,
+                        true>(&p);
+            else
+                dispatch_jit_batch_normalization_fwd<data_type::f32, false,
+                        false>(&p);
+        }
     }
 }
 
 void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const bool is_f16 = data_type_ == data_type::f16;
     const Reg reg_param = a0;
     const Reg reg_src = a1;
     const Reg reg_dst = a2;
@@ -80,10 +122,11 @@ void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
     const FReg f_zero = fa3;
 
     const VReg v_mask(0);
-    const VReg v_src(4);
-    const VReg v_mean(8);
+    const VReg v_src16(4);
+    const VReg v_src(8);
+    const VReg v_mean(10);
     const VReg v_sm(12);
-    const VReg v_sv(16);
+    const VReg v_sv(14);
 
     ld(reg_src, reg_param, 0);
     ld(reg_dst, reg_param, 8);
@@ -102,8 +145,17 @@ void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
     Label loop, done;
     L(loop);
     beqz(reg_len, done);
-    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
-    vle32_v(v_src, reg_src);
+    if (is_f16) {
+        vsetvli(
+                reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vle16_v(v_src16, reg_src);
+        vfwcvt_f_f_v(v_src, v_src16);
+        vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+    } else {
+        vsetvli(
+                reg_vl, reg_len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
+        vle32_v(v_src, reg_src);
+    }
     if (per_elem_params_) {
         vle32_v(v_mean, reg_mean);
         vle32_v(v_sm, reg_sm);
@@ -120,15 +172,314 @@ void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
         vmflt_vf(v_mask, v_src, f_zero);
         vfmerge_vfm(v_src, v_src, f_zero);
     }
-    vse32_v(v_src, reg_dst);
+    if (is_f16) {
+        vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vfncvt_f_f_w(v_src16, v_src);
+        vse16_v(v_src16, reg_dst);
+    } else {
+        vse32_v(v_src, reg_dst);
+    }
 
-    slli(reg_bytes, reg_vl, 2);
+    slli(reg_bytes, reg_vl, is_f16 ? 1 : 2);
     add(reg_src, reg_src, reg_bytes);
     add(reg_dst, reg_dst, reg_bytes);
     if (per_elem_params_) {
+        slli(reg_bytes, reg_vl, 2);
         add(reg_mean, reg_mean, reg_bytes);
         add(reg_sm, reg_sm, reg_bytes);
         add(reg_sv, reg_sv, reg_bytes);
+    }
+    sub(reg_len, reg_len, reg_vl);
+    j_(loop);
+
+    L(done);
+    ret();
+#else
+    ret();
+#endif
+}
+
+jit_rvv_batch_normalization_bwd_reduce_kernel_t::
+        jit_rvv_batch_normalization_bwd_reduce_kernel_t(
+                data_type_t data_type, bool per_elem_params)
+    : jit_generator_t("jit_rvv_batch_normalization_bwd_reduce_kernel")
+    , data_type_(data_type)
+    , per_elem_params_(per_elem_params) {
+    create_kernel();
+}
+
+void jit_rvv_batch_normalization_bwd_reduce(const void *src,
+        const void *diff_dst, dim_t len, const float *mean, float *diff_scale,
+        float *diff_shift, data_type_t dt, bool per_elem_params) {
+    const jit_rvv_batch_normalization_bwd_reduce_kernel_t::call_params_t p {
+            src, diff_dst, len, mean, diff_scale, diff_shift};
+    if (dt == data_type::f16) {
+        if (per_elem_params)
+            dispatch_jit_batch_normalization_bwd_reduce<data_type::f16, true>(
+                    &p);
+        else
+            dispatch_jit_batch_normalization_bwd_reduce<data_type::f16, false>(
+                    &p);
+    } else {
+        if (per_elem_params)
+            dispatch_jit_batch_normalization_bwd_reduce<data_type::f32, true>(
+                    &p);
+        else
+            dispatch_jit_batch_normalization_bwd_reduce<data_type::f32, false>(
+                    &p);
+    }
+}
+
+void jit_rvv_batch_normalization_bwd_reduce_kernel_t::generate() {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const bool is_f16 = data_type_ == data_type::f16;
+    const LMUL compute_lmul = is_f16 ? LMUL::m2 : LMUL::m1;
+
+    const Reg reg_param = a0;
+    const Reg reg_src = a1;
+    const Reg reg_diff_dst = a2;
+    const Reg reg_len = a3;
+    const Reg reg_mean = a4;
+    const Reg reg_diff_scale = a5;
+    const Reg reg_diff_shift = a6;
+    const Reg reg_vl = t0;
+    const Reg reg_data_bytes = t1;
+    const Reg reg_param_bytes = t2;
+
+    const FReg f_mean = fa0;
+    const FReg f_diff_scale = fa1;
+    const FReg f_diff_shift = fa2;
+    const FReg f_reduce = fa3;
+
+    const VReg v_src16(2);
+    const VReg v_diff_dst16(4);
+    const VReg v_src(8);
+    const VReg v_diff_dst(10);
+    const VReg v_mean(12);
+    const VReg v_diff_scale(14);
+    const VReg v_diff_shift(16);
+    const VReg v_work(18);
+    const VReg v_zero(20);
+    const VReg v_reduce(21);
+
+    ld(reg_src, reg_param, 0);
+    ld(reg_diff_dst, reg_param, 8);
+    ld(reg_len, reg_param, 16);
+    ld(reg_mean, reg_param, 24);
+    ld(reg_diff_scale, reg_param, 32);
+    ld(reg_diff_shift, reg_param, 40);
+
+    if (!per_elem_params_) {
+        flw(f_mean, reg_mean, 0);
+        flw(f_diff_scale, reg_diff_scale, 0);
+        flw(f_diff_shift, reg_diff_shift, 0);
+        vsetvli(reg_param_bytes, x0, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
+        vmv_v_x(v_zero, x0);
+    }
+
+    Label loop, done;
+    L(loop);
+    beqz(reg_len, done);
+    if (is_f16) {
+        vsetvli(
+                reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vle16_v(v_src16, reg_src);
+        vle16_v(v_diff_dst16, reg_diff_dst);
+        vfwcvt_f_f_v(v_src, v_src16);
+        vfwcvt_f_f_v(v_diff_dst, v_diff_dst16);
+        vsetvli(
+                reg_vl, reg_vl, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
+    } else {
+        vsetvli(
+                reg_vl, reg_len, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
+        vle32_v(v_src, reg_src);
+        vle32_v(v_diff_dst, reg_diff_dst);
+    }
+
+    if (per_elem_params_) {
+        vle32_v(v_mean, reg_mean);
+        vle32_v(v_diff_scale, reg_diff_scale);
+        vle32_v(v_diff_shift, reg_diff_shift);
+        vfsub_vv(v_work, v_src, v_mean);
+        vfmul_vv(v_work, v_work, v_diff_dst);
+        vfadd_vv(v_diff_scale, v_diff_scale, v_work);
+        vfadd_vv(v_diff_shift, v_diff_shift, v_diff_dst);
+        vse32_v(v_diff_scale, reg_diff_scale);
+        vse32_v(v_diff_shift, reg_diff_shift);
+    } else {
+        vfsub_vf(v_work, v_src, f_mean);
+        vfmul_vv(v_work, v_work, v_diff_dst);
+
+        vfredusum_vs(v_reduce, v_work, v_zero);
+        vfmv_f_s(f_reduce, v_reduce);
+        fadd_s(f_diff_scale, f_diff_scale, f_reduce);
+        vfredusum_vs(v_reduce, v_diff_dst, v_zero);
+        vfmv_f_s(f_reduce, v_reduce);
+        fadd_s(f_diff_shift, f_diff_shift, f_reduce);
+    }
+
+    slli(reg_data_bytes, reg_vl, is_f16 ? 1 : 2);
+    add(reg_src, reg_src, reg_data_bytes);
+    add(reg_diff_dst, reg_diff_dst, reg_data_bytes);
+    if (per_elem_params_) {
+        slli(reg_param_bytes, reg_vl, 2);
+        add(reg_mean, reg_mean, reg_param_bytes);
+        add(reg_diff_scale, reg_diff_scale, reg_param_bytes);
+        add(reg_diff_shift, reg_diff_shift, reg_param_bytes);
+    }
+    sub(reg_len, reg_len, reg_vl);
+    j_(loop);
+
+    L(done);
+    if (!per_elem_params_) {
+        fsw(f_diff_scale, reg_diff_scale, 0);
+        fsw(f_diff_shift, reg_diff_shift, 0);
+    }
+    ret();
+#else
+    ret();
+#endif
+}
+
+jit_rvv_batch_normalization_bwd_apply_kernel_t::
+        jit_rvv_batch_normalization_bwd_apply_kernel_t(
+                data_type_t data_type, bool per_elem_params)
+    : jit_generator_t("jit_rvv_batch_normalization_bwd_apply_kernel")
+    , data_type_(data_type)
+    , per_elem_params_(per_elem_params) {
+    create_kernel();
+}
+
+void jit_rvv_batch_normalization_bwd_apply(const void *src,
+        const void *diff_dst, void *diff_src, dim_t len, const float *mean,
+        const float *scale_mul, const float *diff_scale_mul,
+        const float *diff_shift_add, data_type_t dt,
+        bool per_elem_params) {
+    const jit_rvv_batch_normalization_bwd_apply_kernel_t::call_params_t p {src,
+            diff_dst, diff_src, len, mean, scale_mul, diff_scale_mul,
+            diff_shift_add};
+    if (dt == data_type::f16) {
+        if (per_elem_params)
+            dispatch_jit_batch_normalization_bwd_apply<data_type::f16, true>(
+                    &p);
+        else
+            dispatch_jit_batch_normalization_bwd_apply<data_type::f16, false>(
+                    &p);
+    } else {
+        if (per_elem_params)
+            dispatch_jit_batch_normalization_bwd_apply<data_type::f32, true>(
+                    &p);
+        else
+            dispatch_jit_batch_normalization_bwd_apply<data_type::f32, false>(
+                    &p);
+    }
+}
+
+void jit_rvv_batch_normalization_bwd_apply_kernel_t::generate() {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const bool is_f16 = data_type_ == data_type::f16;
+    const LMUL compute_lmul = is_f16 ? LMUL::m2 : LMUL::m1;
+
+    const Reg reg_param = a0;
+    const Reg reg_src = a1;
+    const Reg reg_diff_dst = a2;
+    const Reg reg_diff_src = a3;
+    const Reg reg_len = a4;
+    const Reg reg_mean = a5;
+    const Reg reg_scale_mul = a6;
+    const Reg reg_diff_scale_mul = a7;
+    const Reg reg_diff_shift_add = t0;
+    const Reg reg_vl = t1;
+    const Reg reg_data_bytes = t2;
+    const Reg reg_param_bytes = t3;
+
+    const FReg f_mean = fa0;
+    const FReg f_scale_mul = fa1;
+    const FReg f_diff_scale_mul = fa2;
+    const FReg f_diff_shift_add = fa3;
+
+    const VReg v_src16(2);
+    const VReg v_diff_dst16(4);
+    const VReg v_diff_src16(6);
+    const VReg v_src(8);
+    const VReg v_diff_dst(10);
+    const VReg v_mean(12);
+    const VReg v_scale_mul(14);
+    const VReg v_diff_scale_mul(16);
+    const VReg v_diff_shift_add(18);
+    const VReg v_work(20);
+
+    ld(reg_src, reg_param, 0);
+    ld(reg_diff_dst, reg_param, 8);
+    ld(reg_diff_src, reg_param, 16);
+    ld(reg_len, reg_param, 24);
+    ld(reg_mean, reg_param, 32);
+    ld(reg_scale_mul, reg_param, 40);
+    ld(reg_diff_scale_mul, reg_param, 48);
+    ld(reg_diff_shift_add, reg_param, 56);
+
+    if (!per_elem_params_) {
+        flw(f_mean, reg_mean, 0);
+        flw(f_scale_mul, reg_scale_mul, 0);
+        flw(f_diff_scale_mul, reg_diff_scale_mul, 0);
+        flw(f_diff_shift_add, reg_diff_shift_add, 0);
+    }
+
+    Label loop, done;
+    L(loop);
+    beqz(reg_len, done);
+    if (is_f16) {
+        vsetvli(
+                reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vle16_v(v_src16, reg_src);
+        vle16_v(v_diff_dst16, reg_diff_dst);
+        vfwcvt_f_f_v(v_src, v_src16);
+        vfwcvt_f_f_v(v_diff_dst, v_diff_dst16);
+        vsetvli(
+                reg_vl, reg_vl, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
+    } else {
+        vsetvli(
+                reg_vl, reg_len, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
+        vle32_v(v_src, reg_src);
+        vle32_v(v_diff_dst, reg_diff_dst);
+    }
+
+    if (per_elem_params_) {
+        vle32_v(v_mean, reg_mean);
+        vle32_v(v_scale_mul, reg_scale_mul);
+        vle32_v(v_diff_scale_mul, reg_diff_scale_mul);
+        vle32_v(v_diff_shift_add, reg_diff_shift_add);
+        vfsub_vv(v_work, v_src, v_mean);
+        vfmul_vv(v_work, v_work, v_diff_scale_mul);
+        vfadd_vv(v_work, v_work, v_diff_shift_add);
+        vfsub_vv(v_diff_dst, v_diff_dst, v_work);
+        vfmul_vv(v_diff_dst, v_diff_dst, v_scale_mul);
+    } else {
+        vfsub_vf(v_work, v_src, f_mean);
+        vfmul_vf(v_work, v_work, f_diff_scale_mul);
+        vfadd_vf(v_work, v_work, f_diff_shift_add);
+        vfsub_vv(v_diff_dst, v_diff_dst, v_work);
+        vfmul_vf(v_diff_dst, v_diff_dst, f_scale_mul);
+    }
+
+    if (is_f16) {
+        vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vfncvt_f_f_w(v_diff_src16, v_diff_dst);
+        vse16_v(v_diff_src16, reg_diff_src);
+    } else {
+        vse32_v(v_diff_dst, reg_diff_src);
+    }
+
+    slli(reg_data_bytes, reg_vl, is_f16 ? 1 : 2);
+    add(reg_src, reg_src, reg_data_bytes);
+    add(reg_diff_dst, reg_diff_dst, reg_data_bytes);
+    add(reg_diff_src, reg_diff_src, reg_data_bytes);
+    if (per_elem_params_) {
+        slli(reg_param_bytes, reg_vl, 2);
+        add(reg_mean, reg_mean, reg_param_bytes);
+        add(reg_scale_mul, reg_scale_mul, reg_param_bytes);
+        add(reg_diff_scale_mul, reg_diff_scale_mul, reg_param_bytes);
+        add(reg_diff_shift_add, reg_diff_shift_add, reg_param_bytes);
     }
     sub(reg_len, reg_len, reg_vl);
     j_(loop);

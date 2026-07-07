@@ -2,8 +2,9 @@
 # These shapes are physically equivalent to canonical layouts once unit dims
 # are squeezed out, e.g. acbd(128,12,1,256) strides=(3072,256,3072,1)
 # is equivalent to acb(128,12,256) n_c_spatial layout.
-# is_format_non_blocked() and get_op_type() both squeeze unit dims, so the
-# same-shape and the broadcast cases below all run on jit:uni (not ref).
+# is_format_non_blocked() and get_op_type() squeeze unit *spatial* dims
+# (index >= 2), so the same-shape and the broadcast cases below all run on
+# jit:uni (not ref).
 # Regression for: jit_uni_binary false positive in is_format_non_blocked()
 # causing assert/NaN with acbd layout and H=1.
 
@@ -63,3 +64,28 @@
 --alg=add  --stag=aBcd16b:aBcd16b --dtag=aBcd16b 128x16x1x256:128x16x1x256
 --alg=mul  --stag=aBcd16b:aBcd16b --dtag=aBcd16b 128x16x1x256:1x16x1x1
 --alg=add  --stag=aBcd8b:aBcd8b   --dtag=aBcd8b  2x32x1x8:2x32x1x8
+
+# Permuted plain layouts with a unit *channel* (C=1) must NOT be squeezed:
+# only unit spatial dims (index >= 2) are removed, so the channel stays at
+# index 1 and op_type keeps the same coordinate system as bcast_type and the
+# execute-time offset math. These `...c` tags (channel innermost) with a
+# spatial broadcast would otherwise be mis-executed on jit:uni; they must run
+# on ref:any with correct results.
+# Regression for: silent wrong output (e.g. abdc 2x1x3x5:2x1x1x5, ~22/30
+# elements wrong) when squeezing a unit channel flipped op_type.
+--reset
+--allow-enum-tags-only=0
+--sdt=f32:f32 --ddt=f32
+--alg=add  --stag=abdc:abdc --dtag=abdc 2x1x3x5:2x1x1x5
+--alg=mul  --stag=abdc:abdc --dtag=abdc 2x1x3x5:2x1x1x5
+--alg=add  --stag=adbc:adbc --dtag=adbc 2x1x3x5:2x1x1x5
+--alg=add  --stag=adcb:adcb --dtag=adcb 2x1x3x5:2x1x1x5
+--alg=add  --stag=abdc:abdc --dtag=abdc 4x1x3x5:4x1x1x5
+
+# 6D+ plain broadcasts must stay on jit:uni (rank-agnostic ncx coverage): the
+# ncx tag list now runs to DNNL_MAX_NDIMS, so these are not dropped to ref.
+# Regression for: 6D broadcasts falling back from jit:uni to ref:any when the
+# is_format_non_blocked tag list stopped at 5D.
+--alg=add  --stag=abcdef:abcdef   --dtag=abcdef   2x3x4x5x2x2:2x3x1x1x1x1
+--alg=mul  --stag=abcdef:abcdef   --dtag=abcdef   2x3x4x5x2x2:1x1x1x1x1x1
+--alg=add  --stag=abcdefg:abcdefg --dtag=abcdefg  2x3x4x2x2x2x3:2x3x1x1x1x1x1

@@ -117,12 +117,20 @@ static bool data_format_supported(
             || (is_superset(isa, sse41) && blk_size == 4);
 }
 
-// Removes all unit (size-1) dims from a plain layout, producing an equivalent
-// lower-rank descriptor. Unit dims don't affect addressing, so a permuted
-// plain layout (e.g. `acbd` with H == 1) maps to a canonical nxc/ncx layout
-// once they are gone. Returns false (leaving `squeezed_md` untouched) for a
-// non-plain layout, when nothing is squeezed, or when fewer than 2 dims
-// remain. Mirrors the pattern in brgemm_matmul_reorders.cpp.
+// Removes unit (size-1) *spatial* dims (index >= 2) from a plain layout,
+// producing an equivalent lower-rank descriptor. A permuted plain layout whose
+// only permutation is a unit spatial dim (e.g. `acbd` with H == 1) maps to a
+// canonical nxc/ncx layout once that dim is gone. Returns false (leaving
+// `squeezed_md` untouched) for a non-plain layout, when nothing is squeezed, or
+// when fewer than 2 dims remain. Mirrors the pattern in
+// brgemm_matmul_reorders.cpp.
+//
+// Batch (index 0) and channel (index 1) are preserved even when they are unit:
+// the execution kernels, the broadcast classification (get_bcast_type reads
+// bcast_dims[1]) and the post-op injector all address batch/channel by fixed
+// index, so removing a unit index 0/1 would shift the channel axis and desync
+// op_type from bcast_type and from the execute-time offset math (silent wrong
+// results for layouts like `abdc` with C == 1).
 static bool squeeze_unit_dims(
         const memory_desc_wrapper &mdw, memory_desc_t &squeezed_md) {
     if (!mdw.is_plain()) return false;
@@ -131,7 +139,7 @@ static bool squeeze_unit_dims(
     dims_t squeezed_dims {};
     int ndims_out = 0;
     for (int i = 0; i < ndims; ++i)
-        if (dims[i] != 1) squeezed_dims[ndims_out++] = dims[i];
+        if (i < 2 || dims[i] != 1) squeezed_dims[ndims_out++] = dims[i];
     if (ndims_out < 2 || ndims_out >= ndims) return false;
     return memory_desc_reshape(squeezed_md, *mdw.md_, ndims_out, squeezed_dims)
             == status::success;
@@ -338,8 +346,15 @@ bool jit_uni_binary_t::pd_t::is_format_non_blocked(
     // A canonical ncx or nxc layout is the only non-blocked form jit:uni
     // supports. matches_one_of_tag() compares against a dense gold descriptor,
     // which covers every layout reachable here once unit dims are squeezed.
+    // Non-dense (padded/gapped) srcs never reach here: is_applicable() rejects
+    // them via is_dense() first. ncx tags are enumerated up to DNNL_MAX_NDIMS
+    // (12D); named channels-last (nxc) tags only exist up to 5D (acdeb), but
+    // higher-rank nxc layouts cannot be constructed (no such format_tag), so
+    // the list is complete for every reachable layout.
     using namespace format_tag;
-    const bool is_ncx = mdw.matches_one_of_tag(a, ab, abc, abcd, abcde)
+    const bool is_ncx = mdw.matches_one_of_tag(a, ab, abc, abcd, abcde, abcdef,
+                                abcdefg, abcdefgh, abcdefghi, abcdefghij,
+                                abcdefghijk, abcdefghijkl)
             != format_tag::undef;
     const bool is_nxc
             = mdw.matches_one_of_tag(acb, acdb, acdeb) != format_tag::undef;

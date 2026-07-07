@@ -37,6 +37,7 @@ struct jit_int8_matmul_utils_kernel_t;
 template <cpu_isa_t isa>
 struct jit_int8_matmul_t : public primitive_t {
     struct pd_t : public cpu::matmul::cpu_matmul_pd_t {
+    public:
         using cpu::matmul::cpu_matmul_pd_t::cpu_matmul_pd_t;
 
         DECLARE_COMMON_PD_T("jit:int8", jit_int8_matmul_t);
@@ -92,15 +93,18 @@ struct jit_int8_matmul_t : public primitive_t {
         int m_block_sz, n_block_sz, mm_parallel_work;
 
     private:
+        bool post_ops_ok() const;
+
         brg_int8_t brg_;
         dyn_vals_t dyn_;
     };
 
     jit_int8_matmul_t(const pd_t *apd);
-    ~jit_int8_matmul_t() override;
-    int get_idx(int z, int m, int k, int n, int M, int K, int N);
+
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
+
+    ~jit_int8_matmul_t() override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

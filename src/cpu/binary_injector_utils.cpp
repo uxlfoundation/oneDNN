@@ -13,9 +13,11 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#include "cpu/binary_injector_utils.hpp"
+#include <algorithm>
+
 #include "common/primitive.hpp"
 #include "common/primitive_attr.hpp"
+#include "cpu/binary_injector_utils.hpp"
 #include "oneapi/dnnl/dnnl_types.h"
 
 namespace dnnl {
@@ -88,6 +90,22 @@ memory_desc_t get_src2_desc(
     } else {
         return memory_desc_t();
     }
+}
+
+bool any_binary_postop_with_ternary_bcast(
+        const post_ops_t &post_ops, const memory_desc_wrapper &dst_d) {
+    return std::any_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
+            [&](const post_ops_t::entry_t &entry) -> bool {
+        if (!entry.is_binary_with_ternary_op()) return false;
+        // Use user_src2_desc: the resolved src2_desc is not yet
+        // populated at primitive-descriptor init time, whereas the
+        // user-provided condition descriptor carries the real dims.
+        const memory_desc_wrapper src2_d(entry.binary.user_src2_desc);
+        if (src2_d.ndims() != dst_d.ndims()) return true;
+        for (int d = 0; d < dst_d.ndims(); ++d)
+            if (src2_d.dims()[d] != dst_d.dims()[d]) return true;
+        return false;
+    });
 }
 
 std::vector<broadcasting_strategy_t> extract_bcast_strategies(

@@ -348,6 +348,16 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                                     po, dst_d)),
             VERBOSE_UNSUPPORTED_POSTOP);
 
+    // A select post-op with a broadcast condition (ternary src2 smaller than
+    // dst) is not implemented: post-op application loads the condition at full
+    // dst shape and would read out of bounds, segfaulting the kernel. Reject it
+    // so the iterator falls back to the reference path, which handles condition
+    // broadcast correctly.
+    VDISPATCH_MATMUL(
+            !binary_injector_utils::any_binary_postop_with_ternary_bcast(
+                    po, dst_d),
+            VERBOSE_UNSUPPORTED_POSTOP);
+
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
     VDISPATCH_MATMUL(
             check_attr_zero_points(is_bf16_with_int_wei || is_f16_with_int_wei

@@ -2909,7 +2909,10 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
         // blending the tensors, the current approach reserves
         // fewer registers for operation.
         if (is_superset(isa_, avx512_core)) {
-            const auto &cmp_mask = rhs_arg_static_params_.tail_opmask;
+            // A dedicated auxiliary opmask, not tail_opmask: the
+            // scalar-broadcast src1 load below needs tail_opmask preserved
+            // (execute_broadcast_*_with_opmask reads it).
+            const auto cmp_mask = get_aux_kmask();
             push_opmask(host_, cmp_mask);
             push_vmm(host_, dst);
             host_->vxorps(dst, dst, dst);
@@ -2919,7 +2922,6 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
             host_->vblendmps(dst | cmp_mask, tmp_vmm, dst);
             host_->knotw(cmp_mask, cmp_mask);
             host_->vpmovm2b(tmp_vmm, cmp_mask);
-            pop_opmask(host_, cmp_mask);
             push_vmm(host_, dst);
 
             if (rhs_addr.isBroadcast())
@@ -2930,14 +2932,13 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
                         with_tail);
             if (types::is_integral_dt(rhs_arg_data_type)) cvt_to_f32(dst);
 
-            push_opmask(host_, cmp_mask);
             host_->vpmovb2m(cmp_mask, tmp_vmm);
 
             host_->vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
             host_->vblendmps(tmp_vmm | cmp_mask, tmp_vmm, dst);
-            pop_opmask(host_, cmp_mask);
             pop_vmm(host_, dst);
             host_->vpaddd(dst, dst, tmp_vmm);
+            pop_opmask(host_, cmp_mask);
         } else {
             push_vmm(host_, dst);
             host_->vxorps(dst, dst, dst);

@@ -21,7 +21,24 @@
 ## TODO: extend generated coverage for fpX masks.
 --reset --dt=f8_e4m3:f8_e4m3:f32 --attr-scales=src:3+wei:3 2x2x8x8:2x2x8x16_n"fp8_per_batch_mask_3"
 
-# Binary select post-op with broadcast
+# Select post-op, scalar-broadcast src1 (.per_tensor).
+--reset
+--dt=f32,s8:s8:s32,bf16
+--stag=ab --wtag=ab --dtag=ab
+--attr-post-ops=select:f32,\
+                select:f32.per_oc,\
+                select:f32.per_tensor,\
+                select:s8.per_tensor+add:f32
+--batch=shapes_2d
+
+# Select post-op, scalar-broadcast src1, SDPA-shaped.
+--reset
+--dt=f32,bf16
+--stag=abcd --wtag=abcd --dtag=abcd
+--attr-post-ops=select:f32,select:f32.per_tensor
+1x16x32x256:1x16x256x33n"sdpa"
+
+# Select post-op, broadcast condition (ternary src2); falls back cleanly.
 --reset
 --dt=f32,bf16
 --stag=abcd --wtag=abcd --dtag=abcd

@@ -322,9 +322,16 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(po.check_sum_consistency(dst_dt, is_int8),
             VERBOSE_UNSUPPORTED_POSTOP);
 
+    // Scalar-broadcast ternary (select) post-ops fuse on avx512_core and
+    // below (get_aux_kmask avoids the src1 tail_opmask collision). The AMX
+    // brgemm post-op path doesn't handle this case, so gate on the AMX ISA
+    // and fall back to avx512_core/ref. Anchor: TERNARY_SCALAR_BCAST_AVX512_ONLY.
+    // TODO(perf): support scalar-broadcast ternary select on AMX.
     VDISPATCH_MATMUL(
-            !binary_injector::any_binary_postop_rhs_with_ternary_scalar_bcast(
-                    po, dst_d),
+            !(is_superset(isa, avx512_core_amx)
+                    && binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    po, dst_d)),
             VERBOSE_UNSUPPORTED_POSTOP);
 
     CHECK(check_attr_scales());

@@ -1922,6 +1922,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.wei_zp_type = get_zp_type(attr, DNNL_ARG_WEIGHTS);
     bgmmc.dst_zp_type = get_zp_type(attr, DNNL_ARG_DST);
 
+    bgmmc.has_zero_point_a = bgmmc.src_zp_type != brgemm_broadcast_t::none;
+    bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
+    bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
     // Non-default src zero points (per-tensor, common, host_scalar) with
     // int8 grouped quantization: the per-(M,N) compensation tile (set via
     // bgmmc.with_per_mn_compensation later in init) covers the remaining
@@ -2378,12 +2381,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 : bgmmc.LDD;
     }
 
-    bgmmc.is_src_batch_layout_trivial
-            = is_batch_layout_trivial(src_d);
-    bgmmc.is_wei_batch_layout_trivial
-            = is_batch_layout_trivial(weights_d);
-    bgmmc.is_dst_batch_layout_trivial
-            = is_batch_layout_trivial(dst_d);
+    bgmmc.is_src_batch_layout_trivial = is_batch_layout_trivial(src_d);
+    bgmmc.is_wei_batch_layout_trivial = is_batch_layout_trivial(weights_d);
+    bgmmc.is_dst_batch_layout_trivial = is_batch_layout_trivial(dst_d);
 
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
@@ -2775,9 +2775,6 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
             ? dst_d.blocking_desc().strides[0] * bgmmc.c_dt_sz
             : 0;
 
-    bgmmc.has_zero_point_a = bgmmc.src_zp_type != brgemm_broadcast_t::none;
-    bgmmc.has_zero_point_b = bgmmc.wei_zp_type != brgemm_broadcast_t::none;
-    bgmmc.has_zero_point_c = bgmmc.dst_zp_type != brgemm_broadcast_t::none;
     bgmmc.with_per_mn_compensation = bgmmc.with_int8_grouped_quantization
             && (bgmmc.has_zero_point_a || bgmmc.has_zero_point_b
                     || bgmmc.s8s8_compensation_required);

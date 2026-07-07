@@ -323,6 +323,15 @@ struct brgemm_matmul_conf_t {
         const dim_t big_K_threshold = big_stride_threshold_in_bytes / a_dt_sz;
         return !transposed_A && math::is_pow2(K) && K >= big_K_threshold;
     }
+
+    inline bool calculate_compensations_in_copy_routines() const {
+        const bool need_to_calculate_compensation_for_a
+                = has_zero_point_b && !with_wei_decompression;
+        const bool need_to_calculate_compensation_for_b = !IMPLICATION(
+                (has_zero_point_a || s8s8_compensation_required), blocked_B);
+        return need_to_calculate_compensation_for_a
+                || need_to_calculate_compensation_for_b;
+    }
 };
 
 struct brgemm_matmul_conf_utils_t {

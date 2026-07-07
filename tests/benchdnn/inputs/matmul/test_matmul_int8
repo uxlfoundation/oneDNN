@@ -86,3 +86,12 @@
 
 # regression
 --batch=harness_matmul_regression_int8
+
+# AMX macro heuristic selecting nthr_k > 1 when zp compensation
+# is required in copy routines, causing incorrect results.
+# Shape has small N (92) which with many threads triggers K-split selection.
+--reset
+--dt=s8:u8:f16 --stag=abx --wtag=abx --dtag=abx
+--attr-scales=src:per_tensor:f16:1x32+wei:per_oc:f16
+--attr-zero-points=wei:common:4:u8
+832x2944:2944x92

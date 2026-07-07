@@ -134,6 +134,11 @@ bool matmul_amx_blocking_params_macro_t::divs_are_acceptable() const {
     }
 
     bool unacceptable_b_div = nthr_b_ > (size_t)batch;
+    if (nthr_k_ > 1 && calculate_compensations_in_copy_routines()) {
+        // If we have to calculate compensations in copy routines,
+        // we cannot split K dimension
+        unacceptable_k_div = true;
+    }
 
     return !unacceptable_m_div && !unacceptable_k_div && !unacceptable_n_div
             && !unacceptable_b_div;

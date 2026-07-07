@@ -1827,10 +1827,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 copy_A_src_stride_
                         = helper.get_a_stride(bgmmc.ndims - 1) * bgmmc.a_dt_sz;
 
-            is_A_batch_layout_trivial_
-                    = is_batch_layout_trivial(src_d_);
-            is_C_batch_layout_trivial_
-                    = is_batch_layout_trivial(dst_d_);
+            is_A_batch_layout_trivial_ = is_batch_layout_trivial(src_d_);
+            is_C_batch_layout_trivial_ = is_batch_layout_trivial(dst_d_);
         } else {
             M_ = bgmmc.M;
             M_chunks_ = bgmmc.M_chunks;
@@ -1890,10 +1888,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 B_strides_[dim_idx] = bgmmc.b_dt_sz
                         * helper.get_b_stride(bgmmc.ndims - 1 - dim_idx);
 
-            is_B_batch_layout_trivial_
-                    = is_batch_layout_trivial(wei_d_);
-            is_C_batch_layout_trivial_
-                    = is_batch_layout_trivial(dst_d_);
+            is_B_batch_layout_trivial_ = is_batch_layout_trivial(wei_d_);
+            is_C_batch_layout_trivial_ = is_batch_layout_trivial(dst_d_);
         } else {
             N_ = bgmmc.N;
             N_chunks_ = bgmmc.N_chunks;
@@ -1958,22 +1954,12 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         num_threads_used_ = nthr_k_ * nthr_bmn_;
 
-        const bool need_to_calculate_compensation_for_a
-                = bgmmc.has_zero_point_b && !bgmmc.with_wei_decompression;
-        const bool need_to_calculate_compensation_for_b = !IMPLICATION(
-                (bgmmc.has_zero_point_a || bgmmc.s8s8_compensation_required),
-                bgmmc.blocked_B);
-        const bool calculate_compensations_in_copy_routines
-                = need_to_calculate_compensation_for_a
-                || need_to_calculate_compensation_for_b;
         // currently parallel reduction is supported only for case of
         // non-batched problems without computation of any compensations in
         // copy routines
         assert(IMPLICATION(parallel_reduction_is_used(),
-                bgmmc.batch == 1 && !calculate_compensations_in_copy_routines));
-        MAYBE_UNUSED(need_to_calculate_compensation_for_a);
-        MAYBE_UNUSED(need_to_calculate_compensation_for_b);
-        MAYBE_UNUSED(calculate_compensations_in_copy_routines);
+                bgmmc.batch == 1
+                        && !bgmmc.calculate_compensations_in_copy_routines()));
     }
 
     // NOTE: gb --> generalized batch, bb --> broadcast batch

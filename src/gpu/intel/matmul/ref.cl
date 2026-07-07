@@ -189,14 +189,16 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
             long src_off = SRC_OFFSET(m, k);
             long wei_off = WEI_OFFSET(k, n);
             int wei_zp = 0;
-#if WITH_WEI_ZPOINTS && !WITH_SRC_GROUP_SUMS
+#if WITH_WEI_ZPOINTS
             long wei_zp_off = wei_zp_stride_n * (n / wei_zp_group_n)
                     + wei_zp_stride_k * (k / wei_zp_group_k)
                     + BATCH_OFF(wei_zp);
+#if !WITH_SRC_GROUP_SUMS
             wei_zp = WEI_ZP_TO_REF(b0, wei_zp_off);
 #endif
+#endif
             int src_zp = 0;
-#if WITH_SRC_ZPOINTS && !WITH_SRC_GROUP_SUMS
+#if WITH_SRC_ZPOINTS
             long src_zp_off = src_zp_stride_k * (k / src_zp_group_k)
                     + src_zp_stride_m * m + BATCH_OFF(src_zp);
             src_zp = SRC_ZP_TO_REF(a0, src_zp_off);
@@ -214,6 +216,10 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #endif
             ACC_DATA_T w = TO_ACC(w_raw - wei_zp);
             acc_g += s * w;
+#if WITH_WEI_ZPOINTS && WITH_SRC_GROUP_SUMS
+            wei_zp = WEI_ZP_TO_REF(b0, wei_zp_off);
+            acc_g += TO_ACC(src_zp * wei_zp);
+#endif
         }
 
         FLT_ACC_DATA_T src_scale = 1.f;

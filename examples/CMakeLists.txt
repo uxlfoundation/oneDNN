@@ -104,6 +104,7 @@ if(NOT ONEDNN_BUILD_GRAPH)
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/sdpa_bottom_right_causal_mask.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/gqa_training.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/graph/sdpa_quantized.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/graph/sdpa_dynamic_quantized.cpp
         )
 endif()
 

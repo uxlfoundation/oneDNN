@@ -428,7 +428,7 @@ auto bias_md = memory::desc({num_groups, N},
 #### Post-ops Support
 
 Post-ops for grouped GEMM follow the same API as regular matmul.
-Eltwise and binary multiplication post-ops are supported.
+Any eltwise algorithm and binary multiplication post-ops are supported.
 
 Binary post-op tensors accept both dense and grouped memory descriptors.
 Note that when a grouped descriptor is provided, we use the binary tensor's
@@ -522,7 +522,8 @@ The following are supported:
   - Weights zero points data types include `u8`, `s8`, `u4`, `s4`
 - Post-ops: eltwise and binary multiplication post-ops are supported. Binary post-op
   tensors accept both dense and grouped memory descriptors.
-  Common patterns include `eltwise_swish` for SiLU activation,
+  Common patterns include `eltwise_swish` (SiLU) or
+  `eltwise_gelu_tanh` / `eltwise_gelu_erf` (GELU) for the gate activation,
   `binary_mul` with a `[total_tokens, N]` grouped or dense tensor,
   `binary_mul` with a `[total_tokens, 1]` dense tensor,
   and `[num_groups, 1]` for a per-group global scale (e.g. NVFP4).

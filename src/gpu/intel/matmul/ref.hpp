@@ -161,12 +161,21 @@ struct ref_t : public primitive_t {
         attr_info_t attr_info_ = {};
 
     private:
+        int broadcast_mask(const memory_desc_t *md) const {
+            int mask = 0;
+            for (int d = 0; d < md->ndims; ++d)
+                if (md->dims[d] == 1) mask |= (1 << d);
+            return mask;
+        }
+
         bool zero_points_ok() const {
             const auto &zp = attr()->zero_points_;
             if (!zp.has_default_values(DNNL_ARG_SRC)) {
-                int mask_src = zp.get_mask(DNNL_ARG_SRC);
-                bool ok = utils::one_of(mask_src, 0, src_qmask_K(),
-                        src_qmask_M() + src_qmask_K());
+                int bcast_mask = broadcast_mask(src_md());
+                int mask_src = zp.get_mask(DNNL_ARG_SRC) & ~bcast_mask;
+                bool ok = utils::one_of(mask_src, 0,
+                        src_qmask_K() & ~bcast_mask,
+                        (src_qmask_M() + src_qmask_K()) & ~bcast_mask);
                 if (!ok) return false;
 
                 if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {
@@ -196,8 +205,10 @@ struct ref_t : public primitive_t {
                 }
             }
             if (!zp.has_default_values(DNNL_ARG_DST)) {
-                int mask_dst = zp.get_mask(DNNL_ARG_DST);
-                bool ok = utils::one_of(mask_dst, 0, dst_qmask_N());
+                int bcast_mask = broadcast_mask(dst_md());
+                int mask_dst = zp.get_mask(DNNL_ARG_DST) & ~bcast_mask;
+                bool ok = utils::one_of(
+                        mask_dst, 0, dst_qmask_N() & ~bcast_mask);
                 if (!ok) return false;
             }
             return true;

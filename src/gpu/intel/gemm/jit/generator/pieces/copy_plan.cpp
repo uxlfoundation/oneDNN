@@ -672,9 +672,12 @@ void CopyPlan::repositionSrc(CopyInstruction &i, int n, int stride, int offset)
     auto CopyInstruction::* src = (n == 0) ? &CopyInstruction::src0 :
                                   (n == 1) ? &CopyInstruction::src1 :
                                              &CopyInstruction::src2;
-    auto type = (i.*src).type;
+    auto &op = i.*src;
+    auto type = op.type;
+    if (type == DataType::v) type = DataType::w;
+    if (type == DataType::uv) type = DataType::uw;
     auto bytes = getBytes(type);
-    auto abs = (i.*src).abs;
+    auto abs = op.abs;
 
     bool inplaceDst = i.dst
                    && stride * bytes == i.dst.byteStride()
@@ -2943,7 +2946,9 @@ void CopyPlan::legalizeNegation()
 void CopyPlan::legalizeImmediateTypes()
 {
     for (auto &i: insns) {
+        int srcN = -1;
         for (auto *op: {&i.src0, &i.src1, &i.src2}) {
+            srcN++;
             if (op->kind != CopyOperand::Immediate)
                 continue;
             if (one_of(op->type, {DataType::ub, DataType::u4}))
@@ -2952,11 +2957,15 @@ void CopyPlan::legalizeImmediateTypes()
                 op->type = DataType::w;
             else if (hw == ngen::HW::Xe3p && i.op != Opcode::mov && op->type == DataType::f && i.dst.type == DataType::bf)
                 legalizeBfImmediate(i);
+            else if (one_of(op->type, {DataType::v, DataType::uv})) {
+                // Destination must be 128 bit-aligned for vector immediates.
+                if ((i.dst.offset * getBits(i.dst.type)) % 128 != 0)
+                    repositionSrc(i, srcN, i.dst.stride, 0);
+            }
         }
     }
     mergeChanges();
     legalizeRegions();
-
 }
 
 // Pass to sort instructions by phase and dst.
@@ -3001,6 +3010,7 @@ void CopyPlan::sort(SortType type)
 void CopyPlan::optimizeZip(bool zip2DSrc0)
 {
     bool didZip2D = false;
+    bool didStridedVecZip = false;
 
     auto ninsn = insns.size();
     for (size_t n1 = 0; n1 < ninsn; n1++) {
@@ -3018,11 +3028,12 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
                 if (o1.type != o2.type || o1.stride != o2.stride || o1.grf != o2.grf) return false;
                 if (o1.temp != o2.temp) return false;
                 if (o1.temp && o1.value != o2.value) return false;
-                if (o1.vs || o1.width) return false;
+                if (o1.vs != o2.vs || o1.width != o2.width) return false;
+                if (o1.width && (!zip2D || o1.stride != 2 * (o2.offset - o1.offset))) return false;
                 if (o1.neg != o2.neg) return false;
                 if (o1.abs != o2.abs) return false;
                 if (!is_zero_or_pow2(o2.offset - o1.offset)) return false;
-                bool can1D = ((o1.stride & 1) == 0)
+                bool can1D = (o1.width == 0) && ((o1.stride & 1) == 0)
                           && (o1.offset + (o1.stride >> 1) == o2.offset);
                 if (!can1D) {
                     unsigned od = (o2.offset - o1.offset);
@@ -3037,10 +3048,8 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
 
             CopyOperand zippedSrc1;
             if (zip && i1.src1.kind == CopyOperand::Immediate && i1.src1.value != i2.src1.value) {
-                const auto bits = getBits(i1.dst.type);
-                const auto offset = std::min(i1.dst.offset, i2.dst.offset);
                 const auto stride = i1.dst.stride >> 1;
-                const auto ok = ((offset * bits) % 128 == 0) && ((stride * bits) % 16 == 0);
+                const auto ok = ((stride * getBits(i1.dst.type)) % 16 == 0);
                 zippedSrc1 = zipImmediates(i1.src1, i2.src1, ok ? stride : 0);
                 zip = zip && zippedSrc1;
             }
@@ -3055,13 +3064,21 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
                         i.src0.stride /= 2;
                         std::swap(i1, i2);      /* move joined entry to end for further processing */
                     } else {
-                        i.src0.vs = i.src0.stride;
-                        i.src0.stride = i2.src0.offset - i1.src0.offset;
-                        i.src0.width = 2;
+                        if (!i.src0.width) {
+                            // transform 1D to equivalent 2D regioning
+                            // <N> -> <N;1,0>
+                            i.src0.width = 1;
+                            i.src0.vs = i.src0.stride;
+                            i.src0.stride = 0;
+                        }
+                        i.src0.width *= 2;
+                        i.src0.stride += i2.src0.offset - i1.src0.offset;
                         didZip2D = true;
                     }
-                    if (zippedSrc1)
+                    if (zippedSrc1) {
                         i.src1 = zippedSrc1;
+                        didStridedVecZip = (i.dst.stride > 1) && one_of(i.src1.type, {DataType::v, DataType::uv});
+                    }
                     break;
                 }
             }
@@ -3070,6 +3087,8 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
 
     mergeChanges();
 
+    if (didStridedVecZip)
+        optimizeZip(zip2DSrc0);  /* may be able to zip more vector immediates */
     if (didZip2D)
         legalizeSIMD();     /* 2D zipping comes late in the pipeline */
 }

@@ -436,6 +436,17 @@ bool check_dyn_quant_dequant_scales_zps(const op_t *n) {
 
         return true;
     } else {
+        // f8 quantization or dequantization does not support zps.
+        const logical_tensor_t &src_lt = n->get_input_logical_tensor(0);
+        const logical_tensor_t &dst_lt = n->get_output_logical_tensor(0);
+        const bool f8_src = utils::one_of(
+                src_lt.data_type, data_type::f8_e5m2, data_type::f8_e4m3);
+        const bool f8_dst = utils::one_of(
+                dst_lt.data_type, data_type::f8_e5m2, data_type::f8_e4m3);
+        VCHECK_SHAPE_INFER(!(f8_src || f8_dst),
+                "%s, f8 quantization or dequantization does not support zps.",
+                op_t::kind2str(n->get_kind()).c_str());
+
         const int64_t sz_zps = n->get_input_logical_tensor(2).dims[0];
 
         // in case of not setting value for zps

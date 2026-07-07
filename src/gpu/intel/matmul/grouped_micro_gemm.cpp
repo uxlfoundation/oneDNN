@@ -308,6 +308,9 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     src_quant_ = quantization_t(attr(), src_d, DNNL_ARG_SRC);
     wei_quant_ = quantization_t(attr(), wei_d, DNNL_ARG_WEIGHTS);
 
+    VDISPATCH_MATMUL(!attr()->post_ops_.has_reads_from_dst(),
+            VERBOSE_UNSUPPORTED_FEATURE, "dst-aliasing post-op");
+
     // Check for grouped encoding on src and dst
     VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);

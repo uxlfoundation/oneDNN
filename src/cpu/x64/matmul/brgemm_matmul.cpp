@@ -327,9 +327,25 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_MATMUL(po.check_sum_consistency(dst_dt, is_int8),
             VERBOSE_UNSUPPORTED_POSTOP);
 
+    // Scalar-broadcast ternary (select) post-ops are supported by the binary
+    // injector on avx512_core and below: the avx512 select path uses a dedicated
+    // auxiliary opmask (get_aux_kmask) for its comparison instead of clobbering
+    // tail_opmask, so it no longer collides with the tail mask a scalar-broadcast
+    // src1 load needs. The AMX brgemm post-op path does not handle this case
+    // correctly yet, so it stays gated here; the iterator then falls back to a
+    // correct implementation (avx512_core brgemm or ref). Keying on the AMX ISA
+    // (not the declared dtype) also covers f32 + fpmath=bf16, which down-converts
+    // onto AMX. This is not a bugfix for a live defect (ref is correct today); it
+    // only avoids flipping AMX-bound scenarios from ref onto an impl that cannot
+    // handle them. Enabling AMX fusion for this case is future perf work.
+    // Anchor: TERNARY_SCALAR_BCAST_AVX512_ONLY.
+    // TODO(perf): support scalar-broadcast ternary select in the AMX brgemm
+    // post-op path (jit_brgemm_amx_uker.cpp) and lift the AMX gate below.
     VDISPATCH_MATMUL(
-            !binary_injector::any_binary_postop_rhs_with_ternary_scalar_bcast(
-                    po, dst_d),
+            !(is_superset(isa, avx512_core_amx)
+                    && binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    po, dst_d)),
             VERBOSE_UNSUPPORTED_POSTOP);
 
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);

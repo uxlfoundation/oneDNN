@@ -38,62 +38,15 @@ struct jit_int8_matmul_utils_kernel_t;
 template <cpu_isa_t isa>
 struct jit_int8_matmul_t : public primitive_t {
     struct pd_t : public cpu::matmul::cpu_matmul_pd_t {
+    public:
         using cpu::matmul::cpu_matmul_pd_t::cpu_matmul_pd_t;
 
         DECLARE_COMMON_PD_T("jit:int8", jit_int8_matmul_t);
 
         status_t init(engine_t *engine);
 
-        bool formats_ok() const {
-            const memory_desc_wrapper src_d(src_md_);
-            const memory_desc_wrapper weights_d(weights_md_);
-            const memory_desc_wrapper dst_d(dst_md_);
-            const bool is_dst = dst_d.matches_one_of_tag(format_tag::ab,
-                                        format_tag::abc, format_tag::abcd)
-                            != format_tag::undef
-                    || dst_d.format_kind() == format_kind::any;
-            const bool is_wei
-                    = weights_d.matches_one_of_tag(format_tag::ab,
-                              format_tag::abc, format_tag::abcd,
-                              format_tag::BA24b8a, format_tag::aCB24c8b,
-                              format_tag::abDC24d8c, format_tag::BA16b8a,
-                              format_tag::aCB16c8b, format_tag::abDC16d8c,
-                              format_tag::BA12b8a, format_tag::aCB12c8b,
-                              format_tag::abDC12d8c, format_tag::BA4b8a,
-                              format_tag::aCB4c8b, format_tag::abDC4d8c,
-                              format_tag::BA8b8a, format_tag::aCB8c8b,
-                              format_tag::abDC8d8c)
-                            != format_tag::undef
-                    || weights_d.format_kind() == format_kind::any;
-            const bool is_src = src_d.matches_one_of_tag(format_tag::ab,
-                                        format_tag::abc, format_tag::abcd)
-                            != format_tag::undef
-                    || src_d.format_kind() == format_kind::any;
-            return is_dst && is_wei && is_src;
-        }
-
         int get_idx(bool is_zp_cal, bool is_m_tail, bool is_k_tail,
-                bool is_n_tail, const brg_int8_t &brg) const {
-            if (brg.zp_type_a == jit_int8_broadcast_t::none
-                    && brg.zp_type_b == jit_int8_broadcast_t::none
-                    && is_zp_cal) {
-                return -1;
-            }
-
-            int m_tail = brg.M % brg.m_blk;
-            int n_tail = brg.N % (brg.n_blk * brg.ld_block);
-            int k_tail = brg.K % (brg.k_blk * 4);
-
-            if ((is_m_tail && m_tail == 0) || (is_k_tail && k_tail == 0)
-                    || (is_n_tail && n_tail == 0)
-                    || (!is_k_tail && k_tail == 1)) {
-                return -1;
-            }
-
-            return static_cast<int>(is_k_tail) + static_cast<int>(is_n_tail) * 2
-                    + static_cast<int>(is_m_tail) * 2 * 2
-                    + static_cast<int>(is_zp_cal) * 2 * 2 * 2;
-        }
+                bool is_n_tail, const brg_int8_t &brg) const;
 
         static constexpr int m_block_sz = 32;
         int n_block_sz;
@@ -101,13 +54,18 @@ struct jit_int8_matmul_t : public primitive_t {
 
         brg_int8_t brg_int8_conf;
         dyn_vals_t dyn_vals;
+
+    private:
+        bool formats_ok() const;
+        bool post_ops_ok() const;
     };
 
     jit_int8_matmul_t(const pd_t *apd);
-    ~jit_int8_matmul_t() override;
-    int get_idx(int z, int m, int k, int n, int M, int K, int N);
+
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
+
+    ~jit_int8_matmul_t() override;
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

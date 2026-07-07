@@ -16,6 +16,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
 #include <cassert>
 
 #include "common/c_types_map.hpp"
@@ -993,22 +994,12 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-    bool no_post_ops = attr()->post_ops_.has_default_values();
-
-    auto with_eltwise = [this]() -> bool {
-        // we only support eltwise post-op
-        for (auto &e : this->attr()->post_ops_.entry_) {
-            if (e.kind != primitive_kind::eltwise) return false;
-        }
-        return true;
-    };
-
     const bool problem_dt_correct = (is_s8 || is_u8 || is_u8_s8)
             && utils::one_of(dst_type, f32, s32, f16, bf16, s8, u8)
             && platform::has_data_type_support(dst_type);
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_MATMUL(no_post_ops || with_eltwise(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_MATMUL(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_MATMUL(formats_ok(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_MATMUL(mayiuse(sve) && utils::one_of(simd_bytes(isa), 16UL, 32UL),
             VERBOSE_UNSUPPORTED_ISA);
@@ -1243,6 +1234,70 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     book_precomputed_scales(scratchpad, attr()->scales_, N());
 
     return status::success;
+}
+
+template <cpu_isa_t isa>
+bool jit_int8_matmul_t<isa>::pd_t::formats_ok() const {
+    const memory_desc_wrapper src_d(src_md_);
+    const memory_desc_wrapper weights_d(weights_md_);
+    const memory_desc_wrapper dst_d(dst_md_);
+    const bool is_dst = dst_d.matches_one_of_tag(format_tag::ab,
+                                format_tag::abc, format_tag::abcd)
+                    != format_tag::undef
+            || dst_d.format_kind() == format_kind::any;
+    const bool is_wei
+            = weights_d.matches_one_of_tag(format_tag::ab, format_tag::abc,
+                      format_tag::abcd, format_tag::BA24b8a,
+                      format_tag::aCB24c8b, format_tag::abDC24d8c,
+                      format_tag::BA16b8a, format_tag::aCB16c8b,
+                      format_tag::abDC16d8c, format_tag::BA12b8a,
+                      format_tag::aCB12c8b, format_tag::abDC12d8c,
+                      format_tag::BA4b8a, format_tag::aCB4c8b,
+                      format_tag::abDC4d8c, format_tag::BA8b8a,
+                      format_tag::aCB8c8b, format_tag::abDC8d8c)
+                    != format_tag::undef
+            || weights_d.format_kind() == format_kind::any;
+    const bool is_src = src_d.matches_one_of_tag(format_tag::ab,
+                                format_tag::abc, format_tag::abcd)
+                    != format_tag::undef
+            || src_d.format_kind() == format_kind::any;
+    return is_dst && is_wei && is_src;
+}
+
+template <cpu_isa_t isa>
+bool jit_int8_matmul_t<isa>::pd_t::post_ops_ok() const {
+    if (attr()->post_ops_.has_default_values()) { return true; }
+
+    const auto &eltwise_ok = [&](dnnl_post_ops::entry_t op) -> bool {
+        return op.is_eltwise()
+                && eltwise_injector::is_supported(isa, op.eltwise.alg);
+    };
+
+    const auto &post_ops = attr()->post_ops_.entry_;
+
+    return std::all_of(post_ops.begin(), post_ops.end(), eltwise_ok);
+}
+
+template <cpu_isa_t isa>
+int jit_int8_matmul_t<isa>::pd_t::get_idx(bool is_zp_cal, bool is_m_tail,
+        bool is_k_tail, bool is_n_tail, const brg_int8_t &brg) const {
+    if (brg.zp_type_a == jit_int8_broadcast_t::none
+            && brg.zp_type_b == jit_int8_broadcast_t::none && is_zp_cal) {
+        return -1;
+    }
+
+    int m_tail = brg.M % brg.m_blk;
+    int n_tail = brg.N % (brg.n_blk * brg.ld_block);
+    int k_tail = brg.K % (brg.k_blk * 4);
+
+    if ((is_m_tail && m_tail == 0) || (is_k_tail && k_tail == 0)
+            || (is_n_tail && n_tail == 0) || (!is_k_tail && k_tail == 1)) {
+        return -1;
+    }
+
+    return static_cast<int>(is_k_tail) + static_cast<int>(is_n_tail) * 2
+            + static_cast<int>(is_m_tail) * 2 * 2
+            + static_cast<int>(is_zp_cal) * 2 * 2 * 2;
 }
 
 template <cpu_isa_t isa>

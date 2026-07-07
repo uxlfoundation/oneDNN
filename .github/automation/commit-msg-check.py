@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 # *******************************************************************************
-# Copyright 2024 Arm Limited and affiliates.
+# Copyright 2024, 2026 Arm Limited and affiliates.
 # Copyright 2024 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -59,14 +59,17 @@ def __numCharacterCheck(msg: str):
         print(f"{status} OK")
         return True
     else:
-        # Fixup or revert commits usually include the full name of the commit
-        # they are fixing, which adds 6 more symbols to the message.
-        # Let them in.
+        # Fixup, revert, and backport commits usually include the full name of
+        # the commit they are related to, which adds a few more symbols to the
+        # message. Let them in.
         if re.match(r"^fixup: ", msg):
             print(f"{status} Fixup message, OK")
             return True
         elif re.match(r"^revert: ", msg):
             print(f"{status} Revert message, OK")
+            return True
+        elif re.match(r"^backport: ", msg):
+            print(f"{status} Backport message, OK")
             return True
         else:
             print(

@@ -287,8 +287,10 @@ private:
         if (is_zmm) {
             vextracti64x4(tmp_y, Xbyak::Zmm(src.getIdx()), 1);
             vpaddd(src_y, src_y, tmp_y);
+            vextracti32x4(tmp_x, src_y, 1);
+        } else {
+            vextracti128(tmp_x, src_y, 1);
         }
-        vextracti128(tmp_x, src_y, 1);
         vpaddd(src_x, src_x, tmp_x);
         vpshufd(tmp_x, src_x, 0x4E);
         vpaddd(src_x, src_x, tmp_x);

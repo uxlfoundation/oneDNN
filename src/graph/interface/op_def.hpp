@@ -1317,7 +1317,10 @@ DNNL_GRAPH_OP_SCHEMA(DynamicQuantize, 1,
                 .set_type_constraints("T1", {data_type::f32})
                 .set_type_constraints(
                         "T2", {data_type::u8, data_type::s8, data_type::s32})
-                .set_type_constraints("T3", {data_type::u8, data_type::s8})
+                .set_type_constraints("T3",
+                        {data_type::u8, data_type::s8, data_type::s4,
+                                data_type::u4, data_type::f8_e5m2,
+                                data_type::f8_e4m3})
                 .set_shape_inference_function(infer_identity_output_shape)
                 .set_op_def_constraint_function(
                         check_dyn_quant_dequant_scales_zps))
@@ -1338,7 +1341,8 @@ DNNL_GRAPH_OP_SCHEMA(DynamicDequantize, 1,
                 .set_attr(op_attr::group_shape, false, attribute_kind::is)
                 .set_type_constraints("T1",
                         {data_type::u8, data_type::s8, data_type::s4,
-                                data_type::u4})
+                                data_type::u4, data_type::f8_e5m2,
+                                data_type::f8_e4m3})
                 .set_type_constraints(
                         "T2", {data_type::bf16, data_type::f16, data_type::f32})
                 .set_type_constraints("T3",

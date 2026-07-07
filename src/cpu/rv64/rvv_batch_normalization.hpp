@@ -17,6 +17,7 @@
 #ifndef CPU_RV64_RVV_BATCH_NORMALIZATION_HPP
 #define CPU_RV64_RVV_BATCH_NORMALIZATION_HPP
 
+#include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 
@@ -34,7 +35,9 @@ struct rvv_batch_normalization_fwd_t : public primitive_t {
         using cpu_batch_normalization_fwd_pd_t::
                 cpu_batch_normalization_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T_("jit:rvv", rvv_batch_normalization_fwd_t);
+        DECLARE_COMMON_PD_T(
+                JIT_IMPL_NAME_HELPER("jit:", isa_, ""),
+                rvv_batch_normalization_fwd_t);
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
@@ -48,11 +51,19 @@ struct rvv_batch_normalization_fwd_t : public primitive_t {
 
             const data_type_t dtsrc = src_md()->data_type;
             const data_type_t dtdst = dst_md()->data_type;
-            bool types_ok = (dtsrc == f32 && dtdst == f32)
+            isa_ = dtsrc == f16 ? zvfh : v;
+            const bool types_ok = utils::one_of(dtsrc, f32, f16)
+                    && dtdst == dtsrc
                     && platform::has_data_type_support(dtsrc)
                     && IMPLICATION(is_training(),
                             platform::has_training_support(dtsrc));
             VDISPATCH_BNORM(types_ok, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BNORM(
+                    IMPLICATION(dtsrc == f16, mayiuse(zvfh)),
+                    VERBOSE_UNSUPPORTED_ISA);
+            VDISPATCH_BNORM(check_scale_shift_data_type(),
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "unsupported scale or shift data type");
 
             VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
@@ -105,7 +116,10 @@ struct rvv_batch_normalization_fwd_t : public primitive_t {
                     && dst_d.is_dense(/*with_padding=*/false);
             bool same_layouts = src_d.similar_to(dst_d, /*with_strides=*/true,
                     /*with_pads=*/false);
-            return ndims_ok && plain_dense && same_layouts;
+            const bool vector_dim_dense
+                    = src_d.blocking_desc().strides[1] == 1
+                    || src_d.blocking_desc().strides[ndims() - 1] == 1;
+            return ndims_ok && plain_dense && same_layouts && vector_dim_dense;
         }
 
         bool fused_relu_in_kernel() const { return fused_relu_in_kernel_; }
@@ -118,6 +132,7 @@ struct rvv_batch_normalization_fwd_t : public primitive_t {
             scratchpad.template book<float>(key_bnorm_tmp_mean, C());
             scratchpad.template book<float>(key_bnorm_tmp_var, C());
         }
+        cpu_isa_t isa_ = v;
         bool fused_relu_in_kernel_ = false;
     };
 
@@ -129,6 +144,105 @@ struct rvv_batch_normalization_fwd_t : public primitive_t {
 
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
+    const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+};
+
+struct rvv_batch_normalization_bwd_t : public primitive_t {
+    struct pd_t : public cpu_batch_normalization_bwd_pd_t {
+        using cpu_batch_normalization_bwd_pd_t::
+                cpu_batch_normalization_bwd_pd_t;
+
+        DECLARE_COMMON_PD_T(
+                JIT_IMPL_NAME_HELPER("jit:", isa_, ""),
+                rvv_batch_normalization_bwd_t);
+
+        status_t init(engine_t *engine) {
+            UNUSED(engine);
+            using namespace data_type;
+
+            VDISPATCH_BNORM(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
+            VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
+            VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+
+            const data_type_t dt = src_md()->data_type;
+            isa_ = dt == f16 ? zvfh : v;
+            VDISPATCH_BNORM(utils::one_of(dt, f32, f16)
+                            && utils::everyone_is(dt,
+                                    diff_dst_md()->data_type,
+                                    diff_src_md()->data_type)
+                            && platform::has_data_type_support(dt)
+                            && platform::has_training_support(dt),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_BNORM(IMPLICATION(dt == f16, mayiuse(zvfh)),
+                    VERBOSE_UNSUPPORTED_ISA);
+            VDISPATCH_BNORM(check_scale_shift_data_type(),
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "unsupported scale or shift data type");
+            VDISPATCH_BNORM(
+                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            VDISPATCH_BNORM(!fuse_norm_add_relu(),
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "fuse_norm_add_relu not supported");
+            VDISPATCH_BNORM(!fuse_norm_relu(), VERBOSE_UNSUPPORTED_FEATURE,
+                    "fused ReLU backward not supported");
+
+            VDISPATCH_BNORM(
+                    set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+            const memory_desc_wrapper src_d(src_md());
+            const memory_desc_wrapper diff_dst_d(diff_dst_md());
+            const memory_desc_wrapper diff_src_d(diff_src_md());
+            VDISPATCH_BNORM(check_layouts(src_d, diff_dst_d, diff_src_d),
+                    VERBOSE_UNSUPPORTED_TAG);
+
+            nthr_ = dnnl_get_max_threads();
+            init_scratchpad();
+            return status::success;
+        }
+
+        int nthr() const { return nthr_; }
+
+    private:
+        bool check_layouts(const memory_desc_wrapper &src_d,
+                const memory_desc_wrapper &diff_dst_d,
+                const memory_desc_wrapper &diff_src_d) const {
+            const bool ndims_ok = utils::one_of(ndims(), 3, 4, 5);
+            const bool plain_dense
+                    = src_d.blocking_desc().inner_nblks == 0
+                    && diff_dst_d.blocking_desc().inner_nblks == 0
+                    && diff_src_d.blocking_desc().inner_nblks == 0
+                    && src_d.is_dense(false) && diff_dst_d.is_dense(false)
+                    && diff_src_d.is_dense(false);
+            const bool vector_dim_dense
+                    = src_d.blocking_desc().strides[1] == 1
+                    || src_d.blocking_desc().strides[ndims() - 1] == 1;
+            return ndims_ok && plain_dense
+                    && src_d.similar_to(
+                            diff_dst_d, /*with_strides=*/true, false)
+                    && src_d.similar_to(
+                            diff_src_d, /*with_strides=*/true, false)
+                    && vector_dim_dense;
+        }
+
+        void init_scratchpad() {
+            using namespace memory_tracking::names;
+            auto scratchpad = scratchpad_registry().registrar();
+            scratchpad.template book<float>(
+                    key_bnorm_reduction, 2 * C() * nthr_);
+            scratchpad.template book<float>(key_bnorm_tmp_diff_ss, 5 * C());
+        }
+
+        cpu_isa_t isa_ = v;
+        int nthr_ = 1;
+    };
+
+    rvv_batch_normalization_bwd_t(const pd_t *apd) : primitive_t(apd) {}
+
+    status_t execute(const exec_ctx_t &ctx) const override {
+        return execute_backward(ctx);
+    }
+
+private:
+    status_t execute_backward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 

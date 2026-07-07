@@ -27,8 +27,8 @@ namespace rv64 {
 
 struct jit_rvv_batch_normalization_fwd_kernel_t : public jit_generator_t {
     struct call_params_t {
-        const float *src;
-        float *dst;
+        const void *src;
+        void *dst;
         dim_t len;
         const float *mean;
         const float *scale_mul;
@@ -38,7 +38,7 @@ struct jit_rvv_batch_normalization_fwd_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_batch_normalization_fwd_kernel_t)
 
     jit_rvv_batch_normalization_fwd_kernel_t(
-            bool per_elem_params, bool with_relu);
+            data_type_t data_type, bool per_elem_params, bool with_relu);
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);
@@ -48,13 +48,84 @@ protected:
     void generate() override;
 
 private:
+    data_type_t data_type_;
     bool per_elem_params_;
     bool with_relu_;
 };
 
-void jit_rvv_batch_normalization_apply_f32(const float *src, float *dst,
-        dim_t len, const float *mean, const float *scale_mul,
-        const float *scale_add, bool per_elem_params, bool with_relu);
+struct jit_rvv_batch_normalization_bwd_reduce_kernel_t
+    : public jit_generator_t {
+    struct call_params_t {
+        const void *src;
+        const void *diff_dst;
+        dim_t len;
+        const float *mean;
+        float *diff_scale;
+        float *diff_shift;
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(
+            jit_rvv_batch_normalization_bwd_reduce_kernel_t)
+
+    jit_rvv_batch_normalization_bwd_reduce_kernel_t(
+            data_type_t data_type, bool per_elem_params);
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override;
+
+private:
+    data_type_t data_type_;
+    bool per_elem_params_;
+};
+
+struct jit_rvv_batch_normalization_bwd_apply_kernel_t
+    : public jit_generator_t {
+    struct call_params_t {
+        const void *src;
+        const void *diff_dst;
+        void *diff_src;
+        dim_t len;
+        const float *mean;
+        const float *scale_mul;
+        const float *diff_scale_mul;
+        const float *diff_shift_add;
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(
+            jit_rvv_batch_normalization_bwd_apply_kernel_t)
+
+    jit_rvv_batch_normalization_bwd_apply_kernel_t(
+            data_type_t data_type, bool per_elem_params);
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override;
+
+private:
+    data_type_t data_type_;
+    bool per_elem_params_;
+};
+
+void jit_rvv_batch_normalization_apply(const void *src, void *dst, dim_t len,
+        const float *mean, const float *scale_mul, const float *scale_add,
+        data_type_t data_type, bool per_elem_params, bool with_relu);
+
+void jit_rvv_batch_normalization_bwd_reduce(const void *src,
+        const void *diff_dst, dim_t len, const float *mean, float *diff_scale,
+        float *diff_shift, data_type_t data_type, bool per_elem_params);
+
+void jit_rvv_batch_normalization_bwd_apply(const void *src,
+        const void *diff_dst, void *diff_src, dim_t len, const float *mean,
+        const float *scale_mul, const float *diff_scale_mul,
+        const float *diff_shift_add, data_type_t data_type,
+        bool per_elem_params);
 
 } // namespace rv64
 } // namespace cpu

@@ -932,7 +932,7 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, float_mqa_jax_fusion)
                     mqa_base_t<false, memory::data_type::f32>>();
         });
 
-// int8 or fp8 SDPA fusion pattern with static quantization.
+// int8 or fp8 SDPA fusion pattern with static or dynamic quantization.
 DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8_sdpa_fusion)
         .set_priority(22.0f)
         .set_kind(partition_kind_t::quantized_sdp)
@@ -988,6 +988,62 @@ DNNL_BACKEND_REGISTER_PATTERN_MATCHER_PASS(dnnl, x8_sdpa_fusion)
                             = optional_transpose_reshape(pgraph, matmul_v, 0);
                     pgraph->append_op(
                             graph::op_kind::Quantize, {in_edge(0, opt_tr, 0)});
+                })
+        .set_attr<FCreatePattern>("FCreatePattern",
+                [](const std::shared_ptr<pb_graph_t> &pgraph) -> void {
+                    // int8 or fp8 SDPA with dynamic quantization.
+                    auto dequantize_query = pgraph->append_op(
+                            graph::op_kind::DynamicDequantize);
+
+                    auto dequantize_key = pgraph->append_op(
+                            graph::op_kind::DynamicDequantize);
+
+                    auto matmul_qk = pgraph->append_op(graph::op_kind::MatMul,
+                            in_edges_t {in_edge(0, dequantize_query, 0),
+                                    in_edge(1, dequantize_key, 0)});
+
+                    std::shared_ptr<pb_graph_t> scale_graph;
+                    scale_graph = std::make_shared<pb_graph_t>();
+                    auto scale = scale_graph->append_alternation(
+                            {graph::op_kind::Divide, graph::op_kind::Multiply});
+                    scale_graph->create_input_port(0, scale, 0);
+                    scale_graph->create_output_port(0, scale, 0);
+                    auto optional_scale = pgraph->append_optional(
+                            scale_graph, {in_edge(0, matmul_qk, 0)});
+
+                    auto optional_mask = std::make_shared<pb_graph_t>();
+                    auto fscore_add
+                            = optional_mask->append_op(graph::op_kind::Add);
+                    optional_mask->create_input_port(0, fscore_add, 0);
+                    optional_mask->create_output_port(0, fscore_add, 0);
+                    auto mask = pgraph->append_optional(
+                            optional_mask, {in_edge(0, optional_scale, 0)});
+
+                    // Optional select for distilbert
+                    auto p_select2 = optional_select(pgraph, mask, 2);
+
+                    auto softmax = pgraph->append_op(graph::op_kind::SoftMax,
+                            in_edges_t {in_edge(0, p_select2, 0)});
+                    auto quantize_softmax
+                            = pgraph->append_op(graph::op_kind::DynamicQuantize,
+                                    in_edges_t {in_edge(0, softmax, 0)});
+                    auto dequantize_softmax = pgraph->append_op(
+                            graph::op_kind::DynamicDequantize,
+                            in_edges_t {in_edge(0, quantize_softmax, 0)});
+
+                    auto dequantize_value = pgraph->append_op(
+                            graph::op_kind::DynamicDequantize);
+                    auto matmul_v = pgraph->append_op(graph::op_kind::MatMul,
+                            in_edges_t {in_edge(0, dequantize_softmax, 0),
+                                    in_edge(1, dequantize_value, 0)});
+
+                    // Optional transpose + reshape/reorder
+                    auto opt_tr
+                            = optional_transpose_reshape(pgraph, matmul_v, 0);
+                    pgraph->append_alternation(
+                            {graph::op_kind::TypeCast,
+                                    graph::op_kind::DynamicQuantize},
+                            {in_edge(0, opt_tr, 0)});
                 })
         .set_attr<FCreateKernel>("FCreateKernel", []() -> kernel_ptr {
             return std::make_shared<sdp_base_t<true, memory::data_type::f32>>();

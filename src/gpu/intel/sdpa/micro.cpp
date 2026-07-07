@@ -173,7 +173,10 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             || (vs_acc_dt() == data_type::f16);
     VDISPATCH_SDPA(IMPLICATION(is_f16_accumulate_gemm, !use_systolic_ukernel()),
             "f16 accumulate only available with FMA matmul."); //TODO: update once matmul primitive supports systolic f16 accumulate for testing
-    config = choose_config(arch_, d->head_size(), d->keys(), thin_q, quantized,
+    // Query using max(D_qk, D_v) so the selected config's tiles are large
+    // enough to hold both the QK and V head sizes when they differ.
+    const dim_t query_head_size = std::max(d->head_size(), d->values());
+    config = choose_config(arch_, query_head_size, d->keys(), thin_q, quantized,
             is_integrated, use_fma_config, is_f32, is_f16_accumulate_gemm);
 
     VDISPATCH_SDPA(config != nullptr,
@@ -206,12 +209,12 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             config->unroll_n_vs * config->wg_n_vs, config->unroll_n_kq,
             config->unroll_n_vs);
 
-    VDISPATCH_SDPA(config->unroll_m_vs * config->wg_m_vs >= d->head_size(),
+    VDISPATCH_SDPA(config->unroll_m_vs * config->wg_m_vs >= d->values(),
             "The vs matmul config work_group tile M(%d*%d=%d) axis must be "
-            "greater than or equal to head size(%ld)",
+            "greater than or equal to values size(%ld)",
             config->unroll_m_vs, config->wg_m_vs,
             config->unroll_m_vs * config->wg_m_vs,
-            static_cast<long int>(d->head_size()));
+            static_cast<long int>(d->values()));
 
     // serializable minimal set of configuration params for ukernels
     // will be used to generate shim ukernels in reusable kernel_ctx
@@ -359,8 +362,8 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     if (with_value_scales() && !vs_common_scales) {
         auto scale_dt = value_scales_dt();
         problem_vs.Ta_scale = convert_dnnl_to_kernel_type(scale_dt);
-        problem_vs.A_scale.setAlignment(uint8_t(d->head_size()
-                / value_group_size() * types::data_type_size(scale_dt)));
+        problem_vs.A_scale.setAlignment(uint8_t(d->values() / value_group_size()
+                * types::data_type_size(scale_dt)));
         problem_vs.A_scale.layout = MatrixLayout::N;
         const int matrix_scale = 2;
         problem_vs.asPtrDims = matrix_scale;
@@ -368,7 +371,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     if (with_value_zp()) {
         auto zp_dt = value_zp_dt();
         problem_vs.Tao = convert_dnnl_to_kernel_type(zp_dt);
-        problem_vs.AO.setAlignment(uint8_t(d->head_size() / value_group_size()
+        problem_vs.AO.setAlignment(uint8_t(d->values() / value_group_size()
                 * types::data_type_size(zp_dt)));
         problem_vs.AO.layout = MatrixLayout::N;
         problem_vs.aoPtrDims = vs_common_zp ? 0 : 2;
@@ -838,7 +841,6 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
     conf.with_causal_mask = pd->with_causal_mask();
 
     conf.subgroup_size = pd->sg_size();
-    conf.d_max = pd->d_max();
 
     bool d_full = (d->head_size() == pd->d_max());
     conf.d_full = d_full;
@@ -853,6 +855,8 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
 status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     using namespace micro;
     init_conf_common(conf, this);
+    conf.d_max_kq = d_max_kq();
+    conf.d_max_v = d_max_v();
 
     conf.require_stateless_addressing = has_large_buffers();
 
@@ -922,7 +926,7 @@ status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     int tile_v = vs_wg_tile_m;
 
     bool d_full = conf.d_full;
-    bool v_full = (desc()->head_size() == tile_v);
+    bool v_full = (desc()->values() == tile_v);
 
     auto Q = desc()->queries();
     const dim_t Q_per_kv_group = (Q == 1 ? Q * conf.kv_group_size : Q);
@@ -944,13 +948,15 @@ status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
         conf.prefetch_k0 = true;
         conf.prefetch_k = true;
         conf.prefetch_v = true;
-        conf.prefetch_d_max = nstl::min(d_max(), 64);
+        conf.prefetch_d_max = nstl::min(d_max_kq(), 64);
+        conf.prefetch_v_max = nstl::min(d_max_v(), 64);
         bool no_rem = d_full && v_full && (desc()->keys() % tile_k == 0);
         conf.prefetch_remainder = !no_rem;
     } else {
         conf.prefetch_mask = conf.prefetch_k0 = conf.prefetch_k
                 = conf.prefetch_v = conf.prefetch_remainder = false;
         conf.prefetch_d_max = 0;
+        conf.prefetch_v_max = 0;
     }
 
     conf.q_arrive_await_barrier = (Q > 1);
@@ -968,6 +974,7 @@ status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
 
 status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     init_conf_common(conf, this);
+    conf.d_max = d_max();
 
     conf.require_stateless_addressing = has_large_buffers();
     conf.with_dS = with_dS();
@@ -1117,7 +1124,8 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("WITH_CAUSAL_MASK", with_causal_mask);
 
     kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
-    kernel_ctx.define_int("D_MAX", d_max);
+    kernel_ctx.define_int("D_MAX_KQ", d_max_kq);
+    kernel_ctx.define_int("D_MAX_V", d_max_v);
 
     kernel_ctx.define_int("BLOCK_Q", block_q);
     kernel_ctx.define_int("BLOCK_A", block_a);
@@ -1129,6 +1137,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("PREFETCH_V", prefetch_v);
     kernel_ctx.define_int("PREFETCH_REMAINDER", prefetch_remainder);
     kernel_ctx.define_int("PREFETCH_D_MAX", prefetch_d_max);
+    kernel_ctx.define_int("PREFETCH_V_MAX", prefetch_v_max);
     kernel_ctx.define_int("REMAINDER_Q", remainder_q);
 
     kernel_ctx.define_int("Q_ARRIVE_AWAIT_BARRIER", q_arrive_await_barrier);
@@ -1604,7 +1613,8 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const int kv_group_size = pd()->conf.kv_group_size;
     const dim_t Q = pd()->desc()->queries();
     const dim_t K = pd()->desc()->keys();
-    const dim_t D = pd()->desc()->head_size();
+    const dim_t D_qk = pd()->desc()->head_size();
+    const dim_t D_v = pd()->desc()->values();
     const dim_t Q_per_kv_group = (Q == 1 ? Q * kv_group_size : Q);
 
     const fwd_config_t config = {conf.ukernel_config.unroll_m_kq,
@@ -1659,7 +1669,8 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     } else {
         arg_list.append(scale);
     }
-    arg_list.append((int)D);
+    arg_list.append((int)D_qk);
+    arg_list.append((int)D_v);
     arg_list.append((int)K);
     arg_list.append((int)Q);
     arg_list.append(key_scales);

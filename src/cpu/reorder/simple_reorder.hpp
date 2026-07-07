@@ -2296,8 +2296,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         VDISPATCH_REORDER_IC(
                 input_d.nelems() % 2 == 0, "Unsupported dimensions");
-        VDISPATCH_REORDER_IC(
-                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(input_d.is_plain() || input_d.is_dense(),
+                VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
         VDISPATCH_REORDER_IC(
                 output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
@@ -2338,36 +2338,33 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         const auto &zps = pd->attr()->zero_points_;
         const bool with_src_zps = !zps.has_default_values(DNNL_ARG_SRC);
 
-        const bool need_second_pass
+        const bool need_wspace
                 = need_transform || with_src_scales || with_src_zps;
-        wspace = need_second_pass ? wspace : output;
+        wspace = need_wspace ? wspace : output;
 
-        // To avoid clashes between threads each byte (or 2 elements)
-        // is handled by a single thread
-        const dim_t work_amount = input_d.nelems() / 2;
-
-        parallel(0, [=](const int ithr, const int nthr) {
-            auto u8_input = reinterpret_cast<const uint8_t *>(input);
-            dim_t start {0}, end {0};
-            balance211(work_amount, nthr, ithr, start, end);
-            PRAGMA_OMP_SIMD()
-            for (dim_t j = start; j < end; j++) {
-                const auto idx = 2 * j;
-                const auto i_off = need_second_pass ? idx : input_d.off_l(idx);
-                const nibble2_t in_nibble(u8_input[i_off / 2]);
-
-                for (int i = 0; i < 2; ++i) {
-                    const auto o_off = need_second_pass
-                            ? idx + i
-                            : output_d.off_l(idx + i);
-                    data_t<type_i> src_val(in_nibble.get(i));
-                    reinterpret_cast<data_t<type_o> *>(wspace)[o_off]
-                            = static_cast<float>(src_val);
-                }
+        auto u8_input = reinterpret_cast<const uint8_t *>(input);
+        parallel_nd(input_d.nelems(), [=](dim_t idx) {
+            const auto i_off = input_d.off_l(idx);
+            data_t<type_i> src_val = uint8_t(0);
+            switch (type_i) {
+                case data_type::s4:
+                case data_type::u4:
+                case data_type::f4_e2m1: {
+                    const auto i_nibble = i_off / nibble2_t::nelems();
+                    const auto i_nibble_off = i_nibble * nibble2_t::size();
+                    const uint8_t pack = u8_input[i_nibble_off];
+                    const nibble2_t in_nibble(pack);
+                    src_val = static_cast<data_t<type_i>>(
+                            in_nibble.get(i_off % nibble2_t::nelems()));
+                } break;
+                default: assert(!"unsupported data type!");
             }
-        });
 
-        if (!need_second_pass) return status::success;
+            const auto o_off = need_wspace ? idx : output_d.off_l(idx);
+            reinterpret_cast<data_t<type_o> *>(wspace)[o_off]
+                    = static_cast<float>(src_val);
+        });
+        if (!need_wspace) return status::success;
 
         const auto &scales = pd->attr()->scales_;
         const int ndims = input_d.ndims();
@@ -2420,9 +2417,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         src_zps_d.data_type(), src_zero_points, src_zps_off);
             }
 
-            const auto i_off = input_d.off_l(idx);
             const auto o_off = output_d.off_l(idx);
-            output[o_off] = src_scale * (wspace[i_off] - src_zp_val);
+            output[o_off] = src_scale * (wspace[idx] - src_zp_val);
         });
 
         return status::success;

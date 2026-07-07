@@ -217,6 +217,15 @@
                 select:s8.per_tensor+add:f32
 --batch=shapes_2d
 
+# Post-ops with binary select op, broadcast condition (ternary src2).
+# The condition broadcast is not fused; these must fall back cleanly (no crash).
+--reset
+--dt=f32,bf16
+--stag=abcd --wtag=abcd --dtag=abcd
+--attr-post-ops=select:f32:common
+1x16x32x256:1x16x256x33n"sdpa_cond_bcast"
+1x16x33x257:1x16x257x37n"sdpa_cond_bcast_tail"
+
 # Rounding Mode
 --reset
 --dt=f8_e5m2,f8_e4m3

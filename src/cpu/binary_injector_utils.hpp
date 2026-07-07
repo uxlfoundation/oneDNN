@@ -55,6 +55,14 @@ memory_desc_t get_src1_desc(
 memory_desc_t get_src2_desc(
         const post_ops_t::entry_t &post_op, const memory_desc_wrapper &dst_d);
 
+// Returns true if any select (binary-with-ternary) post-op has a condition
+// (ternary src2) that is broadcast against dst, i.e. its dims differ from dst.
+// Post-op application loads the condition at full dst shape; a broadcast
+// condition is not implemented and would read out of bounds, so callers must
+// reject such post-ops (falling back to a reference implementation).
+bool any_binary_postop_with_ternary_bcast(
+        const post_ops_t &post_ops, const memory_desc_wrapper &dst_d);
+
 /*
  * Returns a tuple of bools, which size is equal to number of bcast
  * strategies passed in. Values at consecutive positions indicate existence of

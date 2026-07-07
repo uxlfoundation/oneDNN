@@ -352,13 +352,6 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                     } else {
                         e.binary.src2_mask = src_mask;
                         e.binary.src2_mask_input = attr_t::mask_input_t::mask;
-                        if (e.binary.src2_mask > 0)
-                            BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
-                                    "Error: binary post-op policy for the "
-                                    "src2 tensor",
-                                    mask_input_str.c_str(),
-                                    "is not recognized - broadcasting is not "
-                                    "supported for the ternary tensor.");
                     }
                 } else {
                     // Otherwise, re-direct to policy parsing.
@@ -382,13 +375,13 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                         e.binary.src2_policy = src_policy;
                         e.binary.src2_mask_input = attr_t::mask_input_t::policy;
 
-                        if (e.binary.src2_policy != attr_t::policy_t::COMMON) {
+                        if (e.binary.src2_policy
+                                == attr_t::policy_t::POLICY_TOTAL) {
                             BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
                                     "Error: binary post-op policy for the "
                                     "src2 tensor",
                                     mask_input_str.c_str(),
-                                    "is not supported - broadcasting is "
-                                    "not supported for the src2 tensor.");
+                                    "is not recognized.");
                             SAFE_V(FAIL);
                         }
                     }

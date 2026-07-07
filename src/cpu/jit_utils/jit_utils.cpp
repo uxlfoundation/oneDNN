@@ -22,6 +22,8 @@
 
 #include "cpu/platform.hpp"
 
+#include "cpu/jit_utils/jit_utils.hpp"
+
 #ifndef DNNL_ENABLE_JIT_PROFILING
 #define DNNL_ENABLE_JIT_PROFILING 1
 #endif

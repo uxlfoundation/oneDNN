@@ -39,18 +39,6 @@ struct cpu_matmul_pd_t : public matmul_pd_t {
             = {}) const override {
         CHECK(matmul_pd_t::attr_scales_ok(
                 engine, supported_args, supported_qmodes, extra_masks));
-        const auto &scales = attr()->scales_;
-        for (int arg : supported_args) {
-            if (scales.has_default_values(arg)) { continue; }
-            const auto &g0 = scales.get_group(arg, -2);
-            const auto &g1 = scales.get_group(arg, -1);
-
-            // Any group is allowed to be greater than 1 but only one at a
-            // time, not both.
-            VDISPATCH_MATMUL(IMPLICATION(!scales.get(arg).has_default_groups(),
-                                     utils::one_of(1, g0, g1)),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
-        }
         return status::success;
     }
     // NOLINTEND(google-default-arguments)

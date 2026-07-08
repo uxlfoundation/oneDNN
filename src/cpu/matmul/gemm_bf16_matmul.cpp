@@ -105,15 +105,16 @@ static bool should_gemm_execute_sum_po(const gemm_based::params_t &params,
 template <impl::data_type_t dst_type>
 status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
         engine_t *engine) {
-    auto check_attr_scales = [&]() -> bool {
-        bool ok = attr_scales_ok();
+    auto check_attr_scales = [&]() -> status_t {
+        CHECK(attr_scales_ok(engine));
         if (!attr()->scales_.has_default_values(DNNL_ARG_SRC)
                 && !attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
                 && attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0) {
             // This case requires scratchpad with unknown size
-            if (is_runtime_value(N())) ok = false;
+            VDISPATCH_MATMUL(
+                    !is_runtime_value(N()), VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
-        return ok;
+        return status::success;
     };
 
     auto check_attr_post_ops = [&]() -> bool {
@@ -142,7 +143,7 @@ status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
     };
 
     // check basic attributes
-    VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    CHECK(check_attr_scales());
 
     // set state
     CHECK(params_.pp_attr_.copy_from(*attr()));

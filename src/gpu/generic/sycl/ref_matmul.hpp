@@ -60,9 +60,7 @@ struct ref_matmul_t : public gpu::generic::sycl::primitive_t {
                     attr()->has_default_values(sm::post_ops | sm::dropout
                             | sm::scales_data_type | sm::zero_points_data_type),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_MATMUL(IMPLICATION(!attr()->scales_.has_default_values(),
-                                     scales_ok()),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(scales_ok(engine));
             VDISPATCH_MATMUL(sycl_post_ops_t::post_ops_ok(attr()),
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_MATMUL(md_dims_in_range(src_md()),
@@ -120,20 +118,22 @@ struct ref_matmul_t : public gpu::generic::sycl::primitive_t {
             return status::success;
         }
 
-        bool scales_ok() const {
+        status_t scales_ok(impl::engine_t *engine) const {
             const std::vector<int> supported_args
                     = {DNNL_ARG_SRC_0, DNNL_ARG_WEIGHTS_0, DNNL_ARG_DST};
 
             const auto &scales = attr()->scales_;
-            bool dt_ok = true;
             for (auto arg : supported_args) {
                 if (!scales.get(arg).has_default_values()) {
-                    dt_ok = dt_ok
-                            && is_supported_type(scales.get_data_type(arg))
-                            && !scales.get(arg).is_host_scalar();
+                    VDISPATCH_MATMUL(
+                            is_supported_type(scales.get_data_type(arg)),
+                            VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    VDISPATCH_MATMUL(!scales.get(arg).is_host_scalar(),
+                            VERBOSE_UNSUPPORTED_SCALES_CFG);
                 }
             }
-            return dt_ok && attr_scales_ok(supported_args);
+            CHECK(attr_scales_ok(engine, supported_args));
+            return status::success;
         }
 
         static bool check_data_types(const memory_desc_wrapper &src,

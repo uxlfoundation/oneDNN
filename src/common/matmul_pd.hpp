@@ -206,13 +206,14 @@ struct matmul_pd_t : public primitive_desc_t {
 
     int dst_qmask_M() const { return src_qmask_M(); }
 
-    virtual bool attr_scales_ok(const std::vector<int> &supported_args
+    virtual status_t attr_scales_ok(engine_t *engine,
+            const std::vector<int> &supported_args
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
             const std::vector<int> &supported_qmodes
             = {quantization_mode::static_sazp},
             const std::map<int, std::vector<int>> &extra_masks = {}) const {
         const auto &scales = attr()->scales_;
-        if (scales.has_default_values()) return true;
+        if (scales.has_default_values()) return status::success;
 
         const auto extra_mask_ok = [&](int arg, int mask) {
             const auto it = extra_masks.find(arg);
@@ -223,7 +224,8 @@ struct matmul_pd_t : public primitive_desc_t {
             return false;
         };
 
-        bool ok = scales.has_default_values(supported_args);
+        VDISPATCH_MATMUL(scales.has_default_values(supported_args),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
         for (int arg : supported_args) {
             if (scales.has_default_values(arg)) { continue; }
 
@@ -233,7 +235,8 @@ struct matmul_pd_t : public primitive_desc_t {
                 is_qmode_supported = is_qmode_supported
                         || (scales.get(arg).get_quantization_mode() == qmode);
             }
-            ok = ok && is_qmode_supported;
+            VDISPATCH_MATMUL(
+                    is_qmode_supported, VERBOSE_UNSUPPORTED_SCALES_CFG);
 
             const auto &mask = scales.get_mask(arg);
             if (arg == DNNL_ARG_WEIGHTS) {
@@ -242,7 +245,10 @@ struct matmul_pd_t : public primitive_desc_t {
                 const bool wei_k_group_ok = IMPLICATION(g0 > 1, K() % g0 == 0);
                 const bool wei_n_group_ok = IMPLICATION(g1 > 1, N() % g1 == 0);
 
-                ok = ok && wei_k_group_ok && wei_n_group_ok;
+                VDISPATCH_MATMUL(
+                        wei_k_group_ok, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(
+                        wei_n_group_ok, VERBOSE_UNSUPPORTED_SCALES_CFG);
 
                 // Mask over K dim is allowed for fp types or weights decompression only.
                 if (types::is_integral_dt(weights_md(0)->data_type)) {
@@ -253,46 +259,53 @@ struct matmul_pd_t : public primitive_desc_t {
                             && IMPLICATION(
                                     !types::is_integral_dt(src_md()->data_type),
                                     attr()->fpmath_.apply_to_int_);
-                    ok = ok
-                            && IMPLICATION(
-                                    (mask & wei_qmask_K()), is_decompression);
+                    VDISPATCH_MATMUL(IMPLICATION((mask & wei_qmask_K()),
+                                             is_decompression),
+                            VERBOSE_UNSUPPORTED_SCALES_CFG);
                 }
             } else if (arg == DNNL_ARG_SRC) {
                 // Masks supported across all implementations. Implementation
                 // specific masks can be passed through `extra_masks`.
-                ok = ok
-                        && (utils::one_of(mask, 0, src_qmask_K(),
-                                    src_qmask_M() + src_qmask_K(),
-                                    full_tensor_mask())
-                                || extra_mask_ok(arg, mask));
-                ok = ok
-                        && IMPLICATION((mask & src_qmask_K()),
-                                !scales.get(arg).has_default_groups());
-                ok = ok
-                        && IMPLICATION(!scales.get(arg).has_default_groups(),
-                                scales.get_group(arg, 0)
-                                        && K() % scales.get_group(arg, 1) == 0);
-                ok = ok
-                        && IMPLICATION(mask == src_qmask_M(),
-                                scales.get(arg).has_default_groups());
+                VDISPATCH_MATMUL((utils::one_of(mask, 0, src_qmask_K(),
+                                          src_qmask_M() + src_qmask_K(),
+                                          full_tensor_mask())
+                                         || extra_mask_ok(arg, mask)),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(IMPLICATION((mask & src_qmask_K()),
+                                         !scales.get(arg).has_default_groups()),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(
+                        IMPLICATION(!scales.get(arg).has_default_groups(),
+                                scales.get_group(arg, 0) == 1),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(
+                        IMPLICATION(!scales.get(arg).has_default_groups(),
+                                K() % scales.get_group(arg, 1) == 0),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(IMPLICATION(mask == src_qmask_M(),
+                                         scales.get(arg).has_default_groups()),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
             } else if (arg == DNNL_ARG_DST) {
                 // Masks supported across all implementations. Implementation
                 // specific masks can be passed through `extra_masks`.
-                ok = ok
-                        && (utils::one_of(mask, 0, dst_qmask_N(),
-                                    dst_qmask_M() + dst_qmask_N(),
-                                    full_tensor_mask())
-                                || extra_mask_ok(arg, mask));
-                ok = ok
-                        && IMPLICATION(!scales.get(arg).has_default_groups(),
-                                (M() % scales.get_group(arg, -2)) == 0
-                                        && (N() % scales.get_group(arg, -1))
-                                                == 0);
+                VDISPATCH_MATMUL((utils::one_of(mask, 0, dst_qmask_N(),
+                                          dst_qmask_M() + dst_qmask_N(),
+                                          full_tensor_mask())
+                                         || extra_mask_ok(arg, mask)),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(
+                        IMPLICATION(!scales.get(arg).has_default_groups(),
+                                (M() % scales.get_group(arg, -2)) == 0),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                VDISPATCH_MATMUL(
+                        IMPLICATION(!scales.get(arg).has_default_groups(),
+                                (N() % scales.get_group(arg, -1)) == 0),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
             } else {
                 assert(!"Unsupported arg");
             }
         }
-        return ok;
+        return status::success;
     }
 
 protected:

@@ -28,16 +28,26 @@ endif()
 # ZenDNN does not support Windows builds.
 if(WIN32)
     message(FATAL_ERROR
-        "DNNL_X64_USE_ZEN=ON is not supported on Windows. "
-        "Build on Linux, or configure with -DDNNL_X64_USE_ZEN=OFF.")
+        "ONEDNN_X64_USE_ZEN=ON is not supported on Windows. "
+        "Build on Linux, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
 endif()
 
 # ZenDNN requires CMake >= 3.26.
 if(CMAKE_VERSION VERSION_LESS "3.26")
     message(FATAL_ERROR
-        "DNNL_X64_USE_ZEN=ON requires CMake >= 3.26. "
+        "ONEDNN_X64_USE_ZEN=ON requires CMake >= 3.26. "
         "Current CMake: ${CMAKE_VERSION}. "
-        "Upgrade CMake, or configure with -DDNNL_X64_USE_ZEN=OFF.")
+        "Upgrade CMake, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
+endif()
+
+# ZenDNN uses the OpenMP threading runtime exclusively; any other oneDNN CPU
+# runtime (TBB, SEQ, THREADPOOL, ...) is incompatible.
+if(NOT DNNL_CPU_RUNTIME STREQUAL "OMP")
+    message(FATAL_ERROR
+        "ONEDNN_X64_USE_ZEN=ON requires ONEDNN_CPU_RUNTIME=OMP; ZenDNN only "
+        "supports the OpenMP threading runtime. Current ONEDNN_CPU_RUNTIME: "
+        "${DNNL_CPU_RUNTIME}. Configure with -DONEDNN_CPU_RUNTIME=OMP, or "
+        "configure with -DONEDNN_X64_USE_ZEN=OFF.")
 endif()
 
 if(NOT ZENDNNROOT AND DEFINED ENV{ZENDNNROOT})
@@ -48,68 +58,57 @@ if(ZENDNNROOT)
     set(zendnnl_DIR "${ZENDNNROOT}/lib/cmake" CACHE PATH "Path to zendnnl CMake config files")
 endif()
 
-# Minimum supported ZenDNN version. A missing ZenDNN disables support
-# gracefully; a ZenDNN that is present but older than this is treated as a
-# misconfiguration and fails the build.
+# Minimum supported ZenDNN version. With ONEDNN_X64_USE_ZEN=ON, a missing ZenDNN
+# fails configuration (see the FATAL_ERROR below); a ZenDNN that is present but
+# older than this is treated as a misconfiguration and also fails the build.
 set(ZENDNN_MIN_VERSION "6.0.0")
 find_package(zendnnl CONFIG)
 
 if(NOT zendnnl_FOUND)
-    message(WARNING "ZenDNN not found. Building oneDNN without ZenDNN support.")
-    set(DNNL_X64_USE_ZEN OFF CACHE BOOL "" FORCE)
-    add_definitions(-DDNNL_X64_USE_ZEN=0)
-    return()
+    message(FATAL_ERROR
+        "ONEDNN_X64_USE_ZEN=ON but ZenDNN was not found. Set ZENDNNROOT (or the "
+        "ZENDNNROOT environment variable) to a ZenDNN install, ensure its "
+        "CMake package config is discoverable, or configure with "
+        "-DONEDNN_X64_USE_ZEN=OFF.")
 endif()
 
 # zendnnl_VERSION may be unset by some package configs
 if(NOT DEFINED zendnnl_VERSION OR zendnnl_VERSION STREQUAL "")
     message(FATAL_ERROR
-        "DNNL_X64_USE_ZEN=ON requires ZenDNN >= ${ZENDNN_MIN_VERSION}, but the "
+        "ONEDNN_X64_USE_ZEN=ON requires ZenDNN >= ${ZENDNN_MIN_VERSION}, but the "
         "ZenDNN package at ${zendnnl_DIR} did not report a version. Use a "
         "ZenDNN package that provides version information, or configure with "
-        "-DDNNL_X64_USE_ZEN=OFF.")
+        "-DONEDNN_X64_USE_ZEN=OFF.")
 elseif("${zendnnl_VERSION}" VERSION_LESS "${ZENDNN_MIN_VERSION}")
     message(FATAL_ERROR
-        "DNNL_X64_USE_ZEN=ON requires ZenDNN >= ${ZENDNN_MIN_VERSION}. "
+        "ONEDNN_X64_USE_ZEN=ON requires ZenDNN >= ${ZENDNN_MIN_VERSION}. "
         "Found ZenDNN ${zendnnl_VERSION} at ${zendnnl_DIR}. "
-        "Update ZenDNN, or configure with -DDNNL_X64_USE_ZEN=OFF.")
+        "Update ZenDNN, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
 endif()
 
 # Require GCC >= 11.2 or Clang >= 14; ZenDNN builds only with GCC/Clang.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "11.2")
         message(FATAL_ERROR
-            "DNNL_X64_USE_ZEN=ON requires GCC >= 11.2. "
+            "ONEDNN_X64_USE_ZEN=ON requires GCC >= 11.2. "
             "Current C++ compiler: ${CMAKE_CXX_COMPILER_ID} "
             "${CMAKE_CXX_COMPILER_VERSION}. "
-            "Upgrade GCC, or configure with -DDNNL_X64_USE_ZEN=OFF.")
+            "Upgrade GCC, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
     endif()
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "14")
         message(FATAL_ERROR
-            "DNNL_X64_USE_ZEN=ON requires Clang >= 14. "
+            "ONEDNN_X64_USE_ZEN=ON requires Clang >= 14. "
             "Current C++ compiler: ${CMAKE_CXX_COMPILER_ID} "
             "${CMAKE_CXX_COMPILER_VERSION}. "
-            "Upgrade Clang, or configure with -DDNNL_X64_USE_ZEN=OFF.")
+            "Upgrade Clang, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
     endif()
 else()
     message(FATAL_ERROR
-        "DNNL_X64_USE_ZEN=ON requires GCC >= 11.2 or Clang >= 14; ZenDNN does "
+        "ONEDNN_X64_USE_ZEN=ON requires GCC >= 11.2 or Clang >= 14; ZenDNN does "
         "not support other compilers. Current C++ compiler: "
         "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}. "
-        "Build with GCC or Clang, or configure with -DDNNL_X64_USE_ZEN=OFF.")
-endif()
-
-# shared ZenDNN build is rejected until shared builds are supported.
-if(TARGET zendnnl::zendnnl)
-    get_target_property(_zendnnl_type zendnnl::zendnnl TYPE)
-    if(_zendnnl_type STREQUAL "SHARED_LIBRARY")
-        message(FATAL_ERROR
-            "DNNL_X64_USE_ZEN=ON requires a static (archive) ZenDNN; the shared "
-            "ZenDNN at ${zendnnl_DIR} is unsupported. Rebuild ZenDNN as an "
-            "archive (-DZENDNNL_LIB_BUILD_SHARED=OFF -DZENDNNL_LIB_BUILD_ARCHIVE=ON), "
-            "or configure with -DDNNL_X64_USE_ZEN=OFF.")
-    endif()
+        "Build with GCC or Clang, or configure with -DONEDNN_X64_USE_ZEN=OFF.")
 endif()
 
 add_definitions(-DDNNL_X64_USE_ZEN=1)

@@ -82,11 +82,6 @@ endfunction()
 # Library configuration
 # ---------------------
 
-# ===== ZenDNN toggles & paths =====
-onednn_option(X64_USE_ZEN OFF
-    "Enable ZenDNN integration (link against zendnnl when available)")
-set(ZENDNNROOT "" CACHE STRING "Path to ZenDNN installation root")
-
 onednn_option(LIBRARY_TYPE "SHARED"
     "Specifies whether oneDNN library should be SHARED or STATIC")
 
@@ -363,6 +358,11 @@ onednn_option(ENABLE_GEMM_KERNELS_ISA "ALL"
 onednn_option(SAFE_RBP OFF
     "Prohibits RBP register clobbering in JIT kernels. Use this option to enable
     runtime profiling with tools like Flame Graph.")
+
+onednn_option(X64_USE_ZEN OFF
+    "Enable ZenDNN integration. When ON, configuration requires a discoverable
+    ZenDNN package (>= 6.0.0) and ONEDNN_CPU_RUNTIME=OMP, and fails otherwise.")
+set(ZENDNNROOT "" CACHE STRING "Path to ZenDNN installation root")
 
 # -------------------
 # AArch64 CPU options

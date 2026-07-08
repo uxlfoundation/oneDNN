@@ -395,9 +395,8 @@ The build links against a user-provided, prebuilt ZenDNN install rather than
 building ZenDNN from source. The install is located through the `ZENDNNROOT`
 CMake variable or an environment variable of the same name; oneDNN consumes
 ZenDNN's own `zendnnl-config.cmake` package config from that location. If
-`ZENDNNROOT` is not set, CMake searches the default package paths, and if no
-ZenDNN install is found the option is disabled and oneDNN is built without
-ZenDNN support (a warning is emitted).
+`ZENDNNROOT` is not set, CMake searches the default package paths; if no
+ZenDNN install is found, configuration fails with an error.
 
 When `ONEDNN_X64_USE_ZEN=ON`, the following additional requirements apply
 (they do not affect the default `OFF` build):
@@ -405,10 +404,10 @@ When `ONEDNN_X64_USE_ZEN=ON`, the following additional requirements apply
 * Requires CMake 3.26 or later.
 * Requires GCC 11.2 or later, or Clang 14 or later; other compilers are
   rejected.
-* Requires a static (archive) ZenDNN build, version 6.0.0 or later. Rebuild
-  ZenDNN as an archive
-  (`-DZENDNNL_LIB_BUILD_SHARED=OFF -DZENDNNL_LIB_BUILD_ARCHIVE=ON`) if a shared
-  ZenDNN is detected.
+* Requires ZenDNN version 6.0.0 or later. Both static (archive) and shared
+  ZenDNN builds are supported.
+* Requires `ONEDNN_CPU_RUNTIME=OMP`; ZenDNN only supports the OpenMP threading
+  runtime, and other runtimes are rejected at configure time.
 
 Refer to the [ZenDNN repository](https://github.com/amd/ZenDNN) for
 instructions on building the ZenDNN binary (build it with

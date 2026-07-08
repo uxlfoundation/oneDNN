@@ -69,19 +69,6 @@ std::vector<float> alignment_model(
 std::vector<float> alignments(src_seq_length_max *batch, 1.0f);
 std::vector<float> exp_sums(batch, 1.0f);
 
-void compute_weighted_annotations(float *weighted_annotations,
-        dim_t src_seq_length_max, dim_t batch, dim_t feature_size,
-        float *weights_annot, float *annotations) {
-    // annotations(aka enc_dst_layer) is (t, n, 2c)
-    // weights_annot is (2c, c)
-
-    dim_t num_weighted_annotations = src_seq_length_max * batch;
-    // annotation[i] = GEMM(weights_annot, enc_dst_layer[i]);
-    dnnl_sgemm('N', 'N', num_weighted_annotations, feature_size, feature_size,
-            1.f, annotations, feature_size, weights_annot, feature_size, 0.f,
-            weighted_annotations, feature_size);
-}
-
 void compute_sum_of_rows(
         int8_t *a, dim_t rows, dim_t cols, int32_t *a_reduced) {
     PRAGMA_OMP_PARALLEL_FOR_COLLAPSE(1)
@@ -94,11 +81,14 @@ void compute_sum_of_rows(
 }
 
 void compute_attention(float *context_vectors, dim_t src_seq_length_max,
-        dim_t batch, dim_t feature_size, int8_t *weights_src_layer,
-        float weights_src_layer_scale, int32_t *compensation,
-        uint8_t *dec_src_layer, float dec_src_layer_scale,
+        dim_t batch, dim_t feature_size, float weights_src_layer_scale,
+        int32_t *compensation, float dec_src_layer_scale,
         float dec_src_layer_shift, uint8_t *annotations,
-        float *weighted_annotations, float *weights_alignments) {
+        float *weighted_annotations, const memory &src_u8_mem,
+        const memory &wei_s8_mem, const memory &dst_s32_mem,
+        const matmul &matmul_int8_prim, const memory &src_gemv_mem,
+        const memory &wei_gemv_mem, const memory &dst_gemv_mem,
+        const matmul &matmul_gemv_prim, stream &strm) {
     // dst_iter : (n, c) matrix
     // src_layer: (n, c) matrix
     // weighted_annotations (t, n, c)
@@ -110,10 +100,11 @@ void compute_attention(float *context_vectors, dim_t src_seq_length_max,
     // p is (n, 1)
 
     // first we precompute the weighted_dec_src_layer
-    int32_t co = 0;
-    dnnl_gemm_u8s8s32('N', 'N', 'F', batch, feature_size, feature_size, 1.f,
-            dec_src_layer, feature_size, 0, weights_src_layer, feature_size, 0,
-            0.f, weighted_src_layer.data(), feature_size, &co);
+
+    matmul_int8_prim.execute(strm,
+            {{DNNL_ARG_SRC, src_u8_mem}, {DNNL_ARG_WEIGHTS, wei_s8_mem},
+                    {DNNL_ARG_DST, dst_s32_mem}});
+    strm.wait();
 
     // then we compute the alignment model
     float *alignment_model_ptr = alignment_model.data();
@@ -134,10 +125,10 @@ void compute_attention(float *context_vectors, dim_t src_seq_length_max,
     }
 
     // gemv with alignments weights. the resulting alignments are in alignments
-    dim_t num_weighted_annotations = src_seq_length_max * batch;
-    dnnl_sgemm('N', 'N', num_weighted_annotations, 1, feature_size, 1.f,
-            alignment_model_ptr, feature_size, weights_alignments, 1, 0.f,
-            alignments.data(), 1);
+    matmul_gemv_prim.execute(strm,
+            {{DNNL_ARG_SRC, src_gemv_mem}, {DNNL_ARG_WEIGHTS, wei_gemv_mem},
+                    {DNNL_ARG_DST, dst_gemv_mem}});
+    strm.wait();
 
     // softmax on alignments. the resulting context weights are in alignments
     PRAGMA_OMP_PARALLEL_FOR_COLLAPSE(1)
@@ -760,6 +751,62 @@ void simple_net() {
             src_seq_length_max * batch * feature_size, 1.0f);
     std::vector<int32_t> weights_attention_sum_rows(feature_size, 1);
 
+    // Create the attention matmul primitives once and reuse them across all
+    // decoder iterations, instead of rebuilding them on every call to
+    // compute_attention.
+    dim_t num_weighted_annotations = src_seq_length_max * batch;
+
+    const dim_t M = src_seq_length_max * batch;
+    const dim_t K = feature_size;
+    const dim_t N = feature_size;
+
+    auto src_md = memory::desc(
+            {M, K}, memory::data_type::f32, memory::format_tag::ab);
+    auto wei_md = memory::desc(
+            {K, N}, memory::data_type::f32, memory::format_tag::ab);
+    auto dst_md = memory::desc(
+            {M, N}, memory::data_type::f32, memory::format_tag::ab);
+    auto matmul_pd = matmul::primitive_desc(cpu_engine, src_md, wei_md, dst_md);
+    auto matmul_prim = matmul(matmul_pd);
+    auto src_mem = memory(
+            src_md, cpu_engine, enc_dst_layer_memory.get_data_handle());
+    auto wei_mem = memory(wei_md, cpu_engine, user_weights_annotation.data());
+    auto dst_mem = memory(dst_md, cpu_engine, weighted_annotations.data());
+
+    auto att_src_u8_md = memory::desc({batch, feature_size},
+            memory::data_type::u8, memory::format_tag::ab);
+    auto att_wei_s8_md = memory::desc({feature_size, feature_size},
+            memory::data_type::s8, memory::format_tag::ab);
+    auto att_dst_s32_md = memory::desc({batch, feature_size},
+            memory::data_type::s32, memory::format_tag::ab);
+    auto matmul_int8_pd = matmul::primitive_desc(
+            cpu_engine, att_src_u8_md, att_wei_s8_md, att_dst_s32_md);
+    auto matmul_int8_prim = matmul(matmul_int8_pd);
+
+    auto src_u8_mem = memory(matmul_int8_pd.src_desc(), cpu_engine,
+            dec_src_layer_memory.get_data_handle());
+    auto wei_s8_mem = memory(matmul_int8_pd.weights_desc(), cpu_engine,
+            user_weights_attention_src_layer.data());
+    auto dst_s32_mem = memory(
+            matmul_int8_pd.dst_desc(), cpu_engine, weighted_src_layer.data());
+
+    auto att_src_gemv_md
+            = memory::desc({num_weighted_annotations, feature_size},
+                    memory::data_type::f32, memory::format_tag::ab);
+    auto att_wei_gemv_md = memory::desc(
+            {feature_size, 1}, memory::data_type::f32, memory::format_tag::ab);
+    auto att_dst_gemv_md = memory::desc({num_weighted_annotations, 1},
+            memory::data_type::f32, memory::format_tag::ab);
+    auto matmul_gemv_pd = matmul::primitive_desc(
+            cpu_engine, att_src_gemv_md, att_wei_gemv_md, att_dst_gemv_md);
+    auto matmul_gemv_prim = matmul(matmul_gemv_pd);
+    auto src_gemv_mem = memory(
+            matmul_gemv_pd.src_desc(), cpu_engine, alignment_model.data());
+    auto wei_gemv_mem = memory(matmul_gemv_pd.weights_desc(), cpu_engine,
+            user_weights_alignments.data());
+    auto dst_gemv_mem
+            = memory(matmul_gemv_pd.dst_desc(), cpu_engine, alignments.data());
+
     ///
     /// **Execution**
     ///
@@ -782,10 +829,10 @@ void simple_net() {
         /// @snippet cpu_rnn_inference_int8.cpp weight ano
         ///
         //[weight ano]
-        compute_weighted_annotations(weighted_annotations.data(),
-                src_seq_length_max, batch, feature_size,
-                user_weights_annotation.data(),
-                (float *)enc_dst_layer_memory.get_data_handle());
+        matmul_prim.execute(s,
+                {{DNNL_ARG_SRC, src_mem}, {DNNL_ARG_WEIGHTS, wei_mem},
+                        {DNNL_ARG_DST, dst_mem}});
+        s.wait();
         //[weight ano]
         ///
         /// precompute compensation for s8u8s32 gemm in compute attention
@@ -814,19 +861,19 @@ void simple_net() {
                     = (uint8_t *)dec_src_layer_memory.get_data_handle();
             float *src_att_iter_handle
                     = (float *)dec_dst_iter_memory.get_data_handle();
-
+            src_u8_mem.set_data_handle(src_att_layer_handle);
             ///
             /// Compute attention context vector into the first layer src_iter
             /// @snippet cpu_rnn_inference_int8.cpp att ctx
             ///
             //[att ctx]
             compute_attention(src_att_iter_handle, src_seq_length_max, batch,
-                    feature_size, user_weights_attention_src_layer.data(),
-                    weights_attention_scale, weights_attention_sum_rows.data(),
-                    src_att_layer_handle, data_scale, data_shift,
+                    feature_size, weights_attention_scale,
+                    weights_attention_sum_rows.data(), data_scale, data_shift,
                     (uint8_t *)enc_bidir_dst_layer_memory.get_data_handle(),
-                    weighted_annotations.data(),
-                    user_weights_alignments.data());
+                    weighted_annotations.data(), src_u8_mem, wei_s8_mem,
+                    dst_s32_mem, matmul_int8_prim, src_gemv_mem, wei_gemv_mem,
+                    dst_gemv_mem, matmul_gemv_prim, s);
             //[att ctx]
 
             ///

@@ -351,9 +351,6 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
     const auto &enabled_bcast_strategy
             = post_ops_ok_args.enabled_bcast_strategy;
 
-    VCHECK_PO_INJ_BOOL(dst_d && dst_d->md_->format_kind != dnnl_format_kind_any,
-            VERBOSE_UNSUPPORTED_FORMAT_KIND);
-
     // Save scale and zero point of first sum postop in order to check that any
     // subsequent sum postops have the same values. This check is necessary
     // because there is only one lambda injector.
@@ -397,7 +394,12 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
                 case binary:
                 case prelu:
                     if (entry.is_like_binary()) {
-                        assert(dst_d != nullptr && "dst_d is null");
+                        VCHECK_PO_INJ_BOOL(
+                                dst_d, VERBOSE_UNSUPPORTED_FORMAT_KIND);
+                        VCHECK_PO_INJ_BOOL(
+                                dst_d->md_->format_kind != format_kind::any,
+                                VERBOSE_UNSUPPORTED_FORMAT_KIND);
+
                         bool ok = binary_injector::is_supported(isa,
                                 binary_injector::get_src1_desc(entry, *dst_d),
                                 *dst_d, enabled_bcast_strategy);
@@ -408,6 +410,8 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
                                     binary_injector::is_data_supported(
                                             isa, src2_d.data_type),
                                     VERBOSE_ISA_DT_MISMATCH);
+                            VCHECK_PO_INJ_BOOL(dst_d->is_dense(),
+                                    VERBOSE_UNSUPPORTED_FORMAT_KIND);
                         }
                         return ok;
                     }

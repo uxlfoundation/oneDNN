@@ -60,10 +60,11 @@ void verbose_profiler_t::check_for_completed_primitives() {
         double duration_ms = 0.0;
 
         // Handles primitives with no kernels
-        if (evts.empty() && !prof_data.pd_info_.empty()) {
+        if (evts.empty()) {
             // Will be erased in second pass
-            VPROF(prof_data.start_ms_, primitive, exec, VERBOSE_profile,
-                    prof_data.pd_info_.c_str(), duration_ms);
+            if (!prof_data.pd_info_.empty())
+                VPROF(prof_data.start_ms_, primitive, exec, VERBOSE_profile,
+                        prof_data.pd_info_.c_str(), duration_ms);
             continue;
         }
 

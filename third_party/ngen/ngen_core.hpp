@@ -1519,6 +1519,9 @@ public:
     }
 
     int index() const { return (getARFBase() << 1) + getOffset(); }
+    int index(ngen::HW hw) const {
+        return index();
+    }
 
     static inline constexpr14 int count(HW hw) {
         return (hw >= HW::XeHPC) ? 4 : 2;

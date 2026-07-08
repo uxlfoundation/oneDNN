@@ -287,8 +287,8 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
     // C Interleave: pad up gws[N] to a multiple of the chunk size and add to gws[M] if misaligned ldc
     auto info = nocopy_info();
     gws[1] = utils::rnd_up(
-            gws[1], info->cInterleaveChunk(problem->Tc_ext) * lws[1]);
-    if (info->cInterleaveEnabled()
+            gws[1], info->cInterleaveChunk() * lws[1]);
+    if (info->cInterleaveChunk() > 1
             && (offset_c % 64 > 0 || ldc * problem->Tc % 64 > 0)) {
         auto wgTileM = info->wgTile(gemmstone::LoopM);
         auto maxShift = 64 / problem->Tc_ext.size() - 1;

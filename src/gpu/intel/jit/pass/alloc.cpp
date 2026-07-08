@@ -18,6 +18,7 @@
 
 #include "gemmstone/../../dsl/ir/pass/trace.hpp"
 #include "gpu/intel/jit/ir/legacy.hpp"
+#include <numeric>
 
 namespace dnnl {
 namespace impl {

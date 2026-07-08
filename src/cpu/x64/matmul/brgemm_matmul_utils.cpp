@@ -1955,6 +1955,16 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.is_wei_scale_per_k = false;
     }
 
+    // Per-K weight scales are only applied for weight decompression (integer
+    // weights) and int8 grouped quantization. Other types (e.g. fp8) pass the
+    // check above (per_ocic/per_tensor also set the per-N bit) but the
+    // K-grouping would be ignored, so reject them here. A per-K group
+    // spanning all of K was already downgraded to per-N above.
+    VCONDCHECK_BG(IMPLICATION(bgmmc.is_wei_scale_per_k,
+                          bgmmc.with_wei_decompression
+                                  || bgmmc.with_int8_grouped_quantization),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+
     // Batched (3D/4D) per-batch scales/ZP have batch bits set in the mask.
     // Compute the stride (in elements) between consecutive per-batch planes
     // so the matmul driver can offset the scales/ZP pointer per batch index.

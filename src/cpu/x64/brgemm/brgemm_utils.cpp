@@ -346,7 +346,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
         if (brg->brgattr.bd_mask_level != 2 || BD == 0) return false;
 
         auto min_bdb = INT_MAX;
-        const auto start_bd_block = nstl::min(max_width, BD);
+        const auto start_bd_block = nstl::min<dim_t>(max_width, BD);
         auto best_bd_block = start_bd_block;
         for (auto bd_block = start_bd_block; bd_block > 0; bd_block--) {
             int bdb = 0;
@@ -419,7 +419,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                 }
             }
             if (brg->bd_block == 1) {
-                brg->bd_block = nstl::min(max_width, BD);
+                brg->bd_block = nstl::min<dim_t>(max_width, BD);
                 brg->bdb_tail = BD % max_width;
                 for (int i = max_width; i >= min_width; i--) {
                     const auto i_tail = BD % i;
@@ -595,7 +595,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
         } else if (BD <= 16) {
             // Have to call recalc_blocking twice to calculate ldb
             recalc_blocking(BD, 16, 0, 0);
-            const auto ld_block2 = nstl::min(
+            const auto ld_block2 = nstl::min<dim_t>(
                     ldb_tail_16 ? ((brg->ldb > 4) ? 3 : 4) : 5, div_up(LD, 16));
             recalc_blocking(0, 0, 1, ld_block2);
         } else if (bdb_tail_only && weak_bdb && BD > 64) {
@@ -611,7 +611,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
             // Have to call recalc_blocking twice to calculate bdb
             // we can't use ld_block other than 16
             recalc_blocking(16, 16, 0, 0);
-            const auto bd_block2 = nstl::min(
+            const auto bd_block2 = nstl::min<dim_t>(
                     brg->bdb_tail ? (brg->bdb > 4 ? 3 : 4) : 5, div_up(BD, 16));
             recalc_blocking(0, 0, bd_block2, 1);
         } else if (bdb_block_tail && ldb_tail_16 && BD_R16 == 32 && LD_R16 == 32
@@ -660,7 +660,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     const auto rd_block_step = brg->rd_block_step();
     const auto max_rd_block = brg->max_rd_block();
     if (brg->amx_may_extend_k()) {
-        brg->rd_block = nstl::min(
+        brg->rd_block = nstl::min<dim_t>(
                 rnd_up(brg->reduce_dim, brg->rd_step), max_rd_block);
     } else if (brg->fused_copy_a) {
         brg->rd_block = max_rd_block;
@@ -1117,9 +1117,9 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     CHECK(safe_dim_to_int(brg->LDD, LDC));
     brg->is_runtime_ldc = brg->is_runtime_ldd = is_runtime_value(LDC);
 
-    CHECK(safe_dim_to_int(brg->bcast_dim, (brg->is_row_major()) ? M : N));
-    CHECK(safe_dim_to_int(brg->load_dim, (brg->is_row_major()) ? N : M));
-    CHECK(safe_dim_to_int(brg->reduce_dim, K));
+    brg->bcast_dim = (brg->is_row_major()) ? M : N;
+    brg->load_dim = (brg->is_row_major()) ? N : M;
+    brg->reduce_dim = K;
 
     brg->bd_block2 = 0;
     brg->bdb2 = 0;
@@ -1182,8 +1182,8 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     CHECK(safe_dim_to_int(brg->LDC, LDC));
     CHECK(safe_dim_to_int(brg->LDD, LDC));
 
-    CHECK(safe_dim_to_int(brg->bcast_dim, M));
-    CHECK(safe_dim_to_int(brg->load_dim, N));
+    brg->bcast_dim = M;
+    brg->load_dim = N;
 
     return status::success;
 }

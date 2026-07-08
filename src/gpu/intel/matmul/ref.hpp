@@ -67,13 +67,12 @@ struct ref_t : public primitive_t {
                             | smask_t::fpmath_mode | smask_t::rounding_mode
                             | smask_t::precomputed_reductions),
                     VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_MATMUL(attr_scales_ok({DNNL_ARG_SRC, DNNL_ARG_WEIGHTS,
-                                                    DNNL_ARG_DST},
-                                     {quantization_mode::static_sazp,
-                                             quantization_mode::dynamic_mx,
-                                             quantization_mode::dynamic_fp},
-                                     {{DNNL_ARG_SRC, {src_qmask_M()}}}),
-                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_scales_ok(engine,
+                    {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
+                    {quantization_mode::static_sazp,
+                            quantization_mode::dynamic_mx,
+                            quantization_mode::dynamic_fp},
+                    {{DNNL_ARG_SRC, {src_qmask_M()}}}));
             VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
             VDISPATCH_MATMUL(
                     precomputed_reductions_ok(), VERBOSE_UNSUPPORTED_PR_CFG);

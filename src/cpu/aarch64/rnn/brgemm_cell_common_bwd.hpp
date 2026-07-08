@@ -28,6 +28,24 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
+/*
+ * Calculations:
+ * scratch * w_iter = dff_src_iter
+ * A (mb x rnn.n_gates * rnn.dhc) * B (rnn.n_gates * rnn.dhc, rnn.sic) =
+ * C (mb x rnn.sic)
+ *
+ * scratch * w_layer = dff_src_layer
+ * A (mb x rnn.n_gates * rnn.dhc) * B (rnn.n_gates * rnn.dhc, rnn.slc) =
+ * C (mb x rnn.slc)
+ *
+ * Data formats:
+ * scratch = igo (mb, n_gates, rnn.dhc)
+ * w_iter = gIo32i (n_gates, rnn.sic, rnn.dhc)
+ * w_layer = gIo32i (n_gates, rnn.slc, rnn.dhc)
+ * diff_src_layer = io (mb, rnn.slc)
+ * diff_src_iter = io (mb, rnn.sic)
+ */
+
 template <typename weights_t, typename scratch_t, typename gemm_acc_t>
 class brgemm_diff_src_layer_iter_t {
 public:
@@ -95,6 +113,26 @@ private:
     gemm_acc_t *const gemm_acc_scratchpad_;
     brgemm_batch_element_t *const addr_batch_global_;
 };
+
+/*
+ * Calculations:
+ * src_layer^T * scratch = dff_weights_layer
+ * A before transpose (rnn.mb, rnn.slc) - layout in memory
+ * A (rnn.slc, rnn.mb) * B (rnn.mb, rnn.n_gates * rnn.dhc) =
+ * C (rnn.slc, rnn.n_gates * rnn.dhc)
+ * src_iter^T * scratch = dff_weights_iter
+ * A (rnn.sic, rnn.mb) * B (rnn.mb, rnn.n_gates * rnn.dhc) =
+ * C (rnn.sic, rnn.n_gates * rnn.dhc)
+ *
+ * Data formats:
+ * src_iter  = io (mb,  rnn.sic) -> transposed oi (rnn.sic, mb)
+ * src_layer = io (mb, rnn.slc) -> transposed oi (rnn.sic, mb)
+ *
+ * scratch = igo (mb, n_gates, rnn.dhc)
+ *
+ * dff_weights_iter = igo (rnn.sic, rnn.n_gates, rnn.dhc)
+ * dff_weights_layer = igo (rnn.slc, rnn.n_gates, rnn.dhc)
+ */
 
 template <typename src_layer_t, typename src_iter_t, typename scratch_t,
         typename gemm_acc_t>

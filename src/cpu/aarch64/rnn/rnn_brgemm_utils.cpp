@@ -96,7 +96,15 @@ std::pair<dim_t, dim_t> brgemm_calc_k_block_vanilla_rnn(dim_t K1, dim_t K2,
         dim_t Cs, dim_t l2_cache_size, bool is_xf16, aarch64::cpu_isa_t isa) {
 
     const bool is_sve = is_superset(isa, aarch64::sve_128);
-    const float l2_occupancy = is_sve ? 0.35f : 0.70f;
+    // Fraction of L2 that the A+B+C working set may occupy before we start
+    // K-blocking. This multiplies the runtime-queried L2 size, so it is a plain
+    // fraction and does not depend on vector length or ISA -- a single constant.
+    //
+    // The SVE value (0.50) was tuned on Graviton3 (Neoverse V1, sve_256, 1 MiB L2)
+    // with a benchdnn VANILLA_RNN sweep over 15 shapes. It cut worst-case
+    // per-shape regret from ~13% to ~4% (warm and cold).
+    // Similarly the NEON value is inherited from Graviton2 machine.
+    const float l2_occupancy = is_sve ? 0.50f : 0.70f;
 
     const bool should_adjust_by_l2 = static_cast<float>(As + Bs + Cs)
             >= l2_occupancy * static_cast<float>(l2_cache_size);
@@ -207,8 +215,17 @@ dim_t brgemm_calc_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks, bool is_f32,
 
 dim_t adjust_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks) {
 
+    // Target up to 4x the minimum number of M-blocks needed to cover all threads,
+    // giving the scheduler slack to balance load.
     const dim_t max_m_blocks = 4 * utils::div_up(nthr, N_blocks);
-    const dim_t max_m_value = 32;
+
+    // Upper bound on rows per M-block. This is thread-coupled, not vector-length
+    // coupled: it only takes effect through max_m_blocks (above), which scales with
+    // nthr. A benchdnn VANILLA_LSTM sweep on Graviton3 confirmed this -- the best
+    // value shifts with core count (the cap is near-inert at 64 threads but the
+    // inherited 32 degrades badly at 32). 40 is the most robust single value across
+    // the core counts tested.
+    const dim_t max_m_value = 40;
     const dim_t max_M
             = nstl::min(max_m_value, nstl::max((dim_t)1, M / max_m_blocks));
     const dim_t min_M = 4;
@@ -227,14 +244,14 @@ dim_t adjust_m_block_lstm(dim_t nthr, dim_t M, dim_t N_blocks) {
 dim_t brgemm_calc_n_block(
         const cpu::rnn_utils::rnn_conf_t &rnn, alg_kind_t cell_kind) {
 
-    const int simd_w = isa_max_vlen(rnn.brgemm_isa) / (int)sizeof(float);
+    const int simd_elems = isa_max_vlen(rnn.brgemm_isa) / (int)sizeof(float);
 
     if (rnn.brgemm_isa == asimd && rnn.M == 1
             && utils::one_of(
                     cell_kind, alg_kind::vanilla_lstm, alg_kind::lbr_gru))
-        return 4 * simd_w;
+        return 4 * simd_elems;
     else
-        return 2 * simd_w;
+        return 2 * simd_elems;
 }
 
 } // namespace
@@ -266,7 +283,7 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
     if (rnn.is_int8_conf() || rnn.is_cell_dt_int8())
         return status::unimplemented;
 
-    // FOr now only support vanilla RNN/LSTM/GRU/AUGRU
+    // For now only support vanilla RNN/LSTM/GRU/AUGRU
     if (!utils::one_of(cell_kind, alg_kind::vanilla_rnn, alg_kind::vanilla_lstm,
                 alg_kind::vanilla_gru, alg_kind::vanilla_augru))
         return status::unimplemented;

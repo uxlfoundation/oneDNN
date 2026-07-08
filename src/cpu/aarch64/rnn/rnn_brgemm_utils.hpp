@@ -97,6 +97,7 @@ struct rnn_brgemm_t<prop_kind::forward> : public rnn_brgemm_base_t {
     brgemm_desc_t desc_proj_N_tail_b0_[num_proj_kernels_];
     brgemm_desc_t desc_proj_N_tail_b1_[num_proj_kernels_];
 
+    // Set of brgemm descriptor for 2nd part of iteration gemm in vanulla GRU cell
     brgemm_desc_t desc_iter_p2_b1_[num_vanilla_gru_iter_part2_kernels_];
     brgemm_desc_t desc_iter_p2_N_tail_b1_[num_vanilla_gru_iter_part2_kernels_];
     brgemm_desc_t desc_iter_p2_K2_tail_b1_[num_vanilla_gru_iter_part2_kernels_];
@@ -126,6 +127,7 @@ struct rnn_brgemm_t<prop_kind::forward> : public rnn_brgemm_base_t {
     brgemm_ker_ptr_t kernel_proj_N_tail_b0_[num_proj_kernels_];
     brgemm_ker_ptr_t kernel_proj_N_tail_b1_[num_proj_kernels_];
 
+    // Set of brgemm kernels for 2nd part of iteration gemm in vanilla GRU cell
     brgemm_ker_ptr_t kernel_iter_p2_b1_[num_vanilla_gru_iter_part2_kernels_];
     brgemm_ker_ptr_t
             kernel_iter_p2_N_tail_b1_[num_vanilla_gru_iter_part2_kernels_];

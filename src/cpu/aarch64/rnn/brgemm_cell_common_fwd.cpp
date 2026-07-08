@@ -111,31 +111,13 @@ template <typename src_t, typename weights_t, typename scratch_t,
         typename gemm_acc_t>
 int brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
         gemm_acc_t>::calculate_nthr() const {
-    const auto max_nthr = nstl::min(dnnl_get_current_num_threads(), rnn_.nthr);
-
-    // TODO: tune thresholds for aarch64 microarchitectures.
-#if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
-    constexpr dim_t k2_i8_asimd = 192;
-    constexpr dim_t k2_f32_asimd = 112;
-#elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
-    constexpr dim_t k2_i8_asimd = 176;
-    constexpr dim_t k2_f32_asimd = 96;
-#endif
-#if (DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB) \
-        || (DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP)
-    if (rnn_.brgemm_isa == aarch64::asimd && !need_gemm_layer_ && rnn_.M == 1
-            && utils::one_of(rnn_.cell_kind, alg_kind::vanilla_lstm,
-                    alg_kind::lbr_gru)) {
-        if (std::is_same<src_t, uint8_t>::value
-                && std::is_same<weights_t, int8_t>::value) {
-            return rnn_.K2 <= k2_i8_asimd ? 1 : max_nthr;
-        } else if (std::is_same<src_t, float>::value
-                && std::is_same<weights_t, float>::value) {
-            return rnn_.K2 <= k2_f32_asimd ? 1 : max_nthr;
-        }
-    }
-#endif
-    return max_nthr;
+    // TODO(aarch64): the serial/parallel crossover for small problems
+    // (M == 1, no layer GEMM, LSTM/LBR-GRU) has not been measured on
+    // AArch64. The x64 path returned 1 below an ISA-specific K2 threshold
+    // tuned on AVX2; those constants do not transfer to AArch64, so no
+    // small-problem heuristic is applied here yet. Until a sweep is done
+    // on target hardware, always use the full thread count.
+    return nstl::min(dnnl_get_current_num_threads(), rnn_.nthr);
 }
 
 template <typename src_t, typename weights_t, typename scratch_t,
@@ -574,7 +556,7 @@ brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::brgemm_gru_t(
     , addr_batch_global_(addr_batch_global)
     , fused_postgemm_part1_(fused_postgemm_part1)
     , fused_postgemm_part2_(fused_postgemm_part2)
-    , is_fused_layer_iter_brgemm_(false) {}
+    , is_fused_layer_iter_brgemm_(true) {}
 
 template <typename src_t, typename weights_t, typename scratch_t,
         typename gemm_acc_t>

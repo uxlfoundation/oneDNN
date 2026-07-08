@@ -61,6 +61,7 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
 
         bool has_f8_e5m2_binary_postops = false;
         bool has_f8_e4m3_binary_postops = false;
+        bool has_f8_dst_dt = one_of(brg.dt_d, data_type::f8_e5m2, data_type::f8_e4m3);
         if (brg.with_binary) {
             const auto &post_ops = brg.attr()->post_ops_;
             for (int i = 0; i < post_ops.len(); i++) {
@@ -76,7 +77,7 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
         }
 
         if (brg.is_fp8 || has_f8_e5m2_binary_postops
-                || has_f8_e4m3_binary_postops) {
+                || has_f8_e4m3_binary_postops || has_f8_dst_dt) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
                         brg.dt_d)
                     || has_f8_e5m2_binary_postops)

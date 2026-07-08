@@ -167,7 +167,7 @@ struct DNNL_API brgemm_attr_t {
     // if unrolled kernel is used (use_uker == true)
     // then "max_bs" is the the only batch size that can be used on kernel call
     // else "max_bs" is the maximum batch size that can be used
-    int max_bs;
+    dim_t max_bs;
     int max_top_vpad, max_bottom_vpad;
     int max_top_bpad, max_bottom_bpad;
     dim_t hint_expected_A_size, hint_expected_B_size, hint_expected_C_size;
@@ -215,7 +215,7 @@ struct DNNL_API brgemm_attr_t {
     // bd block. By default are equal to regular leading dimension parameters
     // specified on brgemm creation.
     // Supported by brgemm unrolled kernel for now.
-    int LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
+    dim_t LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
     // If "true" then batchsize is allowed to change on each kernel call
     // and there is no unrolling by batchsize in kernel
     bool var_bs {false};
@@ -257,9 +257,9 @@ struct brgemm_desc_t {
 
     // Note: new added parameters must be taken into account in the brgemm
     // comparison function
-    int bcast_dim = 0; // M;
-    int load_dim = 0; // N;
-    int reduce_dim = 0; // K;
+    dim_t bcast_dim = 0; // M;
+    dim_t load_dim = 0; // N;
+    dim_t reduce_dim = 0; // K;
     int LDA = 0;
     int LDB = 0;
     int LDC = 0;
@@ -334,7 +334,7 @@ struct brgemm_desc_t {
     brgemm_attr_t brgattr;
 
     // Derived  parameters
-    int LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
+    dim_t LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
     bool is_blocked = false;
 
     int bdb = 0, bd_block = 0, bdb_tail = 0;

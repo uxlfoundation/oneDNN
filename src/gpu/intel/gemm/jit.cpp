@@ -523,7 +523,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
         }
     }
 
-    // Get host scalar zero-poins values
+    // Get host scalar zero-point values
     if (pd()->with_a_zero_points() || pd()->with_b_zero_points()) {
         ao = &GEMM_CTX_ARG_STORAGE(a_zero_point);
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
@@ -541,7 +541,6 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     if (pd()->attr()->scales_.has_host_scalars()) {
         const auto &a_scales = pd()->attr()->scales_.get(DNNL_ARG_A);
         const auto &b_scales = pd()->attr()->scales_.get(DNNL_ARG_B);
-        const auto &c_scales = pd()->attr()->scales_.get(DNNL_ARG_C);
         const auto &a_scales_storage = GEMM_CTX_ARG_STORAGE(a_scales);
         const auto &b_scales_storage = GEMM_CTX_ARG_STORAGE(b_scales);
         const auto &c_scales_storage = GEMM_CTX_ARG_STORAGE(c_scales);
@@ -556,7 +555,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             alpha *= scale_val;
         }
         // Limited support of host scalar dst scales
-        if (c_scales.is_host_scalar() && pd()->attr()->post_ops_.len() == 0) {
+        if (pd()->with_inlined_c_scale()) {
             CHECK(maybe_get_host_scalar_value(c_scales_storage, scale_val));
             gpu_assert(scale_val != 0);
             alpha /= scale_val;

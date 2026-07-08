@@ -197,6 +197,7 @@ struct pd_t : public gemm::pd_t {
     bool with_c_scales() const {
         return !attr()->scales_.has_default_values(DNNL_ARG_DST);
     }
+    bool with_inlined_c_scale() const;
 
     bool with_a_zero_points() const { return (a_quant.zp_ndims >= 0); }
     bool with_b_zero_points() const { return (b_quant.zp_ndims >= 0); }
@@ -214,9 +215,9 @@ struct pd_t : public gemm::pd_t {
     bool b_scales_2d() const { return b_quant.scale_ndims > 1; }
     bool c_scales_2d() const { return c_quant.scale_ndims > 1; }
 
-    bool dy_quant_enabled();
-    bool wei_decomp();
-    bool quant_enabled();
+    bool dy_quant_enabled() const;
+    bool wei_decomp() const;
+    bool quant_enabled() const;
 
     bool swap_ab() const { return swap_ab_; }
 

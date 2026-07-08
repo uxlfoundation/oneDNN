@@ -21,7 +21,6 @@
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 #include "gpu/intel/gemm/utils.hpp"
 #include "gpu/intel/jit/eltwise_injector.hpp"
-#include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {
@@ -80,7 +79,6 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
 
     bool ok = true;
     int prelu_count = 0;
-    const int num_orig_postops = post_ops_.len();
     for (int i = 0; i < post_ops_.len(); i++) {
         const auto &e = post_ops_.entry_[i];
         switch (e.kind) {
@@ -150,8 +148,7 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
     if (bias_via_binary_) {
         VDISPATCH_GEMM_SC(post_ops_.prepend_binary(binary_add, &d->bias_desc),
                 "%s: bias via binary post-op", VERBOSE_UNSUPPORTED_POSTOP);
-        binary_srcs_.insert(
-                binary_srcs_.begin(), binary_src_t {binary_src_t::bias, 0});
+        binary_srcs_.emplace(binary_srcs_.begin(), binary_src_t::bias, 0);
     }
     non_scale_po_ |= bias_via_binary_;
 
@@ -172,15 +169,14 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
                         post_ops_.append_binary(binary_div, &scale_md),
                         "%s: %s scales via binary post-op",
                         VERBOSE_UNSUPPORTED_POSTOP, arg2str(arg).c_str());
-                binary_srcs_.push_back(
-                        binary_src_t {binary_src_t::scales, arg});
+                binary_srcs_.emplace_back(binary_src_t::scales, arg);
             } else {
                 VDISPATCH_GEMM_SC(
                         post_ops_.prepend_binary(binary_mul, &scale_md),
                         "%s: %s scales via binary post-op",
                         VERBOSE_UNSUPPORTED_POSTOP, arg2str(arg).c_str());
-                binary_srcs_.insert(binary_srcs_.begin(),
-                        binary_src_t {binary_src_t::scales, arg});
+                binary_srcs_.emplace(
+                        binary_srcs_.begin(), binary_src_t::scales, arg);
             }
             converted = true;
         }
@@ -202,8 +198,7 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
         if (converted) b_quant.scale_ndims = -1;
     }
 
-    bool try_c_scale = !c_scales.is_host_scalar()
-            || (c_scales.is_host_scalar() && num_orig_postops > 0);
+    bool try_c_scale = !c_scales.is_host_scalar() || with_inlined_c_scale();
     if (!c_scales.has_default_values() && try_c_scale) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(c_scale_md_, DNNL_ARG_C,
@@ -217,7 +212,14 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
     return status::success;
 }
 
-bool pd_t::dy_quant_enabled() {
+bool pd_t::with_inlined_c_scale() const {
+    if (!with_c_scales()) return false;
+    const auto &c_scales = attr()->scales_.get(DNNL_ARG_C);
+    if (!c_scales.is_host_scalar()) return false;
+    return !non_scale_po_ && !with_sum_;
+}
+
+bool pd_t::dy_quant_enabled() const {
     const auto d = desc();
     using namespace data_type;
     bool all_f8 = (utils::one_of(d->a_type(), f8_e5m2, f8_e4m3)
@@ -229,7 +231,7 @@ bool pd_t::dy_quant_enabled() {
             || all_f8;
 }
 
-bool pd_t::wei_decomp() {
+bool pd_t::wei_decomp() const {
     const auto d = desc();
     using namespace data_type;
     return (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
@@ -242,7 +244,7 @@ bool pd_t::wei_decomp() {
             && attr()->mayiconvert(d->a_type(), f32);
 }
 
-bool pd_t::quant_enabled() {
+bool pd_t::quant_enabled() const {
     return wei_decomp() || dy_quant_enabled();
 }
 

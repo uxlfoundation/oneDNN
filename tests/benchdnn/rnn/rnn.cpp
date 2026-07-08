@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,6 +36,10 @@
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
 #include "oneapi/dnnl/dnnl_threadpool.hpp"
 #include "tests/test_thread_decl.hpp"
+#endif
+
+#if defined(DNNL_AARCH64_USE_ACL)
+#include "tests/test_isa_common.hpp"
 #endif
 
 // Using hidden attr API for testing RNN
@@ -834,7 +839,7 @@ void prb_t::skip_unimplemented(res_t *res) const {
             return;
         }
 
-#ifdef DNNL_AARCH64_USE_ACL
+#if defined(DNNL_AARCH64_USE_ACL)
         const bool is_acl_f16_not_ok = prb.cfg[SRC_LAYER].dt == dnnl_f16
                 && dnnl::impl::cpu::platform::has_data_type_support(dnnl_f16);
         if (is_acl_f16_not_ok) {

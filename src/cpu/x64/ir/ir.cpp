@@ -176,14 +176,14 @@ void ir_t::loop_end(int counter, int begin_idx) {
 void ir_t::label(int label_id) {
     op_t op;
     op.kind = op_kind_t::label;
-    op.imm = label_id;
+    op.label_id = label_id;
     ops_.push_back(op);
 }
 
 void ir_t::jmp(int label_id) {
     op_t op;
     op.kind = op_kind_t::jmp;
-    op.imm = label_id;
+    op.label_id = label_id;
     ops_.push_back(op);
 }
 
@@ -191,7 +191,7 @@ void ir_t::jz(int cond, int label_id) {
     op_t op;
     op.kind = op_kind_t::jz;
     op.s0 = cond;
-    op.imm = label_id;
+    op.label_id = label_id;
     ops_.push_back(op);
 }
 

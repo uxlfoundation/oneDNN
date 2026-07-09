@@ -425,7 +425,7 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
     for (int i = 0; i < ir.n_ops(); i++) {
         if (ir.ops()[i].kind == op_kind_t::label) {
             // Save the position of the label (`i`).
-            bound[(int)ir.ops()[i].imm] = i;
+            bound[ir.ops()[i].label_id] = i;
         }
     }
     // >= 0 means it's bound.
@@ -439,8 +439,8 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
 
     // The conditional jump targets the else label. The unconditional jump jumps
     // over the else block to the end label.
-    EXPECT_EQ(ir.ops()[jz_idx].imm, lbl_else);
-    EXPECT_EQ(ir.ops()[jmp_idx].imm, lbl_end);
+    EXPECT_EQ(ir.ops()[jz_idx].label_id, lbl_else);
+    EXPECT_EQ(ir.ops()[jmp_idx].label_id, lbl_end);
 
     // The then block's jmp precedes the else label it jumps over.
     EXPECT_LT(jmp_idx, bound[lbl_else]);

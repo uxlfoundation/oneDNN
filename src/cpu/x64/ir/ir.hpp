@@ -111,11 +111,11 @@ enum class op_kind_t {
     loop_begin,
     // decrement counter and jump to matching loop_begin if not zero
     loop_end,
-    // bind label id `imm`
+    // bind label id `label_id`
     label,
-    // jump to label id `imm`
+    // jump to label id `label_id`
     jmp,
-    // if s0 == 0 jump to label id `imm`
+    // if s0 == 0 jump to label id `label_id`
     jz,
 };
 
@@ -158,6 +158,7 @@ struct mem_t {
 //         * vload_masked / vstore_masked -> active element count
 // mem   - memory address used only by load/store operations.
 // match - for loop_end, index of matching loop_begin operation.
+// label_id - target label id for label/jmp/jz. When unused it's -1.
 // init_is_reg - for loop_begin, if true, initialize loop counter from s0
 //                (runtime value) instead of imm.
 struct op_t {
@@ -167,6 +168,7 @@ struct op_t {
     dim_t imm = 0;
     mem_t mem;
     int match = -1;
+    int label_id = -1;
     bool init_is_reg = false;
 };
 

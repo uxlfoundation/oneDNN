@@ -176,7 +176,7 @@ void compute_liveness(
     std::vector<int> label_to_op(ir.n_labels(), -1);
     for (int i = 0; i < n_ops; i++)
         if (ir.ops()[i].kind == op_kind_t::label)
-            label_to_op[(int)ir.ops()[i].imm] = i;
+            label_to_op[ir.ops()[i].label_id] = i;
 
     for (int i = 0; i < n_ops; i++) {
         const op_t &op = ir.ops()[i];
@@ -193,10 +193,10 @@ void compute_liveness(
             if (i + 1 < n_ops) successors[i].push_back(i + 1);
             successors[i].push_back(op.match + 1);
         } else if (op.kind == op_kind_t::jmp) {
-            successors[i].push_back(label_to_op[(int)op.imm]);
+            successors[i].push_back(label_to_op[op.label_id]);
         } else if (op.kind == op_kind_t::jz) {
             if (i + 1 < n_ops) successors[i].push_back(i + 1);
-            successors[i].push_back(label_to_op[(int)op.imm]);
+            successors[i].push_back(label_to_op[op.label_id]);
         } else if (i + 1 < n_ops) {
             successors[i].push_back(i + 1);
         }

@@ -70,9 +70,9 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
         __global const float *binary_nvfp4_scale
 #endif
 ) {
-    const int group_id = get_global_id(0);
-    const int m = get_global_id(1);
-    const int n = get_global_id(2);
+    const off_t group_id = get_global_id(0);
+    const long m = get_global_id(1);
+    const long n = get_global_id(2);
 
     if (group_id >= group_count) return;
     if (n >= N) return;
@@ -82,8 +82,8 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
     const int var_extent
             = src_end - src_start; // M_g or K_g depending on the pattern
 
-    int M_g, K_g;
-    int src_group_start, wei_group_start, dst_group_start;
+    long M_g, K_g;
+    off_t src_group_start, wei_group_start, dst_group_start;
     if (is_2dby2d) {
         // partner_offsets == wei_offsets
         if (partner_offsets[group_id] != src_end
@@ -110,16 +110,14 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
     // Note, that K_g == 0 must still write zeros
     if (M_g == 0 || m >= M_g) return;
 
-    const long src_base = (long)src_group_start * src_group_stride;
-    const long wei_base = (long)wei_group_start * wei_group_stride;
-    const long dst_base = (long)dst_group_start * dst_group_stride;
+    const long src_base = src_group_start * src_group_stride;
+    const long wei_base = wei_group_start * wei_group_stride;
+    const long dst_base = dst_group_start * dst_group_stride;
 
     ACC_DATA_T acc = (ACC_DATA_T)0;
     for (int k = 0; k < K_g; k++) {
-        const long src_idx
-                = src_base + (long)m * src_stride_m + (long)k * src_stride_k;
-        const long wei_idx
-                = wei_base + (long)k * wei_stride_k + (long)n * wei_stride_n;
+        const long src_idx = src_base + m * src_stride_m + k * src_stride_k;
+        const long wei_idx = wei_base + k * wei_stride_k + n * wei_stride_n;
         acc += SRC_TO_REF(src[src_idx]) * WEI_TO_REF(wei[wei_idx]);
     }
 
@@ -129,10 +127,10 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
 #endif
 #if WITH_WEI_SCALES
     // Column-wise weight scale, shape [group_count, N].
-    acc *= (ACC_DATA_T)wei_scales[(long)group_id * N + n];
+    acc *= (ACC_DATA_T)wei_scales[group_id * N + n];
 #endif
 #if WITH_BIAS
-    acc += BIA_TO_REF(bias[(long)group_id * N + n]);
+    acc += BIA_TO_REF(bias[group_id * N + n]);
 #endif
 
 #if WITH_POST_OP
@@ -142,7 +140,6 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
             binary_grouped_scale, binary_dense_scale, binary_nvfp4_scale);
 #endif
 
-    const long dst_idx
-            = dst_base + (long)m * dst_stride_m + (long)n * dst_stride_n;
+    const long dst_idx = dst_base + m * dst_stride_m + n * dst_stride_n;
     dst[dst_idx] = REF_TO_DST(acc);
 }

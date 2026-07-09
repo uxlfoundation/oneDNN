@@ -209,30 +209,31 @@ void set_brg_vmm(brgemm_desc_t *brg) {
             = !brg->is_zmm && mayiuse(avx2) && is_superset(brg->isa_impl, avx2);
 }
 
-int calculate_ldb_params(brgemm_desc_t *brg, const int try_ld_block2) {
+dim_t calculate_ldb_params(brgemm_desc_t *brg, const int try_ld_block2) {
     brg->ld_block2 = try_ld_block2;
     brg->ldb2 = brg->ldb / brg->ld_block2;
-    brg->ldb2_tail = brg->ldb % brg->ld_block2;
+    brg->ldb2_tail = static_cast<int>(brg->ldb % brg->ld_block2);
 
-    if (brg->ldb2 == 0) brg->ld_block2 = nstl::max(1, brg->ldb2_tail);
+    if (brg->ldb2 == 0)
+        brg->ld_block2 = static_cast<int>(nstl::max<dim_t>(1, brg->ldb2_tail));
     brg->embd_bcst = brg->is_f32
             && (brg->ldb2_tail <= 1 && brg->ldb2 == 0)
             /*only avx512 or more can bcast*/
             && is_superset(brg->isa_impl, avx512_core);
 
-    const int adj_ld_block2
+    const dim_t adj_ld_block2
             = (brg->ldb2 != 0) ? brg->ld_block2 : brg->ldb2_tail;
-    return nstl::max(1, adj_ld_block2);
+    return nstl::max<dim_t>(1, adj_ld_block2);
 }
 
-int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
+dim_t calculate_max_bcast_block(brgemm_desc_t *brg, const dim_t adj_ld_block2) {
 
     // TODO: Calculating the number of available registers should be re-factored
     // to use one code here and in brgemm kernel generator on
     // "max_effective_vregs" calculation
     int max_isa_regs = isa_num_vregs(brg->isa_impl);
-    const int max_bcst_regs = brg->n_bcast_1_load ? 0 : 1;
-    const int load_regs = brg->n_bcast_1_load ? 1 : adj_ld_block2;
+    const dim_t max_bcst_regs = brg->n_bcast_1_load ? 0 : 1;
+    const dim_t load_regs = brg->n_bcast_1_load ? 1 : adj_ld_block2;
     const bool req_zp_a_comp_pads
             = (brg->req_cal_comp_pads || brg->brgattr.max_top_vpad > 0
                       || brg->brgattr.max_bottom_vpad > 0)
@@ -258,15 +259,15 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
 
     // --------------- microkernel ---------------
     // see vmm_inp_shift() in brgemm kernel
-    const int compensation_regs = brg->req_s8s8_compensation
+    const dim_t compensation_regs = brg->req_s8s8_compensation
                     || brg->zp_type_a != brgemm_broadcast_t::none
             ? 1
             : 0;
 
     // see vmm_zp_a_shift(), vmm_one_bytes() in brgemm kernel
-    const int zp_a_comp_pads_regs = req_zp_a_comp_pads ? 2 : 0;
+    const dim_t zp_a_comp_pads_regs = req_zp_a_comp_pads ? 2 : 0;
 
-    const int microkernel_regs = zp_a_comp_pads_regs + compensation_regs;
+    const dim_t microkernel_regs = zp_a_comp_pads_regs + compensation_regs;
 
     const auto microkernel_max_reg_count
             = max_isa_regs - microkernel_regs - load_regs - max_bcst_regs;
@@ -275,9 +276,9 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
             = microkernel_max_reg_count / (adj_ld_block2 + brg->n_bcast_1_load);
 
     // ----- post-ops and store accumulators -----
-    const int beta_regs = !one_of(brg->beta, 1.f, 0.f);
+    const dim_t beta_regs = !one_of(brg->beta, 1.f, 0.f);
 
-    const int postops_regs = brg->attr()
+    const dim_t postops_regs = brg->attr()
             ? injector::aux_vec_count(
                       brg->attr()->post_ops_, brg->isa_impl, true)
             : 0;
@@ -287,7 +288,7 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     // registers related to 'max_bcast_block'
     assert(IMPLICATION(
             brg->is_bf16_emu, is_superset(brg->isa_impl, avx512_core)));
-    const int bf16_emu_regs = brg->is_bf16_emu ? 4 : 0;
+    const dim_t bf16_emu_regs = brg->is_bf16_emu ? 4 : 0;
 
     const auto store_regs = nstl::max(beta_regs,
             nstl::max(
@@ -313,15 +314,15 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     const auto LD = brg->load_dim;
     const auto LD_R16 = rnd_up(LD, 16);
 
-    const int max_width = 16, min_width = 1;
+    const dim_t max_width = 16, min_width = 1;
     brg->ld_block = 16;
     brg->ldb = LD / brg->ld_block;
     brg->ldb_tail = LD % brg->ld_block;
 
-    auto find_bdb_bd_mask = [&](int bd_block, int &bdb, int &bdb_tail) {
+    auto find_bdb_bd_mask = [&](dim_t bd_block, dim_t &bdb, int &bdb_tail) {
         if (brg->brgattr.bd_mask_level != 2 || BD == 0) {
             bdb = div_up(BD, bd_block);
-            bdb_tail = BD % bd_block;
+            bdb_tail = static_cast<int>(BD % bd_block);
             return;
         }
 
@@ -334,7 +335,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
             } else {
                 i += bd_block;
                 if (i > BD) {
-                    bdb_tail = BD - i + bd_block;
+                    bdb_tail = static_cast<int>(BD - i + bd_block);
                     if (brg->brgattr.use_uker) bdb++;
                 } else
                     bdb++;
@@ -345,11 +346,11 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     auto find_bd_block_for_bd_mask = [&]() {
         if (brg->brgattr.bd_mask_level != 2 || BD == 0) return false;
 
-        auto min_bdb = INT_MAX;
+        dim_t min_bdb = INT_MAX;
         const auto start_bd_block = nstl::min<dim_t>(max_width, BD);
         auto best_bd_block = start_bd_block;
         for (auto bd_block = start_bd_block; bd_block > 0; bd_block--) {
-            int bdb = 0;
+            dim_t bdb = 0;
             int bdb_tail = 0;
             find_bdb_bd_mask(bd_block, bdb, bdb_tail);
             // bcast_dim should be divided by bd_block
@@ -358,7 +359,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                 best_bd_block = bd_block;
             }
         }
-        brg->bd_block = best_bd_block;
+        brg->bd_block = static_cast<int>(best_bd_block);
         brg->bdb_tail = 0;
         brg->bdb = min_bdb;
         return true;
@@ -386,8 +387,9 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
         if (brg->ld_block2 == 1 && !brg->is_M_tail && brg->ldb_tail == 0) {
             brg->bd_block2 = (brg->bdb >= 3) ? 3 : (brg->bdb >= 2) ? 2 : 1;
             brg->bdb2 = brg->bdb / brg->bd_block2;
-            brg->bdb2_tail = (brg->bd_block2 == 1) ? brg->bdb
-                                                   : brg->bdb % brg->bd_block2;
+            brg->bdb2_tail = static_cast<int>((brg->bd_block2 == 1)
+                            ? brg->bdb
+                            : brg->bdb % brg->bd_block2);
         }
     };
 
@@ -396,14 +398,14 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
         if (BD > (width_step - 1) * max_width && BD < width_step * max_width
                 && brg->ldb_tail == 0) {
             if (!find_bd_block_for_bd_mask()) {
-                brg->bd_block = max_width;
+                brg->bd_block = static_cast<int>(max_width);
                 brg->bdb = div_up(BD, brg->bd_block);
-                brg->bdb_tail = BD % brg->bd_block;
+                brg->bdb_tail = static_cast<int>(BD % brg->bd_block);
                 brg->is_M_tail = true;
             }
             brg->bd_block2 = width_step;
             brg->bdb2 = brg->bdb / brg->bd_block2;
-            brg->bdb2_tail = brg->bdb % brg->bd_block2;
+            brg->bdb2_tail = static_cast<int>(brg->bdb % brg->bd_block2);
             set_decomposition_by_ld();
             return true;
         }
@@ -419,10 +421,11 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                 }
             }
             if (brg->bd_block == 1) {
-                brg->bd_block = nstl::min<dim_t>(max_width, BD);
-                brg->bdb_tail = BD % max_width;
+                brg->bd_block
+                        = static_cast<int>(nstl::min<dim_t>(max_width, BD));
+                brg->bdb_tail = static_cast<int>(BD % max_width);
                 for (int i = max_width; i >= min_width; i--) {
-                    const auto i_tail = BD % i;
+                    const int i_tail = static_cast<int>(BD % i);
                     if (i_tail > brg->bdb_tail || i_tail == 0) {
                         brg->bd_block = i;
                         brg->bdb_tail = i_tail;
@@ -431,13 +434,13 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                 }
             }
             brg->bdb = BD / brg->bd_block;
-            brg->bdb_tail = BD % brg->bd_block;
+            brg->bdb_tail = static_cast<int>(BD % brg->bd_block);
         }
 
         brg->bd_block2 = (brg->bdb >= 2) ? 2 : 1;
         brg->bdb2 = brg->bdb / brg->bd_block2;
-        brg->bdb2_tail
-                = (brg->bd_block2 == 1) ? brg->bdb : brg->bdb % brg->bd_block2;
+        brg->bdb2_tail = static_cast<int>(
+                (brg->bd_block2 == 1) ? brg->bdb : brg->bdb % brg->bd_block2);
 
         brg->is_M_tail = false;
 
@@ -458,7 +461,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
         if (new_ld_block != 0) {
             brg->ld_block = new_ld_block;
             brg->ldb = div_up(LD, brg->ld_block);
-            brg->ldb_tail = LD % brg->ld_block;
+            brg->ldb_tail = static_cast<int>(LD % brg->ld_block);
         }
 
         if (new_bd_block2 != 0) {
@@ -470,7 +473,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                 if (brg->bdb_tail && brg->bd_block2 > 1) brg->bd_block2--;
                 auto full_bd_blocks = brg->bdb - (brg->bdb_tail != 0 ? 1 : 0);
                 brg->bdb2 = full_bd_blocks / brg->bd_block2;
-                brg->bdb2_tail = full_bd_blocks % brg->bd_block2;
+                brg->bdb2_tail
+                        = static_cast<int>(full_bd_blocks % brg->bd_block2);
             }
         }
 
@@ -483,7 +487,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                 if (brg->ldb_tail && brg->ld_block2 > 1) brg->ld_block2--;
                 auto full_ld_blocks = brg->ldb - (brg->ldb_tail != 0 ? 1 : 0);
                 brg->ldb2 = full_ld_blocks / brg->ld_block2;
-                brg->ldb2_tail = full_ld_blocks % brg->ld_block2;
+                brg->ldb2_tail
+                        = static_cast<int>(full_ld_blocks % brg->ld_block2);
             }
         }
     };
@@ -594,9 +599,10 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
             recalc_blocking(0, 16, 2, 2);
         } else if (BD <= 16) {
             // Have to call recalc_blocking twice to calculate ldb
-            recalc_blocking(BD, 16, 0, 0);
-            const auto ld_block2 = nstl::min<dim_t>(
-                    ldb_tail_16 ? ((brg->ldb > 4) ? 3 : 4) : 5, div_up(LD, 16));
+            recalc_blocking(static_cast<int>(BD), 16, 0, 0);
+            const auto ld_block2 = static_cast<int>(
+                    nstl::min<dim_t>(ldb_tail_16 ? ((brg->ldb > 4) ? 3 : 4) : 5,
+                            div_up(LD, 16)));
             recalc_blocking(0, 0, 1, ld_block2);
         } else if (bdb_tail_only && weak_bdb && BD > 64) {
             recalc_blocking(16, 16, 1, 2);
@@ -611,8 +617,9 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
             // Have to call recalc_blocking twice to calculate bdb
             // we can't use ld_block other than 16
             recalc_blocking(16, 16, 0, 0);
-            const auto bd_block2 = nstl::min<dim_t>(
-                    brg->bdb_tail ? (brg->bdb > 4 ? 3 : 4) : 5, div_up(BD, 16));
+            const auto bd_block2 = static_cast<int>(
+                    nstl::min<dim_t>(brg->bdb_tail ? (brg->bdb > 4 ? 3 : 4) : 5,
+                            div_up(BD, 16)));
             recalc_blocking(0, 0, bd_block2, 1);
         } else if (bdb_block_tail && ldb_tail_16 && BD_R16 == 32 && LD_R16 == 32
                 && (weak_ldb || weak_bdb)) {
@@ -660,8 +667,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     const auto rd_block_step = brg->rd_block_step();
     const auto max_rd_block = brg->max_rd_block();
     if (brg->amx_may_extend_k()) {
-        brg->rd_block = nstl::min<dim_t>(
-                rnd_up(brg->reduce_dim, brg->rd_step), max_rd_block);
+        brg->rd_block = static_cast<int>(nstl::min<dim_t>(
+                rnd_up(brg->reduce_dim, brg->rd_step), max_rd_block));
     } else if (brg->fused_copy_a) {
         brg->rd_block = max_rd_block;
     } else {
@@ -853,12 +860,12 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     brg->ldb = brg->load_dim / brg->ld_block;
     brg->ldb_tail = brg->load_dim % brg->ld_block;
 
-    const int max_vpad = nstl::max(
+    const dim_t max_vpad = nstl::max<dim_t>(
             brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
 
     // iterate ld_block2 starting from 4 to allow bd_block larger than
     // virtual padding
-    int max_bcast_block {0}, min_bcast_block {0}, adj_ld_block2 {0};
+    dim_t max_bcast_block {0}, min_bcast_block {0}, adj_ld_block2 {0};
     bool few_regs = utils::one_of(brg->isa_impl, avx2, avx2_vnni, avx2_vnni_2);
     bool hint_n_bcast_1_load
             = brg->brgattr.hint_loop_order == brgemm_lo_bl_1load;
@@ -875,11 +882,11 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     // padding to avoid possible functional issues
     if (min_bcast_block < max_vpad) return status::unimplemented;
 
-    const int min_block = nstl::max(1, max_vpad);
+    const dim_t min_block = nstl::max<dim_t>(1, max_vpad);
 
     float best_bd_block_eff = 0.f;
-    brg->bd_block = max_bcast_block;
-    for (int bd_block = max_bcast_block; bd_block >= min_block; bd_block--) {
+    brg->bd_block = static_cast<int>(max_bcast_block);
+    for (dim_t bd_block = max_bcast_block; bd_block >= min_block; bd_block--) {
         // avoid msvc warning 'potential divide by zero'
         const auto bd_block_disb = (brg->bcast_dim <= 0 || bd_block == 0)
                 ? 0.f
@@ -894,21 +901,21 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
                 * brg->reduce_dim;
         if (block_foot_print <= static_cast<float>(L1)
                 && (bd_block_eff > best_bd_block_eff)) {
-            brg->bd_block = bd_block;
+            brg->bd_block = static_cast<int>(bd_block);
             best_bd_block_eff = bd_block_eff;
         }
     }
     brg->bdb = brg->bcast_dim / brg->bd_block;
-    brg->bdb_tail = brg->bcast_dim % brg->bd_block;
+    brg->bdb_tail = static_cast<int>(brg->bcast_dim % brg->bd_block);
 
     const int rd_unroll = 4;
     const data_type_t rd_block_dt = get_mac_emu_data_type(
             brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
     if (rd_block_dt == dnnl_data_type_undef) return status::unimplemented;
-    const int vnni_granularity = data_type_vnni_granularity(rd_block_dt);
-    brg->rd_block = rd_unroll * vnni_granularity;
+    const dim_t vnni_granularity = data_type_vnni_granularity(rd_block_dt);
+    brg->rd_block = static_cast<int>(rd_unroll * vnni_granularity);
     brg->rdb = brg->reduce_dim / brg->rd_block;
-    brg->rdb_tail = brg->reduce_dim % brg->rd_block;
+    brg->rdb_tail = static_cast<int>(brg->reduce_dim % brg->rd_block);
 
     brg->is_M_tail = false;
     // avx2_vnni_2 kernel with xf16 data type requires blocked weights.
@@ -924,10 +931,11 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
             brg->dt_b, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
     brg->ld_step = brg->is_f16_b_non_amx_vnni()
             ? 2
-            : data_type_vnni_granularity(ld_step_compute_dt);
+            : static_cast<int>(data_type_vnni_granularity(ld_step_compute_dt));
     const data_type_t rd_step_compute_dt
             = get_mac_emu_data_type(brg->dt_b, brg->isa_impl);
-    brg->rd_step = data_type_vnni_granularity(rd_step_compute_dt);
+    brg->rd_step
+            = static_cast<int>(data_type_vnni_granularity(rd_step_compute_dt));
 
     set_isa_impl(brg);
     if (brg->isa_impl == isa_undef) return status::unimplemented;
@@ -965,7 +973,7 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     if (brg->isa_impl == isa_undef) return status::unimplemented;
 
     set_brg_vmm(brg); // Needed to dispatch into the right kernel later.
-    const int max_vregs = isa_num_vregs(brg->isa_impl);
+    const dim_t max_vregs = isa_num_vregs(brg->isa_impl);
 
     const int simd_w = isa_max_vlen(brg->isa_impl) / brg->typesize_C;
     const bool is_avx2_vnni_2_xf16
@@ -999,19 +1007,19 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
 
     const int max_n_block2_vmms = 4;
     const int max_n_block2 = max_n_block2_vmms / n_block1_num_steps;
-    n_block2 = nstl::min(max_n_block2, nb_n_block1);
+    n_block2 = static_cast<int>(nstl::min<dim_t>(max_n_block2, nb_n_block1));
 
-    const int aux_vregs
+    const dim_t aux_vregs
             = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_aux_vmm_count(*brg);
-    const int compute_vregs
+    const dim_t compute_vregs
             = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_compute_vmm_count(*brg);
-    const int bf16_emu_vregs = brg->is_bf16_emu * 4;
-    const int postops_regs = brg->attr()
+    const dim_t bf16_emu_vregs = brg->is_bf16_emu * 4;
+    const dim_t postops_regs = brg->attr()
             ? injector::aux_vec_count(
                       brg->attr()->post_ops_, brg->isa_impl, true)
             : 0;
 
-    const int max_acc_vmms = max_vregs
+    const dim_t max_acc_vmms = max_vregs
             - nstl::max(postops_regs,
                     nstl::max(compute_vregs + aux_vregs, bf16_emu_vregs));
 
@@ -1033,11 +1041,12 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     nb_m_block1 = M / m_block1;
     m_block1_tail = M % m_block1;
 
-    m_block2 = nstl::min(nb_m_block1,
-            brg->bs_group > 1 ? (max_acc_vmms / (n_block2 * n_block1_num_steps)
-                                        - brg->bs_group + 1)
+    m_block2 = static_cast<int>(nstl::min(nb_m_block1,
+            brg->bs_group > 1
+                    ? (max_acc_vmms / (n_block2 * n_block1_num_steps)
+                              - brg->bs_group + 1)
                             / 2
-                              : max_acc_vmms / (n_block2 * n_block1_num_steps));
+                    : max_acc_vmms / (n_block2 * n_block1_num_steps)));
     assert(m_block2 > 0);
     nb_m_block2 = div_up(nb_m_block1, m_block2);
     m_block2_tail = nb_m_block1 % m_block2;
@@ -1074,10 +1083,10 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->dt_d = brg->dt_c;
     brg->dt_bias = brg->dt_c;
 
-    brg->typesize_A = types::data_type_size(brg->dt_a);
-    brg->typesize_B = types::data_type_size(brg->dt_b);
-    brg->typesize_C = types::data_type_size(brg->dt_c);
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    brg->typesize_A = static_cast<int>(types::data_type_size(brg->dt_a));
+    brg->typesize_B = static_cast<int>(types::data_type_size(brg->dt_b));
+    brg->typesize_C = static_cast<int>(types::data_type_size(brg->dt_c));
+    brg->typesize_D = static_cast<int>(types::data_type_size(brg->dt_d));
 
     brg->isa_user = isa;
 
@@ -1107,14 +1116,14 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->req_s8s8_compensation = brg->is_int8 && brg->dt_a == data_type::s8
             && !isa_has_s8s8(brg->isa_impl) && !brg->with_per_mn_compensation;
 
-    CHECK(safe_dim_to_int(brg->LDA, (brg->is_row_major()) ? LDA : LDB));
+    brg->LDA = (brg->is_row_major()) ? LDA : LDB;
     brg->is_runtime_lda = (brg->is_row_major()) ? is_runtime_value(LDA)
                                                 : is_runtime_value(LDB);
-    CHECK(safe_dim_to_int(brg->LDB, (brg->is_row_major()) ? LDB : LDA));
+    brg->LDB = (brg->is_row_major()) ? LDB : LDA;
     brg->is_runtime_ldb = (brg->is_row_major()) ? is_runtime_value(LDB)
                                                 : is_runtime_value(LDA);
-    CHECK(safe_dim_to_int(brg->LDC, LDC));
-    CHECK(safe_dim_to_int(brg->LDD, LDC));
+    brg->LDC = LDC;
+    brg->LDD = LDC;
     brg->is_runtime_ldc = brg->is_runtime_ldd = is_runtime_value(LDC);
 
     brg->bcast_dim = (brg->is_row_major()) ? M : N;
@@ -1146,10 +1155,10 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->dt_d = brg->dt_c;
     brg->dt_bias = brg->dt_c;
 
-    brg->typesize_A = types::data_type_size(brg->dt_a);
-    brg->typesize_B = types::data_type_size(brg->dt_b);
-    brg->typesize_C = types::data_type_size(brg->dt_c);
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    brg->typesize_A = static_cast<int>(types::data_type_size(brg->dt_a));
+    brg->typesize_B = static_cast<int>(types::data_type_size(brg->dt_b));
+    brg->typesize_C = static_cast<int>(types::data_type_size(brg->dt_c));
+    brg->typesize_D = static_cast<int>(types::data_type_size(brg->dt_d));
 
     brg->isa_user = isa;
     auto is_isa_ok = [&](cpu_isa_t isa) {
@@ -1178,9 +1187,9 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
 
     brg->is_dgmm = true;
 
-    CHECK(safe_dim_to_int(brg->LDA, LDA));
-    CHECK(safe_dim_to_int(brg->LDC, LDC));
-    CHECK(safe_dim_to_int(brg->LDD, LDC));
+    brg->LDA = LDA;
+    brg->LDC = LDC;
+    brg->LDD = LDC;
 
     brg->bcast_dim = M;
     brg->load_dim = N;

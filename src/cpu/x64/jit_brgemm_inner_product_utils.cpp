@@ -713,7 +713,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
         if (st == success) st = brgemm_desc_finalize(&brg_desc);
 
         if (st == success) {
-            int bd_block = brg_desc.bd_block;
+            dim_t bd_block = brg_desc.bd_block;
 
             if (jbgp.oc_block == 64 && bd_block != 6) jbgp.os_block = 6;
             if (jbgp.oc_block == 48 && bd_block != 8) jbgp.os_block = 8;

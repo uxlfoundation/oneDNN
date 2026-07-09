@@ -668,9 +668,9 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     CHECK(brgemm_desc_set_attr(&brg, brgattr));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     // AMX kernel may fall back to VMM, in which case bd_block2 == 0
-    ur = brg.bd_block * nstl::max(1, brg.bd_block2);
+    ur = brg.bd_block * nstl::max<dim_t>(1, brg.bd_block2);
     ur_block = brg.bd_block;
-    adj_ocblock = nstl::max(1, (brg.ldb2 != 0 ? brg.ld_block2 : brg.ldb2_tail));
+    adj_ocblock = nstl::max<dim_t>(1, (brg.ldb2 != 0 ? brg.ld_block2 : brg.ldb2_tail));
     if (((is_1x1 && is_amx(isa)) || max_vpad > 0) && M > 0 && M_tail > 0) {
         brgemm_desc_t brg_sp_tail;
 

@@ -83,7 +83,7 @@ struct jit_brgemm_primitive_conf_t {
     cpu_isa_t isa;
     bool use_uker;
     bool use_interleave_stores;
-    int amx_buf_size_per_thread;
+    dim_t amx_buf_size_per_thread;
     brgemm_kernel_prefetching_t hint_prefetching
             = brgemm_kernel_prefetching_t::brgemm_prf_default;
 

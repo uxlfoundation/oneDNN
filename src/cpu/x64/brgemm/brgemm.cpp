@@ -347,9 +347,10 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
 
     brg->with_bias = (dt_bias == data_type::undef) ? false : true;
     brg->dt_bias = dt_bias;
+    // Type sizes are always 1/2/4/8, safe to narrow.
     brg->typesize_bias = (dt_bias == data_type::undef)
             ? 0
-            : types::data_type_size(brg->dt_bias);
+            : static_cast<int>(types::data_type_size(brg->dt_bias));
 
     brg->LDD = LDD;
     brg->is_runtime_ldd = is_runtime_value(LDD);
@@ -427,7 +428,8 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         return status::unimplemented;
 
     brg->dt_d = dt_d;
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    // Type sizes are always 1/2/4/8, safe to narrow.
+    brg->typesize_D = static_cast<int>(types::data_type_size(brg->dt_d));
 
     if (!IMPLICATION(brg->is_int8 && brg->dt_d == bf16,
                 is_superset(brg->isa_impl, avx512_core)
@@ -637,7 +639,7 @@ status_t brgemm_desc_set_attr(
 status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (brg == nullptr) return status::invalid_arguments;
 
-    const int max_vpad = nstl::max(
+    const dim_t max_vpad = nstl::max(
             brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
 
     if (brg->is_dgmm)
@@ -648,7 +650,7 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (!brg->is_dgmm) {
         // virtual padding is restricted by bd_block size due to
         // brgemm_kernel implementation. TODO: remove this restriction
-        const int min_bd_block
+        const dim_t min_bd_block
                 = brg->bdb_tail > 0 ? brg->bdb_tail : brg->bd_block;
         if ((max_vpad > min_bd_block)) return status::unimplemented;
     }
@@ -742,12 +744,12 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
     for (int i = 0; i < max_palette_size_in_bytes; i++)
         _tc[i] = 0;
 
-    const int typesize_A
+    const dim_t typesize_A
             = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_A;
-    const int typesize_B
+    const dim_t typesize_B
             = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_B;
 
-    const int rd_step = 4 / typesize_A;
+    const dim_t rd_step = 4 / typesize_A;
 
     const auto Ac = typesize_A * rd_block;
 

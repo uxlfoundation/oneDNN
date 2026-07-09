@@ -1,0 +1,50 @@
+/*******************************************************************************
+* Copyright 2026 Institute of Software, Chinese Academy of Sciences
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
+#ifndef CPU_RV64_GEMM_RVV_GEMM_S8S8S32_HPP
+#define CPU_RV64_GEMM_RVV_GEMM_S8S8S32_HPP
+
+#include "common/c_types_map.hpp"
+
+namespace dnnl {
+namespace impl {
+namespace cpu {
+namespace rv64 {
+
+// RVV int8 GEMM driver. Mirrors rvv_gemm_f32() in structure but accepts s8
+// weights, s8/u8 src, and s32/f32 dst. The dst element width is 4 bytes either
+// way; pass `dst_is_f32 = true` to request an f32 epilogue (alpha/beta applied
+// after fcvt of the s32 accumulator) or `false` to write the raw s32
+// accumulator (alpha and beta are ignored in that case).
+//
+// b_signed selects between s8 and u8 on the B (src) axis; A (weights) is
+// always s8.
+//
+// `bias` is an optional f32 vector of length M, broadcast across the N axis.
+// When non-null it is fused into the JIT kernel's C-update phase, matching the
+// f32 GEMM kernel convention.
+status_t rvv_gemm_s8s8s32(const char *transa, const char *transb,
+        const dim_t *M, const dim_t *N, const dim_t *K, const float *alpha,
+        const int8_t *A, const dim_t *lda, const void *B, const dim_t *ldb,
+        const float *beta, void *C, const dim_t *ldc, const float *bias,
+        bool b_signed, bool dst_is_f32);
+
+} // namespace rv64
+} // namespace cpu
+} // namespace impl
+} // namespace dnnl
+
+#endif // CPU_RV64_GEMM_RVV_GEMM_S8S8S32_HPP

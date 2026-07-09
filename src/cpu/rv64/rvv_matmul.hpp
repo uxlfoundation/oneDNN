@@ -36,11 +36,14 @@ struct rvv_matmul_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("jit:rvv", rvv_matmul_t)
 
-        static constexpr data_type_t d_type = data_type::f32;
+        // Bias is always f32: the f32 path uses it directly, the int8 path
+        // converts it inside the JIT kernel before adding to the s32 acc.
+        static constexpr data_type_t bias_d_type = data_type::f32;
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
             using smask_t = primitive_attr_t::skip_mask_t;
+            using namespace data_type;
 
             // Vector kernels are JIT-emitted; the rv64gc baseline build means a
             // non-V CPU must defer to the next (reference) implementation.
@@ -59,14 +62,26 @@ struct rvv_matmul_t : public primitive_t {
                             && !bias_mdw.has_runtime_dims_or_strides(),
                     VERBOSE_UNSUPPORTED_TAG);
 
-            const bool types_ok = src_mdw.data_type() == d_type
-                    && weights_mdw.data_type() == d_type
-                    && dst_mdw.data_type() == d_type
-                    && desc()->accum_data_type == d_type;
-            VDISPATCH_MATMUL(types_ok, VERBOSE_UNSUPPORTED_DT);
-
+            // Determine which dispatch path this pd serves. f32 stays on the
+            // existing f32 GEMM kernel; int8 src + s8 weights + (s32|f32) dst
+            // runs through the new s8 GEMM kernel.
+            const auto src_dt = src_mdw.data_type();
+            const auto wei_dt = weights_mdw.data_type();
+            const auto dst_dt = dst_mdw.data_type();
+            const auto acc_dt = desc()->accum_data_type;
+            is_f32_path_ = src_dt == f32 && wei_dt == f32 && dst_dt == f32
+                    && acc_dt == f32;
+            is_int8_path_ = utils::one_of(src_dt, s8, u8) && wei_dt == s8
+                    && utils::one_of(dst_dt, s32, f32) && acc_dt == s32;
+            VDISPATCH_MATMUL(is_f32_path_ || is_int8_path_,
+                    VERBOSE_UNSUPPORTED_DT);
+            // The int8 path rejects per-oc / per-tensor scales, zero-points,
+            // and post-ops in this MVP; only optional f32 bias is supported.
+            const auto attr_skip_mask = is_f32_path_
+                    ? smask_t::post_ops
+                    : smask_t::none;
             VDISPATCH_MATMUL(
-                    attr()->has_default_values(smask_t::post_ops, d_type),
+                    attr()->has_default_values(attr_skip_mask, dst_dt),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             // Resolve the primary and the post-op binary src1 formats before any
@@ -81,16 +96,22 @@ struct rvv_matmul_t : public primitive_t {
             // Post-ops are applied per output row (length N) by the unified
             // injector kernel: a chain of supported eltwise ops plus any number
             // of binaries whose src1 is scalar or per-N (broadcast over M/batch).
-            const dim_t N = weights_mdw.dims()[weights_mdw.ndims() - 1];
-            VDISPATCH_MATMUL(jit_uni_postops_kernel_t::post_ops_supported(
-                                     attr()->post_ops_, N),
-                    VERBOSE_UNSUPPORTED_POSTOP);
-            // A non-scalar binary rhs must be strict per-N (broadcast over M and
-            // batch): the per-row execute uses a fixed offset, so e.g. per-M
-            // [M,1] (which slips past nelems==N when M==N) must fall back.
-            VDISPATCH_MATMUL(jit_uni_postops_kernel_t::binary_per_last_dim_ok(
-                                     attr()->post_ops_, N),
-                    VERBOSE_UNSUPPORTED_POSTOP);
+            // The int8 path rejects post-ops entirely (caught above by the
+            // stricter attr skip mask).
+            if (is_f32_path_) {
+                const dim_t N = weights_mdw.dims()[weights_mdw.ndims() - 1];
+                VDISPATCH_MATMUL(jit_uni_postops_kernel_t::post_ops_supported(
+                                         attr()->post_ops_, N),
+                        VERBOSE_UNSUPPORTED_POSTOP);
+                // A non-scalar binary rhs must be strict per-N (broadcast over
+                // M and batch): the per-row execute uses a fixed offset, so
+                // e.g. per-M [M,1] (which slips past nelems==N when M==N) must
+                // fall back.
+                VDISPATCH_MATMUL(
+                        jit_uni_postops_kernel_t::binary_per_last_dim_ok(
+                                attr()->post_ops_, N),
+                        VERBOSE_UNSUPPORTED_POSTOP);
+            }
 
             VDISPATCH_MATMUL(check_layouts(src_mdw, weights_mdw, dst_mdw),
                     VERBOSE_UNSUPPORTED_TAG);
@@ -161,7 +182,7 @@ struct rvv_matmul_t : public primitive_t {
                 const memory_desc_wrapper &bias_mdw) const {
             if (bias_mdw.is_zero()) return true;
 
-            if (bias_mdw.data_type() != d_type) return false;
+            if (bias_mdw.data_type() != bias_d_type) return false;
 
             const int dst_ndims = dst_mdw.ndims();
             const int bias_ndims = bias_mdw.ndims();
@@ -174,6 +195,16 @@ struct rvv_matmul_t : public primitive_t {
                 const dim_t bias_dim = bias_dims[bias_ndims - d];
                 const dim_t dst_dim = dst_dims[dst_ndims - d];
                 if (bias_dim != 1 && bias_dim != dst_dim) return false;
+            }
+
+            // The int8 JIT kernel only knows how to read a 1-D per-N bias
+            // (one value per GEMM-M row). Reject per-M / per-batch bias shapes
+            // that slip through the per-dim check above so we fall back to
+            // ref_matmul_int8 instead of producing wrong numbers.
+            if (is_int8_path_) {
+                for (int d = 2; d <= bias_ndims; ++d) {
+                    if (bias_dims[bias_ndims - d] != 1) return false;
+                }
             }
             return true;
         }
@@ -207,6 +238,11 @@ struct rvv_matmul_t : public primitive_t {
         dim_t batch_ = 0;
         bool weights_are_broadcast_ = false;
         bool weights_col_major_ = false;
+        // Dispatch path selected in init(). is_f32_path_ keeps the historical
+        // behavior; is_int8_path_ routes (s8|u8):s8:(s32|f32) through the new
+        // s8 GEMM kernel and rejects non-default attrs except bias.
+        bool is_f32_path_ = false;
+        bool is_int8_path_ = false;
     };
 
     rvv_matmul_t(const pd_t *apd) : primitive_t(apd) {}

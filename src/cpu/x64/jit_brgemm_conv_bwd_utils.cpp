@@ -594,7 +594,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
             is_bf32, is_tf32));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     // AMX kernel may fall back to VMM, in which case bd_block2 == 0
-    ur = brg.bd_block * nstl::max(1, brg.bd_block2);
+    ur = brg.bd_block * nstl::max<dim_t>(1, brg.bd_block2);
     if (ur == 0) return status::invalid_arguments;
     ur_block = brg.bd_block;
     if (is_1x1 && is_amx(isa) && M > 0 && M_tail > 0) {

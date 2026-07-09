@@ -384,8 +384,8 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
     ir.load_param(base, sizeof(int));
     ir.vload(a, base, 0);
 
-    const int lbl_else = ir.new_label();
-    const int lbl_end = ir.new_label();
+    const label_t lbl_else = ir.new_label();
+    const label_t lbl_end = ir.new_label();
 
     // Build an IR for the following control flow:
     //
@@ -425,12 +425,13 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
     for (int i = 0; i < ir.n_ops(); i++) {
         if (ir.ops()[i].kind == op_kind_t::label) {
             // Save the position of the label (`i`).
-            bound[ir.ops()[i].label_id] = i;
+            bound[(int)ir.ops()[i].label_id] = i;
         }
     }
-    // >= 0 means it's bound.
-    EXPECT_GE(bound[lbl_else], -1);
-    EXPECT_GE(bound[lbl_end], -1);
+
+    // != -1 means it's bound.
+    EXPECT_NE(bound[(int)lbl_else], -1);
+    EXPECT_NE(bound[(int)lbl_end], -1);
 
     const int jz_idx = find_op(ir, op_kind_t::jz);
     const int jmp_idx = find_op(ir, op_kind_t::jmp);
@@ -443,7 +444,7 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
     EXPECT_EQ(ir.ops()[jmp_idx].label_id, lbl_end);
 
     // The then block's jmp precedes the else label it jumps over.
-    EXPECT_LT(jmp_idx, bound[lbl_else]);
+    EXPECT_LT(jmp_idx, bound[(int)lbl_else]);
 
     // The IR that contains branches can be handled by the allocator.
     // It assigns a location to every value that is read somewhere.
@@ -848,8 +849,8 @@ TEST(IntegrationTests, BranchSelectsCorrectValue) {
     const int b = ir.new_vec(data_type::f32);
     ir.vload(b, b_ptr, 0);
 
-    const int lbl_else = ir.new_label();
-    const int lbl_end = ir.new_label();
+    const label_t lbl_else = ir.new_label();
+    const label_t lbl_end = ir.new_label();
 
     //     if (cond != 0) { c = a; }  // then block
     //     else           { c = b; }  // else block

@@ -67,6 +67,13 @@ namespace ir {
 
 enum class reg_kind_t { gpr, vec, mask };
 
+// A label id names a jump target for label/jmp/jz.
+//
+// Strong alias for `int`. Prevents implicit conversion to or from `int` (or a
+// vreg id) so labels and vregs cannot be mixed up accidentally. Cast to
+// `int` when a raw index is needed.
+enum class label_t : int { none = -1 };
+
 enum class op_kind_t {
     // General-purpose register operations
 
@@ -158,7 +165,7 @@ struct mem_t {
 //         * vload_masked / vstore_masked -> active element count
 // mem   - memory address used only by load/store operations.
 // match - for loop_end, index of matching loop_begin operation.
-// label_id - target label id for label/jmp/jz. When unused it's -1.
+// label_id - target label id for label/jmp/jz. When unused it's `none`.
 // init_is_reg - for loop_begin, if true, initialize loop counter from s0
 //                (runtime value) instead of imm.
 struct op_t {
@@ -168,7 +175,7 @@ struct op_t {
     dim_t imm = 0;
     mem_t mem;
     int match = -1;
-    int label_id = -1;
+    label_t label_id = label_t::none;
     bool init_is_reg = false;
 };
 
@@ -211,7 +218,7 @@ struct DNNL_API ir_t {
     int new_mask() { return new_vreg(reg_kind_t::mask); }
 
     // Add a new label and return its id
-    int new_label() { return n_labels_++; }
+    label_t new_label() { return static_cast<label_t>(n_labels_++); }
     int n_vregs() const { return (int)vreg_info_.size(); }
     int n_ops() const { return (int)ops_.size(); }
 
@@ -245,9 +252,9 @@ struct DNNL_API ir_t {
     int loop_begin_imm(int counter, dim_t count);
     int loop_begin_reg(int counter, int init);
     void loop_end(int counter, int begin_idx);
-    void label(int label_id);
-    void jmp(int label_id);
-    void jz(int cond, int label_id);
+    void label(label_t label_id);
+    void jmp(label_t label_id);
+    void jz(int cond, label_t label_id);
 
     // Fill defs/uses with the vregs this operation writes/reads. Liveness and
     // the allocator depend on it, so it must match what the emitter emits.

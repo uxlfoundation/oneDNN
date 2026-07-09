@@ -270,18 +270,18 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 break;
             }
             case op_kind_t::label: {
-                gen.L(label_id_to_label[op.label_id]);
+                gen.L(label_id_to_label[(int)op.label_id]);
                 break;
             }
             case op_kind_t::jmp: {
-                gen.jmp(label_id_to_label[op.label_id],
+                gen.jmp(label_id_to_label[(int)op.label_id],
                         Xbyak::CodeGenerator::T_NEAR);
                 break;
             }
             case op_kind_t::jz: {
                 Xbyak::Reg64 c = gpr_use(op.s0, gpr_scratch0);
                 gen.cmp(c, 0);
-                gen.jz(label_id_to_label[op.label_id],
+                gen.jz(label_id_to_label[(int)op.label_id],
                         Xbyak::CodeGenerator::T_NEAR);
                 break;
             }

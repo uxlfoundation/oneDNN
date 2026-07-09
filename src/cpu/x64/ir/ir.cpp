@@ -173,21 +173,21 @@ void ir_t::loop_end(int counter, int begin_idx) {
     ops_.push_back(op);
 }
 
-void ir_t::label(int label_id) {
+void ir_t::label(label_t label_id) {
     op_t op;
     op.kind = op_kind_t::label;
     op.label_id = label_id;
     ops_.push_back(op);
 }
 
-void ir_t::jmp(int label_id) {
+void ir_t::jmp(label_t label_id) {
     op_t op;
     op.kind = op_kind_t::jmp;
     op.label_id = label_id;
     ops_.push_back(op);
 }
 
-void ir_t::jz(int cond, int label_id) {
+void ir_t::jz(int cond, label_t label_id) {
     op_t op;
     op.kind = op_kind_t::jz;
     op.s0 = cond;

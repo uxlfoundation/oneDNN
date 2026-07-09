@@ -84,12 +84,19 @@ inline int float2int(float x) {
     return utils::bit_cast<int>(x);
 }
 
-inline void tc_configure_tile(palette_config_t *tc, int t, int rows, int cols) {
-    const bool rows_ok = (size_t)t < sizeof(tc->rows) / sizeof(tc->rows[0]);
-    const bool cols_ok = (size_t)t < sizeof(tc->cols) / sizeof(tc->cols[0]);
-    if (rows_ok && cols_ok) {
-        tc->rows[t] = rows;
-        tc->cols[t] = cols;
+inline void tc_configure_tile(
+        palette_config_t *tc, dim_t t, dim_t rows, dim_t cols) {
+    // AMX tile config is a fixed hardware register layout (tile index
+    // bounded by palette_config_t::max_size, uint8_t rows, uint16_t cols)
+    // - narrowing here is unavoidable, so it's consolidated in this single
+    // boundary helper with bounds checks, rather than scattered across
+    // call sites.
+    const bool idx_ok = t >= 0 && t < palette_config_t::max_size;
+    const bool rows_ok = rows >= 0 && rows <= UINT8_MAX;
+    const bool cols_ok = cols >= 0 && cols <= UINT16_MAX;
+    if (idx_ok && rows_ok && cols_ok) {
+        tc->rows[t] = static_cast<uint8_t>(rows);
+        tc->cols[t] = static_cast<uint16_t>(cols);
     } else {
         assert(!"out of range");
     }

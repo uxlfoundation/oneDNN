@@ -126,7 +126,6 @@ The library is optimized for the following GPUs:
   * Intel Graphics for future Intel Core Ultra processors (code name Nova Lake)
 
 > **NOTE**
-> Optimizations for Intel Iris Xe MAX Graphics and Intel Graphics included with 11th-14th Generation Intel Core Processors are deprecated and will be removed in the future releases.
 > Optimizations for processors with Intel SSE4.1 support and Intel AVX support are deprecated and will be removed in the future releases.
 
 [CPU dispatcher control]: https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html

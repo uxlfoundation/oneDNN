@@ -27,7 +27,6 @@
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
 #include "gpu/intel/matmul/config.hpp"
-#include "gpu/intel/matmul/grouped_post_ops_gen.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
@@ -72,19 +71,17 @@ struct ref_grouped_t : public primitive_t {
         }
 
         dim_t group_count_ = 0;
-        bool with_post_op_ = false;
-        po_kind_t po_chain_[3]
-                = {po_kind_t::none, po_kind_t::none, po_kind_t::none};
-        data_type_t binary_scale_dts_[2] = {data_type::undef, data_type::undef};
+        // Re-interpretted binary src1 as 3D view, while attr_.post_ops_
+        // keeps the original grouped md
+        post_ops_t generic_po_;
+        // Re-interpretted grouped dst md as 3D view
+        memory_desc_t group_po_dst_md_ = types::zero_md();
 
     private:
         bool is_2dby2d_ = false;
 
         status_t init_2dby3d(impl::engine_t *engine) {
             using namespace data_type;
-            const auto src_type = src_md(0)->data_type;
-            const auto wei_type = weights_md(0)->data_type;
-            const auto dst_type = dst_md(0)->data_type;
 
             memory_desc_wrapper wei_d(weights_md(0));
             memory_desc_wrapper dst_d(dst_md());
@@ -96,8 +93,10 @@ struct ref_grouped_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             // GPU ref currently only supports matching data types
-            VDISPATCH_MATMUL(src_type == wei_type && src_type == dst_type
-                            && utils::one_of(src_type, f32, bf16, f16),
+            const auto src_dt = src_md()->data_type;
+            VDISPATCH_MATMUL(src_dt == weights_md(0)->data_type
+                            && src_dt == dst_md()->data_type
+                            && utils::one_of(src_dt, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             // Check for supported quantization schemes
@@ -131,25 +130,56 @@ struct ref_grouped_t : public primitive_t {
             }
             VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-
             // Zero-points are not supported
             VDISPATCH_MATMUL(attr()->zero_points_.has_default_values(),
-                    VERBOSE_UNSUPPORTED_ATTR);
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
 
-            with_post_op_ = !attr()->post_ops_.has_default_values();
-            if (with_post_op_) {
-                CHECK(check_post_op_chain(*attr(), dst_d, group_count_,
-                        po_chain_, binary_scale_dts_));
+            if (attr_.post_ops_.len() > 0) CHECK(setup_post_ops(engine));
+
+            return status::success;
+        }
+
+        // Re-interpret src1 as a 3D view so the generic post-op code applies:
+        //   per-group  [G, 1]       -> [G, 1, 1]
+        //   per-token  [total_M, 1] -> [1, total_M, 1]
+        //   per-token  [total_M, N] -> [1, total_M, N]
+        status_t setup_post_ops(impl::engine_t *engine) {
+            auto &attr_po = attr_.post_ops_;
+            generic_po_ = attr_po;
+
+            const dim_t total_tokens = src_md()->dims[0];
+            const dim_t N = dst_md()->dims[1];
+
+            // 3D view of grouped dst [G, DNNL_RUNTIME_DIM_VAL, N]
+            const dims_t po_dst_dims = {group_count_, DNNL_RUNTIME_DIM_VAL, N};
+            CHECK(memory_desc_init_by_strides(group_po_dst_md_, 3, po_dst_dims,
+                    dst_md()->data_type, nullptr));
+
+            for (int i = 0; i < attr_po.len(); ++i) {
+                auto &e = attr_po.entry_[i];
+                if (!e.is_binary()) continue;
+
+                auto &attr_src1 = e.binary.src1_desc;
+                // resolve format_any (e.g. NVFP4 per-group scale)
+                if (memory_desc_wrapper(attr_src1).format_any())
+                    CHECK(memory_desc_init_by_strides(attr_src1, nullptr));
+
+                const memory_desc_wrapper src1_mdw(attr_src1);
+                const bool per_group = src1_mdw.ndims() == 2
+                        && src1_mdw.dims()[0] == group_count_
+                        && src1_mdw.dims()[1] == 1;
+
+                const dims_t dims_3d = {per_group ? group_count_ : 1,
+                        per_group ? 1 : total_tokens, src1_mdw.dims()[1]};
+                CHECK(memory_desc_init_by_strides(
+                        generic_po_.entry_[i].binary.src1_desc, 3, dims_3d,
+                        src1_mdw.data_type(), nullptr));
             }
-
             return status::success;
         }
 
         status_t init_2dby2d(impl::engine_t *engine) {
             using namespace data_type;
-            const auto src_type = src_md(0)->data_type;
-            const auto wei_type = weights_md(0)->data_type;
-            const auto dst_type = dst_md(0)->data_type;
 
             memory_desc_wrapper dst_d(dst_md());
 
@@ -162,8 +192,10 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(dst_d.ndims() == 3, VERBOSE_BAD_NDIMS, "dst",
                     dst_d.ndims());
 
-            VDISPATCH_MATMUL(src_type == wei_type && src_type == dst_type
-                            && utils::one_of(src_type, f32, bf16, f16),
+            VDISPATCH_MATMUL(src_md()->data_type == weights_md(0)->data_type
+                            && src_md()->data_type == dst_md()->data_type
+                            && utils::one_of(
+                                    src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             VDISPATCH_MATMUL(
@@ -178,62 +210,17 @@ struct ref_grouped_t : public primitive_t {
         compute::kernel_ctx_t kernel_ctx;
 
         kernel_ctx.set_data_type(pd()->dst_md()->data_type);
-        const auto &po_chain = pd()->po_chain_;
-        bool with_binary_grouped_scale
-                = (find_po_in_chain(po_chain, po_kind_t::binary_grouped_scale)
-                        != -1);
-        bool with_binary_dense_scale
-                = (find_po_in_chain(po_chain, po_kind_t::binary_dense_scale)
-                        != -1);
-        bool with_binary_nvfp4_scale
-                = (find_po_in_chain(po_chain, po_kind_t::binary_nvfp4_scale)
-                        != -1);
         def_data_type(kernel_ctx, pd()->src_md()->data_type, "SRC");
         def_data_type(kernel_ctx, pd()->weights_md(0)->data_type, "WEI");
         def_data_type(kernel_ctx, pd()->dst_md()->data_type, "DST");
         def_data_type(kernel_ctx, pd()->desc()->accum_data_type, "ACC");
 
-        kernel_ctx.define_int("WITH_POST_OP", pd()->with_post_op_);
-        kernel_ctx.define_int(
-                "WITH_BINARY_GROUPED_SCALE", with_binary_grouped_scale);
-        kernel_ctx.define_int(
-                "WITH_BINARY_DENSE_SCALE", with_binary_dense_scale);
-        kernel_ctx.define_int(
-                "WITH_BINARY_NVFP4_SCALE", with_binary_nvfp4_scale);
-
-        auto define_binary_scale_dt = [](compute::kernel_ctx_t &ctx,
-                                              data_type_t dt, const char *pfx) {
-            if (dt == data_type::f16)
-                ctx.define_int(std::string(pfx) + "_DT_F16", 1);
-            else if (dt == data_type::bf16)
-                ctx.define_int(std::string(pfx) + "_DT_BF16", 1);
-            else
-                ctx.define_int(std::string(pfx) + "_DT_F32", 1);
-        };
-
-        if (with_binary_grouped_scale) {
-            define_binary_scale_dt(kernel_ctx, pd()->binary_scale_dts_[0],
-                    "BINARY_SCALE_GROUPED");
-        }
-
-        if (with_binary_dense_scale) {
-            define_binary_scale_dt(kernel_ctx, pd()->binary_scale_dts_[1],
-                    "BINARY_SCALE_DENSE");
-        }
-
-        kernel_ctx.add_custom_header("grouped_post_ops.h",
-                generate_post_ops_refgemm_header(*pd()->attr(), po_chain));
+        auto attr_info = attr_info_t::create(pd()->attr());
+        CHECK(def_attr_info(kernel_ctx, attr_info, pd()->generic_po_,
+                pd()->group_po_dst_md_));
 
         const bool with_bias = pd()->with_bias();
-        const auto &attr_scales = pd()->attr()->scales_;
-        const bool with_src_scales
-                = !attr_scales.has_default_values(DNNL_ARG_SRC);
-        const bool with_wei_scales
-                = !attr_scales.has_default_values(DNNL_ARG_WEIGHTS);
-
         kernel_ctx.define_int("WITH_BIAS", with_bias ? 1 : 0);
-        kernel_ctx.define_int("WITH_SRC_SCALES", with_src_scales ? 1 : 0);
-        kernel_ctx.define_int("WITH_WEI_SCALES", with_wei_scales ? 1 : 0);
         if (with_bias)
             def_data_type(kernel_ctx, pd()->weights_md(1)->data_type, "BIA");
 

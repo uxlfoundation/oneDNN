@@ -116,21 +116,21 @@ struct brgemv_ir_conf_t {
 // Registers that advance each M-block iteration by a fixed byte offset.
 struct advancing_regs_t {
     // Current output pointer. Advances by `mblk_y_off` per M-block.
-    int y_ptr = -1;
+    ir::vreg_t y_ptr = ir::vreg_t::none;
     // Byte offset into A for the current M-block. Starts at 0 and advances by
     // `mblk_a_off` each iteration.
-    int a_off = -1;
+    ir::vreg_t a_off = ir::vreg_t::none;
 };
 
 // Registers that remain constant for the entire M-loop.
 struct invariant_regs_t {
     // Base pointer of the batch-element array.
-    int batch = -1;
-    // Batch size loop count. Set to -1 when max_bs == 1 (single batch element).
-    int bs = -1;
+    ir::vreg_t batch = ir::vreg_t::none;
+    // Batch size loop count. `none` when max_bs == 1 (single batch element).
+    ir::vreg_t bs = ir::vreg_t::none;
     // K-tail mask, shared by every masked tail load. It's only required when
     // `k_tail` is greater than 1.
-    int k_tail_mask = -1;
+    ir::vreg_t k_tail_mask = ir::vreg_t::none;
 };
 
 // Complete input register set for the M-loop, partitioned by whether values
@@ -146,7 +146,7 @@ struct m_loop_input_regs_t {
 // running A offset to zero.
 //
 // Optional arguments are only initialized when the configuration specifies
-// their presence. Otherwise, they remain set to -1.
+// their presence. Otherwise, they remain `none`.
 m_loop_input_regs_t init_m_loop_input_regs(
         ir::ir_t &ir, const brgemv_ir_conf_t &cfg) {
     m_loop_input_regs_t regs;
@@ -187,9 +187,10 @@ namespace nontrans {
 // Each accumulator holds a partial dot product for one output. The number of
 // accumulators is the number of rows in the current M block or M tail.
 void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
-        const std::vector<int> &acc, int a_ptr, int x_ptr) {
-    const int x = ir.new_vec(cfg.dt_x);
-    const int a = ir.new_vec(cfg.dt_a);
+        const std::vector<ir::vreg_t> &acc, ir::vreg_t a_ptr,
+        ir::vreg_t x_ptr) {
+    const ir::vreg_t x = ir.new_vec(cfg.dt_x);
+    const ir::vreg_t a = ir.new_vec(cfg.dt_a);
     ir.vload(x, x_ptr, 0);
     for (int i = 0; i < (int)acc.size(); i++) {
         ir.vload(a, a_ptr, cfg.dt_sz_a * (dim_t)i * cfg.lda);
@@ -201,9 +202,10 @@ void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 //
 // Same shape as emit_microkernel, but uses masked loads.
 void emit_microkernel_tail(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
-        const std::vector<int> &acc, int a_ptr, int x_ptr, int mask) {
-    const int x = ir.new_vec(cfg.dt_x);
-    const int a = ir.new_vec(cfg.dt_a);
+        const std::vector<ir::vreg_t> &acc, ir::vreg_t a_ptr, ir::vreg_t x_ptr,
+        ir::vreg_t mask) {
+    const ir::vreg_t x = ir.new_vec(cfg.dt_x);
+    const ir::vreg_t a = ir.new_vec(cfg.dt_a);
     ir.vload_masked(x, x_ptr, 0, mask, (int)cfg.k_tail);
     for (int i = 0; i < (int)acc.size(); i++) {
         ir.vload_masked(a, a_ptr, cfg.dt_sz_a * (dim_t)i * cfg.lda, mask,
@@ -217,10 +219,10 @@ void emit_microkernel_tail(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 // Loads A and x pointers, then runs the reduction loop over k.
 // Each iteration processes one `k_block` chunk and advances the pointers.
 void emit_bs_body(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
-        const std::vector<int> &acc, int batch_ptr, int a_off,
-        int k_tail_mask) {
-    const int a_ptr = ir.new_gpr();
-    const int x_ptr = ir.new_gpr();
+        const std::vector<ir::vreg_t> &acc, ir::vreg_t batch_ptr,
+        ir::vreg_t a_off, ir::vreg_t k_tail_mask) {
+    const ir::vreg_t a_ptr = ir.new_gpr();
+    const ir::vreg_t x_ptr = ir.new_gpr();
 
     ir.load(a_ptr, batch_ptr, GET_OFF_BATCH_ELEMENT(ptr.A));
     ir.add_reg(a_ptr, a_off);
@@ -258,14 +260,14 @@ void emit_bs_body(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 // Finally, advances the A and x pointers to the next M block.
 void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         const m_loop_input_regs_t &regs, int m_block) {
-    std::vector<int> acc(m_block);
+    std::vector<ir::vreg_t> acc(m_block, ir::vreg_t::none);
     for (int r = 0; r < m_block; r++) {
         acc[r] = ir.new_vec(cfg.dt_acc);
         ir.vzero(acc[r]);
     }
 
     // Batch reduction over bs dimension
-    const int batch_ptr = ir.new_gpr();
+    const ir::vreg_t batch_ptr = ir.new_gpr();
     ir.mov_reg(batch_ptr, regs.invariant.batch);
 
     if (cfg.max_bs > 1) {
@@ -281,13 +283,13 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     }
 
     // Horizontal reduction + store
-    const int ws = ir.new_vec(cfg.dt_acc);
+    const ir::vreg_t ws = ir.new_vec(cfg.dt_acc);
     for (int r = 0; r < m_block; r++)
         ir.vhreduce(acc[r], ws);
 
     for (int r = 0; r < m_block; r++)
         ir.vstore_masked(regs.advancing.y_ptr,
-                cfg.dt_sz_y * (dim_t)r * cfg.incy, acc[r], -1, 1);
+                cfg.dt_sz_y * (dim_t)r * cfg.incy, acc[r], ir::vreg_t::none, 1);
 
     // Advance to next M block
     ir.add_imm(regs.advancing.a_off, cfg.mblk_a_off);

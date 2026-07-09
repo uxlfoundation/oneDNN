@@ -22,15 +22,15 @@ namespace cpu {
 namespace x64 {
 namespace ir {
 
-int ir_t::new_vreg(reg_kind_t k, data_type_t dt) {
+vreg_t ir_t::new_vreg(reg_kind_t k, data_type_t dt) {
     vreg_info_t info {};
     info.kind = k;
     info.dt = dt;
     vreg_info_.push_back(info);
-    return (int)vreg_info_.size() - 1;
+    return static_cast<vreg_t>((int)vreg_info_.size() - 1);
 }
 
-int ir_t::mov_imm(int dst, dim_t imm) {
+int ir_t::mov_imm(vreg_t dst, dim_t imm) {
     op_t op;
     op.kind = op_kind_t::mov_imm;
     op.dst = dst;
@@ -39,7 +39,7 @@ int ir_t::mov_imm(int dst, dim_t imm) {
     return (int)ops_.size() - 1;
 }
 
-void ir_t::mov_reg(int dst, int src) {
+void ir_t::mov_reg(vreg_t dst, vreg_t src) {
     op_t op;
     op.kind = op_kind_t::mov_reg;
     op.dst = dst;
@@ -47,7 +47,7 @@ void ir_t::mov_reg(int dst, int src) {
     ops_.push_back(op);
 }
 
-void ir_t::add_imm(int dst, dim_t imm) {
+void ir_t::add_imm(vreg_t dst, dim_t imm) {
     op_t op;
     op.kind = op_kind_t::add_imm;
     op.dst = dst;
@@ -55,7 +55,7 @@ void ir_t::add_imm(int dst, dim_t imm) {
     ops_.push_back(op);
 }
 
-void ir_t::add_reg(int dst, int src) {
+void ir_t::add_reg(vreg_t dst, vreg_t src) {
     op_t op;
     op.kind = op_kind_t::add_reg;
     op.dst = dst;
@@ -63,7 +63,7 @@ void ir_t::add_reg(int dst, int src) {
     ops_.push_back(op);
 }
 
-void ir_t::load_param(int dst, dim_t disp) {
+void ir_t::load_param(vreg_t dst, dim_t disp) {
     op_t op;
     op.kind = op_kind_t::load;
     op.dst = dst;
@@ -72,7 +72,7 @@ void ir_t::load_param(int dst, dim_t disp) {
     ops_.push_back(op);
 }
 
-void ir_t::load(int dst, int base, dim_t disp) {
+void ir_t::load(vreg_t dst, vreg_t base, dim_t disp) {
     op_t op;
     op.kind = op_kind_t::load;
     op.dst = dst;
@@ -81,14 +81,14 @@ void ir_t::load(int dst, int base, dim_t disp) {
     ops_.push_back(op);
 }
 
-void ir_t::vzero(int dst) {
+void ir_t::vzero(vreg_t dst) {
     op_t op;
     op.kind = op_kind_t::vzero;
     op.dst = dst;
     ops_.push_back(op);
 }
 
-void ir_t::vload(int dst, int base, dim_t disp) {
+void ir_t::vload(vreg_t dst, vreg_t base, dim_t disp) {
     op_t op;
     op.kind = op_kind_t::vload;
     op.dst = dst;
@@ -97,7 +97,7 @@ void ir_t::vload(int dst, int base, dim_t disp) {
     ops_.push_back(op);
 }
 
-void ir_t::vfma(int dst, int a, int b) {
+void ir_t::vfma(vreg_t dst, vreg_t a, vreg_t b) {
     op_t op;
     op.kind = op_kind_t::vfma;
     op.dst = dst;
@@ -106,7 +106,7 @@ void ir_t::vfma(int dst, int a, int b) {
     ops_.push_back(op);
 }
 
-void ir_t::vhreduce(int dst, int workspace) {
+void ir_t::vhreduce(vreg_t dst, vreg_t workspace) {
     op_t op;
     op.kind = op_kind_t::vhreduce;
     op.dst = dst;
@@ -114,7 +114,7 @@ void ir_t::vhreduce(int dst, int workspace) {
     ops_.push_back(op);
 }
 
-void ir_t::set_mask_imm(int mask, int n_elems) {
+void ir_t::set_mask_imm(vreg_t mask, int n_elems) {
     op_t op;
     op.kind = op_kind_t::set_mask_imm;
     op.dst = mask;
@@ -122,11 +122,12 @@ void ir_t::set_mask_imm(int mask, int n_elems) {
     ops_.push_back(op);
 }
 
-void ir_t::vload_masked(int dst, int base, dim_t disp, int mask, int elems) {
+void ir_t::vload_masked(
+        vreg_t dst, vreg_t base, dim_t disp, vreg_t mask, int elems) {
     op_t op;
     op.kind = op_kind_t::vload_masked;
     op.dst = dst;
-    // -1 when no mask register is needed
+    // `none` when no mask register is needed
     op.s1 = mask;
     op.imm = elems;
     op.mem.base = base;
@@ -134,11 +135,12 @@ void ir_t::vload_masked(int dst, int base, dim_t disp, int mask, int elems) {
     ops_.push_back(op);
 }
 
-void ir_t::vstore_masked(int base, dim_t disp, int src, int mask, int elems) {
+void ir_t::vstore_masked(
+        vreg_t base, dim_t disp, vreg_t src, vreg_t mask, int elems) {
     op_t op;
     op.kind = op_kind_t::vstore_masked;
     op.s0 = src;
-    // -1 when no mask register is needed
+    // `none` when no mask register is needed
     op.s1 = mask;
     op.imm = elems;
     op.mem.base = base;
@@ -146,7 +148,7 @@ void ir_t::vstore_masked(int base, dim_t disp, int src, int mask, int elems) {
     ops_.push_back(op);
 }
 
-int ir_t::loop_begin_imm(int counter, dim_t count) {
+int ir_t::loop_begin_imm(vreg_t counter, dim_t count) {
     op_t op;
     op.kind = op_kind_t::loop_begin;
     op.dst = counter;
@@ -155,7 +157,7 @@ int ir_t::loop_begin_imm(int counter, dim_t count) {
     return (int)ops_.size() - 1;
 }
 
-int ir_t::loop_begin_reg(int counter, int init) {
+int ir_t::loop_begin_reg(vreg_t counter, vreg_t init) {
     op_t op;
     op.kind = op_kind_t::loop_begin;
     op.dst = counter;
@@ -165,7 +167,7 @@ int ir_t::loop_begin_reg(int counter, int init) {
     return (int)ops_.size() - 1;
 }
 
-void ir_t::loop_end(int counter, int begin_idx) {
+void ir_t::loop_end(vreg_t counter, int begin_idx) {
     op_t op;
     op.kind = op_kind_t::loop_end;
     op.dst = counter;
@@ -187,7 +189,7 @@ void ir_t::jmp(label_t label_id) {
     ops_.push_back(op);
 }
 
-void ir_t::jz(int cond, label_t label_id) {
+void ir_t::jz(vreg_t cond, label_t label_id) {
     op_t op;
     op.kind = op_kind_t::jz;
     op.s0 = cond;
@@ -213,11 +215,11 @@ void ir_t::def_use(
     defs.clear();
     uses.clear();
 
-    auto u = [&](int v) {
-        if (v >= 0) uses.push_back(v);
+    auto u = [&](vreg_t v) {
+        if (v != vreg_t::none) uses.push_back((int)v);
     };
-    auto d = [&](int v) {
-        if (v >= 0) defs.push_back(v);
+    auto d = [&](vreg_t v) {
+        if (v != vreg_t::none) defs.push_back((int)v);
     };
 
     switch (op.kind) {

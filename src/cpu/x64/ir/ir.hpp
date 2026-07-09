@@ -67,11 +67,17 @@ namespace ir {
 
 enum class reg_kind_t { gpr, vec, mask };
 
+// vreg_t and label_t are strong aliases for `int`. They are distinct id types
+// that do not implicitly convert to or from `int`, or to each other, so a
+// vreg, a label, and a raw int cannot be mixed up by accident. `none` marks an
+// unset id. Cast to `int` where a raw index is needed.
+
+// A virtual register id. A placeholder the allocator later maps to a physical
+// register or a spill slot. Its kind (gpr/vec/mask) and, for a vec, element
+// data type live separately in vreg_info_.
+enum class vreg_t : int { none = -1 };
+
 // A label id names a jump target for label/jmp/jz.
-//
-// Strong alias for `int`. Prevents implicit conversion to or from `int` (or a
-// vreg id) so labels and vregs cannot be mixed up accidentally. Cast to
-// `int` when a raw index is needed.
 enum class label_t : int { none = -1 };
 
 enum class op_kind_t {
@@ -138,7 +144,7 @@ enum class op_kind_t {
 //              manage it, so it is not counted as a virtual-register use.
 struct mem_t {
     // virtual gpr holding the pointer (ignored when is_param)
-    int base = -1;
+    vreg_t base = vreg_t::none;
     // constant byte offset
     dim_t disp = 0;
     // base is the kernel-argument pointer
@@ -155,9 +161,9 @@ struct mem_t {
 // is clearly defined in ir_t::def_use().
 //
 // kind - which operation this is. Determines how other fields are used.
-// dst  - virtual register that is written to, or -1 if none is written.
+// dst  - virtual register that is written to, or `none` if none is written.
 //        Some ops (e.g. vfma/vadd) both read from and write to dst.
-// s0,s1 - source virtual registers (inputs), or -1 if not used.
+// s0,s1 - source virtual registers (inputs), or `none` if not used.
 // imm   - immediate value whose meaning depends on the kind:
 //         * mov_imm        -> literal constant
 //         * loop_begin     -> loop trip count
@@ -170,8 +176,8 @@ struct mem_t {
 //                (runtime value) instead of imm.
 struct op_t {
     op_kind_t kind;
-    int dst = -1;
-    int s0 = -1, s1 = -1;
+    vreg_t dst = vreg_t::none;
+    vreg_t s0 = vreg_t::none, s1 = vreg_t::none;
     dim_t imm = 0;
     mem_t mem;
     int match = -1;
@@ -210,12 +216,12 @@ struct DNNL_API ir_t {
 
     // Add a vreg of kind `k` and, for a vec, element data type `dt`.
     // Return its id.
-    int new_vreg(reg_kind_t k, data_type_t dt = data_type::undef);
+    vreg_t new_vreg(reg_kind_t k, data_type_t dt = data_type::undef);
 
     // Convenience wrappers around `new_vreg` for the specific kinds.
-    int new_gpr() { return new_vreg(reg_kind_t::gpr); }
-    int new_vec(data_type_t dt) { return new_vreg(reg_kind_t::vec, dt); }
-    int new_mask() { return new_vreg(reg_kind_t::mask); }
+    vreg_t new_gpr() { return new_vreg(reg_kind_t::gpr); }
+    vreg_t new_vec(data_type_t dt) { return new_vreg(reg_kind_t::vec, dt); }
+    vreg_t new_mask() { return new_vreg(reg_kind_t::mask); }
 
     // Add a new label and return its id
     label_t new_label() { return static_cast<label_t>(n_labels_++); }
@@ -228,33 +234,35 @@ struct DNNL_API ir_t {
     // Refer to documentation for `op_kind_t` for each helper.
 
     // gpr
-    int mov_imm(int dst, dim_t imm);
-    void mov_reg(int dst, int src);
-    void add_imm(int dst, dim_t imm);
-    void add_reg(int dst, int src);
-    void load_param(int dst, dim_t disp);
-    void load(int dst, int base, dim_t disp);
+    int mov_imm(vreg_t dst, dim_t imm);
+    void mov_reg(vreg_t dst, vreg_t src);
+    void add_imm(vreg_t dst, dim_t imm);
+    void add_reg(vreg_t dst, vreg_t src);
+    void load_param(vreg_t dst, dim_t disp);
+    void load(vreg_t dst, vreg_t base, dim_t disp);
 
     // vec
-    void vzero(int dst);
-    void vload(int dst, int base, dim_t disp);
-    void vfma(int dst, int a, int b);
-    void vhreduce(int dst, int workspace);
+    void vzero(vreg_t dst);
+    void vload(vreg_t dst, vreg_t base, dim_t disp);
+    void vfma(vreg_t dst, vreg_t a, vreg_t b);
+    void vhreduce(vreg_t dst, vreg_t workspace);
 
     // vec (masked)
-    void vload_masked(int dst, int base, dim_t disp, int mask, int elems);
-    void vstore_masked(int base, dim_t disp, int src, int mask, int elems);
+    void vload_masked(
+            vreg_t dst, vreg_t base, dim_t disp, vreg_t mask, int elems);
+    void vstore_masked(
+            vreg_t base, dim_t disp, vreg_t src, vreg_t mask, int elems);
 
     // mask
-    void set_mask_imm(int mask, int n_elems);
+    void set_mask_imm(vreg_t mask, int n_elems);
 
     // control flow
-    int loop_begin_imm(int counter, dim_t count);
-    int loop_begin_reg(int counter, int init);
-    void loop_end(int counter, int begin_idx);
+    int loop_begin_imm(vreg_t counter, dim_t count);
+    int loop_begin_reg(vreg_t counter, vreg_t init);
+    void loop_end(vreg_t counter, int begin_idx);
     void label(label_t label_id);
     void jmp(label_t label_id);
-    void jz(int cond, label_t label_id);
+    void jz(vreg_t cond, label_t label_id);
 
     // Fill defs/uses with the vregs this operation writes/reads. Liveness and
     // the allocator depend on it, so it must match what the emitter emits.
@@ -296,7 +304,7 @@ void emit_loop_imm(ir_t &ir, dim_t count_imm, body_t body) {
         body();
         return;
     }
-    const int counter = ir.new_gpr();
+    const vreg_t counter = ir.new_gpr();
     const int begin = ir.loop_begin_imm(counter, count_imm);
     body();
     ir.loop_end(counter, begin);
@@ -312,7 +320,7 @@ void emit_loop_imm(ir_t &ir, dim_t count_imm, body_t body, step_t step) {
         body();
         return;
     }
-    const int counter = ir.new_gpr();
+    const vreg_t counter = ir.new_gpr();
     const int begin = ir.loop_begin_imm(counter, count_imm);
     body();
     step();
@@ -324,9 +332,9 @@ void emit_loop_imm(ir_t &ir, dim_t count_imm, body_t body, step_t step) {
 // loop. A negative count never reaches 0 and gets stuck, so the caller must
 // ensure count_reg >= 0.
 template <typename body_t>
-void emit_loop_reg(ir_t &ir, int count_reg, body_t body) {
-    const int counter = ir.new_gpr();
-    const int skip = ir.new_label();
+void emit_loop_reg(ir_t &ir, vreg_t count_reg, body_t body) {
+    const vreg_t counter = ir.new_gpr();
+    const label_t skip = ir.new_label();
     ir.jz(count_reg, skip); // zero-trip guard. A negative count gets stuck.
     const int begin = ir.loop_begin_reg(counter, count_reg);
     body();

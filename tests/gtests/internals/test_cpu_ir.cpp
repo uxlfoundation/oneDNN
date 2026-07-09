@@ -143,10 +143,10 @@ void expect_no_reg_conflicts(const ir_t &ir, const reg_pools_t &pools,
 // exercise register allocation and spilling.
 ir_t build_gpr_live_set(int live_set_size) {
     ir_t ir;
-    const int acc = ir.new_gpr();
+    const vreg_t acc = ir.new_gpr();
     ir.mov_imm(acc, 0);
 
-    std::vector<int> live_set(live_set_size);
+    std::vector<vreg_t> live_set(live_set_size, vreg_t::none);
     for (int i = 0; i < live_set_size; i++) {
         live_set[i] = ir.new_gpr();
         ir.mov_imm(live_set[i], i + 1);
@@ -272,16 +272,16 @@ private:
 // is still in use.
 TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
     ir_t ir {};
-    const int ptr = ir.new_gpr();
+    const vreg_t ptr = ir.new_gpr();
     ir.load_param(ptr, 0);
 
-    const int acc = ir.new_vec(data_type::f32);
+    const vreg_t acc = ir.new_vec(data_type::f32);
     ir.vzero(acc);
 
-    const int a = ir.new_vec(data_type::f32);
+    const vreg_t a = ir.new_vec(data_type::f32);
     ir.vload(a, ptr, 0);
 
-    const int b = ir.new_vec(data_type::f32);
+    const vreg_t b = ir.new_vec(data_type::f32);
     // AVX2 only.
     ir.vload(b, ptr, simd_w * (dim_t)sizeof(float));
 
@@ -296,38 +296,38 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
     EXPECT_EQ(ir.ops()[4].kind, op_kind_t::vfma);
 
     // Register kinds and data type are recorded for the allocator and emitter.
-    EXPECT_EQ(ir.vreg_info()[ptr].kind, reg_kind_t::gpr);
-    EXPECT_EQ(ir.vreg_info()[ptr].dt, data_type::undef);
+    EXPECT_EQ(ir.vreg_info()[(int)ptr].kind, reg_kind_t::gpr);
+    EXPECT_EQ(ir.vreg_info()[(int)ptr].dt, data_type::undef);
 
-    EXPECT_EQ(ir.vreg_info()[a].kind, reg_kind_t::vec);
-    EXPECT_EQ(ir.vreg_info()[a].dt, data_type::f32);
+    EXPECT_EQ(ir.vreg_info()[(int)a].kind, reg_kind_t::vec);
+    EXPECT_EQ(ir.vreg_info()[(int)a].dt, data_type::f32);
 
-    EXPECT_EQ(ir.vreg_info()[b].kind, reg_kind_t::vec);
-    EXPECT_EQ(ir.vreg_info()[b].dt, data_type::f32);
+    EXPECT_EQ(ir.vreg_info()[(int)b].kind, reg_kind_t::vec);
+    EXPECT_EQ(ir.vreg_info()[(int)b].dt, data_type::f32);
 
-    EXPECT_EQ(ir.vreg_info()[acc].kind, reg_kind_t::vec);
-    EXPECT_EQ(ir.vreg_info()[acc].dt, data_type::f32);
+    EXPECT_EQ(ir.vreg_info()[(int)acc].kind, reg_kind_t::vec);
+    EXPECT_EQ(ir.vreg_info()[(int)acc].dt, data_type::f32);
 
     std::vector<int> defs, uses;
 
     // vzero writes its destination and reads nothing.
     ir.def_use(ir.ops()[1], defs, uses);
-    EXPECT_EQ(defs, std::vector<int>({acc}));
+    EXPECT_EQ(defs, std::vector<int>({(int)acc}));
     EXPECT_TRUE(uses.empty());
 
     // vload reads the base pointer and writes the loaded vector.
     ir.def_use(ir.ops()[2], defs, uses);
-    EXPECT_EQ(defs, std::vector<int>({a}));
-    EXPECT_EQ(uses, std::vector<int>({ptr}));
+    EXPECT_EQ(defs, std::vector<int>({(int)a}));
+    EXPECT_EQ(uses, std::vector<int>({(int)ptr}));
 
     // vfma accumulates in place so the destination is read and written, both
     // sources are read.
     ir.def_use(ir.ops()[4], defs, uses);
-    EXPECT_EQ(defs, std::vector<int>({acc}));
+    EXPECT_EQ(defs, std::vector<int>({(int)acc}));
     ASSERT_EQ(uses.size(), 3u);
-    EXPECT_NE(std::find(uses.begin(), uses.end(), a), uses.end());
-    EXPECT_NE(std::find(uses.begin(), uses.end(), b), uses.end());
-    EXPECT_NE(std::find(uses.begin(), uses.end(), acc), uses.end());
+    EXPECT_NE(std::find(uses.begin(), uses.end(), (int)a), uses.end());
+    EXPECT_NE(std::find(uses.begin(), uses.end(), (int)b), uses.end());
+    EXPECT_NE(std::find(uses.begin(), uses.end(), (int)acc), uses.end());
 }
 
 // Validates loop construction. A real loop links its end back to its begin and
@@ -336,7 +336,7 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
 TEST(IRBuilderTests, LoopLinkageAndSingleIterationInlining) {
     {
         ir_t ir {};
-        const int acc = ir.new_gpr();
+        const vreg_t acc = ir.new_gpr();
         ir.mov_imm(acc, 0);
         emit_loop_imm(ir, 4, [&]() { ir.add_imm(acc, 1); });
 
@@ -351,13 +351,14 @@ TEST(IRBuilderTests, LoopLinkageAndSingleIterationInlining) {
         // loop_begin and loop_end operate on the same counter register.
         EXPECT_EQ(ir.ops()[begin].dst, ir.ops()[end].dst);
         // The counter is a general-purpose register created for the loop.
-        EXPECT_EQ(ir.vreg_info()[ir.ops()[begin].dst].kind, reg_kind_t::gpr);
+        EXPECT_EQ(
+                ir.vreg_info()[(int)ir.ops()[begin].dst].kind, reg_kind_t::gpr);
     }
 
     {
         // A single-iteration loop is inlined so no loop markers are emitted.
         ir_t ir {};
-        const int acc = ir.new_gpr();
+        const vreg_t acc = ir.new_gpr();
         ir.mov_imm(acc, 0);
         emit_loop_imm(ir, 1, [&]() { ir.add_imm(acc, 1); });
 
@@ -373,13 +374,13 @@ TEST(IRBuilderTests, LoopLinkageAndSingleIterationInlining) {
 TEST(IRBuilderTests, ForwardEdgeControlFlow) {
     ir_t ir {};
 
-    const int cond = ir.new_gpr();
+    const vreg_t cond = ir.new_gpr();
     ir.load_param(cond, 0);
 
-    const int a = ir.new_vec(data_type::f32);
-    const int acc = ir.new_vec(data_type::f32);
+    const vreg_t a = ir.new_vec(data_type::f32);
+    const vreg_t acc = ir.new_vec(data_type::f32);
 
-    const int base = ir.new_gpr();
+    const vreg_t base = ir.new_gpr();
 
     ir.load_param(base, sizeof(int));
     ir.vload(a, base, 0);
@@ -453,8 +454,8 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
     // All virtual registers have been assigned.
     ASSERT_EQ((int)res.assignments.size(), ir.n_vregs());
 
-    for (int v : {cond, base, a, acc}) {
-        const assignment_t &as = res.assignments[v];
+    for (vreg_t v : {cond, base, a, acc}) {
+        const assignment_t &as = res.assignments[(int)v];
         // Each value is either spilled or has a physical register assigned.
         EXPECT_TRUE(as.spilled || as.phys >= 0);
     }
@@ -487,14 +488,14 @@ TEST(AllocatorTests, DoesNotDoubleAllocateSimultaneouslyLiveValues) {
 TEST(AllocatorTests, ReusesRegisterOfExpiredTemporary) {
     ir_t ir {};
 
-    const int acc = ir.new_gpr();
+    const vreg_t acc = ir.new_gpr();
     ir.mov_imm(acc, 0);
 
-    const int t0 = ir.new_gpr();
+    const vreg_t t0 = ir.new_gpr();
     ir.mov_imm(t0, 5);
     ir.add_reg(acc, t0); // t0 dies here
 
-    const int t1 = ir.new_gpr();
+    const vreg_t t1 = ir.new_gpr();
     ir.mov_imm(t1, 7);
     ir.add_reg(acc, t1); // t1 is used only after t0 is dead
 
@@ -504,12 +505,12 @@ TEST(AllocatorTests, ReusesRegisterOfExpiredTemporary) {
     const reg_alloc_result_t res = allocate_registers(ir, pools);
 
     EXPECT_FALSE(res.any_spill);
-    EXPECT_FALSE(res.assignments[t0].spilled);
-    EXPECT_FALSE(res.assignments[t1].spilled);
+    EXPECT_FALSE(res.assignments[(int)t0].spilled);
+    EXPECT_FALSE(res.assignments[(int)t1].spilled);
     // t0 and t1 reuse the same physical register.
-    EXPECT_EQ(res.assignments[t0].phys, res.assignments[t1].phys);
+    EXPECT_EQ(res.assignments[(int)t0].phys, res.assignments[(int)t1].phys);
     // The accumulator, live across both, does not collide with them.
-    EXPECT_NE(res.assignments[acc].phys, res.assignments[t0].phys);
+    EXPECT_NE(res.assignments[(int)acc].phys, res.assignments[(int)t0].phys);
 }
 
 // Checks allocator behavior under register pressure. If the pool doesn't have
@@ -586,31 +587,31 @@ ir_t build_dot_ir() {
     ir_t ir {};
 
     // Load pointers for a, b, c.
-    const int a_ptr = ir.new_gpr();
+    const vreg_t a_ptr = ir.new_gpr();
     ir.load_param(a_ptr, 0);
 
-    const int b_ptr = ir.new_gpr();
+    const vreg_t b_ptr = ir.new_gpr();
     ir.load_param(b_ptr, sizeof(void *));
 
-    const int c_ptr = ir.new_gpr();
+    const vreg_t c_ptr = ir.new_gpr();
     ir.load_param(c_ptr, 2 * sizeof(void *));
 
-    const int acc = ir.new_vec(data_type::f32);
+    const vreg_t acc = ir.new_vec(data_type::f32);
     ir.vzero(acc);
 
-    const int a = ir.new_vec(data_type::f32);
+    const vreg_t a = ir.new_vec(data_type::f32);
     ir.vload(a, a_ptr, 0);
 
-    const int b = ir.new_vec(data_type::f32);
+    const vreg_t b = ir.new_vec(data_type::f32);
     ir.vload(b, b_ptr, 0);
 
     ir.vfma(acc, a, b);
 
-    const int ws = ir.new_vec(data_type::f32);
+    const vreg_t ws = ir.new_vec(data_type::f32);
     ir.vhreduce(acc, ws);
 
     // store the reduced scalar
-    ir.vstore_masked(c_ptr, 0, acc, -1, 1);
+    ir.vstore_masked(c_ptr, 0, acc, vreg_t::none, 1);
 
     return ir;
 }
@@ -641,23 +642,23 @@ TEST(EmitterTests, EmitsValidCodeForSpilledAllocation) {
     // vector file, so the allocator must spill.
     ir_t ir {};
 
-    const int a_ptr = ir.new_gpr();
+    const vreg_t a_ptr = ir.new_gpr();
     ir.load_param(a_ptr, 0);
 
-    const int b_ptr = ir.new_gpr();
+    const vreg_t b_ptr = ir.new_gpr();
     ir.load_param(b_ptr, sizeof(void *));
 
-    const int b = ir.new_vec(data_type::f32);
+    const vreg_t b = ir.new_vec(data_type::f32);
     ir.vload(b, b_ptr, 0);
 
-    std::vector<int> acc(6);
+    std::vector<vreg_t> acc(6, vreg_t::none);
     for (int r = 0; r < 6; r++) {
         acc[r] = ir.new_vec(data_type::f32);
         ir.vzero(acc[r]);
     }
 
     for (int r = 0; r < 6; r++) {
-        const int a = ir.new_vec(data_type::f32);
+        const vreg_t a = ir.new_vec(data_type::f32);
         ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
         ir.vfma(acc[r], a, b);
     }
@@ -690,23 +691,23 @@ TEST(IntegrationTests, BuildsLoopReduction) {
 
     ir_t ir {};
 
-    const int a_ptr = ir.new_gpr();
+    const vreg_t a_ptr = ir.new_gpr();
     ir.load_param(a_ptr, offsetof(dot_args_t, a));
 
-    const int b_ptr = ir.new_gpr();
+    const vreg_t b_ptr = ir.new_gpr();
     ir.load_param(b_ptr, offsetof(dot_args_t, b));
 
-    const int c_ptr = ir.new_gpr();
+    const vreg_t c_ptr = ir.new_gpr();
     ir.load_param(c_ptr, offsetof(dot_args_t, c));
 
-    const int acc = ir.new_vec(data_type::f32);
+    const vreg_t acc = ir.new_vec(data_type::f32);
     ir.vzero(acc);
 
     // Reduce one simd_w-wide chunk per iteration and advance the pointers.
     emit_loop_imm(ir, k_blocks, [&]() {
-        const int a = ir.new_vec(data_type::f32);
+        const vreg_t a = ir.new_vec(data_type::f32);
         ir.vload(a, a_ptr, 0);
-        const int b = ir.new_vec(data_type::f32);
+        const vreg_t b = ir.new_vec(data_type::f32);
         ir.vload(b, b_ptr, 0);
         ir.vfma(acc, a, b);
     }, [&]() {
@@ -714,9 +715,9 @@ TEST(IntegrationTests, BuildsLoopReduction) {
         ir.add_imm(b_ptr, simd_w * (dim_t)sizeof(float));
     });
 
-    const int ws = ir.new_vec(data_type::f32);
+    const vreg_t ws = ir.new_vec(data_type::f32);
     ir.vhreduce(acc, ws);
-    ir.vstore_masked(c_ptr, 0, acc, -1, 1);
+    ir.vstore_masked(c_ptr, 0, acc, vreg_t::none, 1);
 
     ir_kernel_t kernel(ir);
     ASSERT_TRUE(kernel.run_ir_pipeline());
@@ -739,36 +740,37 @@ TEST(IntegrationTests, BuildsLoopReduction) {
 ir_t build_shared_vector_dot_ir(int n) {
     ir_t ir {};
 
-    const int a_ptr = ir.new_gpr();
+    const vreg_t a_ptr = ir.new_gpr();
     ir.load_param(a_ptr, offsetof(dot_args_t, a));
 
-    const int b_ptr = ir.new_gpr();
+    const vreg_t b_ptr = ir.new_gpr();
     ir.load_param(b_ptr, offsetof(dot_args_t, b));
 
-    const int c_ptr = ir.new_gpr();
+    const vreg_t c_ptr = ir.new_gpr();
     ir.load_param(c_ptr, offsetof(dot_args_t, c));
 
-    const int b = ir.new_vec(data_type::f32);
+    const vreg_t b = ir.new_vec(data_type::f32);
     // Load shared vector.
     ir.vload(b, b_ptr, 0);
 
-    std::vector<int> acc(n);
+    std::vector<vreg_t> acc(n, vreg_t::none);
     for (int r = 0; r < n; r++) {
         acc[r] = ir.new_vec(data_type::f32);
         ir.vzero(acc[r]);
 
-        const int a = ir.new_vec(data_type::f32);
+        const vreg_t a = ir.new_vec(data_type::f32);
         ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
 
         ir.vfma(acc[r], a, b);
     }
 
-    const int ws = ir.new_vec(data_type::f32);
+    const vreg_t ws = ir.new_vec(data_type::f32);
     for (int r = 0; r < n; r++)
         ir.vhreduce(acc[r], ws);
 
     for (int r = 0; r < n; r++)
-        ir.vstore_masked(c_ptr, r * (dim_t)sizeof(float), acc[r], -1, 1);
+        ir.vstore_masked(
+                c_ptr, r * (dim_t)sizeof(float), acc[r], vreg_t::none, 1);
 
     return ir;
 }
@@ -831,22 +833,22 @@ TEST(IntegrationTests, BranchSelectsCorrectValue) {
 
     ir_t ir {};
 
-    const int cond = ir.new_gpr();
+    const vreg_t cond = ir.new_gpr();
     ir.load_param(cond, offsetof(select_args_t, cond));
 
-    const int a_ptr = ir.new_gpr();
+    const vreg_t a_ptr = ir.new_gpr();
     ir.load_param(a_ptr, offsetof(select_args_t, a));
 
-    const int b_ptr = ir.new_gpr();
+    const vreg_t b_ptr = ir.new_gpr();
     ir.load_param(b_ptr, offsetof(select_args_t, b));
 
-    const int c_ptr = ir.new_gpr();
+    const vreg_t c_ptr = ir.new_gpr();
     ir.load_param(c_ptr, offsetof(select_args_t, c));
 
-    const int a = ir.new_vec(data_type::f32);
+    const vreg_t a = ir.new_vec(data_type::f32);
     ir.vload(a, a_ptr, 0);
 
-    const int b = ir.new_vec(data_type::f32);
+    const vreg_t b = ir.new_vec(data_type::f32);
     ir.vload(b, b_ptr, 0);
 
     const label_t lbl_else = ir.new_label();
@@ -865,10 +867,10 @@ TEST(IntegrationTests, BranchSelectsCorrectValue) {
     //     store b -> c
     //   end:
     ir.jz(cond, lbl_else);
-    ir.vstore_masked(c_ptr, 0, a, -1, simd_w); // then: c = a
+    ir.vstore_masked(c_ptr, 0, a, vreg_t::none, simd_w); // then: c = a
     ir.jmp(lbl_end);
     ir.label(lbl_else);
-    ir.vstore_masked(c_ptr, 0, b, -1, simd_w); // else: c = b
+    ir.vstore_masked(c_ptr, 0, b, vreg_t::none, simd_w); // else: c = b
     ir.label(lbl_end);
 
     ir_kernel_t kernel(ir);

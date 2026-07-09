@@ -43,17 +43,19 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     std::vector<Xbyak::Label> label_id_to_label(ir.n_labels());
 
     // if vreg needs to be spilled
-    auto spilled = [&](int vr) { return alloc.assignments[vr].spilled; };
+    auto spilled
+            = [&](vreg_t vr) { return alloc.assignments[(int)vr].spilled; };
     // get a physical register from a virtual one
-    auto phys = [&](int vr) { return alloc.assignments[vr].phys; };
+    auto phys = [&](vreg_t vr) { return alloc.assignments[(int)vr].phys; };
     // get a stack slot for a virtual register
-    auto slot = [&](int vr) {
-        return gen.ptr[gen.rsp + (int)alloc.assignments[vr].slot];
+    auto slot = [&](vreg_t vr) {
+        return gen.ptr[gen.rsp + (int)alloc.assignments[(int)vr].slot];
     };
     // stack slot byte offset for a vec spill
-    auto slot_off = [&](int vr) { return (int)alloc.assignments[vr].slot; };
+    auto slot_off
+            = [&](vreg_t vr) { return (int)alloc.assignments[(int)vr].slot; };
     // Data type of a vec vreg.
-    auto dt_of = [&](int vr) { return ir.vreg_info()[vr].dt; };
+    auto dt_of = [&](vreg_t vr) { return ir.vreg_info()[(int)vr].dt; };
 
     // Reserve scratch registers for the spills.
     const Xbyak::Reg64 gpr_scratch0(rc.gpr_scratch[0]);
@@ -66,9 +68,9 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     // as a vector load/store against the stack frame (rsp).
     const int rsp_idx = gen.rsp.getIdx();
     auto spill_reload
-            = [&](int vr, int p) { be.vload(p, rsp_idx, slot_off(vr)); };
+            = [&](vreg_t vr, int p) { be.vload(p, rsp_idx, slot_off(vr)); };
     auto spill_store
-            = [&](int vr, int p) { be.vstore(rsp_idx, slot_off(vr), p); };
+            = [&](vreg_t vr, int p) { be.vstore(rsp_idx, slot_off(vr), p); };
 
     // Resolve a virtual register that an instruction READS (use) to a
     // concrete physical register, hiding whether the allocator spilled it:
@@ -92,14 +94,14 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     // directly. A spilled vec source is reloaded through the backend, since the
     // reload instruction is ISA-specific. The `vec_use` returns a physical
     // index rather than a typed register.
-    auto gpr_use = [&](int vr, const Xbyak::Reg64 &scr) -> Xbyak::Reg64 {
+    auto gpr_use = [&](vreg_t vr, const Xbyak::Reg64 &scr) -> Xbyak::Reg64 {
         if (!spilled(vr)) return Xbyak::Reg64(phys(vr));
         // reload the spilled gpr from its stack slot
         gen.mov(scr, slot(vr));
         return scr;
     };
 
-    auto vec_use = [&](int vr, int scr_idx) -> int {
+    auto vec_use = [&](vreg_t vr, int scr_idx) -> int {
         if (!spilled(vr)) return phys(vr);
         // reload the spilled vector register from its stack slot
         spill_reload(vr, scr_idx);
@@ -222,9 +224,9 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             case op_kind_t::vload_masked: { // overwrites dst
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                assert((op.s1 < 0 || !spilled(op.s1))
+                assert((op.s1 == vreg_t::none || !spilled(op.s1))
                         && "vload_masked: mask spilled");
-                int mask = (op.s1 >= 0) ? phys(op.s1) : -1;
+                int mask = (op.s1 != vreg_t::none) ? phys(op.s1) : -1;
                 be.vload_masked(d, base, op.mem.disp, mask, (int)op.imm,
                         dt_of(op.dst), data);
                 if (spilled(op.dst)) spill_store(op.dst, d);
@@ -233,9 +235,9 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             case op_kind_t::vstore_masked: {
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int s = vec_use(op.s0, vec_scratch0);
-                assert((op.s1 < 0 || !spilled(op.s1))
+                assert((op.s1 == vreg_t::none || !spilled(op.s1))
                         && "vstore_masked: mask spilled");
-                int mask = (op.s1 >= 0) ? phys(op.s1) : -1;
+                int mask = (op.s1 != vreg_t::none) ? phys(op.s1) : -1;
                 be.vstore_masked(base, op.mem.disp, s, mask, (int)op.imm,
                         dt_of(op.s0), data);
                 break;

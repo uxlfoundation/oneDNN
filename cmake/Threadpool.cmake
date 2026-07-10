@@ -48,10 +48,53 @@ if("${DNNL_CPU_THREADING_RUNTIME}" STREQUAL "THREADPOOL")
         endif()
 
         if("${_DNNL_TEST_THREADPOOL_IMPL}" STREQUAL "EIGEN_ASYNC")
-            find_package(xla REQUIRED CONFIG PATH_SUFFIXES "lib64/cmake/xla")
+            find_package(xla QUIET CONFIG PATH_SUFFIXES "lib64/cmake/xla")
             if(xla_FOUND)
                 list(APPEND EXTRA_STATIC_LIBS xla)
                 message(STATUS "Found XLA: ${PACKAGE_PREFIX_DIR}")
+            else()
+                if("${DNNL_XLA_SOURCE_DIR}" STREQUAL "")
+                    message(FATAL_ERROR
+                        "Could not find XLA package configuration. Set "
+                        "xla_DIR to an XLA package or ONEDNN_XLA_SOURCE_DIR "
+                        "to an OpenXLA/XLA source tree.")
+                endif()
+
+                foreach(_xla_src
+                        "xla/tsl/platform/logging.cc"
+                        "xla/tsl/concurrency/async_value.cc"
+                        "xla/tsl/concurrency/async_value_ref.cc"
+                        "xla/backends/cpu/runtime/work_queue.h")
+                    if(NOT EXISTS "${DNNL_XLA_SOURCE_DIR}/${_xla_src}")
+                        message(FATAL_ERROR
+                            "ONEDNN_XLA_SOURCE_DIR does not look like an "
+                            "OpenXLA/XLA source tree. Missing: "
+                            "${DNNL_XLA_SOURCE_DIR}/${_xla_src}")
+                    endif()
+                endforeach()
+
+                add_library(xla STATIC
+                    "${DNNL_XLA_SOURCE_DIR}/xla/tsl/platform/logging.cc"
+                    "${DNNL_XLA_SOURCE_DIR}/xla/tsl/concurrency/async_value.cc"
+                    "${DNNL_XLA_SOURCE_DIR}/xla/tsl/concurrency/async_value_ref.cc")
+                target_include_directories(xla PUBLIC
+                    "${DNNL_XLA_SOURCE_DIR}"
+                    "${DNNL_XLA_SOURCE_DIR}/third_party/tsl")
+                target_compile_features(xla PUBLIC cxx_std_17)
+                target_link_libraries(xla PUBLIC
+                    absl::any_invocable
+                    absl::base
+                    absl::check
+                    absl::core_headers
+                    absl::inlined_vector
+                    absl::log
+                    absl::span
+                    absl::status
+                    absl::statusor
+                    absl::strings
+                    absl::synchronization)
+                list(APPEND EXTRA_STATIC_LIBS xla)
+                message(STATUS "Using XLA sources: ${DNNL_XLA_SOURCE_DIR}")
             endif()
         endif()
     endif()

@@ -1891,7 +1891,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_CONV_IC(
             IMPLICATION(jcp.wei_dt == f8_e5m2,
-                    mayiuse(avx512_core_amx_fp16) || mayiuse(avx10_2_amx_2)),
+                    mayiuse(avx512_core_amx_fp16) || mayiuse(avx10_2)),
             VERBOSE_ISA_DT_MISMATCH);
     const bool is_f32
             = utils::everyone_is(f32, jcp.src_dt, jcp.wei_dt, jcp.dst_dt);

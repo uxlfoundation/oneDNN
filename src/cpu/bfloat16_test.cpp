@@ -14,11 +14,23 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "dnnl_test_common.hpp"
+// Next-to-source internal unit test for common/bfloat16.hpp.
+//
+// Unlike the legacy tests under tests/gtests/internals/, this file lives right
+// next to the code it exercises and depends on nothing but the header under
+// test and gtest. The build system links it against a static archive of the
+// dnnl_common object library, from which the linker pulls only bfloat16.o.
+
+#include <cfloat>
+#include <limits>
+#include <type_traits>
+
 #include "gtest/gtest.h"
 
-#include "src/common/bfloat16.hpp"
+#include "common/bfloat16.hpp"
 
+namespace dnnl {
+namespace impl {
 namespace {
 
 template <typename IntegerType>
@@ -69,8 +81,6 @@ void assert_same_bits_from_integer_as_from_float() {
 
 } // namespace
 
-namespace dnnl {
-
 TEST(test_bfloat16_plus_float, TestDenormF32) {
     const float denorm_f32 {FLT_MIN / 2.0f};
     const bfloat16_t initial_value_bf16 {FLT_MIN};
@@ -87,24 +97,13 @@ TEST(test_bfloat16_plus_float, TestDenormF32) {
 }
 
 TEST(test_bfloat16_denorm_f32, BitsFromDoubleSameAsFromFloat) {
-    // Test that the bits of a bfloat16 produced by passing 'denorm_f32' as a
-    // 'double' are the same as when passing 'denorm_f32' as 'float'.
-    //
-    // This test aims to check that when converting a 'double' value to
-    // 'bfloat16_t', or when assigning a 'double' to a bfloat16, this value is
-    // _not_ treated as an integer value! ('bfloat16_t' has optimized member
-    // function templates for conversion and assignment, specifically from
-    // integer types.)
     constexpr float denorm_f32 {FLT_MIN / 2.0f};
     const auto expected_bits = bfloat16_t {denorm_f32}.raw_bits_;
 
-    // Test converting 'double' to bfloat16:
     EXPECT_EQ(bfloat16_t {double {denorm_f32}}.raw_bits_, expected_bits);
 
     bfloat16_t bf16;
-    // Test assignment of 'double' to bfloat16:
     bf16 = double {denorm_f32};
-
     EXPECT_EQ(bf16.raw_bits_, expected_bits);
 }
 
@@ -118,20 +117,12 @@ TEST(test_bfloat16_converting_constructor_and_assignment,
 }
 
 TEST(test_bfloat16_rounding, RoundToNearestEven) {
-    // Test round-to-nearest-even (RNE) behavior during float->bfloat16
-    // conversion. A bfloat16 keeps the upper 16 bits of a float. The lower
-    // 16 bits are the "tail" that gets rounded off. When the tail is exactly
-    // at the halfway point, RNE rounds to make the result LSB even.
-
-    // Halfway with odd result LSB: should round up to even.
-    // float 1.01171875f is 0x3F818000 (bf16 candidate 0x3F81, tail 0x8000).
     constexpr float halfway_odd_lsb {1.01171875f};
     ASSERT_EQ(bfloat16_t {halfway_odd_lsb}.raw_bits_, 0x3F82u);
 
-    // Halfway with even result LSB: should stay even (no round up).
-    // float 1.00390625f is 0x3F808000 (bf16 candidate 0x3F80, tail 0x8000).
     constexpr float halfway_even_lsb {1.00390625f};
     ASSERT_EQ(bfloat16_t {halfway_even_lsb}.raw_bits_, 0x3F80u);
 }
 
+} // namespace impl
 } // namespace dnnl

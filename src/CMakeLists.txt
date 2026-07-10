@@ -145,6 +145,10 @@ if(UNIX)
     endif()
 endif()
 
+# Infrastructure for next-to-source internal unit tests (test_*.cpp files
+# living inside the src/ tree). See cmake/internal_unit_test.cmake.
+include("${PROJECT_SOURCE_DIR}/cmake/internal_unit_test.cmake")
+
 add_subdirectory(common)
 
 if(NOT DNNL_CPU_RUNTIME STREQUAL "NONE")
@@ -211,6 +215,11 @@ endif()
 get_property(LIB_DEPS GLOBAL PROPERTY DNNL_LIB_DEPS)
 get_property(STATIC_LIB_DEPS GLOBAL PROPERTY DNNL_SUBDIR_EXTRA_STATIC_LIBS)
 get_property(SHARED_LIB_DEPS GLOBAL PROPERTY DNNL_SUBDIR_EXTRA_SHARED_LIBS)
+
+# Emit next-to-source internal unit tests now that every component (and thus
+# DNNL_LIB_DEPS) is fully populated.
+dnnl_finalize_internal_tests()
+
 add_library(${LIB_PACKAGE_NAME} ${DNNL_LIBRARY_TYPE}
     ${VERSION_RESOURCE_FILE} ${HEADERS_ROOT} ${HEADERS_SUBDIR} ${LIB_DEPS})
 

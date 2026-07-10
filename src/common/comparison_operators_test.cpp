@@ -14,7 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "tests/gtests/dnnl_test_common.hpp"
+#include <cmath>
+#include <vector>
+
 #include "gtest/gtest.h"
 
 #include "dnnl.hpp"
@@ -76,7 +78,7 @@ TEST(comparison_operators_t, TestAttrDataQparams) {
     TEST_SELF_COMPARISON(attr);
 }
 
-HANDLE_EXCEPTIONS_FOR_TEST(comparison_operators_t, TestAttrWeightsQparams) {
+TEST(comparison_operators_t, TestAttrWeightsQparams) {
     dnnl::primitive_attr attr;
 
     attr.set_rnn_weights_qparams(0, {NAN});
@@ -86,8 +88,7 @@ HANDLE_EXCEPTIONS_FOR_TEST(comparison_operators_t, TestAttrWeightsQparams) {
     TEST_SELF_COMPARISON(attr);
 }
 
-HANDLE_EXCEPTIONS_FOR_TEST(
-        comparison_operators_t, TestAttrWeightsProjectionQparams) {
+TEST(comparison_operators_t, TestAttrWeightsProjectionQparams) {
     dnnl::primitive_attr attr;
 
     attr.set_rnn_weights_projection_qparams(0, {NAN});
@@ -106,7 +107,7 @@ TEST(comparison_operators_t, TestSumPostOp) {
     TEST_SELF_COMPARISON(attr);
 }
 
-HANDLE_EXCEPTIONS_FOR_TEST(comparison_operators_t, TestDepthwisePostOp) {
+TEST(comparison_operators_t, TestDepthwisePostOp) {
     dnnl::primitive_attr attr;
     dnnl::post_ops ops;
 

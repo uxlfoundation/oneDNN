@@ -53,6 +53,13 @@ if(NOT DNNL_EXPERIMENTAL_LOGGING)
 endif()
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_common)
+# Keep next-to-source unit tests (*_test.cpp) out of the shipped library.
+dnnl_exclude_internal_tests(SOURCES)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
+
+# Register any *_test.cpp living in this directory as standalone gtest binaries.
+# Dependencies across component archives are resolved automatically at link
+# time (see cmake/internal_unit_test.cmake), so nothing has to be declared here.
+dnnl_add_internal_unit_tests(${OBJ_LIB})

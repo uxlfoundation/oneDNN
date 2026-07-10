@@ -17,8 +17,8 @@
 #ifndef GPU_INTEL_GEMM_WITH_POST_OPS_HPP
 #define GPU_INTEL_GEMM_WITH_POST_OPS_HPP
 
-#include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
+#include "gpu/intel/gemm/types.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 
 namespace dnnl {

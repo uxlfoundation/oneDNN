@@ -19,7 +19,7 @@
 
 #include "common/memory_storage.hpp"
 #include "common/primitive_exec_types.hpp"
-#include "gpu/intel/gemm/config.hpp"
+#include "gpu/intel/gemm/types.hpp"
 
 #define DNNL_ARG_A DNNL_ARG_WEIGHTS
 #define DNNL_ARG_B DNNL_ARG_SRC

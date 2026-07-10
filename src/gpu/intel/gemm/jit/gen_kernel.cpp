@@ -605,16 +605,21 @@ status_t gen_nocopy_desc_t::finalize() {
     return gen_desc_t::finalize(tags_.c_str());
 }
 
-status_t gen_xe_systolic_kernel_desc_t::select_kernel(
-        const compute::device_info_t &dev_info, int batch_dims, bool packed_c,
-        bool trans_co, bool a_offset, bool b_offset, bool c_offset, bool bias,
-        float alpha, float beta, data_type_t a_type, data_type_t b_type,
-        data_type_t c_type, data_type_t ao_type, data_type_t bo_type,
-        data_type_t co_type, data_type_t acc_type, dim_t m, dim_t n, dim_t k,
-        dim_t batch, int unroll_m, int unroll_n, bool alt,
-        gpu_post_ops_t &&post_ops) {
+status_t gen_xe_systolic_desc_t::select_kernel(
+        const compute::device_info_t &dev_info,
+        const gemmstone::GEMMProblem &in, int batch_dims, bool packed_c,
+        float alpha, float beta, dim_t m, dim_t n, dim_t k, dim_t batch,
+        int unroll_m, int unroll_n, bool alt) {
     using namespace ngen;
     using namespace kcatalog;
+
+    auto a_type = convert_kernel_to_dnnl_type(in.Ta_ext);
+    auto c_type = convert_kernel_to_dnnl_type(in.Tc_ext);
+    bool a_offset = (in.aOffset != ABOffset::None);
+    bool b_offset = (in.bOffset != ABOffset::None);
+    bool c_offset = (in.cOffset == COffset::Post);
+    bool bias = (in.cOffset == COffset::Pre);
+    bool trans_co = (in.CO.layout == MatrixLayout::T);
 
     product_ = dev_info.product();
     hw_ = getCore(product_.family);
@@ -636,14 +641,14 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     auto ksys = int(32 / types::data_type_size(a_type));
     auto csys = int(4 / types::data_type_size(a_type));
 
-    problem_.Ta = problem_.Ta_ext = convert_dnnl_to_kernel_type(a_type);
-    problem_.Tb = problem_.Tb_ext = convert_dnnl_to_kernel_type(b_type);
-    problem_.Tc = convert_dnnl_to_kernel_type(acc_type);
-    problem_.Tc_ext = convert_dnnl_to_kernel_type(c_type);
+    problem_.Ta = problem_.Ta_ext = in.Ta_ext;
+    problem_.Tb = problem_.Tb_ext = in.Tb_ext;
+    problem_.Tc = in.Tc;
+    problem_.Tc_ext = in.Tc_ext;
     problem_.Ts = Type::f32;
-    problem_.Tao = convert_dnnl_to_kernel_type(ao_type);
-    problem_.Tbo = convert_dnnl_to_kernel_type(bo_type);
-    problem_.Tco = convert_dnnl_to_kernel_type(co_type);
+    problem_.Tao = Type::s32;
+    problem_.Tbo = Type::s32;
+    problem_.Tco = in.Tco;
     problem_.A.layout = MatrixLayout::PackedColumns;
     problem_.B.layout = MatrixLayout::PackedRows;
     problem_.C.layout = MatrixLayout::N;
@@ -663,7 +668,8 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     if (packed_c) problem_.C = problem_.B;
     if (batch_dims > 0) {
         problem_.batch = BatchMode::Strided;
-        problem_.batchDims = batch_dims;
+        // Multi-dim batch (ndims>3) is rejected upstream, so this is 1.
+        problem_.batchDims = in.batchDims;
     }
     if (a_offset) {
         problem_.aOffset = ABOffset::Load;
@@ -676,8 +682,9 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     if (alpha == 1.0f) problem_.alpha = (int)alpha;
     if (beta == 0.0f || beta == 1.0f) problem_.beta = (int)beta;
 
-    auto status = transfer_post_ops(problem_, std::move(post_ops));
-    if (status != status::success) return status;
+    problem_.postOps = in.postOps;
+    problem_.binary = in.binary;
+    problem_.Tbinary = in.Tbinary;
 
     if (c_offset) problem_.cOffset = COffset::Post;
 
@@ -691,6 +698,8 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
         problem_.CO.crosspack = 1;
         problem_.CO.alignment = problem_.C.alignment;
     }
+
+    problem_.coPtrDims = in.coPtrDims;
 
     // Find it in the catalog.
     MatchParams match_params(hw_, true, product_, problem_);
@@ -723,7 +732,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     eval_params.beta = beta;
     eval_params.euCount = dev_info.eu_count();
     eval_params.postOps = !problem_.postOps.empty();
-    eval_params.cConvert = (acc_type != c_type);
+    eval_params.cConvert = (in.Tc != in.Tc_ext);
     eval_params.batch = (batch_dims > 0);
     eval_params.Tc_ext = problem_.Tc_ext;
 
@@ -737,7 +746,7 @@ status_t gen_xe_systolic_kernel_desc_t::select_kernel(
     return finalize(match_params.tags);
 }
 
-void gen_xe_systolic_kernel_desc_t::choose_unrolls(compute::gpu_arch_t arch,
+void gen_xe_systolic_desc_t::choose_unrolls(compute::gpu_arch_t arch,
         int eu_count, data_type_t a_type, data_type_t b_type,
         data_type_t c_type, dim_t m, dim_t n, dim_t k, dim_t batch,
         int &unroll_m, int &unroll_n, bool &alt) {
@@ -1038,7 +1047,7 @@ void gen_kernel_t::maybe_print_verbose() {
     int level = get_verbose(verbose_t::debuginfo);
     if (level < 2) return;
 
-    if (level >= 10)
+    if (level >= 10 && desc_.has_entry())
         verbose_printf("info,gpu,gemm,catalog entry:%s\n",
                 desc()->entry().str().c_str());
 

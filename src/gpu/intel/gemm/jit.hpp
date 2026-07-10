@@ -32,12 +32,17 @@
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
 #include "gpu/intel/gemm/utils.hpp"
+#include "gpu/intel/utils.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace intel {
 namespace gemm {
+
+namespace jit {
+struct exec_args_t;
+}
 
 // The zero-buffer scratchpad path is prepared when the zero pool is disabled,
 // or (under SYCL) as a fallback while recording a graph.
@@ -84,27 +89,29 @@ struct gen_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("jit:gemm:any", gen_t);
 
-        status_t init(impl::engine_t *engine) {
-            using namespace prop_kind;
+        bool decide_swap_ab(const jit::kernel_config_t &cfg) const override {
+            bool check_lda
+                    = ((!cfg.trans_a() && cfg.lda == 1) || cfg.trans_a());
+            bool s = (cfg.m == 1 && cfg.ldc == 1 && check_lda) || cfg.trans_c();
+            // We cannot swap A/B if we don't have kernels to support the
+            // swapped data type/alignment requirements. Currently mostly
+            // affects weights-only compression cases, since A/B have
+            // different data types.
+            s &= !cfg.wei_decomp;
+            return s;
+        }
+
+        // desc()/attr() checks only; run before apply_swap_ab folds A/B.
+        status_t check_problem(impl::engine_t *engine) const {
             using namespace data_type;
-            using namespace primitive_kind;
-            using namespace alg_kind;
             using smask_t = primitive_attr_t::skip_mask_t;
             using arch_t = compute::gpu_arch_t;
 
-            assert(engine->kind() == engine_kind::gpu);
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
-
-            CHECK(set_default_formats(false));
-
-            dev_info_ = intel_engine->device_info();
-            arch_ = dev_info_->gpu_arch();
-
-            CHECK(jit::pd_t::init(engine, arch_));
-
             const auto d = desc();
-            auto m = desc()->m();
-            auto n = desc()->n();
+            const auto *attr = this->attr();
+            const auto arch = arch_;
+            const auto *dev_info = dev_info_;
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
 
             // Basic implementation attr support:
             auto attr_skip_mask = smask_t::post_ops | smask_t::fpmath_mode
@@ -113,58 +120,21 @@ struct gen_t : public primitive_t {
                     | smask_t::scales_groups | smask_t::precomputed_reductions
                     | smask_t::zero_points | smask_t::zero_points_data_type
                     | smask_t::zero_points_groups;
-            VDISPATCH_GEMM(attr()->has_default_values(attr_skip_mask),
+            VDISPATCH_GEMM(attr->has_default_values(attr_skip_mask),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_GEMM(
                     !utils::one_of(DNNL_RUNTIME_DIM_VAL, d->m(), d->n(), d->k(),
                             d->lda(), d->ldb(), d->ldc(), d->batch()),
-                    VERBOSE_RUNTIMEDIM_UNSUPPORTED);
-
-            // If m = 1, swap A/B to use more efficient n = 1 kernels if possible.
-            bool check_lda = ((d->transa() == dnnl_notrans && d->lda() == 1)
-                    || (d->transa() == dnnl_trans));
-            swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
-                    || d->transc() == dnnl_trans;
-
-            // We cannot swap A/B if we don't have kernels to support the
-            // swapped data type/alignment requirements. Currently mostly affects
-            // weights-only compression cases, since A/B have different data types
-            swap_ab_ &= !wei_decomp_;
-
-            // No kernels with transposed C, if swap_ab is disabled (e.g. due
-            // to wei_decomp_) - this case cannot be handled.
-            VDISPATCH_GEMM(IMPLICATION(d->transc() == dnnl_trans, swap_ab_),
                     VERBOSE_UNSUPPORTED_TAG);
 
-            if (swap_ab_) {
-                // Do not use transposed B when it is unnecessary
-                if (!transa_ && m == 1) {
-                    transa_ = true;
-                    lda_ = d->k();
-                }
-            }
-
-            // Pad leading dimensions in case of a single row/column.
-            if ((d->k() == 1 && !trans_a()) || (m == 1 && trans_a())) {
-                lda_ = utils::rnd_up(lda_, 16);
-            }
-
-            if ((n == 1 && !trans_b()) || (d->k() == 1 && trans_b())) {
-                ldb_ = utils::rnd_up(ldb_, 16);
-            }
-
-            if (swap_ab_) std::swap(m, n);
-
-            // Check parameters.
             if (utils::one_of(d->c_type(), s32, f16, bf16, f32, u8, s8)
                     && utils::one_of(d->a_type(), u8, s8, u4, s4)) {
                 VDISPATCH_GEMM(
-                        (utils::one_of(d->b_type(), u8, s8) || wei_decomp_),
+                        (utils::one_of(d->b_type(), u8, s8) || wei_decomp()),
                         VERBOSE_UNSUPPORTED_DT);
-
                 VDISPATCH_GEMM(IMPLICATION(utils::one_of(d->c_type(), f32, s8,
                                                    u8, f16, bf16),
-                                       arch_ >= arch_t::xe_hp),
+                                       arch >= arch_t::xe_hp),
                         VERBOSE_ISA_DT_MISMATCH);
             } else if (utils::one_of(d->a_type(), f16, bf16)) {
                 VDISPATCH_GEMM(d->b_type() == d->a_type(),
@@ -174,7 +144,7 @@ struct gen_t : public primitive_t {
                         VERBOSE_INCONSISTENT_DT, "a", "c");
                 VDISPATCH_GEMM(utils::one_of(d->acc_type, d->a_type(), f32),
                         VERBOSE_INCONSISTENT_DT, "a", "acc");
-            } else if (!wei_decomp_) {
+            } else if (!wei_decomp()) {
                 VDISPATCH_GEMM(utils::one_of(d->a_type(), f64, f32, f16, bf16,
                                        f8_e5m2, f8_e4m3, f4_e2m1, f4_e3m0),
                         VERBOSE_UNSUPPORTED_DT);
@@ -191,7 +161,7 @@ struct gen_t : public primitive_t {
                         VERBOSE_UNSUPPORTED_DT);
                 VDISPATCH_GEMM(IMPLICATION(utils::one_of(f64, d->a_type(),
                                                    d->b_type()),
-                                       dev_info_->has_native(f64)),
+                                       dev_info->has_native(f64)),
                         VERBOSE_UNSUPPORTED_DT);
             }
 
@@ -201,8 +171,6 @@ struct gen_t : public primitive_t {
             VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen_kernels");
 
-            // Do not use `with_bias()` as the bias operation may have been
-            // moved into a post-op.
             bool with_bias = d->bias_type() != data_type::undef;
             VDISPATCH_GEMM(utils::one_of(d->bias_type(), data_type::undef, f64,
                                    f32, bf16, f16, f8_e5m2, f8_e4m3)
@@ -213,145 +181,167 @@ struct gen_t : public primitive_t {
                             (d->c_type() != f64 || d->bias_type() == f64)),
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
             VDISPATCH_GEMM(
-                    IMPLICATION(with_sum_ab(),
+                    IMPLICATION(sum_ab() != dnnl_sum_none,
                             !with_bias
-                                    && (attr()->zero_points_.has_default_values(
-                                            DNNL_ARG_DST))),
+                                    && attr->zero_points_.has_default_values(
+                                            DNNL_ARG_DST)),
                     VERBOSE_UNSUPPORTED_ATTR);
 
-            VDISPATCH_GEMM(attr()->post_ops_.check_sum_consistency(d->c_type(),
+            VDISPATCH_GEMM(attr->post_ops_.check_sum_consistency(d->c_type(),
                                    utils::one_of(d->a_type(), s8, u8)),
                     VERBOSE_UNSUPPORTED_POSTOP);
+
             auto c_kernel_type
-                    = jit::convert_dnnl_to_kernel_type(desc_.c_desc.data_type);
-            for (int i = 0; i < desc_.c_desc.ndims; i++) {
-                auto c_stride = desc_.c_desc.format_desc.blocking.strides[i];
+                    = jit::convert_dnnl_to_kernel_type(d->c_desc.data_type);
+            for (int i = 0; i < d->c_desc.ndims; i++) {
+                auto c_stride = d->c_desc.format_desc.blocking.strides[i];
                 VDISPATCH_GEMM(IMPLICATION(c_kernel_type.is4(),
                                        c_stride == 1 || c_stride % 2 == 0),
                         VERBOSE_SHAPE_RESTRICTION);
             }
 
-            bool with_binary = (post_ops_.find(binary) != -1)
-                    || (post_ops_.find(prelu) != -1);
-            bool with_eltwise = (post_ops_.find(eltwise) != -1);
-
             // Check GPU architecture.
-            bool arch_ok = utils::one_of(arch_, arch_t::xe_lp, arch_t::xe_hp,
+            bool arch_ok = utils::one_of(arch, arch_t::xe_lp, arch_t::xe_hp,
                     arch_t::xe_hpg, arch_t::xe_hpc, arch_t::xe2, arch_t::xe3);
-            arch_ok |= (arch_ >= arch_t::xe3p);
-
+            arch_ok |= (arch >= arch_t::xe3p);
             VDISPATCH_GEMM(arch_ok, VERBOSE_UNSUPPORTED_ARCH, "gpu");
-            VDISPATCH_GEMM(IMPLICATION(with_binary, arch_ >= arch_t::xe_hp),
-                    VERBOSE_UNSUPPORTED_ARCH, "gpu");
-
-            // Grouped scales break pre-XeHPG kernels due to increased register pressure
-            bool A_grouped
-                    = 1 < a_quant.group_k && a_quant.group_k < desc()->k();
-            bool B_grouped
-                    = 1 < b_quant.group_k && b_quant.group_k < desc()->k();
-            VDISPATCH_GEMM(IMPLICATION(arch_ == compute::gpu_arch_t::xe_lp,
-                                   !(A_grouped || B_grouped)),
-                    VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
 
             // Size checks for fused reduction kernels.
-            if (with_sum_ab()) {
+            if (sum_ab() != dnnl_sum_none) {
                 auto mnk = d->m() * d->n() * d->k();
-                if (arch_ == arch_t::xe_hpc && d->a_type() == f32)
+                if (arch == arch_t::xe_hpc && d->a_type() == f32)
                     VDISPATCH_GEMM(
                             (mnk <= 256 * 1024 * 1024), VERBOSE_LARGE_SHAPES);
             }
 
+            return status::success;
+        }
+
+        status_t init(impl::engine_t *engine) {
+            using namespace data_type;
+            using arch_t = compute::gpu_arch_t;
+
+            assert(engine->kind() == engine_kind::gpu);
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+
+            CHECK(set_default_formats(false));
+
+            dev_info_ = intel_engine->device_info();
+            arch_ = dev_info_->gpu_arch();
+
+            CHECK(check_problem(engine));
+
+            CHECK(jit::pd_t::init(engine, arch_));
+
+            bool swap = decide_swap_ab(cfg_);
+            // No kernels with transposed C, if swap_ab is disabled (e.g.
+            // due to wei_decomp()) - this case cannot be handled.
+            VDISPATCH_GEMM(
+                    IMPLICATION(cfg_.trans_c(), swap), VERBOSE_UNSUPPORTED_TAG);
+            jit::pad_leading_dims(cfg_, swap);
+            jit::apply_swap_ab(cfg_, swap);
+
+            const auto &cfg = cfg_;
+
+            // Grouped scales break pre-XeHPG kernels due to increased register pressure
+            bool A_grouped
+                    = 1 < cfg.problem.aqGroupK && cfg.problem.aqGroupK < cfg.k;
+            bool B_grouped
+                    = 1 < cfg.problem.bqGroupK && cfg.problem.bqGroupK < cfg.k;
+            VDISPATCH_GEMM(IMPLICATION(arch_ == compute::gpu_arch_t::xe_lp,
+                                   !(A_grouped || B_grouped)),
+                    VERBOSE_UNSUPPORTED_FEATURE, "grouped scales");
+
             // Handle special compute modes.
             kernel_desc_t::compute_mode mode = kernel_desc_t::mode_default;
 
-            if (attr()->mayiconvert(f32, tf32))
-                set_mode(mode, kernel_desc_t::mode_tf32);
-            if (attr()->mayiconvert(f32, bf16))
-                set_mode(mode, kernel_desc_t::mode_bf16x1);
-            if (attr()->mayiconvert(f32, f16))
-                set_mode(mode, kernel_desc_t::mode_f16x1);
-            if (attr()->mayiconvert(f32, f32))
-                set_mode(mode, kernel_desc_t::mode_strict);
-            if (attr()->deterministic_)
+            set_mode(mode,
+                    static_cast<kernel_desc_t::compute_mode>(cfg.fpmath_modes));
+            if (cfg.deterministic)
                 set_mode(mode, kernel_desc_t::mode_deterministic);
-            if (attr()->acc_mode_ == accumulation_mode::relaxed)
+            if (cfg.acc_mode == accumulation_mode::relaxed)
                 set_mode(mode, kernel_desc_t::mode_relaxed_acc);
 
-            if (wei_decomp_) { set_mode(mode, kernel_desc_t::mode_w_decomp); }
+            if (cfg.wei_decomp) {
+                set_mode(mode, kernel_desc_t::mode_w_decomp);
+            }
 
             // GEMM kernels down convert the following parameters to
             // int/uint32_t
-            VDISPATCH_GEMM(std::max({m, n, d->k(), d->batch()})
+            VDISPATCH_GEMM(std::max({cfg.m, cfg.n, cfg.k, cfg.batch()})
                             <= std::numeric_limits<int32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
-            VDISPATCH_GEMM(
-                    std::max({ld(DNNL_ARG_A), ld(DNNL_ARG_B), ld(DNNL_ARG_C)})
+            VDISPATCH_GEMM(std::max({cfg.lda, cfg.ldb, cfg.ldc})
                             <= std::numeric_limits<uint32_t>::max(),
                     VERBOSE_SHAPE_RESTRICTION);
 
-            gemmstone::GEMMProblem problem;
-            CHECK(init_GEMMProblem(problem, intel_engine));
+            CHECK(finalize_problem(cfg_, intel_engine));
 
-            VDISPATCH_GEMM(IMPLICATION(problem.Tc == gemmstone::Type::f64,
+            // Post-op flags valid only after finalize_problem lowers bias/scale.
+            bool with_binary = cfg.problem.hasBinaryPostOp();
+            bool with_eltwise = cfg.problem.hasEltwisePostOp();
+            VDISPATCH_GEMM(IMPLICATION(with_binary, arch_ >= arch_t::xe_hp),
+                    VERBOSE_UNSUPPORTED_ARCH, "gpu");
+            VDISPATCH_GEMM(IMPLICATION(cfg.problem.Tc == gemmstone::Type::f64,
                                    !with_eltwise && !with_binary),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
+            kernel_desc_t kernel_desc;
             if (arch_ >= arch_t::xe3p)
-                kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
+                kernel_desc.set_efficient_64b(dev_info_->is_efficient_64bit());
 
             bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
-            auto lda = ld(DNNL_ARG_A);
-            auto ldb = ld(DNNL_ARG_B);
-            if (swap_ab_) std::swap(lda, ldb);
-            auto entries = kernel_desc_.select_kernel(*dev_info_, mode, problem,
-                    alpha(), beta(), m, n, d->k(), lda, ldb, d->ldc(),
-                    d->batch());
+            gpu_assert(cfg.finalized_)
+                    << "select_kernel reads an unfinalized problem";
+            auto entries = kernel_desc.select_kernel(*dev_info_, mode,
+                    cfg.problem, cfg.alpha(), cfg.beta, cfg.m, cfg.n, cfg.k,
+                    cfg.lda, cfg.ldb, cfg.ldc, cfg.batch());
 
             for (auto &entry : entries) {
-                kernel_desc_.set_entry(entry);
-                kernel_desc_.set_problem(problem);
-                auto status = kernel_desc_.finalize();
+                kernel_desc.set_entry(entry);
+                kernel_desc.set_problem(cfg.problem);
+                auto status = kernel_desc.finalize();
                 // select_kernel can return a strategy that failed in the finalize call
                 bool valid = status == status::success;
                 if (!valid && print_verbose)
                     dnnl::impl::verbose_printf(
                             "info,gpu,gemm,skipping:%s,Strategy finalization "
                             "failed.\n",
-                            kernel_desc_.entry().str().c_str());
+                            kernel_desc.entry().str().c_str());
                 // Global k-parallel kernels don't support post-ops or non-f32/s32
                 //   accumulation unless fusion is enabled.
-                if (kernel_desc_.driver_info()->kParallel()
-                        && !kernel_desc_.driver_info()->fusedPostOps()) {
-                    bool po_valid = !non_scale_po_
-                            && !(with_sum_ && with_c_scales())
-                            && utils::one_of(d->c_type(), f32, s32);
+                if (kernel_desc.driver_info()->kParallel()
+                        && !kernel_desc.driver_info()->fusedPostOps()) {
+                    bool po_valid = !cfg.non_scale_po()
+                            && !(cfg.with_sum() && cfg.with_c_scales())
+                            && utils::one_of(cfg.c_type(), f32, s32);
                     if (!po_valid && print_verbose)
                         dnnl::impl::verbose_printf(
                                 "info,gpu,gemm,skipping:%s,Invalid post op.\n",
-                                kernel_desc_.entry().str().c_str());
+                                kernel_desc.entry().str().c_str());
                     valid &= po_valid;
                 }
                 // Limited post-op support for low-precision accumulation.
-                if (kernel_desc_.problem()->Tc.size() < 4) {
+                if (kernel_desc.problem()->Tc.size() < 4) {
                     bool need_x32_acc = with_binary
-                            || !IMPLICATION(with_sum_, sum_at_begin_);
+                            || !IMPLICATION(cfg.with_sum(), cfg.sum_at_begin());
                     valid &= !need_x32_acc;
                     if (need_x32_acc && print_verbose)
                         dnnl::impl::verbose_printf(
                                 "info,gpu,gemm,skipping:%s,Invalid post op.\n",
-                                kernel_desc_.entry().str().c_str());
+                                kernel_desc.entry().str().c_str());
                 }
                 // Ensure kernel can be run deterministically if required.
-                if (attr()->deterministic_) {
+                if (cfg.deterministic) {
                     bool deterministic
-                            = !kernel_desc_.driver_info()->nondeterministic();
+                            = !kernel_desc.driver_info()->nondeterministic();
                     valid &= deterministic;
                     if (!deterministic && print_verbose)
                         dnnl::impl::verbose_printf(
                                 "info,gpu,gemm,skipping:%s,Non deterministic "
                                 "kernel.\n",
-                                kernel_desc_.entry().str().c_str());
+                                kernel_desc.entry().str().c_str());
                 }
 
                 if (valid) {
@@ -362,7 +352,7 @@ struct gen_t : public primitive_t {
                         auto key = std::make_shared<
                                 trivial_key_container_t<dnnl::impl::gpu::intel::
                                                 gemm::jit::gen_nocopy_desc_t>>(
-                                kernel_desc_, intel_engine->engine_id());
+                                kernel_desc, intel_engine->engine_id());
                         cache_state_t kernel_cache_status;
                         auto kernel_name = "gemm_kernel";
                         auto verbose
@@ -393,6 +383,10 @@ struct gen_t : public primitive_t {
 
             VDISPATCH_GEMM(
                     kernel_success, "matching kernel not found in catalog");
+
+            // Keep the finalized desc; cfg exposes only the problem.
+            kernel_desc_ = kernel_desc;
+            cfg_.problem = *kernel_desc.problem();
 
             init_scratchpad();
 
@@ -534,14 +528,14 @@ struct gen_t : public primitive_t {
 
         void init_scratchpad() {
             using namespace gemmstone;
-            const auto *info = kernel_desc()->driver_info();
+            const auto *info = kernel_desc_.driver_info();
             if (info->needsTempC()) {
                 auto scratchpad = scratchpad_registry().registrar();
 
                 int temp_c_sz = nstl::max(
-                        (int)types::data_type_size(desc()->c_type()), 4);
+                        (int)types::data_type_size(cfg_.c_type()), 4);
                 int temp_c_elems = info->wgTile(LoopM) * info->wgTile(LoopN);
-                if (with_sum_ab())
+                if (cfg_.with_sum_ab())
                     temp_c_elems += nstl::max(
                             info->wgTile(LoopM), info->wgTile(LoopN));
                 temp_c_elems = utils::rnd_up(temp_c_elems, 64);
@@ -562,12 +556,8 @@ struct gen_t : public primitive_t {
             }
         }
 
-        const jit::gen_nocopy_desc_t *kernel_desc() const {
-            return &kernel_desc_;
-        }
-
         int max_k_sliced_groups() const {
-            const auto *info = kernel_desc()->driver_info();
+            const auto *info = kernel_desc_.driver_info();
 
             auto groups = dev_info_->hw_threads(info->grfCount)
                     / (info->wg[gemmstone::LoopM] * info->wg[gemmstone::LoopN]);
@@ -576,14 +566,12 @@ struct gen_t : public primitive_t {
             return groups;
         }
 
-        size_t dyn_offset_a = 0;
-        size_t dyn_offset_b = 0;
-        size_t dyn_offset_c = 0;
-        size_t dyn_offset_co = 0;
+        const kernel_desc_t &kernel_desc() const { return kernel_desc_; }
 
         const compute::device_info_t *dev_info_ = nullptr;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
+        // Finalized kernel desc selected in init(); cfg keeps only the problem.
         kernel_desc_t kernel_desc_;
     };
 
@@ -599,11 +587,11 @@ struct gen_t : public primitive_t {
 
     status_t init_nocopy(impl::engine_t *engine) {
         using namespace data_type;
-        auto kd = pd()->kernel_desc();
+        const auto &desc = pd()->kernel_desc();
 
-        CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", *kd));
+        CHECK(create_kernel(engine, nocopy_kernel_, "gemm_kernel", desc));
 
-        scalar_type_ = kd->scalar_type();
+        scalar_type_ = desc.scalar_type();
         const auto *info = nocopy_info();
 
         if (need_zero_buffer()) {
@@ -629,7 +617,7 @@ struct gen_t : public primitive_t {
                 // IFP on (default) forces round-robin thread arbitration.
                 // Disable it on a clear mismatch with the main kernel to
                 // avoid a thread arbitration switch between dispatches.
-                params.no_subgroup_ifp = (kd->strategy()->arbitrationMode
+                params.no_subgroup_ifp = (desc.strategy()->arbitrationMode
                         != ngen::ThreadArbitrationMode::RoundRobin);
                 CHECK(create_kernel(
                         engine, zero_fill_kernel_, "gemm_zero_fill", params));
@@ -643,26 +631,18 @@ struct gen_t : public primitive_t {
 
 private:
     status_t launch_nocopy(const exec_ctx_t &ctx, intel::stream_t *s,
-            zero_pool_t *zero_pool, const memory_storage_t &a,
-            const memory_storage_t &b, const memory_storage_t &c,
-            const memory_storage_t *ao, const memory_storage_t *bo,
-            int16_t ao_host_scalar, int16_t bo_host_scalar,
-            const memory_storage_t *a_scales, const memory_storage_t *b_scales,
-            const memory_storage_t *c_scales, const memory_storage_t *ag,
-            const memory_storage_t *bg, const memory_storage_t &co,
-            int16_t co_host_scalar, const memory_storage_t *c_temp,
-            const memory_storage_t *zero_buf_scratchpad,
-            const memory_storage_t *sround_seed, int po_count,
+            zero_pool_t *zero_pool, const jit::exec_args_t &exec_args,
+            const memory_storage_t *c_temp,
+            const memory_storage_t *zero_buf_scratchpad, int po_count,
             const memory_storage_t **po_src, int64_t offset_a, int64_t offset_b,
             int64_t offset_c, int64_t offset_aq, int64_t offset_bq,
-            int64_t offset_co, int64_t *offset_po_src, int32_t lda, int32_t ldb,
-            int32_t ldc, int32_t m, int32_t n, int32_t k, int32_t k0,
-            float alpha, float beta, int32_t cmask, bool last_k_block,
-            bool swap_ab, bool disable_hilbert) const;
+            int64_t offset_co, int64_t *offset_po_src, int32_t m, int32_t n,
+            int32_t k, int32_t k0, float alpha, float beta, bool last_k_block,
+            bool disable_hilbert) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     const gemmstone::CommonDriverInfo *nocopy_info() const {
-        return pd()->kernel_desc()->driver_info();
+        return pd()->kernel_desc().driver_info();
     }
 
     bool need_zero_buffer() const {

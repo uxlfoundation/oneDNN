@@ -14,26 +14,85 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cstring>
 #include <thread>
+#include <vector>
 
 #include "gtest/gtest.h"
 
-#include "graph/unit/unit_test_common.hpp"
-#include "graph/unit/utils.hpp"
+#include "common/dnnl_thread.hpp"
+#include "common/engine.hpp"
 
-#include "interface/backend.hpp"
-#include "interface/logical_tensor.hpp"
-#include "interface/op.hpp"
-#include "interface/partition.hpp"
-#include "interface/partition_cache.hpp"
+#include "graph/interface/backend.hpp"
+#include "graph/interface/graph.hpp"
+#include "graph/interface/logical_tensor.hpp"
+#include "graph/interface/op.hpp"
+#include "graph/interface/partition.hpp"
+#include "graph/interface/partition_cache.hpp"
+#include "graph/interface/partition_hashing.hpp"
 
 #include "oneapi/dnnl/dnnl.hpp"
 
 using dnnl::impl::cache_state_t;
-namespace utils = dnnl::graph::tests::unit::utils;
 
 namespace dnnl {
 namespace graph {
+
+// ---------------------------------------------------------------------------
+// Helpers local to this test file, replacing the old graph-unit test harness.
+// ---------------------------------------------------------------------------
+namespace {
+
+impl::graph::engine_t *test_engine() {
+    static dnnl::engine eng(dnnl::engine::kind::cpu, 0);
+    return eng.get();
+}
+
+impl::graph::logical_tensor_t logical_tensor_init(size_t id,
+        const std::vector<impl::graph::dim_t> &dims,
+        impl::graph::data_type_t dtype,
+        impl::graph::layout_type_t ltype = impl::graph::layout_type::strided) {
+    impl::graph::logical_tensor_t val;
+    memset(&val, 0, sizeof(val));
+
+    val.id = id;
+    val.data_type = dtype;
+    val.ndims = static_cast<int>(dims.size());
+    val.property = impl::graph::property_type::undef;
+    val.layout_type = ltype;
+    if (val.ndims == 0) return val;
+
+    for (size_t d = 0; d < dims.size(); ++d)
+        val.dims[d] = dims[d];
+
+    if (ltype == impl::graph::layout_type::strided) {
+        val.layout.strides[val.ndims - 1] = 1;
+        for (int s = val.ndims - 2; s >= 0; --s) {
+            size_t si = static_cast<size_t>(s);
+            val.layout.strides[si] = std::max<impl::dim_t>(dims[si + 1], 1)
+                    * val.layout.strides[si + 1];
+        }
+    }
+    return val;
+}
+
+int get_compiled_partition_cache_size() {
+    int result = 0;
+#ifndef DNNL_GRAPH_DISABLE_COMPILED_PARTITION_CACHE
+    result = impl::graph::compiled_partition_cache().get_size();
+#endif
+    return result;
+}
+
+int set_compiled_partition_cache_capacity(int capacity) {
+    if (capacity < 0) return -1;
+#ifndef DNNL_GRAPH_DISABLE_COMPILED_PARTITION_CACHE
+    return impl::graph::compiled_partition_cache().set_capacity(capacity);
+#endif
+    return 0;
+}
+
+} // anonymous namespace
 
 TEST(test_interface_compiled_partition, CacheSingleOpCase) {
 #if !defined(NDEBUG) && (DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL)
@@ -47,7 +106,7 @@ TEST(test_interface_compiled_partition, CacheSingleOpCase) {
     GTEST_SKIP();
 #else
     const size_t max_batch = 4;
-    impl::engine_t *eng = get_engine();
+    impl::engine_t *eng = test_engine();
     std::vector<impl::graph::op_kind_t> kind_set {
             impl::graph::op_kind::ReLU, impl::graph::op_kind::Tanh};
     const size_t num_eltwise_kind = kind_set.size();
@@ -61,11 +120,11 @@ TEST(test_interface_compiled_partition, CacheSingleOpCase) {
     for (size_t batch = 0; batch < max_batch; ++batch) {
         for (size_t op_i = 0; op_i < kind_set.size(); ++op_i) {
             impl::graph::op_kind_t kind = kind_set[op_i];
-            impl::graph::logical_tensor_t input = utils::logical_tensor_init(0,
+            impl::graph::logical_tensor_t input = logical_tensor_init(0,
                     {(int64_t)(batch * (op_i + 1) + 1), 1, 1, 1},
                     impl::graph::data_type::f32,
                     impl::graph::layout_type::strided);
-            impl::graph::logical_tensor_t output = utils::logical_tensor_init(1,
+            impl::graph::logical_tensor_t output = logical_tensor_init(1,
                     {(int64_t)(batch * (op_i + 1) + 1), 1, 1, 1},
                     impl::graph::data_type::f32,
                     impl::graph::layout_type::strided);
@@ -139,12 +198,6 @@ TEST(test_interface_compiled_partition, CacheSingleOpCase) {
 }
 
 TEST(test_interface_compiled_partition, CacheEngine) {
-    dnnl::engine::kind ekind;
-    if (get_test_engine_kind() == impl::graph::engine_kind::cpu) {
-        ekind = dnnl::engine::kind::cpu;
-    } else {
-        ekind = dnnl::engine::kind::gpu;
-    }
     const size_t batch_num = 2;
 
     impl::graph::op_kind_t kind = impl::graph::op_kind::ReLU;
@@ -154,12 +207,12 @@ TEST(test_interface_compiled_partition, CacheEngine) {
     set_compiled_partition_cache_capacity(1024);
 
     for (size_t batch = 0; batch < batch_num; ++batch) {
-        dnnl::engine engine = dnnl::engine(ekind, 0);
+        dnnl::engine engine = dnnl::engine(dnnl::engine::kind::cpu, 0);
         impl::engine_t *eng = engine.get();
-        impl::graph::logical_tensor_t input = utils::logical_tensor_init(0,
+        impl::graph::logical_tensor_t input = logical_tensor_init(0,
                 {1, 1, 1, 1}, impl::graph::data_type::f32,
                 impl::graph::layout_type::strided);
-        impl::graph::logical_tensor_t output = utils::logical_tensor_init(1,
+        impl::graph::logical_tensor_t output = logical_tensor_init(1,
                 {1, 1, 1, 1}, impl::graph::data_type::f32,
                 impl::graph::layout_type::strided);
 
@@ -203,13 +256,6 @@ TEST(test_interface_compiled_partition, CacheEngine) {
 }
 
 TEST(test_interface_compiled_partition, CacheFpmath) {
-    dnnl::engine::kind ekind;
-    if (get_test_engine_kind() == impl::graph::engine_kind::cpu) {
-        ekind = dnnl::engine::kind::cpu;
-    } else {
-        ekind = dnnl::engine::kind::gpu;
-    }
-
     impl::graph::op_kind_t kind = impl::graph::op_kind::MatMul;
 
     const std::vector<impl::graph::fpmath_t> fp_math_vec
@@ -222,17 +268,14 @@ TEST(test_interface_compiled_partition, CacheFpmath) {
     set_compiled_partition_cache_capacity(0);
     set_compiled_partition_cache_capacity(1024);
 
-    dnnl::engine engine = dnnl::engine(ekind, 0);
+    dnnl::engine engine = dnnl::engine(dnnl::engine::kind::cpu, 0);
     impl::engine_t *eng = engine.get();
-    impl::graph::logical_tensor_t src = utils::logical_tensor_init(0,
-            {1, 1, 1, 1}, impl::graph::data_type::f32,
-            impl::graph::layout_type::strided);
-    impl::graph::logical_tensor_t weight = utils::logical_tensor_init(1,
-            {1, 1, 1, 1}, impl::graph::data_type::f32,
-            impl::graph::layout_type::strided);
-    impl::graph::logical_tensor_t dst = utils::logical_tensor_init(2,
-            {1, 1, 1, 1}, impl::graph::data_type::f32,
-            impl::graph::layout_type::strided);
+    impl::graph::logical_tensor_t src = logical_tensor_init(0, {1, 1, 1, 1},
+            impl::graph::data_type::f32, impl::graph::layout_type::strided);
+    impl::graph::logical_tensor_t weight = logical_tensor_init(1, {1, 1, 1, 1},
+            impl::graph::data_type::f32, impl::graph::layout_type::strided);
+    impl::graph::logical_tensor_t dst = logical_tensor_init(2, {1, 1, 1, 1},
+            impl::graph::data_type::f32, impl::graph::layout_type::strided);
     impl::graph::op_t matmul {0, kind, "matmul"};
     matmul.add_input(src);
     matmul.add_input(weight);
@@ -272,20 +315,21 @@ TEST(test_interface_compiled_partition, CacheFpmath) {
 #ifdef DNNL_GRAPH_DISABLE_COMPILED_PARTITION_CACHE
     ASSERT_EQ(get_compiled_partition_cache_size(), 0);
 #else
-    ASSERT_EQ(get_compiled_partition_cache_size(), fp_math_vec.size() / 2);
+    ASSERT_EQ(get_compiled_partition_cache_size(),
+            static_cast<int>(fp_math_vec.size() / 2));
 #endif
 }
 
 TEST(test_interface_compiled_partition, CacheMethod) {
     namespace graph = dnnl::impl::graph;
 
-    graph::engine_t &eng = *get_engine();
+    graph::engine_t &eng = *test_engine();
     std::vector<graph::op_kind_t> kind_set {
             graph::op_kind::ReLU, graph::op_kind::ReLU, graph::op_kind::Tanh};
 
-    graph::logical_tensor_t input = utils::logical_tensor_init(0, {1, 1, 1, 1},
+    graph::logical_tensor_t input = logical_tensor_init(0, {1, 1, 1, 1},
             graph::data_type::f32, graph::layout_type::strided);
-    graph::logical_tensor_t output = utils::logical_tensor_init(1, {1, 1, 1, 1},
+    graph::logical_tensor_t output = logical_tensor_init(1, {1, 1, 1, 1},
             graph::data_type::f32, graph::layout_type::strided);
     // Create op
     auto elt = std::make_shared<graph::op_t>(1, graph::op_kind::Abs, "elt");

@@ -20,7 +20,12 @@ file(GLOB SOURCES
     )
 
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_graph_interface)
+# Keep next-to-source unit tests (*_test.cpp) out of the shipped library.
+dnnl_exclude_internal_tests(SOURCES)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
+
+# Register any *_test.cpp living in this directory as standalone gtest binaries.
+dnnl_add_internal_unit_tests(${OBJ_LIB})

@@ -57,14 +57,14 @@ jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
         static constexpr bool preserve_vmm = false;
         static constexpr bool use_exact_tail_scalar_bcast = false;
         const auto dst_md_wrapper = memory_desc_wrapper(brg.dst_md());
-        const size_t tail = tail_length();
+        const int tail = tail_length();
 
         static const bcast_set_t enabled_bcast_strategy
                 = {broadcasting_strategy_t::scalar,
                         broadcasting_strategy_t::per_oc,
                         broadcasting_strategy_t::no_broadcast};
         const binary_injector::rhs_arg_static_params_t rhs_sp {
-                static_cast<size_t>(vmm_b().getIdx()), r14, r15, r13,
+                vmm_b().getIdx(), r14, r15, r13,
                 preserve_gpr, preserve_vmm,
                 GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(data_C_ptr_),
                 dst_md_wrapper, tail, k_mask, use_exact_tail_scalar_bcast};
@@ -228,7 +228,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::set_A_B_matrices() {
     }
 
     add(reg_aux_A, reg_a_offset);
-    lea(reg_aux_B, ptr[reg_aux_B + reg_aux_N * brg.typesize_B]);
+    lea(reg_aux_B,
+            ptr[reg_aux_B + reg_aux_N * xbyak_address_scale(brg.typesize_B)]);
 }
 
 template <typename Wmm>
@@ -459,7 +460,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
 
     if (brg.with_bias) {
         reg_aux_bias.restore();
-        lea(reg_aux_bias, ptr[reg_aux_bias + reg_aux_N * brg.typesize_bias]);
+        lea(reg_aux_bias,
+                ptr[reg_aux_bias
+                        + reg_aux_N * xbyak_address_scale(brg.typesize_bias)]);
     }
 
     for_(int v_i = 0; v_i < v_substep; ++v_i)
@@ -710,7 +713,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
     for (int n = 0; n < n_blocks; n++) {
         const int substep_simd = get_substep_simd(n, v_i, has_n_tail);
         if (substep_simd <= 0) continue;
-        const size_t offset = comp_offset(n);
+        const dim_t offset = comp_offset(n);
         if (brg.req_s8s8_compensation) {
             const Vmm vmm_comp = vmm_s8s8_comp();
             uni_vmovups(vmm_comp,
@@ -902,7 +905,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
             const Vmm vmm_zp = isa_has_masks(brg.isa_impl)
                     ? maybe_mask(vmm_zp_comp(), is_tail_block, false)
                     : vmm_zp_comp();
-            const size_t offset = comp_offset(n);
+            const dim_t offset = comp_offset(n);
             if (IMPLICATION(is_tail_block, isa_has_masks(brg.isa_impl))) {
                 if (is_src_zp_bcast_) {
                     if (is_superset(brg.isa_impl, avx512_core))
@@ -1046,7 +1049,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
     const int v_substep = vnni_substep();
     assert(max_bvmms > 0);
 
-    auto dot_product = [&](Vmm vmma, Vmm vmmb, int m_i, int n_i, int v_i) {
+    auto dot_product
+            = [&](Vmm vmma, Vmm vmmb, int m_i, int n_i, int v_i) {
         auto vmm_acc = accm(m_blocks, n_blocks, m_i, n_i, v_i);
         if (brg.is_f32) {
             if (is_fma_embd()) {
@@ -1185,8 +1189,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(
-        const int m_blocks) {
+void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(int m_blocks) {
     const bool do_check_effective_padding = check_effective_padding();
     Label no_top_padding;
 
@@ -1194,7 +1197,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(
         if (do_check_effective_padding) {
             Label done_adjust_bottom_padding;
             mov(reg_aux_A_vpad_bottom, reg_aux_M);
-            add(reg_aux_A_vpad_bottom, m_blocks - M());
+            sub(reg_aux_A_vpad_bottom, M() - m_blocks);
             add(reg_aux_A_vpad_bottom,
                     ptr[reg_aux_batch_addr
                             + GET_OFF_BATCH_ELEMENT(vvpad.bottom)]);
@@ -1235,7 +1238,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::get_batch_padding_info() {
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::vertical_pad_kernel(
-        const int m_blocks, const int n_blocks, bool has_n_tail) {
+        int m_blocks, int n_blocks, bool has_n_tail) {
     const int tpad = brg.brgattr.max_top_vpad;
     const int bpad = brg.brgattr.max_bottom_vpad;
     if (tpad > 0) {
@@ -1264,7 +1267,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::vertical_pad_kernel(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::call_brdgmm_microkernel(
-        const int m_blocks, const int n_blocks, bool has_n_tail, int shift_a) {
+        int m_blocks, int n_blocks, bool has_n_tail, int shift_a) {
 
     // padding for vertical dimensions
     const int tpad = brg.brgattr.max_top_vpad;
@@ -1294,7 +1297,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::call_brdgmm_microkernel(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::batch_loop(
-        const int m_blocks, const int n_blocks, bool has_n_tail) {
+        int m_blocks, int n_blocks, bool has_n_tail) {
 
     Label bs_loop_label, done_bs_loop;
     load_accumulators(m_blocks, n_blocks);
@@ -1340,14 +1343,14 @@ template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
 
     const bool has_m_block2_tail = m_block2_tail() > 0;
-    const int loop_m = (nb_m_block2() - has_m_block2_tail);
+    const dim_t loop_m = nb_m_block2() - has_m_block2_tail;
     const bool do_loop_m = loop_m > 1;
 
     const bool has_n_block2_tail = n_block2_tail() > 0;
     const bool need_separate_n_block1_tail_block = n_block1_tail() != 0
             && !has_n_block2_tail && nb_n_block2() > 1
             && !isa_has_masks(brg.isa_impl);
-    const int loop_n = nb_n_block2() - has_n_block2_tail
+    const dim_t loop_n = nb_n_block2() - has_n_block2_tail
             - need_separate_n_block1_tail_block;
     const bool do_loop_n = loop_n > 1;
     const bool loop_n_update_aux_ptrs = do_loop_n || (loop_n < nb_n_block2());
@@ -1355,8 +1358,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
     auto n_loop = [&](int m_blocks) {
         Label n_loop_label;
         const int n_blocks = n_block2();
-        const int n_loop_step = oc_logical_offset(n_blocks);
-        const int n_loop_work = loop_n * n_blocks * n_block1();
+        const dim_t n_loop_step = oc_logical_offset(n_blocks);
+        const dim_t n_loop_work = loop_n * n_blocks * n_block1();
         const bool vlen_tail_in_loop = n_block1_tail() != 0
                 && !need_separate_n_block1_tail_block && !has_n_block2_tail;
 
@@ -1418,13 +1421,24 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
 
             if (do_loop_m || has_m_block2_tail) {
                 add(reg_aux_M, m_blocks);
-                const int n_loop_offset
+                const dim_t n_loop_offset
                         = loop_n_update_aux_ptrs * loop_n * n_block2();
-                add(reg_a_offset, A_offset(m_blocks, -n_loop_offset));
+                // n_loop_offset is a tensor-scale N position (in n_block1
+                // units); A_offset/C_offset/D_offset's `n` parameter is the
+                // bounded per-iteration block index, so narrow explicitly at
+                // this documented boundary.
+                const int n_loop_offset_i = static_cast<int>(n_loop_offset);
+                const dim_t a_shift = A_offset(m_blocks, 0)
+                        - A_offset(0, n_loop_offset_i);
+                const dim_t c_shift = C_offset(m_blocks, 0, 0)
+                        - C_offset(0, n_loop_offset_i, 0);
+                const dim_t d_shift = D_offset(m_blocks, 0, 0)
+                        - D_offset(0, n_loop_offset_i, 0);
+                add(reg_a_offset, a_shift);
                 reg_aux_C.restore();
-                add(reg_aux_C, C_offset(m_blocks, -n_loop_offset, 0));
+                add(reg_aux_C, c_shift);
                 reg_aux_C.save();
-                add(reg_aux_D, D_offset(m_blocks, -n_loop_offset, 0));
+                add(reg_aux_D, d_shift);
             }
 
             if (do_loop_m) {

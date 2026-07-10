@@ -37,15 +37,18 @@ public:
     brgemm_desc_container_t() = default;
     brgemm_desc_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
-    inline const brgemm_desc_t *operator[](int idx) const { return refs_[idx]; }
+    inline const brgemm_desc_t *operator[](int idx) const {
+        assert(idx >= 0);
+        return refs_[idx];
+    }
 
-    bool insert(dim_t idx, brgemm_desc_t &brg) {
+    bool insert(int idx, brgemm_desc_t &brg) {
         std::vector<char> dummy_bd_mask;
         std::vector<brgemm_batch_element_t> dummy_static_offsets;
         return insert(idx, brg, dummy_bd_mask, dummy_static_offsets);
     }
 
-    bool insert(dim_t idx, brgemm_desc_t &brg, const std::vector<char> &bd_mask,
+    bool insert(int idx, brgemm_desc_t &brg, const std::vector<char> &bd_mask,
             const std::vector<brgemm_batch_element_t> &static_offsets);
 
     int insert(brgemm_desc_t &brg) {
@@ -75,10 +78,11 @@ struct brgemm_kernel_container_t {
     brgemm_kernel_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
     inline const brgemm_kernel_t *operator[](int idx) const {
+        assert(idx >= 0);
         return refs_[idx];
     }
 
-    status_t insert(dim_t idx, const brgemm_desc_t *brg);
+    status_t insert(int idx, const brgemm_desc_t *brg);
     static bool brgemm_kernel_cmp(const std::shared_ptr<brgemm_kernel_t> &lhs,
             const std::shared_ptr<brgemm_kernel_t> &rhs);
 
@@ -117,12 +121,15 @@ struct brgemm_palette_container_t {
     brgemm_palette_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
 
-    inline const char *operator[](dim_t idx) const { return refs_[idx]->data(); }
+    inline const char *operator[](int idx) const {
+        assert(idx >= 0);
+        return refs_[idx]->data();
+    }
 
-    bool insert(dim_t idx, const brgemm_desc_t *brg);
-    bool insert(dim_t idx, const brgemm_desc_t &brg) { return insert(idx, &brg); }
+    bool insert(int idx, const brgemm_desc_t *brg);
+    bool insert(int idx, const brgemm_desc_t &brg) { return insert(idx, &brg); }
 
-    inline void maybe_tile_configure(bool is_amx, dim_t &idx, dim_t new_idx) const {
+    inline void maybe_tile_configure(bool is_amx, int &idx, int new_idx) const {
         if (idx == new_idx) return;
         if (is_amx && (idx < 0 || refs_[idx] != refs_[new_idx]))
             amx_tile_configure(refs_[new_idx]->data());

@@ -1,0 +1,21 @@
+# Asymmetric-head SDPA shapes: Q/K head size (d_qk) != V head size (d_v).
+# These exercise the GPU micro kernel path that decouples the QK and V head
+# sizes (cf. tests/gtests/internals/test_sdpa.cpp AsymmetricHeads suites).
+# Only d_qk > d_v is covered: the V-side tile of the config chosen for d_qk
+# must be able to hold d_v, so d_v <= d_qk on the supported configs.
+# Format: Q_dims:K_dims:V_dims  (batch x heads x seq x head_dim)
+#   Q = mb x H x S_q  x d_qk
+#   K = mb x H x d_qk x S_kv   (K stored transposed)
+#   V = mb x H x S_kv x d_v
+
+# 16 heads, seq=384, d_qk=64, d_v=32
+1x16x384x64:1x16x64x384:1x16x384x32
+
+# 16 heads, seq=384, d_qk=128, d_v=64
+1x16x384x128:1x16x128x384:1x16x384x64
+
+# 16 heads, seq=384, d_qk=128, d_v=32
+1x16x384x128:1x16x128x384:1x16x384x32
+
+# Batch > 1: 8 heads, seq=384, d_qk=128, d_v=64
+2x8x384x128:2x8x128x384:2x8x384x64

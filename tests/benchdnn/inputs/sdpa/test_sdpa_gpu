@@ -53,5 +53,15 @@
 --mask=causal_top_left
 --batch=shapes_transformer_gpu
 
+# Asymmetric heads (d_qk > d_v)
+--reset
+--dt=f16,bf16
+--batch=shapes_asymmetric_heads
+
+--reset
+--dt=f16,bf16
+--mask=causal_top_left
+--batch=shapes_asymmetric_heads
+
 # CI tests
 --batch=test_sdpa_ci

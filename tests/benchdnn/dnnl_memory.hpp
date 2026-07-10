@@ -85,11 +85,12 @@ struct dnn_mem_t {
 
     ~dnn_mem_t() { cleanup(); }
 
-    int reorder(const dnn_mem_t &rhs, const_dnnl_primitive_attr_t attr,
+    int reorder(const dnn_mem_t &rhs, res_t *res,
+            const_dnnl_primitive_attr_t attr,
             dnnl_data_type_t swap_dt = dnnl_data_type_undef);
-    int reorder(const dnn_mem_t &rhs,
+    int reorder(const dnn_mem_t &rhs, res_t *res,
             dnnl_data_type_t swap_dt = dnnl_data_type_undef) {
-        return reorder(rhs, nullptr, swap_dt);
+        return reorder(rhs, res, nullptr, swap_dt);
     }
 
     size_t size(int index = 0) const;

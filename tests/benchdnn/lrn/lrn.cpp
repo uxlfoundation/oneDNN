@@ -35,10 +35,10 @@
 namespace lrn {
 
 int fill_dat(int exec_arg, const prb_t *prb, data_kind_t kind,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -58,19 +58,19 @@ int fill_dat(int exec_arg, const prb_t *prb, data_kind_t kind,
         mem_fp.set_f32_elem(i, value);
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
 
-int fill_src(
-        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
-    return fill_dat(exec_arg, prb, SRC, mem_dt, mem_fp);
+int fill_src(int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt,
+        dnn_mem_t &mem_fp, res_t *res) {
+    return fill_dat(exec_arg, prb, SRC, mem_dt, mem_fp, res);
 }
 
-int fill_dst(
-        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
-    return fill_dat(exec_arg, prb, DST, mem_dt, mem_fp);
+int fill_dst(int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt,
+        dnn_mem_t &mem_fp, res_t *res) {
+    return fill_dat(exec_arg, prb, DST, mem_dt, mem_fp, res);
 }
 
 dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
@@ -183,10 +183,10 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_src(exec_arg, prb, mem, ref_mem), WARN);
+                SAFE(fill_src(exec_arg, prb, mem, ref_mem, res), WARN);
                 break;
             case DNNL_ARG_DIFF_DST:
-                SAFE(fill_dst(exec_arg, prb, mem, ref_mem), WARN);
+                SAFE(fill_dst(exec_arg, prb, mem, ref_mem, res), WARN);
                 break;
             default: break;
         }
@@ -247,7 +247,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = prb->dir & FLAG_FWD ? v_prim[0] : v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, v_prim[0], /*override_dir_with_fwd=*/true);
+    init_memory_args(
+            mem_map, prb, v_prim[0], res, /*override_dir_with_fwd=*/true);
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
@@ -264,7 +265,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     if (prb->dir & FLAG_BWD) {
         // Pass same memory map as we need data from forward on backward.
-        init_memory_args(mem_map, prb, v_prim[1]);
+        init_memory_args(mem_map, prb, v_prim[1], res);
         TIME_FILL(SAFE(
                 init_ref_memory_args(ref_mem_map, mem_map, v_prim[1], prb, res),
                 WARN));

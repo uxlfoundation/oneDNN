@@ -65,10 +65,10 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
 }
 
 int fill_src(int exec_arg, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp) {
+        dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -110,7 +110,7 @@ int fill_src(int exec_arg, dnnl_data_type_t dt, dnn_mem_t &mem_dt,
         }
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
@@ -184,7 +184,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // filtered out and re-directed to a common call.
         if ((exec_arg & DNNL_ARG_MULTIPLE_SRC)
                 && !(exec_arg & DNNL_ARG_ATTR_SCALES)) {
-            SAFE(fill_src(exec_arg, prb->ddt, mem, ref_mem), WARN);
+            SAFE(fill_src(exec_arg, prb->ddt, mem, ref_mem, res), WARN);
         } else {
             SAFE(init_ref_memory_args_default_case(
                          exec_arg, mem, ref_mem, prb->attr, res),
@@ -238,7 +238,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = v_prim[0];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, prim);
+    init_memory_args(mem_map, prb, prim, res);
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, prim, prb, res), WARN));
 

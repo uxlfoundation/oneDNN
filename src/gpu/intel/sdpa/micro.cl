@@ -89,6 +89,50 @@
 #define sg_per_wg (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n)
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
 
+/* NaN detection: scan a tile's elements and print a warning if any NaN is
+ * found. checkpoint must be a string literal identifying the callsite,
+ * e.g. "first gemm (ugemm_kq)" or "second gemm (ugemm_vs)". The check
+ * is sub-group-collective: only lane 0 prints, after a sub_group_any
+ * reduction so that NaNs in any lane are reported.
+ *
+ * DIAGNOSTIC NOTE: the isnan() reads inside this macro force the compiler to
+ * fully materialize the tile before the check point. If removing a particular
+ * UGEMM_NAN_CHECK call causes test failures to reappear, that intermediate
+ * tile is being miscompiled (reordered/fused) by the optimizer. Use
+ * UGEMM_FENCE (below) as a lighter-weight stand-in once the culprit is found.
+ */
+#define UGEMM_NAN_CHECK(t, checkpoint) \
+    do { \
+        int _any_nan = 0; \
+        _Pragma("unroll") for (int _i = 0; \
+                               _i < sizeof((t).x) / sizeof((t).x[0]); \
+                               _i++) { \
+            _any_nan |= any(isnan((t).x[_i])); \
+        } \
+        if (sub_group_any(_any_nan)) { \
+            if (get_sub_group_local_id() == 0) \
+                printf("[ugemm NaN WARNING] checkpoint: %s" \
+                       " wg=(%d,%d,%d) sg=%d\n", \
+                       checkpoint, (int)get_group_id(0), \
+                       (int)get_group_id(1), (int)get_group_id(2), \
+                       (int)get_sub_group_id()); \
+        } \
+    } while (0)
+
+/* Lighter-weight compiler fence: forces materialization of all tile elements
+ * without the printf overhead.  The volatile sink prevents DCE/reordering of
+ * the reads while adding zero ALU cost when _sink is never written back. */
+#define UGEMM_FENCE(t) \
+    do { \
+        volatile float _sink = 0.f; \
+        _Pragma("unroll") for (int _i = 0; \
+                               _i < sizeof((t).x) / sizeof((t).x[0]); \
+                               _i++) { \
+            _sink += convert_float((t).x[_i][0]); \
+        } \
+        (void)_sink; \
+    } while (0)
+
 /* Instantiate tile types and operations */
 typedef ugemm_kq_c_type s_tile_type;
 typedef ugemm_vs_c_type a_tile_type;
@@ -835,6 +879,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_copy_reblock(S_tile_f16, &S_tile);
 #endif
 
+        /* NaN check after first gemm (ugemm_kq: S = K^T * Q) */
+        UGEMM_NAN_CHECK(S_tile, "first gemm (ugemm_kq)");
+
 #if KEY_SCALES == QUANTIZE_COMMON
 #define k_scale_op(x) ((x) * k_scale)
         tile_elementwise(S_tile, k_scale_op);
@@ -944,6 +991,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_elementwise(S_tile, scaled_exp);
 #undef scaled_exp
 
+        /* NaN check after softmax (exp(S - max)) */
+        UGEMM_NAN_CHECK(S_tile, "softmax");
+
         /* Accumulate sums. S tile is transposed for easy summation. */
         s_sum_tile_type S_sum_tile1;
         tile_fill(S_sum_tile1, 0.0f);
@@ -959,6 +1009,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
         );
 #endif
+
+        /* NaN check after dropout (0*inf=NaN source) */
+        UGEMM_NAN_CHECK(S_tile, "after dropout");
 
 #if USE_SYSTOLIC_UKERNEL
         /* Convert to half or bf16, VNNI format */
@@ -1000,6 +1053,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #error unimplemented
 #endif
             tile_hbroadcast_mul(&A_tile, A_scale_tile);
+            /* NaN check after A_tile rescale by exp(old_max - new_max) */
+            UGEMM_NAN_CHECK(A_tile, "A_tile rescale (exp(old_max-new_max))");
         }
 
         /* Accumulate sums */
@@ -1132,6 +1187,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_copy_reblock(A_tile1_f16, &A_tile1);
 #endif
 
+        /* NaN check after second gemm (ugemm_vs: A = V * S) */
+        UGEMM_NAN_CHECK(A_tile1, "second gemm (ugemm_vs)");
+
         V += ldv * ugemm_kq_wg_tile_m / VAL_ELEMENTS_PER_BYTE;
 #if VAL_SCALES == QUANTIZE_2D
         V_scales += ldvq * ugemm_kq_wg_tile_m;
@@ -1140,6 +1198,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         V_zp += ldvq * ugemm_kq_wg_tile_m / VAL_ZP_ELEMENTS_PER_BYTE;
 #endif
         tile_binary(A_tile, A_tile1, binary_add);
+        /* NaN check after A_tile accumulation (A += V*S) */
+        UGEMM_NAN_CHECK(A_tile, "A_tile accumulation");
     }
 
     if (k0end > 0) {
@@ -1201,6 +1261,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_elementwise(A_scale_tile, native_vrecip);
 #endif
         tile_hbroadcast_mul(&A_tile, A_scale_tile);
+        /* NaN check after final A_tile normalization (A /= sum) */
+        UGEMM_NAN_CHECK(A_tile, "A_tile final normalize (A/sum)");
     }
 
     a_tile_type_dst A_tile_dst;

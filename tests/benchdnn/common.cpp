@@ -61,6 +61,7 @@ std::string reason2str(reason_t reason) {
         case reason_t::graph_untested_rewriter_error: return "Rewriter failed";
         case reason_t::invalid: return "Invalid case";
         case reason_t::failed_ref_not_expected: return "Ref Impl Not Expected";
+        case reason_t::failed_service_reorder: return "Service Reorder Error";
         case reason_t::skip_not_enough_ram: return "Not enough RAM";
         case reason_t::skip_impl_hit: return "Skip-impl option hit";
         case reason_t::skip_start: return "Skip-start option hit";

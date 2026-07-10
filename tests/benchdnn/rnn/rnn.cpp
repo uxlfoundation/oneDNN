@@ -128,7 +128,7 @@ dnnl_primitive_attr_t create_dnnl_rnn_attr(const prb_t &prb) {
 }
 
 int check_s8s8_reorder(const prb_t &prb, rnn_data_kind_t kind,
-        const dnn_mem_t &mem_dt, const dnn_mem_t &mem_fp) {
+        const dnn_mem_t &mem_dt, const dnn_mem_t &mem_fp, res_t *res) {
     // TODO: enable for all cpu_kind when supported
     if (is_gpu()) return OK;
 
@@ -198,7 +198,7 @@ int check_s8s8_reorder(const prb_t &prb, rnn_data_kind_t kind,
     }
 
     /* 2. compute s8_plain_quantized --reorder--> s8_packed_quantized */
-    SAFE(mem_s8_dst.reorder(mem_s8_src), WARN);
+    SAFE(mem_s8_dst.reorder(mem_s8_src, res), WARN);
 
     /* 3. we check that the two memory are bitwise identical. */
     auto sz = mem_dt.size();
@@ -219,11 +219,11 @@ int check_s8s8_reorder(const prb_t &prb, rnn_data_kind_t kind,
 
 int fill_memory(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
         dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, dnnl_data_type_t dt, float mean,
-        float stddev, float min, float max,
+        float stddev, float min, float max, res_t *res,
         const_dnnl_primitive_attr_t attr = nullptr, bool flip_sign = false) {
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     assert(mem_dt.nelems() == mem_fp.nelems());
 
@@ -298,9 +298,10 @@ int fill_memory(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
     }
 
     // 3. We reorder the data for the DNNL RNN primitive
-    SAFE(mem_dt.reorder(mem_fp, reorder_attr), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res, reorder_attr), WARN);
     if ((reorder_attr != nullptr) && (dt == dnnl_s8))
-        if (check_s8s8_reorder(prb, kind, mem_dt, mem_fp) != OK) return FAIL;
+        if (check_s8s8_reorder(prb, kind, mem_dt, mem_fp, res) != OK)
+            return FAIL;
 
     // Bullet 4.a holds: quantize weights for int8 benchdnn reference RNN
     if (prb.is_int8()) {
@@ -337,15 +338,15 @@ int fill_memory(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
 }
 
 int fill_memory(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res,
         const_dnnl_primitive_attr_t attr = nullptr, bool flip_sign = false) {
     const dt_conf_t::entry_t &c = prb.cfg[kind];
     return fill_memory(exec_arg, prb, kind, mem_dt, mem_fp, c.dt, c.f_mean,
-            c.f_stddev, c.f_min, c.f_max, attr, flip_sign);
+            c.f_stddev, c.f_min, c.f_max, res, attr, flip_sign);
 }
 
 int fill_activation(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res,
         const_dnnl_primitive_attr_t attr = nullptr) {
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
@@ -361,17 +362,20 @@ int fill_activation(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
     bool flip_sign = prb.skip_nonlinear == false && prb.alg == VANILLA_RNN
             && prb.activation == RELU
             && (kind == SRC_LAYER || kind == SRC_ITER);
-    return fill_memory(exec_arg, prb, kind, mem_dt, mem_fp, attr, flip_sign);
+    return fill_memory(
+            exec_arg, prb, kind, mem_dt, mem_fp, res, attr, flip_sign);
 }
 
 int fill_src_iter_c(int exec_arg, const prb_t &prb, dnn_mem_t &mem_dt,
-        dnn_mem_t &mem_fp, const_dnnl_primitive_attr_t attr = nullptr) {
+        dnn_mem_t &mem_fp, res_t *res,
+        const_dnnl_primitive_attr_t attr = nullptr) {
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
 
     const bool special_case = prb.prop == dnnl_backward && prb.skip_nonlinear;
     if (!special_case)
-        return fill_memory(exec_arg, prb, SRC_ITER_C, mem_dt, mem_fp, attr);
+        return fill_memory(
+                exec_arg, prb, SRC_ITER_C, mem_dt, mem_fp, res, attr);
 
     // The scaling factors in tparams when testing backward are common for
     // for forward and backward passes, and computed as 1 over maximum of
@@ -437,15 +441,15 @@ int fill_src_iter_c(int exec_arg, const prb_t &prb, dnn_mem_t &mem_dt,
     const dt_conf_t::entry_t &c = prb.cfg[SRC_ITER_C];
     return fill_memory(exec_arg, prb, SRC_ITER_C, mem_dt, mem_fp, c.dt,
             c.f_mean * adjust_factor, c.f_stddev * adjust_factor,
-            c.f_min * adjust_factor, c.f_max * adjust_factor, attr);
+            c.f_min * adjust_factor, c.f_max * adjust_factor, res, attr);
 }
 
 int fill_weights(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp,
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res,
         const_dnnl_primitive_attr_t attr = nullptr) {
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     assert(kind == WEIGHTS_PROJECTION ? mem_fp.ndims() == 4
                                       : mem_fp.ndims() == 5);
@@ -489,21 +493,21 @@ int fill_weights(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
     // Pass rnn attributes to f32 -> s8 reorders only
     const_dnnl_primitive_attr_t reorder_attr = nullptr;
     if (prb.is_int8()) reorder_attr = attr;
-    SAFE(mem_dt.reorder(mem_pure_fp, reorder_attr), WARN);
+    SAFE(mem_dt.reorder(mem_pure_fp, res, reorder_attr), WARN);
 
     // Test that s8 -> s8 reorder works correctly
     if ((reorder_attr != nullptr) && (dt == dnnl_s8))
-        return check_s8s8_reorder(prb, kind, mem_dt, mem_pure_fp);
+        return check_s8s8_reorder(prb, kind, mem_dt, mem_pure_fp, res);
     return OK;
 }
 
 // To reduce likelihood of cancellation happening in bwd by bias,
 // (especially for GRU), we want diff_bias to be sparse
 int fill_bias(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     /* Do fixed partitioning to have same filling for any number of threads */
     const int64_t chunk_size = 64;
@@ -534,7 +538,7 @@ int fill_bias(int exec_arg, const prb_t &prb, rnn_data_kind_t kind,
         }
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
@@ -1160,124 +1164,131 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC_LAYER:
-                SAFE(fill_activation(
-                             exec_arg, prb, SRC_LAYER, mem, ref_mem, rnn_attr),
+                SAFE(fill_activation(exec_arg, prb, SRC_LAYER, mem, ref_mem,
+                             res, rnn_attr),
                         WARN);
                 break;
             case DNNL_ARG_AUGRU_ATTENTION:
                 SAFE(fill_activation(exec_arg, prb, AUGRU_ATTENTION, mem,
-                             ref_mem, rnn_attr),
+                             ref_mem, res, rnn_attr),
                         WARN);
                 break;
             case DNNL_ARG_SRC_ITER:
-                SAFE(fill_activation(
-                             exec_arg, prb, SRC_ITER, mem, ref_mem, rnn_attr),
+                SAFE(fill_activation(exec_arg, prb, SRC_ITER, mem, ref_mem, res,
+                             rnn_attr),
                         WARN);
                 break;
             case DNNL_ARG_SRC_ITER_C:
-                SAFE(fill_src_iter_c(exec_arg, prb, mem, ref_mem, rnn_attr),
+                SAFE(fill_src_iter_c(
+                             exec_arg, prb, mem, ref_mem, res, rnn_attr),
                         WARN);
                 break;
             case DNNL_ARG_WEIGHTS_LAYER:
                 if (is_fwd_prim)
                     SAFE(fill_weights(exec_arg, prb, WEIGHTS_LAYER, mem,
-                                 ref_mem, rnn_attr),
+                                 ref_mem, res, rnn_attr),
                             WARN);
                 break;
             case DNNL_ARG_WEIGHTS_ITER:
                 if (is_fwd_prim)
                     SAFE(fill_weights(exec_arg, prb, WEIGHTS_ITER, mem, ref_mem,
-                                 rnn_attr),
+                                 res, rnn_attr),
                             WARN);
                 break;
             case DNNL_ARG_WEIGHTS_PEEPHOLE:
                 if (is_fwd_prim)
-                    SAFE(fill_memory(
-                                 exec_arg, prb, WEIGHTS_PEEPHOLE, mem, ref_mem),
+                    SAFE(fill_memory(exec_arg, prb, WEIGHTS_PEEPHOLE, mem,
+                                 ref_mem, res),
                             WARN);
                 break;
             case DNNL_ARG_WEIGHTS_PROJECTION:
                 if (is_fwd_prim)
                     SAFE(fill_weights(exec_arg, prb, WEIGHTS_PROJECTION, mem,
-                                 ref_mem, rnn_attr),
+                                 ref_mem, res, rnn_attr),
                             WARN);
                 break;
             case DNNL_ARG_BIAS:
                 if (is_fwd_prim)
-                    SAFE(fill_memory(exec_arg, prb, BIAS, mem, ref_mem), WARN);
+                    SAFE(fill_memory(exec_arg, prb, BIAS, mem, ref_mem, res),
+                            WARN);
                 break;
             case DNNL_ARG_DST_LAYER:
                 if (is_fwd_prim)
                     SAFE(fill_activation(
-                                 exec_arg, prb, DST_LAYER, mem, ref_mem),
+                                 exec_arg, prb, DST_LAYER, mem, ref_mem, res),
                             WARN);
                 break;
             case DNNL_ARG_DST_ITER:
                 if (is_fwd_prim)
-                    SAFE(fill_activation(exec_arg, prb, DST_ITER, mem, ref_mem),
+                    SAFE(fill_activation(
+                                 exec_arg, prb, DST_ITER, mem, ref_mem, res),
                             WARN);
                 break;
             case DNNL_ARG_DST_ITER_C:
                 if (is_fwd_prim)
-                    SAFE(fill_memory(exec_arg, prb, DST_ITER_C, mem, ref_mem),
+                    SAFE(fill_memory(
+                                 exec_arg, prb, DST_ITER_C, mem, ref_mem, res),
                             WARN);
                 break;
             case DNNL_ARG_SCRATCHPAD: /* Put internal allocations here */ break;
             case DNNL_ARG_WORKSPACE: /* Or here... */ break;
             case DNNL_ARG_DIFF_SRC_LAYER:
                 SAFE(fill_activation(
-                             exec_arg, prb, DIFF_SRC_LAYER, mem, ref_mem),
+                             exec_arg, prb, DIFF_SRC_LAYER, mem, ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_AUGRU_ATTENTION:
-                SAFE(fill_activation(
-                             exec_arg, prb, DIFF_AUGRU_ATTENTION, mem, ref_mem),
+                SAFE(fill_activation(exec_arg, prb, DIFF_AUGRU_ATTENTION, mem,
+                             ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_SRC_ITER:
                 SAFE(fill_activation(
-                             exec_arg, prb, DIFF_SRC_ITER, mem, ref_mem),
+                             exec_arg, prb, DIFF_SRC_ITER, mem, ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_SRC_ITER_C:
-                SAFE(fill_memory(exec_arg, prb, DIFF_SRC_ITER_C, mem, ref_mem),
+                SAFE(fill_memory(
+                             exec_arg, prb, DIFF_SRC_ITER_C, mem, ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_WEIGHTS_LAYER:
-                SAFE(fill_weights(
-                             exec_arg, prb, DIFF_WEIGHTS_LAYER, mem, ref_mem),
+                SAFE(fill_weights(exec_arg, prb, DIFF_WEIGHTS_LAYER, mem,
+                             ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_WEIGHTS_ITER:
-                SAFE(fill_weights(
-                             exec_arg, prb, DIFF_WEIGHTS_ITER, mem, ref_mem),
+                SAFE(fill_weights(exec_arg, prb, DIFF_WEIGHTS_ITER, mem,
+                             ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_WEIGHTS_PEEPHOLE:
                 SAFE(fill_memory(exec_arg, prb, DIFF_WEIGHTS_PEEPHOLE, mem,
-                             ref_mem),
+                             ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_WEIGHTS_PROJECTION:
                 SAFE(fill_memory(exec_arg, prb, DIFF_WEIGHTS_PROJECTION, mem,
-                             ref_mem),
+                             ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_BIAS:
-                SAFE(fill_bias(exec_arg, prb, DIFF_BIAS, mem, ref_mem), WARN);
+                SAFE(fill_bias(exec_arg, prb, DIFF_BIAS, mem, ref_mem, res),
+                        WARN);
                 break;
             case DNNL_ARG_DIFF_DST_LAYER:
                 SAFE(fill_activation(
-                             exec_arg, prb, DIFF_DST_LAYER, mem, ref_mem),
+                             exec_arg, prb, DIFF_DST_LAYER, mem, ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_DST_ITER:
                 SAFE(fill_activation(
-                             exec_arg, prb, DIFF_DST_ITER, mem, ref_mem),
+                             exec_arg, prb, DIFF_DST_ITER, mem, ref_mem, res),
                         WARN);
                 break;
             case DNNL_ARG_DIFF_DST_ITER_C:
-                SAFE(fill_memory(exec_arg, prb, DIFF_DST_ITER_C, mem, ref_mem),
+                SAFE(fill_memory(
+                             exec_arg, prb, DIFF_DST_ITER_C, mem, ref_mem, res),
                         WARN);
                 break;
             default: break;
@@ -1368,7 +1379,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = prb.prop != dnnl_backward ? v_prim[0] : v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, &prb, v_prim[0], /*override_dir_with_fwd=*/true);
+    init_memory_args(
+            mem_map, &prb, v_prim[0], res, /*override_dir_with_fwd=*/true);
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], &prb, res),
             WARN));
@@ -1394,7 +1406,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     if (prb.prop == dnnl_backward) {
         // Pass same memory map as we need data from forward on backward.
-        init_memory_args(mem_map, &prb, v_prim[1]);
+        init_memory_args(mem_map, &prb, v_prim[1], res);
         TIME_FILL(SAFE(init_ref_memory_args(
                                ref_mem_map, mem_map, v_prim[1], &prb, res),
                 WARN));

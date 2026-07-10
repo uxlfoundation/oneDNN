@@ -79,24 +79,24 @@ int execute(const base_prb_t *base_prb, const args_t &args, res_t *res) {
     args_t ref_args;
     const dnn_mem_t &src = args.find(DNNL_ARG_SRC);
     dnn_mem_t src_f32_abx(src, dnnl_f32, tag::abx, src.engine());
-    SAFE_V(src_f32_abx.reorder(src));
+    SAFE_V(src_f32_abx.reorder(src, res));
     ref_args.set(DNNL_ARG_SRC, src_f32_abx);
 
     dnn_mem_t &dst = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST));
     dnn_mem_t dst_f32_abx(dst, dnnl_f32, tag::abx, dst.engine());
-    SAFE_V(dst_f32_abx.reorder(dst));
+    SAFE_V(dst_f32_abx.reorder(dst, res));
     ref_args.set(DNNL_ARG_DST, dst_f32_abx);
 
     dnn_mem_t &stats = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST_1));
     dnn_mem_t stats_f32_abx(stats, dnnl_f32, tag::abx, stats.engine());
-    SAFE_V(stats_f32_abx.reorder(stats));
+    SAFE_V(stats_f32_abx.reorder(stats, res));
     ref_args.set(DNNL_ARG_DST_1, stats_f32_abx);
 
     ::softmax::compute_ref(prb, prb->dir, ref_args);
 
     // restore original memory format after ::softmax::compute_ref
-    SAFE_V(dst.reorder(dst_f32_abx));
-    SAFE_V(stats.reorder(stats_f32_abx));
+    SAFE_V(dst.reorder(dst_f32_abx, res));
+    SAFE_V(stats.reorder(stats_f32_abx, res));
 
     res->state = EXECUTED;
     return OK;
@@ -195,7 +195,7 @@ int ref_primitive_t::init_prim(
                      force_f32_prim_dt, /*is_graph_ref=*/true),
                 WARN);
         if (res->state == SKIPPED || res->state == UNIMPLEMENTED) return OK;
-        ::init_memory_args(mems_, prb, fwd_prim_,
+        ::init_memory_args(mems_, prb, fwd_prim_, res,
                 /*override_dir_with_fwd=*/true, ref_eng);
         SAFE(init_ref_memory_args_func_(
                      ref_mems, mems_, fwd_prim_, prb, res, nullptr),
@@ -214,11 +214,11 @@ int ref_primitive_t::init_prim(
     return OK;
 }
 
-void ref_primitive_t::init_memory_args(const engine_t &ref_eng) {
+void ref_primitive_t::init_memory_args(const engine_t &ref_eng, res_t *res) {
     if (!prb_) return;
 
     if (prim_) {
-        ::init_memory_args(mems_, prb_.get(), prim_,
+        ::init_memory_args(mems_, prb_.get(), prim_, res,
                 /*override_dir_with_fwd=*/false, ref_eng);
     } else {
         // handle an empty primitive through a driver's reference

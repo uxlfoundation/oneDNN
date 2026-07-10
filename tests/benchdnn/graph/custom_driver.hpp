@@ -78,12 +78,13 @@ private:
 
 dnnl_status_t init_pd(init_pd_args_t &init_pd_args);
 
-int fill_mem(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max);
+int fill_mem(
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max, res_t *res);
 void setup_cmp(compare::compare_t &cmp, const base_prb_t *prb, data_kind_t kind,
         const args_t &ref_args);
 
 void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
-        bool override_dir_with_fwd = false,
+        bool override_dir_with_fwd = false, res_t *res = nullptr,
         const engine_t &test_engine = get_test_engine());
 
 void init_memory_args_native(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,

@@ -529,7 +529,7 @@ static int fill_grouped_offsets(
 // The values buffer is filled as a contiguous 2D
 // tensor (offsets describe per-group slicing, not value placement)
 static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     if (kind != SRC && kind != WEI) {
         BENCHDNN_PRINT(0,
                 "Error: grouped filling only supports SRC or WEI, got "
@@ -568,7 +568,7 @@ static int fill_grouped_data(data_kind_t kind, const prb_t *prb,
             = dnn_mem_t::init_md(2, g_dims, mem_dt.dt(), tag::any, val_strides);
     dnn_mem_t vals_view(val_md, mem_fp.engine(), /* prefill = */ false,
             {true, mem_dt.get_mapped_pointer<void>(0)});
-    SAFE(vals_view.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
+    SAFE(vals_view.reorder(mem_fp, res, cfg.get_swapped_dt(kind)), WARN);
 
     return OK;
 }
@@ -578,7 +578,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
 
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     bool is_sparse_packed = false;
     bool is_any_sparse = false;
@@ -595,7 +595,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
     }
 
     if (prb->sparse_options.is_grouped(exec_arg)) {
-        SAFE(fill_grouped_data(kind, prb, mem_dt, mem_fp), WARN);
+        SAFE(fill_grouped_data(kind, prb, mem_dt, mem_fp, res), WARN);
         return OK;
     }
 
@@ -655,7 +655,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         fill_dense_fp_values(kind, prb, cfg, mem_fp);
     }
 
-    SAFE(mem_dt.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res, cfg.get_swapped_dt(kind)), WARN);
 
     return OK;
 }
@@ -927,7 +927,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem, res), WARN);
                     }
                 }
             } break;
@@ -959,7 +959,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
 
         update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
-                cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)));
+                cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)), res);
 
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();
@@ -974,7 +974,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         // TODO: will be handled by `init_ref_memory_args_default_case` once
         // memory argument dependency is resolved.
         if (fill_from_file(DNNL_ARG_ATTR_PRECOMPUTED_REDUCTIONS | DNNL_ARG_SRC,
-                    mem, ref_mem))
+                    mem, ref_mem, res))
             return OK;
         const auto &ref_mem_src = ref_mem_map.at(DNNL_ARG_SRC);
         const auto src_precomputed_reductions_gs
@@ -995,7 +995,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             ref_mem.set_elem(i, val);
         }
 
-        SAFE(mem.reorder(ref_mem), WARN);
+        SAFE(mem.reorder(ref_mem, res), WARN);
     }
 
     return OK;
@@ -1053,7 +1053,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim_ref = v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, prim);
+    init_memory_args(mem_map, prb, prim, res);
     TIME_FILL(SAFE(init_ref_memory_args(
                            ref_mem_map, mem_map, prim, prb, res, prim_ref),
             WARN));

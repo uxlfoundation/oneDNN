@@ -37,10 +37,10 @@
 namespace reorder {
 
 int fill_mem(int exec_arg, const prb_t *prb, data_kind_t kind,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -78,7 +78,7 @@ int fill_mem(int exec_arg, const prb_t *prb, data_kind_t kind,
         if (zero_out_wa) mem_dt.set_elem(i, 0);
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
@@ -550,7 +550,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_FROM: {
-                SAFE(fill_mem(exec_arg, prb, SRC, mem, ref_mem), WARN);
+                SAFE(fill_mem(exec_arg, prb, SRC, mem, ref_mem, res), WARN);
                 // Additional inputs to compare compensation buffers.
                 ref_mem_map.emplace(DNNL_ARG_SRC_1,
                         setup_compensation_memory(prb, FLAG_S8S8_COMP));
@@ -562,12 +562,12 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
                 // MIOpen doesn't work properly when tensors are filled with 0xFF.
                 if (sum_idx >= 0 || is_amd_gpu()) {
-                    SAFE(fill_mem(exec_arg, prb, DST, mem, ref_mem), WARN);
+                    SAFE(fill_mem(exec_arg, prb, DST, mem, ref_mem, res), WARN);
 
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem, res), WARN);
                     }
                 }
             } break;
@@ -612,7 +612,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = v_prim[0];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, prim);
+    init_memory_args(mem_map, prb, prim, res);
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, prim, prb, res), WARN));
 

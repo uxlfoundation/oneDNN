@@ -99,11 +99,11 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     return dnnl_success;
 }
 
-int fill_data_fwd(
-        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_data_fwd(int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt,
+        dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -188,16 +188,16 @@ int fill_data_fwd(
         }
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
 
 int fill_data_bwd(data_kind_t data_kind, int exec_arg, const prb_t *prb,
-        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int seed) {
+        dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int seed, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -225,7 +225,7 @@ int fill_data_bwd(data_kind_t data_kind, int exec_arg, const prb_t *prb,
         mem_fp.set_f32_elem(i, value);
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
@@ -399,36 +399,36 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC:
-                SAFE(fill_data_fwd(exec_arg, prb, mem, ref_mem), WARN);
+                SAFE(fill_data_fwd(exec_arg, prb, mem, ref_mem, res), WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.
                 if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
                     auto &src_copy = mem_map.at(-exec_arg);
                     SAFE(bool(src_copy) ? OK : FAIL, WARN);
-                    SAFE(src_copy.reorder(mem), WARN);
+                    SAFE(src_copy.reorder(mem, res), WARN);
                 }
                 break;
             case DNNL_ARG_DST:
                 if (!is_fwd_prim) {
                     const bool neg_sign = prb->alg == SOFTMAX
                             || prb->alg == SOFTMAX_INF_AS_ZERO;
-                    SAFE(fill_data_bwd(
-                                 DST, exec_arg, prb, mem, ref_mem, neg_sign),
+                    SAFE(fill_data_bwd(DST, exec_arg, prb, mem, ref_mem,
+                                 neg_sign, res),
                             WARN);
                 }
                 break;
             case DNNL_ARG_DIFF_DST: {
                 const bool neg_sign = prb->alg == SOFTMAX
                         || prb->alg == SOFTMAX_INF_AS_ZERO;
-                SAFE(fill_data_bwd(
-                             DIFF_DST, exec_arg, prb, mem, ref_mem, !neg_sign),
+                SAFE(fill_data_bwd(DIFF_DST, exec_arg, prb, mem, ref_mem,
+                             !neg_sign, res),
                         WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.
                 if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
                     auto &diff_dst_copy = mem_map.at(-exec_arg);
                     SAFE(bool(diff_dst_copy) ? OK : FAIL, WARN);
-                    SAFE(diff_dst_copy.reorder(mem), WARN);
+                    SAFE(diff_dst_copy.reorder(mem, res), WARN);
                 }
             } break;
             default: {
@@ -489,7 +489,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = v_prim[0];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, prim);
+    init_memory_args(mem_map, prb, prim, res);
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, prim, prb, res), WARN));
 

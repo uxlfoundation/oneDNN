@@ -19,6 +19,7 @@
 
 #include <limits.h>
 #include <vector>
+#include <type_traits>
 
 #include "common/bit_cast.hpp"
 #include "common/compiler_workarounds.hpp"
@@ -68,6 +69,11 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace x64 {
+
+// Required so XBYAK_THROW's unqualified 'Error' resolves in this namespace.
+#ifndef XBYAK_NO_EXCEPTION
+using Xbyak::Error;
+#endif
 
 // TODO: move this to jit_generator_t class?
 namespace {
@@ -194,6 +200,70 @@ public:
         _op_floor = 1u,
         _op_mxcsr = 4u,
     };
+
+    using Xbyak::CodeGenerator::add;
+    using Xbyak::CodeGenerator::cmp;
+    using Xbyak::CodeGenerator::imul;
+    using Xbyak::CodeGenerator::sub;
+
+    // These are the dim_t immediate forms used by brgemm. x86 accepts at
+    // most a 32-bit immediate. Offsets and shifts are non-negative; cmp also
+    // supports the verified negative-vpad case.
+    // TODO: Use a scratch register or rebase a pointer for values > INT_MAX.
+    // Note: the enable_if constrains this to T == dim_t exactly, so int/
+    // uint32_t call sites keep resolving to the native Xbyak overloads above
+    // instead of becoming ambiguous with these dim_t ones.
+    // Keep these overloads limited to add/sub/cmp/imul, the Xbyak calls that
+    // genuinely receive a potentially large tensor-scale offset or stride
+    // (imul is used to scale a runtime stride into a byte offset). Small,
+    // fixed-range immediates (8-bit lane/blend/shift/predicate values) must
+    // stay `int`/`uint8_t` at their creation site instead of gaining a
+    // dim_t overload here.
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void add(const Xbyak::Operand &op, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= INT_MAX);
+        Xbyak::CodeGenerator::add(op, static_cast<uint32_t>(imm));
+    }
+
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void sub(const Xbyak::Operand &op, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= INT_MAX);
+        Xbyak::CodeGenerator::sub(op, static_cast<uint32_t>(imm));
+    }
+
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void cmp(const Xbyak::Operand &op, T imm) {
+        // Negative virtual padding is compared by brgemm kernels.
+        JIT_ASSERT(imm >= INT_MIN && imm <= INT_MAX);
+        Xbyak::CodeGenerator::cmp(
+                op, static_cast<uint32_t>(static_cast<int32_t>(imm)));
+    }
+
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void imul(const Xbyak::Reg64 &dst, const Xbyak::Operand &src, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= INT_MAX);
+        Xbyak::CodeGenerator::imul(dst, src, static_cast<int>(imm));
+    }
+
+    static int xbyak_register_index(dim_t index) {
+        // The fallback is returned only after XByak records the error.
+        JIT_ASSERT_RET(index >= 0 && index <= INT_MAX, 0);
+        return static_cast<int>(index);
+    }
+
+    static int xbyak_address_scale(dim_t scale) {
+        // The fallback is returned only after XByak records the error.
+        JIT_ASSERT_RET(utils::one_of(scale, 1, 2, 4, 8), 0);
+        return static_cast<int>(scale);
+    }
 
     Xbyak::Reg64 param1 = abi_param1;
     const int EVEX_max_8b_offt = 0x200;
@@ -2218,7 +2288,7 @@ public:
     */
     template <typename Vmm>
     void load_bytes(const Vmm &vmm, const Xbyak::Address &src_addr,
-            int load_size, const bool zero_vmm = true) {
+            dim_t load_size, const bool zero_vmm = true) {
 
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
                 || std::is_same<Vmm, Xbyak::Xmm>::value;
@@ -2227,7 +2297,7 @@ public:
             return;
         }
 
-        const auto addr = [&](int bytes_offset) {
+        const auto addr = [&](dim_t bytes_offset) {
             return ptr[src_addr.getRegExp()
                     + Xbyak::RegExp(bytes_offset * sizeof(int8_t))];
         };
@@ -2237,7 +2307,7 @@ public:
 
     template <typename Vmm>
     void load_bytes(const Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset,
-            int load_size, const bool zero_vmm = true) {
+            dim_t load_size, const bool zero_vmm = true) {
 
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
                 || std::is_same<Vmm, Xbyak::Xmm>::value;
@@ -2249,7 +2319,7 @@ public:
         // Ensure offset is at most 4 bytes to be encoded in the instruction
         assert(offset >= INT_MIN && offset <= INT_MAX);
 
-        const auto addr = [&](int bytes_offset) {
+        const auto addr = [&](dim_t bytes_offset) {
             return ptr[reg + offset + bytes_offset * sizeof(int8_t)];
         };
 
@@ -2258,8 +2328,8 @@ public:
 
 private:
     template <typename Vmm, typename AddrFunc>
-    void helper_load_bytes(const Vmm &vmm, int load_size, const AddrFunc &addr,
-            const bool zero_vmm = true) {
+    void helper_load_bytes(const Vmm &vmm, dim_t load_size,
+            const AddrFunc &addr, const bool zero_vmm = true) {
 
         constexpr bool is_xmm = std::is_same<Vmm, Xbyak::Xmm>::value;
         constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
@@ -2291,8 +2361,8 @@ private:
         // use clean execution sequence
         if (zero_vmm) uni_vpxor(vmm, vmm, vmm);
 
-        int start_bytes = 0;
-        int bytes_to_load = load_size;
+        dim_t start_bytes = 0;
+        dim_t bytes_to_load = load_size;
 
         if (load_size > 16) {
             // Prepare to insert to upper bits of ymm
@@ -2379,8 +2449,8 @@ private:
 public:
     template <typename Vmm>
     void store_bytes(
-            const Vmm &vmm, const Xbyak::Address &dst_addr, int store_size) {
-        const auto addr = [&](int bytes_offset) {
+            const Vmm &vmm, const Xbyak::Address &dst_addr, dim_t store_size) {
+        const auto addr = [&](dim_t bytes_offset) {
             return ptr[dst_addr.getRegExp()
                     + Xbyak::RegExp(bytes_offset * sizeof(int8_t))];
         };
@@ -2389,12 +2459,12 @@ public:
 
     template <typename Vmm>
     void store_bytes(const Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset,
-            int store_size) {
+            dim_t store_size) {
 
         // Ensure offset is at most 4 bytes to be encoded in the instruction
         assert(offset >= INT_MIN && offset <= INT_MAX);
 
-        const auto addr = [&](int bytes_offset) {
+        const auto addr = [&](dim_t bytes_offset) {
             return ptr[reg + offset + bytes_offset * sizeof(int8_t)];
         };
 
@@ -2403,7 +2473,7 @@ public:
 
 private:
     template <typename Vmm, typename AddrFunc>
-    void store_bytes(const Vmm &vmm, int store_size, const AddrFunc &addr) {
+    void store_bytes(const Vmm &vmm, dim_t store_size, const AddrFunc &addr) {
 
         constexpr bool is_xmm = std::is_same<Vmm, Xbyak::Xmm>::value;
         constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
@@ -2433,8 +2503,8 @@ private:
             return;
         }
 
-        int start_bytes = 0;
-        int bytes_to_store = store_size;
+        dim_t start_bytes = 0;
+        dim_t bytes_to_store = store_size;
 
         if (store_size > 16) {
             vmovdqu(addr(0), xmm); // load lower bits from ymm
@@ -2517,7 +2587,7 @@ public:
     */
     template <typename Vmm>
     void load_bytes_to_dword_extension(const Vmm &vmm, const Xbyak::Reg64 &reg,
-            int64_t offset, bool is_signed, int load_size,
+            int64_t offset, bool is_signed, dim_t load_size,
             const bool zero_vmm) {
         // Ensure offset is at most 4 bytes to be encoded in the instruction
         assert(offset >= INT_MIN && offset <= INT_MAX);
@@ -2527,7 +2597,7 @@ public:
 
     template <typename Vmm>
     void load_bytes_to_dword_extension(const Vmm &vmm,
-            const Xbyak::Address &src_addr, bool is_signed, int load_size,
+            const Xbyak::Address &src_addr, bool is_signed, dim_t load_size,
             const bool zero_vmm = true) {
 
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
@@ -2587,7 +2657,7 @@ public:
      */
     template <typename Vmm>
     void store_data(data_type_t type_out, const Vmm &vmm,
-            const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
+            const Xbyak::Reg64 &reg, int64_t offset, dim_t store_size) {
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
                 || std::is_same<Vmm, Xbyak::Xmm>::value;
         using supported_vmm_t = typename utils::conditional<is_vmm_supported,
@@ -2604,7 +2674,7 @@ public:
 private:
     template <typename Vmm>
     void helper_store_data(data_type_t type_out, const Vmm &vmm,
-            const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
+            const Xbyak::Reg64 &reg, int64_t offset, dim_t store_size) {
 
         assert(is_valid_isa(sse41)
                 && "routine is not supported for the current isa");
@@ -2664,7 +2734,7 @@ public:
      */
     template <typename Vmm>
     void load_data(data_type_t type_in, const Vmm &vmm, const Xbyak::Reg64 &reg,
-            int64_t offset, int load_size, const bool zero_vmm = true) {
+            int64_t offset, dim_t load_size, const bool zero_vmm = true) {
         // Ensure offset is at most 4 bytes to be encoded in the instruction
         assert(offset >= INT_MIN && offset <= INT_MAX);
         load_data(type_in, vmm, ptr[reg + offset], load_size, zero_vmm);
@@ -2672,7 +2742,7 @@ public:
 
     template <typename Vmm>
     void load_data(data_type_t type_in, const Vmm &vmm,
-            const Xbyak::Address &src_addr, int load_size,
+            const Xbyak::Address &src_addr, dim_t load_size,
             const bool zero_vmm = true) {
 
         assert(is_valid_isa(sse41)

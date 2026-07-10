@@ -313,7 +313,7 @@ private:
             int idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
                     - bd;
             assert(idx > 0);
-            return Vmm(idx);
+            return Vmm(xbyak_register_index(idx));
         } else
             return Vmm(0);
     }
@@ -325,7 +325,7 @@ private:
             int idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
                     - ld;
             assert(idx > 0);
-            return Vmm(idx);
+            return Vmm(xbyak_register_index(idx));
         }
     }
 
@@ -346,7 +346,7 @@ private:
         MAYBE_UNUSED(bd_block);
         assert(IMPLICATION(!brg.is_tmm,
                 i >= 0 && i < max_effective_vregs - bd_block * brg.ld_block2));
-        return Vmm(i);
+        return Vmm(xbyak_register_index(i));
     }
 
     Vmm vmm_tail_mask() const noexcept { return vmm_tmp(1); }
@@ -1243,11 +1243,11 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(int num_rows,
     assert(r_end <= num_rows && "bad tile parameters");
 
     if (dt == data_type::f8_e5m2)
-        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(xbyak_register_index(r_end),
+                reg_data_aux, reg_data_stride, reg_buf_aux);
     else if (dt == data_type::f8_e4m3)
-        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(xbyak_register_index(r_end),
+                reg_data_aux, reg_data_stride, reg_buf_aux);
     else
         assert(!"unsupported data type");
 
@@ -2477,7 +2477,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(int bd_block2,
 
                         reg_buf.restore();
                     } else {
-                        auto tmm = Tmm(c_tensor);
+                        auto tmm = Tmm(xbyak_register_index(c_tensor));
                         if (skip_accumulation) tilezero(tmm);
                         tilestored(ptr[reg_aux_C + reg_stride_ld_block], tmm);
                         if (ldb < ld_block2 - 1)
@@ -2747,7 +2747,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
         int rd_step = 4 / typesize_A;
         int rd_block = (!brg.rdb && brg.rdb_tail) ? brg.rdb_tail : brg.rd_block;
         if (brg.is_input_convert()) {
-            const int vnni_granularity
+            const auto vnni_granularity
                     = data_type_vnni_granularity(data_type::f16);
             rd_block = utils::rnd_up(rd_block, vnni_granularity);
         }
@@ -3215,7 +3215,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             uni_vpaddb(vmm_bcast, vmm_bcast, vmm_inp_shift());
     };
 
-    auto load_B = [this, is_ld_tail](dim_t vmm_load_idx, int rd, int ld) {
+    auto load_B = [this, is_ld_tail](int vmm_load_idx, int rd, int ld) {
         const bool mem_advice_B
                 = utils::one_of(brg.brgattr.mem_advice,
                           brgemm_hint_mem_advice_B, brgemm_hint_mem_advice_A_B)
@@ -3931,7 +3931,7 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         L(sum_zp_scale_data_);
         const dim_t scale_int = float2int(brg.sum_scale);
         for (dim_t i = 0; i < simd; ++i)
-            dd(scale_int);
+            dd(static_cast<uint32_t>(scale_int));
     }
 
     if (brg.is_fp8_via_convert()) {

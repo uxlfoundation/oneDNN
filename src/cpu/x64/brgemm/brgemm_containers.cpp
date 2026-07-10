@@ -49,7 +49,7 @@ bool brgemm_desc_container_t::insert(int idx, brgemm_desc_t &brg,
     brg.brgattr.static_offsets = static_offsets_list_.back().data();
 
     const auto ret = map_.insert({brg, idx});
-    const int ref_size = refs_.size();
+    const dim_t ref_size = refs_.size();
     if (idx > ref_size - 1) { refs_.resize(idx + 1); }
     refs_[idx] = &(ret.first->first);
     // if there was no insertion then clean bd_mask and static_offsets
@@ -68,7 +68,7 @@ int brgemm_desc_container_t::insert(brgemm_desc_t &brg,
 
     static_offsets_list_.push_back(static_offsets);
     brg.brgattr.static_offsets = static_offsets_list_.back().data();
-    const int ref_size = refs_.size();
+    const dim_t ref_size = refs_.size();
     const auto ret = map_.insert({brg, -1});
     if (!ret.second) {
         // if there was no insertion then clean bd_mask and static_offsets
@@ -77,7 +77,7 @@ int brgemm_desc_container_t::insert(brgemm_desc_t &brg,
         return ret.first->second;
     }
 
-    int idx = map_.size() - 1;
+    const int idx = static_cast<int>(map_.size() - 1);
     if (idx > ref_size - 1) {
         if (ref_size == 0)
             refs_.resize(1);

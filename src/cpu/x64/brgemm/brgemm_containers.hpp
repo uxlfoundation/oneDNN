@@ -37,7 +37,10 @@ public:
     brgemm_desc_container_t() = default;
     brgemm_desc_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
-    inline const brgemm_desc_t *operator[](int idx) const { return refs_[idx]; }
+    inline const brgemm_desc_t *operator[](int idx) const {
+        assert(idx >= 0);
+        return refs_[idx];
+    }
 
     bool insert(int idx, brgemm_desc_t &brg) {
         std::vector<char> dummy_bd_mask;
@@ -75,6 +78,7 @@ struct brgemm_kernel_container_t {
     brgemm_kernel_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
     inline const brgemm_kernel_t *operator[](int idx) const {
+        assert(idx >= 0);
         return refs_[idx];
     }
 
@@ -117,7 +121,10 @@ struct brgemm_palette_container_t {
     brgemm_palette_container_t(size_t ns) { resize(ns); }
     void resize(size_t ns) { refs_.resize(ns); }
 
-    inline const char *operator[](int idx) const { return refs_[idx]->data(); }
+    inline const char *operator[](int idx) const {
+        assert(idx >= 0);
+        return refs_[idx]->data();
+    }
 
     bool insert(int idx, const brgemm_desc_t *brg);
     bool insert(int idx, const brgemm_desc_t &brg) { return insert(idx, &brg); }

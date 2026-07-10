@@ -209,25 +209,29 @@ bool post_ops_ok(brgemm_matmul_conf_t &bgmmc, const primitive_attr_t &attr,
 
 // Trivial: The motivation is to compute batch offset for a memory
 // (src or wei or dst) with minimal overhead, by using
-// `batch_offset = b * b_stride`.
-// This is possible when the batch layout is contiguous.
-bool is_batch_layout_trivial(
-        const memory_desc_wrapper &mdw, const dim_t batch) {
+// `batch_offset = b * b_stride`, where `b` is the flattened batch index
+// iterated in logical (row-major) order and `b_stride` is the stride of
+// the innermost batch dimension (strides[ndims - 3]).
+// This is only valid when the batch dimensions form a contiguous
+// row-major nesting, i.e. every batch dimension `d` satisfies
+// `strides[d] == b_stride * prod(dims[d + 1 .. ndims - 3])`.
+bool is_batch_layout_trivial(const memory_desc_wrapper &mdw) {
     const int ndims = mdw.ndims();
     if (ndims <= 3) return true;
 
+    const auto &dims = mdw.dims();
     const auto &strides = mdw.strides();
-    const int batch_start_idx = ndims - 3;
-    dim_t cur_stride = strides[batch_start_idx];
-    dim_t min_batch_stride = cur_stride;
-    dim_t max_batch_stride = cur_stride;
-    for (int d = batch_start_idx - 1; d >= 0; --d) {
-        cur_stride = strides[d];
-        min_batch_stride = nstl::min(min_batch_stride, cur_stride);
-        max_batch_stride = nstl::max(max_batch_stride, cur_stride);
+    const int innermost_batch_idx = ndims - 3;
+    dim_t expected_stride = strides[innermost_batch_idx];
+    if (expected_stride == 0) return false;
+    for (int d = innermost_batch_idx; d >= 0; --d) {
+        // Dimensions of size 1 do not contribute to the batch offset and
+        // their stride is irrelevant.
+        if (dims[d] == 1) continue;
+        if (strides[d] != expected_stride) return false;
+        expected_stride *= dims[d];
     }
-    if (min_batch_stride == 0) return false;
-    return max_batch_stride / min_batch_stride == batch;
+    return true;
 }
 
 bool dims_adjacent(const memory_desc_wrapper &mdw, const int outer_dim,
@@ -2367,12 +2371,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 : bgmmc.LDD;
     }
 
-    bgmmc.is_src_batch_layout_trivial
-            = is_batch_layout_trivial(src_d, bgmmc.batch);
-    bgmmc.is_wei_batch_layout_trivial
-            = is_batch_layout_trivial(weights_d, bgmmc.batch);
-    bgmmc.is_dst_batch_layout_trivial
-            = is_batch_layout_trivial(dst_d, bgmmc.batch);
+    bgmmc.is_src_batch_layout_trivial = is_batch_layout_trivial(src_d);
+    bgmmc.is_wei_batch_layout_trivial = is_batch_layout_trivial(weights_d);
+    bgmmc.is_dst_batch_layout_trivial = is_batch_layout_trivial(dst_d);
 
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);

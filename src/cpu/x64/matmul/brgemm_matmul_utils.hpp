@@ -540,7 +540,7 @@ int get_n_block_from_tag(format_tag_t matrix_b_tag);
 
 void mem_advice_init(brgemm_matmul_conf_t &bgmmc);
 
-bool is_batch_layout_trivial(const memory_desc_wrapper &mdw, const dim_t batch);
+bool is_batch_layout_trivial(const memory_desc_wrapper &mdw);
 
 // Returns true if logical dimension `inner_dim` is nested immediately inside
 // `outer_dim` in memory, i.e. no other dimension is physically interleaved

@@ -186,32 +186,6 @@ int getpagesize() {
 #endif
 }
 
-void *malloc(size_t size, int alignment) {
-    void *ptr;
-    if (memory_debug::is_mem_debug())
-        return memory_debug::malloc(size, alignment);
-
-#ifdef _WIN32
-    ptr = _aligned_malloc(size, alignment);
-    int rc = ptr ? 0 : -1;
-#else
-    int rc = ::posix_memalign(&ptr, alignment, size);
-#endif
-
-    return (rc == 0) ? ptr : nullptr;
-}
-
-void free(void *p) {
-
-    if (memory_debug::is_mem_debug()) return memory_debug::free(p);
-
-#ifdef _WIN32
-    _aligned_free(p);
-#else
-    ::free(p);
-#endif
-}
-
 // Atomic operations
 int32_t fetch_and_add(int32_t *dst, int32_t val) {
 #ifdef _WIN32

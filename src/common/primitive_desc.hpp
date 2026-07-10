@@ -33,6 +33,7 @@
 #include "primitive_cache.hpp"
 #include "type_helpers.hpp"
 #include "verbose.hpp"
+#include "verbose_pd_info.hpp"
 
 namespace dnnl {
 namespace impl {

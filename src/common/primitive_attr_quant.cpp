@@ -16,7 +16,7 @@
 
 #include "common/primitive_attr_quant.hpp"
 #include "common/primitive_hashing.hpp"
-#include "common/verbose.hpp"
+#include "common/verbose_pd_info.hpp"
 
 namespace dnnl {
 namespace impl {

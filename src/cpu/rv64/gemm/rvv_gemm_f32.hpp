@@ -25,10 +25,12 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
+// rvv_gemm_f32 computes C = alpha * A * B + beta * C (+ optional per-M bias).
 status_t rvv_gemm_f32(const char *transa, const char *transb, const dim_t *M,
         const dim_t *N, const dim_t *K, const float *alpha, const float *A,
         const dim_t *lda, const float *B, const dim_t *ldb, const float *beta,
-        float *C, const dim_t *ldc, const float *bias);
+        float *C, const dim_t *ldc, const float *bias,
+        float *c_buffers = nullptr, float *ws_buffers = nullptr);
 } // namespace rv64
 } // namespace cpu
 } // namespace impl

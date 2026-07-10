@@ -18,6 +18,7 @@
 
 #include <memory>
 
+#include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
 #include "cpu/matmul/cpu_matmul_pd.hpp"
@@ -73,15 +74,13 @@ struct rvv_matmul_t : public primitive_t {
                     && acc_dt == f32;
             is_int8_path_ = utils::one_of(src_dt, s8, u8) && wei_dt == s8
                     && utils::one_of(dst_dt, s32, f32) && acc_dt == s32;
-            VDISPATCH_MATMUL(is_f32_path_ || is_int8_path_,
-                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(
+                    is_f32_path_ || is_int8_path_, VERBOSE_UNSUPPORTED_DT);
             // The int8 path rejects per-oc / per-tensor scales, zero-points,
             // and post-ops in this MVP; only optional f32 bias is supported.
-            const auto attr_skip_mask = is_f32_path_
-                    ? smask_t::post_ops
-                    : smask_t::none;
-            VDISPATCH_MATMUL(
-                    attr()->has_default_values(attr_skip_mask, dst_dt),
+            const auto attr_skip_mask
+                    = is_f32_path_ ? smask_t::post_ops : smask_t::none;
+            VDISPATCH_MATMUL(attr()->has_default_values(attr_skip_mask, dst_dt),
                     VERBOSE_UNSUPPORTED_ATTR);
 
             // Resolve the primary and the post-op binary src1 formats before any
@@ -133,6 +132,7 @@ struct rvv_matmul_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_BIAS_CFG);
 
             init_gemm_conf(src_mdw, weights_mdw);
+            init_scratchpad();
 
             return status::success;
         }
@@ -198,9 +198,6 @@ struct rvv_matmul_t : public primitive_t {
             }
 
             // The int8 JIT kernel only knows how to read a 1-D per-N bias
-            // (one value per GEMM-M row). Reject per-M / per-batch bias shapes
-            // that slip through the per-dim check above so we fall back to
-            // ref_matmul_int8 instead of producing wrong numbers.
             if (is_int8_path_) {
                 for (int d = 2; d <= bias_ndims; ++d) {
                     if (bias_dims[bias_ndims - d] != 1) return false;
@@ -243,6 +240,18 @@ struct rvv_matmul_t : public primitive_t {
         // s8 GEMM kernel and rejects non-default attrs except bias.
         bool is_f32_path_ = false;
         bool is_int8_path_ = false;
+
+        int nthr_m_ = 1;
+        int nthr_n_ = 1;
+        int nthr_k_ = 1;
+        dim_t MB_ = 0;
+        dim_t NB_ = 0;
+        dim_t KB_ = 0;
+        dim_t m_unroll_ = 0;
+        bool do_copy_ = false;
+
+    private:
+        void init_scratchpad();
     };
 
     rvv_matmul_t(const pd_t *apd) : primitive_t(apd) {}

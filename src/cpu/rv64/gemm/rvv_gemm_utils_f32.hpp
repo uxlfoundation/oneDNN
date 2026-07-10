@@ -33,6 +33,7 @@ namespace rv64 {
 namespace gemm_utils {
 
 extern std::atomic<dim_t> rvv_gemm_f32_m_unroll;
+extern std::atomic<dim_t> rvv_gemm_s8_m_unroll;
 
 template <typename T, bool isTransA, bool isTransB>
 struct gemm_traits_t {};
@@ -63,6 +64,23 @@ struct gemm_utils_traits<float> {
     }
 
     // Fixed n = 6 for the double-buffered mx6 micro-kernel.
+    static constexpr dim_t get_n_unroll_factor() { return 6; }
+};
+
+template <>
+struct gemm_utils_traits<int8_t> {
+    static dim_t get_m_unroll_factor() {
+        dim_t m = rvv_gemm_s8_m_unroll.load(std::memory_order_relaxed);
+        if (m == 0) {
+            const uint32_t vlen = Xbyak_riscv::CPU::getInstance().getVlen();
+            m = static_cast<dim_t>(vlen / 8);
+            rvv_gemm_s8_m_unroll.store(m, std::memory_order_relaxed);
+        }
+        return m;
+    }
+
+    // Fixed n = 6: 6 columns * m4 accumulator = 24 vector registers, leaving
+    // v24-v31 for the K-loop/C-update temporaries.
     static constexpr dim_t get_n_unroll_factor() { return 6; }
 };
 

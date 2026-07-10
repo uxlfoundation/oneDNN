@@ -220,7 +220,8 @@ void gemm_ithr(const dim_t M, const dim_t N, const dim_t K, const float alpha,
 status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
         const dim_t *N_, const dim_t *K_, const float *alpha_, const float *A,
         const dim_t *lda_, const float *B, const dim_t *ldb_,
-        const float *beta_, float *C, const dim_t *ldc_, const float *bias) {
+        const float *beta_, float *C, const dim_t *ldc_, const float *bias,
+        float *c_buffers_in, float *ws_buffers_in) {
 
     if (!(utils::one_of(*transa_, 'n', 'N', 't', 'T')
                 && utils::one_of(*transb_, 'n', 'N', 't', 'T')))
@@ -236,25 +237,14 @@ status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
     // early out and avoid division by zero in partitioning
     if (utils::one_of(0, M, N)) return status::success;
 
-    int max_nthr = dnnl_get_current_num_threads();
+    // Use current (not max) threads so nested-parallel callers
+    int nthr = dnnl_get_current_num_threads();
     int nthr_m, nthr_n, nthr_k;
     dim_t MB, NB, KB;
 
     calc_nthr_nocopy_rvv(
-            M, N, K, max_nthr, &nthr_m, &nthr_n, &nthr_k, &MB, &NB, &KB);
+            M, N, K, nthr, &nthr_m, &nthr_n, &nthr_k, &MB, &NB, &KB);
     assert(IMPLICATION(!dnnl_thr_syncable(), nthr_k == 1));
-
-    float *c_buffers = nullptr;
-    float *ws_buffers = nullptr;
-    if (nthr_k > 1) {
-        c_buffers = (float *)malloc(
-                sizeof(*c_buffers) * nthr_m * nthr_n * (nthr_k - 1) * MB * NB,
-                PAGE_4K);
-        if (!c_buffers) {
-            nthr_k = 1;
-            KB = K;
-        }
-    }
 
     bool do_copy = (NB / gemm_f32_traits::get_n_unroll_factor() > 3);
     const int nthr_mn = nthr_m * nthr_n;
@@ -263,9 +253,27 @@ status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
     const size_t ws_elems_per_thr = K * m_unroll;
     const size_t ws_size_per_thr
             = rnd_up(ws_elems_per_thr * sizeof(float), PAGE_4K);
-    if (do_copy) {
-        ws_buffers = (float *)malloc(nthr_to_use * ws_size_per_thr, PAGE_4K);
-        if (!ws_buffers) do_copy = false;
+
+    // Fall back to malloc/free when the caller didn't book scratchpad
+    // The matmul primitive books via pd_t::init_scratchpad() and passes non-null buffers.
+    float *c_buffers = c_buffers_in;
+    float *ws_buffers = ws_buffers_in;
+    bool own_c = false, own_ws = false;
+    if (nthr_k > 1 && !c_buffers) {
+        c_buffers = static_cast<float *>(malloc(
+                sizeof(*c_buffers) * nthr_m * nthr_n * (nthr_k - 1) * MB * NB,
+                PAGE_4K));
+        own_c = c_buffers != nullptr;
+        if (!own_c) {
+            nthr_k = 1;
+            KB = K;
+        }
+    }
+    if (do_copy && !ws_buffers) {
+        ws_buffers = static_cast<float *>(
+                malloc(nthr_to_use * ws_size_per_thr, PAGE_4K));
+        own_ws = ws_buffers != nullptr;
+        if (!own_ws) do_copy = false;
     }
 
     const auto &trans_a_table = get_jit_rvv_gemm_kernel_table(true, isTransB);
@@ -378,8 +386,8 @@ status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
         });
     }
 
-    free(ws_buffers);
-    free(c_buffers);
+    if (own_ws) free(ws_buffers);
+    if (own_c) free(c_buffers);
 
     return status::success;
 }

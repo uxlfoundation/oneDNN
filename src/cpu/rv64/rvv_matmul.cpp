@@ -19,8 +19,10 @@
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/utils.hpp"
+#include "cpu/platform.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_f32.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_s8s8s32.hpp"
+#include "cpu/rv64/gemm/rvv_gemm_utils_f32.hpp"
 #include "cpu/rv64/rvv_matmul.hpp"
 
 namespace dnnl {
@@ -28,6 +30,51 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 namespace matmul {
+
+void rvv_matmul_t::pd_t::init_scratchpad() {
+    using namespace memory_tracking::names;
+    using gemm_utils::calc_nthr_nocopy_rvv;
+    using gemm_utils::gemm_utils_traits;
+
+    // Use max_threads at init so the scratchpad is sized for the worst case.
+    // execute() must reproduce the same partition — see the matching call in
+    // rvv_gemm_f32/rvv_gemm_s8s8s32.
+    const int max_nthr = dnnl_get_max_threads();
+    const dim_t gemm_M = N_;
+    const dim_t gemm_N = weights_are_broadcast_ ? (batch_ * M_) : M_;
+    calc_nthr_nocopy_rvv(gemm_M, gemm_N, K_, max_nthr, &nthr_m_, &nthr_n_,
+            &nthr_k_, &MB_, &NB_, &KB_);
+
+    // Pick the path's own m_unroll: f32 and int8 derive the factor independently
+    m_unroll_ = is_f32_path_ ? gemm_utils_traits<float>::get_m_unroll_factor()
+                             : gemm_utils_traits<int8_t>::get_m_unroll_factor();
+    do_copy_ = (NB_ / gemm_utils_traits<float>::get_n_unroll_factor() > 3);
+
+    const int nthr_mn = nthr_m_ * nthr_n_;
+    const int nthr_to_use = nthr_mn * nthr_k_;
+
+    auto scratchpad = scratchpad_registry().registrar();
+
+    // K-split reduction buffer. Both f32 and s32 dst use 4-byte elements;
+    // book<char> + byte count keeps the contract type-agnostic. Only needed
+    // when the K axis is split across threads.
+    if (nthr_k_ > 1) {
+        const size_t c_elems
+                = (size_t)nthr_m_ * nthr_n_ * (nthr_k_ - 1) * MB_ * NB_;
+        scratchpad.template book<char>(key_gemm_accumulator, c_elems * 4);
+    }
+
+    // Per-thread A-copy workspace. Size mirrors what rvv_gemm_f32 /
+    // rvv_gemm_s8s8s32 malloc in the fallback path: rnd_up(K*m_unroll*elem_size,
+    // PAGE_4K) bytes per thread.
+    if (do_copy_) {
+        const size_t elem_size = is_f32_path_ ? sizeof(float) : sizeof(int8_t);
+        const size_t ws_size_per_thr
+                = utils::rnd_up((size_t)K_ * m_unroll_ * elem_size, PAGE_4K);
+        scratchpad.template book<char>(
+                key_gemm_tmp_buffer, (size_t)nthr_to_use * ws_size_per_thr);
+    }
+}
 
 status_t rvv_matmul_t::init(engine_t *engine) {
     UNUSED(engine);
@@ -129,6 +176,17 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
         const dim_t src_batch_stride = M * K;
         const dim_t dst_batch_stride = M * N;
 
+        // Scratchpad buffers booked in pd_t::init_scratchpad().
+        auto &grantor = ctx.get_scratchpad_grantor();
+        int32_t *c_buffer = pd()->nthr_k_ > 1
+                ? grantor.template get<int32_t>(
+                          memory_tracking::names::key_gemm_accumulator)
+                : nullptr;
+        int8_t *ws_buffer = pd()->do_copy_
+                ? grantor.template get<int8_t>(
+                          memory_tracking::names::key_gemm_tmp_buffer)
+                : nullptr;
+
         if (pd()->weights_are_broadcast_) {
             //   C(N x (batch * M)) = A(N x K) * B(K x (batch * M))
             const dim_t M_gemm_all = g.M_gemm; // N
@@ -137,14 +195,14 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
             status_t st = rvv_gemm_s8s8s32(&g.transa, &g.transb, &M_gemm_all,
                     &N_gemm_all, &g.K_gemm, &alpha, weights, &g.lda, src,
                     &g.ldb, &beta, dst, &g.ldc, /*bias=*/bias, b_signed,
-                    dst_is_f32);
+                    dst_is_f32, c_buffer, ws_buffer);
             assert(st == status::success || st == status::unimplemented);
             MAYBE_UNUSED(st);
         } else {
-            parallel_nd(batch, [&](dim_t b) {
+            for (dim_t b = 0; b < batch; ++b) {
                 const char *src_base = static_cast<const char *>(src)
-                        + b * src_batch_stride * types::data_type_size(
-                                                       src_d.data_type());
+                        + b * src_batch_stride
+                                * types::data_type_size(src_d.data_type());
                 char *dst_base = static_cast<char *>(dst)
                         + b * dst_batch_stride
                                 * types::data_type_size(dst_d.data_type());
@@ -174,10 +232,11 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
                 status_t st = rvv_gemm_s8s8s32(&g.transa, &g.transb, &g.M_gemm,
                         &g.N_gemm, &g.K_gemm, &alpha, wei_base, &g.lda,
                         src_base, &g.ldb, &beta, dst_base, &g.ldc,
-                        /*bias=*/bias, b_signed, dst_is_f32);
+                        /*bias=*/bias, b_signed, dst_is_f32, c_buffer,
+                        ws_buffer);
                 assert(st == status::success || st == status::unimplemented);
                 MAYBE_UNUSED(st);
-            });
+            }
         }
         return status::success;
     }
@@ -205,6 +264,16 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     const dim_t src_batch_stride = M * K;
     const dim_t dst_batch_stride = M * N;
 
+    auto &grantor = ctx.get_scratchpad_grantor();
+    float *c_buffer = pd()->nthr_k_ > 1
+            ? grantor.template get<float>(
+                      memory_tracking::names::key_gemm_accumulator)
+            : nullptr;
+    float *ws_buffer = pd()->do_copy_
+            ? grantor.template get<float>(
+                      memory_tracking::names::key_gemm_tmp_buffer)
+            : nullptr;
+
     if (pd()->weights_are_broadcast_) {
         //   C(N x (batch * M)) = A(N x K) * B(K x (batch * M))
         dim_t M_gemm_all = g.M_gemm; // N
@@ -213,13 +282,12 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
         status_t st = rvv_gemm_f32(&g.transa, &g.transb, &M_gemm_all,
                 &N_gemm_all, &g.K_gemm, &alpha, weights, &g.lda, src, &g.ldb,
                 &beta, dst, &g.ldc,
-                /*bias=*/nullptr);
+                /*bias=*/nullptr, c_buffer, ws_buffer);
         assert(st == status::success || st == status::unimplemented);
         MAYBE_UNUSED(st);
 
     } else {
-        // one GEMM per logical batch
-        parallel_nd(batch, [&](dim_t b) {
+        for (dim_t b = 0; b < batch; ++b) {
             const float *src_base = src + b * src_batch_stride;
             float *dst_base = dst + b * dst_batch_stride;
 
@@ -247,10 +315,10 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
             status_t st = rvv_gemm_f32(&g.transa, &g.transb, &g.M_gemm,
                     &g.N_gemm, &g.K_gemm, &alpha, wei_base, &g.lda, src_base,
                     &g.ldb, &beta, dst_base, &g.ldc,
-                    /*bias=*/nullptr);
+                    /*bias=*/nullptr, c_buffer, ws_buffer);
             assert(st == status::success || st == status::unimplemented);
             MAYBE_UNUSED(st);
-        });
+        }
     }
 
     if (!bias && post_ops.len() == 0) return status::success;

@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2026 Institute of Software, Chinese Academy of Sciences
+* Copyright 2026 ZTE Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,7 +28,9 @@ namespace rv64 {
 // weights, s8/u8 src, and s32/f32 dst. The dst element width is 4 bytes either
 // way; pass `dst_is_f32 = true` to request an f32 epilogue (alpha/beta applied
 // after fcvt of the s32 accumulator) or `false` to write the raw s32
-// accumulator (alpha and beta are ignored in that case).
+// accumulator. On the s32 path alpha is ignored, but beta is still respected
+// (a beta != 0 read-modify-write via vsadd is what lets K-tile accumulation in
+// the wrapper work).
 //
 // b_signed selects between s8 and u8 on the B (src) axis; A (weights) is
 // always s8.
@@ -36,11 +38,21 @@ namespace rv64 {
 // `bias` is an optional f32 vector of length M, broadcast across the N axis.
 // When non-null it is fused into the JIT kernel's C-update phase, matching the
 // f32 GEMM kernel convention.
+//
+// Scratchpad contract mirrors rvv_gemm_f32(). c_buffers carries whatever the
+// kernel's C-update epilogue writes, which is 4 bytes/element in either case:
+//   - dst_is_f32 == false: raw s32 accumulators
+//   - dst_is_f32 == true : f32 values, already fcvt-converted and alpha-scaled
+//     in-kernel (so the K-split reduction below must sum them as float, not
+//     reinterpret the bits as int32)
+// ws_buffers holds int8 elements (one per-thread A-copy cache). Pass nullptr
+// for either to fall back to malloc/free inside the function.
 status_t rvv_gemm_s8s8s32(const char *transa, const char *transb,
         const dim_t *M, const dim_t *N, const dim_t *K, const float *alpha,
         const int8_t *A, const dim_t *lda, const void *B, const dim_t *ldb,
         const float *beta, void *C, const dim_t *ldc, const float *bias,
-        bool b_signed, bool dst_is_f32);
+        bool b_signed, bool dst_is_f32, int32_t *c_buffers = nullptr,
+        int8_t *ws_buffers = nullptr);
 
 } // namespace rv64
 } // namespace cpu

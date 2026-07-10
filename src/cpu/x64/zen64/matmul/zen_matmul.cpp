@@ -56,19 +56,6 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
 #if !DNNL_X64_USE_ZEN
     return status::unimplemented;
 #else
-    // Strict threading-runtime guard: the Zen path is only supported when
-    // oneDNN itself is built with the OpenMP runtime. ZenDNN parallelizes its
-    // kernels with its own OpenMP runtime (it links OpenMP unconditionally and
-    // calls omp_* directly), so OpenMP is the only runtime that yields a single,
-    // consistent thread pool in the process. TBB would add a second, competing
-    // thread pool alongside ZenDNN's OpenMP (oversubscription / unpredictable
-    // performance); THREADPOOL is incompatible because the application owns the
-    // threads; and SEQ contradicts ZenDNN's internally-threaded kernels.
-    VDISPATCH_MATMUL(DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP,
-            VERBOSE_UNSUPPORTED_FEATURE,
-            "ZenDNN requires the OpenMP CPU runtime (DNNL_CPU_RUNTIME=OMP); "
-            "TBB, THREADPOOL, and SEQ are unsupported");
-
     // CPU engine only.
     VDISPATCH_MATMUL(
             engine->kind() == engine_kind::cpu, VERBOSE_BAD_ENGINE_KIND);
@@ -78,7 +65,7 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
 
     // AMD-only vendor gate via xbyak (portable across GCC/Clang/MSVC).
     VDISPATCH_MATMUL(::dnnl::impl::cpu::x64::cpu().has(Xbyak::util::Cpu::tAMD),
-            VERBOSE_UNSUPPORTED_ISA);
+            "This implementation only supports AMD CPUs");
 
     // Zen matmul requires AVX-512 core support regardless of data type.
     // Note: no separate avx512_core_bf16 check is needed here. On AMD CPUs,

@@ -100,25 +100,13 @@ status_t zen_reorder_t::pd_t::init(
 #else
     CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
-    // Strict threading-runtime guard: keep the Zen prepack reorder aligned with
-    // the Zen matmul that consumes its packed weights. ZenDNN parallelizes its
-    // kernels with its own OpenMP runtime, so OpenMP is the only runtime that
-    // yields a single, consistent thread pool. TBB would add a second competing
-    // pool (oversubscription), THREADPOOL is incompatible because the
-    // application owns the threads, and SEQ contradicts ZenDNN's internally-
-    // threaded kernels.
-    VDISPATCH_REORDER_IC(DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP,
-            VERBOSE_UNSUPPORTED_FEATURE,
-            "ZenDNN requires the OpenMP CPU runtime (DNNL_CPU_RUNTIME=OMP); "
-            "TBB, THREADPOOL, and SEQ are unsupported");
-
     VDISPATCH_REORDER_IC(src_engine->kind() == engine_kind::cpu
                     && dst_engine->kind() == engine_kind::cpu,
             VERBOSE_UNSUPPORTED_FEATURE, "non-CPU engine");
 
     VDISPATCH_REORDER_IC(
             ::dnnl::impl::cpu::x64::cpu().has(Xbyak::util::Cpu::tAMD),
-            VERBOSE_UNSUPPORTED_FEATURE, "non-AMD CPU");
+            "This implementation only supports AMD CPUs");
 
     // Zen weight prepack requires AVX-512 core support regardless of data type.
     VDISPATCH_REORDER_IC(mayiuse(avx512_core), VERBOSE_UNSUPPORTED_ISA);

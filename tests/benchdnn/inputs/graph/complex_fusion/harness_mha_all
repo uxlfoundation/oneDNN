@@ -214,6 +214,12 @@
 --reset --in-shapes=3:1x16x384x32,3:1x16x384x64,3:1x16x384x128 --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
 --reset --in-shapes=24:1x16x384x32,24:1x16x384x64,24:1x16x384x128 --case=complex_fusion/mha/sdpa-plain-bottom-right-implicit-causal-mask-f16-f32.json
 
+# d_qk > d_v (larger query/key head, smaller value head)
+--reset --in-shapes=0:1x16x384x128+1:1x16x384x128+8:1x16x384x32,0:1x16x384x128+1:1x16x384x128+8:1x16x384x64 --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
+--reset --in-shapes=1:1x16x384x128+2:1x16x384x128+3:1x16x384x32,1:1x16x384x128+2:1x16x384x128+3:1x16x384x64 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
+--reset --in-shapes=1:1x16x384x128+2:1x16x384x128+3:1x16x384x32,1:1x16x384x128+2:1x16x384x128+3:1x16x384x64 --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
+--reset --in-shapes=0:1x16x384x128+1:1x16x384x128+24:1x16x384x32,0:1x16x384x128+1:1x16x384x128+24:1x16x384x64 --case=complex_fusion/mha/sdpa-plain-bottom-right-implicit-causal-mask-f16-f32.json
+
 # sdpa with packed qkv
 --reset --in-shapes=1:1x12x1024x64*2359296x64x2304x1+2:1x12x1024x64*2359296x64x2304x1+5:1x1x1x1024+3:1x12x1024x64*2359296x64x2304x1 --case=complex_fusion/mha/sdpa-plain-simplified-f16-f32.json
 

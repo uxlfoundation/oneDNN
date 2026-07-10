@@ -744,7 +744,7 @@ int measure_perf(const thr_ctx_t &ctx, res_t *res, perf_function_t &perf_func,
             // numbers.
             mem_map[j].emplace(
                     arg, dnn_mem_t(m.md_, engine, /* prefill = */ true));
-            SAFE(mem_map[j].at(arg).reorder(m), WARN);
+            SAFE(mem_map[j].at(arg).reorder(m, res), WARN);
         }
         v_args[j] = args_t(mem_map[j]);
         execute_unmap_args(v_args[j], dnnl_args[j]);
@@ -1863,7 +1863,7 @@ void get_kinds_to_check_shared(
 // consider passing `cfg` directly.
 int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         const dnn_mem_t &library_mem, dnn_mem_map_t &ref_mem_map, int exec_arg,
-        dnnl_data_type_t swapped_dt) {
+        dnnl_data_type_t swapped_dt, res_t *res) {
     if (!prim_ref) return OK;
 
     const auto &ref_mem = ref_mem_map.at(exec_arg);
@@ -1929,7 +1929,7 @@ int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         const auto prim_ref_swapped_dt = query_md_data_type(ref_md) == dnnl_f32
                 ? dnnl_data_type_undef
                 : swapped_dt;
-        SAFE(prim_ref_mem.reorder(ref_mem, prim_ref_swapped_dt), WARN);
+        SAFE(prim_ref_mem.reorder(ref_mem, res, prim_ref_swapped_dt), WARN);
     }
     ref_mem_map[exec_arg] = std::move(prim_ref_mem);
 
@@ -1948,7 +1948,7 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         dnn_mem_t &ref_mem, const attr_t &attr, res_t *res,
         const std::unordered_map<int, fill_cfg_t> &fill_cfg_map) {
     assert(exec_arg > 0); // Negative values will produce false-positive `true`.
-    if (fill_from_file(exec_arg, mem, ref_mem)) return OK;
+    if (fill_from_file(exec_arg, mem, ref_mem, res)) return OK;
 
     const int post_ops_range = DNNL_ARG_ATTR_MULTIPLE_POST_OP(31)
             - DNNL_ARG_ATTR_MULTIPLE_POST_OP(0);
@@ -2013,8 +2013,9 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
                 fill_scales(attr, local_exec_arg, mem, ref_mem, res), WARN));
     } else if (is_zero_point_arg) {
         int local_exec_arg = exec_arg ^ DNNL_ARG_ATTR_ZERO_POINTS;
-        TIME_FILL(SAFE(
-                fill_zero_points(attr, local_exec_arg, mem, ref_mem), WARN));
+        TIME_FILL(
+                SAFE(fill_zero_points(attr, local_exec_arg, mem, ref_mem, res),
+                        WARN));
     } else if (is_dropout_p) {
         ref_mem.set_f32_elem(0, attr.dropout.p);
         mem.set_elem(0, attr.dropout.p);
@@ -2032,7 +2033,7 @@ int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         mem.set_s64_elem(0, attr.dropout.offset);
     } else if (is_rounding_seed) {
         ref_mem.set_elem(0, attr.rounding_mode.seed);
-        TIME_FILL(SAFE(mem.reorder(ref_mem), WARN));
+        TIME_FILL(SAFE(mem.reorder(ref_mem, res), WARN));
     }
 
     return OK;
@@ -2081,7 +2082,7 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
         run1_mem_map.emplace(arg,
                 dnn_mem_t(mem.md_, dnnl_f32, tag::abx, get_cpu_engine(),
                         /* prefill = */ false));
-        SAFE(run1_mem_map.at(arg).reorder(mem), WARN);
+        SAFE(run1_mem_map.at(arg).reorder(mem, res), WARN);
     }
 
     // Put original data into DST tensor if sum post-op is present.
@@ -2090,7 +2091,7 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
         auto &dst_mem = const_cast<dnn_mem_t &>(args.find(query_arg));
         const auto &orig_dst_mem = args.find(-query_arg);
         SAFE_V(bool(orig_dst_mem) && bool(dst_mem) ? OK : FAIL);
-        SAFE(dst_mem.reorder(orig_dst_mem), WARN);
+        SAFE(dst_mem.reorder(orig_dst_mem, res), WARN);
     }
 
     // Put original data into SRC if inplace mode was specified.
@@ -2115,7 +2116,7 @@ int check_bitwise(dnnl_primitive_t prim, const std::vector<data_kind_t> &kinds,
             res->state = FAILED;
             return FAIL;
         }
-        SAFE(in_mem.reorder(orig_in_mem), WARN);
+        SAFE(in_mem.reorder(orig_in_mem, res), WARN);
     }
 
     // Perform a second run.
@@ -2414,7 +2415,7 @@ void check_correctness(const base_prb_t *base_prb,
 }
 
 void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
-        dnnl_primitive_t prim, bool override_dir_with_fwd,
+        dnnl_primitive_t prim, res_t *res, bool override_dir_with_fwd,
         const engine_t &test_engine) {
     const std::vector<int> supported_exec_args
             = base_prb->supported_exec_args(override_dir_with_fwd);
@@ -2511,7 +2512,7 @@ void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
                         dnn_mem_t new_mem(
                                 md, test_engine, /* prefill = */ true);
                         // Reorder user's data from the old memory to the new one.
-                        auto st = new_mem.reorder(mem_map.at(exec_arg));
+                        auto st = new_mem.reorder(mem_map.at(exec_arg), res);
                         assert(st == OK);
                         if (st != OK) return;
                         mem_map[exec_arg] = std::move(new_mem);

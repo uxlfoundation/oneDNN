@@ -131,6 +131,9 @@ enum class reason_t {
     invalid,
     // The library dispatched in ref implementation when it's not anticipated.
     failed_ref_not_expected,
+    // The internal reorder primitive when moving data from on dnn_mem_t object
+    // to another failed for some reason.
+    failed_service_reorder,
     // The problem requires more RAM than the system provides.
     skip_not_enough_ram,
     // The library fetched the implementation that was requested to be skipped.

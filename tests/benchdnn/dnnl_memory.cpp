@@ -115,7 +115,7 @@ dnn_mem_t::dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt,
     : dnn_mem_t(rhs.md_, dt, tag, engine, /* prefill = */ true) {
     // Prefill is `true` unconditionally because of reorder involved.
     if (active_) {
-        int status = reorder(rhs);
+        int status = reorder(rhs, nullptr);
         if (status != OK) {
             BENCHDNN_PRINT(
                     0, "%s\n", "Error: reorder in memory constructor failed.");
@@ -123,11 +123,12 @@ dnn_mem_t::dnn_mem_t(const dnn_mem_t &rhs, dnnl_data_type_t dt,
     }
 }
 
-int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
+int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst, res_t *res,
         const_dnnl_primitive_attr_t attr) {
     std::shared_ptr<const dnn_mem_t> r_src(&src, [](const dnn_mem_t *) {});
     std::shared_ptr<dnn_mem_t> r_dst(&dst, [](dnn_mem_t *) {});
 
+    dnnl_status_t status = dnnl_success;
     dnnl_primitive_desc_t r_pd_ {};
     dnnl_primitive_t prim_ {};
 
@@ -148,7 +149,7 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     const auto &cpu_engine = get_cpu_engine();
     if (src.engine().is_gpu() || dst.engine().is_gpu()) {
 
-        dnnl_status_t status = dnnl_reorder_primitive_desc_create(
+        status = dnnl_reorder_primitive_desc_create(
                 &r_pd_, src.md_, cpu_engine, dst.md_, cpu_engine, attr);
         if (status == dnnl_success) {
             // Create CPU memory objects wrapping mapped pointers of source and
@@ -163,7 +164,7 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
 
     while (!r_pd_) {
         // Fallback to GPU reorder.
-        auto status = dnnl_reorder_primitive_desc_create(
+        status = dnnl_reorder_primitive_desc_create(
                 &r_pd_, src.md_, src.engine(), dst.md_, dst.engine(), attr);
         if (status == dnnl_success) break;
         // If fail to create reorder pd, use plain data copy for identical
@@ -194,8 +195,9 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
             });
             return OK;
         }
-        BENCHDNN_PRINT(0, "%s\n", "Error: failed to create a reorder.");
-        return FAIL;
+        if (res) res->state = FAILED;
+        if (res) res->reason = reason_t::failed_service_reorder;
+        DNN_SAFE(status, WARN);
     }
 
     auto r_pd = make_benchdnn_dnnl_wrapper(r_pd_);
@@ -216,7 +218,13 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     dnn_mem_t scratchpad(
             scratchpad_md, scratchpad_engine, /* prefill = */ true);
 
-    DNN_SAFE(dnnl_primitive_create(&prim_, r_pd), CRIT);
+    status = dnnl_primitive_create(&prim_, r_pd);
+    if (status != dnnl_success) {
+        if (res) res->state = FAILED;
+        if (res) res->reason = reason_t::failed_service_reorder;
+        DNN_SAFE(status, WARN);
+    }
+
     auto prim = make_benchdnn_dnnl_wrapper(prim_);
 
     args_t args;
@@ -249,7 +257,7 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     }
 
     stream_staller_t staller(stream);
-    auto status = dnnl_primitive_execute(
+    status = dnnl_primitive_execute(
             prim, stream, static_cast<int>(dnnl_args.size()), dnnl_args.data());
     staller.release();
     DNN_SAFE(dnnl_stream_wait(stream), CRIT);
@@ -259,13 +267,19 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst,
     for (int i = 0; i < args.size(); ++i)
         if (!args.dnn_mem(i).is_mapped()) args.dnn_mem(i).map();
 
-    return status != dnnl_success ? FAIL : OK;
+    if (status != dnnl_success) {
+        if (res) res->state = FAILED;
+        if (res) res->reason = reason_t::failed_service_reorder;
+        DNN_SAFE(status, WARN);
+    }
+
+    return OK;
 }
 
 // `swap_dt` changes `this` data type which may be needed for
 // different sum data type or fpmath mode specified.
-int dnn_mem_t::reorder(const dnn_mem_t &rhs, const_dnnl_primitive_attr_t attr,
-        dnnl_data_type_t swap_dt) {
+int dnn_mem_t::reorder(const dnn_mem_t &rhs, res_t *res,
+        const_dnnl_primitive_attr_t attr, dnnl_data_type_t swap_dt) {
     if (this == &rhs) return OK;
 
     // When `rhs` object is empty, it's illigal to execute a reorder over it.
@@ -285,7 +299,7 @@ int dnn_mem_t::reorder(const dnn_mem_t &rhs, const_dnnl_primitive_attr_t attr,
     const bool do_swap_dt = swap_dt != dnnl_data_type_undef;
     dnnl_data_type_t orig_dt = this->dt();
     if (do_swap_dt) this->set_dt(swap_dt);
-    auto status = execute_reorder(rhs, *this, attr);
+    auto status = execute_reorder(rhs, *this, res, attr);
     if (do_swap_dt) this->set_dt(orig_dt);
     return status;
 }

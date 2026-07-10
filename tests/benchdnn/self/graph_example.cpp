@@ -142,7 +142,7 @@ int init_op(std::unordered_map<int, graph_link_t> &op_graph,
     auto &mems = std::get<1>(op_graph[op_idx]);
     auto &ref_mems = std::get<2>(op_graph[op_idx]);
 
-    init_memory_args(mems, prb, prim);
+    init_memory_args(mems, prb, prim, res);
 
     // Initialize reference memories and fill the library memories.
     TIME_FILL(SAFE(init_ref_memory_args(ref_mems, mems, prim, prb, res), WARN));
@@ -218,7 +218,7 @@ int check_correctness(std::unordered_map<int, graph_link_t> &op_graph,
         const auto &mem_fp_md = mem_fp.md_;
         dnn_mem_t mem_fp_golden(mem_fp_md, dnnl_f32, tag::abx, get_cpu_engine(),
                 /* prefill = */ true);
-        SAFE(mem_fp_golden.reorder(mem_fp), WARN);
+        SAFE(mem_fp_golden.reorder(mem_fp, res), WARN);
 
         SAFE(cmp.compare(mem_fp_golden, mem_dt, attr_t(), res), WARN);
     }

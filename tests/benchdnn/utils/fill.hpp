@@ -88,8 +88,8 @@ int fill_scales(const attr_t &attr, int arg, dnn_mem_t &mem_dt,
 int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
         dnn_mem_t &mem_fp, res_t *res);
 
-int fill_zero_points(
-        const attr_t &attr, int arg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp);
+int fill_zero_points(const attr_t &attr, int arg, dnn_mem_t &mem_dt,
+        dnn_mem_t &mem_fp, res_t *res);
 
 int fill_random_real(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
         const fill_cfg_t &fill_cfg = get_default_fill_cfg(),
@@ -101,6 +101,7 @@ int fill_random_real(dnn_mem_t &mem_ref,
 
 extern std::string buffer_prefix;
 
-bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem);
+bool fill_from_file(
+        int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem, res_t *res);
 
 #endif

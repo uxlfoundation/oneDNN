@@ -136,7 +136,7 @@ int fill_data(int exec_arg, data_kind_t kind, const prb_t *prb,
         const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -190,12 +190,12 @@ int fill_data(int exec_arg, data_kind_t kind, const prb_t *prb,
         }
     });
 
-    SAFE(mem_dt.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res, cfg.get_swapped_dt(kind)), WARN);
     return OK;
 }
 
 // Fill attention mask with realistic 0 / -inf values (~25 % masked).
-int fill_mask(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_mask(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
 
@@ -213,7 +213,7 @@ int fill_mask(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
             mem_fp.set_f32_elem(idx, (rng() % 4 == 0) ? neg_inf : 0.f);
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
     return OK;
 }
 
@@ -391,7 +391,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                         WARN);
                 break;
             case DNNL_ARG_DST: break;
-            case DNNL_ARG_ATTN_MASK: SAFE(fill_mask(mem, ref_mem), WARN); break;
+            case DNNL_ARG_ATTN_MASK:
+                SAFE(fill_mask(mem, ref_mem, res), WARN);
+                break;
             case DNNL_ARG_DIFF_DST:
                 SAFE(fill_data(exec_arg, DST, prb, cfg, mem, ref_mem, res),
                         WARN);
@@ -467,7 +469,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     dnn_mem_map_t mem_map, ref_mem_map;
 
-    init_memory_args(mem_map, prb, v_prim[0], /*override_dir_with_fwd=*/true);
+    init_memory_args(
+            mem_map, prb, v_prim[0], res, /*override_dir_with_fwd=*/true);
 
     {
         auto scale_md = dnn_mem_t::init_host_scalar_md(dnnl_f32);
@@ -497,7 +500,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     if (prb->dir & FLAG_BWD) {
         // Extend memory map with backward args.
-        init_memory_args(mem_map, prb, v_prim[1]);
+        init_memory_args(mem_map, prb, v_prim[1], res);
 
         // Re-add scale (pruned by init_memory_args since SCALE is not in
         // exec_bwd_args; init_ref_memory_args will fill the value).

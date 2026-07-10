@@ -38,7 +38,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -85,23 +85,23 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         }
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
 
 // fill ws with big numbers to reliably cause a correctness issue (and not
 // anything else) in case of a bug in the library
-int fill_ws(
-        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_ws(int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt,
+        dnn_mem_t &mem_fp, res_t *res) {
     const size_t nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     benchdnn_parallel_nd(
             nelems, [&](int64_t i) { mem_fp.set_elem(i, (1 << 24) - 1); });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
@@ -323,7 +323,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                             = is_integral_dt(mem.dt()) ? dnnl_s32 : dnnl_f32;
                     ref_mem_map[exec_arg] = dnn_mem_t(mem.md_, ws_dt, tag::abx,
                             ref_engine, /* prefill = */ false);
-                    SAFE(fill_ws(exec_arg, prb, mem, ref_mem), WARN);
+                    SAFE(fill_ws(exec_arg, prb, mem, ref_mem, res), WARN);
                 }
                 break;
             case DNNL_ARG_DST:
@@ -394,7 +394,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = prb->dir & FLAG_FWD ? v_prim[0] : v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, v_prim[0], /*override_dir_with_fwd=*/true);
+    init_memory_args(
+            mem_map, prb, v_prim[0], res, /*override_dir_with_fwd=*/true);
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
@@ -412,7 +413,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     if (prb->dir & FLAG_BWD) {
         // Pass same memory map as we need data from forward on backward.
-        init_memory_args(mem_map, prb, v_prim[1]);
+        init_memory_args(mem_map, prb, v_prim[1], res);
         TIME_FILL(SAFE(
                 init_ref_memory_args(ref_mem_map, mem_map, v_prim[1], prb, res),
                 WARN));

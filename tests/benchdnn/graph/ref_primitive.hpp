@@ -55,7 +55,7 @@ public:
     // memories with int8 data. `force_override` flag restricts forcing f32
     // data type primarily for this use case.
     int init_prim(const engine_t &eng, res_t *res, bool force_override = false);
-    void init_memory_args(const engine_t &eng);
+    void init_memory_args(const engine_t &eng, res_t *res);
     int init_ref_memory_args(const engine_t &eng, res_t *res);
     int execute_prim(res_t *res) const;
     void check_correctness(const args_t &args, bool has_eltwise, bool has_nans,

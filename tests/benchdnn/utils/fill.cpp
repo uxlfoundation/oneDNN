@@ -159,13 +159,13 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
         SAFE(fill_random_real(mem_dt, mem_fp, res, fill_cfg), WARN);
     }
 
-    if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
+    if (mem_dt) SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
 
-int fill_zero_points(
-        const attr_t &attr, int arg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_zero_points(const attr_t &attr, int arg, dnn_mem_t &mem_dt,
+        dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
 
@@ -201,7 +201,7 @@ int fill_zero_points(
         });
     }
 
-    if (mem_dt) SAFE(mem_dt.reorder(mem_fp), WARN);
+    if (mem_dt) SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
@@ -322,14 +322,7 @@ int fill_random_real_dense(dnn_mem_t &mem, dnn_mem_t &mem_ref, res_t *res,
                 0, round_to_nearest_representable(round_dt, elem_first_val));
     }
 
-    if (mem) {
-        // TODO: move `res` inside reorder.
-        auto status = mem.reorder(mem_ref);
-        if (status != OK) {
-            if (res) res->state = FAILED;
-            return status;
-        }
-    }
+    if (mem) SAFE(mem.reorder(mem_ref, res), WARN);
 
     return OK;
 }
@@ -493,8 +486,9 @@ std::string execarg2str(int exec_arg) {
 
 std::string buffer_prefix;
 
-bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem) {
-    static const char format[] = "File %s %s; buffer not imported.\n";
+bool fill_from_file(
+        int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem, res_t *res) {
+    static const char format[] = "[FILL]: File %s %s; buffer not imported.\n";
     auto prefix = buffer_prefix;
     if (prefix.empty()) return false;
 
@@ -536,7 +530,7 @@ bool fill_from_file(int exec_arg, dnn_mem_t &mem, dnn_mem_t &ref_mem) {
         SAFE_V(FAIL);
         return false;
     }
-    if (ref_mem && (ref_mem.reorder(mem) != OK)) {
+    if (ref_mem && (ref_mem.reorder(mem, res) != OK)) {
         BENCHDNN_PRINT(0, format, prefix.c_str(), "cannot be reordered");
         SAFE_V(FAIL);
         return false;

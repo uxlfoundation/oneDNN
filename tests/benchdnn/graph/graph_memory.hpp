@@ -161,9 +161,11 @@ public:
     // value is false.
     //
     dnn_graph_mem_t(const dnn_mem_t &mem, const deserialized_lt_t &lt,
-            const bool is_op_input, const bool use_graph_layout = false);
+            const bool is_op_input, res_t *res,
+            const bool use_graph_layout = false);
 
-    dnnl::graph::tensor make_graph_tensor(const deserialized_lt_t &lt) const;
+    dnnl::graph::tensor make_graph_tensor(
+            const deserialized_lt_t &lt, res_t *res) const;
 
     const dnn_mem_t &get_mem() const { return mem_; }
 
@@ -171,7 +173,8 @@ public:
     void unmap_mem() { mem_.unmap(); }
 
 private:
-    int fill_mem_with_data(const dnn_mem_t &mem, const dnnl::engine &eng);
+    int fill_mem_with_data(
+            const dnn_mem_t &mem, const dnnl::engine &eng, res_t *res);
 
     dnn_mem_t mem_;
     std::shared_ptr<void> buffer_;

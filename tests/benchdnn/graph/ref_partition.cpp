@@ -104,7 +104,7 @@ int ref_partition_t::init_ref(
         SAFE_V(check_partition_total_size(par_op_ref.get(), res));
         if (res->state == SKIPPED) return OK;
 
-        ref_prim->init_memory_args(::get_test_engine());
+        ref_prim->init_memory_args(::get_test_engine(), res);
         SAFE_V(ref_prim->init_ref_memory_args(::get_test_engine(), res));
 
         // store the memory for each logical tensor
@@ -170,11 +170,11 @@ int ref_partition_t::init_graph_mem(
             }
             partition_mem_map.emplace(id,
                     dnn_graph_mem_t(lt_id_2_mems_.at(id), lt_id_2_lt_.at(id),
-                            /*is_op_input=*/true));
+                            /*is_op_input=*/true, res));
         } else
             partition_mem_map.emplace(id,
                     dnn_graph_mem_t({}, lt_id_2_lt_.at(id),
-                            /*is_op_input=*/true));
+                            /*is_op_input=*/true, res));
     }
 
     for (const auto &id : partition_out_ids_) {
@@ -183,7 +183,8 @@ int ref_partition_t::init_graph_mem(
                 || has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
             partition_mem_map.emplace(id,
                     dnn_graph_mem_t({}, lt_id_2_lt_.at(id),
-                            /*is_op_input=*/false, /*use_graph_layout=*/true));
+                            /*is_op_input=*/false, res,
+                            /*use_graph_layout=*/true));
         } else if (lt_id_2_mems_.find(id) != lt_id_2_mems_.end()) {
             // For output memories of graph, they need to be in compliance with
             // the reference memories regarding the shapes and memory tags, as
@@ -191,7 +192,7 @@ int ref_partition_t::init_graph_mem(
             // comparison.
             partition_mem_map.emplace(id,
                     dnn_graph_mem_t(lt_id_2_mems_.at(id), lt_id_2_lt_.at(id),
-                            /*is_op_input=*/false));
+                            /*is_op_input=*/false, res));
         } else {
             BENCHDNN_PRINT(0, "Fail: cannot find memory for %zu\n", id);
             res->state = FAILED;
@@ -234,7 +235,7 @@ void ref_partition_t::exec_ops(res_t *res) {
                 dnn_mem_t &dst_i
                         = const_cast<dnn_mem_t &>(ref_prim->get_arg(arg));
                 const auto &src_i = lt_id_2_mems_.at(lt.id_);
-                SAFE_V(dst_i.reorder(src_i));
+                SAFE_V(dst_i.reorder(src_i, res));
                 continue;
             }
             ref_prim->replace_arg(arg, lt_id_2_mems_.at(lt.id_));
@@ -308,7 +309,7 @@ void ref_partition_t::exec_ops(res_t *res) {
                 dnn_mem_t &src_i
                         = const_cast<dnn_mem_t &>(ref_prim->get_arg(arg));
                 dnn_mem_t src_low_dt(src_i, dt, tag::abx, src_i.engine());
-                SAFE_V(src_i.reorder(src_low_dt));
+                SAFE_V(src_i.reorder(src_low_dt, res));
             }
         }
 
@@ -333,7 +334,7 @@ void ref_partition_t::exec_ops(res_t *res) {
                 dnn_mem_t &dst_i
                         = const_cast<dnn_mem_t &>(ref_prim->get_arg(arg));
                 dnn_mem_t dst_low_dt(dst_i, dt, tag::abx, dst_i.engine());
-                SAFE_V(dst_i.reorder(dst_low_dt));
+                SAFE_V(dst_i.reorder(dst_low_dt, res));
             }
         }
     }

@@ -35,11 +35,11 @@
 
 namespace binary {
 
-int fill_mem(
-        int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp) {
+int fill_mem(int exec_arg, const prb_t *prb, dnn_mem_t &mem_dt,
+        dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -88,7 +88,7 @@ int fill_mem(
         }
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
@@ -254,29 +254,29 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
 
         switch (exec_arg) {
             case DNNL_ARG_SRC_0:
-                SAFE(fill_mem(exec_arg, prb, mem, ref_mem), WARN);
+                SAFE(fill_mem(exec_arg, prb, mem, ref_mem, res), WARN);
                 // Need a copy of source data for inplace mode for bitwise
                 // testing.
                 if (has_bench_mode_bit(mode_bit_t::bitwise) && prb->inplace) {
                     auto &src_copy = mem_map.at(-exec_arg);
                     SAFE(bool(src_copy) ? OK : FAIL, WARN);
-                    SAFE(src_copy.reorder(mem), WARN);
+                    SAFE(src_copy.reorder(mem, res), WARN);
                 }
                 break;
             case DNNL_ARG_SRC_1:
-                SAFE(fill_mem(exec_arg, prb, mem, ref_mem), WARN);
+                SAFE(fill_mem(exec_arg, prb, mem, ref_mem, res), WARN);
                 break;
             case DNNL_ARG_SRC_2:
-                SAFE(fill_mem(exec_arg, prb, mem, ref_mem), WARN);
+                SAFE(fill_mem(exec_arg, prb, mem, ref_mem, res), WARN);
                 break;
             case DNNL_ARG_DST:
                 if (prb->attr.post_ops.find(alg_t::SUM) >= 0) {
-                    SAFE(fill_mem(exec_arg, prb, mem, ref_mem), WARN);
+                    SAFE(fill_mem(exec_arg, prb, mem, ref_mem, res), WARN);
 
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem, res), WARN);
                     }
                 }
                 break;
@@ -321,7 +321,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim = v_prim[0];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, prim);
+    init_memory_args(mem_map, prb, prim, res);
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, prim, prb, res), WARN));
 

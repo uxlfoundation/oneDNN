@@ -162,8 +162,8 @@ int check_reorder_presence(
                 /* prefill = */ true);
         dnn_mem_t mem_dt_s8(
                 mem_dt.md_, get_test_engine(), /* prefill = */ true);
-        SAFE(mem_fp_s8.reorder(mem_fp), WARN);
-        SAFE(mem_dt_s8.reorder(mem_fp_s8), WARN);
+        SAFE(mem_fp_s8.reorder(mem_fp, res), WARN);
+        SAFE(mem_dt_s8.reorder(mem_fp_s8, res), WARN);
         SAFE(mem_dt.size() == mem_dt_s8.size() ? OK : FAIL, WARN);
         int rc = std::memcmp((void *)mem_dt, (void *)mem_dt_s8, mem_dt.size());
         SAFE(rc == 0 ? OK : FAIL, WARN);
@@ -176,7 +176,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         const cfg_t &cfg, dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
@@ -234,7 +234,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         }
     });
 
-    SAFE(mem_dt.reorder(mem_fp, cfg.get_swapped_dt(kind)), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res, cfg.get_swapped_dt(kind)), WARN);
 
     if (kind == WEI)
         SAFE(check_reorder_presence(prb, mem_dt, mem_fp, res), WARN);
@@ -361,7 +361,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                     // Bitwise mode for sum requires a copy due to data for
                     // post-op will be overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
-                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem), WARN);
+                        SAFE(mem_map.at(-exec_arg).reorder(ref_mem, res), WARN);
                     }
                 }
                 break;
@@ -377,7 +377,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         }
 
         update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
-                cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)));
+                cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)), res);
 
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();
@@ -449,7 +449,7 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     const auto &prim_ref = v_prim[1];
 
     dnn_mem_map_t mem_map, ref_mem_map;
-    init_memory_args(mem_map, prb, prim);
+    init_memory_args(mem_map, prb, prim, res);
     TIME_FILL(SAFE(init_ref_memory_args(
                            ref_mem_map, mem_map, prim, prb, res, prim_ref),
             WARN));

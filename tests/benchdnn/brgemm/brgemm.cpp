@@ -219,7 +219,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
 
     const auto nelems = mem_dt.nelems();
     if (nelems == 0) return OK;
-    if (fill_from_file(exec_arg, mem_dt, mem_fp)) return OK;
+    if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
     assert(mem_dt.nelems() == mem_fp.nelems());
 
@@ -275,14 +275,14 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
         }
     });
 
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
 
 // An object to pass information between different modules of the flow.
 struct kernel_args_t {
-    kernel_args_t(const prb_t *prb, res_t *res)
+    kernel_args_t(const prb_t *prb)
         :
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
         brgemm_kernel_(nullptr)
@@ -297,8 +297,7 @@ struct kernel_args_t {
 #endif
         , scratchpad_size_(0)
         , generate_skip_accumulation_(false)
-        , prb_(prb)
-        , res_(res) {
+        , prb_(prb) {
     }
 
     // Output members
@@ -318,12 +317,10 @@ struct kernel_args_t {
 
     // Input members
     const prb_t *prb_;
-    res_t *res_;
 };
 
-int init_kernel(kernel_args_t &kernel_args) {
+int init_kernel(kernel_args_t &kernel_args, res_t *res) {
     const prb_t *prb = kernel_args.prb_;
-    res_t *res = kernel_args.res_;
 
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
     using namespace namespace_impl;
@@ -852,8 +849,8 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             auto &dst_fp = ref_mem_map.at(DNNL_ARG_DST);
             auto &dst_dt = mem_map.at(DNNL_ARG_DST);
 
-            SAFE(dst_fp.reorder(acc_fp), WARN);
-            SAFE(dst_dt.reorder(dst_fp), WARN);
+            SAFE(dst_fp.reorder(acc_fp, res), WARN);
+            SAFE(dst_dt.reorder(dst_fp, res), WARN);
         }
     }
 
@@ -1030,8 +1027,8 @@ int doit(const prb_t *prb, res_t *res) {
     prb->skip_invalid(res);
     if (res->state == SKIPPED) return OK;
 
-    kernel_args_t kernel_args(prb, res);
-    SAFE(init_kernel(kernel_args), WARN);
+    kernel_args_t kernel_args(prb);
+    SAFE(init_kernel(kernel_args, res), WARN);
     if (res->state == SKIPPED) return OK;
     if (bench_mode == bench_mode_t::init) return res->state = INITIALIZED, OK;
 
@@ -1195,7 +1192,7 @@ int doit(const prb_t *prb, res_t *res) {
     } else {
         const auto &wei_dt = mem_map.at(DNNL_ARG_WEIGHTS);
         auto &wei_packed_dt = mem_map.at(DNNL_ARG_WEIGHTS_1);
-        SAFE(wei_packed_dt.reorder(wei_dt), WARN);
+        SAFE(wei_packed_dt.reorder(wei_dt, res), WARN);
     }
 
     std::vector<dnnl_dim_t> offsets(2 * prb->batch_size);

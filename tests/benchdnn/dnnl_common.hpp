@@ -321,7 +321,7 @@ dnnl_data_type_t deduce_cfg_data_type(
 // internally, while map doesn't not invalidate its references when adding a new
 // element which simplifies an implementation.
 void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
-        dnnl_primitive_t prim, bool override_dir_with_fwd = false,
+        dnnl_primitive_t prim, res_t *res, bool override_dir_with_fwd = false,
         const engine_t &test_engine = get_test_engine());
 
 void erase_unused_args(
@@ -332,7 +332,7 @@ void get_kinds_to_check_shared(
 
 int update_ref_mem_map_from_prim(dnnl_primitive_t prim_ref,
         const dnn_mem_t &library_mem, dnn_mem_map_t &ref_mem_map, int exec_arg,
-        dnnl_data_type_t swapped_dt);
+        dnnl_data_type_t swapped_dt, res_t *res);
 
 int init_ref_memory_args_default_case(int exec_arg, dnn_mem_t &mem,
         dnn_mem_t &ref_mem, const attr_t &attr, res_t *res,

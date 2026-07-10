@@ -60,7 +60,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_SRC:
                 // For GenIndex op, the input value doesn't affect the output
                 // value, it doesn't matter what value we fill in.
-                SAFE(::custom::fill_mem(mem, ref_mem, 0, 0), WARN);
+                SAFE(::custom::fill_mem(mem, ref_mem, 0, 0, res), WARN);
                 break;
             default: break;
         }
@@ -125,7 +125,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_SRC:
                 // Use `7` not to mess with scales for s8 which may create a
                 // `8 * 8 (= 128) = -128` for s8.
-                SAFE(::custom::fill_mem(mem, ref_mem, -8, 7), WARN);
+                SAFE(::custom::fill_mem(mem, ref_mem, -8, 7, res), WARN);
                 break;
             default: break;
         }
@@ -138,9 +138,7 @@ int execute(const prb_t *prb, const args_t &args, res_t *res) {
     const auto &tag = ::std::get<0>(prb->arg_mds_.at(DNNL_ARG_SRC));
     dnn_mem_t pad(src, src.dt(), tag, get_test_engine());
     ::graph::permute_md(pad, prb->order);
-    int ret = const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST)).reorder(pad);
-    if (ret != OK) { res->state = FAILED; }
-    return ret;
+    return const_cast<dnn_mem_t &>(args.find(DNNL_ARG_DST)).reorder(pad, res);
 }
 } // namespace transpose
 
@@ -172,7 +170,7 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
             case DNNL_ARG_SRC:
                 // Use `7` not to mess with scales for s8 which may create a
                 // `8 * 8 (= 128) = -128` for s8.
-                SAFE(::custom::fill_mem(mem, ref_mem, -8, 7), WARN);
+                SAFE(::custom::fill_mem(mem, ref_mem, -8, 7, res), WARN);
                 break;
             default: break;
         }
@@ -186,15 +184,13 @@ int execute(const prb_t *prb, const args_t &args, res_t *res) {
     // generate dense stride
     dnn_mem_t pad(src.md_, src.dt(), tag::abx, get_test_engine(),
             /* prefill = */ true);
-    int ret = pad.reorder(src);
-    if (ret != OK) { res->state = FAILED; }
+    SAFE(pad.reorder(src, res), WARN);
+
     // update output shape with dense stride
     dnnl_memory_desc_destroy(pad.md_);
     dnnl_memory_desc_create_with_string_tag(&pad.md_, dst.ndims(), dst.dims(),
             dst.dt(), normalize_tag(tag::abx, dst.ndims()).c_str());
-    ret = dst.reorder(pad);
-    if (ret != OK) { res->state = FAILED; }
-    return ret;
+    return dst.reorder(pad, res);
 }
 } // namespace reshape
 
@@ -224,7 +220,8 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
     }
 }
 
-int fill_mem(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max) {
+int fill_mem(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max,
+        res_t *res) {
 
     const auto dt = mem_dt.dt();
     if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
@@ -253,13 +250,13 @@ int fill_mem(dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, int f_min, int f_max) {
             mem_fp.set_elem(idx, round_to_nearest_representable(dt, value));
         }
     });
-    SAFE(mem_dt.reorder(mem_fp), WARN);
+    SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }
 
 void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
-        bool override_dir_with_fwd, const engine_t &test_engine) {
+        bool override_dir_with_fwd, res_t *, const engine_t &test_engine) {
     const auto *prb = prb_t::from(base_prb);
     const auto &supported_exec_args
             = base_prb->supported_exec_args(override_dir_with_fwd);
@@ -284,8 +281,8 @@ void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
 
 void init_memory_args_native(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
         const graph::deserialized_op_t &, const engine_t &ref_eng) {
-    init_memory_args(
-            mem_map, base_prb, /*override_dir_with_fwd=*/false, ref_eng);
+    init_memory_args(mem_map, base_prb, /*override_dir_with_fwd=*/false,
+            nullptr, ref_eng);
 }
 
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,

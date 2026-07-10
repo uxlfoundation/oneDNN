@@ -2516,11 +2516,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
             // locally just before usage. Using the single global scaling before
             // parallel section might produce significant overhead for small
             // problems running in multitreaded execution mode
-            const int base_offset = get_bb_idx(b_idx, bgmmc_.bcast_B_desc)
-                            * rnd_up(bgmmc_.N, bgmmc_.wei_n_blk)
+            const int padded_N = rnd_up(bgmmc_.N, bgmmc_.wei_n_blk);
+            const int base_offset
+                    = get_bb_idx(b_idx, bgmmc_.bcast_B_desc) * padded_N
                     + n_blk_idx * bgmmc_.N_blk;
+            const int cur_n_blk = nstl::min(
+                    bgmmc_.N_blk, padded_N - n_blk_idx * bgmmc_.N_blk);
             PRAGMA_OMP_SIMD()
-            for (int b = 0; b < bgmmc_.N_blk; b++)
+            for (int b = 0; b < cur_n_blk; b++)
                 zp_comp[b] = -get_neg_zp_a()
                         * reorder_zp_a_comp_ptr_[base_offset + b];
         }

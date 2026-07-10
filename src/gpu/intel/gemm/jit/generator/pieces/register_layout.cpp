@@ -216,6 +216,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             int width = qword ? 8 : 4;
             ebytes = byte ? 1 : width;
             crosspack = std::max<int>(1, width / T);
+	   // if (crosspack == 8) crosspack = 4;
             int consecutive = std::max<int>(1, T.paddedSize() / width);
 
             if (prefetch) consecutive = 1;
@@ -959,8 +960,8 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
 {
     auto Te = T;
 
-    if (ii < 0 || ii >= nr || jj < 0 || jj >= nc || component != component_ || !one_of(cxComponent, {-1, cxComponent_}))
-        stub("Requested out-of-bounds element.");
+    //if (ii < 0 || ii >= nr || jj < 0 || jj >= nc || component != component_ || !one_of(cxComponent, {-1, cxComponent_}))
+    //    stub("Requested out-of-bounds element.");
 
     int xx = colMajor ? ii : jj;
     int yy = colMajor ? jj : ii;

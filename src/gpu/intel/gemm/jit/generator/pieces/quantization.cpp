@@ -24,7 +24,8 @@ GEMMSTONE_NAMESPACE_START
 bool canDequantizeInt4(const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
                        const RegisterLayout &layoutOffset, const RegisterLayout &layoutScale)
 {
-    auto Tsrc = layoutSrc.type(), Tdst = layoutDst.type();
+return false;
+    	auto Tsrc = layoutSrc.type(), Tdst = layoutDst.type();
     if (!Tsrc.isInt4() || !one_of(Tdst, {Type::f16, Type::f32}))
         return false;
 

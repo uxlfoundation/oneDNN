@@ -131,8 +131,8 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
         int cxComp = 0;
 
         // Locate source and destination registers.
-        CopyOperand sOp = sblock.findRegion(Ts,                 eoffR,                          eoffC,         src, &ns,          cxComp, 0, true);
-        CopyOperand dOp = layoutDst.findRegion(sblock.offsetR + eoffR + dOffR, sblock.offsetC + eoffC + dOffC, dst, &nd, &dblock, cxComp, 0, true);
+        CopyOperand sOp = sblock.findRegion(Ts,                 eoffR ,                          eoffC + (sblock.crosspack > 2 ?dOffR: 0),         src, &ns,          cxComp, 0, true);
+        CopyOperand dOp = layoutDst.findRegion(sblock.offsetR + eoffR + (sblock.crosspack > 2 ? 0: dOffR), sblock.offsetC + eoffC + dOffC, dst, &nd, &dblock, cxComp, 0, true);
         dOp.type = Td.real().ngen();
         int n = std::min(ns, nd);
 

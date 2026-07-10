@@ -244,6 +244,9 @@ InstructionModifier CopyInstruction::ngenModifiers() const
 // Run all transformation passes on a CopyPlan.
 void CopyPlan::transform()
 {
+dump();
+printf("-----------------");
+
     distributePhases();
     planEarlyInt4Upconversions();
     split2DRegions();

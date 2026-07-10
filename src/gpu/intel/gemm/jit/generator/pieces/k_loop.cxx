@@ -1594,10 +1594,11 @@ void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const s
         /* no-op */;
     else if (astrategy.address2D)
         incDecAddr(addrs, Subregister(), 0, ka_inc, layout, strategy, state, problem.backward());
-    else if (atype.layout == MatrixLayout::N) {
+    else if (atype.layout == MatrixLayout::N ) {
         bool release = false;
         auto lda_ka = lookupIncrement(state.ldaIncrements, state.lda, ka_inc, strategy, state, &release);
-        incDecAddr(addrs, lda_ka, layout, strategy, state, problem.backward());
+
+	incDecAddr(addrs, lda_ka, layout, strategy, state, problem.backward());
         if (release) state.ra.safeRelease(lda_ka);
     } else {
         int incA;
@@ -1607,6 +1608,7 @@ void Generator<hw>::gemmAIncrementInternal(const RegisterLayout &layout, const s
             case MatrixLayout::T:  incA = ka_inc; break;
             default: stub();
         }
+       // if  (astrategy.accessType == AccessType::Scattered) incA = 54;  
         incDecAddr(addrs, incA * Ta, layout, strategy, state, problem.backward());
     }
 }
@@ -1754,7 +1756,8 @@ void Generator<hw>::gemmAiBiRemLoadInc(int h, bool incremental, bool incremental
                                        const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
 {
     auto kx_slm = doA ? state.ka_slm   : state.kb_slm;
-
+    
+    //kx_slm /= 2;
     auto unrollKSLM = strategy.unrollKSLM;
     bool kSLMCountUp = state.kSLMCountUp;
     int kSLMSign = kSLMCountUp ? +1 : -1;
@@ -1781,7 +1784,7 @@ void Generator<hw>::gemmAiBiRemLoadInc(int h, bool incremental, bool incremental
         if (prezero)
             zeroMatrix(incrementalCopy ? Xo_regs : Xi_regs, strategy);
 
-        for (int hh = 0; hh < kx_slm; hh++) {
+        for (int hh = 0; hh <  kx_slm; hh+=1) {
             int hhRem = kx_slm - hh - 1;
 
             Label skipInc;
@@ -1825,12 +1828,13 @@ void Generator<hw>::gemmAiBiRemLoadInc(int h, bool incremental, bool incremental
                 nextCheck();
             }
 
-            doA ? gemmAIncrement(Xi_layoutK[hh_layout], Xi_addrsK[hh_addr], kx_inc, problem, strategy, state)
+            doA ? gemmAIncrement(Xi_layoutK[hh_layout], Xi_addrsK[hh_addr], hh%2 == 0 ? kx_inc : 0, problem, strategy, state)
                 : gemmBIncrement(Xi_layoutK[hh_layout], Xi_addrsK[hh_addr], kx_inc, problem, strategy, state);
 
             if (incrementalCopy) {
                 int rr_eff = doA ? 0 : hh_eff;
                 int cc_eff = doA ? hh_eff : 0;
+		if (doA && hh % 2) rr_eff = 1;
                 copyRegisters(Xi_layoutK[hh_layout], Xo_layout, Xi_regs, Xo_regs, rr_eff, cc_eff, false, strategy, state);
             }
         }

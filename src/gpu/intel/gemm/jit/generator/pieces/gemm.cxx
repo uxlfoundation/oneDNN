@@ -936,11 +936,11 @@ bool Generator<hw>::gemmBody(GEMMProblem problem, GEMMStrategy strategy, GEMMSta
 
     // Try generating kernel body with current strategy.
     bool success = false;
-    pushStream(); try {
+    pushStream(); //try {
         success = gemmBodyInternal(problem, strategy, state);
-    } catch (...) {
+    /*} catch (...) {
         lastException = std::current_exception();
-    }
+    }*/
     success ? appendCurrentStream() : discardStream();
 
     return success;

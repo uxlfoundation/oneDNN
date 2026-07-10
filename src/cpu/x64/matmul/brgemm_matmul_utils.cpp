@@ -848,8 +848,8 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
 
     if (bgmmc.ndims > 3) return format_tag::undef;
 
-    if (is_int8() || is_f8() || is_bf16_fp8() || is_f16_fp8()
-            || with_int8_grouped_quantization()) {
+    if (is_int8() || (is_f8() && bgmmc.isa != avx10_2) || is_bf16_fp8()
+            || is_f16_fp8() || with_int8_grouped_quantization()) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c4b : BA16a64b4a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c4b : BA16a48b4a;
@@ -865,7 +865,7 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             || is_f32_bf16() || is_f16_with_int_wei() || is_f32_with_int_wei();
 
     if ((prefer_amx_or_avx2_vnni_2 && is_amx_or_avx2_vnni_2) || is_bf16()
-            || is_bf16_with_int_wei()) {
+            || is_bf16_with_int_wei() || (is_f8() && bgmmc.isa == avx10_2)) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c2b : BA16a64b2a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c2b : BA16a48b2a;
@@ -1722,6 +1722,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         VCONDCHECK_BG(bgmmc.is_amx, VERBOSE_ISA_SPARSE_ENCODING_MISMATCH);
         VCONDCHECK_BG(bgmmc.wei_dt == s8, VERBOSE_UNSUPPORTED_DT);
     }
+    bgmmc.is_f8 = bm_conf_utils.is_f8();
     bgmmc.is_bf32 = bm_conf_utils.is_bf32();
     bgmmc.is_tf32 = bm_conf_utils.is_tf32();
     bgmmc.is_bf16_with_int_wei = bm_conf_utils.is_bf16_with_int_wei();
@@ -1771,7 +1772,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         // Note 3: Since `use_buffer_b()` depends on `bgmmc.wei_tag`, which is
         // set later in the code due to its dependencies, the update of data
         // types to f32 happens below in ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`.
-    } else if (bgmmc.is_f16_with_int_wei && bgmmc.isa != avx512_core_fp16) {
+    } else if ((bgmmc.is_f16_with_int_wei && bgmmc.isa != avx512_core_fp16)
+            || (bgmmc.is_f8 && bgmmc.isa == avx10_2)) {
         bgmmc.src_dt = f16;
         bgmmc.wei_dt = f16;
         bgmmc.tr_a_dt_sz = types::data_type_size(f16);
@@ -2235,6 +2237,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                     || ((bm_conf_utils.is_f16()
                                 || bm_conf_utils.is_f16_with_int_wei())
                             && isa == avx512_core_fp16)
+                    || (bm_conf_utils.is_f8() && isa == avx10_2)
                     || (bgmmc.wei_zp_type != brgemm_broadcast_t::none
                             && !bm_conf_utils.with_weights_decompression())
                     || bgmmc.transposed_A);

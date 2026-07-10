@@ -292,6 +292,7 @@ private:
     Xbyak::Opmask kmask_fp8_aux = Xbyak::Opmask(5);
     // Used for both AMX GEMM and GEMV code paths.
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(6);
+    Xbyak::Opmask fp8_tail_mask = Xbyak::Opmask(7);
 
     static int get_max_effective_vregs(const brgemm_desc_t &brg) {
         auto used_vregs = 0;
@@ -428,6 +429,8 @@ private:
     void zero_accumulators(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_ld_tail, bool skip_accumulation);
 
+    void fp8_to_f16_upconvert(
+            data_type_t dt, const Vmm &vmm_out, const Operand &op_in);
     void fp8_to_f16_upconvert(dim_t num_rows, dim_t tile_num_col_bytes,
             reg64_t reg_base, dim_t offset, reg64_t reg_data_stride,
             data_type_t dt, bool is_rd_tail);
@@ -1183,6 +1186,20 @@ void jit_brgemm_kernel_t<Wmm>::zero_accumulators(dim_t bd_block2,
             uni_vpxor(vmm, vmm, vmm);
         }
     }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert(
+        data_type_t dt, const Vmm &vmm_out, const Operand &op_in) {
+    if (!one_of(dt, data_type::f8_e4m3, data_type::f8_e5m2)) {
+        assert(!"unsupported data type");
+        return;
+    }
+
+    if (dt == data_type::f8_e4m3)
+        f8_e4m3_cvt_->vcvt_f8_to_f16(vmm_out, op_in);
+    else if (dt == data_type::f8_e5m2)
+        f8_e5m2_cvt_->vcvt_f8_to_f16(vmm_out, op_in);
 }
 
 // This method up-converts the data from bf8 to f16 and saves at reg_buf.
@@ -3193,7 +3210,11 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             Xmm xmm_tmp = Xmm(vmm_bcast.getIdx());
             load_bytes(
                     xmm_tmp, reg_aux_A, offset, rd_tail_size * brg.typesize_A);
-            uni_vpbroadcastd(vmm_bcast, xmm_tmp);
+            if (brg.fp8_with_f16_vnni_block) {
+                vpbroadcastw(vmm_bcast, xmm_tmp);
+                fp8_to_f16_upconvert(dt, vmm_bcast, vmm_bcast);
+            } else
+                uni_vpbroadcastd(vmm_bcast, xmm_tmp);
         } else {
             if (dt == data_type::f32) {
                 uni_vbroadcastss(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -3202,9 +3223,14 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                     vbcstnebf162ps(vmm_bcast, ptr[reg_aux_A + offset]);
                 else
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
-            } else if (one_of(dt, data_type::s8, data_type::u8,
-                               data_type::f8_e5m2, data_type::f8_e4m3)) {
+            } else if (one_of(dt, data_type::s8, data_type::u8)) {
                 uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+            } else if (one_of(dt, data_type::f8_e5m2, data_type::f8_e4m3)) {
+                if (brg.fp8_with_f16_vnni_block) {
+                    vpbroadcastw(vmm_bcast, ptr[reg_aux_A + offset]);
+                    fp8_to_f16_upconvert(dt, vmm_bcast, vmm_bcast);
+                } else
+                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (dt == data_type::f16) {
                 if (brg.isa_impl == avx10_2) {
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -3229,8 +3255,10 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                         brg.dt_b == data_type::f16, brg.isa_impl == avx10_2)
                 && IMPLICATION(brg.dt_b == data_type::bf16,
                         brg.isa_impl != avx2_vnni_2);
+        const auto tail_mask
+                = brg.fp8_with_f16_vnni_block ? fp8_tail_mask : ld_tail_mask;
         const Vmm vmm_load
-                = vmm_mask(load(vmm_load_idx), is_ld_tail, false, ld_tail_mask);
+                = vmm_mask(load(vmm_load_idx), is_ld_tail, false, tail_mask);
         const auto addr = ptr[reg_aux_B + B_offset(ld, rd)];
         // Note: Assuming the tails are properly padded/blocked for
         // avx2_vnni_2 with xf16 data type, as the B matrix is generally
@@ -3275,6 +3303,11 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
             } else {
                 uni_vmovups(vmm_load, addr);
             }
+        } else if (one_of(brg.dt_b, data_type::f8_e5m2, data_type::f8_e4m3)) {
+            if (brg.fp8_with_f16_vnni_block)
+                fp8_to_f16_upconvert(brg.dt_b, vmm_load, addr);
+            else
+                uni_vmovups(vmm_load, addr);
         } else if (is_ld_tail) {
             if (is_superset(brg.isa_impl, avx512_core)) {
                 uni_vmovups(vmm_load, addr);
@@ -3309,7 +3342,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 broadcast_A(bcst(bd), bd, rd);
             for (dim_t ld = 0; ld < ld_block2; ld++) {
                 load_B(0, rd, ld);
-                if (brg.is_fp8_via_convert_non_amx())
+                if (brg.is_fp8_via_convert_non_amx()
+                        && !brg.fp8_with_f16_vnni_block)
                     maybe_pre_process_data(brg.dt_b, load(), vmm_fp8_load());
                 for (dim_t bd = bd_b; bd < bd_e; bd++) {
                     auto vmm = accm(ld_block2, bd, ld);
@@ -3317,7 +3351,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                         uni_vfmadd231ps(vmm, load(),
                                 ptr_b[reg_aux_A + A_offset(bd, rd)]);
                     else {
-                        if (brg.is_fp8_via_convert_non_amx()) {
+                        if (brg.is_fp8_via_convert_non_amx()
+                                && !brg.fp8_with_f16_vnni_block) {
                             broadcast_A(bcst(bd), bd, rd);
                             maybe_pre_process_data(
                                     brg.dt_a, bcst(bd), vmm_fp8_bcst());
@@ -3337,7 +3372,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
             for (dim_t bd = bd_b; bd < bd_e; bd++) {
                 if (!is_emdbd) broadcast_A(bcst(), bd, rd);
-                if (brg.is_fp8_via_convert_non_amx())
+                if (brg.is_fp8_via_convert_non_amx()
+                        && !brg.fp8_with_f16_vnni_block)
                     maybe_pre_process_data(brg.dt_a, bcst(), vmm_fp8_bcst());
                 if (prefetch_count_B < ld_block2) {
                     const dim_t prefetch_offset
@@ -3364,7 +3400,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                         uni_vfmadd231ps(vmm, load(ld),
                                 ptr_b[reg_aux_A + A_offset(bd, rd)]);
                     else {
-                        if (brg.is_fp8_via_convert_non_amx()) {
+                        if (brg.is_fp8_via_convert_non_amx()
+                                && !brg.fp8_with_f16_vnni_block) {
                             load_B(ld, rd, ld);
                             maybe_pre_process_data(
                                     brg.dt_b, load(ld), vmm_fp8_load());
@@ -3872,6 +3909,12 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
             kmovq(ld_full_mask, reg_mask);
             mov(reg_mask, tail_mask);
             kmovq(ld_tail_mask, reg_mask);
+
+            if (brg.fp8_with_f16_vnni_block) {
+                const auto f8_tail = size_t((1 << (brg.ldb_tail * 2)) - 1);
+                mov(reg_mask.cvt32(), f8_tail);
+                kmovd(fp8_tail_mask, reg_mask.cvt32());
+            }
         } else {
             const auto partial_mask
                     = brg.transA ? size_t((1 << brg.gemv_tail) - 1) : 1;

@@ -1785,8 +1785,9 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             ? jcp.dst_dt
             : utils::one_of(true, jcp.is_f32_bf16, jcp.is_f32_f16) ? jcp.src_dt
                                                                    : jcp.wei_dt;
+    const bool req_emulation = utils::one_of(isa, avx10_1_512, avx10_2);
     const data_type_t vnni_block_dt
-            = get_mac_emu_data_type(vnni_dt, isa, isa == avx10_1_512);
+            = get_mac_emu_data_type(vnni_dt, isa, req_emulation);
     jcp.vnni_block = data_type_vnni_granularity(vnni_block_dt);
 
     if (one_of(jcp.prop_kind, prop_kind::forward_training,
@@ -2150,7 +2151,9 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     bool relo_conv_weights_wi = true;
     const auto rd_wi = jcp.kw * jcp.ic;
     const auto rnd_rd_wi = (float)rnd_up(rd_wi, jcp.simd_w);
-    if (!jcp.wei_plain && relo_supported_isa && relo_reasonable_isa) {
+    // TODO: enable relo for fp8 with f16 vnni block later
+    if (!jcp.wei_plain && !jcp.is_fp8 && relo_supported_isa
+            && relo_reasonable_isa) {
         if (jcp.vnni_block == 1 /* For f32 weights are in needed layout */
                 || (jcp.ic % jcp.vnni_block == 0
                         && IMPLICATION(

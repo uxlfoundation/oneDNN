@@ -299,6 +299,7 @@ struct brgemm_desc_t {
     bool skip_zp_b_compensation = false;
     bool skip_zp_a_compensation = false;
     bool n_bcast_1_load = false;
+    bool fp8_with_f16_vnni_block = false;
 
     brgemm_broadcast_t zp_type_a = brgemm_broadcast_t::none;
     brgemm_broadcast_t zp_type_b = brgemm_broadcast_t::none;

@@ -284,7 +284,8 @@ status_t check_isa_with_datatype(
                     is_superset(isa, avx512_core_amx_fp16)
                             || is_superset(isa, avx10_2))
             && IMPLICATION(bm_conf_utils.is_bf8(),
-                    is_superset(isa, avx512_core_amx_fp16))
+                    is_superset(isa, avx512_core_amx_fp16)
+                            || is_superset(isa, avx10_2))
             && IMPLICATION(
                     bm_conf_utils.is_f4_via_convert(), one_of(isa, avx10_2));
     return ok ? status::success : status::unimplemented;

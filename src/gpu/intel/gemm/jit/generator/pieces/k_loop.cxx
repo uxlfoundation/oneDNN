@@ -1828,7 +1828,7 @@ void Generator<hw>::gemmAiBiRemLoadInc(int h, bool incremental, bool incremental
                 nextCheck();
             }
 
-            doA ? gemmAIncrement(Xi_layoutK[hh_layout], Xi_addrsK[hh_addr], hh%2 == 0 ? kx_inc : 0, problem, strategy, state)
+            doA ? gemmAIncrement(Xi_layoutK[hh_layout], Xi_addrsK[hh_addr], hh%2 ? kx_inc : 0, problem, strategy, state)
                 : gemmBIncrement(Xi_layoutK[hh_layout], Xi_addrsK[hh_addr], kx_inc, problem, strategy, state);
 
             if (incrementalCopy) {

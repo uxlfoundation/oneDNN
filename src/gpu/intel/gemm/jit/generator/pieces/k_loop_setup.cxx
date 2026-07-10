@@ -182,7 +182,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
             kb_loadRem = std::max(kb_loadRem, problem.B.alignment / Tb_load);
             kb_loadRem = std::min(kb_loadRem, strategy.kb_load);
         }
-    ka_loadRem = 2;
+    //ka_loadRem = 2;
     // Fragment the A, B layouts into smaller blocks (usually 1 row/column) for remainder loads.
     state.A_layoutRem = state.A_layout.trySlice(state.A_addrsRem, state.A_addrs, true,  0, ka_loadRem, strategy.A.padded);
     state.B_layoutRem = state.B_layout.trySlice(state.B_addrsRem, state.B_addrs, false, 0, kb_loadRem, strategy.B.padded);

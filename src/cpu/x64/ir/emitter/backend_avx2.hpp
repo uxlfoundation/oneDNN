@@ -67,8 +67,7 @@ struct avx2_backend_t {
     void vadd(int d, int s, data_type_t dt) { // dst += s0
         if (dt == data_type::f32)
             gen().vaddps(Xbyak::Ymm(d), Xbyak::Ymm(d), Xbyak::Ymm(s));
-        else
-            assert(!"vadd: dtype not implemented");
+        else { JIT_ASSERT(!"vadd: dtype not implemented"); }
     }
 
     // dst += a * b. The multiplicand dtype `src_dt` selects the instruction.
@@ -76,16 +75,16 @@ struct avx2_backend_t {
     void vdot(int d, int a, int b, data_type_t src_dt) {
         if (src_dt == data_type::f32)
             gen().vfmadd231ps(Xbyak::Ymm(d), Xbyak::Ymm(a), Xbyak::Ymm(b));
-        else
+        else {
             // Only f32 is supported on AVX2 today.
-            assert(!"vdot: dtype not implemented");
+            JIT_ASSERT(!"vdot: dtype not implemented");
+        }
     }
 
     void vhreduce(int d, int ws, data_type_t dt) {
         if (dt == data_type::f32)
             regops::horizontal_add_ps(&gen(), Xbyak::Ymm(d), Xbyak::Ymm(ws));
-        else
-            assert(!"vhreduce: dtype not implemented");
+        else { JIT_ASSERT(!"vhreduce: dtype not implemented"); }
     }
 
     // Masked vector ops. On AVX2 a mask is a vector.
@@ -126,10 +125,11 @@ struct avx2_backend_t {
                 gen().vmovups(Xbyak::Ymm(d), addr);
             else
                 gen().vmaskmovps(Xbyak::Ymm(d), Xbyak::Ymm(mask), addr);
-        } else
+        } else {
             // vmaskmovps applies only to f32. Other precisions need a different
             // mechanism here.
-            assert(!"vload_masked: dtype not implemented");
+            JIT_ASSERT(!"vload_masked: dtype not implemented");
+        }
     }
 
     // Store `n_elems` f32 elements. Same case split as `vload_masked()`.
@@ -146,8 +146,9 @@ struct avx2_backend_t {
                 gen().vmovups(addr, Xbyak::Ymm(s));
             else
                 gen().vmaskmovps(addr, Xbyak::Ymm(mask), Xbyak::Ymm(s));
-        } else
-            assert(!"vstore_masked: dtype not implemented");
+        } else {
+            JIT_ASSERT(!"vstore_masked: dtype not implemented");
+        }
     }
 
 private:

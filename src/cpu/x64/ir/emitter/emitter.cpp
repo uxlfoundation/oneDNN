@@ -295,7 +295,7 @@ void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &reg_cfg, data_section_t &data) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
-        assert(!"avx512 emitter is not supported");
+        JIT_ASSERT(!"avx512 emitter is not supported");
     } else {
         avx2_backend_t be(gen, isa);
         emit(be, ir, alloc, reg_cfg, data);

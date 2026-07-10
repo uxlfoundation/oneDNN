@@ -47,13 +47,12 @@ namespace graph {
 namespace utils {
 
 void print_verbose_header() {
-    std::vector<const backend_t *> &backends
-            = backend_registry_t::get_singleton().get_registered_backends();
-    for (size_t i = 0; i < backends.size() - 1; ++i) {
-        backend_t *bkd = const_cast<backend_t *>(backends[i]);
-        verbose_printf(
-                "info,graph,backend,%zu:%s\n", i, bkd->get_name().c_str());
-    }
+    // The dnnl backend is the only backend whose presence is guaranteed, and it
+    // is always registered in the shipped library. Printing its name directly
+    // avoids querying the backend registry here, which would otherwise force
+    // every backend implementation to be linked in even when the verbose header
+    // is the only consumer of the registry.
+    verbose_printf("info,graph,backend,0:dnnl_backend\n");
 }
 
 namespace {

@@ -1,5 +1,6 @@
 #===============================================================================
 # Copyright 2018 Intel Corporation
+# Copyright 2026 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -318,6 +319,11 @@ if(NOT "${_DNNL_TEST_THREADPOOL_IMPL}" MATCHES "^(STANDALONE|TBB|EIGEN|EIGEN_ASY
     message(FATAL_ERROR
         "Unsupported threadpool implementation: ${_DNNL_TEST_THREADPOOL_IMPL}")
 endif()
+
+onednn_option(XLA_SOURCE_DIR ""
+    "Path to an OpenXLA/XLA source tree used to build the minimal XLA async
+    runtime subset for _DNNL_TEST_THREADPOOL_IMPL=EIGEN_ASYNC when no XLA
+    CMake package is available.")
 
 custom_option(TBBROOT ""
     "Path to Threading Building Blocks (TBB) package.")

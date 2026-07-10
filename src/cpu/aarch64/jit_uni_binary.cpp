@@ -24,6 +24,11 @@
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_uni_binary.hpp"
 
+#define VDISPATCH_BINARY(cond, msg, ...) \
+    VCONDCHECK(primitive, create, dispatch, binary, (cond), \
+            status::unimplemented, "%s," msg, this->info(engine), \
+            ##__VA_ARGS__)
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -168,8 +173,9 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
     conf_.bcast_type = is_tensor_op() ? bcast_t::none
                                       : get_bcast_type(src1_md_, bcast_dims);
     // op_type only matters for broadcasted operation
-    assert(IMPLICATION(
-            conf_.bcast_type != bcast_t::none, conf_.op_type != op_t::none));
+    VDISPATCH_BINARY(IMPLICATION(conf_.bcast_type != bcast_t::none,
+                             conf_.op_type != op_t::none),
+            "unsupported src0 layout for broadcast operation");
     conf_.broadcast_src1_value = (conf_.op_type == op_t::n_c_spatial
                                          && conf_.bcast_type == bcast_t::per_c)
             || (utils::one_of(conf_.op_type, op_t::n_spatial_c, op_t::c_blocked)
@@ -412,7 +418,8 @@ bool jit_uni_binary_t::pd_t::is_applicable() {
 
     // only nspc and ncsp formats are supported for bcast
     if (src0_d.is_plain() && src1_d.is_plain())
-        return is_format_non_blocked(src0_d) && is_format_non_blocked(src1_d);
+        return is_format_non_blocked(src0_d) && is_format_non_blocked(src1_d)
+                && get_op_type(src0_d) != op_t::none;
 
     // blocked formats
     if (!conf_.is_i8) {

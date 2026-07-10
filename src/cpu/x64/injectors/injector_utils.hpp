@@ -30,8 +30,8 @@ namespace cpu {
 namespace x64 {
 namespace injector_utils {
 
-using vmm_index_set_t = typename std::set<size_t>;
-using vmm_index_set_iterator_t = typename std::set<size_t>::iterator;
+using vmm_index_set_t = typename std::set<int>;
+using vmm_index_set_iterator_t = typename std::set<int>::iterator;
 
 enum class layout_t { ncsp, c_blocked, nspc, cspn, unsupported };
 
@@ -67,7 +67,7 @@ private:
     jit_generator_t *host_;
     std::stack<Xbyak::Reg64> reg64_stack_;
     std::stack<Xbyak::Xmm> vmm_stack_;
-    size_t vmm_to_preserve_size_bytes_;
+    dim_t vmm_to_preserve_size_bytes_;
 };
 
 class conditional_register_preserve_guard_t : public register_preserve_guard_t {
@@ -151,7 +151,7 @@ public:
     void restoreTo(const Xbyak::Reg64 &reg) const;
     void restoreTo(const Xbyak::Reg32 &reg32) const;
     void addTo(const Xbyak::Reg64 &reg) const;
-    void imulTo(const Xbyak::Reg64 &reg, int imm) const;
+    void imulTo(const Xbyak::Reg64 &reg, dim_t imm) const;
     Xbyak::Address getStoragePtr() const {
         return regscratchpad_.getPtr(booking_);
     }

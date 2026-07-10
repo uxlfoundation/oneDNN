@@ -39,7 +39,7 @@ brgemm_kernel_container_t::get_set() {
     return set_;
 }
 
-bool brgemm_desc_container_t::insert(dim_t idx, brgemm_desc_t &brg,
+bool brgemm_desc_container_t::insert(int idx, brgemm_desc_t &brg,
         const std::vector<char> &bd_mask,
         const std::vector<brgemm_batch_element_t> &static_offsets) {
     bd_mask_list_.push_back(bd_mask);
@@ -49,7 +49,7 @@ bool brgemm_desc_container_t::insert(dim_t idx, brgemm_desc_t &brg,
     brg.brgattr.static_offsets = static_offsets_list_.back().data();
 
     const auto ret = map_.insert({brg, idx});
-    const int ref_size = refs_.size();
+    const int ref_size = static_cast<int>(refs_.size());
     if (idx > ref_size - 1) { refs_.resize(idx + 1); }
     refs_[idx] = &(ret.first->first);
     // if there was no insertion then clean bd_mask and static_offsets
@@ -68,7 +68,7 @@ int brgemm_desc_container_t::insert(brgemm_desc_t &brg,
 
     static_offsets_list_.push_back(static_offsets);
     brg.brgattr.static_offsets = static_offsets_list_.back().data();
-    const int ref_size = refs_.size();
+    const int ref_size = static_cast<int>(refs_.size());
     const auto ret = map_.insert({brg, -1});
     if (!ret.second) {
         // if there was no insertion then clean bd_mask and static_offsets
@@ -77,7 +77,7 @@ int brgemm_desc_container_t::insert(brgemm_desc_t &brg,
         return ret.first->second;
     }
 
-    int idx = map_.size() - 1;
+    int idx = static_cast<int>(map_.size()) - 1;
     if (idx > ref_size - 1) {
         if (ref_size == 0)
             refs_.resize(1);
@@ -100,7 +100,7 @@ bool brgemm_kernel_container_t::brgemm_kernel_cmp(
     return (std::memcmp(lcode, rcode, lsz) < 0);
 }
 
-status_t brgemm_kernel_container_t::insert(dim_t idx, const brgemm_desc_t *brg) {
+status_t brgemm_kernel_container_t::insert(int idx, const brgemm_desc_t *brg) {
     // Use two level hashing of brgemm kernels:
     // 1. Try to find entry in local brgemm_map_ using brgemm descriptor as a
     // key (we can check if brgemm descriptor is unique inside brgemm primitive)
@@ -123,7 +123,7 @@ status_t brgemm_kernel_container_t::insert(dim_t idx, const brgemm_desc_t *brg) 
     return status::success;
 }
 
-bool brgemm_palette_container_t::insert(dim_t idx, const brgemm_desc_t *brg) {
+bool brgemm_palette_container_t::insert(int idx, const brgemm_desc_t *brg) {
     S_t kernel_palette;
     auto status = brgemm_init_tiles(*brg, kernel_palette.data());
     if (status != status::success) return false;

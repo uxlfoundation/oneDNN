@@ -16,6 +16,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
 #include <cassert>
 
 #include "common/c_types_map.hpp"
@@ -961,22 +962,12 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-    bool no_post_ops = attr()->post_ops_.has_default_values();
-
-    auto with_eltwise = [this]() -> bool {
-        // we only support eltwise post-op
-        for (auto &e : this->attr()->post_ops_.entry_) {
-            if (e.kind != primitive_kind::eltwise) return false;
-        }
-        return true;
-    };
-
     const bool problem_dt_correct = (is_s8 || is_u8 || is_u8_s8)
             && utils::one_of(dst_type, f32, bf16, s32)
             && platform::has_data_type_support(dst_type);
 
     VDISPATCH_MATMUL(problem_dt_correct, VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_MATMUL(no_post_ops || with_eltwise(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_MATMUL(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_MATMUL(formats_ok(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_MATMUL(mayiuse(sve) && utils::one_of(simd_bytes(isa), 16UL, 32UL),
             VERBOSE_UNSUPPORTED_ISA);
@@ -1204,6 +1195,20 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
     book_precomputed_scales(scratchpad, attr()->scales_, N());
 
     return status::success;
+}
+
+template <cpu_isa_t isa>
+bool jit_int8_matmul_t<isa>::pd_t::post_ops_ok() const {
+    if (attr()->post_ops_.has_default_values()) { return true; }
+
+    const auto &eltwise_ok = [&](dnnl_post_ops::entry_t op) -> bool {
+        return op.is_eltwise()
+                && eltwise_injector::is_supported(isa, op.eltwise.alg);
+    };
+
+    const auto &post_ops = attr()->post_ops_.entry_;
+
+    return std::all_of(post_ops.begin(), post_ops.end(), eltwise_ok);
 }
 
 template <cpu_isa_t isa>

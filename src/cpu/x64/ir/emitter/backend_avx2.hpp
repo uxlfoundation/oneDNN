@@ -73,12 +73,12 @@ struct avx2_backend_t {
 
     // dst += a * b. The multiplicand dtype `src_dt` selects the instruction.
     // f32 inputs use `vfmadd231ps`. The accumulator (dst) is always f32.
-    void vfma(int d, int a, int b, data_type_t src_dt) {
+    void vdot(int d, int a, int b, data_type_t src_dt) {
         if (src_dt == data_type::f32)
             gen().vfmadd231ps(Xbyak::Ymm(d), Xbyak::Ymm(a), Xbyak::Ymm(b));
         else
             // Only f32 is supported on AVX2 today.
-            assert(!"vfma: dtype not implemented");
+            assert(!"vdot: dtype not implemented");
     }
 
     void vhreduce(int d, int ws, data_type_t dt) {

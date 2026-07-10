@@ -100,8 +100,8 @@ enum class op_kind_t {
     vzero,
     // dst = [base + disp] (load full vector)
     vload,
-    // dst += s0 * s1 (fused multiply-add, e.g., vfmadd231ps)
-    vfma,
+    // dst += sum_{i=0}^{N-1} (s0[i] * s1[i]), where N is the dot length
+    vdot,
     // horizontal reduction of dst; result in element 0. s0 is scratch
     // (overwritten).
     vhreduce,
@@ -162,7 +162,7 @@ struct mem_t {
 //
 // kind - which operation this is. Determines how other fields are used.
 // dst  - virtual register that is written to, or `none` if none is written.
-//        Some ops (e.g. vfma/vadd) both read from and write to dst.
+//        Some ops (e.g. vdot/vadd) both read from and write to dst.
 // s0,s1 - source virtual registers (inputs), or `none` if not used.
 // imm   - immediate value whose meaning depends on the kind:
 //         * mov_imm        -> literal constant
@@ -244,7 +244,7 @@ struct DNNL_API ir_t {
     // vec
     void vzero(vreg_t dst);
     void vload(vreg_t dst, vreg_t base, dim_t disp);
-    void vfma(vreg_t dst, vreg_t a, vreg_t b);
+    void vdot(vreg_t dst, vreg_t a, vreg_t b);
     void vhreduce(vreg_t dst, vreg_t workspace);
 
     // vec (masked)

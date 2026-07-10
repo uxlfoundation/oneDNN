@@ -285,7 +285,7 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
     // AVX2 only.
     ir.vload(b, ptr, simd_w * (dim_t)sizeof(float));
 
-    ir.vfma(acc, a, b);
+    ir.vdot(acc, a, b);
 
     // Instructions appear in the exact order they were built.
     ASSERT_EQ(ir.n_ops(), 5);
@@ -293,7 +293,7 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
     EXPECT_EQ(ir.ops()[1].kind, op_kind_t::vzero);
     EXPECT_EQ(ir.ops()[2].kind, op_kind_t::vload);
     EXPECT_EQ(ir.ops()[3].kind, op_kind_t::vload);
-    EXPECT_EQ(ir.ops()[4].kind, op_kind_t::vfma);
+    EXPECT_EQ(ir.ops()[4].kind, op_kind_t::vdot);
 
     // Register kinds and data type are recorded for the allocator and emitter.
     EXPECT_EQ(ir.vreg_info()[(int)ptr].kind, reg_kind_t::gpr);
@@ -320,7 +320,7 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
     EXPECT_EQ(defs, std::vector<int>({(int)a}));
     EXPECT_EQ(uses, std::vector<int>({(int)ptr}));
 
-    // vfma accumulates in place so the destination is read and written, both
+    // vdot accumulates in place so the destination is read and written, both
     // sources are read.
     ir.def_use(ir.ops()[4], defs, uses);
     EXPECT_EQ(defs, std::vector<int>({(int)acc}));
@@ -407,7 +407,7 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
 
     // then:
     ir.vzero(acc);
-    ir.vfma(acc, a, a); // arbitrary work, just to populate the block
+    ir.vdot(acc, a, a); // arbitrary work, just to populate the block
     ir.jmp(lbl_end);
 
     // else:
@@ -605,7 +605,7 @@ ir_t build_dot_ir() {
     const vreg_t b = ir.new_vec(data_type::f32);
     ir.vload(b, b_ptr, 0);
 
-    ir.vfma(acc, a, b);
+    ir.vdot(acc, a, b);
 
     const vreg_t ws = ir.new_vec(data_type::f32);
     ir.vhreduce(acc, ws);
@@ -660,7 +660,7 @@ TEST(EmitterTests, EmitsValidCodeForSpilledAllocation) {
     for (int r = 0; r < 6; r++) {
         const vreg_t a = ir.new_vec(data_type::f32);
         ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
-        ir.vfma(acc[r], a, b);
+        ir.vdot(acc[r], a, b);
     }
 
     ir_kernel_t k(ir, /*vec_regs_limit=*/4);
@@ -709,7 +709,7 @@ TEST(IntegrationTests, BuildsLoopReduction) {
         ir.vload(a, a_ptr, 0);
         const vreg_t b = ir.new_vec(data_type::f32);
         ir.vload(b, b_ptr, 0);
-        ir.vfma(acc, a, b);
+        ir.vdot(acc, a, b);
     }, [&]() {
         ir.add_imm(a_ptr, simd_w * (dim_t)sizeof(float));
         ir.add_imm(b_ptr, simd_w * (dim_t)sizeof(float));
@@ -761,7 +761,7 @@ ir_t build_shared_vector_dot_ir(int n) {
         const vreg_t a = ir.new_vec(data_type::f32);
         ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
 
-        ir.vfma(acc[r], a, b);
+        ir.vdot(acc[r], a, b);
     }
 
     const vreg_t ws = ir.new_vec(data_type::f32);

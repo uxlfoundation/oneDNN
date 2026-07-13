@@ -357,10 +357,7 @@ struct memory_desc_wrapper : public c_compatible {
                 max_size = static_cast<size_t>(blk_size());
             }
 
-            // `div_up` guarantees a spot in memory for odd number of half-byte
-            // elements. Crucial case is `1` when simple division returns 0.
-            size_t data_size = utils::div_up(max_size * data_type_size(),
-                    sub_byte_data_type_multiplier());
+            size_t data_size = types::elements_to_bytes(data_type(), max_size);
             if (is_additional_buffer()) {
                 // The additional buffers, typically of data type int32_t, float
                 // are stored at the end of data. Pad the data, so that the
@@ -471,8 +468,7 @@ struct memory_desc_wrapper : public c_compatible {
         if (utils::one_of(format_kind(), format_kind::undef, format_kind::any))
             return false;
         if (has_runtime_dims_or_strides() || has_broadcast()) return false;
-        return nelems(with_padding) * data_type_size()
-                / sub_byte_data_type_multiplier()
+        return types::elements_to_bytes(data_type(), nelems(with_padding))
                 == size(0, /* include_additional_size = */ false);
     }
 

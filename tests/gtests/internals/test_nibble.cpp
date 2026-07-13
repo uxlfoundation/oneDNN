@@ -18,6 +18,7 @@
 #include "gtest/gtest.h"
 
 #include "src/common/float4.hpp"
+#include "src/common/int3.hpp"
 #include "src/common/int4.hpp"
 #include "src/common/nibble.hpp"
 #include "src/common/nstl.hpp"
@@ -39,6 +40,10 @@ TEST(test_limits, int4) {
 
 TEST(test_limits, uint4) {
     test_limits<impl::uint4_t>(15.f, 0.f, 0.f);
+}
+
+TEST(test_limits, uint3) {
+    test_limits<impl::uint3_t>(7.f, 0.f, 0.f);
 }
 
 TEST(test_limits, f4_e2m1) {
@@ -85,6 +90,14 @@ TEST(test_int4_conversion, uint4) {
 
 TEST(test_e2m1_conversion, f4_e2m1) {
     test_conversions<impl::float4_e2m1_t>();
+}
+
+TEST(test_uint3_conversion, uint3) {
+    for (int v = 0; v <= 7; ++v)
+        ASSERT_EQ(static_cast<float>(impl::uint3_t(v)), static_cast<float>(v));
+
+    ASSERT_EQ(static_cast<float>(impl::uint3_t(8.f)), 0.f);
+    ASSERT_EQ(static_cast<float>(impl::uint3_t(9.f)), 1.f);
 }
 
 } // namespace dnnl

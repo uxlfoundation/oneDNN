@@ -94,7 +94,7 @@ The library is optimized for the following CPUs:
   * future Intel Xeon processor with Intel AVX10.2 instruction set support
     (code name Diamond Rapids)
 * AArch64 architecture
-  * Arm Neoverse(TM) N1 and V1 processors
+  * Arm Neoverse(TM) N-Series and V-Series
 
 On a CPU based on Intel 64 or on AMD64 architecture, oneDNN detects
 the instruction set architecture (ISA) at runtime and uses just-in-time (JIT)

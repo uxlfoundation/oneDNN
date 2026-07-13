@@ -51,6 +51,10 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_GEMM(!(zps.get(DNNL_ARG_SRC).is_host_scalar()
                            || zps.get(DNNL_ARG_WEIGHTS).is_host_scalar()),
             VERBOSE_UNSUPPORTED_ZP_CFG);
+    const auto &dst_zps = zps.get(DNNL_ARG_DST);
+    VDISPATCH_GEMM(
+            IMPLICATION(!dst_zps.has_default_values(), dst_zps.get_mask() == 0),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
 
     const primitive_attr_t *attributes_with_po = attr();
     for (int arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {

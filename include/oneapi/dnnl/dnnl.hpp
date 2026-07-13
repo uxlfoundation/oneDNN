@@ -942,6 +942,8 @@ struct memory : public handle<dnnl_memory_t> {
         s4 = dnnl_s4,
         /// 4-bit unsigned integer.
         u4 = dnnl_u4,
+        /// 3-bit unsigned integer.
+        u3 = dnnl_u3,
     };
 
     /// Returns size of data type in bytes.

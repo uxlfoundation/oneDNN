@@ -56,12 +56,18 @@
 #define JIT_ASSERT(condition) \
     do { \
         assert(condition); \
-        if (!(condition)) XBYAK_THROW(Xbyak::ERR_INTERNAL); \
+        if (!(condition)) { \
+            using namespace Xbyak; \
+            XBYAK_THROW(Xbyak::ERR_INTERNAL); \
+        } \
     } while (false)
 #define JIT_ASSERT_RET(condition, ret) \
     do { \
         assert(condition); \
-        if (!(condition)) XBYAK_THROW_RET(Xbyak::ERR_INTERNAL, ret); \
+        if (!(condition)) { \
+            using namespace Xbyak; \
+            XBYAK_THROW_RET(Xbyak::ERR_INTERNAL, ret); \
+        } \
     } while (false)
 
 namespace dnnl {

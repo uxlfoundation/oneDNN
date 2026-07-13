@@ -438,7 +438,7 @@ static std::vector<fwd_config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 64},                   {16, 64, 32, 16, 8, 2, 2, 8}},
         {{compute::gpu_arch_t::xe2, 64, 64},               {32, 32, 32, 16, 4, 2, 2, 4}},
         {{compute::gpu_arch_t::xe2, 64, 32},               {16, 16, 16, 16, 4, 2, 4, 2}},
-        {{compute::gpu_arch_t::xe2, 64,     second_token}, {32, 32, 32, 16, 4, 2, 2, 4}},
+        {{compute::gpu_arch_t::xe2, 64,     second_token}, {64, 16, 16, 16, 8, 1, 4, 1}},
         {{compute::gpu_arch_t::xe2, 64, 64, second_token}, {16, 16, 16, 16, 4, 2, 4, 2}},
 
         {{compute::gpu_arch_t::xe2, 64,       quantized}, {16, 64, 16, 32, 16, 1, 8, 2}},

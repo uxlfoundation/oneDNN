@@ -118,13 +118,9 @@
         }, 
         {
           "id": 4,
-          "dtype": "f16",
-          "shape": [
-            1
-          ],
-          "stride": [
-            1
-          ],
+          "dtype": "f32",
+          "shape": [],
+          "stride": [],
           "layout_type": "strided",
           "property_type": "constant"
         }

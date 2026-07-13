@@ -29,6 +29,7 @@
 #include "cpu/x64/amx_tile_configure.hpp"
 #include "cpu/x64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/x64/matmul/brgemm_matmul.hpp"
+#include "cpu/x64/matmul/jit_brgemm_matmul_reduce.hpp"
 
 namespace dnnl {
 namespace impl {

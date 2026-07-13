@@ -32,6 +32,7 @@
 #include "cpu/x64/matmul/brgemm_matmul_copy_utils.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
 #include "cpu/x64/matmul/jit_brgemm_matmul_per_mn_comp.hpp"
+#include "cpu/x64/matmul/jit_brgemm_matmul_reduce.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -132,8 +133,8 @@ private:
     // Per-(M, N) compensation kernel
     std::unique_ptr<per_mn_comp_kernel_t> per_mn_comp_kernel_;
 
-    using reducer_t = x64::jit_brgemm_kernel_reduce_t<
-            typename cpu_isa_traits_t<isa>::Vmm>;
+    using reducer_t
+            = jit_brgemm_kernel_reduce_t<typename cpu_isa_traits_t<isa>::Vmm>;
     std::unique_ptr<reducer_t> reducers_[2][2];
 };
 

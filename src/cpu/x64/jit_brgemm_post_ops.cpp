@@ -23,24 +23,6 @@ namespace x64 {
 
 #define GET_OFF(field) offsetof(brgemm_kernel_diff_bias_t, field)
 
-// This version is used from BRGEMM-based Inner Product for weights tensor.
-template <typename Vmm>
-dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::
-        jit_brgemm_kernel_diff_bias_t(const jit_brgemm_primitive_conf_t &ajbgp,
-                const brgemm_desc_t &abrg)
-    : jit_generator_t(jit_name())
-    , brg_(abrg)
-    , reduce_kind_(matmul_reduce_kind::undef)
-    , ddst_dt_((ajbgp.isa == avx512_core_fp16 && ajbgp.use_buffer_b)
-                      ? data_type::f32
-                      : ajbgp.dst_dt)
-    , bia_dt_(ajbgp.bia_dt)
-    , acc_dt_(ajbgp.acc_dt)
-    , ddst_typesize_(types::data_type_size(ddst_dt_))
-    , bia_typesize_(types::data_type_size(bia_dt_))
-    , acc_typesize_(types::data_type_size(acc_dt_))
-    , mult_(data_type_vnni_granularity(ddst_dt_)) {}
-
 // This version is used from MatMul for src tensor.
 template <typename Vmm>
 dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::
@@ -58,9 +40,7 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::
     , acc_dt_(bgmmc.acc_dt)
     , ddst_typesize_(types::data_type_size(ddst_dt_))
     , bia_typesize_(types::data_type_size(bia_dt_))
-    , acc_typesize_(types::data_type_size(acc_dt_))
-    // Unused.
-    , mult_(0) {
+    , acc_typesize_(types::data_type_size(acc_dt_)) {
     // This kernel must be called after the copy A routine because it assumes
     // that fp16 data has already been upconverted to f32.
     // Only reduction for `src` is supported.
@@ -76,39 +56,6 @@ Vmm dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::vmm_mask(
     return mask_flag && isa_has_masks(brg_.isa_impl)
             ? (store ? vmm_in | ktail_mask : vmm_in | ktail_mask | T_z)
             : vmm_in;
-}
-
-// Loads from ddst and adds it to bias accumulator. Used when ddst
-// is a matrix B.
-template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::accumulate_bias(
-        int idx, bool mask_flag) {
-    auto vddst = get_ddst_reg(idx);
-    auto vddst_load = vmm_mask(vddst, mask_flag, false, k_tail_mask);
-    auto vbias = get_bias_reg(idx);
-    if (ddst_dt_ == data_type::f16) {
-        // As we do not have fp16_vnni, we add twice to accumulate
-        // adjacent elements.
-        for (int i = 0; i < 2; ++i) {
-            auto addr = ptr[aux_reg_ddst
-                    + ddst_typesize_ * mult_ * idx * brg_.ld_block + i * 2];
-            vmovups(vddst_load, addr);
-            vpermw(vddst | k_f16_perm_mask | T_z, vreg_perm, vddst);
-            vcvtph2psx(vddst, Vmm_lower_t(vddst.getIdx()));
-            vaddps(vbias, vbias, vddst);
-        }
-    } else {
-        auto addr = ptr[aux_reg_ddst
-                + ddst_typesize_ * mult_ * idx * brg_.ld_block];
-        if (IMPLICATION(mask_flag, isa_has_masks(brg_.isa_impl)))
-            vmovups(vddst_load, addr);
-        else
-            vmaskmovps(vddst_load, vmm_tail_mask, addr);
-        if (ddst_dt_ == data_type::bf16)
-            vdpbf16ps(vbias, vreg_unit, vddst);
-        else
-            vaddps(vbias, vbias, vddst);
-    }
 }
 
 // Loads from ddst and adds it to bias accumulator. Used when ddst
@@ -139,39 +86,6 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::accumulate_bias(
         vaddps(vbias_acc, vbias_acc, vddst);
     } else
         assert(!"Unsupported data type");
-}
-
-template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::store(
-        int idx, bool mask_flag) {
-    auto addr = ptr[reg_bias + bia_typesize_ * idx * brg_.ld_block];
-    auto vbias = get_bias_reg(idx);
-    auto vbias_lower = get_bias_reg_lower(idx);
-    switch (bia_dt_) {
-        case data_type::bf16:
-            vcvtneps2bf16(vbias_lower, vbias);
-            if (mask_flag) {
-                vmovdqu16(addr, vmm_mask(vbias, mask_flag, true, k_tail_mask));
-            } else {
-                vmovups(addr, vbias_lower);
-            }
-            break;
-        case data_type::f16:
-            vcvtps2ph(vbias_lower, vbias, 0x4);
-            if (mask_flag) {
-                vmovdqu16(addr, vmm_mask(vbias, mask_flag, true, k_tail_mask));
-            } else {
-                vmovups(addr, vbias_lower);
-            }
-            break;
-        case data_type::f32:
-            if (IMPLICATION(mask_flag, isa_has_masks(brg_.isa_impl)))
-                vmovups(addr, vmm_mask(vbias, mask_flag, true, k_tail_mask));
-            else
-                vmaskmovps(addr, vmm_tail_mask, vbias);
-            break;
-        default: assert(!"Unsupported bias data type");
-    }
 }
 
 template <typename Vmm>
@@ -242,88 +156,6 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_K() {
 }
 
 template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_N(
-        int n_loop, int nb_tail) {
-    mov(aux_reg_ddst, reg_ddst);
-
-    int n_iters = n_loop;
-    if (nb_tail > 0) n_iters--;
-    Xbyak::Label k_loop, init_zero, init_done;
-    int n_ = 0;
-
-    test(reg_flag, FLAG_REDUCE_FIRST);
-    jnz(init_zero, T_NEAR); // FLAG_REDUCE_FIRST is set
-
-    for (; n_ < n_iters; n_++) {
-        auto vbias = get_bias_reg(n_);
-        auto addr = ptr[reg_bias_acc + acc_typesize_ * n_ * brg_.ld_block];
-        vmovups(vbias, addr);
-    }
-    if (nb_tail > 0) {
-        auto vbias = vmm_mask(get_bias_reg(n_), true, false, k_tail_mask);
-        auto addr = ptr[reg_bias_acc + acc_typesize_ * n_ * brg_.ld_block];
-        if (isa_has_masks(brg_.isa_impl))
-            vmovups(vbias, addr);
-        else
-            vmaskmovps(vbias, vmm_tail_mask, addr);
-    }
-    jmp(init_done, T_NEAR);
-    L(init_zero);
-
-    for (int n_ = 0; n_ < n_loop; n_++) {
-        uni_vxorps(get_bias_reg(n_), get_bias_reg(n_), get_bias_reg(n_));
-    }
-    L(init_done);
-
-    mov(reg_k_iter, utils::div_up(brg_.reduce_dim, mult_));
-    L(k_loop);
-    {
-        int n_ = 0;
-        for (; n_ < n_iters; n_++)
-            accumulate_bias(n_, false);
-
-        if (nb_tail > 0) accumulate_bias(n_, true);
-
-        add(aux_reg_ddst, ddst_typesize_ * mult_ * brg_.LDB);
-
-        sub(reg_k_iter, 1);
-        jnz(k_loop, T_NEAR);
-    }
-
-    Xbyak::Label store_final, store_done;
-    test(reg_flag, FLAG_REDUCE_LAST);
-    jnz(store_final, T_NEAR); // FLAG_REDUCE_LAST is set
-
-    n_ = 0;
-    for (; n_ < n_iters; n_++) {
-        auto vbias = get_bias_reg(n_);
-        auto addr = ptr[reg_bias_acc + acc_typesize_ * n_ * brg_.ld_block];
-        vmovups(addr, vbias);
-    }
-    if (nb_tail > 0) {
-        auto addr = ptr[reg_bias_acc + acc_typesize_ * n_ * brg_.ld_block];
-        auto vbias = get_bias_reg(n_);
-        if (isa_has_masks(brg_.isa_impl)) {
-            vbias = vmm_mask(vbias, true, true, k_tail_mask);
-            vmovups(addr, vbias);
-        } else {
-            vmaskmovps(addr, vmm_tail_mask, vbias);
-        }
-    }
-    jmp(store_done, T_NEAR);
-
-    L(store_final);
-    n_ = 0;
-
-    for (; n_ < n_iters; n_++)
-        store(n_, false);
-
-    if (nb_tail > 0) store(n_, true);
-
-    L(store_done);
-}
-
-template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::init_masks(
         int tail_length) {
     if (ddst_dt_ == data_type::f16) {
@@ -353,38 +185,6 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::init_masks(
     } else {
         vmovups(vmm_tail_mask, ptr[rip + mask_label_]);
     }
-}
-
-template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<
-        Vmm>::generate_for_b() {
-
-    int nb = utils::div_up(brg_.load_dim, brg_.ld_block);
-    int nb_tail = brg_.load_dim % brg_.ld_block;
-
-    int n_loop = nb / n_max_regs_;
-    int n_loop_tail = nb % n_max_regs_;
-    if (n_loop_tail == 0 && nb_tail > 0) {
-        n_loop--;
-        n_loop_tail = n_max_regs_;
-    }
-
-    init_masks(nb_tail);
-
-    mov(reg_ddst, ptr[param1 + GET_OFF(ptr_diff_dst)]);
-    mov(reg_bias_acc, ptr[param1 + GET_OFF(ptr_diff_bias_acc)]);
-    mov(reg_bias, ptr[param1 + GET_OFF(ptr_diff_bias)]);
-    mov(reg_flag, ptr[param1 + GET_OFF(flags)]);
-
-    for (int nb_ = 0; nb_ < n_loop; nb_++) {
-        loop_by_N(n_max_regs_, 0);
-
-        add(reg_ddst, ddst_typesize_ * mult_ * n_max_regs_ * brg_.ld_block);
-        add(reg_bias, bia_typesize_ * n_max_regs_ * brg_.ld_block);
-        add(reg_bias_acc, acc_typesize_ * n_max_regs_ * brg_.ld_block);
-    }
-
-    if (n_loop_tail > 0) loop_by_N(n_loop_tail, nb_tail);
 }
 
 template <typename Vmm>
@@ -420,12 +220,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::generate() {
 
     int tail = 0;
 
-    // Currently, `reduce_kind` is `undef` when this kernel is used from
-    // BRGEMM-based Inner Product.
-    if (reduce_kind_ == matmul_reduce_kind::undef) {
-        tail = brg_.load_dim % brg_.ld_block;
-        generate_for_b();
-    } else if (reduce_kind_ == matmul_reduce_kind::src) {
+    if (reduce_kind_ == matmul_reduce_kind::src) {
         tail = brg_.reduce_dim % brg_.ld_block;
         generate_for_a();
     } else {

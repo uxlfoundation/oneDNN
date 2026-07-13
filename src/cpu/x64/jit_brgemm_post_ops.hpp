@@ -27,7 +27,6 @@
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_avx512_core_bf16cvt.hpp"
 #include "cpu/x64/jit_avx512_core_fp8cvt.hpp"
-#include "cpu/x64/jit_brgemm_primitive_conf.hpp"
 #include "cpu/x64/jit_generator.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
 #include "cpu/x64/utils/jit_regops.hpp"
@@ -52,9 +51,6 @@ struct brgemm_kernel_diff_bias_t {
 
 template <typename Vmm>
 struct jit_brgemm_kernel_diff_bias_t : public jit_generator_t {
-    jit_brgemm_kernel_diff_bias_t(const jit_brgemm_primitive_conf_t &ajbgp,
-            const brgemm_desc_t &abrg);
-
     jit_brgemm_kernel_diff_bias_t(const matmul::brgemm_matmul_conf_t &bgmmc,
             const brgemm_desc_t &abrg);
 
@@ -70,7 +66,6 @@ private:
     int ddst_typesize_;
     int bia_typesize_;
     int acc_typesize_;
-    int mult_;
 
     using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using reg64_t = const Xbyak::Reg64;
@@ -106,16 +101,12 @@ private:
         return Vmm(1);
     }
 
-    void accumulate_bias(int idx, bool mask_flag);
     void accumulate_bias(bool mask_flag);
-    void store(int idx, bool mask_flag);
-    void loop_by_N(int n_loop, int nb_tail);
     void loop_by_K();
     void init_masks(int tail_length);
     void generate() override;
 
     void generate_for_a();
-    void generate_for_b();
 };
 
 struct brgemm_kernel_post_ops_args_t {

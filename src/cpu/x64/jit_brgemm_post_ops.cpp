@@ -21,25 +21,26 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-#define GET_OFF(field) offsetof(brgemm_kernel_diff_bias_t, field)
+#define GET_OFF(field) offsetof(brgemm_kernel_reduce_args_t, field)
 
-// This version is used from MatMul for src tensor.
+// Used by MatMul to implement the `reduce` attribute: reduces the source (`A`)
+// tensor along the K dimension.
 template <typename Vmm>
-dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::
-        jit_brgemm_kernel_diff_bias_t(const matmul::brgemm_matmul_conf_t &bgmmc,
+dnnl::impl::cpu::x64::jit_brgemm_kernel_reduce_t<Vmm>::
+        jit_brgemm_kernel_reduce_t(const matmul::brgemm_matmul_conf_t &bgmmc,
                 const brgemm_desc_t &abrg)
     : jit_generator_t(jit_name())
     , brg_(abrg)
     , reduce_kind_(bgmmc.reduce_kind)
     // MatMul `src`.
-    , ddst_dt_((bgmmc.isa == avx512_core_fp16 && bgmmc.use_buffer_a)
+    , in_dt_((bgmmc.isa == avx512_core_fp16 && bgmmc.use_buffer_a)
                       ? data_type::f32
                       : bgmmc.src_dt)
     // MatMul `reduce` buffer.
-    , bia_dt_(bgmmc.reduce_dt)
+    , out_dt_(bgmmc.reduce_dt)
     , acc_dt_(bgmmc.acc_dt)
-    , ddst_typesize_(types::data_type_size(ddst_dt_))
-    , bia_typesize_(types::data_type_size(bia_dt_))
+    , in_typesize_(types::data_type_size(in_dt_))
+    , out_typesize_(types::data_type_size(out_dt_))
     , acc_typesize_(types::data_type_size(acc_dt_)) {
     // This kernel must be called after the copy A routine because it assumes
     // that fp16 data has already been upconverted to f32.
@@ -50,7 +51,7 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::
 }
 
 template <typename Vmm>
-Vmm dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::vmm_mask(
+Vmm dnnl::impl::cpu::x64::jit_brgemm_kernel_reduce_t<Vmm>::vmm_mask(
         const Vmm vmm_in, bool mask_flag, bool store,
         Xbyak::Opmask ktail_mask) {
     return mask_flag && isa_has_masks(brg_.isa_impl)
@@ -58,54 +59,53 @@ Vmm dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::vmm_mask(
             : vmm_in;
 }
 
-// Loads from ddst and adds it to bias accumulator. Used when ddst
-// is a matrix A.
+// Loads from the input and accumulates it into the reduction accumulator.
 template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::accumulate_bias(
+void dnnl::impl::cpu::x64::jit_brgemm_kernel_reduce_t<Vmm>::accumulate(
         bool mask_flag) {
 
-    auto vddst = get_ddst_reg(0);
-    auto vbias_acc = get_bias_reg(0);
+    auto vin = get_in_reg(0);
+    auto vacc = get_acc_reg(0);
 
-    auto vddst_load = vmm_mask(vddst, mask_flag, false, k_tail_mask);
-    auto addr_ddst = ptr[aux_reg_ddst];
+    auto vin_load = vmm_mask(vin, mask_flag, false, k_tail_mask);
+    auto addr_in = ptr[aux_reg_in];
 
-    if (ddst_dt_ == data_type::f16) {
-        vpmovzxwd(vddst_load, addr_ddst);
-        vpermw(vddst | k_f16_perm_mask | T_z, vreg_perm, vddst);
-        vcvtph2psx(vddst, Vmm_lower_t(vddst.getIdx()));
-        vaddps(vbias_acc, vbias_acc, vddst);
-    } else if (ddst_dt_ == data_type::bf16) {
-        vpmovzxwd(vddst_load, addr_ddst);
-        vdpbf16ps(vbias_acc, vreg_unit, vddst);
-    } else if (ddst_dt_ == data_type::f32) {
+    if (in_dt_ == data_type::f16) {
+        vpmovzxwd(vin_load, addr_in);
+        vpermw(vin | k_f16_perm_mask | T_z, vreg_perm, vin);
+        vcvtph2psx(vin, Vmm_lower_t(vin.getIdx()));
+        vaddps(vacc, vacc, vin);
+    } else if (in_dt_ == data_type::bf16) {
+        vpmovzxwd(vin_load, addr_in);
+        vdpbf16ps(vacc, vreg_unit, vin);
+    } else if (in_dt_ == data_type::f32) {
         if (IMPLICATION(mask_flag, isa_has_masks(brg_.isa_impl)))
-            vmovups(vddst_load, addr_ddst);
+            vmovups(vin_load, addr_in);
         else
-            vmaskmovps(vddst_load, vmm_tail_mask, addr_ddst);
-        vaddps(vbias_acc, vbias_acc, vddst);
+            vmaskmovps(vin_load, vmm_tail_mask, addr_in);
+        vaddps(vacc, vacc, vin);
     } else
         assert(!"Unsupported data type");
 }
 
 template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_K() {
+void dnnl::impl::cpu::x64::jit_brgemm_kernel_reduce_t<Vmm>::loop_by_K() {
     Xbyak::Label k_loop, init_zero, init_done, store_final, store_done;
 
-    mov(aux_reg_ddst, reg_ddst);
+    mov(aux_reg_in, reg_in);
 
     test(reg_flag, FLAG_REDUCE_FIRST);
     jnz(init_zero, T_NEAR);
 
-    // Load data from bias acc when reg_flag != FLAG_REDUCE_FIRST.
-    auto vbias_acc = get_bias_reg(0);
-    auto addr_bias_acc = ptr[reg_bias_acc];
-    uni_vmovss(vbias_acc, addr_bias_acc);
+    // Load data from the accumulator when reg_flag != FLAG_REDUCE_FIRST.
+    auto vacc = get_acc_reg(0);
+    auto addr_acc = ptr[reg_acc];
+    uni_vmovss(vacc, addr_acc);
     jmp(init_done, T_NEAR);
 
-    // Zero out bias acc register.
+    // Zero out the accumulator register.
     L(init_zero);
-    uni_vxorps(vbias_acc, vbias_acc, vbias_acc);
+    uni_vxorps(vacc, vacc, vacc);
     L(init_done);
 
     const auto k_size = brg_.reduce_dim / brg_.ld_block;
@@ -116,49 +116,49 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_K() {
         mov(reg_k_iter, brg_.reduce_dim / brg_.ld_block);
         L(k_loop);
         {
-            accumulate_bias(false);
-            add(aux_reg_ddst, ddst_typesize_ * brg_.ld_block);
+            accumulate(false);
+            add(aux_reg_in, in_typesize_ * brg_.ld_block);
             sub(reg_k_iter, 1);
             jnz(k_loop, T_NEAR);
         }
     }
 
-    if (k_tail > 0) accumulate_bias(true);
+    if (k_tail > 0) accumulate(true);
 
     // Do horizontal reduction.
-    regops::horizontal_add_ps(this, vbias_acc, get_workspace_reg());
+    regops::horizontal_add_ps(this, vacc, get_workspace_reg());
 
     test(reg_flag, FLAG_REDUCE_LAST);
     jnz(store_final, T_NEAR);
 
     // Store intermediate results to accumulator.
-    uni_vmovss(addr_bias_acc, vbias_acc);
+    uni_vmovss(addr_acc, vacc);
     jmp(store_done, T_NEAR);
 
     L(store_final);
 
     // Convert and store final results.
-    auto addr_bias = ptr[reg_bias];
-    auto vbias_acc_lower = get_bias_reg_lower(0);
-    switch (bia_dt_) {
+    auto addr_out = ptr[reg_out];
+    auto vacc_lower = get_acc_reg_lower(0);
+    switch (out_dt_) {
         case data_type::bf16:
-            vcvtneps2bf16(vbias_acc_lower, vbias_acc);
-            vmovdqu16(addr_bias, vbias_acc | k_store_mask);
+            vcvtneps2bf16(vacc_lower, vacc);
+            vmovdqu16(addr_out, vacc | k_store_mask);
             break;
         case data_type::f16:
-            vcvtps2ph(vbias_acc_lower, vbias_acc, 0x4);
-            vmovdqu16(addr_bias, vbias_acc | k_store_mask);
+            vcvtps2ph(vacc_lower, vacc, 0x4);
+            vmovdqu16(addr_out, vacc | k_store_mask);
             break;
-        case data_type::f32: uni_vmovss(addr_bias, vbias_acc); break;
-        default: assert(!"Unsupported bias data type");
+        case data_type::f32: uni_vmovss(addr_out, vacc); break;
+        default: assert(!"Unsupported reduce data type");
     }
     L(store_done);
 }
 
 template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::init_masks(
+void dnnl::impl::cpu::x64::jit_brgemm_kernel_reduce_t<Vmm>::init_masks(
         int tail_length) {
-    if (ddst_dt_ == data_type::f16) {
+    if (in_dt_ == data_type::f16) {
         const auto half_mask = size_t((1 << 16) - 1);
         mov(reg_mask, half_mask);
         kmovq(k_f16_perm_mask, reg_mask);
@@ -167,7 +167,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::init_masks(
     }
 
     if (reduce_kind_ == matmul_reduce_kind::src
-            && utils::one_of(bia_dt_, data_type::f16, data_type::bf16)) {
+            && utils::one_of(out_dt_, data_type::f16, data_type::bf16)) {
         assert(isa_has_masks(brg_.isa_impl));
         mov(reg_mask, 1);
         kmovq(k_store_mask, reg_mask);
@@ -188,12 +188,11 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::init_masks(
 }
 
 template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<
-        Vmm>::generate_for_a() {
+void dnnl::impl::cpu::x64::jit_brgemm_kernel_reduce_t<Vmm>::generate_reduce() {
 
-    mov(reg_ddst, ptr[param1 + GET_OFF(ptr_diff_dst)]);
-    mov(reg_bias_acc, ptr[param1 + GET_OFF(ptr_diff_bias_acc)]);
-    mov(reg_bias, ptr[param1 + GET_OFF(ptr_diff_bias)]);
+    mov(reg_in, ptr[param1 + GET_OFF(ptr_in)]);
+    mov(reg_acc, ptr[param1 + GET_OFF(ptr_acc)]);
+    mov(reg_out, ptr[param1 + GET_OFF(ptr_out)]);
     mov(reg_flag, ptr[param1 + GET_OFF(flags)]);
 
     const int k_tail = brg_.reduce_dim % brg_.ld_block;
@@ -201,17 +200,17 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<
 
     for (int m = 0; m < brg_.load_dim; m++) {
         loop_by_K();
-        add(reg_ddst, ddst_typesize_ * brg_.LDA);
-        add(reg_bias, bia_typesize_);
-        add(reg_bias_acc, acc_typesize_);
+        add(reg_in, in_typesize_ * brg_.LDA);
+        add(reg_out, out_typesize_);
+        add(reg_acc, acc_typesize_);
     }
 }
 
 template <typename Vmm>
-void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::generate() {
+void dnnl::impl::cpu::x64::jit_brgemm_kernel_reduce_t<Vmm>::generate() {
     preamble();
 
-    if (ddst_dt_ == data_type::bf16) {
+    if (in_dt_ == data_type::bf16) {
         auto reg_tmp = rax;
         auto reg_unit_val = reg_tmp.cvt16();
         mov(reg_unit_val, 0x3f80); // bf16 values of 1.
@@ -222,14 +221,14 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::generate() {
 
     if (reduce_kind_ == matmul_reduce_kind::src) {
         tail = brg_.reduce_dim % brg_.ld_block;
-        generate_for_a();
+        generate_reduce();
     } else {
         assert(!"Unsupported reduce kind");
     }
 
     postamble();
 
-    if (ddst_dt_ == data_type::f16) {
+    if (in_dt_ == data_type::f16) {
         // convert interleaved vnni data with holes to packed.
         const uint16_t f16_prm_array[16]
                 = {0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30};
@@ -251,8 +250,8 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::generate() {
 
 #undef GET_OFF
 
-template struct jit_brgemm_kernel_diff_bias_t<Xbyak::Ymm>;
-template struct jit_brgemm_kernel_diff_bias_t<Xbyak::Zmm>;
+template struct jit_brgemm_kernel_reduce_t<Xbyak::Ymm>;
+template struct jit_brgemm_kernel_reduce_t<Xbyak::Zmm>;
 
 jit_brgemm_kernel_post_ops_base_t *jit_brgemm_kernel_post_ops_base_t::create(
         cpu_isa_t isa, const brgemm_desc_t &abrg,

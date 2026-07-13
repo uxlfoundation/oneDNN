@@ -132,7 +132,7 @@ private:
     // Per-(M, N) compensation kernel
     std::unique_ptr<per_mn_comp_kernel_t> per_mn_comp_kernel_;
 
-    using reducer_t = x64::jit_brgemm_kernel_diff_bias_t<
+    using reducer_t = x64::jit_brgemm_kernel_reduce_t<
             typename cpu_isa_traits_t<isa>::Vmm>;
     std::unique_ptr<reducer_t> reducers_[2][2];
 };

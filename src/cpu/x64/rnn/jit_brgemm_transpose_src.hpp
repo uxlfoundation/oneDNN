@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021 Intel Corporation
+* Copyright 2020 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,36 +14,39 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_RNN_BRGEMM_CELL_COMMON_REORDERS_HPP
-#define CPU_X64_RNN_BRGEMM_CELL_COMMON_REORDERS_HPP
+#ifndef CPU_X64_RNN_JIT_BRGEMM_TRANSPOSE_SRC_HPP
+#define CPU_X64_RNN_JIT_BRGEMM_TRANSPOSE_SRC_HPP
 
-#include "cpu/x64/rnn/jit_brgemm_transpose_single_row.hpp"
-#include "cpu/x64/rnn/jit_brgemm_transpose_src.hpp"
+#include "cpu/x64/jit_brgemm_primitive_conf.hpp"
+#include "cpu/x64/jit_generator.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
-
-namespace rnn_utils {
-struct rnn_conf_t;
-}
 namespace x64 {
-struct src_layer_iter_transpose_t {
-    src_layer_iter_transpose_t(const int src_ld, const int dst_ld,
-            const int rows, const int cols,
-            jit_brgemm_trans_src_t *const kernel_transpose);
 
-    template <typename Dt>
-    void execute(const Dt *src, Dt *dst) const;
+struct jit_brgemm_trans_src_t {
+    struct ctx_t {
+        const void *src;
+        const void *tr_src;
 
-private:
-    const int src_ld_;
-    const int dst_ld_;
-    const int src_rows_;
-    const int src_cols_;
-    jit_brgemm_trans_src_t *const kernel_transpose_;
+        dim_t current_gemm_batch;
+        dim_t current_M, current_K;
+    };
+
+    virtual void operator()(const ctx_t *ctx) = 0;
+    virtual status_t create_kernel() = 0;
+
+    jit_brgemm_trans_src_t(const jit_brgemm_primitive_conf_t *conf)
+        : conf_(conf) {}
+    virtual ~jit_brgemm_trans_src_t() = default;
+
+    const jit_brgemm_primitive_conf_t *conf_;
 };
 
+status_t create_brgemm_trans_src(
+        std::unique_ptr<jit_brgemm_trans_src_t> &trans_ker,
+        const jit_brgemm_primitive_conf_t *conf);
 } // namespace x64
 } // namespace cpu
 } // namespace impl

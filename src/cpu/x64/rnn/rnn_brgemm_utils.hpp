@@ -21,9 +21,9 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
-#include "cpu/x64/jit_brgemm_transpose_utils.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_copy_utils.hpp"
 #include "cpu/x64/rnn/jit_brgemm_transpose_single_row.hpp"
+#include "cpu/x64/rnn/jit_brgemm_transpose_src.hpp"
 #include "cpu/x64/rnn/jit_diff_weights_peephole.hpp"
 #include "cpu/x64/rnn/jit_gates_reduction.hpp"
 

@@ -159,6 +159,7 @@ inline int data_type_bits(data_type_t data_type) {
         case dnnl_f4_e2m1:
         case dnnl_s4:
         case dnnl_u4: return 4;
+        case dnnl_u3: return 3;
         case dnnl_u2: return 2;
         case dnnl_boolean: return 1;
         default: assert(!"unsupported data type"); return 0;

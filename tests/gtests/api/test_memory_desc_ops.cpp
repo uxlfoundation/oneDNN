@@ -124,6 +124,26 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeSubByte) {
 #endif
 }
 
+TEST(memory_desc_properties_test, TestMemoryDescSizeU3) {
+    using dt = memory::data_type;
+
+    // u3 uses the transposed group-of-8 layout: 8 values pack into 3 bytes
+    const std::vector<memory::dims> shapes = {
+            {10, 256}, // nelems multiple of 8
+            {1, 8}, // exactly one group
+            {1, 9}, // partial trailing group must rounds up to two groups
+            {1, 1}, // single element still needs a full group
+    };
+
+    for (const auto &dims : shapes) {
+        const size_t nelems = static_cast<size_t>(dims[0]) * dims[1];
+        const size_t ref_size = 3 * ((nelems + 7) / 8);
+        auto md = memory::desc(dims, dt::u3, fmt::ab);
+        ASSERT_EQ(md.get_size(), ref_size)
+                << "u3 dense size mismatch for nelems=" << nelems;
+    }
+}
+
 TEST(memory_desc_properties_test, TestOOBTensorDimensions) {
     using dt = memory::data_type;
 

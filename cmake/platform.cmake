@@ -1,6 +1,6 @@
 #===============================================================================
 # Copyright 2016 Intel Corporation
-# Copyright 2025 Arm Ltd. and affiliates
+# Copyright 2025-2026 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -288,14 +288,6 @@ elseif(UNIX OR MINGW)
              if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
                  set(DEF_ARCH_OPT_FLAGS "-O3")
              endif()
-             if (CMAKE_SYSTEM_PROCESSOR STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
-                 # Defaults to a generic cpu target, equivalent to setting -mtune=generic -march=armv8-a.
-                 # This ensures no implementation specific tuning, or architectural features beyond
-                 # armv8-a are used, for portability across AArch64 systems.
-                 # The DNNL_ARCH_OPT_FLAGS build option can be used to override these defaults
-                 # to optimise for a specific cpu, or revision of the Armv8 architecture.
-                 append(DEF_ARCH_OPT_FLAGS "-mcpu=generic")
-             endif()
         elseif(DNNL_TARGET_ARCH STREQUAL "PPC64")
              if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
                  set(DEF_ARCH_OPT_FLAGS "-O3")
@@ -396,14 +388,6 @@ elseif(UNIX OR MINGW)
         if(DNNL_TARGET_ARCH STREQUAL "AARCH64")
             if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
                 set(DEF_ARCH_OPT_FLAGS "-O3")
-            endif()
-            if (CMAKE_SYSTEM_PROCESSOR STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
-                 # Defaults to a generic cpu target, equivalent to setting -mtune=generic -march=armv8-a.
-                 # This ensures no implementation specific tuning, or architectural features beyond
-                 # armv8-a are used, for portability across AArch64 systems.
-                 # The DNNL_ARCH_OPT_FLAGS build option can be used to override these defaults
-                 # to optimise for a specific cpu, or revision of the Armv8 architecture.
-                 append(DEF_ARCH_OPT_FLAGS "-mcpu=generic")
             endif()
         elseif(DNNL_TARGET_ARCH STREQUAL "PPC64")
             if (NOT CMAKE_BUILD_TYPE STREQUAL "Debug")

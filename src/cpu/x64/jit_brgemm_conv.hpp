@@ -36,10 +36,10 @@
 #include "cpu/x64/cpu_reducer.hpp"
 #include "cpu/x64/jit_avx512_core_amx_conv_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_comp_pad_kernel.hpp"
+#include "cpu/x64/jit_brgemm_conv_relo_copy_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_trans_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_utils.hpp"
 #include "cpu/x64/jit_brgemm_post_ops.hpp"
-#include "cpu/x64/jit_brgemm_transpose_utils.hpp"
 
 namespace dnnl {
 namespace impl {

@@ -14,35 +14,16 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_JIT_BRGEMM_TRANSPOSE_UTILS_HPP
-#define CPU_X64_JIT_BRGEMM_TRANSPOSE_UTILS_HPP
+#ifndef CPU_X64_JIT_BRGEMM_CONV_RELO_COPY_KERNEL_HPP
+#define CPU_X64_JIT_BRGEMM_CONV_RELO_COPY_KERNEL_HPP
 
-#include "cpu/x64/jit_brgemm_primitive_conf.hpp"
+#include "common/c_types_map.hpp"
 #include "cpu/x64/jit_generator.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace x64 {
-
-struct jit_brgemm_trans_src_t {
-    struct ctx_t {
-        const void *src;
-        const void *tr_src;
-
-        dim_t current_gemm_batch;
-        dim_t current_M, current_K;
-    };
-
-    virtual void operator()(const ctx_t *ctx) = 0;
-    virtual status_t create_kernel() = 0;
-
-    jit_brgemm_trans_src_t(const jit_brgemm_primitive_conf_t *conf)
-        : conf_(conf) {}
-    virtual ~jit_brgemm_trans_src_t() = default;
-
-    const jit_brgemm_primitive_conf_t *conf_;
-};
 
 struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator_t {
     struct cfg_t {
@@ -87,9 +68,6 @@ private:
     void generate() override;
 };
 
-status_t create_brgemm_trans_src(
-        std::unique_ptr<jit_brgemm_trans_src_t> &trans_ker,
-        const jit_brgemm_primitive_conf_t *conf);
 } // namespace x64
 } // namespace cpu
 } // namespace impl

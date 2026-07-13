@@ -17,6 +17,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <utility>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -28,7 +29,7 @@
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/jit_uni_layer_normalization.hpp"
-#include "cpu/aarch64/utils/jit_io_helper.hpp"
+#include "cpu/aarch64/utils/jit_io_helper_v2.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -78,6 +79,14 @@ public:
         , eps_(pd_->desc()->layer_norm_epsilon)
         , skip_mean_(pd_->skip_mean()) {
 
+        const io::saturation_conf_t<TReg> sat_conf(
+                vec_zero_, vec_saturation_ubound_);
+
+        io::tail_conf_t tail_conf(axis_simd_tail_, tail_opmask_);
+
+        io_ = utils::make_unique<io::jit_io_helper_v2_t<isa>>(
+                this, sat_conf, tail_conf, reg_io_tmp1_);
+
         const auto &post_ops = pd_->attr()->post_ops_;
         with_postops_ = post_ops.len() != 0;
         with_binary_ = post_ops.find(primitive_kind::binary) != -1;
@@ -85,20 +94,6 @@ public:
         const auto &attr_scales = pd_->attr()->scales_;
         with_src_scales_ = !attr_scales.has_default_values(DNNL_ARG_SRC);
         with_dst_scales_ = !attr_scales.has_default_values(DNNL_ARG_DST);
-
-        io::io_conf_t io_conf;
-        io::io_tail_conf_t io_tail_conf(simd_w_, axis_simd_tail_, tail_opmask_,
-                static_cast<int>(vec_tail_mask_.getIdx()), reg_io_tmp1_,
-                reg_io_tmp2_);
-        typename io::jit_io_multi_dt_helper_t<TReg>::data_types_t io_dts {
-                src_d_.data_type(), dst_d_.data_type(), f32};
-        std::map<data_type_t, io::io_saturation_conf_t> saturation_map;
-        saturation_map.emplace(dst_d_.data_type(),
-                io::io_saturation_conf_t(static_cast<int>(vec_zero_.getIdx()),
-                        static_cast<int>(vec_saturation_ubound_.getIdx()),
-                        reg_io_tmp1_));
-        io_ = utils::make_unique<io::jit_io_multi_dt_helper_t<TReg>>(
-                this, isa, io_dts, io_conf, io_tail_conf, saturation_map);
 
         if (with_postops_) {
             static constexpr bool preserve_gpr = true;
@@ -171,7 +166,6 @@ private:
     const XReg reg_var_ = x13;
     const XReg reg_block_end_ = x14;
     const XReg reg_io_tmp1_ = x15;
-    const XReg reg_io_tmp2_ = x16;
     const XReg reg_src_scales_ = x17;
     const XReg reg_dst_scales_ = x19;
     const XReg reg_stat_loop_idx_ = X_TMP_1;
@@ -201,24 +195,9 @@ private:
     const SReg scalar_inv_sqrtvar_ {vec_inv_sqrtvar_.getIdx()};
     const SReg scalar_mean_ {vec_mean_.getIdx()};
 
-    std::unique_ptr<io::jit_io_multi_dt_helper_t<TReg>> io_;
+    std::unique_ptr<io::jit_io_helper_v2_t<isa>> io_;
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
-
-    float load_src_elem(const char *row_src, dim_t c) const {
-        switch (src_d_.data_type()) {
-            case data_type::f32:
-                return reinterpret_cast<const float *>(row_src)[c];
-            case data_type::s8:
-                return static_cast<float>(
-                        reinterpret_cast<const int8_t *>(row_src)[c]);
-            case data_type::u8:
-                return static_cast<float>(
-                        reinterpret_cast<const uint8_t *>(row_src)[c]);
-            default: assert(!"unsupported source data type");
-        }
-        return 0.f;
-    }
 
     XReg addr_with_offt(const XReg &base, size_t offt_bytes) {
         return addr_off(base, static_cast<int64_t>(offt_bytes), X_DEFAULT_ADDR,
@@ -247,20 +226,19 @@ private:
 
     void calculate_dst_body(size_t offt_elems, bool is_tail) {
         if (use_scale_) {
-            io_->at(f32)->load(
-                    addr_with_offt(reg_scale_, offt_elems * sizeof(float)), 0,
-                    vec_scale_, is_tail);
+            io_->load(f32, vec_scale_,
+                    addr_with_offt(reg_scale_, offt_elems * sizeof(float)),
+                    is_tail);
         }
         if (use_shift_) {
-            io_->at(f32)->load(
-                    addr_with_offt(reg_shift_, offt_elems * sizeof(float)), 0,
-                    vec_shift_, is_tail);
+            io_->load(f32, vec_shift_,
+                    addr_with_offt(reg_shift_, offt_elems * sizeof(float)),
+                    is_tail);
         }
 
-        io_->at(src_d_.data_type())
-                ->load(addr_with_offt(
-                               reg_src_, offt_elems * src_d_.data_type_size()),
-                        0, vec_dst_, is_tail);
+        io_->load(src_d_.data_type(), vec_dst_,
+                addr_with_offt(reg_src_, offt_elems * src_d_.data_type_size()),
+                is_tail);
 
         if (!skip_mean_) fsub(vec_dst_.s, vec_dst_.s, vec_mean_.s);
         fmul(vec_dst_.s, vec_dst_.s, vec_inv_sqrtvar_.s);
@@ -284,11 +262,9 @@ private:
             fmul(vec_dst_.s, vec_dst_.s, vec_qscale_.s);
         }
 
-        io_->at(dst_d_.data_type())
-                ->store(vec_dst_,
-                        addr_with_offt(
-                                reg_dst_, offt_elems * dst_d_.data_type_size()),
-                        0, is_tail);
+        io_->store(dst_d_.data_type(), vec_dst_,
+                addr_with_offt(reg_dst_, offt_elems * dst_d_.data_type_size()),
+                is_tail);
     }
 
     void compute_mean() {
@@ -296,8 +272,8 @@ private:
 
         mov(X_DEFAULT_ADDR, reg_src_);
         asm_for(reg_stat_loop_idx_, axis_simd_full_, [&]() {
-            io_->at(src_d_.data_type())
-                    ->load(X_DEFAULT_ADDR, 0, vec_tmp_data_, false);
+            io_->load(src_d_.data_type(), vec_tmp_data_, X_DEFAULT_ADDR);
+
             fadd(vec_tmp_acc_.s, vec_tmp_acc_.s, vec_tmp_data_.s);
 
             add_imm(X_DEFAULT_ADDR, X_DEFAULT_ADDR,
@@ -305,11 +281,12 @@ private:
         });
 
         if (axis_simd_tail_) {
-            io_->at(src_d_.data_type())
-                    ->load(addr_with_offt(reg_src_,
-                                   axis_simd_full_ * simd_w_
-                                           * src_d_.data_type_size()),
-                            0, vec_tmp_data_, true);
+            io_->load(src_d_.data_type(), vec_tmp_data_,
+                    addr_with_offt(reg_src_,
+                            axis_simd_full_ * simd_w_
+                                    * src_d_.data_type_size()),
+                    true);
+
             fadd(vec_tmp_acc_.s, vec_tmp_acc_.s, vec_tmp_data_.s);
         }
 
@@ -326,8 +303,7 @@ private:
 
         mov(X_DEFAULT_ADDR, reg_src_);
         asm_for(reg_stat_loop_idx_, axis_simd_full_, [&]() {
-            io_->at(src_d_.data_type())
-                    ->load(X_DEFAULT_ADDR, 0, vec_tmp_data_, false);
+            io_->load(src_d_.data_type(), vec_tmp_data_, X_DEFAULT_ADDR);
 
             if (!skip_mean_)
                 fsub(vec_tmp_data_.s, vec_tmp_data_.s, vec_mean_.s);
@@ -340,11 +316,11 @@ private:
         });
 
         if (axis_simd_tail_) {
-            io_->at(src_d_.data_type())
-                    ->load(addr_with_offt(reg_src_,
-                                   axis_simd_full_ * simd_w_
-                                           * src_d_.data_type_size()),
-                            0, vec_tmp_data_, true);
+            io_->load(src_d_.data_type(), vec_tmp_data_,
+                    addr_with_offt(reg_src_,
+                            axis_simd_full_ * simd_w_
+                                    * src_d_.data_type_size()),
+                    true);
 
             if (!skip_mean_) {
                 if (isa == asimd) {
@@ -389,7 +365,6 @@ private:
         static const size_t float_size = types::data_type_size(f32);
 
         preamble();
-        if (axis_simd_tail_) io_->prepare_tail_mask();
 
 #define PARAM_OFF(x) static_cast<int32_t>(offsetof(ker_args_t, x))
         ldr(reg_src_, ptr(reg_param_, PARAM_OFF(src)));
@@ -411,8 +386,6 @@ private:
 
         fmov(float_one_, 1.0f);
         add(reg_block_end_, reg_block_end_, reg_src_);
-
-        io_->init_saturate_f32({dst_d_.data_type()});
 
         Label loop, done;
         L(loop);
@@ -465,9 +438,9 @@ status_t jit_uni_layer_normalization_fwd_t<isa>::pd_t::init(engine_t *engine) {
     VDISPATCH_LNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_LNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
     VDISPATCH_LNORM(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
-    VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, s8, u8),
+    VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, f16, bf16, s8, u8),
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_LNORM(utils::one_of(dst_md()->data_type, f32, s8, u8),
+    VDISPATCH_LNORM(utils::one_of(dst_md()->data_type, f32, f16, bf16, s8, u8),
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_LNORM(platform::has_data_type_support(src_md()->data_type),
             VERBOSE_UNSUPPORTED_DT);

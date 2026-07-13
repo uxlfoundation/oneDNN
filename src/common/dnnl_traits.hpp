@@ -22,6 +22,7 @@
 #include "float16.hpp"
 #include "float4.hpp"
 #include "float8.hpp"
+#include "int3.hpp"
 #include "int4.hpp"
 
 #include <cstdint>
@@ -99,6 +100,10 @@ struct prec_traits_t<data_type::u4> {
     using type = uint4_t;
 };
 template <>
+struct prec_traits_t<data_type::u3> {
+    using type = uint3_t;
+};
+template <>
 struct prec_traits_t<data_type::boolean> {
     using type = bool;
 };
@@ -158,6 +163,10 @@ struct data_traits_t<int4_t> {
 template <>
 struct data_traits_t<uint4_t> {
     static constexpr data_type_t data_type = data_type::u4;
+};
+template <>
+struct data_traits_t<uint3_t> {
+    static constexpr data_type_t data_type = data_type::u3;
 };
 template <>
 struct data_traits_t<bool> {

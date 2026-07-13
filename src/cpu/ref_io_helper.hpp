@@ -102,6 +102,20 @@ ALWAYS_INLINE float load_float_value(
             uint4_t val(nibble_pair.get(idx % 2));
             return static_cast<float>(val);
         }
+        case u3: {
+            // u3 uses OV transposed layout,
+            // each group of 8 values packs into 3 bytes such that:
+            // low 2 bits of values 0-3 are in byte 0
+            // low 2 bits of values 4-7 are in byte 1
+            // all 8 MSBs in byte 2
+            const auto *b = static_cast<const uint8_t *>(ptr);
+            const dim_t base = (idx / 8) * 3;
+            const int pos = idx % 8;
+            const int low2 = (b[base + pos / 4] >> (6 - 2 * (pos % 4))) & 0x3;
+            const int msb = (b[base + 2] >> (7 - pos)) & 0x1;
+            uint3_t val(low2 | (msb << 2));
+            return static_cast<float>(val);
+        }
         case f4_e2m1: {
             const nibble2_t nibble_pair
                     = reinterpret_cast<const nibble2_t *>(ptr)[idx / 2];

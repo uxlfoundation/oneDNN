@@ -102,6 +102,10 @@ ALWAYS_INLINE float load_float_value(
             uint4_t val(nibble_pair.get(idx % 2));
             return static_cast<float>(val);
         }
+        case u3: {
+            uint3_t val(uint3_unpack(static_cast<const uint8_t *>(ptr), idx));
+            return static_cast<float>(val);
+        }
         case f4_e2m1: {
             const nibble2_t nibble_pair
                     = reinterpret_cast<const nibble2_t *>(ptr)[idx / 2];

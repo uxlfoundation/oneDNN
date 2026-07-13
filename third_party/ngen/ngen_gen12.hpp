@@ -1689,12 +1689,13 @@ bool Instruction12::getARFType(ARFType &arfType, int opNum, HW hw) const
 {
     if (opNum > 1) return false;
 
+    if (isSend(opcode()))
+        return false;
+
     // Only need to support unary/binary, for detecting ce/cr/sr usage.
     switch (opcode()) {
         case Opcode::nop:
         case Opcode::illegal:
-        case Opcode::send:
-        case Opcode::sendc:
         case Opcode::bfe:
         case Opcode::bfi2:
         case Opcode::csel:

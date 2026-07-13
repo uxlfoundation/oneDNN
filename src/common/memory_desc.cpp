@@ -42,7 +42,7 @@ inline status_t memory_desc_sanity_check(int ndims, const dims_t dims,
     VCHECK_MEMORY(0 < ndims && ndims <= DNNL_MAX_NDIMS,
             status::invalid_arguments, VERBOSE_BAD_NDIMS, "tensor", ndims);
     VCHECK_MEMORY(utils::one_of(data_type, f4_e2m1, e8m0, f8_e5m2, f8_e4m3, f16,
-                          bf16, f32, f64, s64, s32, s8, u8, s4, u4),
+                          bf16, f32, f64, s64, s32, s8, u8, s4, u4, u3),
             status::invalid_arguments, VERBOSE_UNSUPPORTED_DT);
 
     // A bounds check on the dimensions ensures that the tensor size
@@ -187,6 +187,10 @@ status_t memory_desc_strides_check(
         if (utils::one_of(md.data_type, s4, u4, f4_e2m1)) {
             VCONDCHECK(common, create, check, memory,
                     IMPLICATION(strides[d] > 1, strides[d] % 2 == 0),
+                    status::invalid_arguments, VERBOSE_BAD_DIM, "strides", d);
+        } else if (md.data_type == u3) {
+            VCONDCHECK(common, create, check, memory,
+                    IMPLICATION(strides[d] > 1, strides[d] % 8 == 0),
                     status::invalid_arguments, VERBOSE_BAD_DIM, "strides", d);
         }
 

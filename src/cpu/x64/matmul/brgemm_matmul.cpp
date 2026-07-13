@@ -1115,16 +1115,16 @@ void brgemm_matmul_t<isa>::maybe_reduce_A(
                 ? brgmm_ctx.get_buf_reduce_ptr(ithr, m)
                 : brgmm_ctx.get_data_reduce_ptr(m);
 
-        brgemm_kernel_diff_bias_t p;
+        brgemm_kernel_reduce_args_t p;
 
-        p.ptr_diff_bias_acc = (void *)reduce_ptr;
-        p.ptr_diff_bias = (void *)brgmm_ctx.get_data_reduce_ptr(m);
+        p.ptr_acc = (void *)reduce_ptr;
+        p.ptr_out = (void *)brgmm_ctx.get_data_reduce_ptr(m);
 
         const int m_ker_idx = brgmm_ctx.get_M_kernel_idx(m_blk_idx);
 
         if (!do_K_tail) {
             for (int gb = 0; gb < gemm_batch; gb++) {
-                p.ptr_diff_dst = (void *)addr_batch[gb].ptr.A;
+                p.ptr_in = (void *)addr_batch[gb].ptr.A;
 
                 const bool is_first = do_init && gb == 0;
                 const bool is_last = (bgmmc.nthr_k == 1 || bgmmc.K_chunks == 1)
@@ -1137,7 +1137,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_A(
                 (*reducers_[m_ker_idx][do_K_tail])(&p);
             }
         } else {
-            p.ptr_diff_dst = (void *)addr_batch[0].ptr.A;
+            p.ptr_in = (void *)addr_batch[0].ptr.A;
 
             const bool is_first = do_init && gemm_batch == 0;
             const bool is_last = (bgmmc.nthr_k == 1 || bgmmc.K_chunks == 1)

@@ -243,6 +243,8 @@ private:
     const reg64_savable_t reg_buf_aux {regscratchpad_, abi_param1};
     const reg64_savable_backup_t reg_buf_aux_backup {reg_buf_aux};
     const reg64_savable_t reg_aux_compensation {regscratchpad_, rbx, r29};
+    const reg64_savable_t reg_buf_A {regscratchpad_, rbx, r26};
+    const reg64_savable_t reg_buf_aux_A {regscratchpad_, rbx, r25};
 
     // Base / working pointers for the per-(M,N) f32 compensation buffer used
     // by apply_per_mn_compensation. Lifecycle mirrors reg_C / reg_aux_C.
@@ -1148,6 +1150,11 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
         mov(reg_D_shift_bytes, ptr[param1 + GET_OFF(dynamic_LDD)]);
         if (brg.typesize_D > 1) shl(reg_D_shift_bytes, (brg.typesize_D >> 1));
         reg_D_shift_bytes.save();
+    }
+
+    if (brg.is_fp8_via_convert_non_amx()) {
+        mov(reg_buf_A, ptr[param1 + GET_OFF(ptr_buf)]);
+        reg_buf_A.save();
     }
 
     mov(reg_do_post_ops, ptr[param1 + GET_OFF(do_post_ops)]);
@@ -3889,7 +3896,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::generate() {
     preamble();
-
+    printf("dt a: %d, dt b: %d, f8 with f16: %d\n", brg.dt_a, brg.dt_b,
+            brg.fp8_with_f16_vnni_block);
     sub(rsp, regscratchpad_.Size());
 
     vpad_exist

@@ -2473,7 +2473,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = static_cast<dim_t>(jcp.M) * jcp.N * (jcp.is_bf32 ? 1 : 2)
             > 8 * 1024;
 
-    jcp.fp8_convert_wsp_size = static_cast<dim_t>(32) * 512 * 2;
+    jcp.fp8_convert_wsp_size = static_cast<dim_t>(jcp.M) * jcp.N * 2;
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
 
@@ -2706,7 +2706,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = static_cast<dim_t>(jcp.M) * jcp.N * (jcp.is_bf32 ? 1 : 2)
             > 8 * 1024;
 
-    jcp.fp8_convert_wsp_size = static_cast<dim_t>(32) * 512 * 2;
+    jcp.fp8_convert_wsp_size = static_cast<dim_t>(jcp.M) * jcp.N * 2;
 
     return status::success;
 }

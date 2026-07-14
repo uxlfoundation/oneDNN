@@ -16,6 +16,7 @@
 *******************************************************************************/
 
 #include <atomic>
+#include <map>
 #include <regex>
 #include <sstream>
 #include <type_traits>
@@ -1767,8 +1768,26 @@ void verbose_printf_impl(const char *raw_fmt_str, verbose_t::flag_kind kind) {
 #ifdef DNNL_EXPERIMENTAL_LOGGING
     const log_manager_t &log_manager = log_manager_t::get_log_manager();
 
-    if (log_manager.is_logger_enabled())
-        log_manager.log(fmt_str.c_str(), align_verbose_mode_to_log_level(kind));
+    if (log_manager.is_logger_enabled()) {
+        static const std::map<verbose_t::flag_kind, log_manager_t::log_level_t>
+                verbose_to_log_map {
+                        {verbose_t::all, log_manager_t::trace},
+                        {verbose_t::debuginfo, log_manager_t::debug},
+                        {verbose_t::level1, log_manager_t::info},
+                        {verbose_t::level2, log_manager_t::info},
+                        {verbose_t::create_dispatch, log_manager_t::info},
+                        {verbose_t::create_check, log_manager_t::info},
+                        {verbose_t::create_profile, log_manager_t::info},
+                        {verbose_t::profile_externals, log_manager_t::info},
+                        {verbose_t::exec_profile, log_manager_t::info},
+                        {verbose_t::exec_check, log_manager_t::error},
+                        {verbose_t::error, log_manager_t::critical},
+                        {verbose_t::warn, log_manager_t::warn},
+                        {verbose_t::none, log_manager_t::off},
+                };
+
+        log_manager.log(fmt_str.c_str(), verbose_to_log_map.at(kind));
+    }
     if (log_manager.is_console_enabled()) {
         printf("%s", fmt_str.c_str());
         fflush(stdout);

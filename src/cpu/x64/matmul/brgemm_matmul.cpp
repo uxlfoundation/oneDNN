@@ -1827,10 +1827,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 copy_A_src_stride_
                         = helper.get_a_stride(bgmmc.ndims - 1) * bgmmc.a_dt_sz;
 
-            is_A_batch_layout_trivial_
-                    = is_batch_layout_trivial(src_d_);
-            is_C_batch_layout_trivial_
-                    = is_batch_layout_trivial(dst_d_);
+            is_A_batch_layout_trivial_ = is_batch_layout_trivial(src_d_);
+            is_C_batch_layout_trivial_ = is_batch_layout_trivial(dst_d_);
         } else {
             M_ = bgmmc.M;
             M_chunks_ = bgmmc.M_chunks;
@@ -1890,10 +1888,8 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                 B_strides_[dim_idx] = bgmmc.b_dt_sz
                         * helper.get_b_stride(bgmmc.ndims - 1 - dim_idx);
 
-            is_B_batch_layout_trivial_
-                    = is_batch_layout_trivial(wei_d_);
-            is_C_batch_layout_trivial_
-                    = is_batch_layout_trivial(dst_d_);
+            is_B_batch_layout_trivial_ = is_batch_layout_trivial(wei_d_);
+            is_C_batch_layout_trivial_ = is_batch_layout_trivial(dst_d_);
         } else {
             N_ = bgmmc.N;
             N_chunks_ = bgmmc.N_chunks;

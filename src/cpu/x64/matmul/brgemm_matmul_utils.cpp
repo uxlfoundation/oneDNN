@@ -2360,12 +2360,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                 : bgmmc.LDD;
     }
 
-    bgmmc.is_src_batch_layout_trivial
-            = is_batch_layout_trivial(src_d);
-    bgmmc.is_wei_batch_layout_trivial
-            = is_batch_layout_trivial(weights_d);
-    bgmmc.is_dst_batch_layout_trivial
-            = is_batch_layout_trivial(dst_d);
+    bgmmc.is_src_batch_layout_trivial = is_batch_layout_trivial(src_d);
+    bgmmc.is_wei_batch_layout_trivial = is_batch_layout_trivial(weights_d);
+    bgmmc.is_dst_batch_layout_trivial = is_batch_layout_trivial(dst_d);
 
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);

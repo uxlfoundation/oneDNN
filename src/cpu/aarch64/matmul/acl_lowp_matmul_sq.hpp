@@ -26,6 +26,7 @@
 
 #include "arm_compute/core/CPP/CPPTypes.h"
 #include "arm_compute/runtime/experimental/operators/CpuGEMMLowp.h"
+#include "cpu/aarch64/acl_utils.hpp"
 
 namespace dnnl {
 namespace impl {

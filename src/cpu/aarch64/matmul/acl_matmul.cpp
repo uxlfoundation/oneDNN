@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "cpu/aarch64/matmul/acl_matmul.hpp"
+#include "cpu/aarch64/acl_utils.hpp"
 
 #include <mutex>
 

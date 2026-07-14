@@ -415,4 +415,52 @@ GPU_INSTANTIATE_TEST_SUITE_P(PaddedWeights, reorder_simple_test_t_f32_f32,
         ::testing::Values(cfg_f32 {fmt::oihw, fmt::IOhw16i16o, {17, 23, 2, 1}},
                 cfg_f32 {fmt::goihw, fmt::gOIhw16o16i, {2, 17, 23, 1, 2}}));
 
+// u3 (3-bit) is a packed sub-byte type (8 values per 3 bytes, OV transposed
+// layout) and cannot go through reorder_simple_test_t, which assumes one array
+// slot per element. This checks the public reorder API is reachable in both
+// directions and packs to the exact OV layout; benchdnn covers broad
+// correctness across shapes and layouts. CPU-only.
+TEST(reorder_u3_test, PublicApiPackUnpack) {
+    engine e = get_test_engine();
+    SKIP_IF(get_test_engine_kind() == engine::kind::gpu,
+            "u3 reorder is CPU-only.");
+
+    memory::dims dims = {1, 8};
+    auto f32_md = memory::desc(dims, memory::data_type::f32, fmt::ab);
+    auto u3_md = memory::desc(dims, memory::data_type::u3, fmt::ab);
+    const float vals[8] = {1, 2, 3, 4, 5, 6, 7, 0};
+
+    auto src = test::make_memory(f32_md, e);
+    {
+        auto p = map_memory<float>(src);
+        for (int i = 0; i < 8; ++i)
+            p[i] = vals[i];
+    }
+    auto strm = make_stream(e);
+
+    // pack f32 -> u3: {1,2,3,4,5,6,7,0} -> bytes 6C 6C 1E (low 2 bits of v0-3
+    // in byte0, of v4-7 in byte1, the 8 MSBs in byte2)
+    auto packed = test::make_memory(u3_md, e);
+    reorder(reorder::primitive_desc(e, f32_md, e, u3_md, primitive_attr()))
+            .execute(strm, src, packed);
+    strm.wait();
+    {
+        auto b = map_memory<uint8_t>(packed);
+        ASSERT_EQ(b[0], 0x6C);
+        ASSERT_EQ(b[1], 0x6C);
+        ASSERT_EQ(b[2], 0x1E);
+    }
+
+    // unpack u3 -> f32: round-trips to the original values
+    auto rt = test::make_memory(f32_md, e);
+    reorder(reorder::primitive_desc(e, u3_md, e, f32_md, primitive_attr()))
+            .execute(strm, packed, rt);
+    strm.wait();
+    {
+        auto p = map_memory<float>(rt);
+        for (int i = 0; i < 8; ++i)
+            ASSERT_EQ(p[i], vals[i]) << "at " << i;
+    }
+}
+
 } // namespace dnnl

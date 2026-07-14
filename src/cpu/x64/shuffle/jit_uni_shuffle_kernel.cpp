@@ -78,19 +78,19 @@ void jit_uni_shuffle_kernel_t<avx512_core>::emu_gather_data(
     constexpr unsigned xmm_size_elem = 8; //bf16
     constexpr unsigned xmm_size_elem_half = xmm_size_elem / 2;
 
-    const unsigned number_of_xmms = is_tail
+    const dim_t number_of_xmms = is_tail
             ? utils::div_up(conf_.simd_tail, xmm_size_elem)
             : utils::div_up(conf_.simd_w, xmm_size_elem);
 
     for (unsigned i = 0; i < number_of_xmms; i++) {
-        const unsigned number_of_xmm_halfs = is_tail && i == number_of_xmms - 1
+        const dim_t number_of_xmm_halfs = is_tail && i == number_of_xmms - 1
                 ? utils::div_up(conf_.simd_tail,
                           xmm_size_elem_half + i * xmm_size_elem)
                 : 2;
 
         for (unsigned j = 0; j < number_of_xmm_halfs; j++) {
             const unsigned rem = conf_.simd_tail % xmm_size_elem_half;
-            const unsigned number_of_values_to_load = is_tail
+            const dim_t number_of_values_to_load = is_tail
                             && i == number_of_xmms - 1
                             && j == number_of_xmm_halfs - 1 && rem
                     ? rem
@@ -120,13 +120,13 @@ void jit_uni_shuffle_kernel_t<avx>::emu_gather_data(const Reg64 &reg_src_addr,
 
     constexpr unsigned xmm_size_elem = 4;
 
-    const unsigned number_of_xmms = is_tail
+    const dim_t number_of_xmms = is_tail
             ? utils::div_up(conf_.simd_tail, xmm_size_elem)
             : utils::div_up(conf_.simd_w, xmm_size_elem);
     for (unsigned i = 0; i < number_of_xmms; i++) {
         vextractf128(xmm_tmp, Ymm(indices_idx), i);
 
-        const unsigned number_of_values_to_load = i == number_of_xmms - 1
+        const dim_t number_of_values_to_load = i == number_of_xmms - 1
                         && is_tail && conf_.simd_tail % xmm_size_elem != 0
                 ? conf_.simd_tail % xmm_size_elem
                 : xmm_size_elem;
@@ -149,7 +149,7 @@ void jit_uni_shuffle_kernel_t<sse41>::emu_gather_data(const Reg64 &reg_src_addr,
 
     constexpr unsigned xmm_size_elem = 4;
 
-    const unsigned number_of_values_to_load
+    const dim_t number_of_values_to_load
             = is_tail ? conf_.simd_tail : xmm_size_elem;
     for (unsigned j = 0; j < number_of_values_to_load; j++) {
         pextrd(reg_tmp_.cvt32(), Xmm(indices_idx), j);
@@ -291,13 +291,13 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
     const Reg64 &reg_cb_loop_size = reg_tmp4_;
     const Reg64 &reg_blk_tail = reg_tmp5_;
     const Reg64 &reg_src_save = reg_tmp6_;
-    const int simd_in_blk = conf_.blk_size / conf_.simd_w;
-    const int simd_in_tail_blk
+    const dim_t simd_in_blk = conf_.blk_size / conf_.simd_w;
+    const dim_t simd_in_tail_blk
             = utils::div_up(conf_.c % conf_.blk_size, conf_.simd_w);
     const Vmm vmm_tmp[4] = {Vmm(5), Vmm(6), Vmm(7), Vmm(8)};
 
     auto load_indices = ([&](bool is_blk_tail) {
-        const int simd_to_process
+        const dim_t simd_to_process
                 = is_blk_tail ? simd_in_tail_blk : simd_in_blk;
         for (int i = 0; i < simd_to_process; ++i)
             uni_vmovdqu(vmm_tmp[i],
@@ -306,7 +306,7 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
     });
 
     auto shuffle = ([&](bool is_blk_tail) {
-        const int simd_to_process
+        const dim_t simd_to_process
                 = is_blk_tail ? simd_in_tail_blk : simd_in_blk;
         for (int i = 0; i < simd_to_process; ++i) {
             const bool simd_tail_condition = is_blk_tail && conf_.simd_tail > 0

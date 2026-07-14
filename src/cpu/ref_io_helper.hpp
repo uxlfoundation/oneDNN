@@ -169,6 +169,10 @@ ALWAYS_INLINE void store_float_value(
         case f4_e2m1: store_subbyte<f4_e2m1>(val, ptr, idx); break;
         case s4: store_subbyte<s4>(val, ptr, idx); break;
         case u4: store_subbyte<u4>(val, ptr, idx); break;
+        case u3:
+            uint3_pack(static_cast<uint8_t *>(ptr), idx,
+                    cpu::q10n::saturate_and_round<uint3_t>(val).raw_bits_);
+            break;
         case u2: store_subbyte<u2>(val, ptr, idx); break;
         default: assert(!"bad data_type");
     }

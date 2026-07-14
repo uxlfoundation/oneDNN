@@ -198,7 +198,7 @@ status_t pd_t::init_post_ops(impl::engine_t *engine) {
         if (converted) b_quant.scale_ndims = -1;
     }
 
-    bool try_c_scale = !c_scales.is_host_scalar() || with_inlined_c_scale();
+    bool try_c_scale = !c_scales.is_host_scalar() || !with_inlined_c_scale();
     if (!c_scales.has_default_values() && try_c_scale) {
         bool converted;
         CHECK(maybe_convert_scales_to_postop(c_scale_md_, DNNL_ARG_C,

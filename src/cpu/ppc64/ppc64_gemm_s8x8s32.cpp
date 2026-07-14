@@ -1,4 +1,20 @@
 /*******************************************************************************
+* Copyright 2026 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
+/*******************************************************************************
 * Copyright 2022 IBM Corporation
 *   
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -129,35 +145,35 @@ dnnl_status_t cblas_gemm_s8x8s32_ppc64(int ATflag, int BTflag,
                 free(comparray);
                 return dnnl_out_of_memory;
             }
-            for (int i = 0; i < m; ++i)
+            for (dim_t i = 0; i < m; ++i)
                 comparray[i] = 0;
             if (ATflag) {
-                for (int i = 0; i < m; ++i) {
+                for (dim_t i = 0; i < m; ++i) {
                     int ca = 0;
                     const int8_t *at = &A[lda * i];
-                    for (int j = 0; j < k; ++j) {
+                    for (dim_t j = 0; j < k; ++j) {
                         ca += (int)*at++;
                     }
                     comparray[i] = ca;
                 }
             } else {
-                for (int j = 0; j < k; ++j) {
+                for (dim_t j = 0; j < k; ++j) {
                     int *ca = comparray;
                     const int8_t *at = &A[lda * j];
-                    for (int i = 0; i < m; ++i) {
+                    for (dim_t i = 0; i < m; ++i) {
                         *ca++ += (int)*at++;
                     }
                 }
             }
-            for (int i = 0; i < m; ++i) {
+            for (dim_t i = 0; i < m; ++i) {
                 comparray[i] = cpu::q10n::out_round<int32_t>(
                         cpu::q10n::saturate<int32_t>(
                                 ((double)comparray[i]) * alpha * -128.0));
             }
-            for (int j = 0; j < n; ++j) {
+            for (dim_t j = 0; j < n; ++j) {
                 int *ca = comparray;
                 int *ct = &C[ldc * j];
-                for (int i = 0; i < m; ++i) {
+                for (dim_t i = 0; i < m; ++i) {
                     *ct++ += *ca++;
                 }
             }
@@ -167,16 +183,16 @@ dnnl_status_t cblas_gemm_s8x8s32_ppc64(int ATflag, int BTflag,
         free(BPraw);
     }
     if (*offsetc == 'F' || *offsetc == 'f')
-        for (int i = 0; i < n; ++i)
-            for (int j = 0; j < m; ++j)
+        for (dim_t i = 0; i < n; ++i)
+            for (dim_t j = 0; j < m; ++j)
                 C[ldc * i + j] += co[0];
     if (*offsetc == 'R' || *offsetc == 'r')
-        for (int i = 0; i < n; ++i)
-            for (int j = 0; j < m; ++j)
+        for (dim_t i = 0; i < n; ++i)
+            for (dim_t j = 0; j < m; ++j)
                 C[ldc * i + j] += co[i];
     if (*offsetc == 'C' || *offsetc == 'c')
-        for (int i = 0; i < n; ++i)
-            for (int j = 0; j < m; ++j)
+        for (dim_t i = 0; i < n; ++i)
+            for (dim_t j = 0; j < m; ++j)
                 C[ldc * i + j] += co[j];
 
     return dnnl_success;

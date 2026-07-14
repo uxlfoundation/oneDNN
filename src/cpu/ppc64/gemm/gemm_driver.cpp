@@ -1,4 +1,20 @@
 /*******************************************************************************
+* Copyright 2026 Intel Corporation
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*     http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*******************************************************************************/
+
+/*******************************************************************************
 * Copyright 2022 IBM Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,7 +99,7 @@ static void sum_matrices(dim_t m, dim_t n, mat_t *__restrict dst, dim_t ld_dst,
 
     for (dim_t j = 0; j < n; j++) {
         PRAGMA_OMP_SIMD()
-        for (int i = 0; i < m; i++)
+        for (dim_t i = 0; i < m; i++)
             dst[i + j * ld_dst] += src[i + j * ld_src];
     }
 }
@@ -541,9 +557,9 @@ static dnnl_status_t gemm_kernel_driver(int ithr, dim_t m, dim_t n, dim_t k,
                     // Currently calculating the b_col sum here only to check unit test ase passed or not
                     if (arg->ao != 0) {
                         if (arg->transb == 1) {
-                            for (int i = 0; i < sizeN; i++) {
+                            for (dim_t i = 0; i < sizeN; i++) {
                                 int sum = 0;
-                                for (int j = 0; j < sizeK; j++) {
+                                for (dim_t j = 0; j < sizeK; j++) {
                                     if (arg->b_is_signed) {
                                         sum += b_block[j * ldb + i] + 128;
                                     } else {
@@ -553,9 +569,9 @@ static dnnl_status_t gemm_kernel_driver(int ithr, dim_t m, dim_t n, dim_t k,
                                 b_col_sum[i] = sum;
                             }
                         } else {
-                            for (int i = 0; i < sizeN; i++) {
+                            for (dim_t i = 0; i < sizeN; i++) {
                                 int sum = 0;
-                                for (int j = 0; j < sizeK; j++) {
+                                for (dim_t j = 0; j < sizeK; j++) {
                                     if (arg->b_is_signed) {
                                         sum += b_block[i * ldb + j] + 128;
                                     } else {
@@ -758,9 +774,9 @@ static dnnl_status_t kernel_driver_parallel_acopiedbcopy(int ithr, dim_t m,
             }
             if (arg->ao != 0) {
                 if (arg->transb == 1) {
-                    for (int i = 0; i < sizeN; i++) {
+                    for (dim_t i = 0; i < sizeN; i++) {
                         int sum = 0;
-                        for (int j = 0; j < k; j++) {
+                        for (dim_t j = 0; j < k; j++) {
                             if (arg->b_is_signed) {
                                 sum += b_block[j * ldb + i] + 128;
                             } else {
@@ -770,9 +786,9 @@ static dnnl_status_t kernel_driver_parallel_acopiedbcopy(int ithr, dim_t m,
                         b_col_sum[i] = sum;
                     }
                 } else {
-                    for (int i = 0; i < sizeN; i++) {
+                    for (dim_t i = 0; i < sizeN; i++) {
                         int sum = 0;
-                        for (int j = 0; j < k; j++) {
+                        for (dim_t j = 0; j < k; j++) {
                             if (arg->b_is_signed) {
                                 sum += b_block[i * ldb + j] + 128;
                             } else {

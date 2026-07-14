@@ -156,14 +156,7 @@ constexpr Xbyak::Operand::Code abi_not_param_reg =
 #endif
 
 class jit_generator_t : public Xbyak::MmapAllocator,
-                        public Xbyak::CodeGenerator,
-                        public c_compatible {
-public:
-    using c_compatible::operator new;
-    using c_compatible::operator new[];
-    using c_compatible::operator delete;
-    using c_compatible::operator delete[];
-
+                        public Xbyak::CodeGenerator {
 private:
     const size_t xmm_len = 16;
 #ifdef _WIN32

@@ -37,7 +37,7 @@ namespace impl {
 /** thin wrapper class over \struct memory_desc_t which allows easy
  * manipulations with underlying C structure, which is taken by reference */
 // NOLINTNEXTLINE(readability-identifier-naming)
-struct memory_desc_wrapper : public c_compatible {
+struct memory_desc_wrapper {
     const memory_desc_t *md_;
 
     /** constructor which takes a reference to a constant underlying C memory

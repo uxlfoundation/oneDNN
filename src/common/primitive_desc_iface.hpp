@@ -41,7 +41,7 @@ status_t primitive_desc_create(primitive_desc_iface_t **primitive_desc_iface,
 // can be stored in the primitive cache as part of the primitive implementation
 // to which it belongs
 // 2. engine_t - a dnnl engine
-struct dnnl_primitive_desc : public dnnl::impl::c_compatible {
+struct dnnl_primitive_desc {
     dnnl_primitive_desc(const std::shared_ptr<dnnl::impl::primitive_desc_t> &pd,
             dnnl::impl::engine_t *engine);
 

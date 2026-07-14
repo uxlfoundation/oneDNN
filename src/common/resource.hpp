@@ -42,7 +42,7 @@ namespace impl {
 //
 // This abstraction takes ownership of all content it holds hence it should be
 // responsible for destroying it as well.
-struct resource_t : public c_compatible {
+struct resource_t {
     virtual ~resource_t() = default;
 };
 

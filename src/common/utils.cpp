@@ -186,8 +186,7 @@ int getpagesize() {
 #endif
 }
 
-// Add DNNL_API to make test_internals_cpu_ir work.
-void DNNL_API *malloc(size_t size, int alignment) {
+void *malloc(size_t size, int alignment) {
     void *ptr;
     if (memory_debug::is_mem_debug())
         return memory_debug::malloc(size, alignment);
@@ -202,8 +201,7 @@ void DNNL_API *malloc(size_t size, int alignment) {
     return (rc == 0) ? ptr : nullptr;
 }
 
-// Add DNNL_API to make test_internals_cpu_ir work.
-void DNNL_API free(void *p) {
+void free(void *p) {
 
     if (memory_debug::is_mem_debug()) return memory_debug::free(p);
 

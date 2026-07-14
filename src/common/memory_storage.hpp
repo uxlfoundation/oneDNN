@@ -32,7 +32,7 @@ namespace impl {
 //
 // Memory storage is engine-specific and has different implementations for
 // different engines.
-struct memory_storage_t : public c_compatible {
+struct memory_storage_t {
     memory_storage_t(engine_t *engine, const memory_storage_t *root_storage);
     memory_storage_t(engine_t *engine) : memory_storage_t(engine, this) {}
 

@@ -643,7 +643,7 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
 namespace bnorm_s8_impl {
 
 template <cpu_isa_t isa>
-struct driver_t : public c_compatible {
+struct driver_t {
     driver_t(const batch_normalization_pd_t *pd) : pd_(pd), ker_(pd_) {}
     ~driver_t() = default;
 

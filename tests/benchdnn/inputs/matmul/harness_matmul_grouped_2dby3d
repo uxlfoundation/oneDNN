@@ -59,24 +59,24 @@
 --attr-scales=src:1+wei:7:bf16:128x1,src:1+wei:7:bf16:32x1
 32x512:4x512x256
 
-# Combine row-wise src scales and zp u8/s8
+# Combine row-wise src scales and zp u8/s8/s32
 --reset
 --dt=s8:s4:f32,s8:s4:bf16,u8:s4:bf16
 --wtag=abc,acb
 --grouped=0:4:8+8+8+8
 --bia-dt=undef,bf16 --bia_mask=2
 --attr-scales=src:1+wei:7:f32:128x1
---attr-zero-points=,src:1:u8,src:1:s8
+--attr-zero-points=,src:1:u8,src:1:s8,src:1:s32
 32x512:4x512x256
 
-# Combine blocked src scales and zp u8/s8
+# Combine blocked src scales and zp u8/s8/s32
 --reset
 --dt=s8:s4:bf16,u8:s4:bf16
 --wtag=abc,acb
 --grouped=0:4:8+8+8+8
 --bia-dt=undef,bf16 --bia_mask=2
 --attr-scales=src:3:f32:1x128
---attr-zero-points=,src:3:u8:1x128,src:3:s8:1x128
+--attr-zero-points=,src:3:u8:1x128,src:3:s8:1x128,src:3:s32:1x128
 32x512:4x512x256
 
 # int src + int wei with column-wise scales and ZPs
@@ -85,7 +85,7 @@
 --wtag=abc,acb
 --grouped=0:4:8+8+8+8
 --attr-scales=wei:5:f32
---attr-zero-points=wei:5:s8
+--attr-zero-points=wei:5:s8,wei:5:s32
 32x64:4x64x32
 
 # int src + int wei with blocked scales and ZPs
@@ -94,7 +94,7 @@
 --wtag=abc
 --grouped=0:4:8+8+8+8
 --attr-scales=wei:7:bf16:128x1
---attr-zero-points=wei:7:s8:128x1
+--attr-zero-points=wei:7:s8:128x1,wei:7:s32:128x1
 32x512:4x512x256
 
 # WOQ: f16 activation + s4/u4 weights with blocked scales and ZPs

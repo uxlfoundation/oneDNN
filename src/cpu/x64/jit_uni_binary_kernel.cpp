@@ -347,7 +347,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::perform_op(
     else if (cmp_op) {
         const unsigned int predicate = cmp_predicate(alg);
         if (is_avx512) {
-            vcmpps(cmp_mask, v0, v1, predicate);
+            vcmpps(cmp_mask, v0, v1, static_cast<dim_t>(predicate));
             vmovups(v0 | cmp_mask | T_z, vreg_one_);
         } else {
             uni_vcmpps(v0, v0, v1, predicate);

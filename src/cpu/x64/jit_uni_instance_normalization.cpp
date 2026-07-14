@@ -813,7 +813,7 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
             dim_t SP_start = 0, SP_end = 0;
             balance211(SP, nthr, ithr, SP_start, SP_end);
             const int block_size = SP_end - SP_start;
-            for (int n = 0; n < N; ++n) {
+            for (dim_t n = 0; n < N; ++n) {
                 float *local_mean = stat_reduction + n * nthr * C + ithr * C;
                 const size_t s_off
                         = (size_t)n * SP * C_padded + SP_start * C_padded;

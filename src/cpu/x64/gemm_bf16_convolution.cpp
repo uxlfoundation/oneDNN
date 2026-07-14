@@ -454,7 +454,7 @@ status_t gemm_bf16_convolution_fwd_t<dst_data_type>::execute_forward_thr_nspc(
         if (jcp.im2col_sz && is_problem_3d)
             jit_gemm_convolution_utils::transpose_dt(jcp, src, imtr);
 
-        for (int od = 0; od < jcp.od; od++) {
+        for (dim_t od = 0; od < jcp.od; od++) {
             dst_data_t *__restrict dst = dst_base + n * dst_mb_stride
                     + g * dst_g_stride
                     + ((od * jcp.oh + oh) * jcp.ow + ow) * dst_os_stride;
@@ -763,7 +763,7 @@ status_t gemm_bf16_convolution_bwd_data_t<
                         = diff_src + is * diff_src_os_stride;
                 const acc_data_t *__restrict acc_loc = acc + is * jcp.ic;
                 PRAGMA_OMP_SIMD()
-                for (int ic = 0; ic < jcp.ic; ++ic)
+                for (dim_t ic = 0; ic < jcp.ic; ++ic)
                     diff_src_loc[ic] = acc_loc[ic];
             });
         }
@@ -825,8 +825,8 @@ status_t gemm_bf16_convolution_bwd_data_t<diff_src_data_type>::
             }
 
             const wei_data_t *_weights = weights + g * weights_g_size;
-            for_(int od = 0; od < jcp.od; ++od)
-            for (int os_nb = 0; os_nb < jcp.os_nb_block; ++os_nb) {
+            for_(dim_t od = 0; od < jcp.od; ++od)
+            for (dim_t os_nb = 0; os_nb < jcp.os_nb_block; ++os_nb) {
                 auto out_off = os_nb * m + od * jcp.os;
                 const diff_dst_data_t *_diff_dst
                         = diff_dst + (n * jcp.ngroups + g) * dst_step + out_off;
@@ -1042,7 +1042,7 @@ status_t gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::
                     if (jcp.im2col_sz && is_problem_3d)
                         jit_gemm_convolution_utils::transpose_dt(
                                 jcp, _src, imtr);
-                    for (int od = 0; od < jcp.od; ++od) {
+                    for (dim_t od = 0; od < jcp.od; ++od) {
                         const diff_dst_data_t *_diff_dst = diff_dst
                                 + mb * jcp.ngroups * dst_step
                                 + od * k * jcp.ngroups * jcp.oc + g * jcp.oc;
@@ -1226,8 +1226,8 @@ status_t gemm_bf16_convolution_bwd_weights_t<diff_wei_data_type>::
                 for (size_t mb = mb_start; mb < mb_end; ++mb) {
                     const src_data_t *_src
                             = src + (mb * jcp.ngroups + g) * src_step;
-                    for_(int od = 0; od < jcp.od; ++od)
-                    for (int os_nb = 0; os_nb < jcp.os_nb_block; ++os_nb) {
+                    for_(dim_t od = 0; od < jcp.od; ++od)
+                    for (dim_t os_nb = 0; os_nb < jcp.os_nb_block; ++os_nb) {
                         auto out_off = os_nb * k + od * jcp.os;
                         const dim_t os_block = nstl::min(
                                 (dim_t)jcp.os_block, jcp.os - os_nb * k);

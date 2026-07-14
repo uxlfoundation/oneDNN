@@ -294,7 +294,7 @@ protected:
                 uni_vpxor(Vmm(i), Vmm(i), Vmm(i));
 
             // unrolled loop
-            for (int i = 0; i < axis_simd_full_ / unroll; i++)
+            for (dim_t i = 0; i < axis_simd_full_ / unroll; i++)
                 for (int j = base_idx; j < base_idx + unroll; j += 2) {
                     const bool can_load_two_simdw = base_idx + unroll - j >= 2;
                     if (!can_load_two_simdw)
@@ -318,7 +318,7 @@ protected:
             }
 
             // unrolled loop remainder
-            for (int i = utils::rnd_dn(axis_simd_full_, unroll);
+            for (dim_t i = utils::rnd_dn(axis_simd_full_, unroll);
                     i < axis_simd_full_; i += 2) {
                 const bool can_load_two_simdw = axis_simd_full_ - i >= 2;
                 if (!can_load_two_simdw)
@@ -362,7 +362,7 @@ protected:
                 uni_vpxor(Vmm(i), Vmm(i), Vmm(i));
 
             // unrolled loop
-            for (int i = 0; i < axis_simd_full_ / unroll; i++)
+            for (dim_t i = 0; i < axis_simd_full_ / unroll; i++)
                 for (int j = base_idx; j < base_idx + unroll; j++) {
                     io_[src_d_.data_type()]->load(
                             src_ptr((i * unroll + j - base_idx) * simd_w_),
@@ -379,7 +379,7 @@ protected:
             }
 
             // unrolled loop remainder
-            for (int i = utils::rnd_dn(axis_simd_full_, unroll);
+            for (dim_t i = utils::rnd_dn(axis_simd_full_, unroll);
                     i < axis_simd_full_; i++) {
                 io_[src_d_.data_type()]->load(
                         src_ptr(i * simd_w_), Vmm(base_idx + 1), need_tail);
@@ -522,7 +522,7 @@ protected:
 
     void calculate_dst() {
         if (has_ne_convert_src_xf16_) {
-            for (int i = 0; i < axis_simd_full_; i += 2) {
+            for (dim_t i = 0; i < axis_simd_full_; i += 2) {
                 const bool can_load_two_simdw = axis_simd_full_ - i >= 2;
                 if (can_load_two_simdw)
                     calculate_ne_convert_xf16_dst_body(i * simd_w_);
@@ -530,7 +530,7 @@ protected:
                     calculate_dst_body(i * simd_w_);
             }
         } else {
-            for (int i = 0; i < axis_simd_full_; i++)
+            for (dim_t i = 0; i < axis_simd_full_; i++)
                 calculate_dst_body(i * simd_w_);
         }
         if (axis_simd_tail_)
@@ -893,7 +893,7 @@ protected:
             uni_vmovss(xmm_tmp, dword[reg_inv_sqrtvar]);
             uni_vbroadcastss(vmm_inv_sqrtvar, xmm_tmp);
 
-            for (int i = 0; i < axis_simd_full_; i++)
+            for (dim_t i = 0; i < axis_simd_full_; i++)
                 calculate_diff_scale_shift(i * simd_w_);
             if (axis_simd_tail_)
                 calculate_diff_scale_shift(axis_simd_full_ * simd_w_, true);
@@ -1139,7 +1139,7 @@ protected:
                 uni_vpxor(vmm_dd_scale, vmm_dd_scale, vmm_dd_scale);
                 uni_vpxor(vmm_dd_scale_x, vmm_dd_scale_x, vmm_dd_scale_x);
 
-                for (int i = 0; i < axis_simd_full_; i++)
+                for (dim_t i = 0; i < axis_simd_full_; i++)
                     compute_dd_scales(i * simd_w_);
                 if (axis_simd_tail_)
                     compute_dd_scales(axis_simd_full_ * simd_w_, true);
@@ -1149,7 +1149,7 @@ protected:
                 uni_vmulps(vmm_dd_scale_x, vmm_dd_scale_x, vmm_inv_sqrtvar);
             }
 
-            for (int i = 0; i < axis_simd_full_; i++)
+            for (dim_t i = 0; i < axis_simd_full_; i++)
                 compute_diff_src(i * simd_w_);
             if (axis_simd_tail_)
                 compute_diff_src(axis_simd_full_ * simd_w_, true);

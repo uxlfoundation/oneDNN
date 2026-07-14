@@ -211,6 +211,11 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     checkBeta1 |= C.atomic && !problem.beta1();
 
     GRFs = std::min(GRFs, GRF::maxRegs(hw));
+    // CRI has unique GRF mode behaviour - automatically update to optimal options
+    if (problem.product.family == ngen::ProductFamily::CRI) {
+        if (GRFs == 128) GRFs = 192;
+        if (GRFs == 256) GRFs = 512;
+    }
 
     // Fixed systolic kernel handling.
     if (fixedSystolic) {

@@ -19,7 +19,7 @@
 
 // Grouped GEMM OCL reference kernel
 //
-// Per group g: C[g] = A[g] * B[g] (+ bias / scales for the 2Dx3D pattern)
+// Per group g: C[g] = A[g] * B[g] (+ bias / scales / zero-points for 2Dx3D)
 //
 // 2D grouped src (variable M) x 3D dense wei -> 2D grouped dst (variable M)
 // partner_offsets buffer is dst_offsets
@@ -36,10 +36,11 @@
 // get_global_id(2): output column (n)
 //
 // Supported:
-//  Data types: f32, f16, bf16
-//  Row-wise (per-token) src scales; column-wise weight scales
-//  Bias (shape [group_count, N])
-//  Post-ops (2Dx3D only): eltwise (swish), grouped/dense/nvfp4 binary scale
+//  f32/f16/bf16
+// For 2Dx3D only:
+//  u8/s8 src, u8/s8/s4/u4/f8/f4 wei (incl. WOQ)
+//  row/col-wise or K-grouped scales & zero-points
+//  bias [group_count, N] and post-ops
 __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
         __global const int *src_offsets, __global const WEI_DATA_T *wei,
         __global const int *partner_offsets, __global DST_DATA_T *dst,
@@ -48,18 +49,31 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
         const long src_stride_k, const long wei_stride_k,
         const long wei_stride_n, const long dst_stride_m,
         const long dst_stride_n, const long src_group_stride,
-        const long wei_group_stride, const long dst_group_stride
+        const long wei_group_stride, const long dst_group_stride,
+        const long n_k_groups
 #if WITH_BIAS
         ,
         __global const BIA_DATA_T *bias // Bias [group_count, N]
 #endif
 #if WITH_SRC_SCALES
         ,
-        __global const float *src_scales
+        __global const SRC_SCALES_DATA_T *src_scales,
+        const long src_scale_ngroups_k
 #endif
 #if WITH_WEI_SCALES
         ,
-        __global const float *wei_scales
+        __global const WEI_SCALES_DATA_T *wei_scales,
+        const long wei_scale_ngroups_k
+#endif
+#if WITH_SRC_ZPOINTS
+        ,
+        __global const SRC_ZP_DATA_T *src_zero_points,
+        const long src_zp_ngroups_k
+#endif
+#if WITH_WEI_ZPOINTS
+        ,
+        __global const WEI_ZP_DATA_T *wei_zero_points,
+        const long wei_zp_ngroups_k
 #endif
                 POST_OP_ARGS) {
     const off_t group_id = get_global_id(0);
@@ -106,21 +120,61 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
     const long wei_base = wei_group_start * wei_group_stride;
     const long dst_base = dst_group_start * dst_group_stride;
 
-    ACC_DATA_T acc = (ACC_DATA_T)0;
-    for (int k = 0; k < K_g; k++) {
-        const long src_idx = src_base + m * src_stride_m + k * src_stride_k;
-        const long wei_idx = wei_base + k * wei_stride_k + n * wei_stride_n;
-        acc += SRC_TO_REF(src[src_idx]) * WEI_TO_REF(wei[wei_idx]);
-    }
+    // src attribute row (global token) = group start + local row
+    const long src_attr_row = src_group_start + m;
+    const long k_group_size = K_g / n_k_groups;
 
+    FLT_ACC_DATA_T acc = 0;
+    for (long i_group = 0; i_group < n_k_groups; i_group++) {
+        ACC_DATA_T acc_g = (ACC_DATA_T)0;
+        for (long k = 0; k < k_group_size; k++) {
+            const long k_abs = k + i_group * k_group_size;
+            const long src_idx
+                    = src_base + m * src_stride_m + k_abs * src_stride_k;
+            const long wei_idx
+                    = wei_base + k_abs * wei_stride_k + n * wei_stride_n;
+            int src_zp = 0;
+#if WITH_SRC_ZPOINTS
+            src_zp = SRC_ZP_TO_REF(src_zero_points,
+                    src_attr_row * src_zp_ngroups_k
+                            + i_group * src_zp_ngroups_k / n_k_groups);
+#endif
+            int wei_zp = 0;
+#if WITH_WEI_ZPOINTS
+            wei_zp = WEI_ZP_TO_REF(wei_zero_points,
+                    group_id * wei_zp_ngroups_k * N
+                            + (i_group * wei_zp_ngroups_k / n_k_groups) * N
+                            + n);
+#endif
+#if SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
+            ACC_DATA_T s
+                    = TO_ACC(SRC_TO_REF(GET_HALF_BYTE(src, src_idx)) - src_zp);
+#else
+            ACC_DATA_T s = TO_ACC(SRC_TO_REF(src[src_idx]) - src_zp);
+#endif
+#if WEI_DT_S4 || WEI_DT_U4 || WEI_DT_F4_E2M1 || WEI_DT_F4_E3M0
+            ACC_DATA_T w
+                    = TO_ACC(WEI_TO_REF(GET_HALF_BYTE(wei, wei_idx)) - wei_zp);
+#else
+            ACC_DATA_T w = TO_ACC(WEI_TO_REF(wei[wei_idx]) - wei_zp);
+#endif
+            acc_g += s * w;
+        }
+        FLT_ACC_DATA_T src_scale = 1.f;
+        FLT_ACC_DATA_T wei_scale = 1.f;
 #if WITH_SRC_SCALES
-    // Row-wise (per global token) src scale; global token = src_group_start + m.
-    acc *= (ACC_DATA_T)src_scales[src_group_start + m];
+        src_scale = SRC_SCALES_TO_REF(
+                src_scales[src_attr_row * src_scale_ngroups_k
+                        + i_group * src_scale_ngroups_k / n_k_groups]);
 #endif
 #if WITH_WEI_SCALES
-    // Column-wise weight scale, shape [group_count, N].
-    acc *= (ACC_DATA_T)wei_scales[group_id * N + n];
+        wei_scale = WEI_SCALES_TO_REF(wei_scales[group_id * wei_scale_ngroups_k
+                        * N
+                + (i_group * wei_scale_ngroups_k / n_k_groups) * N + n]);
 #endif
+        acc += ACC_TO_REF(acc_g) * src_scale * wei_scale;
+    }
+
 #if WITH_BIAS
     acc += BIA_TO_REF(bias[group_id * N + n]);
 #endif

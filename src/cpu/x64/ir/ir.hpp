@@ -214,10 +214,6 @@ struct DNNL_API ir_t {
     const std::vector<op_t> &ops() const { return ops_; }
     int n_labels() const { return n_labels_; }
 
-    // Add a vreg of kind `k` and, for a vec, element data type `dt`.
-    // Return its id.
-    vreg_t new_vreg(reg_kind_t k, data_type_t dt = data_type::undef);
-
     // Convenience wrappers around `new_vreg` for the specific kinds.
     vreg_t new_gpr() { return new_vreg(reg_kind_t::gpr); }
     vreg_t new_vec(data_type_t dt) { return new_vreg(reg_kind_t::vec, dt); }
@@ -270,6 +266,10 @@ struct DNNL_API ir_t {
             std::vector<int> &uses) const;
 
 private:
+    // Add a vreg of kind `k` and, for a vec, element data type `dt`.
+    // Return its id.
+    vreg_t new_vreg(reg_kind_t k, data_type_t dt = data_type::undef);
+
     // Info for each vreg, indexed by its id
     std::vector<vreg_info_t> vreg_info_;
     // All operations, in order

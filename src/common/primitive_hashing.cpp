@@ -23,6 +23,7 @@
 
 #include "dnnl_thread.hpp"
 #include "engine.hpp"
+#include "memory_desc.hpp"
 #include "primitive_hashing.hpp"
 
 namespace dnnl {
@@ -57,9 +58,18 @@ bool key_t::operator==(const key_t &rhs) const {
         && pd_iterator_offset_ == rhs.pd_iterator_offset_
         && impl_nthr_ == rhs.impl_nthr_
         && skip_idx_ == rhs.skip_idx_
-        && (*attr_) == (*rhs.attr_)
-        && std::equal(
-            hint_mds_.begin(), hint_mds_.end(), rhs.hint_mds_.begin());
+        && (*attr_) == (*rhs.attr_);
+    if (!ret) {
+        // ANCHOR: HASHING_DEBUGINFO_16.
+        VDEBUGINFO(16, primitive, hashing, "operator==,ret=%d", ret);
+        return ret;
+    }
+
+    for (size_t i = 0; i < rhs.hint_mds_.size(); i++) {
+        // Note: fast exit on `!ret` secures the same-sized hints. Make sure
+        // there will be no access out-of-bounds for hints on both sides.
+        ret = ret && hint_mds_[i] == rhs.hint_mds_[i];
+    }
 
     if (!ret) {
         // ANCHOR: HASHING_DEBUGINFO_16.

@@ -639,14 +639,14 @@ private:
         return ret;
     }
 
-    int get_wei_off(const icoord_t &_start, int ck) const {
+    int get_wei_off(const icoord_t &_start, dim_t ck) const {
         auto start = _start;
         start[ck_idx_] = ck;
         int off = offset_bytes<int>(wei_layout_, start);
         return off % wei_reg_buf_size();
     }
 
-    int get_zp_off(const icoord_t &_start, int ck) const {
+    int get_zp_off(const icoord_t &_start, dim_t ck) const {
         icoord_t start(2);
         if (_start.has(g_idx_)) start[0] = _start[g_idx_];
         start[1] = is_zp_common() ? 0 : ck;
@@ -1381,7 +1381,7 @@ private:
         return utils::rnd_up(ret, grf_size());
     }
 
-    int get_comp_off(const icoord_t &_start, int kw,
+    int get_comp_off(const icoord_t &_start, dim_t kw,
             const split_dispatcher_t &sd) const {
         auto start = sd.c_to_comp(_start);
         start[comp_kw_idx_] = kw;
@@ -1389,7 +1389,7 @@ private:
         return off % comp_reg_buf_size(sd);
     }
 
-    int get_mask_off(const icoord_t &_start, int kw) const {
+    int get_mask_off(const icoord_t &_start, dim_t kw) const {
         // c:    ngcdhw or ngc[osp]
         // mask: ngcdhw[kd][kh][kw] or ngc[osp][kd][kh][kw]
         auto start = _start;
@@ -1399,7 +1399,8 @@ private:
         return off;
     }
 
-    int get_c_off(const icoord_t &start, int kw) const {
+    int get_c_off(const icoord_t &start, dim_t kw) const {
+        UNUSED(kw);
         int off = offset_bytes<int>(c_layout_, start);
         return off;
     }

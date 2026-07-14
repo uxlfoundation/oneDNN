@@ -47,16 +47,16 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
     CHECK(status);
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
-    auto scratchpad_ptr = scratchpad.template get<int>(
+    auto scratchpad_ptr = scratchpad.template get<dim_t>(
             memory_tracking::names::key_shuffle_precompute_transpose);
 
     const auto axis = pd()->axis();
     const auto axis_size = pd()->axis_size();
     const auto group_size = pd()->group_size();
 
-    const int transpose_row
+    const dim_t transpose_row
             = pd()->is_fwd() ? group_size : axis_size / group_size;
-    const int transpose_col
+    const dim_t transpose_col
             = pd()->is_fwd() ? axis_size / group_size : group_size;
 
     // Precompute transposed axis helper array

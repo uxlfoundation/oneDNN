@@ -562,7 +562,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
             || jcp_.with_src_scales || jcp_.with_wei_scales
             || jcp_.with_dst_scales || need_compensation
             || (jcp_.dst_dt != jcp_.acc_dt) || jcp_.with_sum || jcp_.use_M_mask
-            || jcp_.src_zero_point || jcp_.dst_zero_point;
+            || jcp_.src_zero_point || jcp_.dst_zero_point
+            || jcp_.req_fp8_convert_wsp;
 
     const auto &Mv = (jcp_.M_tail > 0 && jcp_.M_tail != jcp_.M)
             ? std::vector<int> {jcp_.M, jcp_.M_tail}
@@ -1325,6 +1326,7 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
     uint8_t *__restrict inp_buffer_mask {nullptr};
     const char *const __restrict weights {nullptr};
     void *__restrict inp_buffer_zero {nullptr};
+    void *__restrict fp8_convert_wsp {nullptr};
 };
 
 template <cpu_isa_t isa>
@@ -1392,6 +1394,10 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                                               key_brgemm_primitive_buffer_comp)
                                     : s8s8_compensation)
             : nullptr;
+    auto *fp8_convert_wsp_base = jcp.req_fp8_convert_wsp
+            ? scratchpad.template get<char>(
+                      key_brgemm_primitive_fp8_convert_wsp)
+            : nullptr;
 
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
 
@@ -1442,6 +1448,10 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
         btc.inp_buffer_mask = (jcp.exec_type == exec_trans)
                 ? inp_p_buffer_mask + ithr * jcp.inp_buffer_mask_size
+                : nullptr;
+
+        btc.fp8_convert_wsp = jcp.req_fp8_convert_wsp
+                ? fp8_convert_wsp_base + ithr * jcp.fp8_convert_wsp_size
                 : nullptr;
 
         btc.input = jcp.copy_input ? btc.inp_buffer : src;
@@ -1763,7 +1773,9 @@ inline void brgemm_convolution_fwd_t<isa>::call_brgemm_kernel(
                 btc.dst_scales};
 
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
-                               : static_cast<void *>(s8s8_comp);
+                : jcp.req_fp8_convert_wsp
+                ? static_cast<void *>(btc.fp8_convert_wsp)
+                : static_cast<void *>(s8s8_comp);
 
         if (do_postops)
             brgemm_kernel_execute_postops(brg_ker, batch_size, ptrA, ptrB,

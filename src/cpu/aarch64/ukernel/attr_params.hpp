@@ -24,7 +24,7 @@
 
 #ifdef DNNL_EXPERIMENTAL_UKERNEL
 
-struct dnnl_ukernel_attr_params : public dnnl::impl::c_compatible {
+struct dnnl_ukernel_attr_params {
     dnnl_ukernel_attr_params() = default;
 
     dnnl::impl::status_t set_post_ops_args(const void **post_ops_args);

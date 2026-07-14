@@ -49,7 +49,7 @@ status_t primitive_execute(
 //
 // Note: primitive_desc_iface_t and impl::primitive_t share the same
 // impl::primitive_desc_t
-struct dnnl_primitive : public dnnl::impl::c_compatible {
+struct dnnl_primitive {
     dnnl_primitive(const std::shared_ptr<dnnl::impl::primitive_t> &primitive,
             dnnl::impl::engine_t *engine);
 

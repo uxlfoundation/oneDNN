@@ -43,43 +43,10 @@ namespace impl {
 // build) in order to replace it with a custom one from an object file at link
 // time.
 void DNNL_WEAK *malloc(size_t size, int alignment);
-// Use glibc malloc (and, consequently, free) when DNNL_ENABLE_MEM_DEBUG is
-// enabled, such that the operator new doesn't fail during out_of_memory
-// testing.
-#define MALLOC(size, alignment) ::malloc(size)
-#define FREE(ptr) ::free(ptr)
 #else
-void DNNL_API *malloc(size_t size, int alignment);
-#define MALLOC(size, alignment) malloc(size, alignment)
-#define FREE(ptr) free(ptr)
+void *malloc(size_t size, int alignment);
 #endif
-void DNNL_API free(void *p);
-
-struct c_compatible { // NOLINT(readability-identifier-naming)
-    enum { default_alignment = 64 };
-    static void *operator new(size_t sz) {
-        return MALLOC(sz, default_alignment);
-    }
-    static void *operator new(size_t sz, void *p) {
-        UNUSED(sz);
-        return p;
-    }
-    static void *operator new[](size_t sz) {
-        return MALLOC(sz, default_alignment);
-    }
-    static void operator delete(void *p) { FREE(p); }
-    static void operator delete[](void *p) { FREE(p); }
-
-protected:
-    // This member is intended as a check for whether all necessary members in
-    // derived classes have been allocated. Consequently status::out_of_memory
-    // should be returned if a fail occurs. This member should be modified only
-    // in a constructor.
-    bool is_initialized_ = true;
-};
-
-#undef MALLOC
-#undef FREE
+void free(void *p);
 
 namespace nstl {
 
@@ -346,7 +313,7 @@ struct is_same<T, T> {
 enum nstl_status_t { success = 0, out_of_memory };
 
 template <typename T>
-class vector : public c_compatible { // NOLINT(readability-identifier-naming)
+class vector { // NOLINT(readability-identifier-naming)
 private:
     std::vector<T> _impl;
 
@@ -380,7 +347,7 @@ public:
 };
 
 template <typename Key, typename T>
-class map : public c_compatible { // NOLINT(readability-identifier-naming)
+class map { // NOLINT(readability-identifier-naming)
 private:
     std::map<Key, T> _impl;
 

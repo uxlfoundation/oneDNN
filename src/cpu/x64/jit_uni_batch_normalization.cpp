@@ -2117,7 +2117,7 @@ struct jit_bnorm_t : public jit_generator_t {
 namespace bnorm_impl {
 
 template <cpu_isa_t isa>
-struct driver_t : public c_compatible {
+struct driver_t {
     driver_t(const batch_normalization_pd_t *pd, int nthr)
         : pd_(pd), jbp_(pd_, nthr, simd_w), ker_(pd_, &jbp_) {}
 

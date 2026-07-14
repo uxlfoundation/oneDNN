@@ -334,7 +334,7 @@ status_t memory_desc_permute_axes(memory_desc_t &out_memory_desc,
 // dimensions themselves, plus information about elements type and memory
 // format. Additionally, contains format-specific descriptions of the data
 // layout.
-struct dnnl_memory_desc : public dnnl::impl::c_compatible {
+struct dnnl_memory_desc {
     dnnl_memory_desc()
         : ndims(0)
         , dims {}

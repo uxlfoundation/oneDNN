@@ -124,14 +124,7 @@ bool is_imm12(T imm) {
 
 } // namespace
 
-class jit_generator_t : public Xbyak_aarch64::CodeGenerator,
-                        public c_compatible {
-public:
-    using c_compatible::operator new;
-    using c_compatible::operator new[];
-    using c_compatible::operator delete;
-    using c_compatible::operator delete[];
-
+class jit_generator_t : public Xbyak_aarch64::CodeGenerator {
 private:
     const size_t xreg_len = 8;
     const size_t vreg_len_preserve = 8; // Only bottom 8byte must be preserved.

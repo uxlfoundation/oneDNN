@@ -1896,7 +1896,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
 namespace bnorm_tbb_impl {
 
 template <cpu_isa_t isa>
-struct driver_t : public c_compatible {
+struct driver_t {
 private:
     struct bnorm_dims_t {
         dim_t N, C, S;

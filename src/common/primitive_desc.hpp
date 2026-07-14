@@ -54,7 +54,7 @@ struct impl_list_item_t;
 struct primitive_t;
 // Primitive descriptor implementation
 // NOLINTBEGIN(google-default-arguments)
-struct primitive_desc_t : public c_compatible {
+struct primitive_desc_t {
     primitive_desc_t(const primitive_attr_t *attr, primitive_kind_t kind)
         : attr_(*attr), kind_(kind), pd_iterator_offset_(0), skip_idx_(-1) {
         is_initialized_ = is_initialized_ && attr_.is_initialized();
@@ -515,6 +515,10 @@ struct primitive_desc_t : public c_compatible {
     }
 
 protected:
+    // Set to `false` by derived classes (typically in a copy constructor) when
+    // a member allocation fails, so that `status::out_of_memory` is reported.
+    bool is_initialized_ = true;
+
     primitive_attr_t attr_;
     primitive_kind_t kind_;
     int pd_iterator_offset_;

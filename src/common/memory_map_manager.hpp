@@ -30,7 +30,7 @@ namespace impl {
 
 // Service class to support RAII semantics with parameterized "finalization".
 template <typename key_type, typename tag_type = void>
-struct memory_map_manager_t : public c_compatible {
+struct memory_map_manager_t {
     using unmap_func_type = std::function<status_t(stream_t *, void *)>;
 
     memory_map_manager_t() = default;

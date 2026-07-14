@@ -45,7 +45,7 @@ namespace impl {
 struct quant_entry_t;
 const quant_entry_t &default_quant_entry();
 
-struct quant_entry_t : public c_compatible {
+struct quant_entry_t {
     quant_entry_t() = default;
     quant_entry_t(const quant_entry_t &e) = default;
     ~quant_entry_t() = default;
@@ -180,7 +180,7 @@ private:
 
 std::ostream &operator<<(std::ostream &ss, const quant_entry_t &e);
 
-struct quant_entries_t : public c_compatible {
+struct quant_entries_t {
     quant_entries_t(data_type_t default_data_type)
         : default_data_type_(default_data_type) {}
 

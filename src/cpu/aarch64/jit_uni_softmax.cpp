@@ -1045,7 +1045,7 @@ status_t jit_uni_softmax_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 namespace softmax_impl {
 
 template <cpu_isa_t isa>
-struct driver_t : public c_compatible {
+struct driver_t {
 
     driver_t(const softmax_pd_t *pd) : pd_(pd), ker_(pd_) {}
 

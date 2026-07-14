@@ -62,13 +62,8 @@ inline bool is_subset(cpu_isa_t isa, cpu_isa_t max_isa) {
 }
 
 // Minimal RV64 JIT generator base class.
-class jit_generator_t : public Xbyak_riscv::CodeGenerator, public c_compatible {
+class jit_generator_t : public Xbyak_riscv::CodeGenerator {
 public:
-    using c_compatible::operator new;
-    using c_compatible::operator new[];
-    using c_compatible::operator delete;
-    using c_compatible::operator delete[];
-
     // All JIT kernels must override these to provide a stable name used for
     // debug/logging and jit code registration.
     virtual const char *name() const = 0;

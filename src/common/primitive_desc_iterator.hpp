@@ -32,7 +32,7 @@ namespace impl {
 
 struct primitive_desc_t;
 
-struct primitive_desc_iterator_t : public c_compatible {
+struct primitive_desc_iterator_t {
     primitive_desc_iterator_t(engine_t *engine, const op_desc_t *op_desc,
             const primitive_attr_t *attr, const primitive_desc_t *hint_fwd_pd,
             int skip_idx = -1)
@@ -48,7 +48,6 @@ struct primitive_desc_iterator_t : public c_compatible {
 
         while (impl_list_[last_idx_])
             ++last_idx_;
-        is_initialized_ = is_initialized_ && attr_.is_initialized();
     }
 
     engine_t *engine() const { return engine_; }
@@ -97,7 +96,9 @@ struct primitive_desc_iterator_t : public c_compatible {
 
     const primitive_attr_t &attr() const { return attr_; }
 
-    bool is_initialized() const { return is_initialized_; }
+    // The iterator is only usable if the attributes it copied were allocated
+    // successfully; delegate the check to the copied attributes.
+    bool is_initialized() const { return attr_.is_initialized(); }
 
 protected:
     int idx_;

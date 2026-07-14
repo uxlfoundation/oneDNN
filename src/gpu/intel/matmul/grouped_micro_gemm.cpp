@@ -352,6 +352,13 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     VDISPATCH_MATMUL(
             utils::one_of(dst_dt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT_CFG);
 
+    // WOQ (fp src + int wei) requires weight scales and fpmath apply_to_int
+    VDISPATCH_MATMUL(
+            IMPLICATION(!types::is_integral_dt(src_dt)
+                            && types::is_integral_dt(wei_dt),
+                    wei_quant_.with_scale() && attr()->fpmath_.apply_to_int_),
+            VERBOSE_UNSUPPORTED_DT_CFG);
+
     const bool src_subbyte = utils::one_of(src_dt, s4, u4);
     const bool wei_subbyte = utils::one_of(wei_dt, s4, u4);
     VDISPATCH_MATMUL(IMPLICATION(src_subbyte, (K() % 2) == 0), VERBOSE_BAD_DIM,

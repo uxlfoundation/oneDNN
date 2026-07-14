@@ -35,9 +35,9 @@
 #include "common/utils.hpp"
 
 #include <algorithm>
+#include <map>
 #include <string>
 #include <vector>
-#include <unordered_map>
 
 namespace dnnl {
 namespace impl {

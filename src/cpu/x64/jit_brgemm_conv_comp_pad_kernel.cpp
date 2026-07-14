@@ -17,6 +17,8 @@
 #include "cpu/x64/jit_brgemm_conv_comp_pad_kernel.hpp"
 #include "cpu/x64/jit_brgemm_conv_utils.hpp"
 
+#include <vector>
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -281,8 +283,8 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::bwd_kw_iw_loop(const int icb,
     const auto LP = jcp_.l_pad;
     const auto nb_iw = div_up(jcp_.iw, SW);
 
-    vector<int> ker_kw_ow_b(SW * KW, -1);
-    vector<int> ker_kw_ow_e(SW * KW, -1);
+    std::vector<int> ker_kw_ow_b(SW * KW, -1);
+    std::vector<int> ker_kw_ow_e(SW * KW, -1);
 
     for_(int sw = 0; sw < SW; sw++)
     for (int iwb = 0; iwb < nb_iw; iwb++) {
@@ -331,10 +333,10 @@ template <typename Vmm>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::fwd_kw_ow_loop(const int icb,
         const int icb_tail, const int ic_step, const int m_block,
         const int mb_tail, const int n_block, const bool use_inversion) {
-    vector<int> kw_ow_b(jcp_.kw, -1);
-    vector<int> kw_ow_e(jcp_.kw, -1);
-    vector<int> comp_ow_kw_s(jcp_.comp_ow_size, -1);
-    vector<int> comp_ow_kw_f(jcp_.comp_ow_size, -1);
+    std::vector<int> kw_ow_b(jcp_.kw, -1);
+    std::vector<int> kw_ow_e(jcp_.kw, -1);
+    std::vector<int> comp_ow_kw_s(jcp_.comp_ow_size, -1);
+    std::vector<int> comp_ow_kw_f(jcp_.comp_ow_size, -1);
     dim_t comp_ow_l = 0;
     const auto DW = jcp_.dilate_w + 1;
 
@@ -607,8 +609,8 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::store(
 template <typename Vmm>
 void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::kw_loop(
         const int n_block) {
-    vector<int> ow_kw_b(jcp_.ow, -1);
-    vector<int> ow_kw_e(jcp_.ow, -1);
+    std::vector<int> ow_kw_b(jcp_.ow, -1);
+    std::vector<int> ow_kw_e(jcp_.ow, -1);
     int prev_comp_ow = 0;
     const auto DW = jcp_.dilate_w + 1;
     for (int ow = 0; ow < jcp_.ow; ow++) {

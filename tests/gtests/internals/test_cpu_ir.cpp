@@ -271,7 +271,7 @@ private:
 // the system would incorrectly think a value is no longer needed even though it
 // is still in use.
 TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
-    ir_t ir {};
+    ir_t ir;
     const vreg_t ptr = ir.new_gpr();
     ir.load_param(ptr, 0);
 
@@ -335,7 +335,7 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
 // rather than emitted as a branch that is never taken.
 TEST(IRBuilderTests, LoopLinkageAndSingleIterationInlining) {
     {
-        ir_t ir {};
+        ir_t ir;
         const vreg_t acc = ir.new_gpr();
         ir.mov_imm(acc, 0);
         emit_loop_imm(ir, 4, [&]() { ir.add_imm(acc, 1); });
@@ -357,7 +357,7 @@ TEST(IRBuilderTests, LoopLinkageAndSingleIterationInlining) {
 
     {
         // A single-iteration loop is inlined so no loop markers are emitted.
-        ir_t ir {};
+        ir_t ir;
         const vreg_t acc = ir.new_gpr();
         ir.mov_imm(acc, 0);
         emit_loop_imm(ir, 1, [&]() { ir.add_imm(acc, 1); });
@@ -372,7 +372,7 @@ TEST(IRBuilderTests, LoopLinkageAndSingleIterationInlining) {
 // each jump targets the right label. This proves the forward-edge control flow
 // is constructed correctly.
 TEST(IRBuilderTests, ForwardEdgeControlFlow) {
-    ir_t ir {};
+    ir_t ir;
 
     const vreg_t cond = ir.new_gpr();
     ir.load_param(cond, 0);
@@ -486,7 +486,7 @@ TEST(AllocatorTests, DoesNotDoubleAllocateSimultaneouslyLiveValues) {
 // needed gives up its register, which is then used by a later temporary.
 // A value that is still in use keeps its own register.
 TEST(AllocatorTests, ReusesRegisterOfExpiredTemporary) {
-    ir_t ir {};
+    ir_t ir;
 
     const vreg_t acc = ir.new_gpr();
     ir.mov_imm(acc, 0);
@@ -584,7 +584,7 @@ TEST(AllocatorTests, AllocatesDeterministically) {
 // Builds a small reduction IR (dot product of one vector pair) used by the
 // emitter and integration tests.
 ir_t build_dot_ir() {
-    ir_t ir {};
+    ir_t ir;
 
     // Load pointers for a, b, c.
     const vreg_t a_ptr = ir.new_gpr();
@@ -640,7 +640,7 @@ TEST(EmitterTests, EmitsValidCodeForSpilledAllocation) {
 
     // Six independent accumulators plus temporaries exceed a four-register
     // vector file, so the allocator must spill.
-    ir_t ir {};
+    ir_t ir;
 
     const vreg_t a_ptr = ir.new_gpr();
     ir.load_param(a_ptr, 0);
@@ -689,7 +689,7 @@ TEST(IntegrationTests, BuildsLoopReduction) {
     constexpr int k_blocks = 2;
     constexpr int k = k_blocks * simd_w; // 16 elements
 
-    ir_t ir {};
+    ir_t ir;
 
     const vreg_t a_ptr = ir.new_gpr();
     ir.load_param(a_ptr, offsetof(dot_args_t, a));
@@ -738,7 +738,7 @@ TEST(IntegrationTests, BuildsLoopReduction) {
 // Computes a dot product where one vector is multiplied by n vectors into
 // n independent accumulators, each of which is reduced and stored.
 ir_t build_shared_vector_dot_ir(int n) {
-    ir_t ir {};
+    ir_t ir;
 
     const vreg_t a_ptr = ir.new_gpr();
     ir.load_param(a_ptr, offsetof(dot_args_t, a));
@@ -831,7 +831,7 @@ struct select_args_t {
 TEST(IntegrationTests, BranchSelectsCorrectValue) {
     SKIP_IF_NO_AVX2();
 
-    ir_t ir {};
+    ir_t ir;
 
     const vreg_t cond = ir.new_gpr();
     ir.load_param(cond, offsetof(select_args_t, cond));

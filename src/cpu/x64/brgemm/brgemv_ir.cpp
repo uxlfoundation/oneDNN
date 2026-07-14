@@ -349,7 +349,7 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
 
     void generate() override {
         // Build IR for non-transposed GEMV kernel
-        ir::ir_t ir {};
+        ir::ir_t ir;
         nontrans::build_gemv(brg_, ir);
 
         // Scratch registers (2 gpr + 3 vec) reserved for spill code.

@@ -279,6 +279,13 @@ status_t stream_impl_t::init_verbose_profiler(engine_kind_t kind) {
     return status::success;
 }
 
+bool stream_impl_t::queue_has_profiling() const {
+    cl_command_queue_properties ocl_queue_props = 0;
+    cl_int err = clGetCommandQueueInfo(queue_, CL_QUEUE_PROPERTIES,
+            sizeof(ocl_queue_props), &ocl_queue_props, nullptr);
+    return (err == CL_SUCCESS && (ocl_queue_props & CL_QUEUE_PROFILING_ENABLE));
+}
+
 const xpu::ocl::context_t &stream_impl_t::ocl_ctx() const {
     static xpu::ocl::context_t empty_ctx {};
     return ctx_.get(empty_ctx);

@@ -139,7 +139,8 @@ protected:
 // operating independently from other stream profilers during primitive
 // execution.
 struct verbose_profiler_t {
-    verbose_profiler_t(const stream_t *stream) : stream_(stream) {}
+    verbose_profiler_t(const stream_t *stream)
+        : stream_(stream), active_(true) {}
 
     virtual ~verbose_profiler_t() = default;
 
@@ -148,13 +149,15 @@ struct verbose_profiler_t {
         std::string pd_info_;
         std::vector<std::shared_ptr<xpu::event_t>> prim_events_;
     };
-
-    // For supported runtimes, querying events for profiling info
-    // can be force-paused for scenarios where profiling capabilities
-    // are temporarily unavailable (example: SYCL graph execution)
-    // This method checks profiler status where such force-pausing
-    // is supported.
-    virtual bool is_active() const { return true; }
+    // Pausing capabilities are added to allow skipping event profiling
+    // queries when they are temporarily unavailable (example:
+    // SYCL graph execution or when queue does not have profiling enabled).
+    // These methods check and update profiler status where such force-pausing
+    // is required. Pausing action is localized to each thread for multi-
+    // threaded execution
+    bool is_active() const { return true; }
+    void start_profiling() { active_ = true; }
+    void pause_profiling() { active_ = false; }
 
     // The profiler operates through a multi-step event tracking workflow:
     // 1. stream->before_exec_hook() calls update_event_list()
@@ -195,6 +198,7 @@ struct verbose_profiler_t {
 protected:
     const stream_t *stream_;
     std::vector<prim_profile_data_t> profiling_data_;
+    bool active_;
 
     // destructor logic to check for unlogged primitives before
     // stream destruction

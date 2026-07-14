@@ -72,7 +72,7 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
 
 status_t verbose_profiler_t::get_aggregate_exec_time(
         size_t index, double &duration_ms) const {
-    if (!is_active()) return status::success;
+    if (!active_) return status::success;
 
     using namespace ::sycl::info;
     if (index >= profiling_data_.size()) {
@@ -124,7 +124,7 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
 
 bool verbose_profiler_t::is_event_complete(
         const std::shared_ptr<xpu::event_t> &event) const {
-    if (!is_active()) return true;
+    if (!active_) return true;
     if (!event) return true;
 
     const auto &sycl_event = xpu::sycl::event_t::from(*event);
@@ -140,7 +140,7 @@ bool verbose_profiler_t::is_event_complete(
 
 void verbose_profiler_t::wait_for_event_completion(
         const std::shared_ptr<xpu::event_t> &event) const {
-    if (!is_active()) return;
+    if (!active_) return;
     if (!event) return;
 
     const auto &sycl_event = xpu::sycl::event_t::from(*event);

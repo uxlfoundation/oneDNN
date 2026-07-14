@@ -25,9 +25,6 @@ if(NOT DNNL_AARCH64_USE_ACL)
         ${CMAKE_CURRENT_SOURCE_DIR}/acl_*.[ch]
         ${CMAKE_CURRENT_SOURCE_DIR}/acl_*.[ch]pp
         )
-    list(APPEND ACL_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/post_ops_fallback.cpp
-        )
     list(REMOVE_ITEM SOURCES ${ACL_FILES})
 endif()
 

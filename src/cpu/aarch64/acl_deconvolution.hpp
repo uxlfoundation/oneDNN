@@ -17,6 +17,7 @@
 #ifndef CPU_AARCH64_ACL_DECONVOLUTION_HPP
 #define CPU_AARCH64_ACL_DECONVOLUTION_HPP
 
+#include "cpu/aarch64/acl_utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/post_ops_fallback.hpp"
 #include "cpu/cpu_deconvolution_pd.hpp"

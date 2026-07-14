@@ -518,8 +518,8 @@ The following are supported:
     | u8, s8, s4, u4             | f32, bf16, f16            |
 - Zero points attribute for source and weights tensors:
   - The masks must match the scales mask
-  - Source zero points data types include `u8`, `s8`
-  - Weights zero points data types include `u8`, `s8`, `u4`, `s4`
+  - Source zero points data types include `u8`, `s8`, `s32`
+  - Weights zero points data types include `u8`, `s8`, `u4`, `s4`, `s32`
 - Post-ops: eltwise and binary multiplication post-ops are supported. Binary post-op
   tensors accept both dense and grouped memory descriptors.
   Common patterns include `eltwise_swish` (SiLU) or

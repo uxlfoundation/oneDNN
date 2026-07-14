@@ -604,7 +604,7 @@ private:
         int bias_off_elems = 0;
         auto &a_mapper = dim_mapper_manager_.mapper(tensor_kind_t::a);
         auto &b_mapper = dim_mapper_manager_.mapper(tensor_kind_t::b);
-        for (int i = 0; i < outer_size; i++) {
+        for (dim_t i = 0; i < outer_size; i++) {
             auto sub_coord = coord_info_.iter_coord();
             if (!outer_dim.is_undef()) {
                 sub_coord[outer_dim] += sub_tile[outer_dim] * i;

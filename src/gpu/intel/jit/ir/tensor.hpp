@@ -479,7 +479,7 @@ public:
         if (elems() % nmasks != 0) return expr_t();
 
         std::vector<expr_t> vec(nmasks);
-        for (int i = 0; i < elems(); i++) {
+        for (dim_t i = 0; i < elems(); i++) {
             auto &channel_mask = vec[i % nmasks];
             auto &cur_mask = id2masks_[masks_[i]];
             if (channel_mask.is_empty()) {

@@ -32,7 +32,7 @@ tile_coord_t split(const layout_t &layout, const grid_info_t &grid_info,
     tile_coord_t min_tile_coord = tile_coord_t::invalid();
     std::vector<dim_t> cur_dims(grid_info.ndims(), 1);
 
-    for (int iter = 0; iter < grid_info.elems(); iter++) {
+    for (dim_t iter = 0; iter < grid_info.elems(); iter++) {
         for (dim_idx_t i = 0; i < grid_info.ndims(); i++) {
             if (++cur_dims[i] <= grid_info.dim(i)) break;
             cur_dims[i] = 1;

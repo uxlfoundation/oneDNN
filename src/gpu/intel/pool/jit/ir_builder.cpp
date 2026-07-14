@@ -456,7 +456,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
         stmt = stmt_t();
 
         const auto a_fv = gen_fill_values(simd, is_neg, acc_type);
-        for (int i = 0; i < acc_size; i += simd * 4)
+        for (dim_t i = 0; i < acc_size; i += simd * 4)
             stmt = stmt.append(store_t::make(acc_buf, i,
                     (acc_size - i < simd * 4) ? a_fv.first : a_fv.second));
         fill_stmt = gen_zero_out(simd, is_neg, read_buf, src_tile, read_layout);
@@ -493,7 +493,7 @@ stmt_t builder_t::try_build(builder_t &pb, const kernel_info_t &ki,
                 filter = cast_t::make(dsl::type_t::f32(), dhw);
             }
             filter = shuffle_t::make_broadcast(filter, simd);
-            for (int i = 0; i < acc_size; i += simd * acc_sc_size) {
+            for (dim_t i = 0; i < acc_size; i += simd * acc_sc_size) {
                 auto acc = cast_t::make(dsl::type_t::f32(simd),
                         load_t::make(acc_type, acc_buf, i));
                 stmt = stmt.append(store_t::make(acc_buf, i, acc / filter));

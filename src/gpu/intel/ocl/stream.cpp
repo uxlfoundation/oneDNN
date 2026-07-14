@@ -48,11 +48,6 @@ status_t stream_t::init() {
     // set_dnnl_verbose()
     CHECK(impl()->init_verbose_profiler(engine()->kind()));
 
-    if (is_verbose_profiler_enabled()) {
-        verbose_profiler_.set(
-                utils::make_unique<xpu::ocl::verbose_profiler_t>(this));
-    }
-
     // Restore queue on successful exit, otherwise queue may be released
     // without retain
     cl_command_queue queue = impl()->queue();
@@ -87,6 +82,20 @@ status_t stream_t::init() {
         OCL_CHECK(xpu::ocl::clRetainCommandQueue(queue));
     }
     CHECK(impl()->set_queue(queue));
+    if (is_verbose_profiler_enabled()) {
+        verbose_profiler_.set(
+                utils::make_unique<xpu::ocl::verbose_profiler_t>(this));
+        // Check if the queue has profiling enabled and pause the verbose
+        // profiler if it does not. Verbose lines are still emitted during
+        // logging, but without execution timing information.
+        if (!impl()->queue_has_profiling()) {
+            VWARN(common, ocl,
+                    "OpenCL queue does not have profiling enabled. "
+                    "Verbose profiling is paused and execution times "
+                    "will not be reported.");
+            verbose_profiler()->pause_profiling();
+        }
+    }
 
     if (is_profiling_enabled() || is_verbose_profiler_enabled()) {
         cl_command_queue_properties props;
@@ -131,6 +140,7 @@ void stream_t::before_exec_hook() {
     if (is_verbose_profiler_enabled()) {
         auto &verbose_profiler = verbose_profiler_.get(
                 utils::make_unique<xpu::ocl::verbose_profiler_t>(this));
+        if (!impl()->queue_has_profiling()) verbose_profiler->pause_profiling();
         verbose_profiler->update_event_list();
     }
 }

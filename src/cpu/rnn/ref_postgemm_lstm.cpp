@@ -141,7 +141,7 @@ void lstm_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src_dt, T4 to_float,
     };
 
     if (rnn.is_brgemm && !rnn.unfused_post_gemm) {
-        for (int i = 0; i < rnn.m_block; i++)
+        for (dim_t i = 0; i < rnn.m_block; i++)
             postgemm_call(i);
     } else {
         parallel_nd(rnn.mb, [&](dim_t i) { postgemm_call(i); });

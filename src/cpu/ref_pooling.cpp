@@ -340,7 +340,7 @@ status_t ref_pooling_bwd_t::execute(const exec_ctx_t &ctx) const {
         balance211(diff_src_d.nelems(true), nthr, ithr, start, end);
         if (start == end) return;
 
-        for (int i = start; i < end; i++)
+        for (dim_t i = start; i < end; i++)
             io::store_float_value(data_type::f32, 0, diff_src, i);
     });
 

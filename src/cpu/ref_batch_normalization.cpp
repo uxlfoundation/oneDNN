@@ -120,19 +120,19 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
         acc_data_t v_variance = calculate_stats ? 0 : variance[c];
 
         if (calculate_stats) {
-            for_(int n = 0; n < N; ++n)
-            for_(int d = 0; d < D; ++d)
-            for_(int h = 0; h < H; ++h)
-            for (int w = 0; w < W; ++w) {
+            for_(dim_t n = 0; n < N; ++n)
+            for_(dim_t d = 0; d < D; ++d)
+            for_(dim_t h = 0; h < H; ++h)
+            for (dim_t w = 0; w < W; ++w) {
                 v_mean += maybe_up_convert(
                         src[DATA_OFF(data_d, n, c, d, h, w)]);
             }
             v_mean /= W * N * H * D;
 
-            for_(int n = 0; n < N; ++n)
-            for_(int d = 0; d < D; ++d)
-            for_(int h = 0; h < H; ++h)
-            for (int w = 0; w < W; ++w) {
+            for_(dim_t n = 0; n < N; ++n)
+            for_(dim_t d = 0; d < D; ++d)
+            for_(dim_t h = 0; h < H; ++h)
+            for (dim_t w = 0; w < W; ++w) {
                 acc_data_t m = src[DATA_OFF(data_d, n, c, d, h, w)] - v_mean;
                 v_variance += m * m;
             }

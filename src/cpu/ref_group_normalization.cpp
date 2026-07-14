@@ -100,20 +100,20 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
         float v_variance = calculate_stats ? 0 : variance[stat_off];
 
         if (calculate_stats) {
-            for_(int c = get_c_start(g); c < get_c_start(g + 1); ++c)
-            for_(int d = 0; d < D; ++d)
-            for_(int h = 0; h < H; ++h)
-            for (int w = 0; w < W; ++w) {
+            for_(dim_t c = get_c_start(g); c < get_c_start(g + 1); ++c)
+            for_(dim_t d = 0; d < D; ++d)
+            for_(dim_t h = 0; h < H; ++h)
+            for (dim_t w = 0; w < W; ++w) {
                 const auto s_off = DATA_OFF(src_d, n, c, d, h, w);
                 float s = io::load_float_value(src_d.data_type(), src, s_off);
                 v_mean += s;
             }
             v_mean /= C_PER_G * W * H * D;
 
-            for_(int c = get_c_start(g); c < get_c_start(g + 1); ++c)
-            for_(int d = 0; d < D; ++d)
-            for_(int h = 0; h < H; ++h)
-            for (int w = 0; w < W; ++w) {
+            for_(dim_t c = get_c_start(g); c < get_c_start(g + 1); ++c)
+            for_(dim_t d = 0; d < D; ++d)
+            for_(dim_t h = 0; h < H; ++h)
+            for (dim_t w = 0; w < W; ++w) {
                 const auto s_off = DATA_OFF(src_d, n, c, d, h, w);
                 float s = io::load_float_value(src_d.data_type(), src, s_off);
                 float m = s - v_mean;
@@ -123,7 +123,7 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
         }
         float sqrt_variance = sqrtf(v_variance + eps);
 
-        for (int c = get_c_start(g); c < get_c_start(g + 1); ++c) {
+        for (dim_t c = get_c_start(g); c < get_c_start(g + 1); ++c) {
             float sm = (scale ? scale[ss_d.off(c)] : 1.0f) / sqrt_variance;
             float sv = shift ? shift[ss_d.off(c)] : 0;
 
@@ -308,7 +308,7 @@ status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
                 }
             }
         } else {
-            for (int c = get_c_start(g); c < get_c_start(g + 1); ++c) {
+            for (dim_t c = get_c_start(g); c < get_c_start(g + 1); ++c) {
                 float gamma = scale ? scale[ss_d.off(c)] : 1.0f;
                 for_(dim_t d = 0; d < D; ++d)
                 for_(dim_t h = 0; h < H; ++h)

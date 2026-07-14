@@ -92,7 +92,7 @@ void gru_fwd_part1_postgemm_template(T1 func1, T2 to_src, T3 acc_to_float,
     };
 
     if (rnn.is_brgemm && !rnn.unfused_post_gemm) {
-        for (int i = 0; i < rnn.m_block; i++)
+        for (dim_t i = 0; i < rnn.m_block; i++)
             postgemm_call(i);
     } else {
         parallel_nd(rnn.mb, [&](dim_t i) { postgemm_call(i); });
@@ -156,7 +156,7 @@ void gru_fwd_part2_postgemm_template(T1 func1, T2 to_src, T3 acc_to_float,
     };
 
     if (rnn.is_brgemm && !rnn.unfused_post_gemm) {
-        for (int i = 0; i < rnn.m_block; i++)
+        for (dim_t i = 0; i < rnn.m_block; i++)
             postgemm_call(i);
     } else {
         parallel_nd(rnn.mb, [&](dim_t i) { postgemm_call(i); });

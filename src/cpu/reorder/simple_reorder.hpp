@@ -1141,7 +1141,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
     (ndims == 3 ? (md).blk_off((batch), (d0), (d1)) : (md).blk_off((d0), (d1)))
 
         parallel_nd(batch_dim, NB_D1dim, [=](dim_t batch, dim_t D1) {
-            for (int D0 = 0; D0 < NB_D0dim; D0++) {
+            for (dim_t D0 = 0; D0 < NB_D0dim; D0++) {
                 auto i = &input[get_blk_off(
                         input_d, batch, D0_blksize * D0, D1_blksize * D1)];
                 auto o = &output[get_blk_off(output_d, batch, D0, D1)];
@@ -1352,7 +1352,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
                     if (zero_padding_needed) {
                         PRAGMA_OMP_SIMD()
-                        for (int off = g_block; off < blksize; off++)
+                        for (dim_t off = g_block; off < blksize; off++)
                             out[off] = 0;
                     }
                 }
@@ -1654,7 +1654,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         const auto pad_start = block_i + o_off;
                         const auto pad_end = pad_size + o_off;
                         PRAGMA_OMP_SIMD()
-                        for (int i = pad_start; i < pad_end; i++) {
+                        for (ptrdiff_t i = pad_start; i < pad_end; i++) {
                             o[i] = 0;
                         }
                     }
@@ -1679,7 +1679,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         const auto pad_start = block_i + o_off;
                         const auto pad_end = pad_size + o_off;
                         PRAGMA_OMP_SIMD()
-                        for (int i = pad_start; i < pad_end; i++) {
+                        for (ptrdiff_t i = pad_start; i < pad_end; i++) {
                             o[i] = 0;
                         }
                     }
@@ -1786,7 +1786,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
         auto ker = [=](const data_t<type_i> *i, data_t<type_o> *o, int block) {
             if (alpha == 1.0 && beta == 0.0) {
-                for (int l = 0; l < L; ++l) {
+                for (dim_t l = 0; l < L; ++l) {
                     for (int blk = 0; blk < block; ++blk) {
                         const dim_t flat_off
                                 = blk * blk_flat_stride + l * l_flat_stride;
@@ -1802,13 +1802,13 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         const auto pad_start = block + l * l_blk_stride;
                         const auto pad_end = blksize + l * l_blk_stride;
                         PRAGMA_OMP_SIMD()
-                        for (int i = pad_start; i < pad_end; ++i) {
+                        for (dim_t i = pad_start; i < pad_end; ++i) {
                             o[i] = 0;
                         }
                     }
                 }
             } else {
-                for (int l = 0; l < L; ++l) {
+                for (dim_t l = 0; l < L; ++l) {
                     for (int blk = 0; blk < block; ++blk) {
                         const dim_t flat_off
                                 = blk * blk_flat_stride + l * l_flat_stride;
@@ -1823,7 +1823,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         const auto pad_start = block + l * l_blk_stride;
                         const auto pad_end = blksize + l * l_blk_stride;
                         PRAGMA_OMP_SIMD()
-                        for (int i = pad_start; i < pad_end; ++i) {
+                        for (dim_t i = pad_start; i < pad_end; ++i) {
                             o[i] = 0;
                         }
                     }
@@ -1979,16 +1979,16 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     if (order_keep && block_h1 < blksize_1) {
                         // zero padding
                         PRAGMA_OMP_SIMD()
-                        for (int h1 = block_h1; h1 < blksize_1; h1++) {
+                        for (dim_t h1 = block_h1; h1 < blksize_1; h1++) {
                             o[blk_off(h0, h1)] = 0;
                         }
                     }
                 }
                 if (order_keep && block_h0 < blksize_0) {
                     // zero padding
-                    for (int h0 = block_h0; h0 < blksize_0; h0++) {
+                    for (dim_t h0 = block_h0; h0 < blksize_0; h0++) {
                         PRAGMA_OMP_SIMD()
-                        for (int h1 = 0; h1 < blksize_1; ++h1) {
+                        for (dim_t h1 = 0; h1 < blksize_1; ++h1) {
                             o[blk_off(h0, h1)] = 0;
                         }
                     }
@@ -2008,16 +2008,16 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     if (order_keep && block_h1 < blksize_1) {
                         // zero padding
                         PRAGMA_OMP_SIMD()
-                        for (int h1 = block_h1; h1 < blksize_1; h1++) {
+                        for (dim_t h1 = block_h1; h1 < blksize_1; h1++) {
                             o[blk_off(h0, h1)] = 0;
                         }
                     }
                 }
                 if (order_keep && block_h0 < blksize_0) {
                     // zero padding
-                    for (int h0 = block_h0; h0 < blksize_0; h0++) {
+                    for (dim_t h0 = block_h0; h0 < blksize_0; h0++) {
                         PRAGMA_OMP_SIMD()
-                        for (int h1 = 0; h1 < blksize_1; ++h1) {
+                        for (dim_t h1 = 0; h1 < blksize_1; ++h1) {
                             o[blk_off(h0, h1)] = 0;
                         }
                     }

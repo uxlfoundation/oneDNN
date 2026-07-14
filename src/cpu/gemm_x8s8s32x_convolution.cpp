@@ -240,7 +240,7 @@ status_t gemm_x8s8s32x_convolution_fwd_t::execute_forward_thr(const int ithr,
         if (jcp.im2col_sz && is_problem_3d)
             jit_gemm_convolution_utils::transpose_dt<char>(jcp, src, imtr);
 
-        for (int od = 0; od < jcp.od; od++) {
+        for (dim_t od = 0; od < jcp.od; od++) {
             const auto dst_off = n * dst_mb_stride + g * dst_g_stride
                     + ((od * jcp.oh + oh) * jcp.ow + ow) * jcp.dst_os_stride;
             char *__restrict dst = (char *)dst_base
@@ -435,7 +435,7 @@ status_t gemm_x8s8s32x_convolution_bwd_data_t::execute_backward_data_thr(
             const int *__restrict acc_loc = acc + is * jcp.ic;
             const float *__restrict scales_loc
                     = scales + g * jcp.ic * scale_idx_mult;
-            for (int ic = 0; ic < jcp.ic; ic++) {
+            for (dim_t ic = 0; ic < jcp.ic; ic++) {
                 float d = static_cast<float>(acc_loc[ic]);
                 d *= scales_loc[ic * scale_idx_mult];
                 if (jcp.with_bias) {

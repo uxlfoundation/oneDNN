@@ -47,7 +47,7 @@ void proj_dst_copy(const rnn_utils::rnn_conf_t &rnn,
     // If dst_iter is not nullptr, we need to copy the state to dst_iter
     if (dst_iter_ != nullptr) {
         if (rnn.is_brgemm && !rnn.unfused_post_gemm) {
-            for (int i = 0; i < rnn.m_block; i++)
+            for (dim_t i = 0; i < rnn.m_block; i++)
                 std::memcpy(dst_iter_ + i * dst_iter_ld,
                         dst_layer_ + i * dst_layer_ld, block_step);
         } else {
@@ -129,7 +129,7 @@ rnn_postgemm_sig(rnn_postgemm_fwd_u8_t::lstm_projection_postgemm) {
         }
     };
     if (rnn.is_brgemm && !rnn.unfused_post_gemm) {
-        for (int i = 0; i < rnn.m_block; i++)
+        for (dim_t i = 0; i < rnn.m_block; i++)
             postgemm_call(i);
     } else {
         parallel_nd(rnn.mb, [&](dim_t i) { postgemm_call(i); });
@@ -173,7 +173,7 @@ rnn_postgemm_sig(rnn_postgemm_fwd_s8_t::lstm_projection_postgemm) {
         }
     };
     if (rnn.is_brgemm && !rnn.unfused_post_gemm) {
-        for (int i = 0; i < rnn.m_block; i++)
+        for (dim_t i = 0; i < rnn.m_block; i++)
             postgemm_call(i);
     } else {
         parallel_nd(rnn.mb, [&](dim_t i) { postgemm_call(i); });

@@ -76,6 +76,7 @@ cfg_t::cfg_entry_t::cfg_map_t cfg_t::get_cfg_map(data_kind_t kind) const {
             {{dnnl_u8}, {0, 8}},
             {{dnnl_s4}, {-2, 2}},
             {{dnnl_u4}, {0, 4}},
+            {{dnnl_u3}, {0, 7}},
     };
 
     static const cfg_t::cfg_entry_t::cfg_map_t bia_cfg_map = {

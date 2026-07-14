@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2025 Intel Corporation
+* Copyright 2018 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
 * Copyright 2022-2025 Arm Ltd. and affiliates
 * Copyright 2026 Institute of Software, Chinese Academy of Sciences
@@ -634,7 +634,7 @@ status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
                     = scratchpad.template get<float>(memory_tracking::names::
                                       key_reorder_precomputed_dst_scales)
                     + ithr * dst_scales_scratch_size_ithr;
-            for (int i = 0; i < dst_scales_scratch_size_ithr; i++) {
+            for (dim_t i = 0; i < dst_scales_scratch_size_ithr; i++) {
                 dst_scales_inv_ptr[i] = 1.f / dst_scales_ptr[i];
             }
         }

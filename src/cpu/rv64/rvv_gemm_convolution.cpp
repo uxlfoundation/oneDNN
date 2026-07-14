@@ -159,7 +159,7 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_thr_nspc(
             }
         }
 
-        for (int od = 0; od < jcp.od; od++) {
+        for (dim_t od = 0; od < jcp.od; od++) {
             data_t *__restrict dst = dst_base + n * dst_mb_stride
                     + g * dst_g_stride
                     + ((od * jcp.oh + oh) * jcp.ow + ow) * dst_os_stride;
@@ -399,7 +399,7 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_ncsp(
                             args.dst_md = pd()->dst_md();
                             args.l_offset = d_ - dst;
 
-                            for (int oS = 0; oS < m; ++oS) {
+                            for (dim_t oS = 0; oS < m; ++oS) {
                                 d_[oS] += b;
                                 post_ops_->execute(d_[oS], args);
                                 args.l_offset++;
@@ -441,7 +441,7 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_ncsp(
 
         if (jcp.loop_order == gemm_loop_rlb)
             for (curr.ic = 0; curr.ic < jcp.ic; curr.ic += step.ic)
-                for (int spatial = start.sp; spatial < end.sp;
+                for (dim_t spatial = start.sp; spatial < end.sp;
                         spatial += step.sp) {
                     nd_iterator_init(spatial, curr.n, jcp.mb, curr.g,
                             jcp.ngroups, curr.od, jcp.od, curr.sp, jcp.os);
@@ -456,7 +456,8 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_ncsp(
                     }
                 }
         else if (jcp.loop_order == gemm_loop_lrb)
-            for (int spatial = start.sp; spatial < end.sp; spatial += step.sp) {
+            for (dim_t spatial = start.sp; spatial < end.sp;
+                    spatial += step.sp) {
                 nd_iterator_init(spatial, curr.n, jcp.mb, curr.g, jcp.ngroups,
                         curr.od, jcp.od, curr.sp, jcp.os);
                 for (curr.ic = 0; curr.ic < jcp.ic; curr.ic += step.ic)

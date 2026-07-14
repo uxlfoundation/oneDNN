@@ -2248,12 +2248,12 @@ void bwd_weights_reduction_par_nspc(int ithr, int nthr, size_t g_start,
             const float *__restrict ws_ptr = ws_base + w * jcp.oc;
             if (tidx == 0) {
                 PRAGMA_OMP_SIMD()
-                for (auto oc = 0; oc < jcp.oc; ++oc) {
+                for (dim_t oc = 0; oc < jcp.oc; ++oc) {
                     dwei_ptr[oc] = ws_ptr[oc];
                 }
             } else {
                 PRAGMA_OMP_SIMD()
-                for (auto oc = 0; oc < jcp.oc; ++oc) {
+                for (dim_t oc = 0; oc < jcp.oc; ++oc) {
                     dwei_ptr[oc] += ws_ptr[oc];
                 }
             }

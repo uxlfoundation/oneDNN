@@ -2428,6 +2428,116 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
+                        && tag_o == format_tag::any && type_i == data_type::f32
+                        && type_o == data_type::u3,
+                spec::reference>::type> {
+    static status_t is_applicable(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
+        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VDISPATCH_REORDER_IC(
+                simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
+        VDISPATCH_REORDER_IC(
+                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(
+                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        return status::success;
+    }
+
+    static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d) {
+        return output_d.nelems() * sizeof(float);
+    }
+
+    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+        DECLARE_COMMON_PARAMS();
+        using namespace utils;
+
+        input += input_d.blk_off(0);
+        output += output_d.blk_off(0);
+
+        // When src and dst share the same dense element order, the packer reads
+        // src directly; otherwise stage a dense f32 buffer in dst order first.
+        const bool need_transform = !array_cmp(
+                input_d.strides(), output_d.strides(), input_d.ndims());
+
+        auto wspace = need_transform
+                ? scratchpad.template get<data_t<type_i>>(
+                          memory_tracking::names::key_reorder_space)
+                : const_cast<data_t<type_i> *>(input);
+        if (need_transform)
+            parallel_nd(input_d.nelems(), [=](dim_t idx) {
+                wspace[output_d.off_l(idx)] = input[input_d.off_l(idx)];
+            });
+
+        auto u8_output = reinterpret_cast<uint8_t *>(output);
+        const dim_t nelems = output_d.nelems();
+        const dim_t n_groups = div_up(nelems, (dim_t)8);
+        parallel(0, [=](const int ithr, const int nthr) {
+            dim_t start {0}, end {0};
+            balance211(n_groups, nthr, ithr, start, end);
+            for (dim_t g = start; g < end; g++) {
+                u8_output[g * 3 + 0] = 0;
+                u8_output[g * 3 + 1] = 0;
+                u8_output[g * 3 + 2] = 0;
+                for (int e = 0; e < 8; ++e) {
+                    const dim_t p = g * 8 + e;
+                    if (p >= nelems) break;
+                    const uint8_t q = _qz_a1b0<data_type::f32, data_type::u3>()(
+                            wspace[p])
+                                              .raw_bits_;
+                    uint3_pack(u8_output, p, q);
+                }
+            }
+        });
+
+        return status::success;
+    }
+};
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
+        typename utils::enable_if<tag_i == format_tag::any
+                        && tag_o == format_tag::any && type_i == data_type::u3
+                        && utils::one_of(type_o, data_type::f32,
+                                data_type::bf16, data_type::f16),
+                spec::reference>::type> {
+    static status_t is_applicable(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
+        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VDISPATCH_REORDER_IC(
+                simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
+        VDISPATCH_REORDER_IC(
+                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(
+                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        return status::success;
+    }
+
+    GET_SCRATCHPAD_SIZE_ZERO();
+
+    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+        DECLARE_COMMON_PARAMS();
+
+        input += input_d.blk_off(0);
+        output += output_d.blk_off(0);
+
+        // Reads decode the shared 3-byte group; writes go to unique output
+        // offsets, so per-element parallelism is race-free.
+        auto u8_input = reinterpret_cast<const uint8_t *>(input);
+        parallel_nd(input_d.nelems(), [=](dim_t idx) {
+            output[output_d.off_l(idx)] = static_cast<data_t<type_o>>(
+                    (float)uint3_unpack(u8_input, input_d.off_l(idx)));
+        });
+
+        return status::success;
+    }
+};
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
+        typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any,
                 spec::direct_copy_except_dim_0>::type> {
@@ -2534,11 +2644,11 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any
-                        // u4/s4 requires a special implementation
+                        // sub-byte types require a special implementation
                         && !utils::one_of(type_i, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1)
+                                data_type::f4_e2m1, data_type::u3)
                         && !utils::one_of(type_o, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1),
+                                data_type::f4_e2m1, data_type::u3),
                 spec::reference>::type> {
     static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {

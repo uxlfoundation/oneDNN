@@ -148,10 +148,12 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
     const auto &conf = pd()->get_conf();
     assert(conf.tag_kind == jit_memory_tag_kind_t::blocked);
 
-    const int transpose_row = pd()->is_fwd() ? conf.group_size
-                                             : conf.axis_size / conf.group_size;
-    const int transpose_col = pd()->is_fwd() ? conf.axis_size / conf.group_size
-                                             : conf.group_size;
+    const dim_t transpose_row = pd()->is_fwd()
+            ? conf.group_size
+            : conf.axis_size / conf.group_size;
+    const dim_t transpose_col = pd()->is_fwd()
+            ? conf.axis_size / conf.group_size
+            : conf.group_size;
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto scratchpad_ptr = scratchpad.template get<int>(
@@ -159,7 +161,8 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
 
     // Precompute transposed axis helper array
     parallel_nd(transpose_col, transpose_row, [=](dim_t i, dim_t j) {
-        scratchpad_ptr[j * transpose_col + i] = i * transpose_row + j;
+        scratchpad_ptr[j * transpose_col + i]
+                = static_cast<int>(i * transpose_row + j);
     });
 
     const dim_t CB = utils::div_up(conf.c, conf.blk_size);
@@ -167,17 +170,17 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
 
     // Precompute input offsets using transposed axis
     parallel_nd(CB, [=](dim_t cb) {
-        const int blk_end
+        const dim_t blk_end
                 = nstl::min(conf.blk_size, conf.c - cb * conf.blk_size);
         PRAGMA_OMP_SIMD()
-        for (int cc = 0; cc < blk_end; ++cc) {
-            const int off = cb * conf.blk_size + cc;
-            int input_c = scratchpad_ptr[off];
+        for (dim_t cc = 0; cc < blk_end; ++cc) {
+            const dim_t off = cb * conf.blk_size + cc;
+            const dim_t input_c = scratchpad_ptr[off];
             // Re-write transposed axis data.
-            scratchpad_ptr[off]
-                    = (input_c / conf.blk_size * conf.sp * conf.blk_size
-                              + input_c % conf.blk_size)
-                    * conf.dt_size;
+            scratchpad_ptr[off] = static_cast<int>(
+                    (input_c / conf.blk_size * conf.sp * conf.blk_size
+                            + input_c % conf.blk_size)
+                    * conf.dt_size);
         }
     });
 

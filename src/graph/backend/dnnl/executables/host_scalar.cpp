@@ -64,10 +64,7 @@ std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
     void *dst_ptr = dst_mem.get_data_handle();
     const size_t size = src_mem.get_desc().get_size();
     auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
-    return sycl_queue.submit([&](::sycl::handler &cgh) {
-        cgh.depends_on(deps);
-        cgh.memcpy(dst_ptr, src_ptr, size);
-    });
+    return sycl_queue.memcpy(dst_ptr, src_ptr, size, deps);
 }
 #endif
 

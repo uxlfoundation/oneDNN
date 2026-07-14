@@ -2432,6 +2432,117 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
+                        && tag_o == format_tag::any && type_i == data_type::f32
+                        && type_o == data_type::u3,
+                spec::reference>::type> {
+    static status_t is_applicable(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
+        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VDISPATCH_REORDER_IC(
+                simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
+        VDISPATCH_REORDER_IC(
+                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(
+                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        return status::success;
+    }
+
+    static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d) {
+        // Dense f32 staging buffer laid out in the output's physical order.
+        return output_d.nelems() * sizeof(float);
+    }
+
+    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+        DECLARE_COMMON_PARAMS();
+        using namespace utils;
+
+        input += input_d.blk_off(0);
+        output += output_d.blk_off(0);
+
+        // u3 packs 8 logical values into 3 bytes (OV transposed layout):
+        // byte0 = low 2 bits of values 0-3, byte1 = low 2 bits of values 4-7,
+        // byte2 = the 8 MSBs. The group is atomic (byte2 is shared), so each
+        // 3-byte group is owned by one thread to avoid write clashes.
+        auto wspace = scratchpad.template get<data_t<type_i>>(
+                memory_tracking::names::key_reorder_space);
+        parallel_nd(input_d.nelems(), [&](dim_t idx) {
+            wspace[output_d.off_l(idx)] = input[input_d.off_l(idx)];
+        });
+
+        auto u8_output = reinterpret_cast<uint8_t *>(output);
+        const dim_t nelems = output_d.nelems();
+        const dim_t n_groups = div_up(nelems, (dim_t)8);
+        parallel_nd(n_groups, [&](dim_t g) {
+            uint8_t b[3] = {0, 0, 0};
+            for (int e = 0; e < 8; ++e) {
+                const dim_t p = g * 8 + e;
+                if (p >= nelems) break;
+                const uint8_t q
+                        = _qz_a1b0<data_type::f32, data_type::u3>()(wspace[p])
+                                  .raw_bits_;
+                b[e / 4] |= (q & 0x3) << (6 - 2 * (e % 4));
+                b[2] |= ((q >> 2) & 0x1) << (7 - e);
+            }
+            u8_output[g * 3 + 0] = b[0];
+            u8_output[g * 3 + 1] = b[1];
+            u8_output[g * 3 + 2] = b[2];
+        });
+
+        return status::success;
+    }
+};
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
+        typename utils::enable_if<tag_i == format_tag::any
+                        && tag_o == format_tag::any && type_i == data_type::u3
+                        && utils::one_of(type_o, data_type::f32,
+                                data_type::bf16, data_type::f16),
+                spec::reference>::type> {
+    static status_t is_applicable(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
+        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VDISPATCH_REORDER_IC(
+                simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
+        VDISPATCH_REORDER_IC(
+                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(
+                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        return status::success;
+    }
+
+    GET_SCRATCHPAD_SIZE_ZERO();
+
+    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+        DECLARE_COMMON_PARAMS();
+
+        input += input_d.blk_off(0);
+        output += output_d.blk_off(0);
+
+        // Reads decode the shared 3-byte group; writes go to unique output
+        // offsets, so per-element parallelism is race-free.
+        auto u8_input = reinterpret_cast<const uint8_t *>(input);
+        parallel_nd(input_d.nelems(), [&](dim_t idx) {
+            const dim_t p = input_d.off_l(idx);
+            const dim_t base = (p / 8) * 3;
+            const int pos = p % 8;
+            const int low2
+                    = (u8_input[base + pos / 4] >> (6 - 2 * (pos % 4))) & 0x3;
+            const int msb = (u8_input[base + 2] >> (7 - pos)) & 0x1;
+            output[output_d.off_l(idx)]
+                    = static_cast<data_t<type_o>>((float)(low2 | (msb << 2)));
+        });
+
+        return status::success;
+    }
+};
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
+        typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any,
                 spec::direct_copy_except_dim_0>::type> {
@@ -2538,11 +2649,13 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && order_keep == fmt_order::any
-                        // u4/s4 requires a special implementation
+                        // sub-byte types require a special implementation
                         && !utils::one_of(type_i, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::f4_e3m0)
+                                data_type::f4_e2m1, data_type::f4_e3m0,
+                                data_type::u3)
                         && !utils::one_of(type_o, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1, data_type::f4_e3m0),
+                                data_type::f4_e2m1, data_type::f4_e3m0,
+                                data_type::u3),
                 spec::reference>::type> {
     static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {

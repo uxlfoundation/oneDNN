@@ -92,47 +92,138 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(wei_d.is_blocking_desc() && wei_d.ndims() == 3,
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-            // GPU ref currently only supports matching data types
-            const auto src_dt = src_md()->data_type;
-            VDISPATCH_MATMUL(src_dt == weights_md(0)->data_type
-                            && src_dt == dst_md()->data_type
-                            && utils::one_of(src_dt, f32, bf16, f16),
+            // Supported data types: fp and int for src/wei
+            const auto src_type = src_md(0)->data_type;
+            const auto wei_type = weights_md(0)->data_type;
+            const auto dst_type = dst_md(0)->data_type;
+            const bool is_fp_src = utils::one_of(
+                    src_type, f32, bf16, f16, f8_e5m2, f8_e4m3, f4_e2m1);
+            const bool is_fp_wei = utils::one_of(
+                    wei_type, f32, bf16, f16, f8_e5m2, f8_e4m3, f4_e2m1);
+            const bool is_int_src = utils::one_of(src_type, u8, s8);
+            const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4);
+
+            // Supported: fp src + int wei (WOQ), int src + int wei, fp src + fp wei
+            VDISPATCH_MATMUL(is_fp_src || is_int_src, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(is_fp_wei || is_int_wei, VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(utils::one_of(dst_type, f32, bf16, f16),
+                    VERBOSE_UNSUPPORTED_DT);
+            VDISPATCH_MATMUL(IMPLICATION(is_int_src, is_int_wei),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+            // WOQ requires weight scales and fpmath with apply_to_int
+            VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
+                                     !attr()->scales_.has_default_values(
+                                             DNNL_ARG_WEIGHTS)),
+                    VERBOSE_UNSUPPORTED_DT_CFG);
+            VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
+                                     attr()->fpmath_.apply_to_int_),
                     VERBOSE_UNSUPPORTED_DT_CFG);
 
             // Check for supported quantization schemes
             const auto &attr_scales = attr()->scales_;
             if (!attr_scales.has_default_values(DNNL_ARG_SRC)) {
                 const int src_mask = attr_scales.get_mask(DNNL_ARG_SRC);
-                const int rowwise_mask = src_qmask_M();
-                // Only row-wise f32 scales supported for src
-                VDISPATCH_MATMUL(src_mask == rowwise_mask,
+                // Allow row-wise or blocked (K-grouping) scales for src
+                VDISPATCH_MATMUL(src_mask == src_qmask_M()
+                                || src_mask == (src_qmask_M() | src_qmask_K()),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
-                VDISPATCH_MATMUL(attr_scales.get_data_type(DNNL_ARG_SRC) == f32,
-                        VERBOSE_UNSUPPORTED_SCALES_CFG);
-                // No groups for src scales
                 VDISPATCH_MATMUL(
-                        attr_scales.get(DNNL_ARG_SRC).has_default_groups(),
+                        utils::one_of(attr_scales.get_data_type(DNNL_ARG_SRC),
+                                f32, bf16, f16, e8m0, f8_e4m3, f8_e5m2),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
+                if (!attr_scales.get(DNNL_ARG_SRC).has_default_groups()) {
+                    const auto gM = attr_scales.get_group(DNNL_ARG_SRC, -2);
+                    VDISPATCH_MATMUL(gM == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    const auto gK = attr_scales.get_group(DNNL_ARG_SRC, -1);
+                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    VDISPATCH_MATMUL(
+                            K() % gK == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                }
             }
             if (!attr_scales.has_default_values(DNNL_ARG_WEIGHTS)) {
                 const int wei_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-                const int colwise_mask = wei_qmask_N();
-                // Only column-wise f32 scales supported for weights
-                VDISPATCH_MATMUL(wei_mask == colwise_mask,
+                // Allow column-wise or blocked (K-grouping) scales for weights
+                VDISPATCH_MATMUL(wei_mask == wei_qmask_N()
+                                || wei_mask == (wei_qmask_K() | wei_qmask_N()),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
-                        attr_scales.get_data_type(DNNL_ARG_WEIGHTS) == f32,
+                        utils::one_of(
+                                attr_scales.get_data_type(DNNL_ARG_WEIGHTS),
+                                f32, bf16, f16, e8m0, f8_e4m3, f8_e5m2),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
-                // No groups for weight scales
-                VDISPATCH_MATMUL(
-                        attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups(),
-                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+                if (!attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+                    const auto gK = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
+                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    VDISPATCH_MATMUL(
+                            K() % gK == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                    const auto gN = attr_scales.get_group(DNNL_ARG_WEIGHTS, -1);
+                    VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_SCALES_CFG);
+                }
             }
             VDISPATCH_MATMUL(attr_scales.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-            // Zero-points are not supported
-            VDISPATCH_MATMUL(attr()->zero_points_.has_default_values(),
+
+            // Zero-points: src (int src), wei (int wei); row/col-wise or K-grouped
+            const auto &attr_zps = attr()->zero_points_;
+            VDISPATCH_MATMUL(attr_zps.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
+            if (!attr_zps.has_default_values(DNNL_ARG_SRC)) {
+                VDISPATCH_MATMUL(is_int_src, VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_MATMUL(
+                        utils::one_of(attr_zps.get_data_type(DNNL_ARG_SRC), u8,
+                                s8, s32),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                const int zp_mask = attr_zps.get_mask(DNNL_ARG_SRC);
+                VDISPATCH_MATMUL(zp_mask == src_qmask_M()
+                                || zp_mask == (src_qmask_M() | src_qmask_K()),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                if (!attr_zps.get(DNNL_ARG_SRC).has_default_groups()) {
+                    const auto gM = attr_zps.get_group(DNNL_ARG_SRC, -2);
+                    VDISPATCH_MATMUL(gM == 1, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    const auto gK = attr_zps.get_group(DNNL_ARG_SRC, -1);
+                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    VDISPATCH_MATMUL(K() % gK == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
+                }
+            }
+            if (!attr_zps.has_default_values(DNNL_ARG_WEIGHTS)) {
+                VDISPATCH_MATMUL(is_int_wei, VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_MATMUL(
+                        utils::one_of(attr_zps.get_data_type(DNNL_ARG_WEIGHTS),
+                                u8, s8, u4, s4, s32),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                const int zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
+                VDISPATCH_MATMUL(zp_mask == wei_qmask_N()
+                                || zp_mask == (wei_qmask_K() | wei_qmask_N()),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                if (!attr_zps.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
+                    const auto gK = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
+                    VDISPATCH_MATMUL(gK > 1, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    VDISPATCH_MATMUL(K() % gK == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    const auto gN = attr_zps.get_group(DNNL_ARG_WEIGHTS, -1);
+                    VDISPATCH_MATMUL(gN == 1, VERBOSE_UNSUPPORTED_ZP_CFG);
+                }
+            }
+            // For K grouping, src/wei scale group sizes must be multiples
+            if (!attr_scales.has_default_values(DNNL_ARG_SRC)
+                    && !attr_scales.get(DNNL_ARG_SRC).has_default_groups()
+                    && !attr_scales.has_default_values(DNNL_ARG_WEIGHTS)
+                    && !attr_scales.get(DNNL_ARG_WEIGHTS)
+                                .has_default_groups()) {
+                const auto src_gK = attr_scales.get_group(DNNL_ARG_SRC, -1);
+                const auto wei_gK = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
+                VDISPATCH_MATMUL(src_gK % wei_gK == 0 || wei_gK % src_gK == 0,
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+            }
+            // Weight scales and ZPs K-groups must match
+            if (!attr_scales.has_default_values(DNNL_ARG_WEIGHTS)
+                    && !attr_zps.has_default_values(DNNL_ARG_WEIGHTS)) {
+                const auto scale_gK
+                        = attr_scales.get_group(DNNL_ARG_WEIGHTS, -2);
+                const auto zp_gK = attr_zps.get_group(DNNL_ARG_WEIGHTS, -2);
+                VDISPATCH_MATMUL(scale_gK == zp_gK, VERBOSE_INCONSISTENT_DIM,
+                        "wei_scale_group_k", (int)scale_gK, "wei_zp_group_k",
+                        (int)zp_gK);
+            }
 
             if (attr_.post_ops_.len() > 0) CHECK(setup_post_ops(engine));
 
@@ -214,6 +305,14 @@ struct ref_grouped_t : public primitive_t {
         def_data_type(kernel_ctx, pd()->weights_md(0)->data_type, "WEI");
         def_data_type(kernel_ctx, pd()->dst_md()->data_type, "DST");
         def_data_type(kernel_ctx, pd()->desc()->accum_data_type, "ACC");
+
+        // Zero-point data types (def_attr_info covers scale data types only)
+        def_data_type(kernel_ctx,
+                pd()->attr()->zero_points_.get_data_type(DNNL_ARG_SRC),
+                "SRC_ZP");
+        def_data_type(kernel_ctx,
+                pd()->attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS),
+                "WEI_ZP");
 
         auto attr_info = attr_info_t::create(pd()->attr());
         CHECK(def_attr_info(kernel_ctx, attr_info, pd()->generic_po_,

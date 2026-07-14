@@ -73,7 +73,8 @@ status_t stream_t::init() {
         }
         impl()->set_queue(::sycl::queue(sycl_ctx, sycl_dev, props));
 
-        // Re-initializes verbose profiler to check for supported backend
+        // Re-initializes verbose profiler after setting the queue to check for
+        // supported backends
         CHECK(impl()->init_verbose_profiler(engine()->kind()));
 
     } else {
@@ -92,6 +93,18 @@ status_t stream_t::init() {
     if (is_verbose_profiler_enabled()) {
         verbose_profiler_.set(
                 utils::make_unique<xpu::sycl::verbose_profiler_t>(this));
+        // Check if the queue has profiling enabled and pause the verbose
+        // profiler if it does not. Verbose lines are still emitted during
+        // logging, but without execution timing information.
+        const bool queue_has_profiling = queue().has_property<
+                ::sycl::property::queue::enable_profiling>();
+        if (!queue_has_profiling) {
+            VWARN(primitive, exec,
+                    "SYCL queue does not have profiling enabled. "
+                    "Verbose profiling is paused and execution times "
+                    "will not be reported.");
+            verbose_profiler()->pause_profiling();
+        }
     }
     if (is_profiling_enabled() && sycl_dev.is_gpu() && !queue().is_in_order()) {
         VERROR(common, dpcpp,
@@ -111,6 +124,10 @@ void stream_t::before_exec_hook() {
                         .get(utils::make_unique<xpu::sycl::verbose_profiler_t>(
                                 this))
                         .get());
+        const bool queue_has_profiling = queue().has_property<
+                ::sycl::property::queue::enable_profiling>();
+        if (!queue_has_profiling) { profiler->pause_profiling(); }
+
         // Device event profiling and SYCL graph recording are incompatible
         // because the graph execution creates a different execution context
         // with new events that do not inherit the original queue's profiling
@@ -123,10 +140,10 @@ void stream_t::before_exec_hook() {
         // graph is recording and resume thereafter to avoid runtime exceptions.
         // In this scenario, the profiler will report zero execution time for
         // the logged primitives.
-        if (!recording()) {
+        if (!recording() && queue_has_profiling) {
             profiler->start_profiling();
         } else {
-            if (profiler->is_active()) {
+            if (profiler->is_active() && queue_has_profiling) {
                 VWARN(primitive, exec,
                         "SYCL graph recording active - verbose profiling will "
                         "show zero "

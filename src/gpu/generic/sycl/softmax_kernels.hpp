@@ -119,7 +119,7 @@ struct softmax_fwd_kernel_vec_t {
             }
         };
 
-        for (int idx = item.get_global_id(0); idx < conf_.wk_size;
+        for (dim_t idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {
             dim_t in = (idx / (1)) % conf_.inner_size;
             dim_t ou = (idx / (conf_.inner_size)) % conf_.outer_size;
@@ -195,7 +195,7 @@ struct softmax_bwd_kernel_vec_t {
             }
         };
 
-        for (int idx = item.get_global_id(0); idx < conf_.wk_size;
+        for (dim_t idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {
             dim_t in = (idx / 1) % conf_.inner_size;
             dim_t ou = (idx / conf_.inner_size) % conf_.outer_size;

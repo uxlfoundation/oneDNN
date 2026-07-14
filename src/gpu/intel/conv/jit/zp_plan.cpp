@@ -341,7 +341,7 @@ public:
             auto off = offset_bytes<int>(b_layout_, start);
             auto mask = (small_ic) ? kw_var < simd_bcast(kw - start.get(kw_idx))
                                    : expr_t();
-            for (int i = 0; i < tile.elems(); i += sdepth_size)
+            for (int64_t i = 0; i < tile.elems(); i += sdepth_size)
                 stmt = stmt.append(store_t::make(dpas_buf, off + i, wei_load,
                         store_t::default_stride, mask, true));
         }
@@ -462,7 +462,7 @@ public:
                 dpas_buf, 0, -load_t::make(dsl::type_t::s8(), src_buf, 0)));
         stmt = stmt.append(int8_bcast4(dpas_buf));
         auto fill = simd_bcast(load_t::make(dsl::type_t::u32(), dpas_buf, 0));
-        for (int i = 0; i < size_bytes(src_layout_); i += simd_ * 4)
+        for (dim_t i = 0; i < size_bytes(src_layout_); i += simd_ * 4)
             stmt = stmt.append(store_t::make(dpas_buf, i, fill));
         return stmt;
     }
@@ -498,7 +498,8 @@ public:
         for (auto &start : comp_layout_.iter(get_simd_tile())) {
             if (!in_subtile(start, subtile_idx)) continue;
             auto comp = comp_buf[get_comp_off(start)];
-            for (int ck = 0; ck < wei_layout_.elems(ck_idx_); ck += ck_blk) {
+            for (int64_t ck = 0; ck < wei_layout_.elems(ck_idx_);
+                    ck += ck_blk) {
                 auto zp = zp_buf[get_zp_off(start, ck)];
                 auto wei = wei_buf[get_wei_off(start, ck)];
                 stmt = stmt.append(create_tile_stmt(zp, wei, comp, buf_mgr));
@@ -1254,7 +1255,7 @@ public:
         std::vector<int> mask_off;
         for (auto &start : c_layout_.iter(sd.get_simd_tile())) {
             if (!sd.in_subtile(start, subtile_idx)) continue;
-            for (int kw = 0; kw < kw_dim; kw++) {
+            for (dim_t kw = 0; kw < kw_dim; kw++) {
                 comp_off.emplace_back(get_comp_off(start, kw, sd));
                 mask_off.emplace_back(
                         (mask_buf.is_empty()) ? -1 : get_mask_off(start, kw));
@@ -1330,7 +1331,7 @@ public:
         } else {
             for (auto &start : c_layout_.iter(sd.get_simd_tile())) {
                 if (!sd.in_subtile(start, subtile_idx)) continue;
-                for (int kw = 0; kw < kw_dim; kw++) {
+                for (dim_t kw = 0; kw < kw_dim; kw++) {
                     auto comp = comp_buf[get_comp_off(start, kw, sd)];
                     auto mask = mask_buf.is_empty()
                             ? expr_t()

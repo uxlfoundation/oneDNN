@@ -47,7 +47,7 @@ struct layer_normalization_fwd_kernel_vec_t {
                   DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)) {}
 
     void operator()(::sycl::nd_item<1> item) const {
-        for (int idx = item.get_global_id(0); idx < conf_.wk_size;
+        for (dim_t idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {
             if (idx < conf_.N) { compute_alg_n(idx); }
         }
@@ -146,7 +146,7 @@ struct layer_normalization_fwd_kernel_vec1_t {
                   DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST)) {}
 
     void operator()(::sycl::nd_item<1> item) const {
-        for (int idx = item.get_global_id(0); idx < conf_.wk_size;
+        for (dim_t idx = item.get_global_id(0); idx < conf_.wk_size;
                 idx += item.get_global_range(0)) {
             if (idx < conf_.N) { compute_alg_n(idx); }
         }

@@ -77,6 +77,8 @@ status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
 
 status_t verbose_profiler_t::get_aggregate_exec_time(
         size_t index, double &duration_ms) const {
+    if (!active_) return status::success;
+
     if (index >= profiling_data_.size()) {
         VERROR(primitive, exec,
                 "profiling error: invalid index %zu, profiling_data size is "
@@ -123,6 +125,7 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
 
 bool verbose_profiler_t::is_event_complete(
         const std::shared_ptr<xpu::event_t> &event) const {
+    if (!active_) return true;
     if (!event) return true;
     const auto &ocl_event = xpu::ocl::event_t::from(*event);
     size_t last_idx = ocl_event.size() - 1;
@@ -142,6 +145,7 @@ bool verbose_profiler_t::is_event_complete(
 
 void verbose_profiler_t::wait_for_event_completion(
         const std::shared_ptr<xpu::event_t> &event) const {
+    if (!active_) return;
     if (!event) return;
     const auto &ocl_event = xpu::ocl::event_t::from(*event);
     size_t last_idx = ocl_event.size() - 1;

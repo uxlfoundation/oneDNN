@@ -73,6 +73,8 @@ public:
 
     status_t init_verbose_profiler(engine_kind_t kind) override;
 
+    bool queue_has_profiling() const;
+
     const xpu::ocl::context_t &ocl_ctx() const;
     xpu::ocl::context_t &ocl_ctx();
     xpu::context_t &ctx();

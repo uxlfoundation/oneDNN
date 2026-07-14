@@ -148,6 +148,14 @@ void ir_t::vstore_masked(
     ops_.push_back(op);
 }
 
+void ir_t::prefetch(vreg_t base, dim_t disp) {
+    op_t op;
+    op.kind = op_kind_t::prefetch;
+    op.mem.base = base;
+    op.mem.disp = disp;
+    ops_.push_back(op);
+}
+
 int ir_t::loop_begin_imm(vreg_t counter, dim_t count) {
     op_t op;
     op.kind = op_kind_t::loop_begin;
@@ -269,6 +277,7 @@ void ir_t::def_use(
             u(op.s1); // mask (-1 -> not counted, dropped by u())
             u(op.mem.base);
             break;
+        case op_kind_t::prefetch: u(op.mem.base); break;
         case op_kind_t::loop_begin:
             if (op.init_is_reg) u(op.s0);
             d(op.dst);

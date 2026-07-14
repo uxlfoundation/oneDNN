@@ -194,11 +194,18 @@ namespace nontrans {
 void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         const std::vector<ir::vreg_t> &acc, ir::vreg_t a_ptr,
         ir::vreg_t x_ptr) {
+    // GEMV is bandwidth-bound, so SW-prefetch ahead of each load: the x vector
+    // once and every A row. The distance is empirically tuned.
+    constexpr dim_t gemv_pf_dist = 512; // bytes = 8 cache lines
+
     const ir::vreg_t x = ir.new_vec(cfg.dt_x);
     const ir::vreg_t a = ir.new_vec(cfg.dt_a);
+    ir.prefetch(x_ptr, gemv_pf_dist);
     ir.vload(x, x_ptr, 0);
     for (int i = 0; i < (int)acc.size(); i++) {
-        ir.vload(a, a_ptr, cfg.dt_sz_a * (dim_t)i * cfg.lda);
+        const dim_t a_off = cfg.dt_sz_a * (dim_t)i * cfg.lda;
+        ir.prefetch(a_ptr, a_off + gemv_pf_dist);
+        ir.vload(a, a_ptr, a_off);
         ir.vdot(acc[i], a, x);
     }
 }

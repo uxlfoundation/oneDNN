@@ -118,6 +118,9 @@ enum class op_kind_t {
     // stores `imm` elements. Mmask vreg = s1 or -1.
     vstore_masked,
 
+    // prefetch [base + disp] into cache. Reads base, writes nothing.
+    prefetch,
+
     // Control flow
     //
     // initialize loop counter (dst = imm or s0 if init_is_reg)
@@ -259,6 +262,8 @@ struct DNNL_API ir_t {
     // of loading.
     void vstore_masked(
             vreg_t base, dim_t disp, vreg_t src, vreg_t mask, int elems);
+
+    void prefetch(vreg_t base, dim_t disp);
 
     // mask
     void set_mask_imm(vreg_t mask, int n_elems);

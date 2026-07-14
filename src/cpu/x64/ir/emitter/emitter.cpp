@@ -243,6 +243,13 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 break;
             }
 
+            // prefetcht0 is base x86-64, so emit it directly.
+            case op_kind_t::prefetch: {
+                Xbyak::Reg64 base = gpr_use(op.mem.base, gpr_scratch0);
+                gen.prefetcht0(gen.ptr[base + (int)op.mem.disp]);
+                break;
+            }
+
             // Control flow. ISA-neutral, emitted directly.
             case op_kind_t::loop_begin: {
                 Xbyak::Reg64 c = spilled(op.dst) ? gpr_scratch0

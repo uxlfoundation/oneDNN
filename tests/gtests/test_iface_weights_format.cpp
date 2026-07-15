@@ -64,22 +64,25 @@ protected:
     };
 
     // Iterate primitive descriptor iterator till either of the following
-    //   - brgemm kernel implementation is found
+    //   - brgemm-based matmul (brg_matmul) implementation is found
     //   - end of the primitive descriptor iterator is reached
-    // return `true` iff brgemm kernel is found
+    // return `true` iff the brg_matmul implementation is found.
+    // Matching brg_matmul (rather than any matmul) ensures the inner product
+    // does not fall back to the gemm or reference implementation.
     template <typename PD>
-    bool seek_brgemm_impl(PD &pd) {
-        const std::string brgemm("brgemm");
+    bool seek_brg_matmul_impl(PD &pd) {
+        const std::string brg_matmul("brg_matmul");
         std::string impl_info;
-        bool brgemm_ker_found = false, seek_next_impl = true;
+        bool brg_matmul_ker_found = false, seek_next_impl = true;
         do {
             std::string impl_info(pd.impl_info_str());
-            brgemm_ker_found = impl_info.find(brgemm) != std::string::npos;
+            brg_matmul_ker_found
+                    = impl_info.find(brg_matmul) != std::string::npos;
 
-            seek_next_impl = !brgemm_ker_found && pd.next_impl();
+            seek_next_impl = !brg_matmul_ker_found && pd.next_impl();
         } while (seek_next_impl);
 
-        return brgemm_ker_found;
+        return brg_matmul_ker_found;
     }
 
     std::vector<inner_product_shape_t> inner_product_shapes;
@@ -142,28 +145,32 @@ HANDLE_EXCEPTIONS_FOR_TEST_F(weights_format_test_t, InnerProductWeightsCheck) {
         auto fwd_pd = inner_product_forward::primitive_desc(eng,
                 prop_kind::forward_training, src_md, wei_md, bia_md, dst_md);
 
-        bool fwd_brgemm_ker_found = false, bwdd_brgemm_ker_found = false,
-             bwdw_brgemm_ker_found = false;
-        // Currently only brgemm kernel supports same weight tags
-        // for forward and backward data/weight inner product, therefore
-        // skip if the forward impl kernel is not brgemm
-        ASSERT_NO_THROW(fwd_brgemm_ker_found = seek_brgemm_impl(fwd_pd));
-        if (!fwd_brgemm_ker_found) continue;
+        bool fwd_brg_matmul_ker_found = false,
+             bwdd_brg_matmul_ker_found = false,
+             bwdw_brg_matmul_ker_found = false;
+        // Only the brgemm-based matmul inner product provides the same weight
+        // tags across the forward and backward data/weight passes, therefore
+        // skip if the forward impl is not brg_matmul.
+        ASSERT_NO_THROW(
+                fwd_brg_matmul_ker_found = seek_brg_matmul_impl(fwd_pd));
+        if (!fwd_brg_matmul_ker_found) continue;
 
-        // Since `seek_brgemm_impl` modifies the forward primitive desc above
-        // therefore bwdd_pd and bwdw_pd needs to be initialized only after
-        // fwd_pd is fixed.
+        // Since `seek_brg_matmul_impl` modifies the forward primitive desc
+        // above therefore bwdd_pd and bwdw_pd needs to be initialized only
+        // after fwd_pd is fixed.
         auto bwdd_pd = inner_product_backward_data::primitive_desc(
                 eng, src_md, wei_md, dst_md, fwd_pd);
         auto bwdw_pd = inner_product_backward_weights::primitive_desc(
                 eng, src_md, wei_md, bia_md, dst_md, fwd_pd);
-        // If the forward inner product can be handled by brgemm then so
-        // should be the backward data/weights one
-        ASSERT_NO_THROW(bwdd_brgemm_ker_found = seek_brgemm_impl(bwdd_pd));
-        ASSERT_NO_THROW(bwdw_brgemm_ker_found = seek_brgemm_impl(bwdw_pd));
+        // If the forward inner product is handled by brg_matmul then so should
+        // be the backward data/weights one, without falling back to gemm/ref.
+        ASSERT_NO_THROW(
+                bwdd_brg_matmul_ker_found = seek_brg_matmul_impl(bwdd_pd));
+        ASSERT_NO_THROW(
+                bwdw_brg_matmul_ker_found = seek_brg_matmul_impl(bwdw_pd));
 
-        ASSERT_TRUE(bwdd_brgemm_ker_found);
-        ASSERT_TRUE(bwdw_brgemm_ker_found);
+        ASSERT_TRUE(bwdd_brg_matmul_ker_found);
+        ASSERT_TRUE(bwdw_brg_matmul_ker_found);
 
         // Check for weights consistency
         const auto &fwd_wei

@@ -1163,6 +1163,9 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
                 && !use_fused_copy_a_;
 
     } else {
+        is_a_nt_ = true;
+        is_b_nt_ = false;
+
         if (is_postops_bound(k_blk_v)) {
             // Give up on the L1 blocking
             best_score_v = 0;
@@ -1180,12 +1183,9 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         n_chunk_size_ = div_up(n_per_thread, n_blk_);
         m_blk_ = nstl::min(best_m_v * m_decomposition, M);
         m_chunk_size_ = 1;
-        is_a_nt_ = true;
-        is_b_nt_ = false;
         need_prefetch_a_ = false;
         need_prefetch_b_ = ((n_per_thread / n_blk_) >= 2) && !use_buffer_b;
         use_fused_copy_a_ = false;
-
         extendable_k_ = K % wei_k_blk != 0 && !skip_extendable_k();
     }
 

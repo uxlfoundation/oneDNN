@@ -109,8 +109,9 @@ struct ref_matmul_t : public primitive_t {
                     {quantization_mode::static_sazp,
                             quantization_mode::dynamic_mx,
                             quantization_mode::dynamic_fp}));
+            CHECK(attr_zero_points_ok(engine, {DNNL_ARG_WEIGHTS},
+                    {quantization_mode::static_sazp}));
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
-            VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
             VDISPATCH_MATMUL(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
@@ -126,30 +127,6 @@ struct ref_matmul_t : public primitive_t {
 
     private:
         void init_scratchpad();
-
-        bool zero_points_ok() const {
-            const auto &zp = attr()->zero_points_;
-            if (!zp.has_default_values(DNNL_ARG_SRC)) { return false; }
-            /* weights decompression requires zero points support */
-            if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
-                if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
-                    const auto gK = zp.get_group(DNNL_ARG_WEIGHTS, 0);
-                    bool ok = IMPLICATION(gK > 1, K() % gK == 0);
-                    if (!ok) return false;
-
-                    const auto gN = zp.get_group(DNNL_ARG_WEIGHTS, 1);
-                    ok = IMPLICATION(gN > 1, N() % gN == 0);
-                    if (!ok) return false;
-
-                    // Only one non-unit group is supported.
-                    ok = utils::one_of(1, gK, gN);
-                    if (!ok) return false;
-                }
-            }
-            if (!zp.has_default_values(DNNL_ARG_DST)) { return false; }
-
-            return true;
-        }
 
         status_t dropout_ok() const {
             if (attr_.dropout_.has_default_values()) return status::success;

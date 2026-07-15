@@ -73,7 +73,9 @@ struct ref_t : public primitive_t {
                             quantization_mode::dynamic_mx,
                             quantization_mode::dynamic_fp},
                     {{DNNL_ARG_SRC, {src_qmask_M()}}}));
-            VDISPATCH_MATMUL(zero_points_ok(), VERBOSE_UNSUPPORTED_ZP_CFG);
+            CHECK(attr_zero_points_ok(engine,
+                    {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
+                    {quantization_mode::static_sazp}));
             VDISPATCH_MATMUL(
                     precomputed_reductions_ok(), VERBOSE_UNSUPPORTED_PR_CFG);
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
@@ -160,58 +162,6 @@ struct ref_t : public primitive_t {
         attr_info_t attr_info_ = {};
 
     private:
-        int broadcast_mask(const memory_desc_t *md) const {
-            int mask = 0;
-            for (int d = 0; d < md->ndims; ++d)
-                if (md->dims[d] == 1) mask |= (1 << d);
-            return mask;
-        }
-
-        bool zero_points_ok() const {
-            const auto &zp = attr()->zero_points_;
-            if (!zp.has_default_values(DNNL_ARG_SRC)) {
-                int bcast_mask = broadcast_mask(src_md());
-                int mask_src = zp.get_mask(DNNL_ARG_SRC) & ~bcast_mask;
-                bool ok = utils::one_of(mask_src, 0,
-                        src_qmask_K() & ~bcast_mask,
-                        (src_qmask_M() + src_qmask_K()) & ~bcast_mask);
-                if (!ok) return false;
-
-                if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {
-                    const auto gM = zp.get_group(DNNL_ARG_SRC, 0);
-                    ok = gM == 1;
-                    if (!ok) return false;
-
-                    const auto gK = zp.get_group(DNNL_ARG_SRC, 1);
-                    ok = IMPLICATION(gK > 1, K() % gK == 0);
-                    if (!ok) return false;
-                }
-            }
-            /* weights decompression requires zero points support */
-            if (!zp.has_default_values(DNNL_ARG_WEIGHTS)) {
-                if (!zp.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
-                    const auto gK = zp.get_group(DNNL_ARG_WEIGHTS, 0);
-                    bool ok = IMPLICATION(gK > 1, K() % gK == 0);
-                    if (!ok) return false;
-
-                    const auto gN = zp.get_group(DNNL_ARG_WEIGHTS, 1);
-                    ok = IMPLICATION(gN > 1, N() % gN == 0);
-                    if (!ok) return false;
-
-                    // Only one non-unit group is supported.
-                    ok = utils::one_of(1, gK, gN);
-                    if (!ok) return false;
-                }
-            }
-            if (!zp.has_default_values(DNNL_ARG_DST)) {
-                int bcast_mask = broadcast_mask(dst_md());
-                int mask_dst = zp.get_mask(DNNL_ARG_DST) & ~bcast_mask;
-                bool ok = utils::one_of(
-                        mask_dst, 0, dst_qmask_N() & ~bcast_mask);
-                if (!ok) return false;
-            }
-            return true;
-        }
         status_t dropout_ok() const {
             if (attr_.dropout_.has_default_values()) return status::success;
 

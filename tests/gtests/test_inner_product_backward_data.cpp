@@ -276,7 +276,7 @@ INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardDataEF,
                         EXPAND_SIZES_2D(2, -1, 48, 6, 6), true,
                         dnnl_invalid_arguments}));
 
-INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData_nCdhw8c,
+GPU_INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData_nCdhw8c,
         inner_product_test_float,
         ::testing::Values(
                 inprod_test_params_float {memory::format_tag::nCdhw8c,
@@ -289,7 +289,7 @@ INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData_nCdhw8c,
                         memory::format_tag::aBcde8b, memory::format_tag::nc,
                         EXPAND_SIZES_3D(2, 29, 7, 2, 2, 2)}));
 
-INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData_nCdhw16c,
+GPU_INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData_nCdhw16c,
         inner_product_test_float,
         ::testing::Values(
                 inprod_test_params_float {memory::format_tag::nCdhw16c,
@@ -302,7 +302,7 @@ INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData_nCdhw16c,
                         memory::format_tag::aBcde16b, memory::format_tag::nc,
                         EXPAND_SIZES_3D(2, 29, 7, 2, 2, 2)}));
 
-INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData_padded,
+GPU_INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData_padded,
         inner_product_test_float,
         ::testing::Values(
                 inprod_test_params_float {memory::format_tag::nChw16c,
@@ -368,21 +368,6 @@ INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData, inner_product_test_float,
                 inprod_test_params_float {memory::format_tag::nchw,
                         memory::format_tag::ohwi, memory::format_tag::nc,
                         EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
-                inprod_test_params_float {memory::format_tag::nChw8c,
-                        memory::format_tag::aBcd8b, memory::format_tag::nc,
-                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
-                inprod_test_params_float {memory::format_tag::any,
-                        memory::format_tag::aBcd8b, memory::format_tag::nc,
-                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
-                inprod_test_params_float {memory::format_tag::nChw8c,
-                        memory::format_tag::any, memory::format_tag::nc,
-                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
-                inprod_test_params_float {memory::format_tag::nChw8c,
-                        memory::format_tag::aBcd8b, memory::format_tag::nc,
-                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
-                inprod_test_params_float {memory::format_tag::nChw16c,
-                        memory::format_tag::aBcd16b, memory::format_tag::nc,
-                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
                 inprod_test_params_float {memory::format_tag::nc,
                         memory::format_tag::oi, memory::format_tag::nc,
                         EXPAND_SIZES_2D(2, 32, 1152, 1, 1)},
@@ -420,5 +405,27 @@ INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardData3D,
                 inprod_test_params_float {memory::format_tag::ndhwc,
                         memory::format_tag::dhwio, memory::format_tag::nc,
                         EXPAND_SIZES_3D(2, 16, 48, 3, 3, 3)}));
+
+// These blocked-layout cases run on GPU only. On CPU the matmul-based inner
+// product requires plain activations, so they would reach only the reference
+// implementation.
+GPU_INSTANTIATE_TEST_SUITE_P(TestInnerProductBackwardDataBlocked,
+        inner_product_test_float,
+        ::testing::Values(
+                inprod_test_params_float {memory::format_tag::nChw8c,
+                        memory::format_tag::aBcd8b, memory::format_tag::nc,
+                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
+                inprod_test_params_float {memory::format_tag::any,
+                        memory::format_tag::aBcd8b, memory::format_tag::nc,
+                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
+                inprod_test_params_float {memory::format_tag::nChw8c,
+                        memory::format_tag::any, memory::format_tag::nc,
+                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
+                inprod_test_params_float {memory::format_tag::nChw8c,
+                        memory::format_tag::aBcd8b, memory::format_tag::nc,
+                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)},
+                inprod_test_params_float {memory::format_tag::nChw16c,
+                        memory::format_tag::aBcd16b, memory::format_tag::nc,
+                        EXPAND_SIZES_2D(2, 32, 48, 6, 6)}));
 
 } // namespace dnnl

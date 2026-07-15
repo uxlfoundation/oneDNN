@@ -266,10 +266,10 @@ struct matmul_pd_t : public primitive_desc_t {
             } else if (arg == DNNL_ARG_SRC) {
                 // Masks supported across all implementations. Implementation
                 // specific masks can be passed through `extra_masks`.
-                VDISPATCH_MATMUL((utils::one_of(mask, 0, src_qmask_K(),
-                                          src_qmask_M() + src_qmask_K(),
-                                          full_tensor_mask())
-                                         || extra_mask_ok(arg, mask)),
+                VDISPATCH_MATMUL(utils::one_of(mask, 0, src_qmask_K(),
+                                         src_qmask_M() + src_qmask_K(),
+                                         full_tensor_mask())
+                                || extra_mask_ok(arg, mask),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(IMPLICATION((mask & src_qmask_K()),
                                          !scales.get(arg).has_default_groups()),
@@ -288,10 +288,10 @@ struct matmul_pd_t : public primitive_desc_t {
             } else if (arg == DNNL_ARG_DST) {
                 // Masks supported across all implementations. Implementation
                 // specific masks can be passed through `extra_masks`.
-                VDISPATCH_MATMUL((utils::one_of(mask, 0, dst_qmask_N(),
-                                          dst_qmask_M() + dst_qmask_N(),
-                                          full_tensor_mask())
-                                         || extra_mask_ok(arg, mask)),
+                VDISPATCH_MATMUL(utils::one_of(mask, 0, dst_qmask_N(),
+                                         dst_qmask_M() + dst_qmask_N(),
+                                         full_tensor_mask())
+                                || extra_mask_ok(arg, mask),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
                         IMPLICATION(!scales.get(arg).has_default_groups(),
@@ -305,6 +305,94 @@ struct matmul_pd_t : public primitive_desc_t {
                 assert(!"Unsupported arg");
             }
         }
+        return status::success;
+    }
+
+    virtual status_t attr_zero_points_ok(engine_t *engine,
+            const std::vector<int> &supported_args
+            = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
+            const std::vector<int> &supported_qmodes
+            = {quantization_mode::static_sazp},
+            const std::map<int, std::vector<int>> &extra_masks = {}) const {
+        const auto &zp = attr()->zero_points_;
+        if (zp.has_default_values()) return status::success;
+
+        const auto extra_mask_ok = [&](int arg, int mask) {
+            const auto it = extra_masks.find(arg);
+            if (it != extra_masks.end()) {
+                for (const auto &extra_mask : it->second)
+                    if (mask == extra_mask) return true;
+            }
+            return false;
+        };
+
+        const auto broadcast_mask = [](const memory_desc_t &md) {
+            int mask = 0;
+            for (int d = 0; d < md.ndims; ++d)
+                if (md.dims[d] == 1) mask |= (1 << d);
+            return mask;
+        };
+
+        VDISPATCH_MATMUL(zp.has_default_values(supported_args),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
+        for (int arg : supported_args) {
+            if (zp.has_default_values(arg)) { continue; }
+
+            // Fold-left to check if quantization mode is supported
+            bool is_qmode_supported = false;
+            for (auto &qmode : supported_qmodes) {
+                is_qmode_supported = is_qmode_supported
+                        || (zp.get(arg).get_quantization_mode() == qmode);
+            }
+            VDISPATCH_MATMUL(is_qmode_supported, VERBOSE_UNSUPPORTED_ZP_CFG);
+
+            if (arg == DNNL_ARG_WEIGHTS) {
+                if (!zp.get(arg).has_default_groups()) {
+                    const auto gK = zp.get_group(arg, -2);
+                    VDISPATCH_MATMUL(IMPLICATION(gK > 1, K() % gK == 0),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
+
+                    const auto gN = zp.get_group(arg, -1);
+                    VDISPATCH_MATMUL(IMPLICATION(gN > 1, N() % gN == 0),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
+
+                    // Only one non-unit group is supported.
+                    VDISPATCH_MATMUL(utils::one_of(1, gK, gN),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
+                }
+            } else if (arg == DNNL_ARG_SRC) {
+                const int bcast_mask = broadcast_mask(*src_md());
+                const auto &mask = zp.get_mask(arg) & ~bcast_mask;
+
+                VDISPATCH_MATMUL(
+                        utils::one_of(mask, 0, src_qmask_K() & ~bcast_mask,
+                                (src_qmask_M() + src_qmask_K()) & ~bcast_mask)
+                                || extra_mask_ok(arg, mask),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+
+                if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {
+                    const auto gM = zp.get_group(DNNL_ARG_SRC, -2);
+                    VDISPATCH_MATMUL(gM == 1, VERBOSE_UNSUPPORTED_ZP_CFG);
+
+                    const auto gK = zp.get_group(DNNL_ARG_SRC, -1);
+                    VDISPATCH_MATMUL(IMPLICATION(gK > 1, K() % gK == 0),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
+                }
+            } else if (arg == DNNL_ARG_DST) {
+                const int bcast_mask = broadcast_mask(*dst_md());
+                const auto &mask = zp.get_mask(arg) & ~bcast_mask;
+
+                VDISPATCH_MATMUL(
+                        utils::one_of(mask, 0, dst_qmask_N() & ~bcast_mask)
+                                || extra_mask_ok(arg, mask),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+                VDISPATCH_MATMUL(zp.get(arg).has_default_groups(),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+            } else {
+                assert(!"Unsupported arg");
+            }
+        }
+
         return status::success;
     }
 

@@ -61,32 +61,32 @@ private:
     const dim_t layer_desc_idx_;
     const dim_t iter_desc_idx_;
 
-    const src_t *const Al_;
-    const src_t *const Ai_;
+    const src_t *const A_layer_;
+    const src_t *const A_iter_;
 
-    const weights_t *const Bl_;
-    const weights_t *const Bi_;
+    const weights_t *const B_layer_;
+    const weights_t *const B_iter_;
 
     scratch_t *const C_gates_;
     scratch_t *const C_cell_;
 
-    const dim_t LDAl_;
-    const dim_t LDAi_;
+    const dim_t LDA_layer_;
+    const dim_t LDA_iter_;
 
     const dim_t n_blocking_;
     const dim_t m_blocking_;
     const int work_amount_;
 
-    const dim_t Bl_n_offset_;
-    const dim_t Bi_n_offset_;
-    const dim_t Bl_g_offset_;
-    const dim_t Bi_g_offset_;
-    const dim_t Al_k_tail_offset_;
-    const dim_t Ai_k_tail_offset_;
-    const dim_t Bl_kb_offset_;
-    const dim_t Bi_kb_offset_;
-    const dim_t Bl_k_tail_offset_;
-    const dim_t Bi_k_tail_offset_;
+    const dim_t B_layer_n_offset_;
+    const dim_t B_iter_n_offset_;
+    const dim_t B_layer_g_offset_;
+    const dim_t B_iter_g_offset_;
+    const dim_t A_layer_k_tail_offset_;
+    const dim_t A_iter_k_tail_offset_;
+    const dim_t B_layer_kb_offset_;
+    const dim_t B_iter_kb_offset_;
+    const dim_t B_layer_k_tail_offset_;
+    const dim_t B_iter_k_tail_offset_;
 
     const dim_t n_gates_;
 
@@ -187,36 +187,36 @@ private:
     const dim_t iter_desc_idx_;
     const dim_t iter_part2_desc_idx_;
 
-    const src_t *const Al_;
-    const src_t *const Ai_;
+    const src_t *const A_layer_;
+    const src_t *const A_iter_;
 
-    const weights_t *const Bl_;
-    const weights_t *const Bi_;
-    const weights_t *const Bi2_;
+    const weights_t *const B_layer_;
+    const weights_t *const B_iter_;
+    const weights_t *const B_iter_part2_;
 
     scratch_t *const C_gates_;
     scratch_t *const C_cell_;
-    src_t *const Dl_;
+    src_t *const D_layer_;
 
-    const dim_t LDAl_;
-    const dim_t LDAi_p1_;
-    const dim_t LDAi_p2_;
+    const dim_t LDA_layer_;
+    const dim_t LDA_iter_part1_;
+    const dim_t LDA_iter_part2_;
 
     const dim_t max_nthr_;
     const dim_t n_blocking_;
     const dim_t m_blocking_;
     const int work_amount_;
 
-    const dim_t Bl_n_offset_;
-    const dim_t Bi_n_offset_;
-    const dim_t Bl_g_offset_;
-    const dim_t Bi_g_offset_;
-    const dim_t Al_k_tail_offset_;
-    const dim_t Ai_k_tail_offset_;
-    const dim_t Bl_kb_offset_;
-    const dim_t Bi_kb_offset_;
-    const dim_t Bl_k_tail_offset_;
-    const dim_t Bi_k_tail_offset_;
+    const dim_t B_layer_n_offset_;
+    const dim_t B_iter_n_offset_;
+    const dim_t B_layer_g_offset_;
+    const dim_t B_iter_g_offset_;
+    const dim_t A_layer_k_tail_offset_;
+    const dim_t A_iter_k_tail_offset_;
+    const dim_t B_layer_kb_offset_;
+    const dim_t B_iter_kb_offset_;
+    const dim_t B_layer_k_tail_offset_;
+    const dim_t B_iter_k_tail_offset_;
 
     const dim_t n_gates_;
 
@@ -267,22 +267,22 @@ private:
 
     const dim_t layer_desc_idx_;
 
-    const src_t *const Al_;
-    const weights_t *const Bl_;
+    const src_t *const A_layer_;
+    const weights_t *const B_layer_;
     scratch_t *const C_;
 
-    const dim_t LDAl_;
+    const dim_t LDA_layer_;
     const dim_t max_nthr_;
 
     const dim_t n_blocking_;
     const dim_t m_blocking_;
     const int work_amount_;
 
-    const dim_t Bl_n_offset_;
-    const dim_t Bl_g_offset_;
-    const dim_t Al_k_tail_offset_;
-    const dim_t Bl_kb_offset_;
-    const dim_t Bl_k_tail_offset_;
+    const dim_t B_layer_n_offset_;
+    const dim_t B_layer_g_offset_;
+    const dim_t A_layer_k_tail_offset_;
+    const dim_t B_layer_kb_offset_;
+    const dim_t B_layer_k_tail_offset_;
 
     const brgemm_kernel_t *const brgemm_kernel_layer_main_;
     const brgemm_kernel_t *const brgemm_kernel_layer_n_tail_;

@@ -31,7 +31,7 @@ enum class AccessClass {Read, Write, Atomic};
 static DataSizeLSC getDataSizeLSC(int ebytes, bool pad32);
 static DataSpecLSC getDataSpecLSC(AccessType access, const RegisterBlock &block);
 static DataSpecLSC getDataSpecLSC(const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                  const RegisterBlock &block, AccessClass aclass);
+                                  const RegisterBlock &block, AccessClass aclass, bool atomic = false);
 static inline GRFDisp getAddress(GRF r, const RegisterBlock &block, const MatrixAddressingStrategy &astrategy);
 
 // Output code for prefetching a matrix chunk (XeHPG+).
@@ -103,10 +103,9 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
         case AccessType::Block:
         case AccessType::Scattered:
         case AccessType::ChannelScattered: {
-            auto spec = getDataSpecLSC(atype, astrategy, block, AccessClass::Read);
+            auto spec = getDataSpecLSC(atype, astrategy, block, AccessClass::Read, astrategy.atomic);
             if(hw >= HW::Xe3p) spec |= Overfetch;
             if (astrategy.atomic && hw >= HW::Xe2) {
-                spec = getDataSpecLSC(atype, astrategy, block, AccessClass::Atomic);
                 atomic(AtomicOp::load, mod, dest, spec, astrategy.base, getAddress(addr, block, astrategy));
             } else if (block.descAssigned) {
                 MessageDescriptor desc;
@@ -721,10 +720,10 @@ static DataSpecLSC getDataSpecLSC(AccessType access, const RegisterBlock &block)
 }
 
 static DataSpecLSC getDataSpecLSC(const MatrixAddressing &atype, const MatrixAddressingStrategy &astrategy,
-                                  const RegisterBlock &block, AccessClass aclass)
+                                  const RegisterBlock &block, AccessClass aclass, bool atomic)
 {
     auto caching = (aclass == AccessClass::Read) ? astrategy.cachingR : astrategy.cachingW;
-    if (aclass == AccessClass::Atomic)
+    if (aclass == AccessClass::Atomic || atomic)
         caching = makeL1Uncacheable(caching);
     return getDataSpecLSC(block.implAccessType(atype, astrategy), block) | caching;
 }

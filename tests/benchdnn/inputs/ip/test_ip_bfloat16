@@ -19,10 +19,12 @@
 --mb=2 --batch=set_all
 --mb=0 --batch=shapes_0d
 
-# Tests for external blocked weights layout. This targets BRGEMM impl.
+# Tests for external blocked weights layout. Blocked weights are supported by
+# the matmul-based inner product for forward inference only.
 # TODO: extend support with nD cases in the future.
 --reset
---dir=FWD_B,BWD_D,BWD_WB
+--dir=FWD_I
+--bia-dt=f32
 --skip-impl=ref
 --dt=bf16
 --wtag=AB16b64a2b,AB16b32a2b,AB16b16a2b
@@ -32,7 +34,3 @@ mb2ic1462oc412
 mb2ic368oc623
 mb2ic1462oc412
 mb2ic65oc65
-
-# regression
---reset
---dir=BWD_D --dt=bf16 --stag=ab --wtag=AB16b32a2b --dtag=ab mb1ic7oc1024

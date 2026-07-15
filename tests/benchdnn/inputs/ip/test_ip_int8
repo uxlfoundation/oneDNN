@@ -21,10 +21,12 @@
 # Test saturation
 --batch=harness_ip_saturation
 
-# Tests for external blocked weights layout. This targets BRGEMM impl.
+# Tests for external blocked weights layout. Blocked weights are supported by
+# the matmul-based inner product for forward inference only.
 # TODO: extend support with nD cases in the future.
 --reset
---dir=FWD_B,FWD_D
+--dir=FWD_I
+--bia-dt=f32
 --skip-impl=ref
 --dt=u8:s8:s32
 --wtag=AB16b64a4b,AB16b32a4b,AB16b16a4b

@@ -223,6 +223,10 @@ status_t grouped_matmul_attr_check(
                     VERBOSE_UNSUPPORTED_POSTOP);
             const memory_desc_wrapper src1_d(e.binary.src1_desc);
 
+            VCHECK_MATMUL(src1_d.ndims() == dst_d.ndims(),
+                    VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "dst", "bin_po src1",
+                    dst_d.ndims(), src1_d.ndims());
+
             if (src1_d.is_grouped_desc()) {
                 // Validate grouped binary post-op descriptor:
                 // group_count and variable_dim_idx must match dst

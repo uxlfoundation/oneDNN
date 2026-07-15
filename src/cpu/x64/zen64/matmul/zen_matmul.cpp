@@ -135,8 +135,11 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
         for (int i = 0; i < po.len(); i++) {
             const auto &entry = po.entry_[i];
             if (entry.is_sum(/*require_scale_one=*/false,
-                        /*require_zp_zero=*/true)
-                    && i == 0) {
+                        /*require_zp_zero=*/true)) {
+                // Sum maps to plain beta accumulation and must be the very
+                // first post-op; at any later position Zen has already
+                // consumed the destination, so it cannot be honored.
+                if (i != 0) return false;
                 // Sum maps to plain beta accumulation, which reads the
                 // destination in its native dtype. A sum.dt that differs
                 // from dst_dt asks the destination bytes to be
@@ -403,7 +406,7 @@ status_t zen_matmul_direct(data_type_t src_dt, data_type_t wei_dt,
     const bool trans_a = (transA != 'N');
     const bool trans_b = (transB != 'N');
     const float alpha = 1.f;
-    const bool is_weights_const = mem_format_b == 'r' ? true : false;
+    const bool is_weights_const = (mem_format_b == 'r');
 
     // Copy pre-built post-ops and patch binary buffer pointers (only
     // available at execute time from the execution context).

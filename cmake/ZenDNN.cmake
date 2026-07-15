@@ -115,4 +115,29 @@ add_definitions(-DDNNL_X64_USE_ZEN=1)
 # C++17 requirement is applied per-target via target_compile_features()
 # in src/cpu/{,x64/}CMakeLists.txt, not project-wide.
 
+# Resolve the available ZenDNN imported target name into ${out_var}. ZenDNN may
+# export either a shared (zendnnl::zendnnl) or an archive
+# (zendnnl::zendnnl_archive) target depending on how it was built. This is the
+# single place that encodes those target names; consumers must go through this
+# (or target_link_zendnnl below) rather than hard-coding the names.
+function(zendnn_resolve_target out_var)
+    if(TARGET zendnnl::zendnnl)
+        set(${out_var} zendnnl::zendnnl PARENT_SCOPE)
+    elseif(TARGET zendnnl::zendnnl_archive)
+        set(${out_var} zendnnl::zendnnl_archive PARENT_SCOPE)
+    else()
+        message(FATAL_ERROR
+            "ONEDNN_X64_USE_ZEN=ON but neither zendnnl::zendnnl nor "
+            "zendnnl::zendnnl_archive target is available. Check your "
+            "ZenDNN install at ZENDNNROOT=${ZENDNNROOT}.")
+    endif()
+endfunction()
+
+# Link the resolved ZenDNN target into ${target} with the given visibility
+# keyword (PRIVATE/PUBLIC/INTERFACE).
+function(target_link_zendnnl target visibility)
+    zendnn_resolve_target(_zendnnl_target)
+    target_link_libraries(${target} ${visibility} ${_zendnnl_target})
+endfunction()
+
 message(STATUS "Found ZenDNN ${zendnnl_VERSION}: ${zendnnl_DIR}")

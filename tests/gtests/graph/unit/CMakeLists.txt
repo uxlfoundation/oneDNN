@@ -71,11 +71,8 @@ target_link_libraries(${BINARY_NAME}
 
 # Absorbed ${LIB_DEPS} objects need libzendnnl symbols that libdnnl links PRIVATE.
 if(DNNL_X64_USE_ZEN)
-    if(TARGET zendnnl::zendnnl)
-        target_link_libraries(${BINARY_NAME} zendnnl::zendnnl)
-    elseif(TARGET zendnnl::zendnnl_archive)
-        target_link_libraries(${BINARY_NAME} zendnnl::zendnnl_archive)
-    endif()
+    zendnn_resolve_target(_zendnnl_target)
+    target_link_libraries(${BINARY_NAME} ${_zendnnl_target})
 endif()
 
 get_property(test_suite_names GLOBAL PROPERTY GRAPH_UNIT_TEST_SUITES)

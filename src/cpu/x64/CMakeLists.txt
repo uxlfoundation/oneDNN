@@ -108,16 +108,7 @@ set(OBJ_LIB ${LIB_PACKAGE_NAME}_cpu_x64)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 
 if (DNNL_X64_USE_ZEN)
-    if(TARGET zendnnl::zendnnl)
-        target_link_libraries(${OBJ_LIB} PRIVATE zendnnl::zendnnl)
-    elseif(TARGET zendnnl::zendnnl_archive)
-        target_link_libraries(${OBJ_LIB} PRIVATE zendnnl::zendnnl_archive)
-    else()
-        message(FATAL_ERROR
-            "DNNL_X64_USE_ZEN is ON but neither zendnnl::zendnnl nor "
-            "zendnnl::zendnnl_archive target is available. Check your "
-            "ZenDNN install at ZENDNNROOT=${ZENDNNROOT}.")
-    endif()
+    target_link_zendnnl(${OBJ_LIB} PRIVATE)
 
     message(STATUS "Linking ZenDNN to dnnl_cpu_x64")
     # ZenDNN public headers require C++17. Scoped to this target only.

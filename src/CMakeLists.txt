@@ -222,16 +222,7 @@ if(DNNL_X64_USE_ZEN)
     if(DNNL_LIBRARY_TYPE STREQUAL "STATIC")
         set(_zendnn_link_visibility PUBLIC)
     endif()
-    if(TARGET zendnnl::zendnnl)
-        target_link_libraries(${LIB_PACKAGE_NAME} ${_zendnn_link_visibility} zendnnl::zendnnl)
-    elseif(TARGET zendnnl::zendnnl_archive)
-        target_link_libraries(${LIB_PACKAGE_NAME} ${_zendnn_link_visibility} zendnnl::zendnnl_archive)
-    else()
-        message(FATAL_ERROR
-            "DNNL_X64_USE_ZEN is ON but neither zendnnl::zendnnl nor "
-            "zendnnl::zendnnl_archive target is available. Check your "
-            "ZenDNN install at ZENDNNROOT=${ZENDNNROOT}.")
-    endif()
+    target_link_zendnnl(${LIB_PACKAGE_NAME} ${_zendnn_link_visibility})
 endif()
 
 set_property(TARGET ${LIB_PACKAGE_NAME} PROPERTY OUTPUT_NAME ${DNNL_LIBRARY_NAME})

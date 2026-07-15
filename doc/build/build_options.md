@@ -297,11 +297,15 @@ discoverable by CMake.
 The `EIGEN_ASYNC` has same requirements as `EIGEN` and additionally requires
 OpenXLA threadpool package, however, additional actions might be required to
 compile tests since this threadpool implementation relies on internal OpenXLA
-headers.
+headers. The OpenXLA dependency can be provided either as an install/package
+prefix with `xlaConfig.cmake`, or by setting `ONEDNN_XLA_SOURCE_DIR` to an
+OpenXLA/XLA source tree. The source-tree path builds the minimal XLA async
+runtime subset required by the tests with the same compiler used for oneDNN.
 
 For example:
 ~~~sh
 $ cmake -DONEDNN_CPU_RUNTIME=THREADPOOL -D_ONEDNN_TEST_THREADPOOL_IMPL=EIGEN -DCMAKE_PREFIX_PATH="/path/to/eigen/share/eigen3/cmake;/path/to/absl/lib64/cmake" ..
+$ cmake -DONEDNN_CPU_RUNTIME=THREADPOOL -D_DNNL_TEST_THREADPOOL_IMPL=EIGEN_ASYNC -DEigen3_DIR=/path/to/eigen/share/eigen3/cmake -Dabsl_DIR=/path/to/absl/lib64/cmake/absl -DONEDNN_XLA_SOURCE_DIR=/path/to/xla ..
 ~~~
 
 @anchor opt_blas_vendor

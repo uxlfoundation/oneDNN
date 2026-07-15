@@ -373,6 +373,13 @@ status_t pd_t::zp_ok(impl::engine_t *engine) {
             = wei_decomp_ || (a_int4 && dy_quant_enabled_);
 
     if (!a_zps.has_default_values()) {
+        const bool has_prB
+                = !attr()->precomputed_reductions_.has_default_values(
+                        DNNL_ARG_B);
+        // The src_zp x wei_zp term is unaccounted for in the generator.
+        // Disable this path.
+        VDISPATCH_GEMM(IMPLICATION(has_prB, b_zps.has_default_values()),
+                VERBOSE_UNSUPPORTED_ZP_CFG);
         // Groups determine supported masks.
         if (!a_zps.has_default_groups()) {
             VDISPATCH_GEMM(valid_2d_mask(cmask_a_, ndims, weights_upconversion),
@@ -384,8 +391,6 @@ status_t pd_t::zp_ok(impl::engine_t *engine) {
                     VERBOSE_UNSUPPORTED_ZP_CFG);
             // Zero points with non-trivial groups only supported with
             // precomputed reductions or when target tensor is being dequantized.
-            bool has_prB = !attr()->precomputed_reductions_.has_default_values(
-                    DNNL_ARG_B);
             // TODO: Re-examine this condition
             bool is_dequantized = !dy_quant_enabled_ || !b_int4 || a_int4;
             VDISPATCH_GEMM(IMPLICATION(a_zp_2d(), is_dequantized || has_prB),

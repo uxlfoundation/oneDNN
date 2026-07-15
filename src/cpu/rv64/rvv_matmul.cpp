@@ -36,9 +36,12 @@ void rvv_matmul_t::pd_t::init_scratchpad() {
     using gemm_utils::calc_nthr_nocopy_rvv;
     using gemm_utils::gemm_utils_traits;
 
-    // Use max_threads at init so the scratchpad is sized for the worst case.
-    // execute() must reproduce the same partition — see the matching call in
-    // rvv_gemm_f32/rvv_gemm_s8s8s32.
+    // Size the scratchpad with max_threads at init, then hand this same
+    // partition to the GEMM drivers at execute() (via gemm_partition_t) so the
+    // per-thread workspace offsets never exceed the booked capacity — even when
+    // init and execute run under different threadpool contexts. The drivers
+    // only recompute from dnnl_get_current_num_threads() when no partition is
+    // supplied (the inner_product / convolution callers).
     const int max_nthr = dnnl_get_max_threads();
     const dim_t gemm_M = N_;
     const dim_t gemm_N = weights_are_broadcast_ ? (batch_ * M_) : M_;
@@ -150,6 +153,13 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     const float alpha = 1.0f;
     const float beta = 0.0f;
 
+    // Reuse the thread partition booked in the scratchpad at init (sized with
+    // dnnl_get_max_threads()) so the drivers' per-thread workspace offsets
+    // never exceed the booked capacity, even when init and execute run under
+    // different threadpool contexts.
+    const gemm_utils::gemm_partition_t part {pd()->nthr_m_, pd()->nthr_n_,
+            pd()->nthr_k_, pd()->MB_, pd()->NB_, pd()->KB_};
+
     const int src_batch_ndims = ndims > 2 ? ndims - 2 : 0;
     const int wei_batch_ndims = wei_ndims > 2 ? wei_ndims - 2 : 0;
     const int batch_dim_shift = src_batch_ndims - wei_batch_ndims;
@@ -169,6 +179,9 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
         const float *bias = bias_d.is_zero()
                 ? nullptr
                 : CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
+        // A scalar (one-element) bias broadcasts over the M tile: tell the
+        // kernel to splat one float instead of reading a full vector.
+        const bool bias_is_scalar = bias && bias_d.nelems() == 1;
 
         const bool b_signed = src_d.data_type() == data_type::s8;
         const bool dst_is_f32 = dst_d.data_type() == data_type::f32;
@@ -195,7 +208,7 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
             status_t st = rvv_gemm_s8s8s32(&g.transa, &g.transb, &M_gemm_all,
                     &N_gemm_all, &g.K_gemm, &alpha, weights, &g.lda, src,
                     &g.ldb, &beta, dst, &g.ldc, /*bias=*/bias, b_signed,
-                    dst_is_f32, c_buffer, ws_buffer);
+                    dst_is_f32, c_buffer, ws_buffer, bias_is_scalar, &part);
             assert(st == status::success || st == status::unimplemented);
             MAYBE_UNUSED(st);
         } else {
@@ -233,7 +246,7 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
                         &g.N_gemm, &g.K_gemm, &alpha, wei_base, &g.lda,
                         src_base, &g.ldb, &beta, dst_base, &g.ldc,
                         /*bias=*/bias, b_signed, dst_is_f32, c_buffer,
-                        ws_buffer);
+                        ws_buffer, bias_is_scalar, &part);
                 assert(st == status::success || st == status::unimplemented);
                 MAYBE_UNUSED(st);
             }
@@ -282,7 +295,7 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
         status_t st = rvv_gemm_f32(&g.transa, &g.transb, &M_gemm_all,
                 &N_gemm_all, &g.K_gemm, &alpha, weights, &g.lda, src, &g.ldb,
                 &beta, dst, &g.ldc,
-                /*bias=*/nullptr, c_buffer, ws_buffer);
+                /*bias=*/nullptr, c_buffer, ws_buffer, &part);
         assert(st == status::success || st == status::unimplemented);
         MAYBE_UNUSED(st);
 
@@ -315,7 +328,7 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
             status_t st = rvv_gemm_f32(&g.transa, &g.transb, &g.M_gemm,
                     &g.N_gemm, &g.K_gemm, &alpha, wei_base, &g.lda, src_base,
                     &g.ldb, &beta, dst_base, &g.ldc,
-                    /*bias=*/nullptr, c_buffer, ws_buffer);
+                    /*bias=*/nullptr, c_buffer, ws_buffer, &part);
             assert(st == status::success || st == status::unimplemented);
             MAYBE_UNUSED(st);
         }

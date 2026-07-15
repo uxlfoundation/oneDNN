@@ -58,8 +58,8 @@ template <bool isTransA, bool isTransB>
 void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
         const dim_t lda, const void *B, const dim_t ldb, void *C,
         const dim_t ldc, const float alpha, const float beta, int8_t *ws,
-        bool do_copy, int ithr, const float *bias, const dim_t m_unroll,
-        bool b_signed, bool dst_is_f32,
+        bool do_copy, int ithr, const float *bias, bool bias_is_scalar,
+        const dim_t m_unroll, bool b_signed, bool dst_is_f32,
         const jit_rvv_gemm_s8_kernel_table_t &trans_a_table,
         const jit_rvv_gemm_s8_kernel_table_t &nontrans_a_table) {
     MAYBE_UNUSED(ithr);
@@ -87,6 +87,7 @@ void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
         p.alpha = alpha;
         p.beta = beta;
         p.bias = bias_tile;
+        p.bias_is_scalar = bias_is_scalar;
 
         const jit_rvv_gemm_s8_kernel_t *kernel
                 = bias_tile ? kernel_table.b[tile_n] : kernel_table.nb[tile_n];
@@ -121,7 +122,9 @@ void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
 
     for (dim_t i = 0; i < Mu; i += m_unroll) {
         const int8_t *a = isTransA ? &A[i * lda] : &A[i];
-        const float *bias_tile = bias ? bias + i : nullptr;
+        // Scalar bias broadcasts over M: every tile reads the same base float.
+        const float *bias_tile
+                = bias ? (bias_is_scalar ? bias : bias + i) : nullptr;
         for (dim_t j = 0; j < Nu; j += n_unroll) {
             const char *b = isTransB ? static_cast<const char *>(B) + j
                                      : static_cast<const char *>(B) + j * ldb;
@@ -139,7 +142,8 @@ void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
 
     if (m_tail > 0) {
         const int8_t *a_tail = isTransA ? &A[Mu * lda] : &A[Mu];
-        const float *bias_tile = bias ? bias + Mu : nullptr;
+        const float *bias_tile
+                = bias ? (bias_is_scalar ? bias : bias + Mu) : nullptr;
 
         for (dim_t j = 0; j < Nu; j += n_unroll) {
             const char *b = isTransB ? static_cast<const char *>(B) + j
@@ -168,8 +172,8 @@ void gemm_ithr_s8(const dim_t M, const dim_t N, const dim_t K,
         const float alpha, const int8_t *A, const dim_t lda, const void *B,
         const dim_t ldb, const float beta, void *C, const dim_t ldc,
         bool do_copy, int8_t *ws, int ithr, const float *bias,
-        const dim_t m_unroll, bool b_signed, bool dst_is_f32,
-        const jit_rvv_gemm_s8_kernel_table_t &trans_a_table,
+        bool bias_is_scalar, const dim_t m_unroll, bool b_signed,
+        bool dst_is_f32, const jit_rvv_gemm_s8_kernel_table_t &trans_a_table,
         const jit_rvv_gemm_s8_kernel_table_t &nontrans_a_table) {
 
     constexpr dim_t BM = gemm_traits_t<float, isTransA, isTransB>::BM;
@@ -230,16 +234,19 @@ void gemm_ithr_s8(const dim_t M, const dim_t N, const dim_t K,
                 curC = static_cast<char *>(C) + (Bm + Bn * ldc) * 4;
 
                 if (Bk == 0) {
-                    const float *bias_block = bias ? bias + Bm : nullptr;
+                    const float *bias_block = bias
+                            ? (bias_is_scalar ? bias : bias + Bm)
+                            : nullptr;
                     block_ker_s8<isTransA, isTransB>(mb, nb, kb, curA, lda,
                             curB, ldb, curC, ldc, alpha, beta, ws, do_copy,
-                            ithr, bias_block, m_unroll, b_signed, dst_is_f32,
-                            trans_a_table, nontrans_a_table);
+                            ithr, bias_block, bias_is_scalar, m_unroll,
+                            b_signed, dst_is_f32, trans_a_table,
+                            nontrans_a_table);
                 } else {
                     block_ker_s8<isTransA, isTransB>(mb, nb, kb, curA, lda,
                             curB, ldb, curC, ldc, alpha, 1.0f, ws, do_copy,
-                            ithr, nullptr, m_unroll, b_signed, dst_is_f32,
-                            trans_a_table, nontrans_a_table);
+                            ithr, nullptr, bias_is_scalar, m_unroll, b_signed,
+                            dst_is_f32, trans_a_table, nontrans_a_table);
                 }
             }
         }
@@ -252,7 +259,8 @@ status_t rvv_gemm_s8s8s32(const char *transa_, const char *transb_,
         const int8_t *A, const dim_t *lda_, const void *B, const dim_t *ldb_,
         const float *beta_, void *C, const dim_t *ldc_, const float *bias,
         bool b_signed, bool dst_is_f32, int32_t *c_buffers_in,
-        int8_t *ws_buffers_in) {
+        int8_t *ws_buffers_in, bool bias_is_scalar,
+        const gemm_partition_t *part) {
 
     if (!(utils::one_of(*transa_, 'n', 'N', 't', 'T')
                 && utils::one_of(*transb_, 'n', 'N', 't', 'T')))
@@ -265,16 +273,35 @@ status_t rvv_gemm_s8s8s32(const char *transa_, const char *transb_,
     const dim_t lda = *lda_, ldb = *ldb_, ldc = *ldc_;
     const float alpha = *alpha_, beta = *beta_;
 
+    // The s32 dst path ignores alpha and only supports beta in {0, 1} (beta
+    // == 1 is the vsadd read-modify-write that accumulates across K blocks).
+    // Reject anything else rather than silently producing wrong results; the
+    // f32 path implements the general alpha/beta epilogue.
+    if (!dst_is_f32 && (alpha != 1.0f || !utils::one_of(beta, 0.0f, 1.0f)))
+        return status::unimplemented;
+
     // Early out: avoid division by zero in partitioning.
     if (utils::one_of(0, M, N)) return status::success;
 
-    // Use current (not max) threads
-    int nthr = dnnl_get_current_num_threads();
     int nthr_m, nthr_n, nthr_k;
     dim_t MB, NB, KB;
-
-    calc_nthr_nocopy_rvv(
-            M, N, K, nthr, &nthr_m, &nthr_n, &nthr_k, &MB, &NB, &KB);
+    if (part) {
+        // Reuse the partition booked in the primitive scratchpad (sized at
+        // init with dnnl_get_max_threads()). Recomputing here with current
+        // threads would mismatch the booked capacity when init and execute
+        // run under different threadpool contexts (e.g. --ctx-init=1
+        // --ctx-exe=8), leading to out-of-bounds workspace access.
+        nthr_m = part->nthr_m;
+        nthr_n = part->nthr_n;
+        nthr_k = part->nthr_k;
+        MB = part->MB;
+        NB = part->NB;
+        KB = part->KB;
+    } else {
+        int nthr = dnnl_get_current_num_threads();
+        calc_nthr_nocopy_rvv(
+                M, N, K, nthr, &nthr_m, &nthr_n, &nthr_k, &MB, &NB, &KB);
+    }
     assert(IMPLICATION(!dnnl_thr_syncable(), nthr_k == 1));
 
     // Copy A into a cache-friendly contiguous workspace once per M-tile when
@@ -361,32 +388,33 @@ status_t rvv_gemm_s8s8s32(const char *transa_, const char *transb_,
                     : static_cast<const void *>(
                               B_bytes + k_from + n_from * ldb);
 
-            const float *myBias
-                    = (ithr_k == 0 && bias) ? bias + m_from : nullptr;
+            const float *myBias = (ithr_k == 0 && bias)
+                    ? (bias_is_scalar ? bias : bias + m_from)
+                    : nullptr;
 
             if (!isTransA) {
                 if (!isTransB) {
                     gemm_ithr_s8<false, false>(myM, myN, myK, alpha, myA, lda,
                             myB, ldb, myBeta, myC, ld, do_copy, ws, ithr,
-                            myBias, m_unroll, b_signed, dst_is_f32,
-                            trans_a_table, nontrans_a_table);
+                            myBias, bias_is_scalar, m_unroll, b_signed,
+                            dst_is_f32, trans_a_table, nontrans_a_table);
                 } else {
                     gemm_ithr_s8<false, true>(myM, myN, myK, alpha, myA, lda,
                             myB, ldb, myBeta, myC, ld, do_copy, ws, ithr,
-                            myBias, m_unroll, b_signed, dst_is_f32,
-                            trans_a_table, nontrans_a_table);
+                            myBias, bias_is_scalar, m_unroll, b_signed,
+                            dst_is_f32, trans_a_table, nontrans_a_table);
                 }
             } else {
                 if (!isTransB) {
                     gemm_ithr_s8<true, false>(myM, myN, myK, alpha, myA, lda,
                             myB, ldb, myBeta, myC, ld, do_copy, ws, ithr,
-                            myBias, m_unroll, b_signed, dst_is_f32,
-                            trans_a_table, nontrans_a_table);
+                            myBias, bias_is_scalar, m_unroll, b_signed,
+                            dst_is_f32, trans_a_table, nontrans_a_table);
                 } else {
                     gemm_ithr_s8<true, true>(myM, myN, myK, alpha, myA, lda,
                             myB, ldb, myBeta, myC, ld, do_copy, ws, ithr,
-                            myBias, m_unroll, b_signed, dst_is_f32,
-                            trans_a_table, nontrans_a_table);
+                            myBias, bias_is_scalar, m_unroll, b_signed,
+                            dst_is_f32, trans_a_table, nontrans_a_table);
                 }
             }
         }

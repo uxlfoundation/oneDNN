@@ -100,6 +100,22 @@ void sum_two_matrices(dim_t m, dim_t n, data_t *__restrict p_src, dim_t ld_src,
 void calc_nthr_nocopy_rvv(dim_t m, dim_t n, dim_t k, int nthrs, int *nthrs_m,
         int *nthrs_n, int *nthrs_k, dim_t *BM, dim_t *BN, dim_t *BK);
 
+// Thread partition computed once at primitive initialization (with
+// dnnl_get_max_threads()) and reused at execution time. Passing it to the GEMM
+// drivers keeps the per-thread workspace offsets consistent with the capacity
+// booked in the scratchpad, even when init and execute run under different
+// threadpool contexts (e.g. --ctx-init=1 --ctx-exe=8). A nullptr leaves the
+// driver to recompute the partition from dnnl_get_current_num_threads() and
+// malloc its own workspace (the path used by inner_product / convolution).
+struct gemm_partition_t {
+    int nthr_m;
+    int nthr_n;
+    int nthr_k;
+    dim_t MB;
+    dim_t NB;
+    dim_t KB;
+};
+
 void partition_unit_diff(
         int ithr, int nthr, dim_t n, dim_t *t_offset, dim_t *t_block);
 

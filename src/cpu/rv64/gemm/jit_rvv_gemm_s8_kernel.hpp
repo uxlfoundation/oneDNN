@@ -55,6 +55,11 @@ struct jit_rvv_gemm_s8_kernel_t : public jit_generator_t {
         float alpha; // applied only when dst_is_f32
         float beta; // applied only when dst_is_f32
         const float *bias; // optional, f32; broadcast per-row
+        // True when the bias is a single scalar that broadcasts across the M
+        // tile (bia_mask=0 / last dim == 1). The kernel then splats one float
+        // instead of reading a full vector, which would overrun the
+        // one-element object.
+        int bias_is_scalar;
     };
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_gemm_s8_kernel_t)

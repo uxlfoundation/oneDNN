@@ -61,6 +61,7 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
     const Reg reg_tmp0 = a7;
     const FReg freg_alpha = fa0;
     const FReg freg_beta = fa1;
+    const FReg freg_bias = fa2; // scalar bias splat (has_bias_ + scalar)
     // B scalars are kept in GPRs across the per-K vwmacc[vx|su.vx] calls.
     const Reg reg_b[6] = {a5, t6, s2, s3, s4, s5};
 
@@ -84,7 +85,8 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
     //   56 : dim_t m
     //   64 : float alpha
     //   68 : float beta
-    //   72 : const float *bias  (only used when has_bias_)
+    //   72 : const float *bias       (only used when has_bias_)
+    //   80 : int bias_is_scalar      (only used when has_bias_)
     ld(reg_A_ptr, reg_param, 0);
     ld(reg_B0_ptr, reg_param, 8);
     ld(reg_C_base, reg_param, 16);
@@ -231,12 +233,26 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
         }
     };
 
-    // Preload the per-M bias vector once (broadcast across N columns).
+    // Preload the per-M bias vector once (broadcast across N columns). A scalar
+    // (one-element) bias must be splat from a single float: a full-vector
+    // vle32 would read past the one-element object. A per-N bias is a
+    // contiguous m-wide load.
     if (has_bias_) {
-        Label label_bias_loaded;
+        Label label_bias_loaded, label_bias_per_element, label_bias_done;
         beqz(reg_bias_ptr, label_bias_loaded);
+        lw(reg_tmp0, reg_param, 80);
+        beqz(reg_tmp0, label_bias_per_element); // per-element: contiguous load
+        // scalar: splat the single bias float across the M tile.
+        flw(freg_bias, reg_bias_ptr, 0);
+        vfmv_v_f(v_bias, freg_bias);
+        j_(label_bias_done);
+        L(label_bias_per_element);
         vle32_v(v_bias, reg_bias_ptr);
-        if (!dst_is_f32_) { vfcvt_rtz_x_f_v(v_bias, v_bias); }
+        L(label_bias_done);
+        // f32 -> s32 using the rounding mode in fcsr (RNE by default), matching
+        // the reference, which adds the f32 bias and rounds via nearbyintf.
+        // RTZ was wrong: it truncated 0.75f to 0 instead of 1.
+        if (!dst_is_f32_) { vfcvt_x_f_v(v_bias, v_bias); }
         L(label_bias_loaded);
     }
 

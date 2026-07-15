@@ -221,7 +221,8 @@ status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
         const dim_t *N_, const dim_t *K_, const float *alpha_, const float *A,
         const dim_t *lda_, const float *B, const dim_t *ldb_,
         const float *beta_, float *C, const dim_t *ldc_, const float *bias,
-        float *c_buffers_in, float *ws_buffers_in) {
+        float *c_buffers_in, float *ws_buffers_in,
+        const gemm_partition_t *part) {
 
     if (!(utils::one_of(*transa_, 'n', 'N', 't', 'T')
                 && utils::one_of(*transb_, 'n', 'N', 't', 'T')))
@@ -237,13 +238,25 @@ status_t rvv_gemm_f32(const char *transa_, const char *transb_, const dim_t *M_,
     // early out and avoid division by zero in partitioning
     if (utils::one_of(0, M, N)) return status::success;
 
-    // Use current (not max) threads so nested-parallel callers
-    int nthr = dnnl_get_current_num_threads();
     int nthr_m, nthr_n, nthr_k;
     dim_t MB, NB, KB;
-
-    calc_nthr_nocopy_rvv(
-            M, N, K, nthr, &nthr_m, &nthr_n, &nthr_k, &MB, &NB, &KB);
+    if (part) {
+        // Reuse the partition booked in the primitive scratchpad (sized at
+        // init with dnnl_get_max_threads()). Recomputing here with current
+        // threads would mismatch the booked capacity when init and execute
+        // run under different threadpool contexts (e.g. --ctx-init=1
+        // --ctx-exe=8), leading to out-of-bounds workspace access.
+        nthr_m = part->nthr_m;
+        nthr_n = part->nthr_n;
+        nthr_k = part->nthr_k;
+        MB = part->MB;
+        NB = part->NB;
+        KB = part->KB;
+    } else {
+        int nthr = dnnl_get_current_num_threads();
+        calc_nthr_nocopy_rvv(
+                M, N, K, nthr, &nthr_m, &nthr_n, &nthr_k, &MB, &NB, &KB);
+    }
     assert(IMPLICATION(!dnnl_thr_syncable(), nthr_k == 1));
 
     bool do_copy = (NB / gemm_f32_traits::get_n_unroll_factor() > 3);

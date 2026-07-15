@@ -23,26 +23,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-bool is_desired_mm_impl(
-        const std::shared_ptr<primitive_desc_t> &matmul_pd, bool with_reduce) {
-    // Fallback to a generic GEMM-based Inner Product is usually preferred
-    // rather than using a reference or GEMM-based MatMul implementations here.
-    //
-    // The only exception is AVX2 for which using the GEMM-based MatMul is
-    // allowed because it is placed higher on the list of implementations.
-    // It is only allowed when no reduciton is requested (i.e. fwd, bwd_d,
-    // bwd_w (w/o bias)).
-    const bool is_brg_matmul = std::string(matmul_pd->name()).find("brg_matmul")
+bool is_desired_mm_impl(const std::shared_ptr<primitive_desc_t> &matmul_pd) {
+    // Only the brgemm-based matmul is used. Otherwise fall back to the
+    // gemm-based inner product.
+    return std::string(matmul_pd->name()).find("brg_matmul")
             != std::string::npos;
-    const bool is_gemm_matmul
-            = std::string(matmul_pd->name()).find("gemm") != std::string::npos;
-
-    if (is_brg_matmul) return true;
-
-    const bool is_avx2 = !mayiuse(avx512_core) && mayiuse(avx2);
-    if (is_avx2 && is_gemm_matmul && !with_reduce) return true;
-
-    return false;
 }
 
 status_t create_matmul_pd(std::shared_ptr<primitive_desc_t> &matmul_pd,
@@ -61,7 +46,7 @@ status_t create_matmul_pd(std::shared_ptr<primitive_desc_t> &matmul_pd,
     while (it != it.end()) {
         matmul_pd = *(++it);
         if (!matmul_pd) return status::unimplemented;
-        if (is_desired_mm_impl(matmul_pd, bool(reduce_md))) break;
+        if (is_desired_mm_impl(matmul_pd)) break;
     }
 
     return status::success;

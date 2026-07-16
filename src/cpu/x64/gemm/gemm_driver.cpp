@@ -87,12 +87,8 @@ int get_vector_length() {
         v_bytes = cpu_isa_traits_t<avx512_core>::vlen;
 #endif
 #if __BUILD_GEMM_AVX2
-    } else if (mayiuse(avx)) {
-        v_bytes = cpu_isa_traits_t<avx>::vlen;
-#endif
-#if __BUILD_GEMM_SSE41
-    } else if (mayiuse(sse41)) {
-        v_bytes = cpu_isa_traits_t<sse41>::vlen;
+    } else if (mayiuse(avx2)) {
+        v_bytes = cpu_isa_traits_t<avx2>::vlen;
 #endif
     } else {
         assert(!"not supposed to be reached.");
@@ -1050,7 +1046,7 @@ static inline bool nocopy_checker(
 
     if (data_traits_t<a_type>::data_type != data_type::f32) return false;
 
-    if (!(mayiuse(avx) && __BUILD_GEMM_AVX2)) return false;
+    if (!(mayiuse(avx2) && __BUILD_GEMM_AVX2)) return false;
 
     if (arg->force_nocopy) return true;
 
@@ -1612,7 +1608,7 @@ static inline void adjust_thread_count(dim_t m, dim_t n, dim_t k, int *nthrs) {
     const bool is_f32 = data_traits_t<T>::data_type == data_type::f32;
 
     const bool is_avx512 = mayiuse(avx512_core) && __BUILD_GEMM_AVX512;
-    const bool is_avx = mayiuse(avx) && __BUILD_GEMM_AVX2;
+    const bool is_avx = mayiuse(avx2) && __BUILD_GEMM_AVX2;
     const bool is_only_avx2 = mayiuse(avx2) && __BUILD_GEMM_AVX2 && !is_avx512;
 
     // Some sgemm cases still benefit from using all threads.
@@ -1710,7 +1706,7 @@ static dnnl_status_t call_no_copy_sgemm(
                     (float *)arg->c, &arg->ldc, (float *)arg->co);
 #endif
 #if __BUILD_GEMM_AVX2
-        } else if (mayiuse(avx)) {
+        } else if (mayiuse(avx2)) {
             return jit_avx_gemm_f32(nthrs, transa_char, transb_char, &arg->m,
                     &arg->n, &arg->k, &arg->alpha, (float *)arg->a, &arg->lda,
                     (float *)arg->b, &arg->ldb, &arg->beta, (float *)arg->c,
@@ -1991,7 +1987,7 @@ static dnnl_status_t gemm_threading_driver(
                                             nullptr);
 #endif
 #if __BUILD_GEMM_AVX2
-                        } else if (mayiuse(avx)) {
+                        } else if (mayiuse(avx2)) {
                             thread_arg[ithr].result
                                     = avx_gemm_f32::sgemm_nocopy_driver(
                                             arg->transa == no_trans ? "N" : "T",
@@ -2060,25 +2056,12 @@ dnnl_status_t gemm_driver(const char *transA, const char *transB,
             mayiuse(avx512_core) && !force_nocopy));
 #endif
 
-#if __BUILD_GEMM_SSE41
-    // gemm_driver supports 8-bit integer Intel AVX512, Intel AVX2, Intel AVX,
-    // Intel SSE4.1 and Intel DL Boost.
-    assert(IMPLICATION(is_int8, mayiuse(sse41)));
-#endif
-
-#if __BUILD_GEMM_SSE41
-    // gemm_driver supports sgemm for Intel AVX512, Intel AVX2, Intel AVX,
-    // and Intel SSE4.1
-    assert(IMPLICATION(data_traits_t<a_type>::data_type == data_type::f32,
-            mayiuse(sse41)));
-#endif
-
     // 8-bit integer gemm doesn't support nocopy kernels.
     assert(IMPLICATION(is_int8, !force_nocopy));
 
 #if __BUILD_GEMM_AVX2
-    // gemm_driver can only dispatch nocopy for avx and above.
-    assert(IMPLICATION(force_nocopy, mayiuse(avx)));
+    // gemm_driver can only dispatch nocopy for avx2 and above.
+    assert(IMPLICATION(force_nocopy, mayiuse(avx2)));
 #endif
 
     gemm_info_t<a_type, b_type, c_type> args(transA, transB, offsetC, m, n, k,

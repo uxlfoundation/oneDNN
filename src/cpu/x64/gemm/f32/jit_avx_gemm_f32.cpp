@@ -1960,7 +1960,7 @@ struct xbyak_gemm_t : public jit_generator_t {
     }
 
     void generate() override {
-        assert(IMPLICATION(!is_avx2, mayiuse(avx)));
+        assert(IMPLICATION(!is_avx2, mayiuse(avx2)));
 
         preamble();
 

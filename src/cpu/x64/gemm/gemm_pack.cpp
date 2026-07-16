@@ -37,7 +37,7 @@ bool pack_sgemm_supported() {
 #if USE_MKL_PACKED_GEMM
     return true;
 #else
-    return mayiuse(sse41);
+    return mayiuse(avx2);
 #endif
 }
 
@@ -82,7 +82,7 @@ static inline bool use_reference_igemm(void) {
             && data_traits_t<a_dt>::data_type == data_type::s8
             && data_traits_t<b_dt>::data_type == data_type::u8;
     if (is_s8u8)
-        return !mayiuse(sse41);
+        return !mayiuse(avx2);
     else
         return !mayiuse(avx512_core);
 }

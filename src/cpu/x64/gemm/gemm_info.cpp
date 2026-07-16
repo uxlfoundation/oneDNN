@@ -41,7 +41,6 @@
 #include "cpu/x64/gemm/f32/jit_avx2_kernel_sgemm_kern.hpp"
 #include "cpu/x64/gemm/f32/jit_avx_gemv_t_f32_kern.hpp"
 #include "cpu/x64/gemm/f32/jit_sse41_gemv_n_f32_kern.hpp"
-#include "cpu/x64/gemm/f32/jit_sse41_gemv_t_f32_kern.hpp"
 
 #include "cpu/x64/gemm/s8x8s32/common_u8.hpp"
 #include "cpu/x64/gemm/s8x8s32/jit_avx2_gemm_s8u8s32_kern.hpp"
@@ -150,9 +149,9 @@ gemm_info_t<a_t, b_t, c_t>::gemm_info_t(const char *transA, const char *transB,
     bool is_gemv = this->m == 1 || this->n == 1;
 
     // Copy-based sgemm doesn't support force-nocopy for ISAs older
-    // than Intel AVX.
+    // than Intel AVX2.
     this->force_nocopy
-            = is_sgemm && force_nocopy && mayiuse(avx) && __BUILD_GEMM_AVX2;
+            = is_sgemm && force_nocopy && mayiuse(avx2) && __BUILD_GEMM_AVX2;
 
     if (!this->force_nocopy || is_gemv) { this->jit_init(); }
 }
@@ -256,32 +255,6 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
                 this->blocking_small_k = 48;
                 this->bn_small_k = 24;
 #endif
-#if __BUILD_GEMM_AVX2
-            } else if (mayiuse(avx)) {
-                this->um = 16;
-                this->un = 2;
-                this->uk = 1;
-                this->bm = 4096;
-                this->bn = 256;
-                this->bk = 256;
-
-                this->bk_traditional = 256;
-                this->blocking_small_k = 48;
-                this->bn_small_k = 24;
-#endif
-#if __BUILD_GEMM_SSE41
-            } else if (mayiuse(sse41)) {
-                this->um = 16;
-                this->un = 2;
-                this->uk = 1;
-                this->bm = 4096;
-                this->bn = 256;
-                this->bk = 256;
-
-                this->bk_traditional = 256;
-                this->blocking_small_k = 48;
-                this->bn_small_k = 24;
-#endif
             }
             break;
 
@@ -341,32 +314,6 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
                 this->bm = 10000;
                 this->bn = 384;
                 this->bk = 192;
-
-                this->bk_traditional = 256;
-                this->blocking_small_k = 48;
-                this->bn_small_k = 24;
-#endif
-#if __BUILD_GEMM_AVX2
-            } else if (mayiuse(avx)) {
-                this->um = 16;
-                this->un = 4;
-                this->uk = 1;
-                this->bm = 4096;
-                this->bn = 96;
-                this->bk = 256;
-
-                this->bk_traditional = 256;
-                this->blocking_small_k = 48;
-                this->bn_small_k = 24;
-#endif
-#if __BUILD_GEMM_SSE41
-            } else if (mayiuse(sse41)) {
-                this->um = 8;
-                this->un = 4;
-                this->uk = 1;
-                this->bm = 4096;
-                this->bn = 96;
-                this->bk = 256;
 
                 this->bk_traditional = 256;
                 this->blocking_small_k = 48;
@@ -480,50 +427,6 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
                     copy_b[do_trans][do_sum].reset(
                             new jit_avx2_u8_copy_sum_bt_kern_t());
 #endif
-#if __BUILD_GEMM_AVX2
-                } else if (mayiuse(avx)) {
-                    copy_a[no_trans][no_sum].reset(
-                            new jit_avx_u8_copy_an_kern_t());
-                    copy_a[do_trans][no_sum].reset(
-                            new jit_avx_u8_copy_at_kern_t());
-
-                    copy_b[no_trans][no_sum].reset(
-                            new jit_avx_u8_copy_bn_kern_t());
-                    copy_b[do_trans][no_sum].reset(
-                            new jit_avx_u8_copy_bt_kern_t());
-
-                    copy_a[no_trans][do_sum].reset(
-                            new jit_avx_u8_copy_sum_an_kern_t());
-                    copy_a[do_trans][do_sum].reset(
-                            new jit_avx_u8_copy_sum_at_kern_t());
-
-                    copy_b[no_trans][do_sum].reset(
-                            new jit_avx_u8_copy_sum_bn_kern_t());
-                    copy_b[do_trans][do_sum].reset(
-                            new jit_avx_u8_copy_sum_bt_kern_t());
-#endif
-#if __BUILD_GEMM_SSE41
-                } else if (mayiuse(sse41)) {
-                    copy_a[no_trans][no_sum].reset(
-                            new jit_sse41_u8_copy_an_kern_t());
-                    copy_a[do_trans][no_sum].reset(
-                            new jit_sse41_u8_copy_at_kern_t());
-
-                    copy_b[no_trans][no_sum].reset(
-                            new jit_sse41_u8_copy_bn_kern_t());
-                    copy_b[do_trans][no_sum].reset(
-                            new jit_sse41_u8_copy_bt_kern_t());
-
-                    copy_a[no_trans][do_sum].reset(
-                            new jit_sse41_u8_copy_sum_an_kern_t());
-                    copy_a[do_trans][do_sum].reset(
-                            new jit_sse41_u8_copy_sum_at_kern_t());
-
-                    copy_b[no_trans][do_sum].reset(
-                            new jit_sse41_u8_copy_sum_bn_kern_t());
-                    copy_b[do_trans][do_sum].reset(
-                            new jit_sse41_u8_copy_sum_bt_kern_t());
-#endif
                 }
                 break;
 
@@ -596,30 +499,6 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
                     copy_b[do_trans][no_sum].reset(
                             new jit_avx2_f32_copy_bt_kern_t());
 #endif
-#if __BUILD_GEMM_AVX2
-                } else if (mayiuse(avx)) {
-                    copy_a[no_trans][no_sum].reset(
-                            new jit_avx_f32_copy_an_kern_t());
-                    copy_a[do_trans][no_sum].reset(
-                            new jit_avx_f32_copy_at_kern_t());
-
-                    copy_b[no_trans][no_sum].reset(
-                            new jit_avx_f32_copy_bn_kern_t());
-                    copy_b[do_trans][no_sum].reset(
-                            new jit_avx_f32_copy_bt_kern_t());
-#endif
-#if __BUILD_GEMM_SSE41
-                } else if (mayiuse(sse41)) {
-                    copy_a[no_trans][no_sum].reset(
-                            new jit_sse41_f32_copy_an_kern_t());
-                    copy_a[do_trans][no_sum].reset(
-                            new jit_sse41_f32_copy_at_kern_t());
-
-                    copy_b[no_trans][no_sum].reset(
-                            new jit_sse41_f32_copy_bn_kern_t());
-                    copy_b[do_trans][no_sum].reset(
-                            new jit_sse41_f32_copy_bt_kern_t());
-#endif
                 }
                 break;
 
@@ -669,46 +548,6 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
                                                 um));
                             }
 #endif
-#if __BUILD_GEMM_AVX2
-                } else if (mayiuse(avx)) {
-                    kernel[no_beta0][do_alpha1][no_sum][no_sum].reset(
-                            new jit_avx_kernel_gemm_s8u8s32_kern_t());
-                    kernel[no_beta0][do_alpha1][do_sum][no_sum].reset(
-                            new jit_avx_kernel_c_gemm_s8u8s32_kern_t());
-                    kernel[no_beta0][do_alpha1][no_sum][do_sum].reset(
-                            new jit_avx_kernel_r_gemm_s8u8s32_kern_t());
-                    kernel[no_beta0][do_alpha1][do_sum][do_sum].reset(
-                            new jit_avx_kernel_b_gemm_s8u8s32_kern_t());
-
-                    kernel[do_beta0][do_alpha1][no_sum][no_sum].reset(
-                            new jit_avx_kernel_b0_gemm_s8u8s32_kern_t());
-                    kernel[do_beta0][do_alpha1][do_sum][no_sum].reset(
-                            new jit_avx_kernel_b0_c_gemm_s8u8s32_kern_t());
-                    kernel[do_beta0][do_alpha1][no_sum][do_sum].reset(
-                            new jit_avx_kernel_b0_r_gemm_s8u8s32_kern_t());
-                    kernel[do_beta0][do_alpha1][do_sum][do_sum].reset(
-                            new jit_avx_kernel_b0_b_gemm_s8u8s32_kern_t());
-#endif
-#if __BUILD_GEMM_SSE41
-                } else if (mayiuse(sse41)) {
-                    kernel[no_beta0][do_alpha1][no_sum][no_sum].reset(
-                            new jit_sse41_kernel_gemm_s8u8s32_kern_t());
-                    kernel[no_beta0][do_alpha1][do_sum][no_sum].reset(
-                            new jit_sse41_kernel_c_gemm_s8u8s32_kern_t());
-                    kernel[no_beta0][do_alpha1][no_sum][do_sum].reset(
-                            new jit_sse41_kernel_r_gemm_s8u8s32_kern_t());
-                    kernel[no_beta0][do_alpha1][do_sum][do_sum].reset(
-                            new jit_sse41_kernel_b_gemm_s8u8s32_kern_t());
-
-                    kernel[do_beta0][do_alpha1][no_sum][no_sum].reset(
-                            new jit_sse41_kernel_b0_gemm_s8u8s32_kern_t());
-                    kernel[do_beta0][do_alpha1][do_sum][no_sum].reset(
-                            new jit_sse41_kernel_b0_c_gemm_s8u8s32_kern_t());
-                    kernel[do_beta0][do_alpha1][no_sum][do_sum].reset(
-                            new jit_sse41_kernel_b0_r_gemm_s8u8s32_kern_t());
-                    kernel[do_beta0][do_alpha1][do_sum][do_sum].reset(
-                            new jit_sse41_kernel_b0_b_gemm_s8u8s32_kern_t());
-#endif
                 }
                 break;
 
@@ -744,20 +583,6 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
                         kernel[isBeta0][do_alpha1][no_sum][no_sum].reset(
                                 new jit_avx2_kernel_sgemm_kern_t(isBeta0));
                     }
-#endif
-#if __BUILD_GEMM_AVX2
-                } else if (mayiuse(avx)) {
-                    kernel[no_beta0][do_alpha1][no_sum][no_sum].reset(
-                            new jit_avx_kernel_sgemm_kern_t());
-                    kernel[do_beta0][do_alpha1][no_sum][no_sum].reset(
-                            new jit_avx_kernel_b0_sgemm_kern_t());
-#endif
-#if __BUILD_GEMM_SSE41
-                } else if (mayiuse(sse41)) {
-                    kernel[no_beta0][do_alpha1][no_sum][no_sum].reset(
-                            new jit_sse41_kernel_sgemm_kern_t());
-                    kernel[do_beta0][do_alpha1][no_sum][no_sum].reset(
-                            new jit_sse41_kernel_b0_sgemm_kern_t());
 #endif
                 }
                 break;
@@ -805,18 +630,11 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
                 if (false) {
                     // dummy if
 #if __BUILD_GEMM_AVX2
-                } else if (mayiuse(avx)) {
+                } else if (mayiuse(avx2)) {
                     gemv_kernel[no_trans].reset(
                             new jit_sse41_gemv_n_f32_kern_t());
                     gemv_kernel[do_trans].reset(
                             new jit_avx_gemv_t_f32_kern_t());
-#endif
-#if __BUILD_GEMM_SSE41
-                } else if (mayiuse(sse41)) {
-                    gemv_kernel[no_trans].reset(
-                            new jit_sse41_gemv_n_f32_kern_t());
-                    gemv_kernel[do_trans].reset(
-                            new jit_sse41_gemv_t_f32_kern_t());
 #endif
                 }
                 break;
@@ -959,13 +777,14 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
 // Copy algorithm supported for:
 //      s8  : Intel AVX512, Intel DL Boost
 //      bf16 : Intel AVX512, Intel AVX512 BF16
-//      f32 : Intel SSE4.1, Intel AVX, Intel AVX2, Intel AVX512
+//      f32 : Intel AVX2, Intel AVX512
 template <typename a_t, typename b_t, typename c_t>
 bool gemm_info_t<a_t, b_t, c_t>::hasKernels(void) {
 
     switch (data_traits_t<a_t>::data_type) {
         case data_type::s8:
-            if (mayiuse(sse41)) {
+            if (!mayiuse(avx2)) return false;
+            {
                 for (int isBeta0 : {no_beta0, do_beta0})
                     for (int doColSum : {no_sum, do_sum})
                         for (int doRowSum : {no_sum, do_sum})
@@ -998,7 +817,8 @@ bool gemm_info_t<a_t, b_t, c_t>::hasKernels(void) {
             break;
 
         case data_type::f32:
-            if (mayiuse(sse41) && !this->force_nocopy) {
+            if (!this->force_nocopy) {
+                if (!mayiuse(avx2)) return false;
                 for (int isBeta0 : {no_beta0, do_beta0})
                     if (!this->kernel[isBeta0][no_sum][no_sum]) return false;
 

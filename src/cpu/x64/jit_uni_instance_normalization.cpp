@@ -214,9 +214,7 @@ struct kernel_t : public jit_uni_instance_normalization_fwd_t::kernel_base_t,
 
 protected:
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    const Xbyak::AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                             ? yword
-                                                        : zword;
+    const Xbyak::AddressFrame &vmmword = (isa == avx2) ? yword : zword;
     const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
@@ -483,9 +481,7 @@ struct kernel_stat_t
 
 protected:
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    const Xbyak::AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                             ? yword
-                                                        : zword;
+    const Xbyak::AddressFrame &vmmword = (isa == avx2) ? yword : zword;
     const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {

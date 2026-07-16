@@ -41,13 +41,11 @@ struct jit_uni_dw_conv_fwd_kernel_f32_t : public jit_generator_t {
     jit_conv_conf_t jcp;
 
 private:
-    using Vmm = typename utils::conditional3<isa == sse41, Xbyak::Xmm,
-            isa == avx2, Xbyak::Ymm, Xbyak::Zmm>::type;
+    using Vmm = typename utils::conditional<isa == avx2, Xbyak::Ymm,
+            Xbyak::Zmm>::type;
     using reg64_t = const Xbyak::Reg64;
     using mask_t = const Xbyak::Opmask;
-    const Xbyak::AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                             ? yword
-                                                        : zword;
+    const Xbyak::AddressFrame &vmmword = (isa == avx2) ? yword : zword;
     const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     // dw convolution
@@ -80,7 +78,7 @@ private:
             const int ur_ch_blocks, const int ur_w, const bool is_ch_tail);
     inline void store_dst(int ur_ch_blocks, int ur_w, bool is_ch_tail);
 
-    int max_repeats() { return jcp.isa == sse41 ? 2 : 1; }
+    int max_repeats() { return 1; }
 
     inline Vmm get_ker_reg(int idx) { return Vmm(idx + 0); }
     inline Vmm get_src_reg(int idx) { return Vmm(idx + 1); }
@@ -134,9 +132,9 @@ struct jit_uni_dw_conv_bwd_data_kernel_f32_t : public jit_generator_t {
     jit_conv_conf_t jcp;
 
 private:
-    using Vmm = typename utils::conditional3<isa == sse41, Xbyak::Xmm,
-            isa == avx2, Xbyak::Ymm, Xbyak::Zmm>::type;
-    const int reg_repeats_ = (isa == sse41) ? 2 : 1;
+    using Vmm = typename utils::conditional<isa == avx2, Xbyak::Ymm,
+            Xbyak::Zmm>::type;
+    const int reg_repeats_ = 1;
     const int simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
     using reg64_t = const Xbyak::Reg64;
 
@@ -200,19 +198,17 @@ struct jit_uni_dw_conv_bwd_weights_kernel_f32_t : public jit_generator_t {
     jit_conv_conf_t jcp;
 
 private:
-    using Vmm = typename utils::conditional3<isa == sse41, Xbyak::Xmm,
-            isa == avx2, Xbyak::Ymm, Xbyak::Zmm>::type;
+    using Vmm = typename utils::conditional<isa == avx2, Xbyak::Ymm,
+            Xbyak::Zmm>::type;
 
     const int simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
-    const int reg_repeats_ = (isa == sse41) ? 2 : 1;
-    const int req_aux_vmm = isa == sse41 ? 1 : 0; // used for FMA operand
+    const int reg_repeats_ = 1;
+    const int req_aux_vmm = 0; // used for FMA operand
 
     const int max_unroll_w_ = 30;
     const int block_size_ = 15;
 
-    const Xbyak::AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                             ? yword
-                                                        : zword;
+    const Xbyak::AddressFrame &vmmword = (isa == avx2) ? yword : zword;
 
     /* Offset between input and accummulators is 3, therefore, assume 'kw'
      * is no larger than 3*/

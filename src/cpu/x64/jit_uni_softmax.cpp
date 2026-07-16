@@ -55,9 +55,8 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_softmax_dense_kernel_t)
 
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    const AddressFrame &vmmword = is_superset(isa, avx512_core) ? zword
-            : is_superset(isa, avx)                             ? yword
-                                                                : xword;
+    const AddressFrame &vmmword
+            = is_superset(isa, avx512_core) ? zword : yword;
     static constexpr auto vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr auto n_vregs = cpu_isa_traits_t<isa>::n_vregs;
     static constexpr auto simd_w_ = vlen / sizeof(float); // bf16 works on ymms
@@ -359,13 +358,8 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         if (tail) {
             if (is_superset(isa, avx512_core)) {
                 uni_vmaxps(v1 | tail_opmask, v1, v2);
-            } else if (is_superset(isa, avx)) {
-                uni_vblendvps(v2, vneg_flt_max, v2, tail_vmask);
-                uni_vmaxps(v1, v1, v2);
             } else {
-                uni_vmovups(vtmp, v2);
-                uni_vmovups(v2, vneg_flt_max);
-                uni_vblendvps(v2, v2, vtmp, tail_vmask);
+                uni_vblendvps(v2, vneg_flt_max, v2, tail_vmask);
                 uni_vmaxps(v1, v1, v2);
             }
         } else
@@ -1047,9 +1041,8 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_softmax_strided_kernel_t)
 
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    const AddressFrame &vmmword = is_superset(isa, avx512_core) ? zword
-            : is_superset(isa, avx)                             ? yword
-                                                                : xword;
+    const AddressFrame &vmmword
+            = is_superset(isa, avx512_core) ? zword : yword;
     static constexpr auto vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr auto simd_w_ = vlen / sizeof(float); // bf16 works on ymms
 
@@ -1208,13 +1201,8 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         if (tail) {
             if (is_superset(isa, avx512_core)) {
                 uni_vmaxps(v1 | tail_opmask, v1, v2);
-            } else if (is_superset(isa, avx)) {
-                uni_vblendvps(v2, vneg_flt_max, v2, tail_vmask);
-                uni_vmaxps(v1, v1, v2);
             } else {
-                uni_vmovups(vtmp, v2);
-                uni_vmovups(v2, vneg_flt_max);
-                uni_vblendvps(v2, v2, vtmp, tail_vmask);
+                uni_vblendvps(v2, vneg_flt_max, v2, tail_vmask);
                 uni_vmaxps(v1, v1, v2);
             }
         } else
@@ -1652,7 +1640,6 @@ jit_softmax_kernel_base_t *jit_softmax_kernel_base_t::create(
     REG_AVX512_ISA(HANDLE_ISA(avx512_core));
     REG_AVX2_ISA(HANDLE_ISA(avx2_vnni_2));
     REG_AVX2_ISA(HANDLE_ISA(avx2));
-    REG_SSE41_ISA(HANDLE_ISA(sse41));
 #undef HANDLE_ISA
     assert(!"kernel is empty.");
     return nullptr;
@@ -1661,7 +1648,7 @@ jit_softmax_kernel_base_t *jit_softmax_kernel_base_t::create(
 std::vector<cpu_isa_t> get_supported_isa(bool is_fwd) {
     if (is_fwd)
         return {avx512_core_fp16, avx512_core_bf16, avx512_core, avx2_vnni_2,
-                avx2, sse41};
+                avx2};
     else
         return {avx512_core_fp16, avx512_core_bf16, avx512_core};
 }

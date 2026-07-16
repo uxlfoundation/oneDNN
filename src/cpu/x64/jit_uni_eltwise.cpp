@@ -467,8 +467,6 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-template struct jit_uni_eltwise_fwd_t<sse41>;
-template struct jit_uni_eltwise_fwd_t<avx>;
 template struct jit_uni_eltwise_fwd_t<avx2>;
 template struct jit_uni_eltwise_fwd_t<avx2_vnni_2>;
 template struct jit_uni_eltwise_fwd_t<avx512_core>;
@@ -477,8 +475,6 @@ template struct jit_uni_eltwise_fwd_t<avx512_core_fp16>;
 template struct jit_uni_eltwise_fwd_t<avx10_2>;
 template struct jit_uni_eltwise_fwd_t<avx512_core_amx>;
 
-template struct jit_uni_eltwise_bwd_t<sse41>;
-template struct jit_uni_eltwise_bwd_t<avx>;
 template struct jit_uni_eltwise_bwd_t<avx2>;
 template struct jit_uni_eltwise_bwd_t<avx512_core>;
 template struct jit_uni_eltwise_bwd_t<avx512_core_bf16>;

@@ -111,8 +111,6 @@ using jit_avx512_common_dw_convolution_fwd_t
         = jit_uni_dw_convolution_fwd_t<avx512_core, data_type::f32>;
 using jit_avx2_dw_convolution_fwd_t
         = jit_uni_dw_convolution_fwd_t<avx2, data_type::f32>;
-using jit_sse41_dw_convolution_fwd_t
-        = jit_uni_dw_convolution_fwd_t<sse41, data_type::f32>;
 
 template <cpu_isa_t isa, data_type_t diff_dst_type,
         data_type_t diff_src_type = diff_dst_type>
@@ -182,8 +180,6 @@ using jit_avx512_common_dw_convolution_bwd_data_t
         = jit_uni_dw_convolution_bwd_data_t<avx512_core, data_type::f32>;
 using jit_avx2_dw_convolution_bwd_data_t
         = jit_uni_dw_convolution_bwd_data_t<avx2, data_type::f32>;
-using jit_sse41_dw_convolution_bwd_data_t
-        = jit_uni_dw_convolution_bwd_data_t<sse41, data_type::f32>;
 
 template <cpu_isa_t isa, data_type_t src_type,
         data_type_t diff_weights_type = src_type>
@@ -252,7 +248,7 @@ struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
 
         const auto jcp = &pd()->jcp_;
         const int reduction = jcp->nthr_mb * jcp->nthr_oh;
-        if (reduction > 1 && isa != sse41) {
+        if (reduction > 1) {
             CHECK(safe_ptr_assign(
                     acc_ker_, new cpu_accumulator_1d_t<data_type::f32>()));
             CHECK(acc_ker_->create_kernel());
@@ -278,8 +274,6 @@ using jit_avx512_common_dw_convolution_bwd_weights_t
         = jit_uni_dw_convolution_bwd_weights_t<avx512_core, data_type::f32>;
 using jit_avx2_dw_convolution_bwd_weights_t
         = jit_uni_dw_convolution_bwd_weights_t<avx2, data_type::f32>;
-using jit_sse41_dw_convolution_bwd_weights_t
-        = jit_uni_dw_convolution_bwd_weights_t<sse41, data_type::f32>;
 
 } // namespace x64
 } // namespace cpu

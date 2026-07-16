@@ -341,23 +341,10 @@ jit_prelu_backward_kernel_t *jit_prelu_backward_kernel_t::create(
 
     const auto isa = prelu::get_supported_isa();
 
-    const auto &src_dt = pd->src_md(0)->data_type;
-    const auto &wei_dt = pd->weights_md(0)->data_type;
-    const auto &diff_src_dt = pd->diff_src_md(0)->data_type;
-    const auto &diff_dst_dt = pd->diff_dst_md(0)->data_type;
-    const auto &diff_wei_dt = pd->diff_weights_md(0)->data_type;
-
     if (is_superset(isa, avx512_core))
         return new jit_uni_prelu_backward_kernel_t<Xbyak::Zmm>(pd, isa);
-    else if (is_superset(isa, avx)) {
-        if (isa == avx
-                && prelu::is_s8u8({src_dt, wei_dt, diff_src_dt, diff_dst_dt,
-                        diff_wei_dt}))
-            return new jit_uni_prelu_backward_kernel_t<Xbyak::Xmm>(pd, isa);
-        else
-            return new jit_uni_prelu_backward_kernel_t<Xbyak::Ymm>(pd, isa);
-    } else if (isa == sse41)
-        return new jit_uni_prelu_backward_kernel_t<Xbyak::Xmm>(pd, isa);
+    else
+        return new jit_uni_prelu_backward_kernel_t<Xbyak::Ymm>(pd, isa);
 
     return nullptr;
 }

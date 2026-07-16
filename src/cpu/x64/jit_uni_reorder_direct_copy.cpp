@@ -348,7 +348,7 @@ jit_uni_reorder_direct_copy_t::kernel_base_t::create(
     } else if (is_superset(isa, avx2)
             && IMPLICATION(has_blocks, blocks_size >= 8)) {
         return new direct_copy_kernel_t<Ymm>(pd, isa);
-    } else if (is_superset(isa, sse41)) {
+    } else if (is_superset(isa, avx2)) {
         return new direct_copy_kernel_t<Xmm>(pd, isa);
     } else {
         assert(!"unexpected");

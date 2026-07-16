@@ -97,7 +97,6 @@ static cpu_isa_t get_supported_isa() {
     if (mayiuse(avx512_core)) return avx512_core;
     if (mayiuse(avx2_vnni_2)) return avx2_vnni_2;
     if (mayiuse(avx2)) return avx2;
-    if (mayiuse(sse41)) return sse41;
 
     return isa_undef;
 }
@@ -108,7 +107,7 @@ static bool data_format_supported(
     const auto blk_size = mdw.blocking_desc().inner_blks[0];
     return (is_superset(isa, avx512_core) && utils::one_of(blk_size, 16, 8, 4))
             || (is_superset(isa, avx2) && utils::one_of(blk_size, 8, 4))
-            || (is_superset(isa, sse41) && blk_size == 4);
+            || (blk_size == 4);
 }
 
 status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
@@ -732,13 +731,6 @@ binary_kernel_t *create_binary_kernel(
                 return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
             } else if (blk_size == 4) {
                 using kernel_t = jit_uni_binary_kernel_t<avx2, Xbyak::Xmm>;
-                return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
-            }
-            break;
-        }
-        case sse41: {
-            if (blk_size == 4 || is_plain_layout) {
-                using kernel_t = jit_uni_binary_kernel_t<sse41, Xbyak::Xmm>;
                 return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
             }
             break;

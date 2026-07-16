@@ -51,10 +51,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             /* fp */
             CPU_INSTANCE_X64(jit_uni_batch_normalization_fwd_t<avx512_core>)
             CPU_INSTANCE_X64(jit_uni_batch_normalization_fwd_t<avx2>)
-            CPU_INSTANCE_X64(jit_uni_batch_normalization_fwd_t<sse41>)
             CPU_INSTANCE_X64(jit_uni_tbb_batch_normalization_fwd_t<avx512_core>)
             CPU_INSTANCE_X64(jit_uni_tbb_batch_normalization_fwd_t<avx2>)
-            CPU_INSTANCE_X64(jit_uni_tbb_batch_normalization_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_uni_batch_normalization_fwd_t<sve>)
             CPU_INSTANCE_AARCH64(jit_uni_batch_normalization_fwd_t<asimd>)
             CPU_INSTANCE_RV64(rvv_batch_normalization_fwd_t)
@@ -70,7 +68,6 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             /* int */
             CPU_INSTANCE_X64(jit_uni_batch_normalization_s8_fwd_t<avx512_core>)
             CPU_INSTANCE_X64(jit_uni_batch_normalization_s8_fwd_t<avx2>)
-            CPU_INSTANCE_X64(jit_uni_batch_normalization_s8_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_uni_batch_normalization_s8_fwd_t<sve_512>)
             CPU_INSTANCE(ref_batch_normalization_fwd_t<s8>)
             nullptr,
@@ -78,10 +75,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
         {{backward}, REG_BWD_PK({
             CPU_INSTANCE_X64(jit_uni_batch_normalization_bwd_t<avx512_core>)
             CPU_INSTANCE_X64(jit_uni_batch_normalization_bwd_t<avx2>)
-            CPU_INSTANCE_X64(jit_uni_batch_normalization_bwd_t<sse41>)
             CPU_INSTANCE_X64(jit_uni_tbb_batch_normalization_bwd_t<avx512_core>)
             CPU_INSTANCE_X64(jit_uni_tbb_batch_normalization_bwd_t<avx2>)
-            CPU_INSTANCE_X64(jit_uni_tbb_batch_normalization_bwd_t<sse41>)
             CPU_INSTANCE_AARCH64(jit_uni_batch_normalization_bwd_t<sve>)
             CPU_INSTANCE_AARCH64(jit_uni_batch_normalization_bwd_t<asimd>)
             CPU_INSTANCE(ncsp_batch_normalization_bwd_t<f32>)

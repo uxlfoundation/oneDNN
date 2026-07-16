@@ -142,10 +142,6 @@ struct jit_uni_x8s8s32x_1x1_conv_kernel_t {
                 kernel_ = utils::make_unique<jit_avx2_x8s8s32x_1x1_conv_kernel>(
                         ajcp, attr, dst_md);
                 return;
-            case sse41:
-                kernel_ = utils::make_unique<
-                        jit_sse41_x8s8s32x_1x1_conv_kernel>(ajcp, attr, dst_md);
-                return;
             default: assert(!"Current ISA is not supported!");
         }
     }
@@ -168,8 +164,6 @@ struct jit_uni_x8s8s32x_1x1_conv_kernel_t {
     static void init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_1x1_conv_conf_t &jcp, const primitive_attr_t &attr);
 
-    using jit_sse41_x8s8s32x_1x1_conv_kernel
-            = jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<sse41, Xbyak::Xmm>;
     using jit_avx2_x8s8s32x_1x1_conv_kernel
             = jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<avx2, Xbyak::Ymm>;
 

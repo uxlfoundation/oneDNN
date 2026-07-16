@@ -702,7 +702,6 @@ status_t jit_uni_x8s8s32x_convolution_fwd_t<isa>::execute_forward_3d(
     return status::success;
 }
 
-template struct jit_uni_x8s8s32x_convolution_fwd_t<sse41>;
 template struct jit_uni_x8s8s32x_convolution_fwd_t<avx2>;
 
 } // namespace x64

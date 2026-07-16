@@ -172,13 +172,8 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
                 dw_conv_pd_.reset(static_cast<cpu_convolution_fwd_pd_t *>(
                         other.dw_conv_pd_->clone()));
                 if (!dw_conv_pd_) return status::out_of_memory;
-                if (jcp_.isa == avx2) {
-                    jcp_dw_ = &(static_cast<dw_pd_t<avx2> *>(dw_conv_pd_.get())
-                                        ->jcp_);
-                } else { // sse41
-                    jcp_dw_ = &(static_cast<dw_pd_t<sse41> *>(dw_conv_pd_.get())
-                                        ->jcp_);
-                }
+                jcp_dw_ = &(static_cast<dw_pd_t<avx2> *>(dw_conv_pd_.get())
+                                    ->jcp_);
             }
 
             return status::success;
@@ -231,23 +226,11 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
             CHECK(get_depthwise_conv_desc(
                     cd_dw, src_md, attr_1x1, attr_dw, dw_po_index));
 
-            if (jcp_1x1.isa == avx2) {
-                auto fusable_pd = make_unique_pd<dw_pd_t<avx2>>(
-                        &cd_dw, &attr_dw, nullptr);
-                CHECK(fusable_pd->init(engine));
-                jcp_dw = &(fusable_pd->jcp_);
-                dw_conv_pd_ = std::move(fusable_pd);
-            } else {
-                // Special case for this primitive, as we dont have dw<avx>.
-                // In this case fuse with sse41 depthwise conv
-                // NOTE: Currently dw f32 kernel is similar for all ISA and can
-                // be fused regardless of ISA if inter-connecting md_ matches.
-                auto fusable_pd = make_unique_pd<dw_pd_t<sse41>>(
-                        &cd_dw, &attr_dw, nullptr);
-                CHECK(fusable_pd->init(engine));
-                jcp_dw = &(fusable_pd->jcp_);
-                dw_conv_pd_ = std::move(fusable_pd);
-            }
+            auto fusable_pd = make_unique_pd<dw_pd_t<avx2>>(
+                    &cd_dw, &attr_dw, nullptr);
+            CHECK(fusable_pd->init(engine));
+            jcp_dw = &(fusable_pd->jcp_);
+            dw_conv_pd_ = std::move(fusable_pd);
 
             VDISPATCH_CONV_IC(
                     dnnl_memory_desc_equal(&src_md, dw_conv_pd_->src_md(0)),
@@ -299,11 +282,7 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
                     dw_conv_buffer_size_,
                     types::data_type_size(dw_conv_pd_->src_md()->data_type));
 
-            if (jcp_1x1.isa == avx2)
-                dw_conv_kernel_t<avx2>::init_scratchpad(dw_scratchpad, *jcp_dw);
-            else
-                dw_conv_kernel_t<sse41>::init_scratchpad(
-                        dw_scratchpad, *jcp_dw);
+            dw_conv_kernel_t<avx2>::init_scratchpad(dw_scratchpad, *jcp_dw);
 
             return status::success;
         }
@@ -321,19 +300,10 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
         CHECK(kernel_->create_kernel());
         CHECK(init_rtus_driver<avx2>(this));
         if (pd()->jcp_.with_dw_conv) {
-            auto &isa = pd()->jcp_.isa;
-
-            if (isa == avx2) {
-                CHECK(safe_ptr_assign(kernel_dw_avx2,
-                        new dw_conv_kernel_t<avx2>(
-                                *(pd()->jcp_dw_), *pd()->dst_md(0))));
-                CHECK(kernel_dw_avx2->create_kernel());
-            } else {
-                CHECK(safe_ptr_assign(kernel_dw_sse41,
-                        new dw_conv_kernel_t<sse41>(
-                                *(pd()->jcp_dw_), *pd()->dst_md(0))));
-                CHECK(kernel_dw_sse41->create_kernel());
-            }
+            CHECK(safe_ptr_assign(kernel_dw_avx2,
+                    new dw_conv_kernel_t<avx2>(
+                            *(pd()->jcp_dw_), *pd()->dst_md(0))));
+            CHECK(kernel_dw_avx2->create_kernel());
         }
 
         return status::success;
@@ -363,7 +333,6 @@ private:
     using dw_conv_kernel_t = jit_uni_dw_conv_fwd_kernel_t<isa, data_type::f32>;
 
     std::unique_ptr<dw_conv_kernel_t<avx2>> kernel_dw_avx2;
-    std::unique_ptr<dw_conv_kernel_t<sse41>> kernel_dw_sse41;
 };
 
 struct jit_avx2_1x1_convolution_bwd_data_t : public primitive_t {

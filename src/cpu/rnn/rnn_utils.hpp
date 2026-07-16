@@ -922,7 +922,7 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
             : false;
     rnn.force_nocopy = false;
 #if DNNL_X64
-    rnn.force_nocopy = x64::mayiuse(x64::avx)
+    rnn.force_nocopy = x64::mayiuse(x64::avx2)
             && ((is_inference && (rnn.n_layer > 1 || rnn.mb < 100))
                     || (rnn.is_training && rnn.dhc < 500));
 #endif

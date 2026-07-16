@@ -154,9 +154,7 @@ struct jit_stat_and_data_base_kernel_t : stat_and_data_kernel_t,
 protected:
     static constexpr int unroll_factor_ = 4;
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    const AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                      ? yword
-                                                 : zword;
+    const AddressFrame &vmmword = (isa == avx2) ? yword : zword;
     const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
@@ -270,7 +268,7 @@ protected:
         else {
             if (is_superset(isa, avx512_core))
                 uni_vsubps(x1 | Opmask(tail_opmask_idx) | T_z, x1, x2);
-            else if (is_superset(isa, sse41)) {
+            else {
                 // We need to call tail version once, it's fine to use vmm_tmp
                 uni_vpxor(vmm_tmp, vmm_tmp, vmm_tmp);
                 uni_vblendvps(vmm_tmp, vmm_tmp, x2, vmm_tail_mask);
@@ -684,30 +682,12 @@ struct jit_stat_and_data_kernel_t<avx2>
     }
 };
 
-template <>
-struct jit_stat_and_data_kernel_t<sse41>
-    : jit_stat_and_data_base_kernel_t<sse41> {
-
-    using jit_stat_and_data_base_kernel_t::jit_stat_and_data_base_kernel_t;
-
-    void reduce(Vmm vmm_src, Vmm vmm_tmp) override {
-        uni_vmovups(vmm_tmp, vmm_src);
-        shufps(vmm_tmp, vmm_tmp, 0x4E); // 64/128-bit shuffle
-        uni_vaddps(vmm_src, vmm_src, vmm_tmp);
-        uni_vmovups(vmm_tmp, vmm_src);
-        shufps(vmm_tmp, vmm_tmp, 0xB1); // 32/64-bit shuffle
-        uni_vaddps(vmm_src, vmm_src, vmm_tmp);
-    }
-};
-
 stat_and_data_kernel_t *stat_and_data_kernel_t::create(
         const layer_normalization_pd_t *pd) {
     if (mayiuse(avx512_core)) {
         return new jit_stat_and_data_kernel_t<avx512_core>(pd);
     } else if (mayiuse(avx2)) {
         return new jit_stat_and_data_kernel_t<avx2>(pd);
-    } else if (mayiuse(sse41)) {
-        return new jit_stat_and_data_kernel_t<sse41>(pd);
     } else {
         assert(!"kernel is empty.");
         return nullptr;
@@ -775,9 +755,7 @@ struct jit_diff_ss_kernel_t : diff_ss_kernel_t, public jit_generator_t {
 
 protected:
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    const AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                      ? yword
-                                                 : zword;
+    const AddressFrame &vmmword = (isa == avx2) ? yword : zword;
     const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
@@ -980,9 +958,7 @@ struct jit_diff_data_base_kernel_t : diff_data_kernel_t,
 protected:
     static constexpr int unroll_factor_ = 4;
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    const AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                      ? yword
-                                                 : zword;
+    const AddressFrame &vmmword = (isa == avx2) ? yword : zword;
     const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {

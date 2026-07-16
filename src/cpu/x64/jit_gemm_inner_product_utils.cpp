@@ -59,8 +59,8 @@ struct jit_pp_kernel_t : public pp_kernel_t, public jit_generator_t {
     }
 
 private:
-    using Vmm = typename utils::conditional3<isa == sse41, Xbyak::Xmm,
-            isa == avx2, Xbyak::Ymm, Xbyak::Zmm>::type;
+    using Vmm = typename utils::conditional<isa == avx2, Xbyak::Ymm,
+            Xbyak::Zmm>::type;
 
     enum class arg_t { dst, acc, bias, stack, scale, sum };
     enum class data_op_t { load, store };
@@ -1253,9 +1253,6 @@ pp_kernel_t *jit_pp_kernel_create(size_t OC, size_t MB, dim_t dst_mb_stride,
                 OC, MB, dst_mb_stride, attr, bias_dt, acc_dt, dst_md, skip_sum);
     } else if (mayiuse(avx2)) {
         return new jit_pp_kernel_t<avx2>(
-                OC, MB, dst_mb_stride, attr, bias_dt, acc_dt, dst_md, skip_sum);
-    } else if (mayiuse(sse41)) {
-        return new jit_pp_kernel_t<sse41>(
                 OC, MB, dst_mb_stride, attr, bias_dt, acc_dt, dst_md, skip_sum);
     } else {
         return nullptr;

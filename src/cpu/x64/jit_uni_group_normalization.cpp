@@ -224,9 +224,7 @@ struct kernel_t : public jit_uni_group_normalization_fwd_t::kernel_base_t,
 
 protected:
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    const Xbyak::AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                             ? yword
-                                                        : zword;
+    const Xbyak::AddressFrame &vmmword = (isa == avx2) ? yword : zword;
     const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
@@ -574,9 +572,7 @@ struct kernel_stat_t
 
 protected:
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    const Xbyak::AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                             ? yword
-                                                        : zword;
+    const Xbyak::AddressFrame &vmmword = (isa == avx2) ? yword : zword;
     const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     struct ker_args_t {
@@ -688,15 +684,13 @@ protected:
                     if (is_superset(isa, avx512_core)) {
                         uni_vsubps(Vmm_src(ur) | tail_opmask, Vmm_src(ur),
                                 Vmm_mean(ur));
-                    } else if (is_superset(isa, avx)) {
+                    } else {
                         // Use a scratch zeroed register to keep stats properly
                         // computed.
                         uni_vpxor(vmm_tmp, vmm_tmp, vmm_tmp);
                         uni_vblendvps(Vmm_mean(ur), vmm_tmp, Vmm_mean(ur),
                                 vmm_tail_mask);
                         uni_vsubps(Vmm_src(ur), Vmm_src(ur), Vmm_mean(ur));
-                    } else {
-                        assert(!"unsupported isa");
                     }
                 }
             }

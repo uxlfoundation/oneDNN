@@ -1005,9 +1005,7 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_scratchpad(
 }
 
 template struct jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<avx2, Ymm>;
-template struct jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<sse41, Xmm>;
 template struct jit_uni_x8s8s32x_1x1_conv_kernel_t<avx2>;
-template struct jit_uni_x8s8s32x_1x1_conv_kernel_t<sse41>;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

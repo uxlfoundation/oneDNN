@@ -41,7 +41,6 @@ size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd) {
         if (post_op.is_eltwise()) {
             CASE_ELTWISE_SUPERSET(avx512_core);
             CASE_ELTWISE_SUPERSET(avx2);
-            CASE_ELTWISE_SUPERSET(sse41);
         }
         // TODO: add support for other post-ops types. For now we assume that
         // other post operations do not use vectors implicitly.
@@ -176,7 +175,6 @@ jit_uni_postops_injector_base_t<Xbyak::Ymm>::create(jit_generator_t *host,
     CASE_EXACT_MATCH(avx512_core);
     CASE_EXACT_MATCH(avx2_vnni_2);
     CASE_EXACT_MATCH(avx2);
-    CASE_EXACT_MATCH(avx);
 
 #undef CASE_EXACT_MATCH
 
@@ -191,7 +189,6 @@ jit_uni_postops_injector_base_t<Xbyak::Ymm>::create(jit_generator_t *host,
     CASE_MAYIUSE(avx512_core);
     CASE_MAYIUSE(avx2_vnni_2);
     CASE_MAYIUSE(avx2);
-    CASE_MAYIUSE(avx);
 
 #undef CASE_MAYIUSE
 
@@ -216,8 +213,6 @@ jit_uni_postops_injector_base_t<Xbyak::Xmm>::create(jit_generator_t *host,
     CASE_EXACT_MATCH(avx512_core);
     CASE_EXACT_MATCH(avx2_vnni_2);
     CASE_EXACT_MATCH(avx2);
-    CASE_EXACT_MATCH(avx);
-    CASE_EXACT_MATCH(sse41);
 
 #undef CASE_EXACT_MATCH
 
@@ -232,8 +227,6 @@ jit_uni_postops_injector_base_t<Xbyak::Xmm>::create(jit_generator_t *host,
     CASE_MAYIUSE(avx512_core);
     CASE_MAYIUSE(avx2_vnni_2);
     CASE_MAYIUSE(avx2);
-    CASE_MAYIUSE(avx);
-    CASE_MAYIUSE(sse41);
 
 #undef CASE_MAYIUSE
 
@@ -436,9 +429,6 @@ template class jit_uni_postops_injector_t<avx2_vnni_2, Xbyak::Ymm>;
 template class jit_uni_postops_injector_t<avx2_vnni_2, Xbyak::Xmm>;
 template class jit_uni_postops_injector_t<avx2, Xbyak::Ymm>;
 template class jit_uni_postops_injector_t<avx2, Xbyak::Xmm>;
-template class jit_uni_postops_injector_t<avx, Xbyak::Ymm>;
-template class jit_uni_postops_injector_t<avx, Xbyak::Xmm>;
-template class jit_uni_postops_injector_t<sse41, Xbyak::Xmm>;
 
 template class jit_uni_postops_injector_base_t<Xbyak::Zmm>;
 template class jit_uni_postops_injector_base_t<Xbyak::Ymm>;

@@ -2096,12 +2096,9 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_3d(
 
 using namespace data_type;
 template struct jit_uni_x8s8s32x_deconvolution_fwd_t<avx2>;
-template struct jit_uni_x8s8s32x_deconvolution_fwd_t<sse41>;
 template struct jit_uni_x8s8s32x_deconv_fwd_kernel_t<avx2>;
-template struct jit_uni_x8s8s32x_deconv_fwd_kernel_t<sse41>;
 template struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<avx2, Xbyak::Ymm>;
 template struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<avx2, Xbyak::Xmm>;
-template struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<sse41, Xbyak::Xmm>;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

@@ -37,7 +37,7 @@ void horizontal_add_ps(
         code->vaddps(src, src, workspace);
         code->vshufps(workspace, src, src, 0x4E); // [2,3,0,1]
         code->vaddps(src, src, workspace);
-    } else if (code->is_valid_isa(avx)) {
+    } else if (code->is_valid_isa(avx2)) {
         UNUSED(workspace);
         code->vhaddps(src, src, src);
         code->vhaddps(src, src, src);

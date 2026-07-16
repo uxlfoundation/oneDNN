@@ -29,8 +29,6 @@ static cpu_isa_t get_supported_isa() {
     if (mayiuse(avx512_core)) return avx512_core;
     if (mayiuse(avx2_vnni_2)) return avx2_vnni_2;
     if (mayiuse(avx2)) return avx2;
-    if (mayiuse(avx)) return avx;
-    if (mayiuse(sse41)) return sse41;
 
     return isa_undef;
 }
@@ -208,7 +206,7 @@ status_t jit_uni_reduction_t::get_proper_kernel(
     else if (conf.isa == avx512_core)
         return safe_ptr_assign(kernel_,
                 new jit_uni_reduction_kernel_t<avx512_core>(conf, dst_md));
-    else if (is_superset(conf.isa, avx)) {
+    else if (is_superset(conf.isa, avx2)) {
         const bool is_src_i8 = utils::one_of(conf.src_type, s8, u8);
         const bool is_dst_i8 = utils::one_of(conf.dst_type, s8, u8);
         if (conf.isa == avx2_vnni_2) {
@@ -220,7 +218,7 @@ status_t jit_uni_reduction_t::get_proper_kernel(
                 return safe_ptr_assign(kernel_,
                         new jit_uni_reduction_kernel_t<avx2_vnni_2>(
                                 conf, dst_md));
-        } else if (conf.isa == avx2) {
+        } else {
             if (is_src_i8 || is_dst_i8)
                 return safe_ptr_assign(kernel_,
                         new jit_uni_reduction_kernel_t<avx2, Xbyak::Xmm>(
@@ -228,19 +226,8 @@ status_t jit_uni_reduction_t::get_proper_kernel(
             else
                 return safe_ptr_assign(kernel_,
                         new jit_uni_reduction_kernel_t<avx2>(conf, dst_md));
-        } else {
-            if (is_src_i8 || is_dst_i8)
-                return safe_ptr_assign(kernel_,
-                        new jit_uni_reduction_kernel_t<avx, Xbyak::Xmm>(
-                                conf, dst_md));
-            else
-                return safe_ptr_assign(kernel_,
-                        new jit_uni_reduction_kernel_t<avx>(conf, dst_md));
         }
-    } else if (conf.isa == sse41)
-        return safe_ptr_assign(
-                kernel_, new jit_uni_reduction_kernel_t<sse41>(conf, dst_md));
-    else
+    } else
         return status::runtime_error;
 }
 

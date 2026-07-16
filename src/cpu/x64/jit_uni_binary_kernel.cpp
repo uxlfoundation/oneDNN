@@ -804,7 +804,6 @@ template struct jit_uni_binary_kernel_t<avx2_vnni_2, Ymm>;
 template struct jit_uni_binary_kernel_t<avx2_vnni_2, Xmm>;
 template struct jit_uni_binary_kernel_t<avx2, Ymm>;
 template struct jit_uni_binary_kernel_t<avx2, Xmm>;
-template struct jit_uni_binary_kernel_t<sse41, Xmm>;
 
 } // namespace x64
 } // namespace cpu

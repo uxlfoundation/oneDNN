@@ -486,7 +486,6 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
 }
 
 template struct jit_uni_x8s8s32x_1x1_convolution_fwd_t<avx2>;
-template struct jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>;
 
 } // namespace x64
 } // namespace cpu

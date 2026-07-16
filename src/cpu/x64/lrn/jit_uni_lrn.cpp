@@ -204,7 +204,7 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
             /* SSE41: prevent loads smaller than the size of xmm registers,
          * otherwise it will result in an illegal memory read (seg-fault)
          * due to protected memory. */
-            && IMPLICATION(isa == sse41 && dat_tag_ == nchw, HW >= 4)
+            && IMPLICATION(false && dat_tag_ == nchw, HW >= 4)
             && !is_superset(isa, avx512_core);
 
     const int jit_max_local_size = 5; // bigger size triggers too big code size
@@ -414,7 +414,6 @@ template struct jit_uni_lrn_fwd_t<avx512_core_fp16, data_type::f16>;
 template struct jit_uni_lrn_fwd_t<avx2_vnni_2, data_type::bf16>;
 template struct jit_uni_lrn_fwd_t<avx2_vnni_2, data_type::f16>;
 template struct jit_uni_lrn_fwd_t<avx2, data_type::f32>;
-template struct jit_uni_lrn_fwd_t<sse41, data_type::f32>;
 template struct jit_uni_lrn_bwd_t<avx512_core, data_type::f32>;
 template struct jit_uni_lrn_bwd_t<avx512_core, data_type::bf16>;
 template struct jit_uni_lrn_bwd_t<avx512_core_fp16, data_type::f16>;

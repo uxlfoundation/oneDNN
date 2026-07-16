@@ -204,13 +204,8 @@ jit_prelu_reduction_kernel_t *jit_prelu_reduction_kernel_t::create(
 
     if (is_superset(isa, avx512_core))
         return new jit_uni_prelu_reduction_kernel_t<Xbyak::Zmm>(pd, isa);
-    else if (is_superset(isa, avx))
-        if (isa == avx && prelu::is_s8u8({pd->diff_weights_md(0)->data_type}))
-            return new jit_uni_prelu_reduction_kernel_t<Xbyak::Xmm>(pd, isa);
-        else
-            return new jit_uni_prelu_reduction_kernel_t<Xbyak::Ymm>(pd, isa);
-    else if (isa == sse41)
-        return new jit_uni_prelu_reduction_kernel_t<Xbyak::Xmm>(pd, isa);
+    else
+        return new jit_uni_prelu_reduction_kernel_t<Xbyak::Ymm>(pd, isa);
 
     return nullptr;
 }

@@ -309,8 +309,7 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
                 scratchpad, memory_tracking::names::prefix_fusion);
         auto dw_conv_buffer
                 = dw_scratchpad.get<data_t>(key_fusion_inout_buffer);
-        dw_jit_ker = kernel_dw_avx2 ? kernel_dw_avx2->ker()
-                                    : kernel_dw_sse41->ker();
+        dw_jit_ker = kernel_dw_avx2->ker();
 
         const auto dw_conv_buffer_size_
                 = (size_t)jcp_dw->kh * jcp.ow * nb_buffer * jcp.oc_block;

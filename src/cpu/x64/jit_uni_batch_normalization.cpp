@@ -239,13 +239,10 @@ struct jit_bnorm_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_t)
 
     /* cpu specific part */
-    using Vmm = typename utils::conditional3<isa == sse41, Xmm, isa == avx2,
-            Ymm, Zmm>::type;
-    const AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                      ? yword
-                                                 : zword;
+    using Vmm = typename utils::conditional<isa == avx2, Ymm, Zmm>::type;
+    const AddressFrame &vmmword = (isa == avx2) ? yword : zword;
 
-    const int vlen = isa == sse41 ? 32 : cpu_isa_traits_t<isa>::vlen;
+    const int vlen = cpu_isa_traits_t<isa>::vlen;
 
     const batch_normalization_pd_t *pd_ = nullptr;
     const jit_bnorm_conf_t *jbp_ = nullptr;
@@ -536,7 +533,7 @@ struct jit_bnorm_t : public jit_generator_t {
         if (isa == avx512_core)
             fwd_process_relu_alpha_avx512_common(vmm_dst);
         else {
-            assert(utils::one_of(isa, avx2, sse41));
+            assert(isa == avx2);
             if (vmm_dst.getIdx() == 0) {
                 uni_vmovups(vdst_aux, vmm_dst);
                 fwd_process_relu_alpha_avx2(vdst_aux);
@@ -557,11 +554,7 @@ struct jit_bnorm_t : public jit_generator_t {
     void fwd_process_relu_alpha_avx2(Vmm vmm_dst) {
         const Xmm xmm_tmp = Xmm(vtmp.getIdx());
         uni_vpxor(vmask, vmask, vmask);
-        if (isa == sse41) {
-            mov(reg_tmp_alpha, ptr[rsp + stack_off_relu_alpha]);
-            uni_vmovq(xmm_tmp, reg_tmp_alpha);
-        } else
-            vmovq(xmm_tmp, ptr[rsp + stack_off_relu_alpha]);
+        vmovq(xmm_tmp, ptr[rsp + stack_off_relu_alpha]);
         uni_vbroadcastss(vtmp, xmm_tmp);
         uni_vcmpps(vmask, vmm_dst, vzero, _cmp_lt_os);
         uni_vmulps(vtmp, vtmp, vmm_dst);
@@ -1139,12 +1132,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 size_t offt = i * vlen_spat_data_;
                 uni_vmovups_spat_data(
                         vtmp0, vmmword[reg_src + reg_soff + offt]);
-                if (isa == sse41) {
-                    movups(vtmp1, vmean);
-                    subps(vtmp1, vtmp0);
-                } else {
-                    vsubps(vtmp1, vmean, vtmp0);
-                }
+                vsubps(vtmp1, vmean, vtmp0);
                 uni_vfmadd231ps(v, vtmp1, vtmp1);
             }, [this](size_t base_reg) {
                 Vmm b = Vmm(0);
@@ -1165,7 +1153,7 @@ struct jit_bnorm_t : public jit_generator_t {
         L(zero_rbuf);
         {
             uni_vmovups(vmmword[reg_rbuf1 + reg_coff], Vmm(0));
-            add(reg_coff, isa == sse41 ? vlen / 2 : vlen);
+            add(reg_coff, vlen);
             cmp(reg_coff, reg_coff_max);
             jne(zero_rbuf);
         }
@@ -1178,19 +1166,7 @@ struct jit_bnorm_t : public jit_generator_t {
         {
             xor_(reg_coff, reg_coff);
 
-            if (isa == sse41) mov(reg_tmp_off, reg_soff);
-
             jbp_->is_nspc_ ? compute_mean_variance_nspc() : mean_channels();
-
-            if (isa == sse41) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_src, vlen / 2);
-                mov(reg_coff, vlen / 2);
-
-                mean_channels();
-
-                sub(reg_src, vlen / 2);
-            }
 
             // Process next image
             if (jbp_->is_nspc_) {
@@ -1234,7 +1210,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 uni_vdivps(Vmm(1), Vmm(1), vchan_size);
                 uni_vmovups_maybe_tail(mean_ptr(), Vmm(1));
 
-                add(reg_coff, isa == sse41 ? vlen / 2 : vlen);
+                add(reg_coff, vlen);
 
                 cmp(reg_coff, reg_coff_max);
                 jl(mean_reduction_channels);
@@ -1249,19 +1225,7 @@ struct jit_bnorm_t : public jit_generator_t {
         {
             xor_(reg_coff, reg_coff);
 
-            if (isa == sse41) mov(reg_tmp_off, reg_soff);
-
             jbp_->is_nspc_ ? compute_mean_variance_nspc(false) : var_channels();
-
-            if (isa == sse41) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_src, vlen / 2);
-                mov(reg_coff, vlen / 2);
-
-                var_channels();
-
-                sub(reg_src, vlen / 2);
-            }
 
             // Process next image
             if (jbp_->is_nspc_) {
@@ -1303,7 +1267,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 }
                 uni_vdivps(Vmm(1), Vmm(1), vchan_size);
                 uni_vmovups_maybe_tail(var_ptr(), Vmm(1));
-                add(reg_coff, isa == sse41 ? vlen / 2 : vlen);
+                add(reg_coff, vlen);
 
                 cmp(reg_coff, reg_coff_max);
                 jne(var_reduction_channels);
@@ -1330,13 +1294,7 @@ struct jit_bnorm_t : public jit_generator_t {
             Vmm vscale = (pd_->use_scale()) ? vgamma : vone;
             Vmm vdiv = (pd_->use_scale()) ? vgamma : vsqrtvar;
 
-            if (isa == sse41) {
-                movups(vtmp, vscale);
-                divps(vtmp, vsqrtvar);
-                movups(vdiv, vtmp);
-            } else {
-                vdivps(vdiv, vscale, vsqrtvar);
-            }
+            vdivps(vdiv, vscale, vsqrtvar);
 
             const auto spat_loop_init_fin
                     = [](size_t base_reg) { UNUSED(base_reg); };
@@ -1463,21 +1421,8 @@ struct jit_bnorm_t : public jit_generator_t {
         L(dst_spatial);
         {
             xor_(reg_coff, reg_coff);
-            if (isa == sse41) mov(reg_tmp_off, reg_soff);
 
             jbp_->is_nspc_ ? forward_channels_nspc() : forward_channels();
-
-            if (isa == sse41) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_src, vlen / 2);
-                add(reg_dst, vlen / 2);
-                mov(reg_coff, vlen / 2);
-
-                forward_channels();
-
-                sub(reg_src, vlen / 2);
-                sub(reg_dst, vlen / 2);
-            }
 
             // Process next image
             if (jbp_->is_nspc_) {
@@ -1536,12 +1481,7 @@ struct jit_bnorm_t : public jit_generator_t {
                         assert(false);
                 }
                 uni_vsubps(t3, vmean, t1, t3);
-                if (isa == sse41) {
-                    mulps(t3, t2);
-                    subps(o0, t3);
-                } else {
-                    vfnmadd231ps(o0, t3, t2);
-                }
+                vfnmadd231ps(o0, t3, t2);
                 uni_vaddps(o1, o1, t2);
             }, [this](size_t base_reg) {
                 Vmm b0 = Vmm(0);
@@ -1916,7 +1856,7 @@ struct jit_bnorm_t : public jit_generator_t {
         {
             uni_vmovups(vmmword[reg_rbuf1 + reg_coff], Vmm(0));
             uni_vmovups(vmmword[reg_rbuf2 + reg_coff], Vmm(0));
-            add(reg_coff, isa == sse41 ? vlen / 2 : vlen);
+            add(reg_coff, vlen);
             cmp(reg_coff, reg_coff_max);
             jne(zero_rbuf);
         }
@@ -1932,18 +1872,8 @@ struct jit_bnorm_t : public jit_generator_t {
         L(sh_spatial);
         {
             xor_(reg_coff, reg_coff);
-            if (isa == sse41) { mov(reg_tmp_off, reg_soff); }
             jbp_->is_nspc_ ? backward_sh_channels_nspc()
                            : backward_sh_channels();
-            if (isa == sse41) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_diff_dst, vlen / 2);
-                add(reg_src, vlen / 2);
-                mov(reg_coff, vlen / 2);
-                backward_sh_channels();
-                sub(reg_diff_dst, vlen / 2);
-                sub(reg_src, vlen / 2);
-            }
             // Process next image
             if (jbp_->is_nspc_) {
                 // Can use static offset since we comeback after spatial loop
@@ -1999,7 +1929,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 uni_vmulps(Vmm(0), Vmm(0), vsqrtvar);
                 uni_vmovups_maybe_tail(diff_gamma_ptr(), Vmm(0));
                 uni_vmovups_maybe_tail(diff_beta_ptr(), Vmm(1));
-                add(reg_coff, isa == sse41 ? vlen / 2 : vlen);
+                add(reg_coff, vlen);
                 cmp(reg_coff, reg_coff_max);
                 jne(sh_reduction_channels);
             }
@@ -2020,20 +1950,8 @@ struct jit_bnorm_t : public jit_generator_t {
             xor_(reg_coff, reg_coff);
             // diff_shift is shared with soff_max.
             mov(reg_diff_shift, ptr[rsp + stack_off_diff_shift]);
-            if (isa == sse41) { mov(reg_tmp_off, reg_soff); }
             jbp_->is_nspc_ ? backward_diff_channels_nspc()
                            : backward_diff_channels();
-            if (isa == sse41) {
-                mov(reg_soff, reg_tmp_off);
-                add(reg_diff_dst, vlen / 2);
-                add(reg_diff_src, vlen / 2);
-                add(reg_src, vlen / 2);
-                mov(reg_coff, vlen / 2);
-                backward_diff_channels();
-                sub(reg_diff_dst, vlen / 2);
-                sub(reg_diff_src, vlen / 2);
-                sub(reg_src, vlen / 2);
-            }
             // Process next image
             if (jbp_->is_nspc_) {
                 // Can use static offset since we comeback after spatial loop
@@ -2072,7 +1990,7 @@ struct jit_bnorm_t : public jit_generator_t {
         , vlen_spat_data_(vlen / (1 + is_xf16())) // 32B of xF16 -> 64B of FP32
         , unroll_blocks(isa == avx512_core && !jbp_->is_spatial_thr_ ? 4 : 1)
         , unroll_regs(isa == avx512_core && !jbp_->is_spatial_thr_ ? 4 : 1) {
-        static_assert(isa == sse41 || isa == avx2 || isa == avx512_core,
+        static_assert(isa == avx2 || isa == avx512_core,
                 "unsupported isa");
     }
 
@@ -2300,9 +2218,8 @@ struct driver_t : public c_compatible {
 
 private:
     enum {
-        simd_w = isa == sse41 ? 8
-                              : cpu_isa_traits_t<isa>::vlen
-                        / sizeof(acc_data_t) // BF16 will expand to FP32
+        simd_w = cpu_isa_traits_t<isa>::vlen
+                / sizeof(acc_data_t) // BF16 will expand to FP32
     };
 
     static bool use_tmp_stats(const batch_normalization_pd_t *pd) {
@@ -2606,8 +2523,6 @@ jit_uni_batch_normalization_bwd_t<isa>::~jit_uni_batch_normalization_bwd_t() {
 }
 
 /* struct instantiation */
-template struct jit_uni_batch_normalization_fwd_t<sse41>;
-template struct jit_uni_batch_normalization_bwd_t<sse41>;
 template struct jit_uni_batch_normalization_fwd_t<avx2>;
 template struct jit_uni_batch_normalization_bwd_t<avx2>;
 template struct jit_uni_batch_normalization_fwd_t<avx512_core>;

@@ -178,8 +178,7 @@ jit_io_helper_t<Vmm>::jit_io_helper_t(jit_generator_t *host,
      * potential performance penalty AVX with s8u8 disabled with YMM.
      */
     static constexpr bool is_xmm = std::is_same<Vmm, Xbyak::Xmm>::value;
-    const bool is_avx_u8s8 = (isa_ == avx
-            && utils::one_of(data_type_, data_type::s8, data_type::u8));
+    const bool is_avx_u8s8 = false;
     MAYBE_UNUSED(is_xmm);
     MAYBE_UNUSED(is_avx_u8s8);
 
@@ -510,7 +509,7 @@ void jit_io_helper_t<Vmm>::prepare_tail_mask() {
     if (is_superset(isa_, avx512_core))
         prepare_opmask(tail_conf_->tail_size_, tail_conf_->reg_tmp_,
                 tail_conf_->tail_opmask_);
-    else if (is_superset(isa_, sse41))
+    else
         prepare_vmm_mask(tail_conf_->tail_size_, tail_conf_->simd_w_,
                 tail_conf_->reg_tmp_, Vmm(tail_conf_->tail_vmm_mask_idx_));
 }
@@ -622,8 +621,7 @@ void jit_io_helper_t<Vmm>::load(const Xbyak::Address &src_addr,
             = utils::one_of(data_type_, data_type::bf16, data_type::f16);
     const bool is_tail_load_supported = is_avx512;
     const bool can_load_byte_by_byte = tail
-            && (isa_ == sse41
-                    || (!is_tail_load_supported && (is_i8 || is_xf16)));
+            && (!is_tail_load_supported && (is_i8 || is_xf16));
 
     if (can_load_byte_by_byte) {
         load_byte_by_byte(src_addr, dst_vmm, tail_conf_->tail_size_);
@@ -769,9 +767,7 @@ void jit_io_helper_t<Vmm>::store(const Vmm &src_raw_vmm,
 
     const bool can_store_byte_by_byte
             = (tail
-                      && (isa_ == sse41
-                              || (!is_store_tail_supported
-                                      && (is_i8 || is_xf16))))
+                      && (!is_store_tail_supported && (is_i8 || is_xf16)))
             || (std::is_same<Vmm, Xbyak::Xmm>::value && is_xf16);
     const bool use_sat_cvt = isa_has_sat_cvt(isa_, data_type_);
 

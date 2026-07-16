@@ -196,7 +196,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                                 && !utils::one_of(p.otype, u8, s8))
                 && utils::everyone_is(0, p.ioff, p.ooff) /* do we need this? */
                 && utils::one_of(p.beta, 0.f, 1.f) /* anything else? */
-                && simple_impl_desc_init(p, nullptr) && mayiuse(sse41)
+                && simple_impl_desc_init(p, nullptr) && mayiuse(avx2)
                 && IMPLICATION(utils::one_of(bf16, p.itype, p.otype),
                         mayiuse(avx512_core) || mayiuse(avx2_vnni_2))
                 && IMPLICATION(utils::one_of(f16, p.itype, p.otype),
@@ -609,7 +609,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                         uni_vmovups(dst, src);
                     break;
                 case bf16:
-                    if (mayiuse(avx)) {
+                    if (mayiuse(avx2)) {
                         vpmovzxwd(dst, src);
                         vpslld(dst, dst, 0x10);
                         break;
@@ -657,7 +657,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             }
             switch (odt) {
                 case bf16:
-                    if (!mayiuse(avx)) assert(!"unreachable");
+                    if (!mayiuse(avx2)) assert(!"unreachable");
                     if (utils::one_of(
                                 idt, f32, f16, f8_e5m2, f8_e4m3, s8, u8)) {
                         if (!utils::one_of(idt, f32, f8_e5m2, f8_e4m3))
@@ -686,7 +686,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     }
                     break;
                 case f16:
-                    if (!mayiuse(avx)) assert(!"unreachable");
+                    if (!mayiuse(avx2)) assert(!"unreachable");
                     if (utils::one_of(
                                 idt, f32, bf16, f8_e5m2, f8_e4m3, s8, u8)) {
                         if (!utils::one_of(idt, f32, f8_e5m2, f8_e4m3))
@@ -932,7 +932,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             } else {
                 for (int ur = 0; ur < reg_unroll; ur += load_step)
                     for (int r = 1; r < load_step; ++r) {
-                        if (mayiuse(avx))
+                        if (mayiuse(avx2))
                             vpalignr(Xmm(ur + r), Xmm(ur), Xmm(ur),
                                     itype_sz_ * r);
                         else {
@@ -1024,7 +1024,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     if (prb_.otype == f32) {
                         /* non VEX instructions do not support unaligned
                          * memory for instructions other than movups. */
-                        if (mayiuse(avx)) {
+                        if (mayiuse(avx2)) {
                             vaddps(Xmm(ur), o_addr(o_off[ur]));
                         } else {
                             /* register xmm(1) is unused */

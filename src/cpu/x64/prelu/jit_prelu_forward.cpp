@@ -47,8 +47,7 @@ status_t jit_prelu_fwd_t::pd_t::init(engine_t *engine) {
     VDISPATCH_PRELU(weights_d.is_dense(true), VERBOSE_UNSUPPORTED_SPARSE_CFG);
     VDISPATCH_PRELU(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_PRELU(utils::one_of(prelu::get_supported_isa(), avx512_core_fp16,
-                            avx512_core_bf16, avx512_core, avx2_vnni_2, avx2,
-                            avx, sse41),
+                            avx512_core_bf16, avx512_core, avx2_vnni_2, avx2),
             VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_PRELU(dst_d == src_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
 

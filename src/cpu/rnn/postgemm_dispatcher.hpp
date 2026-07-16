@@ -261,10 +261,8 @@ protected:
         if (mayiuse(avx512_core)) \
             (k).reset( \
                     new ker_t<avx512_core, src_type, scratch_type>(rnn, pd_)); \
-        else if (mayiuse(avx2)) \
-            (k).reset(new ker_t<avx2, src_type, scratch_type>(rnn, pd_)); \
         else \
-            (k).reset(new ker_t<sse41, src_type, scratch_type>(rnn, pd_)); \
+            (k).reset(new ker_t<avx2, src_type, scratch_type>(rnn, pd_)); \
     } while (0)
 #define CREATE(k, ker_t) \
     do { \

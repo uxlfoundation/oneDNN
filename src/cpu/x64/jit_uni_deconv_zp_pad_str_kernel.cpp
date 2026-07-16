@@ -106,10 +106,7 @@ void jit_uni_deconv_zp_pad_str_kernel_t<isa, Vmm>::init() {
         const Xbyak::Xmm xmm_one {vmm_one_bytes_.getIdx()};
 
         mov(reg32_scratch, 0x1010101);
-        if (isa == sse41)
-            movd(xmm_one, reg32_scratch);
-        else
-            vmovd(xmm_one, reg32_scratch);
+        vmovd(xmm_one, reg32_scratch);
         uni_vbroadcastss(vmm_one_bytes_, xmm_one);
 
         if (!jcp_.has_vnni) {
@@ -380,8 +377,6 @@ bool should_calculate_deconv_zp_src_pad_str_comp(
     return jcp.src_zero_point && (stride_exists(jcp) || padding_exists(jcp));
 }
 
-template jit_uni_deconv_zp_pad_str_kernel_base_t *
-create_deconv_zp_pad_str_comp_ker<sse41>(const jit_conv_conf_t &jcp);
 template jit_uni_deconv_zp_pad_str_kernel_base_t *
 create_deconv_zp_pad_str_comp_ker<avx2>(const jit_conv_conf_t &jcp);
 template jit_uni_deconv_zp_pad_str_kernel_base_t *

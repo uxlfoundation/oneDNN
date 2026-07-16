@@ -435,9 +435,6 @@ template struct jit_uni_reduction_kernel_t<avx2_vnni_2>;
 template struct jit_uni_reduction_kernel_t<avx2_vnni_2, Xbyak::Xmm>;
 template struct jit_uni_reduction_kernel_t<avx2>;
 template struct jit_uni_reduction_kernel_t<avx2, Xbyak::Xmm>;
-template struct jit_uni_reduction_kernel_t<avx>;
-template struct jit_uni_reduction_kernel_t<avx, Xbyak::Xmm>;
-template struct jit_uni_reduction_kernel_t<sse41>;
 
 } // namespace x64
 } // namespace cpu

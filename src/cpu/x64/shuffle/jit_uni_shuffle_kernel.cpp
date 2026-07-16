@@ -55,7 +55,7 @@ void jit_uni_shuffle_kernel_t<avx512_core>::prepare_mask() {
 }
 
 template <>
-void jit_uni_shuffle_kernel_t<avx>::prepare_mask() {
+void jit_uni_shuffle_kernel_t<avx2>::prepare_mask() {
     static constexpr uint32_t mask[16]
             = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
                     0xffffffff, 0xffffffff, 0xffffffff, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -110,7 +110,7 @@ void jit_uni_shuffle_kernel_t<avx512_core>::emu_gather_data(
 }
 
 template <>
-void jit_uni_shuffle_kernel_t<avx>::emu_gather_data(const Reg64 &reg_src_addr,
+void jit_uni_shuffle_kernel_t<avx2>::emu_gather_data(const Reg64 &reg_src_addr,
         const int indices_idx, const int data_idx, const bool is_tail) {
     const Xmm xmm_tmp = Xmm(vmm_full_mask_.getIdx());
     const Xmm xmm_dst = Xmm(vmm_tmp_.getIdx());
@@ -142,24 +142,6 @@ void jit_uni_shuffle_kernel_t<avx>::emu_gather_data(const Reg64 &reg_src_addr,
 }
 
 template <>
-void jit_uni_shuffle_kernel_t<sse41>::emu_gather_data(const Reg64 &reg_src_addr,
-        const int indices_idx, const int data_idx, const bool is_tail) {
-    xor_(reg_tmp_, reg_tmp_);
-    mov(reg_tmp1_, reg_src_addr);
-
-    constexpr unsigned xmm_size_elem = 4;
-
-    const unsigned number_of_values_to_load
-            = is_tail ? conf_.simd_tail : xmm_size_elem;
-    for (unsigned j = 0; j < number_of_values_to_load; j++) {
-        pextrd(reg_tmp_.cvt32(), Xmm(indices_idx), j);
-        add(reg_src_addr, reg_tmp_);
-        pinsrd(Xmm(data_idx), ptr[reg_src_addr], j);
-        mov(reg_src_addr, reg_tmp1_);
-    }
-}
-
-template <>
 void jit_uni_shuffle_kernel_t<avx512_core>::gather_data(
         const Reg64 &reg_src_addr, const int indices_idx, const int data_idx,
         const bool is_tail) {
@@ -182,7 +164,7 @@ void jit_uni_shuffle_kernel_t<avx512_core>::gather_data(
 }
 
 template <>
-void jit_uni_shuffle_kernel_t<avx>::gather_data(const Reg64 &reg_src_addr,
+void jit_uni_shuffle_kernel_t<avx2>::gather_data(const Reg64 &reg_src_addr,
         const int indices_idx, const int data_idx, const bool is_tail) {
     if (conf_.isa == avx2 && conf_.dt_size == sizeof(float)) {
         const Vmm &mask = is_tail ? vmm_tail_mask_ : vmm_full_mask_;
@@ -208,12 +190,6 @@ void jit_uni_shuffle_kernel_t<avx>::gather_data(const Reg64 &reg_src_addr,
     } else {
         emu_gather_data(reg_src_addr, indices_idx, data_idx, is_tail);
     }
-}
-
-template <>
-void jit_uni_shuffle_kernel_t<sse41>::gather_data(const Reg64 &reg_src_addr,
-        const int indices_idx, const int data_idx, const bool is_tail) {
-    emu_gather_data(reg_src_addr, indices_idx, data_idx, is_tail);
 }
 
 template <>
@@ -251,7 +227,7 @@ void jit_uni_shuffle_kernel_t<avx512_core>::store_data(const int data_idx,
 }
 
 template <>
-void jit_uni_shuffle_kernel_t<avx>::store_data(const int data_idx,
+void jit_uni_shuffle_kernel_t<avx2>::store_data(const int data_idx,
         const Reg64 &reg_dst_addr, const int offset, const bool is_tail) {
     const auto extend_for_padding
             = is_tail && padding_size_ + conf_.simd_tail >= conf_.simd_w;
@@ -268,20 +244,6 @@ void jit_uni_shuffle_kernel_t<avx>::store_data(const int data_idx,
             vmovups(ptr[reg_dst_addr + offset], Vmm(data_idx));
     }
     append_zero_padding(reg_dst_, extend_for_padding);
-}
-
-template <>
-void jit_uni_shuffle_kernel_t<sse41>::store_data(const int data_idx,
-        const Reg64 &reg_dst_addr, const int offset, const bool is_tail) {
-    if (is_tail)
-        for (unsigned i = 0; i < conf_.simd_tail; i++) {
-            pextrd(ptr[reg_dst_addr + offset + i * conf_.dt_size],
-                    Xmm(data_idx), i);
-        }
-    else
-        movups(ptr[reg_dst_addr + offset], Vmm(data_idx));
-
-    append_zero_padding(reg_dst_, false);
 }
 
 template <cpu_isa_t isa>
@@ -478,8 +440,7 @@ void jit_uni_shuffle_kernel_t<isa>::generate() {
     postamble();
 }
 
-template struct jit_uni_shuffle_kernel_t<sse41>;
-template struct jit_uni_shuffle_kernel_t<avx>;
+template struct jit_uni_shuffle_kernel_t<avx2>;
 template struct jit_uni_shuffle_kernel_t<avx512_core>;
 
 #undef GET_OFF

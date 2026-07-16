@@ -41,8 +41,6 @@ static cpu_isa_t get_supported_isa(bool is_plain) {
     if (mayiuse(avx512_core)) return avx512_core;
     if (mayiuse(avx2_vnni_2)) return avx2_vnni_2;
     if (mayiuse(avx2)) return avx2;
-    if (mayiuse(avx)) return avx;
-    if (mayiuse(sse41)) return sse41;
 
     return isa_undef;
 }
@@ -231,8 +229,6 @@ status_t jit_uni_resampling_fwd_t::get_proper_kernel_for_avx(
         const memory_desc_t *dst_md, const jit_resampling_conf_t &conf) {
     using namespace data_type;
 
-    const bool is_src_i8 = utils::one_of(conf.src_data_type, s8, u8);
-    const bool is_dst_i8 = utils::one_of(conf.dst_data_type, s8, u8);
     const bool is_xf16 = utils::one_of(conf.src_data_type, bf16, f16)
             || utils::one_of(conf.dst_data_type, bf16, f16);
     if (is_xf16 && is_superset(conf.isa, avx2_vnni_2))
@@ -246,18 +242,7 @@ status_t jit_uni_resampling_fwd_t::get_proper_kernel_for_avx(
                         conf, dst_md));
     }
 
-    if (is_src_i8 || is_dst_i8)
-        return safe_ptr_assign(kernel_,
-                new jit_uni_resampling_kernel_t<avx, Xbyak::Xmm>(conf, dst_md));
-
-    return safe_ptr_assign(kernel_,
-            new jit_uni_resampling_kernel_t<avx, Xbyak::Ymm>(conf, dst_md));
-}
-
-status_t jit_uni_resampling_fwd_t::get_proper_kernel_for_sse(
-        const memory_desc_t *dst_md, const jit_resampling_conf_t &conf) {
-    return safe_ptr_assign(kernel_,
-            new jit_uni_resampling_kernel_t<sse41, Xbyak::Xmm>(conf, dst_md));
+    return status::runtime_error;
 }
 
 status_t jit_uni_resampling_fwd_t::init(engine_t *engine) {
@@ -268,11 +253,9 @@ status_t jit_uni_resampling_fwd_t::init(engine_t *engine) {
 
     if (is_superset(conf.isa, avx512_core))
         CHECK(get_proper_kernel_for_avx512(dst_md, conf));
-    else if (is_superset(conf.isa, avx))
+    else if (is_superset(conf.isa, avx2))
         CHECK(get_proper_kernel_for_avx(dst_md, conf));
-    else if (conf.isa == sse41) {
-        CHECK(get_proper_kernel_for_sse(dst_md, conf));
-    } else {
+    else {
         assert(!"Unsupported isa.");
         return status::runtime_error;
     }

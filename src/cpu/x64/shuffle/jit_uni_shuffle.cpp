@@ -71,7 +71,6 @@ status_t jit_uni_shuffle_t<isa>::pd_t::init(engine_t *engine) {
 
     conf_.data_type = src_d.data_type();
     conf_.isa = isa;
-    if (isa == avx) conf_.isa = mayiuse(avx2) ? avx2 : avx;
     if (conf_.data_type == bf16)
         conf_.isa = mayiuse(avx512_core_bf16) ? avx512_core_bf16 : avx512_core;
 
@@ -204,8 +203,7 @@ status_t jit_uni_shuffle_t<isa>::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-template struct jit_uni_shuffle_t<sse41>;
-template struct jit_uni_shuffle_t<avx>;
+template struct jit_uni_shuffle_t<avx2>;
 template struct jit_uni_shuffle_t<avx512_core>;
 
 } // namespace x64

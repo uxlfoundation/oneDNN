@@ -1455,10 +1455,6 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
     }
 }
 
-template struct jit_uni_pooling_fwd_t<sse41, data_type::f32>;
-template struct jit_uni_pooling_bwd_t<sse41, data_type::f32>;
-template struct jit_uni_pooling_fwd_t<avx, data_type::f32>;
-template struct jit_uni_pooling_bwd_t<avx, data_type::f32>;
 template struct jit_uni_pooling_fwd_t<avx2, data_type::f32>;
 template struct jit_uni_pooling_fwd_t<avx2_vnni_2, data_type::bf16>;
 template struct jit_uni_pooling_fwd_t<avx2_vnni_2, data_type::f16>;

@@ -74,7 +74,7 @@ struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel_t {
         assert(utils::one_of(desc().alg_kind, alg_kind::eltwise_relu,
                 alg_kind::eltwise_linear, alg_kind::eltwise_clip));
         assert(utils::one_of(data_type(), s32, s8, u8));
-        assert(utils::one_of(isa, sse41, avx2, avx512_core));
+        assert(utils::one_of(isa, avx2, avx512_core));
     }
 
     void generate() override {
@@ -287,21 +287,6 @@ void jit_uni_subkernel_int_t<isa>::process_relu(
 }
 
 template <>
-void jit_uni_subkernel_int_t<sse41>::process_relu(
-        const Vmm &vr_to, const Vmm &vr_from) {
-
-    cvtdq2ps(vr_from, vr_from);
-    movups(vr_to, vr_from);
-    mulps(vr_to, vmm_alpha);
-
-    Vmm mask = Vmm(0);
-    movups(mask, vr_from);
-    cmpps(mask, vmm_zero, _cmp_nle_us);
-    blendvps(vr_to, vr_from);
-    cvtps2dq(vr_to, vr_to);
-}
-
-template <>
 void jit_uni_subkernel_int_t<avx2>::process_relu(
         const Vmm &vr_to, const Vmm &vr_from) {
 
@@ -330,17 +315,6 @@ void jit_uni_subkernel_int_t<isa>::process_clip(
 }
 
 template <>
-void jit_uni_subkernel_int_t<sse41>::process_clip(
-        const Vmm &vr_to, const Vmm &vr_from) {
-
-    cvtdq2ps(vr_from, vr_from);
-    movups(vr_to, vr_from);
-    maxps(vr_to, vmm_alpha);
-    minps(vr_to, vmm_beta);
-    cvtps2dq(vr_to, vr_to);
-}
-
-template <>
 void jit_uni_subkernel_int_t<avx2>::process_clip(
         const Vmm &vr_to, const Vmm &vr_from) {
 
@@ -364,33 +338,6 @@ template <cpu_isa_t isa>
 void jit_uni_subkernel_int_t<isa>::store_8bit(const bool vectorize,
         const Address &mem_to, const Vmm &vr_to, bool is_signed) {
     assert(!"unsupported isa");
-}
-
-template <>
-void jit_uni_subkernel_int_t<sse41>::store_8bit(const bool vectorize,
-        const Address &mem_to, const Vmm &vr_to, bool is_signed) {
-    if (vectorize) {
-        // store full Vmm size
-        // s32 -> s16
-        packssdw(vr_to, vmm_zero);
-        // s16 -> s8/u8
-        if (is_signed)
-            packsswb(vr_to, vmm_zero);
-        else
-            packuswb(vr_to, vmm_zero);
-
-        movd(mem_to, Xmm(vr_to.getIdx()));
-    } else {
-        // store exactly one data item
-        // s32 save as s8/u8
-        packssdw(vr_to, vmm_zero);
-        if (is_signed)
-            packsswb(vr_to, vmm_zero);
-        else
-            packuswb(vr_to, vmm_zero);
-        movd(reg_int8.cvt32(), Xmm(vr_to.getIdx()));
-        mov(mem_to, reg_int8.cvt8());
-    }
 }
 
 template <>
@@ -517,7 +464,6 @@ status_t jit_uni_eltwise_int_fwd_t<isa>::execute_forward(
     return status::success;
 }
 
-template struct jit_uni_eltwise_int_fwd_t<sse41>;
 template struct jit_uni_eltwise_int_fwd_t<avx2>;
 template struct jit_uni_eltwise_int_fwd_t<avx512_core>;
 

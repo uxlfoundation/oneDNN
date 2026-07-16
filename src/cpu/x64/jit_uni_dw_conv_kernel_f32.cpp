@@ -355,12 +355,6 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<avx2>::load_tail(
     load_bytes(vmm, reg, offset, load_size);
 }
 
-template <>
-void jit_uni_dw_conv_fwd_kernel_f32_t<sse41>::load_tail(
-        Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int load_size) {
-    load_bytes(vmm, reg, offset, load_size);
-}
-
 template <cpu_isa_t isa>
 void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::add_tail_from_mem(Vmm &vmm_acc,
         Vmm &vmm_tmp, const Xbyak::Reg64 &reg, int64_t offset, int load_size) {
@@ -374,13 +368,6 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<avx2>::add_tail_from_mem(Vmm &vmm_acc,
     uni_vaddps(vmm_acc, vmm_acc, vmm_tmp);
 }
 
-template <>
-void jit_uni_dw_conv_fwd_kernel_f32_t<sse41>::add_tail_from_mem(Vmm &vmm_acc,
-        Vmm &vmm_tmp, const Xbyak::Reg64 &reg, int64_t offset, int load_size) {
-    load_bytes(vmm_tmp, reg, offset, load_size);
-    uni_vaddps(vmm_acc, vmm_acc, vmm_tmp);
-}
-
 template <cpu_isa_t isa>
 void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_tail(
         Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
@@ -389,12 +376,6 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_tail(
 
 template <>
 void jit_uni_dw_conv_fwd_kernel_f32_t<avx2>::store_tail(
-        Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
-    store_bytes(vmm, reg, offset, store_size);
-}
-
-template <>
-void jit_uni_dw_conv_fwd_kernel_f32_t<sse41>::store_tail(
         Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
     store_bytes(vmm, reg, offset, store_size);
 }
@@ -654,7 +635,6 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::generate() {
 
 template struct jit_uni_dw_conv_fwd_kernel_f32_t<avx512_core>;
 template struct jit_uni_dw_conv_fwd_kernel_f32_t<avx2>;
-template struct jit_uni_dw_conv_fwd_kernel_f32_t<sse41>;
 
 template <cpu_isa_t isa>
 inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::load_vmm(
@@ -748,13 +728,7 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::apply_filter(
             for (int r = 0; r < reg_repeats_; r++) {
                 for (int ch = 0; ch < ur_ch_blocks; ch++) {
                     bool last_block = is_last_ch && ch == ur_ch_blocks - 1;
-                    bool masked_load = last_block
-                            && IMPLICATION(
-                                    isa == sse41, tail_simd_overlap(r + 1));
-
-                    // sse41: if second simd_w is outside channel_block, skip
-                    if (last_block && isa == sse41 && tail_simd_overlap(r))
-                        break;
+                    bool masked_load = last_block;
 
                     int ker_off = ch * kh * kw * ch_blk + r * simd_w_;
                     Vmm vmm_ker = get_ker_reg(0);
@@ -815,8 +789,7 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::store_dsrc(
     for (int r = 0; r < reg_repeats_; r++) {
         for (int ch = 0; ch < ur_ch_blocks; ch++) {
             bool last_block = is_last_ch && ch == ur_ch_blocks - 1;
-            bool masked_store = last_block
-                    && IMPLICATION(isa == sse41, tail_simd_overlap(r + 1));
+            bool masked_store = last_block;
 
             // sse41: if second simd_w is outside channel_block, skip
             if (last_block && tail_simd_overlap(r)) break;
@@ -987,7 +960,6 @@ void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::generate() {
 
 template struct jit_uni_dw_conv_bwd_data_kernel_f32_t<avx512_core>;
 template struct jit_uni_dw_conv_bwd_data_kernel_f32_t<avx2>;
-template struct jit_uni_dw_conv_bwd_data_kernel_f32_t<sse41>;
 
 #define GET_OFF(field) offsetof(jit_dw_conv_args_t, field)
 
@@ -1073,25 +1045,6 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::zero_filter() {
     }
 }
 
-template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::load_filter(
-        int nb_ch_blocking, bool is_last_ch) {
-    assert(nb_ch_blocking == 1);
-    for (int r = 0; r < reg_repeats_; ++r) {
-        bool tail_in_first_simd = (r + 1) * simd_w_ >= jcp.ch_tail;
-        bool masked_load = tail_in_first_simd && is_last_ch;
-        const int reg_set = r * jcp.kw;
-        for (int i = 0; i < jcp.kw; ++i) {
-            size_t off_filter = static_cast<size_t>(
-                    (i * jcp.ch_block + r * simd_w_) * sizeof(float));
-            Vmm vmm_acc = get_acc_reg(reg_set + i);
-            load_xmm(
-                    vmm_acc, vmmword[reg_tmp_filter + off_filter], masked_load);
-        }
-        if (masked_load) break; // if tail falls under first simd, skip
-    }
-}
-
 template <cpu_isa_t isa>
 inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::load_filter(
         int nb_ch_blocking, bool is_last_ch) {
@@ -1115,21 +1068,6 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::zero_bias() {
             Vmm vmm_bias = get_bias_reg(r * jcp.nb_ch_blocking + ch);
             uni_vpxor(vmm_bias, vmm_bias, vmm_bias);
         }
-    }
-}
-
-template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::load_bias(
-        int nb_ch_blocking, bool is_last_ch) {
-    for (int r = 0; r < reg_repeats_; ++r) {
-        bool tail_in_first_simd = (r + 1) * simd_w_ >= jcp.ch_tail;
-        bool masked_load = tail_in_first_simd && is_last_ch;
-        size_t half_ch_block_offset
-                = static_cast<size_t>(r * simd_w_ * sizeof(float));
-        Vmm vmm_bias = get_bias_reg(r);
-        load_xmm(vmm_bias, vmmword[reg_bias_baddr + half_ch_block_offset],
-                masked_load);
-        if (masked_load) break; // if tail falls under first simd, skip
     }
 }
 
@@ -1259,13 +1197,11 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_unroll_ow_step(
     /* preamble count for number of cascaded LOAD + FMA operation */
     const int input_overlap = nstl::max(jcp.kw - l_pad, 0);
     const bool is_last_block = (unroll_w + ow_block == jcp.ow);
-    const bool nxc_sse41_offset = is_layout_nxc() && isa == sse41;
+    const bool nxc_sse41_offset = false;
 
     /* LOAD initial input registers, then cascade LOADs and FMAs*/
     for (int r = 0; r < reg_repeats_; ++r) {
-        bool tail_in_first_simd = (r + 1) * simd_w_ >= jcp.ch_tail;
-        bool masked_load
-                = IMPLICATION(isa == sse41, tail_in_first_simd) && is_last_ch;
+        bool masked_load = is_last_ch;
         for (int i_ur = 0; i_ur < unroll_w; ++i_ur) {
             int output_sp_offset = nxc_sse41_offset
                     ? i_ur * ch_step + r * simd_w_
@@ -1333,13 +1269,10 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_unroll_ow_step(
                 Vmm vmm_input = get_input_reg(
                         ((io_overlap - l_pad) % jcp.kw) * reg_repeats_ + r);
                 Vmm vmm_acc = get_acc_reg(r * jcp.kw + i_kw);
-                Vmm vmm_aux = isa == sse41 ? get_aux_reg() : vmm_input;
-                if (isa == sse41) uni_vmovups(vmm_aux, vmm_input);
+                Vmm vmm_aux = vmm_input;
                 uni_vfmadd231ps(vmm_acc, vmm_aux, vmm_output);
             }
         }
-        if (isa == sse41 && masked_load)
-            break; // if tail falls under first simd, skip
     }
 }
 
@@ -1355,28 +1288,6 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::dispatch_ow_step_unroll(
         assert(nb_ch_blocking == 1);
         compute_unroll_ow_step(
                 unroll_w, l_pad, pad_offset, ow_block, is_last_ch);
-    }
-}
-
-template <>
-inline void
-jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::compute_bias_step_unroll(
-        const int unroll_w, int nb_ch_blocking, bool is_last_ch) {
-    const int ch_step = is_ddst_layout_nxc() ? jcp.ngroups : simd_w_;
-    for (int r = 0; r < reg_repeats_; ++r) {
-        bool tail_in_first_simd = (r + 1) * simd_w_ >= jcp.ch_tail;
-        bool masked_load = tail_in_first_simd && is_last_ch;
-        for (int i = 0; i < unroll_w; ++i) {
-            int off_output = is_ddst_layout_nxc()
-                    ? i * ch_step + r * simd_w_
-                    : (i * reg_repeats_ + r) * ch_step;
-            Vmm vmm_bias = get_bias_reg(r);
-            Vmm vmm_out = get_output_reg(1 + r);
-            addps_xmm(vmm_bias, vmm_out,
-                    vmmword[reg_tmp_output + off_output * sizeof(float)],
-                    masked_load);
-        }
-        if (masked_load) break; // if tail falls under first simd, skip
     }
 }
 
@@ -1400,25 +1311,6 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_bias_step_unroll(
     }
 }
 
-template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::store_filter(
-        int nb_ch_blocking, bool is_last_ch) {
-    assert(nb_ch_blocking == 1);
-    for (int r = 0; r < reg_repeats_; ++r) {
-        bool tail_in_first_simd = (r + 1) * simd_w_ >= jcp.ch_tail;
-        bool masked_load = tail_in_first_simd && is_last_ch;
-        const int reg_set = r * jcp.kw;
-        for (int i = 0; i < jcp.kw; ++i) {
-            size_t off_filter = static_cast<size_t>(
-                    (i * jcp.ch_block + r * simd_w_) * sizeof(float));
-            Vmm vmm_acc = get_acc_reg(i + reg_set);
-            store_xmm(
-                    vmm_acc, vmmword[reg_tmp_filter + off_filter], masked_load);
-        }
-        if (masked_load) break; // if tail falls under first simd, skip
-    }
-}
-
 template <cpu_isa_t isa>
 inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::store_filter(
         int nb_ch_blocking, bool is_last_ch) {
@@ -1432,21 +1324,6 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::store_filter(
             store_xmm(vmm_acc, vmmword[reg_tmp_filter + off_filter],
                     masked_store);
         }
-    }
-}
-
-template <>
-inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>::store_bias(
-        int nb_ch_blocking, bool is_last_ch) {
-    for (int r = 0; r < reg_repeats_; ++r) {
-        bool tail_in_first_simd = (r + 1) * simd_w_ >= jcp.ch_tail;
-        bool masked_load = tail_in_first_simd && is_last_ch;
-        size_t half_ch_block_offset
-                = static_cast<size_t>(r * simd_w_ * sizeof(float));
-        Vmm vmm_bias = get_bias_reg(r);
-        store_xmm(vmm_bias, vmmword[reg_bias_baddr + half_ch_block_offset],
-                masked_load);
-        if (masked_load) break; // if tail falls under first simd, skip
     }
 }
 
@@ -2014,7 +1891,6 @@ void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::generate() {
 
 template struct jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx512_core>;
 template struct jit_uni_dw_conv_bwd_weights_kernel_f32_t<avx2>;
-template struct jit_uni_dw_conv_bwd_weights_kernel_f32_t<sse41>;
 
 } // namespace x64
 } // namespace cpu

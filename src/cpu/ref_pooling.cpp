@@ -90,9 +90,9 @@ status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                 assert(0 <= value
                         && value <= numeric_limits<typename prec_traits_t<
                                         data_type::u8>::type>::max());
-                ws[off] = value;
+                ws[off] = static_cast<unsigned char>(value);
             } else
-                reinterpret_cast<int *>(ws)[off] = value;
+                reinterpret_cast<int *>(ws)[off] = static_cast<int>(value);
         }
     };
 
@@ -137,7 +137,7 @@ status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                 }
             }
         }
-        int num_summands;
+        dim_t num_summands;
         if (alg == alg_kind::pooling_avg_include_padding)
             num_summands = KW * KH * KD;
         else {
@@ -165,7 +165,7 @@ status_t ref_pooling_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                     * (KH - ih_start_excluded - ih_end_excluded)
                     * (KW - iw_start_excluded - iw_end_excluded);
         }
-        d /= num_summands;
+        d /= static_cast<float>(num_summands);
     };
 
     const bool is_max_pool = alg == alg_kind::pooling_max;

@@ -40,7 +40,7 @@ struct cudnn_binary_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_binary_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             bool ok = (set_default_params() == status::success)
@@ -88,14 +88,14 @@ struct cudnn_binary_t : public gpu::primitive_t {
             return true;
         }
 
-        bool check_data_types(impl::engine_t *engine) const {
+        bool check_data_types(const impl::engine_t *engine) const {
             using namespace data_type;
             bool inputs_same = src_md(0)->data_type == src_md(1)->data_type;
             dnnl_data_type_t input_type = src_md(0)->data_type;
             dnnl_data_type_t output_type = dst_md()->data_type;
 
-            auto sycl_dev
-                    = utils::downcast<nvidia::engine_t *>(engine)->device();
+            auto sycl_dev = utils::downcast<const nvidia::engine_t *>(engine)
+                                    ->device();
 
             if (!IMPLICATION(utils::one_of(bf16, input_type, output_type),
                         has_bf16_support(sycl_dev)))

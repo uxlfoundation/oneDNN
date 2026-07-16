@@ -123,12 +123,12 @@ struct cudnn_deconvolution_fwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_deconvolution_fwd_t);
 
-        status_t init_convolution(impl::engine_t *engine) {
+        status_t init_convolution(const impl::engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
 
-            auto sycl_dev
-                    = utils::downcast<nvidia::engine_t *>(engine)->device();
+            auto sycl_dev = utils::downcast<const nvidia::engine_t *>(engine)
+                                    ->device();
             convolution_desc_t cd;
             CHECK(conv_descr_create(desc(), &cd));
             primitive_attr_t conv_attr = *attr();
@@ -163,7 +163,7 @@ struct cudnn_deconvolution_fwd_t : public gpu::primitive_t {
             return status::unimplemented;
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             auto *sycl_engine_impl
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
                             engine->impl());
@@ -270,7 +270,7 @@ struct cudnn_deconvolution_bwd_data_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_deconvolution_bwd_data_t);
 
-        status_t init_convolution(impl::engine_t *engine) {
+        status_t init_convolution(const impl::engine_t *engine) {
             convolution_desc_t cd;
             CHECK(conv_descr_create(desc(), &cd));
             primitive_attr_t conv_attr = *attr();
@@ -283,7 +283,7 @@ struct cudnn_deconvolution_bwd_data_t : public gpu::primitive_t {
             return status::unimplemented;
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             auto *sycl_engine_impl
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
                             engine->impl());
@@ -378,7 +378,7 @@ struct cudnn_deconvolution_bwd_weights_t : public gpu::primitive_t {
         DECLARE_COMMON_PD_T(
                 "cuda:cudnn:any", cudnn_deconvolution_bwd_weights_t);
 
-        status_t init_convolution(impl::engine_t *engine) {
+        status_t init_convolution(const impl::engine_t *engine) {
             convolution_desc_t cd;
             CHECK(conv_descr_create(desc(), &cd));
             primitive_attr_t conv_attr = *attr();
@@ -392,7 +392,7 @@ struct cudnn_deconvolution_bwd_weights_t : public gpu::primitive_t {
             return status::unimplemented;
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             auto *sycl_engine_impl
                     = utils::downcast<const xpu::sycl::engine_impl_t *>(
                             engine->impl());

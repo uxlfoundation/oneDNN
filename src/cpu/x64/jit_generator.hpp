@@ -204,8 +204,14 @@ public:
     using Xbyak::CodeGenerator::add;
     using Xbyak::CodeGenerator::cmp;
     using Xbyak::CodeGenerator::imul;
+    using Xbyak::CodeGenerator::pextrb;
+    using Xbyak::CodeGenerator::pinsrb;
     using Xbyak::CodeGenerator::shl;
     using Xbyak::CodeGenerator::sub;
+    using Xbyak::CodeGenerator::vpblendd;
+    using Xbyak::CodeGenerator::vpermq;
+    using Xbyak::CodeGenerator::vpextrb;
+    using Xbyak::CodeGenerator::vpinsrb;
 
     // These are the dim_t immediate forms used by brgemm. x86 accepts at
     // most a 32-bit immediate. Offsets and shifts are non-negative; cmp also
@@ -256,9 +262,66 @@ public:
         Xbyak::CodeGenerator::imul(dst, src, static_cast<int>(imm));
     }
 
+    // dim_t forms of the 8-bit-immediate emit methods, so kernels can pass
+    // dim_t lane indices / blend masks directly. The narrowing to uint8_t and
+    // the bounds check are consolidated here at the XByak boundary.
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void pinsrb(const Xbyak::Xmm &xmm, const Xbyak::Operand &op, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
+        Xbyak::CodeGenerator::pinsrb(xmm, op, static_cast<uint8_t>(imm));
+    }
+
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void pextrb(const Xbyak::Operand &op, const Xbyak::Xmm &xmm, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
+        Xbyak::CodeGenerator::pextrb(op, xmm, static_cast<uint8_t>(imm));
+    }
+
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void vpinsrb(const Xbyak::Xmm &x1, const Xbyak::Xmm &x2,
+            const Xbyak::Operand &op, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
+        Xbyak::CodeGenerator::vpinsrb(x1, x2, op, static_cast<uint8_t>(imm));
+    }
+
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void vpextrb(const Xbyak::Operand &op, const Xbyak::Xmm &x, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
+        Xbyak::CodeGenerator::vpextrb(op, x, static_cast<uint8_t>(imm));
+    }
+
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void vpermq(const Xbyak::Ymm &y, const Xbyak::Operand &op, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
+        Xbyak::CodeGenerator::vpermq(y, op, static_cast<uint8_t>(imm));
+    }
+
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void vpblendd(const Xbyak::Xmm &x1, const Xbyak::Xmm &x2,
+            const Xbyak::Operand &op, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
+        Xbyak::CodeGenerator::vpblendd(x1, x2, op, static_cast<uint8_t>(imm));
+    }
+
     static int xbyak_register_index(dim_t index) {
-        // The fallback is returned only after XByak records the error.
-        JIT_ASSERT_RET(index >= 0 && index <= INT_MAX, 0);
+        // The fallback is returned only after XByak records the error,
+        // INT_MIN is used, because some primitives(e.g. pooling)
+        // are creating registers with invlid index, but never uses it,
+        // currently those objects are gracefully die without assertion.
+        // TODO: refactor pooling primitive in order to follow the contract.
+        JIT_ASSERT_RET(index >= INT_MIN && index <= INT_MAX, 0);
         return static_cast<int>(index);
     }
 

@@ -54,6 +54,8 @@ struct gemm_x8s8s32x_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(
                     DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
                     VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+            VDISPATCH_CONV(platform::has_optimized_gemm(),
+                    VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);

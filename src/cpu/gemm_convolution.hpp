@@ -25,6 +25,7 @@
 #include "cpu/binary_injector_utils.hpp"
 #include "cpu/cpu_convolution_pd.hpp"
 #include "cpu/gemm/gemm.hpp"
+#include "cpu/platform.hpp"
 #include "cpu/gemm_convolution_utils.hpp"
 #include "cpu/primitive_attr_postops.hpp"
 
@@ -45,6 +46,8 @@ struct gemm_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(
                     DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
                     VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+            VDISPATCH_CONV(platform::has_optimized_gemm(),
+                    VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(f32, f32, f32, f32, f32),
                     VERBOSE_UNSUPPORTED_DT_CFG);
@@ -151,6 +154,8 @@ struct gemm_convolution_bwd_data_t : public primitive_t {
             VDISPATCH_CONV(
                     DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
                     VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+            VDISPATCH_CONV(platform::has_optimized_gemm(),
+                    VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(f32, f32, undef, f32, f32),
@@ -208,6 +213,8 @@ struct gemm_convolution_bwd_weights_t : public primitive_t {
             VDISPATCH_CONV(
                     DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
                     VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+            VDISPATCH_CONV(platform::has_optimized_gemm(),
+                    VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_weights,
                     VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(f32, f32, f32, f32, f32),

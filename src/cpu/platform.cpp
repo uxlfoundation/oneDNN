@@ -152,6 +152,16 @@ bool has_data_type_support(data_type_t data_type) {
     }
 }
 
+bool has_optimized_gemm() {
+#if DNNL_X64
+    // On x64 optimized (JIT) GEMM requires Intel AVX2; SSE4.1/AVX use the
+    // reference GEMM, so gemm-based primitives defer to reference impls.
+    return x64::mayiuse(x64::avx2);
+#else
+    return true;
+#endif
+}
+
 bool has_training_support(data_type_t data_type) {
     // TODO: maybe return false for int8, but some primitives like prelu
     // have training support

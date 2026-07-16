@@ -150,6 +150,10 @@ bool DNNL_API prefer_ymm_requested();
 // implementations since these require specific code-path updates.
 bool DNNL_API has_data_type_support(data_type_t data_type);
 bool DNNL_API has_training_support(data_type_t data_type);
+// Returns true if the target CPU has an optimized (non-reference) GEMM. On x64
+// this requires Intel AVX2 (SSE4.1/AVX use the reference GEMM), so gemm-based
+// primitives defer to the reference implementations there.
+bool DNNL_API has_optimized_gemm();
 float DNNL_API s8s8_weights_scale_factor();
 
 unsigned DNNL_API get_per_core_cache_size(int level);

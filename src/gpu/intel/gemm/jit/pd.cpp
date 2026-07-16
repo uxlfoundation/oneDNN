@@ -820,7 +820,7 @@ status_t pd_t::init_GEMMProblem(
         problem.autoTypeConversions(has_systolic);
 
     if (problem.needsAGroupSums()) {
-        if (!problem.hasGroupSumsA) return status::unimplemented;
+        VDISPATCH_GEMM(problem.hasGroupSumsA, VERBOSE_UNSUPPORTED_ZP_CFG);
         data_type_t gs_dt = a_quant.gs_type == data_type::undef
                 ? data_type::s32
                 : a_quant.gs_type;
@@ -830,7 +830,7 @@ status_t pd_t::init_GEMMProblem(
         if (problem.aqGroupK == 0) problem.aqGroupK = problem.bqGroupK;
     }
     if (problem.needsBGroupSums()) {
-        if (!problem.hasGroupSumsB) return status::unimplemented;
+        VDISPATCH_GEMM(problem.hasGroupSumsB, VERBOSE_UNSUPPORTED_ZP_CFG);
         data_type_t gs_dt = b_quant.gs_type == data_type::undef
                 ? data_type::s32
                 : b_quant.gs_type;

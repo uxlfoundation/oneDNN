@@ -40,8 +40,8 @@ struct xe_jit_params_t : public trivially_serializable_t<xe_jit_params_t> {
         return names;
     }
 
-    status_t init(impl::engine_t *engine, const memory_desc_wrapper data_d,
-            alg_kind_t alg_kind);
+    status_t init(const impl::engine_t *engine,
+            const memory_desc_wrapper data_d, alg_kind_t alg_kind);
     compute::kernel_ctx_t get_kernel_ctx() const;
 
     compute::gpu_arch_t arch;
@@ -62,8 +62,9 @@ struct xe_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:xe:any", xe_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+        status_t init(const impl::engine_t *engine) {
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -90,7 +91,7 @@ struct xe_fwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
 
         xe_jit_params_t conf;
     };
@@ -116,11 +117,12 @@ struct xe_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:xe:any", xe_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace utils;
             assert(engine->kind() == engine_kind::gpu);
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             using namespace alg_kind;
             VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -153,7 +155,7 @@ struct xe_bwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
 
         xe_jit_params_t conf;
     };

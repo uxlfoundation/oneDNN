@@ -33,7 +33,7 @@ namespace x64 {
 static constexpr dim_t alignment = platform::get_cache_line_size()
         / sizeof(float); // align to cache line size to avoid false sharing
 
-status_t jit_prelu_bwd_t::pd_t::init(engine_t *engine) {
+status_t jit_prelu_bwd_t::pd_t::init(const engine_t *engine) {
     const memory_desc_wrapper src_d {src_md(0)};
     const memory_desc_wrapper weights_d {weights_md(0)};
     const memory_desc_wrapper src_diff_d {diff_src_md(0)};

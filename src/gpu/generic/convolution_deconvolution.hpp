@@ -90,7 +90,7 @@ struct convolution_deconvolution_fwd_t : public gpu::primitive_t {
         using gpu_deconvolution_fwd_pd_t::gpu_deconvolution_fwd_pd_t;
 
         DECLARE_COMMON_PD_T(name_.c_str(), convolution_deconvolution_fwd_t);
-        status_t init_convolution(impl::engine_t *engine) {
+        status_t init_convolution(const impl::engine_t *engine) {
             convolution_desc_t cd;
             CHECK(conv_descr_create(desc(), &cd));
             primitive_attr_t conv_attr(*attr());
@@ -103,7 +103,7 @@ struct convolution_deconvolution_fwd_t : public gpu::primitive_t {
             return (conv_pd_) ? status::success : status::unimplemented;
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace format_tag;
             using sm = primitive_attr_t::skip_mask_t;
 
@@ -254,7 +254,7 @@ struct convolution_deconvolution_bwd_data_t : public gpu::primitive_t {
         DECLARE_COMMON_PD_T(
                 name_.c_str(), convolution_deconvolution_bwd_data_t);
 
-        status_t init_convolution(impl::engine_t *engine) {
+        status_t init_convolution(const impl::engine_t *engine) {
             convolution_desc_t cd;
             CHECK(conv_descr_create(desc(), &cd));
             primitive_attr_t conv_attr(*attr());
@@ -266,7 +266,7 @@ struct convolution_deconvolution_bwd_data_t : public gpu::primitive_t {
             return (conv_pd_) ? status::success : status::unimplemented;
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             VDISPATCH_DECONVOLUTION(
                     desc()->prop_kind == prop_kind::backward_data,
                     VERBOSE_BAD_PROPKIND);

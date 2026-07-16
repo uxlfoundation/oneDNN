@@ -36,7 +36,7 @@ struct ref_sycl_lrn_fwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_sycl_lrn_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
 
@@ -90,7 +90,7 @@ struct ref_sycl_lrn_bwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_sycl_lrn_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
 

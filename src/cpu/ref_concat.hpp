@@ -35,7 +35,7 @@ struct ref_concat_t : public primitive_t {
 
         DECLARE_CONCAT_PD_T("ref:any", ref_concat_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
             VDISPATCH_CONCAT(attr()->has_default_values(sm::scales),
                     VERBOSE_UNSUPPORTED_ATTR);

@@ -44,7 +44,7 @@ struct gen_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("jit:xe", gen_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             // Require the corresponding environment variable - skip this impl
             // unless requested (do not report this skip to verbose)
             bool enabled = gpu_utils::dev_getenv("enable_jit_reduction", false);
@@ -75,7 +75,7 @@ struct gen_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         dim_t reduction_size = 0;
         dim_t reduction_stride = 0;
         int nregs = 1;

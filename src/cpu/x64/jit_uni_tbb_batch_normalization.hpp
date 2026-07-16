@@ -56,7 +56,7 @@ struct jit_uni_tbb_batch_normalization_fwd_t : public primitive_t {
                         ""),
                 jit_uni_tbb_batch_normalization_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         jit_memory_tag_kind_t tag_kind_;
     };
@@ -93,7 +93,7 @@ struct jit_uni_tbb_batch_normalization_bwd_t : public primitive_t {
                         ""),
                 jit_uni_tbb_batch_normalization_bwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         jit_memory_tag_kind_t tag_kind_;
     };

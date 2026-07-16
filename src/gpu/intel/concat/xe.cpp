@@ -107,7 +107,7 @@ int xe_t::pd_t::calculate_sub_group_size(
     return 1;
 }
 
-status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_t::pd_t::init_conf(const impl::engine_t *engine) {
     const concat_pd_t *pd = this;
 
     const memory_desc_wrapper dst_mdw(pd->dst_md());
@@ -118,7 +118,7 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.dst_offset0 = dst_mdw.offset0();
     conf.src_type = memory_desc_wrapper(pd->src_md(0)).data_type();
     conf.ndims = dst_mdw.ndims();
-    const auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(dst_mdw.md_);
     conf.n = pd->n_inputs();
     conf.concat_axis = pd->concat_dim();

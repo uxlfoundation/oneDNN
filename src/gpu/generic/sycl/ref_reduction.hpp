@@ -51,7 +51,7 @@ struct ref_reduction_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_reduction_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
 
             memory_desc_wrapper src_wrap(src_md());
@@ -110,8 +110,8 @@ struct ref_reduction_t : public gpu::generic::sycl::primitive_t {
                 const std::vector<int> &axes, int reduce_size);
         status_t init_scratchpad();
         status_t init_out_scratchpad();
-        status_t init_reorder(impl::engine_t *engine);
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_reorder(const impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
     };
 
     status_t init(impl::engine_t *engine) override;

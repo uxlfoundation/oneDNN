@@ -23,7 +23,7 @@ namespace gpu {
 namespace intel {
 namespace gemm {
 
-status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
+status_t with_post_ops_t::pd_t::init(const impl::engine_t *engine) {
     using namespace data_type;
 
     const auto &d = desc();
@@ -116,7 +116,7 @@ status_t with_post_ops_t::pd_t::init(impl::engine_t *engine) {
     if (!it_with_po.is_initialized()) return status::invalid_arguments;
     pd_ = *(++it_with_po);
     // exit if gemm kernel support post ops
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto arch = intel_engine->device_info()->gpu_arch();
     bool is_xe_hp = arch >= compute::gpu_arch_t::xe_hp;
     auto skip_impl = is_xe_hp ? "ocl" : "ref";

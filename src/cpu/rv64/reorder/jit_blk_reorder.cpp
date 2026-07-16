@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2018-2025 Intel Corporation
+* Copyright 2018 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
 * Copyright 2022-2025 Arm Ltd. and affiliates
 * Copyright 2026 Institute of Software, Chinese Academy of Sciences
@@ -462,9 +462,9 @@ void jit_single_blk_kernel_t::emit_transpose_kernel() {
 /* ----------------------------- primitive ----------------------------- */
 
 status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
-        engine_t *engine, const primitive_attr_t *attr, engine_t *src_engine,
-        const memory_desc_t *src_md, engine_t *dst_engine,
-        const memory_desc_t *dst_md) {
+        const engine_t *engine, const primitive_attr_t *attr,
+        const engine_t *src_engine, const memory_desc_t *src_md,
+        const engine_t *dst_engine, const memory_desc_t *dst_md) {
     VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
     auto prb = tr::prb_t();

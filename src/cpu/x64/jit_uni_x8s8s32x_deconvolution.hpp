@@ -196,7 +196,7 @@ struct jit_uni_x8s8s32x_deconvolution_fwd_t : public primitive_t {
                         isa == avx2 && jcp_.has_vnni ? avx2_vnni : isa, ""),
                 jit_uni_x8s8s32x_deconvolution_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
         jit_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
     };
 

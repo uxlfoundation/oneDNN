@@ -39,7 +39,7 @@ struct gemm_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 GEMM_IMPL_STR, gemm_convolution_fwd_t, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
 
             VDISPATCH_CONV(
@@ -145,7 +145,7 @@ struct gemm_convolution_bwd_data_t : public primitive_t {
         DECLARE_COMMON_PD_T(GEMM_IMPL_STR, gemm_convolution_bwd_data_t,
                 USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace dnnl::impl::data_type;
 
             VDISPATCH_CONV(
@@ -202,7 +202,7 @@ struct gemm_convolution_bwd_weights_t : public primitive_t {
         DECLARE_COMMON_PD_T(GEMM_IMPL_STR, gemm_convolution_bwd_weights_t,
                 USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace dnnl::impl::data_type;
 
             VDISPATCH_CONV(

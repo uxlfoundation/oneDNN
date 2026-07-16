@@ -40,7 +40,7 @@ struct ncsp_group_normalization_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ncsp_gnorm:any", ncsp_group_normalization_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using namespace format_tag;
             using skip_mask_t = primitive_attr_t::skip_mask_t;

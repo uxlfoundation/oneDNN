@@ -104,14 +104,14 @@ bool with_quantize_common(const quant_entries_t &q, int arg) {
     return !q.has_default_values(arg) && (q.get_mask(arg) == 0);
 }
 
-int sg_size(impl::engine_t *engine) {
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+int sg_size(const impl::engine_t *engine) {
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     return intel_engine->device_info()->min_subgroup_size();
 }
 
 } // anonymous namespace
 
-status_t micro_horz_t::pd_t::init(impl::engine_t *engine) {
+status_t micro_horz_t::pd_t::init(const impl::engine_t *engine) {
     //VDISPATCH_GATED_MLP(gpu_utils::dev_getenv("gmlp_horz_ukern", false),
     //        VERBOSE_SKIP_PRIMITIVE_IMPL);
     memory_desc_t inter_md;
@@ -156,9 +156,9 @@ gemmstone::Type get_ab_type(gemmstone::Type src, gemmstone::Type wei) {
 }
 
 status_t micro_horz_t::pd_t::init_microkernels(
-        impl::engine_t *engine, const memory_desc_t *inter_md) {
+        const impl::engine_t *engine, const memory_desc_t *inter_md) {
     assert(engine->kind() == engine_kind::gpu);
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
 
     VCONDCHECK(primitive, create, check, gated_mlp,

@@ -26,13 +26,13 @@ namespace impl {
 
 struct primitive_desc_t;
 status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
-        engine_t *engine, const memory_desc_t *src_md,
+        const engine_t *engine, const memory_desc_t *src_md,
         const memory_desc_t *dst_md, const primitive_attr_t *attr = nullptr);
 
 status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
-        engine_t *engine, const memory_desc_t *src_md, engine_t *src_engine,
-        const memory_desc_t *dst_md, engine_t *dst_engine,
-        const primitive_attr_t *attr = nullptr);
+        const engine_t *engine, const memory_desc_t *src_md,
+        const engine_t *src_engine, const memory_desc_t *dst_md,
+        const engine_t *dst_engine, const primitive_attr_t *attr = nullptr);
 } // namespace impl
 } // namespace dnnl
 

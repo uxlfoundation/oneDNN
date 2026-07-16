@@ -44,7 +44,7 @@ namespace matmul {
 using namespace data_type;
 
 template <impl::data_type_t dst_type>
-status_t gemm_bf16_matmul_t<dst_type>::pd_t::init(engine_t *engine) {
+status_t gemm_bf16_matmul_t<dst_type>::pd_t::init(const engine_t *engine) {
     auto check_bias = [&]() -> bool {
         return !with_bias()
                 || (utils::one_of(weights_md(1)->data_type, f32, bf16)
@@ -104,7 +104,7 @@ static bool should_gemm_execute_sum_po(const gemm_based::params_t &params,
 
 template <impl::data_type_t dst_type>
 status_t gemm_bf16_matmul_t<dst_type>::pd_t::check_and_configure_attributes(
-        engine_t *engine) {
+        const engine_t *engine) {
     auto check_attr_scales = [&]() -> status_t {
         CHECK(attr_scales_ok(engine));
         if (!attr()->scales_.has_default_values(DNNL_ARG_SRC)

@@ -44,7 +44,7 @@ struct ref_sum_t : public gpu::primitive_t {
 
         DECLARE_SUM_PD_T("ref:any", ref_sum_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             VDISPATCH_SUM_SC(
                     gpu_sum_pd_t::init(engine), VERBOSE_BAD_ENGINE_KIND);
 
@@ -85,10 +85,11 @@ struct ref_sum_t : public gpu::primitive_t {
         memory_desc_t scale_md_;
 
     private:
-        void init_scratchpad(impl::engine_t *engine) {
+        void init_scratchpad(const impl::engine_t *engine) {
             using namespace memory_tracking::names;
             auto scratchpad = scratchpad_registry().registrar();
-            auto *gpu_engine = utils::downcast<gpu::engine_t *>(engine);
+            const auto *gpu_engine
+                    = utils::downcast<const gpu::engine_t *>(engine);
             if (need_output_reorder()) {
                 const memory_desc_wrapper dst_acc_d(dst_acc_md());
                 scratchpad.book(key_sum_reduction, dst_acc_d.size(), 1,

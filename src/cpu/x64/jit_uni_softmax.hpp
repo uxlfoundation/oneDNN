@@ -81,7 +81,7 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(impl_name(), jit_uni_softmax_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
 
@@ -289,7 +289,7 @@ struct jit_uni_softmax_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(impl_name(), jit_uni_softmax_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
 
             // try multiple vlen

@@ -140,7 +140,7 @@ status_t set_and_or_check_formats(const convolution_desc_t &desc,
 
 } // anonymous namespace
 
-status_t ip_convolution_fwd_t::pd_t::init(engine_t *engine) {
+status_t ip_convolution_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace format_tag;
     using smask_t = primitive_attr_t::skip_mask_t;
 
@@ -197,7 +197,7 @@ status_t ip_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     return ip_p_->execute(conv_ctx);
 }
 
-status_t ip_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
+status_t ip_convolution_bwd_data_t::pd_t::init(const engine_t *engine) {
     using namespace format_tag;
 
     VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_data,
@@ -253,7 +253,7 @@ status_t ip_convolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
     return ip_p_->execute(conv_ctx);
 }
 
-status_t ip_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
+status_t ip_convolution_bwd_weights_t::pd_t::init(const engine_t *engine) {
     using namespace format_tag;
 
     VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_weights,

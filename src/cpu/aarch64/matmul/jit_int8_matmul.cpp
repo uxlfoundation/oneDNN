@@ -865,7 +865,7 @@ private:
 };
 
 template <cpu_isa_t isa>
-status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_int8_matmul_t<isa>::pd_t::init(const engine_t *engine) {
 
     const auto src_type = src_md(0)->data_type;
     const auto wei_type = weights_md(0)->data_type;

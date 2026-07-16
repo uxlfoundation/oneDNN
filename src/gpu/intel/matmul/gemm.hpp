@@ -41,7 +41,7 @@ struct gemm_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(gemm_pd_ ? gemm_pd_->name() : "gemm_t", gemm_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             primitive_attr_t gemm_attr;

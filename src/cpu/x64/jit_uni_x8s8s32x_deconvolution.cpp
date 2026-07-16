@@ -1463,7 +1463,7 @@ jit_uni_x8s8s32x_deconvolution_fwd_t<
 
 template <cpu_isa_t isa>
 status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::pd_t::init(
-        engine_t *engine) {
+        const engine_t *engine) {
     using namespace data_type;
     using skip_mask_t = primitive_attr_t::skip_mask_t;
 

@@ -2456,7 +2456,7 @@ using namespace utils;
 /* fwd */
 template <cpu_isa_t isa>
 status_t jit_uni_tbb_batch_normalization_fwd_t<isa>::pd_t::init(
-        engine_t *engine) {
+        const engine_t *engine) {
     VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
 
     // disabling verbose dispatch checks for unsupported isa for better readability
@@ -2592,7 +2592,7 @@ template struct jit_uni_tbb_batch_normalization_fwd_t<avx512_core>;
 /* bwd */
 template <cpu_isa_t isa>
 status_t jit_uni_tbb_batch_normalization_bwd_t<isa>::pd_t::init(
-        engine_t *engine) {
+        const engine_t *engine) {
     VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
     // disabling verbose dispatch checks for unsupported isa for better readability

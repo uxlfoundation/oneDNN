@@ -33,9 +33,10 @@ namespace cpu {
 namespace x64 {
 
 status_t create_matmul_pd(std::shared_ptr<primitive_desc_t> &matmul_pd,
-        engine_t *engine, const memory_desc_t *a_md, const memory_desc_t *b_md,
-        const memory_desc_t *c_md, const memory_desc_t *ip_bia_md,
-        const memory_desc_t *reduce_md, const primitive_attr_t *attr);
+        const engine_t *engine, const memory_desc_t *a_md,
+        const memory_desc_t *b_md, const memory_desc_t *c_md,
+        const memory_desc_t *ip_bia_md, const memory_desc_t *reduce_md,
+        const primitive_attr_t *attr);
 
 status_t init_matmul_md(memory_desc_t &mm_md, const memory_desc_t &ip_md,
         format_tag_t tag, bool swap_dims = false);
@@ -51,7 +52,7 @@ struct matmul_inner_product_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T((matmul_pd_ ? matmul_pd_->name() : "matmul"),
                 matmul_inner_product_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
 
@@ -90,7 +91,7 @@ struct matmul_inner_product_fwd_t : public primitive_t {
 
     private:
         int get_k_blk(format_tag_t tag) const;
-        status_t init_matmul_params(engine_t *engine);
+        status_t init_matmul_params(const engine_t *engine);
 
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
@@ -124,7 +125,7 @@ struct matmul_inner_product_bwd_data_t : public primitive_t {
                     diff_src_md()->data_type, diff_dst_md()->data_type);
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
 
@@ -165,7 +166,7 @@ struct matmul_inner_product_bwd_data_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> matmul_pd_;
 
     private:
-        status_t init_matmul_params(engine_t *engine);
+        status_t init_matmul_params(const engine_t *engine);
         status_t set_formats() {
             return set_training_formats(&diff_src_md_, &weights_md_, nullptr,
                     &diff_dst_md_, get_prop_kind());
@@ -198,7 +199,7 @@ struct matmul_inner_product_bwd_weights_t : public primitive_t {
         DECLARE_COMMON_PD_T((matmul_pd_ ? matmul_pd_->name() : "matmul"),
                 matmul_inner_product_bwd_weights_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
 
@@ -241,7 +242,7 @@ struct matmul_inner_product_bwd_weights_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> matmul_pd_;
 
     private:
-        status_t init_matmul_params(engine_t *engine);
+        status_t init_matmul_params(const engine_t *engine);
         status_t set_formats() {
             return set_training_formats(&src_md_, &diff_weights_md_,
                     &diff_bias_md_, &diff_dst_md_, get_prop_kind());

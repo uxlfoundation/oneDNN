@@ -34,18 +34,18 @@
 namespace dnnl::impl::gpu::generic::sycl {
 
 namespace detail {
-status_t init_matmul_pd(impl::engine_t *engine,
+status_t init_matmul_pd(const impl::engine_t *engine,
         const primitive_attr_t *attributes, const memory_desc_t *src_desc,
         const memory_desc_t *weights_desc, const memory_desc_t *bias_desc,
         const memory_desc_t *dst_desc,
         std::shared_ptr<primitive_desc_t> &matmul_pd);
 
-status_t init_reorder_pd(impl::engine_t *engine, const memory_desc_t *src_md,
-        const memory_desc_t *dst_md,
+status_t init_reorder_pd(const impl::engine_t *engine,
+        const memory_desc_t *src_md, const memory_desc_t *dst_md,
         std::shared_ptr<primitive_desc_t> &reorder_pd);
 
 status_t get_primitive_descriptor(op_desc_t *op_desc,
-        const primitive_attr_t *attributes, impl::engine_t *engine,
+        const primitive_attr_t *attributes, const impl::engine_t *engine,
         std::shared_ptr<primitive_desc_t> &pd);
 
 std::vector<int> get_dim_order(int ndims, const dims_t strides);
@@ -65,7 +65,7 @@ struct ref_inner_product_fwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_inner_product_fwd_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> matmul_pd;
         std::shared_ptr<primitive_desc_t> src_reorder_pd;
@@ -99,7 +99,7 @@ struct ref_inner_product_bwd_data_t : public gpu::generic::sycl::primitive_t {
         using gpu_inner_product_bwd_data_pd_t::gpu_inner_product_bwd_data_pd_t;
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_inner_product_bwd_data_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> matmul_pd;
         std::shared_ptr<primitive_desc_t> dst_reorder_pd;
@@ -134,7 +134,7 @@ struct ref_inner_product_bwd_weights_t
                 gpu_inner_product_bwd_weights_pd_t;
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_inner_product_bwd_weights_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> matmul_pd;
         std::shared_ptr<primitive_desc_t> reduction_pd;
@@ -150,7 +150,7 @@ struct ref_inner_product_bwd_weights_t
                 const data_type_t &dst_dt, const data_type_t &weight_dt,
                 const data_type_t &bias_dt) const;
 
-        status_t init_reduction_pd(impl::engine_t *engine,
+        status_t init_reduction_pd(const impl::engine_t *engine,
                 const memory_desc_t *src_desc, const memory_desc_t *dest_desc);
     };
 

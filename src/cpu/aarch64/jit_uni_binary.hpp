@@ -41,7 +41,7 @@ struct jit_uni_binary_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("jit:uni", jit_uni_binary_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         jit_binary_conf_t get_conf() const { return conf_; }
 

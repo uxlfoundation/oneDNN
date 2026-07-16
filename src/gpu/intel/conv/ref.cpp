@@ -24,7 +24,7 @@ namespace intel {
 namespace conv {
 
 static status_t init_conf_common(
-        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
+        conf_t &conf, const pd_t *pd, const impl::engine_t *engine) {
     const desc_t &cd = *pd->desc();
     const memory_desc_t &src_md = *pd->invariant_src_md();
     const memory_desc_t &weights_md = *pd->invariant_wei_md();
@@ -36,7 +36,7 @@ static status_t init_conf_common(
     conf.require_stateless_addressing = pd->has_large_buffers();
 
     int oc_idx = (int)conf.with_groups;
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     switch (cd.prop_kind) {
         case prop_kind::forward_training:
         case prop_kind::forward_inference: {
@@ -168,7 +168,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     CHECK(init_conf_common(conf, this, engine));
     return status::success;
 }
@@ -251,7 +251,7 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);
 }
 
-status_t ref_bwd_data_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_data_t::pd_t::init_conf(const impl::engine_t *engine) {
     CHECK(init_conf_common(conf, this, engine));
     return status::success;
 }
@@ -332,7 +332,7 @@ status_t ref_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
             ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);
 }
 
-status_t ref_bwd_weights_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_weights_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 

@@ -347,7 +347,7 @@ struct pd_info_t {
     const char *c_str() const { return str_.c_str(); }
     bool is_initialized() const { return is_initialized_; }
 
-    void init(engine_t *engine, const primitive_desc_t *pd);
+    void init(const engine_t *engine, const primitive_desc_t *pd);
 
 private:
     std::string str_;

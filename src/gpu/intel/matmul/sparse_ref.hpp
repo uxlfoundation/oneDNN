@@ -39,7 +39,7 @@ struct ref_sparse_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_sparse_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             src_dt_ = src_md()->data_type;

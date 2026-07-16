@@ -36,9 +36,9 @@ struct ref_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
         // check data types compatibility and initialize `dispatch`
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         // define kernel compile time environment
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
@@ -76,7 +76,7 @@ struct ref_bwd_t : public primitive_t {
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_t);
 
         // check data types compatibility and initialize `dispatch`
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         // define kernel compile time environment
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;

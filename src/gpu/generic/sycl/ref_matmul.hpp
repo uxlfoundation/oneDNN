@@ -40,7 +40,7 @@ struct ref_matmul_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_matmul_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
 
@@ -118,7 +118,7 @@ struct ref_matmul_t : public gpu::generic::sycl::primitive_t {
             return status::success;
         }
 
-        status_t scales_ok(impl::engine_t *engine) const {
+        status_t scales_ok(const impl::engine_t *engine) const {
             const std::vector<int> supported_args
                     = {DNNL_ARG_SRC_0, DNNL_ARG_WEIGHTS_0, DNNL_ARG_DST};
 

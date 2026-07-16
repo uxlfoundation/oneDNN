@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -51,7 +52,7 @@ const std::map<int, conv_key_t> gemm_conv_keys
 template <data_type_t src_t, data_type_t wei_t, data_type_t dst_t,
         data_type_t bia_t>
 status_t acl_gemm_convolution_fwd_t<src_t, wei_t, dst_t, bia_t>::pd_t::init(
-        engine_t *engine) {
+        const engine_t *engine) {
     using namespace data_type;
     using smask_t = primitive_attr_t::skip_mask_t;
 

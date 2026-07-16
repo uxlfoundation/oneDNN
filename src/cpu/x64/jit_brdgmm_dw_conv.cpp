@@ -107,7 +107,7 @@ cpu_isa_t get_supported_isa(bool is_f32, bool is_int8, bool is_bf16,
     return isa_undef;
 }
 
-status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
+status_t brdgmm_dw_convolution_fwd_t::pd_t::init(const engine_t *engine) {
 
     using skip_mask_t = primitive_attr_t::skip_mask_t;
 

@@ -48,7 +48,7 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", jpp_.isa, ""),
                 jit_uni_pooling_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace utils;
 
             VDISPATCH_POOLING(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -124,7 +124,7 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", jpp_.isa, ""),
                 jit_uni_pooling_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace utils;
 
             VDISPATCH_POOLING(set_default_params() == status::success,

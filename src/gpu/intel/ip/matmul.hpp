@@ -45,7 +45,7 @@ struct matmul_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 (matmul_pd_ ? matmul_pd_->name() : "ocl:matmul"), matmul_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using namespace prop_kind;
             assert(engine->kind() == engine_kind::gpu);
@@ -157,7 +157,7 @@ struct matmul_bwd_data_t : public primitive_t {
                     diff_src_md()->data_type, diff_dst_md()->data_type);
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
@@ -242,7 +242,7 @@ struct matmul_bwd_weights_t : public primitive_t {
                     src_md()->data_type, diff_dst_md()->data_type);
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace data_type;
 

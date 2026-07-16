@@ -143,12 +143,13 @@ status_t update_config_from_devenv_values(bwd_config_t *config) {
     return status::success;
 }
 
-status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
+status_t micro_fwd_t::pd_t::init_conf_microkernels(
+        const impl::engine_t *engine) {
     using namespace jit;
     using gemm::jit::convert_dnnl_to_kernel_type;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
 
     auto *d = desc();
@@ -419,12 +420,13 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
+status_t micro_bwd_t::pd_t::init_conf_microkernels(
+        const impl::engine_t *engine) {
     using namespace jit;
     using gemm::jit::convert_dnnl_to_kernel_type;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
     auto *d = desc();
 
@@ -845,7 +847,7 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
     conf.use_systolic_ukernel = pd->use_systolic_ukernel();
 }
 
-status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t micro_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     using namespace micro;
     init_conf_common(conf, this);
     conf.d_max_kq = d_max_kq();
@@ -965,7 +967,7 @@ status_t micro_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t micro_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     init_conf_common(conf, this);
     conf.d_max = d_max();
 
@@ -1017,10 +1019,10 @@ status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t micro_bwd_t::pd_t::init_scratchpad(impl::engine_t *engine) {
+status_t micro_bwd_t::pd_t::init_scratchpad(const impl::engine_t *engine) {
     auto scratchpad = scratchpad_registry().registrar();
-    auto gpu_align
-            = utils::downcast<gpu::engine_t *>(engine)->get_buffer_alignment();
+    auto gpu_align = utils::downcast<const gpu::engine_t *>(engine)
+                             ->get_buffer_alignment();
     size_t wspace_size = memory_desc_wrapper(desc()->diff_qry_md()).nelems();
     // f32 can directly atomic add to output
     // others need intermediate scratchpad before conversion

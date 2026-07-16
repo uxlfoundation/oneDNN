@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2025 ZTE Corporation
 * Copyright 2026 Institute of Software, Chinese Academy of Sciences
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -64,7 +65,7 @@ struct jit_uni_binary_t : public primitive_t {
         using cpu_binary_pd_t::cpu_binary_pd_t;
         DECLARE_COMMON_PD_T("jit:uni", jit_uni_binary_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             UNUSED(engine);
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;

@@ -54,7 +54,7 @@ using namespace rnn_utils;
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
-        acc_type>::pd_t::init_ref(engine_t *engine) {
+        acc_type>::pd_t::init_ref(const engine_t *engine) {
 
     using namespace prop_kind;
     using namespace utils;
@@ -297,7 +297,7 @@ template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 status_t
 ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
-        engine_t *engine) {
+        const engine_t *engine) {
     using namespace prop_kind;
     using namespace utils;
     using namespace format_tag;
@@ -541,7 +541,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
 template <prop_kind_t aprop, impl::data_type_t src_type,
         impl::data_type_t weights_type, impl::data_type_t acc_type>
 status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init(
-        engine_t *engine) {
+        const engine_t *engine) {
     status_t st = init_brgemm(engine);
     if (st != status::success) {
         rnn_.is_brgemm = false;

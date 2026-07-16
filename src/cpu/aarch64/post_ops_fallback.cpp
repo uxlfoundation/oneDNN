@@ -29,7 +29,7 @@ namespace aarch64 {
     VCONDCHECK(primitive, create, dispatch, post_ops_fallback, (cond), \
             status::unimplemented, __VA_ARGS__)
 
-status_t post_ops_fallback_t::init(engine_t *engine, post_ops_t &post_ops,
+status_t post_ops_fallback_t::init(const engine_t *engine, post_ops_t &post_ops,
         const memory_desc_t &dst_md, int post_op_start_index) {
 
     post_op_start_index_ = post_op_start_index;
@@ -160,7 +160,7 @@ status_t post_ops_fallback_t::execute_binary(const exec_ctx_t &ctx,
     return post_op->execute(binary_ctx);
 }
 
-status_t post_ops_fallback_t::create_binary_primitive(engine_t *engine,
+status_t post_ops_fallback_t::create_binary_primitive(const engine_t *engine,
         const binary_desc_t &binary_desc,
         std::shared_ptr<primitive_t> &primitive) const {
     auto empty_attr = dnnl_primitive_attr();
@@ -176,10 +176,11 @@ status_t post_ops_fallback_t::create_binary_primitive(engine_t *engine,
     }
     if (!binary_pd) return status::unimplemented;
 
-    return binary_pd->create_primitive(primitive, engine);
+    return binary_pd->create_primitive(
+            primitive, const_cast<engine_t *>(engine));
 }
 
-status_t post_ops_fallback_t::create_eltwise_primitive(engine_t *engine,
+status_t post_ops_fallback_t::create_eltwise_primitive(const engine_t *engine,
         const eltwise_desc_t &eltwise_desc,
         std::shared_ptr<primitive_t> &primitive) const {
     auto empty_attr = dnnl_primitive_attr();
@@ -195,7 +196,8 @@ status_t post_ops_fallback_t::create_eltwise_primitive(engine_t *engine,
     }
     if (!eltwise_pd) return status::unimplemented;
 
-    return eltwise_pd->create_primitive(primitive, engine);
+    return eltwise_pd->create_primitive(
+            primitive, const_cast<engine_t *>(engine));
 }
 
 status_t post_ops_fallback_t::execute_eltwise(const exec_ctx_t &ctx,

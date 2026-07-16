@@ -36,7 +36,7 @@ struct ref_sycl_softmax_fwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_sycl_softmax_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
 
             VDISPATCH_SOFTMAX(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -102,7 +102,7 @@ struct ref_sycl_softmax_bwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_sycl_softmax_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             VDISPATCH_SOFTMAX(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_SOFTMAX(

@@ -38,7 +38,7 @@ struct ref_sum_many_inputs_t : public gpu::primitive_t {
 
         static constexpr int max_num_tensors = 8;
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             const memory_desc_wrapper dst_d(dst_md());

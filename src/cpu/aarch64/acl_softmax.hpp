@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2024 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,7 +44,7 @@ struct acl_softmax_fwd_t : public primitive_t {
         using cpu_softmax_fwd_pd_t::cpu_softmax_fwd_pd_t;
 
         DECLARE_COMMON_PD_T("acl", acl_softmax_fwd_t);
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         acl_softmax_conf_t asp_;
     }; // pd_t

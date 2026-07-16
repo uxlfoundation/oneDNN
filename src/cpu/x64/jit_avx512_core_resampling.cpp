@@ -817,7 +817,7 @@ data_type_t jit_avx512_core_resampling_kernel_base_t::dst_data_type() const {
         return pd_->diff_src_md()->data_type;
 }
 
-status_t jit_avx512_core_resampling_bwd_t::pd_t::init(engine_t *engine) {
+status_t jit_avx512_core_resampling_bwd_t::pd_t::init(const engine_t *engine) {
     using namespace format_tag;
     using namespace data_type;
     // disabling verbose dispatch messages for unsupported isa for

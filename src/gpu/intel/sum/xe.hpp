@@ -38,7 +38,7 @@ struct xe_t : public primitive_t {
 
         DECLARE_SUM_PD_T("ocl:xe:any", xe_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             const int n = n_inputs();
 
             VDISPATCH_SUM(n <= max_num_arrs, "too many inputs for primitive");

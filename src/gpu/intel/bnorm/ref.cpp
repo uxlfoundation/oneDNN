@@ -29,9 +29,9 @@ namespace bnorm {
 
 static void init_calculate_stats_conf(conf_t &conf,
         compute::dispatch_t &dispatch_calc_stat,
-        compute::dispatch_t &dispatch_reduce_stat, impl::engine_t *engine,
+        compute::dispatch_t &dispatch_reduce_stat, const impl::engine_t *engine,
         const memory_desc_wrapper &data_mdw) {
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     const int ndims = conf.ndims;
     dispatch_calc_stat = intel_engine->create_dispatch(data_mdw.md_);
     dim_t calc_dims[5];
@@ -74,7 +74,7 @@ static void init_calculate_stats_conf(conf_t &conf,
 
 static void init_conf_common(conf_t &conf, compute::dispatch_t &dispatch,
         offsets_t &off, const pd_t *pd, const memory_desc_wrapper &data_mdw,
-        impl::engine_t *engine) {
+        const impl::engine_t *engine) {
     const desc_t &bd = *pd->desc();
     const int ndims = data_mdw.ndims();
 
@@ -105,7 +105,7 @@ static void init_conf_common(conf_t &conf, compute::dispatch_t &dispatch,
 
     set_offsets(data_mdw, off.src_off);
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     dispatch = intel_engine->create_dispatch(data_mdw.md_);
     dispatch.define_dim("MB", 0, conf.mb);
@@ -154,7 +154,7 @@ static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     def_dispatch(kernel_ctx, dispatch);
 }
 
-void ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+void ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     const memory_desc_wrapper data_mdw(src_md());
     init_conf_common(conf, dispatch, off, this, data_mdw, engine);
 
@@ -283,7 +283,7 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
 
-void ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+void ref_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(diff_src_md());
     init_conf_common(conf, dispatch, off, this, data_mdw, engine);

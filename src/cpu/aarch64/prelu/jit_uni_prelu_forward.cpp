@@ -496,7 +496,7 @@ jit_prelu_forward_kernel_t *jit_prelu_forward_kernel_t::create(cpu_isa_t isa,
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_prelu_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_prelu_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     UNUSED(engine);
 
     const memory_desc_wrapper src_d {src_md(0)};

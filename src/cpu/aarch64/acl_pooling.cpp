@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2022-2023, 2025 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,7 +23,7 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-status_t acl_pooling_fwd_t::pd_t::init(engine_t *engine) {
+status_t acl_pooling_fwd_t::pd_t::init(const engine_t *engine) {
 
     // Compute Library supports forward propagation only
     bool ok = set_default_params() == status::success && is_fwd()

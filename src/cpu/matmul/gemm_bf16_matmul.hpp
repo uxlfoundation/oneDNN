@@ -41,13 +41,13 @@ struct gemm_bf16_matmul_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("gemm:jit:bf16", gemm_bf16_matmul_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
         const gemm_based::params_t &params() const { return params_; }
 
         int nthr_; // To not exceed the limit in execute used for set up.
 
     private:
-        status_t check_and_configure_attributes(engine_t *engine);
+        status_t check_and_configure_attributes(const engine_t *engine);
         gemm_based::params_t params_;
     };
 

@@ -40,7 +40,7 @@ struct ref_binary_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_binary_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
 

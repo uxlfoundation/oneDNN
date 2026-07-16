@@ -83,7 +83,7 @@ static std::vector<dim_idx_t> get_dims(size_t ndims) {
 }
 
 status_t reusable_fwd_t::pd_t::init_dispatch_subgroup_per_reduction(
-        gpu::engine_t *engine) {
+        const gpu::engine_t *engine) {
     compute::range_t gws {(size_t)conf.subgroup_size};
     compute::range_t lws {(size_t)conf.subgroup_size};
     for (int i = 0; i < ndims(); i++) {
@@ -97,7 +97,7 @@ status_t reusable_fwd_t::pd_t::init_dispatch_subgroup_per_reduction(
 }
 
 status_t reusable_fwd_t::pd_t::init_dispatch_default_reusable(
-        gpu::engine_t *engine) {
+        const gpu::engine_t *engine) {
     using dims_vec_t = std::vector<dim_idx_t>;
 
     dims_vec_t src_dim_ids(memory_desc_wrapper(src_md()).ndims());
@@ -109,7 +109,7 @@ status_t reusable_fwd_t::pd_t::init_dispatch_default_reusable(
     compute::named_buffer_t src_buf("SRC", *src_md(), src_dim_ids);
     compute::named_buffer_t dst_buf("DST", src_buf);
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     compute::reusable_dispatch_config_t dispatch_config(
             intel_engine, std::move(dispatch_dim_ids));
     CHECK(dispatch_config.register_buffer(src_buf));
@@ -128,7 +128,7 @@ status_t reusable_fwd_t::pd_t::init_dispatch_default_reusable(
 }
 
 status_t reusable_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
-        gpu::engine_t *engine, const size_t num_workers_per_workgroup) {
+        const gpu::engine_t *engine, const size_t num_workers_per_workgroup) {
 
     const memory_desc_wrapper src_mdw(src_md());
     std::vector<dim_idx_t> dims_ids = get_dims(src_mdw.ndims());
@@ -182,7 +182,7 @@ status_t reusable_fwd_t::pd_t::init_dispatch_workgroup_per_reduction(
     std::vector<dim_idx_t> dispatch_dims = std::move(dims_ids);
     dispatch_dims[softmax_axis] = dims::workers;
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     compute::reusable_dispatch_config_t dispatch_config(
             intel_engine, std::move(dispatch_dims));
     CHECK(dispatch_config.register_buffer(src_buf));

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2024, 2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,7 +44,7 @@ struct acl_eltwise_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("acl", acl_eltwise_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         acl_eltwise_conf_t aep;
 

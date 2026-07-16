@@ -39,7 +39,7 @@ struct multi_po_reorder_t : public primitive_t {
 
         DECLARE_SUM_PD_T("reorder+post_ops", multi_po_reorder_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             VDISPATCH_SUM_SC(sum::pd_t::init(engine), VERBOSE_BAD_ENGINE_KIND);
 
             if (has_zero_dim_memory()) return status::success;

@@ -193,10 +193,10 @@ struct rnn_data_reorder_t : public primitive_t {
         DECLARE_COMMON_PD_T("rnn_data_reorder", rnn_data_reorder_t);
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd, engine_t *engine,
-                const primitive_attr_t *attr, engine_t *src_engine,
-                const memory_desc_t *src_md, engine_t *dst_engine,
-                const memory_desc_t *dst_md) {
+        static status_t create(reorder_pd_t **reorder_pd,
+                const engine_t *engine, const primitive_attr_t *attr,
+                const engine_t *src_engine, const memory_desc_t *src_md,
+                const engine_t *dst_engine, const memory_desc_t *dst_md) {
             using namespace format_tag;
             using namespace status;
             const memory_desc_wrapper id(src_md), od(dst_md);
@@ -320,8 +320,8 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("rnn_weights_reorder_s8", rnn_weights_reorder_s8_t);
 
-        status_t init(
-                engine_t *engine, engine_t *src_engine, engine_t *dst_engine) {
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine) {
             status_t status
                     = cpu_reorder_pd_t::init(engine, src_engine, dst_engine);
             if (status != status::success) return status;
@@ -339,10 +339,10 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
         gemm_pack_f gemm_pack;
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd, engine_t *engine,
-                const primitive_attr_t *attr, engine_t *src_engine,
-                const memory_desc_t *src_md, engine_t *dst_engine,
-                const memory_desc_t *dst_md) {
+        static status_t create(reorder_pd_t **reorder_pd,
+                const engine_t *engine, const primitive_attr_t *attr,
+                const engine_t *src_engine, const memory_desc_t *src_md,
+                const engine_t *dst_engine, const memory_desc_t *dst_md) {
             using namespace format_tag;
             using namespace rnn_packed_format;
             using namespace status;
@@ -541,8 +541,8 @@ struct rnn_weights_reorder_t : public primitive_t {
 
         format_tag_t itag_;
 
-        status_t init(
-                engine_t *engine, engine_t *src_engine, engine_t *dst_engine) {
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine) {
             status_t status
                     = cpu_reorder_pd_t::init(engine, src_engine, dst_engine);
             if (status != status::success) return status;
@@ -553,10 +553,10 @@ struct rnn_weights_reorder_t : public primitive_t {
         }
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd, engine_t *engine,
-                const primitive_attr_t *attr, engine_t *src_engine,
-                const memory_desc_t *src_md, engine_t *dst_engine,
-                const memory_desc_t *dst_md) {
+        static status_t create(reorder_pd_t **reorder_pd,
+                const engine_t *engine, const primitive_attr_t *attr,
+                const engine_t *src_engine, const memory_desc_t *src_md,
+                const engine_t *dst_engine, const memory_desc_t *dst_md) {
             using namespace format_tag;
             using namespace rnn_packed_format;
             using namespace status;
@@ -733,8 +733,8 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
         int nthr_; // To not exceed the limit in execute used for set up.
         size_t thr_scratch_comp_sz_ = 0;
 
-        status_t init(
-                engine_t *engine, engine_t *src_engine, engine_t *dst_engine) {
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine) {
             status_t status
                     = cpu_reorder_pd_t::init(engine, src_engine, dst_engine);
             if (status != status::success) return status;
@@ -746,10 +746,10 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
         }
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd, engine_t *engine,
-                const primitive_attr_t *attr, engine_t *src_engine,
-                const memory_desc_t *src_md, engine_t *dst_engine,
-                const memory_desc_t *dst_md) {
+        static status_t create(reorder_pd_t **reorder_pd,
+                const engine_t *engine, const primitive_attr_t *attr,
+                const engine_t *src_engine, const memory_desc_t *src_md,
+                const engine_t *dst_engine, const memory_desc_t *dst_md) {
             using namespace status;
             using namespace format_tag;
             using namespace memory_extra_flags;

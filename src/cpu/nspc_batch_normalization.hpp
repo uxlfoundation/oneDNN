@@ -41,7 +41,7 @@ struct nspc_batch_normalization_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("nspc_bnorm:any", nspc_batch_normalization_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using namespace format_tag;
 
@@ -133,7 +133,7 @@ struct nspc_batch_normalization_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("nspc_bnorm:any", nspc_batch_normalization_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using namespace format_tag;
 

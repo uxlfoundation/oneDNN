@@ -88,7 +88,7 @@ int brgemm_matmul_t<isa>::pd_t::get_brg_kernel_idx(bool is_bs_tail,
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
+status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     const auto src_dt = src_md_.data_type;
     const auto wei_dt = weights_md_.data_type;
     const auto dst_dt = dst_md_.data_type;

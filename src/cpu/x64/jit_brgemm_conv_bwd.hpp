@@ -41,7 +41,7 @@ struct brgemm_convolution_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), brgemm_convolution_bwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> fwd_pd_;
 

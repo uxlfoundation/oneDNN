@@ -39,8 +39,9 @@ struct weights_reorder_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("cross_engine::rnn", weights_reorder_t);
 
-        status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
-                impl::engine_t *dst_engine) {
+        status_t init(const impl::engine_t *engine,
+                const impl::engine_t *src_engine,
+                const impl::engine_t *dst_engine) {
             VDISPATCH_REORDER(dst_md()->extra.flags
                             & memory_extra_flags::rnn_u8s8_compensation,
                     VERBOSE_BAD_FLAGS);
@@ -51,7 +52,8 @@ struct weights_reorder_t : public primitive_t {
             VDISPATCH_REORDER(dst_engine->kind() == engine_kind::gpu,
                     VERBOSE_BAD_ENGINE_KIND);
 
-            auto *intel_engine = utils::downcast<intel::engine_t *>(dst_engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(dst_engine);
 
             VDISPATCH_REORDER(intel_engine->mayiuse(
                                       compute::device_ext_t::intel_subgroups),
@@ -72,7 +74,7 @@ struct weights_reorder_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
         reorder_conf_t conf;

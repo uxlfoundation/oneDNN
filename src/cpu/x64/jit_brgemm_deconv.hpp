@@ -48,7 +48,7 @@ struct brgemm_deconvolution_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), brgemm_deconvolution_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         bool post_ops_ok() const {
             return attr()->post_ops_.find(primitive_kind::convolution) == -1;

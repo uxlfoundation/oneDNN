@@ -52,7 +52,7 @@ struct ref_grouped_t : public primitive_t {
 
         bool is_2dby2d() const { return is_2dby2d_; }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             memory_desc_wrapper src_d(src_md());
             memory_desc_wrapper wei_d(weights_md(0));
 
@@ -80,7 +80,7 @@ struct ref_grouped_t : public primitive_t {
     private:
         bool is_2dby2d_ = false;
 
-        status_t init_2dby3d(impl::engine_t *engine) {
+        status_t init_2dby3d(const impl::engine_t *engine) {
             using namespace data_type;
 
             memory_desc_wrapper wei_d(weights_md(0));
@@ -234,7 +234,7 @@ struct ref_grouped_t : public primitive_t {
         //   per-group  [G, 1]       -> [G, 1, 1]
         //   per-token  [total_M, 1] -> [1, total_M, 1]
         //   per-token  [total_M, N] -> [1, total_M, N]
-        status_t setup_post_ops(impl::engine_t *engine) {
+        status_t setup_post_ops(const impl::engine_t *engine) {
             auto &attr_po = attr_.post_ops_;
             generic_po_ = attr_po;
 
@@ -269,7 +269,7 @@ struct ref_grouped_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_2dby2d(impl::engine_t *engine) {
+        status_t init_2dby2d(const impl::engine_t *engine) {
             using namespace data_type;
 
             memory_desc_wrapper dst_d(dst_md());

@@ -22,8 +22,9 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-dim_t calculate_spatial_chunk(const conf_t &conf, impl::engine_t *engine) {
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+dim_t calculate_spatial_chunk(
+        const conf_t &conf, const impl::engine_t *engine) {
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     const int hw_threads = intel_engine->device_info()->hw_threads();
     const bool is_xe_hp_plus = intel_engine->is_xe_hp()
             || intel_engine->is_xe_hpg() || intel_engine->is_xe_hpc();
@@ -44,8 +45,8 @@ dim_t calculate_spatial_chunk(const conf_t &conf, impl::engine_t *engine) {
     return chunk_size;
 }
 
-static status_t init_conf_common(
-        conf_t &conf, offsets_t &off, const pd_t *pd, impl::engine_t *engine) {
+static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd,
+        const impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
 
     set_default_conf(conf, *pd->desc(), *pd->invariant_src_md(),
@@ -84,7 +85,7 @@ static status_t init_conf_common(
     set_offsets(src_mdw, off.src_off);
     set_offsets(dst_mdw, off.dst_off);
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     conf.is_plain = src_mdw.is_plain();
     conf.global_spatial_chunk = calculate_spatial_chunk(conf, engine);
@@ -160,7 +161,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t xe_global_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_global_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 
@@ -213,7 +214,7 @@ status_t xe_global_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     }
 }
 
-status_t xe_global_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_global_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 

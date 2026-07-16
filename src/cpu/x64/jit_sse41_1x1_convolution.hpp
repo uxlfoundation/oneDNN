@@ -48,7 +48,7 @@ struct jit_sse41_1x1_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_1x1:", sse41, ""),
                 jit_sse41_1x1_convolution_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(f32, f32, f32, f32, f32),
@@ -155,7 +155,7 @@ struct jit_sse41_1x1_convolution_fwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t depthwise_po_init(engine_t *engine) {
+        status_t depthwise_po_init(const engine_t *engine) {
 
             using namespace memory_tracking;
             auto &jcp_1x1 = jcp_;

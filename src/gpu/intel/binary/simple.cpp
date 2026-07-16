@@ -24,7 +24,7 @@ namespace gpu {
 namespace intel {
 namespace binary {
 
-status_t simple_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t simple_t::pd_t::init_conf(const impl::engine_t *engine) {
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));
     const memory_desc_wrapper src2_d(src_md(2));
@@ -99,7 +99,7 @@ status_t simple_t::pd_t::init_conf(impl::engine_t *engine) {
         }
     }
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(dst_d.md_);
     if (conf.is_tensor_op && conf.is_dense && conf.is_same_md
             && !conf.with_binary_post_op) {

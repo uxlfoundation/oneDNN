@@ -24,7 +24,7 @@ namespace shuffle {
 
 using namespace format_tag;
 
-status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_t::pd_t::init_conf(const impl::engine_t *engine) {
     const memory_desc_wrapper input_mdw(is_fwd() ? src_md() : diff_dst_md());
     conf.data_type = input_mdw.data_type();
     const memory_desc_wrapper output_mdw(is_fwd() ? dst_md() : diff_src_md());
@@ -41,7 +41,7 @@ status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
 
     set_offsets(input_mdw, off.src_off);
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(input_mdw.md_);
     for (int i = 0; i < MAX_NDIMS; ++i) {
         auto dim_str = utils::format("D%d", i);

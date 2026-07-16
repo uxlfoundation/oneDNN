@@ -47,7 +47,7 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 JIT_IMPL_NAME_HELPER("jit:", isa, ""), jit_uni_softmax_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             auto is_dense = [&]() {
                 const memory_desc_wrapper src_d(src_md());
                 const auto &bd = src_d.blocking_desc();
@@ -134,7 +134,7 @@ struct jit_uni_softmax_bwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 JIT_IMPL_NAME_HELPER("jit:", isa, ""), jit_uni_softmax_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             auto is_dense = [&]() {
                 const memory_desc_wrapper dst_d(dst_md());
                 const auto &bd = dst_d.blocking_desc();

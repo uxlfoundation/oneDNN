@@ -46,7 +46,7 @@ struct jit_uni_batch_normalization_s8_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("bnorm_s8_jit:", isa, ""),
                 jit_uni_batch_normalization_s8_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
     };
 
     using data_t = int8_t;

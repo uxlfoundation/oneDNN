@@ -97,9 +97,10 @@ struct reusable_vectorized_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 "ocl:reusable:vectorized", reusable_vectorized_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             data_type_t src_dt = src_md()->data_type;
             data_type_t dst_dt = dst_md()->data_type;
@@ -131,7 +132,7 @@ struct reusable_vectorized_fwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
 
         reusable_vectorized_params_t conf;
         reusable_vectorized_runtime_params_t rt_conf;

@@ -28,7 +28,7 @@ struct primitive_desc_t;
 status_t sum_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
         const memory_desc_t *dst_md, int n, const float *scales,
         const memory_desc_t *const *src_mds, const primitive_attr_t *attr,
-        engine_t *engine);
+        const engine_t *engine);
 
 } // namespace impl
 } // namespace dnnl

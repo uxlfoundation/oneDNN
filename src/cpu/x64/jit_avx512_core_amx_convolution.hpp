@@ -44,7 +44,7 @@ struct jit_avx512_core_amx_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", jcp_.isa, ""),
                 jit_avx512_core_amx_convolution_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
             bool is_bf16_convolution
@@ -132,7 +132,7 @@ struct jit_avx512_core_amx_convolution_bwd_data_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", jcp_.isa, ""),
                 jit_avx512_core_amx_convolution_bwd_data_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             const data_type_t wdt = weights_md_.data_type;
             bool is_xf16_convolution
                     = utils::one_of(wdt, data_type::bf16, data_type::f16)
@@ -200,7 +200,7 @@ struct jit_avx512_core_amx_convolution_bwd_weights_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", jcp_.isa, ""),
                 jit_avx512_core_amx_convolution_bwd_weights_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             VDISPATCH_CONV(is_bwd_w(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(

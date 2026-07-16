@@ -18,7 +18,8 @@
 #include "gpu/generic/sycl/ref_group_normalization.hpp"
 
 namespace dnnl::impl::gpu::generic::sycl {
-status_t ref_group_normalization_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t ref_group_normalization_fwd_t::pd_t::init(
+        const impl::engine_t *engine) {
     using namespace data_type;
     VDISPATCH_GNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
     VDISPATCH_GNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -113,7 +114,8 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-status_t ref_group_normalization_bwd_t::pd_t::init(impl::engine_t *engine) {
+status_t ref_group_normalization_bwd_t::pd_t::init(
+        const impl::engine_t *engine) {
     using namespace data_type;
     // TODO: remove me
     VDISPATCH_GNORM(

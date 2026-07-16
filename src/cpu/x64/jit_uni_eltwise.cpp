@@ -278,7 +278,7 @@ private:
 } // namespace
 
 template <cpu_isa_t isa>
-status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace alg_kind;
     using namespace data_type;
 
@@ -368,7 +368,7 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace alg_kind;
     using namespace data_type;
 

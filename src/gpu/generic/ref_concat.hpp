@@ -37,7 +37,7 @@ struct ref_concat_t : public gpu::primitive_t {
 
         DECLARE_CONCAT_PD_T("ref:any", ref_concat_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
 
             VDISPATCH_CONCAT(attr()->has_default_values(sm::scales),
@@ -91,8 +91,9 @@ struct ref_concat_t : public gpu::primitive_t {
         memory_desc_t tent_dst_md_;
 
     private:
-        void init_scratchpad(impl::engine_t *engine) {
-            auto *gpu_engine = utils::downcast<gpu::engine_t *>(engine);
+        void init_scratchpad(const impl::engine_t *engine) {
+            const auto *gpu_engine
+                    = utils::downcast<const gpu::engine_t *>(engine);
             auto scratchpad = scratchpad_registry().registrar();
 
             if (use_tent_dst()) {

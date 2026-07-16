@@ -32,7 +32,7 @@ namespace gemm {
 
 using namespace gemmstone;
 
-status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
+status_t xe_hp_systolic_t::pd_t::init(const impl::engine_t *engine) {
     using namespace prop_kind;
     using namespace data_type;
     using namespace primitive_kind;
@@ -40,7 +40,7 @@ status_t xe_hp_systolic_t::pd_t::init(impl::engine_t *engine) {
     using arch_t = compute::gpu_arch_t;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     VDISPATCH_GEMM(intel_engine->mayiuse_ngen_kernels(),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "ngen kernels");

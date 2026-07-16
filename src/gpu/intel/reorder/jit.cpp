@@ -34,11 +34,11 @@ namespace reorder {
 
 using namespace jit;
 
-status_t gen_t::pd_t::init(impl::engine_t *engine, impl::engine_t *src_engine,
-        impl::engine_t *dst_engine) {
+status_t gen_t::pd_t::init(const impl::engine_t *engine,
+        const impl::engine_t *src_engine, const impl::engine_t *dst_engine) {
     const auto src_dt = src_md()->data_type;
     const auto dst_dt = dst_md()->data_type;
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
     using namespace data_type;
 

@@ -41,7 +41,7 @@ struct ref_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             memory_desc_t gate_dst_md, up_dst_md;
             CHECK(get_gate_dst_md(gate_dst_md));
             CHECK(get_up_dst_md(up_dst_md));
@@ -165,7 +165,7 @@ struct ref_t : public primitive_t {
         }
 
         status_t create_matmul(std::shared_ptr<primitive_desc_t> &retn,
-                impl::engine_t *e, const primitive_attr_t &attr,
+                const impl::engine_t *e, const primitive_attr_t &attr,
                 const memory_desc_t *src_desc, const memory_desc_t *wei_desc,
                 const memory_desc_t *dst_desc) const {
             return impl::create_matmul_pd(

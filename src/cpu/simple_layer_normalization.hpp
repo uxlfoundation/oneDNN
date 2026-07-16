@@ -42,7 +42,7 @@ struct simple_layer_normalization_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("simple:any", simple_layer_normalization_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         bool use_tmp_stats() const { return reorder_pd_ || stats_are_tmp(); }
 
@@ -165,7 +165,7 @@ struct simple_layer_normalization_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("simple:any", simple_layer_normalization_bwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         bool use_tmp_stats() const { return reorder_pd_.get(); }
 

@@ -32,11 +32,11 @@ namespace pool {
 
 using namespace jit;
 
-status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_fwd_t::pd_t::init(const impl::engine_t *engine) {
     using namespace data_type;
     using namespace prop_kind;
     using namespace alg_kind;
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto arch = intel_engine->device_info()->gpu_arch();
     auto src_data_t = src_md()->data_type;
     auto dst_data_t = dst_md()->data_type;

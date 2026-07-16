@@ -24,8 +24,8 @@ namespace gpu {
 namespace intel {
 namespace ip {
 
-static status_t init_conf_common(
-        conf_t &conf, offsets_t &off, const pd_t *pd, impl::engine_t *engine) {
+static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd,
+        const impl::engine_t *engine) {
     const desc_t &ipd = *pd->desc();
     const memory_desc_wrapper src_d(pd->invariant_src_md());
     const memory_desc_wrapper wei_d(pd->invariant_wei_md());
@@ -73,7 +73,7 @@ static status_t init_conf_common(
     conf.is_backward_data = ipd.prop_kind == prop_kind::backward_data;
     conf.is_backward_weights = ipd.prop_kind == prop_kind::backward_weights;
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     if (conf.is_forward) {
         conf.with_bias = ipd.bias_desc.format_kind != format_kind::undef;
         conf.bia_dt = conf.with_bias ? ipd.bias_desc.data_type : data_type::f32;
@@ -162,7 +162,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 
@@ -212,7 +212,7 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t ref_bwd_data_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_data_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 
@@ -247,7 +247,7 @@ status_t ref_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t ref_bwd_weights_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_weights_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 

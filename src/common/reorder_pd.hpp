@@ -47,7 +47,7 @@ namespace impl {
 
 struct reorder_primitive_desc_iface_t : public dnnl_primitive_desc {
     reorder_primitive_desc_iface_t(const std::shared_ptr<primitive_desc_t> &pd,
-            engine_t *engine, engine_t *src_engine, engine_t *dst_engine)
+            const engine_t *engine, engine_t *src_engine, engine_t *dst_engine)
         : dnnl_primitive_desc(pd, engine)
         , src_engine_(src_engine)
         , dst_engine_(dst_engine)

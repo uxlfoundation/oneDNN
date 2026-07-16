@@ -42,7 +42,7 @@ struct gemm_inner_product_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(GEMM_IMPL_STR, gemm_inner_product_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace utils;
 
             VDISPATCH_INNER_PRODUCT(
@@ -144,7 +144,7 @@ struct gemm_inner_product_bwd_data_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(GEMM_IMPL_STR, gemm_inner_product_bwd_data_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             VDISPATCH_INNER_PRODUCT(
                     DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
                     VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
@@ -188,7 +188,7 @@ struct gemm_inner_product_bwd_weights_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(GEMM_IMPL_STR, gemm_inner_product_bwd_weights_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             VDISPATCH_INNER_PRODUCT(
                     DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
                     VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);

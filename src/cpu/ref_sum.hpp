@@ -37,7 +37,7 @@ struct ref_sum_t : public primitive_t {
 
         DECLARE_SUM_PD_T("ref:any", ref_sum_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             bool ok = cpu_sum_pd_t::init(engine) == status::success;
             VDISPATCH_SUM(ok, VERBOSE_BAD_ENGINE_KIND);
 

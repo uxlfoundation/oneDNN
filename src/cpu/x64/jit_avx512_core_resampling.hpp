@@ -51,7 +51,7 @@ struct jit_avx512_core_resampling_bwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", avx512_core, ""),
                 jit_avx512_core_resampling_bwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
     };
 
     jit_avx512_core_resampling_bwd_t(const pd_t *apd) : primitive_t(apd) {}

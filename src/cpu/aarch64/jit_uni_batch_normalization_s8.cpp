@@ -411,7 +411,7 @@ using namespace utils;
 
 template <cpu_isa_t isa>
 status_t jit_uni_batch_normalization_s8_fwd_t<isa>::pd_t::init(
-        engine_t *engine) {
+        const engine_t *engine) {
     auto desired_fmt_tag = (ndims() == 4) ? nhwc : ndhwc;
 
     bool ok = true && mayiuse(isa) && is_fwd() && !has_zero_dim_memory()

@@ -33,7 +33,7 @@ struct vectorized_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:vectorized", vectorized_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
 
@@ -47,7 +47,7 @@ struct vectorized_bwd_t : public primitive_t {
         }
         conf_t conf;
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
     };
 

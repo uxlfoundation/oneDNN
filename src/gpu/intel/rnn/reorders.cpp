@@ -22,7 +22,7 @@ namespace gpu {
 namespace intel {
 namespace rnn {
 
-status_t weights_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t weights_reorder_t::pd_t::init_conf(const impl::engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
 
@@ -37,7 +37,7 @@ status_t weights_reorder_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.sub_group_size = 1;
 
     // only for LDIGO
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     conf.dispatch = intel_engine->create_dispatch(dst_mdw.md_);
     conf.dispatch.define_dim("D0", 0, dims[0]);

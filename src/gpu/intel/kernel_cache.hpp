@@ -141,7 +141,7 @@ private:
 // GPU specific abstract interface for kernel_cache::key_impl_t
 struct gpu_kernel_key_impl_t : public kernel_cache::key_impl_t {
     virtual status_t create_generator(
-            impl::engine_t *engine, gpu_kernel_value_t &generator) const
+            const impl::engine_t *engine, gpu_kernel_value_t &generator) const
             = 0;
 };
 
@@ -164,13 +164,14 @@ struct gpu_kernel_key_container_t final : public gpu_kernel_key_impl_t {
     gpu_kernel_key_container_t(Args &&...args)
         : key(std::forward<Args>(args)...) {}
 
-    status_t create_generator(impl::engine_t *engine,
+    status_t create_generator(const impl::engine_t *engine,
             gpu_kernel_value_t &generator) const override {
 
         auto g = std::make_shared<gpu_kernel_value_container_t<value_type>>(
                 value_type());
 
-        auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+        const auto *intel_engine
+                = utils::downcast<const intel::engine_t *>(engine);
         auto status = key.create_generator(*intel_engine, g->value);
         generator = std::static_pointer_cast<kernel_cache::value_impl_t>(g);
         return status;
@@ -194,19 +195,19 @@ using trivial_key_container_t = gpu_kernel_key_container_t<trivial_key_t<K>>;
 // location
 template <typename value_type>
 status_t get_cached_kernels(std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
+        const impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
         const std::vector<const char *> &kernel_names,
         cache_state_t &kernel_cache_hit);
 
 extern template status_t get_cached_kernels<compute::kernel_t>(
         std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
+        const impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
         const std::vector<const char *> &kernel_names,
         cache_state_t &kernel_cache_hit);
 
 extern template status_t get_cached_kernels<compute::kernel_bundle_t>(
         std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
+        const impl::engine_t *engine, std::vector<compute::kernel_t> &kernels,
         const std::vector<const char *> &kernel_names,
         cache_state_t &kernel_cache_hit);
 

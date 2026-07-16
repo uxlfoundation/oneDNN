@@ -25,7 +25,7 @@ namespace reorder {
 
 using namespace dnnl::impl::memory_tracking::names;
 
-status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_t::pd_t::init_conf(const impl::engine_t *engine) {
     using namespace format_tag;
     using namespace data_type;
 
@@ -47,7 +47,7 @@ status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
     conf.ndims = src_mdw.ndims();
     conf.nelems = utils::array_product(padded_dims, conf.ndims);
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
     int sub_group_size = 1;
     if (device_info->mayiuse_sub_group(16)) sub_group_size = 16;

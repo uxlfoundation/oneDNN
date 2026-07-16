@@ -47,7 +47,7 @@ struct nhwc_pooling_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("simple_nhwc:any", nhwc_pooling_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             const format_tag_t desired_fmt_tag = utils::pick(ndims() - 3,
                     format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
 
@@ -156,7 +156,7 @@ struct nhwc_pooling_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("simple_nhwc:any", nhwc_pooling_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             const format_tag_t desired_fmt_tag = utils::pick(ndims() - 3,
                     format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
 

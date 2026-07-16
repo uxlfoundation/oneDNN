@@ -30,7 +30,7 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-status_t jit_prelu_fwd_t::pd_t::init(engine_t *engine) {
+status_t jit_prelu_fwd_t::pd_t::init(const engine_t *engine) {
     const memory_desc_wrapper src_d {src_md(0)};
     const memory_desc_wrapper weights_d {weights_md(0)};
     const memory_desc_wrapper dst_d {dst_md(0)};

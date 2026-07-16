@@ -55,7 +55,7 @@ bool need_post_processing(const pd_t *pd, float runtime_dst_zero_point = 0.f) {
 }
 } // namespace
 
-status_t gemm_x8s8s32x_matmul_t::pd_t::init(engine_t *engine) {
+status_t gemm_x8s8s32x_matmul_t::pd_t::init(const engine_t *engine) {
     using namespace utils;
     using namespace data_type;
 

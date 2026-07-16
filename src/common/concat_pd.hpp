@@ -274,7 +274,7 @@ private:
 
 #define DECLARE_CONCAT_PD_t(impl_name, ...) \
     static status_t create(concat_pd_t **concat_pd, \
-            dnnl::impl::engine_t *engine, const primitive_attr_t *attr, \
+            const dnnl::impl::engine_t *engine, const primitive_attr_t *attr, \
             const memory_desc_t *dst_md, int n, int concat_dim, \
             const memory_desc_t *const *src_mds) { \
         using namespace status; \

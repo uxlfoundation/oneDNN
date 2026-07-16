@@ -43,7 +43,7 @@ struct ip_convolution_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), ip_convolution_fwd_t);
 
-        status_t init_ip(engine_t *engine) {
+        status_t init_ip(const engine_t *engine) {
             inner_product_desc_t ipd;
             CHECK(ip_desc_create(&ipd));
             primitive_desc_iterator_t it(
@@ -69,7 +69,7 @@ struct ip_convolution_fwd_t : public primitive_t {
             return status::unimplemented;
         }
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> ip_pd_;
 
@@ -117,7 +117,7 @@ struct ip_convolution_bwd_data_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), ip_convolution_bwd_data_t);
 
-        status_t init_ip(engine_t *engine) {
+        status_t init_ip(const engine_t *engine) {
             inner_product_desc_t ipd;
             CHECK(ip_desc_create(&ipd));
             primitive_desc_iterator_t it(
@@ -142,7 +142,7 @@ struct ip_convolution_bwd_data_t : public primitive_t {
             return status::unimplemented;
         }
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> ip_pd_;
 
@@ -189,7 +189,7 @@ struct ip_convolution_bwd_weights_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), ip_convolution_bwd_weights_t);
 
-        status_t init_ip(engine_t *engine) {
+        status_t init_ip(const engine_t *engine) {
             inner_product_desc_t ipd;
             CHECK(ip_desc_create(&ipd));
             primitive_desc_iterator_t it(
@@ -214,7 +214,7 @@ struct ip_convolution_bwd_weights_t : public primitive_t {
             }
             return status::unimplemented;
         }
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> ip_pd_;
 

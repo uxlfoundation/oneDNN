@@ -118,7 +118,7 @@ static inline status_t create_gemm_desc(gemm_desc_t *_gemm_desc,
 }
 
 static inline status_t create_gemm_pd(
-        std::shared_ptr<primitive_desc_t> &gemm_pd_, engine_t *engine,
+        std::shared_ptr<primitive_desc_t> &gemm_pd_, const engine_t *engine,
         const memory_desc_t *a_md, const memory_desc_t *b_md,
         const memory_desc_t *c_md, const memory_desc_t *bias_md,
         data_type_t acc_dt, const primitive_attr_t *attr, bool skip_ref = false,

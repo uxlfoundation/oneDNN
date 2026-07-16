@@ -43,7 +43,7 @@ public:
 
         DECLARE_COMMON_PD_T("jit:ir", gen_fwd_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         std::shared_ptr<pd_data_t> data;
     };
@@ -70,7 +70,7 @@ public:
 
         DECLARE_COMMON_PD_T("jit:ir", gen_bwd_data_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         std::shared_ptr<pd_data_t> data;
     };
@@ -97,7 +97,7 @@ public:
 
         DECLARE_COMMON_PD_T("jit:ir", gen_bwd_weights_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         std::shared_ptr<pd_data_t> data;
     };

@@ -103,7 +103,7 @@ static int get_exec_num_of_threads(const memory_desc_wrapper &dst_d) {
     return dst_d.nelems() <= max_nthr * min_work_per_thread ? 1 : max_nthr;
 }
 
-status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
     using sm = primitive_attr_t::skip_mask_t;
 
     conf_.dst_type = dst_md()->data_type;

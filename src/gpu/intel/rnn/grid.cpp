@@ -575,12 +575,12 @@ status_t simple_common_t<prop_kind::backward>::pd_t::set_default_params() {
 }
 
 template <prop_kind_t aprop>
-status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
+status_t simple_common_t<aprop>::pd_t::init(const impl::engine_t *engine) {
     using namespace prop_kind;
     using namespace format_tag;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     const compute::device_info_t &device_info = *(intel_engine->device_info());
     max_eus_per_wg = device_info.max_eus_per_wg();

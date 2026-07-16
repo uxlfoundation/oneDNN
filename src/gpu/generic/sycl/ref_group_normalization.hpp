@@ -35,7 +35,7 @@ struct ref_group_normalization_fwd_t : public gpu::generic::sycl::primitive_t {
         using group_normalization_fwd_pd_t::group_normalization_fwd_pd_t;
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_group_normalization_fwd_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         ::sycl::nd_range<2> launch_range;
         sycl_group_norm_conf_t conf_;
@@ -59,7 +59,7 @@ struct ref_group_normalization_bwd_t : public gpu::generic::sycl::primitive_t {
         using group_normalization_bwd_pd_t ::group_normalization_bwd_pd_t;
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_group_normalization_bwd_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         ::sycl::nd_range<1> launch_range;
         sycl_gnorm_bwd_conf_t conf_;

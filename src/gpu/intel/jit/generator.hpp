@@ -149,7 +149,7 @@ public:
 };
 
 inline ngen::HW to_ngen_hw(const impl::engine_t *engine) {
-    auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     return intel_engine->device_info()->ngen_hw();
 }
 

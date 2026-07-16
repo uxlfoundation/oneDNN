@@ -177,7 +177,8 @@ static status_t init_conf_common(const pd_t *pd,
     return status::success;
 }
 
-status_t reusable_vectorized_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t reusable_vectorized_fwd_t::pd_t::init_conf(
+        const impl::engine_t *engine) {
     size_t ndims = static_cast<size_t>(src_md()->ndims);
     vector<dim_idx_t> dims = get_dims(ndims);
     vector<dim_idx_t> stat_dims = get_dims(ndims, true);

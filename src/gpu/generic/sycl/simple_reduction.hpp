@@ -41,7 +41,7 @@ struct simple_reduction_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", simple_reduction_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
 
             memory_desc_wrapper src_wrap(src_md());

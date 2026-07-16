@@ -57,7 +57,7 @@ struct jit_uni_ncsp_convolution_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), jit_uni_ncsp_convolution_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> matmul_pd_;
         std::shared_ptr<primitive_desc_t> nspc_conv_pd_;
@@ -72,8 +72,8 @@ struct jit_uni_ncsp_convolution_fwd_t : public primitive_t {
         memory_desc_t nspc_dst_md_;
 
     private:
-        status_t init_convolution(engine_t *engine);
-        status_t init_matmul(engine_t *engine);
+        status_t init_convolution(const engine_t *engine);
+        status_t init_matmul(const engine_t *engine);
         reduction_helper_t reduction_helper_;
         bool is_matmul_ = false;
         std::string name_ = "jit_uni_ncsp:";
@@ -117,7 +117,7 @@ struct jit_uni_ncsp_convolution_bwd_weights_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 name_.c_str(), jit_uni_ncsp_convolution_bwd_weights_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> nspc_conv_pd_;
         std::shared_ptr<primitive_desc_t> src_reorder_pd_;
@@ -126,7 +126,7 @@ struct jit_uni_ncsp_convolution_bwd_weights_t : public primitive_t {
         memory_desc_t nspc_diff_dst_md_;
 
     private:
-        status_t init_convolution(engine_t *engine);
+        status_t init_convolution(const engine_t *engine);
         std::string name_;
         void init_scratchpad();
         void init_name() {
@@ -161,7 +161,7 @@ struct jit_uni_ncsp_convolution_bwd_data_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), jit_uni_ncsp_convolution_bwd_data_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         std::shared_ptr<primitive_desc_t> matmul_diff_src_pd_;
         std::shared_ptr<primitive_desc_t> nspc_conv_pd_;
@@ -174,8 +174,8 @@ struct jit_uni_ncsp_convolution_bwd_data_t : public primitive_t {
         memory_desc_t matmul_dst_md_;
 
     private:
-        status_t init_convolution(engine_t *engine);
-        status_t init_matmul(engine_t *engine);
+        status_t init_convolution(const engine_t *engine);
+        status_t init_matmul(const engine_t *engine);
         reduction_helper_t reduction_helper_;
         bool is_matmul_ = false;
         std::string name_;

@@ -37,7 +37,7 @@ struct ref_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
 
             VDISPATCH_PRELU(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_PRELU(src_md()->data_type == dst_md()->data_type,
@@ -55,7 +55,7 @@ struct ref_fwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
         conf_t conf;
@@ -91,7 +91,7 @@ struct ref_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
 
             VDISPATCH_PRELU(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_PRELU(
@@ -117,11 +117,11 @@ struct ref_bwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
-        status_t init_reduction(impl::engine_t *engine) {
+        status_t init_reduction(const impl::engine_t *engine) {
             reduction_desc_t rdesc;
             memory_desc_t red_diff_mem_desc(*src_md(0));
             red_diff_mem_desc.data_type = dnnl_f32;

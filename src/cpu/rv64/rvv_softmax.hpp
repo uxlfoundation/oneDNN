@@ -1,5 +1,6 @@
 /******************************************************************************
 * Copyright 2025 ZTE Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -50,7 +51,7 @@ struct rvv_softmax_fwd_t : public primitive_t {
         // f32 uses isa v, f16 uses Zvfh (vfwcvt/vfncvt); drives the impl name.
         cpu_isa_t isa_ = v;
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             UNUSED(engine);
 
             VDISPATCH_SOFTMAX(set_default_formats() == status::success,

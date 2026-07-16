@@ -2204,7 +2204,8 @@ using namespace utils;
 /* fwd */
 
 template <cpu_isa_t isa>
-status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(
+        const engine_t *engine) {
     VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_BNORM(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_BNORM(!has_zero_dim_memory(), "zero dims are not supported");
@@ -2327,7 +2328,8 @@ jit_uni_batch_normalization_fwd_t<isa>::~jit_uni_batch_normalization_fwd_t() {
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_batch_normalization_bwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_batch_normalization_bwd_t<isa>::pd_t::init(
+        const engine_t *engine) {
     VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_BNORM(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_BNORM(!has_zero_dim_memory(), "zero dims are not supported");

@@ -39,7 +39,7 @@ struct ref_lrn_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_lrn_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
 
@@ -96,7 +96,7 @@ struct ref_lrn_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_lrn_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
 

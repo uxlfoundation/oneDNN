@@ -88,7 +88,7 @@ struct simple_t : public primitive_t {
 
         DECLARE_CONCAT_PD_T("ocl:simple:reusable", simple_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             VDISPATCH_CONCAT(n_inputs() <= 64, VERBOSE_BAD_PARAM, "n_inputs");
             VDISPATCH_CONCAT(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -99,7 +99,7 @@ struct simple_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
 
         simple_params_t conf;
         simple_runtime_params_t rt_conf;

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2022, 2024 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -66,7 +67,7 @@ status_t acl_eltwise_fwd_t::execute_forward(
     return status::success;
 }
 
-status_t acl_eltwise_fwd_t::pd_t::init(engine_t *engine) {
+status_t acl_eltwise_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace utils;
     using namespace data_type;
     const memory_desc_wrapper src_d(src_md());

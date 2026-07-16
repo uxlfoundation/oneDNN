@@ -67,7 +67,8 @@ static bool impl_supports_datatype(data_type_t data_type) {
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(engine_t *engine) {
+status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::init(
+        const engine_t *engine) {
     using namespace data_type;
 
     const auto diff_src_type = diff_src_md(0)->data_type;

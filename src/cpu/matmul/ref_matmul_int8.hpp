@@ -41,7 +41,7 @@ struct ref_matmul_int8_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref_int8:any", ref_matmul_int8_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto src_type = src_md(0)->data_type;

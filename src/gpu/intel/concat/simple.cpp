@@ -29,14 +29,14 @@ namespace intel {
 namespace concat {
 
 static status_t normalize(simple_params_t &conf,
-        simple_runtime_params_t &rt_conf, impl::engine_t *engine,
+        simple_runtime_params_t &rt_conf, const impl::engine_t *engine,
         const concat_pd_t *pd, const normalization_t &normalize) {
 
     const memory_desc_wrapper ref_dst_mdw = *pd->dst_md();
 
     const auto axis = pd->concat_dim();
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
     dim_t max_write_size = normalize.max_write_size();
     dim_t max_read_size = normalize.max_read_size();
@@ -165,7 +165,7 @@ static status_t normalize(simple_params_t &conf,
 }
 
 static status_t try_normalize_internal_padding(simple_params_t &conf,
-        simple_runtime_params_t &rt_conf, impl::engine_t *engine,
+        simple_runtime_params_t &rt_conf, const impl::engine_t *engine,
         const concat_pd_t *pd, const normalization_t &normalize) {
 
     using namespace utils;
@@ -173,7 +173,7 @@ static status_t try_normalize_internal_padding(simple_params_t &conf,
 
     const auto concat_dim = pd->concat_dim();
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
 
     const int max_sg_size = device_info->max_subgroup_size();
@@ -327,8 +327,9 @@ static status_t try_normalize_internal_padding(simple_params_t &conf,
     return status::success;
 }
 
-static status_t init_conf_common(impl::engine_t *engine, const concat_pd_t *pd,
-        simple_params_t &conf, simple_runtime_params_t &rt_conf) {
+static status_t init_conf_common(const impl::engine_t *engine,
+        const concat_pd_t *pd, simple_params_t &conf,
+        simple_runtime_params_t &rt_conf) {
     using namespace utils;
     const memory_desc_t &ref_dst_md = *pd->dst_md();
 
@@ -373,7 +374,7 @@ compute::kernel_ctx_t simple_params_t::get_kernel_ctx() const {
     return kernel_ctx;
 }
 
-status_t simple_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t simple_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(engine, this, conf, rt_conf);
 }
 

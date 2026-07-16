@@ -34,9 +34,10 @@ struct ref_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
@@ -82,7 +83,7 @@ struct ref_fwd_t : public primitive_t {
             return status::success;
         }
 
-        void init_conf(impl::engine_t *engine);
+        void init_conf(const impl::engine_t *engine);
         void init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
@@ -142,9 +143,10 @@ struct ref_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_BNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),
@@ -180,7 +182,7 @@ struct ref_bwd_t : public primitive_t {
             return status::success;
         }
 
-        void init_conf(impl::engine_t *engine);
+        void init_conf(const impl::engine_t *engine);
         void init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 

@@ -49,7 +49,7 @@ static bool impl_supports_datatype(data_type_t data_type) {
     }
 }
 
-status_t jit_uni_reduction_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_reduction_t::pd_t::init(const engine_t *engine) {
     using namespace alg_kind;
     using namespace data_type;
     using namespace format_tag;

@@ -340,7 +340,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t brgemm_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     using namespace utils;
     brgemm_descriptors_

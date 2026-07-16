@@ -91,7 +91,7 @@ struct conv_bwd_weights_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), conv_bwd_weights_t);
 
-        status_t init_convolution(impl::engine_t *engine) {
+        status_t init_convolution(const impl::engine_t *engine) {
             conv::desc_t cd;
             CHECK(conv_descr_create(desc(), &cd));
             primitive_attr_t conv_attr(*attr());
@@ -103,7 +103,7 @@ struct conv_bwd_weights_t : public primitive_t {
             return (conv_pd_) ? status::success : status::unimplemented;
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace format_tag;
             VDISPATCH_DECONVOLUTION(
                     desc()->prop_kind == prop_kind::backward_weights,

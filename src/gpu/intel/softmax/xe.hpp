@@ -38,9 +38,10 @@ struct xe_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:xe", xe_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace dnnl::impl::format_tag;
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             auto arch = intel_engine->device_info()->gpu_arch();
             const memory_desc_wrapper src_d(src_md());
@@ -249,10 +250,11 @@ struct xe_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:xe", xe_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace dnnl::impl::format_tag;
 
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             const memory_desc_wrapper diff_src_d(diff_src_md());
             const memory_desc_wrapper diff_dst_d(diff_dst_md());

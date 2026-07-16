@@ -33,8 +33,9 @@ struct direct_copy_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("gpu:direct_copy", direct_copy_t);
 
-        status_t init(impl::engine_t *engine, impl::engine_t * /*src_engine*/,
-                impl::engine_t * /*dst_engine*/) {
+        status_t init(const impl::engine_t *engine,
+                const impl::engine_t * /*src_engine*/,
+                const impl::engine_t * /*dst_engine*/) {
             VDISPATCH_REORDER(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_REORDER(

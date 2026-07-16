@@ -30,7 +30,7 @@ namespace matmul {
 struct cpu_matmul_pd_t : public matmul_pd_t {
     using matmul_pd_t::matmul_pd_t;
     // NOLINTBEGIN(google-default-arguments)
-    status_t attr_scales_ok(engine_t *engine,
+    status_t attr_scales_ok(const engine_t *engine,
             const std::vector<int> &supported_args
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
             const std::vector<int> &supported_qmodes

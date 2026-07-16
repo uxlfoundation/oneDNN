@@ -458,7 +458,8 @@ private:
 } // namespace
 
 template <cpu_isa_t isa>
-status_t jit_uni_layer_normalization_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_layer_normalization_fwd_t<isa>::pd_t::init(
+        const engine_t *engine) {
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     const memory_desc_wrapper src_d(src_md());
 

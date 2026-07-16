@@ -28,15 +28,15 @@ namespace lnorm {
 using namespace compute;
 using namespace dnnl::impl::format_tag;
 
-bool mayiuse_sg(const int sg_size, impl::engine_t *engine) {
-    auto *intel_engine = utils::downcast<engine_t *>(engine);
+bool mayiuse_sg(const int sg_size, const impl::engine_t *engine) {
+    auto *intel_engine = utils::downcast<const engine_t *>(engine);
     return intel_engine->mayiuse_sub_group(sg_size)
             && intel_engine->mayiuse_block_reads_writes_with_sub_group(sg_size);
 }
 
 bool is_fused_kernel_applicable(conf_t &conf, const pd_t *pd,
-        impl::engine_t *engine, int grf_per_thread) {
-    auto *intel_engine = utils::downcast<engine_t *>(engine);
+        const impl::engine_t *engine, int grf_per_thread) {
+    auto *intel_engine = utils::downcast<const engine_t *>(engine);
 
     auto gpu_arch = intel_engine->device_info()->gpu_arch();
     memory_desc_wrapper src_mdw(pd->src_md());
@@ -174,9 +174,9 @@ bool is_fused_kernel_applicable(conf_t &conf, const pd_t *pd,
 }
 
 static status_t init_conf_common(
-        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
+        conf_t &conf, const pd_t *pd, const impl::engine_t *engine) {
 
-    auto *intel_engine = utils::downcast<engine_t *>(engine);
+    auto *intel_engine = utils::downcast<const engine_t *>(engine);
     auto &device_info = *intel_engine->device_info();
     auto gpu_arch = device_info.gpu_arch();
 
@@ -526,7 +526,7 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t vectorized_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t vectorized_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
@@ -571,7 +571,7 @@ status_t vectorized_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t vectorized_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t vectorized_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 

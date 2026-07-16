@@ -49,7 +49,7 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brgconv_1x1:", isa, ""),
                 brgemm_1x1_convolution_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         std::shared_ptr<brgemm_containers::brgemm_desc_container_t> brgs_;
         bool with_sum = false;

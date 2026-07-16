@@ -307,7 +307,7 @@ void atomic_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t atomic_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t atomic_t::pd_t::init_conf(const impl::engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -364,7 +364,7 @@ status_t atomic_t::pd_t::init_conf(impl::engine_t *engine) {
     }
 
     const intel::engine_t *intel_engine
-            = utils::downcast<intel::engine_t *>(engine);
+            = utils::downcast<const intel::engine_t *>(engine);
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 
@@ -429,7 +429,7 @@ status_t atomic_t::pd_t::init_conf(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t atomic_t::pd_t::init_finalization_pd(impl::engine_t *engine) {
+status_t atomic_t::pd_t::init_finalization_pd(const impl::engine_t *engine) {
     eltwise_desc_t eltwise_desc;
     memory_desc_t eltwise_mem_desc(*dst_md());
     // XXX: Just for mean currently

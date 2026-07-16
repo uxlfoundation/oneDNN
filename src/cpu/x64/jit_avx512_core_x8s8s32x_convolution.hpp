@@ -38,7 +38,7 @@ struct jit_avx512_core_x8s8s32x_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_int8:", jcp_.isa, ""),
                 jit_avx512_core_x8s8s32x_convolution_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);

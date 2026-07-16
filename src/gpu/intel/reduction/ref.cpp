@@ -25,7 +25,7 @@ namespace gpu {
 namespace intel {
 namespace reduction {
 
-status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_t::pd_t::init_conf(const impl::engine_t *engine) {
     const pd_t *pd = this;
 
     const memory_desc_wrapper src_mdw(pd->src_md());
@@ -34,7 +34,7 @@ status_t ref_t::pd_t::init_conf(impl::engine_t *engine) {
     const int ndims = src_mdw.ndims();
     const auto src_dims = src_mdw.md_->dims;
     const auto dst_dims = dst_mdw.md_->dims;
-    const auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     conf.alg = pd->desc()->alg_kind;
     conf.src_md_info = memory_desc_info_t::create(src_mdw);

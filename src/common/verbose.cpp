@@ -1834,7 +1834,7 @@ std::string rt_dims2fmt_str(primitive_kind_t prim_kind,
     return s;
 }
 
-void pd_info_t::init(engine_t *engine, const primitive_desc_t *pd) {
+void pd_info_t::init(const engine_t *engine, const primitive_desc_t *pd) {
     // Handles VERBOSE_DISABLE since `is_initialized_` is set to `true`.
     if (is_initialized_) return;
 

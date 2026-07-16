@@ -280,7 +280,7 @@ private:
 } // namespace
 
 template <cpu_isa_t isa>
-status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     const memory_desc_wrapper src_d(src_md());
     const data_type_t d_type = src_md()->data_type;
 
@@ -369,7 +369,7 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(const engine_t *engine) {
     // For *_use_dst_for_bwd algs the kernel reads DNNL_ARG_DST and the
     // derivative is expressed in the forward output; otherwise it reads
     // DNNL_ARG_SRC. data_md() selects the matching tensor.

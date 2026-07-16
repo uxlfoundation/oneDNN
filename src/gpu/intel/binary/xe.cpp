@@ -59,7 +59,7 @@ bool check_broadcast(
     return true;
 }
 
-status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_t::pd_t::init_conf(const impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper src0_d(src_md(0));
     const memory_desc_wrapper src1_d(src_md(1));
@@ -112,7 +112,7 @@ status_t xe_t::pd_t::init_conf(impl::engine_t *engine) {
         }
     }
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(dst_d.md_);
 
     format_tag_t dst_tag = dst_d.matches_one_of_tag(nc, ncw, nchw, ncdhw);

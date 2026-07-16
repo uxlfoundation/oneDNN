@@ -43,7 +43,8 @@ namespace impl {
             status::unimplemented, msg, ##__VA_ARGS__);
 
 namespace {
-engine_t *get_reorder_engine(engine_t *src_engine, engine_t *dst_engine) {
+const engine_t *get_reorder_engine(
+        const engine_t *src_engine, const engine_t *dst_engine) {
     auto s_ek = src_engine->kind();
     auto d_ek = dst_engine->kind();
     auto s_rk = src_engine->runtime_kind();
@@ -64,9 +65,9 @@ engine_t *get_reorder_engine(engine_t *src_engine, engine_t *dst_engine) {
 } // namespace
 
 status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
-        engine_t *engine, const memory_desc_t *src_md, engine_t *src_engine,
-        const memory_desc_t *dst_md, engine_t *dst_engine,
-        const primitive_attr_t *attr) {
+        const engine_t *engine, const memory_desc_t *src_md,
+        const engine_t *src_engine, const memory_desc_t *dst_md,
+        const engine_t *dst_engine, const primitive_attr_t *attr) {
     pd.reset();
 
     auto s_ek = src_engine->kind();
@@ -169,7 +170,7 @@ status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
 }
 
 status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
-        engine_t *engine, const memory_desc_t *src_md,
+        const engine_t *engine, const memory_desc_t *src_md,
         const memory_desc_t *dst_md, const primitive_attr_t *attr) {
     return reorder_primitive_desc_create(
             pd, engine, src_md, engine, dst_md, engine, attr);

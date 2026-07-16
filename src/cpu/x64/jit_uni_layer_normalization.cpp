@@ -1214,7 +1214,7 @@ diff_data_kernel_t *diff_data_kernel_t::create(
         return nullptr;
     }
 }
-status_t jit_uni_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_layer_normalization_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     const memory_desc_wrapper src_d(src_md());

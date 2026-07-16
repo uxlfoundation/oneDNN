@@ -22,8 +22,8 @@ namespace gpu {
 namespace intel {
 namespace pool {
 
-static status_t init_conf_common(
-        conf_t &conf, offsets_t &off, const pd_t *pd, impl::engine_t *engine) {
+static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd,
+        const impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     using namespace dnnl::impl::alg_kind;
 
@@ -125,7 +125,7 @@ static status_t init_conf_common(
                     "ocl ref_kernel is faster");
         }
     }
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(
             conf.is_backward ? src_mdw.md_ : dst_mdw.md_);
 
@@ -245,7 +245,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t xe_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 
@@ -281,7 +281,7 @@ status_t xe_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t xe_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine);
 }
 

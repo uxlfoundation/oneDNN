@@ -37,8 +37,9 @@ struct ref_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
-        status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
-                impl::engine_t *dst_engine) {
+        status_t init(const impl::engine_t *engine,
+                const impl::engine_t *src_engine,
+                const impl::engine_t *dst_engine) {
             using namespace data_type;
             using smask_t = dnnl_primitive_attr::skip_mask_t;
             using compute::device_ext_t;
@@ -82,7 +83,7 @@ struct ref_t : public primitive_t {
                             f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
 
-            auto *intel_engine = utils::downcast<intel::engine_t *>(
+            const auto *intel_engine = utils::downcast<const intel::engine_t *>(
                     dst_engine->kind() == engine_kind::gpu ? dst_engine
                                                            : src_engine);
 
@@ -114,7 +115,7 @@ struct ref_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         void init_scratchpad();
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 Institute of Software, Chinese Academy of Sciences
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -505,7 +506,7 @@ jit_uni_group_normalization_fwd_t::kernel_norm_base_t::create(const pd_t *pd) {
 
 // =============================== pd::init ===============================
 
-status_t jit_uni_group_normalization_fwd_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_group_normalization_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace format_tag;
     using skip_mask_t = primitive_attr_t::skip_mask_t;
 

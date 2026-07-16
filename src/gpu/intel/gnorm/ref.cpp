@@ -66,7 +66,7 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t ref_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init(const impl::engine_t *engine) {
     using namespace data_type;
 
     using skip_mask_t = primitive_attr_t::skip_mask_t;
@@ -92,7 +92,7 @@ status_t ref_fwd_t::pd_t::init(impl::engine_t *engine) {
     CHECK(attr_.set_default_formats(
             dst_md(0))); // can't use attr() due to it is const
 
-    const auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     dispatch = intel_engine->create_dispatch(src_md());
 
     dispatch.define_dim("BATCH", MB());
@@ -160,7 +160,7 @@ status_t ref_fwd_t::execute(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t ref_bwd_t::pd_t::init(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init(const impl::engine_t *engine) {
     using namespace data_type;
 
     // TODO: remove me
@@ -183,7 +183,7 @@ status_t ref_bwd_t::pd_t::init(impl::engine_t *engine) {
 
     VDISPATCH_GNORM(set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
 
-    const auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     dispatch = intel_engine->create_dispatch(diff_src_md());
     // put parallelization dimension
     dispatch.define_dim("CHANNEL", C());

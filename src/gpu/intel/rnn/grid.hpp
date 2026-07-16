@@ -76,7 +76,7 @@ struct simple_common_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:simple:any", class_name);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         status_t set_default_params();
 

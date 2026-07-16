@@ -26,7 +26,7 @@ namespace impl {
 namespace gpu {
 
 status_t create_zp_precompute_conv_pd(std::shared_ptr<primitive_desc_t> &retn,
-        dnnl::impl::engine_t *eng, const primitive_attr_t &attr,
+        const dnnl::impl::engine_t *eng, const primitive_attr_t &attr,
         const memory_desc_t *wei, const dim_t *idhw, const dim_t *odhw,
         const dim_t *pdhw, const dim_t *ddhw, data_type_t out_type,
         prop_kind_t prop, bool has_offset0) {

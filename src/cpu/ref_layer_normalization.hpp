@@ -41,7 +41,7 @@ struct ref_layer_normalization_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_layer_normalization_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
 
@@ -111,7 +111,7 @@ struct ref_layer_normalization_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_layer_normalization_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             VDISPATCH_LNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),

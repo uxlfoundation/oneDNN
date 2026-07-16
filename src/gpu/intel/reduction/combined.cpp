@@ -238,7 +238,7 @@ status_t split_into_phases(const subproblem_t &subprb,
     return status::success;
 }
 
-status_t combined_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t combined_t::pd_t::init_conf(const impl::engine_t *engine) {
     // To start, check for compatibility
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
@@ -291,7 +291,7 @@ status_t combined_t::pd_t::init_conf(impl::engine_t *engine) {
             VERBOSE_BAD_ALGORITHM);
 
     const intel::engine_t *intel_engine
-            = utils::downcast<intel::engine_t *>(engine);
+            = utils::downcast<const intel::engine_t *>(engine);
 
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());

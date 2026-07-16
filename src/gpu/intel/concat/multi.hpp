@@ -47,7 +47,7 @@ struct multi_t : public primitive_t {
             return batch_failure;
         }
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             VDISPATCH_CONCAT(max_batch_size() != batch_failure,
                     VERBOSE_SKIP_PRIMITIVE_IMPL);
             VDISPATCH_CONCAT(

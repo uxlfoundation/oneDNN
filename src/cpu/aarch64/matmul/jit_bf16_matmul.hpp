@@ -52,7 +52,7 @@ struct jit_bf16_matmul_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("jit:bf16", jit_bf16_matmul_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         bool formats_ok() const {
 

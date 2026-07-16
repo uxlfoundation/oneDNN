@@ -43,8 +43,9 @@ namespace dnnl {
 namespace impl {
 
 status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
-        engine_t *engine, const memory_desc_t *dst_md, int n, int concat_dim,
-        const memory_desc_t *const *src_mds, const primitive_attr_t *attr) {
+        const engine_t *engine, const memory_desc_t *dst_md, int n,
+        int concat_dim, const memory_desc_t *const *src_mds,
+        const primitive_attr_t *attr) {
     VCHECK_CONCAT(!any_null(src_mds) && n > 0, VERBOSE_NULL_ARG);
 
     if (attr == nullptr)
@@ -149,8 +150,9 @@ status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
 }
 
 status_t concat_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
-        engine_t *engine, const memory_desc_t *dst_md, int n, int concat_dim,
-        const memory_desc_t *src_mds, const primitive_attr_t *attr) {
+        const engine_t *engine, const memory_desc_t *dst_md, int n,
+        int concat_dim, const memory_desc_t *src_mds,
+        const primitive_attr_t *attr) {
     std::vector<const memory_desc_t *> src_mds_ptrs(n);
     for (int i = 0; i < n; i++)
         src_mds_ptrs[i] = &src_mds[i];

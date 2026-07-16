@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2022, 2024-2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -91,7 +92,7 @@ status_t acl_inner_product_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-status_t acl_inner_product_fwd_t::pd_t::init(engine_t *engine) {
+status_t acl_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     using smask_t = primitive_attr_t::skip_mask_t;
     const format_kind_t weights_format_kind_received = weights_md_.format_kind;
@@ -126,7 +127,7 @@ status_t acl_inner_product_fwd_t::pd_t::init(engine_t *engine) {
 }
 
 status_t acl_inner_product_fwd_t::pd_t::init_conf_ip(
-        engine_t *engine, format_kind_t weights_format_kind_received) {
+        const engine_t *engine, format_kind_t weights_format_kind_received) {
 
     const int ndims = src_md()->ndims;
 

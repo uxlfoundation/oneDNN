@@ -40,7 +40,7 @@ struct ref_batch_normalization_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_batch_normalization_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_BNORM(utils::everyone_is(d_type, src_md()->data_type,
@@ -97,7 +97,7 @@ struct ref_batch_normalization_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_batch_normalization_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);

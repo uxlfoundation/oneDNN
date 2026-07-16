@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2020-2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -83,7 +84,7 @@ using conv_key_t = decltype(memory_tracking::names::key_gemm_tmp_buffer);
 
 template <typename op_t, typename post_ops_t>
 status_t init_scratchpad(op_t &conv, memory_tracking::registrar_t &scratchpad,
-        const std::map<int, conv_key_t> &conv_keys, engine_t *engine,
+        const std::map<int, conv_key_t> &conv_keys, const engine_t *engine,
         post_ops_t &post_ops, dnnl::impl::post_ops_t &attr_post_ops,
         arm_compute::ActivationLayerInfo &act_info, bool &use_dst_acc_for_sum,
         const dnnl::impl::memory_desc_t &dst_md) {

@@ -101,7 +101,7 @@ void reusable_ref_t::pd_t::init_scratchpad() {
     }
 }
 
-status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t reusable_ref_t::pd_t::init_conf(const impl::engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -160,7 +160,7 @@ status_t reusable_ref_t::pd_t::init_conf(impl::engine_t *engine) {
     }
 
     const intel::engine_t *intel_engine
-            = utils::downcast<intel::engine_t *>(engine);
+            = utils::downcast<const intel::engine_t *>(engine);
     auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 

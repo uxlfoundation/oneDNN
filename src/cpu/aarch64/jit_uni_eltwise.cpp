@@ -499,7 +499,7 @@ inline void jit_uni_kernel_t<cpu_isa_t::sve>::pack_fp16(TReg &v0, TReg &v1) {
 } // namespace
 
 template <cpu_isa_t isa>
-status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace alg_kind;
 
     const memory_desc_wrapper src_d(src_md());
@@ -581,7 +581,7 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace alg_kind;
 
     const memory_desc_wrapper data_d(data_md());

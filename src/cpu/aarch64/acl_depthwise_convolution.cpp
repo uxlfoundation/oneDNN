@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2023-2024 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -39,7 +40,7 @@ status_t acl_depthwise_convolution_fwd_t::execute_forward(
             ctx, acl_obj_.get(), pd(), depthwise_conv_keys);
 }
 
-status_t acl_depthwise_convolution_fwd_t::pd_t::init(engine_t *engine) {
+status_t acl_depthwise_convolution_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace data_type;
 
     const bool is_fp16_ok = expect_data_types(f16, f16, f16, f16, undef)

@@ -34,7 +34,7 @@ namespace reduction {
 
 using namespace gpu_utils;
 
-status_t gen_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t gen_t::pd_t::init_conf(const impl::engine_t *engine) {
     const memory_desc_wrapper src_mdw(src_md());
     const memory_desc_wrapper dst_mdw(dst_md());
     const int ndims = src_mdw.ndims();
@@ -64,7 +64,7 @@ status_t gen_t::pd_t::init_conf(impl::engine_t *engine) {
     dim_t inner_nelems = reduction_stride;
     int dt_size = into<int>(sizeof(float));
 
-    auto &intel_engine = *utils::downcast<intel::engine_t *>(engine);
+    auto &intel_engine = *utils::downcast<const intel::engine_t *>(engine);
     const compute::device_info_t &device_info = *intel_engine.device_info();
     int reg_size = device_info.grf_size();
     int elems_per_reg = reg_size / dt_size;

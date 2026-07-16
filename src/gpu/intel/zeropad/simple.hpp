@@ -37,8 +37,9 @@ struct simple_t : public primitive_t {
         using zeropad::pd_t::pd_t;
 
         DECLARE_COMMON_PD_T("ocl:simple:any", simple_t);
-        status_t init(impl::engine_t *engine) {
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+        status_t init(const impl::engine_t *engine) {
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
             VDISPATCH_ZERO_PAD(intel_engine->mayiuse_sub_group(16),
                     VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "subgroup(16)");
             return status::success;

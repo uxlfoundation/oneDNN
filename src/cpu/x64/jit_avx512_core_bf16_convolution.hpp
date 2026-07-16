@@ -42,7 +42,7 @@ struct jit_avx512_core_bf16_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_bf16:", jcp_.isa, ""),
                 jit_avx512_core_bf16_convolution_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             // disabling verbose dispatch messages for unsupported isa for better readability
             if (!mayiuse(avx512_core)) return status::unimplemented;
@@ -126,7 +126,7 @@ struct jit_avx512_core_bf16_convolution_bwd_data_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_bf16:", jcp_.isa, ""),
                 jit_avx512_core_bf16_convolution_bwd_data_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace prop_kind;
             using namespace data_type;
             // disabling verbose dispatch messages for unsupported isa for better readability
@@ -193,7 +193,7 @@ struct jit_avx512_core_bf16_convolution_bwd_weights_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_bf16:", jcp_.isa, ""),
                 jit_avx512_core_bf16_convolution_bwd_weights_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             // disabling verbose dispatch messages for unsupported isa for better readability
             if (!mayiuse(avx512_core)) return status::unimplemented;

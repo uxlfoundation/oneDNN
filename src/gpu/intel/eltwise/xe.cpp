@@ -25,10 +25,10 @@ namespace gpu {
 namespace intel {
 namespace eltwise {
 
-status_t xe_jit_params_t::init(impl::engine_t *engine,
+status_t xe_jit_params_t::init(const impl::engine_t *engine,
         const memory_desc_wrapper data_d, alg_kind_t alg_kind_) {
     *this = {};
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     arch = intel_engine->device_info()->gpu_arch();
     data_type = data_d.data_type();
@@ -80,7 +80,7 @@ compute::kernel_ctx_t xe_jit_params_t::get_kernel_ctx() const {
     return kernel_ctx;
 }
 
-status_t xe_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     const memory_desc_wrapper data_d(use_dst() ? dst_md() : src_md());
     status_t status = conf.init(engine, data_d, this->desc()->alg_kind);
     conf.require_stateless_addressing = has_large_buffers();
@@ -121,7 +121,7 @@ status_t xe_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t xe_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t xe_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
 
     const memory_desc_wrapper data_d(data_md());

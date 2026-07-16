@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 IBM Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -51,13 +52,13 @@ struct ppc64_matrixA_reorder_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ppc64_matrixA_reorder_t", ppc64_matrixA_reorder_t);
 
-        status_t init(
-                engine_t *engine, engine_t *src_engine, engine_t *dst_engine);
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine);
 
     private:
         static status_t create(reorder_pd_t **reorder_pd, engine_t *engine,
-                const primitive_attr_t *attr, engine_t *src_engine,
-                const memory_desc_t *src_md, engine_t *dst_engine,
+                const primitive_attr_t *attr, const engine_t *src_engine,
+                const memory_desc_t *src_md, const engine_t *dst_engine,
                 const memory_desc_t *dst_md);
 
         void init_scratchpad() {}

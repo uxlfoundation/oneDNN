@@ -2679,10 +2679,10 @@ struct simple_reorder_t : public primitive_t {
         DECLARE_COMMON_PD_T("simple:any", simple_reorder_t);
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd, engine_t *engine,
-                const primitive_attr_t *attr, engine_t *src_engine,
-                const memory_desc_t *src_md, engine_t *dst_engine,
-                const memory_desc_t *dst_md) {
+        static status_t create(reorder_pd_t **reorder_pd,
+                const engine_t *engine, const primitive_attr_t *attr,
+                const engine_t *src_engine, const memory_desc_t *src_md,
+                const engine_t *dst_engine, const memory_desc_t *dst_md) {
             // Since `type_i` and `type_o` are templated arguments, no need
             // to put them under verbose_dispatch logic.
             bool ok = src_md->data_type == type_i

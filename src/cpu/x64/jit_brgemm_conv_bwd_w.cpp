@@ -39,7 +39,7 @@ using namespace data_type;
     (pd()->with_groups() ? (d).blk_off((g), __VA_ARGS__) \
                          : (d).blk_off(__VA_ARGS__))
 
-status_t brgemm_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
+status_t brgemm_convolution_bwd_weights_t::pd_t::init(const engine_t *engine) {
     const auto src_type = src_md(0)->data_type;
     const auto diff_wei_type = diff_weights_md(0)->data_type;
     const auto diff_bia_type = diff_weights_md(1)->data_type;

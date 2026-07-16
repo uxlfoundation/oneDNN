@@ -53,7 +53,7 @@ struct brgemm_convolution_bwd_weights_t : public primitive_t {
                 JIT_IMPL_NAME_HELPER("brgconv_bwd_w:", jcp_.isa, ""),
                 brgemm_convolution_bwd_weights_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
         jit_conv_conf_t jit_jcp_;

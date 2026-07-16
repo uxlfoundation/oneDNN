@@ -38,7 +38,7 @@ struct ref_inner_product_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_inner_product_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto src_type = src_md(0)->data_type;
@@ -114,7 +114,7 @@ struct ref_inner_product_bwd_data_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_inner_product_bwd_data_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             const auto diff_src_type = diff_src_md(0)->data_type;
             const auto wei_type = weights_md(0)->data_type;
@@ -166,7 +166,7 @@ struct ref_inner_product_bwd_weights_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_inner_product_bwd_weights_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             const auto src_type = src_md(0)->data_type;
             const auto diff_wei_type = diff_weights_md(0)->data_type;

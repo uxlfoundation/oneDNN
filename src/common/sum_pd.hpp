@@ -145,7 +145,7 @@ protected:
         dst_acc_md_.data_type = dnnl_f32;
     }
     /* inits dst_md_ in simple cases. The call may fail. */
-    status_t init(engine_t *engine) {
+    status_t init(const engine_t *engine) {
         for (int i = 0; i < n_; ++i) {
             const memory_desc_wrapper src_d(&src_mds_[i]);
             if (!src_d.is_blocking_desc() || src_d.is_additional_buffer())
@@ -199,9 +199,10 @@ private:
 // NOLINTEND(google-default-arguments)
 
 #define DECLARE_SUM_PD_t(impl_name, ...) \
-    static status_t create(sum_pd_t **sum_pd, dnnl::impl::engine_t *engine, \
-            const primitive_attr_t *attr, const memory_desc_t *dst_md, int n, \
-            const float *scales, const memory_desc_t *const *src_mds) { \
+    static status_t create(sum_pd_t **sum_pd, \
+            const dnnl::impl::engine_t *engine, const primitive_attr_t *attr, \
+            const memory_desc_t *dst_md, int n, const float *scales, \
+            const memory_desc_t *const *src_mds) { \
         using namespace status; \
         auto _pd = make_unique_pd<pd_t>(attr, dst_md, n, scales, src_mds); \
         if (_pd == nullptr) return out_of_memory; \

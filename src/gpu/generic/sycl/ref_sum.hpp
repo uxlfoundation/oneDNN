@@ -39,7 +39,7 @@ struct ref_sum_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_SUM_PD_T("sycl:ref:any", ref_sum_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace format_tag;
 
             const memory_desc_wrapper dst_d(dst_md());

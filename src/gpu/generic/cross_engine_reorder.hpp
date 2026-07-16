@@ -45,15 +45,16 @@ struct cross_engine_reorder_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:cross_engine::any", cross_engine_reorder_t);
 
-        status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
-                impl::engine_t *dst_engine);
+        status_t init(const impl::engine_t *engine,
+                const impl::engine_t *src_engine,
+                const impl::engine_t *dst_engine);
 
         std::shared_ptr<primitive_desc_t> reorder_pd_;
         engine_kind_t reorder_engine_kind_ = engine_kind::gpu;
         bool do_reorder_ = true;
 
     private:
-        void init_scratchpad(impl::engine_t *engine);
+        void init_scratchpad(const impl::engine_t *engine);
         DECLARE_GPU_REORDER_CREATE();
     };
 

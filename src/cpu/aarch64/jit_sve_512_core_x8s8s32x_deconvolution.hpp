@@ -277,7 +277,7 @@ struct jit_sve_512_core_x8s8s32x_deconvolution_fwd_t : public primitive_t {
                 JIT_IMPL_NAME_HELPER("jit_deconvolution:", sve_512, ""),
                 jit_sve_512_core_x8s8s32x_deconvolution_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
             const bool ok = mayiuse(sve_512) && is_fwd()

@@ -41,7 +41,7 @@ struct rvv_matmul_t : public primitive_t {
         // converts it inside the JIT kernel before adding to the s32 acc.
         static constexpr data_type_t bias_d_type = data_type::f32;
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             UNUSED(engine);
             using smask_t = primitive_attr_t::skip_mask_t;
             using namespace data_type;

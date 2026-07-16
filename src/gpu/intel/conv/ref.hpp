@@ -36,11 +36,11 @@ struct ref_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             const auto *intel_engine
-                    = utils::downcast<intel::engine_t *>(engine);
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             const bool is_int8 = utils::one_of(src_md_.data_type, s8, u8);
             const bool is_fp8
@@ -118,7 +118,7 @@ struct ref_fwd_t : public primitive_t {
             return init_conf(engine);
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         bool subbyte_pack_ = false;
 
@@ -170,7 +170,7 @@ struct ref_bwd_data_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_data_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
             auto attr_skip_mask = sm::post_ops | sm::scales;
@@ -179,7 +179,7 @@ struct ref_bwd_data_t : public primitive_t {
             }
             using namespace data_type;
             const auto *intel_engine
-                    = utils::downcast<intel::engine_t *>(engine);
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -232,7 +232,7 @@ struct ref_bwd_data_t : public primitive_t {
             return init_conf(engine);
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         bool subbyte_pack_ = false;
 
@@ -284,10 +284,10 @@ struct ref_bwd_weights_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_bwd_weights_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             const auto *intel_engine
-                    = utils::downcast<intel::engine_t *>(engine);
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
@@ -348,7 +348,7 @@ struct ref_bwd_weights_t : public primitive_t {
             return init_conf(engine);
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         bool subbyte_pack_ = false;
 

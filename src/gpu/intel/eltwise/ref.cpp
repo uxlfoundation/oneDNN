@@ -23,7 +23,7 @@ namespace intel {
 namespace eltwise {
 
 static status_t init_conf_common(
-        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
+        conf_t &conf, const pd_t *pd, const impl::engine_t *engine) {
     alg_kind_t alg = pd->desc()->alg_kind;
     const bool is_forward = pd->is_fwd();
     const auto &src_md = pd->use_dst() ? pd->dst_md() : pd->src_md();
@@ -50,7 +50,7 @@ static status_t init_conf_common(
     conf.with_zero_padding = src_d.nelems(false) != src_d.nelems(true);
 
     int max_ndims = 6;
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(
             is_forward ? src_d.md_ : diff_data_d.md_);
     for (int i = 0; i < max_ndims; ++i) {
@@ -101,7 +101,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
@@ -177,7 +177,7 @@ status_t ref_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
     return large_parallel_for(ctx, nd_range, kernel_, arg_list, 4);
 }
 
-status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 

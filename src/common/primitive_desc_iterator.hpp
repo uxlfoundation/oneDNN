@@ -33,7 +33,7 @@ namespace impl {
 struct primitive_desc_t;
 
 struct primitive_desc_iterator_t {
-    primitive_desc_iterator_t(engine_t *engine, const op_desc_t *op_desc,
+    primitive_desc_iterator_t(const engine_t *engine, const op_desc_t *op_desc,
             const primitive_attr_t *attr, const primitive_desc_t *hint_fwd_pd,
             int skip_idx = -1)
         : idx_(-1)
@@ -50,7 +50,7 @@ struct primitive_desc_iterator_t {
             ++last_idx_;
     }
 
-    engine_t *engine() const { return engine_; }
+    const engine_t *engine() const { return engine_; }
 
     bool operator==(const primitive_desc_iterator_t &rhs) const {
         return idx_ == rhs.idx_ && engine_ == rhs.engine_;
@@ -102,7 +102,7 @@ struct primitive_desc_iterator_t {
 
 protected:
     int idx_;
-    engine_t *engine_;
+    const engine_t *engine_;
     std::shared_ptr<primitive_desc_t> pd_;
     std::unique_ptr<op_desc_t> op_desc_;
     const primitive_attr_t attr_;
@@ -113,7 +113,7 @@ protected:
     int offset_;
 
 private:
-    primitive_desc_iterator_t(engine_t *engine, int last_idx)
+    primitive_desc_iterator_t(const engine_t *engine, int last_idx)
         : idx_(last_idx)
         , engine_(engine)
         , hint_fwd_pd_(nullptr)

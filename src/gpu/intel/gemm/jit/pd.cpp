@@ -66,7 +66,7 @@ int quant_entry_ndims(
 }
 } // anonymous namespace
 
-status_t pd_t::init_post_ops(impl::engine_t *engine) {
+status_t pd_t::init_post_ops(const impl::engine_t *engine) {
     using namespace primitive_kind;
     using namespace alg_kind;
     using namespace data_type;
@@ -248,7 +248,7 @@ bool pd_t::quant_enabled() const {
     return wei_decomp() || dy_quant_enabled();
 }
 
-status_t pd_t::init_attrs(impl::engine_t *engine) {
+status_t pd_t::init_attrs(const impl::engine_t *engine) {
     wei_decomp_ = wei_decomp();
     dy_quant_enabled_ = dy_quant_enabled();
     quant_enabled_ = quant_enabled();
@@ -358,7 +358,7 @@ status_t pd_t::init_attrs(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t pd_t::zp_ok(impl::engine_t *engine) {
+status_t pd_t::zp_ok(const impl::engine_t *engine) {
     using namespace data_type;
     auto &attr_zps = attr()->zero_points_;
     if (attr_zps.has_default_values()) return status::success;
@@ -448,7 +448,7 @@ status_t pd_t::zp_ok(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t pd_t::gs_ok(impl::engine_t *engine) {
+status_t pd_t::gs_ok(const impl::engine_t *engine) {
     auto &attr_gs = attr()->precomputed_reductions_;
     if (attr_gs.has_default_values()) return status::success;
 
@@ -468,7 +468,7 @@ status_t pd_t::gs_ok(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t pd_t::scales_ok(impl::engine_t *engine) {
+status_t pd_t::scales_ok(const impl::engine_t *engine) {
     const auto &scales = attr()->scales_;
     if (scales.has_default_values()) return status::success;
     int ndims = desc()->a_desc.ndims;

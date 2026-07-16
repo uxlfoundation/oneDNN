@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2025-2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -59,7 +60,7 @@ status_t acl_lowp_matmul_sq_t::init(engine_t *engine) {
     return status::success;
 }
 
-status_t acl_lowp_matmul_sq_t::pd_t::init(engine_t *engine) {
+status_t acl_lowp_matmul_sq_t::pd_t::init(const engine_t *engine) {
 
     VDISPATCH_MATMUL(set_default_formats(), "failed to set default formats");
     using smask_t = primitive_attr_t::skip_mask_t;
@@ -211,7 +212,7 @@ status_t acl_lowp_matmul_sq_t::pd_t::init(engine_t *engine) {
 // Keys are anonymous with local linkage. So deduce the type automagically.
 using matmul_key_t = decltype(memory_tracking::names::key_gemm_tmp_buffer);
 
-status_t acl_lowp_matmul_sq_t::pd_t::init_scratchpad(engine_t *engine,
+status_t acl_lowp_matmul_sq_t::pd_t::init_scratchpad(const engine_t *engine,
         memory_tracking::registrar_t &scratchpad, post_ops_fallback_t &post_ops,
         dnnl::impl::post_ops_t &attr_post_ops,
         arm_compute::ActivationLayerInfo &act_info,

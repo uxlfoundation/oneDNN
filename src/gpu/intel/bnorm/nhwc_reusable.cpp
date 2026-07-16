@@ -93,7 +93,7 @@ static status_t init_conf_common(nhwc_params_t &bn_conf,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat,
         compute::dispatch_t &dispatch, compute::dispatch_t &dispatch_reduce_aux,
-        const pd_t *pd, impl::engine_t *engine) {
+        const pd_t *pd, const impl::engine_t *engine) {
 
     // This implementation is temporarly unavailable by default
     // TODO: remove the guard after performance tuning
@@ -115,7 +115,7 @@ static status_t init_conf_common(nhwc_params_t &bn_conf,
     // TODO: create flags() accessor that returns the correct type
     bn_conf.flags = (normalization_flags_t)pd->desc()->flags;
 
-    auto *intel_engine = downcast<intel::engine_t *>(engine);
+    auto *intel_engine = downcast<const intel::engine_t *>(engine);
     auto gpu_arch = intel_engine->device_info()->gpu_arch();
 
     // nhwc-optimized implemntation does not support ic tail processing yet
@@ -233,7 +233,7 @@ static void init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     kernel_ctx.define_int("MAX_IC_BLOCK", cmpl_conf.max_ic_block);
 }
 
-status_t nhwc_reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t nhwc_reusable_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(bn_conf, cmpl_conf, rt_conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, this, engine);
 }
@@ -528,7 +528,7 @@ status_t nhwc_reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             arg_list);
 }
 
-status_t nhwc_reusable_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t nhwc_reusable_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(bn_conf, cmpl_conf, rt_conf, dispatch_calc_stat,
             dispatch_reduce_stat, dispatch, dispatch_reduce_aux, this, engine);
 }

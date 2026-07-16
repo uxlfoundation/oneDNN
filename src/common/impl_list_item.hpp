@@ -137,7 +137,7 @@ struct impl_list_item_t {
 
 private:
     status_t operator()(primitive_desc_t **pd, const op_desc_t *adesc,
-            const primitive_attr_t *attr, engine_t *engine,
+            const primitive_attr_t *attr, const engine_t *engine,
             const primitive_desc_t *hint_fwd, int pd_iterator_offset,
             int skip_idx) const {
         assert(create_pd_func_);
@@ -150,7 +150,7 @@ private:
         return status;
     }
 
-    status_t operator()(concat_pd_t **concat_pd, engine_t *engine,
+    status_t operator()(concat_pd_t **concat_pd, const engine_t *engine,
             const primitive_attr_t *attr, const memory_desc_t *dst_md, int n,
             int concat_dim, const memory_desc_t *const *src_mds) const {
         assert(create_concat_pd_func_);
@@ -159,7 +159,7 @@ private:
                 concat_pd, engine, attr, dst_md, n, concat_dim, src_mds);
     }
 
-    status_t operator()(sum_pd_t **sum_pd, engine_t *engine,
+    status_t operator()(sum_pd_t **sum_pd, const engine_t *engine,
             const primitive_attr_t *attr, const memory_desc_t *dst_md, int n,
             const float *scales, const memory_desc_t *const *src_mds) const {
         assert(create_sum_pd_func_);
@@ -168,9 +168,9 @@ private:
                 sum_pd, engine, attr, dst_md, n, scales, src_mds);
     }
 
-    status_t operator()(reorder_pd_t **reorder_pd, engine_t *engine,
-            const primitive_attr_t *attr, engine_t *src_engine,
-            const memory_desc_t *src_md, engine_t *dst_engine,
+    status_t operator()(reorder_pd_t **reorder_pd, const engine_t *engine,
+            const primitive_attr_t *attr, const engine_t *src_engine,
+            const memory_desc_t *src_md, const engine_t *dst_engine,
             const memory_desc_t *dst_md) const {
         if (!create_reorder_pd_func_) return status::runtime_error;
         return create_reorder_pd_func_(reorder_pd, engine, attr, src_engine,
@@ -178,20 +178,20 @@ private:
     }
 
     using create_pd_func_t = status_t (*)(primitive_desc_t **,
-            const op_desc_t *, const primitive_attr_t *, engine_t *,
+            const op_desc_t *, const primitive_attr_t *, const engine_t *,
             const primitive_desc_t *);
 
-    using create_concat_pd_func_t = status_t (*)(concat_pd_t **, engine_t *,
-            const primitive_attr_t *, const memory_desc_t *, int, int,
-            const memory_desc_t *const *);
+    using create_concat_pd_func_t = status_t (*)(concat_pd_t **,
+            const engine_t *, const primitive_attr_t *, const memory_desc_t *,
+            int, int, const memory_desc_t *const *);
 
-    using create_sum_pd_func_t = status_t (*)(sum_pd_t **, engine_t *,
+    using create_sum_pd_func_t = status_t (*)(sum_pd_t **, const engine_t *,
             const primitive_attr_t *, const memory_desc_t *, int, const float *,
             const memory_desc_t *const *);
 
-    using create_reorder_pd_func_t = status_t (*)(reorder_pd_t **, engine_t *,
-            const primitive_attr_t *, engine_t *, const memory_desc_t *,
-            engine_t *, const memory_desc_t *);
+    using create_reorder_pd_func_t = status_t (*)(reorder_pd_t **,
+            const engine_t *, const primitive_attr_t *, const engine_t *,
+            const memory_desc_t *, const engine_t *, const memory_desc_t *);
 
     create_pd_func_t create_pd_func_ = nullptr;
     create_concat_pd_func_t create_concat_pd_func_ = nullptr;
@@ -202,17 +202,17 @@ private:
     // descriptors.
     friend struct primitive_desc_iterator_t;
     friend status_t concat_primitive_desc_create(
-            std::shared_ptr<primitive_desc_t> &, engine_t *,
+            std::shared_ptr<primitive_desc_t> &, const engine_t *,
             const memory_desc_t *, int, int, const memory_desc_t *const *,
             const primitive_attr_t *);
     friend status_t sum_primitive_desc_create(
             std::shared_ptr<primitive_desc_t> &, const memory_desc_t *, int,
             const float *, const memory_desc_t *const *,
-            const primitive_attr_t *, engine_t *);
+            const primitive_attr_t *, const engine_t *);
     friend status_t reorder_primitive_desc_create(
-            std::shared_ptr<primitive_desc_t> &, engine_t *,
-            const memory_desc_t *, engine_t *, const memory_desc_t *,
-            engine_t *, const primitive_attr_t *);
+            std::shared_ptr<primitive_desc_t> &, const engine_t *,
+            const memory_desc_t *, const engine_t *, const memory_desc_t *,
+            const engine_t *, const primitive_attr_t *);
 };
 
 } // namespace impl

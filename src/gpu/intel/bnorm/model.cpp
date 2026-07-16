@@ -83,8 +83,8 @@ dim_t get_nhwc_calc_stat_ic(dim_t ic, int ic_block, int sg_size) {
     return div_up(ic, ic_block) * sg_size;
 }
 
-void init_hw_params(hw_params_t &hw_params, impl::engine_t *engine) {
-    auto *intel_engine = downcast<intel::engine_t *>(engine);
+void init_hw_params(hw_params_t &hw_params, const impl::engine_t *engine) {
+    auto *intel_engine = downcast<const intel::engine_t *>(engine);
     auto &device_info = *intel_engine->device_info();
     hw_params.gpu_arch = device_info.gpu_arch();
     hw_params.eu_count = device_info.eu_count();
@@ -731,7 +731,7 @@ void dump_params(std::vector<model_params_t> &params) {
 
 status_t get_estimated_hw_utilization(model_params_t &p, nhwc_params_t &conf,
         hw_params_t &hw_params, kernel_desc_t &desc) {
-    auto *intel_engine = downcast<intel::engine_t *>(hw_params.engine);
+    auto *intel_engine = downcast<const intel::engine_t *>(hw_params.engine);
     compute::dispatch_t dry_run_dispatch // to get auto-generated lws
             = intel_engine->create_dispatch();
 

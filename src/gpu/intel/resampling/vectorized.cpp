@@ -103,7 +103,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t vectorized_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t vectorized_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     using namespace data_type;
     assert(engine->kind() == engine_kind::gpu);
     VDISPATCH_RESAMPLING_IC(!is_fwd(), VERBOSE_BAD_PROPKIND);

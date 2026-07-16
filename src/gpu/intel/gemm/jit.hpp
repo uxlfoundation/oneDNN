@@ -84,7 +84,7 @@ struct gen_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("jit:gemm:any", gen_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace data_type;
             using namespace primitive_kind;
@@ -93,7 +93,8 @@ struct gen_t : public primitive_t {
             using arch_t = compute::gpu_arch_t;
 
             assert(engine->kind() == engine_kind::gpu);
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             CHECK(set_default_formats(false));
 
@@ -357,8 +358,9 @@ struct gen_t : public primitive_t {
                 if (valid) {
                     auto try_create = [&]() {
                         std::vector<compute::kernel_t> kernel_(1);
-                        auto *intel_engine
-                                = utils::downcast<intel::engine_t *>(engine);
+                        const auto *intel_engine
+                                = utils::downcast<const intel::engine_t *>(
+                                        engine);
                         auto key = std::make_shared<
                                 trivial_key_container_t<dnnl::impl::gpu::intel::
                                                 gemm::jit::gen_nocopy_desc_t>>(

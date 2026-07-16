@@ -2317,8 +2317,8 @@ static void prb_thread_kernel_balance(
     }
 }
 
-status_t jit_uni_reorder_t::pd_t::init(
-        engine_t *engine, engine_t *src_engine, engine_t *dst_engine) {
+status_t jit_uni_reorder_t::pd_t::init(const engine_t *engine,
+        const engine_t *src_engine, const engine_t *dst_engine) {
     CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
     CHECK(init_scratchpad());
@@ -2362,9 +2362,9 @@ status_t jit_uni_reorder_t::pd_t::init_scratchpad() {
 }
 
 status_t jit_uni_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
-        engine_t *engine, const primitive_attr_t *attr, engine_t *src_engine,
-        const memory_desc_t *src_md, engine_t *dst_engine,
-        const memory_desc_t *dst_md) {
+        const engine_t *engine, const primitive_attr_t *attr,
+        const engine_t *src_engine, const memory_desc_t *src_md,
+        const engine_t *dst_engine, const memory_desc_t *dst_md) {
     VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
     auto prb = tr::prb_t();
@@ -2817,9 +2817,9 @@ status_t jit_uni_reorder_t::execute(const exec_ctx_t &ctx) const {
 }
 
 status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
-        engine_t *engine, const primitive_attr_t *attr, engine_t *src_engine,
-        const memory_desc_t *src_md, engine_t *dst_engine,
-        const memory_desc_t *dst_md) {
+        const engine_t *engine, const primitive_attr_t *attr,
+        const engine_t *src_engine, const memory_desc_t *src_md,
+        const engine_t *dst_engine, const memory_desc_t *dst_md) {
     VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
     auto prb = tr::prb_t();

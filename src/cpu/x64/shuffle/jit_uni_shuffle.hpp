@@ -41,7 +41,7 @@ struct jit_uni_shuffle_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 JIT_IMPL_NAME_HELPER("jit:", conf_.isa, ""), jit_uni_shuffle_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         const jit_shuffle_conf_t &get_conf() const { return conf_; }
 

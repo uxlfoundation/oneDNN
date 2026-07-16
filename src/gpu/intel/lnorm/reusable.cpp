@@ -142,7 +142,7 @@ void init_scratchpad_common(
     }
 }
 
-status_t reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t reusable_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     size_t ndims = static_cast<size_t>(src_md()->ndims);
     std::vector<dim_idx_t> dims = get_dims(ndims);
     std::vector<dim_idx_t> stat_dims = get_dims(ndims, true);
@@ -162,7 +162,7 @@ status_t reusable_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
     const auto *gpu_attr
             = utils::downcast<gpu_primitive_attr_t *>(attr()->gpu_attr_.get());
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto lws_strategy = compute::default_lws_strategy_t(intel_engine, gpu_attr);
 
     return status::success;
@@ -275,7 +275,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
 /********** BWD implementation ***********/
 
-status_t reusable_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t reusable_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     size_t ndims = static_cast<size_t>(diff_dst_md()->ndims);
     std::vector<dim_idx_t> dims = get_dims(ndims);
     std::vector<dim_idx_t> stat_dims = get_dims(ndims, true);

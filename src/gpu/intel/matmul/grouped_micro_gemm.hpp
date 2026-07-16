@@ -66,8 +66,8 @@ struct grouped_micro_gemm_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("grouped_gemm:micro", grouped_micro_gemm_t);
 
-        status_t init(impl::engine_t *engine);
-        status_t init_microkernels(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
+        status_t init_microkernels(const impl::engine_t *engine);
         bool is_gemv_ = false;
         bool with_post_op_ = false;
         po_kind_t po_chain_[3]

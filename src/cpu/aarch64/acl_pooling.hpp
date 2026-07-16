@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2022-2023, 2025 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,7 +44,7 @@ struct acl_pooling_fwd_t : public primitive_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
         DECLARE_COMMON_PD_T("acl", acl_pooling_fwd_t, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         bool use_acl_avg_pool_heuristic(int problem_size, int thread_count,
                 bool is_nhwc, bool use_square_acl_kernel);

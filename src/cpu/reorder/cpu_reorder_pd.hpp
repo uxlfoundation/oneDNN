@@ -31,8 +31,8 @@ namespace cpu {
 struct cpu_reorder_pd_t : public reorder_pd_t {
     using reorder_pd_t::reorder_pd_t;
 
-    status_t init(
-            engine_t *engine, engine_t *src_engine, engine_t *dst_engine) {
+    status_t init(const engine_t *engine, const engine_t *src_engine,
+            const engine_t *dst_engine) {
         const auto &post_ops = attr()->post_ops_;
         bool args_ok = IMPLICATION(post_ops.len() != 0,
                 post_ops.len() == 1

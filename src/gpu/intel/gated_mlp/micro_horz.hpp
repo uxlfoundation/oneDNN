@@ -40,7 +40,7 @@ struct micro_horz_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:micro_horz:any", micro_horz_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
 
         status_t get_gate_dst_md(memory_desc_t &retn) const {
             data_type_t dt = arg_md(DNNL_ARG_WEIGHTS_DOWN)->data_type;
@@ -98,7 +98,7 @@ struct micro_horz_t : public primitive_t {
         }
 
         status_t init_microkernels(
-                impl::engine_t *engine, const memory_desc_t *inter_md);
+                const impl::engine_t *engine, const memory_desc_t *inter_md);
 
         gemmstone::microkernel::Package gemm_gate_up_pkg_;
     };

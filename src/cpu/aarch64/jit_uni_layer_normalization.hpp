@@ -65,7 +65,7 @@ public:
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_lnorm:", isa, ""),
                 jit_uni_layer_normalization_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         bool use_tmp_stats() const { return reorder_pd_ || stats_are_tmp(); }
 

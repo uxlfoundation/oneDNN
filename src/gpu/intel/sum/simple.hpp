@@ -36,7 +36,7 @@ struct simple_t : public primitive_t {
 
         DECLARE_SUM_PD_T("ocl:simple:any", simple_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             const int n = n_inputs();
 
             VDISPATCH_SUM_SC(sum::pd_t::init(engine), VERBOSE_BAD_ENGINE_KIND);

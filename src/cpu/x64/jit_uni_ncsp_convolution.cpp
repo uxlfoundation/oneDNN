@@ -126,7 +126,7 @@ bool reduction_helper_t::is_gemm() {
 }
 
 status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init_convolution(
-        engine_t *engine) {
+        const engine_t *engine) {
     format_tag_t nspc_tag = get_axb_tag(ndims());
     nspc_src_md_ = *src_md();
     nspc_dst_md_ = *dst_md();
@@ -171,7 +171,8 @@ status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init_convolution(
     return status::success;
 }
 
-status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init_matmul(engine_t *engine) {
+status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init_matmul(
+        const engine_t *engine) {
     CHECK(reduction_helper_.reshape_activations(
             &matmul_dst_md_, dst_md(0), true));
 
@@ -211,7 +212,7 @@ status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init_matmul(engine_t *engine) {
     return status::success;
 }
 
-status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_ncsp_convolution_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     using namespace utils;
 
@@ -389,7 +390,8 @@ status_t jit_uni_ncsp_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     return status::runtime_error;
 }
 
-status_t jit_uni_ncsp_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_ncsp_convolution_bwd_weights_t::pd_t::init(
+        const engine_t *engine) {
     VDISPATCH_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
@@ -419,7 +421,7 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::pd_t::init(engine_t *engine) {
 }
 
 status_t jit_uni_ncsp_convolution_bwd_weights_t::pd_t::init_convolution(
-        engine_t *engine) {
+        const engine_t *engine) {
     format_tag_t nspc_tag = get_axb_tag(ndims());
     nspc_src_md_ = *src_md();
     nspc_diff_dst_md_ = *diff_dst_md();
@@ -548,7 +550,8 @@ status_t jit_uni_ncsp_convolution_bwd_weights_t::execute(
     return execute_convolution(ctx);
 }
 
-status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init(
+        const engine_t *engine) {
     VDISPATCH_CONV(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_CONV(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
@@ -587,7 +590,7 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init(engine_t *engine) {
 }
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init_convolution(
-        engine_t *engine) {
+        const engine_t *engine) {
     format_tag_t nspc_tag = get_axb_tag(ndims());
     nspc_diff_src_md_ = *diff_src_md();
     nspc_diff_dst_md_ = *diff_dst_md();
@@ -622,7 +625,7 @@ status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init_convolution(
 }
 
 status_t jit_uni_ncsp_convolution_bwd_data_t::pd_t::init_matmul(
-        engine_t *engine) {
+        const engine_t *engine) {
     CHECK(reduction_helper_.reshape_activations(
             &matmul_wei_md_, diff_dst_md(0), true));
     // initialize diff weights to plain format.

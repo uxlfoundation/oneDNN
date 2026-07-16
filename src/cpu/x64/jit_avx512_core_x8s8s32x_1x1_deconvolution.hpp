@@ -47,7 +47,7 @@ struct jit_avx512_core_x8s8s32x_1x1_deconvolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(name_.c_str(),
                 jit_avx512_core_x8s8s32x_1x1_deconvolution_fwd_t);
 
-        status_t init_convolution(engine_t *engine) {
+        status_t init_convolution(const engine_t *engine) {
             convolution_desc_t cd;
 
             auto dd = desc();
@@ -72,7 +72,7 @@ struct jit_avx512_core_x8s8s32x_1x1_deconvolution_fwd_t : public primitive_t {
             return status::unimplemented;
         }
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
             VDISPATCH_DECONVOLUTION(is_fwd(), VERBOSE_BAD_PROPKIND);

@@ -36,7 +36,7 @@ public:
     public:
         using cpu_prelu_fwd_pd_t::cpu_prelu_fwd_pd_t;
         DECLARE_COMMON_PD_T("jit_uni", jit_prelu_fwd_t);
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
     private:
         bool bcast_supported(const memory_desc_wrapper &src_d,

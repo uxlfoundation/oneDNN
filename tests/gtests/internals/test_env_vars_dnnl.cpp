@@ -57,6 +57,7 @@ namespace dnnl {
 TEST(dnnl_max_cpu_isa_env_var_test, TestEnvVars) {
     const bool has_cpu = DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE;
 
+    custom_unsetenv("ONEDNN_MAX_CPU_ISA");
     custom_setenv("DNNL_MAX_CPU_ISA", "SSE41", 1);
     auto got = dnnl_get_effective_cpu_isa();
     (void)got;
@@ -97,6 +98,7 @@ TEST(dnnl_cpu_isa_hints_var_test, TestEnvVars) {
     const bool has_cpu = DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE;
     (void)has_cpu;
 
+    custom_unsetenv("ONEDNN_CPU_ISA_HINTS");
     custom_setenv("DNNL_CPU_ISA_HINTS", "PREFER_YMM", 1);
     auto got = dnnl_get_cpu_isa_hints();
 
@@ -136,6 +138,7 @@ TEST(dnnl_primitive_cache_capacity_env_var_test, TestEnvVars) {
 }
 
 TEST(dnnl_default_fpmath_mode_env_var_test, TestEnvVars) {
+    custom_unsetenv("ONEDNN_DEFAULT_FPMATH_MODE");
     custom_setenv("DNNL_DEFAULT_FPMATH_MODE", "ANY", 1);
     dnnl_fpmath_mode_t got_val;
     auto st = dnnl_get_default_fpmath_mode(&got_val);

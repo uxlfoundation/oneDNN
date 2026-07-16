@@ -167,7 +167,7 @@ struct miopen_gemm_inner_product_fwd_t : public miopen_inner_product_fwd_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:gemm", miopen_gemm_inner_product_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using namespace prop_kind;
             using namespace data_type;
@@ -221,7 +221,8 @@ struct miopen_gemm_inner_product_fwd_t : public miopen_inner_product_fwd_t {
             inner_product_impl_.reset(
                     new miopen_gemm_inner_product_fwd_impl_t());
 
-            return inner_product_impl_->init(engine, this, with_eltwise,
+            return inner_product_impl_->init(
+                    const_cast<impl::engine_t *>(engine), this, with_eltwise,
                     with_eltwise, with_sum, need_reorder);
         }
 
@@ -247,7 +248,7 @@ struct miopen_gemm_inner_product_bwd_data_t
         DECLARE_COMMON_PD_T(
                 "hip:miopen:gemm", miopen_gemm_inner_product_bwd_data_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
@@ -279,7 +280,8 @@ struct miopen_gemm_inner_product_bwd_data_t
                     new miopen_gemm_inner_product_bwd_data_impl_t());
 
             return inner_product_impl_->init(
-                    engine, this, false, false, false, need_reorder);
+                    const_cast<impl::engine_t *>(engine), this, false, false,
+                    false, need_reorder);
         }
 
         status_t set_default_params() {
@@ -305,7 +307,7 @@ struct miopen_gemm_inner_product_bwd_weights_t
         DECLARE_COMMON_PD_T(
                 "hip:miopen:gemm", miopen_gemm_inner_product_bwd_weights_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
@@ -338,7 +340,8 @@ struct miopen_gemm_inner_product_bwd_weights_t
             inner_product_impl_.reset(
                     new miopen_gemm_inner_product_bwd_weights_impl_t());
             return inner_product_impl_->init(
-                    engine, this, false, false, false, need_reorder);
+                    const_cast<impl::engine_t *>(engine), this, false, false,
+                    false, need_reorder);
         }
 
         status_t set_default_params() {

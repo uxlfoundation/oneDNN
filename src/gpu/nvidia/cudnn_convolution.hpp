@@ -46,13 +46,14 @@ struct cudnn_convolution_fwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_convolution_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             using sm_t = primitive_attr_t::skip_mask_t;
             const auto attr_skip_mask
                     = sm_t::scales | sm_t::post_ops | sm_t::fpmath_mode;
-            auto *sycl_engine = utils::downcast<nvidia::engine_t *>(engine);
+            const auto *sycl_engine
+                    = utils::downcast<const nvidia::engine_t *>(engine);
 
             bool ok = utils::one_of(desc()->prop_kind,
                     prop_kind::forward_training, prop_kind::forward_inference);
@@ -111,7 +112,8 @@ struct cudnn_convolution_fwd_t : public gpu::primitive_t {
             }
 
             impl_.reset(new cudnn_convolution_impl_fwd_t());
-            return impl_->init(engine, this, use_temp_dst, use_scales_dst);
+            return impl_->init(const_cast<impl::engine_t *>(engine), this,
+                    use_temp_dst, use_scales_dst);
         }
         bool with_scratchpad() const { return impl_->with_scratchpad(); }
         std::shared_ptr<cudnn_convolution_impl_base_t> impl_;
@@ -240,7 +242,7 @@ struct cudnn_convolution_bwd_data_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_convolution_bwd_data_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             bool ok = desc()->prop_kind == prop_kind::backward_data;
@@ -280,7 +282,7 @@ struct cudnn_convolution_bwd_data_t : public gpu::primitive_t {
             if (check_for_zero_dims()) return status::success;
 
             impl_.reset(new cudnn_convolution_impl_bwd_data_t());
-            return impl_->init(engine, this);
+            return impl_->init(const_cast<impl::engine_t *>(engine), this);
         }
 
         std::shared_ptr<cudnn_convolution_impl_base_t> impl_;
@@ -319,7 +321,7 @@ struct cudnn_convolution_bwd_weights_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_convolution_bwd_weights_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             bool ok = desc()->prop_kind == prop_kind::backward_weights;
             auto *sycl_engine_impl
@@ -361,7 +363,7 @@ struct cudnn_convolution_bwd_weights_t : public gpu::primitive_t {
             impl_.reset(new cudnn_convolution_impl_bwd_weights_t());
             if (check_for_zero_dims()) { return impl_->init_zero_dims(this); };
 
-            return impl_->init(engine, this);
+            return impl_->init(const_cast<impl::engine_t *>(engine), this);
         }
 
         std::shared_ptr<cudnn_convolution_impl_base_t> impl_;

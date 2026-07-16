@@ -36,11 +36,11 @@ struct cudnn_eltwise_fwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_eltwise_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace alg_kind;
 
-            auto sycl_dev
-                    = utils::downcast<nvidia::engine_t *>(engine)->device();
+            auto sycl_dev = utils::downcast<const nvidia::engine_t *>(engine)
+                                    ->device();
 
             bool ok = is_fwd()
                     // Supported algorithms
@@ -82,7 +82,7 @@ struct cudnn_eltwise_bwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_eltwise_bwd_t);
 
-        status_t init(impl::engine_t *) {
+        status_t init(const impl::engine_t *) {
             using namespace alg_kind;
             bool ok = !is_fwd()
                     // Supported algorithms

@@ -36,7 +36,7 @@ struct miopen_eltwise_fwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:any", miopen_eltwise_fwd_t);
 
-        status_t init(impl::engine_t *) {
+        status_t init(const impl::engine_t *) {
             using namespace alg_kind;
             bool ok = is_fwd()
                     // Supported algorithms
@@ -77,7 +77,7 @@ struct miopen_eltwise_bwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:any", miopen_eltwise_bwd_t);
 
-        status_t init(impl::engine_t *) {
+        status_t init(const impl::engine_t *) {
             using namespace alg_kind;
             bool ok = !is_fwd()
                     // Supported algorithms

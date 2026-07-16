@@ -46,7 +46,7 @@ struct miopen_convolution_fwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:any", miopen_convolution_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             using sm_t = primitive_attr_t::skip_mask_t;
@@ -105,7 +105,8 @@ struct miopen_convolution_fwd_t : public gpu::primitive_t {
             }
 
             impl_.reset(new miopen_convolution_impl_fwd_t());
-            return impl_->init(engine, this, use_temp_dst);
+            return impl_->init(
+                    const_cast<impl::engine_t *>(engine), this, use_temp_dst);
         }
 
         // MIOpen requires src, weights and dst tensors to have the same format.
@@ -278,7 +279,7 @@ struct miopen_convolution_bwd_data_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:any", miopen_convolution_bwd_data_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             bool ok = desc()->prop_kind == prop_kind::backward_data;
@@ -316,7 +317,7 @@ struct miopen_convolution_bwd_data_t : public gpu::primitive_t {
             if (!check_format()) return status::unimplemented;
 
             impl_.reset(new miopen_convolution_impl_bwd_data_t());
-            return impl_->init(engine, this);
+            return impl_->init(const_cast<impl::engine_t *>(engine), this);
         }
 
         //MIOpen supports uniform tags Only
@@ -391,7 +392,7 @@ struct miopen_convolution_bwd_weights_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:any", miopen_convolution_bwd_weights_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             bool ok = desc()->prop_kind == prop_kind::backward_weights;
@@ -430,7 +431,7 @@ struct miopen_convolution_bwd_weights_t : public gpu::primitive_t {
 
             if (!check_format()) return status::unimplemented;
 
-            return impl_->init(engine, this);
+            return impl_->init(const_cast<impl::engine_t *>(engine), this);
         }
 
         //MIOpen supports uniform tags Only

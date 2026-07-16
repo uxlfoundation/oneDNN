@@ -167,7 +167,7 @@ struct cudnn_gemm_inner_product_fwd_t : public cudnn_inner_product_fwd_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:gemm", cudnn_gemm_inner_product_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using namespace prop_kind;
             using namespace data_type;
@@ -210,7 +210,8 @@ struct cudnn_gemm_inner_product_fwd_t : public cudnn_inner_product_fwd_t {
             dnnl_data_type_t dst_type = dst_md()->data_type;
             dnnl_data_type_t acc_type = desc()->accum_data_type;
 
-            auto *sycl_engine = utils::downcast<nvidia::engine_t *>(engine);
+            const auto *sycl_engine
+                    = utils::downcast<const nvidia::engine_t *>(engine);
 
             ok = ok && memory_format_ok(src_md())
                     && memory_format_ok(weights_md(0))
@@ -228,7 +229,8 @@ struct cudnn_gemm_inner_product_fwd_t : public cudnn_inner_product_fwd_t {
 
             inner_product_impl_.reset(
                     new cudnn_gemm_inner_product_fwd_impl_t());
-            return inner_product_impl_->init(engine, this, with_eltwise,
+            return inner_product_impl_->init(
+                    const_cast<impl::engine_t *>(engine), this, with_eltwise,
                     with_eltwise, with_sum, need_reorder, use_f32_sum);
         }
 
@@ -254,7 +256,7 @@ struct cudnn_gemm_inner_product_bwd_data_t
         DECLARE_COMMON_PD_T(
                 "cuda:cudnn:gemm", cudnn_gemm_inner_product_bwd_data_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
@@ -268,7 +270,8 @@ struct cudnn_gemm_inner_product_bwd_data_t
                     ? false
                     : reorder_check(diff_src_md(), weights_md(), diff_dst_md());
 
-            auto *sycl_engine = utils::downcast<nvidia::engine_t *>(engine);
+            const auto *sycl_engine
+                    = utils::downcast<const nvidia::engine_t *>(engine);
 
             auto diff_src_dt = diff_src_md()->data_type;
             auto weights_dt = weights_md(0)->data_type;
@@ -293,7 +296,8 @@ struct cudnn_gemm_inner_product_bwd_data_t
                     new cudnn_gemm_inner_product_bwd_data_impl_t());
 
             return inner_product_impl_->init(
-                    engine, this, false, false, false, need_reorder, false);
+                    const_cast<impl::engine_t *>(engine), this, false, false,
+                    false, need_reorder, false);
         }
 
         status_t set_default_params() {
@@ -318,7 +322,7 @@ struct cudnn_gemm_inner_product_bwd_weights_t
         DECLARE_COMMON_PD_T(
                 "cuda:cudnn:gemm", cudnn_gemm_inner_product_bwd_weights_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace data_type;
             assert(engine->kind() == engine_kind::gpu);
@@ -332,7 +336,8 @@ struct cudnn_gemm_inner_product_bwd_weights_t
                     ? false
                     : reorder_check(src_md(), diff_weights_md(), diff_dst_md());
 
-            auto *sycl_engine = utils::downcast<nvidia::engine_t *>(engine);
+            const auto *sycl_engine
+                    = utils::downcast<const nvidia::engine_t *>(engine);
 
             ok = ok && expect_data_types(f32, f32, f32, f32, f32)
                     && attr()->has_default_values()
@@ -349,7 +354,8 @@ struct cudnn_gemm_inner_product_bwd_weights_t
             inner_product_impl_.reset(
                     new cudnn_gemm_inner_product_bwd_weights_impl_t());
             return inner_product_impl_->init(
-                    engine, this, false, false, false, need_reorder, false);
+                    const_cast<impl::engine_t *>(engine), this, false, false,
+                    false, need_reorder, false);
         }
 
         status_t set_default_params() {

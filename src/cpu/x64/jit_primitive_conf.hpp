@@ -261,12 +261,14 @@ struct jit_conv_conf_t {
 };
 
 // calculates filter size taking into account dilation
-inline int calculate_extended_filter_size(int filter_size, int dilation) {
+template <typename T>
+T calculate_extended_filter_size(T filter_size, T dilation) {
     return (filter_size - 1) * (dilation + 1) + 1;
 }
 
-inline int calculate_end_padding(int start_padding, int dst_size, int src_size,
-        int spatial_stride, int dilated_filter_size) {
+template <typename T>
+T calculate_end_padding(T start_padding, T dst_size, T src_size,
+        T spatial_stride, T dilated_filter_size) {
     return (dst_size - 1) * spatial_stride + dilated_filter_size
             - (src_size + start_padding);
 }
@@ -555,11 +557,11 @@ struct jit_1x1_conv_args_t {
 
 struct jit_pool_conf_t {
     int ndims;
-    int mb, c, c_without_padding;
-    int id, ih, iw, od, oh, ow;
-    int stride_d, stride_h, stride_w;
-    int kd, kh, kw;
-    int f_pad, t_pad, l_pad;
+    dim_t mb, c, c_without_padding;
+    dim_t id, ih, iw, od, oh, ow;
+    dim_t stride_d, stride_h, stride_w;
+    dim_t kd, kh, kw;
+    dim_t f_pad, t_pad, l_pad;
     alg_kind_t alg;
     bool is_training;
     bool pad_w_is_null;
@@ -568,10 +570,10 @@ struct jit_pool_conf_t {
     bool is_c_padded;
     data_type_t ind_dt;
 
-    int c_block, c_tail, nb_c;
-    int ur_bc, ur_bc_tail;
-    int ur_c, ur_c_tail;
-    int ur;
+    dim_t c_block, c_tail, nb_c;
+    dim_t ur_bc, ur_bc_tail;
+    dim_t ur_c, ur_c_tail;
+    dim_t ur;
     size_t tail[4];
     bool safe_c_tail;
     data_type_t src_dt;

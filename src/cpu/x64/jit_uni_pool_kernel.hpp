@@ -65,12 +65,21 @@ private:
         return is_superset(isa, avx512_core) ? 31 : 15;
     }
 
-    int reg_idx(int idx) const noexcept { return vmm_idx_upper_bound() - idx; }
+    // Maps a logical index to a physical XByak register index. The narrowing
+    // and bounds check are done by jit_generator's xbyak_register_index at the
+    // single register-construction boundary.
+    int reg_idx(dim_t idx) const noexcept {
+        // The pooling primitive creates out-of-bounds registers, but never
+        // use it.
+        // TODO: do the proper refactoring eliminating creating registers with
+        // invalid indices.
+        return xbyak_register_index(vmm_idx_upper_bound() - idx);
+    }
 
-    Xmm xreg(int idx) const noexcept { return Xmm(reg_idx(idx)); }
-    Ymm yreg(int idx) const noexcept { return Ymm(reg_idx(idx)); }
-    Zmm zreg(int idx) const noexcept { return Zmm(reg_idx(idx)); }
-    Vmm vreg(int idx) const noexcept { return Vmm(reg_idx(idx)); }
+    Xmm xreg(dim_t idx) const noexcept { return Xmm(reg_idx(idx)); }
+    Ymm yreg(dim_t idx) const noexcept { return Ymm(reg_idx(idx)); }
+    Zmm zreg(dim_t idx) const noexcept { return Zmm(reg_idx(idx)); }
+    Vmm vreg(dim_t idx) const noexcept { return Vmm(reg_idx(idx)); }
 
     const Xbyak::AddressFrame &vmmword = (isa == sse41)  ? xword
             : utils::one_of(isa, avx, avx2, avx2_vnni_2) ? yword
@@ -137,33 +146,34 @@ private:
     bool sse_high_half = false;
     bool disable_postops_when_sse_high_half_processed_ = false;
 
-    int prev_kw = 0;
+    dim_t prev_kw = 0;
 
     void put_one_in_vmm();
     void uni_broadcast_reg_val(const int reg_idx, const int vmm_idx);
     void push_vmm_val(const int idx);
     void pop_vmm_val(const int idx);
-    void load(const data_type_t dt, const int idx, const reg64_t &reg_ptr,
-            const int offset, const bool is_c_tail_proccessing);
-    void store(const data_type_t dt, const int idx, const reg64_t &reg_ptr,
-            const int offset, const bool is_c_tail_proccessing);
-    void pad_with_zeros(int idx);
-    void load_indices(int indr_i, int step_index, bool is_c_tail_processing);
-    void store_indices(int indr_i, int step_index, bool is_c_tail_processing,
-            bool is_first_w_block);
+    void load(const data_type_t dt, const dim_t idx, const reg64_t &reg_ptr,
+            const dim_t offset, const bool is_c_tail_proccessing);
+    void store(const data_type_t dt, const dim_t idx, const reg64_t &reg_ptr,
+            const dim_t offset, const bool is_c_tail_proccessing);
+    void pad_with_zeros(dim_t idx);
+    void load_indices(
+            dim_t indr_i, dim_t step_index, bool is_c_tail_processing);
+    void store_indices(dim_t indr_i, dim_t step_index,
+            bool is_c_tail_processing, bool is_first_w_block);
 
-    void maybe_recalculate_divisor(int jj, int ur_w, int pad_l, int pad_r,
+    void maybe_recalculate_divisor(dim_t jj, dim_t ur_w, dim_t pad_l,
+            dim_t pad_r, bool with_c_tail_proccessing);
+    void avg_step(dim_t ur_w, dim_t ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_proccessing);
-    void avg_step(int ur_w, int ur_bc, int pad_l, int pad_r,
+    void max_step_fwd(dim_t ur_w, dim_t ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_proccessing);
-    void max_step_fwd(int ur_w, int ur_bc, int pad_l, int pad_r,
-            bool with_c_tail_proccessing);
-    void max_step_bwd(int ur_w, int ur_bc, int pad_l, int pad_r,
+    void max_step_bwd(dim_t ur_w, dim_t ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_proccessing);
 
-    void zero_diff_src(int ur_bc, bool with_c_tail_proccessing);
+    void zero_diff_src(dim_t ur_bc, bool with_c_tail_proccessing);
 
-    void step(int ur_w, int ur_bc, int pad_l, int pad_r,
+    void step(dim_t ur_w, dim_t ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_proccessing) {
         if (jpp.alg == alg_kind::pooling_max) {
             if (jpp.is_backward)
@@ -176,7 +186,7 @@ private:
             avg_step(ur_w, ur_bc, pad_l, pad_r, with_c_tail_proccessing);
     }
 
-    void step_high_half(int ur_w, int ur_bc, int pad_l, int pad_r,
+    void step_high_half(dim_t ur_w, dim_t ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_processing) {
         add(reg_input, sizeof(float) * 4);
         add(reg_output, sizeof(float) * 4);
@@ -241,8 +251,8 @@ private:
         pcmpeqd(x0, x1);
     }
 
-    void apply_postops(int ur_bc, int ur_w, int c_block,
-            const std::function<bool(int, bool)> &is_tail_predicate);
+    void apply_postops(dim_t ur_bc, dim_t ur_w, dim_t c_block,
+            const std::function<bool(dim_t, bool)> &is_tail_predicate);
 
     static bool init_post_ops_conf(jit_pool_conf_t &jpp,
             const primitive_attr_t &attr, const memory_desc_wrapper &dst_d);

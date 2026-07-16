@@ -337,8 +337,8 @@ of GEMM operations. The following options are supported:
 #### ONEDNN_ENABLE_PRIMITIVE_CPU_ISA
 
 This option supports several values: `ALL` (the default) which enables all
-ISA implementations or one of `SSE41`, `AVX2`, `AVX512`, and `AMX`. Values are
-linearly ordered as `SSE41` < `AVX2` < `AVX512` < `AMX`. When specified,
+ISA implementations or one of `AVX2`, `AVX512`, and `AMX`. Values are
+linearly ordered as `AVX2` < `AVX512` < `AMX`. When specified,
 selected ISA and all ISA that are "smaller" will be available. When specified,
 [CPU dispatcher controls](@ref dev_guide_cpu_dispatcher_control) are also
 affected in compliance with the option.
@@ -346,7 +346,7 @@ affected in compliance with the option.
 Note that `AVX2` denotes whole AVX2-based family ISAs, `AVX512` denotes whole
 AVX512-based family ISAs, as well as `AMX` denotes any ISA containing AMX unit.
 
-Example that enables SSE41 and AVX2 sets:
+Example that enables the AVX2 set:
 ```
 -DONEDNN_ENABLE_PRIMITIVE_CPU_ISA=AVX2
 ```
@@ -356,10 +356,10 @@ Example that enables SSE41 and AVX2 sets:
 
 This option supports several values: `ALL` (the default) which enables all
 ISA kernels from x64/gemm folder, `NONE` which disables all kernels and removes
-correspondent interfaces, or one of `SSE41`, `AVX2`, and `AVX512`. Values are
-linearly ordered as `SSE41` < `AVX2` < `AVX512`. When specified, selected ISA
-and all ISA that are "smaller" will be available. Example that leaves SSE41 and
-AVX2 sets, but removes AVX512 and AMX kernels:
+correspondent interfaces, or one of `AVX2` and `AVX512`. Values are
+linearly ordered as `AVX2` < `AVX512`. When specified, selected ISA
+and all ISA that are "smaller" will be available. Example that leaves the
+AVX2 set, but removes AVX512 and AMX kernels:
 ```
 -DONEDNN_ENABLE_GEMM_KERNELS_ISA=AVX2
 ```

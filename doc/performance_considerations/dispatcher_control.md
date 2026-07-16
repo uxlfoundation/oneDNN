@@ -4,8 +4,8 @@ CPU Dispatcher Control {#dev_guide_cpu_dispatcher_control}
 oneDNN uses JIT code generation to implement most of its functionality and will
 choose the best code based on detected processor features. Sometimes it is
 necessary to control which features oneDNN detects. This is sometimes useful for
-debugging purposes or for performance exploration. For example, test SSE4.1 code
-on an AVX2-capable processor.
+debugging purposes or for performance exploration. For example, test Intel AVX2 code
+on an Intel AVX-512-capable processor.
 
 ## Build-time Controls
 
@@ -29,9 +29,7 @@ still take effect.
 
 | Environment variable | Value                                        | Description                                                                                                      |
 |:---------------------|:---------------------------------------------|:-----------------------------------------------------------------------------------------------------------------|
-| ONEDNN_MAX_CPU_ISA   | SSE41                                        | Intel Streaming SIMD Extensions 4.1 (Intel SSE4.1)                                                               |
-| \                    | AVX                                          | Intel Advanced Vector Extensions (Intel AVX)                                                                     |
-| \                    | AVX2                                         | Intel Advanced Vector Extensions 2 (Intel AVX2)                                                                  |
+| ONEDNN_MAX_CPU_ISA   | AVX2                                         | Intel Advanced Vector Extensions 2 (Intel AVX2)                                                                  |
 | \                    | AVX2_VNNI                                    | Intel AVX2 with Intel Deep Learning Boost (Intel DL Boost)                                                       |
 | \                    | AVX512_CORE                                  | Intel AVX-512 with AVX512BW, AVX512VL, and AVX512DQ extensions                                                   |
 | \                    | AVX512_CORE_VNNI                             | Intel AVX-512 with Intel DL Boost                                                                                |
@@ -45,7 +43,7 @@ still take effect.
 | \                    | **DEFAULT**                                  | **No restrictions on the above ISAs, but excludes the below ISAs with preview support in the library (default)** |
 
 @note The ISAs are partially ordered:
-* SSE41 < AVX < AVX2 < AVX2_VNNI < AVX2_VNNI_2,
+* AVX2 < AVX2_VNNI < AVX2_VNNI_2,
 * AVX2 < AVX512_CORE < AVX512_CORE_VNNI < AVX512_CORE_BF16
   < AVX10_1_512 < AVX10_2,
 * AVX10_1_512 < AVX10_1_512_AMX < AVX10_1_512_AMX_FP16

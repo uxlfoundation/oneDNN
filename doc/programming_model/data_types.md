@@ -178,8 +178,6 @@ table indicates data types support for every supported ISA:
 
 | ISA                                                  | f64     | f32     | bf16    | f16     | s8/u8   | f8_e4m3 | f8_e5m2 | f4_e2m1 | s4/u4   |
 | ---------------------------------------------------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | 
-| Intel SSE4.1                                         |         | `+`     |         |         |         |         |         |         |         |
-| Intel AVX                                            |         | `+`     |         |         |         |         |         |         |         |
 | Intel AVX2                                           |         | `+`     |         |         | `+`(1)  |         |         |         |         |
 | Intel AVX2 with Intel DL Boost (int8)                |         | `+`     |         |         | `+`     |         |         |         |         |
 | Intel AVX-512                                        |         | `+`     | `.`(2)  |         | `+`(1)  |         |         |         |         |

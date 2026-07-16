@@ -41,6 +41,6 @@ This feature can also be managed at run-time with the following functions:
   and by default poses no restrictions.
 
 Function settings take precedence over environment variables. Moreover, if the
-hint is not applicable then it would be silently ignored. For instance with
-SSE41 there are no YMM registers and so hint to prefer YMM registers would be
-silently bypassed.
+hint is not applicable then it would be silently ignored. For instance, on an
+ISA that only provides YMM registers (such as Intel AVX2), the hint to prefer
+YMM registers has no effect and would be silently bypassed.

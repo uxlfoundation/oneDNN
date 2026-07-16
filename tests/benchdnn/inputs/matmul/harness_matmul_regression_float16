@@ -14,3 +14,12 @@
 --stag=ab,ba --wtag=ab,ba --dtag=ba
 --attr-post-ops=linear:1.2+add:f16:3:ab+linear:1,linear:1.2+add:f16:3:ba+linear:1
 10x50:50x25
+
+# regression: preserve f16 dst after input upconversion to f32
+--reset
+--skip-impl=ref
+--dt=f16:f16:f16
+--stag=abcd --wtag=abcd --dtag=abcd
+--strides=::
+--attr-post-ops=sqrt
+1x2x32x120:1x1x120x5

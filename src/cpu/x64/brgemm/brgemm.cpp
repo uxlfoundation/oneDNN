@@ -392,10 +392,12 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
             && (!one_of(dt_bias, data_type::undef, data_type::bf16,
                     data_type::f32)))
         return status::unimplemented;
+    // Matmul may upconvert f16 inputs or xf16 weights to f32
+    // while retaining the original destination and bias data types.
     if ((brg->dt_a == data_type::f32 && brg->dt_b == data_type::f32)
-            && (!one_of(dt_d, data_type::f32)
-                    || !one_of(
-                            dt_bias, data_type::undef, data_type::f32, dt_d)))
+            && (!one_of(dt_d, data_type::f32, data_type::f16, data_type::bf16)
+                    || !one_of(dt_bias, data_type::undef, data_type::f32,
+                            data_type::f16, data_type::bf16)))
         return status::unimplemented;
     if (!IMPLICATION(brg->is_bf16,
                 one_of(dt_d, data_type::f32, data_type::bf16, data_type::f16,

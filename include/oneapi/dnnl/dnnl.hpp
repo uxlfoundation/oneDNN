@@ -14139,10 +14139,6 @@ inline status set_jit_profiling_jitdumpdir(const std::string &dir) {
 enum class cpu_isa {
     /// @copydoc dnnl_cpu_isa_default
     isa_default = dnnl_cpu_isa_default,
-    /// @copydoc dnnl_cpu_isa_sse41
-    sse41 = dnnl_cpu_isa_sse41,
-    /// @copydoc dnnl_cpu_isa_avx
-    avx = dnnl_cpu_isa_avx,
     /// @copydoc dnnl_cpu_isa_avx2
     avx2 = dnnl_cpu_isa_avx2,
     /// @copydoc dnnl_cpu_isa_avx2_vnni

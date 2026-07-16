@@ -83,8 +83,7 @@ enum cpu_isa_bit_t : unsigned {
     zmm_bit = 1u << 6,
     amx_tile_bit = 1u << 7,
 
-    sse41_bit = xmm_bit, // re-using xmm, ymm and zmm bits for sse, avx, avx512.
-    avx_bit = ymm_bit,
+    // re-using xmm, ymm and zmm bits for avx2 and avx512.
     evex_core_bit = 1u << 8,
     avx2_bit = 1u << 9,
     vex_vnni_bit = 1u << 10,
@@ -135,9 +134,7 @@ inline bool is_hints_bit_set(cpu_isa_bit_t hint_bit, bool soft) {
 
 enum cpu_isa_t : unsigned {
     isa_undef = 0u,
-    sse41 = sse41_bit,
-    avx = avx_bit | sse41,
-    avx2 = avx2_bit | avx,
+    avx2 = avx2_bit | ymm_bit | xmm_bit,
     avx2_vnni = vex_vnni_bit | avx2,
     avx2_vnni_2 = avx2_vnni | vex_vnni_2_bit,
     avx512_core = evex_core_bit | zmm_bit | avx2,
@@ -274,27 +271,11 @@ struct cpu_isa_traits_t<isa_all> {
 };
 
 template <>
-struct cpu_isa_traits_t<sse41> {
-    using Vmm = Xbyak::Xmm;
-    static constexpr int vlen_shift = 4;
-    static constexpr int vlen = vreg_traits_t<Vmm>::vlen;
-    static constexpr int n_vregs = 16;
-    static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_sse41;
-    static constexpr const char *user_option_env = "sse41";
-};
-
-template <>
-struct cpu_isa_traits_t<avx> {
+struct cpu_isa_traits_t<avx2> {
     using Vmm = Xbyak::Ymm;
     static constexpr int vlen_shift = 5;
     static constexpr int vlen = vreg_traits_t<Vmm>::vlen;
     static constexpr int n_vregs = 16;
-    static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx;
-    static constexpr const char *user_option_env = "avx";
-};
-
-template <>
-struct cpu_isa_traits_t<avx2> : public cpu_isa_traits_t<avx> {
     static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx2;
     static constexpr const char *user_option_env = "avx2";
 };
@@ -428,8 +409,6 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
     if (cpu_avx10_version < isa_avx10_version) return false;
 
     switch (cpu_isa) {
-        case sse41: REG_SSE41_ISA(return cpu().has(Cpu::tSSE41));
-        case avx: REG_AVX2_ISA(return cpu().has(Cpu::tAVX));
         case avx2: REG_AVX2_ISA(return cpu().has(Cpu::tAVX2));
         case avx2_vnni:
             REG_AVX2_ISA(
@@ -522,34 +501,28 @@ inline bool isa_has_sat_cvt(cpu_isa_t isa, data_type_t dt) {
 
 inline int isa_max_vlen(cpu_isa_t isa) {
     const bool is_avx512 = is_superset(isa, avx512_core);
-    const bool is_avx = is_superset(isa, avx);
-    const bool is_sse41 = is_superset(isa, sse41);
+    const bool is_avx2 = is_superset(isa, avx2);
 
-    assert(utils::one_of(true, is_avx512, is_avx, is_sse41));
-    MAYBE_UNUSED(is_sse41);
+    assert(utils::one_of(true, is_avx512, is_avx2));
+    MAYBE_UNUSED(is_avx2);
 
     if (is_avx512)
         return cpu_isa_traits_t<avx512_core>::vlen;
-    else if (is_avx)
-        return cpu_isa_traits_t<avx>::vlen;
     else
-        return cpu_isa_traits_t<sse41>::vlen;
+        return cpu_isa_traits_t<avx2>::vlen;
 }
 
 inline int isa_num_vregs(cpu_isa_t isa) {
     const bool is_avx512 = is_superset(isa, avx512_core);
-    const bool is_avx = is_superset(isa, avx);
-    const bool is_sse41 = is_superset(isa, sse41);
+    const bool is_avx2 = is_superset(isa, avx2);
 
-    assert(utils::one_of(true, is_avx512, is_avx, is_sse41));
-    MAYBE_UNUSED(is_sse41);
+    assert(utils::one_of(true, is_avx512, is_avx2));
+    MAYBE_UNUSED(is_avx2);
 
     if (is_avx512)
         return cpu_isa_traits_t<avx512_core>::n_vregs;
-    else if (is_avx)
-        return cpu_isa_traits_t<avx>::n_vregs;
     else
-        return cpu_isa_traits_t<sse41>::n_vregs;
+        return cpu_isa_traits_t<avx2>::n_vregs;
 }
 
 } // namespace
@@ -559,8 +532,6 @@ inline int isa_num_vregs(cpu_isa_t isa) {
 /* clang-format off */
 #define JIT_IMPL_NAME_HELPER(prefix, isa, suffix_if_any) \
     ((isa) == isa_undef ? prefix STRINGIFY(undef) : \
-    (isa) == sse41 ? prefix STRINGIFY(sse41) : \
-    (isa) == avx ? prefix STRINGIFY(avx) : \
     (isa) == avx2 ? prefix STRINGIFY(avx2) : \
     (isa) == avx2_vnni ? prefix STRINGIFY(avx2_vnni) : \
     (isa) == avx2_vnni_2 ? prefix STRINGIFY(avx2_vnni_2) : \

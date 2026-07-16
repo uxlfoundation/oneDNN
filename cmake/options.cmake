@@ -340,9 +340,9 @@ onednn_option(ENABLE_PRIMITIVE_CPU_ISA "ALL"
     implementations will always be available. Valid values:
     - ALL (the default). Includes all ISA to be enabled.
     - <ISA_NAME>. Includes selected and all \"less\" ISA to be enabled.
-      Possible values are: SSE41, AVX2, AVX512, AMX. The linear order is
-      SSE41 < AVX2 < AVX512 < AMX. It means that if user selects, e.g. AVX2 ISA,
-      SSE41 implementations will also be available at build time.")
+      Possible values are: AVX2, AVX512, AMX. The linear order is
+      AVX2 < AVX512 < AMX. It means that if user selects, e.g. AVX512 ISA,
+      AVX2 implementations will also be available at build time.")
 
 onednn_option(ENABLE_GEMM_KERNELS_ISA "ALL"
     "Specifies an ISA set of GeMM kernels residing in x64/gemm folder to be

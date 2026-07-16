@@ -348,8 +348,9 @@ int get_vector_register_size() {
 #if DNNL_X64
     using namespace x64;
     if (mayiuse(avx512_core)) return cpu_isa_traits_t<avx512_core>::vlen;
-    if (mayiuse(avx)) return cpu_isa_traits_t<avx>::vlen;
-    if (mayiuse(sse41)) return cpu_isa_traits_t<sse41>::vlen;
+    if (mayiuse(avx2)) return cpu_isa_traits_t<avx2>::vlen;
+    // x86-64 baseline: SSE2 guarantees 128-bit xmm registers.
+    return static_cast<int>(vreg_traits_t<Xbyak::Xmm>::vlen);
 #elif DNNL_AARCH64
     using namespace aarch64;
     if (mayiuse(asimd)) return cpu_isa_traits<asimd>::vlen;

@@ -205,9 +205,10 @@ private:
             std::shared_ptr<primitive_desc_t> &, engine_t *,
             const memory_desc_t *, int, int, const memory_desc_t *const *,
             const primitive_attr_t *);
-    friend status_t sum_primitive_desc_create(primitive_desc_iface_t **,
-            const memory_desc_t *, int, const float *,
-            const memory_desc_t *const *, const primitive_attr_t *, engine_t *);
+    friend status_t sum_primitive_desc_create(
+            std::shared_ptr<primitive_desc_t> &, const memory_desc_t *, int,
+            const float *, const memory_desc_t *const *,
+            const primitive_attr_t *, engine_t *);
     friend status_t reorder_primitive_desc_create(
             std::shared_ptr<primitive_desc_t> &, engine_t *,
             const memory_desc_t *, engine_t *, const memory_desc_t *,

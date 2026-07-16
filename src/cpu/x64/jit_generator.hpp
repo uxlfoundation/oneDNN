@@ -214,6 +214,7 @@ public:
     using Xbyak::CodeGenerator::pinsrb;
     using Xbyak::CodeGenerator::shl;
     using Xbyak::CodeGenerator::sub;
+    using Xbyak::CodeGenerator::vcmpps;
     using Xbyak::CodeGenerator::vpblendd;
     using Xbyak::CodeGenerator::vpermq;
     using Xbyak::CodeGenerator::vpextrb;
@@ -319,6 +320,15 @@ public:
             const Xbyak::Operand &op, T imm) {
         JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
         Xbyak::CodeGenerator::vpblendd(x1, x2, op, static_cast<uint8_t>(imm));
+    }
+
+    template <typename T,
+            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
+            = 0>
+    void vcmpps(const Xbyak::Opmask &k, const Xbyak::Xmm &x,
+            const Xbyak::Operand &op, T imm) {
+        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
+        Xbyak::CodeGenerator::vcmpps(k, x, op, static_cast<uint8_t>(imm));
     }
 
     static int xbyak_register_index(dim_t index) {

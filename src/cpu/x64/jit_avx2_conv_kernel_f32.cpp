@@ -586,14 +586,14 @@ status_t jit_avx2_conv_fwd_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
         const memory_desc_wrapper &weights_d, const memory_desc_wrapper &dst_d,
         const primitive_attr_t &attr) {
     // disabling verbose dispatch messages for unsupported isa for better readability
-    if (!mayiuse(avx)) return status::unimplemented;
+    if (!mayiuse(avx2)) return status::unimplemented;
 
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
             VERBOSE_BAD_PARAM, "large size is not supported");
 
-    jcp.isa = mayiuse(avx2) ? avx2 : avx;
+    jcp.isa = avx2;
 
     jcp.nthr = dnnl_get_max_threads();
 

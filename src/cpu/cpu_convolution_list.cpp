@@ -50,8 +50,7 @@
 #include "cpu/x64/jit_brgemm_conv_bwd.hpp"
 #include "cpu/x64/jit_brgemm_conv_bwd_strided.hpp"
 #include "cpu/x64/jit_brgemm_conv_bwd_w.hpp"
-#include "cpu/x64/jit_sse41_1x1_convolution.hpp"
-#include "cpu/x64/jit_sse41_convolution.hpp"
+
 #include "cpu/x64/jit_uni_dw_convolution.hpp"
 #include "cpu/x64/jit_uni_ncsp_convolution.hpp"
 #include "cpu/x64/jit_uni_x8s8s32x_1x1_convolution.hpp"
@@ -110,10 +109,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX2(brgemm_1x1_convolution_fwd_t<avx2>)
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2>)
             CPU_INSTANCE_AVX2(jit_avx2_1x1_convolution_fwd_t)
-            CPU_INSTANCE_SSE41(jit_sse41_dw_convolution_fwd_t)
-            CPU_INSTANCE_SSE41(jit_sse41_1x1_convolution_fwd_t)
             CPU_INSTANCE_AVX2(jit_avx2_convolution_fwd_t)
-            CPU_INSTANCE_SSE41(jit_sse41_convolution_fwd_t)
             CPU_INSTANCE_AARCH64_ACL(acl_wino_convolution_fwd_t)
             CPU_INSTANCE_AARCH64(brdgmm_dw_convolution_fwd_t<sve_512>)
             CPU_INSTANCE_AARCH64(brgemm_1x1_convolution_fwd_t<sve_512>)
@@ -230,7 +226,6 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX2(brgemm_convolution_bwd_strided_t<avx2>)
             CPU_INSTANCE_AVX2(jit_avx2_dw_convolution_bwd_data_t)
             CPU_INSTANCE_AVX2(jit_avx2_1x1_convolution_bwd_data_t)
-            CPU_INSTANCE_SSE41(jit_sse41_dw_convolution_bwd_data_t)
             CPU_INSTANCE_AVX2(jit_avx2_convolution_bwd_data_t)
             CPU_INSTANCE_AARCH64(brgemm_convolution_bwd_t<sve_512>)
             CPU_INSTANCE_AARCH64(brgemm_convolution_bwd_t<sve_256>)
@@ -300,7 +295,6 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX512(jit_avx512_common_convolution_bwd_weights_t<f32>)
             CPU_INSTANCE_AVX2(jit_avx2_dw_convolution_bwd_weights_t)
             CPU_INSTANCE_AVX2(jit_avx2_1x1_convolution_bwd_weights_t)
-            CPU_INSTANCE_SSE41(jit_sse41_dw_convolution_bwd_weights_t)
             CPU_INSTANCE_AVX2(jit_avx2_convolution_bwd_weights_t)
             CPU_INSTANCE_AARCH64(jit_uni_dw_convolution_bwd_weights_t<sve_512,f32>)
             CPU_INSTANCE_AARCH64(jit_sve_1x1_convolution_bwd_weights_t<f32,f32,f32,sve_512>)
@@ -363,8 +357,6 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
             CPU_INSTANCE_AVX2(brgemm_convolution_fwd_t<avx2_vnni>)
             CPU_INSTANCE_AVX2(jit_uni_x8s8s32x_1x1_convolution_fwd_t<avx2>)
             CPU_INSTANCE_AVX2(jit_uni_x8s8s32x_convolution_fwd_t<avx2>)
-            CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_convolution_fwd_t<sse41>)
-            CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_convolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(brdgmm_dw_convolution_fwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(brgemm_1x1_convolution_fwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(brgemm_convolution_fwd_t<sve_256>)

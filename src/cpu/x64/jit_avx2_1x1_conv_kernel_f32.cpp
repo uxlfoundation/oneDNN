@@ -688,8 +688,8 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         const memory_desc_wrapper &weights_d, const memory_desc_wrapper &dst_d,
         const primitive_attr_t &attr) {
     // disabling verbose dispatch messages for unsupported isa for better readability
-    if (!mayiuse(avx)) return status::unimplemented;
-    jcp.isa = mayiuse(avx2) ? avx2 : avx;
+    if (!mayiuse(avx2)) return status::unimplemented;
+    jcp.isa = avx2;
 
     // Big int (> INT_MAX) values are unsupported and jcp fields may overflow
     // TODO: change data type of jcp fields to size_t
@@ -835,7 +835,7 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
 
     jcp.ic_block = jcp.oc_block = simd_w;
 
-    jcp.ur = jcp.isa == avx2 ? 4 : 3; // Intel AVX support
+    jcp.ur = 4; // Intel AVX2
     if (jcp.with_dw_conv) jcp.ur = nstl::min(jcp.ow, jcp.ur);
 
     int load_blocking {0};

@@ -1590,7 +1590,7 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasSumNdx2d) {
 
     // skip the test on AArch64 or some older machine without avx support
     SKIP_IF(engine->kind() == graph::engine_kind::cpu
-                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx,
+                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2,
             "skip on machine without AVX");
 
     std::vector<std::string> qtypes {"per_tensor", "per_channel"};
@@ -1797,7 +1797,7 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasBinary) {
 
     // skip the test on AArch64 or some older machine without avx support
     SKIP_IF(engine->kind() == graph::engine_kind::cpu
-                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx,
+                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2,
             "skip on machine without AVX");
 
     std::vector<std::string> qtypes {"per_channel"};
@@ -1977,7 +1977,7 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasAddMul) {
 
     // skip the test on AArch64 or some older machine without avx support
     SKIP_IF(engine->kind() == graph::engine_kind::cpu
-                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx,
+                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2,
             "skip on machine without AVX");
 
     std::vector<std::string> qtypes {"per_tensor", "per_channel"};
@@ -2841,7 +2841,7 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasSumGetInplacePair_CPU) {
     SKIP_IF(engine->kind() == graph::engine_kind::gpu,
             "Skip for GPU - no inplace for layout mismatch.");
     // skip the test on AArch64 or some older machine without avx support
-    SKIP_IF(dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx,
+    SKIP_IF(dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2,
             "skip on machine without AVX");
 
     std::vector<std::string> qtypes {"per_tensor", "per_channel"};

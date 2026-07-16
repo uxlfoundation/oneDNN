@@ -57,36 +57,34 @@ namespace dnnl {
 TEST(dnnl_max_cpu_isa_env_var_test, TestEnvVars) {
     const bool has_cpu = DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE;
 
-    custom_setenv("DNNL_MAX_CPU_ISA", "SSE41", 1);
+    custom_setenv("DNNL_MAX_CPU_ISA", "AVX2", 1);
     auto got = dnnl_get_effective_cpu_isa();
     (void)got;
 
 #if defined(DNNL_ENABLE_MAX_CPU_ISA)
     // Expect env var value to be set when env variable feature is enabled.
-    EXPECT_EQ(got, has_cpu ? dnnl_cpu_isa_sse41 : dnnl_cpu_isa_default);
+    EXPECT_EQ(got, has_cpu ? dnnl_cpu_isa_avx2 : dnnl_cpu_isa_default);
 #elif DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    // Native SSE41 will issue an error. Don't check for it.
-    if (mayiuse(impl::cpu::x64::avx)) {
-        // Otherwise, don't expect it to be set.
-        EXPECT_NE(got, dnnl_cpu_isa_sse41);
+    // Otherwise, don't expect it to be set.
+    if (mayiuse(impl::cpu::x64::avx512_core)) {
+        EXPECT_NE(got, dnnl_cpu_isa_avx2);
     }
 #endif
 
     if (has_cpu) {
         // `dnnl_get_effective_cpu_isa` freezes the isa value, any call to set
         // it again results in invalid_arguments.
-        auto st = dnnl_set_max_cpu_isa(dnnl_cpu_isa_sse41);
+        auto st = dnnl_set_max_cpu_isa(dnnl_cpu_isa_avx2);
         EXPECT_EQ(st, dnnl_invalid_arguments);
     }
     // Check that second pass of env var doesn't take any effect.
-    custom_setenv("DNNL_MAX_CPU_ISA", "AVX", 1);
+    custom_setenv("DNNL_MAX_CPU_ISA", "AVX512_CORE", 1);
     got = dnnl_get_effective_cpu_isa();
 #if defined(DNNL_ENABLE_MAX_CPU_ISA)
-    EXPECT_EQ(got, has_cpu ? dnnl_cpu_isa_sse41 : dnnl_cpu_isa_default);
+    EXPECT_EQ(got, has_cpu ? dnnl_cpu_isa_avx2 : dnnl_cpu_isa_default);
 #elif DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    if (mayiuse(impl::cpu::x64::avx2)) {
-        EXPECT_NE(got, dnnl_cpu_isa_sse41);
-        EXPECT_NE(got, dnnl_cpu_isa_avx);
+    if (mayiuse(impl::cpu::x64::avx512_core)) {
+        EXPECT_NE(got, dnnl_cpu_isa_avx512_core);
     }
 #endif
 }

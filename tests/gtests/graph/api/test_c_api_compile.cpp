@@ -994,7 +994,7 @@ TEST(CAPI, CompileSumConv2DStridedBN) {
     // blocked format. Though they are both opaque tensor, in-place operation
     // is not supported as the different formats they are.
     // skip the test on AArch64 or some older machine without avx support
-    SKIP_IF(dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx,
+    SKIP_IF(dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2,
             "skip on machine without AVX");
     num_inplace_pairs = 10;
     EXPECT_EQ(dnnl_graph_compiled_partition_get_inplace_ports(

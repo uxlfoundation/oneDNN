@@ -214,8 +214,9 @@ You can build the library on Linux, macOS, or Windows using the compiler of your
 This opt-in path links oneDNN against the [ZenDNN](https://github.com/amd/ZenDNN)
 library to enable AMD (Zen) CPU-tuned kernels. It is `OFF` by default; see
 [ONEDNN_X64_USE_ZEN](@ref opt_x64_use_zen) for the full list of requirements
-(Linux on x86_64, CMake >= 3.26, GCC >= 11.2 or Clang >= 14, and a static
-ZenDNN archive >= 6.0.0; Windows builds are rejected at configure time).
+(Linux on x86_64, CMake >= 3.26, GCC >= 11.2 or Clang >= 14, `ONEDNN_CPU_RUNTIME=OMP`,
+and a ZenDNN install >= 6.0.0 built as either a static archive or a shared
+library; Windows builds are rejected at configure time).
 
 1. Set up the environment for the compiler
 
@@ -235,8 +236,9 @@ ZenDNN archive >= 6.0.0; Windows builds are rejected at configure time).
    ~~~
    @note You can also pass the ZenDNN location directly on the command line with
    `-DZENDNNROOT=<path/to/zendnnl/install>` instead of exporting it. If
-   `ZENDNNROOT` is unset and no ZenDNN install is found, the option is disabled
-   and oneDNN is built without ZenDNN support.
+   `ZENDNNROOT` is unset, CMake searches the default package paths; if no
+   ZenDNN install is found (or the found version is older than 6.0.0),
+   configuration fails with an error.
 
 3. Build the library
    ~~~sh

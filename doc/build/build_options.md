@@ -380,12 +380,8 @@ overhead due to additional register management.
 #### ONEDNN_X64_USE_ZEN
 
 This option enables integration with the [ZenDNN] library, which provides
-kernels tuned for AMD (Zen) CPUs. It is an opt-in CPU backend that registers
-ahead of the stock x64 implementations and engages at runtime only on AMD CPUs;
-on all other x86_64 CPUs (and for any unsupported configuration) the existing
-oneDNN implementations run unchanged. The option is `OFF` by default, and a
-build with the default value is byte-identical to a build made without this
-option. No public API changes are introduced.
+kernels tuned for AMD (Zen) CPUs. It is an opt-in CPU backend that engages at
+runtime only on AMD CPUs. The option is `OFF` by default.
 
 ~~~sh
 $ cmake -DONEDNN_X64_USE_ZEN=ON -DZENDNNROOT=<path/to/zendnnl/install> ..

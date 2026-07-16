@@ -28,6 +28,9 @@
 
 #include <sycl/ext/oneapi/backend/level_zero.hpp>
 
+// Include for cl_khr_device_uuid
+#include <CL/cl_ext.h>
+
 namespace dnnl {
 namespace impl {
 namespace gpu {

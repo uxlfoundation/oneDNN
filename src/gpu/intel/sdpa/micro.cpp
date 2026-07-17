@@ -426,7 +426,6 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     assert(engine->kind() == engine_kind::gpu);
     auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
-    arch_ = dev_info->gpu_arch();
     auto *d = desc();
 
     VDISPATCH_SDPA(compute::mayiuse_microkernels(intel_engine),
@@ -443,10 +442,6 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     bool quantized = false;
     bool is_integrated = intel_engine->device_info()->is_integrated();
     bool is_f32 = (desc()->qry_md()->data_type == data_type::f32);
-    use_systolic_ukernel_
-            = intel_engine->mayiuse(compute::device_ext_t::
-                              intel_subgroup_matrix_multiply_accumulate)
-            && !is_f32; // f32 -> non-systolic kernel only
 
     bool use_fma_config = !use_systolic_ukernel_;
     config = choose_bwd_config(arch_, d->head_size(), d->queries(), d->keys(),
@@ -551,8 +546,6 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             hw_info.gmdid != 0, "gmdid is 0, microkernels not supported.");
 
     ukernel_params.hwinfo = {hw_info};
-
-    sg_size_ = dev_info->min_subgroup_size();
 
     auto convert_dnnl_to_kernel_layout = [](const memory_desc_t *md) {
         return (gemm_desc_t::get_trans(*md) == dnnl_trans) ? MatrixLayout::T

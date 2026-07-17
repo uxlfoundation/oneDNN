@@ -65,7 +65,7 @@ public:
         res_cache.release();
     }
 
-    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *g_engine,
+    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *eng,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 
@@ -73,8 +73,7 @@ public:
             const size_t block_size,
             std::unordered_map<dnnl_memory_t, std::vector<memory>> &mem_map);
 
-    status_t execute_impl(stream_t *g_stream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute_impl(stream_t *strm, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf) override;
 
@@ -133,13 +132,13 @@ public:
     std::function<std::shared_ptr<mqa_args_set_t>()> resource_ctor_;
 
 #ifdef DNNL_WITH_SYCL
-    status_t sycl_execute_impl(stream_t *g_stream,
+    status_t sycl_execute_impl(stream_t *strm,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) override {
-        UNUSED(g_stream);
+        UNUSED(strm);
         UNUSED(inputs);
         UNUSED(outputs);
         UNUSED(sycl_deps);
@@ -149,13 +148,13 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    status_t ocl_execute_impl(stream_t *g_stream,
+    status_t ocl_execute_impl(stream_t *strm,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &cl_deps,
             cl_event *ret_event) override {
-        UNUSED(g_stream);
+        UNUSED(strm);
         UNUSED(inputs);
         UNUSED(outputs);
         UNUSED(cl_deps);

@@ -47,35 +47,33 @@ public:
                   engine, inputs, outputs, kernel->get_inplace_pairs())
         , kernel_(kernel) {}
 
-    status_t execute(stream_t *g_stream, const std::vector<tensor_t> &inputs,
+    status_t execute(stream_t *strm, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf) override {
-        return kernel_->execute(g_stream, inputs, outputs, scratchpad_buf);
+        return kernel_->execute(strm, inputs, outputs, scratchpad_buf);
     }
 
 #ifdef DNNL_WITH_SYCL
-    status_t execute_sycl(stream_t *g_stream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute_sycl(stream_t *strm, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
             const std::vector<::sycl::event> &sycl_deps,
             ::sycl::event *sycl_event) override {
-        return kernel_->execute_sycl(g_stream, inputs, outputs, scratchpad_buf,
-                sycl_deps, sycl_event);
+        return kernel_->execute_sycl(
+                strm, inputs, outputs, scratchpad_buf, sycl_deps, sycl_event);
     }
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     // It looks very similar to execute_sycl. Consider to merge them in the
     // future.
-    status_t execute_ocl(stream_t *g_stream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute_ocl(stream_t *strm, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
             const std::vector<cl_event> &ocl_deps,
             cl_event *ocl_event) override {
         return kernel_->execute_ocl(
-                g_stream, inputs, outputs, scratchpad_buf, ocl_deps, ocl_event);
+                strm, inputs, outputs, scratchpad_buf, ocl_deps, ocl_event);
     }
 #endif
 
@@ -120,7 +118,7 @@ public:
     status_t compile(compiled_partition_t *compiled_partition,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs,
-            engine_t *g_engine) const override;
+            engine_t *eng) const override;
 
     status_t infer_shape(std::vector<const logical_tensor_t *> &inputs,
             std::vector<logical_tensor_t *> &outputs) const override;

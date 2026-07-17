@@ -33,10 +33,10 @@ namespace graph {
 namespace dnnl_impl {
 template <bool quantized>
 status_t conv_transpose_fwd_t<quantized>::compile_impl(
-        const dnnl_partition_impl_t *part, engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*g_engine);
+    p_engine_ = make_dnnl_engine(*eng);
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
@@ -126,10 +126,10 @@ status_t conv_transpose_fwd_t<quantized>::prepare_inplace_pairs_impl() {
 
 #if BUILD_TRAINING
 status_t conv_transpose_bwd_data_t::compile_impl(
-        const dnnl_partition_impl_t *part, engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*g_engine);
+    p_engine_ = make_dnnl_engine(*eng);
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
@@ -186,10 +186,10 @@ status_t conv_transpose_bwd_data_t::compile_impl(
 }
 
 status_t conv_transpose_bwd_weights_t::compile_impl(
-        const dnnl_partition_impl_t *part, engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*g_engine);
+    p_engine_ = make_dnnl_engine(*eng);
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,

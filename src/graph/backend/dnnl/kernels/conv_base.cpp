@@ -43,10 +43,10 @@ void conv_base_t::prepare_args_set(const execution_args_set_t *res,
     }
 }
 
-status_t conv_base_t::execute_impl(stream_t *g_stream,
+status_t conv_base_t::execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -101,13 +101,13 @@ status_t conv_base_t::execute_impl(stream_t *g_stream,
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
 
-    prolong_scratchpad_lifetime(g_stream, scratchpad);
+    prolong_scratchpad_lifetime(strm, scratchpad);
 
     return status::success;
 }
 
 #ifdef DNNL_WITH_SYCL
-status_t conv_base_t::sycl_execute_impl(stream_t *g_stream,
+status_t conv_base_t::sycl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
@@ -115,7 +115,7 @@ status_t conv_base_t::sycl_execute_impl(stream_t *g_stream,
 
     auto deps = sycl_deps;
     std::optional<::sycl::event> returned_event;
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -182,14 +182,14 @@ status_t conv_base_t::sycl_execute_impl(stream_t *g_stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-status_t conv_base_t::ocl_execute_impl(stream_t *g_stream,
+status_t conv_base_t::ocl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) {
 
     auto deps = ocl_deps;
     cl_event returned_event {};
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;

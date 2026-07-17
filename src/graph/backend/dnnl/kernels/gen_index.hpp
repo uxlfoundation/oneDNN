@@ -56,15 +56,14 @@ public:
     void prepare_args_set(const execution_args_set_t *res,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs);
-    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *g_engine,
+    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *eng,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
-    status_t execute_impl(stream_t *g_stream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute_impl(stream_t *strm, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf) override;
 #ifdef DNNL_WITH_SYCL
-    status_t sycl_execute_impl(stream_t *g_stream,
+    status_t sycl_execute_impl(stream_t *strm,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -72,7 +71,7 @@ public:
             ::sycl::event *sycl_event) override;
 #endif
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    status_t ocl_execute_impl(stream_t *g_stream,
+    status_t ocl_execute_impl(stream_t *strm,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,

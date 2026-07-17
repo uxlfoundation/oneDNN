@@ -41,7 +41,7 @@ namespace dnnl_impl {
 template <bool quantized>
 struct conv_transpose_fwd_t : public conv_base_t {
 public:
-    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *g_engine,
+    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *eng,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 
@@ -57,7 +57,7 @@ using quantized_convtranspose = conv_transpose_fwd_t</* quantized */ true>;
 #if BUILD_TRAINING
 struct conv_transpose_bwd_data_t : public conv_base_t {
 public:
-    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *g_engine,
+    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *eng,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 
@@ -67,7 +67,7 @@ public:
 
 struct conv_transpose_bwd_weights_t : public conv_base_t {
 public:
-    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *g_engine,
+    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *eng,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 

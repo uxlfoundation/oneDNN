@@ -436,7 +436,21 @@ struct micro_bwd_t : public primitive_t {
         status_t init(impl::engine_t *engine) {
             using namespace data_type;
 
+            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            auto *dev_info = intel_engine->device_info();
+            arch_ = dev_info->gpu_arch();
+            sg_size_ = dev_info->min_subgroup_size();
+
             VDISPATCH_SDPA(!is_fwd(), VERBOSE_BAD_PROPKIND);
+
+            VDISPATCH_SDPA(arch_ != compute::gpu_arch_t::xe_hpg,
+                    "fused SDPA BWD not supported for xe_hpg");
+
+            bool is_f32 = (desc()->qry_md()->data_type == data_type::f32);
+            use_systolic_ukernel_
+                    = intel_engine->mayiuse(compute::device_ext_t::
+                                      intel_subgroup_matrix_multiply_accumulate)
+                    && !is_f32; // f32 -> non-systolic kernel only
 
             VDISPATCH_SDPA(utils::everyone_is(4, desc()->qry_md()->ndims,
                                    desc()->key_md()->ndims,
@@ -529,8 +543,6 @@ struct micro_bwd_t : public primitive_t {
             CHECK(init_default_ws());
             VDISPATCH_SDPA(compare_ws(hint_fwd_pd_), VERBOSE_WS_MISMATCH);
 
-            VDISPATCH_SDPA(arch() != compute::gpu_arch_t::xe_hpg,
-                    "fused SDPA BWD not supported for xe_hpg");
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));
             CHECK(init_scratchpad(engine));

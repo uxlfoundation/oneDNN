@@ -30,7 +30,8 @@ namespace ir {
 
 template <typename backend_t>
 void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
-        const reg_config_t &rc, data_section_t &data) {
+        const reg_config_t &rc, data_section_t &data,
+        const inject_postops_fn_t &inject) {
 
     // The backend holds the generator.
     jit_generator_t &gen = be.gen();
@@ -221,6 +222,29 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 break;
             }
 
+            // Lowers to the external JIT injector via the builder-provided
+            // callback. The injector does not participate in register
+            // allocation, so it is outside the allocation model. Reloading a
+            // spilled operand into a scratch register might work but is not
+            // guaranteed, so the operands must be in their allocated registers
+            // (asserted below).
+            case op_kind_t::inject_postops: {
+                const auto &args = ir.inject_postops_args()[(int)op.imm];
+                std::vector<int> acc_phys;
+                acc_phys.reserve(args.acc.size());
+                for (vreg_t v : args.acc) {
+                    JIT_ASSERT(!spilled(v)
+                            && "inject_postops: accumulator spilled");
+                    acc_phys.push_back(phys(v));
+                }
+                JIT_ASSERT(!spilled(args.base_ptr)
+                        && "inject_postops: base pointer spilled");
+                JIT_ASSERT(
+                        inject && "inject_postops: missing injector callback");
+                inject(acc_phys, phys(args.base_ptr));
+                break;
+            }
+
             // Mask ops. Emitting the instruction is the backend's job.
             // Spilling is not supported for mask vreg for now so we assert
             // `no spills`.
@@ -307,13 +331,14 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
 }
 
 void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
-        const reg_config_t &reg_cfg, data_section_t &data) {
+        const reg_config_t &reg_cfg, data_section_t &data,
+        const inject_postops_fn_t &inject) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
         JIT_ASSERT(!"avx512 emitter is not supported");
     } else {
         avx2_backend_t be(gen, isa);
-        emit(be, ir, alloc, reg_cfg, data);
+        emit(be, ir, alloc, reg_cfg, data, inject);
     }
 }
 

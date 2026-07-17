@@ -154,10 +154,18 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
     auto &A_descRem = state.A_descRem, &B_descRem = state.B_descRem;
     A_descRem = B_descRem = false;
 
+    // Descriptor remainder rounds count up to crosspack, will overread
+    // when src is wider than weights, unless the buffer is padded.
+    auto kDescRemOverreadHazard = [](Type narrow, Type wide,
+            const MatrixAddressingStrategy &narrowAstrategy) {
+        return narrow.size() < wide.size() && !narrowAstrategy.padded;
+    };
+
     if (strategy.kDescRem) {
         if (ka_loadRem == 1) {
             int frag = checkDescriptorRemainder(hw, Ta_load, unrollM, strategy.ka_load, true, false, problem.A, strategy.A);
             if (frag > 1) {
+                if (kDescRemOverreadHazard(Ta_ext, Tb_ext, strategy.A)) stub();
                 ka_loadRem = frag;
                 A_lateKRem = A_descRem = true;
             }
@@ -165,6 +173,7 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
         if (kb_loadRem == 1 && !A_descRem) {
             int frag = checkDescriptorRemainder(hw, Tb_load, strategy.kb_load, unrollN, false, false, problem.B, strategy.B);
             if (frag > 1) {
+                if (kDescRemOverreadHazard(Tb_ext, Ta_ext, strategy.B)) stub();
                 kb_loadRem = frag;
                 B_lateKRem = B_descRem = true;
             }

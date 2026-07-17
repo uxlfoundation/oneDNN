@@ -1880,9 +1880,9 @@ void CopyPlan::planEmulatedBF8ToBF(CopyInstruction &i)
     // shl          y:uw    x:ub    8               /* already done */
     // asr          y:w     y:w     3
     // and          y:uw    y:uw    0x8FFF
-    // cmp (ge)f0   null:bf (abs)y:bf 0x0FA0:bf     /* NaN check */
+    // cmp (ge)f0   null:bf (abs)y:bf 0x0F80:bf     /* Inf/NaN check */
     // mul          y:bf    y:bf    0x7780:bf
-    // (f0) or      y:uw    y:uw    0x7FFF          /* Preserve NaNs */
+    // (f0) or      y:uw    y:uw    0x7F80          /* Preserve Inf/NaNs */
 
     auto ie = splitMultiple<5>(i);
 
@@ -1903,7 +1903,7 @@ void CopyPlan::planEmulatedBF8ToBF(CopyInstruction &i)
 
     ie[2]->op = Opcode::cmp;
     ie[2]->src0 = abs(y);
-    ie[2]->src1 = bfImmediate(0x0FA0, false);
+    ie[2]->src1 = bfImmediate(0x0F80, false);
     ie[2]->dst = CopyOperand();
     ie[2]->dst.stride = y.stride;
     ie[2]->dst.type = DataType::bf;
@@ -1916,7 +1916,7 @@ void CopyPlan::planEmulatedBF8ToBF(CopyInstruction &i)
 
     ie[4]->op = Opcode::or_;
     ie[4]->src0 = ie[4]->dst = yUW;
-    ie[4]->src1 = 0x7FFF;
+    ie[4]->src1 = 0x7F80;
     ie[4]->flag = f;
 }
 

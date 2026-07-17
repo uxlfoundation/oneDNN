@@ -28,7 +28,7 @@
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/jit_primitive_conf.hpp"
-#include "cpu/aarch64/utils/jit_io_helper_v2.hpp"
+#include "cpu/aarch64/utils/jit_io_helper.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -111,7 +111,7 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     const size_t offt_src1_;
 
     static constexpr cpu_isa_t inject_isa = isa;
-    std::unique_ptr<io::jit_io_helper_v2_t<to_vla_sve(isa)>> load_io_;
+    std::unique_ptr<io::jit_io_helper_t<to_vla_sve(isa)>> load_io_;
     std::unique_ptr<
             injector::jit_uni_postops_injector_t<to_vla_sve(inject_isa)>>
             postops_injector_;

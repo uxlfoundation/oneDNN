@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_AARCH64_UTILS_JIT_IO_HELPER_V2_HPP
-#define CPU_AARCH64_UTILS_JIT_IO_HELPER_V2_HPP
+#ifndef CPU_AARCH64_UTILS_JIT_IO_HELPER_HPP
+#define CPU_AARCH64_UTILS_JIT_IO_HELPER_HPP
 
 #include "common/c_types_map.hpp"
 
@@ -73,11 +73,11 @@ struct tail_conf_t {
  * should be reserved exclusively for the io_helper.
  */
 template <cpu_isa_t isa>
-class jit_io_helper_v2_t {
+class jit_io_helper_t {
 public:
     using TReg = typename cpu_isa_traits<isa>::TReg;
 
-    jit_io_helper_v2_t(jit_generator_t *host,
+    jit_io_helper_t(jit_generator_t *host,
             const saturation_conf_t<TReg> &sat_conf,
             const tail_conf_t &tail_conf, const Xbyak_aarch64::XReg &temp_xreg);
 
@@ -169,4 +169,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_AARCH64_UTILS_JIT_IO_HELPER_V2_HPP
+#endif // CPU_AARCH64_UTILS_JIT_IO_HELPER_HPP

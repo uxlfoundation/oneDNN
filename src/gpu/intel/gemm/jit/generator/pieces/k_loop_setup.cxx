@@ -317,7 +317,12 @@ bool Generator<hw>::kLoopSetup(const GEMMProblem &problem, const GEMMStrategy &s
             }
         }
     }
-
+    if (Ai_remIncrCopy && Ta_ext.bits() % 8 != 0){
+	    Ai_remIncrCopy = false; Ai_incrementalRem = false;
+    }
+    if (Bi_remIncrCopy && Tb_ext.bits() % 8 != 0){
+	    Bi_remIncrCopy = false; Bi_incrementalRem = false;
+    }
     // Allocate repack registers if we need to assemble multiple loads for
     //  each outer product calculation.
     // TODO: allow allocation to overlap unneeded A/B registers.

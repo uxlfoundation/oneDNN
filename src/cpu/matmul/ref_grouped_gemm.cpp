@@ -19,9 +19,9 @@
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
 #include <algorithm>
-#include <atomic>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/type_helpers.hpp"
@@ -160,16 +160,8 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
     const auto &po = pd()->attr()->post_ops_;
     const bool with_post_ops = !po.has_default_values();
 
-    // Parallelize over groups (experts in MoE)
-    // Expectation is to see 128-256+ groups, with varying M per group
-    // and possibly some empty groups (M == 0)
-    std::atomic<status_t> st(status::success);
-    parallel_nd(group_count, [&](dim_t group_id) {
-        dim_t M_g, K_g;
-        dim_t src_group_start, wei_group_start, dst_group_start;
-        dim_t src_attr_row_base = 0;
-        dim_t dst_offset_start = 0, dst_offset_end = 0;
-
+    // Validate runtime group offsets
+    for (dim_t group_id = 0; group_id < group_count; ++group_id) {
         if (is_2dby2d) {
             const dim_t total_K = src_d.dims()[1];
             const dim_t k_start
@@ -178,31 +170,71 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
             // src and wei should share the same offsets
             if (wei_offsets[group_id] != k_end
                     || (group_id > 0 && wei_offsets[group_id - 1] != k_start)
-                    || k_start < 0 || k_end > total_K || k_end < k_start) {
-                st = status::invalid_arguments;
-                return;
+                    || k_start < 0 || k_end > total_K || k_end < k_start)
+                return status::invalid_arguments;
+        } else {
+            const dim_t total_M = src_d.dims()[0];
+            const dim_t src_offset_start
+                    = (group_id == 0) ? 0 : src_offsets[group_id - 1];
+            const dim_t src_offset_end = src_offsets[group_id];
+            const dim_t dst_offset_start
+                    = (group_id == 0) ? 0 : dst_offsets[group_id - 1];
+            const dim_t dst_offset_end = dst_offsets[group_id];
+            // src and dst should share the same offsets
+            if (src_offset_start < 0 || src_offset_end > total_M
+                    || src_offset_end < src_offset_start || dst_offset_start < 0
+                    || dst_offset_end > total_M
+                    || dst_offset_end < dst_offset_start)
+                return status::invalid_arguments;
+
+            // Grouped binary post-op tensors must share the dst offsets
+            if (with_post_ops) {
+                for (int po_idx = 0; po_idx < po.len(); ++po_idx) {
+                    const auto &entry = po.entry_[po_idx];
+                    if (!entry.is_binary()) continue;
+                    const memory_desc_wrapper bin_d(entry.binary.src1_desc);
+                    if (!bin_d.is_grouped_desc()) continue;
+                    const int po_arg = DNNL_ARG_ATTR_MULTIPLE_POST_OP(po_idx)
+                            | DNNL_ARG_SRC_1;
+                    const auto bin_offsets
+                            = CTX_IN_MEM(const int32_t *, po_arg, 1);
+                    const dim_t bin_offset_start
+                            = group_id > 0 ? bin_offsets[group_id - 1] : 0;
+                    const dim_t bin_offset_end = bin_offsets[group_id];
+                    const dim_t bin_total_m = bin_d.dims()[0];
+                    if (bin_offset_start < 0 || bin_offset_end > bin_total_m
+                            || bin_offset_end < bin_offset_start
+                            || bin_offset_start != dst_offset_start
+                            || bin_offset_end != dst_offset_end)
+                        return status::invalid_arguments;
+                }
             }
+        }
+    }
+
+    // Parallelize over groups (experts in MoE)
+    // Expectation is to see 128-256+ groups, with varying M per group
+    // and possibly some empty groups (M == 0)
+    parallel_nd(group_count, [= COMPAT_THIS_CAPTURE](dim_t group_id) {
+        dim_t M_g, K_g;
+        dim_t src_group_start, wei_group_start, dst_group_start;
+        dim_t src_attr_row_base = 0;
+        dim_t dst_offset_start = 0;
+
+        if (is_2dby2d) {
+            const dim_t k_start
+                    = (group_id == 0) ? 0 : src_offsets[group_id - 1];
+            const dim_t k_end = src_offsets[group_id];
             M_g = M_fixed;
             K_g = k_end - k_start;
             src_group_start = k_start;
             wei_group_start = k_start;
             dst_group_start = group_id;
         } else {
-            const dim_t total_M = src_d.dims()[0];
             const dim_t src_offset_start
                     = (group_id == 0) ? 0 : src_offsets[group_id - 1];
             const dim_t src_offset_end = src_offsets[group_id];
             dst_offset_start = (group_id == 0) ? 0 : dst_offsets[group_id - 1];
-            dst_offset_end = dst_offsets[group_id];
-
-            // src and dst should share the same offsets
-            if (src_offset_start < 0 || src_offset_end > total_M
-                    || src_offset_end < src_offset_start || dst_offset_start < 0
-                    || dst_offset_end > total_M
-                    || dst_offset_end < dst_offset_start) {
-                st = status::invalid_arguments;
-                return;
-            }
             M_g = src_offset_end - src_offset_start;
             K_g = K_fixed;
             src_group_start = src_offset_start;
@@ -387,17 +419,6 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
                             const dim_t bin_offset_start = group_id > 0
                                     ? bin_offsets[group_id - 1]
                                     : 0;
-                            const dim_t bin_offset_end = bin_offsets[group_id];
-                            const dim_t bin_total_m = bin_d.dims()[0];
-
-                            if (bin_offset_start < 0
-                                    || bin_offset_end > bin_total_m
-                                    || bin_offset_end < bin_offset_start
-                                    || bin_offset_start != dst_offset_start
-                                    || bin_offset_end != dst_offset_end) {
-                                st = status::invalid_arguments;
-                                return;
-                            }
                             bin_row_base = bin_offset_start;
                         }
                         const dim_t bin_M = bin_d.dims()[0];
@@ -422,7 +443,7 @@ status_t ref_grouped_t::execute(const exec_ctx_t &ctx) const {
         }
     });
 
-    return st;
+    return status::success;
 }
 
 } // namespace matmul

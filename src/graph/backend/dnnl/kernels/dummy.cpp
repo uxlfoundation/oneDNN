@@ -68,7 +68,7 @@ status_t dummy_kernel_t::sycl_execute_impl(stream_t *strm,
         const std::vector<::sycl::event> &sycl_deps,
         ::sycl::event *sycl_event) {
 
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     if (sycl_event) {
         // Fast path: if only one event, return it.
@@ -96,7 +96,7 @@ status_t dummy_kernel_t::ocl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     if (ret_event) {
         // Fast path: if only one event, return it.

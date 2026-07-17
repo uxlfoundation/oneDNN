@@ -155,7 +155,7 @@ template <bool quantized, memory::data_type dt>
 status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     auto *tp_stream

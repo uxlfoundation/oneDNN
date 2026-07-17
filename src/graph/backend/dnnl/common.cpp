@@ -85,8 +85,7 @@ dnnl::engine make_dnnl_engine(engine_t &eng) {
     return engine;
 }
 
-dnnl::stream make_dnnl_stream(const dnnl::engine &p_engine, stream_t &stream) {
-    UNUSED(p_engine);
+dnnl::stream make_dnnl_stream(stream_t &stream) {
     dnnl::stream strm;
     strm.reset(&stream, true); // not own
     return strm;

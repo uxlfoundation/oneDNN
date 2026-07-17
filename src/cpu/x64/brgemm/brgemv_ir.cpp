@@ -71,6 +71,12 @@ namespace {
 //   k_tail       - remaining K elements after the full blocks
 //   mblk_*_off   - byte offset to advance A/y pointers between M blocks
 //   kblk_*_off   - byte offset to advance A/x pointers between K blocks
+//   with_bias    - whether a bias is added to the output
+//   treat_y_as_row - whether the output y is a row. When true the bias is
+//                    indexed per M row, otherwise broadcast from bias[0]
+//   dt_bias      - element data type of the bias
+//   dt_sz_bias   - element size in bytes of the bias
+//   mblk_bias_off - byte offset to advance the bias pointer between M blocks
 struct brgemv_ir_conf_t {
     brgemv_ir_conf_t(const brgemm_desc_t &brg)
         : m(brg.bcast_dim)
@@ -95,7 +101,12 @@ struct brgemv_ir_conf_t {
         , mblk_a_off(dt_sz_a * m_block * lda)
         , mblk_y_off(dt_sz_y * m_block * incy)
         , kblk_a_off(dt_sz_a * k_block)
-        , kblk_x_off(dt_sz_x * k_block) {}
+        , kblk_x_off(dt_sz_x * k_block)
+        , with_bias(brg.with_bias)
+        , treat_y_as_row(brg.treat_y_as_row)
+        , dt_bias(brg.dt_bias)
+        , dt_sz_bias(brg.typesize_bias)
+        , mblk_bias_off(dt_sz_bias * m_block) {}
 
     const dim_t m, k, lda, incy;
     const int max_bs;
@@ -106,6 +117,10 @@ struct brgemv_ir_conf_t {
     const dim_t m_blocks, m_tail, k_blocks, k_tail;
     const dim_t mblk_a_off, mblk_y_off;
     const dim_t kblk_a_off, kblk_x_off;
+    const bool with_bias, treat_y_as_row;
+    const data_type_t dt_bias;
+    const int dt_sz_bias;
+    const dim_t mblk_bias_off;
 };
 
 // M-loop input register classification
@@ -128,6 +143,10 @@ struct advancing_regs_t {
     // Byte offset into A for the current M-block. Starts at 0 and advances by
     // `mblk_a_off` each iteration.
     ir::vreg_t a_off = ir::vreg_t::none;
+    // Bias base pointer. Advances by `mblk_bias_off` per M-block when
+    // `treat_y_as_row` is set, otherwise stays at the first element. `none`
+    // unless `with_bias`.
+    ir::vreg_t bias_ptr = ir::vreg_t::none;
 };
 
 // Registers that remain constant for the entire M-loop.
@@ -139,6 +158,10 @@ struct invariant_regs_t {
     // K-tail mask, shared by every masked tail load. It's only required when
     // `k_tail` is greater than 1.
     ir::vreg_t k_tail_mask = ir::vreg_t::none;
+    // Post-ops flag (params.do_post_ops). Non-zero applies the post-ops, zero
+    // stores the raw accumulator. `none` unless the kernel has a post-op to
+    // apply (currently bias).
+    ir::vreg_t do_post_ops = ir::vreg_t::none;
 };
 
 // Complete input register set for the M-loop, partitioned by whether values
@@ -178,6 +201,14 @@ m_loop_input_regs_t init_m_loop_input_regs(
         // managed automatically by the allocator.
         regs.invariant.k_tail_mask = ir.new_mask();
         ir.set_mask_imm(regs.invariant.k_tail_mask, (int)cfg.k_tail);
+    }
+
+    if (cfg.with_bias) {
+        regs.advancing.bias_ptr = ir.new_gpr();
+        ir.load_param(regs.advancing.bias_ptr, GET_OFF(ptr_bias));
+
+        regs.invariant.do_post_ops = ir.new_gpr();
+        ir.load_param(regs.invariant.do_post_ops, GET_OFF(do_post_ops));
     }
 
     return regs;
@@ -310,6 +341,27 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     for (int r = 0; r < m_block; r++)
         ir.vhreduce(acc[r], ws);
 
+    if (cfg.with_bias) {
+        const ir::label_t skip_bias = ir.new_label();
+        ir.jz(regs.invariant.do_post_ops, skip_bias);
+
+        // The broadcast bias is loop invariant, so load it once outside the
+        // loop. A row output loads a separate bias per output element.
+        const ir::vreg_t bias = ir.new_vec(cfg.dt_bias);
+        if (!cfg.treat_y_as_row)
+            ir.vload_masked(
+                    bias, regs.advancing.bias_ptr, 0, ir::vreg_t::none, 1);
+
+        for (int r = 0; r < m_block; r++) {
+            if (cfg.treat_y_as_row)
+                ir.vload_masked(bias, regs.advancing.bias_ptr,
+                        cfg.dt_sz_bias * (dim_t)r, ir::vreg_t::none, 1);
+            ir.vadd(acc[r], bias);
+        }
+
+        ir.label(skip_bias);
+    }
+
     for (int r = 0; r < m_block; r++)
         ir.vstore_masked(regs.advancing.y_ptr,
                 cfg.dt_sz_y * (dim_t)r * cfg.incy, acc[r], ir::vreg_t::none, 1);
@@ -317,6 +369,9 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     // Advance to next M block
     ir.add_imm(regs.advancing.a_off, cfg.mblk_a_off);
     ir.add_imm(regs.advancing.y_ptr, cfg.mblk_y_off);
+
+    if (cfg.with_bias && cfg.treat_y_as_row)
+        ir.add_imm(regs.advancing.bias_ptr, cfg.mblk_bias_off);
 }
 
 // Builds IR for GEMV with a non-transposed A matrix.
@@ -447,8 +502,18 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     VCONDCHECK_BRGEMV_IR(
             !brg.transA, VERBOSE_UNSUPPORTED_FEATURE, "transposed A");
 
+    VCONDCHECK_BRGEMV_IR(!brg.with_eltwise && !brg.with_binary && !brg.with_sum,
+            VERBOSE_UNSUPPORTED_POSTOP);
+    VCONDCHECK_BRGEMV_IR(!brg.with_src_scales && !brg.with_wei_scales
+                    && !brg.with_dst_scales,
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCONDCHECK_BRGEMV_IR(!brg.req_s8s8_compensation,
+            VERBOSE_UNSUPPORTED_FEATURE, "s8s8 compensation");
+    VCONDCHECK_BRGEMV_IR(utils::everyone_is(brgemm_broadcast_t::none,
+                                 brg.zp_type_a, brg.zp_type_b, brg.zp_type_c),
+            VERBOSE_UNSUPPORTED_ZP_CFG);
     VCONDCHECK_BRGEMV_IR(
-            !brg.are_post_ops_applicable(), VERBOSE_UNSUPPORTED_POSTOP);
+            !brg.with_bias || brg.dt_bias == f32, VERBOSE_UNSUPPORTED_BIAS_CFG);
     VCONDCHECK_BRGEMV_IR(
             brg.alpha == 1.0f, VERBOSE_UNSUPPORTED_FEATURE, "alpha != 1");
     VCONDCHECK_BRGEMV_IR(brg.beta == 0.0f || brg.beta == 1.0f,

@@ -102,6 +102,8 @@ enum class op_kind_t {
     vload,
     // dst += sum_{i=0}^{N-1} (s0[i] * s1[i]), where N is the dot length
     vdot,
+    // dst += s0 (vector add)
+    vadd,
     // horizontal reduction of dst; result in element 0. s0 is scratch
     // (overwritten).
     vhreduce,
@@ -248,6 +250,7 @@ struct DNNL_API ir_t {
     void vzero(vreg_t dst);
     void vload(vreg_t dst, vreg_t base, dim_t disp);
     void vdot(vreg_t dst, vreg_t a, vreg_t b);
+    void vadd(vreg_t dst, vreg_t src);
     // `workspace` is scratch. It is overwritten by this call, so pass a vreg
     // whose value is not needed afterwards.
     void vhreduce(vreg_t dst, vreg_t workspace);

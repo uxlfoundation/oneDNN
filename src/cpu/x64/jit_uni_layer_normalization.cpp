@@ -549,7 +549,7 @@ protected:
             static constexpr bool preserve_gpr = true;
             static constexpr bool preserve_vmm = true;
             static constexpr bool use_exact_tail_scalar_bcast = true;
-            static const std::size_t tmp_vmm_injector = this->vmm_tmp.getIdx();
+            static const int tmp_vmm_injector = this->vmm_tmp.getIdx();
 
             const eltwise_injector::static_params_t esp(true /*save_state*/,
                     reg_po_injector_helper_, elt_inj_opmask, true /*is_fwd*/,
@@ -559,7 +559,7 @@ protected:
                     tmp_vmm_injector, this->r14, this->r15, this->r13,
                     preserve_gpr, preserve_vmm,
                     PARAM_OFF(post_ops_binary_rhs_arg_vec), PARAM_OFF(dst),
-                    dst_d_, static_cast<size_t>(axis_simd_tail_), tail_opmask,
+                    dst_d_, static_cast<dim_t>(axis_simd_tail_), tail_opmask,
                     use_exact_tail_scalar_bcast};
 
             const binary_injector::static_params_t bsp {reg_param,
@@ -1331,7 +1331,7 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
                 + N_start * C_padded * src_d.data_type_size();
         char *const __restrict dst_ptr = reinterpret_cast<char *>(dst)
                 + N_start * C_padded * dst_d.data_type_size();
-        const int block_size = N_end - N_start;
+        const dim_t block_size = N_end - N_start;
         float *mean_ptr = skip_mean ? nullptr : &mean[N_start];
         float *dst_scales_inv_ptr = nullptr;
         if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_DST)) {
@@ -1400,7 +1400,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
     parallel(max_nthr, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
-        const int block_size = N_end - N_start;
+        const dim_t block_size = N_end - N_start;
         const char *const __restrict src_ptr
                 = reinterpret_cast<const char *>(src)
                 + N_start * C_padded * src_d.data_type_size();
@@ -1433,7 +1433,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
     parallel(max_nthr, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
-        const int block_size = N_end - N_start;
+        const dim_t block_size = N_end - N_start;
         const char *const __restrict src_ptr
                 = reinterpret_cast<const char *>(src)
                 + N_start * C_padded * src_d.data_type_size();

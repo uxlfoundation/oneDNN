@@ -204,6 +204,14 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
+            case op_kind_t::vadd: { // rmw: reads and writes dst
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                if (spilled(op.dst)) spill_reload(op.dst, d);
+                int s = vec_use(op.s0, vec_scratch1);
+                be.vadd(d, s, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
             case op_kind_t::vhreduce: { // reads and writes dst
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
                 if (spilled(op.dst)) spill_reload(op.dst, d);

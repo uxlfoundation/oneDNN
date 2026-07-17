@@ -114,7 +114,7 @@ void genindex_t::prepare_args_set(const execution_args_set_t *res,
 status_t genindex_t::execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -140,7 +140,7 @@ status_t genindex_t::sycl_execute_impl(stream_t *strm,
     if (p_engine_.get_kind() == engine::kind::gpu) {
         auto deps = sycl_deps;
         std::optional<::sycl::event> returned_event;
-        dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
+        dnnl::stream p_stream = make_dnnl_stream(*strm);
 
         thread_local_cache_t<execution_args_set_t> res_cache;
         execution_args_set_t *res = res_cache.get_or_add(
@@ -168,7 +168,7 @@ status_t genindex_t::ocl_execute_impl(stream_t *strm,
         const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) {
     auto deps = ocl_deps;
     cl_event returned_event {};
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;

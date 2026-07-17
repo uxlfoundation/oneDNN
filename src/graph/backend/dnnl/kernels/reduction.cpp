@@ -110,7 +110,7 @@ template <bool quantized>
 status_t reduction_t<quantized>::execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
@@ -139,7 +139,7 @@ status_t reduction_t<quantized>::sycl_execute_impl(stream_t *strm,
 
     auto deps = sycl_deps;
     std::optional<::sycl::event> returned_event;
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
@@ -172,7 +172,7 @@ status_t reduction_t<quantized>::ocl_execute_impl(stream_t *strm,
 
     auto deps = cl_deps;
     cl_event returned_event {};
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *strm);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(

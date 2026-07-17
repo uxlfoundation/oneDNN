@@ -88,7 +88,6 @@ static bool data_type_supported(const data_type_t dtype) {
 
 static bool data_format_supported(
         const memory_desc_wrapper &mdw, const cpu_isa_t isa) {
-    if (!is_superset(isa, sve)) return false;
     if (mdw.is_plain()) return true;
     if (!mdw.is_blocking_desc()) return false;
     const auto blk_size = mdw.blocking_desc().inner_blks[0];

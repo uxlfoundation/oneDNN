@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_RV64_JIT_RVV_BATCH_NORMALIZATION_KERNEL_HPP
-#define CPU_RV64_JIT_RVV_BATCH_NORMALIZATION_KERNEL_HPP
+#ifndef CPU_RV64_JIT_UNI_BATCH_NORMALIZATION_KERNEL_HPP
+#define CPU_RV64_JIT_UNI_BATCH_NORMALIZATION_KERNEL_HPP
 
 #include "common/c_types_map.hpp"
 #include "cpu/rv64/jit_generator.hpp"
@@ -25,7 +25,7 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-struct jit_rvv_batch_normalization_fwd_kernel_t : public jit_generator_t {
+struct jit_uni_batch_normalization_fwd_kernel_t : public jit_generator_t {
     struct call_params_t {
         const void *src;
         void *dst;
@@ -35,9 +35,9 @@ struct jit_rvv_batch_normalization_fwd_kernel_t : public jit_generator_t {
         const float *scale_add;
     };
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_batch_normalization_fwd_kernel_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_batch_normalization_fwd_kernel_t)
 
-    jit_rvv_batch_normalization_fwd_kernel_t(
+    jit_uni_batch_normalization_fwd_kernel_t(
             data_type_t data_type, bool per_elem_params, bool with_relu);
 
     void operator()(const call_params_t *p) const {
@@ -53,7 +53,7 @@ private:
     bool with_relu_;
 };
 
-struct jit_rvv_batch_normalization_bwd_reduce_kernel_t
+struct jit_uni_batch_normalization_bwd_reduce_kernel_t
     : public jit_generator_t {
     struct call_params_t {
         const void *src;
@@ -65,9 +65,9 @@ struct jit_rvv_batch_normalization_bwd_reduce_kernel_t
     };
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
-            jit_rvv_batch_normalization_bwd_reduce_kernel_t)
+            jit_uni_batch_normalization_bwd_reduce_kernel_t)
 
-    jit_rvv_batch_normalization_bwd_reduce_kernel_t(
+    jit_uni_batch_normalization_bwd_reduce_kernel_t(
             data_type_t data_type, bool per_elem_params);
 
     void operator()(const call_params_t *p) const {
@@ -82,8 +82,7 @@ private:
     bool per_elem_params_;
 };
 
-struct jit_rvv_batch_normalization_bwd_apply_kernel_t
-    : public jit_generator_t {
+struct jit_uni_batch_normalization_bwd_apply_kernel_t : public jit_generator_t {
     struct call_params_t {
         const void *src;
         const void *diff_dst;
@@ -96,9 +95,9 @@ struct jit_rvv_batch_normalization_bwd_apply_kernel_t
     };
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(
-            jit_rvv_batch_normalization_bwd_apply_kernel_t)
+            jit_uni_batch_normalization_bwd_apply_kernel_t)
 
-    jit_rvv_batch_normalization_bwd_apply_kernel_t(
+    jit_uni_batch_normalization_bwd_apply_kernel_t(
             data_type_t data_type, bool per_elem_params);
 
     void operator()(const call_params_t *p) const {
@@ -113,15 +112,15 @@ private:
     bool per_elem_params_;
 };
 
-void jit_rvv_batch_normalization_apply(const void *src, void *dst, dim_t len,
+void jit_uni_batch_normalization_apply(const void *src, void *dst, dim_t len,
         const float *mean, const float *scale_mul, const float *scale_add,
         data_type_t data_type, bool per_elem_params, bool with_relu);
 
-void jit_rvv_batch_normalization_bwd_reduce(const void *src,
+void jit_uni_batch_normalization_bwd_reduce(const void *src,
         const void *diff_dst, dim_t len, const float *mean, float *diff_scale,
         float *diff_shift, data_type_t data_type, bool per_elem_params);
 
-void jit_rvv_batch_normalization_bwd_apply(const void *src,
+void jit_uni_batch_normalization_bwd_apply(const void *src,
         const void *diff_dst, void *diff_src, dim_t len, const float *mean,
         const float *scale_mul, const float *diff_scale_mul,
         const float *diff_shift_add, data_type_t data_type,
@@ -132,4 +131,4 @@ void jit_rvv_batch_normalization_bwd_apply(const void *src,
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_RV64_JIT_RVV_BATCH_NORMALIZATION_KERNEL_HPP
+#endif // CPU_RV64_JIT_UNI_BATCH_NORMALIZATION_KERNEL_HPP

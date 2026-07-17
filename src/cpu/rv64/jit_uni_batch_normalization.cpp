@@ -1,5 +1,6 @@
 /******************************************************************************
 * Copyright 2025 ZTE Corporation
+* Copyright 2026 Institute of Software, Chinese Academy of Sciences
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -22,8 +23,8 @@
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 
-#include "cpu/rv64/jit_rvv_batch_normalization_kernel.hpp"
-#include "cpu/rv64/rvv_batch_normalization.hpp"
+#include "cpu/rv64/jit_uni_batch_normalization.hpp"
+#include "cpu/rv64/jit_uni_batch_normalization_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,17 +33,17 @@ namespace rv64 {
 
 namespace {
 
-static inline void bn_fwd_kernel(const void *s_base, void *d_base,
-        size_t len, const float *mean, const float *sm, const float *sv,
+static inline void bn_fwd_kernel(const void *s_base, void *d_base, size_t len,
+        const float *mean, const float *sm, const float *sv,
         data_type_t data_type, bool per_elem_params, bool with_relu) {
-    jit_rvv_batch_normalization_apply(s_base, d_base,
-            static_cast<dim_t>(len), mean, sm, sv, data_type, per_elem_params,
-            with_relu);
+    jit_uni_batch_normalization_apply(s_base, d_base, static_cast<dim_t>(len),
+            mean, sm, sv, data_type, per_elem_params, with_relu);
 }
 
 } // namespace
 
-status_t rvv_batch_normalization_fwd_t::execute_forward(
+template <cpu_isa_t isa>
+status_t jit_uni_batch_normalization_fwd_t<isa>::execute_forward(
         const exec_ctx_t &ctx) const {
     const memory_desc_wrapper data_d(pd()->src_md());
     const auto dtsrc = pd()->src_md()->data_type;
@@ -94,8 +95,7 @@ status_t rvv_batch_normalization_fwd_t::execute_forward(
             size_t base_off = off(n, c, d, h, 0);
 
             const void *s_ptr = reinterpret_cast<const void *>(
-                    reinterpret_cast<const char *>(src)
-                    + base_off * data_size);
+                    reinterpret_cast<const char *>(src) + base_off * data_size);
             void *d_ptr = reinterpret_cast<void *>(
                     reinterpret_cast<char *>(dst) + base_off * data_size);
             const float mean_b[1] = {vmean};
@@ -122,8 +122,7 @@ status_t rvv_batch_normalization_fwd_t::execute_forward(
         parallel_nd(N, D, H, W, [&](dim_t n, dim_t d, dim_t h, dim_t w) {
             const size_t base_off = off(n, 0, d, h, w);
             const void *s_ptr = reinterpret_cast<const void *>(
-                    reinterpret_cast<const char *>(src)
-                    + base_off * data_size);
+                    reinterpret_cast<const char *>(src) + base_off * data_size);
             void *d_ptr = reinterpret_cast<void *>(
                     reinterpret_cast<char *>(dst) + base_off * data_size);
             bn_fwd_kernel(s_ptr, d_ptr, static_cast<size_t>(C), mean, sm_arr,
@@ -134,7 +133,8 @@ status_t rvv_batch_normalization_fwd_t::execute_forward(
     return status::success;
 }
 
-status_t rvv_batch_normalization_bwd_t::execute_backward(
+template <cpu_isa_t isa>
+status_t jit_uni_batch_normalization_bwd_t<isa>::execute_backward(
         const exec_ctx_t &ctx) const {
     const memory_desc_wrapper data_d(pd()->src_md());
     const data_type_t data_type = pd()->src_md()->data_type;
@@ -154,15 +154,12 @@ status_t rvv_batch_normalization_bwd_t::execute_backward(
     const void *diff_dst = CTX_IN_MEM(const void *, DNNL_ARG_DIFF_DST);
     void *diff_src = CTX_OUT_MEM(void *, DNNL_ARG_DIFF_SRC);
     const float *mean = CTX_IN_MEM(const float *, DNNL_ARG_MEAN);
-    const float *variance
-            = CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE);
+    const float *variance = CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE);
     const float *scale = pd()->use_scale()
             ? CTX_IN_MEM(const float *, DNNL_ARG_SCALE)
             : nullptr;
-    float *diff_scale_out
-            = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_SCALE);
-    float *diff_shift_out
-            = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_SHIFT);
+    float *diff_scale_out = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_SCALE);
+    float *diff_shift_out = CTX_OUT_MEM(float *, DNNL_ARG_DIFF_SHIFT);
 
     auto &grantor = ctx.get_scratchpad_grantor();
     float *tmp = grantor.template get<float>(
@@ -201,7 +198,7 @@ status_t rvv_batch_normalization_bwd_t::execute_backward(
                 for (dim_t d = 0; d < D; ++d) {
                     for (dim_t h = 0; h < H; ++h) {
                         const size_t base_off = off(n, c, d, h, 0);
-                        jit_rvv_batch_normalization_bwd_reduce(
+                        jit_uni_batch_normalization_bwd_reduce(
                                 data_ptr(src, base_off),
                                 data_ptr(diff_dst, base_off), W, mean + c,
                                 diff_scale + c, diff_shift + c, data_type,
@@ -234,10 +231,9 @@ status_t rvv_batch_normalization_bwd_t::execute_backward(
                 const dim_t d = q % D;
                 const dim_t n = q / D;
                 const size_t base_off = off(n, 0, d, h, w);
-                jit_rvv_batch_normalization_bwd_reduce(
-                        data_ptr(src, base_off),
-                        data_ptr(diff_dst, base_off), C, mean,
-                        local_diff_scale, local_diff_shift, data_type,
+                jit_uni_batch_normalization_bwd_reduce(data_ptr(src, base_off),
+                        data_ptr(diff_dst, base_off), C, mean, local_diff_scale,
+                        local_diff_shift, data_type,
                         /*per_elem_params=*/true);
             }
         });
@@ -267,32 +263,33 @@ status_t rvv_batch_normalization_bwd_t::execute_backward(
     });
 
     if (!channels_dense) {
-        parallel_nd(C, N, D, H,
-                [&](dim_t c, dim_t n, dim_t d, dim_t h) {
-                    const size_t base_off = off(n, c, d, h, 0);
-                    jit_rvv_batch_normalization_bwd_apply(
-                            data_ptr(src, base_off),
-                            data_ptr(diff_dst, base_off),
-                            mutable_data_ptr(diff_src, base_off), W, mean + c,
-                            scale_mul + c, diff_scale_mul + c,
-                            diff_shift_add + c, data_type,
-                            /*per_elem_params=*/false);
-                });
+        parallel_nd(C, N, D, H, [&](dim_t c, dim_t n, dim_t d, dim_t h) {
+            const size_t base_off = off(n, c, d, h, 0);
+            jit_uni_batch_normalization_bwd_apply(data_ptr(src, base_off),
+                    data_ptr(diff_dst, base_off),
+                    mutable_data_ptr(diff_src, base_off), W, mean + c,
+                    scale_mul + c, diff_scale_mul + c, diff_shift_add + c,
+                    data_type,
+                    /*per_elem_params=*/false);
+        });
     } else {
-        parallel_nd(N, D, H, W,
-                [&](dim_t n, dim_t d, dim_t h, dim_t w) {
-                    const size_t base_off = off(n, 0, d, h, w);
-                    jit_rvv_batch_normalization_bwd_apply(
-                            data_ptr(src, base_off),
-                            data_ptr(diff_dst, base_off),
-                            mutable_data_ptr(diff_src, base_off), C, mean,
-                            scale_mul, diff_scale_mul, diff_shift_add, data_type,
-                            /*per_elem_params=*/true);
-                });
+        parallel_nd(N, D, H, W, [&](dim_t n, dim_t d, dim_t h, dim_t w) {
+            const size_t base_off = off(n, 0, d, h, w);
+            jit_uni_batch_normalization_bwd_apply(data_ptr(src, base_off),
+                    data_ptr(diff_dst, base_off),
+                    mutable_data_ptr(diff_src, base_off), C, mean, scale_mul,
+                    diff_scale_mul, diff_shift_add, data_type,
+                    /*per_elem_params=*/true);
+        });
     }
 
     return status::success;
 }
+
+template struct jit_uni_batch_normalization_fwd_t<v>;
+template struct jit_uni_batch_normalization_fwd_t<zvfh>;
+template struct jit_uni_batch_normalization_bwd_t<v>;
+template struct jit_uni_batch_normalization_bwd_t<zvfh>;
 
 } // namespace rv64
 } // namespace cpu

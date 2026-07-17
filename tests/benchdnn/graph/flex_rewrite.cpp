@@ -1833,7 +1833,6 @@ int flex_rewrite_t::update_output_info(deserialized_op_t &aop,
         case dnnl::graph::op::kind::Select:
         case dnnl::graph::op::kind::Sigmoid:
         case dnnl::graph::op::kind::SigmoidBackward:
-        case dnnl::graph::op::kind::SoftMax:
         case dnnl::graph::op::kind::SoftMaxBackward:
         case dnnl::graph::op::kind::SoftPlus:
         case dnnl::graph::op::kind::SoftPlusBackward:
@@ -1856,6 +1855,42 @@ int flex_rewrite_t::update_output_info(deserialized_op_t &aop,
                 }
                 lt.stride_ = memory_tag2strides(
                         lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+            }
+            break;
+        }
+        // SoftMax: primary output inherits input tag; stats output reuses
+        // its original tag if available, otherwise inherits from input.
+        case dnnl::graph::op::kind::SoftMax: {
+            for (size_t idx = 0; idx < aop.out_lts_.size(); idx++) {
+                auto &lt = aop.out_lts_[idx];
+                lt.shape_ = gi[lt.id_];
+                if (idx == 0) {
+                    // Primary output: always inherit from input.
+                    if (is_mtag_available) {
+                        dgraph.lt_2_mtag_[lt.id_] = dominate_tag;
+                    } else {
+                        dgraph.lt_2_mtag_[lt.id_]
+                                = get_default_tag(lt.shape_.size());
+                    }
+                    lt.stride_ = memory_tag2strides(
+                            lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+                } else {
+                    // Stats output: reuse original tag if available,
+                    // otherwise inherit from input.
+                    const auto &orig_tag = dgraph.lt_2_mtag_[lt.id_];
+                    if (!orig_tag.empty()) {
+                        lt.stride_ = memory_tag2strides(lt.shape_, orig_tag);
+                    } else if (is_mtag_available) {
+                        dgraph.lt_2_mtag_[lt.id_] = dominate_tag;
+                        lt.stride_ = memory_tag2strides(
+                                lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+                    } else {
+                        dgraph.lt_2_mtag_[lt.id_]
+                                = get_default_tag(lt.shape_.size());
+                        lt.stride_ = memory_tag2strides(
+                                lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+                    }
+                }
             }
             break;
         }

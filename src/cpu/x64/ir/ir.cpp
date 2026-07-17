@@ -164,6 +164,18 @@ void ir_t::prefetch(vreg_t base, dim_t disp) {
     ops_.push_back(op);
 }
 
+void ir_t::inject_postops(const std::vector<vreg_t> &acc, vreg_t base_ptr) {
+    inject_postops_args_t args;
+    args.acc = acc;
+    args.base_ptr = base_ptr;
+    inject_postops_args_.push_back(args);
+
+    op_t op;
+    op.kind = op_kind_t::inject_postops;
+    op.imm = (dim_t)inject_postops_args_.size() - 1;
+    ops_.push_back(op);
+}
+
 int ir_t::loop_begin_imm(vreg_t counter, dim_t count) {
     op_t op;
     op.kind = op_kind_t::loop_begin;
@@ -279,6 +291,19 @@ void ir_t::def_use(
             d(op.dst);
             d(op.s0);
             break;
+        case op_kind_t::inject_postops: {
+            // The injector transforms the accumulators in place (read and
+            // written) and reads the base pointer. Report them so liveness is
+            // correct across the op. Operands live in the side table, not in
+            // `op_t`.
+            const auto &args = inject_postops_args_[(int)op.imm];
+            for (vreg_t v : args.acc) {
+                u(v);
+                d(v);
+            }
+            u(args.base_ptr);
+            break;
+        }
         case op_kind_t::set_mask_imm: d(op.dst); break;
         case op_kind_t::vload_masked:
             u(op.mem.base);

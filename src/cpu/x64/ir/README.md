@@ -136,6 +136,8 @@ today. A shared runner for the fixed part is a follow-up.
   allocated IR, dispatches by ISA family, and manages the static-data section.
 * `emitter/backend_avx2.hpp`: the AVX2-family backend, the reference example of
   per-operation instruction selection.
+* `postops_injector.hpp`, `postops_injector.cpp`: the driver for the JIT post-ops
+  injector, which lowers the `inject_postops` operation.
 
 The kernel-specific builders live outside this directory. For example,
 `src/cpu/x64/brgemm/brgemv_ir.{hpp,cpp}` holds the GEMV builder and shows how

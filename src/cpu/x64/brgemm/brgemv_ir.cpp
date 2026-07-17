@@ -64,6 +64,7 @@ namespace {
 //   dt_a/x/y     - element data type of A, x, and y. Tags the vec vregs so the
 //                  emitter lowers each op to its dtype-specific instruction.
 //   dt_acc       - accumulation data type
+//   beta         - output scaling: 0 overwrites y, 1 accumulates into y
 //   m_blocks     - number of full M blocks
 //   m_tail       - remaining M rows after the full blocks
 //   k_blocks     - number of full K blocks
@@ -86,6 +87,7 @@ struct brgemv_ir_conf_t {
         , dt_x(brg.dt_b)
         , dt_y(brg.dt_c)
         , dt_acc(data_type::f32)
+        , beta(brg.beta)
         , m_blocks(m / m_block)
         , m_tail(m % m_block)
         , k_blocks(k / k_block)
@@ -100,6 +102,7 @@ struct brgemv_ir_conf_t {
     const int m_block, k_block;
     const int dt_sz_a, dt_sz_x, dt_sz_y;
     const data_type_t dt_a, dt_x, dt_y, dt_acc;
+    const float beta;
     const dim_t m_blocks, m_tail, k_blocks, k_tail;
     const dim_t mblk_a_off, mblk_y_off;
     const dim_t kblk_a_off, kblk_x_off;
@@ -275,7 +278,15 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     std::vector<ir::vreg_t> acc(m_block, ir::vreg_t::none);
     for (int r = 0; r < m_block; r++) {
         acc[r] = ir.new_vec(cfg.dt_acc);
-        ir.vzero(acc[r]);
+
+        // The current implementation supports only 0 and 1 for beta so for the
+        // case where beta = 1 we load `y` into the accumulator registers and
+        // then the microkernel adds the results of the multiplication to them.
+        if (cfg.beta == 0.0f)
+            ir.vzero(acc[r]);
+        else
+            ir.vload_masked(acc[r], regs.advancing.y_ptr,
+                    cfg.dt_sz_y * (dim_t)r * cfg.incy, ir::vreg_t::none, 1);
     }
 
     // Batch reduction over bs dimension
@@ -440,8 +451,8 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
             !brg.are_post_ops_applicable(), VERBOSE_UNSUPPORTED_POSTOP);
     VCONDCHECK_BRGEMV_IR(
             brg.alpha == 1.0f, VERBOSE_UNSUPPORTED_FEATURE, "alpha != 1");
-    VCONDCHECK_BRGEMV_IR(
-            brg.beta == 0.0f, VERBOSE_UNSUPPORTED_FEATURE, "beta != 0");
+    VCONDCHECK_BRGEMV_IR(brg.beta == 0.0f || brg.beta == 1.0f,
+            VERBOSE_UNSUPPORTED_FEATURE, "beta != 0 && beta != 1");
 
     VCONDCHECK_BRGEMV_IR(
             !brg.is_runtime_lda, VERBOSE_UNSUPPORTED_FEATURE, "runtime lda");

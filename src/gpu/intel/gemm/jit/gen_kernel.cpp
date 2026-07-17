@@ -137,9 +137,22 @@ status_t gen_desc_t::finalize(const char *tags) {
         gpu_assert(val == "gemm");
         ss >> val;
         const char *pstr = val.c_str();
+        // The external (buffer) data types are fixed by the actual problem /
+        // memory allocation and must NOT be overridden by the kernel string.
+        // A catalog precision like "OHS" encodes the *compute* precision of C
+        // as 'S' (f32 accumulate); parsePrecisions on a single letter sets
+        // both the compute and external type, which would reinterpret the
+        // f16 output buffer as f32 and write out of bounds => CL_OUT_OF_RESOURCES.
+        // Preserve the external types and only override the internal/compute ones.
+        const Type Ta_ext_orig = problem_.Ta_ext;
+        const Type Tb_ext_orig = problem_.Tb_ext;
+        const Type Tc_ext_orig = problem_.Tc_ext;
         pstr = parsePrecisions(pstr, problem_.Ta_ext, problem_.Ta);
         pstr = parsePrecisions(pstr, problem_.Tb_ext, problem_.Tb);
         pstr = parsePrecisions(pstr, problem_.Tc, problem_.Tc_ext);
+        problem_.Ta_ext = Ta_ext_orig;
+        problem_.Tb_ext = Tb_ext_orig;
+        problem_.Tc_ext = Tc_ext_orig;
         ss >> val;
         pstr = val.c_str();
         pstr = parseLayout(pstr, problem_.A);

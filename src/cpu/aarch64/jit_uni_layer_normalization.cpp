@@ -29,7 +29,7 @@
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/jit_uni_layer_normalization.hpp"
-#include "cpu/aarch64/utils/jit_io_helper_v2.hpp"
+#include "cpu/aarch64/utils/jit_io_helper.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -84,7 +84,7 @@ public:
 
         io::tail_conf_t tail_conf(axis_simd_tail_, tail_opmask_);
 
-        io_ = utils::make_unique<io::jit_io_helper_v2_t<isa>>(
+        io_ = utils::make_unique<io::jit_io_helper_t<isa>>(
                 this, sat_conf, tail_conf, reg_io_tmp1_);
 
         const auto &post_ops = pd_->attr()->post_ops_;
@@ -195,7 +195,7 @@ private:
     const SReg scalar_inv_sqrtvar_ {vec_inv_sqrtvar_.getIdx()};
     const SReg scalar_mean_ {vec_mean_.getIdx()};
 
-    std::unique_ptr<io::jit_io_helper_v2_t<isa>> io_;
+    std::unique_ptr<io::jit_io_helper_t<isa>> io_;
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
 

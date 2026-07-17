@@ -88,7 +88,7 @@ jit_uni_binary_kernel_t<isa>::jit_uni_binary_kernel_t(
     , io_tail_conf_(tail_size_, tail_opmask_) {
 
     safe_ptr_assign(load_io_,
-            new io::jit_io_helper_v2_t<to_vla_sve(isa)>(
+            new io::jit_io_helper_t<to_vla_sve(isa)>(
                     this, io_sat_conf_, io_tail_conf_, reg_tmp_));
 
     if (conf_.with_postops) init_post_ops_injector();
@@ -415,7 +415,7 @@ void jit_uni_binary_kernel_t<isa>::store(int unroll, bool tail) {
 
     // Make a local io helper for storage so that our saturation bounds are
     // initialised no matter which branch we took.
-    io::jit_io_helper_v2_t<to_vla_sve(isa)> store_io(
+    io::jit_io_helper_t<to_vla_sve(isa)> store_io(
             this, sat_conf, tail_conf, reg_tmp_);
 
     for (int i = 0; i < unroll; i++) {

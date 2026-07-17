@@ -21,7 +21,7 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
-#include "cpu/aarch64/utils/jit_io_helper_v2.hpp"
+#include "cpu/aarch64/utils/jit_io_helper.hpp"
 #include "cpu/platform.hpp"
 
 namespace dnnl {
@@ -78,7 +78,7 @@ void asimd_narrow_s32_to_i8(
 } // namespace
 
 template <cpu_isa_t isa>
-jit_io_helper_v2_t<isa>::jit_io_helper_v2_t(jit_generator_t *host,
+jit_io_helper_t<isa>::jit_io_helper_t(jit_generator_t *host,
         const saturation_conf_t<TReg> &sat_conf, const tail_conf_t &tail_conf,
         const XReg &temp_xreg)
     : host_(host)
@@ -96,7 +96,7 @@ jit_io_helper_v2_t<isa>::jit_io_helper_v2_t(jit_generator_t *host,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::lazy_init_saturation(data_type_t dt) {
+void jit_io_helper_t<isa>::lazy_init_saturation(data_type_t dt) {
     if (!types::is_integral_dt(dt)
             || (saturation_init_state_.dt == dt
                     && saturation_init_state_.is_ready)) {
@@ -111,7 +111,7 @@ void jit_io_helper_v2_t<isa>::lazy_init_saturation(data_type_t dt) {
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::lazy_init_tail(bool is_tail) {
+void jit_io_helper_t<isa>::lazy_init_tail(bool is_tail) {
     if (!is_tail || is_tail_ready_) { return; }
 
     if (isa == sve) {
@@ -122,7 +122,7 @@ void jit_io_helper_v2_t<isa>::lazy_init_tail(bool is_tail) {
 }
 
 template <cpu_isa_t isa>
-bool jit_io_helper_v2_t<isa>::is_supported_dt(data_type_t dt) {
+bool jit_io_helper_t<isa>::is_supported_dt(data_type_t dt) {
     const bool dt_is_implemented
             = utils::one_of(dt, data_type::f32, data_type::s32, data_type::f16,
                     data_type::bf16, data_type::s8, data_type::u8);
@@ -132,12 +132,12 @@ bool jit_io_helper_v2_t<isa>::is_supported_dt(data_type_t dt) {
 }
 
 template <cpu_isa_t isa>
-Xbyak_aarch64::_PReg jit_io_helper_v2_t<isa>::get_pred(bool is_tail) const {
+Xbyak_aarch64::_PReg jit_io_helper_t<isa>::get_pred(bool is_tail) const {
     return (is_tail ? tail_conf_.pred : host_->P_ALL_ONE) / Xbyak_aarch64::T_z;
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::saturate(data_type_t dt, const TReg &vec) const {
+void jit_io_helper_t<isa>::saturate(data_type_t dt, const TReg &vec) const {
     if (!types::is_integral_dt(dt)) { return; }
 
     host_->saturate_f32(vec, TReg(sat_conf_.lbound_vec.getIdx()),
@@ -148,7 +148,7 @@ void jit_io_helper_v2_t<isa>::saturate(data_type_t dt, const TReg &vec) const {
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::extend_xf16_to_f32(
+void jit_io_helper_t<isa>::extend_xf16_to_f32(
         data_type_t dt, const TReg &vec) const {
     assert(dt == data_type::f16 || dt == data_type::bf16);
 
@@ -170,7 +170,7 @@ void jit_io_helper_v2_t<isa>::extend_xf16_to_f32(
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::narrow_f32_to_xf16(
+void jit_io_helper_t<isa>::narrow_f32_to_xf16(
         data_type_t dt, const TReg &vec) const {
     assert(dt == data_type::f16 || dt == data_type::bf16);
 
@@ -192,7 +192,7 @@ void jit_io_helper_v2_t<isa>::narrow_f32_to_xf16(
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::load(
+void jit_io_helper_t<isa>::load(
         data_type_t dt, const TReg &vec, const XReg &src_addr, bool is_tail) {
     assert(is_supported_dt(dt));
 
@@ -207,7 +207,7 @@ void jit_io_helper_v2_t<isa>::load(
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::gather_load(data_type_t dt, const TReg &vec,
+void jit_io_helper_t<isa>::gather_load(data_type_t dt, const TReg &vec,
         const Xbyak_aarch64::XReg &base_addr, const TReg &offsets_vec,
         const bool is_tail) {
     assert(is_supported_dt(dt));
@@ -229,7 +229,7 @@ void jit_io_helper_v2_t<isa>::gather_load(data_type_t dt, const TReg &vec,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::store(
+void jit_io_helper_t<isa>::store(
         data_type_t dt, const TReg &vec, const XReg &dst_addr, bool is_tail) {
     assert(is_supported_dt(dt));
 
@@ -247,7 +247,7 @@ void jit_io_helper_v2_t<isa>::store(
 // This function is meaningless on SVE and should never be implemented or called
 template <>
 template <size_t lane_size, bool is_load>
-void jit_io_helper_v2_t<sve>::gen_asimd_load_store(
+void jit_io_helper_t<sve>::gen_asimd_load_store(
         const VReg &, const XReg &, bool is_tail) const {
     assert(!"Do not call this on SVE");
 }
@@ -256,7 +256,7 @@ void jit_io_helper_v2_t<sve>::gen_asimd_load_store(
 // vector loads to simulate masked loads on asimd
 template <>
 template <size_t lane_size, bool is_load>
-void jit_io_helper_v2_t<asimd>::gen_asimd_load_store(
+void jit_io_helper_t<asimd>::gen_asimd_load_store(
         const VReg &vec, const XReg &addr, bool is_tail) const {
     // We define three major types: the "Base" type, which is the element size
     // (word, halfword, byte) of the type T we are trying to load, a "Larger"
@@ -339,7 +339,7 @@ void jit_io_helper_v2_t<asimd>::gen_asimd_load_store(
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::broadcast_load(
+void jit_io_helper_t<isa>::broadcast_load(
         data_type_t dt, const TReg &vec, const Xbyak_aarch64::XReg &src_addr) {
     assert(is_supported_dt(dt));
 
@@ -352,8 +352,8 @@ void jit_io_helper_v2_t<isa>::broadcast_load(
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::broadcast_load_word(data_type_t dt,
-        const TReg &vec, const Xbyak_aarch64::XReg &src_addr) const {
+void jit_io_helper_t<isa>::broadcast_load_word(data_type_t dt, const TReg &vec,
+        const Xbyak_aarch64::XReg &src_addr) const {
     assert(dt == data_type::f32 || dt == data_type::s32);
 
     if (isa == sve) {
@@ -368,7 +368,7 @@ void jit_io_helper_v2_t<isa>::broadcast_load_word(data_type_t dt,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::load_words(data_type_t dt, const TReg &vec,
+void jit_io_helper_t<isa>::load_words(data_type_t dt, const TReg &vec,
         const XReg &src_addr, bool is_tail) const {
     assert(dt == data_type::f32 || dt == data_type::s32);
 
@@ -384,7 +384,7 @@ void jit_io_helper_v2_t<isa>::load_words(data_type_t dt, const TReg &vec,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::gather_load_words(data_type_t dt, const TReg &vec,
+void jit_io_helper_t<isa>::gather_load_words(data_type_t dt, const TReg &vec,
         const XReg &base_addr, const TReg &offsets_vec,
         const bool is_tail) const {
     assert(dt == data_type::f32 || dt == data_type::s32);
@@ -410,7 +410,7 @@ void jit_io_helper_v2_t<isa>::gather_load_words(data_type_t dt, const TReg &vec,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::store_words(data_type_t dt, const TReg &vec,
+void jit_io_helper_t<isa>::store_words(data_type_t dt, const TReg &vec,
         const XReg &dst_addr, bool is_tail) const {
     assert(dt == data_type::f32 || dt == data_type::s32);
 
@@ -427,7 +427,7 @@ void jit_io_helper_v2_t<isa>::store_words(data_type_t dt, const TReg &vec,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::broadcast_load_halfword(data_type_t dt,
+void jit_io_helper_t<isa>::broadcast_load_halfword(data_type_t dt,
         const TReg &vec, const Xbyak_aarch64::XReg &src_addr) const {
     assert(dt == data_type::f16 || dt == data_type::bf16);
 
@@ -443,7 +443,7 @@ void jit_io_helper_v2_t<isa>::broadcast_load_halfword(data_type_t dt,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::load_halfwords(data_type_t dt, const TReg &vec,
+void jit_io_helper_t<isa>::load_halfwords(data_type_t dt, const TReg &vec,
         const XReg &src_addr, bool is_tail) const {
     assert(dt == data_type::f16 || dt == data_type::bf16);
 
@@ -463,7 +463,7 @@ void jit_io_helper_v2_t<isa>::load_halfwords(data_type_t dt, const TReg &vec,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::gather_load_halfwords(data_type_t dt,
+void jit_io_helper_t<isa>::gather_load_halfwords(data_type_t dt,
         const TReg &vec, const XReg &base_addr, const TReg &offsets_vec,
         const bool is_tail) const {
     assert(dt == data_type::f16 || dt == data_type::bf16);
@@ -490,7 +490,7 @@ void jit_io_helper_v2_t<isa>::gather_load_halfwords(data_type_t dt,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::store_halfwords(data_type_t dt, const TReg &vec,
+void jit_io_helper_t<isa>::store_halfwords(data_type_t dt, const TReg &vec,
         const XReg &dst_addr, bool is_tail) const {
     assert(dt == data_type::f16 || dt == data_type::bf16);
 
@@ -508,8 +508,8 @@ void jit_io_helper_v2_t<isa>::store_halfwords(data_type_t dt, const TReg &vec,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::broadcast_load_byte(data_type_t dt,
-        const TReg &vec, const Xbyak_aarch64::XReg &src_addr) const {
+void jit_io_helper_t<isa>::broadcast_load_byte(data_type_t dt, const TReg &vec,
+        const Xbyak_aarch64::XReg &src_addr) const {
     assert(dt == data_type::s8 || dt == data_type::u8);
 
     if (isa == sve) {
@@ -529,7 +529,7 @@ void jit_io_helper_v2_t<isa>::broadcast_load_byte(data_type_t dt,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::load_bytes(data_type_t dt, const TReg &vec,
+void jit_io_helper_t<isa>::load_bytes(data_type_t dt, const TReg &vec,
         const XReg &src_addr, bool is_tail) const {
     assert(dt == data_type::s8 || dt == data_type::u8);
 
@@ -550,7 +550,7 @@ void jit_io_helper_v2_t<isa>::load_bytes(data_type_t dt, const TReg &vec,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::gather_load_bytes(data_type_t dt, const TReg &vec,
+void jit_io_helper_t<isa>::gather_load_bytes(data_type_t dt, const TReg &vec,
         const XReg &base_addr, const TReg &offsets_vec,
         const bool is_tail) const {
     assert(dt == data_type::s8 || dt == data_type::u8);
@@ -583,7 +583,7 @@ void jit_io_helper_v2_t<isa>::gather_load_bytes(data_type_t dt, const TReg &vec,
 }
 
 template <cpu_isa_t isa>
-void jit_io_helper_v2_t<isa>::store_bytes(data_type_t dt, const TReg &vec,
+void jit_io_helper_t<isa>::store_bytes(data_type_t dt, const TReg &vec,
         const XReg &dst_addr, bool is_tail) const {
     assert(dt == data_type::s8 || dt == data_type::u8);
 
@@ -600,8 +600,8 @@ void jit_io_helper_v2_t<isa>::store_bytes(data_type_t dt, const TReg &vec,
     gen_asimd_load_store<byte_size, false>(asimd_vec, dst_addr, is_tail);
 }
 
-template class jit_io_helper_v2_t<asimd>;
-template class jit_io_helper_v2_t<sve>;
+template class jit_io_helper_t<asimd>;
+template class jit_io_helper_t<sve>;
 
 } // namespace io
 } // namespace aarch64

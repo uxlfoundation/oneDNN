@@ -14,7 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "cpu/rv64/jit_rvv_batch_normalization_kernel.hpp"
+#include "cpu/rv64/jit_uni_batch_normalization_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -27,46 +27,46 @@ namespace {
 
 template <data_type_t data_type, bool per_elem_params, bool with_relu>
 void dispatch_jit_batch_normalization_fwd(
-        const jit_rvv_batch_normalization_fwd_kernel_t::call_params_t *p) {
-    static const jit_rvv_batch_normalization_fwd_kernel_t kernel(
+        const jit_uni_batch_normalization_fwd_kernel_t::call_params_t *p) {
+    static const jit_uni_batch_normalization_fwd_kernel_t kernel(
             data_type, per_elem_params, with_relu);
     kernel(p);
 }
 
 template <data_type_t data_type, bool per_elem_params>
 void dispatch_jit_batch_normalization_bwd_reduce(
-        const jit_rvv_batch_normalization_bwd_reduce_kernel_t::call_params_t
+        const jit_uni_batch_normalization_bwd_reduce_kernel_t::call_params_t
                 *p) {
-    static const jit_rvv_batch_normalization_bwd_reduce_kernel_t kernel(
+    static const jit_uni_batch_normalization_bwd_reduce_kernel_t kernel(
             data_type, per_elem_params);
     kernel(p);
 }
 
 template <data_type_t data_type, bool per_elem_params>
 void dispatch_jit_batch_normalization_bwd_apply(
-        const jit_rvv_batch_normalization_bwd_apply_kernel_t::call_params_t
+        const jit_uni_batch_normalization_bwd_apply_kernel_t::call_params_t
                 *p) {
-    static const jit_rvv_batch_normalization_bwd_apply_kernel_t kernel(
+    static const jit_uni_batch_normalization_bwd_apply_kernel_t kernel(
             data_type, per_elem_params);
     kernel(p);
 }
 
 } // namespace
 
-jit_rvv_batch_normalization_fwd_kernel_t::
-        jit_rvv_batch_normalization_fwd_kernel_t(
+jit_uni_batch_normalization_fwd_kernel_t::
+        jit_uni_batch_normalization_fwd_kernel_t(
                 data_type_t data_type, bool per_elem_params, bool with_relu)
-    : jit_generator_t("jit_rvv_batch_normalization_fwd_kernel")
+    : jit_generator_t("jit_uni_batch_normalization_fwd_kernel")
     , data_type_(data_type)
     , per_elem_params_(per_elem_params)
     , with_relu_(with_relu) {
     create_kernel();
 }
 
-void jit_rvv_batch_normalization_apply(const void *src, void *dst, dim_t len,
+void jit_uni_batch_normalization_apply(const void *src, void *dst, dim_t len,
         const float *mean, const float *scale_mul, const float *scale_add,
         data_type_t dt, bool per_elem_params, bool with_relu) {
-    const jit_rvv_batch_normalization_fwd_kernel_t::call_params_t p {
+    const jit_uni_batch_normalization_fwd_kernel_t::call_params_t p {
             src, dst, len, mean, scale_mul, scale_add};
     if (dt == data_type::f16) {
         if (per_elem_params) {
@@ -103,7 +103,7 @@ void jit_rvv_batch_normalization_apply(const void *src, void *dst, dim_t len,
     }
 }
 
-void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
+void jit_uni_batch_normalization_fwd_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const bool is_f16 = data_type_ == data_type::f16;
     const Reg reg_param = a0;
@@ -146,14 +146,12 @@ void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
     L(loop);
     beqz(reg_len, done);
     if (is_f16) {
-        vsetvli(
-                reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vle16_v(v_src16, reg_src);
         vfwcvt_f_f_v(v_src, v_src16);
         vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
     } else {
-        vsetvli(
-                reg_vl, reg_len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
+        vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
         vle32_v(v_src, reg_src);
     }
     if (per_elem_params_) {
@@ -199,19 +197,19 @@ void jit_rvv_batch_normalization_fwd_kernel_t::generate() {
 #endif
 }
 
-jit_rvv_batch_normalization_bwd_reduce_kernel_t::
-        jit_rvv_batch_normalization_bwd_reduce_kernel_t(
+jit_uni_batch_normalization_bwd_reduce_kernel_t::
+        jit_uni_batch_normalization_bwd_reduce_kernel_t(
                 data_type_t data_type, bool per_elem_params)
-    : jit_generator_t("jit_rvv_batch_normalization_bwd_reduce_kernel")
+    : jit_generator_t("jit_uni_batch_normalization_bwd_reduce_kernel")
     , data_type_(data_type)
     , per_elem_params_(per_elem_params) {
     create_kernel();
 }
 
-void jit_rvv_batch_normalization_bwd_reduce(const void *src,
+void jit_uni_batch_normalization_bwd_reduce(const void *src,
         const void *diff_dst, dim_t len, const float *mean, float *diff_scale,
         float *diff_shift, data_type_t dt, bool per_elem_params) {
-    const jit_rvv_batch_normalization_bwd_reduce_kernel_t::call_params_t p {
+    const jit_uni_batch_normalization_bwd_reduce_kernel_t::call_params_t p {
             src, diff_dst, len, mean, diff_scale, diff_shift};
     if (dt == data_type::f16) {
         if (per_elem_params)
@@ -230,7 +228,7 @@ void jit_rvv_batch_normalization_bwd_reduce(const void *src,
     }
 }
 
-void jit_rvv_batch_normalization_bwd_reduce_kernel_t::generate() {
+void jit_uni_batch_normalization_bwd_reduce_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const bool is_f16 = data_type_ == data_type::f16;
     const LMUL compute_lmul = is_f16 ? LMUL::m2 : LMUL::m1;
@@ -281,17 +279,14 @@ void jit_rvv_batch_normalization_bwd_reduce_kernel_t::generate() {
     L(loop);
     beqz(reg_len, done);
     if (is_f16) {
-        vsetvli(
-                reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vle16_v(v_src16, reg_src);
         vle16_v(v_diff_dst16, reg_diff_dst);
         vfwcvt_f_f_v(v_src, v_src16);
         vfwcvt_f_f_v(v_diff_dst, v_diff_dst16);
-        vsetvli(
-                reg_vl, reg_vl, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
+        vsetvli(reg_vl, reg_vl, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
     } else {
-        vsetvli(
-                reg_vl, reg_len, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
+        vsetvli(reg_vl, reg_len, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
         vle32_v(v_src, reg_src);
         vle32_v(v_diff_dst, reg_diff_dst);
     }
@@ -341,21 +336,20 @@ void jit_rvv_batch_normalization_bwd_reduce_kernel_t::generate() {
 #endif
 }
 
-jit_rvv_batch_normalization_bwd_apply_kernel_t::
-        jit_rvv_batch_normalization_bwd_apply_kernel_t(
+jit_uni_batch_normalization_bwd_apply_kernel_t::
+        jit_uni_batch_normalization_bwd_apply_kernel_t(
                 data_type_t data_type, bool per_elem_params)
-    : jit_generator_t("jit_rvv_batch_normalization_bwd_apply_kernel")
+    : jit_generator_t("jit_uni_batch_normalization_bwd_apply_kernel")
     , data_type_(data_type)
     , per_elem_params_(per_elem_params) {
     create_kernel();
 }
 
-void jit_rvv_batch_normalization_bwd_apply(const void *src,
+void jit_uni_batch_normalization_bwd_apply(const void *src,
         const void *diff_dst, void *diff_src, dim_t len, const float *mean,
         const float *scale_mul, const float *diff_scale_mul,
-        const float *diff_shift_add, data_type_t dt,
-        bool per_elem_params) {
-    const jit_rvv_batch_normalization_bwd_apply_kernel_t::call_params_t p {src,
+        const float *diff_shift_add, data_type_t dt, bool per_elem_params) {
+    const jit_uni_batch_normalization_bwd_apply_kernel_t::call_params_t p {src,
             diff_dst, diff_src, len, mean, scale_mul, diff_scale_mul,
             diff_shift_add};
     if (dt == data_type::f16) {
@@ -375,7 +369,7 @@ void jit_rvv_batch_normalization_bwd_apply(const void *src,
     }
 }
 
-void jit_rvv_batch_normalization_bwd_apply_kernel_t::generate() {
+void jit_uni_batch_normalization_bwd_apply_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const bool is_f16 = data_type_ == data_type::f16;
     const LMUL compute_lmul = is_f16 ? LMUL::m2 : LMUL::m1;
@@ -429,17 +423,14 @@ void jit_rvv_batch_normalization_bwd_apply_kernel_t::generate() {
     L(loop);
     beqz(reg_len, done);
     if (is_f16) {
-        vsetvli(
-                reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vle16_v(v_src16, reg_src);
         vle16_v(v_diff_dst16, reg_diff_dst);
         vfwcvt_f_f_v(v_src, v_src16);
         vfwcvt_f_f_v(v_diff_dst, v_diff_dst16);
-        vsetvli(
-                reg_vl, reg_vl, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
+        vsetvli(reg_vl, reg_vl, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
     } else {
-        vsetvli(
-                reg_vl, reg_len, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
+        vsetvli(reg_vl, reg_len, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
         vle32_v(v_src, reg_src);
         vle32_v(v_diff_dst, reg_diff_dst);
     }

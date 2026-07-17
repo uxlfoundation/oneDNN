@@ -1,5 +1,6 @@
 /******************************************************************************
 * Copyright 2025 ZTE Corporation
+* Copyright 2026 Institute of Software, Chinese Academy of Sciences
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -14,8 +15,8 @@
 * limitations under the License.
 ******************************************************************************/
 
-#ifndef CPU_RV64_RVV_BATCH_NORMALIZATION_HPP
-#define CPU_RV64_RVV_BATCH_NORMALIZATION_HPP
+#ifndef CPU_RV64_JIT_UNI_BATCH_NORMALIZATION_HPP
+#define CPU_RV64_JIT_UNI_BATCH_NORMALIZATION_HPP
 
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
@@ -30,14 +31,14 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-struct rvv_batch_normalization_fwd_t : public primitive_t {
+template <cpu_isa_t isa>
+struct jit_uni_batch_normalization_fwd_t : public primitive_t {
     struct pd_t : public cpu_batch_normalization_fwd_pd_t {
         using cpu_batch_normalization_fwd_pd_t::
                 cpu_batch_normalization_fwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("jit:", isa_, ""),
-                rvv_batch_normalization_fwd_t);
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", isa, ""),
+                jit_uni_batch_normalization_fwd_t);
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
@@ -46,21 +47,17 @@ struct rvv_batch_normalization_fwd_t : public primitive_t {
 
             // Vector kernels are JIT-emitted; the rv64gc baseline build means a
             // non-V CPU must defer to the next (reference) implementation.
-            VDISPATCH_BNORM(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
+            VDISPATCH_BNORM(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
 
             const data_type_t dtsrc = src_md()->data_type;
             const data_type_t dtdst = dst_md()->data_type;
-            isa_ = dtsrc == f16 ? zvfh : v;
-            const bool types_ok = utils::one_of(dtsrc, f32, f16)
-                    && dtdst == dtsrc
+            const data_type_t expected_dt = isa == zvfh ? f16 : f32;
+            const bool types_ok = dtsrc == expected_dt && dtdst == dtsrc
                     && platform::has_data_type_support(dtsrc)
                     && IMPLICATION(is_training(),
                             platform::has_training_support(dtsrc));
             VDISPATCH_BNORM(types_ok, VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BNORM(
-                    IMPLICATION(dtsrc == f16, mayiuse(zvfh)),
-                    VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_BNORM(check_scale_shift_data_type(),
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "unsupported scale or shift data type");
@@ -116,8 +113,7 @@ struct rvv_batch_normalization_fwd_t : public primitive_t {
                     && dst_d.is_dense(/*with_padding=*/false);
             bool same_layouts = src_d.similar_to(dst_d, /*with_strides=*/true,
                     /*with_pads=*/false);
-            const bool vector_dim_dense
-                    = src_d.blocking_desc().strides[1] == 1
+            const bool vector_dim_dense = src_d.blocking_desc().strides[1] == 1
                     || src_d.blocking_desc().strides[ndims() - 1] == 1;
             return ndims_ok && plain_dense && same_layouts && vector_dim_dense;
         }
@@ -132,11 +128,10 @@ struct rvv_batch_normalization_fwd_t : public primitive_t {
             scratchpad.template book<float>(key_bnorm_tmp_mean, C());
             scratchpad.template book<float>(key_bnorm_tmp_var, C());
         }
-        cpu_isa_t isa_ = v;
         bool fused_relu_in_kernel_ = false;
     };
 
-    rvv_batch_normalization_fwd_t(const pd_t *apd) : primitive_t(apd) {}
+    jit_uni_batch_normalization_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_forward(ctx);
@@ -147,41 +142,37 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 };
 
-struct rvv_batch_normalization_bwd_t : public primitive_t {
+template <cpu_isa_t isa>
+struct jit_uni_batch_normalization_bwd_t : public primitive_t {
     struct pd_t : public cpu_batch_normalization_bwd_pd_t {
         using cpu_batch_normalization_bwd_pd_t::
                 cpu_batch_normalization_bwd_pd_t;
 
-        DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("jit:", isa_, ""),
-                rvv_batch_normalization_bwd_t);
+        DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit:", isa, ""),
+                jit_uni_batch_normalization_bwd_t);
 
         status_t init(engine_t *engine) {
             UNUSED(engine);
             using namespace data_type;
 
-            VDISPATCH_BNORM(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
+            VDISPATCH_BNORM(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
             const data_type_t dt = src_md()->data_type;
-            isa_ = dt == f16 ? zvfh : v;
-            VDISPATCH_BNORM(utils::one_of(dt, f32, f16)
-                            && utils::everyone_is(dt,
-                                    diff_dst_md()->data_type,
+            const data_type_t expected_dt = isa == zvfh ? f16 : f32;
+            VDISPATCH_BNORM(dt == expected_dt
+                            && utils::everyone_is(dt, diff_dst_md()->data_type,
                                     diff_src_md()->data_type)
                             && platform::has_data_type_support(dt)
                             && platform::has_training_support(dt),
                     VERBOSE_UNSUPPORTED_DT);
-            VDISPATCH_BNORM(IMPLICATION(dt == f16, mayiuse(zvfh)),
-                    VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_BNORM(check_scale_shift_data_type(),
                     VERBOSE_UNSUPPORTED_FEATURE,
                     "unsupported scale or shift data type");
             VDISPATCH_BNORM(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
-            VDISPATCH_BNORM(!fuse_norm_add_relu(),
-                    VERBOSE_UNSUPPORTED_FEATURE,
+            VDISPATCH_BNORM(!fuse_norm_add_relu(), VERBOSE_UNSUPPORTED_FEATURE,
                     "fuse_norm_add_relu not supported");
             VDISPATCH_BNORM(!fuse_norm_relu(), VERBOSE_UNSUPPORTED_FEATURE,
                     "fused ReLU backward not supported");
@@ -206,14 +197,12 @@ struct rvv_batch_normalization_bwd_t : public primitive_t {
                 const memory_desc_wrapper &diff_dst_d,
                 const memory_desc_wrapper &diff_src_d) const {
             const bool ndims_ok = utils::one_of(ndims(), 3, 4, 5);
-            const bool plain_dense
-                    = src_d.blocking_desc().inner_nblks == 0
+            const bool plain_dense = src_d.blocking_desc().inner_nblks == 0
                     && diff_dst_d.blocking_desc().inner_nblks == 0
                     && diff_src_d.blocking_desc().inner_nblks == 0
                     && src_d.is_dense(false) && diff_dst_d.is_dense(false)
                     && diff_src_d.is_dense(false);
-            const bool vector_dim_dense
-                    = src_d.blocking_desc().strides[1] == 1
+            const bool vector_dim_dense = src_d.blocking_desc().strides[1] == 1
                     || src_d.blocking_desc().strides[ndims() - 1] == 1;
             return ndims_ok && plain_dense
                     && src_d.similar_to(
@@ -231,11 +220,10 @@ struct rvv_batch_normalization_bwd_t : public primitive_t {
             scratchpad.template book<float>(key_bnorm_tmp_diff_ss, 5 * C());
         }
 
-        cpu_isa_t isa_ = v;
         int nthr_ = 1;
     };
 
-    rvv_batch_normalization_bwd_t(const pd_t *apd) : primitive_t(apd) {}
+    jit_uni_batch_normalization_bwd_t(const pd_t *apd) : primitive_t(apd) {}
 
     status_t execute(const exec_ctx_t &ctx) const override {
         return execute_backward(ctx);
@@ -251,4 +239,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_RV64_RVV_BATCH_NORMALIZATION_HPP
+#endif // CPU_RV64_JIT_UNI_BATCH_NORMALIZATION_HPP

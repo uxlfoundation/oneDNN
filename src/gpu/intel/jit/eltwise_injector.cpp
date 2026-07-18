@@ -371,6 +371,20 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
     h->mul(16, r, r, max.f(1)(0));
     h->mul(16, r_alt.f(0)(1), r_alt.f(0)(1), max.f(1)(0));
 
+    // Saturate dst value to fmax and flow instead of overflowing..
+    float fmax_bf8 = 57344.f, fmax_hf8 = 448.f, fmax_f4_e2m1 = 6.f;
+    float flow_bf8 = -57344.f, flow_hf8 = -448.f, flow_f4_e2m1 = -6.f;
+    auto fmax = (dst_dt == ngen::DataType::bf8) ? Immediate::f(fmax_bf8)
+            : (dst_dt == ngen::DataType::hf8)   ? Immediate::f(fmax_hf8)
+                                                : Immediate::f(fmax_f4_e2m1);
+    auto flow = (dst_dt == ngen::DataType::bf8) ? Immediate::f(flow_bf8)
+            : (dst_dt == ngen::DataType::hf8)   ? Immediate::f(flow_hf8)
+                                                : Immediate::f(flow_f4_e2m1);
+    h->sel(16 | ge, r, r, flow);
+    h->sel(16 | le, r, r, fmax);
+    h->sel(16 | ge, r_alt.f(0)(1), r_alt.f(0)(1), flow);
+    h->sel(16 | le, r_alt.f(0)(1), r_alt.f(0)(1), fmax);
+
     // Store scale value.
     h->shr(1, max.ud(0), max.ud(0), 23);
     h->mov(1, scale_dst.ub(0), max.ub(0));

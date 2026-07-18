@@ -164,10 +164,14 @@ void ir_t::prefetch(vreg_t base, dim_t disp) {
     ops_.push_back(op);
 }
 
-void ir_t::inject_postops(const std::vector<vreg_t> &acc, vreg_t base_ptr) {
+void ir_t::inject_postops(const std::vector<vreg_t> &acc, vreg_t base_ptr,
+        const std::vector<dim_t> &out_byte_off, vreg_t mask, int elems) {
     inject_postops_args_t args;
     args.acc = acc;
     args.base_ptr = base_ptr;
+    args.out_byte_off = out_byte_off;
+    args.mask = mask;
+    args.elems = elems;
     inject_postops_args_.push_back(args);
 
     op_t op;
@@ -293,15 +297,15 @@ void ir_t::def_use(
             break;
         case op_kind_t::inject_postops: {
             // The injector transforms the accumulators in place (read and
-            // written) and reads the base pointer. Report them so liveness is
-            // correct across the op. Operands live in the side table, not in
-            // `op_t`.
+            // written) and reads the base pointer and the tail mask. Report them
+            // so liveness is correct across the op.
             const auto &args = inject_postops_args_[(int)op.imm];
             for (vreg_t v : args.acc) {
                 u(v);
                 d(v);
             }
             u(args.base_ptr);
+            u(args.mask);
             break;
         }
         case op_kind_t::set_mask_imm: d(op.dst); break;

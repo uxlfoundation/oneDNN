@@ -29,12 +29,14 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/memory_desc_wrapper.hpp"
 #include "common/nstl.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 
 #include "cpu/x64/brgemm/brgemv_ir.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
+#include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/ir/ir.hpp"
 #include "cpu/x64/ir/postops_injector.hpp"
@@ -378,8 +380,17 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
             }
         }
 
-        if (cfg.with_injector_postops)
-            ir.inject_postops(acc, regs.advancing.y_ptr);
+        if (cfg.with_injector_postops) {
+            // Each accumulator is horizontally reduced to one scalar, so the
+            // injector sees a single active element with no mask register. Its
+            // output offset matches the store displacement below.
+            std::vector<dim_t> out_byte_off(m_block);
+            for (int r = 0; r < m_block; r++)
+                out_byte_off[r] = cfg.dt_sz_y * (dim_t)r * cfg.incy;
+
+            ir.inject_postops(acc, regs.advancing.y_ptr, out_byte_off,
+                    ir::vreg_t::none, /*elems=*/1);
+        }
 
         ir.label(skip_post_ops);
     }
@@ -469,13 +480,23 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         // callback below.
         std::unique_ptr<ir::postops_injector_t> postops_injector;
         ir::inject_postops_fn_t emit_injector;
+
         if (brg_.with_eltwise || brg_.with_binary) {
-            postops_injector.reset(new ir::postops_injector_t(this,
+            // A partial right-hand-side load reads the vector tail, or one
+            // element for a scalar accumulator.
+            const int postops_tail_elems
+                    = brg_.gemv_acc_is_vector() ? brg_.gemv_tail : 1;
+
+            postops_injector.reset(new ir::postops_injector_t(*this,
                     brg_.isa_impl, brg_.attr()->post_ops_, *brg_.dst_md(),
-                    abi_param1));
-            emit_injector
-                    = [&](const std::vector<int> &acc_phys, int /*base_phys*/) {
-                postops_injector->apply(acc_phys);
+                    abi_param1, GET_OFF(post_ops_binary_rhs_arg_vec),
+                    GET_OFF(data_C_ptr_), postops_tail_elems));
+
+            emit_injector = [&](const std::vector<int> &acc_phys, int base_phys,
+                                    const std::vector<dim_t> &out_byte_off,
+                                    int mask_phys, int elems) {
+                postops_injector->apply(
+                        acc_phys, base_phys, out_byte_off, mask_phys, elems);
             };
         }
 
@@ -545,8 +566,24 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     VCONDCHECK_BRGEMV_IR(
             !brg.transA, VERBOSE_UNSUPPORTED_FEATURE, "transposed A");
 
-    VCONDCHECK_BRGEMV_IR(
-            !brg.with_binary && !brg.with_sum, VERBOSE_UNSUPPORTED_POSTOP);
+    // Post-ops go through the JIT injector. Accept only eltwise and binary, and
+    // only binary arguments the injector can handle on this ISA. Sum and other
+    // kinds fall back.
+    if (brg.attr()) {
+        const memory_desc_wrapper dst_d(brg.dst_md());
+        const std::vector<injector::post_op_type> accepted
+                = {injector::eltwise, injector::binary};
+        VCONDCHECK_BRGEMV_IR(
+                injector::post_ops_ok({brg.isa_impl, accepted,
+                        brg.attr()->post_ops_, &dst_d,
+                        /*sum_at_pos_0_only=*/false,
+                        /*sum_requires_scale_one=*/false,
+                        /*sum_requires_zp_zero=*/false,
+                        /*sum_requires_same_params=*/false,
+                        binary_injector::
+                                get_all_strategies_supported_by_injector()}),
+                VERBOSE_UNSUPPORTED_POSTOP);
+    }
     VCONDCHECK_BRGEMV_IR(!brg.with_src_scales && !brg.with_wei_scales
                     && !brg.with_dst_scales,
             VERBOSE_UNSUPPORTED_SCALES_CFG);

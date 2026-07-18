@@ -16,14 +16,18 @@
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <vector>
 
 #include "gtest/gtest.h"
+
+#include "oneapi/dnnl/dnnl.hpp"
 
 #include "common/c_types_map.hpp"
 
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/ir/ir.hpp"
+#include "cpu/x64/ir/postops_injector.hpp"
 #include "cpu/x64/ir/reg_alloc.hpp"
 #include "cpu/x64/ir/reg_config.hpp"
 #include "cpu/x64/jit_generator.hpp"
@@ -205,6 +209,23 @@ public:
         fn(args);
     }
 
+    // Optional post-ops injector setup. When `post_ops` is set, generate()
+    // creates the JIT post-ops injector and drives the `inject_postops` op
+    // through it, the same way a real IR kernel does.
+    //   rhs_arg_offset  - byte offset in the argument struct of the binary
+    //                     right-hand-side pointer array
+    //   dst_orig_offset - byte offset in the argument struct of the
+    //                     destination origin pointer
+    //   tail_elems      - right-hand-side elements a partial (tail) load reads
+    struct postops_cfg_t {
+        const impl::post_ops_t *post_ops = nullptr;
+        const impl::memory_desc_t *dst_md = nullptr;
+        size_t rhs_arg_offset = 0;
+        size_t dst_orig_offset = 0;
+        int tail_elems = 0;
+    };
+    void set_postops(const postops_cfg_t &cfg) { postops_cfg_ = cfg; }
+
     // Allocation outcome. Becomes valid after `run_ir_pipeline()`.
     //
     // True if the generated kernel has any spills.
@@ -240,19 +261,42 @@ protected:
         spilled_ = alloc.any_spill;
         stack_size_ = alloc.frame_bytes;
 
+        // Create the post-ops injector and the callback the emitter uses to
+        // lower the `inject_postops` op, the same as a real IR kernel's
+        // generate(). The injector saves and restores every register it borrows,
+        // so it takes no part in the IR register allocation.
+        std::unique_ptr<postops_injector_t> injector;
+        inject_postops_fn_t emit_injector;
+        if (postops_cfg_.post_ops) {
+            injector.reset(new postops_injector_t(*this, avx2,
+                    *postops_cfg_.post_ops, *postops_cfg_.dst_md, abi_param1,
+                    postops_cfg_.rhs_arg_offset, postops_cfg_.dst_orig_offset,
+                    postops_cfg_.tail_elems));
+            emit_injector = [&](const std::vector<int> &acc_phys, int base_phys,
+                                    const std::vector<dim_t> &out_byte_off,
+                                    int mask_phys, int elems) {
+                injector->apply(
+                        acc_phys, base_phys, out_byte_off, mask_phys, elems);
+            };
+        }
+
         preamble();
 
         const int frame = (int)utils::rnd_up(alloc.frame_bytes, 16);
         if (frame > 0) sub(rsp, frame);
 
         data_section_t data;
-        emit(*this, ir_, alloc, reg_cfg, data);
+        emit(*this, ir_, alloc, reg_cfg, data, emit_injector);
 
         if (frame > 0) add(rsp, frame);
 
         postamble();
 
         emit_data_section(*this, data);
+
+        // The injector's constant table follows the postamble. A no-op unless
+        // the chain has an eltwise post-op.
+        if (injector) injector->maybe_prepare_table();
     }
 
 private:
@@ -260,6 +304,7 @@ private:
     int vec_regs_limit_ = 0;
     bool spilled_ = false;
     size_t stack_size_ = 0;
+    postops_cfg_t postops_cfg_ {};
 };
 
 // IR builder tests
@@ -459,6 +504,62 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
         // Each value is either spilled or has a physical register assigned.
         EXPECT_TRUE(as.spilled || as.phys >= 0);
     }
+}
+
+// Validates the inject_postops builder and its liveness. The operation stores
+// its variable-length operands in a side table and keeps only the table index,
+// so the test checks that the side table holds exactly what the builder was
+// given. def_use must report each accumulator as read and written in place, and
+// the base pointer and mask as read, or liveness across the injected post-ops
+// would be wrong.
+TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
+    ir_t ir;
+
+    const vreg_t base = ir.new_gpr();
+    ir.load_param(base, 0);
+
+    const vreg_t mask = ir.new_mask();
+    ir.set_mask_imm(mask, simd_w - 1);
+
+    constexpr int n = 3;
+    std::vector<vreg_t> acc(n, vreg_t::none);
+    for (int r = 0; r < n; r++) {
+        acc[r] = ir.new_vec(data_type::f32);
+        ir.vzero(acc[r]);
+    }
+
+    std::vector<dim_t> out_byte_off(n);
+    for (int r = 0; r < n; r++)
+        out_byte_off[r] = r * (dim_t)sizeof(float);
+
+    ir.inject_postops(acc, base, out_byte_off, mask, /*elems=*/simd_w - 1);
+
+    const int idx = find_op(ir, op_kind_t::inject_postops);
+    ASSERT_NE(idx, -1);
+
+    // The operation carries only an index into the side table, which holds the
+    // full argument set.
+    ASSERT_EQ(ir.inject_postops_args().size(), 1u);
+    const auto &args = ir.inject_postops_args()[(int)ir.ops()[idx].imm];
+    EXPECT_EQ(args.acc, acc);
+    EXPECT_EQ(args.base_ptr, base);
+    EXPECT_EQ(args.out_byte_off, out_byte_off);
+    EXPECT_EQ(args.mask, mask);
+    EXPECT_EQ(args.elems, simd_w - 1);
+
+    // def_use reports every accumulator as read and written, and the base
+    // pointer and mask as read.
+    std::vector<int> defs, uses;
+    ir.def_use(ir.ops()[idx], defs, uses);
+
+    for (int r = 0; r < n; r++) {
+        EXPECT_NE(std::find(defs.begin(), defs.end(), (int)acc[r]), defs.end())
+                << "acc " << r << " not written";
+        EXPECT_NE(std::find(uses.begin(), uses.end(), (int)acc[r]), uses.end())
+                << "acc " << r << " not read";
+    }
+    EXPECT_NE(std::find(uses.begin(), uses.end(), (int)base), uses.end());
+    EXPECT_NE(std::find(uses.begin(), uses.end(), (int)mask), uses.end());
 }
 
 // Allocator tests
@@ -894,6 +995,114 @@ TEST(IntegrationTests, BranchSelectsCorrectValue) {
     kernel.run(&args_b);
     for (int i = 0; i < simd_w; i++)
         EXPECT_FLOAT_EQ(c_data[i], b_data[i]) << "lane " << i;
+}
+
+// Arguments for the binary post-op kernel. `binary_rhs` points to the array of
+// right-hand-side base pointers the injector indexes, and `dst_orig` is the
+// destination origin it subtracts to locate each accumulator's output element.
+struct binary_args_t {
+    const float *a;
+    const float *b;
+    float *c;
+    const void **binary_rhs;
+    const void *dst_orig;
+};
+
+// Validates the binary post-op path end to end. It computes n independent dot
+// products, adds a per-element right-hand-side through the JIT post-ops
+// injector, and checks each result against a reference. This exercises the
+// inject_postops op, the postops_injector_t driver, and the injector's
+// destination-relative right-hand-side addressing with a one-element
+// (scalar accumulator) tail load.
+TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
+    SKIP_IF_NO_AVX2();
+
+    constexpr int n = 4;
+
+    // Destination and right-hand-side share the same n x 1 shape, which selects
+    // the injector's no-broadcast (per-element) strategy. The descriptors and
+    // post-ops are built with the public API, then handed to the injector as the
+    // internal types it takes.
+    using dt = dnnl::memory::data_type;
+    using tag = dnnl::memory::format_tag;
+    const dnnl::memory::desc dst_desc({n, 1}, dt::f32, tag::ab);
+    const dnnl::memory::desc rhs_desc({n, 1}, dt::f32, tag::ab);
+
+    dnnl::post_ops po;
+    po.append_binary(dnnl::algorithm::binary_add, rhs_desc);
+
+    const impl::memory_desc_t &dst_md = *dst_desc.get();
+    const impl::post_ops_t &post_ops = *po.get();
+
+    // Build the dot-product IR that feeds the injector: one accumulator per
+    // output element, each reduced to a scalar.
+    ir_t ir;
+
+    const vreg_t a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(binary_args_t, a));
+
+    const vreg_t b_ptr = ir.new_gpr();
+    ir.load_param(b_ptr, offsetof(binary_args_t, b));
+
+    const vreg_t c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(binary_args_t, c));
+
+    const vreg_t b = ir.new_vec(data_type::f32);
+    ir.vload(b, b_ptr, 0);
+
+    std::vector<vreg_t> acc(n, vreg_t::none);
+    for (int r = 0; r < n; r++) {
+        acc[r] = ir.new_vec(data_type::f32);
+        ir.vzero(acc[r]);
+
+        const vreg_t a = ir.new_vec(data_type::f32);
+        ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
+        ir.vdot(acc[r], a, b);
+    }
+
+    const vreg_t ws = ir.new_vec(data_type::f32);
+    for (int r = 0; r < n; r++)
+        ir.vhreduce(acc[r], ws);
+
+    // Each accumulator is a single scalar. Its output offset locates it in the
+    // destination so the injector reads the matching right-hand-side element.
+    std::vector<dim_t> out_byte_off(n);
+    for (int r = 0; r < n; r++)
+        out_byte_off[r] = r * (dim_t)sizeof(float);
+    ir.inject_postops(acc, c_ptr, out_byte_off, vreg_t::none, /*elems=*/1);
+
+    for (int r = 0; r < n; r++)
+        ir.vstore_masked(
+                c_ptr, r * (dim_t)sizeof(float), acc[r], vreg_t::none, 1);
+
+    ir_kernel_t kernel(ir);
+    ir_kernel_t::postops_cfg_t cfg;
+    cfg.post_ops = &post_ops;
+    cfg.dst_md = &dst_md;
+    cfg.rhs_arg_offset = offsetof(binary_args_t, binary_rhs);
+    cfg.dst_orig_offset = offsetof(binary_args_t, dst_orig);
+    cfg.tail_elems = 1;
+    kernel.set_postops(cfg);
+
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+
+    std::vector<float> a(n * simd_w), b_data(simd_w), rhs(n), c(n, 0.f);
+    for (int i = 0; i < n * simd_w; i++)
+        a[i] = (float)(i % 5) - 2.f;
+    for (int i = 0; i < simd_w; i++)
+        b_data[i] = (float)(i - 3);
+    for (int r = 0; r < n; r++)
+        rhs[r] = (float)(10 * (r + 1));
+
+    const void *rhs_ptrs[1] = {rhs.data()};
+    binary_args_t args {a.data(), b_data.data(), c.data(), rhs_ptrs, c.data()};
+    kernel.run(&args);
+
+    for (int r = 0; r < n; r++) {
+        const float expected
+                = ref_dot(&a[r * simd_w], b_data.data(), simd_w) + rhs[r];
+        EXPECT_FLOAT_EQ(c[r], expected) << "row " << r;
+    }
 }
 
 } // namespace dnnl

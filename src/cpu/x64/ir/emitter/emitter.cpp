@@ -239,9 +239,14 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 }
                 JIT_ASSERT(!spilled(args.base_ptr)
                         && "inject_postops: base pointer spilled");
+                const bool has_mask = args.mask != vreg_t::none;
+                JIT_ASSERT(!(has_mask && spilled(args.mask))
+                        && "inject_postops: mask spilled");
                 JIT_ASSERT(
                         inject && "inject_postops: missing injector callback");
-                inject(acc_phys, phys(args.base_ptr));
+                const int mask_phys = has_mask ? phys(args.mask) : -1;
+                inject(acc_phys, phys(args.base_ptr), args.out_byte_off,
+                        mask_phys, args.elems);
                 break;
             }
 

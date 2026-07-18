@@ -97,7 +97,9 @@ __kernel void dynamic_scale_dst(__global float *restrict src,
         off = DST_OFF(m, n_iter, 0, 0, 0);
 #endif
 #endif
-        dst[off] = TO_DST(src[off] / scale_val);
+        // Saturate to the max/low data type value instead of overflowing.
+        dst[off] = TO_DST(
+                max(min(src[off] / scale_val, DST_DATA_FMAX), DST_DATA_FLOW));
     }
 
     long scale_off = 0;

@@ -114,12 +114,11 @@ value). In particular, some hardware platforms have no direct
 conversion instructions from `f32` data type to low-precision data types
 such as `f8` or `f4`, and will perform conversion through an
 intermediate data type (for example `f16` or `bf16`), which may result in
-[double
-rounding](https://en.wikipedia.org/wiki/Rounding#Double_rounding).
+[double rounding](https://en.wikipedia.org/wiki/Rounding#Double_rounding).
 
-Conversions to integral datatypes saturate upon overflow, whereas
-conversions to floating-point datatypes don't. To force saturation behavior for
-floating-point datatypes use @ref dev_guide_attributes_post_ops_eltwise with clip algorithm.
+Conversions to integral datatypes saturate upon overflow. Conversions of
+floating-point datatypes compliant to MXFP schemes saturate upon overflow,
+whereas conversions to any other floating-point datatypes don't.
 
 
 ### Rounding mode and denormal handling

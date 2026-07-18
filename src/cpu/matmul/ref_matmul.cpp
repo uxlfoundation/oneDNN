@@ -384,6 +384,17 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                             data_type::f32, temp_dst, temp_dst_off);
                     d *= dst_group_scale;
 
+                    // A dynamically-computed scale is rounded down to the
+                    // nearest representable power-of-two (e8m0). When the
+                    // resulting (pre-inverted) scale is less than one, its
+                    // inverse applied here is greater than one and may push
+                    // the value beyond the representable range of the
+                    // destination data type. Saturate to the max/min
+                    // representable value instead of overflowing to NaN.
+                    const float dst_max
+                            = types::max_value<float>(dst_d.data_type());
+                    d = nstl::min(nstl::max(d, -dst_max), dst_max);
+
                     if (dst_rnd_mode == rounding_mode::stochastic)
                         d = math::stochastic_round_fwd(d, dst_off,
                                 dropout_seed_val, dst_d.data_type());

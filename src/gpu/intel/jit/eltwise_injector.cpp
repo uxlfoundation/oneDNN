@@ -313,6 +313,11 @@ void eltwise_injector_f32_t<ngen_generator_t>::round_compute_fwd(
     h->rnde(simd, r, r);
 }
 
+// Note: since interface can only take a single `GRF`, but block of `32` for MX
+// scaling requires two GRFs, `off` argument is responsible to get a second
+// part of 32-element block.
+// When computing the scale, both `r` and `GRF(off)` (a.k.a. `r_alt`) must be
+// updated or used.
 template <typename ngen_generator_t>
 void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
         const ngen::GRF &r, int off, const ngen::Subregister &seed, int nreg,
@@ -370,6 +375,20 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
     // Apply scale to dst.
     h->mul(16, r, r, max.f(1)(0));
     h->mul(16, r_alt.f(0)(1), r_alt.f(0)(1), max.f(1)(0));
+
+    // Saturate dst value to fmax and flow instead of overflowing..
+    float fmax_bf8 = 57344.f, fmax_hf8 = 448.f, fmax_f4_e2m1 = 6.f;
+    float flow_bf8 = -57344.f, flow_hf8 = -448.f, flow_f4_e2m1 = -6.f;
+    auto fmax = (dst_dt == ngen::DataType::bf8) ? Immediate::f(fmax_bf8)
+            : (dst_dt == ngen::DataType::hf8)   ? Immediate::f(fmax_hf8)
+                                                : Immediate::f(fmax_f4_e2m1);
+    auto flow = (dst_dt == ngen::DataType::bf8) ? Immediate::f(flow_bf8)
+            : (dst_dt == ngen::DataType::hf8)   ? Immediate::f(flow_hf8)
+                                                : Immediate::f(flow_f4_e2m1);
+    h->sel(16 | ge, r, r, flow);
+    h->sel(16 | le, r, r, fmax);
+    h->sel(16 | ge, r_alt.f(0)(1), r_alt.f(0)(1), flow);
+    h->sel(16 | le, r_alt.f(0)(1), r_alt.f(0)(1), fmax);
 
     // Store scale value.
     h->shr(1, max.ud(0), max.ud(0), 23);

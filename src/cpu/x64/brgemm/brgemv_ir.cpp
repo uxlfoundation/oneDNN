@@ -31,6 +31,7 @@
 #include "common/c_types_map.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/nstl.hpp"
+#include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 
@@ -83,6 +84,16 @@ namespace {
 //   mblk_bias_off - byte offset to advance the bias pointer between M blocks
 //   with_injector_postops - whether attribute post-ops (eltwise/binary) are
 //                    requested
+//   with_src_scales - whether a source scale multiplies the output. Always a
+//                    single common scalar for this kernel
+//   with_wei_scales - whether a weights scale multiplies the output
+//   single_wei_scale - whether the weights scale is one scalar for the whole
+//                    output. False only for per-N scales with a row output,
+//                    where each output element has its own scale
+//   dt_src_scales / dt_wei_scales - element data type of each scale
+//   dt_sz_wei_scales - element size in bytes of the weights scale
+//   mblk_wei_scale_off - byte offset to advance the weights-scale pointer
+//                    between M blocks
 struct brgemv_ir_conf_t {
     brgemv_ir_conf_t(const brgemm_desc_t &brg)
         : m(brg.bcast_dim)
@@ -113,7 +124,16 @@ struct brgemv_ir_conf_t {
         , dt_bias(brg.dt_bias)
         , dt_sz_bias(brg.typesize_bias)
         , mblk_bias_off(dt_sz_bias * m_block)
-        , with_injector_postops(brg.with_eltwise || brg.with_binary) {}
+        , with_injector_postops(brg.with_eltwise || brg.with_binary)
+        , with_src_scales(brg.with_src_scales)
+        , with_wei_scales(brg.with_wei_scales)
+        , single_wei_scale(brg.gemv_single_wei_scale())
+        , dt_src_scales(brg.dt_src_scales)
+        , dt_wei_scales(brg.dt_wei_scales)
+        , dt_sz_wei_scales(with_wei_scales
+                          ? (int)types::data_type_size(dt_wei_scales)
+                          : 0)
+        , mblk_wei_scale_off(dt_sz_wei_scales * m_block) {}
 
     const dim_t m, k, lda, incy;
     const int max_bs;
@@ -129,8 +149,15 @@ struct brgemv_ir_conf_t {
     const int dt_sz_bias;
     const dim_t mblk_bias_off;
     const bool with_injector_postops;
+    const bool with_src_scales, with_wei_scales, single_wei_scale;
+    const data_type_t dt_src_scales, dt_wei_scales;
+    const int dt_sz_wei_scales;
+    const dim_t mblk_wei_scale_off;
 
-    bool has_post_ops() const { return with_bias || with_injector_postops; }
+    bool has_post_ops() const {
+        return with_bias || with_injector_postops || with_src_scales
+                || with_wei_scales;
+    }
 };
 
 // M-loop input register classification
@@ -157,6 +184,10 @@ struct advancing_regs_t {
     // `treat_y_as_row` is set, otherwise stays at the first element. `none`
     // unless `with_bias`.
     ir::vreg_t bias_ptr = ir::vreg_t::none;
+    // Weights-scale base pointer. Advances by `mblk_wei_scale_off` per M-block
+    // for per-N scales, otherwise stays at the first element. `none` unless
+    // `with_wei_scales`.
+    ir::vreg_t wei_scale_ptr = ir::vreg_t::none;
 };
 
 // Registers that remain constant for the entire M-loop.
@@ -170,8 +201,11 @@ struct invariant_regs_t {
     ir::vreg_t k_tail_mask = ir::vreg_t::none;
     // Post-ops flag (params.do_post_ops). Non-zero applies the post-ops, zero
     // stores the raw accumulator. `none` unless the kernel has a post-op to
-    // apply (bias or injector post-ops).
+    // apply (bias, scales, or injector post-ops).
     ir::vreg_t do_post_ops = ir::vreg_t::none;
+    // Source-scale pointer. A single common scalar, so it never advances.
+    // `none` unless `with_src_scales`.
+    ir::vreg_t src_scale_ptr = ir::vreg_t::none;
 };
 
 // Complete input register set for the M-loop, partitioned by whether values
@@ -216,6 +250,16 @@ m_loop_input_regs_t init_m_loop_input_regs(
     if (cfg.with_bias) {
         regs.advancing.bias_ptr = ir.new_gpr();
         ir.load_param(regs.advancing.bias_ptr, GET_OFF(ptr_bias));
+    }
+
+    if (cfg.with_src_scales) {
+        regs.invariant.src_scale_ptr = ir.new_gpr();
+        ir.load_param(regs.invariant.src_scale_ptr, GET_OFF(ptr_src_scales));
+    }
+
+    if (cfg.with_wei_scales) {
+        regs.advancing.wei_scale_ptr = ir.new_gpr();
+        ir.load_param(regs.advancing.wei_scale_ptr, GET_OFF(ptr_wei_scales));
     }
 
     if (cfg.has_post_ops()) {
@@ -364,6 +408,33 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         const ir::label_t skip_post_ops = ir.new_label();
         ir.jz(regs.invariant.do_post_ops, skip_post_ops);
 
+        if (cfg.with_src_scales) {
+            // Loaded once and applied to every output.
+            const ir::vreg_t sc = ir.new_vec(cfg.dt_src_scales);
+            ir.vload_masked(
+                    sc, regs.invariant.src_scale_ptr, 0, ir::vreg_t::none, 1);
+
+            for (int r = 0; r < m_block; r++)
+                ir.vmul(acc[r], sc);
+        }
+
+        if (cfg.with_wei_scales) {
+            // The single scale is loop invariant, so load it once above the
+            // loop. The per-N case loads a separate scale per output element.
+            const ir::vreg_t sc = ir.new_vec(cfg.dt_wei_scales);
+            if (cfg.single_wei_scale)
+                ir.vload_masked(sc, regs.advancing.wei_scale_ptr, 0,
+                        ir::vreg_t::none, 1);
+
+            for (int r = 0; r < m_block; r++) {
+                if (!cfg.single_wei_scale)
+                    ir.vload_masked(sc, regs.advancing.wei_scale_ptr,
+                            cfg.dt_sz_wei_scales * (dim_t)r, ir::vreg_t::none,
+                            1);
+                ir.vmul(acc[r], sc);
+            }
+        }
+
         if (cfg.with_bias) {
             // The broadcast bias is loop invariant, so load it once outside the
             // loop. A row output loads a separate bias per output element.
@@ -405,6 +476,8 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 
     if (cfg.with_bias && cfg.treat_y_as_row)
         ir.add_imm(regs.advancing.bias_ptr, cfg.mblk_bias_off);
+    if (cfg.with_wei_scales && !cfg.single_wei_scale)
+        ir.add_imm(regs.advancing.wei_scale_ptr, cfg.mblk_wei_scale_off);
 }
 
 // Builds IR for GEMV with a non-transposed A matrix.
@@ -584,8 +657,14 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
                                 get_all_strategies_supported_by_injector()}),
                 VERBOSE_UNSUPPORTED_POSTOP);
     }
-    VCONDCHECK_BRGEMV_IR(!brg.with_src_scales && !brg.with_wei_scales
-                    && !brg.with_dst_scales,
+    VCONDCHECK_BRGEMV_IR(!brg.with_dst_scales, VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCONDCHECK_BRGEMV_IR(!brg.is_per_k_src_scales && !brg.is_per_k_wei_scales,
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCONDCHECK_BRGEMV_IR(
+            IMPLICATION(brg.with_src_scales, brg.dt_src_scales == f32),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCONDCHECK_BRGEMV_IR(
+            IMPLICATION(brg.with_wei_scales, brg.dt_wei_scales == f32),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
     VCONDCHECK_BRGEMV_IR(!brg.req_s8s8_compensation,
             VERBOSE_UNSUPPORTED_FEATURE, "s8s8 compensation");

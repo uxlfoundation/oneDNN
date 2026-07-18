@@ -104,6 +104,8 @@ enum class op_kind_t {
     vdot,
     // dst += s0 (vector add)
     vadd,
+    // dst *= s0 (vector multiply)
+    vmul,
     // horizontal reduction of dst; result in element 0. s0 is scratch
     // (overwritten).
     vhreduce,
@@ -292,6 +294,7 @@ struct DNNL_API ir_t {
     void vload(vreg_t dst, vreg_t base, dim_t disp);
     void vdot(vreg_t dst, vreg_t a, vreg_t b);
     void vadd(vreg_t dst, vreg_t src);
+    void vmul(vreg_t dst, vreg_t src);
     // `workspace` is scratch. It is overwritten by this call, so pass a vreg
     // whose value is not needed afterwards.
     void vhreduce(vreg_t dst, vreg_t workspace);

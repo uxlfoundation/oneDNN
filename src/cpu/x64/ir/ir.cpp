@@ -114,6 +114,14 @@ void ir_t::vadd(vreg_t dst, vreg_t src) {
     ops_.push_back(op);
 }
 
+void ir_t::vmul(vreg_t dst, vreg_t src) {
+    op_t op;
+    op.kind = op_kind_t::vmul;
+    op.dst = dst;
+    op.s0 = src;
+    ops_.push_back(op);
+}
+
 void ir_t::vhreduce(vreg_t dst, vreg_t workspace) {
     op_t op;
     op.kind = op_kind_t::vhreduce;
@@ -285,6 +293,7 @@ void ir_t::def_use(
             d(op.dst);
             break;
         case op_kind_t::vadd: // read-modify-write
+        case op_kind_t::vmul: // read-modify-write
             u(op.dst);
             u(op.s0);
             d(op.dst);

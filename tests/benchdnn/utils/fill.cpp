@@ -144,6 +144,9 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
     const auto nelems = mem_fp.nelems();
     if (nelems == 0) return OK;
 
+    // Dynamic scales must not be filled.
+    if (e.is_dynamic()) return OK;
+
     if (mem_dt) { assert(mem_dt.nelems() == mem_fp.nelems()); }
 
     if (e.has_single_element()) {

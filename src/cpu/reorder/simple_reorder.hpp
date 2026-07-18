@@ -2660,10 +2660,21 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
 
             const auto i_off = input_d.off_l(idx);
             const auto o_off = output_d.off_l(idx);
-            float d = src_scale * (input[i_off] - src_zp_val);
-            if (beta) d += beta * output[o_off];
-            d = d / dst_scale + dst_zp;
-            output[o_off] = _qz_a1b0<data_type::f32, type_o>()(d);
+            // The implementation with explicit checks against default values is
+            // mandatory for min e8m0 value - any floating-point operation, such
+            // as subtract or multiply, with that value results in the output
+            // gets converted into 0 which is not correct.
+            //
+            // Same reason for load through `io::load_float_value` over direct
+            // access by pointer - the value is not casted in that case and gets
+            // incorrectly converted.
+            auto s = io::load_float_value(type_i, input, i_off);
+            if (src_zp_val) s -= src_zp_val;
+            if (src_scale != 1.f) s *= src_scale;
+            if (beta) s += beta * output[o_off];
+            if (dst_scale != 1.f) s /= dst_scale;
+            if (dst_zp) s += dst_zp;
+            output[o_off] = _qz_a1b0<data_type::f32, type_o>()(s);
         });
         return status::success;
     }

@@ -51,6 +51,7 @@ namespace cpu {
 namespace x64 {
 namespace ir {
 
+// Interfaces marked with DNNL_API are exported for testing purposes only.
 struct postops_injector_t {
     // gen            - generator the injected post-op code is emitted into
     // isa            - kernel ISA
@@ -64,7 +65,7 @@ struct postops_injector_t {
     //                  origin pointer, used to turn an accumulator address into
     //                  its position in the destination tensor
     // tail_elems     - right-hand-side elements a partial (tail) load reads
-    postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
+    DNNL_API postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
             const post_ops_t &post_ops, const memory_desc_t &dst_md,
             const Xbyak::Reg64 &param_reg, size_t rhs_arg_offset,
             size_t dst_orig_off, int tail_elems);
@@ -78,12 +79,12 @@ struct postops_injector_t {
     // count, `-1` for a full vector, and limits how many right-hand-side
     // elements are read. `mask_phys` is the tail opmask (a K register), used
     // only by the avx512 emitter, which is not enabled yet.
-    void apply(const std::vector<int> &acc_phys, int base_phys,
+    void DNNL_API apply(const std::vector<int> &acc_phys, int base_phys,
             const std::vector<dim_t> &out_byte_off, int mask_phys, int elems);
 
     // Emit the post-ops constant table. Call once, after the postamble. Only
     // eltwise post-ops have a table, so this is a no-op without one.
-    void maybe_prepare_table();
+    void DNNL_API maybe_prepare_table();
 
 private:
     // Type-erased `jit_uni_postops_injector_base_t<Vmm>`. Cast to the target

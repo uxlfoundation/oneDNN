@@ -530,6 +530,14 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
         s.ka_load = std::min(s.ka_load, s.unroll[LoopM] * 2);
     }
 
+    bool slmDequantize2DA = (problem.aOffset2D() || problem.aScale2D()) && s.slmA;
+    bool slmDequantize2DB = (problem.bOffset2D() || problem.bScale2D()) && s.slmB;
+    if (slmDequantize2DA && slmDequantize2DB) {
+        // TODO: try max of ka_load/kb_load and see if it performs better
+        int min_load = std::min(s.ka_load, s.kb_load);
+        s.ka_load = s.kb_load = min_load;
+    }
+
     s.systolic = systolic;
     if (systolic && hw >= HW::XeHPC) {
         s.extendedAtomicFMA = s.atomicFMA = true;

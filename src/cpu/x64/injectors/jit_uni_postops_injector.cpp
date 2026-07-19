@@ -26,8 +26,8 @@ namespace injector {
 #define VCHECK_PO_INJ_BOOL(cond, msg) \
     VCONDCHECK(primitive, create, check, postops_injector, cond, false, msg);
 
-size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd) {
-    size_t res = 0;
+int aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd) {
+    int res = 0;
 #define CASE_ELTWISE_SUPERSET(_isa) \
     if (is_superset(isa, _isa)) { \
         res = nstl::max(res, \
@@ -252,19 +252,19 @@ jit_uni_postops_injector_base_t<Vmm>::create(jit_generator_t *host,
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
-        size_t start_idx, size_t end_idx,
+void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(int start_idx,
+        int end_idx,
         const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params) {
 
     injector_utils::vmm_index_set_t vmm_idxs;
-    for (size_t i = start_idx; i < end_idx; i++)
+    for (int i = start_idx; i < end_idx; i++)
         vmm_idxs.emplace(i);
     compute_vector_range(vmm_idxs, rhs_arg_params);
 }
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
-        size_t start_idx, size_t end_idx) {
+        int start_idx, int end_idx) {
     compute_vector_range(
             start_idx, end_idx, binary_injector::rhs_arg_dynamic_params_t());
 }
@@ -274,7 +274,7 @@ void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs,
         const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params) {
 
-    std::size_t rhs_arg_idx = 0;
+    dim_t rhs_arg_idx = 0;
     for (int i = 0; i < post_ops_.len(); i++) {
         const auto &post_op = post_ops_.entry_[i];
         if (post_op.is_eltwise()) {
@@ -305,13 +305,13 @@ void jit_uni_postops_injector_t<isa, Vmm>::prepare_table(bool gen_table) {
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::compute_vector(size_t idx,
+void jit_uni_postops_injector_t<isa, Vmm>::compute_vector(int idx,
         const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params) {
     compute_vector_range({idx}, rhs_arg_params);
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::compute_vector(size_t idx) {
+void jit_uni_postops_injector_t<isa, Vmm>::compute_vector(int idx) {
     compute_vector_range({idx});
 }
 

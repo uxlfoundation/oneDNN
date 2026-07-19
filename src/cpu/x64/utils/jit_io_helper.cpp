@@ -310,14 +310,17 @@ void jit_io_helper_t<Xbyak::Zmm>::emu_gather(const Xbyak::Reg64 &src_reg,
     // For f16 we do not need such interleaving.
     const int xmm_size_elem = (data_type_ == data_type::f16) ? 8 : 4;
     const int number_of_xmms = tail
-            ? utils::div_up(tail_conf_->tail_size_, xmm_size_elem)
-            : utils::div_up(gather_conf_->simd_w_, xmm_size_elem);
+            ? static_cast<int>(
+                    utils::div_up(tail_conf_->tail_size_, xmm_size_elem))
+            : static_cast<int>(
+                    utils::div_up(gather_conf_->simd_w_, xmm_size_elem));
     const int num_indices_in_xmm = 16 / sizeof(int);
     for (int i = 0, idx = 0; i < number_of_xmms; i++) {
 
         const int number_of_values_to_load = i == number_of_xmms - 1 && tail
                         && tail_conf_->tail_size_ % xmm_size_elem != 0
-                ? tail_conf_->tail_size_ % xmm_size_elem
+                ? static_cast<int>(
+                        tail_conf_->tail_size_ % xmm_size_elem)
                 : xmm_size_elem;
         for (int j = 0; j < number_of_values_to_load; j++) {
 
@@ -392,14 +395,17 @@ void jit_io_helper_t<Xbyak::Ymm>::emu_gather(const Xbyak::Reg64 &src_reg,
     // For f16 we do not need such interleaving.
     const int xmm_size_elem = 4;
     const int number_of_xmms = tail
-            ? utils::div_up(tail_conf_->tail_size_, xmm_size_elem)
-            : utils::div_up(gather_conf_->simd_w_, xmm_size_elem);
+            ? static_cast<int>(
+                    utils::div_up(tail_conf_->tail_size_, xmm_size_elem))
+            : static_cast<int>(
+                    utils::div_up(gather_conf_->simd_w_, xmm_size_elem));
     for (int i = 0; i < number_of_xmms; i++) {
         host_->vextractf128(xmm_tmp, indices_vmm, i);
 
         const int number_of_values_to_load = i == number_of_xmms - 1 && tail
                         && tail_conf_->tail_size_ % xmm_size_elem != 0
-                ? tail_conf_->tail_size_ % xmm_size_elem
+                ? static_cast<int>(
+                        tail_conf_->tail_size_ % xmm_size_elem)
                 : xmm_size_elem;
         for (int j = 0; j < number_of_values_to_load; j++) {
             host_->vpextrd(gather_conf_->reg_tmp_.cvt32(), xmm_tmp, j);
@@ -462,9 +468,9 @@ void jit_io_helper_t<Xbyak::Xmm>::emu_gather(const Xbyak::Reg64 &src_reg,
     host_->mov(gather_conf_->reg_tmp1_, src_reg);
 
     const unsigned xmm_size_elem = 4;
-    const unsigned number_of_values_to_load
-            = tail ? tail_conf_->tail_size_ : xmm_size_elem;
-    for (unsigned j = 0; j < number_of_values_to_load; j++) {
+    const int number_of_values_to_load
+            = tail ? static_cast<int>(tail_conf_->tail_size_) : xmm_size_elem;
+    for (int j = 0; j < number_of_values_to_load; j++) {
         host_->pextrd(gather_conf_->reg_tmp_.cvt32(), indices_vmm, j);
         host_->add(src_reg, gather_conf_->reg_tmp_);
         switch (data_type_) {
@@ -626,7 +632,8 @@ void jit_io_helper_t<Vmm>::load(const Xbyak::Address &src_addr,
                     || (!is_tail_load_supported && (is_i8 || is_xf16)));
 
     if (can_load_byte_by_byte) {
-        load_byte_by_byte(src_addr, dst_vmm, tail_conf_->tail_size_);
+        load_byte_by_byte(src_addr, dst_vmm,
+                static_cast<int>(tail_conf_->tail_size_));
     } else {
         switch (data_type_) {
             case data_type::f32: load_f32(src_addr, dst_vmm, tail); break;
@@ -785,7 +792,7 @@ void jit_io_helper_t<Vmm>::store(const Vmm &src_raw_vmm,
                 = vreg_traits_t<Xbyak::Xmm>::vlen / sizeof(int32_t);
         const size_t store_size = (tail ? tail_conf_->tail_size_ : xmm_length)
                 * types::data_type_size(data_type_);
-        store_byte_by_byte(src_vmm, dst_addr, store_size);
+        store_byte_by_byte(src_vmm, dst_addr, static_cast<int>(store_size));
     } else {
         switch (data_type_) {
             case data_type::f32:

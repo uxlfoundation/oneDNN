@@ -38,17 +38,17 @@ using namespace data_type;
 
 namespace {
 struct blk_info_t {
-    int n_lpad_blks;
-    int rpad_blk_start_idx;
+    dim_t n_lpad_blks;
+    dim_t rpad_blk_start_idx;
 };
-blk_info_t get_blocks_info(int sp_i, int sp_o, int k, int stride, int lpad,
-        int rpad, int blk_size) {
+blk_info_t get_blocks_info(dim_t sp_i, dim_t sp_o, dim_t k, dim_t stride,
+        dim_t lpad, dim_t rpad, dim_t blk_size) {
 
-    const int max_blks = div_up(sp_o, blk_size);
-    const int blk_shift = stride * blk_size;
-    const int n_lpad_blks = nstl::min(
+    const dim_t max_blks = div_up(sp_o, blk_size);
+    const dim_t blk_shift = stride * blk_size;
+    const dim_t n_lpad_blks = nstl::min(
             max_blks, div_up(lpad, blk_shift) + 1 /*include zero lpad*/);
-    const int rpad_blk_start_idx = saturate(
+    const dim_t rpad_blk_start_idx = saturate(
             n_lpad_blks, max_blks, (sp_i + lpad - k + 1) / blk_shift);
     return {n_lpad_blks, rpad_blk_start_idx};
 }
@@ -293,8 +293,9 @@ void brdgmm_dw_convolution_fwd_t::pd_t::init_batch_elements() {
     auto &jcp = jcp_;
 
     auto gen_batch_elements
-            = [&jcp](int fpad, int backpad, int tpad, int bpad, int lpad,
-                      int rpad, int &bs, brgemm_batch_element_t *batches) {
+            = [&jcp](dim_t fpad, dim_t backpad, dim_t tpad, dim_t bpad,
+                      dim_t lpad, dim_t rpad, int &bs,
+                      brgemm_batch_element_t *batches) {
         const bool requires_batch_pad
                 = jcp.s8s8_compensation_required || jcp.src_zero_point;
         const size_t src_w_stride = jcp.ngroups * jcp.src_dsz;
@@ -306,19 +307,20 @@ void brdgmm_dw_convolution_fwd_t::pd_t::init_batch_elements() {
         const size_t wei_h_stride = wei_w_stride * jcp.kw;
         const size_t wei_d_stride = wei_h_stride * jcp.kh;
 
-        const int adj_backpad = nstl::max(0, backpad);
-        const int adj_bpad = nstl::max(0, bpad);
+        const dim_t adj_backpad = nstl::max(dim_t(0), backpad);
+        const dim_t adj_bpad = nstl::max(dim_t(0), bpad);
 
-        for_(int kd = 0; kd < jcp.kd; ++kd)
-        for_(int kh = 0; kh < jcp.kh; ++kh)
-        for (int kw = 0; kw < jcp.kw; ++kw) {
+        for_(dim_t kd = 0; kd < jcp.kd; ++kd)
+        for_(dim_t kh = 0; kh < jcp.kh; ++kh)
+        for (dim_t kw = 0; kw < jcp.kw; ++kw) {
             const bool padded_bs = kd < fpad || kd >= jcp.kd - adj_backpad
                     || kh < tpad || kh >= jcp.kh - adj_bpad;
             if (!requires_batch_pad && padded_bs) continue;
             auto &batch = batches[bs];
-            batch.vvpad.top = div_up(nstl::max(0, lpad - kw), jcp.stride_w);
+            batch.vvpad.top
+                    = div_up(nstl::max(dim_t(0), lpad - kw), jcp.stride_w);
             batch.vvpad.bottom = div_up(
-                    nstl::max(0, rpad - jcp.kw + kw + 1), jcp.stride_w);
+                    nstl::max(dim_t(0), rpad - jcp.kw + kw + 1), jcp.stride_w);
             batch.has_s8s8_comp_batch_pad = padded_bs;
             const dim_t offs_A
                     = kd * src_d_stride + kh * src_h_stride + kw * src_w_stride;
@@ -332,17 +334,19 @@ void brdgmm_dw_convolution_fwd_t::pd_t::init_batch_elements() {
         }
     };
 
-    const int w_shift = jcp.ow_block * jcp.stride_w;
-    const int h_shift = jcp.stride_h;
-    const int d_shift = jcp.stride_d;
+    const dim_t w_shift = jcp.ow_block * jcp.stride_w;
+    const dim_t h_shift = jcp.stride_h;
+    const dim_t d_shift = jcp.stride_d;
 
     const auto w_blk_info = get_blocks_info(jcp.iw, jcp.ow, jcp.kw,
             jcp.stride_w, jcp.l_pad, jcp.r_pad, jcp.ow_block);
-    const int rpad_0
+    const dim_t rpad_0
             = (jcp.ow_block - 1) * jcp.stride_w + jcp.kw - (jcp.iw + jcp.l_pad);
-    const int rpad_1 = rpad_0 + (nstl::max(0, -rpad_0) / w_shift + 1) * w_shift;
-    const int n_uniq_rpads
-            = 1 + div_up(nstl::max(0, jcp.r_pad - (rpad_1 - w_shift)), w_shift);
+    const dim_t rpad_1
+            = rpad_0 + (nstl::max(dim_t(0), -rpad_0) / w_shift + 1) * w_shift;
+    const dim_t n_uniq_rpads = 1
+            + div_up(nstl::max(dim_t(0), jcp.r_pad - (rpad_1 - w_shift)),
+                    w_shift);
 
     const auto h_blk_info = get_blocks_info(
             jcp.ih, jcp.oh, jcp.kh, jcp.stride_h, jcp.t_pad, jcp.b_pad, 1);
@@ -350,41 +354,41 @@ void brdgmm_dw_convolution_fwd_t::pd_t::init_batch_elements() {
     const auto d_blk_info = get_blocks_info(
             jcp.id, jcp.od, jcp.kd, jcp.stride_d, jcp.f_pad, jcp.back_pad, 1);
 
-    const int max_bs = jcp.kd * jcp.kh * jcp.kw;
-    const int n_d_uniq_blks
+    const dim_t max_bs = jcp.kd * jcp.kh * jcp.kw;
+    const dim_t n_d_uniq_blks
             = d_blk_info.n_lpad_blks + (jcp.od - d_blk_info.rpad_blk_start_idx);
-    const int n_h_uniq_blks
+    const dim_t n_h_uniq_blks
             = h_blk_info.n_lpad_blks + (jcp.oh - h_blk_info.rpad_blk_start_idx);
-    const int n_w_uniq_lpads = w_blk_info.n_lpad_blks;
-    const int uniq_blks
+    const dim_t n_w_uniq_lpads = w_blk_info.n_lpad_blks;
+    const dim_t uniq_blks
             = n_d_uniq_blks * n_h_uniq_blks * n_w_uniq_lpads * n_uniq_rpads;
 
     bs_.resize(uniq_blks, 0);
     batches_.resize(bs_.size() * max_bs);
     int bi = 0;
 
-    for_(int odb = 0; odb < n_d_uniq_blks; ++odb)
-    for_(int ohb = 0; ohb < n_h_uniq_blks; ++ohb)
-    for_(int owb = 0; owb < n_w_uniq_lpads; ++owb)
-    for (int rpad_i = 0; rpad_i < n_uniq_rpads; ++rpad_i) {
-        const int lpad = jcp.l_pad - owb * w_shift;
-        const int rpad = rpad_i == 0
+    for_(dim_t odb = 0; odb < n_d_uniq_blks; ++odb)
+    for_(dim_t ohb = 0; ohb < n_h_uniq_blks; ++ohb)
+    for_(dim_t owb = 0; owb < n_w_uniq_lpads; ++owb)
+    for (dim_t rpad_i = 0; rpad_i < n_uniq_rpads; ++rpad_i) {
+        const dim_t lpad = jcp.l_pad - owb * w_shift;
+        const dim_t rpad = rpad_i == 0
                 ? rpad_0
                 : nstl::min(jcp.r_pad, rpad_1 + (rpad_i - 1) * w_shift);
 
-        const int tpad = jcp.t_pad - ohb * h_shift;
-        const int oh = ohb < h_blk_info.n_lpad_blks
+        const dim_t tpad = jcp.t_pad - ohb * h_shift;
+        const dim_t oh = ohb < h_blk_info.n_lpad_blks
                 ? ohb
                 : (h_blk_info.rpad_blk_start_idx
                           + (ohb - h_blk_info.n_lpad_blks));
-        const int bpad = oh * h_shift + jcp.kh - (jcp.ih + jcp.t_pad);
+        const dim_t bpad = oh * h_shift + jcp.kh - (jcp.ih + jcp.t_pad);
 
-        const int fpad = jcp.f_pad - odb * d_shift;
-        const int od = odb < d_blk_info.n_lpad_blks
+        const dim_t fpad = jcp.f_pad - odb * d_shift;
+        const dim_t od = odb < d_blk_info.n_lpad_blks
                 ? odb
                 : (d_blk_info.rpad_blk_start_idx
                           + (odb - d_blk_info.n_lpad_blks));
-        const int backpad = od * d_shift + jcp.kd - (jcp.id + jcp.f_pad);
+        const dim_t backpad = od * d_shift + jcp.kd - (jcp.id + jcp.f_pad);
 
         gen_batch_elements(fpad, backpad, tpad, bpad, lpad, rpad, bs_[bi],
                 &batches_[bi * max_bs]);
@@ -399,23 +403,26 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
     auto &jcp = jcp_;
     const bool is_3d = ndims() == 5;
 
-    auto init_bcp = [&](int &idx, const int M, const int N) {
+    auto init_bcp = [&](int &idx, const dim_t M, const dim_t N) {
         const float alpha = 1.f;
         const float beta = 0.f;
-        const int LDA = jcp.ngroups * jcp.stride_w;
-        const int LDC = jcp.ngroups;
-        const int LDD = jcp.ngroups;
+        const dim_t LDA = jcp.ngroups * jcp.stride_w;
+        const dim_t LDC = jcp.ngroups;
+        const dim_t LDD = jcp.ngroups;
 
         brgemm_attr_t brg_attr;
         brg_attr.max_bs = jcp.kw * jcp.kh * jcp.kd;
-        brg_attr.max_top_vpad = nstl::max(0, jcp.l_pad);
-        brg_attr.max_bottom_vpad = nstl::max(0, jcp.r_pad);
-        brg_attr.max_top_bpad = nstl::max(0, nstl::max(jcp.t_pad, jcp.f_pad));
-        brg_attr.max_bottom_bpad
-                = nstl::max(0, nstl::max(jcp.b_pad, jcp.back_pad));
+        brg_attr.max_top_vpad
+                = static_cast<int>(nstl::max(dim_t(0), jcp.l_pad));
+        brg_attr.max_bottom_vpad
+                = static_cast<int>(nstl::max(dim_t(0), jcp.r_pad));
+        brg_attr.max_top_bpad = static_cast<int>(
+                nstl::max(dim_t(0), nstl::max(jcp.t_pad, jcp.f_pad)));
+        brg_attr.max_bottom_bpad = static_cast<int>(
+                nstl::max(dim_t(0), nstl::max(jcp.b_pad, jcp.back_pad)));
         brg_attr.hint_bs_group
                 = is_superset(jcp.isa, avx512_core) && jcp.stride_w == 1
-                ? jcp.kw
+                ? static_cast<int>(jcp.kw)
                 : 1;
 
         // only needed for strd batch_kind
@@ -478,7 +485,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
                     jcp.ow_block = ow_tail_block;
                 else { jcp.ow_block = jcp.ow; }
             } else {
-                const int max_ow_block = is_superset(jcp.isa, avx512_core)
+                const dim_t max_ow_block = is_superset(jcp.isa, avx512_core)
                         ? 6
                         : bcp_0.bd_block2 /*TODO: Tune for avx2*/;
                 jcp.ow_block = nstl::min(max_ow_block, jcp.ow);
@@ -499,7 +506,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
                 else
                     jcp.nb_ch_blocking = jcp.ngroups;
             } else {
-                const int max_ch_block2 = is_superset(jcp.isa, avx512_core)
+                const dim_t max_ch_block2 = is_superset(jcp.isa, avx512_core)
                         ? 4
                         : bcp_0.ld_block2 /*TODO: Tune for avx2*/;
                 jcp.nb_ch_blocking
@@ -607,12 +614,13 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                       + extra_data_offset + s8_offset)
             : nullptr;
 
-    const int chb_step = jcp.nb_ch_blocking;
-    const int chb_work = div_up(jcp.ngroups, chb_step);
-    const int ow_step = jcp.ow_block;
-    const int work_amount = jcp.mb * jcp.od * jcp.oh * jcp.nb_ow * chb_work;
+    const int chb_step = static_cast<int>(jcp.nb_ch_blocking);
+    const int chb_work = div_up(static_cast<int>(jcp.ngroups), chb_step);
+    const int ow_step = static_cast<int>(jcp.ow_block);
+    const int work_amount
+            = static_cast<int>(jcp.mb * jcp.od * jcp.oh * jcp.nb_ow * chb_work);
 
-    const int max_bs = jcp.kd * jcp.kh * jcp.kw;
+    const int max_bs = static_cast<int>(jcp.kd * jcp.kh * jcp.kw);
 
     const size_t src_ch_stride = jcp.src_dsz;
     const size_t src_w_stride = jcp.ngroups * jcp.src_dsz;
@@ -636,16 +644,19 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
             jcp.ih, jcp.oh, jcp.kh, jcp.stride_h, jcp.t_pad, jcp.b_pad, 1);
     const auto d_blk_info = get_blocks_info(
             jcp.id, jcp.od, jcp.kd, jcp.stride_d, jcp.f_pad, jcp.back_pad, 1);
-    const int n_w_blks = w_blk_info.n_lpad_blks;
-    const int n_h_blks = h_blk_info.n_lpad_blks
-            + nstl::max(0, jcp.oh - h_blk_info.rpad_blk_start_idx);
+    const int n_w_blks = static_cast<int>(w_blk_info.n_lpad_blks);
+    const int n_h_blks = static_cast<int>(h_blk_info.n_lpad_blks)
+            + nstl::max(0,
+                    static_cast<int>(jcp.oh - h_blk_info.rpad_blk_start_idx));
 
-    const int w_shift = jcp.ow_block * jcp.stride_w;
-    const int rpad_0
-            = (jcp.ow_block - 1) * jcp.stride_w + jcp.kw - (jcp.iw + jcp.l_pad);
+    const int w_shift = static_cast<int>(jcp.ow_block * jcp.stride_w);
+    const int rpad_0 = static_cast<int>(
+            (jcp.ow_block - 1) * jcp.stride_w + jcp.kw - (jcp.iw + jcp.l_pad));
     const int rpad_1 = rpad_0 + (nstl::max(0, -rpad_0) / w_shift + 1) * w_shift;
-    const int n_rpad_blks
-            = 1 + div_up(nstl::max(0, jcp.r_pad - (rpad_1 - w_shift)), w_shift);
+    const int n_rpad_blks = 1
+            + div_up(nstl::max(0,
+                             static_cast<int>(jcp.r_pad - (rpad_1 - w_shift))),
+                    w_shift);
 
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0};
@@ -685,8 +696,8 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 
             // Begin: get number of owb to process and its corresponding ker_idx
             const auto rem_work = end - iwork;
-            const int rem_row_owb
-                    = saturate(1, jcp.nb_ow - owb, rem_work / chb_work);
+            const int rem_row_owb = saturate(
+                    1, static_cast<int>(jcp.nb_ow - owb), rem_work / chb_work);
             int cur_n_owb = 1;
             int ker_idx = 0;
             if (is_n_tail) {
@@ -697,7 +708,7 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
                 ker_idx = jcp.nb_ch_blocking_idx;
             } else if (rem_row_owb == jcp.nb_ow) {
                 ker_idx = 0;
-                cur_n_owb = jcp.nb_ow;
+                cur_n_owb = static_cast<int>(jcp.nb_ow);
             } else {
                 // The ow_tail kernel is processed alone, subtract if it exists.
                 const int log_rem_owb = log2(rem_row_owb
@@ -713,19 +724,31 @@ status_t brdgmm_dw_convolution_fwd_t::execute(const exec_ctx_t &ctx) const {
             // Begin: get batch_element idx
             const int ow = owb * ow_step;
 
-            const int id_s = od * jcp.stride_d - jcp.f_pad;
-            const int ih_s = oh * jcp.stride_h - jcp.t_pad;
-            const int iw_s = ow * jcp.stride_w - jcp.l_pad;
+            const int id_s = static_cast<int>(od * jcp.stride_d - jcp.f_pad);
+            const int ih_s = static_cast<int>(oh * jcp.stride_h - jcp.t_pad);
+            const int iw_s = static_cast<int>(ow * jcp.stride_w - jcp.l_pad);
 
-            const int d_bi = nstl::min(od, d_blk_info.n_lpad_blks - 1)
-                    + nstl::max(0, od - d_blk_info.rpad_blk_start_idx + 1);
-            const int h_bi = nstl::min(oh, h_blk_info.n_lpad_blks - 1)
-                    + nstl::max(0, oh - h_blk_info.rpad_blk_start_idx + 1);
-            const int w_bi = nstl::min(owb, w_blk_info.n_lpad_blks - 1);
+            const int d_bi
+                    = nstl::min(
+                              od, static_cast<int>(d_blk_info.n_lpad_blks - 1))
+                    + nstl::max(0,
+                            static_cast<int>(
+                                    od - d_blk_info.rpad_blk_start_idx + 1));
+            const int h_bi
+                    = nstl::min(
+                              oh, static_cast<int>(h_blk_info.n_lpad_blks - 1))
+                    + nstl::max(0,
+                            static_cast<int>(
+                                    oh - h_blk_info.rpad_blk_start_idx + 1));
+            const int w_bi = nstl::min(
+                    owb, static_cast<int>(w_blk_info.n_lpad_blks - 1));
 
             const int ow_e
-                    = nstl::min(ow + cur_n_owb * jcp.ow_block, jcp.ow) - 1;
-            const int rpad = ow_e * jcp.stride_w - jcp.l_pad + jcp.kw - jcp.iw;
+                    = nstl::min(ow + cur_n_owb * static_cast<int>(jcp.ow_block),
+                              static_cast<int>(jcp.ow))
+                    - 1;
+            const int rpad = static_cast<int>(
+                    ow_e * jcp.stride_w - jcp.l_pad + jcp.kw - jcp.iw);
             const int rpad_i
                     = div_up(nstl::max(0, rpad - rpad_1 + w_shift), w_shift);
 

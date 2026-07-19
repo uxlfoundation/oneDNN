@@ -55,7 +55,7 @@ namespace jit_gemm_convolution_utils {
 
 template <typename data_type_t>
 void im2col_3d(const conv_gemm_conf_t &jcp, const data_type_t *im,
-        data_type_t *col, dim_t od, int spatial_step, int spatial_block) {
+        data_type_t *col, dim_t od, dim_t spatial_step, dim_t spatial_block) {
     using data_t =
             typename conditional<data_traits_t<data_type_t>::data_type == bf16,
                     uint16_t, data_type_t>::type;
@@ -226,10 +226,10 @@ void im2col_3d(const conv_gemm_conf_t &jcp, const data_type_t *im,
 }
 
 template void im2col_3d(const conv_gemm_conf_t &jcp, const float *im,
-        float *col, dim_t od, int spatial_step, int spatial_block);
+        float *col, dim_t od, dim_t spatial_step, dim_t spatial_block);
 
 template void im2col_3d(const conv_gemm_conf_t &jcp, const bfloat16_t *im,
-        bfloat16_t *col, dim_t od, int spatial_step, int spatial_block);
+        bfloat16_t *col, dim_t od, dim_t spatial_step, dim_t spatial_block);
 
 /* imtr[ic][od][oh][ow] <-- im[id][ih][iw][ic]*/
 template <typename T>
@@ -790,7 +790,7 @@ template void col2im_dt<bfloat16_t>(const conv_gemm_conf_t &jcp,
         const bfloat16_t *__restrict col, bfloat16_t *__restrict im);
 
 void col2im_3d(const conv_gemm_conf_t &jcp, const float *col, float *im,
-        dim_t od, int spatial_step, int spatial_block) {
+        dim_t od, dim_t spatial_step, dim_t spatial_block) {
 
     auto sp_blocked_ker = [&](dim_t ic) {
         const size_t col_step = jcp.ks * spatial_block;
@@ -892,7 +892,7 @@ void col2im_3d(const conv_gemm_conf_t &jcp, const float *col, float *im,
 }
 
 void col2im(const conv_gemm_conf_t &jcp, const float *col, float *im,
-        int spatial_step, int spatial_block) {
+        dim_t spatial_step, dim_t spatial_block) {
     const size_t col_step = jcp.ks * spatial_block;
     const size_t im_step = jcp.ih * jcp.iw;
     const dim_t iS = jcp.ih * jcp.iw;
@@ -1308,7 +1308,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                         < thr_eff_treshold) // we didn't find suitable h_block
                 {
                     h_block = 1;
-                    int nb_h = oh;
+                    dim_t nb_h = oh;
                     do {
                         dim_t nb_w = div_up(ow, w_block);
                         dim_t work_amount = jcp.ngroups * jcp.mb * nb_h * nb_w;
@@ -1900,7 +1900,7 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     }
                 }
                 jcp.outer_threading = true;
-                jcp.nthr_oc = best_nthr_oc;
+                jcp.nthr_oc = static_cast<int>(best_nthr_oc);
                 jcp.oc_block = best_ocb;
                 jcp.os_block = best_osb;
                 jcp.ic_block = best_icb;
@@ -2188,12 +2188,12 @@ void bwd_weights_reduction_par_nspc(int ithr, int nthr, size_t g_start,
             const float *__restrict ws_ptr = ws_base + w * jcp.oc;
             if (tidx == 0) {
                 PRAGMA_OMP_SIMD()
-                for (auto oc = 0; oc < jcp.oc; ++oc) {
+                for (dim_t oc = 0; oc < jcp.oc; ++oc) {
                     dwei_ptr[oc] = ws_ptr[oc];
                 }
             } else {
                 PRAGMA_OMP_SIMD()
-                for (auto oc = 0; oc < jcp.oc; ++oc) {
+                for (dim_t oc = 0; oc < jcp.oc; ++oc) {
                     dwei_ptr[oc] += ws_ptr[oc];
                 }
             }

@@ -731,7 +731,7 @@ dnnl_status_t sgemm_smalln_tn(const dim_t m, const dim_t n, const dim_t k,
 
     static dnnl_status_t st = dnnl_success;
     std::call_once(initialized, [&] {
-        for (dim_t N : {1, 2, 3, 4}) {
+        for (int N : {1, 2, 3, 4}) {
             for (float al : {0.0f, 1.0f, 2.0f}) {
                 for (float be : {0.0f, 1.0f, 2.0f}) {
                     auto &kern = kernels[N - 1][(dim_t)al][(dim_t)be];
@@ -761,7 +761,7 @@ dnnl_status_t sgemm_smalln_tn(const dim_t m, const dim_t n, const dim_t k,
 #define MROW_ALIGN 1
 #define MINROWS 16 // Min rows each thread should process
 
-static dim_t smalln_set_num_threads(dim_t m, dim_t k, dim_t nthr_to_use) {
+static int smalln_set_num_threads(dim_t m, dim_t k, int nthr_to_use) {
     /**
      * Simple heuristics for determining num threads to use
      */
@@ -773,7 +773,7 @@ static dim_t smalln_set_num_threads(dim_t m, dim_t k, dim_t nthr_to_use) {
     if ((m & 15) == 0) { // Special handling if m is multiple of 16
         // nthr_16: number of threads such that each thread works on
         // 2^n * 16 number of rows.
-        nthr_16 = m >> 4;
+        nthr_16 = static_cast<int>(m >> 4);
         while (nthr_16 > nthr_to_use && (nthr_16 & 1) == 0)
             nthr_16 = nthr_16 >> 1;
         // Ideal number of threads is more than what we can use.

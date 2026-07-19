@@ -172,13 +172,13 @@ public:
     using c_compatible::operator delete[];
 
 private:
-    const size_t xmm_len = 16;
+    const dim_t xmm_len = 16;
 #ifdef _WIN32
-    const size_t xmm_to_preserve_start = 6;
-    const size_t xmm_to_preserve = 10;
+    const dim_t xmm_to_preserve_start = 6;
+    const dim_t xmm_to_preserve = 10;
 #else
-    const size_t xmm_to_preserve_start = 0;
-    const size_t xmm_to_preserve = 0;
+    const dim_t xmm_to_preserve_start = 0;
+    const dim_t xmm_to_preserve = 0;
 #endif
 
     const size_t num_abi_save_gpr_regs
@@ -361,9 +361,10 @@ public:
     void preamble() {
         if (xmm_to_preserve) {
             sub(rsp, xmm_to_preserve * xmm_len);
-            for (size_t i = 0; i < xmm_to_preserve; ++i)
+            for (dim_t i = 0; i < xmm_to_preserve; ++i)
                 uni_vmovdqu(ptr[rsp + i * xmm_len],
-                        Xbyak::Xmm(xmm_to_preserve_start + i));
+                        Xbyak::Xmm(xbyak_register_index(
+                                xmm_to_preserve_start + i)));
         }
         for (size_t i = 0; i < num_abi_save_gpr_regs; ++i) {
             push(Xbyak::Reg64(abi_save_gpr_regs[i]));
@@ -407,7 +408,7 @@ public:
     // Note: that we cannot use RBP inside as we override it in preamble
     // for address computation in EVEX instructions
     inline Xbyak::RegExp get_stack_params_address(bool after_prolog = true) {
-        int saved_regs_size = after_prolog ? get_size_of_abi_save_regs() : 0;
+        size_t saved_regs_size = after_prolog ? get_size_of_abi_save_regs() : 0;
 #ifdef _WIN32
         // Using stack layout described in MS ABI
         // (https://docs.microsoft.com/en-us/cpp/build/stack-usage?view=vs-2019)
@@ -437,8 +438,9 @@ public:
         for (size_t i = 0; i < num_abi_save_gpr_regs; ++i)
             pop(Xbyak::Reg64(abi_save_gpr_regs[num_abi_save_gpr_regs - 1 - i]));
         if (xmm_to_preserve) {
-            for (size_t i = 0; i < xmm_to_preserve; ++i)
-                uni_vmovdqu(Xbyak::Xmm(xmm_to_preserve_start + i),
+            for (dim_t i = 0; i < xmm_to_preserve; ++i)
+                uni_vmovdqu(Xbyak::Xmm(xbyak_register_index(
+                                    xmm_to_preserve_start + i)),
                         ptr[rsp + i * xmm_len]);
             add(rsp, xmm_to_preserve * xmm_len);
         }
@@ -517,7 +519,7 @@ public:
         }
     }
 
-    void safe_add(const Xbyak::Reg64 &base, size_t raw_offt,
+    void safe_add(const Xbyak::Reg64 &base, dim_t raw_offt,
             const Xbyak::Reg64 &reg_offt) {
         if (raw_offt > INT_MAX) {
             mov(reg_offt, raw_offt);
@@ -527,7 +529,7 @@ public:
         }
     }
 
-    void safe_sub(const Xbyak::Reg64 &base, size_t raw_offt,
+    void safe_sub(const Xbyak::Reg64 &base, dim_t raw_offt,
             const Xbyak::Reg64 &reg_offt) {
         if (raw_offt > INT_MAX) {
             mov(reg_offt, raw_offt);
@@ -2884,7 +2886,7 @@ public:
         jmp(label_tbl_end, T_NEAR);
         for (size_t i = 1; i < simd_w; i++) {
             L(l_case[i]);
-            tail_process(i);
+            tail_process(static_cast<int>(i));
             jmp(label_tbl_end, T_NEAR);
         }
         L(label_tbl_end);

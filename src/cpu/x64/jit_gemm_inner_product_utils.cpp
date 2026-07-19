@@ -314,7 +314,7 @@ jit_pp_kernel_t<isa>::jit_pp_kernel_t(size_t OC, size_t MB, dim_t dst_mb_stride,
 #define PARAM_OFF(field) offsetof(ker_args_t, field)
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;
-        static const size_t helper_vmm_idx = is_avx512_ ? 31 : 15;
+        static const dim_t helper_vmm_idx = is_avx512_ ? 31 : 15;
         static constexpr bool use_exact_tail_scalar_bcast = false;
         const auto dst_md_wrapper = memory_desc_wrapper(*dst_md);
 
@@ -327,7 +327,7 @@ jit_pp_kernel_t<isa>::jit_pp_kernel_t(size_t OC, size_t MB, dim_t dst_mb_stride,
             OC_loop = vlen * max_OC_loop_unroll_;
             OC_tail = OC % OC_loop;
         }
-        size_t tail_size = OC_tail % vlen;
+        dim_t tail_size = OC_tail % vlen;
         // enable tail processing for runtime load even if there is no tail
         // for the OC
         tail_size = !!tail_size ? tail_size : 1;
@@ -382,7 +382,7 @@ void jit_pp_kernel_t<isa>::advance_binary_postops_per_oc_off(const T &offset) {
 
     if (this->ndims_ == 2) {
         Xbyak::Label end;
-        cmp(binary_post_op_oc_off_reg, this->OC_);
+        cmp(binary_post_op_oc_off_reg, static_cast<dim_t>(this->OC_));
         jl(end, T_NEAR);
         xor_(binary_post_op_oc_off_reg, binary_post_op_oc_off_reg);
         L(end);
@@ -401,7 +401,8 @@ void jit_pp_kernel_t<isa>::update_binary_postops_per_tensor_off() {
     mov(binary_post_op_offset_reg, reg_dst);
     sub(binary_post_op_offset_reg, ptr[rsp + reg_origin_dst_ptr_]);
     sar(binary_post_op_offset_reg,
-            std::log2(types::data_type_size(get_data_type(arg_t::dst))));
+            static_cast<int>(std::log2(
+                    types::data_type_size(get_data_type(arg_t::dst)))));
     mov(binary_post_op_current_offset_on_stack, binary_post_op_offset_reg);
 }
 
@@ -425,12 +426,13 @@ void jit_pp_kernel_t<isa>::advance_binary_postops_channel_bcast_off(
 template <cpu_isa_t isa>
 void jit_pp_kernel_t<isa>::advance_binary_postops_off(const size_t offset) {
     if (offset) {
+        const auto off_dimt = static_cast<dim_t>(offset);
         if (any_binary_postop_is_per_oc_bcast_type_)
-            advance_binary_postops_per_oc_off(offset);
+            advance_binary_postops_per_oc_off(off_dimt);
         if (any_binary_postop_is_no_bcast_type_)
             update_binary_postops_per_tensor_off();
         if (any_binary_postop_is_oc_bcast_type_)
-            advance_binary_postops_channel_bcast_off(offset);
+            advance_binary_postops_channel_bcast_off(off_dimt);
     }
 }
 
@@ -513,7 +515,8 @@ void jit_pp_kernel_t<isa>::load_tail(const Vmm v, const arg_t arg_num,
         if (utils::one_of(dt, s8, u8)) {
             const Xbyak::Xmm x = Xbyak::Xmm(v.getIdx());
             for (size_t i = 0; i < tail; i++)
-                uni_vpinsrb(x, x, get_address(arg_num, i + off), i);
+                uni_vpinsrb(x, x, get_address(arg_num, i + off),
+                        static_cast<int>(i));
             if (dt == s8)
                 uni_vpmovsxbd(v, v);
             else
@@ -525,8 +528,8 @@ void jit_pp_kernel_t<isa>::load_tail(const Vmm v, const arg_t arg_num,
             } else {
                 const size_t dt_size = types::data_type_size(f32);
                 for (size_t i = 0; i < tail; i++)
-                    uni_vpinsrd(
-                            v, v, get_address(arg_num, i * dt_size + off), i);
+                    uni_vpinsrd(v, v, get_address(arg_num, i * dt_size + off),
+                            static_cast<int>(i));
             }
         }
     }
@@ -606,8 +609,10 @@ void jit_pp_kernel_t<isa>::cvt_and_store(const Xbyak::Ymm v,
         switch (dt) {
             case s8:
             case u8:
-                for (size_t i = 0; i < tail; i++)
-                    vpextrb(get_address(arg_num, off + i), x, i);
+                for (size_t i = 0; i < tail; i++) {
+                    vpextrb(get_address(arg_num, off + i), x,
+                            static_cast<uint8_t>(i));
+                }
                 break;
             case f32:
             case s32: vmaskmovps(dst, vmm_rem_mask, v); break;
@@ -648,14 +653,17 @@ void jit_pp_kernel_t<isa>::cvt_and_store(const Xbyak::Xmm v,
         switch (dt) {
             case s8:
             case u8:
-                for (size_t i = 0; i < tail; i++)
-                    uni_vpextrb(get_address(arg_num, off + i), v, i);
+                for (size_t i = 0; i < tail; i++) {
+                    uni_vpextrb(get_address(arg_num, off + i), v,
+                            static_cast<int>(i));
+                }
                 break;
             case f32:
             case s32: {
                 const size_t dt_size = types::data_type_size(f32);
                 for (size_t i = 0; i < tail; i++)
-                    uni_vpextrd(get_address(arg_num, off + i * dt_size), v, i);
+                    uni_vpextrd(get_address(arg_num, off + i * dt_size), v,
+                            static_cast<int>(i));
             } break;
             default: assert(!"unimplemented");
         }
@@ -794,11 +802,13 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
 
     // Advance all pointers by an immediate
     auto advance_ptrs_imm = [&](size_t offset) {
-        add(reg_dst, offset * this->dst_data_type_size_);
-        add(reg_acc, offset * this->acc_data_type_size_);
+        add(reg_dst, static_cast<dim_t>(offset * this->dst_data_type_size_));
+        add(reg_acc, static_cast<dim_t>(offset * this->acc_data_type_size_));
         if (this->do_scale_ && this->scale_idx_mult_ == 1)
-            add(reg_scales, offset * sizeof(float));
-        if (this->do_bias()) add(reg_bias, offset * this->bias_data_type_size_);
+            add(reg_scales, static_cast<dim_t>(offset * sizeof(float)));
+        if (this->do_bias())
+            add(reg_bias,
+                    static_cast<dim_t>(offset * this->bias_data_type_size_));
         if (this->do_binary_ || this->do_prelu_) {
             advance_binary_postops_off(offset);
         }
@@ -806,12 +816,22 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
 
     // Advance all pointers by a value stored in a register
     auto advance_ptrs_reg = [&](const Reg64 offset) {
-        lea(reg_dst, ptr[reg_dst + offset * this->dst_data_type_size_]);
-        lea(reg_acc, ptr[reg_acc + offset * this->acc_data_type_size_]);
+        lea(reg_dst,
+                ptr[reg_dst
+                        + offset
+                                * static_cast<int>(this->dst_data_type_size_)]);
+        lea(reg_acc,
+                ptr[reg_acc
+                        + offset
+                                * static_cast<int>(this->acc_data_type_size_)]);
         if (this->do_scale_ && this->scale_idx_mult_ == 1)
             lea(reg_scales, ptr[reg_scales + offset * sizeof(float)]);
         if (this->do_bias())
-            lea(reg_bias, ptr[reg_bias + offset * this->bias_data_type_size_]);
+            lea(reg_bias,
+                    ptr[reg_bias
+                            + offset
+                                    * static_cast<int>(
+                                            this->bias_data_type_size_)]);
         if (this->do_binary_ || this->do_prelu_)
             advance_binary_postops_off(offset);
     };
@@ -821,10 +841,14 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
         if (!this->has_trivial_mb_stride()) {
             lea(reg_dst,
                     ptr[reg_dst
-                            + reg_dst_mb_stride * this->dst_data_type_size_]);
+                            + reg_dst_mb_stride
+                                    * static_cast<int>(
+                                            this->dst_data_type_size_)]);
             lea(reg_acc,
                     ptr[reg_acc
-                            + reg_acc_mb_stride * this->acc_data_type_size_]);
+                            + reg_acc_mb_stride
+                                    * static_cast<int>(
+                                            this->acc_data_type_size_)]);
         }
         if ((this->do_binary_ || this->do_prelu_)
                 && any_binary_postop_is_no_bcast_type_)
@@ -836,7 +860,11 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
     auto rewind_ptrs = [&]() {
         neg(reg_oc);
         if (this->do_bias())
-            lea(reg_bias, ptr[reg_bias + reg_oc * this->bias_data_type_size_]);
+            lea(reg_bias,
+                    ptr[reg_bias
+                            + reg_oc
+                                    * static_cast<int>(
+                                            this->bias_data_type_size_)]);
         if (this->do_scale_ && this->scale_idx_mult_ == 1)
             lea(reg_scales, ptr[reg_scales + reg_oc * sizeof(float)]);
 
@@ -846,7 +874,7 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
     // Process one row of reg_tmp elements
     auto process_runtime_oc = [&]() {
         Label l_loop, l_loop_tail, l_loop_end;
-        cmp(reg_tmp, vlen);
+        cmp(reg_tmp, static_cast<uint32_t>(vlen));
         jl(l_loop_tail, T_NEAR);
 
         L(l_loop);
@@ -854,8 +882,8 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
             compute(0, 0, true);
             advance_ptrs_imm(vlen);
 
-            sub(reg_tmp, vlen);
-            cmp(reg_tmp, vlen);
+            sub(reg_tmp, static_cast<uint32_t>(vlen));
+            cmp(reg_tmp, static_cast<uint32_t>(vlen));
             jge(l_loop, T_NEAR);
         }
 
@@ -941,7 +969,7 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
 
             assert(!!OC_loop || !!OC_tail);
 
-            const int vlen_tail = OC_tail % vlen;
+            const int vlen_tail = static_cast<int>(OC_tail % vlen);
             if (vlen_tail) prepare_mask(vlen_tail);
 
             if (OC_loop) {
@@ -950,9 +978,9 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
                 L(l_oc_loop);
                 {
                     for (size_t offset = 0; offset < OC_loop; offset += vlen)
-                        compute(offset, offset / vlen, false);
+                        compute(offset, static_cast<int>(offset / vlen), false);
                     advance_ptrs_imm(OC_loop);
-                    sub(reg_tmp, OC_loop);
+                    sub(reg_tmp, static_cast<dim_t>(OC_loop));
                     jnz(l_oc_loop);
                 }
             }
@@ -960,7 +988,7 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
             if (OC_tail) {
                 for (size_t offset = 0; offset < OC_tail; offset += vlen) {
                     const bool use_mask = (offset + vlen) > OC_tail;
-                    compute(offset, offset / vlen, false,
+                    compute(offset, static_cast<int>(offset / vlen), false,
                             use_mask ? vlen_tail : 0);
                 }
                 advance_ptrs_imm(OC_tail);
@@ -969,7 +997,8 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
             if (any_binary_postop_is_per_oc_sp_bcast_type_
                     && this->ndims_ <= 3) {
                 static constexpr size_t offset_oc_spatial = 1;
-                advance_binary_postops_per_oc_off(offset_oc_spatial);
+                advance_binary_postops_per_oc_off(
+                        static_cast<dim_t>(offset_oc_spatial));
             }
 
             rewind_ptrs();
@@ -1030,7 +1059,7 @@ void jit_pp_kernel_t<isa>::compute_mb_blk() {
         load_and_cvt(vmm_bias, arg_t::bias, 0, this->OC_, false);
 
         // write repeated MB*OC entries into stack
-        sub(rsp, mb_oc_blk * sizeof(uint32_t));
+        sub(rsp, static_cast<uint32_t>(mb_oc_blk * sizeof(uint32_t)));
         for (size_t i = 0; i < mb_step; ++i)
             cvt_and_store(vmm_bias, arg_t::stack,
                     i * this->OC_ * sizeof(uint32_t), this->OC_);
@@ -1043,13 +1072,15 @@ void jit_pp_kernel_t<isa>::compute_mb_blk() {
         uni_vcvtdq2ps(vmm_bias, vmm_bias);
     L(mb_main_loop);
     {
-        cmp(reg_len, mb_oc_blk);
+        cmp(reg_len, static_cast<uint32_t>(mb_oc_blk));
         jl(end_main_loop, T_NEAR);
 
-        compute(!expl_broadcast ? tail_size : 0);
-        add(reg_dst, mb_oc_blk * this->dst_data_type_size_);
-        add(reg_acc, mb_oc_blk * this->acc_data_type_size_);
-        sub(reg_len, mb_oc_blk);
+        compute(static_cast<int>(!expl_broadcast ? tail_size : 0));
+        add(reg_dst,
+                static_cast<uint32_t>(mb_oc_blk * this->dst_data_type_size_));
+        add(reg_acc,
+                static_cast<uint32_t>(mb_oc_blk * this->acc_data_type_size_));
+        sub(reg_len, static_cast<uint32_t>(mb_oc_blk));
         jmp(mb_main_loop, T_NEAR);
     }
     L(end_main_loop);
@@ -1060,12 +1091,16 @@ void jit_pp_kernel_t<isa>::compute_mb_blk() {
         if (tail_size) prepare_mask(tail_size);
         L(mb_tail_loop);
         {
-            cmp(reg_len, tail_size);
+            cmp(reg_len, static_cast<uint32_t>(tail_size));
             jl(runtime_tail, T_NEAR);
-            compute(tail_size);
-            add(reg_dst, tail_size * this->dst_data_type_size_);
-            add(reg_acc, tail_size * this->acc_data_type_size_);
-            sub(reg_len, tail_size);
+            compute(static_cast<int>(tail_size));
+            add(reg_dst,
+                    static_cast<uint32_t>(
+                            tail_size * this->dst_data_type_size_));
+            add(reg_acc,
+                    static_cast<uint32_t>(
+                            tail_size * this->acc_data_type_size_));
+            sub(reg_len, static_cast<uint32_t>(tail_size));
             jmp(mb_tail_loop, T_NEAR);
         }
         // Load tail in runtime if len < mb_tail * oc
@@ -1080,12 +1115,13 @@ void jit_pp_kernel_t<isa>::compute_mb_blk() {
                 sub(reg_rem_mask, 1);
                 kmovq(kreg_rem_mask, reg_rem_mask);
             }
-            compute(tail_size, !is_avx512_);
+            compute(static_cast<int>(tail_size), !is_avx512_);
         }
         L(end_runtime_tail);
     }
 
-    if (!expl_broadcast) add(rsp, mb_oc_blk * sizeof(uint32_t));
+    if (!expl_broadcast)
+        add(rsp, static_cast<uint32_t>(mb_oc_blk * sizeof(uint32_t)));
 }
 
 template <cpu_isa_t isa>

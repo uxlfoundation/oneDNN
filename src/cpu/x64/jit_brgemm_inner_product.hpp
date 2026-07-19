@@ -114,7 +114,7 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
                 auto vM = (i_M) ? jbgp_.M_tail : jbgp_.M;
                 auto vN = (i_N) ? jbgp_.N_tail : jbgp_.N;
                 auto vK = (i_K) ? jbgp_.K_tail : jbgp_.K;
-                int bs = get_brg_batchsize(i_bs, i_K);
+                dim_t bs = get_brg_batchsize(i_bs, i_K);
                 int idx = get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K, bs);
                 if (idx < 0) continue;
                 brgemm_desc_t &brg = brg_descs_[idx];
@@ -167,7 +167,7 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
         }
 
         int get_brg_kernel_idx(bool is_bs_tail, bool do_initialization,
-                bool is_M_tail, bool is_N_tail, bool is_K_tail, int bs) const {
+                bool is_M_tail, bool is_N_tail, bool is_K_tail, dim_t bs) const {
             auto vM = (is_M_tail) ? jbgp_.M_tail : jbgp_.M;
             auto vN = (is_N_tail) ? jbgp_.N_tail : jbgp_.N;
             auto vK = (is_K_tail) ? jbgp_.K_tail : jbgp_.K;
@@ -179,7 +179,7 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
                     do_initialization, is_M_tail, is_N_tail, is_K_tail);
         }
 
-        int get_brg_batchsize(bool is_bs_tail, bool is_K_tail) const {
+        dim_t get_brg_batchsize(bool is_bs_tail, bool is_K_tail) const {
             auto adj_ic = jbgp_.use_buffer_a
                     ? utils::rnd_up(jbgp_.ic, jbgp_.ic_block)
                     : jbgp_.ic;
@@ -203,7 +203,7 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
         for_(int i_N = 0; i_N < 2; i_N++)
         for_(int i_K = 0; i_K < 2; i_K++)
         for (int i_init = 0; i_init < 2; i_init++) {
-            int bs = pd()->get_brg_batchsize(i_bs, i_K);
+            dim_t bs = pd()->get_brg_batchsize(i_bs, i_K);
             int idx = pd()->get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K, bs);
             if (idx < 0) continue;
 
@@ -297,7 +297,7 @@ struct brgemm_inner_product_bwd_data_t : public primitive_t {
                 auto vM = (i_M) ? jbgp_.M_tail : jbgp_.M;
                 auto vN = (i_N) ? jbgp_.N_tail : jbgp_.N;
                 auto vK = (i_K) ? jbgp_.K_tail : jbgp_.K;
-                int bs = get_brg_batchsize(i_bs, i_K);
+                dim_t bs = get_brg_batchsize(i_bs, i_K);
                 int idx = get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K, bs);
                 if (idx < 0) continue;
 
@@ -341,7 +341,7 @@ struct brgemm_inner_product_bwd_data_t : public primitive_t {
         }
 
         int get_brg_kernel_idx(bool is_bs_tail, bool do_initialization,
-                bool is_M_tail, bool is_N_tail, bool is_K_tail, int bs) const {
+                bool is_M_tail, bool is_N_tail, bool is_K_tail, dim_t bs) const {
             auto vM = (is_M_tail) ? jbgp_.M_tail : jbgp_.M;
             auto vN = (is_N_tail) ? jbgp_.N_tail : jbgp_.N;
             auto vK = (is_K_tail) ? jbgp_.K_tail : jbgp_.K;
@@ -353,7 +353,7 @@ struct brgemm_inner_product_bwd_data_t : public primitive_t {
                     do_initialization, is_M_tail, is_N_tail, is_K_tail);
         }
 
-        int get_brg_batchsize(bool is_bs_tail, bool is_K_tail) const {
+        dim_t get_brg_batchsize(bool is_bs_tail, bool is_K_tail) const {
             auto adj_oc = jbgp_.use_buffer_a
                     ? utils::rnd_up(jbgp_.oc, jbgp_.oc_block)
                     : jbgp_.oc;
@@ -380,7 +380,7 @@ struct brgemm_inner_product_bwd_data_t : public primitive_t {
         for_(int i_N = 0; i_N < 2; i_N++)
         for_(int i_K = 0; i_K < 2; i_K++)
         for (int i_init = 0; i_init < 2; i_init++) {
-            int bs = pd()->get_brg_batchsize(i_bs, i_K);
+            dim_t bs = pd()->get_brg_batchsize(i_bs, i_K);
             int idx = pd()->get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K, bs);
             if (idx < 0) continue;
 
@@ -494,7 +494,7 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
                 auto vM = (i_M) ? jbgp_.M_tail : jbgp_.M;
                 auto vN = (i_N) ? jbgp_.N_tail : jbgp_.N;
                 auto vK = (i_K) ? jbgp_.K_tail : jbgp_.K;
-                int bs = get_brg_batchsize(i_bs, i_K);
+                dim_t bs = get_brg_batchsize(i_bs, i_K);
                 int idx = get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K, bs);
                 if (idx < 0) continue;
                 brgemm_desc_t &brg = brg_descs_[idx];
@@ -534,7 +534,7 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
         }
 
         int get_brg_kernel_idx(bool is_bs_tail, bool do_initialization,
-                bool is_M_tail, bool is_N_tail, bool is_K_tail, int bs) const {
+                bool is_M_tail, bool is_N_tail, bool is_K_tail, dim_t bs) const {
             auto vM = (is_M_tail) ? jbgp_.M_tail : jbgp_.M;
             auto vN = (is_N_tail) ? jbgp_.N_tail : jbgp_.N;
             auto vK = (is_K_tail) ? jbgp_.K_tail : jbgp_.K;
@@ -546,7 +546,7 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
                     do_initialization, is_M_tail, is_N_tail, is_K_tail);
         }
 
-        int get_brg_batchsize(bool is_bs_tail, bool is_K_tail) const {
+        dim_t get_brg_batchsize(bool is_bs_tail, bool is_K_tail) const {
             auto bs = (is_K_tail)
                     ? 1
                     : ((is_bs_tail) ? (jbgp_.os / jbgp_.os_block)
@@ -569,7 +569,7 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
         for_(int i_N = 0; i_N < 2; i_N++)
         for_(int i_K = 0; i_K < 2; i_K++)
         for (int i_init = 0; i_init < 2; i_init++) {
-            int bs = pd()->get_brg_batchsize(i_bs, i_K);
+            dim_t bs = pd()->get_brg_batchsize(i_bs, i_K);
             int idx = pd()->get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K, bs);
             if (idx < 0) continue;
 
@@ -609,7 +609,8 @@ struct brgemm_inner_product_bwd_weights_t : public primitive_t {
         } else if (utils::one_of(jbgp.wei_dt, data_type::bf16, data_type::f16,
                            data_type::f8_e5m2, data_type::f8_e4m3)) {
             CHECK(create_brgemm_amx_ip_trans_wei(diff_wei_trans_kernel_,
-                    &pd()->jbgp_, ext_ic_block_, ext_oc_block_));
+                    &pd()->jbgp_, static_cast<int>(ext_ic_block_),
+                    static_cast<int>(ext_oc_block_)));
         }
         if (jbgp.nthr_mb > 1) {
             CHECK(safe_ptr_assign(
@@ -644,20 +645,20 @@ private:
     void reduce_and_convert_diff_weights_and_bias(
             const thread_info_t *ti) const;
     void transform_matrix_a_chunk(char *tr_src, const char *src,
-            int trans_batch, int current_m, int current_k) const;
+            dim_t trans_batch, dim_t current_m, dim_t current_k) const;
     void transform_matrix_b_chunk(char *tr_diff_dst, const char *diff_dst,
-            int trans_batch, int current_col_size, int current_row_size) const;
+            dim_t trans_batch, dim_t current_col_size, dim_t current_row_size) const;
     void transpose_matrix_c_chunk(const thread_info_t *ti, const dim_t ocb,
-            const dim_t icb, int oc_size, int ic_size, dim_t kd, dim_t kh,
+            const dim_t icb, dim_t oc_size, dim_t ic_size, dim_t kd, dim_t kh,
             dim_t kw, bool is_reduction = false) const;
 
     brgemm_containers::brgemm_palette_container_t brgemm_palettes_ {
             brgemm_inner_product_utils::max_num_brg_kernels_ip};
     char *get_wei_acc_ptr(const thread_info_t *ti, dim_t ocb, dim_t icb,
-            dim_t kd, dim_t kh, dim_t kw, int reduction_buf_idx = -1) const;
+            dim_t kd, dim_t kh, dim_t kw, dim_t reduction_buf_idx = -1) const;
 
-    int ext_ic_block_ = 0;
-    int ext_oc_block_ = 0;
+    dim_t ext_ic_block_ = 0;
+    dim_t ext_oc_block_ = 0;
 };
 
 } // namespace x64

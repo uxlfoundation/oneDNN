@@ -152,7 +152,7 @@ struct ref_softmax_fwd_t : public primitive_t {
 
         auto axis = pd()->axis();
         dim_t axis_blk_size = 1;
-        for (int iblk = 0; iblk < bd.inner_nblks; ++iblk)
+        for (dim_t iblk = 0; iblk < bd.inner_nblks; ++iblk)
             if (bd.inner_idxs[iblk] == axis)
                 axis_blk_size *= bd.inner_blks[iblk];
 
@@ -183,7 +183,7 @@ private:
 
     std::unique_ptr<ref_post_ops_t> ref_post_ops;
     bool use_dense_;
-    int outer_size_, channels_, inner_size_;
+    dim_t outer_size_, channels_, inner_size_;
 };
 
 struct ref_softmax_bwd_t : public primitive_t {
@@ -223,7 +223,7 @@ struct ref_softmax_bwd_t : public primitive_t {
 
         auto axis = pd()->axis();
         dim_t axis_blk_size = 1;
-        for (int iblk = 0; iblk < bd.inner_nblks; ++iblk)
+        for (dim_t iblk = 0; iblk < bd.inner_nblks; ++iblk)
             if (bd.inner_idxs[iblk] == axis)
                 axis_blk_size *= bd.inner_blks[iblk];
 
@@ -245,7 +245,7 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 
     bool use_dense_;
-    int outer_size_, channels_, inner_size_;
+    dim_t outer_size_, channels_, inner_size_;
 };
 
 } // namespace cpu

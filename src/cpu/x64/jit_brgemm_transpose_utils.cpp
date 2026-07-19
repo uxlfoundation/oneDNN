@@ -379,7 +379,7 @@ void jit_brgemm_trans_m_k_f32_t::generate() {
     // rows -> sp, cols -> ic
     // M -> ic, K -> sp
     assert(conf_->ic_block % transpose_size == 0);
-    const int os_block = conf_->os_block;
+    const int os_block = static_cast<int>(conf_->os_block);
     const int last_os_block_tail = conf_->K_tail % os_block;
     const int ic_tail = conf_->M_tail % transpose_size;
     src_stride = static_cast<dim_t>(conf_->ic) * conf_->ks() * typesize;
@@ -708,10 +708,10 @@ void jit_brgemm_trans_m_k_bf16_t::generate() {
     constexpr int amx_xf16_granularity = 2;
     const bool last_row_padded = is_superset(conf_->isa, avx512_core_amx)
             && conf_->os % amx_xf16_granularity != 0;
-    const int eff_K_tail = conf_->K_tail - (last_row_padded ? 1 : 0);
+    const dim_t eff_K_tail = conf_->K_tail - (last_row_padded ? 1 : 0);
 
-    const int os_block = conf_->os_block;
-    const int last_os_block_tail = eff_K_tail % transpose_size;
+    const int os_block = static_cast<int>(conf_->os_block);
+    const int last_os_block_tail = static_cast<int>(eff_K_tail % transpose_size);
     const int ic_tail = conf_->M_tail % transpose_size;
     src_stride = static_cast<dim_t>(conf_->ic) * conf_->ks() * typesize;
     tr_src_stride = conf_->LDA * typesize;
@@ -1036,7 +1036,7 @@ void jit_brgemm_trans_m_k_f16_t::transpose_16x16(int nrows, int ncolumns) {
 void jit_brgemm_trans_m_k_f16_t::generate() {
     preamble();
     assert(conf_->ic_block % transpose_size == 0);
-    const int os_block = conf_->os_block;
+    const int os_block = static_cast<int>(conf_->os_block);
     const int last_os_block_tail = conf_->K_tail % transpose_size;
     const int ic_tail = conf_->M_tail % transpose_size;
     src_stride = static_cast<dim_t>(conf_->ic) * conf_->ks() * typesize_in;
@@ -1129,16 +1129,16 @@ void jit_brgemm_trans_m_k_f16_t::generate() {
     postamble();
 }
 
-void jit_brgemm_copy_to_coarse_t::copy_row_blks(int num_row_blks) {
-    int rnd_row_blks = div_up(num_row_blks, row_loop_unroll);
+void jit_brgemm_copy_to_coarse_t::copy_row_blks(dim_t num_row_blks) {
+    const dim_t rnd_row_blks = div_up(num_row_blks, row_loop_unroll);
 
-    for (int row_b = 0; row_b < rnd_row_blks; ++row_b) {
-        const int row_start = 0;
-        const int row_end = nstl::min(static_cast<int>(row_loop_unroll),
-                num_row_blks - row_b * static_cast<int>(row_loop_unroll));
+    for (dim_t row_b = 0; row_b < rnd_row_blks; ++row_b) {
+        const dim_t row_start = 0;
+        const dim_t row_end = nstl::min<dim_t>(
+                row_loop_unroll, num_row_blks - row_b * row_loop_unroll);
 
-        for (int row = row_start; row < row_end; ++row) {
-            const int row_idx = row_b * row_loop_unroll + row;
+        for (dim_t row = row_start; row < row_end; ++row) {
+            const dim_t row_idx = row_b * row_loop_unroll + row;
             const auto offset = addr_offset(row_idx);
 
             const auto zmm = get_zmm_copy(row);
@@ -1152,7 +1152,7 @@ void jit_brgemm_copy_to_coarse_t::copy_row_blks(int num_row_blks) {
 }
 
 void jit_brgemm_copy_to_coarse_t::copy_row_tail(
-        bool is_last_iteration, int row_offset) {
+        bool is_last_iteration, dim_t row_offset) {
     // Masks for row tail load and store are already set up
     const auto load_mask = is_last_iteration ? reg_m_last_row_tail_load
                                              : reg_m_full_row_tail_load;
@@ -1171,10 +1171,10 @@ void jit_brgemm_copy_to_coarse_t::copy_row_tail(
 }
 
 void jit_brgemm_copy_to_coarse_t::zero_out_rows() {
-    const int row_blk = row_size_ % tr_row_size_;
-    const int rnd_up_row_blk = utils::rnd_up(row_blk, row_step_);
+    const dim_t row_blk = row_size_ % tr_row_size_;
+    const dim_t rnd_up_row_blk = utils::rnd_up(row_blk, row_step_);
 
-    int zero_row_blks = tr_row_size_ - rnd_up_row_blk;
+    int zero_row_blks = static_cast<int>(tr_row_size_ - rnd_up_row_blk);
     if (zero_row_blks == 0) return;
 
     const auto zmm_step = row_step_, ymm_step = row_step_ / 2,
@@ -1217,10 +1217,10 @@ void jit_brgemm_copy_to_coarse_t::copy_row_loop() {
 
     // Note: copying is done in chunks of size row_step_
     const auto copy_row = [&](bool is_last_iteration) {
-        const int row_blk
+        const dim_t row_blk
                 = is_last_iteration ? (row_size_ % tr_row_size_) : tr_row_size_;
-        const int row_iters = row_blk / row_step_;
-        const int row_iters_tail = row_blk % row_step_;
+        const dim_t row_iters = row_blk / row_step_;
+        const int row_iters_tail = static_cast<int>(row_blk % row_step_);
 
         copy_row_blks(row_iters);
         if (row_iters_tail != 0)
@@ -1260,7 +1260,8 @@ void jit_brgemm_copy_to_coarse_t::copy_os_loop() {
 }
 
 void jit_brgemm_copy_to_coarse_t::set_last_row_tail_masks() {
-    const int row_tail = (row_size_ % tr_row_size_) % row_step_;
+    const int row_tail
+            = static_cast<int>((row_size_ % tr_row_size_) % row_step_);
     assert(row_tail > 0 && "kernel is meant to be used with tail processing");
 
     // Set load mask
@@ -1315,7 +1316,7 @@ void jit_brgemm_copy_to_coarse_t::generate() {
     if (has_full_row_tail_) set_full_row_tail_masks();
 
     // init zero vreg (zmm_zero) if it is needed
-    const int last_row_size
+    const dim_t last_row_size
             = utils::rnd_up(row_size_ % tr_row_size_, row_step_);
     const bool zero_iters_needed
             = last_row_size > 0 && last_row_size < tr_row_size_;
@@ -1399,8 +1400,10 @@ private:
 void jit_trans_to_vnni_t::maybe_zero_pad_col(reg64_t dst) {
     auto zmm_zero = Xbyak::Zmm(0);
     vpxord(zmm_zero, zmm_zero, zmm_zero);
-    const int oc_utilized = rnd_up(conf_->oc % conf_->oc_block, transpose_size);
-    const int iters = (conf_->oc_block - oc_utilized) / transpose_size;
+    const int oc_utilized = static_cast<int>(
+            rnd_up(conf_->oc % conf_->oc_block, transpose_size));
+    const int iters = static_cast<int>(
+            (conf_->oc_block - oc_utilized) / transpose_size);
     for (int n = 0; n < iters; ++n) {
         for (int i = 0; i < transpose_size; i += 2) {
             auto addr = EVEX_compress_addr_safe(
@@ -1492,14 +1495,14 @@ void jit_trans_to_vnni_t::generate() {
                     25, 10, 26, 11, 27, 12, 28, 13, 29, 14, 30, 15, 31};
 
     if (matrix_to_transform_ == matrix_to_transform_t::matrix_B) {
-        int row_block = conf_->os_block;
+        int row_block = static_cast<int>(conf_->os_block);
 
         constexpr int amx_xf16_granularity = 2;
         const bool last_row_padded = is_superset(conf_->isa, avx512_core_amx)
                 && conf_->os % amx_xf16_granularity != 0;
-        const int eff_K_tail = conf_->K_tail - (last_row_padded ? 1 : 0);
+        const dim_t eff_K_tail = conf_->K_tail - (last_row_padded ? 1 : 0);
 
-        last_row_block_tail = eff_K_tail % transpose_size;
+        last_row_block_tail = static_cast<int>(eff_K_tail % transpose_size);
         col_tail = conf_->oc % transpose_size;
         src_stride = conf_->oc * typesize_data;
         tr_src_stride = conf_->LDB * typesize_data;
@@ -1516,7 +1519,7 @@ void jit_trans_to_vnni_t::generate() {
                 * typesize_data;
 
     } else { // matrix_to_transform_ == matrix_to_transform_t::matrix_C
-        int row_block = conf_->ic_block;
+        int row_block = static_cast<int>(conf_->ic_block);
         last_row_block_tail = conf_->M_tail % transpose_size;
         assert(row_block == transpose_size);
         col_tail = conf_->oc % transpose_size;
@@ -1587,7 +1590,7 @@ void jit_trans_to_vnni_t::generate() {
                     pad_by_zeroes);
             L(col_loop_done);
         }
-        const int oc_block_tail = conf_->oc % conf_->oc_block;
+        const dim_t oc_block_tail = conf_->oc % conf_->oc_block;
         const bool full_oc_block_utilized = oc_block_tail == 0
                 || rnd_up(oc_block_tail, transpose_size) == conf_->oc_block;
         const bool col_pad_required = pad_by_zeroes && !full_oc_block_utilized;
@@ -1768,9 +1771,10 @@ void jit_copy_f32_t::init_masks(int tail_length) {
 void jit_copy_f32_t::generate() {
     preamble();
 
-    const int row_block = conf_->os_block;
+    const int row_block = static_cast<int>(conf_->os_block);
     const int row_tail = conf_->os % row_block;
-    const int col_block = conf_->oc_block * conf_->nb_oc_blocking;
+    const int col_block
+            = static_cast<int>(conf_->oc_block * conf_->nb_oc_blocking);
     const int col_tail = conf_->oc % col_block;
     const int simd_tail = col_tail % column_step;
     src_stride = conf_->oc * typesize_data;
@@ -1855,9 +1859,10 @@ struct jit_copy_f16_t : public jit_brgemm_trans_to_vnni_t,
         // matrix_to_transform_ == matrix_to_transform_t::matrix_C,
         //     copy(f32) -> f16 + zero_pad
         if (matrix_to_transform_ == matrix_to_transform_t::matrix_B) {
-            row_block = conf_->os_block;
+            row_block = static_cast<int>(conf_->os_block);
             row_tail = conf_->os % row_block;
-            col_block = conf_->oc_block * conf_->nb_oc_blocking;
+            col_block
+                    = static_cast<int>(conf_->oc_block * conf_->nb_oc_blocking);
             col_tail = conf_->oc % col_block;
             typesize_in = types::data_type_size(data_type::f16);
             typesize_out = types::data_type_size(data_type::f32);
@@ -1866,9 +1871,10 @@ struct jit_copy_f16_t : public jit_brgemm_trans_to_vnni_t,
             src_batch_shift = src_stride * row_block;
             tr_src_batch_shift = tr_src_stride * row_block;
         } else { // matrix_to_transform_t::matrix_C
-            row_block = conf_->os_block;
+            row_block = static_cast<int>(conf_->os_block);
             row_tail = conf_->os % row_block;
-            col_block = conf_->oc_block * conf_->nb_oc_blocking;
+            col_block
+                    = static_cast<int>(conf_->oc_block * conf_->nb_oc_blocking);
             col_tail = conf_->oc % col_block;
             typesize_in = types::data_type_size(data_type::f32);
             typesize_out = types::data_type_size(data_type::f16);
@@ -2047,10 +2053,11 @@ void jit_brgemm_relo_copy_to_wbuffer_t::generate() {
 
     preamble();
 
-    const int vnni_width = data_type_vnni_granularity(wjcp.wei_dt);
-    const auto wei_dsz = types::data_type_size(wjcp.wei_dt);
-    const auto inp_ocb_size = wjcp.inp_oc_block * vnni_width * wei_dsz;
-    const auto out_ocb_size = wjcp.out_oc_block * vnni_width * wei_dsz;
+    const int vnni_width
+            = static_cast<int>(data_type_vnni_granularity(wjcp.wei_dt));
+    const dim_t wei_dsz = types::data_type_size(wjcp.wei_dt);
+    const dim_t inp_ocb_size = wjcp.inp_oc_block * vnni_width * wei_dsz;
+    const dim_t out_ocb_size = wjcp.out_oc_block * vnni_width * wei_dsz;
     const auto oc_chunks = wjcp.out_oc_block / wjcp.inp_oc_block;
     const auto has_ocb_tail = (oc_chunks != wjcp.last_occ_to_copy);
     auto nb_rd = div_up(wjcp.rd, vnni_width);
@@ -2091,7 +2098,7 @@ void jit_brgemm_relo_copy_to_wbuffer_t::generate() {
                 else
                     copy_zmm(false);
 
-                add(aux_reg_src, wjcp.inp_ocb_offs);
+                add(aux_reg_src, static_cast<dim_t>(wjcp.inp_ocb_offs));
                 add(aux_reg_dst, inp_ocb_size);
             }
             add(reg_src, inp_ocb_size);
@@ -2375,9 +2382,9 @@ void jit_brgemm_trans_wei_f32_t::generate() {
     const dim_t fwd_ic_block = conf_->simd_w;
     const dim_t fwd_oc_block = conf_->get_weights_oc_block();
 
-    int oc_tail = conf_->K_tail % transpose_size;
-    int ic_block = conf_->ic_block;
-    int ic_tail = conf_->N_tail % transpose_size;
+    dim_t oc_tail = conf_->K_tail % transpose_size;
+    dim_t ic_block = conf_->ic_block;
+    dim_t ic_tail = conf_->N_tail % transpose_size;
     src_stride = fwd_oc_block * typesize; // src_row_stride
     tr_src_stride = ic_block * typesize; // tr_src_row_stride
     dim_t N_src_shift = fwd_ic_block * fwd_oc_block * typesize;
@@ -2403,7 +2410,8 @@ void jit_brgemm_trans_wei_f32_t::generate() {
 
         L(N_loop);
 
-        transpose(transpose_size, is_oc_tail ? oc_tail : transpose_size);
+        transpose(transpose_size,
+                static_cast<int>(is_oc_tail ? oc_tail : transpose_size));
         add(reg_src, N_src_shift);
         add(reg_tr_src, N_tr_src_shift);
 
@@ -2416,7 +2424,8 @@ void jit_brgemm_trans_wei_f32_t::generate() {
             Label N_loop_done;
             cmp(reg_loop_N, 0);
             jle(N_loop_done, T_NEAR);
-            transpose(ic_tail, is_oc_tail ? oc_tail : transpose_size);
+            transpose(static_cast<int>(ic_tail),
+                    static_cast<int>(is_oc_tail ? oc_tail : transpose_size));
             L(N_loop_done);
         }
     };
@@ -2578,10 +2587,10 @@ void jit_brgemm_trans_wei_bf16_t::transpose_16x16_vnni(
 
 void jit_brgemm_trans_wei_bf16_t::generate() {
     preamble();
-    int fwd_oc_block = conf_->get_weights_oc_block();
-    int oc_tail = conf_->K_tail % transpose_size;
-    int ic_block = conf_->ic_block;
-    int ic_tail = conf_->N_tail % transpose_size;
+    dim_t fwd_oc_block = conf_->get_weights_oc_block();
+    dim_t oc_tail = conf_->K_tail % transpose_size;
+    dim_t ic_block = conf_->ic_block;
+    dim_t ic_tail = conf_->N_tail % transpose_size;
     src_stride = 2 * fwd_oc_block * typesize;
     tr_src_stride = 2 * ic_block * typesize;
     dim_t N_src_shift
@@ -2619,8 +2628,8 @@ void jit_brgemm_trans_wei_bf16_t::generate() {
 
         L(N_loop);
 
-        transpose_16x16_vnni(
-                transpose_size, is_oc_tail ? oc_tail : transpose_size);
+        transpose_16x16_vnni(transpose_size,
+                static_cast<int>(is_oc_tail ? oc_tail : transpose_size));
         add(reg_src, N_src_shift);
         add(reg_tr_src, N_tr_src_shift);
 
@@ -2633,8 +2642,8 @@ void jit_brgemm_trans_wei_bf16_t::generate() {
             Label N_loop_done;
             cmp(reg_loop_N, 0);
             jle(N_loop_done, T_NEAR);
-            transpose_16x16_vnni(
-                    ic_tail, is_oc_tail ? oc_tail : transpose_size);
+            transpose_16x16_vnni(static_cast<int>(ic_tail),
+                    static_cast<int>(is_oc_tail ? oc_tail : transpose_size));
             L(N_loop_done);
         }
     };
@@ -2861,9 +2870,9 @@ void jit_brgemm_trans_wei_f16_t::generate() {
     assert(conf_->oc_block % transpose_size == 0);
     dim_t fwd_ic_block = conf_->simd_w;
     dim_t fwd_oc_block = conf_->get_weights_oc_block();
-    int oc_tail = conf_->K_tail % transpose_size;
-    int ic_block = conf_->ic_block;
-    int ic_tail = conf_->N_tail % transpose_size;
+    dim_t oc_tail = conf_->K_tail % transpose_size;
+    dim_t ic_block = conf_->ic_block;
+    dim_t ic_tail = conf_->N_tail % transpose_size;
     src_stride = fwd_oc_block * typesize_in;
     tr_src_stride = ic_block * typesize_out;
     dim_t N_src_shift = fwd_ic_block * fwd_oc_block * typesize_in;
@@ -2900,7 +2909,8 @@ void jit_brgemm_trans_wei_f16_t::generate() {
 
         L(N_loop);
 
-        transpose_16x16(transpose_size, is_oc_tail ? oc_tail : transpose_size);
+        transpose_16x16(transpose_size,
+                static_cast<int>(is_oc_tail ? oc_tail : transpose_size));
         add(reg_src, N_src_shift);
         add(reg_tr_src, N_tr_src_shift);
 
@@ -2913,7 +2923,8 @@ void jit_brgemm_trans_wei_f16_t::generate() {
             Label N_loop_done;
             cmp(reg_loop_N, 0);
             jle(N_loop_done, T_NEAR);
-            transpose_16x16(ic_tail, is_oc_tail ? oc_tail : transpose_size);
+            transpose_16x16(static_cast<int>(ic_tail),
+                    static_cast<int>(is_oc_tail ? oc_tail : transpose_size));
             L(N_loop_done);
         }
     };
@@ -3007,8 +3018,8 @@ void jit_amx_ip_trans_diff_wei_to_vnni_t::generate() {
                 * (icb * div_up(ext_ic_block_, 2) * ext_oc_block_
                         * 2); // External
 
-        const int oc_padded = rnd_up(jbgp_->oc, jbgp_->oc_block);
-        const int oc_padded_ext = rnd_up(jbgp_->oc, ext_oc_block_);
+        const dim_t oc_padded = rnd_up(jbgp_->oc, jbgp_->oc_block);
+        const dim_t oc_padded_ext = rnd_up(jbgp_->oc, ext_oc_block_);
 
         bool tailing_done = false;
         for (int oc = 0; oc < jbgp_->oc_block; oc += simd_w) {
@@ -3107,7 +3118,7 @@ void jit_amx_ip_trans_diff_wei_to_vnni_t::generate() {
     };
 
     auto reorder_ic_block = [&](bool is_oc_tail, bool is_ic_tail) {
-        int nb_ic = div_up(jbgp_->ic_block, ext_ic_block_);
+        int nb_ic = static_cast<int>(div_up(jbgp_->ic_block, ext_ic_block_));
         for (int icb = 0; icb < nb_ic; icb++) {
             int ic_0 = icb * ext_ic_block_;
             int ic_1 = (icb + 1) * ext_ic_block_;

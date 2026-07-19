@@ -324,7 +324,7 @@ private:
             return xbyak_register_index(
                     nstl::min<dim_t>(simd_w_, n_block1_tail() - v_i * simd_w_));
         } else {
-            return simd_w_;
+            return xbyak_register_index(simd_w_);
         }
     }
     Vmm vmm_a(dim_t m, dim_t n) {

@@ -57,14 +57,14 @@ jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
         static constexpr bool preserve_vmm = false;
         static constexpr bool use_exact_tail_scalar_bcast = false;
         const auto dst_md_wrapper = memory_desc_wrapper(brg.dst_md());
-        const size_t tail = tail_length();
+        const dim_t tail = tail_length();
 
         static const bcast_set_t enabled_bcast_strategy
                 = {broadcasting_strategy_t::scalar,
                         broadcasting_strategy_t::per_oc,
                         broadcasting_strategy_t::no_broadcast};
         const binary_injector::rhs_arg_static_params_t rhs_sp {
-                static_cast<size_t>(vmm_b().getIdx()), r14, r15, r13,
+                static_cast<dim_t>(vmm_b().getIdx()), r14, r15, r13,
                 preserve_gpr, preserve_vmm,
                 GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(data_C_ptr_),
                 dst_md_wrapper, tail, k_mask, use_exact_tail_scalar_bcast};
@@ -794,7 +794,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_a(
         Vmm vmma, dim_t m_i, dim_t n_i, dim_t v_i, bool has_n_tail) {
     const dim_t n_blocks
             = has_n_tail && n_block2_tail() > 0 ? n_block2_tail() : n_block2();
-    const dim_t substep_simd = get_substep_simd(n_i, v_i, has_n_tail);
+    const int substep_simd = get_substep_simd(n_i, v_i, has_n_tail);
     const bool is_tail_block = has_n_tail && n_i + 1 == n_blocks;
     const bool mask_flag = substep_simd < simd_w_;
     const auto addr = ptr[reg_aux_A + A_offset(m_i, n_i)

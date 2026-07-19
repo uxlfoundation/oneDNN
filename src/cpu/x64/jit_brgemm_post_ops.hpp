@@ -67,10 +67,10 @@ private:
     data_type_t bia_dt_;
     data_type_t acc_dt_;
 
-    int ddst_typesize_;
-    int bia_typesize_;
-    int acc_typesize_;
-    int mult_;
+    dim_t ddst_typesize_;
+    dim_t bia_typesize_;
+    dim_t acc_typesize_;
+    dim_t mult_;
 
     using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using reg64_t = const Xbyak::Reg64;
@@ -109,9 +109,9 @@ private:
     void accumulate_bias(int idx, bool mask_flag);
     void accumulate_bias(bool mask_flag);
     void store(int idx, bool mask_flag);
-    void loop_by_N(int n_loop, int nb_tail);
+    void loop_by_N(int n_loop, dim_t nb_tail);
     void loop_by_K();
-    void init_masks(int tail_length);
+    void init_masks(dim_t tail_length);
     void generate() override;
 
     void generate_for_a();
@@ -149,7 +149,7 @@ struct jit_brgemm_kernel_post_ops_base_t {
     virtual void operator()(const brgemm_kernel_post_ops_args_t *args) const
             = 0;
 
-    virtual int get_bcast_dim() const = 0;
+    virtual dim_t get_bcast_dim() const = 0;
 };
 
 // An implementation class for post-ops based on `Vmm` template argument.
@@ -180,7 +180,7 @@ struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops_t)
 
     // Used for assertion on implementation side in debug mode.
-    int get_bcast_dim() const override { return brg_.bcast_dim; }
+    dim_t get_bcast_dim() const override { return brg_.bcast_dim; }
 
 private:
     // This can't be a reference, otherwise, `get_bcast_dim()` would return
@@ -206,9 +206,9 @@ private:
     int max_vregs_;
     const bool with_binary_non_scalar_bcast_;
 
-    int inp_typesize_;
-    int out_typesize_;
-    int bia_typesize_;
+    dim_t inp_typesize_;
+    dim_t out_typesize_;
+    dim_t bia_typesize_;
 
     using reg64_t = const Xbyak::Reg64;
 
@@ -272,13 +272,13 @@ private:
 
     Vmm vmm_tmp(int i) const { return Vmm(max_vregs_ - 1 - i); }
 
-    int zp_c_values_offset(int n, bool is_tail = false) const noexcept;
-    int zp_comp_a_vpad_offset(
+    dim_t zp_c_values_offset(int n, bool is_tail = false) const noexcept;
+    dim_t zp_comp_a_vpad_offset(
             int n, int m, bool is_tail = false) const noexcept;
-    int mb_zp_comp_a_offset(int m_block) const noexcept;
-    int compensation_vpad_offset(
+    dim_t mb_zp_comp_a_offset(int m_block) const noexcept;
+    dim_t compensation_vpad_offset(
             int n, int m, bool is_tail = false) const noexcept;
-    int mb_compensation_offset(int m_block) const noexcept {
+    dim_t mb_compensation_offset(int m_block) const noexcept {
         return sizeof(int32_t) * m_block * brg_.LDB;
     }
 
@@ -301,7 +301,7 @@ private:
     void apply_comp(int m_block, int n_block, int tail = 0);
     void maybe_apply_comp(int m_block, int n_block, int tail = 0);
     void apply_post_ops(int m_block, int n_block, int tail = 0);
-    void loop_by_N(int m_block, int nb2, int nb2_tail, int nb_tail);
+    void loop_by_N(int m_block, dim_t nb2, int nb2_tail, dim_t nb_tail);
     void generate() override;
 };
 

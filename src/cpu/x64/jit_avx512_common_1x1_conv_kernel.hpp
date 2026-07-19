@@ -87,24 +87,26 @@ private:
     constexpr static int reg_dw_binary_output_off = 3 * reg64_size_;
     constexpr static int stack_space_needed = 4 * reg64_size_;
 
-    void bcast_loop(int load_loop_blk);
-    void reduce_loop(int load_loop_blk, int ur, int substep, bool wraparound);
+    void bcast_loop(dim_t load_loop_blk);
+    void reduce_loop(
+            dim_t load_loop_blk, dim_t ur, dim_t substep, bool wraparound);
 
     inline size_t get_output_offset(const bool is_out_layout_nxc,
-            const int i_load, const int i_ur, bool ignore_dw_conv = false) {
-        const size_t i_load_shift = is_out_layout_nxc
+            const dim_t i_load, const dim_t i_ur,
+            bool ignore_dw_conv = false) {
+        const dim_t i_load_shift = is_out_layout_nxc
                 ? jcp.load_block
                 : (!ignore_dw_conv && jcp.with_dw_conv ? jcp.ow : jcp.bcast_dim)
                         * jcp.load_block;
-        const size_t i_ur_shift
+        const dim_t i_ur_shift
                 = is_out_layout_nxc ? jcp.load_dim : jcp.load_block;
         return jcp.typesize_out * (i_load * i_load_shift + i_ur * i_ur_shift);
     }
 
     Xbyak::Address output_ptr(
-            const bool out_layout_nxc, const int i_load, const int i_ur);
-    void apply_postops(const bool is_out_layout_nxc, const int load_loop_blk,
-            const int ur);
+            const bool out_layout_nxc, const dim_t i_load, const dim_t i_ur);
+    void apply_postops(const bool is_out_layout_nxc, const dim_t load_loop_blk,
+            const dim_t ur);
     void generate() override;
     static void balance(jit_1x1_conv_conf_t &jcp);
 };

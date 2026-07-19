@@ -14,7 +14,6 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <cstdlib>
 #include <functional>
 
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
@@ -50,9 +49,9 @@ struct jit_pp_ker_t : pp_ker_t, public jit_generator_t {
 
 private:
     void apply_postops(
-            const Xbyak::Reg64 &reg_dst, const int idx, const size_t offset);
+            const Xbyak::Reg64 &reg_dst, const int idx, const dim_t offset);
     void generate() override;
-    void append_zp_src_comp(size_t offset, int idx, bool apply_mask);
+    void append_zp_src_comp(dim_t offset, int idx, bool apply_mask);
     void load_as_f32(const Xbyak::Zmm &dst, const Xbyak::Opmask &mask,
             const Xbyak::Address &src_addr, const data_type_t &src_dt);
 
@@ -74,14 +73,14 @@ private:
         float dst_scale;
         float sum_scale;
         float signed_scale;
-        size_t len;
-        size_t oc_offset;
+        dim_t len;
+        dim_t oc_offset;
         const int32_t *zp_src;
         const int32_t *zp_dst;
         const int32_t *zp_src_comp;
         const int32_t *zp_src_pad_comp;
-        size_t g_oc_offset_prologue;
-        size_t g_oc_offset;
+        dim_t g_oc_offset_prologue;
+        dim_t g_oc_offset;
         const void *post_ops_binary_rhs_arg_vec;
         const void *dst_orig;
         dim_t h;
@@ -95,9 +94,9 @@ private:
     std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
             postops_injector_;
 
-    size_t number_of_reserved_zmm_regs_;
-    const size_t bias_data_type_size_;
-    const size_t dst_data_type_size_;
+    int number_of_reserved_zmm_regs_;
+    const dim_t bias_data_type_size_;
+    const dim_t dst_data_type_size_;
     const bool saturation_needed_;
 
     const Xbyak::Reg64 &reg_param_ = rdi;
@@ -130,11 +129,11 @@ private:
     const Xbyak::Opmask &kreg_rem_mask_short_ = k3;
     const Xbyak::Opmask &kreg_rem_mask_vlen_ = k4;
 
-    static constexpr size_t def_unroll_ = 4u;
-    size_t zmm_step_;
-    const size_t bias_step_factor_;
-    const size_t sum_step_factor_;
-    const size_t max_unroll_;
+    static constexpr int def_unroll_ = 4;
+    int zmm_step_;
+    const int bias_step_factor_;
+    const int sum_step_factor_;
+    const int max_unroll_;
 
     std::unique_ptr<jit_gemm_x8s8s32x_zp_pad_comp_helper_t> zp_pad_comp_helper_;
 };
@@ -214,27 +213,30 @@ void jit_pp_ker_t::operator()(void *void_dst, const acc_data_t *acc,
 
     char *dst = (char *)void_dst;
 
+    const dim_t start_dim = static_cast<dim_t>(start);
+    const dim_t end_dim = static_cast<dim_t>(end);
     ker_args_t args;
-    const auto dv = std::div(start, jcp_.oc);
-    const size_t oc_offset = dv.rem;
-    const size_t os_offset = dv.quot;
-    args.acc = acc + start;
+    const dim_t oc_offset = start_dim % jcp_.oc;
+    const dim_t os_offset = start_dim / jcp_.oc;
+    const dim_t dst_os_stride = jcp_.dst_os_stride;
+    const dim_t scale_idx_mult = jcp_.scale_idx_mult;
+    args.acc = acc + start_dim;
     args.dst = dst
-            + (os_offset * jcp_.dst_os_stride + oc_offset)
+            + (os_offset * dst_os_stride + oc_offset)
                     * dst_data_type_size_;
 
-    const ptrdiff_t g_oc_offset = g * jcp_.oc;
-    const ptrdiff_t g_oc_offset_prologue = g_oc_offset + oc_offset;
+    const dim_t g_oc_offset = g * jcp_.oc;
+    const dim_t g_oc_offset_prologue = g_oc_offset + oc_offset;
     args.bias = bias + g_oc_offset_prologue * bias_data_type_size_;
     args.zp_src = zp.src + (jcp_.zp.src_is_common ? 0 : g_oc_offset_prologue);
     args.zp_src_comp
             = zp.src_comp ? zp.src_comp + g_oc_offset_prologue : nullptr;
     args.zp_dst = zp.dst;
-    args.scales = scales + jcp_.scale_idx_mult * g_oc_offset_prologue;
+    args.scales = scales + scale_idx_mult * g_oc_offset_prologue;
     args.dst_scale = dst_scale;
     args.sum_scale = sum_scale;
     args.signed_scale = signed_scale;
-    args.len = end - start;
+    args.len = end_dim - start_dim;
     args.oc_offset = oc_offset;
 
     args.g_oc_offset = g_oc_offset;
@@ -244,10 +246,8 @@ void jit_pp_ker_t::operator()(void *void_dst, const acc_data_t *acc,
     args.dst_orig = dst_orig;
 
     if (zp_pad_comp_helper_) {
-        const auto hw
-                = std::div(static_cast<dim_t>(os_offset), chunk_desc.w_size_);
-        args.h = hw.quot + chunk_desc.h_off_;
-        args.w = hw.rem + chunk_desc.w_off_;
+        args.h = os_offset / chunk_desc.w_size_ + chunk_desc.h_off_;
+        args.w = os_offset % chunk_desc.w_size_ + chunk_desc.w_off_;
         args.w_size = chunk_desc.w_size_ + chunk_desc.w_off_;
         args.w_off = chunk_desc.w_off_;
         args.zp_src_pad_comp = zp.src_pad_comp;
@@ -282,7 +282,8 @@ Xbyak::Zmm jit_pp_ker_t::get_vreg_prev_dst(int idx) const {
     return Xbyak::Zmm(vreg_dst_idx(idx) + sum_step_factor_);
 }
 
-Xbyak::Zmm jit_pp_ker_t::get_masked_vreg_dst(int idx, bool apply_mask) const {
+Xbyak::Zmm jit_pp_ker_t::get_masked_vreg_dst(
+        int idx, bool apply_mask) const {
     auto vreg_dst = this->get_vreg_dst(idx);
     if (apply_mask)
         vreg_dst = vreg_dst | kreg_rem_mask_short_;
@@ -291,10 +292,12 @@ Xbyak::Zmm jit_pp_ker_t::get_masked_vreg_dst(int idx, bool apply_mask) const {
     return vreg_dst;
 }
 
-void jit_pp_ker_t::append_zp_src_comp(size_t offset, int idx, bool apply_mask) {
+void jit_pp_ker_t::append_zp_src_comp(
+        dim_t offset, int idx, bool apply_mask) {
     const auto vreg_dst_masked = get_masked_vreg_dst(idx, apply_mask);
     const auto vreg_dst = get_vreg_dst(idx);
-    const auto zp_src_comp_offset = offset * sizeof(int32_t);
+    const dim_t zp_src_comp_offset
+            = offset * static_cast<dim_t>(sizeof(int32_t));
     const auto zp_src_comp_addr = ptr[reg_zp_src_comp_ + zp_src_comp_offset];
 
     vpaddd(vreg_dst_masked, vreg_dst, zp_src_comp_addr);
@@ -308,7 +311,7 @@ void jit_pp_ker_t::append_zp_src_comp(size_t offset, int idx, bool apply_mask) {
 }
 
 void jit_pp_ker_t::apply_postops(
-        const Xbyak::Reg64 &reg_dst, const int idx, const size_t offset) {
+        const Xbyak::Reg64 &reg_dst, const int idx, const dim_t offset) {
 #define PARAM_OFF(x) offsetof(ker_args_t, x)
     if (jcp_.with_eltwise || jcp_.with_binary) {
         if (jcp_.with_binary) {
@@ -317,7 +320,7 @@ void jit_pp_ker_t::apply_postops(
 
             rhs_arg_params.vmm_idx_to_out_reg.emplace(vmm_idx, reg_dst);
             rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(vmm_idx,
-                    offset * types::data_type_size(jcp_.dst_data_type));
+                    offset * dst_data_type_size_);
             rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
 
             postops_injector_->compute_vector(
@@ -350,8 +353,10 @@ void jit_pp_ker_t::generate() {
     using namespace Xbyak;
     using namespace utils;
 
-    size_t vlen = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
+    dim_t vlen = cpu_isa_traits_t<avx512_core>::vlen
+            / static_cast<dim_t>(sizeof(float));
     for (; vlen >= 1 && (jcp_.oc % vlen != 0); --vlen) {}
+    const dim_t dst_os_stride = jcp_.dst_os_stride;
 
     preamble();
 
@@ -393,7 +398,9 @@ void jit_pp_ker_t::generate() {
 #undef PARAM_OFF
 
     mov(reg_rem_mask_vlen_, 1);
-    shl(reg_rem_mask_vlen_, vlen);
+    // vlen is a SIMD-width-bounded shift count (<= 16 elements), so this
+    // narrowing is provably safe regardless of vlen's declared (dim_t) type.
+    shl(reg_rem_mask_vlen_, static_cast<int>(vlen));
     sub(reg_rem_mask_vlen_, 1);
     kmovq(kreg_rem_mask_vlen_, reg_rem_mask_vlen_);
 
@@ -405,15 +412,17 @@ void jit_pp_ker_t::generate() {
     // Load accumulated value, convert to float, apply sum (if any),
     // bias (if any), scaling, and relu (if any);
     // then convert to destination type and store
-    const auto compute = [&](size_t offset, int idx, bool apply_mask) {
-        auto acc_addr = ptr[reg_acc_ + offset * sizeof(acc_data_t)];
+    const auto compute = [&](dim_t offset, int idx, bool apply_mask) {
+        auto acc_addr = ptr[reg_acc_
+                + offset * static_cast<dim_t>(sizeof(acc_data_t))];
 
         const auto &mask_reg
                 = apply_mask ? kreg_rem_mask_short_ : kreg_rem_mask_vlen_;
 
         if (jcp_.scale_idx_mult > 0) {
             assert(jcp_.scale_idx_mult == 1);
-            const auto scale_addr = ptr[reg_scales_ + offset * sizeof(float)];
+            const auto scale_addr = ptr[reg_scales_
+                    + offset * static_cast<dim_t>(sizeof(float))];
             auto vreg_scale = vreg_scale_;
             vreg_scale = vreg_scale | mask_reg;
             vmovups(vreg_scale, scale_addr);
@@ -478,21 +487,22 @@ void jit_pp_ker_t::generate() {
 
     // Advance all pointers by an immediate
     const auto advance_ptrs_imm
-            = [&](const size_t offset, const size_t binary_offset) {
+            = [&](const dim_t offset, const dim_t binary_offset) {
         add(reg_dst_, offset * dst_data_type_size_);
-        add(reg_acc_, offset * sizeof(acc_data_t));
+        add(reg_acc_, offset * static_cast<dim_t>(sizeof(acc_data_t)));
         if (jcp_.scale_idx_mult) {
             assert(jcp_.scale_idx_mult == 1);
-            add(reg_scales_, offset * sizeof(float));
+            add(reg_scales_, offset * static_cast<dim_t>(sizeof(float)));
         }
         if (jcp_.with_bias) add(reg_bias_, offset * bias_data_type_size_);
         if (jcp_.zp.src_exists) {
-            add(reg_zp_src_comp_, offset * sizeof(int32_t));
+            add(reg_zp_src_comp_, offset * static_cast<dim_t>(sizeof(int32_t)));
 
             if (zp_pad_comp_helper_) {
                 zp_pad_comp_helper_->zp_src_comp_pad_operation(
                         [&](const Xbyak::Reg64 &reg_zp_pad_comp) {
-                    add(reg_zp_pad_comp, offset * sizeof(int32_t));
+                    add(reg_zp_pad_comp,
+                            offset * static_cast<dim_t>(sizeof(int32_t)));
                 });
             }
         }
@@ -501,24 +511,35 @@ void jit_pp_ker_t::generate() {
     // Advance all pointers by a value stored in a register
     const auto advance_ptrs_reg
             = [&](const Reg64 offset, const Reg64 binary_offset) {
-        lea(reg_dst_, ptr[reg_dst_ + offset * dst_data_type_size_]);
-        lea(reg_acc_, ptr[reg_acc_ + offset * sizeof(acc_data_t)]);
+        lea(reg_dst_,
+                ptr[reg_dst_
+                        + offset * static_cast<int>(dst_data_type_size_)]);
+        lea(reg_acc_,
+                ptr[reg_acc_
+                        + offset * static_cast<int>(sizeof(acc_data_t))]);
         if (jcp_.scale_idx_mult) {
             assert(jcp_.scale_idx_mult == 1);
-            lea(reg_scales_, ptr[reg_scales_ + offset * sizeof(float)]);
+            lea(reg_scales_,
+                    ptr[reg_scales_
+                            + offset * static_cast<int>(sizeof(float))]);
         }
         if (jcp_.with_bias)
-            lea(reg_bias_, ptr[reg_bias_ + offset * bias_data_type_size_]);
+            lea(reg_bias_,
+                    ptr[reg_bias_
+                            + offset * static_cast<int>(bias_data_type_size_)]);
 
         if (jcp_.zp.src_exists) {
             lea(reg_zp_src_comp_,
-                    ptr[reg_zp_src_comp_ + offset * sizeof(int32_t)]);
+                    ptr[reg_zp_src_comp_
+                            + offset * static_cast<int>(sizeof(int32_t))]);
 
             if (zp_pad_comp_helper_)
                 zp_pad_comp_helper_->zp_src_comp_pad_operation(
                         [&](const Xbyak::Reg64 &reg_zp_pad_comp) {
                     lea(reg_zp_pad_comp,
-                            ptr[reg_zp_pad_comp + offset * sizeof(int32_t)]);
+                            ptr[reg_zp_pad_comp
+                                    + offset * static_cast<int>(
+                                            sizeof(int32_t))]);
                 });
         }
     };
@@ -528,16 +549,16 @@ void jit_pp_ker_t::generate() {
     const auto rewind_ptrs = [&]() {
         if (jcp_.with_bias) sub(reg_bias_, jcp_.oc * bias_data_type_size_);
         if (jcp_.zp.src_exists) {
-            const auto offset = jcp_.oc * sizeof(int32_t);
+            const dim_t offset = jcp_.oc * static_cast<dim_t>(sizeof(int32_t));
             sub(reg_zp_src_comp_, offset);
             if (zp_pad_comp_helper_)
                 zp_pad_comp_helper_->load_next_point_zp_src_comp_pad_addr();
         }
         if (jcp_.scale_idx_mult) {
             assert(jcp_.scale_idx_mult == 1);
-            sub(reg_scales_, jcp_.oc * sizeof(float));
+            sub(reg_scales_, jcp_.oc * static_cast<dim_t>(sizeof(float)));
         }
-        add(reg_dst_, (jcp_.dst_os_stride - jcp_.oc) * dst_data_type_size_);
+        add(reg_dst_, (dst_os_stride - jcp_.oc) * dst_data_type_size_);
     };
 
     //                    <--------- OC --------------->
@@ -601,8 +622,8 @@ void jit_pp_ker_t::generate() {
         Label main_loop;
         L(main_loop);
         {
-            size_t OC_loop, OC_tail;
-            if (static_cast<size_t>(jcp_.oc) < max_unroll_ * vlen) {
+            dim_t OC_loop, OC_tail;
+            if (jcp_.oc < max_unroll_ * vlen) {
                 // Fully unroll small loops
                 OC_loop = 0;
                 OC_tail = jcp_.oc;
@@ -613,9 +634,10 @@ void jit_pp_ker_t::generate() {
 
             assert(!!OC_loop || !!OC_tail);
 
-            const int vlen_tail = OC_tail % vlen;
+            const dim_t vlen_tail = OC_tail % vlen;
             if (vlen_tail) {
-                unsigned tail_mask = (1 << vlen_tail) - 1;
+                const uint32_t tail_mask
+                        = (uint32_t(1) << vlen_tail) - 1;
                 mov(reg_tmp_, tail_mask);
                 kmovq(kreg_rem_mask_short_, reg_tmp_);
             }
@@ -625,8 +647,8 @@ void jit_pp_ker_t::generate() {
                 Label oc_loop;
                 L(oc_loop);
                 {
-                    for (size_t offset = 0; offset < OC_loop; offset += vlen)
-                        compute(offset, offset / vlen, false);
+                    for (dim_t offset = 0; offset < OC_loop; offset += vlen)
+                        compute(offset, static_cast<int>(offset / vlen), false);
                     advance_ptrs_imm(OC_loop, vlen);
                     sub(reg_tmp_, OC_loop);
                     jnz(oc_loop);
@@ -634,12 +656,12 @@ void jit_pp_ker_t::generate() {
             }
 
             if (OC_tail) {
-                for (size_t offset = 0; offset < OC_tail; offset += vlen) {
+                for (dim_t offset = 0; offset < OC_tail; offset += vlen) {
                     bool use_mask = (offset + vlen) > OC_tail;
-                    compute(offset, offset / vlen, use_mask);
+                    compute(offset, static_cast<int>(offset / vlen), use_mask);
                 }
-                const size_t oc_tail_rem = OC_tail % vlen;
-                const size_t binary_offset = oc_tail_rem ? oc_tail_rem : vlen;
+                const dim_t oc_tail_rem = OC_tail % vlen;
+                const dim_t binary_offset = oc_tail_rem ? oc_tail_rem : vlen;
                 advance_ptrs_imm(OC_tail, binary_offset);
             }
 

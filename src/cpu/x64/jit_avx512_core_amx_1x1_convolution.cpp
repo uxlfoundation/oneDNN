@@ -121,17 +121,16 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
             utils::rnd_up(jcp.ic_without_padding, jcp.ic_block_int)
             * jcp.oc_block * jcp.nb_oc_blocking);
 
-    int nb_os = (jcp.tile_tail) ? jcp.nb_os + 1 : jcp.nb_os;
-    int os_step = jcp.nb_os2_blocking * jcp.nb_os_blocking;
-    int os_chunks = div_up(nb_os, os_step);
+    const dim_t nb_os = (jcp.tile_tail) ? jcp.nb_os + 1 : jcp.nb_os;
+    const dim_t os_step = jcp.nb_os2_blocking * jcp.nb_os_blocking;
+    const dim_t os_chunks = div_up(nb_os, os_step);
 
-    int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
+    const dim_t oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
 
-    const size_t work_amount
-            = (size_t)jcp.mb * jcp.ngroups * os_chunks * oc_chunks;
+    const dim_t work_amount = jcp.mb * jcp.ngroups * os_chunks * oc_chunks;
 
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
-        size_t start {0}, end {0};
+        dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
         auto p = jit_conv_args_t();
@@ -153,19 +152,20 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
             dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
         }
 
-        int mb {0}, g {0}, _osb {0}, _ocb {0};
+        dim_t mb {0}, g {0}, _osb {0}, _ocb {0};
         nd_iterator_init(start, mb, jcp.mb, g, jcp.ngroups, _osb, os_chunks,
                 _ocb, oc_chunks);
 
         while (start < end) {
-            int osb = _osb * os_step;
-            int ocb = _ocb * jcp.nb_oc_blocking;
+            const dim_t osb = _osb * os_step;
+            const dim_t ocb = _ocb * jcp.nb_oc_blocking;
             auto bias_w = bias
                     ? bias + (bias_d.blk_off(ocb * jcp.oc_block) * bia_dt_size)
                     : nullptr;
 
-            int oc = g * jcp.oc_without_padding + ocb * jcp.oc_block;
-            int ic = g * jcp.ic_without_padding;
+            const dim_t oc = g * jcp.oc_without_padding
+                    + ocb * jcp.oc_block;
+            const dim_t ic = g * jcp.ic_without_padding;
 
             p.acc_s32 = wsp + ithr * jcp.wsp_buffer_size;
             p.src_prf = wsp_tile + ithr * (jcp.wsp_buffer_size / 2);
@@ -191,18 +191,18 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
             const bool is_overflow = (osb + os_step >= nb_os);
             if (is_overflow
                     && (os_chunks > 1 || (os_chunks == 1 && is_ic_tail))) {
-                int step = (check_last_sp) ? 1 : jcp.nb_os_blocking;
-                for (int osi = 0; osi < nb_os - osb; osi += step) {
-                    int osb_i = osi + osb;
-                    int od {0}, oh {0}, ow {0};
+                const dim_t step = (check_last_sp) ? 1 : jcp.nb_os_blocking;
+                for (dim_t osi = 0; osi < nb_os - osb; osi += step) {
+                    const dim_t osb_i = osi + osb;
+                    dim_t od {0}, oh {0}, ow {0};
                     nd_iterator_init(osb_i * jcp.tile_width, od, jcp.od, oh,
                             jcp.oh, ow, jcp.ow);
                     size_t dst_offset = md_blk_off(dst_d, mb, oc, od, oh, ow);
                     p.dst = dst + dst_dt_size * dst_offset;
 
-                    int id = od * jcp.stride_d;
-                    int ih = oh * jcp.stride_h;
-                    int iw = ow * jcp.stride_w;
+                    const dim_t id = od * jcp.stride_d;
+                    const dim_t ih = oh * jcp.stride_h;
+                    const dim_t iw = ow * jcp.stride_w;
                     size_t inp_offset = md_blk_off(src_d, mb, ic, id, ih, iw);
                     p.src = src + src_dt_size * inp_offset;
 
@@ -213,15 +213,15 @@ status_t jit_avx512_core_amx_1x1_convolution_fwd_t::execute_forward(
                     (*kernel_)(&p);
                 }
             } else {
-                int od {0}, oh {0}, ow {0};
+                dim_t od {0}, oh {0}, ow {0};
                 nd_iterator_init(osb * jcp.tile_width, od, jcp.od, oh, jcp.oh,
                         ow, jcp.ow);
                 size_t dst_offset = md_blk_off(dst_d, mb, oc, od, oh, ow);
                 p.dst = dst + dst_dt_size * dst_offset;
 
-                int id = od * jcp.stride_d;
-                int ih = oh * jcp.stride_h;
-                int iw = ow * jcp.stride_w;
+                const dim_t id = od * jcp.stride_d;
+                const dim_t ih = oh * jcp.stride_h;
+                const dim_t iw = ow * jcp.stride_w;
                 size_t inp_offset = md_blk_off(src_d, mb, ic, id, ih, iw);
                 p.src = src + src_dt_size * inp_offset;
 

@@ -50,7 +50,7 @@ jit_avx512_core_amx_1x1_fwd_kernel_t::jit_avx512_core_amx_1x1_fwd_kernel_t(
         const auto &rhs_addr_cache_reg = bin_injector_helper_reg_3;
         static constexpr bool preserve_gpr = false;
         static constexpr bool preserve_vmm = false;
-        const size_t tail_size = jcp.oc_without_padding % isa_simd_width_;
+        const dim_t tail_size = jcp.oc_without_padding % isa_simd_width_;
         static constexpr bool use_exact_tail_scalar_bcast = true;
 
         const rhs_arg_static_params_t rhs_arg_static_params {31, rhs_addr_reg,
@@ -90,25 +90,25 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::init_runtime_counters() {
     is_buffer_empty_ = true;
 }
 
-size_t jit_avx512_core_amx_1x1_fwd_kernel_t::out_h_shift() const {
-    return (size_t)jcp.ow * jcp.ngroups * jcp.oc_without_padding;
+dim_t jit_avx512_core_amx_1x1_fwd_kernel_t::out_h_shift() const {
+    return jcp.ow * jcp.ngroups * jcp.oc_without_padding;
 }
 
-size_t jit_avx512_core_amx_1x1_fwd_kernel_t::out_w_shift() const {
-    return (size_t)jcp.ngroups * jcp.oc_without_padding;
+dim_t jit_avx512_core_amx_1x1_fwd_kernel_t::out_w_shift() const {
+    return jcp.ngroups * jcp.oc_without_padding;
 }
 
-size_t jit_avx512_core_amx_1x1_fwd_kernel_t::inp_offset(
-        int h, int w, int icb) const {
-    return (size_t)jcp.typesize_in
+dim_t jit_avx512_core_amx_1x1_fwd_kernel_t::inp_offset(
+        dim_t h, dim_t w, dim_t icb) const {
+    return jcp.typesize_in
             * (h * jcp.iw * jcp.ngroups * jcp.ic_without_padding
                     + w * jcp.ngroups * jcp.ic_without_padding
                     + icb * jcp.ic_block_int_np);
 }
 
-size_t jit_avx512_core_amx_1x1_fwd_kernel_t::out_row_offset(
-        int h, int w, int ocb) const {
-    return (size_t)jcp.typesize_out
+dim_t jit_avx512_core_amx_1x1_fwd_kernel_t::out_row_offset(
+        dim_t h, dim_t w, dim_t ocb) const {
+    return jcp.typesize_out
             * (h * jcp.ow * jcp.ngroups * jcp.oc_without_padding
                     + w * jcp.ngroups * jcp.oc_without_padding
                     + ocb * jcp.oc_block);
@@ -117,9 +117,9 @@ size_t jit_avx512_core_amx_1x1_fwd_kernel_t::out_row_offset(
 void jit_avx512_core_amx_1x1_fwd_kernel_t::update_buffer_pointers() {
     auto buffer_offset
             = [this](bool shift) { return ((buf_count_ + shift) % 2); };
-    int wsp_shift = jcp.typesize_acc * (jcp.wsp_buffer_size / 2);
+    dim_t wsp_shift = jcp.typesize_acc * (jcp.wsp_buffer_size / 2);
 
-    int postop_shift = wsp_shift * buffer_offset(true);
+    dim_t postop_shift = wsp_shift * buffer_offset(true);
 
     mov(reg_postop, wsp_ptr);
     add(reg_postop, postop_shift);
@@ -149,7 +149,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::interleave_store() {
                             {bin_injector_helper_reg_1,
                                     bin_injector_helper_reg_2,
                                     bin_injector_helper_reg_3});
-            const int wsp_row_offset = jcp.typesize_acc
+            const dim_t wsp_row_offset = jcp.typesize_acc
                     * (osb * jcp.nb_oc_blocking * jcp.max_width * jcp.oc_block
                             + ocb * jcp.max_width * jcp.oc_block
                             + row * jcp.oc_block);
@@ -164,7 +164,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::interleave_store() {
         if (row_count_ == exp_row_count) {
             int oh = ((jcp.nb_os_blocking * jcp.tile_width) / jcp.ow);
             int ow = ((jcp.nb_os_blocking * jcp.tile_width) % jcp.ow);
-            size_t out_offset = jcp.typesize_out
+            dim_t out_offset = jcp.typesize_out
                     * (oh * out_h_shift() + ow * out_w_shift());
             add(out_ptr, out_offset);
             row_count_ = 0;
@@ -292,7 +292,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_int8(
     }
 
     if (jcp.src_zero_point) {
-        const int zp_offset = sizeof(int32_t) * ocb * jcp.oc_block;
+        const dim_t zp_offset = sizeof(int32_t) * ocb * jcp.oc_block;
         const Zmm zmm_zp_m = zmm_mask(zmm_zp, mask_flag);
         vpmulld(zmm_zp_m, zmm_src_zp,
                 EVEX_compress_addr(reg_zp_compensation, zp_offset));
@@ -321,7 +321,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_int8(
     if (jcp.with_wei_scales) {
         mov(reg_ptr_wei_scales, ptr[param1 + GET_OFF(wei_scales)]);
         for (int j = 0; j < jcp.tile_width; j++) {
-            const int scale_offset
+            const dim_t scale_offset
                     = jcp.is_oc_scale * (sizeof(float) * ocb * jcp.oc_block);
             const Zmm zmm_r = zmm_out(j);
             const Zmm zmm_r_msk = zmm_mask(zmm_r, mask_flag);
@@ -333,7 +333,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_int8(
 
     if (jcp.with_bias) {
         mov(reg_bias, ptr[param1 + GET_OFF(bias)]);
-        int bias_offset = jcp.typesize_bia * ocb * jcp.oc_block;
+        const dim_t bias_offset = jcp.typesize_bia * ocb * jcp.oc_block;
         auto bias_addr = EVEX_compress_addr(reg_bias, bias_offset);
         cvt2ps(jcp.bia_dt, zmm_bias, bias_addr, mask_flag);
         for (int j = 0; j < jcp.tile_width; j++) {
@@ -446,12 +446,12 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vector_int8(
 
     if (jcp.with_bias) {
         mov(reg_bias, ptr[param1 + GET_OFF(bias)]);
-        int bias_offset = jcp.typesize_bia * ocb * jcp.oc_block;
+        const dim_t bias_offset = jcp.typesize_bia * ocb * jcp.oc_block;
         auto bias_addr = EVEX_compress_addr(reg_bias, bias_offset);
         cvt2ps(jcp.bia_dt, zmm_bias, bias_addr, mask_flag);
     }
     if (jcp.src_zero_point) {
-        const int zp_offset = sizeof(int32_t) * ocb * jcp.oc_block;
+        const dim_t zp_offset = sizeof(int32_t) * ocb * jcp.oc_block;
         const Zmm zmm_zp_m = zmm_mask(zmm_zp, mask_flag);
         vpmulld(zmm_zp_m, zmm_src_zp,
                 EVEX_compress_addr(reg_zp_compensation, zp_offset));
@@ -468,7 +468,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vector_int8(
 
     if (jcp.with_wei_scales) {
         mov(reg_ptr_wei_scales, ptr[param1 + GET_OFF(wei_scales)]);
-        int scale_offset
+        const dim_t scale_offset
                 = jcp.is_oc_scale * (sizeof(float) * ocb * jcp.oc_block);
         const Zmm zmm_out_msk = zmm_mask(zmm_out, mask_flag);
         vmulps(zmm_out_msk, zmm_out,
@@ -517,7 +517,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_bf16(
 
     if (jcp.with_bias) {
         mov(reg_bias, ptr[param1 + GET_OFF(bias)]);
-        const int bias_offset = jcp.typesize_bia * ocb * jcp.oc_block;
+        const dim_t bias_offset = jcp.typesize_bia * ocb * jcp.oc_block;
         const auto bias_addr = EVEX_compress_addr(reg_bias, bias_offset);
         cvt2ps(jcp.bia_dt, zmm_bias, bias_addr, mask_flag);
         for (int j = 0; j < jcp.tile_width; j++) {
@@ -583,7 +583,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vector_bf16(
         }
     }
     if (jcp.with_bias) {
-        int bias_offset = jcp.typesize_bia * ocb * jcp.oc_block;
+        const dim_t bias_offset = jcp.typesize_bia * ocb * jcp.oc_block;
         auto bias_addr = EVEX_compress_addr(reg_bias, bias_offset);
         if (jcp.bia_dt == data_type::bf16) {
             vpmovzxwd(zmm_mask(zmm_bias, mask_flag), bias_addr);
@@ -634,7 +634,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output(
         bool do_store, bool has_tail) {
 
     auto store_output_subblock = [&](int ocb, int osb) {
-        const int wsp_offset = jcp.typesize_acc
+        const dim_t wsp_offset = jcp.typesize_acc
                 * (osb * jcp.nb_oc_blocking * jcp.max_width * jcp.oc_block
                         + ocb * jcp.max_width * jcp.oc_block);
         tilestored(ptr[wsp_ptr + stride_seq + wsp_offset],
@@ -713,11 +713,13 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::icb_loop(bool do_store) {
         }
     };
 
-    auto tileloadd_nt = [this](const Tmm &t1, int offset) {
-        int ab_size = jcp.nb_os2_blocking * jcp.nb_os_blocking * jcp.tile_width
+    auto tileloadd_nt = [this](const Tmm &t1, dim_t offset) {
+        const dim_t ab_size
+                = jcp.nb_os2_blocking * jcp.nb_os_blocking * jcp.tile_width
                 * (jcp.nb_ic_int * jcp.ic_block_int_np
                         + jcp.nb_oc_blocking * jcp.oc_block);
-        int c_size = (jcp.nb_ic_int * jcp.ic_block_int_np * jcp.nb_oc_blocking
+        const dim_t c_size = (jcp.nb_ic_int * jcp.ic_block_int_np
+                * jcp.nb_oc_blocking
                 * jcp.oc_block);
         // If the size of  src + wei used in the kernel cannot fit into L1 cache,
         // use non-temporal load of weights to help keep src in L1 cache
@@ -730,19 +732,20 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::icb_loop(bool do_store) {
 
     auto compute_block = [&](int icb, int os_b) {
         for (int osb = 0; osb < os_b; osb++) {
-            int ih = ((osb * jcp.tile_width) / jcp.ow) * jcp.stride_h;
-            int iw = ((osb * jcp.tile_width) % jcp.ow) * jcp.stride_w;
+            dim_t ih = ((osb * jcp.tile_width) / jcp.ow) * jcp.stride_h;
+            dim_t iw = ((osb * jcp.tile_width) % jcp.ow) * jcp.stride_w;
             tileloadd(Tmm(get_inp_tensor(osb)),
                     ptr[inp_ptr + stride_nhwc + inp_offset(ih, iw, icb)]);
         }
         for (int ocb = 0; ocb < jcp.nb_oc_blocking; ocb++) {
-            const int wei_offset = jcp.typesize_in
+            const dim_t wei_offset = jcp.typesize_in
                     * (ocb
                                     * utils::rnd_up(jcp.ic_without_padding,
                                             jcp.ic_block_int)
                                     * jcp.oc_block
                             + icb * jcp.ic_block_int_np * jcp.oc_block);
-            tileloadd_nt(Tmm(get_wei_tensor(ocb)), wei_offset);
+            tileloadd_nt(
+                    Tmm(get_wei_tensor(ocb)), static_cast<int>(wei_offset));
             for (int osb = 0; osb < os_b; osb++) {
                 tdpbxxd(Tmm(get_out_tensor(osb, ocb)), Tmm(get_inp_tensor(osb)),
                         Tmm(get_wei_tensor(ocb)));
@@ -765,7 +768,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::icb_loop(bool do_store) {
         mov(reg_tilebuff, ptr[param1 + GET_OFF(src_prf)]);
         for (int ocb = 0; ocb < jcp.nb_oc_blocking; ocb++)
             for (int osb = 0; osb < os_b; osb++) {
-                const int wsp_offset = jcp.typesize_acc
+                const dim_t wsp_offset = jcp.typesize_acc
                         * (osb * jcp.nb_oc_blocking * jcp.max_width
                                         * jcp.oc_block
                                 + ocb * jcp.max_width * jcp.oc_block);
@@ -788,7 +791,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::icb_loop(bool do_store) {
 
     auto compute_icb_loop = [&](int os_b = 1) {
         int shift = (get_ic_tail() && os_b == 1) ? 1 : 0;
-        int nb_ic_int = jcp.nb_ic_int - shift;
+        const int nb_ic_int = static_cast<int>(jcp.nb_ic_int - shift);
 
         if (jcp.src_zero_point) {
             mov(reg_zp_compensation, ptr[param1 + GET_OFF(zp_compensation)]);
@@ -814,7 +817,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::icb_loop(bool do_store) {
 
     Label label_last_os, label_compute_done, label_tail, label_done;
 
-    int stride_nhwc_ = jcp.typesize_in * jcp.ngroups * jcp.ic_without_padding
+    dim_t stride_nhwc_ = jcp.typesize_in * jcp.ngroups * jcp.ic_without_padding
             * jcp.stride_w;
     mov(stride_nhwc, stride_nhwc_);
 
@@ -851,19 +854,19 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::osb_loop(int nb_os) {
         int oh = (((osi + 1) * jcp.nb_os_blocking * jcp.tile_width) / jcp.ow);
         int ow = (((osi + 1) * jcp.nb_os_blocking * jcp.tile_width) % jcp.ow);
         if (do_store) {
-            size_t out_offset = jcp.typesize_out
+            dim_t out_offset = jcp.typesize_out
                     * (oh * out_h_shift() + ow * out_w_shift());
             add(out_ptr, out_offset);
         }
 
-        int ih = oh * jcp.stride_h;
-        int iw = ow * jcp.stride_w;
+        dim_t ih = oh * jcp.stride_h;
+        dim_t iw = ow * jcp.stride_w;
         add(inp_ptr, inp_offset(ih, iw, 0));
     }
 }
 
 int jit_avx512_core_amx_1x1_fwd_kernel_t::get_ic_tail() const {
-    return (jcp.ic_without_padding % jcp.ic_block_int_np);
+    return static_cast<int>(jcp.ic_without_padding % jcp.ic_block_int_np);
 }
 
 void jit_avx512_core_amx_1x1_fwd_kernel_t::generate() {
@@ -955,9 +958,10 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::tile_configure(char *tcfg_buff) {
         buff->palette_id = amx::get_target_palette();
     };
 
-    int Ac = jcp.typesize_in
+    int Ac = static_cast<int>(
+            jcp.typesize_in
             * ((jcp.nb_ic_int == 1 && get_ic_tail()) ? get_ic_tail()
-                                                     : jcp.ic_block_int_np);
+                                                     : jcp.ic_block_int_np));
 
     cfg_tiles((palette_config_t *)tcfg_buff, Ac);
     if (jcp.nb_ic_int > 1 && get_ic_tail()) {
@@ -1193,15 +1197,19 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                                     p, dst_d));
     VDISPATCH_CONV_IC(post_ops_ok_, VERBOSE_UNSUPPORTED_POSTOP);
 
-    jcp.typesize_in = types::data_type_size(src_d.data_type());
-    jcp.typesize_out = types::data_type_size(dst_d.data_type());
-    jcp.typesize_bia
-            = jcp.with_bias ? types::data_type_size(bias_d.data_type()) : 0;
+    jcp.typesize_in
+            = static_cast<int>(types::data_type_size(src_d.data_type()));
+    jcp.typesize_out
+            = static_cast<int>(types::data_type_size(dst_d.data_type()));
+    jcp.typesize_bia = jcp.with_bias
+            ? static_cast<int>(types::data_type_size(bias_d.data_type()))
+            : 0;
     jcp.typesize_acc = sizeof(int32_t);
 
-    jcp.nb_ic = jcp.ic / jcp.ic_block;
-    jcp.nb_oc = jcp.oc / jcp.oc_block;
-    jcp.nb_ic_int = div_up(jcp.ic_without_padding, jcp.ic_block_int_np);
+    jcp.nb_ic = static_cast<int>(jcp.ic / jcp.ic_block);
+    jcp.nb_oc = static_cast<int>(jcp.oc / jcp.oc_block);
+    jcp.nb_ic_int = static_cast<int>(
+            div_up(jcp.ic_without_padding, jcp.ic_block_int_np));
 
     jcp.max_width = amx::get_max_rows(amx::get_target_palette());
     VDISPATCH_CONV_IC(jcp.max_width > 0, VERBOSE_BAD_PARAM, "max_width = 0");
@@ -1209,8 +1217,8 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     const int size_treshold = 32;
     const int min_width
             = 1; // TODO: Possible optimizations: do not use small values
-    const int spatial = jcp.od * jcp.oh;
-    const int os = jcp.od * jcp.oh * jcp.ow;
+    const dim_t spatial = jcp.od * jcp.oh;
+    const dim_t os = jcp.od * jcp.oh * jcp.ow;
 
     jcp.tile_width = 1;
     for (int s_size = jcp.max_width; s_size >= min_width; s_size--) {
@@ -1221,8 +1229,8 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         }
     }
     if (jcp.tile_width == 1) {
-        jcp.tile_width = nstl::min(jcp.max_width, os);
-        jcp.tile_tail = os % jcp.max_width;
+        jcp.tile_width = static_cast<int>(nstl::min<dim_t>(jcp.max_width, os));
+        jcp.tile_tail = static_cast<int>(os % jcp.max_width);
         for (int i = jcp.max_width; i >= min_width; i--) {
             int i_tail = os % i;
             if (i_tail > jcp.tile_tail || i_tail == 0) {
@@ -1255,7 +1263,7 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.nb_oc_blocking = (jcp.nb_oc % 2 == 0) ? 2 : 1;
     jcp.nb_ic_blocking = 1;
     jcp.nb_os_blocking = (os / jcp.tile_width > 2) ? 2 : 1;
-    jcp.nb_os = os / jcp.tile_width;
+    jcp.nb_os = static_cast<int>(os / jcp.tile_width);
     jcp.nb_os2_blocking = (jcp.nb_os_blocking > 1)
             ? (jcp.nb_os % jcp.nb_os_blocking == 0) ? 2 : 1
             : 1;
@@ -1265,7 +1273,8 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     int ops_tile_store
             = jcp.nb_oc_blocking * jcp.nb_os_blocking * jcp.tile_width;
-    int avaliable_ops = jcp.nb_ic_int * jcp.nb_oc_blocking * jcp.nb_os_blocking;
+    const dim_t avaliable_ops
+            = jcp.nb_ic_int * jcp.nb_oc_blocking * jcp.nb_os_blocking;
     jcp.per_one_pstore
             = (avaliable_ops) ? ops_tile_store / avaliable_ops + 1 : 0;
     if (jcp.per_one_pstore > 12) jcp.per_one_pstore = 0;

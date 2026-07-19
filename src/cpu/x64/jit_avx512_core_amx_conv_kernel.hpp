@@ -80,31 +80,35 @@ private:
     const Xbyak::Opmask kmask_ic_block = Xbyak::Opmask(1);
     const Xbyak::Opmask ktail_mask = Xbyak::Opmask(2);
 
-    void prepare_output(int ur_w);
-    void store_output(int ur_w, bool last_oc_block_flag);
-    void compute_ker(int ur_w, int pad_l, int pad_r,
+    void prepare_output(dim_t ur_w);
+    void store_output(dim_t ur_w, bool last_oc_block_flag);
+    void compute_ker(dim_t ur_w, dim_t pad_l, dim_t pad_r,
             ic_block_t last_ic_block_flag, bool padded);
-    void kh_loop(int ur_w, int pad_l, int pad_r, ic_block_t last_ic_block_flag,
-            bool handle_h_pad);
-    void kd_loop(int ur_w, int pad_l, int pad_r, ic_block_t last_ic_block_flag,
-            bool handle_h_pad);
-    void icb_loop(int ur_w, int pad_l, int pad_r, bool handle_h_pad);
+    void kh_loop(dim_t ur_w, dim_t pad_l, dim_t pad_r,
+            ic_block_t last_ic_block_flag, bool handle_h_pad);
+    void kd_loop(dim_t ur_w, dim_t pad_l, dim_t pad_r,
+            ic_block_t last_ic_block_flag, bool handle_h_pad);
+    void icb_loop(dim_t ur_w, dim_t pad_l, dim_t pad_r, bool handle_h_pad);
     void unroll_width(const bool h_padding);
 
     void generate() override;
 
-    Xbyak::Zmm zmm_out(int i_ur, int i_oc) const {
-        int idx = i_ur * jcp.nb_oc_blocking + i_oc;
+    Xbyak::Zmm zmm_out(dim_t i_ur, dim_t i_oc) const {
+        const dim_t idx = i_ur * jcp.nb_oc_blocking + i_oc;
         assert(idx < max_regs_ur);
-        return Xbyak::Zmm(idx);
+        return Xbyak::Zmm(static_cast<int>(idx));
     }
-    int get_ow_start(int ki, int pad_l) const {
+    dim_t get_ow_start(dim_t ki, dim_t pad_l) const {
         return utils::div_up(
-                nstl::max(0, pad_l - ki * (jcp.dilate_w + 1)), jcp.stride_w);
+                nstl::max<dim_t>(0, pad_l - ki * (jcp.dilate_w + 1)),
+                jcp.stride_w);
     }
-    int get_ow_end(int ur_w, int ki, int pad_r) const {
-        int filter_overlap = pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1);
-        return ur_w - utils::div_up(nstl::max(0, filter_overlap), jcp.stride_w);
+    dim_t get_ow_end(dim_t ur_w, dim_t ki, dim_t pad_r) const {
+        const dim_t filter_overlap
+                = pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1);
+        return ur_w
+                - utils::div_up(
+                        nstl::max<dim_t>(0, filter_overlap), jcp.stride_w);
     }
 };
 
@@ -184,8 +188,8 @@ private:
     const Xbyak::Zmm &zmm_zero = zmm1;
 
     void generate() override;
-    void copy_row(int icb);
-    void copy_row_body(int lpad, int iw_len, int icb);
+    void copy_row(dim_t icb);
+    void copy_row_body(dim_t lpad, dim_t iw_len, dim_t icb);
     void copy_row_reduced_lowering();
 };
 
@@ -204,11 +208,11 @@ struct jit_avx512_core_amx_fwd_kernel_t : public jit_generator_t {
     static status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
             const jit_conv_conf_t &jcp, const primitive_attr_t &attr);
 
-    inline int accum_with_upper_bound(
-            int upper_bound, int lower_value, int upper_value) {
-        return nstl::min(upper_bound,
-                nstl::min(upper_bound, lower_value)
-                        + nstl::max(0, upper_bound - upper_value));
+    inline dim_t accum_with_upper_bound(
+            dim_t upper_bound, dim_t lower_value, dim_t upper_value) {
+        return nstl::min<dim_t>(upper_bound,
+                nstl::min<dim_t>(upper_bound, lower_value)
+                        + nstl::max<dim_t>(0, upper_bound - upper_value));
     }
 
     /*  Calculate and store the limits relevant to 'ow_block'. These limits
@@ -291,9 +295,10 @@ private:
     bool is_buffer_empty_ = true;
 
     struct w_pad_output_t {
-        int l_pad_output;
-        int r_pad_output;
-        w_pad_output_t(int l_, int r_) : l_pad_output(l_), r_pad_output(r_) {}
+        dim_t l_pad_output;
+        dim_t r_pad_output;
+        w_pad_output_t(dim_t l_, dim_t r_)
+            : l_pad_output(l_), r_pad_output(r_) {}
     };
     std::queue<w_pad_output_t> w_padding;
 
@@ -346,24 +351,25 @@ private:
     const Xbyak::Reg64 bin_injector_helper_reg_3 = r11;
 
     // AUX: Steps, shifts and offsets
-    size_t get_inp_icb_step() const;
-    size_t get_wei_icb_step() const;
-    size_t get_inp_d_step() const;
-    size_t get_inp_h_step() const;
-    size_t get_wei_d_step() const;
-    size_t get_wei_h_step() const;
-    size_t get_out_ocb_offset(int ohb, int ocb, size_t typesize) const;
-    size_t get_out_row_offset(int ohb, int ocb, int j, size_t typesize) const;
-    size_t get_out_shift(int width, size_t typesize) const;
-    size_t get_wsp_ocb_offset(int ohb, int ocb) const;
-    size_t get_wsp_row_offset(int ohb, int ocb, int j) const;
-    size_t get_wsp_shift() const;
-    size_t get_wei_offset(int ocb, int kw) const;
-    size_t get_inp_shift() const;
-    size_t get_inp_offset(int ohb, int kw) const;
-    size_t get_zp_comp_offset(int ocb, int zp_h, int zp_w) const;
-    int get_zp_index_offset(
-            int index, int mid, int s_pad_output, int e_pad_output);
+    dim_t get_inp_icb_step() const;
+    dim_t get_wei_icb_step() const;
+    dim_t get_inp_d_step() const;
+    dim_t get_inp_h_step() const;
+    dim_t get_wei_d_step() const;
+    dim_t get_wei_h_step() const;
+    dim_t get_out_ocb_offset(dim_t ohb, dim_t ocb, dim_t typesize) const;
+    dim_t get_out_row_offset(
+            dim_t ohb, dim_t ocb, dim_t j, dim_t typesize) const;
+    dim_t get_out_shift(dim_t width, dim_t typesize) const;
+    dim_t get_wsp_ocb_offset(dim_t ohb, dim_t ocb) const;
+    dim_t get_wsp_row_offset(dim_t ohb, dim_t ocb, dim_t j) const;
+    dim_t get_wsp_shift() const;
+    dim_t get_wei_offset(dim_t ocb, dim_t kw) const;
+    dim_t get_inp_shift() const;
+    dim_t get_inp_offset(dim_t ohb, dim_t kw) const;
+    dim_t get_zp_comp_offset(dim_t ocb, dim_t zp_h, dim_t zp_w) const;
+    dim_t get_zp_index_offset(
+            dim_t index, dim_t mid, dim_t s_pad_output, dim_t e_pad_output);
 
     int get_out_tensor(int h, int i, bool is_h_tail = false) const;
     int get_inp_tensor(int h, bool is_h_tail = false) const;
@@ -371,9 +377,9 @@ private:
 
     void prepare_output(int tail);
     void init_runtime_counters(bool start_with_last_tile_block);
-    size_t reduce_to_block(const int block_size, const int pad_output);
-    size_t reduce_to_blocked_dims(const int dim_size, const int block_size,
-            const int s_pad_output, const int e_pad_output);
+    dim_t reduce_to_block(const dim_t block_size, const dim_t pad_output);
+    dim_t reduce_to_blocked_dims(const dim_t dim_size, const dim_t block_size,
+            const dim_t s_pad_output, const dim_t e_pad_output);
     void cvt2ps(data_type_t type_in, const Xbyak::Zmm &ymm_in,
             const Xbyak::Operand &op, bool mask_flag = false);
     Xbyak::Zmm zmm_out(const int idx) const {
@@ -393,31 +399,31 @@ private:
             const bool mask_flag);
     void apply_postops(const Xbyak::Zmm &zmm_out, const float *p_sum_scale,
             const int32_t *p_sum_zp, const Xbyak::Address &addr,
-            const size_t off, const bool mask_flag);
+            const dim_t off, const bool mask_flag);
     inline void store_output_ymm_bf16(
             const int idx, const Xbyak::Address &addr, const bool mask_flag);
     void store_output_vector_bf16(
-            const Xbyak::Zmm &zmm_out, int ocb, int h, int w);
-    void store_output_vector_int8(const Xbyak::Zmm &zmm_out, int ocb, int h,
-            int w, const bool compute_zp, const int zp_h, const int zp_w);
-    void store_output_vector(const Xbyak::Zmm &zmm_out, int ocb, int h, int w,
-            const bool compute_zp = false, const int zp_h = 0,
-            const int zp_w = 0);
-    void store_output(int width, int tail, bool do_store,
-            const bool handle_h_block, const int t_pad_output,
-            const int b_pad_output, const int l_pad_output,
-            const int r_pad_output, const bool is_last_oh_block,
+            const Xbyak::Zmm &zmm_out, dim_t ocb, dim_t h, dim_t w);
+    void store_output_vector_int8(const Xbyak::Zmm &zmm_out, dim_t ocb, dim_t h,
+            dim_t w, const bool compute_zp, const dim_t zp_h, const dim_t zp_w);
+    void store_output_vector(const Xbyak::Zmm &zmm_out, dim_t ocb, dim_t h,
+            dim_t w, const bool compute_zp = false, const dim_t zp_h = 0,
+            const dim_t zp_w = 0);
+    void store_output(dim_t width, int tail, bool do_store,
+            const bool handle_h_block, const dim_t t_pad_output,
+            const dim_t b_pad_output, const dim_t l_pad_output,
+            const dim_t r_pad_output, const bool is_last_oh_block,
             const bool zp_3d_pad = false);
-    void interleave_store(int width, int const t_pad_output,
-            int const b_pad_output, const bool zp_3d_pad = false);
-    void compute_icb_loop(int width, bool do_store, const bool handle_h_block,
-            const int t_pad_output, const int b_pad_output,
-            const int l_pad_output, const int r_pad_output,
+    void interleave_store(dim_t width, dim_t const t_pad_output,
+            dim_t const b_pad_output, const bool zp_3d_pad = false);
+    void compute_icb_loop(dim_t width, bool do_store, const bool handle_h_block,
+            const dim_t t_pad_output, const dim_t b_pad_output,
+            const dim_t l_pad_output, const dim_t r_pad_output,
             const bool zp_3d_pad, const bool is_last_oh_block = false);
-    void dispatch_icb_loop(int width, bool do_store, const int l_pad_output,
-            const int r_pad_output, const bool zp_3d_pad);
-    void dispatch_zp_3d_compute(int width, bool do_store,
-            const int l_pad_output, const int r_pad_output);
+    void dispatch_icb_loop(dim_t width, bool do_store, const dim_t l_pad_output,
+            const dim_t r_pad_output, const bool zp_3d_pad);
+    void dispatch_zp_3d_compute(dim_t width, bool do_store,
+            const dim_t l_pad_output, const dim_t r_pad_output);
     void compute_ow_loop();
 
     void generate() override;
@@ -560,27 +566,27 @@ private:
     const Xbyak::Zmm zmm_sum_zp = zmm28;
 
     // AUX: Steps, shifts and offsets
-    size_t get_inp_ocb_step() const;
-    size_t get_inp_offset(int ihb, int kh, int kw) const;
-    size_t get_inp_shift() const;
-    size_t get_inp_d_step() const;
-    size_t get_out_icb_offset(int ihb, int icb) const;
-    size_t get_out_row_offset(int ihb, int icb, int j) const;
-    size_t get_out_shift(int width) const;
-    size_t get_wei_kh_step() const;
-    size_t get_wei_ocb_step() const;
-    size_t get_wei_offset(int icb, int kh, int kw) const;
-    size_t get_wei_d_step() const;
-    size_t get_wsp_icb_offset(int ihb, int icb) const;
-    size_t get_wsp_row_offset(int ihb, int icb, int j) const;
-    size_t get_wsp_shift() const;
+    dim_t get_inp_ocb_step() const;
+    dim_t get_inp_offset(dim_t ihb, dim_t kh, dim_t kw) const;
+    dim_t get_inp_shift() const;
+    dim_t get_inp_d_step() const;
+    dim_t get_out_icb_offset(dim_t ihb, dim_t icb) const;
+    dim_t get_out_row_offset(dim_t ihb, dim_t icb, dim_t j) const;
+    dim_t get_out_shift(dim_t width) const;
+    dim_t get_wei_kh_step() const;
+    dim_t get_wei_ocb_step() const;
+    dim_t get_wei_offset(dim_t icb, dim_t kh, dim_t kw) const;
+    dim_t get_wei_d_step() const;
+    dim_t get_wsp_icb_offset(dim_t ihb, dim_t icb) const;
+    dim_t get_wsp_row_offset(dim_t ihb, dim_t icb, dim_t j) const;
+    dim_t get_wsp_shift() const;
 
     int get_out_tensor(int h, int i) const;
     int get_inp_tensor(int h) const;
     int get_wei_tensor(int i) const;
 
     inline bool gaps_in_store() const {
-        const int gen_kd = (jcp.kd - 1) * (jcp.dilate_d + 1) + 1;
+        const dim_t gen_kd = (jcp.kd - 1) * (jcp.dilate_d + 1) + 1;
         return gen_kd < jcp.stride_d || jcp.dilate_d > 0;
     }
 
@@ -596,16 +602,17 @@ private:
             const Xbyak::Zmm &zmm_in, bool mask_flag, bool store = false);
 
     void store_output_vector_xf16(
-            const Xbyak::Zmm &zmm_out, int icb, int ihb, int iw);
+            const Xbyak::Zmm &zmm_out, dim_t icb, dim_t ihb, dim_t iw);
     void store_output_vector_int8(
-            const Xbyak::Zmm &zmm_out, int icb, int ihb, int iw);
+            const Xbyak::Zmm &zmm_out, dim_t icb, dim_t ihb, dim_t iw);
     void store_output_vector(
-            const Xbyak::Zmm &zmm_out, int icb, int ih, int iw);
-    void store_output(int width, bool do_store);
+            const Xbyak::Zmm &zmm_out, dim_t icb, dim_t ih, dim_t iw);
+    void store_output(dim_t width, bool do_store);
     void skipped_interleave_store();
-    void interleave_store(int width);
-    void compute_ocb_loop(int width, bool do_interleave_store);
-    void compute_kd_loop(int width, bool do_store, bool handle_skipped_stores);
+    void interleave_store(dim_t width);
+    void compute_ocb_loop(dim_t width, bool do_interleave_store);
+    void compute_kd_loop(
+            dim_t width, bool do_store, bool handle_skipped_stores);
     void compute_iw_loop();
 
     void generate() override;
@@ -722,7 +729,7 @@ private:
         return jcp.typesize_in * (w_off + jcp.tr_ow * jcp.oc_block * hd_idx);
     }
 
-    inline dim_t get_kernel_offset(int ic_idx, dim_t ksp_idx) const {
+    inline dim_t get_kernel_offset(dim_t ic_idx, dim_t ksp_idx) const {
         return jcp.typesize_out * jcp.oc_block
                 * (ksp_idx * jcp.ic_block + ic_idx);
     }

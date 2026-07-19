@@ -88,16 +88,17 @@ private:
     Xbyak::Zmm get_acc_reg(int idx);
 
     int get_ow_start(int ki, int pad_l) const {
-        return utils::div_up(
-                nstl::max(0, pad_l - ki * (jcp.dilate_w + 1)), jcp.stride_w);
+        return static_cast<int>(utils::div_up(
+                nstl::max<dim_t>(0, pad_l - ki * (jcp.dilate_w + 1)),
+                jcp.stride_w));
     }
 
     int get_ow_end(int ur_w, int ki, int pad_r) const {
         return ur_w
-                - utils::div_up(
-                        nstl::max(0,
+                - static_cast<int>(utils::div_up(
+                        nstl::max<dim_t>(0,
                                 pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1)),
-                        jcp.stride_w);
+                        jcp.stride_w));
     }
 
     inline bool is_src_layout_nxc() const {
@@ -242,7 +243,8 @@ private:
         return Xbyak::Zmm(idx + idx_start);
     }
     inline Xbyak::Zmm get_input_reg(int idx) const {
-        const int i_idx = idx_start + jcp.kw + idx % jcp.kw;
+        const int i_idx
+                = static_cast<int>(idx_start + jcp.kw + idx % jcp.kw);
         assert(i_idx <= get_max_regs());
         return Xbyak::Zmm(i_idx);
     }

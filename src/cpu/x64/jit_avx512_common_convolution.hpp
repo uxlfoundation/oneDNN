@@ -232,8 +232,9 @@ struct jit_avx512_common_convolution_bwd_weights_t : public primitive_t {
             const size_t max_buffer_size = jcp_.nthr * 3 * 5 * 5 * 16 * 16;
             if (with_bias()) {
                 reducer_bia_conf_.init(reduce_balancer_t(jcp_.nthr,
-                        jcp_.oc_block, jcp_.ngroups * jcp_.nb_oc, jcp_.mb,
-                        max_buffer_size, true));
+                        static_cast<int>(jcp_.oc_block),
+                        static_cast<int>(jcp_.ngroups * jcp_.nb_oc),
+                        static_cast<int>(jcp_.mb), max_buffer_size, true));
             }
         }
     };

@@ -57,12 +57,12 @@ protected:
 
     void init_scratchpad_base(memory_tracking::registrar_t &scratchpad) const;
 
-    int get_os_block(bool try_to_adjust, bool is_adjustment) const;
-    int get_oc_block(bool try_to_adjust = false) const;
+    dim_t get_os_block(bool try_to_adjust, bool is_adjustment) const;
+    dim_t get_oc_block(bool try_to_adjust = false) const;
     std::unordered_map<int, format_tag_t> get_desired_weights_tag() const;
 
-    int get_adjusted_oc_block() const;
-    int get_nb_oc_blocking(bool is_adjustment = false) const;
+    dim_t get_adjusted_oc_block() const;
+    dim_t get_nb_oc_blocking(bool is_adjustment = false) const;
     bool adjust_thread_balance() const;
 
     format_tag_t get_brgemm_ip_weights_tag(
@@ -121,9 +121,9 @@ struct jit_brgemm_ip_bwd_w_conf_t : jit_brgemm_ip_conf_t {
     void init_scratchpad(memory_tracking::registrar_t &scratchpad) const;
 
 private:
-    void thread_balance(int &nb_os_blocking_, int &nb_oc_blocking_,
-            int &nb_ic_blocking_, int &nthr_, int &nthr_mb_, int &nthr_oc_b_,
-            int &nthr_ic_b_) const;
+    void thread_balance(dim_t &nb_os_blocking_, dim_t &nb_oc_blocking_,
+            dim_t &nb_ic_blocking_, dim_t &nthr_, dim_t &nthr_mb_, dim_t &nthr_oc_b_,
+            dim_t &nthr_ic_b_) const;
 
     void choose_loop_order();
 };

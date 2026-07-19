@@ -123,32 +123,33 @@ private:
     const Vmm vmm_prev_dst_ = vmm_zero_;
     const Vmm vmm_sum_zp_ = vmm_tmp_;
 
-    Vmm vmm_out(int i_ur, int i_oc) const;
-    Vmm vmm_inp(int i_ic, int nb_x_blocking) const;
+    Vmm vmm_out(dim_t i_ur, dim_t i_oc) const;
+    Vmm vmm_inp(dim_t i_ic, dim_t nb_x_blocking) const;
 
-    int get_ow_start(int ki, int l_overflow) const noexcept;
-    int get_ow_end(int ur_w, int ki, int r_overflow) const noexcept;
-    int get_blocking_size() const noexcept;
-    int get_tail_size() const noexcept;
+    dim_t get_ow_start(dim_t ki, dim_t l_overflow) const noexcept;
+    dim_t get_ow_end(dim_t ur_w, dim_t ki, dim_t r_overflow) const noexcept;
+    dim_t get_blocking_size() const noexcept;
+    dim_t get_tail_size() const noexcept;
 
-    void prepare_output(int ur_w);
-    void apply_postops(int ur_w, bool last_oc_block, const float *p_sum_scale,
+    void prepare_output(dim_t ur_w);
+    void apply_postops(dim_t ur_w, bool last_oc_block, const float *p_sum_scale,
             const int32_t *p_sum_zp);
-    void store_output(int ur_w, bool last_oc_block);
-    void compute_ker(int ur_w, int l_overflow, int r_overflow,
+    void store_output(dim_t ur_w, bool last_oc_block);
+    void compute_ker(dim_t ur_w, dim_t l_overflow, dim_t r_overflow,
             ker_block_t last_ic_block_flag, bool h_padded = false);
     void compute(const Vmm vreg_acc, const Vmm vreg_wei, const Vmm vreg_src);
     std::function<Vmm()> prepare_round_robin_vmm_inp_generator(
-            int ur_w) const noexcept;
+            dim_t ur_w) const noexcept;
     void apply_zp_src_pad_str_comp(
-            int ur_w, int l_overflow, int r_overflow, bool h_padded);
-    void append_zp_src_pad_str_comp(int ur_w, int l_overflow, int r_overflow,
-            bool h_padded, bool last_oc_block);
-    void kh_loop(int ur_w, int pad_l, int pad_r, ker_block_t last_ker_block);
-    void icb_loop(int ur_w, int pad_l, int pad_r, bool last_block);
+            dim_t ur_w, dim_t l_overflow, dim_t r_overflow, bool h_padded);
+    void append_zp_src_pad_str_comp(dim_t ur_w, dim_t l_overflow,
+            dim_t r_overflow, bool h_padded, bool last_oc_block);
+    void kh_loop(
+            dim_t ur_w, dim_t pad_l, dim_t pad_r, ker_block_t last_ker_block);
+    void icb_loop(dim_t ur_w, dim_t pad_l, dim_t pad_r, bool last_block);
     void generate() override;
     void cvt2ps(data_type_t type_in, const Vmm vmm_in, const Reg64 reg,
-            int offset, int load_size);
+            dim_t offset, dim_t load_size);
 };
 
 template <cpu_isa_t isa>

@@ -205,7 +205,7 @@ private:
         std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
                 postops_injector_;
 
-        void apply_postops(const bool apply_mask, const size_t out_offset,
+        void apply_postops(const bool apply_mask, const dim_t out_offset,
                 const int vmm_idx);
         void generate() override;
         int vreg_dst_idx(int iter) {
@@ -369,7 +369,7 @@ private:
             const conv_gemm_conf_t &jcp, const acc_data_t *weights_reduce_base,
             diff_wei_data_t *weights_base) const;
     void bf16_bwd_weights_reduction_par_nspc(int ithr_mb, int nthr_mb,
-            size_t g_start, size_t g_end, const conv_gemm_conf_t &jcp,
+            dim_t g_start, dim_t g_end, const conv_gemm_conf_t &jcp,
             const acc_data_t *weights_reduce_base,
             diff_wei_data_t *weights_base) const;
 

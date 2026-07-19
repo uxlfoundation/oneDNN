@@ -2127,13 +2127,14 @@ private:
     const Address ARG_A = ptr[rsp + OFFSET_SHADOWSPACE + STACKSIZE];
     const Address ARG_LDA
             = qword[rsp + OFFSET_SHADOWSPACE + sizeof(float *) + STACKSIZE];
-    const int stackOffset = OFFSET_SHADOWSPACE + sizeof(float *) + STACKSIZE;
+    const int stackOffset = OFFSET_SHADOWSPACE + sizeof(float *)
+            + static_cast<int>(STACKSIZE);
     const Reg64 A = rsi;
     const Reg64 LDA = rdi;
 #else
     const Reg64 ARG_A = r8;
     const Reg64 ARG_LDA = r9;
-    const int stackOffset = STACKSIZE;
+    const int stackOffset = static_cast<int>(STACKSIZE);
     const Reg64 A = ARG_A;
     const Reg64 LDA = ARG_LDA;
 #endif

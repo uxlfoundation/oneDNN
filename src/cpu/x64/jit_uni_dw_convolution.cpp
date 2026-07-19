@@ -77,24 +77,24 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
             bias = const_cast<float *>(bias_in);
     }
 
-    const int dil_h = jcp.dilate_h + 1;
-    const int str_h = jcp.stride_h;
+    const dim_t dil_h = jcp.dilate_h + 1;
+    const dim_t str_h = jcp.stride_h;
     const int ch_step = jcp.nb_ch_blocking;
-    const int ow = 0;
-    const int iw = 0;
-    const int kw = 0;
-    const int chb_work = utils::div_up(jcp.nb_ch, ch_step);
+    const dim_t ow = 0;
+    const dim_t iw = 0;
+    const dim_t kw = 0;
+    const dim_t chb_work = utils::div_up(jcp.nb_ch, ch_step);
     const auto is_src_layout_nxc = jcp.src_tag == format_tag::nhwc;
     const auto is_dst_layout_nxc = jcp.dst_tag == format_tag::nhwc;
 
-    const int work_amount = jcp.mb * chb_work * jcp.oh;
+    const dim_t work_amount = jcp.mb * chb_work * jcp.oh;
     const auto nthr = jcp.nthr;
 
     parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
-        int start {0}, end {0};
+        dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        int n {0}, chb {0}, oh {0};
+        dim_t n {0}, chb {0}, oh {0};
         if (jcp.loop_order == loop_ngcw)
             utils::nd_iterator_init(
                     start, n, jcp.mb, chb, chb_work, oh, jcp.oh);
@@ -107,26 +107,24 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
         auto iwork = start;
         while (iwork < end) {
 
-            int ch = chb * ch_step;
+            const dim_t ch = chb * ch_step;
 
-            const int i_t_overflow
-                    = nstl::max(0, (int)(jcp.t_pad - oh * str_h));
-            const int i_b_overflow
-                    = nstl::max(jcp.ih,
-                              (int)(oh * str_h + (jcp.kh - 1) * dil_h
-                                      - jcp.t_pad + 1))
+            const dim_t i_t_overflow
+                    = nstl::max<dim_t>(0, jcp.t_pad - oh * str_h);
+            const dim_t i_b_overflow
+                    = nstl::max<dim_t>(jcp.ih,
+                              oh * str_h + (jcp.kh - 1) * dil_h - jcp.t_pad + 1)
                     - jcp.ih;
 
-            const int ih
-                    = nstl::max((int)(oh * str_h - jcp.t_pad
-                                        + div_up(i_t_overflow, dil_h) * dil_h),
-                            0);
-            const int kh = div_up(i_t_overflow, dil_h);
-            const int kh_padding = jcp.kh - div_up(i_t_overflow, dil_h)
+            const dim_t ih = nstl::max<dim_t>(0,
+                    oh * str_h - jcp.t_pad
+                            + div_up(i_t_overflow, dil_h) * dil_h);
+            const dim_t kh = div_up(i_t_overflow, dil_h);
+            const dim_t kh_padding = jcp.kh - div_up(i_t_overflow, dil_h)
                     - div_up(i_b_overflow, dil_h);
 
-            const auto ic_off_idx = is_src_layout_nxc ? ch * jcp.ch_block : ch;
-            const auto oc_off_idx = is_dst_layout_nxc ? ch * jcp.ch_block : ch;
+            const dim_t ic_off_idx = is_src_layout_nxc ? ch * jcp.ch_block : ch;
+            const dim_t oc_off_idx = is_dst_layout_nxc ? ch * jcp.ch_block : ch;
 
             auto par_conv = jit_conv_args_t();
             par_conv.src = jcp.is_fused_conv
@@ -137,12 +135,13 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
             par_conv.filt = &weights[weights_d.blk_off(ch, 0, 0, kh, kw)];
             if (bias) par_conv.bias = &bias[bias_d.blk_off(ch * jcp.ch_block)];
 
-            par_conv.kh_padding = (size_t)nstl::max(0, kh_padding);
+            par_conv.kh_padding
+                    = static_cast<size_t>(nstl::max<dim_t>(0, kh_padding));
 
             assert(IMPLICATION(
                     jcp.loop_order == loop_nhwcg, is_src_layout_nxc));
             // For is_src_layout_nxc maximize jit work along contiguous dim.
-            const int work_rem = end - iwork;
+            const dim_t work_rem = end - iwork;
             par_conv.load_work = utils::this_block_size(ch * jcp.ch_block,
                     jcp.oc_without_padding,
                     (is_src_layout_nxc ? work_rem * ch_step : ch_step)
@@ -191,38 +190,39 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
 
     const auto &jcp = pd()->jcp_;
 
-    auto kernel_params
-            = [=](int ur_str_w, int iw, int oh, int ih, int i_t_overflow,
-                      int i_b_overflow, int stride_off_h, int ch, int n,
-                      int work_remaining) {
+    auto kernel_params = [=](dim_t ur_str_w, dim_t iw, dim_t oh, dim_t ih,
+                                 dim_t i_t_overflow, dim_t i_b_overflow,
+                                 dim_t stride_off_h, dim_t ch, dim_t n,
+                                 dim_t work_remaining) {
         auto par_conv = jit_conv_args_t();
         const bool is_dsrc_layout_nxc
                 = utils::one_of(jcp.src_tag, format_tag::nwc, format_tag::nhwc);
         const bool is_ddst_layout_nxc
                 = utils::one_of(jcp.dst_tag, format_tag::nwc, format_tag::nhwc);
-        const int nb_ch_blocking = jcp.nb_ch_blocking;
+        const dim_t nb_ch_blocking = jcp.nb_ch_blocking;
 
-        const int i_l_overflow = nstl::max(0, (jcp.kw - 1 - iw - jcp.l_pad));
-        const int i_r_overflow
-                = nstl::max(0, (jcp.kw - 1 - (jcp.iw - 1 - iw) - jcp.r_pad));
+        const dim_t i_l_overflow
+                = nstl::max<dim_t>(0, jcp.kw - 1 - iw - jcp.l_pad);
+        const dim_t i_r_overflow = nstl::max<dim_t>(
+                0, jcp.kw - 1 - (jcp.iw - 1 - iw) - jcp.r_pad);
 
-        int ow = iw + jcp.l_pad - i_r_overflow;
-        int stride_off_w = ow % jcp.stride_w;
+        dim_t ow = iw + jcp.l_pad - i_r_overflow;
+        const dim_t stride_off_w = ow % jcp.stride_w;
         ow /= jcp.stride_w;
 
-        const int ic_offset = is_dsrc_layout_nxc ? ch * jcp.ch_block : ch;
+        const dim_t ic_offset = is_dsrc_layout_nxc ? ch * jcp.ch_block : ch;
         par_conv.src = &diff_src[diff_src_d.blk_off(n, ic_offset, ih, iw)];
-        const int oc_offset = is_ddst_layout_nxc ? ch * jcp.ch_block : ch;
+        const dim_t oc_offset = is_ddst_layout_nxc ? ch * jcp.ch_block : ch;
         par_conv.dst = &diff_dst[diff_dst_d.blk_off(n, oc_offset, oh, ow)];
         par_conv.filt = &weights[weights_d.blk_off(ch, 0, 0,
                 i_b_overflow + stride_off_h, i_r_overflow + stride_off_w)];
 
-        par_conv.kh_padding = nstl::max(
+        par_conv.kh_padding = nstl::max<dim_t>(
                 0, jcp.kh - i_t_overflow - i_b_overflow - stride_off_h);
-        par_conv.kw_padding = nstl::max(
+        par_conv.kw_padding = nstl::max<dim_t>(
                 0, jcp.kw - i_l_overflow - i_r_overflow - stride_off_w);
 
-        par_conv.ur_str_w = ur_str_w;
+        par_conv.ur_str_w = static_cast<int>(ur_str_w);
 
         const size_t ch_work = (is_ddst_layout_nxc ? work_remaining : 1)
                 * nb_ch_blocking * jcp.ch_block;
@@ -234,10 +234,10 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
         return par_conv;
     };
 
-    const int aux_w
-            = nstl::min(jcp.iw, jcp.iw - jcp.kw + jcp.r_pad + jcp.stride_w);
-    const int chb_work = utils::div_up(jcp.nb_ch, jcp.nb_ch_blocking);
-    const dim_t work_amount = static_cast<dim_t>(jcp.mb) * chb_work * jcp.ih;
+    const dim_t aux_w = nstl::min<dim_t>(
+            jcp.iw, jcp.iw - jcp.kw + jcp.r_pad + jcp.stride_w);
+    const dim_t chb_work = utils::div_up(jcp.nb_ch, jcp.nb_ch_blocking);
+    const dim_t work_amount = jcp.mb * chb_work * jcp.ih;
     const auto nthr = jcp.nthr;
 
     parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
@@ -255,23 +255,24 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
 
         auto iwork = start;
         while (iwork < end) {
-            int ch = chb * jcp.nb_ch_blocking;
+            const dim_t ch = chb * jcp.nb_ch_blocking;
 
-            const int work_rem = end - iwork;
+            const dim_t work_rem = end - iwork;
             const dim_t i_t_overflow
                     = nstl::max(dim_t(0), jcp.kh - 1 - ih - jcp.t_pad);
             const dim_t i_b_overflow = nstl::max(
                     dim_t(0), jcp.kh - 1 - (jcp.ih - 1 - ih) - jcp.b_pad);
 
-            int oh = ih + jcp.t_pad - i_b_overflow;
-            int stride_off_h = oh % jcp.stride_h;
+            dim_t oh = ih + jcp.t_pad - i_b_overflow;
+            const dim_t stride_off_h = oh % jcp.stride_h;
             oh /= jcp.stride_h;
 
-            for (int i_str_w = 0; i_str_w < jcp.stride_w; i_str_w++) {
+            for (dim_t i_str_w = 0; i_str_w < jcp.stride_w; i_str_w++) {
                 // left border
-                int iw = i_str_w;
-                int l_border = nstl::min(jcp.kw - 1 - jcp.l_pad, jcp.iw);
-                int ur_str_w = 1;
+                dim_t iw = i_str_w;
+                const dim_t l_border
+                        = nstl::min<dim_t>(jcp.kw - 1 - jcp.l_pad, jcp.iw);
+                dim_t ur_str_w = 1;
                 for (; iw < l_border; iw += jcp.stride_w) {
                     jit_conv_args_t par_conv = kernel_params(ur_str_w, iw, oh,
                             ih, i_t_overflow, i_b_overflow, stride_off_h, ch, n,
@@ -374,24 +375,24 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
             ? diff_bias_f32_to_bf16_accum
             : CTX_OUT_MEM(f32_data_t *, DNNL_ARG_DIFF_BIAS);
 
-    const int ch_block = jcp.ch_block;
+    const dim_t ch_block = jcp.ch_block;
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         auto conv_params = jit_dw_conv_args_t();
-        const int h_block_size = jcp.oh_blk_size;
+        const dim_t h_block_size = jcp.oh_blk_size;
 
-        const int ch_outer_blocks
+        const dim_t ch_outer_blocks
                 = utils::div_up(jcp.nb_ch, jcp.nb_ch_blocking);
         const int ithr_g = ithr % jcp.nthr_g;
-        int g_start {0}, g_end {0};
+        dim_t g_start {0}, g_end {0};
         balance211(ch_outer_blocks, jcp.nthr_g, ithr_g, g_start, g_end);
 
         const int ithr_mb = (ithr / jcp.nthr_g) % jcp.nthr_mb;
-        int mb_start {0}, mb_end {0};
+        dim_t mb_start {0}, mb_end {0};
         balance211(jcp.mb, jcp.nthr_mb, ithr_mb, mb_start, mb_end);
 
         const int ithr_oh = (ithr / (jcp.nthr_mb * jcp.nthr_g)) % jcp.nthr_oh;
-        const int nb_oh = div_up(jcp.oh, jcp.oh_blk_size);
-        int nb_oh_start {0}, nb_oh_end {0};
+        const dim_t nb_oh = div_up(jcp.oh, jcp.oh_blk_size);
+        dim_t nb_oh_start {0}, nb_oh_end {0};
         balance211(nb_oh, jcp.nthr_oh, ithr_oh, nb_oh_start, nb_oh_end);
 
         const size_t wei_size
@@ -416,23 +417,24 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                 ? diff_bias_reduction_buffer + (ithr_block - 1) * bias_size
                 : nullptr;
         const int g_step = jcp.nb_ch_blocking;
-        for (int g_ = g_start; g_ < g_end; ++g_) {
-            const int g = g_ * jcp.nb_ch_blocking;
+        for (dim_t g_ = g_start; g_ < g_end; ++g_) {
+            const dim_t g = g_ * jcp.nb_ch_blocking;
             unsigned char last_g_flag
                     = (g + g_step) >= jcp.nb_ch ? FLAG_OC_LAST : 0;
             unsigned char zero_filter_flag = FLAG_ZERO_FILTER;
             unsigned char zero_bias_flag = jcp.with_bias ? FLAG_ZERO_BIAS : 0;
-            for (int mb = mb_start; mb < mb_end; mb++) {
-                for (int nb_oh = nb_oh_start; nb_oh < nb_oh_end; ++nb_oh) {
-                    const int oh_s = nb_oh * h_block_size;
-                    const int h_work = nstl::min(h_block_size, jcp.oh - oh_s);
-                    const int oh_e = oh_s + h_work;
-                    const int ih = -jcp.t_pad + oh_s * jcp.stride_h;
-                    const int kh_top_overflow = nstl::max(0, -ih);
-                    const int kh_bottom_overflow
-                            = nstl::max(0, ih - jcp.ih + jcp.kh);
-                    const int kh_padding_offset
-                            = nstl::min(jcp.kh - 1, kh_top_overflow);
+            for (dim_t mb = mb_start; mb < mb_end; mb++) {
+                for (dim_t nb_oh = nb_oh_start; nb_oh < nb_oh_end; ++nb_oh) {
+                    const dim_t oh_s = nb_oh * h_block_size;
+                    const dim_t h_work
+                            = nstl::min<dim_t>(h_block_size, jcp.oh - oh_s);
+                    const dim_t oh_e = oh_s + h_work;
+                    const dim_t ih = -jcp.t_pad + oh_s * jcp.stride_h;
+                    const dim_t kh_top_overflow = nstl::max<dim_t>(0, -ih);
+                    const dim_t kh_bottom_overflow
+                            = nstl::max<dim_t>(0, ih - jcp.ih + jcp.kh);
+                    const dim_t kh_padding_offset
+                            = nstl::min<dim_t>(jcp.kh - 1, kh_top_overflow);
                     conv_params.kh_count
                             = jcp.kh - kh_top_overflow - kh_bottom_overflow;
                     conv_params.filter_pad_off
@@ -499,21 +501,21 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
     const size_t wei_size = jcp.ngroups * jcp.kh * jcp.kw;
     const size_t bias_size = jcp.with_bias ? jcp.ngroups : 0;
 
-    const int ch_block = jcp.ch_block;
+    const dim_t ch_block = jcp.ch_block;
 
     auto set_kernel_params
-            = [=](jit_dw_conv_args_t *conv_params, const int batch,
-                      const int group, const int oh_start, const int work_size,
-                      const unsigned char exec_flag, const size_t kh_padding,
-                      const size_t filter_off) {
-        const int tpad_underflow_off = jcp.t_pad - filter_off;
+            = [=](jit_dw_conv_args_t *conv_params, const dim_t batch,
+                      const dim_t group, const dim_t oh_start,
+                      const dim_t work_size, const unsigned char exec_flag,
+                      const size_t kh_padding, const size_t filter_off) {
+        const dim_t tpad_underflow_off = jcp.t_pad - filter_off;
 
         conv_params->exec_flags = exec_flag;
         conv_params->kh_count = jcp.kh - kh_padding;
 
-        const int oh_s = oh_start;
-        const int oh_e = oh_start + work_size;
-        const int ih_s = oh_s * jcp.stride_h;
+        const dim_t oh_s = oh_start;
+        const dim_t oh_e = oh_start + work_size;
+        const dim_t ih_s = oh_s * jcp.stride_h;
 
         conv_params->filter_pad_off
                 = filter_off * jcp.kw * ch_block * jcp.typesize_out;
@@ -537,18 +539,18 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         assert(nthr == jcp.nthr);
 
         auto conv_params = jit_dw_conv_args_t();
-        const int h_block_size = jcp.oh_blk_size;
-        const int nb_ch = jcp.nb_ch;
+        const dim_t h_block_size = jcp.oh_blk_size;
+        const dim_t nb_ch = jcp.nb_ch;
 
         /* assign iteration space to thread */
         const int ithr_g = ithr % jcp.nthr_g;
         const int ithr_mb = (ithr / jcp.nthr_g) % jcp.nthr_mb;
 
         /* split dimensions */
-        int g_start {0}, g_end {0};
+        dim_t g_start {0}, g_end {0};
         balance211(nb_ch, jcp.nthr_g, ithr_g, g_start, g_end);
 
-        int mb_start {0}, mb_end {0};
+        dim_t mb_start {0}, mb_end {0};
         balance211(jcp.mb, jcp.nthr_mb, ithr_mb, mb_start, mb_end);
 
         auto i_mb = diff_weights_type == bf16 ? ithr_mb : ithr_mb - 1;
@@ -560,7 +562,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                 ? diff_bias
                 : diff_bia_reduction_buf + (ithr_mb - 1) * bias_size;
 
-        for (int g = g_start; g < g_end; ++g) {
+        for (dim_t g = g_start; g < g_end; ++g) {
             unsigned char last_g_flag = g == nb_ch - 1 ? FLAG_OC_LAST : 0;
             unsigned char zero_filter_flag = FLAG_ZERO_FILTER;
             unsigned char zero_bias_flag = jcp.with_bias ? FLAG_ZERO_BIAS : 0;
@@ -570,14 +572,16 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 
             if (jcp.with_bias) conv_params.bias = &diff_bia[g * ch_block];
 
-            for (int mb = mb_start; mb < mb_end; ++mb) {
-                int oh = 0;
+            for (dim_t mb = mb_start; mb < mb_end; ++mb) {
+                dim_t oh = 0;
                 while (oh < jcp.oh) {
-                    const int h_work = nstl::min(h_block_size, jcp.oh - oh);
-                    auto kh_t_padding = nstl::max(0, jcp.t_pad - oh);
-                    auto kh_b_padding
+                    const dim_t h_work
+                            = nstl::min<dim_t>(h_block_size, jcp.oh - oh);
+                    const dim_t kh_t_padding
+                            = nstl::max<dim_t>(0, jcp.t_pad - oh);
+                    const dim_t kh_b_padding
                             = (oh * jcp.stride_h + jcp.kh > jcp.ih + jcp.t_pad)
-                            ? nstl::max(jcp.b_pad - (h_work - 1), 0)
+                            ? nstl::max<dim_t>(jcp.b_pad - (h_work - 1), 0)
                             : 0;
 
                     set_kernel_params(&conv_params, mb, g, oh, h_work,
@@ -622,26 +626,26 @@ void jit_uni_dw_convolution_bwd_weights_t<avx512_core, bf16>::execute_reduction(
     const size_t wei_size
             = utils::rnd_up(jcp.ngroups, jcp.ch_block) * jcp.kh * jcp.kw;
     const size_t bias_size = jcp.with_bias ? jcp.ngroups : 0;
-    const int ch_block = jcp.ch_block;
+    const dim_t ch_block = jcp.ch_block;
 
     /* Apply single-threaded 'mb' reduction */
     if (jcp.with_bias && jcp.nthr_mb > 1) {
         for (int thr_mb = 1; thr_mb < jcp.nthr_mb; ++thr_mb) {
             size_t b_accum_offset = (thr_mb - 1) * bias_size;
-            const int bias_ch_tail = jcp.ch_tail;
-            const int nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
+            const dim_t bias_ch_tail = jcp.ch_tail;
+            const dim_t nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
 
-            for (int g = 0; g < nb_ch; ++g) {
+            for (dim_t g = 0; g < nb_ch; ++g) {
                 /* Reduction on Bias */
                 PRAGMA_OMP_SIMD()
-                for (int g_block = 0; g_block < ch_block; ++g_block) {
+                for (dim_t g_block = 0; g_block < ch_block; ++g_block) {
                     size_t bias_offset = g * ch_block + g_block;
                     diff_bias[bias_offset]
                             += diff_bia_reduction_buf[b_accum_offset
                                     + bias_offset];
                 }
             }
-            for (int g = 0; g < bias_ch_tail; ++g) {
+            for (dim_t g = 0; g < bias_ch_tail; ++g) {
                 size_t bias_offset = static_cast<size_t>(nb_ch * ch_block + g);
                 diff_bias[bias_offset]
                         += diff_bia_reduction_buf[b_accum_offset + bias_offset];
@@ -685,19 +689,19 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction(
 
     /* Apply single-threaded 'mb' reduction */
     for (int thr_mb = 1; thr_mb < jcp.nthr_mb; ++thr_mb) {
-        const int ch_block = jcp.ch_block;
+        const dim_t ch_block = jcp.ch_block;
         const size_t wei_size
                 = static_cast<size_t>(jcp.ngroups * jcp.kh * jcp.kw);
         const size_t mb_accum_offset = (thr_mb - 1) * wei_size;
         const size_t bias_size = jcp.ngroups;
         const size_t b_accum_offset = (thr_mb - 1) * bias_size;
 
-        const int bias_ch_tail = jcp.ch_tail;
-        const int nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
-        for (int g = 0; g < nb_ch; ++g) {
+        const dim_t bias_ch_tail = jcp.ch_tail;
+        const dim_t nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
+        for (dim_t g = 0; g < nb_ch; ++g) {
             if (jcp.with_bias) {
                 PRAGMA_OMP_SIMD()
-                for (int g_block = 0; g_block < ch_block; ++g_block) {
+                for (dim_t g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t bias_offset
                             = static_cast<size_t>(g * ch_block + g_block);
                     diff_bias[bias_offset]
@@ -705,11 +709,11 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction(
                                     + bias_offset];
                 }
             }
-            for_(int kh = 0; kh < jcp.kh; ++kh)
-            for (int kw = 0; kw < jcp.kw; ++kw) {
+            for_(dim_t kh = 0; kh < jcp.kh; ++kh)
+            for (dim_t kw = 0; kw < jcp.kw; ++kw) {
                 const size_t wei_sp_offset = (g * jcp.kh + kh) * jcp.kw + kw;
                 PRAGMA_OMP_SIMD()
-                for (int g_block = 0; g_block < ch_block; ++g_block) {
+                for (dim_t g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t wei_offset = static_cast<size_t>(
                             wei_sp_offset * ch_block + g_block);
                     diff_weights[wei_offset]
@@ -720,7 +724,7 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction(
         }
         // handle reduction for channel tail
         if (jcp.with_bias) {
-            for (int g = 0; g < bias_ch_tail; ++g) {
+            for (dim_t g = 0; g < bias_ch_tail; ++g) {
                 const size_t bias_offset
                         = static_cast<size_t>(nb_ch * ch_block + g);
                 diff_bias[bias_offset]
@@ -729,11 +733,11 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction(
             }
         }
         if (bias_ch_tail > 0) {
-            for_(int kh = 0; kh < jcp.kh; ++kh)
-            for (int kw = 0; kw < jcp.kw; ++kw) {
+            for_(dim_t kh = 0; kh < jcp.kh; ++kh)
+            for (dim_t kw = 0; kw < jcp.kw; ++kw) {
                 const size_t wei_sp_offset = static_cast<size_t>(
                         ((nb_ch * jcp.kh + kh) * jcp.kw + kw) * ch_block);
-                for (int g = 0; g < bias_ch_tail; ++g) {
+                for (dim_t g = 0; g < bias_ch_tail; ++g) {
                     const size_t wei_offset = wei_sp_offset + g;
                     diff_weights[wei_offset]
                             += diff_wei_reduction_buffer[mb_accum_offset
@@ -767,7 +771,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 
     /* Apply single-threaded 'mb' reduction */
     for (int thr_mb = 1; thr_mb < jcp.nthr_mb; ++thr_mb) {
-        const int ch_block = jcp.ch_block;
+        const dim_t ch_block = jcp.ch_block;
         const size_t wei_size
                 = static_cast<size_t>(jcp.ngroups * jcp.kh * jcp.kw);
         const size_t mb_accum_offset = (thr_mb - 1) * wei_size;
@@ -775,11 +779,11 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         const size_t b_accum_offset = (thr_mb - 1) * bias_size;
 
         if (jcp.with_bias) { // Reduction on Bias:
-            const int bias_ch_tail = jcp.ch_tail;
-            const int nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
-            for (int g = 0; g < nb_ch; ++g) {
+            const dim_t bias_ch_tail = jcp.ch_tail;
+            const dim_t nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
+            for (dim_t g = 0; g < nb_ch; ++g) {
                 PRAGMA_OMP_SIMD()
-                for (int g_block = 0; g_block < ch_block; ++g_block) {
+                for (dim_t g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t bias_offset
                             = static_cast<size_t>(g * ch_block + g_block);
                     diff_bias[bias_offset]
@@ -788,7 +792,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                 }
             }
             // handle reduction for channel tail
-            for (int g = 0; g < bias_ch_tail; g++) {
+            for (dim_t g = 0; g < bias_ch_tail; g++) {
                 const size_t bias_offset
                         = static_cast<size_t>(nb_ch * ch_block + g);
                 diff_bias[bias_offset]
@@ -857,17 +861,17 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                     reduction_size);
 
             const bool compute_bias = jcp.with_bias;
-            const int ch_block = jcp.ch_block;
+            const dim_t ch_block = jcp.ch_block;
             const size_t bias_size = jcp.ngroups;
             const size_t bias_accum_offset = ithr_offset * bias_size;
             if (compute_bias) {
                 const size_t nb_ch_offset = NB_CH * ch_block;
-                const int bias_ch_tail = jcp.ch_tail;
+                const dim_t bias_ch_tail = jcp.ch_tail;
                 const bool compute_ch_tail
                         = (NB_CH == jcp.nb_ch - 1) && bias_ch_tail > 0;
                 if (!compute_ch_tail) {
                     PRAGMA_OMP_SIMD()
-                    for (int g_block = 0; g_block < ch_block; ++g_block) {
+                    for (dim_t g_block = 0; g_block < ch_block; ++g_block) {
                         const size_t bias_offset
                                 = static_cast<size_t>(nb_ch_offset + g_block);
                         diff_bias[bias_offset]
@@ -876,7 +880,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
                     }
                 } else {
                     // handle reduction for channel tail
-                    for (int g = 0; g < bias_ch_tail; g++) {
+                    for (dim_t g = 0; g < bias_ch_tail; g++) {
                         const size_t bias_offset
                                 = static_cast<size_t>(nb_ch_offset + g);
                         diff_bias[bias_offset]
@@ -929,17 +933,17 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction_nxc(
                 utils::rnd_up(jcp.ngroups, jcp.ch_block) * jcp.kh * jcp.kw);
         const size_t reduction_offset = ithr_offset * wei_size;
 
-        const int ch_block = jcp.ch_block;
+        const dim_t ch_block = jcp.ch_block;
         const size_t bias_size = jcp.ngroups;
         size_t b_accum_offset = ithr_offset * bias_size;
 
         const bool compute_bias = jcp.with_bias;
-        const int bias_ch_tail = jcp.ch_tail;
-        const int nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
-        for (int g = 0; g < nb_ch; ++g) {
+        const dim_t bias_ch_tail = jcp.ch_tail;
+        const dim_t nb_ch = bias_ch_tail > 0 ? jcp.nb_ch - 1 : jcp.nb_ch;
+        for (dim_t g = 0; g < nb_ch; ++g) {
             if (compute_bias) {
                 PRAGMA_OMP_SIMD()
-                for (int g_block = 0; g_block < ch_block; ++g_block) {
+                for (dim_t g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t bias_offset
                             = static_cast<size_t>(g * ch_block + g_block);
                     diff_bias[bias_offset]
@@ -947,12 +951,12 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction_nxc(
                                     + bias_offset];
                 }
             }
-            for_(int kh = 0; kh < jcp.kh; ++kh)
-            for (int kw = 0; kw < jcp.kw; ++kw) {
+            for_(dim_t kh = 0; kh < jcp.kh; ++kh)
+            for (dim_t kw = 0; kw < jcp.kw; ++kw) {
                 const size_t wei_sp_offset
                         = static_cast<size_t>((g * jcp.kh + kh) * jcp.kw + kw);
                 PRAGMA_OMP_SIMD()
-                for (int g_block = 0; g_block < ch_block; ++g_block) {
+                for (dim_t g_block = 0; g_block < ch_block; ++g_block) {
                     const size_t wei_offset = static_cast<size_t>(
                             wei_sp_offset * ch_block + g_block);
                     diff_weights[wei_offset]
@@ -963,7 +967,7 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction_nxc(
         }
         // handle reduction for channel tail
         if (compute_bias) {
-            for (int g = 0; g < bias_ch_tail; ++g) {
+            for (dim_t g = 0; g < bias_ch_tail; ++g) {
                 const size_t bias_offset
                         = static_cast<size_t>(nb_ch * ch_block + g);
                 diff_bias[bias_offset]
@@ -972,11 +976,11 @@ void jit_uni_dw_convolution_bwd_weights_t<sse41, f32>::execute_reduction_nxc(
             }
         }
         if (bias_ch_tail > 0) {
-            for_(int kh = 0; kh < jcp.kh; ++kh)
-            for (int kw = 0; kw < jcp.kw; ++kw) {
+            for_(dim_t kh = 0; kh < jcp.kh; ++kh)
+            for (dim_t kw = 0; kw < jcp.kw; ++kw) {
                 const size_t wei_sp_offset = static_cast<size_t>(
                         (nb_ch * jcp.kh + kh) * jcp.kw + kw);
-                for (int g = 0; g < bias_ch_tail; ++g) {
+                for (dim_t g = 0; g < bias_ch_tail; ++g) {
                     const size_t wei_offset
                             = static_cast<size_t>(wei_sp_offset * ch_block + g);
                     diff_weights[wei_offset]

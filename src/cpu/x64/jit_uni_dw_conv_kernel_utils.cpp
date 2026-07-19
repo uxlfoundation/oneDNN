@@ -134,8 +134,8 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
     jcp.dilate_h = cd.dilates[0];
     jcp.dilate_w = cd.dilates[1];
 
-    int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(
@@ -146,8 +146,10 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
     VDISPATCH_CONV_IC(!kernel_outside_src, VERBOSE_UNSUPPORTED_PAD_FEATURE,
             "weights and src size mismatch");
 
-    jcp.typesize_out = types::data_type_size(dst_d.data_type());
-    jcp.typesize_in = types::data_type_size(src_d.data_type());
+    jcp.typesize_out
+            = static_cast<int>(types::data_type_size(dst_d.data_type()));
+    jcp.typesize_in
+            = static_cast<int>(types::data_type_size(src_d.data_type()));
 
     jcp.loop_order = loop_ngcw;
 
@@ -155,25 +157,28 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
             : utils::one_of(isa, avx512_core, avx512_core_fp16) ? 6
             : isa == avx2                                       ? 4
                                                                 : 3;
-    jcp.ur_w = nstl::min(jcp.ur_w, jcp.ow);
+    jcp.ur_w = static_cast<int>(nstl::min<dim_t>(jcp.ur_w, jcp.ow));
 
     jcp.ch_block = simd_w;
     jcp.nb_ch = div_up(jcp.oc, jcp.ch_block);
     jcp.nb_ch_blocking = is_superset(isa, avx512_core) ? 4
             : isa == avx2                              ? 3
                                                        : 2;
-    if (jcp.nb_ch < jcp.nb_ch_blocking) jcp.nb_ch_blocking = jcp.nb_ch;
+    if (jcp.nb_ch < jcp.nb_ch_blocking)
+        jcp.nb_ch_blocking = static_cast<int>(jcp.nb_ch);
 
     if (is_data_layout_nxc) {
         jcp.loop_order = loop_nhwcg;
-        const int resrc_depthwise_ur_w = (31 - jcp.kw + jcp.stride_w)
-                / (jcp.nb_ch_blocking + jcp.stride_w);
+        const int resrc_depthwise_ur_w
+                = static_cast<int>((31 - jcp.kw + jcp.stride_w)
+                        / (jcp.nb_ch_blocking + jcp.stride_w));
         jcp.is_resrc_depthwise = (!is_bf16 && !is_f16)
                 && is_superset(isa, avx512_core) && jcp.stride_w < jcp.kw
                 && jcp.kw <= 5 && jcp.dilate_w == 0
                 && resrc_depthwise_ur_w >= 2;
         if (jcp.is_resrc_depthwise) {
-            jcp.ur_w = nstl::min(jcp.ow, resrc_depthwise_ur_w);
+            jcp.ur_w = static_cast<int>(
+                    nstl::min<dim_t>(jcp.ow, resrc_depthwise_ur_w));
         }
         bool cache_aliasing
                 = (jcp.ngroups * jcp.iw * jcp.typesize_in) % 1024 == 0;
@@ -211,9 +216,9 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
 
     jcp.ur_w_tail = jcp.ow % jcp.ur_w;
 
-    int r_pad_no_tail = nstl::max(0,
+    int r_pad_no_tail = static_cast<int>(nstl::max<dim_t>(0,
             calculate_end_padding(jcp.l_pad, jcp.ow - jcp.ur_w_tail, jcp.iw,
-                    jcp.stride_w, ext_kw));
+                    jcp.stride_w, ext_kw)));
     VDISPATCH_CONV_IC(!(jcp.l_pad > jcp.ur_w || r_pad_no_tail > jcp.ur_w),
             VERBOSE_UNSUPPORTED_PAD_FEATURE,
             "width unroll exceeds padding size");
@@ -334,8 +339,8 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
     jcp.dilate_h = cd.dilates[0];
     jcp.dilate_w = cd.dilates[1];
 
-    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(
@@ -408,8 +413,10 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
             && jcp.ngroups <= weights_d.padded_dims()[0];
     VDISPATCH_CONV_IC(args_ok, VERBOSE_BAD_PARAM, "");
 
-    jcp.typesize_out = types::data_type_size(diff_src_d.data_type());
-    jcp.typesize_in = types::data_type_size(diff_dst_d.data_type());
+    jcp.typesize_out
+            = static_cast<int>(types::data_type_size(diff_src_d.data_type()));
+    jcp.typesize_in
+            = static_cast<int>(types::data_type_size(diff_dst_d.data_type()));
 
     jcp.ur_w = is_bf16           ? (isa_has_bf16(jcp.isa) ? 6 : 4)
             : isa == avx512_core ? 6
@@ -418,10 +425,11 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
 
     jcp.loop_order = is_data_layout_nxc ? loop_nhwcg : loop_ngcw;
 
-    jcp.ch_tail = jcp.ngroups % jcp.ch_block;
+    jcp.ch_tail = static_cast<int>(jcp.ngroups % jcp.ch_block);
     jcp.nb_ch = div_up(jcp.ic, jcp.ch_block);
     jcp.nb_ch_blocking = isa == avx512_core ? 4 : isa == avx2 ? 3 : 2;
-    if (jcp.nb_ch < jcp.nb_ch_blocking) jcp.nb_ch_blocking = jcp.nb_ch;
+    if (jcp.nb_ch < jcp.nb_ch_blocking)
+        jcp.nb_ch_blocking = static_cast<int>(jcp.nb_ch);
 
     const size_t max_ch_off
             = static_cast<size_t>(jcp.nb_ch_blocking - 1) * jcp.ch_block;
@@ -517,12 +525,12 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
 
     jcp.with_bias = cd.diff_bias_desc.format_kind != format_kind::undef;
 
-    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    jcp.r_pad = nstl::max(0,
+    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    jcp.r_pad = nstl::max<dim_t>(0,
             calculate_end_padding(
                     jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw));
-    jcp.b_pad = nstl::max(0,
+    jcp.b_pad = nstl::max<dim_t>(0,
             calculate_end_padding(
                     jcp.t_pad, jcp.oh, jcp.ih, jcp.stride_h, ext_kh));
 
@@ -578,7 +586,7 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
     }
 
     jcp.ch_block = isa == avx512_core ? 16 : 8;
-    jcp.ch_tail = jcp.oc_without_padding % jcp.ch_block;
+    jcp.ch_tail = static_cast<int>(jcp.oc_without_padding % jcp.ch_block);
 
     // note: bf16 to be supported in the next commit
     bool ok_to_pad_channels
@@ -610,15 +618,17 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
     constexpr int max_reg_idx = isa == avx512_core ? 31 : 15;
     // Note: anything larger than 4 didn't show significant speedup
     const int max_isa_unroll = jcp.is_fast_depthwise ? 4 : 1;
-    int max_ch_unroll = nstl::min(max_isa_unroll, max_reg_idx / (2 * jcp.kw));
-    jcp.nb_ch_blocking = nstl::min(jcp.nb_ch, max_ch_unroll);
+    int max_ch_unroll = static_cast<int>(
+            nstl::min<dim_t>(max_isa_unroll, max_reg_idx / (2 * jcp.kw)));
+    jcp.nb_ch_blocking
+            = static_cast<int>(nstl::min<dim_t>(jcp.nb_ch, max_ch_unroll));
 
     /* kernel applicability check wrt boundaries
      * the conditions are quite general across the kernels we have,
      * but ideally the check should belong to a specific kernel... */
-    const int max_hpad = (jcp.kh - 1 + 1) / 2;
-    const int max_wpad = (jcp.kw - 1 + 1) / 2;
-    const int min_ih = jcp.kh + nstl::modulo(-jcp.t_pad, jcp.stride_h);
+    const dim_t max_hpad = (jcp.kh - 1 + 1) / 2;
+    const dim_t max_wpad = (jcp.kw - 1 + 1) / 2;
+    const dim_t min_ih = jcp.kh + nstl::modulo(-jcp.t_pad, jcp.stride_h);
     const bool boundaries_ok = true && jcp.t_pad <= max_hpad
             && jcp.b_pad <= max_hpad && jcp.l_pad <= max_wpad
             && jcp.r_pad <= max_wpad
@@ -633,7 +643,8 @@ status_t jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::init_conf(
     /* BF16: accumulation of output happens in f32, down-conversion to bf16
      * happens during the reduction phase. */
     jcp.typesize_out = sizeof(float);
-    jcp.typesize_in = types::data_type_size(src_d.data_type());
+    jcp.typesize_in
+            = static_cast<int>(types::data_type_size(src_d.data_type()));
     jcp.bia_dt = jcp.with_bias ? cd.diff_bias_desc.data_type : data_type::undef;
 
     jcp.harness = is_data_layout_nxc ? harness_nxc : harness_mb_reduction;
@@ -707,8 +718,9 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::balance(
          * per-thread load when the number of threads is high (e.g. > 16).
          */
         jcp.oh_blk_size = 15;
-        jcp.nthr_g = nstl::min(jcp.nb_ch, nthreads);
-        jcp.nthr_mb = nstl::min(nstl::max(1, nthreads / jcp.nthr_g), jcp.mb);
+        jcp.nthr_g = static_cast<int>(nstl::min<dim_t>(jcp.nb_ch, nthreads));
+        jcp.nthr_mb = static_cast<int>(nstl::min<dim_t>(
+                nstl::max<dim_t>(1, nthreads / jcp.nthr_g), jcp.mb));
         jcp.nthr = jcp.nthr_g * jcp.nthr_mb;
     } else if (jcp.harness == harness_nxc) {
         /* Allocate threads and partition space with regards to 'nb_ch', 'mb'
@@ -743,15 +755,16 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::partition_nthr_nxc(
     const int env_max_nthr_oh = nthreads; // DNNL_MAX_NTHR_OH
     const int env_min_oh_block = 1; // DNNL_MIN_OH_BLOCK
 
-    const int ch_outer_blocks = utils::div_up(jcp.nb_ch, jcp.nb_ch_blocking);
-    int max_g = nstl::min(env_max_nthr_g, nstl::min(ch_outer_blocks, nthreads));
+    const dim_t ch_outer_blocks = utils::div_up(jcp.nb_ch, jcp.nb_ch_blocking);
+    int max_g = static_cast<int>(nstl::min<dim_t>(
+            env_max_nthr_g, nstl::min<dim_t>(ch_outer_blocks, nthreads)));
     for (int g = max_g; g >= 1; --g) {
         int cur_nthr_g = g;
         auto div_nthr_g = nthreads / cur_nthr_g;
 
         int available_nthr_mb = div_nthr_g;
-        int max_mb = nstl::min(
-                env_max_nthr_mb, nstl::min(jcp.mb, available_nthr_mb));
+        int max_mb = static_cast<int>(nstl::min<dim_t>(
+                env_max_nthr_mb, nstl::min<dim_t>(jcp.mb, available_nthr_mb)));
         for (int mb = max_mb; mb >= 1; --mb) {
             int cur_nthr_mb = mb;
             auto div_nthr_mb = available_nthr_mb / cur_nthr_mb;
@@ -759,27 +772,30 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::partition_nthr_nxc(
             // used to skip cases where efficiency can only worsen
             bool prev_under_blocked = false;
 
-            int available_nthr_oh = nstl::min(
-                    jcp.oh, nstl::min(env_max_nthr_oh, div_nthr_mb));
-            int max_oh_block = jcp.oh;
+            int available_nthr_oh = static_cast<int>(nstl::min<dim_t>(
+                    jcp.oh, nstl::min(env_max_nthr_oh, div_nthr_mb)));
+            int max_oh_block = static_cast<int>(jcp.oh);
             // Note: maybe it's worth exploring a heuristic to determine
             // optimal_min(oh_block)
-            int min_oh_block
-                    = nstl::max(1, nstl::min(jcp.oh, env_min_oh_block));
+            int min_oh_block = static_cast<int>(nstl::max<dim_t>(
+                    1, nstl::min<dim_t>(jcp.oh, env_min_oh_block)));
             for (int oh_block = max_oh_block; oh_block >= min_oh_block;
                     --oh_block) {
 
                 // Calculate most efficient approximation for thread use and/or
                 // blocking:
-                int approx_g_block = utils::div_up(ch_outer_blocks, cur_nthr_g);
-                int approx_mb_block = utils::div_up(jcp.mb, cur_nthr_mb);
-                int approx_oh_block = utils::div_up(jcp.oh, oh_block);
+                int approx_g_block = static_cast<int>(
+                        utils::div_up(ch_outer_blocks, cur_nthr_g));
+                int approx_mb_block
+                        = static_cast<int>(utils::div_up(jcp.mb, cur_nthr_mb));
+                int approx_oh_block
+                        = static_cast<int>(utils::div_up(jcp.oh, oh_block));
 
                 int cur_nthr_oh = nstl::min(available_nthr_oh, approx_oh_block);
 
                 // calculate thread use efficiency
                 int total_nthr = cur_nthr_g * cur_nthr_mb * cur_nthr_oh;
-                float thr_eff = ((float)total_nthr) / nthreads;
+                float thr_eff = ((float)total_nthr) / (float)nthreads;
                 assert(total_nthr <= nthreads);
 
                 // efficiency can only worsen, skip
@@ -790,17 +806,17 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::partition_nthr_nxc(
                 // calculate imbalance
                 float imbalance_g = ((float)std::abs(approx_g_block * cur_nthr_g
                                             - ch_outer_blocks))
-                        / ch_outer_blocks;
+                        / (float)ch_outer_blocks;
                 float imbalance_mb
                         = ((float)std::abs(
                                   approx_mb_block * cur_nthr_mb - jcp.mb))
-                        / jcp.mb;
+                        / (float)jcp.mb;
                 float imbalance_oh
                         = ((float)std::abs(oh_block * cur_nthr_oh - jcp.oh))
-                        / jcp.oh;
-                float total_imbalance = imbalance_g * (jcp.mb * jcp.oh)
-                        + imbalance_mb * (ch_outer_blocks * jcp.oh)
-                        + imbalance_oh * (ch_outer_blocks * jcp.mb);
+                        / (float)jcp.oh;
+                float total_imbalance = imbalance_g * (float)(jcp.mb * jcp.oh)
+                        + imbalance_mb * (float)(ch_outer_blocks * jcp.oh)
+                        + imbalance_oh * (float)(ch_outer_blocks * jcp.mb);
 
                 /* 1) When 'prioritize_threading == true'
                  * First Condition: pick the blocking strategy that uses the

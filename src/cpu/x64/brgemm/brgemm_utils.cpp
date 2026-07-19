@@ -565,8 +565,9 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     if (brg->can_dispatch_uker()) {
         // Blocking heuristics for some shapes
         // TODO: Review these criteria
-        const size_t eff_K
-                = brg->reduce_dim * brg->typesize_A * brg->brgattr.K_koef;
+        const size_t eff_K = static_cast<size_t>(
+                static_cast<float>(brg->reduce_dim * brg->typesize_A)
+                * brg->brgattr.K_koef);
         const auto low_K = (L1 - 4 * 1024) / (6 * 16);
 
         // TODO: if rdb_tail != 0 then we should limit
@@ -928,14 +929,17 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
         const auto bd_block_disb = (brg->bcast_dim <= 0 || bd_block == 0)
                 ? 0.f
                 : static_cast<float>(brg->bcast_dim)
-                        / rnd_up(brg->bcast_dim, bd_block);
+                        / static_cast<float>(rnd_up(brg->bcast_dim, bd_block));
         const auto brgemm_microkernel_eff
-                = (static_cast<float>(adj_ld_block2) * bd_block)
-                / (((adj_ld_block2) + bd_block) * max_bcast_block);
+                = (static_cast<float>(adj_ld_block2)
+                          * static_cast<float>(bd_block))
+                / static_cast<float>(
+                        ((adj_ld_block2) + bd_block) * max_bcast_block);
         const auto bd_block_eff = bd_block_disb * brgemm_microkernel_eff;
 
-        float block_foot_print = static_cast<float>(brg->typesize_A) * bd_block
-                * brg->reduce_dim;
+        float block_foot_print = static_cast<float>(brg->typesize_A)
+                * static_cast<float>(bd_block)
+                * static_cast<float>(brg->reduce_dim);
         if (block_foot_print <= static_cast<float>(L1)
                 && (bd_block_eff > best_bd_block_eff)) {
             brg->bd_block = bd_block;

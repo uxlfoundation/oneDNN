@@ -118,14 +118,14 @@ struct brgemm_matmul_conf_t {
     int ndims, batch_ndims;
     dim_t M, N, K, batch, batch_without_first_dim;
     dim_t M_blk, N_blk, K_blk, M_tail, N_tail, K_tail;
-    int M_chunk_size, N_chunk_size, K_chunk_size;
+    dim_t M_chunk_size, N_chunk_size, K_chunk_size;
     bool is_a_nt, is_b_nt, set_nt;
     bool need_prefetch_a, need_prefetch_b;
     bool use_fused_copy_a;
     dim_t LDA, LDB, LDC, LDD;
     dim_t LDB2;
-    int brgemm_batch_size, brgemm_batch_tail_size;
-    int wei_n_blk, wei_k_blk;
+    dim_t brgemm_batch_size, brgemm_batch_tail_size;
+    dim_t wei_n_blk, wei_k_blk;
     brgemm_batch_kind_t brg_type;
     bool is_macro_heuristics;
 
@@ -179,12 +179,12 @@ struct brgemm_matmul_conf_t {
     // from FP32 implementation)
     dim_t tr_a_dt_sz, tr_b_dt_sz;
 
-    int M_chunks;
-    int N_chunks;
-    int K_chunks;
-    int num_M_blocks;
-    int num_N_blocks;
-    int num_K_blocks;
+    dim_t M_chunks;
+    dim_t N_chunks;
+    dim_t K_chunks;
+    dim_t num_M_blocks;
+    dim_t num_N_blocks;
+    dim_t num_K_blocks;
     dim_t M_chunk_elems;
     dim_t N_chunk_elems;
     dim_t K_chunk_elems;
@@ -229,11 +229,11 @@ struct brgemm_matmul_conf_t {
     // were changed.
     bool adjust_a_strides = false;
 
-    int wsp_tile_per_thr_bytes;
-    int brgemm_batch_element_per_thr_sz;
+    dim_t wsp_tile_per_thr_bytes;
+    dim_t brgemm_batch_element_per_thr_sz;
     bool is_amx;
 
-    int required_k_granularity;
+    dim_t required_k_granularity;
     bool is_bf32 = false;
     bool is_bf16_with_int_wei = false;
     bool is_f16_with_int_wei = false;
@@ -475,13 +475,13 @@ struct brgemm_matmul_conf_utils_t {
     status_t set_or_check_B_tag(memory_desc_t &B_md,
             const dnnl::impl::cpu::matmul::matmul_helper_t &helper,
             bool init_n_tag = true) const;
-    status_t update_and_check_B_tag(memory_desc_t &B_md, int n_blk_size,
+    status_t update_and_check_B_tag(memory_desc_t &B_md, dim_t n_blk_size,
             const dnnl::impl::cpu::matmul::matmul_helper_t &helper) const;
     status_t set_or_check_tags(memory_desc_t &A_md, memory_desc_t &C_md,
             memory_desc_t &bias_md,
             const dnnl::impl::cpu::matmul::matmul_helper_t &helper) const;
     status_t set_B_flags(memory_desc_t &B_md) const;
-    format_tag_t pick_blocked_B_layout(int n_blk) const;
+    format_tag_t pick_blocked_B_layout(dim_t n_blk) const;
 
     format_tag_t get_gemv_A_tag(const memory_desc_t &A_md) const;
     format_tag_t get_gemv_B_tag(const memory_desc_t &B_md) const;
@@ -552,7 +552,7 @@ bool dims_adjacent(const memory_desc_wrapper &mdw, const int outer_dim,
  *
  * @return The total K dimension block size.
  */
-int get_wei_k_blk(data_type_t wei_dt);
+dim_t get_wei_k_blk(data_type_t wei_dt);
 
 } // namespace matmul
 } // namespace x64

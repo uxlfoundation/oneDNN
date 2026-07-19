@@ -86,25 +86,25 @@ private:
     Xbyak::Opmask k_oc_tail_mask = Xbyak::Opmask(2);
     const Xbyak::Opmask postops_mask = Xbyak::Opmask(3);
 
-    inline Vmm vmm_ker(int i_ic) {
+    inline Vmm vmm_ker(dim_t i_ic) {
         assert(i_ic < 4);
-        return Vmm(ker_reg_base_idx + i_ic);
+        return Vmm(static_cast<int>(ker_reg_base_idx + i_ic));
     }
 
-    inline int vmm_out_idx(int i_ur, int i_oc) {
-        const int idx = i_ur * jcp.nb_oc_blocking + i_oc;
+    inline int vmm_out_idx(dim_t i_ur, dim_t i_oc) {
+        const dim_t idx = i_ur * jcp.nb_oc_blocking + i_oc;
         assert(idx < ker_reg_base_idx);
-        return idx;
+        return static_cast<int>(idx);
     }
 
-    inline Vmm vmm_out(int i_ur, int i_oc) {
+    inline Vmm vmm_out(dim_t i_ur, dim_t i_oc) {
         return Vmm(vmm_out_idx(i_ur, i_oc));
     }
 
-    inline Vmm vmm_inp(int i_ic, int nb_x_blocking) {
-        int idx = i_ic + nb_x_blocking * jcp.ur_w;
+    inline Vmm vmm_inp(dim_t i_ic, dim_t nb_x_blocking) {
+        const dim_t idx = i_ic + nb_x_blocking * jcp.ur_w;
         assert(idx < 31);
-        return Vmm(idx);
+        return Vmm(static_cast<int>(idx));
     }
 
     Xbyak::Reg64 imm_addr64 = r15;
@@ -116,13 +116,13 @@ private:
     inline void prepare_output(int ur_w);
     inline void apply_postops(int ur_w);
     inline void store_output(int ur_w);
-    inline void compute_loop_fma(int ur_w, int pad_l, int pad_r);
-    inline void compute_loop_fma_core(int ur_w, int pad_l, int pad_r);
-    inline void compute_loop(int ur_w, int pad_l, int pad_r);
+    inline void compute_loop_fma(int ur_w, dim_t pad_l, dim_t pad_r);
+    inline void compute_loop_fma_core(int ur_w, dim_t pad_l, dim_t pad_r);
+    inline void compute_loop(int ur_w, dim_t pad_l, dim_t pad_r);
 
     void generate() override;
 
-    inline size_t get_output_offset(int oi, int n_oc_block) {
+    inline size_t get_output_offset(dim_t oi, dim_t n_oc_block) {
         const bool is_nxc_layout = is_dst_layout_nxc();
         size_t ow_str = is_nxc_layout ? jcp.ngroups * jcp.oc : jcp.oc_block;
         size_t ocb_str = is_nxc_layout
@@ -132,35 +132,36 @@ private:
         return jcp.typesize_out * (n_oc_block * ocb_str + oi * ow_str);
     }
 
-    inline size_t get_input_offset(int ki, int ic, int oi, int pad_l) {
+    inline dim_t get_input_offset(dim_t ki, dim_t ic, dim_t oi, dim_t pad_l) {
         const bool is_nxc_layout = is_src_layout_nxc();
-        size_t iw_str = is_nxc_layout ? jcp.ngroups * jcp.ic
-                                      : (!jcp.is_1stconv ? jcp.ic_block : 1);
-        size_t ic_str = !jcp.is_1stconv || is_nxc_layout
+        dim_t iw_str = is_nxc_layout ? jcp.ngroups * jcp.ic
+                                     : (!jcp.is_1stconv ? jcp.ic_block : 1);
+        dim_t ic_str = !jcp.is_1stconv || is_nxc_layout
                 ? 1
-                : (size_t)jcp.iw * jcp.ih * jcp.id;
-        size_t iw_idx = ki * (jcp.dilate_w + 1) + oi * jcp.stride_w - pad_l;
+                : jcp.iw * jcp.ih * jcp.id;
+        dim_t iw_idx = ki * (jcp.dilate_w + 1) + oi * jcp.stride_w - pad_l;
 
         return jcp.typesize_in * (iw_idx * iw_str + ic * ic_str);
     }
 
-    inline int get_kernel_offset(
-            int ki, int ic, int n_oc_block, int ker_number) {
+    inline dim_t get_kernel_offset(
+            dim_t ki, dim_t ic, dim_t n_oc_block, dim_t ker_number) {
         return jcp.typesize_in * jcp.oc_block
                 * (n_oc_block * jcp.nb_ic * jcp.ic_block * jcp.kh * jcp.kw
                                 * jcp.kd
                         + (ic + ker_number) + ki * jcp.ic_block);
     }
 
-    inline int get_ow_start(int ki, int pad_l) {
+    inline dim_t get_ow_start(dim_t ki, dim_t pad_l) {
         return utils::div_up(
-                nstl::max(0, pad_l - ki * (jcp.dilate_w + 1)), jcp.stride_w);
+                nstl::max<dim_t>(0, pad_l - ki * (jcp.dilate_w + 1)),
+                jcp.stride_w);
     }
 
-    inline int get_ow_end(int ur_w, int ki, int pad_r) {
+    inline dim_t get_ow_end(dim_t ur_w, dim_t ki, dim_t pad_r) {
         return ur_w
                 - utils::div_up(
-                        nstl::max(0,
+                        nstl::max<dim_t>(0,
                                 pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1)),
                         jcp.stride_w);
     }
@@ -271,34 +272,34 @@ private:
 
     Xbyak::Opmask k_ic_tail_mask = Xbyak::Opmask(1);
 
-    inline Vmm vmm_ker(int i_ic) {
+    inline Vmm vmm_ker(dim_t i_ic) {
         assert(i_ic < 4);
-        return Vmm(ker_reg_base_idx + i_ic);
+        return Vmm(static_cast<int>(ker_reg_base_idx + i_ic));
     }
-    inline Vmm vmm_inp(int i_ic, int nb_x_blocking) {
-        int idx = i_ic + nb_x_blocking * jcp.ur_w;
+    inline Vmm vmm_inp(dim_t i_ic, dim_t nb_x_blocking) {
+        const dim_t idx = i_ic + nb_x_blocking * jcp.ur_w;
         assert(idx < 31);
-        return Vmm(idx);
+        return Vmm(static_cast<int>(idx));
     }
-    inline Vmm vmm_out(int i_ur, int i_oc) {
-        int idx = i_ur + i_oc * jcp.ur_w;
+    inline Vmm vmm_out(dim_t i_ur, dim_t i_oc) {
+        const dim_t idx = i_ur + i_oc * jcp.ur_w;
         assert(idx < ker_reg_base_idx);
-        return Vmm(idx);
+        return Vmm(static_cast<int>(idx));
     }
 
     Vmm vmm_wei = Vmm(31);
 
     inline void prepare_output(int ur_w);
     inline void store_output(int ur_w);
-    inline void compute_loop_fma(int ur_w, int l_overflow, int r_overflow);
+    inline void compute_loop_fma(int ur_w, dim_t l_overflow, dim_t r_overflow);
     inline void compute_loop_fma_core(
-            int ur_w, int l_overflow, int r_overflow, int k_offset);
+            int ur_w, dim_t l_overflow, dim_t r_overflow, int k_offset);
     inline void compute_loop(
-            int ur_w, int l_overflow, int r_overflow, int k_offset = 0);
+            int ur_w, dim_t l_overflow, dim_t r_overflow, int k_offset = 0);
     void generate() override;
 
-    inline int get_iw_start(int ki, int l_overflow) {
-        int res = (jcp.iw - 1 + jcp.r_pad) % jcp.stride_w
+    inline dim_t get_iw_start(dim_t ki, dim_t l_overflow) {
+        dim_t res = (jcp.iw - 1 + jcp.r_pad) % jcp.stride_w
                 + l_overflow * jcp.stride_w
                 - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1);
         while (res < 0)
@@ -307,10 +308,10 @@ private:
         return res;
     }
 
-    inline int get_iw_end(int ur_w, int ki, int r_overflow) {
+    inline dim_t get_iw_end(dim_t ur_w, dim_t ki, dim_t r_overflow) {
         if (utils::one_of(ur_w, jcp.iw, jcp.ur_w_tail))
-            ur_w += nstl::min(0, jcp.r_pad); // remove negative padding
-        int res = (ur_w - 1 + jcp.l_pad) % jcp.stride_w
+            ur_w += nstl::min<dim_t>(0, jcp.r_pad); // remove negative padding
+        dim_t res = (ur_w - 1 + jcp.l_pad) % jcp.stride_w
                 + r_overflow * jcp.stride_w - ki * (jcp.dilate_w + 1);
         while (res < 0)
             res += jcp.stride_w;
@@ -318,7 +319,7 @@ private:
         return ur_w - res;
     }
 
-    inline size_t get_diff_src_offset(int iw, int icb) {
+    inline size_t get_diff_src_offset(dim_t iw, dim_t icb) {
         const bool is_nxc_layout = is_dsrc_layout_nxc();
         size_t iw_str = is_nxc_layout ? jcp.ngroups * jcp.ic : jcp.ic_block;
         size_t icb_str = is_nxc_layout
@@ -328,7 +329,7 @@ private:
         return typesize * (icb * icb_str + iw * iw_str);
     }
 
-    inline ptrdiff_t get_dst_offset(int iw, int oc, int kw) {
+    inline ptrdiff_t get_dst_offset(dim_t iw, dim_t oc, dim_t kw) {
         ptrdiff_t ow
                 = (iw + jcp.l_pad - kw * (jcp.dilate_w + 1)) / jcp.stride_w;
         ptrdiff_t ow_str = is_ddst_layout_nxc()
@@ -460,15 +461,15 @@ private:
     inline void od_step_comeback_pointers();
     inline void oh_step_comeback_pointers();
     inline void compute_oh_step_unroll_ow(int ic_block_step, int max_ur_w);
-    inline void compute_ic_block_step(int ur_w, int pad_l, int pad_r,
-            int ic_block_step, int input_offset, int kernel_offset,
-            int output_offset, bool input_wraparound = false);
-    inline void compute_ic_block_step_fma(int ur_w, int pad_l, int pad_r,
-            int ic_block_step, int input_offset, int kernel_offset,
-            int output_offset, bool input_wraparound);
-    inline void compute_ic_block_step_fma_expl(int ur_w, int pad_l, int pad_r,
-            int ic_block_step, int input_offset, int kernel_offset,
-            int output_offset, bool input_wraparound);
+    inline void compute_ic_block_step(int ur_w, dim_t pad_l, dim_t pad_r,
+            int ic_block_step, dim_t input_offset, dim_t kernel_offset,
+            dim_t output_offset, bool input_wraparound = false);
+    inline void compute_ic_block_step_fma(int ur_w, dim_t pad_l, dim_t pad_r,
+            int ic_block_step, dim_t input_offset, dim_t kernel_offset,
+            dim_t output_offset, bool input_wraparound);
+    inline void compute_ic_block_step_fma_expl(int ur_w, dim_t pad_l,
+            dim_t pad_r, int ic_block_step, dim_t input_offset,
+            dim_t kernel_offset, dim_t output_offset, bool input_wraparound);
     inline void compute_oh_step_common(int ic_block_step, int max_ur_w);
     inline void compute_oh_step_disp();
     inline void compute_oh_loop_common();
@@ -486,7 +487,7 @@ private:
     }
 
     inline ptrdiff_t get_full_src_offset(
-            int i_iw, int i_ic, ptrdiff_t input_offset) {
+            dim_t i_iw, int i_ic, ptrdiff_t input_offset) {
         const bool is_nxc_layout = is_src_layout_nxc();
         const size_t w_shift_st = (jcp.is_hw_transp ? jcp.iw : 1)
                 * (jcp.is_1stconv ? 1 : jcp.ic_block);
@@ -499,7 +500,7 @@ private:
         return input_offset + typesize * local_input_offset;
     }
 
-    inline int get_iw_idx(int ow, int kw, int l_pad) const {
+    inline dim_t get_iw_idx(dim_t ow, dim_t kw, dim_t l_pad) const {
         return ow * jcp.stride_w + kw * (jcp.dilate_w + 1) - l_pad;
     }
 

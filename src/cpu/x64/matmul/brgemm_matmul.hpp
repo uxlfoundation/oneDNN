@@ -63,7 +63,7 @@ struct brgemm_matmul_t : public primitive_t {
         int get_brg_kernel_idx(bool is_bs_tail, bool do_initialization,
                 int m_ker_idx, int n_ker_idx, bool is_K_tail,
                 bool is_prefetching) const;
-        const brgemm_desc_t &get_brg_desc(int idx) const {
+        const brgemm_desc_t &get_brg_desc(dim_t idx) const {
             return brg_descs_[idx];
         }
         const brgemm_matmul_conf_t &get_brgemm_matmul_conf() const {
@@ -91,28 +91,29 @@ private:
     status_t execute_body(const exec_ctx_t &ctx) const;
     void compute_kernel(const brg_matmul_exec_ctx_t &brgmm_ctx,
             const char *A_data_batch_ptr, const char *B_data_batch_ptr,
-            int ithr, int b_idx, int m_blk_idx, int n_blk_idx, int k_blk_idx,
-            bool do_init, int &prev_ker_idx, bool prefetch) const;
+            int ithr, dim_t b_idx, dim_t m_blk_idx, dim_t n_blk_idx,
+            dim_t k_blk_idx, bool do_init, int &prev_ker_idx,
+            bool prefetch) const;
     void fill_per_mn_compensation(const brg_matmul_exec_ctx_t &brgmm_ctx,
-            int ithr, int b_idx, int m_blk_idx, int n_blk_idx,
+            int ithr, dim_t b_idx, dim_t m_blk_idx, dim_t n_blk_idx,
             const char *A_data_batch_ptr, const char *B_data_batch_ptr,
-            int m_kernel_size, int n_kernel_size, int k_blk_idx,
+            dim_t m_kernel_size, dim_t n_kernel_size, dim_t k_blk_idx,
             bool is_tail) const;
 
-    bool determine_prefetch(const int mc, const int m_end, const int nc,
-            const int n_end, const brgemm_matmul_conf_t &bgmmc,
+    bool determine_prefetch(const dim_t mc, const dim_t m_end, const dim_t nc,
+            const dim_t n_end, const brgemm_matmul_conf_t &bgmmc,
             const brg_matmul_exec_ctx_t &brgmm_ctx) const;
 
     void copy_a_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
-            const char *A_data_batch_ptr, int ithr, int m_blk_idx,
-            int k_blk_idx) const;
+            const char *A_data_batch_ptr, int ithr, dim_t m_blk_idx,
+            dim_t k_blk_idx) const;
     void copy_b_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
-            const char *B_data_batch_ptr, int ithr, int b_idx, int n_blk_idx,
-            int k_blk_idx) const;
+            const char *B_data_batch_ptr, int ithr, dim_t b_idx, dim_t n_blk_idx,
+            dim_t k_blk_idx) const;
     void maybe_reduce_partial_results_and_apply_postops(
             const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const;
     void maybe_reduce_A(const brg_matmul_exec_ctx_t &brgmm_ctx, int ithr,
-            int gemm_batch, int m_blk_idx, int n_blk_idx, int k_chunk_idx,
+            dim_t gemm_batch, dim_t m_blk_idx, dim_t n_blk_idx, dim_t k_chunk_idx,
             bool do_init, bool has_K_tail, bool do_K_tail) const;
     void maybe_reduce_and_convert_partial_results_A(
             const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const;

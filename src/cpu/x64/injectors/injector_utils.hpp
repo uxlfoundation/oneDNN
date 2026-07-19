@@ -30,8 +30,8 @@ namespace cpu {
 namespace x64 {
 namespace injector_utils {
 
-using vmm_index_set_t = typename std::set<size_t>;
-using vmm_index_set_iterator_t = typename std::set<size_t>::iterator;
+using vmm_index_set_t = typename std::set<dim_t>;
+using vmm_index_set_iterator_t = typename std::set<dim_t>::iterator;
 
 enum class layout_t { ncsp, c_blocked, nspc, cspn, unsupported };
 

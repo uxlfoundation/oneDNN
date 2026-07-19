@@ -269,7 +269,7 @@ void extend_binary_args_per_w(const post_ops_t &post_ops,
         const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
         std::vector<const void *> &post_ops_binary_rhs_arg_vec,
         uint8_t *expanded_rhs, const std::vector<dim_t> &expanded_elems_len) {
-    size_t offset = 0;
+    dim_t offset = 0;
     const int po_len = post_ops.len();
     auto binary_post_op_idx = 0;
 
@@ -287,7 +287,7 @@ void extend_binary_args_per_w(const post_ops_t &post_ops,
             auto *dst = expanded_rhs + offset;
 
             for (dim_t j = 0; j < expanded_elems_len[i]; ++j) {
-                const size_t src_idx = j % rhs_len;
+                const dim_t src_idx = j % rhs_len;
                 memcpy(dst + j * dt_size, src + src_idx * dt_size, dt_size);
             }
 
@@ -322,56 +322,50 @@ static_params_t::static_params_t(const Xbyak::Reg64 &param1,
     : static_params_t(param1, get_all_strategies_supported_by_injector(),
               rhs_arg_static_params) {}
 
-rhs_arg_static_params_t::rhs_arg_static_params_t(
-        std::size_t rhs_dt_helper_vmm_idx, const Xbyak::Reg64 &rhs_addr_reg,
-        const Xbyak::Reg64 &rhs_helper_reg,
+rhs_arg_static_params_t::rhs_arg_static_params_t(dim_t rhs_dt_helper_vmm_idx,
+        const Xbyak::Reg64 &rhs_addr_reg, const Xbyak::Reg64 &rhs_helper_reg,
         const Xbyak::Reg64 &rhs_addr_cache_reg, bool preserve_gpr_helpers,
-        bool preserve_vmm_helper, std::size_t abi_param_offset,
-        std::size_t dst_orig_offset, const memory_desc_wrapper &dst_d,
-        std::size_t tail_size, bool use_exact_tail_scalar_bcast)
+        bool preserve_vmm_helper, dim_t abi_param_offset, dim_t dst_orig_offset,
+        const memory_desc_wrapper &dst_d, dim_t tail_size,
+        bool use_exact_tail_scalar_bcast)
     : rhs_arg_static_params_t(rhs_dt_helper_vmm_idx, rhs_addr_reg,
               rhs_helper_reg, rhs_addr_cache_reg, preserve_gpr_helpers,
               preserve_vmm_helper, abi_param_offset, dst_orig_offset, dst_d,
               tail_size, Xbyak::Opmask(2), use_exact_tail_scalar_bcast,
               rhs_helper_reg, false /*is_opmask_set*/) {}
 
-rhs_arg_static_params_t::rhs_arg_static_params_t(
-        std::size_t rhs_dt_helper_vmm_idx, const Xbyak::Reg64 &rhs_addr_reg,
-        const Xbyak::Reg64 &rhs_helper_reg,
+rhs_arg_static_params_t::rhs_arg_static_params_t(dim_t rhs_dt_helper_vmm_idx,
+        const Xbyak::Reg64 &rhs_addr_reg, const Xbyak::Reg64 &rhs_helper_reg,
         const Xbyak::Reg64 &rhs_addr_cache_reg, bool preserve_gpr_helpers,
-        bool preserve_vmm_helper, std::size_t abi_param_offset,
-        std::size_t dst_orig_offset, const memory_desc_wrapper &dst_d,
-        std::size_t tail_size, const Xbyak::Opmask &tail_opmask,
-        bool use_exact_tail_scalar_bcast)
+        bool preserve_vmm_helper, dim_t abi_param_offset, dim_t dst_orig_offset,
+        const memory_desc_wrapper &dst_d, dim_t tail_size,
+        const Xbyak::Opmask &tail_opmask, bool use_exact_tail_scalar_bcast)
     : rhs_arg_static_params_t(rhs_dt_helper_vmm_idx, rhs_addr_reg,
               rhs_helper_reg, rhs_addr_cache_reg, preserve_gpr_helpers,
               preserve_vmm_helper, abi_param_offset, dst_orig_offset, dst_d,
               tail_size, tail_opmask, use_exact_tail_scalar_bcast,
               rhs_helper_reg, true /*is_opmask_set*/) {}
 
-rhs_arg_static_params_t::rhs_arg_static_params_t(
-        std::size_t rhs_dt_helper_vmm_idx, const Xbyak::Reg64 &rhs_addr_reg,
-        const Xbyak::Reg64 &rhs_helper_reg,
+rhs_arg_static_params_t::rhs_arg_static_params_t(dim_t rhs_dt_helper_vmm_idx,
+        const Xbyak::Reg64 &rhs_addr_reg, const Xbyak::Reg64 &rhs_helper_reg,
         const Xbyak::Reg64 &rhs_addr_cache_reg, bool preserve_gpr_helpers,
-        bool preserve_vmm_helper, std::size_t abi_param_offset,
-        std::size_t dst_orig_offset, const memory_desc_wrapper &dst_d,
-        std::size_t tail_size, const Xbyak::Opmask &tail_opmask,
-        const Xbyak::Reg64 &reg_tail_size, bool use_exact_tail_scalar_bcast)
+        bool preserve_vmm_helper, dim_t abi_param_offset, dim_t dst_orig_offset,
+        const memory_desc_wrapper &dst_d, dim_t tail_size,
+        const Xbyak::Opmask &tail_opmask, const Xbyak::Reg64 &reg_tail_size,
+        bool use_exact_tail_scalar_bcast)
     : rhs_arg_static_params_t(rhs_dt_helper_vmm_idx, rhs_addr_reg,
               rhs_helper_reg, rhs_addr_cache_reg, preserve_gpr_helpers,
               preserve_vmm_helper, abi_param_offset, dst_orig_offset, dst_d,
               tail_size, tail_opmask, use_exact_tail_scalar_bcast,
               reg_tail_size, true /*is_opmask_set*/) {}
 
-rhs_arg_static_params_t::rhs_arg_static_params_t(
-        std::size_t rhs_dt_helper_vmm_idx, const Xbyak::Reg64 &rhs_addr_reg,
-        const Xbyak::Reg64 &rhs_helper_reg,
+rhs_arg_static_params_t::rhs_arg_static_params_t(dim_t rhs_dt_helper_vmm_idx,
+        const Xbyak::Reg64 &rhs_addr_reg, const Xbyak::Reg64 &rhs_helper_reg,
         const Xbyak::Reg64 &rhs_addr_cache_reg, bool preserve_gpr_helpers,
-        bool preserve_vmm_helper, std::size_t abi_param_offset,
-        std::size_t dst_orig_offset, const memory_desc_wrapper &dst_d,
-        std::size_t tail_size, const Xbyak::Opmask &tail_opmask,
-        bool use_exact_tail_scalar_bcast, const Xbyak::Reg64 &reg_tail_size,
-        bool is_opmask_set)
+        bool preserve_vmm_helper, dim_t abi_param_offset, dim_t dst_orig_offset,
+        const memory_desc_wrapper &dst_d, dim_t tail_size,
+        const Xbyak::Opmask &tail_opmask, bool use_exact_tail_scalar_bcast,
+        const Xbyak::Reg64 &reg_tail_size, bool is_opmask_set)
     : rhs_dt_helper_vmm_idx(rhs_dt_helper_vmm_idx)
     , rhs_addr_reg(rhs_addr_reg)
     , rhs_helper_reg(rhs_helper_reg)
@@ -412,14 +406,17 @@ static bool rhs_arg_params_differ(size_t vmm_idx1, size_t vmm_idx2,
         const rhs_arg_dynamic_params_t &rhs_arg_params,
         broadcasting_strategy_t rhs_broadcasting_strategy) {
 
+    const int vmm_idx1_int = jit_generator_t::xbyak_register_index(vmm_idx1);
+    const int vmm_idx2_int = jit_generator_t::xbyak_register_index(vmm_idx2);
+
     const auto &out_addr = rhs_arg_params.vmm_idx_to_out_addr;
     const auto &out_reg = rhs_arg_params.vmm_idx_to_out_reg;
     const auto &out_elem_off_val = rhs_arg_params.vmm_idx_to_out_elem_off_val;
 
     if (rhs_broadcasting_strategy != broadcasting_strategy_t::scalar) {
-        return params_differ(out_addr, vmm_idx1, vmm_idx2)
-                || params_differ(out_reg, vmm_idx1, vmm_idx2)
-                || params_differ(out_elem_off_val, vmm_idx1, vmm_idx2);
+        return params_differ(out_addr, vmm_idx1_int, vmm_idx2_int)
+                || params_differ(out_reg, vmm_idx1_int, vmm_idx2_int)
+                || params_differ(out_elem_off_val, vmm_idx1_int, vmm_idx2_int);
     }
     return false;
 }
@@ -496,20 +493,19 @@ std::pair<bool, int> jit_uni_binary_injector_t<isa, Vmm>::should_preserve_vmm(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(size_t start_idx,
-        size_t end_idx, std::size_t rhs_arg_idx,
-        const dnnl_post_ops::entry_t &post_op,
+void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(dim_t start_idx,
+        dim_t end_idx, dim_t rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params) const {
     injector_utils::vmm_index_set_t vmm_idxs;
-    for (size_t i = start_idx; i < end_idx; i++)
+    for (dim_t i = start_idx; i < end_idx; i++)
         vmm_idxs.emplace(i);
     compute_vector_range(vmm_idxs, rhs_arg_idx, post_op, rhs_arg_params);
 }
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
-        const injector_utils::vmm_index_set_t &vmm_idxs,
-        std::size_t rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
+        const injector_utils::vmm_index_set_t &vmm_idxs, dim_t rhs_arg_idx,
+        const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params) const {
 
     if (vmm_idxs.empty()) return;
@@ -519,7 +515,10 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     // Phase 1 Validate temporary vmm user hint
     static constexpr int max_vmm_idx = cpu_isa_traits_t<isa>::n_vregs - 1;
     auto &vmm_hint = rhs_arg_static_params_.rhs_dt_helper_vmm_idx;
-    vmm_hint = adjust_temp_vmm_hint(vmm_hint, start_idx, end_idx, max_vmm_idx);
+    vmm_hint = adjust_temp_vmm_hint(
+            jit_generator_t::xbyak_register_index(vmm_hint),
+            jit_generator_t::xbyak_register_index(start_idx),
+            jit_generator_t::xbyak_register_index(end_idx), max_vmm_idx);
 
     const auto dst_d = rhs_arg_static_params_.dst_d;
     const auto src1_desc = get_src1_desc(post_op, dst_d);
@@ -547,7 +546,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     const auto tail_load_mode = rhs_arg_params.tail_load_mode;
     const int simd_w = cpu_isa_traits_t<isa>::vlen
             / types::data_type_size(dst_d.data_type());
-    const int blk_size = dst_d.blocking_desc().inner_blks[0];
+    const int blk_size = jit_generator_t::xbyak_register_index(
+            dst_d.blocking_desc().inner_blks[0]);
     const bool use_offset_conversions
             = (!rhs_arg_params.vmm_idx_to_out_addr.empty()
                     || !rhs_arg_params.vmm_idx_to_out_reg.empty());
@@ -630,7 +630,9 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
                                               host_->rax, host_->rdx})
                             : std::initializer_list<Xbyak::Reg64>()),
             (rhs_arg_static_params_.preserve_vmm_helper && dt_helper_vmm_needed
-                            ? std::initializer_list<Xbyak::Xmm>({Vmm(vmm_hint)})
+                            ? std::initializer_list<Xbyak::Xmm>({Vmm(
+                                      jit_generator_t::xbyak_register_index(
+                                              vmm_hint))})
                             : std::initializer_list<Xbyak::Xmm>())};
 
     bool vmm0_was_preserved = false;
@@ -641,16 +643,20 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     Xbyak::Address rhs2_arg_addr {};
 
     // Phase 3 Apply binary post-op over all vmms.
-    for (const auto vmm_idx : vmm_idxs) {
-        const bool is_start_idx = vmm_idx == start_idx;
+    for (const auto set_vmm_idx : vmm_idxs) {
+        const int vmm_idx = jit_generator_t::xbyak_register_index(set_vmm_idx);
+        const bool is_start_idx
+                = vmm_idx == jit_generator_t::xbyak_register_index(start_idx);
         const bool with_tail = rhs_arg_static_params_.is_tail
                 && vmm_tail_idx.find(vmm_idx) != vmm_tail_idx.cend()
                 && IMPLICATION(rhs_broadcasting_strategy
                                 == broadcasting_strategy_t::scalar,
                         rhs_arg_static_params_.use_exact_tail_scalar_bcast);
-        const Vmm tern_tmp_vmm(rhs_arg_static_params_.rhs_dt_helper_vmm_idx);
-        const auto local_vmm_preservation = should_preserve_vmm(
-                vmm_idx, vmm_hint, max_vmm_idx, dt_helper_vmm_needed);
+        const Vmm tern_tmp_vmm(jit_generator_t::xbyak_register_index(
+                rhs_arg_static_params_.rhs_dt_helper_vmm_idx));
+        const auto local_vmm_preservation = should_preserve_vmm(vmm_idx,
+                jit_generator_t::xbyak_register_index(vmm_hint), max_vmm_idx,
+                dt_helper_vmm_needed);
         const bool &vmm_preservation_needed = local_vmm_preservation.first;
         const Vmm dst_vmm(vmm_idx);
 
@@ -720,12 +726,14 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
 
 template <cpu_isa_t isa, typename Vmm>
 Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
-        std::size_t vmm_idx, std::size_t rhs_arg_idx,
-        const dnnl_post_ops::entry_t &post_op,
+        dim_t vmm_idx, dim_t rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params,
         const broadcasting_strategy_t rhs_broadcasting_strategy, bool is_first,
         bool is_ternary_input) const {
 
+    // append_*_offset() helpers below key their internal maps by int, so
+    // narrow once here rather than at every call site.
+    const int vmm_idx_int = jit_generator_t::xbyak_register_index(vmm_idx);
     static constexpr auto rhs_arg_ptr_size = sizeof(const void *);
     const auto &rhs_addr_reg = rhs_arg_static_params_.rhs_addr_reg;
     const auto &abi_param_offset = rhs_arg_static_params_.abi_param_offset;
@@ -760,7 +768,7 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
             // kernels.
             append_no_broadcast_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first,
                     (!is_ternary_input));
 
@@ -770,7 +778,7 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
         case broadcasting_strategy_t::per_oc_spatial: {
             append_oc_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
 
             return rhs_broadcasting_strategy
@@ -781,14 +789,14 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
         case broadcasting_strategy_t::per_oc_d: {
             append_oc_d_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
             return host_->ptr_b[rhs_addr_reg];
         }
         case broadcasting_strategy_t::per_mb_spatial: {
             append_mb_sp_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first,
                     rhs_d);
 
@@ -797,7 +805,7 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
         case broadcasting_strategy_t::per_mb_w: {
             append_mb_w_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
 
             return host_->ptr[rhs_addr_reg];
@@ -805,7 +813,7 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
         case broadcasting_strategy_t::per_w: {
             append_w_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
 
             return host_->ptr[rhs_addr_reg];
@@ -813,7 +821,7 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
         case broadcasting_strategy_t::per_mb: {
             append_mb_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
 
             return host_->ptr_b[rhs_addr_reg];
@@ -821,7 +829,7 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
         case broadcasting_strategy_t::per_hw: {
             append_hw_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
 
             return host_->ptr[rhs_addr_reg];
@@ -829,7 +837,7 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
         case broadcasting_strategy_t::batch: {
             append_oc_spatial_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
 
             return host_->ptr[rhs_addr_reg];
@@ -837,7 +845,7 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
         case broadcasting_strategy_t::spatial: {
             append_mb_oc_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
-                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx_int,
                     rhs_addr_reg, rhs_helper_reg, rhs_arg_elem_size, is_first);
 
             return host_->ptr[rhs_addr_reg];
@@ -852,9 +860,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_no_broadcast_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first, bool cache_addr) const {
+        dim_t elem_size_bytes, bool is_first, bool cache_addr) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -904,8 +912,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_no_broadcast_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_no_broadcast_partial(
-        const std::size_t offset, const Xbyak::Reg64 &out_reg,
-        std::size_t elem_size_bytes) const {
+        const dim_t offset, const Xbyak::Reg64 &out_reg,
+        dim_t elem_size_bytes) const {
     const auto offset_adj = offset >> math::ilog2q(types::data_type_size(
                                     rhs_arg_static_params_.dst_d.data_type()));
     host_->mov(out_reg,
@@ -917,9 +925,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_oc_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first) const {
+        dim_t elem_size_bytes, bool is_first) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -1026,8 +1034,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_ncsp_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // c = (offset % strides[0]) / strides[1]
     const auto offset_adj
             = ((offset >> math::ilog2q(types::data_type_size(
@@ -1047,7 +1055,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_base(
     const auto dst_d = rhs_arg_static_params_.dst_d;
     const int simd_w = cpu_isa_traits_t<isa>::vlen
             / types::data_type_size(dst_d.data_type());
-    const int blk_size = dst_d.blocking_desc().inner_blks[0];
+    const int blk_size = jit_generator_t::xbyak_register_index(
+            dst_d.blocking_desc().inner_blks[0]);
     const auto rax = host_->rax;
     const auto rdx = host_->rdx;
     const auto r8 = host_->r8;
@@ -1072,11 +1081,12 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // c = ((offset % strides[0]) / strides[1]) * strides[ndims - 1] + offset % blk_size
     const auto dst_d = rhs_arg_static_params_.dst_d;
-    const int blk_size = dst_d.blocking_desc().inner_blks[0];
+    const int blk_size = jit_generator_t::xbyak_register_index(
+            dst_d.blocking_desc().inner_blks[0]);
     const auto offset_shr = offset >> math::ilog2q(types::data_type_size(
                                     rhs_arg_static_params_.dst_d.data_type()));
     const auto offset_adj = ((offset_shr % strides[0]) / strides[1]) * blk_size
@@ -1104,8 +1114,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_nspc_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_nspc_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // c = offset % C
     const auto C = rhs_arg_static_params_.dst_d.dims()[1];
     const auto offset_adj = (offset >> math::ilog2q(types::data_type_size(
@@ -1132,8 +1142,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_cspn_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_cspn_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // c = offset / strides[1]
     const auto offset_adj = (offset >> math::ilog2q(types::data_type_size(
                                      rhs_arg_static_params_.dst_d.data_type())))
@@ -1147,9 +1157,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_oc_d_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first) const {
+        dim_t elem_size_bytes, bool is_first) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -1250,8 +1260,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_d_ncsp_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_d_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // dst_offset % dstride[0] / dstride[2] = b*C + c
     const auto offset_adj
             = ((offset >> math::ilog2q(types::data_type_size(
@@ -1267,9 +1277,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_mb_sp_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first,
+        dim_t elem_size_bytes, bool is_first,
         const memory_desc_wrapper &rhs_d) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
@@ -1374,7 +1384,7 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_base_rhs_strided(
         const memory_desc_wrapper &dst_d, const memory_desc_wrapper &rhs_d,
         const dim_t *dst_strides, const Xbyak::Reg64 &addr_reg,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const Xbyak::Reg64 &tmp_reg, dim_t elem_size_bytes) const {
     // offset = n*dst_stride_n + c*dst_stride_c + d*dst_stride_d + h*dst_stride_h + w*dst_stride_w
     // rhs_off = n*rhs_stride_n + d*rhs_stride_d + h*rhs_stride_h + w*rhs_stride_w
     // per_mb_spatial: channel c is broadcast, so rem = (offset % dst_stride_n) % dst_stride_c.
@@ -1459,9 +1469,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa,
         Vmm>::calculate_mb_sp_ncsp_partial_rhs_strided(const memory_desc_wrapper
                                                                &dst_d,
-        const memory_desc_wrapper &rhs_d, std::size_t dst_offset_bytes,
+        const memory_desc_wrapper &rhs_d, dim_t dst_offset_bytes,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes) const {
+        dim_t elem_size_bytes) const {
     const dim_t rhs_offset
             = rhs_offset_per_mb_spatial(dst_d, rhs_d, dst_offset_bytes);
     if (rhs_offset == 0) return;
@@ -1523,8 +1533,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // mb_sp_off = (n * (stride_n/C)) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // mb_sp_off = offset - (c * stride_c) - (n * (C - 1)DHW)
@@ -1555,7 +1565,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_base(
     const auto dst_d = rhs_arg_static_params_.dst_d;
     const int simd_w = cpu_isa_traits_t<isa>::vlen
             / types::data_type_size(dst_d.data_type());
-    const int blk_size = dst_d.blocking_desc().inner_blks[0];
+    const int blk_size = jit_generator_t::xbyak_register_index(
+            dst_d.blocking_desc().inner_blks[0]);
 
     const auto rax = host_->rax;
     const auto rdx = host_->rdx;
@@ -1577,8 +1588,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // mb_sp_off = offset - (c * stride_c) - (n * (C - 1)DHW) - c % blk_size
 
     const auto dst_d = rhs_arg_static_params_.dst_d;
@@ -1587,7 +1598,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_partial(
     const auto D = (ndims >= 5) ? dst_d.dims()[ndims - 3] : 1;
     const auto H = (ndims >= 4) ? dst_d.dims()[ndims - 2] : 1;
     const auto W = (ndims >= 3) ? dst_d.dims()[ndims - 1] : 1;
-    const int blk_size = dst_d.blocking_desc().inner_blks[0];
+    const int blk_size = jit_generator_t::xbyak_register_index(
+            dst_d.blocking_desc().inner_blks[0]);
 
     const auto offset_shr = offset >> math::ilog2q(types::data_type_size(
                                     rhs_arg_static_params_.dst_d.data_type()));
@@ -1619,8 +1631,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_nspc_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_nspc_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // mb_sp_off = nDHW + dHW + hW + w
     // mb_sp_off = offset / C
@@ -1652,8 +1664,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_cspn_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_cspn_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // mb_sp_off = dHWN + hWN + wN + n
     // mb_sp_off = offset % stride_c
@@ -1669,9 +1681,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_mb_w_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first) const {
+        dim_t elem_size_bytes, bool is_first) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -1821,8 +1833,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_ncsp_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // mb_w_off = (n * (stride_n/(C*D*H))) + (w * stride_w)
     const auto dst_d = rhs_arg_static_params_.dst_d;
@@ -1852,8 +1864,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_blocked_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_blocked_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // mb_w_off = (n * (stride_n/(C*D*H))) + (w * stride_w)
     calculate_mb_w_ncsp_partial(strides, offset, tmp_reg, elem_size_bytes);
 }
@@ -1912,8 +1924,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_nspc_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_nspc_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // mb_w_off = nW + w
     const auto dst_d = rhs_arg_static_params_.dst_d;
@@ -1962,8 +1974,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_cspn_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_cspn_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // mb_w_off = wN + n
     const auto ndims = rhs_arg_static_params_.dst_d.ndims();
@@ -1980,9 +1992,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_hw_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first) const {
+        dim_t elem_size_bytes, bool is_first) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -2067,8 +2079,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_hw_offset(
 }
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_hw_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = nCHW + cHW + hW + w (for 4D)
     // per_spatial_off = offset % HW
 
@@ -2114,9 +2126,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_w_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first) const {
+        dim_t elem_size_bytes, bool is_first) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -2233,8 +2245,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_ncsp_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // w_off = w * stride_w
     const auto ndims = rhs_arg_static_params_.dst_d.ndims();
@@ -2255,8 +2267,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_blocked_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_blocked_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     calculate_w_ncsp_partial(strides, offset, tmp_reg, elem_size_bytes);
 }
 
@@ -2289,8 +2301,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_nspc_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_nspc_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // w_off = w
     const auto ndims = rhs_arg_static_params_.dst_d.ndims();
@@ -2313,8 +2325,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_cspn_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_cspn_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // w_off = w
     calculate_w_nspc_partial(strides, offset, tmp_reg, elem_size_bytes);
@@ -2324,9 +2336,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_mb_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first) const {
+        dim_t elem_size_bytes, bool is_first) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -2431,8 +2443,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_ncsp_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // mb_off = offset / stride_n
     // mb_off = n
@@ -2454,8 +2466,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_nspc_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_nspc_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // mb_off = n;
     calculate_mb_ncsp_partial(strides, offset, tmp_reg, elem_size_bytes);
@@ -2483,8 +2495,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_cspn_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_cspn_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // mb_off = offset % N = offset % strides[ndims-1]
     // mb_off = n
@@ -2501,9 +2513,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_oc_spatial_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first) const {
+        dim_t elem_size_bytes, bool is_first) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -2606,8 +2618,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_ncsp_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // oc_spatial_off = offset % stride_n
     const auto offset_shr = offset >> math::ilog2q(types::data_type_size(
@@ -2628,8 +2640,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_nspc_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_nspc_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // oc_spatial_off = offset % stride_n
     calculate_oc_spatial_ncsp_partial(
@@ -2655,8 +2667,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_cspn_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_cspn_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // oc_spatial_off = offset / strides[ndims - 1]
     const auto offset_shr = offset >> math::ilog2q(types::data_type_size(
@@ -2672,9 +2684,9 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::append_mb_oc_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
-        const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
+        const std::map<int, dim_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
         const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes, bool is_first) const {
+        dim_t elem_size_bytes, bool is_first) const {
 
     const auto it_out_addr = vmm_idx_to_out_addr.find(vmm_idx);
     const auto it_out_reg = vmm_idx_to_out_reg.find(vmm_idx);
@@ -2777,8 +2789,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_ncsp_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = nCDHW + cDHW + dHW + hW + w
     // mb_oc_off = offset / DHW
     const auto offset_shr = offset >> math::ilog2q(types::data_type_size(
@@ -2820,8 +2832,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_nspc_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_nspc_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // mb_oc_off = nC + c
     // mb_oc_off = (offset / DHWC) * C + offset % C
@@ -2869,8 +2881,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_cspn_base(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_cspn_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
+        const dim_t *strides, const dim_t offset, const Xbyak::Reg64 &tmp_reg,
+        dim_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // mb_oc_off = cN + n
     // mb_oc_off = (offset / DHWN) * N + offset % N
@@ -2912,7 +2924,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary(
 
     if (process_rhs_arg_using_tmp_vmm) {
 
-        const Vmm tmp_vmm = Vmm(rhs_arg_static_params_.rhs_dt_helper_vmm_idx);
+        const Vmm tmp_vmm = Vmm(jit_generator_t::xbyak_register_index(
+                rhs_arg_static_params_.rhs_dt_helper_vmm_idx));
 
         if (rhs_addr.isBroadcast())
             execute_broadcast(rhs_arg_data_type, tmp_vmm,
@@ -3275,14 +3288,14 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_with_opmask(
 
 static constexpr int xmm_size_elem = 4;
 
-static void load_tail_avx(jit_generator_t *host, std::size_t ymm_idx,
-        std::size_t tail_size, const std::function<void()> &init_op,
+static void load_tail_avx(jit_generator_t *host, dim_t ymm_idx, dim_t tail_size,
+        const std::function<void()> &init_op,
         const std::function<void(int, bool)> &ymm_upper_half_op,
         const std::function<void(int)> &ymm_lower_half_op) {
 
     if (init_op) init_op();
 
-    const auto res = std::div(tail_size, xmm_size_elem);
+    const auto res = std::div(static_cast<int>(tail_size), xmm_size_elem);
     const auto &ymm_upper_half_op_data_size = res.rem;
     const bool should_load_lower_half = res.quot;
 
@@ -3290,22 +3303,23 @@ static void load_tail_avx(jit_generator_t *host, std::size_t ymm_idx,
         ymm_upper_half_op(ymm_upper_half_op_data_size, should_load_lower_half);
 
     if (should_load_lower_half) {
-        const auto tmp_xmm = Xbyak::Xmm(ymm_idx);
+        const auto tmp_xmm
+                = Xbyak::Xmm(jit_generator_t::xbyak_register_index(ymm_idx));
 
         if (ymm_upper_half_op_data_size) push_vmm(host, tmp_xmm);
 
         if (ymm_lower_half_op) ymm_lower_half_op(ymm_upper_half_op_data_size);
 
         if (ymm_upper_half_op_data_size) {
-            const auto tmp_ymm = Xbyak::Ymm(ymm_idx);
+            const auto tmp_ymm = Xbyak::Ymm(
+                    jit_generator_t::xbyak_register_index(ymm_idx));
             host->vinsertf128(tmp_ymm, tmp_ymm, host->ptr[host->rsp], 1);
             restore_stack(host, tmp_xmm);
         }
     }
 }
 
-static void load_tail_avx(jit_generator_t *host, std::size_t ymm_idx,
-        std::size_t tail_size,
+static void load_tail_avx(jit_generator_t *host, dim_t ymm_idx, dim_t tail_size,
         const std::function<void(int, bool)> &ymm_upper_half_op,
         const std::function<void(int)> &ymm_lower_half_op) {
     load_tail_avx(host, ymm_idx, tail_size, nullptr, ymm_upper_half_op,
@@ -3319,7 +3333,7 @@ static Xbyak::uint8 MM_SHUFFLE(
 
 static void execute_broadcast_f32_tail_avx(jit_generator_t *host,
         const Xbyak::Ymm &vmm, const Xbyak::Address &rhs_addr,
-        std::size_t tail_size) {
+        dim_t tail_size) {
 
     const auto vmm_idx = vmm.getIdx();
     const auto tmp_xmm = Xbyak::Xmm(vmm_idx);
@@ -3344,7 +3358,7 @@ static void execute_broadcast_f32_tail_avx(jit_generator_t *host,
 
 static void execute_broadcast_f32_tail_avx(jit_generator_t *host,
         const Xbyak::Xmm &vmm, const Xbyak::Address &rhs_addr,
-        std::size_t tail_size) {
+        dim_t tail_size) {
 
     const auto vmm_idx = vmm.getIdx();
     const auto tmp_xmm = Xbyak::Xmm(vmm_idx);
@@ -3363,7 +3377,7 @@ struct helper_bcast_tail_t {};
 template <typename Vmm>
 struct helper_bcast_tail_t<avx2, Vmm> {
     static void execute_broadcast_tail_statically(jit_generator_t *host,
-            const size_t tail_size, const data_type_t &data_type,
+            const dim_t tail_size, const data_type_t &data_type,
             const Vmm &tmp_vmm, const Xbyak::Address &rhs_addr) {
         host->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
 
@@ -3371,7 +3385,7 @@ struct helper_bcast_tail_t<avx2, Vmm> {
             execute_broadcast_f32_tail_avx(host, tmp_vmm, rhs_addr, tail_size);
         } else if (data_type == data_type::u8 || data_type == data_type::s8) {
             const auto tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
-            for (std::size_t i = 0; i < tail_size; i++)
+            for (dim_t i = 0; i < tail_size; i++)
                 host->vpinsrb(tmp_xmm, tmp_xmm, rhs_addr, i);
 
             if (data_type == data_type::s8)
@@ -3386,7 +3400,7 @@ struct helper_bcast_tail_t<avx2, Vmm> {
 template <typename Vmm>
 struct helper_bcast_tail_t<avx2_vnni_2, Vmm> {
     static void execute_broadcast_tail_statically(jit_generator_t *host,
-            const size_t tail_size, const data_type_t &data_type,
+            const dim_t tail_size, const data_type_t &data_type,
             const Vmm &tmp_vmm, const Xbyak::Address &rhs_addr,
             fp8_conversion_e5m2_t *f8_e5m2_cvt,
             fp8_conversion_e4m3_t *f8_e4m3_cvt) {
@@ -3395,7 +3409,8 @@ struct helper_bcast_tail_t<avx2_vnni_2, Vmm> {
             const auto tmp_lower_vmm =
                     typename vreg_traits_t<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
             host->load_bytes(tmp_lower_vmm, rhs_addr,
-                    tail_size * types::data_type_size(data_type));
+                    static_cast<int>(
+                            tail_size * types::data_type_size(data_type)));
             if (data_type == data_type::bf16) {
                 host->vpmovzxwd(tmp_vmm, tmp_lower_vmm);
                 host->vpslld(tmp_vmm, tmp_vmm, 16);
@@ -3414,7 +3429,7 @@ struct helper_bcast_tail_t<avx2_vnni_2, Vmm> {
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_statically(
         const data_type_t &data_type, const Vmm &tmp_vmm,
-        const Xbyak::Address &rhs_addr, const std::size_t tail_size) const {
+        const Xbyak::Address &rhs_addr, const dim_t tail_size) const {
     assert(!"unsupported tail load mode");
 }
 
@@ -3423,7 +3438,7 @@ void jit_uni_binary_injector_t<avx2_vnni_2,
         Xbyak::Ymm>::execute_broadcast_tail_statically(const data_type_t
                                                                &data_type,
         const Xbyak::Ymm &tmp_vmm, const Xbyak::Address &rhs_addr,
-        const std::size_t tail_size) const {
+        const dim_t tail_size) const {
     helper_bcast_tail_t<avx2_vnni_2,
             Xbyak::Ymm>::execute_broadcast_tail_statically(host_, tail_size,
             data_type, tmp_vmm, rhs_addr, f8_e5m2_cvt_, f8_e4m3_cvt_);
@@ -3434,7 +3449,7 @@ void jit_uni_binary_injector_t<avx2_vnni_2,
         Xbyak::Xmm>::execute_broadcast_tail_statically(const data_type_t
                                                                &data_type,
         const Xbyak::Xmm &tmp_vmm, const Xbyak::Address &rhs_addr,
-        const std::size_t tail_size) const {
+        const dim_t tail_size) const {
     helper_bcast_tail_t<avx2_vnni_2,
             Xbyak::Xmm>::execute_broadcast_tail_statically(host_, tail_size,
             data_type, tmp_vmm, rhs_addr, f8_e5m2_cvt_, f8_e4m3_cvt_);
@@ -3445,7 +3460,7 @@ void jit_uni_binary_injector_t<avx2,
         Xbyak::Ymm>::execute_broadcast_tail_statically(const data_type_t
                                                                &data_type,
         const Xbyak::Ymm &tmp_vmm, const Xbyak::Address &rhs_addr,
-        const std::size_t tail_size) const {
+        const dim_t tail_size) const {
     helper_bcast_tail_t<avx2, Xbyak::Ymm>::execute_broadcast_tail_statically(
             host_, tail_size, data_type, tmp_vmm, rhs_addr);
 }
@@ -3455,7 +3470,7 @@ void jit_uni_binary_injector_t<avx2,
         Xbyak::Xmm>::execute_broadcast_tail_statically(const data_type_t
                                                                &data_type,
         const Xbyak::Xmm &tmp_vmm, const Xbyak::Address &rhs_addr,
-        const std::size_t tail_size) const {
+        const dim_t tail_size) const {
     helper_bcast_tail_t<avx2, Xbyak::Xmm>::execute_broadcast_tail_statically(
             host_, tail_size, data_type, tmp_vmm, rhs_addr);
 }
@@ -3465,7 +3480,7 @@ void jit_uni_binary_injector_t<avx,
         Xbyak::Ymm>::execute_broadcast_tail_statically(const data_type_t
                                                                &data_type,
         const Xbyak::Ymm &tmp_vmm, const Xbyak::Address &rhs_addr,
-        const std::size_t tail_size) const {
+        const dim_t tail_size) const {
 
     host_->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
 
@@ -3511,12 +3526,12 @@ void jit_uni_binary_injector_t<avx,
         Xbyak::Xmm>::execute_broadcast_tail_statically(const data_type_t
                                                                &data_type,
         const Xbyak::Xmm &tmp_vmm, const Xbyak::Address &rhs_addr,
-        const std::size_t tail_size) const {
+        const dim_t tail_size) const {
 
     host_->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
 
     const auto load_tail_avx_xmm = [&]() {
-        for (size_t i = 0; i < tail_size; i++)
+        for (dim_t i = 0; i < tail_size; i++)
             host_->vpinsrb(tmp_vmm, tmp_vmm, rhs_addr, i);
     };
 
@@ -3537,7 +3552,7 @@ void jit_uni_binary_injector_t<sse41,
         Xbyak::Xmm>::execute_broadcast_tail_statically(const data_type_t
                                                                &data_type,
         const Xbyak::Xmm &tmp_vmm, const Xbyak::Address &rhs_addr,
-        const std::size_t tail_size) const {
+        const dim_t tail_size) const {
 
     host_->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
     if (data_type == data_type::f32 || data_type == data_type::s32) {
@@ -3548,7 +3563,7 @@ void jit_uni_binary_injector_t<sse41,
         if (tail_size > 1) host_->shufps(tmp_vmm, tmp_vmm, imms[tail_size - 2]);
 
     } else if (data_type == data_type::u8 || data_type == data_type::s8) {
-        for (std::size_t i = 0; i < tail_size; i++)
+        for (dim_t i = 0; i < tail_size; i++)
             host_->pinsrb(tmp_vmm, rhs_addr, i);
 
         if (data_type == data_type::s8)
@@ -3727,7 +3742,7 @@ struct helper_load_tail_t {};
 template <typename Vmm>
 struct helper_load_tail_t<avx2, Vmm> {
     static void load_rhs_tail_statically(jit_generator_t *host,
-            const size_t tail_size, const Xbyak::Reg64 &rhs_addr_reg,
+            const dim_t tail_size, const Xbyak::Reg64 &rhs_addr_reg,
             const data_type_t &data_type, const Vmm &tmp_vmm,
             const Xbyak::Address &rhs_addr) {
 
@@ -3735,21 +3750,22 @@ struct helper_load_tail_t<avx2, Vmm> {
                     data_type::s8, data_type::u8))
             assert(!"unsupported data type");
 
-        host->load_data(data_type, tmp_vmm, rhs_addr_reg, 0, tail_size);
+        host->load_data(data_type, tmp_vmm, rhs_addr_reg, 0,
+                static_cast<int>(tail_size));
     }
 };
 
 template <typename Vmm>
 struct helper_load_tail_t<avx2_vnni_2, Vmm> {
     static void load_rhs_tail_statically(jit_generator_t *host,
-            const size_t tail_size, const Xbyak::Reg64 &rhs_addr_reg,
+            const dim_t tail_size, const Xbyak::Reg64 &rhs_addr_reg,
             const data_type_t &data_type, const Vmm &tmp_vmm,
             const Xbyak::Address &rhs_addr) {
         if (utils::one_of(data_type, data_type::bf16, data_type::f16)) {
             const auto tmp_lower_vmm =
                     typename vreg_traits_t<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
             host->load_bytes(tmp_lower_vmm, rhs_addr_reg, 0,
-                    tail_size * sizeof(bfloat16_t));
+                    static_cast<int>(tail_size * sizeof(bfloat16_t)));
             if (data_type == data_type::bf16) {
                 host->vpmovzxwd(tmp_vmm, tmp_lower_vmm);
                 host->vpslld(tmp_vmm, tmp_vmm, 16);
@@ -3812,7 +3828,7 @@ void jit_uni_binary_injector_t<avx, Xbyak::Ymm>::load_rhs_tail_statically(
 
     host_->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
     static constexpr int xmm_size_elem = 4;
-    const auto res = std::div(tail_size, xmm_size_elem);
+    const auto res = std::div(static_cast<int>(tail_size), xmm_size_elem);
     const auto vmm_idx = tmp_vmm.getIdx();
     const auto tmp_xmm = Xbyak::Xmm(vmm_idx);
 
@@ -3868,11 +3884,11 @@ void jit_uni_binary_injector_t<avx, Xbyak::Xmm>::load_rhs_tail_statically(
     host_->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
 
     if (data_type == data_type::f32 || data_type == data_type::s32) {
-        for (size_t i = 0; i < tail_size; i++)
+        for (dim_t i = 0; i < tail_size; i++)
             host_->vpinsrd(tmp_vmm, tmp_vmm,
                     host_->ptr[rhs_addr_reg + i * sizeof(float)], i);
     } else if (data_type == data_type::u8 || data_type == data_type::s8) {
-        for (size_t i = 0; i < tail_size; i++)
+        for (dim_t i = 0; i < tail_size; i++)
             host_->vpinsrb(tmp_vmm, tmp_vmm,
                     host_->ptr[rhs_addr_reg + i * sizeof(int8_t)], i);
         if (data_type == data_type::s8)
@@ -3893,7 +3909,7 @@ void jit_uni_binary_injector_t<sse41, Xbyak::Xmm>::load_rhs_tail_statically(
 
     const auto &tail_size = rhs_arg_static_params_.tail_size;
     host_->load_data(data_type, tmp_vmm, rhs_arg_static_params_.rhs_addr_reg, 0,
-            tail_size);
+            static_cast<int>(tail_size));
 }
 
 // Support compare with Address param only when isa is avx512.
@@ -3908,7 +3924,8 @@ jit_uni_binary_injector_t<isa, Vmm>::execute_cmp_binary(const Vmm &dst,
     // which was returned by vcmpps.
     const auto &cmp_mask = rhs_arg_static_params_.tail_opmask;
     const Xbyak::Xmm xreg_one
-            = Xbyak::Xmm(rhs_arg_static_params_.rhs_dt_helper_vmm_idx);
+            = Xbyak::Xmm(jit_generator_t::xbyak_register_index(
+                    rhs_arg_static_params_.rhs_dt_helper_vmm_idx));
     const Xbyak::Reg64 reg_tmp = rhs_arg_static_params_.rhs_helper_reg;
 
     push_opmask(host_, cmp_mask);
@@ -3928,7 +3945,8 @@ typename std::enable_if<!(std::is_same<T, Xbyak::Zmm>::value
         || std::is_same<T, Xbyak::Address>::value)>::type
 jit_uni_binary_injector_t<isa, Vmm>::execute_cmp_binary(const Vmm &dst,
         const Vmm &lhs, const T &rhs, const unsigned int cmp_predicate) const {
-    const int vmm_idx = rhs_arg_static_params_.rhs_dt_helper_vmm_idx;
+    const int vmm_idx = jit_generator_t::xbyak_register_index(
+            rhs_arg_static_params_.rhs_dt_helper_vmm_idx);
     const Vmm vreg_one = Vmm(vmm_idx);
     const Xbyak::Xmm xreg_one = Xbyak::Xmm(vmm_idx);
     const Xbyak::Reg64 reg_tmp = rhs_arg_static_params_.rhs_helper_reg;
@@ -4045,7 +4063,8 @@ void jit_uni_binary_injector_t<avx, Xbyak::Xmm>::execute_binary(
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::execute_prelu(
         const Vmm &dst, const Xbyak::Operand &rhs) const {
-    Vmm tmp_vmm = Vmm(rhs_arg_static_params_.rhs_dt_helper_vmm_idx);
+    Vmm tmp_vmm = Vmm(jit_generator_t::xbyak_register_index(
+            rhs_arg_static_params_.rhs_dt_helper_vmm_idx));
     if (is_superset(isa, avx512_core)) {
         assert(rhs.isMEM());
         Vmm dst_vmm = Vmm(dst.getIdx());
@@ -4081,8 +4100,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_prelu(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::compute_vector(size_t idx,
-        std::size_t rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
+void jit_uni_binary_injector_t<isa, Vmm>::compute_vector(dim_t idx,
+        dim_t rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params) const {
     compute_vector_range({idx}, rhs_arg_idx, post_op, rhs_arg_params);
 }

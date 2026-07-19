@@ -128,12 +128,12 @@ struct jit_uni_eltwise_injector_t {
                   eltwise.beta, eltwise.scale, dt, save_state, p_table, k_mask,
                   is_fwd, use_dst, preserve_vmm, preserve_p_table) {}
 
-    void compute_vector_range(size_t start_compute_idx, size_t end_compute_idx,
+    void compute_vector_range(dim_t start_compute_idx, dim_t end_compute_idx,
             const injector_utils::vmm_index_set_t &vmm_aux_indices = {});
     void compute_vector_range(
             const injector_utils::vmm_index_set_t &vmm_compute_idxs,
             const injector_utils::vmm_index_set_t &vmm_aux_indices = {});
-    void compute_vector(size_t compute_idx,
+    void compute_vector(dim_t compute_idx,
             const injector_utils::vmm_index_set_t &vmm_aux_indices = {}) {
         compute_vector_range({compute_idx}, vmm_aux_indices);
     }
@@ -143,7 +143,7 @@ struct jit_uni_eltwise_injector_t {
     // This call is `static` and `public` to make a decision on the injector's
     // saving state if the caller can supply the necessary number of vmms. The
     // decision must be made BEFORE constructing the injector, thus, `static`.
-    static size_t aux_vecs_count(alg_kind_t alg, bool is_fwd, float alpha);
+    static dim_t aux_vecs_count(alg_kind_t alg, bool is_fwd, float alpha);
 
 private:
     const alg_kind_t alg_;
@@ -179,21 +179,21 @@ private:
 
     const bool is_avx512_ = is_superset(isa, avx512_core);
 
-    static constexpr size_t vlen_ = vreg_traits_t<Vmm>::vlen;
-    static constexpr size_t preserved_vecs_max_ = 6;
-    static constexpr size_t preserved_gprs_max_ = 5;
-    static constexpr size_t n_vregs_ = cpu_isa_traits_t<isa>::n_vregs;
+    static constexpr dim_t vlen_ = vreg_traits_t<Vmm>::vlen;
+    static constexpr dim_t preserved_vecs_max_ = 6;
+    static constexpr dim_t preserved_gprs_max_ = 5;
+    static constexpr dim_t n_vregs_ = cpu_isa_traits_t<isa>::n_vregs;
     static constexpr int n_mantissa_bits_ = 23;
 
-    const size_t n_vregs_to_preserve_;
-    size_t n_vregs_preserved_ = 0;
+    const dim_t n_vregs_to_preserve_;
+    dim_t n_vregs_preserved_ = 0;
     bool need_vmm_mask_register_ = false;
     // Default initialization will put zeros. Putting any value to trigger a
     // potential error to Xbyak is not working as Xbyak cycles vmm indices
     // over 32 value.
-    size_t preserved_vmm_indices_[preserved_vecs_max_] = {};
-    size_t preserved_vmm_tail_indices_[preserved_vecs_max_] = {};
-    size_t preserved_gpr_indices_[preserved_gprs_max_] = {};
+    dim_t preserved_vmm_indices_[preserved_vecs_max_] = {};
+    dim_t preserved_vmm_tail_indices_[preserved_vecs_max_] = {};
+    dim_t preserved_gpr_indices_[preserved_gprs_max_] = {};
 
     Vmm vmm_mask_;
     Vmm vmm_tmp_;
@@ -201,10 +201,10 @@ private:
     Xbyak::Xmm xmm_tmp_;
 
     static bool need_mask_register(alg_kind_t alg, bool is_fwd, float alpha);
-    static size_t aux_gprs_count(alg_kind_t alg, bool is_fwd, float alpha);
+    static dim_t aux_gprs_count(alg_kind_t alg, bool is_fwd, float alpha);
     static bool need_vmm_stack_ptr(alg_kind_t alg, bool is_fwd, float alpha);
-    static size_t op_vecs_count(alg_kind_t alg, bool is_fwd);
-    size_t get_stack_vmm_space();
+    static dim_t op_vecs_count(alg_kind_t alg, bool is_fwd);
+    dim_t get_stack_vmm_space();
 
     void compute_body(
             const injector_utils::vmm_index_set_iterator_t &start_idx_it,
@@ -212,10 +212,10 @@ private:
     void injector_preamble(const injector_utils::vmm_index_set_t &vmm_idxs,
             injector_utils::vmm_index_set_iterator_t &start_idx_tail_it,
             const injector_utils::vmm_index_set_t &vmm_aux_indices);
-    void injector_preamble_tail(size_t n_vregs_not_preserved);
+    void injector_preamble_tail(dim_t n_vregs_not_preserved);
     void injector_postamble();
     void assign_regs();
-    Wmm vmm_aux(size_t idx);
+    Wmm vmm_aux(dim_t idx);
     void vec_shift(const Vmm &vmm_dst, const Vmm &vmm_src, bool shift_left,
             const int imm);
     void compute_cmp_mask(const Vmm &vmm_src,

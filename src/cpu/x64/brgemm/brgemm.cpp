@@ -798,7 +798,7 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
         }
     }
 
-    buff->palette_id = amx::get_target_palette();
+    buff->palette_id = static_cast<uint8_t>(amx::get_target_palette());
 
     return status::success;
 }

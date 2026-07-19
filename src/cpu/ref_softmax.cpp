@@ -120,7 +120,8 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
         // The code below makes the compiler generate maxps instruction.
         // rather than maxss, which is generated for the 'else' code path
         auto max_wrapper = [](float a, float b) { return nstl::max(a, b); };
-        auto min_wrapper = [](int a, int b) { return nstl::min(a, b); };
+        auto min_wrapper
+                = [](dim_t a, dim_t b) { return nstl::min<dim_t>(a, b); };
 
         if (channels_ < unroll_factor) {
             float max_val = -FLT_MAX;
@@ -137,7 +138,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
                         = io::load_float_value(src_d.data_type(), src_data, i);
             }
             for (int i = unroll_factor; i < channels_; i += unroll_factor) {
-                int offset = min_wrapper(i, channels_ - unroll_factor);
+                dim_t offset = min_wrapper(i, channels_ - unroll_factor);
                 for (int j = 0; j < unroll_factor; j++) {
                     max_values[j] = max_wrapper(max_values[j],
                             io::load_float_value(
@@ -157,7 +158,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
 #endif
 
         // sub + exp + sum
-        int tail = channels_ % unroll_factor;
+        int tail = static_cast<int>(channels_ % unroll_factor);
         for (int i = 0; i < channels_ - tail; i += unroll_factor) {
             PRAGMA_OMP_SIMD(reduction(+ : space_denom))
             for (int j = 0; j < unroll_factor; j++) {
@@ -174,7 +175,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
                 io::store_float_value(interim_dt, d, interim_ptr, i + j);
             }
         }
-        for (int i = channels_ - tail; i < channels_; i++) {
+        for (dim_t i = channels_ - tail; i < channels_; i++) {
             float s = io::load_float_value(src_d.data_type(), src_data, i);
             float d = s - space_max;
             if (pd()->is_softmax()) {

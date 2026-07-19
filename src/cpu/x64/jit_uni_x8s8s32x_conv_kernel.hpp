@@ -150,33 +150,37 @@ private:
         assert(idx < ker_max_reg);
         return Vmm(ker_max_reg - idx);
     }
-    int get_ow_start(int ki, int pad_l) {
+    dim_t get_ow_start(dim_t ki, dim_t pad_l) {
         return utils::div_up(
-                nstl::max(0, pad_l - ki * (jcp.dilate_w + 1)), jcp.stride_w);
+                nstl::max<dim_t>(0, pad_l - ki * (jcp.dilate_w + 1)),
+                jcp.stride_w);
     }
-    int get_ow_end(int ur_w, int ki, int pad_r) {
+    dim_t get_ow_end(dim_t ur_w, dim_t ki, dim_t pad_r) {
         return ur_w
                 - utils::div_up(
-                        nstl::max(0,
+                        nstl::max<dim_t>(0,
                                 pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1)),
                         jcp.stride_w);
     }
-    int get_blocking_size() {
+    dim_t get_blocking_size() {
         return jcp.is_depthwise ? jcp.ch_block : jcp.oc_block;
     }
     int get_tail_size() {
-        return jcp.is_depthwise ? jcp.ngroups % jcp.ch_block
-                                : jcp.oc_without_padding % jcp.oc_block;
+        return static_cast<int>(jcp.is_depthwise
+                        ? jcp.ngroups % jcp.ch_block
+                        : jcp.oc_without_padding % jcp.oc_block);
     }
 
     void prepare_output(int ur_w);
     void store_output(int ur_w, bool last_oc_block_flag);
-    void compute_ker_dw(int ur_w, int pad_l, int pad_r,
+    void compute_ker_dw(int ur_w, dim_t pad_l, dim_t pad_r,
             ic_block_t last_ic_block_flag, bool h_padded);
-    void compute_ker(int ur_w, int pad_l, int pad_r,
+    void compute_ker(int ur_w, dim_t pad_l, dim_t pad_r,
             ic_block_t last_ic_block_flag, bool h_padded = false);
-    void kh_loop(int ur_w, int pad_l, int pad_r, ic_block_t last_ic_block_flag);
-    void icb_loop(int ur_w, int pad_l, int pad_r, bool is_last_spatial_block);
+    void kh_loop(
+            int ur_w, dim_t pad_l, dim_t pad_r, ic_block_t last_ic_block_flag);
+    void icb_loop(
+            int ur_w, dim_t pad_l, dim_t pad_r, bool is_last_spatial_block);
     void generate() override;
 
     void cvt2ps(data_type_t type_in, const Vmm &vmm_in, const Xbyak::Reg64 &reg,
@@ -195,7 +199,8 @@ struct jit_uni_x8s8s32x_fwd_kernel_t {
     jit_uni_x8s8s32x_fwd_kernel_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md)
         : kernel_(nullptr) {
-        int ch_block = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
+        const dim_t ch_block
+                = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
         switch (ch_block) {
             case 8:
                 if (utils::one_of(isa, avx2)) {

@@ -98,16 +98,16 @@ private:
         return static_cast<dim_t>(ki) * (jcp.dilate_d + 1) * jcp.iw * jcp.ih;
     }
 
-    inline dim_t get_input_offset(int i_ic, int i_iw) const {
+    inline dim_t get_input_offset(int i_ic, dim_t i_iw) const {
         dim_t offset;
         if (utils::one_of(jcp.src_tag, format_tag::ncw, format_tag::nchw,
                     format_tag::ncdhw)) {
             offset = static_cast<dim_t>(i_ic) * jcp.id * jcp.ih * jcp.iw + i_iw;
         } else if (utils::one_of(jcp.src_tag, format_tag::nwc, format_tag::nhwc,
                            format_tag::ndhwc)) {
-            offset = static_cast<dim_t>(i_iw) * jcp.ic * jcp.ngroups + i_ic;
+            offset = i_iw * jcp.ic * jcp.ngroups + i_ic;
         } else {
-            offset = static_cast<dim_t>(i_iw) * jcp.ic_block + i_ic;
+            offset = i_iw * jcp.ic_block + i_ic;
         }
         return sizeof(float) * offset;
     }
@@ -190,8 +190,8 @@ private:
 
     void generate() override;
 
-    inline int get_iw_start(int ki, int l_overflow) const {
-        int res = (jcp.iw - 1 + jcp.r_pad) % jcp.stride_w
+    inline dim_t get_iw_start(dim_t ki, dim_t l_overflow) const {
+        dim_t res = (jcp.iw - 1 + jcp.r_pad) % jcp.stride_w
                 + l_overflow * jcp.stride_w
                 - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1);
         while (res < 0)
@@ -200,10 +200,10 @@ private:
         return res;
     }
 
-    inline int get_iw_end(int ur_w, int ki, int r_overflow) const {
+    inline dim_t get_iw_end(dim_t ur_w, dim_t ki, dim_t r_overflow) const {
         if (utils::one_of(ur_w, jcp.iw, jcp.ur_w_tail))
-            ur_w += nstl::min(0, jcp.r_pad); // remove negative padding
-        int res = (ur_w - 1 + jcp.l_pad) % jcp.stride_w
+            ur_w += nstl::min<dim_t>(0, jcp.r_pad); // remove negative padding
+        dim_t res = (ur_w - 1 + jcp.l_pad) % jcp.stride_w
                 + r_overflow * jcp.stride_w - ki * (jcp.dilate_w + 1);
         while (res < 0)
             res += jcp.stride_w;
@@ -215,12 +215,12 @@ private:
         return (oi + pad_l - ki * (jcp.dilate_w + 1)) / jcp.stride_w;
     }
 
-    inline dim_t get_ddst_offset(int i_oc_block, int i_ow, int i_oc) const {
+    inline dim_t get_ddst_offset(int i_oc_block, dim_t i_ow, int i_oc) const {
         dim_t offset;
         if (utils::one_of(jcp.dst_tag, format_tag::nwc, format_tag::nhwc,
                     format_tag::ndhwc)) {
-            offset = static_cast<dim_t>(i_ow) * jcp.oc * jcp.ngroups
-                    + i_oc_block * jcp.oc_block + i_oc;
+            offset = i_ow * jcp.oc * jcp.ngroups + i_oc_block * jcp.oc_block
+                    + i_oc;
         } else {
             offset = static_cast<dim_t>(i_oc_block) * jcp.od * jcp.oh * jcp.ow
                             * jcp.oc_block
@@ -293,24 +293,24 @@ private:
 
     inline void od_step_comeback_pointers();
     inline void oh_step_comeback_pointers();
-    inline void compute_ic_block_step(int ur_w, int pad_l, int pad_r,
-            int ic_block_step, int input_offset, int kernel_offset,
-            int output_offset);
+    inline void compute_ic_block_step(int ur_w, dim_t pad_l, dim_t pad_r,
+            int ic_block_step, dim_t input_offset, dim_t kernel_offset,
+            dim_t output_offset);
     inline void compute_oh_step_disp();
     inline void compute_oh_step_unroll_ow(int ic_block_step, int max_ur_w);
     inline void compute_oh_step_common(int ic_block_step, int max_ur_w);
     inline void compute_oh_loop_common();
 
-    inline dim_t get_input_offset(int i_ic, int i_iw) const {
+    inline dim_t get_input_offset(int i_ic, dim_t i_iw) const {
         dim_t offset;
         if (utils::one_of(jcp.src_tag, format_tag::ncw, format_tag::nchw,
                     format_tag::ncdhw)) {
             offset = static_cast<dim_t>(i_ic) * jcp.id * jcp.ih * jcp.iw + i_iw;
         } else if (utils::one_of(jcp.src_tag, format_tag::nwc, format_tag::nhwc,
                            format_tag::ndhwc)) {
-            offset = static_cast<dim_t>(i_iw) * jcp.ic * jcp.ngroups + i_ic;
+            offset = i_iw * jcp.ic * jcp.ngroups + i_ic;
         } else {
-            offset = static_cast<dim_t>(i_iw) * jcp.ic_block + i_ic;
+            offset = i_iw * jcp.ic_block + i_ic;
         }
         return sizeof(float) * offset;
     }

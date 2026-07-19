@@ -44,9 +44,12 @@ public:
         if (res != status::success) return res;
 
         size_t code_size = post_ops_gen.getSize();
-        size_t estimated_vec_code_size = (size_t)nstl::max(
-                (int)code_size - (int)mean_none_vec_code_bytes, 0);
-        estimated_vec_insts = estimated_vec_code_size / mean_vec_inst_bytes;
+        const size_t estimated_vec_code_size
+                = code_size > mean_none_vec_code_bytes
+                ? code_size - mean_none_vec_code_bytes
+                : 0;
+        estimated_vec_insts = static_cast<int>(
+                estimated_vec_code_size / mean_vec_inst_bytes);
         return status::success;
     }
 
@@ -60,10 +63,10 @@ private:
         : jit_generator_t("dummy_generator") {
         auto dsc = memory_desc_wrapper(dst_md);
         const dnnl::impl::cpu::x64::binary_injector::rhs_arg_static_params_t
-                rhs_sp(static_cast<size_t>(Xbyak::Zmm(1).getIdx()), this->r14,
-                        this->r15, this->r13, false, false,
-                        static_cast<size_t>(0), static_cast<size_t>(0), dsc,
-                        static_cast<size_t>(0), Xbyak::Opmask(0), false);
+                rhs_sp(Xbyak::Zmm(1).getIdx(), this->r14, this->r15, this->r13,
+                        false, false, static_cast<size_t>(0),
+                        static_cast<size_t>(0), dsc, static_cast<size_t>(0),
+                        Xbyak::Opmask(0), false);
 
         const dnnl::impl::cpu::x64::binary_injector::static_params_t bsp(
                 this->param1,

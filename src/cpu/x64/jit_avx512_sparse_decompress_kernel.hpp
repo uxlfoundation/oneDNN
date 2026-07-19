@@ -57,7 +57,8 @@ struct jit_avx512_sparse_decompress_kernel_t : public jit_generator_t {
         }
 
         blk_sz_ = a_outter_blk_sz_ * b_blk_sz_ * a_inner_blk_sz_;
-        nblks_to_decompress_ = bgmmc.K_blk * b_blk_sz_ / blk_sz_;
+        nblks_to_decompress_
+                = static_cast<int>(bgmmc.K_blk * b_blk_sz_ / blk_sz_);
     }
 
     void tile_configure(const char *palette) const { (*this)(palette); }

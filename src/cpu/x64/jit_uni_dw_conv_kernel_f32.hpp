@@ -97,15 +97,16 @@ private:
     void store_tail(
             Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset, int store_size);
 
-    int get_ow_start(int ki, int pad_l) {
+    dim_t get_ow_start(dim_t ki, dim_t pad_l) {
         return utils::div_up(
-                nstl::max(0, pad_l - ki * (jcp.dilate_w + 1)), jcp.stride_w);
+                nstl::max<dim_t>(0, pad_l - ki * (jcp.dilate_w + 1)),
+                jcp.stride_w);
     }
 
-    int get_ow_end(int ur_w, int ki, int pad_r) {
+    dim_t get_ow_end(dim_t ur_w, dim_t ki, dim_t pad_r) {
         return ur_w
                 - utils::div_up(
-                        nstl::max(0,
+                        nstl::max<dim_t>(0,
                                 pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1)),
                         jcp.stride_w);
     }
@@ -218,14 +219,17 @@ private:
      * is no larger than 3*/
     inline Vmm get_bias_reg(int idx = 0) { return Vmm(idx); }
     inline Vmm get_output_reg(int idx) {
-        int vmm_idx = jcp.is_fast_depthwise
-                ? idx + 2 * jcp.kw * jcp.nb_ch_blocking
+        // `jcp.kw` is a genuine (dim_t) kernel-width dimension, but is
+        // assumed no larger than 3 here (see comment above), so the
+        // resulting register index is bounded and narrowed once here.
+        const int vmm_idx = jcp.is_fast_depthwise
+                ? idx + static_cast<int>(2 * jcp.kw * jcp.nb_ch_blocking)
                 : idx + req_aux_vmm;
         return Vmm(vmm_idx);
     }
     inline Vmm get_input_reg(int idx) {
-        int vmm_idx = jcp.is_fast_depthwise
-                ? idx + jcp.kw * jcp.nb_ch_blocking
+        const int vmm_idx = jcp.is_fast_depthwise
+                ? idx + static_cast<int>(jcp.kw * jcp.nb_ch_blocking)
                 : idx + 4 * reg_repeats_ + req_aux_vmm;
         return Vmm(vmm_idx);
     }

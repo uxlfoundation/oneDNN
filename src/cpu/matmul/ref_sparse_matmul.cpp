@@ -144,12 +144,12 @@ status_t ref_sparse_matmul_t::execute(const exec_ctx_t &ctx) const {
 }
 
 void ref_sparse_matmul_t::cvt_coo_indices_to_csr_pointers(
-        const int32_t *indices, int32_t *pointers, const int nnz,
-        const int nrows) const {
+        const int32_t *indices, int32_t *pointers, const dim_t nnz,
+        const dim_t nrows) const {
     parallel_nd(
             nnz, [=](dim_t i) { fetch_and_add(&pointers[indices[i] + 1], 1); });
     parallel(1, [=](int, int) {
-        for (int i = 0; i < nrows; ++i) {
+        for (dim_t i = 0; i < nrows; ++i) {
             pointers[i + 1] += pointers[i];
         }
     });

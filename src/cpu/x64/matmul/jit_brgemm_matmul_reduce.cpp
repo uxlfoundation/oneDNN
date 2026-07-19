@@ -47,9 +47,9 @@ jit_brgemm_kernel_reduce_t<Vmm>::jit_brgemm_kernel_reduce_t(
     // MatMul `reduce` buffer.
     , out_dt_(bgmmc.reduce_dt)
     , acc_dt_(bgmmc.acc_dt)
-    , in_typesize_(types::data_type_size(in_dt_))
-    , out_typesize_(types::data_type_size(out_dt_))
-    , acc_typesize_(types::data_type_size(acc_dt_)) {
+    , in_typesize_(static_cast<int>(types::data_type_size(in_dt_)))
+    , out_typesize_(static_cast<int>(types::data_type_size(out_dt_)))
+    , acc_typesize_(static_cast<int>(types::data_type_size(acc_dt_))) {
     // This kernel must be called after the copy A routine because it assumes
     // that fp16 data has already been upconverted to f32.
     // Only reduction for `src` is supported.

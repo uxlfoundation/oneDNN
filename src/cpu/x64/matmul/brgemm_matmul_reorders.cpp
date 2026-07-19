@@ -72,7 +72,7 @@ status_t calculate_plain_transpose_blocks(dim_t &batch, dim_t &M, dim_t &K,
     // drop all unit dims as they they will break the calculations. Removing
     // unit dims will not change the physical memory reorder problem.
     dims_t non_unit_dims {};
-    dim_t non_unit_dim = 0;
+    int non_unit_dim = 0;
     for (dim_t i = 0; i < src_md.ndims; i++) {
         if (src_md.dims[i] == 1) continue;
         non_unit_dims[non_unit_dim++] = src_md.dims[i];
@@ -147,8 +147,8 @@ status_t calculate_plain_transpose_blocks(dim_t &batch, dim_t &M, dim_t &K,
 
     // find first umatching stride by division
     dim_t lm_idx = -1;
-    int prev_M_src = src_over_dst[l_idx],
-        prev_1_over_M_dst = dst_over_src[l_idx];
+    dim_t prev_M_src = src_over_dst[l_idx],
+          prev_1_over_M_dst = dst_over_src[l_idx];
     // here we are checking to make sure all indexes are the same in src/dst
     // and dst/src arrays (comparing with prev_h_src and prev_h_dst). If its
     // different, then both src/dst and dst/src arrays should be different. In
@@ -175,8 +175,8 @@ status_t calculate_plain_transpose_blocks(dim_t &batch, dim_t &M, dim_t &K,
     // Only case this might be possible is unit strides after batch.
     VDISPATCH_REORDER_IC(lm_idx != -1, VERBOSE_UNSUPPORTED_MEM_STRIDE);
 
-    int prev_1_over_K_src = src_over_dst[lm_idx],
-        prev_K_dst = dst_over_src[lm_idx];
+    dim_t prev_1_over_K_src = src_over_dst[lm_idx],
+          prev_K_dst = dst_over_src[lm_idx];
     // Here we make sure the last strides divs are the same. If not, then this
     // means that one of the l+m, l+m+1, ..., l+m+n indexes is not in the same
     // order as in src. For example in src, looking at memory view, it can be

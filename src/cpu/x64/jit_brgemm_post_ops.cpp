@@ -243,7 +243,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_K() {
 
 template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_N(
-        int n_loop, int nb_tail) {
+        int n_loop, dim_t nb_tail) {
     mov(aux_reg_ddst, reg_ddst);
 
     int n_iters = n_loop;
@@ -325,7 +325,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::loop_by_N(
 
 template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::init_masks(
-        int tail_length) {
+        dim_t tail_length) {
     if (ddst_dt_ == data_type::f16) {
         const auto half_mask = size_t((1 << 16) - 1);
         mov(reg_mask, half_mask);
@@ -359,11 +359,11 @@ template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<
         Vmm>::generate_for_b() {
 
-    int nb = utils::div_up(brg_.load_dim, brg_.ld_block);
-    int nb_tail = brg_.load_dim % brg_.ld_block;
+    const dim_t nb = utils::div_up(brg_.load_dim, brg_.ld_block);
+    const dim_t nb_tail = brg_.load_dim % brg_.ld_block;
 
-    int n_loop = nb / n_max_regs_;
-    int n_loop_tail = nb % n_max_regs_;
+    dim_t n_loop = nb / n_max_regs_;
+    int n_loop_tail = static_cast<int>(nb % n_max_regs_);
     if (n_loop_tail == 0 && nb_tail > 0) {
         n_loop--;
         n_loop_tail = n_max_regs_;
@@ -376,7 +376,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<
     mov(reg_bias, ptr[param1 + GET_OFF(ptr_diff_bias)]);
     mov(reg_flag, ptr[param1 + GET_OFF(flags)]);
 
-    for (int nb_ = 0; nb_ < n_loop; nb_++) {
+    for (dim_t nb_ = 0; nb_ < n_loop; nb_++) {
         loop_by_N(n_max_regs_, 0);
 
         add(reg_ddst, ddst_typesize_ * mult_ * n_max_regs_ * brg_.ld_block);
@@ -396,10 +396,10 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<
     mov(reg_bias, ptr[param1 + GET_OFF(ptr_diff_bias)]);
     mov(reg_flag, ptr[param1 + GET_OFF(flags)]);
 
-    const int k_tail = brg_.reduce_dim % brg_.ld_block;
+    const dim_t k_tail = brg_.reduce_dim % brg_.ld_block;
     init_masks(k_tail);
 
-    for (int m = 0; m < brg_.load_dim; m++) {
+    for (dim_t m = 0; m < brg_.load_dim; m++) {
         loop_by_K();
         add(reg_ddst, ddst_typesize_ * brg_.LDA);
         add(reg_bias, bia_typesize_);
@@ -418,7 +418,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::generate() {
         vpbroadcastw(vreg_unit, reg_unit_val);
     }
 
-    int tail = 0;
+    dim_t tail = 0;
 
     // Currently, `reduce_kind` is `undef` when this kernel is used from
     // BRGEMM-based Inner Product.
@@ -449,7 +449,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<Vmm>::generate() {
         L(mask_label_);
         for (int i = 0; i < tail; ++i)
             dd(~uint32_t(0));
-        for (int i = tail; i < brg_.ld_block; ++i)
+        for (int i = static_cast<int>(tail); i < brg_.ld_block; ++i)
             dd(0);
     }
 }
@@ -520,11 +520,11 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         static constexpr bool use_exact_tail_scalar_bcast = false;
 
         const binary_injector::rhs_arg_static_params_t rhs_sp {
-                static_cast<size_t>(vmm_tmp(4).getIdx()), this->r14, this->r15,
+                static_cast<dim_t>(vmm_tmp(4).getIdx()), this->r14, this->r15,
                 this->r13, preserve_gpr, preserve_vmm,
                 GET_OFF(ptr_binary_post_ops_rhs), GET_OFF(dst_orig),
                 memory_desc_wrapper(brg_.dst_md()),
-                static_cast<size_t>(brg_.load_dim % brg_.ld_block), k_tail_mask,
+                static_cast<dim_t>(brg_.load_dim % brg_.ld_block), k_tail_mask,
                 use_exact_tail_scalar_bcast};
         const binary_injector::static_params_t bsp(this->param1,
                 binary_injector::get_all_strategies_supported_by_injector(),
@@ -555,8 +555,9 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
 }
 
 template <typename Vmm>
-int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::zp_c_values_offset(
-        int n, bool is_tail /*= false*/) const noexcept {
+dim_t dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
+        Vmm>::zp_c_values_offset(int n,
+        bool is_tail /*= false*/) const noexcept {
     if (brg_.zp_type_c == brgemm_broadcast_t::per_n) {
         return (is_tail) ? sizeof(int32_t) * brg_.ldb_tail
                          : sizeof(int32_t) * n * brg_.ld_block;
@@ -566,7 +567,7 @@ int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::zp_c_values_offset(
 }
 
 template <typename Vmm>
-int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
+dim_t dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::zp_comp_a_vpad_offset(int n, int m,
         bool is_tail /*= false*/) const noexcept {
     return (is_tail) ? sizeof(int32_t) * (brg_.ldb_tail + m * brg_.LDB)
@@ -574,13 +575,13 @@ int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
 }
 
 template <typename Vmm>
-int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
+dim_t dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::mb_zp_comp_a_offset(int m_block) const noexcept {
     return sizeof(int32_t) * m_block * brg_.LDB;
 }
 
 template <typename Vmm>
-int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
+dim_t dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::compensation_vpad_offset(int n, int m,
         bool is_tail /*= false*/) const noexcept {
     return (is_tail) ? sizeof(int32_t) * (brg_.ldb_tail + m * brg_.LDB)
@@ -913,7 +914,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
         }
         for (int n = 0; n < n_block; n++) {
             if (brg_.zp_type_c == brgemm_broadcast_t::per_n) {
-                int zp_c_off = zp_c_values_offset(n);
+                const auto zp_c_off = zp_c_values_offset(n);
                 auto zp_c_addr = is_superset(brg_.isa_impl, avx512_core)
                         ? EVEX_compress_addr(aux_reg_zp_c_values, zp_c_off)
                         : ptr[aux_reg_zp_c_values + zp_c_off];
@@ -1015,7 +1016,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
 
 template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
-        int m_block, int nb2, int nb2_tail, int nb_tail) {
+        int m_block, dim_t nb2, int nb2_tail, dim_t nb_tail) {
     if (brg_.alpha) { mov(aux_reg_in, reg_in); }
     if (brg_.beta != 0) {
         if (brg_.with_bias) mov(aux_reg_bias, reg_bias);
@@ -1035,7 +1036,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
     }
     mov(aux_reg_out, reg_out);
 
-    for (int n_loop_ = 0; n_loop_ < nb2; n_loop_++) {
+    for (dim_t n_loop_ = 0; n_loop_ < nb2; n_loop_++) {
         apply_post_ops(m_block, n_block2_);
 
         const auto oc_l_offset = n_block2_ * brg_.ld_block;
@@ -1051,17 +1052,21 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             }
             if (brg_.zp_type_a != brgemm_broadcast_t::none) {
                 mov(aux_reg_zp_a_comp, ptr[rsp + aux_reg_zp_a_comp_offs_]);
-                add(aux_reg_zp_a_comp, sizeof(int32_t) * oc_l_offset);
+                add(aux_reg_zp_a_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_zp_a_comp_offs_], aux_reg_zp_a_comp);
             }
             if (brg_.req_s8s8_compensation) {
                 mov(aux_reg_s8s8_comp, ptr[rsp + aux_reg_s8s8_comp_offs_]);
-                add(aux_reg_s8s8_comp, sizeof(int32_t) * oc_l_offset);
+                add(aux_reg_s8s8_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
             if (brg_.with_wei_scales)
                 add(aux_reg_wei_scales,
-                        brg_.is_per_n_wei_scales * sizeof(float) * oc_l_offset);
+                        static_cast<dim_t>(
+                                brg_.is_per_n_wei_scales * sizeof(float))
+                                * oc_l_offset);
         }
     }
     if (nb2_tail > 0) {
@@ -1079,21 +1084,25 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             }
             if (brg_.zp_type_a != brgemm_broadcast_t::none) {
                 mov(aux_reg_zp_a_comp, ptr[rsp + aux_reg_zp_a_comp_offs_]);
-                add(aux_reg_zp_a_comp, sizeof(int32_t) * oc_l_offset);
+                add(aux_reg_zp_a_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_zp_a_comp_offs_], aux_reg_zp_a_comp);
             }
             if (brg_.req_s8s8_compensation) {
                 mov(aux_reg_s8s8_comp, ptr[rsp + aux_reg_s8s8_comp_offs_]);
-                add(aux_reg_s8s8_comp, sizeof(int32_t) * oc_l_offset);
+                add(aux_reg_s8s8_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
             if (brg_.with_wei_scales)
                 add(aux_reg_wei_scales,
-                        brg_.is_per_n_wei_scales * sizeof(float) * oc_l_offset);
+                        static_cast<dim_t>(
+                                brg_.is_per_n_wei_scales * sizeof(float))
+                                * oc_l_offset);
         }
     }
     if (nb_tail > 0) {
-        apply_post_ops(m_block, 1, nb_tail);
+        apply_post_ops(m_block, 1, static_cast<int>(nb_tail));
 
         if (brg_.alpha != 0) { add(aux_reg_in, inp_typesize_ * (nb_tail)); }
         if (brg_.beta != 0) {
@@ -1105,12 +1114,12 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             }
             if (brg_.zp_type_a != brgemm_broadcast_t::none) {
                 mov(aux_reg_zp_a_comp, ptr[rsp + aux_reg_zp_a_comp_offs_]);
-                add(aux_reg_zp_a_comp, sizeof(int32_t) * nb_tail);
+                add(aux_reg_zp_a_comp, static_cast<dim_t>(sizeof(int32_t)) * nb_tail);
                 mov(ptr[rsp + aux_reg_zp_a_comp_offs_], aux_reg_zp_a_comp);
             }
             if (brg_.req_s8s8_compensation) {
                 mov(aux_reg_s8s8_comp, ptr[rsp + aux_reg_s8s8_comp_offs_]);
-                add(aux_reg_s8s8_comp, sizeof(int32_t) * nb_tail);
+                add(aux_reg_s8s8_comp, static_cast<dim_t>(sizeof(int32_t)) * nb_tail);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
             if (brg_.with_wei_scales)
@@ -1127,21 +1136,22 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
 
     sub(rsp, stack_space_needed_);
 
-    int nb = brg_.load_dim / brg_.ld_block;
-    int nb_tail = brg_.load_dim % brg_.ld_block;
+    const dim_t nb = brg_.load_dim / brg_.ld_block;
+    const dim_t nb_tail = brg_.load_dim % brg_.ld_block;
 
-    int nb2 = nb / n_block2_;
-    int nb2_tail = nb % n_block2_;
+    dim_t nb2 = nb / n_block2_;
+    int nb2_tail = static_cast<int>(nb % n_block2_);
     int n_block = (nb2 == 0) ? nstl::max(1, nb2_tail) : n_block2_;
 
     int m_max_regs = (brg_.is_bf16_emu
                     ? 24
                     : (brg_.is_fp8_via_convert() ? 23 : max_vregs_ - 4));
     m_max_regs /= n_block;
-    int m_block = nstl::min(brg_.bcast_dim, m_max_regs);
+    int m_block
+            = static_cast<int>(nstl::min<dim_t>(brg_.bcast_dim, m_max_regs));
 
-    int mb = brg_.bcast_dim / m_block;
-    int mb_tail = brg_.bcast_dim % m_block;
+    const dim_t mb = brg_.bcast_dim / m_block;
+    const dim_t mb_tail = brg_.bcast_dim % m_block;
 
     if (isa_has_masks(brg_.isa_impl)) {
         const auto full_mask = size_t {0xffffffffffffffff};
@@ -1189,7 +1199,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
     }
     mov(reg_out, ptr[param1 + GET_OFF(ptr_out)]);
 
-    for (int mb_ = 0; mb_ < mb; mb_++) {
+    for (dim_t mb_ = 0; mb_ < mb; mb_++) {
         loop_by_N(m_block, nb2, nb2_tail, nb_tail);
 
         if (brg_.alpha != 0) add(reg_in, inp_typesize_ * (m_block * brg_.LDC));
@@ -1207,7 +1217,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
         }
         add(reg_out, out_typesize_ * (m_block * brg_.LDD));
     }
-    if (mb_tail > 0) loop_by_N(mb_tail, nb2, nb2_tail, nb_tail);
+    if (mb_tail > 0) loop_by_N(static_cast<int>(mb_tail), nb2, nb2_tail, nb_tail);
 
     add(rsp, stack_space_needed_);
 

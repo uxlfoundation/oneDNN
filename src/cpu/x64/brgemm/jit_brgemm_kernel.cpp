@@ -114,10 +114,10 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
             const auto k_mask = !brg.is_gemv ? ld_tail_mask : gemv_partial_mask;
 
             const binary_injector::rhs_arg_static_params_t rhs_sp {
-                    static_cast<size_t>(vmm_tmp(0).getIdx()), this->r14,
+                    static_cast<dim_t>(vmm_tmp(0).getIdx()), this->r14,
                     this->r15, this->r13, preserve_gpr, preserve_vmm,
                     GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(data_C_ptr_),
-                    dst_md_wrapper, static_cast<size_t>(tail_size), k_mask,
+                    dst_md_wrapper, static_cast<dim_t>(tail_size), k_mask,
                     use_exact_tail_scalar_bcast};
 
             const binary_injector::static_params_t bsp {this->param1,

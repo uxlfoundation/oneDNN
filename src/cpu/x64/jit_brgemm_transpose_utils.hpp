@@ -66,15 +66,16 @@ struct jit_brgemm_copy_to_coarse_t : public jit_generator_t {
         , typesize_(sizeof(float) / data_type_vnni_granularity(conf_->wei_dt))
         , is_fwd_dir_(utils::one_of(conf_->prop_kind,
                   prop_kind::forward_training, prop_kind::forward_inference))
-        , row_block_size_(is_fwd_dir_ ? conf_->ic_block : conf_->oc_block)
+        , row_block_size_(static_cast<int>(
+                  is_fwd_dir_ ? conf_->ic_block : conf_->oc_block))
         , row_size_(is_fwd_dir_ ? conf_->ic_without_padding
-                                : conf_->oc_without_padding)
+                                 : conf_->oc_without_padding)
         , tr_row_size_(conf_->LDA)
         , row_granularity_(granularity_in_bytes / typesize_)
         , row_step_(zmm_size_in_bytes / typesize_)
         , data_stride_(static_cast<dim_t>(is_fwd_dir_ ? conf_->ks() : 1)
                   * row_size_ * typesize_)
-        , tr_data_stride_(static_cast<dim_t>(tr_row_size_) * typesize_) {
+        , tr_data_stride_(tr_row_size_ * typesize_) {
 
         // Kernel is supposed to be called under the following constraints
         assert(is_superset(conf_->isa, avx512_core_amx));
@@ -95,17 +96,20 @@ private:
     const jit_brgemm_primitive_conf_t *conf_;
     const int typesize_;
     const bool is_fwd_dir_;
-    const int row_block_size_, row_size_, tr_row_size_, row_granularity_,
-            row_step_;
+    const int row_block_size_;
+    const dim_t row_size_, tr_row_size_;
+    const int row_granularity_, row_step_;
     const dim_t data_stride_, tr_data_stride_;
 
-    inline size_t addr_offset(int row_idx) const {
+    inline size_t addr_offset(dim_t row_idx) const {
         return row_idx * row_step_ * typesize_;
     }
 
-    inline Xbyak::Zmm get_zmm_copy(int row_idx) const {
+    inline Xbyak::Zmm get_zmm_copy(dim_t row_idx) const {
         assert(row_idx >= 0 && row_idx < row_loop_unroll);
-        return Xbyak::Zmm(row_idx);
+        // row_idx is asserted bounded by row_loop_unroll (16); the register
+        // index itself is a fixed hardware count, not tensor-scale.
+        return Xbyak::Zmm(static_cast<int>(row_idx));
     }
 
     const Xbyak::Zmm zmm_zero = Xbyak::Zmm(row_loop_unroll);
@@ -126,8 +130,8 @@ private:
     void copy_os_loop();
     void copy_row_loop();
 
-    void copy_row_blks(int num_row_blks);
-    void copy_row_tail(bool is_last_iteration, int row_offset);
+    void copy_row_blks(dim_t num_row_blks);
+    void copy_row_tail(bool is_last_iteration, dim_t row_offset);
     void zero_out_rows();
 
     void set_full_row_tail_masks();
@@ -187,10 +191,10 @@ struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator_t {
         data_type_t wei_dt {data_type_t::dnnl_data_type_undef};
         int out_oc_block {0};
         int inp_oc_block {0};
-        int rd {0};
+        dim_t rd {0};
         bool is_rd_padded_to_block {false};
-        int inp_ocb_offs {0};
-        int last_occ_to_copy {0};
+        dim_t inp_ocb_offs {0};
+        dim_t last_occ_to_copy {0};
     };
 
     struct ctx_t {

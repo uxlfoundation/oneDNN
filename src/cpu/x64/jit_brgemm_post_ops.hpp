@@ -123,9 +123,9 @@ private:
     int max_vregs_;
     const bool with_binary_non_scalar_bcast_;
 
-    int inp_typesize_;
-    int out_typesize_;
-    int bia_typesize_;
+    dim_t inp_typesize_;
+    dim_t out_typesize_;
+    dim_t bia_typesize_;
 
     using reg64_t = const Xbyak::Reg64;
 
@@ -218,7 +218,7 @@ private:
     void apply_comp(int m_block, int n_block, int tail = 0);
     void maybe_apply_comp(int m_block, int n_block, int tail = 0);
     void apply_post_ops(int m_block, int n_block, int tail = 0);
-    void loop_by_N(int m_block, int nb2, int nb2_tail, int nb_tail);
+    void loop_by_N(int m_block, dim_t nb2, int nb2_tail, dim_t nb_tail);
     void generate() override;
 };
 

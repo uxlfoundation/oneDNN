@@ -172,13 +172,13 @@ public:
     using c_compatible::operator delete[];
 
 private:
-    const size_t xmm_len = 16;
+    const dim_t xmm_len = 16;
 #ifdef _WIN32
-    const size_t xmm_to_preserve_start = 6;
-    const size_t xmm_to_preserve = 10;
+    const dim_t xmm_to_preserve_start = 6;
+    const dim_t xmm_to_preserve = 10;
 #else
-    const size_t xmm_to_preserve_start = 0;
-    const size_t xmm_to_preserve = 0;
+    const dim_t xmm_to_preserve_start = 0;
+    const dim_t xmm_to_preserve = 0;
 #endif
 
     const size_t num_abi_save_gpr_regs
@@ -285,9 +285,10 @@ public:
     void preamble() {
         if (xmm_to_preserve) {
             sub(rsp, xmm_to_preserve * xmm_len);
-            for (size_t i = 0; i < xmm_to_preserve; ++i)
+            for (dim_t i = 0; i < xmm_to_preserve; ++i)
                 uni_vmovdqu(ptr[rsp + i * xmm_len],
-                        Xbyak::Xmm(xmm_to_preserve_start + i));
+                        Xbyak::Xmm(xbyak_register_index(
+                                xmm_to_preserve_start + i)));
         }
         for (size_t i = 0; i < num_abi_save_gpr_regs; ++i) {
             push(Xbyak::Reg64(abi_save_gpr_regs[i]));
@@ -331,7 +332,7 @@ public:
     // Note: that we cannot use RBP inside as we override it in preamble
     // for address computation in EVEX instructions
     inline Xbyak::RegExp get_stack_params_address(bool after_prolog = true) {
-        int saved_regs_size = after_prolog ? get_size_of_abi_save_regs() : 0;
+        size_t saved_regs_size = after_prolog ? get_size_of_abi_save_regs() : 0;
 #ifdef _WIN32
         // Using stack layout described in MS ABI
         // (https://docs.microsoft.com/en-us/cpp/build/stack-usage?view=vs-2019)
@@ -361,8 +362,9 @@ public:
         for (size_t i = 0; i < num_abi_save_gpr_regs; ++i)
             pop(Xbyak::Reg64(abi_save_gpr_regs[num_abi_save_gpr_regs - 1 - i]));
         if (xmm_to_preserve) {
-            for (size_t i = 0; i < xmm_to_preserve; ++i)
-                uni_vmovdqu(Xbyak::Xmm(xmm_to_preserve_start + i),
+            for (dim_t i = 0; i < xmm_to_preserve; ++i)
+                uni_vmovdqu(Xbyak::Xmm(xbyak_register_index(
+                                    xmm_to_preserve_start + i)),
                         ptr[rsp + i * xmm_len]);
             add(rsp, xmm_to_preserve * xmm_len);
         }
@@ -441,7 +443,7 @@ public:
         }
     }
 
-    void safe_add(const Xbyak::Reg64 &base, size_t raw_offt,
+    void safe_add(const Xbyak::Reg64 &base, dim_t raw_offt,
             const Xbyak::Reg64 &reg_offt) {
         if (raw_offt > INT_MAX) {
             mov(reg_offt, raw_offt);
@@ -451,7 +453,7 @@ public:
         }
     }
 
-    void safe_sub(const Xbyak::Reg64 &base, size_t raw_offt,
+    void safe_sub(const Xbyak::Reg64 &base, dim_t raw_offt,
             const Xbyak::Reg64 &reg_offt) {
         if (raw_offt > INT_MAX) {
             mov(reg_offt, raw_offt);
@@ -2288,7 +2290,7 @@ public:
     */
     template <typename Vmm>
     void load_bytes(const Vmm &vmm, const Xbyak::Address &src_addr,
-            dim_t load_size, const bool zero_vmm = true) {
+            int load_size, const bool zero_vmm = true) {
 
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
                 || std::is_same<Vmm, Xbyak::Xmm>::value;
@@ -2307,7 +2309,7 @@ public:
 
     template <typename Vmm>
     void load_bytes(const Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset,
-            dim_t load_size, const bool zero_vmm = true) {
+            int load_size, const bool zero_vmm = true) {
 
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
                 || std::is_same<Vmm, Xbyak::Xmm>::value;
@@ -2328,8 +2330,8 @@ public:
 
 private:
     template <typename Vmm, typename AddrFunc>
-    void helper_load_bytes(const Vmm &vmm, dim_t load_size,
-            const AddrFunc &addr, const bool zero_vmm = true) {
+    void helper_load_bytes(const Vmm &vmm, int load_size, const AddrFunc &addr,
+            const bool zero_vmm = true) {
 
         constexpr bool is_xmm = std::is_same<Vmm, Xbyak::Xmm>::value;
         constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
@@ -2361,8 +2363,8 @@ private:
         // use clean execution sequence
         if (zero_vmm) uni_vpxor(vmm, vmm, vmm);
 
-        dim_t start_bytes = 0;
-        dim_t bytes_to_load = load_size;
+        int start_bytes = 0;
+        int bytes_to_load = load_size;
 
         if (load_size > 16) {
             // Prepare to insert to upper bits of ymm
@@ -2449,7 +2451,7 @@ private:
 public:
     template <typename Vmm>
     void store_bytes(
-            const Vmm &vmm, const Xbyak::Address &dst_addr, dim_t store_size) {
+            const Vmm &vmm, const Xbyak::Address &dst_addr, int store_size) {
         const auto addr = [&](dim_t bytes_offset) {
             return ptr[dst_addr.getRegExp()
                     + Xbyak::RegExp(bytes_offset * sizeof(int8_t))];
@@ -2459,7 +2461,7 @@ public:
 
     template <typename Vmm>
     void store_bytes(const Vmm &vmm, const Xbyak::Reg64 &reg, int64_t offset,
-            dim_t store_size) {
+            int store_size) {
 
         // Ensure offset is at most 4 bytes to be encoded in the instruction
         assert(offset >= INT_MIN && offset <= INT_MAX);
@@ -2473,7 +2475,7 @@ public:
 
 private:
     template <typename Vmm, typename AddrFunc>
-    void store_bytes(const Vmm &vmm, dim_t store_size, const AddrFunc &addr) {
+    void store_bytes(const Vmm &vmm, int store_size, const AddrFunc &addr) {
 
         constexpr bool is_xmm = std::is_same<Vmm, Xbyak::Xmm>::value;
         constexpr bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
@@ -2503,8 +2505,8 @@ private:
             return;
         }
 
-        dim_t start_bytes = 0;
-        dim_t bytes_to_store = store_size;
+        int start_bytes = 0;
+        int bytes_to_store = store_size;
 
         if (store_size > 16) {
             vmovdqu(addr(0), xmm); // load lower bits from ymm
@@ -2587,7 +2589,7 @@ public:
     */
     template <typename Vmm>
     void load_bytes_to_dword_extension(const Vmm &vmm, const Xbyak::Reg64 &reg,
-            int64_t offset, bool is_signed, dim_t load_size,
+            int64_t offset, bool is_signed, int load_size,
             const bool zero_vmm) {
         // Ensure offset is at most 4 bytes to be encoded in the instruction
         assert(offset >= INT_MIN && offset <= INT_MAX);
@@ -2597,7 +2599,7 @@ public:
 
     template <typename Vmm>
     void load_bytes_to_dword_extension(const Vmm &vmm,
-            const Xbyak::Address &src_addr, bool is_signed, dim_t load_size,
+            const Xbyak::Address &src_addr, bool is_signed, int load_size,
             const bool zero_vmm = true) {
 
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
@@ -2657,7 +2659,7 @@ public:
      */
     template <typename Vmm>
     void store_data(data_type_t type_out, const Vmm &vmm,
-            const Xbyak::Reg64 &reg, int64_t offset, dim_t store_size) {
+            const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
         constexpr bool is_vmm_supported = std::is_same<Vmm, Xbyak::Ymm>::value
                 || std::is_same<Vmm, Xbyak::Xmm>::value;
         using supported_vmm_t = typename utils::conditional<is_vmm_supported,
@@ -2674,7 +2676,7 @@ public:
 private:
     template <typename Vmm>
     void helper_store_data(data_type_t type_out, const Vmm &vmm,
-            const Xbyak::Reg64 &reg, int64_t offset, dim_t store_size) {
+            const Xbyak::Reg64 &reg, int64_t offset, int store_size) {
 
         assert(is_valid_isa(sse41)
                 && "routine is not supported for the current isa");
@@ -2734,7 +2736,7 @@ public:
      */
     template <typename Vmm>
     void load_data(data_type_t type_in, const Vmm &vmm, const Xbyak::Reg64 &reg,
-            int64_t offset, dim_t load_size, const bool zero_vmm = true) {
+            int64_t offset, int load_size, const bool zero_vmm = true) {
         // Ensure offset is at most 4 bytes to be encoded in the instruction
         assert(offset >= INT_MIN && offset <= INT_MAX);
         load_data(type_in, vmm, ptr[reg + offset], load_size, zero_vmm);
@@ -2742,7 +2744,7 @@ public:
 
     template <typename Vmm>
     void load_data(data_type_t type_in, const Vmm &vmm,
-            const Xbyak::Address &src_addr, dim_t load_size,
+            const Xbyak::Address &src_addr, int load_size,
             const bool zero_vmm = true) {
 
         assert(is_valid_isa(sse41)
@@ -2808,7 +2810,7 @@ public:
         jmp(label_tbl_end, T_NEAR);
         for (size_t i = 1; i < simd_w; i++) {
             L(l_case[i]);
-            tail_process(i);
+            tail_process(static_cast<int>(i));
             jmp(label_tbl_end, T_NEAR);
         }
         L(label_tbl_end);

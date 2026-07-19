@@ -151,54 +151,58 @@ private:
     Xbyak::Zmm zmm_shifted_zero;
     Xbyak::Zmm zmm_permute;
 
-    int vmm_out_idx(int i_ur, int i_oc) {
-        const int nb_x_blocking
+    int vmm_out_idx(dim_t i_ur, dim_t i_oc) {
+        const dim_t nb_x_blocking
                 = jcp.is_depthwise ? jcp.nb_ch_blocking : jcp.nb_oc_blocking;
-        const int idx = i_ur * nb_x_blocking + i_oc;
+        const dim_t idx = i_ur * nb_x_blocking + i_oc;
         assert(idx < (jcp.is_depthwise              ? ker_dw_reg_base_idx
                                : jcp.src_zero_point ? ker_zp_reg_base_idx
                                                     : ker_reg_base_idx));
-        return idx;
+        return static_cast<int>(idx);
     }
 
-    Vmm vmm_out(int i_ur, int i_oc) { return Vmm(vmm_out_idx(i_ur, i_oc)); }
-    Xbyak::Zmm zmm_out(int i_ur, int i_oc) {
-        int idx = vmm_out(i_ur, i_oc).getIdx();
+    Vmm vmm_out(dim_t i_ur, dim_t i_oc) {
+        return Vmm(vmm_out_idx(i_ur, i_oc));
+    }
+    Xbyak::Zmm zmm_out(dim_t i_ur, dim_t i_oc) {
+        const int idx = vmm_out(i_ur, i_oc).getIdx();
         assert(idx
                 < (jcp.is_depthwise ? ker_dw_reg_base_idx : ker_reg_base_idx));
         return Xbyak::Zmm(idx);
     }
-    Vmm vmm_inp(int i_ic, int nb_x_blocking) {
-        int idx = i_ic + nb_x_blocking * jcp.ur_w;
+    Vmm vmm_inp(dim_t i_ic, dim_t nb_x_blocking) {
+        const dim_t idx = i_ic + nb_x_blocking * jcp.ur_w;
         assert(idx < 31);
-        return Vmm(idx);
+        return Vmm(static_cast<int>(idx));
     }
-    Xbyak::Zmm zmm_inp(int i_ic, int nb_x_blocking) {
-        const int idx = i_ic + nb_x_blocking * jcp.ur_w;
+    Xbyak::Zmm zmm_inp(dim_t i_ic, dim_t nb_x_blocking) {
+        const dim_t idx = i_ic + nb_x_blocking * jcp.ur_w;
         const int max_idx = jcp.src_zero_point ? ker_zp_reg_base_idx
                                                : ker_dw_reg_base_idx;
         assert(idx < max_idx);
         MAYBE_UNUSED(max_idx);
 
-        return Xbyak::Zmm(idx);
+        return Xbyak::Zmm(static_cast<int>(idx));
     }
-    int get_ow_start(int ki, int pad_l) {
+    dim_t get_ow_start(dim_t ki, dim_t pad_l) {
         return utils::div_up(
-                nstl::max(0, pad_l - ki * (jcp.dilate_w + 1)), jcp.stride_w);
+                nstl::max<dim_t>(0, pad_l - ki * (jcp.dilate_w + 1)),
+                jcp.stride_w);
     }
-    int get_ow_end(int ur_w, int ki, int pad_r) {
+    dim_t get_ow_end(dim_t ur_w, dim_t ki, dim_t pad_r) {
         return ur_w
-                - utils::div_up(
-                        nstl::max(0,
-                                pad_r - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1)),
+                - utils::div_up(nstl::max<dim_t>(0,
+                                         pad_r
+                                                 - (jcp.kw - 1 - ki)
+                                                         * (jcp.dilate_w + 1)),
                         jcp.stride_w);
     }
 
     // bf16 utils
-    int get_src_down_idx(int nb_x_blocking) {
-        int idx = nb_x_blocking * jcp.ur_w;
+    int get_src_down_idx(dim_t nb_x_blocking) {
+        const dim_t idx = nb_x_blocking * jcp.ur_w;
         assert(idx < 31);
-        return idx;
+        return static_cast<int>(idx);
     }
     inline Vmm maybe_mask_vmm(Vmm vmm, bool mask_flag) {
         return mask_flag ? vmm | ktail_mask_extended : vmm;
@@ -218,20 +222,23 @@ private:
                 maybe_mask_vmm_down(vmm_down, mask_flag || jcp.simd_w == 4));
     }
 
-    void prepare_output(int ur_w);
-    void apply_sum(int ur_w, bool last_oc_block_flag, const int nb_oc_block,
-            const int oc_block, const float *p_sum_scale,
+    void prepare_output(dim_t ur_w);
+    void apply_sum(dim_t ur_w, bool last_oc_block_flag, const dim_t nb_oc_block,
+            const dim_t oc_block, const float *p_sum_scale,
             const int32_t *p_sum_zp);
-    void apply_postops(int ur_w, bool last_oc_block_flag, const int nb_oc_block,
-            const int oc_block, const float *p_sum_scale,
+    void apply_postops(dim_t ur_w, bool last_oc_block_flag,
+            const dim_t nb_oc_block, const dim_t oc_block,
+            const float *p_sum_scale,
             const int32_t *p_sum_zp);
-    void store_output(int ur_w, bool last_oc_block_flag);
-    void compute_ker_dw(int ur_w, int pad_l, int pad_r,
+    void store_output(dim_t ur_w, bool last_oc_block_flag);
+    void compute_ker_dw(dim_t ur_w, dim_t pad_l, dim_t pad_r,
             ic_block_t last_ic_block_flag, bool h_padded);
-    void compute_ker(int ur_w, int pad_l, int pad_r,
+    void compute_ker(dim_t ur_w, dim_t pad_l, dim_t pad_r,
             ic_block_t last_ic_block_flag, bool h_padded = false);
-    void kh_loop(int ur_w, int pad_l, int pad_r, ic_block_t last_ic_block_flag);
-    void icb_loop(int ur_w, int pad_l, int pad_r, bool is_last_spatial_block);
+    void kh_loop(dim_t ur_w, dim_t pad_l, dim_t pad_r,
+            ic_block_t last_ic_block_flag);
+    void icb_loop(dim_t ur_w, dim_t pad_l, dim_t pad_r,
+            bool is_last_spatial_block);
     void generate() override;
     void cvt2ps(data_type_t type_in, Vmm ymm_in, const Xbyak::Operand &op,
             bool mask_flag);
@@ -243,7 +250,8 @@ struct jit_avx512_core_x8s8s32x_fwd_kernel_t {
     jit_avx512_core_x8s8s32x_fwd_kernel_t(const jit_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md)
         : kernel_(nullptr) {
-        int ch_block = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
+        const dim_t ch_block
+                = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
         switch (ch_block) {
             case 16:
                 kernel_ = utils::make_unique<

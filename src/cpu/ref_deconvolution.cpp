@@ -365,8 +365,8 @@ prepare_zp_pad_comp_ker(const dim_t ndims, const int32_t *src_zero_points,
     const memory_desc_wrapper wei_d(deconv_pd->weights_md());
     const auto get_wei_off
             = [=](dim_t g, dim_t oc, dim_t ic, dim_t kd, dim_t kh, dim_t kw) {
-        return get_weights_off(
-                wei_d, with_groups, ndims, g, oc, ic, kd, kh, kw);
+        return get_weights_off(wei_d, with_groups, static_cast<int>(ndims), g,
+                oc, ic, kd, kh, kw);
     };
 
     return [=](const dim_t g, const dim_t oc, const dim_t od, const dim_t oh,

@@ -44,9 +44,9 @@ void ref_matmul_t::pd_t::init_scratchpad() {
     if (dst_scales.is_dynamic()) {
         auto scratchpad = scratchpad_registry().registrar();
         const memory_desc_wrapper dst_d(dst_md());
-        dim_t group_size = dst_scales.get_group_size();
-        dim_t work_amount = dst_d.nelems() / group_size;
-        ntasks_ = std::min<dim_t>(nthr_, work_amount);
+        const dim_t group_size = dst_scales.get_group_size();
+        const dim_t work_amount = dst_d.nelems() / group_size;
+        ntasks_ = static_cast<int>(nstl::min<dim_t>(nthr_, work_amount));
         scratchpad.template book<float>(
                 key_matmul_dst_in_acc_dt, ntasks_ * group_size);
     }
@@ -320,8 +320,15 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                         d /= dst_scale;
                     }
                     if (dst_rnd_mode == rounding_mode::stochastic)
-                        d = math::stochastic_round_fwd(d, dst_off,
-                                dropout_seed_val, dst_d.data_type());
+                        // NOTE: dst_off is truncated to 32 bits here. For
+                        // tensors with > 2^32 elements, different offsets
+                        // may alias to the same random seed --
+                        // stochastic_round_fwd does not support a 64-bit
+                        // index space.
+                        d = math::stochastic_round_fwd(d,
+                                static_cast<uint32_t>(dst_off),
+                                static_cast<uint32_t>(dropout_seed_val),
+                                dst_d.data_type());
                     io::store_float_value(dst_d.data_type(), d, dst, dst_off);
                     utils::dim_iterator(
                             dst_d.dims(), dst_dims_idx, batch_ndims);
@@ -385,8 +392,15 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                     d *= dst_group_scale;
 
                     if (dst_rnd_mode == rounding_mode::stochastic)
-                        d = math::stochastic_round_fwd(d, dst_off,
-                                dropout_seed_val, dst_d.data_type());
+                        // NOTE: dst_off is truncated to 32 bits here. For
+                        // tensors with > 2^32 elements, different offsets
+                        // may alias to the same random seed --
+                        // stochastic_round_fwd does not support a 64-bit
+                        // index space.
+                        d = math::stochastic_round_fwd(d,
+                                static_cast<uint32_t>(dst_off),
+                                static_cast<uint32_t>(dropout_seed_val),
+                                dst_d.data_type());
                     io::store_float_value(dst_d.data_type(), d, dst, dst_off);
                     utils::dim_iterator(
                             dst_d.dims(), dst_dims_idx, batch_ndims);

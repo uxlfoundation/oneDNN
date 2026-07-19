@@ -34,7 +34,7 @@ struct layer_perf_characteristics_t {
             nt_mat_l1_miss {0};
     float l1_reuse {0};
     float num_postop_cache_lines {0};
-    int num_cycles_per_tmul {0};
+    dim_t num_cycles_per_tmul {0};
 
     bool strip1_b_tranform_h {false};
     bool strips_b_tranform_v {false};
@@ -99,10 +99,10 @@ class matmul_amx_blocking_params_t : public brgemm_matmul_conf_t {
 public:
     matmul_amx_blocking_params_t(const brgemm_matmul_conf_t &bgmmc)
         : brgemm_matmul_conf_t(bgmmc)
-        , nthr_m_(nstl::max(nthr_m, 1))
-        , nthr_n_(nstl::max(nthr_n, 1))
-        , nthr_k_(nstl::max(nthr_k, 1))
-        , nthr_b_(nstl::max(nthr_b, 1))
+        , nthr_m_(nstl::max<int>(nthr_m, 1))
+        , nthr_n_(nstl::max<int>(nthr_n, 1))
+        , nthr_k_(nstl::max<int>(nthr_k, 1))
+        , nthr_b_(nstl::max<int>(nthr_b, 1))
         , nthr_mnb_(nthr / nthr_k_)
         , nthr_(nthr_mnb_ * nthr_k_)
         , n_blk_(N_blk)
@@ -140,7 +140,7 @@ protected:
     virtual dim_t get_actual_lda() const;
 
     // Num threads for parallelism wrt K dimension
-    size_t nthr_m_ {0}, nthr_n_ {0}, nthr_k_ {0}, nthr_b_ {0};
+    int nthr_m_ {0}, nthr_n_ {0}, nthr_k_ {0}, nthr_b_ {0};
     // Num threads for parallelism wrt M, N and batch dimensions
     int nthr_mnb_ {0};
     int nthr_ {0};
@@ -218,9 +218,9 @@ private:
     size_t l2_matrix_and_c_usage(size_t k_chunk_size, size_t m_or_n_blk,
             size_t k_blk, bool is_horizontal) const;
     void set_core_divs(int nthr_b, int nthr_m, int nthr_k, int nthr_n);
-    int bw(size_t m_blk, size_t k_chunk_size, size_t k_blk, size_t n_blk,
+    size_t bw(size_t m_blk, size_t k_chunk_size, size_t k_blk, size_t n_blk,
             bool is_horizontal) const;
-    int compute(size_t m_blk, size_t k_chunk_size, size_t k_blk,
+    size_t compute(size_t m_blk, size_t k_chunk_size, size_t k_blk,
             size_t n_blk) const;
     float ratio(size_t m_blk, size_t k_chunk_size, size_t k_blk, size_t n_blk,
             bool is_horizontal) const;
@@ -260,8 +260,8 @@ public:
     matmul_amx_blocking_params_micro_t(const brgemm_matmul_conf_t &bgmmc)
         : matmul_amx_blocking_params_t(bgmmc) {}
 
-    void set_blocking_parameters(int nthr_k, int n_blk, int n_chunk_size,
-            int m_blk, int m_chunk_size);
+    void set_blocking_parameters(int nthr_k, dim_t n_blk, dim_t n_chunk_size,
+            dim_t m_blk, dim_t m_chunk_size);
 
     static void find_best_blocking(const brgemm_matmul_conf_t &bgmmc,
             const brgemm_matmul_conf_utils_t &bm_conf_utils,

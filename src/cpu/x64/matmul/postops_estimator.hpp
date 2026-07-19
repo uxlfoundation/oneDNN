@@ -44,9 +44,11 @@ public:
         if (res != status::success) return res;
 
         size_t code_size = post_ops_gen.getSize();
-        size_t estimated_vec_code_size = (size_t)nstl::max(
-                (int)code_size - (int)mean_none_vec_code_bytes, 0);
-        estimated_vec_insts = estimated_vec_code_size / mean_vec_inst_bytes;
+        const size_t estimated_vec_code_size = code_size > mean_none_vec_code_bytes
+                ? code_size - mean_none_vec_code_bytes
+                : 0;
+        estimated_vec_insts = static_cast<int>(
+                estimated_vec_code_size / mean_vec_inst_bytes);
         return status::success;
     }
 

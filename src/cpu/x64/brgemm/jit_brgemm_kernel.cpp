@@ -3889,7 +3889,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::generate() {
     preamble();
-
+printf("dt a: %d, dt b: %d, fp8 with f16 block: %d\n", brg.dt_a, brg.dt_b, brg.fp8_with_f16_vnni_block);
     sub(rsp, regscratchpad_.Size());
 
     vpad_exist

@@ -117,6 +117,7 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
         const auto vnni_block_dt
                 = get_mac_emu_data_type(jcp.wei_dt, jcp.isa, req_emulation);
         const auto vnni_block = data_type_vnni_granularity(vnni_block_dt);
+	printf("bwd conv req_emulation: %d, isa: %d, fp8: %d, vnni block: %d\n", req_emulation, jcp.isa, jcp.is_fp8, vnni_block);
         if (jcp.ic_block == 64) {
             if (is_3d) {
                 if (no_vnni_format)
@@ -1509,6 +1510,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.simd_w = isa_max_vlen(isa) / jcp.src_dsz;
     jcp.acc_simd_w = isa_max_vlen(isa) / jcp.acc_dsz;
+    jcp.is_fp8 = one_of(jcp.src_dt, f8_e5m2, f8_e4m3)
+	    && one_of(jcp.wei_dt, f8_e4m3, f8_e5m2);
     jcp.is_bf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
             && isa == avx512_core_amx;
@@ -1524,8 +1527,9 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const auto wei_dt
             = jcp.is_f32_f16 || jcp.is_f32_bf16 ? jcp.src_dt : jcp.wei_dt;
+    const bool req_emulation = one_of(isa, avx512_core_fp16, avx10_2);
     const data_type_t last_oc_block_dt
-            = get_mac_emu_data_type(wei_dt, isa, isa == avx512_core_fp16);
+            = get_mac_emu_data_type(wei_dt, isa, req_emulation);
     jcp.vnni_block = data_type_vnni_granularity(last_oc_block_dt);
 
     // TODO: optimize grouped convolutions with small oc

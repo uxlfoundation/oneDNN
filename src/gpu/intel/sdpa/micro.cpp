@@ -1669,8 +1669,7 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     } else {
         arg_list.append(scale);
     }
-    arg_list.append((int)D_qk);
-    arg_list.append((int)D_v);
+    arg_list.append((int)((D_qk & 0xFFFF) | ((D_v & 0xFFFF) << 16)));
     arg_list.append((int)K);
     arg_list.append((int)Q);
     arg_list.append(key_scales);

@@ -487,8 +487,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #else
         const global SCALE_DATA_T *scale_ptr,
 #endif
-        int d_qk, int d_v, int k, int q,
-        const global KEY_ATTR_SCALES_DATA_T *K_scales,
+        int d_qkv, int k, int q, const global KEY_ATTR_SCALES_DATA_T *K_scales,
         const global KEY_ATTR_ZP_DATA_T *K_zp,
         const global VAL_ATTR_SCALES_DATA_T *V_scales,
         const global VAL_ATTR_ZP_DATA_T *V_zp, const int attn_mask_type
@@ -517,6 +516,11 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 ) {
 
     uint sg_ij = sub_group_broadcast(get_local_id(1), 0);
+    /* d_qk and d_v are packed into a single scalar argument to work around a
+     * GPU compiler miscompilation triggered when they are passed as two
+     * separate kernel arguments. Each head size fits in 16 bits (max 1024). */
+    const int d_qk = d_qkv & 0xFFFF;
+    const int d_v = (d_qkv >> 16) & 0xFFFF;
     uint b1 = get_group_id(2);
 
     uint b0, b0_kv;

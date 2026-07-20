@@ -214,9 +214,11 @@ status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
         const auto &strides0 = src0_md_.blocking_desc().strides;
         const auto &strides1 = src1_md_.blocking_desc().strides;
         conf_.src1_stride
-                = get_different_layout_stride(strides0, strides1, ndims);
+                = get_different_layout_stride(
+                        strides0, strides1, ndims);
         conf_.outer_dims
-                = get_outer_dims_product(strides0, src0_md_.dims(), ndims);
+                = get_outer_dims_product(
+                        strides0, src0_md_.dims(), ndims);
     }
     if (conf_.bcast_type == bcast_t::per_w) {
         for (int d = 2; d < ndims; ++d)
@@ -781,12 +783,12 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
     const memory_desc_wrapper src2_d(pd()->src_md(2));
     const memory_desc_wrapper dst_d(pd()->dst_md(0));
 
-    const int src0_type_size = types::data_type_size(src0_d.data_type());
-    const int src1_type_size = types::data_type_size(src1_d.data_type());
-    const int src2_type_size = pd()->is_ternary_op()
+    const size_t src0_type_size = types::data_type_size(src0_d.data_type());
+    const size_t src1_type_size = types::data_type_size(src1_d.data_type());
+    const size_t src2_type_size = pd()->is_ternary_op()
             ? types::data_type_size(src2_d.data_type())
             : 0;
-    const int dst_type_size = types::data_type_size(dst_d.data_type());
+    const size_t dst_type_size = types::data_type_size(dst_d.data_type());
 
     const auto &conf = pd()->get_conf();
     const bool is_src_different_layouts = conf.is_src_different_layouts;
@@ -795,8 +797,9 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
         std::vector<unsigned> indices(simd_w);
 
         const dim_t src1_different_layout_stride = conf.src1_stride;
-        for (size_t i = 0; i < simd_w; i++)
-            indices[i] = i * src1_different_layout_stride * src1_type_size;
+        for (int i = 0; i < simd_w; i++)
+            indices[i] = static_cast<unsigned>(
+                    i * src1_different_layout_stride * src1_type_size);
 
         const dim_t batch = src0_d.dims()[0];
         const dim_t batch_stride = src1_d.blocking_desc().strides[0];
@@ -902,12 +905,12 @@ void jit_uni_binary_t::execute_bcast_per_batch_strategy(const data_t *src0,
     const memory_desc_wrapper src2_d(pd()->src_md(2));
     const memory_desc_wrapper dst_d(pd()->dst_md(0));
 
-    const int src0_type_size = types::data_type_size(src0_d.data_type());
-    const int src1_type_size = types::data_type_size(src1_d.data_type());
-    const int src2_type_size = pd()->is_ternary_op()
+    const size_t src0_type_size = types::data_type_size(src0_d.data_type());
+    const size_t src1_type_size = types::data_type_size(src1_d.data_type());
+    const size_t src2_type_size = pd()->is_ternary_op()
             ? types::data_type_size(src2_d.data_type())
             : 0;
-    const int dst_type_size = types::data_type_size(dst_d.data_type());
+    const size_t dst_type_size = types::data_type_size(dst_d.data_type());
 
     const dim_t MB = src0_d.dims()[0];
     const dim_t nelems0_per_b = src0_d.nelems(true) / MB;
@@ -957,12 +960,12 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
     const memory_desc_wrapper src2_d(pd()->src_md(2));
     const memory_desc_wrapper dst_d(pd()->dst_md(0));
 
-    const int src0_type_size = types::data_type_size(src0_d.data_type());
-    const int src1_type_size = types::data_type_size(src1_d.data_type());
-    const int src2_type_size = pd()->is_ternary_op()
+    const size_t src0_type_size = types::data_type_size(src0_d.data_type());
+    const size_t src1_type_size = types::data_type_size(src1_d.data_type());
+    const size_t src2_type_size = pd()->is_ternary_op()
             ? types::data_type_size(src2_d.data_type())
             : 0;
-    const int dst_type_size = types::data_type_size(dst_d.data_type());
+    const size_t dst_type_size = types::data_type_size(dst_d.data_type());
 
     const auto ndims = src0_d.ndims();
     const auto &dims = src0_d.dims();
@@ -1081,12 +1084,12 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
     const memory_desc_wrapper src2_d(pd()->src_md(2));
     const memory_desc_wrapper dst_d(pd()->dst_md(0));
 
-    const int src0_type_size = types::data_type_size(src0_d.data_type());
-    const int src1_type_size = types::data_type_size(src1_d.data_type());
-    const int src2_type_size = pd()->is_ternary_op()
+    const size_t src0_type_size = types::data_type_size(src0_d.data_type());
+    const size_t src1_type_size = types::data_type_size(src1_d.data_type());
+    const size_t src2_type_size = pd()->is_ternary_op()
             ? types::data_type_size(src2_d.data_type())
             : 0;
-    const int dst_type_size = types::data_type_size(dst_d.data_type());
+    const size_t dst_type_size = types::data_type_size(dst_d.data_type());
 
     const auto ndims = src0_d.ndims();
     const auto &dims = src0_d.dims();

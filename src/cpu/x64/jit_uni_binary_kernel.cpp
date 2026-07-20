@@ -54,7 +54,7 @@ binary_kernel_t::binary_kernel_t(const size_t vlen, const binary_pd_t *pd,
     , padding_tail_size_(
               pd->src_md(0)->padded_dims[1] - pd->src_md(0)->dims[1]) {}
 
-size_t binary_kernel_t::get_tail_size() const {
+dim_t binary_kernel_t::get_tail_size() const {
     memory_desc_wrapper src0_d(pd_->src_md(0));
     const auto &dims = src0_d.dims();
     const auto &ndims = src0_d.ndims();
@@ -103,13 +103,15 @@ jit_uni_binary_kernel_t<isa, Vmm>::jit_uni_binary_kernel_t(
     if (conf.is_ternary_op) dts.emplace(conf_.src2_type);
 
     io_ = io::jit_io_multi_dt_helper_t<Vmm>(this, isa, dts, {false},
-            io::io_tail_conf_t {simd_w_, tail_size_, tail_opmask_,
+            io::io_tail_conf_t {static_cast<std::size_t>(simd_w_),
+                    static_cast<std::size_t>(tail_size_), tail_opmask_,
                     vmm_tail_vmask_.getIdx(), reg_tmp_},
             io::io_emu_bf16_conf_t {vreg_bf16_emu_1_, vreg_bf16_emu_2_,
                     vreg_bf16_emu_3_, reg_tmp_, vreg_bf16_emu_4_},
             create_saturation_vmm_map(),
-            io::io_gather_conf_t {simd_w_, full_mask_, vmm_full_mask_.getIdx(),
-                    reg_tmp_, reg_tmp1_, vmm_tmp_gather_.getIdx()});
+            io::io_gather_conf_t {static_cast<std::size_t>(simd_w_), full_mask_,
+                    vmm_full_mask_.getIdx(), reg_tmp_, reg_tmp1_,
+                    vmm_tmp_gather_.getIdx()});
     init();
 }
 
@@ -163,7 +165,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::apply_postops(int unroll, bool tail) {
         const Vmm vmm_aux = vreg_saturation_ubound_;
         for (int i = 0; i < unroll; i += 2) {
             const bool can_load_two_simdw = unroll - i >= 2;
-            const int offt_base = simd_w_ * i;
+            const dim_t offt_base = simd_w_ * i;
             const Vmm vreg_tmp_even_src0 = Vmm(i + vmm_start_idx_);
             const Vmm vreg_tmp_odd_src0 = Vmm(i + 1 + vmm_start_idx_);
             if (can_load_two_simdw) {
@@ -190,7 +192,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::apply_postops(int unroll, bool tail) {
 
     const auto sum_injector = [&]() {
         for (int i = 0; i < unroll; i++) {
-            const int offt = simd_w_ * i;
+            const dim_t offt = simd_w_ * i;
             const Vmm vreg_tmp_src0 = Vmm(i + vmm_start_idx_);
             const Vmm vreg_tmp = conf_.is_src_different_layouts
                     ? vmm_gathered_src_
@@ -279,30 +281,31 @@ void jit_uni_binary_kernel_t<isa, Vmm>::load_kernel_params() {
 // the number of elements without multiplying it by dt_size. See a comment for
 // `reg_offt_src0_` in the header file for more details.
 template <cpu_isa_t isa, typename Vmm>
-Address jit_uni_binary_kernel_t<isa, Vmm>::src0_ptr(size_t offt) {
-    const auto src0_type_size = types::data_type_size(conf_.src0_type);
-    return vmmword[reg_src0_ + reg_offt_src0_ * src0_type_size
-            + offt * src0_type_size];
+Address jit_uni_binary_kernel_t<isa, Vmm>::src0_ptr(dim_t offt) {
+    const dim_t src0_type_size = types::data_type_size(conf_.src0_type);
+    return vmmword[reg_src0_ + reg_offt_src0_ * static_cast<int>(src0_type_size)
+            + static_cast<int>(offt * src0_type_size)];
 }
 
 template <cpu_isa_t isa, typename Vmm>
-Address jit_uni_binary_kernel_t<isa, Vmm>::src1_ptr(size_t offt) {
-    return vmmword[reg_src1_ + reg_offt_src1_ + offt];
+Address jit_uni_binary_kernel_t<isa, Vmm>::src1_ptr(dim_t offt) {
+    return vmmword[reg_src1_ + reg_offt_src1_ + static_cast<int>(offt)];
 }
 
 template <cpu_isa_t isa, typename Vmm>
-Address jit_uni_binary_kernel_t<isa, Vmm>::src2_ptr(size_t offt) {
-    const auto src2_type_size = types::data_type_size(conf_.src2_type);
-    return vmmword[reg_src2_ + reg_offt_src0_ * src2_type_size
-            + offt * src2_type_size];
+Address jit_uni_binary_kernel_t<isa, Vmm>::src2_ptr(dim_t offt) {
+    const dim_t src2_type_size = types::data_type_size(conf_.src2_type);
+    return vmmword[reg_src2_ + reg_offt_src0_ * static_cast<int>(src2_type_size)
+            + static_cast<int>(offt * src2_type_size)];
 }
 
 template <cpu_isa_t isa, typename Vmm>
-Address jit_uni_binary_kernel_t<isa, Vmm>::dst_ptr(size_t offt) {
-    const auto src0_type_size = types::data_type_size(conf_.src0_type);
-    const auto &reg_offt_dst
-            = conf_.is_i8 ? reg_offt_dst_ : (reg_offt_src0_ * src0_type_size);
-    return vmmword[reg_dst_ + reg_offt_dst + offt];
+Address jit_uni_binary_kernel_t<isa, Vmm>::dst_ptr(dim_t offt) {
+    const dim_t src0_type_size = types::data_type_size(conf_.src0_type);
+    const auto &reg_offt_dst = conf_.is_i8
+            ? reg_offt_dst_
+            : (reg_offt_src0_ * static_cast<int>(src0_type_size));
+    return vmmword[reg_dst_ + reg_offt_dst + static_cast<int>(offt)];
 }
 
 template <cpu_isa_t isa, typename Vmm>
@@ -433,7 +436,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::compute_bcast(bool tail) {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::load_src1(
-        const Vmm &vreg_src1, const int offt, bool tail) {
+        const Vmm &vreg_src1, dim_t offt, bool tail) {
     if (conf_.is_src_different_layouts) {
         // if different layouts, gather data with strides
         // after getting to stride range, offset is restored and
@@ -444,11 +447,11 @@ void jit_uni_binary_kernel_t<isa, Vmm>::load_src1(
         // use reg_src1_ directly, without offset stored in second
         // register
         add(reg_src1_,
-                types::data_type_size(conf_.src1_type) * conf_.src1_stride
-                        * simd_w_);
+                static_cast<uint32_t>(types::data_type_size(conf_.src1_type)
+                        * conf_.src1_stride * simd_w_));
         sub(reg_reverse_src1_stride_range_,
-                types::data_type_size(conf_.src1_type) * conf_.src1_stride
-                        * simd_w_);
+                static_cast<uint32_t>(types::data_type_size(conf_.src1_type)
+                        * conf_.src1_stride * simd_w_));
 
         Label src1_stride_range_not_exceed, src1_C_tail_end;
 
@@ -456,7 +459,9 @@ void jit_uni_binary_kernel_t<isa, Vmm>::load_src1(
         jg(src1_stride_range_not_exceed, T_NEAR);
         {
             pop(reg_src1_);
-            add(reg_src1_, types::data_type_size(conf_.src1_type));
+            add(reg_src1_,
+                    static_cast<uint32_t>(
+                            types::data_type_size(conf_.src1_type)));
             push(reg_src1_);
             mov(reg_reverse_src1_stride_range_, reg_src1_stride_range_);
         }
@@ -471,8 +476,8 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::store(int unroll, bool tail) {
     for (int i = 0; i < unroll; i++) {
         const Vmm vreg_tmp_src0 = Vmm(i + vmm_start_idx_);
-        const int offt = simd_w_ * i;
-        const auto dt_size = types::data_type_size(conf_.dst_type);
+        const dim_t offt = simd_w_ * i;
+        const dim_t dt_size = types::data_type_size(conf_.dst_type);
 
         if (is_tail_kernel_ && padding_tail_size_) {
             // apply zero-padding
@@ -488,12 +493,12 @@ void jit_uni_binary_kernel_t<isa, Vmm>::store(int unroll, bool tail) {
                             vmm_tail_vmask_);
                 io_.at(conf_.dst_type)
                         ->store(vreg_zero_, dst_ptr(offt * dt_size), false);
-                off_base = simd_w_ * dt_size;
+                off_base = static_cast<int>(simd_w_ * dt_size);
                 zero_pad_left -= simd_w_ - tail_size_;
             } else {
                 io_.at(conf_.dst_type)
                         ->store(vreg_tmp_src0, dst_ptr(offt * dt_size), true);
-                off_base = tail_size_ * dt_size;
+                off_base = static_cast<int>(tail_size_ * dt_size);
             }
 
             if (zero_pad_left) {
@@ -536,7 +541,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::compute_ne_xf16_dst_body(
                 && !conf_.is_src_different_layouts;
         const Vmm vreg_tmp_even_src0 = Vmm(i + vmm_start_idx_);
         const Vmm vreg_tmp_odd_src0 = Vmm(i + 1 + vmm_start_idx_);
-        const int offt_base = simd_w_ * i;
+        const dim_t offt_base = simd_w_ * i;
 
         if (can_load_two_simdw_src0) {
             io_.at(conf_.src0_type)
@@ -564,7 +569,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::compute_ne_xf16_dst_body(
             const Vmm vreg_tmp_src1 = j == 0 || !can_load_two_simdw_src1
                     ? vreg_tmp_even_src1
                     : vreg_tmp_odd_src1;
-            const int offt = simd_w_ * j + offt_base;
+            const dim_t offt = simd_w_ * j + offt_base;
             if (!can_load_two_simdw_src0)
                 io_.at(conf_.src0_type)
                         ->load(src0_ptr(offt), vreg_tmp_src0, tail);
@@ -590,7 +595,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::compute_dst_body(
                 ? vmm_gathered_src_
                 : Vmm(unroll + i + vmm_start_idx_);
         const Vmm vreg_tmp_src1 = offt_src1_ ? vreg_tmp : vreg_bcast_src1_;
-        const int offt = simd_w_ * i;
+        const dim_t offt = simd_w_ * i;
         io_.at(conf_.src0_type)->load(src0_ptr(offt), vreg_tmp_src0, tail);
         if (offt_src1_) load_src1(vreg_tmp_src1, offt, tail);
 
@@ -632,8 +637,8 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::forward() {
     Label unroll_loop, unroll_loop_tail, nelems_tail, end;
 
-    const auto src1_type_size = types::data_type_size(conf_.src1_type);
-    const auto dst_type_size = types::data_type_size(conf_.dst_type);
+    const dim_t src1_type_size = types::data_type_size(conf_.src1_type);
+    const dim_t dst_type_size = types::data_type_size(conf_.dst_type);
 
     if (conf_.is_src_different_layouts) push(reg_src1_);
 
@@ -681,11 +686,12 @@ void jit_uni_binary_kernel_t<isa, Vmm>::forward() {
 
     L(unroll_loop);
     {
-        const size_t offt = unroll_regs_ * simd_w_;
+        const dim_t offt = unroll_regs_ * simd_w_;
         cmp(reg_reverse_spat_offt_, offt * dst_type_size);
         jl(unroll_loop_tail, T_NEAR);
 
-        compute_dst(unroll_regs_, treat_each_compute_step_as_tail);
+        compute_dst(static_cast<int>(unroll_regs_),
+                treat_each_compute_step_as_tail);
         sub(reg_reverse_spat_offt_, offt * dst_type_size);
         add(reg_offt_src0_, offt);
 
@@ -747,8 +753,8 @@ void jit_uni_binary_kernel_t<isa, Vmm>::forward() {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::forward_over_outer_dims() {
-    const auto outer_dims_size
-            = conf_.outer_dims * types::data_type_size(conf_.dst_type);
+    const dim_t outer_dims_size = conf_.outer_dims
+            * static_cast<dim_t>(types::data_type_size(conf_.dst_type));
 
     if (conf_.is_i8 || conf_.dst_type == data_type::s32) {
         uni_vpxor(vreg_zero_, vreg_zero_, vreg_zero_);

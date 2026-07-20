@@ -51,21 +51,23 @@ struct binary_kernel_t : public jit_generator_t {
         jit_generator_t::operator()(p);
     }
 
-    size_t simd_w() const noexcept { return simd_w_; }
+    int simd_w() const noexcept { return simd_w_; }
     size_t vlen() const noexcept { return vlen_; }
 
 protected:
-    size_t get_tail_size() const;
+    dim_t get_tail_size() const;
 
     const size_t vlen_;
-    const size_t simd_w_;
+    // SIMD width: a small, fixed ISA constant (vlen / sizeof(float)),
+    // not a tensor-scale value.
+    const int simd_w_;
     constexpr static int vmm_start_idx_ = 1;
     const binary_pd_t *pd_;
     const jit_binary_conf_t conf_;
     const bool is_tail_kernel_;
     const bool is_src1_outer_dims_tail_;
-    const size_t tail_size_;
-    const size_t padding_tail_size_;
+    const dim_t tail_size_;
+    const dim_t padding_tail_size_;
 };
 
 template <cpu_isa_t isa, typename Vmm>
@@ -148,10 +150,10 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     void init_post_ops_injector();
     void apply_postops(int unroll, bool tail);
     void load_kernel_params();
-    Address src0_ptr(size_t offt = 0);
-    Address src1_ptr(size_t offt = 0);
-    Address src2_ptr(size_t offt = 0);
-    Address dst_ptr(size_t offt = 0);
+    Address src0_ptr(dim_t offt = 0);
+    Address src1_ptr(dim_t offt = 0);
+    Address src2_ptr(dim_t offt = 0);
+    Address dst_ptr(dim_t offt = 0);
     Opmask get_select_opmask(int reg_idx);
     unsigned int cmp_predicate(alg_kind_t alg);
     void perform_op(
@@ -160,7 +162,7 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
             const Vmm &s_src0, const Vmm &s_src1, int reg_idx);
     void prepare_isa_kernel();
     void compute_bcast(bool tail);
-    void load_src1(const Vmm &vreg_src1, const int offt, bool tail);
+    void load_src1(const Vmm &vreg_src1, dim_t offt, bool tail);
     void store(int unroll, bool tail);
     void compute_ne_xf16_dst_body(int unroll, bool tail);
     void compute_dst_body(int unroll, bool tail);

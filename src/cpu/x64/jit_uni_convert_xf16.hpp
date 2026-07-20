@@ -18,6 +18,7 @@
 #define CPU_X64_JIT_UNI_CONVERT_XF16_HPP
 
 #include <assert.h>
+#include <limits>
 
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
@@ -58,15 +59,15 @@ struct jit_uni_cvt_ps_to_xf16_t : public jit_generator_t {
     jit_uni_cvt_ps_to_xf16_t(impl::data_type_t dt, size_t nelems = 0)
         : jit_generator_t(jit_name())
         , output_dt_(dt)
-        , nelems_(nelems)
+        , nelems_(to_dim_t(nelems))
         , is_dynamic_size_(nelems_ == 0)
-        , tail_size_(nelems_ % simd_w_) {}
+        , tail_size_(static_cast<int>(nelems_ % simd_w_)) {}
 
     void generate() override;
 
 protected:
     const impl::data_type_t output_dt_; // bf16 or f16
-    const size_t nelems_;
+    const dim_t nelems_;
     const bool is_dynamic_size_;
     const int tail_size_;
 
@@ -95,6 +96,13 @@ protected:
     Xbyak::Reg64 reg_tail = rcx;
     Xbyak::Reg64 reg_tmp = r8;
     Xbyak::Reg64 reg_scratch = r9;
+
+    static dim_t to_dim_t(size_t nelems) {
+        JIT_ASSERT_RET(nelems <= static_cast<size_t>(
+                                      std::numeric_limits<dim_t>::max()),
+                0);
+        return static_cast<dim_t>(nelems);
+    }
 
     void setup_mask();
     virtual void cvt_ps_to_xf16(const int idx, const bool is_tail);

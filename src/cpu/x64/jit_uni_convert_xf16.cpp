@@ -72,29 +72,32 @@ void jit_uni_cvt_ps_to_xf16_t<isa>::generate() {
 
         L(l_simd_notail);
     } else {
-        const size_t blocked_size = (nelems_ / simd_w_) * simd_w_;
-        constexpr size_t unroll_length = 1024;
-        const size_t number_of_loops = blocked_size / unroll_length;
-        const size_t loop_tail = blocked_size % unroll_length;
+        constexpr dim_t simd_w = simd_w_;
+        const dim_t blocked_size = (nelems_ / simd_w) * simd_w;
+        constexpr dim_t unroll_length = 1024;
+        const dim_t number_of_loops = blocked_size / unroll_length;
+        const dim_t loop_tail = blocked_size % unroll_length;
 
         if (number_of_loops > 0) {
             Xbyak::Label l_number_of_loops;
             mov(reg_nelems, number_of_loops);
             L(l_number_of_loops);
-            for (size_t i = 0; i < unroll_length; i += simd_w_)
-                cvt_ps_to_xf16(i, false);
-            add(reg_input, sizeof(float) * unroll_length);
-            add(reg_output, sizeof(float16_t) * unroll_length);
+            for (dim_t i = 0; i < unroll_length; i += simd_w)
+                cvt_ps_to_xf16(static_cast<int>(i), false);
+            add(reg_input, static_cast<dim_t>(sizeof(float)) * unroll_length);
+            add(reg_output,
+                    static_cast<dim_t>(sizeof(float16_t)) * unroll_length);
 
             dec(reg_nelems);
             cmp(reg_nelems, 0);
             jg(l_number_of_loops, T_NEAR);
         }
         if (loop_tail > 0) {
-            for (size_t i = 0; i < loop_tail; i += simd_w_)
-                cvt_ps_to_xf16(i, false);
-            add(reg_input, sizeof(float) * loop_tail);
-            add(reg_output, sizeof(float16_t) * loop_tail);
+            for (dim_t i = 0; i < loop_tail; i += simd_w)
+                cvt_ps_to_xf16(static_cast<int>(i), false);
+            add(reg_input, static_cast<dim_t>(sizeof(float)) * loop_tail);
+            add(reg_output,
+                    static_cast<dim_t>(sizeof(float16_t)) * loop_tail);
         }
         if (tail_size_ != 0) {
             setup_mask();

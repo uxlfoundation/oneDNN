@@ -70,7 +70,7 @@ private:
     };
 
     void kernel_amx(const int ithr, const int nthr) const;
-    void kernel_amx_compute_iter(const int m_block_id, const int n_block_id,
+    void kernel_amx_compute_iter(const dim_t m_block_id, const dim_t n_block_id,
             const int gates_start, const int gates_end,
             thread_exec_ctx_t &ctx) const;
     void kernel(const int ithr, const int nthr) const;
@@ -97,7 +97,7 @@ private:
     const dim_t max_nthr_;
     const dim_t n_blocking_;
     const dim_t m_blocking_;
-    const int work_amount_;
+    const dim_t work_amount_;
     const dim_t max_n_layer_blocks_;
     const dim_t max_n_iter_blocks_;
     const bool gemm_layer_needed_;
@@ -195,7 +195,7 @@ private:
     const dim_t B_kb_offset_;
     const dim_t B_k_tail_offset_;
     const dim_t B_k_tail_offset_blocked_;
-    const int work_amount_;
+    const dim_t work_amount_;
     const brgemm_kernel_t *const kernel_iter_full_blocks_;
     const brgemm_kernel_t *const kernel_iter_n_tail_;
     const brgemm_kernel_t *const kernel_iter_k_tail_;
@@ -241,9 +241,9 @@ private:
     const void *src_iter_c_;
     const void *dst_iter_c_;
     float *diff_weights_peephole_;
-    const int work_amount_;
-    const int dst_iter_c_ld_;
-    const int src_iter_c_ld_;
+    const dim_t work_amount_;
+    const dim_t dst_iter_c_ld_;
+    const dim_t src_iter_c_ld_;
     const jit_diff_weights_peephole_t *const kernel_;
     const jit_diff_weights_peephole_t *const kernel_tail_;
 };

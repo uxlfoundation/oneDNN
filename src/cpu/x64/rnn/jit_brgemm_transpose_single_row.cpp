@@ -55,18 +55,20 @@ void jit_brgemm_transpose_single_row_t::compute(
         kmovd(tail_mask_, reg_tmp_.cvt32());
     }
 
-    for (int k = unrolling - 1; k >= 0; k--) {
-        const auto read_vmm
-                = is_tail ? Xbyak::Zmm(k) | tail_mask_ | T_z : Xbyak::Zmm(k);
-        const auto src_off = k * simd_w_ * sizeof(bfloat16_t);
-        vpmovzxwd(read_vmm, ptr[reg_src_ + src_off]);
+    for (dim_t k = unrolling - 1; k >= 0; k--) {
+        const auto read_vmm = is_tail
+                ? Xbyak::Zmm(static_cast<int>(k)) | tail_mask_ | T_z
+                : Xbyak::Zmm(static_cast<int>(k));
+        const size_t src_off = k * simd_w_ * sizeof(bfloat16_t);
+        vpmovzxwd(read_vmm, ptr[reg_src_ + static_cast<uint32_t>(src_off)]);
     }
 
-    for (int k = unrolling - 1; k >= 0; k--) {
-        const auto store_vmm
-                = is_tail ? Xbyak::Zmm(k) | tail_mask_ : Xbyak::Zmm(k);
-        const auto dst_off = k * simd_w_ * sizeof(float);
-        uni_vmovups(ptr[reg_dst_ + dst_off], store_vmm);
+    for (dim_t k = unrolling - 1; k >= 0; k--) {
+        const auto store_vmm = is_tail
+                ? Xbyak::Zmm(static_cast<int>(k)) | tail_mask_
+                : Xbyak::Zmm(static_cast<int>(k));
+        const size_t dst_off = k * simd_w_ * sizeof(float);
+        uni_vmovups(ptr[reg_dst_ + static_cast<uint32_t>(dst_off)], store_vmm);
     }
 }
 
@@ -98,8 +100,8 @@ void jit_brgemm_transpose_single_row_t::compute_loop() {
     const int k_blocks_left = k_blocks_nb_ - full_loop_iters_ * vmms_available_;
     if (k_blocks_left > 0) {
         const auto off = k_blocks_left * simd_w_;
-        const auto src_off = off * sizeof(bfloat16_t);
-        const auto dst_off = off * sizeof(float);
+        const dim_t src_off = off * sizeof(bfloat16_t);
+        const dim_t dst_off = off * sizeof(float);
 
         compute(k_blocks_left, false);
         add(reg_src_, src_off);

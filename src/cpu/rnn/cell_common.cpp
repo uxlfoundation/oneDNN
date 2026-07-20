@@ -80,7 +80,7 @@ rnn_cell_execution_sig(
         assert(rnn.scratch_gates_ld >= rnn.dlc);
         gemm_acc_t *dst_proj = rnn.dt_conf == all_f32 ? (gemm_acc_t *)dst_layer_
                                                       : scratch_gates_;
-        const int dst_proj_ld
+        const dim_t dst_proj_ld
                 = rnn.dt_conf == all_f32 ? dst_layer_ld : rnn.scratch_gates_ld;
 
         CHECK((this->*gemm_projection_func)('N', 'N', rnn.dic, rnn.mb, rnn.dhc,
@@ -109,8 +109,8 @@ void lstm_bwd_weights_peephole_and_bias(const rnn_utils::rnn_conf_t &rnn,
         cell_position_t cell_position, const void *src_iter_c_,
         const void *dst_iter_c_, const scratch_data_t *scratch_gates_,
         float *diff_weights_peephole_, acc_data_t *diff_bias_) {
-    const int dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
-    const int src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
+    const dim_t dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
+    const dim_t src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
 
     const auto dst_iter_c = rnn_utils::make_raw_aoc(dst_iter_c_,
             types::data_type_size(rnn.dst_iter_c_dt), rnn.ws_states_iter_c_nld,
@@ -125,13 +125,13 @@ void lstm_bwd_weights_peephole_and_bias(const rnn_utils::rnn_conf_t &rnn,
             rnn, diff_weights_peephole_);
 
     parallel(0, [&](int ithr, int nthr) {
-        int g_dhc_start {}, g_dhc_stop {};
+        dim_t g_dhc_start {}, g_dhc_stop {};
         const int gates_to_process = 5; // 3 -- weights peephole +
                 // 2 -- bias (process a pair at once)
-        balance211(gates_to_process * rnn.dhc, nthr, ithr, g_dhc_start,
-                g_dhc_stop);
-        int g = g_dhc_start / rnn.dhc;
-        int dhc = g_dhc_start % rnn.dhc;
+        balance211(gates_to_process * rnn.dhc, nthr, ithr,
+                g_dhc_start, g_dhc_stop);
+        dim_t g = g_dhc_start / rnn.dhc;
+        dim_t dhc = g_dhc_start % rnn.dhc;
         while (g_dhc_start++ < g_dhc_stop) {
             if (g < 3) {
                 // weights peephole
@@ -139,17 +139,17 @@ void lstm_bwd_weights_peephole_and_bias(const rnn_utils::rnn_conf_t &rnn,
                 const auto c_states_dt
                         = g < 2 ? rnn.src_iter_c_dt : rnn.dst_iter_c_dt;
 
-                const int scratch_g = g < 2 ? g : 3;
+                const int scratch_g = g < 2 ? static_cast<int>(g) : 3;
                 if (rnn.diff_weights_overwrite && (cell_position & last_iter))
                     diff_weights_peephole(g, dhc) = 0;
-                for (int mb = 0; mb < rnn.mb; ++mb) {
+                for (dim_t mb = 0; mb < rnn.mb; ++mb) {
                     diff_weights_peephole(g, dhc)
                             += to_float(c_states(mb, dhc), c_states_dt)
                             * scratch_gates(mb, scratch_g, dhc);
                 }
             } else {
                 // bias
-                const int bias_g_start = 2 * (g - 3);
+                const int bias_g_start = static_cast<int>(2 * (g - 3));
                 const int bias_g_end = bias_g_start + 2;
                 for (int bias_g = bias_g_start; bias_g < bias_g_end; ++bias_g) {
                     if (rnn.diff_weights_overwrite
@@ -194,7 +194,7 @@ dnnl_status_t common_bwd_cell_exec_template(T1 gemm_layer_f, T2 gemm_iter_f,
     if (rnn.is_lstm_projection) {
         parallel_nd(rnn.mb, [&](dim_t i) {
             PRAGMA_OMP_SIMD()
-            for (int j = 0; j < rnn.dlc; j++)
+            for (dim_t j = 0; j < rnn.dlc; j++)
                 scratch_diff_ht_[i * rnn.scratch_diff_ht_ld + j]
                         = diff_dst_layer_[i * rnn.ws_diff_states_layer_ld + j]
                         + diff_dst_iter_[i * rnn.ws_diff_states_iter_ld + j];
@@ -315,7 +315,7 @@ rnn_merged_layer_execution_sig((ref_rnn_fwd_t<src_type, weights_type,
     // hence we cannot merge all iterations.
     // This is not applicable for the first layer though, since
     // all the states come from user's `src_layer_`.
-    const int n_iter
+    const dim_t n_iter
             = (cell_position & first_layer) && rnn.skip_src_layer_copy()
             ? rnn.n_iter
             : rnn.n_iter - (rnn.skip_dst_iter_copy() ? 1 : 0);
@@ -338,7 +338,7 @@ rnn_merged_layer_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
     // hence we cannot merge all iterations.
     // This is not applicable for the first layer though, since
     // all the states come from user's `src_layer_`.
-    const int n_iter
+    const dim_t n_iter
             = (cell_position & first_layer) && rnn.skip_src_layer_copy()
             ? rnn.n_iter
             : rnn.n_iter - (rnn.skip_dst_iter_copy() ? 1 : 0);

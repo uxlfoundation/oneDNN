@@ -153,8 +153,9 @@ std::pair<dim_t, dim_t> brgemm_calc_k_block_vanilla_rnn(dim_t K1, dim_t K2,
     dim_t k2_block = K2;
 
     if (should_adjust_by_l2) {
-        int block_size = (l2_cache_size * l2_occupancy)
-                / ((M + n_block) * src_layer_type_size);
+        int block_size = static_cast<int>(
+                (static_cast<float>(l2_cache_size) * l2_occupancy)
+                / static_cast<float>((M + n_block) * src_layer_type_size));
 
         if (is_xf16) {
             // due to weights format ldgOI32o2i block_size should be even
@@ -210,8 +211,8 @@ dim_t brgemm_calc_m_block_vanilla_rnn(dim_t nthr, dim_t M, dim_t N_blocks,
                 m_block_it--) {
             if (M % m_block_it == 0) {
                 const auto m_blocks = M / m_block_it;
-                const auto work_by_MN
-                        = static_cast<float>(m_blocks * N_blocks) / nthr;
+                const auto work_by_MN = static_cast<float>(m_blocks * N_blocks)
+                        / static_cast<float>(nthr);
 
                 const float work_by_MN_decimal
                         = work_by_MN - std::floor(work_by_MN);
@@ -357,7 +358,7 @@ void rnn_brgemm_base_t::init_scratchpad(const cpu::rnn_utils::rnn_conf_t &rnn,
                 rnn.n_iter * rnn.mb * sizeof(bfloat16_t), 64);
     }
 
-    const int max_K_Block
+    const dim_t max_K_Block
             = nstl::max(rnn.KB1_blocks + 1,
                       nstl::max(rnn.KBproj_blocks + 1, rnn.KB2_blocks + 1))
             * (rnn.brgemm_fwd_iter_layer_fuse_possible ? 2 : 1);
@@ -550,7 +551,7 @@ status_t rnn_brgemm_t<prop_kind::forward>::configure_brgemm(
         rnn.merge_gemm_layer = true;
 
         // required adjustment if mlc_m_dim_adjustment_not_required = false
-        const int n_iters_to_merge = rnn.n_iter;
+        const dim_t n_iters_to_merge = rnn.n_iter;
         rnn.Mlayermerged = rnn.mb * n_iters_to_merge;
         rnn.mlayermerged_block = brgemm_calc_m_block(cell_kind,
                 prop_kind::forward, rnn.nthr, rnn.Mlayermerged, rnn.N_blocks,
@@ -638,8 +639,8 @@ status_t rnn_brgemm_t<prop_kind::forward>::init_kernels(
                 K, LDA, LDB, LDC, beta, max_bs);
     };
 
-    const int brgemm_n = nstl::min(rnn.N, rnn.n_block);
-    const int brgemm_n_tail = nstl::min(rnn.N, rnn.n_tail);
+    const dim_t brgemm_n = nstl::min(rnn.N, rnn.n_block);
+    const dim_t brgemm_n_tail = nstl::min(rnn.N, rnn.n_tail);
     const int max_bs_factor = rnn.brgemm_fwd_iter_layer_fuse_possible ? 2 : 1;
 
     for (int i = 0; i < num_base_kernels_; i++) {
@@ -1141,10 +1142,10 @@ static status_t init_kernels_diff_src(rnn_diff_src_brgemm_t &diff_src,
     };
 
     const auto &diff_src_conf = rnn.diff_src_brgemm;
-    const int n_diff_src = nstl::min(diff_src_conf.N, diff_src_conf.n_block);
-    const int n_diff_src_iter_tail
+    const dim_t n_diff_src = nstl::min(diff_src_conf.N, diff_src_conf.n_block);
+    const dim_t n_diff_src_iter_tail
             = nstl::min(diff_src_conf.N_iter, diff_src_conf.n_iter_tail);
-    const int n_diff_src_layer_tail
+    const dim_t n_diff_src_layer_tail
             = nstl::min(diff_src_conf.N_layer, diff_src_conf.n_layer_tail);
     const auto K_batch_size = rnn.n_gates * diff_src_conf.K_blocks;
     const auto split_gates_computation
@@ -1364,8 +1365,11 @@ static status_t init_kernels_diff_wei(rnn_diff_wei_brgemm_t &diff_wei,
     tmp_matmul_conf_for_reorder.wei_tag = format_tag::ab;
     tmp_matmul_conf_for_reorder.N = rnn.scratch_gates_ld;
     tmp_matmul_conf_for_reorder.K = rnn.mb;
-    tmp_matmul_conf_for_reorder.wei_n_blk = tmp_matmul_conf_for_reorder.N_blk
-            = diff_wei_conf.n_block;
+    tmp_matmul_conf_for_reorder.N_blk = diff_wei_conf.n_block;
+    // wei_n_blk is a bounded block-size value (int), while N_blk/n_block are
+    // dim_t; cast explicitly at this int-typed field boundary.
+    tmp_matmul_conf_for_reorder.wei_n_blk
+            = static_cast<int>(diff_wei_conf.n_block);
     tmp_matmul_conf_for_reorder.N_tail = diff_wei_conf.n_tail;
     tmp_matmul_conf_for_reorder.LDB = diff_wei_conf.LDB;
     tmp_matmul_conf_for_reorder.src_dt = tmp_matmul_conf_for_reorder.wei_dt
@@ -1417,14 +1421,14 @@ status_t rnn_brgemm_t<prop_kind::backward>::init_kernels(
 
             kernel_transpose_single_row_iter_
                     = utils::make_unique<jit_brgemm_transpose_single_row_t>(
-                            m_block_iter);
+                            static_cast<int>(m_block_iter));
             CHECK(kernel_transpose_single_row_iter_->create_kernel());
 
             if (!is_m_block_equal) {
                 const auto m_block_layer = rnn.diff_wei_brgemm.M_layer;
                 kernel_transpose_single_row_layer_
                         = utils::make_unique<jit_brgemm_transpose_single_row_t>(
-                                m_block_layer);
+                                static_cast<int>(m_block_layer));
                 CHECK(kernel_transpose_single_row_layer_->create_kernel());
             }
         }
@@ -1445,7 +1449,7 @@ status_t rnn_brgemm_t<prop_kind::backward>::init_kernels(
         trans_conf.LDA = os_padded; // dst's leading dim
         trans_conf.K_tail = rnn.mb % blk_size; // src's rows tail
 
-        const int LDA_iter[]
+        const dim_t LDA_iter[]
                 = {rnn.src_iter_ld_, rnn.dst_layer_ld_, rnn.ws_states_iter_ld};
         trans_conf.M_tail = rnn.sic % blk_size; // src's cols tail
         for (int i = 0; i < num_base_kernels_; i++) {
@@ -1454,7 +1458,7 @@ status_t rnn_brgemm_t<prop_kind::backward>::init_kernels(
                     kernel_transpose_iter_[i], &trans_conf));
         }
 
-        const int LDA_layer[]
+        const dim_t LDA_layer[]
                 = {rnn.src_layer_ld_, rnn.dst_iter_ld_, rnn.ws_states_layer_ld};
         trans_conf.M_tail = rnn.slc % blk_size; // src's cols tail
         for (int i = 0; i < num_base_kernels_; i++) {

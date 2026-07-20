@@ -2473,7 +2473,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = static_cast<dim_t>(jcp.M) * jcp.N * (jcp.is_bf32 ? 1 : 2)
             > 8 * 1024;
 
-    jcp.fp8_convert_wsp_size = static_cast<dim_t>(jcp.M) * jcp.N * 2;
+    jcp.fp8_convert_wsp_size = static_cast<dim_t>(jcp.M) * 64;
+    //printf("req fp8 wsp: %d, wsp size: %d, M: %d, N: %d\n", jcp.req_fp8_convert_wsp, jcp.fp8_convert_wsp_size, jcp.M, jcp.N);
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
 
@@ -2706,7 +2707,8 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = static_cast<dim_t>(jcp.M) * jcp.N * (jcp.is_bf32 ? 1 : 2)
             > 8 * 1024;
 
-    jcp.fp8_convert_wsp_size = static_cast<dim_t>(jcp.M) * jcp.N * 2;
+    jcp.fp8_convert_wsp_size = static_cast<dim_t>(jcp.M) * 64;
+    //printf("wsp size: %d, M: %d, N: %d\n", jcp.fp8_convert_wsp_size, jcp.M, jcp.N);
 
     return status::success;
 }
@@ -2798,7 +2800,8 @@ status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
 
     if (jcp.req_fp8_convert_wsp) {
         scratchpad.book(key_brgemm_primitive_fp8_convert_wsp,
-                static_cast<size_t>(jcp.nthr) * jcp.fp8_convert_wsp_size, P4K);
+                static_cast<size_t>(jcp.nthr) * jcp.fp8_convert_wsp_size,
+                sizeof(float16_t), 0, P4K);
     }
 
     return status::success;

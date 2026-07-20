@@ -95,7 +95,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
     ic_chunks_ = div_up(jcp_.nb_ic, jcp_.nb_ic_blocking);
     need_postwork_ = jcp_.with_bias || jcp_.with_eltwise || jcp_.with_binary
             || jcp_.with_src_scales || jcp_.with_wei_scales
-            || jcp_.with_dst_scales || need_compensation
+            || jcp_.with_dst_scales || need_compensation || jcp_.is_fp8
             || (jcp_.dst_dt != jcp_.acc_dt) || jcp_.with_sum;
 
     const bool need_extra_m_kernel = get_extra_m_kernel_req(jcp_);
@@ -399,7 +399,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
         const int32_t *src_zero_points, int32_t *src_zp_comp,
         const int32_t *dst_zero_points, int32_t *s8s8_compensation,
         const void *src_scales, const void *wei_scales, const void *dst_scales,
-        const bool is_last_os) const {
+        char *fp8_convert_wsp, const bool is_last_os) const {
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper weights_d(pd()->weights_md());
@@ -534,12 +534,16 @@ void brgemm_1x1_convolution_fwd_t<isa>::exec_ker(
                     dst_scales};
 
             void *scratch = is_amx ? static_cast<void *>(wsp_tile)
-                                   : static_cast<void *>(s8s8_comp_ptr);
+                    : jcp.req_fp8_convert_wsp
+                    ? static_cast<void *>(fp8_convert_wsp)
+                    : static_cast<void *>(s8s8_comp_ptr);
             brgemm_kernel_execute_postops(brg_ker, n_ic_blocks, brg_batch,
                     (void *)ptr_C, (void *)ptr_D, post_ops_data, scratch);
         } else {
             void *scratch = is_amx ? static_cast<void *>(wsp_tile)
-                                   : static_cast<void *>(s8s8_comp_ptr);
+                    : jcp.req_fp8_convert_wsp
+                    ? static_cast<void *>(fp8_convert_wsp)
+                    : static_cast<void *>(s8s8_comp_ptr);
             brgemm_kernel_execute(
                     brg_ker, n_ic_blocks, brg_batch, (void *)ptr_C, scratch);
         }
@@ -575,7 +579,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
         const int32_t *src_zero_points, int32_t *src_zp_comp,
         const int32_t *dst_zero_points, int32_t *s8s8_compensation,
         char *const c_buffer_global, char *inp_buffer_base,
-        uint8_t *inp_buffer_mask_base) const {
+        uint8_t *inp_buffer_mask_base, char *fp8_wsp_base) const {
 
     const auto &jcp = pd()->jcp_;
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
@@ -596,6 +600,9 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
                 : nullptr;
         uint8_t *__restrict inp_buffer_mask = (jcp.is_rtus)
                 ? inp_buffer_mask_base + ithr * jcp.inp_buffer_mask_size
+                : nullptr;
+        char *fp8_convert_wsp = jcp.req_fp8_convert_wsp
+                ? fp8_wsp_base + ithr * jcp.fp8_convert_wsp_size
                 : nullptr;
 
         float *dst_scales_inv_ptr = nullptr;
@@ -646,7 +653,8 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_os_blocking(
                             inp_buffer_sp, g, n, ocb, od, oh, ow, icc,
                             &last_brg_idx, src_zero_points, src_zp_comp,
                             dst_zero_points, s8s8_compensation, src_scales,
-                            wei_scales, dst_scales_inv_ptr, is_last_os);
+                            wei_scales, dst_scales_inv_ptr, fp8_convert_wsp,
+                            is_last_os);
                 }
             }
             last_n = n;
@@ -671,7 +679,7 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
         const void *wei_scales, const void *dst_scales, void *dst_scales_inv,
         const int32_t *src_zero_points, int32_t *src_zp_comp,
         const int32_t *dst_zero_points, int32_t *s8s8_compensation,
-        char *const c_buffer_global) const {
+        char *const c_buffer_global, char *fp8_wsp_base) const {
 
     const auto &jcp = pd()->jcp_;
     const bool is_amx = brgemm_convolution_utils::is_amx(isa);
@@ -684,6 +692,9 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
                 = brg_batch_global + (size_t)ithr * jcp.adjusted_batch_size;
         char *const c_buffer = (jcp.use_buffer)
                 ? c_buffer_global + ithr * acc_dsz * jcp.LDC * jcp.M
+                : nullptr;
+        char *fp8_convert_wsp = jcp.req_fp8_convert_wsp
+                ? fp8_wsp_base + ithr * jcp.fp8_convert_wsp_size
                 : nullptr;
 
         float *dst_scales_inv_ptr = nullptr;
@@ -714,7 +725,8 @@ void brgemm_1x1_convolution_fwd_t<isa>::execute_full_spatial(
                 exec_ker(brgemm_ctx, ithr, brg_batch, c_buffer, nullptr, g, n,
                         ocb, od, oh, ow, icc, &last_brg_idx, src_zero_points,
                         src_zp_comp, dst_zero_points, s8s8_compensation,
-                        src_scales, wei_scales, dst_scales_inv_ptr);
+                        src_scales, wei_scales, dst_scales_inv_ptr,
+                        fp8_convert_wsp);
             }
             if (jcp.loop_order == loop_ndhwgc)
                 nd_iterator_step(n, jcp.mb, od, OD, oh, OH, owb, jcp.nb_ow, g,
@@ -782,17 +794,22 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
     void *dst_scales_inv = jcp.with_dst_scales
             ? scratchpad.template get<void>(key_conv_dst_scales)
             : nullptr;
+    char *fp8_convert_wsp_base = jcp.req_fp8_convert_wsp
+            ? scratchpad.template get<char>(
+                      key_brgemm_primitive_fp8_convert_wsp)
+            : nullptr;
 
     if (jcp.is_os_blocking) {
         execute_os_blocking(brgemm_ctx, brg_batch_global, src_scales,
                 wei_scales, dst_scales, dst_scales_inv, src_zero_points,
                 zp_compensation, dst_zero_points, s8s8_compensation,
-                c_buffer_global, inp_buffer_base, inp_buffer_mask_base);
+                c_buffer_global, inp_buffer_base, inp_buffer_mask_base,
+                fp8_convert_wsp_base);
     } else {
         execute_full_spatial(brgemm_ctx, brg_batch_global, src_scales,
                 wei_scales, dst_scales, dst_scales_inv, src_zero_points,
                 zp_compensation, dst_zero_points, s8s8_compensation,
-                c_buffer_global);
+                c_buffer_global, fp8_convert_wsp_base);
     }
 
     return status::success;

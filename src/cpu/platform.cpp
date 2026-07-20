@@ -35,10 +35,6 @@
 #include "cpu/x64/platform.hpp"
 #elif DNNL_AARCH64
 #include "cpu/aarch64/cpu_isa_traits.hpp"
-#if defined(DNNL_AARCH64_USE_ACL)
-// For checking if fp16 isa is supported on the platform
-#include "arm_compute/core/CPP/CPPTypes.h"
-#endif
 #elif DNNL_RV64
 #include "cpu/rv64/cpu_isa_traits.hpp"
 #endif
@@ -164,16 +160,16 @@ bool has_training_support(data_type_t data_type) {
 #if defined(USE_CBLAS) && defined(BLAS_HAS_SBGEMM) && defined(__MMA__)
             return true;
 #endif
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_bf16();
+#elif DNNL_AARCH64
+            return aarch64::mayiuse_bf16();
 #else
             return false;
 #endif
         case data_type::f16:
 #if DNNL_X64
             return x64::mayiuse(x64::avx512_core_fp16);
-#elif defined(DNNL_AARCH64_USE_ACL)
-            return arm_compute::CPUInfo::get().has_fp16();
+#elif DNNL_AARCH64
+            return aarch64::mayiuse_f16();
 #elif DNNL_RV64
             return rv64::mayiuse(rv64::zvfh);
 #else

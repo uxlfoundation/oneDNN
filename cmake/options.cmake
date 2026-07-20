@@ -1,6 +1,7 @@
 #===============================================================================
 # Copyright 2018 Intel Corporation
 # Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright 2026 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -363,16 +364,6 @@ onednn_option(X64_USE_ZEN OFF
     "Enable ZenDNN integration. When ON, configuration requires a discoverable
     ZenDNN package (>= 6.0.0) and ONEDNN_CPU_RUNTIME=OMP, and fails otherwise.")
 set(ZENDNNROOT "" CACHE STRING "Path to ZenDNN installation root")
-
-# -------------------
-# AArch64 CPU options
-# -------------------
-
-onednn_option(AARCH64_USE_ACL OFF "Enables use of AArch64 optimised functions
-    from Arm Compute Library.
-    This is only supported on AArch64 builds and assumes there is a
-    functioning Compute Library build available at the location specified by the
-    environment variable ACL_ROOT_DIR.")
 
 # ===========
 # GPU options

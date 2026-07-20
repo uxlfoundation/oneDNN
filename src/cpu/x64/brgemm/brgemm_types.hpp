@@ -167,9 +167,9 @@ struct DNNL_API brgemm_attr_t {
     // if unrolled kernel is used (use_uker == true)
     // then "max_bs" is the the only batch size that can be used on kernel call
     // else "max_bs" is the maximum batch size that can be used
-    int max_bs;
-    int max_top_vpad, max_bottom_vpad;
-    int max_top_bpad, max_bottom_bpad;
+    dim_t max_bs;
+    dim_t max_top_vpad, max_bottom_vpad;
+    dim_t max_top_bpad, max_bottom_bpad;
     dim_t hint_expected_A_size, hint_expected_B_size, hint_expected_C_size;
     brgemm_kernel_innermost_loop_t hint_innermost_loop
             = brgemm_ld_loop_innermost;
@@ -201,7 +201,7 @@ struct DNNL_API brgemm_attr_t {
     // 0 – bd_mask is not used
     // 1 – bd_mask is used on storing stage only
     // 2 – bd_mask used both on reading and storing stages
-    int bd_mask_level;
+    dim_t bd_mask_level;
     // use_uker is a boolean value that determines whether to use the unrolled
     // kernel or not
     bool use_uker;
@@ -215,18 +215,18 @@ struct DNNL_API brgemm_attr_t {
     // bd block. By default are equal to regular leading dimension parameters
     // specified on brgemm creation.
     // Supported by brgemm unrolled kernel for now.
-    int LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
+    dim_t LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
     // If "true" then batchsize is allowed to change on each kernel call
     // and there is no unrolling by batchsize in kernel
     bool var_bs {false};
     bool postops_only {false};
     // Hint for bs_group value in brgemm_desc_t
-    int hint_bs_group {0};
+    dim_t hint_bs_group {0};
 
-    int hint_bd_block {0};
-    int hint_ld_block {0};
-    int hint_bd_block2 {0};
-    int hint_ld_block2 {0};
+    dim_t hint_bd_block {0};
+    dim_t hint_ld_block {0};
+    dim_t hint_bd_block2 {0};
+    dim_t hint_ld_block2 {0};
     bool hint_ununroll_bd_loop {false};
 
     brgemm_kernel_hint_mem_advice_t mem_advice {brgemm_hint_mem_advice_undef};
@@ -257,13 +257,13 @@ struct brgemm_desc_t {
 
     // Note: new added parameters must be taken into account in the brgemm
     // comparison function
-    int bcast_dim = 0; // M;
-    int load_dim = 0; // N;
-    int reduce_dim = 0; // K;
-    int LDA = 0;
-    int LDB = 0;
-    int LDC = 0;
-    int LDD = 0;
+    dim_t bcast_dim = 0; // M;
+    dim_t load_dim = 0; // N;
+    dim_t reduce_dim = 0; // K;
+    dim_t LDA = 0;
+    dim_t LDB = 0;
+    dim_t LDC = 0;
+    dim_t LDD = 0;
 
     bool fused_copy_a = false;
     // we use two isa_ variables
@@ -329,26 +329,26 @@ struct brgemm_desc_t {
     bool with_dst_scales = false;
     data_type_t dt_wei_scales = data_type::undef;
     // Grouping in batch used by brdgmm kernel
-    int bs_group {0};
+    dim_t bs_group {0};
 
     brgemm_attr_t brgattr;
 
     // Derived  parameters
-    int LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
+    dim_t LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
     bool is_blocked = false;
 
-    int bdb = 0, bd_block = 0, bdb_tail = 0;
-    int bdb2 = 0, bd_block2 = 0, bdb2_tail = 0;
-    int ldb = 0, ld_block = 0, ldb_tail = 0;
-    int ldb2 = 0, ld_block2 = 0, ldb2_tail = 0;
-    int rdb = 0, rd_block = 0, rdb_tail = 0;
-    int rd_step = 0, ld_step = 0;
+    dim_t bdb = 0, bd_block = 0, bdb_tail = 0;
+    dim_t bdb2 = 0, bd_block2 = 0, bdb2_tail = 0;
+    dim_t ldb = 0, ld_block = 0, ldb_tail = 0;
+    dim_t ldb2 = 0, ld_block2 = 0, ldb2_tail = 0;
+    dim_t rdb = 0, rd_block = 0, rdb_tail = 0;
+    dim_t rd_step = 0, ld_step = 0;
 
-    int typesize_A = 0;
-    int typesize_B = 0;
-    int typesize_C = 0;
-    int typesize_D = 0;
-    int typesize_bias = 0;
+    dim_t typesize_A = 0;
+    dim_t typesize_B = 0;
+    dim_t typesize_C = 0;
+    dim_t typesize_D = 0;
+    dim_t typesize_bias = 0;
 
     bool is_ymm = false;
     bool is_zmm = false;
@@ -374,7 +374,7 @@ struct brgemm_desc_t {
     // by kernel API.
     bool with_weights_scale_adjust = false;
     brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
-    int is_M_tail = false;
+    dim_t is_M_tail = false;
     bool interleave_tilestores_ = false;
     brgemm_prf_t prfA, prfB, prfC;
     bool is_runtime_lda = false;
@@ -391,10 +391,10 @@ struct brgemm_desc_t {
     // Controls whether y is treated as a row in GEMV-specific code paths.
     bool treat_y_as_row = false;
     // GEMV transA register-blocking unroll factor.
-    int gemv_transa_bd_unroll = 0;
+    dim_t gemv_transa_bd_unroll = 0;
     // non-transA: tail along the reduction dimension.
     // transA:     number of valid elements in the final vector accumulator.
-    int gemv_tail = 0;
+    dim_t gemv_tail = 0;
 
     static constexpr int MAX_VPAD = 100;
     static constexpr int AMX_TILES_NUM = 8;
@@ -431,7 +431,7 @@ struct brgemm_desc_t {
     dim_t gemv_bdb_tail() const {
         assert(is_gemv);
         if (!is_gemv) return 0;
-        const int gemv_transa_simd_w
+        const dim_t gemv_transa_simd_w
                 = transA ? bd_block / gemv_transa_bd_unroll : 1;
         assert(IMPLICATION(transA, gemv_transa_simd_w != 1));
         return transA ? bdb_tail / gemv_transa_simd_w : bdb_tail;
@@ -520,67 +520,65 @@ struct brgemm_desc_t {
     }
 
     // Tile register decomposition
-    int get_bd_block2() const noexcept {
-        auto res = (bdb <= bd_block2) ? bdb : (bd_block2 + (bdb_tail ? 1 : 0));
-        return res;
+    dim_t get_bd_block2() const noexcept {
+        return (bdb <= bd_block2) ? bdb : (bd_block2 + (bdb_tail ? 1 : 0));
     }
 
-    int get_ld_block2() const noexcept {
-        auto res = (ldb <= ld_block2) ? ldb : (ld_block2 + (ldb_tail ? 1 : 0));
-        return res;
+    dim_t get_ld_block2() const noexcept {
+        return (ldb <= ld_block2) ? ldb : (ld_block2 + (ldb_tail ? 1 : 0));
     }
 
-    int get_num_C_tiles() const noexcept {
+    dim_t get_num_C_tiles() const noexcept {
         return get_bd_block2() * get_ld_block2();
     }
-    int get_C_tensor(int m, int n, bool m_tail = false,
+    dim_t get_C_tensor(dim_t m, dim_t n, bool m_tail = false,
             bool n_tail = false) const noexcept {
         auto M = m_tail ? get_bd_block2() - 1 : m;
         auto N = n_tail ? get_ld_block2() - 1 : n;
         return (M * get_ld_block2() + N);
     }
 
-    int get_num_A_tiles() const noexcept {
+    dim_t get_num_A_tiles() const noexcept {
         const auto req_tiles = (bdb_tail && bdb > 1) ? 2 : 1;
         const auto max_tiles = AMX_TILES_NUM - get_num_C_tiles() - 1;
         const auto n_tiles = nstl::min(get_bd_block2(), max_tiles);
         assert(n_tiles >= req_tiles);
-        return nstl::max(req_tiles, n_tiles);
+        return nstl::max<dim_t>(req_tiles, n_tiles);
     }
 
-    int get_A_tensor(int m, bool m_tail = false) const noexcept {
+    dim_t get_A_tensor(dim_t m, bool m_tail = false) const noexcept {
         const auto full_A_tiles = get_num_A_tiles() - (bdb_tail ? 1 : 0);
         auto M = (m_tail || full_A_tiles == 0) ? get_num_A_tiles() - 1
                                                : m % full_A_tiles;
         return (get_num_C_tiles() + M);
     }
 
-    int get_num_B_tiles() const noexcept {
+    dim_t get_num_B_tiles() const noexcept {
         const auto req_tiles = (ldb_tail && ldb > 1) ? 2 : 1;
         const auto max_tiles
                 = AMX_TILES_NUM - get_num_C_tiles() - get_num_A_tiles();
         const auto n_tiles = nstl::min(get_ld_block2(), max_tiles);
         assert(n_tiles >= req_tiles);
-        return nstl::max(req_tiles, n_tiles);
+        return nstl::max<dim_t>(req_tiles, n_tiles);
     }
 
-    int get_B_tensor(int n, bool n_tail = false) const noexcept {
+    dim_t get_B_tensor(dim_t n, bool n_tail = false) const noexcept {
         const auto full_B_tiles = get_num_B_tiles() - (ldb_tail ? 1 : 0);
         auto N = (n_tail || full_B_tiles == 0) ? get_num_B_tiles() - 1
                                                : n % full_B_tiles;
         return (get_num_C_tiles() + get_num_A_tiles() + N);
     }
 
-    int get_convert_wsp_buffer_size() const noexcept {
+    dim_t get_convert_wsp_buffer_size() const noexcept {
         if (!is_input_convert()) return 0;
-        const int n_bdb = bd_block2;
-        const int n_rdb = rdb + (rdb_tail != 0);
-        const int n_ldb = ldb + (ldb_tail != 0);
-        const int downcvt_tiles = brgattr.max_bs * n_rdb * (n_bdb + n_ldb);
+        const dim_t n_bdb = bd_block2;
+        const dim_t n_rdb = rdb + (rdb_tail != 0);
+        const dim_t n_ldb = ldb + (ldb_tail != 0);
+        const dim_t downcvt_tiles = brgattr.max_bs * n_rdb * (n_bdb + n_ldb);
         return downcvt_tiles * tilesize;
     }
 
-    int get_fused_copy_a_wsp_buffer_size() const noexcept {
+    dim_t get_fused_copy_a_wsp_buffer_size() const noexcept {
         if (fused_copy_a)
             return brgattr.max_bs * bcast_dim
                     * dnnl::impl::utils::rnd_up(reduce_dim, max_rd_block())
@@ -588,8 +586,8 @@ struct brgemm_desc_t {
         return 0;
     }
 
-    int get_wsp_buffer_size() const noexcept {
-        int sz = 0;
+    dim_t get_wsp_buffer_size() const noexcept {
+        dim_t sz = 0;
         if (is_tmm) {
             sz = get_num_C_tiles() * tilesize; // postops buffer
             sz += get_convert_wsp_buffer_size();

@@ -844,7 +844,7 @@ struct jit_brgemm_conv_conf_t {
 
     int max_batch;
     int max_vpad;
-    int amx_buf_size_per_thread;
+    dim_t amx_buf_size_per_thread;
 
     bool wei_plain;
     bool is_rd_padded_to_block {false}, is_rd_padded_to_vnni {false},
@@ -964,7 +964,7 @@ struct jit_binary_conf_t {
     bool is_ternary_op = false;
     bool is_src_different_layouts = false;
     dim_t outer_dims = 1;
-    int src1_stride = 1;
+    dim_t src1_stride = 1;
     int not_bcasted_sp_dims = 0;
     cpu_isa_t isa = isa_undef;
 

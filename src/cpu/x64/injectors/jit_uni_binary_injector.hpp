@@ -239,7 +239,7 @@ struct rhs_arg_dynamic_params_t {
     std::map<int, Xbyak::Reg64> vmm_idx_to_out_reg;
     std::map<int, size_t> vmm_idx_to_out_elem_off_val;
 
-    std::unordered_set<int> vmm_tail_idx_;
+    std::unordered_set<size_t> vmm_tail_idx_;
     tail_lode_mode_t tail_load_mode = tail_lode_mode_t::DEFAULT;
 };
 
@@ -311,8 +311,8 @@ private:
      * <start_idx, end_idx>). If not it returns new vmm idx value that will be
      * used as temporary vmm in future computations.
      */
-    int adjust_temp_vmm_hint(
-            int user_hint, int start_idx, int end_idx, int max_vmm_idx) const;
+    size_t adjust_temp_vmm_hint(size_t user_hint, size_t start_idx,
+            size_t end_idx, size_t max_vmm_idx) const;
     /*
      * Taking into account rhs_broadcasting_strategy and information from user
      * about tensor slice (rhs_arg_params) stored in Vmm(vmm_idx) calculates
@@ -621,8 +621,9 @@ private:
      * index in second member that should be used as temporary vmm inside inject
      * binary.
      */
-    std::pair<bool, int> should_preserve_vmm(int curr_idx, int vmm_hint,
-            int max_vmm_idx, bool dt_helper_vmm_needed) const;
+    std::pair<bool, size_t> should_preserve_vmm(size_t curr_idx,
+            size_t vmm_hint, size_t max_vmm_idx,
+            bool dt_helper_vmm_needed) const;
     /*
      * Used in isa != avx512 where m32bcst is not supported, replaces ptr_b
      * with ptr.

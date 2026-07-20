@@ -589,7 +589,7 @@ protected:
         else
             compute_mean_block(unroll, tail);
     }
-    void add_mean(int c_block) { add(reg_mean, c_block * sizeof(float)); }
+    void add_mean(dim_t c_block) { add(reg_mean, c_block * sizeof(float)); }
 
     Vmm Vmm_mean(size_t ur = 0) { return Vmm(3 + ur); }
     Vmm Vmm_var(size_t ur = 0) { return Vmm(9 + ur); }
@@ -812,7 +812,7 @@ status_t jit_uni_instance_normalization_fwd_t::execute_forward(
         parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             dim_t SP_start = 0, SP_end = 0;
             balance211(SP, nthr, ithr, SP_start, SP_end);
-            const int block_size = SP_end - SP_start;
+            const dim_t block_size = SP_end - SP_start;
             for (dim_t n = 0; n < N; ++n) {
                 float *local_mean = stat_reduction + n * nthr * C + ithr * C;
                 const size_t s_off

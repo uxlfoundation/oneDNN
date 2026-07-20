@@ -173,7 +173,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_permute_vmm() {
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::load_accumulators(
-        int m_blocks, int n_blocks) {
+        dim_t m_blocks, dim_t n_blocks) {
     const int v_substep = vnni_substep();
     for_(int v = 0; v < v_substep; ++v)
     for_(int m = 0; m < m_blocks; ++m)
@@ -228,7 +228,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::set_A_B_matrices() {
     }
 
     add(reg_aux_A, reg_a_offset);
-    lea(reg_aux_B, ptr[reg_aux_B + reg_aux_N * brg.typesize_B]);
+    lea(reg_aux_B,
+            ptr[reg_aux_B + reg_aux_N * xbyak_address_scale(brg.typesize_B)]);
 }
 
 template <typename Wmm>
@@ -242,7 +243,7 @@ template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::cvt2ps(data_type_t type_in,
         const Vmm vmm_in, const Xbyak::Operand &op, bool mask_flag,
         bool store) {
-    const int tail_size = tail_length();
+    const int tail_size = xbyak_register_index(tail_length());
     const bool is_load_tail = op.isMEM() && mask_flag && tail_size > 0
             && (tail_size < static_cast<int>(
                         vreg_traits_t<Vmm>::vlen / sizeof(float)));
@@ -268,7 +269,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::cvt2ps(data_type_t type_in,
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
-        int m_blocks, int n_blocks, bool has_n_tail) {
+        dim_t m_blocks, dim_t n_blocks, bool has_n_tail) {
 
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
     injector_utils::vmm_index_set_t vmm_idxs_param;
@@ -367,7 +368,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
-        int m_blocks, int n_blocks, bool has_n_tail) {
+        dim_t m_blocks, dim_t n_blocks, bool has_n_tail) {
 
     const bool dq2ps_required = brg.is_int8;
     const int v_substep = vnni_substep();
@@ -459,7 +460,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
 
     if (brg.with_bias) {
         reg_aux_bias.restore();
-        lea(reg_aux_bias, ptr[reg_aux_bias + reg_aux_N * brg.typesize_bias]);
+        lea(reg_aux_bias,
+                ptr[reg_aux_bias
+                        + reg_aux_N * xbyak_address_scale(brg.typesize_bias)]);
     }
 
     for_(int v_i = 0; v_i < v_substep; ++v_i)
@@ -615,7 +618,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_without_post_ops(
-        int m_blocks, int n_blocks, bool has_n_tail) {
+        dim_t m_blocks, dim_t n_blocks, bool has_n_tail) {
 
     const bool dt_requires_saturation
             = brg.is_int8 && brg.dt_c != data_type::s32;
@@ -654,13 +657,13 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_without_post_ops(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::maybe_transpose_interleaved_vnni_to_plain(
-        int m_blocks, int n_blocks, bool has_n_tail) {
+        dim_t m_blocks, dim_t n_blocks, bool has_n_tail) {
 
     if (vnni_substep() == 1) return;
 
     // The tail block is always processed as plain.
     // No need to transpose it here.
-    const int n_blocks_e = n_blocks - has_n_tail;
+    const dim_t n_blocks_e = n_blocks - has_n_tail;
 
     auto ymm_aux0 = vmm_tmp(0);
     for_(int m_i = 0; m_i < m_blocks; m_i++)
@@ -690,7 +693,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_src_zp() {
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
-        int m_blocks, int n_blocks, bool has_n_tail) {
+        dim_t m_blocks, dim_t n_blocks, bool has_n_tail) {
 
     const int v_substep = vnni_substep();
 
@@ -710,7 +713,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
     for (int n = 0; n < n_blocks; n++) {
         const int substep_simd = get_substep_simd(n, v_i, has_n_tail);
         if (substep_simd <= 0) continue;
-        const size_t offset = comp_offset(n);
+        const dim_t offset = comp_offset(n);
         if (brg.req_s8s8_compensation) {
             const Vmm vmm_comp = vmm_s8s8_comp();
             uni_vmovups(vmm_comp,
@@ -737,7 +740,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
                     vpmulld(vmm_zp, vmm_zp,
                             maybe_EVEX_compress_addr(reg_aux_src_zp, offset));
             } else {
-                const int tail_size = tail_length();
+                const int tail_size = xbyak_register_index(tail_length());
                 const Vmm ymm_tmp
                         = vmm_bcast(); // used for bcast or tail processing in avx2
                 load_data(data_type::s32, vmm_zp, ptr[reg_aux_zp_comp + offset],
@@ -758,7 +761,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators(
-        int m_blocks, int n_blocks, bool has_n_tail) {
+        dim_t m_blocks, dim_t n_blocks, bool has_n_tail) {
 
     maybe_transpose_interleaved_vnni_to_plain(m_blocks, n_blocks, has_n_tail);
 
@@ -788,10 +791,10 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::load_a(
-        Vmm vmma, int m_i, int n_i, int v_i, bool has_n_tail) {
-    const int n_blocks
+        Vmm vmma, dim_t m_i, dim_t n_i, dim_t v_i, bool has_n_tail) {
+    const dim_t n_blocks
             = has_n_tail && n_block2_tail() > 0 ? n_block2_tail() : n_block2();
-    const int substep_simd = get_substep_simd(n_i, v_i, has_n_tail);
+    const dim_t substep_simd = get_substep_simd(n_i, v_i, has_n_tail);
     const bool is_tail_block = has_n_tail && n_i + 1 == n_blocks;
     const bool mask_flag = substep_simd < simd_w_;
     const auto addr = ptr[reg_aux_A + A_offset(m_i, n_i)
@@ -840,11 +843,11 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_a(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::load_b(
-        Vmm vmmb, int n_i, int v_i, bool has_n_tail, bool wei_zp) {
+        Vmm vmmb, dim_t n_i, dim_t v_i, bool has_n_tail, bool wei_zp) {
     assert(IMPLICATION(wei_zp, brg.is_int8 && compute_src_zp_));
     // for B matrix we assume memory is padded and it is safe to load simd
     // elements. is_tail only used during avx_ne_convert tail optimization.
-    const int n_blocks
+    const dim_t n_blocks
             = has_n_tail && n_block2_tail() > 0 ? n_block2_tail() : n_block2();
     const bool is_tail_block = has_n_tail && (n_i + 1 == n_blocks);
     const auto addr = ptr[reg_aux_B + B_offset(n_i)
@@ -892,7 +895,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_b(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
-        compute_pad_kernel_t kernel_type, Vmm vmm_acc, Vmm vmmb, int n,
+        compute_pad_kernel_t kernel_type, Vmm vmm_acc, Vmm vmmb, dim_t n,
         bool is_tail_block) {
     switch (kernel_type) {
         case compute_pad_kernel_t::s8s8_kernel:
@@ -902,7 +905,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
             const Vmm vmm_zp = isa_has_masks(brg.isa_impl)
                     ? maybe_mask(vmm_zp_comp(), is_tail_block, false)
                     : vmm_zp_comp();
-            const size_t offset = comp_offset(n);
+            const dim_t offset = comp_offset(n);
             if (IMPLICATION(is_tail_block, isa_has_masks(brg.isa_impl))) {
                 if (is_src_zp_bcast_) {
                     if (is_superset(brg.isa_impl, avx512_core))
@@ -937,22 +940,22 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::pad_comp_kernel(
-        compute_pad_kernel_t kernel_type, int m_blocks, int n_blocks,
-        int padding, const Xbyak::Reg64 reg_pad,
-        const std::function<int(int)> &get_mi, bool has_tail) {
+        compute_pad_kernel_t kernel_type, dim_t m_blocks, dim_t n_blocks,
+        dim_t padding, const Xbyak::Reg64 reg_pad,
+        const std::function<dim_t(dim_t)> &get_mi, bool has_tail) {
     assert(vnni_substep() == 1);
-    const int max_m_unroll = padding;
+    const dim_t max_m_unroll = padding;
     const bool is_zero_point_kernel
             = kernel_type == compute_pad_kernel_t::zero_point_kernel;
-    const int max_bvmms
+    const dim_t max_bvmms
             = accm(m_blocks, n_blocks, 0, 0, 0).getIdx() - vmm_b(0).getIdx();
-    const int n_preload_b_vmms = max_bvmms >= n_blocks
+    const dim_t n_preload_b_vmms = max_bvmms >= n_blocks
             ? n_blocks
             : max_bvmms - 1 /*for ad-hoc load*/;
     const bool load_broadcast_wei = is_zero_point_kernel;
-    for (int i = 0; i < n_preload_b_vmms; ++i) {
-        const int n_i = i % n_blocks;
-        const int v_i = i / n_blocks;
+    for (dim_t i = 0; i < n_preload_b_vmms; ++i) {
+        const dim_t n_i = i % n_blocks;
+        const dim_t v_i = i / n_blocks;
         if (get_substep_simd(n_i, v_i, has_tail) <= 0) continue;
         load_b(vmm_b(i), n_i, v_i, has_tail, load_broadcast_wei);
     }
@@ -965,17 +968,17 @@ void jit_brdgmm_kernel_base_t<Wmm>::pad_comp_kernel(
     jmp(ptr[reg_table_base], T_NEAR);
     align(8);
     L(jmp_table_base);
-    for (int m_i = 0; m_i <= max_m_unroll; ++m_i) {
+    for (dim_t m_i = 0; m_i <= max_m_unroll; ++m_i) {
         putL(jmp_table_labels[m_i]);
     }
 
-    for (int pad_i = max_m_unroll; pad_i > 0; --pad_i) {
+    for (dim_t pad_i = max_m_unroll; pad_i > 0; --pad_i) {
         L(jmp_table_labels[pad_i]);
         if (is_zero_point_kernel) load_src_zp();
         if (pad_i > m_blocks) continue;
-        const int m_i = get_mi(pad_i);
-        int p_b_i = 0;
-        for (int n_i = 0; n_i < n_blocks; ++n_i, ++p_b_i) {
+        const dim_t m_i = get_mi(pad_i);
+        dim_t p_b_i = 0;
+        for (dim_t n_i = 0; n_i < n_blocks; ++n_i, ++p_b_i) {
             const int substep_simd = get_substep_simd(n_i, 0, has_tail);
             if (substep_simd <= 0) continue;
             const Vmm vmm_acc = accm(m_blocks, n_blocks, m_i, n_i, 0);
@@ -998,27 +1001,27 @@ void jit_brdgmm_kernel_base_t<Wmm>::pad_comp_kernel(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::batch_pad_kernel(
-        int m_blocks, int n_blocks, bool has_tail) {
+        dim_t m_blocks, dim_t n_blocks, bool has_tail) {
 
     assert(vnni_substep() == 1);
-    const int max_bvmms
+    const dim_t max_bvmms
             = accm(m_blocks, n_blocks, 0, 0, 0).getIdx() - vmm_b(0).getIdx();
 
     auto kernel_body = [&](compute_pad_kernel_t kernel_type) {
         const bool is_zero_point_kernel
                 = kernel_type == compute_pad_kernel_t::zero_point_kernel;
         if (is_zero_point_kernel) load_src_zp();
-        for (int nb_i = 0; nb_i < n_blocks; nb_i += max_bvmms) {
-            const int n_e = nstl::min(nb_i + max_bvmms, n_blocks) - nb_i;
-            for (int i = 0; i < n_e; ++i) {
-                const int n_i = nb_i + i;
+        for (dim_t nb_i = 0; nb_i < n_blocks; nb_i += max_bvmms) {
+            const dim_t n_e = nstl::min(nb_i + max_bvmms, n_blocks) - nb_i;
+            for (dim_t i = 0; i < n_e; ++i) {
+                const dim_t n_i = nb_i + i;
                 if (get_substep_simd(n_i, 0, has_tail) <= 0) continue;
                 const bool load_broadcast_wei = is_zero_point_kernel;
                 load_b(vmm_b(i), n_i, 0, has_tail, load_broadcast_wei);
             }
-            for_(int m_i = 0; m_i < m_blocks; ++m_i)
-            for (int i = 0; i < n_e; ++i) {
-                const int n_i = nb_i + i;
+            for_(dim_t m_i = 0; m_i < m_blocks; ++m_i)
+            for (dim_t i = 0; i < n_e; ++i) {
+                const dim_t n_i = nb_i + i;
                 const int substep_simd = get_substep_simd(n_i, 0, has_tail);
                 if (substep_simd <= 0) continue;
                 const Vmm vmm_acc = accm(m_blocks, n_blocks, m_i, n_i, 0);
@@ -1036,17 +1039,18 @@ void jit_brdgmm_kernel_base_t<Wmm>::batch_pad_kernel(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
-        int n_blocks, bool has_top_padding, bool has_bottom_padding,
-        bool has_tail, int shift_a) {
+void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(dim_t m_blocks,
+        dim_t n_blocks, bool has_top_padding, bool has_bottom_padding,
+        bool has_tail, dim_t shift_a) {
 
     const bool has_padding = has_top_padding || has_bottom_padding;
-    const int max_bvmms
+    const dim_t max_bvmms
             = accm(m_blocks, n_blocks, 0, 0, 0).getIdx() - vmm_b(0).getIdx();
     const int v_substep = vnni_substep();
     assert(max_bvmms > 0);
 
-    auto dot_product = [&](Vmm vmma, Vmm vmmb, int m_i, int n_i, int v_i) {
+    auto dot_product
+            = [&](Vmm vmma, Vmm vmmb, dim_t m_i, dim_t n_i, dim_t v_i) {
         auto vmm_acc = accm(m_blocks, n_blocks, m_i, n_i, v_i);
         if (brg.is_f32) {
             if (is_fma_embd()) {
@@ -1074,18 +1078,18 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
 
     if (!has_padding) {
         // preload vmm_b if possible.
-        for_(int v_i = 0; v_i < v_substep; ++v_i)
-        for (int nb_i = 0; nb_i < n_blocks; nb_i += max_bvmms) {
-            const int n_e = nstl::min(nb_i + max_bvmms, n_blocks) - nb_i;
-            for (int i = 0; i < n_e; ++i) {
-                const int n_i = nb_i + i;
+        for_(dim_t v_i = 0; v_i < v_substep; ++v_i)
+        for (dim_t nb_i = 0; nb_i < n_blocks; nb_i += max_bvmms) {
+            const dim_t n_e = nstl::min(nb_i + max_bvmms, n_blocks) - nb_i;
+            for (dim_t i = 0; i < n_e; ++i) {
+                const dim_t n_i = nb_i + i;
                 if (get_substep_simd(n_i, v_i, has_tail) <= 0) continue;
                 load_b(vmm_b(i), n_i, v_i, has_tail);
             }
             if (grouped_bs()) {
-                for_(int m_i = 0; m_i < m_blocks; ++m_i)
-                for (int i = 0; i < n_e; ++i) {
-                    const int n_i = nb_i + i;
+                for_(dim_t m_i = 0; m_i < m_blocks; ++m_i)
+                for (dim_t i = 0; i < n_e; ++i) {
+                    const dim_t n_i = nb_i + i;
                     if (get_substep_simd(n_i, v_i, has_tail) <= 0) continue;
                     const auto vmm_A = vmm_a(m_i + shift_a, i);
                     if (shift_a == 0 || m_i == m_blocks - 1) {
@@ -1097,9 +1101,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
                 }
             }
 
-            for_(int m_i = 0; m_i < m_blocks; ++m_i)
-            for (int i = 0; i < n_e; ++i) {
-                const int n_i = nb_i + i;
+            for_(dim_t m_i = 0; m_i < m_blocks; ++m_i)
+            for (dim_t i = 0; i < n_e; ++i) {
+                const dim_t n_i = nb_i + i;
                 if (get_substep_simd(n_i, v_i, has_tail) <= 0) continue;
                 const auto vmm_A = vmm_a(m_i + shift_a, i);
                 if (!grouped_bs() && (shift_a == 0 || m_i == m_blocks - 1)) {
@@ -1111,13 +1115,13 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
             }
         }
     } else {
-        const int max_req_preload_vmms = n_blocks * vnni_substep();
-        const int n_preload_b_vmms = max_bvmms >= max_req_preload_vmms
+        const dim_t max_req_preload_vmms = n_blocks * vnni_substep();
+        const dim_t n_preload_b_vmms = max_bvmms >= max_req_preload_vmms
                 ? max_req_preload_vmms
                 : max_bvmms - 1 /*for ad-hoc load*/;
-        for (int i = 0; i < n_preload_b_vmms; ++i) {
-            const int n_i = i % n_blocks;
-            const int v_i = i / n_blocks;
+        for (dim_t i = 0; i < n_preload_b_vmms; ++i) {
+            const dim_t n_i = i % n_blocks;
+            const dim_t v_i = i / n_blocks;
             if (get_substep_simd(n_i, v_i, has_tail) <= 0) continue;
             load_b(vmm_b(i), n_i, v_i, has_tail);
         }
@@ -1174,7 +1178,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
                     dot_product(vmm_A, vmm_b(p_b_i), m_i, n_i, v_i);
                 } else {
                     // preloaded vmm_b not available
-                    const int b_idx = max_bvmms - 1;
+                    const dim_t b_idx = max_bvmms - 1;
                     load_b(vmm_b(b_idx), n_i, v_i, has_tail);
                     dot_product(vmm_A, vmm_b(b_idx), m_i, n_i, v_i);
                 }
@@ -1185,8 +1189,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(
-        const int m_blocks) {
+void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(dim_t m_blocks) {
     const bool do_check_effective_padding = check_effective_padding();
     Label no_top_padding;
 
@@ -1194,7 +1197,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(
         if (do_check_effective_padding) {
             Label done_adjust_bottom_padding;
             mov(reg_aux_A_vpad_bottom, reg_aux_M);
-            add(reg_aux_A_vpad_bottom, m_blocks - M());
+            sub(reg_aux_A_vpad_bottom, M() - m_blocks);
             add(reg_aux_A_vpad_bottom,
                     ptr[reg_aux_batch_addr
                             + GET_OFF_BATCH_ELEMENT(vvpad.bottom)]);
@@ -1235,11 +1238,11 @@ void jit_brdgmm_kernel_base_t<Wmm>::get_batch_padding_info() {
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::vertical_pad_kernel(
-        const int m_blocks, const int n_blocks, bool has_n_tail) {
-    const int tpad = brg.brgattr.max_top_vpad;
-    const int bpad = brg.brgattr.max_bottom_vpad;
+        dim_t m_blocks, dim_t n_blocks, bool has_n_tail) {
+    const dim_t tpad = brg.brgattr.max_top_vpad;
+    const dim_t bpad = brg.brgattr.max_bottom_vpad;
     if (tpad > 0) {
-        auto get_mi = [=](int pad_i) { return pad_i - 1; };
+        auto get_mi = [=](dim_t pad_i) { return pad_i - 1; };
         if (brg.req_s8s8_compensation)
             pad_comp_kernel(compute_pad_kernel_t::s8s8_kernel, m_blocks,
                     n_blocks, brg.brgattr.max_top_vpad, reg_aux_A_vpad_top,
@@ -1250,7 +1253,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::vertical_pad_kernel(
                     get_mi, has_n_tail);
     }
     if (bpad > 0) {
-        auto get_mi = [=](int pad_i) { return m_blocks - pad_i; };
+        auto get_mi = [=](dim_t pad_i) { return m_blocks - pad_i; };
         if (brg.req_s8s8_compensation)
             pad_comp_kernel(compute_pad_kernel_t::s8s8_kernel, m_blocks,
                     n_blocks, brg.brgattr.max_bottom_vpad,
@@ -1264,11 +1267,11 @@ void jit_brdgmm_kernel_base_t<Wmm>::vertical_pad_kernel(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::call_brdgmm_microkernel(
-        const int m_blocks, const int n_blocks, bool has_n_tail, int shift_a) {
+        dim_t m_blocks, dim_t n_blocks, bool has_n_tail, dim_t shift_a) {
 
     // padding for vertical dimensions
-    const int tpad = brg.brgattr.max_top_vpad;
-    const int bpad = brg.brgattr.max_bottom_vpad;
+    const dim_t tpad = brg.brgattr.max_top_vpad;
+    const dim_t bpad = brg.brgattr.max_bottom_vpad;
     Label microkernel_with_padding, done_microkernel, skip_microkernel_l;
 
     if (has_vpad_) {
@@ -1294,7 +1297,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::call_brdgmm_microkernel(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::batch_loop(
-        const int m_blocks, const int n_blocks, bool has_n_tail) {
+        dim_t m_blocks, dim_t n_blocks, bool has_n_tail) {
 
     Label bs_loop_label, done_bs_loop;
     load_accumulators(m_blocks, n_blocks);
@@ -1304,7 +1307,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::batch_loop(
     mov(reg_BS_loop, reg_BS);
     restore_A_B_matrices();
 
-    auto bs_iteration = [&](int shift_a) {
+    auto bs_iteration = [&](dim_t shift_a) {
         Label compute_brdgemm_l, end_batch_loop_l;
         set_A_B_matrices();
         if (compute_compensation_ && has_bpad_) {
@@ -1323,7 +1326,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::batch_loop(
 
     L(bs_loop_label);
     {
-        for (int sh = 0; sh < bs_group(); sh++) {
+        for (dim_t sh = 0; sh < bs_group(); sh++) {
             bs_iteration(sh);
             advance_A_B_matrices();
         }
@@ -1340,23 +1343,23 @@ template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
 
     const bool has_m_block2_tail = m_block2_tail() > 0;
-    const int loop_m = (nb_m_block2() - has_m_block2_tail);
+    const dim_t loop_m = nb_m_block2() - has_m_block2_tail;
     const bool do_loop_m = loop_m > 1;
 
     const bool has_n_block2_tail = n_block2_tail() > 0;
     const bool need_separate_n_block1_tail_block = n_block1_tail() != 0
             && !has_n_block2_tail && nb_n_block2() > 1
             && !isa_has_masks(brg.isa_impl);
-    const int loop_n = nb_n_block2() - has_n_block2_tail
+    const dim_t loop_n = nb_n_block2() - has_n_block2_tail
             - need_separate_n_block1_tail_block;
     const bool do_loop_n = loop_n > 1;
     const bool loop_n_update_aux_ptrs = do_loop_n || (loop_n < nb_n_block2());
 
-    auto n_loop = [&](int m_blocks) {
+    auto n_loop = [&](dim_t m_blocks) {
         Label n_loop_label;
-        const int n_blocks = n_block2();
-        const int n_loop_step = oc_logical_offset(n_blocks);
-        const int n_loop_work = loop_n * n_blocks * n_block1();
+        const dim_t n_blocks = n_block2();
+        const dim_t n_loop_step = oc_logical_offset(n_blocks);
+        const dim_t n_loop_work = loop_n * n_blocks * n_block1();
         const bool vlen_tail_in_loop = n_block1_tail() != 0
                 && !need_separate_n_block1_tail_block && !has_n_block2_tail;
 
@@ -1404,7 +1407,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
 
     auto m_loop = [&]() {
         Label m_loop_label;
-        const int m_blocks = m_block2();
+        const dim_t m_blocks = m_block2();
         const bool reset_mask = isa_has_masks(brg.isa_impl)
                 && n_block1_tail() != 0 && do_loop_n && !has_n_block2_tail;
 
@@ -1418,13 +1421,19 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
 
             if (do_loop_m || has_m_block2_tail) {
                 add(reg_aux_M, m_blocks);
-                const int n_loop_offset
+                const dim_t n_loop_offset
                         = loop_n_update_aux_ptrs * loop_n * n_block2();
-                add(reg_a_offset, A_offset(m_blocks, -n_loop_offset));
+                const dim_t a_shift
+                        = A_offset(m_blocks, 0) - A_offset(0, n_loop_offset);
+                const dim_t c_shift = C_offset(m_blocks, 0, 0)
+                        - C_offset(0, n_loop_offset, 0);
+                const dim_t d_shift = D_offset(m_blocks, 0, 0)
+                        - D_offset(0, n_loop_offset, 0);
+                add(reg_a_offset, a_shift);
                 reg_aux_C.restore();
-                add(reg_aux_C, C_offset(m_blocks, -n_loop_offset, 0));
+                add(reg_aux_C, c_shift);
                 reg_aux_C.save();
-                add(reg_aux_D, D_offset(m_blocks, -n_loop_offset, 0));
+                add(reg_aux_D, d_shift);
             }
 
             if (do_loop_m) {

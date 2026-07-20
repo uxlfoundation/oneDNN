@@ -30,15 +30,15 @@ struct jit_brgemm_primitive_conf_t {
     conv_harness_t harness;
     int simd_w;
     int ndims;
-    int mb, os;
-    int ngroups, ic, oc, oc_without_padding, ic_without_padding;
-    int id = 1, ih = 1, iw = 1;
-    int od = 1, oh = 1, ow = 1;
-    int kd = 1, kh = 1, kw = 1;
-    int f_pad, l_pad, t_pad;
-    int back_pad, r_pad, b_pad;
-    int stride_d, stride_h, stride_w;
-    int dilate_d, dilate_h, dilate_w;
+    dim_t mb, os;
+    dim_t ngroups, ic, oc, oc_without_padding, ic_without_padding;
+    dim_t id = 1, ih = 1, iw = 1;
+    dim_t od = 1, oh = 1, ow = 1;
+    dim_t kd = 1, kh = 1, kw = 1;
+    dim_t f_pad, l_pad, t_pad;
+    dim_t back_pad, r_pad, b_pad;
+    dim_t stride_d, stride_h, stride_w;
+    dim_t dilate_d, dilate_h, dilate_w;
     format_tag_t src_tag, wei_tag, dst_tag; // temporary workaround
     bool is_wei_layout_any;
     bool with_bias;
@@ -46,14 +46,14 @@ struct jit_brgemm_primitive_conf_t {
     bool with_eltwise;
     bool with_binary;
     bool req_s8s8_compensation;
-    int nb_ic, ic_block, ic_block_ext;
-    int nb_oc, oc_block, oc_block_ext;
-    int nb_iw, iw_block;
-    int nb_ow, ow_block;
-    int nb_os, os_block;
-    int nb_oc_blocking;
-    int nb_ic_blocking;
-    int nb_os_blocking;
+    dim_t nb_ic, ic_block, ic_block_ext;
+    dim_t nb_oc, oc_block, oc_block_ext;
+    dim_t nb_iw, iw_block;
+    dim_t nb_ow, ow_block;
+    dim_t nb_os, os_block;
+    dim_t nb_oc_blocking;
+    dim_t nb_ic_blocking;
+    dim_t nb_os_blocking;
 
     data_type_t src_dt;
     data_type_t dst_dt;
@@ -73,9 +73,9 @@ struct jit_brgemm_primitive_conf_t {
     bool with_dst_scales;
     int is_oc_scale;
 
-    int LDA, LDB, LDC, LDD;
-    int M, N, K, M_tail, N_tail, K_tail;
-    int gemm_batch_size, adjusted_batch_size;
+    dim_t LDA, LDB, LDC, LDD;
+    dim_t M, N, K, M_tail, N_tail, K_tail;
+    dim_t gemm_batch_size, adjusted_batch_size;
     brgemm_batch_kind_t brg_type;
     int num_gemm_kernels;
     int nthr, nthr_mb, nthr_oc_b, nthr_ic_b;
@@ -83,15 +83,15 @@ struct jit_brgemm_primitive_conf_t {
     cpu_isa_t isa;
     bool use_uker;
     bool use_interleave_stores;
-    int amx_buf_size_per_thread;
+    dim_t amx_buf_size_per_thread;
     brgemm_kernel_prefetching_t hint_prefetching
             = brgemm_kernel_prefetching_t::brgemm_prf_default;
 
     // Compute kernel-spatial dimension size.
-    int ks() const;
+    dim_t ks() const;
 
     // Compute foward weights oc-block.
-    int get_weights_oc_block() const;
+    dim_t get_weights_oc_block() const;
 };
 
 } // namespace x64

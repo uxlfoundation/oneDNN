@@ -305,7 +305,8 @@ private:
     }
 
     Vmm accm(dim_t ld_block, dim_t bd, dim_t ld) const noexcept {
-        return Vmm(max_effective_vregs - 1 - (bd * ld_block + ld));
+        return Vmm(xbyak_register_index(
+                max_effective_vregs - 1 - (bd * ld_block + ld)));
     }
 
     Vmm bcst(dim_t bd = 0) const noexcept {
@@ -313,7 +314,7 @@ private:
             dim_t idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
                     - bd;
             assert(idx > 0);
-            return Vmm(idx);
+            return Vmm(xbyak_register_index(idx));
         } else
             return Vmm(0);
     }
@@ -325,20 +326,20 @@ private:
             dim_t idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
                     - ld;
             assert(idx > 0);
-            return Vmm(idx);
+            return Vmm(xbyak_register_index(idx));
         }
     }
 
     Vmm gemv_load_a() const noexcept {
         assert(brg.is_gemv);
         const dim_t idx = max_effective_vregs - 1 - brg.gemv_bd_block() - 0;
-        return Vmm(idx);
+        return Vmm(xbyak_register_index(idx));
     }
 
     Vmm gemv_load_b() const noexcept {
         assert(brg.is_gemv);
         const dim_t idx = max_effective_vregs - 1 - brg.gemv_bd_block() - 1;
-        return Vmm(idx);
+        return Vmm(xbyak_register_index(idx));
     }
 
     Vmm vmm_tmp(dim_t i) const noexcept {
@@ -346,7 +347,7 @@ private:
         MAYBE_UNUSED(bd_block);
         assert(IMPLICATION(!brg.is_tmm,
                 i >= 0 && i < max_effective_vregs - bd_block * brg.ld_block2));
-        return Vmm(i);
+        return Vmm(xbyak_register_index(i));
     }
 
     Vmm vmm_tail_mask() const noexcept { return vmm_tmp(1); }
@@ -1168,7 +1169,8 @@ void jit_brgemm_kernel_t<Wmm>::zero_accumulators(dim_t bd_block2,
         for_(dim_t bdb = 0; bdb < bd_block2; bdb++)
         for (dim_t ldb = 0; ldb < ld_block2; ldb++) {
             dim_t idx = (is_ld_tail) ? brg.ld_block2 : ldb;
-            tilezero(Tmm(brg.get_C_tensor(bdb, idx, is_bdb_tail, is_ld_tail)));
+            tilezero(Tmm(xbyak_register_index(
+                    brg.get_C_tensor(bdb, idx, is_bdb_tail, is_ld_tail))));
         }
     } else if (brg.is_gemv) {
         for (dim_t bd = 0; bd < brg.gemv_bd_block(); bd++) {
@@ -1246,11 +1248,11 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(dim_t num_rows,
     assert(r_end <= num_rows && "bad tile parameters");
 
     if (dt == data_type::f8_e5m2)
-        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(xbyak_register_index(r_end),
+                reg_data_aux, reg_data_stride, reg_buf_aux);
     else if (dt == data_type::f8_e4m3)
-        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(
-                r_end, reg_data_aux, reg_data_stride, reg_buf_aux);
+        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(xbyak_register_index(r_end),
+                reg_data_aux, reg_data_stride, reg_buf_aux);
     else
         assert(!"unsupported data type");
 
@@ -2431,7 +2433,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
             for (dim_t bdb = 0; bdb < bd_block2; bdb++) {
                 for (dim_t ldb = 0; ldb < ld_block2; ldb++) {
                     const dim_t idx = is_ld_tail ? brg.ld_block2 : ldb;
-                    const int c_tensor = brg.get_C_tensor(
+                    const dim_t c_tensor = brg.get_C_tensor(
                             bdb, idx, is_bdb_tail, is_ld_tail);
                     if (do_accum_ops) {
                         if (skip_accumulation) {
@@ -2441,7 +2443,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
                             }
                         } else {
                             tilestored(ptr[reg_buf + reg_stride_ld_block],
-                                    Tmm(c_tensor));
+                                    Tmm(xbyak_register_index(c_tensor)));
                             for (dim_t bd = 0; bd < adj_bd_block; bd++) {
                                 const size_t buf_offset
                                         = (bd * brg.ld_block) * brg.typesize_C;
@@ -2481,7 +2483,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(dim_t bd_block2,
 
                         reg_buf.restore();
                     } else {
-                        auto tmm = Tmm(c_tensor);
+                        auto tmm = Tmm(xbyak_register_index(c_tensor));
                         if (skip_accumulation) tilezero(tmm);
                         tilestored(ptr[reg_aux_C + reg_stride_ld_block], tmm);
                         if (ldb < ld_block2 - 1)
@@ -2735,7 +2737,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
 
     const dim_t tmm_idx = is_A ? brg.get_A_tensor(idx, is_tail)
                                : brg.get_B_tensor(idx, is_tail);
-    auto t1 = Tmm(tmm_idx);
+    auto t1 = Tmm(xbyak_register_index(tmm_idx));
 
     auto reg_base = is_A ? reg_aux_A : reg_aux_B;
 
@@ -2752,7 +2754,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
         dim_t rd_block
                 = (!brg.rdb && brg.rdb_tail) ? brg.rdb_tail : brg.rd_block;
         if (brg.is_input_convert()) {
-            const int vnni_granularity
+            const auto vnni_granularity
                     = data_type_vnni_granularity(data_type::f16);
             rd_block = utils::rnd_up(rd_block, vnni_granularity);
         }
@@ -2901,10 +2903,12 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
                     rdb * rdb_B_offset() + B_offset(ldb, 0, true), is_rd_tail,
                     is_ld_tail, false);
             for (dim_t bdb = 0; bdb < bd_block2; bdb++) {
-                tdpbxxd(Tmm(brg.get_C_tensor(
-                                bdb, idx, is_bdb_tail, is_ld_tail)),
-                        Tmm(brg.get_A_tensor(bdb, is_bdb_tail)),
-                        Tmm(brg.get_B_tensor(idx, is_ld_tail)));
+                tdpbxxd(Tmm(xbyak_register_index(brg.get_C_tensor(
+                                bdb, idx, is_bdb_tail, is_ld_tail))),
+                        Tmm(xbyak_register_index(
+                                brg.get_A_tensor(bdb, is_bdb_tail))),
+                        Tmm(xbyak_register_index(
+                                brg.get_B_tensor(idx, is_ld_tail))));
             }
         }
     }
@@ -3940,7 +3944,7 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         L(sum_zp_scale_data_);
         const dim_t scale_int = float2int(brg.sum_scale);
         for (dim_t i = 0; i < simd; ++i)
-            dd(scale_int);
+            dd(static_cast<uint32_t>(scale_int));
     }
 
     if (brg.is_fp8_via_convert()) {

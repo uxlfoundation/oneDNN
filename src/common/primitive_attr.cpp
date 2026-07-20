@@ -141,6 +141,8 @@ bool primitive_attr_t::has_default_values(dnnl_primitive_attr::skip_mask_t mask,
             (bool)(~mask & smask_t::dropout), dropout_.has_default_values()));
     CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::rounding_mode),
             rounding_mode_.has_default_values()));
+    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::post_ops_read_dst),
+            !post_ops_.has_reads_from_dst()));
     CHECK_ARG(this->defined(smask_t::none));
     bool fpmath_mode_ok = IMPLICATION(
             (bool)(~mask & smask_t::fpmath_mode) && fpmath_.apply_to_int_,
@@ -266,6 +268,7 @@ status_t post_ops_t::append_binary(alg_kind_t alg,
     auto &e = entry_.back();
     e.kind = primitive_kind::binary;
     e.binary.alg = alg;
+    e.binary.reads_dst_buffer = false;
 
     e.binary.user_src1_desc = *user_src1_desc;
     e.binary.src1_desc = *user_src1_desc;
@@ -286,6 +289,7 @@ status_t post_ops_t::prepend_binary(alg_kind_t alg,
     auto &e = entry_[0];
     e.kind = primitive_kind::binary;
     e.binary.alg = alg;
+    e.binary.reads_dst_buffer = false;
 
     e.binary.user_src1_desc = *user_src1_desc;
     e.binary.src1_desc = *user_src1_desc;

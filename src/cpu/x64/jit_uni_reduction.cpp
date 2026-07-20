@@ -122,16 +122,16 @@ status_t jit_uni_reduction_t::pd_t::init(engine_t *engine) {
                                 || src_md_desired_format == format_tag::undef),
             VERBOSE_UNSUPPORTED_TAG);
 
-    const int ndims = src_mdw.ndims();
+    const dim_t ndims = src_mdw.ndims();
     const auto &src_dims = src_mdw.dims();
     const auto &dst_dims = dst_mdw.dims();
 
     conf_.is_saturation_needed = utils::one_of(conf_.dst_type, s32, s8, u8);
 
-    int num_of_reduced_dims = 0;
+    dim_t num_of_reduced_dims = 0;
     conf_.idle_size = dst_mdw.nelems();
     conf_.reduce_size = 1;
-    for (int d = ndims - 1; d >= 0; --d) {
+    for (dim_t d = ndims - 1; d >= 0; --d) {
         if (src_dims[d] != dst_dims[d]) {
             num_of_reduced_dims++;
             conf_.reduce_size *= src_dims[d];
@@ -142,7 +142,7 @@ status_t jit_uni_reduction_t::pd_t::init(engine_t *engine) {
     VDISPATCH_REDUCTION(
             num_of_reduced_dims != 0, "dimensionality reduction not possible");
 
-    for (int d = 0; d < ndims - num_of_reduced_dims; ++d)
+    for (dim_t d = 0; d < ndims - num_of_reduced_dims; ++d)
         if (src_dims[d] != dst_dims[d]) return status::unimplemented;
 
     conf_.alg = desc()->alg_kind;

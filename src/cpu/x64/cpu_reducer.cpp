@@ -246,7 +246,8 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
                 this->L(loop_srcs);
 
                 accumulate(nloads[id], load_len[id], 0);
-                this->add(reg_src, this->src_ld_ * typesize);
+                this->mov(reg_long_offt, this->src_ld_ * typesize);
+                this->add(reg_src, reg_long_offt);
 
                 this->dec(reg_src_id);
                 this->jnz(loop_srcs, this->T_NEAR);
@@ -291,8 +292,10 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
 
         loop_x();
 
-        this->add(reg_dst, this->dst_step_ * typesize);
-        this->add(reg_src, this->src_step_ * typesize);
+        this->mov(reg_long_offt, this->dst_step_ * typesize);
+        this->add(reg_dst, reg_long_offt);
+        this->mov(reg_long_offt, this->src_step_ * typesize);
+        this->add(reg_src, reg_long_offt);
 
         this->dec(reg_ny);
         this->jnz(ny_loop, this->T_NEAR);

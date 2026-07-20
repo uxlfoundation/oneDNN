@@ -56,7 +56,9 @@ struct jit_uni_reduction_kernel_t : public jit_uni_reduction_kernel_base_t {
 
     ~jit_uni_reduction_kernel_t() override = default;
 
-    std::size_t get_simd_w() override { return simd_w_; }
+    std::size_t get_simd_w() override {
+        return static_cast<std::size_t>(simd_w_);
+    }
 
 private:
     using compute_fn_t = std::function<void(
@@ -69,16 +71,16 @@ private:
 
     void reduce_ymm_to_xmm(const Xbyak::Xmm &acc, const Xbyak::Xmm &tmp);
     void reduce_xmm_to_scalar(const Xbyak::Xmm &acc, const Xbyak::Xmm &tmp,
-            const std::size_t number_of_values_to_reduce
+            const dim_t number_of_values_to_reduce
             = number_of_f32_in_xmm_);
     void reduce_zmm_to_ymm(const Xbyak::Xmm &acc, const Xbyak::Xmm &tmp);
     void reduce_ymm_to_scalar(const Xbyak::Xmm &acc, const Xbyak::Xmm &tmp1,
             const Xbyak::Xmm &tmp2,
-            const std::size_t number_of_values_to_reduce
+            const dim_t number_of_values_to_reduce
             = number_of_f32_in_ymm_);
     void reduce_vmm_to_scalar(const Xbyak::Xmm &acc, const Xbyak::Xmm &tmp1,
             const Xbyak::Xmm &tmp2, const Xbyak::Xmm &tmp3,
-            const std::size_t number_of_values_to_reduce
+            const dim_t number_of_values_to_reduce
             = number_of_f32_in_zmm_);
 
     void reduce();
@@ -119,13 +121,13 @@ private:
 
     static constexpr bool is_zmm_ = std::is_same<Vmm, Xbyak::Zmm>::value;
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
-    static constexpr std::size_t vlen_ = is_zmm_ ? 64 : is_ymm_ ? 32 : 16;
-    static constexpr std::size_t simd_w_ = vlen_ / sizeof(float);
-    static constexpr std::size_t number_of_f32_in_xmm_ = 4;
-    static constexpr std::size_t number_of_f32_in_ymm_ = 8;
-    static constexpr std::size_t number_of_f32_in_zmm_ = 16;
-    const std::size_t load_tail_size_;
-    static constexpr std::size_t store_tail_size_ = 1;
+    static constexpr dim_t vlen_ = is_zmm_ ? 64 : is_ymm_ ? 32 : 16;
+    static constexpr dim_t simd_w_ = vlen_ / static_cast<dim_t>(sizeof(float));
+    static constexpr dim_t number_of_f32_in_xmm_ = 4;
+    static constexpr dim_t number_of_f32_in_ymm_ = 8;
+    static constexpr dim_t number_of_f32_in_zmm_ = 16;
+    const dim_t load_tail_size_;
+    static constexpr dim_t store_tail_size_ = 1;
 
     io::jit_io_helper_t<Vmm> io_load_;
     io::jit_io_helper_t<Vmm> io_store_;

@@ -40,14 +40,18 @@ jit_uni_reduction_kernel_t<isa, Vmm>::jit_uni_reduction_kernel_t(
     : jit_uni_reduction_kernel_base_t(conf)
     , load_tail_size_(conf.reduce_size % simd_w_)
     , io_load_(this, isa, conf_.src_type, {false},
-              io::io_tail_conf_t {simd_w_, load_tail_size_, k_tail_load_mask_,
+              io::io_tail_conf_t {static_cast<std::size_t>(simd_w_),
+                      static_cast<std::size_t>(load_tail_size_),
+                      k_tail_load_mask_,
                       vmm_tail_load_mask_.getIdx(), reg_tmp_},
               io::io_emu_bf16_conf_t {vmm_bf16_emu_1_, vmm_bf16_emu_2_,
                       vmm_bf16_emu_3_, reg_tmp_, vmm_bf16_emu_4_},
               io::io_saturation_conf_t {vmm_zero_saturation_.getIdx(),
                       vmm_saturation_ubound_.getIdx(), reg_tmp_})
     , io_store_(this, isa, conf_.dst_type, {false},
-              io::io_tail_conf_t {simd_w_, store_tail_size_, k_tail_store_mask_,
+              io::io_tail_conf_t {static_cast<std::size_t>(simd_w_),
+                      static_cast<std::size_t>(store_tail_size_),
+                      k_tail_store_mask_,
                       vmm_tail_store_mask_.getIdx(), reg_tmp_},
               io::io_emu_bf16_conf_t {vmm_bf16_emu_1_, vmm_bf16_emu_2_,
                       vmm_bf16_emu_3_, reg_tmp_, vmm_bf16_emu_4_},
@@ -154,7 +158,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::init_post_ops_injector(
             reg_po_injector_helper_1_, elt_inj_opmask_, true /*is_fwd*/,
             false /*use_dst*/);
     const binary_injector::rhs_arg_static_params_t rhs_arg_bsp {
-            static_cast<size_t>(rhs_dt_helper_vmm_.getIdx()),
+            static_cast<dim_t>(rhs_dt_helper_vmm_.getIdx()),
             reg_po_injector_helper_1_, reg_po_injector_helper_2_,
             reg_po_injector_helper_3_, true /*preserve gpr*/,
             true /*preserve vmm*/, GET_OFF(post_ops_binary_rhs_arg_vec),
@@ -190,7 +194,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_ymm_to_xmm(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_xmm_to_scalar(const Xmm &acc,
-        const Xmm &tmp, const std::size_t number_of_values_to_reduce) {
+        const Xmm &tmp, const dim_t number_of_values_to_reduce) {
     assert(number_of_values_to_reduce <= number_of_f32_in_xmm_);
 
     const Xmm xmm_acc(acc.getIdx());
@@ -200,7 +204,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_xmm_to_scalar(const Xmm &acc,
     static constexpr uint8_t insertps_configuration[number_of_f32_to_move]
             = {0b01001110, 0b10001110, 0b11001110};
 
-    for (std::size_t i = 0; i < number_of_values_to_reduce - 1; i++) {
+    for (dim_t i = 0; i < number_of_values_to_reduce - 1; i++) {
         insertps(ymm_to_acc, xmm_acc, insertps_configuration[i]);
         compute_scalar_op_(xmm_acc, ymm_to_acc);
     }
@@ -209,7 +213,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_xmm_to_scalar(const Xmm &acc,
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_ymm_to_scalar(
         const Xbyak::Xmm &acc, const Xbyak::Xmm &tmp1, const Xbyak::Xmm &tmp2,
-        const std::size_t number_of_values_to_reduce) {
+        const dim_t number_of_values_to_reduce) {
     assert(number_of_values_to_reduce <= number_of_f32_in_ymm_);
 
     const Ymm ymm_acc(acc.getIdx());
@@ -234,7 +238,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_ymm_to_scalar(
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_vmm_to_scalar(
         const Xbyak::Xmm &acc, const Xbyak::Xmm &tmp1, const Xbyak::Xmm &tmp2,
-        const Xbyak::Xmm &tmp3, const std::size_t number_of_values_to_reduce) {
+        const Xbyak::Xmm &tmp3, const dim_t number_of_values_to_reduce) {
     assert(number_of_values_to_reduce <= number_of_f32_in_zmm_);
 
     const Zmm zmm_acc(acc.getIdx());
@@ -275,7 +279,8 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_ne_convert_xf16() {
         compute_op_(vmm_acc_, vmm_tmp1_);
         compute_op_(vmm_acc_, vmm_tmp2_);
 
-        add(reg_src_, 2 * simd_w_ * conf_.src_dt_size);
+        const dim_t src_offset = 2 * simd_w_ * conf_.src_dt_size;
+        add(reg_src_, static_cast<uint32_t>(src_offset));
 
         sub(reg_work_, 2);
         jmp(label_work_begin);
@@ -288,7 +293,8 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_ne_convert_xf16() {
         io_load_.load(ptr[reg_src_], vmm_tmp1_, false);
         compute_op_(vmm_acc_, vmm_tmp1_);
 
-        add(reg_src_, simd_w_ * conf_.src_dt_size);
+        const dim_t src_offset = simd_w_ * conf_.src_dt_size;
+        add(reg_src_, static_cast<uint32_t>(src_offset));
 
         dec(reg_work_);
         jmp(label_work_tail_begin);
@@ -314,7 +320,8 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::reduce_base() {
         io_load_.load(ptr[reg_src_], vmm_tmp1_, false);
         compute_op_(vmm_acc_, vmm_tmp1_);
 
-        add(reg_src_, simd_w_ * conf_.src_dt_size);
+        const dim_t src_offset = simd_w_ * conf_.src_dt_size;
+        add(reg_src_, static_cast<uint32_t>(src_offset));
 
         dec(reg_work_);
         jmp(label_work_begin);
@@ -389,7 +396,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::apply_postops(const int data_idx) {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_reduction_kernel_t<isa, Vmm>::finalize() {
-    if (static_cast<std::size_t>(conf_.reduce_size) > load_tail_size_) {
+    if (conf_.reduce_size > load_tail_size_) {
         reduce_vmm_to_scalar(
                 vmm_acc_, vmm_tmp1_, vmm_tmp2_, vmm_tmp3_, simd_w_);
     }

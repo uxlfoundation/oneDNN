@@ -54,14 +54,15 @@ status_t ref_shuffle_t::execute_(const exec_ctx_t &ctx) const {
     const auto axis_size = pd()->axis_size();
     const auto group_size = pd()->group_size();
 
-    const int transpose_row
-            = pd()->is_fwd() ? group_size : axis_size / group_size;
-    const int transpose_col
-            = pd()->is_fwd() ? axis_size / group_size : group_size;
+    const int transpose_row = static_cast<int>(
+            pd()->is_fwd() ? group_size : axis_size / group_size);
+    const int transpose_col = static_cast<int>(
+            pd()->is_fwd() ? axis_size / group_size : group_size);
 
     // Precompute transposed axis helper array
     parallel_nd(transpose_col, transpose_row, [=](dim_t i, dim_t j) {
-        scratchpad_ptr[j * transpose_col + i] = i * transpose_row + j;
+        scratchpad_ptr[j * transpose_col + i]
+                = static_cast<int>(i * transpose_row + j);
     });
 
     const dim_t MB = pd()->MB();

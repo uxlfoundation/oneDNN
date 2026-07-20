@@ -1361,14 +1361,16 @@ void jit_uni_lrn_fwd_kernel_t<sse41, data_type::f32>::generate(
     if (load_lo) this->movups(xc_lo, this->ptr[src_ + J.HW * 0]);
     this->movups(xc_hi, this->ptr[src_ + J.HW * 0 + h_offset * sizeof(float)]);
     if (compute_tail) {
-        this->pslldq(xc_lo, l_shift * sizeof(float));
+        this->pslldq(
+                xc_lo, static_cast<int>(l_shift * sizeof(float)));
         this->andps(xc_hi, xmask_hi);
     }
 
     if (load_lo) this->movups(xd_lo, this->ptr[src_ + J.HW * 4]);
     this->movups(xd_hi, this->ptr[src_ + J.HW * 4 + h_offset * sizeof(float)]);
     if (compute_tail) {
-        this->pslldq(xd_lo, l_shift * sizeof(float));
+        this->pslldq(
+                xd_lo, static_cast<int>(l_shift * sizeof(float)));
         this->andps(xd_hi, xmask_hi);
     }
 
@@ -1400,7 +1402,8 @@ void jit_uni_lrn_fwd_kernel_t<sse41, data_type::f32>::generate(
     if (load_lo) this->movups(xe_lo, this->ptr[src_ + J.HW * 8]);
     this->movups(xe_hi, this->ptr[src_ + J.HW * 8 + h_offset * sizeof(float)]);
     if (compute_tail) {
-        this->pslldq(xe_lo, l_shift * sizeof(float));
+        this->pslldq(
+                xe_lo, static_cast<int>(l_shift * sizeof(float)));
         this->andps(xe_hi, xmask_hi);
     }
 

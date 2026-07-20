@@ -195,8 +195,8 @@ struct nchw_pooling_bwd_t : public primitive_t {
 
                 // The value of nbuf_ must be in compliance with arguments of
                 // parallel_nd_ext called from execute_backward for data_type!=f32
-                nbuf_ = nstl::min(static_cast<dim_t>(nthr_),
-                        MB() * utils::div_up(IC(), channel_block_size_));
+                nbuf_ = static_cast<int>(nstl::min(static_cast<dim_t>(nthr_),
+                        MB() * utils::div_up(IC(), channel_block_size_)));
 
                 scratchpad.template book<float>(key_pool_src_bf16cvt,
                         src_sz_ * nbuf_ * channel_block_size_);

@@ -81,7 +81,7 @@ struct jit_avx512_core_resampling_kernel_t
             stride_w_ = inner_stride_;
         }
 
-        number_of_loops_ = (inner_stride_ / simd_w());
+        number_of_loops_ = (static_cast<unsigned int>(inner_stride_ / simd_w()));
         tail_size_ = inner_stride_ % simd_w();
         stack_size_needed_ = 0;
 
@@ -340,7 +340,7 @@ private:
             add(reg_tmp_idx, 1);
             max(reg_tmp_idx, 0);
             min(reg_tmp_idx, y_max);
-            cmp(curr_position, x_max - 1);
+            cmp(curr_position, static_cast<uint32_t>(x_max - 1));
             mov(reg_tmp, y_max);
             cmove(reg_tmp_idx, reg_tmp);
             mov(ptr[c_range.end.linear[1]], reg_tmp_idx);
@@ -435,7 +435,7 @@ private:
                     xmm_w_coeff, zmm_weight, reg_curr_w, pd_->IW(), rm_w);
             // curr_w * stride_w_
             if (!pd_->is_fwd()) mov(reg_curr_w, ptr[ow.loop_counter]);
-            imul(reg_offset, reg_curr_w, stride_w_);
+            imul(reg_offset, reg_curr_w, static_cast<int>(stride_w_));
         }
         if (rm_h != rounding_mode::none) {
             // out: Wh, curr_h
@@ -445,7 +445,7 @@ private:
             vmulps(zmm_weight, zmm_weight, zmm_tmp_weight);
             // curr_w * stride_w_ + curr_h * stride_h_
             if (!pd_->is_fwd()) mov(reg_curr_h, ptr[oh.loop_counter]);
-            imul(reg_tmp, reg_curr_h, stride_h_);
+            imul(reg_tmp, reg_curr_h, static_cast<int>(stride_h_));
             add(reg_offset, reg_tmp);
         }
         if (rm_d != rounding_mode::none) {
@@ -456,12 +456,13 @@ private:
             vmulps(zmm_weight, zmm_weight, zmm_tmp_weight);
             // curr_w * stride_w_ + curr_h * stride_h_ + curr_d * stride_d_
             if (!pd_->is_fwd()) mov(reg_curr_d, ptr[od.loop_counter]);
-            imul(reg_tmp, reg_curr_d, stride_d_);
+            imul(reg_tmp, reg_curr_d, static_cast<int>(stride_d_));
             add(reg_offset, reg_tmp);
         }
 
-        add(reg_offset, channel_offset);
-        imul(reg_offset, reg_offset, types::data_type_size(src_data_type()));
+        add(reg_offset, static_cast<uint32_t>(channel_offset));
+        imul(reg_offset, reg_offset,
+                static_cast<int>(types::data_type_size(src_data_type())));
 
         // read src
         io_->at(src_data_type())
@@ -683,18 +684,20 @@ private:
             mov(reg_curr_d, ptr[od.loop_counter]);
         }
 
-        imul(reg_offset, reg_curr_w, stride_w_); // iw * stride_w_
-        imul(reg_tmp, reg_curr_h, stride_h_);
+        imul(reg_offset, reg_curr_w,
+                static_cast<int>(stride_w_)); // iw * stride_w_
+        imul(reg_tmp, reg_curr_h, static_cast<int>(stride_h_));
         add(reg_offset, reg_tmp); // iw * stride_w_ + ih * stride_h_
-        imul(reg_tmp, reg_curr_d, stride_d_);
+        imul(reg_tmp, reg_curr_d, static_cast<int>(stride_d_));
         add(reg_offset,
                 reg_tmp); // iw * stride_w_ + ih * stride_h_ + id * stride_d_
 
         add(reg_offset,
-                channel_offset); // iw * stride_w_ + ih * stride_h_ + id * stride_d_ + channel_offset
+                static_cast<uint32_t>(
+                        channel_offset)); // iw * stride_w_ + ih * stride_h_ + id * stride_d_ + channel_offset
         imul(reg_offset, reg_offset,
-                types::data_type_size(
-                        src_data_type())); // (iw * stride_w_ + ih * stride_h_ + id * stride_d_ + channel_offset)*dt_size
+                static_cast<int>(types::data_type_size(
+                        src_data_type()))); // (iw * stride_w_ + ih * stride_h_ + id * stride_d_ + channel_offset)*dt_size
 
         if (pd_->is_fwd()) {
             // read nearest to dst

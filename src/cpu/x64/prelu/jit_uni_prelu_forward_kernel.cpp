@@ -52,7 +52,8 @@ Xbyak::Address jit_prelu_forward_kernel_t::data_ptr(int arg_num, size_t offt) {
     const auto get_addr
             = [&](const Xbyak::Reg64 &reg_base, const data_type_t dt) {
         const auto dt_size = types::data_type_size(dt);
-        return ptr[reg_base + reg_offset_ * dt_size + offt * dt_size];
+        return ptr[reg_base + reg_offset_ * static_cast<int>(dt_size)
+                + static_cast<int>(offt) * static_cast<int>(dt_size)];
     };
 
     switch (arg_num) {

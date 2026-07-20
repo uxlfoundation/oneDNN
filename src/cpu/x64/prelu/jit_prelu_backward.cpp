@@ -217,7 +217,8 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
                 weights_diff_scratchpad, C_cache_line_aligned, nthr);
 
         if (bcast == prelu::bcast::per_oc_blocked) {
-            const dim_t C_blocks = std::ceil(static_cast<float>(C) / simd_w);
+            const dim_t C_blocks
+                    = static_cast<dim_t>(std::ceil(static_cast<float>(C) / simd_w));
             work_amount = MB * C_blocks;
             parallel_nd_ext(nthr, MB, C_blocks,
                     [=](int ithr, int, dim_t mb, dim_t c_blk) {
@@ -283,7 +284,7 @@ void jit_prelu_bwd_t::scratchpad_to_diff_weights_reduction(float *scratchpad,
     const auto reduction_kernel = reduction_kernel_.get();
     const auto &simd_w = reduction_kernel_->simd_w();
     const bool tail_exists = C % simd_w;
-    const dim_t C_blocks = std::ceil(static_cast<float>(C) / simd_w);
+    const dim_t C_blocks = static_cast<dim_t>(std::ceil(static_cast<float>(C) / simd_w));
 
     parallel_nd(C_blocks, [=](dim_t c_blk) {
         const auto blk_offset = c_blk * simd_w;

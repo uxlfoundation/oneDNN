@@ -82,9 +82,9 @@ status_t nchw_pooling_fwd_t<data_type::f32>::execute_forward(
                 assert(0 <= value
                         && value <= numeric_limits<typename prec_traits_t<
                                         data_type::u8>::type>::max());
-                ws[ws_offset] = value;
+                ws[ws_offset] = static_cast<uint8_t>(value);
             } else
-                reinterpret_cast<int *>(ws)[ws_offset] = value;
+                reinterpret_cast<int *>(ws)[ws_offset] = static_cast<int>(value);
         }
     };
 
@@ -284,9 +284,9 @@ status_t nchw_pooling_fwd_t<d_type>::execute_forward(
                 assert(0 <= value
                         && value <= numeric_limits<typename prec_traits_t<
                                         data_type::u8>::type>::max());
-                ws[ws_offset] = value;
+                ws[ws_offset] = static_cast<uint8_t>(value);
             } else
-                reinterpret_cast<int *>(ws)[ws_offset] = value;
+                reinterpret_cast<int *>(ws)[ws_offset] = static_cast<int>(value);
         }
     };
 

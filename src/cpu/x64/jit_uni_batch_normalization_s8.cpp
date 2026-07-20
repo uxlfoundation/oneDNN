@@ -286,7 +286,7 @@ struct jit_bnorm_s8_t<avx512_core> : public jit_bnorm_base_t<avx512_core> {
             {
                 if (need_tail) {
                     for (size_t tl = 0; tl < c_tail_; tl++)
-                        vpinsrb(x, x, src_ptr(tl), tl);
+                        vpinsrb(x, x, src_ptr(tl), static_cast<uint8_t>(tl));
                     vpmovsxbd(v, x);
                 } else
                     vpmovsxbd(v, src_ptr());
@@ -305,7 +305,7 @@ struct jit_bnorm_s8_t<avx512_core> : public jit_bnorm_base_t<avx512_core> {
                 if (need_tail) {
                     vpmovsdb(x, v);
                     for (size_t tl = 0; tl < c_tail_; tl++)
-                        vpextrb(dst_ptr(tl), x, tl);
+                        vpextrb(dst_ptr(tl), x, static_cast<uint8_t>(tl));
                 } else
                     vpmovsdb(dst_ptr(), v);
 
@@ -315,9 +315,11 @@ struct jit_bnorm_s8_t<avx512_core> : public jit_bnorm_base_t<avx512_core> {
             }
 
             // reg_tmp checks c_in_xmm_ channels ahead for further tail process
-            add(reg_tmp, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_1byte, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_4byte, sizeof(float) * c_in_xmm_);
+            add(reg_tmp, static_cast<uint32_t>(sizeof(data_t) * c_in_xmm_));
+            add(reg_channel_offt_1byte,
+                    static_cast<uint32_t>(sizeof(data_t) * c_in_xmm_));
+            add(reg_channel_offt_4byte,
+                    static_cast<uint32_t>(sizeof(float) * c_in_xmm_));
             cmp(reg_tmp, reg_channel_offt_count);
             jle(c_loop);
         }
@@ -424,9 +426,10 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
                 if (need_tail) {
                     for (size_t tl = 0; tl < c_tail_; tl++) {
                         if (tl < simd_w_) {
-                            vpinsrb(x0, x0, src_ptr(tl), tl);
+                            vpinsrb(x0, x0, src_ptr(tl), static_cast<uint8_t>(tl));
                         } else {
-                            vpinsrb(x1, x1, src_ptr(tl), tl - simd_w_);
+                            vpinsrb(x1, x1, src_ptr(tl),
+                                    static_cast<uint8_t>(tl - simd_w_));
                         }
                     }
                     vpmovsxbd(v0, x0);
@@ -468,7 +471,7 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
 
                 if (need_tail) {
                     for (size_t tl = 0; tl < c_tail_; tl++) {
-                        vpextrb(dst_ptr(tl), x0, tl);
+                        vpextrb(dst_ptr(tl), x0, static_cast<uint8_t>(tl));
                     }
                 } else {
                     // due to vpacksswb produces 32 integers in ymm, and top
@@ -482,9 +485,11 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
             }
 
             // reg_tmp checks c_in_xmm_ channels ahead for further tail process
-            add(reg_tmp, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_1byte, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_4byte, sizeof(float) * c_in_xmm_);
+            add(reg_tmp, static_cast<uint32_t>(sizeof(data_t) * c_in_xmm_));
+            add(reg_channel_offt_1byte,
+                    static_cast<uint32_t>(sizeof(data_t) * c_in_xmm_));
+            add(reg_channel_offt_4byte,
+                    static_cast<uint32_t>(sizeof(float) * c_in_xmm_));
             cmp(reg_tmp, reg_channel_offt_count);
             jle(c_loop);
         }
@@ -500,8 +505,10 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
             bool need_tail) override {
         if (need_tail) {
             for (size_t tl = 0; tl < c_tail_ % simd_w_; tl++) {
-                pinsrd(vmean, mean_ptr(offt + tl * sizeof(float)), tl);
-                pinsrd(vsqrtvar, var_ptr(offt + tl * sizeof(float)), tl);
+                pinsrd(vmean, mean_ptr(offt + tl * sizeof(float)),
+                        static_cast<uint8_t>(tl));
+                pinsrd(vsqrtvar, var_ptr(offt + tl * sizeof(float)),
+                        static_cast<uint8_t>(tl));
             }
         } else {
             movups(vmean, mean_ptr(offt));
@@ -512,7 +519,8 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
     void load_scale(const Vmm &vscale, size_t offt, bool need_tail) override {
         if (need_tail) {
             for (size_t tl = 0; tl < c_tail_ % simd_w_; tl++) {
-                pinsrd(vscale, scale_ptr(offt + tl * sizeof(float)), tl);
+                pinsrd(vscale, scale_ptr(offt + tl * sizeof(float)),
+                        static_cast<uint8_t>(tl));
             }
         } else {
             movups(vscale, scale_ptr(offt));
@@ -522,7 +530,8 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
     void load_shift(const Vmm &vshift, size_t offt, bool need_tail) override {
         if (need_tail) {
             for (size_t tl = 0; tl < c_tail_ % simd_w_; tl++) {
-                pinsrd(vshift, shift_ptr(offt + tl * sizeof(float)), tl);
+                pinsrd(vshift, shift_ptr(offt + tl * sizeof(float)),
+                        static_cast<uint8_t>(tl));
             }
         } else {
             movups(vshift, shift_ptr(offt));
@@ -574,9 +583,10 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
                 if (need_tail) {
                     for (size_t tl = 0; tl < copy_range; tl++) {
                         if (tl < simd_w_) {
-                            pinsrb(v0, src_ptr(tl), tl);
+                            pinsrb(v0, src_ptr(tl), static_cast<uint8_t>(tl));
                         } else {
-                            pinsrb(v1, src_ptr(tl), (tl - simd_w_));
+                            pinsrb(v1, src_ptr(tl),
+                                    (static_cast<uint8_t>(tl - simd_w_)));
                         }
                     }
                     pmovsxbd(v0, v0);
@@ -619,7 +629,7 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
                 // into a single vector register and use movups instead
                 // of byte stores.
                 for (size_t tl = 0; tl < copy_range; tl++) {
-                    pextrb(dst_ptr(tl), v0, tl);
+                    pextrb(dst_ptr(tl), v0, static_cast<uint8_t>(tl));
                 }
 
                 add(reg_spat_offt, reg_channel_offt_count);
@@ -628,9 +638,11 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
             }
 
             // reg_tmp checks c_in_xmm_ channels ahead for further tail process
-            add(reg_tmp, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_1byte, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_4byte, sizeof(float) * c_in_xmm_);
+            add(reg_tmp, static_cast<uint32_t>(sizeof(data_t) * c_in_xmm_));
+            add(reg_channel_offt_1byte,
+                    static_cast<uint32_t>(sizeof(data_t) * c_in_xmm_));
+            add(reg_channel_offt_4byte,
+                    static_cast<uint32_t>(sizeof(float) * c_in_xmm_));
             cmp(reg_tmp, reg_channel_offt_count);
             jle(c_loop);
         }

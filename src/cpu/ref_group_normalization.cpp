@@ -100,7 +100,8 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
         float v_variance = calculate_stats ? 0 : variance[stat_off];
 
         if (calculate_stats) {
-            for_(int c = get_c_start(g); c < get_c_start(g + 1); ++c)
+            for_(int c = static_cast<int>(get_c_start(g));
+                    c < get_c_start(g + 1); ++c)
             for_(int d = 0; d < D; ++d)
             for_(int h = 0; h < H; ++h)
             for (int w = 0; w < W; ++w) {
@@ -110,7 +111,8 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
             }
             v_mean /= C_PER_G * W * H * D;
 
-            for_(int c = get_c_start(g); c < get_c_start(g + 1); ++c)
+            for_(int c = static_cast<int>(get_c_start(g));
+                    c < get_c_start(g + 1); ++c)
             for_(int d = 0; d < D; ++d)
             for_(int h = 0; h < H; ++h)
             for (int w = 0; w < W; ++w) {
@@ -123,7 +125,8 @@ status_t ref_group_normalization_fwd_t::execute(const exec_ctx_t &ctx) const {
         }
         float sqrt_variance = sqrtf(v_variance + eps);
 
-        for (int c = get_c_start(g); c < get_c_start(g + 1); ++c) {
+        for (int c = static_cast<int>(get_c_start(g));
+                c < get_c_start(g + 1); ++c) {
             float sm = (scale ? scale[ss_d.off(c)] : 1.0f) / sqrt_variance;
             float sv = shift ? shift[ss_d.off(c)] : 0;
 
@@ -308,7 +311,8 @@ status_t ref_group_normalization_bwd_t::execute(const exec_ctx_t &ctx) const {
                 }
             }
         } else {
-            for (int c = get_c_start(g); c < get_c_start(g + 1); ++c) {
+            for (int c = static_cast<int>(get_c_start(g));
+                    c < get_c_start(g + 1); ++c) {
                 float gamma = scale ? scale[ss_d.off(c)] : 1.0f;
                 for_(dim_t d = 0; d < D; ++d)
                 for_(dim_t h = 0; h < H; ++h)

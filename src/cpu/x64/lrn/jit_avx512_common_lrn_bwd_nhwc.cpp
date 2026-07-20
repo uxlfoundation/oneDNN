@@ -66,8 +66,9 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::generate() {
 template <data_type_t d_type>
 void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::reserve_stack_space(
         std::size_t space) {
-    const unsigned maxCounter = (space / zmm_size_) - 1;
-    this->sub(rsp, space);
+    const unsigned maxCounter
+            = static_cast<unsigned>((space / zmm_size_) - 1);
+    this->sub(rsp, static_cast<uint32_t>(space));
     this->uni_vpxor(zmm4, zmm4, zmm4);
     for (unsigned i = 0; i < maxCounter; ++i)
         this->vmovups(ptr[rsp + i * zmm_size_], zmm4);
@@ -76,7 +77,7 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::reserve_stack_space(
 template <data_type_t d_type>
 void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::unreserve_stack_space(
         std::size_t space) {
-    this->add(rsp, space);
+    this->add(rsp, static_cast<uint32_t>(space));
 }
 
 template <data_type_t d_type>
@@ -285,11 +286,11 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::compute(
 template <data_type_t d_type>
 void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::increment_loop_params(
         std::size_t offset) {
-    this->add(this->src_, offset);
-    this->add(this->diffsrc_, offset);
-    this->add(this->diffdst_, offset);
-    this->add(this->workspace0_, offset);
-    this->add(this->workspace1_, offset);
+    this->add(this->src_, static_cast<uint32_t>(offset));
+    this->add(this->diffsrc_, static_cast<uint32_t>(offset));
+    this->add(this->diffdst_, static_cast<uint32_t>(offset));
+    this->add(this->workspace0_, static_cast<uint32_t>(offset));
+    this->add(this->workspace1_, static_cast<uint32_t>(offset));
 }
 
 template <data_type_t d_type>

@@ -37,7 +37,7 @@ static dnnl_dim_t compute_n_summands(
         dnnl_dim_t size, int ndims, const dnnl_alg_kind_t &alg_kind) {
     return alg_kind == alg_kind::lrn_across_channels
             ? size
-            : std::pow(size, ndims - 2);
+            : static_cast<dnnl_dim_t>(std::pow(size, ndims - 2));
 }
 
 template <cpu_isa_t isa, data_type_t d_type>
@@ -54,11 +54,11 @@ template <cpu_isa_t isa, data_type_t d_type>
 status_t jit_uni_lrn_fwd_t<isa, d_type>::init(engine_t *engine) {
     using namespace alg_kind;
 
-    const int C = pd()->C();
-    const int H = pd()->H();
-    const int W = pd()->W();
+    const int C = static_cast<int>(pd()->C());
+    const int H = static_cast<int>(pd()->H());
+    const int W = static_cast<int>(pd()->W());
     const int ndims = memory_desc_wrapper(pd()->src_md()).ndims();
-    const int ls = pd()->desc()->local_size;
+    const int &ls = static_cast<int>(pd()->desc()->local_size);
     const float K = pd()->desc()->lrn_k;
     const auto pk = pd()->desc()->prop_kind;
     const auto ak = pd()->desc()->alg_kind;
@@ -109,10 +109,10 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::execute_forward(
     auto ws = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_WORKSPACE, status);
     CHECK(status);
 
-    const int N = pd()->MB();
-    const int C = pd()->C();
-    const int HW = pd()->H() * pd()->W();
-    const int ls = pd()->desc()->local_size;
+    const int N = static_cast<int>(pd()->MB());
+    const int C = static_cast<int>(pd()->C());
+    const int HW = static_cast<int>(pd()->H() * pd()->W());
+    const int ls = static_cast<int>(pd()->desc()->local_size);
 
     const auto ak = pd()->desc()->alg_kind;
     const auto dat_tag = pd()->dat_tag_;
@@ -196,7 +196,7 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::pd_t::init(engine_t *engine) {
     dat_tag_ = memory_desc_matches_one_of_tag(
             *src_md(), nChw16c, nChw8c, nchw, nhwc);
 
-    const int HW = src_d.dims()[2] * src_d.dims()[3];
+    const int HW = static_cast<int>(src_d.dims()[2] * src_d.dims()[3]);
 
     const bool args_ok_across = true && desc()->alg_kind == lrn_across_channels
             && desc()->local_size == 5 && one_of(dat_tag_, nChw8c, nchw, nhwc)
@@ -245,10 +245,10 @@ jit_uni_lrn_bwd_t<isa, d_type>::~jit_uni_lrn_bwd_t() = default;
 template <cpu_isa_t isa, data_type_t d_type>
 status_t jit_uni_lrn_bwd_t<isa, d_type>::init(engine_t *engine) {
     using namespace alg_kind;
-    const int C = pd()->C();
-    const int H = pd()->H();
-    const int W = pd()->W();
-    const int &ls = pd()->desc()->local_size;
+    const int C = static_cast<int>(pd()->C());
+    const int H = static_cast<int>(pd()->H());
+    const int W = static_cast<int>(pd()->W());
+    const int &ls = static_cast<int>(pd()->desc()->local_size);
     const auto &ak = pd()->desc()->alg_kind;
     const int ndims = memory_desc_wrapper(pd()->src_md()).ndims();
     const float A = pd()->desc()->lrn_alpha / compute_n_summands(ls, ndims, ak);
@@ -290,10 +290,10 @@ status_t jit_uni_lrn_bwd_t<isa, d_type>::execute_backward(
     auto diff_src = CTX_OUT_CLEAN_MEM(data_t *, DNNL_ARG_DIFF_SRC, status);
     CHECK(status);
 
-    const int N = pd()->MB();
-    const int C = pd()->C();
-    const int H = pd()->H();
-    const int W = pd()->W();
+    const int N = static_cast<int>(pd()->MB());
+    const int C = static_cast<int>(pd()->C());
+    const int H = static_cast<int>(pd()->H());
+    const int W = static_cast<int>(pd()->W());
     const auto ak = pd()->desc()->alg_kind;
     const auto &dat_tag = pd()->dat_tag_;
 

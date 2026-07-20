@@ -53,24 +53,24 @@ void jit_prelu_base_kernel_t::generate() {
     L(unroll_loop);
     {
         const size_t offt = unrolling_factor * simd_w_;
-        cmp(reg_data_size_, offt);
+        cmp(reg_data_size_, static_cast<uint32_t>(offt));
         jl(unroll_loop_tail, T_NEAR);
 
         compute_dst(unrolling_factor, false /*tail*/);
-        sub(reg_data_size_, offt);
-        add(reg_offset_, offt);
+        sub(reg_data_size_, static_cast<uint32_t>(offt));
+        add(reg_offset_, static_cast<uint32_t>(offt));
         jmp(unroll_loop);
     }
 
     static constexpr size_t single_unrolling = 1u;
     L(unroll_loop_tail);
     {
-        cmp(reg_data_size_, simd_w_);
+        cmp(reg_data_size_, static_cast<uint32_t>(simd_w_));
         jl(nelems_tail, T_NEAR);
 
         compute_dst(single_unrolling, false /*tail*/);
-        sub(reg_data_size_, simd_w_);
-        add(reg_offset_, simd_w_);
+        sub(reg_data_size_, static_cast<uint32_t>(simd_w_));
+        add(reg_offset_, static_cast<uint32_t>(simd_w_));
         jmp(unroll_loop_tail);
     }
 
@@ -104,7 +104,7 @@ size_t jit_prelu_base_kernel_t::calc_tail_size(
 }
 
 int jit_prelu_base_kernel_t::reserve_vmm() {
-    return number_reserved_vmms_++;
+    return static_cast<int>(number_reserved_vmms_++);
 }
 
 size_t jit_prelu_base_kernel_t::get_number_reserved_vmms() const noexcept {
@@ -118,8 +118,8 @@ size_t jit_prelu_base_kernel_t::get_number_reserved_vmms() const noexcept {
 
 int jit_prelu_base_kernel_t::get_compute_vmm(
         size_t base_idx, size_t unroll_group) const {
-    return number_reserved_vmms_ + base_idx
-            + unroll_group * number_vmm_single_compute_;
+    return static_cast<int>(number_reserved_vmms_ + base_idx
+            + unroll_group * number_vmm_single_compute_);
 }
 
 size_t jit_prelu_base_kernel_t::calc_unrolling_factor() const noexcept {

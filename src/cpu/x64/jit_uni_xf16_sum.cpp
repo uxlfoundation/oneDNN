@@ -202,7 +202,7 @@ status_t jit_avx512_core_bf16_sum_kernel_t::init_conf(
     jsp.is_bf16_dst = data_type::bf16 == o_d.data_type();
 
     jsp.typesize_in = sizeof(bfloat16_t);
-    jsp.typesize_out = types::data_type_size(o_d.data_type());
+    jsp.typesize_out = static_cast<int>(types::data_type_size(o_d.data_type()));
 
     return status::success;
 }
@@ -259,14 +259,14 @@ void jit_avx2_vnni_2_xf16_sum_kernel_t::tail_iteration() {
     cmp(reg_sz, 0);
     jle(exit_label, T_NEAR);
     for (int unroll = 3; unroll >= 0; unroll--) {
-        const unsigned char process_elems = 1 << unroll;
+        const unsigned char process_elems = static_cast<unsigned char>(1 << unroll);
         mov(rsi, process_elems);
         cmp(reg_sz, rsi);
         jge(tail_unroll_labels[unroll], T_NEAR);
     }
 
     for (int unroll = 3; unroll >= 0; unroll--) {
-        const unsigned char process_elems = 1 << unroll;
+        const unsigned char process_elems = static_cast<unsigned char>(1 << unroll);
         L(tail_unroll_labels[unroll]);
         if (process_elems == 8) {
             Xmm vacc0l = Xmm(acc_vreg_idx(unroll, 0));
@@ -338,8 +338,8 @@ status_t jit_avx2_vnni_2_xf16_sum_kernel_t::init_conf(jit_sum_conf_t &jsp,
     jsp.src_dt = i_d.data_type();
     jsp.dst_dt = o_d.data_type();
 
-    jsp.typesize_in = types::data_type_size(i_d.data_type());
-    jsp.typesize_out = types::data_type_size(o_d.data_type());
+    jsp.typesize_in = static_cast<int>(types::data_type_size(i_d.data_type()));
+    jsp.typesize_out = static_cast<int>(types::data_type_size(o_d.data_type()));
 
     return status::success;
 }
@@ -360,15 +360,15 @@ void jit_uni_xf16_sum_kernel_t<Vmm>::loop_iteration(int current_unroll) {
         uni_vpxor(vacc0, vacc0, vacc0);
         uni_vpxor(vacc1, vacc1, vacc1);
         for (int acc_iter = 0; acc_iter < num_acc_iters; acc_iter++) {
-            read_iter(acc_iter, u_idx, src_shift);
+            read_iter(acc_iter, u_idx, static_cast<int>(src_shift));
             add_iter(acc_iter, u_idx);
         }
-        write_iter(u_idx, dst_shift);
+        write_iter(u_idx, static_cast<int>(dst_shift));
     }
     sub(reg_sz, num_compute_elements);
     for (int s = 0; s < jsp.num_srcs; s++)
-        add(reg_src[s], current_unroll * src_shift);
-    add(reg_dst, 2 * current_unroll * dst_shift);
+        add(reg_src[s], static_cast<uint32_t>(current_unroll * src_shift));
+    add(reg_dst, static_cast<uint32_t>(2 * current_unroll * dst_shift));
     jge(loop_label, T_NEAR);
     L(loop_exit_label);
 }

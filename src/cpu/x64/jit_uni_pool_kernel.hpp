@@ -186,7 +186,8 @@ private:
                 assert(!"Unknown data type for indices");
                 return;
             }
-            add(reg_index, types::data_type_size(jpp.ind_dt) * 4);
+            add(reg_index,
+                    static_cast<uint32_t>(types::data_type_size(jpp.ind_dt) * 4));
         }
 
         step(ur_w, ur_bc, pad_l, pad_r, with_c_tail_processing);

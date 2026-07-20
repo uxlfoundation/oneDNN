@@ -89,13 +89,13 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
         static constexpr bool use_exact_tail_scalar_bcast = false;
 
         const binary_injector::rhs_arg_static_params_t rhs_sp {
-                static_cast<std::size_t>(this->xmm4.getIdx()), this->r14,
+                static_cast<dim_t>(this->xmm4.getIdx()), this->r14,
                 this->r15, this->r13, preserve_gpr, preserve_vmm,
                 GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(dst_orig),
                 memory_desc_wrapper(jpp.tag_kind == jit_memory_tag_kind_t::ncsp
                                 ? jpp.tmp_md
                                 : *dst_md),
-                static_cast<size_t>(tail_size), k_c_tail_mask,
+                static_cast<dim_t>(tail_size), k_c_tail_mask,
                 use_exact_tail_scalar_bcast};
 
         const binary_injector::static_params_t bsp {reg_param,
@@ -197,17 +197,17 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
     jpp.is_training = pd.prop_kind == prop_kind::forward_training;
     jpp.is_backward = pd.prop_kind == prop_kind::backward_data;
 
-    jpp.id = (ndims == 5) ? src_d.dims()[2] : 1;
-    jpp.ih = (ndims == 3) ? 1 : src_d.dims()[ndims - 2];
-    jpp.iw = src_d.dims()[ndims - 1];
-    jpp.od = (ndims == 5) ? dst_d.dims()[2] : 1;
-    jpp.ow = dst_d.dims()[ndims - 1];
-    jpp.oh = (ndims == 3) ? 1 : dst_d.dims()[ndims - 2];
+    jpp.id = static_cast<int>((ndims == 5) ? src_d.dims()[2] : 1);
+    jpp.ih = static_cast<int>((ndims == 3) ? 1 : src_d.dims()[ndims - 2]);
+    jpp.iw = static_cast<int>(src_d.dims()[ndims - 1]);
+    jpp.od = static_cast<int>((ndims == 5) ? dst_d.dims()[2] : 1);
+    jpp.ow = static_cast<int>(dst_d.dims()[ndims - 1]);
+    jpp.oh = static_cast<int>((ndims == 3) ? 1 : dst_d.dims()[ndims - 2]);
 
     const bool is_avx512 = is_superset(isa, avx512_core);
     jpp.ndims = ndims;
-    jpp.mb = src_d.dims()[0];
-    jpp.c_without_padding = src_d.dims()[1];
+    jpp.mb = static_cast<int>(src_d.dims()[0]);
+    jpp.c_without_padding = static_cast<int>(src_d.dims()[1]);
     jpp.c_block = is_avx512 ? 16 : 8;
 
     jpp.alg = pd.alg_kind;
@@ -284,7 +284,7 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
         jpp.is_f16 = false;
         jpp.is_fp8 = false;
         jpp.src_dt = jpp.dst_dt = data_type::f32;
-        jpp.dt_size = types::data_type_size(jpp.src_dt);
+        jpp.dt_size = static_cast<int>(types::data_type_size(jpp.src_dt));
         jpp.tag_kind = jit_memory_tag_kind_t::ncsp;
 
         // used to initialize binary post-ops
@@ -293,7 +293,7 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
                     data_type::f32, blocked_fmt_tag));
         }
     } else {
-        jpp.dt_size = types::data_type_size(src_d.data_type());
+        jpp.dt_size = static_cast<int>(types::data_type_size(src_d.data_type()));
         jpp.tag_kind = (fmt_tag == nspc_fmt_tag)
                 ? jit_memory_tag_kind_t::nspc
                 : jit_memory_tag_kind_t::blocked;
@@ -356,23 +356,23 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(
     jpp.is_c_padded = jpp.tag_kind == jit_memory_tag_kind_t::blocked
             && src_d.padded_dims()[1] != jpp.c_without_padding;
 
-    jpp.stride_d = (ndims == 5) ? pd.strides[0] : 1;
-    jpp.stride_h = (ndims == 3) ? 1 : pd.strides[ndims - 4];
-    jpp.stride_w = pd.strides[ndims - 3];
-    jpp.kd = (ndims == 5) ? pd.kernel[0] : 1;
-    jpp.kh = (ndims == 3) ? 1 : pd.kernel[ndims - 4];
-    jpp.kw = pd.kernel[ndims - 3];
+    jpp.stride_d = static_cast<int>((ndims == 5) ? pd.strides[0] : 1);
+    jpp.stride_h = static_cast<int>((ndims == 3) ? 1 : pd.strides[ndims - 4]);
+    jpp.stride_w = static_cast<int>(pd.strides[ndims - 3]);
+    jpp.kd = static_cast<int>((ndims == 5) ? pd.kernel[0] : 1);
+    jpp.kh = static_cast<int>((ndims == 3) ? 1 : pd.kernel[ndims - 4]);
+    jpp.kw = static_cast<int>(pd.kernel[ndims - 3]);
 
-    jpp.f_pad = (ndims == 5) ? pd.padding[0][0] : 0;
-    jpp.t_pad = (ndims == 3) ? 0 : pd.padding[0][ndims - 4];
-    jpp.l_pad = pd.padding[0][ndims - 3];
+    jpp.f_pad = static_cast<int>((ndims == 5) ? pd.padding[0][0] : 0);
+    jpp.t_pad = static_cast<int>((ndims == 3) ? 0 : pd.padding[0][ndims - 4]);
+    jpp.l_pad = static_cast<int>(pd.padding[0][ndims - 3]);
 
-    const int back_pad = calculate_end_padding(
-            jpp.f_pad, jpp.od, jpp.id, jpp.stride_d, jpp.kd);
-    const int bottom_pad = calculate_end_padding(
-            jpp.t_pad, jpp.oh, jpp.ih, jpp.stride_h, jpp.kh);
-    const int right_pad = calculate_end_padding(
-            jpp.l_pad, jpp.ow, jpp.iw, jpp.stride_w, jpp.kw);
+    const int back_pad = static_cast<int>(calculate_end_padding(
+            jpp.f_pad, jpp.od, jpp.id, jpp.stride_d, jpp.kd));
+    const int bottom_pad = static_cast<int>(calculate_end_padding(
+            jpp.t_pad, jpp.oh, jpp.ih, jpp.stride_h, jpp.kh));
+    const int right_pad = static_cast<int>(calculate_end_padding(
+            jpp.l_pad, jpp.ow, jpp.iw, jpp.stride_w, jpp.kw));
 
     VDISPATCH_POOLING_IC(
             !(jpp.f_pad >= jpp.kd || jpp.t_pad >= jpp.kh || jpp.l_pad >= jpp.kw
@@ -566,7 +566,8 @@ inline void jit_uni_pool_kernel_t<isa>::pad_with_zeros(const int idx) {
             const auto c_tail = jpp.c_tail % sse41_single_block_size;
             std::bitset<8> tail_mask((1 << c_tail) - 1);
             tail_mask.flip();
-            uni_vblendps(Vmm(idx), Vmm(idx), xmm_tmp_1, tail_mask.to_ulong());
+            uni_vblendps(Vmm(idx), Vmm(idx), xmm_tmp_1,
+                    static_cast<int>(tail_mask.to_ulong()));
         }
     } else if (isa == avx || isa == avx2) {
         uni_vxorps(ymm_tmp_1, ymm_tmp_1, ymm_tmp_1);
@@ -584,7 +585,8 @@ inline void jit_uni_pool_kernel_t<isa>::load_indices(
         if (isa == sse41) {
             if (is_c_tail_processing && !jpp.is_c_padded) {
                 for (int i = 0; i < jpp.c_tail % (jpp.c_block / 2); i++)
-                    pinsrb(indxr, ptr[reg_index + step_index + i], i);
+                    pinsrb(indxr, ptr[reg_index + step_index + i],
+                            static_cast<uint8_t>(i));
             } else {
                 movd(indxr, ptr[reg_index + step_index]);
             }
@@ -592,7 +594,8 @@ inline void jit_uni_pool_kernel_t<isa>::load_indices(
         } else if (isa == avx || isa == avx2) {
             if (is_c_tail_processing && !jpp.is_c_padded) {
                 for (int i = 0; i < jpp.c_tail; i++)
-                    vpinsrb(indxr, indxr, ptr[reg_index + step_index + i], i);
+                    vpinsrb(indxr, indxr, ptr[reg_index + step_index + i],
+                            static_cast<uint8_t>(i));
             } else {
                 vmovq(indxr, ptr[reg_index + step_index]);
             }
@@ -639,7 +642,8 @@ inline void jit_uni_pool_kernel_t<isa>::store_indices(const int indr_i,
                     // bytes which should be stored are located in
                     // least significant bits(8 to be precise) of 32 bits parts
                     // of xmm thus we need to store 0, 4, 8 and 12 byte of xmm
-                    pextrb(ptr[reg_index + step_index + i], xr, 4 * i);
+                    pextrb(ptr[reg_index + step_index + i], xr,
+                            static_cast<uint8_t>(4 * i));
                 }
             }
         } else if (utils::one_of(isa, avx, avx2, avx2_vnni_2)) {
@@ -652,7 +656,8 @@ inline void jit_uni_pool_kernel_t<isa>::store_indices(const int indr_i,
                     // bytes which should be stored are located in
                     // least significant bits(8 to be precise) of 32 bits parts
                     // of xmm thus we need to store 0, 4, 8 and 12 byte of xmm
-                    vpextrb(ptr[reg_index + step_index + i], xr, 4 * i);
+                    vpextrb(ptr[reg_index + step_index + i], xr,
+                            static_cast<uint8_t>(4 * i));
                 }
 
                 if (jpp.c_tail > (jpp.c_block / 2)) {
@@ -664,7 +669,7 @@ inline void jit_uni_pool_kernel_t<isa>::store_indices(const int indr_i,
                         // of xmm thus we need to store 0, 4, 8 and 12 byte of xmm
                         vpextrb(ptr[reg_index + step_index + (jpp.c_block / 2)
                                         + i],
-                                higher_128bits, 4 * i);
+                                higher_128bits, static_cast<uint8_t>(4 * i));
                     }
                 }
             } else {
@@ -1097,8 +1102,8 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int ur_bc,
 
             const auto indr_i = reg_ind(2, bci, jj, ur_bc, ur_w);
             const bool is_first_w_block = jj == 0;
-            store_indices(
-                    indr_i, step_index, is_c_tail_processing, is_first_w_block);
+            store_indices(indr_i, static_cast<int>(step_index), is_c_tail_processing,
+                    is_first_w_block);
         }
     }
 }
@@ -1113,9 +1118,9 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
     int c_block = jpp.c_block;
     const int output_c_off
             = (jpp.tag_kind == jit_memory_tag_kind_t::nspc) ? jpp.c : c_block;
-    const int input_c_off = jpp.needs_f32_accum_for_bf16
-            ? jpp.f32_accum_block_size
-            : output_c_off;
+    const int input_c_off
+            = static_cast<int>(jpp.needs_f32_accum_for_bf16 ? jpp.f32_accum_block_size
+                                                     : output_c_off);
     const auto input_dt
             = jpp.needs_f32_accum_for_bf16 ? data_type::f32 : jpp.src_dt;
     const size_t input_dt_size = types::data_type_size(input_dt);
@@ -1141,13 +1146,13 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
         const auto outr_i = reg_ind(0, bci, jj, ur_bc, ur_w);
         auto out_offset = output_dt_size * (jj * output_c_off + bci * c_block);
         const bool is_c_tail_processing = is_tail_processing(bci);
-        load(jpp.dst_dt, reg_idx(outr_i), reg_output, out_offset,
+        load(jpp.dst_dt, reg_idx(outr_i), reg_output, static_cast<int>(out_offset),
                 is_c_tail_processing);
         const size_t step_index = (jj * output_c_off + bci * c_block)
                 * types::data_type_size(jpp.ind_dt);
 
         const auto indr_i = reg_ind(1, bci, jj, ur_bc, ur_w);
-        load_indices(indr_i, step_index, is_c_tail_processing);
+        load_indices(indr_i, static_cast<int>(step_index), is_c_tail_processing);
     }
     uni_vmovq(xmm_tmp, reg_k_shift);
     uni_vpbroadcastd(vmm_k_offset, xmm_tmp);
@@ -1182,7 +1187,7 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
                 int aux_inp_offset = (ki + jj * stride_w - pad_l) * input_c_off
                         + bci * c_block;
                 if (aux_inp_offset >= iw * input_c_off) continue;
-                int inp_offset = input_dt_size * aux_inp_offset;
+                int inp_offset = static_cast<int>(input_dt_size * aux_inp_offset);
                 load(input_dt, reg_idx(inpr_i), aux_reg_input, inp_offset,
                         is_tail_processing(bci));
                 if (isa == sse41) {
@@ -1226,13 +1231,14 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
             if (with_c_tail_proccessing && (isa == avx || isa == avx2))
                 pop_vmm_val(vmm_c_tail_mask.getIdx());
         }
-        add(aux_reg_input, input_dt_size * iw * input_c_off);
+        add(aux_reg_input, static_cast<uint32_t>(input_dt_size * iw * input_c_off));
         inc(kj);
         cmp(kj, reg_kh);
         jl(kh_label, T_NEAR);
     }
     if (jpp.simple_alg && jpp.ndims == 5) {
-        add(aux_reg_input_d, input_dt_size * jpp.ih * iw * input_c_off);
+        add(aux_reg_input_d,
+                static_cast<uint32_t>(input_dt_size * jpp.ih * iw * input_c_off));
 
         mov(tmp_gpr, reg_kd_pad_shift);
         uni_vmovq(xmm_tmp, tmp_gpr);
@@ -1255,10 +1261,11 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
 template <cpu_isa_t isa>
 void jit_uni_pool_kernel_t<isa>::zero_diff_src(
         int ur_bc, bool with_c_tail_proccessing) {
-    const int c_off = jpp.needs_f32_accum_for_bf16
-            ? jpp.f32_accum_block_size
-            : ((jpp.tag_kind == jit_memory_tag_kind_t::nspc) ? jpp.c
-                                                             : jpp.c_block);
+    const int c_off = static_cast<int>(jpp.needs_f32_accum_for_bf16
+                    ? jpp.f32_accum_block_size
+                    : ((jpp.tag_kind == jit_memory_tag_kind_t::nspc)
+                                      ? jpp.c
+                                      : jpp.c_block));
 
     Label l_skip, l_ih_loop, l_id_loop;
 
@@ -1282,7 +1289,7 @@ void jit_uni_pool_kernel_t<isa>::zero_diff_src(
     const auto src_dt
             = jpp.needs_f32_accum_for_bf16 ? data_type::f32 : jpp.src_dt;
     const auto dt_size = types::data_type_size(src_dt);
-    const int width_size = jpp.iw * c_off * dt_size;
+    const int width_size = static_cast<int>(jpp.iw * c_off * dt_size);
 
     auto aux_reg_zero_ptr = tmp_gpr;
 
@@ -1293,12 +1300,12 @@ void jit_uni_pool_kernel_t<isa>::zero_diff_src(
         L(l_ih_loop);
         {
             const auto vlen = cpu_isa_traits_t<isa>::vlen;
-            const int step = c_off * dt_size;
+            const int step = static_cast<int>(c_off * dt_size);
 
             // TODO: maybe a big code generated here
             for_(int i = 0; i < width_size; i += step)
             for (int bci = 0; bci < ur_bc; bci++) {
-                const int offs = i + bci * jpp.c_block * dt_size;
+                const int offs = static_cast<int>(i + bci * jpp.c_block * dt_size);
                 if (isa == sse41) {
                     bool is_needed_c_tail_processing = false;
                     if (is_tail_processing(bci)
@@ -1347,9 +1354,9 @@ void jit_uni_pool_kernel_t<isa>::generate() {
     int l_pad = jpp.l_pad;
     const int output_c_off
             = (jpp.tag_kind == jit_memory_tag_kind_t::nspc) ? jpp.c : c_block;
-    const int input_c_off = jpp.needs_f32_accum_for_bf16
-            ? jpp.f32_accum_block_size
-            : output_c_off;
+    const int input_c_off
+            = static_cast<int>(jpp.needs_f32_accum_for_bf16 ? jpp.f32_accum_block_size
+                                                     : output_c_off);
 
     int vlen = cpu_isa_traits_t<isa>::vlen;
 
@@ -1400,14 +1407,17 @@ void jit_uni_pool_kernel_t<isa>::generate() {
         auto output_dt_size = jpp.dt_size;
         auto shift = (isa == sse41) ? vlen : 0;
         add(reg_input,
-                input_dt_size * nstl::max(0, ur_w * stride_w - lpad)
+                static_cast<uint32_t>(input_dt_size
+                                * nstl::max(0, ur_w * stride_w - lpad)
                                 * input_c_off
-                        - shift);
+                        - shift));
         add(reg_output, output_dt_size * ur_w * output_c_off - shift);
         if (jpp.alg == pooling_max && (jpp.is_training || jpp.is_backward)) {
             auto ishift = (isa == sse41) ? jpp.c_block / 2 : 0;
             auto ind_dt_size = types::data_type_size(jpp.ind_dt);
-            add(reg_index, (ur_w * output_c_off - ishift) * ind_dt_size);
+            add(reg_index,
+                    static_cast<uint32_t>(
+                            (ur_w * output_c_off - ishift) * ind_dt_size));
         }
     };
 
@@ -1456,8 +1466,8 @@ void jit_uni_pool_kernel_t<isa>::generate() {
             const int ow_s = i * ur_w;
             const int ow_e = nstl::min(ow, ow_s + ur_w);
             const int cur_l_pad = l_pad - i * ur_stride_w;
-            const int cur_r_pad = nstl::max(
-                    0, calculate_end_padding(l_pad, ow_e, iw, stride_w, kw));
+            const int cur_r_pad = static_cast<int>(nstl::max<dim_t>(
+                    0, calculate_end_padding(l_pad, ow_e, iw, stride_w, kw)));
             const int cur_ur_w = ow_e - ow_s;
             process_oi(cur_ur_w, ur_bc, cur_l_pad, cur_r_pad,
                     with_c_tail_processing);
@@ -1487,8 +1497,8 @@ void jit_uni_pool_kernel_t<isa>::generate() {
                 i < n_oi_iterations; ++i) {
             const int ow_s = i * ur_w;
             const int ow_e = nstl::min(ow, ow_s + ur_w);
-            const int cur_r_pad = nstl::max(
-                    0, calculate_end_padding(l_pad, ow_e, iw, stride_w, kw));
+            const int cur_r_pad = static_cast<int>(nstl::max<dim_t>(
+                    0, calculate_end_padding(l_pad, ow_e, iw, stride_w, kw)));
             const int cur_ur_w = ow_e - ow_s;
             process_oi(cur_ur_w, ur_bc, 0, cur_r_pad, with_c_tail_processing);
         }

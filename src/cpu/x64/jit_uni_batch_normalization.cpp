@@ -767,8 +767,8 @@ struct jit_bnorm_t : public jit_generator_t {
                     size_t base_reg = i % regs;
                     body(base_reg, i);
                 }
-                add(reg_soff, factor * spat_step);
-                sub(reg_ctr, factor);
+                add(reg_soff, static_cast<uint32_t>(factor * spat_step));
+                sub(reg_ctr, static_cast<uint32_t>(factor));
                 jnz(label);
             }
             if (jbp_->is_spatial_thr_) {
@@ -780,7 +780,7 @@ struct jit_bnorm_t : public jit_generator_t {
             size_t base_reg = i % regs;
             body(base_reg, i);
         }
-        if (loop_tail) add(reg_soff, loop_tail * spat_step);
+        if (loop_tail) add(reg_soff, static_cast<uint32_t>(loop_tail * spat_step));
 
         for (size_t i = 0; i < num_active_regs; i++)
             fini(i);
@@ -793,17 +793,17 @@ struct jit_bnorm_t : public jit_generator_t {
             uni_vmovups(Vmm(0), vmmword[reg_rbuf1 + reg_coff]);
             spat_loop(spat_size, unroll_blocks, unroll_regs,
                     [this](size_t base_reg) {
-                Vmm v = Vmm(base_reg * 2);
+                Vmm v = Vmm(static_cast<int>(base_reg * 2));
                 if (base_reg) uni_vpxor(v, v, v);
             }, [this](size_t base_reg, size_t i) {
-                Vmm v0 = Vmm(base_reg * 2 + 0);
-                Vmm v1 = Vmm(base_reg * 2 + 1);
+                Vmm v0 = Vmm(static_cast<int>(base_reg * 2 + 0));
+                Vmm v1 = Vmm(static_cast<int>(base_reg * 2 + 1));
                 size_t offt = i * vlen_spat_data_;
                 uni_vmovups_spat_data(v1, vmmword[reg_src + reg_soff + offt]);
                 uni_vaddps(v0, v0, v1);
             }, [this](size_t base_reg) {
                 Vmm b = Vmm(0);
-                Vmm v = Vmm(base_reg * 2);
+                Vmm v = Vmm(static_cast<int>(base_reg * 2));
                 if (base_reg) uni_vaddps(b, b, v);
             });
             uni_vmovups(vmmword[reg_rbuf1 + reg_coff], Vmm(0));
@@ -836,7 +836,7 @@ struct jit_bnorm_t : public jit_generator_t {
                     if (!is_ch_blks_tail)
                         uni_vaddps(Vmm(ch_idx + 1), Vmm(ch_idx + 1), vsrc_odd);
                 }
-                add(reg_soff_nspc, spat_step);
+                add(reg_soff_nspc, static_cast<uint32_t>(spat_step));
             }
         };
 
@@ -863,7 +863,7 @@ struct jit_bnorm_t : public jit_generator_t {
                         uni_vfmadd231ps(Vmm(ch_idx + 1), vsrc_odd, vsrc_odd);
                     }
                 }
-                add(reg_soff_nspc, spat_step);
+                add(reg_soff_nspc, static_cast<uint32_t>(spat_step));
             }
         };
 
@@ -876,7 +876,7 @@ struct jit_bnorm_t : public jit_generator_t {
                             vsrc, vmmword[reg_src + reg_soff_nspc + offt]);
                     uni_vaddps(Vmm(ch_idx), Vmm(ch_idx), vsrc);
                 }
-                add(reg_soff_nspc, spat_step);
+                add(reg_soff_nspc, static_cast<uint32_t>(spat_step));
             }
         };
 
@@ -891,7 +891,7 @@ struct jit_bnorm_t : public jit_generator_t {
                     uni_vsubps(vsrc, vsrc, vmean_ch);
                     uni_vfmadd231ps(Vmm(ch_idx), vsrc, vsrc);
                 }
-                add(reg_soff_nspc, spat_step);
+                add(reg_soff_nspc, static_cast<uint32_t>(spat_step));
             }
         };
 
@@ -914,7 +914,8 @@ struct jit_bnorm_t : public jit_generator_t {
             num_spat_pts = 1;
         } else {
             mov(reg_ctr, spat_size);
-            num_spat_pts = nstl::min((size_t)num_spat_pts, spat_size);
+            num_spat_pts
+                    = static_cast<int>(nstl::min((size_t)num_spat_pts, spat_size));
             // TODO: unroll by spatial
             if (spat_size % num_spat_pts != 0) num_spat_pts = 1;
         }
@@ -1065,7 +1066,7 @@ struct jit_bnorm_t : public jit_generator_t {
                             vmmword[reg_dst + reg_soff_nspc + offt], vdata,
                             stream_store_allowed);
                 }
-                add(reg_soff_nspc, spat_step);
+                add(reg_soff_nspc, static_cast<uint32_t>(spat_step));
                 sub(reg_ctr, num_spat_pts);
                 jnz(spatial, T_NEAR);
             }
@@ -1130,12 +1131,12 @@ struct jit_bnorm_t : public jit_generator_t {
             uni_vmovups(Vmm(0), vmmword[reg_rbuf1 + reg_coff]);
             spat_loop(spat_size, unroll_blocks, unroll_regs,
                     [this](size_t base_reg) {
-                Vmm v = Vmm(base_reg * 3);
+                Vmm v = Vmm(static_cast<int>(base_reg * 3));
                 if (base_reg > 0) uni_vpxor(v, v, v);
             }, [this](size_t base_reg, size_t i) {
-                Vmm v = Vmm(3 * base_reg);
-                Vmm vtmp0 = Vmm(3 * base_reg + 1);
-                Vmm vtmp1 = Vmm(3 * base_reg + 2);
+                Vmm v = Vmm(static_cast<int>(3 * base_reg));
+                Vmm vtmp0 = Vmm(static_cast<int>(3 * base_reg + 1));
+                Vmm vtmp1 = Vmm(static_cast<int>(3 * base_reg + 2));
                 size_t offt = i * vlen_spat_data_;
                 uni_vmovups_spat_data(
                         vtmp0, vmmword[reg_src + reg_soff + offt]);
@@ -1148,7 +1149,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 uni_vfmadd231ps(v, vtmp1, vtmp1);
             }, [this](size_t base_reg) {
                 Vmm b = Vmm(0);
-                Vmm v = Vmm(base_reg * 3);
+                Vmm v = Vmm(static_cast<int>(base_reg * 3));
                 if (base_reg) uni_vaddps(b, b, v);
             });
             uni_vmovups(vmmword[reg_rbuf1 + reg_coff], Vmm(0));
@@ -1195,8 +1196,8 @@ struct jit_bnorm_t : public jit_generator_t {
             // Process next image
             if (jbp_->is_nspc_) {
                 // Can use static offset since we comeback after spatial loop
-                add(reg_src, mb_offt);
-                add(reg_soff, mb_offt);
+                add(reg_src, static_cast<uint32_t>(mb_offt));
+                add(reg_soff, static_cast<uint32_t>(mb_offt));
             } else {
                 add(reg_soff, reg_mb_stride_Bc);
             }
@@ -1266,8 +1267,8 @@ struct jit_bnorm_t : public jit_generator_t {
             // Process next image
             if (jbp_->is_nspc_) {
                 // Can use static offset since we comeback after spatial loop
-                add(reg_src, mb_offt);
-                add(reg_soff, mb_offt);
+                add(reg_src, static_cast<uint32_t>(mb_offt));
+                add(reg_soff, static_cast<uint32_t>(mb_offt));
             } else {
                 add(reg_soff, reg_mb_stride_Bc);
             }
@@ -1343,7 +1344,7 @@ struct jit_bnorm_t : public jit_generator_t {
 
             const auto spat_loop_body = [this](size_t base_reg, size_t i,
                                                 bool stream_store_allowed) {
-                const Vmm v = Vmm(base_reg);
+                const Vmm v = Vmm(static_cast<int>(base_reg));
                 const size_t offt = i * vlen_spat_data_;
                 uni_vmovups_spat_data(v, vmmword[reg_src + reg_soff + offt]);
                 uni_vsubps(v, v, vmean);
@@ -1366,9 +1367,9 @@ struct jit_bnorm_t : public jit_generator_t {
                         uni_vmaxps(v, v, vzero);
                 } else if (with_relu) { // --flags=R
                     if (isa == avx512_core)
-                        fwd_process_relu_avx512_common(v, offt);
+                        fwd_process_relu_avx512_common(v, static_cast<int>(offt));
                     else
-                        fwd_process_relu_avx2(v, offt);
+                        fwd_process_relu_avx2(v, static_cast<int>(offt));
                 }
                 if (stream_store_allowed) {
                     uni_vmovntps(vmmword[reg_dst + reg_soff + offt], v);
@@ -1482,10 +1483,10 @@ struct jit_bnorm_t : public jit_generator_t {
             // Process next image
             if (jbp_->is_nspc_) {
                 // Can use static offset since we comeback after spatial loop
-                add(reg_src, mb_offt);
-                add(reg_dst, mb_offt);
-                add(reg_soff, mb_offt);
-                add(reg_ws, ws_mb_offt);
+                add(reg_src, static_cast<uint32_t>(mb_offt));
+                add(reg_dst, static_cast<uint32_t>(mb_offt));
+                add(reg_soff, static_cast<uint32_t>(mb_offt));
+                add(reg_ws, static_cast<uint32_t>(ws_mb_offt));
             } else {
                 add(reg_soff, reg_mb_stride_Bc);
             }
@@ -1512,26 +1513,26 @@ struct jit_bnorm_t : public jit_generator_t {
             spat_loop(spat_size, 1, 1, [this](size_t base_reg) {
                 if (base_reg > 0) {
                     for (int i = 0; i < 2; i++) {
-                        Vmm v(base_reg * 5 + i);
+                        Vmm v(static_cast<int>(base_reg * 5 + i));
                         uni_vpxor(v, v, v);
                     }
                 }
             }, [this](size_t base_reg, size_t i) {
                 // TODO: use single set of tmp regs and let ROB handle the rest
-                Vmm o0 = Vmm(base_reg * 5 + 0);
-                Vmm o1 = Vmm(base_reg * 5 + 1);
-                Vmm t1 = Vmm(base_reg * 5 + 2);
-                Vmm t2 = Vmm(base_reg * 5 + 3);
-                Vmm t3 = Vmm(base_reg * 5 + 4);
+                Vmm o0 = Vmm(static_cast<int>(base_reg * 5 + 0));
+                Vmm o1 = Vmm(static_cast<int>(base_reg * 5 + 1));
+                Vmm t1 = Vmm(static_cast<int>(base_reg * 5 + 2));
+                Vmm t2 = Vmm(static_cast<int>(base_reg * 5 + 3));
+                Vmm t3 = Vmm(static_cast<int>(base_reg * 5 + 4));
                 size_t offt = i * vlen_spat_data_;
                 uni_vmovups_spat_data(t1, vmmword[reg_src + reg_soff + offt]);
                 uni_vmovups_spat_data(
                         t2, vmmword[reg_diff_dst + reg_soff + offt]);
                 if (with_relu) {
                     if (isa == avx512_core)
-                        bwd_process_relu_avx512_common(t2, offt);
+                        bwd_process_relu_avx512_common(t2, static_cast<int>(offt));
                     else if (isa == avx2)
-                        bwd_process_relu_avx2(t2, offt);
+                        bwd_process_relu_avx2(t2, static_cast<int>(offt));
                     else
                         assert(false);
                 }
@@ -1547,8 +1548,8 @@ struct jit_bnorm_t : public jit_generator_t {
                 Vmm b0 = Vmm(0);
                 Vmm b1 = Vmm(1);
                 if (base_reg) {
-                    uni_vaddps(b0, b0, Vmm(base_reg * 5 + 0));
-                    uni_vaddps(b1, b1, Vmm(base_reg * 5 + 1));
+                    uni_vaddps(b0, b0, Vmm(static_cast<int>(base_reg * 5 + 0)));
+                    uni_vaddps(b1, b1, Vmm(static_cast<int>(base_reg * 5 + 1)));
                 }
             });
             uni_vmovups(vmmword[reg_rbuf1 + reg_coff], Vmm(0));
@@ -1609,7 +1610,7 @@ struct jit_bnorm_t : public jit_generator_t {
                 uni_vfmadd231ps(vdiff_gamma_ch, vsrc, vdiff_dst);
                 uni_vaddps(vdiff_beta_ch, vdiff_beta_ch, vdiff_dst);
             }
-            add(reg_soff_nspc, spat_step);
+            add(reg_soff_nspc, static_cast<uint32_t>(spat_step));
             sub(reg_ctr, num_spat_pts);
             jnz(spatial, T_NEAR);
         }
@@ -1691,17 +1692,17 @@ struct jit_bnorm_t : public jit_generator_t {
                     = [](size_t base_reg) { UNUSED(base_reg); };
             const auto spat_loop_body = [this](size_t base_reg, size_t i,
                                                 bool stream_store_allowed) {
-                const Vmm v(base_reg * 2 + 0);
-                const Vmm t(base_reg * 2 + 1);
-                const Vmm t1(base_reg * 2 + 2);
+                const Vmm v(static_cast<int>(base_reg * 2 + 0));
+                const Vmm t(static_cast<int>(base_reg * 2 + 1));
+                const Vmm t1(static_cast<int>(base_reg * 2 + 2));
                 const size_t offt = i * vlen_spat_data_;
                 uni_vmovups_spat_data(
                         v, vmmword[reg_diff_dst + reg_soff + offt]);
                 if (with_relu) {
                     if (isa == avx512_core)
-                        bwd_process_relu_avx512_common(v, offt);
+                        bwd_process_relu_avx512_common(v, static_cast<int>(offt));
                     else if (isa == avx2)
-                        bwd_process_relu_avx2(v, offt);
+                        bwd_process_relu_avx2(v, static_cast<int>(offt));
                     else
                         assert(false);
                 }
@@ -1838,7 +1839,7 @@ struct jit_bnorm_t : public jit_generator_t {
                             vmmword[reg_diff_src + reg_soff_nspc + offt],
                             vdiff_data, stream_store_allowed);
                 }
-                add(reg_soff_nspc, spat_step);
+                add(reg_soff_nspc, static_cast<uint32_t>(spat_step));
                 sub(reg_ctr, num_spat_pts);
                 jnz(spatial, T_NEAR);
             }
@@ -1947,10 +1948,10 @@ struct jit_bnorm_t : public jit_generator_t {
             // Process next image
             if (jbp_->is_nspc_) {
                 // Can use static offset since we comeback after spatial loop
-                add(reg_src, mb_offt);
-                add(reg_diff_dst, mb_offt);
-                add(reg_soff, mb_offt);
-                add(reg_ws, ws_mb_offt);
+                add(reg_src, static_cast<uint32_t>(mb_offt));
+                add(reg_diff_dst, static_cast<uint32_t>(mb_offt));
+                add(reg_soff, static_cast<uint32_t>(mb_offt));
+                add(reg_ws, static_cast<uint32_t>(ws_mb_offt));
             } else {
                 add(reg_soff, reg_mb_stride_Bc);
             }
@@ -2037,11 +2038,12 @@ struct jit_bnorm_t : public jit_generator_t {
             // Process next image
             if (jbp_->is_nspc_) {
                 // Can use static offset since we comeback after spatial loop
-                if (!pd_->use_global_stats()) add(reg_src, mb_offt);
-                add(reg_diff_dst, mb_offt);
-                add(reg_diff_src, mb_offt);
-                add(reg_soff, mb_offt);
-                add(reg_ws, ws_mb_offt);
+                if (!pd_->use_global_stats())
+                    add(reg_src, static_cast<uint32_t>(mb_offt));
+                add(reg_diff_dst, static_cast<uint32_t>(mb_offt));
+                add(reg_diff_src, static_cast<uint32_t>(mb_offt));
+                add(reg_soff, static_cast<uint32_t>(mb_offt));
+                add(reg_ws, static_cast<uint32_t>(ws_mb_offt));
             } else {
                 add(reg_soff, reg_mb_stride_Bc);
             }
@@ -2179,7 +2181,7 @@ struct driver_t : public c_compatible {
         dim_t W = pd_->W();
         dim_t SP = D * H * W;
         dim_t img_size = C_PADDED * SP;
-        const int vlen_spat_data = ker_.spat_step;
+        const int vlen_spat_data = static_cast<int>(ker_.spat_step);
 
         typename jit_bnorm_t<isa>::call_params_t p;
 
@@ -2218,13 +2220,13 @@ struct driver_t : public c_compatible {
                 p.N_nthr = jbp_.N_nthr_last_iter_ * jbp_.S_nthr_last_iter_;
             }
 
-            global_C_blk_s = jbp_.do_blocking_ ? (C_blk_s == -1)
-                            ? -1
-                            : it * jbp_.C_blks_per_iter_ + C_blk_s
-                                               : C_blk_s;
+            global_C_blk_s = static_cast<int>(jbp_.do_blocking_ ? (C_blk_s == -1)
+                                    ? -1
+                                    : it * jbp_.C_blks_per_iter_ + C_blk_s
+                                                         : C_blk_s);
 
-            int C_blks_thr = C_blk_e - C_blk_s;
-            int N_thr = N_e - N_s;
+            int C_blks_thr = static_cast<int>(C_blk_e - C_blk_s);
+            int N_thr = static_cast<int>(N_e - N_s);
 
             if (C_blks_thr == 0 || N_thr == 0) continue;
 
@@ -2290,7 +2292,8 @@ struct driver_t : public c_compatible {
     void init_barriers(const memory_tracking::grantor_t &scratchpad) {
         auto barriers = scratchpad.get<barrier::ctx_64_t>(key_barrier);
         if (barriers) {
-            const int n_barriers = get_c_padded(pd_) / simd_w;
+            const int n_barriers
+                    = static_cast<int>(get_c_padded(pd_) / simd_w);
             for (int i = 0; i < n_barriers; ++i)
                 barrier::ctx_init(&barriers[i]);
         }

@@ -252,7 +252,7 @@ status_t nhwc_pooling_fwd_t<data_type::f32>::execute_forward(
                 } else {
                     array_nhwc_max(OC, dst + dst_offset_init,
                             src + src_offset_init, ws, ws_offset_init, ws_dt,
-                            kd * KH * KW + kh * KW + kw);
+                            static_cast<int>(kd * KH * KW + kh * KW + kw));
                 }
             }
         } else {
@@ -422,7 +422,7 @@ status_t nhwc_pooling_fwd_t<d_type>::execute_forward(
                     }
                 } else {
                     array_nhwc_max(OC, dst_f32, src_f32, ws, ws_offset_init,
-                            ws_dt, kd * KH * KW + kh * KW + kw);
+                            ws_dt, static_cast<int>(kd * KH * KW + kh * KW + kw));
                 }
             }
         } else {

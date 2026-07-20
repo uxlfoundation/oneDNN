@@ -34,13 +34,13 @@ public:
         : ker_(nullptr)
         , ker_first_(nullptr)
         , ker_last_(nullptr)
-        , N_(pd->MB())
-        , C_(pd->C())
-        , H_(pd->H())
-        , W_(pd->W())
+        , N_(static_cast<int>(pd->MB()))
+        , C_(static_cast<int>(pd->C()))
+        , H_(static_cast<int>(pd->H()))
+        , W_(static_cast<int>(pd->W()))
         , use_h_parallelism_(H_ > 28 ? 1 : 0) {
 
-        const int local_size = pd->desc()->local_size;
+        const int local_size = static_cast<int>(pd->desc()->local_size);
         const float alpha = pd->desc()->lrn_alpha / local_size;
         const float beta = pd->desc()->lrn_beta;
         const auto pk = pd->desc()->prop_kind;
@@ -174,13 +174,13 @@ public:
         : ker_(nullptr)
         , ker_first_(nullptr)
         , ker_last_(nullptr)
-        , N_(pd->MB())
-        , C_(pd->C())
-        , H_(pd->H())
-        , W_(pd->W())
+        , N_(static_cast<int>(pd->MB()))
+        , C_(static_cast<int>(pd->C()))
+        , H_(static_cast<int>(pd->H()))
+        , W_(static_cast<int>(pd->W()))
         , use_h_parallelism_(H_ > 28 ? 1 : 0) {
 
-        const int local_size = pd->desc()->local_size;
+        const int local_size = static_cast<int>(pd->desc()->local_size);
         const float alpha = pd->desc()->lrn_alpha / local_size;
         const float beta = pd->desc()->lrn_beta;
 

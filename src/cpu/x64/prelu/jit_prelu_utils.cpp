@@ -222,7 +222,8 @@ void apply_zero_padding(jit_generator_t *host, const size_t tail_size,
     if (reg_offset == nullptr)
         host->lea(reg_ptr, ptr[reg_dst + off_start]);
     else
-        host->lea(reg_ptr, ptr[reg_dst + (*reg_offset * dt_size) + off_start]);
+        host->lea(reg_ptr,
+                ptr[reg_dst + (*reg_offset * static_cast<int>(dt_size)) + off_start]);
     host->mov(reg_counter, off_end - off_start);
     host->rep();
     host->stosb();

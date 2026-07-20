@@ -298,9 +298,9 @@ struct jit_xf16_sum_t : public primitive_t {
 
             return is_superset(isa, avx512_core)
                     ? jit_avx512_core_bf16_sum_kernel_t::init_conf(
-                              jsp_, src_mds_.size(), dst_md_)
-                    : jit_avx2_vnni_2_xf16_sum_kernel_t::init_conf(
-                              jsp_, src_mds_.size(), src_mds_, dst_md_);
+                              jsp_, static_cast<int>(src_mds_.size()), dst_md_)
+                    : jit_avx2_vnni_2_xf16_sum_kernel_t::init_conf(jsp_,
+                              static_cast<int>(src_mds_.size()), src_mds_, dst_md_);
         }
         jit_sum_conf_t jsp_;
     };

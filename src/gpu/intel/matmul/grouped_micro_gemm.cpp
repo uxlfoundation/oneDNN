@@ -222,6 +222,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
         dim_t m_unroll = sg_size_;
         float avg_m = float(M()) / ngroups_;
         dim_t n_unroll = std::max<dim_t>(2, utils::rnd_up_pow2(dim_t(avg_m)));
+        dim_t min_n_unroll = 1;
         dim_t max_n_unroll = 0;
         dim_t max_wg_n = 4;
         dim_t min_wg_n = 1;
@@ -238,13 +239,20 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
                         ? 8
                         : 16;
                 break;
-            case compute::gpu_arch_t::xe_hpg:
+            case compute::gpu_arch_t::xe_hpg: {
+                auto product = dev_info->product();
+                bool is_xelpg = (product.family == ngen::ProductFamily::ARL
+                        || product.family == ngen::ProductFamily::MTL);
                 if (!dev_info->mayiuse_systolic()) max_wg_n = 2;
-                max_n_unroll = (problem.Ta_ext.bits() < 8)
+                max_n_unroll = (problem.Ta_ext.bits() < 8
+                                       && problem.Ta_ext.isInteger())
                         ? sg_size_ * problem.Ta_ext
                         : 16;
+                if (is_xelpg && problem.Ta_ext.bits() <= 8
+                        && problem.Ta_ext.isFP())
+                    min_n_unroll = sg_size_;
                 if (problem.Ta_ext.bits() <= 8) min_wg_n = 2;
-                break;
+            } break;
             case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;
             default:
                 m_unroll = sg_size_ / problem.Ta_ext;
@@ -254,7 +262,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
 
         reqs.push_back(StrategyRequirement::UnrollM == m_unroll);
         reqs.push_back(StrategyRequirement::UnrollN
-                == std::min(n_unroll, max_n_unroll));
+                == std::max(min_n_unroll, std::min(n_unroll, max_n_unroll)));
         reqs.push_back(StrategyRequirement::WGM == 2);
         reqs.push_back(StrategyRequirement::WGN
                 == utils::rnd_up_pow2(std::max(min_wg_n,

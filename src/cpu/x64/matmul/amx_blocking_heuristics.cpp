@@ -1171,7 +1171,8 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         is_a_nt_ = true;
         is_b_nt_ = false;
 
-        if (is_postops_bound(k_blk_v)) {
+        const auto is_po_bnd = is_postops_bound(k_blk_v);
+        if (is_po_bnd) {
             // Give up on the L1 blocking
             best_score_v = 0;
             // Calculate k_blk_h and n_blk_h that can fit in the L2 when k_blk is wei_k_blk
@@ -1186,6 +1187,17 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         n_chunk_size_ = div_up(n_per_thread, n_blk_);
         m_blk_ = nstl::min(best_m_v * m_decomposition, M);
         m_chunk_size_ = 1;
+        if (!is_po_bnd) {
+            // In vertical traversal the A panel is reused by every N-block the
+            // thread walks, so an NT stream re-reads it from L3/DRAM each time.
+            // When it is actually reused (n_chunk_size_ >= 2) and fits L2, cache it
+            // (T0) instead. Helps small-M read-once-weight shapes (MoE experts)
+            // where A is tiny and B is the large streamed operand.
+            const bool a_reused_fits_l2 = n_chunk_size_ >= 2
+                    && (size_t)m_blk_ * k_per_thread * gemm_dt_sz
+                            <= L2_threshold();
+            is_a_nt_ = !a_reused_fits_l2;
+        }
         need_prefetch_a_ = false;
         need_prefetch_b_ = ((n_per_thread / n_blk_) >= 2) && !use_buffer_b;
         use_fused_copy_a_ = false;

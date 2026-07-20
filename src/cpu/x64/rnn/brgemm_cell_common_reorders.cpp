@@ -23,8 +23,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-src_layer_iter_transpose_t::src_layer_iter_transpose_t(const int src_ld,
-        const int dst_ld, const int rows, const int cols,
+src_layer_iter_transpose_t::src_layer_iter_transpose_t(const dim_t src_ld,
+        const dim_t dst_ld, const dim_t rows, const dim_t cols,
         jit_brgemm_trans_src_t *const kernel_transpose)
     : src_ld_(src_ld)
     , dst_ld_(dst_ld)
@@ -34,7 +34,7 @@ src_layer_iter_transpose_t::src_layer_iter_transpose_t(const int src_ld,
 
 template <typename Dt>
 void src_layer_iter_transpose_t::execute(const Dt *src, Dt *dst) const {
-    static constexpr int block_size = 16;
+    static constexpr dim_t block_size = 16;
     const auto rows_div = std::div(src_rows_, block_size);
     const auto rows_tail = rows_div.rem;
     const auto rows_blks = rows_div.quot + (rows_tail > 0 ? 1 : 0);

@@ -56,26 +56,31 @@ protected:
 
     // register size in bytes
     using Vmm = typename jit_uni_eltwise_injector_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t qscale_dt_size = sizeof(float);
-    const size_t vlen_dst
-            = vlen / (sizeof(float) / types::data_type_size(src_data_t));
-    const size_t vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
-    const size_t hstate_dt_size = types::data_type_size(src_data_t);
-    const size_t gate_dt_size = types::data_type_size(src_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
-    const size_t vlen_qscale = vlen / qscale_dt_size;
-    const size_t vlen_elems = vlen / scratch_dt_size;
+    static constexpr dim_t vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr dim_t qscale_dt_size = sizeof(float);
+    const dim_t vlen_dst = vlen
+            / (sizeof(float)
+                    / static_cast<dim_t>(types::data_type_size(src_data_t)));
+    const dim_t vlen_bias
+            = vlen / (sizeof(float) / static_cast<dim_t>(bias_dt_size_));
+    const dim_t hstate_dt_size
+            = static_cast<dim_t>(types::data_type_size(src_data_t));
+    const dim_t gate_dt_size
+            = static_cast<dim_t>(types::data_type_size(src_data_t));
+    const dim_t scratch_dt_size
+            = static_cast<dim_t>(types::data_type_size(scratch_data_t));
+    const dim_t vlen_qscale = vlen / qscale_dt_size;
+    const dim_t vlen_elems = vlen / scratch_dt_size;
 
-    const int loop_ur_max = 4;
+    static constexpr int loop_ur_max = 4;
     // We skip vmm0 as it can be used by the injector for masks on sse4.1
-    Vmm G0(int i) {
-        const int idx = 1 + i;
+    Vmm G0(dim_t i) {
+        const int idx = static_cast<int>(1 + i);
         assert(idx < loop_ur_max + 1);
         return Vmm(idx); // max of vmm4
     }
-    Vmm G2(int i) {
-        const int idx = loop_ur_max + 1 + i;
+    Vmm G2(dim_t i) {
+        const int idx = static_cast<int>(loop_ur_max + 1 + i);
         assert(idx < 2 * loop_ur_max + 1);
         return Vmm(idx); // max of vmm8
     }
@@ -130,29 +135,31 @@ protected:
 #endif
 
         // helper lambda to address the gates and biases
-        const auto sg_addr = [&](int i, int j) {
+        const auto sg_addr = [&](dim_t i, dim_t j) {
             return ptr[addr_scratch_gates_reg + i * rnn_.dhc * scratch_dt_size
                     + j * vlen];
         };
-        const auto wg_addr = [&](int i, int j) {
+        const auto wg_addr = [&](dim_t i, dim_t j) {
             return ptr[addr_ws_gates_reg + i * rnn_.dhc * gate_dt_size
                     + j * vlen_dst];
         };
-        const auto B_addr = [&](int i, int j) {
-            return ptr[addr_bias_reg + i * rnn_.dhc * bias_dt_size_
+        const auto B_addr = [&](dim_t i, dim_t j) {
+            return ptr[addr_bias_reg
+                    + i * rnn_.dhc * static_cast<dim_t>(bias_dt_size_)
                     + j * vlen_bias];
         };
 
-        const size_t loop_len = rnn_.dhc;
-        const size_t loop_tail = loop_len % vlen_elems;
+        const dim_t loop_len = rnn_.dhc;
+        const dim_t loop_tail = loop_len % vlen_elems;
 
         // initialize registers with addresses and constants
         mov(table_reg, table_label);
         tanh_injector_->load_table_addr();
-        init_regs(weights_scales, vlen, loop_tail);
+        init_regs(weights_scales, static_cast<size_t>(vlen),
+                static_cast<size_t>(loop_tail));
 
-        const size_t nb_loop_len = loop_len / vlen_elems;
-        size_t loop_ur_val = 1;
+        const dim_t nb_loop_len = loop_len / vlen_elems;
+        dim_t loop_ur_val = 1;
         const bool is_brgemm = rnn_.is_brgemm && !rnn_.unfused_post_gemm;
         if (is_brgemm) {
 #ifdef _WIN32
@@ -168,90 +175,91 @@ protected:
             for (loop_ur_val = loop_ur_max; loop_ur_val > 1; --loop_ur_val)
                 if (nb_loop_len % loop_ur_val == 0) break;
 
-            mov(loop_cnt, loop_len);
+            mov(loop_cnt, static_cast<uint64_t>(loop_len));
         }
-        const size_t loop_ur = loop_ur_val;
+        const dim_t loop_ur = loop_ur_val;
 
         auto compute_loop
-                = [&](size_t current_vlen_elem, size_t current_loop_unroll) {
+                = [&](dim_t current_vlen_elem, dim_t current_loop_unroll) {
             const auto current_vlen = current_vlen_elem * scratch_dt_size;
+            const int vlen_int = static_cast<int>(current_vlen);
             Label loop_start_label;
             L(loop_start_label);
             {
-                for (size_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
+                for (dim_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
                         ++loop_ur_idx) {
                     // Compute gate 2: G2 = tanh(G2 + b2)
                     load(G2(loop_ur_idx), sg_addr(2, loop_ur_idx),
-                            scratch_data_t, current_vlen);
+                            scratch_data_t, vlen_int);
                     // dequantize gate from s32 to f32 if needed
                     deq_w(src_data_t, G2(loop_ur_idx), tmp1_vmm, tmp2_vmm,
                             2 * rnn_.dhc + loop_ur_idx * vlen_qscale, mask,
-                            current_vlen);
+                            vlen_int);
                     to_float(tmp1_vmm, B_addr(2, loop_ur_idx), rnn_.bias_dt,
-                            current_vlen);
+                            vlen_int);
                     compute_vaddps(G2(loop_ur_idx), G2(loop_ur_idx), tmp1_vmm,
-                            current_vlen);
+                            vlen_int);
                 }
 
                 // Compute tanh of unrolled G2 regs together
                 // (this allows to not save any registers during eltwise)
                 injector_utils::vmm_index_set_t vmm_idxs;
-                for (size_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
+                for (dim_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
                         ++loop_ur_idx) {
                     vmm_idxs.emplace(G2(loop_ur_idx).getIdx());
                 }
                 tanh_injector_->compute_vector_range(vmm_idxs);
 
-                for (size_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
+                for (dim_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
                         ++loop_ur_idx) {
                     // if training we write back the gates
                     if (is_training)
                         to_src(wg_addr(2, loop_ur_idx), G2(loop_ur_idx),
-                                src_data_t, current_vlen);
+                                src_data_t, vlen_int);
 
                     load(G0(loop_ur_idx), sg_addr(0, loop_ur_idx),
-                            scratch_data_t, current_vlen);
-                    load(tmp1_vmm, one_addr, scratch_data_t, current_vlen);
+                            scratch_data_t, vlen_int);
+                    load(tmp1_vmm, one_addr, scratch_data_t, vlen_int);
                     if (is_augru) {
                         // for augru there is additional step G01 = (1 - a) * G0
                         // states_t_l = states_tm1_l * G01 + (1 - G01) * G2
                         const Xmm tmp2s_vmm(tmp2_vmm.getIdx());
                         to_float(tmp2s_vmm, ptr[addr_attn_reg], src_data_t,
-                                scratch_dt_size);
+                                static_cast<int>(scratch_dt_size));
                         uni_vbroadcastss(tmp2_vmm, tmp2s_vmm);
                         // G01 = (1 - a) * G0
                         compute_vsubps(tmp2_vmm, tmp1_vmm, tmp2_vmm, tmp3_vmm,
-                                current_vlen);
+                                vlen_int);
                         compute_vmulps(G0(loop_ur_idx), G0(loop_ur_idx),
-                                tmp2_vmm, current_vlen);
+                                tmp2_vmm, vlen_int);
                         to_float(tmp2_vmm,
                                 ptr[addr_states_tm1_l_reg
                                         + loop_ur_idx * vlen_dst],
-                                src_data_t, current_vlen);
+                                src_data_t, vlen_int);
                         // tmp1 = 1 - G01
-                        compute_vsubps(tmp1_vmm, tmp1_vmm, G0(loop_ur_idx),
-                                current_vlen);
+                        compute_vsubps(
+                                tmp1_vmm, tmp1_vmm, G0(loop_ur_idx), vlen_int);
                         // tmp1 = G2 * tmp1
                         compute_vmulps(tmp1_vmm, G2(loop_ur_idx), tmp1_vmm,
-                                tmp3_vmm, current_vlen);
+                                tmp3_vmm, vlen_int);
                         // states_t_l = G01 * states_tm1_l + tmp1
-                        compute_vfmadd213ps(G0(loop_ur_idx), tmp2_vmm, tmp1_vmm,
-                                current_vlen);
+                        compute_vfmadd213ps(
+                                G0(loop_ur_idx), tmp2_vmm, tmp1_vmm, vlen_int);
                     } else {
                         // states_t_l = states_tm1_l * G0 + (1 - G0) * G2
-                        compute_vsubps(tmp1_vmm, tmp1_vmm, G0(loop_ur_idx),
-                                current_vlen);
+                        compute_vsubps(
+                                tmp1_vmm, tmp1_vmm, G0(loop_ur_idx), vlen_int);
                         to_float(tmp2_vmm,
                                 ptr[addr_states_tm1_l_reg
                                         + loop_ur_idx * vlen_dst],
-                                src_data_t, current_vlen);
+                                src_data_t, vlen_int);
                         compute_vmulps(G0(loop_ur_idx), G0(loop_ur_idx),
-                                tmp2_vmm, current_vlen);
+                                tmp2_vmm, vlen_int);
                         compute_vfmadd231ps(G0(loop_ur_idx), tmp1_vmm,
-                                G2(loop_ur_idx), current_vlen);
+                                G2(loop_ur_idx), vlen_int);
                     }
                     to_src(ptr[addr_states_t_l_reg + loop_ur_idx * vlen_dst],
-                            G0(loop_ur_idx), src_data_t, current_vlen);
+                            G0(loop_ur_idx), src_data_t, vlen_int);
                     // if states_t_l_copy is a non null ptr, we write the output
                     // to both tensors
                     Label loop_inc_regs;
@@ -262,16 +270,16 @@ protected:
                     // write_only=false for the same Vmm
                     to_src(ptr[addr_states_t_l_copy_reg
                                    + loop_ur_idx * vlen_dst],
-                            G0(loop_ur_idx), src_data_t, current_vlen, true);
+                            G0(loop_ur_idx), src_data_t, vlen_int, true);
                     L(loop_inc_regs);
                 }
 
                 if (current_vlen_elem != loop_tail) {
                     // increment address pointers
-                    const auto current_gate_size = current_vlen == vlen
+                    const dim_t current_gate_size = current_vlen == vlen
                             ? vlen_dst * current_loop_unroll
                             : gate_dt_size;
-                    const auto current_states_size = current_vlen == vlen
+                    const dim_t current_states_size = current_vlen == vlen
                             ? vlen_dst * current_loop_unroll
                             : hstate_dt_size;
 
@@ -280,15 +288,15 @@ protected:
                     add(addr_bias_reg,
                             current_vlen == vlen
                                     ? vlen_bias * current_loop_unroll
-                                    : bias_dt_size_);
+                                    : static_cast<dim_t>(bias_dt_size_));
                     add(addr_states_t_l_reg, current_states_size);
                     add(addr_states_t_l_copy_reg, current_states_size);
                     add(addr_states_tm1_l_reg, current_states_size);
                     if (is_training) add(addr_ws_gates_reg, current_gate_size);
                     inc_regs(mask,
-                            current_vlen == vlen
-                                    ? current_vlen * current_loop_unroll
-                                    : qscale_dt_size);
+                            static_cast<size_t>(current_vlen == vlen
+                                            ? current_vlen * current_loop_unroll
+                                            : qscale_dt_size));
 
                     // increment loop counter
                     sub(loop_cnt, current_vlen_elem * current_loop_unroll);
@@ -324,10 +332,10 @@ protected:
         postamble();
 
         tanh_injector_->prepare_table(true);
-        init_table(vlen);
+        init_table(static_cast<size_t>(vlen));
         L(table_label);
         {
-            for (size_t i = 0; i < vlen / sizeof(float); i++)
+            for (dim_t i = 0; i < vlen / static_cast<dim_t>(sizeof(float)); i++)
                 dd(float2int(1.0f));
         }
     }

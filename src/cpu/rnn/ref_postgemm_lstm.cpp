@@ -42,7 +42,7 @@ void lstm_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src_dt, T4 to_float,
         scratch_data_t *scratch_gates_, src_data_t *dst_layer_,
         src_data_t *dst_iter_, void *dst_iter_c_, const src_data_t *src_iter_,
         const void *src_iter_c_, const float *weights_peephole_,
-        const void *bias_, int block_step) {
+        const void *bias_, dim_t block_step) {
     const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
     const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
             rnn, scratch_gates_);
@@ -50,7 +50,7 @@ void lstm_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src_dt, T4 to_float,
             rnn, weights_peephole_);
     const auto bias_aoc = rnn_utils::make_raw_aoc(
             bias_, types::data_type_size(rnn.bias_dt), rnn.n_bias, rnn.dhc);
-    const auto bias = [&](int gate_id, int dhc_id) {
+    const auto bias = [&](int gate_id, dim_t dhc_id) {
         return rnn_utils::to_float(bias_aoc(gate_id, dhc_id), rnn.bias_dt);
     };
     // If lstmp, instead of dst_layer, we use scratch_ht if inference or ws_ht if training
@@ -58,8 +58,8 @@ void lstm_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src_dt, T4 to_float,
             ? rnn.scratch_ht_ld
             : rnn.dst_layer_ld(cell_position);
     const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
-    const int dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
-    const int src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
+    const dim_t dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
+    const dim_t src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
 
     const ws_states_layer_aoc_t<src_data_t> dst_layer(
             rnn, dst_layer_, dst_layer_ld);
@@ -74,11 +74,12 @@ void lstm_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src_dt, T4 to_float,
             types::data_type_size(rnn.src_iter_c_dt), rnn.ws_states_iter_c_nld,
             src_iter_c_ld);
 
-    const auto src_iter_c = [&](int mb_id, int dhc_id) {
+    const auto src_iter_c = [&](dim_t mb_id, dim_t dhc_id) {
         return rnn_utils::to_float(
                 src_iter_c_aoc(mb_id, dhc_id), rnn.src_iter_c_dt);
     };
-    const auto dst_iter_c_assign = [&](int mb_id, int dhc_id, float c_state) {
+    const auto dst_iter_c_assign
+            = [&](dim_t mb_id, dim_t dhc_id, float c_state) {
         const auto dst_iter_c_ptr
                 = const_cast<void *>(dst_iter_c(mb_id, dhc_id));
 
@@ -92,10 +93,10 @@ void lstm_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src_dt, T4 to_float,
                     = cpu::q10n::saturate_and_round<float16_t>(c_state);
     };
 
-    const auto postgemm_call = [&](int i) {
-        const int n_elem = block_step / (int)sizeof(scratch_data_t);
+    const auto postgemm_call = [&](dim_t i) {
+        const dim_t n_elem = block_step / sizeof(scratch_data_t);
         PRAGMA_OMP_SIMD()
-        for (int j = 0; j < n_elem; j++) {
+        for (dim_t j = 0; j < n_elem; j++) {
             float gate_i_arg
                     = to_float(scratch_gates(i, 0, j), 0, j) + bias(0, j);
             if (rnn.is_lstm_peephole)
@@ -154,7 +155,7 @@ rnn_postgemm_sig(
     const float *scales = this->pd_->attr()->rnn_tparams_.scales_;
     const float *cscale = &(this->pd_->attr()->rnn_tparams_.cscale_);
     const auto to_src_dt = [&](float f) { return gates_t(f); };
-    const auto deq_id = [&](float f, int i, int j) { return f; };
+    const auto deq_id = [&](float f, int i, dim_t j) { return f; };
 
     const auto linear_f
             = [](const float *scale, float a) { return *scale * a; };
@@ -193,12 +194,13 @@ rnn_postgemm_sig(rnn_postgemm_fwd_u8_t::lstm_postgemm) {
         return q10n::qz_a1b0_t<float, dst_layer_t>()(qf);
     };
 
-    const auto dequantize_s32_f32 = [&](gemm_acc_t s, int gate, int j) {
+    const auto dequantize_s32_f32 = [&](gemm_acc_t s, int gate, dim_t j) {
         const float wscale = pd_->attr()->rnn_weights_qparams_.mask_ == 0
                 ? weights_scales_[0]
                 : weights_scales_[gate * rnn.dhc + j];
 
-        return q10n::saturate<float>(s) * (1.f / (wscale * data_scale));
+        return static_cast<float>(q10n::saturate<float>(s))
+                * (1.f / (wscale * data_scale));
     };
 
     const auto linear_f
@@ -234,12 +236,13 @@ rnn_postgemm_sig(rnn_postgemm_fwd_s8_t::lstm_postgemm) {
         return q10n::qz_a1b0_t<float, dst_layer_t>()(qf);
     };
 
-    const auto dequantize_s32_f32 = [&](gemm_acc_t s, int gate, int j) {
+    const auto dequantize_s32_f32 = [&](gemm_acc_t s, int gate, dim_t j) {
         float wscale = pd_->attr()->rnn_weights_qparams_.mask_ == 0
                 ? weights_scales_[0]
                 : weights_scales_[gate * rnn.dhc + j];
 
-        return q10n::saturate<float>(s) * (1.f / (wscale * data_scale));
+        return static_cast<float>(q10n::saturate<float>(s))
+                * (1.f / (wscale * data_scale));
     };
 
     const auto linear_f
@@ -276,19 +279,19 @@ void lstm_bwd_postgemm_template(T1 func1, T2 to_src_dt, const float *cscale,
             rnn, scratch_gates_);
     const weights_peephole_aoc_t<const float> weights_peephole(
             rnn, weights_peephole_);
-    const int dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
-    const int src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
+    const dim_t dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
+    const dim_t src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
     const auto src_iter_c_aoc = rnn_utils::make_raw_aoc(src_iter_c_,
             types::data_type_size(rnn.src_iter_c_dt), rnn.ws_states_iter_c_nld,
             src_iter_c_ld);
-    const auto src_iter_c = [&](int mb_id, int dhc_id) {
+    const auto src_iter_c = [&](dim_t mb_id, dim_t dhc_id) {
         return rnn_utils::to_float(
                 src_iter_c_aoc(mb_id, dhc_id), rnn.src_iter_c_dt);
     };
     const auto dst_iter_c_aoc = rnn_utils::make_raw_aoc(dst_iter_c_,
             types::data_type_size(rnn.dst_iter_c_dt), rnn.ws_states_iter_c_nld,
             dst_iter_c_ld);
-    const auto dst_iter_c = [&](int mb_id, int dhc_id) {
+    const auto dst_iter_c = [&](dim_t mb_id, dim_t dhc_id) {
         return rnn_utils::to_float(
                 dst_iter_c_aoc(mb_id, dhc_id), rnn.dst_iter_c_dt);
     };
@@ -304,7 +307,7 @@ void lstm_bwd_postgemm_template(T1 func1, T2 to_src_dt, const float *cscale,
 
     parallel_nd(rnn.mb, [&](dim_t i) {
         PRAGMA_OMP_SIMD()
-        for (int j = 0; j < rnn.dhc; j++) {
+        for (dim_t j = 0; j < rnn.dhc; j++) {
             const float Ct = dst_iter_c(i, j);
             /// @todo save it in the workspace in fwd pass or recompute it to
             /// save bw

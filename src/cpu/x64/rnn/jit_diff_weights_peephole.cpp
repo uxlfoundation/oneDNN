@@ -70,8 +70,8 @@ void jit_diff_weights_peephole_t::compute_loop() {
     mov(loop_cnt_, compute_block_size_);
     xor_(reg_offset_, reg_offset_);
 
-    const size_t offt_max = max_unrolling * simd_w_;
-    const size_t full_unroling_steps = compute_block_size_ / offt_max;
+    const dim_t offt_max = max_unrolling * simd_w_;
+    const dim_t full_unroling_steps = compute_block_size_ / offt_max;
 
     if (full_unroling_steps) {
         L(unroll_loop);
@@ -86,17 +86,17 @@ void jit_diff_weights_peephole_t::compute_loop() {
         }
     }
 
-    const size_t full_blocks_left = (compute_block_size_ - tail_size_
+    const dim_t full_blocks_left = (compute_block_size_ - tail_size_
                                             - (full_unroling_steps * offt_max))
             / simd_w_;
 
     L(unroll_loop_tail);
     {
         if (full_blocks_left) {
-            compute_dst(full_blocks_left, false /*tail*/);
+            compute_dst(static_cast<int>(full_blocks_left), false /*tail*/);
             if (tail_size_) {
-                const size_t offt = full_blocks_left * simd_w_;
-                add(reg_offset_, offt);
+                const dim_t offt = full_blocks_left * simd_w_;
+                add(reg_offset_, static_cast<uint32_t>(offt));
             }
         }
         if (tail_size_) { compute_dst(1u /*unrolling factor*/, true /*tail*/); }
@@ -104,29 +104,31 @@ void jit_diff_weights_peephole_t::compute_loop() {
 }
 
 void jit_diff_weights_peephole_t::compute_dst(
-        size_t unrolling_factor, bool tail) {
+        int unrolling_factor, bool tail) {
 
-    static constexpr dim_t number_vmm_single_compute = 3;
+    static constexpr int number_vmm_single_compute = 3;
 
-    const auto get_compute_zmm = [=](size_t base_idx, size_t unroll_group) {
+    const auto get_compute_zmm = [=](int base_idx, int unroll_group) {
         return Xbyak::Zmm(base_idx + unroll_group * number_vmm_single_compute);
     };
 
     const auto get_addr = [&](const Xbyak::Reg64 &reg_base, const dim_t offt,
                                   const data_type_t dt) {
-        const auto dt_size = types::data_type_size(dt);
-        return ptr[reg_base + reg_offset_ * dt_size + offt * dt_size];
+        const dim_t dt_size = types::data_type_size(dt);
+        return ptr[reg_base + reg_offset_
+                        * static_cast<uint32_t>(dt_size)
+                + static_cast<uint32_t>(offt * dt_size)];
     };
 
-    static constexpr size_t dst_idx = 0;
-    static constexpr size_t scratch_idx = 1;
-    static constexpr size_t c_states_idx = 2;
+    static constexpr int dst_idx = 0;
+    static constexpr int scratch_idx = 1;
+    static constexpr int c_states_idx = 2;
 
     const auto io_dst = io_.at(dst_dt_);
     const auto io_scratch = io_.at(scratch_dt_);
     const auto io_c_states = io_.at(c_states_dt_);
 
-    for (size_t unroll_group = 0; unroll_group < unrolling_factor;
+    for (int unroll_group = 0; unroll_group < unrolling_factor;
             ++unroll_group) {
 
         const auto dst_zmm = get_compute_zmm(dst_idx, unroll_group);

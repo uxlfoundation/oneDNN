@@ -52,16 +52,19 @@ protected:
 
     // register size in bytes
     using Vmm = typename jit_uni_eltwise_injector_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t cstate_dt_size = sizeof(float);
-    static constexpr size_t qscale_dt_size = sizeof(float);
+    static constexpr dim_t vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr dim_t cstate_dt_size = sizeof(float);
+    static constexpr dim_t qscale_dt_size = sizeof(float);
 
-    const size_t vlen_dst
+    const dim_t vlen_dst
             = vlen / (sizeof(float) / types::data_type_size(src_data_t));
-    const size_t vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
-    const size_t hstate_dt_size = types::data_type_size(src_data_t);
-    const size_t gate_dt_size = types::data_type_size(src_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
+    const dim_t vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
+    const dim_t hstate_dt_size
+            = static_cast<dim_t>(types::data_type_size(src_data_t));
+    const dim_t gate_dt_size
+            = static_cast<dim_t>(types::data_type_size(src_data_t));
+    const dim_t scratch_dt_size
+            = static_cast<dim_t>(types::data_type_size(scratch_data_t));
 
     void generate() override {
         using namespace Xbyak;
@@ -116,7 +119,7 @@ protected:
         const auto B_addr = ptr[addr_bias_reg + 0 * rnn_.dhc * bias_dt_size_];
 
         // initialize registers with addresses and constants
-        init_regs(weights_scales, vlen);
+        init_regs(weights_scales, static_cast<size_t>(vlen));
         injector_->load_table_addr();
 
         if (rnn_.is_brgemm && !rnn_.unfused_post_gemm)
@@ -133,19 +136,22 @@ protected:
             uni_vmovups(G, sg_addr);
 
             // dequantize the gates from s32 to f32 if needed
-            deq_w(src_data_t, G, tmp1_vmm, tmp2_vmm, 0, mask, vlen);
+            deq_w(src_data_t, G, tmp1_vmm, tmp2_vmm, 0, mask,
+                    static_cast<int>(vlen));
 
             // add biases
-            to_float(tmp1_vmm, B_addr, rnn_.bias_dt, vlen);
+            to_float(tmp1_vmm, B_addr, rnn_.bias_dt, static_cast<int>(vlen));
             uni_vaddps(G, G, tmp1_vmm);
 
             // inject eltwise code
             injector_->compute_vector(G.getIdx());
 
             // if training we write back the gates
-            if (is_training) to_src(wg_addr, G, src_data_t, vlen);
+            if (is_training)
+                to_src(wg_addr, G, src_data_t, static_cast<int>(vlen));
 
-            to_src(ptr[addr_states_t_l_reg], G, src_data_t, vlen);
+            to_src(ptr[addr_states_t_l_reg], G, src_data_t,
+                    static_cast<int>(vlen));
             // if states_t_l_copy is a non null ptr, we write the output to both
             // tensors
             cmp(addr_states_t_l_copy_reg, rnn_.dhc * hstate_dt_size);
@@ -153,7 +159,8 @@ protected:
             // As to_src is called with write_only=true it's important for xf16
             // src_dt to execute just after to_src method with write_only=false
             // for the same Vmm
-            to_src(ptr[addr_states_t_l_copy_reg], G, src_data_t, vlen, true);
+            to_src(ptr[addr_states_t_l_copy_reg], G, src_data_t,
+                    static_cast<int>(vlen), true);
 
             // increment address pointers
             L(vector_loop_inc_regs);
@@ -162,7 +169,7 @@ protected:
             add(addr_states_t_l_reg, vlen_dst);
             add(addr_states_t_l_copy_reg, vlen_dst);
             if (is_training) add(addr_ws_gates_reg, vlen_dst);
-            inc_regs(mask, vlen);
+            inc_regs(mask, static_cast<size_t>(vlen));
 
             // increment loop counter
             sub(loop_cnt, vlen);
@@ -185,19 +192,24 @@ protected:
             uni_vmovss(Gs, sg_addr);
 
             // dequantize the gates from s32 to f32 if needed
-            deq_w(src_data_t, G, tmp1_vmm, tmp2_vmm, 0, mask, scratch_dt_size);
+            deq_w(src_data_t, G, tmp1_vmm, tmp2_vmm, 0, mask,
+                    static_cast<int>(scratch_dt_size));
 
             // add biases
-            to_float(tmp1_vmm, B_addr, rnn_.bias_dt, sizeof(float));
+            to_float(tmp1_vmm, B_addr, rnn_.bias_dt,
+                    static_cast<int>(sizeof(float)));
             uni_vaddps(Gs, Gs, tmp1s_vmm);
 
             // inject eltwise code
             injector_->compute_vector(Gs.getIdx());
 
             // if training we write back the gates
-            if (is_training) to_src(wg_addr, G, src_data_t, scratch_dt_size);
+            if (is_training)
+                to_src(wg_addr, G, src_data_t,
+                        static_cast<int>(scratch_dt_size));
 
-            to_src(ptr[addr_states_t_l_reg], G, src_data_t, scratch_dt_size);
+            to_src(ptr[addr_states_t_l_reg], G, src_data_t,
+                    static_cast<int>(scratch_dt_size));
             // if states_t_l_copy is a non null ptr, we write the output to both
             // tensors
             cmp(addr_states_t_l_copy_reg, rnn_.dhc * hstate_dt_size);
@@ -206,16 +218,16 @@ protected:
             // src_dt to execute just after to_src method with write_only=false
             // for the same Vmm
             to_src(ptr[addr_states_t_l_copy_reg], G, src_data_t,
-                    scratch_dt_size, true);
+                    static_cast<int>(scratch_dt_size), true);
 
             // increment address pointers
             L(rem_loop_inc_regs);
             add(addr_scratch_gates_reg, scratch_dt_size);
-            add(addr_bias_reg, bias_dt_size_);
+            add(addr_bias_reg, static_cast<uint32_t>(bias_dt_size_));
             add(addr_states_t_l_reg, hstate_dt_size);
             add(addr_states_t_l_copy_reg, hstate_dt_size);
             if (is_training) add(addr_ws_gates_reg, gate_dt_size);
-            inc_regs(mask, qscale_dt_size);
+            inc_regs(mask, static_cast<size_t>(qscale_dt_size));
 
             // increment loop counter
             sub(loop_cnt, scratch_dt_size);
@@ -228,7 +240,7 @@ protected:
 
         // inject the constant table for the activation
         injector_->prepare_table();
-        init_table(vlen);
+        init_table(static_cast<size_t>(vlen));
     }
 };
 

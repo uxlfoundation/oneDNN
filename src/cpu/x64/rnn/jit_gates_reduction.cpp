@@ -33,9 +33,9 @@ jit_gates_reduction_t::jit_gates_reduction_t(
                           : rnn_.diff_wei_brgemm.n_block)
     , n_simd_w_blks_(n_block_ / simd_w_)
     , n_tail_(n_block_ % simd_w_)
-    , bf16_ones_(rnn_.is_bf16_conf() ? reserve_vmm() : 0)
-    , f16_tmp_vreg_(rnn_.is_f16_conf() ? reserve_vmm() : 0)
-    , f16_vperm_vreg_(rnn_.is_f16_conf() ? reserve_vmm() : 0)
+    , bf16_ones_(rnn_.is_bf16_conf() ? static_cast<int>(reserve_vmm()) : 0)
+    , f16_tmp_vreg_(rnn_.is_f16_conf() ? static_cast<int>(reserve_vmm()) : 0)
+    , f16_vperm_vreg_(rnn_.is_f16_conf() ? static_cast<int>(reserve_vmm()) : 0)
     , acc_regs_(reserve_acc_regs()) {}
 
 void jit_gates_reduction_t::generate() {
@@ -148,17 +148,18 @@ void jit_gates_reduction_t::compute_step(
 
 void jit_gates_reduction_t::compute(dim_t unrolling) {
 
-    const int n_block_off = rnn_.diff_wei_brgemm.n_block * sizeof(float);
+    const size_t n_block_off = rnn_.diff_wei_brgemm.n_block * sizeof(float);
 
     for (dim_t k = 0; k < unrolling; ++k) {
-        const int k_offset = -1 * (k + 1) * n_block_off;
-        const int first_reversed_block = acc_regs_.size() - 1;
+        const dim_t k_offset = -1 * (k + 1) * n_block_off;
+        const dim_t first_reversed_block = acc_regs_.size() - 1;
 
-        for (int n_block = first_reversed_block; n_block >= 0; --n_block) {
+        for (dim_t n_block = first_reversed_block; n_block >= 0; --n_block) {
             const bool tail = static_cast<bool>(n_tail_)
                     && n_block == first_reversed_block;
             const auto &acc_zmm = acc_regs_[n_block];
-            const int nk_offset = k_offset + n_block * simd_w_ * sizeof(float);
+            const dim_t nk_offset
+                    = k_offset + n_block * simd_w_ * sizeof(float);
             compute_step(acc_zmm, ptr[reg_src_ + reg_loop_ + nk_offset], tail);
         }
     }
@@ -169,7 +170,7 @@ void jit_gates_reduction_t::compute_loop() {
     const dim_t k_pack = rnn_.is_xf16_conf() ? 2 : 1;
     const dim_t k = rnn_.diff_wei_brgemm.Kpadded;
     const auto res = std::div(k, k_block);
-    const int n_block_off = rnn_.diff_wei_brgemm.n_block
+    const size_t n_block_off = rnn_.diff_wei_brgemm.n_block
             * (rnn_.is_xf16_conf() ? sizeof(bfloat16_t) : sizeof(float));
     const auto &num_k_blks = res.quot;
     const auto &k_tail = res.rem;

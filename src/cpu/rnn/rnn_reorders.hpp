@@ -72,7 +72,7 @@ static inline void quantize_igo(int8_t *scratch_quantized,
     parallel(0, [=](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
         balance211(L * D * I, nthr, ithr, start, end);
-        for (int ldi = start; ldi < end; ldi++) {
+        for (dim_t ldi = start; ldi < end; ldi++) {
             for (int go = 0; go < G * O; go++) {
                 const float s = scales[(mask == 0) ? 0 : go];
                 scratch_quantized[ldi * G * O + go]
@@ -117,11 +117,11 @@ static inline void compensate_igo(float *compensation,
     // We parallelize on LD and GO
     // TODO: maybe restrict parallelism as we might have large
     // parallelisation overhead if dimensions are small
-    const int LD_nthr = nstl::min(L * D, dim_t(nthr));
-    const int GO_nthr = nstl::min(G * O, dim_t(nthr / LD_nthr));
+    const dim_t LD_nthr = nstl::min(L * D, dim_t(nthr));
+    const dim_t GO_nthr = nstl::min(G * O, dim_t(nthr / LD_nthr));
     parallel(nthr, [=](const int ithr, const int nthr) {
-        int LD_ithr = -1;
-        int GO_ithr = -1;
+        dim_t LD_ithr = -1;
+        dim_t GO_ithr = -1;
         dim_t LD_s = -1, LD_e = -1;
         dim_t GO_s = -1, GO_e = -1;
         if (ithr < LD_nthr * GO_nthr) {
@@ -132,29 +132,29 @@ static inline void compensate_igo(float *compensation,
         }
         int32_t *compensation_s32
                 = scratch_compensation + ithr * scratch_comp_sz;
-        for (int ld = LD_s; ld < LD_e; ld++) {
+        for (dim_t ld = LD_s; ld < LD_e; ld++) {
             if (I == 1) {
                 PRAGMA_OMP_SIMD()
-                for (int go = GO_s; go < GO_e; go++)
+                for (dim_t go = GO_s; go < GO_e; go++)
                     compensation[ld * G * O + go] = q10n::saturate<float>(
                             scratch_quantized[ld * I * G * O + go]);
             } else {
                 // We split the loop on I in three to avoid conditionals or zeroing compensation
-                int i = 0;
+                dim_t i = 0;
                 PRAGMA_OMP_SIMD()
-                for (int go = GO_s; go < GO_e; go++)
+                for (dim_t go = GO_s; go < GO_e; go++)
                     compensation_s32[go]
                             = scratch_quantized[go + G * O * (i + I * (ld))];
                 // 1 <= i < I-1
                 for (i = 1; i < I - 1; i++) {
                     PRAGMA_OMP_SIMD()
-                    for (int go = GO_s; go < GO_e; go++)
+                    for (dim_t go = GO_s; go < GO_e; go++)
                         compensation_s32[go] += scratch_quantized[go
                                 + G * O * (i + I * (ld))];
                 }
                 // i = I-1
                 PRAGMA_OMP_SIMD()
-                for (int go = GO_s; go < GO_e; go++)
+                for (dim_t go = GO_s; go < GO_e; go++)
                     compensation[ld * G * O + go] = q10n::saturate<float>(
                             compensation_s32[go]
                             + scratch_quantized[go + G * O * (i + I * (ld))]);
@@ -263,13 +263,13 @@ private:
         parallel(0, [=](const int ithr, const int nthr) {
             dim_t start {0}, end {0};
             balance211(outer_dim, nthr, ithr, start, end);
-            for (int i = start; i < end; ++i) {
+            for (dim_t i = start; i < end; ++i) {
                 const dim_t off_in = input_d.off_l(i * inner_dim);
                 const dim_t off_out = output_d.off_l(i * inner_dim);
                 const in_data_t *__restrict i_ = input + off_in;
                 out_data_t *__restrict o_ = output + off_out;
                 PRAGMA_OMP_SIMD()
-                for (int j = 0; j < inner_dim; ++j) {
+                for (dim_t j = 0; j < inner_dim; ++j) {
                     const float in = (float)i_[j] * scale + shift;
                     o_[j] = q10n::qz_a1b0_t<float, out_data_t>()(in);
                 }
@@ -857,7 +857,8 @@ private:
             return status::success;
         }
 
-        const int o_block = dst_d.blocking_desc().inner_blks[0];
+        const int o_block
+                = static_cast<int>(dst_d.blocking_desc().inner_blks[0]);
         static constexpr int i_block = 4;
 
         dim_t L, D, I, G, O;
@@ -944,7 +945,8 @@ private:
                     l, d, ib * i_block, g, ob * o_block)];
             auto out = &dst[off_blk(l, d, g, ob, ib)];
 
-            kernel_plain_to_blocked(inp, out, ib, ob);
+            kernel_plain_to_blocked(
+                    inp, out, static_cast<int>(ib), static_cast<int>(ob));
         });
 
         return status::success;

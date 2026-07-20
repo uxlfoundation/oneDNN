@@ -1160,8 +1160,9 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         ? &dst_scales[dst_scales_mask == 0 ? 0 : _offset]
                         : nullptr;
                 ker(i, o, (order_keep && req_comp) ? &cp[_offset] : nullptr,
-                        zp_ptr, src_scales_ptr, dst_scales_ptr, d0_block,
-                        d1_block);
+                        zp_ptr, src_scales_ptr, dst_scales_ptr,
+                        static_cast<int>(d0_block),
+                        static_cast<int>(d1_block));
             }
         });
 

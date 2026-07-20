@@ -93,10 +93,10 @@ bool rnn_utils::is_ldio_blocked(const memory_desc_wrapper &mdw) {
     return md_format_tag != format_tag::undef;
 }
 
-int rnn_utils::get_good_ld(int dim, int sizeof_dt) {
+dim_t rnn_utils::get_good_ld(dim_t dim, int sizeof_dt) {
     // we want matrices leading dimentions to be 64-byte aligned,
     // and not divisible by 256 to avoid 4K aliasing effects
-    const int ld = rnd_up(dim, 64 / sizeof_dt);
+    const dim_t ld = rnd_up(dim, 64 / sizeof_dt);
     return (ld % 256 == 0) ? ld + 64 / sizeof_dt : ld;
 }
 
@@ -229,8 +229,10 @@ status_t rnn_utils::set_expected_desc(rnn_conf_t &rnn,
                 rnn_pdata.format = rnn.is_fwd
                         ? rnn_packed_memory_format_t::ldigo_p
                         : rnn_packed_memory_format_t::ldgoi_p;
-                rnn_pdata.ldb = rnn.ws_states_iter_ld;
-                rnn_pdata.n = rnn.mb;
+                assert(rnn.ws_states_iter_ld <= INT_MAX);
+                assert(rnn.mb <= INT_MAX);
+                rnn_pdata.ldb = static_cast<int>(rnn.ws_states_iter_ld);
+                rnn_pdata.n = static_cast<int>(rnn.mb);
                 rnn_pdata.n_parts = rnn.n_parts_weights_iter;
                 array_copy(rnn_pdata.parts, rnn.parts_weights_iter,
                         DNNL_RNN_MAX_N_PARTS);
@@ -243,9 +245,13 @@ status_t rnn_utils::set_expected_desc(rnn_conf_t &rnn,
                 rnn_pdata.format = rnn.is_fwd
                         ? rnn_packed_memory_format_t::ldigo_p
                         : rnn_packed_memory_format_t::ldgoi_p;
-                rnn_pdata.ldb = rnn.ws_states_layer_ld;
-                rnn_pdata.n
-                        = rnn.merge_gemm_layer ? rnn.n_iter * rnn.mb : rnn.mb;
+                assert(rnn.ws_states_layer_ld <= INT_MAX);
+                assert(!rnn.merge_gemm_layer || rnn.n_iter * rnn.mb <= INT_MAX);
+                assert(rnn.mb <= INT_MAX);
+                rnn_pdata.ldb = static_cast<int>(rnn.ws_states_layer_ld);
+                rnn_pdata.n = static_cast<int>(rnn.merge_gemm_layer
+                                ? rnn.n_iter * rnn.mb
+                                : rnn.mb);
                 rnn_pdata.n_parts = rnn.n_parts_weights_layer;
                 array_copy(rnn_pdata.parts, rnn.parts_weights_layer,
                         DNNL_RNN_MAX_N_PARTS);
@@ -257,8 +263,10 @@ status_t rnn_utils::set_expected_desc(rnn_conf_t &rnn,
             case weights_type_t::projection:
                 // TODO: add ldoi_p for bwd?
                 rnn_pdata.format = rnn_packed_memory_format_t::ldio_p;
-                rnn_pdata.ldb = rnn.proj_ht_ld;
-                rnn_pdata.n = rnn.mb;
+                assert(rnn.proj_ht_ld <= INT_MAX);
+                assert(rnn.mb <= INT_MAX);
+                rnn_pdata.ldb = static_cast<int>(rnn.proj_ht_ld);
+                rnn_pdata.n = static_cast<int>(rnn.mb);
                 rnn_pdata.n_parts = rnn.n_parts_weights_projection;
                 array_copy(rnn_pdata.parts, rnn.parts_weights_projection,
                         DNNL_RNN_MAX_N_PARTS);
@@ -279,7 +287,7 @@ status_t rnn_utils::set_expected_desc(rnn_conf_t &rnn,
     } else {
         using namespace format_tag;
         if (rnn.is_brgemm) {
-            const int n_block = rnn.n_block;
+            const int n_block = static_cast<int>(rnn.n_block);
             format_tag_t tag = format_tag::undef;
 
             if (weights_type == weights_type_t::projection) {
@@ -353,7 +361,7 @@ float rnn_utils::to_float(const void *data, const data_type_t dt) {
 }
 
 const void *rnn_utils::inc_ptr(
-        const void *data, data_type_t data_type, int offset) {
+        const void *data, data_type_t data_type, dim_t offset) {
     if (data_type == data_type::f32)
         return static_cast<const float *>(data) + offset;
     else if (data_type == data_type::bf16)
@@ -364,7 +372,7 @@ const void *rnn_utils::inc_ptr(
         return data;
 }
 
-void *rnn_utils::inc_ptr(void *data, data_type_t data_type, int offset) {
+void *rnn_utils::inc_ptr(void *data, data_type_t data_type, dim_t offset) {
     return const_cast<void *>(
             inc_ptr(static_cast<const void *>(data), data_type, offset));
 }

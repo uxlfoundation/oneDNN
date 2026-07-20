@@ -43,12 +43,16 @@ struct jit_uni_gru_cell_postgemm_part1_bwd : public jit_uni_rnn_postgemm_t {
 protected:
     // register size in bytes
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    const size_t vlen_scratch
-            = vlen / (sizeof(float) / types::data_type_size(scratch_data_t));
-    static constexpr size_t hstate_dt_size = sizeof(float);
-    const size_t gate_dt_size = types::data_type_size(scratch_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
+    static constexpr dim_t vlen = cpu_isa_traits_t<isa>::vlen;
+    const dim_t vlen_scratch = vlen
+            / (sizeof(float)
+                    / static_cast<dim_t>(
+                            types::data_type_size(scratch_data_t)));
+    static constexpr dim_t hstate_dt_size = sizeof(float);
+    const dim_t gate_dt_size
+            = static_cast<dim_t>(types::data_type_size(scratch_data_t));
+    const dim_t scratch_dt_size
+            = static_cast<dim_t>(types::data_type_size(scratch_data_t));
 
     void generate() override {
         using namespace Xbyak;
@@ -100,26 +104,29 @@ protected:
 #endif
 
         // helper lambda to address the gates and biases
-        const auto sg_addr = [&](int i) {
+        const auto sg_addr = [&](dim_t i) {
             return ptr[addr_scratch_gates_reg + i * rnn_.dhc * scratch_dt_size];
         };
-        const auto wg_addr = [&](int i) {
+        const auto wg_addr = [&](dim_t i) {
             return ptr[addr_ws_gates_reg + i * rnn_.dhc * gate_dt_size];
         };
 
         // initialize registers with addresses and constants
         mov(table_reg, table_label);
-        init_regs(vlen);
+        init_regs(static_cast<size_t>(vlen));
+        const int vlen_int = static_cast<int>(vlen);
+        const int hstate_dt_size_int = static_cast<int>(hstate_dt_size);
         uni_vmovups(one_vmm, one_addr);
 
         if (is_augru) {
             uni_vpxor(
                     Vmm(dattn_acc_idx), Vmm(dattn_acc_idx), Vmm(dattn_acc_idx));
             const Xmm attn1s(attn_idx);
-            to_float(attn1s, ptr[addr_attn_reg], src_data_t, hstate_dt_size);
+            to_float(attn1s, ptr[addr_attn_reg], src_data_t,
+                    hstate_dt_size_int);
         }
 
-        mov(loop_cnt, rnn_.dhc * scratch_dt_size);
+        mov(loop_cnt, static_cast<uint64_t>(rnn_.dhc * scratch_dt_size));
         cmp(loop_cnt, vlen_scratch);
         jl(vector_loop_end_label, Xbyak::CodeGenerator::T_NEAR);
 
@@ -135,8 +142,8 @@ protected:
                     dHt(dHt_idx), tmp1(tmp1_idx), tmp2(tmp2_idx), h(h_idx),
                     diff_attn_acc(dattn_acc_idx), attn(attn_idx);
 
-            to_float(G0, wg_addr(0), src_data_t, vlen);
-            to_float(G2, wg_addr(2), src_data_t, vlen);
+            to_float(G0, wg_addr(0), src_data_t, vlen_int);
+            to_float(G2, wg_addr(2), src_data_t, vlen_int);
 
             // compute dHt
             uni_vmovups(dHt, ptr[addr_diff_states_tp1_l_reg]);
@@ -145,7 +152,7 @@ protected:
             uni_vaddps(dHt, dHt, tmp1);
 
             // compute dG0
-            to_float(h, ptr[addr_states_tm1_l_reg], src_data_t, vlen);
+            to_float(h, ptr[addr_states_tm1_l_reg], src_data_t, vlen_int);
             uni_vmovups(dG0, G0);
             uni_vmovups(tmp1, G0);
             uni_vfnmadd231ps(dG0, tmp1, tmp1); // (G0 - G0^2)
@@ -176,8 +183,8 @@ protected:
             uni_vmovups(ptr[addr_diff_states_t_l_reg], dHt);
 
             // downconvert and write data
-            to_src(sg_addr(0), dG0, scratch_data_t, vlen);
-            to_src(sg_addr(2), dG2, scratch_data_t, vlen);
+            to_src(sg_addr(0), dG0, scratch_data_t, vlen_int);
+            to_src(sg_addr(2), dG2, scratch_data_t, vlen_int);
 
             // increment address pointers
             add(addr_ws_gates_reg, vlen_scratch);
@@ -186,7 +193,7 @@ protected:
             add(addr_diff_states_tp1_l_reg, vlen);
             add(addr_diff_states_t_l_reg, vlen);
             add(addr_states_tm1_l_reg, vlen_scratch);
-            inc_regs(vlen);
+            inc_regs(static_cast<size_t>(vlen));
 
             // increment loop counter
             sub(loop_cnt, vlen_scratch);
@@ -223,8 +230,8 @@ protected:
                     dHt(dHt_idx), tmp1(tmp1_idx), tmp2(tmp2_idx), h(h_idx),
                     diff_attn_acc(dattn_acc_idx), attn(attn_idx);
 
-            to_float(G0, wg_addr(0), src_data_t, hstate_dt_size);
-            to_float(G2, wg_addr(2), src_data_t, hstate_dt_size);
+            to_float(G0, wg_addr(0), src_data_t, hstate_dt_size_int);
+            to_float(G2, wg_addr(2), src_data_t, hstate_dt_size_int);
 
             // compute dHt
             uni_vmovss(dHt, ptr[addr_diff_states_tp1_l_reg]);
@@ -233,7 +240,8 @@ protected:
             uni_vaddss(dHt, dHt, tmp1);
 
             // compute dG0
-            to_float(h, ptr[addr_states_tm1_l_reg], src_data_t, hstate_dt_size);
+            to_float(h, ptr[addr_states_tm1_l_reg], src_data_t,
+                    hstate_dt_size_int);
             uni_vmovss(dG0, G0);
             uni_vmovss(tmp1, G0);
             uni_vfnmadd231ps(dG0, tmp1, tmp1); // (G0 - G0^2)
@@ -268,8 +276,8 @@ protected:
             uni_vmovss(ptr[addr_diff_states_t_l_reg], dHt);
 
             // downconvert and write data
-            to_src(sg_addr(0), dG0, scratch_data_t, hstate_dt_size);
-            to_src(sg_addr(2), dG2, scratch_data_t, hstate_dt_size);
+            to_src(sg_addr(0), dG0, scratch_data_t, hstate_dt_size_int);
+            to_src(sg_addr(2), dG2, scratch_data_t, hstate_dt_size_int);
 
             // increment address pointers
             add(addr_ws_gates_reg, scratch_dt_size);
@@ -278,7 +286,7 @@ protected:
             add(addr_diff_states_tp1_l_reg, hstate_dt_size);
             add(addr_diff_states_t_l_reg, hstate_dt_size);
             add(addr_states_tm1_l_reg, scratch_dt_size);
-            inc_regs(hstate_dt_size);
+            inc_regs(static_cast<size_t>(hstate_dt_size));
 
             // increment loop counter
             sub(loop_cnt, scratch_dt_size);
@@ -302,7 +310,7 @@ protected:
 
         postamble();
 
-        init_table(vlen);
+        init_table(static_cast<size_t>(vlen));
         L(table_label);
         {
             for (size_t i = 0; i < vlen / sizeof(float); i++)

@@ -181,7 +181,7 @@ status_t jit_prelu_fwd_t::execute(const exec_ctx_t &ctx) const {
             });
         } else if (bcast == prelu::bcast::per_oc_blocked) {
             const auto simd_w = kernel->simd_w();
-            const dim_t C_blocks = std::ceil(static_cast<float>(C) / simd_w);
+            const dim_t C_blocks = utils::div_up(C, simd_w);
 
             parallel_nd(MB, C_blocks, [=](dim_t mb, dim_t c_blk) {
                 jit_prelu_forward_kernel_t::call_params_t params;

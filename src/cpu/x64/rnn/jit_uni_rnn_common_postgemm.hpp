@@ -126,14 +126,14 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
 
     template <typename dst_layer_t, typename dst_iter_t, typename src_iter_t,
             typename gates_t, typename scratch_t>
-    inline void postgemm_fwd_call(int m, const rnn_utils::rnn_conf_t &rnn,
+    inline void postgemm_fwd_call(dim_t m, const rnn_utils::rnn_conf_t &rnn,
             rnn_utils::cell_position_t cell_position, gates_t *ws_gates_,
             scratch_t *scratch_gates_, const dst_layer_t *augru_attention_,
             dst_layer_t *dst_layer_, void *dst_iter_c_,
             const src_iter_t *src_iter_, const void *src_iter_c_,
             const float *weights_peephole_, const void *bias_,
             gates_t *ws_grid_, scratch_t *scratch_cell_, dst_iter_t *dst_iter_,
-            float *weights_scales_, int block_step) const {
+            float *weights_scales_, dim_t block_step) const {
         const rnn_utils::ws_gates_aoc_t<gates_t> ws_gates(rnn, ws_gates_);
         const rnn_utils::scratch_gates_aoc_t<scratch_t> scratch_gates(
                 rnn, scratch_gates_);
@@ -143,11 +143,11 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
                 bias_, types::data_type_size(rnn.bias_dt), rnn.n_bias, rnn.dhc);
 
         const auto src_iter_ld = rnn.src_iter_ld(cell_position);
-        const int dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
+        const dim_t dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
         const auto dst_layer_ld
                 = rnn.dst_layer_ld(cell_position, is_projection());
         const auto dst_iter_ld = rnn.dst_iter_ld(cell_position);
-        const int src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
+        const dim_t src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
 
         const rnn_utils::ws_states_layer_aoc_t<dst_layer_t> dst_layer(
                 rnn, dst_layer_, dst_layer_ld);
@@ -227,8 +227,8 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
             typename gemm_acc_t, typename gates_t, typename scratch_t>
     rnn_postgemm_sig(execute_bwd) {
         using namespace rnn_utils;
-        const int dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
-        const int src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
+        const dim_t dst_iter_c_ld = rnn.dst_iter_c_ld(cell_position);
+        const dim_t src_iter_c_ld = rnn.src_iter_c_ld(cell_position);
         const auto src_iter_ld = rnn.src_iter_ld(cell_position);
 
         const rnn_utils::weights_peephole_aoc_t<const float> weights_peephole(
@@ -475,7 +475,7 @@ protected:
 
     void inc_regs(int mask, size_t vlen) {
         if (pd_->weights_md()->data_type == data_type::s8) {
-            if (mask != 0) add(weights_scales_reg, vlen);
+            if (mask != 0) add(weights_scales_reg, static_cast<uint32_t>(vlen));
         }
     }
     void inc_regs(size_t vlen) {
@@ -885,7 +885,7 @@ protected:
     bool projection_;
     bf16_emulation_t *bf16_emu_ = nullptr;
     const size_t bias_dt_size_;
-    const size_t cstate_dt_size_;
+    const dim_t cstate_dt_size_;
     const bool is_avx512;
     const bool is_avx2;
 

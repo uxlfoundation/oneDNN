@@ -58,8 +58,8 @@ status_t init_kernel_datatype(
             && utils::one_of(dt_b, data_type::u8, data_type::s8);
     brg->is_bf16 = (dt_a == data_type::bf16) && (dt_b == data_type::bf16);
     brg->is_f32 = (dt_a == data_type::f32)
-            && utils::one_of(
-                    dt_b, data_type::f32, data_type::bf16, data_type::f16);
+            && utils::one_of(dt_b, data_type::f32, data_type::bf16,
+                    data_type::f16, data_type::f4_e2m1);
     brg->is_f16 = (dt_a == data_type::f16)
             && utils::one_of(dt_b, data_type::f32, data_type::f16);
     brg->is_fp8 = one_of(dt_a, data_type::f8_e5m2, data_type::f8_e4m3)
@@ -215,7 +215,7 @@ int calculate_ldb_params(brgemm_desc_t *brg, const int try_ld_block2) {
     brg->ldb2_tail = brg->ldb % brg->ld_block2;
 
     if (brg->ldb2 == 0) brg->ld_block2 = nstl::max(1, brg->ldb2_tail);
-    brg->embd_bcst = brg->is_f32
+    brg->embd_bcst = brg->is_f32 && !brg->is_f4_fused_decompress
             && (brg->ldb2_tail <= 1 && brg->ldb2 == 0)
             /*only avx512 or more can bcast*/
             && is_superset(brg->isa_impl, avx512_core);
@@ -901,9 +901,11 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
     brg->bdb = brg->bcast_dim / brg->bd_block;
     brg->bdb_tail = brg->bcast_dim % brg->bd_block;
 
-    const int rd_unroll = 4;
-    const data_type_t rd_block_dt = get_mac_emu_data_type(
-            brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
+    const int rd_unroll = brg->is_f4_fused_decompress ? 32 : 4;
+    const data_type_t rd_block_dt = brg->is_f4_fused_decompress
+            ? data_type::f32
+            : get_mac_emu_data_type(
+                      brg->dt_a, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
     if (rd_block_dt == dnnl_data_type_undef) return status::unimplemented;
     const int vnni_granularity = data_type_vnni_granularity(rd_block_dt);
     brg->rd_block = rd_unroll * vnni_granularity;
@@ -920,14 +922,21 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
 }
 
 status_t brgemm_blocking(brgemm_desc_t *brg) {
-    const data_type_t ld_step_compute_dt = get_mac_emu_data_type(
-            brg->dt_b, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
-    brg->ld_step = brg->is_f16_b_non_amx_vnni()
-            ? 2
-            : data_type_vnni_granularity(ld_step_compute_dt);
-    const data_type_t rd_step_compute_dt
-            = get_mac_emu_data_type(brg->dt_b, brg->isa_impl);
-    brg->rd_step = data_type_vnni_granularity(rd_step_compute_dt);
+    if (brg->is_f4_fused_decompress) {
+        // Fused f4 loads a single K row at a time (no VNNI packing along K).
+        // A is f32, B is f4 packed nibbles decoded in the kernel to f32.
+        brg->ld_step = 1;
+        brg->rd_step = 1;
+    } else {
+        const data_type_t ld_step_compute_dt = get_mac_emu_data_type(
+                brg->dt_b, brg->isa_impl, brg->isa_impl != avx2_vnni_2);
+        brg->ld_step = brg->is_f16_b_non_amx_vnni()
+                ? 2
+                : data_type_vnni_granularity(ld_step_compute_dt);
+        const data_type_t rd_step_compute_dt
+                = get_mac_emu_data_type(brg->dt_b, brg->isa_impl);
+        brg->rd_step = data_type_vnni_granularity(rd_step_compute_dt);
+    }
 
     set_isa_impl(brg);
     if (brg->isa_impl == isa_undef) return status::unimplemented;

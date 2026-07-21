@@ -40,10 +40,10 @@ namespace dnnl_impl {
 
 template <bool quantized, memory::data_type dt>
 status_t mqa_decomp_kernel_t<quantized, dt>::compile_impl(
-        const dnnl_partition_impl_t *part, engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*g_engine);
+    p_engine_ = make_dnnl_engine(*eng);
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
@@ -152,15 +152,15 @@ void mqa_decomp_kernel_t<quantized, dt>::prepare_sub_args(
 }
 
 template <bool quantized, memory::data_type dt>
-status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(stream_t *g_stream,
+status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream strm = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     auto *tp_stream
             = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
-                    g_stream);
+                    strm);
 #endif
 
     // each thread's own local resource
@@ -250,19 +250,19 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(stream_t *g_stream,
         }
 
         // in parallel region - these primitives should use single thread.
-        mqa_cfg_.sub_reorder0.execute(strm, res->sub_reorder0_args[tid]);
-        mqa_cfg_.sub_reorder1.execute(strm, res->sub_reorder1_args[tid]);
+        mqa_cfg_.sub_reorder0.execute(p_stream, res->sub_reorder0_args[tid]);
+        mqa_cfg_.sub_reorder1.execute(p_stream, res->sub_reorder1_args[tid]);
         dnnl_primitive_execute_without_tp_hook(
-                mqa_cfg_.sub_mm1_prim, strm, res->sub_mm1_args[tid]);
+                mqa_cfg_.sub_mm1_prim, p_stream, res->sub_mm1_args[tid]);
+
+        dnnl_primitive_execute_without_tp_hook(mqa_cfg_.sub_softmax_prim,
+                p_stream, res->sub_softmax_args[tid]);
+
+        mqa_cfg_.sub_reorder2.execute(p_stream, res->sub_reorder2_args[tid]);
 
         dnnl_primitive_execute_without_tp_hook(
-                mqa_cfg_.sub_softmax_prim, strm, res->sub_softmax_args[tid]);
-
-        mqa_cfg_.sub_reorder2.execute(strm, res->sub_reorder2_args[tid]);
-
-        dnnl_primitive_execute_without_tp_hook(
-                mqa_cfg_.sub_mm2_prim, strm, res->sub_mm2_args[tid]);
-        mqa_cfg_.sub_reorder3.execute(strm, res->sub_reorder3_args[tid]);
+                mqa_cfg_.sub_mm2_prim, p_stream, res->sub_mm2_args[tid]);
+        mqa_cfg_.sub_reorder3.execute(p_stream, res->sub_reorder3_args[tid]);
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
         auto tp = threadpool_utils::get_active_threadpool();
         threadpool_utils::activate_threadpool(tp);
@@ -279,7 +279,7 @@ status_t mqa_decomp_kernel_t<quantized, dt>::execute_impl(stream_t *g_stream,
     tp_stream->after_exec_hook();
 #endif
 
-    prolong_scratchpad_lifetime(g_stream, scratchpad);
+    prolong_scratchpad_lifetime(strm, scratchpad);
 
     return status::success;
 }

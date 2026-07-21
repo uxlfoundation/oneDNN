@@ -144,7 +144,7 @@ template <bool quantized>
 status_t gated_mlp_primitive_kernel_t<quantized>::execute_impl(stream_t *stream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *stream);
+    dnnl::stream p_stream = make_dnnl_stream(*stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
@@ -174,7 +174,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::sycl_execute_impl(
     auto deps = sycl_deps;
     std::optional<::sycl::event> returned_event;
 
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *stream);
+    dnnl::stream p_stream = make_dnnl_stream(*stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
@@ -208,7 +208,7 @@ status_t gated_mlp_primitive_kernel_t<quantized>::ocl_execute_impl(
     auto deps = ocl_deps;
     cl_event returned_event {};
 
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *stream);
+    dnnl::stream p_stream = make_dnnl_stream(*stream);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(

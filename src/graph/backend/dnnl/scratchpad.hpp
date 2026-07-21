@@ -85,7 +85,7 @@ private:
 // for memory objects before they are passed into a primitive execute call.
 // No-op if the scratchpad is user-managed.
 void prolong_scratchpad_lifetime(
-        stream_t *g_stream, const std::shared_ptr<scratchpad_t> &scratchpad);
+        stream_t *strm, const std::shared_ptr<scratchpad_t> &scratchpad);
 
 class registrar_t;
 class grantor_t;

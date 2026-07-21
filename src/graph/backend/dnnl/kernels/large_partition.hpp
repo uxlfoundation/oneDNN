@@ -70,7 +70,7 @@ public:
     static void setup_pipeline(pass_pipeline_t &pipeline,
             memory_planner_t &mem_planner, bool enable_constant_cache);
 
-    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *g_engine,
+    status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *eng,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override;
 
@@ -84,13 +84,12 @@ public:
             const std::vector<tensor_t> &outputs,
             const scratchpad_t &scratchpad);
 
-    status_t execute_impl(stream_t *g_stream,
-            const std::vector<tensor_t> &inputs,
+    status_t execute_impl(stream_t *strm, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf) override;
 
 #ifdef DNNL_WITH_SYCL
-    status_t sycl_execute_impl(stream_t *g_stream,
+    status_t sycl_execute_impl(stream_t *strm,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
@@ -99,7 +98,7 @@ public:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    status_t ocl_execute_impl(stream_t *g_stream,
+    status_t ocl_execute_impl(stream_t *strm,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,

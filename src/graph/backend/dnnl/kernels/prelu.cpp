@@ -34,13 +34,13 @@ namespace dnnl_impl {
 
 template <bool quantized>
 status_t prelu_fwd_t<quantized>::compile_impl(const dnnl_partition_impl_t *part,
-        engine_t *g_engine, const std::vector<logical_tensor_t> &inputs,
+        engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
     // output tensor should have same data type as input tensor
     if (inputs[0].data_type != outputs[0].data_type)
         return status::unimplemented;
 
-    p_engine_ = make_dnnl_engine(*g_engine);
+    p_engine_ = make_dnnl_engine(*eng);
 
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
@@ -107,10 +107,10 @@ void prelu_fwd_t<quantized>::prepare_args_set(const execution_args_set_t *res,
 }
 
 template <bool quantized>
-status_t prelu_fwd_t<quantized>::execute_impl(stream_t *g_stream,
+status_t prelu_fwd_t<quantized>::execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -125,14 +125,14 @@ status_t prelu_fwd_t<quantized>::execute_impl(stream_t *g_stream,
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
 
-    prolong_scratchpad_lifetime(g_stream, scratchpad);
+    prolong_scratchpad_lifetime(strm, scratchpad);
 
     return status::success;
 }
 
 #ifdef DNNL_WITH_SYCL
 template <bool quantized>
-status_t prelu_fwd_t<quantized>::sycl_execute_impl(stream_t *g_stream,
+status_t prelu_fwd_t<quantized>::sycl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
@@ -140,7 +140,7 @@ status_t prelu_fwd_t<quantized>::sycl_execute_impl(stream_t *g_stream,
 
     auto deps = sycl_deps;
     std::optional<::sycl::event> returned_event;
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -167,14 +167,14 @@ status_t prelu_fwd_t<quantized>::sycl_execute_impl(stream_t *g_stream,
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 template <bool quantized>
-status_t prelu_fwd_t<quantized>::ocl_execute_impl(stream_t *g_stream,
+status_t prelu_fwd_t<quantized>::ocl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     auto deps = cl_deps;
     cl_event returned_event {};
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -200,9 +200,9 @@ status_t prelu_fwd_t<quantized>::ocl_execute_impl(stream_t *g_stream,
 
 #if BUILD_TRAINING
 status_t prelu_bwd_t::compile_impl(const dnnl_partition_impl_t *part,
-        engine_t *g_engine, const std::vector<logical_tensor_t> &inputs,
+        engine_t *eng, const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*g_engine);
+    p_engine_ = make_dnnl_engine(*eng);
 
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
             part->get_fpmath_mode(), part->get_use_blocked_layout(), true);
@@ -264,10 +264,10 @@ void prelu_bwd_t::prepare_args_set(const execution_args_set_t *res,
     }
 }
 
-status_t prelu_bwd_t::execute_impl(stream_t *g_stream,
+status_t prelu_bwd_t::execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -282,13 +282,13 @@ status_t prelu_bwd_t::execute_impl(stream_t *g_stream,
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
 
-    prolong_scratchpad_lifetime(g_stream, scratchpad);
+    prolong_scratchpad_lifetime(strm, scratchpad);
 
     return status::success;
 }
 
 #ifdef DNNL_WITH_SYCL
-status_t prelu_bwd_t::sycl_execute_impl(stream_t *g_stream,
+status_t prelu_bwd_t::sycl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
@@ -296,7 +296,7 @@ status_t prelu_bwd_t::sycl_execute_impl(stream_t *g_stream,
 
     auto deps = sycl_deps;
     std::optional<::sycl::event> returned_event;
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -322,14 +322,14 @@ status_t prelu_bwd_t::sycl_execute_impl(stream_t *g_stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-status_t prelu_bwd_t::ocl_execute_impl(stream_t *g_stream,
+status_t prelu_bwd_t::ocl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
 
     auto deps = cl_deps;
     cl_event returned_event {};
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;

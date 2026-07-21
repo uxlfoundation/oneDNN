@@ -202,10 +202,10 @@ void larger_partition_kernel_t::prepare_args_set(
 }
 
 status_t larger_partition_kernel_t::compile_impl(
-        const dnnl_partition_impl_t *part, engine_t *g_engine,
+        const dnnl_partition_impl_t *part, engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
-    p_engine_ = make_dnnl_engine(*g_engine);
+    p_engine_ = make_dnnl_engine(*eng);
 
     // get subgraph from the deep copied partition
     subgraph_ = std::make_shared<subgraph_t>(part->get_ops(), p_engine_,
@@ -248,10 +248,10 @@ status_t larger_partition_kernel_t::compile_impl(
     return status::success;
 }
 
-status_t larger_partition_kernel_t::execute_impl(stream_t *g_stream,
+status_t larger_partition_kernel_t::execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf) {
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -306,13 +306,13 @@ status_t larger_partition_kernel_t::execute_impl(stream_t *g_stream,
         subgraph_->execs_[i]->execute(p_stream, res->get_exec_args()[i]);
     }
 
-    prolong_scratchpad_lifetime(g_stream, scratchpad);
+    prolong_scratchpad_lifetime(strm, scratchpad);
 
     return status::success;
 }
 
 #ifdef DNNL_WITH_SYCL
-status_t larger_partition_kernel_t::sycl_execute_impl(stream_t *g_stream,
+status_t larger_partition_kernel_t::sycl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<::sycl::event> &sycl_deps,
@@ -320,7 +320,7 @@ status_t larger_partition_kernel_t::sycl_execute_impl(stream_t *g_stream,
 
     auto deps = sycl_deps;
     std::optional<::sycl::event> returned_event;
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(
@@ -386,13 +386,13 @@ status_t larger_partition_kernel_t::sycl_execute_impl(stream_t *g_stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-status_t larger_partition_kernel_t::ocl_execute_impl(stream_t *g_stream,
+status_t larger_partition_kernel_t::ocl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
         const std::vector<cl_event> &ocl_deps, cl_event *event) {
     auto deps = ocl_deps;
     cl_event returned_event {};
-    dnnl::stream p_stream = make_dnnl_stream(p_engine_, *g_stream);
+    dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
     execution_args_set_t *res = res_cache.get_or_add(

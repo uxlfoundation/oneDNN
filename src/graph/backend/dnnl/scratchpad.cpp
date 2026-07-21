@@ -73,12 +73,12 @@ scratchpad_t::~scratchpad_t() {
 }
 
 void prolong_scratchpad_lifetime(
-        stream_t *g_stream, const std::shared_ptr<scratchpad_t> &scratchpad) {
+        stream_t *strm, const std::shared_ptr<scratchpad_t> &scratchpad) {
     if (scratchpad->is_user_managed()) return;
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     auto *tp_stream
             = dnnl::impl::utils::downcast<dnnl::impl::cpu::cpu_stream_t *>(
-                    g_stream);
+                    strm);
     tp_stream->before_exec_hook();
 
     parallel(1, [=](int, int) { UNUSED(scratchpad); });

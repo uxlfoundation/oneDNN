@@ -1519,13 +1519,17 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.is_tf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
             && is_superset(isa, avx10_2_amx_2);
-
+    jcp.is_fp8 = one_of(jcp.src_dt, f8_e5m2, f8_e4m3)
+            && one_of(jcp.wei_dt, f8_e5m2, f8_e4m3);
+    jcp.req_fp8_convert_wsp = jcp.is_fp8 && isa == avx10_2;
+    //printf("fp8: %d, %d, src dt: %d, wei dt: %d, dst dt: %d\n", jcp.is_fp8, jcp.req_fp8_convert_wsp, jcp.src_dt, jcp.wei_dt, jcp.dst_dt);
     VDISPATCH_CONV_IC(!jcp.is_bf32, VERBOSE_UNSUPPORTED_DT);
 
     const auto wei_dt
             = jcp.is_f32_f16 || jcp.is_f32_bf16 ? jcp.src_dt : jcp.wei_dt;
+    const bool req_emulation = one_of(isa, avx512_core_fp16, avx10_2);
     const data_type_t last_oc_block_dt
-            = get_mac_emu_data_type(wei_dt, isa, isa == avx512_core_fp16);
+            = get_mac_emu_data_type(wei_dt, isa, req_emulation);
     jcp.vnni_block = data_type_vnni_granularity(last_oc_block_dt);
 
     // TODO: optimize grouped convolutions with small oc
@@ -2117,6 +2121,10 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
     }
 
+    jcp.fp8_convert_wsp_size
+            = static_cast<dim_t>(jcp.iw_block) * isa_max_vlen(jcp.isa);
+    //printf("wsp: %d, jcp.M: %d, max vlen: %d\n", jcp.req_fp8_convert_wsp, jcp.N, isa_max_vlen(jcp.isa));
+
     return status::success;
 }
 
@@ -2164,6 +2172,11 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         // See brgemm_types.hpp comment for `with_dst_scales`.
         scratchpad.book(key_conv_dst_scales,
                 static_cast<size_t>(jcp.nthr) * sizeof(float), P4K);
+    }
+    if (jcp.req_fp8_convert_wsp) {
+        scratchpad.book(key_brgemm_primitive_fp8_convert_wsp,
+                static_cast<size_t>(jcp.nthr) * jcp.fp8_convert_wsp_size,
+                sizeof(float16_t), 0, P4K);
     }
 }
 

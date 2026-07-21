@@ -325,6 +325,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(int vM,
     brg.req_cal_comp_pads = jcp_.req_brg_comp_pad;
     brg.req_comp_pads_with_bcast
             = jcp_.req_cal_comp_pad && jcp_.exec_type == exec_trans;
+    brg.fp8_with_f16_vnni_block = jcp_.is_fp8 && jcp_.vnni_block == 2;
     const auto strides_ptr
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, jcp_.src_dt, jcp_.wei_dt,
@@ -694,7 +695,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::init(engine_t *engine) {
     need_postwork = jcp.with_bias || jcp.with_eltwise || jcp.with_binary
             || jcp.with_src_scales || jcp.with_wei_scales || jcp.with_dst_scales
             || need_compensation || (jcp.dst_dt != jcp.acc_dt) || jcp.with_sum
-            || jcp.use_M_mask || jcp.src_zero_point || jcp.dst_zero_point;
+            || jcp.use_M_mask || jcp.src_zero_point || jcp.dst_zero_point
+            || jcp.req_fp8_convert_wsp;
 
     // ---- Initialize arrays ---------------------
     brg_kernels_.resize(_pd->brgs_sz_);
@@ -834,6 +836,10 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
                                               key_brgemm_primitive_buffer_comp)
                                     : s8s8_compensation)
             : nullptr;
+    auto *fp8_convert_wsp_base = jcp.req_fp8_convert_wsp
+            ? scratchpad.template get<char>(
+                      key_brgemm_primitive_fp8_convert_wsp)
+            : nullptr;
 
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
 
@@ -868,6 +874,9 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
         char *const wsp_tile = is_amx
                 ? wsp_tile_global + ithr * 2 * brgemm_convolution_bwd_utils::P4K
                 : nullptr;
+        char *const fp8_convert_wsp = jcp.req_fp8_convert_wsp
+                ? fp8_convert_wsp_base + ithr * jcp.fp8_convert_wsp_size
+                : nullptr;
 
         float *dst_scales_inv_ptr = nullptr;
         if (jcp.with_dst_scales) {
@@ -895,8 +904,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
         else
             assert(!"Unknown loop order");
 
-        brgemm_bwd_thread_ctx_t btc(
-                brgemm_ctx, ithr, brg_batch, c_buffer, out_buffer, wsp_tile);
+        brgemm_bwd_thread_ctx_t btc(brgemm_ctx, ithr, brg_batch, c_buffer,
+                out_buffer, wsp_tile, fp8_convert_wsp);
 
         int last_n = -1;
         int last_g = -1;
@@ -1230,7 +1239,9 @@ void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
                 btc.dst_scales};
 
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
-                               : static_cast<void *>(s8s8_comp);
+                : jcp.req_fp8_convert_wsp
+                ? static_cast<void *>(btc.fp8_convert_wsp)
+                : static_cast<void *>(s8s8_comp);
 
         if (do_postops || do_skip_accm) {
             brgemm_kernel_execute_postops(brg_ker, batch_size, btc.brg_batch,
@@ -1238,9 +1249,12 @@ void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
         } else
             brgemm_kernel_execute_postops(brg_ker, batch_size, btc.brg_batch,
                     ptr_C, ptr_C, post_ops_data, scratch);
-    } else
-        brgemm_kernel_execute(brg_ker, batch_size, btc.brg_batch, ptr_C,
-                static_cast<void *>(btc.wsp_tile));
+    } else {
+        void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
+                               : static_cast<void *>(btc.fp8_convert_wsp);
+        brgemm_kernel_execute(
+                brg_ker, batch_size, btc.brg_batch, ptr_C, scratch);
+    }
 }
 
 template <cpu_isa_t isa>

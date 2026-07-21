@@ -350,9 +350,8 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
                 *attr(), dst_d, ngroups_, po_chain_, binary_scale_dts_));
     }
 
-    // only supported dt for now
-    VDISPATCH_MATMUL(utils::one_of(src_dt, f32, f16, bf16, u8, s8, s4, u4,
-                             f8_e5m2, f8_e4m3, f4_e2m1),
+    VDISPATCH_MATMUL(utils::one_of(src_dt, f32, f16, bf16, u8, s8, f8_e5m2,
+                             f8_e4m3, f4_e2m1),
             VERBOSE_UNSUPPORTED_DT_CFG);
     VDISPATCH_MATMUL(utils::one_of(wei_dt, f32, f16, bf16, u8, s8, s4, u4,
                              f8_e5m2, f8_e4m3, f4_e2m1),
@@ -367,10 +366,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
                     wei_quant_.with_scale() && attr()->fpmath_.apply_to_int_),
             VERBOSE_UNSUPPORTED_DT_CFG);
 
-    const bool src_subbyte = utils::one_of(src_dt, s4, u4);
     const bool wei_subbyte = utils::one_of(wei_dt, s4, u4);
-    VDISPATCH_MATMUL(IMPLICATION(src_subbyte, (K() % 2) == 0), VERBOSE_BAD_DIM,
-            "src", 1);
     VDISPATCH_MATMUL(IMPLICATION(wei_subbyte, (K() % 2) == 0), VERBOSE_BAD_DIM,
             "weights", 1);
     VDISPATCH_MATMUL(IMPLICATION(wei_subbyte, (N() % 2) == 0), VERBOSE_BAD_DIM,

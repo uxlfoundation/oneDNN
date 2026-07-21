@@ -327,6 +327,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(int vM,
             = jcp_.req_cal_comp_pad && jcp_.exec_type == exec_trans;
     const auto strides_ptr
             = (jcp_.brg_type == brgemm_strd) ? &brg_strides : nullptr;
+    brg.fp8_with_f16_vnni_block = jcp_.is_fp8 && jcp_.vnni_block == 2;
     CHECK(brgemm_desc_init(&brg, isa, jcp_.brg_type, jcp_.src_dt, jcp_.wei_dt,
             false, false, brgemm_row_major, alpha, vbeta, jcp_.LDA, jcp_.LDB,
             jcp_.LDC, vM, vN, vK, strides_ptr, jcp_.is_tf32));

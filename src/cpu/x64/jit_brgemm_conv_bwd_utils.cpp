@@ -1519,13 +1519,16 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.is_tf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
             && is_superset(isa, avx10_2_amx_2);
+    jcp.is_fp8 = one_of(jcp.src_dt, f8_e5m2, f8_e4m3)
+            && one_of(jcp.wei_dt, f8_e4m3, f8_e5m2);
 
     VDISPATCH_CONV_IC(!jcp.is_bf32, VERBOSE_UNSUPPORTED_DT);
 
     const auto wei_dt
             = jcp.is_f32_f16 || jcp.is_f32_bf16 ? jcp.src_dt : jcp.wei_dt;
+    const bool req_emulation = one_of(isa, avx512_core_fp16, avx10_2);
     const data_type_t last_oc_block_dt
-            = get_mac_emu_data_type(wei_dt, isa, isa == avx512_core_fp16);
+            = get_mac_emu_data_type(wei_dt, isa, req_emulation);
     jcp.vnni_block = data_type_vnni_granularity(last_oc_block_dt);
 
     // TODO: optimize grouped convolutions with small oc

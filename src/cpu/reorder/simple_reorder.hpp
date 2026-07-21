@@ -2284,6 +2284,71 @@ template <SIMPLE_REORDER_TEMPL_DECL>
 struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
+                        && type_i == data_type::f4_e2m1
+                        && type_o == data_type::f4_e2m1,
+                spec::reference>::type> {
+    static status_t is_applicable(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
+        VDISPATCH_REORDER_IC(!input_d.has_runtime_dims_or_strides(),
+                VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+        VDISPATCH_REORDER_IC(
+                input_d.nelems() % 2 == 0, "Unsupported dimensions");
+        VDISPATCH_REORDER_IC(
+                input_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+        VDISPATCH_REORDER_IC(
+                output_d.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
+        VDISPATCH_REORDER_IC(
+                simple_attr_check(attr, false, true), VERBOSE_UNSUPPORTED_ATTR);
+
+        return status::success;
+    }
+
+    GET_SCRATCHPAD_SIZE_ZERO();
+
+    static status_t execute(const cpu_reorder_pd_t *pd, const exec_ctx_t &ctx) {
+        DECLARE_COMMON_PARAMS();
+        using namespace utils;
+
+        input += input_d.blk_off(0);
+        output += output_d.blk_off(0);
+
+        const auto u8_input = reinterpret_cast<const uint8_t *>(input);
+        auto u8_output = reinterpret_cast<uint8_t *>(output);
+
+        const bool same_layout = input_d.similar_to(output_d, true, false, 0);
+        if (same_layout) {
+            const size_t sz = input_d.size();
+            parallel(0, [=](const int ithr, const int nthr) {
+                size_t start {0}, end {0};
+                balance211(sz, nthr, ithr, start, end);
+                if (start < end) {
+                    std::memcpy(
+                            u8_output + start, u8_input + start, end - start);
+                }
+            });
+        } else {
+            const dim_t work_amount = input_d.nelems() / 2;
+            parallel(0, [=](const int ithr, const int nthr) {
+                dim_t start {0}, end {0};
+                balance211(work_amount, nthr, ithr, start, end);
+                PRAGMA_OMP_SIMD()
+                for (dim_t j = start; j < end; j++) {
+                    const auto idx = 2 * j;
+                    const auto i_off = input_d.off_l(idx);
+                    const auto o_off = output_d.off_l(idx);
+                    u8_output[o_off / 2] = u8_input[i_off / 2];
+                }
+            });
+        }
+
+        return status::success;
+    }
+};
+
+template <SIMPLE_REORDER_TEMPL_DECL>
+struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
+        typename utils::enable_if<tag_i == format_tag::any
+                        && tag_o == format_tag::any
                         && utils::one_of(type_i, data_type::s4, data_type::u4,
                                 data_type::f4_e2m1, data_type::f4_e3m0)
                         && utils::one_of(type_o, data_type::f32,

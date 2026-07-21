@@ -34,6 +34,20 @@ static void unparseAddressBase(std::ostream &s, ngen::AddressBase base);
 static void unparseCaching(HW hw, std::ostream &s, const MatrixAddressingStrategy &astrategy);
 static void unparseTiling(std::ostream &s, const MatrixAddressingStrategy &astrategy);
 
+static HW parseRAHW(const std::string &name) {
+    if (name == "xehpc")
+        return HW::XeHPC;
+
+    stub("Only raxehpc is supported for register allocation override.");
+    return HW::Unknown;
+}
+
+static const char *unparseRAHW(HW hw) {
+    if (hw == HW::XeHPC)
+        return "xehpc";
+    return nullptr;
+}
+
 bool native64Bit(HW hw)
 {
     EmulationStrategy emulate(hw);
@@ -508,6 +522,8 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
         } else if (mod.substr(0, 3) == "dot") {
             mod.erase(0,3);
             strategy.dotVL = mod.empty() ? 1 : std::stoi(mod);
+        } else if (mod.substr(0, 2) == "ra") {
+            strategy.raHW = parseRAHW(mod.substr(2));
         } else if (mod.length() >= 2) {
             if (mod.substr(0, 2) == "ms")
                 strategy.mSplitThresh = stoi(mod.substr(2));
@@ -909,6 +925,9 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
 
     if (strategy.GRFs != 128)
         s << " grf" << strategy.GRFs;
+    if (strategy.raHW != hw)
+        if (auto ra = unparseRAHW(strategy.raHW))
+            s << " ra" << ra;
 
     if (strategy.coopA == CoopSplit::MN)    s << " sm";
     if (strategy.coopA == CoopSplit::FullK) s << " ska";

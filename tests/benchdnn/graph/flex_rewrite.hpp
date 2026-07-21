@@ -60,6 +60,7 @@ private:
     int infer_output_shape(deserialized_graph_t &dgraph, bool change_stride);
     int inports_shape_rewrite(
             deserialized_graph_t &dgraph, bool &change_stride);
+    int outports_shape_rewrite(deserialized_graph_t &dgraph);
     bool get_inport_shape_stride(const std::string &in_shape,
             std::string &shape, std::string &stride, std::string &mtag,
             std::string &msg);

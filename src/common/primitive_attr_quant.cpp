@@ -52,7 +52,7 @@ quant_entry_t quant_entry_t::deserialize(deserializer_t &d) {
     d.pop(e.mask_);
     d.pop(e.data_type_);
     size_t group_ndims;
-    d.pop_array(group_ndims, e.group_dims_);
+    d.pop_array(group_ndims, e.group_dims_, DNNL_MAX_NDIMS);
     e.group_ndims_ = static_cast<int>(group_ndims);
     d.pop(e.is_host_scalar_);
     d.pop(e.qmode_);

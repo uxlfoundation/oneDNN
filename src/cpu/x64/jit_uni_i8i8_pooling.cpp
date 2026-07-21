@@ -167,20 +167,8 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
     };
 
     inline size_t get_offset_dst(int jj, int ll) const {
-        size_t offset = 0;
-        switch (jpp.alg) {
-            case pooling_max: {
-                offset = jj * jpp.c_block * sizeof_dst_dt();
-                break;
-            }
-            case pooling_avg_include_padding:
-            case pooling_avg_exclude_padding: {
-                offset = (ll * (jpp.c_block / max_num_ll) + jj * jpp.c_block)
-                        * sizeof_dst_dt();
-                break;
-            }
-            default: assert(!"unsupported pooling algorithm");
-        }
+        size_t offset = (ll * (jpp.c_block / max_num_ll) + jj * jpp.c_block)
+                * sizeof_dst_dt();
         return offset;
     }
 
@@ -242,10 +230,26 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
             const std::size_t c_tail_elems = jpp.c % simd_w;
             post_op_tail_opmask_idx_ = 0;
             if (c_tail_elems) {
-                for (int ll = max_num_ll - 1; ll >= 0; ll--) {
-                    if (jpp.tail[ll] != 0) {
-                        post_op_tail_opmask_idx_ = ll;
-                        break;
+                if (jpp.alg == pooling_max
+                        && utils::one_of(
+                                jpp.src_dt, data_type::s8, data_type::u8)) {
+                    // For max pooling with i8, post-ops process data in s32
+                    // chunks. Compute per-chunk tail to find the correct
+                    // tail opmask index.
+                    const size_t msk_gran = simd_w;
+                    size_t m = jpp.tail[0];
+                    for (int ll = max_num_ll - 1; ll >= 0; ll--) {
+                        if ((m >> (ll * msk_gran)) & ((1ULL << msk_gran) - 1)) {
+                            post_op_tail_opmask_idx_ = ll;
+                            break;
+                        }
+                    }
+                } else {
+                    for (int ll = max_num_ll - 1; ll >= 0; ll--) {
+                        if (jpp.tail[ll] != 0) {
+                            post_op_tail_opmask_idx_ = ll;
+                            break;
+                        }
                     }
                 }
             };
@@ -676,7 +680,7 @@ void jit_uni_i8i8_pooling_fwd_ker_t<sse41>::store_dst_avg_op(
             packuswb(vr_dst, vr_dst);
 
         const int copy_range = masked
-                ? math::ilog2q(jpp.tail[ll] + 1)
+                ? math::ilog2q(msk + 1)
                 : cpu_isa_traits_t<sse41>::vlen / data_type_size(avg_proc_dt);
         for (int i = 0; i < copy_range; i++)
             pextrb(ptr[reg_ptr_dst_i8 + offset + i], vr_dst, i);
@@ -878,6 +882,54 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx512_core>::compute_max_op(const int jj) {
 }
 
 template <cpu_isa_t isa>
+struct max_postops_unpacker_t;
+
+template <>
+struct max_postops_unpacker_t<avx512_core> {
+    static void load_dst_chunk(
+            jit_uni_i8i8_pooling_fwd_ker_t<avx512_core> *self, int jj, int ll,
+            const Xbyak::Zmm &dst_s32) {
+        // Use dst_s32's XMM part as temp to avoid clobbering vreg_tmp
+        // which holds the min init value needed across c_block iterations.
+        // vpmovsxbd/vpmovzxbd reads XMM src before writing the full ZMM.
+        Xbyak::Xmm xtmp(dst_s32.getIdx());
+        Xbyak::Zmm zreg(self->vreg_dst(jj).getIdx());
+        self->vextracti32x4(xtmp, zreg, ll);
+
+        if (self->jpp.src_dt == data_type::s8)
+            self->vpmovsxbd(dst_s32, xtmp);
+        else
+            self->vpmovzxbd(dst_s32, xtmp);
+    }
+};
+
+template <>
+struct max_postops_unpacker_t<avx2> {
+    static void load_dst_chunk(jit_uni_i8i8_pooling_fwd_ker_t<avx2> *self,
+            int jj, int ll, const Xbyak::Ymm &dst_s32) {
+        // Use dst_s32's XMM part as temp to avoid clobbering vreg_tmp
+        // which holds the min init value needed across c_block iterations.
+        Xbyak::Xmm xtmp(dst_s32.getIdx());
+        Xbyak::Ymm yreg(self->vreg_dst(jj).getIdx());
+        self->vextracti128(xtmp, yreg, ll / 2);
+        if (ll % 2 == 1) self->vpsrldq(xtmp, xtmp, 8);
+
+        if (self->jpp.src_dt == data_type::s8)
+            self->vpmovsxbd(dst_s32, xtmp);
+        else
+            self->vpmovzxbd(dst_s32, xtmp);
+    }
+};
+
+template <>
+struct max_postops_unpacker_t<sse41> {
+    static void load_dst_chunk(jit_uni_i8i8_pooling_fwd_ker_t<sse41> *, int,
+            int, const Xbyak::Xmm &) {
+        assert(!"unreachable: max pooling post-ops not supported on SSE41");
+    }
+};
+
+template <cpu_isa_t isa>
 void jit_uni_i8i8_pooling_fwd_ker_t<isa>::compute_max_step(
         int ur_c, int c_tail) {
     Label l_kd, l_kh, l_kw;
@@ -919,6 +971,86 @@ void jit_uni_i8i8_pooling_fwd_ker_t<isa>::compute_max_step(
         inc(reg_kd_index);
         cmp(reg_kd_index, reg_kd);
         jl(l_kd, T_NEAR);
+    }
+
+    if (jpp.with_postops) {
+        const bool is_u8 = jpp.dst_dt == data_type::u8;
+        const bool is_i8
+                = utils::one_of(jpp.src_dt, data_type::s8, data_type::u8);
+
+        const int num_ll
+                = data_type_size(avg_proc_dt) / data_type_size(jpp.src_dt);
+
+        // Compute per-ll tail masks (s32/f32 granularity) from
+        // the byte-level tail mask used by max pooling.
+        const size_t msk_gran
+                = cpu_isa_traits_t<isa>::vlen / data_type_size(avg_proc_dt);
+        const size_t msk_msk = (1ULL << msk_gran) - 1;
+        uint64_t tail_per_ll[max_num_ll];
+        {
+            size_t m = jpp.tail[0];
+            for (int ll = 0; ll < max_num_ll; ll++) {
+                tail_per_ll[ll] = m & msk_msk;
+                m >>= msk_gran;
+            }
+        }
+
+        // For AVX-512 with i8: reload opmask registers with per-ll
+        // f32-level masks needed by the binary injector and Phase 3
+        // store. The byte-level masks loaded by init_mask() are no
+        // longer needed since the max pooling loop has already completed.
+        if (isa == avx512_core && c_tail && is_i8) {
+            for (int ll = 0; ll < num_ll; ll++) {
+                mov(reg_tmp, tail_per_ll[ll]);
+                kmovq(mask(ll), reg_tmp);
+            }
+        }
+
+        // Process each s32 chunk: unpack, apply post-ops, store.
+        // Iterate in reverse so that vreg_dst (which aliases
+        // vreg_dst_s32 for ll=0) is preserved until the last chunk.
+        // This keeps peak register usage to 2*ur_c data regs + fixed,
+        // which fits within AVX2's 16 Ymm registers.
+        for (int jj = 0; jj < ur_c; jj++) {
+            for (int ll = num_ll - 1; ll >= 0; ll--) {
+                const bool masked = jj == ur_c - 1 && c_tail;
+                if (masked && !tail_per_ll[ll]) continue;
+
+                // Unpack: extract chunk ll into vreg_dst_s32.
+                auto reg_dst_s32 = vreg_dst_s32(jj, ll);
+                if (is_i8) {
+                    max_postops_unpacker_t<isa>::load_dst_chunk(
+                            this, jj, ll, reg_dst_s32);
+                } else {
+                    uni_vmovups(reg_dst_s32, vreg_dst(jj));
+                }
+
+                // Apply post-ops: s32 -> f32, inject, f32 -> s32.
+                const auto &reg_dst_f32 = vreg_dst_f32(jj, ll);
+                uni_vcvtdq2ps(reg_dst_f32, reg_dst_s32);
+
+                binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
+                if (jpp.with_binary) {
+                    rhs_arg_params.vmm_idx_to_out_reg.emplace(
+                            reg_dst_f32.getIdx(), reg_ptr_dst_i8);
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
+                            reg_dst_f32.getIdx(), get_offset_dst(jj, ll));
+                    if (masked && ll == post_op_tail_opmask_idx_)
+                        rhs_arg_params.vmm_tail_idx_.emplace(
+                                reg_dst_f32.getIdx());
+                }
+                postops_injector_->compute_vector(
+                        reg_dst_f32.getIdx(), rhs_arg_params);
+
+                uni_vcvtps2dq(reg_dst_s32, reg_dst_f32);
+                if (is_u8) uni_vpmaxsd(reg_dst_s32, reg_dst_s32, vreg_zeros);
+
+                // Store: pack s32 back to i8 and write to memory.
+                store_dst_avg_op(jj, ll, get_offset_dst(jj, ll), masked,
+                        tail_per_ll[ll]);
+            }
+        }
+        return;
     }
 
     for (int jj = 0; jj < ur_c; jj++)
@@ -1156,7 +1288,13 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::init_mask() {
     switch (jpp.alg) {
         case pooling_max:
             // For "max" we need mask only in case of non-zero tail
-            if (tail_mask) init(tail_mask);
+            if (tail_mask) {
+                // When post-ops are enabled for i8 types, Phase 3 store
+                // uses store_dst_avg_op which requires MMX masks.
+                const bool need_mmx
+                        = jpp.with_postops && utils::one_of(jpp.src_dt, s8, u8);
+                init(tail_mask, true, need_mmx);
+            }
             break;
         case pooling_avg_include_padding:
         case pooling_avg_exclude_padding:
@@ -1389,16 +1527,14 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_post_ops_conf(
 
     if (post_ops.len() == 0) return status::success;
 
-    // TODO: currently, eltwise/binary injectors assume vmms data is f32.
-    // In max pooling data remains in i8 data type.
-    VDISPATCH_POOLING_IC(jpp.alg != pooling_max, "%s: %s",
-            VERBOSE_UNSUPPORTED_POSTOP, VERBOSE_BAD_ALGORITHM);
+    // Post-ops for max pooling only supported on AVX2+.
+    if (jpp.alg == pooling_max && isa == sse41) return status::unimplemented;
 
     jpp.with_eltwise = post_ops.find(primitive_kind::eltwise) != -1;
     jpp.with_binary = post_ops.find(primitive_kind::binary) != -1;
     jpp.with_postops = jpp.with_eltwise || jpp.with_binary;
 
-    VDISPATCH_POOLING_IC(jpp.with_postops, VERBOSE_UNSUPPORTED_POSTOP);
+    if (!jpp.with_postops) return status::unimplemented;
 
     jpp.post_ops = post_ops;
 
@@ -1408,8 +1544,6 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_post_ops_conf(
             false /*sum_requires_scale_one*/, false /*sum_requires_zp_zero*/,
             false /*sum_requires_same_params*/,
             get_supported_bcast_strategies()));
-
-    // Verbose is reported inside `post_ops_ok`.
     if (!po_ok) return status::unimplemented;
 
     return status::success;
@@ -1491,6 +1625,7 @@ status_t jit_uni_i8i8_pooling_fwd_t<isa>::execute_forward(
         p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
         (*ker_)(&p);
     });
+
     return status::success;
 }
 

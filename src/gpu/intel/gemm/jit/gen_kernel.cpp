@@ -210,7 +210,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     if (hw_ == ngen::HW::Xe2 || hw_ == ngen::HW::Xe3) {
         // Use XeHPC register banking on Xe2/Xe3, in order
         // to successfully reuse XeHPC strategies.
-        strategy_.raHW = ngen::HW::XeHPC;
+        if (strategy_.raHW == hw_) strategy_.raHW = ngen::HW::XeHPC;
 
         // Bump up alignments to 16 bytes for block 2D if available.
         bool block_2d_a = false, block_2d_b = false;
@@ -226,7 +226,8 @@ status_t gen_desc_t::finalize(const char *tags) {
 
     if (hw_ == ngen::HW::Xe3p) {
         // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
-        if (!efficient_64b_) strategy_.raHW = ngen::HW::XeHPC;
+        if (!efficient_64b_ && strategy_.raHW == hw_)
+            strategy_.raHW = ngen::HW::XeHPC;
 
         // Disable named barriers to avoid simulator errors, allow fallback to pvc strategies.
         strategy_.namedBarriers[0] = 0;

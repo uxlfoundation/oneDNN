@@ -1,15 +1,15 @@
 oneAPI Deep Neural Network Library (oneDNN) Developer Guide and Reference
 =========================================================================
 
-oneAPI Deep Neural Network Library (oneDNN) is an open-source cross-platform 
+oneAPI Deep Neural Network Library (oneDNN) is an open-source cross-platform
 performance library of basic building blocks for deep learning applications.
 
-The library is optimized for Intel(R) Architecture Processors, Intel Graphics, 
-and Arm(R) 64-bit Architecture (AArch64)-based processors. oneDNN has experimental 
-support for the following architectures: NVIDIA* GPU, AMD* GPU, 
+The library is optimized for Intel(R) Architecture Processors, Intel Graphics,
+and Arm(R) 64-bit Architecture (AArch64)-based processors. oneDNN has experimental
+support for the following architectures: NVIDIA* GPU, AMD* GPU,
 OpenPOWER* Power ISA (PPC64), IBMz* (s390x), and RISC-V.
 
-oneDNN is intended for deep learning applications and framework developers 
+oneDNN is intended for deep learning applications and framework developers
 interested in improving application performance on CPUs and GPUs.
 
 .. toctree::
@@ -20,7 +20,7 @@ interested in improving application performance on CPUs and GPUs.
    Introduction<self>
 
 .. toctree::
-   :caption: Get Started 
+   :caption: Get Started
    :hidden:
    :maxdepth: 1
 
@@ -28,9 +28,9 @@ interested in improving application performance on CPUs and GPUs.
    dev_guide_build
    dev_guide_build_options
    dev_guide_link
-   
+
 .. toctree::
-   :caption: Learn oneDNN 
+   :caption: Learn oneDNN
    :hidden:
    :maxdepth: 1
 
@@ -42,6 +42,7 @@ interested in improving application performance on CPUs and GPUs.
    :hidden:
    :maxdepth: 1
 
+   dev_guide_conventions
    programming_model
    supported_primitives
    graph_extension
@@ -51,7 +52,7 @@ interested in improving application performance on CPUs and GPUs.
    ukernels
 
 .. toctree::
-   :caption: Developer Reference  
+   :caption: Developer Reference
    :hidden:
    :maxdepth: 1
 

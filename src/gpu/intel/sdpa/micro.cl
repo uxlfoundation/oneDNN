@@ -56,6 +56,9 @@
  * rather than the bf16 struct that CONVERT_DATA_T returns. */
 #ifdef QRY_DT_BF16
 #define CONVERT_TILE_FMA_T(v) (into_bf16(convert_float(v)).data)
+#elif defined(QRY_DT_HF8) || defined(QRY_DT_BF8)
+/* fp8 query stages softmax probabilities (S) in f16, not fp8. */
+#define CONVERT_TILE_FMA_T(v) convert_half(v)
 #else
 #define CONVERT_TILE_FMA_T CONVERT_DATA_T
 #endif
@@ -161,6 +164,12 @@ inline void apply_dropout_s_tile(
 #elif defined(QRY_DT_BF16)
 #define VEC_TYPE2 ushort2
 #define FMA_TYPE ushort
+#elif defined(QRY_DT_HF8) || defined(QRY_DT_BF8)
+/* fp8 query is upconverted to f16 while staging to SLM, so the KQ GEMM and
+ * the softmax-probability (S) storage operate in f16. */
+#define VEC_TYPE2 half2
+#define FMA_TYPE half
+#define QRY_FP8 1
 #else
 #error "Data type not supported for VEC_TYPE2"
 #endif
@@ -212,6 +221,13 @@ DECLARE_2D_TILE_LOAD_PACKED_VEC(q_tile_type, QRY_DATA_T, VEC_TYPE2,
         SUBGROUP_SIZE, D_MAX_KQ / 2, 1, 1, q_tile_sg_n)
 #endif
 
+#endif
+
+#if defined(QRY_FP8) && USE_SYSTOLIC_UKERNEL
+/* fp8 query is loaded byte-wise and converted to f16 before SLM staging,
+ * independent of BLOCK_Q / Q_ALIGN (which assume 16-bit elements). */
+DECLARE_2D_TILE_LOAD_PACKED_VEC_CVT(q_tile_type, QRY_DATA_T, VEC_TYPE2,
+        into_half, SUBGROUP_SIZE, D_MAX_KQ / 2, 1, 1, q_tile_sg_n)
 #endif
 
 #if BLOCK_A
@@ -447,7 +463,10 @@ inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
 
 #if USE_SYSTOLIC_UKERNEL
 
-#if BLOCK_Q
+#if defined(QRY_FP8)
+    /* fp8: load bytes and convert to f16 (ldq is in elements). */
+    tile_load_packed_vec2_cvt(Q_tile, Q, m, n, ldq, offset_r, offset_c);
+#elif BLOCK_Q
     tile_load_block_rem_q(
             Q_tile, (global uint *)Q, n, ldq >> 1, offset_r, offset_c);
 #elif Q_ALIGN >= 4
@@ -573,9 +592,10 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     uint sg_j_vs = sg_ij / ugemm_vs_sg_per_wg_m;
 
     /* SLM allocations -- place in one array to work around compiler bug */
-#define Q_slm_size (D_MAX_KQ * ugemm_kq_wg_tile_n * sizeof(QRY_DATA_T))
-#define S_slm_size \
-    (ugemm_kq_wg_tile_m * ugemm_kq_wg_tile_n * sizeof(QRY_DATA_T))
+    /* Q and S are staged in SLM as FMA_TYPE (fp8 query is upconverted to f16),
+     * so size by FMA_TYPE rather than the external query type. */
+#define Q_slm_size (D_MAX_KQ * ugemm_kq_wg_tile_n * sizeof(FMA_TYPE))
+#define S_slm_size (ugemm_kq_wg_tile_m * ugemm_kq_wg_tile_n * sizeof(FMA_TYPE))
 #define S_sum_slm_size \
     (ugemm_kq_wg_tile_n * ugemm_kq_sg_per_wg_m * sizeof(float))
 #define S_max_slm_size (ugemm_kq_wg_tile_n * sizeof(float))

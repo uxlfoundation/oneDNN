@@ -261,9 +261,11 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
         problem.Ta = problem.Tb = Type::f32;
     } else if (utils::one_of(desc()->qry_md()->data_type, data_type::f8_e4m3,
                        data_type::f8_e5m2)) {
-        // fp8 has no native systolic multiply on current targets: keep fp8 as
-        // the external (stored) type and upconvert to f16 for the DPAS compute.
+        // fp8 query has no native systolic multiply and no matching KQ
+        // microkernel strategy on current targets. The SDPA kernel upconverts
+        // Q to f16 while staging it to SLM, so the KQ GEMM sees an f16 B input.
         problem.Ta = problem.Tb = Type::f16;
+        problem.Tb_ext = Type::f16;
     } else {
         VCHECK_SDPA_COND(utils::one_of(desc()->qry_md()->data_type,
                                  data_type::f16, data_type::bf16,
@@ -1085,6 +1087,17 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     def_data_type(kernel_ctx, qry_data_t, "QRY");
     def_data_type(kernel_ctx, val_data_t, "VAL");
     def_data_type(kernel_ctx, dst_data_t, "DST");
+
+    // The SDPA kernel uses the QRY_/KEY_/VAL_/DST_ dtype prefixes, which
+    // math_utils.h does not inspect when deciding whether to emit the fp8
+    // conversion helpers (into_half(f8_*), etc.). Enable them explicitly when
+    // any tensor is fp8 so in-kernel fp8<->f16 conversions are available.
+    const bool any_hf8 = utils::one_of(
+            data_type::f8_e4m3, key_data_t, qry_data_t, val_data_t, dst_data_t);
+    const bool any_bf8 = utils::one_of(
+            data_type::f8_e5m2, key_data_t, qry_data_t, val_data_t, dst_data_t);
+    if (any_hf8) kernel_ctx.define_int("MATH_UTILS_DECLARE_HF8", 1);
+    if (any_bf8) kernel_ctx.define_int("MATH_UTILS_DECLARE_BF8", 1);
 
     if (with_attn_mask) { def_data_type(kernel_ctx, msk_data_t, "MSK"); }
 

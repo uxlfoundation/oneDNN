@@ -1,0 +1,1000 @@
+--reset --inplace=true 30x300
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --stat_tag=undef --flags=GCHM 64x30x512
+--reset --dir=BWD_D --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=G --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --stat_tag=axb --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=ntc --flags=GCH --inplace=true 6x2x128x1024
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=abc:abc --stat_tag=ab --flags=CH 32x512x1024_n"fc898a4493653373b7fbcf229e85b334"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=ntc --stat_tag=xba --ss_dt=bf16 --flags=C 128x1x1024
+--reset --dt=f32:f16 --stat_tag=abx --ss_dt=f16 --flags=H 6x2x128x1024
+--reset --dir=BWD_D --dt=f16:f16 --stat_tag=undef --flags=GM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=f32:s8 --tag=axb --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f64:f64 --tag=AB48a16b --stat_tag=abx --flags=C --inplace=true 24576x1024
+--reset --stat_tag=axb --flags=M --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=abx --flags=CH 30x300
+--reset --allow-enum-tags-only=false --dir=BWD_DW --tag=ab:ab --stat_tag=a --flags=CH 1216x1024_n"a8a216d7a50a21988ac8e883a31deec6&amp;0537f62f22d875a8f952dcc9e1ff6067"
+--reset --dir=BWD_D --dt=f64:f64 --tag=ntc 128x1x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=undef --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --tag=axb --stat_tag=abx --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=axb --flags=G --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=f32:u8 --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --stat_tag=xba --flags=GCH --inplace=true 128x1x1024
+--reset --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=C 6x2x128x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --flags=M --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=bf16:u8 --flags=CH --attr-scales=src:common:64+dst:common:0.5 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=ntc --flags=M 6x2x128x1024
+--reset --dt=f32:f16 --tag=ntc --stat_tag=xba --ss_dt=f16 --flags=H 128x1x1024
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=axb --stat_tag=abx 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=s8:f32 --stat_tag=undef 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=s8:bf16 --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --allow-enum-tags-only=false --dir=BWD_DW --tag=ba --flags=GCH 1x33554432
+--reset --dir=FWD_I --dt=u8:bf16 --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=u8:f32 --tag=ntc --stat_tag=xba 64x30x512
+--reset --dir=BWD_DW --dt=f32:f16 --ss_dt=f16 --flags=C 30x300
+--reset --dt=f16:f16 --flags=G --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_D --tag=axb --flags=GM --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=GCHM --inplace=true 30x300
+--reset --dt=bf16:bf16 --tag=AB48a16b --stat_tag=abx --flags=GCH --inplace=true 30x300
+--reset --dt=bf16:f32 128x1x1024_n"lnorm_ci_1d:0"
+--reset --allow-enum-tags-only=false --dt=f16:f16 --tag=ab:ab --stat_tag=a --flags=CH 128x768_n"3dc2611020f80d51037143e073b53289*24"
+--reset --dt=f64:f64 --stat_tag=undef --flags=M --inplace=true 30x300
+--reset --dt=f64:f64 --tag=ntc --stat_tag=xba --flags=CH --inplace=true 64x30x512
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=axb --flags=C --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=f32:s8 --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=bf16:u8 --tag=axb --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --stat_tag=undef 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --flags=CH 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=undef 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --stat_tag=ntc --inplace=true 6x2x128x1024
+--reset --dt=bf16:bf16 --tag=ntc --stat_tag=xba --flags=M --inplace=true 64x30x512
+--reset --dt=f32:bf16 --ss_dt=bf16 --flags=H 30x300
+--reset --tag=axb --stat_tag=undef --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f16:f16 --stat_tag=axb --flags=H --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=abx --flags=GM --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ab:ab --flags=CH 24576x1024_n"4e221a7c3f7630998575f5436491b756*48"
+--reset --tag=ntc --stat_tag=xba --flags=GCHM --inplace=true 128x1x1024
+--reset --stat_tag=ntc --flags=GCHM --inplace=true 6x2x128x1024
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=ntc --flags=CH 6x2x128x1024
+--reset --stat_tag=abx --flags=H --inplace=true 24576x1024
+--reset --dir=BWD_D --stat_tag=undef --flags=G --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_D --stat_tag=axb --flags=GM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:f32 --stat_tag=undef 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=f32:s8 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=bf16:u8 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=abx 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=s8:f32 --stat_tag=abx 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=abx 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --allow-enum-tags-only=false --dir=BWD_DW --tag=abc:abc --stat_tag=ab --flags=CH 16x512x1024_n"1f764ae9010fb489a2ca30702a208d30&amp;3b46d49f49f391c04292f6e55370e941"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=M --inplace=true 30x300
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=undef 256x768
+--reset --dt=f32:bf16 --stat_tag=ntc --ss_dt=bf16 --flags=C 6x2x128x1024
+--reset --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=CH 30x300
+--reset --dt=f32:f16 --stat_tag=ntc --ss_dt=f16 --flags=H 6x2x128x1024
+--reset --dt=f32:bf16 --stat_tag=axb --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dt=bf16:f32 --stat_tag=abx 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f32:u8 --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=f32:s8 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f32:u8 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=bf16:u8 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=s8:f32 --stat_tag=axb --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=axb --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=axb 30x300_n"lnorm_ci_0d:1"
+--reset --allow-enum-tags-only=false --dir=BWD_DW --dt=bf16:bf16 --tag=ab:ab --stat_tag=a --flags=CH 16384x1024_n"ca96212e020d3483758c65a9f1c77edf*48"
+--reset --allow-enum-tags-only=false --dt=f16:f16 --tag=abc:abc --stat_tag=ab --flags=CH 1x128x768_n"1bcd784897b56fc655ac8233bdf9d763"
+--reset --dir=BWD_D --tag=ntc --stat_tag=xba --inplace=true 64x30x512
+--reset --dir=BWD_D --stat_tag=ntc --inplace=true 6x2x128x1024
+--reset --dt=f64:f64 --flags=GCHM --inplace=true 30x300
+--reset --dt=f16:f16 --ss_dt=f16 --flags=C 30x300
+--reset --tag=AB48a16b --stat_tag=abx --flags=C --inplace=true 30x300
+--reset --dt=f64:f64 --tag=AB48a16b --stat_tag=abx --flags=H --inplace=true 30x300
+--reset --tag=AB48a16b --stat_tag=abx --inplace=true 24576x1024
+--reset --stat_tag=axb --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --stat_tag=axb --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f16:f16 --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f32:u8 --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=axb --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=ab:ab --flags=CH 24576x1024_n"3fbcdf246ed35c8b2053913aee4bd333*48"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=ab:ab --flags=CH 24576x1024_n"5e420c52a9532296897161c1cd610bff*48"
+--reset --allow-enum-tags-only=false --dir=BWD_DW --tag=ab --flags=CH 257x32
+--reset --allow-enum-tags-only=false --tag=ba 64x64
+--reset --tag=AB48a16b --stat_tag=abx --inplace=true 2048x1024
+--reset --inplace=true 128x1024
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 1x6272x256_n"4603c90aad135ad7b7d494763f2d27ba*80"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 1x1568x1024_n"cb0b25ec470a9a006c9e2854a2997ed7*20"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 1x25088x128_n"e4613c7701dea9428b3842f723302aca*100"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 1x6272x512_n"af4081d0f72e8d9701c67bc7d00ee974*20"
+--reset --allow-enum-tags-only=false --dir=BWD_DW --dt=bf16:bf16 --tag=abc:abc --stat_tag=ab --flags=CH 1x16384x3072_n"2b27c6ae74ae9c39240d69ad98e68897*61"
+--reset --stat_tag=abx --inplace=true 1x2048x1024
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 1x392x1024_n"d434ebef24393b230f76e6ae87523536*100"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 64x384x1024_n"16ed8e0505e6d6130ad1b90dca7eea5a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 1x392x2048_n"45cf018c294c9422c1caaa287a00d0e8*20"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 1x1568x512_n"8d0b76644097d420ba8cd8f5cee48628*720"
+--reset --inplace=true 257x768
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 1x16384x768_n"77ae9fb991c7281c481753a8d17b8124*41"
+--reset --inplace=true 128x40x1024
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abc:abc --flags=CH 1x768x768_n"94744d982befe019a88e9942b9c47705*27"
+--reset --allow-enum-tags-only=false --dir=BWD_DW --dt=bf16:bf16 --tag=ab:ab --stat_tag=a --flags=CH 2432x1024_n"a74691c06d124881abd05442ba85547d"
+--reset --allow-enum-tags-only=false --dir=BWD_DW --tag=ab:ab --stat_tag=a --flags=CH 8192x1024_n"f4ebe3e0e6bccb09a00e145a25dcd224*48&amp;58144f35566b4e7f908324b7ff9632c8*48"
+--reset --inplace=true 31x301
+--reset --inplace=true 5120x1024
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=abc:abc --stat_tag=ab --flags=CH 1x24576x1024_n"8221ea4338e48caa21b1ae8d7f5e9657*49"
+--reset --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C 256x768
+--reset --dir=FWD_I --dt=u8:bf16 --flags=CH --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --stat_tag=undef --inplace=true 257x768
+--reset --dt=f64:f64 --tag=ntc --stat_tag=xba --flags=GCHM --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=abx --flags=GCHM --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f64:f64 --tag=ntc --stat_tag=xba --flags=CH --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=bf16:u8 --tag=axb --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f16:f16 --tag=ntc --stat_tag=xba --ss_dt=f16 --flags=H 64x30x512
+--reset --dir=BWD_DW --stat_tag=abx --flags=C --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=abx --ss_dt=bf16 --flags=H --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --flags=CH --inplace=true 64x30x512
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_D --flags=G --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f16:f16 --tag=axb --stat_tag=abx --flags=C --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=f64:f64 --tag=AB48a16b --stat_tag=abx --flags=C --inplace=true 2048x1024
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=CH --inplace=true 257x768
+--reset --dt=bf16:bf16 --stat_tag=axb --flags=GCHM --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=H --inplace=true 5120x1024
+--reset --dt=f32:f16 --stat_tag=abx --ss_dt=f16 --flags=CH 30x300
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=abx --attr-scales=src:common:2 31x301
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=axb --flags=G --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --tag=ntc 128x40x1024
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=abx --flags=CH --inplace=true 256x768
+--reset --dir=FWD_I --dt=bf16:u8 --tag=axb --stat_tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=ntc --ss_dt=bf16 --flags=C 128x1x1024
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=undef --flags=CH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=undef --flags=CH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f64:f64 --flags=M --inplace=true 257x768
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --stat_tag=axb --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=f32:u8 --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f64:f64 --stat_tag=undef 256x768
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=ntc --flags=GCH --inplace=true 6x2x128x1024
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=M --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --stat_tag=abx --flags=GCH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --ss_dt=bf16 --flags=CH 128x40x1024
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=axb --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f64:f64 --stat_tag=undef 6x2x128x1024
+--reset --dt=bf16:bf16 --tag=ntc --stat_tag=undef --ss_dt=bf16 --flags=C 128x40x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=abx --flags=GCH --inplace=true 128x40x1024
+--reset --dt=f16:f16 --tag=axb --stat_tag=axb --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f64:f64 --flags=M --inplace=true 256x768
+--reset --tag=ntc --flags=M --inplace=true 128x40x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=axb --ss_dt=bf16 --flags=CH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=undef --flags=M --inplace=true 128x1x1024
+--reset --dir=BWD_D --tag=axb --stat_tag=abx --flags=GM --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=axb --stat_tag=axb --flags=CH 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_D --dt=f64:f64 --stat_tag=undef 64x30x512
+--reset --flags=H --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f16:f16 --tag=ntc --stat_tag=undef --ss_dt=f16 --flags=C 128x1x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=undef --ss_dt=f16 --flags=C 256x768
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=undef --flags=GM --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=undef --flags=CH 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f16:f16 --stat_tag=axb --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=abx 256x768
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=undef 31x301
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=undef 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --tag=axb --stat_tag=abx --flags=CH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=M --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=bf16:bf16 31x301
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --stat_tag=undef --flags=CH 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f32:f16 --ss_dt=f16 --flags=CH 31x301
+--reset --dir=BWD_D --dt=f16:f16 --stat_tag=abx --flags=G --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=abx --flags=CH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --flags=GCH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=abx --ss_dt=bf16 --flags=C --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=undef --ss_dt=f16 --flags=C --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f32:bf16 --ss_dt=bf16 --flags=C 31x301
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=M 6x2x128x1024
+--reset --dt=bf16:bf16 --flags=M --inplace=true 6x2x128x1024
+--reset --dir=BWD_D --dt=f16:f16 --stat_tag=undef --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_D --dt=f64:f64 --stat_tag=undef --inplace=true 128x40x1024
+--reset --tag=axb --stat_tag=axb --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=axb --ss_dt=bf16 --flags=CH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_D --dt=f16:f16 --stat_tag=abx --flags=GM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f32:f16 --tag=ntc --ss_dt=f16 --flags=C 128x1x1024
+--reset --dt=bf16:bf16 --tag=ntc --stat_tag=undef 128x1x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=abx --flags=C --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=f16:f16 --flags=GCH 128x1x1024
+--reset --dt=f64:f64 64x30x512
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=axb --stat_tag=axb --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --flags=GCHM --inplace=true 31x301
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=axb --flags=CH 256x768_n"lnorm_ci_0d:2"
+--reset --tag=axb --stat_tag=abx --flags=G --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=abx --flags=M --inplace=true 128x1024
+--reset --stat_tag=undef --flags=M --inplace=true 256x768
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=GCH --inplace=true 6x2x128x1024
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=axb --flags=CH 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=abx --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --tag=ntc --stat_tag=abx --ss_dt=f16 --flags=H 128x40x1024
+--reset --stat_tag=undef 128x1024
+--reset --dt=f16:f16 --stat_tag=abx --ss_dt=f16 --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --tag=AB48a16b --stat_tag=abx --flags=C --inplace=true 2048x1024
+--reset --dt=bf16:bf16 --flags=M --inplace=true 5120x1024
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f32:bf16 --ss_dt=bf16 --flags=H 31x301
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=undef --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --stat_tag=abx --flags=GCHM --inplace=true 6x2x128x1024
+--reset --dt=f16:f16 --stat_tag=undef --flags=M --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --stat_tag=undef 6x2x128x1024
+--reset --dt=f16:f16 --tag=axb --flags=CH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=C 128x1x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=undef --ss_dt=f16 --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=CH 128x40x1024
+--reset --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=H 6x2x128x1024
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=ntc --stat_tag=xba --ss_dt=bf16 --flags=C 64x30x512
+--reset --dt=f64:f64 --stat_tag=abx --flags=GCH --inplace=true 1x2048x1024
+--reset --dir=BWD_DW --stat_tag=abx --flags=GCH --inplace=true 128x1024
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=axb --flags=G --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f16:f16 --ss_dt=f16 --flags=H 31x301
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=axb --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=AB48a16b --stat_tag=abx --flags=H --inplace=true 24576x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=M --inplace=true 257x768
+--reset --tag=axb --stat_tag=axb --flags=CH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f64:f64 --tag=ntc --flags=GCH --inplace=true 128x1x1024
+--reset --dir=FWD_I --dt=u8:f32 --tag=ntc --flags=CH --attr-scales=src:common:2 128x40x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=axb --ss_dt=f16 --flags=CH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=H --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=GCH --inplace=true 5120x1024
+--reset --tag=axb --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --flags=GCHM --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --stat_tag=undef --flags=CH --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --stat_tag=abx --flags=CH 257x768_n"lnorm_ci_0d:3"
+--reset --tag=axb --flags=M --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=GCH --inplace=true 257x768
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=axb --ss_dt=f16 --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=axb 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --tag=AB48a16b --stat_tag=abx --inplace=true 30x300
+--reset --dt=f16:f16 --ss_dt=f16 --flags=CH 5120x1024
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=CH 6x2x128x1024
+--reset --dt=f32:bf16 --tag=axb --stat_tag=abx 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --tag=axb --flags=GCHM --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --tag=axb --stat_tag=undef --flags=GCHM --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --tag=axb --stat_tag=undef --flags=CH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=bf16:bf16 --stat_tag=abx --flags=M --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f16:f16 --tag=ntc --stat_tag=abx --ss_dt=f16 --flags=CH 64x30x512
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=abx 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --flags=CH 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f32:bf16 --tag=axb --stat_tag=axb 256x768_n"lnorm_ci_0d:2"
+--reset --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --stat_tag=undef --flags=CH 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --flags=CH --inplace=true 6x2x128x1024
+--reset --dir=FWD_I --dt=u8:f32 --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=C 64x30x512
+--reset --dir=BWD_DW --dt=f64:f64 --tag=ntc --stat_tag=undef --flags=GCH --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=u8:f32 --flags=CH --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f64:f64 --flags=GCHM --inplace=true 6x2x128x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=AB48a16b --stat_tag=abx --flags=GCH --inplace=true 128x1024
+--reset --stat_tag=abx --inplace=true 2048x1024
+--reset --dir=BWD_D --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=GCH --inplace=true 128x1024
+--reset --dir=BWD_DW --dt=bf16:f32 --stat_tag=axb 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --stat_tag=abx 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f16:f16 --tag=axb --stat_tag=axb --flags=C --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f16:f16 --tag=axb --stat_tag=abx --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=abx --ss_dt=bf16 --flags=H --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f16:f16 --ss_dt=f16 --flags=C 31x301
+--reset --dir=BWD_DW --dt=f16:f16 --ss_dt=f16 --flags=C 5120x1024
+--reset --dt=f64:f64 --stat_tag=ntc 6x2x128x1024
+--reset --dir=BWD_DW --tag=ntc --stat_tag=xba --flags=M --inplace=true 64x30x512
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=abx --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=abx --ss_dt=bf16 --flags=H --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=C 128x1024
+--reset --dir=FWD_I --dt=bf16:s8 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=C 128x40x1024
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=bf16:s8 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --tag=axb --stat_tag=undef --flags=GCH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=axb --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dt=bf16:bf16 --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=undef --flags=GCHM --inplace=true 128x40x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=undef --flags=CH --inplace=true 128x40x1024
+--reset --dir=BWD_DW --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=CH 5120x1024
+--reset --dt=f16:f16 --flags=M --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --tag=axb --flags=GM --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=xba --ss_dt=bf16 --flags=H 128x40x1024
+--reset --dir=BWD_DW --dt=f64:f64 --flags=GCH --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=bf16:u8 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --tag=axb --flags=GCH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=GCHM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=M --inplace=true 64x30x512
+--reset --dir=FWD_I --dt=f32:s8 --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f16:f16 --stat_tag=axb --flags=CH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f32:f16 --stat_tag=abx --ss_dt=f16 --flags=H 5120x1024
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=M 30x300
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=abx --flags=GCHM --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --stat_tag=abx --flags=C --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_D --stat_tag=abx 64x30x512
+--reset --stat_tag=abx --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=s8:f32 --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=H 64x30x512
+--reset --dt=f64:f64 --stat_tag=abx --flags=GCH --inplace=true 128x1x1024
+--reset --dt=f16:f16 --ss_dt=f16 --flags=H --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=u8:f32 256x768
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=f16:f16 --ss_dt=f16 --flags=C 128x1x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --flags=GCH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f64:f64 --stat_tag=abx --flags=GCH --inplace=true 128x1024
+--reset --dir=FWD_I --dt=bf16:u8 --flags=CH --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C 257x768
+--reset --dir=BWD_D --stat_tag=abx --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --flags=GCH 128x1x1024
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=axb --flags=CH 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f32:bf16 --tag=ntc --stat_tag=abx --ss_dt=bf16 --flags=CH 128x40x1024
+--reset --dir=FWD_I --dt=bf16:s8 --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=u8:f32 --tag=ntc --stat_tag=abx --attr-scales=src:common:2 128x40x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --flags=M --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --stat_tag=abx --flags=C --inplace=true 1x2048x1024
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=G --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_D --dt=f16:f16 --stat_tag=undef --flags=G --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --stat_tag=abx --flags=GCH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --ss_dt=f16 --flags=C --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=f64:f64 --flags=M --inplace=true 128x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=xba --flags=GCH --inplace=true 64x30x512
+--reset --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=CH 64x30x512
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=H 64x30x512
+--reset --dt=f64:f64 --tag=ntc --stat_tag=abx --flags=GCHM --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=f32:u8 --stat_tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --dt=f64:f64 --stat_tag=abx --inplace=true 6x2x128x1024
+--reset --dt=bf16:bf16 --tag=ntc --ss_dt=bf16 --flags=H 64x30x512
+--reset --dir=BWD_DW --dt=bf16:bf16 --ss_dt=bf16 --flags=H --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --tag=ntc --stat_tag=abx --flags=CH --inplace=true 64x30x512
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=undef --ss_dt=bf16 --flags=H --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_D --dt=f16:f16 --stat_tag=abx --flags=G --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --inplace=true 128x1x1024
+--reset --tag=axb --flags=GCHM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f32:f16 --stat_tag=abx --ss_dt=f16 --flags=C 256x768
+--reset --dt=f16:f16 --ss_dt=f16 --flags=H --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=axb --stat_tag=abx --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --stat_tag=abx 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=CH 31x301
+--reset --dt=bf16:f32 --tag=axb 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=abx --ss_dt=bf16 --flags=H 128x1x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=abx --inplace=true 128x1024
+--reset --stat_tag=abx --flags=G --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --tag=ntc --stat_tag=abx --flags=GCHM --inplace=true 64x30x512
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=undef --ss_dt=bf16 --flags=C --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=f64:f64 --flags=GCHM --inplace=true 64x30x512
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --stat_tag=undef --flags=M --inplace=true 5120x1024
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=undef --flags=GM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=ntc --inplace=true 6x2x128x1024
+--reset --dir=BWD_D --dt=f16:f16 --flags=G --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_D --dt=bf16:bf16 --flags=G --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=bf16:bf16 128x1024
+--reset --dt=f16:f16 --tag=axb --stat_tag=abx --ss_dt=f16 --flags=CH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=s8:f32 --flags=CH --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --ss_dt=f16 --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=undef --inplace=true 256x768
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=M --inplace=true 128x40x1024
+--reset --dt=f64:f64 --tag=ntc --stat_tag=xba --flags=M --inplace=true 128x40x1024
+--reset --stat_tag=axb --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=bf16:u8 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=C 128x40x1024
+--reset --dt=bf16:f32 --tag=axb --stat_tag=axb 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:f32 --tag=axb --stat_tag=axb --flags=CH 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_D --stat_tag=abx --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=axb 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --flags=M --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --tag=ntc --stat_tag=xba --flags=GCHM --inplace=true 128x40x1024
+--reset --tag=AB48a16b --stat_tag=abx --flags=H --inplace=true 2048x1024
+--reset --dir=FWD_I --dt=u8:bf16 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --tag=AB48a16b --stat_tag=abx --flags=CH --inplace=true 256x768
+--reset --dt=f64:f64 --stat_tag=abx --flags=GCH --inplace=true 256x768
+--reset --dir=FWD_I --dt=bf16:s8 --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --tag=ntc --stat_tag=xba --flags=GCHM --inplace=true 128x40x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=C 128x40x1024
+--reset --dt=f64:f64 --stat_tag=abx --flags=M --inplace=true 256x768
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --stat_tag=abx --flags=CH --inplace=true 128x1x1024
+--reset --dt=f32:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C 5120x1024
+--reset --dt=f32:bf16 --ss_dt=bf16 --flags=CH 6x2x128x1024
+--reset --dir=FWD_I --dt=s8:f32 --stat_tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=undef --flags=GM --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f32:bf16 --stat_tag=abx --ss_dt=bf16 --flags=CH 31x301
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=abx --flags=CH 257x768
+--reset --allow-enum-tags-only=false --tag=abc:abc --stat_tag=ab --flags=CH 16x512x1024_n"f6ebe6f46f636b0645337fdc1318ea88&amp;8ee2f0f6ca8acd5860bec7652334b988"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=H --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --stat_tag=undef --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:bf16 --tag=ntc --stat_tag=undef --flags=GCHM --inplace=true 64x30x512
+--reset --dt=f64:f64 --stat_tag=abx --flags=M --inplace=true 257x768
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=abx --ss_dt=bf16 --flags=H 256x768
+--reset --dt=bf16:f32 --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=CH 128x1x1024
+--reset --dir=BWD_DW --stat_tag=undef --flags=CH --inplace=true 128x1x1024
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=H --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --stat_tag=undef --flags=CH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --stat_tag=undef --flags=GCHM --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=u8:f32 --flags=CH 31x301
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=GCHM --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --stat_tag=abx --flags=CH 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --tag=axb --stat_tag=axb --flags=M --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=abx --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=M --inplace=true 5120x1024
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=GCHM 30x300
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=axb --flags=GCHM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --stat_tag=xba --flags=CH --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --flags=M --inplace=true 64x30x512
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=CH 64x30x512
+--reset --dir=FWD_I --dt=u8:f32 --tag=ntc --stat_tag=undef --attr-scales=src:common:2 128x40x1024
+--reset --dt=f16:f16 --stat_tag=axb --ss_dt=f16 --flags=CH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=M --inplace=true 257x768
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=abx --flags=G --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset 31x301
+--reset --dir=FWD_I --dt=bf16:u8 --tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f64:f64 --tag=ntc --stat_tag=xba --flags=GCH --inplace=true 128x1x1024
+--reset --dt=f16:f16 --stat_tag=abx --flags=C --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=GCHM --inplace=true 256x768
+--reset --dir=BWD_DW --stat_tag=undef --flags=GCH --inplace=true 64x30x512
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=H 30x300
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=undef 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=GCH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=axb --ss_dt=f16 --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=abx --inplace=true 5120x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=GCHM --inplace=true 257x768
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=M --inplace=true 256x768
+--reset --flags=GCH --inplace=true 6x2x128x1024
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=abx --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=axb --ss_dt=f16 --flags=H --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=axb --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f64:f64 --stat_tag=ntc --flags=GCHM --inplace=true 6x2x128x1024
+--reset --dt=f16:f16 --tag=axb --stat_tag=undef --flags=G --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=CH 64x30x512
+--reset --dir=BWD_DW --stat_tag=undef --flags=GCH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f32:f16 --stat_tag=abx --ss_dt=f16 --flags=CH 6x2x128x1024
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=undef 256x768_n"lnorm_ci_0d:2"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=ab:ab --stat_tag=a --flags=CH 2432x1024_n"657a6a1cd237a5ef102a81f6546bc7f5"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=CH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=undef --ss_dt=bf16 --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=GCHM --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --stat_tag=undef --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --tag=ntc --flags=GCHM --inplace=true 128x40x1024
+--reset --dt=bf16:bf16 --tag=ntc --flags=CH --inplace=true 128x1x1024
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=GCHM 257x768
+--reset --dt=bf16:bf16 --stat_tag=abx --flags=C --inplace=true 2048x1024
+--reset --dir=BWD_D --dt=bf16:bf16 --flags=G --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --tag=axb --stat_tag=axb --flags=GCHM --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=f16:f16 --flags=CH --inplace=true 6x2x128x1024
+--reset --dir=BWD_D --stat_tag=axb --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f16:f16 --stat_tag=undef --ss_dt=f16 --flags=C 5120x1024
+--reset --dt=f16:f16 --tag=axb --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f16:f16 --stat_tag=undef --flags=M --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --tag=axb --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:f32 --tag=axb --stat_tag=axb 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=axb --flags=CH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=bf16:u8 --tag=axb --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=GCH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=M --inplace=true 256x768
+--reset --dir=BWD_DW --dt=f16:f16 --tag=ntc --stat_tag=undef --ss_dt=f16 --flags=CH 128x1x1024
+--reset --dir=FWD_I --dt=s8:f32 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dt=bf16:f32 --tag=axb --stat_tag=undef --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=axb --flags=CH 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f16:f16 --tag=axb --stat_tag=axb --ss_dt=f16 --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --tag=ntc --stat_tag=xba --flags=M --inplace=true 64x30x512
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=s8:f32 --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --stat_tag=undef --flags=GCHM --inplace=true 5120x1024
+--reset --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=C 30x300
+--reset --tag=axb --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=AB48a16b --stat_tag=abx --flags=H --inplace=true 5120x1024
+--reset --dt=bf16:bf16 --tag=axb --flags=GCHM --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f64:f64 --tag=ntc --stat_tag=abx --flags=CH --inplace=true 128x1x1024
+--reset --dt=bf16:bf16 --stat_tag=abx --flags=CH --inplace=true 64x30x512
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=M 64x30x512
+--reset --dir=BWD_DW --stat_tag=undef --flags=CH --inplace=true 256x768
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --flags=GCH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=GCHM --inplace=true 128x1024
+--reset --dt=bf16:bf16 --stat_tag=ntc --flags=M --inplace=true 6x2x128x1024
+--reset --dt=f32:bf16 --ss_dt=bf16 --flags=H 6x2x128x1024
+--reset --tag=axb --stat_tag=axb --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --tag=AB48a16b --stat_tag=abx --flags=GCH --inplace=true 128x1024
+--reset --dir=FWD_I --dt=u8:f32 --flags=CH 256x768_n"lnorm_ci_0d:2"
+--reset --tag=axb --stat_tag=axb --flags=G --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=axb 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --stat_tag=abx --flags=M --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f16:f16 --stat_tag=axb --ss_dt=f16 --flags=H --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --tag=ntc --stat_tag=undef 128x1x1024
+--reset --dt=f32:bf16 --ss_dt=bf16 --flags=CH 256x768
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=GCH --inplace=true 64x30x512
+--reset --dir=FWD_I --dt=u8:f32 --tag=ntc --flags=CH --attr-scales=src:common:2 64x30x512
+--reset --dir=BWD_D --dt=f64:f64 --stat_tag=undef --inplace=true 6x2x128x1024
+--reset --dir=BWD_DW --tag=AB48a16b --stat_tag=abx --flags=CH --inplace=true 256x768
+--reset --dir=BWD_D --stat_tag=abx --inplace=true 64x30x512
+--reset --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=CH 6x2x128x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --flags=M --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --ss_dt=bf16 --flags=C 257x768
+--reset --dir=FWD_I --dt=f32:s8 --tag=axb --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=axb --stat_tag=undef --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=ntc --stat_tag=abx --ss_dt=bf16 --flags=H 128x40x1024
+--reset --dt=bf16:f32 --tag=axb --stat_tag=undef 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f16:f16 --stat_tag=undef --ss_dt=f16 --flags=H 31x301
+--reset --dt=f64:f64 --flags=M --inplace=true 128x40x1024
+--reset --dir=BWD_DW --dt=f32:f16 --stat_tag=abx --ss_dt=f16 --flags=H 128x40x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=CH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=C 31x301
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --ss_dt=f16 --flags=C 257x768
+--reset --dt=bf16:bf16 --tag=ntc --stat_tag=xba --flags=M --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=f32:s8 --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_D --tag=axb --stat_tag=axb --flags=G --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=GCH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f64:f64 --stat_tag=abx 64x30x512
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=undef --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=undef --flags=CH 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f16:f16 --tag=axb --stat_tag=undef --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=H 257x768
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=xba --flags=CH --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --ss_dt=bf16 --flags=H 30x300
+--reset --dt=f16:f16 --tag=axb --stat_tag=undef --flags=M --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_D --dt=f16:f16 --stat_tag=undef --flags=GM --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=undef --flags=G --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=H 257x768
+--reset --stat_tag=abx --flags=GCHM --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=undef --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=C 257x768
+--reset --dt=f16:f16 --tag=axb --stat_tag=abx --flags=GCHM --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --tag=axb --stat_tag=axb --flags=M --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=xba --flags=M --inplace=true 128x40x1024
+--reset --dt=f32:bf16 --ss_dt=bf16 --flags=C 256x768
+--reset --dt=f64:f64 --tag=AB48a16b --stat_tag=abx --flags=H --inplace=true 24576x1024
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --flags=GCH --inplace=true 128x1024
+--reset --dir=BWD_D --dt=f64:f64 --stat_tag=undef 128x1024
+--reset --dir=BWD_DW --dt=f16:f16 --ss_dt=f16 --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f32:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C 31x301
+--reset --dir=BWD_DW --tag=axb --flags=GCH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --tag=axb --stat_tag=axb --flags=GCH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f64:f64 --stat_tag=abx --flags=C --inplace=true 30x300
+--reset --dt=bf16:bf16 --stat_tag=abx 128x40x1024
+--reset --stat_tag=abx --flags=CH --inplace=true 128x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=axb --flags=GCHM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --stat_tag=axb --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --flags=C --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=H --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=abx --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:bf16 --tag=ntc --stat_tag=abx --ss_dt=bf16 --flags=C 128x40x1024
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=abx --flags=CH --inplace=true 1x2048x1024
+--reset --dir=BWD_D --tag=axb --stat_tag=axb --flags=G --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=GCHM --inplace=true 64x30x512
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=GCH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=GCH --inplace=true 30x300
+--reset --dt=bf16:bf16 --ss_dt=bf16 --flags=H --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C 257x768
+--reset --tag=ntc --stat_tag=undef --flags=M --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=f32:f16 --ss_dt=f16 --flags=H 64x30x512
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=undef --inplace=true 31x301
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=GCHM --inplace=true 30x300
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=axb --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=undef --flags=G --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --tag=axb --stat_tag=abx --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 128x1x1024
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=CH --inplace=true 256x768
+--reset --dir=BWD_DW --dt=f64:f64 --tag=AB48a16b --stat_tag=abx --flags=C --inplace=true 5120x1024
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=abx --inplace=true 256x768
+--reset --dir=BWD_D --dt=f64:f64 --stat_tag=undef --inplace=true 256x768
+--reset --flags=H --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --stat_tag=undef --inplace=true 257x768
+--reset --flags=GCH --inplace=true 257x768
+--reset --dt=bf16:bf16 --stat_tag=undef 6x2x128x1024
+--reset --dir=BWD_DW --flags=H --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --flags=M --inplace=true 256x768
+--reset --dt=f32:f16 --tag=ntc --stat_tag=undef --ss_dt=f16 --flags=CH 64x30x512
+--reset --dt=f16:f16 --tag=axb --stat_tag=undef --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=GCHM --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=H 6x2x128x1024
+--reset --dt=f64:f64 --tag=ntc --flags=M --inplace=true 128x1x1024
+--reset --dir=BWD_D 128x1x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=CH --inplace=true 1x2048x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --flags=GCH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_D --tag=axb --flags=G --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=abx --flags=CH 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=abx --flags=M --inplace=true 257x768
+--reset --dt=bf16:f32 --stat_tag=axb 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --tag=ntc --stat_tag=xba --flags=GCHM --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=undef --ss_dt=f16 --flags=C --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --tag=axb --stat_tag=axb --flags=GCH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f16:f16 --tag=axb --flags=CH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f64:f64 --tag=ntc --stat_tag=undef --flags=GCHM --inplace=true 128x40x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=CH --inplace=true 5120x1024
+--reset --dt=f16:f16 --tag=axb --flags=CH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=undef --flags=CH 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f64:f64 --tag=AB48a16b --stat_tag=abx --inplace=true 256x768
+--reset --dir=BWD_DW --tag=axb --stat_tag=abx --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --stat_tag=undef --flags=CH --inplace=true 64x30x512
+--reset --dir=BWD_D --tag=axb --stat_tag=axb --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=f32:u8 --flags=CH --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f16:f16 --flags=M 64x30x512
+--reset --dir=BWD_DW --stat_tag=abx --flags=M --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --stat_tag=axb --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=axb --stat_tag=undef --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --flags=GCHM --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --stat_tag=axb --flags=GCH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f64:f64 --stat_tag=abx --inplace=true 1x2048x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --flags=CH --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=H 5120x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=C --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=bf16:bf16 --ss_dt=bf16 --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f64:f64 --stat_tag=abx 128x1024
+--reset --dir=BWD_DW --stat_tag=abx --flags=C --inplace=true 2048x1024
+--reset --dt=f16:f16 --stat_tag=axb --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f32:bf16 --tag=axb --stat_tag=abx 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=axb --flags=CH 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --flags=GCH --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --tag=ntc --stat_tag=abx --flags=GCH --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=undef --ss_dt=bf16 --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f64:f64 --stat_tag=abx --flags=H --inplace=true 2048x1024
+--reset --dir=FWD_I --dt=f32:s8 --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --tag=axb --stat_tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=axb --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f32:f16 --stat_tag=abx --ss_dt=f16 --flags=C 31x301
+--reset --dt=f16:f16 --stat_tag=abx --flags=C --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --flags=M --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f16:f16 --stat_tag=abx --flags=G --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=axb --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --inplace=true 256x768
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --ss_dt=f16 --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=f64:f64 128x1x1024
+--reset --dir=FWD_I --dt=bf16:u8 --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=abx 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=C 128x1x1024
+--reset --dir=BWD_DW --dt=f32:bf16 --flags=CH 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f64:f64 --stat_tag=abx --inplace=true 5120x1024
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=u8:f32 --flags=CH 64x30x512
+--reset --dir=BWD_D --stat_tag=abx --flags=GM --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=abx --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=axb --flags=GCH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --stat_tag=abx 128x40x1024
+--reset --dt=f64:f64 --inplace=true 128x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=undef --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=axb --flags=GM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=abx --flags=H --inplace=true 1x2048x1024
+--reset --dt=f16:f16 --tag=ntc --stat_tag=undef --ss_dt=f16 --flags=H 64x30x512
+--reset --dir=FWD_I --dt=f32:s8 --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --tag=axb --stat_tag=axb --flags=GCHM --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f16:f16 --flags=GCH 128x40x1024
+--reset --stat_tag=undef --flags=G --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f16:f16 --stat_tag=abx --ss_dt=f16 --flags=CH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --tag=axb --stat_tag=undef --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=H 256x768
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=C --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=undef --flags=GCH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=axb --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f64:f64 --tag=ntc --stat_tag=xba 128x40x1024
+--reset --dt=f16:f16 --tag=axb --stat_tag=abx --flags=M --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --flags=GM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=f64:f64 --stat_tag=abx --inplace=true 257x768
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=GCHM --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=abx --flags=CH --inplace=true 128x1024
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=abx 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=abx --flags=GCHM --inplace=true 128x1x1024
+--reset --dir=BWD_D --stat_tag=undef --inplace=true 6x2x128x1024
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=abx 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=bf16:u8 --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f16:f16 --tag=axb --stat_tag=axb --ss_dt=f16 --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --tag=axb --stat_tag=axb --flags=G --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=CH 30x300
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=axb --flags=H --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --flags=GCHM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f64:f64 --tag=AB48a16b --stat_tag=abx --flags=CH --inplace=true 5120x1024
+--reset --dir=FWD_I --dt=bf16:u8 --tag=axb --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C 128x1x1024
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=f16:f16 --flags=CH 257x768
+--reset --dt=f16:f16 --stat_tag=axb --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f64:f64 128x1x1024
+--reset --tag=axb --stat_tag=axb --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f16:f16 --ss_dt=f16 --flags=CH 5120x1024
+--reset --dt=bf16:bf16 --stat_tag=axb --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --flags=GCH --inplace=true 64x30x512
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=abx --flags=CH 31x301
+--reset --dir=BWD_DW --dt=f16:f16 --ss_dt=f16 --flags=H --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --stat_tag=abx --flags=CH --inplace=true 128x1x1024
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=ntc --ss_dt=bf16 --flags=C 6x2x128x1024
+--reset --dt=f16:f16 --stat_tag=undef --flags=G --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=M --inplace=true 128x1x1024
+--reset --dt=bf16:bf16 --tag=ntc --stat_tag=undef --flags=M --inplace=true 128x1x1024
+--reset --dt=f32:f16 --ss_dt=f16 --flags=CH 5120x1024
+--reset --dt=f16:f16 --stat_tag=abx --ss_dt=f16 --flags=H 257x768
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=ntc --stat_tag=abx --ss_dt=bf16 --flags=CH 64x30x512
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=undef --flags=CH --attr-scales=src:common:2 6x2x128x1024
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=u8:f32 --tag=ntc --stat_tag=xba --flags=CH --attr-scales=src:common:2 128x40x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --flags=M --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=axb --ss_dt=bf16 --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_D --dt=f16:f16 --stat_tag=abx --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --flags=GCH 128x40x1024
+--reset --dt=f16:f16 --stat_tag=abx --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --tag=axb --stat_tag=undef --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --stat_tag=undef --flags=H --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --flags=GCH --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=GCHM --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=axb --flags=CH 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=u8:f32 --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=GCHM --inplace=true 31x301
+--reset --dt=bf16:bf16 --stat_tag=abx --flags=H --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=axb --ss_dt=f16 --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=undef --ss_dt=f16 --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --stat_tag=undef --flags=GCHM --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --flags=CH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C 31x301
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --stat_tag=abx --flags=GCH --inplace=true 128x1x1024
+--reset --dir=BWD_D --dt=bf16:bf16 31x301
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --stat_tag=xba --flags=M 128x1x1024
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --stat_tag=undef 64x30x512
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:f32 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f32:f16 --tag=ntc --stat_tag=abx --ss_dt=f16 --flags=H 64x30x512
+--reset --flags=CH --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --ss_dt=bf16 --flags=H 31x301
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=axb 257x768_n"lnorm_ci_0d:3"
+--reset --stat_tag=abx --flags=M --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f32:bf16 --stat_tag=undef 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --stat_tag=abx 30x300_n"lnorm_ci_0d:1"
+--reset --tag=axb --stat_tag=undef --flags=H --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=GCH 6x2x128x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --stat_tag=undef --ss_dt=bf16 --flags=CH 128x1x1024
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=abx --ss_dt=bf16 --flags=H 30x300
+--reset --tag=ntc --stat_tag=undef --flags=GCH --inplace=true 64x30x512
+--reset --dt=f64:f64 --tag=ntc --stat_tag=xba 64x30x512
+--reset --dt=f64:f64 --inplace=true 6x2x128x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=H 128x1024
+--reset --dir=BWD_D --dt=bf16:bf16 256x768
+--reset --dir=BWD_DW --dt=f32:f16 --tag=ntc --ss_dt=f16 --flags=C 64x30x512
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=GCHM --inplace=true 128x1x1024
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=GCH --inplace=true 31x301
+--reset --dt=f16:f16 --ss_dt=f16 --flags=H 128x1x1024
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=undef --flags=CH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --ss_dt=f16 --flags=C 30x300
+--reset --dt=f32:bf16 --tag=axb --flags=CH 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_D --tag=axb --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --stat_tag=axb --flags=GCH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f16:f16 --tag=ntc --ss_dt=f16 --flags=CH 64x30x512
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --stat_tag=axb 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --tag=AB48a16b --stat_tag=abx --flags=GCH --inplace=true 30x300
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --flags=GCHM 64x30x512
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f16:f16 --stat_tag=undef --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --stat_tag=undef 6x2x128x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=H --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f32:f16 --tag=ntc --stat_tag=undef --ss_dt=f16 --flags=C 64x30x512
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=GCHM --inplace=true 31x301
+--reset --dt=f16:f16 --stat_tag=undef --ss_dt=f16 --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=H 31x301
+--reset --dir=BWD_DW --dt=f16:f16 --ss_dt=f16 --flags=H --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=f16:f16 --flags=G --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=abx --ss_dt=bf16 --flags=H --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --stat_tag=xba --flags=GCHM 128x40x1024
+--reset --dt=bf16:bf16 --stat_tag=abx 128x1024
+--reset --dt=f64:f64 --stat_tag=undef --flags=GCH --inplace=true 5120x1024
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --flags=GM --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=axb --flags=GCH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=bf16:bf16 --stat_tag=abx --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f64:f64 --stat_tag=abx --flags=H --inplace=true 24576x1024
+--reset --dir=BWD_DW --dt=f32:f16 --tag=ntc --ss_dt=f16 --flags=CH 64x30x512
+--reset --stat_tag=undef --inplace=true 128x40x1024
+--reset --stat_tag=axb --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --tag=axb --flags=M --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:bf16 30x300
+--reset --dt=f16:f16 --tag=axb --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f16:f16 --tag=axb --stat_tag=abx --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=axb --ss_dt=f16 --flags=H --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=GCHM 30x300
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=ntc --ss_dt=bf16 --flags=C 128x1x1024
+--reset --dt=bf16:bf16 --stat_tag=abx --flags=C --inplace=true 5120x1024
+--reset --dir=BWD_D --dt=bf16:bf16 --tag=ntc --stat_tag=xba 128x40x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=undef --flags=M --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=axb --flags=G --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=bf16:bf16 --tag=axb --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=u8:f32 --tag=ntc --stat_tag=abx --attr-scales=src:common:2 128x1x1024
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=abx --flags=GM --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --stat_tag=ntc --flags=GCH --inplace=true 6x2x128x1024
+--reset --dt=f16:f16 --stat_tag=abx --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --stat_tag=undef --flags=C --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=GCHM --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --tag=ntc --flags=CH --inplace=true 64x30x512
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=axb --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --stat_tag=abx --flags=H --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --ss_dt=f16 --flags=H 6x2x128x1024
+--reset --dt=bf16:bf16 --ss_dt=bf16 --flags=CH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --stat_tag=undef --flags=CH 15x3_n"lnorm_ci_0d:0"
+--reset --stat_tag=undef --flags=GCH --inplace=true 128x40x1024
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=abx 257x768_n"lnorm_ci_0d:3"
+--reset --tag=axb --stat_tag=abx --flags=G --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --flags=C --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=CH --inplace=true 31x301
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=axb --ss_dt=bf16 --flags=C --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --tag=ntc --inplace=true 128x40x1024
+--reset --dt=bf16:bf16 --stat_tag=axb --ss_dt=bf16 --flags=H --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=f16:f16 --flags=GCHM --inplace=true 31x301
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=abx --ss_dt=bf16 --flags=CH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=abx --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=f64:f64 --tag=ntc --flags=GCH --inplace=true 128x1x1024
+--reset --dir=BWD_DW --flags=GCH --inplace=true 6x2x128x1024
+--reset --tag=axb --stat_tag=abx --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=f32:f16 --ss_dt=f16 --flags=H 128x1x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --ss_dt=f16 --flags=C 128x1x1024
+--reset --dir=BWD_DW --tag=ntc --stat_tag=xba --flags=GCHM --inplace=true 64x30x512
+--reset --dt=f16:f16 --tag=axb --stat_tag=undef --flags=GCH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --stat_tag=axb --flags=H --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --stat_tag=axb 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --flags=CH --inplace=true 128x1024
+--reset --dt=f16:f16 --stat_tag=axb --flags=GCH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f16:f16 --stat_tag=axb --flags=GCH --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --tag=ntc --stat_tag=abx --flags=CH --inplace=true 64x30x512
+--reset --dt=f16:f16 --stat_tag=axb --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=abx --ss_dt=bf16 --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f16:f16 --stat_tag=undef --flags=H --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=f16:f16 --tag=ntc --stat_tag=abx --flags=CH 128x1x1024
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=undef --flags=M --inplace=true 5120x1024
+--reset --dt=f64:f64 --stat_tag=abx 256x768
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=bf16:bf16 --flags=CH --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=AB48a16b --stat_tag=abx --flags=H --inplace=true 128x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=abx --flags=M --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=bf16:bf16 --stat_tag=abx 257x768
+--reset --dir=BWD_D --dt=f16:f16 --tag=axb --stat_tag=axb --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=C 128x1x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=GCH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=GCHM --inplace=true 257x768
+--reset --dir=BWD_DW --dt=f32:bf16 --tag=ntc --stat_tag=abx --ss_dt=bf16 --flags=H 64x30x512
+--reset --dt=bf16:bf16 --flags=GCHM --inplace=true 6x2x128x1024
+--reset --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=CH 257x768
+--reset --dir=BWD_DW --stat_tag=axb --flags=GCH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f16:f16 --stat_tag=undef --ss_dt=f16 --flags=CH --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --tag=axb --flags=G --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=GCH --inplace=true 128x1x1024
+--reset --dt=f64:f64 --stat_tag=ntc --flags=M --inplace=true 6x2x128x1024
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=GCH --inplace=true 128x40x1024
+--reset --dir=BWD_D --stat_tag=abx --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --flags=CH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=CH 257x768
+--reset --dt=bf16:bf16 --stat_tag=abx --flags=GCH --inplace=true 24576x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --tag=axb --ss_dt=bf16 --flags=H --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=bf16:f32 --tag=axb --stat_tag=abx 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=CH --inplace=true 257x768
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=axb --ss_dt=bf16 --flags=H --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=abx --flags=CH 31x301
+--reset --dt=f32:bf16 --stat_tag=abx 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=f32:u8 --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --stat_tag=abx --flags=C --inplace=true 5120x1024
+--reset --dt=f16:f16 --flags=GCHM --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_D --dt=f16:f16 --flags=G --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:bf16 --stat_tag=undef --flags=G --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --stat_tag=undef --flags=CH --inplace=true 128x1x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=abx --flags=M --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --stat_tag=abx --inplace=true 256x768
+--reset --dt=f64:f64 --stat_tag=abx --flags=M --inplace=true 6x2x128x1024
+--reset --dir=FWD_I --dt=f16:f16 --flags=GCHM --inplace=true 5120x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=axb --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f16:f16 --ss_dt=f16 --flags=C 256x768
+--reset --dt=f16:f16 --stat_tag=abx --ss_dt=f16 --flags=H 5120x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=undef --flags=H --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=f16:f16 --tag=axb --flags=GCHM --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --stat_tag=undef --flags=G --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --stat_tag=abx --flags=CH --inplace=true 24576x1024
+--reset --dt=f16:f16 --flags=GCH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --tag=axb --stat_tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f16:f16 --stat_tag=undef --ss_dt=f16 --flags=C 128x1024
+--reset --dt=bf16:bf16 --stat_tag=abx --inplace=true 128x40x1024
+--reset --dt=bf16:bf16 --tag=axb --ss_dt=bf16 --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --stat_tag=undef --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=C --inplace=true 24576x1024
+--reset --tag=ntc --stat_tag=undef --inplace=true 128x40x1024
+--reset --dir=BWD_DW --dt=f32:f16 --stat_tag=undef --ss_dt=f16 --flags=CH 128x1024
+--reset --dir=BWD_D 5120x1024
+--reset --dir=BWD_DW --dt=f32:f16 --ss_dt=f16 --flags=CH 257x768
+--reset --dir=BWD_DW --dt=f16:f16 --tag=ntc --stat_tag=abx --ss_dt=f16 --flags=H 64x30x512
+--reset --dir=BWD_DW --stat_tag=abx --flags=CH --inplace=true 5120x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=ntc --ss_dt=f16 --flags=C 64x30x512
+--reset --dir=FWD_I --dt=f32:s8 --tag=axb --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f32:bf16 --stat_tag=abx --flags=CH 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --stat_tag=axb --ss_dt=bf16 --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=bf16:s8 --tag=axb --stat_tag=undef --flags=CH --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dt=f32:bf16 --stat_tag=undef --ss_dt=bf16 --flags=CH 256x768
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --stat_tag=abx 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=FWD_I --dt=s8:bf16 --stat_tag=axb 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=CH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=GCH --inplace=true 257x768
+--reset --dir=BWD_DW --dt=bf16:f32 --tag=axb --stat_tag=undef 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --tag=axb --stat_tag=undef --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=f64:f64 --stat_tag=undef --flags=GCHM --inplace=true 64x30x512
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=bf16:bf16 --flags=CH --inplace=true 128x1024
+--reset --dt=f32:bf16 --tag=ntc --stat_tag=xba --ss_dt=bf16 --flags=H 128x1x1024
+--reset --dt=f16:f16 --ss_dt=f16 --flags=H --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dt=f16:f16 --tag=axb --stat_tag=axb --flags=GCH --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=f32:bf16 --stat_tag=abx --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dt=bf16:bf16 --tag=axb --stat_tag=abx --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=undef --flags=GCH --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=axb --flags=GCHM --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --tag=ntc --stat_tag=undef --inplace=true 128x1x1024
+--reset --dt=bf16:bf16 --stat_tag=abx --inplace=true 2048x1024
+--reset --dt=bf16:bf16 --tag=axb --ss_dt=bf16 --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f16:f16 --tag=axb --stat_tag=abx --flags=M --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dt=f64:f64 --stat_tag=abx --flags=GCH --inplace=true 257x768
+--reset --dir=BWD_DW --dt=f16:f16 --flags=H --inplace=true 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=undef --flags=GM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --stat_tag=undef 257x768_n"lnorm_ci_0d:3"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=abx --flags=GM --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --tag=ntc --stat_tag=abx --inplace=true 128x1x1024
+--reset --tag=AB48a16b --stat_tag=abx --flags=CH --inplace=true 5120x1024
+--reset --stat_tag=undef --flags=GCHM --inplace=true 128x1x1024
+--reset --dt=f64:f64 --stat_tag=undef --inplace=true 6x2x128x1024
+--reset --dt=bf16:bf16 --flags=GCHM --inplace=true 5120x1024
+--reset --dir=BWD_DW --dt=f16:f16 --tag=axb --stat_tag=abx --ss_dt=f16 --flags=C --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=s8:bf16 --tag=axb --stat_tag=abx 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --tag=ntc 128x40x1024
+--reset --dt=bf16:bf16 --inplace=true 5120x1024
+--reset --dir=FWD_I --dt=bf16:s8 --tag=axb --attr-scales=src:common:64+dst:common:0.5 256x768_n"lnorm_ci_0d:2"
+--reset --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --flags=GCHM --inplace=true 257x768
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=abx --ss_dt=bf16 --flags=C --inplace=true 128x1x1024_n"lnorm_ci_1d:0"
+--reset --stat_tag=abx --flags=CH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f32:f16 --tag=ntc --stat_tag=undef --ss_dt=f16 --flags=C 64x30x512
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --flags=CH --attr-scales=src:common:64+dst:common:0.5 30x300_n"lnorm_ci_0d:1"
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=CH 257x768
+--reset --dir=BWD_DW --tag=axb --stat_tag=abx --flags=CH --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=abx --flags=CH --attr-scales=src:common:64+dst:common:0.5 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --dt=f64:f64 --flags=M --inplace=true 257x768
+--reset --dt=f64:f64 --tag=ntc 128x1x1024
+--reset --dt=bf16:f32 --stat_tag=abx --flags=CH 6x2x128x1024_n"lnorm_ci_2d:0"
+--reset --flags=GCHM --inplace=true 15x3_n"lnorm_ci_0d:0"
+--reset --dir=BWD_DW --tag=ntc --stat_tag=undef --flags=M --inplace=true 64x30x512
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=undef 128x1024
+--reset --dt=f64:f64 --stat_tag=abx --flags=GCHM --inplace=true 64x30x512
+--reset --dir=FWD_I --dt=bf16:s8 --attr-scales=src:common:64+dst:common:0.5 128x1x1024_n"lnorm_ci_1d:0"
+--reset --dir=BWD_D --dt=bf16:bf16 --stat_tag=ntc 6x2x128x1024
+--reset --dir=BWD_DW --stat_tag=abx --flags=CH --inplace=true 64x30x512
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=axb --flags=H --inplace=true 256x768_n"lnorm_ci_0d:2"
+--reset --dir=BWD_D --dt=bf16:bf16 --tag=axb --stat_tag=undef --flags=G --inplace=true 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=f16:f16 --stat_tag=undef --flags=CH --inplace=true 128x1024
+--reset --dir=BWD_DW --tag=AB48a16b --stat_tag=abx --inplace=true 24576x1024
+--reset --dir=BWD_DW --dt=bf16:bf16 --stat_tag=undef --ss_dt=bf16 --flags=H --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --tag=ntc --stat_tag=abx --flags=CH --inplace=true 128x40x1024
+--reset --dir=BWD_DW --dt=f16:f16 --stat_tag=axb --flags=C --inplace=true 30x300_n"lnorm_ci_0d:1"
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --stat_tag=undef --attr-scales=src:common:64+dst:common:0.5 257x768_n"lnorm_ci_0d:3"
+--reset --dir=FWD_I --dt=u8:bf16 --tag=axb --flags=CH 30x300_n"lnorm_ci_0d:1"
+--reset --dt=f32:bf16 --tag=ntc --stat_tag=undef --ss_dt=bf16 --flags=C 128x1x1024
+--reset --dt=f32:bf16 --stat_tag=abx --ss_dt=bf16 --flags=CH 6x2x128x1024

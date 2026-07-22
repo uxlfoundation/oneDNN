@@ -1,0 +1,1000 @@
+--reset --sdt=f64 --stag=aBx16b --axis=0 96x1000x1x1
+--reset --dir=BWD_D --alg=LOGSOFTMAX --axis=2 --inplace=true 256x10x1x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abc --dtag=abc --axis=2 16x1000x91_n"8830107c6a44dd1e87e064911e880efd"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --ddt=bf16 --stag=axb --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-post-ops=add:f32:common+linear:0.5:2 2x19x128x256
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --alg=LOGSOFTMAX --axis=0 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=bf16 --stag=aBx16b --alg=LOGSOFTMAX --axis=2 96x1000x1x1
+--reset --allow-enum-tags-only=false --stag=abcd --dtag=abcd --axis=3 32x16x250x250_n"08e2fb1fcef43cdb7c834f3c2b456a17*4"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f64 --alg=LOGSOFTMAX --axis=0 8192x64
+--reset --dir=FWD_I --ddt=f8_e4m3 --axis=0 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --stag=acb --axis=2 1x1x4097
+--reset --dir=FWD_I --sdt=u8 --stag=abc --dtag=abc --axis=2 16x32x129
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --axis=0 --inplace=true 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --axis=0 --inplace=true 96x1024x1x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --stag=axb --axis=0 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --stag=aBx16b --axis=0 --inplace=true 2x19x128x256
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-post-ops=add:f32:common+linear:0.5:2 96x1000x1x1
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --stag=axb --alg=LOGSOFTMAX --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --allow-enum-tags-only=false --stag=abc --dtag=abc --axis=2 32x1x2_n"95e0ebb6f5ac999afcdbd12bd3fa4c8d"
+--reset --dir=FWD_I --sdt=f16 --ddt=f16 --stag=aBx16b --axis=2 --inplace=true 96x1000x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-post-ops=add:f32:per_oc 2x19x128x256
+--reset --sdt=f64 --ddt=f64 --axis=0 --inplace=true 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=s8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --allow-enum-tags-only=false --stag=ab --dtag=ab 256x1001_n"71283f157871181f6c017da3aa8c17bd&amp;8455cc85c1594dc5676bf68e2e3bc069"
+--reset --allow-enum-tags-only=false --ddt=bf16 --axis=4 1x128x128x128x4_n"26825fcd1a425ad07df733ddab2bf869"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 96x1000x1x1
+--reset --allow-enum-tags-only=false --stag=acb --dtag=acb --axis=0 2x3x15000_n"2b438b4abf3c4d0240230ea355fabdd4"
+--reset --sdt=f64 --axis=0 96x1024x1x1x1
+--reset --sdt=bf16 --ddt=bf16 --axis=0 --inplace=true 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=f8_e5m2 --alg=LOGSOFTMAX --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abcd --dtag=abcd --axis=3 1x8x4096x4096_n"69d1e3eb1d2033502a35168b36fff080*10"
+--reset --allow-enum-tags-only=false --ddt=bf16 --axis=3 64x16x384x384_n"36dcbcef29175048d84fb56e56bc2332*24"
+--reset --sdt=f64 --stag=aBx16b --axis=0 256x10x1x1
+--reset --sdt=bf16 --stag=aBx16b --axis=0 2x19x128x256
+--reset --sdt=bf16 --axis=0 96x1024x1x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-post-ops=add:f32:per_oc 96x1000x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-post-ops=linear:0.5:2 96x1000x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-post-ops=add:f32:common+linear:0.5:2 256x10x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-post-ops=linear:0.5:2 2x19x128x256
+--reset --dir=FWD_I --stag=abcd --dtag=abcd --alg=LOGSOFTMAX --axis=3 64x3x224x224
+--reset --ddt=f64 --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --ddt=f16 --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --ddt=bf16 --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --ddt=f16 --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --ddt=f64 --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --ddt=f16 --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f16 --ddt=f64 --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f16 --ddt=bf16 --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e4m3 --axis=0 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --allow-enum-tags-only=false --stag=acb --dtag=acb 16x5x15000_n"433ef0579df98c7fab828ce0b4829119"
+--reset --allow-enum-tags-only=false --dir=FWD_I --sdt=u8 --ddt=s8 --axis=3 --attr-scales=dst:common:0.125 1x4x192x256
+--reset --sdt=f64 --axis=0 128x365
+--reset --sdt=f64 --stag=aBx16b --axis=0 448x16x28x28
+--reset --sdt=f64 --axis=0 3x17x9x37x19
+--reset --allow-enum-tags-only=false --stag=abcd --dtag=abcd --axis=3 1113x8x30x30_n"fa5081b7283e1f54e9f1594b732fa5d2"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abcd --dtag=abcd --axis=3 1x12x128x128_n"8ac784423dace427d23e7124884b3f42*12"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abc --dtag=abc --axis=2 1x1000x91_n"93ca9f54dac135090fae87e88d60d9e8"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abcd --dtag=abcd --axis=3 1x8x4096x77_n"509e60ac98e25c23296cb8609dddc77e*10"
+--reset --sdt=f64 --axis=0 2x16x128x2x4
+--reset --sdt=f64 --stag=aBx16b --axis=0 64x1011x1x1
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abcd --dtag=abcd --axis=3 1x8x64x77_n"eb99367e129422025cffd8eb4bfca671*2"
+--reset --allow-enum-tags-only=false --stag=ab --dtag=ab 1024x1001_n"04466cd5a83a7d464dd5e24d29ecc4b4"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abcd --dtag=abcd --axis=3 1x8x256x256_n"fd0bff24d578f71adfb48e10ec48e503*10"
+--reset --allow-enum-tags-only=false --stag=acdb --dtag=acdb 4x3x640x1024_n"30527568313375521a38616bbdcf50af*3&amp;fc1dbd51d4f08f19383c2b170aec1ff6*3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=ab --dtag=ab 128x1000_n"6db5cea2752ec106b450eb415592cfb8*50&amp;2783cc17c3d8c42a7c22bb18bfb6e9d8*50&amp;d7c13c99b99f1e74f7589feb747bcb7a*50"
+--reset --stag=acb --axis=2 8x3x8320
+--reset --allow-enum-tags-only=false --stag=ab --dtag=ab 32x2_n"d1225ab29e1da9cc741154bd299b185a"
+--reset --allow-enum-tags-only=false --stag=abcd --dtag=abcd --axis=3 1113x8x1x30_n"ee108845199d41541fe6c977a86f1569"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abcd --dtag=abcd --axis=3 1x8x1024x1024_n"2068d2632ff25ebd1326fb00fa619b86*10"
+--reset --stag=acb --axis=2 4x3x5600
+--reset --allow-enum-tags-only=false --stag=ab --dtag=ab 1x2_n"3ab55fc114fa642c24e9d87a3796f122"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=ab --dtag=ab 5000x8_n"d7eafd2124815a6c8ec94631d4e0a8ad*2"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abcd --dtag=abcd --axis=3 1x8x64x64_n"29fea86a5c5be797305d56b0d6349781*2"
+--reset --allow-enum-tags-only=false --stag=abcd --dtag=abcd --axis=3 64x8x1x50_n"9355f7ee62c82f04e0c498982abeea55"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abcd --dtag=abcd --axis=3 1x8x256x77_n"d9deaf4a2d3878837b91df93d005e600*10"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=ab --dtag=ab 5000x2_n"08a72f393f13301033abaefc609190ed*400&amp;7eb1ede4af2780fca1020637046c202c*2"
+--reset --axis=0 16384x64
+--reset --allow-enum-tags-only=false --axis=3 14x640x1024x3_n"d2d305399573d9d8113ed689bdf59b51*3"
+--reset --allow-enum-tags-only=false --stag=ab --dtag=ab 32x1000_n"398bf18595f862902111436318cb2050&amp;e98dde59130efec398a6aecd70946dfc"
+--reset --sdt=f64 --stag=aBx16b --axis=0 1x2x64x64
+--reset --sdt=f64 --stag=aBx16b --axis=0 2x16x128x128
+--reset --allow-enum-tags-only=false --stag=abcd --dtag=abcd --axis=3 64x8x50x50_n"1cf7835e977523c0c82496c86af7e8ef"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --stag=abcd --dtag=abcd --axis=3 1x8x1024x77_n"987572e788b2796c7708d58cc52e2e07*10"
+--reset --sdt=f64 --axis=0 96x1000
+--reset --sdt=f64 --axis=0 256x10
+--reset --sdt=f64 --axis=0 2x113
+--reset --stag=acb --axis=2 2x3x9999
+--reset --dir=FWD_I --sdt=f16 --stag=abc --dtag=abc --axis=2 10x5x389
+--reset --allow-enum-tags-only=false --stag=acb --dtag=acb --axis=0 4x3x15000_n"c667fd8387268a2fc9c8b7306b101129*2"
+--reset --sdt=f64 --stag=aBx16b --axis=0 1x8x1024x16
+--reset --sdt=f64 --axis=0 32x100
+--reset --allow-enum-tags-only=false --dir=FWD_I --sdt=u8 --ddt=s8 --axis=3 --attr-scales=dst:common:0.125 1x4x16x32
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f64 --axis=2 96x1024x1x1x1
+--reset --sdt=bf16 --axis=0 256x10
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 96x1000x1x1
+--reset --dir=FWD_I --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f16 --axis=3 1x2x64x64
+--reset --dir=BWD_D --ddt=bf16 --stag=axb 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --alg=LOGSOFTMAX 128x365
+--reset --dir=FWD_I --sdt=s8 --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=bf16 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=f8_e4m3 --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=bf16 --stag=aBx16b --axis=3 64x1011x1x1
+--reset --dir=FWD_I --sdt=f16 --ddt=f16 --stag=aBx16b --axis=2 64x1011x1x1
+--reset --dir=FWD_I --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e4m3 --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --alg=LOGSOFTMAX --axis=2 1x8x1024x16
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --stag=aBx16b --axis=3 --inplace=true 2x19x128x256
+--reset --dir=FWD_I --sdt=bf16 1x2x64x64
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --ddt=f16 --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=dst:common:0.125 --attr-post-ops=linear:0.5:2 1x2x64x64
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --alg=LOGSOFTMAX 448x16x28x28
+--reset --dir=FWD_I --ddt=f8_e5m2 --stag=axb --axis=0 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --ddt=f16 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-scales=dst:common:0.125 --attr-post-ops=add:f32:per_oc 96x1000x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=dst:common:0.125 --attr-post-ops=add:f32:per_oc 256x10x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 64x1011x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-post-ops=add:f32:common+linear:0.5:2 448x16x28x28
+--reset --dir=FWD_I --sdt=bf16 --axis=0 448x16x28x28
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --alg=LOGSOFTMAX --axis=3 --inplace=true 96x1000x1x1
+--reset --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:128 --attr-post-ops=linear:0.5:2 96x1000x1x1
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=dst:common:0.125 --attr-post-ops=linear:0.5:2 256x10x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --stag=axb --inplace=true 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --axis=0 256x10
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --ddt=f8_e4m3 --stag=axb --alg=LOGSOFTMAX --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --ddt=f64 --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 256x10x1x1
+--reset --sdt=f16 --ddt=f64 --stag=axb --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --ddt=f64 --stag=axb --alg=LOGSOFTMAX --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=u8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=f64 --alg=LOGSOFTMAX --axis=0 --inplace=true 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=src:common:128 --attr-post-ops=linear:0.5:2 64x1011x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --ddt=bf16 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 1x2x64x64
+--reset --ddt=f16 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --stag=aBx16b --axis=2 --inplace=true 2x16x128x128
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f64 --stag=aBx16b --alg=LOGSOFTMAX --axis=0 448x16x28x28
+--reset --sdt=f16 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=bf16 --ddt=f16 --stag=axb --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --inplace=true 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=dst:common:0.125 --attr-post-ops=add:f32:common+linear:0.5:2 448x16x28x28
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 1x16x2x12_n"softmax_ci_2d:1"
+--reset --alg=LOGSOFTMAX --axis=3 --inplace=true 2x16x128x2x4
+--reset --dir=BWD_D --inplace=true 32x100
+--reset --dir=BWD_D --sdt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --ddt=f16 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --ddt=f64 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --axis=0 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 255x10_n"softmax_ci_0d:1"
+--reset --axis=0 --inplace=true 2x16x128x2x4
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f16 --ddt=f64 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f64 --ddt=f16 --alg=LOGSOFTMAX --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --inplace=true 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --ddt=f64 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --axis=3 --inplace=true 1x2x64x64
+--reset --sdt=f64 --ddt=f64 --alg=LOGSOFTMAX --inplace=true 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --stag=axb --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --axis=0 --inplace=true 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f64 --ddt=f16 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --axis=0 --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --axis=0 2x113
+--reset --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=f64 --stag=axb --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --stag=axb 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=f8_e5m2 --stag=axb --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --stag=aBx16b --axis=0 --inplace=true 96x1000x1x1
+--reset --dir=BWD_D --ddt=f16 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f64 --stag=aBx16b --axis=0 1x8x1024x16
+--reset --dir=FWD_I --ddt=f8_e4m3 --stag=axb --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --axis=0 --inplace=true 1x16x2x12_n"softmax_ci_2d:1"
+--reset --alg=LOGSOFTMAX --axis=2 96x1024x1x1x1
+--reset --dir=BWD_D --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --ddt=f64 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --ddt=bf16 --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=f8_e5m2 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --stag=aBx16b --axis=3 1x8x1024x16
+--reset --sdt=bf16 --axis=2 96x1000x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-scales=dst:common:0.125 256x10x1x1
+--reset --dir=FWD_I --sdt=bf16 --alg=LOGSOFTMAX 2x19x128x256
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 255x10_n"softmax_ci_0d:1"
+--reset --stag=aBx16b --axis=3 --inplace=true 448x16x28x28
+--reset --dir=FWD_I --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --ddt=f8_e5m2 --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f16 --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --alg=LOGSOFTMAX 256x10x1x1x1
+--reset --sdt=bf16 --alg=LOGSOFTMAX --axis=2 1x2x64x64
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --ddt=f64 --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f16 --stag=aBx16b --axis=3 --inplace=true 64x1011x1x1
+--reset --sdt=f64 --ddt=f64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --alg=LOGSOFTMAX --axis=3 --inplace=true 256x10x1x1x1
+--reset --alg=LOGSOFTMAX --axis=3 96x1024x1x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 255x10_n"softmax_ci_0d:1"
+--reset --ddt=bf16 --stag=axb --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --stag=aBx16b --alg=LOGSOFTMAX --axis=2 --inplace=true 96x1000x1x1
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --alg=LOGSOFTMAX --axis=2 3x17x9x37x19
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f16 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --axis=0 96x1000
+--reset --dir=BWD_D --inplace=true --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --stag=axb --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f16 --ddt=f16 --alg=LOGSOFTMAX 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-post-ops=add:f32:per_oc 256x10x1x1
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --ddt=bf16 --stag=axb --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --stag=aBx16b --axis=2 256x10x1x1
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --stag=aBx16b --axis=2 448x16x28x28
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=dst:common:0.125 --attr-post-ops=linear:0.5:2 96x1000x1x1
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --axis=0 --inplace=true 255x10_n"softmax_ci_0d:1"
+--reset --sdt=bf16 --ddt=bf16 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:128 --attr-post-ops=linear:0.5:2 256x10x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:128 --attr-post-ops=add:f32:common+linear:0.5:2 1x2x64x64
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=src:common:128 --attr-post-ops=linear:0.5:2 256x10x1x1
+--reset --dir=FWD_I --sdt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I 1x2x64x64
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --alg=LOGSOFTMAX --axis=3 448x16x28x28
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f16 --ddt=bf16 --stag=axb --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --alg=LOGSOFTMAX 256x10
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=bf16 --axis=2 256x10x1x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:common+linear:0.5:2 448x16x28x28
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=bf16 --stag=axb 16x16_n"softmax_ci_0d:0"
+--reset --ddt=f16 --stag=axb --alg=LOGSOFTMAX 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=f64 --stag=axb --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --stag=aBx16b --axis=2 96x1000x1x1
+--reset --dir=FWD_I --axis=0 96x1000x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f64 --stag=aBx16b --alg=LOGSOFTMAX 1x8x1024x16
+--reset --dir=FWD_I --sdt=u8 --stag=axb --attr-scales=src:common:64 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=bf16 --ddt=f64 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --axis=2 448x16x28x28
+--reset --dir=FWD_I --sdt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --ddt=f16 --stag=axb --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f16 --ddt=bf16 --stag=axb --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=f8_e4m3 --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=f8_e5m2 --alg=LOGSOFTMAX --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f16 1x2x64x64
+--reset --dir=FWD_I --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f16 --ddt=bf16 --alg=LOGSOFTMAX 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --stag=aBx16b --alg=LOGSOFTMAX --axis=0 --inplace=true 256x10x1x1
+--reset --sdt=f16 --ddt=bf16 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-post-ops=add:f32:per_oc 2x19x128x256
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f64 --ddt=f16 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x2x64x64
+--reset --dir=BWD_D --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f16 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-scales=dst:common:0.125 --attr-post-ops=linear:0.5:2 96x1000x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --alg=LOGSOFTMAX 2x19x17x13_n"softmax_ci_2d:0"
+--reset --alg=LOGSOFTMAX --axis=0 --inplace=true 96x1000
+--reset --dir=FWD_I --sdt=f16 --alg=LOGSOFTMAX 96x1000x1x1
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f64 --alg=LOGSOFTMAX 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --alg=LOGSOFTMAX --inplace=true 96x1000
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=bf16 --ddt=bf16 --alg=LOGSOFTMAX 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f64 --stag=aBx16b --alg=LOGSOFTMAX --axis=3 64x1011x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --stag=aBx16b --alg=LOGSOFTMAX 2x16x128x128
+--reset --dir=BWD_D --sdt=f16 --ddt=bf16 --stag=axb --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --ddt=f16 --axis=0 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --ddt=bf16 --stag=axb 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --inplace=true --attr-scales=src:common:64+dst:common:0.5 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --stag=axb --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --stag=axb --axis=0 --attr-scales=src:common:64 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=f8_e5m2 --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --attr-scales=src:common:64 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --axis=4 256x10x1x1x1
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --stag=axb --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --stag=axb --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-post-ops=add:f32:per_oc 2x16x128x128
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --axis=0 --attr-scales=dst:common:0.25 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --stag=aBx16b --alg=LOGSOFTMAX --axis=2 448x16x28x28
+--reset --dir=BWD_D --alg=LOGSOFTMAX --axis=0 96x1000
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --stag=axb --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --stag=aBx16b --axis=0 256x10x1x1
+--reset --dir=FWD_I --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --ddt=bf16 --attr-dropout=0.25:843921:any:1238976:1 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=bf16 --stag=axb --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=dst:common:0.25 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --stag=axb --axis=0 --inplace=true --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=bf16 --ddt=f64 --stag=axb --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=bf16 --axis=0 32x100
+--reset --alg=LOGSOFTMAX --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 256x10x1x1
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f64 --ddt=f64 --stag=axb --axis=0 --inplace=true 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-post-ops=add:f32:per_oc 1x2x64x64
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --stag=aBx16b --inplace=true 64x1011x1x1
+--reset --sdt=bf16 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --stag=aBx16b --alg=LOGSOFTMAX --axis=0 1x2x64x64
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:common+linear:0.5:2 64x1011x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --axis=0 --attr-scales=src:common:64 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --ddt=f16 --stag=axb --alg=LOGSOFTMAX 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --stag=aBx16b --inplace=true 448x16x28x28
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --stag=axb --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --alg=LOGSOFTMAX 3x17x9x37x19
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=dst:common:0.125 --attr-post-ops=linear:0.5:2 96x1000x1x1
+--reset --dir=BWD_D --sdt=f16 --ddt=f64 --alg=LOGSOFTMAX 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=bf16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f16 --axis=0 96x1000x1x1
+--reset --alg=LOGSOFTMAX --axis=0 --inplace=true 256x10
+--reset --dir=BWD_D --sdt=f64 --axis=0 256x10x1x1x1
+--reset --dir=BWD_D --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --ddt=f64 --stag=axb --alg=LOGSOFTMAX --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --alg=LOGSOFTMAX --axis=0 --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --axis=0 96x1024x1x1x1
+--reset --stag=aBx16b --axis=0 --inplace=true 1x8x1024x16
+--reset --sdt=bf16 256x10
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --alg=LOGSOFTMAX --axis=0 96x1024x1x1x1
+--reset --dir=BWD_D --ddt=f16 --stag=axb --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --axis=0 --inplace=true 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --alg=LOGSOFTMAX --axis=2 --inplace=true 2x16x128x2x4
+--reset --ddt=f64 --stag=axb 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --axis=0 --attr-scales=src:common:64 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --ddt=f16 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:128 --attr-post-ops=add:f32:common+linear:0.5:2 1x8x1024x16
+--reset --dir=FWD_I --sdt=f16 --alg=LOGSOFTMAX --axis=2 64x1011x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-post-ops=add:f32:common+linear:0.5:2 256x10x1x1
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=bf16 96x1000
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:128 --attr-post-ops=linear:0.5:2 2x19x128x256
+--reset --dir=FWD_I --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --stag=aBx16b --axis=0 --inplace=true 448x16x28x28
+--reset --sdt=bf16 --ddt=f64 --alg=LOGSOFTMAX 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=bf16 --ddt=f64 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --stag=axb --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --axis=3 --inplace=true 256x10x1x1
+--reset --dir=FWD_I --sdt=f16 --ddt=f16 --stag=aBx16b --axis=3 448x16x28x28
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:128 --attr-post-ops=linear:0.5:2 448x16x28x28
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 1x2x64x64
+--reset --axis=3 --inplace=true 2x16x128x2x4
+--reset --sdt=f16 --ddt=bf16 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --axis=0 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --alg=LOGSOFTMAX --axis=0 1x8x1024x16
+--reset --dir=FWD_I --sdt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --stag=aBx16b --alg=LOGSOFTMAX --axis=2 --inplace=true 1x2x64x64
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=f16 --stag=aBx16b --alg=LOGSOFTMAX --axis=2 256x10x1x1
+--reset --dir=FWD_I --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=bf16 --alg=LOGSOFTMAX 256x10x1x1x1
+--reset --sdt=bf16 --stag=axb --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=dst:common:0.125 --attr-post-ops=add:f32:per_oc 256x10x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=dst:common:0.125 --attr-post-ops=linear:0.5:2 64x1011x1x1
+--reset --sdt=f16 --ddt=bf16 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:128 --attr-post-ops=add:f32:per_oc 96x1000x1x1
+--reset --sdt=f64 --axis=4 3x17x9x37x19
+--reset --sdt=bf16 --ddt=bf16 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --stag=aBx16b --alg=LOGSOFTMAX --axis=3 2x19x128x256
+--reset --dir=FWD_I --sdt=f16 --ddt=f16 --stag=aBx16b --axis=3 1x8x1024x16
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --axis=3 96x1000x1x1
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --stag=aBx16b --alg=LOGSOFTMAX 64x1011x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=f64 --alg=LOGSOFTMAX --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --stag=axb --axis=0 --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=f64 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f64 --ddt=f16 --stag=axb --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f16 --alg=LOGSOFTMAX --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=bf16 256x10
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e4m3 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e4m3 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --stag=aBx16b 1x2x64x64
+--reset --sdt=f64 --ddt=f64 --inplace=true --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=bf16 --ddt=f64 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --alg=LOGSOFTMAX 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --ddt=f64 --stag=axb --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 256x10x1x1
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f64 --alg=LOGSOFTMAX 128x365
+--reset --sdt=bf16 --axis=0 1x8x1024x16
+--reset --dir=FWD_I --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f16 --ddt=f64 --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --ddt=f16 --stag=axb --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --axis=3 2x16x128x128
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --ddt=f16 --stag=axb --axis=0 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f16 --ddt=f16 --alg=LOGSOFTMAX --inplace=true --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --ddt=bf16 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e4m3 --stag=axb --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=f8_e5m2 --alg=LOGSOFTMAX --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --stag=aBx16b 2x19x128x256
+--reset --dir=FWD_I --axis=2 --inplace=true 448x16x28x28
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f64 --stag=aBx16b --alg=LOGSOFTMAX --axis=2 2x16x128x128
+--reset --dir=FWD_I --sdt=f16 96x1000x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --axis=0 --attr-scales=src:common:64 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=bf16 --stag=aBx16b --alg=LOGSOFTMAX --axis=0 256x10x1x1
+--reset --dir=BWD_D --alg=LOGSOFTMAX --axis=4 256x10x1x1x1
+--reset --dir=BWD_D --alg=LOGSOFTMAX --axis=0 256x10
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset 448x16x28x28
+--reset --sdt=f64 --ddt=bf16 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --ddt=bf16 --stag=axb 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f64 --ddt=f64 --alg=LOGSOFTMAX 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --stag=aBx16b --alg=LOGSOFTMAX 256x10x1x1
+--reset --dir=FWD_I --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --inplace=true 1x2x64x64
+--reset --sdt=f64 --stag=aBx16b --alg=LOGSOFTMAX 2x16x128x128
+--reset --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --alg=LOGSOFTMAX --attr-scales=src:common:64 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f16 --stag=axb --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --stag=aBx16b --alg=LOGSOFTMAX --axis=3 1x8x1024x16
+--reset --dir=FWD_I --sdt=f16 --alg=LOGSOFTMAX --axis=0 96x1000
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --ddt=f64 --stag=axb --axis=0 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=bf16 --stag=axb 2x19x17x13_n"softmax_ci_2d:0"
+--reset --stag=axb --inplace=true 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --stag=aBx16b --alg=LOGSOFTMAX --axis=3 256x10x1x1
+--reset --inplace=true --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --alg=LOGSOFTMAX --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --stag=aBx16b 1x8x1024x16
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=bf16 --axis=3 256x10x1x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f16 --ddt=f16 --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --stag=aBx16b --alg=LOGSOFTMAX --axis=0 256x10x1x1
+--reset --dir=BWD_D --sdt=f16 --ddt=bf16 --stag=axb --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e4m3 --stag=axb --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --alg=LOGSOFTMAX --axis=0 2x19x128x256
+--reset --dir=FWD_I --sdt=f16 --ddt=f16 --stag=aBx16b --axis=3 --inplace=true 2x19x128x256
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=bf16 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --stag=axb --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --stag=aBx16b --alg=LOGSOFTMAX --axis=2 --inplace=true 256x10x1x1
+--reset --sdt=f64 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --inplace=true 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=bf16 --stag=aBx16b --axis=0 256x10x1x1
+--reset --sdt=f64 --stag=axb 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --ddt=f8_e4m3 --alg=LOGSOFTMAX --axis=0 --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --attr-scales=src:common:64 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --inplace=true --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:128 1x8x1024x16
+--reset --dir=BWD_D --sdt=f64 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --stag=aBx16b --alg=LOGSOFTMAX --axis=0 2x16x128x128
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:128 2x19x128x256
+--reset --dir=FWD_I --alg=LOGSOFTMAX --axis=3 1x2x64x64
+--reset --dir=BWD_D --sdt=bf16 --alg=LOGSOFTMAX 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --stag=aBx16b 1x8x1024x16
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f16 --stag=axb --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --alg=LOGSOFTMAX --axis=4 --inplace=true 2x16x128x2x4
+--reset --sdt=f16 --ddt=f64 --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --stag=axb --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --inplace=true 256x10x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --axis=0 --inplace=true 256x10x1x1
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f16 --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=bf16 --stag=aBx16b --axis=3 2x19x128x256
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=f64 --stag=aBx16b 256x10x1x1
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --inplace=true 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=bf16 --ddt=f64 --stag=axb --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=dst:common:0.125 --attr-post-ops=add:f32:common+linear:0.5:2 64x1011x1x1
+--reset --dir=BWD_D --sdt=bf16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --stag=axb --alg=LOGSOFTMAX --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --alg=LOGSOFTMAX --inplace=true 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset 2x16x128x128
+--reset --dir=BWD_D --ddt=f16 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --axis=0 --inplace=true 448x16x28x28
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-post-ops=add:f32:common+linear:0.5:2 96x1000x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-scales=src:common:128 --attr-post-ops=add:f32:common+linear:0.5:2 64x1011x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=f64 --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f64 --stag=aBx16b 64x1011x1x1
+--reset --dir=FWD_I --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --ddt=f64 --inplace=true 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=src:common:128 --attr-post-ops=add:f32:common+linear:0.5:2 1x2x64x64
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --alg=LOGSOFTMAX --axis=3 2x19x128x256
+--reset --dir=BWD_D --sdt=f16 --ddt=f64 --stag=axb --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=f8_e4m3 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=bf16 --stag=aBx16b --alg=LOGSOFTMAX --axis=3 256x10x1x1
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --alg=LOGSOFTMAX --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=bf16 --ddt=bf16 --attr-dropout=0.25:843921:any:1238976:1 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --axis=2 2x16x128x128
+--reset --dir=FWD_I --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f64 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=bf16 --axis=0 96x1024x1x1x1
+--reset --alg=LOGSOFTMAX 2x16x128x2x4
+--reset --sdt=bf16 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --stag=aBx16b --alg=LOGSOFTMAX 96x1000x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-post-ops=add:f32:common+linear:0.5:2 1x2x64x64
+--reset --dir=FWD_I --sdt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 448x16x28x28
+--reset --dir=FWD_I --ddt=f8_e4m3 --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e4m3 --stag=axb --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --alg=LOGSOFTMAX --axis=3 2x16x128x2x4
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 64x1011x1x1
+--reset --dir=FWD_I --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --ddt=f8_e4m3 --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --stag=aBx16b --axis=2 1x2x64x64
+--reset --dir=FWD_I --sdt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f64 --ddt=bf16 --stag=axb --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --alg=LOGSOFTMAX 32x100
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e4m3 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=dst:common:0.25 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --axis=3 256x10x1x1
+--reset --sdt=f16 --alg=LOGSOFTMAX --axis=3 1x8x1024x16
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e4m3 --alg=LOGSOFTMAX --axis=0 --attr-scales=dst:common:0.25 1x16x2x12_n"softmax_ci_2d:1"
+--reset --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --stag=aBx16b --axis=2 --inplace=true 2x19x128x256
+--reset --dir=FWD_I --ddt=s8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --inplace=true --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --axis=2 --inplace=true 2x19x128x256
+--reset --ddt=f64 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --stag=aBx16b --alg=LOGSOFTMAX --axis=0 2x16x128x128
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --inplace=true --attr-scales=src:common:64+dst:common:0.5 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=f16 --alg=LOGSOFTMAX --axis=0 2x19x128x256
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 1x16x2x12_n"softmax_ci_2d:1"
+--reset --axis=4 --inplace=true 96x1024x1x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f16 --ddt=f64 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f16 --stag=aBx16b --alg=LOGSOFTMAX --axis=3 2x16x128x128
+--reset --dir=FWD_I --sdt=f16 --ddt=f16 --stag=aBx16b --alg=LOGSOFTMAX --axis=2 2x16x128x128
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --axis=3 --inplace=true 2x16x128x128
+--reset --dir=FWD_I --sdt=bf16 2x19x128x256
+--reset --dir=FWD_I --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=dst:common:0.25 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --stag=axb --axis=0 --inplace=true 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=bf16 --axis=3 448x16x28x28
+--reset --sdt=bf16 --attr-dropout=0.25:843921:any:1238976:1 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 2x19x17x13_n"softmax_ci_2d:0"
+--reset --alg=LOGSOFTMAX --inplace=true 96x1000
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --ddt=f16 --alg=LOGSOFTMAX --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --ddt=bf16 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --stag=axb --axis=0 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --alg=LOGSOFTMAX 2x16x128x128
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f16 --alg=LOGSOFTMAX --axis=2 256x10x1x1
+--reset --sdt=f16 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f64 --ddt=f64 --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f64 --ddt=f16 --stag=axb --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:common+linear:0.5:2 1x8x1024x16
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --axis=0 --attr-scales=src:common:64 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --alg=LOGSOFTMAX --axis=0 32x100
+--reset --dir=FWD_I --alg=LOGSOFTMAX --axis=0 1x8x1024x16
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-post-ops=linear:0.5:2 2x16x128x128
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f16 --ddt=f64 --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --ddt=f8_e4m3 --stag=axb --alg=LOGSOFTMAX --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --ddt=f8_e5m2 --alg=LOGSOFTMAX 255x10_n"softmax_ci_0d:1"
+--reset --ddt=bf16 --stag=axb --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --axis=2 256x10x1x1x1
+--reset --sdt=f64 --ddt=bf16 --stag=axb 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --attr-scales=src:common:64 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:128 --attr-post-ops=add:f32:common+linear:0.5:2 2x16x128x128
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=f64 --stag=axb --inplace=true --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --alg=LOGSOFTMAX --axis=3 2x16x128x128
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f16 --stag=axb --axis=0 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-post-ops=add:f32:common+linear:0.5:2 256x10x1x1
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f16 --ddt=f64 --stag=axb --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --stag=axb --axis=0 --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=f16 --ddt=f8_e5m2 --alg=LOGSOFTMAX --attr-scales=dst:common:0.25 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --ddt=f64 --stag=axb --axis=0 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=s8 --attr-scales=src:common:128 96x1000x1x1
+--reset --dir=BWD_D --sdt=f16 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor 16x16_n"softmax_ci_0d:0"
+--reset --attr-dropout=0.25:843921:any:1238976:1 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --axis=2 96x1024x1x1x1
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --attr-post-ops=add:f32:per_oc 1x2x64x64
+--reset --dir=FWD_I --ddt=f8_e5m2 --stag=axb --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=f16 --ddt=f16 --stag=axb 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f64 --alg=LOGSOFTMAX 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --stag=axb --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --stag=axb --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=f64 --alg=LOGSOFTMAX --axis=0 2x16x128x2x4
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=BWD_D --sdt=bf16 --ddt=f64 --stag=axb 1x16x2x12_n"softmax_ci_2d:1"
+--reset --sdt=bf16 --ddt=f16 --stag=axb --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=bf16 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --stag=axb --attr-scales=src:common:64 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --ddt=bf16 --alg=LOGSOFTMAX --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --stag=aBx16b --alg=LOGSOFTMAX --axis=2 448x16x28x28
+--reset --sdt=f16 --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=BWD_D --sdt=bf16 --stag=axb --axis=0 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=bf16 --ddt=bf16 --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --ddt=f8_e5m2 --axis=0 --attr-scales=dst:common:0.25 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --ddt=u8 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 16x16_n"softmax_ci_0d:0"
+--reset --sdt=f16 --ddt=f64 --stag=axb --alg=LOGSOFTMAX --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --stag=axb --attr-scales=src:common:64 --attr-post-ops=mul:f32:per_tensor --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f64 --ddt=f16 --stag=axb 16x16_n"softmax_ci_0d:0"
+--reset --sdt=bf16 --alg=LOGSOFTMAX 448x16x28x28
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --axis=0 --inplace=true --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=s8 --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f16 --ddt=bf16 --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=bf16 --alg=LOGSOFTMAX --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=f16 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 16x16_n"softmax_ci_0d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=u8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-acc-mode=relaxed 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --ddt=f16 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-acc-mode=relaxed 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --stag=axb --inplace=true 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=bf16 --alg=LOGSOFTMAX --axis=0 3x17x9x37x19
+--reset --dir=FWD_I --sdt=s8 --ddt=f16 --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=BWD_D --sdt=f64 --ddt=f64 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --alg=LOGSOFTMAX --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=add:f32:per_oc 255x10_n"softmax_ci_0d:1"
+--reset --sdt=f64 256x10x1x1x1
+--reset --dir=FWD_I --sdt=s8 --stag=axb --alg=LOGSOFTMAX --attr-scales=src:common:64 255x10_n"softmax_ci_0d:1"
+--reset --dir=BWD_D --sdt=f64 --alg=LOGSOFTMAX --axis=0 255x10_n"softmax_ci_0d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --stag=axb --alg=LOGSOFTMAX --axis=0 2x19x17x13_n"softmax_ci_2d:0"
+--reset --ddt=f64 --alg=LOGSOFTMAX --attr-acc-mode=relaxed 2x19x17x13_n"softmax_ci_2d:0"
+--reset --sdt=f64 --ddt=f16 --stag=axb 1x16x2x12_n"softmax_ci_2d:1"
+--reset --alg=LOGSOFTMAX --axis=2 --inplace=true 2x16x128x2x4
+--reset --dir=BWD_D --ddt=bf16 --alg=LOGSOFTMAX --axis=0 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=bf16 --ddt=f8_e5m2 --alg=LOGSOFTMAX --axis=0 --attr-post-ops=add:f32:per_oc 1x16x2x12_n"softmax_ci_2d:1"
+--reset --dir=FWD_I --sdt=u8 --ddt=u8 --stag=axb --axis=0 --inplace=true --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset --dir=FWD_I --sdt=s8 --ddt=s8 --stag=axb --alg=LOGSOFTMAX --axis=0 --attr-scales=src:common:64+dst:common:0.5 --attr-post-ops=linear:0.5:2 2x19x17x13_n"softmax_ci_2d:0"
+--reset 128x365

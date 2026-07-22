@@ -4637,6 +4637,10 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                     has_dropout = true;
                     break;
                 }
+                case op_kind::_reorder: {
+                    // allow reorder for typecast in xf16-f32 mixed pattern.
+                    break;
+                }
                 default: valid_pattern = false;
             }
 

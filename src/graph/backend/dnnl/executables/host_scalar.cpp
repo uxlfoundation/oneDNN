@@ -16,12 +16,14 @@
 
 #include "graph/backend/dnnl/executables/host_scalar.hpp"
 
+#include "common/stream.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace graph {
 namespace dnnl_impl {
 
-void host_scalar_executable_t::execute(const stream &stream,
+void host_scalar_executable_t::execute_impl(const stream &stream,
         const std::unordered_map<int, memory> &args) const {
     auto it_src = args.find(DNNL_ARG_FROM);
     auto it_dst = args.find(DNNL_ARG_TO);
@@ -39,8 +41,24 @@ void host_scalar_executable_t::execute(const stream &stream,
     });
 }
 
+void host_scalar_executable_t::execute(const stream &stream,
+        const std::unordered_map<int, memory> &args) const {
+    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
+                dnnl::impl::component_t::graph)) {
+        stream.get()->wait();
+        double start_ms = dnnl::impl::get_msec();
+        execute_impl(stream, args);
+        stream.get()->wait();
+        double duration_ms = dnnl::impl::get_msec() - start_ms;
+        VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
+                duration_ms);
+    } else {
+        execute_impl(stream, args);
+    }
+}
+
 #ifdef DNNL_WITH_SYCL
-std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
+std::optional<::sycl::event> host_scalar_executable_t::execute_sycl_impl(
         const stream &stream, const std::unordered_map<int, memory> &args,
         const std::vector<::sycl::event> &deps) const {
     auto it_src = args.find(DNNL_ARG_FROM);
@@ -56,6 +74,10 @@ std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
     const memory &src_mem = it_src->second;
     const memory &dst_mem = it_dst->second;
 
+    double start_ms = dnnl::impl::get_msec();
+    auto *strm = stream.get();
+    strm->before_exec_hook();
+
     // get_data_handle() is blocked for host scalar memories at the C API
     // level, so we access the underlying storage pointer directly.
     void *src_ptr = const_cast<memory_t *>(src_mem.get())
@@ -63,16 +85,51 @@ std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
                             ->data_handle();
     void *dst_ptr = dst_mem.get_data_handle();
     const size_t size = src_mem.get_desc().get_size();
+
     auto sycl_queue = dnnl::sycl_interop::get_queue(stream);
-    return sycl_queue.submit([&](::sycl::handler &cgh) {
+    auto event = sycl_queue.submit([&](::sycl::handler &cgh) {
         cgh.depends_on(deps);
         cgh.memcpy(dst_ptr, src_ptr, size);
     });
+
+    // SYCL GPU only.
+    if (strm->is_verbose_profiler_enabled()
+            && stream.get_engine().get_kind() == engine::kind::gpu) {
+        auto *gpu_strm = dnnl::impl::utils::downcast<gpu::stream_t *>(strm);
+        auto verbose_event = std::make_shared<xpu::sycl::event_t>(
+                std::vector<::sycl::event> {event});
+        gpu_strm->verbose_profiler()->register_event(verbose_event);
+        strm->run_verbose_profiler(info_, start_ms);
+    }
+    strm->after_exec_hook();
+    return event;
+}
+
+std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
+        const stream &stream, const std::unordered_map<int, memory> &args,
+        const std::vector<::sycl::event> &deps) const {
+    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
+                dnnl::impl::component_t::graph)) {
+        if (!stream.get()->is_verbose_profiler_enabled()) {
+            stream.get()->wait();
+            double start_ms = dnnl::impl::get_msec();
+            execute_sycl_impl(stream, args, deps);
+            stream.get()->wait();
+            double duration_ms = dnnl::impl::get_msec() - start_ms;
+            VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
+                    duration_ms);
+            return std::nullopt;
+        } else {
+            return execute_sycl_impl(stream, args, deps);
+        }
+    } else {
+        return execute_sycl_impl(stream, args, deps);
+    }
 }
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event host_scalar_executable_t::execute_ocl(const stream &stream,
+cl_event host_scalar_executable_t::execute_ocl_impl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
     auto it_src = args.find(DNNL_ARG_FROM);
@@ -86,6 +143,10 @@ cl_event host_scalar_executable_t::execute_ocl(const stream &stream,
     const memory &src_mem = it_src->second;
     const memory &dst_mem = it_dst->second;
 
+    double start_ms = dnnl::impl::get_msec();
+    auto *strm = stream.get();
+    strm->before_exec_hook();
+
     assert(deps.size() <= 1);
     // Passing the empty event to memcpy below causes failure.
     const bool empty = deps.empty() || deps[0] == nullptr;
@@ -93,16 +154,45 @@ cl_event host_scalar_executable_t::execute_ocl(const stream &stream,
     const size_t size = src_mem.get_desc().get_size();
     const auto dt = src_mem.get_desc().get_data_type();
     assert(size == types::data_type_size(static_cast<impl::data_type_t>(dt)));
+
     cl_event e = nullptr;
     DNNL_HOST_SCALAR_TYPE_SWITCH(dt, DType, {
         const DType val = src_mem.get_host_scalar_value<DType>();
-        UNUSED_STATUS(xpu::ocl::usm::memcpy(stream.get(),
-                dst_mem.get_data_handle(), static_cast<const void *>(&val),
-                size, num, empty ? nullptr : deps.data(), &e));
-        xpu::ocl::clWaitForEvents(1, &e);
-        xpu::ocl::clReleaseEvent(e);
+        UNUSED_STATUS(xpu::ocl::usm::memcpy(strm, dst_mem.get_data_handle(),
+                static_cast<const void *>(&val), size, num,
+                empty ? nullptr : deps.data(), &e));
     });
-    return nullptr;
+    if (strm->is_verbose_profiler_enabled() && e) {
+        auto *gpu_strm = dnnl::impl::utils::downcast<gpu::stream_t *>(strm);
+        auto verbose_event = std::make_shared<xpu::ocl::event_t>(
+                xpu::ocl::wrapper_t<cl_event>(e, true));
+        gpu_strm->verbose_profiler()->register_event(verbose_event);
+        strm->run_verbose_profiler(info_, start_ms);
+    }
+    strm->after_exec_hook();
+    return e;
+}
+
+cl_event host_scalar_executable_t::execute_ocl(const stream &stream,
+        const std::unordered_map<int, memory> &args,
+        const std::vector<cl_event> &deps) const {
+    if (get_verbose(dnnl::impl::verbose_t::exec_profile,
+                dnnl::impl::component_t::graph)) {
+        if (!stream.get()->is_verbose_profiler_enabled()) {
+            stream.get()->wait();
+            double start_ms = dnnl::impl::get_msec();
+            execute_ocl_impl(stream, args, deps);
+            stream.get()->wait();
+            double duration_ms = dnnl::impl::get_msec() - start_ms;
+            VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
+                    duration_ms);
+            return nullptr;
+        } else {
+            return execute_ocl_impl(stream, args, deps);
+        }
+    } else {
+        return execute_ocl_impl(stream, args, deps);
+    }
 }
 #endif
 

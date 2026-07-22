@@ -30,29 +30,42 @@ struct host_scalar_executable_t : public op_executable_t {
     host_scalar_executable_t(std::shared_ptr<op_t> &op,
             const dnnl::engine &p_engine, pd_cache_t &pd_cache,
             const fpmath_t &fpmath, bool use_block_layout) {
-        UNUSED(op);
-        UNUSED(p_engine);
         UNUSED(pd_cache);
         UNUSED(fpmath);
         UNUSED(use_block_layout);
+        info_ = std::string(dnnl_engine_kind2str(
+                        static_cast<dnnl_engine_kind_t>(p_engine.get_kind())))
+                + "," + op->str();
     }
 
     void execute(const stream &stream,
             const std::unordered_map<int, memory> &args) const override;
+    void execute_impl(const stream &stream,
+            const std::unordered_map<int, memory> &args) const;
 
 #ifdef DNNL_WITH_SYCL
     std::optional<::sycl::event> execute_sycl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<::sycl::event> &deps) const override;
+    std::optional<::sycl::event> execute_sycl_impl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<::sycl::event> &deps) const;
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     cl_event execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
             const std::vector<cl_event> &deps) const override;
+    cl_event execute_ocl_impl(const stream &stream,
+            const std::unordered_map<int, memory> &args,
+            const std::vector<cl_event> &deps) const;
 #endif
 
     bool is_initialized() const override { return true; }
+
+private:
+    // needed for verbose profiling.
+    std::string info_;
 };
 
 } // namespace dnnl_impl

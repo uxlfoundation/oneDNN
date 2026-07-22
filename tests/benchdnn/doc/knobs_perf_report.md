@@ -31,6 +31,7 @@ Data types options supported:
 | Syntax | Primitives                                     | Description
 | :--    | :--                                            | :--
 | %cfg%  | Conv, IP, Matmul, Pool, RNN                    | Config which describes data types and filling rules
+| %bia_dt% | BRGEMM, Conv, Deconv, IP, Matmul             | Bias data type (precision)
 | %dt%   | Data md based, Resampling, Zeropad             | Source and Destination Data type (precision)
 | %ddt%  | Binary, Concat, Reduction, Reorder, Sum        | Destination data types (precision)
 | %sdt%  | Binary, Concat, Prelu, Reduction, Reorder, Sum | Source data types (precision)
@@ -137,9 +138,9 @@ CSV-style:
                --batch=inputs/ip/test_ip_all
 ```
 ```
-Template entries: perf,%engine%,%impl%,%name%,%dir%,%sdt%,%stag%,%wtag%,%dtag%,%attr%,%desc%,%Gops%,%+ctime%,%-time%,%-Gflops%,%0time%,%0Gflops%
-perf,engine,impl,name,dir,sdt,stag,wtag,dtag,attr,desc,Gops,max_ctime,min_time,min_Gflops,avg_time,avg_Gflops
-perf,cpu,brg_matmul:avx512_core,"resnet:ip1",FWD_B,f32:f32:f32,any,any,any,,ic2048oc1000n"resnet:ip1",0.008192,0.9375,0.0234375,349.525,0.027302,300.051
+Template entries: perf,%engine%,%impl%,%name%,%dir%,%sdt%,%bia_dt%,%stag%,%wtag%,%dtag%,%attr%,%desc%,%Gops%,%+ctime%,%-time%,%-Gflops%,%0time%,%0Gflops%
+perf,engine,impl,name,dir,sdt,bia_dt,stag,wtag,dtag,attr,desc,Gops,max_ctime,min_time,min_Gflops,avg_time,avg_Gflops
+perf,cpu,brg_matmul:avx512_core,"resnet:ip1",FWD_B,f32:f32:f32,f32,any,any,any,,ic2048oc1000n"resnet:ip1",0.008192,0.9375,0.0234375,349.525,0.027302,300.051
 ...
 ```
 

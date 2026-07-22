@@ -349,6 +349,10 @@ mb1_ic2oc2_ih10oh12kh1sh1dh0ph1_iw7ow7kw1sw1dw0pw0_n"brgemm_post-op-jit_sum-with
 --attr-zero-points=dst:common:2+src:common:1
 mb1ic2ih10iw7oc2oh6ow4kh1kw1sh2sw2ph1pw0dh1dw1_n"brgemm_post-op-jit_sum-with-zp:2"
 
+# check vpad with sum+zero-point
+--reset
+--dt=s8:s8:s32 --attr-post-ops=sum:0:1 g64ic512ih240oc512oh120kh3sh2ph1n"brgemm_post_op-sum_zp-vpad-tail""
+
 # test primitive cache correctly dispatching proper CPU ISA
 --reset
 --dir=fwd_d --dt=f16 --stag=axb --dtag=axb --mb=1

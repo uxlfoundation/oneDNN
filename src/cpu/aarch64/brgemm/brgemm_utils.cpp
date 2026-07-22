@@ -143,10 +143,11 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
                       || brg->brgattr.max_bottom_vpad > 0)
             && brg->zp_type_a != brgemm_broadcast_t::none;
     const int beta_regs = !one_of(brg->beta, 1.f, 0.f);
+    const int sum_zp_regs = brg->with_sum && brg->sum_zp != 0 ? 1 : 0;
 
     const int max_isa_regs = isa_num_vregs(brg->isa_impl);
     auto max_reg_count = max_isa_regs - max_bcst_regs - beta_regs
-            - req_compensation - req_zp_a_comp_pads;
+            - req_compensation - req_zp_a_comp_pads - sum_zp_regs;
     if (req_zp_a_comp_pads)
         max_reg_count
                 = nstl::min(max_reg_count, max_isa_regs - max_bcst_regs - 5);

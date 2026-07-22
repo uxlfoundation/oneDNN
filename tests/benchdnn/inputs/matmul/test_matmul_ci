@@ -214,8 +214,16 @@
 --stag=ab --wtag=ab --dtag=ab
 --attr-post-ops=select:f32,\
                 select:f32.per_oc,\
+                select:f32.per_tensor,\
                 select:s8.per_tensor+add:f32
 --batch=shapes_2d
+
+# Post-ops with binary select op with broadcast condition
+--reset
+--dt=f32,bf16
+--stag=abcd --wtag=abcd --dtag=abcd
+--attr-post-ops=select:f32,select:f32.per_tensor
+1x16x32x256:1x16x256x33n"sdpa"
 
 # Rounding Mode
 --reset

@@ -2963,7 +2963,15 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary_with_ternary_op(
         // blending the tensors, the current approach reserves
         // fewer registers for operation.
         if (is_superset(isa, avx512_core)) {
-            const auto &cmp_mask = rhs_arg_static_params_.tail_opmask;
+            // Use a dedicated auxiliary opmask (guaranteed distinct from
+            // tail_opmask) for the select comparison instead of borrowing
+            // tail_opmask. Reusing tail_opmask here collides with the tail
+            // mask that the scalar-broadcast src1 load below needs to keep
+            // (execute_broadcast_*_with_opmask reads tail_opmask), which is
+            // why scalar-broadcast ternary post-ops used to be rejected on
+            // avx512. Preserving it lets that dispatch restriction be lifted.
+            // Anchor: TERNARY_SCALAR_BCAST_AVX512_ONLY.
+            const auto cmp_mask = get_aux_kmask();
             push_opmask(host_, cmp_mask);
             push_vmm(host_, dst);
             host_->vxorps(dst, dst, dst);
@@ -2973,7 +2981,6 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary_with_ternary_op(
             host_->vblendmps(dst | cmp_mask, tmp_vmm, dst);
             host_->knotw(cmp_mask, cmp_mask);
             host_->vpmovm2b(tmp_vmm, cmp_mask);
-            pop_opmask(host_, cmp_mask);
             push_vmm(host_, dst);
 
             if (rhs_addr.isBroadcast())
@@ -2984,14 +2991,13 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary_with_ternary_op(
                         with_tail);
             if (types::is_integral_dt(rhs_arg_data_type)) cvt_to_f32(dst);
 
-            push_opmask(host_, cmp_mask);
             host_->vpmovb2m(cmp_mask, tmp_vmm);
 
             host_->vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
             host_->vblendmps(tmp_vmm | cmp_mask, tmp_vmm, dst);
-            pop_opmask(host_, cmp_mask);
             pop_vmm(host_, dst);
             host_->vpaddd(dst, dst, tmp_vmm);
+            pop_opmask(host_, cmp_mask);
         } else {
             push_vmm(host_, dst);
             host_->vxorps(dst, dst, dst);

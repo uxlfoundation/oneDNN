@@ -17,6 +17,7 @@
 #include "cpu/rv64/gemm/jit_rvv_gemm_s8_kernel.hpp"
 
 #include <array>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 
@@ -27,15 +28,16 @@ namespace rv64 {
 namespace gemm_utils {
 
 using namespace Xbyak_riscv;
+using namespace dnnl::impl::utils;
 
 jit_rvv_gemm_s8_kernel_t::jit_rvv_gemm_s8_kernel_t(dim_t n_cols, bool isTransA,
-        bool isTransB, bool b_signed, bool dst_is_f32, bool has_bias)
+        bool isTransB, bool b_signed, data_type_t dst_dt, bool has_bias)
     : jit_generator_t("rv64_gemm_kernel_s8_jit")
     , n_cols_(n_cols)
     , isTransA_(isTransA)
     , isTransB_(isTransB)
     , b_signed_(b_signed)
-    , dst_is_f32_(dst_is_f32)
+    , dst_dt_(dst_dt)
     , has_bias_(has_bias) {
     create_kernel();
 }
@@ -50,7 +52,7 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
 
     const Reg reg_lda_bytes = t0; // A is s8: 1 byte per element
     const Reg reg_ldb_bytes = t1; // B is s8/u8: 1 byte per element
-    const Reg reg_ldc_bytes = t2; // C is s32/f32: 4 bytes per element
+    const Reg reg_ldc_bytes = t2; // C element size in bytes
     const Reg reg_K = t3;
     const Reg reg_alpha_bits = t4;
     const Reg reg_bias_ptr = t4; // reuse after alpha bits moved to freg
@@ -103,9 +105,14 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
 
     if (has_bias_) { ld(reg_bias_ptr, reg_param, 72); }
 
-    // A is s8 (1 byte), B is s8/u8 (1 byte): element stride == byte stride.
-    // C is s32/f32 (4 bytes): ldc * 4 = byte stride.
-    slli(reg_ldc_bytes, reg_ldc_bytes, 2);
+    // Scale ldc from element-count to byte stride.
+    if (one_of(dst_dt_, data_type::s8, data_type::u8)) {
+        // 1-byte element: element units == byte units, no shift needed.
+    } else if (one_of(dst_dt_, data_type::f16, data_type::bf16)) {
+        slli(reg_ldc_bytes, reg_ldc_bytes, 1);
+    } else {
+        slli(reg_ldc_bytes, reg_ldc_bytes, 2);
+    }
 
     // Save callee-saved registers (s2..s5 hold reg_b[2..5] when n_cols >= 3).
     const bool need_callee_save = (n_cols_ >= 3);
@@ -222,7 +229,7 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
     // C-update: switch back to e32 LMUL=m4 (VL=m) for the epilogue.
     vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
 
-    // Computes the address of C's col_idx column into reg_tmp3.
+    // Computes the address of C's col_idx column into reg_tmp0.
     auto emit_col_addr = [&](dim_t col_idx) {
         if (col_idx == 0) {
             mv(reg_tmp0, reg_C_base);
@@ -241,8 +248,12 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
         Label label_bias_loaded, label_bias_per_element, label_bias_done;
         beqz(reg_bias_ptr, label_bias_loaded);
         lw(reg_tmp0, reg_param, 80);
-        beqz(reg_tmp0, label_bias_per_element); // per-element: contiguous load
-        // scalar: splat the single bias float across the M tile.
+        // 0 → per-element bias (bias_is_scalar == false): do a contiguous
+        // vle32_v load of the m-wide vector. nonzero → scalar bias
+        // (bias_is_scalar == true): splat the single float across all m
+        // lanes via vfmv.v.f. A full vle32_v on a one-element object would
+        // overrun the allocation.
+        beqz(reg_tmp0, label_bias_per_element);
         flw(freg_bias, reg_bias_ptr, 0);
         vfmv_v_f(v_bias, freg_bias);
         j_(label_bias_done);
@@ -252,12 +263,16 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
         // f32 -> s32 using the rounding mode in fcsr (RNE by default), matching
         // the reference, which adds the f32 bias and rounds via nearbyintf.
         // RTZ was wrong: it truncated 0.75f to 0 instead of 1.
-        if (!dst_is_f32_) { vfcvt_x_f_v(v_bias, v_bias); }
+        if (dst_dt_ == data_type::s32) { vfcvt_x_f_v(v_bias, v_bias); }
         L(label_bias_loaded);
     }
 
-    if (dst_is_f32_) {
-        // f32 dst path: C[col_idx] = alpha * fcvt(acc) + beta * C + bias.
+    if (one_of(dst_dt_, data_type::f32, data_type::f16, data_type::bf16)) {
+        // f32-compatible epilogue: s32 acc -> f32 -> alpha/beta/bias ->
+        // store at element width (4 bytes for f32, 2 bytes for f16/bf16).
+        // For f16/bf16 we narrow via vfncvt before storing.
+        const bool is_f32_dst = (dst_dt_ == data_type::f32);
+
         for (dim_t c = 0; c < n_cols_; c++) {
             Label label_beta_zero, label_skip_bias, label_store, label_done;
 
@@ -268,7 +283,18 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
 
             beqz(reg_beta_bits, label_beta_zero);
 
-            vle32_v(v_tmp, reg_tmp0);
+            // Read existing C (element-width-aware: e32 for f32, e16 for f16/bf16).
+            // For f16/bf16 we scalar-load the 2-byte value and broadcast to
+            // all m lanes via vfmv.v.f. Using a scalar load avoids depending
+            // on vector widening (vfwcvt.f.f.v)
+            const FReg freg_loaded = fa5;
+            if (is_f32_dst) {
+                vle32_v(v_tmp, reg_tmp0);
+            } else {
+                lh(reg_k, reg_tmp0, 0); // sign-extend s16 -> s32 in reg_k
+                fmv_w_x(freg_loaded, reg_k);
+                vfmv_v_f(v_tmp, freg_loaded);
+            }
             vfmul_vf(v_tmp, v_tmp, freg_beta);
             vfmul_vf(v_c[c], v_c[c], freg_alpha);
             vfadd_vv(v_tmp, v_tmp, v_c[c]);
@@ -279,7 +305,18 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
                 L(label_skip_bias);
             }
 
-            vse32_v(v_tmp, reg_tmp0);
+            if (!is_f32_dst) {
+                vsetvli(x0, reg_m, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+                if (dst_dt_ == data_type::bf16) {
+                    vfncvtbf16_f_f_w(v_tmp, v_tmp);
+                } else {
+                    vfncvt_f_f_w(v_tmp, v_tmp);
+                }
+                vse16_v(v_tmp, reg_tmp0);
+                vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+            } else {
+                vse32_v(v_tmp, reg_tmp0);
+            }
             j_(label_done);
 
             L(label_beta_zero);
@@ -291,12 +328,81 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
             }
 
             L(label_store);
-            vse32_v(v_c[c], reg_tmp0);
+            if (!is_f32_dst) {
+                vsetvli(x0, reg_m, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+                if (dst_dt_ == data_type::bf16) {
+                    vfncvtbf16_f_f_w(v_c[c], v_c[c]);
+                } else {
+                    vfncvt_f_f_w(v_c[c], v_c[c]);
+                }
+                vse16_v(v_c[c], reg_tmp0);
+                vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+            } else {
+                vse32_v(v_c[c], reg_tmp0);
+            }
 
             L(label_done);
         }
+    } else if (one_of(dst_dt_, data_type::s8, data_type::u8)) {
+        // Narrow 8-bit dst: s32 acc -> f32 -> +bias (if any) -> saturate to
+        // [lbound, ubound] -> f32 -> s32 (RNE per fcsr) -> narrow to e8 ->
+        // vse8. Alpha is ignored (the driver rejects alpha != 1 for s8/u8
+        // dst). Beta must be 0 (overwrite-only): the driver asserts beta == 0
+        // and the kernel branch overwrites v_c[c] regardless.
+        const bool dst_is_u8 = (dst_dt_ == data_type::u8);
+
+        // Splat scalar saturate bounds into fregs once (reused per column).
+        const FReg freg_sat_ubound = fa3;
+        const FReg freg_sat_lbound = fa4;
+        if (dst_is_u8) {
+            li(reg_tmp0, 0x437F0000); // 255.0f
+            fmv_w_x(freg_sat_ubound, reg_tmp0);
+            li(reg_tmp0, 0x00000000); // 0.0f
+            fmv_w_x(freg_sat_lbound, reg_tmp0);
+        } else {
+            li(reg_tmp0, 0x42FE0000); // 127.0f
+            fmv_w_x(freg_sat_ubound, reg_tmp0);
+            li(reg_tmp0, 0xC3000000); // -128.0f
+            fmv_w_x(freg_sat_lbound, reg_tmp0);
+        }
+
+        for (dim_t c = 0; c < n_cols_; c++) {
+            emit_col_addr(c);
+
+            // s32 acc -> f32 in place (in v_c[c]).
+            vfcvt_f_x_v(v_c[c], v_c[c]);
+
+            // Add bias if requested.
+            if (has_bias_) {
+                Label label_skip_bias;
+                beqz(reg_bias_ptr, label_skip_bias);
+                vfadd_vv(v_c[c], v_c[c], v_bias);
+                L(label_skip_bias);
+            }
+
+            // Saturate to the dst range.
+            vfmax_vf(v_c[c], v_c[c], freg_sat_lbound);
+            vfmin_vf(v_c[c], v_c[c], freg_sat_ubound);
+
+            // f32 -> s32 / u32 with RNE rounding (fcsr default).
+            if (dst_is_u8) {
+                vfcvt_xu_f_v(v_c[c], v_c[c]);
+            } else {
+                vfcvt_x_f_v(v_c[c], v_c[c]);
+            }
+
+            // Narrow the s32/u32 accumulator in v_c[c] to e8 and store.
+            vsetvli(x0, reg_m, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            vnsrl_wi(v_tmp, v_c[c], 0);
+            vsetvli(x0, reg_m, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
+            vnsrl_wi(v_tmp, v_tmp, 0);
+            vse8_v(v_tmp, reg_tmp0);
+            // Restore e32/m4 state for the next column (or for callee-save
+            // epilogue / return).
+            vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+        }
     } else {
-        // s32 dst path.
+        // s32 dst path (default branch when dst_dt_ == data_type::s32).
         for (dim_t c = 0; c < n_cols_; c++) {
             Label label_after_beta, label_skip_bias;
 
@@ -334,63 +440,123 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
 
 namespace {
 
-template <bool isTransA, bool isTransB, bool b_signed, bool dst_is_f32>
+// Number of destination data types supported by the s8 GEMM JIT kernel.
+// Used as a bound on the storage arrays. Keep in lockstep with
+// `supported_dst_dts()` below — adding a new dst means appending both.
+constexpr int kNumDstKinds = 6;
+
+// Single source of truth for the supported-dst enumeration. Used to build
+// the storage in dst → index order and to answer the reverse lookup in
+// `dst_kind_index()`. Adding a new dst is a one-line change here.
+const std::array<data_type_t, kNumDstKinds> &supported_dst_dts() {
+    static const std::array<data_type_t, kNumDstKinds> dts
+            = {data_type::s32, data_type::f32, data_type::s8, data_type::u8,
+                    data_type::f16, data_type::bf16};
+    return dts;
+}
+
+// Map a destination data type to its [0, kNumDstKinds) index in
+// `supported_dst_dts()`. Returns -1 for unsupported data types. The caller
+// (the dispatcher) checks the return and aborts on -1; assert-only
+// validation here would let a missing case silently produce a wrong
+// answer in release builds.
+int dst_kind_index(data_type_t dst_dt) {
+    const auto &dts = supported_dst_dts();
+    for (int i = 0; i < kNumDstKinds; ++i) {
+        if (dts[i] == dst_dt) return i;
+    }
+    return -1;
+}
+
+// One (transA, transB, b_signed) combination's worth of kernel storage:
+// for each supported dst, an array of (n_cols -> unique_ptr<kernel>) for
+// both the no-bias (nb) and with-bias (b) variants. The [kNumDstKinds]
+// outer dimension and the [8] inner dimension (with [0] and [7] unused
+// because n_cols ∈ [1, 6]) mirror the f32 GEMM dispatcher's shape so the
+// patterns read consistently across kernels in this directory.
 struct jit_rvv_gemm_s8_kernel_storage_t {
-    std::array<std::unique_ptr<jit_rvv_gemm_s8_kernel_t>, 8> nb;
-    std::array<std::unique_ptr<jit_rvv_gemm_s8_kernel_t>, 8> b;
-    jit_rvv_gemm_s8_kernel_table_t table;
+    std::array<std::array<std::unique_ptr<jit_rvv_gemm_s8_kernel_t>, 8>,
+            kNumDstKinds>
+            nb;
+    std::array<std::array<std::unique_ptr<jit_rvv_gemm_s8_kernel_t>, 8>,
+            kNumDstKinds>
+            b;
 };
 
-template <bool isTransA, bool isTransB, bool b_signed, bool dst_is_f32>
-jit_rvv_gemm_s8_kernel_storage_t<isTransA, isTransB, b_signed, dst_is_f32> &
-get_jit_rvv_gemm_s8_kernel_storage() {
-    static jit_rvv_gemm_s8_kernel_storage_t<isTransA, isTransB, b_signed,
-            dst_is_f32>
-            storage;
+template <bool isTransA, bool isTransB, bool b_signed>
+const jit_rvv_gemm_s8_kernel_storage_t &get_jit_rvv_gemm_s8_kernel_storage() {
+    static jit_rvv_gemm_s8_kernel_storage_t storage;
     static std::once_flag initialized;
-
     std::call_once(initialized, [] {
-        for (dim_t n_cols = 1; n_cols <= 6; n_cols++) {
-            storage.nb[n_cols].reset(new jit_rvv_gemm_s8_kernel_t(
-                    n_cols, isTransA, isTransB, b_signed, dst_is_f32, false));
-            storage.b[n_cols].reset(new jit_rvv_gemm_s8_kernel_t(
-                    n_cols, isTransA, isTransB, b_signed, dst_is_f32, true));
-            storage.table.nb[n_cols] = storage.nb[n_cols].get();
-            storage.table.b[n_cols] = storage.b[n_cols].get();
+        const auto &dts = supported_dst_dts();
+        for (int dt = 0; dt < kNumDstKinds; ++dt) {
+            const data_type_t dst_dt = dts[dt];
+            for (dim_t n_cols = 1; n_cols <= 6; n_cols++) {
+                storage.nb[dt][n_cols].reset(new jit_rvv_gemm_s8_kernel_t(
+                        n_cols, isTransA, isTransB, b_signed, dst_dt, false));
+                storage.b[dt][n_cols].reset(new jit_rvv_gemm_s8_kernel_t(
+                        n_cols, isTransA, isTransB, b_signed, dst_dt, true));
+            }
         }
     });
-
     return storage;
+}
+
+// Pick the per-(transA, transB, b_signed) storage. Exhaustive over the 8
+// combinations; aborts on a combination the dispatcher macro doesn't
+// cover rather than silently picking a wrong kernel.
+const jit_rvv_gemm_s8_kernel_storage_t &pick_jit_rvv_gemm_s8_kernel_storage(
+        bool isTransA, bool isTransB, bool b_signed) {
+#define DISPATCH(SA, SB, BS) \
+    if (isTransA == (SA) && isTransB == (SB) && b_signed == (BS)) { \
+        return get_jit_rvv_gemm_s8_kernel_storage<SA, SB, BS>(); \
+    }
+    DISPATCH(false, false, true)
+    DISPATCH(false, false, false)
+    DISPATCH(false, true, true)
+    DISPATCH(false, true, false)
+    DISPATCH(true, false, true)
+    DISPATCH(true, false, false)
+    DISPATCH(true, true, true)
+    DISPATCH(true, true, false)
+#undef DISPATCH
+    assert(!"unsupported (transA, transB, b_signed) combination");
+    // The assert above only fires in debug builds. In release, abort
+    // rather than silently picking a wrong kernel (the previous fallback
+    // returned the s32 table, which would write s32 values for any
+    // dst_dt — exactly the class of bug we want to surface).
+    std::abort();
+    // unreachable; satisfies the compiler's control-flow analysis.
+    return get_jit_rvv_gemm_s8_kernel_storage<false, false, true>();
 }
 
 } // namespace
 
-const jit_rvv_gemm_s8_kernel_table_t &get_jit_rvv_gemm_s8_kernel_table(
-        bool isTransA, bool isTransB, bool b_signed, bool dst_is_f32) {
-#define DISPATCH(SA, SB, BS, DF) \
-    if (isTransA == (SA) && isTransB == (SB) && b_signed == (BS) \
-            && dst_is_f32 == (DF)) \
-        return get_jit_rvv_gemm_s8_kernel_storage<SA, SB, BS, DF>().table;
-    DISPATCH(false, false, true, false)
-    DISPATCH(false, false, true, true)
-    DISPATCH(false, false, false, false)
-    DISPATCH(false, false, false, true)
-    DISPATCH(false, true, true, false)
-    DISPATCH(false, true, true, true)
-    DISPATCH(false, true, false, false)
-    DISPATCH(false, true, false, true)
-    DISPATCH(true, false, true, false)
-    DISPATCH(true, false, true, true)
-    DISPATCH(true, false, false, false)
-    DISPATCH(true, false, false, true)
-    DISPATCH(true, true, true, false)
-    DISPATCH(true, true, true, true)
-    DISPATCH(true, true, false, false)
-    DISPATCH(true, true, false, true)
-#undef DISPATCH
-    // Unreachable: all 16 combinations are covered above.
-    return get_jit_rvv_gemm_s8_kernel_storage<false, false, true, false>()
-            .table;
+jit_rvv_gemm_s8_kernel_table_t get_jit_rvv_gemm_s8_kernel_table(
+        bool isTransA, bool isTransB, bool b_signed, data_type_t dst_dt) {
+    // Map the request to a dst index. Abort on an unsupported dst_dt
+    // rather than silently substituting a different dst's kernel (the
+    // previous code's s32 fallback had this exact hazard).
+    const int idx = dst_kind_index(dst_dt);
+    if (idx < 0) {
+        assert(!"unsupported dst_dt for jit_rvv_gemm_s8 kernel table");
+        std::abort();
+    }
+
+    const auto &storage
+            = pick_jit_rvv_gemm_s8_kernel_storage(isTransA, isTransB, b_signed);
+
+    // Build the per-n_cols lookup by reading pointers out of the
+    // function-local-static storage. The `unique_ptr`s are populated once
+    // under call_once and never reassigned, so the .get() pointers are
+    // stable for the program's lifetime — copying them into the returned
+    // table_t (12 raw-pointer copies) is correct.
+    jit_rvv_gemm_s8_kernel_table_t table;
+    for (dim_t n_cols = 1; n_cols <= 6; n_cols++) {
+        table.nb[n_cols] = storage.nb[idx][n_cols].get();
+        table.b[n_cols] = storage.b[idx][n_cols].get();
+    }
+    return table;
 }
 
 } // namespace gemm_utils

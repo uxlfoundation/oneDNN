@@ -64,18 +64,30 @@ struct rvv_matmul_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_TAG);
 
             // Determine which dispatch path this pd serves. f32 stays on the
-            // existing f32 GEMM kernel; int8 src + s8 weights + (s32|f32) dst
-            // runs through the new s8 GEMM kernel.
+            // existing f32 GEMM kernel; int8 src + s8 weights + a dst in the
+            // int8-supported set (s32|f32|s8|u8|f16|bf16) runs through the s8
+            // GEMM kernel. f16 and bf16 additionally require Zvfh /
+            // Zvfbfwma, which we gate below.
             const auto src_dt = src_mdw.data_type();
             const auto wei_dt = weights_mdw.data_type();
             const auto dst_dt = dst_mdw.data_type();
             const auto acc_dt = desc()->accum_data_type;
             is_f32_path_ = src_dt == f32 && wei_dt == f32 && dst_dt == f32
                     && acc_dt == f32;
+            const bool dst_in_int8_set
+                    = utils::one_of(dst_dt, s32, f32, s8, u8, f16, bf16);
             is_int8_path_ = utils::one_of(src_dt, s8, u8) && wei_dt == s8
-                    && utils::one_of(dst_dt, s32, f32) && acc_dt == s32;
+                    && dst_in_int8_set && acc_dt == s32;
             VDISPATCH_MATMUL(
                     is_f32_path_ || is_int8_path_, VERBOSE_UNSUPPORTED_DT);
+            // Half-precision dst requires the corresponding vector fp
+            // extension. The CPU is probed once in init() so this is cheap.
+            if (is_int8_path_ && dst_dt == f16) {
+                VDISPATCH_MATMUL(mayiuse(zvfh), VERBOSE_UNSUPPORTED_ISA);
+            }
+            if (is_int8_path_ && dst_dt == bf16) {
+                VDISPATCH_MATMUL(mayiuse(zvfbfwma), VERBOSE_UNSUPPORTED_ISA);
+            }
             // The int8 path rejects per-oc / per-tensor scales, zero-points,
             // and post-ops in this MVP; only optional f32 bias is supported.
             const auto attr_skip_mask
@@ -236,8 +248,9 @@ struct rvv_matmul_t : public primitive_t {
         bool weights_are_broadcast_ = false;
         bool weights_col_major_ = false;
         // Dispatch path selected in init(). is_f32_path_ keeps the historical
-        // behavior; is_int8_path_ routes (s8|u8):s8:(s32|f32) through the new
-        // s8 GEMM kernel and rejects non-default attrs except bias.
+        // behavior; is_int8_path_ routes (s8|u8):s8:(s32|f32|s8|u8|f16|bf16)
+        // through the s8 GEMM kernel and rejects non-default attrs except bias
+        // (and scales/zero-points/post-ops).
         bool is_f32_path_ = false;
         bool is_int8_path_ = false;
 

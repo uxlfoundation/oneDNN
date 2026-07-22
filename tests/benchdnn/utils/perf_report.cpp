@@ -118,6 +118,7 @@ void base_perf_report_t::handle_option(std::ostream &s, const char *&option,
     HANDLE("dt", if (dt()) s << *dt());
     HANDLE("group", if (group()) s << *group());
     HANDLE("sdt", if (sdt()) s << *sdt());
+    HANDLE("bia_dt", if (bia_dt()) s << *bia_dt());
     HANDLE("stag", if (stag()) s << *stag());
     HANDLE("mb", if (user_mb()) s << *user_mb());
     HANDLE("name", if (name()) s << *name());

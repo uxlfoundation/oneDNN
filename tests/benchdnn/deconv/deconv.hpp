@@ -106,7 +106,7 @@ struct settings_t : public base_settings_t {
 
     const char *perf_template_csv() const {
         static const std::string args
-                = "%dir%,%sdt%,%stag%,%wtag%,%dtag%,%alg%";
+                = "%dir%,%sdt%,%bia_dt%,%stag%,%wtag%,%dtag%,%alg%";
         return perf_template_csv_base(args);
     }
 
@@ -205,6 +205,7 @@ struct perf_report_t : public base_perf_report_t {
     const std::vector<dnnl_data_type_t> *sdt() const override {
         return &p_->dt;
     }
+    const dnnl_data_type_t *bia_dt() const override { return &p_->bia_dt_; }
     const attr_t *attr() const override { return &p_->attr; }
     const thr_ctx_t *ctx_init() const override { return &p_->ctx_init; }
     const thr_ctx_t *ctx_exe() const override { return &p_->ctx_exe; }

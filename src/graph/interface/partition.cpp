@@ -390,7 +390,8 @@ status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute_v2(
     }
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream->wait();
+        bool use_profiler = stream->is_verbose_profiler_enabled();
+        if (!use_profiler) stream->wait();
         double start_ms = dnnl::impl::get_msec();
         if (deps != nullptr) {
             const auto &sycl_deps = *(const std::vector<::sycl::event> *)deps;
@@ -401,11 +402,16 @@ status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute_v2(
             CHECK(compiled_partition->execute_sycl(stream, ins, outs,
                     scratchpad, {}, static_cast<::sycl::event *>(sycl_event)));
         }
-        stream->wait();
-        double duration_ms = dnnl::impl::get_msec() - start_ms;
         auto info = compiled_partition->exec_info(scratchpad != nullptr);
-        VPROF(start_ms, graph, exec, VERBOSE_profile, info.c_str(),
-                duration_ms);
+        if (!use_profiler) {
+            stream->wait();
+            double duration_ms = dnnl::impl::get_msec() - start_ms;
+            VPROF(start_ms, graph, exec, VERBOSE_profile, info.c_str(),
+                    duration_ms);
+        } else {
+            CHECK(stream->run_verbose_profiler(info, start_ms,
+                    static_cast<uint64_t>(dnnl::impl::component_t::graph)));
+        }
     } else {
         if (deps != nullptr) {
             const auto &sycl_deps = *(const std::vector<::sycl::event> *)deps;
@@ -467,7 +473,8 @@ status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute_v2(
 
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream->wait();
+        bool use_profiler = stream->is_verbose_profiler_enabled();
+        if (!use_profiler) stream->wait();
         double start_ms = dnnl::impl::get_msec();
         if (deps != nullptr) {
             std::vector<cl_event> ocl_deps(deps, deps + ndeps);
@@ -477,11 +484,16 @@ status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute_v2(
             CHECK(compiled_partition->execute_ocl(
                     stream, ins, outs, scratchpad, {}, ocl_event));
         }
-        stream->wait();
-        double duration_ms = dnnl::impl::get_msec() - start_ms;
         auto info = compiled_partition->exec_info(scratchpad != nullptr);
-        VPROF(start_ms, graph, exec, VERBOSE_profile, info.c_str(),
-                duration_ms);
+        if (!use_profiler) {
+            stream->wait();
+            double duration_ms = dnnl::impl::get_msec() - start_ms;
+            VPROF(start_ms, graph, exec, VERBOSE_profile, info.c_str(),
+                    duration_ms);
+        } else {
+            CHECK(stream->run_verbose_profiler(info, start_ms,
+                    static_cast<uint64_t>(dnnl::impl::component_t::graph)));
+        }
     } else {
         if (deps != nullptr) {
             std::vector<cl_event> ocl_deps(deps, deps + ndeps);

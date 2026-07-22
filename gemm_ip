@@ -1,0 +1,1 @@
+GEMM_KERNEL="gemm SSS TTN 32 32 1 0 aB8 aB8 aU  wg 8x4   grf256   np bm524288 bn1048576 bk16777216" DNNL_JIT_DUMP=1 ./benchdnn  --mode-modifier=P --ip --engine=gpu --allow-enum-tags-only=false --dir=BWD_W --bia-dt=f32 --stag=ab --wtag=ba --dtag=ab mb512ic256oc16n2e549fd450da59e365885b458f24fd4b*24

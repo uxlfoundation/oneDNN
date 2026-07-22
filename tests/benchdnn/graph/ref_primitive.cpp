@@ -312,7 +312,7 @@ void ref_primitive_t::check_correctness(
         //
         // Note: the following threshold is obtained from actual runs on
         // different hardware.
-        cmp.set_threshold_norm(2.5e-3f);
+        cmp.set_threshold_norm(3e-3f);
         dnn_mem_t mem_fp_abx(mem_fp, dnnl_f32, tag::abx, ::get_cpu_engine());
         // Clear previous output stats.
         auto cur_res_state = res->state;

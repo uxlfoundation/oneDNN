@@ -67,6 +67,10 @@
 #AVX2
 mb1_g2ic4oc16_ih8oh6kh3sh1dh0ph0_iw8ow6kw3sw1dw0pw0
 
+# grouped int convolutions with small input-channel and source zero-points
+--reset --dir=FWD_I --dt=s8:s8:s32 --attr-zero-points=src:common:1
+g8mb1ic64ih52iw2oc640oh50ow3kh5kw1ph2pw1
+
 --reset --mb=2 --dir=BWD_W --dt=f32
 g1_ic16ih4iw8_oc16oh3ow8_kh1kw1sh2sw1ph0pw0
 g1_ic16ih4iw8_oc16oh3ow8_kh2kw1sh2sw1ph0pw0

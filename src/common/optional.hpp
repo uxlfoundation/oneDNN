@@ -56,7 +56,7 @@ public:
     static_assert(!std::is_const<T>::value, "");
     static_assert(!std::is_volatile<T>::value, "");
 
-    optional_t(const nullopt_t nullopt_) : has_value_(false), dummy {} {}
+    optional_t(const nullopt_t) : has_value_(false), dummy {} {}
     optional_t() : optional_t(nullopt) {}
     optional_t(const T &object) : has_value_(true), value_(object) {}
     optional_t(const optional_t &other)
@@ -71,22 +71,26 @@ public:
         if (has_value_) value_.~T();
     }
 
-    optional_t &operator=(const nullopt_t nullopt_) {
-        if (has_value_) value_.~T();
-        has_value_ = false;
+    optional_t &operator=(const nullopt_t) {
+        reset();
+        return *this;
     }
     optional_t &operator=(const optional_t &other) {
         if (this == &other) return *this;
-        if (has_value_) value_.~T();
-        has_value_ = other.has_value_;
-        if (has_value_) value_ = other.value_;
+        reset();
+        if (other.has_value_) {
+            new (std::addressof(value_)) T(other.value_);
+            has_value_ = true;
+        }
         return *this;
     }
     optional_t &operator=(optional_t &&other) {
         if (this == &other) return *this;
-        if (has_value_) value_.~T();
-        has_value_ = other.has_value_;
-        if (has_value_) value_ = std::move(other.value_);
+        reset();
+        if (other.has_value_) {
+            new (std::addressof(value_)) T(std::move(other.value_));
+            has_value_ = true;
+        }
         return *this;
     }
 

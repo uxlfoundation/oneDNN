@@ -49,6 +49,7 @@ genindex_executable_t::genindex_executable_t(std::shared_ptr<op_t> &op,
     if (ekind_ == engine::kind::gpu) {
         compute::kernel_ctx_t kernel_ctx;
         kernel_ctx.define_int("NDIMS", ndims_);
+        if (nelems_ > INT32_MAX) kernel_ctx.use_int32_offset(false);
         for (int d = 0; d < MAX_NDIMS; ++d) {
             dim_t dim = (d < ndims_) ? output_dims_[d] : 1;
             dim_t stride = (d < ndims_) ? output_strides_[d] : 0;

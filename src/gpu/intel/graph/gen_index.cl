@@ -14,40 +14,41 @@
 * limitations under the License.
 *******************************************************************************/
 
+#ifdef USE_INT32_OFFSET
+typedef int idx_t;
+#else
+typedef long idx_t;
+#endif
+
 __kernel void gen_index(__global int *dst, int axis) {
-    long id = get_global_id(0);
-    int result, offset = 0;
+    idx_t id = (idx_t)get_global_id(0);
+    int result = 0;
+    idx_t offset = 0;
     int idx;
 
-    idx = id % D0;
-    id = id / D0;
-    offset += idx * S0;
-    if (axis == 0) result = idx;
+#define PROCESS_DIM(N) \
+    idx = (int)(id % D##N); \
+    id = id / D##N; \
+    offset += (idx_t)idx * S##N; \
+    if (axis == N) result = idx;
 
-    idx = id % D1;
-    id = id / D1;
-    offset += idx * S1;
-    if (axis == 1) result = idx;
-
-    idx = id % D2;
-    id = id / D2;
-    offset += idx * S2;
-    if (axis == 2) result = idx;
-
-    idx = id % D3;
-    id = id / D3;
-    offset += idx * S3;
-    if (axis == 3) result = idx;
-
-    idx = id % D4;
-    id = id / D4;
-    offset += idx * S4;
-    if (axis == 4) result = idx;
-
-    idx = id % D5;
-    id = id / D5;
-    offset += idx * S5;
-    if (axis == 5) result = idx;
+    PROCESS_DIM(0);
+#if NDIMS > 1
+    PROCESS_DIM(1);
+#endif
+#if NDIMS > 2
+    PROCESS_DIM(2);
+#endif
+#if NDIMS > 3
+    PROCESS_DIM(3);
+#endif
+#if NDIMS > 4
+    PROCESS_DIM(4);
+#endif
+#if NDIMS > 5
+    PROCESS_DIM(5);
+#endif
+#undef PROCESS_DIM
 
     dst[offset] = result;
 }

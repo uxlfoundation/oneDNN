@@ -141,7 +141,8 @@ std::optional<::sycl::event> genindex_executable_t::execute_sycl_impl(
             sycl_stream->sycl_ctx().get_deps());
     auto return_event = sycl_stream->get_output_event();
     if (sycl_stream->is_verbose_profiler_enabled())
-        sycl_stream->run_verbose_profiler(info_, start_ms);
+        sycl_stream->run_verbose_profiler(info_, start_ms,
+                static_cast<uint64_t>(dnnl::impl::component_t::graph));
     sycl_stream->after_exec_hook();
     return return_event;
 #else
@@ -181,7 +182,7 @@ cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
         const std::unordered_map<int, memory> &args,
         const std::vector<cl_event> &deps) const {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
-    double start_ms = dnnl::impl::get_msec();
+    // double start_ms = dnnl::impl::get_msec();
     auto compute_stream
             = dnnl::impl::utils::downcast<gpu::intel::stream_t *>(stream.get());
 
@@ -212,8 +213,8 @@ cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
         auto last = ocl_stream->get_output_event();
         return_event = last.release();
     }
-    if (ocl_stream->is_verbose_profiler_enabled())
-        ocl_stream->run_verbose_profiler(info_, start_ms);
+    // if (ocl_stream->is_verbose_profiler_enabled())
+    //     ocl_stream->run_verbose_profiler(info_, start_ms, static_cast<uint64_t>(dnnl::impl::component_t::graph));
     ocl_stream->after_exec_hook();
     return return_event;
 #else

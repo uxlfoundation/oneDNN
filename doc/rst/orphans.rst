@@ -94,7 +94,6 @@ Orphans
     page_dev_guide_attributes_quantization.rst
     page_dev_guide_attributes_rounding_mode.rst
     page_dev_guide_attributes_scratchpad.rst
-    page_dev_guide_conventions.rst
     page_dev_guide_dpcpp_interoperability.rst
     page_dev_guide_examples.rst
     page_dev_guide_inference.rst

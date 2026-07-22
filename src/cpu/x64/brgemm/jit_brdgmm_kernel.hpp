@@ -260,8 +260,11 @@ private:
     // note 2: zmm0 collides with vmm_permute, hence need to write this value
     // before every loop.
 
-    const dim_t simd_w_;
-    const dim_t max_vmms_;
+    // SIMD width and max vector-register count are hardware/ISA-bounded
+    // code-generation values, not tensor-scale quantities, so they stay
+    // `int` rather than `dim_t`.
+    const int simd_w_;
+    const int max_vmms_;
     const bool compute_dst_zp_, compute_src_zp_;
     const bool is_src_zp_bcast_;
     const bool compute_compensation_; // code-path for either s8s8 or src_zp
@@ -285,7 +288,11 @@ private:
     inline dim_t n_block2() { return brg.ld_block2; }
     inline dim_t nb_n_block2() { return brg.ldb2; }
     inline dim_t n_block2_tail() { return brg.ldb2_tail; }
-    dim_t tail_length() { return n_block1_tail() % simd_w_; }
+    int tail_length() {
+        // The remainder of a modulo by simd_w_ is always < simd_w_, so this
+        // narrowing is provably safe regardless of n_block1_tail()'s range.
+        return static_cast<int>(n_block1_tail() % simd_w_);
+    }
 
     inline dim_t bs_group() const { return brg.bs_group; }
     static bool grouped_bs(const brgemm_desc_t &brg) {

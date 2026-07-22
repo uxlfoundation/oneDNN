@@ -1132,13 +1132,19 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
 
     if (brg.is_runtime_ldc) {
         mov(reg_stride_ld_block, ptr[param1 + GET_OFF(dynamic_LDC)]);
-        if (brg.typesize_C > 1) shl(reg_stride_ld_block, (brg.typesize_C >> 1));
+        // typesize_C is always 1/2/4/8, so this shift amount is provably
+        // bounded regardless of typesize_C's declared (dim_t) type.
+        if (brg.typesize_C > 1)
+            shl(reg_stride_ld_block, static_cast<int>(brg.typesize_C >> 1));
         reg_stride_ld_block.save();
     }
 
     if (brg.is_runtime_ldd) {
         mov(reg_D_shift_bytes, ptr[param1 + GET_OFF(dynamic_LDD)]);
-        if (brg.typesize_D > 1) shl(reg_D_shift_bytes, (brg.typesize_D >> 1));
+        // typesize_D is always 1/2/4/8, so this shift amount is provably
+        // bounded regardless of typesize_D's declared (dim_t) type.
+        if (brg.typesize_D > 1)
+            shl(reg_D_shift_bytes, static_cast<int>(brg.typesize_D >> 1));
         reg_D_shift_bytes.save();
     }
 

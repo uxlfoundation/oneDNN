@@ -204,15 +204,7 @@ public:
     using Xbyak::CodeGenerator::add;
     using Xbyak::CodeGenerator::cmp;
     using Xbyak::CodeGenerator::imul;
-    using Xbyak::CodeGenerator::pextrb;
-    using Xbyak::CodeGenerator::pinsrb;
-    using Xbyak::CodeGenerator::shl;
     using Xbyak::CodeGenerator::sub;
-    using Xbyak::CodeGenerator::vcmpps;
-    using Xbyak::CodeGenerator::vpblendd;
-    using Xbyak::CodeGenerator::vpermq;
-    using Xbyak::CodeGenerator::vpextrb;
-    using Xbyak::CodeGenerator::vpinsrb;
 
     // These are the dim_t immediate forms used by brgemm. x86 accepts at
     // most a 32-bit immediate. Offsets and shifts are non-negative; cmp also
@@ -221,6 +213,12 @@ public:
     // Note: the enable_if constrains this to T == dim_t exactly, so int/
     // uint32_t call sites keep resolving to the native Xbyak overloads above
     // instead of becoming ambiguous with these dim_t ones.
+    // Keep these overloads limited to add/sub/cmp/imul, the Xbyak calls that
+    // genuinely receive a potentially large tensor-scale offset or stride
+    // (imul is used to scale a runtime stride into a byte offset). Small,
+    // fixed-range immediates (8-bit lane/blend/shift/predicate values) must
+    // stay `int`/`uint8_t` at their creation site instead of gaining a
+    // dim_t overload here.
     template <typename T,
             typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
             = 0>
@@ -250,79 +248,9 @@ public:
     template <typename T,
             typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
             = 0>
-    void shl(const Xbyak::Operand &op, T count) {
-        JIT_ASSERT(count >= 0 && count <= UINT8_MAX);
-        Xbyak::CodeGenerator::shl(op, static_cast<int>(count));
-    }
-
-    template <typename T,
-            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
-            = 0>
     void imul(const Xbyak::Reg64 &dst, const Xbyak::Operand &src, T imm) {
         JIT_ASSERT(imm >= 0 && imm <= INT_MAX);
         Xbyak::CodeGenerator::imul(dst, src, static_cast<int>(imm));
-    }
-
-    // dim_t forms of the 8-bit-immediate emit methods, so kernels can pass
-    // dim_t lane indices / blend masks directly. The narrowing to uint8_t and
-    // the bounds check are consolidated here at the XByak boundary.
-    template <typename T,
-            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
-            = 0>
-    void pinsrb(const Xbyak::Xmm &xmm, const Xbyak::Operand &op, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
-        Xbyak::CodeGenerator::pinsrb(xmm, op, static_cast<uint8_t>(imm));
-    }
-
-    template <typename T,
-            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
-            = 0>
-    void pextrb(const Xbyak::Operand &op, const Xbyak::Xmm &xmm, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
-        Xbyak::CodeGenerator::pextrb(op, xmm, static_cast<uint8_t>(imm));
-    }
-
-    template <typename T,
-            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
-            = 0>
-    void vpinsrb(const Xbyak::Xmm &x1, const Xbyak::Xmm &x2,
-            const Xbyak::Operand &op, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
-        Xbyak::CodeGenerator::vpinsrb(x1, x2, op, static_cast<uint8_t>(imm));
-    }
-
-    template <typename T,
-            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
-            = 0>
-    void vpextrb(const Xbyak::Operand &op, const Xbyak::Xmm &x, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
-        Xbyak::CodeGenerator::vpextrb(op, x, static_cast<uint8_t>(imm));
-    }
-
-    template <typename T,
-            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
-            = 0>
-    void vpermq(const Xbyak::Ymm &y, const Xbyak::Operand &op, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
-        Xbyak::CodeGenerator::vpermq(y, op, static_cast<uint8_t>(imm));
-    }
-
-    template <typename T,
-            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
-            = 0>
-    void vpblendd(const Xbyak::Xmm &x1, const Xbyak::Xmm &x2,
-            const Xbyak::Operand &op, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
-        Xbyak::CodeGenerator::vpblendd(x1, x2, op, static_cast<uint8_t>(imm));
-    }
-
-    template <typename T,
-            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
-            = 0>
-    void vcmpps(const Xbyak::Opmask &k, const Xbyak::Xmm &x,
-            const Xbyak::Operand &op, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= UINT8_MAX);
-        Xbyak::CodeGenerator::vcmpps(k, x, op, static_cast<uint8_t>(imm));
     }
 
     static int xbyak_register_index(dim_t index) {

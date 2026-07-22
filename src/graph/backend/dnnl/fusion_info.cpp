@@ -1,6 +1,5 @@
 /*******************************************************************************
  * Copyright 2022 Intel Corporation
- * Copyright 2026 Arm Ltd. and affiliates
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -330,8 +329,7 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                         "input scale and zp",
                         op->get_name().c_str());
                 auto md = make_dnnl_memory_desc(psrc);
-                if (impl::utils::one_of(op->get_kind(), op_kind::_convolution,
-                            op_kind::_convtranspose))
+                if (op->get_kind() == op_kind::_convolution)
                     md = to_format_any(md);
                 dnnl_pops.append_binary(alg, md);
             }

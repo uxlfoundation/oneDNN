@@ -1,6 +1,5 @@
 /*******************************************************************************
  * Copyright 2022 Intel Corporation
- * Copyright 2026 Arm Ltd. and affiliates
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -247,36 +246,6 @@ status_t layout_propagator_for_deconv(op_ptr &op, const dnnl::engine &p_engine,
         VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
                 "failed to fill layout info for reorder before deconv bias");
     }
-
-    if (op->has_attr(op_attr::fusion_info)) {
-        const fusion_info_t &fusion_info
-                = op->get_attr<fusion_info_t>(op_attr::fusion_info);
-        const auto &post_ops = fusion_info.get_post_ops();
-        for (size_t i = 0; i < post_ops.size(); ++i) {
-            if (!post_ops[i]->is_post_binary()) continue;
-            const auto &binary = post_ops[i];
-            std::vector<size_t> binary_idx
-                    = binary->get_unfused_input_indices();
-            if (binary_idx.empty()) continue;
-
-            value_ptr binary_unfused_src = op->get_input_value(binary_idx[0]);
-            const auto &binary_unfused_src_opt_mdesc
-                    = pd.query_md(query::exec_arg_md,
-                            DNNL_ARG_SRC_1
-                                    | DNNL_ARG_ATTR_MULTIPLE_POST_OP(
-                                            static_cast<int>(i)));
-            insert_reorder_before(op, binary_idx[0],
-                    binary_unfused_src_opt_mdesc, p_engine, pd_cache, fpmath,
-                    use_block_layout, rewriter);
-            status = fill_layout_info(
-                    binary_unfused_src, binary_unfused_src_opt_mdesc);
-
-            VCHECK_LAYOUT_PROPAGATOR(status == status::success, status,
-                    "failed to fill layout info for reorder before "
-                    "deconv post_binary");
-        }
-    }
-
     // insert a reorder if output layout is different from output optimal layout
     // 1) output layout is opaque
     // 2) output is any, directly set optimal layout

@@ -623,16 +623,16 @@ struct jit_uni_pooling_args_t {
 };
 
 struct jit_resampling_conf_t {
-    unsigned ndims = 0;
+    dim_t ndims = 0;
 
-    unsigned c = 0;
-    unsigned id = 0, ih = 0, iw = 0;
-    unsigned od = 0, oh = 0, ow = 0;
+    dim_t c = 0;
+    dim_t id = 0, ih = 0, iw = 0;
+    dim_t od = 0, oh = 0, ow = 0;
 
-    unsigned stride_d = 0;
-    unsigned stride_h = 0;
-    unsigned stride_w = 0;
-    unsigned inner_stride = 0;
+    dim_t stride_d = 0;
+    dim_t stride_h = 0;
+    dim_t stride_w = 0;
+    dim_t inner_stride = 0;
 
     // The linear algorithm is an approximation of the point
     // value based on the limit values. For one dimension,

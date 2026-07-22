@@ -228,6 +228,8 @@ struct micro_fwd_t : public primitive_t {
                             dnnl_dt2str(desc()->qry_md()->data_type));
                 }
             }
+            const auto qry_dt = desc()->qry_md()->data_type;
+            const bool is_fp8_qry = utils::one_of(qry_dt, f8_e4m3, f8_e5m2);
             VDISPATCH_SDPA(
                     (utils::everyone_is(data_type::f16,
                              desc()->qry_md()->data_type, dst_md()->data_type)
@@ -236,13 +238,17 @@ struct micro_fwd_t : public primitive_t {
                                     dst_md()->data_type)
                             || utils::everyone_is(data_type::f32,
                                     desc()->qry_md()->data_type,
-                                    dst_md()->data_type)),
+                                    dst_md()->data_type)
+                            // fp8 query: allow higher-precision or fp8 output.
+                            || (is_fp8_qry
+                                    && utils::one_of(dst_md()->data_type, f16,
+                                            bf16, f32, f8_e4m3, f8_e5m2))),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SDPA(utils::one_of(desc()->key_md()->data_type, f32, bf16,
-                                   f16, u8, s8, u4, s4),
+                                   f16, u8, s8, u4, s4, f8_e4m3, f8_e5m2),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SDPA(utils::one_of(desc()->val_md()->data_type, f32, bf16,
-                                   f16, u8, s8, u4, s4),
+                                   f16, u8, s8, u4, s4, f8_e4m3, f8_e5m2),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_SDPA(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);

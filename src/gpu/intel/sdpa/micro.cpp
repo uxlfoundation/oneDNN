@@ -259,10 +259,16 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
         problem.Ta = problem.Tb = Type::bf16;
     } else if (desc()->qry_md()->data_type == data_type::f32) {
         problem.Ta = problem.Tb = Type::f32;
+    } else if (utils::one_of(desc()->qry_md()->data_type, data_type::f8_e4m3,
+                       data_type::f8_e5m2)) {
+        // fp8 has no native systolic multiply on current targets: keep fp8 as
+        // the external (stored) type and upconvert to f16 for the DPAS compute.
+        problem.Ta = problem.Tb = Type::f16;
     } else {
         VCHECK_SDPA_COND(utils::one_of(desc()->qry_md()->data_type,
-                                 data_type::f16, data_type::bf16),
-                "Q tensor's data type must be bf16 or f16");
+                                 data_type::f16, data_type::bf16,
+                                 data_type::f8_e4m3, data_type::f8_e5m2),
+                "Q tensor's data type must be bf16, f16, or fp8");
     }
     problem.Tc = problem.Tc_ext = Type::f32;
     problem.Ts = problem.Tc;

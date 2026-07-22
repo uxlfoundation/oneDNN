@@ -170,6 +170,7 @@ enum {
     // src and/or wei zero points (consumed by apply_per_mn_compensation).
     key_brgemm_primitive_per_mn_comp,
     key_brgemm_primitive_buffer_reduce,
+    key_brgemm_primitive_fp8_convert_wsp,
     key_concat_iptrs,
     key_concat_istrides,
     key_concat_nelems,

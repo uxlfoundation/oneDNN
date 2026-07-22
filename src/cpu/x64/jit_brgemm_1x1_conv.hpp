@@ -125,7 +125,8 @@ private:
             const int32_t *src_zero_points, int32_t *src_zp_comp,
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             const void *src_scales, const void *wei_scales,
-            const void *dst_scales_inv, const bool is_last_os = false) const;
+            const void *dst_scales_inv, char *fp8_wsp_base,
+            const bool is_last_os = false) const;
     void execute_os_blocking(const brgemm_exec_ctx_t &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const void *src_scales, const void *wei_scales,
@@ -133,14 +134,14 @@ private:
             const int32_t *src_zero_points, int32_t *src_zp_comp,
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             char *const c_buffer_global, char *inp_buffer_base,
-            uint8_t *inp_buffer_mask_base) const;
+            uint8_t *inp_buffer_mask_base, char *fp8_wsp_base) const;
     void execute_full_spatial(const brgemm_exec_ctx_t &brgemm_ctx,
             brgemm_batch_element_t *const brg_batch_global,
             const void *src_scales, const void *wei_scales,
             const void *dst_scales, void *dst_scales_inv,
             const int32_t *src_zero_points, int32_t *src_zp_comp,
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
-            char *const c_buffer_global) const;
+            char *const c_buffer_global, char *fp8_wsp_base) const;
 
     status_t execute_forward_all(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

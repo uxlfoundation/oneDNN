@@ -133,13 +133,15 @@ private:
     struct brgemm_bwd_thread_ctx_t {
         brgemm_bwd_thread_ctx_t(const brgemm_bwd_exec_ctx_t &brgemm_ctx_,
                 int ithr_, brgemm_batch_element_t *__restrict brg_batch_,
-                char *c_buffer_, char *out_buffer_, char *wsp_tile_)
+                char *c_buffer_, char *out_buffer_, char *wsp_tile_,
+                char *fp8_convert_wsp_)
             : brgemm_ctx(brgemm_ctx_)
             , ithr(ithr_)
             , brg_batch(brg_batch_)
             , c_buffer(c_buffer_)
             , out_buffer(out_buffer_)
             , wsp_tile(wsp_tile_)
+            , fp8_convert_wsp(fp8_convert_wsp_)
             , cur_brg_idx(-1)
             , g(0)
             , n(0)
@@ -165,6 +167,7 @@ private:
         char *c_buffer;
         char *out_buffer;
         char *wsp_tile;
+        char *fp8_convert_wsp;
         int cur_brg_idx;
         int g, n, icb;
         int id, idb, ih, ihb, iwb;

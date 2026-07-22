@@ -824,6 +824,7 @@ struct jit_brgemm_conv_conf_t {
     dim_t ker_ranges_size;
     dim_t comp_a_buffer_size;
     dim_t s8s8_comp_buffer_size;
+    dim_t fp8_convert_wsp_size;
 
     bool with_src_scales;
     bool with_wei_scales;
@@ -873,6 +874,7 @@ struct jit_brgemm_conv_conf_t {
     bool is_f32_f16 {false};
     bool is_f32_bf16 {false};
     bool comp_with_vpads;
+    bool req_fp8_convert_wsp {false};
 
     int nthr_mb, nthr_g, nthr_oc_b, nthr_ic_b, nthr_oh;
     bool transform_to_vnni;

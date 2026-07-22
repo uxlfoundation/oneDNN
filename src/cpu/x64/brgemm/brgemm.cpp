@@ -82,8 +82,7 @@ void brgemm_desc_t::cleanup_dst_md() {
 
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
-        const brgemm_dynamic_values_t *dynamic_values,
-        const void *ptr_wei_scales) {
+        const brgemm_dynamic_values_t *dynamic_values) {
     brgemm_kernel_params_t brgemm_p;
 
     brgemm_p.batch = batch;
@@ -97,7 +96,6 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.do_apply_comp = 0;
     brgemm_p.skip_accm = 0;
     brgemm_p.BS = bs;
-    brgemm_p.ptr_wei_scales = ptr_wei_scales;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;
@@ -113,8 +111,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
         const void *addr_A, const void *addr_B,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
-        const brgemm_dynamic_values_t *dynamic_values,
-        const void *ptr_wei_scales) {
+        const brgemm_dynamic_values_t *dynamic_values) {
     brgemm_kernel_params_t brgemm_p;
 
     brgemm_p.batch = batch;
@@ -128,7 +125,6 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     brgemm_p.do_apply_comp = 0;
     brgemm_p.skip_accm = 0;
     brgemm_p.BS = bs;
-    brgemm_p.ptr_wei_scales = ptr_wei_scales;
     if (dynamic_values) {
         brgemm_p.dynamic_LDA = dynamic_values->dynamic_LDA;
         brgemm_p.dynamic_LDB = dynamic_values->dynamic_LDB;

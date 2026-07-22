@@ -86,8 +86,8 @@ struct stream_t : public intel::stream_t {
         return profiler_->get_info(data_kind, num_entries, data);
     }
 
-    status_t run_verbose_profiler(
-            const std::string &pd_info, double start_ms) override;
+    status_t run_verbose_profiler(const std::string &pd_info, double start_ms,
+            uint64_t component) override;
 
     cl_command_queue queue() const { return impl()->queue(); }
 

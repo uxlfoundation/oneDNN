@@ -188,7 +188,7 @@ status_t primitive_execute(
             // measured execution times in a non-blocking manner.
             double start_ms = get_msec();
             status = stream->enqueue_primitive(primitive_iface, ctx);
-            CHECK(stream->run_verbose_profiler(pd_info, start_ms));
+            CHECK(stream->run_verbose_profiler(pd_info, start_ms, 0));
         }
     } else {
         status = stream->enqueue_primitive(primitive_iface, ctx);

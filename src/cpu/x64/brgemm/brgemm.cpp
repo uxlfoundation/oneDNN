@@ -348,7 +348,8 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
     brg->dt_bias = dt_bias;
     brg->typesize_bias = (dt_bias == data_type::undef)
             ? 0
-            : types::data_type_size(brg->dt_bias);
+            // Type sizes are always 1/2/4/8, safe to narrow.
+            : static_cast<int>(types::data_type_size(brg->dt_bias));
 
     brg->LDD = LDD;
     brg->is_runtime_ldd = is_runtime_value(LDD);
@@ -424,7 +425,8 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         return status::unimplemented;
 
     brg->dt_d = dt_d;
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    // Type sizes are always 1/2/4/8, safe to narrow.
+    brg->typesize_D = static_cast<int>(types::data_type_size(brg->dt_d));
 
     if (!IMPLICATION(brg->is_int8 && brg->dt_d == bf16,
                 is_superset(brg->isa_impl, avx512_core)

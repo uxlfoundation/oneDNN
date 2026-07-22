@@ -730,8 +730,9 @@ status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
     bcfg->LDD = (is_init && jcp.use_buffer) ? jcp.LDC : jcp.LDD;
     bcfg->dt_c = (!is_init && jcp.use_buffer) ? jcp.acc_dt : jcp.dst_dt; // inp
     bcfg->dt_d = (is_init && jcp.use_buffer) ? jcp.acc_dt : jcp.dst_dt; // out
-    bcfg->typesize_C = types::data_type_size(bcfg->dt_c);
-    bcfg->typesize_D = types::data_type_size(bcfg->dt_d);
+    // Type sizes are always 1/2/4/8, safe to narrow.
+    bcfg->typesize_C = static_cast<int>(types::data_type_size(bcfg->dt_c));
+    bcfg->typesize_D = static_cast<int>(types::data_type_size(bcfg->dt_d));
     bcfg->alpha = !is_init && IMPLICATION(jcp.with_sum, jcp.use_buffer);
     bcfg->beta = is_init ? 0 : 1;
     // See the comment in `add_po_kernels` why `*_pd->attr()` is needed so far.

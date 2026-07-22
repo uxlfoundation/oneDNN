@@ -2415,7 +2415,10 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
         return;
     }
 
-    auto buf_offt = matrix_offset;
+    // buf_offt may be reassigned below using a dim_t-scale buf_idx
+    // (bounded by brgattr.max_bs), so keep it dim_t even though
+    // matrix_offset itself is a bounded int tile-buffer offset.
+    dim_t buf_offt = matrix_offset;
     // save offset of the transformation if required.
     if (should_save_transform(mk)) {
         auto buf_idx = transform_buf.size();

@@ -168,8 +168,11 @@ struct DNNL_API brgemm_attr_t {
     // then "max_bs" is the the only batch size that can be used on kernel call
     // else "max_bs" is the maximum batch size that can be used
     dim_t max_bs;
-    dim_t max_top_vpad, max_bottom_vpad;
-    dim_t max_top_bpad, max_bottom_bpad;
+    // Virtual/batch padding amounts along the M dimension. Bounded by
+    // brgemm_desc_t::MAX_VPAD (100), checked in brgemm_desc_init(), so these
+    // are small code-generation values, not tensor-scale ones.
+    int max_top_vpad, max_bottom_vpad;
+    int max_top_bpad, max_bottom_bpad;
     dim_t hint_expected_A_size, hint_expected_B_size, hint_expected_C_size;
     brgemm_kernel_innermost_loop_t hint_innermost_loop
             = brgemm_ld_loop_innermost;
@@ -201,7 +204,7 @@ struct DNNL_API brgemm_attr_t {
     // 0 – bd_mask is not used
     // 1 – bd_mask is used on storing stage only
     // 2 – bd_mask used both on reading and storing stages
-    dim_t bd_mask_level;
+    int bd_mask_level;
     // use_uker is a boolean value that determines whether to use the unrolled
     // kernel or not
     bool use_uker;
@@ -221,12 +224,14 @@ struct DNNL_API brgemm_attr_t {
     bool var_bs {false};
     bool postops_only {false};
     // Hint for bs_group value in brgemm_desc_t
-    dim_t hint_bs_group {0};
+    int hint_bs_group {0};
 
-    dim_t hint_bd_block {0};
-    dim_t hint_ld_block {0};
-    dim_t hint_bd_block2 {0};
-    dim_t hint_ld_block2 {0};
+    // Blocking-factor hints: bounded code-generation tile sizes (AMX-tile
+    // and register-blocking limited), not tensor-scale values.
+    int hint_bd_block {0};
+    int hint_ld_block {0};
+    int hint_bd_block2 {0};
+    int hint_ld_block2 {0};
     bool hint_ununroll_bd_loop {false};
 
     brgemm_kernel_hint_mem_advice_t mem_advice {brgemm_hint_mem_advice_undef};
@@ -328,8 +333,9 @@ struct brgemm_desc_t {
     // parallel task.
     bool with_dst_scales = false;
     data_type_t dt_wei_scales = data_type::undef;
-    // Grouping in batch used by brdgmm kernel
-    dim_t bs_group {0};
+    // Grouping in batch used by brdgmm kernel. Bounded by AMX_TILES_NUM-like
+    // small grouping factors, not a tensor-scale value.
+    int bs_group {0};
 
     brgemm_attr_t brgattr;
 
@@ -337,18 +343,34 @@ struct brgemm_desc_t {
     dim_t LDA2 {0}, LDB2 {0}, LDC2_M {0}, LDC2_N {0};
     bool is_blocked = false;
 
-    dim_t bdb = 0, bd_block = 0, bdb_tail = 0;
-    dim_t bdb2 = 0, bd_block2 = 0, bdb2_tail = 0;
-    dim_t ldb = 0, ld_block = 0, ldb_tail = 0;
-    dim_t ldb2 = 0, ld_block2 = 0, ldb2_tail = 0;
-    dim_t rdb = 0, rd_block = 0, rdb_tail = 0;
-    dim_t rd_step = 0, ld_step = 0;
+    // bdb/ldb/rdb (block counts) scale with the tensor dimension divided by
+    // a small blocking factor, so they stay dim_t. bd_block/ld_block/rd_block
+    // (the blocking factor itself) and the *_tail remainders (always smaller
+    // than their respective block) are bounded code-generation values and
+    // stay int. bd_block2/ld_block2 (AMX tile grouping, bounded by
+    // AMX_TILES_NUM) stay int; bdb2/ldb2 (= bdb/ldb divided by a small
+    // block2 factor) still scale with the tensor dimension and stay dim_t,
+    // while their *_tail remainders stay int.
+    dim_t bdb = 0;
+    int bd_block = 0, bdb_tail = 0;
+    dim_t bdb2 = 0;
+    int bd_block2 = 0, bdb2_tail = 0;
+    dim_t ldb = 0;
+    int ld_block = 0, ldb_tail = 0;
+    dim_t ldb2 = 0;
+    int ld_block2 = 0, ldb2_tail = 0;
+    dim_t rdb = 0;
+    int rd_block = 0, rdb_tail = 0;
+    // rd_step/ld_step are VNNI granularity / f16-non-AMX-VNNI step values:
+    // small, fixed hardware constants.
+    int rd_step = 0, ld_step = 0;
 
-    dim_t typesize_A = 0;
-    dim_t typesize_B = 0;
-    dim_t typesize_C = 0;
-    dim_t typesize_D = 0;
-    dim_t typesize_bias = 0;
+    // Type sizes are always 1/2/4/8: bounded code-generation values.
+    int typesize_A = 0;
+    int typesize_B = 0;
+    int typesize_C = 0;
+    int typesize_D = 0;
+    int typesize_bias = 0;
 
     bool is_ymm = false;
     bool is_zmm = false;
@@ -373,7 +395,8 @@ struct brgemm_desc_t {
     // by kernel API.
     bool with_weights_scale_adjust = false;
     brgemm_kernel_innermost_loop_t innermost_loop = brgemm_ld_loop_innermost;
-    dim_t is_M_tail = false;
+    // is_M_tail is used purely as a boolean flag.
+    int is_M_tail = false;
     bool interleave_tilestores_ = false;
     brgemm_prf_t prfA, prfB, prfC;
     bool is_runtime_lda = false;
@@ -389,11 +412,12 @@ struct brgemm_desc_t {
     bool is_gemv = false;
     // Controls whether y is treated as a row in GEMV-specific code paths.
     bool treat_y_as_row = false;
-    // GEMV transA register-blocking unroll factor.
-    dim_t gemv_transa_bd_unroll = 0;
+    // GEMV transA register-blocking unroll factor: a fixed small constant.
+    int gemv_transa_bd_unroll = 0;
     // non-transA: tail along the reduction dimension.
     // transA:     number of valid elements in the final vector accumulator.
-    dim_t gemv_tail = 0;
+    // Bounded: always < simd width.
+    int gemv_tail = 0;
 
     static constexpr int MAX_VPAD = 100;
     static constexpr int AMX_TILES_NUM = 8;
@@ -412,7 +436,7 @@ struct brgemm_desc_t {
     // transA:
     //  - number of full vector accumulators updated per reduction step
     //  - equal to `gemv_transa_bd_unroll`
-    dim_t gemv_bd_block() const {
+    int gemv_bd_block() const {
         assert(is_gemv);
         if (!is_gemv) return 0;
         return transA ? gemv_transa_bd_unroll : bd_block;
@@ -427,10 +451,10 @@ struct brgemm_desc_t {
     //   - number of full vector accumulators in the tail block
     //   - the remaining first-level register tail is stored separately in
     //     `gemv_tail`
-    dim_t gemv_bdb_tail() const {
+    int gemv_bdb_tail() const {
         assert(is_gemv);
         if (!is_gemv) return 0;
-        const dim_t gemv_transa_simd_w
+        const int gemv_transa_simd_w
                 = transA ? bd_block / gemv_transa_bd_unroll : 1;
         assert(IMPLICATION(transA, gemv_transa_simd_w != 1));
         return transA ? bdb_tail / gemv_transa_simd_w : bdb_tail;
@@ -464,13 +488,13 @@ struct brgemm_desc_t {
     //                    defined by `gemv_bdb_tail()`
     //   - if `gemv_tail > 0`, one additional accumulator is included for the
     //     final partial vector
-    dim_t gemv_num_acc_blocks(bool is_bdb_tail) const {
+    int gemv_num_acc_blocks(bool is_bdb_tail) const {
         assert(is_gemv);
         if (!gemv_acc_is_vector())
             return is_bdb_tail ? gemv_bdb_tail() : gemv_bd_block();
 
         const bool has_tail_acc = is_bdb_tail && gemv_tail > 0;
-        const dim_t full_accs = is_bdb_tail ? gemv_bdb_tail() : gemv_bd_block();
+        const int full_accs = is_bdb_tail ? gemv_bdb_tail() : gemv_bd_block();
         return full_accs + has_tail_acc;
     }
 
@@ -518,50 +542,53 @@ struct brgemm_desc_t {
         return layout == brgemm_row_major;
     }
 
-    // Tile register decomposition
-    dim_t get_bd_block2() const noexcept {
-        return (bdb <= bd_block2) ? bdb : (bd_block2 + (bdb_tail ? 1 : 0));
+    // Tile register decomposition. All of these are AMX tile indices/counts,
+    // bounded by AMX_TILES_NUM (8), not tensor-scale values.
+    int get_bd_block2() const noexcept {
+        return static_cast<int>(
+                (bdb <= bd_block2) ? bdb : (bd_block2 + (bdb_tail ? 1 : 0)));
     }
 
-    dim_t get_ld_block2() const noexcept {
-        return (ldb <= ld_block2) ? ldb : (ld_block2 + (ldb_tail ? 1 : 0));
+    int get_ld_block2() const noexcept {
+        return static_cast<int>(
+                (ldb <= ld_block2) ? ldb : (ld_block2 + (ldb_tail ? 1 : 0)));
     }
 
-    dim_t get_num_C_tiles() const noexcept {
+    int get_num_C_tiles() const noexcept {
         return get_bd_block2() * get_ld_block2();
     }
-    dim_t get_C_tensor(dim_t m, dim_t n, bool m_tail = false,
+    int get_C_tensor(int m, int n, bool m_tail = false,
             bool n_tail = false) const noexcept {
         auto M = m_tail ? get_bd_block2() - 1 : m;
         auto N = n_tail ? get_ld_block2() - 1 : n;
         return (M * get_ld_block2() + N);
     }
 
-    dim_t get_num_A_tiles() const noexcept {
+    int get_num_A_tiles() const noexcept {
         const auto req_tiles = (bdb_tail && bdb > 1) ? 2 : 1;
         const auto max_tiles = AMX_TILES_NUM - get_num_C_tiles() - 1;
         const auto n_tiles = nstl::min(get_bd_block2(), max_tiles);
         assert(n_tiles >= req_tiles);
-        return nstl::max<dim_t>(req_tiles, n_tiles);
+        return nstl::max(req_tiles, n_tiles);
     }
 
-    dim_t get_A_tensor(dim_t m, bool m_tail = false) const noexcept {
+    int get_A_tensor(int m, bool m_tail = false) const noexcept {
         const auto full_A_tiles = get_num_A_tiles() - (bdb_tail ? 1 : 0);
         auto M = (m_tail || full_A_tiles == 0) ? get_num_A_tiles() - 1
                                                : m % full_A_tiles;
         return (get_num_C_tiles() + M);
     }
 
-    dim_t get_num_B_tiles() const noexcept {
+    int get_num_B_tiles() const noexcept {
         const auto req_tiles = (ldb_tail && ldb > 1) ? 2 : 1;
         const auto max_tiles
                 = AMX_TILES_NUM - get_num_C_tiles() - get_num_A_tiles();
         const auto n_tiles = nstl::min(get_ld_block2(), max_tiles);
         assert(n_tiles >= req_tiles);
-        return nstl::max<dim_t>(req_tiles, n_tiles);
+        return nstl::max(req_tiles, n_tiles);
     }
 
-    dim_t get_B_tensor(dim_t n, bool n_tail = false) const noexcept {
+    int get_B_tensor(int n, bool n_tail = false) const noexcept {
         const auto full_B_tiles = get_num_B_tiles() - (ldb_tail ? 1 : 0);
         auto N = (n_tail || full_B_tiles == 0) ? get_num_B_tiles() - 1
                                                : n % full_B_tiles;

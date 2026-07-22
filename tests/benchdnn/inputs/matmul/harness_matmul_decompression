@@ -281,7 +281,7 @@
 --reset
 --skip-impl=ref
 --dt=f32:f4_e2m1:f32
---attr-scales=wei:per_ocic:e8m0:32x1
+--attr-scales=wei:per_tensor:e8m0:32x1
 --batch=shapes_mx
 
 # Dynamic quantization (int8 src, int4/int8 weights)

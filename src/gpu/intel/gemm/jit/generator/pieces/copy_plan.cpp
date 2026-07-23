@@ -3127,7 +3127,7 @@ CopyOperand CopyPlan::zipImmediates(const CopyOperand &o1, const CopyOperand &o2
             pattern |= pattern << bits;
         if (v1 <= 0xF && v2 <= 0xF)
             return ngen::Immediate::uv(pattern);
-        else if (o1.type == DataType::w && v1 + 8 <= 0xF && v2 + 8 <= 0xF)
+        else if (o1.type == DataType::w && (uint16_t)(v1 + 8) <= 0xF && (uint16_t)(v2 + 8) <= 0xF)
             return ngen::Immediate::v(pattern);
     }
 

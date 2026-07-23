@@ -264,6 +264,17 @@ inline void weight_format_to_memory_desc(memory_desc_t &md,
     if (is_bf16_weight_format(wf)) md.data_type = data_type::bf16;
 }
 
+inline bool memory_desc_matches_weight_format(const memory_desc_t &md,
+        kai::ops::WeightFormat wf, dim_t i_dim, dim_t o_dim,
+        const std::vector<dim_t> &spatial_dims,
+        const std::vector<dim_t> &batch_dims = {}) {
+    memory_desc_t expected = md;
+    weight_format_to_memory_desc(
+            expected, wf, i_dim, o_dim, spatial_dims, batch_dims);
+
+    return expected == md;
+}
+
 } // namespace kai_utils
 } // namespace aarch64
 } // namespace cpu

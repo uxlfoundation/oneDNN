@@ -292,7 +292,8 @@ struct fpmath_t : public c_compatible {
 
 struct dnnl_post_ops : public dnnl::impl::c_compatible {
     struct entry_t {
-        entry_t() : kind(dnnl::impl::primitive_kind::undefined) {}
+        // Initialize binary to avoid uninitialized memory in the union.
+        entry_t() : kind(dnnl::impl::primitive_kind::undefined), binary {} {}
 
         entry_t(const entry_t &other) = default;
 

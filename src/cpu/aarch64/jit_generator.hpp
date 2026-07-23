@@ -676,6 +676,28 @@ public:
         }
     }
 
+    void uni_mov(const Xbyak_aarch64::VReg &d, const Xbyak_aarch64::VReg &s) {
+        mov(d.b16, s.b16);
+    }
+
+    void uni_mov(const Xbyak_aarch64::ZReg &d, const Xbyak_aarch64::ZReg &s) {
+        mov(d.d, s.d);
+    }
+
+    void uni_dup(const Xbyak_aarch64::VReg4S &dst, int32_t value) {
+        assert(value >= -128 && value <= 127);
+
+        if (value >= 0)
+            movi(dst, static_cast<uint32_t>(value));
+        else
+            mvni(dst, static_cast<uint32_t>(~value));
+    }
+
+    void uni_dup(const Xbyak_aarch64::ZRegS &dst, int32_t value) {
+        assert(value >= -128 && value <= 127);
+        dup(dst, value);
+    }
+
     void uni_orr(const Xbyak_aarch64::VReg &d, const Xbyak_aarch64::VReg &s0,
             const Xbyak_aarch64::VReg &s1) {
         orr(d.b16, s0.b16, s1.b16);

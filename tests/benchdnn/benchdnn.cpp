@@ -33,6 +33,7 @@
 #include "conv/conv.hpp"
 #include "deconv/deconv.hpp"
 #include "eltwise/eltwise.hpp"
+#include "gated_mlp/gated_mlp.hpp"
 #include "gnorm/gnorm.hpp"
 #include "ip/ip.hpp"
 #include "lnorm/lnorm.hpp"
@@ -128,6 +129,8 @@ int main(int argc, char **argv) {
         sum::bench(--argc, ++argv);
     } else if (!strcmp("--eltwise", argv[0])) {
         eltwise::bench(--argc, ++argv);
+    } else if (!strcmp("--gated_mlp", argv[0])) {
+        gated_mlp::bench(--argc, ++argv);
     } else if (!strcmp("--concat", argv[0])) {
         concat::bench(--argc, ++argv);
     } else if (!strcmp("--lrn", argv[0])) {

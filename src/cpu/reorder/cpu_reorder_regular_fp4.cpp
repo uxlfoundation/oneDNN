@@ -29,6 +29,7 @@ const impl_list_map_t &regular_fp4_impl_list_map() {
             nullptr,
         }},
         {{f4_e2m1, data_type::undef, 0}, {
+            REG_SR(f4_e2m1, any, f4_e2m1, any, fmt_order::any, spec::reference)
             REG_SR(f4_e2m1, any, f32, any, fmt_order::any, spec::reference)
             nullptr,
         }},

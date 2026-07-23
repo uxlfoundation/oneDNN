@@ -103,7 +103,8 @@ struct qz_a1b0_t<in_t, out_t,
 template <typename in_t, typename out_t>
 struct qz_a1_t {
     out_t operator()(in_t in, out_t out, float beta) {
-        return saturate_and_round<out_t>((float)in + beta * out);
+        return saturate_and_round<out_t>(
+                (float)in + beta * static_cast<float>(out));
     }
 };
 
@@ -118,7 +119,7 @@ struct qz_a1_t<in_t, float> {
 template <typename in_t, typename out_t>
 struct qz_b0_t {
     out_t operator()(in_t in, float alpha) {
-        return saturate_and_round<out_t>(alpha * in);
+        return saturate_and_round<out_t>(alpha * static_cast<float>(in));
     }
 };
 
@@ -131,42 +132,45 @@ struct qz_b0_t<in_t, float> {
 template <typename in_t, typename out_t>
 struct qz_t {
     out_t operator()(in_t in, out_t out, float alpha, float beta) {
-        return saturate_and_round<out_t>(alpha * in + (beta ? beta * out : 0));
+        return saturate_and_round<out_t>(alpha * static_cast<float>(in)
+                + (beta != 0.f ? beta * static_cast<float>(out) : 0.f));
     }
 };
 
 template <typename in_t>
 struct qz_t<in_t, float> {
     float operator()(in_t in, float out, float alpha, float beta) {
-        return alpha * in + (beta ? beta * out : 0);
+        return alpha * in + (beta != 0.f ? beta * out : 0);
     }
 };
 
 template <>
 struct qz_t<bfloat16_t, bfloat16_t> {
     float operator()(bfloat16_t in, bfloat16_t out, float alpha, float beta) {
-        return (bfloat16_t)(alpha * (float)in + (beta ? beta * (float)out : 0));
+        return (bfloat16_t)(alpha * (float)in
+                + (beta != 0.f ? beta * (float)out : 0));
     }
 };
 
 template <>
 struct qz_t<float, bfloat16_t> {
     float operator()(float in, bfloat16_t out, float alpha, float beta) {
-        return (bfloat16_t)(alpha * in + (beta ? beta * out : 0));
+        return (bfloat16_t)(alpha * in + (beta != 0.f ? beta * out : 0));
     }
 };
 
 template <>
 struct qz_t<float16_t, float16_t> {
     float operator()(float16_t in, float16_t out, float alpha, float beta) {
-        return (float16_t)(alpha * (float)in + (beta ? beta * (float)out : 0));
+        return (float16_t)(alpha * (float)in
+                + (beta != 0.f ? beta * (float)out : 0));
     }
 };
 
 template <>
 struct qz_t<float, float16_t> {
     float operator()(float in, float16_t out, float alpha, float beta) {
-        return (float16_t)(alpha * in + (beta ? beta * out : 0));
+        return (float16_t)(alpha * in + (beta != 0.f ? beta * out : 0));
     }
 };
 

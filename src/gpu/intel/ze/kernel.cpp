@@ -182,9 +182,19 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
             kernel_, &group_count, out_event, ze_deps.size(), ze_deps.data()));
 
     if (out_event) xpu::ze::event_t::from(out_dep).append(out_event);
+
+    // Event registration for profilers - carried out separately for each
+    // profiler
     if (stream.is_profiling_enabled()) {
         ze_stream->profiler().register_event(
-                utils::make_unique<xpu::ze::event_t>(out_event));
+                utils::make_unique<xpu::ze::event_t>(
+                        std::vector<ze_event_handle_t> {out_event}));
+    }
+
+    if (stream.is_verbose_profiler_enabled()) {
+        ze_stream->verbose_profiler()->register_event(
+                std::make_shared<xpu::ze::event_t>(
+                        std::vector<ze_event_handle_t> {out_event}));
     }
 
     return status::success;

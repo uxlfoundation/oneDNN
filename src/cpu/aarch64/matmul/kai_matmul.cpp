@@ -96,15 +96,14 @@ bool kai_matmul_t::pd_t::swd_dt(
 std::unique_ptr<kai::ops::IGemmCommon>
 kai_matmul_t::pd_t::create_kai_gemm_dequant(
         const kai::ops::DequantizeFloat &dequant) const {
-    return kai_utils::create_kai_gemm_dequant(*_args, _cfg.get(),
-            src_md()->data_type, weights_md()->data_type, dst_md()->data_type,
-            dequant);
+    return kai_utils::create_kai_gemm_dequant(*_args, _cfg.get(), _kai_src_dt,
+            _kai_weights_dt, _kai_dst_dt, dequant);
 }
 
 std::unique_ptr<kai::ops::IGemmCommon>
 kai_matmul_t::pd_t::create_kai_gemm() const {
-    return kai_utils::create_kai_gemm(*_args, _cfg.get(), src_md()->data_type,
-            weights_md()->data_type, dst_md()->data_type);
+    return kai_utils::create_kai_gemm(
+            *_args, _cfg.get(), _kai_src_dt, _kai_weights_dt, _kai_dst_dt);
 }
 
 status_t kai_matmul_t::pd_t::init(engine_t *engine) {
@@ -114,11 +113,20 @@ status_t kai_matmul_t::pd_t::init(engine_t *engine) {
     const memory_desc_wrapper dst_d(dst_md());
     cpu::matmul::matmul_helper_t helper(src_d, wei_d, dst_d);
 
+    const bool weights_md_was_any
+            = weights_md()->format_kind == format_kind::any;
+    const bool weights_md_may_be_fixed_format
+            = weights_md()->format_kind == format_kind::blocked
+            && weights_md()->format_desc.blocking.inner_nblks > 0;
+
     auto sdt = src_md()->data_type;
     auto wdt = weights_md()->data_type;
     auto ddt = dst_md()->data_type;
 
     _cfg = std::make_shared<kai::ops::GemmConfig>();
+    _kai_src_dt = sdt;
+    _kai_weights_dt = wdt;
+    _kai_dst_dt = ddt;
 
     if (types::is_integral_dt(sdt) && types::is_integral_dt(wdt)
             && !types::is_integral_dt(ddt)) {
@@ -127,13 +135,9 @@ status_t kai_matmul_t::pd_t::init(engine_t *engine) {
         kai_gemm_type_ = kai_gemm_type::noquant;
     }
 
-    // TODO: handle the case where the specific blocked format is passed in
-    // Note that this may enable reusing prefill reordered weights for decode
-    // TODO: handle ba, ab ect
-
     // Quant workflows do not yet support fixed format, in this case set_default_formats() will set
     // wtag, and we will do a reorder in execute
-    if (wei_d.format_kind() == format_kind::any
+    if ((weights_md_was_any || weights_md_may_be_fixed_format)
             && kai_gemm_type_ == kai_gemm_type::noquant) {
         _cfg->weight_format = kai::ops::WeightFormat::ANY;
         _fixed_format = true;
@@ -145,6 +149,14 @@ status_t kai_matmul_t::pd_t::init(engine_t *engine) {
         VDISPATCH_MATMUL_SC(memory_desc_init_by_strides(bias_md_, nullptr),
                 VERBOSE_UNSUPPORTED_BIAS_CFG);
     }
+
+    const bool fast_mode = use_fast_mode(*src_md(), *attr());
+    if (_fixed_format && fast_mode
+            && utils::everyone_is(data_type::f32, sdt, ddt)
+            && wdt == data_type::bf16) {
+        _kai_weights_dt = data_type::f32;
+    }
+
     const memory_desc_wrapper bia_d(weights_md(1));
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
@@ -234,8 +246,6 @@ status_t kai_matmul_t::pd_t::init(engine_t *engine) {
     unsigned int sections = 1;
     bool indirect = false;
 
-    const bool fast_mode = use_fast_mode(*src_md(), *attr());
-
     if (types::is_integral_dt(ddt)) {
         VDISPATCH_MATMUL(attr_.post_ops_.len() == 0,
                 "no post op support for integral dt");
@@ -289,8 +299,17 @@ status_t kai_matmul_t::pd_t::init(engine_t *engine) {
         for (dim_t i = K_dim - 1; i >= 0; --i)
             batch_dims.push_back(i);
 
-        weight_format_to_memory_desc(
-                weights_md_, _cfg->weight_format, K_dim, N_dim, {}, batch_dims);
+        VDISPATCH_MATMUL(kai_utils::is_fixed_format(_cfg->weight_format),
+                "KAI did not select a fixed weights format");
+        if (weights_md_was_any) {
+            weight_format_to_memory_desc(weights_md_, _cfg->weight_format,
+                    K_dim, N_dim, {}, batch_dims);
+        } else {
+            VDISPATCH_MATMUL(
+                    memory_desc_matches_weight_format(weights_md_,
+                            _cfg->weight_format, K_dim, N_dim, {}, batch_dims),
+                    VERBOSE_UNSUPPORTED_TAG_S, "weights");
+        }
     }
 
     if (kernel->get_working_size() != 0)

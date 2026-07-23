@@ -62,6 +62,9 @@ struct kai_matmul_t : public primitive_t {
 
         std::shared_ptr<kai::ops::GemmConfig> _cfg = nullptr;
         std::shared_ptr<kai::ops::GemmArgs> _args = nullptr;
+        data_type_t _kai_src_dt = data_type::undef;
+        data_type_t _kai_weights_dt = data_type::undef;
+        data_type_t _kai_dst_dt = data_type::undef;
         bool _fixed_format = false;
         bool _run_weight_reorder = false;
         unsigned int _ag_nbatches = 1;

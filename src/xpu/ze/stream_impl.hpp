@@ -53,6 +53,8 @@ public:
 
     status_t barrier();
 
+    status_t init_verbose_profiler(engine_kind_t eng) override;
+
     const xpu::ze::context_t &ze_ctx() const;
     xpu::ze::context_t &ze_ctx();
     xpu::context_t &ctx();

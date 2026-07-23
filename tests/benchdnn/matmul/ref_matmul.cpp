@@ -334,6 +334,14 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
         }
         float dst = p.dst_m->get_f32_elem(dst_off);
         float dst_val = dst_scale * dst + dst_zp;
+        if (p.has_dst_dynamic) {
+            // When the computed dst_scale is < 1.f, its inverse is > 1.f and
+            // may push the value beyond the representable range of the dst dt.
+            // Saturate to the max/min representable value instead of
+            // overflowing to NaN.
+            dst_val = MAX2(
+                    MIN2(dst_val, max_dt(p.dst_dt)), lowest_dt(p.dst_dt));
+        }
         maybe_round(attr, DNNL_ARG_DST, dst_val, dst_off, p.dst_dt);
         p.dst_m->set_f32_elem(dst_off, dst_val);
     }

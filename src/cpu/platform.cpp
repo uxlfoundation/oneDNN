@@ -143,6 +143,7 @@ bool has_data_type_support(data_type_t data_type) {
 #endif
         case data_type::f8_e5m2:
         case data_type::f8_e4m3:
+        case data_type::e8m0:
 #if DNNL_X64
             return x64::mayiuse(x64::avx512_core_fp16);
 #else

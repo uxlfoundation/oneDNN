@@ -259,16 +259,20 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     const auto dt = got_mem.dt();
     const bool has_eltwise
             = attr.post_ops.eltwise_index() != -1 || has_eltwise_post_op_;
-    const std::vector<dnnl_data_type_t> dt_with_nan {
-            dnnl_f16, dnnl_e8m0, dnnl_f8_e5m2, dnnl_f8_e4m3};
     const bool output_has_nans = op_output_has_nans_
             || eltwise::eltwise_alg_returns_nan_or_inf(attr)
             || has_binary_po_algs(attr, {attr_t::post_ops_t::kind_t::DIV})
-            || std::any_of(dt_with_nan.begin(), dt_with_nan.end(),
-                    [&](dnnl_data_type_t dt) { return got_mem.dt() == dt; });
+            || got_mem.dt() == dnnl_f16
+            // Output fp8 data types expected to have dynamic dst scaling. When
+            // such scaling is enabled, it saturates, doesn't overflow, thus,
+            // not expecting NaNs in the output. No scaling - NaN may happen.
+            || IMPLICATION(got_mem.dt() == dnnl_f8_e5m2
+                            || got_mem.dt() == dnnl_f8_e4m3,
+                    !attr.scales.get(DNNL_ARG_DST).is_dynamic());
     const bool has_exp_eltwise
             = attr.post_ops.find(attr_t::post_ops_t::kind_t::EXP) >= 0;
-    const bool has_dst_scale = !attr.scales.get(DNNL_ARG_DST).is_def();
+    const auto &dst_scale = attr.scales.get(DNNL_ARG_DST);
+    const bool has_dst_scale = !dst_scale.is_def();
 
     // Idea is to pad nelems to mimic uniform load between available threads.
     // It allows to make a clear assumption when the last element is processed
@@ -350,11 +354,16 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
 
             // Discard tiny values very close to each other. It's impossible to
             // compare them reliably and fit into any criterion.
-            ok = fabsf(args.exp) <= 1e-5f && args.diff < epsilon_dt(dnnl_f32);
+            // Note: the only exception is e8m0 since it's minimal value must be
+            // verified but passing this criterion.
+            ok = fabsf(args.exp) <= 1e-5f && args.diff < epsilon_dt(dnnl_f32)
+                    && args.dt != dnnl_e8m0;
             if (ok) break;
 
             // Standard check for relative diff is under set threshold.
-            ok = (fabsf(args.exp) > 1e-5f ? args.rel_diff : args.diff) <= trh_;
+            // Note: and same limitations for e8m0.
+            ok = (fabsf(args.exp) > 1e-5f ? args.rel_diff : args.diff) <= trh_
+                    && args.dt != dnnl_e8m0;
             if (ok) break;
 
             // When NaNs or infinity are allowed for the driver, check
@@ -402,13 +411,14 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
                     && args.rel_diff <= std::max(epsilon_dt(dt), 5e-6f);
             if (ok) break;
 
-            // Attr dst scale is used as a divisor to quantize data to dt.
+            // f32 dst scale is used as a divisor to quantize data to dt.
             // Implementation might decide to pre-compute inverse value and
             // multiply on it in kernel. This difference might result in a
             // slight error comparing to a division operation.
             const float experimental_dst_scale_trh
                     = std::max(epsilon_dt(dt), 1e-5f);
-            ok = has_dst_scale && args.rel_diff <= experimental_dst_scale_trh;
+            ok = has_dst_scale && dst_scale.dt == dnnl_f32
+                    && args.rel_diff <= experimental_dst_scale_trh;
             if (ok) break;
 
             // Binary MAX, MIN and comparison operations post-ops may return

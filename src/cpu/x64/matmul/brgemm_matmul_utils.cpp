@@ -1488,164 +1488,328 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
     return best_imbalance;
 }
 
-status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
-        const brgemm_matmul_conf_utils_t &bm_conf_utils) {
+// Pick an AMX M block that uses most of a tile. Prefer M blocks that fill at
+// least 13 of the 16 tile rows, scaled by 2..4, and divide M evenly. Falls
+// back to the largest such block capped by M.
+dim_t pick_amx_m_blk(dim_t M) {
+    constexpr dim_t tile_rows_min = 13;
+    constexpr dim_t tile_rows_max = 16;
+    constexpr dim_t scale_rows_min = 2;
+    constexpr dim_t scale_rows_max = 4;
+
+    for_(dim_t r = tile_rows_max; r >= tile_rows_min; r--)
+    for (dim_t s = scale_rows_max; s >= scale_rows_min; s--) {
+        const dim_t m_blk = s * r;
+        if (M % m_blk == 0) return m_blk;
+    }
+
+    const dim_t max_M = scale_rows_max * tile_rows_max;
+    return nstl::min(M, max_M);
+}
+
+// Compute the per-K (grouped) scales/ZP granularity. When such quantization
+// parameters are applied at kernel time (i.e. not folded into buffer B), each
+// brgemm call must cover at most a single K-group of every active per-K axis.
+// Returns the gcd of all active per-K group sizes, or 0 when none apply.
+dim_t compute_k_group(const brgemm_matmul_conf_t &bgmmc) {
+    if (bgmmc.is_runtime_K) return 0;
+
+    dim_t k_group = 0;
+    auto fold_group = [&](bool active, dim_t g) {
+        if (!active || g <= 0) return;
+        k_group = (k_group == 0) ? g : math::gcd(k_group, g);
+    };
+    fold_group(bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b,
+            bgmmc.wei_scales_k_gsize);
+    fold_group(bgmmc.is_src_scale_per_k, bgmmc.src_scales_k_gsize);
+
+    const bool wei_zp_folded_into_buffer_b = bgmmc.with_wei_decompression
+            && !bgmmc.with_int8_grouped_quantization;
+    fold_group(bgmmc.is_wei_zp_per_k && !wei_zp_folded_into_buffer_b,
+            bgmmc.wei_zp_k_gsize);
+    fold_group(bgmmc.is_src_zp_per_k, bgmmc.src_zp_k_gsize);
+    return k_group;
+}
+
+// Reset the blocking state so a (re-)run of a blocking search starts from a
+// well-defined configuration.
+void reset_blocking_state(brgemm_matmul_conf_t &bgmmc) {
     bgmmc.N_blk = bgmmc.wei_n_blk;
     if (!bgmmc.is_runtime_N) bgmmc.N_blk = nstl::min(bgmmc.N_blk, bgmmc.N);
 
     bgmmc.M_chunk_size = bgmmc.N_chunk_size = bgmmc.K_chunk_size = 1;
+}
 
-    bool prefer_copy_a
-            = one_of(true, bm_conf_utils.is_f32() && bgmmc.isa == avx2,
-                      bm_conf_utils.is_bf16(),
-                      bm_conf_utils.is_bf16_with_int_wei(),
-                      (bgmmc.is_amx
-                              && (bm_conf_utils.is_f16()
-                                      || bm_conf_utils.is_f16_with_int_wei()
-                                      || bm_conf_utils.is_bf16_fp8()
-                                      || bm_conf_utils.is_f16_fp8())))
+// Clamp the K blocking so that a single brgemm call never spans more than one
+// per-K quantization group (see `compute_k_group()`).
+// Returns true when the resulting blocking forces a C buffer.
+bool apply_per_k_constraints(
+        brgemm_matmul_conf_t &bgmmc, dim_t k_group, dim_t actual_ldd) {
+    if (k_group <= 0) return false;
+
+    const dim_t prev_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
+    if (bgmmc.K_blk > k_group) {
+        bgmmc.K_blk = rnd_up(
+                nstl::min(bgmmc.K, k_group), bgmmc.required_k_granularity);
+        bgmmc.brgemm_batch_size = 1;
+    } else {
+        const dim_t max_bs = nstl::max<dim_t>(1, k_group / bgmmc.K_blk);
+        if (bgmmc.brgemm_batch_size > max_bs) bgmmc.brgemm_batch_size = max_bs;
+    }
+
+    const dim_t new_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
+    const bool per_k_requires_buffer_c
+            = (new_chunk_K < prev_chunk_K && new_chunk_K < bgmmc.K)
+            || actual_ldd != bgmmc.N;
+    if (per_k_requires_buffer_c) bgmmc.use_buffer_c = true;
+    return per_k_requires_buffer_c;
+}
+
+// Decide whether copying A into a buffer is preferable for the given data type
+// and shape.
+bool prefer_copy_a_heuristic(const brgemm_matmul_conf_t &bgmmc,
+        const brgemm_matmul_conf_utils_t &bm_conf_utils) {
+    const bool dt_prefers_copy_a = one_of(true,
+            bm_conf_utils.is_f32() && bgmmc.isa == avx2,
+            bm_conf_utils.is_bf16(), bm_conf_utils.is_bf16_with_int_wei(),
+            (bgmmc.is_amx
+                    && (bm_conf_utils.is_f16()
+                            || bm_conf_utils.is_f16_with_int_wei()
+                            || bm_conf_utils.is_bf16_fp8()
+                            || bm_conf_utils.is_f16_fp8())));
+    bool prefer_copy_a = dt_prefers_copy_a
             && (bgmmc.isa != avx2_vnni_2) // no perf study yet.
             && bgmmc.lda_big_pow2() && bgmmc.M >= 1024 && !bgmmc.is_gemv;
 
     // Avoid copying A for small N gives better performance.
     // TODO: Expand for other precisions and cases.
-
     if (bgmmc.is_amx && bm_conf_utils.is_int8())
         prefer_copy_a &= bgmmc.N >= 256;
 
-    if (bgmmc.is_amx) {
-        if (matmul_amx_blocking_params_macro_t::is_supported(
-                    bgmmc, bm_conf_utils)) {
-            //grid heuristic is possible best blocking is set
-            matmul_amx_blocking_params_macro_t best_blocking(bgmmc);
-            matmul_amx_blocking_params_macro_t::find_best_blocking(
-                    bgmmc, bm_conf_utils, best_blocking);
+    return prefer_copy_a;
+}
 
-            if (best_blocking.get_blocking_scores() != 0.0f) {
-                best_blocking.update_configuration(bgmmc);
-                return status::success;
-            }
-        }
-        bgmmc.use_buffer_a |= prefer_copy_a;
+// Run one AMX blocking search (macro grid heuristic first, micro heuristic as
+// a fallback) and apply the per-K constraints to the resulting blocking.
+status_t compute_amx_blocking_candidate(brgemm_matmul_conf_t &bgmmc,
+        const brgemm_matmul_conf_utils_t &bm_conf_utils, bool prefer_copy_a,
+        dim_t k_group, dim_t actual_ldd, bool &per_k_requires_buffer_c) {
+    reset_blocking_state(bgmmc);
 
-        // Configure matrix sizes
-        if (bgmmc.is_runtime_M) {
-            bgmmc.M_blk = 64; // use fixed block size for runtime M case
-        } else {
-            auto get_block_candidate = [&]() -> dim_t {
-                // for AMX prefer block sizes which utilize at least 13 tile
-                // rows
-                const dim_t tile_rows_min = 13;
-                const dim_t tile_rows_max = 16;
-                const dim_t scale_rows_min = 2;
-                const dim_t scale_rows_max = 4;
-
-                for_(dim_t r = tile_rows_max; r >= tile_rows_min; r--)
-                for (dim_t s = scale_rows_max; s >= scale_rows_min; s--) {
-                    const dim_t m_blk = s * r;
-                    if (bgmmc.M % m_blk == 0) return m_blk;
-                }
-
-                const dim_t max_M = scale_rows_max * tile_rows_max;
-                return nstl::min(bgmmc.M, max_M);
-            };
-            bgmmc.M_blk = get_block_candidate();
-        }
-
-        // AMX BRGEMM kernel requires (K_brgemm % 64 == 0 || K_brgemm < 64)
-        // for K_brgemm reduction value to avoid AMX tiles re-configuration.
-        // To satisfy this condition K_tail value is fixed to K % wei_k_blk here.
-
-        const bool fixed_K_tail_size
-                = bgmmc.K % bgmmc.wei_k_blk > 0 && bgmmc.K > bgmmc.wei_k_blk;
-        bgmmc.K_blk = bgmmc.K < bgmmc.wei_k_blk
-                ? rnd_up(bgmmc.K, bgmmc.required_k_granularity)
-                : fixed_K_tail_size ? bgmmc.wei_k_blk
-                                    : bgmmc.K;
-        bgmmc.brgemm_batch_size
-                = nstl::max(bgmmc.K / bgmmc.K_blk, static_cast<dim_t>(1));
-
-        matmul_amx_blocking_params_micro_t best_blocking(bgmmc);
-
-        matmul_amx_blocking_params_micro_t::find_best_blocking(
+    if (matmul_amx_blocking_params_macro_t::is_supported(
+                bgmmc, bm_conf_utils)) {
+        //grid heuristic is possible best blocking is set
+        matmul_amx_blocking_params_macro_t best_blocking(bgmmc);
+        matmul_amx_blocking_params_macro_t::find_best_blocking(
                 bgmmc, bm_conf_utils, best_blocking);
 
-        VCONDCHECK_BG(best_blocking.get_blocking_scores() != 0.0f,
-                VERBOSE_BLOCKING_FAIL, "");
+        if (best_blocking.get_blocking_scores() != 0.0f) {
+            best_blocking.update_configuration(bgmmc);
+            per_k_requires_buffer_c
+                    = apply_per_k_constraints(bgmmc, k_group, actual_ldd);
+            return status::success;
+        }
+    }
+    bgmmc.use_buffer_a |= prefer_copy_a;
 
-        best_blocking.update_configuration(bgmmc);
-
-    } else if (is_superset(bm_conf_utils.get_isa(), avx512_core)) {
-        // TODO:
-        // *) adjust K_BLK using 'rnd_up(bgmmc.K, bgmmc.required_k_granularity)'
-        //    for non-f32 datatypes.
-        // *) optimize param search complexity
-
-        // Approach for selecting ideal 'blocking parameters':
-        // M_blk:
-        // - main param for having parallel_work optimally distributed.
-        // - 'br_block' is a BRGeMM uKernel parameter derived from 'M_Blk',
-        // however, there is no measured performance impact from small
-        // variations in 'br_block' size.
-        //
-        // M_Chunks:
-        // - no noticeable performance impact i.e. 'M_blk = M_Chunks * M_Blk';
-        // with M_Chunks > 1', brgemm has the same performance results. Instead,
-        // choose a larger 'M_blk'.
-        //
-        // N_blk:
-        // - ideally 64 (from 'get_default_n_block()').
-        // - can be reduced to 32 to improve performance for some shapes, as
-        //  well as increasing parallelization search space.
-        //
-        // N_Chunks:
-        // - No different as long as thread/work balance is the same.
-        // - Note: for A_Transposed cases using A_buffer (i.e. bwd-w): select
-        // a higher count to increase performance -better for transposed data
-        // reuse.
-        //
-        // K_blk:
-        // - block size variation '512 <= K_blk < 1024' has negligible
-        // performance difference. However, Some cases benefit from higher
-        // block size.
-        // - can parallelize if not enough work; notice: requires reduction!
-        //
-        // Batch_Size:
-        // - unused.
-        bgmmc.use_buffer_a |= prefer_copy_a;
-        const matmul_avx512_blocking_params_t::matmul_params_t matmul(
-                bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);
-
-        matmul_avx512_blocking_params_t best_blocking(matmul, bgmmc.nthr);
-
-        const float best_imbalance = compute_blocking_heuristic_avx512(
-                bgmmc, bm_conf_utils, matmul, best_blocking);
-
-        VCONDCHECK_BG(best_imbalance != 1.f, VERBOSE_BLOCKING_FAIL, "")
-
-        best_blocking.update_configuration(bgmmc);
+    // Configure matrix sizes
+    if (bgmmc.is_runtime_M) {
+        bgmmc.M_blk = 64; // use fixed block size for runtime M case
     } else {
-        bgmmc.use_buffer_a |= prefer_copy_a;
-        VCONDCHECK_BG(is_superset(bm_conf_utils.get_isa(), avx2),
-                VERBOSE_UNSUPPORTED_ISA)
-        const bool is_f32 = bm_conf_utils.is_f32() && bgmmc.isa == avx2;
-
-        const matmul_avx512_blocking_params_t::matmul_params_t matmul(
-                bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);
-
-        matmul_avx512_blocking_params_t best_blocking(matmul, bgmmc.nthr);
-
-        const float best_imbalance = is_f32
-                ? compute_blocking_heuristic_avx2_f32(
-                          bgmmc, bm_conf_utils, matmul, best_blocking)
-                : compute_blocking_heuristic_avx2(
-                          bgmmc, bm_conf_utils, matmul, best_blocking);
-
-        VCONDCHECK_BG(best_imbalance != 1.f, VERBOSE_BLOCKING_FAIL, "")
-
-        best_blocking.update_configuration(bgmmc);
+        bgmmc.M_blk = pick_amx_m_blk(bgmmc.M);
     }
 
+    // AMX BRGEMM kernel requires
+    // (K_brgemm % 64 == 0 || K_brgemm < 64) for K_brgemm reduction
+    // value to avoid AMX tiles re-configuration. To satisfy this
+    // condition K_tail value is fixed to K % wei_k_blk here.
+    const bool fixed_K_tail_size
+            = bgmmc.K % bgmmc.wei_k_blk > 0 && bgmmc.K > bgmmc.wei_k_blk;
+    bgmmc.K_blk = bgmmc.K < bgmmc.wei_k_blk
+            ? rnd_up(bgmmc.K, bgmmc.required_k_granularity)
+            : fixed_K_tail_size ? bgmmc.wei_k_blk
+                                : bgmmc.K;
+    bgmmc.brgemm_batch_size
+            = nstl::max(bgmmc.K / bgmmc.K_blk, static_cast<dim_t>(1));
+
+    matmul_amx_blocking_params_micro_t best_blocking(bgmmc);
+
+    matmul_amx_blocking_params_micro_t::find_best_blocking(
+            bgmmc, bm_conf_utils, best_blocking);
+
+    VCONDCHECK_BG(best_blocking.get_blocking_scores() != 0.0f,
+            VERBOSE_BLOCKING_FAIL, "");
+
+    best_blocking.update_configuration(bgmmc);
+    per_k_requires_buffer_c
+            = apply_per_k_constraints(bgmmc, k_group, actual_ldd);
+    return status::success;
+}
+
+// Decide whether the is_c_buf_dst_dt bypass (nthr_k<=1 accumulating into
+// narrow-dt D with a recurring per-K-chunk read-modify-write) is worth
+// keeping, re-running the blocking search as the flag changes:
+//   1. High panel reuse (or single K-chunk): keep the bypass as-is.
+//   2. Low reuse: the D-RMW cannot be hidden, so adopt the f32 buffer.
+//   3. Unless that f32 path does not halve K-chunk granularity: revert.
+status_t reevaluate_narrow_c_bypass(brgemm_matmul_conf_t &bgmmc,
+        const brgemm_matmul_conf_utils_t &bm_conf_utils, bool prefer_copy_a,
+        dim_t k_group, dim_t actual_ldd, bool &per_k_requires_buffer_c) {
+    const dim_t panel_reuse = nstl::max(bgmmc.M_chunk_size, bgmmc.N_chunk_size);
+    const dim_t bypass_k_chunk_elems
+            = static_cast<dim_t>(bgmmc.K_blk) * bgmmc.K_chunk_size;
+    const bool multiple_k_chunks
+            = bypass_k_chunk_elems > 0 && bgmmc.K > bypass_k_chunk_elems;
+    // `panel_reuse` is how often a loaded panel is reused within a chunk,
+    // i.e. how much compute can hide the narrow-D RMW the bypass repeats per
+    // K-chunk. Below this cut-off the RMW stays exposed.
+    constexpr dim_t min_panel_reuse_for_bypass = 16;
+    if (!multiple_k_chunks || panel_reuse >= min_panel_reuse_for_bypass)
+        return status::success;
+
+    bgmmc.is_c_buf_dst_dt = false;
+    CHECK(compute_amx_blocking_candidate(bgmmc, bm_conf_utils, prefer_copy_a,
+            k_group, actual_ldd, per_k_requires_buffer_c));
+
+    // f32-buffer path wins only if it at least halves K-chunk granularity.
+    // Otherwise extra f32 buffer overhead outweighs saved D-RMW.
+    constexpr dim_t min_k_chunk_shrink_factor = 2;
+    const dim_t f32_k_chunk_elems
+            = static_cast<dim_t>(bgmmc.K_blk) * bgmmc.K_chunk_size;
+    if (f32_k_chunk_elems * min_k_chunk_shrink_factor > bypass_k_chunk_elems) {
+        bgmmc.is_c_buf_dst_dt = true;
+        CHECK(compute_amx_blocking_candidate(bgmmc, bm_conf_utils,
+                prefer_copy_a, k_group, actual_ldd, per_k_requires_buffer_c));
+    }
+    return status::success;
+}
+
+status_t compute_blocking_heuristic_amx(brgemm_matmul_conf_t &bgmmc,
+        const brgemm_matmul_conf_utils_t &bm_conf_utils,
+        const primitive_attr_t &attr, bool prefer_copy_a, dim_t k_group,
+        dim_t actual_ldd) {
+    // Only the AMX uker has the narrow-dt store/beta=1 paths this function
+    // relies on, so the caller must have dispatched on `is_amx`.
+    assert(bgmmc.is_amx);
+
+    // Use dst dtype (bf16/f16) for K-chunk accumulation under relaxed
+    // accumulation; nthr_k<=1 then bypasses the C buffer (beta=1 into D).
+    // Not write-once: the bypass-viability retry below may toggle it.
+    const bool is_relaxed_acc = utils::one_of(
+            attr.acc_mode_, accumulation_mode::relaxed, accumulation_mode::any);
+    const bool dst_dt_eligible
+            = utils::one_of(bgmmc.dst_dt, data_type::bf16, data_type::f16);
+    // Narrow dt_c is an AMX uker feature, but runtime M falls back to a
+    // non-AMX ISA for the smallest M tail and runtime N leaves LDC/LDD as
+    // runtime values; either way can_dispatch_uker() picks the generic kernel.
+    const bool all_kernels_are_amx_uker
+            = !bgmmc.is_runtime_M && !bgmmc.is_runtime_N && !bgmmc.is_runtime_K;
+    bgmmc.is_c_buf_dst_dt
+            = is_relaxed_acc && dst_dt_eligible && all_kernels_are_amx_uker;
+
+    // Must be re-evaluated after each blocking search: both `is_c_buf_dst_dt`
+    // and `nthr_k` may change while the bypass viability is reconsidered.
+    auto can_bypass_c_buffer = [&]() {
+        return bgmmc.is_c_buf_dst_dt && bgmmc.nthr_k <= 1 && !bgmmc.with_sum;
+    };
+
+    bool per_k_requires_buffer_c = false;
+    CHECK(compute_amx_blocking_candidate(bgmmc, bm_conf_utils, prefer_copy_a,
+            k_group, actual_ldd, per_k_requires_buffer_c));
+
+    if (can_bypass_c_buffer())
+        CHECK(reevaluate_narrow_c_bypass(bgmmc, bm_conf_utils, prefer_copy_a,
+                k_group, actual_ldd, per_k_requires_buffer_c));
+
+    if (can_bypass_c_buffer() && !per_k_requires_buffer_c)
+        bgmmc.use_buffer_c = false;
+
+    return status::success;
+}
+
+status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
+        const brgemm_matmul_conf_utils_t &bm_conf_utils,
+        const memory_desc_wrapper &dst_d, const primitive_attr_t &attr) {
+    const dim_t actual_ldd = dst_d.ndims() == 2 && bgmmc.M == 1
+            ? bgmmc.N
+            : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
+    // Loop-invariant across every blocking candidate, so set it once here.
+    bgmmc.LDD = actual_ldd;
+
+    // Per-K (grouped) scales/ZP applied at kernel time (i.e. not folded into
+    // buffer B) require each brgemm call to cover at most a single K-group
+    // of every active per-K axis.
+    const dim_t k_group = compute_k_group(bgmmc);
+
+    const bool prefer_copy_a = prefer_copy_a_heuristic(bgmmc, bm_conf_utils);
+
+    if (bgmmc.is_amx)
+        return compute_blocking_heuristic_amx(
+                bgmmc, bm_conf_utils, attr, prefer_copy_a, k_group, actual_ldd);
+
+    bgmmc.is_c_buf_dst_dt = false;
+    reset_blocking_state(bgmmc);
+
+    const bool is_avx512 = is_superset(bm_conf_utils.get_isa(), avx512_core);
+    VCONDCHECK_BG(is_avx512 || is_superset(bm_conf_utils.get_isa(), avx2),
+            VERBOSE_UNSUPPORTED_ISA)
+
+    bgmmc.use_buffer_a |= prefer_copy_a;
+
+    const matmul_avx512_blocking_params_t::matmul_params_t matmul(
+            bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch);
+    matmul_avx512_blocking_params_t best_blocking(matmul, bgmmc.nthr);
+
+    // TODO:
+    // *) adjust K_BLK using 'rnd_up(bgmmc.K, bgmmc.required_k_granularity)'
+    //    for non-f32 datatypes.
+    // *) optimize param search complexity
+
+    // Approach for selecting ideal 'blocking parameters' (avx512 path):
+    // M_blk:
+    // - main param for having parallel_work optimally distributed.
+    // - 'br_block' is a BRGeMM uKernel parameter derived from 'M_Blk',
+    // however, there is no measured performance impact from small
+    // variations in 'br_block' size.
+    //
+    // M_Chunks:
+    // - no noticeable performance impact i.e. 'M_blk = M_Chunks * M_Blk';
+    // with M_Chunks > 1', brgemm has the same performance results. Instead,
+    // choose a larger 'M_blk'.
+    //
+    // N_blk:
+    // - ideally 64 (from 'get_default_n_block()').
+    // - can be reduced to 32 to improve performance for some shapes, as
+    //  well as increasing parallelization search space.
+    //
+    // N_Chunks:
+    // - No different as long as thread/work balance is the same.
+    // - Note: for A_Transposed cases using A_buffer (i.e. bwd-w): select
+    // a higher count to increase performance -better for transposed data
+    // reuse.
+    //
+    // K_blk:
+    // - block size variation '512 <= K_blk < 1024' has negligible
+    // performance difference. However, Some cases benefit from higher
+    // block size.
+    // - can parallelize if not enough work; notice: requires reduction!
+    //
+    // Batch_Size:
+    // - unused.
+    const bool is_avx2_f32 = bm_conf_utils.is_f32() && bgmmc.isa == avx2;
+    const float best_imbalance = is_avx512
+            ? compute_blocking_heuristic_avx512(
+                      bgmmc, bm_conf_utils, matmul, best_blocking)
+            : is_avx2_f32 ? compute_blocking_heuristic_avx2_f32(
+                                    bgmmc, bm_conf_utils, matmul, best_blocking)
+                          : compute_blocking_heuristic_avx2(bgmmc,
+                                    bm_conf_utils, matmul, best_blocking);
+
+    VCONDCHECK_BG(best_imbalance != 1.f, VERBOSE_BLOCKING_FAIL, "")
+
+    best_blocking.update_configuration(bgmmc);
+
+    apply_per_k_constraints(bgmmc, k_group, actual_ldd);
     return status::success;
 }
 
@@ -2286,117 +2450,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             bgmmc.postops_inst_count = 0;
         }
 
-    // Use dst dtype (bf16/f16) for K-chunk accumulation when relaxed
-    // accumulation mode is enabled. nthr_k<=1 bypasses C buffer (beta=1 into D).
-    // Set before blocking heuristic so AMX blocking accounts for narrow C.
-    // use_buffer_c is decided inside heuristic, so not in predicate here.
-    {
-        const bool is_relaxed_acc = utils::one_of(attr.acc_mode_,
-                accumulation_mode::relaxed, accumulation_mode::any);
-        const bool dst_dt_eligible
-                = utils::one_of(bgmmc.dst_dt, data_type::bf16, data_type::f16);
-        // Only the AMX uker has the narrow-dt store/beta=1 paths.
-        const bool isa_eligible = is_superset(bgmmc.isa, avx512_core_amx);
-        // Narrow dt_c is an AMX uker feature, but runtime M falls back to a
-        // non-AMX ISA for the smallest M tail and runtime N leaves LDC/LDD as
-        // runtime values; either way can_dispatch_uker() picks the generic
-        // kernel.
-        const bool all_kernels_are_amx_uker = !bgmmc.is_runtime_M
-                && !bgmmc.is_runtime_N && !bgmmc.is_runtime_K;
-        bgmmc.is_c_buf_dst_dt = is_relaxed_acc && dst_dt_eligible
-                && isa_eligible && all_kernels_are_amx_uker;
-    }
-
     // Heuristic tries to optimize the following parameters:
     // - M_blk, M_Chunk
     // - N_blk, N_Chunk
     // - K_blk, batch_size
     // - nthr_K
-    VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
+    VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils, dst_d, attr),
             VERBOSE_BLOCKING_FAIL, "");
-
-    auto get_actual_ldd = [&]() {
-        return dst_d.ndims() == 2 && bgmmc.M == 1
-                ? bgmmc.N
-                : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
-    };
-
-    // Per-K (grouped) scales/ZP applied at kernel time (i.e. not folded into
-    // buffer B) require each brgemm call to cover at most a single K-group
-    // of every active per-K axis.
-    dim_t k_group = 0;
-    if (!bgmmc.is_runtime_K) {
-        auto fold_group = [&](bool active, dim_t g) {
-            if (!active || g <= 0) return;
-            k_group = (k_group == 0) ? g : math::gcd(k_group, g);
-        };
-        fold_group(bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b,
-                bgmmc.wei_scales_k_gsize);
-        fold_group(bgmmc.is_src_scale_per_k, bgmmc.src_scales_k_gsize);
-
-        const bool wei_zp_folded_into_buffer_b = bgmmc.with_wei_decompression
-                && !bgmmc.with_int8_grouped_quantization;
-        fold_group(bgmmc.is_wei_zp_per_k && !wei_zp_folded_into_buffer_b,
-                bgmmc.wei_zp_k_gsize);
-        fold_group(bgmmc.is_src_zp_per_k, bgmmc.src_zp_k_gsize);
-    }
-
-    bool per_k_requires_buffer_c = false;
-    auto apply_per_k_constraints = [&]() {
-        per_k_requires_buffer_c = false;
-        if (k_group <= 0) return;
-
-        const dim_t prev_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
-        if (bgmmc.K_blk > k_group) {
-            bgmmc.K_blk = rnd_up(
-                    nstl::min(bgmmc.K, k_group), bgmmc.required_k_granularity);
-            bgmmc.brgemm_batch_size = 1;
-        } else {
-            const dim_t max_bs = nstl::max<dim_t>(1, k_group / bgmmc.K_blk);
-            if (bgmmc.brgemm_batch_size > max_bs)
-                bgmmc.brgemm_batch_size = max_bs;
-        }
-
-        const dim_t new_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;
-        per_k_requires_buffer_c
-                = (new_chunk_K < prev_chunk_K && new_chunk_K < bgmmc.K)
-                || get_actual_ldd() != bgmmc.N;
-        if (per_k_requires_buffer_c) bgmmc.use_buffer_c = true;
-    };
-
-    apply_per_k_constraints();
-
-    // is_c_buf_dst_dt bypass viability: nthr_k<=1 accumulates into narrow-dt
-    // D with recurring RMW per K-chunk. Only viable when panel reuse is
-    // high enough to hide RMW. For low reuse, f32-buffer path is faster.
-    if (bgmmc.is_c_buf_dst_dt && bgmmc.nthr_k <= 1 && !bgmmc.with_sum) {
-        const dim_t panel_reuse
-                = nstl::max(bgmmc.M_chunk_size, bgmmc.N_chunk_size);
-        const dim_t bypass_k_chunk_elems
-                = static_cast<dim_t>(bgmmc.K_blk) * bgmmc.K_chunk_size;
-        const bool multiple_k_chunks
-                = bypass_k_chunk_elems > 0 && bgmmc.K > bypass_k_chunk_elems;
-        // `panel_reuse` is how often a loaded panel is reused within a
-        // chunk, i.e. how much compute can hide the narrow-D RMW the bypass
-        // repeats per K-chunk. Below this cut-off the RMW stays exposed.
-        const dim_t min_panel_reuse_for_bypass = 16;
-        if (multiple_k_chunks && panel_reuse < min_panel_reuse_for_bypass) {
-            bgmmc.is_c_buf_dst_dt = false;
-            VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
-                    VERBOSE_BLOCKING_FAIL, "");
-            apply_per_k_constraints();
-            // f32-buffer path wins only if it halves K-chunk granularity.
-            // Otherwise extra f32 buffer overhead outweighs saved D-RMW.
-            const dim_t f32_k_chunk_elems
-                    = static_cast<dim_t>(bgmmc.K_blk) * bgmmc.K_chunk_size;
-            if (f32_k_chunk_elems * 2 > bypass_k_chunk_elems) {
-                bgmmc.is_c_buf_dst_dt = true;
-                VCHECK_BG(compute_blocking_heuristic(bgmmc, bm_conf_utils),
-                        VERBOSE_BLOCKING_FAIL, "");
-                apply_per_k_constraints();
-            }
-        }
-    }
 
     if (bgmmc.wei_n_blk > bgmmc.N_blk && bgmmc.N != bgmmc.N_blk) {
         assert(!bgmmc.is_runtime_N
@@ -2438,14 +2498,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             "The first coordinate of every N_blk that is larger than LDB "
             "needs to be divisible by LDB");
 
-    if (bgmmc.is_c_buf_dst_dt && bgmmc.nthr_k <= 1 && !bgmmc.with_sum
-            && !per_k_requires_buffer_c)
-        bgmmc.use_buffer_c = false;
-
     if (bgmmc.is_gemv && bgmmc.gemv_swap_a_b) {
         bgmmc.LDC = bgmmc.LDD = 1;
     } else {
-        bgmmc.LDD = get_actual_ldd();
         bgmmc.LDC = bgmmc.use_buffer_c && bgmmc.nthr_k <= 1
                 ? (bgmmc.is_amx ? nstl::min((dim_t)32, bgmmc.N_blk)
                                 : bgmmc.N_blk)

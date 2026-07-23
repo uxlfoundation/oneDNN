@@ -6455,11 +6455,14 @@ private:
     Vmm vmm_wei_scales1 = Vmm(5);
 
     Vmm get_vmm(const int blk, const int idx) {
+        // fp8->f16 path needs only 1 VMM per block
+        // so that the full register pool is available for loop unrolling.
         const int max_isa_regs = isa_num_vregs(conf_->isa);
-        const int max_unroll = (max_isa_regs - reserved_regs_) / k_blk_step;
-        assert(idx >= 0 && idx < k_blk_step && blk >= 0);
+        const int blk_sz = req_cvtf82f16_ ? 1 : k_blk_step;
+        const int max_unroll = (max_isa_regs - reserved_regs_) / blk_sz;
+        assert(idx >= 0 && idx < blk_sz && blk >= 0);
         const auto reg_idx
-                = max_unroll * ((idx + 1) % k_blk_step) + blk + reserved_regs_;
+                = max_unroll * ((idx + 1) % blk_sz) + blk + reserved_regs_;
         assert(reg_idx >= reserved_regs_ && reg_idx < max_isa_regs);
         return Vmm(reg_idx);
     }
@@ -6608,7 +6611,9 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
         }
     }
 
-    static constexpr int blk_sz = k_blk_step;
+    // fp8->f16: only 1 VMM per block needed(not 2-register packing)
+    // and the full register pool is used
+    static int blk_sz = req_cvtf82f16_ ? 1 : k_blk_step;
     const int max_regs_available = isa_num_vregs(conf_->isa) - reserved_regs_;
     const int max_unroll = max_regs_available / blk_sz;
 
@@ -6616,12 +6621,9 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
     auto load = [this, nrows, ncolumns](int blk, int k, int n) {
         const int k_blk = k / k_blk_step;
         const auto src_vmm0 = get_vmm(blk, 0);
-        const auto src_vmm1 = get_vmm(blk, 1);
         const dim_t offset = k_blk * src_stride_
                 + (n * k_blk_step * typesize_) / src_elems_per_byte_;
-        const dim_t stride = (n_blk_step * typesize_) / src_elems_per_byte_;
         auto load_addr0 = maybe_EVEX_compress_addr(reg_src, offset);
-        auto load_addr1 = maybe_EVEX_compress_addr(reg_src, offset + stride);
 
         const bool is_n_tail = ncolumns - n < n_blk_step;
         const bool is_k_tail = nrows - k < k_blk_step;
@@ -6630,15 +6632,19 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::copy_block(
             f8_to_f16_upconvert(
                     conf_->orig_wei_dt, src_vmm0, load_addr0, false, true);
         else {
+            const auto src_vmm1 = get_vmm(blk, 1);
+            const dim_t stride = (n_blk_step * typesize_) / src_elems_per_byte_;
+            auto load_addr1
+                    = maybe_EVEX_compress_addr(reg_src, offset + stride);
             load_value(src_vmm0, load_addr0, vmm_permd, conf_->orig_wei_dt);
             load_value(src_vmm1, load_addr1, vmm_permd, conf_->orig_wei_dt);
-        }
-        get_wei_scales(n, is_n_tail, is_k_tail);
-        get_zero_points(n, is_n_tail, is_k_tail);
-        if (!req_cvtf82f16_)
+
+            get_wei_scales(n, is_n_tail, is_k_tail);
+            get_zero_points(n, is_n_tail, is_k_tail);
             decompress_and_downcvt_2reg(src_vmm0, src_vmm1, vmm_zp_b_val0,
                     vmm_zp_b_val1, vmm_wei_scales0, vmm_wei_scales1,
                     conf_->orig_wei_dt, conf_->wei_dt);
+        }
     };
 
     maybe_update_strides(nrows);

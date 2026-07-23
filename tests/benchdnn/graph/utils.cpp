@@ -27,14 +27,6 @@
 #include "utils/stringstream.hpp"
 #include "utils/timer.hpp"
 
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-#include "oneapi/dnnl/dnnl_graph_sycl.hpp"
-#endif
-
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-#include "oneapi/dnnl/dnnl_graph_ocl.hpp"
-#endif
-
 namespace graph {
 
 bdnn_state_t convert_state(const dnnl_status_t &s) {
@@ -69,27 +61,7 @@ void compiled_partition_executor(dnnl::graph::compiled_partition &cp,
         dnnl::stream &stream, const std::vector<dnnl::graph::tensor> &inputs,
         const std::vector<dnnl::graph::tensor> &outputs,
         const dnnl::graph::tensor &scratchpad) {
-    if (is_cpu()) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_SYCL
-        dnnl::graph::sycl_interop::execute(cp, stream, inputs,
-                const_cast<std::vector<dnnl::graph::tensor> &>(outputs),
-                scratchpad);
-#else
-        cp.execute(stream, inputs, outputs, scratchpad);
-#endif
-    } else {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
-        dnnl::graph::sycl_interop::execute(cp, stream, inputs,
-                const_cast<std::vector<dnnl::graph::tensor> &>(outputs),
-                scratchpad);
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        dnnl::graph::ocl_interop::execute(cp, stream, inputs,
-                const_cast<std::vector<dnnl::graph::tensor> &>(outputs),
-                scratchpad);
-#else
-        assert(!"unsupported gpu runtime");
-#endif
-    }
+    cp.execute(stream, inputs, outputs, scratchpad);
 }
 
 inline int measure_perf_aggregate(timer::timer_t &t,

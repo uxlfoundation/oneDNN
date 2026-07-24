@@ -59,9 +59,9 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
 
 // ---------- ref_fwd_t ------------ //
 
-status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(dst_md());
 
     conf.dispatch.define_dim("MB", 0, dst_md()->padded_dims[0]);
@@ -135,9 +135,9 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
 // -------- ref_bwd_t ---------- //
 
-status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(diff_src_md());
 
     conf.dispatch.define_dim("MB", 0, diff_src_md()->padded_dims[0]);

@@ -223,15 +223,15 @@ struct jit_uni_reorder_t : public primitive_t {
         bool with_groups_ = false;
         dim_t D_mask_ = 0;
 
-        status_t init(
-                engine_t *engine, engine_t *src_engine, engine_t *dst_engine);
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine);
 
     private:
         status_t init_scratchpad();
-        static status_t create(reorder_pd_t **reorder_pd, engine_t *engine,
-                const primitive_attr_t *attr, engine_t *src_engine,
-                const memory_desc_t *src_md, engine_t *dst_engine,
-                const memory_desc_t *dst_md);
+        static status_t create(reorder_pd_t **reorder_pd,
+                const engine_t *engine, const primitive_attr_t *attr,
+                const engine_t *src_engine, const memory_desc_t *src_md,
+                const engine_t *dst_engine, const memory_desc_t *dst_md);
 
         friend dnnl::impl::impl_list_item_t;
     };
@@ -279,10 +279,10 @@ struct jit_blk_reorder_t : public primitive_t {
         tr::prb_t prb_;
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd, engine_t *engine,
-                const primitive_attr_t *attr, engine_t *src_engine,
-                const memory_desc_t *src_md, engine_t *dst_engine,
-                const memory_desc_t *dst_md);
+        static status_t create(reorder_pd_t **reorder_pd,
+                const engine_t *engine, const primitive_attr_t *attr,
+                const engine_t *src_engine, const memory_desc_t *src_md,
+                const engine_t *dst_engine, const memory_desc_t *dst_md);
 
         // Swap last two nodes, put block 4, 8, 16 nodes to first
         static void prb_tile_normalize(tr::prb_t &p);

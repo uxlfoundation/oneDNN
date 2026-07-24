@@ -659,7 +659,8 @@ jit_uni_instance_normalization_fwd_t::kernel_stat_base_t::create(
     }
 }
 
-status_t jit_uni_instance_normalization_fwd_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_instance_normalization_fwd_t::pd_t::init(
+        const engine_t *engine) {
     using namespace data_type;
     using namespace format_tag;
     using skip_mask_t = primitive_attr_t::skip_mask_t;

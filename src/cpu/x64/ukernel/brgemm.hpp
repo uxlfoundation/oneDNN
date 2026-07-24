@@ -26,7 +26,7 @@
 
 #ifdef DNNL_EXPERIMENTAL_UKERNEL
 
-struct dnnl_brgemm : public dnnl::impl::c_compatible {
+struct dnnl_brgemm {
     dnnl_brgemm(dnnl::impl::dim_t M, dnnl::impl::dim_t N, dnnl::impl::dim_t K,
             dnnl::impl::dim_t batch_size, dnnl::impl::dim_t lda,
             dnnl::impl::dim_t ldb, dnnl::impl::dim_t ldc,

@@ -23,7 +23,7 @@ namespace detail {
 
 // TODO: this seems like a function generic enough to go a common utils file.
 status_t get_primitive_descriptor(op_desc_t *op_desc,
-        const primitive_attr_t *attributes, impl::engine_t *engine,
+        const primitive_attr_t *attributes, const impl::engine_t *engine,
         std::shared_ptr<primitive_desc_t> &pd) {
 
     primitive_desc_iterator_t it(engine, op_desc, attributes, nullptr);
@@ -40,7 +40,7 @@ status_t get_primitive_descriptor(op_desc_t *op_desc,
     return status::out_of_memory;
 }
 
-status_t init_matmul_pd(impl::engine_t *engine,
+status_t init_matmul_pd(const impl::engine_t *engine,
         const primitive_attr_t *attributes, const memory_desc_t *src_desc,
         const memory_desc_t *weights_desc, const memory_desc_t *bias_desc,
         const memory_desc_t *dst_desc,
@@ -55,8 +55,8 @@ status_t init_matmul_pd(impl::engine_t *engine,
     return status::success;
 }
 
-status_t init_reorder_pd(impl::engine_t *engine, const memory_desc_t *src_md,
-        const memory_desc_t *dst_md,
+status_t init_reorder_pd(const impl::engine_t *engine,
+        const memory_desc_t *src_md, const memory_desc_t *dst_md,
         std::shared_ptr<primitive_desc_t> &reorder_pd) {
     // This will always be a gpu-gpu copy in our case.
     CHECK(reorder_primitive_desc_create(reorder_pd, engine, src_md, dst_md));
@@ -146,7 +146,7 @@ bool ref_inner_product_bwd_weights_t::pd_t::check_bwd_weights_dtypes(
 }
 
 status_t ref_inner_product_bwd_weights_t::pd_t::init_reduction_pd(
-        impl::engine_t *engine, const memory_desc_t *src_desc,
+        const impl::engine_t *engine, const memory_desc_t *src_desc,
         const memory_desc_t *dest_desc) {
     reduction_desc_t reduction_descriptor;
     //diff_bias is 1D, diff_dst will be 2D, reshape diff_bias to 1xOC
@@ -162,7 +162,7 @@ status_t ref_inner_product_bwd_weights_t::pd_t::init_reduction_pd(
     return status::success;
 }
 
-status_t ref_inner_product_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t ref_inner_product_fwd_t::pd_t::init(const impl::engine_t *engine) {
 
     const bool ok = (set_default_params() == status::success);
     VDISPATCH_INNER_PRODUCT(ok, VERBOSE_UNSUPPORTED_TAG);
@@ -318,7 +318,8 @@ status_t ref_inner_product_fwd_t::pd_t::init(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t ref_inner_product_bwd_data_t::pd_t::init(impl::engine_t *engine) {
+status_t ref_inner_product_bwd_data_t::pd_t::init(
+        const impl::engine_t *engine) {
 
     bool ok = (set_default_params() == status::success)
             && attr()->has_default_values();
@@ -445,7 +446,8 @@ status_t ref_inner_product_bwd_data_t::pd_t::init(impl::engine_t *engine) {
     return status::success;
 }
 
-status_t ref_inner_product_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
+status_t ref_inner_product_bwd_weights_t::pd_t::init(
+        const impl::engine_t *engine) {
 
     bool ok = (set_default_params() == status::success);
     VDISPATCH_INNER_PRODUCT(ok, VERBOSE_UNSUPPORTED_TAG);

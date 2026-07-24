@@ -135,7 +135,7 @@ int brgemm_matmul_t<isa>::pd_t::get_brg_kernel_idx(bool is_bs_tail,
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
+status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     const auto src_dt = src_md_.data_type;
     const auto wei_dt = weights_md_.data_type;
     const auto dst_dt = dst_md_.data_type;
@@ -210,38 +210,46 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         return ok;
     };
 
-    auto check_attr_scales = [&]() -> bool {
+    auto check_attr_scales = [&]() -> status_t {
         const std::vector<int> supported_args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-        bool ok = attr_scales_ok(supported_args);
+        CHECK(attr_scales_ok(engine, supported_args));
         const auto &asc = attr()->scales_;
         if (!asc.has_default_values(DNNL_ARG_SRC)
                 && !asc.has_default_values(DNNL_ARG_WEIGHTS)
                 && asc.get_mask(DNNL_ARG_WEIGHTS) > 0) {
             // This case requires scratchpad
-            if (is_runtime_value(N())) ok = false;
+            VDISPATCH_MATMUL(
+                    !is_runtime_value(N()), VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
         // Impl suppports f32 scales only for non-weight decompression
         if (!(is_bf16_with_int_wei || is_f16_with_int_wei || is_f32_with_int_wei
                     || with_int8_grouped_quantization)) {
-            ok = ok && one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32);
-            ok = ok && one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32);
-            ok = ok && one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32);
+            VDISPATCH_MATMUL(
+                    one_of(asc.get_data_type(DNNL_ARG_SRC), undef, f32),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_MATMUL(
+                    one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VDISPATCH_MATMUL(
+                    one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
         // Implementation has limited support w.r.t. scales groups.
         if (!asc.has_default_values(DNNL_ARG_WEIGHTS)) {
             if (!asc.get(DNNL_ARG_WEIGHTS).has_default_groups()) {
                 // Only grouping over K is supported.
-                ok = ok && asc.get_group(DNNL_ARG_WEIGHTS, 1) == 1;
+                VDISPATCH_MATMUL(asc.get_group(DNNL_ARG_WEIGHTS, 1) == 1,
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
                 // masks 3 per-(k,n) and 7 per-(b,k,n) are supported
                 const int mask = asc.get_mask(DNNL_ARG_WEIGHTS);
                 const int kn_mask = wei_qmask_N() + wei_qmask_K();
                 const int batch_mask = full_tensor_mask() & ~kn_mask;
                 const bool mask_ok = (mask & ~(kn_mask | batch_mask)) == 0;
-                ok = ok && mask_ok;
+                VDISPATCH_MATMUL(mask_ok, VERBOSE_UNSUPPORTED_SCALES_CFG);
             }
         }
-        return ok;
+        return status::success;
     };
 
     auto check_attr_zero_points
@@ -320,7 +328,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                     po, dst_d),
             VERBOSE_UNSUPPORTED_POSTOP);
 
-    VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    CHECK(check_attr_scales());
     VDISPATCH_MATMUL(
             check_attr_zero_points(is_bf16_with_int_wei || is_f16_with_int_wei
                             || is_f32_with_int_wei

@@ -82,7 +82,7 @@ struct ref_convolution_fwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_convolution_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
 
@@ -162,7 +162,7 @@ struct ref_convolution_bwd_data_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_convolution_bwd_data_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
 
@@ -243,7 +243,7 @@ struct ref_convolution_bwd_weights_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_convolution_bwd_weights_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             const memory_desc_wrapper data_d(src_md());

@@ -104,7 +104,7 @@ class problem_t {
 public:
     problem_t() = default;
 
-    status_t init(impl::engine_t *engine, const pd_t *conv_pd);
+    status_t init(const impl::engine_t *engine, const pd_t *conv_pd);
 
     bool is_stride1() const { return sd == 1 && sh == 1 && sw == 1; }
 

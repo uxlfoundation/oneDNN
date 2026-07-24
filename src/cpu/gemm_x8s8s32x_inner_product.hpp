@@ -49,7 +49,7 @@ struct gemm_x8s8s32x_inner_product_fwd_t : public primitive_t {
                         : IGEMM_S8S8S32_IMPL_STR,
                 gemm_x8s8s32x_inner_product_fwd_t, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
 
             VDISPATCH_INNER_PRODUCT(

@@ -60,10 +60,10 @@ public:
     static const int max_kernels = 16;
 
     template <typename T>
-    static status_t init_pd(T *pd, impl::engine_t *engine) {
+    static status_t init_pd(T *pd, const impl::engine_t *engine) {
         try {
             using intel::engine_t;
-            auto *intel_engine = utils::downcast<engine_t *>(engine);
+            auto *intel_engine = utils::downcast<const engine_t *>(engine);
 
             VDISPATCH_CONV_IC(intel_engine->mayiuse_ngen_kernels(),
                     VERBOSE_BAD_ENGINE_KIND);
@@ -525,7 +525,7 @@ private:
     }
 
     static status_t report_runtime_error(const convolution_pd_t *pd,
-            impl::engine_t *engine, const char *msg = "internal error") {
+            const impl::engine_t *engine, const char *msg = "internal error") {
         VERROR(primitive, gpu, "%s,%s", pd->info(engine), msg);
         return status::runtime_error;
     }
@@ -535,7 +535,7 @@ private:
     std::shared_ptr<impl::primitive_t> zp_prim_;
 };
 
-status_t gen_fwd_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_fwd_t::pd_t::init(const impl::engine_t *engine) {
     VDISPATCH_CONV_IC(is_fwd(), VERBOSE_BAD_PROPKIND);
     CHECK(gen_t::init_pd(this, engine));
     return status::success;
@@ -550,13 +550,13 @@ status_t gen_fwd_t::execute(const exec_ctx_t &ctx) const {
     return impl_->execute(this, ctx);
 }
 
-status_t gen_bwd_data_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_bwd_data_t::pd_t::init(const impl::engine_t *engine) {
     VDISPATCH_CONV_IC(is_bwd_d(), VERBOSE_BAD_PROPKIND);
     CHECK(gen_t::init_pd(this, engine));
     return status::success;
 }
 
-status_t gen_bwd_weights_t::pd_t::init(impl::engine_t *engine) {
+status_t gen_bwd_weights_t::pd_t::init(const impl::engine_t *engine) {
     VDISPATCH_CONV_IC(is_bwd_w(), VERBOSE_BAD_PROPKIND);
     CHECK(gen_t::init_pd(this, engine));
     return status::success;

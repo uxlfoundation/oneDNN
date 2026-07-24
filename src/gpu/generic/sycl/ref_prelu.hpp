@@ -44,7 +44,7 @@ struct ref_prelu_fwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_prelu_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             const memory_desc_wrapper data_d(src_md(0));
@@ -101,7 +101,7 @@ struct ref_prelu_bwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_prelu_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             const memory_desc_wrapper data_d(src_md(0));
             const memory_desc_wrapper weights_d(weights_md(0));
@@ -138,7 +138,7 @@ struct ref_prelu_bwd_t : public gpu::generic::sycl::primitive_t {
         }
 
         status_t init_conf();
-        status_t init_reduction(impl::engine_t *engine);
+        status_t init_reduction(const impl::engine_t *engine);
         void init_scratchpad();
 
         static bool check_data_types(const memory_desc_wrapper &src,

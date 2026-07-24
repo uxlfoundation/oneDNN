@@ -54,7 +54,7 @@ struct cudnn_pooling_fwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_pooling_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using namespace prop_kind;
             using namespace alg_kind;
@@ -62,7 +62,8 @@ struct cudnn_pooling_fwd_t : public gpu::primitive_t {
 
             assert(engine->kind() == engine_kind::gpu);
             auto src_dt = src_md()->data_type;
-            auto *sycl_engine = utils::downcast<nvidia::engine_t *>(engine);
+            const auto *sycl_engine
+                    = utils::downcast<const nvidia::engine_t *>(engine);
 
             bool ok = true && is_fwd()
                     && utils::one_of(desc()->prop_kind, forward_training,
@@ -124,12 +125,13 @@ struct cudnn_pooling_bwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_pooling_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace alg_kind;
             using namespace format_tag;
             assert(engine->kind() == engine_kind::gpu);
-            auto *sycl_engine = utils::downcast<nvidia::engine_t *>(engine);
+            const auto *sycl_engine
+                    = utils::downcast<const nvidia::engine_t *>(engine);
 
             bool ok = true && !is_fwd()
                     && set_default_params() == status::success

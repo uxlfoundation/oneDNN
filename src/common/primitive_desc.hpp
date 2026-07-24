@@ -54,7 +54,7 @@ struct impl_list_item_t;
 struct primitive_t;
 // Primitive descriptor implementation
 // NOLINTBEGIN(google-default-arguments)
-struct primitive_desc_t : public c_compatible {
+struct primitive_desc_t {
     primitive_desc_t(const primitive_attr_t *attr, primitive_kind_t kind)
         : attr_(*attr), kind_(kind), pd_iterator_offset_(0), skip_idx_(-1) {
         is_initialized_ = is_initialized_ && attr_.is_initialized();
@@ -83,7 +83,7 @@ struct primitive_desc_t : public c_compatible {
     // Note: The `do_init` workaround is utilized during ITT task setup for
     //     primitive operations, since the `info_` string is used as metadata
     //     for ITT tasks and can significantly slow down execution times.
-    const char *info(engine_t *engine, bool do_init = true) const {
+    const char *info(const engine_t *engine, bool do_init = true) const {
         if (!info_.is_initialized() && do_init) info_.init(engine, this);
         return info_.c_str();
     }
@@ -97,7 +97,7 @@ struct primitive_desc_t : public c_compatible {
     //     not available in verbose translation unit.
     // Note: requires all internals to be defined for ONEDNN_VERBOSE=OFF, but
     //     doesn't require any special handling since `get_verbose` is `false`.
-    std::string info_with_runtime_dims(engine_t *engine,
+    std::string info_with_runtime_dims(const engine_t *engine,
             const memory_desc_t *src_md, const memory_desc_t *wei_md,
             const memory_desc_t *bia_md, const memory_desc_t *dst_md) const {
         std::string info_str = info(engine);
@@ -515,6 +515,10 @@ struct primitive_desc_t : public c_compatible {
     }
 
 protected:
+    // Set to `false` by derived classes (typically in a copy constructor) when
+    // a member allocation fails, so that `status::out_of_memory` is reported.
+    bool is_initialized_ = true;
+
     primitive_attr_t attr_;
     primitive_kind_t kind_;
     int pd_iterator_offset_;
@@ -557,7 +561,7 @@ protected:
 
     template <typename pd_t>
     static status_t create(primitive_desc_t **pd, const op_desc_t *adesc,
-            const primitive_attr_t *attr, engine_t *engine,
+            const primitive_attr_t *attr, const engine_t *engine,
             const primitive_desc_t *hint_fwd) {
         using namespace dnnl::impl::status;
         if (adesc->primitive_kind != pd_t::base_pkind) return invalid_arguments;
@@ -607,7 +611,8 @@ inline bool is_ref_impl(const primitive_desc_t *pd) {
     template <typename pd_t> \
     friend status_t primitive_desc_t::create(primitive_desc_t **pd, \
             const op_desc_t *adesc, const primitive_attr_t *attr, \
-            dnnl::impl::engine_t *engine, const primitive_desc_t *hint_fwd);
+            const dnnl::impl::engine_t *engine, \
+            const primitive_desc_t *hint_fwd);
 
 #define DECLARE_COMMON_PD_T_USE_GLOBAL_SCRATCHPAD(impl_name, impl_type) \
     DECLARE_COMMON_PD_t(impl_name, impl_type, true)

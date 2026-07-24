@@ -276,7 +276,7 @@ struct jit_bf16_matmul_kernel_t : public jit_generator_t {
     int k_residual_blk;
 };
 
-status_t jit_bf16_matmul_t::pd_t::init(engine_t *engine) {
+status_t jit_bf16_matmul_t::pd_t::init(const engine_t *engine) {
     const memory_desc_wrapper src_d(src_md_);
     const memory_desc_wrapper weights_d(weights_md_);
     const memory_desc_wrapper dst_d(dst_md_);

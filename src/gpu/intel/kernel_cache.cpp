@@ -24,11 +24,11 @@ namespace intel {
 using namespace compute;
 
 status_t get_or_create(const kernel_cache::key_t &key,
-        gpu_kernel_value_t &jit_generator, impl::engine_t *engine,
+        gpu_kernel_value_t &jit_generator, const impl::engine_t *engine,
         cache_state_t &kernel_cache_hit) {
     struct create_context_t {
         const gpu_kernel_key_impl_t &params;
-        impl::engine_t *engine;
+        const impl::engine_t *engine;
         cache_state_t cache_status;
     };
 
@@ -51,7 +51,7 @@ status_t get_or_create(const kernel_cache::key_t &key,
 
 template <typename value_type>
 status_t get_cached_kernels(std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        impl::engine_t *engine, std::vector<kernel_t> &kernels,
+        const impl::engine_t *engine, std::vector<kernel_t> &kernels,
         const std::vector<const char *> &kernel_names,
         cache_state_t &kernel_cache_hit) {
     kernel_cache::key_t key {std::move(key_impl)};
@@ -86,12 +86,12 @@ status_t get_cached_kernels(std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
 
 template status_t get_cached_kernels<kernel_t>(
         std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        impl::engine_t *engine, std::vector<kernel_t> &kernels,
+        const impl::engine_t *engine, std::vector<kernel_t> &kernels,
         const std::vector<const char *> &kernel_names,
         cache_state_t &kernel_cache_hit);
 template status_t get_cached_kernels<kernel_bundle_t>(
         std::shared_ptr<gpu_kernel_key_impl_t> &&key_impl,
-        impl::engine_t *engine, std::vector<kernel_t> &kernels,
+        const impl::engine_t *engine, std::vector<kernel_t> &kernels,
         const std::vector<const char *> &kernel_names,
         cache_state_t &kernel_cache_hit);
 

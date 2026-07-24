@@ -42,7 +42,7 @@ struct jit_uni_x8s8s32x_convolution_fwd_t : public primitive_t {
                         isa == avx2 && jcp_.has_vnni ? avx2_vnni : isa, ""),
                 jit_uni_x8s8s32x_convolution_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);

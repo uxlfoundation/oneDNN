@@ -865,7 +865,7 @@ private:
 };
 
 template <cpu_isa_t isa>
-status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_int8_matmul_t<isa>::pd_t::init(const engine_t *engine) {
 
     const auto src_type = src_md(0)->data_type;
     const auto wei_type = weights_md(0)->data_type;
@@ -893,7 +893,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     int dims = src_d.ndims();
 
-    auto check_attr_scales = [&]() -> bool {
+    auto check_attr_scales = [&]() -> status_t {
         const std::vector<int> supported_args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
         const auto &scales = attr()->scales_;
@@ -906,24 +906,29 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
         auto src_scl_msk = src_scales.get_mask();
         const bool is_src_per_m = src_scl_msk == src_qmask_M();
 
-        bool ok = attr_scales_ok(supported_args,
+        CHECK(attr_scales_ok(engine, supported_args,
                 {quantization_mode::static_sazp},
-                {{DNNL_ARG_SRC, {src_qmask_M()}}});
-        ok = ok && IMPLICATION(is_src_per_m, src_scales.has_default_groups());
+                {{DNNL_ARG_SRC, {src_qmask_M()}}}));
+        VDISPATCH_MATMUL(
+                IMPLICATION(is_src_per_m, src_scales.has_default_groups()),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-        if (is_src_scl && !scales.has_default_data_type(DNNL_ARG_SRC))
-            return false;
+        VDISPATCH_MATMUL(IMPLICATION(is_src_scl,
+                                 scales.has_default_data_type(DNNL_ARG_SRC)),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-        if ((src_scl_msk > 0 && !is_src_per_m)
-                || (wei_scl_msk > 0 && wei_scl_msk != 1 << (dims - 1))
-                || dst_scl_msk > 0)
-            return false;
+        VDISPATCH_MATMUL(
+                !((src_scl_msk > 0 && !is_src_per_m)
+                        || (wei_scl_msk > 0 && wei_scl_msk != 1 << (dims - 1))
+                        || dst_scl_msk > 0),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
 
         if (is_src_scl && is_wei_scl && wei_scl_msk > 0) {
             // This case requires scratchpad.
-            if (is_runtime_value(N())) ok = false;
+            VDISPATCH_MATMUL(
+                    !is_runtime_value(N()), VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
-        return ok;
+        return status::success;
     };
 
     auto check_bias = [&]() -> bool {
@@ -992,7 +997,7 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(engine_t *engine) {
 
     VDISPATCH_MATMUL(check_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
 
-    VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    CHECK(check_attr_scales());
 
     const bool problem_dt_correct = (is_s8 || is_u8 || is_u8_s8)
             && utils::one_of(dst_type, f32, s32, f16, bf16, s8, u8)

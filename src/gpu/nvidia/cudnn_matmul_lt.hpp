@@ -42,7 +42,7 @@ struct cudnn_matmul_lt_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cublaslt:any", cudnn_matmul_lt_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
 
@@ -170,8 +170,9 @@ struct cudnn_matmul_lt_t : public gpu::primitive_t {
             }
 
             params_ = std::make_shared<cublas_lt_params>();
-            CHECK(params_->init(engine, src_md(), weights_md(), dst_md(),
-                    weights_md(1), attr(), batched(), with_bias()));
+            CHECK(params_->init(const_cast<impl::engine_t *>(engine), src_md(),
+                    weights_md(), dst_md(), weights_md(1), attr(), batched(),
+                    with_bias()));
 
             if (!params_->has_runtime_params()) {
                 auto scratchpad = scratchpad_registry().registrar();
@@ -211,7 +212,7 @@ struct cudnn_matmul_lt_t : public gpu::primitive_t {
             return ok;
         }
 
-        status_t create_scale_binary_pd(impl::engine_t *engine, int ARG) {
+        status_t create_scale_binary_pd(const impl::engine_t *engine, int ARG) {
             if (ARG != DNNL_ARG_DST) return status::unimplemented;
 
             auto md = arg_md(ARG);
@@ -240,7 +241,7 @@ struct cudnn_matmul_lt_t : public gpu::primitive_t {
                     arg_md(ARG), scale_md, alg_kind::binary_div);
         }
 
-        status_t init_scale_binary_pd(impl::engine_t *engine, int ARG,
+        status_t init_scale_binary_pd(const impl::engine_t *engine, int ARG,
                 std::shared_ptr<primitive_desc_t> &scale_binary_pd,
                 const memory_desc_t *in_out, memory_desc_t &in2,
                 alg_kind_t mul_or_div) {

@@ -778,7 +778,7 @@ status_t dnnl_post_ops_clone(
     if (any_null(post_ops, existing_post_ops)) return invalid_arguments;
 
     auto new_post_ops = utils::make_unique<post_ops_t>(*existing_post_ops);
-    if (!new_post_ops->is_initialized()) return out_of_memory;
+    if (!new_post_ops) return out_of_memory;
 
     return safe_ptr_assign(*post_ops, new_post_ops.release());
 }

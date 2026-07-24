@@ -80,10 +80,12 @@ step. They are omitted above for clarity.
   bytes and an unresolved label. After the postamble, the bytes are written and
   the labels are bound.
 * **Post-ops injector.** The existing Xbyak post-ops injector is reused unchanged,
-  plugged in as a single `inject_postops` operation. Its variable-length argument
-  list is stored in a side table indexed from the operation's immediate field, so
-  the IR core carries only virtual-register ids. The injector saves and restores
-  its own registers and does not participate in IR allocation.
+  plugged in as a single `inject_postops` operation. Its variable-length arguments
+  live in a side table indexed from the operation's immediate field, so the
+  operation itself carries only that index. For binary post-ops the table also
+  holds each accumulator's output offset and active-element count, which the
+  injector needs to address its right-hand-side argument. The injector saves and
+  restores its own registers and does not participate in IR allocation.
 
 ### Control and Data Flow
 
@@ -136,6 +138,8 @@ today. A shared runner for the fixed part is a follow-up.
   allocated IR, dispatches by ISA family, and manages the static-data section.
 * `emitter/backend_avx2.hpp`: the AVX2-family backend, the reference example of
   per-operation instruction selection.
+* `postops_injector.hpp`, `postops_injector.cpp`: the driver for the JIT post-ops
+  injector, which lowers the `inject_postops` operation.
 
 The kernel-specific builders live outside this directory. For example,
 `src/cpu/x64/brgemm/brgemv_ir.{hpp,cpp}` holds the GEMV builder and shows how

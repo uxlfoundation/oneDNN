@@ -39,12 +39,12 @@ struct cudnn_softmax_fwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_softmax_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             const memory_desc_wrapper src_d(src_md());
             const memory_desc_wrapper dst_d(dst_md());
 
-            auto sycl_dev
-                    = utils::downcast<nvidia::engine_t *>(engine)->device();
+            auto sycl_dev = utils::downcast<const nvidia::engine_t *>(engine)
+                                    ->device();
 
             bool ok = is_fwd()
                     && utils::one_of(src_d.data_type(), data_type::f32,
@@ -96,13 +96,13 @@ struct cudnn_softmax_bwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_softmax_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             const memory_desc_wrapper diff_src_d(diff_src_md());
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
             const memory_desc_wrapper dst_d(dst_md());
 
-            auto sycl_dev
-                    = utils::downcast<nvidia::engine_t *>(engine)->device();
+            auto sycl_dev = utils::downcast<const nvidia::engine_t *>(engine)
+                                    ->device();
 
             bool ok = !is_fwd()
                     && utils::one_of(dst_d.data_type(), data_type::f32,

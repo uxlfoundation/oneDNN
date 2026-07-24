@@ -123,7 +123,7 @@ bool is_small_oc(const problem_t &prb) {
 }
 
 status_t problem_t::init(
-        impl::engine_t *engine, const convolution_pd_t *conv_pd) {
+        const impl::engine_t *engine, const convolution_pd_t *conv_pd) {
     using namespace compute;
 
     VDISPATCH_CHECK(conv_pd, engine, !conv_pd->has_zero_dim_memory(),
@@ -706,7 +706,7 @@ void prepare_zp_precompute(const problem_t &prb, dim_t *idhw, dim_t *odhw,
 }
 
 status_t init_tensor_layouts(
-        config_t &cfg, convolution_pd_t *pd, impl::engine_t *engine) {
+        config_t &cfg, convolution_pd_t *pd, const impl::engine_t *engine) {
     const auto &prb = cfg.prb();
     // Compute layout tags and user layout tags. If a compute layout is
     // different from a user layout then an extra pre/post reorder will be
@@ -879,8 +879,8 @@ bool hw_ok(const dsl::hw_t &hw) {
     return true;
 }
 
-bool data_types_ok(
-        const problem_t &prb, const dsl::hw_t &hw, impl::engine_t *engine) {
+bool data_types_ok(const problem_t &prb, const dsl::hw_t &hw,
+        const impl::engine_t *engine) {
     auto src = prb.src_data_type;
     auto wei = prb.wei_data_type;
     auto dst = prb.dst_data_type;
@@ -892,7 +892,7 @@ bool data_types_ok(
     if (!prb.is_f64_accumulator()
             && utils::one_of(data_type::f64, src, wei, dst, bia))
         return false;
-    auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *device_info = intel_engine->device_info();
     if (prb.is_f64_accumulator() && !device_info->has_native(data_type::f64))
         return false;
@@ -1041,7 +1041,7 @@ bool should_use_mad(const problem_t &prb) {
 }
 
 status_t init_fma_kind(
-        config_t &cfg, convolution_pd_t *pd, impl::engine_t *engine) {
+        config_t &cfg, convolution_pd_t *pd, const impl::engine_t *engine) {
     if (cfg.fma_kind_param().is_overridden()) return status::success;
     const auto &prb = cfg.prb();
     auto fma_kind = get_supported_fma_kind(cfg.hw(), to_ir(prb.a_data_type),
@@ -1136,7 +1136,8 @@ void init_bwd_d_optimize(config_t &cfg) {
 }
 
 status_t init_pd_time_cfg(const problem_t &prb, config_t &cfg,
-        impl::engine_t *engine, convolution_pd_t *pd, primitive_attr_t *attr) {
+        const impl::engine_t *engine, convolution_pd_t *pd,
+        primitive_attr_t *attr) {
     dsl::hw_t hw(make_ir_hw(engine));
 
     VDISPATCH_CHECK(pd, engine, hw_ok(hw), VERBOSE_UNSUPPORTED_ISA);

@@ -25,7 +25,7 @@ namespace intel {
 namespace prelu {
 
 static status_t init_conf_common(
-        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
+        conf_t &conf, const pd_t *pd, const impl::engine_t *engine) {
 
     conf.is_forward = pd->is_fwd();
 
@@ -59,7 +59,7 @@ static status_t init_conf_common(
 
     const auto &ndims = dst_mdw.ndims();
 
-    const auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(src_mdw.md_);
 
     for (int i = 0; i < MAX_NDIMS; ++i) {
@@ -100,7 +100,7 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
@@ -127,7 +127,7 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 

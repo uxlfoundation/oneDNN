@@ -42,7 +42,7 @@ struct jit_sve_512_x8s8s32x_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_int8:", sve_512, ""),
                 jit_sve_512_x8s8s32x_convolution_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using smask_t = primitive_attr_t::skip_mask_t;
             bool ok = true && is_fwd()
                     && set_default_alg_kind(alg_kind::convolution_direct)

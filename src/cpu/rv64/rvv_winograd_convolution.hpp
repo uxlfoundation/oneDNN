@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 ZTE Corporation
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -145,7 +146,7 @@ struct rvv_wino_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 "wino:rvv", rvv_wino_convolution_fwd_t, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
 
             VDISPATCH_CONV(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);

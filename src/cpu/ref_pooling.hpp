@@ -39,7 +39,7 @@ struct ref_pooling_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_pooling_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using sm = primitive_attr_t::skip_mask_t;
 
             VDISPATCH_POOLING(
@@ -93,7 +93,7 @@ struct ref_pooling_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_pooling_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             const auto diff_src_type = diff_src_md(0)->data_type;
             const auto diff_dst_type = diff_dst_md(0)->data_type;

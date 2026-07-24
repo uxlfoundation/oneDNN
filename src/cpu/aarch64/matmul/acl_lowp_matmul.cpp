@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2024-2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -40,7 +41,7 @@ const std::vector<lowp_matmul_key_t> lowp_matmul_keys = {
         memory_tracking::names::key_gemm_mm_signed_output,
 };
 } // namespace
-status_t acl_lowp_matmul_t::pd_t::init(engine_t *engine) {
+status_t acl_lowp_matmul_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(set_default_formats(), "failed to set default formats");
     using smask_t = primitive_attr_t::skip_mask_t;
     VDISPATCH_MATMUL(attr()->has_default_values(smask_t::scales

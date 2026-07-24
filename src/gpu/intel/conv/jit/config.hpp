@@ -682,7 +682,7 @@ private:
 };
 
 status_t init_pd_time_cfg(const problem_t &prb, config_t &cfg,
-        impl::engine_t *engine, pd_t *pd, primitive_attr_t *attr);
+        const impl::engine_t *engine, pd_t *pd, primitive_attr_t *attr);
 status_t init_cfg(config_t &cfg, const primitive_t *prim);
 void init_regs(config_t &cfg);
 int slm_bufs_hint(const problem_t &prb, dim_t m_tg, dim_t n_tg,

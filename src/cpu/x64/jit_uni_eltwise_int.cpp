@@ -444,7 +444,7 @@ void jit_uni_subkernel_int_t<avx512_core>::store_8bit(const bool vectorize,
 } /* namespace */
 
 template <cpu_isa_t isa>
-status_t jit_uni_eltwise_int_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_eltwise_int_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     // disabling verbose dispatch messages for unsupported isa for better readability
     if (!mayiuse(isa)) return status::unimplemented;

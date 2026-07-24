@@ -24,7 +24,7 @@ namespace impl {
 namespace gpu {
 
 status_t gpu_reorder_pd_t::maybe_create_zp_precompute_conv_pd(
-        impl::engine_t *dst_engine) {
+        const impl::engine_t *dst_engine) {
     memory_desc_wrapper dst_mdw(dst_md());
     auto &extra = dst_mdw.extra();
     auto needs_conv = memory_extra_flags::compensation_gpu_conv_asymmetric_src;
@@ -44,7 +44,7 @@ status_t gpu_reorder_pd_t::maybe_create_zp_precompute_conv_pd(
             prop));
 
     using namespace memory_tracking::names;
-    auto gpu_align = utils::downcast<gpu::engine_t *>(dst_engine)
+    auto gpu_align = utils::downcast<const gpu::engine_t *>(dst_engine)
                              ->get_buffer_alignment();
     auto scratchpad = scratchpad_registry().registrar();
     const auto &registry = zp_precomp_conv_pd_->scratchpad_registry();

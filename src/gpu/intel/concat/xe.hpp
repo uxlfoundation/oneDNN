@@ -39,7 +39,7 @@ struct xe_t : public primitive_t {
 
         DECLARE_CONCAT_PD_T("xe:any", xe_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
 
             using sm = primitive_attr_t::skip_mask_t;
 
@@ -53,7 +53,7 @@ struct xe_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
         conf_t conf;

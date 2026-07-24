@@ -95,8 +95,9 @@ struct miopen_reorder_t : public gpu::primitive_t {
                     || has_zero_dims(dst_md()->dims, dst_md()->ndims);
         }
 
-        status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
-                impl::engine_t *dst_engine) {
+        status_t init(const impl::engine_t *engine,
+                const impl::engine_t *src_engine,
+                const impl::engine_t *dst_engine) {
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::scales
                     | primitive_attr_t::skip_mask_t::post_ops;
             const bool ok = true && (engine == dst_engine)
@@ -115,9 +116,9 @@ struct miopen_reorder_t : public gpu::primitive_t {
 
     private:
         static status_t create(reorder_pd_t **reorder_pd,
-                impl::engine_t *engine, const primitive_attr_t *attr,
-                impl::engine_t *src_engine, const memory_desc_t *src_md,
-                impl::engine_t *dst_engine, const memory_desc_t *dst_md) {
+                const impl::engine_t *engine, const primitive_attr_t *attr,
+                const impl::engine_t *src_engine, const memory_desc_t *src_md,
+                const impl::engine_t *dst_engine, const memory_desc_t *dst_md) {
             auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
                     dst_engine->kind(), dst_md);
             if (_pd == nullptr) return status::out_of_memory;

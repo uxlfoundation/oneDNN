@@ -42,7 +42,7 @@ struct ref_pooling_fwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_pooling_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using namespace prop_kind;
             using namespace alg_kind;
@@ -106,7 +106,7 @@ struct ref_pooling_bwd_t : public gpu::generic::sycl::primitive_t {
 
         DECLARE_COMMON_PD_T("sycl:ref:any", ref_pooling_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             const memory_desc_wrapper diff_dst_d(diff_dst_md(0));

@@ -72,7 +72,7 @@ status_t ref_prelu_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     });
 }
 
-status_t ref_prelu_bwd_t::pd_t::init_reduction(impl::engine_t *engine) {
+status_t ref_prelu_bwd_t::pd_t::init_reduction(const impl::engine_t *engine) {
     if (reduce_diff_weights_) {
         reduction_desc_t rdesc;
         scratch_md_ = memory_desc_t(*src_md(0));

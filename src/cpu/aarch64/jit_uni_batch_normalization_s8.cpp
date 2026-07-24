@@ -357,7 +357,7 @@ struct jit_bnorm_s8_t<sve_512> : public jit_bnorm_base_t<sve_512> {
 namespace bnorm_s8_impl {
 
 template <cpu_isa_t isa>
-struct driver_t : public c_compatible {
+struct driver_t {
     driver_t(const batch_normalization_pd_t *pd) : pd_(pd), ker_(pd_) {}
     ~driver_t() = default;
 
@@ -411,7 +411,7 @@ using namespace utils;
 
 template <cpu_isa_t isa>
 status_t jit_uni_batch_normalization_s8_fwd_t<isa>::pd_t::init(
-        engine_t *engine) {
+        const engine_t *engine) {
     auto desired_fmt_tag = (ndims() == 4) ? nhwc : ndhwc;
 
     bool ok = true && mayiuse(isa) && is_fwd() && !has_zero_dim_memory()

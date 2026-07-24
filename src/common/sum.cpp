@@ -44,13 +44,12 @@ using namespace dnnl::impl::status;
 namespace dnnl {
 namespace impl {
 
-status_t sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
+status_t sum_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
         const memory_desc_t *dst_md, int n, const float *scales,
         const memory_desc_t *const *src_mds, const primitive_attr_t *attr,
-        engine_t *engine) {
+        const engine_t *engine) {
 
-    VCHECK_SUM(!any_null(sum_pd_iface, src_mds, scales) && n > 0,
-            VERBOSE_NULL_ARG);
+    VCHECK_SUM(!any_null(src_mds, scales) && n > 0, VERBOSE_NULL_ARG);
 
     if (attr == nullptr) attr = &default_attr();
     VCHECK_SUM_UNIMPL(attr->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
@@ -99,20 +98,15 @@ status_t sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
     auto desc = sum_desc_t(primitive_kind::sum, dst_md, n, scales, src_mds);
     primitive_hashing::key_t key(
             engine, reinterpret_cast<op_desc_t *>(&desc), attr, 0, {}, -1);
-    auto pd = primitive_cache().get_pd(key);
+    pd = primitive_cache().get_pd(key);
 
-    if (pd) {
-        return safe_ptr_assign(
-                *sum_pd_iface, new primitive_desc_iface_t(pd, engine));
-    }
+    if (pd) return success;
 
     for (auto s = engine->get_sum_implementation_list(); *s; ++s) {
         sum_pd_t *sum_pd = nullptr;
         if ((*s)(&sum_pd, engine, attr, dst_md, n, scales, src_mds)
                 == success) {
             pd.reset(sum_pd);
-            CHECK(safe_ptr_assign(
-                    *sum_pd_iface, new primitive_desc_iface_t(pd, engine)));
             return status::success;
         }
     }
@@ -126,6 +120,11 @@ status_t dnnl_sum_primitive_desc_create(primitive_desc_iface_t **sum_pd_iface,
         engine_t *engine, const memory_desc_t *dst_md, int n,
         const float *scales, const memory_desc_t *const *src_mds,
         const primitive_attr_t *attr) {
-    return sum_primitive_desc_create(
-            sum_pd_iface, dst_md, n, scales, src_mds, attr, engine);
+    if (any_null(sum_pd_iface)) return invalid_arguments;
+
+    std::shared_ptr<primitive_desc_t> pd;
+    CHECK(sum_primitive_desc_create(
+            pd, dst_md, n, scales, src_mds, attr, engine));
+    return safe_ptr_assign(
+            *sum_pd_iface, new primitive_desc_iface_t(pd, engine));
 }

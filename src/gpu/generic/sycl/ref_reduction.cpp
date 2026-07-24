@@ -85,7 +85,7 @@ status_t ref_reduction_t::pd_t::init_out_scratchpad() {
     return status::success;
 }
 
-status_t ref_reduction_t::pd_t::init_reorder(impl::engine_t *engine) {
+status_t ref_reduction_t::pd_t::init_reorder(const impl::engine_t *engine) {
     reorder_src_md_ = *dst_md();
     reorder_src_md_.data_type = data_type::f32;
     CHECK(reorder_primitive_desc_create(
@@ -149,7 +149,7 @@ std::vector<int> ref_reduction_t::pd_t::get_first_two_out_sizes(
     return result;
 }
 
-status_t ref_reduction_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_reduction_t::pd_t::init_conf(const impl::engine_t *engine) {
     auto *sycl_engine = utils::downcast<const impl::xpu::sycl::engine_impl_t *>(
             engine->impl());
     const ::sycl::device &sycl_device = sycl_engine->device();

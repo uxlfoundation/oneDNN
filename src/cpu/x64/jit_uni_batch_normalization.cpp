@@ -2117,7 +2117,7 @@ struct jit_bnorm_t : public jit_generator_t {
 namespace bnorm_impl {
 
 template <cpu_isa_t isa>
-struct driver_t : public c_compatible {
+struct driver_t {
     driver_t(const batch_normalization_pd_t *pd, int nthr)
         : pd_(pd), jbp_(pd_, nthr, simd_w), ker_(pd_, &jbp_) {}
 
@@ -2333,7 +2333,8 @@ using namespace utils;
 /* fwd */
 
 template <cpu_isa_t isa>
-status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_batch_normalization_fwd_t<isa>::pd_t::init(
+        const engine_t *engine) {
     VDISPATCH_BNORM(is_fwd(), VERBOSE_BAD_PROPKIND);
 
     // disabling verbose dispatch checks for unsupported isa for better readability
@@ -2473,7 +2474,8 @@ jit_uni_batch_normalization_fwd_t<isa>::~jit_uni_batch_normalization_fwd_t() {
 }
 
 template <cpu_isa_t isa>
-status_t jit_uni_batch_normalization_bwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_batch_normalization_bwd_t<isa>::pd_t::init(
+        const engine_t *engine) {
     VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
 
     // disabling verbose dispatch checks for unsupported isa for better readability

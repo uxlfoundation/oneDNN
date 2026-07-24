@@ -152,9 +152,9 @@ struct ref_rnn_common_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(impl_name(), impl_t, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init_ref(engine_t *engine);
-        status_t init_brgemm(engine_t *engine);
-        status_t init(engine_t *engine);
+        status_t init_ref(const engine_t *engine);
+        status_t init_brgemm(const engine_t *engine);
+        status_t init(const engine_t *engine);
 
         rnn_utils::rnn_conf_t rnn_;
         std::shared_ptr<primitive_desc_t> matmul_layer_1_pd_;

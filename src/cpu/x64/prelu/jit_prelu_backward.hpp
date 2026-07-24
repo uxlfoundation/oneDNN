@@ -39,7 +39,7 @@ public:
     public:
         using cpu_prelu_bwd_pd_t::cpu_prelu_bwd_pd_t;
         DECLARE_COMMON_PD_T("jit_uni", jit_prelu_bwd_t);
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
         int nthr_; // To not exceed the limit in execute used for set up.
 
     private:

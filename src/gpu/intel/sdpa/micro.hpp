@@ -163,11 +163,12 @@ struct micro_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:micro:reusable", micro_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
 
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
             auto *dev_info = intel_engine->device_info();
             arch_ = dev_info->gpu_arch();
             sg_size_ = dev_info->min_subgroup_size();
@@ -395,8 +396,8 @@ struct micro_fwd_t : public primitive_t {
         bool use_systolic_ukernel_ = true;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
-        status_t init_conf_microkernels(impl::engine_t *engine);
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf_microkernels(const impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
 
         status_t set_default_format(memory_desc_t &md, bool allow_transpose) {
             using namespace format_tag;
@@ -433,10 +434,11 @@ struct micro_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:micro:reusable", micro_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
             auto *dev_info = intel_engine->device_info();
             arch_ = dev_info->gpu_arch();
             sg_size_ = dev_info->min_subgroup_size();
@@ -581,9 +583,9 @@ struct micro_bwd_t : public primitive_t {
         bool use_systolic_ukernel_ = true;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
-        status_t init_scratchpad(impl::engine_t *engine);
-        status_t init_conf_microkernels(impl::engine_t *engine);
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_scratchpad(const impl::engine_t *engine);
+        status_t init_conf_microkernels(const impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
 
         status_t set_default_format(memory_desc_t &md, bool allow_transpose) {
             using namespace format_tag;

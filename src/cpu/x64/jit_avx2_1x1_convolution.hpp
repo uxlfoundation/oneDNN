@@ -51,7 +51,7 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_1x1:", jcp_.isa, ""),
                 jit_avx2_1x1_convolution_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(expect_data_types(f32, f32, f32, f32, f32),
@@ -184,7 +184,7 @@ struct jit_avx2_1x1_convolution_fwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t depthwise_po_init(engine_t *engine) {
+        status_t depthwise_po_init(const engine_t *engine) {
 
             using namespace memory_tracking;
             auto &jcp_1x1 = jcp_;
@@ -373,7 +373,7 @@ struct jit_avx2_1x1_convolution_bwd_data_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_1x1:", avx2, ""),
                 jit_avx2_1x1_convolution_bwd_data_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
 
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_data,
@@ -475,7 +475,7 @@ struct jit_avx2_1x1_convolution_bwd_weights_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_1x1:", avx2, ""),
                 jit_avx2_1x1_convolution_bwd_weights_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
 
             VDISPATCH_CONV(desc()->prop_kind == prop_kind::backward_weights,

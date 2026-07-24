@@ -61,7 +61,7 @@ static bool impl_supports_datatype(data_type_t data_type) {
     }
 }
 
-status_t jit_uni_resampling_fwd_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_resampling_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     using sm = primitive_attr_t::skip_mask_t;
 

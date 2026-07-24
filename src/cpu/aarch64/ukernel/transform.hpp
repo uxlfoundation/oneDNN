@@ -26,7 +26,7 @@
 
 #ifdef DNNL_EXPERIMENTAL_UKERNEL
 
-struct dnnl_transform : public dnnl::impl::c_compatible {
+struct dnnl_transform {
     // Ctor that follows a call to initialize matmul conf struct.
     dnnl_transform(dnnl::impl::dim_t K, dnnl::impl::dim_t N,
             dnnl::impl::cpu::ukernel::pack_type_t in_pack_type,

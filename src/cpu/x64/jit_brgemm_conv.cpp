@@ -23,6 +23,8 @@
 #include "cpu/x64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/x64/jit_brgemm_conv.hpp"
 
+#include <vector>
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -338,7 +340,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t brgemm_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     using namespace utils;
     brgemm_descriptors_
@@ -1162,10 +1164,10 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
     if (jcp.req_cal_comp_pad && jcp.exec_type != exec_vpad) {
         comp_owb.resize(jcp.nb_ow, -1);
-        vector<int> ow_kw_b(jcp.ow, -1);
-        vector<int> ow_kw_e(jcp.ow, -1);
-        vector<int> comp_ow_kw_s(jcp.comp_ow_size, -1);
-        vector<int> comp_ow_kw_f(jcp.comp_ow_size, -1);
+        std::vector<int> ow_kw_b(jcp.ow, -1);
+        std::vector<int> ow_kw_e(jcp.ow, -1);
+        std::vector<int> comp_ow_kw_s(jcp.comp_ow_size, -1);
+        std::vector<int> comp_ow_kw_f(jcp.comp_ow_size, -1);
         dim_t comp_ow_l = 0;
 
         for (int ow = 0; ow < OW;) {
@@ -1524,8 +1526,8 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
     if (!jcp.req_cal_comp_pad) return status::success;
 
     // TODO: taking them by copy might affect the performance.
-    vector<int> adjusted_k;
-    vector<int> adjusted_k_l;
+    std::vector<int> adjusted_k;
+    std::vector<int> adjusted_k_l;
     int vpad_k = 0;
     const bool has_relo_large_spatial /* heuristic*/
             = is_relo_with_relo_weights && jcp.oc_block * jcp.ow > 10240;

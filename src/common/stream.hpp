@@ -26,7 +26,7 @@
 #include "common/stream_impl.hpp"
 #include "common/utils.hpp"
 
-struct dnnl_stream : public dnnl::impl::c_compatible {
+struct dnnl_stream {
     dnnl_stream(dnnl::impl::engine_t *engine, dnnl::impl::stream_impl_t *impl)
         : engine_(engine), impl_(impl) {}
     virtual ~dnnl_stream() = default;

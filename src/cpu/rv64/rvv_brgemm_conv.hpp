@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 ZTE Corporation
+* Copyright 2026 Intel Corporation
 * 
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -43,7 +44,7 @@ struct rvv_brgemm_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("brgemm:", isa_, ""),
                 rvv_brgemm_convolution_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         // ISA that drives the impl name: v (f32), zvfh (f16), or zvfbfwma
         // (bf16). Set in init() before any dtype/ISA rejection.

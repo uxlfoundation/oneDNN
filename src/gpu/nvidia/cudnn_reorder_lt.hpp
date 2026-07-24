@@ -41,7 +41,7 @@ struct cudnn_reorder_lt_t : public gpu::primitive_t {
         DECLARE_COMMON_PD_T("cuda:cublaslt:any", cudnn_reorder_lt_t);
 
         // Function to verify data and memory format
-        bool valid_data_n_mem_format(impl::engine_t *engine) {
+        bool valid_data_n_mem_format(const impl::engine_t *engine) {
             auto src_dt_ = src_md()->data_type;
             auto dst_dt_ = dst_md()->data_type;
             bool ok = utils::one_of(
@@ -136,8 +136,9 @@ struct cudnn_reorder_lt_t : public gpu::primitive_t {
             return p.len() == 0 || (p.len() == 1 && p.entry_[0].is_sum(false));
         }
 
-        status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
-                impl::engine_t *dst_engine) {
+        status_t init(const impl::engine_t *engine,
+                const impl::engine_t *src_engine,
+                const impl::engine_t *dst_engine) {
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::scales
                     | primitive_attr_t::skip_mask_t::post_ops;
             bool ok = engine == dst_engine && src_engine == dst_engine

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 ZTE Corporation
+* Copyright 2026 Intel Corporation
 * 
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -33,7 +34,7 @@ using namespace dnnl::impl::status;
 using namespace dnnl::impl::utils;
 using namespace data_type;
 
-status_t rvv_brgemm_convolution_fwd_t::pd_t::init(engine_t *engine) {
+status_t rvv_brgemm_convolution_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace data_type;
 
     // Drive the impl name by input dtype (set before any rejection below).

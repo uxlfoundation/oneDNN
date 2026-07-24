@@ -58,7 +58,7 @@ struct miopen_pooling_fwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:any", miopen_pooling_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
             using namespace prop_kind;
             using namespace alg_kind;
@@ -123,7 +123,7 @@ struct miopen_pooling_bwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:any", miopen_pooling_bwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace prop_kind;
             using namespace alg_kind;
             using namespace format_tag;

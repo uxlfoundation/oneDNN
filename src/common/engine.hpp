@@ -46,7 +46,7 @@
  *   - Provide engine specific memory allocation
  *   - Provide engine specific primitive_desc_t creators
  */
-struct dnnl_engine : public dnnl::impl::c_compatible {
+struct dnnl_engine {
     dnnl_engine(dnnl::impl::engine_impl_t *impl) : impl_(impl), counter_(1) {}
 
     /** get kind of the current engine */
@@ -229,7 +229,7 @@ inline runtime_kind_t get_cpu_native_runtime() {
 #endif
 }
 
-struct engine_factory_t : public c_compatible {
+struct engine_factory_t {
     virtual size_t count() const = 0;
     virtual status_t engine_create(engine_t **engine, size_t index) const = 0;
     virtual ~engine_factory_t() = default;

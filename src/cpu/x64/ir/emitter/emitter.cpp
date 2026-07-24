@@ -30,7 +30,8 @@ namespace ir {
 
 template <typename backend_t>
 void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
-        const reg_config_t &rc, data_section_t &data) {
+        const reg_config_t &rc, data_section_t &data,
+        const inject_postops_fn_t &inject) {
 
     // The backend holds the generator.
     jit_generator_t &gen = be.gen();
@@ -204,12 +205,56 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
+            case op_kind_t::vadd: { // rmw: reads and writes dst
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                if (spilled(op.dst)) spill_reload(op.dst, d);
+                int s = vec_use(op.s0, vec_scratch1);
+                be.vadd(d, s, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vmul: { // rmw: reads and writes dst
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                if (spilled(op.dst)) spill_reload(op.dst, d);
+                int s = vec_use(op.s0, vec_scratch1);
+                be.vmul(d, s, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
             case op_kind_t::vhreduce: { // reads and writes dst
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
                 if (spilled(op.dst)) spill_reload(op.dst, d);
                 int ws = vec_use(op.s0, vec_scratch1);
                 be.vhreduce(d, ws, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+
+            // Lowers to the external JIT injector via the builder-provided
+            // callback. The injector does not participate in register
+            // allocation, so it is outside the allocation model. Reloading a
+            // spilled operand into a scratch register might work but is not
+            // guaranteed, so the operands must be in their allocated registers
+            // (asserted below).
+            case op_kind_t::inject_postops: {
+                const auto &args = ir.inject_postops_args()[(int)op.imm];
+                std::vector<int> acc_phys;
+                acc_phys.reserve(args.acc.size());
+                for (vreg_t v : args.acc) {
+                    JIT_ASSERT(!spilled(v)
+                            && "inject_postops: accumulator spilled");
+                    acc_phys.push_back(phys(v));
+                }
+                JIT_ASSERT(!spilled(args.base_ptr)
+                        && "inject_postops: base pointer spilled");
+                const bool has_mask = args.mask != vreg_t::none;
+                JIT_ASSERT(!(has_mask && spilled(args.mask))
+                        && "inject_postops: mask spilled");
+                JIT_ASSERT(
+                        inject && "inject_postops: missing injector callback");
+                const int mask_phys = has_mask ? phys(args.mask) : -1;
+                inject(acc_phys, phys(args.base_ptr), args.out_byte_off,
+                        mask_phys, args.elems);
                 break;
             }
 
@@ -299,13 +344,14 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
 }
 
 void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
-        const reg_config_t &reg_cfg, data_section_t &data) {
+        const reg_config_t &reg_cfg, data_section_t &data,
+        const inject_postops_fn_t &inject) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
         JIT_ASSERT(!"avx512 emitter is not supported");
     } else {
         avx2_backend_t be(gen, isa);
-        emit(be, ir, alloc, reg_cfg, data);
+        emit(be, ir, alloc, reg_cfg, data, inject);
     }
 }
 

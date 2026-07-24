@@ -40,7 +40,7 @@ struct cudnn_reduction_t : public gpu::primitive_t {
         using reduction_pd_t::reduction_pd_t;
 
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_reduction_t);
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
 
             const bool ok = (set_default_params() == status::success)
@@ -71,7 +71,8 @@ struct cudnn_reduction_t : public gpu::primitive_t {
             auto status = reduction_impl_->init(this);
 
             if (status == status::success)
-                reduction_impl_->create_and_set_workspace(this, engine);
+                reduction_impl_->create_and_set_workspace(
+                        this, const_cast<impl::engine_t *>(engine));
             return status;
         }
 

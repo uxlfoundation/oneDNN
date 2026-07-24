@@ -1270,15 +1270,15 @@ format_tag_t memory_desc_matches_one_of_tag(
     }
     return format_tag::undef;
 }
+inline bool any_memory_desc_host_scalar(const memory_desc_t *md) {
+    return md != nullptr && md->format_kind == format_kind::host_scalar;
+}
+
 template <typename... Args>
 inline bool any_memory_desc_host_scalar(const memory_desc_t *md, Args... mds) {
     if (md != nullptr && md->format_kind == format_kind::host_scalar)
         return true;
     return any_memory_desc_host_scalar(mds...);
-}
-
-inline bool any_memory_desc_host_scalar(const memory_desc_t *md) {
-    return md != nullptr && md->format_kind == format_kind::host_scalar;
 }
 
 } // namespace impl

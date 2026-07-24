@@ -279,44 +279,6 @@ static inline uint32_t get_verbose_dev_mode(
 
 bool get_verbose_timestamp();
 
-// logging functionality for saving verbose outputs to logfiles
-#ifdef DNNL_EXPERIMENTAL_LOGGING
-inline const std::map<dnnl::impl::verbose_t::flag_kind,
-        log_manager_t::log_level_t> &
-get_verbose_to_log_level_map() {
-    static const std::map<dnnl::impl::verbose_t::flag_kind,
-            log_manager_t::log_level_t>
-            verbose_to_log_map {
-                    {verbose_t::all, log_manager_t::trace},
-                    {verbose_t::debuginfo, log_manager_t::debug},
-                    {verbose_t::level1, log_manager_t::info},
-                    {verbose_t::level2, log_manager_t::info},
-                    {verbose_t::create_dispatch, log_manager_t::info},
-                    {verbose_t::create_check, log_manager_t::info},
-                    {verbose_t::create_profile, log_manager_t::info},
-                    {verbose_t::profile_externals, log_manager_t::info},
-                    {verbose_t::exec_profile, log_manager_t::info},
-                    {verbose_t::exec_check, log_manager_t::error},
-                    {verbose_t::error, log_manager_t::critical},
-                    {verbose_t::warn, log_manager_t::warn},
-                    {verbose_t::none, log_manager_t::off},
-            };
-    return verbose_to_log_map;
-}
-
-// aligns the verbose modes to the logger levels when printing API output
-inline log_manager_t::log_level_t align_verbose_mode_to_log_level(
-        verbose_t::flag_kind kind) {
-    const auto &map = get_verbose_to_log_level_map();
-    auto it = map.find(kind);
-    if (it != map.end()) {
-        return it->second;
-    } else {
-        return log_manager_t::off;
-    }
-}
-#endif
-
 // Helpers to print verbose outputs to the console and the logfiles.
 // when logging is disabled, data is printed only to stdout.
 // when enabled, it is printed to the logfile and to stdout as well if
@@ -385,7 +347,7 @@ struct pd_info_t {
     const char *c_str() const { return str_.c_str(); }
     bool is_initialized() const { return is_initialized_; }
 
-    void init(engine_t *engine, const primitive_desc_t *pd);
+    void init(const engine_t *engine, const primitive_desc_t *pd);
 
 private:
     std::string str_;

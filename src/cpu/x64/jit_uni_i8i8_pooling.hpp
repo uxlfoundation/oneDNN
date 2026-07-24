@@ -42,7 +42,7 @@ struct jit_uni_i8i8_pooling_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(JIT_IMPL_NAME_HELPER("jit_int:", isa, ""),
                 jit_uni_i8i8_pooling_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace format_tag;
             // disabling verbose dispatch messages for unsupported isa for better readability
             if (!mayiuse(isa)) return status::unimplemented;

@@ -35,7 +35,7 @@ namespace cpu {
 using namespace memory_tracking::names;
 using namespace data_type;
 
-status_t simple_layer_normalization_fwd_t::pd_t::init(engine_t *engine) {
+status_t simple_layer_normalization_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     const memory_desc_wrapper src_d(src_md());
@@ -250,7 +250,7 @@ status_t simple_layer_normalization_fwd_t::execute_forward(
     return status::success;
 }
 
-status_t simple_layer_normalization_bwd_t::pd_t::init(engine_t *engine) {
+status_t simple_layer_normalization_bwd_t::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     const memory_desc_wrapper src_d(src_md());
 

@@ -42,7 +42,7 @@ using namespace data_type;
     ((ndims == 5) ? (v5) : (ndims == 4) ? (v4) : (ndims == 3) ? (v3) : 0)
 
 template <cpu_isa_t isa>
-status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace data_type;
     using namespace utils;
 

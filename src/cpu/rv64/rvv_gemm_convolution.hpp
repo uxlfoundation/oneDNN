@@ -45,7 +45,7 @@ struct riscv_gemm_convolution_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T("gemm:rvv", riscv_gemm_convolution_fwd_t,
                 USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
 
             // The GEMM path is JIT-emitted (rvv_gemm_f32); on the rv64gc

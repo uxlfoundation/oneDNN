@@ -48,7 +48,7 @@ struct jit_avx512_common_lrn_fwd_t : public primitive_t {
                         ""),
                 jit_avx512_common_lrn_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
     };
 
     jit_avx512_common_lrn_fwd_t(const pd_t *apd);
@@ -88,7 +88,7 @@ struct jit_avx512_common_lrn_bwd_t : public primitive_t {
                         ""),
                 jit_avx512_common_lrn_bwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
     };
 
     jit_avx512_common_lrn_bwd_t(const pd_t *apd);

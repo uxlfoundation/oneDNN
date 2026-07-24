@@ -37,7 +37,7 @@ public:
 
         DECLARE_COMMON_PD_T("jit:ir", gen_fwd_t);
 
-        status_t init(impl::engine_t *);
+        status_t init(const impl::engine_t *);
 
         std::shared_ptr<conf_t> conf;
         std::shared_ptr<jit::dsl::kernel::options_t> options;

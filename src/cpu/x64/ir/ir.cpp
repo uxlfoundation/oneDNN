@@ -106,6 +106,22 @@ void ir_t::vdot(vreg_t dst, vreg_t a, vreg_t b) {
     ops_.push_back(op);
 }
 
+void ir_t::vadd(vreg_t dst, vreg_t src) {
+    op_t op;
+    op.kind = op_kind_t::vadd;
+    op.dst = dst;
+    op.s0 = src;
+    ops_.push_back(op);
+}
+
+void ir_t::vmul(vreg_t dst, vreg_t src) {
+    op_t op;
+    op.kind = op_kind_t::vmul;
+    op.dst = dst;
+    op.s0 = src;
+    ops_.push_back(op);
+}
+
 void ir_t::vhreduce(vreg_t dst, vreg_t workspace) {
     op_t op;
     op.kind = op_kind_t::vhreduce;
@@ -153,6 +169,22 @@ void ir_t::prefetch(vreg_t base, dim_t disp) {
     op.kind = op_kind_t::prefetch;
     op.mem.base = base;
     op.mem.disp = disp;
+    ops_.push_back(op);
+}
+
+void ir_t::inject_postops(const std::vector<vreg_t> &acc, vreg_t base_ptr,
+        const std::vector<dim_t> &out_byte_off, vreg_t mask, int elems) {
+    inject_postops_args_t args;
+    args.acc = acc;
+    args.base_ptr = base_ptr;
+    args.out_byte_off = out_byte_off;
+    args.mask = mask;
+    args.elems = elems;
+    inject_postops_args_.push_back(args);
+
+    op_t op;
+    op.kind = op_kind_t::inject_postops;
+    op.imm = (dim_t)inject_postops_args_.size() - 1;
     ops_.push_back(op);
 }
 
@@ -260,12 +292,31 @@ void ir_t::def_use(
             u(op.s1);
             d(op.dst);
             break;
+        case op_kind_t::vadd: // read-modify-write
+        case op_kind_t::vmul: // read-modify-write
+            u(op.dst);
+            u(op.s0);
+            d(op.dst);
+            break;
         case op_kind_t::vhreduce: // dst and workspace are both read and written
             u(op.dst);
             u(op.s0);
             d(op.dst);
             d(op.s0);
             break;
+        case op_kind_t::inject_postops: {
+            // The injector transforms the accumulators in place (read and
+            // written) and reads the base pointer and the tail mask. Report them
+            // so liveness is correct across the op.
+            const auto &args = inject_postops_args_[(int)op.imm];
+            for (vreg_t v : args.acc) {
+                u(v);
+                d(v);
+            }
+            u(args.base_ptr);
+            u(args.mask);
+            break;
+        }
         case op_kind_t::set_mask_imm: d(op.dst); break;
         case op_kind_t::vload_masked:
             u(op.mem.base);

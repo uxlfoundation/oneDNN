@@ -34,7 +34,7 @@ namespace cpu {
 namespace aarch64 {
 
 template <cpu_isa_t isa>
-status_t jit_uni_shuffle_t<isa>::pd_t::init(engine_t *engine) {
+status_t jit_uni_shuffle_t<isa>::pd_t::init(const engine_t *engine) {
     using namespace format_tag;
     using namespace data_type;
     using namespace types;

@@ -40,7 +40,7 @@ struct jit_uni_lrn_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 JIT_IMPL_NAME_HELPER("jit:", isa, ""), jit_uni_lrn_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         format_tag_t dat_tag_;
     };
@@ -75,7 +75,7 @@ struct jit_uni_lrn_bwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 JIT_IMPL_NAME_HELPER("jit:", isa, ""), jit_uni_lrn_bwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         format_tag_t dat_tag_;
     };

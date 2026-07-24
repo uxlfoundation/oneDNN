@@ -37,7 +37,7 @@ struct ref_inner_product_int8_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_inner_product_int8_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
             const auto src_type = src_md(0)->data_type;

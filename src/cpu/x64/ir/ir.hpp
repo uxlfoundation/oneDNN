@@ -102,9 +102,20 @@ enum class op_kind_t {
     vload,
     // dst += sum_{i=0}^{N-1} (s0[i] * s1[i]), where N is the dot length
     vdot,
+    // dst += s0 (vector add)
+    vadd,
+    // dst *= s0 (vector multiply)
+    vmul,
     // horizontal reduction of dst; result in element 0. s0 is scratch
     // (overwritten).
     vhreduce,
+
+    // Post-ops
+    //
+    // Apply post-ops via an injector to a set of accumulators. The injector is
+    // not IR-based, so lowering to it needs interoperability code (see the
+    // emitter's `inject_postops_fn_t`). Operands are in `inject_postops_args_t`.
+    inject_postops,
 
     // Mask operations
     //
@@ -172,6 +183,7 @@ struct mem_t {
 //         * loop_begin     -> loop trip count
 //         * set_mask_imm   -> active element count
 //         * vload_masked / vstore_masked -> active element count
+//         * inject_postops -> index into inject_postops_args()
 // mem   - memory address used only by load/store operations.
 // match - for loop_end, index of matching loop_begin operation.
 // label_id - target label id for label/jmp/jz. When unused it's `none`.
@@ -195,6 +207,36 @@ struct vreg_info_t {
     data_type_t dt = data_type::undef;
 };
 
+// Arguments of an `inject_postops` operation. They live in a side table in
+// `ir_t` because an `op_t` has a fixed field set and cannot hold the variadic
+// `acc` list. Each `inject_postops` op stores only its index into that table in
+// `imm`.
+//
+//   acc          - accumulators transformed in place by the post-ops
+//   base_ptr     - gpr holding the output base pointer, used by binary post-ops
+//                  to address their right-hand-side argument
+//   out_byte_off - output byte offset of each accumulator from `base_ptr`,
+//                  parallel to `acc`. Locates each accumulator in the
+//                  destination tensor so binary post-ops address the matching
+//                  right-hand-side slice
+//   mask, elems  - active-element descriptor of the accumulators, the same
+//                  `mask` and `elems` that `vload_masked` / `vstore_masked`
+//                  take. `elems` is the active element count and `mask` holds
+//                  that pattern, or `vreg_t::none` for a single element or a
+//                  full vector. `elems == -1` marks a full vector, every element
+//                  valid. A binary post-op reads `elems` right-hand-side
+//                  elements per accumulator, keeping the read in bounds
+//
+// `base_ptr`, `out_byte_off`, `mask`, and `elems` are unused by an eltwise-only
+// chain.
+struct inject_postops_args_t {
+    std::vector<vreg_t> acc;
+    vreg_t base_ptr = vreg_t::none;
+    std::vector<dim_t> out_byte_off;
+    vreg_t mask = vreg_t::none;
+    int elems = -1;
+};
+
 // An `ir_t` is the operation list plus, for each virtual register, its info
 // (kind and for a vec its element data type) so the allocator knows which
 // physical registers it can use and the emitter knows which dtype-specific
@@ -215,6 +257,9 @@ struct vreg_info_t {
 struct DNNL_API ir_t {
     const std::vector<vreg_info_t> &vreg_info() const { return vreg_info_; }
     const std::vector<op_t> &ops() const { return ops_; }
+    const std::vector<inject_postops_args_t> &inject_postops_args() const {
+        return inject_postops_args_;
+    }
     int n_labels() const { return n_labels_; }
 
     // Convenience wrappers around `new_vreg` for the specific kinds.
@@ -248,6 +293,8 @@ struct DNNL_API ir_t {
     void vzero(vreg_t dst);
     void vload(vreg_t dst, vreg_t base, dim_t disp);
     void vdot(vreg_t dst, vreg_t a, vreg_t b);
+    void vadd(vreg_t dst, vreg_t src);
+    void vmul(vreg_t dst, vreg_t src);
     // `workspace` is scratch. It is overwritten by this call, so pass a vreg
     // whose value is not needed afterwards.
     void vhreduce(vreg_t dst, vreg_t workspace);
@@ -267,6 +314,13 @@ struct DNNL_API ir_t {
 
     // mask
     void set_mask_imm(vreg_t mask, int n_elems);
+
+    // post-ops
+    // Apply post-ops to `acc` in place. `base_ptr`, `out_byte_off`, `mask`, and
+    // `elems` describe where each accumulator lands in the output and how many
+    // elements are active (see `inject_postops_args_t`).
+    void inject_postops(const std::vector<vreg_t> &acc, vreg_t base_ptr,
+            const std::vector<dim_t> &out_byte_off, vreg_t mask, int elems);
 
     // control flow
     // Pass the returned op index to `loop_end` to close the loop.
@@ -295,6 +349,8 @@ private:
     std::vector<vreg_info_t> vreg_info_;
     // All operations, in order
     std::vector<op_t> ops_;
+    // Arguments of each `inject_postops` operation.
+    std::vector<inject_postops_args_t> inject_postops_args_;
 
     // Label counter.
     int n_labels_ = 0;

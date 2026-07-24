@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2024 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,7 +26,7 @@ const acl_softmax_fwd_t::pd_t *acl_softmax_fwd_t::pd() const {
     return static_cast<const pd_t *>(primitive_t::pd().get());
 }
 
-status_t acl_softmax_fwd_t::pd_t::init(engine_t *engine) {
+status_t acl_softmax_fwd_t::pd_t::init(const engine_t *engine) {
 
     bool ok = is_fwd()
             && set_default_formats() == status::success

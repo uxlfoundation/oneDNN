@@ -38,7 +38,7 @@ struct jit_uni_instance_normalization_fwd_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 "jit_instance:uni", jit_uni_instance_normalization_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         int nthr_; // To not exceed the limit in execute used for set up.
     };

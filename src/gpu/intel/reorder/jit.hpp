@@ -38,7 +38,8 @@ public:
 
         DECLARE_COMMON_PD_T("jit:ir", gen_t);
 
-        status_t init(impl::engine_t *, impl::engine_t *, impl::engine_t *);
+        status_t init(const impl::engine_t *, const impl::engine_t *,
+                const impl::engine_t *);
         status_t init_kernel_info();
 
         std::shared_ptr<jit::config_t> cfg;

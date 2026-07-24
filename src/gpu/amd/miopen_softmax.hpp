@@ -41,7 +41,7 @@ struct miopen_softmax_fwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:any", miopen_softmax_fwd_t);
 
-        status_t init(impl::engine_t *) {
+        status_t init(const impl::engine_t *) {
             const memory_desc_wrapper src_d(src_md());
             const memory_desc_wrapper dst_d(dst_md());
             bool ok = is_fwd()
@@ -86,7 +86,7 @@ struct miopen_softmax_bwd_t : public gpu::primitive_t {
 
         DECLARE_COMMON_PD_T("hip:miopen:any", miopen_softmax_bwd_t);
 
-        status_t init(impl::engine_t *) {
+        status_t init(const impl::engine_t *) {
             const memory_desc_wrapper diff_src_d(diff_src_md());
             const memory_desc_wrapper diff_dst_d(diff_dst_md());
             const memory_desc_wrapper dst_d(dst_md());

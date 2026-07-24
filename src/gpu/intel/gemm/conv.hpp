@@ -36,7 +36,7 @@ struct conv_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("conv:ir", conv_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             // This is currently only used for experimentation purposes
             bool enabled = gpu_utils::dev_getenv("enable_conv_gemm", false);
             VDISPATCH_GEMM(

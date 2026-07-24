@@ -14,28 +14,19 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include "gpu/generic/sycl/ref_sum_many_inputs.hpp"
-#include "common/primitive_desc_iface.hpp"
+#include "gpu/generic/ref_sum_many_inputs.hpp"
 
 namespace dnnl {
 namespace impl {
 namespace gpu {
 namespace generic {
-namespace sycl {
-
-status_t ref_sum_many_inputs_t::pd_t::init_conf() {
-    conf_ = sycl_sum_conf_t();
-    conf_.n = n_inputs();
-
-    return status::success;
-}
 
 status_t ref_sum_many_inputs_t::init(engine_t *engine) {
     const size_t n = pd()->base_pds_.size();
     base_prims_.resize(n);
     for (size_t i = 0; i < n; ++i) {
-        CHECK(pd()->base_pds_[i]->impl()->create_primitive(
-                base_prims_[i], engine, cache_blob()));
+        CHECK(create_nested_primitive(
+                base_prims_[i], pd()->base_pds_[i], engine));
     }
 
     return status::success;
@@ -45,13 +36,13 @@ status_t ref_sum_many_inputs_t::execute(const exec_ctx_t &ctx) const {
     memory_arg_t dst_mem_arg = {ctx.args().at(DNNL_ARG_DST).mem(), false};
     memory_arg_t dst_read_mem_arg = {ctx.args().at(DNNL_ARG_DST).mem(), true};
 
-    int n_remaining = pd()->conf_.n;
+    int n_remaining = pd()->n_inputs();
     int in_arg_offset = 0;
     int i = 0;
 
     while (n_remaining > 0) {
         bool pass_in_dst = i > 0;
-        int max_n_child_inputs = DNNL_REF_SUM_MAX_NUM_TENSORS - pass_in_dst;
+        int max_n_child_inputs = pd_t::max_num_tensors - pass_in_dst;
         int args_handled = std::min(n_remaining, max_n_child_inputs);
         exec_args_t r_args;
         r_args[DNNL_ARG_DST] = dst_mem_arg;
@@ -73,7 +64,6 @@ status_t ref_sum_many_inputs_t::execute(const exec_ctx_t &ctx) const {
     return status::success;
 }
 
-} // namespace sycl
 } // namespace generic
 } // namespace gpu
 } // namespace impl

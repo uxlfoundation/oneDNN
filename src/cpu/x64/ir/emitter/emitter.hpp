@@ -21,6 +21,7 @@
 // using a `jit_generator`.
 
 #include <deque>
+#include <functional>
 #include <utility>
 #include <vector>
 
@@ -68,10 +69,26 @@ struct data_section_t {
 // This is the main entry point for the emitter. It dispatches by ISA family to
 // the matching backend.
 //
+// `inject` lowers the `inject_postops` operation to the JIT post-ops injector.
+// It is the interoperability layer between the IR and the non-IR injector. When
+// the IR has no `inject_postops` op it is unused and may be left empty.
+//
+//   acc_phys     - physical vec register indices of the accumulators, in the
+//                  order passed to `ir_t::inject_postops()`
+//   base_phys    - physical gpr index of the base (output) pointer
+//   out_byte_off - output byte offset of each accumulator from the base pointer,
+//                  parallel to `acc_phys`
+//   mask_phys    - physical register index of the active-element mask, or `-1`
+//                  when there is none
+//   elems        - active element count per accumulator, `-1` for a full vector
+using inject_postops_fn_t = std::function<void(const std::vector<int> &acc_phys,
+        int base_phys, const std::vector<dim_t> &out_byte_off, int mask_phys,
+        int elems)>;
+
 // Export for testing.
 void DNNL_API emit(jit_generator_t &gen, const ir_t &ir,
         const reg_alloc_result_t &alloc, const reg_config_t &reg_cfg,
-        data_section_t &data);
+        data_section_t &data, const inject_postops_fn_t &inject = {});
 
 // Emit the accumulated static data after the kernel's postamble. It aligns,
 // binds each label and then write the data bytes with `db`.

@@ -767,7 +767,7 @@ bool fill_conf_vld(const memory_desc_wrapper &src,
     return true;
 }
 
-status_t generic_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t generic_t::pd_t::init_conf(const impl::engine_t *engine) {
     using namespace format_tag;
 
     size_t memlimit_bytes;
@@ -813,7 +813,7 @@ status_t generic_t::pd_t::init_conf(impl::engine_t *engine) {
 
     conf.sub_group_size = 1;
     if (conf.nelems == 0) { return status::success; }
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
 
     // Theoretically, bursts should be at least big enough to span whole
     // cache line and bigger bursts should give better perf as long as

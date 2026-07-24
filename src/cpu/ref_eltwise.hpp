@@ -39,7 +39,7 @@ struct ref_eltwise_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_eltwise_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace utils;
             using namespace data_type;
             using sm = primitive_attr_t::skip_mask_t;
@@ -136,7 +136,7 @@ struct ref_eltwise_bwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_eltwise_bwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace utils;
             using namespace data_type;
 

@@ -261,7 +261,7 @@ oneAPI DPC++/C++ Compiler that supports the target GPU. Refer to
 [disabling hangcheck]: https://www.intel.com/content/www/us/en/docs/oneapi/installation-guide-linux/2023-0/gpu-disable-hangcheck.html
 [timeout detection and recovery]: https://learn.microsoft.com/en-us/windows-hardware/drivers/display/timeout-detection-and-recovery
 [TdrDelay]: https://learn.microsoft.com/en-us/windows-hardware/drivers/display/tdr-registry-keys#tdrdelay
-[generic GPU vendor](src/gpu/generic/sycl/README.md)
+[generic GPU vendor]: src/gpu/generic/sycl/README.md
 
 ### Runtime Dependencies
 

@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2021-2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -35,7 +36,7 @@ struct acl_matmul_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("gemm:acl", acl_matmul_t, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         acl_matmul_conf_t amp_ = utils::zero<decltype(amp_)>();
         post_ops_fallback_t post_ops;

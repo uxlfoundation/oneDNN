@@ -78,7 +78,7 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), ref_fused_convolution_fwd_t);
 
-        virtual status_t init(engine_t *engine) {
+        virtual status_t init(const engine_t *engine) {
             using namespace primitive_kind;
 
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -183,7 +183,7 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
         const unsigned int max_fusions_ = 1;
 
         status_t append_op(std::shared_ptr<primitive_desc_t> &op_pd,
-                size_t &sp_begin, size_t &sp_end, engine_t *engine) {
+                size_t &sp_begin, size_t &sp_end, const engine_t *engine) {
             auto from_md = op_pds_.back()->dst_md();
             auto to_md = op_pd->src_md();
 
@@ -215,7 +215,7 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_ops(engine_t *engine) {
+        status_t init_ops(const engine_t *engine) {
             using namespace data_type;
             primitive_attr_t root_attr(*attr());
             if (!root_attr.is_initialized()) return status::out_of_memory;

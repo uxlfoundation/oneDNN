@@ -111,7 +111,7 @@ static bool data_format_supported(
             || (is_superset(isa, sse41) && blk_size == 4);
 }
 
-status_t jit_uni_binary_t::pd_t::init(engine_t *engine) {
+status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
     using sm = primitive_attr_t::skip_mask_t;
 
     conf_.dst_type = dst_md()->data_type;

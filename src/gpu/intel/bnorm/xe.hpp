@@ -38,9 +38,10 @@ struct xe_fwd_t : public primitive_t {
         const char *impl_name() const {
             return conf.use_stats_one_pass ? "ocl:xe:onepass" : "ocl:xe";
         }
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace data_type;
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::post_ops;
 
@@ -89,7 +90,7 @@ struct xe_fwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 
@@ -189,8 +190,9 @@ struct xe_bwd_t : public primitive_t {
 
         const char *impl_name() const { return "ocl:xe"; }
 
-        status_t init(impl::engine_t *engine) {
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+        status_t init(const impl::engine_t *engine) {
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
             using namespace data_type;
 
             VDISPATCH_BNORM(!is_fwd(), VERBOSE_BAD_PROPKIND);
@@ -231,7 +233,7 @@ struct xe_bwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
         void init_scratchpad();
 

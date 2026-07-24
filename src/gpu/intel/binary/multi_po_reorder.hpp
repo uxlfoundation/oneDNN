@@ -37,7 +37,7 @@ struct multi_po_reorder_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("reorder+postops", multi_po_reorder_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             if (!attr()->scales_.has_default_values(DNNL_ARG_SRC_0)
                     || !attr()->scales_.get(DNNL_ARG_SRC_1).has_default_values()
                     || attr()->post_ops_.len() >= 1) {

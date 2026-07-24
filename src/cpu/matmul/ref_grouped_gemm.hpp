@@ -50,7 +50,7 @@ struct ref_grouped_t : public primitive_t {
 
         bool is_2dby2d() const { return is_2dby2d_; }
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             memory_desc_wrapper src_d(src_md());
             memory_desc_wrapper wei_d(weights_md(0));
 
@@ -64,7 +64,7 @@ struct ref_grouped_t : public primitive_t {
     private:
         bool is_2dby2d_ = false;
 
-        status_t init_2dby3d(engine_t *engine) {
+        status_t init_2dby3d(const engine_t *engine) {
             using namespace data_type;
             const auto src_type = src_md(0)->data_type;
             const auto wei_type = weights_md(0)->data_type;
@@ -245,7 +245,7 @@ struct ref_grouped_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_2dby2d(engine_t *engine) {
+        status_t init_2dby2d(const engine_t *engine) {
             using namespace data_type;
             const auto src_type = src_md(0)->data_type;
             const auto wei_type = weights_md(0)->data_type;

@@ -104,7 +104,7 @@ struct ref_deconvolution_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_fwd_t);
 
-        status_t init_convolution(engine_t *engine) {
+        status_t init_convolution(const engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
 
@@ -158,7 +158,7 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             return status::unimplemented;
         }
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
             using smask_t = primitive_attr_t::skip_mask_t;
@@ -336,7 +336,7 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_bwd_data_t);
 
-        status_t init_convolution(engine_t *engine) {
+        status_t init_convolution(const engine_t *engine) {
             using namespace types;
 
             convolution_desc_t cd;
@@ -357,7 +357,7 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
             return status::unimplemented;
         }
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             auto dsrc_type = desc()->diff_src_desc.data_type;
             auto wei_type = desc()->weights_desc.data_type;
@@ -445,7 +445,7 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
 
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_bwd_weights_t);
 
-        status_t init_convolution(engine_t *engine) {
+        status_t init_convolution(const engine_t *engine) {
             using namespace types;
             using namespace format_tag;
 
@@ -476,7 +476,7 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
             return status::unimplemented;
         }
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace format_tag;
             using namespace data_type;
             auto src_type = invariant_src_md()->data_type;

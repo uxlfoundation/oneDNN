@@ -27,10 +27,11 @@ namespace impl {
 namespace gpu {
 namespace generic {
 
-void cross_engine_reorder_t::pd_t::init_scratchpad(impl::engine_t *gpu_engine) {
+void cross_engine_reorder_t::pd_t::init_scratchpad(
+        const impl::engine_t *gpu_engine) {
     if (do_reorder_) {
         using namespace memory_tracking::names;
-        auto gpu_align = utils::downcast<gpu::engine_t *>(gpu_engine)
+        auto gpu_align = utils::downcast<const gpu::engine_t *>(gpu_engine)
                                  ->get_buffer_alignment();
         auto scratchpad = scratchpad_registry().registrar();
         auto needs_dst = desc()->src_engine_kind == reorder_engine_kind_;
@@ -41,8 +42,8 @@ void cross_engine_reorder_t::pd_t::init_scratchpad(impl::engine_t *gpu_engine) {
     }
 }
 
-status_t cross_engine_reorder_t::pd_t::init(impl::engine_t *engine,
-        impl::engine_t *src_engine, impl::engine_t *dst_engine) {
+status_t cross_engine_reorder_t::pd_t::init(const impl::engine_t *engine,
+        const impl::engine_t *src_engine, const impl::engine_t *dst_engine) {
     VDISPATCH_REORDER(src_engine != dst_engine, VERBOSE_BAD_ENGINE_KIND);
     VDISPATCH_REORDER(utils::one_of(engine_kind::gpu, src_engine->kind(),
                               dst_engine->kind()),
@@ -66,7 +67,7 @@ status_t cross_engine_reorder_t::pd_t::init(impl::engine_t *engine,
             || sum_quant.with_scale() || sum_quant.with_zp();
     do_reorder_ = with_sum_ab || src_mdw != dst_mdw;
 
-    impl::engine_t *reorder_engine
+    const impl::engine_t *reorder_engine
             = src_engine->kind() == engine_kind::gpu ? src_engine : dst_engine;
 
     primitive_attr_t r_attr(*attr());

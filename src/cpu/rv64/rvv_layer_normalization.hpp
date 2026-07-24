@@ -44,7 +44,7 @@ struct rvv_layer_normalization_fwd_t : public primitive_t {
         // verbose impl name (jit_lnorm:rvv vs jit_lnorm:rvv_zvfh).
         cpu_isa_t isa_ = v;
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
 
             const memory_desc_wrapper src_d(src_md());

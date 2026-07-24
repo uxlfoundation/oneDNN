@@ -35,9 +35,10 @@ struct ref_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:ref:any", ref_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using namespace format_tag;
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
 
             const auto &md_src = is_fwd() ? src_md() : diff_src_md();
             const auto &md_dst = is_fwd() ? dst_md() : diff_dst_md();
@@ -62,7 +63,7 @@ struct ref_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_conf(impl::engine_t *engine);
+        status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
         conf_t conf;

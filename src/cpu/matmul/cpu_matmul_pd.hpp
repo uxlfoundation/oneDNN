@@ -30,14 +30,15 @@ namespace matmul {
 struct cpu_matmul_pd_t : public matmul_pd_t {
     using matmul_pd_t::matmul_pd_t;
     // NOLINTBEGIN(google-default-arguments)
-    bool attr_scales_ok(const std::vector<int> &supported_args
+    status_t attr_scales_ok(const engine_t *engine,
+            const std::vector<int> &supported_args
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
             const std::vector<int> &supported_qmodes
             = {quantization_mode::static_sazp},
             const std::map<int, std::vector<int>> &extra_masks
             = {}) const override {
-        bool ok = matmul_pd_t::attr_scales_ok(
-                supported_args, supported_qmodes, extra_masks);
+        CHECK(matmul_pd_t::attr_scales_ok(
+                engine, supported_args, supported_qmodes, extra_masks));
         const auto &scales = attr()->scales_;
         for (int arg : supported_args) {
             if (scales.has_default_values(arg)) { continue; }
@@ -46,11 +47,11 @@ struct cpu_matmul_pd_t : public matmul_pd_t {
 
             // Any group is allowed to be greater than 1 but only one at a
             // time, not both.
-            ok = ok
-                    && IMPLICATION(!scales.get(arg).has_default_groups(),
-                            utils::one_of(1, g0, g1));
+            VDISPATCH_MATMUL(IMPLICATION(!scales.get(arg).has_default_groups(),
+                                     utils::one_of(1, g0, g1)),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
-        return ok;
+        return status::success;
     }
     // NOLINTEND(google-default-arguments)
 };

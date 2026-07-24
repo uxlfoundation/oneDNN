@@ -88,7 +88,7 @@ int brgemm_matmul_t<isa>::pd_t::get_brg_kernel_idx(bool is_bs_tail,
 }
 
 template <cpu_isa_t isa>
-status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
+status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     const auto src_dt = src_md_.data_type;
     const auto wei_dt = weights_md_.data_type;
     const auto dst_dt = dst_md_.data_type;
@@ -111,20 +111,22 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         return IMPLICATION(with_bias(), is_bia_dt_correct && is_bias_1xN());
     };
 
-    auto check_attr_scales = [&]() -> bool {
+    auto check_attr_scales = [&]() -> status_t {
         const std::vector<int> supported_args
                 = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST};
-        bool ok = attr_scales_ok(supported_args);
+        CHECK(attr_scales_ok(engine, supported_args));
         if (!attr()->scales_.has_default_values(DNNL_ARG_SRC)
                 && !attr()->scales_.has_default_values(DNNL_ARG_WEIGHTS)
                 && attr()->scales_.get_mask(DNNL_ARG_WEIGHTS) > 0) {
             // This case requires scratchpad
-            if (is_runtime_value(N())) ok = false;
+            VDISPATCH_MATMUL(
+                    !is_runtime_value(N()), VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
 
-        if (!attr()->post_ops_.sum_with_default_dt()) return false;
+        VDISPATCH_MATMUL(attr()->post_ops_.sum_with_default_dt(),
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-        return ok;
+        return status::success;
     };
 
     auto check_attr_zero_points = [&]() -> bool {
@@ -165,7 +167,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_MATMUL(attr()->post_ops_.check_sum_consistency(dst_dt, is_int8),
             VERBOSE_UNSUPPORTED_DT);
-    VDISPATCH_MATMUL(check_attr_scales(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+    CHECK(check_attr_scales());
     VDISPATCH_MATMUL(check_attr_zero_points(), VERBOSE_UNSUPPORTED_ZP_CFG);
     VDISPATCH_MATMUL(check_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
 

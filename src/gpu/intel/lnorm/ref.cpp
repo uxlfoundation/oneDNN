@@ -25,7 +25,7 @@ namespace intel {
 namespace lnorm {
 
 static status_t init_conf_common(
-        conf_t &conf, const pd_t *pd, impl::engine_t *engine) {
+        conf_t &conf, const pd_t *pd, const impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
 
     memory_desc_wrapper src_mdw(
@@ -58,7 +58,7 @@ static status_t init_conf_common(
         conf.weights_data_type = weights_mdw.data_type();
     }
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch_scaleshift = intel_engine->create_dispatch();
     conf.dispatch = intel_engine->create_dispatch(
             pd->is_fwd() ? dst_mdw.md_ : src_mdw.md_);
@@ -113,7 +113,7 @@ static status_t init_kernel_ctx_common(
     return status::success;
 }
 
-status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 
@@ -159,7 +159,7 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, this, engine);
 }
 

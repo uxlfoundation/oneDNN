@@ -42,7 +42,7 @@ struct simple_sum_t : public primitive_t {
 
         DECLARE_SUM_PD_T("simple:any", simple_sum_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             const int n = n_inputs();
 
             VDISPATCH_SUM(platform::has_data_type_support(src_data_type),

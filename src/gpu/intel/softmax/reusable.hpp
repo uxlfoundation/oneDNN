@@ -92,9 +92,10 @@ struct reusable_fwd_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ocl:reusable", reusable_fwd_t);
 
-        status_t init(impl::engine_t *engine) {
+        status_t init(const impl::engine_t *engine) {
             using arch_t = compute::gpu_arch_t;
-            auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+            const auto *intel_engine
+                    = utils::downcast<const intel::engine_t *>(engine);
             const arch_t arch = intel_engine->device_info()->gpu_arch();
 
             const memory_desc_wrapper src_mdw(src_md());
@@ -270,10 +271,12 @@ struct reusable_fwd_t : public primitive_t {
             return status::success;
         }
 
-        status_t init_dispatch_default_reusable(gpu::engine_t *engine);
+        status_t init_dispatch_default_reusable(const gpu::engine_t *engine);
         status_t init_dispatch_workgroup_per_reduction(
-                gpu::engine_t *engine, const size_t num_workers_per_workgroup);
-        status_t init_dispatch_subgroup_per_reduction(gpu::engine_t *engine);
+                const gpu::engine_t *engine,
+                const size_t num_workers_per_workgroup);
+        status_t init_dispatch_subgroup_per_reduction(
+                const gpu::engine_t *engine);
 
         reusable_params_t conf;
         reusable_runtime_params_t rt_conf;

@@ -42,8 +42,8 @@ functionalities. By composing these low-level, sequential operations, users can
 implement their own custom operations/fusions, and tailor blocking/threading
 logic to their applications.
 
-More details on this API are available in the [Microkernel APIs
-section](@ref dev_guide_ukernel_basic_concepts).
+More details on this API are available in the
+[Microkernel APIs](@ref dev_guide_ukernel_basic_concepts) section.
 
 
 ### ONEDNN_EXPERIMENTAL_GROUPED_MEMORY
@@ -52,8 +52,8 @@ This option enables grouped memory format and grouped GEMM support (via matmul p
 for Mixture-of-Experts (MoE) workloads. Grouped format allows handling of
 variable-size batching where one dimension varies per group.
 
-More details are available in the [Grouped Memory Format section](@ref
-dev_guide_grouped_mem) and [MatMul Grouped GEMM section](@ref dev_guide_matmul_grouped_gemm).
+More details are available in the [Grouped Memory Format](@ref dev_guide_grouped_mem)
+section and [MatMul Grouped GEMM](@ref dev_guide_matmul_grouped_gemm) section.
 
 
 ### ONEDNN_EXPERIMENTAL_PROFILING

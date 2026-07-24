@@ -255,7 +255,7 @@ struct jit_xf16_sum_t : public primitive_t {
         DECLARE_SUM_PD_T(JIT_IMPL_NAME_HELPER("jit_xf16_", jsp_.isa, ""),
                 jit_xf16_sum_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
 
             unsigned int max_num_arrs;
             // disabling verbose dispatch messages for unsupported isa for

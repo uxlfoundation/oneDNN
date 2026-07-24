@@ -39,9 +39,9 @@ struct cudnn_reorder_t : public gpu::primitive_t {
         DECLARE_COMMON_PD_T("cuda:cudnn:any", cudnn_reorder_t);
 
         // Function to verify data and memory format
-        bool valid_data_n_mem_format(impl::engine_t *engine) const {
-            auto sycl_dev
-                    = utils::downcast<nvidia::engine_t *>(engine)->device();
+        bool valid_data_n_mem_format(const impl::engine_t *engine) const {
+            auto sycl_dev = utils::downcast<const nvidia::engine_t *>(engine)
+                                    ->device();
 
             bool ok = utils::one_of(src_md()->data_type, data_type::s8,
                               data_type::bf16, data_type::f16, data_type::f32)
@@ -102,8 +102,9 @@ struct cudnn_reorder_t : public gpu::primitive_t {
             return p.len() == 0 || (p.len() == 1 && p.entry_[0].is_sum(false));
         }
 
-        status_t init(impl::engine_t *engine, impl::engine_t *src_engine,
-                impl::engine_t *dst_engine) {
+        status_t init(const impl::engine_t *engine,
+                const impl::engine_t *src_engine,
+                const impl::engine_t *dst_engine) {
             const auto attr_skip_mask = primitive_attr_t::skip_mask_t::scales
                     | primitive_attr_t::skip_mask_t::post_ops;
             bool ok = engine == dst_engine

@@ -48,8 +48,8 @@ static size_t get_slm_buff_size(
 }
 // Local group size adjustment for calc_stat kernel
 static void adjust_lws_calc_kernel(int ic_block, nhwc_params_t &conf,
-        compute::dispatch_t &dispatch, impl::engine_t *engine) {
-    auto *intel_engine = downcast<intel::engine_t *>(engine);
+        compute::dispatch_t &dispatch, const impl::engine_t *engine) {
+    const auto *intel_engine = downcast<const intel::engine_t *>(engine);
     auto eu_count = intel_engine->device_info()->eu_count();
     auto max_lws = intel_engine->device_info()->max_wg_size();
     auto eus_per_ss = intel_engine->device_info()->max_eus_per_wg();
@@ -109,7 +109,7 @@ static int get_reduce_sub_group_count(
 }
 
 status_t nhwc_kernel_dispatching(kernel_kind_t kernel, nhwc_params_t &conf,
-        impl::engine_t *engine, compute::dispatch_t &dispatch) {
+        const impl::engine_t *engine, compute::dispatch_t &dispatch) {
 
     conf.stat_sp_nblocks
             = rnd_up(conf.sp, conf.stat_sp_block()) / conf.stat_sp_block();
@@ -192,7 +192,7 @@ static status_t init_conf_common(nhwc_params_t &conf, offsets_t &off,
         compute::dispatch_t &dispatch_calc_stat,
         compute::dispatch_t &dispatch_reduce_stat,
         compute::dispatch_t &dispatch, compute::dispatch_t &dispatch_reduce_aux,
-        const pd_t *pd, impl::engine_t *engine) {
+        const pd_t *pd, const impl::engine_t *engine) {
     using namespace dnnl::impl::format_tag;
     const memory_desc_wrapper data_mdw(
             pd->is_fwd() ? pd->src_md() : pd->diff_src_md());
@@ -205,7 +205,7 @@ static status_t init_conf_common(nhwc_params_t &conf, offsets_t &off,
     // TODO: create flags() accessor that returns the correct type
     conf.flags = (normalization_flags_t)pd->desc()->flags;
 
-    auto *intel_engine = downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = downcast<const intel::engine_t *>(engine);
     auto gpu_arch = intel_engine->device_info()->gpu_arch();
 
     // nhwc-optimized implemntation does not support ic tail processing yet
@@ -368,7 +368,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t nhwc_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t nhwc_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }
@@ -570,7 +570,7 @@ status_t nhwc_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return status;
 }
 
-status_t nhwc_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t nhwc_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, dispatch_calc_stat, dispatch_reduce_stat,
             dispatch, dispatch_reduce_aux, this, engine);
 }

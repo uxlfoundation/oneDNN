@@ -37,7 +37,7 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
 
         DECLARE_COMMON_PD_T("jit:xe_hp:gemm:any", xe_hp_systolic_t);
 
-        status_t init(impl::engine_t *engine);
+        status_t init(const impl::engine_t *engine);
         void init_scratchpad();
 
         bool use_nocopy();

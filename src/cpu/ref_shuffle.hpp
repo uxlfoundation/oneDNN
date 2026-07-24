@@ -39,7 +39,7 @@ struct ref_shuffle_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("ref:any", ref_shuffle_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace format_tag;
 
             const memory_desc_wrapper src_d(

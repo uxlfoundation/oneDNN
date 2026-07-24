@@ -257,7 +257,7 @@ struct jit_avx512_core_x8s8s32x_deconvolution_fwd_t : public primitive_t {
                         ((jcp_.has_vnni) ? avx512_core_vnni : avx512_core), ""),
                 jit_avx512_core_x8s8s32x_deconvolution_fwd_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
             VDISPATCH_DECONVOLUTION(is_fwd(), VERBOSE_BAD_PROPKIND);

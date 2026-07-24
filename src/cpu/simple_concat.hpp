@@ -37,7 +37,7 @@ struct simple_concat_t : public primitive_t {
 
         DECLARE_CONCAT_PD_T("simple:any", simple_concat_t);
 
-        status_t init(engine_t *engine) {
+        status_t init(const engine_t *engine) {
             const memory_desc_wrapper dst_d(dst_md());
             VDISPATCH_CONCAT(platform::has_data_type_support(data_type),
                     VERBOSE_UNSUPPORTED_DT);

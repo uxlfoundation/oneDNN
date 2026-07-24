@@ -38,14 +38,15 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
-status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
+status_t grouped_micro_gemm_t::pd_t::init_microkernels(
+        const impl::engine_t *engine) {
     using namespace jit;
     using namespace gemmstone;
     using namespace gemmstone::microkernel;
     using gemm::jit::convert_dnnl_to_kernel_type;
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
     bool use_systolic_ukernel = dev_info->mayiuse_systolic();
 
@@ -303,7 +304,7 @@ void calc_group_sizes(std::array<int, N> &dims, const quant_entry_t &entry,
     });
 }
 
-status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
+status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
     using namespace data_type;
 
     memory_desc_wrapper src_d(src_md());
@@ -392,7 +393,7 @@ status_t grouped_micro_gemm_t::pd_t::init(impl::engine_t *engine) {
     }
 
     assert(engine->kind() == engine_kind::gpu);
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     auto *dev_info = intel_engine->device_info();
     VDISPATCH_MATMUL(compute::mayiuse_microkernels(intel_engine),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "microkernels");

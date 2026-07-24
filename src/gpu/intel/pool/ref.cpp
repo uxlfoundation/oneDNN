@@ -23,7 +23,7 @@ namespace intel {
 namespace pool {
 
 static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd,
-        impl::engine_t *engine, const bool is_bwd) {
+        const impl::engine_t *engine, const bool is_bwd) {
     using namespace dnnl::impl::format_tag;
 
     const memory_desc_wrapper src_mdw(pd->invariant_src_md());
@@ -36,7 +36,7 @@ static status_t init_conf_common(conf_t &conf, offsets_t &off, const pd_t *pd,
     set_offsets(src_mdw, off.src_off);
     set_offsets(dst_mdw, off.dst_off);
 
-    auto *intel_engine = utils::downcast<intel::engine_t *>(engine);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
     conf.dispatch = intel_engine->create_dispatch(
             conf.is_backward ? src_mdw.md_ : dst_mdw.md_);
     conf.dispatch.define_dim("MB", 0, conf.mb_padded);
@@ -109,7 +109,7 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
-status_t ref_fwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine, false);
 }
 
@@ -136,7 +136,7 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     return parallel_for(ctx, nd_range, kernel_, arg_list);
 }
 
-status_t ref_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
+status_t ref_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     return init_conf_common(conf, off, this, engine, true);
 }
 

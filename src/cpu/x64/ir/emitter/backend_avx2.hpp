@@ -70,6 +70,12 @@ struct avx2_backend_t {
         else { JIT_ASSERT(!"vadd: dtype not implemented"); }
     }
 
+    void vmul(int d, int s, data_type_t dt) { // dst *= s0
+        if (dt == data_type::f32)
+            gen().vmulps(Xbyak::Ymm(d), Xbyak::Ymm(d), Xbyak::Ymm(s));
+        else { JIT_ASSERT(!"vmul: dtype not implemented"); }
+    }
+
     // dst += a * b. The multiplicand dtype `src_dt` selects the instruction.
     // f32 inputs use `vfmadd231ps`. The accumulator (dst) is always f32.
     void vdot(int d, int a, int b, data_type_t src_dt) {

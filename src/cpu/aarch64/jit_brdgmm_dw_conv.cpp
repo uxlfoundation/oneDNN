@@ -91,7 +91,7 @@ bool post_ops_ok(jit_brdgmm_conv_conf_t &jcp, const primitive_attr_t &attr,
 }
 
 template <cpu_isa_t isa>
-status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(engine_t *engine) {
+status_t brdgmm_dw_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     using skip_mask_t = primitive_attr_t::skip_mask_t;
     const auto &cd = *desc();
     const auto src_type = cd.src_desc.data_type;

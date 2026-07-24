@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2024-2026 Arm Ltd. and affiliates
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -55,7 +56,7 @@ struct acl_lowp_matmul_t : public primitive_t {
         DECLARE_COMMON_PD_T(
                 "lowp_gemm:acl", acl_lowp_matmul_t, USE_GLOBAL_SCRATCHPAD);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
         status_t init_scratchpad(memory_tracking::registrar_t &scratchpad,
                 const arm_compute::experimental::MemoryRequirements

@@ -58,10 +58,10 @@ status_t primitive_desc_create(primitive_desc_iface_t **primitive_desc_iface,
 } // namespace dnnl
 
 dnnl_primitive_desc::dnnl_primitive_desc(
-        const std::shared_ptr<primitive_desc_t> &pd, engine_t *engine)
+        const std::shared_ptr<primitive_desc_t> &pd, const engine_t *engine)
     : pd_(pd), engine_(engine) {}
 
-dnnl_primitive_desc::dnnl_primitive_desc(engine_t *engine,
+dnnl_primitive_desc::dnnl_primitive_desc(const engine_t *engine,
         const op_desc_t *op_desc, const primitive_attr_t *attr,
         const primitive_desc_t *hint_fwd_pd) {
 
@@ -118,7 +118,10 @@ const std::shared_ptr<primitive_desc_t> &dnnl_primitive_desc::impl() const {
 }
 
 dnnl::impl::engine_t *dnnl_primitive_desc::engine() const {
-    return engine_;
+    // This method is passed to primitive_create which is not yet converted to
+    // `const engine_t *`. This `const_cast` will be automatically removed once
+    // it changes.
+    return const_cast<dnnl::impl::engine_t *>(engine_);
 }
 const dnnl::impl::primitive_attr_t *dnnl_primitive_desc::attr() const {
     return impl()->attr();

@@ -49,9 +49,9 @@ namespace cpu {
 namespace aarch64 {
 
 status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
-        engine_t *engine, const primitive_attr_t *attr, engine_t *src_engine,
-        const memory_desc_t *src_md, engine_t *dst_engine,
-        const memory_desc_t *dst_md) {
+        const engine_t *engine, const primitive_attr_t *attr,
+        const engine_t *src_engine, const memory_desc_t *src_md,
+        const engine_t *dst_engine, const memory_desc_t *dst_md) {
     if (!impl::is_dense_format_kind({src_md, dst_md}))
         return status::unimplemented;
     auto prb = tr::prb_t();

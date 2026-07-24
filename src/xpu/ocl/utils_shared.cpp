@@ -241,7 +241,7 @@ status_t get_devices(std::vector<cl_device_id> *devices,
     CHECK(get_devices(&devices_tmp, device_type));
 
     for (cl_device_id d : devices_tmp) {
-        cl_uint max_sub_devices;
+        cl_uint max_sub_devices = 0;
         cl_device_partition_property properties[3]
                 = {CL_DEVICE_PARTITION_BY_AFFINITY_DOMAIN,
                         CL_DEVICE_AFFINITY_DOMAIN_NEXT_PARTITIONABLE, 0};

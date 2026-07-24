@@ -231,6 +231,29 @@
 # kv_seq_len = 1
 --reset --dt=0:f32+1:f32+4:f32+7:f32+10:f32+13:f32+14:f32 --in-shapes=1:1x16x1x64+7:1x16x384x1+13:1x16x1x64 --case=complex_fusion/mha/sdpa-plain-training-forward-bf16-f32.json
 
+# sdpa training forward: logsumexp stats layout
+--reset
+--in-shapes=0:8x12x512x64*abcd+1:8x12x512x64*abcd+5:8x12x512x64*abcd+6:8x12x512x64*abcd+7:8x12x512x1*abcd,\
+            0:8x12x512x64*acbd+1:8x12x512x64*acbd+5:8x12x512x64*acbd+6:8x12x512x64*acbd+7:8x12x512x1*abcd,\
+            0:8x12x512x64*abcd+1:8x12x512x64*abcd+5:8x12x512x64*abcd+6:8x12x512x64*acbd+7:8x12x512x1*abcd,\
+            0:8x12x512x64*acbd+1:8x12x512x64*acbd+5:8x12x512x64*acbd+6:8x12x512x64*abcd+7:8x12x512x1*abcd,\
+            0:1x2x8x8*acbd+1:1x2x8x8*acbd+5:1x2x8x8*acbd+6:1x2x8x8*acbd+7:1x2x8x1*abcd,\
+            0:1x4x8x8*acbd+1:1x4x8x8*acbd+5:1x4x8x8*acbd+6:1x4x8x8*acbd+7:1x4x8x1*abcd,\
+            0:2x16x384x64*acbd+1:2x16x384x64*acbd+5:2x16x384x64*acbd+6:2x16x384x64*acbd+7:2x16x384x1*abcd,\
+            0:4x8x1024x128*acbd+1:4x8x1024x128*acbd+5:4x8x1024x128*acbd+6:4x8x1024x128*acbd+7:4x8x1024x1*abcd,\
+            0:8x12x512x64*acbd+1:8x12x1024x64*acbd+5:8x12x1024x64*acbd+6:8x12x512x64*acbd+7:8x12x512x1*abcd,\
+            0:8x12x1x64*acbd+1:8x12x512x64*acbd+5:8x12x512x64*acbd+6:8x12x1x64*acbd+7:8x12x1x1*abcd
+--case=complex_fusion/mha/sdpa-training-fwd-no-mask-f16-f32.json
+
+# stats layout with bf16 and an explicit mask
+--reset --in-shapes=0:1x16x384x64*acbd+1:1x16x384x64*acbd+13:1x16x384x64*acbd+14:1x16x384x64*acbd+11:1x16x384x1*abcd --case=complex_fusion/mha/sdpa-plain-training-forward-bf16-f32.json
+
+# sdpa training backward: packed-QKV (non-dense) Q/K/V on a ragged seq; acbd control
+--reset
+--in-shapes=100:8x12x196x32*225792x32x1152x1+101:8x12x196x32*225792x32x1152x1+104:8x12x196x32*225792x32x1152x1+105:8x12x196x32*acbd+10:8x12x196x32*acbd+8:8x12x196x1+103:1x1x196x196,\
+            100:8x12x196x32*acbd+101:8x12x196x32*acbd+104:8x12x196x32*acbd+105:8x12x196x32*acbd+10:8x12x196x32*acbd+8:8x12x196x1+103:1x1x196x196
+--case=complex_fusion/mha/sdpa-plain-training-backward-bf16-f32.json
+
 # causal mask with Q larger than K/V
 --reset
 --dt=15:f32+16:f32+5:f32+21:f32

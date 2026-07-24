@@ -48,16 +48,16 @@ jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::
     , n_tail_vec((jcp.oc_without_padding % jcp.oc_block) / jcp.simd_w) {}
 
 template <typename Vmm>
-int jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::inp_w(
-        int out_w) const {
+dim_t jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::inp_w(
+        dim_t out_w) const {
     const auto res = div_up(out_w + jcp.l_pad % jcp.stride_w, jcp.stride_w)
             + (jcp.ext_kw - 1 - jcp.l_pad % jcp.stride_w) / jcp.stride_w;
     return res;
 }
 
 template <typename Vmm>
-int jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::inp_w_start(
-        int iwb) const {
+dim_t jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::inp_w_start(
+        dim_t iwb) const {
     const auto sw = jcp.l_pad % jcp.stride_w;
     const auto kw = (jcp.kw - 1) % jcp.stride_w;
     const auto kw_x = (jcp.kw - 1) - nstl::modulo(kw - sw, jcp.stride_w);
@@ -104,13 +104,13 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::store(
 template <>
 void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Xbyak::Ymm>::load(
         const Xbyak::Ymm &x, const Xbyak::Address &addr, const int load_size) {
-    load_bytes(x, addr, jcp.src_dsz * load_size, true);
+    load_bytes(x, addr, static_cast<int>(jcp.src_dsz * load_size), true);
 }
 
 template <>
 void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Xbyak::Ymm>::store(
         const Xbyak::Address &addr, const Xbyak::Ymm &x, const int store_size) {
-    store_bytes(x, addr, jcp.src_dsz * store_size);
+    store_bytes(x, addr, static_cast<int>(jcp.src_dsz * store_size));
 }
 
 template <typename Vmm>
@@ -312,7 +312,7 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::copy_iw_block(
     int start_last_partial_block = -1;
     int end_last_partial_block = -1;
 
-    int iw_block_tail = jcp.iw % jcp.iw_block;
+    dim_t iw_block_tail = jcp.iw % jcp.iw_block;
 
     for (int iwb = 0; iwb < jcp.nb_iw; iwb++) {
         const auto inp_block = inp_w(jcp.iw_block);
@@ -350,18 +350,19 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::copy_iw_block(
     if (start_first_partial_block != -1) {
         for (int b = start_first_partial_block; b <= end_first_partial_block;
                 b++) {
-            int cur_iw_block = (b == jcp.nb_iw - 1 && iw_block_tail > 0)
+            dim_t cur_iw_block = (b == jcp.nb_iw - 1 && iw_block_tail > 0)
                     ? iw_block_tail
                     : jcp.iw_block;
             const auto inp_block = inp_w(cur_iw_block);
             const auto inp_start = inp_w_start(b);
             const auto inp_end = inp_start + inp_block;
             const auto block_lpad = -inp_start;
-            const auto block_len = nstl::min(jcp.ow, inp_end);
+            const dim_t block_len = nstl::min<dim_t>(jcp.ow, inp_end);
             Xbyak::Label skip_first_partial_block;
             cmp(reg_iwb, b);
             jne(skip_first_partial_block, T_NEAR);
-            copy_iw_block_body(block_lpad, jcp.iw_block, block_len, is_oc_tail);
+            copy_iw_block_body(
+                    block_lpad, jcp.iw_block, block_len, is_oc_tail);
             jmp(copy_block_done_label, T_NEAR);
             L(skip_first_partial_block);
         }
@@ -370,7 +371,8 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::copy_iw_block(
         Xbyak::Label skip_full_blocks;
         cmp(reg_iwb, end_full_block);
         jg(skip_full_blocks, T_NEAR);
-        copy_iw_block_body(0, jcp.iw_block, inp_w(jcp.iw_block), is_oc_tail);
+        copy_iw_block_body(
+                0, jcp.iw_block, inp_w(jcp.iw_block), is_oc_tail);
         jmp(copy_block_done_label, T_NEAR);
 
         L(skip_full_blocks);
@@ -378,18 +380,20 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::copy_iw_block(
     if (start_last_partial_block != -1) {
         for (int b = start_last_partial_block; b <= end_last_partial_block;
                 b++) {
-            int cur_iw_block = (b == jcp.nb_iw - 1 && iw_block_tail > 0)
+            dim_t cur_iw_block = (b == jcp.nb_iw - 1 && iw_block_tail > 0)
                     ? iw_block_tail
                     : jcp.iw_block;
             const auto inp_block = inp_w(cur_iw_block);
             const auto inp_start = inp_w_start(b);
             const auto inp_end = inp_start + inp_block;
             const auto block_lpad = 0;
-            const auto block_len = nstl::min(jcp.ow, inp_end) - inp_start;
+            const dim_t block_len
+                    = nstl::min<dim_t>(jcp.ow, inp_end) - inp_start;
             Xbyak::Label skip_last_partial_block;
             cmp(reg_iwb, b);
             jne(skip_last_partial_block, T_NEAR);
-            copy_iw_block_body(block_lpad, cur_iw_block, block_len, is_oc_tail);
+            copy_iw_block_body(
+                    block_lpad, cur_iw_block, block_len, is_oc_tail);
             jmp(copy_block_done_label, T_NEAR);
 
             L(skip_last_partial_block);
@@ -405,7 +409,7 @@ void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::copy_iw_block(
 
 template <typename Vmm>
 void jit_avx512_core_brgemm_conv_bwd_trans_kernel_t<Vmm>::copy_iw_block_body(
-        int lpad, int iw_len, int ow_len, bool is_oc_tail) {
+        dim_t lpad, dim_t iw_len, dim_t ow_len, bool is_oc_tail) {
     const auto dst_width = inp_w(iw_len) + lpad;
     for (dim_t ind_w = 0; ind_w < dst_width; ind_w++) {
         auto ow_idx = ind_w - lpad;

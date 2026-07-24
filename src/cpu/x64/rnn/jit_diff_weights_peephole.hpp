@@ -52,7 +52,7 @@ private:
     void load_addresses();
     void init();
     void compute_loop();
-    void compute_dst(size_t unrolling, bool tail);
+    void compute_dst(int unrolling, bool tail);
 
     static constexpr dim_t simd_w_ = 16;
     static constexpr dim_t max_unrolling = 10;

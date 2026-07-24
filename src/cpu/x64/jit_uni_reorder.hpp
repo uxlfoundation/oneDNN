@@ -36,8 +36,8 @@ constexpr int max_ndims = DNNL_MAX_NDIMS;
 struct node_t {
     static constexpr int64_t empty_field = -1;
 
-    size_t n = 0;
-    size_t tail_size = 0;
+    dim_t n = 0;
+    dim_t tail_size = 0;
     int dim_id = empty_field;
     int parent_node_id = empty_field;
     bool is_zero_pad_needed = false;
@@ -77,12 +77,12 @@ struct prb_t {
         return false;
     }
 
-    size_t tail(int d) const {
+    dim_t tail(int d) const {
         assert(d < ndims);
         return nodes[d].tail_size;
     }
 
-    size_t n(int d) const {
+    dim_t n(int d) const {
         assert(d < ndims);
         return nodes[d].n;
     }
@@ -137,7 +137,7 @@ void prb_simplify(prb_t &p);
 
 /** splits the node dim into two of sizes n1 and n / n1
  * @warning n must be multiple of n1 */
-void prb_node_split(prb_t &p, int dim, size_t n1);
+void prb_node_split(prb_t &p, int dim, dim_t n1);
 
 /** swaps d0 and d1 nodes */
 void prb_node_swap(prb_t &p, int d0, int d1);
@@ -259,7 +259,7 @@ private:
             int dst_zp, int32_t *compensation_scratch) const;
 
     void fill_curr_data_chunks(const tr::prb_t &prb, const int off,
-            const ptrdiff_t *omp_data_chunks, const int omp_ndims,
+            const dim_t *omp_data_chunks, const int omp_ndims,
             tr::tail_call_param_t &c) const;
 
     void reduce_compensation(char *out,

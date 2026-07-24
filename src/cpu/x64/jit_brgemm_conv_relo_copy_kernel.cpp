@@ -45,10 +45,11 @@ void jit_brgemm_relo_copy_to_wbuffer_t::generate() {
 
     preamble();
 
-    const int vnni_width = data_type_vnni_granularity(wjcp.wei_dt);
-    const auto wei_dsz = types::data_type_size(wjcp.wei_dt);
-    const auto inp_ocb_size = wjcp.inp_oc_block * vnni_width * wei_dsz;
-    const auto out_ocb_size = wjcp.out_oc_block * vnni_width * wei_dsz;
+    const int vnni_width
+            = static_cast<int>(data_type_vnni_granularity(wjcp.wei_dt));
+    const dim_t wei_dsz = types::data_type_size(wjcp.wei_dt);
+    const dim_t inp_ocb_size = wjcp.inp_oc_block * vnni_width * wei_dsz;
+    const dim_t out_ocb_size = wjcp.out_oc_block * vnni_width * wei_dsz;
     const auto oc_chunks = wjcp.out_oc_block / wjcp.inp_oc_block;
     const auto has_ocb_tail = (oc_chunks != wjcp.last_occ_to_copy);
     auto nb_rd = div_up(wjcp.rd, vnni_width);
@@ -89,7 +90,7 @@ void jit_brgemm_relo_copy_to_wbuffer_t::generate() {
                 else
                     copy_zmm(false);
 
-                add(aux_reg_src, wjcp.inp_ocb_offs);
+                add(aux_reg_src, static_cast<dim_t>(wjcp.inp_ocb_offs));
                 add(aux_reg_dst, inp_ocb_size);
             }
             add(reg_src, inp_ocb_size);

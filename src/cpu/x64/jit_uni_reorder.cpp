@@ -68,9 +68,12 @@ static bool prb_has_small_strides(const prb_t &prb) {
     constexpr ptrdiff_t max_stride = (1LL << 31) - 1;
     for (int d = 0; d < prb.ndims; ++d) {
         const ptrdiff_t cms = max_stride / prb.nodes[d].n;
-        const bool small_strides = true
-                && prb.nodes[d].is < cms / (int)data_type_size(prb.itype)
-                && prb.nodes[d].os < cms / (int)data_type_size(prb.otype);
+        const ptrdiff_t itype_sz
+                = static_cast<ptrdiff_t>(data_type_size(prb.itype));
+        const ptrdiff_t otype_sz
+                = static_cast<ptrdiff_t>(data_type_size(prb.otype));
+        const bool small_strides = true && prb.nodes[d].is < cms / itype_sz
+                && prb.nodes[d].os < cms / otype_sz;
         if (!small_strides) return false;
     }
     return true;
@@ -87,7 +90,7 @@ bool prb_has_huge_prime_number(const prb_t &prb) {
 /** Minimal reasonable/desirable kernel size.
  * The constant might be used to determine how a problem should be split
  * between kernel and threading driver. */
-const size_t ker_prb_size_min = 64;
+const dim_t ker_prb_size_min = 64;
 
 /* kernel */
 struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
@@ -113,9 +116,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
 
     struct simple_impl_desc_t {
         int ndims_full_unroll = 0;
-        int len_last_dim_unroll = 0;
-        int tail_len_unroll = 0;
-        int len_unroll = 0;
+        dim_t len_last_dim_unroll = 0;
+        dim_t tail_len_unroll = 0;
+        dim_t len_unroll = 0;
     };
 
 #define PARAM(x) \
@@ -130,9 +133,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         const int ndims = prb.ndims;
 
         int ndims_full_unroll = 0;
-        int len_last_dim_unroll = 1;
-        int tail_len_unroll = 0;
-        int len_unroll = 1;
+        dim_t len_last_dim_unroll = 1;
+        dim_t tail_len_unroll = 0;
+        dim_t len_unroll = 1;
 
         // It is responsible for finding as many values as kernel can unroll.
         // If tail is present, then kernel will unroll only last node.
@@ -145,7 +148,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             len_unroll = prb.nodes[0].n;
             tail_len_unroll = prb.nodes[0].is_zero_pad_needed
                     ? 0
-                    : static_cast<int>(prb.nodes[0].tail_size);
+                    : prb.nodes[0].tail_size;
         } else {
             for (int d = 0; d < ndims; ++d) {
                 const auto &node = prb.nodes[d];
@@ -212,26 +215,26 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         return is_superset(isa, avx512_core_fp16) || is_superset(isa, avx10_2);
     }
 
-    Address i_addr(int i_off) {
+    Address i_addr(dim_t i_off) {
         return ptr[reg_ptr_in_ + reg_off_in_ + i_off * itype_sz_];
     }
 
-    Address o_addr(int o_off, bool with_type_multiplier = true) {
+    Address o_addr(dim_t o_off, bool with_type_multiplier = true) {
         if (with_type_multiplier)
             return ptr[reg_ptr_out_ + reg_off_out_ + o_off * otype_sz_];
         else
             return ptr[reg_ptr_out_ + reg_off_out_ + o_off];
     }
 
-    Address src_s_addr(int s_off) {
+    Address src_s_addr(dim_t s_off) {
         return ptr[reg_ptr_src_scales_ + reg_off_scale_ + s_off * stype_sz_];
     }
 
-    Address dst_s_addr(int s_off) {
+    Address dst_s_addr(dim_t s_off) {
         return ptr[reg_ptr_dst_scales_ + reg_off_scale_ + s_off * stype_sz_];
     }
 
-    Address c_addr(int c_off) {
+    Address c_addr(dim_t c_off) {
         return ptr[reg_ptr_comp_ + reg_off_comp_ + c_off * sizeof(int32_t)];
     }
 
@@ -240,9 +243,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 + sizeof(int64_t) * (node_id)];
     }
 
-    void step(int off, int prev_i_off, int prev_o_off, int prev_s_off,
-            int prev_c_off, int &i_off, int &o_off, int &s_off, int &c_off,
-            int step_size = 1) {
+    void step(dim_t off, dim_t prev_i_off, dim_t prev_o_off, dim_t prev_s_off,
+            dim_t prev_c_off, dim_t &i_off, dim_t &o_off, dim_t &s_off,
+            dim_t &c_off, dim_t step_size = 1) {
         i_off = prev_i_off;
         o_off = prev_o_off;
         s_off = prev_s_off;
@@ -250,7 +253,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
 
         if (off == 0) return;
 
-        int start_dim = 0, dims_prod = 1;
+        int start_dim = 0;
+        dim_t dims_prod = 1;
         for (; start_dim < prb_.ndims && dims_prod != step_size; ++start_dim)
             dims_prod *= prb_.n(start_dim);
         assert(start_dim < prb_.ndims);
@@ -275,14 +279,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         }
     }
 
-    void step(int off, int prev_i_off, int prev_o_off, int &i_off, int &o_off,
-            int step_size = 1) {
-        int dummy = 0;
+    void step(dim_t off, dim_t prev_i_off, dim_t prev_o_off, dim_t &i_off,
+            dim_t &o_off, dim_t step_size = 1) {
+        dim_t dummy = 0;
         step(off, prev_i_off, prev_o_off, dummy, dummy, i_off, o_off, dummy,
                 dummy, step_size);
     }
 
-    void tr8x8_avx2(int i_off, int o_off) {
+    void tr8x8_avx2(dim_t i_off, dim_t o_off) {
         using namespace data_type;
 
         const auto cvt2ps
@@ -509,7 +513,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 = (utils::one_of(prb_.otype, u8, s8, s32) && interim_f32);
 
         for (int i = 0; i < unroll; i++) {
-            const int node_0_input_stride = prb_.is(0);
+            const ptrdiff_t node_0_input_stride = prb_.is(0);
             load(Ymm(i), i_addr(i_off + i * node_0_input_stride),
                     unroll * itype_sz_);
 
@@ -548,7 +552,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         }
 
         for (int i = 0; i < unroll; i++) {
-            const int node_1_output_stride = prb_.os(1);
+            const ptrdiff_t node_1_output_stride = prb_.os(1);
             if (prb_.otype != f32)
                 cvt2odt(Ymm(i), prb_.otype,
                         need_saturation       ? s32
@@ -563,7 +567,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     bool can_do_tr8x8() {
         using namespace data_type;
 
-        static constexpr size_t desirable_node_size = 8;
+        static constexpr dim_t desirable_node_size = 8;
         static constexpr ptrdiff_t desirable_stride = 1;
 
         // This process relies on swapping the two innermost dimensions.
@@ -582,12 +586,12 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 && !compensation_needed_;
     }
 
-    bool process_unroll_tr8x8(const int ndims, const int len) {
+    bool process_unroll_tr8x8(const int ndims, const dim_t len) {
         if (!can_do_tr8x8()) return false;
 
-        const int step_size = prb_.n(0) * prb_.n(1);
-        int i_off = 0, o_off = 0;
-        for (int off = 0; off < len; off += step_size) {
+        const dim_t step_size = prb_.n(0) * prb_.n(1);
+        dim_t i_off = 0, o_off = 0;
+        for (dim_t off = 0; off < len; off += step_size) {
             step(off, i_off, o_off, i_off, o_off, step_size);
             tr8x8_avx2(i_off, o_off);
         }
@@ -595,8 +599,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         return true;
     }
 
-    void process_unroll_generic_step(int reg_unroll, const int *i_off,
-            const int *o_off, const int *s_off, const int *c_off,
+    void process_unroll_generic_step(int reg_unroll, const dim_t *i_off,
+            const dim_t *o_off, const dim_t *s_off, const dim_t *c_off,
             const int *zero_padding, const bool tail_processing) {
         using namespace data_type;
 
@@ -927,17 +931,19 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             if (itype_sz_ == 4 || interim_f32) {
                 for (int ur = 0; ur < reg_unroll; ur += load_step)
                     for (int r = 1; r < load_step; ++r) {
-                        uni_vshufps(Xmm(ur + r), Xmm(ur), Xmm(ur), r);
+                        uni_vshufps(Xmm(ur + r), Xmm(ur), Xmm(ur),
+                                static_cast<Xbyak::uint8>(r));
                     }
             } else {
                 for (int ur = 0; ur < reg_unroll; ur += load_step)
                     for (int r = 1; r < load_step; ++r) {
                         if (mayiuse(avx))
                             vpalignr(Xmm(ur + r), Xmm(ur), Xmm(ur),
-                                    itype_sz_ * r);
+                                    static_cast<uint8_t>(itype_sz_ * r));
                         else {
                             movups(Xmm(ur + r), Xmm(ur));
-                            palignr(Xmm(ur + r), Xmm(ur), itype_sz_ * r);
+                            palignr(Xmm(ur + r), Xmm(ur),
+                                    static_cast<uint8_t>(itype_sz_ * r));
                         }
                     }
             }
@@ -1202,7 +1208,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                     for (int r = ur; r < ur + ur_step; ++r) {
                         if (zero_padding[r] == 0 || !tail_processing) {
                             uni_vshufps(xmm_tmp_, xmm_compensation,
-                                    xmm_compensation, r);
+                                    xmm_compensation,
+                                    static_cast<Xbyak::uint8>(r));
                             const Reg32 reg_tmp_32 = reg_tmp_.cvt32();
                             uni_vmovd(reg_tmp_32, xmm_tmp_);
                             const auto comp_addr = c_addr(c_off[r]);
@@ -1255,17 +1262,16 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     }
 
     void process_unroll_generic(
-            const int ndims, int len, const bool tail_processing) {
+            const int ndims, dim_t len, const bool tail_processing) {
         assert(IMPLICATION(prb_.nodes[0].tail_size > 0,
-                len == static_cast<int>(prb_.nodes[0].n)
-                        || len == static_cast<int>(prb_.nodes[0].tail_size)));
+                len == prb_.nodes[0].n || len == prb_.nodes[0].tail_size));
 
         const int blk = 8;
 
-        int i_off[2 * blk] = {0};
-        int o_off[2 * blk] = {0};
-        int s_off[2 * blk] = {0};
-        int c_off[2 * blk] = {0};
+        dim_t i_off[2 * blk] = {0};
+        dim_t o_off[2 * blk] = {0};
+        dim_t s_off[2 * blk] = {0};
+        dim_t c_off[2 * blk] = {0};
 
         int curr = 0; // will switch between 0 and 1
 
@@ -1280,8 +1286,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             if (interim_f32) uni_vcvtdq2ps(xmm_dst_zp_, xmm_dst_zp_);
         }
 
-        for (int off = 0; off < len; off += blk) {
-            const int reg_unroll = nstl::min(off + blk, len) - off;
+        for (dim_t off = 0; off < len; off += blk) {
+            const int reg_unroll
+                    = static_cast<int>(nstl::min<dim_t>(off + blk, len) - off);
             int zero_padding[blk] = {0};
             const auto curr_blk = curr * blk;
 
@@ -1289,8 +1296,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             for (int ur = off != 0 ? 0 : 1; ur < reg_unroll; ++ur) {
                 const int ur_c = curr_blk + ur;
                 const int ur_p = (ur_c - 1 + 2 * blk) % (2 * blk); // prev ur
-                const bool is_tail
-                        = off + ur >= static_cast<int>(prb_.nodes[0].tail_size);
+                const bool is_tail = off + ur >= prb_.nodes[0].tail_size;
                 step(off + ur, i_off[ur_p], o_off[ur_p], s_off[ur_p],
                         c_off[ur_p], i_off[ur_c], o_off[ur_c], s_off[ur_c],
                         c_off[ur_c]);
@@ -1305,14 +1311,14 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         }
     }
 
-    void compute_ker(
-            const int ndims, const int len_unroll, const bool tail_processing) {
+    void compute_ker(const int ndims, const dim_t len_unroll,
+            const bool tail_processing) {
         bool optimized = process_unroll_tr8x8(ndims, len_unroll);
         if (!optimized)
             process_unroll_generic(ndims, len_unroll, tail_processing);
     }
 
-    void loop_begin(Label &l, Reg64 reg_cnt, int len) {
+    void loop_begin(Label &l, Reg64 reg_cnt, dim_t len) {
         mov(reg_cnt, len);
         L(l);
     }
@@ -1331,13 +1337,11 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         cmp(reg_curr_chunk, last_chunk);
     }
 
-    void zero_dst_memory(const int bytes_to_zeroing) {
+    void zero_dst_memory(const dim_t bytes_to_zeroing) {
         static constexpr int num_of_bytes_in_xmm = 128 / 8;
 
-        const int xmms_to_zeroing
-                = std::div(bytes_to_zeroing, num_of_bytes_in_xmm).quot;
-        const int tail_to_zeroing
-                = std::div(bytes_to_zeroing, num_of_bytes_in_xmm).rem;
+        const dim_t xmms_to_zeroing = bytes_to_zeroing / num_of_bytes_in_xmm;
+        const dim_t tail_to_zeroing = bytes_to_zeroing % num_of_bytes_in_xmm;
 
         uni_vpxor(xmm_tmp_, xmm_tmp_, xmm_tmp_);
 
@@ -1352,7 +1356,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             jnz(loop);
         }
 
-        for (int i = 0; i < tail_to_zeroing; i++)
+        for (dim_t i = 0; i < tail_to_zeroing; i++)
             uni_vpextrb(o_addr(i, false), xmm_tmp_, 0);
 
         // Restore dst offset to initial value
@@ -1360,23 +1364,24 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             sub(reg_off_out_, num_of_bytes_in_xmm * xmms_to_zeroing);
     }
 
-    void finalize_tail_loop(int i_step, int o_step, int s_step, int c_step,
-            const int curr_node_id) {
+    void finalize_tail_loop(dim_t i_step, dim_t o_step, dim_t s_step,
+            dim_t c_step, const int curr_node_id) {
         static constexpr int empty_chunk_info = -1;
 
         mov(reg_tmp_, empty_chunk_info);
         mov(data_chunk_addr(curr_node_id), reg_tmp_);
 
-        const int padded_area = prb_.nodes[curr_node_id].n
+        const dim_t padded_area = prb_.nodes[curr_node_id].n
                 - prb_.nodes[curr_node_id].tail_size;
 
         if (prb_.nodes[curr_node_id].is_zero_pad_needed) {
-            int num_of_zero_padded_values = padded_area;
+            dim_t num_of_zero_padded_values = padded_area;
             for (int i = curr_node_id - 1; i >= 0; i--) {
                 num_of_zero_padded_values *= prb_.nodes[i].n;
             }
 
-            const int bytes_to_zeroing = num_of_zero_padded_values * otype_sz_;
+            const dim_t bytes_to_zeroing
+                    = num_of_zero_padded_values * otype_sz_;
             zero_dst_memory(bytes_to_zeroing);
         }
 
@@ -1394,17 +1399,19 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 || prb_.dst_scale_type == scale_type_t::MANY)
             add(reg_off_scale_, padded_area * s_step * stype_sz_);
         if (compensation_needed_)
-            add(reg_off_comp_, padded_area * c_step * sizeof(int32_t));
+            add(reg_off_comp_,
+                    padded_area * c_step * static_cast<dim_t>(sizeof(int32_t)));
     }
 
-    void loop_end(Label &l, const Reg64 reg_cnt, int len, int i_step,
-            int o_step, int s_step, int c_step, const int curr_node_id) {
+    void loop_end(Label &l, const Reg64 reg_cnt, dim_t len, dim_t i_step,
+            dim_t o_step, dim_t s_step, dim_t c_step, const int curr_node_id) {
         add(reg_off_in_, i_step * itype_sz_);
         add(reg_off_out_, o_step * otype_sz_);
         if (prb_.src_scale_type == scale_type_t::MANY
                 || prb_.dst_scale_type == scale_type_t::MANY)
             add(reg_off_scale_, s_step * stype_sz_);
-        if (compensation_needed_) add(reg_off_comp_, c_step * sizeof(int32_t));
+        if (compensation_needed_)
+            add(reg_off_comp_, c_step * static_cast<dim_t>(sizeof(int32_t)));
 
         dec(reg_cnt);
         jnz(l);
@@ -1430,7 +1437,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 || prb_.dst_scale_type == scale_type_t::MANY)
             sub(reg_off_scale_, len * s_step * stype_sz_);
         if (compensation_needed_)
-            sub(reg_off_comp_, len * c_step * sizeof(int32_t));
+            sub(reg_off_comp_,
+                    len * c_step * static_cast<dim_t>(sizeof(int32_t)));
     }
 
     void compute_blk_ker(const simple_impl_desc_t &desc) {
@@ -1446,7 +1454,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
                 jne(no_last_chunk, T_NEAR);
             }
 
-            const int len_unroll = desc.tail_len_unroll > 0
+            const dim_t len_unroll = desc.tail_len_unroll > 0
                     ? desc.tail_len_unroll
                     : desc.len_unroll;
             compute_ker(omp_ndims, len_unroll, with_tail_processing);
@@ -1464,12 +1472,12 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
 
         if (jit_loop > 0) {
             const int nfu = desc.ndims_full_unroll;
-            const int unroll_factor
+            const dim_t unroll_factor
                     = jit_loop == 1 ? desc.len_last_dim_unroll : 1;
             const int curr_node_id = nfu + (jit_loop - 1);
             const int parent_node_id = prb_.nodes[curr_node_id].parent_node_id;
-            const int tail_size = prb_.tail(curr_node_id) / unroll_factor;
-            const auto node_size = prb_.n(curr_node_id) / unroll_factor;
+            const dim_t tail_size = prb_.tail(curr_node_id) / unroll_factor;
+            const dim_t node_size = prb_.n(curr_node_id) / unroll_factor;
             const Reg64 reg_loop_cnt = reg_cnt[jit_loop - 1];
             const bool curr_node_has_tail = prb_.tail(curr_node_id) != 0;
             Label loop, if_no_tail, if_end;
@@ -1565,8 +1573,8 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
         , f8_e5m2_cvt_(nullptr)
         , f8_e4m3_cvt_(nullptr) {
         assert(!utils::one_of(isa_, isa_undef, isa_all));
-        itype_sz_ = data_type_size(prb_.itype);
-        otype_sz_ = data_type_size(prb_.otype);
+        itype_sz_ = static_cast<int>(data_type_size(prb_.itype));
+        otype_sz_ = static_cast<int>(data_type_size(prb_.otype));
         stype_sz_ = sizeof(float);
         if (prb_.otype == data_type::bf16 && !mayiuse(avx512_core_bf16)
                 && !mayiuse(avx2_vnni_2)) {
@@ -1655,7 +1663,7 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
             je(reorder_kernel, T_NEAR);
             // If zeroing data is set then all dst memory
             // will be zeroed and nothing more will be done.
-            int bytes_to_zeroing = otype_sz_;
+            dim_t bytes_to_zeroing = otype_sz_;
             for (int i = 0; i < prb_.ndims; i++) {
                 bytes_to_zeroing *= prb_.nodes[i].n;
             }
@@ -1822,15 +1830,15 @@ struct jit_single_blk_kernel_t : public jit_generator_t {
     jit_single_blk_kernel_t(const tr::prb_t &prb)
         : jit_generator_t(jit_name())
         , prb_(prb)
-        , itype_sz_(data_type_size(prb_.itype))
-        , otype_sz_(data_type_size(prb_.otype))
-        , block_sz(prb.nodes[0].n) {}
+        , itype_sz_(static_cast<int>(data_type_size(prb_.itype)))
+        , otype_sz_(static_cast<int>(data_type_size(prb_.otype)))
+        , block_sz(static_cast<int>(prb.nodes[0].n)) {}
 
     void generate() override {
-        auto input_stride
-                = prb_.nodes[0].is != 1 ? prb_.nodes[0].is : prb_.nodes[1].is;
-        auto output_stride
-                = prb_.nodes[0].os != 1 ? prb_.nodes[0].os : prb_.nodes[1].os;
+        const int input_stride = static_cast<int>(
+                prb_.nodes[0].is != 1 ? prb_.nodes[0].is : prb_.nodes[1].is);
+        const int output_stride = static_cast<int>(
+                prb_.nodes[0].os != 1 ? prb_.nodes[0].os : prb_.nodes[1].os);
 
         Label tail_processing;
 
@@ -1950,7 +1958,7 @@ struct jit_single_blk_kernel_t : public jit_generator_t {
         vxorps(ymm_tmp, ymm_tmp, ymm_tmp);
         vpcmpeqd(ymm_mask, ymm_mask, ymm_mask);
         // shift by mask to have tail nelems in ymm_mask
-        const uint8_t in_mask = 0xFF << mask;
+        const uint8_t in_mask = static_cast<uint8_t>(0xFF << mask);
         vpblendd(ymm_mask, ymm_mask, ymm_tmp, in_mask);
     }
 
@@ -2096,7 +2104,7 @@ status_t kernel_t::desc_init(
     if (ndims_ker_max > prb.ndims) return status::invalid_arguments;
 
     auto ndims_ker_max_f = [&]() {
-        size_t cur_size = 1;
+        dim_t cur_size = 1;
         for (int d = 0; d < prb.ndims; cur_size *= prb.nodes[d++].n)
             if (cur_size >= ker_prb_size_min) return d;
         return prb.ndims;
@@ -2138,10 +2146,10 @@ static void prb_block_for_cache(tr::prb_t &prb) {
             && !prb.is_tail_present;
 
     // performance improvement for shapes with large inner-most dimension
-    const size_t L1_cache_sz
-            = size_t(3) * platform::get_per_core_cache_size(1) / 4;
-    const size_t itype_sz_ = data_type_size(prb.itype);
-    const size_t inner_block_sz = prb.nodes[0].n * itype_sz_;
+    const dim_t L1_cache_sz = static_cast<dim_t>(static_cast<dim_t>(
+            size_t(3) * platform::get_per_core_cache_size(1) / 4));
+    const dim_t itype_sz_ = static_cast<dim_t>(data_type_size(prb.itype));
+    const dim_t inner_block_sz = prb.nodes[0].n * itype_sz_;
     const bool requires_inner_blocking = inner_block_sz > L1_cache_sz
             // 'is_tail_present' is not supported for cache_blocking when
             // asymmetric_comp is executed.
@@ -2202,7 +2210,8 @@ static void prb_block_for_cache(tr::prb_t &prb) {
                     [](const tr::node_t &lhs, const tr::node_t &rhs) {
                 return lhs.n < rhs.n;
             });
-            const auto min_idx = std::distance(dim_beg_it, min_n_node_it);
+            const int min_idx = static_cast<int>(
+                    std::distance(dim_beg_it, min_n_node_it));
             // check if min_idx node is parent of node with tail processing which
             // is currently unsupported (i.e. tail processing can only be handled
             // at the inner-most dimension)
@@ -2225,7 +2234,7 @@ static void prb_block_for_cache(tr::prb_t &prb) {
  * parallel driver and the kernel. */
 static void prb_thread_kernel_balance(
         tr::prb_t &prb, int &ndims_ker_max, int nthr) {
-    size_t size_total = 1;
+    dim_t size_total = 1;
     for (int d = 0; d < prb.ndims; ++d)
         size_total *= prb.nodes[d].n;
 
@@ -2233,23 +2242,23 @@ static void prb_thread_kernel_balance(
     // size_drv_min = C0 + FC * (nthr > 1 ? 1 : 0) + VC * (nthr - 1)
     // where FC and VC are fixed and variable costs respectively.
     // Though for now, the below heuristic seems to be good enough
-    const size_t size_drv_thr = (nthr > 1) ? 16 * nthr : 1;
+    const dim_t size_drv_thr = (nthr > 1) ? 16 * nthr : 1;
 
     /* size_drv_min is the minimal size for the parallel
      * driver required for good parallelization */
-    const size_t size_drv_min
-            = nstl::min<size_t>(size_drv_thr, utils::div_up(size_total, 1024));
+    const dim_t size_drv_min
+            = nstl::min<dim_t>(size_drv_thr, utils::div_up(size_total, 1024));
 
     /* kdims -- # of dimensions processed by a kernel
      * size_ker_cur -- product of the dimension processed by a kernel
      * size_drv_cur -- product of the dimension processed by a driver */
 
     int kdims = prb.ndims;
-    size_t size_drv_cur = 1;
+    dim_t size_drv_cur = 1;
     for (; kdims > 1 && size_drv_cur < size_drv_min; --kdims)
         size_drv_cur *= prb.nodes[kdims - 1].n;
 
-    size_t size_ker_cur = 1;
+    dim_t size_ker_cur = 1;
     for (int d = 0; d < kdims; ++d)
         size_ker_cur *= prb.nodes[d].n;
 
@@ -2271,8 +2280,8 @@ static void prb_thread_kernel_balance(
          *  In the worst case the minimal size_want_borrow is equal
          *  to the innermost driver dimension itself. In that case
          *  we will sacrifice it in favor of kernel (is it fine?). */
-        size_t size_want_borrow
-                = utils::div_up(tr::ker_prb_size_min, size_ker_cur);
+        dim_t size_want_borrow = utils::div_up(
+                static_cast<dim_t>(tr::ker_prb_size_min), size_ker_cur);
         for (; prb.nodes[kdims].n % size_want_borrow; ++size_want_borrow)
             ;
 
@@ -2289,14 +2298,17 @@ static void prb_thread_kernel_balance(
             && size_drv_cur < size_drv_min;
 
     VDEBUGINFO(5, primitive, reorder,
-            "size_drv_thr=%zu size_drv_min=%zu size_drv_cur=%zu "
-            "tr::ker_prb_size_min=%zu want_borrow_ker_from_drv=%d "
+            "size_drv_thr=%lld size_drv_min=%lld size_drv_cur=%lld "
+            "tr::ker_prb_size_min=%lld want_borrow_ker_from_drv=%d "
             "want_borrow_drv_from_ker=%d",
-            size_drv_thr, size_drv_min, size_drv_cur, tr::ker_prb_size_min,
+            static_cast<long long>(size_drv_thr),
+            static_cast<long long>(size_drv_min),
+            static_cast<long long>(size_drv_cur),
+            static_cast<long long>(tr::ker_prb_size_min),
             want_borrow_ker_from_drv, want_borrow_drv_from_ker);
 
     if (want_borrow_drv_from_ker) {
-        size_t size_want_borrow = utils::div_up(size_drv_min, size_drv_cur);
+        dim_t size_want_borrow = utils::div_up(size_drv_min, size_drv_cur);
         for (; prb.nodes[kdims - 1].n % size_want_borrow; ++size_want_borrow)
             ;
 
@@ -2448,7 +2460,7 @@ void jit_uni_reorder_t::omp_driver_1d(int ithr, int nthr, int off,
         int32_t *compensation_scratch) const {
     const tr::prb_t &prb = pd()->prb_;
     const tr::node_t *ns = prb.nodes + off;
-    for_nd(ithr, nthr, (ptrdiff_t)ns[0].n, [&](ptrdiff_t d0) {
+    for_nd(ithr, nthr, static_cast<dim_t>(ns[0].n), [&](dim_t d0) {
         tr::call_param_t base_params;
         base_params.in = in + d0 * ns[0].is * data_type_size(prb.itype);
         base_params.out = out + d0 * ns[0].os * data_type_size(prb.otype);
@@ -2467,7 +2479,7 @@ void jit_uni_reorder_t::omp_driver_1d(int ithr, int nthr, int off,
             tail_params.base_params = base_params;
 
             static constexpr int omp_ndims = 1;
-            const ptrdiff_t omp_data_chunks[omp_ndims] = {d0};
+            const dim_t omp_data_chunks[omp_ndims] = {d0};
             fill_curr_data_chunks(
                     prb, off, omp_data_chunks, omp_ndims, tail_params);
 
@@ -2484,8 +2496,8 @@ void jit_uni_reorder_t::omp_driver_2d(int ithr, int nthr, int off,
         int32_t *compensation_scratch) const {
     const tr::prb_t &prb = pd()->prb_;
     const tr::node_t *ns = prb.nodes + off;
-    for_nd(ithr, nthr, (ptrdiff_t)ns[1].n, (ptrdiff_t)ns[0].n,
-            [&](ptrdiff_t d1, ptrdiff_t d0) {
+    for_nd(ithr, nthr, static_cast<dim_t>(ns[1].n), static_cast<dim_t>(ns[0].n),
+            [&](dim_t d1, dim_t d0) {
         tr::call_param_t base_params;
         base_params.in = in
                 + (d0 * ns[0].is + d1 * ns[1].is) * data_type_size(prb.itype);
@@ -2507,7 +2519,7 @@ void jit_uni_reorder_t::omp_driver_2d(int ithr, int nthr, int off,
             tail_params.base_params = base_params;
 
             static constexpr int omp_ndims = 2;
-            const ptrdiff_t omp_data_chunks[omp_ndims] = {d0, d1};
+            const dim_t omp_data_chunks[omp_ndims] = {d0, d1};
             fill_curr_data_chunks(
                     prb, off, omp_data_chunks, omp_ndims, tail_params);
 
@@ -2524,8 +2536,8 @@ void jit_uni_reorder_t::omp_driver_3d(int ithr, int nthr, int off,
         int32_t *compensation_scratch) const {
     const tr::prb_t &prb = pd()->prb_;
     const tr::node_t *ns = prb.nodes + off;
-    for_nd(ithr, nthr, (ptrdiff_t)ns[2].n, (ptrdiff_t)ns[1].n,
-            (ptrdiff_t)ns[0].n, [&](ptrdiff_t d2, ptrdiff_t d1, ptrdiff_t d0) {
+    for_nd(ithr, nthr, static_cast<dim_t>(ns[2].n), static_cast<dim_t>(ns[1].n),
+            static_cast<dim_t>(ns[0].n), [&](dim_t d2, dim_t d1, dim_t d0) {
         tr::call_param_t base_params;
         base_params.in = in
                 + (d0 * ns[0].is + d1 * ns[1].is + d2 * ns[2].is)
@@ -2549,7 +2561,7 @@ void jit_uni_reorder_t::omp_driver_3d(int ithr, int nthr, int off,
             tail_params.base_params = base_params;
 
             static constexpr int omp_ndims = 3;
-            const ptrdiff_t omp_data_chunks[omp_ndims] = {d0, d1, d2};
+            const dim_t omp_data_chunks[omp_ndims] = {d0, d1, d2};
             fill_curr_data_chunks(
                     prb, off, omp_data_chunks, omp_ndims, tail_params);
 
@@ -2566,9 +2578,9 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
         int32_t *compensation_scratch) const {
     const tr::prb_t &prb = pd()->prb_;
     const tr::node_t *ns = prb.nodes + off;
-    for_nd(ithr, nthr, (ptrdiff_t)ns[3].n, (ptrdiff_t)ns[2].n,
-            (ptrdiff_t)ns[1].n, (ptrdiff_t)ns[0].n,
-            [&](ptrdiff_t d3, ptrdiff_t d2, ptrdiff_t d1, ptrdiff_t d0) {
+    for_nd(ithr, nthr, static_cast<dim_t>(ns[3].n), static_cast<dim_t>(ns[2].n),
+            static_cast<dim_t>(ns[1].n), static_cast<dim_t>(ns[0].n),
+            [&](dim_t d3, dim_t d2, dim_t d1, dim_t d0) {
         tr::call_param_t base_params;
         base_params.in = in
                 + (d0 * ns[0].is + d1 * ns[1].is + d2 * ns[2].is
@@ -2596,7 +2608,7 @@ void jit_uni_reorder_t::omp_driver_4d(int ithr, int nthr, int off,
             tail_params.base_params = base_params;
 
             static constexpr int omp_ndims = 4;
-            const ptrdiff_t omp_data_chunks[omp_ndims] = {d0, d1, d2, d3};
+            const dim_t omp_data_chunks[omp_ndims] = {d0, d1, d2, d3};
             fill_curr_data_chunks(
                     prb, off, omp_data_chunks, omp_ndims, tail_params);
 
@@ -2646,7 +2658,7 @@ void jit_uni_reorder_t::reduce_compensation(char *out,
 }
 
 void jit_uni_reorder_t::fill_curr_data_chunks(const tr::prb_t &prb,
-        const int off, const ptrdiff_t *omp_data_chunks, const int omp_ndims,
+        const int off, const dim_t *omp_data_chunks, const int omp_ndims,
         tr::tail_call_param_t &c) const {
     // Chunks are backwards numered i.e:
     // [0] -> [node_size]
@@ -2672,10 +2684,10 @@ void jit_uni_reorder_t::fill_curr_data_chunks(const tr::prb_t &prb,
         if (is_drv_processing_this_node && is_tail_processing) {
             const int inner_idx = curr_node_id - off;
             assert(inner_idx < omp_ndims);
-            const int64_t node_size = prb.nodes[curr_node_id].tail_size > 0
+            const dim_t node_size = prb.nodes[curr_node_id].tail_size > 0
                     ? prb.nodes[curr_node_id].tail_size
                     : prb.nodes[curr_node_id].n;
-            const int64_t data_chunk = node_size - omp_data_chunks[inner_idx];
+            const dim_t data_chunk = node_size - omp_data_chunks[inner_idx];
 
             if (!prb.nodes[curr_node_id].is_parent_empty()) {
                 const bool is_parent_chunk_last
@@ -2852,8 +2864,8 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
 }
 
 void jit_blk_reorder_t::pd_t::prb_tile_normalize(tr::prb_t &p) {
-    if (!utils::one_of(p.nodes[0].n, 8ul, 16ul)
-            && utils::one_of(p.nodes[1].n, 8ul, 16ul)) {
+    if (!utils::one_of(p.nodes[0].n, 8, 16)
+            && utils::one_of(p.nodes[1].n, 8, 16)) {
         nstl::swap(p.nodes[0], p.nodes[1]);
     }
 }
@@ -2872,7 +2884,7 @@ status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
 
     // kernel handle 2-dimension tiles, a tail is possible
     auto &prb = this->pd()->prb_;
-    ptrdiff_t BH = 1;
+    dim_t BH = 1;
     for (int i = 2; i < prb.ndims; ++i) {
         BH *= prb.nodes[i].n;
     }
@@ -2884,8 +2896,10 @@ status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
     auto FL = (n1 + block_sz - 1) / block_sz;
     auto bh_stride = BH == 1 ? 0 : prb.is(2);
 
-    auto itype_sz_ = data_type_size(pd()->prb_.itype);
-    auto otype_sz_ = data_type_size(pd()->prb_.otype);
+    const dim_t itype_sz_
+            = static_cast<dim_t>(data_type_size(pd()->prb_.itype));
+    const dim_t otype_sz_
+            = static_cast<dim_t>(data_type_size(pd()->prb_.otype));
 
     parallel_nd(BH, FL, [= COMPAT_THIS_CAPTURE](dim_t bh, dim_t fl) {
         auto fl_b = fl * block_sz;

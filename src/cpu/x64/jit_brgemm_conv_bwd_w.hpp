@@ -59,63 +59,63 @@ struct brgemm_convolution_bwd_weights_t : public primitive_t {
         jit_conv_conf_t jit_jcp_;
         void copy2jit_jcp();
 
-        int brgs_sz_ = 0;
+        dim_t brgs_sz_ = 0;
         std::shared_ptr<brgemm_containers::brgemm_desc_container_t> brgs_;
 
-        int bs_c = 0;
+        dim_t bs_c = 0;
         std::vector<int> batchsizes;
         bool are_empty_bs {false};
 
-        int get_brg_idx(int bs, int m, bool do_initialization, bool is_N_tail,
+        int get_brg_idx(dim_t bs, dim_t m, bool do_initialization, bool is_N_tail,
                 bool is_K_tail) const {
             auto my_bs = jcp_.var_bs ? 1 : bs;
             auto bs_idx = jcp_.use_uker ? batchsizes[my_bs] : 0;
             assert(bs_idx >= 0);
-            return (((m * bs_c + bs_idx) * 2
+            return static_cast<int>((((m * bs_c + bs_idx) * 2
                             + static_cast<int>(do_initialization))
                                    * 2
                            + static_cast<int>(is_N_tail))
                     * 2
-                    + static_cast<int>(is_K_tail);
+                    + static_cast<int>(is_K_tail));
         }
-        inline int filter_w_to_src(int kw) const {
+        inline dim_t filter_w_to_src(dim_t kw) const {
             return kw * (jcp_.dilate_w + 1);
         }
-        inline int filter_h_to_src(int kh) const {
+        inline dim_t filter_h_to_src(dim_t kh) const {
             return kh * (jcp_.dilate_h + 1) - jcp_.t_pad;
         }
-        inline int filter_d_to_src(int kd) const {
+        inline dim_t filter_d_to_src(dim_t kd) const {
             return kd * (jcp_.dilate_d + 1) - jcp_.f_pad;
         }
-        inline int get_start_ih(int kh, int oh_s) const {
-            const auto real_ih = filter_h_to_src(kh) + oh_s * jcp_.stride_h;
-            return utils::saturate(0, jcp_.ih,
+        inline dim_t get_start_ih(dim_t kh, dim_t oh_s) const {
+            const dim_t real_ih = filter_h_to_src(kh) + oh_s * jcp_.stride_h;
+            return utils::saturate<dim_t>(0, jcp_.ih,
                     real_ih
-                            + utils::rnd_up(
-                                    nstl::max(0, -real_ih), jcp_.stride_h));
+                            + utils::rnd_up(nstl::max<dim_t>(0, -real_ih),
+                                    jcp_.stride_h));
         }
-        inline int get_finish_ih(int kh, int oh_e) const {
-            return utils::saturate(0, jcp_.ih,
+        inline dim_t get_finish_ih(dim_t kh, dim_t oh_e) const {
+            return utils::saturate<dim_t>(0, jcp_.ih,
                     filter_h_to_src(kh) + (oh_e - 1) * jcp_.stride_h + 1);
         }
-        inline int get_start_id(int kd, int od_s) const {
-            const auto real_id = filter_d_to_src(kd) + od_s * jcp_.stride_d;
-            return utils::saturate(0, jcp_.id,
+        inline dim_t get_start_id(dim_t kd, dim_t od_s) const {
+            const dim_t real_id = filter_d_to_src(kd) + od_s * jcp_.stride_d;
+            return utils::saturate<dim_t>(0, jcp_.id,
                     real_id
-                            + utils::rnd_up(
-                                    nstl::max(0, -real_id), jcp_.stride_d));
+                            + utils::rnd_up(nstl::max<dim_t>(0, -real_id),
+                                    jcp_.stride_d));
         }
-        inline int get_finish_id(int kd, int od_e) const {
-            return utils::saturate(0, jcp_.id,
+        inline dim_t get_finish_id(dim_t kd, dim_t od_e) const {
+            return utils::saturate<dim_t>(0, jcp_.id,
                     filter_d_to_src(kd) + (od_e - 1) * jcp_.stride_d + 1);
         }
 
-        inline int get_finish_oh(int oh_s, int start, int end) const {
-            int work_rem = end - start;
+        inline dim_t get_finish_oh(dim_t oh_s, dim_t start, dim_t end) const {
+            const dim_t work_rem = end - start;
             return (oh_s + work_rem > jcp_.oh ? jcp_.oh : oh_s + work_rem);
         }
-        inline int get_finish_od(int od_s, int start, int end) const {
-            int work_rem = end - start;
+        inline dim_t get_finish_od(dim_t od_s, dim_t start, dim_t end) const {
+            const dim_t work_rem = end - start;
             return (od_s + work_rem > jcp_.od ? jcp_.od : od_s + work_rem);
         }
     };
@@ -151,12 +151,13 @@ private:
     brgemm_containers::brgemm_kernel_container_t brg_kernels_;
     brgemm_containers::brgemm_palette_container_t brgemm_palettes_;
 
-    status_t add_brg_kernel(int bs, int M, int i_N, int i_K, int i_init);
+    status_t add_brg_kernel(int bs, dim_t M, int i_N, int i_K, int i_init);
     void call_brgemm_kernel(
-            thread_info_t &btc, int brg_idx, int batch_size, void *ptr_C) const;
+            thread_info_t &btc, int brg_idx, dim_t batch_size, void *ptr_C) const;
 
     inline dim_t wei_offset_int(
-            int g, int oc_b, int ic_b, int kd, int kh, int kw) const {
+            dim_t g, dim_t oc_b, dim_t ic_b, dim_t kd, dim_t kh,
+            dim_t kw) const {
         const auto &jcp = pd()->jcp_;
         const dim_t kw_offset = jcp.ic_block * jcp.oc_block;
         dim_t extra_offset = ((kd * jcp.kh + kh) * jcp.kw + kw) * kw_offset;
@@ -165,7 +166,8 @@ private:
                 + extra_offset;
     }
 
-    inline dim_t wei_offset_int(int g, int oc_b, int ic_b, int kX) const {
+    inline dim_t wei_offset_int(
+            dim_t g, dim_t oc_b, dim_t ic_b, dim_t kX) const {
         const auto &jcp = pd()->jcp_;
         const dim_t kh_offset = jcp.kw * jcp.ic_block * jcp.oc_block;
         dim_t extra_offset
@@ -177,17 +179,18 @@ private:
         return res;
     }
 
-    inline dim_t wei_offset_ext(int g, int oc_b, int ic_b) const {
+    inline dim_t wei_offset_ext(dim_t g, dim_t oc_b, dim_t ic_b) const {
         const auto &jcp = pd()->jcp_;
-        const int vnni_granularity = data_type_vnni_granularity(jcp.wei_dt);
+        const dim_t vnni_granularity
+                = data_type_vnni_granularity(jcp.wei_dt);
         if (vnni_granularity == 0) {
             assert(!"Invalid vnni granularity.");
             return 0;
         }
 
-        const int vnni_ic_b = ic_b / vnni_granularity;
-        const int vnni_ic_block = vnni_granularity * jcp.ic_block;
-        const int vnni_nb_ic = utils::div_up(jcp.ic, vnni_ic_block);
+        const dim_t vnni_ic_b = ic_b / vnni_granularity;
+        const dim_t vnni_ic_block = vnni_granularity * jcp.ic_block;
+        const dim_t vnni_nb_ic = utils::div_up(jcp.ic, vnni_ic_block);
         const dim_t kh_offset
                 = static_cast<dim_t>(jcp.kw) * jcp.oc_block * vnni_ic_block;
         const auto res
@@ -196,7 +199,7 @@ private:
         return res;
     }
 
-    inline int get_end(int start, int step, int limit) const {
+    inline dim_t get_end(dim_t start, dim_t step, dim_t limit) const {
         return nstl::min(start + step, limit);
     }
 };

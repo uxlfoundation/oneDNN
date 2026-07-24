@@ -36,7 +36,7 @@ struct jit_args_int8_t {
     const void *from;
     const void *for_comparison;
     const void *to;
-    size_t work_amount;
+    dim_t work_amount;
 };
 
 struct jit_uni_eltwise_int_kernel_t : public jit_generator_t {
@@ -50,7 +50,7 @@ struct jit_uni_eltwise_int_kernel_t : public jit_generator_t {
 
 protected:
     data_type_t data_type() const { return pd_->src_md()->data_type; }
-    int dtype_size() const { return types::data_type_size(data_type()); }
+    dim_t dtype_size() const { return types::data_type_size(data_type()); }
 
     const eltwise_desc_t &desc() const { return *pd_->desc(); }
 
@@ -80,11 +80,11 @@ struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel_t {
     void generate() override {
         Reg64 param = abi_param1;
 
-        const size_t vlen = cpu_isa_traits_t<isa>::vlen;
-        const size_t simd_w = vlen / sizeof(float);
-        const size_t loop_dec[] = {simd_w, 1};
-        const size_t uf[] = {1, 1};
-        const size_t shift[] = {dtype_size() * simd_w, (size_t)dtype_size()};
+        const dim_t vlen = cpu_isa_traits_t<isa>::vlen;
+        const dim_t simd_w = vlen / sizeof(float);
+        const dim_t loop_dec[] = {simd_w, 1};
+        const dim_t uf[] = {1, 1};
+        const dim_t shift[] = {dtype_size() * simd_w, dtype_size()};
         const bool loop_vectorize[] = {true, false};
 
         preamble();
@@ -114,7 +114,8 @@ struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel_t {
 
         for (int id = 0; id < 2; id++) {
             L(loop_label[id]);
-            cmp(reg_work_amount, uf[id] * loop_dec[id] - 1);
+            cmp(reg_work_amount,
+                    static_cast<uint32_t>(uf[id] * loop_dec[id] - 1));
             jle(loop_label[id + 1], T_NEAR);
 
             compute_step(
@@ -123,7 +124,8 @@ struct jit_uni_subkernel_int_t : public jit_uni_eltwise_int_kernel_t {
             add(reg_from, uf[id] * shift[id]);
             add(reg_to, uf[id] * shift[id]);
 
-            sub(reg_work_amount, uf[id] * loop_dec[id]);
+            sub(reg_work_amount,
+                    static_cast<uint32_t>(uf[id] * loop_dec[id]));
             jmp(loop_label[id]);
         }
 
@@ -232,35 +234,39 @@ private:
             store_8bit(vectorize, mem_to, vr_to, data_type() == data_type::s8);
     }
 
-    void compute_step(bool vectorize, const size_t uf, const size_t shift,
+    void compute_step(bool vectorize, const dim_t uf, const dim_t shift,
             const alg_kind_t alg) {
 
-        auto vreg_from = [&](const size_t i) -> Vmm { return Vmm(i + 1); };
-        auto vreg_to = [&](const size_t i) -> Vmm { return Vmm(uf + i + 1); };
+        auto vreg_from = [&](const dim_t i) -> Vmm {
+            return Vmm(static_cast<int>(i + 1));
+        };
+        auto vreg_to = [&](const dim_t i) -> Vmm {
+            return Vmm(static_cast<int>(uf + i + 1));
+        };
 
         // 1. Load (vregs <- mem)
-        for (size_t i = 0; i < uf; i++)
+        for (dim_t i = 0; i < uf; i++)
             load(vectorize, vreg_from(i), ptr[reg_from + i * shift]);
 
         // 2. Process (vregs <- vergs)
         switch (alg) {
             case alg_kind::eltwise_linear:
-                for (size_t i = 0; i < uf; i++)
+                for (dim_t i = 0; i < uf; i++)
                     process_linear(vreg_to(i), vreg_from(i));
                 break;
             case alg_kind::eltwise_relu:
-                for (size_t i = 0; i < uf; i++)
+                for (dim_t i = 0; i < uf; i++)
                     process_relu(vreg_to(i), vreg_from(i));
                 break;
             case alg_kind::eltwise_clip:
-                for (size_t i = 0; i < uf; i++)
+                for (dim_t i = 0; i < uf; i++)
                     process_clip(vreg_to(i), vreg_from(i));
                 break;
             default: assert(!"unsupported alg");
         }
 
         // 3. Store (mem <- vregs)
-        for (size_t i = 0; i < uf; i++)
+        for (dim_t i = 0; i < uf; i++)
             store(vectorize, ptr[reg_to + i * shift], vreg_to(i));
     }
 };
@@ -493,14 +499,15 @@ status_t jit_uni_eltwise_int_fwd_t<isa>::execute_forward(
 
     const memory_desc_wrapper src_d(pd()->src_md());
 
-    const size_t nelems = src_d.nelems(true);
+    const dim_t nelems = src_d.nelems(true);
 
-    src += src_d.data_type_size() * src_d.offset0();
-    dst += src_d.data_type_size() * src_d.offset0();
+    const dim_t data_type_size = src_d.data_type_size();
+    src += data_type_size * src_d.offset0();
+    dst += data_type_size * src_d.offset0();
 
-    const int cache_line = 64 / src_d.data_type_size();
+    const dim_t cache_line = 64 / data_type_size;
     parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
-        size_t start {0}, end {0};
+        dim_t start {0}, end {0};
 
         balance211(utils::div_up(nelems, cache_line), nthr, ithr, start, end);
         start = nstl::min(nelems, start * cache_line);
@@ -508,9 +515,9 @@ status_t jit_uni_eltwise_int_fwd_t<isa>::execute_forward(
         if (start == end) return;
 
         jit_args_int8_t arg;
-        arg.from = src + src_d.data_type_size() * start;
-        arg.for_comparison = src + src_d.data_type_size() * start;
-        arg.to = dst + src_d.data_type_size() * start;
+        arg.from = src + data_type_size * start;
+        arg.for_comparison = src + data_type_size * start;
+        arg.to = dst + data_type_size * start;
         arg.work_amount = end - start;
         (*kernel_)(&arg);
     });

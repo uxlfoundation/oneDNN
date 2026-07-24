@@ -59,13 +59,13 @@ void jit_uni_deconv_zp_pad_str_kernel_base_t::compute() {
     for (dim_t icb = 0; icb < jcp_.nb_ic; ++icb) {
         const bool is_last_icb = icb == jcp_.nb_ic - 1;
 
-        const int n_inner_ic_blk = jcp_.is_depthwise
+        const int n_inner_ic_blk = static_cast<int>(jcp_.is_depthwise
                 ? 1
                 : (is_last_icb && ic_tail_exists
                                   ? utils::div_up(jcp_.ic_without_padding
                                                     % jcp_.ic_block,
                                             4)
-                                  : (jcp_.ic_block / 4));
+                                  : (jcp_.ic_block / 4)));
 
         const dim_t outer_wei_offset = icb * outer_icb_step;
 
@@ -82,10 +82,14 @@ template <cpu_isa_t isa, typename Vmm>
 jit_uni_deconv_zp_pad_str_kernel_t<isa,
         Vmm>::jit_uni_deconv_zp_pad_str_kernel_t(const jit_conv_conf_t &jcp)
     : jit_uni_deconv_zp_pad_str_kernel_base_t(jcp)
-    , result_acc_(reserve_vmm())
-    , vmm_tmp_((jcp.has_vnni || jcp.is_depthwise) ? 0 : reserve_vmm())
-    , vmm_one_bytes_(jcp.is_depthwise ? 0 : reserve_vmm())
-    , vmm_one_words_((jcp.has_vnni || jcp.is_depthwise) ? 0 : reserve_vmm())
+    , result_acc_(static_cast<int>(reserve_vmm()))
+    , vmm_tmp_((jcp.has_vnni || jcp.is_depthwise)
+                    ? 0
+                    : static_cast<int>(reserve_vmm()))
+    , vmm_one_bytes_(jcp.is_depthwise ? 0 : static_cast<int>(reserve_vmm()))
+    , vmm_one_words_((jcp.has_vnni || jcp.is_depthwise)
+                    ? 0
+                    : static_cast<int>(reserve_vmm()))
     , current_vmm_(number_reserved_vmms_) {}
 
 template <cpu_isa_t isa, typename Vmm>
@@ -158,7 +162,7 @@ template <cpu_isa_t isa, typename Vmm,
         typename T = std::integral_constant<bool, (isa < avx512_core)>>
 struct helper_store_t {
     static void store(jit_generator_t *gen, const Vmm &vmm,
-            const Xbyak::Reg64 &reg_dst, const size_t size,
+            const Xbyak::Reg64 &reg_dst, const int size,
             const Xbyak::Opmask &opmask) {
         gen->store_bytes(vmm, reg_dst, 0, size);
     }
@@ -168,7 +172,7 @@ using isa_at_least_avx512_core = std::false_type;
 template <cpu_isa_t isa, typename Vmm>
 struct helper_store_t<isa, Vmm, isa_at_least_avx512_core> {
     static void store(jit_generator_t *gen, const Vmm &vmm,
-            const Xbyak::Reg64 &reg_dst, const size_t size,
+            const Xbyak::Reg64 &reg_dst, const int size,
             const Xbyak::Opmask &opmask) {
         using namespace Xbyak::util;
         gen->vmovups(gen->ptr[reg_dst], vmm | opmask);
@@ -184,7 +188,7 @@ void jit_uni_deconv_zp_pad_str_kernel_t<isa, Vmm>::store_result() {
         cmp(reg_last_oc_block_, 0);
         je(store_no_tail, T_NEAR);
         helper_store_t<isa, Vmm>::store(this, result_acc_, reg_dst_,
-                tail_size_ * sizeof(int32_t), ktail_mask_);
+                static_cast<int>(tail_size_ * sizeof(int32_t)), ktail_mask_);
         jmp(end, T_NEAR);
     }
 
@@ -220,7 +224,8 @@ struct helper_create_deconv_ker_t {
     static jit_uni_deconv_zp_pad_str_kernel_base_t *
     create_deconv_zp_pad_str_comp_ker(const jit_conv_conf_t &jcp) {
 
-        const int ch_block = jcp.is_depthwise ? jcp.ch_block : jcp.ic_block;
+        const dim_t ch_block
+                = jcp.is_depthwise ? jcp.ch_block : jcp.ic_block;
         switch (ch_block) {
             case 8:
                 if (isa == avx2) {
@@ -242,7 +247,8 @@ template <cpu_isa_t isa>
 struct helper_create_deconv_ker_t<isa, isa_at_least_avx512_core> {
     static jit_uni_deconv_zp_pad_str_kernel_base_t *
     create_deconv_zp_pad_str_comp_ker(const jit_conv_conf_t &jcp) {
-        const int ch_block = jcp.is_depthwise ? jcp.ch_block : jcp.ic_block;
+        const dim_t ch_block
+                = jcp.is_depthwise ? jcp.ch_block : jcp.ic_block;
         switch (ch_block) {
             case 16:
                 return new jit_uni_deconv_zp_pad_str_kernel_t<avx512_core,
@@ -325,10 +331,10 @@ void compute_deconv_zp_pad_str_comp_ker(const jit_conv_conf_t &jcp,
             : 1;
 
     parallel(nthrs, [=](const int ithr, const int nthr) {
-        int start {0}, end {0};
+        dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        int ch_b {0}, oc_b {0}, d {0}, h {0}, w {0};
+        dim_t ch_b {0}, oc_b {0}, d {0}, h {0}, w {0};
         if (jcp.loop_order == loop_ngc)
             nd_iterator_init(start, ch_b, jcp.nb_ch, oc_b, jcp.nb_oc, d, jcp.kd,
                     h, jcp.kh, w, jcp.kw);

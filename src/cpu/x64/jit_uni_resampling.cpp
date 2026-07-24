@@ -35,6 +35,13 @@ namespace x64 {
 
 using namespace resampling_utils;
 
+// Offsets are stored in the 32-bit gather-index buffer
+// This function safely casts the offset.
+static unsigned to_gather_index(dim_t offset) {
+    assert(offset >= 0 && offset <= UINT32_MAX);
+    return static_cast<unsigned>(offset);
+}
+
 static cpu_isa_t get_supported_isa(bool is_plain) {
     if (is_plain && mayiuse(avx512_core_fp16)) return avx512_core_fp16;
     if (mayiuse(avx512_core_bf16)) return avx512_core_bf16;
@@ -109,7 +116,7 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(const engine_t *engine) {
     conf_.ndims = ndims();
 
     if (conf_.alg == alg_kind::resampling_linear)
-        conf_.number_of_corners = pow(2, conf_.ndims - 2);
+        conf_.number_of_corners = 1u << (conf_.ndims - 2);
 
     conf_.src_dt_size = types::data_type_size(conf_.src_data_type);
     conf_.dst_dt_size = types::data_type_size(conf_.dst_data_type);
@@ -301,18 +308,21 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_nearest() {
             + utils::rnd_up(pd()->OW(), kernel_->get_simd_w()));
 
     for (dim_t od = 0; od < pd()->OD(); od++) {
-        const int offset_id = nearest_idx(od, pd()->OD(), pd()->ID())
-                * pd()->get_conf().stride_d;
+        const unsigned offset_id
+                = to_gather_index(nearest_idx(od, pd()->OD(), pd()->ID())
+                        * pd()->get_conf().stride_d);
         indices_.emplace_back(offset_id);
     }
     for (dim_t oh = 0; oh < pd()->OH(); oh++) {
-        const int offset_ih = nearest_idx(oh, pd()->OH(), pd()->IH())
-                * pd()->get_conf().stride_h;
+        const unsigned offset_ih
+                = to_gather_index(nearest_idx(oh, pd()->OH(), pd()->IH())
+                        * pd()->get_conf().stride_h);
         indices_.emplace_back(offset_ih);
     }
     for (dim_t ow = 0; ow < pd()->OW(); ow++) {
-        const int offset_iw = nearest_idx(ow, pd()->OW(), pd()->IW())
-                * pd()->get_conf().stride_w;
+        const unsigned offset_iw
+                = to_gather_index(nearest_idx(ow, pd()->OW(), pd()->IW())
+                        * pd()->get_conf().stride_w);
         indices_.emplace_back(offset_iw);
     }
 
@@ -322,12 +332,12 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_nearest() {
 status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
     using namespace resampling_utils;
 
-    const unsigned number_of_corners = pd()->get_conf().number_of_corners;
-    const unsigned stride_w = pd()->get_conf().stride_w;
-    const unsigned stride_h = pd()->get_conf().stride_h;
-    const unsigned stride_d = pd()->get_conf().stride_d;
+    const dim_t number_of_corners = pd()->get_conf().number_of_corners;
+    const dim_t stride_w = pd()->get_conf().stride_w;
+    const dim_t stride_h = pd()->get_conf().stride_h;
+    const dim_t stride_d = pd()->get_conf().stride_d;
 
-    unsigned num_of_elements = 0;
+    dim_t num_of_elements = 0;
     if (pd()->get_conf().tag_kind == jit_memory_tag_kind_t::ncsp) {
         // In kernel is used vmovdqu to get indices. This instruction don't have
         // tail processing possibilities on sse41 and avx. To avoid problems
@@ -356,10 +366,10 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
 
                 for (unsigned i = 0; i < number_of_corners; i++) {
                     std::bitset<3> corners(i);
-                    indices_[i * indices_stride + offset]
-                            = coeffs_id.idx[corners.test(2)] * stride_d
+                    indices_[i * indices_stride + offset] = to_gather_index(
+                            coeffs_id.idx[corners.test(2)] * stride_d
                             + coeffs_ih.idx[corners.test(1)] * stride_h
-                            + coeffs_iw.idx[corners.test(0)] * stride_w;
+                            + coeffs_iw.idx[corners.test(0)] * stride_w);
                     weights_[i * weights_stride + offset]
                             = coeffs_id.wei[corners.test(2)]
                             * coeffs_ih.wei[corners.test(1)]
@@ -390,8 +400,9 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
             // to read and makes the operation faster.
             weights_w[2 * ow] = coeffs_iw.wei[0];
             weights_w[2 * ow + 1] = coeffs_iw.wei[1];
-            indices_w[2 * ow] = coeffs_iw.idx[0] * stride_w;
-            indices_w[2 * ow + 1] = coeffs_iw.idx[1] * stride_w;
+            indices_w[2 * ow] = to_gather_index(coeffs_iw.idx[0] * stride_w);
+            indices_w[2 * ow + 1]
+                    = to_gather_index(coeffs_iw.idx[1] * stride_w);
         }
 
         for (dim_t oh = 0; oh < pd()->OH(); oh++) {
@@ -399,8 +410,9 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
 
             weights_h[oh] = coeffs_ih.wei[0];
             weights_h[pd()->OH() + oh] = coeffs_ih.wei[1];
-            indices_h[oh] = coeffs_ih.idx[0] * stride_h;
-            indices_h[pd()->OH() + oh] = coeffs_ih.idx[1] * stride_h;
+            indices_h[oh] = to_gather_index(coeffs_ih.idx[0] * stride_h);
+            indices_h[pd()->OH() + oh]
+                    = to_gather_index(coeffs_ih.idx[1] * stride_h);
         }
 
         for (dim_t od = 0; od < pd()->OD(); od++) {
@@ -408,8 +420,9 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
 
             weights_d[od] = coeffs_id.wei[0];
             weights_d[pd()->OD() + od] = coeffs_id.wei[1];
-            indices_d[od] = coeffs_id.idx[0] * stride_d;
-            indices_d[pd()->OD() + od] = coeffs_id.idx[1] * stride_d;
+            indices_d[od] = to_gather_index(coeffs_id.idx[0] * stride_d);
+            indices_d[pd()->OD() + od]
+                    = to_gather_index(coeffs_id.idx[1] * stride_d);
         }
     } else {
         assert(!"Invalid memory format kind.");

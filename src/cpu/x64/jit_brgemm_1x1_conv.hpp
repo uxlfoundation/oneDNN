@@ -53,8 +53,8 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
         status_t init(const engine_t *engine);
 
         struct brgemm_init_params_t {
-            brgemm_init_params_t(int k_accum_idx, int m, int n, int k,
-                    size_t lda, bool wary_tail_read)
+            brgemm_init_params_t(int k_accum_idx, dim_t m, dim_t n, dim_t k,
+                    dim_t lda, bool wary_tail_read)
                 : k_accum_idx_(k_accum_idx)
                 , M_(m)
                 , N_(n)
@@ -62,8 +62,8 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
                 , LDA_(lda)
                 , wary_tail_read_(wary_tail_read) {}
             const int k_accum_idx_; // controls brgemm:beta param
-            const int M_, N_, K_;
-            const size_t LDA_;
+            const dim_t M_, N_, K_;
+            const dim_t LDA_;
             bool wary_tail_read_ {false};
         };
 
@@ -71,7 +71,7 @@ struct brgemm_1x1_convolution_fwd_t : public primitive_t {
         std::forward_list<brgemm_init_params_t> brgemm_init_params_;
 
         bool need_postwork_ {};
-        int ic_chunks_ {};
+        dim_t ic_chunks_ {};
 
         jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
 
@@ -117,11 +117,11 @@ private:
 
     void maybe_rtus(int ithr, const char *__restrict src,
             char *__restrict inp_buffer, uint8_t *__restrict inp_buffer_mask,
-            int g, int n, int icc, int od, int oh, int ow) const;
+            int g, int n, dim_t icc, dim_t od, dim_t oh, dim_t ow) const;
     void exec_ker(const brgemm_exec_ctx_t &brgemm_ctx, int ithr,
             brgemm_batch_element_t *const __restrict brg_batch,
             char *const c_buffer, const char *inp_buffer, int g, int n, int ocb,
-            int od, int oh, int ow, int icc, int *last_brg_idx,
+            dim_t od, dim_t oh, dim_t ow, dim_t icc, int *last_brg_idx,
             const int32_t *src_zero_points, int32_t *src_zp_comp,
             const int32_t *dst_zero_points, int32_t *s8s8_compensation,
             const void *src_scales, const void *wei_scales,
@@ -192,7 +192,7 @@ private:
 
     const memory_desc_wrapper bias_d;
 
-    int ID, IH, IW, OD, OH, OW, SD, SH, SW;
+    dim_t ID, IH, IW, OD, OH, OW, SD, SH, SW;
     size_t bia_dsz, acc_dsz, src_dsz, wei_dsz;
     // const variables used for address calculations
     dim_t src_w_sz, src_h_sz, src_d_sz, dst_w_sz, dst_h_sz, dst_d_sz;

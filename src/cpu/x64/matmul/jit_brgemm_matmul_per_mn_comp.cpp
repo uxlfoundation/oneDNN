@@ -655,7 +655,8 @@ private:
                     const dim_t off
                             = c * simd_w * types::data_type_size(wei_zp_dt_);
                     const int tail_bytes = has_tail
-                            ? rem * types::data_type_size(wei_zp_dt_)
+                            ? static_cast<int>(
+                                      rem * types::data_type_size(wei_zp_dt_))
                             : 0;
                     load_vec_zps_f32(vmm_zw(), wei_zp_dt_, ptr[reg_tmp + off],
                             has_tail, tail_bytes);

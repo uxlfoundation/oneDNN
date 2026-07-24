@@ -99,11 +99,11 @@ template <typename weights_t, typename scratch_t, typename gemm_acc_t>
 void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::execute()
         const {
     if (rnn_.is_cell_amx()) {
-        parallel(max_nthr_, [this](const int ithr, const int nthr) {
+        parallel(static_cast<int>(max_nthr_), [this](const int ithr, const int nthr) {
             this->kernel_amx(ithr, nthr);
         });
     } else {
-        parallel(max_nthr_, [this](const int ithr, const int nthr) {
+        parallel(static_cast<int>(max_nthr_), [this](const int ithr, const int nthr) {
             this->kernel(ithr, nthr);
         });
     }
@@ -111,12 +111,12 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::execute()
 
 template <typename weights_t, typename scratch_t, typename gemm_acc_t>
 void brgemm_diff_src_layer_iter_t<weights_t, scratch_t,
-        gemm_acc_t>::kernel_amx_compute_iter(const int m_block_id,
-        const int n_block_id, const int gates_start, const int gates_end,
+        gemm_acc_t>::kernel_amx_compute_iter(const dim_t m_block_id,
+        const dim_t n_block_id, const int gates_start, const int gates_end,
         thread_exec_ctx_t &ctx) const {
 
-    const int m = m_block_id * rnn_.diff_src_brgemm.m_block;
-    const int n = n_block_id * rnn_.diff_src_brgemm.n_block;
+    const dim_t m = m_block_id * rnn_.diff_src_brgemm.m_block;
+    const dim_t n = n_block_id * rnn_.diff_src_brgemm.n_block;
     const int num_gates = gates_end - gates_start;
     const scratch_t *const A_m = A_ + m * LDA_;
     const auto B_n_offset = n_block_id * B_nb_offset_;
@@ -253,21 +253,23 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel_amx(
         const int ithr, const int nthr) const {
     using namespace cpu::rnn_utils;
 
-    int mn_start = 0, mn_end = 0;
+    dim_t mn_start = 0, mn_end = 0;
     balance211(work_amount_, nthr, ithr, mn_start, mn_end);
 
-    int n_block_id = 0, m_block_id = 0;
+    dim_t n_block_id = 0, m_block_id = 0;
     const auto n_gates = rnn_.n_gates;
-    const int gates_block_size = rnn_.diff_src_brgemm.gates_block;
+    const dim_t gates_block_size = rnn_.diff_src_brgemm.gates_block;
     thread_exec_ctx_t ctx;
     ctx.addr_batch = addr_batch_global_ + ithr * (k_blocks_n_gates_ + 1);
     ctx.amx_buffer = amx_scratchpad_
             + rnn_.diff_src_brgemm.m_block * rnn_.diff_src_brgemm.n_block
                     * ithr;
 
-    for (int gate_idx = 0; gate_idx < n_gates; gate_idx += gates_block_size) {
-        const int gates_start = gate_idx;
-        const int gates_end = nstl::min(gate_idx + gates_block_size, n_gates);
+    for (dim_t gate_idx = 0; gate_idx < n_gates;
+            gate_idx += gates_block_size) {
+        const int gates_start = static_cast<int>(gate_idx);
+        const int gates_end = static_cast<int>(
+                nstl::min<dim_t>(gate_idx + gates_block_size, n_gates));
 
         switch (rnn_.diff_src_brgemm.loop_order) {
             case brgemm_rnn_execute_loop_order_t::mblk_nblk:
@@ -280,7 +282,7 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel_amx(
                 break;
             default: assert(!"unsupported loop order");
         }
-        int mn_idx = mn_start;
+        dim_t mn_idx = mn_start;
         while (mn_idx < mn_end) {
             kernel_amx_compute_iter(
                     m_block_id, n_block_id, gates_start, gates_end, ctx);
@@ -303,10 +305,10 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel_amx(
 template <typename weights_t, typename scratch_t, typename gemm_acc_t>
 void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
         const int ithr, const int nthr) const {
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
 
-    int n_block_id = 0, m_block_id = 0;
+    dim_t n_block_id = 0, m_block_id = 0;
     nd_iterator_init(start, n_block_id, n_blocking_, m_block_id, m_blocking_);
 
     x64::brgemm_batch_element_t *const addr_batch
@@ -314,8 +316,8 @@ void brgemm_diff_src_layer_iter_t<weights_t, scratch_t, gemm_acc_t>::kernel(
     const auto n_gates = rnn_.n_gates;
 
     while (start < end) {
-        const int m = m_block_id * rnn_.diff_src_brgemm.m_block;
-        const int n = n_block_id * rnn_.diff_src_brgemm.n_block;
+        const dim_t m = m_block_id * rnn_.diff_src_brgemm.m_block;
+        const dim_t n = n_block_id * rnn_.diff_src_brgemm.n_block;
         const scratch_t *const A_m = A_ + m * LDA_;
         const auto B_n_offset = n_block_id * B_nb_offset_;
         const weights_t *const B_wei_iter_n = B_wei_iter_ + B_n_offset;
@@ -491,11 +493,11 @@ template <typename src_layer_t, typename src_iter_t, typename scratch_t,
 void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
         gemm_acc_t>::execute() const {
     if (is_amx_) {
-        parallel(max_nthr_, [this](const int ithr, const int nthr) {
+        parallel(static_cast<int>(max_nthr_), [this](const int ithr, const int nthr) {
             this->kernel_amx(ithr, nthr);
         });
     } else {
-        parallel(max_nthr_, [this](const int ithr, const int nthr) {
+        parallel(static_cast<int>(max_nthr_), [this](const int ithr, const int nthr) {
             this->kernel(ithr, nthr);
         });
     }
@@ -537,11 +539,11 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
             : A_layer_transposed_scratch_
                     + ithr * rnn_.diff_wei_brgemm.Kpadded * m_layer_block_;
 
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
 
-    int n_block_id = 0, m_block_id = 0, last_n_block_id = -1,
-        last_m_block_id = -1;
+    dim_t n_block_id = 0, m_block_id = 0, last_n_block_id = -1,
+          last_m_block_id = -1;
 
     nd_iterator_init(start, n_block_id, n_blocking_, m_block_id, m_blocking_);
 
@@ -555,8 +557,8 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
         const bool should_transpose_src = transpose_needed && !global_transpose
                 && (last_m_block_id != m_block_id);
 
-        const int m_iter = m_block_id * m_iter_block_;
-        const int m_layer = m_block_id * m_layer_block_;
+        const dim_t m_iter = m_block_id * m_iter_block_;
+        const dim_t m_layer = m_block_id * m_layer_block_;
         const src_iter_t *const A_iter_m = global_transpose
                 ? A_iter_transposed_ithr + m_iter * LDA_iter_
                 : A_iter_ + m_iter;
@@ -573,7 +575,7 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
                 ? const_cast<src_layer_t *>(A_layer_m)
                 : A_layer_transposed_ithr;
 
-        const int n = n_block_id * rnn_.diff_wei_brgemm.n_block;
+        const dim_t n = n_block_id * rnn_.diff_wei_brgemm.n_block;
         const scratch_t *const B_n = B_ + n;
         const auto C_iter_offset = m_iter * LDC_iter_ + n;
         const auto C_layer_offset = m_layer * LDC_layer_ + n;
@@ -670,11 +672,11 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
 
     const bool global_transpose = rnn_.diff_wei_brgemm.global_transpose;
 
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
 
-    int n_block_id = 0, m_block_id = 0, last_n_block_id = -1,
-        last_m_block_id = -1;
+    dim_t n_block_id = 0, m_block_id = 0, last_n_block_id = -1,
+          last_m_block_id = -1;
     switch (rnn_.diff_wei_brgemm.loop_order) {
         case brgemm_rnn_execute_loop_order_t::mblk_nblk:
             nd_iterator_init(
@@ -713,8 +715,8 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
         const bool should_transpose_src
                 = !global_transpose && last_m_block_id != m_block_id;
 
-        const int m_iter = m_block_id * m_iter_block_;
-        const int m_layer = m_block_id * m_layer_block_;
+        const dim_t m_iter = m_block_id * m_iter_block_;
+        const dim_t m_layer = m_block_id * m_layer_block_;
         const src_iter_t *const A_iter_m = global_transpose
                 ? A_iter_transposed_ithr + m_iter * LDA_iter_
                 : A_iter_ + m_iter;
@@ -729,7 +731,7 @@ void brgemm_diff_weights_layer_iter_t<src_layer_t, src_iter_t, scratch_t,
                 ? const_cast<src_layer_t *>(A_layer_m)
                 : A_layer_transposed_ithr;
 
-        const int n = n_block_id * rnn_.diff_wei_brgemm.n_block;
+        const dim_t n = n_block_id * rnn_.diff_wei_brgemm.n_block;
         const scratch_t *const B_n = B_ + n;
         const auto C_iter_offset = m_iter * LDC_iter_ + n;
         const auto C_layer_offset = m_layer * LDC_layer_ + n;
@@ -885,10 +887,10 @@ template <typename scratch_t>
 void brgemm_diff_wei_peep_t<scratch_t>::kernel(
         const int ithr, const int nthr) const {
 
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
 
-    int g = 0, dhc_block_id = 0;
+    dim_t g = 0, dhc_block_id = 0;
 
     nd_iterator_init(
             start, g, n_gates_, dhc_block_id, rnn_.dhc_blocks_peephole);

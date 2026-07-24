@@ -63,14 +63,14 @@ jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::
     , isa_max_regs(isa_num_vregs(jcp_.isa)) {}
 
 template <typename Vmm>
-size_t jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::out_oc_offset(
-        const int n, const int w) const {
-    return static_cast<size_t>(out_dsz_) * n * m_block2_ + w * out_ow_sz_;
+dim_t jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::out_oc_offset(
+        const dim_t n, const dim_t w) const {
+    return out_dsz_ * n * m_block2_ + w * out_ow_sz_;
 }
 template <typename Vmm>
-size_t jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::inp_ic_offset(
+dim_t jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::inp_ic_offset(
         const int m_block, const int icb, const int m, const int n) const {
-    return static_cast<size_t>(inp_dsz_) * n * m_block2_ * last_ic_block_
+    return inp_dsz_ * n * m_block2_ * last_ic_block_
             + ((icb * m_block) + m) * inp_ic_sz_;
 }
 template <typename Vmm>
@@ -81,7 +81,8 @@ Vmm jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::accum(
 
 template <typename Vmm>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::store_accumulators(
-        const int m_block, const int n_block, const int ow_b, const int ow_e) {
+        const int m_block, const int n_block, const dim_t ow_b,
+        const dim_t ow_e) {
     if (jcp_.src_zero_point) {
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
@@ -90,7 +91,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::store_accumulators(
             auto vmm_tmp2 = vmm_one_bytes;
             uni_vpmulld(vmm_tmp, vmm, vmm_zp_shift);
 
-            for (int w = ow_b; w < ow_e; w++) {
+            for (dim_t w = ow_b; w < ow_e; w++) {
                 const auto offset = out_oc_offset(n, w);
                 auto zp_addr = is_superset(jcp_.isa, avx512_core)
                         ? EVEX_compress_addr(reg_zp_comp_out, offset)
@@ -110,7 +111,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::store_accumulators(
             auto vmm_tmp2 = vmm_one_bytes;
             uni_vpmulld(vmm_tmp, vmm, vmm_cp_shift);
 
-            for (int w = ow_b; w < ow_e; w++) {
+            for (dim_t w = ow_b; w < ow_e; w++) {
                 const auto offset = out_oc_offset(n, w);
                 auto cp_addr = is_superset(jcp_.isa, avx512_core)
                         ? EVEX_compress_addr(reg_comp_out, offset)
@@ -130,10 +131,10 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::store_accumulators(
 
 template <typename Vmm>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::copy_ow_body(
-        const int n_block, const int ow_b, const int ow_e) {
+        const int n_block, const dim_t ow_b, const dim_t ow_e) {
 
     if (jcp_.src_zero_point) {
-        for_(int w = ow_b; w < ow_e; w++)
+        for_(dim_t w = ow_b; w < ow_e; w++)
         for (int n = 0; n < n_block; n++) {
             auto vmm_tmp = vmm_tmp_1();
             const auto offset = out_oc_offset(n, w);
@@ -147,7 +148,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::copy_ow_body(
     }
 
     if (jcp_.s8s8_compensation_required) {
-        for_(int w = ow_b; w < ow_e; w++)
+        for_(dim_t w = ow_b; w < ow_e; w++)
         for (int n = 0; n < n_block; n++) {
             auto vmm_tmp = vmm_tmp_1();
             const auto offset = out_oc_offset(n, w);
@@ -160,8 +161,8 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::copy_ow_body(
 }
 
 template <typename Vmm>
-void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::copy_ow(
-        const int m_block, const int n_block, const int ow_b, const int ow_e) {
+void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::copy_ow(const int m_block,
+        const int n_block, const dim_t ow_b, const dim_t ow_e) {
     mov(reg_ker_l, ptr[param1 + GET_OFF(ker_l)]);
     mov(reg_aux_zp_comp_out, reg_zp_comp_out);
     mov(reg_aux_comp_out, reg_comp_out);
@@ -229,7 +230,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::icb_loop(const int icb,
         cmp(reg_icb, 0);
         je(label_loop_end, T_NEAR);
         compute(ic_step, m_block, n_block, 0, false);
-        add(reg_aux_in, ic_step * m_block * inp_ic_sz_);
+        add(reg_aux_in, static_cast<dim_t>(ic_step * m_block * inp_ic_sz_));
         dec(reg_icb);
         jmp(label_icb_loop, T_NEAR);
     }
@@ -257,16 +258,18 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::kdh_loop(const int icb,
             je(label_kh_end, T_NEAR);
             icb_loop(icb, icb_tail, ic_step, m_block, mb_tail, n_block);
             add(reg_aux_kh_in,
-                    jcp_.prop_kind == backward_data ? inp_kh_sz_ * jcp_.stride_h
-                                                    : inp_kh_sz_);
+                    static_cast<dim_t>(jcp_.prop_kind == backward_data
+                                    ? inp_kh_sz_ * jcp_.stride_h
+                                    : inp_kh_sz_));
             dec(reg_kh_l);
             jmp(label_kh_loop, T_NEAR);
         }
         L_aligned(label_kh_end);
 
         add(reg_aux_kd_in,
-                jcp_.prop_kind == backward_data ? inp_kd_sz_ * jcp_.stride_d
-                                                : inp_kd_sz_);
+                static_cast<dim_t>(jcp_.prop_kind == backward_data
+                                ? inp_kd_sz_ * jcp_.stride_d
+                                : inp_kd_sz_));
         dec(reg_kd_l);
         jmp(label_kd_loop, T_NEAR);
     }
@@ -283,22 +286,24 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::bwd_kw_iw_loop(const int icb,
     const auto LP = jcp_.l_pad;
     const auto nb_iw = div_up(jcp_.iw, SW);
 
-    std::vector<int> ker_kw_ow_b(SW * KW, -1);
-    std::vector<int> ker_kw_ow_e(SW * KW, -1);
+    std::vector<dim_t> ker_kw_ow_b(SW * KW, -1);
+    std::vector<dim_t> ker_kw_ow_e(SW * KW, -1);
 
     for_(int sw = 0; sw < SW; sw++)
     for (int iwb = 0; iwb < nb_iw; iwb++) {
         const auto iw = iwb * SW + sw;
         const auto ker_iw = sw * nb_iw + iwb;
 
-        int s {0}, o_test {0};
+        dim_t s {0}, o_test {0};
         while (true) {
             o_test = iw + LP - s * DW;
             if (o_test % SW == 0) break;
             s++;
         }
-        const int k_f = nstl::min(jcp_.kw, div_up(iw + LP + 1, DW));
-        int k_s = div_up(nstl::max(0, iw + LP - jcp_.ow * SW + 1), DW);
+        const int k_f = static_cast<int>(
+                nstl::min<dim_t>(jcp_.kw, div_up(iw + LP + 1, DW)));
+        int k_s = static_cast<int>(
+                div_up(nstl::max<dim_t>(0, iw + LP - jcp_.ow * SW + 1), DW));
         while (k_s % SW != s)
             k_s++;
 
@@ -333,25 +338,26 @@ template <typename Vmm>
 void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::fwd_kw_ow_loop(const int icb,
         const int icb_tail, const int ic_step, const int m_block,
         const int mb_tail, const int n_block, const bool use_inversion) {
-    std::vector<int> kw_ow_b(jcp_.kw, -1);
-    std::vector<int> kw_ow_e(jcp_.kw, -1);
-    std::vector<int> comp_ow_kw_s(jcp_.comp_ow_size, -1);
-    std::vector<int> comp_ow_kw_f(jcp_.comp_ow_size, -1);
+    std::vector<dim_t> kw_ow_b(jcp_.kw, -1);
+    std::vector<dim_t> kw_ow_e(jcp_.kw, -1);
+    std::vector<dim_t> comp_ow_kw_s(jcp_.comp_ow_size, -1);
+    std::vector<dim_t> comp_ow_kw_f(jcp_.comp_ow_size, -1);
     dim_t comp_ow_l = 0;
     const auto DW = jcp_.dilate_w + 1;
 
-    for (int ow = 0; ow < jcp_.ow;) {
+    for (dim_t ow = 0; ow < jcp_.ow;) {
         const auto iiw = ow * jcp_.stride_w - jcp_.l_pad;
-        const auto kw_s = div_up(nstl::max(0, -iiw), DW);
+        const auto kw_s = div_up(nstl::max<dim_t>(0, -iiw), DW);
         const auto kw_f = jcp_.kw
-                - div_up(nstl::max(0, iiw - jcp_.iw + (jcp_.kw - 1) * DW + 1),
+                - div_up(nstl::max<dim_t>(
+                                 0, iiw - jcp_.iw + (jcp_.kw - 1) * DW + 1),
                         DW);
-        int ow_e = ow;
+        dim_t ow_e = ow;
         while (ow_e < jcp_.ow) {
             const auto iiw_e = ow_e * jcp_.stride_w - jcp_.l_pad;
-            const auto cur_kw_s = div_up(nstl::max(0, -iiw_e), DW);
+            const auto cur_kw_s = div_up(nstl::max<dim_t>(0, -iiw_e), DW);
             const auto cur_kw_f = jcp_.kw
-                    - div_up(nstl::max(0,
+                    - div_up(nstl::max<dim_t>(0,
                                      iiw_e - jcp_.iw + (jcp_.kw - 1) * DW + 1),
                             DW);
             if (cur_kw_s != kw_s || cur_kw_f != kw_f) break;
@@ -365,7 +371,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::fwd_kw_ow_loop(const int icb,
         ow = ow_e;
     }
 
-    for_(int ow = 0; ow < comp_ow_l; ow++)
+    for_(dim_t ow = 0; ow < comp_ow_l; ow++)
     for (int kw = 0; kw < jcp_.kw; kw++) {
         if (kw >= comp_ow_kw_s[ow] && kw < comp_ow_kw_f[ow]) {
             const auto inv_kw = use_inversion ? jcp_.kw - 1 - kw : kw;
@@ -446,22 +452,25 @@ int jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::compute_ic_step(
     int best_ic_step = 1;
     float best_block_eff = 0.f;
 
-    int max_ic_step
-            = nstl::min(static_cast<size_t>(m_block), div_up(nb_ic_, m_block));
+    int max_ic_step = static_cast<int>(
+            nstl::min<dim_t>(m_block, div_up(nb_ic_, m_block)));
 
     // Introduce ic_step to increase kernel efficiency
     // Compute the ic_step based on the optimal kernel efficiency
     for (int ic_s = max_ic_step; ic_s >= 1; --ic_s) {
         const auto blocks = ic_s * m_block;
-        const float block_disb
-                = static_cast<float>(nb_ic_) / rnd_up(nb_ic_, blocks);
-        const float eff = (static_cast<float>(n_block) * blocks)
-                / ((n_block + blocks) * max_ic_step);
+        const float block_disb = static_cast<float>(nb_ic_)
+                / static_cast<float>(rnd_up(nb_ic_, blocks));
+        const float eff = static_cast<float>(n_block)
+                * static_cast<float>(blocks)
+                / static_cast<float>((n_block + blocks) * max_ic_step);
         const float block_eff = block_disb * eff;
-        float block_footprint = static_cast<float>(inp_dsz_) * blocks
-                * (jcp_.prop_kind == backward_data ? jcp_.ic_block
-                                                   : jcp_.oc_block)
-                * last_ic_block_;
+        float block_footprint = static_cast<float>(inp_dsz_)
+                * static_cast<float>(blocks)
+                * static_cast<float>(jcp_.prop_kind == backward_data
+                                ? jcp_.ic_block
+                                : jcp_.oc_block)
+                * static_cast<float>(last_ic_block_);
         if (block_footprint <= static_cast<float>(
                     platform::get_per_core_cache_size(1))
                 && (block_eff > best_block_eff)) {
@@ -501,18 +510,19 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::generate() {
     const int max_regs = isa_max_regs
             - (is_int8_avx512_core ? 6
                                    : (jcp_.s8s8_compensation_required ? 4 : 3));
-    const int nb = div_up(
+    const int nb = static_cast<int>(div_up(
             nstl::min(jcp_.prop_kind == backward_data ? jcp_.ic : jcp_.oc,
                     jcp_.prop_kind == backward_data ? jcp_.ic_block
                                                     : jcp_.oc_block),
-            m_block2_);
+            m_block2_));
     const int nb2 = nb / n_max_regs_;
     const int nb2_tail = nb % n_max_regs_;
     const int n_block = (nb2 == 0) ? nstl::max(1, nb2_tail) : n_max_regs_;
 
     const size_t m_max_regs = max_regs / n_block;
-    const int m_block = nstl::min(m_max_regs, nb_ic_);
-    const int ic_step = compute_ic_step(m_max_regs, m_block, n_block);
+    const int m_block = static_cast<int>(nstl::min<dim_t>(m_max_regs, nb_ic_));
+    const int ic_step
+            = compute_ic_step(static_cast<int>(m_max_regs), m_block, n_block);
 
     assert(m_block * n_block <= max_regs);
 
@@ -526,26 +536,27 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::generate() {
     mov(reg_use_inversion, ptr[param1 + GET_OFF(use_inversion)]);
     cmp(reg_use_inversion, 0);
     jz(label_kw_without_inversion, T_NEAR);
-    kw_loop(icb, icb_tail, ic_step, m_block, mb_tail, n_block, true);
+    kw_loop(static_cast<int>(icb), static_cast<int>(icb_tail), ic_step, m_block,
+            static_cast<int>(mb_tail), n_block, true);
     jmp(label_done, T_NEAR);
 
     L_aligned(label_kw_without_inversion);
-    kw_loop(icb, icb_tail, ic_step, m_block, mb_tail, n_block, false);
+    kw_loop(static_cast<int>(icb), static_cast<int>(icb_tail), ic_step, m_block,
+            static_cast<int>(mb_tail), n_block, false);
 
     L_aligned(label_done);
 
     postamble();
 }
 template <typename Vmm>
-size_t jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::out_oc_offset(
-        const int n, const int w) const {
-    return static_cast<size_t>(out_dsz_) * n * inp_oc_block_ + w * out_ow_sz_;
+dim_t jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::out_oc_offset(
+        const dim_t n, const dim_t w) const {
+    return out_dsz_ * n * inp_oc_block_ + w * out_ow_sz_;
 }
 template <typename Vmm>
-size_t jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::inp_ic_offset(
-        const int kw, const int ic, const int n) const {
-    return static_cast<size_t>(kw) * inp_kw_sz_ + n * inp_oc_sz_
-            + ic * inp_ic_sz_;
+dim_t jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::inp_ic_offset(
+        const dim_t kw, const dim_t ic, const dim_t n) const {
+    return kw * inp_kw_sz_ + n * inp_oc_sz_ + ic * inp_ic_sz_;
 }
 
 template <typename Vmm>
@@ -563,10 +574,10 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::zero_accumulators(
 }
 template <typename Vmm>
 void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::store_accumulators(
-        const int n_block, const int ow_b, const int ow_e) {
+        const int n_block, const dim_t ow_b, const dim_t ow_e) {
     if (jcp_.src_zero_point) {
         for_(int n = 0; n < n_block; n++)
-        for (int w = ow_b; w < ow_e; w++) {
+        for (dim_t w = ow_b; w < ow_e; w++) {
             auto vmm = accum(n);
             const auto offset = out_oc_offset(n, w);
             auto zp_addr = ptr[reg_aux_zp_comp_out + offset];
@@ -576,7 +587,7 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::store_accumulators(
 
     if (jcp_.s8s8_compensation_required) {
         for_(int n = 0; n < n_block; n++)
-        for (int w = ow_b; w < ow_e; w++) {
+        for (dim_t w = ow_b; w < ow_e; w++) {
             auto vmm = accum(n, true);
             const auto offset = out_oc_offset(n, w);
             auto cp_addr = ptr[reg_aux_comp_out + offset];
@@ -587,7 +598,7 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::store_accumulators(
 
 template <typename Vmm>
 void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::store(
-        const int n_block, const int ow_b, const int ow_e) {
+        const int n_block, const dim_t ow_b, const dim_t ow_e) {
     mov(reg_aux_zp_comp_out, reg_zp_comp_out);
     mov(reg_aux_comp_out, reg_comp_out);
     mov(reg_ker_l, ptr[param1 + GET_OFF(ker_l)]);
@@ -609,29 +620,30 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::store(
 template <typename Vmm>
 void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::kw_loop(
         const int n_block) {
-    std::vector<int> ow_kw_b(jcp_.ow, -1);
-    std::vector<int> ow_kw_e(jcp_.ow, -1);
-    int prev_comp_ow = 0;
+    std::vector<dim_t> ow_kw_b(jcp_.ow, -1);
+    std::vector<dim_t> ow_kw_e(jcp_.ow, -1);
+    dim_t prev_comp_ow = 0;
     const auto DW = jcp_.dilate_w + 1;
-    for (int ow = 0; ow < jcp_.ow; ow++) {
+    for (dim_t ow = 0; ow < jcp_.ow; ow++) {
         const auto iiw = ow * jcp_.stride_w - jcp_.l_pad;
-        const auto kw_s = div_up(nstl::max(0, -iiw), DW);
+        const auto kw_s = div_up(nstl::max<dim_t>(0, -iiw), DW);
         const auto kw_f = jcp_.kw
-                - div_up(nstl::max(0, iiw - jcp_.iw + (jcp_.kw - 1) * DW + 1),
+                - div_up(nstl::max<dim_t>(
+                                 0, iiw - jcp_.iw + (jcp_.kw - 1) * DW + 1),
                         DW);
         ow_kw_b[ow] = kw_s;
         ow_kw_e[ow] = kw_f;
     }
 
-    for (int ow = 0; ow < jcp_.ow;) {
+    for (dim_t ow = 0; ow < jcp_.ow;) {
         const auto kw_b = ow_kw_b[ow];
         const auto kw_e = ow_kw_e[ow];
-        int ow_e = ow + 1;
+        dim_t ow_e = ow + 1;
         while (ow_e < jcp_.ow) {
             if (ow_kw_b[ow_e] != kw_b || ow_kw_e[ow_e] != kw_e) break;
             ow_e++;
         }
-        const auto ow_l = nstl::min(ow_e - ow, jcp_.ow_block);
+        const auto ow_l = nstl::min<dim_t>(ow_e - ow, jcp_.ow_block);
 
         if (kw_b < kw_e) {
             zero_accumulators(n_block);
@@ -645,7 +657,7 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::kw_loop(
 
 template <typename Vmm>
 void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::compute(
-        const int n_block, const int kw_b, const int kw_e) {
+        const int n_block, const dim_t kw_b, const dim_t kw_e) {
     Xbyak::Label label_kh_loop, label_end;
     mov(reg_kh_l, ptr[param1 + GET_OFF(kh_l)]);
     mov(reg_aux_in, reg_in);
@@ -654,7 +666,7 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::compute(
     {
         cmp(reg_kh_l, 0);
         je(label_end, T_NEAR);
-        for_(int kw = kw_b; kw < kw_e; kw++)
+        for_(dim_t kw = kw_b; kw < kw_e; kw++)
         for_(int n = 0; n < n_block; n++)
         for (int ic = 0; ic < jcp_.ic; ic++) {
             auto vmm = accum(n);
@@ -696,9 +708,10 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::generate() {
     mov(reg32_scratch, 128);
     uni_vpbroadcastd(vmm_cp_shift, reg32_scratch);
 
-    const int last_oc_block = nstl::min(
-            jcp_.oc_block, jcp_.oc - (jcp_.nb_oc - 1) * jcp_.oc_block);
-    const int max_n_block = div_up(jcp_.oc_block, inp_oc_block_);
+    const int last_oc_block = static_cast<int>(nstl::min(
+            jcp_.oc_block, jcp_.oc - (jcp_.nb_oc - 1) * jcp_.oc_block));
+    const int max_n_block
+            = static_cast<int>(div_up(jcp_.oc_block, inp_oc_block_));
     const int last_n_block = div_up(last_oc_block, inp_oc_block_);
 
     Xbyak::Label label_last_ocb, label_done;

@@ -87,7 +87,7 @@ inline void rtus_prepare(conv_pd_t *self, const convolution_desc_t *&conv_d,
     if (ndims == 4) self->rtus_.conv_d_.strides[1] = 1;
     utils::array_set(self->rtus_.conv_d_.padding[0], 0, 2);
     if (ndims == 4) utils::array_set(self->rtus_.conv_d_.padding[1], 0, 2);
-    const int ic = src_d->dims[1];
+    const dim_t ic = src_d->dims[1];
     if (self->desc()->prop_kind == prop_kind::backward_data) {
         data_type_t data_type = self->rtus_.conv_d_.diff_src_desc.data_type;
         src_d = &(self->rtus_.conv_d_.diff_src_desc = *dst_d);
@@ -113,9 +113,9 @@ inline void rtus_prepare_space_info(conv_pd_t *self,
     const bool is_nspc
             = utils::one_of(jcp.src_tag, format_tag::nhwc, format_tag::nwc);
 
-    const size_t factor = utils::pick_by_prop_kind(self->desc()->prop_kind,
+    const dim_t factor = utils::pick_by_prop_kind(self->desc()->prop_kind,
             jcp.nb_reduce, jcp.nb_load_blocking_max, jcp.nb_bcast_blocking);
-    size_t typesize
+    const dim_t typesize
             = types::data_type_size(self->invariant_src_md()->data_type);
 
     self->rtus_.space_per_thread_
@@ -156,19 +156,20 @@ struct rtus_driver_t : public jit_generator_t {
     Xbyak::Reg64 reg_icb_remainder = rcx;
     Xbyak::Reg64 reg_ws_copy = r15;
 
-    int iw_, stride_w_;
-    int src_step_h_, src_step_icb_, ws_step_icb_, vlen_, vlen_shift_;
+    dim_t iw_, stride_w_;
+    dim_t src_step_h_, src_step_icb_, ws_step_icb_;
+    int vlen_, vlen_shift_;
     bool src_to_ws_;
-    size_t typesize_;
-    int ic_, ic_tail_;
+    dim_t typesize_;
+    dim_t ic_, ic_tail_;
     bool is_nspc_;
 
     Xbyak::Xmm reg_zero;
     Xbyak::Xmm reg_v;
 
-    rtus_driver_t(int iw, int stride_w, int src_step_h, int src_step_icb,
-            int ws_step_icb, bool src_to_ws, size_t typesize, int ic,
-            bool is_nspc = false)
+    rtus_driver_t(dim_t iw, dim_t stride_w, dim_t src_step_h,
+            dim_t src_step_icb, dim_t ws_step_icb, bool src_to_ws,
+            dim_t typesize, dim_t ic, bool is_nspc = false)
         : jit_generator_t(jit_name(), isa)
         , iw_(iw)
         , stride_w_(stride_w)
@@ -189,7 +190,7 @@ struct rtus_driver_t : public jit_generator_t {
          * fail to work on reg_v, reg_zero because of this
          * data_type change, e.g. uni_vpxor doen't
          * work on reg_zero now*/
-        auto Vmm = [this](int idx, size_t typesize) {
+        auto Vmm = [this](int idx, dim_t typesize) {
             Xmm res;
             if (is_nspc_) {
                 switch (isa) {
@@ -235,13 +236,13 @@ struct rtus_driver_t : public jit_generator_t {
         vlen_ = reg_v.getBit() / 8;
         vlen_shift_ = 0;
 
-        int tvlen = is_nspc_ ? typesize_ : vlen_;
+        dim_t tvlen = is_nspc_ ? typesize_ : vlen_;
         while (tvlen > 1) {
             tvlen /= 2;
             vlen_shift_++;
         }
 
-        const int simd_w = vlen_ / sizeof(float);
+        const dim_t simd_w = vlen_ / sizeof(float);
         ic_tail_ = ic_ % simd_w;
     }
 
@@ -328,7 +329,7 @@ struct rtus_driver_t : public jit_generator_t {
         }
 
         auto load_reg = [this](const Xmm &vreg, const Reg64 &reg,
-                                const int64_t offset, const int load_size) {
+                                const dim_t offset, const int load_size) {
             if (isa == avx512_core) {
                 const Address &addr = ptr[reg + offset];
                 switch (typesize_) {
@@ -349,7 +350,7 @@ struct rtus_driver_t : public jit_generator_t {
         };
 
         auto store_reg = [this](const Reg64 &reg, const Xmm &vreg,
-                                 const int64_t offset, const int store_size) {
+                                 const dim_t offset, const int store_size) {
             if (isa == avx512_core) {
                 const Address &addr = ptr[reg + offset];
                 switch (typesize_) {
@@ -372,15 +373,15 @@ struct rtus_driver_t : public jit_generator_t {
         mov(reg_ws_copy, reg_ws);
         shl(reg_icb, vlen_shift_);
 
-        const size_t w_step_factor = ic_ * typesize_;
-        const size_t max_load_store_bytes = isa == sse41
-                ? typesize_ == 4 ? 16 : 8
-                : typesize_ == 4 ? 32
-                                 : 16;
-        const size_t load_store_size
+        const dim_t w_step_factor = ic_ * typesize_;
+        const int max_load_store_bytes = isa == sse41 ? typesize_ == 4 ? 16 : 8
+                : typesize_ == 4                      ? 32
+                                                      : 16;
+        const int load_store_size
                 = isa == avx512_core ? vlen_ : max_load_store_bytes;
-        size_t load_store_tail_size = (typesize_ == 1 ? max_load_store_bytes
-                                                      : ic_tail_ * typesize_);
+        const int load_store_tail_size = typesize_ == 1
+                ? max_load_store_bytes
+                : static_cast<int>(ic_tail_ * typesize_);
 
         Label is_loop, ic_loop, ic_loop_tail, ic_loop_finish;
         L(is_loop);
@@ -550,25 +551,25 @@ inline status_t init_rtus_driver(conv_t *self) {
     if (!conf.rtus_.reduce_src_) return status::success;
 
     const auto &cd = *conf.desc();
-    const int ndims = conf.ndims();
-    const int stride_h = (conf.ndims() == 3) ? 1 : cd.strides[0];
-    const int stride_w = cd.strides[ndims - 3];
+    const dim_t ndims = conf.ndims();
+    const dim_t stride_h = (conf.ndims() == 3) ? 1 : cd.strides[0];
+    const dim_t stride_w = cd.strides[ndims - 3];
 
     const bool is_bwd_data = cd.prop_kind == prop_kind::backward_data;
     const auto &src_d = is_bwd_data ? *conf.diff_src_md() : *conf.src_md();
 
-    const int ih = ndims == 3 ? 1 : src_d.dims[2];
-    const int iw = src_d.dims[ndims - 1];
-    const int ic = src_d.dims[1];
+    const dim_t ih = ndims == 3 ? 1 : src_d.dims[2];
+    const dim_t iw = src_d.dims[ndims - 1];
+    const dim_t ic = src_d.dims[1];
 
     const auto src_tag = memory_desc_wrapper(src_d).matches_one_of_tag(
             format_tag::nhwc, format_tag::nwc);
     const bool is_nspc = src_tag != format_tag::undef;
-    const int src_step_h = stride_h * iw;
-    const int src_step_icb = !is_nspc ? ih * iw : 1;
-    const int ws_step_icb = !is_nspc ? conf.jcp_.is : 1;
+    const dim_t src_step_h = stride_h * iw;
+    const dim_t src_step_icb = !is_nspc ? ih * iw : 1;
+    const dim_t ws_step_icb = !is_nspc ? conf.jcp_.is : 1;
     const bool src_to_ws = !is_bwd_data;
-    const size_t typesize
+    const dim_t typesize
             = types::data_type_size(self->pd()->invariant_src_md()->data_type);
 
     CHECK(safe_ptr_assign(self->rtus_driver_,
@@ -578,19 +579,22 @@ inline status_t init_rtus_driver(conv_t *self) {
     return self->rtus_driver_->create_kernel();
 }
 
-inline int best_divider(int value, int min_divider, int max_divider,
+inline int best_divider(dim_t value, int min_divider, dim_t max_divider,
         bool find_max, int step = 1) {
     using namespace dnnl::impl::utils;
-    max_divider = nstl::max(1, nstl::min(max_divider, value));
-    min_divider = nstl::max(1, nstl::min(min_divider, max_divider));
+    const int max_divider_int = static_cast<int>(
+            nstl::max<dim_t>(1, nstl::min<dim_t>(max_divider, value)));
+    min_divider = nstl::max(1, nstl::min(min_divider, max_divider_int));
 
-    auto loss_ratio = [](int total, int chunk) {
-        return float(rnd_up(total, chunk) - total) / rnd_up(total, chunk);
+    auto loss_ratio = [](dim_t total, int chunk) {
+        return float(rnd_up(total, chunk) - total)
+                / float(rnd_up(total, chunk));
     };
 
     float min_loss = FLT_MAX;
-    int x_divider = max_divider;
-    for (int divider = max_divider; divider >= min_divider; divider -= step) {
+    int x_divider = max_divider_int;
+    for (int divider = max_divider_int; divider >= min_divider;
+            divider -= step) {
         const float loss = loss_ratio(value, divider);
         if ((find_max && loss < min_loss) || (!find_max && loss <= min_loss)) {
             min_loss = loss;

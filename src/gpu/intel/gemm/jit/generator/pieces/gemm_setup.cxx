@@ -1694,7 +1694,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     // Prepare layouts for row/column sum calculation.
     if (problem.needsASums()) {
         state.systolicSumA = strategy.systolic && globalCM;
-        state.slmASums = slmA && !state.systolicSumA;
+        state.slmASums = false;  //slmA && !state.systolicSumA;
 
         if (!state.slmASums && !globalCM && strategy.dpasw) stub();  /* don't have full A data */
 
@@ -1711,7 +1711,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     }
     if (problem.needsBSums()) {
         state.systolicSumB = strategy.systolic && !globalCM;
-        state.slmBSums = slmB && !state.systolicSumB;
+        state.slmBSums = false; //slmB && !state.systolicSumB;
 
         if (!state.slmBSums && globalCM && strategy.dpasw) stub();
 

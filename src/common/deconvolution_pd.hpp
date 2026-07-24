@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -265,6 +266,15 @@ protected:
         , weights_md_(desc_.weights_desc)
         , bias_md_(desc_.bias_desc)
         , dst_md_(desc_.dst_desc) {}
+
+
+    // This function sets the default algorithm kind for the deconvolution descriptor
+    bool set_default_alg_kind(alg_kind_t alg_kind) {
+        assert(utils::one_of(alg_kind, alg_kind::deconvolution_direct,
+                alg_kind::deconvolution_winograd));
+        return desc_.alg_kind == alg_kind;
+    }
+
 };
 // NOLINTEND(google-default-arguments)
 

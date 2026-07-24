@@ -26,6 +26,7 @@
 #include "common/utils.hpp"
 
 #include <cstdint>
+#include <limits>
 
 #include "cpu/x64/cpu_isa_traits.hpp" // cpu().has(tAMD)
 #include "cpu/x64/zen64/common/zen_format_tag.hpp" // is_zen_packed
@@ -74,17 +75,23 @@ status_t zen_weight_prepack(const void *src, void *dst, zd wei_dt, int64_t K,
 // Plain f32 -> bf16 element conversion (standard reorder_direct path).
 // Writes K rows of N elements contiguously into `dst` (row-major).
 //
-// When src is `ba` (col-major), src_strides={1,K} describes the source;
-// the destination is always written contiguous (lowoha reorder ignores
+// `ldb` is the source leading dim (in elements), read from the actual src
+// strides so a padded leading dim is honored:
+//   * ab (row-major): src_strides = {ldb, 1}   (ldb == N for dense, N+pad if padded)
+//   * ba (col-major): src_strides = {1, ldb}    (ldb == K for dense, K+pad if padded)
+// The destination is always written contiguous (lowoha reorder ignores
 // dst_strides), so dst ends up in `ab` (K-major) regardless of src.
-status_t f32_to_bf16_plain(
-        const void *src, void *dst, int64_t K, int64_t N, bool src_is_ab) {
+status_t f32_to_bf16_plain(const void *src, void *dst, int64_t K, int64_t N,
+        int64_t ldb, bool src_is_ab) {
     zendnnl::lowoha::reorder::reorder_params_t rp;
     rp.src_dtype = zd::f32;
     rp.dst_dtype = zd::bf16;
     rp.src_shape = {K, N};
     rp.dst_shape = {K, N};
-    if (!src_is_ab) rp.src_strides = {1, K};
+    if (src_is_ab)
+        rp.src_strides = {ldb, 1};
+    else
+        rp.src_strides = {1, ldb};
 
     return to_dnnl_status(
             zendnnl::lowoha::reorder::reorder_direct(src, dst, rp));
@@ -113,8 +120,13 @@ status_t zen_reorder_t::pd_t::init(
 
     const memory_desc_wrapper id(src_md_), od(dst_md_);
 
-    VDISPATCH_REORDER_IC(id.ndims() == 2 && od.ndims() == 2, VERBOSE_BAD_NDIMS,
-            "src/dst", id.ndims());
+    // 2D weight slice, or 3D batched weights (one (K, N) slice per batch).
+    VDISPATCH_REORDER_IC(
+            utils::one_of(id.ndims(), 2, 3) && id.ndims() == od.ndims(),
+            VERBOSE_BAD_NDIMS, "src/dst", id.ndims());
+
+    const int ndims = id.ndims();
+    const bool batched = ndims == 3;
 
     const auto type_i = id.data_type();
     const auto type_o = od.data_type();
@@ -153,40 +165,81 @@ status_t zen_reorder_t::pd_t::init(
     VDISPATCH_REORDER_IC(!id.has_zero_dim() && !od.has_zero_dim(),
             VERBOSE_BAD_DIM, "src/dst", 0);
 
-    // src must be plain `ab` or `ba` (the only two 2D row/col-major layouts
-    // the packer accepts via the `trans` parameter).
-    const auto src_tag = id.matches_one_of_tag(ab, ba);
-    VDISPATCH_REORDER_IC(
-            src_tag != format_tag::undef, VERBOSE_UNSUPPORTED_TAG_S, "src");
+    // Each (K, N) slice of src must be plain row-major (`ab`/`abc`) or
+    // col-major (`ba`/`acb`). The packer takes an explicit leading dim (derived
+    // from the actual strides in execute()), so a padded leading dim on one
+    // axis is supported -- an exact tag check would reject those layouts. Match
+    // the matmul contract: require a plain layout with one of the inner (K, N)
+    // axes contiguous and no zero strides. For 3D also require the batch dim to
+    // be outermost (largest stride) so the per-batch stride is the true slice
+    // span (execute() advances src by strides[0] per batch).
+    const auto &src_strides = id.blocking_desc().strides;
+    const bool inner_contig
+            = src_strides[ndims - 1] == 1 || src_strides[ndims - 2] == 1;
+    bool no_zero_stride = true;
+    for (int i = 0; i < ndims; i++)
+        no_zero_stride = no_zero_stride && src_strides[i] != 0;
+    VDISPATCH_REORDER_IC(id.is_plain() && inner_contig && no_zero_stride,
+            VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VDISPATCH_REORDER_IC(!batched
+                    || (src_strides[0] >= src_strides[1]
+                            && src_strides[0] >= src_strides[2]),
+            VERBOSE_UNSUPPORTED_TAG_S, "src");
 
-    // src and dst logical (K, N) must agree (oneDNN reorder API contract).
-    VDISPATCH_REORDER_IC(
-            id.dims()[0] == od.dims()[0] && id.dims()[1] == od.dims()[1],
-            VERBOSE_INCONSISTENT_DIM, "src", 0, "dst", 0);
+    // src and dst logical dims must agree (oneDNN reorder API contract).
+    for (int i = 0; i < ndims; i++)
+        VDISPATCH_REORDER_IC(id.dims()[i] == od.dims()[i],
+                VERBOSE_INCONSISTENT_DIM, "src", i, "dst", i);
 
-    // This reorder packs a single 2D (K, N) weight slice only; batched
-    // (batch > 1) packed descriptors are not supported. A batched dst encodes
-    // size = per_slice_size * batch, so require the two to be equal to reject
-    // any batched packed buffer up front.
+    // Logical (K, N) of one slice and the batch count.
+    const dim_t K = od.dims()[ndims - 2];
+    const dim_t N = od.dims()[ndims - 1];
+    const dim_t batch = batched ? od.dims()[0] : 1;
+
+    // execute() collapses a K==1 slice to contiguous row-major (`ab`) since a
+    // dense single row is layout-agnostic. A padded col-major (`acb`/`ba`) row
+    // (N stride != 1) is *not* contiguous, so that assumption would misread it;
+    // decline it here and let the reference reorder serve the (pathological)
+    // case instead.
+    VDISPATCH_REORDER_IC(K != 1 || src_strides[ndims - 1] == 1,
+            VERBOSE_UNSUPPORTED_TAG_S, "src");
+
+    // zen_weight_prepack takes int64_t K/N/ldb but the matmul that consumes the
+    // packed buffer drives them through the int Zen API; reject oversized slices
+    // up front so packing and matmul agree on what is representable.
+    const dim_t int_max = std::numeric_limits<int>::max();
+    VDISPATCH_REORDER_IC(K <= int_max && N <= int_max && batch <= int_max,
+            VERBOSE_UNSUPPORTED_FEATURE,
+            "dimension > INT_MAX is not supported");
+
+    // Cross-check the recorded packed sizes against the backend-reported
+    // per-slice size to turn a silent overrun into a clean dispatch failure.
+    // The opaque dst carries per_slice_size and size == per_slice_size * batch.
     const auto &zpd = od.zen_packed_desc();
-    VDISPATCH_REORDER_IC(zpd.per_slice_size == zpd.size,
-            VERBOSE_UNSUPPORTED_TAG_S, "dst (batched packed)");
+    const dim_t expected_per_slice = zen_packed_bytes(K, N, type_o);
+    VDISPATCH_REORDER_IC(expected_per_slice > 0
+                    && zpd.per_slice_size
+                            == static_cast<size_t>(expected_per_slice),
+            VERBOSE_INCONSISTENT_MDS, "dst", "packed-slice-size");
 
-    // Reject any dst whose buffer size disagrees with the
-    // backend-reported packed size to turn a silent overrun into a clean
-    // dispatch failure. ndims()==2 here, so size() == per-slice size.
-    const dim_t expected_packed_bytes
-            = zen_packed_bytes(od.dims()[0], od.dims()[1], type_o);
-    VDISPATCH_REORDER_IC(expected_packed_bytes > 0
-                    && od.size() == static_cast<size_t>(expected_packed_bytes),
+    // batch is validated >= 1 (no zero dims) and <= INT_MAX above. Guard the
+    // per_slice_size * batch product against size_t overflow before comparing:
+    // a wrap could otherwise make an undersized buffer pass this check and lead
+    // to out-of-bounds writes during packing. Mirrors init_zen_packed_md().
+    const size_t batch_sz = static_cast<size_t>(batch);
+    VDISPATCH_REORDER_IC(zpd.per_slice_size <= SIZE_MAX / batch_sz,
+            VERBOSE_INCONSISTENT_MDS, "dst", "packed-size-overflow");
+    VDISPATCH_REORDER_IC(
+            zpd.size == zpd.per_slice_size * batch_sz && od.size() == zpd.size,
             VERBOSE_INCONSISTENT_MDS, "dst", "packed-size");
 
     // The f32 -> bf16 prepack path needs a K*N bf16 conversion buffer. Book it
     // on the primitive scratchpad (declared here, consumed in execute() via the
     // grantor) so execution stays allocation-free.
     if (type_i == data_type::f32 && type_o == data_type::bf16) {
-        const size_t conv_bytes = static_cast<size_t>(id.dims()[0])
-                * static_cast<size_t>(id.dims()[1]) * sizeof(int16_t);
+        // One (K, N) bf16 slice; reused across batches in execute().
+        const size_t conv_bytes = static_cast<size_t>(K)
+                * static_cast<size_t>(N) * sizeof(int16_t);
         auto scratchpad = scratchpad_registry().registrar();
         scratchpad.book(memory_tracking::names::key_reorder_space, conv_bytes,
                 /*data_size=*/1, /*alignment=*/64);
@@ -219,59 +272,89 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
 
-    // The src has been validated as a 2D plain `ab` or `ba` layout by
-    // pd_t::init. Logical dims are always (K, N).
-    const int64_t K = src_d.dims()[0];
-    const int64_t N = src_d.dims()[1];
+    // src is a plain 2D (K, N) slice or a 3D batched [B, K, N] tensor, each
+    // slice plain `ab`/`ba` (validated by pd_t::init). Logical per-slice dims
+    // are always (K, N); the batch dim (if any) is outermost.
+    const int ndims = src_d.ndims();
+    const bool batched = ndims == 3;
+    const int64_t K = src_d.dims()[ndims - 2];
+    const int64_t N = src_d.dims()[ndims - 1];
+    const int64_t batch = batched ? src_d.dims()[0] : 1;
 
-    // Detect transpose from the src strides:
-    //   ab -> strides = {N, 1}  -> trans='n', ldb=N
-    //   ba -> strides = {1, K}  -> trans='t', ldb=K
-    // When K==1 (degenerate row), both layouts coincide and we treat the
-    // src as `ab` (trans='n') since the byte stream is identical.
+    // Detect transpose from the slice's last-two-dim strides:
+    //   ab -> strides[..]={ldb, 1}  -> trans='n', ldb = row stride
+    //   ba -> strides[..]={1, ldb}  -> trans='t', ldb = col stride
+    // When K==1 (degenerate row) and the row is contiguous (N stride == 1),
+    // both layouts coincide, so treat the src as `ab` (trans='n'); the byte
+    // stream is identical. A padded (non-contiguous) K==1 row is rejected in
+    // pd_t::init(), so it never reaches here.
     const auto &src_strides = src_d.blocking_desc().strides;
-    const bool src_is_ab = (src_strides[1] == 1) || (src_d.dims()[0] == 1);
+    const bool src_is_ab = (src_strides[ndims - 1] == 1) || (K == 1);
     const bool transposed = !src_is_ab;
 
-    const void *src_ptr = CTX_IN_MEM(const void *, DNNL_ARG_FROM);
-    void *dst_ptr = CTX_OUT_MEM(void *, DNNL_ARG_TO);
+    // The leading dim is read from the actual inner stride (not the logical
+    // extent), so a padded leading dim is honored: ab -> row stride
+    // (strides[ndims-2]); ba -> col stride (strides[ndims-1]).
+    // Exception: when K==1 the slice is a single row and both layouts coincide
+    // (src_is_ab is forced true above), but the K-dimension stride is then
+    // degenerate (can be 1 for an `acb` source) rather than the row length, so
+    // fall back to the logical N -- the packer requires ldb >= N.
+    const int64_t ldb = src_is_ab ? (K == 1 ? N : src_strides[ndims - 2])
+                                  : src_strides[ndims - 1];
 
     const auto src_dt = src_d.data_type();
     const auto dst_dt = dst_d.data_type();
 
-    // ab -> ldb=N (trans='n'); ba -> ldb=K (trans='t').
-    const int64_t ldb = src_is_ab ? N : K;
+    // Per-batch advance: src by its leading-dim stride (elements), dst by one
+    // fixed-size packed slot (per_slice_size bytes).
+    const size_t src_elem = src_d.data_type_size();
+    const size_t src_slice_bytes
+            = batched ? static_cast<size_t>(src_strides[0]) * src_elem : 0;
+    const size_t dst_slice_bytes = dst_d.zen_packed_desc().per_slice_size;
 
-    if (src_dt == data_type::bf16 && dst_dt == data_type::bf16)
-        return zen_weight_prepack(
-                src_ptr, dst_ptr, zd::bf16, K, N, ldb, transposed);
+    const auto *src_base = CTX_IN_MEM(const uint8_t *, DNNL_ARG_FROM);
+    auto *dst_base = CTX_OUT_MEM(uint8_t *, DNNL_ARG_TO);
 
-    if (src_dt == data_type::f32 && dst_dt == data_type::f32)
-        return zen_weight_prepack(
-                src_ptr, dst_ptr, zd::f32, K, N, ldb, transposed);
-
+    // f32 -> bf16 prepack needs a per-slice bf16 conversion buffer (booked in
+    // pd_t::init), reused across batches so execute() stays allocation-free.
+    void *conv = nullptr;
     if (src_dt == data_type::f32 && dst_dt == data_type::bf16) {
-        // Mixed-precision prepack: convert f32 -> plain bf16 (contiguous `ab`),
-        // then prepack that bf16 into the Zen blocked layout. The conversion
-        // scratch is required because f32_to_bf16_plain writes a new bf16
-        // buffer; it is taken from the primitive scratchpad (booked in
-        // pd_t::init), so execute() performs no heap allocation.
-        const auto &scratchpad = ctx.get_scratchpad_grantor();
-        void *conv = scratchpad.get<int16_t>(
+        conv = ctx.get_scratchpad_grantor().get<int16_t>(
                 memory_tracking::names::key_reorder_space);
         if (conv == nullptr) return status::out_of_memory;
-
-        status_t st = f32_to_bf16_plain(src_ptr, conv, K, N, src_is_ab);
-        if (st == success) {
-            // conv is in `ab` (K-major) layout regardless of original src.
-            st = zen_weight_prepack(conv, dst_ptr, zd::bf16, K, N,
-                    /*ldb=*/N, /*transposed=*/false);
-        }
-
-        return st;
     }
 
-    return status::unimplemented;
+    // Pack one (K, N) slice from `src` into `dst`.
+    auto prepack_slice = [&](const void *src, void *dst) -> status_t {
+        if (src_dt == data_type::bf16 && dst_dt == data_type::bf16)
+            return zen_weight_prepack(
+                    src, dst, zd::bf16, K, N, ldb, transposed);
+
+        if (src_dt == data_type::f32 && dst_dt == data_type::f32)
+            return zen_weight_prepack(src, dst, zd::f32, K, N, ldb, transposed);
+
+        if (src_dt == data_type::f32 && dst_dt == data_type::bf16) {
+            // Convert f32 -> plain bf16 (contiguous `ab`), then prepack that
+            // bf16 slice into the Zen blocked layout. The conversion avoids the
+            // backend's f32->bf16 fringe-N bug (see header note).
+            status_t st = f32_to_bf16_plain(src, conv, K, N, ldb, src_is_ab);
+            if (st == success)
+                st = zen_weight_prepack(conv, dst, zd::bf16, K, N,
+                        /*ldb=*/N, /*transposed=*/false);
+            return st;
+        }
+
+        return status::unimplemented;
+    };
+
+    for (int64_t b = 0; b < batch; b++) {
+        const void *src_slice
+                = src_base + static_cast<size_t>(b) * src_slice_bytes;
+        void *dst_slice = dst_base + static_cast<size_t>(b) * dst_slice_bytes;
+        CHECK(prepack_slice(src_slice, dst_slice));
+    }
+
+    return status::success;
 #endif
 }
 

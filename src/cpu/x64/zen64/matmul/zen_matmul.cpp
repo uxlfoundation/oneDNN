@@ -48,6 +48,53 @@ using namespace dnnl::impl::cpu::matmul;
 
 #if DNNL_X64_USE_ZEN
 using namespace zen_matmul;
+
+namespace {
+
+// Resolved Zen BMM batch parameters. For the non-batched (2D) path the batch
+// counts stay 1 and the strides keep the (size_t)-1 sentinel (the backend then
+// derives dense strides). For 3D the leading dim is the single batch dim and
+// the per-batch strides are expressed in elements (matching the Zen looper,
+// which scales them by the per-tensor element size).
+struct zen_bmm_params_t {
+    int batch_a = 1;
+    int batch_b = 1;
+    size_t stride_src = static_cast<size_t>(-1);
+    size_t stride_wei = static_cast<size_t>(-1);
+    size_t stride_dst = static_cast<size_t>(-1);
+};
+
+// Compute the BMM batch parameters from resolved (post set_default_formats)
+// descriptors. Shared by pd_t::init (for INT_MAX validation) and execute_body
+// (for the values actually handed to the backend) so the two never diverge.
+inline zen_bmm_params_t compute_zen_bmm_params(const memory_desc_wrapper &src_d,
+        const memory_desc_wrapper &weights_d, const matmul_helper_t &helper,
+        bool wei_is_zen_packed) {
+    zen_bmm_params_t p;
+    if (src_d.ndims() != 3) return p; // 2D: defaults (batch 1, derive strides)
+
+    p.batch_a = static_cast<int>(src_d.dims()[0]);
+    p.batch_b = static_cast<int>(weights_d.dims()[0]);
+    // oneDNN strides are already in elements.
+    p.stride_src = static_cast<size_t>(helper.get_a_stride(0));
+    p.stride_dst = static_cast<size_t>(helper.get_c_stride(0));
+    if (wei_is_zen_packed) {
+        // The packed weights md is opaque (no blocking_desc); each batch
+        // occupies one fixed-size packed slot. Convert the per-slice byte size
+        // to elements for the Zen looper. pd_t::init() has already verified that
+        // per_slice_size is an exact multiple of the (non-zero) element size,
+        // so this division is exact.
+        const size_t wei_elem = weights_d.data_type_size();
+        assert(wei_elem > 0
+                && weights_d.zen_packed_desc().per_slice_size % wei_elem == 0);
+        p.stride_wei = weights_d.zen_packed_desc().per_slice_size / wei_elem;
+    } else {
+        p.stride_wei = static_cast<size_t>(helper.get_b_stride(0));
+    }
+    return p;
+}
+
+} // namespace
 #endif
 
 status_t zen_matmul_t::pd_t::init(engine_t *engine) {
@@ -81,11 +128,34 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
     const auto wei_dt = weights_md(0)->data_type;
     const auto dst_dt = dst_md(0)->data_type;
 
-    // 2D only -- batched (3D+) matmul not yet supported.
-    VDISPATCH_MATMUL(ndims() == 2, VERBOSE_BAD_NDIMS, "dst", ndims());
+    // 2D plain matmul and 3D batched matmul (a single leading batch dim) are
+    // supported. Higher-rank batched matmul (ndims > 3, multiple batch dims)
+    // maps to several batch strides which the Zen BMM looper -- a single
+    // (Batch_A, Batch_B) batch index -- cannot express, so reject it here.
+    VDISPATCH_MATMUL(
+            utils::one_of(ndims(), 2, 3), VERBOSE_BAD_NDIMS, "dst", ndims());
+
+    const bool is_batched = ndims() == 3;
 
     // No zero-dim tensors.
     VDISPATCH_MATMUL(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
+
+    // ---- Batch (BMM) validation ----
+    // For 3D the leading dim is the single batch dim. The Zen BMM looper
+    // broadcasts an operand whose batch count is 1 (get_batch_index returns
+    // b % batch, i.e. always 0 when batch == 1) and otherwise expects the
+    // batch index to map 1:1. oneDNN only allows a batch dim to broadcast
+    // when its extent is 1, so require the src and weights batch counts to be
+    // equal or for one of them to broadcast (== 1). The output batch count is
+    // max(src_batch, wei_batch), enforced by the framework on the dst desc.
+    dim_t src_batch = 1, wei_batch = 1;
+    if (is_batched) {
+        src_batch = src_md(0)->dims[0];
+        wei_batch = weights_md(0)->dims[0];
+        VDISPATCH_MATMUL(
+                src_batch == wei_batch || src_batch == 1 || wei_batch == 1,
+                VERBOSE_INCONSISTENT_DIM, "src", 0, "weights", 0);
+    }
 
     // ---- Datatype validation (aligned with Zen support) ----
     // Supported configurations:
@@ -163,6 +233,12 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
                     return false;
             } else if (entry.is_binary()) {
                 using namespace alg_kind;
+                // Binary post-ops are supported on both the 2D and 3D (BMM)
+                // paths. On BMM the Zen backend advances the src1 buffer per
+                // batch by a dense M*N stride and per row by N, so the operand
+                // must be a dense row-major tensor that is full in M and N;
+                // the shape/stride contract is enforced in
+                // check_binary_postop_formats() below.
                 if (!utils::one_of(entry.binary.alg, binary_add, binary_mul))
                     return false;
                 const auto src1_dt = entry.binary.src1_desc.data_type;
@@ -209,10 +285,15 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
     // set_default_formats() leaves it untouched.
     VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
 
+    // Advertise the opaque zen_packed weights format whenever the framework
+    // leaves the weights layout open. For BMM (3D) the packed buffer holds one
+    // packed (K, N) slice per weight batch (wei_batch back-to-back slots),
+    // produced by zen_reorder_t and consumed here with mem_format_b='r' plus a
+    // per-slice batch_stride_wei.
     bool wei_zen_packed = wei_already_packed;
     if (wei_format_any && (wei_dt == bf16 || wei_dt == f32)) {
-        VDISPATCH_MATMUL_SC(
-                zen::init_zen_packed_md(weights_md_, src_dt, K(), N()),
+        VDISPATCH_MATMUL_SC(zen::init_zen_packed_md(weights_md_, src_dt, K(),
+                                    N(), is_batched ? wei_batch : 1),
                 VERBOSE_UNSUPPORTED_TAG);
         wei_zen_packed = true;
     }
@@ -225,10 +306,54 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
             wei_zen_packed || gemm_based::check_gemm_compatible_formats(*this),
             VERBOSE_INCOMPATIBLE_GEMM_FMT);
 
-    // Destination must be plain row-major ab layout.
+    // Source / destination layout validation.
+    //
+    // The Zen backend drives the GEMM via explicit leading dims and per-batch
+    // strides, so it accepts a padded leading dim: src plain with one inner
+    // axis contiguous, dst plain with the last (N) axis contiguous.
+    // check_gemm_{input,output}_format() capture exactly this contract, so an
+    // exact matches_one_of_tag() check would needlessly reject supported
+    // padded layouts. Applied unconditionally (including the packed-weights
+    // path) so an unsupported layout declines at creation, not at runtime.
     const memory_desc_wrapper dst_d(dst_md(0));
-    VDISPATCH_MATMUL(
-            dst_d.matches_one_of_tag(format_tag::ab), VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_MATMUL(gemm_based::check_gemm_output_format(*dst_md(0)),
+            VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_MATMUL(gemm_based::check_gemm_input_format(*src_md(0)),
+            VERBOSE_UNSUPPORTED_TAG);
+
+    // check_gemm_output_format() only enforces plain + contiguous N; unlike
+    // check_gemm_input_format() it does not reject zero strides. A zero stride
+    // on dst (an M- or batch-broadcast output) would make the Zen kernel write
+    // repeatedly to the same location and produce wrong results, so reject it
+    // here explicitly (is_plain() is guaranteed by the check above).
+    const auto &dst_strides = dst_d.blocking_desc().strides;
+    bool dst_no_zero_stride = true;
+    for (int i = 0; i < dst_d.ndims(); i++)
+        dst_no_zero_stride = dst_no_zero_stride && dst_strides[i] != 0;
+    VDISPATCH_MATMUL(dst_no_zero_stride, VERBOSE_UNSUPPORTED_TAG);
+
+    // For BMM the Zen looper treats dim 0 as the single batch dimension and
+    // advances each operand by its dim-0 (batch) stride. check_gemm_*_format()
+    // above only constrains the inner M/K axes, so it would also accept a
+    // permuted layout where the batch dim is not outermost. To
+    // keep the accepted layouts matched to the abc/acb (batch-outermost)
+    // contract, require dim 0 to carry the largest stride for every batched
+    // operand that exposes strides (packed weights are opaque and validated via
+    // their per-slice size instead).
+    if (is_batched) {
+        auto batch_is_outermost = [](const memory_desc_t *md) {
+            const memory_desc_wrapper mdw(md);
+            const auto &s = mdw.blocking_desc().strides;
+            return s[0] >= s[1] && s[0] >= s[2];
+        };
+        VDISPATCH_MATMUL(
+                batch_is_outermost(src_md(0)), VERBOSE_UNSUPPORTED_TAG);
+        VDISPATCH_MATMUL(
+                batch_is_outermost(dst_md(0)), VERBOSE_UNSUPPORTED_TAG);
+        if (!wei_zen_packed)
+            VDISPATCH_MATMUL(
+                    batch_is_outermost(weights_md(0)), VERBOSE_UNSUPPORTED_TAG);
+    }
 
     VDISPATCH_MATMUL(!::dnnl::impl::cpu::x64::binary_injector::
                              any_binary_postop_rhs_with_ternary_scalar_bcast(
@@ -240,12 +365,18 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_POSTOP);
 
     // ---- Binary post-op shape/format validation ----
-    // Supported src1 layouts for binary post-ops via Zen (both ab,
-    // row-major dense):
-    //   * per_tensor : src1 dims match dst exactly (no broadcast)
-    //   * per_channel: broadcast over every dim except the last (N/OC)
-    //                  dim, i.e. the broadcast dims have extent 1 while
-    //                  the channel dim is full-size.
+    // The src1 operand must be a plain row-major dense tensor (ab for 2D, abc
+    // for 3D); the Zen backend does not support arbitrary strides. The channel
+    // (last/N) dim must always be full-size. Supported broadcast patterns:
+    //   2D:  * per_tensor  : dims == dst (M, N)
+    //        * per_channel : M broadcast (1, N) -- applied via the non-batched
+    //                        path, which honors a 1-row operand.
+    //   3D:  * per_tensor  : dims == dst (batch, M, N)
+    //        * batch bcast : (1, M, N) -- reused across batches.
+    //        M must be full on the BMM path: the Zen looper applies a fixed
+    //        per-row (m_start*N) and per-batch (M*N) offset, so a row-broadcast
+    //        operand would be read out of bounds. The batch dim may be full or
+    //        broadcast (1).
     auto check_binary_postop_formats = [&]() -> bool {
         const auto &po = attr()->post_ops_;
         for (int i = 0; i < po.len(); i++) {
@@ -255,24 +386,40 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
             const auto &src1_desc = entry.binary.src1_desc;
             const auto *dst = dst_md(0);
 
-            // Each dim must either match dst (full) or be a unit-extent
-            // broadcast (per_tensor => all full, per_channel => only the
-            // channel dim full). The channel dim (last) must be full-size.
             if (src1_desc.ndims != dst->ndims) return false;
-            const int channel_dim = src1_desc.ndims - 1;
-            for (int d = 0; d < src1_desc.ndims; d++) {
+            const int nd = src1_desc.ndims;
+            const int channel_dim = nd - 1; // N
+            for (int d = 0; d < nd; d++) {
                 const bool full = src1_desc.dims[d] == dst->dims[d];
                 const bool bcast = src1_desc.dims[d] == 1;
                 if (!(full || bcast)) return false;
                 if (d == channel_dim && !full) return false;
             }
+            // On the BMM (3D) path the M dim (nd-2) must be full; the Zen looper
+            // offsets the operand by m_start*N rows, so a 1-row (M-broadcast)
+            // operand cannot be supported there.
+            if (nd == 3 && src1_desc.dims[nd - 2] != dst->dims[nd - 2])
+                return false;
 
-            // ab format: plain row-major dense.
+            // Plain row-major dense: last dim contiguous, row stride == N, and
+            // (3D, batch full) batch stride == M*N.
             const memory_desc_wrapper src1_mdw(src1_desc);
             if (!src1_mdw.is_plain()) return false;
             const auto &strides = src1_mdw.blocking_desc().strides;
-            if (strides[1] != 1 || strides[0] != src1_desc.dims[1])
-                return false;
+            if (strides[nd - 1] != 1) return false;
+            if (strides[nd - 2] != src1_desc.dims[nd - 1]) return false;
+            if (nd == 3 && src1_desc.dims[0] != 1) {
+                // Compute M*N in size_t with an overflow guard: an oversized
+                // product would wrap in signed dim_t and invoke UB even though
+                // such a case is rejected later by the INT_MAX guard.
+                const size_t m = static_cast<size_t>(src1_desc.dims[1]);
+                const size_t n = static_cast<size_t>(src1_desc.dims[2]);
+                if (n != 0 && m > std::numeric_limits<size_t>::max() / n)
+                    return false;
+                const size_t batch_stride = m * n;
+                if (static_cast<size_t>(strides[0]) != batch_stride)
+                    return false;
+            }
         }
         return true;
     };
@@ -286,9 +433,43 @@ status_t zen_matmul_t::pd_t::init(engine_t *engine) {
     // For the packed path the weights md is opaque (no blocking_desc), and the
     // backend uses ldb = N; otherwise read ldb from the plain weights strides.
     const dim_t wei_ldb = wei_zen_packed ? N() : helper.ldb();
-    const bool fits_zen_int_api = helper.M() <= int_max && helper.N() <= int_max
+    // The Zen BMM looper takes Batch_A/Batch_B as int; the batch count is
+    // max(src_batch, wei_batch). Guard all three against the int API.
+    const dim_t batch_count = src_batch > wei_batch ? src_batch : wei_batch;
+    bool fits_zen_int_api = helper.M() <= int_max && helper.N() <= int_max
             && helper.K() <= int_max && helper.lda() <= int_max
-            && wei_ldb <= int_max && helper.ldc() <= int_max;
+            && wei_ldb <= int_max && helper.ldc() <= int_max
+            && src_batch <= int_max && wei_batch <= int_max
+            && batch_count <= int_max;
+
+    // For batched pre-packed weights the per-batch weight stride is derived as
+    // per_slice_size / wei_elem (the opaque md has no blocking_desc). Reject a
+    // descriptor whose per-slice byte size is not an exact multiple of the
+    // weight element size: the integer division would otherwise truncate and
+    // point the Zen looper at the wrong packed slot (silently wrong results).
+    if (is_batched && wei_zen_packed) {
+        const memory_desc_wrapper wei_d(weights_md(0));
+        const size_t wei_elem = wei_d.data_type_size();
+        const size_t per_slice = wei_d.zen_packed_desc().per_slice_size;
+        VDISPATCH_MATMUL(wei_elem > 0 && per_slice % wei_elem == 0,
+                VERBOSE_INCONSISTENT_MDS, "weights", "packed-slice-size");
+    }
+
+    // The per-batch strides handed to the Zen looper must also fit the int API
+    // (defense in depth: they are size_t in the backend but derived from dims).
+    // Only meaningful for the batched path; 2D keeps the (size_t)-1 sentinel.
+    // Guard the call behind fits_zen_int_api: compute_zen_bmm_params() casts the
+    // batch dims to int, so it must not run when the batch/dim validation above
+    // has already failed (batch dims > INT_MAX would be an out-of-range,
+    // implementation-defined integral conversion). When fits_zen_int_api is
+    // already false the VDISPATCH below rejects the primitive regardless.
+    if (is_batched && fits_zen_int_api) {
+        const auto bmm = compute_zen_bmm_params(memory_desc_wrapper(src_md(0)),
+                memory_desc_wrapper(weights_md(0)), helper, wei_zen_packed);
+        const size_t int_max_sz = static_cast<size_t>(int_max);
+        fits_zen_int_api = fits_zen_int_api && bmm.stride_src <= int_max_sz
+                && bmm.stride_wei <= int_max_sz && bmm.stride_dst <= int_max_sz;
+    }
     VDISPATCH_MATMUL(fits_zen_int_api, VERBOSE_UNSUPPORTED_FEATURE,
             "dimension/stride > INT_MAX is not supported");
 
@@ -380,17 +561,23 @@ status_t zen_matmul_direct(data_type_t src_dt, data_type_t wei_dt,
         data_type_t dst_dt, data_type_t bia_dt, const void *A, const void *B,
         void *C, const void *bias, dim_t M, dim_t N, dim_t K, dim_t lda,
         dim_t ldb, dim_t ldc, char transA, char transB, char mem_format_b,
+        int Batch_A, int Batch_B, size_t batch_stride_src,
+        size_t batch_stride_wei, size_t batch_stride_dst,
         const std::vector<matmul_post_op> &cached_postops,
         const std::vector<int> &cached_postop_po_indices, float cached_beta,
         const exec_ctx_t &ctx) {
     using zd = zendnnl::common::data_type_t;
 
+    // Batch_A/Batch_B default to 1 (single GEMM) for the non-batched path.
+    // For BMM the strides are expressed in elements (the Zen looper scales
+    // them by the per-tensor type size); a sentinel of (size_t)-1 lets the
+    // backend derive the dense stride from the dimensions.
     matmul_batch_params_t batch {};
-    batch.Batch_A = 1;
-    batch.Batch_B = 1;
-    batch.batch_stride_src = -1;
-    batch.batch_stride_wei = -1;
-    batch.batch_stride_dst = -1;
+    batch.Batch_A = Batch_A;
+    batch.Batch_B = Batch_B;
+    batch.batch_stride_src = batch_stride_src;
+    batch.batch_stride_wei = batch_stride_wei;
+    batch.batch_stride_dst = batch_stride_dst;
 
     matmul_params params {};
     params.dtypes.src = to_zen_dt(src_dt);
@@ -486,14 +673,33 @@ status_t zen_matmul_t::execute_body(const exec_ctx_t &ctx) const {
         ldb = helper.ldb();
     }
 
+    // Batch (BMM) parameters (shared with pd_t::init via compute_zen_bmm_params
+    // so validation and execution agree). The non-batched path keeps Batch == 1
+    // and the (size_t)-1 stride sentinel (the backend derives dense strides).
+    const auto bmm = compute_zen_bmm_params(
+            src_d, weights_d, helper, wei_is_zen_packed);
+    const int Batch_A = bmm.batch_a;
+    const int Batch_B = bmm.batch_b;
+    const size_t batch_stride_src = bmm.stride_src;
+    const size_t batch_stride_wei = bmm.stride_wei;
+    const size_t batch_stride_dst = bmm.stride_dst;
+
     // pd_t::init() rejects dimensions/strides above INT_MAX; assert here as a
-    // defensive invariant before casting to the int-based Zen API.
+    // defensive invariant before casting to the int-based Zen API. The batch
+    // strides keep their (size_t)-1 sentinel on the 2D path, so only assert
+    // them for the batched path.
+    const size_t int_max_sz
+            = static_cast<size_t>(std::numeric_limits<int>::max());
     assert(M <= std::numeric_limits<int>::max()
             && N <= std::numeric_limits<int>::max()
             && K <= std::numeric_limits<int>::max()
             && lda <= std::numeric_limits<int>::max()
             && ldb <= std::numeric_limits<int>::max()
             && ldc <= std::numeric_limits<int>::max());
+    assert(IMPLICATION(pd()->ndims() == 3,
+            batch_stride_src <= int_max_sz && batch_stride_wei <= int_max_sz
+                    && batch_stride_dst <= int_max_sz));
+    MAYBE_UNUSED(int_max_sz);
 
     // Per-tensor data types (may differ for mixed-precision configs).
     const auto src_dt = src_d.data_type();
@@ -504,9 +710,10 @@ status_t zen_matmul_t::execute_body(const exec_ctx_t &ctx) const {
 
     VDEBUGINFO(2, primitive, matmul,
             "zen matmul: M=%ld N=%ld K=%ld transA=%c transB=%c lda=%ld "
-            "ldb=%ld ldc=%ld src_dt=%d wei_dt=%d dst_dt=%d",
+            "ldb=%ld ldc=%ld src_dt=%d wei_dt=%d dst_dt=%d Batch_A=%d "
+            "Batch_B=%d",
             (long)M, (long)N, (long)K, transA, transB, (long)lda, (long)ldb,
-            (long)ldc, (int)src_dt, (int)wei_dt, (int)dst_dt);
+            (long)ldc, (int)src_dt, (int)wei_dt, (int)dst_dt, Batch_A, Batch_B);
 
     // Extract raw pointers.
     const void *A = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
@@ -520,7 +727,8 @@ status_t zen_matmul_t::execute_body(const exec_ctx_t &ctx) const {
     // Post-ops were pre-built at primitive init(); only binary buffer
     // pointers are patched here from the execution context.
     return zen_matmul_direct(src_dt, wei_dt, dst_dt, bia_dt, A, B, C, bias, M,
-            N, K, lda, ldb, ldc, transA, transB, mem_format_b, zen_postop_,
+            N, K, lda, ldb, ldc, transA, transB, mem_format_b, Batch_A, Batch_B,
+            batch_stride_src, batch_stride_wei, batch_stride_dst, zen_postop_,
             postop_indices_, beta_, ctx);
 #endif // DNNL_X64_USE_ZEN
 }

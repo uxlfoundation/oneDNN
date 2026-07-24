@@ -463,7 +463,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                     VERBOSE_UNSUPPORTED_ZP_CFG);
             VCHECK_MATMUL_UNIMPL(
                     IMPLICATION(mask_src == full_tensor_mask && ndims_src == 3,
-                            desc.src_desc.dims[0] == 1),
+                            !is_runtime_value(desc.src_desc.dims[0])
+                                    && desc.src_desc.dims[0] == 1),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
 
             if (!zp.get(DNNL_ARG_SRC).has_default_groups()) {

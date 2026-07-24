@@ -23,9 +23,9 @@
 namespace dnnl {
 namespace impl {
 
-// Common abstraction to manipulate nibbles in memory as pairs
+// An abstraction to manipulate with bits as bytes. `2` means there are two
+// elements in it.
 struct nibble2_t {
-
     // constructs a nibble pair from a pair of uint8_t values
     nibble2_t(uint8_t low_, uint8_t high_) : low(low_), high(high_) {}
 
@@ -53,11 +53,18 @@ struct nibble2_t {
     // returns pair of nibbles as uint8_t
     inline uint8_t get() const { return static_cast<uint8_t>(high << 4 | low); }
 
+    // Returns a size of a nibble object in bytes.
+    static constexpr size_t size() { return 1; }
+
+    // Returns the number of elements in this type of nibble.
+    static constexpr int nelems() { return 2; }
+
 private:
     uint8_t low : 4;
     uint8_t high : 4;
 };
 static_assert(sizeof(nibble2_t) == 1, "nibble2_t must be 1 byte");
+static_assert(nibble2_t::size() == 1, "nibble2_t must be 1 byte");
 
 } // namespace impl
 } // namespace dnnl

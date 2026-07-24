@@ -21,17 +21,14 @@
 
 #include <cassert>
 
+#include "common/binary_pd.hpp"
 #include "common/c_types_map.hpp"
-#include "common/type_helpers.hpp"
-#include "common/utils.hpp"
 
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/jit_primitive_conf.hpp"
 #include "cpu/aarch64/utils/jit_io_helper.hpp"
-
-#include "cpu/cpu_binary_pd.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -94,20 +91,18 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     const XReg reg_offt_dst_ = x2;
     const PReg tail_opmask_ = p2;
     const PReg cmp_mask = p3;
-    const PReg full_mask_ = p4;
     const Vmm vmm_tail_vmask_ = Vmm(0);
     const Vmm vreg_sum_scale_ = Vmm(17);
     const VReg xreg_sum_scale_ = VReg(9);
     const Vmm vreg_zero_ = Vmm(18);
     const Vmm vreg_one_ = Vmm(19);
+    const Vmm vreg_saturation_lbound_ = Vmm(24);
     const Vmm vreg_saturation_ubound_ = Vmm(20);
     const Vmm vreg_bcast_src1_ = Vmm(21);
     const VReg xreg_bcast_src1_ = VReg(13);
     const Vmm vreg_scales_src0_ = Vmm(22);
     const Vmm vreg_scales_src1_ = Vmm(23);
 
-    const Vmm vmm_full_mask_ = Vmm(24);
-    const Vmm vmm_tmp_gather_ = Vmm(25);
     const Vmm vmm_indices_ = Vmm(30);
     const Vmm vmm_gathered_src_ = Vmm(31);
 
@@ -116,7 +111,7 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     const size_t offt_src1_;
 
     static constexpr cpu_isa_t inject_isa = isa;
-    io::jit_io_multi_dt_helper_t<Vmm> io_;
+    std::unique_ptr<io::jit_io_helper_t<to_vla_sve(isa)>> load_io_;
     std::unique_ptr<
             injector::jit_uni_postops_injector_t<to_vla_sve(inject_isa)>>
             postops_injector_;
@@ -124,13 +119,12 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     const PReg elt_inj_p_tmp0_ = p2;
     const PReg elt_inj_p_all_ = p3;
 
-    void init();
     void init_post_ops_injector();
     void apply_postops(int unroll, bool tail);
     void load_kernel_params();
-    XReg src0_ptr(size_t offt = 0);
-    XReg src1_ptr(size_t offt = 0);
-    XReg dst_ptr(size_t offt = 0);
+    XReg prepare_xaddr_reg_with_src0_ptr(size_t offt = 0);
+    XReg prepare_xaddr_reg_with_src1_ptr(size_t offt = 0);
+    XReg prepare_xaddr_reg_with_dst_ptr(size_t offt = 0);
     void perform_op(
             const Vmm &v0, const Vmm &v1, const Vmm &s_src0, const Vmm &s_src1);
     void prepare_isa_kernel();
@@ -150,14 +144,12 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     void push(const XReg &reg);
     void pop(const XReg &reg);
 
-    void uni_broadcast(const Vmm &dst, const Xbyak_aarch64::XReg &addr);
-
     jit_uni_binary_kernel_t(const binary_pd_t *pd, const jit_binary_conf_t conf,
             bool tail_kernel = false);
     ~jit_uni_binary_kernel_t() override = default;
 
-    std::map<data_type_t, io::io_saturation_conf_t>
-    create_saturation_vmm_map() const;
+    const io::saturation_conf_t<Vmm> io_sat_conf_;
+    const io::tail_conf_t io_tail_conf_;
 };
 
 } // namespace aarch64

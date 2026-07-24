@@ -161,11 +161,11 @@ static void prb_set_compensation_strides(prb_t &p) {
         const int parent = get_next_parent_node(p.nodes, p.ndims, cur_node);
         if (parent < 0) return false;
 
-        const size_t p_n = p.nodes[parent].n;
+        const dim_t p_n = p.nodes[parent].n;
 
         // if 'parent_node.n' is larger than 1, then cur_node stride
         // is 'cur_node.n'
-        return p_n > size_t(1);
+        return p_n > 1;
     };
 
     const auto compensation_needed = p.req_s8s8_comp || p.req_asymmetric_comp;
@@ -370,7 +370,7 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
 
         if (ild.dims[i_pos] == old.dims[o_pos]) {
             p.nodes[ndims].n = ild.dims[i_pos];
-            p.nodes[ndims].dim_id = old.id[o_pos];
+            p.nodes[ndims].dim_id = static_cast<int>(old.id[o_pos]);
             p.nodes[ndims].tail_size = old.tails[o_pos];
             p.nodes[ndims].is_zero_pad_needed
                     = old.is_blk[o_pos] && old.tails[o_pos] > 0;
@@ -389,14 +389,14 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
 
             dim_t factor = old.dims[o_pos] / ild.dims[i_pos];
 
-            const size_t tail_of_upper_dim
+            const dim_t tail_of_upper_dim
                     = utils::div_up(old.tails[o_pos], factor) == ild.dims[i_pos]
                     ? 0
                     : utils::div_up(old.tails[o_pos], factor);
-            const size_t tail_of_lower_dim = old.tails[o_pos] % factor;
+            const dim_t tail_of_lower_dim = old.tails[o_pos] % factor;
 
             p.nodes[ndims].n = ild.dims[i_pos];
-            p.nodes[ndims].dim_id = old.id[o_pos];
+            p.nodes[ndims].dim_id = static_cast<int>(old.id[o_pos]);
             p.nodes[ndims].tail_size = tail_of_upper_dim;
             p.nodes[ndims].is_zero_pad_needed
                     = old.is_blk[o_pos] && tail_of_upper_dim > 0;
@@ -416,7 +416,7 @@ status_t prb_init(prb_t &p, const memory_desc_t &imd, const memory_desc_t &omd,
 
             dim_t factor = ild.dims[i_pos] / old.dims[o_pos];
             p.nodes[ndims].n = old.dims[o_pos];
-            p.nodes[ndims].dim_id = old.id[o_pos];
+            p.nodes[ndims].dim_id = static_cast<int>(old.id[o_pos]);
             p.nodes[ndims].tail_size = old.tails[o_pos];
             p.nodes[ndims].is_zero_pad_needed
                     = old.is_blk[o_pos] && old.tails[o_pos] > 0;
@@ -514,15 +514,15 @@ void prb_simplify(prb_t &p) {
                 = skip_dim_combining(d) || skip_dim_combining(d + 1);
         if (skip_dims_combining) continue;
 
-        const bool trivial_fold = next_node.n == static_cast<size_t>(1);
+        const bool trivial_fold = next_node.n == 1;
         const bool real_fold = next_node.is
-                        == static_cast<ptrdiff_t>(this_node.n * this_node.is)
+                        == this_node.n * this_node.is
                 && next_node.os
-                        == static_cast<ptrdiff_t>(this_node.n * this_node.os)
+                        == this_node.n * this_node.os
                 && next_node.ss
-                        == static_cast<ptrdiff_t>(this_node.n * this_node.ss)
+                        == this_node.n * this_node.ss
                 && next_node.cs
-                        == static_cast<ptrdiff_t>(this_node.n * this_node.cs);
+                        == this_node.n * this_node.cs;
         if (trivial_fold || real_fold) {
             this_node.n *= next_node.n;
             this_node.dim_id = node_t::empty_field;
@@ -540,7 +540,7 @@ void prb_simplify(prb_t &p) {
 #endif
 }
 
-void prb_node_split(prb_t &p, int dim, size_t new_node_size) {
+void prb_node_split(prb_t &p, int dim, dim_t new_node_size) {
     assert(dim < p.ndims);
     assert(p.ndims < max_ndims);
     assert(p.nodes[dim].n % new_node_size == 0);
@@ -551,18 +551,18 @@ void prb_node_split(prb_t &p, int dim, size_t new_node_size) {
     for (int d = p.ndims; d > dim + 1; --d)
         p.nodes[d] = p.nodes[d - 1];
 
-    const size_t upper_node_size = p.nodes[dim].n / new_node_size;
-    const size_t lower_node_size = new_node_size;
+    const dim_t upper_node_size = p.nodes[dim].n / new_node_size;
+    const dim_t lower_node_size = new_node_size;
     p.nodes[dim + 1].n = upper_node_size;
     p.nodes[dim].n = lower_node_size;
 
     const bool is_tail = p.nodes[dim].tail_size > 0;
-    const size_t upper_node_tail
+    const dim_t upper_node_tail
             = utils::div_up(p.nodes[dim].tail_size, lower_node_size)
                     == upper_node_size
             ? 0
             : utils::div_up(p.nodes[dim].tail_size, lower_node_size);
-    const size_t lower_node_tail = p.nodes[dim].tail_size % lower_node_size;
+    const dim_t lower_node_tail = p.nodes[dim].tail_size % lower_node_size;
     p.nodes[dim].tail_size = is_tail ? lower_node_tail : 0;
     p.nodes[dim + 1].tail_size = is_tail ? upper_node_tail : 0;
 

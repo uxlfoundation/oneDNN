@@ -733,7 +733,11 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
     problem_ktq.B.layout = MatrixLayout::Pr;
     problem_ktq.C.layout = MatrixLayout::N;
 
-    problem_ktq.A.setAlignment(micro::alignmentForLD(int(ldk)));
+    constexpr int ktq_nondense_align = 2;
+    problem_ktq.A.setAlignment(key_mdw.is_dense()
+                    ? micro::alignmentForLD(int(ldk))
+                    : std::min(ktq_nondense_align,
+                              micro::alignmentForLD(int(ldk))));
     problem_ktq.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_ktq.B.crosspack = 16; }
 

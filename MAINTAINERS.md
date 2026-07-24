@@ -160,7 +160,7 @@ Team: @uxlfoundation/onednn-cpu-aarch64
 | Marek Michałowski  | @michalowski-arm      | Arm Ltd           | Code Owner |
 | Radu Salavat       | @Radu2k               | Arm Ltd           | Code Owner |
 | Renato Arantes     | @renato-arantes       | Arm Ltd           | Code Owner |
-| Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
+| Ryo Suzuki         | @Ryo-not-rio          |                   | Code Owner |
 | Sunita Nadampalli  | @snadampal            | Amazon.com, Inc.  | Code Owner |
 
 ### OpenPOWER (PPC64)
@@ -240,7 +240,7 @@ Team: @uxlfoundation/onednn-devops
 | Sergey Razumovskiy | @srazumov             | Intel Corporation | Maintainer |
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
 | Hamza Butt         | @theComputeKid        | Arm Ltd           | Code Owner |
-| Ryo Suzuki         | @Ryo-not-rio          | Arm Ltd           | Code Owner |
+| Ryo Suzuki         | @Ryo-not-rio          |                   | Code Owner |
 | Siddhartha Menon   | @Sqvid                | Arm Ltd           | Code Owner |
 
 ### Release management

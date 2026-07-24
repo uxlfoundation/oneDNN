@@ -238,14 +238,8 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     dpasw &= systolic && fused;
 
-    // Accumulator usage: 64-bit emulation, or k chaining, or extra C registers, or storage for r0 header.
-    // Priority: k chaining > extra C registers > r0 header storage.
-    //                         64-bit emulation > r0 header storage.
-    if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
-        kChain = 1;
-    // Fwd modifier not supported in below case
-    if (hw == HW::Xe3p && systolic && problem.product.family < ProductFamily::CRI)
-        kChain = 1;
+    if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0 && kChain > 1)
+        stub("kChain > 1 requires accumulator registers.");
     cAccumulators &= (kChain == 1);
 
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW;
@@ -263,7 +257,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     checkAdd32 &= !(A.address2D && B.address2D && (!prefetchA || A_prefetch.address2D) && (!prefetchB || B_prefetch.address2D));
 
     int opCount = outerProductCount(problem, *this);
-    int minOPCount = minOuterProductCount(problem, *this);
     int ukAlign = opCount;
 
     if (kParallelLocal)
@@ -281,14 +274,23 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         slmUseIncrCopy &= (slmCopies == 1);
     }
 
-    // ka/kb_load wranging.
+    // ka/kb_load wrangling.
     if (ka_load_masked == 0) ka_load_masked = ka_load;
     if (kb_load_masked == 0) kb_load_masked = kb_load;
 
-    int maskedOPCount = minOPCount;
-    if(problem.product.family == ProductFamily::CRI && kChain >= 2)
-        // On CRI, dpas fwd modifier is required for optimal compute throughput
-        maskedOPCount *= 2;
+    bool hasGeneralM = (remHandling[LoopM] == RemainderHandling::General) && !A.padded;
+    bool hasGeneralN = (remHandling[LoopN] == RemainderHandling::General) && !B.padded;
+
+    // k{a,b}_load_masked are always used in loop generation, avoid duplicate representations.
+    if (hasGeneralM && ka_load_masked != ka_load)
+        stub("Non-default General M remainder handling is not supported");
+    if (hasGeneralN && kb_load_masked != kb_load)
+        stub("Non-default General N remainder handling is not supported");
+
+    // On CRI, dpas fwd modifier is required for optimal compute throughput.
+    int maskedOPCount = minOuterProductCount(problem, *this);
+    if (problem.product.family == ProductFamily::CRI && kChain >= 2) maskedOPCount *= 2;
+    if (hasGeneralM && hasGeneralN) maskedOPCount = opCount;
 
     if (!slmA) {
         ka_load = align_up(ka_load, opCount);

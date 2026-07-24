@@ -179,8 +179,10 @@ bool matmul_amx_blocking_params_macro_t::maybe_small_dims_heuristics(
         best_blocking.need_buf_c_ = false;
         best_blocking.need_buf_a_ = best_blocking.use_buffer_a;
 
+        // extendable_k requires A to be contiguous along K (LDA == K).
         best_blocking.extendable_k_ = bgmmc.K % best_blocking.wei_k_blk != 0
-                && !best_blocking.skip_extendable_k();
+                && !best_blocking.skip_extendable_k()
+                && best_blocking.get_actual_lda() == bgmmc.K;
 
         best_blocking.is_a_nt_ = true;
         best_blocking.is_b_nt = true;

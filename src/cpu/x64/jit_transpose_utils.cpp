@@ -54,10 +54,10 @@ struct jit_trans_iw_ic_t : public jit_trans_src_t, public jit_generator_t {
     }
 
 private:
-    int typesize = 0;
+    dim_t typesize = 0;
     bool is_layout_nxc = false;
     static constexpr int transpose_size = 16;
-    size_t src_stride = 0, tr_src_stride = 0;
+    dim_t src_stride = 0, tr_src_stride = 0;
 
     Opmask kLoadMask1 = k1;
     Opmask kLoadMask2 = k2;
@@ -111,14 +111,17 @@ private:
         jit_generator_t::vmovdqa32(z, ptr[imm_addr64]);
     }
 
-    void transpose(int nrows, int l_pad, int r_pad, bool nontemporal_stores);
-    void transpose_2b(int nrows, int l_pad, int r_pad, bool nontemporal_stores);
-    void transpose_1b(int nrows, int l_pad, int r_pad, bool nontemporal_stores);
+    void transpose(
+            dim_t nrows, dim_t l_pad, dim_t r_pad, bool nontemporal_stores);
+    void transpose_2b(
+            dim_t nrows, dim_t l_pad, dim_t r_pad, bool nontemporal_stores);
+    void transpose_1b(
+            dim_t nrows, dim_t l_pad, dim_t r_pad, bool nontemporal_stores);
     void generate() override;
 };
 
 void jit_trans_iw_ic_t::transpose(
-        int nrows, int l_pad, int r_pad, bool nontemporal_stores) {
+        dim_t nrows, dim_t l_pad, dim_t r_pad, bool nontemporal_stores) {
     assert(nrows >= 0 && nrows <= transpose_size);
     static_assert(transpose_size == 16, "Unsupported transpose size");
     if (!nrows) return;
@@ -132,7 +135,7 @@ void jit_trans_iw_ic_t::transpose(
 }
 
 void jit_trans_iw_ic_t::transpose_2b(
-        int nrows, int l_pad, int r_pad, bool nontemporal_stores) {
+        dim_t nrows, dim_t l_pad, dim_t r_pad, bool nontemporal_stores) {
     auto load_ymm = [this](int i) {
         vmovups(src_ymm(i), EVEX_compress_addr(reg_src, i * src_stride));
     };
@@ -141,28 +144,28 @@ void jit_trans_iw_ic_t::transpose_2b(
         mov(regw_tmp, w);
         jit_generator_t::kmovd(k, regw_tmp);
     };
-    int l_pad_tail {0}, l_pad_rows {0};
-    int r_pad_tail {0}, r_pad_rows {0};
+    dim_t l_pad_tail {0}, l_pad_rows {0};
+    dim_t r_pad_tail {0}, r_pad_rows {0};
 
     if (l_pad > 0) {
-        int store_pad = 2 * transpose_size;
+        dim_t store_pad = 2 * transpose_size;
         l_pad_rows = l_pad / store_pad;
         l_pad_tail = div_up(l_pad % store_pad, 2);
         kmovw(kLPad, (1 << l_pad_tail) - 1);
     }
     if (r_pad > 0) {
-        int store_pad = div_up(r_pad, 2);
+        dim_t store_pad = div_up(r_pad, 2);
         r_pad_rows = store_pad / transpose_size;
         r_pad_tail = store_pad % transpose_size;
         kmovw(kRPad, (1 << r_pad_tail) - 1);
     }
 
-    auto padding = [this](Reg64 base, int addr_shift, int pad_rows,
-                           int pad_tail, const Opmask &mask, int i) {
+    auto padding = [this](Reg64 base, dim_t addr_shift, dim_t pad_rows,
+                           dim_t pad_tail, const Opmask &mask, dim_t i) {
         // note: pad can be bigger than 16 because of dilation
-        const size_t row_offset = 2 * transpose_size * typesize;
+        const dim_t row_offset = 2 * transpose_size * typesize;
         const auto pshift = addr_shift * typesize + i * tr_src_stride;
-        for (int i_row = 0; i_row < pad_rows; i_row++) {
+        for (dim_t i_row = 0; i_row < pad_rows; i_row++) {
             auto addr = EVEX_compress_addr(base, pshift + i_row * row_offset);
             vmovups(addr, zmm_zero);
         }
@@ -174,14 +177,14 @@ void jit_trans_iw_ic_t::transpose_2b(
         }
     };
 
-    auto store = [&](Zmm r, int i) {
+    auto store = [&](Zmm r, dim_t i) {
         mov(reg_tr_src_tmp, reg_tr_src);
         if (l_pad > 0) {
             padding(reg_tr_src_tmp, 0, l_pad_rows, l_pad_tail, kLPad, i);
             add(reg_tr_src_tmp, l_pad * typesize);
         }
         if (r_pad > 0) {
-            int addr_shift = nrows - r_pad % 2;
+            dim_t addr_shift = nrows - r_pad % 2;
             padding(reg_tr_src_tmp, addr_shift, r_pad_rows, r_pad_tail, kRPad,
                     i);
         }
@@ -194,12 +197,12 @@ void jit_trans_iw_ic_t::transpose_2b(
     };
 
     if (l_pad > 0 || r_pad > 0) vpxord(zmm_zero, zmm_zero, zmm_zero);
-    int store_tail = rnd_up(nrows, 2);
+    dim_t store_tail = rnd_up(nrows, 2);
     kmovw(kTail, (1 << store_tail / 2) - 1);
 
-    const int ic_block = conf_->ic_block;
+    const dim_t ic_block = conf_->ic_block;
     const bool is_short_block = ic_block != 16;
-    const int ic_tail = conf_->ic_tail;
+    const dim_t ic_tail = conf_->ic_tail;
     // Assertion below as we need vmovdqu16 for ic_tails.
     // If needed, can be extended by using load_bytes() helper.
     assert(IMPLICATION(ic_tail, mayiuse(avx512_core)));
@@ -245,14 +248,14 @@ void jit_trans_iw_ic_t::transpose_2b(
 
         // for odd numbers we need to mix row with zeroes
         if (nrows % 2) {
-            int i = nrows - 1;
+            int i = static_cast<int>(nrows - 1);
             auto zmm_src0 = src_zmm(i);
             vmovdqu16(zmm_src0 | kLoadMask1 | T_z,
                     EVEX_compress_addr(reg_src, i * src_stride));
             vpermw(zmm_src0, vidx5, zmm_src0);
         }
 
-        for (int i = rnd_up(nrows, 2); i < 16; i += 2) {
+        for (int i = static_cast<int>(rnd_up(nrows, 2)); i < 16; i += 2) {
             vpxord(src_zmm(i), src_zmm(i), src_zmm(i));
         }
     } else {
@@ -277,7 +280,7 @@ void jit_trans_iw_ic_t::transpose_2b(
 
         // for odd numbers we need to mix row with zeroes
         if (nrows % 2) {
-            int i = nrows - 1;
+            int i = static_cast<int>(nrows - 1);
             auto src0 = src_ymm(i);
             auto src1 = src_ymm(i + 1); // zero
 
@@ -396,7 +399,7 @@ void jit_trans_iw_ic_t::transpose_2b(
 }
 
 void jit_trans_iw_ic_t::transpose_1b(
-        int nrows, int l_pad, int r_pad, bool nontemporal_stores) {
+        dim_t nrows, dim_t l_pad, dim_t r_pad, bool nontemporal_stores) {
 
     auto load = [this, nrows](int i) {
         auto zmm_src = src_zmm(i);
@@ -407,7 +410,7 @@ void jit_trans_iw_ic_t::transpose_1b(
             vpxord(zmm_src, zmm_src, zmm_src);
     };
 
-    int l_pad_tail {0}, r_pad_tail {0}, l_pad_rows {0}, r_pad_rows {0};
+    dim_t l_pad_tail {0}, r_pad_tail {0}, l_pad_rows {0}, r_pad_rows {0};
 
     if (l_pad > 0) {
         l_pad_rows = l_pad / transpose_size;
@@ -420,13 +423,13 @@ void jit_trans_iw_ic_t::transpose_1b(
         kmovw(kRPad, (1 << r_pad_tail) - 1);
     }
 
-    auto padding = [this](Reg64 base, int addr_shift, int pad_rows,
-                           int pad_tail, const Opmask &mask, int i) {
+    auto padding = [this](Reg64 base, dim_t addr_shift, dim_t pad_rows,
+                           dim_t pad_tail, const Opmask &mask, dim_t i) {
         // note: pad can be bigger than 16 because of dilation
-        const size_t row_off = transpose_size;
+        const dim_t row_off = transpose_size;
         auto xmm_zero = Xmm(zmm_zero.getIdx());
         const auto pshift = addr_shift * typesize + i * tr_src_stride;
-        for (int i_row = 0; i_row < pad_rows; i_row++) {
+        for (dim_t i_row = 0; i_row < pad_rows; i_row++) {
             auto addr = EVEX_compress_addr(base, pshift + i_row * row_off);
             vmovups(addr, xmm_zero);
         }
@@ -437,7 +440,7 @@ void jit_trans_iw_ic_t::transpose_1b(
         }
     };
 
-    auto store = [&](Zmm r, int i) {
+    auto store = [&](Zmm r, dim_t i) {
         mov(reg_tr_src_tmp, reg_tr_src);
         if (l_pad > 0) {
             padding(reg_tr_src_tmp, 0, l_pad_rows, l_pad_tail, kLPad, i);
@@ -455,7 +458,7 @@ void jit_trans_iw_ic_t::transpose_1b(
     };
 
     if (l_pad > 0 || r_pad > 0) vpxord(zmm_zero, zmm_zero, zmm_zero);
-    int store_tail = rnd_up(nrows, 4);
+    dim_t store_tail = rnd_up(nrows, 4);
     kmovw(kTail, (1 << store_tail) - 1);
 
     // load rows and swap bytes
@@ -479,7 +482,8 @@ void jit_trans_iw_ic_t::transpose_1b(
         vpermb(zmm_src0, vidx1, zmm_src0);
     }
     // zero rest zmm_src
-    for (int i = rnd_up(nrows, 4); i < transpose_size; i += 4) {
+    for (int i = static_cast<int>(rnd_up(nrows, 4)); i < transpose_size;
+            i += 4) {
         auto zmm_src0 = src_zmm(i);
         vpxord(zmm_src0, zmm_src0, zmm_src0);
     }
@@ -537,7 +541,7 @@ void jit_trans_iw_ic_t::transpose_1b(
         return mod * 4 + div;
     };
 
-    const int ic_block = conf_->ic_block;
+    const dim_t ic_block = conf_->ic_block;
     for (int col_idx = 0; col_idx < ic_block; col_idx++) {
         store(src_zmm(get_vec_idx(col_idx)), col_idx);
     }
@@ -547,7 +551,7 @@ void jit_trans_iw_ic_t::generate() {
     preamble();
 
     if (mayiuse(avx512_core)) {
-        const int ic_block = conf_->ic_block;
+        const dim_t ic_block = conf_->ic_block;
         const int ic_tail = conf_->ic_tail;
         if (conf_->stride_w > 1 || is_layout_nxc) {
             kmovd(kLoadMask1, (1 << ic_block) - 1);
@@ -607,39 +611,41 @@ void jit_trans_iw_ic_t::generate() {
     } else
         assert(!"unsupported data type");
 
-    const int ic_block = conf_->ic_block;
-    const size_t src_mult
+    const dim_t ic_block = conf_->ic_block;
+    const dim_t src_mult
             = is_layout_nxc ? conf_->ngroups * conf_->ic : ic_block;
-    const int iw = conf_->iw;
-    const int tr_iw = conf_->tr_iw;
-    const int str_w = conf_->stride_w;
+    const dim_t iw = conf_->iw;
+    const dim_t tr_iw = conf_->tr_iw;
+    const dim_t str_w = conf_->stride_w;
     assert(tr_iw % str_w == 0);
-    const int tr_iw_s = tr_iw / str_w;
+    const dim_t tr_iw_s = tr_iw / str_w;
     assert(transpose_size >= ic_block);
 
     // Data for every strided case is placed consecutively
     // For 1x1 convolutions with strides we transpose only needed elements
     const auto str_w_end = (conf_->kw == 1) ? 1 : str_w;
-    for (int s = 0; s < str_w_end; s++) {
-        const int left_pad = div_up(nstl::max(0, conf_->l_pad - s), str_w);
-        const int iw1 = iw + conf_->l_pad;
-        const int iw_s = (s < (iw1 % str_w) ? div_up(nstl::max(0, iw1), str_w)
-                                            : iw1 / str_w)
+    for (dim_t s = 0; s < str_w_end; s++) {
+        const dim_t left_pad
+                = div_up(nstl::max<dim_t>(0, conf_->l_pad - s), str_w);
+        const dim_t iw1 = iw + conf_->l_pad;
+        const dim_t iw_s
+                = (s < (iw1 % str_w) ? div_up(nstl::max<dim_t>(0, iw1), str_w)
+                                     : iw1 / str_w)
                 - left_pad;
-        const int right_pad = tr_iw_s - iw_s - left_pad;
+        const dim_t right_pad = tr_iw_s - iw_s - left_pad;
 
-        const int transposes
-                = utils::div_up(nstl::max(0, iw_s), transpose_size);
-        int loop_iters = nstl::max(0, transposes - 1);
-        int tail = iw_s - loop_iters * transpose_size;
+        const dim_t transposes
+                = utils::div_up(nstl::max<dim_t>(0, iw_s), transpose_size);
+        dim_t loop_iters = nstl::max<dim_t>(0, transposes - 1);
+        dim_t tail = iw_s - loop_iters * transpose_size;
 
         src_stride = src_mult * typesize * str_w;
         tr_src_stride = tr_iw * typesize;
 
         bool nontemporal_stores = false;
 
-        const size_t src_step = src_mult * transpose_size * str_w * typesize;
-        const size_t tr_src_step = transpose_size * typesize;
+        const dim_t src_step = src_mult * transpose_size * str_w * typesize;
+        const dim_t tr_src_step = transpose_size * typesize;
 
         mov(reg_src, ptr[param1 + GET_OFF(src)]);
         mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
@@ -647,8 +653,8 @@ void jit_trans_iw_ic_t::generate() {
         mov(reg_tr_src_prf, ptr[param1 + GET_OFF(tr_src_prf)]);
 
         if (str_w > 1) {
-            int tr_src_shift = s;
-            int src_shift = (str_w - (conf_->l_pad % str_w) + s) % str_w;
+            dim_t tr_src_shift = s;
+            dim_t src_shift = (str_w - (conf_->l_pad % str_w) + s) % str_w;
             add(reg_src, src_shift * src_mult * typesize);
             add(reg_tr_src, tr_src_shift * tr_iw_s * typesize);
             add(reg_src_prf, src_shift * src_mult * typesize);
@@ -709,12 +715,12 @@ struct jit_trans_ow_oc_t : public jit_trans_dst_t, public jit_generator_t {
     }
 
 private:
-    int typesize = 0;
+    dim_t typesize = 0;
     bool is_layout_nxc = false;
-    int vnni_block = 0;
+    dim_t vnni_block = 0;
     static constexpr int transpose_size = 16;
-    size_t src_stride = 0, tr_src_stride = 0;
-    int tail = 0;
+    dim_t src_stride = 0, tr_src_stride = 0;
+    dim_t tail = 0;
 
     Opmask kFF = k1;
     Opmask mask_lo = k2;
@@ -755,18 +761,19 @@ private:
         return Xmm(i);
     }
 
-    void transpose(int nrows, bool nontemporal_stores, bool do_convert = true);
+    void transpose(
+            dim_t nrows, bool nontemporal_stores, bool do_convert = true);
     void transpose_2b(
-            int nrows, bool nontemporal_stores, bool do_convert = true);
+            dim_t nrows, bool nontemporal_stores, bool do_convert = true);
     void transpose_1b(
-            int nrows, bool nontemporal_stores, bool do_convert = true);
+            dim_t nrows, bool nontemporal_stores, bool do_convert = true);
     void generate() override;
 };
 
 // do_convert (default is 'true') is a flag that determines when to do the
 // transformation of the input data and when to simply zero out the output data
 void jit_trans_ow_oc_t::transpose(
-        int nrows, bool nontemporal_stores, bool do_convert) {
+        dim_t nrows, bool nontemporal_stores, bool do_convert) {
     assert(nrows >= 0 && nrows <= transpose_size);
     static_assert(transpose_size == 16, "Unsupported transpose size");
     if (!nrows) return;
@@ -779,7 +786,7 @@ void jit_trans_ow_oc_t::transpose(
 }
 
 void jit_trans_ow_oc_t::transpose_2b(
-        int nrows, bool nontemporal_stores, bool do_convert) {
+        dim_t nrows, bool nontemporal_stores, bool do_convert) {
 
     auto load_ymm = [this](int i) {
         auto ymm_reg = src_ymm(i);
@@ -827,7 +834,7 @@ void jit_trans_ow_oc_t::transpose_2b(
             } else {
                 vpxord(zmm_src0, zmm_src0, zmm_src0);
             }
-            store(zmm_src0, nrows - 1);
+            store(zmm_src0, static_cast<int>(nrows - 1));
         }
     } else {
         for (int i = 0; i < rnd_dn(nrows, 2); i += 2) {
@@ -856,11 +863,11 @@ void jit_trans_ow_oc_t::transpose_2b(
             store(zmm_src0, i);
         }
         if (row_pad > 0) {
-            auto src0 = src_ymm(nrows - 1);
-            auto src1 = src_ymm(nrows);
+            auto src0 = src_ymm(static_cast<int>(nrows - 1));
+            auto src1 = src_ymm(static_cast<int>(nrows));
             auto zmm_src0 = src_zmm(30);
             if (do_convert) {
-                load_ymm(nrows - 1);
+                load_ymm(static_cast<int>(nrows - 1));
 
                 vpxor(src1, src1, src1);
                 vpunpckhwd(src1, src0, src1);
@@ -872,13 +879,13 @@ void jit_trans_ow_oc_t::transpose_2b(
             } else {
                 vpxord(zmm_src0, zmm_src0, zmm_src0);
             }
-            store(zmm_src0, nrows - 1);
+            store(zmm_src0, static_cast<int>(nrows - 1));
         }
     }
 }
 
 void jit_trans_ow_oc_t::transpose_1b(
-        int nrows, bool nontemporal_stores, bool do_convert) {
+        dim_t nrows, bool nontemporal_stores, bool do_convert) {
     auto load_xmm = [this](int i) {
         auto xmm_reg = src_xmm(i);
         auto addr = EVEX_compress_addr(reg_src, i * src_stride);
@@ -903,7 +910,8 @@ void jit_trans_ow_oc_t::transpose_1b(
     assert(is_layout_nxc);
     assert(vnni_block == 4);
 
-    for (int i = 0; i < rnd_up(nrows, vnni_block); i += vnni_block) {
+    for (int i = 0; i < static_cast<int>(rnd_up(nrows, vnni_block));
+            i += static_cast<int>(vnni_block)) {
         const auto idx0 = i;
         const auto idx1 = i + 1;
         const auto idx2 = i + 2;
@@ -997,12 +1005,12 @@ void jit_trans_ow_oc_t::generate() {
         vmovdqa64(vidx4 /*vreg_idx_hi_128*/, (const int64_t *)idx_hi_8);
     }
 
-    const int oc_block = conf_->oc_block;
-    const size_t src_mult
+    const dim_t oc_block = conf_->oc_block;
+    const dim_t src_mult
             = is_layout_nxc ? conf_->ngroups * conf_->oc : oc_block;
-    const int ow = conf_->ow;
-    const int transposes = utils::div_up(ow, transpose_size);
-    int loop_iters = nstl::max(0, transposes - 1);
+    const dim_t ow = conf_->ow;
+    const dim_t transposes = utils::div_up(ow, transpose_size);
+    dim_t loop_iters = nstl::max<dim_t>(0, transposes - 1);
     tail = ow - loop_iters * transpose_size;
 
     src_stride = src_mult * typesize;
@@ -1010,10 +1018,11 @@ void jit_trans_ow_oc_t::generate() {
 
     bool nontemporal_stores = conf_->use_nt_stores_ddst;
 
-    const size_t src_step = src_mult * transpose_size * typesize;
-    const size_t tr_src_step = (size_t)oc_block * transpose_size * typesize;
+    const dim_t src_step = src_mult * transpose_size * typesize;
+    const dim_t tr_src_step = oc_block * transpose_size * typesize;
 
-    const auto zero_tr_ow = nstl::max(0, conf_->tr_ow - rnd_up(ow, vnni_block));
+    const dim_t zero_tr_ow
+            = nstl::max<dim_t>(0, conf_->tr_ow - rnd_up(ow, vnni_block));
 
     mov(reg_src, ptr[param1 + GET_OFF(src)]);
     mov(reg_tr_src, ptr[param1 + GET_OFF(tr_src)]);
@@ -1047,11 +1056,11 @@ void jit_trans_ow_oc_t::generate() {
     transpose(tail, nontemporal_stores);
     if (zero_tr_ow) {
         const auto zero_transposes = utils::div_up(zero_tr_ow, transpose_size);
-        const auto zero_loop_iters = nstl::max(0, zero_transposes - 1);
+        const auto zero_loop_iters = nstl::max<dim_t>(0, zero_transposes - 1);
         const auto zero_tail = zero_tr_ow - zero_loop_iters * transpose_size;
 
         // shift over tail
-        add(reg_tr_src, (size_t)oc_block * rnd_up(tail, vnni_block) * typesize);
+        add(reg_tr_src, oc_block * rnd_up(tail, vnni_block) * typesize);
 
         // zero the tr_ow - ow
         if (zero_loop_iters) {
@@ -1077,7 +1086,7 @@ void jit_trans_ow_oc_t::generate() {
 // -------------------------------------------------
 */
 
-void jit_transpose4x16_src_t::transpose(int nrows) {
+void jit_transpose4x16_src_t::transpose(dim_t nrows) {
     assert(nrows >= 0 && nrows <= transpose_size);
     static_assert(transpose_size == 4, "Unsupported transpose size");
     if (!nrows) return;
@@ -1135,8 +1144,9 @@ void jit_transpose4x16_src_t::transpose(int nrows) {
         load(i);
     }
 
-    for (size_t i = nrows; i < 4; i++) {
-        vpxord(src_zmm(i), src_zmm(i), src_zmm(i));
+    for (dim_t i = nrows; i < 4; i++) {
+        const int reg_idx = static_cast<int>(i);
+        vpxord(src_zmm(reg_idx), src_zmm(reg_idx), src_zmm(reg_idx));
     }
 
     vmovupd(tmp0, src0);
@@ -1200,16 +1210,16 @@ alignas(64) static constexpr const int32_t idxP[16]
 void jit_transpose4x16_src_t::generate() {
     preamble();
 
-    const int ic_block = params->ic_block;
-    const int is = params->is;
-    int tail = is % transpose_size;
+    const dim_t ic_block = params->ic_block;
+    const dim_t is = params->is;
+    dim_t tail = is % transpose_size;
 
     src_stride = ic_block * typesize;
     assert(src_stride == 64);
     tr_src_stride = ic_block * typesize;
 
-    const int src_step = ic_block * transpose_size * typesize;
-    const int tr_src_step = ic_block * transpose_size * typesize;
+    const dim_t src_step = ic_block * transpose_size * typesize;
+    const dim_t tr_src_step = ic_block * transpose_size * typesize;
 
 #define GET_TR_OFF(x) offsetof(jit_transpose_src_args_t, x)
     mov(reg_loop, ptr[param1 + GET_TR_OFF(size)]);
@@ -1275,9 +1285,9 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
     /* Reorder part of F32 weights tensor
        from [VNNI_GRANULARITY][I][kd][kh][kw][16i][16o] to VNNI format [kd][kh][kw][16i][16o][VNNI_GRANULARITY][i]
        and down-convert it to required float. */
-    const int ts_out = types::data_type_size(out_dt_);
-    const int ts_inp = 4;
-    const int simd_w = 16;
+    const dim_t ts_out = types::data_type_size(out_dt_);
+    const dim_t ts_inp = 4;
+    const dim_t simd_w = 16;
 
     const Reg64 &reg_output = r15;
     const Reg64 &reg_output_kd = r14;
@@ -1316,7 +1326,7 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
     auto get_zmm_src = [&](int idx, int ic) { return Zmm(4 * idx + ic); };
     auto get_zmm_bf16 = [&](int ic) { return Zmm(16 + ic); };
 
-    const int vnni_granularity = data_type_vnni_granularity(out_dt_);
+    const dim_t vnni_granularity = data_type_vnni_granularity(out_dt_);
 
     Xbyak::Label prm_table, zero_buffer;
     Xbyak::Label kd_loop_label, kh_loop_label;
@@ -1477,10 +1487,10 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
         L(prm_table);
         uint8_t prm_array[64];
         for (size_t i = 0; i < 16; i++) {
-            prm_array[4 * i] = i;
-            prm_array[4 * i + 1] = i + 16;
-            prm_array[4 * i + 2] = i + 32;
-            prm_array[4 * i + 3] = i + 48;
+            prm_array[4 * i] = static_cast<uint8_t>(i);
+            prm_array[4 * i + 1] = static_cast<uint8_t>(i + 16);
+            prm_array[4 * i + 2] = static_cast<uint8_t>(i + 32);
+            prm_array[4 * i + 3] = static_cast<uint8_t>(i + 48);
         }
 
         for (size_t i = 0; i < 64; ++i)

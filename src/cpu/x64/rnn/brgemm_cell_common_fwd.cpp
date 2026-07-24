@@ -110,11 +110,11 @@ template <typename src_t, typename weights_t, typename scratch_t,
 void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::execute()
         const {
     if (is_fused_layer_iter_brgemm_) {
-        parallel(max_nthr_, [this](const int ithr, const int nthr) {
+        parallel(static_cast<int>(max_nthr_), [this](const int ithr, const int nthr) {
             this->kernel_fused_iter_layer(ithr, nthr);
         });
     } else {
-        parallel(max_nthr_, [this](const int ithr, const int nthr) {
+        parallel(static_cast<int>(max_nthr_), [this](const int ithr, const int nthr) {
             this->kernel(ithr, nthr);
         });
     }
@@ -158,14 +158,14 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
         const int ithr, const int nthr) const {
     using namespace cpu::rnn_utils;
 
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
 
     const bool is_amx = is_superset(rnn_.brgemm_isa, x64::avx512_core_amx);
     gemm_acc_t *const amx_buffer = is_amx
             ? amx_scratchpad_ + rnn_.m_block * rnn_.n_block * ithr
             : nullptr;
-    const int max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
+    const dim_t max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
             nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
     brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * max_K_Block;
@@ -245,7 +245,7 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
         }
 
         for (int g = 0; g < n_gates_; g++) {
-            const int lg = g + g_unfused;
+            const dim_t lg = g + g_unfused;
             const auto *const Bl_g = Bl_n + lg * Bl_g_offset_;
             const auto *const Bi_g = Bi_n + lg * Bi_g_offset_;
             auto *C_g = C_n + lg * rnn_.N;
@@ -274,7 +274,7 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             if (is_amx) load_cfg_if_needed(pallete_buff_layer_k_tail);
 
             for (int g = 0; g < n_gates_; g++) {
-                const int lg = g + g_unfused;
+                const dim_t lg = g + g_unfused;
                 const auto *const Bl_g = Bl_n + lg * Bl_g_offset_;
                 auto *const C_g = C_n + lg * rnn_.N;
 
@@ -289,7 +289,7 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
             if (is_amx) load_cfg_if_needed(pallete_buff_iter_k_tail);
 
             for (int g = 0; g < n_gates_; g++) {
-                const int lg = g + g_unfused;
+                const dim_t lg = g + g_unfused;
                 const auto *const Bi_g = Bi_n + lg * Bi_g_offset_;
                 auto *C_g = C_n + lg * rnn_.N;
                 if (rnn_.is_lbr && g == n_gates_ - 1) C_g = C_cell_i;
@@ -326,14 +326,14 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
         const int nthr) const {
     using namespace cpu::rnn_utils;
 
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
 
     const bool is_amx = is_superset(rnn_.brgemm_isa, x64::avx512_core_amx);
     gemm_acc_t *const amx_buffer = is_amx
             ? amx_scratchpad_ + rnn_.m_block * rnn_.n_block * ithr
             : nullptr;
-    const int max_K_Block = 2
+    const dim_t max_K_Block = 2
             * nstl::max(rnn_.KB1_blocks + 1,
                     nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
     brgemm_batch_element_t *const addr_batch
@@ -398,7 +398,7 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
         }
 
         for (int g = 0; g < n_gates_; g++) {
-            const int lg = g + g_unfused;
+            const dim_t lg = g + g_unfused;
             const auto *const Bl_g = Bl_n + lg * B_g_offset;
             const auto *const Bi_g = Bi_n + lg * B_g_offset;
             auto *const C_g = C_n + lg * rnn_.N;
@@ -427,7 +427,7 @@ void brgemm_dst_layer_iter_t<src_t, weights_t, scratch_t,
 
         if (rnn_.k2_tail) {
             for (int g = 0; g < n_gates_; g++) {
-                const int lg = g + g_unfused;
+                const dim_t lg = g + g_unfused;
                 auto *const C_g = C_n + lg * rnn_.N;
 
                 int batch_idx = 0;
@@ -501,7 +501,7 @@ brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::brgemm_dst_proj_t(
 
 template <typename src_t, typename weights_t, typename gemm_acc_t>
 void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::execute() const {
-    parallel(max_nthr_, [this](const int ithr, const int nthr) {
+    parallel(static_cast<int>(max_nthr_), [this](const int ithr, const int nthr) {
         this->kernel(ithr, nthr);
     });
 }
@@ -511,10 +511,10 @@ void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::kernel(
         const int ithr, const int nthr) const {
     using namespace cpu::rnn_utils;
 
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work_amount_proj_, nthr, ithr, start, end);
     const bool is_amx = is_superset(rnn_.brgemm_isa, x64::avx512_core_amx);
-    const int max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
+    const dim_t max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
             nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
     auto *const amx_buffer = is_amx
             ? amx_scratchpad_ + rnn_.m_block * rnn_.n_block * ithr
@@ -525,7 +525,7 @@ void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::kernel(
 
     if (is_amx) load_cfg_if_needed(rnn_brgemm_.pallete_buff_proj_);
 
-    int nb = 0, mb = 0;
+    dim_t nb = 0, mb = 0;
     switch (rnn_.loop_order) {
         case brgemm_rnn_execute_loop_order_t::mblk_nblk:
             nd_iterator_init(start, mb, rnn_.M_blocks, nb, rnn_.Nproj_blocks);
@@ -537,10 +537,10 @@ void brgemm_dst_proj_t<src_t, weights_t, gemm_acc_t>::kernel(
     }
 
     while (start < end) {
-        const int n = nb * rnn_.n_block;
-        const int m = mb * rnn_.m_block;
+        const dim_t n = nb * rnn_.n_block;
+        const dim_t m = mb * rnn_.m_block;
         const bool do_n_tail = (n + rnn_.n_block) > rnn_.Nproj;
-        const int block_step = ((do_n_tail) ? rnn_.nproj_tail : rnn_.n_block)
+        const dim_t block_step = ((do_n_tail) ? rnn_.nproj_tail : rnn_.n_block)
                 * sizeof(src_t);
 
         const auto *const Ap_m = A_ + m * rnn_.LDAproj;
@@ -704,7 +704,7 @@ template <typename src_t, typename weights_t, typename scratch_t,
         typename gemm_acc_t>
 void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::execute() const {
     assert(is_fused_layer_iter_brgemm_);
-    parallel(max_nthr_, [this](const int ithr, const int nthr) {
+    parallel(static_cast<int>(max_nthr_), [this](const int ithr, const int nthr) {
         this->kernel(ithr, nthr);
     });
 }
@@ -713,14 +713,14 @@ template <typename src_t, typename weights_t, typename scratch_t,
         typename gemm_acc_t>
 void brgemm_gru_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
         const int ithr, const int nthr) const {
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
 
     const bool is_amx = is_superset(rnn_.brgemm_isa, x64::avx512_core_amx);
     gemm_acc_t *const amx_buffer = is_amx
             ? amx_scratchpad_ + rnn_.m_block * rnn_.n_block * ithr
             : nullptr;
-    const int max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
+    const dim_t max_K_Block = nstl::max(rnn_.KB1_blocks + 1,
             nstl::max(rnn_.KBproj_blocks + 1, rnn_.KB2_blocks + 1));
     brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * max_K_Block;
@@ -974,7 +974,7 @@ template <typename src_t, typename weights_t, typename scratch_t,
         typename gemm_acc_t>
 void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::execute()
         const {
-    parallel(max_nthr_, [this](const int ithr, const int nthr) {
+    parallel(static_cast<int>(max_nthr_), [this](const int ithr, const int nthr) {
         this->kernel(ithr, nthr);
     });
 }
@@ -985,7 +985,7 @@ void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
         const int ithr, const int nthr) const {
     using namespace cpu::rnn_utils;
 
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work_amount_, nthr, ithr, start, end);
 
     const bool is_amx = is_superset(rnn_.brgemm_isa, x64::avx512_core_amx);
@@ -993,7 +993,7 @@ void brgemm_merged_layer_t<src_t, weights_t, scratch_t, gemm_acc_t>::kernel(
     gemm_acc_t *const amx_buffer = is_amx
             ? amx_scratchpad_ + m_block * rnn_.n_block * ithr
             : nullptr;
-    const int max_K_Block = rnn_.KB1_blocks + 1;
+    const dim_t max_K_Block = rnn_.KB1_blocks + 1;
     brgemm_batch_element_t *const addr_batch
             = addr_batch_global_ + ithr * max_K_Block;
 

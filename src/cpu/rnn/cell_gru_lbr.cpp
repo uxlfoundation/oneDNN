@@ -160,15 +160,15 @@ rnn_cell_execution_sig((ref_rnn_bwd_t<src_type, weights_type,
                 rnn.n_gates * rnn.dhc, 1.0f, A, rnn.weights_iter_ld, B,
                 rnn.ws_gates_ld, 1.0f, C, rnn.ws_diff_states_iter_ld);
     };
-    const auto gemm_weights_layer
-            = [&](const scratch_t *A, const src_layer_t *B, int ldb, float *C) {
+    const auto gemm_weights_layer =
+            [&](const scratch_t *A, const src_layer_t *B, dim_t ldb, float *C) {
         const float beta = rnn.diff_weights_beta(cell_position);
         return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb, 1.0f, A,
                 rnn.scratch_gates_ld, B, ldb, beta, C,
                 rnn.diff_weights_layer_ld);
     };
-    const auto gemm_weights_iter
-            = [&](const scratch_t *A, const src_iter_t *B, int ldb, float *C) {
+    const auto gemm_weights_iter = [&](const scratch_t *A, const src_iter_t *B,
+                                           dim_t ldb, float *C) {
         const float beta = rnn.diff_weights_beta(cell_position);
         return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.sic, rnn.mb, 1.0f, A,
                 rnn.ws_gates_ld, B, ldb, beta, C, rnn.diff_weights_iter_ld);

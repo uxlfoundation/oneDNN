@@ -69,16 +69,19 @@ protected:
     std::unique_ptr<injector_t> tanh_injector_;
 
     // register size in bytes
-    static constexpr size_t vlen_ = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t qscale_dt_size = sizeof(float);
-    static constexpr size_t weights_peephole_dt_size_ = sizeof(float);
-    const size_t vlen_dst_
+    static constexpr dim_t vlen_ = cpu_isa_traits_t<isa>::vlen;
+    static constexpr dim_t qscale_dt_size = sizeof(float);
+    static constexpr dim_t weights_peephole_dt_size_ = sizeof(float);
+    const dim_t vlen_dst_
             = vlen_ / (sizeof(float) / types::data_type_size(src_data_t));
-    const size_t vlen_bias_ = vlen_ / (sizeof(float) / bias_dt_size_);
-    const size_t vlen_c_states_ = vlen_ / (sizeof(float) / cstate_dt_size_);
-    const size_t hstate_dt_size_ = types::data_type_size(src_data_t);
-    const size_t gate_dt_size_ = types::data_type_size(src_data_t);
-    const size_t scratch_dt_size_ = types::data_type_size(scratch_data_t);
+    const dim_t vlen_bias_ = vlen_ / (sizeof(float) / bias_dt_size_);
+    const dim_t vlen_c_states_ = vlen_ / (sizeof(float) / cstate_dt_size_);
+    const dim_t hstate_dt_size_
+            = static_cast<dim_t>(types::data_type_size(src_data_t));
+    const dim_t gate_dt_size_
+            = static_cast<dim_t>(types::data_type_size(src_data_t));
+    const dim_t scratch_dt_size_
+            = static_cast<dim_t>(types::data_type_size(scratch_data_t));
     int get_vmm_idx(int unroll_idx, int type_shift) const {
         const int preserved_vmm_start_idx = 1;
         // G0, G1, G2, G3, c_states;
@@ -101,7 +104,7 @@ protected:
     }
 
     dim_t scale_off(int gate_idx, int unroll_idx) const {
-        const size_t vlen_qscale_elem = vlen_ / qscale_dt_size;
+        const dim_t vlen_qscale_elem = vlen_ / qscale_dt_size;
         return gate_idx * rnn_.dhc + unroll_idx * vlen_qscale_elem;
     }
 
@@ -172,11 +175,12 @@ protected:
                     + i * rnn_.dhc * weights_peephole_dt_size_ + j * vlen_];
         };
 
-        const auto loop_len = rnn_.dhc * scratch_dt_size_;
-        const auto loop_tail = loop_len % vlen_;
+        const dim_t loop_len = rnn_.dhc * scratch_dt_size_;
+        const dim_t loop_tail = loop_len % vlen_;
 
         // initialize registers with addresses and constants
-        init_regs(weights_scales, vlen_, loop_tail / scratch_dt_size_);
+        init_regs(weights_scales, static_cast<size_t>(vlen_),
+                static_cast<size_t>(loop_tail / scratch_dt_size_));
         sigmoid_injector_->load_table_addr();
         tanh_injector_->load_table_addr();
         if (rnn_.is_brgemm && !rnn_.unfused_post_gemm)
@@ -207,7 +211,8 @@ protected:
                 loop_unroll_tail = 1;
         }
 
-        auto compute_loop = [&](size_t current_vlen, int current_unroll_len) {
+        auto compute_loop = [&](dim_t current_vlen, int current_unroll_len) {
+            const int vlen_int = static_cast<int>(current_vlen);
             this->reset_tmp_vmm_idx_range(
                     get_last_preserved_vmm_idx(current_unroll_len) + 1,
                     this->get_max_allowed_tmp_vmm_allowed_idx());
@@ -217,7 +222,7 @@ protected:
             const bool single_tail_loop_iter
                     = current_vlen < vlen_ && current_vlen == loop_tail;
             const bool need_increment_regs = !single_tail_loop_iter;
-            const auto iter_size = current_unroll_len * current_vlen;
+            const dim_t iter_size = current_unroll_len * current_vlen;
 
             Label loop_start_label, loop_skip_label;
             cmp(loop_cnt, iter_size);
@@ -230,56 +235,56 @@ protected:
                             G2(G2_idx(ur_idx)), G3(G3_idx(ur_idx)),
                             tmp_c_states(c_states_idx(ur_idx));
                     // load G0 G1 G2 G3
-                    load(G0, sg_addr(0, ur_idx), scratch_data_t, current_vlen);
-                    load(G1, sg_addr(1, ur_idx), scratch_data_t, current_vlen);
-                    load(G2, sg_addr(2, ur_idx), scratch_data_t, current_vlen);
-                    load(G3, sg_addr(3, ur_idx), scratch_data_t, current_vlen);
+                    load(G0, sg_addr(0, ur_idx), scratch_data_t, vlen_int);
+                    load(G1, sg_addr(1, ur_idx), scratch_data_t, vlen_int);
+                    load(G2, sg_addr(2, ur_idx), scratch_data_t, vlen_int);
+                    load(G3, sg_addr(3, ur_idx), scratch_data_t, vlen_int);
 
                     // dequantize the gates from s32 to f32 if needed, add bias
                     deq_w(src_data_t, G0, this->get_next_tmp_vmm(),
                             this->get_next_tmp_vmm(), scale_off(0, ur_idx),
-                            mask, current_vlen);
+                            mask, vlen_int);
                     const auto bias_g0_vmm = this->get_next_tmp_vmm();
                     to_float(bias_g0_vmm, B_addr(0, ur_idx), rnn_.bias_dt,
-                            current_vlen);
-                    compute_vaddps(G0, G0, bias_g0_vmm, current_vlen);
+                            vlen_int);
+                    compute_vaddps(G0, G0, bias_g0_vmm, vlen_int);
 
                     deq_w(src_data_t, G1, this->get_next_tmp_vmm(),
                             this->get_next_tmp_vmm(), scale_off(1, ur_idx),
-                            mask, current_vlen);
+                            mask, vlen_int);
                     const auto bias_g1_vmm = this->get_next_tmp_vmm();
                     to_float(bias_g1_vmm, B_addr(1, ur_idx), rnn_.bias_dt,
-                            current_vlen);
-                    compute_vaddps(G1, G1, bias_g1_vmm, current_vlen);
+                            vlen_int);
+                    compute_vaddps(G1, G1, bias_g1_vmm, vlen_int);
 
                     deq_w(src_data_t, G2, this->get_next_tmp_vmm(),
                             this->get_next_tmp_vmm(), scale_off(2, ur_idx),
-                            mask, current_vlen);
+                            mask, vlen_int);
                     const auto bias_g2_vmm = this->get_next_tmp_vmm();
                     to_float(bias_g2_vmm, B_addr(2, ur_idx), rnn_.bias_dt,
-                            current_vlen);
-                    compute_vaddps(G2, G2, bias_g2_vmm, current_vlen);
+                            vlen_int);
+                    compute_vaddps(G2, G2, bias_g2_vmm, vlen_int);
 
                     deq_w(src_data_t, G3, this->get_next_tmp_vmm(),
                             this->get_next_tmp_vmm(), scale_off(3, ur_idx),
-                            mask, current_vlen);
+                            mask, vlen_int);
                     const auto bias_g3_vmm = this->get_next_tmp_vmm();
                     to_float(bias_g3_vmm, B_addr(3, ur_idx), rnn_.bias_dt,
-                            current_vlen);
-                    compute_vaddps(G3, G3, bias_g3_vmm, current_vlen);
+                            vlen_int);
+                    compute_vaddps(G3, G3, bias_g3_vmm, vlen_int);
 
                     to_float(tmp_c_states,
                             ptr[addr_c_states_tm1_l_reg
                                     + ur_idx * vlen_c_states_],
-                            rnn_.src_iter_c_dt, current_vlen);
+                            rnn_.src_iter_c_dt, vlen_int);
 
                     // add peephole
                     if (rnn_.is_lstm_peephole) {
                         compute_vfmadd231ps(G0, tmp_c_states,
-                                weights_peephole_addr(0, ur_idx), current_vlen,
+                                weights_peephole_addr(0, ur_idx), vlen_int,
                                 this->maybe_get_next_tmp_vmm_for_below_avx2_isa());
                         compute_vfmadd231ps(G1, tmp_c_states,
-                                weights_peephole_addr(1, ur_idx), current_vlen,
+                                weights_peephole_addr(1, ur_idx), vlen_int,
                                 this->maybe_get_next_tmp_vmm_for_below_avx2_isa());
                     }
 
@@ -297,12 +302,12 @@ protected:
                     for (int ur_idx = 0; ur_idx < current_unroll_len;
                             ur_idx++) {
                         to_src(wg_addr(0, ur_idx), Vmm(G0_idx(ur_idx)),
-                                src_data_t, current_vlen);
+                                src_data_t, vlen_int);
                         to_src(wg_addr(1, ur_idx), Vmm(G1_idx(ur_idx)),
-                                src_data_t, current_vlen);
+                                src_data_t, vlen_int);
                         if (!rnn_.is_lstm_peephole)
                             to_src(wg_addr(3, ur_idx), Vmm(G3_idx(ur_idx)),
-                                    src_data_t, current_vlen);
+                                    src_data_t, vlen_int);
                     }
                 }
                 for (int ur_idx = 0; ur_idx < current_unroll_len; ur_idx++) {
@@ -317,17 +322,15 @@ protected:
                             G2(G2_idx(ur_idx)),
                             tmp_c_states(c_states_idx(ur_idx));
                     if (is_training) {
-                        to_src(wg_addr(2, ur_idx), G2, src_data_t,
-                                current_vlen);
+                        to_src(wg_addr(2, ur_idx), G2, src_data_t, vlen_int);
                     }
 
                     // compute c_states_t_l = G1 * c_tm1_l + G0 * G2
-                    compute_vmulps(
-                            tmp_c_states, tmp_c_states, G1, current_vlen);
-                    compute_vfmadd231ps(tmp_c_states, this->vmm_backup(G0), G2,
-                            current_vlen);
+                    compute_vmulps(tmp_c_states, tmp_c_states, G1, vlen_int);
+                    compute_vfmadd231ps(
+                            tmp_c_states, this->vmm_backup(G0), G2, vlen_int);
                     to_src(ptr[addr_c_states_t_l_reg + ur_idx * vlen_c_states_],
-                            tmp_c_states, rnn_.dst_iter_c_dt, current_vlen);
+                            tmp_c_states, rnn_.dst_iter_c_dt, vlen_int);
                 }
 
                 // add peephole
@@ -337,7 +340,7 @@ protected:
                         const int cur_g3_idx = G3_idx(ur_idx);
                         compute_vfmadd231ps(Vmm(cur_g3_idx),
                                 Vmm(c_states_idx(ur_idx)),
-                                weights_peephole_addr(2, ur_idx), current_vlen,
+                                weights_peephole_addr(2, ur_idx), vlen_int,
                                 this->maybe_get_next_tmp_vmm_for_below_avx2_isa());
                         vmm_idxs.emplace(cur_g3_idx);
                     }
@@ -350,7 +353,7 @@ protected:
                         for (int ur_idx = 0; ur_idx < current_unroll_len;
                                 ur_idx++) {
                             to_src(wg_addr(3, ur_idx), Vmm(G3_idx(ur_idx)),
-                                    src_data_t, current_vlen);
+                                    src_data_t, vlen_int);
                         }
                     }
                 }
@@ -366,8 +369,7 @@ protected:
                 for (int ur_idx = 0; ur_idx < current_unroll_len; ur_idx++) {
                     const Vmm G3(G3_idx(ur_idx)),
                             tmp_c_states(c_states_idx(ur_idx));
-                    compute_vmulps(
-                            tmp_c_states, tmp_c_states, G3, current_vlen);
+                    compute_vmulps(tmp_c_states, tmp_c_states, G3, vlen_int);
                 }
 
                 // downconvert/quantize and write back the state
@@ -380,60 +382,60 @@ protected:
                 for (int ur_idx = 0; ur_idx < current_unroll_len; ur_idx++) {
                     const Vmm tmp_c_states(c_states_idx(ur_idx));
                     to_src(ptr[addr_states_t_l_reg + ur_idx * vlen_dst_],
-                            tmp_c_states, src_data_t, current_vlen);
+                            tmp_c_states, src_data_t, vlen_int);
                     // As to_src is called with write_only=true it's important
                     // for xf16 src_dt to execute just after to_src method with
                     // write_only=false for the same Vmm
                     to_src(ptr[addr_states_t_l_copy_reg + ur_idx * vlen_dst_],
-                            tmp_c_states, src_data_t, current_vlen, true);
+                            tmp_c_states, src_data_t, vlen_int, true);
                 }
-                const size_t hstate_shift = current_vlen < vlen_
+                const dim_t hstate_shift = current_vlen < vlen_
                         ? hstate_dt_size_
                         : current_unroll_len * vlen_dst_;
                 if (need_increment_regs)
-                    add(addr_states_t_l_copy_reg, hstate_shift);
+                    add(addr_states_t_l_copy_reg,
+                            hstate_shift);
                 jmp(loop_inc_regs_label, T_NEAR);
 
                 L_aligned(update_single_states_tensor_only_label);
                 for (int ur_idx = 0; ur_idx < current_unroll_len; ur_idx++) {
                     to_src(ptr[addr_states_t_l_reg + ur_idx * vlen_dst_],
-                            Vmm(c_states_idx(ur_idx)), src_data_t,
-                            current_vlen);
+                            Vmm(c_states_idx(ur_idx)), src_data_t, vlen_int);
                 }
 
                 // increment address pointers
                 L_aligned(loop_inc_regs_label);
                 if (need_increment_regs) {
-                    const size_t scratch_shift = current_vlen < vlen_
+                    const dim_t scratch_shift = current_vlen < vlen_
                             ? scratch_dt_size_
                             : current_unroll_len * vlen_;
                     add(addr_scratch_gates_reg, scratch_shift);
                     if (rnn_.is_lstm_peephole) {
-                        const size_t wpeephole_shift = current_vlen < vlen_
+                        const dim_t wpeephole_shift = current_vlen < vlen_
                                 ? weights_peephole_dt_size_
                                 : current_unroll_len * vlen_;
                         add(addr_weights_peephole_reg, wpeephole_shift);
                     }
-                    const size_t bias_shift = current_vlen < vlen_
+                    const dim_t bias_shift = current_vlen < vlen_
                             ? bias_dt_size_
                             : current_unroll_len * vlen_bias_;
                     add(addr_bias_reg, bias_shift);
                     add(addr_states_t_l_reg, hstate_shift);
-                    const size_t cstate_shift = current_vlen < vlen_
+                    const dim_t cstate_shift = current_vlen < vlen_
                             ? cstate_dt_size_
                             : current_unroll_len * vlen_c_states_;
                     add(addr_c_states_tm1_l_reg, cstate_shift);
                     add(addr_c_states_t_l_reg, cstate_shift);
                     if (is_training) {
-                        const size_t gate_shift = current_vlen < vlen_
+                        const dim_t gate_shift = current_vlen < vlen_
                                 ? gate_dt_size_
                                 : current_unroll_len * vlen_dst_;
                         add(addr_ws_gates_reg, gate_shift);
                     }
-                    const size_t qscale_shift = current_vlen < vlen_
+                    const dim_t qscale_shift = current_vlen < vlen_
                             ? qscale_dt_size
                             : current_unroll_len * vlen_;
-                    inc_regs(mask, qscale_shift);
+                    inc_regs(mask, static_cast<size_t>(qscale_shift));
                 }
 
                 // increment loop counter
@@ -464,7 +466,7 @@ protected:
         sigmoid_injector_->prepare_table(true);
         tanh_injector_->prepare_table(true);
 
-        init_table(vlen_);
+        init_table(static_cast<size_t>(vlen_));
     }
 };
 

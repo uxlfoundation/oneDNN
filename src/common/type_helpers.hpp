@@ -1033,6 +1033,7 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
             && COMPARE_DESC_MEMBERS(vs_zero_points)
             && COMPARE_DESC_MEMBERS(dS_desc)
             && COMPARE_DESC_MEMBERS(dst_desc)
+            && COMPARE_DESC_MEMBERS(stats_desc)
             && COMPARE_DESC_MEMBERS(diff_dst_desc)
             && COMPARE_DESC_MEMBERS(diff_q_desc)
             && COMPARE_DESC_MEMBERS(diff_k_desc)

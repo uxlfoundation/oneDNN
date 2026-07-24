@@ -91,12 +91,16 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     const auto prop
             = is_training_ ? dnnl_forward_training : dnnl_forward_inference;
 
+    dnnl::memory::desc md_stats;
+    if (is_training_)
+        md_stats = make_dnnl_memory_desc(op->get_output_logical_tensor(2));
+
     dnnl_primitive_desc_t pd = nullptr;
     auto ret = sdpa_primitive_desc_create(&pd, p_engine.get(), md_q.get(),
             md_k.get(), md_v.get(), md_dst.get(), md_mask.get(), md_scale.get(),
             is_invert_scale_, kv_head_number, mask_type_,
             static_cast<dnnl_alg_kind_t>(softmax_alg), prop, attr.get(),
-            qk_attr.get(), vs_attr.get());
+            qk_attr.get(), vs_attr.get(), md_stats.get());
 
     if (pd && ret == dnnl_success) {
         pd_.reset(pd);

@@ -120,8 +120,6 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
         auto diff_dst_d
                 = create_md(prb->ndims, prb->dst_dims, dst_dt, prb->dtag);
 
-        // Follow the implementation parameter order (mask/scale before
-        // diff descs) which differs from the .hpp declaration.
         TIME_C_PD(DNN_SAFE_STATUS(sdpa_primitive_desc_create(&init_pd_args.pd,
                 init_pd_args.engine, q_d, k_d, v_d, dst_d, mask_ptr, scale_d,
                 diff_q_d, diff_k_d, diff_v_d, diff_dst_d,

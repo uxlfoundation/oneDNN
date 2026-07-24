@@ -27,13 +27,23 @@ namespace cpu {
 namespace rv64 {
 
 // RVV int8 GEMM driver. Mirrors rvv_gemm_f32() in structure but accepts s8
-// weights, s8/u8 src, and s32/f32 dst. The dst element width is 4 bytes either
-// way; pass `dst_is_f32 = true` to request an f32 epilogue (alpha/beta applied
-// after fcvt of the s32 accumulator) or `false` to write the raw s32
-// accumulator. The s32 path only implements alpha == 1 and beta in {0, 1}
-// (beta == 1 is the read-modify-write vsadd that lets K-tile accumulation in
-// the wrapper work); anything else is rejected as unimplemented rather than
-// silently mishandled.
+// weights, s8/u8 src, and a wider set of dst types: s32, f32, s8, u8, f16,
+// bf16. The dst element width is no longer uniform (1, 2 or 4 bytes), so
+// `dst_dt` selects both the type and the element size; `dst_dt_sz` is derived
+// internally.
+//
+// Per-destination alpha/beta contract enforced by the driver:
+//   - s32   : alpha must be 1; beta in {0, 1}. K-split (nthr_k > 1) is
+//             supported because the JIT kernel implements the
+//             read-modify-write epilogue for s32.
+//   - f32   : any alpha, any beta. K-split supported.
+//   - s8    : alpha must be 1; beta must be 0. K-split is forced off
+//             (nthr_k = 1) because the JIT s8 epilogue is overwrite-only.
+//   - u8    : same as s8.
+//   - f16   : any alpha; beta must be 0. K-split forced off. Requires
+//             Zvfh; caller (matmul primitive) gates on mayiuse(zvfh).
+//   - bf16  : any alpha; beta must be 0. K-split forced off. Requires
+//             Zvfbfwma; caller gates on mayiuse(zvfbfwma).
 //
 // b_signed selects between s8 and u8 on the B (src) axis; A (weights) is
 // always s8.
@@ -51,18 +61,24 @@ namespace rv64 {
 // booked at init. Pass nullptr to recompute and malloc (inner_product / conv).
 //
 // Scratchpad contract mirrors rvv_gemm_f32(). c_buffers carries whatever the
-// kernel's C-update epilogue writes, which is 4 bytes/element in either case:
-//   - dst_is_f32 == false: raw s32 accumulators
-//   - dst_is_f32 == true : f32 values, already fcvt-converted and alpha-scaled
-//     in-kernel (so the K-split reduction below must sum them as float, not
-//     reinterpret the bits as int32)
+// kernel's C-update epilogue writes, which is dst_dt_sz bytes/element:
+//   - dst_dt == s32  : 4 bytes/element raw s32 acc
+//   - dst_dt == f32  : 4 bytes/element f32
+//   - dst_dt == f16  : 2 bytes/element f16
+//   - dst_dt == bf16 : 2 bytes/element bf16
+//   - dst_dt == s8   : 1 byte/element  s8 (beta == 0 only)
+//   - dst_dt == u8   : 1 byte/element  u8 (beta == 0 only)
 // ws_buffers holds int8 elements (one per-thread A-copy cache). Pass nullptr
 // for either to fall back to malloc/free inside the function.
+//
+// `dst_dt` must be one of: data_type::s32, f32, s8, u8, f16, bf16. Callers
+// (matmul primitive) gate f16 on mayiuse(zvfh) and bf16 on mayiuse(zvfbfwma)
+// before passing them through.
 status_t rvv_gemm_s8s8s32(const char *transa, const char *transb,
         const dim_t *M, const dim_t *N, const dim_t *K, const float *alpha,
         const int8_t *A, const dim_t *lda, const void *B, const dim_t *ldb,
         const float *beta, void *C, const dim_t *ldc, const float *bias,
-        bool b_signed, bool dst_is_f32, int32_t *c_buffers = nullptr,
+        bool b_signed, data_type_t dst_dt, int32_t *c_buffers = nullptr,
         int8_t *ws_buffers = nullptr, bool bias_is_scalar = false,
         const gemm_utils::gemm_partition_t *part = nullptr);
 

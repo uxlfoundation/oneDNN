@@ -697,7 +697,7 @@ inline bool intersects(const Producer &dep1, const Consumer &dep2)
         if (dep2.write() && (dep1.pipe == dep2.pipe) && (dep1.pipe != GeneralizedPipe::Math()))     return false;
         if (dep1.pipe.inOrder() && (distance(dep1, dep2, dep1.pipe) >= timeout(dep1.pipe)))         return false;
         if ((dep2.region.base >> 4) != (static_cast<uint8_t>(ARFType::s) & 0xF))
-        if (dep2.region.rf == RegFileARF && (dep2.read() || dep2.region.hw == HW::Gen12LP))         return false;
+        if (dep2.region.rf == RegFileARF && ((dep2.read() && !(dep2.region.hw == HW::Xe3p)) || dep2.region.hw == HW::Gen12LP)) return false;
         return intersects(dep1.region, dep2.region);
     } else {
         // SWSB dependency.

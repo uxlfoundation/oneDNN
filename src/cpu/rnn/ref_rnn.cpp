@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2026 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -302,8 +303,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     using namespace utils;
     using namespace format_tag;
     using namespace rnn_utils;
-#if DNNL_X64
-    using namespace x64;
+#if DNNL_X64 || DNNL_AARCH64
     const alg_kind_t cell_kind = this->desc()->cell_kind;
 
     const data_type_t src_layer_dt = this->desc()->src_layer_desc.data_type;
@@ -311,6 +311,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
             = this->desc()->weights_iter_desc.data_type;
     const data_type_t weights_layer_dt
             = this->desc()->weights_layer_desc.data_type;
+#if DNNL_X64
     bool is_f32 = everyone_is(
             data_type::f32, src_layer_dt, weights_iter_dt, weights_layer_dt);
     bool is_impl_bf16 = everyone_is(data_type::bf16, src_type, weights_type);
@@ -318,6 +319,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
             this->attr()->fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any);
     bool allow_down_conversion_to_bf16
             = is_f32 && is_fpmath_bf16 && is_impl_bf16;
+#endif
 
     // Initialized rnn_ early to get correct verbose output
     rnn_ = zero<decltype(rnn_)>();
@@ -345,11 +347,18 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
             VERBOSE_BAD_PROPKIND);
     // cell_type (or src_type) and primitive data type should
     // match, except for the bf32 case.
+#if DNNL_X64
     VDISPATCH_RNN(IMPLICATION(!allow_down_conversion_to_bf16,
                           src_layer_dt == src_type
                                   && everyone_is(weights_type, weights_iter_dt,
                                           weights_layer_dt)),
             VERBOSE_UNSUPPORTED_DT);
+#else
+    VDISPATCH_RNN(src_layer_dt == src_type
+                    && everyone_is(
+                            weights_type, weights_iter_dt, weights_layer_dt),
+            VERBOSE_UNSUPPORTED_DT);
+#endif
     VDISPATCH_RNN(this->set_default_params() == status::success,
             VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_RNN(this->with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
@@ -388,16 +397,28 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
                           this->desc()->prop_kind == forward_inference)),
             "bad algorithm for lstm projection for forward inference");
 
+#if DNNL_AARCH64
+    VDISPATCH_RNN(mayiuse(asimd), VERBOSE_ISA_DT_MISMATCH);
+#endif
+
     if (rnn_.is_bf16_conf()) {
-        const bool isa_dt_not_ok = (!mayiuse(avx512_core_bf16)
-                || !utils::one_of(rnn_.bias_dt, data_type::bf16, data_type::f32)
+        const bool isa_dt_not_ok = (
+#if DNNL_X64
+                !mayiuse(avx512_core_bf16) ||
+#else
+                !mayiuse_bf16() ||
+#endif
+                !utils::one_of(rnn_.bias_dt, data_type::bf16, data_type::f32)
                 || rnn_.src_iter_c_dt != rnn_.dst_iter_c_dt
                 || !utils::one_of(rnn_.src_iter_c_dt, data_type::undef,
                         data_type::bf16, data_type::f32));
         VDISPATCH_RNN(!isa_dt_not_ok, VERBOSE_ISA_DT_MISMATCH);
     } else if (rnn_.is_f16_conf()) {
-        const bool isa_dt_not_ok = (!mayiuse(avx512_core_amx_fp16)
-                || !utils::one_of(rnn_.bias_dt, data_type::f16, data_type::f32)
+        const bool isa_dt_not_ok = (
+#if DNNL_X64
+                !mayiuse(avx512_core_amx_fp16) ||
+#endif
+                !utils::one_of(rnn_.bias_dt, data_type::f16, data_type::f32)
                 || rnn_.src_iter_c_dt != rnn_.dst_iter_c_dt
                 || !utils::one_of(rnn_.src_iter_c_dt, data_type::undef,
                         data_type::f16, data_type::f32));
@@ -409,6 +430,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
                 || rnn_.src_iter_c_dt != rnn_.dst_iter_c_dt);
         VDISPATCH_RNN(!dt_not_ok, VERBOSE_UNSUPPORTED_DT_CFG);
     }
+#if DNNL_X64
     const auto isa = get_max_cpu_isa();
     VDISPATCH_RNN(
             !(rnn_.is_signed_int8_conf() && !is_superset(isa, avx512_core_amx)),
@@ -423,6 +445,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
                           this->attr()->rnn_data_qparams_.shift_ == 0),
             VERBOSE_UNSUPPORTED_FEATURE,
             "s8s8 amx lstm does not support shift");
+#endif
 
     /* INT8 cases with non-trivial strides are not supported */
     VDISPATCH_RNN(!(rnn_.is_int8_conf()
@@ -437,7 +460,10 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
         attr_mask = attr_mask | primitive_attr_t::skip_mask_t::rnn_data_qparams
                 | primitive_attr_t::skip_mask_t::rnn_weights_qparams
                 | primitive_attr_t::skip_mask_t::rnn_weights_projection_qparams
-                | primitive_attr_t::skip_mask_t::fpmath_mode;
+#if DNNL_X64
+                | primitive_attr_t::skip_mask_t::fpmath_mode
+#endif
+                ;
     VDISPATCH_RNN(this->attr()->has_default_values(attr_mask),
             VERBOSE_UNSUPPORTED_ATTR);
 
@@ -452,9 +478,11 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     // must be called after configure_brgemm()
     set_workspace_sizes<class_name>(rnn_, *this->desc());
 
+#if DNNL_X64
     // Only AMX LSTM supports s8s8 now
     VDISPATCH_RNN(!(rnn_.is_signed_int8_conf() && !rnn_.is_cell_int8_amx()),
             VERBOSE_UNSUPPORTED_DT);
+#endif
 
     // Set weights descriptors to desired format
     memory_desc_t new_weights_layer_md = *this->weights_md(0);
@@ -512,7 +540,7 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
     VDISPATCH_RNN(this->check_layout_consistency(true /*is_brgemm*/)
                     == status::success,
             "layout consistency check failed");
-
+#if DNNL_X64
     if (rnn_.is_bf32()) {
         const memory_desc_wrapper weights_layer_d(this->weights_layer_md_);
         memory_desc_t weights_layer_md;
@@ -531,6 +559,11 @@ ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::pd_t::init_brgemm(
         CHECK(reorder_primitive_desc_create(bf32_wei_iter_reorder_pd_, engine,
                 weights_iter_d.md_, &weights_iter_md, nullptr));
     }
+#else
+    VDISPATCH_RNN(!rnn_.is_bf32(), VERBOSE_UNSUPPORTED_FEATURE,
+            "bf32 is not supported in aarch64 brgemm rnn as No bf32 reorder on "
+            "aarch64.");
+#endif
 
     return status::success;
 #else
@@ -595,7 +628,7 @@ void ref_rnn_common_t<aprop, src_type, weights_type,
     scratchpad.template book<void *>(
             key_rnn_ptrs_bia, ptr_wei_sz * bias_dt_size);
 
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
     if (rnn_.is_brgemm)
         ref_rnn_brgemm_t::init_scratchpad(
                 rnn_, scratchpad, sizeof(gemm_acc_t), alignof(gemm_acc_t));
@@ -714,20 +747,21 @@ status_t dnnl::impl::cpu::ref_rnn_common_t<aprop, src_type, weights_type,
     CREATE_MATMUL(matmul_part2_4_);
 #undef CREATE_MATMUL
 
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
     const auto rnn = pd()->rnn_;
     if (rnn.is_brgemm) {
+#if DNNL_X64
         if (rnn.is_bf32()) {
-
             CHECK(pd()->bf32_wei_layer_reorder_pd_->create_primitive(
                     bf32_wei_layer_reorder_, engine));
-
             CHECK(pd()->bf32_wei_iter_reorder_pd_->create_primitive(
                     bf32_wei_iter_reorder_, engine));
         }
+#endif
         return rnn_brgemm_.init_kernels(rnn, src_type, weights_type);
     }
 #endif
+
     return status::success;
 }
 
@@ -1024,11 +1058,11 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
         const src_layer_t *src_layer = lay == 0 && rnn.skip_src_layer_copy()
                 ? src_layer_
                 : SAFE_PTR(ws_states_layer, lay, dir, 1, 0);
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
         CHECK((this->*merged_layer_func)(ctx, rnn, cell_position,
                 SAFE_PTR(weights_layer, lay, dir, 0), src_layer, scratch_gates_,
                 SAFE_PTR(ws_diff_states_layer, lay, dir, 0, 0),
-                SAFE_PTR(diff_weights_layer, lay, dir, 0), amx_scratchpad,
+                SAFE_PTR(diff_weights_layer, lay, dir, 0), gemm_acc_scratchpad,
                 addr_batch_global));
 #else
         CHECK((this->*merged_layer_func)(rnn, cell_position,
@@ -1138,7 +1172,7 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                     proj_ht = scratch_ht_;
             }
 
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
             CHECK((this->*cell_func)(ctx, rnn, cell_position, cell_dst_layer,
                     cell_dst_iter_c,
                     SAFE_PTR(ws_diff_states_layer, lay, dir, iter, 0),
@@ -1166,7 +1200,7 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                     proj_ht, scratch_diff_ht_,
                     SAFE_PTR(ws_grid, lay, dir, iter, 0), scratch_cell_,
                     scratch_gates_blocked_, scratch_src_layer_,
-                    scratch_src_iter_, cell_dst_iter, amx_scratchpad,
+                    scratch_src_iter_, cell_dst_iter, gemm_acc_scratchpad,
                     addr_batch_global));
 #else
             CHECK((this->*cell_func)(ctx, rnn, cell_position, cell_dst_layer,
@@ -1195,7 +1229,7 @@ rnn_grid_execution_sig((ref_rnn_common_t<aprop, src_type, weights_type,
                     SAFE_PTR(ws_gates, lay, dir, iter, 0), cell_scratch_gates,
                     proj_ht, scratch_diff_ht_,
                     SAFE_PTR(ws_grid, lay, dir, iter, 0), scratch_cell_,
-                    cell_dst_iter, amx_scratchpad));
+                    cell_dst_iter, gemm_acc_scratchpad));
 #endif
         }
 
@@ -2045,7 +2079,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
     auto ptr_wei_projection
             = scratchpad.template get<weights_t *>(key_rnn_ptrs_wei_projection);
     auto ptr_bias = scratchpad.template get<void *>(key_rnn_ptrs_bia);
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
     const auto scratch_gates_blocked
             = scratchpad.template get<scratch_t>(key_rnn_gates_blocked);
     const auto scratch_src_layer
@@ -2054,16 +2088,22 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             = scratchpad.template get<scratch_t>(key_rnn_src_iter_trans);
 #endif
 
-    gemm_acc_t *amx_scratchpad = nullptr;
+    gemm_acc_t *gemm_acc_scratchpad = nullptr;
+#if DNNL_X64 || DNNL_AARCH64
+    brgemm_batch_element_t *addr_batch_global = nullptr;
+
+    if (rnn.is_brgemm) {
 #if DNNL_X64
-    x64::brgemm_batch_element_t *addr_batch_global = nullptr;
-    if (rnn.is_brgemm && rnn.is_cell_amx()) {
-        amx_scratchpad = scratchpad.template get<gemm_acc_t>(
-                key_brgemm_primitive_buffer);
-    }
-    addr_batch_global = scratchpad.template get<x64::brgemm_batch_element_t>(
-            key_brgemm_primitive_batch);
+        if (rnn.is_cell_amx()) {
+            gemm_acc_scratchpad = scratchpad.template get<gemm_acc_t>(
+                    key_brgemm_primitive_buffer);
+        }
 #endif
+        addr_batch_global = scratchpad.template get<brgemm_batch_element_t>(
+                key_brgemm_primitive_batch);
+    }
+#endif
+
     // Fetching buffers from the workspace
     // if no workspace was provided we use the scratchpad
     char *scratch_ptr = scratchpad.template get<char>(key_rnn_space);
@@ -2236,7 +2276,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
     }
 
     // run the execution on the grid
-#if DNNL_X64
+#if DNNL_X64 || DNNL_AARCH64
     CHECK((this->*grid_computation)(ctx, rnn, ptr_wei_layer, ptr_wei_iter,
             ptr_wei_projection, weights_peephole, w_projection_comp, ptr_bias,
             src_layer, augru_attention, (const src_iter_t *)src_iter,
@@ -2247,7 +2287,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             scratch_diff_ht, scratch_cell, scratch_gates_blocked,
             scratch_src_layer, scratch_src_iter, diff_augru_attention,
             diff_weights_layer, diff_weights_iter, diff_weights_projection,
-            diff_weights_peephole, diff_bias, amx_scratchpad,
+            diff_weights_peephole, diff_bias, gemm_acc_scratchpad,
             addr_batch_global));
 #else
     CHECK((this->*grid_computation)(ctx, rnn, ptr_wei_layer, ptr_wei_iter,
@@ -2259,7 +2299,7 @@ status_t ref_rnn_common_t<aprop, src_type, weights_type, acc_type>::execute(
             ws_gates, ws_ht, ws_grid, scratch_gates, scratch_ht,
             scratch_diff_ht, scratch_cell, diff_augru_attention,
             diff_weights_layer, diff_weights_iter, diff_weights_projection,
-            diff_weights_peephole, diff_bias, amx_scratchpad));
+            diff_weights_peephole, diff_bias, gemm_acc_scratchpad));
 #endif
 
     // Finally we copy the results to the result buffers

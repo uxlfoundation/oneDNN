@@ -120,11 +120,12 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
         // The code below makes the compiler generate maxps instruction.
         // rather than maxss, which is generated for the 'else' code path
         auto max_wrapper = [](float a, float b) { return nstl::max(a, b); };
-        auto min_wrapper = [](int a, int b) { return nstl::min(a, b); };
+        auto min_wrapper
+                = [](dim_t a, dim_t b) { return nstl::min<dim_t>(a, b); };
 
         if (channels_ < unroll_factor) {
             float max_val = -FLT_MAX;
-            for (int i = 0; i < channels_; i++) {
+            for (dim_t i = 0; i < channels_; i++) {
                 max_val = max_wrapper(max_val,
                         io::load_float_value(src_d.data_type(), src_data, i));
             }
@@ -136,8 +137,8 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
                 max_values[i]
                         = io::load_float_value(src_d.data_type(), src_data, i);
             }
-            for (int i = unroll_factor; i < channels_; i += unroll_factor) {
-                int offset = min_wrapper(i, channels_ - unroll_factor);
+            for (dim_t i = unroll_factor; i < channels_; i += unroll_factor) {
+                dim_t offset = min_wrapper(i, channels_ - unroll_factor);
                 for (int j = 0; j < unroll_factor; j++) {
                     max_values[j] = max_wrapper(max_values[j],
                             io::load_float_value(
@@ -151,14 +152,14 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
             space_max = max_val;
         }
 #else
-        for (int c = 0; c < channels_; ++c)
+        for (dim_t c = 0; c < channels_; ++c)
             space_max = nstl::max(space_max,
                     io::load_float_value(src_d.data_type(), src_data, c));
 #endif
 
         // sub + exp + sum
-        int tail = channels_ % unroll_factor;
-        for (int i = 0; i < channels_ - tail; i += unroll_factor) {
+        int tail = static_cast<int>(channels_ % unroll_factor);
+        for (dim_t i = 0; i < channels_ - tail; i += unroll_factor) {
             PRAGMA_OMP_SIMD(reduction(+ : space_denom))
             for (int j = 0; j < unroll_factor; j++) {
                 float s = io::load_float_value(
@@ -174,7 +175,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
                 io::store_float_value(interim_dt, d, interim_ptr, i + j);
             }
         }
-        for (int i = channels_ - tail; i < channels_; i++) {
+        for (dim_t i = channels_ - tail; i < channels_; i++) {
             float s = io::load_float_value(src_d.data_type(), src_data, i);
             float d = s - space_max;
             if (pd()->is_softmax()) {
@@ -192,7 +193,7 @@ status_t ref_softmax_fwd_t::execute_forward_dense(const exec_ctx_t &ctx) const {
         } else if (pd()->is_logsoftmax()) {
             space_denom = logf(space_denom);
         }
-        for (int c = 0; c < channels_; ++c) {
+        for (dim_t c = 0; c < channels_; ++c) {
             float d = io::load_float_value(interim_dt, interim_ptr, c);
             float val = 0;
             if (pd()->is_softmax()) {
@@ -316,16 +317,16 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
         utils::array_set(space_max, -FLT_MAX, inner_size_);
         utils::array_set(space_denom, 0, inner_size_);
 
-        for (int in = 0; in < inner_size_; in++) {
+        for (dim_t in = 0; in < inner_size_; in++) {
             dim_t ou_in_offset = ou * channels_ * inner_size_ + in;
 
-            for (int c = 0; c < channels_; c++) {
+            for (dim_t c = 0; c < channels_; c++) {
                 size_t off = src_d.off_l(ou_in_offset + c * inner_size_);
                 float s = io::load_float_value(src_d.data_type(), src, off);
                 space_max[in] = nstl::max(space_max[in], s);
             }
 
-            for (int c = 0; c < channels_; c++) {
+            for (dim_t c = 0; c < channels_; c++) {
                 size_t src_off = src_d.off_l(ou_in_offset + c * inner_size_);
                 float s = io::load_float_value(src_d.data_type(), src, src_off);
                 float d = s - space_max[in];
@@ -346,7 +347,7 @@ status_t ref_softmax_fwd_t::execute_forward_generic(
                 space_denom[in] = logf(space_denom[in]);
             }
 
-            for (int c = 0; c < channels_; c++) {
+            for (dim_t c = 0; c < channels_; c++) {
                 size_t dst_off = dst_d.off_l(ou_in_offset + c * inner_size_);
                 size_t interim_off = pd()->need_intermediate_scratchpad()
                         ? thr_shift + c
@@ -472,7 +473,7 @@ status_t ref_softmax_bwd_t::execute_backward_generic(
             [= COMPAT_THIS_CAPTURE](dim_t ou, dim_t in) {
         dim_t ou_in_offset = ou * channels_ * inner_size_ + in;
         float sbr = 0;
-        for (int c = 0; c < channels_; ++c) {
+        for (dim_t c = 0; c < channels_; ++c) {
             auto diff_dst_off
                     = diff_dst_d.off_l(ou_in_offset + c * inner_size_);
             float dd = io::load_float_value(
@@ -486,7 +487,7 @@ status_t ref_softmax_bwd_t::execute_backward_generic(
             }
         }
 
-        for (int c = 0; c < channels_; ++c) {
+        for (dim_t c = 0; c < channels_; ++c) {
             auto diff_dst_off
                     = diff_dst_d.off_l(ou_in_offset + c * inner_size_);
             auto dst_off = dst_d.off_l(ou_in_offset + c * inner_size_);

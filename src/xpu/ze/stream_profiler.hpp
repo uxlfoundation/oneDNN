@@ -132,6 +132,39 @@ private:
     uint64_t max_timestamp_value_;
 };
 
+struct verbose_profiler_t : public xpu::verbose_profiler_t {
+    verbose_profiler_t(const impl::stream_t *stream, double timestamp_freq,
+            uint64_t max_timestamp_value)
+        : xpu::verbose_profiler_t(stream)
+        , timestamp_freq_(timestamp_freq)
+        , max_timestamp_value_(max_timestamp_value) {}
+
+    ~verbose_profiler_t() override { cleanup(); }
+
+private:
+    verbose_profiler_t() = delete;
+    DNNL_DISALLOW_COPY_AND_ASSIGN(verbose_profiler_t);
+
+    status_t get_aggregate_exec_time(
+            size_t index, double &duration_ms) const override;
+
+    bool is_event_complete(
+            const std::shared_ptr<xpu::event_t> &event) const override;
+
+    void wait_for_event_completion(
+            const std::shared_ptr<xpu::event_t> &event) const override;
+
+    uint64_t get_duration_cycles(
+            uint64_t start_cycles, uint64_t end_cycles) const {
+        return (end_cycles >= start_cycles)
+                ? (end_cycles - start_cycles)
+                : ((max_timestamp_value_ - start_cycles) + end_cycles + 1);
+    }
+
+    double timestamp_freq_;
+    uint64_t max_timestamp_value_;
+};
+
 } // namespace ze
 } // namespace xpu
 } // namespace impl

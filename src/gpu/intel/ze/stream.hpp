@@ -54,6 +54,9 @@ public:
     status_t get_profiling_data(profiling_data_kind_t data_kind,
             int *num_entries, uint64_t *data) const override;
 
+    status_t run_verbose_profiler(
+            const std::string &pd_info, double start_ms) override;
+
     status_t copy(const impl::memory_storage_t &src,
             const impl::memory_storage_t &dst, size_t size,
             const xpu::event_t &deps, xpu::event_t &out_dep) override {
@@ -77,6 +80,22 @@ private:
     status_t init();
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(stream_t);
+
+    std::pair<double, uint64_t> get_device_properties(
+            ze_device_handle_t dev) const {
+        ze_device_properties_t device_properties {};
+        device_properties.stype = ZE_STRUCTURE_TYPE_DEVICE_PROPERTIES_1_2;
+
+        auto status = xpu::ze::zeDeviceGetProperties(dev, &device_properties);
+
+        if (status != ZE_RESULT_SUCCESS) { return {1.0, UINT64_MAX}; }
+
+        double freq = 1e9 / device_properties.timerResolution;
+        uint64_t max_ts
+                = (1ULL << device_properties.kernelTimestampValidBits) - 1;
+
+        return {freq, max_ts};
+    }
 };
 
 } // namespace ze

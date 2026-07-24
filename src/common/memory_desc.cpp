@@ -1132,8 +1132,26 @@ status_t dnnl_memory_desc_create_with_blob(
         memory_desc_t **md, const uint8_t *blob) {
     if (one_of(nullptr, md, blob)) return invalid_arguments;
 
-    *md = new memory_desc_t();
-    memcpy(*md, blob, sizeof(memory_desc_t));
+    auto md_ptr = utils::make_unique<memory_desc_t>();
+    if (!md_ptr) return out_of_memory;
+    memcpy(md_ptr.get(), blob, sizeof(memory_desc_t));
+
+    // The blob carries a raw memory_desc_t, so every field is caller-supplied.
+    // Validate it before it reaches consumers that index fixed-size dims_t
+    // arrays by these values (e.g. memory_desc_wrapper::size ->
+    // compute_blocks writes blocks[inner_idxs[i]]).
+    CHECK(memory_desc_sanity_check(*md_ptr));
+    if (md_ptr->format_kind == format_kind::blocked) {
+        const auto &blk = md_ptr->format_desc.blocking;
+        VCHECK_MEMORY(blk.inner_nblks >= 0 && blk.inner_nblks <= DNNL_MAX_NDIMS,
+                invalid_arguments, VERBOSE_BAD_PARAM, "inner_nblks");
+        for (int i = 0; i < blk.inner_nblks; ++i)
+            VCHECK_MEMORY(
+                    blk.inner_idxs[i] >= 0 && blk.inner_idxs[i] < md_ptr->ndims,
+                    invalid_arguments, VERBOSE_BAD_PARAM, "inner_idxs");
+    }
+
+    *md = md_ptr.release();
     return success;
 }
 

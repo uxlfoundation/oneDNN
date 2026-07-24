@@ -87,9 +87,8 @@ bool prb_is_f32_default_plain_blocked_reorder(
             || !prb_has_small_strides(p))
         return false;
 
-    auto is_supported_block = [](size_t n) {
-        return utils::one_of(n, 4ul, 8ul, 16ul, 32ul, 64ul);
-    };
+    auto is_supported_block
+            = [](size_t n) { return utils::one_of(n, 4ul, 8ul, 16ul, 32ul); };
 
     plain_blocked_reorder_desc_t candidates[2];
     int ncandidates = 0;

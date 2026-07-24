@@ -285,13 +285,18 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (ka_load_masked == 0) ka_load_masked = ka_load;
     if (kb_load_masked == 0) kb_load_masked = kb_load;
 
+    int maskedOPCount = minOPCount;
+    if(problem.product.family == ProductFamily::CRI && kChain >= 2)
+        // On CRI, dpas fwd modifier is required for optimal compute throughput
+        maskedOPCount *= 2;
+
     if (!slmA) {
         ka_load = align_up(ka_load, opCount);
-        ka_load_masked = align_up(ka_load_masked, minOPCount);
+        ka_load_masked = align_up(ka_load_masked, maskedOPCount);
     }
     if (!slmB) {
         kb_load = align_up(kb_load, opCount);
-        kb_load_masked = align_up(kb_load_masked, minOPCount);
+        kb_load_masked = align_up(kb_load_masked, maskedOPCount);
     }
 
     if (ka_load == 0 || kb_load == 0)

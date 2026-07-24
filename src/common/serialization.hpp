@@ -271,8 +271,13 @@ struct deserializer_t {
                     serialization_stream_t::is_trivially_serialized<T>::value,
                     bool>
             = true>
-    void pop_array(size_t &size, T *ptr) {
+    void pop_array(size_t &size, T *ptr, size_t max_size) {
         pop(size);
+        if (size > max_size) {
+            assert(!"unexpected");
+            size = 0;
+            return;
+        }
         sstream_.get(idx_, sizeof(T) * size, reinterpret_cast<uint8_t *>(ptr));
         idx_ += sizeof(T) * size;
     }

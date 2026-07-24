@@ -63,7 +63,7 @@ struct jit_deconvolution_fwd_t : public primitive_t {
                 name_.c_str(),
                 jit_deconvolution_fwd_t);
 
-        status_t init(engine_t *engine);
+        status_t init(const engine_t *engine);
 
     private:
         /*

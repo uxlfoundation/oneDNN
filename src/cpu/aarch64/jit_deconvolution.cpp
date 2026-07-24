@@ -365,7 +365,7 @@ status_t jit_deconvolution_fwd_t::pd_t::set_default_formats() {
  * outer source, weights, bias, and destination descriptors unchanged.
  */
 status_t jit_deconvolution_fwd_t::pd_t::init(
-        engine_t *engine) {
+        const engine_t *engine) {
 
     using namespace format_tag;
 

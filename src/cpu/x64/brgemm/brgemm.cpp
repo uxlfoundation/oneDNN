@@ -744,12 +744,12 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
     for (int i = 0; i < max_palette_size_in_bytes; i++)
         _tc[i] = 0;
 
-    const dim_t typesize_A
+    const int typesize_A
             = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_A;
-    const dim_t typesize_B
+    const int typesize_B
             = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_B;
 
-    const dim_t rd_step = 4 / typesize_A;
+    const int rd_step = 4 / typesize_A;
 
     const auto Ac = typesize_A * rd_block;
 

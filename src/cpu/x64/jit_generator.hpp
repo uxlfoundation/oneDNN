@@ -76,11 +76,6 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-// Required so XBYAK_THROW's unqualified 'Error' resolves in this namespace.
-#ifndef XBYAK_NO_EXCEPTION
-using Xbyak::Error;
-#endif
-
 // TODO: move this to jit_generator_t class?
 namespace {
 
@@ -90,19 +85,12 @@ inline int float2int(float x) {
     return utils::bit_cast<int>(x);
 }
 
-inline void tc_configure_tile(
-        palette_config_t *tc, dim_t t, dim_t rows, dim_t cols) {
-    // AMX tile config is a fixed hardware register layout (tile index
-    // bounded by palette_config_t::max_size, uint8_t rows, uint16_t cols)
-    // - narrowing here is unavoidable, so it's consolidated in this single
-    // boundary helper with bounds checks, rather than scattered across
-    // call sites.
-    const bool idx_ok = t >= 0 && t < palette_config_t::max_size;
-    const bool rows_ok = rows >= 0 && rows <= UINT8_MAX;
-    const bool cols_ok = cols >= 0 && cols <= UINT16_MAX;
-    if (idx_ok && rows_ok && cols_ok) {
-        tc->rows[t] = static_cast<uint8_t>(rows);
-        tc->cols[t] = static_cast<uint16_t>(cols);
+inline void tc_configure_tile(palette_config_t *tc, int t, int rows, int cols) {
+    const bool rows_ok = (size_t)t < sizeof(tc->rows) / sizeof(tc->rows[0]);
+    const bool cols_ok = (size_t)t < sizeof(tc->cols) / sizeof(tc->cols[0]);
+    if (rows_ok && cols_ok) {
+        tc->rows[t] = rows;
+        tc->cols[t] = cols;
     } else {
         assert(!"out of range");
     }
@@ -178,13 +166,13 @@ public:
     using c_compatible::operator delete[];
 
 private:
-    const dim_t xmm_len = 16;
+    const size_t xmm_len = 16;
 #ifdef _WIN32
-    const dim_t xmm_to_preserve_start = 6;
-    const dim_t xmm_to_preserve = 10;
+    const size_t xmm_to_preserve_start = 6;
+    const size_t xmm_to_preserve = 10;
 #else
-    const dim_t xmm_to_preserve_start = 0;
-    const dim_t xmm_to_preserve = 0;
+    const size_t xmm_to_preserve_start = 0;
+    const size_t xmm_to_preserve = 0;
 #endif
 
     const size_t num_abi_save_gpr_regs
@@ -209,22 +197,19 @@ public:
 
     using Xbyak::CodeGenerator::add;
     using Xbyak::CodeGenerator::cmp;
-    using Xbyak::CodeGenerator::imul;
     using Xbyak::CodeGenerator::sub;
 
-    // These are the dim_t immediate forms used by brgemm. x86 accepts at
-    // most a 32-bit immediate. Offsets and shifts are non-negative; cmp also
-    // supports the verified negative-vpad case.
-    // TODO: Use a scratch register or rebase a pointer for values > INT_MAX.
-    // Note: the enable_if constrains this to T == dim_t exactly, so int/
-    // uint32_t call sites keep resolving to the native Xbyak overloads above
-    // instead of becoming ambiguous with these dim_t ones.
-    // Keep these overloads limited to add/sub/cmp/imul, the Xbyak calls that
-    // genuinely receive a potentially large tensor-scale offset or stride
-    // (imul is used to scale a runtime stride into a byte offset). Small,
-    // fixed-range immediates (8-bit lane/blend/shift/predicate values) must
-    // stay `int`/`uint8_t` at their creation site instead of gaining a
-    // dim_t overload here.
+    // dim_t immediate forms for the Xbyak instructions that legitimately
+    // receive a tensor offset or stride computed in dim_t. x86 encodes at
+    // most a 32-bit immediate, so the check and the narrowing conversion are
+    // consolidated here rather than repeated at every call site. The
+    // enable_if constrains the overload to exactly dim_t, so int/uint32_t
+    // call sites keep resolving to the native Xbyak overloads above.
+    // Only add/sub/cmp are provided: these are the offset-taking
+    // instructions. Small fixed-range immediates (lane/blend/shift/predicate
+    // values) must stay int at their creation site instead of gaining an
+    // overload here.
+    // TODO: use a scratch register or rebase a pointer for values > INT_MAX.
     template <typename T,
             typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
             = 0>
@@ -251,18 +236,6 @@ public:
                 op, static_cast<uint32_t>(static_cast<int32_t>(imm)));
     }
 
-    static int xbyak_register_index(dim_t index) {
-        // The fallback is returned only after XByak records the error.
-        JIT_ASSERT_RET(index >= 0 && index <= INT_MAX, 0);
-        return static_cast<int>(index);
-    }
-
-    static int xbyak_address_scale(dim_t scale) {
-        // The fallback is returned only after XByak records the error.
-        JIT_ASSERT_RET(utils::one_of(scale, 1, 2, 4, 8), 0);
-        return static_cast<int>(scale);
-    }
-
     Xbyak::Reg64 param1 = abi_param1;
     const int EVEX_max_8b_offt = 0x200;
     const Xbyak::Reg64 reg_EVEX_max_8b_offt = rbp;
@@ -283,10 +256,9 @@ public:
     void preamble() {
         if (xmm_to_preserve) {
             sub(rsp, xmm_to_preserve * xmm_len);
-            for (dim_t i = 0; i < xmm_to_preserve; ++i)
+            for (size_t i = 0; i < xmm_to_preserve; ++i)
                 uni_vmovdqu(ptr[rsp + i * xmm_len],
-                        Xbyak::Xmm(xbyak_register_index(
-                                xmm_to_preserve_start + i)));
+                        Xbyak::Xmm(xmm_to_preserve_start + i));
         }
         for (size_t i = 0; i < num_abi_save_gpr_regs; ++i) {
             push(Xbyak::Reg64(abi_save_gpr_regs[i]));
@@ -330,7 +302,7 @@ public:
     // Note: that we cannot use RBP inside as we override it in preamble
     // for address computation in EVEX instructions
     inline Xbyak::RegExp get_stack_params_address(bool after_prolog = true) {
-        size_t saved_regs_size = after_prolog ? get_size_of_abi_save_regs() : 0;
+        int saved_regs_size = after_prolog ? get_size_of_abi_save_regs() : 0;
 #ifdef _WIN32
         // Using stack layout described in MS ABI
         // (https://docs.microsoft.com/en-us/cpp/build/stack-usage?view=vs-2019)
@@ -360,9 +332,8 @@ public:
         for (size_t i = 0; i < num_abi_save_gpr_regs; ++i)
             pop(Xbyak::Reg64(abi_save_gpr_regs[num_abi_save_gpr_regs - 1 - i]));
         if (xmm_to_preserve) {
-            for (dim_t i = 0; i < xmm_to_preserve; ++i)
-                uni_vmovdqu(Xbyak::Xmm(xbyak_register_index(
-                                    xmm_to_preserve_start + i)),
+            for (size_t i = 0; i < xmm_to_preserve; ++i)
+                uni_vmovdqu(Xbyak::Xmm(xmm_to_preserve_start + i),
                         ptr[rsp + i * xmm_len]);
             add(rsp, xmm_to_preserve * xmm_len);
         }
@@ -380,7 +351,7 @@ public:
         using Xbyak::RegExp;
         using Xbyak::Zmm;
 
-        JIT_ASSERT_RET(raw_offt <= INT_MAX, ptr[RegExp() + base]);
+        assert(raw_offt <= INT_MAX);
         auto offt = static_cast<int>(raw_offt);
         int scale = 0;
 
@@ -441,7 +412,7 @@ public:
         }
     }
 
-    void safe_add(const Xbyak::Reg64 &base, dim_t raw_offt,
+    void safe_add(const Xbyak::Reg64 &base, size_t raw_offt,
             const Xbyak::Reg64 &reg_offt) {
         if (raw_offt > INT_MAX) {
             mov(reg_offt, raw_offt);
@@ -451,7 +422,7 @@ public:
         }
     }
 
-    void safe_sub(const Xbyak::Reg64 &base, dim_t raw_offt,
+    void safe_sub(const Xbyak::Reg64 &base, size_t raw_offt,
             const Xbyak::Reg64 &reg_offt) {
         if (raw_offt > INT_MAX) {
             mov(reg_offt, raw_offt);
@@ -2297,7 +2268,7 @@ public:
             return;
         }
 
-        const auto addr = [&](dim_t bytes_offset) {
+        const auto addr = [&](int bytes_offset) {
             return ptr[src_addr.getRegExp()
                     + Xbyak::RegExp(bytes_offset * sizeof(int8_t))];
         };
@@ -2319,7 +2290,7 @@ public:
         // Ensure offset is at most 4 bytes to be encoded in the instruction
         assert(offset >= INT_MIN && offset <= INT_MAX);
 
-        const auto addr = [&](dim_t bytes_offset) {
+        const auto addr = [&](int bytes_offset) {
             return ptr[reg + offset + bytes_offset * sizeof(int8_t)];
         };
 
@@ -2450,7 +2421,7 @@ public:
     template <typename Vmm>
     void store_bytes(
             const Vmm &vmm, const Xbyak::Address &dst_addr, int store_size) {
-        const auto addr = [&](dim_t bytes_offset) {
+        const auto addr = [&](int bytes_offset) {
             return ptr[dst_addr.getRegExp()
                     + Xbyak::RegExp(bytes_offset * sizeof(int8_t))];
         };
@@ -2464,7 +2435,7 @@ public:
         // Ensure offset is at most 4 bytes to be encoded in the instruction
         assert(offset >= INT_MIN && offset <= INT_MAX);
 
-        const auto addr = [&](dim_t bytes_offset) {
+        const auto addr = [&](int bytes_offset) {
             return ptr[reg + offset + bytes_offset * sizeof(int8_t)];
         };
 
@@ -2808,7 +2779,7 @@ public:
         jmp(label_tbl_end, T_NEAR);
         for (size_t i = 1; i < simd_w; i++) {
             L(l_case[i]);
-            tail_process(static_cast<int>(i));
+            tail_process(i);
             jmp(label_tbl_end, T_NEAR);
         }
         L(label_tbl_end);

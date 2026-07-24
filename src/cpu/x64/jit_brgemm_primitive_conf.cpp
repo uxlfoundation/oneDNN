@@ -23,11 +23,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-dim_t jit_brgemm_primitive_conf_t::ks() const {
+int jit_brgemm_primitive_conf_t::ks() const {
     return kd * kh * kw;
 }
 
-dim_t jit_brgemm_primitive_conf_t::get_weights_oc_block() const {
+int jit_brgemm_primitive_conf_t::get_weights_oc_block() const {
     using namespace format_tag;
 
     assert(wei_tag != undef && "Weights tag not defined!");

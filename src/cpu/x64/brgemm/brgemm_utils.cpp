@@ -283,11 +283,9 @@ int calculate_max_bcast_block(brgemm_desc_t *brg, const int adj_ld_block2) {
     // ----- post-ops and store accumulators -----
     const int beta_regs = !one_of(brg->beta, 1.f, 0.f);
 
-    // aux_vec_count() returns size_t but the post-ops register count is
-    // always small and bounded by the number of vector registers.
     const int postops_regs = brg->attr()
-            ? static_cast<int>(injector::aux_vec_count(
-                      brg->attr()->post_ops_, brg->isa_impl, true))
+            ? injector::aux_vec_count(
+                      brg->attr()->post_ops_, brg->isa_impl, true)
             : 0;
 
     // Emulators: fp8 emulation are supported for amx only
@@ -1059,11 +1057,9 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     const int compute_vregs
             = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_compute_vmm_count(*brg);
     const int bf16_emu_vregs = brg->is_bf16_emu * 4;
-    // aux_vec_count() returns size_t but the post-ops register count is
-    // always small and bounded by the number of vector registers.
     const int postops_regs = brg->attr()
-            ? static_cast<int>(injector::aux_vec_count(
-                      brg->attr()->post_ops_, brg->isa_impl, true))
+            ? injector::aux_vec_count(
+                      brg->attr()->post_ops_, brg->isa_impl, true)
             : 0;
 
     const int max_acc_vmms = max_vregs

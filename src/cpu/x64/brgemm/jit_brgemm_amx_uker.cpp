@@ -504,8 +504,8 @@ private:
 
     void process_output_range(brgemm_iteration_t &bi, int bd_start,
             int bd_finish, int bdb, int ldb);
-    void store_vector_without_post_ops(
-            int idx, const Address &addr, bool is_ld_tail);
+    void store_vector_without_post_ops(int idx, const Address &addr,
+            bool is_ld_tail, data_type_t dst_dt = data_type::f32);
     void store_vector(brgemm_iteration_t &bi, int bdb, int bd, int ldb);
     void apply_comp_pad_to_vector(brgemm_iteration_t &bi, int bdb, int inp_bd,
             int ldb, const int idx);
@@ -578,9 +578,15 @@ private:
     bool get_store_by_vectors(bool apply_post_ops) const {
         const bool need_to_apply_post_ops
                 = are_post_ops_applicable_ && apply_post_ops;
+        // Tile-direct-store fast-path dumps raw accumulator dtype; for
+        // narrow dt_c (bf16/f16) we must go through the per-vector store
+        // path that downconverts via store_vector_without_post_ops.
+        const bool c_dt_needs_cvt
+                = !utils::one_of(brg.dt_c, data_type::f32, data_type::s32);
         const auto store_by_vectors = need_to_apply_alpha_beta_
                 || need_to_apply_post_ops || brg.brgattr.bd_mask_level
-                || brg.has_per_k_scales() || brg.with_per_mn_compensation;
+                || brg.has_per_k_scales() || brg.with_per_mn_compensation
+                || c_dt_needs_cvt;
         return store_by_vectors;
     }
     bool actual_ils(bool apply_post_ops, bool skip_accumulation = false) const {
@@ -1005,9 +1011,15 @@ void jit_brgemm_amx_uker_base_t::apply_alpha_beta_to_vector(
     const bool apply_beta = brg.beta != 0.f;
     if (!apply_alpha && !apply_beta) return;
 
+    // vaddps/vpaddd beta=1 fast-path reads the C buffer as raw accumulator
+    // dtype; only valid when dt_c matches it. For narrow dt_c (bf16/f16/f8)
+    // fall through to cvt2ps + vfmadd231ps so previous-dst is upconverted.
+    const bool c_dt_matches_acc
+            = utils::one_of(brg.dt_c, data_type::f32, data_type::s32);
     // When K-scales (wei or src) are applied, accumulator is already
     // converted to float (dq2ps + scales before alpha_beta), C stores floats.
-    const bool use_vadd_for_beta = brg.beta == 1.f && !brg.do_dq2ps_cvt();
+    const bool use_vadd_for_beta
+            = brg.beta == 1.f && !brg.do_dq2ps_cvt() && c_dt_matches_acc;
 
     if (apply_beta && !use_vadd_for_beta) {
         mov(reg_tmp_gpr, float2int(static_cast<float>(brg.beta)));
@@ -1766,10 +1778,23 @@ void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
 }
 
 void jit_brgemm_amx_uker_base_t::store_vector_without_post_ops(
-        int idx, const Address &addr, bool is_ld_tail) {
+        int idx, const Address &addr, bool is_ld_tail, data_type_t dst_dt) {
     auto zmm = Zmm(idx);
 
     maybe_saturation(zmm);
+
+    // Downconvert f32 accumulator before the masked store for bf16/f16 dst.
+    if (dst_dt == data_type::bf16 || dst_dt == data_type::f16) {
+        auto k_mask = is_ld_tail ? ld_tail_mask : ld_full_mask;
+        auto ymm = Xbyak::Ymm(idx);
+        const Xbyak::Ymm r_ymm = vmm_mask(ymm, true, true, k_mask);
+        if (dst_dt == data_type::bf16)
+            vcvtneps2bf16(ymm, zmm);
+        else
+            vcvtps2ph(ymm, zmm, _op_mxcsr);
+        vmovdqu16(addr, r_ymm);
+        return;
+    }
 
     if (is_ld_tail)
         vmovups(addr | ld_tail_mask | T_z, zmm);
@@ -1794,11 +1819,15 @@ void jit_brgemm_amx_uker_base_t::store_vector(
         auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_tmp_gpr);
         store_vector_with_post_ops(vreg_acc.getIdx(), ptr_D, is_ld_tail);
     } else if (are_post_ops_applicable_) {
+        // Intermediate C-buffer store; dtype may be narrower than the
+        // accumulator (e.g. bf16/f16) under dst-dtype C-buffer mode.
         auto ptr_C = EVEX_compress_addr_safe(reg_C, c_offset, reg_tmp_gpr);
-        store_vector_without_post_ops(vreg_acc.getIdx(), ptr_C, is_ld_tail);
+        store_vector_without_post_ops(
+                vreg_acc.getIdx(), ptr_C, is_ld_tail, brg.dt_c);
     } else {
         auto ptr_D = EVEX_compress_addr_safe(reg_D, d_offset, reg_tmp_gpr);
-        store_vector_without_post_ops(vreg_acc.getIdx(), ptr_D, is_ld_tail);
+        store_vector_without_post_ops(
+                vreg_acc.getIdx(), ptr_D, is_ld_tail, brg.dt_d);
     }
 }
 
@@ -3167,7 +3196,10 @@ void jit_brgemm_amx_uker_base_t::generate() {
 
     ld_block_B_size_ = static_cast<dim_t>(brg.typesize_B)
             * ((brg.brgattr.LDB2 != 0) ? brg.brgattr.LDB2 : brg.ld_block);
-    ld_block_C_size_ = static_cast<dim_t>(brg.typesize_C) * brg.ld_block;
+    // tilestored stride for the f32 AMX accumulator tile (4-byte elements,
+    // independent of logical dt_c).
+    ld_block_C_size_ = static_cast<dim_t>(brgemm_desc_t::amx_c_tile_elem_size)
+            * brg.ld_block;
     ld_block_D_size_ = static_cast<dim_t>(brg.typesize_D) * brg.ld_block;
     ld_block_bias_size_ = static_cast<dim_t>(brg.typesize_bias) * brg.ld_block;
     if (brg.with_wei_scales) {

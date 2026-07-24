@@ -220,6 +220,10 @@ struct DNNL_API brgemm_attr_t {
     // and there is no unrolling by batchsize in kernel
     bool var_bs {false};
     bool postops_only {false};
+    // Force the kernel to populate the C buffer (reg_C) on non-postops
+    // calls, even when dt_c == dt_d and no post-ops. Set when an external
+    // C buffer must be filled (e.g. cross-K partial reduction in dst dtype).
+    bool use_intermediate_c_buffer {false};
     // Hint for bs_group value in brgemm_desc_t
     int hint_bs_group {0};
 
@@ -399,6 +403,8 @@ struct brgemm_desc_t {
     static constexpr int MAX_VPAD = 100;
     static constexpr int AMX_TILES_NUM = 8;
     static constexpr int tilesize = 1024;
+    // AMX accumulator tile element size (always f32, 4 bytes, independent of dt_c)
+    static constexpr int amx_c_tile_elem_size = 4;
 
     void set_attr(const primitive_attr_t *ppdattr);
     void set_dst_md(const memory_desc_t *pdst_md);
@@ -653,7 +659,8 @@ struct brgemm_desc_t {
                 brgemm_broadcast_t::none, zp_type_a, zp_type_b, zp_type_c);
         return dt_c != dt_d || with_eltwise || with_binary || with_bias
                 || with_sum || req_s8s8_compensation || has_zero_points
-                || with_src_scales || with_wei_scales || with_dst_scales;
+                || with_src_scales || with_wei_scales || with_dst_scales
+                || brgattr.use_intermediate_c_buffer;
     }
 
     bool can_dispatch_uker() const noexcept {

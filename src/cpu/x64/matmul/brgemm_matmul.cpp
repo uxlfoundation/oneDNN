@@ -471,9 +471,24 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
         CHECK(brgemm_desc_set_postops(
                 &brg, attr(), &dst_md_, LDD, bgmmc_.bia_dt));
 
+        // c_buf_dst_dt path: keep partial K-chunk accumulation in dst dtype.
+        // nthr_k<=1 bypasses the C buffer (accumulate into D, beta=1);
+        // nthr_k>1 keeps a C buffer in dst dtype and reduces across K-threads.
+        // Either way set dt_c=dst_dt to activate the kernel's narrow-dt_c
+        // store/beta paths (see jit_brgemm_amx_uker.cpp).
+        if (bgmmc_.c_buf_dst_dt) {
+            brg.dt_c = brg.dt_d;
+            brg.typesize_C = types::data_type_size(brg.dt_c);
+        }
+
         brgemm_attr_t brgattr;
         brgattr.generate_skip_accumulation
                 = bgmmc_.post_ops_applicable && bgmmc_.nthr_k > 1;
+        // With dst-dtype C buffer (nthr_k>1), force intermediate-C-buffer
+        // store path even if dt_c==dt_d. Otherwise per-K-thread brgemm
+        // writes to reg_D, overrunning dst and racing across K-threads.
+        brgattr.use_intermediate_c_buffer
+                = bgmmc_.c_buf_dst_dt && bgmmc_.use_buffer_c;
         brgattr.mem_advice = bgmmc_.mem_advice;
         brgattr.max_bs = bs;
         brgattr.hint_prefetchw = bgmmc_.hint_prefetchw;
@@ -573,14 +588,28 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
     if (bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only)
         CHECK(create_brgemm_matmul_copy_a(copy_A_kernel_, &bgmmc));
 
-    if (pd()->with_reduce() || (bgmmc.nthr_k > 1 && bgmmc.acc_dt == f32)) {
+    // C-buffer dtype for cross-K reduction: by default this is acc_dt
+    // (f32 / s32). When relaxed accumulation is enabled and nthr_k > 1
+    // the per-thread brgemm writes bf16/f16 into the C buffer, so the
+    // reducer must work on bf16/f16 too.
+    const bool c_buf_is_dst_dt = bgmmc.c_buf_dst_dt && bgmmc.nthr_k > 1;
+    if (pd()->with_reduce()
+            || (bgmmc.nthr_k > 1 && bgmmc.acc_dt == f32 && !c_buf_is_dst_dt)) {
         CHECK(safe_ptr_assign(
                 acc_ker_f32_, new cpu_accumulator_1d_t<data_type::f32>()));
         CHECK(acc_ker_f32_->create_kernel());
-    } else if (bgmmc.nthr_k > 1 && bgmmc.acc_dt == s32) {
+    } else if (bgmmc.nthr_k > 1 && bgmmc.acc_dt == s32 && !c_buf_is_dst_dt) {
         CHECK(safe_ptr_assign(
                 acc_ker_s32_, new cpu_accumulator_1d_t<data_type::s32>()));
         CHECK(acc_ker_s32_->create_kernel());
+    } else if (c_buf_is_dst_dt && bgmmc.dst_dt == data_type::bf16) {
+        CHECK(safe_ptr_assign(
+                acc_ker_bf16_, new cpu_accumulator_1d_t<data_type::bf16>()));
+        CHECK(acc_ker_bf16_->create_kernel());
+    } else if (c_buf_is_dst_dt && bgmmc.dst_dt == data_type::f16) {
+        CHECK(safe_ptr_assign(
+                acc_ker_f16_, new cpu_accumulator_1d_t<data_type::f16>()));
+        CHECK(acc_ker_f16_->create_kernel());
     }
 
     if (bgmmc.packed_sparse_weights) {
@@ -1363,7 +1392,11 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                 char *buf_reduced_base
                         = brgmm_ctx.get_buf_C_par_reduction_ptr(0, mb, nb);
 
-                const size_t m_offset = brgmm_ctx.get_LDC() * bgmmc.acc_dt_sz;
+                const bool c_buf_is_dst_dt
+                        = bgmmc.c_buf_dst_dt && bgmmc.nthr_k > 1;
+                const dim_t c_buf_dt_sz
+                        = c_buf_is_dst_dt ? bgmmc.c_dt_sz : bgmmc.acc_dt_sz;
+                const size_t m_offset = brgmm_ctx.get_LDC() * c_buf_dt_sz;
                 for (int r = 1; r < num_reduction_buffers; r++) {
                     const char *buf_to_reduce_base
                             = brgmm_ctx.get_buf_C_par_reduction_ptr(r, mb, nb);
@@ -1622,10 +1655,18 @@ void brgemm_matmul_t<isa>::copy_b_chunk_in_buffer(
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::accumulate(
         char *result_ptr, const char *reduce_ptr, size_t size) const {
-    if (pd()->get_brgemm_matmul_conf().acc_dt == f32)
+    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+    const bool c_buf_is_dst_dt = bgmmc.c_buf_dst_dt && bgmmc.nthr_k > 1;
+    if (c_buf_is_dst_dt && bgmmc.dst_dt == data_type::bf16)
+        acc_ker_bf16_->accumulate(
+                (bfloat16_t *)result_ptr, (const bfloat16_t *)reduce_ptr, size);
+    else if (c_buf_is_dst_dt && bgmmc.dst_dt == data_type::f16)
+        acc_ker_f16_->accumulate(
+                (float16_t *)result_ptr, (const float16_t *)reduce_ptr, size);
+    else if (bgmmc.acc_dt == f32)
         acc_ker_f32_->accumulate(
                 (float *)result_ptr, (const float *)reduce_ptr, size);
-    else if (pd()->get_brgemm_matmul_conf().acc_dt == s32)
+    else if (bgmmc.acc_dt == s32)
         acc_ker_s32_->accumulate(
                 (int32_t *)result_ptr, (const int32_t *)reduce_ptr, size);
     else
@@ -2255,8 +2296,11 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
             return get_data_C_ptr(0, m, n);
 
         int k_buf_idx = ithr_k - (!bgmmc_.post_ops_applicable ? 1 : 0);
+        const dim_t c_buf_dt_sz = (bgmmc_.c_buf_dst_dt && bgmmc_.nthr_k > 1)
+                ? bgmmc_.c_dt_sz
+                : bgmmc_.acc_dt_sz;
         return buf_C_ptr_ + k_buf_idx * bgmmc_.buffer_c_per_thread_sz
-                + get_data_C_off(0, m, n) * bgmmc_.acc_dt_sz / bgmmc_.c_dt_sz;
+                + get_data_C_off(0, m, n) * c_buf_dt_sz / bgmmc_.c_dt_sz;
     }
 
     dim_t get_data_B_off_within_block(dim_t k, dim_t n) const {

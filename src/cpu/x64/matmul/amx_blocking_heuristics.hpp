@@ -17,7 +17,6 @@
 #ifndef CPU_X64_MATMUL_AMX_BLOCKING_HEURISTICS_HPP
 #define CPU_X64_MATMUL_AMX_BLOCKING_HEURISTICS_HPP
 
-#include "common/math_utils.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
 
 namespace dnnl {
@@ -134,10 +133,24 @@ public:
     static size_t L1_threshold();
     static size_t L2_threshold();
     static size_t L2_ways_threshold();
+    // Whether the 2D M*N tiling saturates the cores on compute, so that a
+    // K-split over partial-C buffers is pure DRAM overhead rather
+    // than an operand-bandwidth win. Keys off machine geometry (L2 size),
+    // thread count, and the problem's K extent instead of hard-coded M/N.
+    static bool mn_compute_saturated(
+            dim_t M, dim_t N, dim_t K, int nthr, dim_t operand_dt_sz);
 
 protected:
     virtual float calculate_blocking_scores() const = 0;
     virtual dim_t get_actual_lda() const;
+    dim_t effective_c_buf_dt_sz(int nthr_k_cand) const;
+    // Footprint (L1/L2 residency) element size for the partial-C tile. Unlike
+    // effective_c_buf_dt_sz (which returns 0 for the bypass sub-mode because
+    // no scratch buffer is allocated), this models the dst (D) tile residency
+    // for the MULTI-K-chunk bypass case where the same D tile is touched once
+    // per chunk and is effectively resident across chunks. For a single
+    // K-chunk the D tile is written once and carries no residency cost (0).
+    dim_t c_buf_footprint_dt_sz(int nthr_k_cand, bool single_k_chunk) const;
 
     // Num threads for parallelism wrt K dimension
     size_t nthr_m_ {0}, nthr_n_ {0}, nthr_k_ {0}, nthr_b_ {0};

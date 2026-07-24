@@ -84,28 +84,7 @@ status_t with_post_ops_t::pd_t::init(const impl::engine_t *engine) {
             "bias reduction");
 
     subbyte_pack_ = utils::one_of(d->c_type(), f4_e2m1, f4_e3m0);
-    if (subbyte_pack_) {
-        using namespace dnnl::impl::memory_tracking::names;
-        const memory_desc_wrapper dst_mdw(dst_md(0));
-        const auto &padded_dims = dst_mdw.padded_dims();
-        const dim_t ndims = dst_mdw.ndims();
-        const dim_t nelems = utils::array_product(padded_dims, ndims);
-        auto scratchpad = scratchpad_registry().registrar();
-        scratchpad.book(memory_tracking::names::key_matmul_pack_space, nelems,
-                sizeof(char), OCL_BUFFER_ALIGNMENT);
-    }
-
     dynamic_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
-    if (dynamic_scales_) {
-        using namespace dnnl::impl::memory_tracking::names;
-        const memory_desc_wrapper dst_mdw(dst_md(0));
-        const auto &padded_dims = dst_mdw.padded_dims();
-        const dim_t ndims = dst_mdw.ndims();
-        const dim_t nelems = utils::array_product(padded_dims, ndims);
-        auto scratchpad = scratchpad_registry().registrar();
-        scratchpad.book(memory_tracking::names::key_matmul_dyn_scale_space,
-                nelems, sizeof(float), OCL_BUFFER_ALIGNMENT);
-    }
 
     const auto impl_list = engine->get_implementation_list(op_desc());
     int current_impl_idx
@@ -273,10 +252,18 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
 
 void with_post_ops_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
+    const dim_t dst_span = memory_desc_wrapper(dst_md(0)).span();
+    if (subbyte_pack_) {
+        scratchpad.book(memory_tracking::names::key_matmul_pack_space, dst_span,
+                sizeof(char), OCL_BUFFER_ALIGNMENT);
+    }
+    if (dynamic_scales_) {
+        scratchpad.book(memory_tracking::names::key_matmul_dyn_scale_space,
+                dst_span, sizeof(float), OCL_BUFFER_ALIGNMENT);
+    }
     if (use_scratchpad_with_post_op_worker) {
-        memory_desc_wrapper dst_mdw(dst_md());
-        scratchpad.book(memory_tracking::names::key_gemm_tmp_buffer,
-                dst_mdw.size(), types::data_type_size(desc_.acc_type));
+        scratchpad.book(memory_tracking::names::key_gemm_tmp_buffer, dst_span,
+                types::data_type_size(desc_.acc_type), OCL_BUFFER_ALIGNMENT);
     }
     scratchpad.book(memory_tracking::names::key_nested_multiple,
             pd_->scratchpad_registry());
@@ -401,14 +388,16 @@ status_t with_post_ops_t::execute(const exec_ctx_t &ctx) const {
         CHECK(parallel_for(ctx, nd_range, kernels_[1], arg_list));
     }
     if (!subbyte_pack) return status_t::dnnl_success;
-    memory_desc_wrapper dst_mdw(pd()->dst_md(0));
-    const dim_t nelems = dst_mdw.nelems();
+
+    // The unpacked buffer is indexed with dst_md() offsets, so packing covers
+    // its whole element span, not just its element count.
+    const dim_t dst_span = memory_desc_wrapper(pd()->dst_md(0)).span();
     compute::kernel_arg_list_t repack_arg_list;
     repack_arg_list.set(0, *tmp);
     repack_arg_list.set(1, GEMM_CTX_ARG_STORAGE(c));
-    repack_arg_list.set(2, into<dim_t>(nelems));
+    repack_arg_list.set(2, dst_span);
     repack_arg_list.set(3, 4);
-    compute::range_t repack_gws((nelems * 4 + 7) / 8);
+    compute::range_t repack_gws((dst_span * 4 + 7) / 8);
     compute::nd_range_t repack_nd_range(repack_gws);
     return large_parallel_for(impl::exec_ctx_t(ctx.stream()), repack_nd_range,
             kernels_[2], repack_arg_list, 4);

@@ -113,8 +113,9 @@ status_t ref_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
 void ref_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
     if (conf.subbyte_pack) {
-        scratchpad.book(memory_tracking::names::key_reorder_space, conf.nelems,
-                sizeof(char), OCL_BUFFER_ALIGNMENT);
+        scratchpad.book(memory_tracking::names::key_reorder_space,
+                memory_desc_wrapper(dst_md(0)).span(), sizeof(char),
+                OCL_BUFFER_ALIGNMENT);
     }
     if (conf.src_quant.with_scale()) {
         scratchpad.book(memory_tracking::names::key_reorder_src_scales,
@@ -161,12 +162,15 @@ status_t ref_t::execute(const exec_ctx_t &ctx) const {
             ctx, nd_range, kernels_[0], arg_list, arg_list.nargs()));
 
     if (conf.subbyte_pack) {
+        // The unpacked buffer is indexed with dst_md() offsets, so packing
+        // covers its whole element span, not just its element count.
+        const dim_t dst_span = memory_desc_wrapper(pd()->dst_md(0)).span();
         compute::kernel_arg_list_t repack_arg_list;
         repack_arg_list.set(0, *tmp);
         repack_arg_list.set(1, dst);
-        repack_arg_list.set(2, into<dim_t>(conf.nelems));
+        repack_arg_list.set(2, dst_span);
         repack_arg_list.set(3, 4);
-        compute::range_t repack_gws((conf.nelems * 4 + 7) / 8);
+        compute::range_t repack_gws((dst_span * 4 + 7) / 8);
         compute::nd_range_t repack_nd_range(repack_gws);
         CHECK(large_parallel_for(
                 ctx, repack_nd_range, kernels_[1], repack_arg_list, 4));

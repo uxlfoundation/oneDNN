@@ -124,26 +124,16 @@ struct ref_t : public primitive_t {
             subbyte_pack_ = utils::one_of(
                     dst_dt_, data_type::f4_e2m1, data_type::f4_e3m0);
             dynamic_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
+            const dim_t dst_span = memory_desc_wrapper(dst_md(0)).span();
+            auto scratchpad = scratchpad_registry().registrar();
             if (dynamic_scales_) {
-                using namespace dnnl::impl::memory_tracking::names;
-                const memory_desc_wrapper dst_mdw(dst_md(0));
-                const auto &padded_dims = dst_mdw.padded_dims();
-                const dim_t ndims = dst_mdw.ndims();
-                const dim_t nelems = utils::array_product(padded_dims, ndims);
-                auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(
                         memory_tracking::names::key_matmul_dyn_scale_space,
-                        nelems, sizeof(float), OCL_BUFFER_ALIGNMENT);
+                        dst_span, sizeof(float), OCL_BUFFER_ALIGNMENT);
             }
             if (subbyte_pack_) {
-                using namespace dnnl::impl::memory_tracking::names;
-                const memory_desc_wrapper dst_mdw(dst_md(0));
-                const auto &padded_dims = dst_mdw.padded_dims();
-                const dim_t ndims = dst_mdw.ndims();
-                const dim_t nelems = utils::array_product(padded_dims, ndims);
-                auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_matmul_pack_space,
-                        nelems, sizeof(char), OCL_BUFFER_ALIGNMENT);
+                        dst_span, sizeof(char), OCL_BUFFER_ALIGNMENT);
             }
 
             non_default_attrs_ = !attr()->has_default_values();

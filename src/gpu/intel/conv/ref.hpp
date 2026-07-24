@@ -105,14 +105,10 @@ struct ref_fwd_t : public primitive_t {
             subbyte_pack_ = utils::one_of(
                     dst_md_.data_type, data_type::f4_e2m1, data_type::f4_e3m0);
             if (subbyte_pack_) {
-                using namespace dnnl::impl::memory_tracking::names;
-                const memory_desc_wrapper dst_mdw(dst_md(0));
-                const auto &padded_dims = dst_mdw.padded_dims();
-                const dim_t ndims = dst_mdw.ndims();
-                const dim_t nelems = utils::array_product(padded_dims, ndims);
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_conv_pack_space,
-                        nelems, sizeof(char), OCL_BUFFER_ALIGNMENT);
+                        memory_desc_wrapper(dst_md(0)).span(), sizeof(char),
+                        OCL_BUFFER_ALIGNMENT);
             }
 
             return init_conf(engine);

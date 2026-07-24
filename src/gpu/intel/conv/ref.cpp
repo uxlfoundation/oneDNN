@@ -201,7 +201,6 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     auto &conf = pd()->conf;
     const bool subbyte_pack = pd()->subbyte_pack_;
     const auto c_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
-    const dim_t nelems = c_d.nelems();
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_conv_pack_space);
 
@@ -240,12 +239,16 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     CHECK(parallel_for(ctx, nd_range, kernels_[0], arg_list));
 
     if (!subbyte_pack) return status::success;
+
+    // The unpacked buffer is indexed with dst_md() offsets, so packing covers
+    // its whole element span, not just its element count.
+    const dim_t dst_span = c_d.span();
     compute::kernel_arg_list_t repack_arg_list;
     repack_arg_list.set(0, *tmp);
     repack_arg_list.set(1, dst);
-    repack_arg_list.set(2, into<dim_t>(nelems));
+    repack_arg_list.set(2, dst_span);
     repack_arg_list.set(3, 4);
-    compute::range_t repack_gws((nelems * 4 + 7) / 8);
+    compute::range_t repack_gws((dst_span * 4 + 7) / 8);
     compute::nd_range_t repack_nd_range(repack_gws);
     return large_parallel_for(
             ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);

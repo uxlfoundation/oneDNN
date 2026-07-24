@@ -69,13 +69,13 @@ inline MatrixLayout charLayout(char c) {
 }
 
 struct MatrixAddressing {
-    MatrixLayout layout;            // Layout type (N/T/Pr/Pc)
+    MatrixLayout layout = MatrixLayout::N; // Layout type (N/T/Pr/Pc)
     uint8_t pad[3] = {};
-    uint32_t packSize = 0;           // # of elements in a packed row/column for packed layouts.
+    uint32_t packSize = 0;          // # of elements in a packed row/column for packed layouts.
     uint16_t tileR = 0, tileC = 0;  // Tiling (0 if none) for packed layouts.
     uint8_t panelLength = 0;        // Length of the panel for packed layouts = #cols/rows for Pc/Pr respectively.
     uint8_t crosspack = 1;          // Crosspack for packed layouts.
-    uint8_t alignment;              // Alignment for all addresses, offsets, and leading dimensions.
+    uint8_t alignment = 1;          // Alignment for all addresses, offsets, and leading dimensions.
     bool needA64 = false;
 
     void setAlignment(int align) { alignment = static_cast<uint8_t>(sanitizeAlign(align)); }

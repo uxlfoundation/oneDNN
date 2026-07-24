@@ -299,6 +299,7 @@ struct brgemm_desc_t {
     bool skip_zp_b_compensation = false;
     bool skip_zp_a_compensation = false;
     bool n_bcast_1_load = false;
+    bool fp8_with_f16_vnni_block = false;
 
     brgemm_broadcast_t zp_type_a = brgemm_broadcast_t::none;
     brgemm_broadcast_t zp_type_b = brgemm_broadcast_t::none;
@@ -573,11 +574,16 @@ struct brgemm_desc_t {
 
     int get_convert_wsp_buffer_size() const noexcept {
         if (!is_input_convert()) return 0;
-        const int n_bdb = bd_block2;
-        const int n_rdb = rdb + (rdb_tail != 0);
-        const int n_ldb = ldb + (ldb_tail != 0);
-        const int downcvt_tiles = brgattr.max_bs * n_rdb * (n_bdb + n_ldb);
-        return downcvt_tiles * tilesize;
+        if (is_tmm) {
+            const int n_bdb = bd_block2;
+            const int n_rdb = rdb + (rdb_tail != 0);
+            const int n_ldb = ldb + (ldb_tail != 0);
+            const int downcvt_tiles = brgattr.max_bs * n_rdb * (n_bdb + n_ldb);
+            return downcvt_tiles * tilesize;
+        } else {
+            return nstl::min(bcast_dim, 32)
+                    * cpu_isa_traits_t<avx512_core>::vlen * 2;
+        }
     }
 
     int get_fused_copy_a_wsp_buffer_size() const noexcept {
@@ -595,7 +601,8 @@ struct brgemm_desc_t {
             sz += get_convert_wsp_buffer_size();
             if (amx_wary_k_tail()) sz += tilesize;
             sz += get_fused_copy_a_wsp_buffer_size();
-        }
+        } else
+            sz = get_convert_wsp_buffer_size();
         return sz;
     }
 

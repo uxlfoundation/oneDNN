@@ -234,6 +234,7 @@ struct brgemm_matmul_conf_t {
     bool is_amx;
 
     int required_k_granularity;
+    bool is_f8 = false;
     bool is_bf32 = false;
     bool is_bf16_with_int_wei = false;
     bool is_f16_with_int_wei = false;
@@ -388,7 +389,7 @@ struct brgemm_matmul_conf_utils_t {
                 && !bgmmc.blocked_B;
         bool use_copy_buffer = IMPLICATION(
                 this->is_f32(), use_heuristic && (big_LDB && is_pow2));
-        return is_avx2_simd_tail
+        return is_avx2_simd_tail || (this->is_f8() && bgmmc.isa == avx10_2)
                 || (this->is_f16() && bgmmc.isa == avx512_core_fp16)
                 || (use_copy_buffer && this->check_is_plain(bgmmc.wei_tag))
                 || this->check_is_transposed(bgmmc.wei_tag)

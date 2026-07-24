@@ -56,15 +56,15 @@ protected:
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
 
     jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
-    const int inp_dsz_;
-    const int out_dsz_;
-    const size_t nb_ic_;
-    const size_t inp_ic_sz_;
-    const size_t inp_kw_sz_;
-    const size_t inp_kh_sz_;
-    const size_t inp_kd_sz_;
-    const size_t out_ow_sz_;
-    const size_t out_ker_sz_;
+    const dim_t inp_dsz_;
+    const dim_t out_dsz_;
+    const dim_t nb_ic_;
+    const dim_t inp_ic_sz_;
+    const dim_t inp_kw_sz_;
+    const dim_t inp_kh_sz_;
+    const dim_t inp_kd_sz_;
+    const dim_t out_ow_sz_;
+    const dim_t out_ker_sz_;
     const int isa_max_regs;
 
     // Register decomposition
@@ -103,14 +103,14 @@ protected:
     const Vmm &vmm_tmp_1() const noexcept { return vmm_tmp; }
 
     Vmm accum(const int n_block, const int m, const int n) const;
-    size_t out_oc_offset(const int n, const int w) const;
-    size_t inp_ic_offset(
+    dim_t out_oc_offset(const dim_t n, const dim_t w) const;
+    dim_t inp_ic_offset(
             const int m_block, const int icb, const int m, const int n) const;
     int compute_ic_step(
             const int m_max_regs, const int m_block, const int n_block) const;
 
     void store_accumulators(const int m_block, const int n_block,
-            const int ow_b, const int ow_e);
+            const dim_t ow_b, const dim_t ow_e);
     void zero_accumulators(const int m_block, const int n_block);
     void compute(const int ic_step, const int m_block, const int n_block,
             const int m_tail, const bool is_mb_tail);
@@ -118,9 +118,9 @@ protected:
             const int m_block, const int mb_tail, const int n_block);
     void kdh_loop(const int icb, const int icb_tail, const int ic_step,
             const int m_block, const int mb_tail, const int n_block);
-    void copy_ow(const int m_block, const int n_block, const int ow_b,
-            const int ow_e);
-    void copy_ow_body(const int n_block, const int ow_b, const int ow_e);
+    void copy_ow(const int m_block, const int n_block, const dim_t ow_b,
+            const dim_t ow_e);
+    void copy_ow_body(const int n_block, const dim_t ow_b, const dim_t ow_e);
     void kw_loop(const int icb, const int icb_tail, const int ic_step,
             const int m_block, const int mb_tail, const int n_block,
             const bool use_inversion);
@@ -147,15 +147,15 @@ struct jit_uni_brgemm_conv_relo_comp_pad_kernel_t : public jit_generator_t {
 
 protected:
     jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
-    const int inp_dsz_;
-    const int out_dsz_;
+    const dim_t inp_dsz_;
+    const dim_t out_dsz_;
     const int inp_oc_block_;
-    const size_t inp_ic_sz_;
-    const size_t inp_kw_sz_;
-    const size_t inp_kh_sz_;
-    const size_t inp_oc_sz_;
-    const size_t out_ow_sz_;
-    const size_t out_ker_sz_;
+    const dim_t inp_ic_sz_;
+    const dim_t inp_kw_sz_;
+    const dim_t inp_kh_sz_;
+    const dim_t inp_oc_sz_;
+    const dim_t out_ow_sz_;
+    const dim_t out_ker_sz_;
     const int isa_max_regs_;
 
     // Register decomposition
@@ -178,13 +178,15 @@ protected:
     const int n_max_regs_ = 4;
 
     Vmm accum(const int n, const bool has_s8s8_shift = false) const;
-    size_t out_oc_offset(const int n, const int w) const;
-    size_t inp_ic_offset(const int kw, const int ic, const int m) const;
+    dim_t out_oc_offset(const dim_t n, const dim_t w) const;
+    dim_t inp_ic_offset(
+            const dim_t kw, const dim_t ic, const dim_t m) const;
     void zero_accumulators(const int n_block);
-    void store_accumulators(const int n_block, const int ow_b, const int ow_e);
-    void store(const int n_block, const int ow_b, const int ow_e);
+    void store_accumulators(
+            const int n_block, const dim_t ow_b, const dim_t ow_e);
+    void store(const int n_block, const dim_t ow_b, const dim_t ow_e);
     void kw_loop(const int n_block);
-    void compute(const int n_block, const int kw_b, const int kw_e);
+    void compute(const int n_block, const dim_t kw_b, const dim_t kw_e);
     void load_params();
 
     void generate() override;

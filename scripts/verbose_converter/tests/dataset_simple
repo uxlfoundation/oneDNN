@@ -27,6 +27,7 @@ ip,shapes_ci
 lnorm,shapes_ci
 lrn,shapes_ci
 matmul,shapes_2d_ci
+matmul,test_matmul_grouped_ci
 pool,shapes_basic
 prelu,shapes_ci
 reduction,shapes_ci

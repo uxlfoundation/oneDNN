@@ -39,13 +39,14 @@ constexpr size_t P4K = 4096;
 
 bool is_amx(cpu_isa_t isa);
 
-void set_k_range(int P, int D, int S, dim_t i, dim_t O, int K, int &k_s,
+void set_k_range(dim_t P, dim_t D, dim_t S, dim_t i, dim_t O, dim_t K, int &k_s,
         int &k_f, bool is_w = false);
 
-void get_iw_range(const jit_brgemm_conv_conf_t &jcp, int iw, int iw_raw, int kw,
+void get_iw_range(const jit_brgemm_conv_conf_t &jcp, dim_t iw, dim_t iw_raw,
+        dim_t kw,
         int &iw_s, int &M_without_overflow);
 
-void get_kw_range(const jit_brgemm_conv_conf_t &jcp, int iw, int iw_raw,
+void get_kw_range(const jit_brgemm_conv_conf_t &jcp, dim_t iw, dim_t iw_raw,
         int &kw_s, int &kw_full_s, int &kw_full_f, int &kw_f);
 
 dim_t precalculate_comp_pad_kernels(const jit_brgemm_conv_conf_t &jcp,

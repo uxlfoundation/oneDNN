@@ -389,6 +389,22 @@ HANDLE_EXCEPTIONS_FOR_TEST_P(
     ASSERT_EQ(impl_info_no_postops, impl_info_with_postops);
 }
 
+TEST(Matmul, TransposedDstUsesOptimizedImplementation) {
+    const auto engine_kind = get_test_engine_kind();
+    SKIP_IF(!DNNL_X64 || engine_kind != engine::kind::cpu,
+            "Optimized transposed destination is specific to x64 CPU");
+
+    engine e {engine_kind, 0};
+    const auto src_md = memory::desc({63, 40}, memory::data_type::f32, tag::ba);
+    const auto weights_md
+            = memory::desc({40, 2}, memory::data_type::f32, tag::ba);
+    const auto dst_md = memory::desc({63, 2}, memory::data_type::f32, tag::ba);
+    const auto matmul_pd
+            = matmul::primitive_desc(e, src_md, weights_md, dst_md);
+
+    ASSERT_NE(std::string(matmul_pd.impl_info_str()), "ref:any");
+}
+
 /********************************* TEST CASES *********************************/
 
 using iface = matmul_iface_test_t;
@@ -535,6 +551,18 @@ static auto cases_f = [](memory::data_type dt) {
     cases.push_back({{{{10, 2}, dt, tag::ab}, {{2, 20}, dt, tag::ab},
                              {{10, 20}, dt, tag::ab}, data_type::undef},
             {}});
+    if (dt == data_type::f32) {
+        // Transposed destination with small N (regression for issue #1667).
+        cases.push_back({{{{63, 40}, dt, tag::ba}, {{40, 2}, dt, tag::ba},
+                                 {{63, 2}, dt, tag::ba}, data_type::undef},
+                {}});
+        // The optimized path must preserve valid input leading dimensions.
+        cases.push_back(
+                {{{{63, 40}, dt, tag::ba, P::SRC | P::LEADING_DIM},
+                         {{40, 2}, dt, tag::ba, P::WEIGHTS | P::LEADING_DIM},
+                         {{63, 2}, dt, tag::ba}, data_type::undef},
+                        {}});
+    }
     // simple case + leading dimensions
     cases.push_back(
             {{{{10, 1}, dt, tag::ab, P::SRC | P::LEADING_DIM},

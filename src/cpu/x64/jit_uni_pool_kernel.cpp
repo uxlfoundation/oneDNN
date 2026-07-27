@@ -800,7 +800,8 @@ void jit_uni_pool_kernel_t<isa>::apply_postops(dim_t ur_bc, dim_t ur_w,
             }
         }
     }
-    postops_injector_->compute_vector_range(start_idx, end_idx, rhs_arg_params);
+    postops_injector_->compute_vector_range(static_cast<int>(start_idx),
+            static_cast<int>(end_idx), rhs_arg_params);
 }
 
 template <cpu_isa_t isa>

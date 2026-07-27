@@ -37,9 +37,28 @@ if(NOT DNNL_CPU_RUNTIME STREQUAL "THREADPOOL")
     list(REMOVE_ITEM SOURCES ${ACL_THREADPOOL_FILES})
 endif()
 
+if(DNNL_AARCH64_DISABLE_KAI)
+    file(GLOB_RECURSE KAI_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/kai_*.[ch]
+        ${CMAKE_CURRENT_SOURCE_DIR}/kai_*.[ch]pp
+        ${CMAKE_CURRENT_SOURCE_DIR}/matmul/kai_*.[ch]
+        ${CMAKE_CURRENT_SOURCE_DIR}/matmul/kai_*.[ch]pp
+        )
+    list(REMOVE_ITEM SOURCES ${KAI_FILES})
+endif()
+
 set(OBJ_LIB ${LIB_PACKAGE_NAME}_cpu_aarch64)
 add_library(${OBJ_LIB} OBJECT ${SOURCES})
 set_property(GLOBAL APPEND PROPERTY DNNL_LIB_DEPS
     $<TARGET_OBJECTS:${OBJ_LIB}>)
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/xbyak_aarch64 xbyak_aarch64)
+
+if(NOT DNNL_AARCH64_DISABLE_KAI)
+    add_subdirectory(${PROJECT_SOURCE_DIR}/third_party/kleidiai/experimental/ops kleidiai_ops)
+
+    target_link_libraries(${OBJ_LIB} PRIVATE kleidiai_ops)
+
+    set_property(GLOBAL APPEND PROPERTY DNNL_SUBDIR_EXTRA_STATIC_LIBS
+        kleidiai_ops)
+endif()

@@ -380,6 +380,9 @@ onednn_option(AARCH64_USE_ACL OFF "Enables use of AArch64 optimised functions
     functioning Compute Library build available at the location specified by the
     environment variable ACL_ROOT_DIR.")
 
+onednn_option(AARCH64_DISABLE_KAI OFF
+    "Disables AArch64 KleidiAI-based implementations.")
+
 # ===========
 # GPU options
 # ===========

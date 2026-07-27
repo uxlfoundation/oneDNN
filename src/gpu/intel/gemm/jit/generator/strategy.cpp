@@ -238,13 +238,25 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     dpasw &= systolic && fused;
 
-    // Accumulator usage: 64-bit emulation, or k chaining, or extra C registers, or storage for r0 header.
-    // Priority: k chaining > extra C registers > r0 header storage.
-    //                         64-bit emulation > r0 header storage.
-    if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
+    if (kChain == 0) {
+        kChain = 1;
+        if (!cAccumulators) {
+            if (!systolic && !dotVL && Ta.isFP() && Tb.isFP() && hw >= HW::XeHP)
+                kChain = gcd(ka_load, kb_load);
+            if (systolic && problem.product.family == ProductFamily::CRI) {
+                int minOPCount = minOuterProductCount(problem, *this);
+                kChain = std::max(1, gcd(ka_load, kb_load) / minOPCount);
+            }
+        }
+    }
+
+    if (!systolic && AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
         kChain = 1;
     cAccumulators &= (kChain == 1);
 
+    // Accumulator usage: 64-bit emulation, or k chaining, or extra C registers, or storage for r0 header.
+    // Priority: k chaining > extra C registers > r0 header storage.
+    //                         64-bit emulation > r0 header storage.
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW;
     if (moveR0 == MoveR0::Acc)
         if (cAccumulators || emulateNeedsAcc || xParallel || (kChain > 1) || barrierFreq || fuseBeta)

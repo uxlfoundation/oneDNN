@@ -195,7 +195,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool fmaBoustrophedon = false;               // Use boustrophedon ordering inside FMA/DPAS blocks?
                                     ZPAD(A, 1)
     int fmaSIMD = 0;                             // Vector length for FMA (0 = default = 2 GRFs).
-    int kChain = 1;                              // # of FMAs to chain in k dimension.
+    int kChain = 0;                              // # of FMAs to chain in k dimension.
     int dotVL = 0;                               // If > 0, use dot products of the given length, instead of outer products.
     int wg[3] = {0,0,0};                         // m/n/k workgroup sizes, 0 if unconstrained. Indexed by LoopType.
     WGType forceWGUpdate = WGDynamic;            // Force work group update type.

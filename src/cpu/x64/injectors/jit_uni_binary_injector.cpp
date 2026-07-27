@@ -406,8 +406,8 @@ static bool rhs_arg_params_differ(size_t vmm_idx1, size_t vmm_idx2,
         const rhs_arg_dynamic_params_t &rhs_arg_params,
         broadcasting_strategy_t rhs_broadcasting_strategy) {
 
-    const int vmm_idx1_int = jit_generator_t::xbyak_register_index(vmm_idx1);
-    const int vmm_idx2_int = jit_generator_t::xbyak_register_index(vmm_idx2);
+    const int vmm_idx1_int = static_cast<int>(vmm_idx1);
+    const int vmm_idx2_int = static_cast<int>(vmm_idx2);
 
     const auto &out_addr = rhs_arg_params.vmm_idx_to_out_addr;
     const auto &out_reg = rhs_arg_params.vmm_idx_to_out_reg;
@@ -543,8 +543,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     const auto tail_load_mode = rhs_arg_params.tail_load_mode;
     const int simd_w = cpu_isa_traits_t<isa>::vlen
             / types::data_type_size(dst_d.data_type());
-    const int blk_size = jit_generator_t::xbyak_register_index(
-            dst_d.blocking_desc().inner_blks[0]);
+    const int blk_size = static_cast<int>(dst_d.blocking_desc().inner_blks[0]);
     const bool use_offset_conversions
             = (!rhs_arg_params.vmm_idx_to_out_addr.empty()
                     || !rhs_arg_params.vmm_idx_to_out_reg.empty());
@@ -1046,8 +1045,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_base(
     const auto dst_d = rhs_arg_static_params_.dst_d;
     const int simd_w = cpu_isa_traits_t<isa>::vlen
             / types::data_type_size(dst_d.data_type());
-    const int blk_size = jit_generator_t::xbyak_register_index(
-            dst_d.blocking_desc().inner_blks[0]);
+    const int blk_size = static_cast<int>(dst_d.blocking_desc().inner_blks[0]);
     const auto rax = host_->rax;
     const auto rdx = host_->rdx;
     const auto r8 = host_->r8;
@@ -1076,8 +1074,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_partial(
         dim_t elem_size_bytes) const {
     // c = ((offset % strides[0]) / strides[1]) * strides[ndims - 1] + offset % blk_size
     const auto dst_d = rhs_arg_static_params_.dst_d;
-    const int blk_size = jit_generator_t::xbyak_register_index(
-            dst_d.blocking_desc().inner_blks[0]);
+    const int blk_size = static_cast<int>(dst_d.blocking_desc().inner_blks[0]);
     const auto offset_shr = offset >> math::ilog2q(types::data_type_size(
                                     rhs_arg_static_params_.dst_d.data_type()));
     const auto offset_adj = ((offset_shr % strides[0]) / strides[1]) * blk_size
@@ -1558,8 +1555,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_base(
     const auto dst_d = rhs_arg_static_params_.dst_d;
     const int simd_w = cpu_isa_traits_t<isa>::vlen
             / types::data_type_size(dst_d.data_type());
-    const int blk_size = jit_generator_t::xbyak_register_index(
-            dst_d.blocking_desc().inner_blks[0]);
+    const int blk_size = static_cast<int>(dst_d.blocking_desc().inner_blks[0]);
 
     const auto rax = host_->rax;
     const auto rdx = host_->rdx;
@@ -1591,8 +1587,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_partial(
     const auto D = (ndims >= 5) ? dst_d.dims()[ndims - 3] : 1;
     const auto H = (ndims >= 4) ? dst_d.dims()[ndims - 2] : 1;
     const auto W = (ndims >= 3) ? dst_d.dims()[ndims - 1] : 1;
-    const int blk_size = jit_generator_t::xbyak_register_index(
-            dst_d.blocking_desc().inner_blks[0]);
+    const int blk_size = static_cast<int>(dst_d.blocking_desc().inner_blks[0]);
 
     const auto offset_shr = offset >> math::ilog2q(types::data_type_size(
                                     rhs_arg_static_params_.dst_d.data_type()));

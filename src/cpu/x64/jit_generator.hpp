@@ -200,9 +200,11 @@ public:
     using Xbyak::CodeGenerator::sub;
 
     // dim_t immediate forms for the Xbyak instructions that legitimately
-    // receive a tensor offset or stride computed in dim_t. x86 encodes at
-    // most a 32-bit immediate, so the check and the narrowing conversion are
-    // consolidated here rather than repeated at every call site. The
+    // receive a tensor offset or stride computed in dim_t. The value may be
+    // negative (e.g. a backward pointer shift between iterations). x86 encodes
+    // at most a signed 32-bit immediate, so the range check and the narrowing
+    // conversion are consolidated here rather than repeated at every call
+    // site; the int32_t cast keeps a negative offset sign-extended. The
     // enable_if constrains the overload to exactly dim_t, so int/uint32_t
     // call sites keep resolving to the native Xbyak overloads above.
     // Only add/sub/cmp are provided: these are the offset-taking
@@ -213,16 +215,18 @@ public:
             typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
             = 0>
     void add(const Xbyak::Operand &op, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= INT_MAX);
-        Xbyak::CodeGenerator::add(op, static_cast<uint32_t>(imm));
+        JIT_ASSERT(imm >= INT_MIN && imm <= INT_MAX);
+        Xbyak::CodeGenerator::add(
+                op, static_cast<uint32_t>(static_cast<int32_t>(imm)));
     }
 
     template <typename T,
             typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
             = 0>
     void sub(const Xbyak::Operand &op, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= INT_MAX);
-        Xbyak::CodeGenerator::sub(op, static_cast<uint32_t>(imm));
+        JIT_ASSERT(imm >= INT_MIN && imm <= INT_MAX);
+        Xbyak::CodeGenerator::sub(
+                op, static_cast<uint32_t>(static_cast<int32_t>(imm)));
     }
 
     template <typename T,

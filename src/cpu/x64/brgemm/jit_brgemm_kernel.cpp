@@ -305,7 +305,7 @@ private:
     }
 
     Vmm accm(int ld_block, int bd, int ld) const noexcept {
-        return Vmm(xbyak_register_index(
+        return Vmm(static_cast<int>(
                 max_effective_vregs - 1 - (bd * ld_block + ld)));
     }
 
@@ -314,7 +314,7 @@ private:
             int idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
                     - bd;
             assert(idx > 0);
-            return Vmm(xbyak_register_index(idx));
+            return Vmm(static_cast<int>(idx));
         } else
             return Vmm(0);
     }
@@ -326,20 +326,20 @@ private:
             int idx = max_effective_vregs - 1 - (brg.ld_block2 * brg.bd_block)
                     - ld;
             assert(idx > 0);
-            return Vmm(xbyak_register_index(idx));
+            return Vmm(static_cast<int>(idx));
         }
     }
 
     Vmm gemv_load_a() const noexcept {
         assert(brg.is_gemv);
         const int idx = max_effective_vregs - 1 - brg.gemv_bd_block() - 0;
-        return Vmm(xbyak_register_index(idx));
+        return Vmm(static_cast<int>(idx));
     }
 
     Vmm gemv_load_b() const noexcept {
         assert(brg.is_gemv);
         const int idx = max_effective_vregs - 1 - brg.gemv_bd_block() - 1;
-        return Vmm(xbyak_register_index(idx));
+        return Vmm(static_cast<int>(idx));
     }
 
     Vmm vmm_tmp(dim_t i) const noexcept {
@@ -347,7 +347,7 @@ private:
         MAYBE_UNUSED(bd_block);
         assert(IMPLICATION(!brg.is_tmm,
                 i >= 0 && i < max_effective_vregs - bd_block * brg.ld_block2));
-        return Vmm(xbyak_register_index(i));
+        return Vmm(static_cast<int>(i));
     }
 
     Vmm vmm_tail_mask() const noexcept { return vmm_tmp(1); }
@@ -1172,7 +1172,7 @@ void jit_brgemm_kernel_t<Wmm>::zero_accumulators(int bd_block2,
         for_(int bdb = 0; bdb < bd_block2; bdb++)
         for (int ldb = 0; ldb < ld_block2; ldb++) {
             int idx = (is_ld_tail) ? brg.ld_block2 : ldb;
-            tilezero(Tmm(xbyak_register_index(
+            tilezero(Tmm(static_cast<int>(
                     brg.get_C_tensor(bdb, idx, is_bdb_tail, is_ld_tail))));
         }
     } else if (brg.is_gemv) {
@@ -1251,10 +1251,10 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert_to_vnni(int num_rows,
     assert(r_end <= num_rows && "bad tile parameters");
 
     if (dt == data_type::f8_e5m2)
-        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(xbyak_register_index(r_end),
+        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(static_cast<int>(r_end),
                 reg_data_aux, reg_data_stride, reg_buf_aux);
     else if (dt == data_type::f8_e4m3)
-        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(xbyak_register_index(r_end),
+        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(static_cast<int>(r_end),
                 reg_data_aux, reg_data_stride, reg_buf_aux);
     else
         assert(!"unsupported data type");
@@ -2445,7 +2445,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(int bd_block2,
                             }
                         } else {
                             tilestored(ptr[reg_buf + reg_stride_ld_block],
-                                    Tmm(xbyak_register_index(c_tensor)));
+                                    Tmm(static_cast<int>(c_tensor)));
                             for (int bd = 0; bd < adj_bd_block; bd++) {
                                 const size_t buf_offset
                                         = (bd * brg.ld_block) * brg.typesize_C;
@@ -2485,7 +2485,7 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(int bd_block2,
 
                         reg_buf.restore();
                     } else {
-                        auto tmm = Tmm(xbyak_register_index(c_tensor));
+                        auto tmm = Tmm(static_cast<int>(c_tensor));
                         if (skip_accumulation) tilezero(tmm);
                         tilestored(ptr[reg_aux_C + reg_stride_ld_block], tmm);
                         if (ldb < ld_block2 - 1)
@@ -2739,7 +2739,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
 
     const int tmm_idx = is_A ? brg.get_A_tensor(idx, is_tail)
                              : brg.get_B_tensor(idx, is_tail);
-    auto t1 = Tmm(xbyak_register_index(tmm_idx));
+    auto t1 = Tmm(static_cast<int>(tmm_idx));
 
     auto reg_base = is_A ? reg_aux_A : reg_aux_B;
 
@@ -2904,11 +2904,11 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(int bd_block2,
                     rdb * rdb_B_offset() + B_offset(ldb, 0, true), is_rd_tail,
                     is_ld_tail, false);
             for (int bdb = 0; bdb < bd_block2; bdb++) {
-                tdpbxxd(Tmm(xbyak_register_index(brg.get_C_tensor(
+                tdpbxxd(Tmm(static_cast<int>(brg.get_C_tensor(
                                 bdb, idx, is_bdb_tail, is_ld_tail))),
-                        Tmm(xbyak_register_index(
+                        Tmm(static_cast<int>(
                                 brg.get_A_tensor(bdb, is_bdb_tail))),
-                        Tmm(xbyak_register_index(
+                        Tmm(static_cast<int>(
                                 brg.get_B_tensor(idx, is_ld_tail))));
             }
         }

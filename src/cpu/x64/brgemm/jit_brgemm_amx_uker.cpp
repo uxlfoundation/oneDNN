@@ -443,20 +443,20 @@ private:
     // zmm_bias, zmm_bias and accm shouldn't be overlapped
     Xbyak::Zmm accm(dim_t bd) const {
         assert(bd < 16);
-        return Xbyak::Zmm(xbyak_register_index(31 - (bd % ils_bd_step_)));
+        return Xbyak::Zmm(static_cast<int>(31 - (bd % ils_bd_step_)));
     }
 
     Xbyak::Zmm zmm_bias(dim_t ldb) const {
         assert(ldb < 5);
         // zmm10 - zmm14
-        return Xbyak::Zmm(xbyak_register_index(10 + ldb));
+        return Xbyak::Zmm(static_cast<int>(10 + ldb));
     }
 
     Xbyak::Zmm zmm_scales(dim_t ldb) const {
         assert(ldb < 5);
         assert(ils_bd_step_ < 10);
         // zmm15 - zmm19
-        return Xbyak::Zmm(xbyak_register_index(15 + ldb));
+        return Xbyak::Zmm(static_cast<int>(15 + ldb));
     }
 
     template <typename U>
@@ -982,13 +982,13 @@ void jit_brgemm_amx_uker_base_t::load_accumulators(brgemm_iteration_t &bi) {
     for (dim_t ldb = 0; ldb < bi.ldi->block2(); ldb++) {
         if (may_load_accumulators_) {
             auto c_offset = C_offset(bi, bdb, 0, bi.ldi->pos(ldb)) + ils_shift;
-            tileloadd(Tmm(xbyak_register_index(get_C_tensor(bi, bdb, ldb))),
+            tileloadd(Tmm(static_cast<int>(get_C_tensor(bi, bdb, ldb))),
                     ptr[reg_C + c_offset + reg_stride_ld_block]);
         } else {
             // call tilezero on very first iteration
             if (!brg.interleave_tilestores_
                     || everyone_is(0u, bi.bdi->idx, bi.ldi->idx))
-                tilezero(Tmm(xbyak_register_index(get_C_tensor(bi, bdb, ldb))));
+                tilezero(Tmm(static_cast<int>(get_C_tensor(bi, bdb, ldb))));
         }
     }
 }
@@ -1897,7 +1897,7 @@ void jit_brgemm_amx_uker_base_t::store_accumulators(brgemm_iteration_t &bi) {
                                 * ld_block_C_size_
                         : 0;
                 tilestored(ptr[reg_buf + reg_stride_ld_block + wsp_offset],
-                        Tmm(xbyak_register_index(get_C_tensor(bi, bdb, ldb))));
+                        Tmm(static_cast<int>(get_C_tensor(bi, bdb, ldb))));
             }
             if (real_ils) continue;
 
@@ -1915,7 +1915,7 @@ void jit_brgemm_amx_uker_base_t::store_accumulators(brgemm_iteration_t &bi) {
         } else if (!brg.interleave_tilestores_) {
             const auto c_offset = C_offset(bi, bdb, 0, bi.ldi->pos(ldb));
             tilestored(ptr[reg_C + reg_stride_ld_block + c_offset],
-                    Tmm(xbyak_register_index(get_C_tensor(bi, bdb, ldb))));
+                    Tmm(static_cast<int>(get_C_tensor(bi, bdb, ldb))));
         }
     }
 }
@@ -2031,7 +2031,7 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
     const bool is_A = mk == matrix_kind_t::matrix_A;
     bool load_nt = is_A ? brg.load_nt_A : brg.load_nt_B;
 
-    auto t1 = Tmm(xbyak_register_index(is_A
+    auto t1 = Tmm(static_cast<int>(is_A
                     ? brg.get_A_tensor(xdb, bi.bdi->is_tail(xdb))
                     : brg.get_B_tensor(xdb, bi.ldi->is_tail(xdb))));
     auto reg_base = is_A ? reg_A : reg_B;
@@ -2070,7 +2070,7 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
 void jit_brgemm_amx_uker_base_t::maybe_fused_copy_A_nt_load(
         brgemm_iteration_t &bi, dim_t bdb) {
     auto t1 = Tmm(
-            xbyak_register_index(brg.get_A_tensor(bdb, bi.bdi->is_tail(bdb))));
+            static_cast<int>(brg.get_A_tensor(bdb, bi.bdi->is_tail(bdb))));
 
     auto load_a_tile_from_wsp = [&]() {
         if (brg.load_nt_A) {
@@ -2137,7 +2137,7 @@ void jit_brgemm_amx_uker_base_t::maybe_tilestore(brgemm_iteration_t &bi,
         ldb_idx = store_tensor_idx % bi.ldi->block2();
     }
     const bool store_by_vectors = get_store_by_vectors(bi.apply_postops);
-    Tmm acc = Tmm(xbyak_register_index(store_tensor_idx));
+    Tmm acc = Tmm(static_cast<int>(store_tensor_idx));
     if (store_by_vectors) {
         const auto wsp_offset = (use_ils_ || brg.interleave_tilestores_)
                 ? (bdb_idx * bi.ldi->block2() + ldb_idx) * bi.bdi->block(0)
@@ -2159,11 +2159,10 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, dim_t bdb_idx,
     prefetching(bi, false);
     maybe_tilestore(bi, bdb_idx, ldb_idx, do_pre_tilestore, false);
 
-    const Tmm &x1
-            = Tmm(xbyak_register_index(get_C_tensor(bi, bdb_idx, ldb_idx)));
-    const Tmm &x2 = Tmm(xbyak_register_index(
+    const Tmm &x1 = Tmm(static_cast<int>(get_C_tensor(bi, bdb_idx, ldb_idx)));
+    const Tmm &x2 = Tmm(static_cast<int>(
             brg.get_A_tensor(bdb_idx, bi.bdi->is_tail(bdb_idx))));
-    const Tmm &x3 = Tmm(xbyak_register_index(
+    const Tmm &x3 = Tmm(static_cast<int>(
             brg.get_B_tensor(ldb_idx, bi.ldi->is_tail(ldb_idx))));
 
     using namespace data_type;
@@ -2300,10 +2299,10 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert_to_vnni(
     assert(r_end <= num_rows && "bad tile parameters");
 
     if (dt == data_type::f8_e5m2)
-        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(xbyak_register_index(r_end),
+        f8_e5m2_cvt_->vcvt_f8_to_f16_vnni_block(static_cast<int>(r_end),
                 reg_data_aux, reg_data_stride, reg_buf);
     else if (dt == data_type::f8_e4m3)
-        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(xbyak_register_index(r_end),
+        f8_e4m3_cvt_->vcvt_f8_to_f16_vnni_block(static_cast<int>(r_end),
                 reg_data_aux, reg_data_stride, reg_buf);
     else
         assert(!"unsupported data type");
@@ -2371,7 +2370,7 @@ void jit_brgemm_amx_uker_base_t::bf32_downconvert_to_vnni(
         lea(reg_data_aux,
                 ptr[reg_data_aux
                         + reg_data_stride
-                                * xbyak_address_scale(vnni_granularity)]);
+                                * static_cast<int>(vnni_granularity)]);
     }
 
     // zero rest of the tile data

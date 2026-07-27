@@ -228,7 +228,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::set_A_B_matrices() {
 
     add(reg_aux_A, reg_a_offset);
     lea(reg_aux_B,
-            ptr[reg_aux_B + reg_aux_N * xbyak_address_scale(brg.typesize_B)]);
+            ptr[reg_aux_B + reg_aux_N * static_cast<int>(brg.typesize_B)]);
 }
 
 template <typename Wmm>
@@ -461,7 +461,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
         reg_aux_bias.restore();
         lea(reg_aux_bias,
                 ptr[reg_aux_bias
-                        + reg_aux_N * xbyak_address_scale(brg.typesize_bias)]);
+                        + reg_aux_N * static_cast<int>(brg.typesize_bias)]);
     }
 
     for_(int v_i = 0; v_i < v_substep; ++v_i)

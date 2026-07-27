@@ -238,30 +238,6 @@ public:
                 op, static_cast<uint32_t>(static_cast<int32_t>(imm)));
     }
 
-    template <typename T,
-            typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
-            = 0>
-    void imul(const Xbyak::Reg64 &dst, const Xbyak::Operand &src, T imm) {
-        JIT_ASSERT(imm >= 0 && imm <= INT_MAX);
-        Xbyak::CodeGenerator::imul(dst, src, static_cast<int>(imm));
-    }
-
-    static int xbyak_register_index(dim_t index) {
-        // The fallback is returned only after XByak records the error,
-        // INT_MIN is used, because some primitives(e.g. pooling)
-        // are creating registers with invlid index, but never uses it,
-        // currently those objects are gracefully die without assertion.
-        // TODO: refactor pooling primitive in order to follow the contract.
-        JIT_ASSERT_RET(index >= INT_MIN && index <= INT_MAX, 0);
-        return static_cast<int>(index);
-    }
-
-    static int xbyak_address_scale(dim_t scale) {
-        // The fallback is returned only after XByak records the error.
-        JIT_ASSERT_RET(utils::one_of(scale, 1, 2, 4, 8), 0);
-        return static_cast<int>(scale);
-    }
-
     Xbyak::Reg64 param1 = abi_param1;
     const int EVEX_max_8b_offt = 0x200;
     const Xbyak::Reg64 reg_EVEX_max_8b_offt = rbp;

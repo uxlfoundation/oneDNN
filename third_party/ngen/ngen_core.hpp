@@ -1421,7 +1421,7 @@ public:
         return 2;
     }
     static constexpr14 int count(HW hw, int grfCount, DataType dt = DataType::invalid) {
-        return count(hw, dt) * (grfCount == 256 ? 2 : 1);
+        return count(hw, dt) * (grfCount >= 256 ? 2 : 1);
     }
 };
 

@@ -459,7 +459,12 @@ void Generator<hw>::outerProductSystolic(int h, int ha_period, int hb_period, in
                 if (rc != 8 && strategy.extendedAtomicFMA) hw_unsupported();
             }
 
-            if (hhbase + ksys < opCount && rc == 8) mod |= Fwd;
+            bool canFwd = (hw == ngen::HW::Xe3p)
+                && (getProductFamily() >= ngen::ProductFamily::CRI)
+                && (rc == 8)
+                && mod.isAtomic()
+                && (Tc != Type::f16);
+            if (hhbase + ksys < opCount && canFwd) mod |= Fwd;
 
             if (startRepackC && hhbase == 0)
                 srcC0 = null.retype(C0.getType());

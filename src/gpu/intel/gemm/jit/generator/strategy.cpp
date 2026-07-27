@@ -243,9 +243,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     //                         64-bit emulation > r0 header storage.
     if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
         kChain = 1;
-    // Fwd modifier not supported in below case
-    if (hw == HW::Xe3p && systolic && problem.product.family < ProductFamily::CRI)
-        kChain = 1;
     cAccumulators &= (kChain == 1);
 
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW;

@@ -1823,7 +1823,22 @@ private:
     constraint_set_t cset_;
 };
 
+expr_t simplify_expr_impl(const expr_t &_e, const constraint_set_t &cset);
+
 expr_t simplify_expr(const expr_t &_e, const constraint_set_t &cset) {
+    if (!cset.is_empty()) return simplify_expr_impl(_e, cset);
+    if (is_const(_e) || is_var(_e)) return _e;
+    static const size_t max_cache_size = 4096;
+    static thread_local object_eq_map_t<expr_t, expr_t> cache;
+    auto it = cache.find(_e);
+    if (it != cache.end()) return it->second;
+    auto ret = simplify_expr_impl(_e, cset);
+    if (cache.size() >= max_cache_size) cache.clear();
+    cache.emplace(_e, ret);
+    return ret;
+}
+
+expr_t simplify_expr_impl(const expr_t &_e, const constraint_set_t &cset) {
     expr_t e = _e;
 
     if (is_const(e) || is_var(e)) return e;
@@ -2421,7 +2436,6 @@ expr_t nary_op_canonicalize(const expr_t &_e) {
     e = mul_nary_op_expander_t().mutate(e);
 
     dsl_assert(is_nary_op_canonical(e)) << e;
-    maybe_unused(is_nary_op_canonical(e));
 
     return e;
 }

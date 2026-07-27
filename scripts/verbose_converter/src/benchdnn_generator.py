@@ -630,13 +630,19 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
     def tags(self):
         if not self._is_grouped:
             return super().tags
-        # Grouped src/dst have no tag; only emit wtag since the library
-        # requires a concrete format (abc/acb) for weights.
+        # Grouped MDs carry no tag; emit a concrete tag only for the dense
+        # arg(s): wei in the 2Dx3D variant, dst in the 2Dx2D variant.
         md_map = {md.arg: md for md in self.entry.mds}
-        wei_md = md_map.get("wei")
-        if wei_md:
-            return f"--wtag={maybe_make_any_tag(wei_md)}"
-        return ""
+        tags = []
+        for arg in ("src", "wei", "dst"):
+            md = md_map.get(arg)
+            if md is None or md.is_grouped:
+                continue
+            tag = maybe_make_any_tag(md)
+            if arg == "wei" and str(md.flags.value) != "f0":
+                tag = "any"
+            tags.append(f"--{arg[0]}tag={tag}")
+        return " ".join(tags)
 
     @property
     def grouped(self) -> str:
@@ -657,7 +663,7 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
         sizes = [group_size] * group_count
         for i in range(remainder):
             sizes[i] += 1
-        group_sizes = ",".join(map(str, sizes))
+        group_sizes = "+".join(map(str, sizes))
         return f"--grouped={var_dim_idx}:{group_count}:{group_sizes}"
 
     @property

@@ -605,8 +605,14 @@ class V1ParserImpl(ParserImpl):
         fields = descriptor.split(":")
         format_kind = fields[3]
 
-        if format_kind == "sparse" and fields[4] == "grouped":
+        if format_kind == "sparse" and len(fields) > 4 and fields[4] == "grouped":
             # arg:dt:props:sparse:grouped:var_dim_idx:group_count::flags
+            if len(fields) < 9:
+                raise ValueError(
+                    f"grouped MD '{descriptor}' is missing "
+                    "var_dim_idx:group_count; regenerate the verbose log with "
+                    "a oneDNN build that dumps them"
+                )
             flags = self.parse_md_flags(fields[8], fields[9:])
             return ir.MemoryDescriptor(
                 arg=fields[0],

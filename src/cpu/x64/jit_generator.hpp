@@ -209,7 +209,6 @@ public:
     // instructions. Small fixed-range immediates (lane/blend/shift/predicate
     // values) must stay int at their creation site instead of gaining an
     // overload here.
-    // TODO: use a scratch register or rebase a pointer for values > INT_MAX.
     template <typename T,
             typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
             = 0>
@@ -230,7 +229,6 @@ public:
             typename std::enable_if<std::is_same<T, dim_t>::value, int>::type
             = 0>
     void cmp(const Xbyak::Operand &op, T imm) {
-        // Negative virtual padding is compared by brgemm kernels.
         JIT_ASSERT(imm >= INT_MIN && imm <= INT_MAX);
         Xbyak::CodeGenerator::cmp(
                 op, static_cast<uint32_t>(static_cast<int32_t>(imm)));

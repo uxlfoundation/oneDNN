@@ -92,6 +92,10 @@ class Converter(metaclass=ConverterMeta):
         return ""
 
     @property
+    def grouped(self) -> str:
+        return ""
+
+    @property
     def flags(self) -> str:
         return ""
 
@@ -608,6 +612,10 @@ class LRNConverter(AlgorithmMixin, Converter):
 class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
     driver: str = "matmul"
 
+    def __init__(self, entry):
+        super().__init__(entry)
+        self._is_grouped = any(md.is_grouped for md in entry.mds)
+
     @property
     def bias_mask(self):
         for md in self.entry.mds:
@@ -617,6 +625,63 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
                 mask = md.flags.value.split("_")[1][4:]
                 return f"--bia_mask={mask}"
         return ""
+
+    @property
+    def tags(self):
+        if not self._is_grouped:
+            return super().tags
+        # Grouped MDs carry no tag; emit a concrete tag only for the dense
+        # arg(s): wei in the 2Dx3D variant, dst in the 2Dx2D variant.
+        md_map = {md.arg: md for md in self.entry.mds}
+        tags = []
+        for arg in ("src", "wei", "dst"):
+            md = md_map.get(arg)
+            if md is None or md.is_grouped:
+                continue
+            tag = maybe_make_any_tag(md)
+            if arg == "wei" and str(md.flags.value) != "f0":
+                tag = "any"
+            tags.append(f"--{arg[0]}tag={tag}")
+        return " ".join(tags)
+
+    @property
+    def grouped(self) -> str:
+        if not self._is_grouped:
+            return ""
+        md = next(md for md in self.entry.mds if md.is_grouped)
+        var_dim_idx = md.variable_dim_idx
+        group_count = md.group_count
+        if var_dim_idx is None or group_count is None:
+            var_dim_idx, group_count = self._infer_grouping()
+        # Compute group sizes by dividing the variable dimension of src by the
+        # number of groups.
+        # WARN: verbose does not carry per-group sizes, so this even split may
+        # not match the original grouping.
+        src_dims = self.entry.shapes.split(":")[0].split("x")
+        total_dim = int(src_dims[var_dim_idx])
+        group_size, remainder = divmod(total_dim, group_count)
+        sizes = [group_size] * group_count
+        for i in range(remainder):
+            sizes[i] += 1
+        group_sizes = "+".join(map(str, sizes))
+        return f"--grouped={var_dim_idx}:{group_count}:{group_sizes}"
+
+    def _infer_grouping(self):
+        # Old-format verbose omits var_dim_idx/group_count. Recover them from
+        # the shapes: wei grouped => 2Dx2D (variable K, idx 1); otherwise 2Dx3D
+        # (variable M, idx 0) where wei is the dense 3D [G,K,N] and G is its
+        # leading dim.
+        md_map = {md.arg: md for md in self.entry.mds}
+        wei_md = md_map.get("wei")
+        var_dim_idx = 1 if wei_md is not None and wei_md.is_grouped else 0
+        three_d = [t for t in self.entry.shapes.split(":") if t.count("x") == 2]
+        if three_d:
+            group_count = int(three_d[0].split("x")[0])
+        else:
+            # 2Dx2D: group_count is unrecoverable from old-format verbose
+            # (dst[G,M,N] dims are not printed); assume a single group.
+            group_count = 1
+        return var_dim_idx, group_count
 
     @property
     def aux(self):
@@ -979,10 +1044,21 @@ class InputGenerator:
 
     def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger
+        self._warned_grouped = False
 
     def _generate_case(self, entry: ir.Entry):
         Converter = get_converter(entry.prim_kind)
         converter = Converter(entry)
+        grouped = converter.grouped
+        if grouped and not self._warned_grouped and self.logger is not None:
+            self._warned_grouped = True
+            self.logger.warning(
+                "Verbose does not report per-group sizes; group sizes in"
+                " --grouped are inferred by dividing the total dimension"
+                " by the number of groups and may not match the original."
+                " For 2Dx2D logs lacking group metadata, group_count is"
+                " assumed to be 1 and is likely wrong."
+            )
         args = [
             "--reset",
             "--allow-enum-tags-only=0",
@@ -994,6 +1070,7 @@ class InputGenerator:
             converter.tags,
             converter.flags,
             converter.attrs,
+            grouped,
             converter.shapes,
         ]
         return converter.driver, " ".join(arg for arg in args if arg)

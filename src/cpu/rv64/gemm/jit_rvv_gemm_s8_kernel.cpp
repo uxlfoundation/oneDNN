@@ -267,12 +267,10 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
         L(label_bias_loaded);
     }
 
-    if (one_of(dst_dt_, data_type::f32, data_type::f16, data_type::bf16)) {
-        // f32-compatible epilogue: s32 acc -> f32 -> alpha/beta/bias ->
-        // store at element width (4 bytes for f32, 2 bytes for f16/bf16).
-        // For f16/bf16 we narrow via vfncvt before storing.
-        const bool is_f32_dst = (dst_dt_ == data_type::f32);
-
+    if (dst_dt_ == data_type::f32) {
+        // f32 epilogue: s32 acc -> f32 -> alpha/beta/bias -> vse32.
+        // Full alpha/beta support: when beta != 0, vle32 reads C and folds
+        // beta*C into the acc.
         for (dim_t c = 0; c < n_cols_; c++) {
             Label label_beta_zero, label_skip_bias, label_store, label_done;
 
@@ -283,18 +281,8 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
 
             beqz(reg_beta_bits, label_beta_zero);
 
-            // Read existing C (element-width-aware: e32 for f32, e16 for f16/bf16).
-            // For f16/bf16 we scalar-load the 2-byte value and broadcast to
-            // all m lanes via vfmv.v.f. Using a scalar load avoids depending
-            // on vector widening (vfwcvt.f.f.v)
-            const FReg freg_loaded = fa5;
-            if (is_f32_dst) {
-                vle32_v(v_tmp, reg_tmp0);
-            } else {
-                lh(reg_k, reg_tmp0, 0); // sign-extend s16 -> s32 in reg_k
-                fmv_w_x(freg_loaded, reg_k);
-                vfmv_v_f(v_tmp, freg_loaded);
-            }
+            // beta != 0: read C (e32 LMUL=m4 vector load).
+            vle32_v(v_tmp, reg_tmp0);
             vfmul_vf(v_tmp, v_tmp, freg_beta);
             vfmul_vf(v_c[c], v_c[c], freg_alpha);
             vfadd_vv(v_tmp, v_tmp, v_c[c]);
@@ -305,18 +293,7 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
                 L(label_skip_bias);
             }
 
-            if (!is_f32_dst) {
-                vsetvli(x0, reg_m, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-                if (dst_dt_ == data_type::bf16) {
-                    vfncvtbf16_f_f_w(v_tmp, v_tmp);
-                } else {
-                    vfncvt_f_f_w(v_tmp, v_tmp);
-                }
-                vse16_v(v_tmp, reg_tmp0);
-                vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
-            } else {
-                vse32_v(v_tmp, reg_tmp0);
-            }
+            vse32_v(v_tmp, reg_tmp0);
             j_(label_done);
 
             L(label_beta_zero);
@@ -328,20 +305,42 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
             }
 
             L(label_store);
-            if (!is_f32_dst) {
-                vsetvli(x0, reg_m, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-                if (dst_dt_ == data_type::bf16) {
-                    vfncvtbf16_f_f_w(v_c[c], v_c[c]);
-                } else {
-                    vfncvt_f_f_w(v_c[c], v_c[c]);
-                }
-                vse16_v(v_c[c], reg_tmp0);
-                vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
-            } else {
-                vse32_v(v_c[c], reg_tmp0);
-            }
+            vse32_v(v_c[c], reg_tmp0);
 
             L(label_done);
+        }
+    } else if (one_of(dst_dt_, data_type::f16, data_type::bf16)) {
+        // Half-precision overwrite-only epilogue: beta must be 0
+        // (driver-enforced; see rvv_gemm_s8s8s32's f16/bf16 contract —
+        // `if (beta != 0.0f) return status::unimplemented`). s32 acc ->
+        // f32 -> alpha -> bias -> narrow via vfncvt* -> vse16. No C read:
+        // the per-M column may carry stale data that the overwrite
+        // contract discards.
+        for (dim_t c = 0; c < n_cols_; c++) {
+            emit_col_addr(c);
+
+            // s32 acc -> f32 in place.
+            vfcvt_f_x_v(v_c[c], v_c[c]);
+
+            // alpha (any value, scalar broadcast across m lanes).
+            vfmul_vf(v_c[c], v_c[c], freg_alpha);
+
+            if (has_bias_) {
+                Label label_skip_bias;
+                beqz(reg_bias_ptr, label_skip_bias);
+                vfadd_vv(v_c[c], v_c[c], v_bias);
+                L(label_skip_bias);
+            }
+
+            // Narrow f32 -> f16/bf16 and store at half width.
+            vsetvli(x0, reg_m, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+            if (dst_dt_ == data_type::bf16) {
+                vfncvtbf16_f_f_w(v_c[c], v_c[c]);
+            } else {
+                vfncvt_f_f_w(v_c[c], v_c[c]);
+            }
+            vse16_v(v_c[c], reg_tmp0);
+            vsetvli(x0, reg_m, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
         }
     } else if (one_of(dst_dt_, data_type::s8, data_type::u8)) {
         // Narrow 8-bit dst: s32 acc -> f32 -> +bias (if any) -> saturate to

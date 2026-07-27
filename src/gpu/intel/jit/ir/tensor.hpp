@@ -374,6 +374,19 @@ private:
     dim_t block_;
 };
 
+// Some complex expressions need more than one simplify() call.
+inline expr_t simplify_repeat(
+        const expr_t &e, const constraint_set_t &cset, int max_tries = 5) {
+    auto ret = e;
+    auto next = ir::simplify(ret, cset);
+    for (int i = 0; i < max_tries; i++) {
+        ret = next;
+        next = ir::simplify(next, cset);
+        if (next.is_equal(ret)) break;
+    }
+    return ret;
+}
+
 class mask_tensor_t {
 public:
     mask_tensor_t() = default;
@@ -416,16 +429,8 @@ public:
     }
 
     void simplify(const constraint_set_t &cset) {
-        for (auto &mask : id2masks_) {
-            auto new_mask = ir::simplify(mask, cset);
-            // Some complex expressions need more than one simplify() call.
-            int max_tries = 5;
-            for (int i = 0; i < max_tries; i++) {
-                mask = new_mask;
-                new_mask = ir::simplify(new_mask, cset);
-                if (new_mask.is_equal(mask)) break;
-            }
-        }
+        for (auto &mask : id2masks_)
+            mask = simplify_repeat(mask, cset);
         mask2ids_.clear();
         for (int i = 0; i < int(id2masks_.size()); i++) {
             auto ret = mask2ids_.insert({id2masks_[i], i});
@@ -930,8 +935,9 @@ public:
         auto _vlayout = create_dense_vlayout();
         mask_tensor_t mask_tensor(_vlayout);
         icoord_t vargs(nvdims());
-        create_mask_tensor(mask_tensor, _vlayout, 0, vargs, tmask);
-        mask_tensor.simplify(cset);
+        // Distinct per-tdim mask factors are far fewer than elements.
+        std::vector<object_eq_map_t<expr_t, expr_t>> memo(ntdims());
+        create_mask_tensor(mask_tensor, _vlayout, 0, vargs, tmask, cset, memo);
         return mask_tensor;
     }
 
@@ -1045,12 +1051,13 @@ private:
 
     void create_mask_tensor(mask_tensor_t &mask_tensor,
             const layout_t &_vlayout, dim_idx_t vidx, icoord_t &vargs,
-            uint32_t tmask) const {
+            uint32_t tmask, const constraint_set_t &cset,
+            std::vector<object_eq_map_t<expr_t, expr_t>> &memo) const {
         if (vidx == _vlayout.ndims()) {
             bool is_init = false;
             coord_t vvalues;
             coord_t targs;
-            expr_t mask = bool_imm_t::make(true);
+            expr_t mask;
             for (dim_idx_t i = 0; i < ntdims(); i++) {
                 auto &tdim = tdims_[i];
                 if ((tmask & (1 << i)) == 0) continue;
@@ -1063,15 +1070,32 @@ private:
                     targs = cvt_vargs_to_targs(vargs);
                     is_init = true;
                 }
-                mask &= tdim.mask(targs[i], vvars_, vvalues);
+                auto f = tdim.mask(targs[i], vvars_, vvalues);
+                expr_t fs;
+                auto it = memo[i].find(f);
+                if (it != memo[i].end()) {
+                    fs = it->second;
+                } else {
+                    fs = simplify_repeat(f, cset);
+                    memo[i].emplace(f, fs);
+                }
+                // Fold the conjunction as simplify_rewrite_and() would.
+                if (auto *imm = fs.as_ptr<bool_imm_t>()) {
+                    if (imm->value) continue;
+                    mask = fs;
+                    break;
+                }
+                mask = mask.is_empty() ? fs : (mask & fs);
             }
+            if (mask.is_empty()) mask = bool_imm_t::make(true);
             mask_tensor.set_mask(_vlayout.offset<dim_t>(vargs), mask);
             return;
         }
 
         for (dim_idx_t i = 0; i < vdims()[vidx]; i++) {
             vargs[vidx] = i;
-            create_mask_tensor(mask_tensor, _vlayout, vidx + 1, vargs, tmask);
+            create_mask_tensor(
+                    mask_tensor, _vlayout, vidx + 1, vargs, tmask, cset, memo);
         }
     }
 

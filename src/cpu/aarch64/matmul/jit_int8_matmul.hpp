@@ -2,7 +2,8 @@
 * Copyright 2025 FUJITSU LIMITED
 * Copyright 2025-2026 Arm Ltd. and affiliates
 * Copyright 2026 Intel Corporation
-*
+* Copyright 2026 Ampere Computing LLC
+
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
@@ -49,7 +50,7 @@ struct jit_int8_matmul_t : public primitive_t {
         int get_idx(bool is_zp_cal, bool is_m_tail, bool is_k_tail,
                 bool is_n_tail, const brg_int8_t &brg) const;
 
-        static constexpr int m_block_sz = 32;
+        int m_block_sz = 32;
         int n_block_sz;
         int mm_parallel_work;
 

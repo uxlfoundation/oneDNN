@@ -57,8 +57,7 @@ Effect of the above threading strategies is measured on the primitive performanc
 strategies improve the primitive latency performance by 1.2X to 1.5X on native PyTorch performance, as
 shown on few representative loads in the table below.
 
-| Precision | Table | Embed | Batch | PyTorch (ms) | ZenDNN (ms) | Speedup |
-|           | Size | Dim | Size | Latency | Latency |  |
+| Precision | Tbl Sz | Embed Dim| Batch Sz | PyTorch Latency (ms) | ZenDNN Latency (ms) | Speedup |
 |---|---|---|---|---|---|---|
 | fp32 | 40000000 | 128 | 4096 | 0.0458 | 0.0300 | 1.53x |
 | bf16 | 40000000 | 128 | 4096 | 0.0452 | 0.0287 | 1.58x |

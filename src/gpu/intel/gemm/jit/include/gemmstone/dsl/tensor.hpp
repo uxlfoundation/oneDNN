@@ -71,8 +71,9 @@ private:
             return !operator==(other);
         }
 
+        // NUL-padded names: byte-swapped compare matches strncmp() ordering.
         bool operator<(const name_t &other) const {
-            return std::strncmp(data_, other.data_, max_len) < 0;
+            return bswap(numeric_value()) < bswap(other.numeric_value());
         }
 
         size_t index() const {
@@ -89,6 +90,17 @@ private:
         std::string str() const { return data_; }
 
     private:
+        static uint64_t bswap(uint64_t v) {
+#if defined(__GNUC__) || defined(__clang__)
+            return __builtin_bswap64(v);
+#else
+            uint64_t ret = 0;
+            for (int i = 0; i < 8; i++)
+                ret |= ((v >> (8 * i)) & 0xFF) << (8 * (7 - i));
+            return ret;
+#endif
+        }
+
         uint64_t numeric_value() const {
             uint64_t ret;
             static_assert(sizeof(*this) == sizeof(ret),
@@ -283,8 +295,9 @@ public:
     }
 
     const ValueT &operator[](const idx_t &key) const {
-        gemm_assert(has(key), "Key not found: " + key.str());
-        return map_.at(key);
+        auto it = map_.find(key);
+        if (it == map_.end()) stub(("Key not found: " + key.str()).c_str());
+        return it->second;
     }
 
     ValueT &operator[](const idx_t &key) {

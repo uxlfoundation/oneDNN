@@ -374,7 +374,7 @@ void brdgmm_dw_convolution_fwd_t::pd_t::init_batch_elements() {
         const dim_t lpad = jcp.l_pad - owb * w_shift;
         const dim_t rpad = rpad_i == 0
                 ? rpad_0
-                : nstl::min(jcp.r_pad, rpad_1 + (rpad_i - 1) * w_shift);
+                : nstl::min<dim_t>(jcp.r_pad, rpad_1 + (rpad_i - 1) * w_shift);
 
         const dim_t tpad = jcp.t_pad - ohb * h_shift;
         const dim_t oh = ohb < h_blk_info.n_lpad_blks
@@ -412,14 +412,11 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
 
         brgemm_attr_t brg_attr;
         brg_attr.max_bs = jcp.kw * jcp.kh * jcp.kd;
-        brg_attr.max_top_vpad
-                = static_cast<int>(nstl::max(dim_t(0), jcp.l_pad));
-        brg_attr.max_bottom_vpad
-                = static_cast<int>(nstl::max(dim_t(0), jcp.r_pad));
-        brg_attr.max_top_bpad = static_cast<int>(
-                nstl::max(dim_t(0), nstl::max(jcp.t_pad, jcp.f_pad)));
-        brg_attr.max_bottom_bpad = static_cast<int>(
-                nstl::max(dim_t(0), nstl::max(jcp.b_pad, jcp.back_pad)));
+        brg_attr.max_top_vpad = nstl::max(0, jcp.l_pad);
+        brg_attr.max_bottom_vpad = nstl::max(0, jcp.r_pad);
+        brg_attr.max_top_bpad = nstl::max(0, nstl::max(jcp.t_pad, jcp.f_pad));
+        brg_attr.max_bottom_bpad
+                = nstl::max(0, nstl::max(jcp.b_pad, jcp.back_pad));
         brg_attr.hint_bs_group
                 = is_superset(jcp.isa, avx512_core) && jcp.stride_w == 1
                 ? static_cast<int>(jcp.kw)
@@ -485,7 +482,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
                     jcp.ow_block = ow_tail_block;
                 else { jcp.ow_block = jcp.ow; }
             } else {
-                const dim_t max_ow_block = is_superset(jcp.isa, avx512_core)
+                const int max_ow_block = is_superset(jcp.isa, avx512_core)
                         ? 6
                         : bcp_0.bd_block2 /*TODO: Tune for avx2*/;
                 jcp.ow_block = nstl::min(max_ow_block, jcp.ow);
@@ -506,7 +503,7 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
                 else
                     jcp.nb_ch_blocking = jcp.ngroups;
             } else {
-                const dim_t max_ch_block2 = is_superset(jcp.isa, avx512_core)
+                const int max_ch_block2 = is_superset(jcp.isa, avx512_core)
                         ? 4
                         : bcp_0.ld_block2 /*TODO: Tune for avx2*/;
                 jcp.nb_ch_blocking

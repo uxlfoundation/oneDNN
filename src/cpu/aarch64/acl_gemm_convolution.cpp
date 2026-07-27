@@ -101,6 +101,8 @@ status_t acl_gemm_convolution_fwd_t<src_t, wei_t, dst_t, bia_t>::init(
             &acp_.dst_tensor_info, acp_.padstride_info, acp_.weights_info,
             acp_.dilation_info, acp_.act_info, acp_.fast_math);
     acl_obj_->aux_mem_req = acl_obj_->conv.workspace();
+    post_ops_ = pd()->post_ops;
+    CHECK(post_ops_.init_primitives(engine));
     return status::success;
 }
 
@@ -110,7 +112,8 @@ status_t
 acl_gemm_convolution_fwd_t<src_t, wei_t, dst_t, bia_t>::execute_forward(
         const exec_ctx_t &ctx) const {
     return execute_forward_conv_acl<acl_obj_t<Op>, pd_t, src_data_t, wei_data_t,
-            dst_data_t, bia_data_t>(ctx, acl_obj_.get(), pd(), gemm_conv_keys);
+            dst_data_t, bia_data_t>(
+            ctx, acl_obj_.get(), pd(), gemm_conv_keys, post_ops_);
 }
 
 using namespace data_type;

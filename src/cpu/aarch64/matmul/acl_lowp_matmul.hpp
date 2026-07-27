@@ -77,6 +77,7 @@ private:
     std::unique_ptr<arm_compute::experimental::op::CpuQuantize> quant_;
     std::unique_ptr<arm_compute::experimental::op::CpuDequantize> dequant_;
     std::unique_ptr<arm_compute::experimental::op::CpuGEMMLowp> gemm_;
+    post_ops_fallback_t fallback_post_ops_;
 
     mutable std::mutex mtx_;
 };

@@ -57,6 +57,9 @@ status_t acl_lowp_matmul_sq_t::init(engine_t *engine) {
             almc.with_bias ? &almc.bia_tensor_info : nullptr,
             &almc.dst_tensor_info, almc.gemm_info);
 
+    post_ops_ = pd()->post_ops;
+    CHECK(post_ops_.init_primitives(engine));
+
     return status::success;
 }
 

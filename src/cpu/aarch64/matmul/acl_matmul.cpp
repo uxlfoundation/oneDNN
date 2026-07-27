@@ -62,6 +62,9 @@ status_t acl_matmul_t::init(engine_t *engine) {
                 amp_.gemm_info.activation_info());
     }
 
+    post_ops_ = pd()->post_ops;
+    CHECK(post_ops_.init_primitives(engine));
+
     return status::success;
 }
 
@@ -386,7 +389,7 @@ status_t acl_matmul_t::execute_forward(const exec_ctx_t &ctx) const {
     }
 
     void *dst = dst_tensor.buffer();
-    status = pd()->post_ops.execute(ctx, dst);
+    status = post_ops_.execute(ctx, dst);
 
     return status;
 }

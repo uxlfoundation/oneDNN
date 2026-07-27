@@ -54,7 +54,7 @@ status_t acl_deconvolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     acl_obj.deconv.run();
 
     void *dst = acl_obj.dst_tensor.buffer();
-    status_t status = pd()->post_ops.execute(ctx, dst);
+    status_t status = post_ops_.execute(ctx, dst);
 
     acl_obj.src_tensor.allocator()->free();
     acl_obj.dst_tensor.allocator()->free();

@@ -74,6 +74,7 @@ private:
     }
     std::unique_ptr<arm_compute::experimental::op::CpuFullyConnected>
             inner_product_op_;
+    post_ops_fallback_t post_ops_;
 }; // acl_inner_product_fwd_t
 
 } // namespace aarch64

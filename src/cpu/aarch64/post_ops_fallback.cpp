@@ -39,6 +39,7 @@ status_t post_ops_fallback_t::init(const engine_t *engine, post_ops_t &post_ops,
 
     // Reset properties derived from post_ops
     sum_index = -1;
+    post_op_pds = {};
     post_op_primitives = {};
 
     for (int i = post_op_start_index; i < post_ops.len(); i++) {
@@ -65,9 +66,9 @@ status_t post_ops_fallback_t::init(const engine_t *engine, post_ops_t &post_ops,
             po_desc.src_desc[1] = dst_md;
             po_desc.dst_desc = dst_md;
 
-            std::shared_ptr<primitive_t> binary_prim;
-            CHECK(create_binary_primitive(engine, po_desc, binary_prim));
-            post_op_primitives.push_back(std::move(binary_prim));
+            std::shared_ptr<primitive_desc_t> binary_pd;
+            CHECK(create_binary_pd(engine, po_desc, binary_pd));
+            post_op_pds.push_back(std::move(binary_pd));
 
         } else if (po.is_binary()) {
             binary_desc_t po_desc;
@@ -80,9 +81,9 @@ status_t post_ops_fallback_t::init(const engine_t *engine, post_ops_t &post_ops,
             }
             po_desc.dst_desc = dst_md;
 
-            std::shared_ptr<primitive_t> binary_prim;
-            CHECK(create_binary_primitive(engine, po_desc, binary_prim));
-            post_op_primitives.push_back(std::move(binary_prim));
+            std::shared_ptr<primitive_desc_t> binary_pd;
+            CHECK(create_binary_pd(engine, po_desc, binary_pd));
+            post_op_pds.push_back(std::move(binary_pd));
 
         } else if (po.is_eltwise()) {
             VDISPATCH_FALLBACK_POST_OPS(po.eltwise.scale == 1.0f,
@@ -95,9 +96,9 @@ status_t post_ops_fallback_t::init(const engine_t *engine, post_ops_t &post_ops,
                     po.eltwise.alg, &dst_md, &dst_md, nullptr, nullptr,
                     po.eltwise.alpha, po.eltwise.beta));
 
-            std::shared_ptr<primitive_t> eltwise_prim;
-            CHECK(create_eltwise_primitive(engine, ed, eltwise_prim));
-            post_op_primitives.push_back(std::move(eltwise_prim));
+            std::shared_ptr<primitive_desc_t> eltwise_pd;
+            CHECK(create_eltwise_pd(engine, ed, eltwise_pd));
+            post_op_pds.push_back(std::move(eltwise_pd));
 
         } else {
             // Unsupported catchall
@@ -107,13 +108,26 @@ status_t post_ops_fallback_t::init(const engine_t *engine, post_ops_t &post_ops,
     return status::success;
 }
 
+status_t post_ops_fallback_t::init_primitives(engine_t *engine) {
+    post_op_primitives = {};
+    post_op_primitives.reserve(post_op_pds.size());
+
+    for (const auto &post_op_pd : post_op_pds) {
+        std::shared_ptr<primitive_t> post_op;
+        CHECK(post_op_pd->create_primitive(post_op, engine));
+        post_op_primitives.push_back(std::move(post_op));
+    }
+
+    return status::success;
+}
+
 void post_ops_fallback_t::init_scratchpad(
         memory_tracking::registrar_t &scratchpad) const {
     using namespace memory_tracking::names;
 
-    for (size_t i = 0; i < post_op_primitives.size(); ++i) {
+    for (size_t i = 0; i < post_op_pds.size(); ++i) {
         scratchpad.book(key_nested_multiple + (int)i,
-                post_op_primitives[i]->pd()->scratchpad_registry());
+                post_op_pds[i]->scratchpad_registry());
     }
 }
 
@@ -160,44 +174,36 @@ status_t post_ops_fallback_t::execute_binary(const exec_ctx_t &ctx,
     return post_op->execute(binary_ctx);
 }
 
-status_t post_ops_fallback_t::create_binary_primitive(const engine_t *engine,
+status_t post_ops_fallback_t::create_binary_pd(const engine_t *engine,
         const binary_desc_t &binary_desc,
-        std::shared_ptr<primitive_t> &primitive) const {
+        std::shared_ptr<primitive_desc_t> &primitive_desc) const {
     auto empty_attr = dnnl_primitive_attr();
 
     primitive_desc_iterator_t it(engine,
             reinterpret_cast<const op_desc_t *>(&binary_desc), &empty_attr,
             nullptr);
 
-    std::shared_ptr<primitive_desc_t> binary_pd;
     while (++it != it.end()) {
-        binary_pd = *it;
-        if (binary_pd) break;
+        primitive_desc = *it;
+        if (primitive_desc) return status::success;
     }
-    if (!binary_pd) return status::unimplemented;
-
-    return binary_pd->create_primitive(
-            primitive, const_cast<engine_t *>(engine));
+    return status::unimplemented;
 }
 
-status_t post_ops_fallback_t::create_eltwise_primitive(const engine_t *engine,
+status_t post_ops_fallback_t::create_eltwise_pd(const engine_t *engine,
         const eltwise_desc_t &eltwise_desc,
-        std::shared_ptr<primitive_t> &primitive) const {
+        std::shared_ptr<primitive_desc_t> &primitive_desc) const {
     auto empty_attr = dnnl_primitive_attr();
 
     primitive_desc_iterator_t it(engine,
             reinterpret_cast<const op_desc_t *>(&eltwise_desc), &empty_attr,
             nullptr);
 
-    std::shared_ptr<primitive_desc_t> eltwise_pd;
     while (++it != it.end()) {
-        eltwise_pd = *it;
-        if (eltwise_pd) break;
+        primitive_desc = *it;
+        if (primitive_desc) return status::success;
     }
-    if (!eltwise_pd) return status::unimplemented;
-
-    return eltwise_pd->create_primitive(
-            primitive, const_cast<engine_t *>(engine));
+    return status::unimplemented;
 }
 
 status_t post_ops_fallback_t::execute_eltwise(const exec_ctx_t &ctx,
@@ -226,7 +232,6 @@ status_t post_ops_fallback_t::execute_eltwise(const exec_ctx_t &ctx,
 
 status_t post_ops_fallback_t::execute(
         const exec_ctx_t &ctx, void *src, void *dst) const {
-
     int post_op_index = post_op_start_index_;
     int primitive_index = 0;
 

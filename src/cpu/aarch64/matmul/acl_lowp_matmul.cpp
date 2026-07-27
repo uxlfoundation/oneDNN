@@ -294,6 +294,9 @@ status_t acl_lowp_matmul_t::init(engine_t *engine) {
         }
     }
 
+    fallback_post_ops_ = pd()->fallback_post_ops;
+    CHECK(fallback_post_ops_.init_primitives(engine));
+
     return status::success;
 }
 
@@ -407,7 +410,7 @@ status_t acl_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
     // these are in-place so that dst=src. However, when there is a non-fused
     // sum, we set dst to be the tensor where data to be summed is stored.
     void *dst_post_ops;
-    if (pd()->fallback_post_ops.has_sum() && !pd()->almc_.sum_is_fused) {
+    if (fallback_post_ops_.has_sum() && !pd()->almc_.sum_is_fused) {
         if (pd()->almc_.dst_is_s8) {
             dst_post_ops = dst_cast_tensor.buffer();
         } else {
@@ -417,7 +420,7 @@ status_t acl_lowp_matmul_t::execute(const exec_ctx_t &ctx) const {
         dst_post_ops = src_post_ops;
     }
     status_t post_ops_status
-            = pd()->fallback_post_ops.execute(ctx, src_post_ops, dst_post_ops);
+            = fallback_post_ops_.execute(ctx, src_post_ops, dst_post_ops);
 
     // free() here tells ACL it can no longer use it, it does not deallocate
     src_tensor.allocator()->free();

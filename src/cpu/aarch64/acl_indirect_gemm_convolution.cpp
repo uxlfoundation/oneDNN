@@ -48,13 +48,15 @@ status_t acl_indirect_gemm_convolution_fwd_t::init(engine_t *engine) {
                     acp_.act_info, acp_.fast_math, 1, acp_.weights_info,
                     acp_.use_fp32_acc));
     acl_obj_->aux_mem_req = acl_obj_->conv.workspace();
+    post_ops_ = pd()->post_ops;
+    CHECK(post_ops_.init_primitives(engine));
     return status::success;
 }
 
 status_t acl_indirect_gemm_convolution_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
     return execute_forward_conv_acl<acl_obj_t<Op>, pd_t, data_t>(
-            ctx, acl_obj_.get(), pd(), indirect_conv_keys);
+            ctx, acl_obj_.get(), pd(), indirect_conv_keys, post_ops_);
 }
 
 status_t acl_indirect_gemm_convolution_fwd_t::pd_t::init_conf() {

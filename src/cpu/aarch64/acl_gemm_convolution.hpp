@@ -66,6 +66,7 @@ private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<acl_obj_t<Op>> acl_obj_;
+    post_ops_fallback_t post_ops_;
 }; // acl_gemm_convolution_fwd_t
 
 } // namespace aarch64

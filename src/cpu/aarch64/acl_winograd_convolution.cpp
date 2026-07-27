@@ -35,7 +35,7 @@ status_t acl_wino_convolution_fwd_t::execute_forward(
 
     return execute_forward_conv_acl<
             acl_obj_t<arm_compute::NEWinogradConvolutionLayer>, pd_t, data_t>(
-            ctx, acl_wino_obj, pd());
+            ctx, acl_wino_obj, pd(), post_ops_);
 }
 
 } // namespace aarch64

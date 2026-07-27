@@ -121,6 +121,11 @@ struct acl_wino_convolution_fwd_t : public primitive_t {
 
     acl_wino_convolution_fwd_t(const pd_t *apd) : primitive_t(apd) {}
 
+    status_t init(engine_t *engine) override {
+        post_ops_ = pd()->post_ops;
+        return post_ops_.init_primitives(engine);
+    }
+
     status_t create_resource(
             engine_t *engine, resource_mapper_t &mapper) const override {
         if (mapper.has_resource(this)) return status::success;
@@ -148,6 +153,7 @@ private:
     mutable std::mutex mtx;
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
+    post_ops_fallback_t post_ops_;
 }; // acl_wino_convolution_fwd_t
 
 } // namespace aarch64

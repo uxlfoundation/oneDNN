@@ -84,6 +84,7 @@ private:
         return (const pd_t *)primitive_t::pd().get();
     }
     std::unique_ptr<arm_compute::experimental::op::CpuGEMMLowp> gemm_;
+    post_ops_fallback_t post_ops_;
 };
 
 } // namespace matmul

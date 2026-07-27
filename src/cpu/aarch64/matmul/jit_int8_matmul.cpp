@@ -2,6 +2,7 @@
 * Copyright 2026 Intel Corporation
 * Copyright 2025 FUJITSU LIMITED
 * Copyright 2025-2026 Arm Ltd. and affiliates
+* Copyright 2026 Ampere Computing LLC
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,12 +19,15 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
+#include <limits>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "common/verbose.hpp"
 #include "common/verbose_msg.hpp"
 
 #include "cpu/cpu_primitive.hpp"
@@ -57,6 +61,342 @@ using namespace dnnl::impl::utils;
 using namespace nstl;
 
 using namespace data_type;
+
+namespace {
+struct jit_int8_matmul_tile_hint_t {
+    int m_block_sz = 32;
+    int n_block_factor = 0;
+};
+
+struct jit_int8_matmul_balance_t {
+    float thread_eff = 0.f;
+    float active_threads = 0.f;
+    dim_t first_thread_jobs = 0;
+    double first_thread_work = 0.;
+};
+
+jit_int8_matmul_balance_t get_thread_balance(
+        dim_t m, dim_t n, int m_block, int n_block, int nthr) {
+    jit_int8_matmul_balance_t balance;
+    const dim_t m_tiles = div_up(m, m_block);
+    const dim_t n_tiles = div_up(n, n_block);
+    const dim_t total_tiles = m_tiles * n_tiles;
+
+    balance.first_thread_jobs = div_up(total_tiles, nthr);
+    dim_t remaining = balance.first_thread_jobs;
+
+    const dim_t full_n_tiles = remaining / m_tiles;
+    remaining = remaining % m_tiles;
+    const dim_t full_n_work = nstl::min(n, full_n_tiles * n_block);
+    balance.first_thread_work += static_cast<double>(m) * full_n_work;
+
+    if (remaining > 0) {
+        const dim_t cur_n
+                = nstl::min(static_cast<dim_t>(n_block), n - full_n_work);
+        const dim_t cur_m = nstl::min(m, remaining * m_block);
+        balance.first_thread_work += static_cast<double>(cur_m) * cur_n;
+    }
+
+    const double total_work = static_cast<double>(m) * n;
+    balance.thread_eff = static_cast<float>(
+            total_work / (nthr * balance.first_thread_work));
+    balance.active_threads = static_cast<float>(nstl::min(
+                                     static_cast<dim_t>(nthr), total_tiles))
+            / nthr;
+    return balance;
+}
+
+constexpr double cache_fit_midpoint = 0.7;
+constexpr double l2_stream_fraction = 0.75;
+constexpr double cache_partition_a_l1_fraction = 0.5;
+constexpr double cache_partition_b_l2_fraction = 0.25;
+constexpr double cache_partition_min_b_l2_fraction = 0.5;
+
+float soft_cache_fit(double bytes, double capacity) {
+    // Use 70% as the cache-residency crossover to leave room for unrelated
+    // data. Clamp the positive exponent once the fit is negligible so exp()
+    // remains bounded.
+    if (capacity <= 0.) return 0.f;
+    constexpr double cache_fit_slope = 5.;
+    constexpr double max_exp_argument = 20.;
+    double x = cache_fit_slope * (bytes / capacity - cache_fit_midpoint);
+    x = nstl::min(max_exp_argument, x);
+    return static_cast<float>(1. / (1. + std::exp(x)));
+}
+
+float score_thread_tiles(const brg_int8_t &brg, int m_block, int n_block,
+        int micro_n, int nthr, dim_t padded_k, double l1_cache_size,
+        double l2_cache_size, bool model_outer_b_panel) {
+    const auto balance
+            = get_thread_balance(brg.M, brg.N, m_block, n_block, nthr);
+
+    const int actual_m = nstl::min(brg.M, m_block);
+    const int actual_n = nstl::min(brg.N, n_block);
+
+    constexpr double job_cost_macs = 128. * 1024.;
+    const double first_compute = balance.first_thread_work * padded_k;
+    const double job_eff = first_compute
+            / (first_compute + balance.first_thread_jobs * job_cost_macs);
+
+    const double a_bytes = static_cast<double>(actual_m) * padded_k;
+    const int cache_model_n
+            = model_outer_b_panel ? actual_n : nstl::min(brg.N, micro_n);
+    const double b_bytes = static_cast<double>(cache_model_n) * padded_k;
+    const float a_l1_fit = soft_cache_fit(a_bytes, l1_cache_size);
+    const float ab_l2_fit = soft_cache_fit(a_bytes + b_bytes, l2_cache_size);
+
+    const double m_reuse = std::log2(
+            nstl::max(1., static_cast<double>(actual_m) / brg.m_blk));
+    const double n_reuse
+            = std::log2(nstl::max(1., static_cast<double>(actual_n) / micro_n));
+
+    // Prioritize thread balance and job amortization; use cache fit and reuse
+    // as secondary signals. weights are empirical for SVE128
+    constexpr float thread_eff_weight = 4.f;
+    constexpr float job_eff_weight = 4.f;
+    constexpr float active_threads_weight = 0.5f;
+    constexpr float a_l1_fit_weight = 3.f;
+    constexpr float ab_l2_fit_weight = 0.8f;
+    constexpr float m_reuse_weight = 0.25f;
+    constexpr float n_reuse_weight = 0.05f;
+    return thread_eff_weight * balance.thread_eff
+            + job_eff_weight * static_cast<float>(job_eff)
+            + active_threads_weight * balance.active_threads
+            + a_l1_fit_weight * a_l1_fit + ab_l2_fit_weight * ab_l2_fit
+            + m_reuse_weight * static_cast<float>(m_reuse) * (1.f - a_l1_fit)
+            + n_reuse_weight * static_cast<float>(n_reuse);
+}
+
+constexpr size_t max_m_tile_candidates = 8;
+constexpr size_t max_n_tile_candidates = 12;
+constexpr int max_tuned_m_block = 128;
+
+template <size_t capacity>
+void append_unique_candidate(
+        std::array<int, capacity> &candidates, size_t &count, int value) {
+    const auto end = candidates.begin() + count;
+    if (std::find(candidates.begin(), end, value) != end) return;
+    candidates[count++] = value;
+}
+
+jit_int8_matmul_tile_hint_t get_thread_tile_hint(const brg_int8_t &brg,
+        int nthr, int micro_n, int max_search_m_block,
+        bool allow_wide_n_candidates, bool use_long_reduction_model) {
+    jit_int8_matmul_tile_hint_t hint;
+
+    const dim_t max_int = std::numeric_limits<int>::max();
+    constexpr int short_reduction_k = 256;
+    constexpr int short_reduction_max_m_block = 32;
+    // Empirical search bounds keep short reductions at or below 32 rows and
+    // allow longer reductions to amortize blocks of up to 128 rows.
+    const int reduction_m_block_limit = brg.K < short_reduction_k
+            ? short_reduction_max_m_block
+            : max_tuned_m_block;
+    const int max_m_block
+            = nstl::min(max_search_m_block, reduction_m_block_limit);
+
+    // Sample power-of-two M blocks and 1.5x intermediate sizes, plus M rounded
+    // to the microtile and capped by max_m_block.
+    constexpr std::array<int, max_m_tile_candidates> m_block_values {
+            {8, 16, 24, 32, 48, 64, 96, 128}};
+    std::array<int, max_m_tile_candidates> m_candidates {};
+    size_t m_count = 0;
+    const int rounded_m = static_cast<int>(nstl::min(
+            rnd_up(static_cast<dim_t>(brg.M), static_cast<dim_t>(brg.m_blk)),
+            static_cast<dim_t>(max_m_block)));
+    for (const int value : m_block_values) {
+        if (value <= rounded_m)
+            append_unique_candidate(m_candidates, m_count, value);
+    }
+    append_unique_candidate(m_candidates, m_count, rounded_m);
+
+    const int full_n_factor = static_cast<int>(
+            div_up(static_cast<dim_t>(brg.N), static_cast<dim_t>(micro_n)));
+    const dim_t padded_k
+            = rnd_up(static_cast<dim_t>(brg.K), static_cast<dim_t>(brg.k_blk));
+    const double l1_cache_size = platform::get_per_core_cache_size(1);
+    const double l2_cache_size = platform::get_per_core_cache_size(2);
+    const double b_stream_limit = l2_stream_fraction * l2_cache_size;
+    const double wide_n_panel_limit = cache_fit_midpoint * l2_cache_size;
+
+    float best_score = nstl::numeric_limits<float>::lowest();
+    for (size_t m_idx = 0; m_idx < m_count; m_idx++) {
+        const int m_block = m_candidates[m_idx];
+        const int actual_m = nstl::min(brg.M, m_block);
+        std::array<int, max_n_tile_candidates> n_factors {};
+        size_t n_count = 0;
+
+        constexpr int max_base_n_factor = 4;
+        constexpr std::array<int, 7> preset_n_factors {{1, 2, 4, 6, 8, 9, 16}};
+        for (const int factor : preset_n_factors) {
+            if (factor > max_base_n_factor) {
+                const bool long_reduction_candidate = use_long_reduction_model
+                        && utils::one_of(factor, 6, 8, 9);
+                const bool wide_n_candidate = allow_wide_n_candidates
+                        && utils::one_of(factor, 8, 16);
+                if (!long_reduction_candidate && !wide_n_candidate) continue;
+                const int actual_n = nstl::min(brg.N, factor * micro_n);
+                const double outer_panel_bytes
+                        = static_cast<double>(actual_m) * padded_k
+                        + static_cast<double>(actual_n) * padded_k;
+                if (outer_panel_bytes > wide_n_panel_limit) continue;
+            }
+            append_unique_candidate(
+                    n_factors, n_count, nstl::min(factor, full_n_factor));
+        }
+        append_unique_candidate(n_factors, n_count, full_n_factor);
+
+        const dim_t m_tiles = div_up(
+                static_cast<dim_t>(brg.M), static_cast<dim_t>(m_block));
+        const dim_t m_jobs = m_tiles;
+        // Include candidates targeting roughly one through four jobs/thread.
+        constexpr int max_jobs_per_thread = 4;
+        for (int job_multiplier = 1; job_multiplier <= max_jobs_per_thread;
+                job_multiplier++) {
+            const dim_t target_jobs = static_cast<dim_t>(nthr) * job_multiplier;
+            const dim_t target_n_jobs = nstl::max(
+                    static_cast<dim_t>(1), div_up(target_jobs, m_jobs));
+            const dim_t target_n_block
+                    = rnd_up(div_up(static_cast<dim_t>(brg.N), target_n_jobs),
+                            static_cast<dim_t>(micro_n));
+            const int factor = static_cast<int>(
+                    nstl::min(div_up(target_n_block, micro_n),
+                            static_cast<dim_t>(full_n_factor)));
+            append_unique_candidate(n_factors, n_count, factor);
+        }
+
+        for (size_t n_idx = 0; n_idx < n_count; n_idx++) {
+            const int factor = n_factors[n_idx];
+            const dim_t n_block_dim = static_cast<dim_t>(factor) * micro_n;
+            if (n_block_dim > max_int) continue;
+            const dim_t n_tiles
+                    = div_up(static_cast<dim_t>(brg.N), n_block_dim);
+            if (m_jobs > max_int / n_tiles) continue;
+            const int n_block = static_cast<int>(n_block_dim);
+            const int actual_n = nstl::min(brg.N, n_block);
+            const double b_block_bytes
+                    = static_cast<double>(actual_n) * padded_k;
+            const double b_bytes_per_m_micro
+                    = b_block_bytes / div_up(actual_m, brg.m_blk);
+            if (factor > 1 && b_bytes_per_m_micro > b_stream_limit) continue;
+
+            const float score = score_thread_tiles(brg, m_block, n_block,
+                    micro_n, nthr, padded_k, l1_cache_size, l2_cache_size,
+                    use_long_reduction_model);
+            if (score > best_score) {
+                best_score = score;
+                hint.m_block_sz = m_block;
+                hint.n_block_factor = factor;
+            }
+        }
+    }
+
+    if (hint.n_block_factor == 0) return hint;
+
+    // Short reductions do not amortize an imbalanced wave of outer jobs.
+    // Preserve the established blocking if tuning leaves fewer than two
+    // jobs per thread.
+    constexpr int min_short_reduction_jobs_per_thread = 2;
+    if (brg.K < short_reduction_k) {
+        const dim_t tuned_jobs = div_up(static_cast<dim_t>(brg.M),
+                                         static_cast<dim_t>(hint.m_block_sz))
+                * div_up(static_cast<dim_t>(brg.N),
+                        static_cast<dim_t>(hint.n_block_factor) * micro_n);
+        if (tuned_jobs < static_cast<dim_t>(nthr)
+                        * min_short_reduction_jobs_per_thread)
+            return {};
+    }
+    return hint;
+}
+
+jit_int8_matmul_tile_hint_t get_partitioned_n_tile_hint(
+        const brg_int8_t &brg, int micro_n, int m_block, int target_n_tiles) {
+    const dim_t n_block
+            = rnd_up(div_up(static_cast<dim_t>(brg.N), target_n_tiles),
+                    static_cast<dim_t>(micro_n));
+    jit_int8_matmul_tile_hint_t hint;
+    hint.m_block_sz = m_block;
+    hint.n_block_factor = static_cast<int>(n_block / micro_n);
+    return hint;
+}
+
+jit_int8_matmul_tile_hint_t get_cache_partitioned_tile_hint(
+        const brg_int8_t &brg, int micro_n, double l1_cache_size,
+        double l2_cache_size) {
+    if (l1_cache_size <= 0. || l2_cache_size <= 0.) return {};
+
+    const dim_t padded_k
+            = rnd_up(static_cast<dim_t>(brg.K), static_cast<dim_t>(brg.k_blk));
+    const double a_tile_budget = cache_partition_a_l1_fraction * l1_cache_size;
+    const dim_t cache_m_rows = static_cast<dim_t>(a_tile_budget / padded_k);
+    const dim_t aligned_cache_m_rows
+            = rnd_dn(cache_m_rows, static_cast<dim_t>(brg.m_blk));
+    if (aligned_cache_m_rows < brg.m_blk) return {};
+
+    const dim_t rounded_m
+            = rnd_up(static_cast<dim_t>(brg.M), static_cast<dim_t>(brg.m_blk));
+    const dim_t m_block_dim = nstl::min(rounded_m,
+            nstl::min(aligned_cache_m_rows,
+                    static_cast<dim_t>(max_tuned_m_block)));
+    const int m_block = static_cast<int>(m_block_dim);
+
+    const double b_panel_budget = cache_partition_b_l2_fraction * l2_cache_size;
+    const double total_b_bytes = static_cast<double>(brg.N) * padded_k;
+    const dim_t max_n_tiles
+            = div_up(static_cast<dim_t>(brg.N), static_cast<dim_t>(micro_n));
+    dim_t target_n_tiles
+            = static_cast<dim_t>(std::ceil(total_b_bytes / b_panel_budget));
+    target_n_tiles = nstl::max(
+            static_cast<dim_t>(1), nstl::min(target_n_tiles, max_n_tiles));
+    if (brg.N >= brg.K && target_n_tiles < max_n_tiles) ++target_n_tiles;
+
+    return get_partitioned_n_tile_hint(
+            brg, micro_n, m_block, static_cast<int>(target_n_tiles));
+}
+
+struct jit_int8_matmul_thread_tiles_t {
+    int m_block_sz;
+    int n_block_sz;
+};
+
+jit_int8_matmul_thread_tiles_t get_thread_tiles(const brg_int8_t &brg,
+        int num_threads, size_t simd_bytes, int micro_n,
+        const jit_int8_matmul_tile_hint_t &hint) {
+    jit_int8_matmul_thread_tiles_t tiles;
+    tiles.m_block_sz = hint.m_block_sz;
+    if (hint.n_block_factor > 0) {
+        tiles.n_block_sz = hint.n_block_factor * micro_n;
+        return tiles;
+    }
+
+    tiles.n_block_sz = (brg.ld_block == 6) ? micro_n : 2 * micro_n;
+
+    if (simd_bytes == 16 && brg.ld_block == 6) {
+        int best_n_block_sz = micro_n;
+        const int num_m_tiles = div_up(brg.M, tiles.m_block_sz);
+        const bool mid_m
+                = (brg.M > tiles.m_block_sz) && (brg.M <= 4 * tiles.m_block_sz);
+        const bool small_m = num_m_tiles <= 4;
+
+        const int preferred_factor = (mid_m || small_m) ? 2 : 4;
+        for (int f = preferred_factor; f >= 1; f /= 2) {
+            const int temp_n_block_sz = f * micro_n;
+            const int num_n_tiles = div_up(brg.N, temp_n_block_sz);
+            const dim_t work
+                    = brg.batch * num_m_tiles * static_cast<dim_t>(num_n_tiles);
+            if (work >= num_threads) {
+                best_n_block_sz = temp_n_block_sz;
+                break;
+            }
+        }
+        tiles.n_block_sz = nstl::min(brg.N, best_n_block_sz);
+        if (tiles.n_block_sz % micro_n != 0)
+            tiles.n_block_sz = div_up(tiles.n_block_sz, micro_n) * micro_n;
+    }
+
+    return tiles;
+}
+} // namespace
 
 template <cpu_isa_t isa>
 struct jit_int8_matmul_kernel_t : public jit_generator_t {
@@ -1029,38 +1369,151 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     else
         brg_int8_conf.ld_block = 6;
     const int micro_n = brg_int8_conf.n_blk * brg_int8_conf.ld_block;
-    n_block_sz = (brg_int8_conf.ld_block == 6) ? micro_n : 2 * micro_n;
+    const bool tunable_weights_layout = dims == 2
+            && (weights_d.format_any()
+                    || weights_d.matches_tag(format_tag::BA12b8a));
+    const bool no_zero_points = utils::everyone_is(jit_int8_broadcast_t::none,
+            brg_int8_conf.zp_type_a, brg_int8_conf.zp_type_b,
+            brg_int8_conf.zp_type_c);
 
-    // micro_n is small for 128 bit.
-    // so N tiles can get too tiny and we spend time in OpenMP overhead.
-    // try a coarser N tile (4x/2x/1x) and pick the first that keeps
-    // total work more than num_threads.
-    if (simd_bytes(isa) == 16 && brg_int8_conf.ld_block == 6) {
-        // pick the largest N size that still gives enough work.
-        int best_n_block_sz = micro_n;
-        const int num_m_tiles = div_up(brg_int8_conf.M, m_block_sz);
-        // when M is only a few blocks, starting at 4x can reduce N-parallelism.
-        const bool mid_m = (brg_int8_conf.M > m_block_sz)
-                && (brg_int8_conf.M <= 4 * m_block_sz);
-        const bool small_m = num_m_tiles <= 4;
+    // Empirical boundaries from SVE128
+    constexpr int min_tuning_threads = 32;
+    constexpr int high_thread_count = 96;
+    constexpr dim_t min_tuning_k = 128;
+    constexpr dim_t min_float_tuning_channel = 2048;
+    constexpr dim_t min_cache_partition_channel = 1024;
+    constexpr dim_t min_narrow_f32_tuning_channel = 1280;
+    constexpr dim_t f32_long_reduction_model_min_m = 2048;
+    constexpr dim_t f32_wide_n_candidate_min_m = 2048;
+    constexpr dim_t high_thread_wide_n_min_m = 128;
+    constexpr dim_t low_thread_wide_n_min_m = 24;
+    constexpr dim_t small_m_near_square_max = 64;
+    constexpr dim_t near_square_n_slack_divisor = 15;
+    constexpr dim_t medium_m_min = 128;
+    constexpr dim_t large_m_min = 4096;
+    constexpr dim_t long_reduction_k = 8192;
+    constexpr dim_t wide_n_to_k_ratio = 4;
+    constexpr dim_t reduction_k_to_n_ratio = 2;
+    constexpr dim_t large_reduction_k_to_n_ratio = 3;
+    const dim_t m = brg_int8_conf.M;
+    const dim_t n = brg_int8_conf.N;
+    const dim_t k = brg_int8_conf.K;
+    const dim_t padded_k = rnd_up(k, static_cast<dim_t>(brg_int8_conf.k_blk));
+    const double l1_cache_size = platform::get_per_core_cache_size(1);
+    const double l2_cache_size = platform::get_per_core_cache_size(2);
+    const double max_a_tile_bytes
+            = static_cast<double>(
+                      nstl::min(m, static_cast<dim_t>(max_tuned_m_block)))
+            * padded_k;
+    const dim_t wide_n_min_m = num_threads >= high_thread_count
+            ? high_thread_wide_n_min_m
+            : low_thread_wide_n_min_m;
+    const bool wide_n = m >= wide_n_min_m && n >= wide_n_to_k_ratio * k;
+    const bool medium_m_reduction = m >= medium_m_min && m < large_m_min
+            && k >= reduction_k_to_n_ratio * n;
+    const bool large_prefill = m >= large_m_min && k < long_reduction_k
+            && (num_threads < high_thread_count || n <= k
+                    || n >= wide_n_to_k_ratio * k);
+    const dim_t min_channel = nstl::min(k, n);
+    const bool fp32_tune_threshold = min_channel >= min_float_tuning_channel;
+    const bool fp32_tune_shape = fp32_tune_threshold
+            && (wide_n || medium_m_reduction || large_prefill);
+    const bool small_gemv = m == 1 && k < long_reduction_k;
 
-        const int preferred_factor = (mid_m || small_m) ? 2 : 4;
-        for (int f = preferred_factor; f >= 1; f /= 2) {
-            const int temp_n_block_sz = f * micro_n;
-            const int num_n_tiles = div_up(brg_int8_conf.N, temp_n_block_sz);
-            const int work
-                    = (int)brg_int8_conf.batch * num_m_tiles * num_n_tiles;
-            if (work >= num_threads) {
-                best_n_block_sz = temp_n_block_sz;
-                break;
-            }
+    const bool large_m_cache_pressure = m >= large_m_min
+            && k >= large_reduction_k_to_n_ratio * n
+            && max_a_tile_bytes > l2_stream_fraction * l2_cache_size;
+
+    bool tune_dst = false;
+    bool use_cache_partition = false;
+    bool use_micro_m_block_limit = false;
+    bool use_long_reduction_model = false;
+    bool allow_wide_n_candidates = false;
+    jit_int8_matmul_tile_hint_t cache_partition_hint;
+    switch (dst_type) {
+        case f32: {
+            const dim_t max_channel = nstl::max(k, n);
+            const bool cache_partition_shape = large_prefill
+                    && min_channel >= min_cache_partition_channel
+                    && min_channel < min_narrow_f32_tuning_channel
+                    && max_channel <= wide_n_to_k_ratio * min_channel
+                    && l1_cache_size > 0. && l2_cache_size > 0.
+                    && static_cast<double>(brg_int8_conf.m_blk) * padded_k
+                            <= cache_partition_a_l1_fraction * l1_cache_size
+                    && static_cast<double>(n) * padded_k
+                            >= cache_partition_min_b_l2_fraction
+                                    * l2_cache_size;
+            if (cache_partition_shape)
+                cache_partition_hint = get_cache_partitioned_tile_hint(
+                        brg_int8_conf, micro_n, l1_cache_size, l2_cache_size);
+            use_cache_partition = cache_partition_hint.n_block_factor > 0
+                    && div_up(m,
+                               static_cast<dim_t>(
+                                       cache_partition_hint.m_block_sz))
+                            >= num_threads;
+
+            const bool tune_narrow_large_prefill = large_prefill
+                    && min_channel >= min_narrow_f32_tuning_channel
+                    && min_channel < min_float_tuning_channel;
+            const bool small_m_near_square = m >= 16
+                    && m <= small_m_near_square_max && n >= k
+                    && n - k <= k / near_square_n_slack_divisor;
+            const bool tune_small_m_near_square
+                    = fp32_tune_threshold && small_m_near_square;
+            const bool tune_cache_pressure
+                    = fp32_tune_threshold && large_m_cache_pressure;
+            const bool k_dominant_long_reduction = k >= long_reduction_k
+                    && k >= large_reduction_k_to_n_ratio * n;
+            // Use the long-reduction search and scoring model from M=2048 onward
+            // when K is at least 8192.
+            use_long_reduction_model = fp32_tune_threshold
+                    && m >= f32_long_reduction_model_min_m
+                    && k_dominant_long_reduction;
+            allow_wide_n_candidates = m >= f32_wide_n_candidate_min_m
+                    && (wide_n || large_prefill);
+            use_micro_m_block_limit
+                    = tune_cache_pressure || use_long_reduction_model;
+            tune_dst = (!large_m_cache_pressure || tune_cache_pressure)
+                    && (fp32_tune_shape || tune_narrow_large_prefill
+                            || tune_small_m_near_square || tune_cache_pressure
+                            || use_long_reduction_model || use_cache_partition);
+            break;
         }
-        n_block_sz = std::min<int>(brg_int8_conf.N, best_n_block_sz);
-        // keep the coarsened tile but align it to micro_n so that the last tile
-        // is correctly handled by the tail kernel when needed.
-        if (n_block_sz % micro_n != 0) {
-            n_block_sz = div_up(n_block_sz, micro_n) * micro_n;
+        case bf16: tune_dst = !large_m_cache_pressure && fp32_tune_shape; break;
+        case s32: tune_dst = !large_m_cache_pressure; break;
+        default: break;
+    }
+
+    // Tune only outer M/N partitioning; preserve the established micro-N and
+    // packed-weight layout.
+    const bool use_tile_tuner = m > 0 && num_threads >= min_tuning_threads
+            && simd_bytes(isa) == 16 && brg_int8_conf.ld_block == 6
+            && k >= min_tuning_k && tunable_weights_layout && no_zero_points
+            && attr()->post_ops_.len() == 0 && !with_bias() && is_s8
+            && !small_gemv && tune_dst;
+    jit_int8_matmul_tile_hint_t tile_hint;
+    if (use_tile_tuner) {
+        if (use_cache_partition) {
+            tile_hint = cache_partition_hint;
+        } else {
+            const int max_search_m_block = use_micro_m_block_limit
+                    ? brg_int8_conf.m_blk
+                    : max_tuned_m_block;
+            tile_hint = get_thread_tile_hint(brg_int8_conf, num_threads,
+                    micro_n, max_search_m_block, allow_wide_n_candidates,
+                    use_long_reduction_model);
         }
+    }
+    const auto thread_tiles = get_thread_tiles(
+            brg_int8_conf, num_threads, simd_bytes(isa), micro_n, tile_hint);
+    m_block_sz = thread_tiles.m_block_sz;
+    n_block_sz = thread_tiles.n_block_sz;
+    if (use_tile_tuner && tile_hint.n_block_factor > 0) {
+        VDEBUGINFO(1, primitive, matmul,
+                "jit_int8_matmul autotuner: policy=%s M=%ld N=%ld K=%ld "
+                "nthr=%d m_block=%d n_block=%d",
+                use_cache_partition ? "cache_partition" : "scored", (long)m,
+                (long)n, (long)k, num_threads, m_block_sz, n_block_sz);
     }
 
     int num_a_blocks = div_up(brg_int8_conf.M, m_block_sz);

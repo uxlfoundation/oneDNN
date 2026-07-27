@@ -387,6 +387,24 @@ onednn_option(AARCH64_USE_ACL OFF "Enables use of AArch64 optimised functions
     functioning Compute Library build available at the location specified by the
     environment variable ACL_ROOT_DIR.")
 
+# KleidiAI defaults to ON on supported platforms/configurations
+set(_dnnl_aarch64_use_kai_supported ON)
+if(NOT DNNL_TARGET_ARCH STREQUAL "AARCH64"
+        OR DNNL_CPU_RUNTIME STREQUAL "THREADPOOL"
+        OR MSVC)
+    set(_dnnl_aarch64_use_kai_supported OFF)
+endif()
+onednn_option(AARCH64_USE_KAI ${_dnnl_aarch64_use_kai_supported}
+    "Enables AArch64 KleidiAI-based implementations.")
+
+if(NOT _dnnl_aarch64_use_kai_supported AND DNNL_AARCH64_USE_KAI)
+    # Force users to rethink and reconfigure if the cached value was
+    # previously ON or user explicitly requested KAI for unsupported configuration.
+    message(FATAL_ERROR
+        "KleidiAI is not supported for non-AArch64 targets and is not "
+        "yet supported for threadpool runtime or MSVC")
+endif()
+
 # ===========
 # GPU options
 # ===========

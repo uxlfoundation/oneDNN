@@ -1,5 +1,6 @@
 #===============================================================================
 # Copyright 2016-2024 Intel Corporation
+# Copyright 2020, 2026 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -106,6 +107,10 @@ include("cmake/build_types.cmake")
 include("cmake/testing.cmake")
 include("cmake/host_compiler.cmake")
 include("cmake/configuring_primitive_list.cmake")
+
+if(DNNL_AARCH64_USE_KAI)
+    add_definitions_with_host_compiler(-DDNNL_AARCH64_USE_KAI=1)
+endif()
 
 if(UNIX OR MINGW)
     # CMAKE_<lang>_STANDARD support, so set it to our defaults, unless

@@ -823,7 +823,7 @@ public:
     }
 
 private:
-    object_map_t<expr_t, std::vector<relation_t>> relations_;
+    const object_map_t<expr_t, std::vector<relation_t>> &relations_;
 };
 
 // TODO: Add integers check (only integers can be constrained).
@@ -834,6 +834,10 @@ public:
     }
 
     void add_constraint(const expr_t &e);
+
+    bool is_empty() const {
+        return relations_.empty() && modulus_infos_.empty();
+    }
 
     bool can_prove(const expr_t &e, bool try_simplify = true) const {
         auto ret = can_prove_impl(e, /*do_simplify=*/false);

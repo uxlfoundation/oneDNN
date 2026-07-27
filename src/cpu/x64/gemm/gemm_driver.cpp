@@ -135,7 +135,8 @@ static inline void add_results(const dim_t m, const dim_t n, const float alpha,
                         c_float += (double)ctemp;
                         round_to_nearest(&c_data[i + j * ldc], c_float);
                     } else {
-                        c_data[i + j * ldc] *= beta;
+                        c_data[i + j * ldc] = static_cast<c_type>(
+                                static_cast<float>(c_data[i + j * ldc]) * beta);
                         c_data[i + j * ldc] += ctemp;
                     }
                 }
@@ -149,7 +150,8 @@ static inline void add_results(const dim_t m, const dim_t n, const float alpha,
                         c_float -= (double)ctemp;
                         round_to_nearest(&c_data[i + j * ldc], c_float);
                     } else {
-                        c_data[i + j * ldc] *= beta;
+                        c_data[i + j * ldc] = static_cast<c_type>(
+                                static_cast<float>(c_data[i + j * ldc]) * beta);
                         c_data[i + j * ldc] -= ctemp;
                     }
                 }
@@ -159,7 +161,8 @@ static inline void add_results(const dim_t m, const dim_t n, const float alpha,
                         double c_float = alpha * (double)ctemp;
                         round_to_nearest(&c_data[i + j * ldc], c_float);
                     } else {
-                        c_data[i + j * ldc] = alpha * ctemp;
+                        c_data[i + j * ldc] = static_cast<c_type>(
+                                alpha * static_cast<float>(ctemp));
                     }
 
                 } else {
@@ -168,8 +171,11 @@ static inline void add_results(const dim_t m, const dim_t n, const float alpha,
                                 + beta * (double)c_data[i + j * ldc];
                         round_to_nearest(&c_data[i + j * ldc], c_float);
                     } else {
-                        c_data[i + j * ldc] *= beta;
-                        c_data[i + j * ldc] += alpha * ctemp;
+                        c_data[i + j * ldc] = static_cast<c_type>(
+                                static_cast<float>(c_data[i + j * ldc]) * beta);
+                        c_data[i + j * ldc] = static_cast<c_type>(
+                                static_cast<float>(c_data[i + j * ldc])
+                                + alpha * static_cast<float>(ctemp));
                     }
                 }
             }
@@ -423,8 +429,8 @@ void gemm_kernel(dim_t m, dim_t n, const dim_t k, const float alpha,
     c_type *row_offset = row_offset_ws ? row_offset_ws : row_offset_stk;
 
     if (is_int8) {
-        c_type ao = arg->ao;
-        c_type bo = arg->bo;
+        c_type ao = static_cast<c_type>(arg->ao);
+        c_type bo = static_cast<c_type>(arg->bo);
         c_type co_0 = offsetc == offset_type::none ? 0 : co[0];
 
         if (bo != 0 || offsetc == offset_type::column) col_req = true;
@@ -952,7 +958,9 @@ static inline bool nocopy_checker_avx2(const int nthr, const int transa,
     static const double FORCE_NOCOPY_THRESH = 0.0038;
 
     // Crude threshold to nocopy kernels if copy overhead is significant.
-    if (1.0 / m + 1.0 / n >= FORCE_NOCOPY_THRESH) { return true; }
+    if (1.0 / (double)m + 1.0 / (double)n >= FORCE_NOCOPY_THRESH) {
+        return true;
+    }
 
     const dim_t LIMIT = 378;
     if (m <= LIMIT && n <= LIMIT && k >= nthr * LIMIT) return false;
@@ -1008,7 +1016,7 @@ static inline bool nocopy_checker_avx512(int nthr, const int transa,
         return false;
 
     // Crude threshold for nocopy kernels if copy overhead is significant.
-    if (1.0 / m + 1.0 / n >= FORCE_NOCOPY_THRESH
+    if (1.0 / (double)m + 1.0 / (double)n >= FORCE_NOCOPY_THRESH
             && !(is_lda_verybad && is_NT)) {
         return true;
     }
@@ -1281,11 +1289,11 @@ static inline void set_thread_opts_pack(int nthrs,
         block_z = utils::rnd_up(block_z, block_align);
         thread_z = num_blk * block_z;
         if (thread_z * nthr_z > size_z)
-            nthr_z = utils::div_up(size_z, thread_z);
+            nthr_z = static_cast<int>(utils::div_up(size_z, thread_z));
     };
 
     auto choose_m_blocking = [&]() {
-        auto align = get_vector_length<c_type>();
+        dim_t align = get_vector_length<c_type>();
         align = do_m_blocking_only ? arg->um : align;
         choose_blocking(m, thread_m, nthr_m, arg->bm, block_m, align);
     };
@@ -1623,9 +1631,9 @@ static inline void adjust_thread_count(dim_t m, dim_t n, dim_t k, int *nthrs) {
     if (is_only_avx2)
         if (m > 10 * n && n < *nthrs)
             if (m / *nthrs < veclen * 3)
-                *nthrs = nstl::max(m / veclen / 3, dim_t(1));
+                *nthrs = static_cast<int>(nstl::max(m / veclen / 3, dim_t(1)));
 
-    double gemm_cycles = m * n * k / fp_per_cycle;
+    double gemm_cycles = (double)(m * n * k) / fp_per_cycle;
     gemm_cycles *= is_f32 ? 2.0 : 8.0;
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL

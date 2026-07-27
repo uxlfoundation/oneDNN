@@ -43,12 +43,14 @@ struct jit_uni_rnn_cell_postgemm_bwd : public jit_uni_rnn_postgemm_t {
 protected:
     // register size in bytes
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t hstate_dt_size = sizeof(float);
-    const size_t vlen_scratch
+    static constexpr dim_t vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr dim_t hstate_dt_size = sizeof(float);
+    const dim_t vlen_scratch
             = vlen / (sizeof(float) / types::data_type_size(scratch_data_t));
-    const size_t gate_dt_size = types::data_type_size(scratch_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
+    const dim_t gate_dt_size
+            = static_cast<dim_t>(types::data_type_size(scratch_data_t));
+    const dim_t scratch_dt_size
+            = static_cast<dim_t>(types::data_type_size(scratch_data_t));
 
     void generate() override {
         using namespace Xbyak;
@@ -98,7 +100,7 @@ protected:
         // };
 
         // initialize registers with addresses and constants
-        init_regs(vlen);
+        init_regs(static_cast<size_t>(vlen));
 
         mov(table_reg, table_one_label);
         uni_vmovups(Vmm(one_idx), ptr[table_reg]);
@@ -119,7 +121,7 @@ protected:
             const Vmm G(G_idx), dG(dG_idx), dHt(dHt_idx), tmp1(tmp1_idx),
                     one(one_idx), zero(zero_idx), alpha(alpha_idx);
 
-            to_float(G, wg_addr(0), src_data_t, vlen);
+            to_float(G, wg_addr(0), src_data_t, static_cast<int>(vlen));
 
             // compute dHt
             uni_vmovups(dHt, ptr[addr_diff_states_tp1_l_reg]);
@@ -156,14 +158,14 @@ protected:
             uni_vmulps(dG, dG, dHt);
 
             // downconvert and write data
-            to_src(sg_addr(0), dG, scratch_data_t, vlen);
+            to_src(sg_addr(0), dG, scratch_data_t, static_cast<int>(vlen));
 
             // increment address pointers
             add(addr_ws_gates_reg, vlen_scratch);
             add(addr_scratch_gates_reg, vlen_scratch);
             add(addr_diff_states_t_lp1_reg, vlen);
             add(addr_diff_states_tp1_l_reg, vlen);
-            inc_regs(vlen);
+            inc_regs(static_cast<size_t>(vlen));
 
             // increment loop counter
             sub(loop_cnt, vlen_scratch);
@@ -181,7 +183,8 @@ protected:
             const Xmm G(G_idx), dG(dG_idx), dHt(dHt_idx), tmp1(tmp1_idx),
                     one(one_idx), zero(zero_idx), alpha(alpha_idx);
 
-            to_float(G, wg_addr(0), src_data_t, hstate_dt_size);
+            to_float(G, wg_addr(0), src_data_t,
+                    static_cast<int>(hstate_dt_size));
 
             // compute dHt
             uni_vmovss(dHt, ptr[addr_diff_states_tp1_l_reg]);
@@ -213,14 +216,15 @@ protected:
             uni_vmulps(dG, dG, dHt);
 
             // downconvert and write data
-            to_src(sg_addr(0), dG, scratch_data_t, hstate_dt_size);
+            to_src(sg_addr(0), dG, scratch_data_t,
+                    static_cast<int>(hstate_dt_size));
 
             // increment address pointers
             add(addr_ws_gates_reg, scratch_dt_size);
             add(addr_scratch_gates_reg, scratch_dt_size);
             add(addr_diff_states_t_lp1_reg, hstate_dt_size);
             add(addr_diff_states_tp1_l_reg, hstate_dt_size);
-            inc_regs(hstate_dt_size);
+            inc_regs(static_cast<size_t>(hstate_dt_size));
 
             // increment loop counter
             sub(loop_cnt, scratch_dt_size);
@@ -232,7 +236,7 @@ protected:
         postamble();
 
         // inject the constant table for the activation
-        init_table(vlen);
+        init_table(static_cast<size_t>(vlen));
         L(table_one_label);
         {
             for (size_t i = 0; i < vlen / sizeof(float); i++)

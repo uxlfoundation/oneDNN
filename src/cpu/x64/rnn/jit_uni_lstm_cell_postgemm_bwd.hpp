@@ -64,17 +64,17 @@ protected:
     std::unique_ptr<injector_t> tanh_injector_;
 
     // register size in bytes
-    static constexpr size_t vlen_ = cpu_isa_traits_t<isa>::vlen;
-    const size_t vlen_c_states_ = vlen_ / (sizeof(float) / cstate_dt_size_);
+    static constexpr dim_t vlen_ = cpu_isa_traits_t<isa>::vlen;
+    const dim_t vlen_c_states_ = vlen_ / (sizeof(float) / cstate_dt_size_);
 
-    static constexpr size_t diff_cstate_dt_size_ = sizeof(float);
-    static constexpr size_t hstate_dt_size_ = sizeof(float);
-    static constexpr size_t weights_peephole_dt_size_ = sizeof(float);
+    static constexpr dim_t diff_cstate_dt_size_ = sizeof(float);
+    static constexpr dim_t hstate_dt_size_ = sizeof(float);
+    static constexpr dim_t weights_peephole_dt_size_ = sizeof(float);
 
-    const size_t vlen_scratch_
+    const dim_t vlen_scratch_
             = vlen_ / (sizeof(float) / types::data_type_size(scratch_data_t));
-    const size_t gate_dt_size_ = types::data_type_size(scratch_data_t);
-    const size_t scratch_dt_size_ = types::data_type_size(scratch_data_t);
+    const dim_t gate_dt_size_ = types::data_type_size(scratch_data_t);
+    const dim_t scratch_dt_size_ = types::data_type_size(scratch_data_t);
 
     void generate() override {
         using namespace Xbyak;

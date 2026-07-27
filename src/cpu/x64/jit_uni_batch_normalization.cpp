@@ -2202,7 +2202,7 @@ struct driver_t {
         p.N_ithr = SP_N_ithr;
         p.N_nthr = SP_N_nthr;
 
-        int global_C_blk_s;
+        dim_t global_C_blk_s;
         int global_barriers_per_iter = jbp_.C_nthr_;
 
         for (int64_t it = 0; it < jbp_.iters_; it++) {
@@ -2223,8 +2223,8 @@ struct driver_t {
                             : it * jbp_.C_blks_per_iter_ + C_blk_s
                                                : C_blk_s;
 
-            int C_blks_thr = C_blk_e - C_blk_s;
-            int N_thr = N_e - N_s;
+            dim_t C_blks_thr = C_blk_e - C_blk_s;
+            dim_t N_thr = N_e - N_s;
 
             if (C_blks_thr == 0 || N_thr == 0) continue;
 
@@ -2290,7 +2290,7 @@ struct driver_t {
     void init_barriers(const memory_tracking::grantor_t &scratchpad) {
         auto barriers = scratchpad.get<barrier::ctx_64_t>(key_barrier);
         if (barriers) {
-            const int n_barriers = get_c_padded(pd_) / simd_w;
+            const dim_t n_barriers = get_c_padded(pd_) / simd_w;
             for (int i = 0; i < n_barriers; ++i)
                 barrier::ctx_init(&barriers[i]);
         }

@@ -110,8 +110,8 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         max_regs = isa == isa_undef ? 0 : isa_num_vregs(isa);
     }
 
-    int ur, ur_block, ur_block_tail, adj_ocblock;
-    int nb_kd, nb_kh, nb_kw;
+    dim_t ur, ur_block, ur_block_tail, adj_ocblock;
+    dim_t nb_kd, nb_kh, nb_kw;
     int max_regs;
     float eff;
     static unsigned L1;
@@ -125,7 +125,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     static float mem_k;
     static constexpr int bench_iterations = 1;
 
-    int sp, sp_block, nb_sp;
+    dim_t sp, sp_block, nb_sp;
 
     void get_from_jcp(const jit_brgemm_conv_conf_t &jcp) { *this = jcp; }
     void save_to_jcp(jit_brgemm_conv_conf_t &jcp) const { jcp = *this; }
@@ -145,8 +145,8 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     void update_blocks();
     bool fast_check_oc_block() const;
     float est_eff();
-    void iterate_ker_block(brg_blocking_t &best_brgb, int kd_block,
-            int kh_block, bool maybe_use_buffer, int max_ow_block_thr);
+    void iterate_ker_block(brg_blocking_t &best_brgb, dim_t kd_block,
+            dim_t kh_block, bool maybe_use_buffer, dim_t max_ow_block_thr);
     status_t calc_blocks();
 
     bool fast_check_oc_block_1x1() const;
@@ -154,8 +154,8 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     void calc_blocks_1x1();
 
     // utils
-    static int get_inp_size(
-            int max_src_size, int dst_size, int k, int stride, int dilate) {
+    static dim_t get_inp_size(dim_t max_src_size, dim_t dst_size, dim_t k,
+            dim_t stride, dim_t dilate) {
         const auto res = nstl::min(max_src_size,
                 calculate_end_padding(0, dst_size, 0, stride,
                         calculate_extended_filter_size(k, dilate)));
@@ -169,7 +169,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         return (k > 1.f) ? (k - 1 + eff) / k : eff * koeff;
     }
 
-    static int estimate_ur(cpu_isa_t isa, int oc_block) {
+    static int estimate_ur(cpu_isa_t isa, dim_t oc_block) {
         if (one_of(isa, avx2, avx2_vnni, avx2_vnni_2)) {
             switch (oc_block) {
                 case 32: return 3;
@@ -187,16 +187,19 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         }
     }
 
-    int inp_w(int out_w, int ker_w) const {
+    dim_t inp_w(dim_t out_w, dim_t ker_w) const {
         return get_inp_size(iw, out_w, ker_w, stride_w, dilate_w);
     }
 
-    int rnd_simd(int val) const { return rnd_up(val, simd_w); }
+    dim_t rnd_simd(dim_t val) const {
+        return rnd_up(val, static_cast<dim_t>(simd_w));
+    }
 
-    int rnd_inp_simd(int out_w, int ker_w, int vic) const {
+    dim_t rnd_inp_simd(dim_t out_w, dim_t ker_w, dim_t vic) const {
         const auto vsp = inp_w(out_w, ker_w);
-        return ((stride_w == 1 && vic >= ic) ? rnd_up(vsp * vic, simd_w)
-                                             : vsp * rnd_up(vic, simd_w));
+        return ((stride_w == 1 && vic >= ic)
+                        ? rnd_up(vsp * vic, static_cast<dim_t>(simd_w))
+                        : vsp * rnd_up(vic, static_cast<dim_t>(simd_w)));
     }
     dim_t grid_coverage(
             dim_t nb, dim_t x, dim_t nx, dim_t xb, dim_t y, dim_t yb);
@@ -216,15 +219,17 @@ dim_t get_comp_ow_size(const jit_brgemm_conv_conf_t &jcp) {
 
     for (int ow = 0; ow < jcp.ow;) {
         const auto iiw = ow * SW - LP;
-        const auto kw_s = div_up(nstl::max(0, -iiw), DW);
-        const auto kw_f
-                = KW - div_up(nstl::max(0, iiw - IW + (KW - 1) * DW + 1), DW);
+        const auto kw_s = div_up(nstl::max<dim_t>(0, -iiw), DW);
+        const auto kw_f = KW
+                - div_up(nstl::max<dim_t>(0, iiw - IW + (KW - 1) * DW + 1), DW);
         int ow_e = ow;
         while (ow_e < jcp.ow) {
             const auto iiw_e = ow_e * SW - LP;
-            const auto cur_kw_s = div_up(nstl::max(0, -iiw_e), DW);
+            const auto cur_kw_s = div_up(nstl::max<dim_t>(0, -iiw_e), DW);
             const auto cur_kw_f = KW
-                    - div_up(nstl::max(0, iiw_e - IW + (KW - 1) * DW + 1), DW);
+                    - div_up(
+                            nstl::max<dim_t>(0, iiw_e - IW + (KW - 1) * DW + 1),
+                            DW);
             if (cur_kw_s != kw_s || cur_kw_f != kw_f) break;
             if (ow_e - ow < jcp.ow_block) comp_ow_size++;
             ow_e++;
@@ -454,13 +459,13 @@ void brg_blocking_t::select_ic_block() {
         MAYBE_UNUSED(ic_padded_block);
         // Note: bf32 and tf32 require ic_block be less than 64, otherwise it results
         // in incorrect output.
-        ic_block = is_xf32 && (!is_rtus) ? nstl::min(64, ic) : ic;
+        ic_block = is_xf32 && (!is_rtus) ? nstl::min<dim_t>(64, ic) : ic;
         nb_ic = utils::div_up(ic, ic_block); // trivially 1 for now
         inp_ic_block = ic_block;
         return;
     }
     auto nb_simd = utils::div_up(ic, simd_w);
-    auto max_simd_blocks = nstl::min(5 * simd_w, nb_simd);
+    auto max_simd_blocks = nstl::min<dim_t>(5 * simd_w, nb_simd);
     const auto nb_icb_eff_threshold = 0.5f;
     const auto padded_rd
             = vnni_block * (is_rd_padded_to_block ? acc_simd_w : 1);
@@ -489,10 +494,10 @@ void brg_blocking_t::select_ic_block() {
             if (exec_type == exec_trans) {
                 // TODO: double check calculation of ic_block here:
                 // for example for ic == 48
-                auto simd_blocks = 1;
-                for (int nb_icb = max_simd_blocks; nb_icb >= 1; nb_icb--) {
+                dim_t simd_blocks = 1;
+                for (dim_t nb_icb = max_simd_blocks; nb_icb >= 1; nb_icb--) {
                     auto nb_icb_eff = static_cast<float>(nb_simd)
-                            / rnd_up(nb_simd, nb_icb);
+                            / static_cast<float>(rnd_up(nb_simd, nb_icb));
                     if (nb_icb_eff >= nb_icb_eff_threshold) {
                         simd_blocks = nb_icb;
                         break;
@@ -504,20 +509,20 @@ void brg_blocking_t::select_ic_block() {
         }
     } else {
         const auto est_ur = sp_block > 0
-                ? nstl::min(sp_block, estimate_ur(isa, oc_block))
+                ? nstl::min<dim_t>(sp_block, estimate_ur(isa, oc_block))
                 : estimate_ur(isa, oc_block);
         const auto inp_ur = is_os_blocking ? est_ur : inp_w(est_ur, kw_block);
 
         if (kw_block > 1) {
             // try to fit src into L1
             const auto inp_per_ic = static_cast<unsigned int>(inp_ur) * src_dsz;
-            max_simd_blocks = saturate(1, max_simd_blocks,
-                    static_cast<int>(L1 / (inp_per_ic * simd_w)));
+            max_simd_blocks = utils::saturate<dim_t>(1, max_simd_blocks,
+                    static_cast<dim_t>(L1 / (inp_per_ic * simd_w)));
         }
         // try to fit all batch for ur into L2
         const bool adjust = wei_plain && math::is_pow2(oc)
                 && utils::everyone_is(1, kd_block, kh_block, kw_block);
-        const int adj_oc_block = adjust ? oc : oc_block; // due to aliasing
+        const dim_t adj_oc_block = adjust ? oc : oc_block; // due to aliasing
         const auto wei_per_ic = static_cast<unsigned int>(kd_block) * kh_block
                 * kw_block * adj_oc_block * wei_dsz;
         const auto inp_per_ic = static_cast<unsigned int>(kd_block) * kh_block
@@ -525,8 +530,8 @@ void brg_blocking_t::select_ic_block() {
         const auto out_size
                 = static_cast<unsigned int>(ur) * oc_block * dst_dsz;
 
-        max_simd_blocks = saturate(1, max_simd_blocks,
-                static_cast<int>((L2 - out_size)
+        max_simd_blocks = utils::saturate<dim_t>(1, max_simd_blocks,
+                static_cast<dim_t>((L2 - out_size)
                         / ((wei_per_ic + inp_per_ic) * simd_w)));
 
         // use nb_simd as max_simd_blocks for some shapes on avx2
@@ -535,17 +540,18 @@ void brg_blocking_t::select_ic_block() {
             max_simd_blocks = nb_simd;
 
         auto simd_blocks = 1;
-        for (int nb_icb = nstl::min(max_simd_blocks, nb_simd); nb_icb >= 1;
-                nb_icb--) {
-            auto nb_icb_eff
-                    = static_cast<float>(nb_simd) / rnd_up(nb_simd, nb_icb);
+        for (int nb_icb
+                = static_cast<int>(nstl::min<dim_t>(max_simd_blocks, nb_simd));
+                nb_icb >= 1; nb_icb--) {
+            auto nb_icb_eff = static_cast<float>(nb_simd)
+                    / static_cast<float>(rnd_up(nb_simd, nb_icb));
             if (nb_icb_eff >= nb_icb_eff_threshold) {
                 simd_blocks = nb_icb;
                 break;
             }
         }
 
-        ic_block = nstl::min(
+        ic_block = nstl::min<dim_t>(
                 exec_type == exec_trans ? rnd_up(ic, padded_rd) : ic,
                 simd_blocks * simd_w);
     }
@@ -663,14 +669,15 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     brgattr.use_uker = use_uker;
     brgattr.max_bs = max_batch;
     max_vpad = exec_type == exec_vpad ? nstl::max(l_pad, r_pad) : 0;
-    brgattr.max_top_vpad = max_vpad;
-    brgattr.max_bottom_vpad = max_vpad;
+    brgattr.max_top_vpad = static_cast<int>(max_vpad);
+    brgattr.max_bottom_vpad = static_cast<int>(max_vpad);
     CHECK(brgemm_desc_set_attr(&brg, brgattr));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     // AMX kernel may fall back to VMM, in which case bd_block2 == 0
-    ur = brg.bd_block * nstl::max(1, brg.bd_block2);
+    ur = brg.bd_block * nstl::max<dim_t>(1, brg.bd_block2);
     ur_block = brg.bd_block;
-    adj_ocblock = nstl::max(1, (brg.ldb2 != 0 ? brg.ld_block2 : brg.ldb2_tail));
+    adj_ocblock = nstl::max<dim_t>(
+            1, (brg.ldb2 != 0 ? brg.ld_block2 : brg.ldb2_tail));
     if (((is_1x1 && is_amx(isa)) || max_vpad > 0) && M > 0 && M_tail > 0) {
         brgemm_desc_t brg_sp_tail;
 
@@ -764,8 +771,8 @@ status_t brg_blocking_t::get_brgemm_ur(
         brgattr.use_uker = use_uker;
         brgattr.max_bs = max_batch;
         max_vpad = exec_type == exec_vpad ? nstl::max(l_pad, r_pad) : 0;
-        brgattr.max_top_vpad = max_vpad;
-        brgattr.max_bottom_vpad = max_vpad;
+        brgattr.max_top_vpad = static_cast<int>(max_vpad);
+        brgattr.max_bottom_vpad = static_cast<int>(max_vpad);
         brgattr.fpmath_mode = attr->fpmath_.mode_;
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
 
@@ -873,20 +880,27 @@ float brg_blocking_t::est_eff() {
     const auto N_regs = static_cast<float>(adj_ocblock);
     const auto M_regs = is_amx(isa) ? div_up(ur, amx_h) : ur;
     const auto tot_regs = is_amx(isa) ? brgemm_desc_t::AMX_TILES_NUM : max_regs;
-    const auto brgemm_microkernel_eff
-            = (N_regs * M_regs) / ((N_regs + M_regs) * tot_regs);
+    const auto brgemm_microkernel_eff = (N_regs * static_cast<float>(M_regs))
+            / ((N_regs + static_cast<float>(M_regs))
+                    * static_cast<float>(tot_regs));
 
-    const auto ur_eff = static_cast<float>(sp_block) / rnd_up(sp_block, ur);
-    const auto brgemm_eff = squeeze_val(ur
-                    * (2.f - nstl::min(1.9f, static_cast<float>(ur) / sp_block))
+    const auto ur_eff = static_cast<float>(sp_block)
+            / static_cast<float>(rnd_up(sp_block, ur));
+    const auto brgemm_eff = squeeze_val(static_cast<float>(ur)
+                    * (2.f
+                            - nstl::min(1.9f,
+                                    static_cast<float>(ur)
+                                            / static_cast<float>(sp_block)))
                     / 64,
             0.5f);
 
     const dim_t sp_amount = static_cast<dim_t>(nb_od) * nb_oh * nb_sp;
     const auto work_amount = sp_amount * mb * ngroups * nb_oc;
-    const auto sp_eff = (static_cast<float>(sp) / rnd_up(sp, sp_block));
+    const auto sp_eff = (static_cast<float>(sp)
+            / static_cast<float>(rnd_up(sp, sp_block)));
 
-    const auto oc_block_eff = static_cast<float>(oc) / rnd_up(oc, oc_block);
+    const auto oc_block_eff
+            = static_cast<float>(oc) / static_cast<float>(rnd_up(oc, oc_block));
 
     const auto job = div_up(work_amount, static_cast<dim_t>(nthr));
 
@@ -903,7 +917,7 @@ float brg_blocking_t::est_eff() {
 
     const float job_eff = max_job == 0
             ? 1.f
-            : static_cast<float>(sum_job) / (max_job * nthr);
+            : static_cast<float>(sum_job) / static_cast<float>(max_job * nthr);
 
     const auto ic_blocking_size = ic_block * nb_ic_blocking;
     const auto oc_blocking_size = oc_block * ic_blocking_size;
@@ -913,14 +927,14 @@ float brg_blocking_t::est_eff() {
     // -- brgemm kernel: loop by simd_w  --
     l++;
     const auto inp_ur = inp_w(ur, kw_block);
-    loop[l].src.set(inp_ur * simd_w, 1, acc_simd_w);
+    loop[l].src.set(inp_ur * simd_w, 1, static_cast<float>(acc_simd_w));
     loop[l].dst.set(0, 1);
     loop[l].wei.set(oc_block, 1);
 
     // -- brgemm kernel: loop by kw in kw_block  --
     l++;
     auto src_is = rnd_inp_simd(ur, kw_block, ic_blocking_size);
-    loop[l].src.set(src_is, 1, kw_block);
+    loop[l].src.set(src_is, 1, static_cast<float>(kw_block));
     loop[l].dst.set(0, 1);
     loop[l].wei.set(oc_blocking_size, 1);
 
@@ -937,21 +951,22 @@ float brg_blocking_t::est_eff() {
     loop[l].dst.set(ur * oc_block, 1);
     wei_is = static_cast<dim_t>(kd_block) * kh_block * kw_block
             * oc_blocking_size;
-    loop[l].wei.set(wei_is, nb_ur);
+    loop[l].wei.set(wei_is, static_cast<float>(nb_ur));
 
     // -- harness: loop by k_blocks in ks --
     l++;
     loop[l].src.set(kd_block * kh_block
                     * rnd_inp_simd(sp_block, kw_block, ic_blocking_size),
             1);
-    loop[l].dst.set(sp_block * oc_block, nb_kd * nb_kh * nb_kw);
+    loop[l].dst.set(
+            sp_block * oc_block, static_cast<float>(nb_kd * nb_kh * nb_kw));
     loop[l].wei.set(wei_is, 1);
 
     // -- brgemm kernel: loop by ic_chunks --
     l++;
     const auto ic_chunks = div_up(nb_ic, nb_ic_blocking);
     loop[l].src.set(kd * kh * rnd_inp_simd(sp_block, kw, ic_blocking_size), 1);
-    loop[l].dst.set(sp_block * oc_block, ic_chunks);
+    loop[l].dst.set(sp_block * oc_block, static_cast<float>(ic_chunks));
     wei_is = static_cast<dim_t>(kd) * kh * kw * oc_blocking_size;
     loop[l].wei.set(wei_is, 1);
 
@@ -966,15 +981,15 @@ float brg_blocking_t::est_eff() {
             = nstl::min(static_cast<dim_t>(nb_sp), div_up(job, dim_sp));
     const auto sp_thr = nstl::min(static_cast<dim_t>(sp), nb_sp_thr * sp_block);
 
-    int nb_oh_thr {1}, oh_thr {1}, nb_od_thr {1}, od_thr {1};
+    dim_t nb_oh_thr {1}, oh_thr {1}, nb_od_thr {1}, od_thr {1};
     if (!is_os_blocking) {
         const auto dim_oh = nb_sp * dim_sp;
         nb_oh_thr = nstl::min(static_cast<dim_t>(nb_oh), div_up(job, dim_oh));
-        oh_thr = nstl::min(oh, nb_oh_thr * oh_block);
+        oh_thr = nstl::min(static_cast<dim_t>(oh), nb_oh_thr * oh_block);
 
         const auto dim_od = nb_oh * dim_oh;
         nb_od_thr = nstl::min(static_cast<dim_t>(nb_od), div_up(job, dim_od));
-        od_thr = nstl::min(od, nb_od_thr * od_block);
+        od_thr = nstl::min(static_cast<dim_t>(od), nb_od_thr * od_block);
     }
 
     src_is = kd * kh * rnd_inp_simd(sp_block, kw, ic);
@@ -983,7 +998,7 @@ float brg_blocking_t::est_eff() {
     if (loop_order == loop_ndhwgc) {
         // -- harness: loop by oc_block --
         l++;
-        loop[l].src.set(src_is, nb_oc_thr);
+        loop[l].src.set(src_is, static_cast<float>(nb_oc_thr));
         loop[l].dst.set(sp_block * oc_block, 1);
         wei_is = static_cast<dim_t>(kd) * kh * kw * oc_block * ic;
         wei_op = kd * kh * kw * nsimd_oc_thr * ic;
@@ -996,25 +1011,26 @@ float brg_blocking_t::est_eff() {
     const auto rnd_oc_for_sp = simd_w
             * ((loop_order == loop_ndhwgc) ? nsimd_oc_thr : adj_ocblock);
     loop[l].dst.set(sp_block * rnd_oc_for_sp, 1);
-    loop[l].wei.set(wei_op * simd_w, nb_sp_thr);
+    loop[l].wei.set(wei_op * simd_w, static_cast<float>(nb_sp_thr));
     // oh_block almost all is 1. TODO: manage oh_block != 1
     // -- harness: loop by oh_blocks --
     l++;
     src_is = kd * kh * rnd_inp_simd(sp_thr, kw, ic);
     loop[l].src.set(oh_block * src_is, 1);
     loop[l].dst.set(sp_thr * rnd_oc_for_sp, 1);
-    loop[l].wei.set(wei_op * simd_w, nb_oh_thr);
+    loop[l].wei.set(wei_op * simd_w, static_cast<float>(nb_oh_thr));
     // od_block almost all is 1. TODO: manage oh_block != 1
     // -- harness: loop by od_blocks --
     l++;
     loop[l].src.set(od_block * oh_thr * src_is, 1);
     loop[l].dst.set(oh_thr * sp_thr * rnd_oc_for_sp, 1);
-    loop[l].wei.set(wei_op * simd_w, nb_od_thr);
+    loop[l].wei.set(wei_op * simd_w, static_cast<float>(nb_od_thr));
 
     if (loop_order != loop_ndhwgc) {
         // -- harness: loop by oc_block --
         l++;
-        loop[l].src.set(od_thr * oh_thr * src_is, nb_oc_thr);
+        loop[l].src.set(
+                od_thr * oh_thr * src_is, static_cast<float>(nb_oc_thr));
         loop[l].dst.set(oc_block * od_thr * oh_thr * sp_thr, 1);
         loop[l].wei.set(kd * kh * kw * oc_block * ic, 1);
     }
@@ -1027,7 +1043,7 @@ float brg_blocking_t::est_eff() {
     loop[l].dst.set(od_thr * oh_thr * sp_thr * nsimd_oc_thr * simd_w, 1);
     loop[l].wei.set(
             static_cast<dim_t>(kd) * kh * kw * nsimd_oc_thr * simd_w * ic,
-            mb_thr);
+            static_cast<float>(mb_thr));
 
     const auto src_op = static_cast<dim_t>(mb_thr) * od_thr * oh_thr * sp_thr
             * kd * kh * kw * ic;
@@ -1059,34 +1075,38 @@ float brg_blocking_t::est_eff() {
         dst_rp *= loop[il].dst.repeatn;
         wei_rp *= loop[il].wei.repeatn;
     }
-    const auto src_ops = (src_op * src_rp) / iterations;
-    const auto dst_ops = (dst_op * dst_rp) / iterations;
-    const auto wei_ops = (wei_op * wei_rp) / iterations;
+    const auto src_ops = (static_cast<float>(src_op) * src_rp) / iterations;
+    const auto dst_ops = (static_cast<float>(dst_op) * dst_rp) / iterations;
+    const auto wei_ops = (static_cast<float>(wei_op) * wei_rp) / iterations;
 
     const auto src_cost = src_mem_k * src_ops;
     const auto dst_cost = dst_mem_k * dst_ops;
     const auto wei_cost = wei_mem_k * wei_ops;
-    const auto call_kernel_cost
-            = 1000.f * job * ic_chunks * nb_kd * nb_kh * nb_kw;
+    const auto call_kernel_cost = 1000.f * static_cast<float>(job)
+            * static_cast<float>(ic_chunks) * static_cast<float>(nb_kd)
+            * static_cast<float>(nb_kh) * static_cast<float>(nb_kw);
 
     // Avoid huge batch sizes if possible (ie prefer to block on kd/kh/kw).
-    const float gemm_batch_bytes
-            = sizeof(brgemm_batch_element_t) * gemm_batch_size;
+    const float gemm_batch_bytes = sizeof(brgemm_batch_element_t)
+            * static_cast<float>(gemm_batch_size);
     const float batch_eff = uses_batch_elements(brg_type, exec_type)
-            ? nstl::min(1.f, L2 / (gemm_batch_bytes))
+            ? nstl::min(1.f, static_cast<float>(L2) / (gemm_batch_bytes))
             : 1.f;
 
-    const auto cache_eff = (static_cast<dim_t>(mb) * od * oh * sp * ic * oc)
-            / (nthr * (src_cost + dst_cost + wei_cost + call_kernel_cost));
+    const auto cache_eff = static_cast<float>(static_cast<dim_t>(mb) * od * oh
+                                   * sp * ic * oc)
+            / (static_cast<float>(nthr)
+                    * (src_cost + dst_cost + wei_cost + call_kernel_cost));
     const auto res_eff = oc_block_eff * brgemm_microkernel_eff * sp_eff
             * job_eff * ur_eff * cache_eff * brgemm_eff * batch_eff;
     return res_eff;
 }
 
-void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
-        int kh_block_, bool maybe_use_buffer, int max_ow_block_thr) {
+void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb,
+        dim_t kd_block_, dim_t kh_block_, bool maybe_use_buffer,
+        dim_t max_ow_block_thr) {
 
-    unsigned est_k_amount = ic * oc_block * wei_dsz;
+    unsigned est_k_amount = static_cast<unsigned>(ic * oc_block * wei_dsz);
 
     kd_block = kd_block_;
     kh_block = kh_block_;
@@ -1119,14 +1139,15 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
                 = 2 * src_dsz * ic_size * iwp + dst_dsz * ow * oc_block;
         const auto other_size = wei_dsz * kd * kh * kw * ic_size * oc_block
                 + acc_dsz * 2 * amx_h * oc_block;
-        const auto L2_available = nstl::min(static_cast<size_t>(div_up(L2, 2)),
-                other_size > L2 ? 0 : L2 - other_size);
+        const auto L2_available
+                = nstl::min<size_t>(static_cast<size_t>(div_up(L2, 2)),
+                        other_size > L2 ? 0 : L2 - other_size);
         if (idp * ihp * w_block_size > L2_available) {
-            od_block = utils::saturate(
-                    1, od, int(L2_available / (ihp * w_block_size)));
+            od_block = utils::saturate<dim_t>(
+                    1, od, L2_available / (ihp * w_block_size));
             if (od_block == 1)
-                oh_block = utils::saturate(
-                        1, oh, int(L2_available / (w_block_size)));
+                oh_block = utils::saturate<dim_t>(
+                        1, oh, L2_available / w_block_size);
             else
                 oh_block = oh;
         } else {
@@ -1141,16 +1162,19 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
             const auto src_w_block_size
                     = src_dsz * ic * iwp + dst_dsz * ow * oc_block;
             if (src_w_block_size < L1) {
-                cur_od_block = utils::saturate(
-                        1, od, int(L1 / (ihp * src_w_block_size)));
+                cur_od_block = utils::saturate<dim_t>(
+                        1, od, L1 / (ihp * src_w_block_size));
                 if (cur_od_block == 1)
-                    cur_oh_block = utils::saturate(
-                            1, oh, static_cast<int>(L1 / src_w_block_size));
+                    cur_oh_block = utils::saturate<dim_t>(
+                            1, oh, L1 / src_w_block_size);
             }
             for (; cur_od_block > 1; cur_od_block--) {
                 const auto sp_size = cur_od_block * cur_oh_block * iwp;
-                if ((static_cast<float>(od) / rnd_up(od, cur_od_block)) > 0.9f
-                        && static_cast<float>(sp_size) / rnd_up(sp, amx_h)
+                if ((static_cast<float>(od)
+                            / static_cast<float>(rnd_up(od, cur_od_block)))
+                                > 0.9f
+                        && static_cast<float>(sp_size)
+                                        / static_cast<float>(rnd_up(sp, amx_h))
                                 > 0.8f) {
                     L1_fit_res = true;
                     break;
@@ -1160,7 +1184,8 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
                 auto tmp_oh_block = cur_oh_block;
                 while (tmp_oh_block >= 1) {
                     const auto sp_size = tmp_oh_block * iwp;
-                    if ((static_cast<float>(oh) / rnd_up(oh, tmp_oh_block))
+                    if ((static_cast<float>(oh)
+                                / static_cast<float>(rnd_up(oh, tmp_oh_block)))
                                     > 0.9f
                             && sp_size > 128) {
                         L1_fit_res = true;
@@ -1191,11 +1216,11 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
 
     // --- Select ow_block ----
     const auto max_ow_block_L2 = ow;
-    auto start_ow_block = nstl::min(max_ow_block_thr, max_ow_block_L2);
+    auto start_ow_block = nstl::min<dim_t>(max_ow_block_thr, max_ow_block_L2);
 
     sp = ow * (is_os_blocking ? oh : 1);
     const auto start_sp_block = is_os_blocking ? ow : start_ow_block;
-    auto prev_spb = 0;
+    auto prev_spb = dim_t(0);
     for (auto ns = 1; ns <= sp; ns++) {
         const auto spb = div_up(sp, ns);
         if (spb == prev_spb || spb > start_sp_block) continue;
@@ -1234,7 +1259,7 @@ status_t brg_blocking_t::calc_blocks() {
     // results then we need the out buffer
     const auto maybe_use_buffer = (dst_dt != acc_dt || with_sum);
 
-    std::vector<int> kd_blocks(1), kh_blocks(1);
+    std::vector<dim_t> kd_blocks(1), kh_blocks(1);
     kd_blocks[0] = kd;
     kh_blocks[0] = kh;
     if (kd != 1) {
@@ -1247,9 +1272,10 @@ status_t brg_blocking_t::calc_blocks() {
     }
 
     const auto thr_eff_threshold = 0.9f;
-    const auto max_ow_block_thr = utils::saturate(1, ow,
-            static_cast<int>(ceil(
-                    mb * ngroups * nb_oc * os / (thr_eff_threshold * nthr))));
+    const auto max_ow_block_thr = utils::saturate<dim_t>(1, ow,
+            static_cast<dim_t>(
+                    ceil(static_cast<float>(mb * ngroups * nb_oc * os)
+                            / (thr_eff_threshold * static_cast<float>(nthr)))));
 
     ow_block = os_block = sp_block = -1;
     brg_blocking_t best_brgb = *this;
@@ -1288,7 +1314,8 @@ bool brg_blocking_t::fast_check_oc_block_1x1() const {
                 = od * oh * ow >= 64 * stride_d * stride_h * stride_w;
         res = (rnd_oc % oc_block == 0 && big_spatial);
     } else if (oc_block == 48) {
-        const auto oc_block_eff = static_cast<float>(oc) / rnd_up(oc, oc_block);
+        const auto oc_block_eff = static_cast<float>(oc)
+                / static_cast<float>(rnd_up(oc, oc_block));
         res = (oc_block_eff >= 0.95f);
     } else
         res = true;
@@ -1298,14 +1325,16 @@ bool brg_blocking_t::fast_check_oc_block_1x1() const {
 
 float brg_blocking_t::est_eff_1x1() {
 
-    auto calc_ave_blk = [&](int dim, int block, bool use_ave) -> float {
-        const int nb = dim / block;
+    auto calc_ave_blk = [&](dim_t dim, dim_t block, bool use_ave) -> float {
+        const dim_t nb = dim / block;
         constexpr int max_nb = 2; // only consider 2x2 tile blocking
-        const int block2 = nstl::min(max_nb, nb);
-        const int nb2 = nb / block2;
-        const int nb2_tail = nb % block2;
-        if (!use_ave) return block2;
-        return (float(nb2) * block2 + nb2_tail) / div_up(nb, block2);
+        const dim_t block2 = nstl::min<dim_t>(max_nb, nb);
+        const dim_t nb2 = nb / block2;
+        const dim_t nb2_tail = nb % block2;
+        if (!use_ave) return static_cast<float>(block2);
+        return (float(nb2) * static_cast<float>(block2)
+                       + static_cast<float>(nb2_tail))
+                / static_cast<float>(div_up(nb, block2));
     };
     const bool use_ocb_ave = true;
     const auto ocb_ave = calc_ave_blk(oc_block, acc_simd_w, use_ocb_ave);
@@ -1321,21 +1350,29 @@ float brg_blocking_t::est_eff_1x1() {
             || (ic == 1024 && oc == 512) || (ic == 256 && oc == 1024)
             || (ic == 512 && oc == 1024) || (ic == 512 && oc == 2048);
     const auto amx_fac = maskrcnn_cond
-            ? (div_up(M + M_tail, 16) / (M_n_sp_blks + M_tail_n_sp_blks))
+            ? (static_cast<float>(div_up(M + M_tail, 16))
+                      / static_cast<float>(M_n_sp_blks + M_tail_n_sp_blks))
             : (static_cast<float>(div_up(M + M_tail, 16))
-                      / (M_n_sp_blks + M_tail_n_sp_blks));
+                      / static_cast<float>(M_n_sp_blks + M_tail_n_sp_blks));
 
     const auto brgemm_microkernel_eff = is_amx(isa)
             ? amx_fac * (static_cast<float>(ocb_ave) * spb_ave)
                     / (ocb_ave + spb_ave)
-            : (static_cast<float>(adj_ocblock) * ur)
-                    / ((ur + adj_ocblock) * max_regs);
-    const auto ur_eff = static_cast<float>(sp_block) / rnd_up(sp_block, ur);
+            : (static_cast<float>(adj_ocblock) * static_cast<float>(ur))
+                    / static_cast<float>((ur + adj_ocblock) * max_regs);
+    const auto ur_eff = static_cast<float>(sp_block)
+            / static_cast<float>(rnd_up(sp_block, ur));
 
     // heuristic sp_block: for reduced rtus, prioritize a smaller sp_block
-    const auto heur_sp_block = is_reduced_rtus ? 1.f / sp_block : sp_block;
-    const auto brgemm_eff = squeeze_val(
-            ur * (2.f - nstl::min(1.9f, static_cast<float>(ur) / heur_sp_block))
+    const auto heur_sp_block = is_reduced_rtus
+            ? 1.f / static_cast<float>(sp_block)
+            : static_cast<float>(sp_block);
+    const auto brgemm_eff = squeeze_val(static_cast<float>(ur)
+                    * (2.f
+                            - nstl::min(1.9f,
+                                    static_cast<float>(ur)
+                                            / static_cast<float>(
+                                                    heur_sp_block)))
                     / 64,
             0.5f);
 
@@ -1344,8 +1381,10 @@ float brg_blocking_t::est_eff_1x1() {
     const auto work_amount
             = static_cast<dim_t>(mb) * ngroups * nb_oc * sp_amount;
 
-    const auto sp_eff = static_cast<float>(sp) / rnd_up(sp, sp_block);
-    const auto oc_block_eff = static_cast<float>(oc) / rnd_up(oc, oc_block);
+    const auto sp_eff
+            = static_cast<float>(sp) / static_cast<float>(rnd_up(sp, sp_block));
+    const auto oc_block_eff
+            = static_cast<float>(oc) / static_cast<float>(rnd_up(oc, oc_block));
 
     const auto job = div_up(work_amount, nthr);
 
@@ -1393,8 +1432,9 @@ float brg_blocking_t::est_eff_1x1() {
 
     const dim_t sum_job = static_cast<dim_t>(mb) * od * oh * ow * ngroups * oc;
 
-    const float job_eff
-            = max_job == 0 ? 1 : static_cast<float>(sum_job) / (max_job * nthr);
+    const float job_eff = max_job == 0
+            ? 1.f
+            : static_cast<float>(sum_job) / static_cast<float>(max_job * nthr);
 
     const auto ic_blocking_size = ic_block * nb_ic_blocking;
     const auto oc_blocking_size = oc_block * ic_blocking_size;
@@ -1402,7 +1442,7 @@ float brg_blocking_t::est_eff_1x1() {
     int l = -1;
     // -- brgemm kernel: loop by simd_w  --
     l++;
-    loop[l].src.set(ur * simd_w, 1, acc_simd_w);
+    loop[l].src.set(ur * simd_w, 1, static_cast<float>(acc_simd_w));
     loop[l].dst.set(0, 1);
     loop[l].wei.set(oc_block, 1);
 
@@ -1415,12 +1455,13 @@ float brg_blocking_t::est_eff_1x1() {
             = (nb_sp_no_tail * nb_ur + div_up(sp_block_tail, ur)) / nb_sp;
     loop[l].src.set(ur * rnd_simd(ic_blocking_size), 1);
     loop[l].dst.set(ur * oc_block, 1);
-    loop[l].wei.set(oc_blocking_size, is_amx(isa) ? nb_ur_average : nb_ur);
+    loop[l].wei.set(oc_blocking_size,
+            static_cast<float>(is_amx(isa) ? nb_ur_average : nb_ur));
     // -- brgemm kernel: loop by ic_chunks --
     l++;
     const auto ic_chunks = div_up(nb_ic, nb_ic_blocking);
     loop[l].src.set(sp_block * ic_blocking_size, 1);
-    loop[l].dst.set(sp_block * oc_block, ic_chunks);
+    loop[l].dst.set(sp_block * oc_block, static_cast<float>(ic_chunks));
     auto wei_is = oc_blocking_size;
     auto wei_op = adj_ocblock * ic;
     loop[l].wei.set(wei_is, 1);
@@ -1428,7 +1469,7 @@ float brg_blocking_t::est_eff_1x1() {
     if (loop_order == loop_ndhwgc) {
         // -- harness: loop by oc_block --
         l++;
-        loop[l].src.set(sp_block * rnd_simd(ic), nb_oc_thr);
+        loop[l].src.set(sp_block * rnd_simd(ic), static_cast<float>(nb_oc_thr));
         loop[l].dst.set(sp_block * oc_block, 1);
         wei_is = oc_block * ic;
         wei_op = nsimd_oc_thr * ic;
@@ -1442,31 +1483,31 @@ float brg_blocking_t::est_eff_1x1() {
         l++;
         loop[l].src.set(sp_block * ic_blocking_size, 1);
         loop[l].dst.set(sp_block * rnd_oc_for_sp, 1);
-        loop[l].wei.set(wei_op * simd_w, nb_sp_thr);
+        loop[l].wei.set(wei_op * simd_w, static_cast<float>(nb_sp_thr));
     } else {
         // -- harness: loop by sp_blocks --
         l++;
         loop[l].src.set(sp_block * ic_blocking_size, 1);
         loop[l].dst.set(sp_block * rnd_oc_for_sp, 1);
-        loop[l].wei.set(wei_op * simd_w, nb_sp_thr);
+        loop[l].wei.set(wei_op * simd_w, static_cast<float>(nb_sp_thr));
         // -- harness: loop by oh_blocks --
         l++;
         loop[l].src.set(oh_block * sp_thr * rnd_simd(ic_blocking_size), 1);
         loop[l].dst.set(oh_block * sp_thr * rnd_oc_for_sp, 1);
-        loop[l].wei.set(wei_op * simd_w, nb_oh_thr);
+        loop[l].wei.set(wei_op * simd_w, static_cast<float>(nb_oh_thr));
         // -- harness: loop by od_blocks --
         l++;
         loop[l].src.set(
                 od_block * oh_thr * sp_thr * rnd_simd(ic_blocking_size), 1);
         loop[l].dst.set(od_block * oh_thr * sp_thr * rnd_oc_for_sp, 1);
-        loop[l].wei.set(wei_op * simd_w, nb_od_thr);
+        loop[l].wei.set(wei_op * simd_w, static_cast<float>(nb_od_thr));
     }
 
     if (loop_order != loop_ndhwgc) {
         // -- harness: loop by oc_block --
         l++;
         loop[l].src.set(od_thr * oh_thr * rnd_simd(sp_thr * ic_blocking_size),
-                nb_oc_thr);
+                static_cast<float>(nb_oc_thr));
         loop[l].dst.set(oc_block * od_thr * oh_thr * sp_thr, 1);
         loop[l].wei.set(oc_block * ic, 1);
     }
@@ -1477,7 +1518,7 @@ float brg_blocking_t::est_eff_1x1() {
             static_cast<dim_t>(mb), div_up(job, sp_amount * ngroups * nb_oc));
     loop[l].src.set(od_thr * oh_thr * sp_thr * rnd_simd(ic_blocking_size), 1);
     loop[l].dst.set(nsimd_oc_thr * simd_w * od_thr * oh_thr * sp_thr, 1);
-    loop[l].wei.set(nsimd_oc_thr * ic * simd_w, mb_thr);
+    loop[l].wei.set(nsimd_oc_thr * ic * simd_w, static_cast<float>(mb_thr));
 
     const auto src_op = static_cast<dim_t>(mb_thr) * od_thr * oh_thr * sp_thr
             * ic_blocking_size;
@@ -1507,19 +1548,22 @@ float brg_blocking_t::est_eff_1x1() {
         dst_rp *= loop[il].dst.repeatn;
         wei_rp *= loop[il].wei.repeatn;
     }
-    const auto src_ops = (src_op * src_rp) / iterations;
-    const auto dst_ops = (dst_op * dst_rp) / iterations;
-    const auto wei_ops = (wei_op * wei_rp) / iterations;
+    const auto src_ops = (static_cast<float>(src_op) * src_rp) / iterations;
+    const auto dst_ops = (static_cast<float>(dst_op) * dst_rp) / iterations;
+    const auto wei_ops = (static_cast<float>(wei_op) * wei_rp) / iterations;
 
     const auto src_cost = src_mem_k * src_ops;
     const auto dst_cost = dst_mem_k * dst_ops;
     const auto wei_cost = wei_mem_k * wei_ops;
-    const auto call_kernel_cost = 1000.f * job * ic_chunks;
+    const auto call_kernel_cost
+            = 1000.f * static_cast<float>(job) * static_cast<float>(ic_chunks);
 
     const auto up_sp_size = is_os_blocking ? 1 : od * oh;
 
-    const auto cache_eff = (static_cast<dim_t>(mb) * up_sp_size * sp * ic * oc)
-            / (nthr * (src_cost + dst_cost + wei_cost + call_kernel_cost));
+    const auto cache_eff = static_cast<float>(static_cast<dim_t>(mb)
+                                   * up_sp_size * sp * ic * oc)
+            / (static_cast<float>(nthr)
+                    * (src_cost + dst_cost + wei_cost + call_kernel_cost));
 
     const auto res_eff = oc_block_eff * brgemm_microkernel_eff * sp_eff
             * job_eff * ur_eff * cache_eff * brgemm_eff;
@@ -1559,17 +1603,17 @@ void brg_blocking_t::calc_blocks_1x1() {
     const auto max_sp_block_L2 = os;
     // TODO: nb_os_blocking always is 1 for now. Update this code
     nb_os_blocking = 1;
-    int start_sp_block = 0;
+    dim_t start_sp_block = 0;
 
     if (is_os_blocking) {
         ow_block = 0;
 
         const auto max_os_block_thr
                 = (src_dsz * ic >= 1024 && src_dsz * ic < 4096)
-                ? nstl::max(nstl::min(16, os),
+                ? nstl::max<dim_t>(nstl::min<dim_t>(16, os),
                           div_up(os, div_up(nthr, mb * div_up(oc, oc_block))))
-                : nstl::max(div_up(2048, oc_block),
-                          static_cast<int>(div_up(mb * ngroups * os, nthr)));
+                : nstl::max<dim_t>(div_up(2048, oc_block),
+                          div_up(mb * ngroups * os, nthr));
         const auto max_os_block_L2 = max_sp_block_L2;
 
         auto max_os_block_aliasing = 1000000 / nthr;
@@ -1586,32 +1630,34 @@ void brg_blocking_t::calc_blocks_1x1() {
         max_os_block_aliasing
                 = nstl::min(div_up(1001, dst_dsz), max_os_block_aliasing);
 
-        start_sp_block = utils::saturate(1, os,
-                nstl::min(nstl::min(max_os_block_thr, max_os_block_L2),
+        start_sp_block = utils::saturate<dim_t>(1, os,
+                nstl::min<dim_t>(
+                        nstl::min<dim_t>(max_os_block_thr, max_os_block_L2),
                         max_os_block_aliasing));
 
     } else {
         os_block = 0;
 
-        const auto max_ow_block_thr = utils::saturate(1, ow,
-                static_cast<int>(ceil(mb * ngroups * nb_oc * os
-                        / (thr_eff_threshold * nthr))));
+        const auto max_ow_block_thr = utils::saturate<dim_t>(1, ow,
+                static_cast<dim_t>(ceil(
+                        static_cast<float>(mb * ngroups * nb_oc * os)
+                        / (thr_eff_threshold * static_cast<float>(nthr)))));
         const auto max_ow_block_L2 = max_sp_block_L2;
 
-        start_sp_block = utils::saturate(
-                1, ow, nstl::min(max_ow_block_thr, max_ow_block_L2));
+        start_sp_block = utils::saturate<dim_t>(
+                1, ow, nstl::min<dim_t>(max_ow_block_thr, max_ow_block_L2));
     }
     os_block = ow_block = sp_block = -1;
     brg_blocking_t best_brgb = *this;
 
-    auto prev_spb = 0;
+    auto prev_spb = dim_t(0);
     for (auto ns = 1; ns <= sp; ns++) {
         auto spb = div_up(sp, ns);
         if (is_amx(isa)) {
-            auto min_dis = 16;
-            auto best_w = 16;
-            const auto max_tile_width = nstl::min(16, sp);
-            const auto min_tile_width = utils::saturate(1, 11, sp / 2);
+            dim_t min_dis = 16;
+            dim_t best_w = 16;
+            const auto max_tile_width = nstl::min<dim_t>(16, sp);
+            const auto min_tile_width = utils::saturate<dim_t>(1, 11, sp / 2);
             if (spb < min_tile_width) break;
             for (auto w = max_tile_width; w >= min_tile_width; w--) {
                 const auto dis = nstl::additive_inverse_modulo(spb, w);
@@ -1625,7 +1671,8 @@ void brg_blocking_t::calc_blocks_1x1() {
         }
         if (spb == prev_spb || spb > start_sp_block) continue;
         prev_spb = spb;
-        os_block = ow_block = sp_block = spb;
+        sp_block = spb;
+        os_block = ow_block = spb;
         select_ic_block();
         const status_t st = estimate_brgemm_ur();
         if (st != status::success) continue;
@@ -1786,7 +1833,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                                                                    : jcp.wei_dt;
     const data_type_t vnni_block_dt
             = get_mac_emu_data_type(vnni_dt, isa, isa == avx10_1_512);
-    jcp.vnni_block = data_type_vnni_granularity(vnni_block_dt);
+    jcp.vnni_block
+            = static_cast<int>(data_type_vnni_granularity(vnni_block_dt));
 
     if (one_of(jcp.prop_kind, prop_kind::forward_training,
                 prop_kind::forward_inference)
@@ -1989,7 +2037,7 @@ void adjust_nthr(jit_brgemm_conv_conf_t &jcp, const memory_desc_wrapper &src_d,
     const bool out_small = dst_d.size() < threshold;
     if (in_small && out_small && jcp.ngroups < jcp.nthr
             && jcp.nb_oc < jcp.nthr) {
-        int nthr = nstl::max(jcp.ngroups, jcp.nb_oc);
+        int nthr = static_cast<int>(nstl::max<dim_t>(jcp.ngroups, jcp.nb_oc));
         jcp.nthr = nstl::min(jcp.nthr, nthr);
     }
 }
@@ -2056,13 +2104,13 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     const int min_oc_block = jcp.acc_simd_w;
 
-    int selected_ur = 0;
+    dim_t selected_ur = 0;
     MAYBE_UNUSED(selected_ur);
 
     auto try_exec_type = [&]() {
         brg_blocking_t best_brgb = zero<decltype(best_brgb)>();
         best_brgb.oc_block = min_oc_block;
-        const int est_amx_job = div_up(jcp.mb * div_up(jcp.os, 4 * 16)
+        const dim_t est_amx_job = div_up(jcp.mb * div_up(jcp.os, 4 * 16)
                         * jcp.ngroups * div_up(jcp.oc, 4 * 16),
                 jcp.nthr);
         const bool small_amx_job = est_amx_job < 64 || jcp.oc < 256;
@@ -2075,7 +2123,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                 && jcp.oh * jcp.ow >= 150 * 150)
             start_ocb = 2;
 
-        start_ocb = nstl::min(div_up(jcp.oc, jcp.acc_simd_w), start_ocb);
+        start_ocb = static_cast<int>(
+                nstl::min<dim_t>(div_up(jcp.oc, jcp.acc_simd_w), start_ocb));
 
         auto finish_ocb = 1;
         for (auto ocb = start_ocb; ocb >= finish_ocb; ocb--) {
@@ -2111,8 +2160,9 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     // TODO: this logic seems not taking dilation into which can avoid pure
     // kernel-in-pad cases.
-    if (!is_amx(isa) && div_up(nstl::max(0, jcp.l_pad), jcp.stride_w) < jcp.kw
-            && div_up(nstl::max(0, jcp.r_pad), jcp.stride_w) < jcp.kw) {
+    if (!is_amx(isa)
+            && div_up(nstl::max<dim_t>(0, jcp.l_pad), jcp.stride_w) < jcp.kw
+            && div_up(nstl::max<dim_t>(0, jcp.r_pad), jcp.stride_w) < jcp.kw) {
         try_exec_vpad = true;
     }
 
@@ -2160,11 +2210,11 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                 && IMPLICATION(jcp.id > 1, relo_conv_weights_wi == false)
                 && !cd.use_inversion && jcp.dilate_w == 0;
 
-        const auto rnd_kwic = (float)jcp.kw * rnd_up(jcp.ic, jcp.simd_w);
-        const auto src_per_ic
-                = (float)jcp.src_dsz * jcp.mb * jcp.id * jcp.ih * jcp.iw;
-        const auto wei_per_ic
-                = (float)jcp.wei_dsz * jcp.oc * jcp.kd * jcp.kh * jcp.kw;
+        const auto rnd_kwic = (float)jcp.kw * (float)rnd_up(jcp.ic, jcp.simd_w);
+        const auto src_per_ic = (float)jcp.src_dsz * (float)jcp.mb
+                * (float)jcp.id * (float)jcp.ih * (float)jcp.iw;
+        const auto wei_per_ic = (float)jcp.wei_dsz * (float)jcp.oc
+                * (float)jcp.kd * (float)jcp.kh * (float)jcp.kw;
         bool perf_relo = false;
         if (is_amx(jcp.isa)) {
             if (jcp.ic < jcp.simd_w / 2
@@ -2190,7 +2240,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     bool relo_conv_weights_whi = true;
     if (!jcp.wei_plain && relo_supported_isa && relo_reasonable_isa
             && !jcp.is_fp8) {
-        const int rd_whi = jcp.kh * jcp.kw * jcp.ic;
+        const dim_t rd_whi = jcp.kh * jcp.kw * jcp.ic;
         //TODO: support fp8
         if (jcp.ic % jcp.vnni_block == 0
                 && IMPLICATION(rd_whi > jcp.simd_w, rd_whi % jcp.simd_w == 0)
@@ -2203,13 +2253,13 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                 && IMPLICATION(jcp.s8s8_compensation_required,
                         everyone_is(0, jcp.t_pad, jcp.b_pad));
 
-        const float rnd_rd_whi = rnd_up(rd_whi, jcp.simd_w);
-        const auto rnd_khkwic
-                = (float)jcp.kh * jcp.kw * rnd_up(jcp.ic, jcp.simd_w);
-        const auto src_per_ic
-                = (float)jcp.src_dsz * jcp.mb * jcp.id * jcp.ih * jcp.iw;
-        const auto wei_per_ic
-                = (float)jcp.wei_dsz * jcp.oc * jcp.kd * jcp.kh * jcp.kw;
+        const float rnd_rd_whi = (float)rnd_up(rd_whi, jcp.simd_w);
+        const auto rnd_khkwic = (float)jcp.kh * (float)jcp.kw
+                * (float)rnd_up(jcp.ic, jcp.simd_w);
+        const auto src_per_ic = (float)jcp.src_dsz * (float)jcp.mb
+                * (float)jcp.id * (float)jcp.ih * (float)jcp.iw;
+        const auto wei_per_ic = (float)jcp.wei_dsz * (float)jcp.oc
+                * (float)jcp.kd * (float)jcp.kh * (float)jcp.kw;
         // Heuristics for determining relo_whi makes sense for performance
         bool perf_relo = false;
         if (is_amx(jcp.isa)) {
@@ -2218,9 +2268,10 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                                 && rnd_rd_whi / rnd_khkwic < 0.5f
                                 && IMPLICATION(relo_conv_weights_whi,
                                         wei_per_ic / src_per_ic <= 4)))
-                    && rd_whi / rnd_rd_whi > rd_wi / rnd_rd_wi
+                    && (float)rd_whi / rnd_rd_whi > (float)rd_wi / rnd_rd_wi
                     && (jcp.ow > 48 || jcp.ow % 16 == 0)
-                    && IMPLICATION(try_relo_wi, rd_whi / rnd_rd_whi > 0.7f))
+                    && IMPLICATION(
+                            try_relo_wi, (float)rd_whi / rnd_rd_whi > 0.7f))
                 perf_relo = true;
         } else {
             if (one_of(jcp.wei_dt, f32, s8)) {
@@ -2369,13 +2420,14 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         dim_t ds = jcp.copy_block_only
                 ? (brg_blocking_t::get_inp_size(jcp.idp, jcp.od_block, jcp.kd,
                            jcp.stride_d, jcp.dilate_d)
-                          + nstl::max(0, jcp.f_pad)
-                          + nstl::max(0, jcp.back_pad))
+                          + nstl::max<dim_t>(0, jcp.f_pad)
+                          + nstl::max<dim_t>(0, jcp.back_pad))
                 : jcp.idp;
         dim_t hs = jcp.copy_block_only
                 ? (brg_blocking_t::get_inp_size(jcp.ihp, jcp.oh_block, jcp.kh,
                            jcp.stride_h, jcp.dilate_h)
-                          + nstl::max(0, jcp.t_pad) + nstl::max(0, jcp.b_pad))
+                          + nstl::max<dim_t>(0, jcp.t_pad)
+                          + nstl::max<dim_t>(0, jcp.b_pad))
                 : jcp.ihp;
         if (jcp.is_os_blocking)
             hs = div_up(rnd_up(hs * jcp.iwp, jcp.brgM), jcp.iwp)
@@ -2505,9 +2557,9 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     if (is_amx(isa)) {
         // round up ic if needed
-        const int n_vnni_blocks = utils::div_up(jcp.ic, jcp.vnni_block);
-        const int ic_block
-                = nstl::min(jcp.acc_simd_w, n_vnni_blocks) * jcp.vnni_block;
+        const dim_t n_vnni_blocks = utils::div_up(jcp.ic, jcp.vnni_block);
+        const dim_t ic_block = nstl::min<dim_t>(jcp.acc_simd_w, n_vnni_blocks)
+                * jcp.vnni_block;
 
         jcp.extendable_k
                 = !jcp.is_tf32 && jcp.ic > jcp.simd_w && jcp.ic % jcp.simd_w;
@@ -2523,11 +2575,11 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         // try to choose optimal loop order
         // TODO: incorporate loop order into smart blocking selection
         auto wei_size = (size_t)jcp.oc * jcp.ic * jcp.wei_dsz;
-        auto max_size = 0.75f * brg_blocking_t::L2;
+        auto max_size = 0.75f * static_cast<float>(brg_blocking_t::L2);
         const dim_t os = static_cast<dim_t>(jcp.od) * jcp.oh * jcp.ow;
         const dim_t os_cutoff = 400; // approximate and empiric
-        const bool use_loop_ngcdhw
-                = max_size < wei_size || (jcp.mb == 1 && os < os_cutoff);
+        const bool use_loop_ngcdhw = max_size < static_cast<float>(wei_size)
+                || (jcp.mb == 1 && os < os_cutoff);
         jcp.loop_order = use_loop_ngcdhw ? loop_ngcdhw : loop_ndhwgc;
     }
 
@@ -2540,10 +2592,10 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     brg_blocking_t best_brgb = zero<decltype(best_brgb)>();
     best_brgb.oc_block = min_oc_block;
-    auto start_ocb = 4;
-    start_ocb = nstl::min(div_up(jcp.oc, jcp.acc_simd_w), start_ocb);
+    dim_t start_ocb = 4;
+    start_ocb = nstl::min<dim_t>(div_up(jcp.oc, jcp.acc_simd_w), start_ocb);
 
-    auto finish_ocb = 1;
+    dim_t finish_ocb = 1;
 
     const bool is_os_blocking_ok
             = utils::everyone_is(1, jcp.stride_d, jcp.stride_h)
@@ -2641,10 +2693,10 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
      **/
     constexpr int int8_outer_vnni_block = 16; // currently, only for AMX
     const int ic_padded_block = int8_outer_vnni_block * jcp.vnni_block;
-    const int ic_vnni_block = jcp.ic_without_padding / ic_padded_block;
-    const int effective_rtus_ic_block
+    const dim_t ic_vnni_block = jcp.ic_without_padding / ic_padded_block;
+    const dim_t effective_rtus_ic_block
             = jcp.ic_without_padding - (ic_vnni_block * ic_padded_block);
-    const int rtus_padded_ic_size
+    const dim_t rtus_padded_ic_size
             = rnd_up(effective_rtus_ic_block, ic_padded_block);
     // used as K dimension for BRGeMM:
     jcp.rtus_ic_size = jcp.is_reduced_rtus ? effective_rtus_ic_block : 1;
@@ -2825,8 +2877,11 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         dim_t dst_size = dst_spatial * jcp.oc * src_type_size;
         dim_t wei_size = (dim_t)jcp.oc * jcp.ic * wei_ks * wei_type_size;
 
-        float wei_compensation_scale = 0.5f * (dst_size + src_size) / wei_size;
-        float oi_channels_ratio = (float)(oc_chunks) / ic_chunks;
+        float wei_compensation_scale = 0.5f
+                * static_cast<float>(dst_size + src_size)
+                / static_cast<float>(wei_size);
+        float oi_channels_ratio
+                = (float)(oc_chunks) / static_cast<float>(ic_chunks);
 
         auto get_src_coef = [=]() {
             float src_coef = nstl::max(1.0f / oi_channels_ratio, 1.0f);
@@ -2861,12 +2916,16 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         const auto thr_oc_b = div_up(oc_chunks, nb_oc_job * nthr_oc_b);
 
         const auto thr_oc_amount = thr_oc_b * nb_oc_job;
-        float src_v
-                = src_type_size * src_coef * thr_g * thr_ic_amount * thr_src_sp;
-        float dst_v
-                = src_type_size * dst_coef * thr_g * thr_oc_amount * thr_dst_sp;
-        float wei_v = acc_type_size * wei_coef * thr_g * thr_oc_amount
-                * thr_ic_amount * wei_ks;
+        float src_v = src_type_size * src_coef * static_cast<float>(thr_g)
+                * static_cast<float>(thr_ic_amount)
+                * static_cast<float>(thr_src_sp);
+        float dst_v = src_type_size * dst_coef * static_cast<float>(thr_g)
+                * static_cast<float>(thr_oc_amount)
+                * static_cast<float>(thr_dst_sp);
+        float wei_v = acc_type_size * wei_coef * static_cast<float>(thr_g)
+                * static_cast<float>(thr_oc_amount)
+                * static_cast<float>(thr_ic_amount)
+                * static_cast<float>(wei_ks);
 
         return src_v + dst_v + wei_v;
     };
@@ -2881,7 +2940,7 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
             return;
         }
 
-        nthr_g_ = jcp.ngroups;
+        nthr_g_ = static_cast<int>(jcp.ngroups);
         const int nthr = jcp.nthr / nthr_g_;
 
         float best_mem_cost
@@ -2892,11 +2951,12 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         const int nthr_mb_max = nstl::min(nthr, jcp.nthr_mb_work);
         for (int nthr_mb = 1; nthr_mb <= nthr_mb_max; ++nthr_mb) {
             const int nthr_par = nthr / nthr_mb;
-            const int nthr_oc_b_max = nstl::min(nthr_par,
-                    oc_chunks); // Amount of nb_oc_blocks
+            const int nthr_oc_b_max = static_cast<int>(nstl::min<dim_t>(
+                    nthr_par, oc_chunks)); // Amount of nb_oc_blocks
             for (int nthr_oc_b = 1; nthr_oc_b <= nthr_oc_b_max; ++nthr_oc_b) {
-                int nthr_ic_b = nstl::min(
-                        nthr_par / nthr_oc_b, (jcp.nb_ic / jcp.nb_ic_blocking));
+                int nthr_ic_b = static_cast<int>(
+                        nstl::min<dim_t>(nthr_par / nthr_oc_b,
+                                (jcp.nb_ic / jcp.nb_ic_blocking)));
 
                 float mem_cost
                         = calc_mem_cost(nthr_mb, nthr_g_, nthr_oc_b, nthr_ic_b);
@@ -2960,15 +3020,21 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         // Keep dimension values as a vector
         std::vector<std::pair<double, bwd_w_dims>> dv;
         const auto ks = jcp.kd * jcp.kh * jcp.kw;
-        double v = (jcp.ngroups > 1) ? static_cast<double>(jcp.ic) * jcp.oc
-                        * jcp.ngroups * jcp.ngroups * ks
-                                     : 1;
+        double v = (jcp.ngroups > 1)
+                ? static_cast<double>(jcp.ic) * static_cast<double>(jcp.oc)
+                        * static_cast<double>(jcp.ngroups)
+                        * static_cast<double>(jcp.ngroups)
+                        * static_cast<double>(ks)
+                : 1;
         dv.emplace_back(v, bwd_w_dims::g);
-        v = 5 * div_up(jcp.ic, jcp.amx_h) * ks;
+        v = 5 * static_cast<double>(div_up(jcp.ic, jcp.amx_h))
+                * static_cast<double>(ks);
         dv.emplace_back(v, bwd_w_dims::ic);
-        v = 3 * div_up(jcp.oc, jcp.amx_h) * ks;
+        v = 3 * static_cast<double>(div_up(jcp.oc, jcp.amx_h))
+                * static_cast<double>(ks);
         dv.emplace_back(v, bwd_w_dims::oc);
-        v = div_up(jcp.mb * jcp.od * jcp.oh * jcp.ow, jcp.amx_w);
+        v = static_cast<double>(
+                div_up(jcp.mb * jcp.od * jcp.oh * jcp.ow, jcp.amx_w));
         dv.emplace_back(v, bwd_w_dims::sp);
         // Estimate the size of "cubic" piece
         double xd = 1;
@@ -2987,7 +3053,7 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
                 xd = 1;
                 for (int j = i + 1; j < nd; j++)
                     xd *= dv[j].first;
-                xd = pow(xd / jcp.nthr, 1.f / (nd - i - 1));
+                xd = pow(xd / jcp.nthr, 1.f / static_cast<float>(nd - i - 1));
             } else {
                 v = nstl::min(dvf / xd, maxvf);
             }
@@ -3005,7 +3071,7 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
             const auto maxvf = static_cast<double>(maxv[dvs]);
             const auto new_dvf = dvf * knorm;
             dvf = utils::saturate(1., maxvf, new_dvf);
-            knorm *= pow(new_dvf / dvf, 1.f / (nd - i - 1));
+            knorm *= pow(new_dvf / dvf, 1.f / static_cast<float>(nd - i - 1));
             tot_v *= dvf;
         }
         std::sort(dv.begin(), dv.end());
@@ -3109,10 +3175,11 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         }
         nthr = nthr_mb * nthr_g * nthr_oc_b * nthr_ic_b;
     } else if (jcp.kw > 100 && jcp.id == 1 && jcp.ih == 1) {
-        nthr_g = nstl::min(jcp.nthr, jcp.ngroups);
-        nthr_oc_b = nstl::min(jcp.nthr / nthr_g, div_up(jcp.nb_oc, 2));
-        nthr_ic_b = nstl::min(
-                jcp.nthr / (nthr_g * nthr_oc_b), div_up(jcp.nb_ic, 2));
+        nthr_g = static_cast<int>(nstl::min<dim_t>(jcp.nthr, jcp.ngroups));
+        nthr_oc_b = static_cast<int>(
+                nstl::min<dim_t>(jcp.nthr / nthr_g, div_up(jcp.nb_oc, 2)));
+        nthr_ic_b = static_cast<int>(nstl::min<dim_t>(
+                jcp.nthr / (nthr_g * nthr_oc_b), div_up(jcp.nb_ic, 2)));
         nthr_mb = jcp.nthr / (nthr_g * nthr_oc_b * nthr_ic_b);
         nthr = nthr_mb * nthr_g * nthr_oc_b * nthr_ic_b;
     }
@@ -3178,7 +3245,7 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
             && everyone_is(0, jcp.f_pad, jcp.back_pad, jcp.t_pad, jcp.b_pad))
         jcp.var_bs = false;
 
-    jcp.typesize_in = jcp.src_dsz;
+    jcp.typesize_in = static_cast<int>(jcp.src_dsz);
     jcp.typesize_out = sizeof(float);
 
     bool ok = true
@@ -3260,7 +3327,7 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     /* kernel applicability check wrt boundaries
      * the conditions are quite general across the kernels we have,
      * but ideally the check should belong to a specific kernel... */
-    const int max_pad_h = jcp.ext_kh / 2;
+    const dim_t max_pad_h = jcp.ext_kh / 2;
     const bool boundaries_ok = true && jcp.l_pad < jcp.ext_kw
             && jcp.r_pad < jcp.ext_kw && jcp.t_pad <= max_pad_h
             && jcp.b_pad <= max_pad_h && jcp.f_pad < jcp.ext_kd
@@ -3274,8 +3341,8 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     jcp.nb_ic = utils::div_up(jcp.ic, jcp.ic_block);
     jcp.nb_oc = utils::div_up(jcp.oc, jcp.oc_block);
 
-    jcp.ic_tail = jcp.ic % jcp.ic_block;
-    jcp.oc_tail = jcp.oc % jcp.oc_block;
+    jcp.ic_tail = static_cast<int>(jcp.ic % jcp.ic_block);
+    jcp.oc_tail = static_cast<int>(jcp.oc % jcp.oc_block);
 
     jcp.nb_oc_blocking = (jcp.nb_oc > 1) ? 2 : 1;
     jcp.nb_ic_blocking = (jcp.nb_ic > 1) ? 2 : 1;
@@ -3286,13 +3353,13 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     // TODO: Find more shapes (especially 3D with large spatials) for which
     // local transposition will be beneficial. Furthermore, for TBB threads
     // more shapes can potentially benefit from spatial blocking
-    int optimal_blk_size = is_3d ? jcp.od : is_2d ? jcp.oh : jcp.ow;
+    dim_t optimal_blk_size = is_3d ? jcp.od : is_2d ? jcp.oh : jcp.ow;
 
     jcp.global_transpose = dnnl_thr_syncable();
     jcp.spatial_blk_size = optimal_blk_size;
 
     const int tr_round = 32; // To load full tile register
-    int tr_pad = rnd_up(nstl::max(jcp.l_pad, jcp.r_pad + 1), tr_round);
+    dim_t tr_pad = rnd_up(nstl::max(jcp.l_pad, jcp.r_pad + 1), tr_round);
     jcp.tr_iw = rnd_up(div_up(jcp.iw + jcp.l_pad + jcp.r_pad, jcp.stride_w),
                         tr_round)
             * jcp.stride_w;
@@ -3303,9 +3370,9 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     jcp.tr_ow = rnd_up(jcp.ow, rnd_val);
     if (jcp.tr_ow > tr_round) {
         // we may increase tr_ow to have better bd_block in brgemm kernel
-        int best_bdb = jcp.tr_ow / rnd_val;
-        int best_tr_ow = jcp.tr_ow;
-        for (int tr_ow = jcp.tr_ow; tr_ow <= rnd_up(jcp.tr_ow, tr_round);
+        dim_t best_bdb = jcp.tr_ow / rnd_val;
+        dim_t best_tr_ow = jcp.tr_ow;
+        for (dim_t tr_ow = jcp.tr_ow; tr_ow <= rnd_up(jcp.tr_ow, tr_round);
                 tr_ow += rnd_val) {
             for (int i = tr_round; i > 0; i -= rnd_val) {
                 if (tr_ow % i == 0) {
@@ -3334,9 +3401,15 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     }
 
     switch (jcp.harness) {
-        case harness_2d_reduction: jcp.nthr_mb_work = jcp.mb * jcp.oh; break;
-        case harness_3d_reduction: jcp.nthr_mb_work = jcp.mb * jcp.od; break;
-        default: assert(!"Invalid harness"); jcp.nthr_mb_work = jcp.mb;
+        case harness_2d_reduction:
+            jcp.nthr_mb_work = static_cast<int>(jcp.mb * jcp.oh);
+            break;
+        case harness_3d_reduction:
+            jcp.nthr_mb_work = static_cast<int>(jcp.mb * jcp.od);
+            break;
+        default:
+            assert(!"Invalid harness");
+            jcp.nthr_mb_work = static_cast<int>(jcp.mb);
     }
 
     balance_bwd_w(jcp);
@@ -3371,19 +3444,22 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     jcp.tr_ocb_chunk = tr_ocb_chunk_allowed && (jcp.oh * jcp.ow > 38 * 38);
     jcp.tr_icb_chunk = false;
 
-    const int irow_size = jcp.src_dsz * jcp.tr_iw * jcp.ic_block
-            * div_up(jcp.nb_ic, jcp.nthr_ic_b)
+    const dim_t irow_size = static_cast<dim_t>(jcp.src_dsz) * jcp.tr_iw
+            * jcp.ic_block * div_up(jcp.nb_ic, jcp.nthr_ic_b)
             * 2 /*we have real and transposed input */;
-    const int orow_size = jcp.dst_dsz * jcp.tr_ow * jcp.oc_block
-            * div_up(jcp.nb_oc, jcp.nthr_oc_b)
+    const dim_t orow_size = static_cast<dim_t>(jcp.dst_dsz) * jcp.tr_ow
+            * jcp.oc_block * div_up(jcp.nb_oc, jcp.nthr_oc_b)
             * 2 /*we have real and transposed diff_dst*/;
-    int oh_block_limit = nstl::max(1.f,
-            nstl::max(0.f, 0.8f * brg_blocking_t::L2 - jcp.kh * irow_size)
-                    / (irow_size + orow_size));
+    dim_t oh_block_limit = static_cast<dim_t>(nstl::max(1.f,
+            nstl::max(0.f,
+                    0.8f * static_cast<float>(brg_blocking_t::L2)
+                            - static_cast<float>(jcp.kh)
+                                    * static_cast<float>(irow_size))
+                    / static_cast<float>(irow_size + orow_size)));
     // try to split oh by equal oh blocks
     oh_block_limit = div_up(jcp.oh, div_up(jcp.oh, oh_block_limit));
-    jcp.oh_block = utils::saturate(1, jcp.oh, oh_block_limit);
-    jcp.ih_block = nstl::min(jcp.ih,
+    jcp.oh_block = utils::saturate<dim_t>(1, jcp.oh, oh_block_limit);
+    jcp.ih_block = nstl::min<dim_t>(jcp.ih,
             jcp.stride_h
                     * brg_blocking_t::get_inp_size(jcp.ih, jcp.oh_block, jcp.kh,
                             jcp.stride_h, jcp.dilate_h));
@@ -3392,12 +3468,13 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     // among nthr_oc_b
     jcp.tr_ic_block = jcp.ic_block;
     if (jcp.ic <= jcp.ic_block) {
-        for (int itr_icb = jcp.ic_block; itr_icb > 1; itr_icb--) {
+        for (dim_t itr_icb = jcp.ic_block; itr_icb > 1; itr_icb--) {
             if (jcp.ic_block % itr_icb != 0) continue;
             const auto icb_per_thr_ic_b = div_up(jcp.nb_ic, jcp.nthr_ic_b);
             const auto ic_per_thr_ic_b
-                    = nstl::min(jcp.ic, icb_per_thr_ic_b * jcp.ic_block);
-            const auto ic_block_per_thr_ic_b = nstl::min(jcp.ic, jcp.ic_block);
+                    = nstl::min<dim_t>(jcp.ic, icb_per_thr_ic_b * jcp.ic_block);
+            const auto ic_block_per_thr_ic_b
+                    = nstl::min<dim_t>(jcp.ic, jcp.ic_block);
             if (ic_block_per_thr_ic_b % itr_icb != 0) continue;
             const auto tr_icb_per_thr = div_up(ic_per_thr_ic_b, itr_icb);
             const auto sp_per_thr_mb
@@ -3427,14 +3504,17 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     jcp.tr_diff_dst_buf_size = jcp.tr_diff_dst_block_size
             * (jcp.global_transpose ? 1 : jcp.nb_oc_blocking);
 
-    const int iframe_size = irow_size * jcp.id;
-    const int oframe_size = orow_size * jcp.od;
-    int od_block_limit = nstl::max(1.f,
-            nstl::max(0.f, 0.8f * brg_blocking_t::L2 - jcp.kd * iframe_size)
-                    / (iframe_size + oframe_size));
+    const dim_t iframe_size = irow_size * jcp.id;
+    const dim_t oframe_size = orow_size * jcp.od;
+    dim_t od_block_limit = static_cast<dim_t>(nstl::max(1.f,
+            nstl::max(0.f,
+                    0.8f * static_cast<float>(brg_blocking_t::L2)
+                            - static_cast<float>(jcp.kd)
+                                    * static_cast<float>(iframe_size))
+                    / static_cast<float>(iframe_size + oframe_size)));
     // try to split od by equal od blocks
     od_block_limit = div_up(jcp.od, div_up(jcp.od, od_block_limit));
-    jcp.od_block = utils::saturate(1, jcp.od, od_block_limit);
+    jcp.od_block = utils::saturate<dim_t>(1, jcp.od, od_block_limit);
 
     jcp.use_interleave_stores = false;
     jcp.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
@@ -3570,10 +3650,10 @@ void get_ow_range(const jit_brgemm_conv_conf_t &jcp, int ow, int kw, int &ow_s,
         ow_s += ker_idx;
     }
     if (iw_rp > 0) ker_idx += div_up(iw_rp, SW);
-    ow_f = nstl::max(ow_s, ow_s + (M - ker_idx));
+    ow_f = static_cast<int>(nstl::max<dim_t>(ow_s, ow_s + (M - ker_idx)));
 
-    ow_s = nstl::min(ow_s, ow + M);
-    ow_f = nstl::min(ow_f, ow + M);
+    ow_s = static_cast<int>(nstl::min<dim_t>(ow_s, ow + M));
+    ow_f = static_cast<int>(nstl::min<dim_t>(ow_f, ow + M));
 }
 
 // Sets pairs of `kw_s`-`kw_f` and `kw_full_s`-`kw_full_f` based on given `jcp`.

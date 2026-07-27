@@ -70,8 +70,9 @@ postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
     // enabled yet.
     const binary_injector::rhs_arg_static_params_t rhs_sp {
             rhs_dt_helper_vmm_idx, gen.r14, gen.r15, gen.r13, preserve_gpr,
-            preserve_vmm, rhs_arg_offset, dst_orig_off, dst_d,
-            (size_t)tail_elems, use_exact_tail_scalar_bcast};
+            preserve_vmm, static_cast<dim_t>(rhs_arg_offset),
+            static_cast<dim_t>(dst_orig_off), dst_d,
+            static_cast<dim_t>(tail_elems), use_exact_tail_scalar_bcast};
 
     const binary_injector::static_params_t bsp {param_reg,
             binary_injector::get_all_strategies_supported_by_injector(),

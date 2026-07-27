@@ -89,7 +89,7 @@ private:
     ymm_t vtmp = ymm_t(14);
 
     void apply_postops(
-            const int load_loop_blk, const int ur, const int load_dim_tail);
+            const int load_loop_blk, const int ur, const dim_t load_dim_tail);
     void generate_bcast_loop(int load_loop_blk);
     void generate_reduce_loop(int load_loop_blk, int ur);
     void generate_diff_bias_loop(int load_loop_blk);

@@ -52,7 +52,7 @@ void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper weights_d(pd()->weights_md(0));
     const memory_desc_wrapper bias_d(pd()->weights_md(1));
 
-    int ocb_work = div_up(jcp.nb_oc, jcp.nb_oc_blocking);
+    const dim_t ocb_work = div_up(jcp.nb_oc, jcp.nb_oc_blocking);
     const size_t work_amount = jcp.mb * jcp.ngroups * ocb_work * jcp.oh;
 
     const bool is_src_layout_nxc
@@ -66,26 +66,28 @@ void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         size_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        int icbb = 0;
+        dim_t icbb = 0;
         while (icbb < jcp.nb_ic) {
-            int icb_step = jcp.nb_ic_blocking;
-            int icb_step_rem = jcp.nb_ic - icbb;
-            if (icb_step_rem < jcp.nb_ic_blocking_max) icb_step = icb_step_rem;
+            dim_t icb_step = jcp.nb_ic_blocking;
+            const dim_t icb_step_rem = jcp.nb_ic - icbb;
+            if (icb_step_rem < jcp.nb_ic_blocking_max)
+                icb_step = icb_step_rem;
 
             size_t n {0}, g {0}, ocbb {0}, oh {0};
             nd_iterator_init(start, n, jcp.mb, g, jcp.ngroups, ocbb, ocb_work,
                     oh, jcp.oh);
             for (size_t iwork = start; iwork < end; ++iwork) {
-                int ocb = ocbb * jcp.nb_oc_blocking;
-                int ocb_num = jcp.nb_oc_blocking;
+                const dim_t ocb = ocbb * jcp.nb_oc_blocking;
+                const dim_t ocb_num = jcp.nb_oc_blocking;
 
-                for (int icb = icbb; icb < icbb + icb_step; ++icb) {
+                for (dim_t icb = icbb; icb < icbb + icb_step; ++icb) {
                     auto par_conv = jit_conv_args_t();
 
-                    const int ij = oh * jcp.stride_h;
-                    const int i_t_overflow = nstl::max(0, jcp.t_pad - ij);
-                    const int i_b_overflow
-                            = nstl::max(jcp.ih,
+                    const dim_t ij = oh * jcp.stride_h;
+                    const dim_t i_t_overflow
+                            = nstl::max<dim_t>(0, jcp.t_pad - ij);
+                    const dim_t i_b_overflow
+                            = nstl::max<dim_t>(jcp.ih,
                                       ij + (jcp.kh - 1) * (jcp.dilate_h + 1)
                                               - jcp.t_pad + 1)
                             - jcp.ih;
@@ -97,7 +99,8 @@ void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                             = g * (is_src_layout_nxc ? jcp.ic : jcp.nb_ic)
                             + icb * (is_src_layout_nxc ? jcp.ic_block : 1);
 
-                    const int ih = nstl::max(ij - jcp.t_pad
+                    const dim_t ih = nstl::max<dim_t>(
+                            ij - jcp.t_pad
                                     + div_up(i_t_overflow, (jcp.dilate_h + 1))
                                             * (jcp.dilate_h + 1),
                             0);
@@ -105,7 +108,8 @@ void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
                     par_conv.dst = &dst[src_blk_off(dst_d, n, _oc, oh, 0)];
 
-                    const int wh = div_up(i_t_overflow, (jcp.dilate_h + 1));
+                    const dim_t wh
+                            = div_up(i_t_overflow, (jcp.dilate_h + 1));
                     par_conv.filt = &weights[wht_blk_off(
                             weights_d, g, ocb, icb, wh, 0)];
 
@@ -122,13 +126,13 @@ void jit_sse41_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                     }
 
                     par_conv.oc_blocks
-                            = nstl::min(ocb + ocb_num, jcp.nb_oc) - ocb;
+                            = nstl::min<dim_t>(ocb + ocb_num, jcp.nb_oc) - ocb;
 
                     par_conv.kw_padding = 0;
-                    const int kh_padding = jcp.kh
+                    const dim_t kh_padding = jcp.kh
                             - div_up(i_t_overflow, (jcp.dilate_h + 1))
                             - div_up(i_b_overflow, (jcp.dilate_h + 1));
-                    par_conv.kh_padding = nstl::max(0, kh_padding);
+                    par_conv.kh_padding = nstl::max<dim_t>(0, kh_padding);
 
                     par_conv.post_ops_binary_rhs_arg_vec
                             = post_ops_binary_rhs_arg_vec.data();

@@ -72,7 +72,8 @@ rnn_cell_execution_sig(
             augru_attention_, dst_layer_, nullptr, src_iter_, nullptr,
             diff_src_layer_, diff_augru_attention_, diff_src_iter_, nullptr,
             diff_dst_layer_, diff_dst_iter_, nullptr, nullptr, bias_[0],
-            nullptr, nullptr, dst_iter_, weights_scales, rnn.dhc);
+            nullptr, nullptr, dst_iter_, weights_scales,
+            rnn.dhc);
 
     // 4. gemm Wh[2],h~t
     if (rnn.use_matmul) {
@@ -190,8 +191,8 @@ template <data_type_t src_type, data_type_t weights_type, data_type_t acc_type>
 rnn_cell_execution_sig(
         (ref_rnn_bwd_t<src_type, weights_type, acc_type>::cell_execution_gru)) {
     auto gemm_iter_f
-            = [&](int m, int n, int k, const weights_t *A, const gemm_data_t *B,
-                      float beta, gemm_acc_t *C) {
+            = [&](dim_t m, dim_t n, dim_t k, const weights_t *A,
+                      const gemm_data_t *B, float beta, gemm_acc_t *C) {
         return (this->*gemm_iter_func)('N', 'N', m, n, k, 1.0f, A,
                 rnn.weights_iter_ld, B, rnn.scratch_gates_ld, beta, C,
                 rnn.ws_diff_states_iter_ld);
@@ -203,15 +204,15 @@ rnn_cell_execution_sig(
                 rnn.scratch_gates_ld, 0.0, C, rnn.ws_diff_states_layer_ld);
     };
     auto gemm_weights_layer_f = [&](const gemm_data_t *A, const weights_t *B,
-                                        int ldb, gemm_acc_t *C) {
+                                        dim_t ldb, gemm_acc_t *C) {
         const float beta = rnn.diff_weights_beta(cell_position);
         return gemm('N', 'T', rnn.n_gates * rnn.dhc, rnn.slc, rnn.mb, 1.0, A,
                 rnn.scratch_gates_ld, B, ldb, beta, C,
                 rnn.diff_weights_layer_ld);
     };
     auto gemm_weights_iter_f
-            = [&](int m, int n, int k, const weights_t *A, const gemm_data_t *B,
-                      int ldb, gemm_acc_t *C) {
+            = [&](dim_t m, dim_t n, dim_t k, const weights_t *A,
+                      const gemm_data_t *B, dim_t ldb, gemm_acc_t *C) {
         const float beta = rnn.diff_weights_beta(cell_position);
         return gemm('N', 'T', m, n, k, 1.0f, A, rnn.ws_gates_ld, B, ldb, beta,
                 C, rnn.diff_weights_iter_ld);

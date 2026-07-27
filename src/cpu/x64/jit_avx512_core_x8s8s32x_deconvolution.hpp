@@ -49,25 +49,25 @@ enum ker_block_t {
 struct ur_w_blks_params_t {
     struct single_ur_w_blk_params_t {
         single_ur_w_blk_params_t(
-                int l_overflow, int r_overflow, bool process_sp_carefully)
+                dim_t l_overflow, dim_t r_overflow, bool process_sp_carefully)
             : l_overflow(l_overflow)
             , r_overflow(r_overflow)
             , process_sp_carefully(process_sp_carefully) {}
 
         // l_overflow - no. of spatial elements of weights standing out of
         // src spatial when computing the 1st output pixel in the current blk
-        int l_overflow;
+        dim_t l_overflow;
         // r_overflow - no. of spatial elements of weights standing out of
         // src spatial when computing the lst output pixel in the current blk
-        int r_overflow;
+        dim_t r_overflow;
         // process_sp_carefully - indicates if loading the last src sp
         // for computation of the last dst sp of the block can't be done
         // by fetching 4 src sp at once
         bool process_sp_carefully;
     };
     std::vector<single_ur_w_blk_params_t> blks_params;
-    int num_pre_blks; // num of blocks with l_overflow>0
-    int num_post_blks; // num of blocks with r_overflow>0 or that need to be
+    dim_t num_pre_blks; // num of blocks with l_overflow>0
+    dim_t num_post_blks; // num of blocks with r_overflow>0 or that need to be
             // processed carefully
 };
 
@@ -141,19 +141,19 @@ private:
     const Vmm vmm_scale_adjust = Vmm(31);
     const Vmm vmm_prev_dst = Vmm(31);
 
-    Vmm vmm_out(int i_ur, int i_oc) {
-        int idx = i_ur * jcp.nb_oc_blocking + i_oc;
+    Vmm vmm_out(dim_t i_ur, dim_t i_oc) {
+        const dim_t idx = i_ur * jcp.nb_oc_blocking + i_oc;
         assert(idx < 31);
-        return Vmm(idx);
+        return Vmm(static_cast<int>(idx));
     }
-    Vmm vmm_inp(int i_ic, int nb_x_blocking) const {
-        int idx = i_ic + nb_x_blocking * jcp.ur_w;
+    Vmm vmm_inp(dim_t i_ic, dim_t nb_x_blocking) const {
+        const dim_t idx = i_ic + nb_x_blocking * jcp.ur_w;
         assert(idx < 31);
-        return Vmm(idx);
+        return Vmm(static_cast<int>(idx));
     }
 
-    int get_ow_start(int ki, int l_overflow) {
-        int res = (jcp.ow - 1 + jcp.r_pad) % jcp.stride_w
+    dim_t get_ow_start(dim_t ki, dim_t l_overflow) {
+        dim_t res = (jcp.ow - 1 + jcp.r_pad) % jcp.stride_w
                 + l_overflow * jcp.stride_w
                 - (jcp.kw - 1 - ki) * (jcp.dilate_w + 1);
         while (res < 0)
@@ -161,18 +161,18 @@ private:
         return res;
     }
 
-    int get_ow_end(int ur_w, int ki, int r_overflow) {
+    dim_t get_ow_end(dim_t ur_w, dim_t ki, dim_t r_overflow) {
         if (utils::one_of(ur_w, jcp.ow, jcp.ur_w_tail))
-            ur_w += nstl::min(0, jcp.r_pad); // remove negative padding
-        int res = (ur_w - 1 + jcp.l_pad) % jcp.stride_w
+            ur_w += nstl::min<dim_t>(0, jcp.r_pad); // remove negative padding
+        dim_t res = (ur_w - 1 + jcp.l_pad) % jcp.stride_w
                 + r_overflow * jcp.stride_w - ki * (jcp.dilate_w + 1);
         while (res < 0)
             res += jcp.stride_w;
         return ur_w - res;
     }
 
-    int get_blocking_size() const noexcept;
-    int get_tail_size() const noexcept;
+    dim_t get_blocking_size() const noexcept;
+    dim_t get_tail_size() const noexcept;
     void prepare_output(int ur_w);
     void store_output(int ur_w, bool last_oc_block);
     void compute(const Vmm &vreg_acc, const Vmm &vreg_wei, const Vmm &vreg_src);
@@ -200,7 +200,8 @@ struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t {
             const memory_desc_t &dst_md)
         : kernel_(nullptr) {
 
-        int ch_block = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
+        const dim_t ch_block
+                = ajcp.is_depthwise ? ajcp.ch_block : ajcp.ic_block;
         switch (ch_block) {
             case 16:
                 kernel_ = utils::make_unique<

@@ -33,7 +33,7 @@ class brgemm_dst_layer_iter_t {
 public:
     using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<prop_kind::forward>;
     using postgemm_fused_t = std::function<void(
-            dim_t, dim_t, dim_t, const src_t *, scratch_t *, scratch_t *, int)>;
+            dim_t, dim_t, dim_t, const src_t *, scratch_t *, scratch_t *, dim_t)>;
     brgemm_dst_layer_iter_t(const ref_rnn_brgemm_t &rnn_brgemm_,
             const rnn_utils::rnn_conf_t &rnn,
             rnn_utils::cell_position_t cell_position, const src_t *src_iter,
@@ -64,7 +64,7 @@ private:
     const dim_t LDAi_;
     const dim_t n_blocking_;
     const dim_t m_blocking_;
-    const int work_amount_;
+    const dim_t work_amount_;
     const dim_t Bl_n_offset_;
     const dim_t Bi_n_offset_;
     const dim_t Bl_g_offset_;
@@ -108,7 +108,7 @@ class brgemm_dst_proj_t {
 public:
     using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<prop_kind::forward>;
     using postgemm_fused_t
-            = std::function<void(dim_t, dim_t, gemm_acc_t *, int)>;
+            = std::function<void(dim_t, dim_t, gemm_acc_t *, dim_t)>;
     brgemm_dst_proj_t(const ref_rnn_brgemm_t &rnn_brgemm_,
             const rnn_utils::rnn_conf_t &rnn,
             rnn_utils::cell_position_t cell_position, const src_t *proj_ht,
@@ -124,13 +124,13 @@ private:
 
     const ref_rnn_brgemm_t &rnn_brgemm_;
     const rnn_utils::rnn_conf_t &rnn_;
-    const int proj_desc_idx_;
+    const dim_t proj_desc_idx_;
     const src_t *const A_;
     const weights_t *const B_;
     gemm_acc_t *const C_;
     const dim_t LDC_;
     const dim_t max_nthr_;
-    const int work_amount_proj_;
+    const dim_t work_amount_proj_;
     const dim_t B_n_offset_;
     const dim_t Bp_kb_offset_;
     gemm_acc_t *const amx_scratchpad_;
@@ -149,7 +149,7 @@ class brgemm_gru_t {
 public:
     using ref_rnn_brgemm_t = rnn_brgemm_utils::rnn_brgemm_t<prop_kind::forward>;
     using postgemm_fused_t = std::function<void(
-            dim_t, dim_t, dim_t, const src_t *, scratch_t *, scratch_t *, int)>;
+            dim_t, dim_t, dim_t, const src_t *, scratch_t *, scratch_t *, dim_t)>;
     brgemm_gru_t(const ref_rnn_brgemm_t &rnn_brgemm_,
             const rnn_utils::rnn_conf_t &rnn,
             rnn_utils::cell_position_t cell_position, const src_t *src_iter,
@@ -184,7 +184,7 @@ private:
     const dim_t max_nthr_;
     const dim_t n_blocking_;
     const dim_t m_blocking_;
-    const int work_amount_;
+    const dim_t work_amount_;
     const dim_t Bl_n_offset_;
     const dim_t Bi_n_offset_;
     const dim_t Bl_g_offset_;
@@ -253,7 +253,7 @@ private:
     const dim_t max_nthr_;
     const dim_t n_blocking_;
     const dim_t m_blocking_;
-    const int work_amount_;
+    const dim_t work_amount_;
     const dim_t Bl_n_offset_;
     const dim_t Bl_g_offset_;
     const dim_t Al_k_tail_offset_;

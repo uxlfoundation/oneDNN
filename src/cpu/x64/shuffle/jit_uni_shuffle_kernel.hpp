@@ -74,6 +74,13 @@ struct jit_uni_shuffle_kernel_t : public jit_generator_t {
 
     void generate() override;
 
+    // Narrows a small, fixed-range value (SIMD lane/element index) to the
+    // XByak 8-bit immediate at the single instruction-emit boundary.
+    static uint8_t to_imm_uint8_t(dim_t v) noexcept {
+        assert(v >= 0 && v <= UINT8_MAX);
+        return static_cast<uint8_t>(v);
+    }
+
     const Vmm vmm_tail_mask_ = Vmm(0);
     // Used only for avx
     // Vgatherdps always gets data using a conditional mask

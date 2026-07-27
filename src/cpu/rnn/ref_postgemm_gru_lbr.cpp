@@ -40,7 +40,7 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
         scratch_data_t *scratch_gates_, const src_data_t *augru_attention_,
         src_data_t *dst_layer_, src_data_t *dst_iter_,
         const src_data_t *src_iter_, const void *bias_, src_data_t *ws_grid_,
-        scratch_data_t *scratch_cell_, int block_step) {
+        scratch_data_t *scratch_cell_, dim_t block_step) {
 
     const auto src_iter_ld = rnn.src_iter_ld(cell_position);
     const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
@@ -60,7 +60,7 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
     const auto bias_aoc = rnn_utils::make_raw_aoc(
             bias_, types::data_type_size(rnn.bias_dt), rnn.n_bias, rnn.dhc);
 
-    const auto bias = [&](int gate_id, int dhc_id) {
+    const auto bias = [&](int gate_id, dim_t dhc_id) {
         return to_float(bias_aoc(gate_id, dhc_id), rnn.bias_dt);
     };
     const scratch_gates_aoc_t<scratch_data_t> scratch_cell(rnn, scratch_cell_);
@@ -74,7 +74,7 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
 
     const auto postgemm = [&](dim_t i) {
         PRAGMA_OMP_SIMD()
-        for (int j = 0; j < rnn.dhc; j++) {
+        for (dim_t j = 0; j < rnn.dhc; j++) {
             const float Wh_b = scratch_cell(i, 2, j) + bias(3, j);
             auto G0 = func1(scales, // default func1 is sigmoid
                     scratch_gates(i, 0, j) + scratch_cell(i, 0, j)
@@ -101,9 +101,9 @@ void gru_lbr_fwd_postgemm_template(T1 func1, T2 func2, T3 to_src,
     };
 
     const auto postgemm_brgemm = [&](dim_t i) {
-        const int n_elem = block_step;
+        const dim_t n_elem = block_step;
         PRAGMA_OMP_SIMD()
-        for (int j = 0; j < n_elem; j++) {
+        for (dim_t j = 0; j < n_elem; j++) {
             const float Wh_b = scratch_cell(i, 0, j) + bias(3, j);
             auto G0 = func1(scales, // default func1 is sigmoid
                     scratch_gates(i, 0, j) + bias(0, j));
@@ -213,7 +213,7 @@ void gru_lbr_bwd_postgemm_template(T1 to_src, const rnn_utils::rnn_conf_t &rnn,
     parallel_nd(rnn.mb, [&](dim_t i) {
         acc_data_t diff_attention = 0.0f;
         PRAGMA_OMP_SIMD(reduction(+ : diff_attention))
-        for (int j = 0; j < rnn.dhc; j++) {
+        for (dim_t j = 0; j < rnn.dhc; j++) {
             const float h = src_iter(i, j);
             const float dHt = diff_dst_iter(i, j) + diff_dst_layer(i, j);
             float dG0 = (h - ws_gates(i, 2, j)) * dHt

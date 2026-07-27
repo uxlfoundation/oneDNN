@@ -183,7 +183,7 @@ struct nchw_pooling_bwd_t : public primitive_t {
 
         dim_t channel_block_size_ {1};
         int nthr_; // To not exceed the limit in execute used for set up.
-        int nbuf_ {0};
+        dim_t nbuf_ {0};
 
     private:
         void init_scratchpad() {

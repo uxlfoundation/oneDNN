@@ -75,8 +75,8 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
 
     size_t extra_data_offset
             = weights_d.size() - weights_d.additional_buffer_size();
-    size_t ch_offset = jcp.is_depthwise ? jcp.nb_ch * jcp.ch_block
-                                        : jcp.ngroups * jcp.oc;
+    const dim_t ch_offset = jcp.is_depthwise ? jcp.nb_ch * jcp.ch_block
+                                             : jcp.ngroups * jcp.oc;
     auto w = const_cast<char *>(weights);
     int32_t *compensation = (jcp.signed_input)
             ? reinterpret_cast<int32_t *>(&w[extra_data_offset])
@@ -86,13 +86,13 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
                     + (jcp.signed_input ? ch_offset : 0)
             : nullptr;
 
-    int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
-    int nb_groups = jcp.nb_ch / jcp.nb_ch_blocking;
-    int group_block = jcp.ch_block;
-    int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.nb_ow;
+    const dim_t oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking;
+    const dim_t nb_groups = jcp.nb_ch / jcp.nb_ch_blocking;
+    const dim_t group_block = jcp.ch_block;
+    const dim_t work_amount = jcp.mb * nb_groups * oc_chunks * jcp.nb_ow;
 
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
-        int start {0}, end {0};
+        dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
         auto p = jit_conv_args_t();
@@ -108,7 +108,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
             dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
         }
 
-        int n {0}, gg {0}, occ {0}, owb {0};
+        dim_t n {0}, gg {0}, occ {0}, owb {0};
         switch (jcp.loop_order) {
             case loop_cwgn:
                 nd_iterator_init(start, occ, oc_chunks, owb, jcp.nb_ow, gg,
@@ -129,13 +129,13 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
             default: assert(!"unsupported loop order");
         }
         while (start < end) {
-            int ocb = occ * jcp.nb_oc_blocking;
-            int gb = gg * jcp.nb_ch_blocking;
-            int g = gb * group_block;
-            int g_oc = (g * jcp.nb_oc + ocb) * jcp.oc_block;
-            int g_ic = g * jcp.nb_ic * jcp.ic_block;
-            int ow_s = owb * jcp.ow_block;
-            int iw_s = ow_s * jcp.stride_w;
+            const dim_t ocb = occ * jcp.nb_oc_blocking;
+            const dim_t gb = gg * jcp.nb_ch_blocking;
+            dim_t g = gb * group_block;
+            dim_t g_oc = (g * jcp.nb_oc + ocb) * jcp.oc_block;
+            dim_t g_ic = g * jcp.nb_ic * jcp.ic_block;
+            dim_t ow_s = owb * jcp.ow_block;
+            dim_t iw_s = ow_s * jcp.stride_w;
 
             p.bias = bias ? bias + (bias_d.blk_off(g_oc) * bia_dt_size)
                           : nullptr;
@@ -234,12 +234,13 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
                     + (jcp.signed_input ? jcp.ngroups * jcp.oc : 0)
             : nullptr;
 
-    int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking_thr_chunk;
-    int nb_groups = jcp.nb_ch;
-    int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.oh * jcp.nb_ow;
+    const dim_t oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking_thr_chunk;
+    const dim_t nb_groups = jcp.nb_ch;
+    const dim_t work_amount
+            = jcp.mb * nb_groups * oc_chunks * jcp.oh * jcp.nb_ow;
 
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
-        int start {0}, end {0};
+        dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
         auto p = jit_conv_args_t();
@@ -259,7 +260,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
         size_t dst_h_stride = dst_d.blk_off(0, 0, 1);
         size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
 
-        int n {0}, g {0}, occ {0}, oh_s {0}, owb {0};
+        dim_t n {0}, g {0}, occ {0}, oh_s {0}, owb {0};
         switch (jcp.loop_order) {
             case loop_cwgn:
                 nd_iterator_init(start, occ, oc_chunks, owb, jcp.nb_ow, g,
@@ -276,20 +277,22 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
             default: assert(!"unsupported loop order");
         }
         while (start < end) {
-            for (int occ1 = 0; occ1 < jcp.nb_oc_blocking_thr_chunk;
+            for (dim_t occ1 = 0; occ1 < jcp.nb_oc_blocking_thr_chunk;
                     occ1 += jcp.nb_oc_blocking) {
-                int ocb = occ * jcp.nb_oc_blocking_thr_chunk + occ1;
-                int g_oc = (g * jcp.nb_oc + ocb) * jcp.oc_block;
+                const dim_t ocb
+                        = occ * jcp.nb_oc_blocking_thr_chunk + occ1;
+                dim_t g_oc = (g * jcp.nb_oc + ocb) * jcp.oc_block;
 
-                int g_ic = g * jcp.nb_ic * jcp.ic_block;
+                dim_t g_ic = g * jcp.nb_ic * jcp.ic_block;
 
-                int work_rem = end - start;
-                int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
-                int oh_e = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
+                dim_t work_rem = end - start;
+                dim_t ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
+                dim_t oh_e
+                        = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
                 if (jcp.loop_order == loop_nhwcg)
                     oh_e = oh_s + 1; // step instead
-                int ow_s = owb * jcp.ow_block;
-                int iw_s = ow_s * jcp.stride_w;
+                dim_t ow_s = owb * jcp.ow_block;
+                dim_t iw_s = ow_s * jcp.stride_w;
 
                 auto bias_w = bias ? bias + (bias_d.blk_off(g_oc) * bia_dt_size)
                                    : nullptr;
@@ -301,17 +304,17 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
                 auto src_w = src + src_d.blk_off(n, g_ic, ih_s, iw_s);
                 auto wht_w = weights + wht_blk_off(weights_d, g, ocb, 0);
 
-                for (int oj = oh_s, ij = ih_s; oj < oh_e;
+                for (dim_t oj = oh_s, ij = ih_s; oj < oh_e;
                         ++oj, ij += jcp.stride_h) {
-                    int dilate_h = jcp.dilate_h + 1;
-                    int i_t_overflow
-                            = nstl::min(jcp.kh, div_up(max(0, -ij), dilate_h));
-                    int i_b_overflow = nstl::min(jcp.kh,
-                            div_up(max(0,
+                    dim_t dilate_h = jcp.dilate_h + 1;
+                    dim_t i_t_overflow = nstl::min<dim_t>(
+                            jcp.kh, div_up(max<dim_t>(0, -ij), dilate_h));
+                    dim_t i_b_overflow = nstl::min<dim_t>(jcp.kh,
+                            div_up(max<dim_t>(0,
                                            ij - jcp.ih + (jcp.kh - 1) * dilate_h
                                                    + 1),
                                     dilate_h));
-                    int kh_padding = nstl::max(
+                    dim_t kh_padding = nstl::max<dim_t>(
                             0, jcp.kh - i_t_overflow - i_b_overflow);
 
                     size_t wei_stride = (jcp.signed_input || jcp.src_zero_point)
@@ -416,8 +419,8 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
             ? reinterpret_cast<int32_t *>(&w[offset])
                     + (jcp.signed_input ? jcp.nb_ch * jcp.ch_block : 0)
             : nullptr;
-    int nb_groups = jcp.nb_ch / jcp.nb_ch_blocking;
-    int group_block = jcp.ch_block;
+    const dim_t nb_groups = jcp.nb_ch / jcp.nb_ch_blocking;
+    const dim_t group_block = jcp.ch_block;
 
     parallel_nd(jcp.mb, jcp.oh, jcp.nb_ow, nb_groups,
             [= COMPAT_THIS_CAPTURE](dim_t n, dim_t oh_s, dim_t owb, dim_t gg) {
@@ -426,12 +429,12 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
         size_t src_h_stride = src_d.blk_off(0, 0, 1);
         size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
 
-        int gb = gg * jcp.nb_ch_blocking;
-        int g = gb * group_block;
+        dim_t gb = gg * jcp.nb_ch_blocking;
+        dim_t g = gb * group_block;
 
-        int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
-        int ow_s = owb * jcp.ow_block;
-        int iw_s = ow_s * jcp.stride_w;
+        dim_t ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
+        dim_t ow_s = owb * jcp.ow_block;
+        dim_t iw_s = ow_s * jcp.stride_w;
 
         auto bias_w = bias ? bias + (bias_d.blk_off(g) * bia_dt_size) : nullptr;
         int32_t *compensation_w = jcp.signed_input ? compensation + g : nullptr;
@@ -455,12 +458,15 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
                 ? static_cast<const float *>(wei_scales) + jcp.is_oc_scale * g
                 : nullptr;
 
-        int dilate_h = jcp.dilate_h + 1;
-        int i_t_overflow = nstl::min(jcp.kh, div_up(max(0, -ih_s), dilate_h));
-        int i_b_overflow = nstl::min(jcp.kh,
-                div_up(max(0, ih_s - jcp.ih + (jcp.kh - 1) * dilate_h + 1),
+        dim_t dilate_h = jcp.dilate_h + 1;
+        dim_t i_t_overflow = nstl::min<dim_t>(
+                jcp.kh, div_up(max<dim_t>(0, -ih_s), dilate_h));
+        dim_t i_b_overflow = nstl::min<dim_t>(jcp.kh,
+                div_up(max<dim_t>(
+                               0, ih_s - jcp.ih + (jcp.kh - 1) * dilate_h + 1),
                         dilate_h));
-        int kh_padding = nstl::max(0, jcp.kh - i_t_overflow - i_b_overflow);
+        dim_t kh_padding
+                = nstl::max<dim_t>(0, jcp.kh - i_t_overflow - i_b_overflow);
 
         size_t wei_stride = (jcp.signed_input || jcp.src_zero_point)
                 ? 0
@@ -535,13 +541,13 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_3d(
             ? reinterpret_cast<int32_t *>(&w[offset])
                     + (jcp.signed_input ? jcp.ngroups * jcp.oc : 0)
             : nullptr;
-    int oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking_thr_chunk;
-    int nb_groups = jcp.nb_ch;
-    int work_amount
+    const dim_t oc_chunks = jcp.nb_oc / jcp.nb_oc_blocking_thr_chunk;
+    const dim_t nb_groups = jcp.nb_ch;
+    const dim_t work_amount
             = jcp.mb * nb_groups * oc_chunks * jcp.od * jcp.oh * jcp.nb_ow;
 
     parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
-        int start {0}, end {0};
+        dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
         auto p = jit_conv_args_t();
@@ -563,7 +569,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_3d(
         size_t wht_d_stride = wht_blk_off(weights_d, 0, 0, 0, 1);
         size_t wht_h_stride = wht_blk_off(weights_d, 0, 0, 0, 0, 1);
 
-        int n {0}, g {0}, occ {0}, od_s {0}, oh_s {0}, owb {0};
+        dim_t n {0}, g {0}, occ {0}, od_s {0}, oh_s {0}, owb {0};
         switch (jcp.loop_order) {
             case loop_cwgn:
                 nd_iterator_init(start, occ, oc_chunks, owb, jcp.nb_ow, g,
@@ -580,32 +586,34 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_3d(
             default: assert(!"unsupported loop order");
         }
         while (start < end) {
-            for (int occ1 = 0; occ1 < jcp.nb_oc_blocking_thr_chunk;
+            for (dim_t occ1 = 0; occ1 < jcp.nb_oc_blocking_thr_chunk;
                     occ1 += jcp.nb_oc_blocking) {
-                int ocb = occ * jcp.nb_oc_blocking_thr_chunk + occ1;
-                int g_oc = (g * jcp.nb_oc + ocb) * jcp.oc_block;
+                const dim_t ocb
+                        = occ * jcp.nb_oc_blocking_thr_chunk + occ1;
+                dim_t g_oc = (g * jcp.nb_oc + ocb) * jcp.oc_block;
 
-                int g_ic = g * jcp.nb_ic * jcp.ic_block;
+                dim_t g_ic = g * jcp.nb_ic * jcp.ic_block;
 
-                int work_rem = end - start;
-                int ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
-                int oh_e = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
+                dim_t work_rem = end - start;
+                dim_t ih_s = -jcp.t_pad + oh_s * jcp.stride_h;
+                dim_t oh_e
+                        = oh_s + work_rem > jcp.oh ? jcp.oh : oh_s + work_rem;
                 if (jcp.loop_order == loop_nhwcg)
                     oh_e = oh_s + 1; // step instead
-                int ow_s = owb * jcp.ow_block;
-                int iw_s = ow_s * jcp.stride_w;
-                int id_s = -jcp.f_pad + od_s * jcp.stride_d;
-                int dilate_d = jcp.dilate_d + 1;
-                int d_f_overflow
-                        = nstl::min(jcp.kd, div_up(max(0, -id_s), dilate_d));
-                int d_back_overflow = nstl::min(jcp.kd,
-                        div_up(max(0,
+                dim_t ow_s = owb * jcp.ow_block;
+                dim_t iw_s = ow_s * jcp.stride_w;
+                dim_t id_s = -jcp.f_pad + od_s * jcp.stride_d;
+                dim_t dilate_d = jcp.dilate_d + 1;
+                dim_t d_f_overflow = nstl::min<dim_t>(
+                        jcp.kd, div_up(max<dim_t>(0, -id_s), dilate_d));
+                dim_t d_back_overflow = nstl::min<dim_t>(jcp.kd,
+                        div_up(max<dim_t>(0,
                                        id_s - jcp.id + (jcp.kd - 1) * dilate_d
                                                + 1),
                                 dilate_d));
 
-                int kd_padding
-                        = nstl::max(0, jcp.kd - d_f_overflow - d_back_overflow);
+                dim_t kd_padding = nstl::max<dim_t>(
+                        0, jcp.kd - d_f_overflow - d_back_overflow);
 
                 auto bias_w = bias ? bias + (bias_d.blk_off(g_oc) * bia_dt_size)
                                    : nullptr;
@@ -623,17 +631,17 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_3d(
                                           : d_f_overflow)
                                 * wht_d_stride;
 
-                for (int oj = oh_s, ij = ih_s; oj < oh_e;
+                for (dim_t oj = oh_s, ij = ih_s; oj < oh_e;
                         ++oj, ij += jcp.stride_h) {
-                    int dilate_h = jcp.dilate_h + 1;
-                    int i_t_overflow
-                            = nstl::min(jcp.kh, div_up(max(0, -ij), dilate_h));
-                    int i_b_overflow = nstl::min(jcp.kh,
-                            div_up(max(0,
+                    dim_t dilate_h = jcp.dilate_h + 1;
+                    dim_t i_t_overflow = nstl::min<dim_t>(
+                            jcp.kh, div_up(max<dim_t>(0, -ij), dilate_h));
+                    dim_t i_b_overflow = nstl::min<dim_t>(jcp.kh,
+                            div_up(max<dim_t>(0,
                                            ij - jcp.ih + (jcp.kh - 1) * dilate_h
                                                    + 1),
                                     dilate_h));
-                    int kh_padding = nstl::max(
+                    dim_t kh_padding = nstl::max<dim_t>(
                             0, jcp.kh - i_t_overflow - i_b_overflow);
 
                     size_t wei_stride = (jcp.signed_input || jcp.src_zero_point)

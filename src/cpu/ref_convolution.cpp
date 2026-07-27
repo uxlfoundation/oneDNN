@@ -218,8 +218,8 @@ status_t ref_convolution_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         args.dst_md = pd()->dst_md();
         ref_post_ops->execute(d, args);
         if (dst_rnd_mode == rounding_mode::stochastic)
-            d = math::stochastic_round_fwd(
-                    d, dst_off, rnd_seed[0], dst_d.data_type());
+            d = math::stochastic_round_fwd(d, static_cast<uint32_t>(dst_off),
+                    rnd_seed[0], dst_d.data_type());
 
         io::store_float_value(dst_d.data_type(), d, dst, dst_off);
     });

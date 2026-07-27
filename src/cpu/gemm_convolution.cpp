@@ -87,7 +87,7 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
             + (ptrdiff_t)ithr * jcp.is * jcp.ic;
 
     dim_t g {0}, n {0}, ohb {0}, owb {0};
-    dim_t start = 0, end = 0;
+    int start_i {0}, end_i {0};
     const bool is_problem_3d = pd()->ndims() == 5;
 
     assert(IMPLICATION(is_problem_3d,
@@ -95,11 +95,13 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
                     && jcp.ic_block == jcp.ic));
     assert(IMPLICATION(jcp.ow_block != jcp.ow, jcp.oh_block == 1));
 
-    const dim_t nb_oh = div_up(jcp.oh, jcp.oh_block);
-    const dim_t nb_ow = div_up(jcp.ow, jcp.ow_block);
+    const int nb_oh = static_cast<int>(div_up(jcp.oh, jcp.oh_block));
+    const int nb_ow = static_cast<int>(div_up(jcp.ow, jcp.ow_block));
     // threads share work across mini-batch, groups, and blocked width/height
-    const dim_t work_amount = jcp.mb * jcp.ngroups * nb_oh * nb_ow;
-    balance211(work_amount, nthr, ithr, start, end);
+    const int work_amount
+            = static_cast<int>(jcp.mb * jcp.ngroups * nb_oh * nb_ow);
+    balance211(work_amount, nthr, ithr, start_i, end_i);
+    dim_t start = start_i, end = end_i;
     nd_iterator_init(start, n, jcp.mb, g, jcp.ngroups, ohb, nb_oh, owb, nb_ow);
 
     if (jcp.im2col_sz && is_problem_3d) {
@@ -116,8 +118,10 @@ status_t gemm_convolution_fwd_t::execute_forward_thr_nspc(const exec_ctx_t &ctx,
                 = src_base + n * src_mb_stride + g * src_g_stride;
         const data_t *__restrict wei = wei_base + g * wei_g_stride;
 
-        const int h_step = nstl::min(jcp.oh_block, jcp.oh - oh);
-        const int w_step = nstl::min(jcp.ow_block, jcp.ow - ow);
+        const int h_step
+                = static_cast<int>(nstl::min<dim_t>(jcp.oh_block, jcp.oh - oh));
+        const int w_step
+                = static_cast<int>(nstl::min<dim_t>(jcp.ow_block, jcp.ow - ow));
         if (jcp.im2col_sz && is_problem_3d) {
             jit_gemm_convolution_utils::transpose_dt(jcp, src, imtr);
         }
@@ -264,8 +268,9 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
             for (ptrdiff_t i = 0; i < jcp.im2col_sz; i++)
                 _col[i] = (data_t)0;
         }
-        auto inner_ker = [&](int spatial, const im_pos_t &curr, im_pos_t &prev,
-                                 im_pos_t &step, const im_pos_t &end) {
+        auto inner_ker
+                = [&](dim_t spatial, const im_pos_t &curr, im_pos_t &prev,
+                          im_pos_t &step, const im_pos_t &end) {
             const data_t *_src
                     = src + curr.n * src_mb_stride + curr.g * src_g_stride;
             step.oc = nstl::min(
@@ -282,8 +287,8 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                     jit_gemm_convolution_utils::im2col<float>(jcp, _src, _col,
                             curr.sp, step.sp, curr.ic, step.ic);
                 else
-                    jit_gemm_convolution_utils::im2col_3d<float>(
-                            jcp, _src, _col, curr.od, 0, jcp.os);
+                    jit_gemm_convolution_utils::im2col_3d<float>(jcp, _src,
+                            _col, curr.od, 0, static_cast<int>(jcp.os));
             }
             const data_t one = 1.0;
 
@@ -312,7 +317,8 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                 // TODO: for "outer threading" we have parallel section within
                 // outermost "parallel". It is not good. Consider to use
                 // "parallel" here with number of threads passed as parameter
-                const int oc_start = curr.g * jcp.oc + curr.oc;
+                const int oc_start
+                        = static_cast<int>(curr.g * jcp.oc + curr.oc);
                 if (jcp.with_eltwise || jcp.with_binary) {
                     bool fast_relu_done = false;
                     if (jcp.with_eltwise && jcp.post_ops.len() == 1) {
@@ -479,9 +485,10 @@ status_t gemm_convolution_bwd_data_t::execute_backward_data_thr_nspc(
             : nullptr;
 
     dim_t n {0}, g {0};
-    dim_t start = 0, end = 0;
+    dim_t start_i {0}, end_i {0};
 
-    balance211(work_amount, nthr, ithr, start, end);
+    balance211(work_amount, nthr, ithr, start_i, end_i);
+    dim_t start = start_i, end = end_i;
     nd_iterator_init(start, n, jcp.mb, g, jcp.ngroups);
 
     for (dim_t iwork = start; iwork < end; ++iwork) {
@@ -550,7 +557,7 @@ status_t gemm_convolution_bwd_data_t::execute_backward_data_ncsp(
     const dim_t K = jcp.oc;
     const dim_t N = jcp.ic * jcp.ks;
 
-    const dim_t work_amount = (size_t)jcp.ngroups * jcp.mb;
+    const dim_t work_amount = jcp.ngroups * jcp.mb;
     const bool is_problem_3d = pd()->ndims() == 5;
 
     std::atomic<status_t> st(status::success);
@@ -558,8 +565,9 @@ status_t gemm_convolution_bwd_data_t::execute_backward_data_ncsp(
         data_t *_col = col + (ptrdiff_t)ithr * jcp.im2col_sz;
 
         dim_t g {0}, n {0};
-        dim_t start = 0, end = 0;
-        balance211(work_amount, nthr, ithr, start, end);
+        dim_t start_i {0}, end_i {0};
+        balance211(work_amount, nthr, ithr, start_i, end_i);
+        dim_t start = start_i, end = end_i;
         nd_iterator_init(start, g, jcp.ngroups, n, jcp.mb);
         for (dim_t iwork = start; iwork < end; ++iwork) {
 
@@ -636,11 +644,13 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
     std::atomic<status_t> st(status::success);
     parallel(jcp.nthr, [&](const int ithr, const int nthr) {
         int ithr_g, nthr_g, ithr_mb, nthr_mb;
-        size_t g_start {0}, g_end {0}, mb_start {0}, mb_end {0};
+        dim_t g_start {0}, g_end {0}, mb_start {0}, mb_end {0};
 
-        const int mb_for_balance = jcp.need_wei_reduction ? jcp.mb : 1;
-        jit_gemm_convolution_utils::bwd_weights_balance(ithr, nthr, jcp.ngroups,
-                mb_for_balance, ithr_g, nthr_g, ithr_mb, nthr_mb);
+        const int mb_for_balance
+                = jcp.need_wei_reduction ? static_cast<int>(jcp.mb) : 1;
+        jit_gemm_convolution_utils::bwd_weights_balance(ithr, nthr,
+                static_cast<int>(jcp.ngroups), mb_for_balance, ithr_g, nthr_g,
+                ithr_mb, nthr_mb);
 
         assert(IMPLICATION(!jcp.need_wei_reduction, nthr_mb == 1));
 
@@ -651,8 +661,8 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
                 + (ptrdiff_t)ithr * jcp.id * jcp.ic * jcp.is;
 
         if (ithr_g != -1 && ithr_mb != -1) {
-            balance211((size_t)jcp.ngroups, nthr_g, ithr_g, g_start, g_end);
-            balance211((size_t)jcp.mb, nthr_mb, ithr_mb, mb_start, mb_end);
+            balance211(jcp.ngroups, nthr_g, ithr_g, g_start, g_end);
+            balance211(jcp.mb, nthr_mb, ithr_mb, mb_start, mb_end);
 
             assert(IMPLICATION((g_end - g_start) > 1, need_reduction == 0));
 
@@ -670,11 +680,11 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
             data_t *weights_reduce = weights_reduce_base
                     + ithr_mb * weights_g_size * jcp.ks * jcp.ic;
 
-            for (size_t g = g_start; g < g_end; ++g) {
+            for (dim_t g = g_start; g < g_end; ++g) {
                 data_t *_diff_weights = need_reduction
                         ? weights_reduce
                         : diff_weights + g * weights_g_size;
-                for (size_t mb = mb_start; mb < mb_end; ++mb) {
+                for (dim_t mb = mb_start; mb < mb_end; ++mb) {
                     const data_t *_src
                             = src + mb * jcp.ngroups * src_step + g * jcp.ic;
                     if (jcp.im2col_sz && is_problem_3d)
@@ -730,17 +740,20 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
             int ithr_g, nthr_g, ithr_mb, nthr_mb;
             size_t g_start {0}, g_end {0};
             size_t mb_start {0}, mb_end {0};
-            const int mb_for_balance = jcp.need_wei_reduction ? jcp.mb : 1;
+            const int mb_for_balance
+                    = jcp.need_wei_reduction ? static_cast<int>(jcp.mb) : 1;
             jit_gemm_convolution_utils::bwd_weights_balance(ithr, nthr,
-                    jcp.ngroups, mb_for_balance, ithr_g, nthr_g, ithr_mb,
-                    nthr_mb);
+                    static_cast<int>(jcp.ngroups), mb_for_balance, ithr_g,
+                    nthr_g, ithr_mb, nthr_mb);
 
             assert(IMPLICATION(!jcp.need_wei_reduction, nthr_mb == 1));
             const int need_reduction = nthr_mb != 1;
 
             if (need_reduction && ithr_g != -1 && ithr_mb != -1) {
-                balance211((size_t)jcp.ngroups, nthr_g, ithr_g, g_start, g_end);
-                balance211((size_t)jcp.mb, nthr_mb, ithr_mb, mb_start, mb_end);
+                balance211(static_cast<size_t>(jcp.ngroups), nthr_g, ithr_g,
+                        g_start, g_end);
+                balance211(static_cast<size_t>(jcp.mb), nthr_mb, ithr_mb,
+                        mb_start, mb_end);
 
                 assert(IMPLICATION((g_end - g_start) > 1, need_reduction == 0));
 
@@ -765,7 +778,7 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
                         + ((static_cast<size_t>(mb) * jcp.od + od) * jcp.oh
                                   + oh)
                                 * jcp.ow * jcp.ngroups * jcp.oc;
-                const int width_stride = jcp.ngroups * jcp.oc;
+                const dim_t width_stride = jcp.ngroups * jcp.oc;
 
                 PRAGMA_OMP_SIMD(reduction(+ : db))
                 for (dim_t ow = 0; ow < jcp.ow; ++ow) {
@@ -806,9 +819,11 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_ncsp(
         int ithr_g, nthr_g, ithr_mb, nthr_mb;
         size_t g_start {0}, g_end {0}, mb_start {0}, mb_end {0};
 
-        const int mb_for_balance = jcp.need_wei_reduction ? jcp.mb : 1;
-        jit_gemm_convolution_utils::bwd_weights_balance(ithr, nthr, jcp.ngroups,
-                mb_for_balance, ithr_g, nthr_g, ithr_mb, nthr_mb);
+        const int mb_for_balance
+                = jcp.need_wei_reduction ? static_cast<int>(jcp.mb) : 1;
+        jit_gemm_convolution_utils::bwd_weights_balance(ithr, nthr,
+                static_cast<int>(jcp.ngroups), mb_for_balance, ithr_g, nthr_g,
+                ithr_mb, nthr_mb);
 
         assert(IMPLICATION(!jcp.need_wei_reduction, nthr_mb == 1));
         const int need_reduction = nthr_mb != 1;
@@ -897,10 +912,11 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_ncsp(
         parallel(jcp.nthr, [&](const int ithr, const int nthr) {
             int ithr_g, nthr_g, ithr_mb, nthr_mb;
             size_t g_start {0}, g_end {0};
-            const int mb_for_balance = jcp.need_wei_reduction ? jcp.mb : 1;
+            const int mb_for_balance
+                    = jcp.need_wei_reduction ? static_cast<int>(jcp.mb) : 1;
             jit_gemm_convolution_utils::bwd_weights_balance(ithr, nthr,
-                    jcp.ngroups, mb_for_balance, ithr_g, nthr_g, ithr_mb,
-                    nthr_mb);
+                    static_cast<int>(jcp.ngroups), mb_for_balance, ithr_g,
+                    nthr_g, ithr_mb, nthr_mb);
 
             assert(IMPLICATION(!jcp.need_wei_reduction, nthr_mb == 1));
             const int need_reduction = nthr_mb != 1;

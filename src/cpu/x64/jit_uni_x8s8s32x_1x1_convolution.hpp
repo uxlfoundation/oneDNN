@@ -315,7 +315,8 @@ struct jit_uni_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
                 --jcp_dw_->nb_ch_blocking;
 
             jcp_dw_->dw_conv_buffer_oc
-                    = jcp_1x1.nb_load_blocking * jcp_1x1.oc_block;
+                    = static_cast<int>(
+                            jcp_1x1.nb_load_blocking * jcp_1x1.oc_block);
             jcp_1x1.bcast_loop_output_step = jcp_1x1.ur
                     * (jcp_1x1.nb_load_blocking * jcp_1x1.oc_block)
                     * jcp_1x1.typesize_out;

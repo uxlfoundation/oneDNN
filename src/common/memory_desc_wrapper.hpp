@@ -314,6 +314,37 @@ struct memory_desc_wrapper {
         return buff_size;
     }
 
+    /** returns the number of elements spanned by the descriptor, i.e. one past
+     * the largest linear offset `off_v()` may return. Exceeds `nelems(true)`
+     * for strided descriptors. */
+    size_t span() const {
+        if (utils::one_of(format_kind(), format_kind::undef, format_kind::any)
+                || is_zero() || has_zero_dim())
+            return 0;
+
+        if (has_runtime_dims_or_strides()) return runtime_value_for<size_t>();
+
+        if (is_blocking_desc()) {
+            dims_t blocks = {0};
+            compute_blocks(blocks);
+
+            const auto &bd = blocking_desc();
+
+            dim_t max_size = 0;
+            for (int d = 0; d < ndims(); ++d) {
+                dim_t strided_pdim = padded_dims()[d] / blocks[d];
+                dim_t effective_stride = strided_pdim == 1 ? 1 : bd.strides[d];
+                max_size = nstl::max(max_size, strided_pdim * effective_stride);
+            }
+
+            if (max_size == 1 && bd.inner_nblks != 0) max_size = blk_size();
+            return static_cast<size_t>(max_size);
+        } else {
+            assert(!"unsupported format kind");
+            return 0;
+        }
+    }
+
     /** returns the size required to store described memory note: does not
         include offset0 by default */
     size_t size(int index = 0, bool include_additional_size = true,
@@ -340,22 +371,7 @@ struct memory_desc_wrapper {
         } else if (is_zen_packed_desc()) {
             return zen_packed_desc().size;
         } else if (is_blocking_desc()) {
-            dims_t blocks = {0};
-            compute_blocks(blocks);
-
-            const auto &bd = blocking_desc();
-
-            size_t max_size = 0;
-            for (int d = 0; d < ndims(); ++d) {
-                dim_t strided_pdim = padded_dims()[d] / blocks[d];
-                dim_t effective_stride = strided_pdim == 1 ? 1 : bd.strides[d];
-                max_size = nstl::max<size_t>(
-                        max_size, strided_pdim * effective_stride);
-            }
-
-            if (max_size == 1 && bd.inner_nblks != 0) {
-                max_size = static_cast<size_t>(blk_size());
-            }
+            const size_t max_size = span();
 
             // `div_up` guarantees a spot in memory for odd number of half-byte
             // elements. Crucial case is `1` when simple division returns 0.

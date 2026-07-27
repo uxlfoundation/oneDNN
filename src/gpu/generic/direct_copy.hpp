@@ -36,8 +36,10 @@ struct direct_copy_t : public primitive_t {
         status_t init(const impl::engine_t *engine,
                 const impl::engine_t * /*src_engine*/,
                 const impl::engine_t * /*dst_engine*/) {
-            VDISPATCH_REORDER(
-                    attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+            // GRF mode hint is irrelevant for a plain copy.
+            VDISPATCH_REORDER(attr()->has_default_values(
+                                      primitive_attr_t::skip_mask_t::gpu_attr),
+                    VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_REORDER(
                     extra_ok(), VERBOSE_UNSUPPORTED_MD_FLAG, "extra_ok");
 

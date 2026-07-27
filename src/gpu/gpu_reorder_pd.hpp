@@ -31,7 +31,8 @@ protected:
     bool attr_ok() const {
         using sm = dnnl_primitive_attr::skip_mask_t;
         return attr()->has_default_values(
-                       sm::zero_points | sm::scales | sm::post_ops)
+                       sm::zero_points | sm::scales | sm::post_ops
+                       | sm::gpu_attr)
                 && post_ops_ok() && zero_points_ok();
     }
 

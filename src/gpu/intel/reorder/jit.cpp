@@ -78,8 +78,8 @@ status_t gen_t::pd_t::init(const impl::engine_t *engine,
             VERBOSE_UNSUPPORTED_DT_CFG);
 
     using sm = dnnl_primitive_attr::skip_mask_t;
-    auto skip_mask
-            = sm::post_ops | sm::zero_points | sm::scales | sm::rounding_mode;
+    auto skip_mask = sm::post_ops | sm::zero_points | sm::scales
+            | sm::rounding_mode | sm::gpu_attr;
     VDISPATCH_REORDER(
             attr()->has_default_values(skip_mask), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_REORDER(extra_ok(true), VERBOSE_UNSUPPORTED_MD_FLAG, "extra_ok");

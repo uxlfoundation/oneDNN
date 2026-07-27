@@ -58,7 +58,7 @@ struct ref_t : public primitive_t {
                             | smask_t::scales_groups
                             | smask_t::zero_points_data_type
                             | smask_t::zero_points_groups | smask_t::post_ops
-                            | smask_t::rounding_mode)
+                            | smask_t::rounding_mode | smask_t::gpu_attr)
                             && post_ops_ok(),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_REORDER(

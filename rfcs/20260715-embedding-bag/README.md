@@ -6,31 +6,33 @@
 ## Introduction
 
 This RFC adds an Embedding Bag  as a public oneDNN primitive `dnnl::embedding_bag`,
-backed first by a portable CPU reference implementation. A thin `dnnl::embedding`
-wrapper covers the lookup-only (no-reduction) mode.
+backed first by a portable CPU reference implementation.
 
-This primitive closely resembles PyTorch Embedding Bag semantics.
+This primitive closely resembles PyTorch Embedding Bag (*nn.EmbeddingBag*) semantics.
 
 oneDNN currently has no primitive equivalent to PyTorch Embedding Bag. The closest
 dense neighbours (`reduction`, graph `gather`) do not cover
 *indexed lookup + variable-length bag reduction* semantics. Framework users that
 integrate with oneDNN either need to depend on its framework implementation,
-or assemble multiple ops by hand.
+or compose the operator using graph level API and multiple primitives. Such composition
+is complex and sub-optimal.
 
 The first PR promotes the primitive plumbing to a public C++ API, adds the CPU
 reference implementation, and validates the behavior needed by recommendation
 and NLP workloads: sum / mean / max reduction over variable-length bags,
 optional per-sample weights, `padding_idx` skipping, and the
-`include_last_offset` flag matching PyTorch semantics. Future optimized
-implementations (AVX-512 intrinsics) reuse the same API without any framework
-changes.
+`include_last_offset` flag matching PyTorch semantics.
+
+Future PRs include adding optimized implementations having vector intrinsic (AVX-512 intrinsics)
+based kernels that reuse the same API without any framework changes.
 
 ## 1. Motivation
 
 Embedding lookups and bag reductions are the dominant CPU operation in
 recommendation models (DLRM, DCNv2, MMoE) and token-id-consuming NLP models.
-PyTorch `nn.EmbeddingBag`, TensorFlow `embedding_lookup_sparse`, and ONNX
-Runtime `EmbedLayerNormalization` each implement this on CPU today — either
+PyTorch `nn.EmbeddingBag` (https://docs.pytorch.org/docs/2.13/generated/torch.nn.EmbeddingBag.html),
+and TensorFlow `embedding_lookup_sparse` (https://www.tensorflow.org/api_docs/python/tf/nn/embedding_lookup_sparse),
+each implement this on CPU today — either
 through per-framework hand-rolled kernels or FBGEMM — because oneDNN offers no
 equivalent primitive.
 
@@ -51,9 +53,24 @@ Embedding Bag Operator on AMD CPUs] (https://dl.acm.org/doi/10.1109/MM.2024.3423
 that embedding bag bandwidth can be improved by 9x over state of the art
 implementations using different threading strategies.**
 
-The kernels for the optimized phase come from AMD's ZenDNN, which ships highly
-optimized AVX-512 / AVX-512-FP16 implementations through its internal
-`lowoha::embag` API. This RFC upstreams those intrinsic kernels into oneDNN as a
+Effect of the above threading strategies is measured on the primitive performance. The above
+strategies improve the primitive latency performance by 1.2X to 1.5X on native PyTorch performance, as
+shown on few representative loads in the table below.
+
+| Precision | Table | Embed | Batch | PyTorch (ms) | ZenDNN (ms) | Speedup |
+|           | Size | Dim | Size | Latency | Latency |  |
+|---|---|---|---|---|---|---|
+| fp32 | 40000000 | 128 | 4096 | 0.0458 | 0.0300 | 1.53x |
+| bf16 | 40000000 | 128 | 4096 | 0.0452 | 0.0287 | 1.58x |
+
+This performance gain in the primimitive results in a performance gain of ~5% in DLRM V2, having 26
+embedding tables. In production grade DLRM code, the embedding tables are more than 100 so we expect
+a performance gain of ~15% due to this operator on such networks.
+
+First PR aims to add only reference kernel. Subsequent PRs aim to add optimized kernels with vector
+intrinsics (AVX-512 / AVX-512-FP16) from AMD's ZenDNN, which ships these highly
+optimized  implementations through its internal
+`lowoha::embag` API. This RFC aims to upstreams those intrinsic kernels into oneDNN as a
 first-class primitive lifted into `src/cpu/x64/`, with ZenDNN removed from the
 runtime path after integration.
 
@@ -72,6 +89,10 @@ runtime path after integration.
 The design follows the same skeleton used by other oneDNN primitives. It adds
 a public header API, a CPU implementation-list entry, and the CPU reference
 kernel; consumers that do not call `dnnl::embedding_bag` are unaffected.
+
+This primitive will be addded as an `Experimental Features`
+(https://uxlfoundation.github.io/oneDNN/dev_guide_experimental.html) with appropriate
+build and runtime controls.
 
 ### 3.1 Architecture overview
 
@@ -164,7 +185,7 @@ struct embedding_bag : public primitive {
 
 ```
 
-New algorithm values in `dnnl_alg_kind_t` (`0x30000` band to avoid collisions):
+New algorithm values in `dnnl_alg_kind_t` (`0x40000` band to avoid collisions):
 `dnnl_embedding_bag_sum`, `dnnl_embedding_bag_mean`, `dnnl_embedding_bag_max`,
 `dnnl_embedding_lookup`.
 
@@ -173,10 +194,10 @@ New algorithm values in `dnnl_alg_kind_t` (`0x30000` band to avoid collisions):
 | Argument | Memory | When required |
 |---|---|---|
 | `DNNL_ARG_EMBEDDING_BAG_TABLE` | embedding table `[V, D]` | always |
-| `DNNL_ARG_SRC_INDICES` | indices `[N]`, `s32` | always |
-| `DNNL_ARG_SRC_OFFSETS` | offsets `[B]` or `[B+1]`, same dtype as indices | bag modes only |
-| `DNNL_ARG_WEIGHTS` | per-sample weights `[N]`, `f32` | optional; ingnored if `max` |
-| `DNNL_ARG_DST` | output `[B, D]` (bag) or `[N, D]` (lookup) | always |
+| `DNNL_ARG_EMBEDDING_BAG_INDICES` | indices `[N]`, `s32` | always |
+| `DNNL_ARG_EMBEDDING_BAG_OFFSETS` | offsets `[B]` or `[B+1]`, same dtype as indices | bag modes only |
+| `DNNL_ARG_EMBEDING_BAG_WEIGHTS` | per-sample weights `[N]`, `f32` | optional; ingnored if `max` |
+| `DNNL_ARG_EMBEDDING_BAG_DST` | output `[B, D]` (bag) or `[N, D]` (lookup) | always |
 
 ### 3.5 CPU registration and reference kernel
 
@@ -212,7 +233,7 @@ Enforced in `embedding_bag_desc_init` and `embedding_bag_pd_t::init_*`:
 7. All MDs must be fully described.
 8. `dst_desc.dims[1] == src_desc.dims[1]` (embedding dim matches).
 
-## 4. PoC — embedding_bag primitive end-to-end with benchdnn
+## 4. PoC — embedding_bag primitive with a benchdnn driver
 
 The public primitive was validated end-to-end through the benchdnn
 `--embedding-bag` driver, running against the CPU reference implementation.
@@ -297,20 +318,15 @@ paths, quantized tables (Phase 3), and GPU support (future).
    intrinsic impl in a follow-up if profiling justifies it — users see no API
    change.
 
-2. **Threading strategy for very long bags.** Phase 1 parallelizes across bags
-   (`parallel_nd(B, ...)`). For workloads where a single bag is very long
-   relative to thread count, an optional inner split via `balance211` could
-   improve scaling. Deferred to Phase 2.
-
-3. **`max` + per-sample weights.** PyTorch forbids this; we mirror that. Some
+2. **`max` + per-sample weights.** PyTorch forbids this; we mirror that. Some
    users may expect `max(T[i] * w[i])`; the RFC defaults to the PyTorch
    behavior.
 
-4. **All-padding bag output.** PyTorch returns zeros for sum / mean and 0 for
+3. **All-padding bag output.** PyTorch returns zeros for sum / mean and 0 for
    max when all indices in a bag equal `padding_idx`. We match this; document
    and test explicitly.
 
-5. **Performance gate.** Every new oneDNN primitive must show material
+4. **Performance gate.** Every new oneDNN primitive must show material
    workload-level impact. A documented benchdnn perf comparison vs framework
    baselines on representative DLRM shapes is required before the Phase 2 PR
    can land.

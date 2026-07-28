@@ -1,0 +1,134 @@
+# u3 wei decompression (CPU reference only; no optimized/GPU impl).
+# No --skip-impl=ref: ref is the only u3 impl, skipping it leaves nothing.
+# ZP dt must be u8/s8 (u3 as a zero-point dt is not wired in benchdnn yet)
+--reset
+--dt=bf16:u3:bf16
+--wtag=any,abc,acb
+--attr-scales=wei:common:2,wei:per_oc:bf16,wei:per_ocic:bf16:32x1
+--attr-zero-points=wei:common:1:u8,wei:per_oc:u8,wei:per_ocic:s8:32x1
+--attr-fpmath=bf16:true
+7x24x32:7x32x64
+7x25x32:1x32x72
+3x96x96:3x96x64
+3x14x96:1x96x80
+
+--reset
+--dt=f16:u3:f16
+--wtag=any,abc,acb
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+--attr-zero-points=wei:common:1:u8,wei:per_oc:u8,wei:per_ocic:u8:128x1
+--attr-fpmath=f16:true
+2x40x256:2x256x64
+7x41x256:1x256x64
+3x96x512:3x512x64
+3x6x512:1x512x64
+
+--reset
+--dt=bf16:u3:bf16
+--wtag=any,ab,ba
+--attr-scales=wei:common:2,wei:per_oc:bf16,wei:per_ocic:bf16:128x1
+--attr-zero-points=wei:common:1:u8,wei:per_oc:u8,wei:per_ocic:u8:128x1
+--attr-fpmath=bf16:true
+1x4096:4096x4096
+
+--reset
+--dt=f16:u3:f16
+--wtag=any,ab,ba
+--attr-scales=wei:common:2,wei:per_oc:f16,wei:per_ocic:f16:128x1
+--attr-zero-points=wei:common:1:u8,wei:per_oc:u8,wei:per_ocic:u8:128x1
+--attr-fpmath=f16:true
+1x4096:4096x4096
+
+# f32 + u3 weight decompression
+--reset
+--dt=f32:u3:f32
+--wtag=any,ab,ba
+--attr-scales=,wei:common:0.5:f32,wei:per_ocic:f32:32x1
+--attr-zero-points=,wei:common:2,wei:per_ocic:s8:32x1
+--attr-fpmath=strict:true
+1x4096:4096x4096
+
+# Regular (non-grouped) matmul cases from the OpenVINO u4 GPU workload,
+# adapted to CPU-ref u3: u4->u3 in wei dt, engine dropped. ZP stays u8.
+
+# 3D (wtag=cab), per-K grouped scales/zps (group 64)
+--reset
+--dt=f16:u3:f16
+--wtag=cab
+--attr-scales=wei:7:f16:64x1
+--attr-zero-points=wei:7:u8:64x1
+--attr-fpmath=f16:true
+64x1x2048:1x2048x4096
+64x1x2048:1x2048x8192
+64x1x2048:1x2048x9216
+
+# 3D + eltwise_logistic post-op
+--reset
+--dt=f16:u3:f16
+--wtag=cab
+--attr-post-ops=eltwise_logistic
+--attr-scales=wei:7:f16:64x1
+--attr-zero-points=wei:7:u8:64x1
+--attr-fpmath=f16:true
+64x1x2048:1x2048x32
+
+# 3D + per-N bias (f16)
+--reset
+--dt=f16:u3:f16
+--wtag=cab
+--bia_mask=4
+--bia-dt=f16
+--attr-scales=wei:7:f16:64x1
+--attr-zero-points=wei:7:u8:64x1
+--attr-fpmath=f16:true
+64x1x2048:1x2048x32
+
+# 3D f32 dst + binary_add post-op
+--reset
+--dt=f16:u3:f32
+--wtag=cab
+--attr-post-ops=binary_add:f32:6:abc
+--attr-scales=wei:7:f16:64x1
+--attr-zero-points=wei:7:u8:64x1
+--attr-fpmath=f16:true
+1x64x4096:1x4096x2048
+
+# 2D (wtag=ba), per-K grouped scales/zps (group 64)
+--reset
+--dt=f16:u3:f16
+--wtag=ba
+--attr-scales=wei:3:f16:64x1
+--attr-zero-points=wei:3:u8:64x1
+--attr-fpmath=f16:true
+64x2048:2048x256
+64x2048:2048x512
+
+# 2D + swish + binary_mul post-ops
+--reset
+--dt=f16:u3:f16
+--wtag=ba
+--attr-post-ops=eltwise_swish:1.0+binary_mul:f16:3:ab
+--attr-scales=wei:3:f16:64x1
+--attr-zero-points=wei:3:u8:64x1
+--attr-fpmath=f16:true
+64x2048:2048x512
+
+# 2D f32 dst + eltwise_logistic post-op
+--reset
+--dt=f16:u3:f32
+--wtag=ba
+--attr-post-ops=eltwise_logistic
+--attr-scales=wei:3:f16:64x1
+--attr-zero-points=wei:3:u8:64x1
+--attr-fpmath=f16:true
+64x2048:2048x1
+
+# 2D f32 dst + binary_mul post-op
+--reset
+--dt=f16:u3:f32
+--wtag=ba
+--attr-post-ops=binary_mul:f32:1
+--attr-scales=wei:3:f16:64x1
+--attr-zero-points=wei:3:u8:64x1
+--attr-fpmath=f16:true
+64x512:512x2048

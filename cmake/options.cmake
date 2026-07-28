@@ -200,6 +200,10 @@ onednn_option(EXPERIMENTAL_SYCL_KERNEL_COMPILER OFF
     "Enables experimental SYCL OpenCL kernel compiler extension. This option
     works independently from DNNL_EXPERIMENTAL.")
 
+onednn_option(TEMPORARY_U3_CONTIGUOUS_LAYOUT OFF
+    "Uses the contiguous u3 bit-packing layout instead of the default OV
+    transposed layout")
+
 # -------------------
 # Debug and profiling
 # -------------------

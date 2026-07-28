@@ -22,6 +22,8 @@
 #include <limits>
 #include <type_traits>
 
+#include "oneapi/dnnl/dnnl_config.h"
+
 namespace dnnl {
 namespace impl {
 
@@ -46,6 +48,7 @@ struct uint3_t {
 
 static_assert(sizeof(uint3_t) == 1, "uint3_t must be 1 byte");
 
+#if !DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
 // u3 uses the OV transposed layout:
 //
 //         bit7 bit6 bit5 bit4 bit3 bit2 bit1 bit0
@@ -76,6 +79,39 @@ inline void uint3_pack(uint8_t *packed, int64_t idx, uint8_t v) {
             = static_cast<uint8_t>((packed[base + 2] & ~(0x1 << hshift))
                     | (((v >> 2) & 0x1) << hshift));
 }
+#else
+// alternatively u3 uses contiguous layout:
+//
+//         bit7 bit6 bit5 bit4 bit3 bit2 bit1 bit0
+//        ┌────┬────┬────┬────┬────┬────┬────┬────┐
+// byte0  │v2.1│v2.0│v1.2│v1.1│v1.0│v0.2│v0.1│v0.0│
+//        ├────┼────┼────┼────┼────┼────┼────┼────┤
+// byte1  │v5.0│v4.2│v4.1│v4.0│v3.2│v3.1│v3.0│v2.2│
+//        ├────┼────┼────┼────┼────┼────┼────┼────┤
+// byte2  │v7.2│v7.1│v7.0│v6.2│v6.1│v6.0│v5.2│v5.1│
+//        └────┴────┴────┴────┴────┴────┴────┴────┘
+//
+inline uint8_t uint3_unpack(const uint8_t *packed, int64_t idx) {
+    const int64_t bit = idx * 3, byte = bit >> 3;
+    const int sh = static_cast<int>(bit & 7);
+    uint8_t v = packed[byte] >> sh;
+    if (sh > 5) v |= packed[byte + 1] << (8 - sh); // straddle into next byte
+    return v & 0x7;
+}
+inline void uint3_pack(uint8_t *packed, int64_t idx, uint8_t v) {
+    const int64_t bit = idx * 3, byte = bit >> 3;
+    const int sh = static_cast<int>(bit & 7);
+    v &= 0x7;
+    packed[byte] = static_cast<uint8_t>(
+            (packed[byte] & ~((0x7 << sh) & 0xFF)) | ((v << sh) & 0xFF));
+    if (sh > 5) { // high bits straddle into next byte
+        const int lo_bits = 8 - sh;
+        packed[byte + 1] = static_cast<uint8_t>(
+                (packed[byte + 1] & ~((1 << (3 - lo_bits)) - 1))
+                | (v >> lo_bits));
+    }
+}
+#endif
 
 } // namespace impl
 } // namespace dnnl

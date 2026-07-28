@@ -161,6 +161,10 @@ status_t xe_hp_systolic_t::pd_t::init(const impl::engine_t *engine) {
     VDISPATCH_GEMM(
             !decide_swap_ab(cfg_), VERBOSE_UNSUPPORTED_FEATURE, "swap_ab");
 
+    // Systolic has no non-strict accumulator support; a relaxed/any acc mode
+    // would rewrite Tc and leave no matching catalog entry.
+    cfg_.acc_mode = accumulation_mode::strict;
+
     CHECK(finalize_problem(cfg_, intel_engine));
 
     // Select here to gate dispatch and snapshot driver_info (shared by all

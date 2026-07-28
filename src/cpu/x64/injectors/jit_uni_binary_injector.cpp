@@ -643,8 +643,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     Xbyak::Address rhs2_arg_addr {};
 
     // Phase 3 Apply binary post-op over all vmms.
-    for (const auto set_vmm_idx : vmm_idxs) {
-        const int vmm_idx = set_vmm_idx;
+    for (const auto vmm_idx : vmm_idxs) {
         const bool is_start_idx = vmm_idx == start_idx;
         const bool with_tail = rhs_arg_static_params_.is_tail
                 && vmm_tail_idx.find(vmm_idx) != vmm_tail_idx.cend()

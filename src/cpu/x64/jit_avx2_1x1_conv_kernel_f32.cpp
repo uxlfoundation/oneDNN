@@ -1012,12 +1012,17 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.ur_tail = static_cast<int>(
             (jcp.with_dw_conv ? jcp.ow : jcp.bcast_dim) % jcp.bcast_block);
 
-    jcp.nb_bcast_blocking = bcast_blocking / jcp.bcast_block;
-    jcp.nb_bcast_blocking_max = bcast_blocking_max / jcp.bcast_block;
-    jcp.nb_load_blocking = div_up(load_blocking, jcp.load_block);
-    jcp.nb_load_blocking_max = div_up(load_blocking_max, jcp.load_block);
-    jcp.nb_reduce_blocking = div_up(reduce_blocking, jcp.reduce_block);
-    jcp.nb_reduce_blocking_max = div_up(reduce_blocking_max, jcp.reduce_block);
+    jcp.nb_bcast_blocking = static_cast<int>(bcast_blocking / jcp.bcast_block);
+    jcp.nb_bcast_blocking_max
+            = static_cast<int>(bcast_blocking_max / jcp.bcast_block);
+    jcp.nb_load_blocking
+            = static_cast<int>(div_up(load_blocking, jcp.load_block));
+    jcp.nb_load_blocking_max
+            = static_cast<int>(div_up(load_blocking_max, jcp.load_block));
+    jcp.nb_reduce_blocking
+            = static_cast<int>(div_up(reduce_blocking, jcp.reduce_block));
+    jcp.nb_reduce_blocking_max
+            = static_cast<int>(div_up(reduce_blocking_max, jcp.reduce_block));
 
     jcp.nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);

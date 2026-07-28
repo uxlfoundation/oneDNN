@@ -297,14 +297,14 @@ inline void jit_sse41_conv_fwd_kernel_f32_t::solve_common(int oc_blocks) {
     const int ur_w = jcp.ur_w;
     const int ur_w_tail = jcp.ur_w_tail;
     int n_oi = static_cast<int>(jcp.ow / ur_w);
-    const dim_t iw = jcp.iw;
-    const dim_t kw = jcp.kw;
-    const dim_t str_w = jcp.stride_w;
+    const int iw = jcp.iw;
+    const int kw = jcp.kw;
+    const int str_w = jcp.stride_w;
 
     const dim_t l_pad = jcp.l_pad;
     int r_pad = static_cast<int>(nstl::max<dim_t>(0, jcp.r_pad));
-    int r_pad1 = static_cast<int>(calculate_end_padding(l_pad, ur_w * n_oi, iw,
-            str_w, calculate_extended_filter_size(kw, jcp.dilate_w)));
+    int r_pad1 = calculate_end_padding(static_cast<int>(l_pad), ur_w * n_oi, iw,
+            str_w, calculate_extended_filter_size(kw, jcp.dilate_w));
     if (r_pad1 > 0) n_oi--;
 
     if (l_pad > 0) {
@@ -422,8 +422,8 @@ status_t jit_sse41_conv_fwd_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
     jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[0];
     jcp.dilate_w = cd.dilates[ndims - 3];
 
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(

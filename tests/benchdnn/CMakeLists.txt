@@ -75,11 +75,6 @@ function(register_benchdnn_test engine driver test_file)
     # Parallel creation introduces race conditions inside native libraries.
     # Additionally, only needed for speeding up JIT compilation of OCL kernels.
     set(mode_modifier "")
-    if(${engine} MATCHES "gpu"
-       AND NOT ${DNNL_GPU_VENDOR} MATCHES "NVIDIA"
-       AND NOT ${DNNL_GPU_VENDOR} MATCHES "AMD")
-        set(mode_modifier "--mode-modifier=P")
-    endif()
 
     foreach(tm ${test_mode})
         string(REPLACE "test_" "test_benchdnn_mode${tm}_" target_name ${test_file})

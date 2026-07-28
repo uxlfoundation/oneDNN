@@ -195,7 +195,7 @@ onednn_option(EXPERIMENTAL_LOGGING OFF
     "Enables experimental functionality for logging. This option works
     independently from DNNL_EXPERIMENTAL.")
 
-onednn_option(EXPERIMENTAL_SYCL_KERNEL_COMPILER OFF
+onednn_option(EXPERIMENTAL_SYCL_KERNEL_COMPILER ON
     "Enables experimental SYCL OpenCL kernel compiler extension. This option
     works independently from DNNL_EXPERIMENTAL.")
 

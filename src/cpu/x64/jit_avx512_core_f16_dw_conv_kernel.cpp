@@ -417,13 +417,13 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::compute_loop(
 
 void jit_avx512_dw_conv_fwd_kernel_f16_t::ow_loop(int ur_ch_blocks) {
 
-    const dim_t iw = jcp.iw;
-    const dim_t ow = jcp.ow;
-    const dim_t kw = jcp.kw;
-    const dim_t l_pad = jcp.l_pad;
+    const int iw = jcp.iw;
+    const int ow = jcp.ow;
+    const int kw = jcp.kw;
+    const int l_pad = jcp.l_pad;
     int ur_w = jcp.ur_w;
     int ur_w_tail = jcp.ur_w_tail;
-    const dim_t stride_w = jcp.stride_w;
+    const int stride_w = jcp.stride_w;
 
     const auto src_layout_nxc = is_src_layout_nxc();
     const auto dat_c_stride = src_layout_nxc ? jcp.ngroups : jcp.ch_block;
@@ -433,20 +433,20 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::ow_loop(int ur_ch_blocks) {
     const dim_t inp_shift_pad
             = jcp.typesize_in * (ur_w * stride_w - l_pad) * dat_c_stride;
 
-    int r_pad = static_cast<int>(nstl::max<dim_t>(0, jcp.r_pad));
-    int n_oi = static_cast<int>(ow / ur_w);
-    int r_pad1 = static_cast<int>(calculate_end_padding(l_pad, ur_w * n_oi, iw,
-            stride_w, calculate_extended_filter_size(kw, jcp.dilate_w)));
+    int r_pad = nstl::max(0, jcp.r_pad);
+    int n_oi = ow / ur_w;
+    int r_pad1 = calculate_end_padding(l_pad, ur_w * n_oi, iw, stride_w,
+            calculate_extended_filter_size(kw, jcp.dilate_w));
 
     assert(jcp.nb_ow <= 1);
 
     if (r_pad1 > 0) n_oi--;
     xor_(reg_oi, reg_oi);
     if (ow == ur_w) {
-        compute_loop(ur_w, ur_ch_blocks, static_cast<int>(l_pad), r_pad);
+        compute_loop(ur_w, ur_ch_blocks, l_pad, r_pad);
     } else {
         if (n_oi == 0) {
-            compute_loop(ur_w, ur_ch_blocks, static_cast<int>(l_pad), r_pad1);
+            compute_loop(ur_w, ur_ch_blocks, l_pad, r_pad1);
             add(reg_input, inp_shift_pad);
             add(reg_output, static_cast<uint32_t>(out_shift));
             if (ur_w_tail != 0) {
@@ -454,7 +454,7 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::ow_loop(int ur_ch_blocks) {
             }
         } else {
             if (l_pad > 0) {
-                compute_loop(ur_w, ur_ch_blocks, static_cast<int>(l_pad), 0);
+                compute_loop(ur_w, ur_ch_blocks, l_pad, 0);
                 add(reg_input, inp_shift_pad);
                 add(reg_output, static_cast<uint32_t>(out_shift));
                 inc(reg_oi);

@@ -106,7 +106,7 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
     const dim_t stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
     const dim_t stride_w = pd()->desc()->strides[ndims - 3];
 
-    const dim_t nb_oc = jcp.nb_load;
+    const int nb_oc = jcp.nb_load;
     const dim_t nb_ic = jcp.nb_reduce;
     const dim_t nb_ic_blocking = jcp.nb_reduce_blocking;
 
@@ -325,9 +325,9 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
         row_offset = dw_conv_buffer_size_ / jcp_dw->kh;
         addrs.resize(jcp_dw->kh);
 
-        dim_t bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
+        int bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
         balance2D(nthr, ithr, jcp.mb * jcp.ngroups * jcp_dw->oh, bcast_start,
-                bcast_end, nb_oc, ocb_start, ocb_end, dim_t {1});
+                bcast_end, nb_oc, ocb_start, ocb_end, 1);
 
         while (ocb_start < ocb_end) {
             dim_t load_step;
@@ -368,8 +368,8 @@ void jit_avx2_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
     if (jcp.with_dw_conv) {
         conv_dw();
     } else {
-        dim_t start {0}, end {0};
-        const dim_t work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
+        int start {0}, end {0};
+        const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
         balance211(work_amount, nthr, ithr, start, end);
         conv_1x1(start, end, 0, jcp.nb_load);
     }
@@ -405,7 +405,7 @@ void jit_avx2_1x1_convolution_bwd_data_t::execute_backward_data(
     const dim_t os_block = jcp.bcast_block;
     const dim_t nb_oc_blocking = jcp.nb_reduce_blocking;
 
-    const dim_t work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
+    const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
 
     auto step = [](dim_t default_step, dim_t remaining, dim_t tail_step) {
         assert(default_step <= tail_step);
@@ -416,13 +416,13 @@ void jit_avx2_1x1_convolution_bwd_data_t::execute_backward_data(
         auto p = jit_1x1_conv_args_t();
         auto rp = rtus_driver_t<avx2>::call_params_t();
 
-        dim_t start {0}, end {0};
+        int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        dim_t load_step = 0;
-        for (dim_t icb = 0; icb < jcp.nb_load; icb += load_step) {
-            load_step = step(jcp.nb_load_blocking, jcp.nb_load - icb,
-                    jcp.nb_load_blocking_max);
+        int load_step = 0;
+        for (int icb = 0; icb < jcp.nb_load; icb += load_step) {
+            load_step = static_cast<int>(step(jcp.nb_load_blocking,
+                    jcp.nb_load - icb, jcp.nb_load_blocking_max));
 
             p.load_dim = this_block_size(
                     icb * jcp.ic_block, jcp.ic, load_step * jcp.ic_block);
@@ -569,8 +569,8 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
     const dim_t nb_oc_blocking = jcp.nb_load_blocking;
     const dim_t load_work = div_up(nb_oc, nb_oc_blocking);
 
-    const dim_t sp_dim = jcp.reduce_dim;
-    const dim_t mb_sp_work = jcp.mb * sp_dim;
+    const int sp_dim = static_cast<int>(jcp.reduce_dim);
+    const int mb_sp_work = jcp.mb * sp_dim;
 
     const dim_t stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
     const dim_t stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[ndims - 4];
@@ -707,7 +707,7 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
                 bcast_i, bcast_work);
 
         /* setup: reduction work (mb, sp) */
-        dim_t mb_sp_start {0}, mb_sp_end {0};
+        int mb_sp_start {0}, mb_sp_end {0};
         balance211(mb_sp_work, rw->balancer().nthr_per_group_,
                 rw->balancer().id_in_group(ithr), mb_sp_start, mb_sp_end);
         dim_t img_start {0}, sp_start {0};
@@ -791,7 +791,7 @@ void jit_avx2_1x1_convolution_bwd_weights_t::execute_backward_weights(
         if (b_njobs == 0) return;
 
         /* reduction dimension */
-        dim_t img_start {0}, img_end {0};
+        int img_start {0}, img_end {0};
         balance211(jcp.mb, rb->balancer().nthr_per_group_,
                 rb->balancer().id_in_group(ithr), img_start, img_end);
 

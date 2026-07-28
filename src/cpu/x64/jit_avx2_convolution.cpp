@@ -203,8 +203,8 @@ void jit_avx2_convolution_bwd_data_t::execute_backward_data(
     const auto &jcp = kernel_->jcp;
 
     dim_t icb_work = jcp.nb_ic / jcp.nb_ic_blocking;
-    dim_t ih_block_size = jcp.ih;
-    dim_t num_ih_blocks = utils::div_up(jcp.ih, ih_block_size);
+    int ih_block_size = jcp.ih;
+    int num_ih_blocks = utils::div_up(jcp.ih, ih_block_size);
     dim_t work_amount = jcp.mb * jcp.ngroups * icb_work * num_ih_blocks;
 
     const auto data_size = sizeof(data_t);
@@ -275,10 +275,9 @@ void jit_avx2_convolution_bwd_data_t::execute_backward_data(
                 }
                 par_conv.kd_padding = jcp.kd - d_t_overflow - d_b_overflow;
 
-                dim_t ih_start = ihb * ih_block_size;
-                dim_t ih_end
-                        = nstl::min<dim_t>(jcp.ih, ih_start + ih_block_size);
-                for (dim_t ih = ih_start; ih < ih_end; ++ih) {
+                int ih_start = static_cast<int>(ihb * ih_block_size);
+                int ih_end = nstl::min(jcp.ih, ih_start + ih_block_size);
+                for (int ih = ih_start; ih < ih_end; ++ih) {
 
                     dim_t k_lo, oh;
                     if (jcp.dilate_h != 0) { // stride == 1
@@ -405,8 +404,8 @@ void jit_avx2_convolution_bwd_weights_t::execute_backward_weights(
         if (w_njobs == 0) return;
 
         /* reduction dimension */
-        dim_t img_od_start {0}, img_od_end {0};
-        dim_t img {0}, od_s {0};
+        int img_od_start {0}, img_od_end {0};
+        int img {0}, od_s {0};
         balance211(jcp.mb * jcp.od, rw->balancer().nthr_per_group_,
                 rw->balancer().id_in_group(ithr), img_od_start, img_od_end);
 
@@ -481,7 +480,7 @@ void jit_avx2_convolution_bwd_weights_t::execute_backward_weights(
         if (b_njobs == 0) return;
 
         /* reduction dimension */
-        dim_t img_start {0}, img_end {0};
+        int img_start {0}, img_end {0};
         balance211(jcp.mb, rb->balancer().nthr_per_group_,
                 rb->balancer().id_in_group(ithr), img_start, img_end);
 

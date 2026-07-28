@@ -37,9 +37,9 @@ Package::Status Package::finalize(const ClobberSet &knownClobbers) {
     }
 
     Decoder decoder(hw, binary);
-    DependencyRegion dstRegion;
 
     auto clobbered = knownClobbers;
+    int maxAccIdx = -1;
 
     for (; !decoder.done(); decoder.advance()) {
         // Check for systolic usage.
@@ -49,13 +49,35 @@ Package::Status Package::finalize(const ClobberSet &knownClobbers) {
         // Get destination region and add to clobbers. This indeterminate for
         // indirect or variable sized destinations. In this case, rely on
         // knownClobbers.
-        if (decoder.getOperandRegion(dstRegion, -1)) {
+        DependencyRegion dstRegion;
+        if (!decoder.getOperandRegion(dstRegion, -1)) continue;
+
+        if (dstRegion.rf == RegFileGRF) {
             if (dstRegion.unspecified
                 && !(dstRegion.isValid() && knownClobbers[dstRegion.base])) {
                     status = Status::UncertainClobbers;
             } else
                 for (int j = 0; j < dstRegion.size; j++)
                     clobbered[dstRegion.base + j] = true;
+        }
+
+        // There is no vISA-supported mechanism for passing clobber data for ARF registers.
+        // We can either disallow overwriting ARF, or blindly expect the kernel to save/restore them.
+        // Allow the use of acc/flag registers only, for now.
+        if (dstRegion.rf == RegFileARF) {
+            ARFType dstType = static_cast<ARFType>(dstRegion.base >> 4);
+            if (dstType == ARFType::acc) {
+                // Expectation: kernel saves/restores accumulator registers if needed.
+                // Track the higest acc index, to use a GRF mode that supports the number of accumulators used
+                int accBase = dstRegion.base & 0xF;
+                int accLast = accBase + std::max(int(dstRegion.size), 1) - 1;
+                maxAccIdx = std::max(maxAccIdx, accLast);
+            } else if (dstType == ARFType::f) {
+                // Expectation: kernel saves/restores flag registers if needed.
+            } else {
+                // Other ARF registers are not expected to be overwritten
+                status = Status::UncertainClobbers;
+            }
         }
     }
 
@@ -90,6 +112,12 @@ Package::Status Package::finalize(const ClobberSet &knownClobbers) {
             last = std::max(last, range.boffset + range.blen);
 
     grfMin = (last + regBytes - 1) / regBytes;
+
+    int nacc = AccumulatorRegister::count(hw, grfMin);
+    if (nacc <= maxAccIdx) {
+        // Upgrade to 8 accumulators
+        grfMin = 256;
+    }
 
     // Generate LUID from hash of kernel. Later, the cataloguer can update it in case of collisions.
     uint32_t luid = 0;

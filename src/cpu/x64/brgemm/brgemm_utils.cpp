@@ -334,7 +334,7 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
 
         bdb = 0;
         bdb_tail = 0;
-        for (int i = 0; i < BD;) {
+        for (dim_t i = 0; i < BD;) {
             if (brg->brgattr.bd_mask_level == 2
                     && brg->brgattr.bd_mask[i] == 0) {
                 i++;
@@ -1099,17 +1099,6 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     m_block2_tail = static_cast<int>(nb_m_block1 % m_block2);
 
     return status::success;
-}
-
-status_t safe_dim_to_int(int &dst, dim_t src) {
-    assert(src >= 0 || is_runtime_value(src));
-    // TODO: should DNNL_RUNTIME_DIM_VAL be converted to DNNL_RUNTIME_S32_VAL?
-    if ((src <= INT_MAX && src >= 0) || is_runtime_value(src)) {
-        dst = static_cast<int>(src);
-        return status::success;
-    }
-
-    return status::unimplemented;
 }
 
 status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,

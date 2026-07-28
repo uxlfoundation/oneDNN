@@ -914,12 +914,12 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.K_koef);
 
     if (lhs.brgattr.bd_mask_level > 0)
-        for (int i = 0; i < lhs.bcast_dim; i++) {
+        for (dim_t i = 0; i < lhs.bcast_dim; i++) {
             CMP_BRGEMM_FIELD(brgattr.bd_mask[i]);
         }
 
     if (lhs.type == brgemm_static_offs)
-        for (int i = 0; i < lhs.brgattr.max_bs; i++) {
+        for (dim_t i = 0; i < lhs.brgattr.max_bs; i++) {
             CMP_BRGEMM_FIELD(brgattr.static_offsets[i].offset.A);
             CMP_BRGEMM_FIELD(brgattr.static_offsets[i].offset.B);
         }

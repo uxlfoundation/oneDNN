@@ -869,13 +869,17 @@ status_t finalize_problem(kernel_config_t &cfg, const intel::engine_t *engine) {
     if (!problem.bScale2D()) problem.B_scale.layout = layout_T;
     if (!problem.hasGroupSumsB) problem.Bg.layout = layout_T;
 
+    // Tao/Tbo are assigned unconditionally and map undef to invalid, so the
+    // sentinel is a valid presence test here. Ta_scale/Tb_scale are assigned
+    // only when a scale exists, and Type defaults to f32, not invalid: test
+    // the scale operand instead.
     if (problem.Tao != Type::invalid)
         problem.AO.setAlignment(problem.Tao.paddedSize());
     if (problem.Tbo != Type::invalid)
         problem.BO.setAlignment(problem.Tbo.paddedSize());
-    if (problem.Ta_scale != Type::invalid)
+    if (problem.hasAScalePtr())
         problem.A_scale.setAlignment(problem.Ta_scale.paddedSize());
-    if (problem.Tb_scale != Type::invalid)
+    if (problem.hasBScalePtr())
         problem.B_scale.setAlignment(problem.Tb_scale.paddedSize());
 
     // Mixed s8/s4 DPAS support:

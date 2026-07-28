@@ -615,14 +615,14 @@ private:
             load_param(reg_a, GET_OFF(src_batch_ptr));
             load_param(reg_tmp, GET_OFF(m_base));
             add(reg_tmp, reg_m);
-            imul(reg_tmp, reg_tmp, src_m_stride_bytes_);
+            imul(reg_tmp, reg_tmp, static_cast<int>(src_m_stride_bytes_));
             add(reg_a, reg_tmp);
             emit_t_reduce_into_T_bc(subtract_Gzs);
         }
 
         // delta row base = delta + m * LDC * 4.
         push(reg_m);
-        imul(reg_m, reg_m, LDC_ * f32_sz);
+        imul(reg_m, reg_m, static_cast<int>(LDC_ * f32_sz));
         add(reg_m, reg_delta);
 
         for (int c = 0; c < chunks_; ++c) {
@@ -655,7 +655,8 @@ private:
                     const dim_t off
                             = c * simd_w * types::data_type_size(wei_zp_dt_);
                     const int tail_bytes = has_tail
-                            ? rem * types::data_type_size(wei_zp_dt_)
+                            ? static_cast<int>(
+                                      rem * types::data_type_size(wei_zp_dt_))
                             : 0;
                     load_vec_zps_f32(vmm_zw(), wei_zp_dt_, ptr[reg_tmp + off],
                             has_tail, tail_bytes);

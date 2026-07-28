@@ -141,7 +141,7 @@ struct ref_sparse_matmul_t : public primitive_t {
     // COO sparse encodings are converted to CSR format by
     // compressing the respective row indices into CSR pointers.
     void cvt_coo_indices_to_csr_pointers(const int32_t *indices,
-            int32_t *pointers, const int nnz, const int nrows) const;
+            int32_t *pointers, const dim_t nnz, const dim_t nrows) const;
 
     // Executes the matrix mutiplication, C = A x B where one of the input
     // matrices is dense. Operation indices are determined depending on

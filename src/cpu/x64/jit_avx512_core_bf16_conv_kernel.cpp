@@ -575,15 +575,15 @@ void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::compute_loop(
 
 template <typename Vmm>
 void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::generate() {
-    dim_t iw = jcp.iw;
-    dim_t ow = jcp.ow;
-    int ow_block = static_cast<int>(jcp.ow_block);
-    dim_t nb_ow = jcp.nb_ow;
-    dim_t kw = jcp.kw;
-    dim_t l_pad = jcp.l_pad;
-    int ur_w = jcp.ur_w;
-    int ur_w_tail = jcp.ur_w_tail;
-    dim_t stride_w = jcp.stride_w;
+    const int iw = jcp.iw;
+    const int ow = jcp.ow;
+    const int ow_block = jcp.ow_block;
+    const int nb_ow = jcp.nb_ow;
+    const int kw = jcp.kw;
+    const int l_pad = jcp.l_pad;
+    const int ur_w = jcp.ur_w;
+    const int ur_w_tail = jcp.ur_w_tail;
+    const int stride_w = jcp.stride_w;
 
     auto src_shift = get_src_offset(0, filter_w_to_src(0, ur_w));
     auto dst_shift = get_dst_offset(ur_w, 0);
@@ -656,9 +656,9 @@ void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::generate() {
     mov(reg_ker, ptr[param1 + GET_OFF(filt)]);
     mov(reg_kh, ptr[param1 + GET_OFF(kh_padding)]);
 
-    dim_t r_pad = nstl::max<dim_t>(0, jcp.r_pad);
-    dim_t n_oi = ow / ur_w;
-    dim_t r_pad1 = calculate_end_padding(l_pad, ur_w * n_oi, iw, stride_w,
+    const int r_pad = nstl::max(0, jcp.r_pad);
+    int n_oi = ow / ur_w;
+    const int r_pad1 = calculate_end_padding(l_pad, ur_w * n_oi, iw, stride_w,
             calculate_extended_filter_size(kw, jcp.dilate_w));
 
     if (!is_ow_threading_on(jcp)) {
@@ -718,8 +718,7 @@ void jit_avx512_core_bf16_fwd_kernel_vmm_t<Vmm>::generate() {
         int n_oi_next_last_ow_block = n_oi_not_last_ow_block;
         int n_oi_first_ow_block = n_oi_not_last_ow_block;
 
-        int n_oi_last_ow_block
-                = static_cast<int>((ow - ow_block * (nb_ow - 1)) / ur_w);
+        int n_oi_last_ow_block = (ow - ow_block * (nb_ow - 1)) / ur_w;
 
         // prepare right padding
         bool next_last_ow_block_padded = r_pad1 > 0 && n_oi_last_ow_block == 0;
@@ -894,9 +893,9 @@ status_t jit_avx512_core_bf16_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             ? static_cast<int>(types::data_type_size(jcp.bia_dt))
             : 0;
 
-    dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(
@@ -1084,14 +1083,14 @@ status_t jit_avx512_core_bf16_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                 * jcp.nb_oc_blocking * jcp.ur_w;
         dim_t size_wei_chunk = jcp.typesize_in * jcp.oc_block * jcp.ic_block
                 * jcp.nb_oc_blocking * jcp.kw;
-        dim_t nurw = (L1_part - size_wei_chunk)
+        const dim_t nurw = (L1_part - size_wei_chunk)
                 / (size_dst_chunk + size_src_chunk);
         // current design of generate() requires ow_block >= 2 * ur_w
-        jcp.ow_block = jcp.ur_w * nstl::max<dim_t>(2, nurw);
+        jcp.ow_block = jcp.ur_w * static_cast<int>(nstl::max<dim_t>(2, nurw));
     }
     jcp.nb_ow = div_up(jcp.ow, jcp.ow_block);
 
-    int r_pad_no_tail = static_cast<int>(nstl::max<dim_t>(0,
+    int r_pad_no_tail = static_cast<int>(nstl::max(0,
             calculate_end_padding(jcp.l_pad, jcp.ow - jcp.ur_w_tail, jcp.iw,
                     jcp.stride_w, ext_kw)));
     VDISPATCH_CONV_IC(!(jcp.l_pad > jcp.ur_w || r_pad_no_tail > jcp.ur_w),
@@ -1635,9 +1634,9 @@ status_t jit_avx512_core_bf16_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     VDISPATCH_CONV_IC(dilate_ok, VERBOSE_UNSUPPORTED_FEATURE,
             "unsupported shape with 'stride > 1' when 'dilate > 0'");
 
-    dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(
@@ -2738,11 +2737,10 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::get_ur_w(
     int r_pad = 0;
     if (!jcp.transpose_src) {
         // If jcp.transpose_src, the buffer has physical padding
-        const dim_t ext_kw
-                = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-        r_pad = static_cast<int>(nstl::max<dim_t>(0,
-                calculate_end_padding(jcp.l_pad, jcp.tr_ow, jcp.tr_iw,
-                        jcp.stride_w, ext_kw)));
+        const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+        r_pad = nstl::max(0,
+                calculate_end_padding(
+                        jcp.l_pad, jcp.tr_ow, jcp.tr_iw, jcp.stride_w, ext_kw));
     }
     dim_t l_pad = (jcp.transpose_src) ? 0 : jcp.l_pad;
     ur_w = max_ur_w;
@@ -2774,7 +2772,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
 
     dim_t ic_block = jcp.ic_block;
     int ic_tail = jcp.ic_tail;
-    dim_t ow = jcp.tr_ow;
+    const int ow = jcp.tr_ow;
     int r_pad = 0;
     int ur_w, ur_w_tail, ur_w_trips;
     get_ur_w(ur_w, ur_w_tail, ur_w_trips);
@@ -2782,12 +2780,10 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
 
     if (!jcp.transpose_src) {
         // If jcp.transpose_src, the buffer has physical padding
-        const dim_t ext_kw
-                = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-        dim_t iw = jcp.tr_iw;
-        r_pad = static_cast<int>(nstl::max<dim_t>(0,
-                calculate_end_padding(
-                        jcp.l_pad, ow, iw, jcp.stride_w, ext_kw)));
+        const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+        const int iw = jcp.tr_iw;
+        r_pad = nstl::max(0,
+                calculate_end_padding(jcp.l_pad, ow, iw, jcp.stride_w, ext_kw));
     }
     dim_t l_pad = (jcp.transpose_src) ? 0 : jcp.l_pad;
 
@@ -2877,7 +2873,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
 
     dim_t ic_block = jcp.ic_block;
     const int ic_tail = jcp.ic_tail;
-    dim_t ow = jcp.tr_ow;
+    const int ow = jcp.tr_ow;
 
     int r_pad = 0;
     int ur_w, ur_w_tail, ur_w_trips;
@@ -2886,12 +2882,10 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
 
     if (!jcp.transpose_src) {
         // If jcp.transpose_src, the buffer has physical padding
-        const dim_t ext_kw
-                = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-        dim_t iw = jcp.tr_iw;
-        r_pad = static_cast<int>(nstl::max<dim_t>(0,
-                calculate_end_padding(
-                        jcp.l_pad, ow, iw, jcp.stride_w, ext_kw)));
+        const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+        const int iw = jcp.tr_iw;
+        r_pad = nstl::max(0,
+                calculate_end_padding(jcp.l_pad, ow, iw, jcp.stride_w, ext_kw));
     }
     dim_t l_pad = (jcp.transpose_src) ? 0 : jcp.l_pad;
 
@@ -2920,7 +2914,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
 
         xor_(b_ic, b_ic);
         if (jcp.uses_permw_transposition) {
-            convert_src_to_vnni_format(static_cast<int>(ow), l_pad, r_pad, 0);
+            convert_src_to_vnni_format(ow, l_pad, r_pad, 0);
             xor_(b_ic, b_ic);
         }
 
@@ -3011,16 +3005,14 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::compute_oh_step_common(
 
     dim_t ic_block = jcp.ic_block;
     int ic_tail = jcp.ic_tail;
-    dim_t ow = jcp.tr_ow;
+    const int ow = jcp.tr_ow;
     int r_pad = 0;
     if (!jcp.transpose_src) {
         // If jcp.transpose_src, the buffer has physical padding
-        const dim_t ext_kw
-                = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-        dim_t iw = jcp.tr_iw;
-        r_pad = static_cast<int>(nstl::max<dim_t>(0,
-                calculate_end_padding(
-                        jcp.l_pad, ow, iw, jcp.stride_w, ext_kw)));
+        const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+        const int iw = jcp.tr_iw;
+        r_pad = nstl::max(0,
+                calculate_end_padding(jcp.l_pad, ow, iw, jcp.stride_w, ext_kw));
     }
     dim_t l_pad = (jcp.transpose_src) ? 0 : jcp.l_pad;
 
@@ -3404,7 +3396,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t ::
             oh_dilate_label_end, oh_dilate_setup_label_shift,
             oh_dilate_setup_label_noshift, oh_dilate_setup_label_end;
 
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
     const dim_t oh_body_end = div_up(t_pad + jcp.ih - ext_kh + 1, stride_h);
     const dim_t oh_head_end
             = nstl::min<dim_t>(div_up(t_pad, stride_h), oh_body_end);
@@ -4276,9 +4268,9 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_conf(
     jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
     jcp.dilate_w = cd.dilates[ndims - 3];
 
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    const dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
 
     bool ok = true
             // general condition to simplify dilations
@@ -4289,13 +4281,13 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_conf(
             && IMPLICATION(jcp.dilate_h != 0, ext_kh <= jcp.ih);
     VDISPATCH_CONV_IC(ok, "dilation / stride values do not match");
 
-    jcp.r_pad = nstl::max<dim_t>(0,
+    jcp.r_pad = nstl::max(0,
             calculate_end_padding(
                     jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw));
-    jcp.b_pad = nstl::max<dim_t>(0,
+    jcp.b_pad = nstl::max(0,
             calculate_end_padding(
                     jcp.t_pad, jcp.oh, jcp.ih, jcp.stride_h, ext_kh));
-    jcp.back_pad = nstl::max<dim_t>(0,
+    jcp.back_pad = nstl::max(0,
             calculate_end_padding(
                     jcp.f_pad, jcp.od, jcp.id, jcp.stride_d, ext_kd));
 
@@ -4543,8 +4535,7 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_conf(
     // padding. Because elements are read two at a time, we may need r_pad + 1
     // padding on the right. As such, the shared padding is the max of l_pad and
     // r_pad + 1, rounded as necessary for the transpose data format.
-    const dim_t tr_pad
-            = rnd_up(nstl::max<dim_t>(jcp.l_pad, jcp.r_pad + 1), tr_round);
+    const int tr_pad = rnd_up(nstl::max(jcp.l_pad, jcp.r_pad + 1), tr_round);
     jcp.tr_iw = jcp.transpose_src
             ? rnd_up(div_up(jcp.iw, jcp.stride_w) + tr_pad, tr_round)
                     * jcp.stride_w

@@ -187,25 +187,25 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init(engine_t *engine) {
             VERBOSE_UNSUPPORTED_FEATURE, "dilations are not supported");
 
     jcp = zero<decltype(jcp)>();
-    jcp.ngroups = weights_d.dims()[0];
-    jcp.mb = src_d.dims()[0];
-    jcp.oc = dst_d.dims()[1] / jcp.ngroups;
-    jcp.ic = src_d.dims()[1] / jcp.ngroups;
-    jcp.id = is_3d ? src_d.dims()[2] : 1;
-    jcp.ih = src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = is_3d ? dst_d.dims()[2] : 1;
-    jcp.oh = dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
-    jcp.kd = is_3d ? weights_d.dims()[3] : 1;
-    jcp.kh = weights_d.dims()[ndims - 1];
-    jcp.kw = weights_d.dims()[ndims];
-    jcp.f_pad = is_3d ? cd.padding[0][0] : 0;
-    jcp.t_pad = cd.padding[0][is_3d];
-    jcp.l_pad = cd.padding[0][is_3d + 1];
-    jcp.stride_d = is_3d ? cd.strides[0] : 1;
-    jcp.stride_h = cd.strides[is_3d];
-    jcp.stride_w = cd.strides[is_3d + 1];
+    jcp.ngroups = static_cast<int>(weights_d.dims()[0]);
+    jcp.mb = static_cast<int>(src_d.dims()[0]);
+    jcp.oc = static_cast<int>(dst_d.dims()[1]) / jcp.ngroups;
+    jcp.ic = static_cast<int>(src_d.dims()[1]) / jcp.ngroups;
+    jcp.id = is_3d ? static_cast<int>(src_d.dims()[2]) : 1;
+    jcp.ih = static_cast<int>(src_d.dims()[ndims - 2]);
+    jcp.iw = static_cast<int>(src_d.dims()[ndims - 1]);
+    jcp.od = is_3d ? static_cast<int>(dst_d.dims()[2]) : 1;
+    jcp.oh = static_cast<int>(dst_d.dims()[ndims - 2]);
+    jcp.ow = static_cast<int>(dst_d.dims()[ndims - 1]);
+    jcp.kd = is_3d ? static_cast<int>(weights_d.dims()[3]) : 1;
+    jcp.kh = static_cast<int>(weights_d.dims()[ndims - 1]);
+    jcp.kw = static_cast<int>(weights_d.dims()[ndims]);
+    jcp.f_pad = is_3d ? static_cast<int>(cd.padding[0][0]) : 0;
+    jcp.t_pad = static_cast<int>(cd.padding[0][is_3d]);
+    jcp.l_pad = static_cast<int>(cd.padding[0][is_3d + 1]);
+    jcp.stride_d = is_3d ? static_cast<int>(cd.strides[0]) : 1;
+    jcp.stride_h = static_cast<int>(cd.strides[is_3d]);
+    jcp.stride_w = static_cast<int>(cd.strides[is_3d + 1]);
     jcp.back_pad = calculate_end_padding(
             jcp.f_pad, jcp.od, jcp.id, jcp.stride_d, jcp.kd);
     jcp.b_pad = calculate_end_padding(

@@ -116,7 +116,7 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
 
     auto rp = rtus_driver_t<avx512_core>::call_params_t();
 
-    const dim_t nb_oc = jcp.nb_load;
+    const int nb_oc = jcp.nb_load;
     const dim_t nb_ic = jcp.nb_reduce;
     const dim_t nb_ic_blocking = jcp.nb_reduce_blocking;
 
@@ -397,10 +397,9 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
         row_offset = dw_conv_buffer_size / jcp_dw.kh;
         addrs.resize(jcp_dw.kh);
 
-        dim_t bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
+        int bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
         balance2D(nthr, ithr, jcp.mb * jcp.ngroups * jcp_dw.oh, bcast_start,
-                bcast_end, nb_oc, ocb_start, ocb_end,
-                static_cast<dim_t>(jcp.load_grp_count));
+                bcast_end, nb_oc, ocb_start, ocb_end, jcp.load_grp_count);
 
         while (ocb_start < ocb_end) {
             dim_t load_step;
@@ -443,10 +442,10 @@ void jit_avx512_common_1x1_convolution_fwd_t<src_type, wei_type,
         conv_dw();
     } else {
 
-        const dim_t work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
-        dim_t bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
+        const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
+        int bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
         balance2D(nthr, ithr, work_amount, bcast_start, bcast_end, jcp.nb_load,
-                ocb_start, ocb_end, static_cast<dim_t>(jcp.load_grp_count));
+                ocb_start, ocb_end, jcp.load_grp_count);
 
         conv_1x1(bcast_start, bcast_end, ocb_start, ocb_end);
     }
@@ -483,11 +482,11 @@ void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
     const dim_t stride_w = pd()->desc()->strides[ndims - 3];
 
     const dim_t nb_ic = jcp.nb_load;
-    const dim_t nb_oc = jcp.nb_reduce;
-    const dim_t os_block = jcp.bcast_block;
-    const dim_t nb_oc_blocking = jcp.nb_reduce_blocking;
+    const int nb_oc = jcp.nb_reduce;
+    const int os_block = jcp.bcast_block;
+    const int nb_oc_blocking = jcp.nb_reduce_blocking;
 
-    const dim_t work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
+    const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
 
     auto step = [](dim_t default_step, dim_t remaining, dim_t tail_step) {
         assert(default_step <= tail_step);
@@ -498,9 +497,9 @@ void jit_avx512_common_1x1_convolution_bwd_data_t<diff_dst_type, wei_type,
         auto p = jit_1x1_conv_args_t();
         auto rp = rtus_driver_t<avx512_core>::call_params_t();
 
-        dim_t bcast_start {0}, bcast_end {0}, icb_start {0}, icb_end {0};
+        int bcast_start {0}, bcast_end {0}, icb_start {0}, icb_end {0};
         balance2D(nthr, ithr, work_amount, bcast_start, bcast_end, jcp.nb_load,
-                icb_start, icb_end, static_cast<dim_t>(jcp.load_grp_count));
+                icb_start, icb_end, jcp.load_grp_count);
 
         bool reduce_outer
                 = (jcp.loop_order == loop_rbl || jcp.loop_order == loop_rlb);
@@ -678,11 +677,11 @@ void jit_avx512_common_1x1_convolution_bwd_weights_t::execute_backward_weights(
     const dim_t nb_ic = jcp.nb_bcast;
     const dim_t nb_ic_blocking = jcp.nb_bcast_blocking;
 
-    const dim_t nb_oc = jcp.nb_load;
+    const int nb_oc = jcp.nb_load;
     const dim_t nb_oc_blocking = jcp.nb_load_blocking;
 
-    const dim_t sp_nb = jcp.nb_reduce;
-    const dim_t mb_sp_work = jcp.mb * sp_nb;
+    const int sp_nb = jcp.nb_reduce;
+    const int mb_sp_work = jcp.mb * sp_nb;
 
     const dim_t stride_h = (ndims == 3) ? 1 : pd()->desc()->strides[0];
     const dim_t stride_w = pd()->desc()->strides[ndims - 3];
@@ -729,13 +728,13 @@ void jit_avx512_common_1x1_convolution_bwd_weights_t::execute_backward_weights(
         const int ithr_mb = ithr / jcp.nthr_ic_b / jcp.nthr_oc_b / jcp.nthr_g;
 
         /* reduction dimension */
-        dim_t mb_sp_b_start {0}, mb_sp_b_end {0};
+        int mb_sp_b_start {0}, mb_sp_b_end {0};
         balance211(
                 mb_sp_work, jcp.nthr_mb, ithr_mb, mb_sp_b_start, mb_sp_b_end);
 
         /* independent dimensions */
-        dim_t g_start {0}, oc_b_start {0}, ic_b_start {0};
-        dim_t g_end {0}, oc_b_end {0}, ic_b_end {0};
+        int g_start {0}, oc_b_start {0}, ic_b_start {0};
+        int g_end {0}, oc_b_end {0}, ic_b_end {0};
 
         balance211(jcp.ngroups, jcp.nthr_g, ithr_g, g_start, g_end);
         balance211(jcp.nb_load, jcp.nthr_oc_b, ithr_oc_b, oc_b_start, oc_b_end);

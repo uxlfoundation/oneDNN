@@ -365,12 +365,15 @@ status_t init_kernel_config(
     cfg.a_host_scale = pd->a_host_scale();
     cfg.b_host_scale = pd->b_host_scale();
     cfg.c_host_scale_to_alpha = pd->c_host_scale_to_alpha();
-    const bool any_host_scale
-            = cfg.a_host_scale || cfg.b_host_scale || cfg.c_host_scale_to_alpha;
-    cfg.alpha_ = any_host_scale ? 9.99f : 1.0f;
 
     CHECK(init_attrs(cfg, pd, engine));
     CHECK(init_post_ops(cfg, pd, engine));
+
+    // After init_post_ops: it clears c_host_scale_to_alpha for a binary bias,
+    // and exec gates the alpha reset on these same flags.
+    const bool any_host_scale
+            = cfg.a_host_scale || cfg.b_host_scale || cfg.c_host_scale_to_alpha;
+    cfg.alpha_ = any_host_scale ? 9.99f : 1.0f;
 
     return status::success;
 }

@@ -957,11 +957,11 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
             static constexpr std::size_t tmp_vmm_injector = 0u;
 
             const binary_injector::rhs_arg_static_params_t rhs_sp {
-                    tmp_vmm_injector, this->r14, this->r15, this->r13,
-                    preserve_gpr, preserve_vmm,
+                    static_cast<std::size_t>(tmp_vmm_injector), this->r14,
+                    this->r15, this->r13, preserve_gpr, preserve_vmm,
                     PARAM_OFF(post_ops_binary_rhs_arg_vec), PARAM_OFF(dst_orig),
-                    dst_d_, static_cast<dim_t>(axis_simd_tail_), tail_opmask,
-                    use_exact_tail_scalar_bcast};
+                    dst_d_, static_cast<std::size_t>(axis_simd_tail_),
+                    tail_opmask, use_exact_tail_scalar_bcast};
 
             const binary_injector::static_params_t bsp {
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
@@ -1548,11 +1548,11 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
             static constexpr std::size_t tmp_vmm_injector = 0u;
 
             const binary_injector::rhs_arg_static_params_t rhs_sp {
-                    tmp_vmm_injector, this->r14, this->r15, this->r13,
-                    preserve_gpr, preserve_vmm,
+                    static_cast<std::size_t>(tmp_vmm_injector), this->r14,
+                    this->r15, this->r13, preserve_gpr, preserve_vmm,
                     PARAM_OFF(post_ops_binary_rhs_arg_vec), PARAM_OFF(dst_orig),
-                    dst_d_, static_cast<dim_t>(axis_simd_tail_), tail_opmask,
-                    use_exact_tail_scalar_bcast};
+                    dst_d_, static_cast<std::size_t>(axis_simd_tail_),
+                    tail_opmask, use_exact_tail_scalar_bcast};
 
             const binary_injector::static_params_t bsp {
                     reg_param, get_supported_bcast_strategies(), rhs_sp};

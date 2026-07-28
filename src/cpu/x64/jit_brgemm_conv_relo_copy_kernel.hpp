@@ -30,10 +30,10 @@ struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator_t {
         data_type_t wei_dt {data_type_t::dnnl_data_type_undef};
         int out_oc_block {0};
         int inp_oc_block {0};
-        int rd {0};
+        dim_t rd {0};
         bool is_rd_padded_to_block {false};
-        int inp_ocb_offs {0};
-        int last_occ_to_copy {0};
+        dim_t inp_ocb_offs {0};
+        dim_t last_occ_to_copy {0};
     };
 
     struct ctx_t {

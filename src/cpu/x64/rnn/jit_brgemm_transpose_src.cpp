@@ -379,7 +379,7 @@ void jit_brgemm_trans_m_k_f32_t::generate() {
     // rows -> sp, cols -> ic
     // M -> ic, K -> sp
     assert(conf_->ic_block % transpose_size == 0);
-    const int os_block = conf_->os_block;
+    const int os_block = static_cast<int>(conf_->os_block);
     const int last_os_block_tail = conf_->K_tail % os_block;
     const int ic_tail = conf_->M_tail % transpose_size;
     src_stride = static_cast<dim_t>(conf_->ic) * conf_->ks() * typesize;
@@ -708,10 +708,11 @@ void jit_brgemm_trans_m_k_bf16_t::generate() {
     constexpr int amx_xf16_granularity = 2;
     const bool last_row_padded = is_superset(conf_->isa, avx512_core_amx)
             && conf_->os % amx_xf16_granularity != 0;
-    const int eff_K_tail = conf_->K_tail - (last_row_padded ? 1 : 0);
+    const dim_t eff_K_tail = conf_->K_tail - (last_row_padded ? 1 : 0);
 
-    const int os_block = conf_->os_block;
-    const int last_os_block_tail = eff_K_tail % transpose_size;
+    const int os_block = static_cast<int>(conf_->os_block);
+    const int last_os_block_tail
+            = static_cast<int>(eff_K_tail % transpose_size);
     const int ic_tail = conf_->M_tail % transpose_size;
     src_stride = static_cast<dim_t>(conf_->ic) * conf_->ks() * typesize;
     tr_src_stride = conf_->LDA * typesize;
@@ -1036,7 +1037,7 @@ void jit_brgemm_trans_m_k_f16_t::transpose_16x16(int nrows, int ncolumns) {
 void jit_brgemm_trans_m_k_f16_t::generate() {
     preamble();
     assert(conf_->ic_block % transpose_size == 0);
-    const int os_block = conf_->os_block;
+    const int os_block = static_cast<int>(conf_->os_block);
     const int last_os_block_tail = conf_->K_tail % transpose_size;
     const int ic_tail = conf_->M_tail % transpose_size;
     src_stride = static_cast<dim_t>(conf_->ic) * conf_->ks() * typesize_in;

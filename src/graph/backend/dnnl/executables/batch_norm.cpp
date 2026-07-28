@@ -265,9 +265,9 @@ std::optional<::sycl::event> bn_folding_t::execute_sycl(const stream &stream,
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event bn_folding_t::execute_ocl(const stream &stream,
+ocl_event_t bn_folding_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
+        const std::vector<ocl_event_t> &deps) const {
     UNUSED(args);
 
     auto weights = args.find(DNNL_ARG_WEIGHTS)->second;
@@ -307,11 +307,13 @@ cl_event bn_folding_t::execute_ocl(const stream &stream,
     xpu::ocl::usm::memcpy(stream.get(), epsilon_mem.get_data_handle(),
             &desc_.epsilon_, epsilon_mem.get_desc().get_size(), 0, nullptr, &e);
     xpu::ocl::clWaitForEvents(1, &e);
+    xpu::ocl::clReleaseEvent(e);
 
-    auto ocl_deps = dnnl::ocl_interop::execute(add_prim_, stream,
+    std::vector<cl_event> raw_deps(deps.begin(), deps.end());
+    ocl_event_t ocl_deps(dnnl::ocl_interop::execute(add_prim_, stream,
             {{DNNL_ARG_SRC_0, variance}, {DNNL_ARG_SRC_1, epsilon_mem},
                     {DNNL_ARG_DST, sqrt_variance}},
-            deps);
+            raw_deps));
 
     // 2. updated_weight = weights * scale / sqrt_variance
     memory new_scale = dnnl::ocl_interop::make_memory(desc_.new_scale_desc_,
@@ -322,12 +324,12 @@ cl_event bn_folding_t::execute_ocl(const stream &stream,
             dnnl::ocl_interop::memory_kind::usm,
             sqrt_variance.get_data_handle());
 
-    auto ocl_deps2 = dnnl::ocl_interop::execute(mul_prim_, stream,
+    ocl_event_t ocl_deps2(dnnl::ocl_interop::execute(mul_prim_, stream,
             {{DNNL_ARG_SRC_0, weights}, {DNNL_ARG_SRC_1, new_scale},
                     {DNNL_ARG_DST, updated_weights},
                     {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
                             new_sqrt_variance}},
-            {ocl_deps});
+            {ocl_deps.get()}));
 
     // 3. updated_bias = (bias - mean) * scale / sqrt_variance + shift
     if (bias.get(true) == nullptr || bias.get_data_handle() == nullptr) {
@@ -337,6 +339,7 @@ cl_event bn_folding_t::execute_ocl(const stream &stream,
         xpu::ocl::usm::memcpy(stream.get(), valid_bias.get_data_handle(),
                 zero.data(), valid_bias.get_desc().get_size(), 0, nullptr, &e);
         xpu::ocl::clWaitForEvents(1, &e);
+        xpu::ocl::clReleaseEvent(e);
 
         auto ocl_deps3 = dnnl::ocl_interop::execute(sub_prim_, stream,
                 {{DNNL_ARG_SRC_0, valid_bias}, {DNNL_ARG_SRC_1, mean},
@@ -347,8 +350,8 @@ cl_event bn_folding_t::execute_ocl(const stream &stream,
                                 sqrt_variance},
                         {DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
                                 shift}},
-                {ocl_deps2});
-        return ocl_deps3;
+                {ocl_deps2.get()});
+        return ocl_event_t(ocl_deps3);
     }
 
     auto ocl_deps3 = dnnl::ocl_interop::execute(sub_prim_, stream,
@@ -359,8 +362,8 @@ cl_event bn_folding_t::execute_ocl(const stream &stream,
                             sqrt_variance},
                     {DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
                             shift}},
-            {ocl_deps2});
-    return ocl_deps3;
+            {ocl_deps2.get()});
+    return ocl_event_t(ocl_deps3);
 }
 #endif
 
@@ -705,12 +708,13 @@ std::optional<::sycl::event> batchnorm_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event batchnorm_executable_t::execute_ocl(const stream &stream,
+ocl_event_t batchnorm_executable_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
+        const std::vector<ocl_event_t> &deps) const {
+    std::vector<cl_event> raw_deps(deps.begin(), deps.end());
     if (!is_training_) {
-        auto e = dnnl::ocl_interop::execute(prim_, stream, args, deps);
-        return e;
+        auto e = dnnl::ocl_interop::execute(prim_, stream, args, raw_deps);
+        return ocl_event_t(e);
     }
 
     std::unordered_map<int, memory> exe_args = args;
@@ -719,7 +723,8 @@ cl_event batchnorm_executable_t::execute_ocl(const stream &stream,
     exe_args.erase(DNNL_ARG_DST_1);
     exe_args.erase(DNNL_ARG_DST_2);
 
-    auto e0 = dnnl::ocl_interop::execute(prim_, stream, exe_args, deps);
+    ocl_event_t e0(
+            dnnl::ocl_interop::execute(prim_, stream, exe_args, raw_deps));
 
     // calculate running_mean and running_variance
     auto batch_mean = args.find(DNNL_ARG_MEAN)->second;
@@ -734,20 +739,20 @@ cl_event batchnorm_executable_t::execute_ocl(const stream &stream,
     //                                      (1 - momentum) * batch_mean
     auto sum_prim_0 = dnnl::sum({p_engine, scales_,
             {old_running_mean.get_desc(), batch_mean.get_desc()}});
-    auto e1 = dnnl::ocl_interop::execute(sum_prim_0, stream,
+    ocl_event_t e1(dnnl::ocl_interop::execute(sum_prim_0, stream,
             {{DNNL_ARG_MULTIPLE_SRC, old_running_mean},
                     {DNNL_ARG_MULTIPLE_SRC + 1, batch_mean},
                     {DNNL_ARG_DST, new_running_mean}},
-            {e0});
+            {e0.get()}));
     // new_running_variance = momentum * old_running_variance +
     //                                  (1 - momentum) * batch_variance
     auto sum_prim_1 = dnnl::sum({p_engine, scales_,
             {old_running_variance.get_desc(), batch_variance.get_desc()}});
-    auto e2 = dnnl::ocl_interop::execute(sum_prim_1, stream,
+    ocl_event_t e2(dnnl::ocl_interop::execute(sum_prim_1, stream,
             {{DNNL_ARG_MULTIPLE_SRC, old_running_variance},
                     {DNNL_ARG_MULTIPLE_SRC + 1, batch_variance},
                     {DNNL_ARG_DST, new_running_variance}},
-            {e1});
+            {e1.get()}));
     return e2;
 }
 #endif

@@ -47,9 +47,9 @@ struct host_scalar_executable_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream &stream,
+    ocl_event_t execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
-            const std::vector<cl_event> &deps) const override;
+            const std::vector<ocl_event_t> &deps) const override;
 #endif
 
     bool is_initialized() const override { return true; }

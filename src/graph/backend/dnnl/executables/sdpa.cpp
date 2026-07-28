@@ -136,24 +136,25 @@ std::optional<::sycl::event> sdpa_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event sdpa_executable_t::execute_ocl(const stream &stream,
+ocl_event_t sdpa_executable_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
+        const std::vector<ocl_event_t> &deps) const {
     std::vector<dnnl_exec_arg_t> c_args;
     c_args.reserve(args.size());
     for (const auto &a : args)
         c_args.push_back({a.first, a.second.get()});
 
-    const cl_event *c_deps = deps.empty() ? nullptr : deps.data();
+    std::vector<cl_event> raw_deps(deps.begin(), deps.end());
+    const cl_event *c_deps = raw_deps.empty() ? nullptr : raw_deps.data();
 
     cl_event return_event = nullptr;
     auto ret = dnnl_ocl_interop_primitive_execute(prim_.get(), stream.get(),
             static_cast<int>(c_args.size()), c_args.data(), c_deps,
-            static_cast<int>(deps.size()), &return_event);
+            static_cast<int>(raw_deps.size()), &return_event);
     dnnl::error::wrap_c_api(
             ret, "could not execute sdpa primitive with ocl runtime");
 
-    return return_event;
+    return ocl_event_t(return_event);
 }
 #endif
 
@@ -339,22 +340,23 @@ std::optional<::sycl::event> sdpa_bwd_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event sdpa_bwd_executable_t::execute_ocl(const stream &stream,
+ocl_event_t sdpa_bwd_executable_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
+        const std::vector<ocl_event_t> &deps) const {
     std::vector<dnnl_exec_arg_t> c_args;
     c_args.reserve(args.size());
     for (const auto &a : args)
         c_args.push_back({a.first, a.second.get()});
 
-    const cl_event *c_deps = deps.empty() ? nullptr : deps.data();
+    std::vector<cl_event> raw_deps(deps.begin(), deps.end());
+    const cl_event *c_deps = raw_deps.empty() ? nullptr : raw_deps.data();
     cl_event return_event = nullptr;
     auto ret = dnnl_ocl_interop_primitive_execute(prim_.get(), stream.get(),
             static_cast<int>(c_args.size()), c_args.data(), c_deps,
-            static_cast<int>(deps.size()), &return_event);
+            static_cast<int>(raw_deps.size()), &return_event);
     dnnl::error::wrap_c_api(
             ret, "could not execute sdpa backward with ocl runtime");
-    return return_event;
+    return ocl_event_t(return_event);
 }
 #endif
 

@@ -67,9 +67,9 @@ std::optional<::sycl::event> memory_reparser_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event memory_reparser_t::execute_ocl(const stream &stream,
+ocl_event_t memory_reparser_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
+        const std::vector<ocl_event_t> &deps) const {
     auto from = args.find(DNNL_ARG_FROM);
     auto to = args.find(DNNL_ARG_TO);
     if (from == args.end() || to == args.end()) return {};
@@ -81,14 +81,15 @@ cl_event memory_reparser_t::execute_ocl(const stream &stream,
         const memory &dst_mem = to->second;
         assert(deps.size() <= 1);
         // Passing the empty event to memcpy below causes failure.
-        const bool empty = deps.empty() || deps[0] == nullptr;
-        const cl_uint num = empty ? 0 : static_cast<cl_uint>(deps.size());
+        std::vector<cl_event> raw_deps(deps.begin(), deps.end());
+        const bool empty = raw_deps.empty() || raw_deps[0] == nullptr;
+        const cl_uint num = empty ? 0 : static_cast<cl_uint>(raw_deps.size());
         cl_event e;
         UNUSED_STATUS(xpu::ocl::usm::memcpy(stream.get(),
                 dst_mem.get_data_handle(), src_mem.get_data_handle(),
                 dst_mem.get_desc().get_size(), num,
-                empty ? nullptr : deps.data(), &e));
-        return e;
+                empty ? nullptr : raw_deps.data(), &e));
+        return ocl_event_t(e);
     }
 }
 #endif

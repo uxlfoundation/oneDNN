@@ -72,9 +72,9 @@ std::optional<::sycl::event> host_scalar_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event host_scalar_executable_t::execute_ocl(const stream &stream,
+ocl_event_t host_scalar_executable_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
+        const std::vector<ocl_event_t> &deps) const {
     auto it_src = args.find(DNNL_ARG_FROM);
     auto it_dst = args.find(DNNL_ARG_TO);
 
@@ -88,8 +88,9 @@ cl_event host_scalar_executable_t::execute_ocl(const stream &stream,
 
     assert(deps.size() <= 1);
     // Passing the empty event to memcpy below causes failure.
-    const bool empty = deps.empty() || deps[0] == nullptr;
-    const cl_uint num = empty ? 0 : static_cast<cl_uint>(deps.size());
+    std::vector<cl_event> raw_deps(deps.begin(), deps.end());
+    const bool empty = raw_deps.empty() || raw_deps[0] == nullptr;
+    const cl_uint num = empty ? 0 : static_cast<cl_uint>(raw_deps.size());
     const size_t size = src_mem.get_desc().get_size();
     const auto dt = src_mem.get_desc().get_data_type();
     assert(size == types::data_type_size(static_cast<impl::data_type_t>(dt)));
@@ -98,11 +99,11 @@ cl_event host_scalar_executable_t::execute_ocl(const stream &stream,
         const DType val = src_mem.get_host_scalar_value<DType>();
         UNUSED_STATUS(xpu::ocl::usm::memcpy(stream.get(),
                 dst_mem.get_data_handle(), static_cast<const void *>(&val),
-                size, num, empty ? nullptr : deps.data(), &e));
+                size, num, empty ? nullptr : raw_deps.data(), &e));
         xpu::ocl::clWaitForEvents(1, &e);
         xpu::ocl::clReleaseEvent(e);
     });
-    return nullptr;
+    return {};
 }
 #endif
 

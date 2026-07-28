@@ -177,9 +177,9 @@ std::optional<::sycl::event> genindex_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
+ocl_event_t genindex_executable_t::execute_ocl_impl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
+        const std::vector<ocl_event_t> &deps) const {
 #if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
     double start_ms = dnnl::impl::get_msec();
     auto compute_stream
@@ -198,10 +198,8 @@ cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
     ocl_stream->before_exec_hook();
 
     if (!deps.empty()) {
-        std::vector<xpu::ocl::wrapper_t<cl_event>> events(deps.size());
-        for (size_t i = 0; i < deps.size(); i++)
-            events[i] = xpu::ocl::wrapper_t<cl_event>(deps[i], true);
-        ocl_stream->ocl_ctx().set_deps(events);
+        ocl_stream->ocl_ctx().set_deps(
+                std::vector<ocl_event_t>(deps.begin(), deps.end()));
     }
 
     kernel_.parallel_for(*compute_stream, nd_range, arg_list,
@@ -215,7 +213,7 @@ cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
     if (ocl_stream->is_verbose_profiler_enabled())
         ocl_stream->run_verbose_profiler(info_, start_ms);
     ocl_stream->after_exec_hook();
-    return return_event;
+    return ocl_event_t(return_event);
 #else
     assertm(false,
             "genindex opexcutable is only implemented for intel vendor "
@@ -224,9 +222,9 @@ cl_event genindex_executable_t::execute_ocl_impl(const stream &stream,
 #endif
 }
 
-cl_event genindex_executable_t::execute_ocl(const stream &stream,
+ocl_event_t genindex_executable_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
+        const std::vector<ocl_event_t> &deps) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
         if (!stream.get()->is_verbose_profiler_enabled()) {
@@ -240,7 +238,7 @@ cl_event genindex_executable_t::execute_ocl(const stream &stream,
         } else {
             execute_ocl_impl(stream, args, deps);
         }
-        return nullptr; // no event returned in profiling mode
+        return {};
     } else {
         return execute_ocl_impl(stream, args, deps);
     }

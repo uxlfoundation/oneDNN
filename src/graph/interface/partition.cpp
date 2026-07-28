@@ -434,6 +434,8 @@ status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute_v2(
 }
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+using ocl_event_t = dnnl::impl::xpu::ocl::wrapper_t<cl_event>;
+
 status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute(
         const compiled_partition_t *compiled_partition, stream_t *stream,
         size_t num_inputs, const tensor_t **inputs, size_t num_outputs,
@@ -465,32 +467,35 @@ status_t DNNL_API dnnl_graph_ocl_interop_compiled_partition_execute_v2(
         outs.emplace_back(**(outputs + i));
     }
 
+    // Wrap raw user deps with retain.
+    std::vector<ocl_event_t> wrapped_deps;
+    if (deps != nullptr) {
+        if (ndeps < 0) return status::invalid_arguments;
+        wrapped_deps.reserve(static_cast<size_t>(ndeps));
+        for (int i = 0; i < ndeps; i++)
+            wrapped_deps.emplace_back(deps[i], true);
+    }
+
+    ocl_event_t ret_event;
+
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
         stream->wait();
         double start_ms = dnnl::impl::get_msec();
-        if (deps != nullptr) {
-            std::vector<cl_event> ocl_deps(deps, deps + ndeps);
-            CHECK(compiled_partition->execute_ocl(
-                    stream, ins, outs, scratchpad, ocl_deps, ocl_event));
-        } else {
-            CHECK(compiled_partition->execute_ocl(
-                    stream, ins, outs, scratchpad, {}, ocl_event));
-        }
+        CHECK(compiled_partition->execute_ocl(
+                stream, ins, outs, scratchpad, wrapped_deps, ret_event));
+        // Transfer ownership to caller.
+        if (ocl_event) *ocl_event = ret_event.release();
         stream->wait();
         double duration_ms = dnnl::impl::get_msec() - start_ms;
         auto info = compiled_partition->exec_info(scratchpad != nullptr);
         VPROF(start_ms, graph, exec, VERBOSE_profile, info.c_str(),
                 duration_ms);
     } else {
-        if (deps != nullptr) {
-            std::vector<cl_event> ocl_deps(deps, deps + ndeps);
-            CHECK(compiled_partition->execute_ocl(
-                    stream, ins, outs, scratchpad, ocl_deps, ocl_event));
-        } else {
-            CHECK(compiled_partition->execute_ocl(
-                    stream, ins, outs, scratchpad, {}, ocl_event));
-        }
+        CHECK(compiled_partition->execute_ocl(
+                stream, ins, outs, scratchpad, wrapped_deps, ret_event));
+        // Transfer ownership to caller.
+        if (ocl_event) *ocl_event = ret_event.release();
     }
 
     return status::success;
@@ -751,7 +756,9 @@ status_t dnnl_graph_compiled_partition::execute(stream_t *astream,
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
         return execute_sycl(astream, inputs, outputs, scratchpad, {}, nullptr);
 #elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        return execute_ocl(astream, inputs, outputs, scratchpad, {}, nullptr);
+        ocl_event_t unused_event;
+        return execute_ocl(
+                astream, inputs, outputs, scratchpad, {}, unused_event);
 #else
         return status::runtime_error;
 #endif
@@ -812,7 +819,8 @@ status_t dnnl_graph_compiled_partition::execute_sycl(stream_t *astream,
 status_t dnnl_graph_compiled_partition::execute_ocl(stream_t *astream,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad,
-        const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) const {
+        const std::vector<ocl_event_t> &ocl_deps,
+        ocl_event_t &ocl_event) const {
     if (!astream || (astream->engine()->kind() != pimpl_->get_engine()->kind()))
         return status::invalid_arguments;
 

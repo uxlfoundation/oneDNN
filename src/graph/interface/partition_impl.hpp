@@ -43,6 +43,8 @@
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include <CL/cl.h>
+
+#include "xpu/ocl/utils.hpp"
 #endif
 
 namespace std {
@@ -367,7 +369,8 @@ public:
     virtual status_t execute_ocl(stream_t *astream,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs, const tensor_t *scratchpad,
-            const std::vector<cl_event> &ocl_deps, cl_event *ocl_event)
+            const std::vector<xpu::ocl::wrapper_t<cl_event>> &ocl_deps,
+            xpu::ocl::wrapper_t<cl_event> &ocl_event)
             = 0;
 #endif
 

@@ -380,14 +380,14 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         auto conv_params = jit_dw_conv_args_t();
         const dim_t h_block_size = jcp.oh_blk_size;
 
-        const dim_t ch_outer_blocks
+        const int ch_outer_blocks
                 = utils::div_up(jcp.nb_ch, jcp.nb_ch_blocking);
         const int ithr_g = ithr % jcp.nthr_g;
-        dim_t g_start {0}, g_end {0};
+        int g_start {0}, g_end {0};
         balance211(ch_outer_blocks, jcp.nthr_g, ithr_g, g_start, g_end);
 
         const int ithr_mb = (ithr / jcp.nthr_g) % jcp.nthr_mb;
-        dim_t mb_start {0}, mb_end {0};
+        int mb_start {0}, mb_end {0};
         balance211(jcp.mb, jcp.nthr_mb, ithr_mb, mb_start, mb_end);
 
         const int ithr_oh = (ithr / (jcp.nthr_mb * jcp.nthr_g)) % jcp.nthr_oh;
@@ -540,17 +540,17 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 
         auto conv_params = jit_dw_conv_args_t();
         const dim_t h_block_size = jcp.oh_blk_size;
-        const dim_t nb_ch = jcp.nb_ch;
+        const int nb_ch = jcp.nb_ch;
 
         /* assign iteration space to thread */
         const int ithr_g = ithr % jcp.nthr_g;
         const int ithr_mb = (ithr / jcp.nthr_g) % jcp.nthr_mb;
 
         /* split dimensions */
-        dim_t g_start {0}, g_end {0};
+        int g_start {0}, g_end {0};
         balance211(nb_ch, jcp.nthr_g, ithr_g, g_start, g_end);
 
-        dim_t mb_start {0}, mb_end {0};
+        int mb_start {0}, mb_end {0};
         balance211(jcp.mb, jcp.nthr_mb, ithr_mb, mb_start, mb_end);
 
         auto i_mb = diff_weights_type == bf16 ? ithr_mb : ithr_mb - 1;

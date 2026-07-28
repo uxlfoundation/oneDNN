@@ -39,7 +39,7 @@ jit_avx512_dw_conv_fwd_kernel_f16_t::jit_avx512_dw_conv_fwd_kernel_f16_t(
         const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md)
     : jit_generator_t(jit_name()), jcp(ajcp) {
     const auto simd_w = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
-    const dim_t tail_size = jcp.oc_without_padding % simd_w;
+    const std::size_t tail_size = jcp.oc_without_padding % simd_w;
     if (jcp.with_eltwise || jcp.with_binary) {
         using namespace binary_injector;
         static constexpr auto preserve_gpr = true;

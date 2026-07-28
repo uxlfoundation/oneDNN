@@ -59,7 +59,7 @@ jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::
         static constexpr bool preserve_vmm = false;
         static constexpr unsigned helper_vmm_idx = 31;
         const dim_t oc_block_tail = jcp.oc_block % isa_simd_width_;
-        const dim_t tail_size = oc_block_tail
+        const std::size_t tail_size = oc_block_tail
                 ? oc_block_tail
                 : jcp.oc_without_padding % isa_simd_width_;
         static constexpr bool use_exact_tail_scalar_bcast = true;

@@ -50,7 +50,7 @@ jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::
     , postops_injector_(nullptr) {
 
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
-        const dim_t tail_size = jcp.is_depthwise
+        const std::size_t tail_size = jcp.is_depthwise
                 ? jcp.ngroups % jcp.ch_block
                 : jcp.oc_without_padding % jcp.oc_block;
 
@@ -59,8 +59,8 @@ jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::
         static constexpr bool use_exact_tail_scalar_bcast = false;
 
         const binary_injector::rhs_arg_static_params_t rhs_sp {
-                Xbyak::Xmm(31).getIdx(), this->r14, this->r15, this->r13,
-                preserve_gpr, preserve_vmm,
+                static_cast<std::size_t>(Xbyak::Xmm(31).getIdx()), this->r14,
+                this->r15, this->r13, preserve_gpr, preserve_vmm,
                 GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(dst_orig),
                 memory_desc_wrapper(dst_md), tail_size, ktail_mask,
                 use_exact_tail_scalar_bcast};
@@ -1689,7 +1689,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_2d(
                                     / jcp.stride_h);
                     dim_t overflow_kh_hi = jcp.kh - 1
                             - modulo(jcp.oh + jcp.b_pad - (oj + 1),
-                                    jcp.stride_h);
+                                    static_cast<dim_t>(jcp.stride_h));
                     dim_t overflow_kh_lo = (oj + jcp.t_pad) % jcp.stride_h;
 
                     kh_len = (overflow_kh_hi - overflow_kh_lo) / jcp.stride_h
@@ -1870,7 +1870,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
                                 / jcp.stride_d);
                 dim_t overflow_kd_hi = jcp.kd - 1
                         - modulo(jcp.od + jcp.back_pad - (od_s + 1),
-                                jcp.stride_d);
+                                static_cast<dim_t>(jcp.stride_d));
                 dim_t overflow_kd_lo = (od_s + jcp.f_pad) % jcp.stride_d;
 
                 kd_len = (overflow_kd_hi - overflow_kd_lo) / jcp.stride_d + 1
@@ -1919,7 +1919,7 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
                                     / jcp.stride_h);
                     dim_t overflow_kh_hi = jcp.kh - 1
                             - modulo(jcp.oh + jcp.b_pad - (oj + 1),
-                                    jcp.stride_h);
+                                    static_cast<dim_t>(jcp.stride_h));
                     dim_t overflow_kh_lo = (oj + jcp.t_pad) % jcp.stride_h;
 
                     kh_len = (overflow_kh_hi - overflow_kh_lo) / jcp.stride_h

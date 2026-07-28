@@ -76,7 +76,9 @@ struct binary_src_t {
 // Kernel-facing snapshot of pd_t state; swap_ab is folded once in
 // apply_swap_ab.
 struct kernel_config_t {
-    gemmstone::GEMMProblem problem;
+    // Value-init: MatrixAddressing layout/alignment have no initializers and
+    // are serialized into the kernel cache key.
+    gemmstone::GEMMProblem problem = {};
 
     data_type_t a_type() const {
         return convert_kernel_to_dnnl_type(problem.Ta_ext);

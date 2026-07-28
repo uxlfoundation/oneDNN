@@ -66,7 +66,7 @@ jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::jit_uni_x8s8s32x_fwd_kernel_vmm_t(
         const dim_t block_tail
                 = (jcp.is_depthwise ? jcp.ch_block : jcp.oc_block)
                 % isa_simd_width_;
-        const dim_t tail_size = block_tail
+        const std::size_t tail_size = block_tail
                 ? block_tail
                 : (jcp.is_depthwise ? jcp.ngroups : jcp.oc_without_padding)
                         % isa_simd_width_;

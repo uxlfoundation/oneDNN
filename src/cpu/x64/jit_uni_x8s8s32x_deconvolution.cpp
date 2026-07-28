@@ -434,7 +434,7 @@ jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
     , ker_max_regs_(jcp_.has_vnni ? 14 : 12) {
 
     if (jcp_.with_eltwise || jcp_.with_binary || jcp_.with_sum) {
-        const dim_t tail_size = get_tail_size();
+        const std::size_t tail_size = get_tail_size();
 
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;
@@ -1804,7 +1804,7 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_2d(
                                     / jcp.stride_h);
                     const dim_t overflow_kh_hi = jcp.kh - 1
                             - modulo(jcp.oh + jcp.b_pad - (oj + 1),
-                                    jcp.stride_h);
+                                    static_cast<dim_t>(jcp.stride_h));
                     const dim_t overflow_kh_lo
                             = (oj + jcp.t_pad) % jcp.stride_h;
 
@@ -1991,7 +1991,7 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_3d(
                                 / jcp.stride_d);
                 const dim_t overflow_kd_hi = jcp.kd - 1
                         - modulo(jcp.od + jcp.back_pad - (od_s + 1),
-                                jcp.stride_d);
+                                static_cast<dim_t>(jcp.stride_d));
                 const dim_t overflow_kd_lo = (od_s + jcp.f_pad) % jcp.stride_d;
 
                 kd_len = (overflow_kd_hi - overflow_kd_lo) / jcp.stride_d + 1
@@ -2040,7 +2040,7 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_3d(
                                     / jcp.stride_h);
                     const dim_t overflow_kh_hi = jcp.kh - 1
                             - modulo(jcp.oh + jcp.b_pad - (oj + 1),
-                                    jcp.stride_h);
+                                    static_cast<dim_t>(jcp.stride_h));
                     const dim_t overflow_kh_lo
                             = (oj + jcp.t_pad) % jcp.stride_h;
 

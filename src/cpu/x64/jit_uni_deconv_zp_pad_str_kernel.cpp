@@ -330,7 +330,7 @@ void compute_deconv_zp_pad_str_comp_ker(const jit_conv_conf_t &jcp,
             : 1;
 
     parallel(nthrs, [=](const int ithr, const int nthr) {
-        dim_t start {0}, end {0};
+        int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
         dim_t ch_b {0}, oc_b {0}, d {0}, h {0}, w {0};

@@ -115,7 +115,7 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
             ? scratchpad.get<char>(key_conv_rtus_space)
             : nullptr;
 
-    const dim_t work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
+    const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_bcast;
 
     const int ndims = dst_d.ndims();
     const dim_t stride_d = (ndims == 5) ? pd()->desc()->strides[0] : 1;
@@ -143,7 +143,7 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
     auto p = jit_1x1_conv_args_t();
 
     auto rp = typename rtus_driver_t<isa>::call_params_t();
-    const dim_t nb_oc = jcp.nb_load;
+    const int nb_oc = jcp.nb_load;
     // override some constants for fused dw_conv
     const dim_t os_block = jcp.with_dw_conv ? jcp.ow : jcp.bcast_block;
     const dim_t nb_bcast = jcp.with_dw_conv ? jcp.oh : jcp.nb_bcast;
@@ -435,10 +435,9 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
         row_offset = dw_conv_buffer_size_ / jcp_dw->kh;
         addrs.resize(jcp_dw->kh);
 
-        dim_t bcast_start {0}, bcast_end {0}, ocb_start, ocb_end;
+        int bcast_start {0}, bcast_end {0}, ocb_start, ocb_end;
         balance2D(nthr, ithr, jcp.mb * jcp.ngroups * jcp_dw->oh, bcast_start,
-                bcast_end, nb_oc, ocb_start, ocb_end,
-                static_cast<dim_t>(jcp.load_grp_count));
+                bcast_end, nb_oc, ocb_start, ocb_end, jcp.load_grp_count);
 
         while (ocb_start < ocb_end) {
             dim_t load_step;
@@ -480,10 +479,10 @@ void jit_uni_x8s8s32x_1x1_convolution_fwd_t<isa>::execute_forward_thr(
     if (jcp.with_dw_conv) {
         conv_dw();
     } else {
-        dim_t bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
+        int bcast_start {0}, bcast_end {0}, ocb_start {0}, ocb_end {0};
         balance2D(nthr, ithr, work_amount, bcast_start, bcast_end,
                 jcp.nb_load / jcp.nb_load_chunk, ocb_start, ocb_end,
-                static_cast<dim_t>(jcp.load_grp_count));
+                jcp.load_grp_count);
         if (jcp.nb_load_chunk > 1) {
             ocb_start *= jcp.nb_load_chunk;
             ocb_end *= jcp.nb_load_chunk;

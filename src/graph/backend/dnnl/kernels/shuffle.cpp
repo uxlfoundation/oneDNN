@@ -167,10 +167,10 @@ status_t shuffle_fwd_t::sycl_execute_impl(stream_t *strm,
 status_t shuffle_fwd_t::ocl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
-        const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
+        const std::vector<ocl_event_t> &cl_deps, ocl_event_t &ret_event) {
 
     auto deps = cl_deps;
-    cl_event returned_event {};
+    ocl_event_t returned_event;
     dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -185,11 +185,11 @@ status_t shuffle_fwd_t::ocl_execute_impl(stream_t *strm,
         if (subgraph_->is_constant_[i]) continue;
         returned_event = subgraph_->execs_[i]->execute_ocl(
                 p_stream, res->get_exec_args()[i], deps);
-        deps.assign(1, returned_event);
+        deps = {returned_event};
     }
 
-    scratchpad->set_deps(returned_event);
-    if (ret_event) *ret_event = returned_event;
+    scratchpad->set_deps(returned_event.get());
+    ret_event = std::move(returned_event);
 
     return status::success;
 }

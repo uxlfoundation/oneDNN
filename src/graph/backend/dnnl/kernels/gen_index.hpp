@@ -75,8 +75,8 @@ public:
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
-            const std::vector<cl_event> &ocl_deps,
-            cl_event *ocl_event) override;
+            const std::vector<ocl_event_t> &ocl_deps,
+            ocl_event_t &ocl_event) override;
 #endif
     DEF_KERNEL_METHOD_STR(genindex_t)
     DEF_KERNEL_METHOD_SCRATCHPAD_SIZE()

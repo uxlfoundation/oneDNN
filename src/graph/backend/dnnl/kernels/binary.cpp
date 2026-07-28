@@ -170,10 +170,10 @@ status_t binary_t::sycl_execute_impl(stream_t *strm,
 status_t binary_t::ocl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
-        const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) {
+        const std::vector<ocl_event_t> &ocl_deps, ocl_event_t &ocl_event) {
 
     auto deps = ocl_deps;
-    cl_event returned_event {};
+    ocl_event_t returned_event;
     dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     // each thread's own local resource
@@ -192,8 +192,8 @@ status_t binary_t::ocl_execute_impl(stream_t *strm,
         deps.assign(1, returned_event);
     }
 
-    scratchpad->set_deps(returned_event);
-    if (ocl_event) *ocl_event = returned_event;
+    scratchpad->set_deps(returned_event.get());
+    ocl_event = std::move(returned_event);
 
     return status::success;
 }

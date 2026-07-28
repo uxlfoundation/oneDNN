@@ -105,8 +105,8 @@ public:
     status_t ocl_execute_impl(stream_t *strm,
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
-            const tensor_t *scratchpad_buf, const std::vector<cl_event> &deps,
-            cl_event *event) override {
+            const tensor_t *scratchpad_buf,
+            const std::vector<ocl_event_t> &deps, ocl_event_t &event) override {
         return kernel->ocl_execute_impl(
                 strm, inputs, outputs, scratchpad_buf, deps, event);
     }

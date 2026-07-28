@@ -1,46 +1,23 @@
 # Runtime M dimension and binary post-ops with per_oc broadcast.
---reset
---dt=bf16,bf16:bf16:f32
---stag=ab --wtag=ab --dtag=ab
---runtime_dims_masks=1:0
---attr-post-ops=add:bf16:per_oc,add:f32:per_oc
-10x1:1x20_n"runtime_m_and_binary_po"
+--reset --dt=bf16,bf16:bf16:f32 --stag=ab --wtag=ab --dtag=ab --runtime_dims_masks=1:0 --attr-post-ops=add:bf16:per_oc,add:f32:per_oc 10x1:1x20_n"runtime_m_and_binary_po"
 
 # Small shape with binary po and mask 13 broadcast.
---reset
---dt=bf16
---stag=abcd --wtag=abcd --dtag=abcd
---attr-post-ops=add:bf16:13:abcd
-2x2x32x16:2x2x16x64_n"small_shape_with_binary_po_and_mask_13"
+--reset --dt=bf16 --stag=abcd --wtag=abcd --dtag=abcd --attr-post-ops=add:bf16:13:abcd 2x2x32x16:2x2x16x64_n"small_shape_with_binary_po_and_mask_13"
 
 # Binary post-op with mask 6 to test broadcasting strategy per_oc_d for non-f32.
---reset
---dt=bf16:bf16:f32
---stag=abcd --wtag=abdc --dtag=abcd
---attr-post-ops=binary_sub:f32:6
-1x16x384x64:1x16x64x384_n"binary_po_and_mask_6_and_bf16"
+--reset --dt=bf16:bf16:f32 --stag=abcd --wtag=abdc --dtag=abcd --attr-post-ops=binary_sub:f32:6 1x16x384x64:1x16x64x384_n"binary_po_and_mask_6_and_bf16"
 
 # Shape to reach parallel reduction.
---reset
---dt=bf16:bf16:bf16
-2x1280:1280x65_n"parallel_reduction"
+--reset --dt=bf16:bf16:bf16 2x1280:1280x65_n"parallel_reduction"
 
 # Shape to better test k tail.
---reset
---dt=bf16:bf16:bf16
---stag=ab
---wtag=ab
---dtag=ab
-8x2664:2664x256_n"k_tail"
+--reset --dt=bf16:bf16:bf16 --stag=ab --wtag=ab --dtag=ab 8x2664:2664x256_n"k_tail"
 
 # Test that cases when M == 1 are handled correctly.
---reset
---stag=ba,ab --wtag=ab --dtag=ab --dt=bf16 1x2:2x256
+--reset --dt=bf16 --stag=ba,ab --wtag=ab --dtag=ab 1x2:2x256
 
 # 4D matrix A with acbd-like layout (second dimension = 1) - regression test for segfault.
---reset
---dt=bf16:bf16:bf16 --stag=abcd,acbd --wtag=abdc --dtag=abcd 6x1x100x256:1x1x256x9_n"4d_matrix_a_acbd_layout"
+--reset --dt=bf16:bf16:bf16 --stag=abcd,acbd --wtag=abdc --dtag=abcd 6x1x100x256:1x1x256x9_n"4d_matrix_a_acbd_layout"
 
 # Test LDA initialization when the batch dimension are merged into M.
---reset
---dt=bf16 --stag=abdc --wtag=abcd --dtag=abcd 64x4x1x256:1x1x256x32_n"merge_batch_dimensions_into_M"
+--reset --dt=bf16 --stag=abdc --wtag=abcd --dtag=abcd 64x4x1x256:1x1x256x32_n"merge_batch_dimensions_into_M"

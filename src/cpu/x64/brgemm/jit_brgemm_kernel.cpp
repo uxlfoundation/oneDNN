@@ -2419,14 +2419,15 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(int bd_block2,
 
             if (brg.is_runtime_ldc && bd_block2 > 1) {
                 xor_(reg_dynamic_C_offset, reg_dynamic_C_offset);
-                reg_stride_ld_block.imulTo(
-                        reg_dynamic_C_offset, bdb_C_offset(1));
+                reg_stride_ld_block.imulTo(reg_dynamic_C_offset,
+                        static_cast<int>(bdb_C_offset(1)));
                 reg_dynamic_C_offset.save();
             }
 
             if (apply_post_ops && brg.is_runtime_ldd && bd_block2 > 1) {
                 xor_(reg_D_bdb_loop_shift, reg_D_bdb_loop_shift);
-                reg_D_shift_bytes.imulTo(reg_D_bdb_loop_shift, bdb_D_offset(1));
+                reg_D_shift_bytes.imulTo(reg_D_bdb_loop_shift,
+                        static_cast<int>(bdb_D_offset(1)));
                 reg_D_bdb_loop_shift.save();
             }
 
@@ -3618,7 +3619,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         if (brg.is_runtime_ldc) {
             reg_C.saveTo(reg_C_backup);
             xor_(reg_C, reg_C);
-            reg_stride_ld_block.imulTo(reg_C, bdb_C_offset(bd_block2));
+            reg_stride_ld_block.imulTo(
+                    reg_C, static_cast<int>(bdb_C_offset(bd_block2)));
             reg_C_backup.addTo(reg_C);
         } else {
             add(reg_C, bdb_C_offset(bd_block2));
@@ -3626,7 +3628,8 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         if (brg.is_runtime_ldd) {
             reg_D.saveTo(reg_aux_D_backup);
             xor_(reg_D, reg_D);
-            reg_D_shift_bytes.imulTo(reg_D, bdb_D_offset(bd_block2));
+            reg_D_shift_bytes.imulTo(
+                    reg_D, static_cast<int>(bdb_D_offset(bd_block2)));
             reg_aux_D_backup.addTo(reg_D);
         } else {
             add(reg_D, bdb_D_offset(bd_block2));

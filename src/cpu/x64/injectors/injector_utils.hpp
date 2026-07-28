@@ -151,7 +151,7 @@ public:
     void restoreTo(const Xbyak::Reg64 &reg) const;
     void restoreTo(const Xbyak::Reg32 &reg32) const;
     void addTo(const Xbyak::Reg64 &reg) const;
-    void imulTo(const Xbyak::Reg64 &reg, dim_t imm) const;
+    void imulTo(const Xbyak::Reg64 &reg, int imm) const;
     Xbyak::Address getStoragePtr() const {
         return regscratchpad_.getPtr(booking_);
     }

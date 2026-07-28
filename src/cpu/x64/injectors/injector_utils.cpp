@@ -214,7 +214,7 @@ void reg64_savable_t::addTo(const Xbyak::Reg64 &reg) const {
         regscratchpad_.jit().add(reg, *this);
 }
 
-void reg64_savable_t::imulTo(const Xbyak::Reg64 &reg, dim_t imm) const {
+void reg64_savable_t::imulTo(const Xbyak::Reg64 &reg, int imm) const {
     if (booking_ >= 0)
         regscratchpad_.jit().imul(reg, getStoragePtr(), imm);
     else

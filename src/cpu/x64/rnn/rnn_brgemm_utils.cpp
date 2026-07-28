@@ -1444,7 +1444,8 @@ status_t rnn_brgemm_t<prop_kind::backward>::init_kernels(
         trans_conf.ic_block = blk_size; // src's cols block size
         trans_conf.M = 0;
         const auto rnd_up_size = data_type_vnni_granularity(src_type);
-        const auto os_padded = utils::rnd_up(rnn.mb, rnd_up_size);
+        const int os_padded
+                = static_cast<int>(utils::rnd_up(rnn.mb, rnd_up_size));
         trans_conf.os = os_padded;
         trans_conf.LDA = os_padded; // dst's leading dim
         trans_conf.K_tail = rnn.mb % blk_size; // src's rows tail
@@ -1453,7 +1454,7 @@ status_t rnn_brgemm_t<prop_kind::backward>::init_kernels(
                 = {rnn.src_iter_ld_, rnn.dst_layer_ld_, rnn.ws_states_iter_ld};
         trans_conf.M_tail = rnn.sic % blk_size; // src's cols tail
         for (int i = 0; i < num_base_kernels_; i++) {
-            trans_conf.ic = LDA_iter[i];
+            trans_conf.ic = static_cast<int>(LDA_iter[i]);
             CHECK(create_brgemm_trans_src(
                     kernel_transpose_iter_[i], &trans_conf));
         }
@@ -1462,7 +1463,7 @@ status_t rnn_brgemm_t<prop_kind::backward>::init_kernels(
                 = {rnn.src_layer_ld_, rnn.dst_iter_ld_, rnn.ws_states_layer_ld};
         trans_conf.M_tail = rnn.slc % blk_size; // src's cols tail
         for (int i = 0; i < num_base_kernels_; i++) {
-            trans_conf.ic = LDA_layer[i];
+            trans_conf.ic = static_cast<int>(LDA_layer[i]);
             CHECK(create_brgemm_trans_src(
                     kernel_transpose_layer_[i], &trans_conf));
         }

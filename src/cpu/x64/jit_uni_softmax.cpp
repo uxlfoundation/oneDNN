@@ -170,18 +170,16 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         axis_has_padding_ = pd_->axis_size(true) != pd_->axis_size();
     }
 
-    size_t compute_process_n_elems(const memory_desc_wrapper &mdw) {
+    dim_t compute_process_n_elems(const memory_desc_wrapper &mdw) {
         const auto &bd = mdw.blocking_desc();
         if (bd.inner_nblks) return bd.strides[pd_->axis()];
         return simd_w_;
     }
 
-    size_t compute_next_vreg_stride(const memory_desc_wrapper &mdw) {
+    dim_t compute_next_vreg_stride(const memory_desc_wrapper &mdw) {
         const auto &bd = mdw.blocking_desc();
-        size_t axis_next_elem_stride = simd_w_;
-        if (bd.inner_nblks)
-            axis_next_elem_stride
-                    = static_cast<size_t>(bd.strides[pd_->axis()]);
+        dim_t axis_next_elem_stride = simd_w_;
+        if (bd.inner_nblks) axis_next_elem_stride = bd.strides[pd_->axis()];
         return axis_next_elem_stride * mdw.data_type_size();
     }
 
@@ -1151,7 +1149,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         dst_next_vreg_stride_ = compute_next_vreg_stride(dst_d_);
     }
 
-    size_t compute_next_vreg_stride(const memory_desc_wrapper &mdw) {
+    dim_t compute_next_vreg_stride(const memory_desc_wrapper &mdw) {
         return axis_stride_ * mdw.data_type_size();
     }
 

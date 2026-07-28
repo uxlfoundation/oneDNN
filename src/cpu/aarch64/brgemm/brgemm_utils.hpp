@@ -54,6 +54,23 @@ inline constexpr int mmla_rd_chunks_per_block(int dt_a_sz) {
     return mmla_rd_block() / mmla_rd_chunk_elems(dt_a_sz);
 }
 
+// MMLA BRGEMM and its weight reorder share a four-vector N tile. Keep the
+// packed-weight layout and kernel blocking derived from this value.
+inline constexpr int mmla_ld_block2() {
+    return 4;
+}
+// With four N vectors, native-A kernels can keep at most six M rows within
+// the 24-register accumulator budget.
+inline constexpr int mmla_max_native_bd_block() {
+    return 6;
+}
+inline int mmla_n_block(cpu_isa_t isa) {
+    return mmla_ld_block2() * simd_elems(data_type::f32, isa);
+}
+
+// Build the packed-weight layout consumed by MMLA BRGEMM and reorders.
+status_t init_mmla_wei_md(memory_desc_t &md, int k_dim, int n_dim, int n_block);
+
 status_t validate_mmla_compute(const brgemm_desc_t &brg);
 
 inline bool is_mmla_ld_blocks_supported(dim_t ld_blocks) {

@@ -22,6 +22,7 @@
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/aarch64/brgemm/brgemm_utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/jit_brgemm_conv.hpp"
 #include "cpu/aarch64/jit_brgemm_conv_comp_pad_kernel.hpp"
@@ -261,6 +262,12 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
     // remove the dead code.
     brgattr.use_uker = jcp_.use_uker;
     brgattr.use_interleave_stores = jcp_.use_interleave_stores;
+    if (jcp_.use_mmla) {
+        brgattr.use_mmla = true;
+        brgattr.hint_ld_block2 = brgemm_utils::mmla_ld_block2();
+        brgattr.hint_bd_block
+                = nstl::min(brgemm_utils::mmla_max_native_bd_block(), vbrgM);
+    }
     brgattr.hint_prefetching = jcp_.hint_prefetching;
     brgattr.max_bs = bs;
     brgattr.hint_ununroll_bd_loop = jcp_.ununroll_bd_loop;

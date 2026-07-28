@@ -95,7 +95,7 @@ void Generator<hw>::outerProductFMA(int h, int ha_period, int hb_period, int opC
 
     // Emit an FMA instruction.
     auto outputFMA = [&](InstructionModifier mod, const Subregister &A, const Subregister &B, const Subregister &C, const RegData &bcastSrc, bool colMajor, int hh, bool ivfirst, bool ivlast) {
-        auto Cacc = AccumulatorRegister(accNum).sub(0, Tc.real().ngen());
+        auto Cacc = AccumulatorRegister(accNum).sub(C.getOffset(), Tc.real().ngen());
         auto Csrc = (hh == 0                    && ivfirst) ? C : Cacc;
         auto Cdst = (hh == opCount - minOPCount && ivlast)  ? C : Cacc;
         if (startRepackC && hh == 0)

@@ -88,7 +88,7 @@ struct xe_hp_systolic_t : public gemm::primitive_t {
         // 'F' full / 'R' row / 'C' column / 'M' both / 'N' none.
         char co_kind() const {
             int m = -1;
-            if (cfg().with_c_zero_points() || cfg().with_bias())
+            if (cfg().with_c_zero_points() || cfg().bias_as_c_offset())
                 m = cfg().cmask;
             switch (m) {
                 case 0: return 'F';

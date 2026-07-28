@@ -147,8 +147,9 @@ struct kernel_config_t {
         return n > (with_sum() ? 1 : 0);
     }
 
-    // Bias present and not lowered to a binary post-op (dedicated C-offset).
-    bool with_bias() const {
+    // Bias realized through the dedicated C-offset operand rather than a
+    // binary post-op. Not the attr-level "a bias was passed" question.
+    bool bias_as_c_offset() const {
         if (bias_type == data_type::undef) return false;
         for (const auto &s : binary_srcs)
             if (s.type == binary_src_t::bias) return false;

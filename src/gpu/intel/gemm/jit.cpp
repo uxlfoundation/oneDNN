@@ -195,7 +195,7 @@ status_t gen_t::launch_nocopy(const exec_ctx_t &ctx,
             return status::runtime_error;
         arg_list.set(argn++, *exec_args.co);
         arg_list.set(argn++, offset_co);
-        if (cfg.with_bias()) {
+        if (cfg.bias_as_c_offset()) {
             auto ldco = into<int32_t>(cfg.ld_bias);
             arg_list.set(argn++, ldco);
         }
@@ -392,7 +392,7 @@ static status_t init_exec_args(jit::exec_args_t &exec_args,
             // DST zero point is added to result (not subtracted like SRC/WEI).
             exec_args.co_host_scalar = static_cast<int16_t>(co_host);
         }
-    } else if (cfg.with_bias()) {
+    } else if (cfg.bias_as_c_offset()) {
         co = &GEMM_CTX_ARG_STORAGE(bias);
         exec_args.off_co0
                 = types::bytes_to_elements(cfg.c_type(), co->offset());
@@ -492,7 +492,7 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
     const auto lda = into<int32_t>(cfg.lda);
     const auto ldb = into<int32_t>(cfg.ldb);
     const auto ldc = into<int32_t>(cfg.ldc);
-    const auto ldco = into<int32_t>(cfg.with_bias() ? cfg.ld_bias : 0);
+    const auto ldco = into<int32_t>(cfg.bias_as_c_offset() ? cfg.ld_bias : 0);
 
     auto alpha = exec_args.alpha;
     auto beta = cfg.beta;

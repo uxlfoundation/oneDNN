@@ -810,10 +810,10 @@ status_t xe_hp_systolic_t::launch_compute(const exec_ctx_t &ctx, int32_t m,
 
     if (pd()->cfg().with_a_zero_points()) arg_list.set(argn++, *ao);
     if (pd()->cfg().with_b_zero_points()) arg_list.set(argn++, *bo);
-    if ((pd()->cfg().with_bias() || pd()->cfg().with_c_zero_points())) {
+    if ((pd()->cfg().bias_as_c_offset() || pd()->cfg().with_c_zero_points())) {
         arg_list.set(argn++, co);
         arg_list.set(argn++, offset_co);
-        if (pd()->cfg().with_bias()) {
+        if (pd()->cfg().bias_as_c_offset()) {
             auto ldco = into<int32_t>(pd()->cfg().ld_bias);
             arg_list.set(argn++, ldco);
         }
@@ -911,7 +911,7 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
     auto lda = packed_a ? 0 : cfg.lda;
     auto ldb = packed_b ? 0 : cfg.ldb;
     auto ldc = into<int32_t>(packed_c ? pd()->ldc_packed() : cfg.ldc);
-    auto ldco = into<int32_t>(cfg.with_bias() ? cfg.ld_bias : 0);
+    auto ldco = into<int32_t>(cfg.bias_as_c_offset() ? cfg.ld_bias : 0);
 
     auto stride_a = into<int32_t>(cfg.a_batch_strides[0]);
     auto stride_b = into<int32_t>(cfg.b_batch_strides[0]);
@@ -1003,7 +1003,7 @@ status_t xe_hp_systolic_t::execute(const exec_ctx_t &ctx) const {
         bo = &GEMM_CTX_ARG_STORAGE(b_zero_point);
     }
 
-    if (cfg.with_bias()) {
+    if (cfg.bias_as_c_offset()) {
         off_co0 = bias.offset() / types::data_type_size(bias_type);
         co = &bias;
     }

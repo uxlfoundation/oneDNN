@@ -300,7 +300,7 @@ static status_t init_post_ops(
 
     if (cfg.with_c_zero_points())
         cfg.cmask = pd->attr()->zero_points_.get_mask(DNNL_ARG_DST);
-    else if (cfg.with_bias())
+    else if (cfg.bias_as_c_offset())
         cfg.cmask = bias_cmask;
     else if (cfg.with_sum_ab())
         cfg.cmask = d->sum_ab == sum_ab::sum_a_row ? 1 : 2;
@@ -791,7 +791,7 @@ status_t finalize_problem(kernel_config_t &cfg, const intel::engine_t *engine) {
             (int)types::data_type_size(cfg.c_type()));
     auto c_size = cfg.n * cfg.ldc * types::data_type_size(cfg.c_type());
 
-    auto co_type = cfg.with_bias() ? cfg.bias_type
+    auto co_type = cfg.bias_as_c_offset() ? cfg.bias_type
             : cfg.with_sum_ab()    ? cfg.sum_ab_type
             : int_acc              ? data_type::s32
                                    : cfg.c_type();
@@ -833,7 +833,7 @@ status_t finalize_problem(kernel_config_t &cfg, const intel::engine_t *engine) {
     if (cfg.wei_decomp) { acc_type = data_type::f32; }
 
     bool c_offset = cfg.with_c_zero_points();
-    bool bias = cfg.with_bias();
+    bool bias = cfg.bias_as_c_offset();
 
     problem.Ta = problem.Ta_ext;
     problem.Tb = problem.Tb_ext;

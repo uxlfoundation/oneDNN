@@ -23,16 +23,16 @@ namespace cpu {
 namespace x64 {
 namespace injector_utils {
 
-static std::size_t get_vmm_size_bytes(const Xbyak::Xmm &vmm) {
+static dim_t get_vmm_size_bytes(const Xbyak::Xmm &vmm) {
     static constexpr int byte_size_bits = 8;
     return vmm.getBit() / byte_size_bits;
 }
 
-static std::size_t calc_vmm_to_preserve_size_bytes(
+static dim_t calc_vmm_to_preserve_size_bytes(
         const std::initializer_list<Xbyak::Xmm> &vmm_to_preserve) {
 
     return std::accumulate(vmm_to_preserve.begin(), vmm_to_preserve.end(),
-            std::size_t(0u), [](std::size_t accum, const Xbyak::Xmm &vmm) {
+            dim_t(0), [](dim_t accum, const Xbyak::Xmm &vmm) {
         return accum + get_vmm_size_bytes(vmm);
     });
 }

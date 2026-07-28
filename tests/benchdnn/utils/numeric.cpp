@@ -344,13 +344,10 @@ void set_element(dnnl_data_type_t dt, int64_t idx, void *ptr, float value) {
             ((dnnl::impl::nibble2_t *)ptr)[idx / 2] = dst_val;
             break;
         }
-        case dnnl_u3: {
-            int q = static_cast<int>(value + 0.5f);
-            q = q < 0 ? 0 : (q > 7 ? 7 : q);
+        case dnnl_u3:
             dnnl::impl::uint3_pack(reinterpret_cast<uint8_t *>(ptr), idx,
-                    static_cast<uint8_t>(q));
+                    dnnl::impl::uint3_t(value).raw_bits_);
             break;
-        }
         default: assert(!"bad data type");
     }
 #undef CASE

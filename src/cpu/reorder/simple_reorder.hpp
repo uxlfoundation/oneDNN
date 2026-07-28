@@ -1160,8 +1160,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         ? &dst_scales[dst_scales_mask == 0 ? 0 : _offset]
                         : nullptr;
                 ker(i, o, (order_keep && req_comp) ? &cp[_offset] : nullptr,
-                        zp_ptr, src_scales_ptr, dst_scales_ptr, d0_block,
-                        d1_block);
+                        zp_ptr, src_scales_ptr, dst_scales_ptr,
+                        static_cast<int>(d0_block), static_cast<int>(d1_block));
             }
         });
 
@@ -2416,13 +2416,14 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
-                src_zp_val = io::load_float_value(
-                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+                src_zp_val = static_cast<int>(io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off));
             }
 
             const auto i_off = input_d.off_l(idx);
             const auto o_off = output_d.off_l(idx);
-            output[o_off] = src_scale * (wspace[i_off] - src_zp_val);
+            output[o_off] = src_scale
+                    * (wspace[i_off] - static_cast<float>(src_zp_val));
         });
 
         return status::success;
@@ -2654,15 +2655,17 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
-                src_zp_val = io::load_float_value(
-                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+                src_zp_val = static_cast<int>(io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off));
             }
 
             const auto i_off = input_d.off_l(idx);
             const auto o_off = output_d.off_l(idx);
-            float d = src_scale * (input[i_off] - src_zp_val);
-            if (beta) d += beta * output[o_off];
-            d = d / dst_scale + dst_zp;
+            float d = src_scale
+                    * (static_cast<float>(input[i_off])
+                            - static_cast<float>(src_zp_val));
+            if (beta != 0.f) d += beta * static_cast<float>(output[o_off]);
+            d = d / dst_scale + static_cast<float>(dst_zp);
             output[o_off] = _qz_a1b0<data_type::f32, type_o>()(d);
         });
         return status::success;

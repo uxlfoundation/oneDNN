@@ -711,32 +711,35 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
 
     jcp.prop_kind = cd.prop_kind;
 
-    jcp.ngroups = with_groups ? weights_d.dims()[0] : 1;
-    jcp.mb = src_d.dims()[0];
+    jcp.ngroups = with_groups ? static_cast<int>(weights_d.dims()[0]) : 1;
+    jcp.mb = static_cast<int>(src_d.dims()[0]);
 
-    jcp.oc_without_padding = dst_d.dims()[1] / jcp.ngroups;
+    jcp.oc_without_padding = static_cast<int>(dst_d.dims()[1]) / jcp.ngroups;
     jcp.oc = jcp.oc_without_padding;
-    jcp.ic_without_padding = src_d.dims()[1] / jcp.ngroups;
+    jcp.ic_without_padding = static_cast<int>(src_d.dims()[1]) / jcp.ngroups;
     jcp.ic = jcp.ic_without_padding;
 
-    jcp.id = (ndims == 5) ? src_d.dims()[2] : 1;
-    jcp.ih = (ndims == 3) ? 1 : src_d.dims()[ndims - 2];
-    jcp.iw = src_d.dims()[ndims - 1];
-    jcp.od = (ndims == 5) ? dst_d.dims()[2] : 1;
-    jcp.oh = (ndims == 3) ? 1 : dst_d.dims()[ndims - 2];
-    jcp.ow = dst_d.dims()[ndims - 1];
+    jcp.id = (ndims == 5) ? static_cast<int>(src_d.dims()[2]) : 1;
+    jcp.ih = (ndims == 3) ? 1 : static_cast<int>(src_d.dims()[ndims - 2]);
+    jcp.iw = static_cast<int>(src_d.dims()[ndims - 1]);
+    jcp.od = (ndims == 5) ? static_cast<int>(dst_d.dims()[2]) : 1;
+    jcp.oh = (ndims == 3) ? 1 : static_cast<int>(dst_d.dims()[ndims - 2]);
+    jcp.ow = static_cast<int>(dst_d.dims()[ndims - 1]);
 
-    jcp.kd = (ndims == 5) ? weights_d.dims()[with_groups + 2] : 1;
-    jcp.kh = (ndims == 3) ? 1 : weights_d.dims()[with_groups + ndims - 2];
-    jcp.kw = weights_d.dims()[with_groups + ndims - 1];
+    jcp.kd = (ndims == 5) ? static_cast<int>(weights_d.dims()[with_groups + 2])
+                          : 1;
+    jcp.kh = (ndims == 3)
+            ? 1
+            : static_cast<int>(weights_d.dims()[with_groups + ndims - 2]);
+    jcp.kw = static_cast<int>(weights_d.dims()[with_groups + ndims - 1]);
 
-    jcp.f_pad = (ndims == 5) ? cd.padding[0][0] : 0;
-    jcp.t_pad = (ndims == 3) ? 0 : cd.padding[0][ndims - 4];
-    jcp.l_pad = cd.padding[0][ndims - 3];
+    jcp.f_pad = (ndims == 5) ? static_cast<int>(cd.padding[0][0]) : 0;
+    jcp.t_pad = (ndims == 3) ? 0 : static_cast<int>(cd.padding[0][ndims - 4]);
+    jcp.l_pad = static_cast<int>(cd.padding[0][ndims - 3]);
 
-    jcp.stride_d = (ndims == 5) ? cd.strides[0] : 1;
-    jcp.stride_h = (ndims == 3) ? 1 : cd.strides[ndims - 4];
-    jcp.stride_w = cd.strides[ndims - 3];
+    jcp.stride_d = (ndims == 5) ? static_cast<int>(cd.strides[0]) : 1;
+    jcp.stride_h = (ndims == 3) ? 1 : static_cast<int>(cd.strides[ndims - 4]);
+    jcp.stride_w = static_cast<int>(cd.strides[ndims - 3]);
 
     jcp.with_bias = pick_by_prop_kind(jcp.prop_kind, cd.bias_desc.format_kind,
                             format_kind::undef, cd.diff_bias_desc.format_kind)
@@ -1024,9 +1027,9 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.nb_reduce_blocking_max
             = static_cast<int>(div_up(reduce_blocking_max, jcp.reduce_block));
 
-    jcp.nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
+    jcp.nb_bcast = static_cast<int>(div_up(jcp.bcast_dim, jcp.bcast_block));
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);
-    jcp.nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
+    jcp.nb_reduce = static_cast<int>(div_up(jcp.reduce_dim, jcp.reduce_block));
 
     if (jcp.prop_kind == backward_weights) {
         const auto mb_with_nb_reduce

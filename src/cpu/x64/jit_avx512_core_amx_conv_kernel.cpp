@@ -346,7 +346,7 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::unroll_width(
 
     const int max_ur_w = jit_avx512_core_amx_compute_zp_pbuff_t::max_regs_ur
             / (jcp.nb_oc_blocking);
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
     dim_t l_pad = jcp.l_pad;
 
     const dim_t l_pad_output = jcp.l_pad_output;
@@ -368,7 +368,7 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::unroll_width(
                 = nstl::min(cur_l_pad_output, static_cast<dim_t>(max_ur_w));
         ow += ur_w;
         const dim_t cur_r_pad = calculate_end_padding(
-                jcp.l_pad, ow, jcp.iw, jcp.stride_w, ext_kw);
+                jcp.l_pad, static_cast<int>(ow), jcp.iw, jcp.stride_w, ext_kw);
         icb_loop(ur_w, l_pad, cur_r_pad, h_padding);
         add(reg_zp_pbuff, ur_w_shift(ur_w));
 
@@ -390,7 +390,7 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::unroll_width(
                 = nstl::min(cur_r_pad_output, static_cast<dim_t>(max_ur_w));
         ow += ur_w;
         const dim_t cur_r_pad = calculate_end_padding(
-                jcp.l_pad, ow, jcp.iw, jcp.stride_w, ext_kw);
+                jcp.l_pad, static_cast<int>(ow), jcp.iw, jcp.stride_w, ext_kw);
         icb_loop(ur_w, 0, cur_r_pad, h_padding);
         add(reg_zp_pbuff, ur_w_shift(ur_w));
 
@@ -573,7 +573,7 @@ void jit_avx512_core_amx_copy_to_pbuffer_t::copy_row_body(
     // without additional padding
     const bool are_sets_interleaved
             = IMPLICATION(jcp.dilate_w != 0, jcp.stride_w == 1);
-    const dim_t gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
+    const int gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
     const dim_t num_sets = are_sets_interleaved ? jcp.n_stride_sets : jcp.kw;
     for (dim_t set_idx = 0; set_idx < num_sets; set_idx++) {
         dim_t set_width_padded = !jcp.is_pbuffer_strided
@@ -1270,7 +1270,7 @@ dim_t jit_avx512_core_amx_fwd_kernel_t::get_inp_offset(
     if (jcp.is_relo)
         return ohb * jcp.iwp * jcp.kh * jcp.ic_block_int_np * jcp.typesize_in;
     // calculate offset by height dimension
-    const dim_t gen_kh = (jcp.kh - 1) * (jcp.dilate_h + 1) + 1;
+    const int gen_kh = (jcp.kh - 1) * (jcp.dilate_h + 1) + 1;
     const dim_t gen_stride_h = nstl::min<dim_t>(jcp.stride_h, gen_kh);
     dim_t el_offset = ohb * jcp.oh_per_tile * gen_stride_h * jcp.iwp
             * jcp.ic_block_int_np;
@@ -1640,7 +1640,7 @@ void jit_avx512_core_amx_fwd_kernel_t::store_output(dim_t width, int tail,
         const int h_tail = is_last_h && jcp.oh % jcp.oh_per_tile != 0
                 ? (h_blks - 1) * jcp.oh_per_tile + jcp.oh % jcp.oh_per_tile
                 : h_blks * jcp.oh_per_tile;
-        const dim_t gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
+        const int gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
         const dim_t owp = gen_kw + jcp.ow - 1;
 
         if (jcp.src_zero_point) {
@@ -2192,8 +2192,8 @@ void jit_avx512_core_amx_fwd_kernel_t::tile_configure(char *tcfg_buff) {
                     ? jcp.ic_block_int
                     : jcp.ic_block_int_np * jcp.kw_per_tile);
     // Weights tile dimensions
-    const dim_t b_col = jcp.oc_block * vnni_width;
-    const dim_t b_row = a_col / vnni_width;
+    const int b_col = jcp.oc_block * vnni_width;
+    const int b_row = a_col / vnni_width;
     // Accumulator tile dimensions
     const int c_col = 16;
 
@@ -2385,9 +2385,9 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.dilate_h = !is_1d ? cd.dilates[ndims - 4] : 0;
     jcp.dilate_w = cd.dilates[ndims - 3];
 
-    const dim_t gen_kd = (jcp.kd - 1) * (jcp.dilate_d + 1) + 1;
-    const dim_t gen_kh = (jcp.kh - 1) * (jcp.dilate_h + 1) + 1;
-    const dim_t gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
+    const int gen_kd = (jcp.kd - 1) * (jcp.dilate_d + 1) + 1;
+    const int gen_kh = (jcp.kh - 1) * (jcp.dilate_h + 1) + 1;
+    const int gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
     jcp.back_pad = calculate_end_padding(
             jcp.f_pad, jcp.od, jcp.id, jcp.stride_d, gen_kd);
     jcp.b_pad = calculate_end_padding(
@@ -2520,7 +2520,7 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     // small-ic parameters
     jcp.ic_block_int_np = jcp.is_nspc
-            ? nstl::min<dim_t>(jcp.ic_block_int, jcp.ic_without_padding)
+            ? nstl::min(jcp.ic_block_int, jcp.ic_without_padding)
             : jcp.ic_block_int;
     bool is_small_ic = jcp.ic_block_int_np < jcp.ic_block_int;
 
@@ -2699,21 +2699,18 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     const int oh_blk_size_param = jcp.is_relo ? 1 : 10;
     const dim_t oh_step_size = jcp.nb_oh_blocking * jcp.oh_per_tile;
     const int oh_blk_size = rnd_up(oh_blk_size_param, oh_step_size);
-    jcp.oh_blk_size
-            = rnd_up(nstl::min<dim_t>(jcp.oh, oh_blk_size), oh_step_size);
+    jcp.oh_blk_size = rnd_up(nstl::min(jcp.oh, oh_blk_size), oh_step_size);
     // Here ihp means the input buffer height including padding (ie the number
     // of input rows required for computation of jcp.oh_blk_size output rows.
     // If an input row doesn't participate in the computation of any output row,
     // it isn't copied to the buffer at all (eg jcp.stride_h > gen_kh).
     jcp.ihp = jcp.is_relo
             ? jcp.oh_blk_size
-            : (jcp.oh_blk_size - 1) * nstl::min<dim_t>(jcp.stride_h, gen_kh)
-                    + gen_kh;
+            : (jcp.oh_blk_size - 1) * nstl::min(jcp.stride_h, gen_kh) + gen_kh;
 
     // TODO: tune ow blocking
     const int ow_blocks_per_call = jcp.is_relo ? 10 : 2;
-    jcp.ow_block
-            = nstl::min<dim_t>(jcp.ow, jcp.tile_width * ow_blocks_per_call);
+    jcp.ow_block = nstl::min(jcp.ow, jcp.tile_width * ow_blocks_per_call);
     jcp.nb_ow = utils::div_up(jcp.ow, jcp.ow_block);
     // iwp includes all width elements that are really used in calculation
     // including left and right zero padding
@@ -3800,10 +3797,10 @@ void jit_avx512_core_amx_bwd_data_kernel_t::tile_configure(char *tcfg_buff) {
     const int a_col = static_cast<int>(jcp.oc_block_int);
     const int a_row = jcp.tile_width;
     // Weights tile dimensions
-    const dim_t b_col = jcp.ic_block * vnni_width;
-    const dim_t b_row = a_col / vnni_width;
+    const int b_col = jcp.ic_block * vnni_width;
+    const int b_row = a_col / vnni_width;
     // Accumulator tile dimensions
-    const dim_t c_col = jcp.ic_block;
+    const int c_col = jcp.ic_block;
     const int c_row = a_row;
 
     for (size_t i = 0; i < 64; i++)
@@ -3906,9 +3903,9 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     VDISPATCH_CONV_IC(!(jcp.dilate_d != 0 && jcp.stride_d != 1),
             "unsupported stride/dilation values");
 
-    const dim_t gen_kd = (jcp.kd - 1) * (jcp.dilate_d + 1) + 1;
-    const dim_t gen_kh = (jcp.kh - 1) * (jcp.dilate_h + 1) + 1;
-    const dim_t gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
+    const int gen_kd = (jcp.kd - 1) * (jcp.dilate_d + 1) + 1;
+    const int gen_kh = (jcp.kh - 1) * (jcp.dilate_h + 1) + 1;
+    const int gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
     jcp.back_pad = calculate_end_padding(
             jcp.f_pad, jcp.od, jcp.id, jcp.stride_d, gen_kd);
     jcp.b_pad = calculate_end_padding(
@@ -4072,8 +4069,7 @@ status_t jit_avx512_core_amx_bwd_data_kernel_t::init_conf(jit_conv_conf_t &jcp,
     // TODO: tune ih blocking
     const int ih_blk_size_tmp = 10;
     const dim_t ih_step = jcp.nb_ih_blocking;
-    jcp.ih_blk_size
-            = rnd_up(nstl::min<dim_t>(jcp.ih, ih_blk_size_tmp), ih_step);
+    jcp.ih_blk_size = rnd_up(nstl::min(jcp.ih, ih_blk_size_tmp), ih_step);
     // ohp includes all elements that are really used in calculation,
     // including zero-padded "dilate-by-strides" and top and bottom overflow
     jcp.ohp = jcp.ih_blk_size + gen_kh - 1;
@@ -4166,14 +4162,14 @@ int jit_avx512_core_amx_bwd_weights_kernel_t::get_ddst_tensor(int ocb) const {
 
 void jit_avx512_core_amx_bwd_weights_kernel_t::tile_configure(char *tcfg_buff) {
     // Input tile dimensions
-    const dim_t a_col = jcp.ur_w;
-    const dim_t a_row = jcp.ic_block;
+    const int a_col = jcp.ur_w;
+    const int a_row = jcp.ic_block;
     // Weights tile dimensions
-    const dim_t b_col = jcp.oc_block * 2;
-    const dim_t b_row = a_col / 2;
+    const int b_col = jcp.oc_block * 2;
+    const int b_row = a_col / 2;
     // Accumulator tile dimensions
-    const dim_t c_col = jcp.oc_block;
-    const dim_t c_row = a_row;
+    const int c_col = jcp.oc_block;
+    const int c_row = a_row;
 
     for (size_t i = 0; i < 64; i++)
         tcfg_buff[i] = 0;
@@ -5354,9 +5350,9 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
     jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
     jcp.dilate_w = cd.dilates[ndims - 3];
 
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    const dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
 
     bool ok = true
             // general condition to simplify dilations
@@ -5376,13 +5372,13 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
 
     jcp.transform_to_vnni = diff_weights_d.data_type() == data_type::bf16;
 
-    jcp.r_pad = nstl::max<dim_t>(0,
+    jcp.r_pad = nstl::max(0,
             calculate_end_padding(
                     jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw));
-    jcp.b_pad = nstl::max<dim_t>(0,
+    jcp.b_pad = nstl::max(0,
             calculate_end_padding(
                     jcp.t_pad, jcp.oh, jcp.ih, jcp.stride_h, ext_kh));
-    jcp.back_pad = nstl::max<dim_t>(0,
+    jcp.back_pad = nstl::max(0,
             calculate_end_padding(
                     jcp.f_pad, jcp.od, jcp.id, jcp.stride_d, ext_kd));
 
@@ -5494,14 +5490,13 @@ status_t jit_avx512_core_amx_bwd_weights_kernel_t::init_conf(
     // TODO: Find more shapes (especially 3D with large spatials) for which
     // local transposition will be beneficial. Furthermore, for TBB threads
     // more shapes can potentially benefit from spatial blocking
-    const dim_t optimal_blk_size = is_3d ? jcp.od : is_2d ? jcp.oh : jcp.ow;
+    const int optimal_blk_size = is_3d ? jcp.od : is_2d ? jcp.oh : jcp.ow;
 
     jcp.global_transpose = dnnl_thr_syncable();
     jcp.spatial_blk_size = optimal_blk_size;
 
     const int tr_round = 32; // To load full tile register
-    const dim_t tr_pad
-            = rnd_up(nstl::max<dim_t>(jcp.l_pad, jcp.r_pad + 1), tr_round);
+    const int tr_pad = rnd_up(nstl::max(jcp.l_pad, jcp.r_pad + 1), tr_round);
     jcp.tr_iw = (rnd_up(div_up(jcp.iw, jcp.stride_w) + tr_pad, tr_round)
             * jcp.stride_w);
 

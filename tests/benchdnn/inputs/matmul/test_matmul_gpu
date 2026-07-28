@@ -68,8 +68,7 @@
 --attr-post-ops=sum+add:f32+add:u8:per_dim_01+mul:f32:per_dim_0+add:s8:per_tensor+add:f32:per_dim_01+linear:2:-1
 3x30x1:3x1x20
 
-# test regressions
---batch=harness_matmul_regression_f32
+--batch=harness_matmul_regression
 
 --reset
 --dt=f64,f32
@@ -144,9 +143,6 @@
 # precomputed reductions for zero points
 --reset
 --batch=harness_matmul_precomp_reductions
-
-# float16 regressions
---batch=harness_matmul_regression_float16
 
 # regressions
 --check-ref-impl=

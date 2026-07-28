@@ -84,8 +84,7 @@
 # Run-time
 --batch=harness_matmul_runtime_int8
 
-# regression
---batch=harness_matmul_regression_int8
+--batch=harness_matmul_regression
 
 # AMX macro heuristic selecting nthr_k > 1 when zp compensation
 # is required in copy routines, causing incorrect results.

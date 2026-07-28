@@ -569,11 +569,11 @@ void jit_avx512_common_conv_fwd_kernel_vmm_t<Vmm>::compute_loop(
 
 template <typename Vmm>
 void jit_avx512_common_conv_fwd_kernel_vmm_t<Vmm>::generate() {
-    const dim_t iw = jcp.iw;
+    const int iw = jcp.iw;
     const dim_t ow = jcp.ow;
     dim_t ow_block = jcp.ow_block;
     dim_t nb_ow = jcp.nb_ow;
-    const dim_t kw = jcp.kw;
+    const int kw = jcp.kw;
     const dim_t l_pad = jcp.l_pad;
     int ur_w = jcp.ur_w;
     int ur_w_tail = jcp.ur_w_tail;
@@ -617,7 +617,8 @@ void jit_avx512_common_conv_fwd_kernel_vmm_t<Vmm>::generate() {
 
     const dim_t r_pad = nstl::max<dim_t>(0, jcp.r_pad);
     dim_t n_oi = ow / ur_w;
-    const dim_t r_pad1 = calculate_end_padding(l_pad, ur_w * n_oi, iw, stride_w,
+    const dim_t r_pad1 = calculate_end_padding(static_cast<int>(l_pad),
+            static_cast<int>(ur_w * n_oi), iw, static_cast<int>(stride_w),
             calculate_extended_filter_size(kw, jcp.dilate_w));
 
     if (!is_ow_threading_on(jcp)) {
@@ -832,9 +833,9 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
     jcp.dilate_w = cd.dilates[ndims - 3];
 
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    const dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(
@@ -1012,8 +1013,8 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     // Need to try for other topologies
     if (jcp.ow > 150 && jcp.ur_w < regs / 2) jcp.ur_w = regs;
 
-    dim_t n_oi = jcp.ow / jcp.ur_w;
-    dim_t r_pad = calculate_end_padding(
+    int n_oi = jcp.ow / jcp.ur_w;
+    int r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ur_w * n_oi, jcp.iw, jcp.stride_w, ext_kw);
     if (jcp.l_pad > 0 && r_pad > 0) n_oi--;
 
@@ -1060,7 +1061,7 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     };
 
     auto get_ow_block = [&](int nb_oc_blocking, int ur_w, int nthr) {
-        dim_t res_ow_block = jcp.ow;
+        int res_ow_block = jcp.ow;
         float eff = get_thr_eff(nb_oc_blocking, res_ow_block, nthr);
         if (!is_ow_threading_applicable()) return res_ow_block;
 
@@ -1211,7 +1212,7 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                         } else {
                             int ur_w = static_cast<int>(
                                     nstl::min<dim_t>(jcp.ow, 31 / (i + 1)));
-                            dim_t ow_block = get_ow_block(i, ur_w, jcp.nthr);
+                            int ow_block = get_ow_block(i, ur_w, jcp.nthr);
                             float thr_eff = get_thr_eff(i, ow_block, jcp.nthr);
                             if (thr_eff > 1.05f * best_thr_eff) {
                                 best_nb_oc_blocking = i;
@@ -1237,9 +1238,9 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     VDISPATCH_CONV_IC(args_ok, VERBOSE_UNSUPPORTED_PAD_FEATURE,
             "weight and src size mismatch");
 
-    int r_pad_no_tail = static_cast<int>(nstl::max<dim_t>(0,
+    int r_pad_no_tail = nstl::max(0,
             calculate_end_padding(jcp.l_pad, jcp.ow - jcp.ur_w_tail, jcp.iw,
-                    jcp.stride_w, ext_kw)));
+                    jcp.stride_w, ext_kw));
     VDISPATCH_CONV_IC(r_pad_no_tail <= jcp.ur_w,
             VERBOSE_UNSUPPORTED_PAD_FEATURE,
             "width unroll exceeds padding size");
@@ -1266,7 +1267,7 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     if (thr_eff < eff_threshold && jcp.ngroups < jcp.nthr
             && (total_size < L1_cache_size)) {
-        dim_t ow_block = jcp.ow_block;
+        int ow_block = jcp.ow_block;
         float best_thr_eff = -1.0f;
         float eff = -1.0f;
         const int end_nthr = with_groups ? static_cast<int>(jcp.ngroups) : 1;
@@ -1290,7 +1291,7 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
                            - (float)(nstl::min<dim_t>(0, jcp.kh - jcp.stride_h)
                                    * jcp.iw))
             / (float)(jcp.stride_h * jcp.iw + jcp.ow));
-    jcp.h_blocking = nstl::max<dim_t>(1, nstl::min<dim_t>(jcp.oh, h_L2));
+    jcp.h_blocking = nstl::max(1, nstl::min(jcp.oh, h_L2));
 
     if (is_data_layout_nxc) {
         // TODO: improve L2 blocking for large IC
@@ -1298,7 +1299,7 @@ status_t jit_avx512_common_conv_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         if (jcp.nb_ic > nb_ic_theshold_L2 && jcp.nb_ic < 2 * nb_ic_theshold_L2)
             jcp.nb_ic_L2 = div_up(jcp.nb_ic, 2);
         else
-            jcp.nb_ic_L2 = nstl::min<dim_t>(nb_ic_theshold_L2, jcp.nb_ic);
+            jcp.nb_ic_L2 = nstl::min(nb_ic_theshold_L2, jcp.nb_ic);
     }
 
     // A rough check on code size
@@ -1935,9 +1936,9 @@ status_t jit_avx512_common_conv_bwd_data_kernel_f32_t::init_conf(
             VERBOSE_UNSUPPORTED_FEATURE,
             "unsupported shape with 'stride > 1' when 'dilate > 0'");
 
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    const dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(
@@ -2294,7 +2295,7 @@ status_t jit_avx512_common_conv_bwd_data_kernel_f32_t::init_conf(
         if (jcp.nb_oc > nb_oc_theshold_L2 && jcp.nb_oc < 2 * nb_oc_theshold_L2)
             jcp.nb_oc_L2 = div_up(jcp.nb_oc, 2);
         else
-            jcp.nb_oc_L2 = nstl::min<dim_t>(nb_oc_theshold_L2, jcp.nb_oc);
+            jcp.nb_oc_L2 = nstl::min(nb_oc_theshold_L2, jcp.nb_oc);
     }
 
     bool args_ok = true && jcp.ic <= diff_src_d.padded_dims()[1]
@@ -3358,7 +3359,7 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t ::
             mov(reg_tmp, 0);
         } else {
             mov(reg_kh, ihp - b_pad);
-            imul(reg_tmp, reg_oj, stride_h);
+            imul(reg_tmp, reg_oj, static_cast<int>(stride_h));
             sub(reg_kh, reg_tmp);
         }
         L(oh_bpad_label);
@@ -4021,9 +4022,9 @@ status_t jit_avx512_common_conv_bwd_weights_kernel_f32_t::init_conf(
     jcp.dilate_h = (ndims == 3) ? 0 : cd.dilates[ndims - 4];
     jcp.dilate_w = cd.dilates[ndims - 3];
 
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    const dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
 
     bool ok = true
             // general condition to simplify dilations
@@ -4035,13 +4036,13 @@ status_t jit_avx512_common_conv_bwd_weights_kernel_f32_t::init_conf(
     VDISPATCH_CONV_IC(ok, VERBOSE_UNSUPPORTED_PAD_FEATURE,
             "unsupported shape with 'stride > 1' when 'dilate > 0'");
 
-    jcp.r_pad = nstl::max<dim_t>(0,
+    jcp.r_pad = nstl::max(0,
             calculate_end_padding(
                     jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw));
-    jcp.b_pad = nstl::max<dim_t>(0,
+    jcp.b_pad = nstl::max(0,
             calculate_end_padding(
                     jcp.t_pad, jcp.oh, jcp.ih, jcp.stride_h, ext_kh));
-    jcp.back_pad = nstl::max<dim_t>(0,
+    jcp.back_pad = nstl::max(0,
             calculate_end_padding(
                     jcp.f_pad, jcp.od, jcp.id, jcp.stride_d, ext_kd));
 

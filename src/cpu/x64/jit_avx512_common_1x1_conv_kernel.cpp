@@ -1145,13 +1145,17 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
 
     assert(jcp.bcast_block % jcp.ur == 0);
 
-    jcp.nb_bcast_blocking = bcast_blocking / jcp.bcast_block;
-    jcp.nb_bcast_blocking_max = bcast_blocking_max / jcp.bcast_block;
-    jcp.nb_load_blocking = utils::div_up(load_blocking, jcp.load_block);
-    jcp.nb_load_blocking_max = utils::div_up(load_blocking_max, jcp.load_block);
-    jcp.nb_reduce_blocking = utils::div_up(reduce_blocking, jcp.reduce_block);
-    jcp.nb_reduce_blocking_max
-            = utils::div_up(reduce_blocking_max, jcp.reduce_block);
+    jcp.nb_bcast_blocking = static_cast<int>(bcast_blocking / jcp.bcast_block);
+    jcp.nb_bcast_blocking_max
+            = static_cast<int>(bcast_blocking_max / jcp.bcast_block);
+    jcp.nb_load_blocking
+            = static_cast<int>(utils::div_up(load_blocking, jcp.load_block));
+    jcp.nb_load_blocking_max = static_cast<int>(
+            utils::div_up(load_blocking_max, jcp.load_block));
+    jcp.nb_reduce_blocking = static_cast<int>(
+            utils::div_up(reduce_blocking, jcp.reduce_block));
+    jcp.nb_reduce_blocking_max = static_cast<int>(
+            utils::div_up(reduce_blocking_max, jcp.reduce_block));
 
     jcp.nb_bcast = div_up(jcp.bcast_dim, jcp.bcast_block);
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);

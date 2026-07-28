@@ -100,6 +100,15 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
         mov(1, flagSave[i], FlagRegister(i));
     }
 
+    // Save accumulator registers used by the host kernel, if we'll use them here
+    // TODO: Only done in the case of FMA kChain currently. Generalize to other accumulator uses.
+    const int accSaveCount = (strategy.kChain > 1 && !strategy.systolic)
+        ? AccumulatorRegister::count(hw, strategy.GRFs, problem.Tc.real().ngen()) : 0;
+    const int accElts = GRF::bytes(hw) >> 2;  // dwords per accumulator register
+    GRFRange accSave = state.ra.alloc_range(accSaveCount);
+    for (int i = 0; i < accSave.getLen(); i++)
+        mov<uint32_t>(accElts, accSave[i], AccumulatorRegister(i));
+
     // Beginning of microkernel:
     //   - check32
     //   - fused ID calculation
@@ -186,6 +195,11 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     if (strategy.prefetchB && state.effBp.isInvalid()) state.effBp = state.effB;
 
     gemmSubkernel(problem, strategy, state);
+
+    // Restore accumulator registers if saved above.
+    for (int i = 0; i < accSave.getLen(); i++)
+        mov<uint32_t>(accElts, AccumulatorRegister(i), accSave[i]);
+    state.ra.safeRelease(accSave);
 
     // Restore flag registers and dispatch mask and return to host kernel.
     for (int i = 0; i < FlagRegister::count(hw); i++)

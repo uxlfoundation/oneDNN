@@ -153,9 +153,9 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
                     ? bias_ptr + (bias_d.blk_off(ic) * bia_dt_size)
                     : nullptr;
 
-            const dim_t ih_b = ihc * jcp.ih_blk_size;
-            const dim_t ih_e = nstl::min<dim_t>(jcp.ih, ih_b + jcp.ih_blk_size);
-            const dim_t iw = iwb * jcp.iw_block;
+            const int ih_b = static_cast<int>(ihc * jcp.ih_blk_size);
+            const int ih_e = nstl::min(jcp.ih, ih_b + jcp.ih_blk_size);
+            const int iw = static_cast<int>(iwb * jcp.iw_block);
             bool is_inp_buffer_relevant = true && last_copied_mb == mb
                     && last_copied_id == id_s && last_copied_ihc == ihc
                     && last_copied_iwb == iwb && last_copied_g == g;
@@ -165,31 +165,30 @@ status_t jit_avx512_core_amx_deconvolution_fwd_t::execute_forward(
             const dim_t d_lo = sfd.get_lower_offset();
             const dim_t d_oj = sfd.get_output_offset();
 
-            const dim_t ih_step = jcp.nb_ih_blocking;
-            for (dim_t ih = ih_b; ih < ih_e; ih += ih_step) {
+            const int ih_step = jcp.nb_ih_blocking;
+            for (int ih = ih_b; ih < ih_e; ih += ih_step) {
                 if (!is_inp_buffer_relevant) {
-                    const dim_t gen_kh = (jcp.kh - 1) * (jcp.dilate_h + 1) + 1;
-                    const dim_t gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
+                    const int gen_kh = (jcp.kh - 1) * (jcp.dilate_h + 1) + 1;
+                    const int gen_kw = (jcp.kw - 1) * (jcp.dilate_w + 1) + 1;
                     // dox: x-index dilated by strides (dox = ox * stride_x)
-                    const dim_t doh = ih + jcp.t_pad - (gen_kh - 1);
-                    const dim_t dow = iw + jcp.l_pad - (gen_kw - 1);
-                    const dim_t doh_b = ih_b + jcp.t_pad - (gen_kh - 1);
-                    const dim_t doh_l = (jcp.oh - 1) * jcp.stride_h; // last oh
+                    const int doh = ih + jcp.t_pad - (gen_kh - 1);
+                    const int dow = iw + jcp.l_pad - (gen_kw - 1);
+                    const int doh_b = ih_b + jcp.t_pad - (gen_kh - 1);
+                    const int doh_l = (jcp.oh - 1) * jcp.stride_h; // last oh
                     const dim_t dow_l = (jcp.ow - 1) * jcp.stride_w; // last ow
 
                     // dox_{s,f}: start and finish indices for copy kernel
-                    const dim_t doh_s = doh + (ih == ih_b ? 0 : gen_kh - 1);
-                    const dim_t doh_f = doh + (ih_step - 1) + (gen_kh - 1);
-                    const dim_t delta_h = doh_f - doh_s + 1;
+                    const int doh_s = doh + (ih == ih_b ? 0 : gen_kh - 1);
+                    const int doh_f = doh + (ih_step - 1) + (gen_kh - 1);
+                    const int delta_h = doh_f - doh_s + 1;
                     const dim_t doh_t_overflow = 0 < doh_s && doh_s < doh_l
                             ? nstl::additive_inverse_modulo(doh_s, jcp.stride_h)
-                            : nstl::max<dim_t>(0, -doh_s);
+                            : nstl::max(0, -doh_s);
                     const dim_t doh_b_overflow = 0 < doh_f && doh_f < doh_l
                             ? nstl::modulo(doh_f, jcp.stride_h)
-                            : nstl::max<dim_t>(0,
-                                      nstl::min<dim_t>(delta_h, doh_f - doh_l));
-                    dim_t dow_s = dow;
-                    dim_t dow_f = dow + jcp.owp - 1;
+                            : nstl::max(0, nstl::min(delta_h, doh_f - doh_l));
+                    int dow_s = dow;
+                    int dow_f = dow + jcp.owp - 1;
                     const dim_t delta_w = dow_f - dow_s + 1;
                     const dim_t dow_l_overflow = 0 < dow_s && dow_s < dow_l
                             ? nstl::additive_inverse_modulo(dow_s, jcp.stride_w)

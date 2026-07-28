@@ -963,32 +963,32 @@ status_t jit_avx512_core_amx_convolution_bwd_data_t::execute_backward(
                     const dim_t doh_s = doh + (ih == ih_b ? 0 : gen_kh - 1);
                     const dim_t doh_f = doh + (ih_step - 1) + (gen_kh - 1);
                     const dim_t delta_h = doh_f - doh_s + 1;
-                    const int doh_t_overflow
-                            = static_cast<int>(0 < doh_s && doh_s < doh_l
-                                            ? nstl::additive_inverse_modulo(
-                                                      static_cast<dim_t>(doh_s),
-                                                      jcp.stride_h)
-                                            : nstl::max<dim_t>(0, -doh_s));
+                    const int doh_t_overflow = static_cast<int>(
+                            0 < doh_s && doh_s < doh_l
+                                    ? nstl::additive_inverse_modulo(
+                                              static_cast<dim_t>(doh_s),
+                                              static_cast<dim_t>(jcp.stride_h))
+                                    : nstl::max<dim_t>(0, -doh_s));
                     const int doh_b_overflow = static_cast<int>(
                             0 < doh_f && doh_f < doh_l
                                     ? nstl::modulo(static_cast<dim_t>(doh_f),
-                                              jcp.stride_h)
+                                              static_cast<dim_t>(jcp.stride_h))
                                     : nstl::max<dim_t>(0,
                                               nstl::min<dim_t>(
                                                       delta_h, doh_f - doh_l)));
                     dim_t dow_s = dow;
                     dim_t dow_f = dow + jcp.owp - 1;
                     const dim_t delta_w = dow_f - dow_s + 1;
-                    const int dow_l_overflow
-                            = static_cast<int>(0 < dow_s && dow_s < dow_l
-                                            ? nstl::additive_inverse_modulo(
-                                                      static_cast<dim_t>(dow_s),
-                                                      jcp.stride_w)
-                                            : nstl::max<dim_t>(0, -dow_s));
+                    const int dow_l_overflow = static_cast<int>(
+                            0 < dow_s && dow_s < dow_l
+                                    ? nstl::additive_inverse_modulo(
+                                              static_cast<dim_t>(dow_s),
+                                              static_cast<dim_t>(jcp.stride_w))
+                                    : nstl::max<dim_t>(0, -dow_s));
                     const int dow_r_overflow = static_cast<int>(
                             0 < dow_f && dow_f < dow_l
                                     ? nstl::modulo(static_cast<dim_t>(dow_f),
-                                              jcp.stride_w)
+                                              static_cast<dim_t>(jcp.stride_w))
                                     : nstl::max<dim_t>(0,
                                               nstl::min<dim_t>(
                                                       delta_w, dow_f - dow_l)));

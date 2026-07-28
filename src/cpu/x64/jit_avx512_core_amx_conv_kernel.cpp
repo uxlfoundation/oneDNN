@@ -1110,7 +1110,7 @@ jit_avx512_core_amx_fwd_kernel_t::jit_avx512_core_amx_fwd_kernel_t(
         const auto &rhs_addr_cache_reg = bin_injector_helper_reg_3;
         static constexpr bool preserve_gpr = false;
         static constexpr bool preserve_vmm = false;
-        const dim_t tail_size = jcp.oc_without_padding % isa_simd_width_;
+        const size_t tail_size = jcp.oc_without_padding % isa_simd_width_;
         static constexpr bool use_exact_tail_scalar_bcast = true;
 
         const binary_injector::rhs_arg_static_params_t rhs_arg_static_params {
@@ -2765,17 +2765,16 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     // Relevant to 'zero_point padding buffer' (pbuff) jit kernel
     if (jcp.req_zero_point_buffer) {
         auto calculate_output_padding_dims
-                = [](dim_t o_dim, dim_t s_pad, dim_t e_pad, dim_t &s_pad_output,
-                          dim_t &e_pad_output, bool &o_mid, dim_t &o_pad,
-                          dim_t stride, bool req_mid_area) {
-            s_pad_output = nstl::min<dim_t>(
-                    o_dim, div_up(nstl::max<dim_t>(0, s_pad), stride));
-            e_pad_output = nstl::min<dim_t>(
-                    o_dim, div_up(nstl::max<dim_t>(0, e_pad), stride));
+                = [](int o_dim, int s_pad, int e_pad, int &s_pad_output,
+                          int &e_pad_output, bool &o_mid, int &o_pad,
+                          int stride, bool req_mid_area) {
+            s_pad_output
+                    = nstl::min(o_dim, div_up(nstl::max(0, s_pad), stride));
+            e_pad_output
+                    = nstl::min(o_dim, div_up(nstl::max(0, e_pad), stride));
             o_mid = (o_dim - s_pad_output - e_pad_output > 0) && req_mid_area;
-            o_pad = nstl::min<dim_t>(o_dim,
-                    nstl::max<dim_t>(
-                            1, s_pad_output + e_pad_output + (dim_t)o_mid));
+            o_pad = nstl::min(o_dim,
+                    nstl::max(1, s_pad_output + e_pad_output + (int)o_mid));
         };
 
         const bool mid_w_area = (jcp.l_pad > 0 || jcp.r_pad > 0)

@@ -124,7 +124,15 @@ struct ref_t : public primitive_t {
             CHECK(dropout_ok());
             CHECK(pack_desc_.init(*dst_md(0)));
             dynamic_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
-            const dim_t dst_span = memory_desc_wrapper(dst_md(0)).span();
+            VDISPATCH_MATMUL(
+                    IMPLICATION(bool(pack_desc_) || dynamic_scales_,
+                            attr()->post_ops_.find(primitive_kind::sum) == -1),
+                    VERBOSE_UNSUPPORTED_POSTOP);
+            VDISPATCH_MATMUL(IMPLICATION(dynamic_scales_,
+                                     !memory_desc_wrapper(dst_md(0))
+                                              .has_runtime_dims_or_strides()),
+                    VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+            const size_t dst_span = memory_desc_wrapper(dst_md(0)).span();
             auto scratchpad = scratchpad_registry().registrar();
             if (dynamic_scales_) {
                 scratchpad.book(

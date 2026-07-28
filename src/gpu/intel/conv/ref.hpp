@@ -104,6 +104,10 @@ struct ref_fwd_t : public primitive_t {
                     {DNNL_ARG_WEIGHTS, {0}}, {DNNL_ARG_DST, {0, 2}}}));
 
             CHECK(pack_desc_.init(*dst_md(0)));
+            VDISPATCH_CONV(
+                    IMPLICATION(bool(pack_desc_),
+                            attr()->post_ops_.find(primitive_kind::sum) == -1),
+                    VERBOSE_UNSUPPORTED_POSTOP);
             if (pack_desc_) {
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_conv_pack_space,
@@ -211,6 +215,10 @@ struct ref_bwd_data_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             CHECK(pack_desc_.init(*diff_src_md(0)));
+            VDISPATCH_CONV(
+                    IMPLICATION(bool(pack_desc_),
+                            attr()->post_ops_.find(primitive_kind::sum) == -1),
+                    VERBOSE_UNSUPPORTED_POSTOP);
             if (pack_desc_) {
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_conv_pack_space,

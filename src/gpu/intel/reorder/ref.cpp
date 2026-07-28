@@ -57,6 +57,8 @@ status_t ref_t::pd_t::init_conf(const impl::engine_t *engine) {
 
     conf.dispatch = intel_engine->create_dispatch(dst_mdw.md_);
     CHECK(conf.pack_desc.init(*dst_md()));
+    if (conf.pack_desc && attr()->post_ops_.find(primitive_kind::sum) != -1)
+        return status::unimplemented;
 
     dim_t blocks[MAX_NDIMS] = {1, 1, 0, 0, 0, 0};
     for (int i = 0; i < MAX_NDIMS; ++i) {

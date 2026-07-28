@@ -143,6 +143,13 @@ status_t with_post_ops_t::pd_t::init(const impl::engine_t *engine) {
 
     CHECK(pack_desc_.init(*dst_md(0)));
     dynamic_scales_ = attr()->scales_.get(DNNL_ARG_DST).is_dynamic();
+    VDISPATCH_GEMM(IMPLICATION(bool(pack_desc_) || dynamic_scales_,
+                           attr()->post_ops_.find(primitive_kind::sum) == -1),
+            VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_GEMM(IMPLICATION(dynamic_scales_,
+                           !memory_desc_wrapper(dst_md(0))
+                                    .has_runtime_dims_or_strides()),
+            VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
     use_scratchpad_with_post_op_worker = use_reorder
             || attributes_with_po->post_ops_.find(primitive_kind_t::dnnl_sum)

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2023-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -171,6 +171,8 @@ struct brgemm_matmul_conf_t {
     bool transposed_A;
     bool transposed_B;
     bool blocked_B;
+    // MMLA consumes the primitive-selected packed B layout directly.
+    bool use_mmla {false};
 
     dim_t zp_a_comp_shift_n;
     dim_t zp_a_comp_elems_per_thr;
@@ -209,11 +211,13 @@ struct brgemm_matmul_conf_utils_t {
     }
 
     inline bool get_blocked_B() const {
-        return blocked_B_layouts_allowed
-                && check_b_layout_blocked_by_n(bgmmc.wei_tag);
+        return bgmmc.use_mmla
+                || (blocked_B_layouts_allowed
+                        && check_b_layout_blocked_by_n(bgmmc.wei_tag));
     }
 
     inline bool use_buffer_b(bool use_heuristic = true) const {
+        if (bgmmc.use_mmla) return false;
         // In the case of 1xK gemmv, we should avoid copying the weights if
         // they are in BA format, since the copy would be more expensive than
         // the gemv itself.
@@ -236,6 +240,7 @@ struct brgemm_matmul_conf_utils_t {
     }
 
     inline dim_t get_actual_LDB() const {
+        if (bgmmc.use_mmla) return bgmmc.wei_n_blk;
         if (bgmmc.wei_tag == format_tag::acbd && !bgmmc.use_buffer_b) {
             assert(bgmmc.b_dt_sz == bgmmc.tr_b_dt_sz);
             return bgmmc.B_strides[1] / bgmmc.b_dt_sz;
@@ -253,7 +258,9 @@ struct brgemm_matmul_conf_utils_t {
         return is_prime_num && IMPLICATION(bgmmc.M_blk < 48, maybe_ldb_tail);
     }
 
-    inline bool check_n_blk_fixed() const { return n_blk_fixed; }
+    inline bool check_n_blk_fixed() const {
+        return n_blk_fixed || bgmmc.use_mmla;
+    }
 
     inline bool check_is_transposed(format_tag_t tag) const {
         return tag == transposed_tensor_layout_tag;

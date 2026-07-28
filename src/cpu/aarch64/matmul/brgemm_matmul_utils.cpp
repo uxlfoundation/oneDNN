@@ -21,6 +21,7 @@
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+#include "cpu/aarch64/brgemm/brgemm_utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 
@@ -51,6 +52,7 @@ using namespace format_tag;
 
 int get_default_n_block(
         format_tag_t matrix_b_tag, brgemm_matmul_conf_t &bgmmc) {
+    if (bgmmc.use_mmla) return brgemm_utils::mmla_n_block(bgmmc.isa);
     // Note: consider using weights mem_descriptor 'inner_blks' to
     // return B's inner block for non-default cases.
     switch (matrix_b_tag) {
@@ -191,6 +193,20 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
 status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
         memory_desc_t &B_md, bool init_n_tag) const {
     using namespace data_type;
+    if (bgmmc.use_mmla) {
+        auto want_B_md = B_md;
+        CHECK(brgemm_utils::init_mmla_wei_md(want_B_md, bgmmc.ndims - 2,
+                bgmmc.ndims - 1, brgemm_utils::mmla_n_block(bgmmc.isa)));
+        if (B_any_layout)
+            B_md = want_B_md;
+        else if (B_md != want_B_md)
+            return status::unimplemented;
+        // The custom MMLA blocking is described by B_md rather than a public
+        // format tag.
+        bgmmc.wei_tag = format_tag::undef;
+        return status::success;
+    }
+
     if (B_any_layout) {
         const int default_n_block = init_n_tag
                 ? get_default_n_block(format_tag::undef, bgmmc)
@@ -273,6 +289,12 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
 
 status_t brgemm_matmul_conf_utils_t::update_and_check_B_tag(
         memory_desc_t &B_md, int n_blk_size) const {
+
+    // Packed MMLA weights fix N blocking, so the heuristic cannot shrink it.
+    if (bgmmc.use_mmla)
+        return n_blk_size == brgemm_utils::mmla_n_block(bgmmc.isa)
+                ? status::success
+                : status::unimplemented;
 
     if (n_blk_fixed && n_blk_size != bgmmc.wei_n_blk)
         return status::unimplemented;
@@ -960,15 +982,39 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.bcast_B_desc.set_params(
             weights_d.dims(), dst_d.dims(), bgmmc.batch_ndims, bgmmc.batch);
 
+    const int mmla_m_block = brgemm_utils::mmla_bd_blk();
+    const int mmla_n_block = brgemm_utils::mmla_n_block(isa);
+    const int mmla_k_block = brgemm_utils::mmla_rd_block();
+    // Matmul handles batch dimensions outside the BRGEMM kernel. Select MMLA
+    // when each BF16 matrix has complete N and K tiles; M tails are supported.
+    const bool mmla_shape_ok = utils::one_of(isa, sve_128, sve_256)
+            && bm_conf_utils.is_bf16() && bgmmc.M >= mmla_m_block
+            && bgmmc.N >= mmla_n_block && bgmmc.K >= mmla_k_block
+            && bgmmc.N % mmla_n_block == 0 && bgmmc.K % mmla_k_block == 0;
+    bool mmla_layout_ok = false;
+    if (mmla_shape_ok) {
+        auto mmla_weights_md = weights_md;
+        const bool mmla_md_ok
+                = brgemm_utils::init_mmla_wei_md(mmla_weights_md,
+                          bgmmc.ndims - 2, bgmmc.ndims - 1, mmla_n_block)
+                == status::success;
+        mmla_layout_ok = mmla_md_ok
+                && (weights_d.format_kind() == format_kind::any
+                        || weights_md == mmla_weights_md);
+    }
+    bgmmc.use_mmla = mmla_shape_ok && mmla_layout_ok;
+
     // Dispatch small shapes to VNNI for better performance
     bool is_small_shapes = false;
 
     VCONDCHECK_BG(!is_small_shapes, VERBOSE_SMALL_SHAPES);
 
     // required granularity for k dimension
-    bgmmc.required_k_granularity = 1;
+    bgmmc.required_k_granularity = bgmmc.use_mmla ? mmla_k_block : 1;
     VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL, "");
-    bgmmc.wei_k_blk = data_type_vnni_simd_elems<sve_512>(bgmmc.wei_dt);
+    bgmmc.wei_k_blk = bgmmc.use_mmla
+            ? mmla_k_block
+            : data_type_vnni_simd_elems<sve_512>(bgmmc.wei_dt);
 
     VCHECK_BG(bm_conf_utils.set_or_check_tags(src_md, dst_md, bias_md),
             VERBOSE_UNSUPPORTED_TAG);

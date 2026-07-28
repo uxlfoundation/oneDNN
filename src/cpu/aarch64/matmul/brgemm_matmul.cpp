@@ -26,6 +26,7 @@
 #include "cpu/matmul/matmul_utils.hpp"
 #include "cpu/scale_utils.hpp"
 
+#include "cpu/aarch64/brgemm/brgemm_utils.hpp"
 #include "cpu/aarch64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul.hpp"
 
@@ -215,6 +216,14 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         brgemm_attr_t brgattr;
         brgattr.generate_skip_accumulation
                 = bgmmc_.post_ops_applicable && bgmmc_.nthr_k > 1;
+        if (bgmmc_.use_mmla) {
+            // Matmul keeps A plain and supplies B in the packed MMLA layout.
+            // Match the kernel's N tile and cap M blocking for register use.
+            brgattr.use_mmla = true;
+            brgattr.hint_ld_block2 = brgemm_utils::mmla_ld_block2();
+            brgattr.hint_bd_block = nstl::min<dim_t>(
+                    brgemm_utils::mmla_max_native_bd_block(), vM);
+        }
 
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
 

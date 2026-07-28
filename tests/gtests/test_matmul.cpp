@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2019 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,6 +19,7 @@
 #include "gtest/gtest.h"
 
 #include "oneapi/dnnl/dnnl.hpp"
+#include "tests/test_isa_common.hpp"
 
 #include <vector>
 
@@ -688,5 +690,91 @@ INSTANTIATE_TEST_SUITE_P(TensorDims, attr_test_t,
                 std::make_tuple(memory::dims {2, 10, 10, 10},
                         memory::dims {2, 10, 10, 10}, tag::abcd,
                         memory::data_type::f16, 4)));
+
+#if DNNL_AARCH64
+namespace {
+
+bool is_bf16_mmla_matmul_weights(const memory::desc &desc) {
+    const int k_dim = desc.get_ndims() - 2;
+    return k_dim >= 0
+            && aarch64_mmla_test::matches_weights_desc(desc, k_dim, k_dim + 1);
+}
+
+bool has_bf16_mmla_matmul(const engine &eng) {
+    try {
+        const auto src = memory::desc(
+                {17, 64}, data_type::bf16, memory::format_tag::ab);
+        const auto weights = memory::desc(
+                {64, 64}, data_type::bf16, memory::format_tag::any);
+        const auto dst = memory::desc(
+                {17, 64}, data_type::f32, memory::format_tag::ab);
+        const auto pd = matmul::primitive_desc(eng, src, weights, dst);
+        return is_bf16_mmla_matmul_weights(pd.weights_desc());
+    } catch (const error &) { return false; }
+}
+
+} // namespace
+
+TEST(AArch64MmlaMatmul, Bf16SelectionAndFallbacks) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "This test targets the CPU matmul implementation.");
+
+    auto eng = get_test_engine();
+    SKIP_IF(!has_bf16_mmla_matmul(eng), "This test targets AArch64 BF16 MMLA.");
+
+    const auto src
+            = memory::desc({17, 64}, data_type::bf16, memory::format_tag::ab);
+    const auto dst
+            = memory::desc({17, 64}, data_type::f32, memory::format_tag::ab);
+    const auto any_weights
+            = memory::desc({64, 64}, data_type::bf16, memory::format_tag::any);
+    const auto selected = matmul::primitive_desc(eng, src, any_weights, dst);
+    ASSERT_TRUE(is_bf16_mmla_matmul_weights(selected.weights_desc()));
+
+    const auto packed = selected.weights_desc();
+    EXPECT_EQ(matmul::primitive_desc(eng, src, packed, dst).weights_desc(),
+            packed);
+
+    const auto n_tail_weights
+            = memory::desc({64, 49}, data_type::bf16, memory::format_tag::any);
+    const auto n_tail_dst
+            = memory::desc({17, 49}, data_type::f32, memory::format_tag::ab);
+    EXPECT_FALSE(is_bf16_mmla_matmul_weights(
+            matmul::primitive_desc(eng, src, n_tail_weights, n_tail_dst)
+                    .weights_desc()));
+
+    const auto k_tail_src
+            = memory::desc({17, 66}, data_type::bf16, memory::format_tag::ab);
+    const auto k_tail_weights
+            = memory::desc({66, 64}, data_type::bf16, memory::format_tag::any);
+    EXPECT_FALSE(is_bf16_mmla_matmul_weights(
+            matmul::primitive_desc(eng, k_tail_src, k_tail_weights, dst)
+                    .weights_desc()));
+
+    const auto gemv_src
+            = memory::desc({1, 64}, data_type::bf16, memory::format_tag::ab);
+    const auto gemv_dst
+            = memory::desc({1, 64}, data_type::f32, memory::format_tag::ab);
+    EXPECT_FALSE(is_bf16_mmla_matmul_weights(
+            matmul::primitive_desc(eng, gemv_src, any_weights, gemv_dst)
+                    .weights_desc()));
+
+    const auto batch_src = memory::desc(
+            {2, 17, 64}, data_type::bf16, memory::format_tag::abc);
+    const auto batch_weights = memory::desc(
+            {2, 64, 64}, data_type::bf16, memory::format_tag::any);
+    const auto batch_dst = memory::desc(
+            {2, 17, 64}, data_type::f32, memory::format_tag::abc);
+    const auto batched
+            = matmul::primitive_desc(eng, batch_src, batch_weights, batch_dst);
+    EXPECT_TRUE(is_bf16_mmla_matmul_weights(batched.weights_desc()));
+
+    const auto broadcast_weights = memory::desc(
+            {1, 64, 64}, data_type::bf16, memory::format_tag::any);
+    EXPECT_TRUE(is_bf16_mmla_matmul_weights(
+            matmul::primitive_desc(eng, batch_src, broadcast_weights, batch_dst)
+                    .weights_desc()));
+}
+#endif
 
 } // namespace dnnl

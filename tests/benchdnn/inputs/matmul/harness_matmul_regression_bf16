@@ -33,6 +33,43 @@
 --dtag=ab
 8x2664:2664x256_n"k_tail"
 
+# Low-parallel shapes must not shrink the packed MMLA N block.
+--reset
+--dt=bf16:bf16:f32
+--stag=ab --wtag=any --dtag=ab
+17x64:64x32_n"mmla_fixed_n_block_n32"
+17x64:64x64_n"mmla_fixed_n_block_n64"
+
+# Batch-specific and broadcast B descriptors preserve the packed layout.
+--reset
+--dt=bf16:bf16:f32
+--stag=abc --wtag=any --dtag=abc
+2x17x64:2x64x64_n"mmla_batched_weights"
+2x17x64:1x64x64_n"mmla_broadcast_weights"
+
+# Packed BF16 weights cover small K blocks, M tails, and multiple N tiles.
+--reset
+--dt=bf16:bf16:f32
+--stag=ab --wtag=any --dtag=ab
+2x8:8x32_n"mmla_small_k"
+5x16:16x32_n"mmla_m_tail"
+31x72:72x96_n"mmla_multiple_n_tiles"
+
+# Destination conversion, bias, sum, and eltwise use the shared epilogue.
+--reset
+--dt=bf16:bf16:bf16
+--bia-dt=bf16
+--stag=ab --wtag=any --dtag=ab
+--attr-post-ops=sum:1+relu
+5x16:16x32_n"mmla_epilogue_m_tail"
+
+# Multi-axis broadcasting preserves the packed weight layout.
+--reset
+--dt=bf16:bf16:f32
+--stag=abcd --wtag=any --dtag=abcd
+2x3x5x16:2x3x16x32_n"mmla_4d_batched_weights"
+2x1x5x16:1x3x16x32_n"mmla_4d_broadcast_weights"
+
 # Test that cases when M == 1 are handled correctly.
 --reset
 --stag=ba,ab --wtag=ab --dtag=ab --dt=bf16 1x2:2x256

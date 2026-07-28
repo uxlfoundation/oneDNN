@@ -615,14 +615,14 @@ private:
             load_param(reg_a, GET_OFF(src_batch_ptr));
             load_param(reg_tmp, GET_OFF(m_base));
             add(reg_tmp, reg_m);
-            imul(reg_tmp, reg_tmp, src_m_stride_bytes_);
+            imul(reg_tmp, reg_tmp, static_cast<int>(src_m_stride_bytes_));
             add(reg_a, reg_tmp);
             emit_t_reduce_into_T_bc(subtract_Gzs);
         }
 
         // delta row base = delta + m * LDC * 4.
         push(reg_m);
-        imul(reg_m, reg_m, LDC_ * f32_sz);
+        imul(reg_m, reg_m, static_cast<int>(LDC_ * f32_sz));
         add(reg_m, reg_delta);
 
         for (int c = 0; c < chunks_; ++c) {

@@ -1179,7 +1179,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
 
         // middle_region:
         int n_urw_middle_block_loop = 0;
-        int cur_r_pad = static_cast<int>(nstl::max<dim_t>(0,
+        int cur_r_pad = static_cast<int>(nstl::max(0,
                 calculate_end_padding(jcp.l_pad, cur_ow + jcp.ur_w, jcp.iw,
                         jcp.stride_w, extended_filter_size)));
         if (cur_ow + jcp.ur_w <= jcp.ow && cur_r_pad == 0) {
@@ -1286,7 +1286,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
             }
 
             cur_ow += jcp.ur_w;
-            int cur_r_pad = static_cast<int>(nstl::max<dim_t>(0,
+            int cur_r_pad = static_cast<int>(nstl::max(0,
                     calculate_end_padding(jcp.l_pad, cur_ow, jcp.iw,
                             jcp.stride_w, extended_filter_size)));
             icb_loop(jcp.ur_w, cur_l_pad, cur_r_pad, cur_ow > max_safe_ow);
@@ -1308,7 +1308,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
 
     // middle_block
     {
-        int cur_r_pad = static_cast<int>(nstl::max<dim_t>(0,
+        int cur_r_pad = static_cast<int>(nstl::max(0,
                 calculate_end_padding(jcp.l_pad, cur_ow + jcp.ur_w, jcp.iw,
                         jcp.stride_w, extended_filter_size)));
         if (cur_r_pad == 0 && cur_ow + jcp.ur_w <= jcp.ow) {
@@ -1468,9 +1468,9 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     jcp.dilate_h = is_1d ? 0 : cd.dilates[ndims - 4];
     jcp.dilate_w = cd.dilates[ndims - 3];
 
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    const dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(
@@ -1762,14 +1762,14 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
         return float(work_amount) / (float)rnd_up(work_amount, nthr);
     };
 
-    auto get_ow_block = [&](dim_t ur_w, int nthr) {
-        dim_t res_ow_block = jcp.ow;
+    auto get_ow_block = [&](int ur_w, int nthr) {
+        int res_ow_block = jcp.ow;
         float best_thr_eff = get_thr_eff(1, nthr);
         float thr_eff;
-        const dim_t max_nb_ow = div_up(jcp.ow, ur_w);
-        for (dim_t nb_ow = 1; nb_ow <= max_nb_ow; nb_ow++) {
-            const dim_t ow_block = nstl::min<dim_t>(
-                    rnd_up(div_up(jcp.ow, nb_ow), ur_w), jcp.ow);
+        const int max_nb_ow = div_up(jcp.ow, ur_w);
+        for (int nb_ow = 1; nb_ow <= max_nb_ow; nb_ow++) {
+            const int ow_block
+                    = nstl::min(rnd_up(div_up(jcp.ow, nb_ow), ur_w), jcp.ow);
             if (ow_block < jcp.nb_oc_blocking_thr_chunk * jcp.oc_block
                     && best_thr_eff > 0.8f)
                 break;
@@ -1802,13 +1802,13 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     if (thr_eff < 0.9f && jcp.ngroups < jcp.nthr
             && (total_size < L1_cache_size)) {
-        int ow_block = static_cast<int>(jcp.ow_block);
+        int ow_block = jcp.ow_block;
         float best_thr_eff = -1.0f;
         float eff = -1.0f;
         int end_nthr = with_groups ? static_cast<int>(jcp.ngroups) : 1;
         for (int nthr = jcp.nthr / 2; nthr > end_nthr; nthr--) {
-            ow_block = static_cast<int>(get_ow_block(jcp.ur_w, nthr));
-            eff = get_thr_eff(static_cast<int>(div_up(jcp.ow, ow_block)), nthr);
+            ow_block = get_ow_block(jcp.ur_w, nthr);
+            eff = get_thr_eff(div_up(jcp.ow, ow_block), nthr);
             if (eff > 1.1f * best_thr_eff) {
                 best_thr_eff = eff;
                 jcp.ow_block = ow_block;

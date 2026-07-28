@@ -165,13 +165,18 @@ void Generator<hw>::outerProductFMA(int h, int ha_period, int hb_period, int opC
     accPerFMA = std::max(accPerFMA, minAccPerFMA);
     int independentAccs = div_up(accCount, accPerFMA);
 
+    // Mirror canColMajor/canRowMajor logic below. If neither, downgrade simd to 1.
+    bool fmaVectorized = (isRegisterColMajor(problem.Ta, problem.A, strategy.A) && globalCM)
+                      || (!isRegisterColMajor(problem.Tb, problem.B, strategy.B) && !globalCM);
+    int fmaExpected = fmaVectorized ? fmaSIMD : 1;
+
     int nx1i = 1, ny1 = 1;
     if (kChain > 1) {
         if (independentAccs < icompCount) hw_unsupported();
         int indepAccComp = div_up(independentAccs, icompCount);
 
-        nx1i = std::min(nx1, indepAccComp * fmaSIMD);
-        ny1 = div_up(indepAccComp, div_up(nx1i, fmaSIMD));
+        nx1i = std::min(nx1, indepAccComp * fmaExpected);
+        ny1 = div_up(indepAccComp, div_up(nx1i, fmaExpected));
 
         noAccSBSet &= Tc.isFP()
                    && (div_up(nx1i, necAcc) * ny1 * icompCount >= 8)

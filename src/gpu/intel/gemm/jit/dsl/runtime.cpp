@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "gemmstone/runtime.hpp"
+#include "dsl/utils/utils.hpp"
 #include "gemmstone/dsl/hw.hpp"
 #include "gemmstone/dsl/runtime.hpp"
 #include "generator_dsl/builder.hpp"
@@ -62,100 +63,6 @@ std::vector<uint8_t> make_binary(const GEMMKernelDesc &desc) {
     if (desc.strategy.isDSLGenerator) {
         generator_dsl_desc_t dsl_desc(
                 desc.problem, desc.strategy, desc.iface, desc.options);
-        auto dsl_kernel = make_kernel(dsl_desc);
-        return dsl::make_kernel(
-                dsl_kernel, std::move(context), std::move(device));
-    }
-    stub();
-}
-#endif
-
-#ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
-
-#ifndef CL_DEVICE_FEATURE_CAPABILITIES_INTEL
-#define CL_DEVICE_FEATURE_CAPABILITIES_INTEL 0x4256
-#endif
-
-#ifndef CL_DEVICE_ATOMIC_FLAGS
-#define CL_DEVICE_ATOMIC_FLAGS
-#define CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT (1 << 0)
-#define CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT (1 << 1)
-#define CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT (1 << 2)
-#define CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT (1 << 16)
-#define CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT (1 << 17)
-#define CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT (1 << 18)
-#endif
-
-#ifndef CL_DEVICE_FEATURE_FLAG_DPAS_INTEL
-#define CL_DEVICE_FEATURE_FLAG_DPAS_INTEL (1 << 1)
-#endif
-
-dsl::hw_t get_hardware(cl_device_id device, cl_context context) {
-    auto product = ngen::OpenCLCodeGenerator<ngen::HW::Unknown>::detectHWInfo(
-            context, device);
-
-    cl_int err;
-    cl_uint eu_count = 0;
-    err = ngen::dynamic::clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,
-            sizeof(eu_count), &eu_count, nullptr);
-    if (err) return {};
-
-    size_t max_wg_size;
-    err = ngen::dynamic::clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
-            sizeof(max_wg_size), &max_wg_size, nullptr);
-    if (err) return {};
-
-    cl_ulong l3_cache_size;
-    err = ngen::dynamic::clGetDeviceInfo(device,
-            CL_DEVICE_GLOBAL_MEM_CACHE_SIZE, sizeof(l3_cache_size),
-            &l3_cache_size, nullptr);
-    if (err) return {};
-
-    dsl::hw::attr_t attr;
-    cl_bitfield attrs_cl;
-    err = ngen::dynamic::clGetDeviceInfo(device,
-            CL_DEVICE_FEATURE_CAPABILITIES_INTEL, sizeof(cl_bitfield),
-            &attrs_cl, nullptr);
-    if (err) return {};
-    ngen::HW hw = ngen::getCore(product.family);
-
-    if (hw >= ngen::HW::XeHPC) attr |= dsl::hw::attr_t::large_grf;
-
-    if (attrs_cl & CL_DEVICE_FEATURE_FLAG_DPAS_INTEL)
-        attr |= dsl::hw::attr_t::systolic;
-    if (attrs_cl & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
-            && product.family != ngen::ProductFamily::ARL
-            && product.family != ngen::ProductFamily::MTL)
-        attr |= dsl::hw::attr_t::atomic_fp64;
-    if (ngen::OpenCLCodeGenerator<ngen::HW::Unknown>::detectEfficient64Bit(
-                context, device, hw))
-        attr |= dsl::hw::attr_t::efficient_64bit;
-
-    return dsl::hw_t(product, eu_count, (int)max_wg_size, l3_cache_size, attr);
-}
-
-#ifdef GEMMSTONE_WITH_BINARY_RUNTIME
-std::vector<uint8_t> make_binary(
-        const GEMMKernelDesc &desc, cl_device_id device, cl_context context) {
-    if (desc.strategy.isDSLGenerator) {
-        generator_dsl_desc_t dsl_desc(
-                desc.problem, desc.strategy, desc.iface, desc.options);
-        if (dsl_desc.options.hw() == dsl::hw_t())
-            dsl_desc.options.set_hw(get_hardware(device, context));
-        auto dsl_kernel = make_kernel(dsl_desc);
-        return dsl::make_binary(dsl_kernel);
-    }
-    stub();
-}
-#endif
-
-cl_kernel make_kernel(
-        const GEMMKernelDesc &desc, cl_device_id device, cl_context context) {
-    if (desc.strategy.isDSLGenerator) {
-        generator_dsl_desc_t dsl_desc(
-                desc.problem, desc.strategy, desc.iface, desc.options);
-        if (dsl_desc.options.hw() == dsl::hw_t())
-            dsl_desc.options.set_hw(get_hardware(device, context));
         auto dsl_kernel = make_kernel(dsl_desc);
         return dsl::make_kernel(dsl_kernel, context, device);
     }
@@ -217,8 +124,8 @@ dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
     }
 
     dsl::hw::attr_t attr = {};
-    ngen::HW hw = ngen::getCore(product.family);
-    if (hw >= ngen::HW::XeHPC) attr |= dsl::hw::attr_t::large_grf;
+    if (ngen::getCore(product.family) >= ngen::HW::XeHPC)
+        attr |= dsl::hw::attr_t::large_grf;
 
     {
         auto deviceModPropsExt = ze_intel_device_module_dp_exp_properties_t();
@@ -255,7 +162,7 @@ dsl::hw_t get_hardware(ze_device_handle_t device, ze_context_handle_t context) {
     }
 
     if (ngen::LevelZeroCodeGenerator<ngen::HW::Unknown>::detectEfficient64Bit(
-                context, device, hw))
+                context, device, ngen::getCore(product.family)))
         attr |= dsl::hw::attr_t::efficient_64bit;
 
     return dsl::hw_t(product, static_cast<int>(eu_count),
@@ -267,6 +174,101 @@ LevelZeroKernelAndModule make_kernel(const GEMMKernelDesc &desc,
     if (desc.strategy.isDSLGenerator) {
         generator_dsl_desc_t dsl_desc(
                 desc.problem, desc.strategy, desc.iface, desc.options);
+        auto dsl_kernel = make_kernel(dsl_desc);
+        return dsl::make_kernel(
+                dsl_kernel, std::move(context), std::move(device));
+    }
+    stub();
+}
+#endif
+
+#ifdef GEMMSTONE_WITH_OPENCL_RUNTIME
+
+#ifndef CL_DEVICE_FEATURE_CAPABILITIES_INTEL
+#define CL_DEVICE_FEATURE_CAPABILITIES_INTEL 0x4256
+#endif
+
+#ifndef CL_DEVICE_ATOMIC_FLAGS
+#define CL_DEVICE_ATOMIC_FLAGS
+#define CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT (1 << 0)
+#define CL_DEVICE_GLOBAL_FP_ATOMIC_ADD_EXT (1 << 1)
+#define CL_DEVICE_GLOBAL_FP_ATOMIC_MIN_MAX_EXT (1 << 2)
+#define CL_DEVICE_LOCAL_FP_ATOMIC_LOAD_STORE_EXT (1 << 16)
+#define CL_DEVICE_LOCAL_FP_ATOMIC_ADD_EXT (1 << 17)
+#define CL_DEVICE_LOCAL_FP_ATOMIC_MIN_MAX_EXT (1 << 18)
+#endif
+
+#ifndef CL_DEVICE_FEATURE_FLAG_DPAS_INTEL
+#define CL_DEVICE_FEATURE_FLAG_DPAS_INTEL (1 << 1)
+#endif
+
+dsl::hw_t get_hardware(cl_device_id device, cl_context context) {
+    auto product = ngen::OpenCLCodeGenerator<ngen::HW::Unknown>::detectHWInfo(
+            context, device);
+
+    cl_int err;
+    cl_uint eu_count = 0;
+    err = ngen::dynamic::clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS,
+            sizeof(eu_count), &eu_count, nullptr);
+    if (err) return {};
+
+    size_t max_wg_size;
+    err = ngen::dynamic::clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE,
+            sizeof(max_wg_size), &max_wg_size, nullptr);
+    if (err) return {};
+
+    cl_ulong l3_cache_size;
+    err = ngen::dynamic::clGetDeviceInfo(device,
+            CL_DEVICE_GLOBAL_MEM_CACHE_SIZE, sizeof(l3_cache_size),
+            &l3_cache_size, nullptr);
+    if (err) return {};
+
+    dsl::hw::attr_t attr = {};
+    cl_bitfield attrs_cl;
+    err = ngen::dynamic::clGetDeviceInfo(device,
+            CL_DEVICE_FEATURE_CAPABILITIES_INTEL, sizeof(cl_bitfield),
+            &attrs_cl, nullptr);
+    if (err) return {};
+
+    if (ngen::getCore(product.family) >= ngen::HW::XeHPC)
+        attr |= dsl::hw::attr_t::large_grf;
+
+    if (attrs_cl & CL_DEVICE_FEATURE_FLAG_DPAS_INTEL)
+        attr |= dsl::hw::attr_t::systolic;
+    if (attrs_cl & CL_DEVICE_GLOBAL_FP_ATOMIC_LOAD_STORE_EXT
+            && product.family != ngen::ProductFamily::ARL
+            && product.family != ngen::ProductFamily::MTL)
+        attr |= dsl::hw::attr_t::atomic_fp64;
+    if (ngen::OpenCLCodeGenerator<ngen::HW::Unknown>::detectEfficient64Bit(
+                context, device, ngen::getCore(product.family)))
+        attr |= dsl::hw::attr_t::efficient_64bit;
+
+    return dsl::hw_t(product, static_cast<int>(eu_count),
+            static_cast<int>(max_wg_size), l3_cache_size, attr);
+}
+
+#ifdef GEMMSTONE_WITH_BINARY_RUNTIME
+std::vector<uint8_t> make_binary(
+        const GEMMKernelDesc &desc, cl_device_id device, cl_context context) {
+    if (desc.strategy.isDSLGenerator) {
+        generator_dsl_desc_t dsl_desc(
+                desc.problem, desc.strategy, desc.iface, desc.options);
+        if (dsl_desc.options.hw() == dsl::hw_t())
+            dsl_desc.options.set_hw(get_hardware(device, context));
+        auto dsl_kernel = make_kernel(dsl_desc);
+        return dsl::make_binary(dsl_kernel);
+    }
+    stub();
+}
+#endif
+
+cl_kernel make_kernel(
+        const GEMMKernelDesc &desc, cl_device_id device, cl_context context) {
+    if (desc.strategy.isDSLGenerator) {
+        generator_dsl_desc_t dsl_desc(
+                desc.problem, desc.strategy, desc.iface, desc.options);
+        if (dsl_desc.options.hw() == dsl::hw_t())
+            dsl_desc.options.set_hw(get_hardware(device, context));
         auto dsl_kernel = make_kernel(dsl_desc);
         return dsl::make_kernel(dsl_kernel, context, device);
     }

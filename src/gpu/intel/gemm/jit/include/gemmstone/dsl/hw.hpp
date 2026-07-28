@@ -19,6 +19,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "gemmstone/config.hpp"
@@ -74,10 +75,11 @@ class hw_t : public stringify_t<hw_t> {
 public:
     using attr_t = hw::attr_t;
     hw_t() = default;
-    explicit hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
-            size_t l3_cache_size, attr_t attr);
-    hw_t(const hw_t &);
-    hw_t operator=(const hw_t &other) {
+    explicit hw_t(const ngen::Product &product, int eu_count,
+            size_t max_wg_size, size_t l3_cache_size, attr_t attr);
+    explicit hw_t(const ngen::ProductFamily &family);
+    hw_t(const hw_t &other);
+    hw_t &operator=(const hw_t &other) {
         hw_t tmp(other);
         std::swap(product_, tmp.product_);
         std::swap(hw_, tmp.hw_);
@@ -93,6 +95,13 @@ public:
     int stepping() const;
     ngen::HW ngen_hw() const { return hw_; }
     operator ngen::HW() const { return hw_; }
+    size_t max_wg_size(int regs = 128) const {
+        // max_wg_size_ implicitly assumes 128 GRF/thread - other GRF modes will vary
+        size_t thread_per_eu = threads_per_eu(regs);
+        size_t base_thread_per_eu = threads_per_eu(128);
+        return max_wg_size_ * thread_per_eu / base_thread_per_eu;
+    }
+    attr_t attr() const { return attr_; }
 
     bool has_fp64_atomic_support() const {
         return any(attr_ & attr_t::atomic_fp64);
@@ -137,13 +146,6 @@ protected:
     std::unique_ptr<ngen::Product> product_;
 
 private:
-    size_t max_wg_size(int regs = 128) const {
-        // max_wg_size_ implicitly assumes 128 GRF/thread - other GRF modes will vary
-        size_t thread_per_eu = threads_per_eu(regs);
-        size_t base_thread_per_eu = threads_per_eu(128);
-        return max_wg_size_ * thread_per_eu / base_thread_per_eu;
-    }
-
     ngen::HW hw_ = {};
     int eu_count_ = 0;
     size_t max_wg_size_ = 0;

@@ -21,7 +21,57 @@
 GEMMSTONE_NAMESPACE_START
 namespace dsl {
 
-hw_t::hw_t(const ngen::Product &product, int eu_count, int max_wg_size,
+hw_t get_default_hardware(ngen::ProductFamily family) {
+    using namespace ngen;
+    using namespace dsl;
+
+    // TODO: stepping should be set to stepping of released hardware
+    ngen::Product product {family, 0, getPlatformType(family)};
+
+    // EU count and L3 cache size are currently unused for kernel generation,
+    // setting them to 0.
+    switch (family) {
+        case ProductFamily::GenericXeLP:
+            return hw_t(product, 0, 512, 0, hw::attr_t::atomic_fp64);
+        case ProductFamily::GenericXeHPG:
+        case ProductFamily::DG2:
+            return hw_t(product, 0, 1024, 0,
+                    hw::attr_t::systolic | hw::attr_t::atomic_fp64);
+        case ProductFamily::MTL:
+        case ProductFamily::ARL:
+        case ProductFamily::GenericXeHP:
+            return hw_t(product, 0, 1024, 0, hw::attr_t::systolic);
+        case ProductFamily::GenericXeHPC:
+        case ProductFamily::PVC:
+            return hw_t(product, 0, 1024, 0,
+                    hw::attr_t::large_grf | hw::attr_t::systolic
+                            | hw::attr_t::atomic_fp64);
+        case ProductFamily::PVCVG:
+            return hw_t(product, 0, 1024, 0,
+                    hw::attr_t::large_grf | hw::attr_t::atomic_fp64);
+        case ProductFamily::GenericXe2:
+        case ProductFamily::BMG:
+        case ProductFamily::LNL:
+            return hw_t(product, 0, 1024, 0,
+                    hw::attr_t::large_grf | hw::attr_t::systolic
+                            | hw::attr_t::atomic_fp64);
+        case ProductFamily::GenericXe3:
+            return hw_t(product, 0, 1024, 0,
+                    hw::attr_t::large_grf | hw::attr_t::systolic
+                            | hw::attr_t::atomic_fp64);
+        case ProductFamily::GenericXe3p:
+        case ProductFamily::NVLP:
+        case ProductFamily::CRI:
+            return hw_t(product, 0, 1024, 0,
+                    hw::attr_t::large_grf | hw::attr_t::systolic
+                            | hw::attr_t::atomic_fp64);
+        default: break;
+    }
+    throw std::runtime_error("Unknown GPU product.");
+    return {};
+}
+
+hw_t::hw_t(const ngen::Product &product, int eu_count, size_t max_wg_size,
         size_t l3_cache_size, attr_t attr)
     : product_(make_unique<ngen::Product>(product))
     , hw_(ngen::getCore(product.family))
@@ -38,6 +88,9 @@ hw_t::hw_t(const hw_t &other)
     , max_wg_size_(other.max_wg_size_)
     , l3_cache_size_(other.l3_cache_size_)
     , attr_(other.attr_) {}
+
+hw_t::hw_t(const ngen::ProductFamily &family)
+    : hw_t(get_default_hardware(family)) {}
 
 const ngen::Product &hw_t::product() const {
     gpu_assert(product_) << "Product information not available";

@@ -475,12 +475,14 @@
 #define DST_TO_REF(x) into_float(x)
 #define DST_TO_REF8(x) into_float(x)
 #define REF_TO_DST(x) into_f8_e5m2(x)
+#define DST_DATA_MAX (uchar)0x7B
+#define DST_DATA_MIN (uchar)0xFB
 #elif DST_DT_HF8
 #define DST_TO_REF(x) into_float(x)
 #define DST_TO_REF8(x) into_float(x)
 #define REF_TO_DST(x) into_f8_e4m3(x)
-#define DST_DATA_MAX (uchar)0x7B
-#define DST_DATA_MIN (uchar)0xFB
+#define DST_DATA_MAX (uchar)0x7E
+#define DST_DATA_MIN (uchar)0xFE
 #elif DST_DT_F4_E2M1
 #define DST_TO_REF(x) into_float(x)
 #define DST_TO_REF8(x) into_float(x)

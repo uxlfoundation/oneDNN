@@ -18,6 +18,7 @@
 #define GEMMSTONE_DSL_UTILS_BLOCK_2D_UTILS_HPP
 
 #include <algorithm>
+#include <vector>
 
 #include "dsl/utils/utils.hpp"
 #include "ngen.hpp"
@@ -98,6 +99,12 @@ inline std::vector<int> block_2d_counts(ngen::HW hw, bool is_prefetch,
     }
     if (res.empty()) gpu_error_not_expected();
     return res;
+}
+
+inline int block_2d_max_count(
+        bool is_store, bool is_transpose, int block_width, int type_size) {
+    return block_2d_counts(ngen::HW::Xe3, false, is_store, is_transpose,
+            block_width, type_size)[0];
 }
 
 } // namespace dsl

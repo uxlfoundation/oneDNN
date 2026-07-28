@@ -177,6 +177,14 @@ void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
 
 template <typename GeneratorT>
 void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
+        const ngen::InstructionModifier &mod, const reg_buf_data_t &dst,
+        reg_buf_data_t &src0, reg_buf_data_t &src1) {
+    align_src_dst_offset(host, scope, mod, dst, src0);
+    align_src_dst_offset(host, scope, mod, dst, src1);
+}
+
+template <typename GeneratorT>
+void align_src_dst_offset(GeneratorT *host, ngen_register_scope_t &scope,
         const ngen::InstructionModifier &mod, const ngen_operand_t &dst,
         ngen_operand_t &src, bool align_stride = false) {
     if (!src.is_reg_data()) return;
@@ -363,13 +371,13 @@ public:
             copy_plan_t plan(scope.register_allocator(),
                     host->hw_info().systolic_support());
             const auto base_phase = plan.phase;
-            auto src_tile = src_layout_.sub(tile);
-            auto dst_tile = dst_layout_.sub(tile);
+            auto src_sub = src_layout_.sub(tile).with_offset(0);
+            auto dst_sub = dst_layout_.sub(tile).with_offset(0);
             auto emit_tile = [&](const dsl::icoord_t &start) {
                 auto src_off = src_layout_.offset<int>(start);
                 auto dst_off = dst_layout_.offset<int>(start);
-                auto src_op = init_operand(src_tile, from_rd(src, src_off));
-                auto dst_op = init_operand(dst_tile, from_rd(dst, dst_off));
+                auto src_op = init_operand(src_sub, from_rd(src, src_off));
+                auto dst_op = init_operand(dst_sub, from_rd(dst, dst_off));
                 emit(plan, src_op, dst_op);
                 plan.phase = base_phase;
             };

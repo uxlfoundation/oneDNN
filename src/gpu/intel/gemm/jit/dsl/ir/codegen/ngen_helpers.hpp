@@ -51,13 +51,12 @@ T to_cpp(const ngen::Immediate &imm) {
 
 // type_t to ngen::DataType convertor.
 inline ngen::DataType to_ngen(const type_t &type) {
+    if (type.is_undef()) return ngen::DataType::invalid;
+
     dsl_assert(type.is_scalar()) << "Expected scalar type.";
 
 #define CASE(_kind, ngen_enum) \
-    if (type.base() == type_t::_kind()) return ngen::DataType::ngen_enum
-
-    // Until f4_e2m1 lands in ngen
-    if (type.base() == type_t::f4_e2m1()) return ngen::DataType::e2m1;
+    if (type.scalar() == type_t::_kind()) return ngen::DataType::ngen_enum
 
     CASE(bf16, bf);
     CASE(f16, hf);
@@ -76,6 +75,7 @@ inline ngen::DataType to_ngen(const type_t &type) {
     CASE(u64, uq);
     CASE(u8, ub);
     CASE(u4, u4);
+    CASE(f4_e2m1, e2m1);
 
     if (type == type_t::byte(1, type::attr_t::ptr)) return ngen::DataType::uq;
 

@@ -2088,11 +2088,11 @@ expr_t const_fold_binary(const type_t &compute_type, op_kind_t op_kind,
         const expr_t &a, const expr_t &b) {
     if (!compute_type.is_scalar()) {
         int elems = compute_type.elems();
-        auto base_type = compute_type.base();
+        auto stype = compute_type.scalar();
         std::vector<expr_t> ret;
         ret.reserve(elems);
         for (int i = 0; i < elems; i++) {
-            ret.push_back(const_fold_binary(base_type, op_kind, a[i], b[i]));
+            ret.push_back(const_fold_binary(stype, op_kind, a[i], b[i]));
         }
         return shuffle_t::make(ret);
     }
@@ -2413,7 +2413,8 @@ expr_t const_fold_non_recursive(const expr_t &e) {
         if (cast->expr.is<bool_imm_t>())
             return to_expr(to_cpp<bool>(cast->expr), cast->type);
         if (cast->expr.is<int_imm_t>())
-            return to_expr(to_cpp<int64_t>(cast->expr), cast->type);
+            return int_imm_t::make(
+                    cast->expr.as<int_imm_t>().value, cast->type);
         if (cast->expr.is<float_imm_t>())
             return to_expr(to_cpp<double>(cast->expr), cast->type);
     }

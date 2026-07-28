@@ -65,7 +65,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
         bool with_sum_ = false;
         jit_brgemm_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
 
-        dim_t ic_chunks {};
+        int ic_chunks {};
         bool need_postwork {};
         dim_t wei_g_stride {}, wei_ic_stride {}, wei_ocb_stride {};
         dim_t wei_kw_stride {}, wei_kh_stride {}, wei_kd_stride {};
@@ -131,7 +131,7 @@ struct brgemm_convolution_fwd_t : public primitive_t {
                 bool do_init, int kd_b, int kd_e, int kh_b, int kh_e);
 
     protected:
-        dim_t KD {}, KH {}, KW {}, EXT_KD {}, EXT_KH {}, EXT_KW {}, KS {},
+        int KD {}, KH {}, KW {}, EXT_KD {}, EXT_KH {}, EXT_KW {}, KS {},
                 KD_BLOCK {}, KH_BLOCK {}, KW_BLOCK {}, KD_BLOCK_PAD {},
                 KH_BLOCK_PAD {}, ID {}, IH {}, IW {}, IDP {}, IHP {}, IWP {},
                 OD {}, OH {}, OW {}, SD {}, SH {}, SW {}, FP {}, TP {}, LP {},
@@ -175,9 +175,9 @@ private:
                 + static_cast<int>(is_N_tail));
     }
 
-    inline static dim_t get_inp_size(dim_t max_src_size, dim_t dst_size,
-            dim_t k, dim_t stride, dim_t dilate) {
-        const auto res = nstl::min<dim_t>(max_src_size,
+    inline static int get_inp_size(
+            int max_src_size, int dst_size, int k, int stride, int dilate) {
+        const auto res = nstl::min(max_src_size,
                 calculate_end_padding(0, dst_size, 0, stride,
                         calculate_extended_filter_size(k, dilate)));
         return res;
@@ -251,7 +251,7 @@ private:
     std::vector<dim_t> kd_bs, kd_es, kh_bs, kh_es, kw_bs, kw_es, oh_kh_b,
             oh_kh_e, comp_oh, comp_oh_kh_b, comp_oh_kh_e, comp_owb;
 
-    dim_t KD, KH, KW, EXT_KD, EXT_KH, EXT_KW, KS, KD_BLOCK, KH_BLOCK, KW_BLOCK,
+    int KD, KH, KW, EXT_KD, EXT_KH, EXT_KW, KS, KD_BLOCK, KH_BLOCK, KW_BLOCK,
             KD_BLOCK_PAD, KH_BLOCK_PAD, ID, IH, IW, IDP, IHP, IWP, OD, OH, OW,
             SD, SH, SW, FP, TP, LP, DD, DH, DW;
     dim_t src_w_sz, src_h_sz, dst_w_sz, dst_h_sz;

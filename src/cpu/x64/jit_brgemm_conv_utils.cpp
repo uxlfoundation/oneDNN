@@ -110,8 +110,8 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         max_regs = isa == isa_undef ? 0 : isa_num_vregs(isa);
     }
 
-    dim_t ur, ur_block, ur_block_tail, adj_ocblock;
-    dim_t nb_kd, nb_kh, nb_kw;
+    int ur, ur_block, ur_block_tail, adj_ocblock;
+    int nb_kd, nb_kh, nb_kw;
     int max_regs;
     float eff;
     static unsigned L1;
@@ -125,7 +125,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     static float mem_k;
     static constexpr int bench_iterations = 1;
 
-    dim_t sp, sp_block, nb_sp;
+    int sp, sp_block, nb_sp;
 
     void get_from_jcp(const jit_brgemm_conv_conf_t &jcp) { *this = jcp; }
     void save_to_jcp(jit_brgemm_conv_conf_t &jcp) const { jcp = *this; }
@@ -145,8 +145,8 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     void update_blocks();
     bool fast_check_oc_block() const;
     float est_eff();
-    void iterate_ker_block(brg_blocking_t &best_brgb, dim_t kd_block,
-            dim_t kh_block, bool maybe_use_buffer, dim_t max_ow_block_thr);
+    void iterate_ker_block(brg_blocking_t &best_brgb, int kd_block,
+            int kh_block, bool maybe_use_buffer, int max_ow_block_thr);
     status_t calc_blocks();
 
     bool fast_check_oc_block_1x1() const;
@@ -154,8 +154,8 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     void calc_blocks_1x1();
 
     // utils
-    static dim_t get_inp_size(dim_t max_src_size, dim_t dst_size, dim_t k,
-            dim_t stride, dim_t dilate) {
+    static int get_inp_size(
+            int max_src_size, int dst_size, int k, int stride, int dilate) {
         const auto res = nstl::min(max_src_size,
                 calculate_end_padding(0, dst_size, 0, stride,
                         calculate_extended_filter_size(k, dilate)));
@@ -169,7 +169,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         return (k > 1.f) ? (k - 1 + eff) / k : eff * koeff;
     }
 
-    static int estimate_ur(cpu_isa_t isa, dim_t oc_block) {
+    static int estimate_ur(cpu_isa_t isa, int oc_block) {
         if (one_of(isa, avx2, avx2_vnni, avx2_vnni_2)) {
             switch (oc_block) {
                 case 32: return 3;
@@ -187,7 +187,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         }
     }
 
-    dim_t inp_w(dim_t out_w, dim_t ker_w) const {
+    int inp_w(int out_w, int ker_w) const {
         return get_inp_size(iw, out_w, ker_w, stride_w, dilate_w);
     }
 
@@ -195,7 +195,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         return rnd_up(val, static_cast<dim_t>(simd_w));
     }
 
-    dim_t rnd_inp_simd(dim_t out_w, dim_t ker_w, dim_t vic) const {
+    dim_t rnd_inp_simd(int out_w, int ker_w, dim_t vic) const {
         const auto vsp = inp_w(out_w, ker_w);
         return ((stride_w == 1 && vic >= ic)
                         ? rnd_up(vsp * vic, static_cast<dim_t>(simd_w))
@@ -459,13 +459,13 @@ void brg_blocking_t::select_ic_block() {
         MAYBE_UNUSED(ic_padded_block);
         // Note: bf32 and tf32 require ic_block be less than 64, otherwise it results
         // in incorrect output.
-        ic_block = is_xf32 && (!is_rtus) ? nstl::min<dim_t>(64, ic) : ic;
+        ic_block = is_xf32 && (!is_rtus) ? nstl::min(64, ic) : ic;
         nb_ic = utils::div_up(ic, ic_block); // trivially 1 for now
         inp_ic_block = ic_block;
         return;
     }
     auto nb_simd = utils::div_up(ic, simd_w);
-    auto max_simd_blocks = nstl::min<dim_t>(5 * simd_w, nb_simd);
+    auto max_simd_blocks = nstl::min(5 * simd_w, nb_simd);
     const auto nb_icb_eff_threshold = 0.5f;
     const auto padded_rd
             = vnni_block * (is_rd_padded_to_block ? acc_simd_w : 1);
@@ -494,8 +494,8 @@ void brg_blocking_t::select_ic_block() {
             if (exec_type == exec_trans) {
                 // TODO: double check calculation of ic_block here:
                 // for example for ic == 48
-                dim_t simd_blocks = 1;
-                for (dim_t nb_icb = max_simd_blocks; nb_icb >= 1; nb_icb--) {
+                int simd_blocks = 1;
+                for (int nb_icb = max_simd_blocks; nb_icb >= 1; nb_icb--) {
                     auto nb_icb_eff = static_cast<float>(nb_simd)
                             / static_cast<float>(rnd_up(nb_simd, nb_icb));
                     if (nb_icb_eff >= nb_icb_eff_threshold) {
@@ -509,20 +509,20 @@ void brg_blocking_t::select_ic_block() {
         }
     } else {
         const auto est_ur = sp_block > 0
-                ? nstl::min<dim_t>(sp_block, estimate_ur(isa, oc_block))
+                ? nstl::min(sp_block, estimate_ur(isa, oc_block))
                 : estimate_ur(isa, oc_block);
         const auto inp_ur = is_os_blocking ? est_ur : inp_w(est_ur, kw_block);
 
         if (kw_block > 1) {
             // try to fit src into L1
             const auto inp_per_ic = static_cast<unsigned int>(inp_ur) * src_dsz;
-            max_simd_blocks = utils::saturate<dim_t>(1, max_simd_blocks,
-                    static_cast<dim_t>(L1 / (inp_per_ic * simd_w)));
+            max_simd_blocks = utils::saturate(1, max_simd_blocks,
+                    static_cast<int>(L1 / (inp_per_ic * simd_w)));
         }
         // try to fit all batch for ur into L2
         const bool adjust = wei_plain && math::is_pow2(oc)
                 && utils::everyone_is(1, kd_block, kh_block, kw_block);
-        const dim_t adj_oc_block = adjust ? oc : oc_block; // due to aliasing
+        const int adj_oc_block = adjust ? oc : oc_block; // due to aliasing
         const auto wei_per_ic = static_cast<unsigned int>(kd_block) * kh_block
                 * kw_block * adj_oc_block * wei_dsz;
         const auto inp_per_ic = static_cast<unsigned int>(kd_block) * kh_block
@@ -530,8 +530,8 @@ void brg_blocking_t::select_ic_block() {
         const auto out_size
                 = static_cast<unsigned int>(ur) * oc_block * dst_dsz;
 
-        max_simd_blocks = utils::saturate<dim_t>(1, max_simd_blocks,
-                static_cast<dim_t>((L2 - out_size)
+        max_simd_blocks = utils::saturate(1, max_simd_blocks,
+                static_cast<int>((L2 - out_size)
                         / ((wei_per_ic + inp_per_ic) * simd_w)));
 
         // use nb_simd as max_simd_blocks for some shapes on avx2
@@ -540,9 +540,8 @@ void brg_blocking_t::select_ic_block() {
             max_simd_blocks = nb_simd;
 
         auto simd_blocks = 1;
-        for (int nb_icb
-                = static_cast<int>(nstl::min<dim_t>(max_simd_blocks, nb_simd));
-                nb_icb >= 1; nb_icb--) {
+        for (int nb_icb = nstl::min(max_simd_blocks, nb_simd); nb_icb >= 1;
+                nb_icb--) {
             auto nb_icb_eff = static_cast<float>(nb_simd)
                     / static_cast<float>(rnd_up(nb_simd, nb_icb));
             if (nb_icb_eff >= nb_icb_eff_threshold) {
@@ -551,7 +550,7 @@ void brg_blocking_t::select_ic_block() {
             }
         }
 
-        ic_block = nstl::min<dim_t>(
+        ic_block = nstl::min(
                 exec_type == exec_trans ? rnd_up(ic, padded_rd) : ic,
                 simd_blocks * simd_w);
     }
@@ -674,10 +673,9 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     CHECK(brgemm_desc_set_attr(&brg, brgattr));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     // AMX kernel may fall back to VMM, in which case bd_block2 == 0
-    ur = brg.bd_block * nstl::max<dim_t>(1, brg.bd_block2);
+    ur = brg.bd_block * nstl::max(1, brg.bd_block2);
     ur_block = brg.bd_block;
-    adj_ocblock = nstl::max<dim_t>(
-            1, (brg.ldb2 != 0 ? brg.ld_block2 : brg.ldb2_tail));
+    adj_ocblock = nstl::max(1, (brg.ldb2 != 0 ? brg.ld_block2 : brg.ldb2_tail));
     if (((is_1x1 && is_amx(isa)) || max_vpad > 0) && M > 0 && M_tail > 0) {
         brgemm_desc_t brg_sp_tail;
 
@@ -1102,9 +1100,8 @@ float brg_blocking_t::est_eff() {
     return res_eff;
 }
 
-void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb,
-        dim_t kd_block_, dim_t kh_block_, bool maybe_use_buffer,
-        dim_t max_ow_block_thr) {
+void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb, int kd_block_,
+        int kh_block_, bool maybe_use_buffer, int max_ow_block_thr) {
 
     unsigned est_k_amount = static_cast<unsigned>(ic * oc_block * wei_dsz);
 
@@ -1143,11 +1140,11 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb,
                 = nstl::min<size_t>(static_cast<size_t>(div_up(L2, 2)),
                         other_size > L2 ? 0 : L2 - other_size);
         if (idp * ihp * w_block_size > L2_available) {
-            od_block = utils::saturate<dim_t>(
-                    1, od, L2_available / (ihp * w_block_size));
+            od_block = utils::saturate(1, od,
+                    static_cast<int>(L2_available / (ihp * w_block_size)));
             if (od_block == 1)
-                oh_block = utils::saturate<dim_t>(
-                        1, oh, L2_available / w_block_size);
+                oh_block = utils::saturate(
+                        1, oh, static_cast<int>(L2_available / w_block_size));
             else
                 oh_block = oh;
         } else {
@@ -1162,11 +1159,11 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb,
             const auto src_w_block_size
                     = src_dsz * ic * iwp + dst_dsz * ow * oc_block;
             if (src_w_block_size < L1) {
-                cur_od_block = utils::saturate<dim_t>(
-                        1, od, L1 / (ihp * src_w_block_size));
+                cur_od_block = utils::saturate(
+                        1, od, static_cast<int>(L1 / (ihp * src_w_block_size)));
                 if (cur_od_block == 1)
-                    cur_oh_block = utils::saturate<dim_t>(
-                            1, oh, L1 / src_w_block_size);
+                    cur_oh_block = utils::saturate(
+                            1, oh, static_cast<int>(L1 / src_w_block_size));
             }
             for (; cur_od_block > 1; cur_od_block--) {
                 const auto sp_size = cur_od_block * cur_oh_block * iwp;
@@ -1220,7 +1217,7 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb,
 
     sp = ow * (is_os_blocking ? oh : 1);
     const auto start_sp_block = is_os_blocking ? ow : start_ow_block;
-    auto prev_spb = dim_t(0);
+    auto prev_spb = 0;
     for (auto ns = 1; ns <= sp; ns++) {
         const auto spb = div_up(sp, ns);
         if (spb == prev_spb || spb > start_sp_block) continue;
@@ -1259,7 +1256,7 @@ status_t brg_blocking_t::calc_blocks() {
     // results then we need the out buffer
     const auto maybe_use_buffer = (dst_dt != acc_dt || with_sum);
 
-    std::vector<dim_t> kd_blocks(1), kh_blocks(1);
+    std::vector<int> kd_blocks(1), kh_blocks(1);
     kd_blocks[0] = kd;
     kh_blocks[0] = kh;
     if (kd != 1) {
@@ -1272,10 +1269,9 @@ status_t brg_blocking_t::calc_blocks() {
     }
 
     const auto thr_eff_threshold = 0.9f;
-    const auto max_ow_block_thr = utils::saturate<dim_t>(1, ow,
-            static_cast<dim_t>(
-                    ceil(static_cast<float>(mb * ngroups * nb_oc * os)
-                            / (thr_eff_threshold * static_cast<float>(nthr)))));
+    const auto max_ow_block_thr = utils::saturate(1, ow,
+            static_cast<int>(ceil(static_cast<float>(mb * ngroups * nb_oc * os)
+                    / (thr_eff_threshold * static_cast<float>(nthr)))));
 
     ow_block = os_block = sp_block = -1;
     brg_blocking_t best_brgb = *this;
@@ -1603,17 +1599,17 @@ void brg_blocking_t::calc_blocks_1x1() {
     const auto max_sp_block_L2 = os;
     // TODO: nb_os_blocking always is 1 for now. Update this code
     nb_os_blocking = 1;
-    dim_t start_sp_block = 0;
+    int start_sp_block = 0;
 
     if (is_os_blocking) {
         ow_block = 0;
 
         const auto max_os_block_thr
                 = (src_dsz * ic >= 1024 && src_dsz * ic < 4096)
-                ? nstl::max<dim_t>(nstl::min<dim_t>(16, os),
+                ? nstl::max(nstl::min(16, os),
                           div_up(os, div_up(nthr, mb * div_up(oc, oc_block))))
-                : nstl::max<dim_t>(div_up(2048, oc_block),
-                          div_up(mb * ngroups * os, nthr));
+                : nstl::max(div_up(2048, oc_block),
+                          static_cast<int>(div_up(mb * ngroups * os, nthr)));
         const auto max_os_block_L2 = max_sp_block_L2;
 
         auto max_os_block_aliasing = 1000000 / nthr;
@@ -1630,34 +1626,33 @@ void brg_blocking_t::calc_blocks_1x1() {
         max_os_block_aliasing
                 = nstl::min(div_up(1001, dst_dsz), max_os_block_aliasing);
 
-        start_sp_block = utils::saturate<dim_t>(1, os,
-                nstl::min<dim_t>(
-                        nstl::min<dim_t>(max_os_block_thr, max_os_block_L2),
+        start_sp_block = utils::saturate(1, os,
+                nstl::min(nstl::min(max_os_block_thr, max_os_block_L2),
                         max_os_block_aliasing));
 
     } else {
         os_block = 0;
 
-        const auto max_ow_block_thr = utils::saturate<dim_t>(1, ow,
-                static_cast<dim_t>(ceil(
+        const auto max_ow_block_thr = utils::saturate(1, ow,
+                static_cast<int>(ceil(
                         static_cast<float>(mb * ngroups * nb_oc * os)
                         / (thr_eff_threshold * static_cast<float>(nthr)))));
         const auto max_ow_block_L2 = max_sp_block_L2;
 
-        start_sp_block = utils::saturate<dim_t>(
-                1, ow, nstl::min<dim_t>(max_ow_block_thr, max_ow_block_L2));
+        start_sp_block = utils::saturate(
+                1, ow, nstl::min(max_ow_block_thr, max_ow_block_L2));
     }
     os_block = ow_block = sp_block = -1;
     brg_blocking_t best_brgb = *this;
 
-    auto prev_spb = dim_t(0);
+    auto prev_spb = 0;
     for (auto ns = 1; ns <= sp; ns++) {
         auto spb = div_up(sp, ns);
         if (is_amx(isa)) {
-            dim_t min_dis = 16;
-            dim_t best_w = 16;
-            const auto max_tile_width = nstl::min<dim_t>(16, sp);
-            const auto min_tile_width = utils::saturate<dim_t>(1, 11, sp / 2);
+            auto min_dis = 16;
+            auto best_w = 16;
+            const auto max_tile_width = nstl::min(16, sp);
+            const auto min_tile_width = utils::saturate(1, 11, sp / 2);
             if (spb < min_tile_width) break;
             for (auto w = max_tile_width; w >= min_tile_width; w--) {
                 const auto dis = nstl::additive_inverse_modulo(spb, w);
@@ -2592,10 +2587,10 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     brg_blocking_t best_brgb = zero<decltype(best_brgb)>();
     best_brgb.oc_block = min_oc_block;
-    dim_t start_ocb = 4;
-    start_ocb = nstl::min<dim_t>(div_up(jcp.oc, jcp.acc_simd_w), start_ocb);
+    auto start_ocb = 4;
+    start_ocb = nstl::min(div_up(jcp.oc, jcp.acc_simd_w), start_ocb);
 
-    dim_t finish_ocb = 1;
+    const auto finish_ocb = 1;
 
     const bool is_os_blocking_ok
             = utils::everyone_is(1, jcp.stride_d, jcp.stride_h)
@@ -3353,13 +3348,13 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     // TODO: Find more shapes (especially 3D with large spatials) for which
     // local transposition will be beneficial. Furthermore, for TBB threads
     // more shapes can potentially benefit from spatial blocking
-    dim_t optimal_blk_size = is_3d ? jcp.od : is_2d ? jcp.oh : jcp.ow;
+    const int optimal_blk_size = is_3d ? jcp.od : is_2d ? jcp.oh : jcp.ow;
 
     jcp.global_transpose = dnnl_thr_syncable();
     jcp.spatial_blk_size = optimal_blk_size;
 
     const int tr_round = 32; // To load full tile register
-    dim_t tr_pad = rnd_up(nstl::max(jcp.l_pad, jcp.r_pad + 1), tr_round);
+    const int tr_pad = rnd_up(nstl::max(jcp.l_pad, jcp.r_pad + 1), tr_round);
     jcp.tr_iw = rnd_up(div_up(jcp.iw + jcp.l_pad + jcp.r_pad, jcp.stride_w),
                         tr_round)
             * jcp.stride_w;
@@ -3370,9 +3365,9 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     jcp.tr_ow = rnd_up(jcp.ow, rnd_val);
     if (jcp.tr_ow > tr_round) {
         // we may increase tr_ow to have better bd_block in brgemm kernel
-        dim_t best_bdb = jcp.tr_ow / rnd_val;
-        dim_t best_tr_ow = jcp.tr_ow;
-        for (dim_t tr_ow = jcp.tr_ow; tr_ow <= rnd_up(jcp.tr_ow, tr_round);
+        int best_bdb = jcp.tr_ow / rnd_val;
+        int best_tr_ow = jcp.tr_ow;
+        for (int tr_ow = jcp.tr_ow; tr_ow <= rnd_up(jcp.tr_ow, tr_round);
                 tr_ow += rnd_val) {
             for (int i = tr_round; i > 0; i -= rnd_val) {
                 if (tr_ow % i == 0) {
@@ -3450,7 +3445,7 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     const dim_t orow_size = static_cast<dim_t>(jcp.dst_dsz) * jcp.tr_ow
             * jcp.oc_block * div_up(jcp.nb_oc, jcp.nthr_oc_b)
             * 2 /*we have real and transposed diff_dst*/;
-    dim_t oh_block_limit = static_cast<dim_t>(nstl::max(1.f,
+    int oh_block_limit = static_cast<int>(nstl::max(1.f,
             nstl::max(0.f,
                     0.8f * static_cast<float>(brg_blocking_t::L2)
                             - static_cast<float>(jcp.kh)
@@ -3458,8 +3453,8 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
                     / static_cast<float>(irow_size + orow_size)));
     // try to split oh by equal oh blocks
     oh_block_limit = div_up(jcp.oh, div_up(jcp.oh, oh_block_limit));
-    jcp.oh_block = utils::saturate<dim_t>(1, jcp.oh, oh_block_limit);
-    jcp.ih_block = nstl::min<dim_t>(jcp.ih,
+    jcp.oh_block = utils::saturate(1, jcp.oh, oh_block_limit);
+    jcp.ih_block = nstl::min(jcp.ih,
             jcp.stride_h
                     * brg_blocking_t::get_inp_size(jcp.ih, jcp.oh_block, jcp.kh,
                             jcp.stride_h, jcp.dilate_h));
@@ -3468,7 +3463,7 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     // among nthr_oc_b
     jcp.tr_ic_block = jcp.ic_block;
     if (jcp.ic <= jcp.ic_block) {
-        for (dim_t itr_icb = jcp.ic_block; itr_icb > 1; itr_icb--) {
+        for (int itr_icb = jcp.ic_block; itr_icb > 1; itr_icb--) {
             if (jcp.ic_block % itr_icb != 0) continue;
             const auto icb_per_thr_ic_b = div_up(jcp.nb_ic, jcp.nthr_ic_b);
             const auto ic_per_thr_ic_b
@@ -3506,7 +3501,7 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
 
     const dim_t iframe_size = irow_size * jcp.id;
     const dim_t oframe_size = orow_size * jcp.od;
-    dim_t od_block_limit = static_cast<dim_t>(nstl::max(1.f,
+    int od_block_limit = static_cast<int>(nstl::max(1.f,
             nstl::max(0.f,
                     0.8f * static_cast<float>(brg_blocking_t::L2)
                             - static_cast<float>(jcp.kd)
@@ -3514,7 +3509,7 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
                     / static_cast<float>(iframe_size + oframe_size)));
     // try to split od by equal od blocks
     od_block_limit = div_up(jcp.od, div_up(jcp.od, od_block_limit));
-    jcp.od_block = utils::saturate<dim_t>(1, jcp.od, od_block_limit);
+    jcp.od_block = utils::saturate(1, jcp.od, od_block_limit);
 
     jcp.use_interleave_stores = false;
     jcp.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;

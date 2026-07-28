@@ -1322,9 +1322,9 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
     char *__restrict c_buffer {nullptr};
     char *__restrict wsp_tile {nullptr};
     int cur_brg_idx {-1};
-    dim_t g {-1}, n {-1}, ocb {-1};
-    dim_t od {-1}, odb {-1}, oh {-1}, ohb {-1}, owb {-1};
-    dim_t icc {-1};
+    int g {-1}, n {-1}, ocb {-1};
+    int od {-1}, odb {-1}, oh {-1}, ohb {-1}, owb {-1};
+    int icc {-1};
     int32_t src_zp_val {0};
     int32_t *__restrict src_zp_comp_ptr {nullptr};
     const int32_t *__restrict dst_zp_vals {nullptr};
@@ -1461,7 +1461,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
         dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        dim_t n {0}, g {0}, ocb {0}, odb {0}, ohb {0}, owb {0};
+        int n {0}, g {0}, ocb {0}, odb {0}, ohb {0}, owb {0};
         BRGEMM_CONV_ITERATOR_INIT;
         for (auto work = start; work < end; work++) {
             btc.g = g;
@@ -1487,16 +1487,16 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
                             jcp.inp_buffer_mask_size);
             }
             auto od_begin = odb * jcp.od_block;
-            auto od_end = nstl::min<dim_t>(OD, od_begin + jcp.od_block);
+            auto od_end = nstl::min(OD, od_begin + jcp.od_block);
             auto oh_begin = ohb * jcp.oh_block;
             // if is_os_blocking is true then we do only one iteration of loop
             // by oh and process entire oh block in kernel call
             auto oh_end = jcp.is_os_blocking
                     ? oh_begin + 1
-                    : nstl::min<dim_t>(OH, oh_begin + jcp.oh_block);
-            for_(dim_t od = od_begin; od < od_end; od++)
-            for_(dim_t oh = oh_begin; oh < oh_end; oh++)
-            for (dim_t icc = 0; icc < _pd->ic_chunks; icc++) {
+                    : nstl::min(OH, oh_begin + jcp.oh_block);
+            for_(int od = od_begin; od < od_end; od++)
+            for_(int oh = oh_begin; oh < oh_end; oh++)
+            for (int icc = 0; icc < _pd->ic_chunks; icc++) {
                 btc.od = od;
                 btc.oh = oh;
                 btc.icc = icc;
@@ -1897,30 +1897,28 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
     const auto g_ic = btc.g * jcp.ic + ic;
     const auto oh = btc.ohb * jcp.oh_block;
     const auto ow = btc.owb * jcp.ow_block;
-    const dim_t iw = nstl::max<dim_t>(0, ow * SW - LP);
+    const auto iw = nstl::max(0, ow * SW - LP);
 
-    dim_t id_start {0}, id_end {0}, ih_start {0}, ih_end {0};
-    dim_t virt_id_start {0}, virt_id_end {0}, virt_ih_start {0},
-            virt_ih_end {0};
+    int id_start {0}, id_end {0}, ih_start {0}, ih_end {0};
+    int virt_id_start {0}, virt_id_end {0}, virt_ih_start {0}, virt_ih_end {0};
 
-    auto get_start_end
-            = [](dim_t &start, dim_t &end, dim_t &virt_start, dim_t &virt_end,
-                      dim_t b, dim_t bs, dim_t i, dim_t o, dim_t s, dim_t p,
-                      dim_t k, dim_t d, bool prev) {
-        const dim_t o_b = saturate<dim_t>(0, o, b * bs);
-        const dim_t prev_o_b = saturate<dim_t>(0, o, (b - 1) * bs);
-        const dim_t virt_cur_start = o_b * s - p;
-        const dim_t cur_start = saturate<dim_t>(0, i, virt_cur_start);
-        const dim_t virt_prev_start = prev_o_b * s - p;
-        const dim_t i_bs = get_inp_size(i, bs, k, s, d);
-        const dim_t virt_i_bs = calculate_end_padding(
+    auto get_start_end = [](int &start, int &end, int &virt_start,
+                                 int &virt_end, int b, int bs, int i, int o,
+                                 int s, int p, int k, int d, bool prev) {
+        const auto o_b = saturate(0, o, b * bs);
+        const auto prev_o_b = saturate(0, o, (b - 1) * bs);
+        const auto virt_cur_start = o_b * s - p;
+        const auto cur_start = saturate(0, i, virt_cur_start);
+        const auto virt_prev_start = prev_o_b * s - p;
+        const auto i_bs = get_inp_size(i, bs, k, s, d);
+        const auto virt_i_bs = calculate_end_padding(
                 0, bs, 0, s, calculate_extended_filter_size(k, d));
-        const dim_t virt_prev_end = prev ? virt_prev_start + virt_i_bs : -p;
-        const dim_t prev_end = prev ? saturate<dim_t>(0, i, virt_prev_end) : 0;
+        const auto virt_prev_end = prev ? virt_prev_start + virt_i_bs : -p;
+        const auto prev_end = prev ? saturate(0, i, virt_prev_end) : 0;
         virt_start = nstl::max(virt_prev_end, virt_cur_start);
         start = nstl::max(prev_end, cur_start);
         virt_end = virt_cur_start + virt_i_bs;
-        end = saturate<dim_t>(0, i, cur_start + i_bs);
+        end = saturate(0, i, cur_start + i_bs);
     };
     get_start_end(id_start, id_end, virt_id_start, virt_id_end, btc.odb,
             jcp.od_block, nstl::min(ID, IDP - FP), OD, SD, FP, KD, DD - 1,

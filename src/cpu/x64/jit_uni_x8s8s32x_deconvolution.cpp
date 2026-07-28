@@ -239,9 +239,9 @@ status_t jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(
             VERBOSE_UNSUPPORTED_FEATURE,
             "unsupported shape with 'stride = 1' when 'dilate > 0'");
 
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    const dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.iw, jcp.ow, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(

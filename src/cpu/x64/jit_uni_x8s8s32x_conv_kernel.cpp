@@ -1105,7 +1105,7 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::generate() {
 
         // middle_region:
         int n_urw_middle_block_loop = 0;
-        int cur_r_pad = static_cast<int>(nstl::max<dim_t>(0,
+        int cur_r_pad = static_cast<int>(nstl::max(0,
                 calculate_end_padding(jcp.l_pad, cur_ow + jcp.ur_w, jcp.iw,
                         jcp.stride_w, extended_filter_size)));
         if (cur_ow + jcp.ur_w <= jcp.ow && cur_r_pad == 0) {
@@ -1212,7 +1212,7 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::generate() {
             }
 
             cur_ow += jcp.ur_w;
-            int cur_r_pad = static_cast<int>(nstl::max<dim_t>(0,
+            int cur_r_pad = static_cast<int>(nstl::max(0,
                     calculate_end_padding(jcp.l_pad, cur_ow, jcp.iw,
                             jcp.stride_w, extended_filter_size)));
             icb_loop(jcp.ur_w, cur_l_pad, cur_r_pad, cur_ow > max_safe_ow);
@@ -1234,7 +1234,7 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::generate() {
 
     // middle_block
     {
-        int cur_r_pad = static_cast<int>(nstl::max<dim_t>(0,
+        int cur_r_pad = static_cast<int>(nstl::max(0,
                 calculate_end_padding(jcp.l_pad, cur_ow + jcp.ur_w, jcp.iw,
                         jcp.stride_w, extended_filter_size)));
         if (cur_r_pad == 0 && cur_ow + jcp.ur_w <= jcp.ow) {
@@ -1390,9 +1390,9 @@ status_t jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_conf(jit_conv_conf_t &jcp,
     jcp.dilate_h = is_1d ? 0 : cd.dilates[ndims - 4];
     jcp.dilate_w = cd.dilates[ndims - 3];
 
-    const dim_t ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
-    const dim_t ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
-    const dim_t ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
+    const int ext_kw = calculate_extended_filter_size(jcp.kw, jcp.dilate_w);
+    const int ext_kh = calculate_extended_filter_size(jcp.kh, jcp.dilate_h);
+    const int ext_kd = calculate_extended_filter_size(jcp.kd, jcp.dilate_d);
     jcp.r_pad = calculate_end_padding(
             jcp.l_pad, jcp.ow, jcp.iw, jcp.stride_w, ext_kw);
     jcp.b_pad = calculate_end_padding(

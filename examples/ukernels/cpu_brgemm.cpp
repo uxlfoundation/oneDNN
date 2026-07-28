@@ -370,7 +370,7 @@ void brgemm_example() {
     brgemm::release_hw_context();
 
     // Clean up an extra buffer.
-    delete B_blocked;
+    delete[] B_blocked;
 
     // Used for verification results, need unconditional reorder.
     auto user_D_mem = memory(D_f32_md, engine, D_data.data());

@@ -1028,16 +1028,20 @@ int doit(const prb_t *prb, res_t *res) {
     if (res->state == SKIPPED) return OK;
 
     kernel_args_t kernel_args(prb);
-    SAFE(init_kernel(kernel_args, res), WARN);
-    if (res->state == SKIPPED) return OK;
-    if (bench_mode == bench_mode_t::init) return res->state = INITIALIZED, OK;
+    const int init_status = init_kernel(kernel_args, res);
 
+    // Take ownership of created handles right after init so they are released
+    // on every early-return path below (SKIPPED, init mode, init failure).
 #if !defined(DNNL_EXPERIMENTAL_UKERNEL)
     auto brgemm_kernel = make_benchdnn_dnnl_wrapper(kernel_args.brgemm_kernel_);
 #else
     auto brgemm = make_benchdnn_dnnl_wrapper(kernel_args.brgemm_);
     auto transform = make_benchdnn_dnnl_wrapper(kernel_args.transform_);
 #endif
+
+    SAFE(init_status, WARN);
+    if (res->state == SKIPPED) return OK;
+    if (bench_mode == bench_mode_t::init) return res->state = INITIALIZED, OK;
 
     dnn_mem_map_t mem_map, ref_mem_map;
     init_memory_args(mem_map, prb, kernel_args);

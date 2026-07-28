@@ -277,6 +277,13 @@ static status_t init_post_ops(
         // cases supported in the library.
         gpu_assert(converted || c_scales.is_mx())
                 << "Unable to convert dst scales to a post op";
+        // Drop the native dst scale once it lives in the post-op chain, as
+        // for A/B. Only the MX form is applied by the kernel itself, and
+        // converted implies !mx.
+        if (converted) {
+            cfg.problem.csPtrDims = -1;
+            cfg.problem.Tc_scale = gemmstone::Type::invalid;
+        }
     }
 
     gpu_post_ops_t gpu_post_ops;

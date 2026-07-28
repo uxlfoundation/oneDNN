@@ -22,6 +22,7 @@
 #include "common/primitive.hpp"
 #include "gpu/intel/conv/config.hpp"
 #include "gpu/intel/primitive.hpp"
+#include "gpu/intel/subbyte_pack.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -102,12 +103,11 @@ struct ref_fwd_t : public primitive_t {
             CHECK(attr_zero_points_ok({{DNNL_ARG_SRC, {0, 2}},
                     {DNNL_ARG_WEIGHTS, {0}}, {DNNL_ARG_DST, {0, 2}}}));
 
-            subbyte_pack_ = utils::one_of(
-                    dst_md_.data_type, data_type::f4_e2m1, data_type::f4_e3m0);
-            if (subbyte_pack_) {
+            CHECK(pack_desc_.init(*dst_md(0)));
+            if (pack_desc_) {
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_conv_pack_space,
-                        memory_desc_wrapper(dst_md(0)).span(), sizeof(char),
+                        pack_desc_.span(), sizeof(char),
                         OCL_BUFFER_ALIGNMENT);
             }
 
@@ -116,7 +116,7 @@ struct ref_fwd_t : public primitive_t {
 
         status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
-        bool subbyte_pack_ = false;
+        subbyte_pack_desc_t pack_desc_;
 
         conf_t conf;
 
@@ -136,15 +136,12 @@ struct ref_fwd_t : public primitive_t {
 
         auto status = pd()->init_kernel_ctx(kernel_ctx);
         if (status != status::success) return status;
-        kernels_.resize(2);
 
         CHECK(create_kernel(
-                engine, &kernels_[0], "ref_convolution_fwd", kernel_ctx));
-        if (pd()->subbyte_pack_)
-            CHECK(create_kernel(
-                    engine, &kernels_[1], "subbyte_pack", kernel_ctx));
-        if (!kernels_[0]) return status::runtime_error;
-        if (pd()->subbyte_pack_ && !kernels_[1]) return status::runtime_error;
+                engine, &kernel_, "ref_convolution_fwd", kernel_ctx));
+        if (pd()->pack_desc_)
+            CHECK(pack_.create(pd()->pack_desc_, *this, engine));
+        if (!kernel_) return status::runtime_error;
 
         return status::success;
     }
@@ -156,7 +153,8 @@ struct ref_fwd_t : public primitive_t {
 private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::vector<compute::kernel_t> kernels_;
+    compute::kernel_t kernel_;
+    subbyte_pack_t pack_;
 };
 
 struct ref_bwd_data_t : public primitive_t {
@@ -212,17 +210,12 @@ struct ref_bwd_data_t : public primitive_t {
             VDISPATCH_CONV_SC(attr_.set_default_formats(diff_src_md(0)),
                     VERBOSE_UNSUPPORTED_POSTOP);
 
-            subbyte_pack_
-                    = utils::one_of(dst_md()->data_type, f4_e2m1, f4_e3m0);
-            if (subbyte_pack_) {
-                using namespace dnnl::impl::memory_tracking::names;
-                const memory_desc_wrapper dst_mdw(dst_md(0));
-                const auto &padded_dims = dst_mdw.padded_dims();
-                const dim_t ndims = dst_mdw.ndims();
-                const dim_t nelems = utils::array_product(padded_dims, ndims);
+            CHECK(pack_desc_.init(*diff_src_md(0)));
+            if (pack_desc_) {
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_conv_pack_space,
-                        nelems, sizeof(char), OCL_BUFFER_ALIGNMENT);
+                        pack_desc_.span(), sizeof(char),
+                        OCL_BUFFER_ALIGNMENT);
             }
 
             return init_conf(engine);
@@ -230,7 +223,7 @@ struct ref_bwd_data_t : public primitive_t {
 
         status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
-        bool subbyte_pack_ = false;
+        subbyte_pack_desc_t pack_desc_;
 
         conf_t conf;
 
@@ -251,14 +244,11 @@ struct ref_bwd_data_t : public primitive_t {
         auto status = pd()->init_kernel_ctx(kernel_ctx);
         if (status != status::success) return status;
 
-        kernels_.resize(2);
         CHECK(create_kernel(
-                engine, &kernels_[0], "ref_convolution_bwd_data", kernel_ctx));
-        if (pd()->subbyte_pack_)
-            CHECK(create_kernel(
-                    engine, &kernels_[1], "subbyte_pack", kernel_ctx));
-        if (!kernels_[0]) return status::runtime_error;
-        if (pd()->subbyte_pack_ && !kernels_[1]) return status::runtime_error;
+                engine, &kernel_, "ref_convolution_bwd_data", kernel_ctx));
+        if (pd()->pack_desc_)
+            CHECK(pack_.create(pd()->pack_desc_, *this, engine));
+        if (!kernel_) return status::runtime_error;
 
         return status::success;
     }
@@ -270,7 +260,8 @@ struct ref_bwd_data_t : public primitive_t {
 private:
     status_t execute_backward_data(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::vector<compute::kernel_t> kernels_;
+    compute::kernel_t kernel_;
+    subbyte_pack_t pack_;
 };
 
 struct ref_bwd_weights_t : public primitive_t {
@@ -328,17 +319,12 @@ struct ref_bwd_weights_t : public primitive_t {
             VDISPATCH_CONV(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
-            subbyte_pack_ = utils::one_of(dst_md()->data_type,
-                    data_type::f4_e2m1, data_type::f4_e3m0);
-            if (subbyte_pack_) {
-                using namespace dnnl::impl::memory_tracking::names;
-                const memory_desc_wrapper dst_mdw(dst_md(0));
-                const auto &padded_dims = dst_mdw.padded_dims();
-                const dim_t ndims = dst_mdw.ndims();
-                const dim_t nelems = utils::array_product(padded_dims, ndims);
+            CHECK(pack_desc_.init(*diff_weights_md(0)));
+            if (pack_desc_) {
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_conv_pack_space,
-                        nelems, sizeof(char), OCL_BUFFER_ALIGNMENT);
+                        pack_desc_.span(), sizeof(char),
+                        OCL_BUFFER_ALIGNMENT);
             }
 
             return init_conf(engine);
@@ -346,7 +332,7 @@ struct ref_bwd_weights_t : public primitive_t {
 
         status_t init_conf(const impl::engine_t *engine);
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
-        bool subbyte_pack_ = false;
+        subbyte_pack_desc_t pack_desc_;
 
         conf_t conf;
 
@@ -367,14 +353,11 @@ struct ref_bwd_weights_t : public primitive_t {
         auto status = pd()->init_kernel_ctx(kernel_ctx);
         if (status != status::success) return status;
 
-        kernels_.resize(2);
-        CHECK(create_kernel(engine, &kernels_[0], "ref_convolution_bwd_weights",
-                kernel_ctx));
-        if (pd()->subbyte_pack_)
-            CHECK(create_kernel(
-                    engine, &kernels_[1], "subbyte_pack", kernel_ctx));
-        if (!kernels_[0]) return status::runtime_error;
-        if (pd()->subbyte_pack_ && !kernels_[1]) return status::runtime_error;
+        CHECK(create_kernel(
+                engine, &kernel_, "ref_convolution_bwd_weights", kernel_ctx));
+        if (pd()->pack_desc_)
+            CHECK(pack_.create(pd()->pack_desc_, *this, engine));
+        if (!kernel_) return status::runtime_error;
 
         return status::success;
     }
@@ -386,7 +369,8 @@ struct ref_bwd_weights_t : public primitive_t {
 private:
     status_t execute_backward_weights(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::vector<compute::kernel_t> kernels_;
+    compute::kernel_t kernel_;
+    subbyte_pack_t pack_;
 };
 
 } // namespace conv

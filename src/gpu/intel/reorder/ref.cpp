@@ -56,8 +56,7 @@ status_t ref_t::pd_t::init_conf(const impl::engine_t *engine) {
     if (conf.nelems == 0) return status::success;
 
     conf.dispatch = intel_engine->create_dispatch(dst_mdw.md_);
-    conf.subbyte_pack
-            = utils::one_of(dst_mdw.data_type(), u4, s4, f4_e2m1, f4_e3m0);
+    CHECK(conf.pack_desc.init(*dst_md()));
 
     dim_t blocks[MAX_NDIMS] = {1, 1, 0, 0, 0, 0};
     for (int i = 0; i < MAX_NDIMS; ++i) {
@@ -112,9 +111,9 @@ status_t ref_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
 
 void ref_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
-    if (conf.subbyte_pack) {
+    if (conf.pack_desc) {
         scratchpad.book(memory_tracking::names::key_reorder_space,
-                memory_desc_wrapper(dst_md(0)).span(), sizeof(char),
+                conf.pack_desc.span(), sizeof(char),
                 OCL_BUFFER_ALIGNMENT);
     }
     if (conf.src_quant.with_scale()) {
@@ -137,14 +136,14 @@ status_t ref_t::execute(const exec_ctx_t &ctx) const {
     if (conf.nelems == 0) return status::success;
 
     std::unique_ptr<memory_storage_t> tmp;
-    if (conf.subbyte_pack) {
+    if (pack_) {
         tmp = ctx.get_scratchpad_grantor().get_memory_storage(
                 memory_tracking::names::key_reorder_space);
     }
 
     compute::kernel_arg_list_t arg_list;
     arg_list.append(src);
-    arg_list.append(conf.subbyte_pack ? *tmp : dst);
+    arg_list.append(pack_ ? *tmp : dst);
 
     arg_list.append(conf.src_quant.scales(ctx));
     arg_list.append(conf.src_quant.zero_points(ctx));
@@ -159,22 +158,8 @@ status_t ref_t::execute(const exec_ctx_t &ctx) const {
 
     auto nd_range = conf.dispatch.nd_range();
     CHECK(large_parallel_for(
-            ctx, nd_range, kernels_[0], arg_list, arg_list.nargs()));
-
-    if (conf.subbyte_pack) {
-        // The unpacked buffer is indexed with dst_md() offsets, so packing
-        // covers its whole element span, not just its element count.
-        const dim_t dst_span = memory_desc_wrapper(pd()->dst_md(0)).span();
-        compute::kernel_arg_list_t repack_arg_list;
-        repack_arg_list.set(0, *tmp);
-        repack_arg_list.set(1, dst);
-        repack_arg_list.set(2, dst_span);
-        repack_arg_list.set(3, 4);
-        compute::range_t repack_gws((dst_span * 4 + 7) / 8);
-        compute::nd_range_t repack_nd_range(repack_gws);
-        CHECK(large_parallel_for(
-                ctx, repack_nd_range, kernels_[1], repack_arg_list, 4));
-    }
+            ctx, nd_range, kernel_, arg_list, arg_list.nargs()));
+    if (pack_) CHECK(pack_(ctx, *tmp, dst));
     CHECK(pd()->maybe_exec_zp_precompute_conv(ctx, zp_precomp_conv_));
     return status::success;
 }

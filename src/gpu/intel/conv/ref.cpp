@@ -199,8 +199,6 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     auto &dst_sround = CTX_IN_STORAGE(DNNL_ARG_ATTR_ROUNDING_SEED);
 
     auto &conf = pd()->conf;
-    const bool subbyte_pack = pd()->subbyte_pack_;
-    const auto c_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_conv_pack_space);
 
@@ -208,7 +206,7 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.set(0, src);
     arg_list.set(1, weights);
     arg_list.set(2, bias);
-    arg_list.set(3, subbyte_pack ? *tmp : dst);
+    arg_list.set(3, pack_ ? *tmp : dst);
 
     unsigned arg_idx = append_post_ops_to_arg_list(
             ctx, arg_list, 4, pd()->attr()->post_ops_, *pd()->dst_md());
@@ -236,22 +234,9 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 
     auto nd_range = pd()->conf.dispatch.nd_range();
 
-    CHECK(parallel_for(ctx, nd_range, kernels_[0], arg_list));
-
-    if (!subbyte_pack) return status::success;
-
-    // The unpacked buffer is indexed with dst_md() offsets, so packing covers
-    // its whole element span, not just its element count.
-    const dim_t dst_span = c_d.span();
-    compute::kernel_arg_list_t repack_arg_list;
-    repack_arg_list.set(0, *tmp);
-    repack_arg_list.set(1, dst);
-    repack_arg_list.set(2, dst_span);
-    repack_arg_list.set(3, 4);
-    compute::range_t repack_gws((dst_span * 4 + 7) / 8);
-    compute::nd_range_t repack_nd_range(repack_gws);
-    return large_parallel_for(
-            ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);
+    CHECK(parallel_for(ctx, nd_range, kernel_, arg_list));
+    if (!pack_) return status::success;
+    return pack_(ctx, *tmp, dst);
 }
 
 status_t ref_bwd_data_t::pd_t::init_conf(const impl::engine_t *engine) {
@@ -285,14 +270,11 @@ status_t ref_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
 
     auto &conf = pd()->conf;
 
-    const bool subbyte_pack = pd()->subbyte_pack_;
-    const auto c_d = ctx.memory_mdw(DNNL_ARG_DIFF_DST, pd()->diff_dst_md());
-    const dim_t nelems = c_d.nelems();
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_conv_pack_space);
 
     compute::kernel_arg_list_t arg_list;
-    arg_list.set(0, subbyte_pack ? *tmp : diff_src);
+    arg_list.set(0, pack_ ? *tmp : diff_src);
     arg_list.set(1, weights);
     arg_list.set(2, diff_dst);
     arg_list.set(3, bias);
@@ -321,18 +303,9 @@ status_t ref_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
 
     auto nd_range = pd()->conf.dispatch.nd_range();
 
-    CHECK(parallel_for(ctx, nd_range, kernels_[0], arg_list));
-
-    if (!subbyte_pack) return status::success;
-    compute::kernel_arg_list_t repack_arg_list;
-    repack_arg_list.set(0, *tmp);
-    repack_arg_list.set(1, diff_src);
-    repack_arg_list.set(2, into<dim_t>(nelems));
-    repack_arg_list.set(3, 4);
-    compute::range_t repack_gws((nelems * 4 + 7) / 8);
-    compute::nd_range_t repack_nd_range(repack_gws);
-    return large_parallel_for(
-            ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);
+    CHECK(parallel_for(ctx, nd_range, kernel_, arg_list));
+    if (!pack_) return status::success;
+    return pack_(ctx, *tmp, diff_src);
 }
 
 status_t ref_bwd_weights_t::pd_t::init_conf(const impl::engine_t *engine) {
@@ -356,33 +329,20 @@ status_t ref_bwd_weights_t::execute_backward_weights(
     auto &diff_bias = CTX_OUT_CLEAN_STORAGE(DNNL_ARG_DIFF_BIAS, status);
     CHECK(status);
 
-    const bool subbyte_pack = pd()->subbyte_pack_;
-    const auto c_d
-            = ctx.memory_mdw(DNNL_ARG_DIFF_WEIGHTS, pd()->diff_weights_md());
-    const dim_t nelems = c_d.nelems();
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_conv_pack_space);
 
     compute::kernel_arg_list_t arg_list;
     arg_list.set(0, src);
-    arg_list.set(1, subbyte_pack ? *tmp : diff_weights);
+    arg_list.set(1, pack_ ? *tmp : diff_weights);
     arg_list.set(2, diff_bias);
     arg_list.set(3, diff_dst);
 
     auto nd_range = pd()->conf.dispatch.nd_range();
 
-    CHECK(parallel_for(ctx, nd_range, kernels_[0], arg_list));
-
-    if (!subbyte_pack) return status::success;
-    compute::kernel_arg_list_t repack_arg_list;
-    repack_arg_list.set(0, *tmp);
-    repack_arg_list.set(1, diff_weights);
-    repack_arg_list.set(2, into<dim_t>(nelems));
-    repack_arg_list.set(3, 4);
-    compute::range_t repack_gws((nelems * 4 + 7) / 8);
-    compute::nd_range_t repack_nd_range(repack_gws);
-    return large_parallel_for(
-            ctx, repack_nd_range, kernels_[1], repack_arg_list, 4);
+    CHECK(parallel_for(ctx, nd_range, kernel_, arg_list));
+    if (!pack_) return status::success;
+    return pack_(ctx, *tmp, diff_weights);
 }
 
 } // namespace conv

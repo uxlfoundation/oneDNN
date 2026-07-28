@@ -20,6 +20,7 @@
 #include "gpu/intel/gemm/config.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/subbyte_pack.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -52,7 +53,7 @@ struct with_post_ops_t : public primitive_t {
         bool use_reorder = false;
         compute::dispatch_t dispatch_;
         attr_info_t attr_info_;
-        bool subbyte_pack_ = false;
+        subbyte_pack_desc_t pack_desc_;
         bool dynamic_scales_ = false;
         bool with_dropout = false;
         bool dropout_use_host_scalars = false;
@@ -100,9 +101,8 @@ struct with_post_ops_t : public primitive_t {
             CHECK(create_kernel(
                     engine, &kernels_[1], "dynamic_scale_dst", alt_ctx));
         }
-        if (pd()->subbyte_pack_)
-            CHECK(create_kernel(
-                    engine, &kernels_[2], "subbyte_pack", kernel_ctx));
+        if (pd()->pack_desc_)
+            CHECK(pack_.create(pd()->pack_desc_, *this, engine));
         return status::success;
     }
 
@@ -111,7 +111,8 @@ struct with_post_ops_t : public primitive_t {
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::shared_ptr<impl::primitive_t> prim_;
-    std::array<compute::kernel_t, 3> kernels_ = {};
+    std::array<compute::kernel_t, 2> kernels_ = {};
+    subbyte_pack_t pack_;
 };
 
 } // namespace gemm

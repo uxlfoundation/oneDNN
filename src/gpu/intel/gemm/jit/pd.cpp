@@ -473,6 +473,7 @@ static status_t init_attrs(
             : quant_entry_ndims(c_zps, c_zp_md, -1);
     // cOffset == Post marks c-zp presence (cf. with_c_zero_points()).
     if (!c_zps.has_default_values()) p.cOffset = gemmstone::COffset::Post;
+    cfg.with_c_scales = !c_scales.has_default_values();
     if (c_scales.get_data_type() != data_type::undef) {
         p.csPtrDims = quant_entry_ndims(c_scales, c_scale_md, -1);
         p.Tc_scale = convert_dnnl_to_kernel_type(c_scales.get_data_type());

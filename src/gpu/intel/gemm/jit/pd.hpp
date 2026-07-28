@@ -112,10 +112,9 @@ struct kernel_config_t {
     bool with_c_zero_points() const {
         return problem.cOffset == gemmstone::COffset::Post;
     }
-    // csPtrDims is set for any present dst scale (converted/mx/host-scalar)
-    // and is not cleared on conversion. Tc_scale cannot be used here: Type
-    // defaults to f32, not invalid.
-    bool with_c_scales() const { return problem.csPtrDims >= 0; }
+    // Attr-level: a dst scale was requested, whatever lowering does with it
+    // (binary post-op, alpha, or MX). Set in init_attrs.
+    bool with_c_scales = false;
 
     // sumA/sumB carry the sum_ab reduction; the OR is swap-invariant.
     bool with_sum_ab() const { return problem.sumA || problem.sumB; }

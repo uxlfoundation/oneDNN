@@ -316,7 +316,7 @@ struct gen_t : public primitive_t {
                 if (kernel_desc.driver_info()->kParallel()
                         && !kernel_desc.driver_info()->fusedPostOps()) {
                     bool po_valid = !cfg.non_scale_po()
-                            && !(cfg.with_sum() && cfg.with_c_scales())
+                            && !(cfg.with_sum() && cfg.with_c_scales)
                             && utils::one_of(cfg.c_type(), f32, s32);
                     if (!po_valid && print_verbose)
                         dnnl::impl::verbose_printf(

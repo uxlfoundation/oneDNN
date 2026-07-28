@@ -184,6 +184,10 @@
 // is enabled.
 #cmakedefine01 DNNL_EXPERIMENTAL_GROUPED_MEMORY
 
+// When set to 1, u3 uses a contiguous bit-packing layout instead of the
+// default OV transposed layout.
+#cmakedefine01 DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
+
 // When defined, it disables GPU compute reference kernels.
 #cmakedefine DNNL_DISABLE_GPU_REF_KERNELS
 

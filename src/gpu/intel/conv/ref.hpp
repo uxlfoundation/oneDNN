@@ -111,8 +111,7 @@ struct ref_fwd_t : public primitive_t {
             if (pack_desc_) {
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_conv_pack_space,
-                        pack_desc_.span(), sizeof(char),
-                        OCL_BUFFER_ALIGNMENT);
+                        pack_desc_.span(), sizeof(char), OCL_BUFFER_ALIGNMENT);
             }
 
             return init_conf(engine);
@@ -222,8 +221,7 @@ struct ref_bwd_data_t : public primitive_t {
             if (pack_desc_) {
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_conv_pack_space,
-                        pack_desc_.span(), sizeof(char),
-                        OCL_BUFFER_ALIGNMENT);
+                        pack_desc_.span(), sizeof(char), OCL_BUFFER_ALIGNMENT);
             }
 
             return init_conf(engine);
@@ -331,8 +329,7 @@ struct ref_bwd_weights_t : public primitive_t {
             if (pack_desc_) {
                 auto scratchpad = scratchpad_registry().registrar();
                 scratchpad.book(memory_tracking::names::key_conv_pack_space,
-                        pack_desc_.span(), sizeof(char),
-                        OCL_BUFFER_ALIGNMENT);
+                        pack_desc_.span(), sizeof(char), OCL_BUFFER_ALIGNMENT);
             }
 
             return init_conf(engine);

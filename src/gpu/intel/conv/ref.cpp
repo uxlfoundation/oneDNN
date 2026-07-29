@@ -89,8 +89,8 @@ static status_t init_conf_common(
 }
 
 static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
-        const conf_t &conf, const post_ops_t &post_ops,
-        const memory_desc_t *dst_md) {
+        const conf_t &conf, const subbyte_pack_desc_t &pack_desc,
+        const post_ops_t &post_ops, const memory_desc_t *dst_md) {
     kernel_ctx.require_stateless_addressing(conf.require_stateless_addressing);
     kernel_ctx.define_int("NDIMS", conf.ndims);
     kernel_ctx.define_int("G", conf.ngroups);
@@ -165,18 +165,18 @@ static status_t init_kernel_ctx_common(compute::kernel_ctx_t &kernel_ctx,
             "SUM");
 
     CHECK(def_attr_info(kernel_ctx, conf.attr_info, post_ops, *dst_md));
+    kernel_ctx.register_buffer_size(pack_desc.span(), pack_desc.span());
     return status::success;
 }
 
 status_t ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
-    CHECK(init_conf_common(conf, this, engine));
-    return status::success;
+    return init_conf_common(conf, this, engine);
 }
 
 status_t ref_fwd_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
-    return init_kernel_ctx_common(
-            kernel_ctx, conf, attr()->post_ops_, invariant_dst_md());
+    return init_kernel_ctx_common(kernel_ctx, conf, pack_desc_,
+            attr()->post_ops_, invariant_dst_md());
 }
 
 status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
@@ -240,14 +240,13 @@ status_t ref_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
 }
 
 status_t ref_bwd_data_t::pd_t::init_conf(const impl::engine_t *engine) {
-    CHECK(init_conf_common(conf, this, engine));
-    return status::success;
+    return init_conf_common(conf, this, engine);
 }
 
 status_t ref_bwd_data_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
-    return init_kernel_ctx_common(
-            kernel_ctx, conf, attr()->post_ops_, invariant_src_md());
+    return init_kernel_ctx_common(kernel_ctx, conf, pack_desc_,
+            attr()->post_ops_, invariant_src_md());
 }
 
 status_t ref_bwd_data_t::execute_backward_data(const exec_ctx_t &ctx) const {
@@ -314,8 +313,8 @@ status_t ref_bwd_weights_t::pd_t::init_conf(const impl::engine_t *engine) {
 
 status_t ref_bwd_weights_t::pd_t::init_kernel_ctx(
         compute::kernel_ctx_t &kernel_ctx) const {
-    return init_kernel_ctx_common(
-            kernel_ctx, conf, attr()->post_ops_, invariant_wei_md());
+    return init_kernel_ctx_common(kernel_ctx, conf, pack_desc_,
+            attr()->post_ops_, invariant_wei_md());
 }
 
 status_t ref_bwd_weights_t::execute_backward_weights(

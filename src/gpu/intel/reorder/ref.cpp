@@ -107,6 +107,8 @@ status_t ref_t::pd_t::init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const {
 
     def_memory_desc_info(kernel_ctx, conf.src_md_info, "SRC");
     def_memory_desc_info(kernel_ctx, conf.dst_md_info, "DST");
+    kernel_ctx.register_buffer_size(
+            conf.pack_desc.span(), conf.pack_desc.span());
 
     return status::success;
 }
@@ -115,8 +117,7 @@ void ref_t::pd_t::init_scratchpad() {
     auto scratchpad = scratchpad_registry().registrar();
     if (conf.pack_desc) {
         scratchpad.book(memory_tracking::names::key_reorder_space,
-                conf.pack_desc.span(), sizeof(char),
-                OCL_BUFFER_ALIGNMENT);
+                conf.pack_desc.span(), sizeof(char), OCL_BUFFER_ALIGNMENT);
     }
     if (conf.src_quant.with_scale()) {
         scratchpad.book(memory_tracking::names::key_reorder_src_scales,

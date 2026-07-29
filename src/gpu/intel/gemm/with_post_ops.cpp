@@ -217,6 +217,7 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
     int ndims = src_info.ndims;
     kernel_ctx.set_data_type(dynamic_scales_ ? acc_type_ : c_type);
     kernel_ctx.require_stateless_addressing(has_large_buffers());
+    kernel_ctx.register_buffer_size(pack_desc_.span(), pack_desc_.span());
 
     const auto &attr_scales = attr()->scales_;
     const bool with_src_scales = !attr_scales.has_default_values(DNNL_ARG_SRC);

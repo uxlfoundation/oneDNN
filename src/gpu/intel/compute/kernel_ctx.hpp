@@ -79,6 +79,10 @@ public:
 
     void register_buffer_size(const memory_desc_wrapper &mdw);
     void register_buffer_size(const memory_desc_info_t &mdi);
+    void register_buffer_size(dim_t size_elems, size_t size_bytes) {
+        if (size_elems > INT32_MAX) use_int32_offset(false);
+        if (size_bytes > UINT32_MAX) require_stateless_addressing(true);
+    }
 
     // Enable various optimizations when all buffers are < 2GB in size. In this
     // case, int32_t types can be used for data offsets and avoid int64_t
@@ -167,11 +171,6 @@ public:
     bool has_custom_headers() const { return !custom_headers_.empty(); }
 
 private:
-    void register_buffer_size(dim_t nelems, size_t size) {
-        if (nelems > INT32_MAX) use_int32_offset(false);
-        if (size > UINT32_MAX) require_stateless_addressing(true);
-    }
-
     void set_default_options(const primitive_attr_t *attr) {
         // By default fp32 division and sqrt are not IEEE-compliant
         add_option("-cl-fp32-correctly-rounded-divide-sqrt");

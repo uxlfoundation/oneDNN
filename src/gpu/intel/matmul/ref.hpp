@@ -141,8 +141,7 @@ struct ref_t : public primitive_t {
             }
             if (pack_desc_) {
                 scratchpad.book(memory_tracking::names::key_matmul_pack_space,
-                        pack_desc_.span(), sizeof(char),
-                        OCL_BUFFER_ALIGNMENT);
+                        pack_desc_.span(), sizeof(char), OCL_BUFFER_ALIGNMENT);
             }
 
             non_default_attrs_ = !attr()->has_default_values();
@@ -231,6 +230,8 @@ struct ref_t : public primitive_t {
         CHECK(def_attr_info(kernel_ctx, pd()->attr_info_,
                 pd()->attr()->post_ops_, *pd()->dst_md()));
         kernel_ctx.require_stateless_addressing(pd()->has_large_buffers());
+        kernel_ctx.register_buffer_size(
+                pd()->pack_desc_.span(), pd()->pack_desc_.span());
 
         if (!pd()->attr()->precomputed_reductions_.has_default_values(
                     DNNL_ARG_SRC))

@@ -2221,8 +2221,9 @@ void Generator<hw>::gemmAccessSums(COperation op, const GEMMProblem &problem, co
     auto remR = sumA && !strategy.CO.padded && strategy.remHandling[LoopM] != RemainderHandling::Ignore;
     auto remC = sumB && !strategy.CO.padded && strategy.remHandling[LoopN] != RemainderHandling::Ignore;
 
-    RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, true);
-
+    RegisterLayout CO_layout(hw, Tco, cor, coc, CO, CO_strategy, remR, remC, true, AvoidFragment, 8);
+//ool writable_ = false, RemainderOptions remOpts = AvoidFragment,
+  //                 int maxRBlock = 0, int maxCBlock = 0, bool reverseOrder = false)
     bool share = (Tc == Tco) && CO_layout.match(Xs_layout);
 
     Label noAccess;
@@ -2278,7 +2279,9 @@ void Generator<hw>::gemmAccessSums(COperation op, const GEMMProblem &problem, co
         }
 
         auto &effCO_regs = share ? Xs_regs : CO_regs;
-        if (atomicUpdate) {
+    //     for (int i=0; i< effCO_regs.getLen(); i++)
+   //   mov(16, effCO_regs[i].f(), 31);
+	if (atomicUpdate) {
             allocEAtomicAddRegs(hw, Tco, CO_layout, CO, CO_strategy, state, state.flagAP);
             atomicAddMatrix(effCO_regs, CO_layout, CO_addrs, problem, strategy, state);
             freeEAtomicAddRegs(state, state.flagAP);

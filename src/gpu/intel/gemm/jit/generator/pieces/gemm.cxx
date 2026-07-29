@@ -830,7 +830,6 @@ void Generator<hw>::gemmSubkernel(GEMMProblem &problem, GEMMStrategy &strategy, 
         auto alignedProblem = problem;
         if (doA) alignedProblem.A.setAlignment(std::max<int>(problem.A.alignment, optAlignA));
         if (doB) alignedProblem.B.setAlignment(std::max<int>(problem.B.alignment, optAlignB));
-
         status << "Aligned A/B" << status_stream::endl;
         success = gemmMEdge(alignedProblem, strategy, state);
 
@@ -889,7 +888,7 @@ bool Generator<hw>::gemmBody(GEMMProblem problem, GEMMStrategy strategy, GEMMSta
     if (problem.sumA || problem.sumB) {
         if (problem.sumA && problem.sumB) stub();
         auto &y0 = problem.sumA ? state.j0 : state.i0;
-        cmp(1 | eq | state.flagAP, y0, 0);
+        cmp(1 | eq | state.flagAP, y0, 32);
         or_(1 | state.flagAP, state.inputs.flags, state.inputs.flags, FlagStoreSums);
     }
 

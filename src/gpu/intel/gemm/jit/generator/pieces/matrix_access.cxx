@@ -290,12 +290,12 @@ void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterB
     if (block.descAssigned)     stub();
 
     FlagRegister flag;
-    maskMod |= registerBlockMasking(block, state, &flag);
+   // maskMod |= registerBlockMasking(block, state, &flag);
 
     // SIMD16 A64 atomics are emulated with 2x SIMD8.
     bool a64 = (astrategy.base.getModel() == ModelA64);
     int hsize = a64 ? 2 : 1;
-    int simd = block.simdSize;
+    int simd =  block.simdSize;
     if (!astrategy.newDP && a64) simd = std::min(simd, 8);
     if (hw >= HW::XeHPC && block.ebytes < 8 && block.simdSize == 16 && simd == 8) stub();    // Can't split data GRFs.
     auto nreg = block.nregs();
@@ -307,7 +307,7 @@ void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterB
     switch (block.implAccessType(atype, astrategy)) {
         case AccessType::Scattered:
         case AccessType::ChannelScattered:
-            if (hasNativeAtomicAdd(hw, T.real(), atype, astrategy)) {
+            if (hasNativeAtomicAdd(hw, T.real(), atype, astrategy) || simd != 8) {
                 auto curSrc = src;
                 for (int eoff = 0, hoff = 0; eoff < block.simdSize; eoff += simd, hoff += hsize, curSrc += nregReal) {
                     auto mod = simd | maskMod | ExecutionOffset(eoff);
@@ -379,14 +379,14 @@ void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterB
 
                     auto dt = T.ngen();
                     auto hs = std::max(1, 4 / ebytes);
-                    add(int(simd * ebytes / T.real()) | eoMod | NoMask, rNew.retype(dt)[0](hs), rOld.retype(dt)[0](hs), curSrc.retype(dt)[0](hs));
-                    mov<uint32_t>((simd * hs * ebytes / 4) | eoMod | NoMask, rSave, rOld);
+                    add(int(simd * ebytes / T.real()) |  NoMask, rNew.retype(dt)[0](hs), rOld.retype(dt)[0](hs), curSrc.retype(dt)[0](hs));
+                    mov<uint32_t>((simd * hs * ebytes / 4) |  NoMask, rSave, rOld);
 
-                    auto atomicMod = simd | flagToDo | eoMod;
-                    auto cmpMod = simd | flagToDo | ne | flagToDo | eoMod;
+                    auto atomicMod = simd | flagToDo ;
+                    auto cmpMod = simd | flagToDo | ne | flagToDo ;
 
-                    if (astrategy.newDP)
-                        atomic(AtomicOp::cmpwr, atomicMod, rOld, specLSC, astrategy.base, getAddress(addr[hoff], block, astrategy), rOld);
+                  if (astrategy.newDP)
+                       atomic(AtomicOp::fcmpwr, atomicMod, rOld, specLSC, astrategy.base, getAddress(addr[hoff], block, astrategy), rOld);
                     else switch (ebytes) {
                         case 2: atomic(AtomicOp::cmpwr, atomicMod, rOld, scattered_word(),  astrategy.base, addr[hoff], rOld); break;
                         case 4: atomic(AtomicOp::cmpwr, atomicMod, rOld, scattered_dword(), astrategy.base, addr[hoff], rOld); break;
@@ -400,8 +400,8 @@ void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterB
                         cmp<uint32_t>(cmpMod, rSave, rOld);
                     else if (ebytes == 8) {
                         if (strategy.emulate.emulate64) {
-                            cmp<uint32_t>(simd | ne | flagToDo | eoMod, rSave[0][0](2), rOld[0](2));
-                            cmp<uint32_t>(simd | ~flagToDo | ne | flagToDo | eoMod, rSave[0][1](2), rOld[1](2));
+                            cmp<uint32_t>(simd | ne | flagToDo, rSave[0][0](2), rOld[0](2));
+                            cmp<uint32_t>(simd | ~flagToDo | ne | flagToDo , rSave[0][1](2), rOld[1](2));
                         } else
                             cmp<uint64_t>(cmpMod, rSave, rOld);
                     } else

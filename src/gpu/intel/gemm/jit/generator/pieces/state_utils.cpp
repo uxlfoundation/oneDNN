@@ -52,15 +52,15 @@ void allocEAtomicAddRegs(HW hw, Type T, const RegisterLayout &layout,
 
     state.eatomicAddRegs[0] = state.ra.alloc_range(maxNReg * 2);
     state.eatomicAddRegs[1] = state.ra.alloc_range(maxNReg);
-    state.vflagEAtomicAdd = flag.isValid() ? flag
-                                           : state.allocVFlag(hw);
+    state.vflagEAtomicAdd = state.allocVFlag(hw); // flag.isValid() ? flag
+                                         //  : state.allocVFlag(hw);
 }
 
 void freeEAtomicAddRegs(CommonState &state, const FlagRegister &flag)
 {
     state.ra.safeRelease(state.eatomicAddRegs[0]);
     state.ra.safeRelease(state.eatomicAddRegs[1]);
-    if (flag.isInvalid())
+   // if (flag.isInvalid())
         state.raVFlag.release(state.vflagEAtomicAdd);
 }
 

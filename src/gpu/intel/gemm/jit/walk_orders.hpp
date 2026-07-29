@@ -220,6 +220,8 @@ inline void linear_order_args(compute::kernel_arg_list_t &arg_list, int &argn,
 
     gws[0] = lws[0] * (group_count + info.extraWGs());
     gws[1] = lws[1];
+    printf("--------\n %i %i %i %i %i %i %i\n", gws[0], gws[1], gws[2], lws[0],
+        lws[1], lws[2], group_count);
 }
 
 } // namespace jit

@@ -101,9 +101,9 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     }
 
     // Save accumulator registers used by the host kernel, if we'll use them here
-    // TODO: Only done in the case of FMA kChain currently. Generalize to other accumulator uses.
-    const int accSaveCount = (strategy.kChain > 1 && !strategy.systolic)
-        ? AccumulatorRegister::count(hw, strategy.GRFs, problem.Tc.real().ngen()) : 0;
+    // TODO: Only save the accumulators used by the kernel. Potentially move into the package,
+    // which already decodes/scans the microkernel binary for register usage.
+    const int accSaveCount = AccumulatorRegister::count(hw, strategy.GRFs, problem.Tc.real().ngen());
     const int accElts = GRF::bytes(hw) >> 2;  // dwords per accumulator register
     GRFRange accSave = state.ra.alloc_range(accSaveCount);
     for (int i = 0; i < accSave.getLen(); i++)

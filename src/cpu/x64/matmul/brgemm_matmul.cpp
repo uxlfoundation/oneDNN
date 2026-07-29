@@ -442,7 +442,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
             CHECK(brgemm_desc_init(&brg, kernel_isa, bgmmc_.brg_type,
                     bgmmc_.src_dt, bgmmc_.wei_dt, false, false,
                     brgemm_row_major, alpha, vbeta, LDA, bgmmc_.LDB, bgmmc_.LDC,
-                    vM, vN, vK, nullptr, bgmmc_.is_tf32));
+                    vM, vN, vK, nullptr));
         }
 
         auto LDD = bgmmc_.LDD;

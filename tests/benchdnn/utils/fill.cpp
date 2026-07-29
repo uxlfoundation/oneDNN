@@ -154,6 +154,7 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
         mem_fp.set_f32_elem(0, e.scale);
         // TODO: replace reorder with `fill` that takes any pattern unlike
         // memset.
+        if (mem_dt) SAFE(mem_dt.reorder(mem_fp, res), WARN);
     } else {
         // 1/16, 1/8 and 1/4 to properly work with grouped scaling.
         // Full density as zero scales are prohibited.
@@ -161,8 +162,6 @@ int fill_scales(const attr_t::arg_scales_t::entry_t &e, dnn_mem_t &mem_dt,
         fill_cfg_t fill_cfg(scales_set, /* density = */ 1.f, "scales");
         SAFE(fill_random_real(mem_dt, mem_fp, res, fill_cfg), WARN);
     }
-
-    if (mem_dt) SAFE(mem_dt.reorder(mem_fp, res), WARN);
 
     return OK;
 }

@@ -23,6 +23,7 @@
 // Internal alg_kind used by the GPU SDPA kernel. Must be removed once
 // softmax_accurate_inf_as_zero is promoted to a public value.
 #include "src/common/c_types_map.hpp"
+#include "src/common/float8.hpp"
 
 #include "dnnl_common.hpp"
 #include "dnnl_memory.hpp"
@@ -275,6 +276,49 @@ static void compute_fwd(const prb_t *prb, dnnl_engine_t eng, dnnl_stream_t strm,
         const dnn_mem_t &dropout_mask = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
         for (int64_t i = 0; i < score_n; i++)
             maybe_dropout(prb->attr, sp[i], i, dropout_mask);
+    }
+
+    // Step 4c: fp8 PV path modeling (inference/forward only). When Q, K and V
+    // are all fp8, the GPU micro kernel quantizes the softmax probabilities to
+    // fp8 before the P*V matmul (f8_e4m3 prob x f8_e4m3 value). The kernel is a
+    // flash-attention kernel, so it quantizes the *unnormalized* exponentials
+    // u_k = exp(s_k - max_k) (which lie in (0, 1]) and applies the 1/sum
+    // normalization only after the P*V matmul. Reconstruct u_k = p_k / max_k(p_k)
+    // from the normalized probs, round-trip through fp8, and rescale so the
+    // reference matches the kernel's arithmetic (small exponentials flush to the
+    // fp8 denormal min / zero).
+    //
+    // Guarded by `out != nullptr` so this only touches the forward output path:
+    // the fp8 PV path is inference-only, and when compute_fwd is called to
+    // recompute intermediates for the backward pass (out == nullptr) score2_dp
+    // is reused for dV and must remain the exact (unquantized) probabilities.
+    const bool q_is_fp8
+            = (prb->q_dt() == dnnl_f8_e4m3) || (prb->q_dt() == dnnl_f8_e5m2);
+    const bool k_is_fp8
+            = (prb->k_dt() == dnnl_f8_e4m3) || (prb->k_dt() == dnnl_f8_e5m2);
+    const bool v_is_fp8
+            = (prb->v_dt() == dnnl_f8_e4m3) || (prb->v_dt() == dnnl_f8_e5m2);
+    if (out && q_is_fp8 && k_is_fp8 && v_is_fp8) {
+        float *sp = static_cast<float *>(score2_dp);
+        const bool is_e5m2 = (prb->q_dt() == dnnl_f8_e5m2);
+        for (int64_t mb = 0; mb < MB; mb++) {
+            for (int64_t sq = 0; sq < SQ; sq++) {
+                float *row = sp + (mb * SQ + sq) * SK;
+                float pmax = 0.f;
+                for (int64_t sk = 0; sk < SK; sk++)
+                    pmax = std::max(pmax, row[sk]);
+                if (pmax <= 0.f) continue;
+                const float inv_pmax = 1.f / pmax;
+                for (int64_t sk = 0; sk < SK; sk++) {
+                    const float u
+                            = row[sk] * inv_pmax; // exp(s - max) in (0, 1]
+                    const float uq = is_e5m2
+                            ? static_cast<float>(dnnl::impl::float8_e5m2_t(u))
+                            : static_cast<float>(dnnl::impl::float8_e4m3_t(u));
+                    row[sk] = uq * pmax;
+                }
+            }
+        }
     }
 
     // Step 5: output = prob_dp x V  (matmul primitive).

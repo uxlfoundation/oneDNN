@@ -109,6 +109,9 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     for (int i = 0; i < accSave.getLen(); i++)
         mov<uint32_t>(accElts, accSave[i], AccumulatorRegister(i));
 
+    knownClobbers.addFlag(0, FlagRegister::count(hw));
+    knownClobbers.addAcc(0, accSaveCount);
+
     // Beginning of microkernel:
     //   - check32
     //   - fused ID calculation

@@ -61,23 +61,24 @@ Package::Status Package::finalize(const ClobberSet &knownClobbers) {
                     clobbered[dstRegion.base + j] = true;
         }
 
-        // There is no vISA-supported mechanism for passing clobber data for ARF registers.
-        // We can either disallow overwriting ARF, or blindly expect the kernel to save/restore them.
-        // Allow the use of acc/flag registers only, for now.
+        // Allow acc/flag ARF destinations only if declared in knownClobbers.
         if (dstRegion.rf == RegFileARF) {
             ARFType dstType = static_cast<ARFType>(dstRegion.base >> 4);
+            int arfIdx = dstRegion.base & 0xF;
+            int arfLen = dstRegion.size;
+            bool known = false;
             if (dstType == ARFType::acc) {
-                // Expectation: kernel saves/restores accumulator registers if needed.
-                // Track the higest acc index, to use a GRF mode that supports the number of accumulators used
-                int accBase = dstRegion.base & 0xF;
-                int accLast = accBase + std::max(int(dstRegion.size), 1) - 1;
-                maxAccIdx = std::max(maxAccIdx, accLast);
+                known = true;
+                for (int j = arfIdx; j < arfIdx + arfLen; j++)
+                    known &= knownClobbers.acc(j);
+                maxAccIdx = std::max(maxAccIdx, arfIdx + arfLen - 1);
             } else if (dstType == ARFType::f) {
-                // Expectation: kernel saves/restores flag registers if needed.
-            } else {
-                // Other ARF registers are not expected to be overwritten
-                status = Status::UncertainClobbers;
+                known = true;
+                for (int j = arfIdx; j < arfIdx + arfLen; j++)
+                    known &= knownClobbers.flag(j);
             }
+            if (!known)
+                status = Status::UncertainClobbers;
         }
     }
 

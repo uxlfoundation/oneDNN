@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 #include <cassert>
+#include <vector>
 #include "common/verbose.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 
@@ -56,15 +57,18 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params,
-        const lambda_jit_injectors_t &lambda_jit_injectors)
+        const lambda_jit_injectors_t &lambda_jit_injectors,
+        bool enable_native_sum)
     : post_ops_(post_ops)
     , host_(host)
     , binary_injector_(nullptr)
-    , lambda_jit_injectors_(lambda_jit_injectors) {
+    , lambda_jit_injectors_(lambda_jit_injectors)
+    , sum_is_native_(enable_native_sum) {
 
     const auto &esp = eltwise_static_params;
     bool is_like_binary = false;
     bool is_eltwise = false;
+    bool is_sum = false;
 
     for (int i = 0; i < post_ops.len(); i++) {
         const auto &post_op = post_ops.entry_[i];
@@ -81,6 +85,8 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
                             esp.preserve_vmm, esp.preserve_p_table));
         } else if (post_op.is_like_binary()) {
             is_like_binary = true;
+        } else if (post_op.is_sum(false, false)) {
+            is_sum = true;
         }
     }
 
@@ -92,10 +98,28 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
                 injector opmask. Otherwise eltwise injector will overwrite \
                 binary tail opmask.");
 
-    if (is_like_binary)
+    // Native sum reads the previous value through the binary injector's load
+    // path so the binary injector is created for a sum-only chain as well.
+    if (is_like_binary || is_sum)
         binary_injector_ = utils::make_unique<
                 binary_injector::jit_uni_binary_injector_t<isa, Vmm>>(
                 host, binary_static_params);
+
+    // Build one sum injector per sum post-op when the caller opted in to
+    // native sum.
+    if (is_sum && sum_is_native_) {
+        const auto &rhs = binary_static_params.rhs_arg_static_params;
+        const auto dst_dt = rhs.dst_d.data_type();
+        for (int i = 0; i < post_ops.len(); i++) {
+            const auto &post_op = post_ops.entry_[i];
+            if (!post_op.is_sum(false, false)) continue;
+
+            idx_to_sum_injector_.emplace(i,
+                    jit_uni_sum_injector_t<isa, Vmm>(host_, post_op.sum, dst_dt,
+                            binary_injector_.get(), rhs.rhs_dt_helper_vmm_idx,
+                            rhs.preserve_vmm_helper));
+        }
+    }
 }
 
 template <cpu_isa_t isa, typename Vmm>
@@ -128,13 +152,15 @@ jit_uni_postops_injector_base_t<Xbyak::Zmm> *
 jit_uni_postops_injector_base_t<Xbyak::Zmm>::create(jit_generator_t *host,
         cpu_isa_t isa, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
-        const eltwise_injector::static_params_t &eltwise_static_params) {
+        const eltwise_injector::static_params_t &eltwise_static_params,
+        bool enable_native_sum) {
 
 // Exact match case goes first and required to force `isa` passed by user.
 #define CASE_EXACT_MATCH(_isa) \
     if (isa == (_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Zmm>( \
-                host, post_ops, binary_static_params, eltwise_static_params);
+        return new jit_uni_postops_injector_t<_isa, Xbyak::Zmm>(host, \
+                post_ops, binary_static_params, eltwise_static_params, \
+                lambda_jit_injectors_t(), enable_native_sum);
 
     CASE_EXACT_MATCH(avx512_core_fp16);
     CASE_EXACT_MATCH(avx512_core_bf16);
@@ -146,8 +172,9 @@ jit_uni_postops_injector_base_t<Xbyak::Zmm>::create(jit_generator_t *host,
 // not every ISA has instances in post-ops injector.
 #define CASE_MAYIUSE(_isa) \
     if (mayiuse(_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Zmm>( \
-                host, post_ops, binary_static_params, eltwise_static_params);
+        return new jit_uni_postops_injector_t<_isa, Xbyak::Zmm>(host, \
+                post_ops, binary_static_params, eltwise_static_params, \
+                lambda_jit_injectors_t(), enable_native_sum);
 
     CASE_MAYIUSE(avx512_core_fp16);
     CASE_MAYIUSE(avx512_core_bf16);
@@ -164,13 +191,15 @@ jit_uni_postops_injector_base_t<Xbyak::Ymm> *
 jit_uni_postops_injector_base_t<Xbyak::Ymm>::create(jit_generator_t *host,
         cpu_isa_t isa, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
-        const eltwise_injector::static_params_t &eltwise_static_params) {
+        const eltwise_injector::static_params_t &eltwise_static_params,
+        bool enable_native_sum) {
 
 // Exact match case goes first and required to force `isa` passed by user.
 #define CASE_EXACT_MATCH(_isa) \
     if (isa == (_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Ymm>( \
-                host, post_ops, binary_static_params, eltwise_static_params);
+        return new jit_uni_postops_injector_t<_isa, Xbyak::Ymm>(host, \
+                post_ops, binary_static_params, eltwise_static_params, \
+                lambda_jit_injectors_t(), enable_native_sum);
 
     CASE_EXACT_MATCH(avx512_core_fp16);
     CASE_EXACT_MATCH(avx512_core);
@@ -184,8 +213,9 @@ jit_uni_postops_injector_base_t<Xbyak::Ymm>::create(jit_generator_t *host,
 // not every ISA has instances in post-ops injector.
 #define CASE_MAYIUSE(_isa) \
     if (mayiuse(_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Ymm>( \
-                host, post_ops, binary_static_params, eltwise_static_params);
+        return new jit_uni_postops_injector_t<_isa, Xbyak::Ymm>(host, \
+                post_ops, binary_static_params, eltwise_static_params, \
+                lambda_jit_injectors_t(), enable_native_sum);
 
     CASE_MAYIUSE(avx512_core_fp16);
     CASE_MAYIUSE(avx512_core);
@@ -204,13 +234,15 @@ jit_uni_postops_injector_base_t<Xbyak::Xmm> *
 jit_uni_postops_injector_base_t<Xbyak::Xmm>::create(jit_generator_t *host,
         cpu_isa_t isa, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
-        const eltwise_injector::static_params_t &eltwise_static_params) {
+        const eltwise_injector::static_params_t &eltwise_static_params,
+        bool enable_native_sum) {
 
 // Exact match case goes first and required to force `isa` passed by user.
 #define CASE_EXACT_MATCH(_isa) \
     if (isa == (_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Xmm>( \
-                host, post_ops, binary_static_params, eltwise_static_params);
+        return new jit_uni_postops_injector_t<_isa, Xbyak::Xmm>(host, \
+                post_ops, binary_static_params, eltwise_static_params, \
+                lambda_jit_injectors_t(), enable_native_sum);
 
     CASE_EXACT_MATCH(avx512_core_fp16);
     CASE_EXACT_MATCH(avx512_core);
@@ -225,8 +257,9 @@ jit_uni_postops_injector_base_t<Xbyak::Xmm>::create(jit_generator_t *host,
 // not every ISA has instances in post-ops injector.
 #define CASE_MAYIUSE(_isa) \
     if (mayiuse(_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Xmm>( \
-                host, post_ops, binary_static_params, eltwise_static_params);
+        return new jit_uni_postops_injector_t<_isa, Xbyak::Xmm>(host, \
+                post_ops, binary_static_params, eltwise_static_params, \
+                lambda_jit_injectors_t(), enable_native_sum);
 
     CASE_MAYIUSE(avx512_core_fp16);
     CASE_MAYIUSE(avx512_core);
@@ -245,10 +278,11 @@ template <typename Vmm>
 jit_uni_postops_injector_base_t<Vmm> *
 jit_uni_postops_injector_base_t<Vmm>::create(jit_generator_t *host,
         cpu_isa_t isa, const post_ops_t &post_ops,
-        const binary_injector::static_params_t &binary_static_params) {
+        const binary_injector::static_params_t &binary_static_params,
+        bool enable_native_sum) {
     const eltwise_injector::static_params_t eltwise_static_params;
-    return create(
-            host, isa, post_ops, binary_static_params, eltwise_static_params);
+    return create(host, isa, post_ops, binary_static_params,
+            eltwise_static_params, enable_native_sum);
 }
 
 template <cpu_isa_t isa, typename Vmm>
@@ -286,6 +320,9 @@ void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
             // Ternary op handles two arguments at the same time, thus,
             // skipping one more.
             if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
+        } else if (sum_is_native_ && post_op.is_sum(false, false)) {
+            idx_to_sum_injector_.at(i).compute_vector_range(
+                    vmm_idxs, rhs_arg_params);
         } else {
             const auto lam = lambda_jit_injectors_.find(post_op.kind);
             if (lam != lambda_jit_injectors_.end()) lam->second();
@@ -302,6 +339,12 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_postops_injector_t<isa, Vmm>::prepare_table(bool gen_table) {
     for (auto &alg_elt_inject : alg_to_eltwise_injector_)
         alg_elt_inject.second.prepare_table(gen_table);
+
+    // Sum injectors emit their scale/zero-point constants here, similar to the
+    // eltwise loop above.
+    if (sum_is_native_)
+        for (auto &kv : idx_to_sum_injector_)
+            kv.second.prepare_table(gen_table);
 }
 
 template <cpu_isa_t isa, typename Vmm>

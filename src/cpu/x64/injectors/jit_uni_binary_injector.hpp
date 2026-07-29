@@ -305,6 +305,18 @@ public:
             const dnnl_post_ops::entry_t &post_op,
             const rhs_arg_dynamic_params_t &rhs_arg_params) const;
 
+    /*
+     * Reads a value from `base + byte_off` into vmm `dst` as f32, reusing the
+     * RHS load path (`load_rhs` and its helpers). The sum post-op uses it to
+     * read the accumulator's previous value, so the RHS infrastructure
+     * (`rhs_addr_reg`, tail mask, integer-to-f32 conversion) operates on
+     * accumulator memory. `byte_off` values past `int` range go through a
+     * scratch register.
+     */
+    void load_acc_as_f32(const Vmm &dst, const Xbyak::Reg64 &base,
+            size_t byte_off, data_type_t data_type, bool with_tail,
+            tail_lode_mode_t tail_load_mode = tail_lode_mode_t::DEFAULT) const;
+
 private:
     /*
      * Determines if hint passed by user is valid (is inside range

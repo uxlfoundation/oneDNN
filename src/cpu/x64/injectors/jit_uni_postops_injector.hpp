@@ -27,6 +27,7 @@
 #include "cpu/x64/injectors/injector_utils.hpp"
 #include "cpu/x64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/x64/injectors/jit_uni_eltwise_injector.hpp"
+#include "cpu/x64/injectors/jit_uni_sum_injector.hpp"
 #include "cpu/x64/jit_generator.hpp"
 #include <initializer_list>
 
@@ -65,14 +66,22 @@ public:
     // cases it's aligned with the former kernel ISA if such enum value is
     // instantiated for injectors. If not, uses the next available isa enum
     // value in compliance with same vector length.
+    //
+    // `enable_native_sum` opts in to handling the sum post-op inside the
+    // injector instead of through a caller-provided lambda. Native sum reads
+    // the previous value from the address supplied per accumulator in
+    // `rhs_arg_dynamic_params_t`, so the caller must provide it (as it does for
+    // binary post-ops).
     static jit_uni_postops_injector_base_t *create(jit_generator_t *host,
             cpu_isa_t isa, const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
-            const eltwise_injector::static_params_t &eltwise_static_params);
+            const eltwise_injector::static_params_t &eltwise_static_params,
+            bool enable_native_sum = false);
 
     static jit_uni_postops_injector_base_t *create(jit_generator_t *host,
             cpu_isa_t isa, const post_ops_t &post_ops,
-            const binary_injector::static_params_t &binary_static_params);
+            const binary_injector::static_params_t &binary_static_params,
+            bool enable_native_sum = false);
 
     virtual ~jit_uni_postops_injector_base_t() = default;
 
@@ -125,6 +134,9 @@ public:
      * params for eltwise_injector
      * @param lambda_jit_injectors <optional> - allows user specify custom injector
      * function for given post-op type
+     * @param enable_native_sum <optional> - handle the sum post-op inside the
+     * injector instead of through a caller-provided lambda (see the `create`
+     * documentation for the caller's obligations)
      */
     jit_uni_postops_injector_t(jit_generator_t *host,
             const post_ops_t &post_ops,
@@ -137,11 +149,14 @@ public:
             const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params);
+    // This is the delegation target for the other constructors and the only one
+    // that carries `enable_native_sum`, since it owns all construction state.
     jit_uni_postops_injector_t(jit_generator_t *host,
             const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params,
-            const lambda_jit_injectors_t &lambda_jit_injectors);
+            const lambda_jit_injectors_t &lambda_jit_injectors,
+            bool enable_native_sum = false);
 
     ~jit_uni_postops_injector_t() override = default;
 
@@ -181,7 +196,14 @@ private:
             alg_to_eltwise_injector_;
     std::unique_ptr<binary_injector::jit_uni_binary_injector_t<isa, Vmm>>
             binary_injector_;
+    // Native sum injectors, one per sum post-op, keyed by post-op index same as
+    // `alg_to_eltwise_injector_`. They contain a `binary_injector_` pointer but
+    // do not own it. Keep `idx_to_sum_injector_` after the `binary_injector_`
+    // field, just in case.
+    std::map<int, jit_uni_sum_injector_t<isa, Vmm>> idx_to_sum_injector_;
     lambda_jit_injectors_t lambda_jit_injectors_;
+    // When set, a sum entry is handled by the sum injector instead of a lambda.
+    const bool sum_is_native_;
 };
 
 enum post_op_type { sum = 0, eltwise, binary, prelu };

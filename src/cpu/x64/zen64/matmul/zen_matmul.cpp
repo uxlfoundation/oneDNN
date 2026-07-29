@@ -97,7 +97,7 @@ inline zen_bmm_params_t compute_zen_bmm_params(const memory_desc_wrapper &src_d,
 } // namespace
 #endif
 
-status_t zen_matmul_t::pd_t::init(engine_t *engine) {
+status_t zen_matmul_t::pd_t::init(const engine_t *engine) {
     using smask_t = primitive_attr_t::skip_mask_t;
 
 #if !DNNL_X64_USE_ZEN

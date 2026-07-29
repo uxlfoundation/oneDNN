@@ -166,9 +166,7 @@ struct jit_uni_cvt_xf16_to_ps_t : public jit_generator_t {
         : jit_generator_t(jit_name())
         , input_dt_(dt)
         , with_add_(with_add)
-        , row_stride_(row_stride) {
-        create_kernel();
-    }
+        , row_stride_(row_stride) {}
 
     void generate() override;
 

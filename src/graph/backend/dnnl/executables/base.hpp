@@ -17,7 +17,9 @@
 #define GRAPH_BACKEND_DNNL_EXECUTABLES_BASE_HPP
 
 #include <memory>
+#ifdef DNNL_WITH_SYCL
 #include <optional>
+#endif
 #include <string>
 #include <utility>
 #include <vector>

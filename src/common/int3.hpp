@@ -46,16 +46,35 @@ struct uint3_t {
 
 static_assert(sizeof(uint3_t) == 1, "uint3_t must be 1 byte");
 
-// u3 uses the OV transposed layout: each group of 8 values packs into 3 bytes
-// such that the low 2 bits of values 0-3 are in byte 0, the low 2 bits of
-// values 4-7 are in byte 1, and all 8 MSBs are in byte 2. Decodes the 3-bit
-// value at logical index `idx` from the packed buffer.
+// u3 uses the OV transposed layout:
+//
+//         bit7 bit6 bit5 bit4 bit3 bit2 bit1 bit0
+//        ┌────┬────┬────┬────┬────┬────┬────┬────┐
+// byte0  │v0.1│v0.0│v1.1│v1.0│v2.1│v2.0│v3.1│v3.0│ low 2 bits of v0..v3
+//        ├────┼────┼────┼────┼────┼────┼────┼────┤
+// byte1  │v4.1│v4.0│v5.1│v5.0│v6.1│v6.0│v7.1│v7.0│ low 2 bits of v4..v7
+//        ├────┼────┼────┼────┼────┼────┼────┼────┤
+// byte2  │v0.2│v1.2│v2.2│v3.2│v4.2│v5.2│v6.2│v7.2│ MSB of all
+//        └────┴────┴────┴────┴────┴────┴────┴────┘
+//
 inline uint8_t uint3_unpack(const uint8_t *packed, int64_t idx) {
     const int64_t base = (idx / 8) * 3;
     const int pos = idx % 8;
     const int low2 = (packed[base + pos / 4] >> (6 - 2 * (pos % 4))) & 0x3;
     const int msb = (packed[base + 2] >> (7 - pos)) & 0x1;
     return static_cast<uint8_t>(low2 | (msb << 2));
+}
+inline void uint3_pack(uint8_t *packed, int64_t idx, uint8_t v) {
+    const int64_t base = (idx / 8) * 3;
+    const int pos = idx % 8;
+    const int lshift = 6 - 2 * (pos % 4);
+    packed[base + pos / 4]
+            = static_cast<uint8_t>((packed[base + pos / 4] & ~(0x3 << lshift))
+                    | ((v & 0x3) << lshift));
+    const int hshift = 7 - pos;
+    packed[base + 2]
+            = static_cast<uint8_t>((packed[base + 2] & ~(0x1 << hshift))
+                    | (((v >> 2) & 0x1) << hshift));
 }
 
 } // namespace impl

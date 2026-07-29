@@ -442,6 +442,23 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
         } \
     } while (0)
 
+/* Pack four consecutive (contraction-dim) tile elements into a single 32-bit
+ * word, applying cvt to each. Used to stage fp8 softmax probabilities (S) in
+ * 4-deep VNNI layout for the fp8 systolic V*S multiply. */
+#define tile_copy_to_vec4_cvt(t, t_new, type, cvt) \
+    do { \
+        _Pragma("unroll") for (int i = 0; i < sizeof(t.x) / sizeof(t.x[0]); \
+                               i++) { \
+            _Pragma("unroll") for (int s = 0; \
+                                   s < sizeof(t.x[0]) / sizeof(t.x[0][0]) / 4; \
+                                   s++) { \
+                type v = {cvt(t.x[i][4 * s]), cvt(t.x[i][4 * s + 1]), \
+                        cvt(t.x[i][4 * s + 2]), cvt(t.x[i][4 * s + 3])}; \
+                t_new.x[i][s] = as_uint(v); \
+            } \
+        } \
+    } while (0)
+
 #define tile_access(t, i0, j, sg, br, bc, nbr) \
     (t).x[(i0) / (br) + (nbr) * ((j) / (bc))] \
          [((i0) % (br)) / (sg) + ((j) % (bc)) * ((br) / (sg))]
@@ -990,6 +1007,30 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             local element_type *ptr, int tile_n, int ld, int offset_r, \
             int offset_c) { \
         const int cp = 32 / sizeof(element_type); \
+        offset_c += get_sub_group_local_id(); \
+        int offset_r0 = offset_r & (cp - 1); \
+        int offset_r1 = offset_r & ~(cp - 1); \
+        ptr += offset_r0 + tile_n * offset_r1; \
+        _Pragma("unroll") for (int j0 = 0; j0 < br * nbr; \
+                               j0 += sg, offset_c += sg) { \
+            int offset_c0 = offset_c & (tile_n - 1); \
+            int offset_c1 = offset_c & ~(tile_n - 1); \
+            local element_type *ptr_j = ptr + cp * offset_c0 + ld * offset_c1; \
+            _Pragma("unroll") for (int i = 0; i < bc * nbc; i++) { \
+                *ptr_j = tile_access(t, j0, i, sg, br, bc, nbr); \
+                ptr_j++; \
+                if ((~i & (cp - 1)) == 0) ptr_j += cp * (tile_n - 1); \
+            } \
+        } \
+    } \
+    /* Variant of tile_store_t_sys_src2 with an explicit crosspack-group size \
+     * (in packed 32-bit words). The default derives cp from the element size \
+     * (8 for uint = 32-byte groups); the fp8 PV path stages S as fp8 packed \
+     * 4-deep per word and needs 16-element (4-word) crosspack groups to match \
+     * the fp8 systolic B operand layout. */ \
+    __attribute__((overloadable)) void tile_store_t_sys_src2_cp(tile_type t, \
+            local element_type *ptr, int tile_n, int ld, int offset_r, \
+            int offset_c, int cp) { \
         offset_c += get_sub_group_local_id(); \
         int offset_r0 = offset_r & (cp - 1); \
         int offset_r1 = offset_r & ~(cp - 1); \

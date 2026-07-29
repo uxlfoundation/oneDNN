@@ -99,7 +99,7 @@ struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
     bool require_stateless_addressing;
     bool is_training;
     bool dropout, dropout_output_mask, dropout_offset, dropout_host_scalars;
-    uint8_t padding3[1] = {0};
+    bool pv_fp8;
 
     micro_fwd_ukernel_params_t ukernel_config;
 };
@@ -401,6 +401,11 @@ struct micro_fwd_t : public primitive_t {
         int sg_size() const { return sg_size_; }
         bool use_systolic_ukernel() const { return use_systolic_ukernel_; }
 
+        // Separate fp8 PV path: the softmax probabilities (S) are quantized to
+        // fp8 and fed to the V*S GEMM as an fp8 B operand, enabling native fp8
+        // systolic multiplies. When false, S stays in f16 (default path).
+        bool pv_fp8() const { return pv_fp8_; }
+
         // Block size for the Q/K head dim, baked into the kernel.
         int d_max_kq() const {
             int head_size = into<int>(desc()->head_size());
@@ -424,6 +429,7 @@ struct micro_fwd_t : public primitive_t {
     private:
         int sg_size_ = 0;
         bool use_systolic_ukernel_ = true;
+        bool pv_fp8_ = false;
         compute::gpu_arch_t arch_ = compute::gpu_arch_t::unknown;
 
         status_t init_conf_microkernels(const impl::engine_t *engine);

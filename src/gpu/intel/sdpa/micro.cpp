@@ -187,6 +187,19 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(
     bool is_integrated = intel_engine->device_info()->is_integrated();
     bool is_f32 = (desc()->qry_md()->data_type == data_type::f32);
 
+    // Enable the separate fp8 PV path when Q, K and V are all fp8 and the
+    // systolic ukernel is in use. In that path the softmax probabilities (S)
+    // are quantized to fp8 so the V*S GEMM runs as a native fp8 systolic
+    // multiply, rather than upconverting S to f16 (default path).
+    const bool all_fp8 = utils::everyone_is(true,
+            utils::one_of(desc()->qry_md()->data_type, data_type::f8_e4m3,
+                    data_type::f8_e5m2),
+            utils::one_of(desc()->key_md()->data_type, data_type::f8_e4m3,
+                    data_type::f8_e5m2),
+            utils::one_of(desc()->val_md()->data_type, data_type::f8_e4m3,
+                    data_type::f8_e5m2));
+    pv_fp8_ = all_fp8 && use_systolic_ukernel();
+
     bool use_fma_config = !use_systolic_ukernel();
     bool is_f16_accumulate_gemm = (kq_acc_dt() == data_type::f16)
             || (vs_acc_dt() == data_type::f16);
@@ -379,6 +392,15 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(
     auto problem_vs = std::move(problem);
     problem_vs.Tc = problem_vs.Ts
             = (vs_acc_dt() == data_type::f16) ? Type::f16 : Type::f32;
+
+    if (pv_fp8()) {
+        // Separate fp8 PV path: feed the S (softmax probability) operand to the
+        // V*S GEMM as fp8 instead of the upconverted f16 used by the default
+        // path. The base problem set Tb/Tb_ext = f16 (fp8 Q is staged to SLM as
+        // f16 for the KQ GEMM); here we override just the PV B operand.
+        problem_vs.Tb = problem_vs.Tb_ext
+                = convert_dnnl_to_kernel_type(desc()->qry_md()->data_type);
+    }
 
     bool vs_common_scales = with_quantize_common(d->vs_scales);
     bool vs_common_zp = with_quantize_common(d->vs_zero_points);
@@ -892,6 +914,7 @@ status_t micro_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     init_conf_common(conf, this);
     conf.d_max_kq = d_max_kq();
     conf.d_max_v = d_max_v();
+    conf.pv_fp8 = pv_fp8();
 
     conf.require_stateless_addressing = has_large_buffers();
 
@@ -1196,6 +1219,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("Q_ARRIVE_AWAIT_BARRIER", q_arrive_await_barrier);
     kernel_ctx.define_int("SOFTMAX_INF_AS_ZERO", softmax_inf_as_zero);
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
+    kernel_ctx.define_int("VS_S_FP8", pv_fp8);
     kernel_ctx.define_int("KQ_F16_ACC", kq_f16_accumulate);
     kernel_ctx.define_int("VS_F16_ACC", vs_f16_accumulate);
     kernel_ctx.define_int("IS_TRAINING", is_training);

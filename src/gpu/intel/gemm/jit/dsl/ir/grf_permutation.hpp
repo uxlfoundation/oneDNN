@@ -80,7 +80,7 @@ public:
         return this == &obj;
     }
 
-    size_t get_hash() const override { return 0; }
+    size_t compute_hash() const override { return 0; }
 
     std::shared_ptr<grf_permutation_t> grf_perm;
 

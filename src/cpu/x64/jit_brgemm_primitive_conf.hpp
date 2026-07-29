@@ -66,7 +66,6 @@ struct jit_brgemm_primitive_conf_t {
     bool use_buffer_a;
     bool use_buffer_b;
     bool is_bf32;
-    bool is_tf32;
 
     bool with_src_scales;
     bool with_wei_scales;

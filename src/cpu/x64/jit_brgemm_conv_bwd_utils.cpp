@@ -591,7 +591,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     brgemm_desc_t brg;
     CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
             brgemm_row_major, alpha, beta, LDA, LDB, LDC, vM, vN, vK, nullptr,
-            is_bf32, is_tf32));
+            is_bf32));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     // AMX kernel may fall back to VMM, in which case bd_block2 == 0
     ur = brg.bd_block * nstl::max(1, brg.bd_block2);
@@ -601,7 +601,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
         brgemm_desc_t brg_sp_tail;
         CHECK(brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr,
                 src_dt, wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC,
-                M_tail, vN, vK, nullptr, is_bf32, is_tf32));
+                M_tail, vN, vK, nullptr, is_bf32));
         CHECK(brgemm_utils::brgemm_blocking(&brg_sp_tail));
         ur_block_tail = brg_sp_tail.bd_block;
     } else {
@@ -648,8 +648,7 @@ status_t brg_blocking_t::get_brgemm_ur(
                             : nullptr;
                     CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brg_type,
                             src_dt, wei_dt, brgemm_row_major, alpha, vbeta, LDA,
-                            LDB, LDC, vM, vN, vK, strides_ptr, is_bf32,
-                            is_tf32));
+                            LDB, LDC, vM, vN, vK, strides_ptr, is_bf32));
                     CHECK(brgemm_utils::brgemm_blocking(&brg));
 
                     brgemm_attr_t brgattr;
@@ -1512,9 +1511,6 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             = everyone_is(f32, jcp.src_dt, jcp.dst_dt) && jcp.wei_dt == bf16;
     jcp.is_f32_f16
             = everyone_is(f32, jcp.src_dt, jcp.dst_dt) && jcp.wei_dt == f16;
-    jcp.is_tf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
-            && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
-            && is_superset(isa, avx10_2_amx_2);
 
     VDISPATCH_CONV_IC(!jcp.is_bf32, VERBOSE_UNSUPPORTED_DT);
 
@@ -1623,8 +1619,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                                       || is_superset(jcp.isa, avx2_vnni_2)),
             VERBOSE_ISA_DT_MISMATCH);
 
-    VDISPATCH_CONV_IC(
-            IMPLICATION(is_f32, one_of(isa, avx512_core, avx2) || jcp.is_tf32),
+    VDISPATCH_CONV_IC(IMPLICATION(is_f32, one_of(isa, avx512_core, avx2)),
             VERBOSE_ISA_DT_MISMATCH);
 
     VDISPATCH_CONV_IC(

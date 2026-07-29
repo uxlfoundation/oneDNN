@@ -448,13 +448,12 @@ float brg_blocking_t::io_k(const loop_t loop, const array_in_loop_t arr,
 void brg_blocking_t::select_ic_block() {
     if (is_1x1 && is_amx(isa)) {
         // TODO: merge with non-1x1 code block below
-        const bool is_xf32 = is_bf32 || is_tf32;
         const int ic_padded_block = 16 * vnni_block;
 
         MAYBE_UNUSED(ic_padded_block);
-        // Note: bf32 and tf32 require ic_block be less than 64, otherwise it results
+        // Note: bf32 requires ic_block be less than 64, otherwise it results
         // in incorrect output.
-        ic_block = is_xf32 && (!is_rtus) ? nstl::min(64, ic) : ic;
+        ic_block = is_bf32 && (!is_rtus) ? nstl::min(64, ic) : ic;
         nb_ic = utils::div_up(ic, ic_block); // trivially 1 for now
         inp_ic_block = ic_block;
         return;
@@ -623,21 +622,20 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
 
     N = oc >= oc_block ? oc_block : 0;
     N_tail = oc % oc_block;
-    const bool is_xf32 = is_bf32 || is_tf32;
     if (is_relo()) {
         K = (ic >= ic_block) ? rnd_up(kh_koef * kw * inp_ic_block, vnni_block)
                              : 0;
         if (vnni_block > 1 && K > simd_w) K = rnd_up(K, simd_w);
 
         K_tail = rnd_up(kh_koef * kw
-                        * (!is_xf32 ? inp_ic_block
+                        * (!is_bf32 ? inp_ic_block
                                     : rnd_up(ic % ic_block, vnni_block)),
                 vnni_block);
         if (vnni_block > 1 && K_tail > simd_w) K_tail = rnd_up(K_tail, simd_w);
     } else {
         K = kh_koef * (ic >= ic_block ? ic_block : 0);
         const auto ic_ceil
-                = exec_type == exec_trans && ic_block % simd_w == 0 && !is_xf32
+                = exec_type == exec_trans && ic_block % simd_w == 0 && !is_bf32
                 ? simd_w
                 : vnni_block;
         K_tail = kh_koef
@@ -654,7 +652,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     brgemm_desc_t brg;
     CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
             brgemm_row_major, alpha, beta, LDA, LDB, LDC, vM, vN, vK, nullptr,
-            is_bf32, is_tf32));
+            is_bf32));
     if (exec_type == exec_vpad) {
         brg.zp_type_a = src_zero_point ? brgemm_broadcast_t::per_tensor
                                        : brgemm_broadcast_t::none;
@@ -676,7 +674,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
 
         CHECK(brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr,
                 src_dt, wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC,
-                M_tail, vN, vK, nullptr, is_bf32, is_tf32));
+                M_tail, vN, vK, nullptr, is_bf32));
         if (exec_type == exec_vpad) {
             brg_sp_tail.zp_type_a = src_zero_point
                     ? brgemm_broadcast_t::per_tensor
@@ -758,7 +756,7 @@ status_t brg_blocking_t::get_brgemm_ur(
                 = (brg_type == brgemm_strd) ? &brg_strides : nullptr;
         CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brg_type, src_dt,
                 wei_dt, brgemm_row_major, alpha, vbeta, LDA, LDB, LDC, vM, vN,
-                vK, strides_ptr, is_bf32, is_tf32));
+                vK, strides_ptr, is_bf32));
 
         brgemm_attr_t brgattr;
         brgattr.use_uker = use_uker;
@@ -1772,9 +1770,6 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.is_bf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
             && isa == avx512_core_amx;
-    jcp.is_tf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
-            && one_of(attr.fpmath_.mode_, fpmath_mode::tf32, fpmath_mode::any)
-            && is_superset(isa, avx10_2_amx_2);
     jcp.wei_plain = everyone_is(true, jcp.wei_dt == data_type::f32,
             is_superset(isa, avx512_core), weights_d.is_plain());
     if (jcp.wei_plain)
@@ -1894,9 +1889,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             VERBOSE_ISA_DT_MISMATCH);
     const bool is_f32
             = utils::everyone_is(f32, jcp.src_dt, jcp.wei_dt, jcp.dst_dt);
-    VDISPATCH_CONV_IC(IMPLICATION(is_f32,
-                              one_of(isa, avx512_core, avx2) || jcp.is_bf32
-                                      || jcp.is_tf32),
+    VDISPATCH_CONV_IC(
+            IMPLICATION(is_f32, one_of(isa, avx512_core, avx2) || jcp.is_bf32),
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_CONV_IC(
             IMPLICATION(jcp.is_f32_f16, one_of(isa, avx512_core, avx2)),
@@ -2509,16 +2503,13 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         const int ic_block
                 = nstl::min(jcp.acc_simd_w, n_vnni_blocks) * jcp.vnni_block;
 
-        jcp.extendable_k
-                = !jcp.is_tf32 && jcp.ic > jcp.simd_w && jcp.ic % jcp.simd_w;
+        jcp.extendable_k = jcp.ic > jcp.simd_w && jcp.ic % jcp.simd_w;
 
-        const bool do_zeropad = !(jcp.is_bf32 || jcp.is_tf32)
-                && !jcp.extendable_k
+        const bool do_zeropad = !jcp.is_bf32 && !jcp.extendable_k
                 && (jcp.ic % jcp.vnni_block != 0 || jcp.ic > ic_block);
         if (do_zeropad) jcp.ic = utils::rnd_up(jcp.ic, ic_block);
         const auto ic_padded_block = jcp.simd_w;
-        jcp.is_rd_padded_to_block
-                = jcp.ic > ic_padded_block && !(jcp.is_bf32 || jcp.is_tf32);
+        jcp.is_rd_padded_to_block = jcp.ic > ic_padded_block && !jcp.is_bf32;
 
         // try to choose optimal loop order
         // TODO: incorporate loop order into smart blocking selection

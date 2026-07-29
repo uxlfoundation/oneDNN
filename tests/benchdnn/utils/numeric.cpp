@@ -299,16 +299,10 @@ float get_element(dnnl_data_type_t dt, int64_t idx, void *ptr) {
             elem = dnnl::impl::float4_e2m1_t(nibble_pair.get(idx % 2));
             break;
         }
-        case dnnl_u3: {
-            // u3 transposed layout (see ref_io_helper.hpp load_float_value)
-            auto *b = reinterpret_cast<uint8_t *>(ptr);
-            const int64_t base = (idx / 8) * 3;
-            const int pos = idx % 8;
-            const int low2 = (b[base + pos / 4] >> (6 - 2 * (pos % 4))) & 0x3;
-            const int msb = (b[base + 2] >> (7 - pos)) & 0x1;
-            elem = dnnl::impl::uint3_t(low2 | (msb << 2));
+        case dnnl_u3:
+            elem = dnnl::impl::uint3_t(dnnl::impl::uint3_unpack(
+                    reinterpret_cast<uint8_t *>(ptr), idx));
             break;
-        }
         default: assert(!"bad data type");
     }
 #undef CASE
@@ -351,19 +345,10 @@ void set_element(dnnl_data_type_t dt, int64_t idx, void *ptr, float value) {
             break;
         }
         case dnnl_u3: {
-            // inverse of the u3 transposed decode in get_element
-            auto *b = reinterpret_cast<uint8_t *>(ptr);
             int q = static_cast<int>(value + 0.5f);
             q = q < 0 ? 0 : (q > 7 ? 7 : q);
-            const int64_t base = (idx / 8) * 3;
-            const int pos = idx % 8;
-            const int lshift = 6 - 2 * (pos % 4);
-            b[base + pos / 4] = static_cast<uint8_t>(
-                    (b[base + pos / 4] & ~(0x3 << lshift))
-                    | ((q & 0x3) << lshift));
-            const int hshift = 7 - pos;
-            b[base + 2] = static_cast<uint8_t>((b[base + 2] & ~(0x1 << hshift))
-                    | (((q >> 2) & 0x1) << hshift));
+            dnnl::impl::uint3_pack(reinterpret_cast<uint8_t *>(ptr), idx,
+                    static_cast<uint8_t>(q));
             break;
         }
         default: assert(!"bad data type");

@@ -119,6 +119,31 @@ ze_memory_type_t get_pointer_type(
     return memory_allocation_properties.type;
 }
 
+status_t create_kernel(ze_kernel_handle_t &kernel,
+        ze_module_handle_t module_handle, const std::string &akernel_name) {
+    std::string kernel_name(akernel_name);
+    if (kernel_name.empty()) {
+        // Re-used the approach from OCL backend.
+        // Handle cases when kernel name is not available (they mostly come from
+        // ngen) by querying the kernel name from the module.
+        uint32_t count = 1;
+        const char *name = nullptr;
+        ZE_CHECK(xpu::ze::zeModuleGetKernelNames(module_handle, &count, &name));
+
+        kernel_name = std::string(name);
+        assert(!kernel_name.empty());
+        if (kernel_name.empty()) return status::runtime_error;
+    }
+
+    ze_kernel_desc_t kernel_desc {};
+    kernel_desc.stype = ZE_STRUCTURE_TYPE_KERNEL_DESC;
+    kernel_desc.pKernelName = kernel_name.c_str();
+
+    ZE_CHECK(xpu::ze::zeKernelCreate(module_handle, &kernel_desc, &kernel));
+
+    return status::success;
+}
+
 status_t append_memory_copy(ze_command_list_handle_t list,
         std::mutex &list_mutex, void *dst, const void *src, size_t size,
         ze_event_handle_t out_event, uint32_t num_deps_events,

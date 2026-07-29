@@ -1659,6 +1659,24 @@ static bool parse_memory_kind(
     return parsed;
 }
 
+// TODO: remove once the SYCL kernel compiler becomes thread-safe.
+static mode_modifier_t drop_par_create(mode_modifier_t modifier) {
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+    if (static_cast<bool>(modifier & mode_modifier_t::par_create)) {
+        static bool reported = false;
+        if (!reported) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "INFO: `P` mode modifier is ignored in the build with "
+                    "DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER=ON.");
+            reported = true;
+        }
+        modifier = static_cast<mode_modifier_t>(static_cast<unsigned>(modifier)
+                & ~static_cast<unsigned>(mode_modifier_t::par_create));
+    }
+#endif
+    return modifier;
+}
+
 static bool parse_mode(
         const char *str, const std::string &option_name = "mode") {
     static const std::string help
@@ -1910,6 +1928,9 @@ bool parse_bench_settings(const char *str) {
                 << driver_name << ".md)\n\n";
         end_msg = true;
     }
+
+    if (parsed) bench_mode_modifier = drop_par_create(bench_mode_modifier);
+
     return parsed;
 }
 

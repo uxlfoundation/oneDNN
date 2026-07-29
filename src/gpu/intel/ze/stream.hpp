@@ -43,6 +43,7 @@ public:
     ze_event_handle_t create_event() const { return impl()->create_event(); }
 
     ze_command_list_handle_t list() const { return impl()->list(); }
+    std::mutex &list_mutex() { return impl()->list_mutex(); }
 
     status_t wait() override { return impl()->wait(); }
     status_t barrier() override { return impl()->barrier(); }

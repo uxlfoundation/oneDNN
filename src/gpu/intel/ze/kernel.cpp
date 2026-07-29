@@ -48,7 +48,20 @@ status_t kernel_t::make(compute::kernel_t &compute_kernel,
 kernel_t::kernel_t(
         const std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>> &amodule,
         ze_kernel_handle_t akernel, const std::string &kernel_name)
-    : module_(amodule), kernel_(akernel), kernel_name_(kernel_name) {}
+    : module_(amodule), ze_kernel_(akernel), kernel_name_(kernel_name) {}
+
+ze_kernel_handle_t kernel_t::thread_local_kernel() {
+    if (!kernel_tls_.is_set()) {
+        // No copy for this thread, clone the original kernel and save the copy.
+        ze_kernel_handle_t cloned_kernel;
+        auto st = xpu::ze::create_kernel(cloned_kernel, *module_, kernel_name_);
+        assert(st == status::success);
+        if (st != status::success) return nullptr;
+
+        kernel_tls_.set(cloned_kernel);
+    }
+    return kernel_tls_.get();
+}
 
 status_t kernel_t::check_alignment(
         const compute::kernel_arg_list_t &arg_list) const {
@@ -66,10 +79,10 @@ status_t kernel_t::check_alignment(
     return status::success;
 }
 
-status_t kernel_t::set_arg(
-        int arg_index, size_t arg_size, const void *arg_value) const {
+status_t kernel_t::set_arg(ze_kernel_handle_t kernel, int arg_index,
+        size_t arg_size, const void *arg_value) {
     ZE_CHECK(xpu::ze::zeKernelSetArgumentValue(
-            kernel_, arg_index, arg_size, arg_value));
+            kernel, arg_index, arg_size, arg_value));
     return status::success;
 }
 
@@ -77,6 +90,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
         const compute::nd_range_t &range,
         const compute::kernel_arg_list_t &arg_list, const xpu::event_t &deps,
         xpu::event_t &out_dep) {
+    const auto &kernel = thread_local_kernel();
     CHECK(check_scalar_arguments(arg_list));
     CHECK(check_alignment(arg_list));
 
@@ -107,17 +121,17 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                 }
 
                 void *ptr = ze_mem_storage->ptr();
-                CHECK(set_arg(i, pointer_size, &ptr));
+                CHECK(set_arg(kernel, i, pointer_size, &ptr));
                 param_bytes += pointer_size;
             } else {
-                CHECK(set_arg(i, pointer_size, nullptr));
+                CHECK(set_arg(kernel, i, pointer_size, nullptr));
                 param_bytes += pointer_size;
             }
         } else if (arg.is_local()) {
-            CHECK(set_arg(i, arg.size(), arg.value()));
+            CHECK(set_arg(kernel, i, arg.size(), arg.value()));
             param_bytes += pointer_size;
         } else {
-            CHECK(set_arg(i, arg.size(), arg.value()));
+            CHECK(set_arg(kernel, i, arg.size(), arg.value()));
             param_bytes += arg.size();
         }
     }
@@ -158,7 +172,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                 return status::invalid_arguments;
         }
     } else {
-        ZE_CHECK(xpu::ze::zeKernelSuggestGroupSize(kernel_, global_size[0],
+        ZE_CHECK(xpu::ze::zeKernelSuggestGroupSize(kernel, global_size[0],
                 global_size[1], global_size[2], &group_size[0], &group_size[1],
                 &group_size[2]));
     }
@@ -171,15 +185,21 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     }
 
     ZE_CHECK(xpu::ze::zeKernelSetGroupSize(
-            kernel_, group_size[0], group_size[1], group_size[2]));
+            kernel, group_size[0], group_size[1], group_size[2]));
     ze_group_count_t group_count = {global_size[0] / group_size[0],
             global_size[1] / group_size[1], global_size[2] / group_size[2]};
 
     const auto &ze_deps = xpu::ze::event_t::from(deps);
-    ze_event_handle_t out_event = ze_stream->create_event();
-
-    ZE_CHECK(xpu::ze::zeCommandListAppendLaunchKernel(ze_stream->list(),
-            kernel_, &group_count, out_event, ze_deps.size(), ze_deps.data()));
+    ze_event_handle_t out_event = nullptr;
+    {
+        // `zeEventCreate` and `zeCommandListAppendLaunchKernel` are not thread
+        // safe. Rely on impl's underlying mutex to serialize access to them.
+        std::lock_guard<std::mutex> guard(ze_stream->list_mutex());
+        out_event = ze_stream->create_event();
+        ZE_CHECK(xpu::ze::zeCommandListAppendLaunchKernel(ze_stream->list(),
+                kernel, &group_count, out_event, ze_deps.size(),
+                ze_deps.data()));
+    }
 
     if (out_event) xpu::ze::event_t::from(out_dep).append(out_event);
     if (stream.is_profiling_enabled()) {
@@ -196,7 +216,7 @@ status_t kernel_t::get_binary(
 }
 
 status_t kernel_t::get_kernel_binary(xpu::binary_t &binary) const {
-    return ze::get_kernel_binary(kernel_, binary);
+    return ze::get_kernel_binary(ze_kernel(), binary);
 }
 
 status_t kernel_t::get_binary_size(

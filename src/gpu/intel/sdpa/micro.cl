@@ -63,6 +63,19 @@
 #define CONVERT_TILE_FMA_T CONVERT_DATA_T
 #endif
 
+/* Separate fp8 PV path: quantize softmax probabilities (S) to fp8 (returning the
+ * raw byte) for the 4-deep VNNI staging consumed by the fp8 systolic V*S GEMM. */
+#if VS_S_FP8
+#ifdef QRY_DT_BF8
+#define CONVERT_TILE_S_FP8_T(v) (into_f8_e5m2(convert_float(v)).data)
+#else
+#define CONVERT_TILE_S_FP8_T(v) (into_f8_e4m3(convert_float(v)).data)
+#endif
+#define S_PACK_DIV 4
+#else
+#define S_PACK_DIV 2
+#endif
+
 /* Conditional casts for ugemm pointer arguments: cast when the data type
  * is a struct, since the ugemm microkernels use punned scalar types. */
 #ifdef KEY_DT_BF16
@@ -261,7 +274,7 @@ DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE, ugemm_vs_c_type_block0,
 #endif
 
 DECLARE_2D_TILE(s_tile_type_packed, uint, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
-        ugemm_kq_c_type_block1 / 2, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_block1 / S_PACK_DIV, ugemm_kq_c_type_nblock0,
         ugemm_kq_c_type_nblock1)
 DECLARE_2D_TILE(s_tile_type_reblock, FMA_TYPE, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_n, 1, ugemm_kq_sg_tile_n / ugemm_vs_sg_tile_n,
@@ -984,8 +997,19 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
 #if USE_SYSTOLIC_UKERNEL
-        /* Convert to half or bf16, VNNI format */
+        /* Convert probabilities to the systolic B operand and store to SLM */
         s_tile_type_packed S_tile_packed;
+#if VS_S_FP8
+        /* fp8 path: quantize S to fp8 and pack 4-deep VNNI. S is stored with a
+         * 16-element (4 packed-word) crosspack group to match the fp8 systolic
+         * B operand layout (problem_vs.B.crosspack == 16). */
+        tile_copy_to_vec4_cvt(
+                S_tile, S_tile_packed, uchar4, CONVERT_TILE_S_FP8_T);
+        tile_store_t_sys_src2_cp(S_tile_packed, (local uint *)S_slm,
+                ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m / 4, sg_i0_kq / 4,
+                sg_j0_kq, 4);
+#else
+        /* Convert to half or bf16, VNNI format */
         tile_copy_to_vec2_cvt(
                 S_tile, S_tile_packed, VEC_TYPE2, CONVERT_TILE_FMA_T);
 
@@ -993,6 +1017,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_store_t_sys_src2(S_tile_packed, (local uint *)S_slm,
                 ugemm_vs_sg_tile_n, ugemm_kq_wg_tile_m / 2, sg_i0_kq / 2,
                 sg_j0_kq);
+#endif
 #else
         /* Reblock and store to SLM */
         s_tile_type_reblock S_tile_reblock;

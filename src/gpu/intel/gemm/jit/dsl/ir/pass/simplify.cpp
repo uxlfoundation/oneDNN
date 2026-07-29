@@ -42,7 +42,7 @@ public:
 
     bool operator==(const pexpr_t &other) const { return id == other.id; }
 
-    size_t get_hash() const override { return hash(id); }
+    size_t compute_hash() const override { return hash(id); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -102,7 +102,7 @@ public:
         return (id == other.id) && (value == other.value);
     }
 
-    size_t get_hash() const override { return hash(id, value); }
+    size_t compute_hash() const override { return hash(id, value); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -721,7 +721,7 @@ public:
         return (op_kind == other.op_kind) && utils::is_equal(args, other.args);
     }
 
-    size_t get_hash() const override { return hash(op_kind, args); }
+    size_t compute_hash() const override { return hash(op_kind, args); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -1040,7 +1040,7 @@ public:
         return f_common.factors.size() == factors.size();
     }
 
-    size_t get_hash() const override { return hash(factors); }
+    size_t compute_hash() const override { return hash(factors); }
 
     std::string str() const override {
         ostringstream_t oss;

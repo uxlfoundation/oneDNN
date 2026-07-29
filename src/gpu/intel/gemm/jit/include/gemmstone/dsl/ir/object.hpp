@@ -46,7 +46,15 @@ public:
     // Provides equality semantics.
     virtual bool is_equal(const impl_t &obj) const = 0;
 
-    virtual size_t get_hash() const = 0;
+    // Memoized, the hash is computed at most once per object: IR objects are
+    // immutable once created by design.
+    size_t get_hash() const {
+        if (!hash_) {
+            size_t h = compute_hash();
+            hash_ = h ? h : 1; // 0 marks "not computed yet"
+        }
+        return hash_;
+    }
 
     bool is_expr() const { return info().is_expr; }
     bool is_stmt() const { return info().is_stmt; }
@@ -88,6 +96,8 @@ public:
     virtual void _visit(ir_visitor_t &visitor) const;
 
 protected:
+    virtual size_t compute_hash() const = 0;
+
     friend class gemmstone::dsl::ir::object_t;
     template <typename T>
     friend struct info_t;
@@ -140,6 +150,7 @@ private:
 
     ref_count_t ref_count_;
     info_t info_;
+    mutable size_t hash_ = 0;
 };
 
 template <typename T>
@@ -236,6 +247,7 @@ public:
 
     // Comparison with equality semantics.
     bool is_equal(const object_t &other) const {
+        if (impl_ == other.impl()) return true;
         if (is_empty() || other.is_empty())
             return is_empty() == other.is_empty();
 

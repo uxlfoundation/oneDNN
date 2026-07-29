@@ -64,9 +64,9 @@ struct rvv_matmul_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_TAG);
 
             // Determine which dispatch path this pd serves. f32 stays on the
-            // existing f32 GEMM kernel; int8 src + s8 weights + a dst in the
-            // int8-supported set (s32|f32|s8|u8|f16|bf16) runs through the s8
-            // GEMM kernel. f16 and bf16 additionally require Zvfh /
+            // existing f32 GEMM kernel; (s8|u8) src + (s8|u8) weights + a dst
+            // in the int8-supported set (s32|f32|s8|u8|f16|bf16) runs through
+            // the int8 GEMM kernel. f16 and bf16 additionally require Zvfh /
             // Zvfbfwma, which we gate below.
             const auto src_dt = src_mdw.data_type();
             const auto wei_dt = weights_mdw.data_type();
@@ -76,8 +76,9 @@ struct rvv_matmul_t : public primitive_t {
                     && acc_dt == f32;
             const bool dst_in_int8_set
                     = utils::one_of(dst_dt, s32, f32, s8, u8, f16, bf16);
-            is_int8_path_ = utils::one_of(src_dt, s8, u8) && wei_dt == s8
-                    && dst_in_int8_set && acc_dt == s32;
+            is_int8_path_ = utils::one_of(src_dt, s8, u8)
+                    && utils::one_of(wei_dt, s8, u8) && dst_in_int8_set
+                    && acc_dt == s32;
             VDISPATCH_MATMUL(
                     is_f32_path_ || is_int8_path_, VERBOSE_UNSUPPORTED_DT);
             // Half-precision dst requires the corresponding vector fp
@@ -248,9 +249,9 @@ struct rvv_matmul_t : public primitive_t {
         bool weights_are_broadcast_ = false;
         bool weights_col_major_ = false;
         // Dispatch path selected in init(). is_f32_path_ keeps the historical
-        // behavior; is_int8_path_ routes (s8|u8):s8:(s32|f32|s8|u8|f16|bf16)
-        // through the s8 GEMM kernel and rejects non-default attrs except bias
-        // (and scales/zero-points/post-ops).
+        // behavior; is_int8_path_ routes (s8|u8):(s8|u8):(s32|f32|s8|u8|f16|bf16)
+        // through the int8 GEMM kernel and rejects non-default attrs except
+        // bias (and scales/zero-points/post-ops).
         bool is_f32_path_ = false;
         bool is_int8_path_ = false;
 

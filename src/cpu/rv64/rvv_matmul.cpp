@@ -171,12 +171,11 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     const dim_t wei_matrix_stride = K_dim * N_dim;
 
     if (pd()->is_int8_path_) {
-        // Int8 dispatch: s8 weights * (s8|u8) src -> (s32|f32|s8|u8|f16|bf16)
-        // dst. No post-ops or scales (those attrs are rejected in
-        // pd_t::init), so the only epilogue work is the optional fused bias
-        // inside the GEMM kernel itself.
-        const int8_t *weights = static_cast<const int8_t *>(
-                CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS));
+        // Int8 dispatch: (s8|u8) weights * (s8|u8) src ->
+        // (s32|f32|s8|u8|f16|bf16) dst. No post-ops or scales (those attrs are
+        // rejected in pd_t::init), so the only epilogue work is the optional
+        // fused bias inside the GEMM kernel itself.
+        const void *weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
         const void *src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
         void *dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
         const float *bias = bias_d.is_zero()
@@ -186,6 +185,9 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
         // kernel to splat one float instead of reading a full vector.
         const bool bias_is_scalar = bias && bias_d.nelems() == 1;
 
+        // A axis = weights, B axis = src (see the GEMM mapping comment
+        // below). Each operand is independently s8/u8.
+        const bool a_signed = weights_d.data_type() == data_type::s8;
         const bool b_signed = src_d.data_type() == data_type::s8;
         const data_type_t dst_dt = dst_d.data_type();
 
@@ -210,8 +212,9 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
 
             status_t st = rvv_gemm_s8s8s32(&g.transa, &g.transb, &M_gemm_all,
                     &N_gemm_all, &g.K_gemm, &alpha, weights, &g.lda, src,
-                    &g.ldb, &beta, dst, &g.ldc, /*bias=*/bias, b_signed, dst_dt,
-                    c_buffer, ws_buffer, bias_is_scalar, &part);
+                    &g.ldb, &beta, dst, &g.ldc, /*bias=*/bias, a_signed,
+                    b_signed, dst_dt, c_buffer, ws_buffer, bias_is_scalar,
+                    &part);
             assert(st == status::success || st == status::unimplemented);
             MAYBE_UNUSED(st);
         } else {
@@ -242,14 +245,14 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
                     }
                 }
 
-                const int8_t *wei_base
-                        = weights + weight_batch_index * wei_matrix_stride;
+                const char *wei_base = static_cast<const char *>(weights)
+                        + weight_batch_index * wei_matrix_stride;
 
                 status_t st = rvv_gemm_s8s8s32(&g.transa, &g.transb, &g.M_gemm,
                         &g.N_gemm, &g.K_gemm, &alpha, wei_base, &g.lda,
                         src_base, &g.ldb, &beta, dst_base, &g.ldc,
-                        /*bias=*/bias, b_signed, dst_dt, c_buffer, ws_buffer,
-                        bias_is_scalar, &part);
+                        /*bias=*/bias, a_signed, b_signed, dst_dt, c_buffer,
+                        ws_buffer, bias_is_scalar, &part);
                 assert(st == status::success || st == status::unimplemented);
                 MAYBE_UNUSED(st);
             }

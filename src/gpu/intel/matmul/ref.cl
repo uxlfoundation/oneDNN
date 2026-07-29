@@ -53,6 +53,35 @@
 #define BATCH_OFF(pfx) \
     (pfx##_stride_d0 * d0 + pfx##_stride_d1 * d1 + pfx##_stride_d2 * d2)
 
+// Group sizes are defined at build time when known, else passed as arguments.
+#ifndef GROUP_K
+#define GROUP_K group_K
+#endif
+#ifndef WEI_ZP_GROUP_K
+#define WEI_ZP_GROUP_K wei_zp_group_k
+#endif
+#ifndef WEI_ZP_GROUP_N
+#define WEI_ZP_GROUP_N wei_zp_group_n
+#endif
+#ifndef SRC_ZP_GROUP_K
+#define SRC_ZP_GROUP_K src_zp_group_k
+#endif
+#ifndef WEI_SCALE_GROUP_K
+#define WEI_SCALE_GROUP_K wei_scale_group_k
+#endif
+#ifndef WEI_SCALE_GROUP_N
+#define WEI_SCALE_GROUP_N wei_scale_group_n
+#endif
+#ifndef SRC_SCALE_GROUP_K
+#define SRC_SCALE_GROUP_K src_scale_group_k
+#endif
+#ifndef SRC_SCALE_GROUP_M
+#define SRC_SCALE_GROUP_M src_scale_group_m
+#endif
+#ifndef SRC_GS_GROUP_K
+#define SRC_GS_GROUP_K src_gs_group_k
+#endif
+
 __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         __global DST_DATA_T *C, __global BIA_DATA_T *bia,
 #if WITH_HOST_SRC_ZP
@@ -179,19 +208,19 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
     // With groups, compute `k` over each group, and iterate over k_groups.
     // Inside each group, compute acc as `ACC_DATA_T` but once reduction
     // happens, convert to float and apply scales.
-    long n_groups_k = K / group_K;
+    long n_groups_k = K / GROUP_K;
 
     FLT_ACC_DATA_T acc = 0.f;
     for (long g = 0; g < n_groups_k; g++) {
         ACC_DATA_T acc_g = 0;
-        for (long k_g = 0; k_g < group_K; ++k_g) {
-            auto k = k_g + g * group_K;
+        for (long k_g = 0; k_g < GROUP_K; ++k_g) {
+            auto k = k_g + g * GROUP_K;
             long src_off = SRC_OFFSET(m, k);
             long wei_off = WEI_OFFSET(k, n);
             int wei_zp = 0;
 #if WITH_WEI_ZPOINTS
-            long wei_zp_off = wei_zp_stride_n * (n / wei_zp_group_n)
-                    + wei_zp_stride_k * (k / wei_zp_group_k)
+            long wei_zp_off = wei_zp_stride_n * (n / WEI_ZP_GROUP_N)
+                    + wei_zp_stride_k * (k / WEI_ZP_GROUP_K)
                     + BATCH_OFF(wei_zp);
 #if !WITH_SRC_GROUP_SUMS
             wei_zp = WEI_ZP_TO_REF(b0, wei_zp_off);
@@ -199,7 +228,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #endif
             int src_zp = 0;
 #if WITH_SRC_ZPOINTS
-            long src_zp_off = src_zp_stride_k * (k / src_zp_group_k)
+            long src_zp_off = src_zp_stride_k * (k / SRC_ZP_GROUP_K)
                     + src_zp_stride_m * m + BATCH_OFF(src_zp);
             src_zp = SRC_ZP_TO_REF(a0, src_zp_off);
 #endif
@@ -225,14 +254,14 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         FLT_ACC_DATA_T src_scale = 1.f;
         FLT_ACC_DATA_T wei_scale = 1.f;
 #if WITH_SRC_SCALES
-        long src_scale_off = src_scale_stride_m * (m / src_scale_group_m)
-                + src_scale_stride_k * (g * group_K / src_scale_group_k)
+        long src_scale_off = src_scale_stride_m * (m / SRC_SCALE_GROUP_M)
+                + src_scale_stride_k * (g * GROUP_K / SRC_SCALE_GROUP_K)
                 + BATCH_OFF(src_scale);
         src_scale = SRC_SCALES_TO_REF(src_scales[src_scale_off]);
 #endif
 #if WITH_WEI_SCALES
-        long wei_scale_off = wei_scale_stride_n * (n / wei_scale_group_n)
-                + wei_scale_stride_k * (g * group_K / wei_scale_group_k)
+        long wei_scale_off = wei_scale_stride_n * (n / WEI_SCALE_GROUP_N)
+                + wei_scale_stride_k * (g * GROUP_K / WEI_SCALE_GROUP_K)
                 + BATCH_OFF(wei_scale);
         wei_scale = WEI_SCALES_TO_REF(wei_scales[wei_scale_off]);
 #endif
@@ -240,26 +269,26 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
         acc += acc_g_to_f;
     }
 #if WITH_SRC_GROUP_SUMS
-    for (int g = 0, gend = K / src_gs_group_k; g < gend; g++) {
+    for (int g = 0, gend = K / SRC_GS_GROUP_K; g < gend; g++) {
         FLT_ACC_DATA_T src_scale = 1.f;
         FLT_ACC_DATA_T wei_scale = 1.f;
 #if WITH_SRC_SCALES
-        long src_scale_g = g * src_gs_group_k / src_scale_group_k;
-        long src_scale_off = src_scale_stride_m * (m / src_scale_group_m)
+        long src_scale_g = g * SRC_GS_GROUP_K / SRC_SCALE_GROUP_K;
+        long src_scale_off = src_scale_stride_m * (m / SRC_SCALE_GROUP_M)
                 + src_scale_stride_k * src_scale_g + BATCH_OFF(src_scale);
         src_scale = SRC_SCALES_TO_REF(src_scales[src_scale_off]);
 #endif
 #if WITH_WEI_SCALES
-        long wei_scale_g = g * src_gs_group_k / wei_scale_group_k;
-        long wei_scale_off = wei_scale_stride_n * (n / wei_scale_group_n)
+        long wei_scale_g = g * SRC_GS_GROUP_K / WEI_SCALE_GROUP_K;
+        long wei_scale_off = wei_scale_stride_n * (n / WEI_SCALE_GROUP_N)
                 + wei_scale_stride_k * wei_scale_g + BATCH_OFF(wei_scale);
         wei_scale = WEI_SCALES_TO_REF(wei_scales[wei_scale_off]);
 #endif
         long src_gs_off
                 = src_gs_stride_m * m + src_gs_stride_k * g + BATCH_OFF(src_gs);
         int src_gs = SRC_ZP_TO_REF(ag, src_gs_off);
-        long wei_zp_off = wei_zp_stride_n * (n / wei_zp_group_n)
-                + wei_zp_stride_k * (g * src_gs_group_k / wei_zp_group_k)
+        long wei_zp_off = wei_zp_stride_n * (n / WEI_ZP_GROUP_N)
+                + wei_zp_stride_k * (g * SRC_GS_GROUP_K / WEI_ZP_GROUP_K)
                 + BATCH_OFF(wei_zp);
         int wei_zp = WEI_ZP_TO_REF(b0, wei_zp_off);
         acc -= src_scale * wei_scale * TO_ACC(src_gs) * TO_ACC(wei_zp);

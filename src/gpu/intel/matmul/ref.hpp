@@ -152,6 +152,42 @@ struct ref_t : public primitive_t {
             return status::success;
         }
 
+        struct quant_groups_t {
+            dim_t src_zp_k, wei_zp_k, wei_zp_n;
+            dim_t src_scale_k, src_scale_m, wei_scale_k, wei_scale_n;
+            dim_t src_gs_k;
+            // K span accumulated before scales are applied.
+            dim_t k;
+        };
+
+        // `k` is the runtime K, which differs from K() with runtime dims.
+        quant_groups_t quant_groups(dim_t k) const {
+            const auto &sc = attr()->scales_;
+            const auto &zp = attr()->zero_points_;
+            const auto &pr = attr()->precomputed_reductions_;
+            // Without groups scales are either per-K or span the whole K.
+            auto scale_k = [&](int arg, int d, int qmask_k) {
+                return !sc.get(arg).has_default_groups()
+                        ? sc.get_group(arg, d)
+                        : ((sc.get_mask(arg) & qmask_k) ? 1 : k);
+            };
+            quant_groups_t g {};
+            g.src_zp_k = zp.get_group(DNNL_ARG_SRC, 1);
+            g.wei_zp_k = zp.get_group(DNNL_ARG_WEIGHTS, 0);
+            g.wei_zp_n = zp.get_group(DNNL_ARG_WEIGHTS, 1);
+            g.src_scale_k = scale_k(DNNL_ARG_SRC, 1, src_qmask_K());
+            g.src_scale_m = sc.get_group(DNNL_ARG_SRC, 0);
+            g.wei_scale_k = scale_k(DNNL_ARG_WEIGHTS, 0, wei_qmask_K());
+            g.wei_scale_n = sc.get_group(DNNL_ARG_WEIGHTS, 1);
+            g.src_gs_k = pr.get_group(DNNL_ARG_SRC, 1);
+            // Only scales are applied per group; zero points are per element
+            // and group sums have their own loop. No groups -> flat `k` loop.
+            const dim_t ngroups
+                    = nstl::max(k / g.src_scale_k, k / g.wei_scale_k);
+            g.k = ngroups > 1 ? k / ngroups : 1;
+            return g;
+        }
+
         bool non_default_attrs_ = false;
         bool subbyte_pack_ = false;
         bool dynamic_scales_ = false;
@@ -260,6 +296,26 @@ struct ref_t : public primitive_t {
             kernel_ctx.define_int("NDIMS", ndims);
         }
         kernel_ctx.define_int("RUNTIME_DIMS", runtime_dims);
+        if (!pd()->has_runtime_dims_or_strides()) {
+            const dim_t k = pd()->K(), n = pd()->N(), m = pd()->M();
+            const auto g = pd()->quant_groups(k);
+            // A group spanning the dimension zeroes the stride, so the divisor
+            // is unused; 1 folds it away and keeps the kernel shape-agnostic.
+            auto def_group = [&](const char *name, dim_t group, dim_t dim) {
+                kernel_ctx.define_int(name, group >= dim ? 1 : group);
+            };
+            def_group("SRC_ZP_GROUP_K", g.src_zp_k, k);
+            def_group("WEI_ZP_GROUP_K", g.wei_zp_k, k);
+            def_group("WEI_ZP_GROUP_N", g.wei_zp_n, n);
+            def_group("SRC_SCALE_GROUP_K", g.src_scale_k, k);
+            def_group("SRC_SCALE_GROUP_M", g.src_scale_m, m);
+            def_group("WEI_SCALE_GROUP_K", g.wei_scale_k, k);
+            def_group("WEI_SCALE_GROUP_N", g.wei_scale_n, n);
+            kernel_ctx.define_int("GROUP_K", g.k);
+            // A trip count, not a divisor: a K-spanning group cannot fold to 1.
+            if (g.src_gs_k != k)
+                kernel_ctx.define_int("SRC_GS_GROUP_K", g.src_gs_k);
+        }
 
         def_data_type(kernel_ctx, pd()->src_dt_, "SRC");
         def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");

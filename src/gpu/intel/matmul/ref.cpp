@@ -90,15 +90,12 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t N = c_d.dims()[last];
     const dim_t K = a_d.dims()[last];
 
+    const auto groups = pd()->quant_groups(K);
+
     const auto &attr_scales = pd()->attr()->scales_;
     const int wei_scale_mask = attr_scales.get_mask(DNNL_ARG_WEIGHTS);
-    const bool wei_scale_per_k = wei_scale_mask & pd()->wei_qmask_K();
-    const auto wei_scale_group_k
-            = !attr_scales.get(DNNL_ARG_WEIGHTS).has_default_groups()
-            ? attr_scales.get_group(DNNL_ARG_WEIGHTS, 0)
-            : (wei_scale_per_k ? 1 : K);
-    const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
-    const auto wei_scale_ngroups_k = K / wei_scale_group_k;
+    const auto wei_scale_group_k = groups.wei_scale_k;
+    const auto wei_scale_group_n = groups.wei_scale_n;
     // Identify wei_scales dimensions as user may not pass them.
     dims_t wei_scale_dims {};
     dims_t wei_scale_strides {};
@@ -129,13 +126,8 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             = b_d.ndims() > 4 ? wei_scale_strides[b_d.ndims() - 5] : 0;
 
     const int src_scale_mask = attr_scales.get_mask(DNNL_ARG_SRC);
-    const bool src_scale_per_k = src_scale_mask & pd()->src_qmask_K();
-    const auto src_scale_group_k
-            = !attr_scales.get(DNNL_ARG_SRC).has_default_groups()
-            ? attr_scales.get_group(DNNL_ARG_SRC, 1)
-            : (src_scale_per_k ? 1 : K);
-    const auto src_scale_group_m = attr_scales.get_group(DNNL_ARG_SRC, 0);
-    const auto src_scale_ngroups_k = K / src_scale_group_k;
+    const auto src_scale_group_k = groups.src_scale_k;
+    const auto src_scale_group_m = groups.src_scale_m;
     // Identify src_scales dimensions as user may not pass them.
     dims_t src_scale_dims {};
     dims_t src_scale_strides {};
@@ -167,9 +159,8 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const auto &attr_zps = pd()->attr()->zero_points_;
     int wei_zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
-    const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
-    const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
-    const auto wei_zp_ngroups_k = K / wei_zp_group_k;
+    const auto wei_zp_group_k = groups.wei_zp_k;
+    const auto wei_zp_group_n = groups.wei_zp_n;
     // Identify wei_zp dimensions as user may not pass them.
     dims_t wei_zp_dims {};
     dims_t wei_zp_strides {};
@@ -198,8 +189,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             = b_d.ndims() > 4 ? wei_zp_strides[b_d.ndims() - 5] : 0;
 
     int src_zp_mask = attr_zps.get_mask(DNNL_ARG_SRC);
-    const auto src_zp_group_k = attr_zps.get_group(DNNL_ARG_SRC, 1);
-    const auto src_zp_ngroups_k = K / src_zp_group_k;
+    const auto src_zp_group_k = groups.src_zp_k;
     // Identify src_zp dimensions as user may not pass them.
     dims_t src_zp_dims {};
     dims_t src_zp_strides {};
@@ -228,8 +218,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const auto &attr_pr = pd()->attr()->precomputed_reductions_;
     const int src_pr_mask = attr_pr.get_mask(DNNL_ARG_SRC);
-    const auto src_pr_group_k = attr_pr.get_group(DNNL_ARG_SRC, 1);
-    const auto src_pr_ngroups_k = K / src_pr_group_k;
+    const auto src_pr_group_k = groups.src_gs_k;
     // Identify src_pr dimensions as user may not pass them.
     dims_t src_pr_dims {};
     dims_t src_pr_strides {};
@@ -255,14 +244,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t src_pr_stride_b2
             = a_d.ndims() > 4 ? src_pr_strides[a_d.ndims() - 5] : 0;
 
-    // For compute kernel, the minimal group is picked.
-    const auto scale_ngroups_k
-            = std::max(src_scale_ngroups_k, wei_scale_ngroups_k);
-    const auto zp_ngroups_k = std::max(src_zp_ngroups_k, wei_zp_ngroups_k);
-    const auto gs_ngroups_k = src_pr_ngroups_k;
-    const auto ngroups_k
-            = std::max(std::max(zp_ngroups_k, scale_ngroups_k), gs_ngroups_k);
-    const auto group_K = K / ngroups_k;
+    const auto group_K = groups.k;
 
     const bool subbyte_pack
             = pd()->subbyte_pack_; //(c_d.data_type() == data_type::f4_e2m1);

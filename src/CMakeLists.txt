@@ -164,11 +164,9 @@ if(DNNL_WITH_SYCL)
     # Enable linking SYCL kernels.
     if(DNNL_SYCL_CUDA OR (DNNL_SYCL_GENERIC AND NVIDIA_TARGET_SUPPORTED))
         append(CMAKE_SHARED_LINKER_FLAGS "-fsycl-targets=nvptx64-nvidia-cuda")
-        append(CMAKE_STATIC_LINKER_FLAGS "-fsycl-targets=nvptx64-nvidia-cuda")
     endif()
     if(DNNL_AMD_ENABLE_SYCL_KERNELS)
         append(CMAKE_SHARED_LINKER_FLAGS "-fsycl-targets=amdgcn-amd-amdhsa -Xsycl-target-backend --offload-arch=${DNNL_AMD_SYCL_KERNELS_TARGET_ARCH}")
-        append(CMAKE_STATIC_LINKER_FLAGS "-fsycl-targets=amdgcn-amd-amdhsa -Xsycl-target-backend --offload-arch=${DNNL_AMD_SYCL_KERNELS_TARGET_ARCH}")
     endif()
 endif()
 

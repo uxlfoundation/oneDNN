@@ -206,6 +206,9 @@ struct matmul_pd_t : public primitive_desc_t {
 
     int dst_qmask_M() const { return src_qmask_M(); }
 
+    // A sentinel for `extra_masks` meaning "any mask is supported".
+    static constexpr int any_mask = -1;
+
     virtual status_t attr_scales_ok(const engine_t *engine,
             const std::vector<int> &supported_args
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
@@ -219,7 +222,8 @@ struct matmul_pd_t : public primitive_desc_t {
             const auto it = extra_masks.find(arg);
             if (it != extra_masks.end()) {
                 for (const auto &extra_mask : it->second)
-                    if (mask == extra_mask) return true;
+                    if (extra_mask == any_mask || mask == extra_mask)
+                        return true;
             }
             return false;
         };
@@ -266,13 +270,16 @@ struct matmul_pd_t : public primitive_desc_t {
             } else if (arg == DNNL_ARG_SRC) {
                 // Masks supported across all implementations. Implementation
                 // specific masks can be passed through `extra_masks`.
-                VDISPATCH_MATMUL(utils::one_of(mask, 0, src_qmask_K(),
-                                         src_qmask_M() + src_qmask_K(),
-                                         full_tensor_mask())
+                const bool any_mask_ok = extra_mask_ok(arg, any_mask);
+                VDISPATCH_MATMUL(any_mask_ok
+                                || utils::one_of(mask, 0, src_qmask_K(),
+                                        src_qmask_M() + src_qmask_K(),
+                                        full_tensor_mask())
                                 || extra_mask_ok(arg, mask),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
-                VDISPATCH_MATMUL(IMPLICATION((mask & src_qmask_K()),
-                                         !scales.get(arg).has_default_groups()),
+                VDISPATCH_MATMUL(
+                        IMPLICATION(!any_mask_ok && (mask & src_qmask_K()),
+                                !scales.get(arg).has_default_groups()),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
                 VDISPATCH_MATMUL(
                         IMPLICATION(!scales.get(arg).has_default_groups(),
@@ -282,8 +289,9 @@ struct matmul_pd_t : public primitive_desc_t {
                         IMPLICATION(!scales.get(arg).has_default_groups(),
                                 K() % scales.get_group(arg, 1) == 0),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
-                VDISPATCH_MATMUL(IMPLICATION(mask == src_qmask_M(),
-                                         scales.get(arg).has_default_groups()),
+                VDISPATCH_MATMUL(
+                        IMPLICATION(!any_mask_ok && mask == src_qmask_M(),
+                                scales.get(arg).has_default_groups()),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
             } else if (arg == DNNL_ARG_DST) {
                 // Masks supported across all implementations. Implementation
@@ -321,7 +329,8 @@ struct matmul_pd_t : public primitive_desc_t {
             const auto it = extra_masks.find(arg);
             if (it != extra_masks.end()) {
                 for (const auto &extra_mask : it->second)
-                    if (mask == extra_mask) return true;
+                    if (extra_mask == any_mask || mask == extra_mask)
+                        return true;
             }
             return false;
         };

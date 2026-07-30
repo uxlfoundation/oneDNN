@@ -130,8 +130,11 @@ struct quant_entry_t {
         utils::copy_dims_with_mask(quant_dims, in_dims, ndims, mask_,
                 /* fill_with_ones = */ true);
         if (!has_default_groups()) {
-            quant_dims[ndims - 2] /= get_group(0);
-            quant_dims[ndims - 1] /= get_group(1);
+            // Groups over non-masked dimensions are ignored.
+            if (mask_ & (1 << (ndims - 2)))
+                quant_dims[ndims - 2] /= get_group(0);
+            if (mask_ & (1 << (ndims - 1)))
+                quant_dims[ndims - 1] /= get_group(1);
         }
 
         CHECK(memory_desc_init_by_tag(

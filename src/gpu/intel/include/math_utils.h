@@ -711,6 +711,10 @@ int __attribute__((overloadable)) cvt_u4_to_s32(u4 a) {
     return (int)(a.data & 0x0f);
 }
 
+int __attribute__((overloadable)) cvt_u3_to_s32(u3 a) {
+    return (int)(a.data & 0x7);
+}
+
 #if MATH_UTILS_DECLARE_F4_E2M1
 
 uchar __attribute__((overloadable)) cvt_f32_to_f4_e2m1(float a) {
@@ -804,6 +808,30 @@ u4 __attribute__((overloadable)) get_half_byte(const __global u4 *x, off_t y) {
 void __attribute__((overloadable)) set_double_half_byte(
         __global u4 *x, off_t y, uchar z) {
     set_double_half_byte((__global uchar *)x, y, z);
+}
+
+// u3 is packed 8 values / 3 bytes; decode matches impl::uint3_unpack (int3.hpp).
+// U3_CONTIGUOUS_LAYOUT selects the same layout the weights were packed with.
+#define GET_U3(x, y) get_u3(x, y)
+
+uchar __attribute__((overloadable)) get_u3(const __global uchar *x, off_t y) {
+#if U3_CONTIGUOUS_LAYOUT
+    const off_t bit = y * 3, byte = bit >> 3;
+    const int sh = (int)(bit & 7);
+    uchar v = x[byte] >> sh;
+    if (sh > 5) v |= x[byte + 1] << (8 - sh); // straddle into next byte
+    return v & 0x7;
+#else
+    const off_t base = (y / 8) * 3;
+    const int pos = (int)(y % 8);
+    const int low2 = (x[base + pos / 4] >> (6 - 2 * (pos % 4))) & 0x3;
+    const int msb = (x[base + 2] >> (7 - pos)) & 0x1;
+    return (uchar)(low2 | (msb << 2));
+#endif
+}
+
+u3 __attribute__((overloadable)) get_u3(const __global u3 *x, off_t y) {
+    return as_u3(get_u3((__global const uchar *)x, y));
 }
 
 #if MATH_UTILS_DECLARE_F4_E2M1

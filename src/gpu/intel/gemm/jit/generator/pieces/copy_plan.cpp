@@ -648,6 +648,16 @@ void CopyPlan::copyThrough(CopyInstruction &i, DataType type, int stride, bool s
         return !isSubsetOf(st, dt);
     };
 
+    auto setNullDstRegioning = [](CopyOperand &dst, const CopyOperand &src) {
+        if (!dst.isNull()) return;
+        dst.stride = src.width == 1 ? src.vs : src.stride;
+        dst.width = dst.vs = 0;
+        dst.type = src.type;
+    };
+
+    setNullDstRegioning(i0.dst, i0.src0);
+    setNullDstRegioning(i1.dst, i1.src0);
+
     if (needsSaturate(i0.src0, i0.dst))
         i0.sat = true;
     if (needsSaturate(i1.src0, i1.dst))
@@ -708,6 +718,12 @@ void CopyPlan::repositionSrc(CopyInstruction &i, int n, int stride, int offset)
     i1.*src = i0.dst;
     (i1.*src).overwrite = true;
     (i1.*src).abs = abs;
+
+    if (!i1.dst) {
+        i1.dst.stride = i1.src0.width == 1 ? i1.src0.vs : i1.src0.stride;
+        i1.dst.width = i1.dst.vs = 0;
+        i1.dst.type = i1.src0.type;
+    }
 
     i0.cmod = ConditionModifier::none;
     i0.moveToIntegerPipe();

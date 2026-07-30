@@ -98,6 +98,9 @@ void load_bias(
 #endif
 
 #if WITH_POST_OP
+#define ELTWISE_VECTOR_API
+#include "gpu/intel/include/eltwise.h"
+
 #if WITH_BINARY_GROUPED_SCALE
 #if !BINARY_SCALE_GROUPED_DT_F32
 // Intermediate tile for loading non-float binary scale data before converting

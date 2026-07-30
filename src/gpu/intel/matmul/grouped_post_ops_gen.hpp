@@ -41,6 +41,8 @@ enum class po_kind_t {
     binary_nvfp4_scale
 };
 
+bool is_eltwise_alg_supported(alg_kind_t alg);
+
 int find_po_in_chain(const po_kind_t *po_chain, po_kind_t kind);
 
 status_t check_post_op_chain(const primitive_attr_t &attr,

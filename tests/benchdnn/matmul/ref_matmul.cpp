@@ -344,8 +344,9 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
             dst_zp = p.dst_zps->get_elem(dst_zp_idx);
         }
         if (p.has_dst_scale && !p.has_dst_dynamic) {
-            dst_scale = 1.f
-                    / p.dst_scales->get_f32_elem(p.dst_scale_mask > 0 ? n : 0);
+            const auto dscale_idx = p.dst_m->get_idx(dst_off, p.dst_scale_mask,
+                    p.dst_m->ndims(), p.dst_scale_groups);
+            dst_scale = 1.f / p.dst_scales->get_f32_elem(dscale_idx);
         }
         float dst = p.dst_m->get_f32_elem(dst_off);
         float dst_val = dst_scale * dst + dst_zp;

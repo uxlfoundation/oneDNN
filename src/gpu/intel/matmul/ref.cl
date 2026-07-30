@@ -98,16 +98,20 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #else
         __global DST_SCALES_DATA_T *dst_scales,
 #endif
-        __global SRC_GS_DATA_T *ag, long src_gs_stride_k, long src_gs_stride_m,
-        long src_gs_stride_d0, long src_gs_stride_d1, long src_gs_stride_d2,
-        long src_gs_group_k, long group_K, long K, long N, long M, long D0,
-        long D1, long D2, long bia_stride_d3, long bia_stride_d2,
-        long bia_stride_d1, long bia_stride_d0, long bia_stride_m,
-        long bia_stride_n, long a_stride_d3, long a_stride_d2, long a_stride_d1,
-        long a_stride_d0, long a_stride_m, long a_stride_k, long b_stride_d3,
-        long b_stride_d2, long b_stride_d1, long b_stride_d0, long b_stride_k,
-        long b_stride_n, long c_stride_d3, long c_stride_d2, long c_stride_d1,
-        long c_stride_d0, long c_stride_m, long c_stride_n
+        long dst_scale_stride_n, long dst_scale_stride_m,
+        long dst_scale_stride_d0, long dst_scale_stride_d1,
+        long dst_scale_stride_d2, long dst_scale_group_n,
+        long dst_scale_group_m, __global SRC_GS_DATA_T *ag,
+        long src_gs_stride_k, long src_gs_stride_m, long src_gs_stride_d0,
+        long src_gs_stride_d1, long src_gs_stride_d2, long src_gs_group_k,
+        long group_K, long K, long N, long M, long D0, long D1, long D2,
+        long bia_stride_d3, long bia_stride_d2, long bia_stride_d1,
+        long bia_stride_d0, long bia_stride_m, long bia_stride_n,
+        long a_stride_d3, long a_stride_d2, long a_stride_d1, long a_stride_d0,
+        long a_stride_m, long a_stride_k, long b_stride_d3, long b_stride_d2,
+        long b_stride_d1, long b_stride_d0, long b_stride_k, long b_stride_n,
+        long c_stride_d3, long c_stride_d2, long c_stride_d1, long c_stride_d0,
+        long c_stride_m, long c_stride_n
 #if WITH_DROPOUT
         ,
         __global uchar *dropout_mask_buf,
@@ -314,7 +318,10 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #if DST_SCALES_MASK == 0
     po_acc /= DST_SCALES_TO_REF(dst_scales[0]);
 #elif WITH_DYN_DST_SCALE == 0
-    po_acc /= DST_SCALES_TO_REF(dst_scales[n]);
+    long dst_scale_off = dst_scale_stride_n * (n / dst_scale_group_n)
+            + dst_scale_stride_m * (m / dst_scale_group_m)
+            + BATCH_OFF(dst_scale);
+    po_acc /= DST_SCALES_TO_REF(dst_scales[dst_scale_off]);
 #endif
 #endif
     po_acc += dst_zp;

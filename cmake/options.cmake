@@ -205,7 +205,7 @@ onednn_option(EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG OFF
     for verbose profiling. When disabled, verbose profiling requires a
     profiling-enabled SYCL queue to function.")
 
-onednn_option(TEMPORARY_U3_CONTIGUOUS_LAYOUT OFF
+onednn_option(TEMPORARY_U3_CONTIGUOUS_LAYOUT ON
     "Uses the contiguous u3 bit-packing layout instead of the default OV
     transposed layout")
 

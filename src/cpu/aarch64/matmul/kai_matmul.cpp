@@ -264,28 +264,36 @@ status_t kai_matmul_t::pd_t::init(engine_t *engine) {
             post_ops_fusion.activation, num_threads, _fixed_format, fast_mode,
             post_ops_fusion.accumulate, _cfg.get());
 
-    std::unique_ptr<kai::ops::IGemmCommon> kernel = nullptr;
+    // Create a KAI object, enforcing the datatype combination. Dequantization
+    // scales are only available at execution time, so use a non-trivial
+    // placeholder while selecting the implementation for the primitive.
+    auto create_kernel = [&]() -> std::unique_ptr<kai::ops::IGemmCommon> {
+        if (is_dequant()) {
+            kai::ops::DequantizeFloat dequant(0.5);
+            return create_kai_gemm_dequant(dequant);
+        }
+        return create_kai_gemm();
+    };
 
-    // Create an kai object, this is where we enforce the datatype combination
-    if (is_dequant()) {
-        // Non-trivial placeholder value, because the value is only provided at runtime
-        kai::ops::DequantizeFloat dequant(0.5);
-        kernel = create_kai_gemm_dequant(dequant);
-    } else {
-        kernel = create_kai_gemm();
-    }
+    // First select a kernel to negotiate the packed weights format.
+    auto kernel = create_kernel();
     VDISPATCH_MATMUL(kernel, VERBOSE_UNSUPPORTED_DT_CFG);
-    VDISPATCH_MATMUL(_fixed_format || helper.transB() == 'N'
-                    || (kernel->B_is_pretransposed()
-                            && kernel->B_pretranspose_supports_transpose()),
-            "only supports transposed weights when pretransposition is "
-            "available");
 
     // Copy the resulting config object constructed from kernel
     _cfg = std::make_shared<kai::ops::GemmConfig>(kernel->get_config());
     // Some generated filters do not match the impl list, so it ends up rejecting
     // the second time around. This could be removed if this is fixed in KleidiAI
     _cfg->filter.clear();
+
+    // Select again with the finalized config. execute() uses this same config,
+    // so capability checks and scratchpad sizing must use this final kernel.
+    kernel = create_kernel();
+    VDISPATCH_MATMUL(kernel, VERBOSE_UNSUPPORTED_DT_CFG);
+    VDISPATCH_MATMUL(_fixed_format || helper.transB() == 'N'
+                    || (kernel->B_is_pretransposed()
+                            && kernel->B_pretranspose_supports_transpose()),
+            "only supports transposed weights when pretransposition is "
+            "available");
 
     if (_fixed_format) {
         // Logical dimension indices

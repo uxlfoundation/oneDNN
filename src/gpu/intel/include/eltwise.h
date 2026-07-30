@@ -153,12 +153,9 @@ POST_OP_DATA_T exp_bwd_use_dst(POST_OP_DATA_T dd, POST_OP_DATA_T d) {
 }
 
 POST_OP_DATA_T gelu_tanh_fwd(POST_OP_DATA_T s) {
-    const POST_OP_DATA_T sqrt_2_over_pi
-            = POST_OP_LITERAL(0.79788458347320556640625);
-    const POST_OP_DATA_T fitting_const = POST_OP_LITERAL(0.044715);
-    const POST_OP_DATA_T g = sqrt_2_over_pi * s
-            * (POST_OP_LITERAL(1.) + fitting_const * s * s);
-    return (POST_OP_LITERAL(0.5) * s * (POST_OP_LITERAL(1.) + tanh_fwd(g)));
+    const POST_OP_DATA_T g = POST_OP_LITERAL(1.5957691669464111328125) * s
+            * (POST_OP_LITERAL(1.) + POST_OP_LITERAL(0.044715) * s * s);
+    return s / (POST_OP_LITERAL(1.) + exp(-g));
 }
 POST_OP_DATA_T gelu_tanh_bwd(POST_OP_DATA_T dd, POST_OP_DATA_T s) {
     const POST_OP_DATA_T sqrt_2_over_pi

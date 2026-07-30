@@ -165,6 +165,38 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t src_scale_stride_b2
             = a_d.ndims() > 4 ? src_scale_strides[a_d.ndims() - 5] : 0;
 
+    const int dst_scale_mask = attr_scales.get_mask(DNNL_ARG_DST);
+    const auto dst_scale_group_m = attr_scales.get_group(DNNL_ARG_DST, -2);
+    const auto dst_scale_group_n = attr_scales.get_group(DNNL_ARG_DST, -1);
+    // Identify dst_scales dimensions as user may not pass them.
+    dims_t dst_scale_dims {};
+    dims_t dst_scale_strides {};
+    utils::copy_dims_with_mask(
+            dst_scale_dims, c_d.dims(), c_d.ndims(), dst_scale_mask);
+    dst_scale_dims[c_d.ndims() - 1] /= dst_scale_group_n;
+    dst_scale_dims[c_d.ndims() - 2] /= dst_scale_group_m;
+
+    last_scale_dim = 0;
+    last_scale_stride = 0;
+    for (int d = c_d.ndims() - 1; d >= 0; d--) {
+        if (dst_scale_dims[d] == 0) continue;
+        dst_scale_strides[d] = last_scale_stride == 0
+                ? 1
+                : last_scale_dim * last_scale_stride;
+        last_scale_stride = dst_scale_strides[d];
+        last_scale_dim = dst_scale_dims[d];
+        if (dst_scale_dims[d] == 1) dst_scale_strides[d] = 0;
+    }
+
+    const dim_t dst_scale_stride_n = dst_scale_strides[c_d.ndims() - 1];
+    const dim_t dst_scale_stride_m = dst_scale_strides[c_d.ndims() - 2];
+    const dim_t dst_scale_stride_b0
+            = c_d.ndims() > 2 ? dst_scale_strides[c_d.ndims() - 3] : 0;
+    const dim_t dst_scale_stride_b1
+            = c_d.ndims() > 3 ? dst_scale_strides[c_d.ndims() - 4] : 0;
+    const dim_t dst_scale_stride_b2
+            = c_d.ndims() > 4 ? dst_scale_strides[c_d.ndims() - 5] : 0;
+
     const auto &attr_zps = pd()->attr()->zero_points_;
     int wei_zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
     const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
@@ -311,6 +343,13 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     arg_list.set(arg_idx++, wei_scale_group_n);
     arg_list.set(arg_idx++, wei_scale_group_k);
     arg_list.set(arg_idx++, dst_scales);
+    arg_list.set(arg_idx++, dst_scale_stride_n);
+    arg_list.set(arg_idx++, dst_scale_stride_m);
+    arg_list.set(arg_idx++, dst_scale_stride_b0);
+    arg_list.set(arg_idx++, dst_scale_stride_b1);
+    arg_list.set(arg_idx++, dst_scale_stride_b2);
+    arg_list.set(arg_idx++, dst_scale_group_n);
+    arg_list.set(arg_idx++, dst_scale_group_m);
     arg_list.set(arg_idx++, src_precomp_reduction);
     arg_list.set(arg_idx++, src_pr_stride_k);
     arg_list.set(arg_idx++, src_pr_stride_m);

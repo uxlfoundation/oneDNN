@@ -73,7 +73,7 @@ struct ref_t : public primitive_t {
                     {quantization_mode::static_sazp,
                             quantization_mode::dynamic_mx,
                             quantization_mode::dynamic_fp},
-                    {{DNNL_ARG_SRC, {src_qmask_M()}}}));
+                    {{DNNL_ARG_SRC, {any_mask}}}));
             CHECK(attr_zero_points_ok(engine,
                     {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
                     {quantization_mode::static_sazp}));

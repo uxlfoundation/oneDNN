@@ -593,7 +593,8 @@ void CopyPlan::copyThrough(CopyInstruction &i, DataType type, int stride, bool s
         i0.dst = i0.src0;
         i0.dst.offset = (i0.dst.offset * ssize) / isize;
         i0.dst.stride = (i0.dst.stride * ssize) / isize;
-        i0.src1 = i0.src2 = CopyOperand();
+        i0.flag = i0.src1 = i0.src2 = CopyOperand();
+        i0.cmod = ConditionModifier::none;
         i1.src0 = i0.dst;
     } else if (inplaceDst) {
         // Convert dst in place
@@ -601,7 +602,8 @@ void CopyPlan::copyThrough(CopyInstruction &i, DataType type, int stride, bool s
         i1.src0 = i1.dst;
         i1.src0.offset = (i1.src0.offset * dsize) / isize;
         i1.src0.stride = (i1.src0.stride * dsize) / isize;
-        i1.src1 = i1.src2 = CopyOperand();
+        i1.flag = i1.src1 = i1.src2 = CopyOperand();
+        i1.cmod = ConditionModifier::none;
         i0.dst = i1.src0;
     } else {
         // No space for in-place conversion -- create temporary.
@@ -625,7 +627,8 @@ void CopyPlan::copyThrough(CopyInstruction &i, DataType type, int stride, bool s
 
         auto &im = movAfter ? i1 : i0;
         im.op = Opcode::mov;
-        im.src1 = im.src2 = CopyOperand();
+        im.flag = im.src1 = im.src2 = CopyOperand();
+        im.cmod = ConditionModifier::none;
     }
     i1.src0.overwrite = true;
     i0.dst.type = i1.src0.type = type;
@@ -649,8 +652,6 @@ void CopyPlan::copyThrough(CopyInstruction &i, DataType type, int stride, bool s
         i0.sat = true;
     if (needsSaturate(i1.src0, i1.dst))
         i1.sat = true;
-
-    i0.cmod = ConditionModifier::none;
 }
 
 // Adjust stride on src0.
@@ -1295,21 +1296,16 @@ void CopyPlan::planInt8ToBF(CopyInstruction &i)
 void CopyPlan::legalizeBfImmediate(CopyInstruction &i1)
 {
     if (i1.src1.kind != CopyOperand::Immediate) return;
-    auto op = i1.op;
     auto temp = newTemp(DataType::uw, i1.simd, 1);
-    auto src0 = i1.src0;
-    auto dst = i1.dst;
+    auto &i2 = split(i1);
 
     i1.op = Opcode::mov;
     i1.dst = temp;
     i1.src0 = Immediate::uw((uint16_t)(i1.src1.value >> 16));
     i1.src0.type = DataType::uw;
+    i1.flag = i1.src1 = i1.src2 = CopyOperand{};
+    i1.cmod = ConditionModifier::none;
 
-    auto &i2 = split(i1);
-
-    i2.op = op;
-    i2.dst = dst;
-    i2.src0 = src0;
     i2.src1 = temp;
     i2.src1.type = DataType::bf;
 }

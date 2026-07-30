@@ -125,8 +125,9 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
                     rhs_sp, f8_e5m2_cvt_.get(), f8_e4m3_cvt_.get()};
 
             auto st = safe_ptr_assign(postops_injector_,
-                    po_injector_t::create(
-                            this, brg.isa_impl, brg.attr()->post_ops_, bsp));
+                    po_injector_t::create(this, brg.isa_impl,
+                            brg.attr()->post_ops_, bsp,
+                            /* enable_native_sum = */ brg.with_sum));
             if (st != status::success) {
                 assert(!"postops_injector creation failed");
             }
@@ -163,7 +164,6 @@ private:
     std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
 
     Xbyak::Label avx_tail_mask_;
-    Xbyak::Label sum_zp_scale_data_;
     Xbyak::Label f16_perm_even_table_;
     Xbyak::Label f16_perm_odd_table_;
     using reg64_t = const Xbyak::Reg64;
@@ -233,8 +233,6 @@ private:
     const reg64_savable_t reg_do_comp {regscratchpad_, rbx};
     const reg64_savable_t reg_skip_accm {regscratchpad_, rbx};
     const reg64_t reg_tmp_gpr = rbx;
-    const reg64_savable_t reg_ptr_sum_scale {regscratchpad_, rbx};
-    const reg64_savable_t reg_ptr_sum_zp {regscratchpad_, rbx};
     const reg64_savable_t reg_zp_a_val {regscratchpad_, rbx};
     const reg64_savable_t reg_buf {regscratchpad_, rbx, r26};
     const reg64_savable_t reg_dynamic_C_offset {regscratchpad_, rbx};
@@ -1640,7 +1638,10 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
         dim_t bd_end = bd_start + bd_block_shift;
 
         const auto set_binary_injecotr_params = [&] {
-            if (!brg.with_binary || !with_binary_non_scalar_bcast_) return;
+            // Sum post-op requires binary parameters to be set.
+            const bool set_for_binary
+                    = brg.with_binary && with_binary_non_scalar_bcast_;
+            if (!set_for_binary && !brg.with_sum) return;
             for_(dim_t bd = bd_start; bd < bd_end; bd++)
             for (dim_t ld = 0; ld < ld_block2; ld++) {
                 const auto vmm_idx = accm(ld_block2, bd, ld).getIdx();
@@ -1661,93 +1662,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
             }
         };
 
-        const auto sum_injector = [&] {
-            const float *p_sum_scale = &brg.sum_scale;
-            const int32_t *p_sum_zp = &brg.sum_zp;
-            const bool p_sum_scale_reg_set = *p_sum_scale != 1.f;
-            const bool p_sum_zp_reg_set = *p_sum_zp != 0;
-            const bool reset_avx_tail_mask = p_sum_zp_reg_set;
-
-            {
-                const reg64_savable_guard_t register_sum_fp8_guard(
-                        {{{&reg_ptr_sum_scale},
-                                 with_binary_non_scalar_bcast_
-                                         && p_sum_scale_reg_set},
-                                {{&reg_ptr_sum_zp}, p_sum_zp_reg_set},
-                                {{&reg64_fp8_aux}, brg.is_fp8_via_convert()}});
-
-                const auto &vmm_sum_zp = vmm_tmp(1);
-
-                if (p_sum_zp_reg_set) {
-                    assert(!brg.is_gemv && "feature is not supported for gemv");
-                    mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-                    if (is_superset(brg.isa_impl, avx512_core)) {
-                        vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
-                    } else {
-                        uni_vpbroadcastd(vmm_sum_zp, ptr[reg_ptr_sum_zp]);
-                        uni_vcvtdq2ps(vmm_sum_zp, vmm_sum_zp);
-                    }
-                }
-
-                if (p_sum_scale_reg_set) {
-                    if (is_superset(brg.isa_impl, avx512_core)) {
-                        // embd bcast fma
-                        mov(reg_ptr_sum_scale,
-                                reinterpret_cast<size_t>(p_sum_scale));
-                    } else {
-                        lea(reg_ptr_sum_scale, ptr[rip + sum_zp_scale_data_]);
-                    }
-                }
-
-                for_(dim_t bd = bd_start; bd < bd_end; bd++)
-                for (dim_t ld = 0; ld < ld_block2; ld++) {
-                    const auto vmm = accm(ld_block2, bd, ld);
-                    const auto addr = ptr[reg_aux_D + D_offset(bd, ld)];
-                    const auto vmm_prev_dst = vmm_tmp(0);
-                    if (!brg.is_gemv) {
-                        const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
-                        const auto k_mask
-                                = is_tail ? ld_tail_mask : ld_full_mask;
-                        const dim_t ld_size
-                                = is_tail ? brg.ldb_tail : brg.ld_block;
-                        cvt2ps(brg.sum_dt, vmm_prev_dst, addr, is_tail, false,
-                                k_mask, ld_size);
-                    } else {
-                        const bool use_partial_mask = !brg.gemv_acc_is_vector()
-                                || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
-                        const auto k_mask = use_partial_mask ? gemv_partial_mask
-                                                             : gemv_full_mask;
-
-                        const dim_t elements_to_load = use_partial_mask
-                                ? brg.gemv_acc_is_vector() ? brg.gemv_tail : 1
-                                : brg.bd_block / brg.gemv_bd_block();
-                        cvt2ps(brg.sum_dt, vmm_prev_dst, addr, use_partial_mask,
-                                false, k_mask, elements_to_load);
-                    }
-
-                    if (p_sum_zp_reg_set)
-                        uni_vsubps(vmm_prev_dst, vmm_prev_dst, vmm_sum_zp);
-                    if (p_sum_scale_reg_set) {
-                        if (is_superset(brg.isa_impl, avx512_core))
-                            uni_vfmadd231ps(vmm, vmm_prev_dst,
-                                    ptr_b[reg_ptr_sum_scale]);
-                        else
-                            uni_vfmadd231ps(
-                                    vmm, vmm_prev_dst, ptr[reg_ptr_sum_scale]);
-                    } else
-                        uni_vaddps(vmm, vmm, vmm_prev_dst);
-                }
-            }
-
-            if (reset_avx_tail_mask) maybe_set_avx_mask(is_ld_tail);
-        };
-
         set_binary_injecotr_params();
-
-        if (brg.with_sum) {
-            postops_injector_->set_lambda_injector(
-                    primitive_kind::sum, sum_injector);
-        }
 
         postops_injector_->compute_vector_range(
                 max_effective_vregs - bd_end * ld_block2,
@@ -3935,20 +3850,12 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
             dd(0);
     }
 
-    if (!is_superset(brg.isa_impl, avx512_core) && brg.with_sum
-            && brg.sum_scale != 1.f) {
-        L(sum_zp_scale_data_);
-        const dim_t scale_int = float2int(brg.sum_scale);
-        for (dim_t i = 0; i < simd; ++i)
-            dd(scale_int);
-    }
-
     if (brg.is_fp8_via_convert()) {
         if (f8_e5m2_cvt_) f8_e5m2_cvt_->prepare_table();
         if (f8_e4m3_cvt_) f8_e4m3_cvt_->prepare_table();
     }
 
-    if (brg.with_eltwise)
+    if (brg.with_eltwise || brg.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);
 
     if (brg.is_f16_b_non_amx_vnni()) {

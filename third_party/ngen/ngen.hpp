@@ -211,7 +211,7 @@ protected:
 
 private:
     InstructionModifier defaultModifier;
-    bool useEfficient64Bit = (hw >= HW::Xe3p);
+    bool useEfficient64Bit = false; //(hw >= HW::Xe3p);
 
     LabelManager labelManager;
     InstructionStream rootStream;

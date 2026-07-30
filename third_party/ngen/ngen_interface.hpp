@@ -84,7 +84,7 @@ class InterfaceHandler
 
 public:
     InterfaceHandler(HW hw_) : hw(hw_), simd(GRF::bytes(hw_) >> 2)
-                             , useEfficient64Bit(hw_ >= HW::Xe3p)
+                             , useEfficient64Bit(false) //hw_ >= HW::Xe3p)
                              , requestedInlineBytes(defaultInlineBytes(hw))
     {}
 

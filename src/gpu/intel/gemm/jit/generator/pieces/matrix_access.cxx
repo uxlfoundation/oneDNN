@@ -290,7 +290,7 @@ void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterB
     if (block.descAssigned)     stub();
 
     FlagRegister flag;
-   // maskMod |= registerBlockMasking(block, state, &flag);
+     maskMod |= registerBlockMasking(block, state, &flag);
 
     // SIMD16 A64 atomics are emulated with 2x SIMD8.
     bool a64 = (astrategy.base.getModel() == ModelA64);
@@ -367,7 +367,8 @@ void Generator<hw>::atomicAddMatrixBlock(Type T, const GRF &src, const RegisterB
                     setDefaultNoMask(false);
                 }
 
-                and_(1 | NoMask, flagToDo, ce0, uint16_t((1 << block.simdSize) - 1));
+               // and_(1 | NoMask, flagToDo, ce0, uint16_t((1 << block.simdSize) - 1));
+                mov(1 | NoMask, flagToDo, uint16_t((1 << block.simdSize) - 1));
 
                 auto curSrc = src;
 

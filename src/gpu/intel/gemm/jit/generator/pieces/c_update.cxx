@@ -2205,6 +2205,7 @@ void Generator<hw>::gemmAccessSums(COperation op, const GEMMProblem &problem, co
 
     auto CO = problem.CO;
     auto CO_strategy = strategy.CO;
+   // CO_strategy.base = A32;
     std::vector<GRFRange> CO_addrs;
     std::vector<MaskAssignment> masks;
     GRFMultirange CO_regs;

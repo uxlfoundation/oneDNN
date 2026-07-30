@@ -1940,7 +1940,8 @@ status_t init_cfg(config_t &cfg, const primitive_t *prim) {
             cfg = std::move(try_cfg);
             return status::success;
         }
-        cfg.tiler().move_next(cfg);
+        // Pass the tried config: the GRF mode is set on it, not on cfg.
+        cfg.tiler().move_next(try_cfg);
     }
     return status::runtime_error;
 }

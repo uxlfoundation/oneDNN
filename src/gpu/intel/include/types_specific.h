@@ -167,6 +167,8 @@
 #define WEI_TO_REF(x) cvt_s4_to_s32(x)
 #elif WEI_DT_U4
 #define WEI_TO_REF(x) cvt_u4_to_s32(x)
+#elif WEI_DT_U3
+#define WEI_TO_REF(x) cvt_u3_to_s32(x)
 #else
 #define WEI_TO_REF(x) (x)
 #define REF_TO_WEI(x) (x)

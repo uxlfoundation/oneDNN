@@ -19,6 +19,8 @@
 
 #include <assert.h>
 
+#include "oneapi/dnnl/dnnl_config.h"
+
 #include "common/c_types_map.hpp"
 #include "common/host_scalar_memory_storage.hpp"
 #include "common/memory_tracking.hpp"
@@ -90,11 +92,11 @@ struct ref_t : public primitive_t {
             const bool is_f64
                     = utils::everyone_is(f64, src_dt_, wei_dt_, dst_dt_);
             const bool is_f32 = src_dt_ == f32
-                    && utils::one_of(wei_dt_, f32, s8, u8, s4, u4);
+                    && utils::one_of(wei_dt_, f32, s8, u8, s4, u4, u3);
             const bool is_f16 = src_dt_ == f16
-                    && utils::one_of(wei_dt_, f16, s8, u8, s4, u4);
+                    && utils::one_of(wei_dt_, f16, s8, u8, s4, u4, u3);
             const bool is_bf16 = src_dt_ == bf16
-                    && utils::one_of(wei_dt_, bf16, s8, u8, s4, u4);
+                    && utils::one_of(wei_dt_, bf16, s8, u8, s4, u4, u3);
 
             const bool is_f8 = utils::one_of(src_dt_, f8_e5m2, f8_e4m3)
                     || utils::one_of(wei_dt_, f8_e5m2, f8_e4m3);
@@ -265,6 +267,8 @@ struct ref_t : public primitive_t {
         def_data_type(kernel_ctx, pd()->wei_dt_, "WEI");
         def_data_type(kernel_ctx, pd()->dst_dt_, "DST");
         def_data_type(kernel_ctx, pd()->bia_dt_, "BIA");
+        kernel_ctx.define_int(
+                "U3_CONTIGUOUS_LAYOUT", DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT);
         data_type_t acc_type = pd()->desc()->accum_data_type;
         data_type_t seed_type = pd()->attr()->dropout_.seed_dt_;
         switch (pd()->attr()->acc_mode_) {

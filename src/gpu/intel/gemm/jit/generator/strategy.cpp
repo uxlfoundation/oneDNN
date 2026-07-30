@@ -290,14 +290,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         // On CRI, dpas fwd modifier is required for optimal compute throughput
         maskedOPCount *= 2;
 
-    if (!slmA) {
-        ka_load = align_up(ka_load, opCount);
-        ka_load_masked = align_up(ka_load_masked, maskedOPCount);
-    }
-    if (!slmB) {
-        kb_load = align_up(kb_load, opCount);
-        kb_load_masked = align_up(kb_load_masked, maskedOPCount);
-    }
+    ka_load = align_up(ka_load, opCount);
+    kb_load = align_up(kb_load, opCount);
+    ka_load_masked = align_up(ka_load_masked, maskedOPCount);
+    kb_load_masked = align_up(kb_load_masked, maskedOPCount);
 
     if (ka_load == 0 || kb_load == 0)
         stub("Zero k-load granularity is invalid");
@@ -364,6 +360,20 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     A.address2D &= !isPacked(problem.A.layout);
     B.address2D &= !isPacked(problem.B.layout);
 
+    // SLM staging must cover the k-loads, on the main and the masked path.
+    int minUnrollKSLM = 1, minUnrollKSLMMasked = 1;
+    if (slmA) {
+        minUnrollKSLM = lcm(minUnrollKSLM, ka_load);
+        minUnrollKSLMMasked = lcm(minUnrollKSLMMasked, lcm(ka_load, ka_load_masked));
+    }
+    if (slmB) {
+        minUnrollKSLM = lcm(minUnrollKSLM, kb_load);
+        minUnrollKSLMMasked = lcm(minUnrollKSLMMasked, lcm(kb_load, kb_load_masked));
+    }
+
+    if (unrollKSLM > 0) minUnrollKSLM = unrollKSLM = lcm(unrollKSLM, minUnrollKSLM);
+    if (unrollKSLMMasked > 0) unrollKSLMMasked = lcm(unrollKSLMMasked, minUnrollKSLMMasked);
+
     // k interleaving chunk size.
     if (kInterleave) {
         int kchunk0 = lcm(ka_inc(), kb_inc());
@@ -390,14 +400,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     }
     if (ka_pfStride) ukAlign = lcm(ukAlign, ka_pfStride);
     if (kb_pfStride) ukAlign = lcm(ukAlign, kb_pfStride);
-
-    int minUnrollKSLM = 1;
-    if (unrollKSLM > 0)
-        minUnrollKSLM = unrollKSLM;
-    else {
-        if (slmA) minUnrollKSLM = lcm(minUnrollKSLM, ka_load);
-        if (slmB) minUnrollKSLM = lcm(minUnrollKSLM, kb_load);
-    }
 
     ukAlign = lcm(ukAlign, minUnrollKSLM * slmVersions);
 

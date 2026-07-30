@@ -4000,6 +4000,7 @@ void DataSpecLSC::getDescriptor(HW hw, int execSize, SharedFunction &sfid, Addre
     switch (model) {
         case ModelA64:          desc.mem.addrSize = 0b10; break;
         case ModelA64A32U:      desc.mem.addrSize = 0b00; break;
+	case ModelA32:
         case ModelA64A32S:      desc.mem.addrSize = 0b01; break;
         case ModelSLM:
             defaultSFID = SharedFunction::slm;

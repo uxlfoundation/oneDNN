@@ -79,7 +79,7 @@ struct ref_matmul_int8_t : public primitive_t {
             CHECK(attr_scales_ok(engine,
                     {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
                     {quantization_mode::static_sazp},
-                    {{DNNL_ARG_SRC, {src_qmask_M()}}}));
+                    {{DNNL_ARG_SRC, {any_mask}}}));
             CHECK(attr_zero_points_ok(engine,
                     {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
                     {quantization_mode::static_sazp}));

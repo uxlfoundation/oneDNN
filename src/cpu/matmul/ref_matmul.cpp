@@ -315,8 +315,13 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                             data_type::f32, d, temp_dst, temp_dst_off);
                 } else {
                     if (with_dst_scales) {
+                        const dim_t dst_scale_off
+                                = matmul_helper_t::get_quant_off(dst_dims_idx,
+                                        ndims, dst_scale_mask,
+                                        dst_scale_group_m, dst_scale_group_n,
+                                        dst_scales_md);
                         const float dst_scale = io::load_float_value(
-                                dst_scale_dt, dst_scales, 0);
+                                dst_scale_dt, dst_scales, dst_scale_off);
                         d /= dst_scale;
                     }
                     if (dst_rnd_mode == rounding_mode::stochastic)

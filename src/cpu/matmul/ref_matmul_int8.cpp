@@ -80,6 +80,8 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const dim_t N = helper.N();
     const dim_t K = helper.K();
     const dim_t batch = helper.batch();
+    const int src_qmask_K = pd()->src_qmask_K();
+    const int wei_qmask_K = pd()->wei_qmask_K();
 
     const auto &attr_zps = pd()->attr()->zero_points_;
     const bool with_src_zero_points
@@ -87,7 +89,8 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     int src_zp_mask = attr_zps.get_mask(DNNL_ARG_SRC);
     const auto &src_zp_dt = attr_zps.get_data_type(DNNL_ARG_SRC);
     const auto src_zp_group_k = attr_zps.get_group(DNNL_ARG_SRC, 1);
-    const auto src_zp_ngroups_k = src_zp_group_k > 1 ? K / src_zp_group_k : 1;
+    const auto src_zp_ngroups_k
+            = (src_zp_mask & src_qmask_K) ? K / src_zp_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_zp_md {};
     CHECK(attr_zps.get(DNNL_ARG_SRC).get_md(src_zp_md, *src_d.md_));
@@ -98,7 +101,8 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto &wei_zp_dt = attr_zps.get_data_type(DNNL_ARG_WEIGHTS);
     const auto wei_zp_group_k = attr_zps.get_group(DNNL_ARG_WEIGHTS, 0);
     const auto wei_zp_group_n = attr_zps.get_group(DNNL_ARG_WEIGHTS, 1);
-    const auto wei_zp_ngroups_k = wei_zp_group_k > 1 ? K / wei_zp_group_k : 1;
+    const auto wei_zp_ngroups_k
+            = (wei_zp_mask & wei_qmask_K) ? K / wei_zp_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_zp_md {};
     CHECK(attr_zps.get(DNNL_ARG_WEIGHTS).get_md(wei_zp_md, *weights_d.md_));
@@ -123,7 +127,7 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto wei_scale_group_k = attr_scales.get_group(DNNL_ARG_WEIGHTS, 0);
     const auto wei_scale_group_n = attr_scales.get_group(DNNL_ARG_WEIGHTS, 1);
     const auto wei_scale_ngroups_k
-            = wei_scale_group_k > 1 ? K / wei_scale_group_k : 1;
+            = (wei_scale_mask & wei_qmask_K) ? K / wei_scale_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t wei_scale_md {};
     CHECK(attr_scales.get(DNNL_ARG_WEIGHTS)
@@ -135,13 +139,18 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const auto src_scale_group_m = attr_scales.get_group(DNNL_ARG_SRC, 0);
     const auto src_scale_group_k = attr_scales.get_group(DNNL_ARG_SRC, 1);
     const auto src_scale_ngroups_k
-            = src_scale_group_k > 1 ? K / src_scale_group_k : 1;
+            = (src_scale_mask & src_qmask_K) ? K / src_scale_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_scale_md {};
     CHECK(attr_scales.get(DNNL_ARG_SRC).get_md(src_scale_md, *src_d.md_));
 
     const bool with_dst_scales = !attr_scales.has_default_values(DNNL_ARG_DST);
     const auto dst_scale_dt = attr_scales.get_data_type(DNNL_ARG_DST);
+    const int dst_scale_mask = attr_scales.get_mask(DNNL_ARG_DST);
+    const auto dst_scale_group_m = attr_scales.get_group(DNNL_ARG_DST, -2);
+    const auto dst_scale_group_n = attr_scales.get_group(DNNL_ARG_DST, -1);
+    memory_desc_t dst_scale_md {};
+    CHECK(attr_scales.get(DNNL_ARG_DST).get_md(dst_scale_md, *dst_d.md_));
 
     // precomputed reductions section
     const auto &attr_pr = pd()->attr()->precomputed_reductions_;
@@ -149,7 +158,8 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
     const int src_pr_mask = attr_pr.get_mask(DNNL_ARG_SRC);
     const auto &src_pr_dt = attr_pr.get_data_type(DNNL_ARG_SRC);
     const auto src_pr_group_k = attr_pr.get_group(DNNL_ARG_SRC, 1);
-    const auto src_pr_ngroups_k = src_pr_group_k > 1 ? K / src_pr_group_k : 1;
+    const auto src_pr_ngroups_k
+            = (src_pr_mask & src_qmask_K) ? K / src_pr_group_k : 1;
     // Initialize a memory desc for quant entries for easier offset calculation.
     memory_desc_t src_pr_md {};
     CHECK(attr_pr.get(DNNL_ARG_SRC).get_md(src_pr_md, *src_d.md_));
@@ -291,8 +301,11 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
             ref_post_ops->execute(d, args);
 
             if (with_dst_scales) {
-                const float dst_scale
-                        = io::load_float_value(dst_scale_dt, dst_scales, 0);
+                const dim_t dst_scale_off = matmul_helper_t::get_quant_off(
+                        dst_dims_idx, ndims, dst_scale_mask, dst_scale_group_m,
+                        dst_scale_group_n, dst_scale_md);
+                const float dst_scale = io::load_float_value(
+                        dst_scale_dt, dst_scales, dst_scale_off);
                 d /= dst_scale;
             }
             if (dst_zero_points) {

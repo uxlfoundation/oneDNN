@@ -109,7 +109,8 @@ struct ref_matmul_t : public primitive_t {
                     {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
                     {quantization_mode::static_sazp,
                             quantization_mode::dynamic_mx,
-                            quantization_mode::dynamic_fp}));
+                            quantization_mode::dynamic_fp},
+                    {{DNNL_ARG_SRC, {any_mask}}}));
             CHECK(attr_zero_points_ok(engine, {DNNL_ARG_WEIGHTS},
                     {quantization_mode::static_sazp}));
             VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);

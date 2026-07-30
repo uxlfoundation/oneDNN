@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
-* Copyright 2023 Arm Ltd. and affiliates
+* Copyright 2023-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -24,6 +24,8 @@
 #include "oneapi/dnnl/dnnl.hpp"
 
 #include "test_reorder_common.hpp"
+
+#include "tests/test_isa_common.hpp"
 
 namespace dnnl {
 
@@ -56,6 +58,76 @@ TEST_P(reorder_simple_test_t_f32_f32, TestsReorder) {
 TEST_P(reorder_simple_test_t_s8_s8, TestsReorder) {
     Test();
 }
+
+#if DNNL_AARCH64
+namespace {
+
+memory::desc make_bf16_mmla_conv_weights_desc(const engine &eng) {
+    const auto src_md = memory::desc(
+            {1, 64, 16, 16}, memory::data_type::bf16, memory::format_tag::nhwc);
+    const auto weights_md = memory::desc(
+            {64, 64, 3, 3}, memory::data_type::bf16, memory::format_tag::any);
+    const auto dst_md = memory::desc(
+            {1, 64, 16, 16}, memory::data_type::f32, memory::format_tag::nhwc);
+    const auto pd = convolution_forward::primitive_desc(eng,
+            prop_kind::forward_inference, algorithm::convolution_direct, src_md,
+            weights_md, memory::desc(), dst_md, {1, 1}, {1, 1}, {1, 1},
+            primitive_attr(), true);
+    return pd.get() == nullptr ? memory::desc() : pd.weights_desc();
+}
+
+template <typename data_t>
+void check_mmla_weights_round_trip(const engine &eng,
+        const memory::desc &packed_md, memory::format_tag plain_tag, int k_dim,
+        int n_dim) {
+    using namespace aarch64_mmla_test;
+
+    auto strm = stream(eng);
+    const auto plain_md = memory::desc(
+            packed_md.get_dims(), packed_md.get_data_type(), plain_tag);
+    EXPECT_TRUE(matches_weights_desc(packed_md, k_dim, n_dim));
+    EXPECT_EQ(packed_md.get_size(), plain_md.get_size());
+
+    auto plain = memory(plain_md, eng);
+    auto packed = memory(packed_md, eng);
+    auto round_trip = memory(plain_md, eng);
+    const auto logical_elements = plain_md.get_size() / sizeof(data_t);
+    std::vector<float> expected(logical_elements);
+    auto *plain_ptr = plain.map_data<data_t>();
+    ASSERT_NE(plain_ptr, nullptr);
+    for (size_t i = 0; i < logical_elements; ++i) {
+        expected[i] = static_cast<float>(static_cast<int>((i + 5) % 13) - 6);
+        plain_ptr[i] = static_cast<data_t>(expected[i]);
+    }
+    plain.unmap_data(plain_ptr);
+
+    reorder(plain, packed).execute(strm, plain, packed);
+    reorder(packed, round_trip).execute(strm, packed, round_trip);
+    strm.wait();
+
+    auto *round_trip_ptr = round_trip.map_data<data_t>();
+    ASSERT_NE(round_trip_ptr, nullptr);
+    for (size_t i = 0; i < logical_elements; ++i)
+        EXPECT_EQ(static_cast<float>(round_trip_ptr[i]), expected[i]) << i;
+    round_trip.unmap_data(round_trip_ptr);
+}
+
+} // namespace
+
+TEST(AArch64MmlaWeights, DescriptorSizeAndRoundTrip) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "This test targets AArch64 CPU weight preparation.");
+
+    using namespace aarch64_mmla_test;
+    auto eng = get_test_engine();
+    const auto packed_md = make_bf16_mmla_conv_weights_desc(eng);
+    SKIP_IF(packed_md.is_zero() || !matches_weights_desc(packed_md, 1, 0),
+            "This test targets AArch64 BF16 MMLA.");
+
+    check_mmla_weights_round_trip<bfloat16_t>(
+            eng, packed_md, memory::format_tag::oihw, 1, 0);
+}
+#endif
 
 INSTANTIATE_TEST_SUITE_P(ACLCases, reorder_simple_test_t_f32_bf16,
         ::testing::Values(cfg_bf16 {fmt::ab, fmt::BA4b4a, {128, 128}},

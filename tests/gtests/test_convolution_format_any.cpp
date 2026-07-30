@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -136,5 +137,108 @@ TEST_P(conv_any_fmt_test_float, TestsConvolutionAnyFmt) {}
 
 CPU_INSTANTIATE_TEST_SUITE_P(TestConvolutionAlexnetAnyFmtForward,
         conv_any_fmt_test_float, ::testing::Values(ALEXNET_SUITE(BLK)));
+#endif
+
+#if DNNL_AARCH64
+namespace {
+
+convolution_forward::primitive_desc make_bf16_mmla_conv_pd(const engine &eng,
+        const memory::desc &weights_md, memory::dim ih = 16,
+        memory::dim iw = 16, memory::dim stride = 1, memory::dim padding = 1,
+        bool allow_empty = false) {
+    const auto weights_dims = weights_md.get_dims();
+    const auto oc = weights_dims[0];
+    const auto ic = weights_dims[1];
+    const auto kh = weights_dims[2];
+    const auto kw = weights_dims[3];
+    const auto oh = (ih + 2 * padding - kh) / stride + 1;
+    const auto ow = (iw + 2 * padding - kw) / stride + 1;
+    const auto src_md
+            = memory::desc({1, ic, ih, iw}, memory::data_type::bf16, tag::nhwc);
+    const auto dst_md
+            = memory::desc({1, oc, oh, ow}, memory::data_type::f32, tag::nhwc);
+    return convolution_forward::primitive_desc(eng,
+            prop_kind::forward_inference, algorithm::convolution_direct, src_md,
+            weights_md, memory::desc(), dst_md, {stride, stride},
+            {padding, padding}, {padding, padding}, primitive_attr(),
+            allow_empty);
+}
+
+bool is_bf16_mmla_weights(const memory::desc &desc) {
+    return aarch64_mmla_test::matches_weights_desc(desc, 1, 0);
+}
+
+bool has_bf16_mmla(const engine &eng) {
+    const auto any
+            = memory::desc({64, 64, 3, 3}, memory::data_type::bf16, tag::any);
+    const auto pd = make_bf16_mmla_conv_pd(eng, any, 16, 16, 1, 1, true);
+    return pd.get() != nullptr && is_bf16_mmla_weights(pd.weights_desc());
+}
+
+} // namespace
+
+TEST(AArch64MmlaConvolution, Bf16SelectionAndFallbacks) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "This test targets the CPU convolution implementation.");
+
+    auto eng = get_test_engine();
+    SKIP_IF(!has_bf16_mmla(eng), "This test targets AArch64 BF16 MMLA.");
+
+    const auto any_3x3
+            = memory::desc({64, 64, 3, 3}, memory::data_type::bf16, tag::any);
+    for (const auto &pd : {make_bf16_mmla_conv_pd(eng, any_3x3),
+                 make_bf16_mmla_conv_pd(eng, any_3x3, 17, 19, 2, 1)}) {
+        EXPECT_TRUE(is_bf16_mmla_weights(pd.weights_desc()));
+    }
+
+    const auto any_1x1
+            = memory::desc({64, 64, 1, 1}, memory::data_type::bf16, tag::any);
+    const auto selected_1x1
+            = make_bf16_mmla_conv_pd(eng, any_1x1, 11, 13, 1, 0);
+    EXPECT_TRUE(is_bf16_mmla_weights(selected_1x1.weights_desc()));
+
+    const auto stride_fallback
+            = make_bf16_mmla_conv_pd(eng, any_1x1, 16, 16, 2, 0);
+    EXPECT_FALSE(is_bf16_mmla_weights(stride_fallback.weights_desc()));
+
+    const auto odd_ic
+            = memory::desc({64, 66, 1, 1}, memory::data_type::bf16, tag::any);
+    const auto channel_fallback
+            = make_bf16_mmla_conv_pd(eng, odd_ic, 8, 8, 1, 0);
+    EXPECT_FALSE(is_bf16_mmla_weights(channel_fallback.weights_desc()));
+
+    // This padding bypasses virtual-padding execution after MMLA selection
+    // and exercises descriptor restoration before the fallback retry.
+    const auto retry_fallback
+            = make_bf16_mmla_conv_pd(eng, any_3x3, 16, 16, 1, 3);
+    EXPECT_FALSE(is_bf16_mmla_weights(retry_fallback.weights_desc()));
+    EXPECT_EQ(retry_fallback.src_desc(),
+            memory::desc({1, 64, 16, 16}, memory::data_type::bf16, tag::nhwc));
+    EXPECT_EQ(retry_fallback.dst_desc(),
+            memory::desc({1, 64, 20, 20}, memory::data_type::f32, tag::nhwc));
+}
+
+TEST(AArch64MmlaConvolution, Bf16ExplicitWeights) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "This test targets the CPU convolution implementation.");
+
+    auto eng = get_test_engine();
+    SKIP_IF(!has_bf16_mmla(eng), "This test targets AArch64 BF16 MMLA.");
+
+    const auto any_3x3
+            = memory::desc({64, 64, 3, 3}, memory::data_type::bf16, tag::any);
+    const auto packed = make_bf16_mmla_conv_pd(eng, any_3x3).weights_desc();
+    const auto packed_pd = make_bf16_mmla_conv_pd(eng, packed);
+    EXPECT_EQ(packed_pd.weights_desc(), packed);
+    EXPECT_TRUE(is_bf16_mmla_weights(packed_pd.weights_desc()));
+
+    const auto any_1x1
+            = memory::desc({64, 64, 1, 1}, memory::data_type::bf16, tag::any);
+    const auto dot
+            = make_bf16_mmla_conv_pd(eng, any_1x1, 16, 16, 2, 0).weights_desc();
+    const auto dot_pd = make_bf16_mmla_conv_pd(eng, dot, 16, 16, 1, 0);
+    EXPECT_EQ(dot_pd.weights_desc(), dot);
+    EXPECT_FALSE(is_bf16_mmla_weights(dot_pd.weights_desc()));
+}
 #endif
 } // namespace dnnl

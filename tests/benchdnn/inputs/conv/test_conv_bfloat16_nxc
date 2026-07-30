@@ -58,3 +58,25 @@
 --skip-impl=ref,x64:gemm
 --dt=bf16 --dir=BWD_W
 --batch=shapes_src-transpose_padding
+
+# Native 1x1/3x3 paths, including stride and an input-channel block tail.
+--reset
+--dir=FWD_I
+--dt=bf16:bf16:f32
+--stag=nhwc
+--wtag=any
+--dtag=nhwc
+mb1ic64ih16oc64oh16kh3ph1
+mb1ic72ih17oc64oh9kh3sh2ph1
+mb1ic64ih11iw13oc64oh11ow13kh1kw1
+
+# Destination conversion, bias, sum, and eltwise share the same epilogue.
+--reset
+--dir=FWD_I
+--dt=bf16:bf16:bf16
+--bia-dt=bf16
+--stag=nhwc
+--wtag=any
+--dtag=nhwc
+--attr-post-ops=sum:1+relu
+mb1ic64ih16oc64oh16kh3ph1

@@ -76,6 +76,12 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::load_src(
                     // Convert BF16 input to FP32
                     lsl(ZRegS(0), ZRegS(0), 16);
                     fadd(zregs_acc, zregs_acc, ZRegS(0));
+                } else if (jcp.dst_dt == data_type::f16) {
+                    LD_MUL_VL(ld1h, ZRegS(0), P_ALL_ONE, reg_tmp_addr,
+                            o_off * jcp.typesize_out, jcp.typesize_out);
+                    // Convert existing FP16 destination to FP32 for sum.
+                    fcvt(ZRegS(0), P_ALL_ONE, ZReg(0).h);
+                    fadd(zregs_acc, zregs_acc, ZRegS(0));
                 } else {
                     assert(!"Unsupported: data type");
                 }
@@ -180,6 +186,10 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
                     } else if (jcp.dst_dt == data_type::bf16) {
                         LD_MUL_VL(ld1h, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
                                 ker_off * jcp.typesize_in, jcp.typesize_in);
+                    } else if (jcp.dst_dt == data_type::f16) {
+                        LD_MUL_VL(ld1h, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
+                                ker_off * jcp.typesize_in, jcp.typesize_in);
+                        fcvt(zregs_ker.s, P_ALL_ONE, zregs_ker.h);
                     } else {
                         assert(!"Unsupported: data type");
                     }
@@ -215,6 +225,14 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
                                     jcp.typesize_in);
                             ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
                             bfmlalb(zregs_acc, zregs_src.h, zregs_ker.h);
+                        } else if (jcp.dst_dt == data_type::f16) {
+                            LD_MUL_VL(ld1h, zregs_src.s, P_ALL_ONE,
+                                    reg_tmp_addr, inp_off * jcp.typesize_in,
+                                    jcp.typesize_in);
+                            ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
+                            fcvt(zregs_src.s, P_ALL_ONE, zregs_src.h);
+                            fmla(zregs_acc, P_ALL_ONE, zregs_src.s,
+                                    zregs_ker.s);
                         } else {
                             assert(!"Unsupported: data type");
                         }
@@ -274,6 +292,13 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_dst(
                 // Convert fp32 to bf16
                 bfcvt(zreg_dst.h, P_ALL_ONE, zreg_dst.s);
                 // Store the bf16 value doing the downcast
+                ST_MUL_VL(st1h, zreg_dst.s, P_ALL_ONE, reg_tmp_addr,
+                        o_off * jcp.typesize_out, jcp.typesize_out);
+            } else if (jcp.dst_dt == data_type::f16) {
+                ZReg zreg_dst = get_acc_reg(ch * ur_w + ow);
+                // Convert fp32 to f16
+                fcvt(zreg_dst.h, P_ALL_ONE, zreg_dst.s);
+                // Store the f16 value doing the downcast
                 ST_MUL_VL(st1h, zreg_dst.s, P_ALL_ONE, reg_tmp_addr,
                         o_off * jcp.typesize_out, jcp.typesize_out);
             } else {

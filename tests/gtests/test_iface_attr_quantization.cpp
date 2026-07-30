@@ -541,12 +541,9 @@ TEST_F(attr_quantization_test_t, TestMatmul) {
                                     data_type::f32, {32, 1})));
                 }
             } else if (arg == DNNL_ARG_SRC) {
-                // Somehow GPU doeshave this support.
-                const bool is_cpu = get_test_engine_kind() == engine::kind::cpu;
-                if (is_cpu) {
-                    CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                            gen_attr_with_scales(arg, 1 << 1)));
-                }
+                // A per_ic mask is supported by the reference impl.
+                CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                        gen_attr_with_scales(arg, 1 << 1)));
                 if (a_dt == data_type::u8) {
                     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
                             gen_attr_with_scales(

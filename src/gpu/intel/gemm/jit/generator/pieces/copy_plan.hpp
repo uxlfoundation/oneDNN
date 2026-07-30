@@ -278,7 +278,6 @@ protected:
     void plan4BitShifts(CopyInstruction &i);
     void planInt4Downconversion(CopyInstruction &i);
     void planEmulatedSIMD1(CopyInstruction &i);
-    void planEmulatedBF8ToBF(CopyInstruction &i);
     void planEmulatedHF8ToHF(CopyInstruction &i);
     void planEmulatedHF8ToBF(CopyInstruction &i);
     void planEmulatedHFToHF8(CopyInstruction &i);

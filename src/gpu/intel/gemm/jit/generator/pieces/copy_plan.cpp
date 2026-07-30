@@ -920,12 +920,9 @@ void CopyPlan::planTypeConversions()
                     planEmulatedHalveFloat(i);
             }
         } else if (st == DataType::bf8 && dt == DataType::bf) {
-            bfArithmeticOK(i) ? planUnpack8To16High(i)
-                              : copyThrough(i, DataType::hf, 1);
-            rerunZip = true;
-        } else if (st == ngen_b16() && srange == DataType::bf8 && dt == DataType::bf)
-            planEmulatedBF8ToBF(i);
-        else if (st == DataType::hf8 && dt == DataType::hf) {
+            copyThrough(i, DataType::hf, 1);
+            rerun = true;
+        } else if (st == DataType::hf8 && dt == DataType::hf) {
             if (hw < HW::Xe3) {
                 planUnpack8To16High(i);
                 rerunZip = true;
@@ -1880,56 +1877,6 @@ void CopyPlan::planE8M0ToF(CopyInstruction &i)
     ie[2]->dst.offset += 1;
     ie[2]->src0 = ie[2]->dst;
     ie[2]->src1 = 0x40;
-}
-
-// Emulation sequence for bf8->bf conversion.
-void CopyPlan::planEmulatedBF8ToBF(CopyInstruction &i)
-{
-    if (i.src0.neg || i.sat || i.hasCMod()) stub("Unsupported modifier");
-    if (!bfArithmeticOK(i)) stub();      /* need bf * f multiply */
-
-    // Emulation sequence for mov y:bf x:bf8:
-    // shl          y:uw    x:ub    8               /* already done */
-    // asr          y:w     y:w     3
-    // and          y:uw    y:uw    0x8FFF
-    // cmp (ge)f0   null:bf (abs)y:bf 0x0F80:bf     /* Inf/NaN check */
-    // mul          y:bf    y:bf    0x7780:bf
-    // (f0) or      y:uw    y:uw    0x7F80          /* Preserve Inf/NaNs */
-
-    auto ie = splitMultiple<5>(i);
-
-    auto y = i.dst, yUW = y, yW = y;
-    yUW.type = DataType::uw;
-    yW.type = DataType::w;
-    y.type = DataType::bf;
-
-    auto f = newFlag(i.simd);
-
-    ie[0]->op = Opcode::asr;
-    ie[0]->src0 = ie[0]->dst = yW;
-    ie[0]->src1 = 3;
-
-    ie[1]->op = Opcode::and_;
-    ie[1]->src0 = ie[1]->dst = yUW;
-    ie[1]->src1 = 0x8FFF;
-
-    ie[2]->op = Opcode::cmp;
-    ie[2]->src0 = abs(y);
-    ie[2]->src1 = bfImmediate(0x0F80, false);
-    ie[2]->dst = CopyOperand();
-    ie[2]->dst.stride = y.stride;
-    ie[2]->dst.type = DataType::bf;
-    ie[2]->cmod = ConditionModifier::ge;
-    ie[2]->flag = f;
-
-    ie[3]->op = Opcode::mul;
-    ie[3]->src0 = ie[3]->dst = y;
-    ie[3]->src1 = bfImmediate(0x7780, false);
-
-    ie[4]->op = Opcode::or_;
-    ie[4]->src0 = ie[4]->dst = yUW;
-    ie[4]->src1 = 0x7F80;
-    ie[4]->flag = f;
 }
 
 // Emulation sequence for hf8->hf conversion.

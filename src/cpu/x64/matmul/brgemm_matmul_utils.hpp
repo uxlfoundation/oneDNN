@@ -243,7 +243,7 @@ struct brgemm_matmul_conf_t {
     bool is_f32_bf16 = false;
     bool is_xf16_fp8 = false;
     bool is_int4_weights = false;
-    int wei_packed_elems_per_byte = 1;
+    int wei_packed_elems_per_byte = 0;
     bool is_f4_fused_decompress = false;
     bool is_tf32 = false;
     bool with_int8_grouped_quantization = false;

@@ -56,7 +56,7 @@ string(REGEX REPLACE "\n" ")==\"\"\\\\n\"\nR\"==(" cl_file_lines "${cl_file_line
 
 if(cl_file_ext STREQUAL ".cl")
     set(cl_file_contents  "const char *${cl_file_name}_kernel = R\"==(${cl_file_lines})==\";")
-elseif(cl_file_ext STREQUAL ".h")
+elseif(cl_file_ext STREQUAL ".h" OR cl_file_ext STREQUAL ".hxx")
     set(cl_file_contents  "const char *${cl_file_name}_header = R\"==(${cl_file_lines})==\";")
 else()
     message(FATAL_ERROR "Unknown file extensions: ${cl_file_ext}")

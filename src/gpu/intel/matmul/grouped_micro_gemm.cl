@@ -98,6 +98,9 @@ void load_bias(
 #endif
 
 #if WITH_POST_OP
+#define ELTWISE_VECTOR_API
+#include "gpu/intel/include/eltwise.h"
+
 #if WITH_BINARY_GROUPED_SCALE
 // One column-block of the [M,N] grouped scale, applied a block at a time.
 DECLARE_2D_TILE(binary_group_chunk_type, float, SUBGROUP_SIZE,

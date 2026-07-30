@@ -14,6 +14,7 @@
 * limitations under the License.
 *******************************************************************************/
 #include <numeric>
+#include <utility>
 #include "common/broadcast_strategy.hpp"
 #include "cpu/x64/injectors/injector_utils.hpp"
 
@@ -67,6 +68,19 @@ register_preserve_guard_t::register_preserve_guard_t(jit_generator_t *host,
                         host_->ptr[host_->rsp + stack_offset], Xbyak::Zmm(idx));
         }
     }
+}
+
+register_preserve_guard_t::register_preserve_guard_t(
+        register_preserve_guard_t &&other)
+    : host_(other.host_)
+    , reg64_stack_(std::move(other.reg64_stack_))
+    , vmm_stack_(std::move(other.vmm_stack_))
+    , vmm_to_preserve_size_bytes_(other.vmm_to_preserve_size_bytes_) {
+
+    other.host_ = nullptr;
+    other.reg64_stack_ = std::stack<Xbyak::Reg64>();
+    other.vmm_stack_ = std::stack<Xbyak::Xmm>();
+    other.vmm_to_preserve_size_bytes_ = 0;
 }
 
 register_preserve_guard_t::~register_preserve_guard_t() {

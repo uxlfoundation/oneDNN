@@ -491,7 +491,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     bool use_fma_config = !use_systolic_ukernel_;
     config = choose_bwd_config(arch_, d->head_size(), d->queries(), d->keys(),
-            thin_q, quantized, is_integrated, use_fma_config, is_f32);
+            thin_q, quantized, is_integrated, use_fma_config, is_f32,
+            with_causal_mask());
 
     VDISPATCH_SDPA(config != nullptr,
             "No suitable kernel configuration found for the given problem "
@@ -641,11 +642,19 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
             gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
     auto ldq = static_cast<int>(
             gemm_desc_t::get_ld(*desc()->qry_md()) * qry_mdw.data_type_size());
-    problem_kq.A.setAlignment(64); // Q is packed in VNNI format in SLM
-    if (use_systolic_ukernel()) {
-        problem_kq.A.crosspack = 2;
-        problem_kq.A.tileR = into<uint16_t>(sg_size_);
-        problem_kq.A.tileC = into<uint16_t>(d_max());
+
+    conf.k_in_slm = !utils::one_of(
+            arch_, compute::gpu_arch_t::xe_hpc, compute::gpu_arch_t::xe2);
+    if (conf.k_in_slm) {
+        problem_kq.A.setAlignment(64); // K is packed in VNNI format in SLM
+        if (use_systolic_ukernel()) {
+            problem_kq.A.crosspack = 2;
+            problem_kq.A.tileR = into<uint16_t>(sg_size_);
+            problem_kq.A.tileC = into<uint16_t>(d_max());
+        }
+    } else {
+        problem_kq.A.layout = convert_dnnl_to_kernel_layout(desc()->key_md());
+        problem_kq.A.setAlignment(micro::alignmentForLD(int(ldk)));
     }
     problem_kq.B.setAlignment(micro::alignmentForLD(int(ldq)));
 
@@ -653,7 +662,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(impl::engine_t *engine) {
 
     /* Set up microkernel options */
     micro::GEMMOptions opts_kq;
-    opts_kq.localA = true;
+    opts_kq.localA = conf.k_in_slm;
     opts_kq.slmPtr = true;
     opts_kq.scaleA = false;
     opts_kq.offsetA = false;
@@ -1045,7 +1054,7 @@ status_t micro_bwd_t::pd_t::init_conf(impl::engine_t *engine) {
     if (d_full) {
         bool can_block_load_k
                 = (ldk % 4 == 0) && (desc()->keys() % tile_k == 0);
-        conf.block_k = can_block_load_k;
+        conf.block_k = can_block_load_k && conf.k_in_slm;
         if (conf.transpose_k) {
             // tile_store_dK_t uses lddk = max(DK_S2, DK_S3)
             const memory_desc_wrapper dk_mdw(desc()->diff_key_md());
@@ -1339,9 +1348,10 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
     kernel_ctx.define_int("D_MAX", d_max);
 
-    kernel_ctx.define_int("BLOCK_K", block_k);
     kernel_ctx.define_int("BLOCK_DK", block_dK);
     kernel_ctx.define_int("BLOCK_DV", block_dV);
+    kernel_ctx.define_int("BLOCK_K", block_k);
+    kernel_ctx.define_int("K_IN_SLM", k_in_slm);
 
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
     kernel_ctx.define_int("WITH_DROPOUT", dropout);

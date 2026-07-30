@@ -486,6 +486,15 @@ status_t pd_t::scales_ok(const impl::engine_t *engine) {
                         && valid_2d_mask(mask, ndims));
         VDISPATCH_GEMM(supportedMask, "%s: unsupported A/B mask",
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+        // Quantization over K requires explicit groups, otherwise the group
+        // size stays unset (0). A is K x N, B is M x K.
+        const int k_mask
+                = s == DNNL_ARG_A ? (1 << (ndims - 2)) : (1 << (ndims - 1));
+        VDISPATCH_GEMM(
+                IMPLICATION((mask & k_mask), !x_scales.has_default_groups()),
+                "%s: K quantization without groups",
+                VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
     const auto &dst_scales = scales.get(DNNL_ARG_C);

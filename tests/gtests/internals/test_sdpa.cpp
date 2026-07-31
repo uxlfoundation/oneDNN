@@ -25,6 +25,7 @@
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
 
+#include <algorithm>
 #include <memory>
 #include <random>
 
@@ -316,6 +317,8 @@ struct sdpa_dims_t {
 
 struct sdpa_tensors_t {
     memory m_query, m_mask, m_output;
+    // sum_k prob_k*|V_k|; sizes the absolute error floor in check_memory.
+    memory m_output_absmag;
     memory m_key_quantized, m_value_quantized, m_output_quantized;
     memory m_scale; // tested sdpa arg, can be host-side scalar
     memory m_scale_prim; // reference (prim) sdpa arg
@@ -695,6 +698,10 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     out.m_mask = double_and_resize(mask_md, eng, strm, doubled_memory);
 
     out.m_output = double_and_resize(output_md, eng, strm, doubled_memory);
+    // Always f32, regardless of the output dtype.
+    auto output_absmag_md = memory::desc(q_sz, mdt::f32, abcd);
+    out.m_output_absmag
+            = double_and_resize(output_absmag_md, eng, strm, doubled_memory);
     out.m_output_quantized
             = double_and_resize(output_quantized_md, eng, strm, doubled_memory);
     out.m_diff_output = double_and_resize(output_md, eng, strm, doubled_memory);
@@ -1159,7 +1166,8 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
         dnnl::memory &mask, dnnl::memory &value, dnnl::memory &value_scales,
         dnnl::memory &value_zp, dnnl::memory &output, bool invert_scale,
         dnnl::memory *dropout_mask_out,
-        std::vector<dnnl_memory_t> &doubled_memory) {
+        std::vector<dnnl_memory_t> &doubled_memory,
+        dnnl::memory *output_absmag = nullptr) {
     using namespace dnnl;
     primitive_attr bmm1_attr;
     post_ops bmm1_po;
@@ -1476,6 +1484,33 @@ void prim_sdpa_quant(const sdpa_dims_t &p, const sdpa_tensors_t &t,
     grouped_output.unmap_data(grouped_output_ptr_);
     output.unmap_data(output_ptr_);
     strm.wait();
+
+    // = matmul(score2, |V|) since prob >= 0; score2 carries dropout scaling.
+    if (output_absmag) {
+        memory::desc grouped_absmag_md(grouped_query_md.get_dims(), mdt::f32,
+                memory::format_tag::abcde);
+        auto abs_value = memory(grouped_value_md, eng);
+        auto abs_pd = eltwise_forward::primitive_desc(eng,
+                prop_kind::forward_inference, algorithm::eltwise_abs,
+                grouped_value_md, grouped_value_md, 0.f, 0.f);
+        eltwise_forward(abs_pd).execute(strm,
+                {{DNNL_ARG_SRC, value_dequantized}, {DNNL_ARG_DST, abs_value}});
+
+        auto absmag_pd = matmul::primitive_desc(
+                eng, score_md, grouped_value_md, grouped_absmag_md);
+        auto grouped_absmag = memory(grouped_absmag_md, eng);
+        matmul(absmag_pd).execute(strm,
+                {{DNNL_ARG_SRC, score2}, {DNNL_ARG_WEIGHTS, abs_value},
+                        {DNNL_ARG_DST, grouped_absmag}});
+        strm.wait();
+
+        void *dst = (void *)output_absmag->map_data();
+        void *src = (void *)grouped_absmag.map_data();
+        memcpy(dst, src, grouped_absmag_md.get_size());
+        grouped_absmag.unmap_data(src);
+        output_absmag->unmap_data(dst);
+        strm.wait();
+    }
 }
 
 std::vector<std::chrono::nanoseconds> timeit(
@@ -1981,9 +2016,25 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
     return qtime_bwd;
 }
 
+// Upper bound on max|V| after dequantization. Fill ranges: codes and
+// zero-points [0,6] unsigned / [-4,4] signed, scales [-2,2].
+static float forward_value_magnitude(const sdpa_dims_t &p) {
+    const bool quantized
+            = is_quantized(p.value.dt, p.value.sdt, p.value.zpdt, p.qtype);
+    if (!quantized) return 4.0f;
+    // max|V| <= (|code|max + |zp|max) * |scale|max.
+    const bool code_unsigned = (p.value.dt == mdt::u8 || p.value.dt == mdt::u4);
+    const bool zp_unsigned
+            = !(p.value.zpdt == mdt::s8 || p.value.zpdt == mdt::s4);
+    const float code_max = code_unsigned ? 6.0f : 4.0f;
+    const float zp_max = zp_unsigned ? 6.0f : 4.0f;
+    return (code_max + zp_max) * 2.0f; // 16 signed, 20 mixed, 24 unsigned
+}
+
 template <typename T>
 void check_memory(dnnl::stream &strm, memory &gold, memory &test,
-        float max_diff_threshold = 0.03f, float fthreshold = 0.001466) {
+        float max_diff_threshold = 0.03f, float fthreshold = 0.001466,
+        float max_abs_value = 1.0f, memory *ref_magnitude = nullptr) {
     T *mapped_ptr_gold = nullptr;
     T *mapped_ptr_test = nullptr;
     mapped_ptr_gold = (T *)gold.map_data();
@@ -1999,6 +2050,21 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
     float max_diff = std::numeric_limits<float>::min();
     std::map<int, std::map<int, int>> hist;
     const bool verbose = false;
+
+    // Catch systematic errors the per-element floor misses.
+    double sumsq_diff = 0.0, sumsq_gold = 0.0, sum_signed_diff = 0.0;
+
+    // Error is bounded by fthreshold * the conditioning magnitude, independent
+    // of |O|: a relative gate explodes when cancellation drives |O| -> 0.
+    float *mapped_ptr_mag
+            = ref_magnitude ? (float *)ref_magnitude->map_data() : nullptr;
+
+    // Keeps the per-element budget from underflowing where mag is tiny.
+    const float acc_floor = 64.0f * 1.1920929e-7f * max_abs_value; // 64*eps_f32
+
+    // Sizes the max_diff cap when only a flat magnitude is available.
+    float max_abs_gold = 0.f;
+
     for_(int l = 0; l < dims[0]; l++)
     for_(int k = 0; k < dims[1]; k++)
     for_(int j = 0; j < dims[2]; j++)
@@ -2014,15 +2080,31 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
         float abs_diff = abs(max_val - min_val);
         bool is_nan = isnan(o_gold) || isnan(o_test);
 
-        float large_threshold = abs(o_gold) * fthreshold;
-        bool is_mismatch = is_nan
-                || (abs(o_gold) > 1.f ? abs_diff > large_threshold
-                                      : abs_diff > fthreshold);
+        if (!is_nan) {
+            const double d = (double)o_test - (double)o_gold;
+            sumsq_diff += d * d;
+            sumsq_gold += (double)o_gold * (double)o_gold;
+            sum_signed_diff += d;
+        }
+
+        max_abs_gold = fmax(max_abs_gold, fabsf(o_gold));
+
+        // Per-element conditioning magnitude when available, else flat bound.
+        const float mag
+                = mapped_ptr_mag ? mapped_ptr_mag[offset] : max_abs_value;
+        const float atol
+                = std::min(fthreshold * mag + acc_floor, max_diff_threshold);
+        // Relative arm, ORed with the floor (as benchdnn does). Only needed
+        // for a flat mag; per-element absmag >= |gold| makes it redundant.
+        const float rtol = mapped_ptr_mag ? 0.f : fthreshold * fabsf(o_gold);
+        const float elem_threshold = fmax(atol, rtol);
+        bool is_mismatch = is_nan || (abs_diff > elem_threshold);
         if (max_diff < abs_diff) {
             if (verbose) {
-                printf("new max(%d,%d,%d,%d): test: %f vs gold: %f diff: "
-                       "%f\n",
-                        l, k, j, i, o_test, o_gold, abs_diff);
+                printf("new max(%d,%d,%d,%d): test: %f vs gold: %f "
+                       "(diff: %f thresh: %f mag: %f)\n",
+                        l, k, j, i, o_test, o_gold, abs_diff, elem_threshold,
+                        mag);
             }
             max_diff = abs_diff;
         }
@@ -2035,19 +2117,33 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
         if (is_mismatch && mismatches++ < 32) {
             if (verbose)
                 printf("Mismatch at (%d,%d,%d,%d): test %f "
-                       "vs. gold %f (diff: %f thresh: %f)\n",
-                        l, k, j, i, o_test, o_gold, abs_diff,
-                        (abs(o_gold) > 1.f ? large_threshold : fthreshold));
+                       "vs. gold %f (diff: %f thresh: %f mag: %f)\n",
+                        l, k, j, i, o_test, o_gold, abs_diff, elem_threshold,
+                        mag);
         }
     }
 
     gold.unmap_data(mapped_ptr_gold);
     test.unmap_data(mapped_ptr_test);
+    if (mapped_ptr_mag) ref_magnitude->unmap_data(mapped_ptr_mag);
 
-    int threshold = total * 0.002;
+    // Sized as multiples of the per-element budget so they stay dtype-aware.
+    const double l2_rel = sumsq_gold > 0.0 ? std::sqrt(sumsq_diff / sumsq_gold)
+                                           : std::sqrt(sumsq_diff);
+    const double bias = total > 0 ? sum_signed_diff / total : 0.0;
+    const double l2_threshold = 8.0 * fthreshold;
+    const double bias_threshold = 0.5 * fthreshold * max_abs_value;
 
-    ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
-    ASSERT_LE(max_diff, max_diff_threshold);
+    // A flat magnitude cannot bound the largest element: one f16 ulp above
+    // 1024 is 1.0, vs a 0.3 bwd cap.
+    const float max_diff_cap = ref_magnitude
+            ? max_diff_threshold
+            : fmax(max_diff_threshold, fthreshold * max_abs_gold);
+
+    ASSERT_EQ(mismatches, 0) << mismatches << " out of: " << total;
+    ASSERT_LE(max_diff, max_diff_cap);
+    ASSERT_LE(l2_rel, l2_threshold) << "L2 rel error " << l2_rel;
+    ASSERT_LE(std::abs(bias), bias_threshold) << "systematic bias " << bias;
 }
 
 template <typename T>
@@ -2308,40 +2404,46 @@ public:
                 t.m_value_quantized, t.m_value_scales, t.m_value_zp, t.m_output,
                 invert_scale,
                 p.dropout.has_output_mask() ? &ref_dropout_mask : nullptr,
-                doubled_memory);
+                doubled_memory, &t.m_output_absmag);
 
 #if 0
     if (::getenv("SKIP_CHECK")) return;
 #endif
         float max_diff_threshold = 0.03f;
+        // bf16 uses its unit roundoff, doubled for the extra s4 dequant path.
+        // The f16/f32 value is empirical, deliberately not eps-derived.
+        constexpr float eps_bf16 = 0.0078125f; // 2^-7, bf16 unit roundoff
         float fthreshold = 0.f;
         if (p.dt.dt == mdt::bf16) {
-            if (p.key.dt == mdt::s4 || p.value.dt == mdt::s4) {
-                fthreshold = 0.0157f;
-            } else {
-                fthreshold = 0.0079f;
-            }
+            const bool kv_s4 = (p.key.dt == mdt::s4 || p.value.dt == mdt::s4);
+            fthreshold = kv_s4 ? 2.f * eps_bf16 : eps_bf16;
         } else {
             fthreshold = 0.001466f;
         }
 
+        // f16 accumulation carries ~bf16 precision regardless of I/O dtype.
         if (p.acc_modes.kq_acc == dnnl::accumulation_mode::f16
                 || p.acc_modes.vs_acc == dnnl::accumulation_mode::f16) {
-            fthreshold = 0.0079f;
+            fthreshold = eps_bf16;
         }
 
         if (p.key.dt == mdt::s4 || p.value.dt == mdt::s4) {
             max_diff_threshold = 0.063f;
         }
+        // m_output_absmag bounds the error for all forward cases, quantized
+        // included. value_mag is the flat fallback and sizes the bias bound.
+        float value_mag = forward_value_magnitude(p);
+        if (p.dropout.enabled()) value_mag /= (1.0f - p.dropout.probability);
+        memory *ref_mag = &t.m_output_absmag;
         if (t.m_output.get_desc().get_data_type() == mdt::f16)
             check_memory<float16_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, fthreshold, value_mag, ref_mag);
         else if (t.m_output.get_desc().get_data_type() == mdt::bf16)
             check_memory<bfloat16_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, fthreshold, value_mag, ref_mag);
         else if (t.m_output.get_desc().get_data_type() == mdt::f32)
             check_memory<float_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, fthreshold, value_mag, ref_mag);
 
         if (p.dropout.enabled() && p.dropout.has_output_mask()) {
             // The reference path (prim_sdpa_quant) reshapes Q/K/V into a 5D
@@ -2521,38 +2623,52 @@ public:
         const float gqa_fthreshold
                 = fthreshold * std::sqrt(static_cast<float>(kv_group_size));
 
+        // Operand-scale proxies: dV ~ P^T*dO -> max|dO|, the rest -> max|V|.
+        // The relative arm in check_memory is the primary gate.
+        float value_mag = forward_value_magnitude(p);
+        float dO_mag = 4.0f;
+        // Dropout scales surviving probabilities by 1/(1-p).
+        if (p.dropout.enabled()) {
+            const float inv_keep = 1.0f / (1.0f - p.dropout.probability);
+            value_mag *= inv_keep;
+            dO_mag *= inv_keep;
+        }
+
         if (t.m_output.get_desc().get_data_type() == mdt::f16) {
             check_memory<float16_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, fthreshold, value_mag);
             check_memory<float16_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
+                    value_mag);
             check_memory<float16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold);
+                    max_diff_threshold, gqa_fthreshold, value_mag);
             check_memory<float16_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold);
+                    gqa_fthreshold, dO_mag);
 
         } else if (t.m_output.get_desc().get_data_type() == mdt::bf16) {
             check_memory<bfloat16_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, fthreshold, value_mag);
             check_memory<bfloat16_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
+                    value_mag);
             check_memory<bfloat16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold);
+                    max_diff_threshold, gqa_fthreshold, value_mag);
             check_memory<bfloat16_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold);
+                    gqa_fthreshold, dO_mag);
 
         } else if (t.m_output.get_desc().get_data_type() == mdt::f32) {
             check_memory<float_t>(strm, t.m_output, t.m_output_quantized,
-                    max_diff_threshold, fthreshold);
+                    max_diff_threshold, fthreshold, value_mag);
             check_memory<float_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
+                    value_mag);
             check_memory<float_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold);
+                    max_diff_threshold, gqa_fthreshold, value_mag);
             check_memory<float_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold);
+                    gqa_fthreshold, dO_mag);
         }
 
 #if DEBUG_PRINT_MEM

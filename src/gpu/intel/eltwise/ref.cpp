@@ -37,8 +37,7 @@ status_t ref_jit_params_t::get_kernel_ctx(
         kernel_ctx.define_int(
                 "USE_HOST_SCALARS", core.dropout_use_host_scalars);
         kernel_ctx.define_int("USE_OFFSET", core.dropout_use_offset);
-        kernel_ctx.define_int(
-                "HAS_OUTPUT_MASK", core.dropout_has_output_mask);
+        kernel_ctx.define_int("HAS_OUTPUT_MASK", core.dropout_has_output_mask);
         kernel_ctx.define_int("IS_FWD", 1);
         def_post_ops_cfg(kernel_ctx, post_ops, core.ndims);
     } else {
@@ -79,11 +78,18 @@ status_t ref_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     CHECK(config.generate(dispatch));
 
     const auto &dropout = attr()->dropout_;
-    conf.core = {dispatch.get_compile_params(), desc()->alg_kind,
-            src_md()->ndims, src_md()->data_type, dst_md()->data_type,
-            data_type::undef, data_type::undef, true, has_large_buffers(),
-            !dropout.has_default_values(), dropout.use_host_scalars_,
-            dropout.use_offset_, dropout.has_output_mask(), {}};
+    auto &core = conf.core;
+    core.params = dispatch.get_compile_params();
+    core.alg_kind = desc()->alg_kind;
+    core.ndims = src_md()->ndims;
+    core.src_dt = src_md()->data_type;
+    core.dst_dt = dst_md()->data_type;
+    core.is_fwd = true;
+    core.requrie_stateless_addressing = has_large_buffers();
+    core.with_dropout = !dropout.has_default_values();
+    core.dropout_use_host_scalars = dropout.use_host_scalars_;
+    core.dropout_use_offset = dropout.use_offset_;
+    core.dropout_has_output_mask = dropout.has_output_mask();
 
     rt_conf = dispatch.get_runtime_params();
     return status::success;
@@ -168,12 +174,15 @@ status_t ref_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     compute::reusable_dispatch_t dispatch;
     CHECK(config.generate(dispatch));
 
-    conf.core
-            = {dispatch.get_compile_params(), desc()->alg_kind, src_md()->ndims,
-                    use_dst() ? dst_md()->data_type : src_md()->data_type,
-                    data_type::undef, diff_src_md()->data_type,
-                    diff_dst_md()->data_type, false, has_large_buffers(), false,
-                    false, false, false, {}};
+    auto &core = conf.core;
+    core.params = dispatch.get_compile_params();
+    core.alg_kind = desc()->alg_kind;
+    core.ndims = src_md()->ndims;
+    core.src_dt = use_dst() ? dst_md()->data_type : src_md()->data_type;
+    core.diff_src_dt = diff_src_md()->data_type;
+    core.diff_dst_dt = diff_dst_md()->data_type;
+    core.is_fwd = false;
+    core.requrie_stateless_addressing = has_large_buffers();
 
     rt_conf = dispatch.get_runtime_params();
     return status::success;

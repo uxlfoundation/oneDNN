@@ -1118,6 +1118,12 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("BROADCAST_MASK_Q", broadcast_mask_q);
     kernel_ctx.define_int("WITH_CAUSAL_MASK", with_causal_mask);
 
+    /* DIAGNOSTIC: select the 2D attention mask fill implementation.
+       See MASK_FILL_VARIANT in micro.cl. */
+    kernel_ctx.define_int("MASK_FILL_VARIANT",
+            std::stoi(gpu_utils::dev_getenv(
+                    "SDPA_MASK_FILL_VARIANT", std::string("1"))));
+
     kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
     kernel_ctx.define_int("D_MAX_KQ", d_max_kq);
     kernel_ctx.define_int("D_MAX_V", d_max_v);

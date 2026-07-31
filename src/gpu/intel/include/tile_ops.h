@@ -544,11 +544,10 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             const local element_type *ptr, int ld, int offset_r, \
             int offset_c) { \
         ptr += ld * offset_r + offset_c; \
-        _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
-                               i0 += sg, ptr += ld * sg) { \
+        _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
             _Pragma("unroll") for (int j = 0; j < bc * nbc; j++) { \
                 tile_access(*t, i0, j, sg, br, bc, nbr) \
-                        = ptr[get_sub_group_local_id() * ld + j]; \
+                        = ptr[(i0 + (int)get_sub_group_local_id()) * ld + j]; \
             } \
         } \
     } \
@@ -560,14 +559,13 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             return; \
         } \
         ptr += ld * offset_r + offset_c; \
-        _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
-                               i0 += sg, ptr += ld * sg) { \
+        _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
             int i = i0 + get_sub_group_local_id(); \
             if (offset_r + i < m) \
                 _Pragma("unroll") for (int j = 0; j < bc * nbc; j++) { \
                     if (offset_c + j < n) { \
                         tile_access(*t, i0, j, sg, br, bc, nbr) \
-                                = ptr[get_sub_group_local_id() * ld + j]; \
+                                = ptr[i * ld + j]; \
                     } \
                 } \
         } \
@@ -576,11 +574,10 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             const global element_type *ptr, int ld, int offset_r, \
             int offset_c) { \
         ptr += ld * offset_r + offset_c; \
-        _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
-                               i0 += sg, ptr += ld * sg) { \
+        _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
             _Pragma("unroll") for (int j = 0; j < bc * nbc; j++) { \
                 tile_access(*t, i0, j, sg, br, bc, nbr) \
-                        = ptr[get_sub_group_local_id() * ld + j]; \
+                        = ptr[(i0 + (int)get_sub_group_local_id()) * ld + j]; \
             } \
         } \
     } \
@@ -592,14 +589,13 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             return; \
         } \
         ptr += ld * offset_r + offset_c; \
-        _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; \
-                               i0 += sg, ptr += ld * sg) { \
+        _Pragma("unroll") for (int i0 = 0; i0 < br * nbr; i0 += sg) { \
             int i = i0 + get_sub_group_local_id(); \
             if (offset_r + i < m) \
                 _Pragma("unroll") for (int j = 0; j < bc * nbc; j++) { \
                     if (offset_c + j < n) { \
                         tile_access(*t, i0, j, sg, br, bc, nbr) \
-                                = ptr[get_sub_group_local_id() * ld + j]; \
+                                = ptr[i * ld + j]; \
                     } \
                 } \
         } \

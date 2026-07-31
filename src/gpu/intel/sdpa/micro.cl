@@ -778,10 +778,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         int knext = k0 + ugemm_kq_wg_tile_m;
         bool last = (knext >= k0end);
 
-#if WITH_ATTN_MASK
+#if WITH_ATTN_MASK && BROADCAST_MASK_Q
         /* Load mask. No remainder handling needed assuming k block size is a power of 2. */
         mask_tile_type mask_tile;
-#if BROADCAST_MASK_Q
         if (block_msk) {
             tile_load_block(&mask_tile, (const global MSK_TILE_DATA_T *)msk,
                     MSK_S2, 0, k0 + sg_i0_kq, 0);
@@ -789,10 +788,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             tile_load(&mask_tile, (const global MSK_TILE_DATA_T *)msk, k, 1,
                     MSK_S2, k0 + sg_i0_kq, 0);
         }
-#else
-        tile_load_t(&mask_tile, (const global MSK_TILE_DATA_T *)msk, q, k,
-                MSK_S2, sg_j0_kq + wg_j0, k0 + sg_i0_kq);
-#endif
 #endif
 
         /* Prepare k mask: NaN in bounds, -inf out of bounds */
@@ -850,6 +845,61 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         /* Apply attention mask */
 #if WITH_ATTN_MASK
 #define unscale(x) ((x) * iscale)
+#if !BROADCAST_MASK_Q
+#ifndef MASK_FILL_VARIANT
+#define MASK_FILL_VARIANT 1
+#endif
+#define MSK_PTR ((const global MSK_TILE_DATA_T *)msk)
+#define MSK_AT(mi, mj) \
+    tile_access(mask_tile, mi, mj, SUBGROUP_SIZE, mask_br, mask_bc, mask_nbr)
+        mask_tile_type mask_tile;
+#if MASK_FILL_VARIANT == 0
+        /* V0: library op.  Baseline. */
+        tile_load_t(&mask_tile, MSK_PTR, q, k, MSK_S2, sg_j0_kq + wg_j0,
+                k0 + sg_i0_kq);
+#elif MASK_FILL_VARIANT == 2
+        /* V2: manual, rows-outer/cols-inner -- tile_load_t's loop order. */
+#pragma unroll
+        for (int mi = 0; mi < mask_br * mask_nbr; mi += SUBGROUP_SIZE) {
+#pragma unroll
+            for (int mj = 0; mj < mask_bc * mask_nbc; mj++) {
+                const int qi
+                        = wg_j0 + sg_j0_kq + mi + get_sub_group_local_id();
+                const int ki = k0 + sg_i0_kq + mj;
+                MSK_AT(mi, mj) = (qi < q && ki < k)
+                        ? MSK_PTR[(long)qi * MSK_S2 + ki]
+                        : (MSK_TILE_DATA_T)0;
+            }
+        }
+#elif MASK_FILL_VARIANT == 3
+        /* V3: manual, cols-outer, 32-bit arithmetic, no bounds predicate.
+           Only valid for shapes that take tile_load_t's full path. */
+#pragma unroll
+        for (int mj = 0; mj < mask_bc * mask_nbc; mj++) {
+#pragma unroll
+            for (int mi = 0; mi < mask_br * mask_nbr; mi += SUBGROUP_SIZE) {
+                const int qi
+                        = wg_j0 + sg_j0_kq + mi + get_sub_group_local_id();
+                const int ki = k0 + sg_i0_kq + mj;
+                MSK_AT(mi, mj) = MSK_PTR[qi * MSK_S2 + ki];
+            }
+        }
+#else
+        /* V1: cols-outer, 64-bit, predicated.  Known good. */
+#pragma unroll
+        for (int mj = 0; mj < mask_bc * mask_nbc; mj++) {
+#pragma unroll
+            for (int mi = 0; mi < mask_br * mask_nbr; mi += SUBGROUP_SIZE) {
+                const int qi
+                        = wg_j0 + sg_j0_kq + mi + get_sub_group_local_id();
+                const int ki = k0 + sg_i0_kq + mj;
+                MSK_AT(mi, mj) = (qi < q && ki < k)
+                        ? MSK_PTR[(long)qi * MSK_S2 + ki]
+                        : (MSK_TILE_DATA_T)0;
+            }
+        }
+#endif
+#endif
         mask_tile_type_float mask_tile_float;
         tile_copy_reblock(mask_tile, &mask_tile_float);
 #if WITH_ATTN_SCALE

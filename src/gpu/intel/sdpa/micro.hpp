@@ -342,11 +342,6 @@ struct micro_fwd_t : public primitive_t {
                         vgs, static_cast<long int>(desc()->val_md()->dims[3]));
             }
 
-            VDISPATCH_SDPA(IMPLICATION((arch() == compute::gpu_arch_t::xe_hpc)
-                                           && (desc()->qry_md()->data_type
-                                                   == data_type::f32),
-                                   with_causal_mask()),
-                    "fused f32 SDPA only optimized for causal mask"); //TODO: update when performance improved
             VDISPATCH_SDPA(
                     IMPLICATION(arch() == compute::gpu_arch_t::xe_hpg
                                     && !attr()->dropout_.has_default_values(),

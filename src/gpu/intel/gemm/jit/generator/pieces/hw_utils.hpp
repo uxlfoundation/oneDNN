@@ -133,14 +133,16 @@ static inline int GRFPerEU(const ngen::Product &product)
 
 static inline int threadsPerEU(const ngen::Product &product, const CommonStrategy &strategy)
 {
-    // CRI has an exception: 256 GRF/thread is restricted to 4 threads/EU due to lack of accumulators
-    if (product.family == ngen::ProductFamily::CRI && strategy.GRFs == 256)
-        return 4;
-
     if (product.family <= ngen::ProductFamily::GenericXeLP)
         return 7;
 
-    return GRFPerEU(product) / strategy.GRFs;
+    int grfs = GRFPerEU(product);
+
+    // On CRI the full register file is only available for the 512 grf mode.
+    if (product.family == ngen::ProductFamily::CRI && strategy.GRFs < 512)
+        grfs /= 2;
+
+    return grfs / strategy.GRFs;
 }
 
 static inline int eusPerSubslice(ngen::HW hw)

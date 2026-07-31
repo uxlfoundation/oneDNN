@@ -289,12 +289,14 @@ int device_info_t::threads_per_eu(
         const ngen::Product &product, int grf_per_thread) {
     gpu_assert(grf_per_thread > 0) << "Invalid GRF per thread";
 
-    // CRI has an exception: 256 GRF/thread is restricted to 4 threads/EU due to lack of accumulators
-    if (product.family == ngen::ProductFamily::CRI && grf_per_thread == 256)
-        return 4;
+    int grfs = grf_per_eu(product);
+
+    // On CRI the full register file is only available for the 512 grf mode.
+    if (product.family == ngen::ProductFamily::CRI && grf_per_thread < 512)
+        grfs /= 2;
 
     int hw_max = max_threads_per_eu(product);
-    return std::min(hw_max, grf_per_eu(product) / grf_per_thread);
+    return std::min(hw_max, grfs / grf_per_thread);
 }
 
 int device_info_t::max_slm_size(const ngen::Product &product) {

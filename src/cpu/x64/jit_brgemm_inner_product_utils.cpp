@@ -490,9 +490,10 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     //   * Work amount per thread ~ 2
     //   * NOTE: here nb_oc_blocking = 1 as os is large
     if (jbgp.os > 256 && is_f32_compute) {
-        jbgp.nb_os_blocking = saturate(1, nstl::min(8, jbgp.nb_os),
-                nstl::min(nstl::max(jbgp.oc / jbgp.os / 2, 1),
-                        div_up(jbgp.nb_os * jbgp.nb_oc, 2 * jbgp.nthr)));
+        jbgp.nb_os_blocking = static_cast<int>(saturate<dim_t>(1,
+                nstl::min<dim_t>(8, jbgp.nb_os),
+                nstl::min<dim_t>(nstl::max<dim_t>(jbgp.oc / jbgp.os / 2, 1),
+                        div_up(jbgp.nb_os * jbgp.nb_oc, 2 * jbgp.nthr))));
         jbgp.nb_os_blocking = max_div(jbgp.nb_os, jbgp.nb_os_blocking);
     }
 
@@ -509,12 +510,12 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     // NOTE: comment about is_gigantic_shape is in get_os_block()
     const bool is_gigantic_shape = jbgp.oc >= 4096 && jbgp.os >= 512;
 
-    int oc_chunks = div_up(jbgp.nb_oc, jbgp.nb_oc_blocking);
-    int os_chunks = div_up(jbgp.nb_os, jbgp.nb_os_blocking);
-    int other_work = oc_chunks * os_chunks;
+    dim_t oc_chunks = div_up(jbgp.nb_oc, jbgp.nb_oc_blocking);
+    dim_t os_chunks = div_up(jbgp.nb_os, jbgp.nb_os_blocking);
+    dim_t other_work = oc_chunks * os_chunks;
 
-    const int max_nb_ic_blocking = nstl::min(64, jbgp.nb_ic);
-    const int min_ic_chunks = jbgp.nb_ic / max_nb_ic_blocking;
+    const dim_t max_nb_ic_blocking = nstl::min<dim_t>(64, jbgp.nb_ic);
+    const dim_t min_ic_chunks = jbgp.nb_ic / max_nb_ic_blocking;
 
     // Use parallel IC reduction for xf16 if we have:
     //  * Very large input channels.
@@ -732,7 +733,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     const auto LDA = jbgp.use_buffer_a
             ? static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size
             : static_cast<dim_t>(jbgp.ic_without_padding) * jbgp.ks();
-    CHECK(safe_dim_to_int(jbgp.LDA, LDA));
+    jbgp.LDA = LDA;
     jbgp.LDB = jbgp.N;
     jbgp.LDD = jbgp.oc_without_padding;
     jbgp.LDC = jbgp.LDD;
@@ -931,8 +932,7 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
             ? static_cast<dim_t>(jbgp.K) * jbgp.nb_oc_blocking
             : jbgp.oc_without_padding;
     jbgp.LDB = jbgp.N;
-    CHECK(safe_dim_to_int(
-            jbgp.LDD, static_cast<dim_t>(jbgp.ic_without_padding) * jbgp.ks()));
+    jbgp.LDD = static_cast<dim_t>(jbgp.ic_without_padding) * jbgp.ks();
     jbgp.LDC = jbgp.use_buffer && jbgp.nthr_oc_b == 1 ? jbgp.N : jbgp.LDD;
 
     if (jbgp.is_bf32) {
@@ -1101,7 +1101,8 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
 
     /* find the best thread distribution with lowest memory cost */
     const int min_osb_chunk = is_f32 ? 32 : is_xf16 ? 8 : 1;
-    const int nthr_mb_max = nstl::min(nthr, div_up(j.nb_os, min_osb_chunk));
+    const int nthr_mb_max = static_cast<int>(
+            nstl::min<dim_t>(nthr, div_up(j.nb_os, min_osb_chunk)));
     for (int nthr_mb = 1; nthr_mb <= nthr_mb_max; ++nthr_mb) {
         int nb_os_blocking = j.nb_os_blocking;
         int os_chunks = div_up(j.nb_os, nb_os_blocking);
@@ -1206,13 +1207,14 @@ status_t jit_brgemm_ip_bwd_w_conf_t::init_conf(cpu_isa_t isa,
     jbgp.K_tail = (jbgp.os % jbgp.os_block) + (do_rnd_os ? 1 : 0);
 
     jbgp.nb_os_blocking = 1;
-    int os_blocking_max = (is_amx_xf16 && jbgp.nb_os >= 64)
+    const dim_t os_blocking_max = (is_amx_xf16 && jbgp.nb_os >= 64)
             ? (types::data_type_size(jbgp.src_dt) * jbgp.mb * jbgp.ic
                       < platform::get_per_core_cache_size(2))
                     ? 8
                     : 4
-            : nstl::min(64, jbgp.nb_os);
-    jbgp.nb_os_blocking = max_div(jbgp.nb_os, os_blocking_max);
+            : nstl::min<dim_t>(64, jbgp.nb_os);
+    jbgp.nb_os_blocking
+            = static_cast<int>(max_div(jbgp.nb_os, os_blocking_max));
 
     jbgp.use_buffer_a = true;
     const bool is_oc_big_2_pow = jbgp.oc >= 512 && math::is_pow2(jbgp.oc);

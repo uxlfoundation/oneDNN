@@ -162,7 +162,7 @@ status_t ref_batch_normalization_fwd_t<d_type>::execute_forward(
                 dst[d_off] = q10n::qz_a1b0_t<float, data_t>()(
                         maybe_post_op(bn_res));
             else
-                dst[d_off] = maybe_post_op(bn_res);
+                dst[d_off] = static_cast<data_t>(maybe_post_op(bn_res));
         }
 
         if (calculate_stats) {

@@ -74,7 +74,7 @@ void jit_avx512_common_lrn_kernel_fwd_t<d_type>::load_tail(int tail_value,
 
     // TODO: Investigate if this method can be simplified by using mask or
     // jit_generator_t load utilities.
-    static constexpr auto src_size = sizeof(data_t);
+    static constexpr int src_size = sizeof(data_t);
     auto tmp_xreg = this->xreg(0, tmp_load_to_stack_idx_tail);
 
     const auto load_tail_simd = [&](Xmm tmp_reg, int vlen) {

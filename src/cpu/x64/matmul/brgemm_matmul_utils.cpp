@@ -302,11 +302,11 @@ status_t gemv_check_isa_with_datatype(
     // Valid GEMV (dt, isa) combinations:
     // - f32  -> avx2
     // - bf16 -> avx512_core_bf16
-    // - f16  -> avx512_core
+    // - f16  -> avx512_core_fp16
     // Any other data type or isa is unsupported.
     const bool ok = (bm_conf_utils.is_f32() && isa == avx2)
             || (bm_conf_utils.is_bf16() && isa == avx512_core_bf16)
-            || (bm_conf_utils.is_f16() && isa == avx512_core);
+            || (bm_conf_utils.is_f16() && isa == avx512_core_fp16);
 
     return ok ? status::success : status::unimplemented;
 }
@@ -579,11 +579,11 @@ bool is_gemv_applicable(const brgemm_matmul_conf_t &bgmmc,
     // instantiation can execute the case because GEMM/GEMV dispatching logic
     // relies on it. Here we require the platform to support the exact isa that
     // `gemv_check_isa_with_datatype` mandates for the data type:
-    // f32 -> avx2, bf16 -> avx512_core_bf16, f16 -> avx512_core.
+    // f32 -> avx2, bf16 -> avx512_core_bf16, f16 -> avx512_core_fp16.
     // This also rejects any data type not supported by the GEMV path.
     const bool gemv_isa_dt_supported = (bm_conf_utils.is_f32() && mayiuse(avx2))
             || (bm_conf_utils.is_bf16() && mayiuse(avx512_core_bf16))
-            || (bm_conf_utils.is_f16() && mayiuse(avx512_core));
+            || (bm_conf_utils.is_f16() && mayiuse(avx512_core_fp16));
     if (!gemv_isa_dt_supported) return false;
 
     const format_tag_t gemv_A_tag = bm_conf_utils.get_gemv_A_tag(A_md);
@@ -2042,6 +2042,14 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             VERBOSE_ISA_DT_MISMATCH);
 
     if (bgmmc.is_gemv) {
+        // The GEMV code path requires the compute data types to remain the
+        // same as the memory data types because brgemv performs upconversion on
+        // the fly when necessary.
+        bgmmc.src_dt = bgmmc.orig_src_dt;
+        bgmmc.wei_dt = bgmmc.orig_wei_dt;
+        bgmmc.tr_a_dt_sz = types::data_type_size(bgmmc.src_dt);
+        bgmmc.tr_b_dt_sz = types::data_type_size(bgmmc.wei_dt);
+
         bgmmc.gemv_strategy = bm_conf_utils.get_gemv_strategy(
                 bm_conf_utils.get_gemv_A_tag(src_md),
                 bm_conf_utils.get_gemv_B_tag(weights_md));

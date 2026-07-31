@@ -365,13 +365,13 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
                             || is_superset(brg->isa_impl, avx2_vnni_2)))
             return status::unimplemented;
     } else {
-        // The GEMV code path requires avx512_core_bf16 for bf16 and avx512_core
-        // for f16.
+        // The GEMV code path requires avx512_core_bf16 for bf16 and
+        // avx512_core_fp16 for f16.
         if (!IMPLICATION(one_of(data_type::bf16, dt_bias, dt_d),
                     is_superset(brg->isa_impl, avx512_core_bf16)))
             return status::unimplemented;
         if (!IMPLICATION(one_of(data_type::f16, dt_bias, dt_d),
-                    is_superset(brg->isa_impl, avx512_core)))
+                    is_superset(brg->isa_impl, avx512_core_fp16)))
             return status::unimplemented;
     }
 

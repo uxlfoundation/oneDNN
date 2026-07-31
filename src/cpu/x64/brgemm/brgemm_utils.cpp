@@ -132,7 +132,8 @@ void set_isa_impl(brgemm_desc_t *brg) {
             brg->isa_impl = is_isa_ok(avx512_core_bf16) ? avx512_core_bf16
                                                         : isa_undef;
         } else if (everyone_is(data_type::f16, brg->dt_a, brg->dt_b)) {
-            brg->isa_impl = is_isa_ok(avx512_core) ? avx512_core : isa_undef;
+            brg->isa_impl = is_isa_ok(avx512_core_fp16) ? avx512_core_fp16
+                                                        : isa_undef;
         }
         return;
     }
@@ -789,7 +790,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
  *
  */
 status_t brgemm_blocking_vmm_gemv(brgemm_desc_t *brg) {
-    assert(utils::one_of(brg->isa_impl, avx2, avx512_core, avx512_core_bf16));
+    assert(utils::one_of(
+            brg->isa_impl, avx2, avx512_core_bf16, avx512_core_fp16));
     assert(brg->load_dim == 1);
 
     const int simd_w = is_superset(brg->isa_impl, avx512_core) ? 16 : 8;

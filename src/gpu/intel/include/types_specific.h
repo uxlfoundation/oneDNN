@@ -788,6 +788,8 @@
 #define WEI_ZP_TO_REF(zp, off) cvt_s4_to_s32(GET_HALF_BYTE(zp, off))
 #elif WEI_ZP_DT_U4
 #define WEI_ZP_TO_REF(zp, off) cvt_u4_to_s32(GET_HALF_BYTE(zp, off))
+#elif WEI_ZP_DT_U3
+#define WEI_ZP_TO_REF(zp, off) cvt_u3_to_s32(GET_U3(zp, off))
 #else
 #define WEI_ZP_TO_REF(zp, off) (zp[off])
 #endif

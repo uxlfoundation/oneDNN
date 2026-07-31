@@ -782,12 +782,15 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
     const memory_desc_wrapper src2_d(pd()->src_md(2));
     const memory_desc_wrapper dst_d(pd()->dst_md(0));
 
-    const int src0_type_size = types::data_type_size(src0_d.data_type());
-    const int src1_type_size = types::data_type_size(src1_d.data_type());
+    const int src0_type_size
+            = static_cast<int>(types::data_type_size(src0_d.data_type()));
+    const int src1_type_size
+            = static_cast<int>(types::data_type_size(src1_d.data_type()));
     const int src2_type_size = pd()->is_ternary_op()
-            ? types::data_type_size(src2_d.data_type())
+            ? static_cast<int>(types::data_type_size(src2_d.data_type()))
             : 0;
-    const int dst_type_size = types::data_type_size(dst_d.data_type());
+    const int dst_type_size
+            = static_cast<int>(types::data_type_size(dst_d.data_type()));
 
     const auto &conf = pd()->get_conf();
     const bool is_src_different_layouts = conf.is_src_different_layouts;
@@ -797,7 +800,8 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
 
         const dim_t src1_different_layout_stride = conf.src1_stride;
         for (int i = 0; i < simd_w; i++)
-            indices[i] = i * src1_different_layout_stride * src1_type_size;
+            indices[i] = static_cast<unsigned>(
+                    i * src1_different_layout_stride * src1_type_size);
 
         const dim_t batch = src0_d.dims()[0];
         const dim_t batch_stride = src1_d.blocking_desc().strides[0];
@@ -903,12 +907,15 @@ void jit_uni_binary_t::execute_bcast_per_batch_strategy(const data_t *src0,
     const memory_desc_wrapper src2_d(pd()->src_md(2));
     const memory_desc_wrapper dst_d(pd()->dst_md(0));
 
-    const int src0_type_size = types::data_type_size(src0_d.data_type());
-    const int src1_type_size = types::data_type_size(src1_d.data_type());
+    const int src0_type_size
+            = static_cast<int>(types::data_type_size(src0_d.data_type()));
+    const int src1_type_size
+            = static_cast<int>(types::data_type_size(src1_d.data_type()));
     const int src2_type_size = pd()->is_ternary_op()
-            ? types::data_type_size(src2_d.data_type())
+            ? static_cast<int>(types::data_type_size(src2_d.data_type()))
             : 0;
-    const int dst_type_size = types::data_type_size(dst_d.data_type());
+    const int dst_type_size
+            = static_cast<int>(types::data_type_size(dst_d.data_type()));
 
     const dim_t MB = src0_d.dims()[0];
     const dim_t nelems0_per_b = src0_d.nelems(true) / MB;
@@ -958,12 +965,15 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
     const memory_desc_wrapper src2_d(pd()->src_md(2));
     const memory_desc_wrapper dst_d(pd()->dst_md(0));
 
-    const int src0_type_size = types::data_type_size(src0_d.data_type());
-    const int src1_type_size = types::data_type_size(src1_d.data_type());
+    const int src0_type_size
+            = static_cast<int>(types::data_type_size(src0_d.data_type()));
+    const int src1_type_size
+            = static_cast<int>(types::data_type_size(src1_d.data_type()));
     const int src2_type_size = pd()->is_ternary_op()
-            ? types::data_type_size(src2_d.data_type())
+            ? static_cast<int>(types::data_type_size(src2_d.data_type()))
             : 0;
-    const int dst_type_size = types::data_type_size(dst_d.data_type());
+    const int dst_type_size
+            = static_cast<int>(types::data_type_size(dst_d.data_type()));
 
     const auto ndims = src0_d.ndims();
     const auto &dims = src0_d.dims();
@@ -983,8 +993,7 @@ void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
                               : 0);
 
     if (op_type == op_t::c_blocked) {
-        const dim_t C_blocks = std::ceil(
-                static_cast<float>(src0_d.padded_dims()[1]) / simd_w);
+        const dim_t C_blocks = utils::div_up(src0_d.padded_dims()[1], simd_w);
         // Compute strategy:
         // Each block is individual - parallel over MB and C_blocks safely.
 
@@ -1082,12 +1091,15 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
     const memory_desc_wrapper src2_d(pd()->src_md(2));
     const memory_desc_wrapper dst_d(pd()->dst_md(0));
 
-    const int src0_type_size = types::data_type_size(src0_d.data_type());
-    const int src1_type_size = types::data_type_size(src1_d.data_type());
+    const int src0_type_size
+            = static_cast<int>(types::data_type_size(src0_d.data_type()));
+    const int src1_type_size
+            = static_cast<int>(types::data_type_size(src1_d.data_type()));
     const int src2_type_size = pd()->is_ternary_op()
-            ? types::data_type_size(src2_d.data_type())
+            ? static_cast<int>(types::data_type_size(src2_d.data_type()))
             : 0;
-    const int dst_type_size = types::data_type_size(dst_d.data_type());
+    const int dst_type_size
+            = static_cast<int>(types::data_type_size(dst_d.data_type()));
 
     const auto ndims = src0_d.ndims();
     const auto &dims = src0_d.dims();
@@ -1109,8 +1121,7 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
             = utils::array_product(src0_d.padded_dims() + 1, ndims - 1);
 
     if (op_type == op_t::c_blocked) {
-        const dim_t C_blocks = std::ceil(
-                static_cast<float>(src0_d.padded_dims()[1]) / simd_w);
+        const dim_t C_blocks = utils::div_up(src0_d.padded_dims()[1], simd_w);
         // Compute strategy:
         // Each line of channels is individual, parallel over MB, C_blocks
         // and spatial (broadcasted and not broadcasted spatial dims

@@ -42,7 +42,7 @@ struct binary_kernel_t : public jit_generator_t {
     using op_t = binary_op_t;
     using bcast_t = binary_bcast_t;
 
-    binary_kernel_t(const size_t vlen, const binary_pd_t *pd,
+    binary_kernel_t(const int vlen, const binary_pd_t *pd,
             const jit_binary_conf_t &conf, const char *name,
             bool tail_kernel = false);
     ~binary_kernel_t() override = default;
@@ -52,12 +52,12 @@ struct binary_kernel_t : public jit_generator_t {
     }
 
     int simd_w() const noexcept { return simd_w_; }
-    size_t vlen() const noexcept { return vlen_; }
+    int vlen() const noexcept { return vlen_; }
 
 protected:
     int get_tail_size() const;
 
-    const size_t vlen_;
+    const int vlen_;
     const int simd_w_;
     constexpr static int vmm_start_idx_ = 1;
     const binary_pd_t *pd_;
@@ -129,11 +129,11 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     // For the ternary select operation, a conditional value is required
     // for computation in addition to src0 and src1. The number of unroll
     // registers are adjusted to accomodate for the extra input.
-    const size_t unroll_regs_ = is_avx512 ? (conf_.is_ternary_op ? 3 : 8)
-                                          : (conf_.is_ternary_op ? 1 : 4);
-    const size_t offt_src0_;
-    const size_t offt_src1_;
-    const size_t offt_src2_;
+    const int unroll_regs_ = is_avx512 ? (conf_.is_ternary_op ? 3 : 8)
+                                       : (conf_.is_ternary_op ? 1 : 4);
+    const int offt_src0_;
+    const int offt_src1_;
+    const int offt_src2_;
 
     io::jit_io_multi_dt_helper_t<Vmm> io_;
     std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>

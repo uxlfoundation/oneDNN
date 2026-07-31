@@ -1576,11 +1576,14 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
             vsubps(zmm, zmm, zmm_delta);
         }
 
-        // For K-scales (wei and/or src), convert int32->float (if not
-        // already done by per-MN compensation) and apply the current
-        // K-group's scales BEFORE alpha_beta accumulation.
+        // For K-scales (wei and/or src), convert int32->float and apply the
+        // current K-group's scales BEFORE alpha_beta accumulation. The
+        // int32->float conversion is only needed for int8 compute (s32
+        // accumulator tiles); fp8/bf16/f16 already accumulate in f32. It is
+        // also skipped when per-MN compensation already converted the tile.
         if (brg.has_per_k_scales() && !bi.skip_accumulation) {
-            if (!brg.with_per_mn_compensation) vcvtdq2ps(zmm, zmm);
+            if (!brg.with_per_mn_compensation && brg.is_int8)
+                vcvtdq2ps(zmm, zmm);
 
             const Xbyak::Zmm scaled_zmm = vmm_mask(zmm, true, false, k_mask);
             // Apply K-wei_scales if present (pre-loaded per-ldb vector).
@@ -3189,7 +3192,12 @@ void jit_brgemm_amx_uker_base_t::generate() {
             && IMPLICATION(
                     brg.is_f32 || brg.is_bf16, brg.dt_c == data_type::f32)
             && IMPLICATION(brg.is_int8, brg.is_integer_acc())
-            && brg.brgattr.bd_mask_level == 0;
+            // Per-K (grouped) scales must be applied to each K-group's isolated
+            // partial before it is accumulated into C. Pre-loading the tiles
+            // from C would let the current group's scale multiply the already
+            // accumulated result of previous groups, so force the vector
+            // read/modify/write accumulation path instead.
+            && !brg.has_per_k_scales() && brg.brgattr.bd_mask_level == 0;
     need_to_apply_alpha_beta_
             = (brg.beta != 0.f && !may_load_accumulators_) || brg.alpha != 1.f;
     are_post_ops_applicable_ = brg.are_post_ops_applicable();

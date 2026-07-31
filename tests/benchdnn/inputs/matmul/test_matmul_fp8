@@ -86,6 +86,17 @@
 8x2664:2664x256
 3x4128:4128x128
 
+# grouped per-K weight scales (per_ocic / per_tensor). Grouped scales vary
+# along K and are applied at accumulation time between brgemm K-group calls.
+# Covers dst=f32 (accumulator read-modify-write path) and dst=bf16/f16, with
+# plain (ab/ba) and blocked (any) weight layouts. The group must divide K.
+--reset
+--dt=f8_e4m3:f8_e4m3:f32,f8_e5m2:f8_e5m2:bf16,f8_e4m3:f8_e4m3:f16
+--stag=ab,ba --wtag=ab,ba,any --dtag=ab
+--attr-scales=wei:per_ocic:f32:64x1,wei:per_tensor:f32:128x1
+256x512:512x128
+128x1024:1024x256
+
 ## MXFP8
 --reset
 --stag=abx --wtag=abx,any --dtag=abx

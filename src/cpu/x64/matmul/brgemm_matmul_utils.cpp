@@ -1962,14 +1962,21 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.is_wei_scale_per_k = false;
     }
 
-    // Per-K weight scales are only applied for weight decompression (integer
-    // weights) and int8 grouped quantization. Other types (e.g. fp8) pass the
-    // check above (per_ocic/per_tensor also set the per-N bit) but the
-    // K-grouping would be ignored, so reject them here. A per-K group
-    // spanning all of K was already downgraded to per-N above.
+    // Per-K weight scales are applied for weight decompression (integer
+    // weights), int8 grouped quantization, and fp8 weights (fp8:fp8 or bf16/f16
+    // src with fp8 weights). For fp8 the K-grouped scales cannot be folded into
+    // buffer B, so they are applied at accumulation time between brgemm calls;
+    // that path lays out one scale per N within each K-group, hence require the
+    // per-N bit (set by per_ocic / per_tensor). Other per-K cases (e.g. plain
+    // fp8 per-IC) would ignore the K-grouping, so reject them here. A per-K
+    // group spanning all of K was already downgraded to per-N above.
+    const bool fp8_wei_per_k_scales_ok
+            = (bm_conf_utils.is_f8() || bgmmc.is_xf16_fp8)
+            && bgmmc.is_wei_scale_per_n;
     VCONDCHECK_BG(IMPLICATION(bgmmc.is_wei_scale_per_k,
                           bgmmc.with_wei_decompression
-                                  || bgmmc.with_int8_grouped_quantization),
+                                  || bgmmc.with_int8_grouped_quantization
+                                  || fp8_wei_per_k_scales_ok),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     // Batched (3D/4D) per-batch scales/ZP have batch bits set in the mask.

@@ -258,6 +258,13 @@ struct jit_resampling_conf_t {
     bool with_postops;
     bool fuse_eltwise;
     bool fuse_binary;
+    // A sum post-op (dst = sum_scale * dst + result) applied in-kernel at its
+    // position in the chain: the injector skips sum entries, so the kernel
+    // reads dst back, scales it in, and applies the surrounding entries as two
+    // sub-ranges. sum_idx is that position; -1 when there is no sum.
+    bool fuse_sum;
+    int sum_idx;
+    float sum_scale;
     post_ops_t post_ops;
 };
 

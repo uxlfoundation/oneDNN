@@ -81,16 +81,39 @@ struct jit_uni_resampling_fwd_t : public primitive_t {
 
     private:
         // Accept an injector-supported post-op chain: any number of forward
-        // eltwise ops, plus at most one binary. The binary is fused for f32 only
-        // (the kernel accumulates f16 at f32 but has no f16 binary path) and only
-        // for the broadcasts the kernel positions host-side: per-tensor (scalar),
-        // per-oc ([1,C,1,..], read as a dense [C] vector), and full-dst (read 1:1
-        // with the output). Anything else (sum, prelu, >1 binary, f16+binary,
-        // exotic broadcast) falls back to simple/ref_resampling.
+        // eltwise ops, at most one binary, and at most one sum. The binary is
+        // fused for f32 only (the kernel accumulates f16 at f32 but has no f16
+        // binary path) and only for the broadcasts the kernel positions
+        // host-side: per-tensor (scalar), per-oc ([1,C,1,..], read as a dense
+        // [C] vector), and full-dst (read 1:1 with the output). The sum is
+        // applied by the kernel at its position in the chain (the injector
+        // skips it), reading dst back with the same access form as the store;
+        // it requires a zero zero-point and a dst-typed accumulation. Anything
+        // else (prelu, >1 binary, >1 sum, f16+binary, exotic broadcast) falls
+        // back to simple/ref_resampling.
         bool post_ops_ok() const {
             const auto &po = attr()->post_ops_;
             if (po.has_default_values()) return true;
-            if (!injector::jit_uni_postops_injector_t<isa>::post_ops_ok(po))
+            // The injector rejects sum outright, so gate the chain on a copy
+            // with the sum entries removed and validate those separately.
+            int n_sum = 0;
+            post_ops_t po_no_sum;
+            for (int i = 0; i < po.len(); i++) {
+                const auto &e = po.entry_[i];
+                if (e.kind != primitive_kind::sum) {
+                    po_no_sum.entry_.push_back(e);
+                    continue;
+                }
+                if (++n_sum > 1) return false;
+                // A non-zero zero-point would need an extra subtract the kernel
+                // does not emit; sum.dt must match dst (no reinterpreting the
+                // destination as another type on read-back).
+                if (e.sum.zero_point != 0) return false;
+                if (!utils::one_of(e.sum.dt, data_type::undef, d_type))
+                    return false;
+            }
+            if (!injector::jit_uni_postops_injector_t<isa>::post_ops_ok(
+                        po_no_sum))
                 return false;
             const memory_desc_wrapper dst_d(dst_md());
             int n_binary = 0;

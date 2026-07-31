@@ -16,6 +16,7 @@
 
 #include <cstddef>
 
+#include "common/bit_cast.hpp"
 #include "common/c_types_map.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
@@ -101,16 +102,34 @@ status_t jit_uni_resampling_kernel_t<isa, d_type>::init_conf(
     const auto &po = pd->attr()->post_ops_;
     conf.post_ops = po;
     conf.with_postops = !po.has_default_values();
-    conf.fuse_eltwise = conf.fuse_binary = false;
+    conf.fuse_eltwise = conf.fuse_binary = conf.fuse_sum = false;
+    conf.sum_idx = -1;
+    conf.sum_scale = 1.f;
     if (conf.with_postops) {
+        // The injector cannot carry sum, so it is validated (and later applied)
+        // separately; gate the injectable part on a sum-free copy.
+        post_ops_t po_no_sum;
+        for (int i = 0; i < po.len(); i++) {
+            const auto &e = po.entry_[i];
+            if (e.kind == primitive_kind::sum) {
+                conf.fuse_sum = true;
+                conf.sum_idx = i;
+                conf.sum_scale = e.sum.scale;
+            } else
+                po_no_sum.entry_.push_back(e);
+        }
         const bool inj_ok
-                = injector::jit_uni_postops_injector_t<isa>::post_ops_ok(po);
-        bool has_binary = false;
-        for (int i = 0; i < po.len(); i++)
-            if (po.entry_[i].is_binary()) has_binary = true;
-        conf.fuse_eltwise = inj_ok && !has_binary;
+                = injector::jit_uni_postops_injector_t<isa>::post_ops_ok(
+                        po_no_sum);
+        bool has_binary = false, has_eltwise = false;
+        for (int i = 0; i < po_no_sum.len(); i++) {
+            if (po_no_sum.entry_[i].is_binary()) has_binary = true;
+            if (po_no_sum.entry_[i].is_eltwise()) has_eltwise = true;
+        }
+        conf.fuse_eltwise = inj_ok && has_eltwise && !has_binary;
         conf.fuse_binary = inj_ok && has_binary && (d_type == data_type::f32);
-        if (!conf.fuse_eltwise && !conf.fuse_binary)
+        if (!inj_ok) return status::unimplemented;
+        if (!conf.fuse_eltwise && !conf.fuse_binary && !conf.fuse_sum)
             return status::unimplemented;
     }
     return status::success;
@@ -229,12 +248,38 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f32() {
         }
     }
 
-    if (po) {
+    if (po || conf_.fuse_sum) {
         // a5 is the per-chunk byte offset of the first active lane
         // (off_is_bytes); the injector derives each rhs address from it.
         binary_injector::rhs_arg_dynamic_params_t rhs_dyn;
         rhs_dyn.vmm_idx_to_out_off[v_acc.getIdx()] = a5;
-        po_inj->compute_vector(v_acc.getIdx(), rhs_dyn);
+        const int n_po = conf_.post_ops.len();
+        const int s_idx = conf_.fuse_sum ? conf_.sum_idx : -1;
+        // Entries before the sum, then the sum itself, then the rest. The
+        // injector skips sum entries, so a single full-range call would drop it.
+        if (po)
+            po_inj->compute_vector(
+                    v_acc.getIdx(), rhs_dyn, 0, s_idx < 0 ? n_po : s_idx);
+        if (conf_.fuse_sum) {
+            // dst is read back with the same access form as the store: unit
+            // stride for nspc/blocked, dst channel stride (a1) for ncsp.
+            Label sum_strided, sum_done;
+            bne(a1, t2, sum_strided);
+            vle32_v(v_tmp, s9);
+            j_(sum_done);
+            L(sum_strided);
+            vlse32_v(v_tmp, s9, a1);
+            L(sum_done);
+            if (conf_.sum_scale == 1.f)
+                vfadd_vv(v_acc, v_acc, v_tmp);
+            else {
+                li(t4, (int32_t)utils::bit_cast<uint32_t>(conf_.sum_scale));
+                fmv_w_x(ft3, t4);
+                vfmacc_vf(v_acc, ft3, v_tmp);
+            }
+        }
+        if (po && s_idx >= 0)
+            po_inj->compute_vector(v_acc.getIdx(), rhs_dyn, s_idx + 1, n_po);
     }
 
     {
@@ -371,6 +416,40 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
         L(done);
     };
 
+    // Apply the post-op chain to the f32 accumulator. Entered and left with the
+    // e32/m2 vtype. The injector skips sum entries, so the chain is applied as
+    // [0, sum) then the sum then (sum, len); the sum reads dst back as f16 and
+    // widens it, using the same access form as the store (a1 vs t2).
+    const bool need_f32 = po || conf_.fuse_sum;
+    auto apply_chain = [&]() {
+        const int n_po = conf_.post_ops.len();
+        const int s_idx = conf_.fuse_sum ? conf_.sum_idx : -1;
+        if (po)
+            po_inj->compute_vector(
+                    v_acc.getIdx(), rhs_dyn, 0, s_idx < 0 ? n_po : s_idx);
+        if (conf_.fuse_sum) {
+            vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+            Label sum_strided, sum_done;
+            bne(a1, t2, sum_strided);
+            vle16_v(v_f16, s9);
+            j_(sum_done);
+            L(sum_strided);
+            vlse16_v(v_f16, s9, a1);
+            L(sum_done);
+            vfwcvt_f_f_v(v_wide, v_f16); // f16 m1 -> f32 m2
+            vsetvli(t0, s10, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+            if (conf_.sum_scale == 1.f)
+                vfadd_vv(v_acc, v_acc, v_wide);
+            else {
+                li(t4, (int32_t)utils::bit_cast<uint32_t>(conf_.sum_scale));
+                fmv_w_x(ft3, t4);
+                vfmacc_vf(v_acc, ft3, v_wide);
+            }
+        }
+        if (po && s_idx >= 0)
+            po_inj->compute_vector(v_acc.getIdx(), rhs_dyn, s_idx + 1, n_po);
+    };
+
     Label ch_loop, ch_done;
     L(ch_loop);
     beqz(s10, ch_done);
@@ -380,10 +459,10 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
         // widen to f32, apply the chain, narrow back.
         vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         load_f16(corner_reg[0]);
-        if (po) {
+        if (need_f32) {
             vfwcvt_f_f_v(v_acc, v_f16); // f16 m1 -> f32 m2
             vsetvli(t0, s10, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-            po_inj->compute_vector(v_acc.getIdx(), rhs_dyn);
+            apply_chain();
             vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
             vfncvt_f_f_w(v_f16, v_acc); // f32 m2 -> f16 m1
         }
@@ -401,7 +480,7 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
             vsetvli(t0, s10, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
             vfmacc_vf(v_acc, wei_reg[i], v_wide);
         }
-        if (po) po_inj->compute_vector(v_acc.getIdx(), rhs_dyn);
+        if (need_f32) apply_chain();
         vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vfncvt_f_f_w(v_f16, v_acc); // narrow result to f16
     }

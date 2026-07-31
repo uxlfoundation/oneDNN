@@ -53,6 +53,29 @@ static std::vector<dim_idx_t> get_dims(size_t ndims) {
     return ret;
 }
 
+// The reusable dispatcher packs dispatched dimensions into the gws in dispatch
+// order, which does not necessarily match the memory layout. Batch
+// normalization requires the innermost dimension (ic for blocked and nhwc
+// layouts, the inner spatial dimension for plain layouts) to drive the lws so
+// that neighboring work items access neighboring memory.
+static compute::inner_dim_lws_strategy_t get_lws_strategy(
+        const impl::engine_t *engine, const compute::named_buffer_t &buffer,
+        const std::vector<dim_idx_t> &dispatched_dims) {
+    // block_layout_t is ordered from the innermost to the outermost block
+    for (const auto &block : buffer.layout()) {
+        const auto dim = static_cast<dim_idx_t>(block.dim_idx);
+        if (std::find(dispatched_dims.begin(), dispatched_dims.end(), dim)
+                == dispatched_dims.end())
+            continue;
+
+        const size_t dim_idx = buffer.get_dim_idx(dim);
+        if (dim_idx == compute::dim_not_found) continue;
+
+        return {engine, dim, buffer.dims[dim_idx]};
+    }
+    return {engine, dim_idx::invalid, 1};
+}
+
 static status_t init_calculate_stats_conf(reusable_params_t &conf,
         reusable_runtime_params_t &rt_conf, const impl::engine_t *engine,
         const memory_desc_wrapper &data_mdw) {
@@ -108,7 +131,7 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
             break;
         }
     }
-    auto lws_strategy = compute::default_lws_strategy_t(engine);
+    auto lws_strategy = get_lws_strategy(engine, src_buf, dim_ids);
     compute::reusable_dispatch_config_t calc_stat_dispatch_config(
             dim_ids, lws_strategy);
     VDISPATCH_BNORM_IC(calc_stat_dispatch_config.register_buffer(src_buf)
@@ -135,8 +158,10 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
     }
 
     // Reduce kernels dispatch to ic dim only
+    auto reduce_lws_strategy
+            = get_lws_strategy(engine, reduce_buffer, {dims::ic});
     compute::reusable_dispatch_config_t reduce_stat_dispatch_config(
-            {dims::ic}, lws_strategy);
+            {dims::ic}, reduce_lws_strategy);
     VDISPATCH_BNORM_IC(
             reduce_stat_dispatch_config.register_buffer(reduce_buffer)
                     == status::success,
@@ -181,7 +206,7 @@ static status_t init_conf_common(reusable_params_t &conf,
 
     // Dispatch to all dims
 
-    auto lws_strategy = compute::default_lws_strategy_t(engine);
+    auto lws_strategy = get_lws_strategy(engine, buffer, dims);
     compute::reusable_dispatch_config_t dispatch_config(
             std::move(dims), lws_strategy);
     VDISPATCH_BNORM_IC(

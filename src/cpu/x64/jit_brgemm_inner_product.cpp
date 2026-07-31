@@ -419,13 +419,15 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
                 break;
         }
         while (work < end) {
-            int ocb_s = occ * jbgp.nb_oc_blocking;
-            int ocb_e = nstl::min(ocb_s + jbgp.nb_oc_blocking, jbgp.nb_oc);
-            int ocb_work = ocb_e - ocb_s;
+            dim_t ocb_s = occ * jbgp.nb_oc_blocking;
+            dim_t ocb_e
+                    = nstl::min<dim_t>(ocb_s + jbgp.nb_oc_blocking, jbgp.nb_oc);
+            dim_t ocb_work = ocb_e - ocb_s;
 
-            int osb_s = osc * jbgp.nb_os_blocking;
-            int osb_e = nstl::min(osb_s + jbgp.nb_os_blocking, jbgp.nb_os);
-            int osb_work = osb_e - osb_s;
+            dim_t osb_s = osc * jbgp.nb_os_blocking;
+            dim_t osb_e
+                    = nstl::min<dim_t>(osb_s + jbgp.nb_os_blocking, jbgp.nb_os);
+            dim_t osb_work = osb_e - osb_s;
 
             // Each thread runs the below loops:
             int loop_start = 0, loop_end = 0;
@@ -558,18 +560,20 @@ status_t brgemm_inner_product_fwd_t<isa>::execute_forward(
             nd_iterator_init(
                     ocmb_start + start, osc, os_chunks, occ, oc_chunks);
             while (start < end) {
-                int ocb_s = occ * jbgp.nb_oc_blocking;
-                int ocb_e = nstl::min(ocb_s + jbgp.nb_oc_blocking, jbgp.nb_oc);
+                dim_t ocb_s = occ * jbgp.nb_oc_blocking;
+                dim_t ocb_e = nstl::min<dim_t>(
+                        ocb_s + jbgp.nb_oc_blocking, jbgp.nb_oc);
 
-                int osb_s = osc * jbgp.nb_os_blocking;
-                int osb_e = nstl::min(osb_s + jbgp.nb_os_blocking, jbgp.nb_os);
+                dim_t osb_s = osc * jbgp.nb_os_blocking;
+                dim_t osb_e = nstl::min<dim_t>(
+                        osb_s + jbgp.nb_os_blocking, jbgp.nb_os);
 
-                for (int osb = osb_s; osb < osb_e; ++osb) {
-                    int cur_os_block = nstl::min(
+                for (dim_t osb = osb_s; osb < osb_e; ++osb) {
+                    dim_t cur_os_block = nstl::min<dim_t>(
                             jbgp.os - osb * jbgp.os_block, jbgp.os_block);
                     const bool is_os_tail = cur_os_block < jbgp.os_block;
-                    const int cur_oc_chunk_size
-                            = nstl::min(jbgp.LDC, ocb_e * jbgp.oc_block)
+                    const dim_t cur_oc_chunk_size
+                            = nstl::min<dim_t>(jbgp.LDC, ocb_e * jbgp.oc_block)
                             - ocb_s * jbgp.oc_block;
                     char *dst_reduced
                             = (can_use_dst_as_acc_buffer ? dst
@@ -918,12 +922,14 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
             int icc, occ;
             nd_iterator_init(start, icc, nc_ic, occ, nc_oc);
             while (start < end) {
-                int icb_start = icc * ic_chunk_sz;
-                int icb_end = nstl::min((icc + 1) * ic_chunk_sz, jbgp.nb_ic);
-                int ocb_start = occ * oc_chunk_sz;
-                int ocb_end = nstl::min((occ + 1) * oc_chunk_sz, jbgp.nb_oc);
-                for_(int icb = icb_start; icb < icb_end; icb++)
-                for (int ocb = ocb_start; ocb < ocb_end; ocb++) {
+                dim_t icb_start = icc * ic_chunk_sz;
+                dim_t icb_end
+                        = nstl::min<dim_t>((icc + 1) * ic_chunk_sz, jbgp.nb_ic);
+                dim_t ocb_start = occ * oc_chunk_sz;
+                dim_t ocb_end
+                        = nstl::min<dim_t>((occ + 1) * oc_chunk_sz, jbgp.nb_oc);
+                for_(dim_t icb = icb_start; icb < icb_end; icb++)
+                for (dim_t ocb = ocb_start; ocb < ocb_end; ocb++) {
                     int ic = icb * jbgp.ic_block;
                     int oc = ocb * jbgp.oc_block;
                     bool is_ic_tail = (jbgp.ic - ic < jbgp.ic_block);
@@ -969,8 +975,8 @@ void brgemm_inner_product_bwd_data_t<isa>::execute_backward_data(
         nd_iterator_init(work, osc, os_chunks, kd, jbgp.kd, kh, jbgp.kh, kw,
                 jbgp.kw, icb, jbgp.nb_ic);
         while (work < end) {
-            const int nb_os_blocking
-                    = nstl::min(jbgp.nb_os - osc * jbgp.nb_os_blocking,
+            const dim_t nb_os_blocking
+                    = nstl::min<dim_t>(jbgp.nb_os - osc * jbgp.nb_os_blocking,
                             jbgp.nb_os_blocking);
             const int occ_work = occ_end - occ_start;
             const int loop_iteration = nb_os_blocking * occ_work;
@@ -1658,9 +1664,9 @@ void brgemm_inner_product_bwd_weights_t<isa>::compute_diff_weights_and_bias(
         nd_iterator_init(
                 sp_icc, kd, jbgp.kd, kh, jbgp.kh, kw, jbgp.kw, icc, ic_chunks);
 
-        const int ocb_work = nstl::min(
+        const dim_t ocb_work = nstl::min<dim_t>(
                 jbgp.nb_oc_blocking, jbgp.nb_oc - occ * jbgp.nb_oc_blocking);
-        const int icb_work = nstl::min(
+        const dim_t icb_work = nstl::min<dim_t>(
                 jbgp.nb_ic_blocking, jbgp.nb_ic - icc * jbgp.nb_ic_blocking);
 
         for_(int ocb_i = 0; ocb_i < ocb_work; ocb_i++)
@@ -1704,18 +1710,19 @@ void brgemm_inner_product_bwd_weights_t<
     const bool is_f32_out = jbgp.wei_dt == data_type::f32;
     const int icb_scale = is_f32_out ? jbgp.ic_block / jbgp.simd_w : 1;
 
-    const int icb_work = nstl::min(ti->sp_ic_c_work * jbgp.nb_ic_blocking,
-            jbgp.nb_ic - ti->sp_ic_c_start * jbgp.nb_ic_blocking);
-    const int ocb_work = nstl::min(ti->oc_c_work * jbgp.nb_oc_blocking,
+    const dim_t icb_work
+            = nstl::min<dim_t>(ti->sp_ic_c_work * jbgp.nb_ic_blocking,
+                    jbgp.nb_ic - ti->sp_ic_c_start * jbgp.nb_ic_blocking);
+    const dim_t ocb_work = nstl::min<dim_t>(ti->oc_c_work * jbgp.nb_oc_blocking,
             jbgp.nb_oc - ti->oc_c_start * jbgp.nb_oc_blocking);
-    const int work = ocb_work * icb_work * jbgp.ks();
+    const dim_t work = ocb_work * icb_work * jbgp.ks();
 
     int os_chunks = utils::div_up(jbgp.nb_os, jbgp.nb_os_blocking);
     int reduce_buffers = nstl::min(ti->nthr_os_c, os_chunks);
     int reduce_buf_idx_start = !is_f32_out;
     int reduce_buf_idx_end = reduce_buffers - is_f32_out;
 
-    int start = 0, end = 0;
+    dim_t start = 0, end = 0;
     balance211(work, ti->nthr_os_c, ti->ithr_os_c, start, end);
     if (start == end) return;
 

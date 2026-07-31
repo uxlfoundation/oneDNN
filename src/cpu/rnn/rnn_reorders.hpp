@@ -77,7 +77,8 @@ static inline void quantize_igo(int8_t *scratch_quantized,
                 const float s = scales[(mask == 0) ? 0 : go];
                 scratch_quantized[ldi * G * O + go]
                         = q10n::qz_b0_t<in_data_t, int8_t>()(
-                                src[ldi * G * O + go], s);
+                                static_cast<in_data_t>(src[ldi * G * O + go]),
+                                s);
             }
         }
     });
@@ -101,7 +102,9 @@ static inline void quantize_goi(int8_t *scratch_quantized,
         for (dim_t i = 0; i < I; i++) {
             scratch_quantized[ld * I * G * O + i * G * O + go]
                     = q10n::qz_b0_t<in_data_t, int8_t>()(
-                            src[ld * G * O * I + go * I + i], s);
+                            static_cast<in_data_t>(
+                                    src[ld * G * O * I + go * I + i]),
+                            s);
         }
     });
 }
@@ -117,8 +120,9 @@ static inline void compensate_igo(float *compensation,
     // We parallelize on LD and GO
     // TODO: maybe restrict parallelism as we might have large
     // parallelisation overhead if dimensions are small
-    const int LD_nthr = nstl::min(L * D, dim_t(nthr));
-    const int GO_nthr = nstl::min(G * O, dim_t(nthr / LD_nthr));
+    const int LD_nthr = static_cast<int>(nstl::min<dim_t>(L * D, nthr));
+    const int GO_nthr
+            = static_cast<int>(nstl::min<dim_t>(G * O, nthr / LD_nthr));
     parallel(nthr, [=](const int ithr, const int nthr) {
         int LD_ithr = -1;
         int GO_ithr = -1;
@@ -857,7 +861,8 @@ private:
             return status::success;
         }
 
-        const int o_block = dst_d.blocking_desc().inner_blks[0];
+        const int o_block
+                = static_cast<int>(dst_d.blocking_desc().inner_blks[0]);
         static constexpr int i_block = 4;
 
         dim_t L, D, I, G, O;
@@ -925,7 +930,8 @@ private:
             return row + col;
         };
         const auto kernel_plain_to_blocked
-                = [=](const out_data_t *inp, out_data_t *out, int ib, int ob) {
+                = [=](const out_data_t *inp, out_data_t *out, dim_t ib,
+                          dim_t ob) {
             PRAGMA_OMP_SIMD()
             for (int i = 0; i < i_block * o_block; i++)
                 out[i] = 0;

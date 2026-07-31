@@ -117,10 +117,12 @@ struct kernel_t : public jit_uni_group_normalization_fwd_t::kernel_base_t,
         return jit_generator_t::create_kernel();
     }
     void generate() override {
-        const size_t c_src_size
-                = C_ * types::data_type_size(src_d_.data_type());
-        const size_t c_dst_size
-                = C_ * types::data_type_size(dst_d_.data_type());
+        const int src_dt_size
+                = static_cast<int>(types::data_type_size(src_d_.data_type()));
+        const int dst_dt_size
+                = static_cast<int>(types::data_type_size(dst_d_.data_type()));
+        const dim_t c_src_size = C_ * src_dt_size;
+        const dim_t c_dst_size = C_ * dst_dt_size;
 
 #define PARAM_OFF(x) offsetof(ker_args_t, x)
         if (with_postops_) {
@@ -405,7 +407,7 @@ struct kernel_stat_t
         , c_block_(unroll_c_ * simd_w_)
         , nc_blocks_(C_PER_G_ / c_block_)
         , c_block_tail_((C_PER_G_ % c_block_) - axis_simd_tail_)
-        , unroll_c_tail_(c_block_tail_ / simd_w_) {
+        , unroll_c_tail_(static_cast<int>(c_block_tail_ / simd_w_)) {
 
         io::io_conf_t io_conf;
         io::io_tail_conf_t io_tail_conf(simd_w_, axis_simd_tail_,
@@ -429,9 +431,9 @@ struct kernel_stat_t
                 "%s:\n    compute_var_=%d\n    C_=%" PRId64
                 "\n    C_PER_G_=%" PRId64
                 "\n    simd_w_=%d\n    axis_simd_tail_=%d"
-                "\n    unroll_c_=%" PRId64 "\n    c_block_=%" PRId64
+                "\n    unroll_c_=%d\n    c_block_=%" PRId64
                 "\n    nc_blocks_=%" PRId64 "\n    c_block_tail_=%" PRId64
-                "\n    unroll_c_tail_=%" PRId64,
+                "\n    unroll_c_tail_=%d",
                 jit_name(), compute_var_, C_, C_PER_G_, simd_w_,
                 axis_simd_tail_, unroll_c_, c_block_, nc_blocks_, c_block_tail_,
                 unroll_c_tail_);
@@ -442,6 +444,8 @@ struct kernel_stat_t
     }
 
     void generate() override {
+        const int src_dt_size
+                = static_cast<int>(types::data_type_size(src_d_.data_type()));
         preamble();
 
         io_.init_bf16();
@@ -457,16 +461,16 @@ struct kernel_stat_t
         // is called with the maximum unroll value of a `compute_stat_block`
         // function as they operate over vmms, which numeration depends on
         // unroll value.
-        const size_t max_unroll = nc_blocks_ ? unroll_c_
-                : unroll_c_tail_             ? unroll_c_tail_
-                                             : 1;
+        const int max_unroll = nc_blocks_ ? unroll_c_
+                : unroll_c_tail_          ? unroll_c_tail_
+                                          : 1;
 
         if (!compute_var_) {
-            for (size_t ur = 0; ur < max_unroll; ur++) {
+            for (int ur = 0; ur < max_unroll; ur++) {
                 uni_vpxor(Vmm_mean(ur), Vmm_mean(ur), Vmm_mean(ur));
             }
         } else {
-            for (size_t ur = 0; ur < max_unroll; ur++) {
+            for (int ur = 0; ur < max_unroll; ur++) {
                 uni_vpxor(Vmm_var(ur), Vmm_var(ur), Vmm_var(ur));
             }
         }
@@ -483,8 +487,7 @@ struct kernel_stat_t
                 // calculate mean
                 compute_stat_block(unroll_c_);
 
-                add(reg_src_start,
-                        c_block_ * types::data_type_size(src_d_.data_type()));
+                add(reg_src_start, c_block_ * src_dt_size);
                 add(reg_nc_block, 1);
 
                 jmp(c_blk_loop);
@@ -494,8 +497,7 @@ struct kernel_stat_t
 
         if (unroll_c_tail_) {
             compute_stat_block(unroll_c_tail_);
-            add(reg_src_start,
-                    c_block_tail_ * types::data_type_size(src_d_.data_type()));
+            add(reg_src_start, c_block_tail_ * src_dt_size);
         }
 
         if (axis_simd_tail_) compute_stat_block(1, true);
@@ -537,7 +539,7 @@ struct kernel_stat_t
         // Note: the behavior is aligned with with kernel execution model.
         //   Check for `SINGLE_KERNEL_HEURISTIC_ANCHOR` for a pairing spot.
         if (C_PER_G_ >= 32) {
-            mov(reg_tmp, float2int(C_PER_G_ * SP_));
+            mov(reg_tmp, float2int(static_cast<float>(C_PER_G_ * SP_)));
             uni_vmovq(xmm_tmp, reg_tmp);
             uni_vbroadcastss(vmm_tmp, xmm_tmp);
             uni_vdivps(vmm_stat, vmm_stat, vmm_tmp);
@@ -594,11 +596,11 @@ protected:
     const dim_t SP_;
     const int simd_w_;
     const int axis_simd_tail_;
-    static constexpr dim_t unroll_c_ = 4;
+    static constexpr int unroll_c_ = 4;
     const dim_t c_block_;
     const dim_t nc_blocks_;
     const dim_t c_block_tail_;
-    const dim_t unroll_c_tail_;
+    const int unroll_c_tail_;
 
     io::jit_io_multi_dt_helper_t<Vmm> io_;
     // `io_stat_` is to store a single element of mean or var.
@@ -626,9 +628,10 @@ protected:
         uni_vaddps(vstat, vstat, vtmp);
     }
 
-    void compute_mean_block(size_t unroll, bool tail = false) {
-        const size_t c_src_size
-                = C_ * types::data_type_size(src_d_.data_type());
+    void compute_mean_block(int unroll, bool tail = false) {
+        const int src_dt_size
+                = static_cast<int>(types::data_type_size(src_d_.data_type()));
+        const dim_t c_src_size = C_ * src_dt_size;
 #define PARAM_OFF(x) offsetof(ker_args_t, x)
         mov(reg_sp_block_end, ptr[reg_param + PARAM_OFF(block_size)]);
 #undef PARAM_OFF
@@ -643,7 +646,7 @@ protected:
             cmp(reg_sp_block_end, reg_src);
             jle(sp_blk_loop_end, T_NEAR);
 
-            for (size_t ur = 0; ur < unroll; ur++) {
+            for (int ur = 0; ur < unroll; ur++) {
                 io_[src_d_.data_type()]->load(
                         src_ptr(ur * simd_w_), Vmm_src(ur), tail);
                 uni_vaddps(Vmm_mean(ur), Vmm_mean(ur), Vmm_src(ur));
@@ -655,13 +658,14 @@ protected:
         L(sp_blk_loop_end);
     }
 
-    void compute_var_block(size_t unroll, bool tail = false) {
-        const size_t c_src_size
-                = C_ * types::data_type_size(src_d_.data_type());
+    void compute_var_block(int unroll, bool tail = false) {
+        const int src_dt_size
+                = static_cast<int>(types::data_type_size(src_d_.data_type()));
+        const dim_t c_src_size = C_ * src_dt_size;
 #define PARAM_OFF(x) offsetof(ker_args_t, x)
         mov(reg_sp_block_end, ptr[reg_param + PARAM_OFF(block_size)]);
 #undef PARAM_OFF
-        for (size_t ur = 0; ur < unroll; ur++) {
+        for (int ur = 0; ur < unroll; ur++) {
             io_[data_type::f32]->broadcast(mean_ptr(0), Vmm_mean(ur));
         }
 
@@ -675,11 +679,11 @@ protected:
             cmp(reg_sp_block_end, reg_src);
             jle(sp_blk_loop_end, T_NEAR);
 
-            for (size_t ur = 0; ur < unroll; ur++) {
+            for (int ur = 0; ur < unroll; ur++) {
                 io_[src_d_.data_type()]->load(
                         src_ptr(ur * simd_w_), Vmm_src(ur), tail);
             }
-            for (size_t ur = 0; ur < unroll; ur++) {
+            for (int ur = 0; ur < unroll; ur++) {
                 if (!tail)
                     uni_vsubps(Vmm_src(ur), Vmm_src(ur), Vmm_mean(ur));
                 else {
@@ -701,7 +705,7 @@ protected:
                     }
                 }
             }
-            for (size_t ur = 0; ur < unroll; ur++) {
+            for (int ur = 0; ur < unroll; ur++) {
                 uni_vfmadd231ps(Vmm_var(ur), Vmm_src(ur), Vmm_src(ur));
             }
 
@@ -710,18 +714,18 @@ protected:
         }
         L(sp_blk_loop_end);
     }
-    void compute_stat_block(size_t unroll, bool tail = false) {
+    void compute_stat_block(int unroll, bool tail = false) {
         if (compute_var_)
             compute_var_block(unroll, tail);
         else
             compute_mean_block(unroll, tail);
     }
 
-    Vmm Vmm_mean(size_t ur = 0) { return Vmm(1 + 0 * unroll_c_ + ur); }
-    Vmm Vmm_var(size_t ur = 0) { return Vmm(1 + 1 * unroll_c_ + ur); }
-    Vmm Vmm_src(size_t ur = 0) { return Vmm(1 + 2 * unroll_c_ + ur); }
+    Vmm Vmm_mean(int ur = 0) { return Vmm(1 + 0 * unroll_c_ + ur); }
+    Vmm Vmm_var(int ur = 0) { return Vmm(1 + 1 * unroll_c_ + ur); }
+    Vmm Vmm_src(int ur = 0) { return Vmm(1 + 2 * unroll_c_ + ur); }
 
-    Xbyak::Address src_ptr(size_t offt = 0) {
+    Xbyak::Address src_ptr(dim_t offt = 0) {
         return vmmword[reg_src + offt * src_d_.data_type_size()];
     }
 

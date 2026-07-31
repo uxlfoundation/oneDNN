@@ -538,11 +538,12 @@ protected:
     }
 
     void generate() override {
-        const size_t c_src_size
-                = C_ * types::data_type_size(src_d_.data_type());
-        const size_t c_dst_size
-                = C_ * types::data_type_size(dst_d_.data_type());
-        static const size_t float_size = types::data_type_size(f32);
+        const dim_t c_src_size = C_
+                * static_cast<int>(types::data_type_size(src_d_.data_type()));
+        const dim_t c_dst_size = C_
+                * static_cast<int>(types::data_type_size(dst_d_.data_type()));
+        static const int float_size
+                = static_cast<int>(types::data_type_size(f32));
 
 #define PARAM_OFF(x) offsetof(ker_args_t, x)
         if (with_postops_) {
@@ -596,7 +597,7 @@ protected:
         uni_vmovq(xmm_tmp, reg_tmp);
         uni_vbroadcastss(vmm_ones, xmm_tmp);
 
-        mov(reg_tmp, float2int(C_));
+        mov(reg_tmp, float2int(static_cast<float>(C_)));
         uni_vmovq(xmm_tmp, reg_tmp);
         uni_vbroadcastss(vmm_c, xmm_tmp);
 
@@ -857,11 +858,12 @@ protected:
     }
 
     void generate() override {
-        const size_t c_src_size
-                = C_ * types::data_type_size(src_d_.data_type());
-        const size_t c_ddst_size
-                = C_ * types::data_type_size(d_dst_d_.data_type());
-        static const size_t float_size = types::data_type_size(f32);
+        const dim_t c_src_size = C_
+                * static_cast<int>(types::data_type_size(src_d_.data_type()));
+        const dim_t c_ddst_size = C_
+                * static_cast<int>(types::data_type_size(d_dst_d_.data_type()));
+        static const int float_size
+                = static_cast<int>(types::data_type_size(f32));
 
         preamble();
 
@@ -1089,13 +1091,14 @@ protected:
     }
 
     void generate() override {
-        const size_t c_src_size
-                = C_ * types::data_type_size(src_d_.data_type());
-        const size_t c_ddst_size
-                = C_ * types::data_type_size(d_dst_d_.data_type());
-        const size_t c_dsrc_size
-                = C_ * types::data_type_size(d_src_d_.data_type());
-        static const size_t float_size = types::data_type_size(f32);
+        const dim_t c_src_size = C_
+                * static_cast<int>(types::data_type_size(src_d_.data_type()));
+        const dim_t c_ddst_size = C_
+                * static_cast<int>(types::data_type_size(d_dst_d_.data_type()));
+        const dim_t c_dsrc_size = C_
+                * static_cast<int>(types::data_type_size(d_src_d_.data_type()));
+        static const int float_size
+                = static_cast<int>(types::data_type_size(f32));
 
         preamble();
 
@@ -1115,7 +1118,7 @@ protected:
         mov(reg_block_end, ptr[reg_param + PARAM_OFF(block_size)]);
 #undef PARAM_OFF
 
-        mov(reg_tmp, float2int(C_));
+        mov(reg_tmp, float2int(static_cast<float>(C_)));
         uni_vmovq(xmm_tmp, reg_tmp);
         uni_vbroadcastss(vmm_C, xmm_tmp);
 
@@ -1332,7 +1335,7 @@ status_t jit_uni_layer_normalization_fwd_t::execute_forward(
                 + N_start * C_padded * src_d.data_type_size();
         char *const __restrict dst_ptr = reinterpret_cast<char *>(dst)
                 + N_start * C_padded * dst_d.data_type_size();
-        const int block_size = N_end - N_start;
+        const dim_t block_size = N_end - N_start;
         float *mean_ptr = skip_mean ? nullptr : &mean[N_start];
         float *dst_scales_inv_ptr = nullptr;
         if (!pd()->attr()->scales_.has_default_values(DNNL_ARG_DST)) {
@@ -1401,7 +1404,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
     parallel(max_nthr, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
-        const int block_size = N_end - N_start;
+        const dim_t block_size = N_end - N_start;
         const char *const __restrict src_ptr
                 = reinterpret_cast<const char *>(src)
                 + N_start * C_padded * src_d.data_type_size();
@@ -1434,7 +1437,7 @@ status_t jit_uni_layer_normalization_bwd_t::execute_backward(
     parallel(max_nthr, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
         dim_t N_start = 0, N_end = 0;
         balance211(N, nthr, ithr, N_start, N_end);
-        const int block_size = N_end - N_start;
+        const dim_t block_size = N_end - N_start;
         const char *const __restrict src_ptr
                 = reinterpret_cast<const char *>(src)
                 + N_start * C_padded * src_d.data_type_size();

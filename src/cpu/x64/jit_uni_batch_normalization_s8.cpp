@@ -82,18 +82,20 @@ struct jit_bnorm_base_t : public jit_generator_t {
     Vmm vmm_aux = Vmm(isa == avx512_core ? 28 : 10); // shared with 'veps'
     Vmm vmm_mask = Vmm(0); // used for AVX2 and SSE41
 
-    size_t simd_w_ = cpu_isa_traits_t<isa>::vlen / sizeof(float);
-    size_t c_in_xmm_ = (isa == sse41) ? 8 : 16;
-    size_t chan_data_offt_;
-    size_t num_c_blocks_;
-    size_t c_tail_;
+    static constexpr int data_size_ = sizeof(data_t);
+    static constexpr int float_size_ = sizeof(float);
+    int simd_w_ = cpu_isa_traits_t<isa>::vlen / float_size_;
+    int c_in_xmm_ = (isa == sse41) ? 8 : 16;
+    dim_t chan_data_offt_;
+    dim_t num_c_blocks_;
+    int c_tail_;
     bool with_relu_;
     bool has_alpha_value_;
 
     void compute_predefined_variables() {
-        chan_data_offt_ = pd_->C() * sizeof(float);
+        chan_data_offt_ = pd_->C() * float_size_;
         num_c_blocks_ = pd_->C() / c_in_xmm_;
-        c_tail_ = pd_->C() % c_in_xmm_;
+        c_tail_ = static_cast<int>(pd_->C() % c_in_xmm_);
         with_relu_ = (pd_->with_relu_post_op(false) || pd_->fuse_norm_relu())
                 && pd_->is_fwd();
         has_alpha_value_ = with_relu_ && pd_->with_relu_post_op(false)
@@ -123,44 +125,43 @@ struct jit_bnorm_base_t : public jit_generator_t {
         if (has_alpha_value_) { mov(reg_relu_alpha, float2int(pd_->alpha())); }
     }
 
-    Address mean_ptr(size_t offt = 0) {
+    Address mean_ptr(dim_t offt = 0) {
         return vmmword[reg_mean + reg_channel_offt_4byte + offt];
     }
 
-    Address var_ptr(size_t offt = 0) {
+    Address var_ptr(dim_t offt = 0) {
         return vmmword[reg_var + reg_channel_offt_4byte + offt];
     }
 
-    Address scale_ptr(size_t offt = 0) {
+    Address scale_ptr(dim_t offt = 0) {
         return vmmword[reg_scale + reg_channel_offt_4byte + offt
                 + 0 * chan_data_offt_];
     }
 
-    Address shift_ptr(size_t offt = 0) {
+    Address shift_ptr(dim_t offt = 0) {
         return vmmword[reg_shift + reg_channel_offt_4byte + offt
                 + 0 * chan_data_offt_];
     }
 
-    Address src_ptr(size_t offt = 0) {
+    Address src_ptr(dim_t offt = 0) {
         return vmmword[reg_src + reg_spat_offt + offt];
     }
 
-    Address dst_ptr(size_t offt = 0) {
+    Address dst_ptr(dim_t offt = 0) {
         return vmmword[reg_dst + reg_spat_offt + offt];
     }
 
     virtual void prepare_tail_mask() {}
     virtual void load_mean_and_var(const Vmm &vmean, const Vmm &vsqrtvar,
-            size_t offt, bool need_tail) {}
-    virtual void load_scale(const Vmm &vscale, size_t offt, bool need_tail) {}
-    virtual void load_shift(const Vmm &vshift, size_t offt, bool need_tail) {}
+            dim_t offt, bool need_tail) {}
+    virtual void load_scale(const Vmm &vscale, dim_t offt, bool need_tail) {}
+    virtual void load_shift(const Vmm &vshift, dim_t offt, bool need_tail) {}
     virtual void compute_dst(bool need_tail) {}
 
     // Precomputes vscale and vshift for following
     // `vdst = vscale * vsrc + vshift`
     void compute_vscaleshift(const Vmm &vscale, const Vmm &vshift,
-            const Vmm &vmean, const Vmm &vsqrtvar, size_t offt,
-            bool need_tail) {
+            const Vmm &vmean, const Vmm &vsqrtvar, dim_t offt, bool need_tail) {
         load_mean_and_var(vmean, vsqrtvar, offt, need_tail);
         uni_vaddps(vsqrtvar, vsqrtvar, veps);
         uni_vsqrtps(vsqrtvar, vsqrtvar);
@@ -189,7 +190,7 @@ struct jit_bnorm_base_t : public jit_generator_t {
     void forward() {
         xor_(reg_channel_offt_1byte, reg_channel_offt_1byte);
         xor_(reg_channel_offt_4byte, reg_channel_offt_4byte);
-        mov(reg_tmp, sizeof(data_t) * c_in_xmm_);
+        mov(reg_tmp, data_size_ * c_in_xmm_);
 
         if (num_c_blocks_) compute_dst(false);
         if (c_tail_) compute_dst(true);
@@ -228,7 +229,7 @@ struct jit_bnorm_s8_t<avx512_core> : public jit_bnorm_base_t<avx512_core> {
         kmovw(tail_opmask, regw_tmp);
     }
 
-    void load_mean_and_var(const Vmm &vmean, const Vmm &vsqrtvar, size_t offt,
+    void load_mean_and_var(const Vmm &vmean, const Vmm &vsqrtvar, dim_t offt,
             bool need_tail) override {
         if (need_tail) {
             uni_vmovups_tail(vmean, tail_opmask, mean_ptr(offt));
@@ -239,7 +240,7 @@ struct jit_bnorm_s8_t<avx512_core> : public jit_bnorm_base_t<avx512_core> {
         }
     }
 
-    void load_scale(const Vmm &vscale, size_t offt, bool need_tail) override {
+    void load_scale(const Vmm &vscale, dim_t offt, bool need_tail) override {
         if (need_tail) {
             uni_vmovups_tail(vscale, tail_opmask, scale_ptr(offt));
         } else {
@@ -247,7 +248,7 @@ struct jit_bnorm_s8_t<avx512_core> : public jit_bnorm_base_t<avx512_core> {
         }
     }
 
-    void load_shift(const Vmm &vshift, size_t offt, bool need_tail) override {
+    void load_shift(const Vmm &vshift, dim_t offt, bool need_tail) override {
         if (need_tail) {
             uni_vmovups_tail(vshift, tail_opmask, shift_ptr(offt));
         } else {
@@ -285,8 +286,8 @@ struct jit_bnorm_s8_t<avx512_core> : public jit_bnorm_base_t<avx512_core> {
             L(mb_sp_loop);
             {
                 if (need_tail) {
-                    for (size_t tl = 0; tl < c_tail_; tl++)
-                        vpinsrb(x, x, src_ptr(tl), tl);
+                    for (int tl = 0; tl < c_tail_; tl++)
+                        vpinsrb(x, x, src_ptr(tl), static_cast<uint8_t>(tl));
                     vpmovsxbd(v, x);
                 } else
                     vpmovsxbd(v, src_ptr());
@@ -304,8 +305,8 @@ struct jit_bnorm_s8_t<avx512_core> : public jit_bnorm_base_t<avx512_core> {
                 vcvtps2dq(v, v);
                 if (need_tail) {
                     vpmovsdb(x, v);
-                    for (size_t tl = 0; tl < c_tail_; tl++)
-                        vpextrb(dst_ptr(tl), x, tl);
+                    for (int tl = 0; tl < c_tail_; tl++)
+                        vpextrb(dst_ptr(tl), x, static_cast<uint8_t>(tl));
                 } else
                     vpmovsdb(dst_ptr(), v);
 
@@ -315,9 +316,9 @@ struct jit_bnorm_s8_t<avx512_core> : public jit_bnorm_base_t<avx512_core> {
             }
 
             // reg_tmp checks c_in_xmm_ channels ahead for further tail process
-            add(reg_tmp, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_1byte, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_4byte, sizeof(float) * c_in_xmm_);
+            add(reg_tmp, data_size_ * c_in_xmm_);
+            add(reg_channel_offt_1byte, data_size_ * c_in_xmm_);
+            add(reg_channel_offt_4byte, float_size_ * c_in_xmm_);
             cmp(reg_tmp, reg_channel_offt_count);
             jle(c_loop);
         }
@@ -350,7 +351,7 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
         vmovups(tail_vmask, ptr[reg_tmp]);
     }
 
-    void load_mean_and_var(const Vmm &vmean, const Vmm &vsqrtvar, size_t offt,
+    void load_mean_and_var(const Vmm &vmean, const Vmm &vsqrtvar, dim_t offt,
             bool need_tail) override {
         if (need_tail) {
             uni_vmovups_tail(vmean, tail_vmask, mean_ptr(offt));
@@ -361,7 +362,7 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
         }
     }
 
-    void load_scale(const Vmm &vscale, size_t offt, bool need_tail) override {
+    void load_scale(const Vmm &vscale, dim_t offt, bool need_tail) override {
         if (need_tail) {
             uni_vmovups_tail(vscale, tail_vmask, scale_ptr(offt));
         } else {
@@ -369,7 +370,7 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
         }
     }
 
-    void load_shift(const Vmm &vshift, size_t offt, bool need_tail) override {
+    void load_shift(const Vmm &vshift, dim_t offt, bool need_tail) override {
         if (need_tail) {
             uni_vmovups_tail(vshift, tail_vmask, shift_ptr(offt));
         } else {
@@ -411,7 +412,7 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
                     (c_tail_ < simd_w_ && need_tail) ? true : false);
             if (!need_tail || c_tail_ > simd_w_) {
                 compute_vscaleshift(vscale1, vshift1, vmean1, vsqrtvar1,
-                        simd_w_ * sizeof(float), need_tail);
+                        simd_w_ * float_size_, need_tail);
             }
 
             // ... then process all spatial loop with it and move to the
@@ -422,11 +423,13 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
             {
 
                 if (need_tail) {
-                    for (size_t tl = 0; tl < c_tail_; tl++) {
+                    for (int tl = 0; tl < c_tail_; tl++) {
                         if (tl < simd_w_) {
-                            vpinsrb(x0, x0, src_ptr(tl), tl);
+                            vpinsrb(x0, x0, src_ptr(tl),
+                                    static_cast<uint8_t>(tl));
                         } else {
-                            vpinsrb(x1, x1, src_ptr(tl), tl - simd_w_);
+                            vpinsrb(x1, x1, src_ptr(tl),
+                                    static_cast<uint8_t>(tl - simd_w_));
                         }
                     }
                     vpmovsxbd(v0, x0);
@@ -467,8 +470,8 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
                 vpacksswb(v0, v0, v1); // DCBA + BADC -> badcDCBA
 
                 if (need_tail) {
-                    for (size_t tl = 0; tl < c_tail_; tl++) {
-                        vpextrb(dst_ptr(tl), x0, tl);
+                    for (int tl = 0; tl < c_tail_; tl++) {
+                        vpextrb(dst_ptr(tl), x0, static_cast<uint8_t>(tl));
                     }
                 } else {
                     // due to vpacksswb produces 32 integers in ymm, and top
@@ -482,9 +485,9 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
             }
 
             // reg_tmp checks c_in_xmm_ channels ahead for further tail process
-            add(reg_tmp, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_1byte, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_4byte, sizeof(float) * c_in_xmm_);
+            add(reg_tmp, data_size_ * c_in_xmm_);
+            add(reg_channel_offt_1byte, data_size_ * c_in_xmm_);
+            add(reg_channel_offt_4byte, float_size_ * c_in_xmm_);
             cmp(reg_tmp, reg_channel_offt_count);
             jle(c_loop);
         }
@@ -496,12 +499,14 @@ struct jit_bnorm_s8_t<avx2> : public jit_bnorm_base_t<avx2> {
 
 template <>
 struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
-    void load_mean_and_var(const Vmm &vmean, const Vmm &vsqrtvar, size_t offt,
+    void load_mean_and_var(const Vmm &vmean, const Vmm &vsqrtvar, dim_t offt,
             bool need_tail) override {
         if (need_tail) {
-            for (size_t tl = 0; tl < c_tail_ % simd_w_; tl++) {
-                pinsrd(vmean, mean_ptr(offt + tl * sizeof(float)), tl);
-                pinsrd(vsqrtvar, var_ptr(offt + tl * sizeof(float)), tl);
+            for (int tl = 0; tl < c_tail_ % simd_w_; tl++) {
+                pinsrd(vmean, mean_ptr(offt + tl * float_size_),
+                        static_cast<uint8_t>(tl));
+                pinsrd(vsqrtvar, var_ptr(offt + tl * float_size_),
+                        static_cast<uint8_t>(tl));
             }
         } else {
             movups(vmean, mean_ptr(offt));
@@ -509,20 +514,22 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
         }
     }
 
-    void load_scale(const Vmm &vscale, size_t offt, bool need_tail) override {
+    void load_scale(const Vmm &vscale, dim_t offt, bool need_tail) override {
         if (need_tail) {
-            for (size_t tl = 0; tl < c_tail_ % simd_w_; tl++) {
-                pinsrd(vscale, scale_ptr(offt + tl * sizeof(float)), tl);
+            for (int tl = 0; tl < c_tail_ % simd_w_; tl++) {
+                pinsrd(vscale, scale_ptr(offt + tl * float_size_),
+                        static_cast<uint8_t>(tl));
             }
         } else {
             movups(vscale, scale_ptr(offt));
         }
     }
 
-    void load_shift(const Vmm &vshift, size_t offt, bool need_tail) override {
+    void load_shift(const Vmm &vshift, dim_t offt, bool need_tail) override {
         if (need_tail) {
-            for (size_t tl = 0; tl < c_tail_ % simd_w_; tl++) {
-                pinsrd(vshift, shift_ptr(offt + tl * sizeof(float)), tl);
+            for (int tl = 0; tl < c_tail_ % simd_w_; tl++) {
+                pinsrd(vshift, shift_ptr(offt + tl * float_size_),
+                        static_cast<uint8_t>(tl));
             }
         } else {
             movups(vshift, shift_ptr(offt));
@@ -541,7 +548,7 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
     }
 
     void compute_dst(bool need_tail) override {
-        const size_t copy_range = need_tail ? c_tail_ : c_in_xmm_;
+        const int copy_range = need_tail ? c_tail_ : c_in_xmm_;
         Label c_loop;
         L(c_loop);
         {
@@ -562,7 +569,7 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
                     (c_tail_ < simd_w_ && need_tail) ? true : false);
             if (!need_tail || c_tail_ > simd_w_) {
                 compute_vscaleshift(vscale1, vshift1, vmean1, vsqrtvar1,
-                        simd_w_ * sizeof(float), need_tail);
+                        simd_w_ * float_size_, need_tail);
             }
 
             // ... then process all spatial loop with it and move to the
@@ -572,11 +579,12 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
             L(mb_sp_loop);
             {
                 if (need_tail) {
-                    for (size_t tl = 0; tl < copy_range; tl++) {
+                    for (int tl = 0; tl < copy_range; tl++) {
                         if (tl < simd_w_) {
-                            pinsrb(v0, src_ptr(tl), tl);
+                            pinsrb(v0, src_ptr(tl), static_cast<uint8_t>(tl));
                         } else {
-                            pinsrb(v1, src_ptr(tl), (tl - simd_w_));
+                            pinsrb(v1, src_ptr(tl),
+                                    static_cast<uint8_t>(tl - simd_w_));
                         }
                     }
                     pmovsxbd(v0, v0);
@@ -618,8 +626,8 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
                 // Potential perf gain is possible if combining two halves
                 // into a single vector register and use movups instead
                 // of byte stores.
-                for (size_t tl = 0; tl < copy_range; tl++) {
-                    pextrb(dst_ptr(tl), v0, tl);
+                for (int tl = 0; tl < copy_range; tl++) {
+                    pextrb(dst_ptr(tl), v0, static_cast<uint8_t>(tl));
                 }
 
                 add(reg_spat_offt, reg_channel_offt_count);
@@ -628,9 +636,9 @@ struct jit_bnorm_s8_t<sse41> : public jit_bnorm_base_t<sse41> {
             }
 
             // reg_tmp checks c_in_xmm_ channels ahead for further tail process
-            add(reg_tmp, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_1byte, sizeof(data_t) * c_in_xmm_);
-            add(reg_channel_offt_4byte, sizeof(float) * c_in_xmm_);
+            add(reg_tmp, data_size_ * c_in_xmm_);
+            add(reg_channel_offt_1byte, data_size_ * c_in_xmm_);
+            add(reg_channel_offt_4byte, float_size_ * c_in_xmm_);
             cmp(reg_tmp, reg_channel_offt_count);
             jle(c_loop);
         }

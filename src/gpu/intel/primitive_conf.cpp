@@ -686,8 +686,8 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
         return status::success;
     };
 
-    for (int idx = 0; idx < post_ops.len(); ++idx) {
-        CHECK(add_po_defines(post_ops[idx], idx));
+    for (size_t idx = 0; idx < post_ops.len(); ++idx) {
+        CHECK(add_po_defines(post_ops[idx], static_cast<int>(idx)));
     }
 
     kernel_ctx.define_int("WITH_POST_OP", post_ops.len() > 0);

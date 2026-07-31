@@ -381,8 +381,8 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::load_src_avg_op(
             //    vreg_src = [x,x,x,x,.....,x,-,-,-,-,-] ; x => byte data
             //    shift to transform vreg_src = [-,-,-,-,-,x,..,x,x,x,x,]
             // Re-purposing vreg_zeros here. Set it back to zero immmediately.
-            const int msk_gran = cpu_isa_traits_t<avx2>::vlen
-                    / data_type_size(avg_proc_dt);
+            const int msk_gran = static_cast<int>(
+                    cpu_isa_traits_t<avx2>::vlen / data_type_size(avg_proc_dt));
 
             const uint8_t shift
                     = static_cast<uint8_t>(cpu_isa_traits_t<avx2>::vlen
@@ -639,8 +639,8 @@ void jit_uni_i8i8_pooling_fwd_ker_t<avx2>::store_dst_avg_op(
         // mmx_full_msk - mask for all 8 bytes in zero-tail case
         // mmx_mask(ll) - ll-th mask of tail in non-zero-tail case
 
-        const int msk_gran
-                = cpu_isa_traits_t<avx2>::vlen / data_type_size(avg_proc_dt);
+        const int msk_gran = static_cast<int>(
+                cpu_isa_traits_t<avx2>::vlen / data_type_size(avg_proc_dt));
 
         const int ll_end = (ll + 1) * msk_gran; // ((ll + 1) * 8)
 
@@ -1215,7 +1215,8 @@ status_t jit_uni_i8i8_pooling_fwd_ker_t<isa>::init_conf(
     // data_type items per one vreg on the <isa>
     //     isa == avx2    : 32 bytes -> 32 for s8/u8, 8 for s32
     //     isa == avx512* : 64 bytes -> 64 for s8/u8, 16 for s32
-    int simd_w = cpu_isa_traits_t<isa>::vlen / data_type_size(jpp.src_dt);
+    int simd_w = static_cast<int>(
+            cpu_isa_traits_t<isa>::vlen / data_type_size(jpp.src_dt));
 
     /* Verify that vlen-sized memory access happens within the tensor's
      * size, otherwise load/store will always spill outside the memory

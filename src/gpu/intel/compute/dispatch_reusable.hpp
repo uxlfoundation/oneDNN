@@ -401,6 +401,66 @@ struct default_lws_strategy_t : public lws_strategy_t {
     gpu_arch_t arch;
 };
 
+// Balance lws size with occupation, while requiring a given dimension to be
+// mapped to the first gws index and contained in the lws. Dispatched
+// dimensions are otherwise packed into the gws in dispatch order, which need
+// not match the memory layout. Primitives relying on neighboring work items
+// accessing neighboring memory need the innermost dimension pinned this way.
+struct inner_dim_lws_strategy_t : public lws_strategy_t {
+    inner_dim_lws_strategy_t(gpu_arch_t arch, dim_idx_t dim, int64_t dim_size,
+            size_t max_wg_size = default_max_wg_size)
+        : arch(arch), max_wg_size(std::min(max_wg_size, default_max_wg_size)) {
+        if (dim == dim_idx::invalid) return;
+
+        // Use the largest power of 2 dividing the dimension which fits within
+        // a work group.
+        int64_t size = 1;
+        for (int64_t i = 2; i <= static_cast<int64_t>(this->max_wg_size);
+                i *= 2) {
+            if (dim_size % i == 0) size = i;
+        }
+        local_[0] = {dim, size};
+    }
+
+    inner_dim_lws_strategy_t(const impl::engine_t *engine, dim_idx_t dim,
+            int64_t dim_size, size_t max_wg_size = default_max_wg_size)
+        : inner_dim_lws_strategy_t(
+                  utils::downcast<const intel::engine_t *>(engine)
+                          ->device_info()
+                          ->gpu_arch(),
+                  dim, dim_size, max_wg_size) {}
+
+    range_t create_lws(range_t &gws) const override {
+        if (local_[0].idx == dim_idx::invalid)
+            return get_optimal_lws(gws, -1, arch);
+
+        range_t lws = get_optimal_lws(gws, 0, arch);
+        lws[0] = static_cast<size_t>(local_[0].size);
+
+        // Shrink the remaining dimensions so that the work group stays within
+        // the size supported by the device.
+        for (size_t i = lws.ndims() - 1; i > 0; i--) {
+            while (lws.nelems() > max_wg_size && lws[i] > 1)
+                lws[i] = utils::div_up(lws[i], size_t(2));
+        }
+
+        // Work groups must be uniform
+        for (size_t i = 0; i < gws.ndims(); i++)
+            gws[i] = utils::rnd_up(gws[i], lws[i]);
+
+        return lws;
+    }
+
+    const std::array<dim_info_t, 3> &local() const override { return local_; }
+
+private:
+    static constexpr size_t default_max_wg_size = 256;
+
+    gpu_arch_t arch;
+    size_t max_wg_size;
+    std::array<dim_info_t, 3> local_ = {};
+};
+
 struct explicit_lws_strategy_t : public lws_strategy_t {
     explicit_lws_strategy_t(
             int subgroup_size, const std::array<dim_info_t, 3> &local)

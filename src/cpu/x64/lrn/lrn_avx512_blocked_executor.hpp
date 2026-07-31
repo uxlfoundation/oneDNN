@@ -36,11 +36,11 @@ public:
         , ker_last_(nullptr)
         , N_(pd->MB())
         , C_(pd->C())
-        , H_(pd->H())
-        , W_(pd->W())
+        , H_(static_cast<int>(pd->H()))
+        , W_(static_cast<int>(pd->W()))
         , use_h_parallelism_(H_ > 28 ? 1 : 0) {
 
-        const int local_size = pd->desc()->local_size;
+        const int local_size = static_cast<int>(pd->desc()->local_size);
         const float alpha = pd->desc()->lrn_alpha / local_size;
         const float beta = pd->desc()->lrn_beta;
         const auto pk = pd->desc()->prop_kind;
@@ -90,13 +90,13 @@ public:
 
         parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             size_t start {0}, end {0};
-            const int C16 = C_ / vsize_;
+            const dim_t C16 = C_ / vsize_;
             const size_t work_amount
                     = use_h_parallelism_ ? N_ * C16 * H_ : N_ * C16;
 
             balance211(work_amount, nthr, ithr, start, end);
             if (use_h_parallelism_) {
-                int n {0}, c16 {0}, h {0};
+                dim_t n {0}, c16 {0}, h {0};
                 nd_iterator_init(start, n, N_, c16, C16, h, H_);
                 for (size_t iwork = start; iwork < end; ++iwork) {
                     const auto offset = n * C_ * H_ * W_
@@ -123,7 +123,7 @@ public:
                     nd_iterator_step(n, N_, c16, C16, h, H_);
                 }
             } else {
-                int n {0}, c16 {0};
+                dim_t n {0}, c16 {0};
                 nd_iterator_init(start, n, N_, c16, C16);
                 for (size_t iwork = start; iwork < end; ++iwork) {
                     const auto offset
@@ -160,8 +160,8 @@ private:
     std::unique_ptr<lrn::jit_avx512_common_lrn_kernel_fwd_blocked_t<d_type>>
             ker_, ker_first_, ker_last_;
     static constexpr int vsize_ = 16;
-    const int N_;
-    const int C_;
+    const dim_t N_;
+    const dim_t C_;
     const int H_;
     const int W_;
     const int use_h_parallelism_;
@@ -176,11 +176,11 @@ public:
         , ker_last_(nullptr)
         , N_(pd->MB())
         , C_(pd->C())
-        , H_(pd->H())
-        , W_(pd->W())
+        , H_(static_cast<int>(pd->H()))
+        , W_(static_cast<int>(pd->W()))
         , use_h_parallelism_(H_ > 28 ? 1 : 0) {
 
-        const int local_size = pd->desc()->local_size;
+        const int local_size = static_cast<int>(pd->desc()->local_size);
         const float alpha = pd->desc()->lrn_alpha / local_size;
         const float beta = pd->desc()->lrn_beta;
 
@@ -229,13 +229,13 @@ public:
 
         parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             size_t start {0}, end {0};
-            const int C16 = C_ / vsize_;
+            const dim_t C16 = C_ / vsize_;
             const size_t work_amount
                     = use_h_parallelism_ ? N_ * C16 * H_ : N_ * C16;
 
             balance211(work_amount, nthr, ithr, start, end);
             if (use_h_parallelism_) {
-                int n {0}, c16 {0}, h {0};
+                dim_t n {0}, c16 {0}, h {0};
                 nd_iterator_init(start, n, N_, h, H_, c16, C16);
                 for (size_t iwork = start; iwork < end; ++iwork) {
                     const auto offset = n * C_ * H_ * W_
@@ -263,7 +263,7 @@ public:
                     nd_iterator_step(n, N_, h, H_, c16, C16);
                 }
             } else {
-                int n {0}, c16 {0};
+                dim_t n {0}, c16 {0};
                 nd_iterator_init(start, n, N_, c16, C16);
                 for (size_t iwork = start; iwork < end; ++iwork) {
                     const auto offset
@@ -301,8 +301,8 @@ private:
     std::unique_ptr<lrn::jit_avx512_common_lrn_kernel_bwd_blocked_t<d_type>>
             ker_, ker_first_, ker_last_;
     static constexpr int vsize_ = 16;
-    const int N_;
-    const int C_;
+    const dim_t N_;
+    const dim_t C_;
     const int H_;
     const int W_;
     const int use_h_parallelism_;

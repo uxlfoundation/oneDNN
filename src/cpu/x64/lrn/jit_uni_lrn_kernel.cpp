@@ -1314,8 +1314,8 @@ void jit_uni_lrn_fwd_kernel_t<sse41, data_type::f32>::generate(
     bool compute_tail = J.tail != 0;
     bool load_lo = J.tail == 0 || J.tail > 4;
 
-    size_t h_offset = vlen;
-    size_t l_shift = 0;
+    int h_offset = vlen;
+    int l_shift = 0;
 
     this->preamble();
     if (this->emulate_bfloat_) this->io_.init_bf16();
@@ -1347,7 +1347,7 @@ void jit_uni_lrn_fwd_kernel_t<sse41, data_type::f32>::generate(
         l_shift = nstl::min(2 * vlen - J.tail, vlen);
 
         /* if 'tail' is between [1:3], need to zero-mask for underflow */
-        size_t m_off = nstl::min(J.tail - 1, 3);
+        int m_off = nstl::min(J.tail - 1, 3);
         this->mov(this->imm_addr64_, reinterpret_cast<size_t>(&mask[m_off]));
         this->movups(xmask_hi, this->ptr[this->imm_addr64_]);
     }

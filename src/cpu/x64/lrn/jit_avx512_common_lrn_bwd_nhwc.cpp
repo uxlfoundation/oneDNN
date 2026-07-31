@@ -65,17 +65,17 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::generate() {
 
 template <data_type_t d_type>
 void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::reserve_stack_space(
-        std::size_t space) {
-    const unsigned maxCounter = (space / zmm_size_) - 1;
+        int space) {
+    const int maxCounter = (space / zmm_size_) - 1;
     this->sub(rsp, space);
     this->uni_vpxor(zmm4, zmm4, zmm4);
-    for (unsigned i = 0; i < maxCounter; ++i)
+    for (int i = 0; i < maxCounter; ++i)
         this->vmovups(ptr[rsp + i * zmm_size_], zmm4);
 }
 
 template <data_type_t d_type>
 void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::unreserve_stack_space(
-        std::size_t space) {
+        int space) {
     this->add(rsp, space);
 }
 
@@ -284,7 +284,7 @@ void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::compute(
 
 template <data_type_t d_type>
 void jit_avx512_common_lrn_kernel_bwd_nhwc_t<d_type>::increment_loop_params(
-        std::size_t offset) {
+        int offset) {
     this->add(this->src_, offset);
     this->add(this->diffsrc_, offset);
     this->add(this->diffdst_, offset);

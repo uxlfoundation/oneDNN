@@ -744,8 +744,8 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(
                 const memory_desc_wrapper tmp_d
                         = memory_desc_wrapper(jpp.tmp_md);
                 // offset needs to be f32
-                const int dt_scale
-                        = sizeof(float) / types::data_type_size(d_type);
+                const int dt_scale = static_cast<int>(
+                        sizeof(float) / types::data_type_size(d_type));
                 const auto blk_off = tmp_d.blk_off(n, c_off, oh) * dt_scale;
                 args.dst_po_helper = static_cast<const void *>(&dst[blk_off]);
             }
@@ -875,8 +875,8 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(
                 const memory_desc_wrapper tmp_d
                         = memory_desc_wrapper(jpp.tmp_md);
                 // offset needs to be f32
-                const int dt_scale
-                        = sizeof(float) / types::data_type_size(d_type);
+                const int dt_scale = static_cast<int>(
+                        sizeof(float) / types::data_type_size(d_type));
                 const auto blk_off = tmp_d.blk_off(n, c_off, od, oh) * dt_scale;
                 args.dst_po_helper = static_cast<const void *>(&dst[blk_off]);
             }

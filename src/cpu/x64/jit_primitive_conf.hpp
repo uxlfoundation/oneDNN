@@ -1006,9 +1006,9 @@ struct jit_reduction_conf_t {
     data_type_t dst_type = data_type::undef;
     data_type_t acc_type = data_type::undef;
 
-    std::size_t src_dt_size = 0;
-    std::size_t dst_dt_size = 0;
-    std::size_t acc_dt_size = 0;
+    int src_dt_size = 0;
+    int dst_dt_size = 0;
+    int acc_dt_size = 0;
 
     alg_kind_t alg = alg_kind::undef;
     cpu_isa_t isa = isa_undef;

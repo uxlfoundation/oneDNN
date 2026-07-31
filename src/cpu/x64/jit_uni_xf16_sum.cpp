@@ -44,7 +44,7 @@ void jit_avx512_core_bf16_sum_kernel_t::broadcast_scale(int scale_iter) {
 }
 
 void jit_avx512_core_bf16_sum_kernel_t::read_iter(
-        int acc_iter, int u_idx, int src_shift) {
+        int acc_iter, int u_idx, dim_t src_shift) {
     Zmm vsrc0 = Zmm(src_vreg_idx(u_idx, 2 * acc_iter));
     Zmm vsrc1_vtmp = Zmm(tmp_vreg_idx(u_idx, acc_iter));
     vmovups(vsrc0, ptr[reg_src[2 * acc_iter] + u_idx * src_shift]);
@@ -78,7 +78,7 @@ void jit_avx512_core_bf16_sum_kernel_t::add_iter(int acc_iter, int u_idx) {
     }
 }
 
-void jit_avx512_core_bf16_sum_kernel_t::write_iter(int u_idx, int dst_shift) {
+void jit_avx512_core_bf16_sum_kernel_t::write_iter(int u_idx, dim_t dst_shift) {
     Zmm vacc0 = Zmm(acc_vreg_idx(u_idx, 0));
     Zmm vacc1 = Zmm(acc_vreg_idx(u_idx, 1));
     if (!jsp.is_bf16_dst) {
@@ -202,7 +202,7 @@ status_t jit_avx512_core_bf16_sum_kernel_t::init_conf(
     jsp.is_bf16_dst = data_type::bf16 == o_d.data_type();
 
     jsp.typesize_in = sizeof(bfloat16_t);
-    jsp.typesize_out = types::data_type_size(o_d.data_type());
+    jsp.typesize_out = static_cast<int>(types::data_type_size(o_d.data_type()));
 
     return status::success;
 }
@@ -216,7 +216,7 @@ void jit_avx2_vnni_2_xf16_sum_kernel_t::broadcast_scale(int scale_iter) {
 }
 
 void jit_avx2_vnni_2_xf16_sum_kernel_t::read_iter(
-        int acc_iter, int u_idx, int src_shift) {
+        int acc_iter, int u_idx, dim_t src_shift) {
     Ymm vsrc0 = Ymm(src_vreg_idx(u_idx, 2 * acc_iter));
     Ymm vsrc1 = Ymm(src_vreg_idx(u_idx, 2 * acc_iter + 1));
     if (jsp.src_dt == data_type::bf16) {
@@ -238,7 +238,7 @@ void jit_avx2_vnni_2_xf16_sum_kernel_t::add_iter(int acc_iter, int u_idx) {
     vfmadd231ps(vacc1, vsrc1, vscale);
 }
 
-void jit_avx2_vnni_2_xf16_sum_kernel_t::write_iter(int u_idx, int dst_shift) {
+void jit_avx2_vnni_2_xf16_sum_kernel_t::write_iter(int u_idx, dim_t dst_shift) {
     Ymm vacc0 = Ymm(acc_vreg_idx(u_idx, 0));
     Ymm vacc1 = Ymm(acc_vreg_idx(u_idx, 1));
     Ymm vtmp0 = Ymm(tmp_vreg_idx(u_idx, 0));
@@ -259,14 +259,14 @@ void jit_avx2_vnni_2_xf16_sum_kernel_t::tail_iteration() {
     cmp(reg_sz, 0);
     jle(exit_label, T_NEAR);
     for (int unroll = 3; unroll >= 0; unroll--) {
-        const unsigned char process_elems = 1 << unroll;
+        const int process_elems = 1 << unroll;
         mov(rsi, process_elems);
         cmp(reg_sz, rsi);
         jge(tail_unroll_labels[unroll], T_NEAR);
     }
 
     for (int unroll = 3; unroll >= 0; unroll--) {
-        const unsigned char process_elems = 1 << unroll;
+        const int process_elems = 1 << unroll;
         L(tail_unroll_labels[unroll]);
         if (process_elems == 8) {
             Xmm vacc0l = Xmm(acc_vreg_idx(unroll, 0));
@@ -338,8 +338,8 @@ status_t jit_avx2_vnni_2_xf16_sum_kernel_t::init_conf(jit_sum_conf_t &jsp,
     jsp.src_dt = i_d.data_type();
     jsp.dst_dt = o_d.data_type();
 
-    jsp.typesize_in = types::data_type_size(i_d.data_type());
-    jsp.typesize_out = types::data_type_size(o_d.data_type());
+    jsp.typesize_in = static_cast<int>(types::data_type_size(i_d.data_type()));
+    jsp.typesize_out = static_cast<int>(types::data_type_size(o_d.data_type()));
 
     return status::success;
 }

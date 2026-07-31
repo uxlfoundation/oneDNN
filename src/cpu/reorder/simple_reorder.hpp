@@ -1145,10 +1145,10 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 auto i = &input[get_blk_off(
                         input_d, batch, D0_blksize * D0, D1_blksize * D1)];
                 auto o = &output[get_blk_off(output_d, batch, D0, D1)];
-                const dim_t d0_block
-                        = nstl::min(D0_blksize, D0dim - D0 * D0_blksize);
-                const dim_t d1_block
-                        = nstl::min(D1_blksize, D1dim - D1 * D1_blksize);
+                const int d0_block = static_cast<int>(
+                        nstl::min(D0_blksize, D0dim - D0 * D0_blksize));
+                const int d1_block = static_cast<int>(
+                        nstl::min(D1_blksize, D1dim - D1 * D1_blksize));
                 dim_t _offset = batch * NB_D1dim * D1_blksize + D1 * D1_blksize;
                 int32_t *zp_ptr = (order_keep && has_asymmetric_comp)
                         ? &zp[_offset]
@@ -2413,8 +2413,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
-                src_zp_val = io::load_float_value(
-                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+                src_zp_val = static_cast<int>(io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off));
             }
 
             const auto o_off = output_d.off_l(idx);
@@ -2650,8 +2650,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
-                src_zp_val = io::load_float_value(
-                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+                src_zp_val = static_cast<int>(io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off));
             }
 
             const auto i_off = input_d.off_l(idx);

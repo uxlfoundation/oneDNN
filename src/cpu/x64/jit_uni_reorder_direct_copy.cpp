@@ -70,7 +70,7 @@ struct direct_copy_kernel_t
     int get_max_unroll() const override { return unroll_12_; }
 
     void operator()(
-            const void *src, void *dst, size_t work_amount) const override {
+            const void *src, void *dst, dim_t work_amount) const override {
         ker_args_t args;
         args.src = src;
         args.dst = dst;
@@ -82,9 +82,9 @@ struct direct_copy_kernel_t
         return jit_generator_t::create_kernel();
     }
 
-    Address src_ptr(size_t offt = 0) { return ptr[reg_src + offt]; }
+    Address src_ptr(int offt = 0) { return ptr[reg_src + offt]; }
 
-    Address dst_ptr(size_t offt = 0) { return ptr[reg_dst + offt]; }
+    Address dst_ptr(int offt = 0) { return ptr[reg_dst + offt]; }
 
     Vmm vmm_src(int idx) const {
         // Incorporate `+ 1` here as `0th` index is used for tail on AVX2.
@@ -92,47 +92,45 @@ struct direct_copy_kernel_t
     }
 
     void copy(const int unroll, const bool tail) {
+        const int src_dt_size
+                = static_cast<int>(types::data_type_size(src_dt_));
+        const int dst_dt_size
+                = static_cast<int>(types::data_type_size(dst_dt_));
+
         // Copy two simdw at once in vectorized loop first when `ne_convert`
         // instructions are available for xf16.
         if (isa_ == avx2_vnni_2
                 && (utils::one_of(src_dt_, data_type::bf16, data_type::f16))
                 && (unroll % 2 == 0)) {
-            for (size_t i = 0; i < static_cast<size_t>(unroll) / 2; i++) {
+            for (int i = 0; i < unroll / 2; i++) {
                 const Vmm &vmm_src_even = vmm_src(2 * i);
                 const Vmm &vmm_src_odd = vmm_src(2 * i + 1);
                 Vmm vmm_tmp(vmm_tmp_idx_);
                 io_[src_dt_]->load_two_simdw_xf16(
-                        src_ptr(2 * i * types::data_type_size(src_dt_)
-                                * simd_w_),
-                        vmm_src_even, vmm_src_odd);
+                        src_ptr(2 * i * src_dt_size * simd_w_), vmm_src_even,
+                        vmm_src_odd);
                 io_[src_dt_]->merge_interleaved_to_plain(
                         vmm_src_even, vmm_src_odd, vmm_tmp);
                 io_[dst_dt_]->store(vmm_src_even,
-                        dst_ptr(2 * i * types::data_type_size(dst_dt_)
-                                * simd_w_),
-                        tail);
+                        dst_ptr(2 * i * dst_dt_size * simd_w_), tail);
                 io_[dst_dt_]->store(vmm_src_odd,
-                        dst_ptr((2 * i + 1) * types::data_type_size(dst_dt_)
-                                * simd_w_),
-                        tail);
+                        dst_ptr((2 * i + 1) * dst_dt_size * simd_w_), tail);
             }
         } else {
             for (int i = 0; i < unroll; i++) {
                 io_[src_dt_]->load(
-                        src_ptr(i * types::data_type_size(src_dt_) * simd_w_),
-                        vmm_src(i), tail);
+                        src_ptr(i * src_dt_size * simd_w_), vmm_src(i), tail);
             }
             for (int i = 0; i < unroll; i++) {
-                io_[dst_dt_]->store(vmm_src(i),
-                        dst_ptr(i * types::data_type_size(dst_dt_) * simd_w_),
-                        tail);
+                io_[dst_dt_]->store(
+                        vmm_src(i), dst_ptr(i * dst_dt_size * simd_w_), tail);
             }
         }
 
         if (tail) return;
 
-        add(reg_src, unroll * types::data_type_size(src_dt_) * simd_w_);
-        add(reg_dst, unroll * types::data_type_size(dst_dt_) * simd_w_);
+        add(reg_src, unroll * src_dt_size * simd_w_);
+        add(reg_dst, unroll * dst_dt_size * simd_w_);
         sub(reg_work_amount, unroll * simd_w_);
     }
 
@@ -201,7 +199,7 @@ private:
     struct ker_args_t {
         const void *src;
         void *dst;
-        size_t work_amount;
+        dim_t work_amount;
     };
 
     bool is_bf16() const {

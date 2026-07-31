@@ -55,16 +55,19 @@ protected:
 
     // register size in bytes
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t qscale_dt_size = sizeof(float);
-    const size_t vlen_dst
+    static constexpr int vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr int qscale_dt_size = sizeof(float);
+    const int vlen_dst
             = vlen / (sizeof(float) / types::data_type_size(src_data_t));
-    const size_t vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
-    const size_t hstate_dt_size = types::data_type_size(src_data_t);
-    const size_t gate_dt_size = types::data_type_size(src_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
-    const size_t vlen_qscale = vlen / qscale_dt_size;
-    const size_t vlen_elems = vlen / scratch_dt_size;
+    const int vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
+    const int hstate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int gate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int scratch_dt_size
+            = static_cast<int>(types::data_type_size(scratch_data_t));
+    const int vlen_qscale = vlen / qscale_dt_size;
+    const int vlen_elems = vlen / scratch_dt_size;
 
     const int loop_ur_max = 4;
     // We skip vmm0 as it can be used by the injector for masks on sse4.1
@@ -142,16 +145,16 @@ protected:
                     + j * vlen_bias];
         };
 
-        const size_t loop_len = rnn_.dhc;
-        const size_t loop_tail = loop_len % vlen_elems;
+        const dim_t loop_len = rnn_.dhc;
+        const int loop_tail = static_cast<int>(loop_len % vlen_elems);
 
         // initialize registers with addresses and constants
         mov(table_reg, table_label);
         tanh_injector_->load_table_addr();
         init_regs(weights_scales, vlen, loop_tail);
 
-        const size_t nb_loop_len = loop_len / vlen_elems;
-        size_t loop_ur_val = 1;
+        const dim_t nb_loop_len = loop_len / vlen_elems;
+        int loop_ur_val = 1;
         const bool is_brgemm = rnn_.is_brgemm && !rnn_.unfused_post_gemm;
         if (is_brgemm) {
 #ifdef _WIN32
@@ -169,15 +172,15 @@ protected:
 
             mov(loop_cnt, loop_len);
         }
-        const size_t loop_ur = loop_ur_val;
+        const int loop_ur = loop_ur_val;
 
         auto compute_loop
-                = [&](size_t current_vlen_elem, size_t current_loop_unroll) {
+                = [&](int current_vlen_elem, int current_loop_unroll) {
             const auto current_vlen = current_vlen_elem * scratch_dt_size;
             Label loop_start_label;
             L(loop_start_label);
             {
-                for (size_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
+                for (int loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
                         ++loop_ur_idx) {
                     // Compute gate 2: G2 = tanh(G2 + b2)
                     load(G2(loop_ur_idx), sg_addr(2, loop_ur_idx),
@@ -195,13 +198,13 @@ protected:
                 // Compute tanh of unrolled G2 regs together
                 // (this allows to not save any registers during eltwise)
                 injector_utils::vmm_index_set_t vmm_idxs;
-                for (size_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
+                for (int loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
                         ++loop_ur_idx) {
                     vmm_idxs.emplace(G2(loop_ur_idx).getIdx());
                 }
                 tanh_injector_->compute_vector_range(vmm_idxs);
 
-                for (size_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
+                for (int loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
                         ++loop_ur_idx) {
                     // if training we write back the gates
                     if (is_training)
@@ -267,10 +270,10 @@ protected:
 
                 if (current_vlen_elem != loop_tail) {
                     // increment address pointers
-                    const auto current_gate_size = current_vlen == vlen
+                    const dim_t current_gate_size = current_vlen == vlen
                             ? vlen_dst * current_loop_unroll
                             : gate_dt_size;
-                    const auto current_states_size = current_vlen == vlen
+                    const dim_t current_states_size = current_vlen == vlen
                             ? vlen_dst * current_loop_unroll
                             : hstate_dt_size;
 
@@ -326,7 +329,7 @@ protected:
         init_table(vlen);
         L(table_label);
         {
-            for (size_t i = 0; i < vlen / sizeof(float); i++)
+            for (int i = 0; i < vlen / qscale_dt_size; i++)
                 dd(float2int(1.0f));
         }
     }

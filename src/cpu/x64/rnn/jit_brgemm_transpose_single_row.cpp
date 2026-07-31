@@ -48,24 +48,24 @@ void jit_brgemm_transpose_single_row_t::load_addresses() {
 #undef PARAM
 
 void jit_brgemm_transpose_single_row_t::compute(
-        const dim_t unrolling, const bool is_tail) {
+        const int unrolling, const bool is_tail) {
 
     if (is_tail) {
-        mov(reg_tmp_.cvt32(), std::pow(2, tail_) - 1);
+        mov(reg_tmp_.cvt32(), (1u << tail_) - 1);
         kmovd(tail_mask_, reg_tmp_.cvt32());
     }
 
     for (int k = unrolling - 1; k >= 0; k--) {
         const auto read_vmm
                 = is_tail ? Xbyak::Zmm(k) | tail_mask_ | T_z : Xbyak::Zmm(k);
-        const auto src_off = k * simd_w_ * sizeof(bfloat16_t);
+        const int src_off = k * simd_w_ * src_dt_size_;
         vpmovzxwd(read_vmm, ptr[reg_src_ + src_off]);
     }
 
     for (int k = unrolling - 1; k >= 0; k--) {
         const auto store_vmm
                 = is_tail ? Xbyak::Zmm(k) | tail_mask_ : Xbyak::Zmm(k);
-        const auto dst_off = k * simd_w_ * sizeof(float);
+        const int dst_off = k * simd_w_ * dst_dt_size_;
         uni_vmovups(ptr[reg_dst_ + dst_off], store_vmm);
     }
 }
@@ -75,8 +75,8 @@ void jit_brgemm_transpose_single_row_t::compute_loop() {
 
     if (full_loop_iters_ > 0) {
         const auto loop_l_off = vmms_available_ * simd_w_;
-        const auto loop_src_off = loop_l_off * sizeof(bfloat16_t);
-        const auto loop_dst_off = loop_l_off * sizeof(float);
+        const auto loop_src_off = loop_l_off * src_dt_size_;
+        const auto loop_dst_off = loop_l_off * dst_dt_size_;
 
         mov(reg_full_loop_, full_loop_iters_);
         L(unroll_full_loop);
@@ -98,8 +98,8 @@ void jit_brgemm_transpose_single_row_t::compute_loop() {
     const int k_blocks_left = k_blocks_nb_ - full_loop_iters_ * vmms_available_;
     if (k_blocks_left > 0) {
         const auto off = k_blocks_left * simd_w_;
-        const auto src_off = off * sizeof(bfloat16_t);
-        const auto dst_off = off * sizeof(float);
+        const auto src_off = off * src_dt_size_;
+        const auto dst_off = off * dst_dt_size_;
 
         compute(k_blocks_left, false);
         add(reg_src_, src_off);

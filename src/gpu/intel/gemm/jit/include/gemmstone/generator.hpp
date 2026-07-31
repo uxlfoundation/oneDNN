@@ -61,7 +61,15 @@ GEMMSTONE_NAMESPACE_START
 #define GENERATOR_BASE(hw) GENERATOR_SUPER(hw)
 #endif
 
+namespace microkernel {
+template <ngen::HW hw, typename Generator> class Injector;
+}
+
 template <ngen::HW hw> class Generator : public GENERATOR_BASE(hw) {
+    // The microkernel injector wraps generated microkernel bodies in the code
+    // needed to splice them into a host kernel.
+    template <ngen::HW, typename> friend class microkernel::Injector;
+
 public:
     using super = GENERATOR_SUPER(hw);
 
@@ -299,6 +307,9 @@ protected:
     template <typename DT = void> void esqt(const ngen::InstructionModifier &mod, const ngen::RegData &dst, const ngen::RegData &src0, const GEMMStrategy &strategy, CommonState &state, ngen::SourceLocation loc = {}) { emath<DT>(mod, ngen::MathFunction::sqt, dst, src0, strategy, state, loc); }
 
     void ejmpi(ngen::InstructionModifier mod, ngen::Label &dst, ngen::SourceLocation loc = {});
+
+    // gemm_microkernel.cxx
+    void gemmMicrokernelBody(GEMMProblem &problem, GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_);
 
     // gemm.cxx
     void gemm(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);

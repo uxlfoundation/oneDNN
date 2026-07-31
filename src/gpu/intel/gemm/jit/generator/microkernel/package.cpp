@@ -14,6 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <algorithm>
+
+#include "inject.hpp"
 #include "gemmstone/microkernel/package.hpp"
 #include "ngen_decoder.hpp"
 
@@ -21,6 +24,75 @@ GEMMSTONE_NAMESPACE_START
 namespace microkernel {
 
 using namespace ngen;
+
+namespace {
+
+// Records a write to an architectural register.
+void addARFWrite(CodeAnalysis &analysis, const DependencyRegion &region, HW hw)
+{
+    // DependencyRegion truncates ARF bases to 8 bits, which aliases the scalar
+    // register onto the (unused on Xe3+) sp encoding. Undo that here.
+    auto type = normalizeARFType(static_cast<ARFType>(region.base >> 4), hw);
+    int idx = region.base & 0xF;
+    int len = std::max<int>(region.size, 1);
+
+    switch (type) {
+        case ARFType::acc:
+            if (idx + len > maxAccs) { analysis.unpreservableARF = true; break; }
+            for (int i = idx; i < idx + len; i++) {
+                analysis.acc |= (1u << i);
+                analysis.maxAcc = std::max(analysis.maxAcc, i);
+            }
+            break;
+        case ARFType::f:
+            if (idx + len > maxFlags) { analysis.unpreservableARF = true; break; }
+            for (int i = idx; i < idx + len; i++)
+                analysis.flag |= (1u << i);
+            break;
+        default:
+            // Address and scalar registers have no general save/restore
+            // sequence, so microkernels writing them cannot be preserved.
+            analysis.unpreservableARF = true;
+            break;
+    }
+}
+
+} /* anonymous namespace */
+
+void analyzeCode(CodeAnalysis &analysis, HW hw, const void *code, size_t bytes)
+{
+    Decoder decoder(hw, static_cast<const uint8_t *>(code), bytes);
+
+    for (; !decoder.done(); decoder.advance()) {
+        // Check for systolic usage.
+        auto op = decoder.opcode();
+        analysis.systolic |= (op == Opcode::dpas || op == Opcode::dpasw);
+
+        // Flag registers written through a conditional modifier are not
+        // reported as destination operands; collect them separately.
+        DependencyRegion cmodRegion;
+        if (decoder.getCModRegion(cmodRegion) && cmodRegion.rf == RegFileARF)
+            addARFWrite(analysis, cmodRegion, hw);
+
+        // Get destination region and add to clobbers. This is indeterminate for
+        // indirect or variable sized destinations. In this case, rely on the
+        // clobbers the caller seeded.
+        DependencyRegion dstRegion;
+        if (!decoder.getOperandRegion(dstRegion, -1)) continue;
+
+        if (dstRegion.rf == RegFileGRF) {
+            if (dstRegion.unspecified
+                && !(dstRegion.isValid() && analysis.clobbers[dstRegion.base])) {
+                    analysis.uncertainClobbers = true;
+            } else
+                for (int j = 0; j < dstRegion.size; j++)
+                    analysis.clobbers[dstRegion.base + j] = true;
+        }
+
+        if (dstRegion.rf == RegFileARF)
+            addARFWrite(analysis, dstRegion, hw);
+    }
+}
 
 Package::Status Package::finalize(const ClobberSet &knownClobbers) {
     using namespace ngen;
@@ -36,59 +108,25 @@ Package::Status Package::finalize(const ClobberSet &knownClobbers) {
         return status;
     }
 
-    Decoder decoder(hw, binary);
+    CodeAnalysis analysis;
+    analysis.clobbers = knownClobbers;
+    analyzeCode(analysis, hw, binary.data(), binary.size());
 
-    auto clobbered = knownClobbers;
-    int maxAccIdx = -1;
+    systolic |= analysis.systolic;
 
-    for (; !decoder.done(); decoder.advance()) {
-        // Check for systolic usage.
-        auto op = decoder.opcode();
-        systolic |= (op == Opcode::dpas || op == Opcode::dpasw);
-
-        // Get destination region and add to clobbers. This indeterminate for
-        // indirect or variable sized destinations. In this case, rely on
-        // knownClobbers.
-        DependencyRegion dstRegion;
-        if (!decoder.getOperandRegion(dstRegion, -1)) continue;
-
-        if (dstRegion.rf == RegFileGRF) {
-            if (dstRegion.unspecified
-                && !(dstRegion.isValid() && knownClobbers[dstRegion.base])) {
-                    status = Status::UncertainClobbers;
-            } else
-                for (int j = 0; j < dstRegion.size; j++)
-                    clobbered[dstRegion.base + j] = true;
-        }
-
-        // Allow acc/flag ARF destinations only if declared in knownClobbers.
-        if (dstRegion.rf == RegFileARF) {
-            ARFType dstType = static_cast<ARFType>(dstRegion.base >> 4);
-            int arfIdx = dstRegion.base & 0xF;
-            int arfLen = dstRegion.size;
-            bool known = false;
-            if (dstType == ARFType::acc) {
-                known = true;
-                for (int j = arfIdx; j < arfIdx + arfLen; j++)
-                    known &= knownClobbers.acc(j);
-                maxAccIdx = std::max(maxAccIdx, arfIdx + arfLen - 1);
-            } else if (dstType == ARFType::f) {
-                known = true;
-                for (int j = arfIdx; j < arfIdx + arfLen; j++)
-                    known &= knownClobbers.flag(j);
-            }
-            if (!known)
-                status = Status::UncertainClobbers;
-        }
-    }
+    // Architectural registers cannot be communicated to the host kernel as
+    // clobbers; those that cannot be saved and restored by the microkernel
+    // itself leave the host kernel's state uncertain.
+    if (analysis.uncertainClobbers || analysis.unpreservableARF)
+        status = Status::UncertainClobbers;
 
     // Group clobber array into consecutive ranges.
     clobbers.clear();
 
     int regBytes = GRF::bytes(hw);
     int base = 0, len = 0;
-    for (int j = 0; j < int(clobbered.size()); j++) {
-        if (clobbered[j]) {
+    for (int j = 0; j < int(analysis.clobbers.size()); j++) {
+        if (analysis.clobbers[j]) {
             if (len > 0)
                 len++;
             else
@@ -114,11 +152,10 @@ Package::Status Package::finalize(const ClobberSet &knownClobbers) {
 
     grfMin = (last + regBytes - 1) / regBytes;
 
-    int nacc = AccumulatorRegister::count(hw, grfMin);
-    if (nacc <= maxAccIdx) {
-        // Upgrade to 8 accumulators
-        grfMin = 256;
-    }
+    // The host kernel's GRF mode determines how many accumulators exist; make
+    // sure it provides every accumulator the microkernel uses.
+    if (AccumulatorRegister::count(hw, grfMin) <= analysis.maxAcc)
+        grfMin = maxGRFs;
 
     // Generate LUID from hash of kernel. Later, the cataloguer can update it in case of collisions.
     uint32_t luid = 0;

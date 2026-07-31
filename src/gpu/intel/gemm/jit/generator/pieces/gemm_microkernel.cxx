@@ -16,6 +16,7 @@
 
 
 #include "gemmstone/generator.hpp"
+#include "../microkernel/inject.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
@@ -25,6 +26,18 @@ using namespace ngen::utils;
 
 template <HW hw>
 void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, const ngen::InterfaceHandler &interface_)
+{
+    // The microkernel API injects the synchronization and architectural
+    // register save/restore needed to splice the body into a host kernel.
+    microkernel::Injector<hw, Generator<hw>> injector(*this);
+
+    injector.inject(knownClobbers, [&] {
+        gemmMicrokernelBody(problem, strategy, interface_);
+    });
+}
+
+template <HW hw>
+void Generator<hw>::gemmMicrokernelBody(GEMMProblem &problem, GEMMStrategy &strategy, const ngen::InterfaceHandler &interface_)
 {
     GEMMState state(hw, strategy);
 
@@ -91,26 +104,6 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
         mov(1, dmaskSave, sr0[2]);
         mov(1 | SWSB<AllPipes>(1), sr0[2], uint32_t(uint64_t(1) << state.internalSIMD()) - 1);
     }
-
-    // Synchronize and save flag registers from host kernel.
-    syncall();
-    Subregister flagSave[4];
-    for (int i = 0; i < FlagRegister::count(hw); i++) {
-        flagSave[i] = state.ra.alloc_sub<uint32_t>();
-        mov(1, flagSave[i], FlagRegister(i));
-    }
-
-    // Save accumulator registers used by the host kernel, if we'll use them here
-    // TODO: Only done in the case of FMA kChain currently. Generalize to other accumulator uses.
-    const int accSaveCount = (strategy.kChain > 1 && !strategy.systolic)
-        ? AccumulatorRegister::count(hw, strategy.GRFs, problem.Tc.real().ngen()) : 0;
-    const int accElts = GRF::bytes(hw) >> 2;  // dwords per accumulator register
-    GRFRange accSave = state.ra.alloc_range(accSaveCount);
-    for (int i = 0; i < accSave.getLen(); i++)
-        mov<uint32_t>(accElts, accSave[i], AccumulatorRegister(i));
-
-    knownClobbers.addFlag(0, FlagRegister::count(hw));
-    knownClobbers.addAcc(0, accSaveCount);
 
     // Beginning of microkernel:
     //   - check32
@@ -199,17 +192,9 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
 
     gemmSubkernel(problem, strategy, state);
 
-    // Restore accumulator registers if saved above.
-    for (int i = 0; i < accSave.getLen(); i++)
-        mov<uint32_t>(accElts, AccumulatorRegister(i), accSave[i]);
-    state.ra.safeRelease(accSave);
-
-    // Restore flag registers and dispatch mask and return to host kernel.
-    for (int i = 0; i < FlagRegister::count(hw); i++)
-        mov(1, FlagRegister(i), flagSave[i]);
+    // Restore dispatch mask and return to host kernel.
     if (dmaskSave.isValid())
         mov(1, sr0[2], dmaskSave);
-    syncall();
 }
 
 static inline microkernel::StructuredType::Type microType(Type T);

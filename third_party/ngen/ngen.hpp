@@ -386,6 +386,12 @@ protected:
 
     void discardStream()                            { delete popStream(); }
 
+    // Raw access to the instructions in the current stream. Instructions are
+    // fully encoded when emitted, aside from label targets and SWSB fields,
+    // allowing a stream to be analyzed before it is appended to the program.
+    const uint8_t *streamData() const               { return reinterpret_cast<const uint8_t *>(streamStack.back()->code.data()); }
+    size_t streamLength() const                     { return size_t(streamStack.back()->length()); }
+
     void requireGRF(int grfs)                       { declaredGRFs = grfs; }
 
 public:

@@ -56,6 +56,7 @@ public:
 
     Opcode opcode() const { return static_cast<Opcode>(*current & 0x7F); }
     inline bool getOperandRegion(autoswsb::DependencyRegion &region, int opNum) const;
+    inline bool getCModRegion(autoswsb::DependencyRegion &region) const;
 
 protected:
     HW hw;
@@ -86,6 +87,21 @@ bool Decoder::getOperandRegion(autoswsb::DependencyRegion &region, int opNum) co
         return get<InstructionXeHPC>().getOperandRegion(region, opNum);
     if (hw >= HW::Gen12LP)
         return get<Instruction12>().getOperandRegion(region, opNum);
+#ifdef NGEN_SAFE
+    throw unimplemented();
+#else
+    return false;
+#endif
+}
+
+bool Decoder::getCModRegion(autoswsb::DependencyRegion &region) const
+{
+    checkCompaction();
+    region.hw = hw;
+    if (hw >= HW::XeHPC)
+        return get<InstructionXeHPC>().getCModDepRegion(region);
+    if (hw >= HW::Gen12LP)
+        return get<Instruction12>().getCModDepRegion(region);
 #ifdef NGEN_SAFE
     throw unimplemented();
 #else

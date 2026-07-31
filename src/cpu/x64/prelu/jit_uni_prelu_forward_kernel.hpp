@@ -52,7 +52,7 @@ protected:
 
     jit_prelu_forward_kernel_t(const cpu_prelu_fwd_pd_t *pd,
             const cpu_isa_t &isa, const int vlen,
-            const size_t number_vmm_single_compute);
+            const int number_vmm_single_compute);
     Xbyak::Address data_ptr(int arg_num, size_t offt = 0);
 
 private:
@@ -78,11 +78,11 @@ private:
     using jit_generator_t::uni_vfmadd132ps;
 
     void prepare_kernel_const_vars() override;
-    void compute_dst(size_t unrolling_factor, bool tail) override;
+    void compute_dst(int unrolling_factor, bool tail) override;
     bool can_load_wei_from_addr_directly(bool tail) const noexcept;
 
-    void compute_dst_body(size_t unrolling_factor, bool tail);
-    void compute_ne_convert_xf16_dst_body(size_t unrolling_factor, bool tail);
+    void compute_dst_body(int unrolling_factor, bool tail);
+    void compute_ne_convert_xf16_dst_body(int unrolling_factor, bool tail);
     Vmm get_or_load_weights(
             const Xbyak::Address &src_addr, const Vmm &dst_vmm, bool tail);
     void uni_vfmadd132ps(
@@ -95,7 +95,7 @@ private:
     const Vmm vmm_zeros_;
     const Vmm dst_saturate_ubound_;
     const Vmm weights_const_vmm_;
-    const size_t number_vmm_single_compute_ = 0;
+    const int number_vmm_single_compute_ = 0;
     const Xbyak::Opmask &tail_opmask_ = k1;
     const Xbyak::Reg64 &reg_tmp_ = r15;
 

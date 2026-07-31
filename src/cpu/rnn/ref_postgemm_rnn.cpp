@@ -66,14 +66,14 @@ void rnn_fwd_postgemm_template(T func1, const float *scales, float alpha,
         rnn_utils::cell_position_t cell_position, src_data_t *ws_gates_,
         scratch_data_t *scratch_gates_, src_data_t *dst_layer_,
         src_data_t *dst_iter_, const src_data_t *src_iter_, const void *bias_,
-        int block_step) {
+        dim_t block_step) {
 
     const ws_gates_aoc_t<src_data_t> ws_gates(rnn, ws_gates_);
     const scratch_gates_aoc_t<scratch_data_t> scratch_gates(
             rnn, scratch_gates_);
     const auto bias_aoc = rnn_utils::make_raw_aoc(
             bias_, types::data_type_size(rnn.bias_dt), rnn.n_bias, rnn.dhc);
-    const auto bias = [&](int gate_id, int dhc_id) {
+    const auto bias = [&](int gate_id, dim_t dhc_id) {
         return to_float(bias_aoc(gate_id, dhc_id), rnn.bias_dt);
     };
     const auto dst_layer_ld = rnn.dst_layer_ld(cell_position);
@@ -85,10 +85,10 @@ void rnn_fwd_postgemm_template(T func1, const float *scales, float alpha,
 
     if (scales != nullptr) alpha = scales[0];
 
-    const int n_elem = block_step / sizeof(scratch_data_t);
+    const dim_t n_elem = block_step / sizeof(scratch_data_t);
 
     const auto postgemm_call = [&](dim_t i) {
-        for (int j = 0; j < n_elem; j++) {
+        for (dim_t j = 0; j < n_elem; j++) {
             const float h
                     = func1(scratch_gates(i, 0, j) + bias(0, j), alpha, 0);
             if (dst_layer_ != nullptr) dst_layer(i, j) = h;

@@ -43,12 +43,16 @@ struct jit_uni_gru_cell_postgemm_part2_bwd : public jit_uni_rnn_postgemm_t {
 protected:
     // register size in bytes
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t hstate_dt_size = sizeof(float);
-    const size_t vlen_scratch
-            = vlen / (sizeof(float) / types::data_type_size(scratch_data_t));
-    const size_t gate_dt_size = types::data_type_size(scratch_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
+    static constexpr int vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr int hstate_dt_size = sizeof(float);
+    const int vlen_scratch = vlen
+            / (sizeof(float)
+                    / static_cast<dim_t>(
+                            types::data_type_size(scratch_data_t)));
+    const int gate_dt_size
+            = static_cast<int>(types::data_type_size(scratch_data_t));
+    const int scratch_dt_size
+            = static_cast<int>(types::data_type_size(scratch_data_t));
 
     void generate() override {
         using namespace Xbyak;
@@ -105,10 +109,10 @@ protected:
 #endif
 
         // helper lambda to address the gates and biases
-        const auto sg_addr = [&](int i) {
+        const auto sg_addr = [&](dim_t i) {
             return ptr[addr_scratch_gates_reg + i * rnn_.dhc * scratch_dt_size];
         };
-        const auto wg_addr = [&](int i) {
+        const auto wg_addr = [&](dim_t i) {
             return ptr[addr_ws_gates_reg + i * rnn_.dhc * gate_dt_size];
         };
 

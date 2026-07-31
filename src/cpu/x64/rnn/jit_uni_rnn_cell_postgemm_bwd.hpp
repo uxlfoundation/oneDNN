@@ -43,12 +43,14 @@ struct jit_uni_rnn_cell_postgemm_bwd : public jit_uni_rnn_postgemm_t {
 protected:
     // register size in bytes
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t hstate_dt_size = sizeof(float);
-    const size_t vlen_scratch
+    static constexpr int vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr int hstate_dt_size = sizeof(float);
+    const int vlen_scratch
             = vlen / (sizeof(float) / types::data_type_size(scratch_data_t));
-    const size_t gate_dt_size = types::data_type_size(scratch_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
+    const int gate_dt_size
+            = static_cast<int>(types::data_type_size(scratch_data_t));
+    const int scratch_dt_size
+            = static_cast<int>(types::data_type_size(scratch_data_t));
 
     void generate() override {
         using namespace Xbyak;

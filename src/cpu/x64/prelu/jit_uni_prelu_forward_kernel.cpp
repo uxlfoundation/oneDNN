@@ -24,7 +24,7 @@ namespace x64 {
 
 jit_prelu_forward_kernel_t::jit_prelu_forward_kernel_t(
         const cpu_prelu_fwd_pd_t *pd, const cpu_isa_t &isa, const int vlen,
-        const size_t number_vmm_single_compute)
+        const int number_vmm_single_compute)
     : jit_prelu_base_kernel_t(isa, vlen,
               prelu::get_bcast_type(memory_desc_wrapper(pd->src_md(0)),
                       memory_desc_wrapper(pd->weights_md(0))),
@@ -51,7 +51,7 @@ Xbyak::Address jit_prelu_forward_kernel_t::data_ptr(int arg_num, size_t offt) {
 
     const auto get_addr
             = [&](const Xbyak::Reg64 &reg_base, const data_type_t dt) {
-        const auto dt_size = types::data_type_size(dt);
+        const int dt_size = static_cast<int>(types::data_type_size(dt));
         return ptr[reg_base + reg_offset_ * dt_size + offt * dt_size];
     };
 
@@ -183,14 +183,14 @@ void jit_uni_prelu_forward_kernel_t<Xbyak::Zmm>::uni_vfmadd132ps(
 
 template <typename Vmm>
 void jit_uni_prelu_forward_kernel_t<Vmm>::compute_ne_convert_xf16_dst_body(
-        size_t unrolling_factor, bool tail) {
-    static constexpr size_t max_idx = 0;
-    static constexpr size_t min_idx = 1;
-    static constexpr size_t src_idx = 2;
-    static constexpr size_t weights_idx = 3;
+        int unrolling_factor, bool tail) {
+    static constexpr int max_idx = 0;
+    static constexpr int min_idx = 1;
+    static constexpr int src_idx = 2;
+    static constexpr int weights_idx = 3;
     const auto vtmp = vmm_zeros_;
 
-    for (size_t ur_group_base = 0; ur_group_base < unrolling_factor;
+    for (int ur_group_base = 0; ur_group_base < unrolling_factor;
             ur_group_base += 2) {
         const Vmm src_vmm_even {get_compute_vmm(src_idx, ur_group_base)};
         const Vmm src_vmm_odd {get_compute_vmm(src_idx, ur_group_base + 1)};
@@ -208,7 +208,7 @@ void jit_uni_prelu_forward_kernel_t<Vmm>::compute_ne_convert_xf16_dst_body(
             io_.at(src_dt_)->load(
                     data_ptr(DNNL_ARG_SRC, offset_base), src_vmm_even, tail);
         for (int i = 0; i < 2 && i + ur_group_base < unrolling_factor; ++i) {
-            const size_t unroll_group = ur_group_base + i;
+            const int unroll_group = ur_group_base + i;
             const Vmm src_vmm = i == 0 ? src_vmm_even : src_vmm_odd;
             const Vmm max_vmm {get_compute_vmm(max_idx, unroll_group)};
             const Vmm min_vmm {get_compute_vmm(min_idx, unroll_group)};
@@ -240,13 +240,13 @@ void jit_uni_prelu_forward_kernel_t<Vmm>::compute_ne_convert_xf16_dst_body(
 
 template <typename Vmm>
 void jit_uni_prelu_forward_kernel_t<Vmm>::compute_dst_body(
-        size_t unrolling_factor, bool tail) {
-    static constexpr size_t max_idx = 0;
-    static constexpr size_t min_idx = 1;
-    static constexpr size_t src_idx = 2;
-    static constexpr size_t weights_idx = 3;
+        int unrolling_factor, bool tail) {
+    static constexpr int max_idx = 0;
+    static constexpr int min_idx = 1;
+    static constexpr int src_idx = 2;
+    static constexpr int weights_idx = 3;
 
-    for (size_t unroll_group = 0; unroll_group < unrolling_factor;
+    for (int unroll_group = 0; unroll_group < unrolling_factor;
             ++unroll_group) {
         const Vmm max_vmm {get_compute_vmm(max_idx, unroll_group)};
         const Vmm min_vmm {get_compute_vmm(min_idx, unroll_group)};
@@ -277,7 +277,7 @@ void jit_uni_prelu_forward_kernel_t<Vmm>::compute_dst_body(
 
 template <typename Vmm>
 void jit_uni_prelu_forward_kernel_t<Vmm>::compute_dst(
-        size_t unrolling_factor, bool tail) {
+        int unrolling_factor, bool tail) {
     if (utils::one_of(src_dt_, data_type::bf16, data_type::f16)
             && prelu::get_supported_isa() == avx2_vnni_2 && !tail)
         compute_ne_convert_xf16_dst_body(unrolling_factor, tail);

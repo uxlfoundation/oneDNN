@@ -51,7 +51,7 @@ public:
 
 private:
     void load_kernel_call_params();
-    virtual size_t get_unrolling_factor(bool tail) const = 0;
+    virtual int get_unrolling_factor(bool tail) const = 0;
     virtual void compute_dst(int unrolling_factor, bool tail) = 0;
     virtual void prepare_kernel_const_vars(bool tail) = 0;
     virtual void finalize(bool tail) = 0;
@@ -61,7 +61,7 @@ private:
     const Xbyak::Reg64 &reg_weights_diff_scratch_ = r10;
     const Xbyak::Reg8 &reg_tail_ = r12b;
 
-    const size_t scratchpad_c_block_offset_ = 0;
+    const int scratchpad_c_block_offset_ = 0;
 
 protected:
     jit_prelu_reduction_kernel_t(const cpu_prelu_bwd_pd_t *pd, int simd_w);
@@ -74,7 +74,7 @@ protected:
     const Xbyak::Reg64 &reg_offset_ = r9;
     const Xbyak::Reg64 &reg_weights_diff_ = r11;
     const Xbyak::Reg8 &reg_last_c_blk_byte_ = r13b;
-    size_t number_reserved_vmms_ = 0;
+    int number_reserved_vmms_ = 0;
     size_t tail_block_size_ = 0;
     size_t c_blk_nelems_ = 0;
 };
@@ -86,7 +86,7 @@ public:
             const cpu_prelu_bwd_pd_t *pd, const cpu_isa_t &isa);
 
 private:
-    size_t get_unrolling_factor(bool tail) const override;
+    int get_unrolling_factor(bool tail) const override;
     void prepare_kernel_const_vars(bool tail) override;
     void finalize(bool tail) override;
     void compute_dst(int unrolling_factor, bool tail) override;

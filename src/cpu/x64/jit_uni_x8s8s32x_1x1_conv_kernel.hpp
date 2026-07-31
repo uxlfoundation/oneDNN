@@ -36,7 +36,9 @@ struct jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t : public jit_generator_t {
     jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md);
 
-    int get_tail_size() { return jcp.oc_without_padding % jcp.oc_block; }
+    int get_tail_size() {
+        return static_cast<int>(jcp.oc_without_padding % jcp.oc_block);
+    }
 
     jit_1x1_conv_conf_t jcp;
     const primitive_attr_t &attr_;
@@ -115,7 +117,7 @@ private:
     int vreg_accum_idx(
             const int load_loop_blk, const int i_load, const int i_ur);
     Vmm vreg_accum(const int load_loop_blk, const int i_load, const int i_ur);
-    int output_ptr(const int i_load, const int i_ur);
+    dim_t output_ptr(const int i_load, const int i_ur);
     void bcast_loop(int load_loop_blk);
     void apply_sum(const int ur, const int load_loop_blk,
             const bool mask_flag_in, const float *p_sum_scale,

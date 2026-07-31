@@ -90,7 +90,7 @@ struct jit_transpose4x16_src_t : public jit_generator_t {
 private:
     static const int typesize = sizeof(float);
 
-    int src_stride = 0, tr_src_stride = 0;
+    dim_t src_stride = 0, tr_src_stride = 0;
 
     Xbyak::Reg64 imm_addr64 = rbx;
 
@@ -112,8 +112,8 @@ private:
     Xbyak::Reg64 reg_tr_src_tmp = r13;
     Xbyak::Reg32 regw_tmp = r14d;
 
-    void transpose_block(int ur, int nrows);
-    void transpose(int nrows);
+    void transpose_block(dim_t ur, dim_t nrows);
+    void transpose(dim_t nrows);
     void generate() override;
 };
 

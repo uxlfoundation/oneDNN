@@ -87,7 +87,7 @@ struct single_gemm_conv_chunk_desc_t {
 namespace jit_gemm_convolution_utils {
 template <typename data_type_t>
 void im2col_3d(const conv_gemm_conf_t &jcp, const data_type_t *im,
-        data_type_t *col, dim_t od, int spatial_step, int spatial_block);
+        data_type_t *col, dim_t od, dim_t spatial_step, dim_t spatial_block);
 
 template <typename T>
 void transpose_dt(const conv_gemm_conf_t &jcp, const T *__restrict im,
@@ -110,9 +110,9 @@ template <typename T>
 void col2im_dt(
         const conv_gemm_conf_t &jcp, const T *__restrict col, T *__restrict im);
 void col2im_3d(const conv_gemm_conf_t &jcp, const float *col, float *im,
-        dim_t od, int spatial_step, int spatial_block);
+        dim_t od, dim_t spatial_step, dim_t spatial_block);
 void col2im(const conv_gemm_conf_t &jcp, const float *col, float *im,
-        int spatial_step, int spatial_block);
+        dim_t spatial_step, dim_t spatial_block);
 
 status_t init_conf(conv_gemm_conf_t &jcp,
         memory_tracking::registrar_t &scratchpad, const convolution_desc_t &cd,

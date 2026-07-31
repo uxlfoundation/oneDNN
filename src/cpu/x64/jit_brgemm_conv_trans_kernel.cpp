@@ -40,7 +40,7 @@ jit_avx512_core_brgemm_conv_trans_kernel_t::
               jcp.is_reduced_rtus ? jcp.rtus_padded_ic_size : jcp.inp_ic_block)
     , ic_block_offset(inp_dsz * ic_block_sz)
     , iw_size(inp_dsz * jcp.ngroups * jcp.ic_without_padding)
-    , dst_w_block(dst_w(jcp, jcp.ow_block))
+    , dst_w_block(dst_w(jcp, static_cast<int>(jcp.ow_block)))
     , dst_stride(jcp.copy_block_only ? dst_w_block : jcp.iwp)
     , VL(cpu_isa_traits_t<avx512_core>::vlen)
     , n_vec(ic_block_sz / jcp.simd_w)
@@ -54,7 +54,7 @@ jit_avx512_core_brgemm_conv_trans_kernel_t::
 
 int get_inp_size(int dst_size, int ext_k, int stride, int dilate) {
     const auto res = calculate_end_padding(0, dst_size, 0, stride, ext_k);
-    return res;
+    return static_cast<int>(res);
 }
 
 int get_inp_start(int b, int b_size, int stride, int pad) {
@@ -62,23 +62,26 @@ int get_inp_start(int b, int b_size, int stride, int pad) {
 }
 
 int jit_avx512_core_brgemm_conv_trans_kernel_t::inp_w(int out_w, int kw) const {
-    return get_inp_size(out_w, kw, jcp.stride_w, jcp.dilate_w);
+    return get_inp_size(out_w, kw, static_cast<int>(jcp.stride_w),
+            static_cast<int>(jcp.dilate_w));
 }
 
 int jit_avx512_core_brgemm_conv_trans_kernel_t::inp_w(int out_w) const {
-    return inp_w(out_w, jcp.ext_kw);
+    return inp_w(out_w, static_cast<int>(jcp.ext_kw));
 }
 
 int jit_avx512_core_brgemm_conv_trans_kernel_t::dst_w(
         const jit_brgemm_conv_conf_t &ajcp, int out_w) {
     int res = 0;
-    res = get_inp_size(out_w, ajcp.ext_kw, ajcp.stride_w, ajcp.dilate_w);
+    res = get_inp_size(out_w, static_cast<int>(ajcp.ext_kw),
+            static_cast<int>(ajcp.stride_w), static_cast<int>(ajcp.dilate_w));
     if (ajcp.is_os_blocking) res = rnd_up(res, ajcp.stride_w);
     return res;
 }
 
 int jit_avx512_core_brgemm_conv_trans_kernel_t::inp_w_start(int owb) const {
-    return get_inp_start(owb, jcp.ow_block, jcp.stride_w, jcp.l_pad);
+    return get_inp_start(owb, static_cast<int>(jcp.ow_block),
+            static_cast<int>(jcp.stride_w), static_cast<int>(jcp.l_pad));
 }
 
 // use different vmovdqu32/16/8 due to case when tail mask used
@@ -284,7 +287,9 @@ void jit_avx512_core_brgemm_conv_trans_kernel_t::generate() {
 void jit_avx512_core_brgemm_conv_trans_kernel_t::copy_ow_block(
         bool is_ic_tail) {
     if (jcp.nb_ow == 1) {
-        copy_ow_block_body(jcp.l_pad, jcp.ow_block, jcp.iw, is_ic_tail);
+        copy_ow_block_body(static_cast<int>(jcp.l_pad),
+                static_cast<int>(jcp.ow_block), static_cast<int>(jcp.iw),
+                is_ic_tail);
         return;
     }
 
@@ -301,10 +306,10 @@ void jit_avx512_core_brgemm_conv_trans_kernel_t::copy_ow_block(
 
     const auto adj_iw = nstl::min(jcp.iw, jcp.iwp - jcp.l_pad);
 
-    int ow_block_tail = jcp.ow % jcp.ow_block;
+    const int ow_block_tail = static_cast<int>(jcp.ow % jcp.ow_block);
 
     for (int owb = 0; owb < jcp.nb_ow; owb++) {
-        const auto inp_block = inp_w(jcp.ow_block);
+        const auto inp_block = inp_w(static_cast<int>(jcp.ow_block));
         const auto inp_start = inp_w_start(owb);
         const auto inp_end = inp_start + inp_block;
         if (inp_start + inp_block < 0) {
@@ -331,7 +336,7 @@ void jit_avx512_core_brgemm_conv_trans_kernel_t::copy_ow_block(
         cmp(reg_owb, end_first_zero_block);
         jg(skip_first_zero_blocks, T_NEAR);
         // zero block
-        copy_ow_block_body(0, jcp.ow_block, 0, is_ic_tail);
+        copy_ow_block_body(0, static_cast<int>(jcp.ow_block), 0, is_ic_tail);
         jmp(copy_block_done_label, T_NEAR);
 
         L(skip_first_zero_blocks);
@@ -341,16 +346,17 @@ void jit_avx512_core_brgemm_conv_trans_kernel_t::copy_ow_block(
                 b++) {
             int cur_ow_block = (b == jcp.nb_ow - 1 && ow_block_tail > 0)
                     ? ow_block_tail
-                    : jcp.ow_block;
+                    : static_cast<int>(jcp.ow_block);
             const auto inp_block = inp_w(cur_ow_block);
             const auto inp_start = inp_w_start(b);
             const auto inp_end = inp_start + inp_block;
             const auto block_lpad = -inp_start;
-            const auto block_len = nstl::min(adj_iw, inp_end);
+            const auto block_len = nstl::min<dim_t>(adj_iw, inp_end);
             Xbyak::Label skip_first_partial_block;
             cmp(reg_owb, b);
             jne(skip_first_partial_block, T_NEAR);
-            copy_ow_block_body(block_lpad, jcp.ow_block, block_len, is_ic_tail);
+            copy_ow_block_body(block_lpad, static_cast<int>(jcp.ow_block),
+                    static_cast<int>(block_len), is_ic_tail);
             jmp(copy_block_done_label, T_NEAR);
             L(skip_first_partial_block);
         }
@@ -359,7 +365,8 @@ void jit_avx512_core_brgemm_conv_trans_kernel_t::copy_ow_block(
         Xbyak::Label skip_full_blocks;
         cmp(reg_owb, end_full_block);
         jg(skip_full_blocks, T_NEAR);
-        copy_ow_block_body(0, jcp.ow_block, inp_w(jcp.ow_block), is_ic_tail);
+        copy_ow_block_body(0, static_cast<int>(jcp.ow_block),
+                inp_w(static_cast<int>(jcp.ow_block)), is_ic_tail);
         jmp(copy_block_done_label, T_NEAR);
 
         L(skip_full_blocks);
@@ -369,16 +376,18 @@ void jit_avx512_core_brgemm_conv_trans_kernel_t::copy_ow_block(
                 b++) {
             int cur_ow_block = (b == jcp.nb_ow - 1 && ow_block_tail > 0)
                     ? ow_block_tail
-                    : jcp.ow_block;
+                    : static_cast<int>(jcp.ow_block);
             const auto inp_block = inp_w(cur_ow_block);
             const auto inp_start = inp_w_start(b);
             const auto inp_end = inp_start + inp_block;
             const auto block_lpad = 0;
-            const auto block_len = nstl::min(adj_iw, inp_end) - inp_start;
+            const auto block_len
+                    = nstl::min<dim_t>(adj_iw, inp_end) - inp_start;
             Xbyak::Label skip_last_partial_block;
             cmp(reg_owb, b);
             jne(skip_last_partial_block, T_NEAR);
-            copy_ow_block_body(block_lpad, cur_ow_block, block_len, is_ic_tail);
+            copy_ow_block_body(block_lpad, cur_ow_block,
+                    static_cast<int>(block_len), is_ic_tail);
             jmp(copy_block_done_label, T_NEAR);
 
             L(skip_last_partial_block);
@@ -387,7 +396,7 @@ void jit_avx512_core_brgemm_conv_trans_kernel_t::copy_ow_block(
 
     // if not any above case then owb is among last zero blocks
     // check is this needed and check may it be partial
-    copy_ow_block_body(0, jcp.ow_block, 0, is_ic_tail);
+    copy_ow_block_body(0, static_cast<int>(jcp.ow_block), 0, is_ic_tail);
 
     L(copy_block_done_label);
 }

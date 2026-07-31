@@ -69,9 +69,9 @@ protected:
     data_type_t bias_data_type_;
     data_type_t acc_data_type_;
     data_type_t dst_data_type_;
-    size_t bias_data_type_size_ = 0;
-    size_t acc_data_type_size_ = 4;
-    size_t dst_data_type_size_ = 0;
+    int bias_data_type_size_ = 0;
+    int acc_data_type_size_ = 4;
+    int dst_data_type_size_ = 0;
     bool do_scale_ = false;
     size_t scale_idx_mult_ = 0;
     bool do_eltwise_ = false;

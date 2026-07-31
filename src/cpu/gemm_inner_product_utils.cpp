@@ -187,9 +187,11 @@ pp_kernel_t::pp_kernel_t(size_t OC, size_t MB, dim_t dst_mb_stride,
         sum_data_type_ = sum_dt != data_type::undef ? sum_dt : dst_data_type_;
     }
 
-    dst_data_type_size_ = types::data_type_size(dst_data_type_);
+    dst_data_type_size_
+            = static_cast<int>(types::data_type_size(dst_data_type_));
     if (do_bias())
-        bias_data_type_size_ = types::data_type_size(bias_data_type_);
+        bias_data_type_size_
+                = static_cast<int>(types::data_type_size(bias_data_type_));
 
     if (!attr->zero_points_.has_default_values(DNNL_ARG_DST))
         do_dst_zero_points_ = true;

@@ -67,25 +67,25 @@ private:
 
     void apply_postops(const bool apply_mask, const int vmm_idx,
             const size_t offset, bool runtime_tail_mask);
-    void prepare_mask(const size_t tail);
+    void prepare_mask(const int tail);
     void load_no_tail(const Vmm v, Xbyak::Address op, const data_type_t dt);
     void load_tail(const Vmm v, const arg_t arg_num, const size_t off,
-            const data_type_t dt, const size_t tail);
+            const data_type_t dt, const int tail);
     void load_and_cvt(const Vmm v, const arg_t arg_num, const size_t off,
-            const size_t tail, bool do_cvt = true);
+            const int tail, bool do_cvt = true);
     // convert and store instances for each case of Vmm
     void cvt_and_store(const Xbyak::Zmm v, const arg_t arg_num,
-            const size_t off, const size_t tail);
+            const size_t off, const int tail);
     void cvt_and_store(const Xbyak::Ymm v, const arg_t arg_num,
-            const size_t off, const size_t tail);
+            const size_t off, const int tail);
     void cvt_and_store(const Xbyak::Xmm v, const arg_t arg_num,
-            const size_t off, const size_t tail);
+            const size_t off, const int tail);
     void runtime_tail_load_cvt(const Vmm v, const arg_t arg_num,
             const size_t off, bool cvt = true);
     void runtime_tail_cvt_store(
             const Vmm v, const arg_t arg_num, const size_t off);
     void data_copy(const Vmm v, const arg_t arg_num, const size_t off,
-            data_op_t data_op, const size_t tail,
+            data_op_t data_op, const int tail,
             const bool is_needed_runtime_tail_process,
             const bool do_cvt = true);
     void generate() override;
@@ -403,7 +403,7 @@ void jit_pp_kernel_t<isa>::update_binary_postops_per_tensor_off() {
     mov(binary_post_op_offset_reg, reg_dst);
     sub(binary_post_op_offset_reg, ptr[rsp + reg_origin_dst_ptr_]);
     sar(binary_post_op_offset_reg,
-            std::log2(types::data_type_size(get_data_type(arg_t::dst))));
+            math::ilog2q(types::data_type_size(get_data_type(arg_t::dst))));
     mov(binary_post_op_current_offset_on_stack, binary_post_op_offset_reg);
 }
 
@@ -471,8 +471,8 @@ void jit_pp_kernel_t<isa>::apply_postops(const bool apply_mask,
 }
 
 template <cpu_isa_t isa>
-void jit_pp_kernel_t<isa>::prepare_mask(const size_t tail) {
-    assert(tail > 0 && tail <= vlen - 1);
+void jit_pp_kernel_t<isa>::prepare_mask(const int tail) {
+    assert(tail > 0 && tail <= static_cast<int>(vlen) - 1);
     if (is_avx512_) {
         const size_t tail_mask = (1 << tail) - 1;
         mov(reg_tmp, tail_mask);
@@ -506,7 +506,7 @@ void jit_pp_kernel_t<isa>::load_no_tail(
 
 template <cpu_isa_t isa>
 void jit_pp_kernel_t<isa>::load_tail(const Vmm v, const arg_t arg_num,
-        const size_t off, const data_type_t dt, const size_t tail) {
+        const size_t off, const data_type_t dt, const int tail) {
     using namespace data_type;
     if (is_avx512_) {
         auto v_dst = tail ? v | kreg_rem_mask : v;
@@ -514,7 +514,7 @@ void jit_pp_kernel_t<isa>::load_tail(const Vmm v, const arg_t arg_num,
     } else {
         if (utils::one_of(dt, s8, u8)) {
             const Xbyak::Xmm x = Xbyak::Xmm(v.getIdx());
-            for (size_t i = 0; i < tail; i++)
+            for (int i = 0; i < tail; i++)
                 uni_vpinsrb(x, x, get_address(arg_num, i + off), i);
             if (dt == s8)
                 uni_vpmovsxbd(v, v);
@@ -526,7 +526,7 @@ void jit_pp_kernel_t<isa>::load_tail(const Vmm v, const arg_t arg_num,
                 vmaskmovps(v, vmm_rem_mask, get_address(arg_num, off));
             } else {
                 const size_t dt_size = types::data_type_size(f32);
-                for (size_t i = 0; i < tail; i++)
+                for (int i = 0; i < tail; i++)
                     uni_vpinsrd(
                             v, v, get_address(arg_num, i * dt_size + off), i);
             }
@@ -536,7 +536,7 @@ void jit_pp_kernel_t<isa>::load_tail(const Vmm v, const arg_t arg_num,
 
 template <cpu_isa_t isa>
 void jit_pp_kernel_t<isa>::load_and_cvt(const Vmm v, const arg_t arg_num,
-        const size_t off, const size_t tail, bool do_cvt) {
+        const size_t off, const int tail, bool do_cvt) {
     using namespace data_type;
     const data_type_t dt = get_data_type(arg_num);
     if (tail)
@@ -549,7 +549,7 @@ void jit_pp_kernel_t<isa>::load_and_cvt(const Vmm v, const arg_t arg_num,
 
 template <cpu_isa_t isa>
 void jit_pp_kernel_t<isa>::cvt_and_store(const Xbyak::Zmm v,
-        const arg_t arg_num, const size_t off, const size_t tail) {
+        const arg_t arg_num, const size_t off, const int tail) {
     using namespace data_type;
     const data_type_t dt = get_data_type(arg_num);
     if (!utils::one_of(dt, f32, bf16)) {
@@ -579,7 +579,7 @@ void jit_pp_kernel_t<isa>::cvt_and_store(const Xbyak::Zmm v,
 
 template <cpu_isa_t isa>
 void jit_pp_kernel_t<isa>::cvt_and_store(const Xbyak::Ymm v,
-        const arg_t arg_num, const size_t off, const size_t tail) {
+        const arg_t arg_num, const size_t off, const int tail) {
     using namespace data_type;
     const data_type_t dt = get_data_type(arg_num);
     const Xbyak::Address dst = get_address(arg_num, off);
@@ -608,8 +608,9 @@ void jit_pp_kernel_t<isa>::cvt_and_store(const Xbyak::Ymm v,
         switch (dt) {
             case s8:
             case u8:
-                for (size_t i = 0; i < tail; i++)
-                    vpextrb(get_address(arg_num, off + i), x, i);
+                for (int i = 0; i < tail; i++)
+                    vpextrb(get_address(arg_num, off + i), x,
+                            static_cast<uint8_t>(i));
                 break;
             case f32:
             case s32: vmaskmovps(dst, vmm_rem_mask, v); break;
@@ -628,7 +629,7 @@ void jit_pp_kernel_t<isa>::cvt_and_store(const Xbyak::Ymm v,
 
 template <cpu_isa_t isa>
 void jit_pp_kernel_t<isa>::cvt_and_store(const Xbyak::Xmm v,
-        const arg_t arg_num, const size_t off, const size_t tail) {
+        const arg_t arg_num, const size_t off, const int tail) {
     using namespace data_type;
     const data_type_t dt = get_data_type(arg_num);
     const Xbyak::Address dst = get_address(arg_num, off);
@@ -650,13 +651,13 @@ void jit_pp_kernel_t<isa>::cvt_and_store(const Xbyak::Xmm v,
         switch (dt) {
             case s8:
             case u8:
-                for (size_t i = 0; i < tail; i++)
+                for (int i = 0; i < tail; i++)
                     uni_vpextrb(get_address(arg_num, off + i), v, i);
                 break;
             case f32:
             case s32: {
                 const size_t dt_size = types::data_type_size(f32);
-                for (size_t i = 0; i < tail; i++)
+                for (int i = 0; i < tail; i++)
                     uni_vpextrd(get_address(arg_num, off + i * dt_size), v, i);
             } break;
             default: assert(!"unimplemented");
@@ -720,7 +721,7 @@ void jit_pp_kernel_t<isa>::runtime_tail_cvt_store(
 
 template <cpu_isa_t isa>
 void jit_pp_kernel_t<isa>::data_copy(const Vmm v, const arg_t arg_num,
-        const size_t off, data_op_t data_op, const size_t tail,
+        const size_t off, data_op_t data_op, const int tail,
         const bool is_needed_runtime_tail_process, const bool do_cvt) {
     if (data_op == data_op_t::load) {
         if (is_needed_runtime_tail_process)
@@ -943,7 +944,7 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
 
             assert(!!OC_loop || !!OC_tail);
 
-            const int vlen_tail = OC_tail % vlen;
+            const int vlen_tail = static_cast<int>(OC_tail % vlen);
             if (vlen_tail) prepare_mask(vlen_tail);
 
             if (OC_loop) {
@@ -952,7 +953,7 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
                 L(l_oc_loop);
                 {
                     for (size_t offset = 0; offset < OC_loop; offset += vlen)
-                        compute(offset, offset / vlen, false);
+                        compute(offset, static_cast<int>(offset / vlen), false);
                     advance_ptrs_imm(OC_loop);
                     sub(reg_tmp, OC_loop);
                     jnz(l_oc_loop);
@@ -962,7 +963,7 @@ void jit_pp_kernel_t<isa>::compute_oc_channel_blk() {
             if (OC_tail) {
                 for (size_t offset = 0; offset < OC_tail; offset += vlen) {
                     const bool use_mask = (offset + vlen) > OC_tail;
-                    compute(offset, offset / vlen, false,
+                    compute(offset, static_cast<int>(offset / vlen), false,
                             use_mask ? vlen_tail : 0);
                 }
                 advance_ptrs_imm(OC_tail);
@@ -1012,7 +1013,7 @@ void jit_pp_kernel_t<isa>::compute_mb_blk() {
     size_t mb_step = vlen / this->OC_;
     size_t mb_tail = this->MB_ % mb_step;
     size_t mb_oc_blk = mb_step * this->OC_;
-    size_t tail_size = mb_oc_blk % vlen;
+    int tail_size = static_cast<int>(mb_oc_blk % vlen);
     auto vmm_bias = vreg_bias(0);
 
     if (this->dst_data_type_ == bf16 && isa != avx512_core_bf16)
@@ -1028,14 +1029,16 @@ void jit_pp_kernel_t<isa>::compute_mb_blk() {
         }
     } else {
         // prepare bias data for simd computation
-        prepare_mask(this->OC_); // this->OC will never be larger than vlen / 2
-        load_and_cvt(vmm_bias, arg_t::bias, 0, this->OC_, false);
+        // this->OC will never be larger than vlen / 2
+        const int oc = static_cast<int>(this->OC_);
+        prepare_mask(oc);
+        load_and_cvt(vmm_bias, arg_t::bias, 0, oc, false);
 
         // write repeated MB*OC entries into stack
         sub(rsp, mb_oc_blk * sizeof(uint32_t));
         for (size_t i = 0; i < mb_step; ++i)
             cvt_and_store(vmm_bias, arg_t::stack,
-                    i * this->OC_ * sizeof(uint32_t), this->OC_);
+                    i * this->OC_ * sizeof(uint32_t), oc);
 
         // load into simd
         if (tail_size) prepare_mask(tail_size);
@@ -1058,7 +1061,7 @@ void jit_pp_kernel_t<isa>::compute_mb_blk() {
 
     if (mb_tail > 0) {
         Label mb_tail_loop, runtime_tail, end_runtime_tail;
-        tail_size = (mb_tail * this->OC_);
+        tail_size = static_cast<int>(mb_tail * this->OC_);
         if (tail_size) prepare_mask(tail_size);
         L(mb_tail_loop);
         {

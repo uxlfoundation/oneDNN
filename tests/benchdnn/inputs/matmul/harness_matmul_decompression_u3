@@ -1,4 +1,4 @@
-# u3 wei decompression (CPU reference only; no optimized/GPU impl).
+# u3 wei decompression (CPU + GPU reference impls; no optimized impl).
 # No --skip-impl=ref: ref is the only u3 impl, skipping it leaves nothing.
 # ZP dt must be u8/s8 (u3 as a zero-point dt is not wired in benchdnn yet)
 --reset

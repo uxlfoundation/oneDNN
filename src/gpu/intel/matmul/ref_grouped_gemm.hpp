@@ -101,7 +101,7 @@ struct ref_grouped_t : public primitive_t {
             const bool is_fp_wei = utils::one_of(
                     wei_type, f32, bf16, f16, f8_e5m2, f8_e4m3, f4_e2m1);
             const bool is_int_src = utils::one_of(src_type, u8, s8);
-            const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4);
+            const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4, u3);
 
             // Supported: fp src + int wei (WOQ), int src + int wei, fp src + fp wei
             VDISPATCH_MATMUL(is_fp_src || is_int_src, VERBOSE_UNSUPPORTED_DT);
@@ -189,7 +189,7 @@ struct ref_grouped_t : public primitive_t {
                 VDISPATCH_MATMUL(is_int_wei, VERBOSE_UNSUPPORTED_ZP_CFG);
                 VDISPATCH_MATMUL(
                         utils::one_of(attr_zps.get_data_type(DNNL_ARG_WEIGHTS),
-                                u8, s8, u4, s4, s32),
+                                u8, s8, u4, s4, u3, s32),
                         VERBOSE_UNSUPPORTED_ZP_CFG);
                 const int zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
                 VDISPATCH_MATMUL(zp_mask == wei_qmask_N()
@@ -313,6 +313,8 @@ struct ref_grouped_t : public primitive_t {
         def_data_type(kernel_ctx,
                 pd()->attr()->zero_points_.get_data_type(DNNL_ARG_WEIGHTS),
                 "WEI_ZP");
+        kernel_ctx.define_int(
+                "U3_CONTIGUOUS_LAYOUT", DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT);
 
         auto attr_info = attr_info_t::create(pd()->attr());
         CHECK(def_attr_info(kernel_ctx, attr_info, pd()->generic_po_,

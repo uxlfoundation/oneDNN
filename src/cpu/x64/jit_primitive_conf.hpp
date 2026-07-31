@@ -916,14 +916,14 @@ struct jit_shuffle_conf_t {
     dim_t group_size = 0;
     dim_t axis = 0;
     dim_t axis_size = 0;
-    dim_t simd_tail = 0;
+    int simd_tail = 0;
 
-    unsigned simd_w = 0;
+    int simd_w = 0;
 
     jit_memory_tag_kind_t tag_kind = jit_memory_tag_kind_t::undef;
     data_type_t data_type = data_type::undef;
-    size_t dt_size = 0;
-    unsigned el_size_of_indices = 0;
+    int dt_size = 0;
+    int el_size_of_indices = 0;
     dim_t c_split_size = 0;
     dim_t sp_split_size = 0;
 

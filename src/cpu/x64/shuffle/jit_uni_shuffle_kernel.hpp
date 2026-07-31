@@ -104,7 +104,7 @@ struct jit_uni_shuffle_kernel_t : public jit_generator_t {
     const Reg8 &reg_padded_block = r14b;
 
     const jit_shuffle_conf_t conf_;
-    const size_t padding_size_;
+    const int padding_size_;
 };
 
 } // namespace x64

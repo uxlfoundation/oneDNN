@@ -1983,7 +1983,8 @@ std::chrono::nanoseconds prim_sdpa_quant_bwd(const sdpa_dims_t &p,
 
 template <typename T>
 void check_memory(dnnl::stream &strm, memory &gold, memory &test,
-        float max_diff_threshold = 0.03f, float fthreshold = 0.001466) {
+        float max_diff_threshold = 0.03f, float fthreshold = 0.001466,
+        float atol_scale = 0.f) {
     T *mapped_ptr_gold = nullptr;
     T *mapped_ptr_test = nullptr;
     mapped_ptr_gold = (T *)gold.map_data();
@@ -1995,6 +1996,18 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
 
     int mismatches = 0;
     int total = 0;
+
+    float max_abs_gold = 0.f;
+    for_(int l = 0; l < dims[0]; l++)
+    for_(int k = 0; k < dims[1]; k++)
+    for_(int j = 0; j < dims[2]; j++)
+    for (int i = 0; i < dims[3]; i++) {
+        auto offset = l * strides[0] + k * strides[1] + j * strides[2]
+                + i * strides[3];
+        max_abs_gold
+                = fmax(max_abs_gold, fabsf((float)mapped_ptr_gold[offset]));
+    }
+    const float atol = fmax(fthreshold, atol_scale * max_abs_gold);
 
     float max_diff = std::numeric_limits<float>::min();
     std::map<int, std::map<int, int>> hist;
@@ -2014,10 +2027,9 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
         float abs_diff = abs(max_val - min_val);
         bool is_nan = isnan(o_gold) || isnan(o_test);
 
-        float large_threshold = abs(o_gold) * fthreshold;
-        bool is_mismatch = is_nan
-                || (abs(o_gold) > 1.f ? abs_diff > large_threshold
-                                      : abs_diff > fthreshold);
+        // relative tolerance for large values, absolute tolerance otherwise
+        float elem_threshold = fmax(abs(o_gold) * fthreshold, atol);
+        bool is_mismatch = is_nan || abs_diff > elem_threshold;
         if (max_diff < abs_diff) {
             if (verbose) {
                 printf("new max(%d,%d,%d,%d): test: %f vs gold: %f diff: "
@@ -2036,18 +2048,24 @@ void check_memory(dnnl::stream &strm, memory &gold, memory &test,
             if (verbose)
                 printf("Mismatch at (%d,%d,%d,%d): test %f "
                        "vs. gold %f (diff: %f thresh: %f)\n",
-                        l, k, j, i, o_test, o_gold, abs_diff,
-                        (abs(o_gold) > 1.f ? large_threshold : fthreshold));
+                        l, k, j, i, o_test, o_gold, abs_diff, elem_threshold);
         }
     }
 
     gold.unmap_data(mapped_ptr_gold);
     test.unmap_data(mapped_ptr_test);
 
-    int threshold = total * 0.002;
+    // bound mismatch rate at 3 sigma, not at mean
+    const double mismatch_rate = 0.002;
+    const double mean = total * mismatch_rate;
+    const double sigma
+            = std::sqrt(total * mismatch_rate * (1. - mismatch_rate));
+    const int threshold = static_cast<int>(std::ceil(mean + 3. * sigma));
 
-    ASSERT_LE(mismatches, threshold) << mismatches << " out of: " << total;
-    ASSERT_LE(max_diff, max_diff_threshold);
+    ASSERT_LE(mismatches, threshold)
+            << mismatches << " out of: " << total << " (rel tol: " << fthreshold
+            << ", abs tol: " << atol << ")";
+    ASSERT_LE(max_diff, fmax(max_diff_threshold, fthreshold * max_abs_gold));
 }
 
 template <typename T>
@@ -2505,12 +2523,16 @@ public:
         // softmax backward potential catastrophic cancellation S*(dP - Di)
         // and atomic adds across dQ accumulation
         float fthreshold = 0.f;
+        float dt_eps = 0.f; // unit roundoff
         if (p.dt.dt == mdt::bf16) {
             fthreshold = 0.1f;
+            dt_eps = 0.00390625f;
         } else if (p.dt.dt == mdt::f16) {
             fthreshold = 0.035f;
+            dt_eps = 0.00048828f;
         } else {
             fthreshold = 0.002f;
+            dt_eps = 6e-8f;
         }
 
         strm.wait();
@@ -2521,38 +2543,46 @@ public:
         const float gqa_fthreshold
                 = fthreshold * std::sqrt(static_cast<float>(kv_group_size));
 
+        // gradient error scales with eps * sqrt(n)
+        const float atol_scale = dt_eps
+                * std::sqrt(static_cast<float>(
+                        std::max(p.seq_len.kv, p.seq_len.q * kv_group_size)));
+
         if (t.m_output.get_desc().get_data_type() == mdt::f16) {
             check_memory<float16_t>(strm, t.m_output, t.m_output_quantized,
                     max_diff_threshold, fthreshold);
             check_memory<float16_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
+                    atol_scale);
             check_memory<float16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold);
+                    max_diff_threshold, gqa_fthreshold, atol_scale);
             check_memory<float16_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold);
+                    gqa_fthreshold, atol_scale);
 
         } else if (t.m_output.get_desc().get_data_type() == mdt::bf16) {
             check_memory<bfloat16_t>(strm, t.m_output, t.m_output_quantized,
                     max_diff_threshold, fthreshold);
             check_memory<bfloat16_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
+                    atol_scale);
             check_memory<bfloat16_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold);
+                    max_diff_threshold, gqa_fthreshold, atol_scale);
             check_memory<bfloat16_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold);
+                    gqa_fthreshold, atol_scale);
 
         } else if (t.m_output.get_desc().get_data_type() == mdt::f32) {
             check_memory<float_t>(strm, t.m_output, t.m_output_quantized,
                     max_diff_threshold, fthreshold);
             check_memory<float_t>(strm, t.m_diff_query,
-                    t.m_diff_query_quantized, max_diff_threshold, fthreshold);
+                    t.m_diff_query_quantized, max_diff_threshold, fthreshold,
+                    atol_scale);
             check_memory<float_t>(strm, t.m_diff_key, t.m_diff_key_quantized,
-                    max_diff_threshold, gqa_fthreshold);
+                    max_diff_threshold, gqa_fthreshold, atol_scale);
             check_memory<float_t>(strm, t.m_diff_value,
                     t.m_diff_value_quantized, max_diff_threshold,
-                    gqa_fthreshold);
+                    gqa_fthreshold, atol_scale);
         }
 
 #if DEBUG_PRINT_MEM

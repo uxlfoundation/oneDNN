@@ -1,7 +1,9 @@
 # Grouped GEMM CI includes:
 # 2Dx3D: variable M, weights 3D [G, K, N]
 # 2Dx2D: variable contraction dim K
+# 2Dx3D u3 WOQ: weights decompression (u3), variable M
 
 --reset
 --batch=harness_matmul_grouped_2dby3d
 --batch=harness_matmul_grouped_2dby2d
+--batch=harness_matmul_grouped_decompression_u3

@@ -154,7 +154,7 @@ struct CopyTemporary
 
     int bytes = 0, align = 0, offset = 0;
     bool flag = false;
-    uint16_t phaseMin = 0xFFFF;
+    uint16_t phaseMin = 0xFFFF, phaseMax = 0x0000;
     int assignment = -1;
     CopyRange range;
 
@@ -167,6 +167,7 @@ protected:
     void usedBy(const CopyInstruction &i) {
         range |= i.range;
         phaseMin = std::min(phaseMin, i.phase);
+        phaseMax = std::max(phaseMax, i.phase);
     }
 
 private:

@@ -3480,6 +3480,17 @@ struct AllocationManager {
         release(end, flagAllocations);
     }
 
+    // Release any temporaries whose last use precedes the given phase, i.e.
+    //   whose value is no longer needed once instructions up to (but not
+    //   including) that phase have been emitted. This is necessary in
+    //   addition to release(int), as temporaries sharing the same element
+    //   range (e.g. all covering a single unbatched instruction group) can
+    //   only be distinguished by when they are last used, not by range.
+    void releasePhase(uint16_t phase) {
+        releasePhase(phase, grfAllocations);
+        releasePhase(phase, flagAllocations);
+    }
+
 private:
     template <typename AllocationType>
     void release(int end, std::vector<AllocationType> &allocs) {
@@ -3494,15 +3505,30 @@ private:
         }
     }
 
+    template <typename AllocationType>
+    void releasePhase(uint16_t phase, std::vector<AllocationType> &allocs) {
+        for (size_t i = 0; i < allocs.size();) {
+            auto &alloc = allocs[i];
+            if (alloc.phaseMax < phase) {
+                dealloc(alloc);
+                std::swap(allocs[i], allocs[allocs.size() - 1]);
+                allocs.pop_back();
+            } else
+                ++i;
+        }
+    }
+
 protected:
     struct GRFAllocation {
         GRFRange range;
         int end;
+        uint16_t phaseMax;
     };
 
     struct FlagAllocation {
         FlagRegister flag;
         int end;
+        uint16_t phaseMax;
     };
 
     void dealloc(GRFAllocation &alloc) { grfAllocator(0, alloc.range); }
@@ -3513,7 +3539,7 @@ protected:
         flagAllocator(temp.bytes, flag);
         if (!flag.isValid()) return false;
         temp.assignment = flag.index();
-        flagAllocations.push_back({flag, temp.range.end});
+        flagAllocations.push_back({flag, temp.range.end, temp.phaseMax});
         return true;
     }
 
@@ -3523,7 +3549,7 @@ protected:
         grfAllocator(grfs, range);
         if (!range.isValid()) return false;
         temp.assignment = range.getBase();
-        grfAllocations.push_back({range, temp.range.end});
+        grfAllocations.push_back({range, temp.range.end, temp.phaseMax});
         return true;
     }
 
@@ -3560,13 +3586,36 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
     // No temporaries used
     if (minPhaseTemp > maxPhaseTemp) return;
 
-    /* Check which instruction groups must be issued together */
+    /* Temporaries whose allocation cannot currently be resolved (neither by
+       phase advance nor by a range boundary) are deferred: their
+       instructions are excluded from consideration until they can be
+       retried, typically once other, currently-blocking temporaries have
+       had their instructions emitted and their registers released. A
+       temporary's range may nest inside another's (e.g. a flag that is
+       only truly needed once several disjoint sub-ranges have each been
+       fully processed) in a way that a single index/phase sweep cannot
+       always resolve on the first pass. */
+    std::vector<bool> deferred(temps.size(), false);
+
+    auto usesDeferredTemp = [&](const CopyInstruction &i) {
+        for (auto o: {&i.dst, &i.src0, &i.src1, &i.src2, &i.flag})
+            if (*o && o->temp && deferred[o->value]) return true;
+        return false;
+    };
+
+    /* Check which instruction groups must be issued together. Instructions
+       that use a currently-deferred temporary are excluded: they cannot be
+       issued yet regardless, and must not be allowed to block a range
+       boundary that would otherwise let other temporaries' registers be
+       reclaimed. */
     auto groupInstructions = [&](std::vector<bool> &joined, CopyRange &range) {
         range = {};
         joined.assign(joined.size(), false);
 
         for (auto &i: insns) {
             if (i.phase < minPhaseTemp || i.phase > maxPhaseTemp)
+                continue;
+            if (usesDeferredTemp(i))
                 continue;
             for (auto j = i.range.start; j < i.range.end; j++)
                 joined[j] = true;
@@ -3583,7 +3632,6 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
     groupInstructions(joined, range);
 
     /* Sort instructions and temporaries by element index */
-
     auto cmp = [&](int i, int j) {
         const auto &ri = temps[i].range;
         const auto &rj = temps[j].range;
@@ -3595,13 +3643,20 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
     std::iota(rangeOrder.begin(), rangeOrder.end(), 0);
     std::sort(rangeOrder.begin(), rangeOrder.end(), cmp);
 
-    auto emit = [&](const CopyRange &range, uint16_t minPhase, uint16_t maxPhase) {
+    std::vector<bool> insnEmitted(insns.size(), false);
+    auto emit = [&](const CopyRange &range, uint16_t minPhase, uint16_t maxPhase, bool skipDeferred = true) {
         bool emitted = false;
-        for (const auto &i: insns) {
+        for (size_t idx = 0; idx < insns.size(); idx++) {
+            auto &i = insns[idx];
+            if (insnEmitted[idx])
+                continue;
             if (i.phase < minPhase || i.phase > maxPhase)
                 continue;
             if (i.range.start < range.start || i.range.end > range.end)
                 continue;
+            if (skipDeferred && usesDeferredTemp(i))
+                continue;
+            insnEmitted[idx] = true;
             sortedInsns.push_back(i);
             emitted = true;
         }
@@ -3614,31 +3669,99 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
 
     auto order = rangeOrder.begin();
     const auto end = rangeOrder.end();
+
+    /* Check whether it is safe to advance the phase window across
+       [loPhase, hiPhase]: every temporary used by an instruction in that
+       phase range must already be allocated. This applies equally to
+       deferred temporaries: even though their instructions are excluded
+       from emission for now, advancing minPhaseTemp past their phase would
+       make them permanently unreachable (emit() never considers phases
+       below minPhaseTemp again), so their presence in the gap must block
+       the advance just like any other not-yet-allocated temporary. */
+    auto phaseGapSafe = [&](uint16_t loPhase, uint16_t hiPhase) {
+        for (auto &i: insns) {
+            if (i.phase < loPhase || i.phase > hiPhase)
+                continue;
+            for (auto o: {&i.dst, &i.src0, &i.src1, &i.src2, &i.flag}) {
+                if (!*o || !o->temp) continue;
+                auto &t = temps[o->value];
+                if (!t.range) continue;
+                if (t.assignment < 0) return false;
+            }
+        }
+        return true;
+    };
+
+    /* Advance the phase window up to just before temp's first use, emitting
+       any instructions that fall in the gap and releasing any temporaries
+       that are no longer needed as of the new phase. This is necessary in
+       addition to range-based back off: temporaries that happen to share
+       the same element range (e.g. because they all belong to a single,
+       unbatched instruction group) can only be distinguished -- and their
+       registers reclaimed -- by phase, not by range. Returns whether the
+       phase window was actually advanced. */
+    auto advancePhase = [&](const CopyTemporary &temp) {
+        if (temp.phaseMin <= minPhaseTemp) return false;
+        if (!phaseGapSafe(minPhaseTemp, temp.phaseMin - 1)) return false;
+        emit(range0, minPhaseTemp, temp.phaseMin - 1);
+        minPhaseTemp = temp.phaseMin;
+        manager.releasePhase(minPhaseTemp);
+        CopyRange unused;
+        groupInstructions(joined, unused);
+        return true;
+    };
+
     while (order != end) {
         for (; order != end; ++order) {
             auto &temp = temps[*order];
             // Don't allocate unused temporaries.
             if (!temp.range) continue;
-            if (!manager.allocate(temp)) {
-                range.end = temp.range.start - 1; break;
-            }
+            if (manager.allocate(temp)) continue;
+
+            /* Ran out of registers/flags. First see if any already-allocated
+               temporaries are simply dead in program order (their last use
+               precedes this temporary's first use) and can be released,
+               even if they can't be distinguished by element range. */
+            if (advancePhase(temp) && manager.allocate(temp)) continue;
+
+            range.end = temp.range.start - 1; break;
         }
 
-        /* Back off to the nearest instruction group boundary */
+        /* Back off to the nearest instruction group boundary. If no boundary
+           can be found (some instruction's range spans clear across the
+           remaining region), advance the phase window past already-emitted
+           phases and retry -- this may unjoin the region by excluding
+           instructions that no longer need to be considered -- until a
+           boundary is found or no further progress is possible. */
         while (range.end >= range.start && joined[range.end])
             range.end--;
-        if (range.end < range.start) {
-            bool emitted = false;
-            if (order != end) {
-                auto &temp = temps[*order];
-                if (temp.phaseMin > minPhaseTemp) {
-                    emitted = emit(range0, minPhaseTemp, temp.phaseMin - 1);
-                    minPhaseTemp = temp.phaseMin;
-                }
+
+        bool deferredCurrent = false;
+        while (range.end < range.start && order != end) {
+            if (!advancePhase(temps[*order])) {
+                /* Neither a phase advance nor a range boundary can resolve
+                   this temporary right now. Defer it: exclude its
+                   instructions from consideration and move on to the rest
+                   of the temporaries, retrying it later once other,
+                   currently-blocking temporaries have been fully emitted
+                   and released -- this may free up the resources it
+                   needs even though its own range doesn't allow it to be
+                   isolated via a range boundary. */
+                deferred[*order] = true;
+                CopyRange unused;
+                groupInstructions(joined, unused);
+                ++order;
+                deferredCurrent = true;
+                break;
             }
-            if (!emitted)
-                throw out_of_registers_exception();
-            groupInstructions(joined, range);
+            range.end = temps[*order].range.start - 1;
+            while (range.end >= range.start && joined[range.end])
+                range.end--;
+        }
+
+        if (deferredCurrent) {
+            range.end = range0.end;
+            continue;
         }
 
         /* Issue instructions for this batch of instruction groups */
@@ -3652,6 +3775,36 @@ void CopyPlan::materializeTemps(const GRFAllocator &grfAllocator, const FlagAllo
     /* Issue any remaining instructions */
     if (range.start <= range0.end)
         emit(range, minPhaseTemp, maxPhaseTemp);
+
+    /* The whole index range has now been swept, so every temporary that
+       was allocated (deferred or not) has had all of its range-bounded
+       instructions considered; release anything still held so that
+       deferred temporaries below have the best chance of finding a free
+       register. */
+    manager.release(range0.end + 1);
+
+    /* Retry any temporaries whose allocation was deferred earlier, now
+       that further registers may have been released. Keep retrying until
+       no more progress can be made; if any remain unresolved, we have
+       genuinely run out of registers. */
+    for (bool progress = true; progress;) {
+        progress = false;
+        for (auto ti: rangeOrder) {
+            if (!deferred[ti]) continue;
+            auto &temp = temps[ti];
+            if (manager.allocate(temp) || (advancePhase(temp) && manager.allocate(temp))) {
+                deferred[ti] = false;
+                progress = true;
+            }
+        }
+    }
+    if (std::find(deferred.begin(), deferred.end(), true) != deferred.end())
+        throw out_of_registers_exception();
+
+    /* Emit any instructions that were excluded earlier because they used a
+       temporary that has since been resolved. */
+    emit(range0, minPhaseTemp, maxPhaseTemp);
+
     if (maxPhaseTemp < 0xFFFF)
         emit(range0, maxPhaseTemp + 1, 0xFFFF);
 

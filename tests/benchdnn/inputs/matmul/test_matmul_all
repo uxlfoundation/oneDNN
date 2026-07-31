@@ -91,3 +91,6 @@
 
 # matmul with binary injector with non-trivial strides
 --batch=harness_matmul_binary_injector_non_trivial_strides
+
+# u3 weights decompression
+--batch=harness_matmul_decompression_u3

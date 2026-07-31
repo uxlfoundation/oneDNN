@@ -122,6 +122,7 @@
 
 # Decompression flavors
 --batch=harness_matmul_decompression
+--batch=harness_matmul_decompression_u3
 
 # Test bf32, tf32 data type configuration
 --reset

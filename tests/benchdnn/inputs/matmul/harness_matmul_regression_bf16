@@ -70,6 +70,12 @@
 2x3x5x16:2x3x16x32_n"mmla_4d_batched_weights"
 2x1x5x16:1x3x16x32_n"mmla_4d_broadcast_weights"
 
+# Cross the 16-entry compact-K batch cap and exercise batch and K tails.
+--reset
+--dt=bf16:bf16:f32
+--stag=ab --wtag=any --dtag=ab
+17x2184:2184x64_n"mmla_compact_k_batch_tail"
+
 # Test that cases when M == 1 are handled correctly.
 --reset
 --stag=ba,ab --wtag=ab --dtag=ab --dt=bf16 1x2:2x256

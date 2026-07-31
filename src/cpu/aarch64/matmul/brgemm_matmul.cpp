@@ -192,6 +192,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
                                                     : bgmmc_.M_tail);
         auto vN = (i_N) ? bgmmc_.N_tail : bgmmc_.N_blk;
         auto vK = (i_K) ? bgmmc_.K_tail : bgmmc_.K_blk;
+        const int bs = get_brg_batchsize(bgmmc_, i_bs, i_K);
 
         int idx = get_brg_kernel_idx(i_bs, i_init, i_M, i_N, i_K);
         if (idx < 0) continue;
@@ -219,6 +220,9 @@ status_t brgemm_matmul_t<isa>::pd_t::init(engine_t *engine) {
         if (bgmmc_.use_mmla) {
             // Matmul keeps A plain and supplies B in the packed MMLA layout.
             // Match the kernel's N tile and cap M blocking for register use.
+            // Full, batch-tail, and K-tail descriptors use their actual batch
+            // bound.
+            brgattr.max_bs = bs;
             brgattr.use_mmla = true;
             brgattr.hint_ld_block2 = brgemm_utils::mmla_ld_block2();
             brgattr.hint_bd_block = nstl::min<dim_t>(

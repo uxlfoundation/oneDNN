@@ -566,6 +566,21 @@ struct matmul_brgemm_blocking_params_t {
     }
 };
 
+int get_mmla_brgemm_batch_size(const brgemm_matmul_conf_t &bgmmc,
+        const matmul_brgemm_blocking_params_t::matmul_params_t &matmul,
+        int k_blk) {
+    // Wider K tiles already amortize kernel entry and are more sensitive to
+    // working-set pressure, so keep one such tile per BRGEMM call.
+    constexpr int max_batched_k_block = 128;
+    if (!bgmmc.use_mmla || k_blk > max_batched_k_block) return 1;
+
+    // The packed-B panel is ISA-defined. Amortize driver and kernel-entry
+    // overhead across adjacent K blocks without changing that layout.
+    // Bound batch growth so larger problems remain split into compact K chunks.
+    constexpr int max_mmla_brgemm_batch_size = 16;
+    return nstl::min(max_mmla_brgemm_batch_size, matmul.K / k_blk);
+}
+
 float compute_blocking_heuristic_sve_512(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const matmul_brgemm_blocking_params_t::matmul_params_t &matmul,
@@ -668,6 +683,7 @@ float compute_blocking_heuristic_sve_256(brgemm_matmul_conf_t &bgmmc,
     //It is found that for M<512 k_blk of 128 works better than 1024 for most of the shapes.
     int default_k_blk = (matmul.M >= 512) ? 1024 : 128;
     int k_blk = nstl::min(matmul.K, default_k_blk);
+    const int batch_size = get_mmla_brgemm_batch_size(bgmmc, matmul, k_blk);
     int start_nthr_k = 1;
 
     // for cases with low parallel work, reduce 'min_m_blk' to
@@ -712,7 +728,7 @@ float compute_blocking_heuristic_sve_256(brgemm_matmul_conf_t &bgmmc,
 
         matmul_brgemm_blocking_params_t cur_params(matmul, nthr);
         cur_params.update_params(
-                1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
+                1, m_blk, n_chunk_size, n_blk, batch_size, k_blk, nthr_k);
 
         float cur_imbalance = cur_params.get_imbalance();
         if (cur_imbalance < best_imbalance) {
@@ -743,6 +759,7 @@ float compute_blocking_heuristic_sve_128(brgemm_matmul_conf_t &bgmmc,
 
     int default_k_blk = (matmul.M >= 256) ? 512 : 64;
     int k_blk = nstl::min(matmul.K, default_k_blk);
+    const int batch_size = get_mmla_brgemm_batch_size(bgmmc, matmul, k_blk);
     int start_nthr_k = 1;
 
     // for cases with low parallel work, reduce 'min_m_blk' to
@@ -787,7 +804,7 @@ float compute_blocking_heuristic_sve_128(brgemm_matmul_conf_t &bgmmc,
 
         matmul_brgemm_blocking_params_t cur_params(matmul, nthr);
         cur_params.update_params(
-                1, m_blk, n_chunk_size, n_blk, 1, k_blk, nthr_k);
+                1, m_blk, n_chunk_size, n_blk, batch_size, k_blk, nthr_k);
 
         float cur_imbalance = cur_params.get_imbalance();
         if (cur_imbalance < best_imbalance) {

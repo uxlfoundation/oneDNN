@@ -3639,8 +3639,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_no_tail(
         case data_type::f16:
             if (is_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm, rhs_addr);
-            else if (is_avx512_ || isa == avx2_vnni_2)
-                // `is_avx512_` is allowed here to enable `load_acc_as_f32`.
+            else if (isa == avx2_vnni_2)
                 host_->vcvtph2ps(tmp_vmm, rhs_addr);
             else
                 assert(!"unsupported ISA for given data type");
@@ -3725,8 +3724,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_tail_dynamically_with_opmask(
             if (is_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
             else
-                // This branch exists to enable `load_acc_as_f32` on avx512_core
-                host_->vcvtph2ps(tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
+                assert(!"unsupported masked tail processing");
             break;
         case data_type::f8_e5m2:
             assert(f8_e5m2_cvt_);

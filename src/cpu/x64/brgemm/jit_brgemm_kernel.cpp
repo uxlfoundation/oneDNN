@@ -1637,7 +1637,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
         dim_t bd_start = bd_block_idx;
         dim_t bd_end = bd_start + bd_block_shift;
 
-        const auto set_binary_injecotr_params = [&] {
+        const auto set_binary_injector_params = [&] {
             // Sum post-op requires binary parameters to be set.
             const bool set_for_binary
                     = brg.with_binary && with_binary_non_scalar_bcast_;
@@ -1662,7 +1662,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(dim_t bd_block, dim_t ld_block2,
             }
         };
 
-        set_binary_injecotr_params();
+        set_binary_injector_params();
 
         postops_injector_->compute_vector_range(
                 max_effective_vregs - bd_end * ld_block2,

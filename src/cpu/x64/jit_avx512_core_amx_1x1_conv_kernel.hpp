@@ -122,10 +122,10 @@ private:
     int get_wei_tensor(int i) const;
     int get_ic_tail() const;
 
-    size_t out_h_shift() const;
-    size_t out_w_shift() const;
-    size_t inp_offset(int ih, int iw, int icb) const;
-    size_t out_row_offset(int h, int w, int ocb) const;
+    dim_t out_h_shift() const;
+    dim_t out_w_shift() const;
+    dim_t inp_offset(dim_t ih, dim_t iw, dim_t icb) const;
+    dim_t out_row_offset(dim_t h, dim_t w, dim_t ocb) const;
 
     void prepare_output();
 

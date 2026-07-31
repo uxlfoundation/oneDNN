@@ -1455,8 +1455,8 @@ void jit_uni_pool_kernel_t<isa>::generate() {
             const int ow_s = i * ur_w;
             const int ow_e = nstl::min(ow, ow_s + ur_w);
             const int cur_l_pad = l_pad - i * ur_stride_w;
-            const int cur_r_pad = nstl::max(
-                    0, calculate_end_padding(l_pad, ow_e, iw, stride_w, kw));
+            const int cur_r_pad = static_cast<int>(nstl::max(dim_t(0),
+                    calculate_end_padding(l_pad, ow_e, iw, stride_w, kw)));
             const int cur_ur_w = ow_e - ow_s;
             process_oi(cur_ur_w, ur_bc, cur_l_pad, cur_r_pad,
                     with_c_tail_processing);
@@ -1486,8 +1486,8 @@ void jit_uni_pool_kernel_t<isa>::generate() {
                 i < n_oi_iterations; ++i) {
             const int ow_s = i * ur_w;
             const int ow_e = nstl::min(ow, ow_s + ur_w);
-            const int cur_r_pad = nstl::max(
-                    0, calculate_end_padding(l_pad, ow_e, iw, stride_w, kw));
+            const int cur_r_pad = static_cast<int>(nstl::max(dim_t(0),
+                    calculate_end_padding(l_pad, ow_e, iw, stride_w, kw)));
             const int cur_ur_w = ow_e - ow_s;
             process_oi(cur_ur_w, ur_bc, 0, cur_r_pad, with_c_tail_processing);
         }

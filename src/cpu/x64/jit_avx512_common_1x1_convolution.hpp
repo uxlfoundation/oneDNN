@@ -293,11 +293,11 @@ struct jit_avx512_common_1x1_convolution_fwd_t : public primitive_t {
             registrar_t scratchpad(scratchpad_registry_);
             registrar_t dw_scratchpad(scratchpad, names::prefix_fusion);
 
-            size_t dw_conv_buffer_size_ = (size_t)nthr * jcp_dw.kh * jcp_dw.iw
-                    * jcp_dw.dw_conv_buffer_oc;
-            assert(dw_conv_buffer_size_);
+            const dim_t dw_conv_buffer_size = static_cast<dim_t>(nthr)
+                    * jcp_dw.kh * jcp_dw.iw * jcp_dw.dw_conv_buffer_oc;
+            assert(dw_conv_buffer_size);
             dw_scratchpad.book(memory_tracking::names::key_fusion_inout_buffer,
-                    dw_conv_buffer_size_,
+                    static_cast<size_t>(dw_conv_buffer_size),
                     types::data_type_size(dw_conv_pd_->src_md()->data_type));
 
             jit_uni_dw_conv_fwd_kernel_t<avx512_core,
@@ -554,11 +554,14 @@ struct jit_avx512_common_1x1_convolution_bwd_weights_t : public primitive_t {
 
     private:
         void init_balancers() {
-            const size_t max_buffer_size = jcp_.nthr * 3 * 5 * 5 * 16 * 16;
+            const dim_t max_buffer_size
+                    = static_cast<dim_t>(jcp_.nthr) * 3 * 5 * 5 * 16 * 16;
             if (with_bias()) {
                 reducer_bia_conf_.init(reduce_balancer_t(jcp_.nthr,
-                        jcp_.oc_block, jcp_.ngroups * jcp_.nb_load, jcp_.mb,
-                        max_buffer_size, true));
+                        static_cast<int>(jcp_.oc_block),
+                        static_cast<int>(jcp_.ngroups * jcp_.nb_load),
+                        static_cast<int>(jcp_.mb),
+                        static_cast<size_t>(max_buffer_size), true));
             }
         }
     };

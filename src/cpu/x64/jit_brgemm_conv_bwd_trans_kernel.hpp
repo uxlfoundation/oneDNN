@@ -89,10 +89,11 @@ protected:
             bool do_load = true);
     void generate() override;
     void copy_iw_block(bool is_oc_tail);
-    void copy_iw_block_body(int lpad, int iw_len, int ow_len, bool is_oc_tail);
+    void copy_iw_block_body(
+            dim_t lpad, dim_t iw_len, dim_t ow_len, bool is_oc_tail);
 
-    int inp_w(int out_w) const;
-    int inp_w_start(int iwb) const;
+    dim_t inp_w(dim_t out_w) const;
+    dim_t inp_w_start(dim_t iwb) const;
 };
 
 } // namespace jit_avx512_core_brgemm_conv_bwd_trans_kernel

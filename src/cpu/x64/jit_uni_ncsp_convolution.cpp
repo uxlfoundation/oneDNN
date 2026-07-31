@@ -91,10 +91,11 @@ status_t reduction_helper_t::reshape_weights(
         // matmul to conv: remove batch, restore spatial
         for (int d = 0; d < ndims_ch; ++d)
             reduce[d] = i_md->dims[d + 1]; // g, o, i
-        for (int d = ndims_ch; d < ndims_out; ++d)
+        for (int d = static_cast<int>(ndims_ch); d < ndims_out; ++d)
             reduce[d] = 1; // d, h, w
     }
-    return memory_desc_reshape(*o_md, *i_md, ndims_out, reduce);
+    return memory_desc_reshape(
+            *o_md, *i_md, static_cast<int>(ndims_out), reduce);
 }
 
 status_t reduction_helper_t::reshape_for_transpose(

@@ -54,13 +54,15 @@ private:
     void generate() override;
     void load_addresses();
     void compute_loop();
-    void compute(const dim_t unrolling, const bool is_tail);
+    void compute(const int unrolling, const bool is_tail);
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_transpose_single_row_t)
     DNNL_DISALLOW_COPY_AND_ASSIGN(jit_brgemm_transpose_single_row_t);
 
-    static constexpr dim_t simd_w_ = 16;
-    static constexpr dim_t vmms_available_ = 32;
+    static constexpr int simd_w_ = 16;
+    static constexpr int vmms_available_ = 32;
+    static constexpr int src_dt_size_ = sizeof(bfloat16_t);
+    static constexpr int dst_dt_size_ = sizeof(float);
 
     const int m_block_;
     const int full_loop_iters_;

@@ -6,6 +6,7 @@
 --reset
 --batch=harness_matmul_grouped_2dby3d
 --batch=harness_matmul_grouped_2dby2d
+--batch=harness_matmul_grouped_decompression_u3
 
 --reset
 

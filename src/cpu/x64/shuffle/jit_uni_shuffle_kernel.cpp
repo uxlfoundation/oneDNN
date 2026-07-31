@@ -31,9 +31,11 @@ using namespace Xbyak;
 
 #define GET_OFF(field) offsetof(jit_uni_shuffle_args_t, field)
 
-static size_t get_padding_size(const jit_shuffle_conf_t &conf) {
-    const auto padding_tail_size = conf.c % conf.blk_size;
-    return (padding_tail_size) ? conf.blk_size - padding_tail_size : 0;
+static int get_padding_size(const jit_shuffle_conf_t &conf) {
+    const int padding_tail_size = static_cast<int>(conf.c % conf.blk_size);
+    return (padding_tail_size)
+            ? static_cast<int>(conf.blk_size) - padding_tail_size
+            : 0;
 }
 
 template <cpu_isa_t isa>
@@ -75,37 +77,40 @@ void jit_uni_shuffle_kernel_t<avx512_core>::emu_gather_data(
     xor_(reg_tmp_, reg_tmp_);
     mov(reg_tmp1_, reg_src_addr);
 
-    constexpr unsigned xmm_size_elem = 8; //bf16
-    constexpr unsigned xmm_size_elem_half = xmm_size_elem / 2;
+    constexpr int xmm_size_elem = 8; //bf16
+    constexpr int xmm_size_elem_half = xmm_size_elem / 2;
 
-    const unsigned number_of_xmms = is_tail
+    const int number_of_xmms = is_tail
             ? utils::div_up(conf_.simd_tail, xmm_size_elem)
             : utils::div_up(conf_.simd_w, xmm_size_elem);
 
-    for (unsigned i = 0; i < number_of_xmms; i++) {
-        const unsigned number_of_xmm_halfs = is_tail && i == number_of_xmms - 1
+    for (int i = 0; i < number_of_xmms; i++) {
+        const int number_of_xmm_halfs = is_tail && i == number_of_xmms - 1
                 ? utils::div_up(conf_.simd_tail,
                           xmm_size_elem_half + i * xmm_size_elem)
                 : 2;
 
-        for (unsigned j = 0; j < number_of_xmm_halfs; j++) {
-            const unsigned rem = conf_.simd_tail % xmm_size_elem_half;
-            const unsigned number_of_values_to_load = is_tail
+        for (int j = 0; j < number_of_xmm_halfs; j++) {
+            const int rem = conf_.simd_tail % xmm_size_elem_half;
+            const int number_of_values_to_load = is_tail
                             && i == number_of_xmms - 1
                             && j == number_of_xmm_halfs - 1 && rem
                     ? rem
                     : xmm_size_elem_half;
 
-            vextractf32x4(xmm_tmp, Zmm(indices_idx), j + i * 2);
-            for (unsigned k = 0; k < number_of_values_to_load; k++) {
-                vpextrd(reg_tmp_.cvt32(), xmm_tmp, k + j * xmm_size_elem_half);
+            vextractf32x4(
+                    xmm_tmp, Zmm(indices_idx), static_cast<uint8_t>(j + i * 2));
+            for (int k = 0; k < number_of_values_to_load; k++) {
+                vpextrd(reg_tmp_.cvt32(), xmm_tmp,
+                        static_cast<uint8_t>(k + j * xmm_size_elem_half));
                 add(reg_src_addr, reg_tmp_);
                 vpinsrw(xmm_dst, xmm_dst, ptr[reg_src_addr],
-                        k + j * xmm_size_elem_half);
+                        static_cast<uint8_t>(k + j * xmm_size_elem_half));
                 mov(reg_src_addr, reg_tmp1_);
             }
         }
-        vinsertf128(Ymm(data_idx), Ymm(data_idx), xmm_dst, i);
+        vinsertf128(
+                Ymm(data_idx), Ymm(data_idx), xmm_dst, static_cast<uint8_t>(i));
     }
 }
 
@@ -118,26 +123,28 @@ void jit_uni_shuffle_kernel_t<avx>::emu_gather_data(const Reg64 &reg_src_addr,
     xor_(reg_tmp_, reg_tmp_);
     mov(reg_tmp1_, reg_src_addr);
 
-    constexpr unsigned xmm_size_elem = 4;
+    constexpr int xmm_size_elem = 4;
 
-    const unsigned number_of_xmms = is_tail
+    const int number_of_xmms = is_tail
             ? utils::div_up(conf_.simd_tail, xmm_size_elem)
             : utils::div_up(conf_.simd_w, xmm_size_elem);
-    for (unsigned i = 0; i < number_of_xmms; i++) {
-        vextractf128(xmm_tmp, Ymm(indices_idx), i);
+    for (int i = 0; i < number_of_xmms; i++) {
+        vextractf128(xmm_tmp, Ymm(indices_idx), static_cast<uint8_t>(i));
 
-        const unsigned number_of_values_to_load = i == number_of_xmms - 1
-                        && is_tail && conf_.simd_tail % xmm_size_elem != 0
+        const int number_of_values_to_load = i == number_of_xmms - 1 && is_tail
+                        && conf_.simd_tail % xmm_size_elem != 0
                 ? conf_.simd_tail % xmm_size_elem
                 : xmm_size_elem;
-        for (unsigned j = 0; j < number_of_values_to_load; j++) {
-            vpextrd(reg_tmp_.cvt32(), xmm_tmp, j);
+        for (int j = 0; j < number_of_values_to_load; j++) {
+            vpextrd(reg_tmp_.cvt32(), xmm_tmp, static_cast<uint8_t>(j));
             add(reg_src_addr, reg_tmp_);
-            vpinsrd(xmm_dst, xmm_dst, ptr[reg_src_addr], j);
+            vpinsrd(xmm_dst, xmm_dst, ptr[reg_src_addr],
+                    static_cast<uint8_t>(j));
             mov(reg_src_addr, reg_tmp1_);
         }
 
-        vinsertf128(Ymm(data_idx), Ymm(data_idx), xmm_dst, i);
+        vinsertf128(
+                Ymm(data_idx), Ymm(data_idx), xmm_dst, static_cast<uint8_t>(i));
     }
 }
 
@@ -147,14 +154,14 @@ void jit_uni_shuffle_kernel_t<sse41>::emu_gather_data(const Reg64 &reg_src_addr,
     xor_(reg_tmp_, reg_tmp_);
     mov(reg_tmp1_, reg_src_addr);
 
-    constexpr unsigned xmm_size_elem = 4;
+    constexpr int xmm_size_elem = 4;
 
-    const unsigned number_of_values_to_load
+    const int number_of_values_to_load
             = is_tail ? conf_.simd_tail : xmm_size_elem;
-    for (unsigned j = 0; j < number_of_values_to_load; j++) {
-        pextrd(reg_tmp_.cvt32(), Xmm(indices_idx), j);
+    for (int j = 0; j < number_of_values_to_load; j++) {
+        pextrd(reg_tmp_.cvt32(), Xmm(indices_idx), static_cast<uint8_t>(j));
         add(reg_src_addr, reg_tmp_);
-        pinsrd(Xmm(data_idx), ptr[reg_src_addr], j);
+        pinsrd(Xmm(data_idx), ptr[reg_src_addr], static_cast<uint8_t>(j));
         mov(reg_src_addr, reg_tmp1_);
     }
 }
@@ -274,9 +281,9 @@ template <>
 void jit_uni_shuffle_kernel_t<sse41>::store_data(const int data_idx,
         const Reg64 &reg_dst_addr, const int offset, const bool is_tail) {
     if (is_tail)
-        for (unsigned i = 0; i < conf_.simd_tail; i++) {
+        for (int i = 0; i < conf_.simd_tail; i++) {
             pextrd(ptr[reg_dst_addr + offset + i * conf_.dt_size],
-                    Xmm(data_idx), i);
+                    Xmm(data_idx), static_cast<uint8_t>(i));
         }
     else
         movups(ptr[reg_dst_addr + offset], Vmm(data_idx));
@@ -291,9 +298,9 @@ void jit_uni_shuffle_kernel_t<isa>::shuffle_blocked_format() {
     const Reg64 &reg_cb_loop_size = reg_tmp4_;
     const Reg64 &reg_blk_tail = reg_tmp5_;
     const Reg64 &reg_src_save = reg_tmp6_;
-    const int simd_in_blk = conf_.blk_size / conf_.simd_w;
-    const int simd_in_tail_blk
-            = utils::div_up(conf_.c % conf_.blk_size, conf_.simd_w);
+    const int simd_in_blk = static_cast<int>(conf_.blk_size / conf_.simd_w);
+    const int simd_in_tail_blk = static_cast<int>(
+            utils::div_up(conf_.c % conf_.blk_size, conf_.simd_w));
     const Vmm vmm_tmp[4] = {Vmm(5), Vmm(6), Vmm(7), Vmm(8)};
 
     auto load_indices = ([&](bool is_blk_tail) {
@@ -406,8 +413,8 @@ template <cpu_isa_t isa>
 void jit_uni_shuffle_kernel_t<isa>::append_zero_padding(
         const Reg64 &reg_dst_addr, const bool extend_for_padding) {
 
-    static constexpr size_t reg64_size = 8;
-    const size_t simd_w_byte = conf_.simd_w * sizeof(float);
+    static constexpr int reg64_size = 8;
+    const int simd_w_byte = conf_.simd_w * static_cast<int>(sizeof(float));
 
     if (!padding_size_) return;
 
@@ -422,7 +429,7 @@ void jit_uni_shuffle_kernel_t<isa>::append_zero_padding(
     if (!padding_to_add) return;
 
     Label end;
-    unsigned int off = 0;
+    int off = 0;
 
     cmp(reg_padded_block, 0);
     je(end, T_NEAR);

@@ -159,7 +159,9 @@ RegData CopyOperand::ngen() const
 {
     if (kind == Null)
         return ngen::NullRegister().sub(offset, type)(stride);
-    if (kind != GRF || temp) stub("Invalid operation");
+    if (temp) stub("Invalid operation");
+    if (kind == Flag) return ngenFlag();
+    if (kind != GRF) stub("Invalid operation");
 
     auto sub = ngen::GRF(grf).sub(offset, type);
     RegData rd;
@@ -211,7 +213,7 @@ void CopyInstruction::moveToIntegerPipe()
         case 2: st = dt = DataType::uw; break;
         case 4: st = dt = DataType::ud; break;
         case 8:
-            if (src0.stride == 1 && dst.stride == 1) {
+            if (!flag && src0.stride == 1 && dst.stride == 1) {
                 st = dt = DataType::ud;
                 simd *= 2;
                 src0.offset *= 2;
@@ -250,6 +252,7 @@ void CopyPlan::transform()
 
     sort(SortType::Register);
 
+    optimizeSIMD();
     optimizeIntegerDownconvert();
     optimizeZip();
     optimizeZipAdjacent();
@@ -2860,7 +2863,7 @@ void CopyPlan::legalizeRegions()
             i.dst.offset *= 2;
             i.src0.stride *= 2;
             i.src0.offset *= 2;
-            if (i.dst.stride == 2) {
+            if (!i.flag && i.dst.stride == 2) {
                 /* Use 2D regioned src */
                 i.simd *= 2;
                 i.dst.stride = 1;
@@ -2966,6 +2969,155 @@ void CopyPlan::sort(SortType type)
     });
 }
 
+// Optimization pass: extend SIMD widths to avoid many small-SIMD instructions
+// Example input:
+//    mov (15)  r0.0<4>:uw   r10.0<2>:uw
+// i.e.,
+//    mov (8)  r0.0<4>:uw   r10.0<2>:uw
+//    mov (4)  r1.0<4>:uw   r10.16<2>:uw
+//    mov (2)  r1.16<4>:uw   r10.24<2>:uw
+//    mov (1)  r1.24<4>:uw   r10.28<2>:uw
+// Output:
+//    mov (1)  f0.0:uw    0x7FFF
+//    (f0.0) mov (16) r0.0<2>:uw   r10.0<1>:uw
+//
+void CopyPlan::optimizeSIMD()
+{
+    const auto grf = ngen::GRF::bytes(hw);
+
+    auto advance = [grf](CopyOperand &op, int n) {
+        if (op.kind == CopyOperand::Flag)
+            op.offset += n;
+        if (op.kind != CopyOperand::GRF) return;
+        int ne = bytesToElements(grf, op.type);
+        if (op.width) {
+            op.offset += (n / op.width) * op.vs;
+            n %= op.width;
+        }
+        op.offset += n * op.stride;
+        int grfOffset = op.offset / ne;
+        op.grf += grfOffset;
+        op.offset -= grfOffset * ne;
+    };
+
+    auto rerange = [](CopyInstruction &i, int simd) {
+        auto channels = i.range.end - i.range.start + 1;
+        i.range.end = i.range.start + channels * simd / i.simd - 1;
+        i.simd = simd;
+    };
+
+    auto predicatedMovSupported = [&](const CopyInstruction &i) {
+        if (i.simd > 32) return false;
+        if (getBits(i.dst.type) < 8) return false;
+        if (hw < HW::XeHPC) return true;
+        if (!isB(i.dst.type) || !isB(i.src0.type)) return true;
+        if (i.dst.stride != 1) return true;
+        if ((i.dst.offset & 1) == 0) return true;
+        return false;
+    };
+
+
+    bool needsMerge = false;
+    for (auto &i : insns) {
+        if (!predicatedMovSupported(i)) continue;
+        auto tail = i.simd % 32;
+        if (tail == rounddown_pow2(tail)) continue;
+        auto simd0 = i.simd - tail;
+
+        auto &i0 = i, &i1 = split(i, false);
+        advance(i1.dst, simd0);
+        advance(i1.src0, simd0);
+        advance(i1.src1, simd0);
+        advance(i1.src2, simd0);
+        rerange(i0, simd0);
+        rerange(i1, tail);
+        needsMerge = true;
+    }
+
+    if (needsMerge)
+        mergeChanges();
+
+    auto mask = [&](CopyInstruction &i0, CopyInstruction &i2, const CopyOperand &flag) {
+        auto hasConversion = (i0.op != Opcode::mov)
+                          || (i0.dst.type != i0.src0.type)
+                          || (i0.flag && i0.cmod != ConditionModifier::none);
+        auto dst = i0.dst;
+        auto tmp = i0.src0;
+
+        if (hasConversion) {
+            tmp = newTemp(dst.type, i0.simd, dst.stride);
+            i0.dst = tmp;
+        } else  {
+            i0.invalidate();
+        }
+
+        i2.op = Opcode::mov;
+        i2.flag = flag;
+        i2.dst = dst;
+        i2.src0 = tmp;
+        i2.src1 = i2.src2 = CopyOperand{};
+    };
+
+    const auto ninsns = insns.size();
+    for (size_t n1 = 0; n1 < ninsns; n1++) {
+        auto &i1 = insns[n1];
+        if (!predicatedMovSupported(i1)) continue;
+        if (rounddown_pow2(i1.simd) == i1.simd) continue;
+
+        size_t n2;
+        auto range = i1.range;
+        for (n2 = n1 + 1; n2 < ninsns; n2++) {
+            auto &i2 = insns[n2];
+            if (!predicatedMovSupported(i2)) continue;
+            if (i2.simd != i1.simd) break;
+            if (i2.flag != i1.flag) break;
+            if (i2.phase != i1.phase) break;
+            range |= i2.range;
+        }
+
+        auto simd = i1.simd;
+        auto esimd = 2 * rounddown_pow2(simd);
+        auto oflag = i1.flag;
+        auto flag = newFlag(esimd);
+        auto value = (1u << simd) - 1;
+        flag.type = esimd > 16 ? DataType::ud : DataType::uw;
+        rerange(i1, esimd);
+
+        auto ie1 = splitMultiple<3>(i1);
+        ie1[0]->simd = ie1[2]->simd = esimd;
+        auto &fi = *ie1[1];
+
+        fi.simd = 1;
+        fi.range = range;
+        fi.dst = flag;
+        if (oflag) {
+            fi.op = Opcode::or_;
+            fi.src0 = oflag;
+            fi.src1 = value;
+            fi.flag = fi.src2 = CopyOperand{};
+        } else {
+            fi.op = Opcode::mov;
+            fi.src0 = value;
+            fi.src1 = fi.src2 = CopyOperand{};
+        }
+        fi.cmod = ConditionModifier::none;
+
+        mask(*ie1[0], *ie1[2], flag);
+
+        for (size_t n = n1 + 1; n < n2; ++n, ++n1) {
+            auto &i = insns[n];
+            if (!predicatedMovSupported(i)) continue;
+            rerange(i, esimd);
+            auto ie = splitMultiple<3>(i);
+            ie[0]->simd = ie[2]->simd = esimd;
+            ie[1]->invalidate();
+            mask(*ie[0], *ie[2], flag);
+        }
+    }
+
+    mergeChanges();
+}
+
 // Optimization pass: zip together interleaved operations.
 // Requires a sorted plan.
 //
@@ -3001,7 +3153,7 @@ void CopyPlan::optimizeZip(bool zip2DSrc0)
             auto zippable = [&](const CopyOperand &o1, const CopyOperand &o2, bool zip2D = false, bool zipImm = false) {
                 if (o1.kind != o2.kind) return false;
                 if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value || zipImm);
-                if (o1.kind != CopyOperand::GRF) return true;
+                if (!one_of(o1.kind, {CopyOperand::GRF, CopyOperand::Flag})) return true;
                 if (o1.type != o2.type || o1.stride != o2.stride || o1.grf != o2.grf) return false;
                 if (o1.temp != o2.temp) return false;
                 if (o1.temp && o1.value != o2.value) return false;
@@ -3180,7 +3332,7 @@ void CopyPlan::optimizeZipAdjacent()
         auto zippable = [](const CopyOperand &o1, const CopyOperand &o2) {
             if (o1.kind != o2.kind) return false;
             if (o1.kind == CopyOperand::Immediate) return (o1.value == o2.value);
-            if (o1.kind != CopyOperand::GRF) return true;
+            if (!one_of(o1.kind, {CopyOperand::GRF, CopyOperand::Flag})) return true;
             if (o1.type != o2.type || o1.stride != o2.stride || o1.grf != o2.grf) return false;
             if (o1.temp != o2.temp) return false;
             if (o1.temp && o1.value != o2.value) return false;

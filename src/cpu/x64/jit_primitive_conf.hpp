@@ -630,14 +630,14 @@ struct jit_uni_pooling_args_t {
 struct jit_resampling_conf_t {
     unsigned ndims = 0;
 
-    unsigned c = 0;
-    unsigned id = 0, ih = 0, iw = 0;
-    unsigned od = 0, oh = 0, ow = 0;
+    dim_t c = 0;
+    dim_t id = 0, ih = 0, iw = 0;
+    dim_t od = 0, oh = 0, ow = 0;
 
-    unsigned stride_d = 0;
-    unsigned stride_h = 0;
-    unsigned stride_w = 0;
-    unsigned inner_stride = 0;
+    dim_t stride_d = 0;
+    dim_t stride_h = 0;
+    dim_t stride_w = 0;
+    dim_t inner_stride = 0;
 
     // The linear algorithm is an approximation of the point
     // value based on the limit values. For one dimension,
@@ -651,10 +651,10 @@ struct jit_resampling_conf_t {
     bool is_saturation_needed = false;
     data_type_t src_data_type = data_type::undef;
     data_type_t dst_data_type = data_type::undef;
-    size_t src_dt_size = 0;
-    size_t dst_dt_size = 0;
+    int src_dt_size = 0;
+    int dst_dt_size = 0;
     size_t output_data_size = 0;
-    size_t el_size_of_indices = 0;
+    int el_size_of_indices = 0;
 
     bool is_blocked_8_format = false;
     format_tag_t src_tag = format_tag::undef;

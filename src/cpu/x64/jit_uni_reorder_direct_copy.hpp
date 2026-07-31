@@ -55,7 +55,7 @@ struct jit_uni_reorder_direct_copy_t : public primitive_t {
 
     struct kernel_base_t {
         virtual void operator()(
-                const void *src, void *dst, size_t work_amount) const
+                const void *src, void *dst, dim_t work_amount) const
                 = 0;
         static kernel_base_t *create(const reorder_pd_t *pd, cpu_isa_t isa);
         virtual status_t create_kernel() = 0;

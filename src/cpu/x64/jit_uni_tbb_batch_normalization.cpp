@@ -523,7 +523,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
     jit_bnorm_process_tail_t<isa> jit_tail_;
     helper_vmovups_data_t<isa> helper_vmovups_;
     int stride_N_, stride_S_, stride_C_;
-    size_t data_type_size_, acc_type_size_;
+    int data_type_size_, acc_type_size_;
 
     void load_common_params() {
 #define PARAM_PTR(x) ptr[PARAM_ADDR(x)]
@@ -757,8 +757,8 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
         cmp(reg_do_normalise_, 0);
         jz(label_ret);
 
-        const int S = pd_->D() * pd_->H() * pd_->W();
-        mov(reg_tmp_, float2int(pd_->MB() * S));
+        const dim_t S = pd_->D() * pd_->H() * pd_->W();
+        mov(reg_tmp_, float2int(static_cast<float>(pd_->MB() * S)));
         Xmm xtmp = Xmm(vtmp_.getIdx());
         uni_vmovq(xtmp, reg_tmp_);
         uni_vbroadcastss(vNS_, xtmp);
@@ -800,13 +800,16 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
         , jit_tail_(pd, this, reg_tmp_, reg_blk_has_tail_, reg_C_, vtail_mask_,
                   ktail_mask_)
         , helper_vmovups_(pd, this, zmm28, zmm29, zmm30, zmm31, reg_tmp_)
-        , data_type_size_(types::data_type_size(pd->src_md()->data_type))
+        , data_type_size_(static_cast<int>(
+                  types::data_type_size(pd->src_md()->data_type)))
         , acc_type_size_(sizeof(acc_data_t)) {
         static_assert(utils::one_of(isa, sse41, avx2, avx512_core),
                 "unsupported isa");
 
-        std::tie(stride_N_, stride_S_, stride_C_)
-                = get_data_strides<isa>(pd_, tag_kind);
+        const auto strides = get_data_strides<isa>(pd_, tag_kind);
+        stride_N_ = static_cast<int>(std::get<0>(strides));
+        stride_S_ = static_cast<int>(std::get<1>(strides));
+        stride_C_ = static_cast<int>(std::get<2>(strides));
     }
 };
 
@@ -924,7 +927,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
     jit_bnorm_process_relu_t<isa> jit_relu_;
     helper_vmovups_data_t<isa> helper_vmovups_;
     int stride_N_, stride_S_, stride_C_;
-    size_t data_type_size_, acc_type_size_;
+    int data_type_size_, acc_type_size_;
 
     enum {
         stack_off_N = 0,
@@ -1188,13 +1191,16 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
         , jit_relu_(pd, this, reg_off_dat_, reg_tmp_, reg_ptr_ws_, vzero_,
                   vstore_mask_, kstore_mask_, valpha, vmask, reg_alpha_)
         , helper_vmovups_(pd, this, zmm28, zmm29, zmm30, zmm31, reg_tmp_)
-        , data_type_size_(types::data_type_size(pd->src_md()->data_type))
+        , data_type_size_(static_cast<int>(
+                  types::data_type_size(pd->src_md()->data_type)))
         , acc_type_size_(sizeof(acc_data_t)) {
         static_assert(utils::one_of(isa, sse41, avx2, avx512_core),
                 "unsupported isa");
 
-        std::tie(stride_N_, stride_S_, stride_C_)
-                = get_data_strides<isa>(pd_, tag_kind);
+        const auto strides = get_data_strides<isa>(pd_, tag_kind);
+        stride_N_ = static_cast<int>(std::get<0>(strides));
+        stride_S_ = static_cast<int>(std::get<1>(strides));
+        stride_C_ = static_cast<int>(std::get<2>(strides));
     }
 
     void generate() override {
@@ -1286,7 +1292,7 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
     jit_bnorm_process_relu_t<isa> jit_relu_;
     helper_vmovups_data_t<isa> helper_vmovups_;
     int stride_N_, stride_S_, stride_C_;
-    size_t data_type_size_, acc_type_size_;
+    int data_type_size_, acc_type_size_;
 
     void load_common_params() {
 #define PARAM_PTR(x) ptr[PARAM_ADDR(x)]
@@ -1306,8 +1312,8 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
         uni_vmovq(x, reg_tmp_);
         uni_vbroadcastss(vone_, x);
 
-        const int S = pd_->D() * pd_->H() * pd_->W();
-        mov(reg_tmp_, float2int(pd_->MB() * S));
+        const dim_t S = pd_->D() * pd_->H() * pd_->W();
+        mov(reg_tmp_, float2int(static_cast<float>(pd_->MB() * S)));
         uni_vmovq(x, reg_tmp_);
         uni_vbroadcastss(vNS_, x);
 
@@ -1475,13 +1481,16 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
         , jit_relu_(pd, this, reg_off_dat_, reg_tmp_, reg_ptr_ws_, vzero_,
                   vstore_mask_, kstore_mask_)
         , helper_vmovups_(pd, this, zmm28, zmm29, zmm30, zmm31, reg_tmp_)
-        , data_type_size_(types::data_type_size(pd->src_md()->data_type))
+        , data_type_size_(static_cast<int>(
+                  types::data_type_size(pd->src_md()->data_type)))
         , acc_type_size_(sizeof(acc_data_t)) {
         static_assert(utils::one_of(isa, sse41, avx2, avx512_core),
                 "unsupported isa");
 
-        std::tie(stride_N_, stride_S_, stride_C_)
-                = get_data_strides<isa>(pd_, tag_kind);
+        const auto strides = get_data_strides<isa>(pd_, tag_kind);
+        stride_N_ = static_cast<int>(std::get<0>(strides));
+        stride_S_ = static_cast<int>(std::get<1>(strides));
+        stride_C_ = static_cast<int>(std::get<2>(strides));
     }
 
     void generate() override {
@@ -1581,7 +1590,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
     jit_bnorm_process_relu_t<isa> jit_relu_;
     helper_vmovups_data_t<isa> helper_vmovups_;
     int stride_N_, stride_S_, stride_C_;
-    size_t data_type_size_, acc_type_size_;
+    int data_type_size_, acc_type_size_;
 
     void load_common_params() {
 #define PARAM_PTR(x) ptr[PARAM_ADDR(x)]
@@ -1873,13 +1882,16 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
         , jit_relu_(pd, this, reg_off_dat_, reg_tmp_, reg_ptr_ws_, vzero_,
                   vstore_mask_, kstore_mask_)
         , helper_vmovups_(pd, this, zmm28, zmm29, zmm30, zmm31, reg_tmp_)
-        , data_type_size_(types::data_type_size(pd->src_md()->data_type))
+        , data_type_size_(static_cast<int>(
+                  types::data_type_size(pd->src_md()->data_type)))
         , acc_type_size_(sizeof(acc_data_t)) {
         static_assert(utils::one_of(isa, sse41, avx2, avx512_core),
                 "unsupported isa");
 
-        std::tie(stride_N_, stride_S_, stride_C_)
-                = get_data_strides<isa>(pd_, tag_kind);
+        const auto strides = get_data_strides<isa>(pd_, tag_kind);
+        stride_N_ = static_cast<int>(std::get<0>(strides));
+        stride_S_ = static_cast<int>(std::get<1>(strides));
+        stride_C_ = static_cast<int>(std::get<2>(strides));
     }
 
     void generate() override {
@@ -1973,7 +1985,7 @@ public:
             const batch_normalization_pd_t *pd) {
 
         int nthrs = dnnl_get_max_threads();
-        int C_PADDED = get_c_padded(pd);
+        dim_t C_PADDED = get_c_padded(pd);
 
         auto sbuf_sz = use_tmp_stats(pd) * 2 * C_PADDED;
         auto pbuf_sz
@@ -1992,7 +2004,7 @@ public:
         std::tie(stride_N, stride_S, stride_C)
                 = get_data_strides<isa>(pd_, tag_kind_);
 
-        const int nthr_NS = nthr.N * nthr.S;
+        const int nthr_NS = static_cast<int>(nthr.N * nthr.S);
         const bool need_reduction = nthr_NS > 1;
         const dim_t tail_size = blk_has_tail ? C_ % simd_w : simd_w;
 
@@ -2020,7 +2032,7 @@ public:
 
         // find local mean
         acc_data_t *r_mean = need_reduction ? rbuf : mean;
-        parallel(nthr.glob,
+        parallel(static_cast<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
@@ -2035,7 +2047,7 @@ public:
             const size_t d_off = start.N * stride_N + start.C * stride_C
                     + start.S * stride_S;
             c.src = (void *)((char *)src + d_off * dt_size_);
-            const int ithr_NS = ithr.N * nthr.S + ithr.S;
+            const int ithr_NS = static_cast<int>(ithr.N * nthr.S + ithr.S);
             c.mean = &r_mean[ithr_NS * size_C_stat + start.C * simd_w];
             c.blk_has_tail = blk_has_tail && stop.C == C_blks;
             c.do_normalise = !need_reduction;
@@ -2047,7 +2059,7 @@ public:
 
         // find local var
         acc_data_t *r_var = need_reduction ? rbuf : var;
-        parallel(nthr.glob,
+        parallel(static_cast<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
@@ -2062,7 +2074,7 @@ public:
             const size_t d_off = start.N * stride_N + start.C * stride_C
                     + start.S * stride_S;
             c.src = (void *)((char *)src + d_off * dt_size_);
-            const int ithr_NS = ithr.N * nthr.S + ithr.S;
+            const int ithr_NS = static_cast<int>(ithr.N * nthr.S + ithr.S);
             c.mean = &mean[start.C * simd_w];
             c.var = &r_var[ithr_NS * size_C_stat + start.C * simd_w];
             c.blk_has_tail = blk_has_tail && stop.C == C_blks;
@@ -2083,7 +2095,7 @@ public:
         std::tie(stride_N, stride_S, stride_C)
                 = get_data_strides<isa>(pd_, tag_kind_);
 
-        parallel(nthr.glob,
+        parallel(static_cast<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
@@ -2161,7 +2173,7 @@ public:
         const dim_t tail_size = blk_has_tail ? C_ % simd_w : simd_w;
         const dim_t size_C_stat = (C_blks - 1) * simd_w + tail_size;
 
-        const int nthr_NS = nthr.N * nthr.S;
+        const int nthr_NS = static_cast<int>(nthr.N * nthr.S);
         const bool need_reduction = nthr_NS > 1;
 
         acc_data_t *diff_gamma = diff_scale;
@@ -2197,14 +2209,14 @@ public:
             });
         };
 
-        parallel(nthr.glob,
+        parallel(static_cast<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
             bnorm_dims_t start, stop;
             work_distribution(C_blks, ithr, nthr, start, stop);
 
-            const int ithr_NS = ithr.N * nthr.S + ithr.S;
+            const int ithr_NS = static_cast<int>(ithr.N * nthr.S + ithr.S);
             acc_data_t *loc_diff_gamma = &r_diff_gamma[ithr_NS * size_C_stat];
             acc_data_t *loc_diff_beta = &r_diff_beta[ithr_NS * size_C_stat];
 
@@ -2240,7 +2252,7 @@ public:
         std::tie(stride_N, stride_S, stride_C)
                 = get_data_strides<isa>(pd_, tag_kind_);
 
-        parallel(nthr.glob,
+        parallel(static_cast<int>(nthr.glob),
                 [= COMPAT_THIS_CAPTURE](int ithr_glob, int nthr_glob) {
             assert(nthr_glob == nthr.glob);
             const auto ithr = map_thread(ithr_glob, nthr);
@@ -2403,13 +2415,13 @@ private:
     }
 
     int map_thread_c(int ithr_glob, const bnorm_dims_t &nthr) {
-        return ithr_glob / nthr.N / nthr.S;
+        return static_cast<int>(ithr_glob / nthr.N / nthr.S);
     }
 
     bnorm_dims_t map_thread(int ithr_glob, const bnorm_dims_t &nthr) {
         auto ithr = bnorm_dims_t();
         ithr.glob = ithr_glob;
-        ithr.C = map_thread_c(ithr.glob, nthr);
+        ithr.C = map_thread_c(ithr_glob, nthr);
         ithr.N = ithr.glob / nthr.S % nthr.N;
         ithr.S = ithr.glob % nthr.S;
         return ithr;
@@ -2422,7 +2434,8 @@ private:
 
     void work_distribution(dim_t C_blks, const bnorm_dims_t &ithr,
             const bnorm_dims_t &nthr, bnorm_dims_t &start, bnorm_dims_t &stop) {
-        work_distribution_c(C_blks, ithr.C, nthr.C, start.C, stop.C);
+        work_distribution_c(C_blks, static_cast<int>(ithr.C),
+                static_cast<int>(nthr.C), start.C, stop.C);
         balance211(N_, nthr.N, ithr.N, start.N, stop.N);
         balance211(S_, nthr.S, ithr.S, start.S, stop.S);
     }

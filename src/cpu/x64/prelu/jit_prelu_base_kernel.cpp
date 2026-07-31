@@ -24,7 +24,7 @@ namespace x64 {
 
 jit_prelu_base_kernel_t::jit_prelu_base_kernel_t(const cpu_isa_t &isa, int vlen,
         const prelu::bcast &bcast, const memory_desc_wrapper &tensor_md,
-        size_t number_vmm_single_compute, const char *name)
+        int number_vmm_single_compute, const char *name)
     : jit_generator_t(name, isa)
     , isa_(isa)
     , simd_w_(vlen / sizeof(float))
@@ -52,7 +52,7 @@ void jit_prelu_base_kernel_t::generate() {
     xor_(reg_offset_, reg_offset_);
     L(unroll_loop);
     {
-        const size_t offt = unrolling_factor * simd_w_;
+        const int offt = unrolling_factor * simd_w_;
         cmp(reg_data_size_, offt);
         jl(unroll_loop_tail, T_NEAR);
 
@@ -62,7 +62,7 @@ void jit_prelu_base_kernel_t::generate() {
         jmp(unroll_loop);
     }
 
-    static constexpr size_t single_unrolling = 1u;
+    static constexpr int single_unrolling = 1;
     L(unroll_loop_tail);
     {
         cmp(reg_data_size_, simd_w_);
@@ -88,7 +88,7 @@ void jit_prelu_base_kernel_t::generate() {
     postamble();
 }
 
-size_t jit_prelu_base_kernel_t::calc_tail_size(
+int jit_prelu_base_kernel_t::calc_tail_size(
         const memory_desc_wrapper &tensor_md) const noexcept {
 
     const auto &ndims = tensor_md.ndims();
@@ -100,15 +100,15 @@ size_t jit_prelu_base_kernel_t::calc_tail_size(
     else if (bcast_ == prelu::bcast::per_oc_n_c_spatial && ndims >= 3)
         nelems = utils::array_product(tensor_md.dims() + 2, ndims - 2);
 
-    return nelems % simd_w_;
+    return static_cast<int>(nelems % simd_w_);
 }
 
 int jit_prelu_base_kernel_t::reserve_vmm() {
     return number_reserved_vmms_++;
 }
 
-size_t jit_prelu_base_kernel_t::get_number_reserved_vmms() const noexcept {
-    static constexpr size_t number_vmm_reserved_bf16_process = 4u;
+int jit_prelu_base_kernel_t::get_number_reserved_vmms() const noexcept {
+    static constexpr int number_vmm_reserved_bf16_process = 4;
 
     const bool process_bf16_with_emu = any_tensor_bf16() && isa_ == avx512_core;
 
@@ -117,19 +117,18 @@ size_t jit_prelu_base_kernel_t::get_number_reserved_vmms() const noexcept {
 }
 
 int jit_prelu_base_kernel_t::get_compute_vmm(
-        size_t base_idx, size_t unroll_group) const {
+        int base_idx, int unroll_group) const {
     return number_reserved_vmms_ + base_idx
             + unroll_group * number_vmm_single_compute_;
 }
 
-size_t jit_prelu_base_kernel_t::calc_unrolling_factor() const noexcept {
+int jit_prelu_base_kernel_t::calc_unrolling_factor() const noexcept {
     const auto n_vregs = prelu::get_n_vregs(isa_);
-    const size_t number_of_available_regs
-            = n_vregs - get_number_reserved_vmms();
-    const size_t max_unrolling_factor
+    const int number_of_available_regs = n_vregs - get_number_reserved_vmms();
+    const int max_unrolling_factor
             = number_of_available_regs / number_vmm_single_compute_;
 
-    size_t single_thread_estimated_elems = 0;
+    dim_t single_thread_estimated_elems = 0;
     const auto &dims = tensor_md_.dims();
     const auto &ndims = tensor_md_.ndims();
     const dim_t D = ndims >= 5 ? dims[ndims - 3] : 1;
@@ -138,7 +137,7 @@ size_t jit_prelu_base_kernel_t::calc_unrolling_factor() const noexcept {
     const dim_t SP = D * H * W;
 
     if (bcast_ == prelu::bcast::full) {
-        const size_t nelems = tensor_md_.nelems();
+        const dim_t nelems = tensor_md_.nelems();
         single_thread_estimated_elems = nelems / dnnl_get_max_threads();
     } else if (bcast_ == prelu::bcast::per_oc_n_spatial_c) {
         single_thread_estimated_elems = tensor_md_.dims()[1];
@@ -148,12 +147,11 @@ size_t jit_prelu_base_kernel_t::calc_unrolling_factor() const noexcept {
         single_thread_estimated_elems = SP;
     }
 
-    const size_t estimated_vectors_used = nstl::max(
-            static_cast<size_t>(
-                    std::floor(single_thread_estimated_elems / simd_w_)),
-            static_cast<size_t>(1));
+    const dim_t estimated_vectors_used
+            = nstl::max<dim_t>(single_thread_estimated_elems / simd_w_, 1);
 
-    return nstl::min(max_unrolling_factor, estimated_vectors_used);
+    return static_cast<int>(
+            nstl::min<dim_t>(max_unrolling_factor, estimated_vectors_used));
 }
 
 } // namespace x64

@@ -50,7 +50,7 @@ public:
 protected:
     jit_prelu_backward_kernel_t(const cpu_prelu_bwd_pd_t *pd,
             const cpu_isa_t &isa, const int vlen,
-            size_t number_vmm_single_compute);
+            int number_vmm_single_compute);
     Xbyak::Address data_ptr(int arg_num, size_t offt = 0);
 
     const cpu_prelu_bwd_pd_t *pd_;
@@ -83,7 +83,7 @@ public:
 
 private:
     void prepare_kernel_const_vars() override;
-    void compute_dst(size_t unrolling_factor, bool tail) override;
+    void compute_dst(int unrolling_factor, bool tail) override;
     const Xbyak::Operand &get_or_load_weights(
             const Xbyak::Address &src_addr, const Vmm &dst_vmm, bool tail);
     void accumulate_weights_diff(const Vmm &partial_sum_vmm, const Vmm &tmp_vmm,

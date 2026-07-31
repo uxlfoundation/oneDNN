@@ -214,7 +214,7 @@ void apply_zero_padding(jit_generator_t *host, const size_t tail_size,
     const Reg32 &reg_zero = eax;
     const Reg64 &reg_ptr = rdi;
     const Reg64 &reg_counter = rcx;
-    const auto dt_size = types::data_type_size(dt);
+    const int dt_size = static_cast<int>(types::data_type_size(dt));
     const auto off_start = tail_size * dt_size;
     const auto off_end = off_start + block_tail_size * dt_size;
 

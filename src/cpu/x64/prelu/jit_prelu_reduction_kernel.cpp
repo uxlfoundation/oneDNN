@@ -34,8 +34,8 @@ static dim_t get_C(const cpu_prelu_bwd_pd_t *pd) {
 jit_prelu_reduction_kernel_t::jit_prelu_reduction_kernel_t(
         const cpu_prelu_bwd_pd_t *pd, int simd_w)
     : jit_generator_t(jit_name())
-    , scratchpad_c_block_offset_(
-              utils::rnd_up(get_C(pd), alignment) * sizeof(float))
+    , scratchpad_c_block_offset_(static_cast<int>(
+              utils::rnd_up(get_C(pd), alignment) * sizeof(float)))
     , simd_w_(simd_w)
     , data_type_(pd->diff_weights_md(0)->data_type)
     , tail_size_(get_C(pd) % simd_w)
@@ -91,7 +91,7 @@ void jit_prelu_reduction_kernel_t::generate(bool tail) {
     xor_(reg_offset_, reg_offset_);
     L(unroll_loop);
     {
-        const size_t offt = unrolling_factor * scratchpad_c_block_offset_;
+        const int offt = unrolling_factor * scratchpad_c_block_offset_;
         cmp(reg_reduction_blocks_, unrolling_factor);
         jl(unroll_loop_tail, T_NEAR);
         compute_dst(unrolling_factor, tail);
@@ -146,11 +146,11 @@ jit_uni_prelu_reduction_kernel_t<Vmm>::jit_uni_prelu_reduction_kernel_t(
 }
 
 template <typename Vmm>
-size_t jit_uni_prelu_reduction_kernel_t<Vmm>::get_unrolling_factor(
+int jit_uni_prelu_reduction_kernel_t<Vmm>::get_unrolling_factor(
         bool tail) const {
-    const size_t max_num_threads = dnnl_get_max_threads();
-    const size_t n_vregs = prelu::get_n_vregs(isa_);
-    const size_t number_of_available_regs = n_vregs
+    const int max_num_threads = dnnl_get_max_threads();
+    const int n_vregs = prelu::get_n_vregs(isa_);
+    const int number_of_available_regs = n_vregs
             - (number_reserved_vmms_
                     + (data_type_ == data_type::bf16 && isa_ == avx512_core
                                     ? 4

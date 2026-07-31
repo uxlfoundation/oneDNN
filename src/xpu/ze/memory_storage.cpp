@@ -19,6 +19,10 @@
 #include "common/stream.hpp"
 #include "common/utils.hpp"
 
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+#include "gpu/intel/utils.hpp"
+#endif
+
 #include "xpu/ze/engine_impl.hpp"
 #include "xpu/ze/memory_storage.hpp"
 #include "xpu/ze/stream_impl.hpp"
@@ -65,20 +69,32 @@ status_t memory_storage_t::map_data(
 
     if (!stream) CHECK(engine()->get_service_stream(stream));
 
-    void *host_ptr = malloc_host(size);
+    bool use_usm_host = false;
+#if DNNL_GPU_VENDOR == DNNL_VENDOR_INTEL
+    use_usm_host = gpu::intel::gpu_utils::use_usm_host_for_memory_map(engine());
+#endif
+    void *host_ptr = use_usm_host ? malloc_host(size) : impl::malloc(size, 64);
     if (!host_ptr) return status::out_of_memory;
 
-    auto leak_guard = decltype(ptr_)(host_ptr, [this](void *p) { free(p); });
+    auto leak_guard = decltype(ptr_)(host_ptr, [use_usm_host, this](void *p) {
+        if (use_usm_host)
+            free(p);
+        else
+            impl::free(p);
+    });
     CHECK(memcpy(stream, host_ptr, ptr(), size));
     CHECK(stream->wait());
     leak_guard.release();
 
     auto *usm_ptr_for_unmap = ptr();
-    auto unmap_callback = [size, usm_ptr_for_unmap, this](
+    auto unmap_callback = [size, usm_ptr_for_unmap, use_usm_host, this](
                                   impl::stream_t *stream, void *mapped_ptr) {
         CHECK(memcpy(stream, usm_ptr_for_unmap, mapped_ptr, size));
         CHECK(stream->wait());
-        free(mapped_ptr);
+        if (use_usm_host)
+            free(mapped_ptr);
+        else
+            impl::free(mapped_ptr);
 
         return status::success;
     };

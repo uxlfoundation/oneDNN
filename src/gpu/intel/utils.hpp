@@ -197,6 +197,10 @@ bool is_jit_dump_enabled();
 status_t dump_kernel_binary(
         const std::vector<uint8_t> &binary, const std::string &name);
 
+// Whether map_data should stage through a USM host allocation rather than
+// regular system memory.
+bool use_usm_host_for_memory_map(const impl::engine_t *engine);
+
 // -------------------------------------------------------------
 //  Backend      | Compound ID
 // -------------------------------------------------------------

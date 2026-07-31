@@ -17,6 +17,7 @@
 #include "gpu/intel/utils.hpp"
 
 #include "common/utils.hpp"
+#include "gpu/intel/engine.hpp"
 
 #include <cstdio>
 #include <mutex>
@@ -59,6 +60,15 @@ status_t dump_kernel_binary(
 
     counter++;
     return status::success;
+}
+
+bool use_usm_host_for_memory_map(const impl::engine_t *engine) {
+    auto *intel_engine = dynamic_cast<const intel::engine_t *>(engine);
+    if (!intel_engine) return false;
+    if (intel_engine->device_info()->is_integrated()) return false;
+    // XXX: Use USM host memory for discrete XeHPC/XeHPG where there are
+    // stability issues with mixing USM and system memory in memcpy().
+    return intel_engine->is_xe_hpc() || intel_engine->is_xe_hpg();
 }
 
 } // namespace gpu_utils

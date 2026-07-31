@@ -85,7 +85,7 @@ status_t pd_t::init_post_ops(const impl::engine_t *engine) {
             case binary:
                 ok &= supported_binary_op(e.binary.alg)
                         && is_md_gemm_compatible_plain_format(
-                                &e.binary.src1_desc);
+                                &e.binary.src1_desc, false, true);
                 binary_srcs_.push_back(
                         binary_src_t {binary_src_t::binary, int(i)});
                 non_scale_po_ = true;

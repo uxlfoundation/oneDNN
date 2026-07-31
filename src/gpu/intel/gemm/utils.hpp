@@ -141,7 +141,7 @@ static inline status_t create_gemm_pd(
 }
 
 static inline bool is_md_gemm_compatible_plain_format(
-        const memory_desc_t *md, bool is_dst = false) {
+        const memory_desc_t *md, bool is_dst = false, bool may_bcast = false) {
 
     if (md->format_kind != format_kind::blocked) return false;
 
@@ -149,11 +149,15 @@ static inline bool is_md_gemm_compatible_plain_format(
 
     if (blk_desc.inner_nblks != 0) return false;
 
-    return (md->dims[md->ndims - 1] == 1
-                   || blk_desc.strides[md->ndims - 1] == 1)
-            || (!is_dst
-                    && (md->dims[md->ndims - 2] == 1
-                            || blk_desc.strides[md->ndims - 2] == 1));
+    const int m_dim = md->ndims - 1, n_dim = md->ndims - 2;
+    const bool m_inner = md->dims[m_dim] == 1 || blk_desc.strides[m_dim] == 1;
+    const bool n_inner = md->dims[n_dim] == 1 || blk_desc.strides[n_dim] == 1;
+    const bool m_bcast = may_bcast && md->dims[m_dim] == 1;
+    const bool n_bcast = may_bcast && md->dims[n_dim] == 1;
+
+    return m_bcast    ? n_inner
+            : n_bcast ? m_inner
+                      : m_inner || (!is_dst && n_inner);
 }
 
 } // namespace impl

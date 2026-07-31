@@ -59,3 +59,16 @@ mb1ic72ih31iw33oc64oh16ow17kh3kw3sh2sw2ph1pw1
 --attr-zero-points=src:common:3
 mb3ic64ih8oc64oh8kh3ph1
 mb1ic64ih8iw8oc64oh8ow6kh3kw3ph1pw0
+
+# Signed source shares the K8 packed-weight layout with U8xS8.
+--reset
+--dir=FWD_I
+--dt=s8:s8:f32
+--stag=nhwc
+--wtag=any
+--dtag=nhwc
+mb1ic64ih16oc64oh16kh3ph1
+mb1ic64ih20oc64oh20kh1
+
+--attr-zero-points=src:common:-125
+mb1ic64ih16oc64oh16kh3ph1

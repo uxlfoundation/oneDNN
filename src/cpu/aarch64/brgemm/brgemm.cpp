@@ -467,9 +467,9 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     const bool has_per_m_zp_comp = brg->has_zp_a_compensation_per_m();
     if (has_per_m_zp_comp) {
         const bool per_m_compensation_ok = brg->brgattr.use_mmla && brg->is_int8
-                && brg->dt_a == data_type::u8 && brg->dt_b == data_type::s8
-                && has_src_zp && !brg->req_s8s8_compensation
-                && !brg->req_cal_comp_pads
+                && utils::one_of(brg->dt_a, data_type::u8, data_type::s8)
+                && brg->dt_b == data_type::s8 && has_src_zp
+                && !brg->req_s8s8_compensation && !brg->req_cal_comp_pads
                 && brg->zp_a_compensation_m_stride >= brg->load_dim;
         if (!per_m_compensation_ok) return status::unimplemented;
     }

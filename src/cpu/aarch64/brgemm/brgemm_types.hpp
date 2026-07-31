@@ -151,7 +151,7 @@ struct DNNL_API brgemm_attr_t {
     // interleave stores or not
     bool use_interleave_stores;
     // use_mmla requests the MMLA compute path explicitly.
-    // Supported inputs are bf16 x bf16 and u8 x s8.
+    // Supported inputs are bf16 x bf16, u8 x s8, and s8 x s8.
     bool use_mmla;
     // use_mmla_packed_a expects A to use the MMLA packed layout.
     bool use_mmla_packed_a;

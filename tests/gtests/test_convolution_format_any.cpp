@@ -373,5 +373,24 @@ TEST(AArch64MmlaConvolution, Int8VpadCompensationBoundaries) {
             any, memory::desc(), dst_md, {1, 1}, {1, 0}, {1, 0}, attr);
     EXPECT_FALSE(is_int8_mmla_weights(vertical_only.weights_desc()));
 }
+
+TEST(AArch64MmlaConvolution, SmmlaSignedSelection) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "This test targets the CPU convolution implementation.");
+
+    auto eng = get_test_engine();
+    SKIP_IF(!has_int8_mmla(eng), "This test targets AArch64 SVE-I8MM.");
+    const auto any_3x3
+            = memory::desc({64, 64, 3, 3}, memory::data_type::s8, tag::any);
+    const auto conv_3x3
+            = make_int8_mmla_conv_pd(eng, memory::data_type::s8, any_3x3);
+    EXPECT_TRUE(is_int8_mmla_weights(conv_3x3.weights_desc()));
+
+    const auto any_1x1
+            = memory::desc({64, 64, 1, 1}, memory::data_type::s8, tag::any);
+    const auto conv_1x1 = make_int8_mmla_conv_pd(
+            eng, memory::data_type::s8, any_1x1, 20, 20, 1, 0);
+    EXPECT_TRUE(is_int8_mmla_weights(conv_1x1.weights_desc()));
+}
 #endif
 } // namespace dnnl

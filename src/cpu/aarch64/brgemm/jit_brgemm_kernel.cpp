@@ -1658,6 +1658,9 @@ void jit_brgemm_kernel_t::mmla(ZReg v_acc, ZReg v_a, ZReg v_b) {
     } else if (brg.is_int8 && brg.dt_a == data_type::u8
             && brg.dt_b == data_type::s8) {
         usmmla(v_acc.s, v_a.b, v_b.b);
+    } else if (brg.is_int8 && brg.dt_a == data_type::s8
+            && brg.dt_b == data_type::s8) {
+        smmla(v_acc.s, v_a.b, v_b.b);
     } else {
         assert(!"unsupported");
     }
@@ -1917,6 +1920,8 @@ void jit_brgemm_kernel_t::mmla_load_plain_a_k16(int bd_pair, const ZReg &z_a_lo,
     const int bd = mmla_bd_blk() * bd_pair;
     load_a_row(QReg(z_a_tmp.getIdx()), row0_valid, bd);
     load_a_row(QReg(z_a_hi.getIdx()), row1_valid, bd + 1);
+    // A Q load fetches K16 from each row. TRN1 forms the low-K8 row pair and
+    // TRN2 forms the high-K8 pair expected by the two byte-MMLA steps.
     trn1(z_a_lo.d, z_a_tmp.d, z_a_hi.d);
     trn2(z_a_hi.d, z_a_tmp.d, z_a_hi.d);
 }

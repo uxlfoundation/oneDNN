@@ -697,7 +697,15 @@ void init_memory_args(
     // zero point reduction values are needed.
     dnnl::impl::memory_extra_desc_t wei_md_extra {};
     wei_md_extra.flags = dnnl::impl::memory_extra_flags::none;
-    if (prb->get_dt(SRC) == dnnl_s8 && prb->get_dt(WEI) == dnnl_s8) {
+    bool needs_s8s8_compensation
+            = prb->get_dt(SRC) == dnnl_s8 && prb->get_dt(WEI) == dnnl_s8;
+#if defined(brg_aarch64)
+    // Native SMMLA consumes signed A and B directly. Attaching legacy S8S8
+    // compensation to its K8 packed descriptor is both unnecessary and not a
+    // supported reorder contract.
+    needs_s8s8_compensation = needs_s8s8_compensation && !kernel_args.use_mmla_;
+#endif
+    if (needs_s8s8_compensation) {
         wei_md_extra.flags
                 |= dnnl::impl::memory_extra_flags::compensation_conv_s8s8;
         wei_md_extra.compensation_mask = 2; // N dimension

@@ -139,7 +139,8 @@ void maybe_try_bf32(brgemm_desc_t *brg) {
 status_t validate_mmla_compute(const brgemm_desc_t &brg) {
     const bool isa_ok = utils::one_of(brg.isa_impl, sve_128, sve_256);
     const bool is_bf16_mmla = brg.is_bf16 && !brg.is_bf16_emu;
-    const bool is_int8_mmla = brg.is_int8 && brg.dt_a == data_type::u8
+    const bool is_int8_mmla = brg.is_int8
+            && utils::one_of(brg.dt_a, data_type::u8, data_type::s8)
             && brg.dt_b == data_type::s8 && mayiuse_sve_i8mm();
     const bool is_valid = isa_ok && (is_bf16_mmla || is_int8_mmla)
             && !brg.is_dgmm && brg.is_row_major();

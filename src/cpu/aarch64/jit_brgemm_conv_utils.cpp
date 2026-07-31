@@ -119,7 +119,8 @@ bool use_int8_mmla_3x3(
     const bool isa_ok
             = mayiuse_sve_i8mm() && utils::one_of(jcp.isa, sve_128, sve_256);
     const bool problem_ok = jcp.prop_kind == prop_kind::forward_inference
-            && jcp.ndims == 4 && jcp.ngroups == 1 && jcp.src_dt == data_type::u8
+            && jcp.ndims == 4 && jcp.ngroups == 1
+            && utils::one_of(jcp.src_dt, data_type::u8, data_type::s8)
             && jcp.wei_dt == data_type::s8;
     const bool shape_ok = jcp.kd == 1 && jcp.kh == 3 && jcp.kw == 3
             && jcp.dilate_d == 0 && jcp.dilate_h == 0 && jcp.dilate_w == 0
@@ -138,7 +139,8 @@ bool use_int8_mmla_1x1(const jit_brgemm_conv_conf_t &jcp,
     const bool isa_ok
             = mayiuse_sve_i8mm() && utils::one_of(jcp.isa, sve_128, sve_256);
     const bool problem_ok = jcp.prop_kind == prop_kind::forward_inference
-            && jcp.ndims == 4 && jcp.ngroups == 1 && jcp.src_dt == data_type::u8
+            && jcp.ndims == 4 && jcp.ngroups == 1
+            && utils::one_of(jcp.src_dt, data_type::u8, data_type::s8)
             && jcp.wei_dt == data_type::s8;
     const bool shape_ok = jcp.is_1x1 && jcp.kd == 1 && jcp.kh == 1
             && jcp.kw == 1 && jcp.dilate_d == 0 && jcp.dilate_h == 0
@@ -2225,7 +2227,8 @@ static status_t init_conf_impl(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                     >= int8_mmla_vpad_comp_min_work_ratio * vpad_comp_table_work
             && vpad_comp_spatial_work >= int8_mmla_vpad_comp_min_spatial_work
             && vpad_comp_compute_work >= vpad_comp_thread_work;
-    const bool is_int8_mmla = jcp.use_mmla && jcp.src_dt == data_type::u8
+    const bool is_int8_mmla = jcp.use_mmla
+            && utils::one_of(jcp.src_dt, data_type::u8, data_type::s8)
             && jcp.wei_dt == data_type::s8;
     jcp.use_mmla_vpad_comp = is_int8_mmla && jcp.exec_type == exec_vpad
             && jcp.src_zero_point && !jcp.s8s8_compensation_required

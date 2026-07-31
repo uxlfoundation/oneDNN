@@ -77,6 +77,21 @@
 --brgemm-attr=use_mmla:1
 5x15:15x17
 
+# AArch64 SVE-I8MM signed MMLA path. Aligned and tail shapes distinguish
+# SMMLA from the U8xS8 instruction path without repeating its full matrix.
+--reset
+--dt=s8:s8:s32
+--beta=0,2
+--brgemm-attr=use_mmla:1
+6x16:16x16 10x63:63x17
+
+--reset
+--dt=s8:s8:f32
+--alpha=0.5
+--beta=2
+--brgemm-attr=use_mmla:1
+5x15:15x17
+
 # s8 src
 ## Bias check
 --reset

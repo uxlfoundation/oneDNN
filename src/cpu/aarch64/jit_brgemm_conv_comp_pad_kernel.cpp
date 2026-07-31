@@ -36,7 +36,9 @@ namespace jit_uni_brgemm_conv_comp_pad_kernel {
     (uint32_t) offsetof(jit_brgemm_conv_comp_pad_args_t, field)
 
 static bool is_int8_mmla(const jit_brgemm_conv_conf_t &jcp) noexcept {
-    return jcp.use_mmla && jcp.src_dt == data_type::u8;
+    return jcp.use_mmla
+            && utils::one_of(jcp.src_dt, data_type::u8, data_type::s8)
+            && jcp.wei_dt == data_type::s8;
 }
 
 static int comp_pad_ic_block(const jit_brgemm_conv_conf_t &jcp) noexcept {
@@ -149,6 +151,11 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::compute(const int ic_step,
             if (is_int8_mmla(jcp_)) {
                 const auto sum01 = zmm_one_words;
                 const auto sum23 = zmm_int8_temp;
+                // USMMLA against an all-ones u8 row reduces one packed K8
+                // weight slice for either u8 or s8 source convolution. This
+                // computes a weight sum, so source signedness is irrelevant.
+                // Each result duplicates a pair of OC sums; UZP1 below joins
+                // the two loads into four consecutive sums.
                 ldr(vmm_tmp, ptr(X_DEFAULT_ADDR));
                 eor(sum01.d, sum01.d, sum01.d);
                 usmmla(sum01.s, vmm_one_bytes.b, vmm_tmp.b);

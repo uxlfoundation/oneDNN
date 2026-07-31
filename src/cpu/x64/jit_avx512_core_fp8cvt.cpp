@@ -37,9 +37,9 @@ void fp8_conversion_e5m2_t::prepare_table() {
     host_->align(64);
     host_->L(label_vnni_permute_index_table_);
     // Data for f16
-    for (size_t i = 0; i < 64; ++i) {
+    for (int i = 0; i < 64; ++i) {
         // 2, 0, 3, 1, ...
-        size_t index = i;
+        int index = i;
         switch (i % 4) {
             case 0: index = i + 2; break;
             case 1: index = i - 1; break;
@@ -49,12 +49,12 @@ void fp8_conversion_e5m2_t::prepare_table() {
         host_->db(index);
     }
     // Data for bf16
-    for (size_t i = 0; i < 32; ++i) {
-        size_t index = 4 * (i / 2) + (i % 2);
+    for (int i = 0; i < 32; ++i) {
+        int index = 4 * (i / 2) + (i % 2);
         host_->db(index);
     }
-    for (size_t i = 32; i < 64; ++i) {
-        size_t index = 4 * ((i - 32) / 2) + (i % 2) + 2;
+    for (int i = 32; i < 64; ++i) {
+        int index = 4 * ((i - 32) / 2) + (i % 2) + 2;
         host_->db(index);
     }
 
@@ -85,12 +85,12 @@ void fp8_conversion_e5m2_t::prepare_table() {
 void fp8_conversion_e4m3_t::prepare_table() {
     host_->align(64);
     host_->L(label_vnni_permute_index_table_);
-    for (size_t i = 0; i < 32; ++i) {
-        size_t index = 4 * (i / 2) + (i % 2);
+    for (int i = 0; i < 32; ++i) {
+        int index = 4 * (i / 2) + (i % 2);
         host_->db(index);
     }
-    for (size_t i = 32; i < 64; ++i) {
-        size_t index = 4 * ((i - 32) / 2) + (i % 2) + 2;
+    for (int i = 32; i < 64; ++i) {
+        int index = 4 * ((i - 32) / 2) + (i % 2) + 2;
         host_->db(index);
     }
 

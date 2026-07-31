@@ -461,7 +461,8 @@ private:
         }
 
         add(reg_offset, channel_offset);
-        imul(reg_offset, reg_offset, types::data_type_size(src_data_type()));
+        const dim_t src_dt_size = types::data_type_size(src_data_type());
+        imul(reg_offset, reg_offset, src_dt_size);
 
         // read src
         io_->at(src_data_type())
@@ -513,7 +514,7 @@ private:
             io_->at(dst_data_type())->store(zmm_dst, address, is_tail);
         });
 
-        for (unsigned i = 0; i < number_of_loops_;
+        for (dim_t i = 0; i < number_of_loops_;
                 i++, number_of_processed_points += simd_w())
             resample_linear(false);
 
@@ -577,7 +578,7 @@ private:
             io_->at(dst_data_type())->store(zmm_dst, address, is_tail);
         });
 
-        for (unsigned i = 0; i < number_of_loops_;
+        for (dim_t i = 0; i < number_of_loops_;
                 i++, number_of_processed_points += simd_w())
             resample_linear(false);
 
@@ -655,7 +656,7 @@ private:
             io_->at(dst_data_type())->store(zmm_dst, address, is_tail);
         });
 
-        for (unsigned i = 0; i < number_of_loops_;
+        for (dim_t i = 0; i < number_of_loops_;
                 i++, number_of_processed_points += simd_w())
             resample_linear(false);
 
@@ -692,9 +693,9 @@ private:
 
         add(reg_offset,
                 channel_offset); // iw * stride_w_ + ih * stride_h_ + id * stride_d_ + channel_offset
+        const dim_t src_dt_size = types::data_type_size(src_data_type());
         imul(reg_offset, reg_offset,
-                types::data_type_size(
-                        src_data_type())); // (iw * stride_w_ + ih * stride_h_ + id * stride_d_ + channel_offset)*dt_size
+                src_dt_size); // (iw * stride_w_ + ih * stride_h_ + id * stride_d_ + channel_offset)*dt_size
 
         if (pd_->is_fwd()) {
             // read nearest to dst
@@ -744,7 +745,7 @@ private:
             io_->at(dst_data_type())->store(zmm_dst, address, is_tail);
         });
 
-        for (unsigned i = 0; i < number_of_loops_;
+        for (dim_t i = 0; i < number_of_loops_;
                 i++, number_of_processed_points += simd_w())
             resample_nearest(false);
 
@@ -790,7 +791,7 @@ private:
     dim_t stride_h_ = 0;
     dim_t stride_w_ = 0;
     dim_t inner_stride_ = 0;
-    unsigned number_of_loops_ = 0;
+    dim_t number_of_loops_ = 0;
     int tail_size_ = 0;
     bool is_saturation_needed_ = false;
     unsigned stack_size_needed_ = 0;

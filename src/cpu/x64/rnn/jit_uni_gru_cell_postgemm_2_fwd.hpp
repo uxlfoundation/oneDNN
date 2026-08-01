@@ -29,9 +29,7 @@ template <cpu_isa_t isa, impl::data_type_t src_data_t,
 struct jit_uni_gru_cell_postgemm_part2_fwd : public jit_uni_rnn_postgemm_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_gru_cell_postgemm_part2_fwd)
 
-    using injector_t = typename utils::conditional<isa == avx512_core,
-            jit_uni_eltwise_injector_t<avx512_core>,
-            jit_uni_eltwise_injector_t<isa>>::type;
+    using injector_t = jit_uni_eltwise_injector_t<isa>;
 
     jit_uni_gru_cell_postgemm_part2_fwd(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)

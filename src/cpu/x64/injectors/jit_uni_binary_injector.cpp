@@ -389,8 +389,8 @@ rhs_arg_static_params_t::rhs_arg_static_params_t(
     , is_tail(tail_size)
     , is_opmask_set_(is_opmask_set) {}
 
-template <cpu_isa_t isa, typename Vmm>
-jit_uni_binary_injector_t<isa, Vmm>::jit_uni_binary_injector_t(
+template <typename Vmm>
+jit_uni_binary_injector_t<Vmm>::jit_uni_binary_injector_t(
         jit_generator_t *host, const static_params_t &static_params)
     : host_(host)
     , f8_e5m2_cvt_(static_params.f8_e5m2_cvt_)
@@ -425,8 +425,8 @@ static bool rhs_arg_params_differ(size_t vmm_idx1, size_t vmm_idx2,
     return false;
 }
 
-template <cpu_isa_t isa, typename Vmm>
-int jit_uni_binary_injector_t<isa, Vmm>::adjust_temp_vmm_hint(
+template <typename Vmm>
+int jit_uni_binary_injector_t<Vmm>::adjust_temp_vmm_hint(
         int user_hint, int start_idx, int end_idx, int max_vmm_idx) const {
     const bool user_hint_in_vector_range
             = user_hint >= start_idx && user_hint <= end_idx;
@@ -483,8 +483,8 @@ static void restore_stack(jit_generator_t *host, const Vmm &vmm) {
     host->add(host->rsp, vreg_traits_t<Vmm>::vlen);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-std::pair<bool, int> jit_uni_binary_injector_t<isa, Vmm>::should_preserve_vmm(
+template <typename Vmm>
+std::pair<bool, int> jit_uni_binary_injector_t<Vmm>::should_preserve_vmm(
         int curr_idx, int vmm_hint, int max_vmm_idx,
         bool dt_helper_vmm_needed) const {
     if (dt_helper_vmm_needed && vmm_hint == curr_idx) {
@@ -496,8 +496,8 @@ std::pair<bool, int> jit_uni_binary_injector_t<isa, Vmm>::should_preserve_vmm(
     return std::make_pair(false, vmm_hint);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(size_t start_idx,
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::compute_vector_range(size_t start_idx,
         size_t end_idx, std::size_t rhs_arg_idx,
         const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params) const {
@@ -507,8 +507,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(size_t start_idx,
     compute_vector_range(vmm_idxs, rhs_arg_idx, post_op, rhs_arg_params);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs,
         std::size_t rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params) const {
@@ -518,7 +518,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     const auto end_idx = *(vmm_idxs.rbegin());
 
     // Phase 1 Validate temporary vmm user hint
-    const int max_vmm_idx = isa_num_vregs(isa) - 1;
+    const int max_vmm_idx = isa_num_vregs(isa_) - 1;
     auto &vmm_hint = rhs_arg_static_params_.rhs_dt_helper_vmm_idx;
     vmm_hint = adjust_temp_vmm_hint(vmm_hint, start_idx, end_idx, max_vmm_idx);
 
@@ -547,7 +547,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
             || should_preserve_vmm_tail || post_op.is_prelu();
     const auto tail_load_mode = rhs_arg_params.tail_load_mode;
     const int simd_w
-            = isa_max_vlen(isa) / types::data_type_size(dst_d.data_type());
+            = isa_max_vlen(isa_) / types::data_type_size(dst_d.data_type());
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
     const bool use_offset_conversions
             = (!rhs_arg_params.vmm_idx_to_out_addr.empty()
@@ -719,8 +719,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     if (post_op.is_prelu() && is_avx512_) pop_opmask(host_, get_aux_kmask());
 }
 
-template <cpu_isa_t isa, typename Vmm>
-Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
+template <typename Vmm>
+Xbyak::Address jit_uni_binary_injector_t<Vmm>::prepare_rhs_arg_addr(
         std::size_t vmm_idx, std::size_t rhs_arg_idx,
         const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params,
@@ -849,8 +849,8 @@ Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::prepare_rhs_arg_addr(
     return host_->ptr[rhs_addr_reg];
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_no_broadcast_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_no_broadcast_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -888,8 +888,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_no_broadcast_offset(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_no_broadcast_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_no_broadcast_base(
         Xbyak::Address addr, const Xbyak::Reg64 &out_reg) const {
     // addr may carry a zword[] (512-bit) size annotation because it was built
     // for a Zmm vmm access. LEA only needs the address computation, not the
@@ -903,8 +903,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_no_broadcast_base(
                     rhs_arg_static_params_.dst_d.data_type())));
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_no_broadcast_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_no_broadcast_partial(
         const std::size_t offset, const Xbyak::Reg64 &out_reg,
         std::size_t elem_size_bytes) const {
     const auto offset_adj = offset >> math::ilog2q(types::data_type_size(
@@ -914,8 +914,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_no_broadcast_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_oc_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_oc_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -1007,8 +1007,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_oc_offset(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_ncsp_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // c = (offset % strides[0]) / strides[1]
     // output = rax
@@ -1025,8 +1025,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_ncsp_base(
     host_->div(tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_ncsp_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_ncsp_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // c = (offset % strides[0]) / strides[1]
@@ -1040,14 +1040,14 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_ncsp_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_blocked_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // c = ((offset % strides[0]) / strides[1]) * strides[ndims - 1] + offset % blk_size
     // output = rax
     const auto dst_d = rhs_arg_static_params_.dst_d;
     const int simd_w
-            = isa_max_vlen(isa) / types::data_type_size(dst_d.data_type());
+            = isa_max_vlen(isa_) / types::data_type_size(dst_d.data_type());
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
     const auto rax = host_->rax;
     const auto rdx = host_->rdx;
@@ -1071,8 +1071,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_base(
     if (blk_size > simd_w) host_->add(rax, r8);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_blocked_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // c = ((offset % strides[0]) / strides[1]) * strides[ndims - 1] + offset % blk_size
@@ -1087,8 +1087,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_nspc_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_nspc_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // c = offset % C
     // output = rax
@@ -1103,8 +1103,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_nspc_base(
     host_->mov(rax, rdx);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_nspc_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_nspc_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // c = offset % C
@@ -1117,8 +1117,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_nspc_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_cspn_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_cspn_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // c = offset / strides[1]
     // output = rax
@@ -1131,8 +1131,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_cspn_base(
     host_->div(tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_cspn_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_cspn_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // c = offset / strides[1]
@@ -1144,8 +1144,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_cspn_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_oc_d_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_oc_d_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -1214,8 +1214,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_oc_d_offset(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_d_ncsp_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_d_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
 
     /* 
@@ -1249,8 +1249,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_d_ncsp_base(
     host_->div(tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_d_ncsp_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_d_ncsp_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // dst_offset % dstride[0] / dstride[2] = b*C + c
@@ -1264,8 +1264,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_d_ncsp_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_mb_sp_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_mb_sp_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -1371,8 +1371,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_mb_sp_offset(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_base_rhs_strided(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_ncsp_base_rhs_strided(
         const memory_desc_wrapper &dst_d, const memory_desc_wrapper &rhs_d,
         const dim_t *dst_strides, const Xbyak::Reg64 &addr_reg,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
@@ -1456,13 +1456,11 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_base_rhs_strided(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa,
-        Vmm>::calculate_mb_sp_ncsp_partial_rhs_strided(const memory_desc_wrapper
-                                                               &dst_d,
-        const memory_desc_wrapper &rhs_d, std::size_t dst_offset_bytes,
-        const Xbyak::Reg64 &addr_reg, const Xbyak::Reg64 &tmp_reg,
-        std::size_t elem_size_bytes) const {
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_ncsp_partial_rhs_strided(
+        const memory_desc_wrapper &dst_d, const memory_desc_wrapper &rhs_d,
+        std::size_t dst_offset_bytes, const Xbyak::Reg64 &addr_reg,
+        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     const dim_t rhs_offset
             = rhs_offset_per_mb_spatial(dst_d, rhs_d, dst_offset_bytes);
     if (rhs_offset == 0) return;
@@ -1478,8 +1476,8 @@ void jit_uni_binary_injector_t<isa,
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // mb_sp_off = (n * (stride_n/C)) + (d * stride_d) + (h * stride_h) + (w * stride_w)
@@ -1522,8 +1520,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_base(
     // rax = offset - (c * stride_c) - (n * (C - 1)DHW)
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_ncsp_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
@@ -1548,14 +1546,14 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_ncsp_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_blocked_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // mb_sp_off = offset - (c * stride_c) - (n * (C - 1)DHW) - c % blk_size
     // output = rax
     const auto dst_d = rhs_arg_static_params_.dst_d;
     const int simd_w
-            = isa_max_vlen(isa) / types::data_type_size(dst_d.data_type());
+            = isa_max_vlen(isa_) / types::data_type_size(dst_d.data_type());
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
 
     const auto rax = host_->rax;
@@ -1576,8 +1574,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_base(
     calculate_mb_sp_ncsp_base(strides, tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_blocked_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // mb_sp_off = offset - (c * stride_c) - (n * (C - 1)DHW) - c % blk_size
@@ -1601,8 +1599,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_nspc_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_nspc_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // mb_sp_off = nDHW + dHW + hW + w
@@ -1618,8 +1616,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_nspc_base(
     host_->div(tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_nspc_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_nspc_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
@@ -1634,8 +1632,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_nspc_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_cspn_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_cspn_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // mb_sp_off = dHWN + hWN + wN + n
@@ -1651,8 +1649,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_cspn_base(
     host_->mov(rax, rdx);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_cspn_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_sp_cspn_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
@@ -1666,8 +1664,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_cspn_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_mb_w_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_mb_w_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -1760,8 +1758,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_mb_w_offset(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_ncsp_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_w_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // mb_w_off = (n * (stride_n/(C*D*H))) + (w * stride_w)
@@ -1820,8 +1818,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_ncsp_base(
     // rax = (n * (stride_n/(C*D*H))) + (w * stride_w)
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_ncsp_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_w_ncsp_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
@@ -1843,24 +1841,24 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_ncsp_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_blocked_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_w_blocked_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // mb_w_off = (n * (stride_n/(C*D*H))) + (w * stride_w)
     // output = rax
     calculate_mb_sp_ncsp_base(strides, tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_blocked_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_w_blocked_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // mb_w_off = (n * (stride_n/(C*D*H))) + (w * stride_w)
     calculate_mb_w_ncsp_partial(strides, offset, tmp_reg, elem_size_bytes);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_nspc_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_w_nspc_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // mb_w_off = nW + w
@@ -1911,8 +1909,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_nspc_base(
     if (ndims >= 3) host_->add(rax, tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_nspc_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_w_nspc_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
@@ -1932,8 +1930,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_nspc_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_cspn_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_w_cspn_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // mb_w_off = wN + n
@@ -1961,8 +1959,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_cspn_base(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_cspn_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_w_cspn_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
@@ -1977,8 +1975,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_w_cspn_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_hw_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_hw_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -2066,8 +2064,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_hw_offset(
         }
     }
 }
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_hw_ncsp_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_hw_ncsp_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = nCHW + cHW + hW + w (for 4D)
@@ -2088,8 +2086,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_hw_ncsp_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_hw_ncsp_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_hw_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = nCHW + cHW + hW + w (for 4D)
     // per_spatial_off = hW + w
@@ -2111,8 +2109,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_hw_ncsp_base(
     host_->mov(rax, rdx);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_w_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_w_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -2194,8 +2192,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_w_offset(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_ncsp_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_w_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // w_off = w * stride_w
@@ -2222,14 +2220,14 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_ncsp_base(
     // rax = w * stride_w
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_blocked_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_w_blocked_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     calculate_w_ncsp_base(strides, tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_nspc_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_w_nspc_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // w_off = w
@@ -2255,16 +2253,16 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_nspc_base(
     // rax = w
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_cspn_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_w_cspn_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // w_off = w
     calculate_w_nspc_base(strides, tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_mb_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_mb_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -2355,8 +2353,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_mb_offset(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_ncsp_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // mb_off = offset / stride_n
@@ -2372,8 +2370,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_ncsp_base(
     // rax = n
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_ncsp_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_ncsp_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
@@ -2387,16 +2385,16 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_ncsp_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_nspc_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_nspc_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // mb_off = n;
     calculate_mb_ncsp_base(strides, tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_nspc_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_nspc_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
@@ -2404,8 +2402,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_nspc_partial(
     calculate_mb_ncsp_partial(strides, offset, tmp_reg, elem_size_bytes);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_cspn_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_cspn_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // mb_off = offset % N = offset % strides[ndims-1]
@@ -2424,8 +2422,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_cspn_base(
     // rax = n
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_cspn_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_cspn_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
@@ -2440,8 +2438,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_cspn_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_oc_spatial_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_oc_spatial_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -2532,8 +2530,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_oc_spatial_offset(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_ncsp_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_spatial_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
     // oc_spatial_off = offset % stride_n
@@ -2547,8 +2545,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_ncsp_base(
     host_->mov(rax, rdx);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_ncsp_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_spatial_ncsp_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
@@ -2561,16 +2559,16 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_ncsp_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_nspc_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_spatial_nspc_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // oc_spatial_off = offset % stride_n
     calculate_oc_spatial_ncsp_base(strides, tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_nspc_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_spatial_nspc_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
@@ -2579,8 +2577,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_nspc_partial(
             strides, offset, tmp_reg, elem_size_bytes);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_cspn_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_spatial_cspn_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // oc_spatial_off = offset / strides[ndims - 1]
@@ -2596,8 +2594,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_cspn_base(
     host_->div(tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_cspn_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_oc_spatial_cspn_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
@@ -2611,8 +2609,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_spatial_cspn_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::append_mb_oc_offset(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::append_mb_oc_offset(
         const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,
         const std::map<int, Xbyak::Reg64> &vmm_idx_to_out_reg,
         const std::map<int, size_t> &vmm_idx_to_out_elem_off_val, int vmm_idx,
@@ -2703,8 +2701,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_mb_oc_offset(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_ncsp_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_oc_ncsp_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = nCDHW + cDHW + dHW + hW + w
     // mb_oc_off = nC + c
@@ -2718,8 +2716,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_ncsp_base(
     host_->div(tmp_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_ncsp_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_oc_ncsp_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = nCDHW + cDHW + dHW + hW + w
@@ -2732,8 +2730,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_ncsp_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_nspc_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_oc_nspc_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = nDHWC + dHWC + hWC + wC + c
     // mb_oc_off = nC + c
@@ -2761,8 +2759,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_nspc_base(
     host_->add(rax, tmp_reg); // rax = nC + c
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_nspc_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_oc_nspc_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = nDHWC + dHWC + hWC + wC + c
@@ -2781,8 +2779,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_nspc_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_cspn_base(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_oc_cspn_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // mb_oc_off = cN + n
@@ -2810,8 +2808,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_cspn_base(
     host_->add(rax, tmp_reg); // rax = cN + n
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_cspn_partial(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::calculate_mb_oc_cspn_partial(
         const dim_t *strides, const std::size_t offset,
         const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
     // offset = cDHWN + dHWN + hWN + wN + n
@@ -2830,8 +2828,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_oc_cspn_partial(
                                 : offset_adj);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::inject_binary(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::inject_binary(
         const dnnl_post_ops::entry_t &post_op, Vmm dst,
         const Xbyak::Address &rhs_addr, bool with_tail,
         const tail_lode_mode_t tail_load_mode) const {
@@ -2846,7 +2844,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary(
     const bool scalar_f32
             = rhs_addr.isBroadcast() && rhs_arg_data_type == data_type::f32;
     const bool with_tail_not_fusable_to_binary_op
-            = with_tail && !isa_has_masks(isa);
+            = with_tail && !isa_has_masks(isa_);
     const bool cmp_op_with_tail_vector_mem_operand
             = cmp_op && with_tail && !rhs_addr.isBroadcast();
     const bool process_rhs_arg_using_tmp_vmm
@@ -2875,7 +2873,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary(
     } else {
         const auto lhs = dst;
         if (with_tail) {
-            assert(isa_has_masks(isa));
+            assert(isa_has_masks(isa_));
             assert(rhs_arg_static_params_.is_opmask_set()
                     && "Opmask is not set for tail loading avx512");
             const auto &tail_opmask = rhs_arg_static_params_.tail_opmask;
@@ -2889,8 +2887,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::inject_binary_with_ternary_op(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
         const dnnl_post_ops::entry_t &post_op, Vmm dst,
         const Xbyak::Address &rhs_addr, Vmm tmp_vmm, bool with_tail,
         const tail_lode_mode_t tail_load_mode) const {
@@ -2905,7 +2903,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary_with_ternary_op(
         // While a more direct implementation can be obtained by
         // blending the tensors, the current approach reserves
         // fewer registers for operation.
-        if (is_superset(isa, avx512_core)) {
+        if (is_superset(isa_, avx512_core)) {
             const auto &cmp_mask = rhs_arg_static_params_.tail_opmask;
             push_opmask(host_, cmp_mask);
             push_vmm(host_, dst);
@@ -2963,8 +2961,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::inject_binary_with_ternary_op(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::execute_broadcast(
         const data_type_t &data_type, const Vmm &tmp_reg,
         const Xbyak::Address &rhs_addr, const tail_lode_mode_t tail_load_mode,
         bool with_tail) const {
@@ -2984,8 +2982,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast(
         execute_broadcast_no_tail(data_type, tmp_reg, rhs_addr);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::load_rhs(const data_type_t &data_type,
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::load_rhs(const data_type_t &data_type,
         const Vmm &tmp_reg, const Xbyak::Address &rhs_addr,
         const tail_lode_mode_t tail_load_mode, bool with_tail) const {
     if (with_tail) {
@@ -3003,8 +3001,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs(const data_type_t &data_type,
         load_rhs_no_tail(data_type, tmp_reg, rhs_addr);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::load_acc_as_f32(const Vmm &dst,
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::load_acc_as_f32(const Vmm &dst,
         const Xbyak::Reg64 &base, size_t byte_off, data_type_t data_type,
         bool with_tail, const tail_lode_mode_t tail_load_mode) const {
 
@@ -3050,20 +3048,20 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_acc_as_f32(const Vmm &dst,
     if (need_scratch_reg && preserve_gpr) host_->pop(addr_reg);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-Xbyak::Address jit_uni_binary_injector_t<isa, Vmm>::remove_bcast_bit(
+template <typename Vmm>
+Xbyak::Address jit_uni_binary_injector_t<Vmm>::remove_bcast_bit(
         const Xbyak::Address &rhs_addr) const {
     return Xbyak::Address(rhs_addr.getBit(), false, rhs_addr.getRegExp());
 }
 
-template <cpu_isa_t isa, typename Vmm>
-Xbyak::Opmask jit_uni_binary_injector_t<isa, Vmm>::get_aux_kmask() const {
+template <typename Vmm>
+Xbyak::Opmask jit_uni_binary_injector_t<Vmm>::get_aux_kmask() const {
     auto tail_mask_idx = rhs_arg_static_params_.tail_opmask.getIdx();
     return Xbyak::Opmask(tail_mask_idx < 7 ? tail_mask_idx + 1 : 1);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::cvt_to_f32(const Vmm &tmp_vmm) const {
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::cvt_to_f32(const Vmm &tmp_vmm) const {
     if (is_sse41_) {
         const Xbyak::Xmm tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
         host_->cvtdq2ps(tmp_xmm, tmp_xmm);
@@ -3071,11 +3069,11 @@ void jit_uni_binary_injector_t<isa, Vmm>::cvt_to_f32(const Vmm &tmp_vmm) const {
         host_->uni_vcvtdq2ps(tmp_vmm, tmp_vmm);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_no_tail(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::execute_broadcast_no_tail(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr) const {
-    assert(is_data_supported(isa, data_type) && "unsupported data type");
+    assert(is_data_supported(isa_, data_type) && "unsupported data type");
     switch (data_type) {
         case data_type::f32: host_->uni_vbroadcastss(tmp_vmm, rhs_addr); break;
         case data_type::s32: host_->uni_vpbroadcastd(tmp_vmm, rhs_addr); break;
@@ -3086,7 +3084,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_no_tail(
         case data_type::f16:
             if (is_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm, host_->ptr_b[rhs_addr.getRegExp()]);
-            else if (is_superset(isa, avx2_vnni_2))
+            else if (is_superset(isa_, avx2_vnni_2))
                 host_->vbcstnesh2ps(tmp_vmm, rhs_addr);
             else
                 assert(!"unsupported ISA for given data type");
@@ -3103,7 +3101,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_no_tail(
             if (is_avx512_) {
                 host_->vpbroadcastw(tmp_vmm, rhs_addr);
                 host_->vpslld(tmp_vmm, tmp_vmm, 0x10);
-            } else if (is_superset(isa, avx2_vnni_2)) {
+            } else if (is_superset(isa_, avx2_vnni_2)) {
                 host_->vbcstnebf162ps(tmp_vmm, rhs_addr);
             } else
                 assert(!"unsupported ISA for given data type");
@@ -3112,8 +3110,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_no_tail(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_s8u8_no_tail(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::execute_broadcast_s8u8_no_tail(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr) const {
     assert(utils::one_of(data_type, data_type::s8, data_type::u8)
@@ -3163,12 +3161,12 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_s8u8_no_tail(
         assert(!"unsupported ISA");
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_with_opmask(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::execute_broadcast_tail_with_opmask(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr) const {
 
-    assert(is_data_supported(isa, data_type) && "unsupported data type");
+    assert(is_data_supported(isa_, data_type) && "unsupported data type");
     assert(rhs_arg_static_params_.is_opmask_set()
             && "Opmask is not set for tail loading avx512");
     const auto &tail_opmask = rhs_arg_static_params_.tail_opmask;
@@ -3301,8 +3299,8 @@ static void execute_broadcast_f32_tail_avx(jit_generator_t *host,
         host->vshufps(tmp_xmm, tmp_xmm, tmp_xmm, imms.at(tail_size - 2));
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_statically(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::execute_broadcast_tail_statically(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr, const std::size_t tail_size) const {
     // An opmask-capable ISA has no static tail path. `execute_broadcast` sends
@@ -3321,7 +3319,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_statically(
     // Sub-dword floating point is widened in place from a packed tail, so it
     // shares neither the zeroing nor the element assembly the integer and f32
     // paths below need.
-    if (is_superset(isa, avx2_vnni_2)
+    if (is_superset(isa_, avx2_vnni_2)
             && utils::one_of(data_type, data_type::bf16, data_type::f16,
                     data_type::f8_e5m2, data_type::f8_e4m3)) {
         const auto tmp_lower_vmm =
@@ -3401,8 +3399,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_statically(
         assert(!"unsupported data type");
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_with_gpr(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::execute_broadcast_tail_with_gpr(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr) const {
 
@@ -3416,11 +3414,11 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_tail_with_gpr(
     host_->runtime_tail_process<Vmm>(reg_tail_size, reg_tmp, runtime_tail_load);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_no_tail(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::load_rhs_no_tail(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr) const {
-    assert(is_data_supported(isa, data_type) && "unsupported data type");
+    assert(is_data_supported(isa_, data_type) && "unsupported data type");
     switch (data_type) {
         case data_type::f32:
         case data_type::s32: host_->uni_vmovups(tmp_vmm, rhs_addr); break;
@@ -3431,7 +3429,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_no_tail(
         case data_type::f16:
             if (is_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm, rhs_addr);
-            else if (is_superset(isa, avx2_vnni_2))
+            else if (is_superset(isa_, avx2_vnni_2))
                 host_->vcvtph2ps(tmp_vmm, rhs_addr);
             else
                 assert(!"unsupported ISA for given data type");
@@ -3445,7 +3443,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_no_tail(
             f8_e4m3_cvt_->vcvt_f8_to_f32(tmp_vmm, rhs_addr);
             break;
         case data_type::bf16:
-            if (is_avx512_ || is_superset(isa, avx2_vnni_2)) {
+            if (is_avx512_ || is_superset(isa_, avx2_vnni_2)) {
                 host_->vpmovzxwd(tmp_vmm, rhs_addr);
                 host_->vpslld(tmp_vmm, tmp_vmm, 0x10);
                 break;
@@ -3454,8 +3452,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_no_tail(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_i8_no_tail(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::load_rhs_i8_no_tail(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr) const {
     if (is_avx_ && std::is_same<Vmm, Xbyak::Ymm>::value) {
@@ -3492,11 +3490,11 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_i8_no_tail(
         assert(!"unsupported data type");
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_tail_dynamically_with_opmask(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::load_rhs_tail_dynamically_with_opmask(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr) const {
-    assert(is_data_supported(isa, data_type) && "unsupported data type");
+    assert(is_data_supported(isa_, data_type) && "unsupported data type");
     assert(rhs_arg_static_params_.is_opmask_set()
             && "Opmask is not set for tail loading avx512");
 
@@ -3537,8 +3535,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_tail_dynamically_with_opmask(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_tail_dynamically_with_gpr(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::load_rhs_tail_dynamically_with_gpr(
         const data_type_t &data_type, const Vmm &tmp_vmm) const {
 
     const bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
@@ -3558,8 +3556,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_tail_dynamically_with_gpr(
     host_->runtime_tail_process<Vmm>(reg_tail_size, reg_tmp, runtime_tail_load);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_tail_statically(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::load_rhs_tail_statically(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr) const {
     // An opmask-capable ISA has no static tail path. `load_rhs` sends its tails
@@ -3576,7 +3574,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_tail_statically(
     // Sub-dword floating point is widened in place from a packed tail, so it
     // shares neither the zeroing nor the element assembly the dword paths
     // below need.
-    if (is_superset(isa, avx2_vnni_2)
+    if (is_superset(isa_, avx2_vnni_2)
             && utils::one_of(data_type, data_type::bf16, data_type::f16)) {
         const auto tmp_lower_vmm =
                 typename vreg_traits_t<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
@@ -3671,9 +3669,9 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_tail_statically(
         assert(!"unsupported data type");
 }
 
-template <cpu_isa_t isa, typename Vmm>
+template <typename Vmm>
 template <typename T>
-void jit_uni_binary_injector_t<isa, Vmm>::execute_cmp_binary(const Vmm &dst,
+void jit_uni_binary_injector_t<Vmm>::execute_cmp_binary(const Vmm &dst,
         const Vmm &lhs, const T &rhs, const unsigned int cmp_predicate) const {
     // The rhs operand shape selects the sequence, and it also pins the ISA. A
     // memory operand needs the opmask form because it only arrives from the
@@ -3716,9 +3714,9 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_cmp_binary(const Vmm &dst,
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
+template <typename Vmm>
 template <typename T>
-void jit_uni_binary_injector_t<isa, Vmm>::execute_binary(alg_kind_t binary_alg,
+void jit_uni_binary_injector_t<Vmm>::execute_binary(alg_kind_t binary_alg,
         const Vmm &dst, const Vmm &lhs, const T &rhs) const {
     switch (binary_alg) {
         case alg_kind::binary_add: host_->uni_vaddps(dst, lhs, rhs); break;
@@ -3749,11 +3747,11 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_binary(alg_kind_t binary_alg,
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::execute_prelu(
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::execute_prelu(
         const Vmm &dst, const Xbyak::Operand &rhs) const {
     Vmm tmp_vmm = Vmm(rhs_arg_static_params_.rhs_dt_helper_vmm_idx);
-    if (is_superset(isa, avx512_core)) {
+    if (is_superset(isa_, avx512_core)) {
         assert(rhs.isMEM());
         Vmm dst_vmm = Vmm(dst.getIdx());
         Xbyak::Opmask maybe_tail_kmask = Xbyak::Opmask(dst.getOpmaskIdx());
@@ -3762,7 +3760,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_prelu(
         host_->vcmpps(aux_kmask | maybe_tail_kmask, dst_vmm, tmp_vmm,
                 jit_generator_t::_cmp_le_os);
         host_->vmulps(dst_vmm | aux_kmask, dst_vmm, rhs);
-    } else if (is_superset(isa, avx)) {
+    } else if (is_superset(isa_, avx)) {
         // Three operand version
         host_->uni_vmulps(tmp_vmm, dst, rhs);
         host_->uni_vblendvps(dst, dst, tmp_vmm, dst);
@@ -3787,27 +3785,16 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_prelu(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::compute_vector(size_t idx,
+template <typename Vmm>
+void jit_uni_binary_injector_t<Vmm>::compute_vector(size_t idx,
         std::size_t rhs_arg_idx, const dnnl_post_ops::entry_t &post_op,
         const rhs_arg_dynamic_params_t &rhs_arg_params) const {
     compute_vector_range({idx}, rhs_arg_idx, post_op, rhs_arg_params);
 }
 
-template class jit_uni_binary_injector_t<avx512_core_fp16>;
-template class jit_uni_binary_injector_t<avx512_core_fp16, Xbyak::Ymm>;
-template class jit_uni_binary_injector_t<avx512_core_fp16, Xbyak::Xmm>;
-template class jit_uni_binary_injector_t<avx512_core_bf16>;
-template class jit_uni_binary_injector_t<avx512_core>;
-template class jit_uni_binary_injector_t<avx512_core, Xbyak::Ymm>;
-template class jit_uni_binary_injector_t<avx512_core, Xbyak::Xmm>;
-template class jit_uni_binary_injector_t<avx2_vnni_2>;
-template class jit_uni_binary_injector_t<avx2_vnni_2, Xbyak::Xmm>;
-template class jit_uni_binary_injector_t<avx2, Xbyak::Ymm>;
-template class jit_uni_binary_injector_t<avx2, Xbyak::Xmm>;
-template class jit_uni_binary_injector_t<avx, Xbyak::Ymm>;
-template class jit_uni_binary_injector_t<avx, Xbyak::Xmm>;
-template class jit_uni_binary_injector_t<sse41>;
+template class jit_uni_binary_injector_t<Xbyak::Zmm>;
+template class jit_uni_binary_injector_t<Xbyak::Ymm>;
+template class jit_uni_binary_injector_t<Xbyak::Xmm>;
 
 #undef VCHECK_BIN_INJ_BOOL
 

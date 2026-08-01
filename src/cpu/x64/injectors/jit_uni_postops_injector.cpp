@@ -102,7 +102,7 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
     // path so the binary injector is created for a sum-only chain as well.
     if (is_like_binary || is_sum)
         binary_injector_ = utils::make_unique<
-                binary_injector::jit_uni_binary_injector_t<isa, Vmm>>(
+                binary_injector::jit_uni_binary_injector_t<Vmm>>(
                 host, binary_static_params);
 
     // Build one sum injector per sum post-op when the caller opted in to

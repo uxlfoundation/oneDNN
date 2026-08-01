@@ -27,7 +27,7 @@ namespace x64 {
 template <cpu_isa_t isa, typename Vmm>
 jit_uni_sum_injector_t<isa, Vmm>::jit_uni_sum_injector_t(jit_generator_t *host,
         const post_ops_t::entry_t::sum_t &sum, data_type_t dst_dt,
-        binary_injector::jit_uni_binary_injector_t<isa, Vmm> *binary_injector,
+        binary_injector::jit_uni_binary_injector_t<Vmm> *binary_injector,
         size_t scratch_vmm_idx, bool preserve_scratch_vmm)
     : host_(host)
     , binary_injector_(binary_injector)

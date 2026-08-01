@@ -47,8 +47,7 @@ public:
     // preserved when `preserve_scratch_vmm` is set.
     jit_uni_sum_injector_t(jit_generator_t *host,
             const post_ops_t::entry_t::sum_t &sum, data_type_t dst_dt,
-            binary_injector::jit_uni_binary_injector_t<isa, Vmm>
-                    *binary_injector,
+            binary_injector::jit_uni_binary_injector_t<Vmm> *binary_injector,
             size_t scratch_vmm_idx, bool preserve_scratch_vmm);
 
     // Computes `acc += scale * (prev - zp)` for each accumulator in `vmm_idxs`.
@@ -64,7 +63,7 @@ public:
 
 private:
     jit_generator_t *host_;
-    binary_injector::jit_uni_binary_injector_t<isa, Vmm> *binary_injector_;
+    binary_injector::jit_uni_binary_injector_t<Vmm> *binary_injector_;
 
     // Read type for the previous value (`sum.dt` or `dst_dt` when undefined).
     const data_type_t sum_dt_;

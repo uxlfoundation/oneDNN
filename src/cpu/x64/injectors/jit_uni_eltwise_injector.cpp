@@ -88,7 +88,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::injector_preamble(
     const auto start_idx = *(vmm_compute_idxs.begin());
     const auto end_idx = *(vmm_compute_idxs.rbegin()) + 1;
     // For sse41 mask register must be Xmm(0), reserve it unconditionally.
-    if (isa == sse41 && need_vmm_mask_register_) {
+    if (is_sse41_ && need_vmm_mask_register_) {
         static constexpr int mask_idx = 0;
         assert(start_idx > mask_idx);
         // When external indices come, they must secure first index is 0.
@@ -302,7 +302,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::assign_regs() {
     // For avx we need a register to save the upper part of Ymm
     // Note: the number in `aux_vecs_count` is accounted for here.
     using namespace alg_kind;
-    const bool preserve_vec_for_avx = isa == avx
+    const bool preserve_vec_for_avx = is_avx_
             && utils::one_of(alg_, eltwise_tanh, eltwise_elu, eltwise_abs,
                     eltwise_soft_relu, eltwise_mish, eltwise_logistic,
                     eltwise_exp, eltwise_gelu_tanh, eltwise_swish,
@@ -331,7 +331,7 @@ Wmm jit_uni_eltwise_injector_t<isa, Wmm>::vmm_aux(size_t idx) {
 template <cpu_isa_t isa, typename Wmm>
 void jit_uni_eltwise_injector_t<isa, Wmm>::vec_shift(const Vmm &vmm_dst,
         const Vmm &vmm_src, bool shift_left, const int imm) {
-    if (isa != avx) {
+    if (!is_avx_) {
         if (shift_left)
             h->uni_vpslld(vmm_dst, vmm_src, imm);
         else
@@ -428,7 +428,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::exp_compute_vector_fwd(
     // compute 2^(n-1)
     h->uni_vsubps(vmm_src, vmm_src, table_val(one));
     h->uni_vcvtps2dq(vmm_aux(1), vmm_src);
-    if (isa != avx)
+    if (!is_avx_)
         h->uni_vpaddd(vmm_aux(1), vmm_aux(1), table_val(exponent_bias));
     else {
         Ymm ymm_aux2 = Ymm(vmm_aux(1).getIdx());
@@ -492,7 +492,7 @@ template <cpu_isa_t isa, typename Wmm>
 void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
         const Vmm &vmm_src) {
     // we add a check as the avx2 code cannot be used for avx
-    assert(IMPLICATION(isa == avx2, mayiuse(avx2)));
+    assert(mayiuse(isa));
 
     using namespace Xbyak::util;
     const int XMM_float_lanes_count = 4;
@@ -511,7 +511,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
     Vmm vmm_sign = vmm_aux(3);
     Reg64 gpr_idx[XMM_float_lanes_count];
 
-    if (isa == sse41 || isa == avx) {
+    if (!has_avx2_) {
         assert(aux_gprs_count(alg_, is_fwd_, alpha_) >= XMM_float_lanes_count);
         for (int i = 0; i < XMM_float_lanes_count; i++)
             gpr_idx[i] = Reg64(preserved_gpr_indices_[i
@@ -628,7 +628,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
 
     // We compute the indices for the table lookup
     h->uni_vmovups(vmm_indices, vmm_src);
-    if (isa != avx)
+    if (!is_avx_)
         h->uni_vpsubd(vmm_indices, vmm_indices, table_val(tanh_idx_bias));
     else {
         Ymm ymm_indices = Ymm(vmm_indices.getIdx());
@@ -654,7 +654,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
         h->uni_vfmadd213ps(vmm_pol, vmm_src, vmm_coeff);
     }
 
-    if (isa == avx) {
+    if (is_avx_) {
         Ymm ymm_indices = Ymm(vmm_indices.getIdx());
         Ymm ymm_pol = Ymm(vmm_pol.getIdx());
         Ymm ymm_src = Ymm(vmm_src.getIdx());
@@ -862,7 +862,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::soft_relu_compute_vector_fwd(
     if (is_avx512_) {
         h->vmulps(vmm_aux(1), vmm_src, table_val(minus_one));
         h->vcvtps2dq(vmm_aux(1), vmm_aux(1));
-    } else if (isa == avx) {
+    } else if (is_avx_) {
         h->uni_vxorps(vmm_aux(1), vmm_src, table_val(sign_mask));
         h->uni_vcvtps2dq(vmm_aux(1), vmm_aux(1));
     } else {
@@ -872,7 +872,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::soft_relu_compute_vector_fwd(
     // restore vmm_src to n
     h->uni_vaddps(vmm_src, vmm_src, table_val(one));
 
-    if (isa != avx)
+    if (!is_avx_)
         h->uni_vpaddd(vmm_aux(1), vmm_aux(1), table_val(exponent_bias));
     else {
         Ymm ymm_aux1 = Ymm(vmm_aux(1).getIdx());
@@ -997,7 +997,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::log_compute_vector_fwd(
     // If (x == 1) result = 0;
 
     // set unused register as tmp for avx
-    if (isa == avx) {
+    if (is_avx_) {
         ymm_tmp_ = Ymm(vmm_aux(0).getIdx());
         xmm_tmp_ = Xmm(vmm_aux(0).getIdx());
     }
@@ -1016,7 +1016,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::log_compute_vector_fwd(
 
     // get E, don't care about sign as only positive numbers are considered
     vec_shift(vmm_aux(3), vmm_src, false, n_mantissa_bits_);
-    if (isa != avx)
+    if (!is_avx_)
         h->uni_vpaddd(vmm_aux(3), vmm_aux(3), vmm_aux(2));
     else {
         Ymm ymm_aux2 = Ymm(vmm_aux(2).getIdx());
@@ -1058,10 +1058,10 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::log_compute_vector_fwd(
         if (is_avx512_) {
             h->kmovw(k_mask_, table_val(log_full_k_reg_mask));
             h->vgatherdps(vmm_dst | k_mask_, table_idx);
-        } else if (utils::one_of(isa, avx2, avx2_vnni_2)) {
+        } else if (has_avx2_) {
             h->uni_vmovups(vmm_mask_, table_val(sign_mask));
             h->vgatherdps(vmm_dst, table_idx, vmm_mask_);
-        } else if (isa == avx || isa == sse41) {
+        } else {
             Xbyak::Reg64 reg_tmp
                     = p_table_.getIdx() != h->r9.getIdx() ? h->r9 : h->r10;
 
@@ -1254,7 +1254,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::pow_compute_vector_fwd(
             h->uni_vzeroupper(); // eliminate performance penalties on avx
             h->call(h->r12);
             // eliminate performance penalties on sse isa
-            if (isa == sse41) h->uni_vzeroupper();
+            if (is_sse41_) h->uni_vzeroupper();
             h->uni_vmovss(source, xmm0);
         }
 
@@ -1497,7 +1497,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::gelu_tanh_compute_vector_bwd(
     h->uni_vmovups(vmm_aux(2), vmm_aux(4));
 
     // compute 0.5 * (1 + T) * (1 + G2 * (1 - T))
-    if (isa == sse41 || isa == avx) {
+    if (!has_avx2_) {
         h->uni_vmovups(vmm_aux(3), table_val(one));
         h->uni_vsubps(vmm_aux(3), vmm_aux(3), vmm_src);
         h->uni_vmulps(vmm_aux(2), vmm_aux(2), vmm_aux(3));
@@ -1625,7 +1625,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::swish_compute_vector_bwd(
     // Q = sigmoid(alpha * s)
     logistic_compute_vector_fwd(vmm_src);
     // compute Q * (1 + R * (1 - Q))
-    if (utils::one_of(isa, sse41, avx)) {
+    if (!has_avx2_) {
         h->uni_vmovups(vmm_aux(1), table_val(one));
         h->uni_vsubps(vmm_aux(1), vmm_aux(1), vmm_src);
         h->uni_vmulps(vmm_aux(1), vmm_aux(1), vmm_aux(3));
@@ -1808,7 +1808,7 @@ size_t jit_uni_eltwise_injector_t<isa, Wmm>::aux_gprs_count(
     switch (alg) {
         case eltwise_tanh_use_dst_for_bwd:
         case eltwise_tanh:
-        case eltwise_gelu_tanh: ret = isa == sse41 || isa == avx ? 4 : 0; break;
+        case eltwise_gelu_tanh: ret = !is_superset(isa, avx2) ? 4 : 0; break;
         default: ret = 0;
     }
     return ret + need_vmm_stack_ptr(alg, is_fwd, alpha);
@@ -1828,7 +1828,7 @@ size_t jit_uni_eltwise_injector_t<isa, Wmm>::op_vecs_count(
     if (is_fwd) {
         switch (alg) {
             case eltwise_gelu_tanh: ret = 1; break;
-            case eltwise_log: ret = 1 + utils::one_of(isa, sse41, avx); break;
+            case eltwise_log: ret = 1 + !is_superset(isa, avx2); break;
             case eltwise_pow: ret = n_vregs_ + 2; break;
             default: ret = 0;
         }
@@ -1846,7 +1846,7 @@ template <cpu_isa_t isa, typename Wmm>
 size_t jit_uni_eltwise_injector_t<isa, Wmm>::aux_vecs_count(
         alg_kind_t alg, bool is_fwd, float alpha) {
     // For avx we need a register to save the upper part of Ymm
-    const bool extra_avx_vmm = isa == avx;
+    const bool extra_avx_vmm = is_superset(isa, avx) && !is_superset(isa, avx2);
     size_t n_vmms = 0;
 
     using namespace alg_kind;

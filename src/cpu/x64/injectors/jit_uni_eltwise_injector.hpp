@@ -178,6 +178,9 @@ private:
     };
 
     const bool is_avx512_ = is_superset(isa, avx512_core);
+    const bool has_avx2_ = is_superset(isa, avx2);
+    const bool is_avx_ = is_superset(isa, avx) && !has_avx2_;
+    const bool is_sse41_ = !is_superset(isa, avx);
 
     static constexpr size_t vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr size_t preserved_vecs_max_ = 6;

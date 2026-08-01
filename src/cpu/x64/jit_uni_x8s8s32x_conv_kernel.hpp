@@ -71,8 +71,6 @@ private:
     const Xbyak::Reg64 reg_ker = r9;
     const Xbyak::Reg64 reg_out = r10;
     const Xbyak::Reg64 aux_reg_inp = r11;
-    const Xbyak::Reg64 reg_ptr_sum_scale = r11;
-    const Xbyak::Reg64 reg_ptr_sum_zp = rdx;
     const Xbyak::Reg64 aux_reg_ker = r12;
     const Xbyak::Reg64 aux_reg_inp_d = r13;
     const Xbyak::Reg64 reg_compensation = r14;
@@ -108,8 +106,6 @@ private:
     const Vmm vmm_scales = Vmm(1);
     const Vmm vmm_scales_tmp = Vmm(0); // Has dependency on `vmm_bias`.
     const Vmm vmm_dst_scales = Vmm(0);
-    /* used during post_op sum section of store_output */
-    const Vmm vmm_prev_dst = Vmm(0);
     /* used during write-out section of store_output */
     const Vmm vmm_zero = Vmm(0);
     const Vmm vmm_saturation = Vmm(0);
@@ -182,12 +178,8 @@ private:
 
     void cvt2ps(data_type_t type_in, const Vmm &vmm_in, const Xbyak::Reg64 &reg,
             int offset, int load_size);
-    void apply_sum(const int nb_oc_block, const int ur_w,
-            const bool last_oc_block_flag, const int oc_block,
-            const float *p_sum_scale, const int32_t *p_sum_zp);
     void apply_postops(const int nb_oc_block, const int ur_w,
-            const bool last_oc_block_flag, const int oc_block,
-            const float *p_sum_scale, const int32_t *p_sum_zp);
+            const bool last_oc_block_flag, const int oc_block);
 };
 
 template <cpu_isa_t isa>

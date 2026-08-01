@@ -81,7 +81,8 @@ jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::jit_uni_x8s8s32x_fwd_kernel_vmm_t(
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<
                         typename cpu_isa_traits_t<isa>::Vmm>>(
-                        this, jcp.post_ops, static_params);
+                        this, jcp.post_ops, static_params,
+                        /* enable_native_sum = */ jcp.with_sum);
     }
 }
 
@@ -124,70 +125,18 @@ void iterate(const int nb_oc_block, const int ur_w,
     }
 }
 template <typename F>
-void iterate(const int nb_oc_block, const int ur_w,
-        const bool last_oc_block_flag, const F &f) {
-    iterate(nb_oc_block, ur_w, last_oc_block_flag, false, f);
-}
-template <typename F>
 void iterate(const int nb_oc_block, const int ur_w, const F &f) {
     iterate(nb_oc_block, ur_w, false, false, f);
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::apply_sum(
-        const int nb_oc_block, const int ur_w, const bool last_oc_block_flag,
-        const int oc_block, const float *p_sum_scale, const int32_t *p_sum_zp) {
-    if (jcp.with_sum) {
-        assert(!utils::any_null(p_sum_scale, p_sum_zp)
-                && "p_sum_scale or p_sum_zp = nullptr");
-        const float sum_scale = *p_sum_scale;
-        const int32_t sum_zp = *p_sum_zp;
-        const auto sum_injector_lam
-                = [this, oc_block, sum_scale, sum_zp](
-                          const bool mask_flag, const int k, const int j) {
-            const int aux_output_offset = jcp.typesize_out
-                    * (k * oc_block + j * jcp.oc_without_padding * jcp.ngroups);
-            cvt2ps(jcp.sum_dt, vmm_prev_dst, reg_out, aux_output_offset,
-                    mask_flag ? get_tail_size() : get_blocking_size());
-            const Vmm vmm = vmm_out(j, k);
-            if (sum_zp != 0) {
-                uni_vbroadcastss(vmm_tmp, ptr[reg_ptr_sum_zp]);
-                uni_vcvtdq2ps(vmm_tmp, vmm_tmp);
-                uni_vsubps(vmm_prev_dst, vmm_prev_dst, vmm_tmp);
-            }
-            if (sum_scale == 1.f)
-                uni_vaddps(vmm, vmm, vmm_prev_dst);
-            else {
-                uni_vbroadcastss(vmm_tmp, ptr[reg_ptr_sum_scale]);
-                uni_vfmadd231ps(vmm, vmm_prev_dst, vmm_tmp);
-            }
-        };
-        // Capture by value has to be applied since this lambda is called from
-        // a different context when stack values are unavailable.
-        const auto sum_injector
-                = [nb_oc_block, ur_w, last_oc_block_flag, sum_injector_lam]() {
-            iterate(nb_oc_block, ur_w, last_oc_block_flag, sum_injector_lam);
-        };
-        if (*p_sum_scale != 1.f)
-            mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
-        if (*p_sum_zp != 0)
-            mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
-    }
-}
-
-template <cpu_isa_t isa, typename Vmm>
 void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::apply_postops(
         const int nb_oc_block, const int ur_w, const bool last_oc_block_flag,
-        const int oc_block, const float *p_sum_scale, const int32_t *p_sum_zp) {
+        const int oc_block) {
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
-        if (jcp.with_sum && *p_sum_zp != 0) push(reg_ptr_sum_zp);
-        apply_sum(nb_oc_block, ur_w, last_oc_block_flag, oc_block, p_sum_scale,
-                p_sum_zp);
-
         vmm_index_set_t vmm_idxs;
-        if (jcp.with_binary) {
+        // Sum post-op requires binary parameters to be set.
+        if (jcp.with_binary || jcp.with_sum) {
             binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
             const bool oc_blk_is_smaller_than_vmm = oc_block < isa_simd_width_;
             iterate(nb_oc_block, ur_w, last_oc_block_flag,
@@ -214,7 +163,6 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::apply_postops(
             });
             postops_injector_->compute_vector_range(vmm_idxs);
         }
-        if (jcp.with_sum && *p_sum_zp != 0) pop(reg_ptr_sum_zp);
     }
 }
 
@@ -233,16 +181,6 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::store_output(
         mov(reg_zp_compensation, ptr[param1 + GET_OFF(zp_compensation)]);
         mov(reg_src_zero_point, ptr[param1 + GET_OFF(src_zero_point)]);
         uni_vpbroadcastd(vmm_zp, ptr[reg_src_zero_point]);
-    }
-
-    const auto &p = attr_.post_ops_;
-    const int sum_idx = p.find(primitive_kind::sum);
-    const float *p_sum_scale = nullptr;
-    const int32_t *p_sum_zp = nullptr;
-    if (sum_idx != -1) {
-        const auto &p_entry = p.entry_[sum_idx];
-        p_sum_scale = &p_entry.sum.scale;
-        p_sum_zp = &p_entry.sum.zero_point;
     }
 
     for (int k = 0; k < nb_oc_block; ++k) {
@@ -342,8 +280,7 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::store_output(
         }
     }
 
-    apply_postops(nb_oc_block, ur_w, last_oc_block_flag, oc_block, p_sum_scale,
-            p_sum_zp);
+    apply_postops(nb_oc_block, ur_w, last_oc_block_flag, oc_block);
 
     if (jcp.with_dst_scales) {
         mov(reg_dst_scales, ptr[param1 + GET_OFF(dst_scales)]);
@@ -1284,7 +1221,7 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::generate() {
 
     postamble();
 
-    if (jcp.with_eltwise)
+    if (jcp.with_eltwise || jcp.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

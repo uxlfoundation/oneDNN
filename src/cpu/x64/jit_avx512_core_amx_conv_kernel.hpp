@@ -309,9 +309,7 @@ private:
     const Xbyak::Reg64 reg_ptr_src_scales = r10;
     const Xbyak::Reg64 reg_ptr_wei_scales = r10;
     const Xbyak::Reg64 reg_ptr_dst_scales = r10;
-    const Xbyak::Reg64 reg_ptr_sum_scale = r9;
-    const Xbyak::Reg64 reg_ptr_sum_zp = abi_not_param1;
-    const Xbyak::Reg64 reg_aux_saturation = reg_ptr_sum_scale;
+    const Xbyak::Reg64 reg_aux_saturation = r9;
 
     const Xbyak::Reg64 reg_inp_stride = rbx;
     const Xbyak::Reg64 reg_wei_stride = rdx;
@@ -335,7 +333,6 @@ private:
     const Xbyak::Zmm &zmm_saturation = zmm_bias;
     const Xbyak::Zmm &zmm_zero = zmm30;
     const Xbyak::Zmm &zmm_prev_dst = zmm29;
-    const Xbyak::Zmm &zmm_sum_zp = zmm26;
     /* zero-point */
     const Xbyak::Zmm &zmm_zp = zmm29;
     const Xbyak::Zmm &zmm_src_zp = zmm28;
@@ -388,12 +385,14 @@ private:
             const Xbyak::Ymm &zmm_in, bool mask_flag, bool store = false);
     Xbyak::Zmm zmm_mask(
             const Xbyak::Zmm &zmm_in, bool mask_flag, bool store = false);
-    void apply_sum(const Xbyak::Zmm &zmm_out, const float *p_sum_scale,
-            const int32_t *p_sum_zp, const Xbyak::Address &addr,
-            const bool mask_flag);
-    void apply_postops(const Xbyak::Zmm &zmm_out, const float *p_sum_scale,
-            const int32_t *p_sum_zp, const Xbyak::Address &addr,
-            const size_t off, const bool mask_flag);
+    // Sum goes through the post-ops injector on the int8 store path only. The
+    // bf16 path folds it into the accumulator by hand, see
+    // `store_output_vector_bf16`.
+    bool is_sum_via_postops() const {
+        return jcp.with_sum && jcp.src_dt != data_type::bf16;
+    }
+    void apply_postops(
+            const Xbyak::Zmm &zmm_out, const size_t off, const bool mask_flag);
     inline void store_output_ymm_bf16(
             const int idx, const Xbyak::Address &addr, const bool mask_flag);
     void store_output_vector_bf16(

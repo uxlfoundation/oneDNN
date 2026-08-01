@@ -86,7 +86,8 @@ public:
     jit_uni_postops_injector_t(jit_generator_t *host,
             const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
-            const eltwise_injector::static_params_t &eltwise_static_params);
+            const eltwise_injector::static_params_t &eltwise_static_params,
+            bool enable_native_sum = false);
     // This is the delegation target for the other constructors, since it owns
     // all construction state.
     jit_uni_postops_injector_t(jit_generator_t *host,

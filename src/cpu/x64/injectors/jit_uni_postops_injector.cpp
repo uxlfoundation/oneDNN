@@ -137,9 +137,11 @@ template <typename Vmm>
 jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
-        const eltwise_injector::static_params_t &eltwise_static_params)
+        const eltwise_injector::static_params_t &eltwise_static_params,
+        bool enable_native_sum)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
-              eltwise_static_params, lambda_jit_injectors_t()) {}
+              eltwise_static_params, lambda_jit_injectors_t(),
+              enable_native_sum) {}
 
 template <typename Vmm>
 void jit_uni_postops_injector_t<Vmm>::compute_vector_range(size_t start_idx,

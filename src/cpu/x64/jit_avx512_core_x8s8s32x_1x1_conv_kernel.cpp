@@ -74,7 +74,8 @@ jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                        this, jcp.post_ops, static_params);
+                        this, jcp.post_ops, static_params,
+                        /* enable_native_sum = */ jcp.with_sum);
     }
     if (jcp.dst_dt == data_type::bf16 && !isa_has_bf16(jcp.isa))
         bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,
@@ -164,11 +165,6 @@ static void iterate(const int load_loop_blk, const int ur,
     }
 }
 template <typename F>
-static void iterate(const int load_loop_blk, const int ur,
-        const bool last_oc_block_flag, const F &f) {
-    iterate(load_loop_blk, ur, last_oc_block_flag, false, f);
-}
-template <typename F>
 static void iterate(const int load_loop_blk, const int ur, const F &f) {
     iterate(load_loop_blk, ur, false, false, f);
 }
@@ -197,46 +193,12 @@ Vmm jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::vreg_accum(
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_sum(
-        const int load_loop_blk, const int ur, const bool mask_flag_in,
-        const float *p_sum_scale, const int32_t *p_sum_zp) {
-    if (jcp.with_sum) {
-        const float sum_scale = *p_sum_scale;
-        const int32_t sum_zp = *p_sum_zp;
-        const auto sum_injector_lam
-                = [this, sum_scale, sum_zp, load_loop_blk](const bool mask_flag,
-                          const int i_load, const int i_ur) {
-            const auto r = vreg_accum(load_loop_blk, i_load, i_ur);
-            cvt2ps(jcp.sum_dt, vmm_prev_dst, output_ptr(i_load, i_ur),
-                    mask_flag);
-            if (sum_zp != 0) vsubps(vmm_prev_dst, vmm_tmp);
-            if (sum_scale == 1.f)
-                vaddps(r, vmm_prev_dst);
-            else
-                vfmadd231ps(r, vmm_prev_dst, zword_b[reg_ptr_sum_scale]);
-        };
-        // Capture by value has to be applied since this lambda is called from
-        // a different context when stack values are unavailable.
-        const auto sum_injector
-                = [load_loop_blk, ur, mask_flag_in, sum_injector_lam]() {
-            iterate(load_loop_blk, ur, mask_flag_in, sum_injector_lam);
-        };
-        if (sum_zp != 0) vcvtdq2ps(vmm_tmp, ptr_b[rsp + reg_ptr_sum_zp_off]);
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
-    }
-}
-
-template <typename Vmm>
 void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_postops(
-        const int load_loop_blk, const int ur, const bool mask_flag_in,
-        const float *p_sum_scale, const int32_t *p_sum_zp) {
+        const int load_loop_blk, const int ur) {
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
-
-        apply_sum(load_loop_blk, ur, mask_flag_in, p_sum_scale, p_sum_zp);
-
         injector_utils::vmm_index_set_t vmm_idxs;
-        if (jcp.with_binary) {
+        // Sum post-op requires binary parameters to be set.
+        if (jcp.with_binary || jcp.with_sum) {
             binary_injector::rhs_arg_dynamic_params_t rhs_arg_params,
                     rhs_arg_params_tail;
             const auto mask_tail = jcp.oc_without_padding % jcp.load_block;
@@ -263,7 +225,10 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_postops(
             rhs_arg_params = rhs_arg_params_tail;
             rhs_arg_params.vmm_tail_idx_.clear();
 
-            mov(abi_param1, EVEX_compress_addr(rsp, reg_abi_param1_backup));
+            // Only the binary injector reads the rhs arguments through
+            // `abi_param1`, and only then is the backup slot filled in.
+            if (jcp.with_binary)
+                mov(abi_param1, EVEX_compress_addr(rsp, reg_abi_param1_backup));
 
             Label postops_done;
             if (mask_tail || oc_blk_is_smaller_than_vmm) {
@@ -343,28 +308,7 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
     };
 
     auto store = [&](const bool mask_flag_in) {
-        const auto &p = attr_.post_ops_;
-        const int sum_idx = p.find(primitive_kind::sum);
-        const float *p_sum_scale = nullptr;
-        const int32_t *p_sum_zp = nullptr;
-        if (sum_idx != -1) {
-            p_sum_scale = &p.entry_[sum_idx].sum.scale;
-            p_sum_zp = &p.entry_[sum_idx].sum.zero_point;
-        }
-        const auto p_sum_scale_val = p_sum_scale ? *p_sum_scale : 1.f;
-        const auto p_sum_zp_val = p_sum_zp ? *p_sum_zp : 0;
-        const bool is_scale_or_zp_sum
-                = p_sum_zp_val != 0 || p_sum_scale_val != 1.f;
         mov(EVEX_compress_addr(rsp, reg_bcast_data_off), reg_bcast_data);
-        if (is_scale_or_zp_sum) {
-            mov(EVEX_compress_addr(rsp, reg_load_data_off), reg_load_data);
-            if (p_sum_zp_val != 0) {
-                mov(reg_load_data, p_sum_zp_val);
-                mov(ptr[rsp + reg_ptr_sum_zp_off], reg_load_data);
-            }
-            if (p_sum_scale_val != 1.f)
-                mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
-        }
         if (jcp.signed_input && (!jcp.has_vnni)) {
             mov(reg_scratch, float2int(jcp.wei_adj_scale));
         }
@@ -455,7 +399,7 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
             }
         }
 
-        apply_postops(load_loop_blk, ur, mask_flag_in, p_sum_scale, p_sum_zp);
+        apply_postops(load_loop_blk, ur);
 
         if (jcp.with_dst_scales) {
             mov(reg_dst_scales, EVEX_compress_addr(rsp, reg_dst_scales_off));
@@ -561,8 +505,6 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::reduce_loop(
             }
         }
         mov(reg_bcast_data, EVEX_compress_addr(rsp, reg_bcast_data_off));
-        if (is_scale_or_zp_sum)
-            mov(reg_load_data, EVEX_compress_addr(rsp, reg_load_data_off));
     };
 
     auto compute = [this](Vmm vreg_acc, Vmm vreg_wei, Vmm vreg_src) {
@@ -742,13 +684,16 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
                     (1 << (load_dim_tail + jcp.load_block)) - 1);
             kmovd(k_load_dim_tail_mask_extended, reg_tail_32.cvt32());
         }
-    } else if (jcp.with_binary)
+    } else if (jcp.with_binary || jcp.with_sum) {
+        // Native sum reads the destination through the binary injector, so it
+        // needs `postops_mask` as well.
         if (jcp.oc_block != isa_simd_width_) {
             const int mask = (1 << jcp.oc_block) - 1;
             const Reg32 reg_tail_32 = reg_load_dim_tail_mask.cvt32();
             mov(reg_tail_32, mask);
             kmovw(postops_mask, reg_tail_32);
         }
+    }
 
     auto load_loop_body = [&](int load_loop_blk) {
         if (load_dim_tail) {
@@ -861,7 +806,7 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
 
     postamble();
 
-    if (jcp.with_eltwise)
+    if (jcp.with_eltwise || jcp.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

@@ -68,7 +68,8 @@ jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                        this, jcp.post_ops, bsp);
+                        this, jcp.post_ops, bsp,
+                        /* enable_native_sum = */ jcp.with_sum);
     }
 }
 
@@ -1031,43 +1032,9 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::store_output(
     }
     /* Do post-ops */
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
-        const auto &p = attr_.post_ops_;
-        const int sum_idx = p.find(primitive_kind::sum);
-        const float *p_sum_scale
-                = (sum_idx != -1) ? &p.entry_[sum_idx].sum.scale : nullptr;
-        if (p_sum_scale && *p_sum_scale != 1.f)
-            mov(reg_ptr_sum_scale, (size_t)p_sum_scale);
-
-        const auto sum_injector = [&]() {
-            if (p_sum_scale) { // post_op: sum
-                for (int k = 0; k < jcp.nb_oc_blocking; k++) {
-                    const bool mask_flag
-                            = last_oc_block == 1 && k == jcp.nb_oc_blocking - 1;
-                    for (int j = 0; j < ur_w; j++) {
-                        int aux_output_offset = jcp.typesize_out
-                                * (k * jcp.oc_block
-                                        + j * jcp.oc_without_padding
-                                                * jcp.ngroups);
-                        auto addr = EVEX_compress_addr(
-                                reg_dst, aux_output_offset);
-                        const Vmm vmm = vmm_out(j, k);
-                        cvt2ps(jcp.dst_dt, vmm_prev_dst, addr, mask_flag);
-                        if (*p_sum_scale == 1.f)
-                            vaddps(vmm, vmm_prev_dst);
-                        else
-                            vfmadd231ps(vmm, vmm_prev_dst,
-                                    zword_b[reg_ptr_sum_scale]);
-                    }
-                }
-            }
-        };
-
-        if (p_sum_scale)
-            postops_injector_->set_lambda_injector(
-                    primitive_kind::sum, sum_injector);
-
         binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
-        if (jcp.with_binary) {
+        // Sum post-op requires binary parameters to be set.
+        if (jcp.with_binary || jcp.with_sum) {
             for (int ocb = 0; ocb < jcp.nb_oc_blocking; ocb++) {
                 const bool mask_flag
                         = last_oc_block && ocb == jcp.nb_oc_blocking - 1;
@@ -1432,7 +1399,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::generate() {
 
     postamble();
 
-    if (jcp.with_eltwise)
+    if (jcp.with_eltwise || jcp.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

@@ -115,7 +115,6 @@ private:
 
     const Xbyak::Reg64 reg_compensation = r14;
     const Xbyak::Reg64 reg_scratch = r14;
-    const Xbyak::Reg64 reg_ptr_sum_scale = r11;
     const Xbyak::Reg64 reg_overflow = rax;
     const Xbyak::Reg64 reg_comp_strides = reg_overflow;
     const Xbyak::Reg64 reg_ker_long_offt = r15;
@@ -139,7 +138,6 @@ private:
     const Vmm vmm_comp = Vmm(30);
     const Vmm vmm_bias = Vmm(31);
     const Vmm vmm_scale_adjust = Vmm(31);
-    const Vmm vmm_prev_dst = Vmm(31);
 
     Vmm vmm_out(int i_ur, int i_oc) {
         int idx = i_ur * jcp.nb_oc_blocking + i_oc;

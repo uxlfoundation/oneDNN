@@ -47,7 +47,7 @@ struct jit_avx2_conv_fwd_kernel_f32_t : public jit_generator_t {
     const primitive_attr_t &attr_;
 
 private:
-    std::unique_ptr<injector::jit_uni_postops_injector_t<avx2>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Ymm>>
             postops_injector_;
 
     constexpr static int isa_simd_width_

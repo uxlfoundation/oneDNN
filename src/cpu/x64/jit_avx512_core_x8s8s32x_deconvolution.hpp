@@ -84,7 +84,7 @@ struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t : public jit_generator_t {
     const primitive_attr_t &attr_;
 
 private:
-    std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core, Vmm>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 
     const int ic_sub_step = 4;

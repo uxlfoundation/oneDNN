@@ -54,7 +54,7 @@ jit_avx512_dw_conv_fwd_kernel_f16_t::jit_avx512_dw_conv_fwd_kernel_f16_t(
         static_params_t static_params {this->param1, rhs_arg_static_params};
 
         postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<avx512_core>>(
+                injector::jit_uni_postops_injector_t<Xbyak::Zmm>>(
                 this, jcp.post_ops, static_params);
     }
 

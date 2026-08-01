@@ -106,7 +106,7 @@ private:
                 format_tag::nwc);
     }
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Zmm>>
             postops_injector_;
     std::unique_ptr<io::jit_io_multi_dt_helper_t<Xbyak::Zmm>> io_;
 

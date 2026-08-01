@@ -45,8 +45,8 @@ size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd) {
     return res;
 }
 
-template <cpu_isa_t isa, typename Vmm>
-jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
+template <typename Vmm>
+jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params,
@@ -83,7 +83,8 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
         }
     }
 
-    if (is_superset(isa, avx512_core) && is_eltwise && is_like_binary
+    if (is_superset(host->max_cpu_isa(), avx512_core) && is_eltwise
+            && is_like_binary
             && binary_static_params.rhs_arg_static_params.tail_size)
         assert(eltwise_static_params.k_mask_
                 != binary_static_params.rhs_arg_static_params.tail_opmask &&
@@ -115,172 +116,34 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
+template <typename Vmm>
+jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
-        const binary_injector::static_params_t &binary_static_params)
+        const binary_injector::static_params_t &binary_static_params,
+        bool enable_native_sum)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
-              eltwise_injector::static_params_t(), lambda_jit_injectors_t()) {}
+              eltwise_injector::static_params_t(), lambda_jit_injectors_t(),
+              enable_native_sum) {}
 
-template <cpu_isa_t isa, typename Vmm>
-jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
+template <typename Vmm>
+jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const lambda_jit_injectors_t &lambda_jit_injectors)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
               eltwise_injector::static_params_t(), lambda_jit_injectors) {}
 
-template <cpu_isa_t isa, typename Vmm>
-jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
+template <typename Vmm>
+jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
               eltwise_static_params, lambda_jit_injectors_t()) {}
 
-// Specialization instantiations are needed to avoid instantiating ISA with
-// Vmm that don't make any sense like sse41 + Zmm.
-template <>
-jit_uni_postops_injector_base_t<Xbyak::Zmm> *
-jit_uni_postops_injector_base_t<Xbyak::Zmm>::create(jit_generator_t *host,
-        cpu_isa_t isa, const post_ops_t &post_ops,
-        const binary_injector::static_params_t &binary_static_params,
-        const eltwise_injector::static_params_t &eltwise_static_params,
-        bool enable_native_sum) {
-
-// Exact match case goes first and required to force `isa` passed by user.
-#define CASE_EXACT_MATCH(_isa) \
-    if (isa == (_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Zmm>(host, \
-                post_ops, binary_static_params, eltwise_static_params, \
-                lambda_jit_injectors_t(), enable_native_sum);
-
-    CASE_EXACT_MATCH(avx512_core_fp16);
-    CASE_EXACT_MATCH(avx512_core_bf16);
-    CASE_EXACT_MATCH(avx512_core);
-
-#undef CASE_EXACT_MATCH
-
-// When there's no exact match, pick up what's allowed through mayiuse since
-// not every ISA has instances in post-ops injector.
-#define CASE_MAYIUSE(_isa) \
-    if (mayiuse(_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Zmm>(host, \
-                post_ops, binary_static_params, eltwise_static_params, \
-                lambda_jit_injectors_t(), enable_native_sum);
-
-    CASE_MAYIUSE(avx512_core_fp16);
-    CASE_MAYIUSE(avx512_core_bf16);
-    CASE_MAYIUSE(avx512_core);
-
-#undef CASE_MAYIUSE
-
-    assert(!"Kernel is empty!");
-    return nullptr;
-}
-
-template <>
-jit_uni_postops_injector_base_t<Xbyak::Ymm> *
-jit_uni_postops_injector_base_t<Xbyak::Ymm>::create(jit_generator_t *host,
-        cpu_isa_t isa, const post_ops_t &post_ops,
-        const binary_injector::static_params_t &binary_static_params,
-        const eltwise_injector::static_params_t &eltwise_static_params,
-        bool enable_native_sum) {
-
-// Exact match case goes first and required to force `isa` passed by user.
-#define CASE_EXACT_MATCH(_isa) \
-    if (isa == (_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Ymm>(host, \
-                post_ops, binary_static_params, eltwise_static_params, \
-                lambda_jit_injectors_t(), enable_native_sum);
-
-    CASE_EXACT_MATCH(avx512_core_fp16);
-    CASE_EXACT_MATCH(avx512_core);
-    CASE_EXACT_MATCH(avx2_vnni_2);
-    CASE_EXACT_MATCH(avx2);
-    CASE_EXACT_MATCH(avx);
-
-#undef CASE_EXACT_MATCH
-
-// When there's no exact match, pick up what's allowed through mayiuse since
-// not every ISA has instances in post-ops injector.
-#define CASE_MAYIUSE(_isa) \
-    if (mayiuse(_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Ymm>(host, \
-                post_ops, binary_static_params, eltwise_static_params, \
-                lambda_jit_injectors_t(), enable_native_sum);
-
-    CASE_MAYIUSE(avx512_core_fp16);
-    CASE_MAYIUSE(avx512_core);
-    CASE_MAYIUSE(avx2_vnni_2);
-    CASE_MAYIUSE(avx2);
-    CASE_MAYIUSE(avx);
-
-#undef CASE_MAYIUSE
-
-    assert(!"Kernel is empty!");
-    return nullptr;
-}
-
-template <>
-jit_uni_postops_injector_base_t<Xbyak::Xmm> *
-jit_uni_postops_injector_base_t<Xbyak::Xmm>::create(jit_generator_t *host,
-        cpu_isa_t isa, const post_ops_t &post_ops,
-        const binary_injector::static_params_t &binary_static_params,
-        const eltwise_injector::static_params_t &eltwise_static_params,
-        bool enable_native_sum) {
-
-// Exact match case goes first and required to force `isa` passed by user.
-#define CASE_EXACT_MATCH(_isa) \
-    if (isa == (_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Xmm>(host, \
-                post_ops, binary_static_params, eltwise_static_params, \
-                lambda_jit_injectors_t(), enable_native_sum);
-
-    CASE_EXACT_MATCH(avx512_core_fp16);
-    CASE_EXACT_MATCH(avx512_core);
-    CASE_EXACT_MATCH(avx2_vnni_2);
-    CASE_EXACT_MATCH(avx2);
-    CASE_EXACT_MATCH(avx);
-    CASE_EXACT_MATCH(sse41);
-
-#undef CASE_EXACT_MATCH
-
-// When there's no exact match, pick up what's allowed through mayiuse since
-// not every ISA has instances in post-ops injector.
-#define CASE_MAYIUSE(_isa) \
-    if (mayiuse(_isa)) \
-        return new jit_uni_postops_injector_t<_isa, Xbyak::Xmm>(host, \
-                post_ops, binary_static_params, eltwise_static_params, \
-                lambda_jit_injectors_t(), enable_native_sum);
-
-    CASE_MAYIUSE(avx512_core_fp16);
-    CASE_MAYIUSE(avx512_core);
-    CASE_MAYIUSE(avx2_vnni_2);
-    CASE_MAYIUSE(avx2);
-    CASE_MAYIUSE(avx);
-    CASE_MAYIUSE(sse41);
-
-#undef CASE_MAYIUSE
-
-    assert(!"Kernel is empty!");
-    return nullptr;
-}
-
 template <typename Vmm>
-jit_uni_postops_injector_base_t<Vmm> *
-jit_uni_postops_injector_base_t<Vmm>::create(jit_generator_t *host,
-        cpu_isa_t isa, const post_ops_t &post_ops,
-        const binary_injector::static_params_t &binary_static_params,
-        bool enable_native_sum) {
-    const eltwise_injector::static_params_t eltwise_static_params;
-    return create(host, isa, post_ops, binary_static_params,
-            eltwise_static_params, enable_native_sum);
-}
-
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
-        size_t start_idx, size_t end_idx,
+void jit_uni_postops_injector_t<Vmm>::compute_vector_range(size_t start_idx,
+        size_t end_idx,
         const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params) {
 
     injector_utils::vmm_index_set_t vmm_idxs;
@@ -289,15 +152,15 @@ void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
     compute_vector_range(vmm_idxs, rhs_arg_params);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
+template <typename Vmm>
+void jit_uni_postops_injector_t<Vmm>::compute_vector_range(
         size_t start_idx, size_t end_idx) {
     compute_vector_range(
             start_idx, end_idx, binary_injector::rhs_arg_dynamic_params_t());
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
+template <typename Vmm>
+void jit_uni_postops_injector_t<Vmm>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs,
         const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params) {
 
@@ -322,14 +185,14 @@ void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
         }
     }
 }
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::compute_vector_range(
+template <typename Vmm>
+void jit_uni_postops_injector_t<Vmm>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs) {
     compute_vector_range(vmm_idxs, binary_injector::rhs_arg_dynamic_params_t());
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::prepare_table(bool gen_table) {
+template <typename Vmm>
+void jit_uni_postops_injector_t<Vmm>::prepare_table(bool gen_table) {
     for (auto &alg_elt_inject : alg_to_eltwise_injector_)
         alg_elt_inject.second.prepare_table(gen_table);
 
@@ -340,19 +203,19 @@ void jit_uni_postops_injector_t<isa, Vmm>::prepare_table(bool gen_table) {
             kv.second.prepare_table(gen_table);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::compute_vector(size_t idx,
+template <typename Vmm>
+void jit_uni_postops_injector_t<Vmm>::compute_vector(size_t idx,
         const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params) {
     compute_vector_range({idx}, rhs_arg_params);
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::compute_vector(size_t idx) {
+template <typename Vmm>
+void jit_uni_postops_injector_t<Vmm>::compute_vector(size_t idx) {
     compute_vector_range({idx});
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_postops_injector_t<isa, Vmm>::set_lambda_injector(
+template <typename Vmm>
+void jit_uni_postops_injector_t<Vmm>::set_lambda_injector(
         dnnl_primitive_kind_t kind, const std::function<void()> &jit_injector) {
     lambda_jit_injectors_[kind] = jit_injector;
 }
@@ -465,24 +328,9 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
     return true;
 }
 
-template class jit_uni_postops_injector_t<avx512_core_fp16, Xbyak::Zmm>;
-template class jit_uni_postops_injector_t<avx512_core_fp16, Xbyak::Ymm>;
-template class jit_uni_postops_injector_t<avx512_core_fp16, Xbyak::Xmm>;
-template class jit_uni_postops_injector_t<avx512_core_bf16, Xbyak::Zmm>;
-template class jit_uni_postops_injector_t<avx512_core, Xbyak::Zmm>;
-template class jit_uni_postops_injector_t<avx512_core, Xbyak::Ymm>;
-template class jit_uni_postops_injector_t<avx512_core, Xbyak::Xmm>;
-template class jit_uni_postops_injector_t<avx2_vnni_2, Xbyak::Ymm>;
-template class jit_uni_postops_injector_t<avx2_vnni_2, Xbyak::Xmm>;
-template class jit_uni_postops_injector_t<avx2, Xbyak::Ymm>;
-template class jit_uni_postops_injector_t<avx2, Xbyak::Xmm>;
-template class jit_uni_postops_injector_t<avx, Xbyak::Ymm>;
-template class jit_uni_postops_injector_t<avx, Xbyak::Xmm>;
-template class jit_uni_postops_injector_t<sse41, Xbyak::Xmm>;
-
-template class jit_uni_postops_injector_base_t<Xbyak::Zmm>;
-template class jit_uni_postops_injector_base_t<Xbyak::Ymm>;
-template class jit_uni_postops_injector_base_t<Xbyak::Xmm>;
+template class jit_uni_postops_injector_t<Xbyak::Zmm>;
+template class jit_uni_postops_injector_t<Xbyak::Ymm>;
+template class jit_uni_postops_injector_t<Xbyak::Xmm>;
 
 #undef VCHECK_PO_INJ_BOOL
 

@@ -49,80 +49,15 @@ using lambda_jit_injectors_t
 
 size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd);
 
-// A base isa-agnostic post-ops injector abstract class.
-//
 // The main mechanism of handling various post-ops types. It utilizes internally
 // specialized injectors to generate post-ops code to host primitive. Random
 // order of post-ops is supported.
 //
-// Note: to move back from `create` to constructor and merge base into a parent
-// class, both binary and eltwise injector top-level objects should become
-// isa-agnostic, which allows to call their constructors or methods passing isa
-// at runtime.
+// The ISA the code is generated for is taken from the host generator, see
+// `jit_generator_t::max_cpu_isa()`. `Vmm` remains a template parameter to keep
+// the vector width the injector operates on statically typed.
 template <typename Vmm>
-class jit_uni_postops_injector_base_t {
-public:
-    // `isa` argument specifies the ISA the kernel to be generated for. In most
-    // cases it's aligned with the former kernel ISA if such enum value is
-    // instantiated for injectors. If not, uses the next available isa enum
-    // value in compliance with same vector length.
-    //
-    // `enable_native_sum` opts in to handling the sum post-op inside the
-    // injector instead of through a caller-provided lambda. Native sum reads
-    // the previous value from the address supplied per accumulator in
-    // `rhs_arg_dynamic_params_t`, so the caller must provide it (as it does for
-    // binary post-ops).
-    static jit_uni_postops_injector_base_t *create(jit_generator_t *host,
-            cpu_isa_t isa, const post_ops_t &post_ops,
-            const binary_injector::static_params_t &binary_static_params,
-            const eltwise_injector::static_params_t &eltwise_static_params,
-            bool enable_native_sum = false);
-
-    static jit_uni_postops_injector_base_t *create(jit_generator_t *host,
-            cpu_isa_t isa, const post_ops_t &post_ops,
-            const binary_injector::static_params_t &binary_static_params,
-            bool enable_native_sum = false);
-
-    virtual ~jit_uni_postops_injector_base_t() = default;
-
-    // Generates code of post_ops chain injected to host primitive. Applied to
-    // ordered set of vector registers' indexes.
-    // @rhs_arg_params: see jit_uni_binary_injector description
-    virtual void compute_vector_range(
-            const injector_utils::vmm_index_set_t &vmm_idxs,
-            const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
-            = 0;
-    virtual void compute_vector_range(
-            const injector_utils::vmm_index_set_t &vmm_idxs)
-            = 0;
-
-    // Generates code of post_ops chain injected to host primitive. Applied to
-    // range <start_idx, end_idx) of vector registers' indexes.
-    // @rhs_arg_params: see jit_uni_binary_injector description
-    virtual void compute_vector_range(size_t start_idx, size_t end_idx,
-            const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
-            = 0;
-    virtual void compute_vector_range(size_t start_idx, size_t end_idx) = 0;
-
-    // Generates code of post_ops chain injected to host primitive. Applied to
-    // a single vector register index.
-    // @rhs_arg_params: see jit_uni_binary_injector description
-    virtual void compute_vector(size_t idx,
-            const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
-            = 0;
-    virtual void compute_vector(size_t idx) = 0;
-
-    // Thin wrapper for eltwise injector specific function
-    virtual void prepare_table(bool gen_table) = 0;
-    virtual void set_lambda_injector(lambda_jit_injectors_t::key_type,
-            const lambda_jit_injectors_t::mapped_type &jit_injector)
-            = 0;
-};
-
-// A parent isa-specific post-ops injector class. A specific instance is
-// assigned based on `cpu_isa_t isa` argument in the base class.
-template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits_t<isa>::Vmm>
-class jit_uni_postops_injector_t : public jit_uni_postops_injector_base_t<Vmm> {
+class jit_uni_postops_injector_t {
 public:
     /*
      * @param host <required> - user primitive where post-ops generated code is
@@ -135,12 +70,15 @@ public:
      * @param lambda_jit_injectors <optional> - allows user specify custom injector
      * function for given post-op type
      * @param enable_native_sum <optional> - handle the sum post-op inside the
-     * injector instead of through a caller-provided lambda (see the `create`
-     * documentation for the caller's obligations)
+     * injector instead of through a caller-provided lambda. Native sum reads
+     * the previous value from the address supplied per accumulator in
+     * `rhs_arg_dynamic_params_t`, so the caller must provide it (as it does for
+     * binary post-ops).
      */
     jit_uni_postops_injector_t(jit_generator_t *host,
             const post_ops_t &post_ops,
-            const binary_injector::static_params_t &binary_static_params);
+            const binary_injector::static_params_t &binary_static_params,
+            bool enable_native_sum = false);
     jit_uni_postops_injector_t(jit_generator_t *host,
             const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
@@ -149,8 +87,8 @@ public:
             const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params);
-    // This is the delegation target for the other constructors and the only one
-    // that carries `enable_native_sum`, since it owns all construction state.
+    // This is the delegation target for the other constructors, since it owns
+    // all construction state.
     jit_uni_postops_injector_t(jit_generator_t *host,
             const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
@@ -158,35 +96,31 @@ public:
             const lambda_jit_injectors_t &lambda_jit_injectors,
             bool enable_native_sum = false);
 
-    ~jit_uni_postops_injector_t() override = default;
-
-    // See `jit_uni_postops_injector_base_t::compute_vector_range(...)`
+    // Generates code of post_ops chain injected to host primitive. Applied to
+    // ordered set of vector registers' indexes.
+    // @rhs_arg_params: see jit_uni_binary_injector description
     void compute_vector_range(const injector_utils::vmm_index_set_t &vmm_idxs,
-            const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
-            override;
+            const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params);
+    void compute_vector_range(const injector_utils::vmm_index_set_t &vmm_idxs);
 
-    void compute_vector_range(
-            const injector_utils::vmm_index_set_t &vmm_idxs) override;
-
-    // See `jit_uni_postops_injector_base_t::compute_vector_range(...)`
+    // Generates code of post_ops chain injected to host primitive. Applied to
+    // range <start_idx, end_idx) of vector registers' indexes.
+    // @rhs_arg_params: see jit_uni_binary_injector description
     void compute_vector_range(size_t start_idx, size_t end_idx,
-            const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
-            override;
+            const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params);
+    void compute_vector_range(size_t start_idx, size_t end_idx);
 
-    void compute_vector_range(size_t start_idx, size_t end_idx) override;
-
-    // See `jit_uni_postops_injector_base_t::compute_vector(...)`
+    // Generates code of post_ops chain injected to host primitive. Applied to
+    // a single vector register index.
+    // @rhs_arg_params: see jit_uni_binary_injector description
     void compute_vector(size_t idx,
-            const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
-            override;
-    void compute_vector(size_t idx) override;
+            const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params);
+    void compute_vector(size_t idx);
 
-    /*
-     * Thin wrapper for eltwise injector specific function
-     */
-    void prepare_table(bool gen_table) override;
+    // Thin wrapper for eltwise injector specific function
+    void prepare_table(bool gen_table);
     void set_lambda_injector(lambda_jit_injectors_t::key_type,
-            const lambda_jit_injectors_t::mapped_type &jit_injector) override;
+            const lambda_jit_injectors_t::mapped_type &jit_injector);
 
 private:
     post_ops_t post_ops_;

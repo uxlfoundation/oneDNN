@@ -137,10 +137,8 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     const size_t offt_src1_;
     const size_t offt_src2_;
 
-    static constexpr cpu_isa_t inject_isa
-            = isa == avx512_core_bf16 ? avx512_core : isa;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<inject_isa, Vmm>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
     const Opmask elt_inj_opmask_ = k1;
 

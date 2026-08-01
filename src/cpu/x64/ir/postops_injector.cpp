@@ -28,22 +28,22 @@ namespace x64 {
 namespace ir {
 
 template <typename Vmm>
-using injector_base_t = injector::jit_uni_postops_injector_base_t<Vmm>;
+using injector_t = injector::jit_uni_postops_injector_t<Vmm>;
 
 namespace {
 
-// Create an injector for the target ISA and return it type-erased.
+// Create an injector and return it type-erased. The ISA it generates for comes
+// from the host generator.
 template <typename Vmm>
-std::shared_ptr<void> create_injector(jit_generator_t &gen, cpu_isa_t isa,
+std::shared_ptr<void> create_injector(jit_generator_t &gen,
         const post_ops_t &post_ops,
         const binary_injector::static_params_t &bsp) {
-    return std::shared_ptr<injector_base_t<Vmm>>(
-            injector_base_t<Vmm>::create(&gen, isa, post_ops, bsp));
+    return std::make_shared<injector_t<Vmm>>(&gen, post_ops, bsp);
 }
 
 template <typename Vmm>
-injector_base_t<Vmm> *cast2tgt(void *injector) {
-    return static_cast<injector_base_t<Vmm> *>(injector);
+injector_t<Vmm> *cast2tgt(void *injector) {
+    return static_cast<injector_t<Vmm> *>(injector);
 }
 
 } // namespace
@@ -77,8 +77,8 @@ postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
             binary_injector::get_all_strategies_supported_by_injector(),
             rhs_sp};
 
-    injector_ = is_zmm_ ? create_injector<Xbyak::Zmm>(gen, isa, post_ops, bsp)
-                        : create_injector<Xbyak::Ymm>(gen, isa, post_ops, bsp);
+    injector_ = is_zmm_ ? create_injector<Xbyak::Zmm>(gen, post_ops, bsp)
+                        : create_injector<Xbyak::Ymm>(gen, post_ops, bsp);
     assert(injector_ && "ir post-ops injector creation failed");
 
     with_eltwise_ = post_ops.find(primitive_kind::eltwise) != -1;

@@ -103,7 +103,7 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
                 f8_e4m3_cvt_.get()};
 
         postops_injector_
-                = utils::make_unique<injector::jit_uni_postops_injector_t<isa>>(
+                = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
                         this, jpp.post_ops, bsp);
     }
 

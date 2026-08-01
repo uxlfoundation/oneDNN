@@ -77,7 +77,7 @@ private:
 
     xmm_t reg_bcast = xmm_t(15);
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<sse41>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Xmm>>
             postops_injector_;
 
     void generate_bcast_loop(int load_loop_blk);

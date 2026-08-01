@@ -138,10 +138,7 @@ private:
     const Xbyak::Reg64 reg_po_injector_helper_2_ = r15;
     const Xbyak::Reg64 reg_po_injector_helper_3_ = r12;
 
-    // post-ops injector does not use avx512_core_bf16 instructions
-    static constexpr cpu_isa_t inject_isa_
-            = isa == avx512_core_bf16 ? avx512_core : isa;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<inject_isa_, Vmm>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 };
 

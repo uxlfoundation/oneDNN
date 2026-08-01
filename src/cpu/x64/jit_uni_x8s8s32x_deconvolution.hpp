@@ -38,7 +38,7 @@ class jit_uni_deconv_zp_pad_str_kernel_base_t;
 } // namespace zp
 
 namespace injector {
-template <cpu_isa_t isa, typename Vmm>
+template <typename Vmm>
 class jit_uni_postops_injector_t;
 } // namespace injector
 
@@ -56,7 +56,7 @@ struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t : public jit_generator_t {
     const jit_conv_conf_t jcp_ = utils::zero<decltype(jcp_)>();
 
 private:
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa, Vmm>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
     using reg64_t = const Xbyak::Reg64;
 

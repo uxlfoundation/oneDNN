@@ -87,7 +87,7 @@ struct postops_injector_t {
     void DNNL_API maybe_prepare_table();
 
 private:
-    // Type-erased `jit_uni_postops_injector_base_t<Vmm>`. Cast to the target
+    // Type-erased `jit_uni_postops_injector_t<Vmm>`. Cast to the target
     // type when used, based on `is_zmm_`.
     std::shared_ptr<void> injector_;
     bool is_zmm_ = false;

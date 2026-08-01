@@ -68,9 +68,9 @@ jit_uni_resampling_kernel_t<isa, Vmm>::jit_uni_resampling_kernel_t(
         const binary_injector::static_params_t bsp {
                 reg_param, accepted_broadcasts, rhs_sp};
 
-        postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<isa, Vmm>>(
-                this, conf_.post_ops, bsp);
+        postops_injector_
+                = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
+                        this, conf_.post_ops, bsp);
 
         std::tie(any_binary_postop_is_per_oc_bcast_type_,
                 any_binary_postop_is_per_oc_sp_bcast_type_)

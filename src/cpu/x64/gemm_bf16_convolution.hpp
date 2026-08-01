@@ -202,7 +202,7 @@ private:
         size_t vlen_;
         cpu_isa_t isa_;
         std::unique_ptr<bf16_emulation_t> bf16_emu_;
-        std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
+        std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Zmm>>
                 postops_injector_;
 
         void apply_postops(const bool apply_mask, const size_t out_offset,

@@ -92,7 +92,7 @@ private:
         bool should_apply_zp_src_pad_comp_d;
     };
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Zmm>>
             postops_injector_;
 
     size_t number_of_reserved_zmm_regs_;
@@ -197,7 +197,7 @@ jit_pp_ker_t::jit_pp_ker_t(
         const static_params_t static_params {reg_param_, rhs_arg_static_params};
 
         postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<avx512_core>>(
+                injector::jit_uni_postops_injector_t<Xbyak::Zmm>>(
                 this, jcp_.post_ops, static_params);
     }
 }

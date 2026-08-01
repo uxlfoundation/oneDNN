@@ -119,7 +119,8 @@ private:
                 format_tag::nwc);
     }
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<
+            typename cpu_isa_traits_t<isa>::Vmm>>
             postops_injector_;
 
     void generate() override;

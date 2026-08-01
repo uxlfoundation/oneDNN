@@ -144,7 +144,7 @@ struct kernel_t : public jit_uni_group_normalization_fwd_t::kernel_base_t,
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<isa>>(
+                    injector::jit_uni_postops_injector_t<Vmm>>(
                     this, pd_->attr()->post_ops_, bsp, esp);
         }
         preamble();
@@ -259,7 +259,7 @@ protected:
     bool with_src_scales_ = false;
     bool with_dst_scales_ = false;
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 
     void compute_dst_body(size_t offt_elems, bool tail = false) {

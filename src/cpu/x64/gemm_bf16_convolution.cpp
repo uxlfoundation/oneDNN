@@ -107,7 +107,7 @@ gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
                 save_state, reserved_eltwise_gpr, reserved_eltwise_maskr};
 
         postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<avx512_core>>(
+                injector::jit_uni_postops_injector_t<Xbyak::Zmm>>(
                 this, post_ops, binary_static_params, eltwise_static_params);
 #undef PARAM_OFF
     }

@@ -48,7 +48,7 @@ struct jit_avx512_common_1x1_conv_kernel_t : public jit_generator_t {
     const primitive_attr_t &attr_;
 
 private:
-    std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Zmm>>
             postops_injector_;
 
     constexpr static int isa_simd_width_

@@ -124,9 +124,8 @@ private:
     };
 
     const bool is_avx512_ = utils::one_of(isa, avx512_core, avx512_core_bf16);
-    static constexpr cpu_isa_t inject_isa_
-            = isa == avx512_core_bf16 ? avx512_core : isa;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<inject_isa_>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<
+            typename cpu_isa_traits_t<isa>::Vmm>>
             postops_injector_;
 
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
@@ -351,9 +350,11 @@ jit_pp_kernel_t<isa>::jit_pp_kernel_t(size_t OC, size_t MB, dim_t dst_mb_stride,
         const eltwise_injector::static_params_t eltwise_static_params {
                 save_state, reg_tmp_comp, eltwise_reserved_opmask_};
 
-        postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<inject_isa_>>(this,
-                this->post_ops_, binary_static_params, eltwise_static_params);
+        postops_injector_
+                = utils::make_unique<injector::jit_uni_postops_injector_t<
+                        typename cpu_isa_traits_t<isa>::Vmm>>(this,
+                        this->post_ops_, binary_static_params,
+                        eltwise_static_params);
 
         using namespace dnnl::impl::cpu::binary_injector_utils;
         std::tie(any_binary_postop_is_no_bcast_type_,

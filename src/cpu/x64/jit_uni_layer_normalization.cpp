@@ -192,7 +192,7 @@ protected:
     bool with_src_scales_ = false;
     bool with_dst_scales_ = false;
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 
     const Reg64 reg_param = abi_param1;
@@ -566,7 +566,7 @@ protected:
                     get_supported_bcast_strategies(dst_d_.ndims()), rhs_sp};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<isa>>(
+                    injector::jit_uni_postops_injector_t<Vmm>>(
                     this, pd_->attr()->post_ops_, bsp, esp);
         }
         preamble();

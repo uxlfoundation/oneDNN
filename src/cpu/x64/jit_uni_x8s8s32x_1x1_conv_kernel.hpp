@@ -42,7 +42,8 @@ struct jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t : public jit_generator_t {
     const primitive_attr_t &attr_;
 
 private:
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<
+            typename cpu_isa_traits_t<isa>::Vmm>>
             postops_injector_;
 
     enum {

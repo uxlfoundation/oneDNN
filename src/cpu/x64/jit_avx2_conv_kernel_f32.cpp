@@ -70,7 +70,7 @@ jit_avx2_conv_fwd_kernel_f32_t::jit_avx2_conv_fwd_kernel_f32_t(
         static_params_t static_params {this->param1, rhs_arg_static_params};
 
         postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<avx2>>(
+                injector::jit_uni_postops_injector_t<Xbyak::Ymm>>(
                 this, jcp.post_ops, static_params);
     }
 }

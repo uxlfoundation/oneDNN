@@ -64,7 +64,7 @@ private:
 
     Xbyak::Reg32 reg_ci_flag = r13d;
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<sse41>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Xmm>>
             postops_injector_;
 
     inline void oh_step_unroll_kw(

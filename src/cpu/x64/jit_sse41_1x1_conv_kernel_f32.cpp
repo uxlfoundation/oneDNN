@@ -58,7 +58,7 @@ jit_sse41_1x1_conv_kernel_f32_t::jit_sse41_1x1_conv_kernel_f32_t(
         const binary_injector::static_params_t static_params {
                 this->param1, rhs_arg_static_params};
         postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<sse41>>(
+                injector::jit_uni_postops_injector_t<Xbyak::Xmm>>(
                 this, jcp.post_ops, static_params);
     }
 }

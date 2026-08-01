@@ -274,7 +274,7 @@ struct jit_avx512_core_amx_fwd_kernel_t : public jit_generator_t {
 private:
     constexpr static int isa_simd_width_
             = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
-    std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Zmm>>
             postops_injector_;
     std::unique_ptr<jit_avx512_core_amx_copy_to_pbuffer_t> copy_to_pbuffer_;
     std::unique_ptr<jit_avx512_core_amx_copy_to_wbuffer_t> copy_to_wbuffer_;

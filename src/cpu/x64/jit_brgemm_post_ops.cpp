@@ -99,12 +99,8 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         const eltwise_injector::static_params_t esp {
                 save_state, reserved_eltwise_gpr, reserved_eltwise_maskr};
 
-        auto st = safe_ptr_assign(postops_injector_,
-                po_injector_t::create(
-                        this, brg_.isa_impl, attr_.post_ops_, bsp, esp));
-        if (st != status::success) {
-            assert(!"postops_injector creation failed");
-        }
+        postops_injector_ = utils::make_unique<po_injector_t>(
+                this, attr_.post_ops_, bsp, esp);
     }
 
     inp_dt_ = brg_.dt_c;

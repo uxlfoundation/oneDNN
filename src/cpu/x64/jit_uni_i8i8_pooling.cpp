@@ -136,7 +136,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
     Mmx mmx_tmp = Mmx(2);
     int post_op_tail_opmask_idx_ = -1;
     jit_pool_conf_t jpp;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 
     enum : int { max_vidx_base = utils::one_of(isa, sse41, avx2) ? 7 : 2 };
@@ -265,7 +265,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<isa>>(
+                    injector::jit_uni_postops_injector_t<Vmm>>(
                     this, jpp.post_ops, bsp);
         }
     }

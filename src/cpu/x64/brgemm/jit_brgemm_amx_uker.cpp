@@ -99,12 +99,8 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
             esp.preserve_vmm = preserve_vmm;
             esp.preserve_p_table = false;
 
-            auto st = safe_ptr_assign(postops_injector_,
-                    po_injector_t::create(this, brg.isa_impl,
-                            brg.attr()->post_ops_, bsp, esp));
-            if (st != status::success) {
-                assert(!"postops_injector creation failed");
-            }
+            postops_injector_ = utils::make_unique<po_injector_t>(
+                    this, brg.attr()->post_ops_, bsp, esp);
 
             using namespace dnnl::impl::cpu::binary_injector_utils;
             std::tie(with_binary_per_oc_bcast_, with_binary_per_oc_sp_bcast_,
@@ -143,7 +139,7 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
     const brgemm_desc_t &get_brg() const override { return brg; }
 
 private:
-    using po_injector_t = injector::jit_uni_postops_injector_base_t<Zmm>;
+    using po_injector_t = injector::jit_uni_postops_injector_t<Zmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
 
     std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;

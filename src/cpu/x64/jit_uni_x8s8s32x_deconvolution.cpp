@@ -442,9 +442,9 @@ jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
                 tail_size, Xbyak::Opmask(2), use_exact_tail_scalar_bcast};
         const binary_injector::static_params_t bsp {this->param1_, rhs_sp};
 
-        postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<isa, Vmm>>(
-                this, jcp_.post_ops, bsp);
+        postops_injector_
+                = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
+                        this, jcp_.post_ops, bsp);
     }
 }
 

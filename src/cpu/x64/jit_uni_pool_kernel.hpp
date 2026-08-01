@@ -259,7 +259,7 @@ private:
 
     std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
     std::unique_ptr<fp8_conversion_e4m3_t> f8_e4m3_cvt_;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
 };

@@ -43,7 +43,8 @@ struct jit_uni_x8s8s32x_fwd_kernel_vmm_t : public jit_generator_t {
 private:
     constexpr static int isa_simd_width_
             = cpu_isa_traits_t<isa>::vlen / sizeof(float);
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<
+            typename cpu_isa_traits_t<isa>::Vmm>>
             postops_injector_;
     enum {
         typesize = sizeof(float),

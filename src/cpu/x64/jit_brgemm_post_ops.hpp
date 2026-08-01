@@ -114,7 +114,7 @@ private:
 
     using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using Vmm_lower2_t = typename vreg_traits_t<Vmm_lower_t>::Vmm_lower_t;
-    using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
+    using po_injector_t = injector::jit_uni_postops_injector_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
     std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;

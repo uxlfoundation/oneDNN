@@ -163,9 +163,9 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::init_post_ops_injector(
     const binary_injector::static_params_t bsp(
             reg_param_, get_supported_postops_bcast_strategies(), rhs_arg_bsp);
 
-    postops_injector_ = utils::make_unique<
-            injector::jit_uni_postops_injector_t<inject_isa_, Vmm>>(
-            this, conf_.post_ops, bsp, esp);
+    postops_injector_
+            = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
+                    this, conf_.post_ops, bsp, esp);
 }
 
 template <cpu_isa_t isa, typename Vmm>

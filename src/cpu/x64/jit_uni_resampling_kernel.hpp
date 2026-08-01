@@ -207,7 +207,7 @@ private:
     bool any_binary_postop_is_per_oc_sp_bcast_type_ = false;
 
     io::jit_io_multi_dt_helper_t<Vmm> io_;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa, Vmm>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 };
 } // namespace x64

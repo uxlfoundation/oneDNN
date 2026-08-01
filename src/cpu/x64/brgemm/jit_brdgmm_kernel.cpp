@@ -71,12 +71,9 @@ jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
         const binary_injector::static_params_t bsp {
                 this->param1, enabled_bcast_strategy, rhs_sp};
 
-        auto st = safe_ptr_assign(postops_injector_,
-                injector::jit_uni_postops_injector_base_t<Vmm>::create(
-                        this, brg.isa_impl, brg.attr()->post_ops_, bsp));
-        if (st != status::success) {
-            assert(!"postops_injector creation failed");
-        }
+        postops_injector_
+                = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
+                        this, brg.attr()->post_ops_, bsp);
 
         with_binary_non_scalar_bcast_
                 = binary_injector::any_binary_postop_rhs_non_scalar_broadcast(

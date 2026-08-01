@@ -119,7 +119,7 @@ private:
             int ur_ch_blocks, int ur_w, bool last_ch_block_flag);
     inline void store_dst(int ur_ch_blocks, int ur_w, bool last_ch_block_flag);
 
-    std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Zmm>>
             postops_injector_;
 
     std::unique_ptr<bf16_emulation_t> bf16_emu_;

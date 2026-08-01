@@ -72,9 +72,9 @@ jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::
         const static_params_t static_params {
                 this->param1, rhs_arg_static_params};
 
-        postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<avx512_core, Vmm>>(
-                this, jcp.post_ops, static_params);
+        postops_injector_
+                = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
+                        this, jcp.post_ops, static_params);
     }
     if (jcp.dst_dt == data_type::bf16 && !isa_has_bf16(jcp.isa))
         bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,

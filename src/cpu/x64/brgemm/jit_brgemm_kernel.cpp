@@ -124,13 +124,9 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
                     binary_injector::get_all_strategies_supported_by_injector(),
                     rhs_sp, f8_e5m2_cvt_.get(), f8_e4m3_cvt_.get()};
 
-            auto st = safe_ptr_assign(postops_injector_,
-                    po_injector_t::create(this, brg.isa_impl,
-                            brg.attr()->post_ops_, bsp,
-                            /* enable_native_sum = */ brg.with_sum));
-            if (st != status::success) {
-                assert(!"postops_injector creation failed");
-            }
+            postops_injector_ = utils::make_unique<po_injector_t>(this,
+                    brg.attr()->post_ops_, bsp,
+                    /* enable_native_sum = */ brg.with_sum);
 
             with_binary_non_scalar_bcast_ = binary_injector::
                     any_binary_postop_rhs_non_scalar_broadcast(
@@ -157,7 +153,7 @@ private:
             typename utils::conditional<std::is_same<Wmm, Xbyak::Tmm>::value,
                     Xbyak::Zmm, Wmm>::type;
     using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
-    using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
+    using po_injector_t = injector::jit_uni_postops_injector_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
     std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;

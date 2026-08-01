@@ -143,9 +143,6 @@ private:
     const reg64_t reg_wei_scales = r9;
     const reg64_t aux_reg_wei_scales = r8;
 
-    const reg64_t reg_ptr_sum_scale = rdx;
-    const reg64_t reg_ptr_sum_zp = rsi;
-
     const reg64_t reg_zp_c_values = rbx;
     const reg64_t aux_reg_zp_c_values = rbx;
     const reg64_t reg_zp_a_comp = rbx;

@@ -99,8 +99,9 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         const eltwise_injector::static_params_t esp {
                 save_state, reserved_eltwise_gpr, reserved_eltwise_maskr};
 
-        postops_injector_ = utils::make_unique<po_injector_t>(
-                this, attr_.post_ops_, bsp, esp);
+        postops_injector_ = utils::make_unique<po_injector_t>(this,
+                attr_.post_ops_, bsp, esp,
+                /* enable_native_sum = */ brg_.with_sum);
     }
 
     inp_dt_ = brg_.dt_c;
@@ -186,58 +187,10 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::cvt2ps(
 template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::inject_attr_postops(int m_block, int n_block, int tail /*= 0*/) {
-    const auto &p = attr_.post_ops_;
-    const int sum_idx = p.find(primitive_kind::sum);
-    const auto k_mask = tail == 0 ? k_full_mask : k_tail_mask;
-    const auto sum_dt = p.get_sum_dt(out_dt_);
-
-    const auto sum_injector = [&] {
-        const float *p_sum_scale = &p.entry_[sum_idx].sum.scale;
-        const int32_t *p_sum_zp = &p.entry_[sum_idx].sum.zero_point;
-        if (*p_sum_scale != 1.f) mov(reg_ptr_sum_scale, (size_t)p_sum_scale);
-        auto vmm_sum_zp = vmm_tmp(1);
-        if (*p_sum_zp != 0) {
-            mov(reg_ptr_sum_zp, (size_t)p_sum_zp);
-            if (is_superset(brg_.isa_impl, avx512_core)) {
-                vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
-            } else {
-                vpbroadcastd(vmm_sum_zp, ptr[reg_ptr_sum_zp]);
-                uni_vcvtdq2ps(vmm_sum_zp, vmm_sum_zp);
-            }
-        }
-
-        for_(int m = 0; m < m_block; m++)
-        for (int n = 0; n < n_block; n++) {
-            const auto vmm = vector(m, n, n_block);
-            const auto addr = ptr[aux_reg_out
-                    + out_typesize_ * (m * brg_.LDD + n * brg_.ld_block)];
-
-            const auto vmm_prev_dst = vmm_tmp(0);
-            cvt2ps(sum_dt, vmm_prev_dst, addr, tail, false, k_mask);
-            if (*p_sum_zp != 0)
-                uni_vsubps(vmm_prev_dst, vmm_prev_dst, vmm_sum_zp);
-            if (*p_sum_scale == 1.f)
-                uni_vaddps(vmm, vmm, vmm_prev_dst);
-            else {
-                if (is_superset(brg_.isa_impl, avx512_core)) {
-                    vfmadd231ps(vmm, vmm_prev_dst, ptr_b[reg_ptr_sum_scale]);
-                } else {
-                    auto vmm_sum_scale = vmm_tmp(2);
-                    vpbroadcastd(vmm_sum_scale, ptr[reg_ptr_sum_scale]);
-                    vfmadd231ps(vmm, vmm_prev_dst, vmm_sum_scale);
-                }
-            }
-        }
-    };
-
-    if (brg_.with_sum) {
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
-    }
-
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
 
-    if (with_binary_non_scalar_bcast_) {
+    // Sum post-op requires binary parameters to be set.
+    if (with_binary_non_scalar_bcast_ || brg_.with_sum) {
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             const auto vmm_idx = vector(m, n, n_block).getIdx();

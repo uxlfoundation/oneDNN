@@ -66,7 +66,8 @@ jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa,
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<
                         typename cpu_isa_traits_t<isa>::Vmm>>(
-                        this, jcp.post_ops, static_params);
+                        this, jcp.post_ops, static_params,
+                        /* enable_native_sum = */ jcp.with_sum);
     }
 }
 
@@ -147,61 +148,15 @@ void iterate(const int ur, const int load_loop_blk, const F &f) {
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::apply_sum(const int ur,
-        const int load_loop_blk, const bool mask_flag_in,
-        const float *p_sum_scale, const int32_t *p_sum_zp) {
-
-    if (jcp.with_sum) {
-        assert(!utils::any_null(p_sum_scale, p_sum_zp)
-                && "p_sum_scale or p_sum_zp = nullptr");
-        const float sum_scale = *p_sum_scale;
-        const int32_t sum_zp = *p_sum_zp;
-        const auto sum_injector_lam
-                = [this, mask_flag_in, load_loop_blk, sum_scale, sum_zp](
-                          const int i_ur, const int i_load) {
-            const bool mask_flag = mask_flag_in && i_load == load_loop_blk - 1;
-            const auto ymm_prev_dst = vmm_zero;
-
-            const auto r = vreg_accum(load_loop_blk, i_load, i_ur);
-            cvt2ps(jcp.sum_dt, ymm_prev_dst, aux_reg_output_data,
-                    output_ptr(i_load, i_ur),
-                    mask_flag ? get_tail_size() : simd_w);
-
-            if (sum_zp != 0) {
-                uni_vbroadcastss(vmm_tmp, ptr[reg_ptr_sum_zp]);
-                uni_vcvtdq2ps(vmm_tmp, vmm_tmp);
-                uni_vsubps(vmm_prev_dst, vmm_prev_dst, vmm_tmp);
-            }
-            if (sum_scale == 1.f)
-                uni_vaddps(r, r, ymm_prev_dst);
-            else {
-                uni_vbroadcastss(vmm_tmp, ptr[reg_ptr_sum_scale]);
-                uni_vfmadd231ps(r, ymm_prev_dst, vmm_tmp);
-            }
-        };
-        const auto sum_injector
-                = [=]() { iterate(ur, load_loop_blk, sum_injector_lam); };
-        if (sum_zp != 0)
-            mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
-    }
-}
-
-template <cpu_isa_t isa, typename Vmm>
 void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::apply_postops(
-        const int ur, const int load_loop_blk, const bool mask_flag_in,
-        const float *p_sum_scale, const int32_t *p_sum_zp) {
+        const int ur, const int load_loop_blk, const bool mask_flag_in) {
 
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
-        if (jcp.with_sum && *p_sum_zp != 0)
-            mov(ptr[rsp + reg_bcast_loop_iter_off], reg_ptr_sum_zp);
-        apply_sum(ur, load_loop_blk, mask_flag_in, p_sum_scale, p_sum_zp);
-
         binary_injector::rhs_arg_dynamic_params_t rhs_arg_params,
                 rhs_arg_params_tail;
         vmm_index_set_t vmm_idxs;
-        if (jcp.with_binary) {
+        // Sum post-op requires binary parameters to be set.
+        if (jcp.with_binary || jcp.with_sum) {
             iterate(ur, load_loop_blk, [&](const int i_ur, const int i_load) {
                 const int ur_stride
                         = jcp.oc_without_padding * jcp.ngroups * i_ur;
@@ -238,8 +193,6 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::apply_postops(
             });
             postops_injector_->compute_vector_range(vmm_idxs, rhs_arg_params);
         }
-        if (jcp.with_sum && *p_sum_zp != 0)
-            mov(reg_ptr_sum_zp, ptr[rsp + reg_bcast_loop_iter_off]);
     }
 }
 
@@ -300,17 +253,7 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
     };
 
     auto store = [&](const bool mask_flag_in) {
-        const auto &p = attr_.post_ops_;
-        const int sum_idx = p.find(primitive_kind::sum);
-        const float *p_sum_scale
-                = (sum_idx != -1) ? &p.entry_[sum_idx].sum.scale : nullptr;
-        const int32_t *p_sum_zp
-                = (sum_idx != -1) ? &p.entry_[sum_idx].sum.zero_point : nullptr;
         mov(ptr[rsp + reg_bcast_data_off], reg_bcast_data);
-        if (p_sum_scale && *p_sum_scale != 1.f) {
-            mov(ptr[rsp + reg_load_data_off], reg_load_data);
-            mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
-        }
         if (jcp.src_zero_point) {
             mov(reg_zp_compensation, ptr[rsp + reg_zp_compensation_off]);
             mov(reg_src_zero_point, ptr[rsp + reg_src_zero_point_off]);
@@ -419,7 +362,7 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
             }
         }
 
-        apply_postops(ur, load_loop_blk, mask_flag_in, p_sum_scale, p_sum_zp);
+        apply_postops(ur, load_loop_blk, mask_flag_in);
 
         if (jcp.with_dst_scales) {
             mov(reg_dst_scales, ptr[rsp + reg_dst_scales_off]);
@@ -472,8 +415,6 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::reduce_loop(
             }
         }
         mov(reg_bcast_data, ptr[rsp + reg_bcast_data_off]);
-        if (p_sum_scale && *p_sum_scale != 1.f)
-            mov(reg_load_data, ptr[rsp + reg_load_data_off]);
     };
 
     auto compute = [&](Vmm vreg_acc, Vmm vreg_wei, Vmm vreg_src) {
@@ -692,7 +633,7 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::generate() {
     add(rsp, stack_space_needed);
     postamble();
 
-    if (jcp.with_eltwise)
+    if (jcp.with_eltwise || jcp.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

@@ -444,7 +444,8 @@ jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                        this, jcp_.post_ops, bsp);
+                        this, jcp_.post_ops, bsp,
+                        /* enable_native_sum = */ jcp_.with_sum);
     }
 }
 
@@ -1013,44 +1014,11 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::cvt2ps(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::apply_postops(int ur_w,
-        bool last_oc_block, const float *p_sum_scale, const int32_t *p_sum_zp) {
-    const auto sum_injector = [&]() {
-        if (p_sum_scale) { // post_op: sum
-            for (int k = 0; k < jcp_.nb_oc_blocking; k++) {
-                const bool mask_flag
-                        = last_oc_block == 1 && k == jcp_.nb_oc_blocking - 1;
-                for (int j = 0; j < ur_w; j++) {
-                    const int aux_output_offset = jcp_.typesize_out
-                            * (k * jcp_.oc_block
-                                    + j * jcp_.oc_without_padding
-                                            * jcp_.ngroups);
-                    cvt2ps(jcp_.dst_dt, vmm_prev_dst_, reg_dst_,
-                            aux_output_offset,
-                            mask_flag ? get_tail_size() : get_blocking_size());
-                    if (*p_sum_zp != 0) {
-                        uni_vbroadcastss(vmm_sum_zp_, ptr[reg_ptr_sum_zp_]);
-                        uni_vcvtdq2ps(vmm_sum_zp_, vmm_sum_zp_);
-                        uni_vsubps(vmm_prev_dst_, vmm_prev_dst_, vmm_sum_zp_);
-                    }
-                    const Vmm vmm = vmm_out(j, k);
-                    if (*p_sum_scale == 1.f)
-                        uni_vaddps(vmm, vmm, vmm_prev_dst_);
-                    else {
-                        uni_vbroadcastss(vmm_tmp_, ptr[reg_ptr_sum_scale_]);
-                        uni_vfmadd231ps(vmm, vmm_prev_dst_, vmm_tmp_);
-                    }
-                }
-            }
-        }
-    };
-
-    if (p_sum_scale)
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
-
+void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::apply_postops(
+        int ur_w, bool last_oc_block) {
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
-    if (jcp_.with_binary) {
+    // Sum post-op requires binary parameters to be set.
+    if (jcp_.with_binary || jcp_.with_sum) {
         for (int ocb = 0; ocb < jcp_.nb_oc_blocking; ocb++) {
             const bool mask_flag
                     = last_oc_block && ocb == jcp_.nb_oc_blocking - 1;
@@ -1085,13 +1053,6 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::store_output(
         mov(reg_zp_src_, ptr[param1_ + GET_OFF(src_zero_point)]);
         mov(reg_zp_compensation_, ptr[param1_ + GET_OFF(zp_compensation)]);
     }
-
-    const auto &p = jcp_.post_ops;
-    const int sum_idx = p.find(primitive_kind::sum);
-    const float *p_sum_scale
-            = (sum_idx != -1) ? &p.entry_[sum_idx].sum.scale : nullptr;
-    const int32_t *p_sum_zp
-            = (sum_idx != -1) ? &p.entry_[sum_idx].sum.zero_point : nullptr;
 
     if (jcp_.src_zero_point) {
         const auto &vmm_src_zp = vmm_tmp_;
@@ -1206,13 +1167,8 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::store_output(
         }
     }
 
-    if (p_sum_scale && *p_sum_scale != 1.f)
-        mov(reg_ptr_sum_scale_, reinterpret_cast<size_t>(p_sum_scale));
-    if (p_sum_zp && *p_sum_zp != 0) {
-        mov(reg_ptr_sum_zp_, reinterpret_cast<size_t>(p_sum_zp));
-    }
     if (jcp_.with_eltwise || jcp_.with_binary || jcp_.with_sum)
-        apply_postops(ur_w, last_oc_block, p_sum_scale, p_sum_zp);
+        apply_postops(ur_w, last_oc_block);
 
     if (jcp_.with_dst_scales) {
         mov(reg_dst_scales_, ptr[param1_ + GET_OFF(dst_scales)]);
@@ -1447,7 +1403,7 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::generate() {
 
     postamble();
 
-    if (jcp_.with_eltwise)
+    if (jcp_.with_eltwise || jcp_.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

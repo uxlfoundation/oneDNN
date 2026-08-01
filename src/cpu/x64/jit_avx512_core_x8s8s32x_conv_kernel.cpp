@@ -85,7 +85,8 @@ jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                        this, jcp.post_ops, static_params);
+                        this, jcp.post_ops, static_params,
+                        /* enable_native_sum = */ jcp.with_sum);
     }
     if (!isa_has_bf16(jcp.isa) && jcp.dst_dt == data_type::bf16)
         bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,
@@ -154,63 +155,17 @@ static void iterate(const int nb_oc_block, const int ur_w,
     }
 }
 template <typename F>
-static void iterate(const int nb_oc_block, const int ur_w,
-        const bool last_oc_block_flag, const F &f) {
-    iterate(nb_oc_block, ur_w, last_oc_block_flag, false, f);
-}
-template <typename F>
 static void iterate(const int nb_oc_block, const int ur_w, const F &f) {
     iterate(nb_oc_block, ur_w, false, false, f);
 }
 
 template <typename Vmm>
-void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::apply_sum(int ur_w,
-        bool last_oc_block_flag, const int nb_oc_block, const int oc_block,
-        const float *p_sum_scale, const int32_t *p_sum_zp) {
-    if (jcp.with_sum) {
-        const float sum_scale = *p_sum_scale;
-        const int32_t sum_zp = *p_sum_zp;
-        const auto sum_injector_lam
-                = [this, oc_block, sum_scale, sum_zp](
-                          const bool mask_flag, const int k, const int j) {
-            int aux_output_offset = jcp.typesize_out
-                    * (k * oc_block + j * jcp.oc_without_padding * jcp.ngroups);
-            auto addr = EVEX_compress_addr(reg_out, aux_output_offset);
-            Vmm vmm = vmm_out(j, k);
-            cvt2ps(jcp.sum_dt, vmm_prev_dst, addr, mask_flag);
-            if (sum_zp != 0) vsubps(vmm_prev_dst, vmm_sum_zp);
-            if (sum_scale == 1.f)
-                vaddps(vmm, vmm_prev_dst);
-            else
-                vfmadd231ps(vmm, vmm_prev_dst, zword_b[reg_ptr_sum_scale]);
-        };
-        // Capture by value has to be applied since this lambda is called from
-        // a different context when stack values are unavailable.
-        const auto sum_injector
-                = [nb_oc_block, ur_w, last_oc_block_flag, sum_injector_lam]() {
-            iterate(nb_oc_block, ur_w, last_oc_block_flag, sum_injector_lam);
-        };
-        if (sum_scale != 1.f)
-            mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
-        if (sum_zp != 0) {
-            mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-            vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
-        }
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
-    }
-}
-
-template <typename Vmm>
 void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::apply_postops(int ur_w,
-        bool last_oc_block_flag, const int nb_oc_block, const int oc_block,
-        const float *p_sum_scale, const int32_t *p_sum_zp) {
+        bool last_oc_block_flag, const int nb_oc_block, const int oc_block) {
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
-        apply_sum(ur_w, last_oc_block_flag, nb_oc_block, oc_block, p_sum_scale,
-                p_sum_zp);
-
         injector_utils::vmm_index_set_t vmm_idxs;
-        if (jcp.with_binary) {
+        // Sum post-op requires binary parameters to be set.
+        if (jcp.with_binary || jcp.with_sum) {
             binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
             const bool oc_blk_is_smaller_than_vmm = oc_block < isa_simd_width_;
             iterate(nb_oc_block, ur_w, last_oc_block_flag,
@@ -253,16 +208,6 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::store_output(
     if (jcp.src_zero_point) {
         mov(reg_zp_compensation, ptr[param1 + GET_OFF(zp_compensation)]);
         mov(reg_src_zero_point, ptr[param1 + GET_OFF(src_zero_point)]);
-    }
-
-    const auto &p = attr_.post_ops_;
-    const int sum_idx = p.find(primitive_kind::sum);
-    const float *p_sum_scale = nullptr;
-    const int32_t *p_sum_zp = nullptr;
-    if (sum_idx != -1) {
-        const auto &p_entry = p.entry_[sum_idx];
-        p_sum_scale = &p_entry.sum.scale;
-        p_sum_zp = &p_entry.sum.zero_point;
     }
 
     for (int k = 0; k < nb_oc_block; k++) {
@@ -345,8 +290,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::store_output(
         }
     }
 
-    apply_postops(ur_w, last_oc_block_flag, nb_oc_block, oc_block, p_sum_scale,
-            p_sum_zp);
+    apply_postops(ur_w, last_oc_block_flag, nb_oc_block, oc_block);
 
     if (jcp.with_dst_scales) {
         mov(reg_dst_scales, ptr[param1 + GET_OFF(dst_scales)]);
@@ -1081,13 +1025,16 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
             mov(regw_tmp, (1 << (tail_size + jcp.simd_w)) - 1);
             kmovd(ktail_mask_extended, regw_tmp);
         }
-    } else if (jcp.with_binary)
+    } else if (jcp.with_binary || jcp.with_sum) {
+        // Native sum reads the destination through the binary injector, so it
+        // needs `postops_mask` as well.
         if (jcp.oc_block != isa_simd_width_) {
             const int mask = (1 << jcp.oc_block) - 1;
             const Reg32 regw_tmp = reg_oi.cvt32();
             mov(regw_tmp, mask);
             kmovw(postops_mask, regw_tmp);
         }
+    }
     if (jcp.is_fast_depthwise) {
         // prepare mask register for blending weights
         mov(reg_scratch, 0x8888444422221111);
@@ -1378,7 +1325,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
 
     postamble();
 
-    if (jcp.with_eltwise)
+    if (jcp.with_eltwise || jcp.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);
 
     if (jcp.is_fast_depthwise) {

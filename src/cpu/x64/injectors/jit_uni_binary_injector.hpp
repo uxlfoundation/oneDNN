@@ -655,8 +655,8 @@ private:
      * When using benchdnn zmalloc_protect doesn't guarantee that tensor memory
      * address is 64 byte aligned, which can cause segmentation fault.
      */
-    static constexpr bool binary_op_with_unaligned_mem_operand_allowed_
-            = !utils::one_of(isa, avx, sse41);
+    const bool binary_op_with_unaligned_mem_operand_allowed_
+            = is_superset(isa, avx2);
 };
 
 } // namespace binary_injector

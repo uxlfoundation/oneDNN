@@ -518,7 +518,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
     const auto end_idx = *(vmm_idxs.rbegin());
 
     // Phase 1 Validate temporary vmm user hint
-    static constexpr int max_vmm_idx = cpu_isa_traits_t<isa>::n_vregs - 1;
+    const int max_vmm_idx = isa_num_vregs(isa) - 1;
     auto &vmm_hint = rhs_arg_static_params_.rhs_dt_helper_vmm_idx;
     vmm_hint = adjust_temp_vmm_hint(vmm_hint, start_idx, end_idx, max_vmm_idx);
 
@@ -546,8 +546,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
             || rhs_arg_data_type != data_type::f32 || bcast_f32_non_avx512
             || should_preserve_vmm_tail || post_op.is_prelu();
     const auto tail_load_mode = rhs_arg_params.tail_load_mode;
-    const int simd_w = cpu_isa_traits_t<isa>::vlen
-            / types::data_type_size(dst_d.data_type());
+    const int simd_w
+            = isa_max_vlen(isa) / types::data_type_size(dst_d.data_type());
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
     const bool use_offset_conversions
             = (!rhs_arg_params.vmm_idx_to_out_addr.empty()
@@ -1046,8 +1046,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_oc_blocked_base(
     // c = ((offset % strides[0]) / strides[1]) * strides[ndims - 1] + offset % blk_size
     // output = rax
     const auto dst_d = rhs_arg_static_params_.dst_d;
-    const int simd_w = cpu_isa_traits_t<isa>::vlen
-            / types::data_type_size(dst_d.data_type());
+    const int simd_w
+            = isa_max_vlen(isa) / types::data_type_size(dst_d.data_type());
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
     const auto rax = host_->rax;
     const auto rdx = host_->rdx;
@@ -1554,8 +1554,8 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_mb_sp_blocked_base(
     // mb_sp_off = offset - (c * stride_c) - (n * (C - 1)DHW) - c % blk_size
     // output = rax
     const auto dst_d = rhs_arg_static_params_.dst_d;
-    const int simd_w = cpu_isa_traits_t<isa>::vlen
-            / types::data_type_size(dst_d.data_type());
+    const int simd_w
+            = isa_max_vlen(isa) / types::data_type_size(dst_d.data_type());
     const int blk_size = dst_d.blocking_desc().inner_blks[0];
 
     const auto rax = host_->rax;
@@ -3088,7 +3088,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_no_tail(
         case data_type::f16:
             if (is_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm, host_->ptr_b[rhs_addr.getRegExp()]);
-            else if (isa == avx2_vnni_2)
+            else if (is_superset(isa, avx2_vnni_2))
                 host_->vbcstnesh2ps(tmp_vmm, rhs_addr);
             else
                 assert(!"unsupported ISA for given data type");
@@ -3105,7 +3105,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_no_tail(
             if (is_avx512_) {
                 host_->vpbroadcastw(tmp_vmm, rhs_addr);
                 host_->vpslld(tmp_vmm, tmp_vmm, 0x10);
-            } else if (isa == avx2_vnni_2) {
+            } else if (is_superset(isa, avx2_vnni_2)) {
                 host_->vbcstnebf162ps(tmp_vmm, rhs_addr);
             } else
                 assert(!"unsupported ISA for given data type");
@@ -3581,7 +3581,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_no_tail(
         case data_type::f16:
             if (is_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm, rhs_addr);
-            else if (isa == avx2_vnni_2)
+            else if (is_superset(isa, avx2_vnni_2))
                 host_->vcvtph2ps(tmp_vmm, rhs_addr);
             else
                 assert(!"unsupported ISA for given data type");
@@ -3595,7 +3595,7 @@ void jit_uni_binary_injector_t<isa, Vmm>::load_rhs_no_tail(
             f8_e4m3_cvt_->vcvt_f8_to_f32(tmp_vmm, rhs_addr);
             break;
         case data_type::bf16:
-            if (is_avx512_ || isa == avx2_vnni_2) {
+            if (is_avx512_ || is_superset(isa, avx2_vnni_2)) {
                 host_->vpmovzxwd(tmp_vmm, rhs_addr);
                 host_->vpslld(tmp_vmm, tmp_vmm, 0x10);
                 break;

@@ -99,8 +99,9 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
             esp.preserve_vmm = preserve_vmm;
             esp.preserve_p_table = false;
 
-            postops_injector_ = utils::make_unique<po_injector_t>(
-                    this, brg.attr()->post_ops_, bsp, esp);
+            postops_injector_ = utils::make_unique<po_injector_t>(this,
+                    brg.attr()->post_ops_, bsp, esp,
+                    /* enable_native_sum = */ brg.with_sum);
 
             using namespace dnnl::impl::cpu::binary_injector_utils;
             std::tie(with_binary_per_oc_bcast_, with_binary_per_oc_sp_bcast_,
@@ -180,7 +181,6 @@ private:
     const reg64_t reg_do_post_ops = rbx;
     const reg64_t reg_do_skip_accum = reg_do_post_ops;
     const reg64_t reg_tmp_gpr = rbx;
-    const reg64_t reg_ptr_sum_scale = rbx;
 
     const reg64_savable_t reg_zp_comp_a {regscratchpad_, rbx, r17};
     const reg64_savable_t reg_zp_a_values {regscratchpad_, rbx, r18};
@@ -188,7 +188,6 @@ private:
     const reg64_savable_t reg_zp_c_values {regscratchpad_, rbx, r20};
     const reg64_savable_t reg_src_scales_per_k {regscratchpad_, rbx, r21};
     const reg64_savable_t reg_per_mn_comp {regscratchpad_, rbx, r22};
-    const reg64_t reg_ptr_sum_zp = rbx;
     const reg64_t reg_converted_stride = rsi;
     const reg64_t reg_zp_comp_pad_a = rsi;
 
@@ -1049,75 +1048,25 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
     const auto ldb_pos = bi.ldi->pos(ldb);
     const auto is_ld_tail = bi.ldi->is_tail(ldb);
 
-    if (brg.with_binary) {
-        if (handle_binary_po_offset_) {
-            for (auto bd = bd_start; bd < bd_finish; bd++) {
-                // We have no way to tell the injector to skip some vectors.
-                // Therefore, we must set parameters correctly for all registers.
-                // TODO: Make it possible to specify "skipped" vectors to injector
-                const auto idx = accm(bd).getIdx();
-                if (is_ld_tail) rhs_arg_params.vmm_tail_idx_.emplace(idx);
-                rhs_arg_params.vmm_idx_to_out_reg.emplace(idx, reg_D);
+    // Sum post-op requires binary parameters to be set.
+    const bool set_for_binary = brg.with_binary && handle_binary_po_offset_;
+    if (set_for_binary || brg.with_sum) {
+        for (auto bd = bd_start; bd < bd_finish; bd++) {
+            // We have no way to tell the injector to skip some vectors.
+            // Therefore, we must set parameters correctly for all registers.
+            // TODO: Make it possible to specify "skipped" vectors to injector
+            const auto idx = accm(bd).getIdx();
+            if (is_ld_tail) rhs_arg_params.vmm_tail_idx_.emplace(idx);
+            rhs_arg_params.vmm_idx_to_out_reg.emplace(idx, reg_D);
 
-                if (!is_out_bd(bi.bdi, bdb, bd)) continue;
+            // Rows that are not stored keep the default zero offset. Sum then
+            // reads the head of `reg_D`, which stays in bounds, and the result
+            // is dropped along with the accumulator.
+            if (!is_out_bd(bi.bdi, bdb, bd)) continue;
 
-                const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
-                rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                        idx, d_offset);
-            }
+            const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
+            rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(idx, d_offset);
         }
-    }
-
-    const auto sum_injector = [&] {
-        const float *p_sum_scale = &brg.sum_scale;
-        const int32_t *p_sum_zp = &brg.sum_zp;
-        const bool p_sum_scale_reg_set = *p_sum_scale != 1.f;
-        const bool p_sum_zp_reg_set = *p_sum_zp != 0;
-
-        {
-            const auto &zmm_sum_zp = zmm_tmp_2();
-            if (p_sum_zp_reg_set) {
-                mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-                vcvtdq2ps(zmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
-            }
-            if (p_sum_scale_reg_set)
-                mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
-
-            const auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
-            const auto zmm_prev_dst = Xbyak::Zmm(0);
-
-            const auto max_d_offset = [&]() {
-                dim_t result = 0;
-                for (auto bd = bd_start; bd < bd_finish; bd++) {
-                    if (!is_out_bd(bi.bdi, bdb, bd)) continue;
-                    result = nstl::max(result, D_offset(bi, bdb, bd, ldb_pos));
-                }
-                return result;
-            }();
-            reg64_savable_guard_t reg_A_guard(
-                    {&reg_long_offt}, max_d_offset > INT_MAX);
-
-            for (auto bd = bd_start; bd < bd_finish; bd++) {
-                if (!is_out_bd(bi.bdi, bdb, bd)) continue;
-
-                auto zmm = accm(bd);
-                const auto d_offset = D_offset(bi, bdb, bd, ldb_pos);
-                auto addr = EVEX_compress_addr_safe(
-                        reg_D, d_offset, reg_long_offt);
-
-                cvt2ps(brg.sum_dt, zmm_prev_dst, addr, true, false, k_mask);
-                if (p_sum_zp_reg_set) vsubps(zmm_prev_dst, zmm_sum_zp);
-                if (!p_sum_scale_reg_set)
-                    vaddps(zmm, zmm_prev_dst);
-                else
-                    vfmadd231ps(zmm, zmm_prev_dst, zword_b[reg_ptr_sum_scale]);
-            }
-        }
-    };
-
-    if (brg.with_sum) {
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
     }
 
     // Using knowledge how "accm" assign zmm registers.
@@ -3282,7 +3231,7 @@ void jit_brgemm_amx_uker_base_t::generate() {
 
     postamble();
 
-    if (brg.with_eltwise)
+    if (brg.with_eltwise || brg.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);
 
     if (brg.is_fp8_via_convert()) {

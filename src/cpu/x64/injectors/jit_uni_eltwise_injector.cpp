@@ -495,7 +495,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
     assert(mayiuse(isa));
 
     using namespace Xbyak::util;
-    const int XMM_float_lanes_count = 4;
+    const int XMM_float_elems_count = 4;
     const int tanh_n_polynomials = 32;
 
     // register mapping
@@ -509,11 +509,11 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
                              : vmm_mask_; // TODO: why `vmm_mask_` directly?
     Vmm vmm_src_original = vmm_aux(3);
     Vmm vmm_sign = vmm_aux(3);
-    Reg64 gpr_idx[XMM_float_lanes_count];
+    Reg64 gpr_idx[XMM_float_elems_count];
 
     if (!has_avx2_) {
-        assert(aux_gprs_count(alg_, is_fwd_, alpha_) >= XMM_float_lanes_count);
-        for (int i = 0; i < XMM_float_lanes_count; i++)
+        assert(aux_gprs_count(alg_, is_fwd_, alpha_) >= XMM_float_elems_count);
+        for (int i = 0; i < XMM_float_elems_count; i++)
             gpr_idx[i] = Reg64(preserved_gpr_indices_[i
                     + need_vmm_stack_ptr(alg_, is_fwd_, alpha_)]);
     }
@@ -548,76 +548,51 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::tanh_compute_vector_fwd(
         return table_val(tanh_pol_table, coeff_off * tanh_n_polynomials + off);
     };
     auto gather_coefficient_init = [&](Vmm vmm_pol_idx, int nelems) {
-        switch (isa) {
-            case sse41:
-                for (int i = 0; i < XMM_float_lanes_count; ++i)
-                    h->pextrd(gpr_idx[i].cvt32(), vmm_pol_idx, i);
-                break;
-            case avx: {
-                Xmm xmm_pol_idx = Xmm(vmm_pol_idx.getIdx());
-                for (int i = 0; i < XMM_float_lanes_count; ++i)
-                    h->vpextrd(gpr_idx[i].cvt32(), xmm_pol_idx, i);
-            } break;
-            case avx2_vnni_2:
-            case avx2:
-                // needed for gather instruction
-                h->uni_vxorps(vmm_mask_, vmm_mask_, vmm_mask_);
-                break;
-            case avx512_core_fp16:
-            case avx512_core_bf16:
-            case avx512_core:
-            case avx10_2: break;
-            default: assert(!"unimplemented");
+        if (is_sse41_) {
+            for (int i = 0; i < XMM_float_elems_count; ++i)
+                h->pextrd(gpr_idx[i].cvt32(), vmm_pol_idx, i);
+        } else if (is_avx_) {
+            Xmm xmm_pol_idx = Xmm(vmm_pol_idx.getIdx());
+            for (int i = 0; i < XMM_float_elems_count; ++i)
+                h->vpextrd(gpr_idx[i].cvt32(), xmm_pol_idx, i);
+        } else if (has_avx2_ && !is_avx512_) {
+            // Zero the mask so that the `_cmp_eq_oq` compare in
+            // `gather_coefficient` yields all ones. A NaN left over in the
+            // register would compare unequal to itself.
+            h->uni_vxorps(vmm_mask_, vmm_mask_, vmm_mask_);
         }
+        // AVX-512 gathers with `vpermt2ps`, which takes no mask register.
     };
     auto gather_coefficient
             = [&](Vmm vmm_coeff, int coeff_idx, Vmm vmm_pol_idx) {
-        switch (isa) {
-            case sse41:
-                for (int idx = 0; idx < 4; ++idx) {
-                    Xbyak::Address coeff_addr
-                            = ptr[p_table_ + coeffs_off(coeff_idx)
-                                    + gpr_idx[idx] * sizeof(float)];
-                    h->pinsrd(vmm_coeff, coeff_addr, idx);
-                }
-                break;
-            case avx: {
-                Xmm xmm_coeff = Xmm(vmm_coeff.getIdx());
-                for (int idx = 0; idx < 4; ++idx) {
-                    Xbyak::Address coeff_addr
-                            = ptr[p_table_ + coeffs_off(coeff_idx)
-                                    + gpr_idx[idx] * sizeof(float)];
-                    h->vpinsrd(xmm_coeff, xmm_coeff, coeff_addr, idx);
-                }
-            } break;
-            case avx2_vnni_2:
-            case avx2: {
-                Xbyak::Address idx_addr = ptr[p_table_ + coeffs_off(coeff_idx)
-                        + vmm_pol_idx * sizeof(float)];
-                // we set the mask to all ones to gather full
-                // register.  needs to be done after each gather since
-                // since the gather instructions zeros the mask if
-                // successful
-                h->uni_vcmpps(vmm_mask_, vmm_mask_, vmm_mask_, _cmp_eq_oq);
-                h->vgatherdps(vmm_coeff, idx_addr, vmm_mask_);
-                break;
+        if (is_sse41_) {
+            for (int idx = 0; idx < 4; ++idx) {
+                Xbyak::Address coeff_addr = ptr[p_table_ + coeffs_off(coeff_idx)
+                        + gpr_idx[idx] * sizeof(float)];
+                h->pinsrd(vmm_coeff, coeff_addr, idx);
             }
-                // use gather instruction
-            case avx512_core_fp16:
-            case avx512_core_bf16:
-            case avx512_core:
-            case avx10_2:
-                // we use vpermt2ps to not override the indices
-                // this also enables to save a register for table loading
-                {
-                    Zmm zmm_coeff(vmm_coeff.getIdx());
-                    Zmm zmm_pol_idx(vmm_pol_idx.getIdx());
-                    h->uni_vmovups(zmm_coeff, coeffs_address(coeff_idx, 0));
-                    h->vpermt2ps(zmm_coeff, zmm_pol_idx,
-                            coeffs_address(coeff_idx, 16));
-                    break;
-                }
-            default: assert(!"unimplemented");
+        } else if (is_avx_) {
+            Xmm xmm_coeff = Xmm(vmm_coeff.getIdx());
+            for (int idx = 0; idx < 4; ++idx) {
+                Xbyak::Address coeff_addr = ptr[p_table_ + coeffs_off(coeff_idx)
+                        + gpr_idx[idx] * sizeof(float)];
+                h->vpinsrd(xmm_coeff, xmm_coeff, coeff_addr, idx);
+            }
+        } else if (has_avx2_ && !is_avx512_) {
+            Xbyak::Address idx_addr = ptr[p_table_ + coeffs_off(coeff_idx)
+                    + vmm_pol_idx * sizeof(float)];
+            // Set the mask to all ones to gather a full register. A
+            // successful `vgatherdps` zeroes its mask, so the mask has to be
+            // rebuilt before every gather.
+            h->uni_vcmpps(vmm_mask_, vmm_mask_, vmm_mask_, _cmp_eq_oq);
+            h->vgatherdps(vmm_coeff, idx_addr, vmm_mask_);
+        } else {
+            // AVX-512 uses `vpermt2ps` so that the indices are not
+            // overwritten. That also saves a register for table loading.
+            Zmm zmm_coeff(vmm_coeff.getIdx());
+            Zmm zmm_pol_idx(vmm_pol_idx.getIdx());
+            h->uni_vmovups(zmm_coeff, coeffs_address(coeff_idx, 0));
+            h->vpermt2ps(zmm_coeff, zmm_pol_idx, coeffs_address(coeff_idx, 16));
         }
     };
 

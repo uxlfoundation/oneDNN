@@ -145,12 +145,13 @@ private:
 
     void update_buffer_pointers();
     void interleave_store();
-    void apply_sum(const Xbyak::Zmm zmm_out, const float *p_sum_scale,
-            const int32_t *p_sum_zp, const Xbyak::Address &addr,
-            const bool mask_flag);
-    void apply_postops(const Xbyak::Zmm zmm_out, const float *p_sum_scale,
-            const int32_t *p_sum_zp, const Xbyak::Address &addr,
-            const size_t off, const bool mask_flag);
+    // Sum goes through the post-ops injector on the int8 single-row store path
+    // only. The bf16 path folds it into the accumulator by hand, see
+    // `store_output_vector_bf16`, and the `is_fast_postops` whole-tile paths
+    // bypass the injector altogether.
+    bool is_sum_via_postops() const { return jcp.with_sum && !is_bf16(); }
+    void apply_postops(
+            const Xbyak::Zmm zmm_out, const size_t off, const bool mask_flag);
     static bool is_fast_postops(const jit_conv_conf_t &jcp);
     void store_output_vectors_int8(int ocb, int osb);
     void store_output_vector_int8(

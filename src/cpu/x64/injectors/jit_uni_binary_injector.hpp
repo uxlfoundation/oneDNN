@@ -645,6 +645,9 @@ private:
     const bcast_set_t supported_strategy_set_;
     const bool is_avx512_ = is_superset(isa, avx512_core);
     const bool is_avx512_core_fp16_ = is_superset(isa, avx512_core_fp16);
+    const bool has_avx2_ = is_superset(isa, avx2);
+    const bool is_avx_ = is_superset(isa, avx) && !has_avx2_;
+    const bool is_sse41_ = !is_superset(isa, avx);
 
     static constexpr int sizeof_reg64 = 8;
     /*

@@ -3064,13 +3064,11 @@ Xbyak::Opmask jit_uni_binary_injector_t<isa, Vmm>::get_aux_kmask() const {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::cvt_to_f32(const Vmm &tmp_vmm) const {
-    host_->uni_vcvtdq2ps(tmp_vmm, tmp_vmm);
-}
-
-template <>
-void jit_uni_binary_injector_t<sse41, Xbyak::Xmm>::cvt_to_f32(
-        const Xbyak::Xmm &tmp_vmm) const {
-    host_->cvtdq2ps(tmp_vmm, tmp_vmm);
+    if (is_sse41_) {
+        const Xbyak::Xmm tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
+        host_->cvtdq2ps(tmp_xmm, tmp_xmm);
+    } else
+        host_->uni_vcvtdq2ps(tmp_vmm, tmp_vmm);
 }
 
 template <cpu_isa_t isa, typename Vmm>
@@ -3121,94 +3119,48 @@ void jit_uni_binary_injector_t<isa, Vmm>::execute_broadcast_s8u8_no_tail(
     assert(utils::one_of(data_type, data_type::s8, data_type::u8)
             && "unsupported data type");
 
-    const Xbyak::Xmm xmm(tmp_vmm.getIdx());
+    const auto rhs_helper_reg_idx
+            = rhs_arg_static_params_.rhs_helper_reg.getIdx();
+    const Xbyak::Reg8 tmp_reg8 = Xbyak::Reg8(rhs_helper_reg_idx);
+    const Xbyak::Reg32 tmp_reg32 = Xbyak::Reg32(rhs_helper_reg_idx);
+    const Xbyak::Xmm tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
 
-    host_->uni_vpinsrb(xmm, xmm, rhs_addr, 0);
-    if (data_type == data_type::s8)
-        host_->uni_vpmovsxbd(xmm, xmm);
-    else if (data_type == data_type::u8)
-        host_->uni_vpmovzxbd(tmp_vmm, xmm);
-    host_->uni_vpbroadcastd(tmp_vmm, xmm);
-}
-
-template <cpu_isa_t isa, typename Vmm>
-struct helper_broadcast_s8u8_t {};
-
-template <typename Vmm>
-struct helper_broadcast_s8u8_t<avx, Vmm> {
-    static void execute_broadcast_s8u8_no_tail(jit_generator_t *host,
-            const int rhs_helper_reg_idx, const data_type_t &data_type,
-            const Vmm &tmp_vmm, const Xbyak::Address &rhs_addr,
-            const std::function<void()> &post_process) {
-
-        if (data_type != data_type::s8 && data_type != data_type::u8)
-            assert(!"unsupported data type");
-
-        const Xbyak::Reg8 tmp_reg8 = Xbyak::Reg8(rhs_helper_reg_idx);
-        const Xbyak::Reg32 tmp_reg32 = Xbyak::Reg32(rhs_helper_reg_idx);
-        const auto tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
-        host->mov(tmp_reg8, rhs_addr);
-        host->vmovd(tmp_xmm, tmp_reg32);
-        host->vpunpcklbw(tmp_xmm, tmp_xmm, tmp_xmm);
-        host->vpshuflw(tmp_xmm, tmp_xmm, 0);
+    if (has_avx2_) {
+        host_->uni_vpinsrb(tmp_xmm, tmp_xmm, rhs_addr, 0);
         if (data_type == data_type::s8)
-            host->vpmovsxbd(tmp_xmm, tmp_xmm);
-        else
-            host->vpmovzxbd(tmp_xmm, tmp_xmm);
-
-        if (post_process) post_process();
-    }
-};
-
-template <>
-void jit_uni_binary_injector_t<avx, Xbyak::Ymm>::execute_broadcast_s8u8_no_tail(
-        const data_type_t &data_type, const Xbyak::Ymm &tmp_vmm,
-        const Xbyak::Address &rhs_addr) const {
-
-    const auto rhs_helper_reg_idx
-            = rhs_arg_static_params_.rhs_helper_reg.getIdx();
-    const auto expand_xmm_to_ymm = [&] {
-        const auto tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
-        host_->vinsertf128(tmp_vmm, tmp_vmm, tmp_xmm, 1);
-    };
-
-    helper_broadcast_s8u8_t<avx, Xbyak::Ymm>::execute_broadcast_s8u8_no_tail(
-            host_, rhs_helper_reg_idx, data_type, tmp_vmm, rhs_addr,
-            expand_xmm_to_ymm);
-}
-
-template <>
-void jit_uni_binary_injector_t<avx, Xbyak::Xmm>::execute_broadcast_s8u8_no_tail(
-        const data_type_t &data_type, const Xbyak::Xmm &tmp_vmm,
-        const Xbyak::Address &rhs_addr) const {
-
-    const auto rhs_helper_reg_idx
-            = rhs_arg_static_params_.rhs_helper_reg.getIdx();
-    helper_broadcast_s8u8_t<avx, Xbyak::Xmm>::execute_broadcast_s8u8_no_tail(
-            host_, rhs_helper_reg_idx, data_type, tmp_vmm, rhs_addr, nullptr);
-}
-
-template <>
-void jit_uni_binary_injector_t<sse41,
-        Xbyak::Xmm>::execute_broadcast_s8u8_no_tail(const data_type_t
-                                                            &data_type,
-        const Xbyak::Xmm &tmp_vmm, const Xbyak::Address &rhs_addr) const {
-
-    if (data_type == data_type::s8 || data_type == data_type::u8) {
-        const auto tmp_reg64_idx
-                = rhs_arg_static_params_.rhs_helper_reg.getIdx();
-        const Xbyak::Reg8 tmp_reg8 = Xbyak::Reg8(tmp_reg64_idx);
+            host_->uni_vpmovsxbd(tmp_xmm, tmp_xmm);
+        else if (data_type == data_type::u8)
+            host_->uni_vpmovzxbd(tmp_vmm, tmp_xmm);
+        host_->uni_vpbroadcastd(tmp_vmm, tmp_xmm);
+    } else if (is_avx_) {
+        // AVX has no register-source dword broadcast, so the byte is
+        // duplicated across the low half by an unpack and a shuffle before the
+        // extension spreads it over the four dwords.
         host_->mov(tmp_reg8, rhs_addr);
-        const Xbyak::Reg32 tmp_reg32 = Xbyak::Reg32(tmp_reg64_idx);
-        host_->movd(tmp_vmm, tmp_reg32);
-        host_->punpcklbw(tmp_vmm, tmp_vmm);
-        host_->pshuflw(tmp_vmm, tmp_vmm, 0);
+        host_->vmovd(tmp_xmm, tmp_reg32);
+        host_->vpunpcklbw(tmp_xmm, tmp_xmm, tmp_xmm);
+        host_->vpshuflw(tmp_xmm, tmp_xmm, 0);
         if (data_type == data_type::s8)
-            host_->pmovsxbd(tmp_vmm, tmp_vmm);
+            host_->vpmovsxbd(tmp_xmm, tmp_xmm);
         else
-            host_->pmovzxbd(tmp_vmm, tmp_vmm);
+            host_->vpmovzxbd(tmp_xmm, tmp_xmm);
+        // AVX has no 256-bit integer operations either, so a Ymm destination
+        // gets its upper half from a float-domain copy of the lower one.
+        if (std::is_same<Vmm, Xbyak::Ymm>::value) {
+            const Xbyak::Ymm tmp_ymm = Xbyak::Ymm(tmp_vmm.getIdx());
+            host_->vinsertf128(tmp_ymm, tmp_ymm, tmp_xmm, 1);
+        }
+    } else if (is_sse41_) {
+        host_->mov(tmp_reg8, rhs_addr);
+        host_->movd(tmp_xmm, tmp_reg32);
+        host_->punpcklbw(tmp_xmm, tmp_xmm);
+        host_->pshuflw(tmp_xmm, tmp_xmm, 0);
+        if (data_type == data_type::s8)
+            host_->pmovsxbd(tmp_xmm, tmp_xmm);
+        else
+            host_->pmovzxbd(tmp_xmm, tmp_xmm);
     } else
-        assert(!"unsupported data type");
+        assert(!"unsupported ISA");
 }
 
 template <cpu_isa_t isa, typename Vmm>

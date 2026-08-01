@@ -192,8 +192,7 @@ private:
     post_ops_t post_ops_;
     jit_generator_t *host_;
     // Key is a numerical order of a post-op in attributes.
-    std::map<int, jit_uni_eltwise_injector_t<isa, Vmm>>
-            alg_to_eltwise_injector_;
+    std::map<int, jit_uni_eltwise_injector_t<Vmm>> alg_to_eltwise_injector_;
     std::unique_ptr<binary_injector::jit_uni_binary_injector_t<Vmm>>
             binary_injector_;
     // Native sum injectors, one per sum post-op, keyed by post-op index same as

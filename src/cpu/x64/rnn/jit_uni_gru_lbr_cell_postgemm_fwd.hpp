@@ -30,7 +30,8 @@ template <cpu_isa_t isa, impl::data_type_t src_data_t,
 struct jit_uni_gru_lbr_cell_postgemm_fwd : public jit_uni_rnn_postgemm_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_gru_lbr_cell_postgemm_fwd)
 
-    using injector_t = jit_uni_eltwise_injector_t<isa>;
+    using injector_t
+            = jit_uni_eltwise_injector_t<typename cpu_isa_traits_t<isa>::Vmm>;
 
     jit_uni_gru_lbr_cell_postgemm_fwd(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
@@ -54,7 +55,7 @@ protected:
     std::unique_ptr<injector_t> tanh_injector_;
 
     // register size in bytes
-    using Vmm = typename jit_uni_eltwise_injector_t<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
 
     const size_t vlen_dst

@@ -75,7 +75,14 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg, data_type_t dt);
 
 } // namespace eltwise_injector
 
-template <cpu_isa_t isa, typename Wmm = typename cpu_isa_traits_t<isa>::Vmm>
+/*
+ * Main mechanism responsible for injecting eltwise postops.
+ *
+ * The ISA to generate for is taken from the host generator, which already
+ * carries it as its `max_cpu_isa()` ceiling. `Wmm` stays a template parameter
+ * to keep the vector width statically typed.
+ */
+template <typename Wmm>
 struct jit_uni_eltwise_injector_t {
     using Vmm = Wmm;
 
@@ -111,8 +118,8 @@ struct jit_uni_eltwise_injector_t {
         , use_dst_(use_dst)
         , preserve_vmm_(preserve_vmm)
         , preserve_p_table_(preserve_p_table)
-        , n_vregs_to_preserve_(aux_vecs_count(alg_, is_fwd_, alpha_)) {
-        assert(eltwise_injector::is_supported(isa, alg_, dt_));
+        , n_vregs_to_preserve_(aux_vecs_count(isa_, alg_, is_fwd_, alpha_)) {
+        assert(eltwise_injector::is_supported(isa_, alg_, dt_));
 
         register_table_entries();
     }
@@ -142,8 +149,10 @@ struct jit_uni_eltwise_injector_t {
 
     // This call is `static` and `public` to make a decision on the injector's
     // saving state if the caller can supply the necessary number of vmms. The
-    // decision must be made BEFORE constructing the injector, thus, `static`.
-    static size_t aux_vecs_count(alg_kind_t alg, bool is_fwd, float alpha);
+    // decision must be made BEFORE constructing the injector, thus, `static`,
+    // and `isa` comes as an argument since there's no host to query yet.
+    static size_t aux_vecs_count(
+            cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha);
 
 private:
     const alg_kind_t alg_;
@@ -177,15 +186,16 @@ private:
         _op_mxcsr = jit_generator_t::_op_mxcsr
     };
 
-    const bool is_avx512_ = is_superset(isa, avx512_core);
-    const bool has_avx2_ = is_superset(isa, avx2);
-    const bool is_avx_ = is_superset(isa, avx) && !has_avx2_;
-    const bool is_sse41_ = !is_superset(isa, avx);
+    const cpu_isa_t isa_ = h->max_cpu_isa();
+    const bool is_avx512_ = is_superset(isa_, avx512_core);
+    const bool has_avx2_ = is_superset(isa_, avx2);
+    const bool is_avx_ = is_superset(isa_, avx) && !has_avx2_;
+    const bool is_sse41_ = !is_superset(isa_, avx);
 
     static constexpr size_t vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr size_t preserved_vecs_max_ = 6;
     static constexpr size_t preserved_gprs_max_ = 5;
-    static constexpr size_t n_vregs_ = cpu_isa_traits_t<isa>::n_vregs;
+    const size_t n_vregs_ = isa_num_vregs(isa_);
     static constexpr int n_mantissa_bits_ = 23;
 
     const size_t n_vregs_to_preserve_;
@@ -203,10 +213,13 @@ private:
     Xbyak::Ymm ymm_tmp_;
     Xbyak::Xmm xmm_tmp_;
 
-    static bool need_mask_register(alg_kind_t alg, bool is_fwd, float alpha);
-    static size_t aux_gprs_count(alg_kind_t alg, bool is_fwd, float alpha);
-    static bool need_vmm_stack_ptr(alg_kind_t alg, bool is_fwd, float alpha);
-    static size_t op_vecs_count(alg_kind_t alg, bool is_fwd);
+    static bool need_mask_register(
+            cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha);
+    static size_t aux_gprs_count(
+            cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha);
+    static bool need_vmm_stack_ptr(
+            cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha);
+    static size_t op_vecs_count(cpu_isa_t isa, alg_kind_t alg, bool is_fwd);
     size_t get_stack_vmm_space();
 
     void compute_body(

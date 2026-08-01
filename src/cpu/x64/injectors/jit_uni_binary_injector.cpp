@@ -685,9 +685,15 @@ void jit_uni_binary_injector_t<isa, Vmm>::compute_vector_range(
                 rhs_arg_params, rhs_broadcasting_strategy);
         const bool need_new_addr = is_start_idx || params_differ || load_addr;
         if (need_new_addr) {
+            const bool is_baddr_loop_invariant
+                    = utils::one_of(rhs_broadcasting_strategy,
+                            broadcasting_strategy_t::no_broadcast,
+                            broadcasting_strategy_t::per_mb_spatial);
+            const bool is_first = is_baddr_loop_invariant
+                    ? (is_start_idx || load_addr)
+                    : need_new_addr;
             rhs1_arg_addr = prepare_rhs_arg_addr(vmm_idx, rhs_arg_idx, post_op,
-                    rhs_arg_params, rhs_broadcasting_strategy, need_new_addr,
-                    false);
+                    rhs_arg_params, rhs_broadcasting_strategy, is_first, false);
         }
 
         if (vmm_preservation_needed) {

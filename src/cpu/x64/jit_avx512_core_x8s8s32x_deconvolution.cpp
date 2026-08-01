@@ -44,7 +44,7 @@ jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::
         jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t(
                 const jit_conv_conf_t &ajcp, const primitive_attr_t &attr,
                 const memory_desc_t &dst_md)
-    : jit_generator_t(jit_name())
+    : jit_generator_t(jit_name(), ajcp.isa)
     , jcp(ajcp)
     , attr_(attr)
     , postops_injector_(nullptr) {
@@ -292,6 +292,7 @@ status_t jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_conf(
     jcp.post_ops = p;
 
     jcp.has_vnni = mayiuse(avx512_core_vnni);
+    jcp.isa = jcp.has_vnni ? avx512_core_vnni : avx512_core;
 
     jcp.is_oc_scale = attr.scales_.get_mask(DNNL_ARG_WEIGHTS) > 0;
     jcp.with_src_scales = !attr.scales_.get(DNNL_ARG_SRC).has_default_values();

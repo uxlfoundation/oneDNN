@@ -978,6 +978,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
     if (is_relo_with_relo_weights) {
         jit_brgemm_relo_copy_to_wbuffer_t::cfg_t wjcp;
+        wjcp.isa = jcp.isa;
         wjcp.wei_dt = jcp.wei_dt;
         wjcp.out_oc_block = jcp.oc_block;
         wjcp.inp_oc_block = 16;

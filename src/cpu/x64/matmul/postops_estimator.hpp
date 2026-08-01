@@ -57,7 +57,8 @@ private:
     static constexpr size_t mean_vec_inst_bytes = 7;
 
     postops_estimator_t(memory_desc_t &dst_md, primitive_attr_t &attr)
-        : jit_generator_t("dummy_generator") {
+        : jit_generator_t("dummy_generator",
+                  impl::cpu::x64::cpu_isa_t::avx512_core_amx) {
         auto dsc = memory_desc_wrapper(dst_md);
         const dnnl::impl::cpu::x64::binary_injector::rhs_arg_static_params_t
                 rhs_sp(static_cast<size_t>(Xbyak::Zmm(1).getIdx()), this->r14,

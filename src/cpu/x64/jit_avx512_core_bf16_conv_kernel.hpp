@@ -263,9 +263,7 @@ template <typename Vmm>
 struct jit_avx512_core_bf16_bwd_data_kernel_vmm_t : public jit_generator_t {
 
     jit_avx512_core_bf16_bwd_data_kernel_vmm_t(const jit_conv_conf_t &ajcp)
-        : jit_generator_t(jit_name(), avx512_core_bf16)
-        , jcp(ajcp)
-        , bf16_emu_(nullptr) {
+        : jit_generator_t(jit_name(), ajcp.isa), jcp(ajcp), bf16_emu_(nullptr) {
         if (!isa_has_bf16(jcp.isa))
             bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,
                     bf16_emu_reserv_1, bf16_emu_reserv_2, bf16_emu_reserv_3,
@@ -477,9 +475,7 @@ struct jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t
 
     jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t(
             const jit_conv_conf_t &ajcp)
-        : jit_generator_t(jit_name(), avx512_core_bf16)
-        , jcp(ajcp)
-        , bf16_emu_(nullptr) {
+        : jit_generator_t(jit_name(), ajcp.isa), jcp(ajcp), bf16_emu_(nullptr) {
         if (!isa_has_bf16(jcp.isa)) {
             bf16_emu_ = utils::make_unique<bf16_emulation_t>(
                     this, one, even, selector, scratch, tmp0, tmp1);

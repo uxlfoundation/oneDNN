@@ -35,7 +35,7 @@ using namespace dnnl::impl::utils;
 
 jit_avx512_dw_conv_fwd_kernel_bf16_t::jit_avx512_dw_conv_fwd_kernel_bf16_t(
         const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md)
-    : jit_generator_t(jit_name()), jcp(ajcp) {
+    : jit_generator_t(jit_name(), ajcp.isa), jcp(ajcp) {
     if (jcp.with_eltwise || jcp.with_binary) {
         using namespace binary_injector;
         static constexpr bool preserve_gpr = true;

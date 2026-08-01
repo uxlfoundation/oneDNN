@@ -49,7 +49,7 @@ jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::
         jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t(
                 const jit_1x1_conv_conf_t &ajcp, const primitive_attr_t &attr,
                 const memory_desc_t &dst_md)
-    : jit_generator_t(jit_name())
+    : jit_generator_t(jit_name(), ajcp.isa)
     , jcp(ajcp)
     , attr_(attr)
     , postops_injector_(nullptr) {
@@ -875,6 +875,7 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
 
     // used for bf16 output
     jcp.isa = mayiuse(avx512_core_bf16) ? avx512_core_bf16
+            : mayiuse(avx512_core_vnni) ? avx512_core_vnni
                                         : bf16_emulation_t::get_isa();
 
     const memory_desc_wrapper src_d(src_md);

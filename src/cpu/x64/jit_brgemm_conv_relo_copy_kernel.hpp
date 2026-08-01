@@ -27,6 +27,7 @@ namespace x64 {
 
 struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator_t {
     struct cfg_t {
+        cpu_isa_t isa {isa_undef};
         data_type_t wei_dt {data_type_t::dnnl_data_type_undef};
         int out_oc_block {0};
         int inp_oc_block {0};
@@ -47,7 +48,7 @@ struct jit_brgemm_relo_copy_to_wbuffer_t : public jit_generator_t {
     using reg64_t = Xbyak::Reg64;
 
     jit_brgemm_relo_copy_to_wbuffer_t(const cfg_t &ajcp)
-        : jit_generator_t(jit_name(), avx512_core_amx), wjcp(ajcp) {}
+        : jit_generator_t(jit_name(), ajcp.isa), wjcp(ajcp) {}
 
 private:
     cfg_t wjcp;

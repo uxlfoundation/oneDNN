@@ -56,8 +56,8 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
 #if DROPOUT_USE_HOST_SCALARS
         long dropout_seed, long dropout_offset, float dropout_p
 #else
-        __global long *dropout_seed_buf, __global long *dropout_offset_buf,
-        __global float *dropout_p_buf
+        __global SEED_DATA_T *dropout_seed_buf,
+        __global long *dropout_offset_buf, __global float *dropout_p_buf
 #endif
 #endif
 ) {
@@ -72,6 +72,15 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
 #endif
 #if WITH_HOST_DST_ZP
     int *dst_zp = &dst_zp_value;
+#endif
+#if WITH_DROPOUT
+#if !DROPOUT_USE_HOST_SCALARS
+    SEED_DATA_T dropout_seed = dropout_seed_buf[0];
+    long dropout_offset = DROPOUT_USE_OFFSET ? dropout_offset_buf[0] : 0;
+    float dropout_p = dropout_p_buf[0];
+#endif
+    uint dropout_threshold = get_dropout_threshold(dropout_p);
+    float dropout_inv_q = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
 #endif
 
     const uint d0 = GWS_GET_D0();
@@ -102,10 +111,23 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
             acc += b;
         }
 
+        accumulator = AS_POST_OP_DATA_T(acc);
+#if WITH_DROPOUT
+#if WITH_SEED_S64 && DROPOUT_USE_OFFSET
+        uint res = philox_4x32_w_offset(data_idx, dropout_seed, dropout_offset);
+#else
+        uint res = philox_4x32(data_idx, dropout_seed);
+#endif
+        uchar dropout = res > dropout_threshold;
+        accumulator = (dropout) ? accumulator * dropout_inv_q : 0;
+#if DROPOUT_HAS_OUTPUT_MASK
+        dropout_mask_buf[data_idx] = dropout;
+#endif
+#endif
+
         // Apply postops
         POST_OP_DATA_T sum_src = WITH_SUM ? load(sum_src, dst, data_idx) : 0.0f;
 
-        accumulator = AS_POST_OP_DATA_T(acc);
         APPLY_POST_OPS_SERIAL(accumulator, sum_src, d0, d1, d2, d3, d4, d5);
 #if WITH_DYN_DST_SCALE == 0
         if (C_SCALES) {
@@ -115,24 +137,5 @@ __kernel void gemm_post_ops(__global SRC_DATA_T *src,
 #endif
         if (DST_ZERO_POINT) accumulator += dst_zp[0];
     }
-#if WITH_DROPOUT
-#if !DROPOUT_USE_HOST_SCALARS
-    long dropout_seed = dropout_seed_buf[0];
-    long dropout_offset = DROPOUT_USE_OFFSET ? dropout_offset_buf[0] : 0;
-    float dropout_p = dropout_p_buf[0];
-#endif
-    uint dropout_threshold = get_dropout_threshold(dropout_p);
-    float dropout_inv_q = (dropout_p != 1.f) ? 1.f / (1.f - dropout_p) : 0.f;
-#if DROPOUT_USE_OFFSET
-    uint res = philox_4x32_w_offset(data_idx, dropout_seed, dropout_offset);
-#else
-    uint res = philox_4x32(data_idx, dropout_seed);
-#endif
-    uchar dropout = res > dropout_threshold;
-    accumulator = (dropout) ? accumulator * dropout_inv_q : 0;
-#if DROPOUT_HAS_OUTPUT_MASK
-    dropout_mask_buf[data_idx] = dropout;
-#endif
-#endif
     write(dst + data_idx, accumulator);
 }

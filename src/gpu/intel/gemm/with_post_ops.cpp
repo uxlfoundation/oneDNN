@@ -248,7 +248,11 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
             acc_type = data_type::f32;
         }
     }
+    data_type_t seed_type = attr()->dropout_.seed_dt_;
+    bool with_seed_s64 = attr()->dropout_.seed_dt_ == data_type::s64;
+
     def_data_type(kernel_ctx, acc_type, "ACC");
+    def_data_type(kernel_ctx, seed_type, "SEED");
 
     kernel_ctx.define_int("NDIMS", ndims);
     CHECK(def_attr_info(
@@ -259,6 +263,7 @@ status_t with_post_ops_t::pd_t::init_kernel_ctx(
     kernel_ctx.define_int("DST_ZERO_POINT",
             !attr()->zero_points_.has_default_values(DNNL_ARG_DST));
     kernel_ctx.define_int("WITH_DROPOUT", with_dropout);
+    kernel_ctx.define_int("WITH_SEED_S64", with_seed_s64);
     kernel_ctx.define_int("DROPOUT_USE_HOST_SCALARS", dropout_use_host_scalars);
     kernel_ctx.define_int("DROPOUT_USE_OFFSET", dropout_use_offset);
     kernel_ctx.define_int("DROPOUT_HAS_OUTPUT_MASK", dropout_has_output_mask);

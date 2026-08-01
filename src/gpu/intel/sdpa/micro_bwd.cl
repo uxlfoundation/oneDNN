@@ -467,6 +467,13 @@ inline void tile_store_k_slm(
 #define DST_DATA_T_DKDV DST_DATA_T
 #endif
 
+#if DIRECT_DQ
+#define DST_DATA_T_DQ DST_DATA_T
+#else
+// needs intermediate f32 output before postprocess_dQ
+#define DST_DATA_T_DQ float
+#endif
+
 // round f32 intermediate values to DST_DATA_T precision before GQA atomic
 // accumulation. Although less accurate, it matches the unfused path
 // where each query group matmul output passes through DST_DATA_T
@@ -554,7 +561,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #if WITH_DS
         global DST_DATA_T *dS, // expensive, optional intermediate
 #endif
-        global DST_DATA_T_DKDV *dK, global float *dQ,
+        global DST_DATA_T_DKDV *dK, global DST_DATA_T_DQ *dQ,
         global DST_DATA_T_DKDV *dV,
 #if WITH_HOST_SCALE
         float scalar_scale, float inv_scalar_scale,
@@ -1060,9 +1067,8 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
         {
-#if DO_MM
             ktq_tile_type dQ_tile;
-
+#if DO_MM
             dQ_tile = ugemm_ktq(
 #if TRANSPOSE_K
                     AS_KEY_TILE_PTR(K + k0 * ldk),
@@ -1071,14 +1077,20 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
                     ldk, dSt_slm, ugemm_kq_wg_tile_m, d, q_nchunk, k_chunk, 0,
                     0, 0, sg_i_ktq, sg_j_ktq, (local char *)ugemm_slm);
-#else
-            ktq_tile_type dQ_tile;
 #endif
             uint sg_i0_dq = sg_i_ktq * ugemm_ktq_sg_tile_m;
             uint sg_j0_dq = sg_j_ktq * ugemm_ktq_sg_tile_n + q0;
 
+#if DIRECT_DQ
+            dq_tile_type_dst dQ_tile_dst;
+            tile_copy_reblock(dQ_tile, &dQ_tile_dst);
+            if (sg_ij < sg_per_wg_BrD)
+                tile_store(dQ_tile_dst, (global DST_TILE_DATA_T *)dQ, d, q,
+                        lddq, sg_i0_dq, sg_j0_dq);
+#else
             if (sg_ij < sg_per_wg_BrD)
                 tile_atomic_add(dQ_tile, dQ, d, q, lddq, sg_i0_dq, sg_j0_dq);
+#endif
         }
     }
 
@@ -1225,11 +1237,19 @@ postprocess_dQ(global DST_DATA_T *dst, global const float *src, int nelems,
     src += src_offset;
     dst += dst_offset;
     size_t idx = get_global_id(0);
-    if (idx < nelems) {
-        size_t row = idx / QRY_D3;
-        size_t col = idx % QRY_D3;
-        size_t src_idx = (size_t)row * DQ_S2 + col * DQ_S3;
-        size_t dst_idx = (size_t)row * QRY_S2 + col * QRY_S3;
+    if (idx >= (size_t)nelems) return;
+
+    const bool dense = (DQ_S3 == 1) && (QRY_S3 == 1) && (DQ_S2 == QRY_D3)
+            && (QRY_S2 == QRY_D3);
+    if (dense) {
+        dst[idx] = TO_DATA_T(src[idx]);
+    } else {
+        uint lin = (uint)idx;
+        uint ncols = (uint)QRY_D3;
+        uint row = lin / ncols;
+        uint col = lin - row * ncols;
+        size_t src_idx = (size_t)row * DQ_S2 + (size_t)col * DQ_S3;
+        size_t dst_idx = (size_t)row * QRY_S2 + (size_t)col * QRY_S3;
         dst[dst_idx] = TO_DATA_T(src[src_idx]);
     }
 }

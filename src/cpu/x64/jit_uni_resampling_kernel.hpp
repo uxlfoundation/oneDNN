@@ -38,9 +38,7 @@ struct jit_uni_resampling_kernel_base_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_resampling)
 
     jit_uni_resampling_kernel_base_t(const jit_resampling_conf_t &conf)
-        : jit_generator_t(jit_name(), conf.isa)
-        , conf_(conf)
-        , sum_scales_(conf_.sum_scales) {}
+        : jit_generator_t(jit_name(), conf.isa), conf_(conf) {}
 
     ~jit_uni_resampling_kernel_base_t() override = default;
 
@@ -48,7 +46,6 @@ struct jit_uni_resampling_kernel_base_t : public jit_generator_t {
 
 protected:
     const jit_resampling_conf_t &conf_;
-    std::queue<float> sum_scales_;
 };
 
 template <cpu_isa_t isa, typename Vmm>
@@ -84,8 +81,6 @@ private:
     void get_params_for_linear_in_c_oriented_format();
 
     void preserve_zero_padding_in_post_ops(int data_idx);
-    void apply_sum(
-            const int data_idx, const bool is_tail, const size_t offset = 0);
     void apply_postops(
             const int data_idx, const bool is_tail, const size_t offset = 0);
 
@@ -120,7 +115,6 @@ private:
     const Vmm vmm_weights_ = Vmm(3);
     const Vmm vmm_indices_ = Vmm(4);
     const Vmm vmm_tmp_gather_ = Vmm(5);
-    const Vmm vmm_sum_scale_ = Vmm(7);
     const Vmm vmm_tmp_ = Vmm(8);
     const Vmm vmm_post_op_helper_ = Vmm(9);
     const Vmm vmm_zero_saturation_ = isa == avx512_core ? Vmm(18) : Vmm(10);

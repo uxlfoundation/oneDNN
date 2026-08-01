@@ -663,7 +663,6 @@ struct jit_resampling_conf_t {
     bool with_eltwise = false;
     bool with_binary = false;
     bool with_sum = false;
-    std::queue<float> sum_scales;
 };
 
 struct jit_uni_resampling_args_t {

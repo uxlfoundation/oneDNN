@@ -70,7 +70,8 @@ jit_uni_resampling_kernel_t<isa, Vmm>::jit_uni_resampling_kernel_t(
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                        this, conf_.post_ops, bsp);
+                        this, conf_.post_ops, bsp,
+                        /* enable_native_sum = */ conf_.with_sum);
 
         std::tie(any_binary_postop_is_per_oc_bcast_type_,
                 any_binary_postop_is_per_oc_sp_bcast_type_)
@@ -230,52 +231,6 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::preserve_zero_padding_in_post_ops(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_resampling_kernel_t<isa, Vmm>::apply_sum(
-        const int data_idx, const bool is_tail, const size_t offset) {
-    if (conf_.with_sum) {
-        assert(!conf_.sum_scales.empty()
-                && "No scales for sum post operation.");
-        const auto sum_injector = [this, data_idx, is_tail, offset]() {
-            const Vmm vmm_prev_dst(vmm_tmp_.getIdx());
-            const Vmm vmm_dst(data_idx);
-
-            // Zeroing previous dst is needed to preserve zero padding.
-            if (is_tail && conf_.tag_kind == tag_kind::blocked)
-                uni_vxorps(vmm_prev_dst, vmm_prev_dst, vmm_prev_dst);
-
-            io_.at(conf_.dst_data_type)
-                    ->load(ptr[reg_dst_ + offset], vmm_prev_dst, is_tail);
-            const float sum_scale = sum_scales_.front();
-            if (sum_scale == 1.f)
-                uni_vaddps(vmm_dst, vmm_dst, vmm_prev_dst);
-            else {
-                const Xmm xmm_sum_scale = Xmm(vmm_sum_scale_.getIdx());
-
-                // If the algorithm used is the linear algorithm, and the shape
-                // has 5 dimensions, then we have not enough gpr registers to use
-                // tmp registers. Therefore, if there is a need to use them it is
-                // needed to save their state and restore it after execution of all
-                // needed operations.
-                if (conf_.alg == alg_kind::resampling_linear
-                        && conf_.ndims == 5)
-                    push(reg_tmp1_);
-                mov(reg_tmp1_.cvt32(), float2int(sum_scale));
-                uni_vmovd(xmm_sum_scale, reg_tmp1_.cvt32());
-                if (conf_.alg == alg_kind::resampling_linear
-                        && conf_.ndims == 5)
-                    pop(reg_tmp1_);
-                uni_vbroadcastss(vmm_sum_scale_, xmm_sum_scale);
-                uni_vfmadd231ps(vmm_dst, vmm_prev_dst, vmm_sum_scale_);
-            }
-            sum_scales_.push(sum_scale);
-            sum_scales_.pop();
-        };
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
-    }
-}
-
-template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa, Vmm>::apply_postops(
         const int data_idx, const bool is_tail, const size_t offset) {
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
@@ -285,9 +240,8 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::apply_postops(
             && (any_binary_postop_is_per_oc_bcast_type_
                     || any_binary_postop_is_per_oc_sp_bcast_type_);
 
-    if (conf_.with_sum) apply_sum(data_idx, is_tail, offset);
-
-    if (apply_rhs_binary) {
+    // Sum post-op requires binary parameters to be set.
+    if (apply_rhs_binary || conf_.with_sum) {
         rhs_arg_params.vmm_idx_to_out_reg.emplace(data_idx, reg_dst_);
         rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(data_idx, offset);
         if (is_tail) rhs_arg_params.vmm_tail_idx_.emplace(data_idx);
@@ -909,7 +863,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::generate() {
 
     postamble();
 
-    if (conf_.with_eltwise && postops_injector_)
+    if ((conf_.with_eltwise || conf_.with_sum) && postops_injector_)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

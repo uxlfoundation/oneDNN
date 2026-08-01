@@ -160,7 +160,6 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(const engine_t *engine) {
             conf_.with_binary = true;
         } else if (entry.is_sum(require_scale_one) && entry.sum.scale != 0.f) {
             conf_.with_sum = true;
-            conf_.sum_scales.push(entry.sum.scale);
         }
     }
     conf_.with_postops

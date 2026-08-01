@@ -287,6 +287,13 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
                     }
                     VCHECK_PO_INJ_BOOL(IMPLICATION(sum_at_pos_0_only, idx == 0),
                             "Unsupported sum position in post-ops");
+                    // The sum post-op reads the destination back.
+                    VCHECK_PO_INJ_BOOL(dst_d, VERBOSE_UNSUPPORTED_FORMAT_KIND);
+                    VCHECK_PO_INJ_BOOL(
+                            binary_injector::is_data_supported(isa,
+                                    post_ops.get_sum_dt(
+                                            dst_d->data_type(), idx)),
+                            VERBOSE_ISA_DT_MISMATCH);
                     return true;
                 case eltwise:
                     if (!entry.is_eltwise()) continue;

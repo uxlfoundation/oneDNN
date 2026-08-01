@@ -24,8 +24,8 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-template <cpu_isa_t isa, typename Vmm>
-jit_uni_sum_injector_t<isa, Vmm>::jit_uni_sum_injector_t(jit_generator_t *host,
+template <typename Vmm>
+jit_uni_sum_injector_t<Vmm>::jit_uni_sum_injector_t(jit_generator_t *host,
         const post_ops_t::entry_t::sum_t &sum, data_type_t dst_dt,
         binary_injector::jit_uni_binary_injector_t<Vmm> *binary_injector,
         size_t scratch_vmm_idx, bool preserve_scratch_vmm)
@@ -47,8 +47,8 @@ jit_uni_sum_injector_t<isa, Vmm>::jit_uni_sum_injector_t(jit_generator_t *host,
             && "native sum read type is undef: binary static params unset");
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_sum_injector_t<isa, Vmm>::compute_vector_range(
+template <typename Vmm>
+void jit_uni_sum_injector_t<Vmm>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs,
         const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params) {
 
@@ -57,7 +57,7 @@ void jit_uni_sum_injector_t<isa, Vmm>::compute_vector_range(
 
     // If a user-provided scratch register happens to be one of the
     // accumulators, pick a new free register.
-    const int max_idx = cpu_isa_traits_t<isa>::n_vregs - 1;
+    const int max_idx = isa_num_vregs(isa_) - 1;
     const int scratch = (int)scratch_vmm_idx_;
 
     int tmp_idx = scratch;
@@ -118,11 +118,11 @@ void jit_uni_sum_injector_t<isa, Vmm>::compute_vector_range(
     }
 }
 
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_sum_injector_t<isa, Vmm>::prepare_table(bool gen_table) {
+template <typename Vmm>
+void jit_uni_sum_injector_t<Vmm>::prepare_table(bool gen_table) {
     if (!gen_table || (!has_scale_ && !has_zp_)) return;
 
-    const int simd = cpu_isa_traits_t<isa>::vlen / (int)sizeof(float);
+    const int simd = isa_max_vlen(isa_) / (int)sizeof(float);
     const auto store_value = [&](float val) {
         for (int i = 0; i < simd; i++)
             host_->dd(float2int(val));
@@ -138,20 +138,9 @@ void jit_uni_sum_injector_t<isa, Vmm>::prepare_table(bool gen_table) {
     }
 }
 
-template class jit_uni_sum_injector_t<avx512_core_fp16, Xbyak::Zmm>;
-template class jit_uni_sum_injector_t<avx512_core_fp16, Xbyak::Ymm>;
-template class jit_uni_sum_injector_t<avx512_core_fp16, Xbyak::Xmm>;
-template class jit_uni_sum_injector_t<avx512_core_bf16, Xbyak::Zmm>;
-template class jit_uni_sum_injector_t<avx512_core, Xbyak::Zmm>;
-template class jit_uni_sum_injector_t<avx512_core, Xbyak::Ymm>;
-template class jit_uni_sum_injector_t<avx512_core, Xbyak::Xmm>;
-template class jit_uni_sum_injector_t<avx2_vnni_2, Xbyak::Ymm>;
-template class jit_uni_sum_injector_t<avx2_vnni_2, Xbyak::Xmm>;
-template class jit_uni_sum_injector_t<avx2, Xbyak::Ymm>;
-template class jit_uni_sum_injector_t<avx2, Xbyak::Xmm>;
-template class jit_uni_sum_injector_t<avx, Xbyak::Ymm>;
-template class jit_uni_sum_injector_t<avx, Xbyak::Xmm>;
-template class jit_uni_sum_injector_t<sse41, Xbyak::Xmm>;
+template class jit_uni_sum_injector_t<Xbyak::Zmm>;
+template class jit_uni_sum_injector_t<Xbyak::Ymm>;
+template class jit_uni_sum_injector_t<Xbyak::Xmm>;
 
 } // namespace x64
 } // namespace cpu

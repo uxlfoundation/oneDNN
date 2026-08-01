@@ -199,7 +199,7 @@ private:
     // `alg_to_eltwise_injector_`. They contain a `binary_injector_` pointer but
     // do not own it. Keep `idx_to_sum_injector_` after the `binary_injector_`
     // field, just in case.
-    std::map<int, jit_uni_sum_injector_t<isa, Vmm>> idx_to_sum_injector_;
+    std::map<int, jit_uni_sum_injector_t<Vmm>> idx_to_sum_injector_;
     lambda_jit_injectors_t lambda_jit_injectors_;
     // When set, a sum entry is handled by the sum injector instead of a lambda.
     const bool sum_is_native_;

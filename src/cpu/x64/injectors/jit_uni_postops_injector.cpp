@@ -108,7 +108,7 @@ jit_uni_postops_injector_t<isa, Vmm>::jit_uni_postops_injector_t(
             if (!post_op.is_sum(false, false)) continue;
 
             idx_to_sum_injector_.emplace(i,
-                    jit_uni_sum_injector_t<isa, Vmm>(host_, post_op.sum, dst_dt,
+                    jit_uni_sum_injector_t<Vmm>(host_, post_op.sum, dst_dt,
                             binary_injector_.get(), rhs.rhs_dt_helper_vmm_idx,
                             rhs.preserve_vmm_helper));
         }

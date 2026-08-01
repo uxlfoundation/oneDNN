@@ -151,7 +151,8 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
     bool require_stateless_addressing;
     bool dropout, dropout_output_mask, dropout_offset, dropout_host_scalars;
     bool k_in_slm;
-    uint8_t padding2[2] = {0};
+    bool direct_dQ;
+    uint8_t padding2[1] = {0};
 
     micro_bwd_ukernel_params_t ukernel_config;
 };

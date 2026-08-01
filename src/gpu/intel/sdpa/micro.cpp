@@ -446,9 +446,10 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
     bool is_f32 = (desc()->qry_md()->data_type == data_type::f32);
 
     bool use_fma_config = !use_systolic_ukernel_;
+    const dim_t batch_heads = d->batch() * d->num_q_heads();
     config = choose_bwd_config(arch_, d->head_size(), d->queries(), d->keys(),
-            thin_q, quantized, is_integrated, use_fma_config, is_f32,
-            with_causal_mask());
+            batch_heads, thin_q, quantized, is_integrated, use_fma_config,
+            is_f32, with_causal_mask());
 
     VDISPATCH_SDPA(config != nullptr,
             "No suitable kernel configuration found for the given problem "
@@ -1025,6 +1026,14 @@ status_t micro_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
         conf.block_dV = (ldv % 4 == 0) && (dv_full);
     }
 
+    // check if dQ can be computed without atomics
+    {
+        const memory_desc_wrapper diff_qry_mdw(desc()->diff_qry_md());
+        const bool single_k_block = (desc()->keys() <= tile_k);
+        conf.direct_dQ = single_k_block && diff_qry_mdw.is_plain()
+                && diff_qry_mdw.strides()[3] == 1;
+    }
+
     return status::success;
 }
 
@@ -1035,7 +1044,7 @@ status_t micro_bwd_t::pd_t::init_scratchpad(const impl::engine_t *engine) {
     size_t wspace_size = memory_desc_wrapper(desc()->diff_qry_md()).nelems();
     // f32 can directly atomic add to output
     // others need intermediate scratchpad before conversion
-    if (conf.data_t != data_type::f32) {
+    if (conf.data_t != data_type::f32 && !conf.direct_dQ) {
         scratchpad.book(memory_tracking::names::key_sdpa_dQ_reduction,
                 wspace_size, sizeof(float), gpu_align);
     }
@@ -1326,6 +1335,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("BLOCK_DV", block_dV);
     kernel_ctx.define_int("BLOCK_K", block_k);
     kernel_ctx.define_int("K_IN_SLM", k_in_slm);
+    kernel_ctx.define_int("DIRECT_DQ", direct_dQ);
 
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
     kernel_ctx.define_int("WITH_DROPOUT", dropout);
@@ -1744,10 +1754,16 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     const dim_t D = pd()->desc()->head_size();
 
     const data_type_t data_t = pd()->dst_md()->data_type;
-    const bool needs_intermediate_dQ = (data_t != data_type::f32);
+    const bool direct_dQ = pd()->conf.direct_dQ;
+    const bool needs_intermediate_dQ = (data_t != data_type::f32) && !direct_dQ;
     const bool needs_intermediate_dKV
             = (kv_group_size > 1 && data_t != data_type::f32);
     const bool needs_zero_dKV = (kv_group_size > 1);
+
+    const bool all_q_visited
+            = (pd()->desc()->mask_type != attn_mask_type::bottom_right)
+            || (Q <= K);
+    const bool needs_zero_dQ = !direct_dQ || !all_q_visited;
 
     const auto &conf = pd()->conf;
 
@@ -1886,7 +1902,6 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     auto *d = pd()->desc();
     // zero f32 intermediates before atomic adds in the main kernel
-    // dQ always needs atomics, dK/dV only for GQA cases
     {
         auto compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
         auto &fill_deps = compute_stream->ctx().get_deps();
@@ -1900,12 +1915,14 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             return compute_stream->fill(buf, 0, bytes, fill_deps, fill_deps);
         };
 
-        // always zero dQ
-        auto &dQ_buf = needs_intermediate_dQ ? *diff_q_scratch : diff_q;
-        const size_t dQ_bytes = needs_intermediate_dQ
-                ? size_t(batch * num_q_heads * Q * D) * sizeof(float)
-                : diff_qry_mdw.size();
-        CHECK(zero_fill(dQ_buf, dQ_bytes));
+        // zero dQ
+        if (needs_zero_dQ) {
+            auto &dQ_buf = needs_intermediate_dQ ? *diff_q_scratch : diff_q;
+            const size_t dQ_bytes = needs_intermediate_dQ
+                    ? size_t(batch * num_q_heads * Q * D) * sizeof(float)
+                    : diff_qry_mdw.size();
+            CHECK(zero_fill(dQ_buf, dQ_bytes));
+        }
 
         // zero dK/dV for GQA cases
         if (needs_zero_dKV) {

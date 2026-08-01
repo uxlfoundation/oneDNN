@@ -1011,7 +1011,6 @@ struct jit_reduction_conf_t {
     bool with_eltwise = false;
     bool with_binary = false;
     bool with_sum = false;
-    std::queue<float> sum_scales;
 };
 
 struct jit_uni_reduction_args_t {

@@ -164,8 +164,9 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::init_post_ops_injector(
             reg_param_, get_supported_postops_bcast_strategies(), rhs_arg_bsp);
 
     postops_injector_
-            = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                    this, conf_.post_ops, bsp, esp);
+            = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(this,
+                    conf_.post_ops, bsp, esp,
+                    /* enable_native_sum = */ conf_.with_sum);
 }
 
 template <cpu_isa_t isa, typename Vmm>
@@ -346,40 +347,11 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::load_params() {
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_reduction_kernel_t<isa, Vmm>::apply_sum(const int data_idx) {
-    if (conf_.with_sum) {
-        assert(!conf_.sum_scales.empty()
-                && "No scales for sum post operation.");
-        const auto sum_injector = [this, data_idx]() {
-            const Vmm vmm_prev_dst(vmm_tmp1_.getIdx());
-            const Vmm vmm_dst(data_idx);
-
-            io_store_.load(ptr[reg_dst_], vmm_prev_dst, true);
-            const float sum_scale = sum_scales_.front();
-            if (sum_scale == 1.f)
-                uni_vaddps(vmm_dst, vmm_dst, vmm_prev_dst);
-            else {
-                const Xmm xmm_sum_scale = Xmm(vmm_sum_scale_.getIdx());
-                mov(reg_tmp1_.cvt32(), float2int(sum_scale));
-                uni_vmovd(xmm_sum_scale, reg_tmp1_.cvt32());
-                uni_vbroadcastss(vmm_sum_scale_, xmm_sum_scale);
-                uni_vfmadd231ps(vmm_dst, vmm_prev_dst, vmm_sum_scale_);
-            }
-            sum_scales_.push(sum_scale);
-            sum_scales_.pop();
-        };
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
-    }
-}
-
-template <cpu_isa_t isa, typename Vmm>
 void jit_uni_reduction_kernel_t<isa, Vmm>::apply_postops(const int data_idx) {
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
 
-    if (conf_.with_sum) apply_sum(data_idx);
-
-    if (conf_.with_binary) {
+    // Sum post-op requires binary parameters to be set.
+    if (conf_.with_binary || conf_.with_sum) {
         rhs_arg_params.vmm_idx_to_out_reg.emplace(data_idx, reg_dst_);
         rhs_arg_params.vmm_tail_idx_.emplace(data_idx);
     }
@@ -424,7 +396,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::generate() {
 
     postamble();
 
-    if (conf_.with_eltwise && postops_injector_)
+    if ((conf_.with_eltwise || conf_.with_sum) && postops_injector_)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

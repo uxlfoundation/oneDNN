@@ -77,12 +77,6 @@ struct jit_brdgmm_kernel_base_t : public jit_base_brgemm_kernel_t {
                 idx_vmm_zp_comp_ = aux_vmm_count_++;
                 if (!is_superset(brg.isa_impl, avx512_core))
                     idx_vmm_bcast_ = aux_vmm_count_++;
-            } else if (brg.with_sum
-                    && (!is_superset(brg.isa_impl, avx512_core))) {
-                const bool p_sum_scale_reg_set = brg.sum_scale != 1.f;
-                if (p_sum_scale_reg_set)
-                    idx_vmm_bcast_
-                            = aux_vmm_count_++; // need extra vmm for broadcast
             }
             compute_vmm_base_idx_ = aux_vmm_count_;
 
@@ -232,10 +226,6 @@ private:
     // so need to be savable or use other registers
     const injector_utils::reg64_savable_t reg_binary_params {
             regscratchpad_, abi_param1};
-    const injector_utils::reg64_savable_t reg_ptr_sum_scale {
-            regscratchpad_, r14, r27};
-    const injector_utils::reg64_savable_t reg_ptr_sum_zp {
-            regscratchpad_, rax, r28};
     const injector_utils::reg64_savable_t reg_s8s8_comp {
             regscratchpad_, r14, r29};
 

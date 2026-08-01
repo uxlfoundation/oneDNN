@@ -73,7 +73,8 @@ jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                        this, brg.attr()->post_ops_, bsp);
+                        this, brg.attr()->post_ops_, bsp,
+                        /* enable_native_sum = */ brg.with_sum);
 
         with_binary_non_scalar_bcast_
                 = binary_injector::any_binary_postop_rhs_non_scalar_broadcast(
@@ -282,81 +283,26 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
         vmm_idxs_param.insert(vmm_idx);
     }
 
-    if (brg.with_binary) {
-        reg_binary_params.restore();
+    if (brg.with_binary) reg_binary_params.restore();
 
-        if (with_binary_non_scalar_bcast_) {
-
-            for_(int v_i = 0; v_i < v_substep; ++v_i)
-            for_(int m_i = 0; m_i < m_blocks; m_i++)
-            for (int n_i = 0; n_i < n_blocks; n_i++) {
-                const int substep_simd = get_substep_simd(n_i, v_i, has_n_tail);
-                if (substep_simd <= 0) continue;
-                const auto vmm_idx
-                        = accm(m_blocks, n_blocks, m_i, n_i, v_i).getIdx();
-                rhs_arg_params.vmm_idx_to_out_reg.emplace(vmm_idx, reg_aux_D);
-                rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                        vmm_idx, D_offset(m_i, n_i, v_i));
-
-                if (n_i + 1 == n_blocks && has_n_tail && substep_simd < simd_w_)
-                    rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
-            }
-        }
-    }
-
-    const auto sum_injector = [&] {
-        const float *p_sum_scale = &brg.sum_scale;
-        const int32_t *p_sum_zp = &brg.sum_zp;
-        const bool p_sum_scale_reg_set = *p_sum_scale != 1.f;
-        const bool p_sum_zp_reg_set = *p_sum_zp != 0;
-
-        const reg64_savable_guard_t register_guard_sum(
-                {{{&reg_ptr_sum_scale},
-                         with_binary_non_scalar_bcast_ && p_sum_scale_reg_set},
-                        {{&reg_ptr_sum_zp}, p_sum_zp_reg_set}});
-
-        if (p_sum_scale_reg_set)
-            mov(reg_ptr_sum_scale, reinterpret_cast<size_t>(p_sum_scale));
-
-        auto vmm_sum_zp = vmm_tmp(0);
-        if (p_sum_zp_reg_set) {
-            mov(reg_ptr_sum_zp, reinterpret_cast<size_t>(p_sum_zp));
-            if (is_superset(brg.isa_impl, avx512_core)) {
-                vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
-            } else {
-                uni_vpbroadcastd(vmm_sum_zp, ptr[reg_ptr_sum_zp]);
-                vcvtdq2ps(vmm_sum_zp, vmm_sum_zp);
-            }
-        }
-
+    // Sum post-op requires binary parameters to be set.
+    const bool set_for_binary
+            = brg.with_binary && with_binary_non_scalar_bcast_;
+    if (set_for_binary || brg.with_sum) {
+        for_(int v_i = 0; v_i < v_substep; ++v_i)
         for_(int m_i = 0; m_i < m_blocks; m_i++)
-        for_(int n_i = 0; n_i < n_blocks; n_i++)
-        for (int v_i = 0; v_i < v_substep; v_i++) {
+        for (int n_i = 0; n_i < n_blocks; n_i++) {
             const int substep_simd = get_substep_simd(n_i, v_i, has_n_tail);
             if (substep_simd <= 0) continue;
-            const auto vmm = accm(m_blocks, n_blocks, m_i, n_i, v_i);
-            const auto addr = ptr[reg_aux_D + D_offset(m_i, n_i, v_i)];
-            const auto vmm_prev_dst = vmm_tmp(1);
-            cvt2ps(brg.sum_dt, vmm_prev_dst, addr, substep_simd != simd_w_,
-                    false);
-            if (p_sum_zp_reg_set) vsubps(vmm_prev_dst, vmm_sum_zp);
-            if (!p_sum_scale_reg_set)
-                vaddps(vmm, vmm_prev_dst);
-            else {
-                if (is_superset(brg.isa_impl, avx512_core)) {
-                    vfmadd231ps(vmm, vmm_prev_dst, ptr_b[reg_ptr_sum_scale]);
-                } else {
-                    auto vmm_scale = vmm_bcast();
-                    uni_vpbroadcastd(vmm_scale, ptr[reg_ptr_sum_scale]);
-                    uni_vfmadd231ps(vmm, vmm_prev_dst, vmm_scale);
-                }
-            }
-        }
-    };
+            const auto vmm_idx
+                    = accm(m_blocks, n_blocks, m_i, n_i, v_i).getIdx();
+            rhs_arg_params.vmm_idx_to_out_reg.emplace(vmm_idx, reg_aux_D);
+            rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
+                    vmm_idx, D_offset(m_i, n_i, v_i));
 
-    if (brg.with_sum) {
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
+            if (n_i + 1 == n_blocks && has_n_tail && substep_simd < simd_w_)
+                rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
+        }
     }
 
     postops_injector_->compute_vector_range(vmm_idxs_param, rhs_arg_params);
@@ -1484,7 +1430,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::generate() {
     add(rsp, regscratchpad_.Size());
     postamble();
 
-    if (brg.with_eltwise)
+    if (brg.with_eltwise || brg.with_sum)
         postops_injector_->prepare_table(/* generate = */ true);
 
     if (is_fast_vnni_int8()) {

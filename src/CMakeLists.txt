@@ -1,6 +1,7 @@
 #===============================================================================
 # Copyright 2016 Intel Corporation
 # Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright 2026 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -72,6 +73,10 @@ endif()
 
 if(DNNL_ENABLE_CONCURRENT_EXEC)
     add_definitions_with_host_compiler(-DDNNL_ENABLE_CONCURRENT_EXEC)
+endif()
+
+if(DNNL_AARCH64_DISABLE_KAI)
+    add_definitions_with_host_compiler(-DDNNL_AARCH64_DISABLE_KAI=1)
 endif()
 
 if(DNNL_ENABLE_PRIMITIVE_CACHE)

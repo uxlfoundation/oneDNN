@@ -122,8 +122,8 @@ bool sdp_decomp_training_config_t::initial_check(
     // Initialize nthr with max threads num
     nthr = dnnl_get_max_threads();
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
-#define RATIO 2
-    VCHECK_SDP_TRAIN(batch_size * num_head_q > RATIO * nthr, false,
+    constexpr dim_t ratio = 2;
+    VCHECK_SDP_TRAIN(batch_size * num_head_q > ratio * nthr, false,
             "Doesn't meet condition for decompose: batch_size * num_head_q "
             "should be larger than ratio * nthr");
 #endif

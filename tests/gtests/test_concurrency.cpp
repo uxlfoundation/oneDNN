@@ -130,7 +130,8 @@ public:
         return create_object<stream>(reuse_stream_, key, stream_mgr_, [&] {
             stream::flags stream_flags = stream::flags::default_flags;
 #ifdef DNNL_EXPERIMENTAL_PROFILING
-            stream_flags |= stream::flags::profiling;
+            const bool is_gpu = get_test_engine_kind() == engine::kind::gpu;
+            if (is_gpu) stream_flags |= stream::flags::profiling;
 #endif
             return stream(eng, stream_flags);
         });

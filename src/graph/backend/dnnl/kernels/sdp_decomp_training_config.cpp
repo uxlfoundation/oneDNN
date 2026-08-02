@@ -392,7 +392,7 @@ impl::status_t sdp_decomp_training_config_t::construct_params(
         sub_mm1_post_mem.emplace_back(sub_mm1_post_md[i], p_engine, nullptr);
     }
 
-    // Softmax output P is in dt_src_user (bf16) for mm2 consumption
+    // Softmax output P is f32 (dt_inter); reorder to dt_src_user is applied before mm2 when needed.
     sub_softmax_out = memory(softmax_out_md, p_engine, nullptr);
 
     // mm2 memories

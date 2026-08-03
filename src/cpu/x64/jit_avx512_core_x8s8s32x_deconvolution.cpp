@@ -69,7 +69,7 @@ jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
                         this, jcp.post_ops, bsp,
-                        /* enable_native_sum = */ jcp.with_sum);
+                        /* inject_sum = */ jcp.with_sum);
     }
 }
 

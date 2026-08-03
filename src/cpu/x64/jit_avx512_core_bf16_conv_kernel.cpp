@@ -122,7 +122,9 @@ jit_avx512_core_bf16_fwd_kernel_vmm_t<
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                        this, jcp.post_ops, static_params);
+                        // Sum is folded into accumulator initialization.
+                        this, jcp.post_ops, static_params,
+                        /* inject_sum = */ false);
     }
     if (!isa_has_bf16(jcp.isa))
         bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,

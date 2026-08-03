@@ -134,8 +134,9 @@ struct kernel_t : public jit_uni_instance_normalization_fwd_t::kernel_base_t,
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<Vmm>>(
-                    this, pd_->attr()->post_ops_, bsp, esp);
+                    injector::jit_uni_postops_injector_t<Vmm>>(this,
+                    pd_->attr()->post_ops_, bsp, esp,
+                    /* inject_sum = */ false);
         }
         preamble();
 

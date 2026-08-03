@@ -57,7 +57,9 @@ jit_uni_dw_conv_fwd_kernel_f32_t<isa>::jit_uni_dw_conv_fwd_kernel_f32_t(
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<
                         typename cpu_isa_traits_t<isa>::Vmm>>(
-                        this, jcp.post_ops, static_params);
+                        // Sum is folded into accumulator initialization.
+                        this, jcp.post_ops, static_params,
+                        /* inject_sum = */ false);
     }
 }
 

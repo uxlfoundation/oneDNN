@@ -74,7 +74,7 @@ jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
                         this, brg.attr()->post_ops_, bsp,
-                        /* enable_native_sum = */ brg.with_sum);
+                        /* inject_sum = */ brg.with_sum);
 
         with_binary_non_scalar_bcast_
                 = binary_injector::any_binary_postop_rhs_non_scalar_broadcast(

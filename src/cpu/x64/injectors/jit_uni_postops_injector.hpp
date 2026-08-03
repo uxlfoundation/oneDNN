@@ -16,7 +16,6 @@
 #ifndef CPU_X64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
 #define CPU_X64_INJECTORS_JIT_UNI_POSTOPS_INJECTOR_HPP
 
-#include <functional>
 #include <map>
 #include <memory>
 
@@ -36,16 +35,6 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 namespace injector {
-
-/*
- * Allows specifying custom injector function for given post-op type - one
- * function per primitive. There are post-ops type (example: sum) that don't
- * have specialized injector. They heavily rely on kernel specific intrnals,
- * which makes the generalization unreasonable. As so user can prepare internal
- * kernel lambda and pass it explicitly to injector.
- */
-using lambda_jit_injectors_t
-        = std::map<dnnl_primitive_kind_t, std::function<void()>>;
 
 size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd);
 
@@ -67,35 +56,27 @@ public:
      * see: jit_uni_binary_injector.hpp for more info.
      * @param eltwise_static_params <optional> - allows user specify non default
      * params for eltwise_injector
-     * @param lambda_jit_injectors <optional> - allows user specify custom injector
-     * function for given post-op type
-     * @param enable_native_sum <optional> - handle the sum post-op inside the
-     * injector instead of through a caller-provided lambda. Native sum reads
-     * the previous value from the address supplied per accumulator in
-     * `rhs_arg_dynamic_params_t`, so the caller must provide it (as it does for
-     * binary post-ops).
+     * @param inject_sum <required> - whether the injector applies the sum
+     * post-op. Whether the chain holds a sum entry is visible in `post_ops`,
+     * but whether this kernel wants the injector to act on it is not. Some
+     * kernels apply sum manually and pass the entry along only so the rest of
+     * the chain is handled. Those must pass `false`, otherwise the value is
+     * summed twice. The argument is mandatory so that the intent is stated at
+     * every call site. When set, the injector reads the previous value from the
+     * address supplied per accumulator in `rhs_arg_dynamic_params_t`, so the
+     * caller must provide it, as it does for binary post-ops.
      */
     jit_uni_postops_injector_t(jit_generator_t *host,
             const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
-            bool enable_native_sum = false);
-    jit_uni_postops_injector_t(jit_generator_t *host,
-            const post_ops_t &post_ops,
-            const binary_injector::static_params_t &binary_static_params,
-            const lambda_jit_injectors_t &lambda_jit_injectors);
-    jit_uni_postops_injector_t(jit_generator_t *host,
-            const post_ops_t &post_ops,
-            const binary_injector::static_params_t &binary_static_params,
-            const eltwise_injector::static_params_t &eltwise_static_params,
-            bool enable_native_sum = false);
-    // This is the delegation target for the other constructors, since it owns
+            bool inject_sum);
+    // This is the delegation target for the other constructor, since it owns
     // all construction state.
     jit_uni_postops_injector_t(jit_generator_t *host,
             const post_ops_t &post_ops,
             const binary_injector::static_params_t &binary_static_params,
             const eltwise_injector::static_params_t &eltwise_static_params,
-            const lambda_jit_injectors_t &lambda_jit_injectors,
-            bool enable_native_sum = false);
+            bool inject_sum);
 
     // Generates code of post_ops chain injected to host primitive. Applied to
     // ordered set of vector registers' indexes.
@@ -120,8 +101,6 @@ public:
 
     // Thin wrapper for eltwise injector specific function
     void prepare_table(bool gen_table);
-    void set_lambda_injector(lambda_jit_injectors_t::key_type,
-            const lambda_jit_injectors_t::mapped_type &jit_injector);
 
 private:
     post_ops_t post_ops_;
@@ -135,9 +114,8 @@ private:
     // do not own it. Keep `idx_to_sum_injector_` after the `binary_injector_`
     // field, just in case.
     std::map<int, jit_uni_sum_injector_t<Vmm>> idx_to_sum_injector_;
-    lambda_jit_injectors_t lambda_jit_injectors_;
-    // When set, a sum entry is handled by the sum injector instead of a lambda.
-    const bool sum_is_native_;
+    // When unset, a sum entry is skipped because the kernel applies it itself.
+    const bool inject_sum_;
 };
 
 enum post_op_type { sum = 0, eltwise, binary, prelu };

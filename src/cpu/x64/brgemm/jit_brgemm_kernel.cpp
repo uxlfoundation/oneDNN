@@ -126,7 +126,7 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
 
             postops_injector_ = utils::make_unique<po_injector_t>(this,
                     brg.attr()->post_ops_, bsp,
-                    /* enable_native_sum = */ brg.with_sum);
+                    /* inject_sum = */ brg.with_sum);
 
             with_binary_non_scalar_bcast_ = binary_injector::
                     any_binary_postop_rhs_non_scalar_broadcast(

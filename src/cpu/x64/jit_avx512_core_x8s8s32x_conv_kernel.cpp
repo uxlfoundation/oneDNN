@@ -86,7 +86,7 @@ jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
                         this, jcp.post_ops, static_params,
-                        /* enable_native_sum = */ jcp.with_sum);
+                        /* inject_sum = */ jcp.with_sum);
     }
     if (!isa_has_bf16(jcp.isa) && jcp.dst_dt == data_type::bf16)
         bf16_emu_ = utils::make_unique<bf16_emulation_t>(this,

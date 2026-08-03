@@ -50,13 +50,11 @@ jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
         const eltwise_injector::static_params_t &eltwise_static_params,
-        const lambda_jit_injectors_t &lambda_jit_injectors,
-        bool enable_native_sum)
+        bool inject_sum)
     : post_ops_(post_ops)
     , host_(host)
     , binary_injector_(nullptr)
-    , lambda_jit_injectors_(lambda_jit_injectors)
-    , sum_is_native_(enable_native_sum) {
+    , inject_sum_(inject_sum) {
 
     const auto &esp = eltwise_static_params;
     bool is_like_binary = false;
@@ -92,16 +90,15 @@ jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
                 injector opmask. Otherwise eltwise injector will overwrite \
                 binary tail opmask.");
 
-    // Native sum reads the previous value through the binary injector's load
-    // path so the binary injector is created for a sum-only chain as well.
+    // The sum injector reads the previous value through the binary injector's
+    // load path so the binary injector is created for a sum-only chain as well.
     if (is_like_binary || is_sum)
         binary_injector_ = utils::make_unique<
                 binary_injector::jit_uni_binary_injector_t<Vmm>>(
                 host, binary_static_params);
 
-    // Build one sum injector per sum post-op when the caller opted in to
-    // native sum.
-    if (is_sum && sum_is_native_) {
+    // Build one sum injector per sum post-op when the caller asked for it.
+    if (is_sum && inject_sum_) {
         const auto &rhs = binary_static_params.rhs_arg_static_params;
         const auto dst_dt = rhs.dst_d.data_type();
         for (int i = 0; i < post_ops.len(); i++) {
@@ -120,28 +117,9 @@ template <typename Vmm>
 jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
         jit_generator_t *host, const post_ops_t &post_ops,
         const binary_injector::static_params_t &binary_static_params,
-        bool enable_native_sum)
+        bool inject_sum)
     : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
-              eltwise_injector::static_params_t(), lambda_jit_injectors_t(),
-              enable_native_sum) {}
-
-template <typename Vmm>
-jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
-        jit_generator_t *host, const post_ops_t &post_ops,
-        const binary_injector::static_params_t &binary_static_params,
-        const lambda_jit_injectors_t &lambda_jit_injectors)
-    : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
-              eltwise_injector::static_params_t(), lambda_jit_injectors) {}
-
-template <typename Vmm>
-jit_uni_postops_injector_t<Vmm>::jit_uni_postops_injector_t(
-        jit_generator_t *host, const post_ops_t &post_ops,
-        const binary_injector::static_params_t &binary_static_params,
-        const eltwise_injector::static_params_t &eltwise_static_params,
-        bool enable_native_sum)
-    : jit_uni_postops_injector_t(host, post_ops, binary_static_params,
-              eltwise_static_params, lambda_jit_injectors_t(),
-              enable_native_sum) {}
+              eltwise_injector::static_params_t(), inject_sum) {}
 
 template <typename Vmm>
 void jit_uni_postops_injector_t<Vmm>::compute_vector_range(size_t start_idx,
@@ -178,13 +156,12 @@ void jit_uni_postops_injector_t<Vmm>::compute_vector_range(
             // Ternary op handles two arguments at the same time, thus,
             // skipping one more.
             if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
-        } else if (sum_is_native_ && post_op.is_sum(false, false)) {
+        } else if (inject_sum_ && post_op.is_sum(false, false)) {
             idx_to_sum_injector_.at(i).compute_vector_range(
                     vmm_idxs, rhs_arg_params);
-        } else {
-            const auto lam = lambda_jit_injectors_.find(post_op.kind);
-            if (lam != lambda_jit_injectors_.end()) lam->second();
         }
+        // A sum entry falls through when `inject_sum_` is unset. The kernel
+        // applies it itself in that case.
     }
 }
 template <typename Vmm>
@@ -200,7 +177,7 @@ void jit_uni_postops_injector_t<Vmm>::prepare_table(bool gen_table) {
 
     // Sum injectors emit their scale/zero-point constants here, similar to the
     // eltwise loop above.
-    if (sum_is_native_)
+    if (inject_sum_)
         for (auto &kv : idx_to_sum_injector_)
             kv.second.prepare_table(gen_table);
 }
@@ -214,12 +191,6 @@ void jit_uni_postops_injector_t<Vmm>::compute_vector(size_t idx,
 template <typename Vmm>
 void jit_uni_postops_injector_t<Vmm>::compute_vector(size_t idx) {
     compute_vector_range({idx});
-}
-
-template <typename Vmm>
-void jit_uni_postops_injector_t<Vmm>::set_lambda_injector(
-        dnnl_primitive_kind_t kind, const std::function<void()> &jit_injector) {
-    lambda_jit_injectors_[kind] = jit_injector;
 }
 
 post_ops_ok_args_t::post_ops_ok_args_t(const cpu_isa_t isa,
@@ -253,8 +224,9 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
             = post_ops_ok_args.enabled_bcast_strategy;
 
     // Save scale and zero point of first sum postop in order to check that any
-    // subsequent sum postops have the same values. This check is necessary
-    // because there is only one lambda injector.
+    // subsequent sum postops have the same values. Callers that apply sum with
+    // a single set of constants ask for this check through
+    // `sum_requires_same_params`.
     const auto sum_idx = post_ops.find(primitive_kind::sum);
     const bool with_sum = sum_idx != -1;
     const auto &entry

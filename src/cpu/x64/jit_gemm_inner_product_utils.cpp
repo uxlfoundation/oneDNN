@@ -353,8 +353,9 @@ jit_pp_kernel_t<isa>::jit_pp_kernel_t(size_t OC, size_t MB, dim_t dst_mb_stride,
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<
                         typename cpu_isa_traits_t<isa>::Vmm>>(this,
+                        // Sum is applied in the kernel's own store sequence.
                         this->post_ops_, binary_static_params,
-                        eltwise_static_params);
+                        eltwise_static_params, /* inject_sum = */ false);
 
         using namespace dnnl::impl::cpu::binary_injector_utils;
         std::tie(any_binary_postop_is_no_bcast_type_,

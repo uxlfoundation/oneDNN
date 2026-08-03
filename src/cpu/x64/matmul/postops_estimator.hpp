@@ -76,8 +76,10 @@ private:
         esp.preserve_vmm = false;
         esp.preserve_p_table = false;
 
-        postops_injector_ = utils::make_unique<po_injector_t>(
-                this, attr.post_ops_, bsp, esp);
+        postops_injector_ = utils::make_unique<po_injector_t>(this,
+                attr.post_ops_, bsp, esp,
+                // The estimate leaves sum out, as it always has.
+                /* inject_sum = */ false);
     }
 
     const char *name() const final {

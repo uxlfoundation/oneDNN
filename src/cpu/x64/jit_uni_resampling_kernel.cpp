@@ -71,7 +71,7 @@ jit_uni_resampling_kernel_t<isa, Vmm>::jit_uni_resampling_kernel_t(
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
                         this, conf_.post_ops, bsp,
-                        /* enable_native_sum = */ conf_.with_sum);
+                        /* inject_sum = */ conf_.with_sum);
 
         std::tie(any_binary_postop_is_per_oc_bcast_type_,
                 any_binary_postop_is_per_oc_sp_bcast_type_)

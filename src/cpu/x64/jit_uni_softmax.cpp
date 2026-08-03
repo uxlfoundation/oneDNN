@@ -966,8 +966,8 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<Vmm>>(
-                    this, pd_->attr()->post_ops_, bsp);
+                    injector::jit_uni_postops_injector_t<Vmm>>(this,
+                    pd_->attr()->post_ops_, bsp, /* inject_sum = */ false);
         }
 #undef PARAM_OFF
 
@@ -1551,8 +1551,8 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<Vmm>>(
-                    this, pd_->attr()->post_ops_, bsp);
+                    injector::jit_uni_postops_injector_t<Vmm>>(this,
+                    pd_->attr()->post_ops_, bsp, /* inject_sum = */ false);
         }
 #undef PARAM_OFF
 

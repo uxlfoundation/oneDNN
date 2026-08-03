@@ -150,7 +150,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::init_post_ops_injector() {
 
     postops_injector_
             = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                    this, po, bsp, esp, /* enable_native_sum = */ conf_.do_sum);
+                    this, po, bsp, esp, /* inject_sum = */ conf_.do_sum);
 }
 
 template <cpu_isa_t isa, typename Vmm>

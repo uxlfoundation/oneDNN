@@ -445,7 +445,7 @@ jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
                         this, jcp_.post_ops, bsp,
-                        /* enable_native_sum = */ jcp_.with_sum);
+                        /* inject_sum = */ jcp_.with_sum);
     }
 }
 

@@ -55,7 +55,8 @@ jit_avx512_dw_conv_fwd_kernel_f16_t::jit_avx512_dw_conv_fwd_kernel_f16_t(
 
         postops_injector_ = utils::make_unique<
                 injector::jit_uni_postops_injector_t<Xbyak::Zmm>>(
-                this, jcp.post_ops, static_params);
+                // Sum is folded into accumulator initialization.
+                this, jcp.post_ops, static_params, /* inject_sum = */ false);
     }
 
     const io::jit_io_multi_dt_helper_t<Xbyak::Zmm>::data_types_t data_types {

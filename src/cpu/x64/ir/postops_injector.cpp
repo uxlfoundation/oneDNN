@@ -38,7 +38,10 @@ template <typename Vmm>
 std::shared_ptr<void> create_injector(jit_generator_t &gen,
         const post_ops_t &post_ops,
         const binary_injector::static_params_t &bsp) {
-    return std::make_shared<injector_t<Vmm>>(&gen, post_ops, bsp);
+    // The IR path rejects a sum post-op during dispatch, so the injector
+    // never has one to apply.
+    return std::make_shared<injector_t<Vmm>>(
+            &gen, post_ops, bsp, /* inject_sum = */ false);
 }
 
 template <typename Vmm>

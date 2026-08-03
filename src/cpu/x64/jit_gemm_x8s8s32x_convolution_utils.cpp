@@ -198,7 +198,8 @@ jit_pp_ker_t::jit_pp_ker_t(
 
         postops_injector_ = utils::make_unique<
                 injector::jit_uni_postops_injector_t<Xbyak::Zmm>>(
-                this, jcp_.post_ops, static_params);
+                // Sum is applied in the kernel's own store sequence.
+                this, jcp_.post_ops, static_params, /* inject_sum = */ false);
     }
 }
 

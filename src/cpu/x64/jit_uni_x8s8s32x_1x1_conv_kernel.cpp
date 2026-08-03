@@ -65,9 +65,9 @@ jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa,
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<
-                        typename cpu_isa_traits_t<isa>::Vmm>>(
-                        this, jcp.post_ops, static_params,
-                        /* enable_native_sum = */ jcp.with_sum);
+                        typename cpu_isa_traits_t<isa>::Vmm>>(this,
+                        jcp.post_ops, static_params,
+                        /* inject_sum = */ jcp.with_sum);
     }
 }
 

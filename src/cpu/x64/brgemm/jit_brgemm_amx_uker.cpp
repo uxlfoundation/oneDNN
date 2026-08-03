@@ -101,7 +101,7 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
 
             postops_injector_ = utils::make_unique<po_injector_t>(this,
                     brg.attr()->post_ops_, bsp, esp,
-                    /* enable_native_sum = */ brg.with_sum);
+                    /* inject_sum = */ brg.with_sum);
 
             using namespace dnnl::impl::cpu::binary_injector_utils;
             std::tie(with_binary_per_oc_bcast_, with_binary_per_oc_sp_bcast_,

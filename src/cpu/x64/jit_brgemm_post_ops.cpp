@@ -101,7 +101,7 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
 
         postops_injector_ = utils::make_unique<po_injector_t>(this,
                 attr_.post_ops_, bsp, esp,
-                /* enable_native_sum = */ brg_.with_sum);
+                /* inject_sum = */ brg_.with_sum);
     }
 
     inp_dt_ = brg_.dt_c;

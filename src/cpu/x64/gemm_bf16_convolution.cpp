@@ -108,7 +108,9 @@ gemm_bf16_convolution_fwd_t<dst_data_type>::pp_ker_t::pp_ker_t(const pd_t *pd)
 
         postops_injector_ = utils::make_unique<
                 injector::jit_uni_postops_injector_t<Xbyak::Zmm>>(
-                this, post_ops, binary_static_params, eltwise_static_params);
+                // Sum is applied in the kernel's own store sequence.
+                this, post_ops, binary_static_params, eltwise_static_params,
+                /* inject_sum = */ false);
 #undef PARAM_OFF
     }
 

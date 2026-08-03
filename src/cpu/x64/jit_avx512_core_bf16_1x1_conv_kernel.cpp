@@ -64,7 +64,8 @@ jit_avx512_core_bf16_1x1_conv_kernel_t::jit_avx512_core_bf16_1x1_conv_kernel_t(
 
         postops_injector_ = utils::make_unique<
                 injector::jit_uni_postops_injector_t<Xbyak::Zmm>>(
-                this, jcp.post_ops, static_params);
+                // Sum is folded into accumulator initialization.
+                this, jcp.post_ops, static_params, /* inject_sum = */ false);
     }
 
     if (!isa_has_bf16(jcp.isa))

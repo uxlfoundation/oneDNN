@@ -115,7 +115,8 @@ jit_avx512_common_conv_fwd_kernel_vmm_t<Vmm>::
 
         postops_injector_ = utils::make_unique<
                 injector::jit_uni_postops_injector_t<Xbyak::Zmm>>(
-                this, jcp.post_ops, static_params);
+                // Sum is folded into accumulator initialization.
+                this, jcp.post_ops, static_params, /* inject_sum = */ false);
     }
 }
 

@@ -266,7 +266,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
 
             postops_injector_ = utils::make_unique<
                     injector::jit_uni_postops_injector_t<Vmm>>(
-                    this, jpp.post_ops, bsp);
+                    this, jpp.post_ops, bsp, /* inject_sum = */ false);
         }
     }
 };

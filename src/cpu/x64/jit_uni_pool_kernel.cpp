@@ -104,7 +104,7 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
 
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                        this, jpp.post_ops, bsp);
+                        this, jpp.post_ops, bsp, /* inject_sum = */ false);
     }
 
     io::io_tail_conf_t io_tail_conf(jpp.c_block, tail_size,

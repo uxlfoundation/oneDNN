@@ -64,7 +64,7 @@ jit_avx512_core_amx_1x1_fwd_kernel_t::jit_avx512_core_amx_1x1_fwd_kernel_t(
         postops_injector_ = utils::make_unique<
                 injector::jit_uni_postops_injector_t<Xbyak::Zmm>>(this,
                 jcp.post_ops, static_params,
-                /* enable_native_sum = */ is_sum_via_postops());
+                /* inject_sum = */ is_sum_via_postops());
     }
 }
 

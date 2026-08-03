@@ -49,62 +49,38 @@ public:
     status_t compile_impl(const dnnl_partition_impl_t *part, engine_t *eng,
             const std::vector<logical_tensor_t> &inputs,
             const std::vector<logical_tensor_t> &outputs) override {
-        const engine_kind_t ekind = eng->kind();
-        bool enable_decomp = false;
-        bool enable_ukernel = false;
-
-        if (ekind == engine_kind::cpu) {
-            enable_decomp = enable_decomp_kernel();
-        } else if (ekind == engine_kind::gpu) {
-            enable_ukernel = !force_primitive();
-        } else {
-            assert(!"unknown engine kind");
-            return status::invalid_arguments;
-        }
+        const bool use_larger_partition = force_larger_partition();
 
         status_t ret = status::unimplemented;
 
-        if (enable_ukernel) {
-            kernel = std::make_shared<sdp_primitive_kernel_t<quantized>>();
-            ret = kernel->compile_impl(part, eng, inputs, outputs);
-        }
-
-        if (ret != status::success && enable_decomp) {
-            kernel = std::make_shared<sdp_decomp_kernel_t<quantized, dt>>();
-            ret = kernel->compile_impl(part, eng, inputs, outputs);
-        }
-
-        if (ret != status::success) {
+        if (use_larger_partition) {
             kernel = std::make_shared<larger_partition_kernel_t>();
             ret = kernel->compile_impl(part, eng, inputs, outputs);
+        } else {
+            kernel = std::make_shared<sdp_primitive_kernel_t<quantized>>();
+            ret = kernel->compile_impl(part, eng, inputs, outputs);
+
+            if (ret != status::success) {
+                kernel = std::make_shared<sdp_decomp_kernel_t<quantized, dt>>();
+                ret = kernel->compile_impl(part, eng, inputs, outputs);
+            }
+
+            if (ret != status::success) {
+                kernel = std::make_shared<larger_partition_kernel_t>();
+                ret = kernel->compile_impl(part, eng, inputs, outputs);
+            }
         }
         if (ret == status::success)
             VDISPATCH_GRAPH_SDP(
-                    "sdpa is dispatched to (%s)", kernel->str().c_str());
+                    "sdpa is dispatched to %s", kernel->str().c_str());
         else
             VDISPATCH_GRAPH_SDP("sdpa is failed to dispatch");
         return ret;
     }
 
-    // It is used to check if enable the decomposition kernel based on user's
-    // env and params. Decomposition kernel is enabled when:
-    // - CPU runtime is OMP or THREADPOOl.
-    // - Primitive based implementation is not forced by the internal env var.
-    bool enable_decomp_kernel() const {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP \
-        || DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-        const bool force_prim = force_primitive();
-        return !force_prim;
-#else
-        return false;
-#endif
-    }
-
-    // An internal env var is provided to force using primitive based SDPA
-    // implementation and skipping ukernel based optimization on GPU or
-    // decomposition based optimization on CPU. Currently it's for oneDNN debug
-    // and testing only.
-    bool force_primitive() const {
+    // An internal env var is provided to force the larger-partition SDPA
+    // implementation. Currently it's for oneDNN debug and testing only.
+    bool force_larger_partition() const {
         const int force = graph::utils::getenv_int_internal(
                 "GRAPH_SDPA_FORCE_PRIMITIVE", 0);
         return force > 0;

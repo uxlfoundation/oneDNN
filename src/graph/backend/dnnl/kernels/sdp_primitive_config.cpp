@@ -43,10 +43,6 @@ status_t sdp_primitive_config_t::initial_check(
     VCHECK_SDP_PRIMITIVE(inputs.size() >= 3, status::invalid_arguments,
             "At least 3 inputs are required");
 
-    const bool is_f32 = inputs[0].data_type == data_type::f32;
-    bool has_genindex = false;
-
-    // Dispatch f32 implicit causal mask cases into the f32 ukernel impl.
     for (auto &cur_op : sg->get_ops()) {
         const auto opk = cur_op->get_kind();
         // SDPA with static quantization and dequantization is currently
@@ -55,7 +51,6 @@ status_t sdp_primitive_config_t::initial_check(
         VCHECK_SDP_PRIMITIVE(opk != graph::op_kind::Dequantize
                         && opk != graph::op_kind::Quantize,
                 status::unimplemented, "Not support quantized SDPA");
-        if (opk == graph::op_kind::GenIndex) { has_genindex = true; }
     }
 
     // step1(pattern check): Not support sdpa variants with select as mask
@@ -169,9 +164,6 @@ status_t sdp_primitive_config_t::initial_check(
 
     VCHECK_SDP_PRIMITIVE(q_id != -1 && k_id != -1 && v_id != -1,
             status::unimplemented, "Q, K, V are not found");
-
-    VCHECK_SDP_PRIMITIVE(!is_f32 || has_genindex, status::unimplemented,
-            "f32 fused sdpa supported for causal mask only");
 
     // sdp_primitive only supports single scale value.
     if (scale) {

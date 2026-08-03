@@ -33,6 +33,10 @@
 #include "cpu/cpu_stream.hpp"
 #endif
 
+#define VCHECK_SDP_PRIMITIVE(cond, status, msg, ...) \
+    VCONDCHECK(graph, create, check, sdp_decomp_kernel_t, (cond), status, msg, \
+            ##__VA_ARGS__);
+
 namespace dnnl {
 namespace impl {
 namespace graph {
@@ -42,6 +46,18 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
         const dnnl_partition_impl_t *part, engine_t *eng,
         const std::vector<logical_tensor_t> &inputs,
         const std::vector<logical_tensor_t> &outputs) {
+    VCHECK_SDP_PRIMITIVE(eng->kind() == engine_kind::cpu, status::unimplemented,
+            "supports cpu only");
+
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_OMP \
+        && DNNL_CPU_RUNTIME != DNNL_RUNTIME_THREADPOOL
+    UNUSED(part);
+    UNUSED(inputs);
+    UNUSED(outputs);
+    VCHECK_SDP_PRIMITIVE(false, status::unimplemented,
+            "supports OMP or Threadpool runtime only");
+#else
+
     p_engine_ = make_dnnl_engine(*eng);
 
     // get subgraph from the deep copied partition
@@ -110,6 +126,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::compile_impl(
     // Initialize and construct kernel params
     return sdp_cfg_.construct_params<quantized, dt>(
             subgraph_, sdp_registry_, p_engine_, inputs);
+#endif
 }
 
 template <bool quantized, memory::data_type dt>

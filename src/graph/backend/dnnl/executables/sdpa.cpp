@@ -111,9 +111,14 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
 
 void sdpa_executable_t::execute(const stream &stream,
         const std::unordered_map<int, memory> &args) const {
-    UNUSED(stream);
-    UNUSED(args);
-    assert(!"sdpa_executable_t::execute() is not implemented on cpu");
+    std::vector<dnnl_exec_arg_t> c_args;
+    c_args.reserve(args.size());
+    for (const auto &a : args)
+        c_args.push_back({a.first, a.second.get()});
+
+    auto ret = dnnl_primitive_execute(prim_.get(), stream.get(),
+            static_cast<int>(c_args.size()), c_args.data());
+    dnnl::error::wrap_c_api(ret, "could not execute sdpa primitive on cpu");
 }
 
 #ifdef DNNL_WITH_SYCL
@@ -315,9 +320,15 @@ sdpa_bwd_executable_t::sdpa_bwd_executable_t(std::shared_ptr<op_t> &op,
 
 void sdpa_bwd_executable_t::execute(const stream &stream,
         const std::unordered_map<int, memory> &args) const {
-    UNUSED(stream);
-    UNUSED(args);
-    assert(!"sdpa_bwd_executable_t::execute() is not implemented on cpu");
+    std::vector<dnnl_exec_arg_t> c_args;
+    c_args.reserve(args.size());
+    for (const auto &a : args)
+        c_args.push_back({a.first, a.second.get()});
+
+    auto ret = dnnl_primitive_execute(prim_.get(), stream.get(),
+            static_cast<int>(c_args.size()), c_args.data());
+    dnnl::error::wrap_c_api(
+            ret, "could not execute sdpa backward primitive on cpu");
 }
 
 #ifdef DNNL_WITH_SYCL

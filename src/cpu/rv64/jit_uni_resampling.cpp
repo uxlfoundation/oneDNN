@@ -14,10 +14,9 @@
 * limitations under the License.
 *******************************************************************************/
 
-#include <vector>
-
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
+#include "common/memory_tracking.hpp"
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
@@ -75,20 +74,18 @@ status_t jit_uni_resampling_fwd_t<isa>::execute_forward(
     // Fused binary (f32 only); the injector reads the rhs origin array and adds
     // the per-point byte offset set below (see jit_resampling_args_t).
     enum { BC_NONE, BC_SCALAR, BC_PER_OC, BC_FULL } bcast = BC_NONE;
-    std::vector<const void *> po_rhs;
+    // The rhs origin array comes from the scratchpad booked by the pd, so this
+    // path never allocates. post_ops_ok() caps binaries at one.
+    const void **po_rhs = nullptr;
     if (conf.fuse_binary) {
-        int bin_idx = 0;
-        for (int i = 0; i < conf.post_ops.len(); i++) {
-            if (!conf.post_ops.entry_[i].is_binary()) continue;
-            bin_idx = i;
-            const memory_desc_wrapper s1_d(
-                    conf.post_ops.entry_[i].binary.src1_desc);
-            const auto *base = static_cast<const char *>(ctx.host_ptr(
-                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1));
-            po_rhs.push_back(base + s1_d.off_l(0) * sizeof(float));
-        }
+        po_rhs = ctx.get_scratchpad_grantor().template get<const void *>(
+                memory_tracking::names::key_binary_post_ops_rhs_ptrs);
+        const int bin_idx = conf.post_ops.find(primitive_kind::binary);
         const memory_desc_wrapper s1(
                 conf.post_ops.entry_[bin_idx].binary.src1_desc);
+        const auto *base = static_cast<const char *>(ctx.host_ptr(
+                DNNL_ARG_ATTR_MULTIPLE_POST_OP(bin_idx) | DNNL_ARG_SRC_1));
+        po_rhs[0] = base + s1.off_l(0) * sizeof(float);
         if (s1.nelems(true) == 1)
             bcast = BC_SCALAR;
         else if (s1.nelems() == C)
@@ -96,7 +93,6 @@ status_t jit_uni_resampling_fwd_t<isa>::execute_forward(
         else
             bcast = BC_FULL;
     }
-    const void *const po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     // Element offset of a spatial point.
     auto src_sp_off = [=](dim_t id, dim_t ih, dim_t iw) {
@@ -164,7 +160,7 @@ status_t jit_uni_resampling_fwd_t<isa>::execute_forward(
         }
 
         if (conf.fuse_binary) {
-            args.post_op_rhs = po_rhs_arr;
+            args.post_op_rhs = po_rhs;
             switch (bcast) {
                 case BC_SCALAR: args.post_op_off0 = 0; break;
                 case BC_PER_OC:

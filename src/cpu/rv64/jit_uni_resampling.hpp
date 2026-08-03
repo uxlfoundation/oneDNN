@@ -20,6 +20,7 @@
 #include <memory>
 
 #include "common/memory_desc_wrapper.hpp"
+#include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 
 #include "cpu/cpu_resampling_pd.hpp"
@@ -74,12 +75,23 @@ struct jit_uni_resampling_fwd_t : public primitive_t {
                             conf_, this);
             VDISPATCH_RESAMPLING(
                     conf_status == status::success, VERBOSE_UNSUPPORTED_TAG);
+            init_scratchpad();
             return status::success;
         }
 
         jit_resampling_conf_t conf_ = {};
 
     private:
+        // The kernel reads the binary rhs origins through a pointer array; book
+        // it here so execute() never allocates. post_ops_ok() caps binaries at
+        // one, so the array holds a single entry.
+        void init_scratchpad() {
+            if (!conf_.fuse_binary) return;
+            auto scratchpad = scratchpad_registry().registrar();
+            scratchpad.template book<const void *>(
+                    memory_tracking::names::key_binary_post_ops_rhs_ptrs, 1);
+        }
+
         // Any number of eltwise ops, at most one binary and one sum. The
         // binary is f32-only (there is no f16 binary path) and limited to the
         // broadcasts the driver positions host-side: scalar, per-oc and

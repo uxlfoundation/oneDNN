@@ -150,69 +150,14 @@ void jit_uni_binary_kernel_t<isa, Vmm>::init_post_ops_injector() {
 
     postops_injector_
             = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
-                    this, po, bsp, esp);
+                    this, po, bsp, esp, /* enable_native_sum = */ conf_.do_sum);
 }
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::apply_postops(int unroll, bool tail) {
-    const auto sum_ne_xf16_injector = [&]() {
-        const Vmm vreg_dst_even_tmp = conf_.is_src_different_layouts
-                ? vmm_gathered_src_
-                : Vmm(unroll + vmm_start_idx_);
-        const Vmm vreg_dst_odd_tmp = Vmm(unroll + 1 + vmm_start_idx_);
-        const Vmm vmm_aux = vreg_saturation_ubound_;
-        for (int i = 0; i < unroll; i += 2) {
-            const bool can_load_two_simdw = unroll - i >= 2;
-            const int offt_base = simd_w_ * i;
-            const Vmm vreg_tmp_even_src0 = Vmm(i + vmm_start_idx_);
-            const Vmm vreg_tmp_odd_src0 = Vmm(i + 1 + vmm_start_idx_);
-            if (can_load_two_simdw) {
-                io_.at(conf_.dst_type)
-                        ->load_two_simdw_xf16(dst_ptr(offt_base
-                                                      * types::data_type_size(
-                                                              conf_.dst_type)),
-                                vreg_dst_even_tmp, vreg_dst_odd_tmp);
-                io_.at(conf_.dst_type)
-                        ->merge_interleaved_to_plain(
-                                vreg_dst_even_tmp, vreg_dst_odd_tmp, vmm_aux);
-            } else
-                io_.at(conf_.dst_type)
-                        ->load(dst_ptr(offt_base
-                                       * types::data_type_size(conf_.dst_type)),
-                                vreg_dst_even_tmp, false);
-            uni_vfmadd231ps(
-                    vreg_tmp_even_src0, vreg_dst_even_tmp, vreg_sum_scale_);
-            if (can_load_two_simdw)
-                uni_vfmadd231ps(
-                        vreg_tmp_odd_src0, vreg_dst_odd_tmp, vreg_sum_scale_);
-        }
-    };
-
-    const auto sum_injector = [&]() {
-        for (int i = 0; i < unroll; i++) {
-            const int offt = simd_w_ * i;
-            const Vmm vreg_tmp_src0 = Vmm(i + vmm_start_idx_);
-            const Vmm vreg_tmp = conf_.is_src_different_layouts
-                    ? vmm_gathered_src_
-                    : Vmm(unroll + i + vmm_start_idx_);
-            io_.at(conf_.dst_type)
-                    ->load(dst_ptr(offt
-                                   * types::data_type_size(conf_.dst_type)),
-                            vreg_tmp, tail);
-            uni_vfmadd231ps(vreg_tmp_src0, vreg_tmp, vreg_sum_scale_);
-        }
-    };
-
-    if (conf_.do_sum) {
-        if (is_ne_xf16_supported(isa, conf_.dst_type) && !tail)
-            postops_injector_->set_lambda_injector(
-                    primitive_kind::sum, sum_ne_xf16_injector);
-        else
-            postops_injector_->set_lambda_injector(
-                    primitive_kind::sum, sum_injector);
-    }
-
-    if (conf_.with_binary) {
+    // The sum post-op reads the destination through the same rhs parameters as
+    // a binary post-op, so they have to be filled for either one.
+    if (conf_.with_binary || conf_.do_sum) {
         binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
         const Reg64 &reg_offt_dst
                 = conf_.is_i8 ? reg_offt_dst_ : reg_offt_src0_;
@@ -241,9 +186,6 @@ void jit_uni_binary_kernel_t<isa, Vmm>::apply_postops(int unroll, bool tail) {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::load_kernel_params() {
-    mov(reg_tmp_, float2int(conf_.sum_scale));
-    uni_vmovq(xreg_sum_scale_, reg_tmp_);
-    uni_vbroadcastss(vreg_sum_scale_, xreg_sum_scale_);
     if (is_src1_outer_dims_tail_)
         mov(reg_outer_dims_range_,
                 ptr[reg_param_ + PARAM_OFF(spat_offt_count)]);
@@ -779,7 +721,8 @@ void jit_uni_binary_kernel_t<isa, Vmm>::generate() {
         forward();
     postamble();
 
-    if ((conf_.with_eltwise || conf_.is_i8) && postops_injector_)
+    if ((conf_.with_eltwise || conf_.is_i8 || conf_.do_sum)
+            && postops_injector_)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

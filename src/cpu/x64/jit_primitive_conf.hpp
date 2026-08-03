@@ -950,7 +950,6 @@ struct jit_binary_conf_t {
     bool with_eltwise = false;
     bool with_binary = false;
     bool with_postops = false;
-    float sum_scale = 0.f;
     bool use_stride_src1 = false;
     bool broadcast_src1_value = false;
     bool use_stride_rhs_postops = false;

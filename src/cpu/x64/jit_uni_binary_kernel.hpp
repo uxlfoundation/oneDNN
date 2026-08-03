@@ -108,8 +108,6 @@ struct jit_uni_binary_kernel_t : public binary_kernel_t {
     const Opmask cmp_mask = k3;
     const Opmask full_mask_ = k4;
     const Vmm vmm_tail_vmask_ = Vmm(0);
-    const Vmm vreg_sum_scale_ = Vmm(is_avx512 ? 17 : 9);
-    const Xmm xreg_sum_scale_ = Xmm(9);
     const Vmm vreg_zero_ = Vmm(is_avx512 ? 18 : 10);
     const Vmm vreg_one_ = Vmm(is_avx512 ? 19 : 11);
     const Vmm vreg_saturation_ubound_ = Vmm(is_avx512 ? 20 : 12);

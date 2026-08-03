@@ -187,7 +187,6 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
     conf_.with_binary = po.find(primitive_kind::binary) != -1;
     conf_.with_postops
             = conf_.with_binary || conf_.with_eltwise || conf_.do_sum;
-    conf_.sum_scale = conf_.do_sum ? po.entry_[sum_idx].sum.scale : 0.f;
     const auto &bcast_dims = broadcast_dims();
     conf_.bcast_type = is_tensor_op() ? bcast_t::none
                                       : get_bcast_type(src1_md_, bcast_dims);

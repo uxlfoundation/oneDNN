@@ -1637,7 +1637,6 @@ inline uint8_t preferredSBID(int tokens, uint16_t base)
 template <typename Program>
 inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock &bb, int32_t inum, int32_t counterC, const DependencyTable<false> &incoming, const DependencyTable<false> &producers, uint32_t maskDst)
 {
-    uint32_t unclaimed = (uint64_t(1) << tokens) - 1;
     std::array<int32_t, 32> pastExpiration;
     constexpr int32_t infinite = std::numeric_limits<int32_t>::max();
 
@@ -1654,8 +1653,6 @@ inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock 
         auto depSWSB = program[dep.inum].swsb();
         int token;
         if (getTokenSet(depSWSB, token)) {
-            unclaimed &= ~(1 << token);
-
             int32_t pe = counterC - (dep.counters[PipeBitC] + dep.tokenTime);
             pastExpiration[token] = std::min<int32_t>(pastExpiration[token], pe);
         }
@@ -1672,23 +1669,6 @@ inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock 
             bestPESBID = token;
         }
     }
-
-    // Priority 2: assign SBID based on base register of dst, src1, src0 (in that order),
-    //  if it's unclaimed or expired.
-    for (int opNum : {-1, 1, 0, 2, 3}) {
-        auto &region = bb.getOperandRegion(inum, opNum);
-        if (region.size > 0) {
-            auto sbid = preferredSBID(tokens, region.base);
-            if (pastExpiration[sbid] >= 0)
-                return sbid;
-        }
-    }
-
-    // Priority 3: choose highest-numbered unclaimed SBID.
-    if (unclaimed)
-        return utils::bsr(unclaimed);
-
-    // Priority 4: choose token that's longest expired or closest to expiring.
     return bestPESBID;
 }
 

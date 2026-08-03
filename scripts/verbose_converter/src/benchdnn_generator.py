@@ -14,6 +14,7 @@
 # limitations under the License.
 ################################################################################
 
+import functools
 import logging
 from collections import defaultdict
 from typing import Dict, List, Mapping, Optional, Set, cast
@@ -89,6 +90,10 @@ class Converter(metaclass=ConverterMeta):
             if not md.tag:
                 continue
             return f"--tag={md.tag}"  # XXX: Don't use maybe_make_any_tag
+        return ""
+
+    @property
+    def grouped(self) -> str:
         return ""
 
     @property
@@ -371,8 +376,8 @@ class StridesMixin(TagTripletMixin):
         strides = []
 
         def add_strides_or_tag(arg, md):
-            if md.tag == "grouped":
-                return
+            if md.grouped is not None:
+                return  # grouped MDs go through --grouped
             tag = maybe_make_any_tag(md)
             if arg == "wei" and str(md.flags.value) != "f0":
                 tag = "any"
@@ -617,6 +622,24 @@ class MatmulConverter(StridesMixin, MultiDataTypeWithBiasMixin, Converter):
                 mask = md.flags.value.split("_")[1][4:]
                 return f"--bia_mask={mask}"
         return ""
+
+    @property
+    def grouped(self) -> str:
+        # grouped params come from the src variable dim
+        src_md = next((md for md in self.entry.mds if md.arg == "src"), None)
+        desc = src_md.grouped if src_md is not None else None
+        if desc is None:
+            return ""
+        var_idx, count = desc.variable_dim_idx, desc.group_count
+        # verbose omits per-group sizes, so split the src dim evenly
+        src_dims = self.entry.shapes.split(":")[0].split("x")
+        total_dim = int(src_dims[var_idx])
+        group_size, remainder = divmod(total_dim, count)
+        sizes = [group_size] * count
+        for i in range(remainder):
+            sizes[i] += 1
+        group_sizes = "+".join(map(str, sizes))
+        return f"--grouped={var_idx}:{count}:{group_sizes}"
 
     @property
     def aux(self):
@@ -980,9 +1003,23 @@ class InputGenerator:
     def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger
 
+    @staticmethod
+    @functools.lru_cache(maxsize=None)
+    def _warn_grouped(logger: Optional[logging.Logger]):
+        if not logger:
+            return
+        logger.warning(
+            "Verbose does not report per-group sizes; group sizes in"
+            " --grouped are inferred by dividing the total dimension"
+            " by the number of groups and may not match the original."
+        )
+
     def _generate_case(self, entry: ir.Entry):
         Converter = get_converter(entry.prim_kind)
         converter = Converter(entry)
+        grouped = converter.grouped
+        if grouped:
+            self._warn_grouped(self.logger)
         args = [
             "--reset",
             "--allow-enum-tags-only=0",
@@ -994,6 +1031,7 @@ class InputGenerator:
             converter.tags,
             converter.flags,
             converter.attrs,
+            grouped,
             converter.shapes,
         ]
         return converter.driver, " ".join(arg for arg in args if arg)

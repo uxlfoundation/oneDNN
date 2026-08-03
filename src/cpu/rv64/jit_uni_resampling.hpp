@@ -60,15 +60,15 @@ struct jit_uni_resampling_fwd_t : public primitive_t {
             VDISPATCH_RESAMPLING(attr()->has_default_values(
                                          sm::post_ops, dst_md()->data_type),
                     VERBOSE_UNSUPPORTED_ATTR);
-            // Resolve binary post-op src1 formats (may be format_any) against the
-            // concrete dst before post_ops_ok() inspects their layout.
+            // Resolve format_any src1 against dst before post_ops_ok() reads
+            // their layout.
             VDISPATCH_RESAMPLING(
                     attr_.set_default_formats(dst_md(0)) == status::success,
                     VERBOSE_UNSUPPORTED_POSTOP);
             VDISPATCH_RESAMPLING(post_ops_ok(), VERBOSE_UNSUPPORTED_POSTOP);
 
-            // init_conf fills conf_ and selects the layout (nspc/ncsp/blocked);
-            // it returns unimplemented for any other tag / alg / dtype.
+            // init_conf fills conf_ and rejects any layout/alg/dtype it cannot
+            // serve.
             const status_t conf_status
                     = jit_uni_resampling_kernel_t<isa, d_type>::init_conf(
                             conf_, this);
@@ -80,22 +80,14 @@ struct jit_uni_resampling_fwd_t : public primitive_t {
         jit_resampling_conf_t conf_ = {};
 
     private:
-        // Accept an injector-supported post-op chain: any number of forward
-        // eltwise ops, at most one binary, and at most one sum. The binary is
-        // fused for f32 only (the kernel accumulates f16 at f32 but has no f16
-        // binary path) and only for the broadcasts the kernel positions
-        // host-side: per-tensor (scalar), per-oc ([1,C,1,..], read as a dense
-        // [C] vector), and full-dst (read 1:1 with the output). The sum is
-        // applied by the kernel at its position in the chain (the injector
-        // skips it), reading dst back with the same access form as the store;
-        // it requires a zero zero-point and a dst-typed accumulation. Anything
-        // else (prelu, >1 binary, >1 sum, f16+binary, exotic broadcast) falls
-        // back to simple/ref_resampling.
+        // Any number of eltwise ops, at most one binary and one sum. The
+        // binary is f32-only (there is no f16 binary path) and limited to the
+        // broadcasts the driver positions host-side: scalar, per-oc and
+        // full-dst. Anything else falls back to simple/ref_resampling.
         bool post_ops_ok() const {
             const auto &po = attr()->post_ops_;
             if (po.has_default_values()) return true;
-            // The injector rejects sum outright, so gate the chain on a copy
-            // with the sum entries removed and validate those separately.
+            // The injector rejects sum, so validate it separately.
             int n_sum = 0;
             post_ops_t po_no_sum;
             for (int i = 0; i < po.len(); i++) {
@@ -105,9 +97,8 @@ struct jit_uni_resampling_fwd_t : public primitive_t {
                     continue;
                 }
                 if (++n_sum > 1) return false;
-                // A non-zero zero-point would need an extra subtract the kernel
-                // does not emit; sum.dt must match dst (no reinterpreting the
-                // destination as another type on read-back).
+                // A non-zero zero-point needs a subtract the kernel does not
+                // emit; sum.dt must match dst on read-back.
                 if (e.sum.zero_point != 0) return false;
                 if (!utils::one_of(e.sum.dt, data_type::undef, d_type))
                     return false;

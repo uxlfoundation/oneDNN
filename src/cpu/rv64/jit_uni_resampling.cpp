@@ -18,6 +18,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
+#include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
@@ -63,31 +64,16 @@ status_t jit_uni_resampling_fwd_t<isa>::execute_forward(
     const dim_t OD = conf.od, OH = conf.oh, OW = conf.ow;
     const dim_t ndims = conf.ndims;
     const alg_kind_t alg = conf.alg;
-    const bool is_ncsp = conf.tag_kind == jit_resampling_tag_kind_t::ncsp;
 
-    const dim_t in_sp = ID * IH * IW;
-    const dim_t out_sp = OD * OH * OW;
+    // A blocked layout is walked one block at a time; a plain one is a single
+    // group over all of C. Strides come from conf, so no tag is named here.
+    const dim_t B = conf.block > 1 ? conf.block : C;
+    const dim_t Cb = utils::div_up(C, B);
+    const dim_t src_vec_byte_stride = conf.src_c_stride * conf.dt_size;
+    const dim_t dst_vec_byte_stride = conf.dst_c_stride * conf.dt_size;
 
-    // Channel grouping. ncsp: one strided group over all C. nspc/blocked:
-    // channel-contiguous groups of B (= C for nspc, = the inner block for
-    // blocked), iterated over Cb outer blocks. sp_scale is the element step
-    // between adjacent spatial points (x64's inner_stride).
-    const dim_t B = is_ncsp ? C : (conf.block ? conf.block : C);
-    const dim_t Cb = is_ncsp ? 1 : utils::div_up(C, B);
-    const dim_t src_sp_scale = is_ncsp ? 1 : B;
-    const dim_t dst_sp_scale = is_ncsp ? 1 : B;
-    const dim_t src_vec_byte_stride
-            = (is_ncsp ? in_sp : (dim_t)1) * conf.dt_size;
-    const dim_t dst_vec_byte_stride
-            = (is_ncsp ? out_sp : (dim_t)1) * conf.dt_size;
-    const dim_t src_mb_stride = is_ncsp ? C * in_sp : Cb * in_sp * B;
-    const dim_t dst_mb_stride = is_ncsp ? C * out_sp : Cb * out_sp * B;
-    const dim_t src_cb_stride = is_ncsp ? 0 : in_sp * B;
-    const dim_t dst_cb_stride = is_ncsp ? 0 : out_sp * B;
-
-    // Fused binary (f32 only). The injector runs in indirect mode: it reads the
-    // rhs base from a per-binary ORIGIN pointer array and adds the shared byte
-    // offset the driver hands it per output point (see jit_resampling_args_t).
+    // Fused binary (f32 only); the injector reads the rhs origin array and adds
+    // the per-point byte offset set below (see jit_resampling_args_t).
     enum { BC_NONE, BC_SCALAR, BC_PER_OC, BC_FULL } bcast = BC_NONE;
     std::vector<const void *> po_rhs;
     if (conf.fuse_binary) {
@@ -112,30 +98,33 @@ status_t jit_uni_resampling_fwd_t<isa>::execute_forward(
     }
     const void *const po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
-    auto sp_index = [=](dim_t id, dim_t ih, dim_t iw) {
-        return (id * IH + ih) * IW + iw;
+    // Element offset of a spatial point.
+    auto src_sp_off = [=](dim_t id, dim_t ih, dim_t iw) {
+        return id * conf.src_d_stride + ih * conf.src_h_stride
+                + iw * conf.src_w_stride;
     };
 
     parallel_nd(MB, Cb, OD, OH, OW,
             [&](dim_t mb, dim_t cb, dim_t od, dim_t oh, dim_t ow) {
         jit_resampling_args_t args = {};
         // Valid channels in this group (last blocked group may be partial).
-        args.channels = is_ncsp ? C : ((C - cb * B) < B ? (C - cb * B) : B);
+        args.channels = nstl::min(B, C - cb * B);
         args.src_vec_byte_stride = src_vec_byte_stride;
         args.dst_vec_byte_stride = dst_vec_byte_stride;
 
-        const dim_t out_sp_off = (od * OH + oh) * OW + ow;
-        data_t *p_dst = dst0 + mb * dst_mb_stride + cb * dst_cb_stride
-                + out_sp_off * dst_sp_scale;
+        data_t *p_dst = dst0 + mb * conf.dst_mb_stride + cb * conf.dst_cb_stride
+                + od * conf.dst_d_stride + oh * conf.dst_h_stride
+                + ow * conf.dst_w_stride;
         args.dst = p_dst;
 
-        const data_t *src_base = src0 + mb * src_mb_stride + cb * src_cb_stride;
+        const data_t *src_base
+                = src0 + mb * conf.src_mb_stride + cb * conf.src_cb_stride;
 
         if (alg == alg_kind::resampling_nearest) {
             const dim_t id = ndims >= 5 ? nearest_idx(od, OD, ID) : 0;
             const dim_t ih = ndims >= 4 ? nearest_idx(oh, OH, IH) : 0;
             const dim_t iw = nearest_idx(ow, OW, IW);
-            args.src[0] = src_base + sp_index(id, ih, iw) * src_sp_scale;
+            args.src[0] = src_base + src_sp_off(id, ih, iw);
         } else {
             dim_t d_idx[2] = {0, 0}, h_idx[2] = {0, 0}, w_idx[2] = {0, 0};
             float d_w[2] = {1.f, 0.f}, h_w[2] = {1.f, 0.f}, w_w[2] = {1.f, 0.f};
@@ -168,8 +157,7 @@ status_t jit_uni_resampling_fwd_t<isa>::execute_forward(
                 for (int j = 0; j < hn; j++)
                     for (int k = 0; k < wn; k++) {
                         args.src[c] = src_base
-                                + sp_index(d_idx[i], h_idx[j], w_idx[k])
-                                        * src_sp_scale;
+                                + src_sp_off(d_idx[i], h_idx[j], w_idx[k]);
                         args.weights[c] = d_w[i] * h_w[j] * w_w[k];
                         c++;
                     }
@@ -191,13 +179,11 @@ status_t jit_uni_resampling_fwd_t<isa>::execute_forward(
 
         (*kernel_)(&args);
 
-        // Blocked layout zero-pads the channel dimension: when C is not a
-        // multiple of the block, the last block's padded channels
-        // [valid, block) must be zero in the output. The kernel wrote only the
-        // valid channels (contiguous from p_dst), so zero the padding tail here.
-        // nspc/ncsp have no channel padding (block == 0). Padding must stay zero
-        // regardless of post-ops (they apply to logical elements only).
-        if (conf.block && cb == Cb - 1 && args.channels < B) {
+        // A blocked layout zero-pads C: the last block's [valid, block) lanes
+        // must read 0, and stay 0 regardless of post-ops (which apply to
+        // logical elements only). The kernel wrote only the valid channels,
+        // contiguous from p_dst, so zero the tail here.
+        if (conf.block > 1 && cb == Cb - 1 && args.channels < B) {
             data_t *pd = static_cast<data_t *>(args.dst);
             for (dim_t c = args.channels; c < B; c++)
                 pd[c] = data_t(0.f);

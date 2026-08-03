@@ -44,8 +44,6 @@ jit_uni_resampling_kernel_t<isa, d_type>::jit_uni_resampling_kernel_t(
 template <cpu_isa_t isa, data_type_t d_type>
 status_t jit_uni_resampling_kernel_t<isa, d_type>::init_conf(
         jit_resampling_conf_t &conf, const resampling_pd_t *pd) {
-    using namespace format_tag;
-
     const memory_desc_wrapper src_d(pd->src_md());
     const memory_desc_wrapper dst_d(pd->dst_md());
     const int ndims = pd->ndims();
@@ -58,25 +56,40 @@ status_t jit_uni_resampling_kernel_t<isa, d_type>::init_conf(
                 alg, alg_kind::resampling_nearest, alg_kind::resampling_linear))
         return status::unimplemented;
 
-    // Layout: nspc (channels innermost), ncsp (channels outermost), or blocked
-    // (nCxc, inner channel block). The vector runs along C in all three.
-    const auto nspc_tag = utils::pick(ndims - 3, nwc, nhwc, ndhwc);
-    const auto ncsp_tag = utils::pick(ndims - 3, ncw, nchw, ncdhw);
-    const auto blk16_tag = utils::pick(ndims - 3, nCw16c, nChw16c, nCdhw16c);
-    const auto blk8_tag = utils::pick(ndims - 3, nCw8c, nChw8c, nCdhw8c);
-    conf.block = 0;
-    if (src_d.matches_tag(nspc_tag) && dst_d.matches_tag(nspc_tag))
-        conf.tag_kind = jit_resampling_tag_kind_t::nspc;
-    else if (src_d.matches_tag(ncsp_tag) && dst_d.matches_tag(ncsp_tag))
-        conf.tag_kind = jit_resampling_tag_kind_t::ncsp;
-    else if (src_d.matches_tag(blk16_tag) && dst_d.matches_tag(blk16_tag)) {
-        conf.tag_kind = jit_resampling_tag_kind_t::blocked;
-        conf.block = 16;
-    } else if (src_d.matches_tag(blk8_tag) && dst_d.matches_tag(blk8_tag)) {
-        conf.tag_kind = jit_resampling_tag_kind_t::blocked;
-        conf.block = 8;
-    } else
+    // Layout comes from the blocking descriptors, not from format tags: tags
+    // are a user-facing label and can share a name across differing strides.
+    if (!src_d.is_blocking_desc() || !dst_d.is_blocking_desc())
         return status::unimplemented;
+
+    // The vector runs along C, so only a single innermost block on the channel
+    // dimension keeps channels contiguous. Returns 0 to reject.
+    auto channel_block = [](const memory_desc_wrapper &md) -> int {
+        const auto &bd = md.blocking_desc();
+        if (bd.inner_nblks == 0) return 1;
+        if (bd.inner_nblks != 1 || bd.inner_idxs[0] != 1) return 0; // reject
+        return (int)bd.inner_blks[0];
+    };
+    const int src_blk = channel_block(src_d), dst_blk = channel_block(dst_d);
+    if (src_blk == 0 || dst_blk == 0) return status::unimplemented;
+    // One grouping drives both tensors, so the blocks must agree.
+    if (src_blk != dst_blk) return status::unimplemented;
+    conf.block = src_blk;
+
+    const auto &sbd = src_d.blocking_desc();
+    const auto &dbd = dst_d.blocking_desc();
+    // Blocked: strides[1] steps between blocks. Plain: it is the channel step.
+    conf.src_c_stride = conf.block > 1 ? 1 : sbd.strides[1];
+    conf.dst_c_stride = conf.block > 1 ? 1 : dbd.strides[1];
+    conf.src_cb_stride = conf.block > 1 ? sbd.strides[1] : 0;
+    conf.dst_cb_stride = conf.block > 1 ? dbd.strides[1] : 0;
+    conf.src_mb_stride = sbd.strides[0];
+    conf.dst_mb_stride = dbd.strides[0];
+    conf.src_w_stride = sbd.strides[ndims - 1];
+    conf.dst_w_stride = dbd.strides[ndims - 1];
+    conf.src_h_stride = ndims >= 4 ? sbd.strides[ndims - 2] : 0;
+    conf.dst_h_stride = ndims >= 4 ? dbd.strides[ndims - 2] : 0;
+    conf.src_d_stride = ndims >= 5 ? sbd.strides[ndims - 3] : 0;
+    conf.dst_d_stride = ndims >= 5 ? dbd.strides[ndims - 3] : 0;
 
     conf.ndims = ndims;
     conf.mb = pd->MB();
@@ -94,11 +107,8 @@ status_t jit_uni_resampling_kernel_t<isa, d_type>::init_conf(
     conf.num_corners
             = (alg == alg_kind::resampling_nearest) ? 1 : (1 << (ndims - 2));
 
-    // Post-ops fused in-kernel (mirrors rv64 pooling): eltwise chain for f32 and
-    // f16 (computed at f32); at most one binary for f32 only. The pd's
-    // post_ops_ok() has already restricted the chain shape; here we only set the
-    // fusion flags. An accepted chain that this kernel cannot fuse is a bug in
-    // the gate, so bail to ref if that ever happens.
+    // The pd's post_ops_ok() already restricted the chain; set the fusion flags
+    // here, and bail to ref if the gate ever lets through something unfusable.
     const auto &po = pd->attr()->post_ops_;
     conf.post_ops = po;
     conf.with_postops = !po.has_default_values();
@@ -106,8 +116,7 @@ status_t jit_uni_resampling_kernel_t<isa, d_type>::init_conf(
     conf.sum_idx = -1;
     conf.sum_scale = 1.f;
     if (conf.with_postops) {
-        // The injector cannot carry sum, so it is validated (and later applied)
-        // separately; gate the injectable part on a sum-free copy.
+        // The injector cannot carry sum; gate the rest on a sum-free copy.
         post_ops_t po_no_sum;
         for (int i = 0; i < po.len(); i++) {
             const auto &e = po.entry_[i];
@@ -151,9 +160,9 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f32() {
     const int n = conf_.num_corners;
     const bool po = conf_.fuse_eltwise || conf_.fuse_binary;
 
-    // Classify the fused binary (if any) to pick the rhs load form. Lanes are
-    // channels: per-tensor -> scalar; per-oc / full-dst on nspc/blocked ->
-    // contiguous; full-dst on ncsp -> strided by the dst channel stride.
+    // Pick the rhs load form. Lanes are channels: per-tensor -> scalar; per-oc
+    // and contiguous full-dst -> unit stride; full-dst over a channel-strided
+    // dst -> strided (a full-dst rhs matches the dst layout).
     bool bin_scalar = false, bin_strided = false;
     if (conf_.fuse_binary)
         for (int i = 0; i < conf_.post_ops.len(); i++) {
@@ -163,8 +172,7 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f32() {
             bin_scalar = s1.nelems() == 1;
             const bool per_oc = !bin_scalar && s1.nelems() == (dim_t)conf_.c;
             const bool full = !bin_scalar && !per_oc;
-            bin_strided
-                    = full && conf_.tag_kind == jit_resampling_tag_kind_t::ncsp;
+            bin_strided = full && conf_.dst_c_stride != 1;
         }
 
     const Reg corner_reg[8] = {s1, s2, s3, s4, s5, s6, s7, s8};
@@ -255,14 +263,12 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f32() {
         rhs_dyn.vmm_idx_to_out_off[v_acc.getIdx()] = a5;
         const int n_po = conf_.post_ops.len();
         const int s_idx = conf_.fuse_sum ? conf_.sum_idx : -1;
-        // Entries before the sum, then the sum itself, then the rest. The
-        // injector skips sum entries, so a single full-range call would drop it.
+        // The injector skips sum, so apply the chain around it in two ranges.
         if (po)
             po_inj->compute_vector(
                     v_acc.getIdx(), rhs_dyn, 0, s_idx < 0 ? n_po : s_idx);
         if (conf_.fuse_sum) {
-            // dst is read back with the same access form as the store: unit
-            // stride for nspc/blocked, dst channel stride (a1) for ncsp.
+            // dst is read back with the same access form as the store.
             Label sum_strided, sum_done;
             bne(a1, t2, sum_strided);
             vle32_v(v_tmp, s9);
@@ -416,10 +422,8 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
         L(done);
     };
 
-    // Apply the post-op chain to the f32 accumulator. Entered and left with the
-    // e32/m2 vtype. The injector skips sum entries, so the chain is applied as
-    // [0, sum) then the sum then (sum, len); the sum reads dst back as f16 and
-    // widens it, using the same access form as the store (a1 vs t2).
+    // Apply the chain to the f32 accumulator; entered and left at e32/m2. The
+    // sum reads dst back as f16 and widens it (same access form as the store).
     const bool need_f32 = po || conf_.fuse_sum;
     auto apply_chain = [&]() {
         const int n_po = conf_.post_ops.len();

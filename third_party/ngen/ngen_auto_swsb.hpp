@@ -1625,72 +1625,111 @@ inline bool getTokenSet(SWSBInfo info, int &token)
     return false;
 }
 
-// Get preferred SBID for a given GRF.
-inline uint8_t preferredSBID(int tokens, uint16_t base)
-{
-    if (tokens >= 32)
-        return (base >> 2) & 0x1F;
-    else
-        return (base >> 3) & 0xF;
-}
-
 // Choose SBID for an OOO instruction, based on preceding OOO instructions.
 template <typename Program>
 inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock &bb, int32_t inum, int32_t counterC, const DependencyTable<false> &incoming, const DependencyTable<false> &producers, uint32_t maskDst)
 {
-    uint32_t unclaimed = (uint64_t(1) << tokens) - 1;
-    std::array<int32_t, 32> pastExpiration;
-    constexpr int32_t infinite = std::numeric_limits<int32_t>::max();
+    struct TokenStates {
+        struct State {
+            int32_t pastExpiration = std::numeric_limits<int32_t>::max();
+            const Producer *dep = nullptr;
+            int idx = -1;
+
+            bool isInUse() const { return pastExpiration != std::numeric_limits<int32_t>::max(); }
+            int id() const { return idx; }
+        };
+
+        std::array<State, 32> states;
+        int count = 0;
+
+        TokenStates(int count_) : count(count_) {
+            for (size_t i = 0; i < states.size(); i++)
+                states[i].idx = int(i);
+        }
+
+        State &operator[](int tokenID) { return states[tokenID]; }
+        const State &operator[](int tokenID) const { return states[tokenID]; }
+
+        typename std::array<State, 32>::iterator begin() { return states.begin(); }
+        typename std::array<State, 32>::const_iterator begin() const { return states.begin(); }
+        typename std::array<State, 32>::iterator end() { return states.begin() + count; }
+        typename std::array<State, 32>::const_iterator end() const { return states.begin() + count; }
+    };
+
+    TokenStates tokenStates(tokens);
 
     // Priority 1: choose SBID that is an explicit dst dependency for this instruction, if any.
     if (maskDst)
         return utils::bsf(maskDst);
 
     // Otherwise, look through incoming OOO producers and accumulate most recent use of each token.
-    for (auto &dist : pastExpiration) dist = infinite;
-
     auto accumulateTokens = [&](const Producer &dep) {
         if (!dep.hasToken()) return;
 
         auto depSWSB = program[dep.inum].swsb();
-        int token;
-        if (getTokenSet(depSWSB, token)) {
-            unclaimed &= ~(1 << token);
-
+        int tokenID;
+        if (getTokenSet(depSWSB, tokenID)) {
             int32_t pe = counterC - (dep.counters[PipeBitC] + dep.tokenTime);
-            pastExpiration[token] = std::min<int32_t>(pastExpiration[token], pe);
+            auto &token = tokenStates[tokenID];
+            if (pe < token.pastExpiration) {
+                token.pastExpiration = pe;
+                token.dep = &dep;
+            }
         }
     };
 
     incoming.forEach(accumulateTokens);
     producers.forEach(accumulateTokens);
 
+    std::array<DependencyRegion, 5> operandRegions;
+    int numOperands = -1;
+    auto isDstDependent = [&](const typename TokenStates::State &token) {
+        if (!token.isInUse()) return false;
+        if (!token.dep->tokenMaskDst) return false;
+
+        if (numOperands < 0) {
+            // Note: could be improved to better prioritize tokens when multiple
+            // BB predecessors are available (e.g. across loop back-edges).
+            numOperands = 0;
+            for (int opNum : {-1, 1, 0, 2, 3}) {
+                auto region = bb.getOperandRegion(inum, opNum);
+                if (region.empty()) continue;
+                if (region.unspecified) {
+                    if (!region.isValid() || region.rf != RegFileGRF) continue;
+                    // Conservative overlap check for operands with unknown dst size
+                    region = DependencyRegion(hw, GRFRange(region.base, 1));
+                }
+                operandRegions[numOperands++] = region;
+            }
+        }
+        const DependencyRegion *region = &token.dep->region;
+        DependencyRegion narrowed;
+        if (region->unspecified) {
+            if (!region->isValid() || region->rf != RegFileGRF) return false;
+            narrowed = DependencyRegion(hw, GRFRange(region->base, 1));
+            region = &narrowed;
+        }
+
+        for (int i = 0; i < numOperands; i++)
+            if (intersects(*region, operandRegions[i])) return true;
+        return false;
+    };
+
+    const typename TokenStates::State *bestToken = &tokenStates[0];
     int32_t bestPE = std::numeric_limits<int32_t>::min();
-    uint8_t bestPESBID = 0;
-    for (int token = 0; token < tokens; token++) {
-        if (pastExpiration[token] > bestPE) {
-            bestPE = pastExpiration[token];
-            bestPESBID = token;
+    for (auto &token : tokenStates) {
+        //  Prefer a token that is already tracking a dependency on instruction
+        //  registers.
+        if (isDstDependent(token)) { bestToken = &token; break; }
+
+        // Prefer the token that maximizes (estimated) slack. Prefer higher
+        // tokens due to interactions with programs manually allocating SBIDs.
+        if (token.pastExpiration >= bestPE) {
+            bestPE = token.pastExpiration;
+            bestToken = &token;
         }
     }
-
-    // Priority 2: assign SBID based on base register of dst, src1, src0, src2, src3 (in that order),
-    //  if it's unclaimed or expired.
-    for (int opNum : {-1, 1, 0, 2, 3}) {
-        auto &region = bb.getOperandRegion(inum, opNum);
-        if (region.size > 0) {
-            auto sbid = preferredSBID(tokens, region.base);
-            if (pastExpiration[sbid] >= 0)
-                return sbid;
-        }
-    }
-
-    // Priority 3: choose highest-numbered unclaimed SBID.
-    if (unclaimed)
-        return utils::bsr(unclaimed);
-
-    // Priority 4: choose token that's longest expired or closest to expiring.
-    return bestPESBID;
+    return bestToken->id();
 }
 
 // Make an SWSB dependency consume a given producer.

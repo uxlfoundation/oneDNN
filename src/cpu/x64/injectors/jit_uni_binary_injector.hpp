@@ -478,24 +478,12 @@ private:
             bool is_first) const;
     void calculate_w_ncsp_base(
             const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const;
-    void calculate_w_ncsp_partial(const dim_t *strides,
-            const std::size_t offset, const Xbyak::Reg64 &tmp_reg,
-            std::size_t elem_size_bytes) const;
     void calculate_w_blocked_base(
             const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const;
-    void calculate_w_blocked_partial(const dim_t *strides,
-            const std::size_t offset, const Xbyak::Reg64 &tmp_reg,
-            std::size_t elem_size_bytes) const;
     void calculate_w_nspc_base(
             const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const;
-    void calculate_w_nspc_partial(const dim_t *strides,
-            const std::size_t offset, const Xbyak::Reg64 &tmp_reg,
-            std::size_t elem_size_bytes) const;
     void calculate_w_cspn_base(
             const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const;
-    void calculate_w_cspn_partial(const dim_t *strides,
-            const std::size_t offset, const Xbyak::Reg64 &tmp_reg,
-            std::size_t elem_size_bytes) const;
 
     void append_mb_offset(
             const std::map<int, Xbyak::Address> &vmm_idx_to_out_addr,

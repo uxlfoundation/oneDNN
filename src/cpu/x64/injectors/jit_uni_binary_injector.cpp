@@ -2125,82 +2125,72 @@ void jit_uni_binary_injector_t<isa, Vmm>::append_w_offset(
     const bool is_out_addr = it_out_addr != vmm_idx_to_out_addr.end();
     const bool is_out_reg = it_out_reg != vmm_idx_to_out_reg.end();
 
-    if (is_out_addr || is_out_reg) {
-        Xbyak::Address out_addr = is_out_addr ? it_out_addr->second
-                                              : host_->ptr[it_out_reg->second];
-        const auto it_off_val = vmm_idx_to_out_elem_off_val.find(vmm_idx);
-        const auto &addr_cache_reg = rhs_arg_static_params_.rhs_addr_cache_reg;
+    if (!is_out_addr && !is_out_reg) return;
 
-        const auto dst_d = rhs_arg_static_params_.dst_d;
-        const auto strides = dst_d.blocking_desc().strides;
-        const auto layout = injector_utils::get_layout_type(dst_d);
+    Xbyak::Address out_addr = is_out_addr ? it_out_addr->second
+                                          : host_->ptr[it_out_reg->second];
+    const auto it_off_val = vmm_idx_to_out_elem_off_val.find(vmm_idx);
+    const auto &addr_cache_reg = rhs_arg_static_params_.rhs_addr_cache_reg;
 
-        if (is_first) {
-            calculate_no_broadcast_base(out_addr, tmp_reg);
+    const auto dst_d = rhs_arg_static_params_.dst_d;
+    const auto strides = dst_d.blocking_desc().strides;
+    const auto layout = injector_utils::get_layout_type(dst_d);
 
-            const auto rax = host_->rax;
-            const auto rdx = host_->rdx;
-            const auto r8 = host_->r8;
+    const auto rax = host_->rax;
+    const auto rdx = host_->rdx;
+    const auto r8 = host_->r8;
 
-            const injector_utils::conditional_register_preserve_guard_t
-                    register_guard {is_out_reg
-                                    ? utils::one_of(
-                                              it_out_reg->second, rax, rdx, r8)
-                                    : false,
-                            host_,
-                            {is_out_reg ? it_out_reg->second : Xbyak::Reg64()}};
+    // The width index of a position is that position reduced modulo the row
+    // length, so it does not distribute over addition. Deriving it separately
+    // for the base and for the per-vmm displacement yields
+    // `w(base) + w(off)`, which diverges from the required `w(base + off)` once
+    // a displacement reaches a full row. The displacement therefore joins the
+    // linear position before the reduction. Only the rhs base pointer stays
+    // loop-invariant, so that is what the cache register holds.
+    assert(!utils::one_of(addr_cache_reg, rax, rdx, r8)
+            && "the rhs address cache register must survive the division");
+    if (is_first)
+        host_->mov(addr_cache_reg, addr_reg);
+    else
+        host_->mov(addr_reg, addr_cache_reg);
 
-            switch (layout) {
-                case injector_utils::layout_t::ncsp:
-                    calculate_w_ncsp_base(strides, tmp_reg);
-                    break;
-                case injector_utils::layout_t::c_blocked:
-                    calculate_w_blocked_base(strides, tmp_reg);
-                    break;
-                case injector_utils::layout_t::nspc:
-                    calculate_w_nspc_base(strides, tmp_reg);
-                    break;
-                case injector_utils::layout_t::cspn:
-                    calculate_w_cspn_base(strides, tmp_reg);
-                    break;
-                default: assert(!"Unknown layout");
-            }
+    calculate_no_broadcast_base(out_addr, tmp_reg);
+    if (it_off_val != vmm_idx_to_out_elem_off_val.end()) {
+        const auto off_elems = it_off_val->second
+                >> math::ilog2q(types::data_type_size(dst_d.data_type()));
+        assert(off_elems <= (size_t)std::numeric_limits<int>::max()
+                && "destination element offset does not fit a displacement");
+        if (off_elems) host_->add(tmp_reg, (int)off_elems);
+    }
 
-            if (elem_size_bytes == 1) {
-                host_->add(addr_reg, rax);
-            } else {
-                const int shift_val = std::log2(elem_size_bytes);
-                host_->mov(tmp_reg, rax);
-                host_->sal(tmp_reg, shift_val);
-                host_->add(addr_reg, tmp_reg);
-            }
-            host_->mov(addr_cache_reg, addr_reg);
-        } else {
-            host_->mov(addr_reg, addr_cache_reg);
-        }
+    const injector_utils::conditional_register_preserve_guard_t register_guard {
+            is_out_reg ? utils::one_of(it_out_reg->second, rax, rdx, r8)
+                       : false,
+            host_, {is_out_reg ? it_out_reg->second : Xbyak::Reg64()}};
 
-        if (it_off_val != vmm_idx_to_out_elem_off_val.end()) {
-            switch (layout) {
-                case injector_utils::layout_t::ncsp:
-                    calculate_w_ncsp_partial(strides, it_off_val->second,
-                            tmp_reg, elem_size_bytes);
-                    break;
-                case injector_utils::layout_t::c_blocked:
-                    calculate_w_blocked_partial(strides, it_off_val->second,
-                            tmp_reg, elem_size_bytes);
-                    break;
-                case injector_utils::layout_t::nspc:
-                    calculate_w_nspc_partial(strides, it_off_val->second,
-                            tmp_reg, elem_size_bytes);
-                    break;
-                case injector_utils::layout_t::cspn:
-                    calculate_w_cspn_partial(strides, it_off_val->second,
-                            tmp_reg, elem_size_bytes);
-                    break;
-                default: assert(!"Unknown layout");
-            }
-            host_->add(addr_reg, tmp_reg);
-        }
+    switch (layout) {
+        case injector_utils::layout_t::ncsp:
+            calculate_w_ncsp_base(strides, tmp_reg);
+            break;
+        case injector_utils::layout_t::c_blocked:
+            calculate_w_blocked_base(strides, tmp_reg);
+            break;
+        case injector_utils::layout_t::nspc:
+            calculate_w_nspc_base(strides, tmp_reg);
+            break;
+        case injector_utils::layout_t::cspn:
+            calculate_w_cspn_base(strides, tmp_reg);
+            break;
+        default: assert(!"Unknown layout");
+    }
+
+    if (elem_size_bytes == 1) {
+        host_->add(addr_reg, rax);
+    } else {
+        const int shift_val = std::log2(elem_size_bytes);
+        host_->mov(tmp_reg, rax);
+        host_->sal(tmp_reg, shift_val);
+        host_->add(addr_reg, tmp_reg);
     }
 }
 
@@ -2233,32 +2223,9 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_ncsp_base(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_ncsp_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
-    // offset = (n * stride_n) + (c * stride_c) + (d * stride_d) + (h * stride_h) + (w * stride_w)
-    // w_off = w * stride_w
-    const auto ndims = rhs_arg_static_params_.dst_d.ndims();
-    const auto offset_shr = offset >> math::ilog2q(types::data_type_size(
-                                    rhs_arg_static_params_.dst_d.data_type()));
-    const auto w = (offset_shr % strides[ndims - 2]) / strides[ndims - 1];
-    const auto offset_adj = w * strides[ndims - 1];
-    host_->mov(tmp_reg,
-            elem_size_bytes > 1 ? offset_adj << math::ilog2q(elem_size_bytes)
-                                : offset_adj);
-}
-
-template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_blocked_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     calculate_w_ncsp_base(strides, tmp_reg);
-}
-
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_blocked_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
-    calculate_w_ncsp_partial(strides, offset, tmp_reg, elem_size_bytes);
 }
 
 template <cpu_isa_t isa, typename Vmm>
@@ -2289,36 +2256,11 @@ void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_nspc_base(
 }
 
 template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_nspc_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
-    // offset = nDHWC + dHWC + hWC + wC + c
-    // w_off = w
-    const auto ndims = rhs_arg_static_params_.dst_d.ndims();
-    const auto offset_shr = offset >> math::ilog2q(types::data_type_size(
-                                    rhs_arg_static_params_.dst_d.data_type()));
-    const auto offset_adj
-            = (offset_shr % strides[ndims - 2]) / strides[ndims - 1];
-    host_->mov(tmp_reg,
-            elem_size_bytes > 1 ? offset_adj << math::ilog2q(elem_size_bytes)
-                                : offset_adj);
-}
-
-template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_cspn_base(
         const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const {
     // offset = cDHWN + dHWN + hWN + wN + n
     // w_off = w
     calculate_w_nspc_base(strides, tmp_reg);
-}
-
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_binary_injector_t<isa, Vmm>::calculate_w_cspn_partial(
-        const dim_t *strides, const std::size_t offset,
-        const Xbyak::Reg64 &tmp_reg, std::size_t elem_size_bytes) const {
-    // offset = cDHWN + dHWN + hWN + wN + n
-    // w_off = w
-    calculate_w_nspc_partial(strides, offset, tmp_reg, elem_size_bytes);
 }
 
 template <cpu_isa_t isa, typename Vmm>

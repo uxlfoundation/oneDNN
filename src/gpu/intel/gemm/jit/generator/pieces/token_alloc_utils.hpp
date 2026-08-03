@@ -24,13 +24,6 @@
 
 GEMMSTONE_NAMESPACE_START
 
-// Allocate tokens for a layout keyed to the given source/destination registers.
-bool allocateTokens(const RegisterLayout &layout, const GRFMultirange &regs, CommonState &state,
-                    const std::vector<ngen::GRFRange> &addrs = std::vector<ngen::GRFRange>());
-
-// Clear token allocations that are mapped to specific registers.
-void clearMappedTokenAllocations(ngen::HW hw, CommonState &state);
-
 // Clear all token allocations.
 void clearTokenAllocations(ngen::HW hw, CommonState &state);
 

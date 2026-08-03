@@ -162,13 +162,19 @@ protected:
     }
 };
 
+struct TokenTime {
+    uint16_t dst = 0;
+    uint16_t src = 0;
+    constexpr bool empty() const { return (dst == 0) && (src == 0); }
+};
+
 template <bool consumer>
 struct Dependency {
     int32_t label;                                      // Multipurpose label for use in algorithms
 
     // Source instruction information.
     GeneralizedPipe pipe;                               // Execution pipe for instruction
-    uint16_t tokenTime;                                 // Estimated upper bound for token lifetime, in cycles.
+    TokenTime tokenTime;                                // Estimated upper bound for token lifetime, in cycles.
     std::array<int32_t, NPipes> counters;               // Pipe counters, relative to start of BB.
     uint32_t inum;                                      // Instruction number.
 
@@ -181,7 +187,7 @@ struct Dependency {
     uint32_t tokenMaskSrc, tokenMaskDst;                // Bitmasks of token src/dst dependencies
     DependencyRegion region;                            // GRF region covered
 
-    Dependency() : label{0}, pipe{}, tokenTime{0}, inum{0xffffffff},
+    Dependency() : label{0}, pipe{}, tokenTime{}, inum{0xffffffff},
         rw{false}, swsb{false}, active{true}, tokenTBD{false},
         tokenMaskSrc{0u}, tokenMaskDst{0u}, region{} { counters.fill(0); dists.fill(0); }
 
@@ -634,16 +640,66 @@ inline int timeout(GeneralizedPipe pipe)
     }
 }
 
+// Extract dpas repeat count (rcount) from an assembled (in-memory string) instruction.
+template <typename Instruction>
+inline auto dpasRepeatCount(const Instruction &insn) -> decltype(insn.ext, int())
+{
+    return int(unsigned(insn.ext) & 0xFFu);
+}
+
+// Extract dpas repeat count (rcount) from a binary-encoded instruction (Instruction12/InstructionXeHPC/...).
+template <typename Instruction>
+inline auto dpasRepeatCount(const Instruction &insn) -> decltype(insn.dpas.rcount, int())
+{
+    return 1 + int(insn.dpas.rcount);
+}
+
 // Approximate upper bound on cycle count for an OOO instruction.
 template <typename Instruction>
-inline int estimateLatency(HW hw, const Instruction &insn)
+inline TokenTime estimateLatency(HW hw, const Instruction &insn)
 {
+    TokenTime tokenTime;
+
     switch (insn.opcode()) {
         default:
-        case Opcode::math: return (hw == HW::Gen12LP) ? 20 : 17;
+        case Opcode::math:
+            tokenTime.dst = (hw == HW::Gen12LP) ? 20 : 17;
+            tokenTime.src = 2;
+            break;
         case Opcode::bdpas:
         case Opcode::dpas:
-        case Opcode::dpasw: return 20;   // need correct value
+        case Opcode::dpasw: {
+            int rcount = dpasRepeatCount(insn);
+            switch (hw) {
+                case HW::XeHP:
+                    tokenTime.dst = 21 + rcount - 1; break;
+                case HW::XeHPG:
+                    switch (rcount) {
+                        case 1: tokenTime.dst = 21; break;
+                        case 2: tokenTime.dst = 22; break;
+                        default: tokenTime.dst = 32; break;
+                    }
+                    break;
+                case HW::XeHPC:
+                    tokenTime.dst = 21 + rcount - 1; break;
+                case HW::Xe2:
+                case HW::Xe3:
+                case HW::Xe3p:
+                    switch (rcount) {
+                        case 1: tokenTime.dst = 22; break;
+                        case 2: tokenTime.dst = 23; break;
+                        default: tokenTime.dst = 33; break;
+                    }
+                    break;
+                default:
+#ifdef NGEN_SAFE
+                    throw unsupported_instruction();
+#endif
+                    tokenTime.dst = 33; break;
+            }
+            tokenTime.src = 2;
+            break;
+        }
         case Opcode::sendg:
         case Opcode::sendgc:
         case Opcode::sendgx:
@@ -654,16 +710,32 @@ inline int estimateLatency(HW hw, const Instruction &insn)
                 case SharedFunction::dc0:
                 case SharedFunction::dc1: {
                     MessageDescriptor desc;
-                    if (insn.getSendDesc(desc))
-                        if (desc.surface.index == 0xFE)
-                            return (hw == HW::Gen12LP) ? 33 : 25;
-                    return (hw == HW::Gen12LP) ? 106 : 150;
+                    if(insn.getSendDesc(desc))
+                        if(desc.surface.index == 0xFE)
+                            tokenTime.dst = ((hw == HW::Gen12LP) ? 33 : 25);
+                    tokenTime.dst = ((hw == HW::Gen12LP) ? 106 : 150);
+                    break;
                 }
-                case SharedFunction::sampler: return (hw == HW::Gen12LP) ? 175 : 210;
-                default: return 50;
+                case SharedFunction::sampler: tokenTime.dst = (hw == HW::Gen12LP) ? 175 : 210; break;
+                case SharedFunction::gtwy:    tokenTime.dst = 30; break;
+                default:                      tokenTime.dst = 50; break;
             }
+
+            const int arbCycles = 8;
+            int payloadRegs = 0;
+            for (int opNum = 0; opNum <= 1; opNum++) {
+                DependencyRegion srcRegion;
+                srcRegion.hw = hw;
+                if (insn.getOperandRegion(srcRegion, opNum))
+                    payloadRegs += srcRegion.unspecified ? 8 : srcRegion.size;
+            }
+
+            tokenTime.src = arbCycles + payloadRegs;
+            break;
         }
     }
+
+    return tokenTime;
 }
 
 // Measure instruction distance between two Dependencies in a given pipe.
@@ -1173,8 +1245,8 @@ void DependencyRegion::dump() const
 template <bool consumer>
 void Dependency<consumer>::dump() const
 {
-    if (tokenTime > 0) {
-        std::cerr << '[' << counters[PipeBitA] << " + " << tokenTime;
+    if (!tokenTime.empty()) {
+        std::cerr << '[' << counters[PipeBitA] << " + d" << tokenTime.dst << "/s" << tokenTime.src;
         std::cerr << ',' << inum;
     } else {
         std::cerr << '[';
@@ -1669,7 +1741,8 @@ inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock 
         auto depSWSB = program[dep.inum].swsb();
         int tokenID;
         if (getTokenSet(depSWSB, tokenID)) {
-            int32_t pe = counterC - (dep.counters[PipeBitC] + dep.tokenTime);
+            auto latency = dep.tokenMaskDst ? dep.tokenTime.dst : dep.tokenTime.src;
+            int32_t pe = counterC - (dep.counters[PipeBitC] + latency);
             auto &token = tokenStates[tokenID];
             if (pe < token.pastExpiration) {
                 token.pastExpiration = pe;
@@ -2615,7 +2688,7 @@ inline void propagate(std::vector<BasicBlock> &BBs, std::atomic<bool> *cancel)
                     // Adjust counters.
                     // Exception for OOO tokenless dependencies: counter[0] stores instruction #; only adjust counter C.
                     auto newDep = dep;
-                    if (newDep.tokenTime == 0)
+                    if (newDep.tokenTime.empty())
                         for (int p = 0; p < NPipes; p++)
                             newDep.counters[p] -= pred->lengths[p];
                     else
@@ -2675,7 +2748,7 @@ inline void propagate(std::vector<BasicBlock> &BBs, std::atomic<bool> *cancel)
             pred->producers.forEach([&](const Producer &dep) {
                 // Adjust counters, except for OOO tokenless dependencies.
                 auto newDep = dep;
-                if (newDep.tokenTime == 0)
+                if (newDep.tokenTime.empty())
                     for (int p = 0; p < NPipes; p++)
                         newDep.counters[p] -= pred->lengths[p];
                 else

@@ -252,6 +252,7 @@ void CopyPlan::transform()
 
     sort(SortType::Register);
 
+    optimizeTranspose();
     optimizeSIMD();
     optimizeIntegerDownconvert();
     optimizeZip();
@@ -3112,6 +3113,73 @@ void CopyPlan::optimizeSIMD()
             ie[0]->simd = ie[2]->simd = esimd;
             ie[1]->invalidate();
             mask(*ie[0], *ie[2], flag);
+        }
+    }
+
+    mergeChanges();
+}
+
+// Optimization pass: Convert long chains of small-SIMD equal-strided movs
+// to a few larger-SIMD movs.
+// Example input:
+//    mov (2) r3.0:ub<1>      r3.0:ub<2>
+//    mov (2) r3.4:ub<1>      r3.4:ub<2>
+//    mov (2) r3.8:ub<1>      r3.8:ub<2>
+//    mov (2) r3.12:ub<1>     r3.12:ub<2>
+//    mov (2) r3.16:ub<1>     r3.16:ub<2>
+//    mov (2) r3.20:ub<1>     r3.20:ub<2>
+//    mov (2) r3.24:ub<1>     r3.24:ub<2>
+//    mov (2) r3.28:ub<1>     r3.28:ub<2>
+// Output:
+//    mov (8) r3.0:ub<4>      r3.0:ub<4>  /* removed */
+//    mov (8) r3.1:ub<4>      r3.2:ub<4>
+//
+void CopyPlan::optimizeTranspose()
+{
+    const auto grf = ngen::GRF::bytes(hw);
+    auto transposable = [grf](const CopyOperand &o1, const CopyOperand &o2, size_t offset) {
+        if (o1.kind != CopyOperand::GRF || o2.kind != CopyOperand::GRF) return false;
+        if (o1.type != o2.type || o1.stride != o2.stride) return false;
+        if (o1.temp != o2.temp) return false;
+        if (o1.temp && o1.grf != o2.grf) return false;
+
+        auto grf_diff = o1.temp ? o2.value - o1.value : o2.grf - o1.grf;
+        auto dist = bytesToElements(grf, o1.type) * grf_diff + (o2.offset - o1.offset);
+        return dist == offset;
+    };
+
+    auto ninsn = insns.size();
+    for (size_t n1 = 0; n1 < ninsn; n1++) {
+        auto &i1 = insns[n1];
+        if (i1.op != Opcode::mov || i1.simd == 0) continue;
+        int8_t dstride = bytesToElements(4, i1.dst.type);
+        int8_t sstride = bytesToElements(4, i1.src0.type);
+        int simd = 1;
+        size_t n2;
+        for (n2 = n1 + 1; n2 < ninsn; n2++, simd++) {
+            auto &i2 = insns[n2];
+            if (i1.phase != i2.phase) break;
+            if (i2.op != Opcode::mov) break;
+            if (i1.simd != i2.simd) break;
+            if (!transposable(i1.src0, i2.src0, dstride * (n2 - n1))) break;
+            if (!transposable(i1.dst, i2.dst, sstride * (n2 - n1))) break;
+        }
+
+        if (i1.simd > simd) continue;
+
+        for (size_t n = n1 + 1; n < n2; n++, n1++)
+            join(i1, insns[n]);
+
+        auto simd0 = i1.simd;
+        i1.simd = simd;
+        auto soffset = i1.src0.stride;
+        auto doffset = i1.dst.stride;
+        i1.src0.stride = sstride;
+        i1.dst.stride = dstride;
+        for (int i = 1; i < simd0; ++i) {
+            auto &i2 = split(i1, false);
+            i2.src0.offset += i * soffset;
+            i2.dst.offset += i * doffset;
         }
     }
 

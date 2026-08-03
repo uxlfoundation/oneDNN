@@ -214,7 +214,7 @@ struct GEMMStrategyPOD : public CommonStrategy {
     bool slmA = false, slmB = false;             // Whether to copy A/B to SLM.
     bool splitCopy = false;                      // Separate SLM copy and compute threads?
     bool tlbWarmup = false;                      // Enable TLB warmup?
-                                    ZPAD(C, 1)
+    bool tokenAlloc = false;                     // Enable dedicated SWSB token allocation for k loop loads/stores.
     int slmBuffers = 0;                          // # of A/B SLM buffers, 0 for none.
     int unrollKSLM = 0;                          // k unroll for SLM copies (0 = auto = unroll[LoopK]/slmCopies)
     int unrollKSLMMasked = 0;                    //   Alternate value to use with masking (0 = same as unrollKSLM)

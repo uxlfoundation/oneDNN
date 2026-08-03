@@ -2124,7 +2124,8 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     reclaimRanges(state.C_regs, state);
 
     // Allocate tokens.
-    gemmAllocateTokens(problem, strategy, state);
+    if (strategy.tokenAlloc)
+        gemmAllocateTokens(problem, strategy, state);
 
     // Preloading C and fused beta scaling need some extra registers for C headers.
     // Temporarily free up A/B data registers for that purpose.

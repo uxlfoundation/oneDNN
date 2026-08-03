@@ -335,7 +335,8 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
         {"int", [](ParserContext& ctx) { ctx.strategy.registerScheme = GEMMStrategy::ABInterleave; }},
         {"nse", [](ParserContext& ctx) { ctx.strategy.registerScheme = GEMMStrategy::NSeparate; }},
         {"vav", [](ParserContext& ctx) { ctx.strategy.registerScheme = GEMMStrategy::VAvoid; }},
-        
+        {"tk", [](ParserContext& ctx) { ctx.strategy.tokenAlloc = true; }},
+
         /* Dispatch Settings */
         {"mnk", [](ParserContext& ctx) {
             ctx.strategy.loopOrder[0] = LoopM;
@@ -966,6 +967,7 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (strategy.scramble[LoopM])           s << " ym";
     if (strategy.scramble[LoopN])           s << " yn";
     if (strategy.tlbWarmup)                 s << " wt";
+    if (strategy.tokenAlloc)                s << " tk";
 
     if (strategy.checkAdd32 && !strategy.emulate.emulate64) s << " ch";
     if (!strategy.checkAdd32 && strategy.emulate.emulate64) s << " nch";

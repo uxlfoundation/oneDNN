@@ -168,11 +168,19 @@ TEST(test_mqa_decomp_execute, Bf16MqaDecomp_CPU) {
 }
 
 // Test multiple thread execute
-TEST(test_mqa_decomp_execute, MultithreaMqaDecomp_CPU) {
+TEST(test_mqa_decomp_execute, MultithreadMqaDecomp_CPU) {
     graph::engine_t *eng = get_engine();
 
     SKIP_IF(eng->kind() == graph::engine_kind::gpu,
             "Skip for GPU - not supported yet.");
+
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+    // 4 concurrent threads will be executed below. Limiting the number of OMP
+    // threads to avoid oversubscription.
+    const int nthr = dnnl_get_current_num_threads() / 4;
+    SKIP_IF(nthr == 0, "skip as not enough threads for test");
+    omp_set_num_threads(nthr);
+#endif
 
     int batch_size = 56;
     graph::graph_t g(eng->kind());

@@ -311,6 +311,10 @@ size_t get_attr_hash(const primitive_attr_t &attr) {
                         seed, static_cast<size_t>(entry.binary.alg));
                 seed = hash_combine(
                         seed, get_md_hash(entry.binary.user_src1_desc));
+                seed = hash_combine(
+                        seed, get_md_hash(entry.binary.user_src2_desc));
+                seed = hash_combine(
+                        seed, static_cast<size_t>(entry.binary.src1_from_dst));
                 break;
             case primitive_kind::prelu:
                 seed = hash_combine(

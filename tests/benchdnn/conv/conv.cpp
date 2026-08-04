@@ -263,8 +263,8 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     if (prb->alg == AUTO) alg = dnnl_convolution_auto;
 
     attr_args_t attr_args;
-    attr_args.prepare_post_ops_mds(
-            prb->attr, prb->ndims, prb->dst_dims().data());
+    attr_args.prepare_post_ops_mds(prb->attr, prb->ndims,
+            prb->dst_dims().data(), prb->get_md(DNNL_ARG_DST));
     auto wei_scale = prb->attr.scales.get(DNNL_ARG_WEIGHTS);
     if (wei_scale.policy == policy_t::PER_OC) {
         // oihw: per_oc: 1 << 0 -> 1

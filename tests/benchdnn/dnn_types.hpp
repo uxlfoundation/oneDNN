@@ -771,6 +771,7 @@ struct attr_args_t {
 
     int prepare_post_ops_mds(const attr_t &attr, int ndims,
             const dnnl_dims_t prb_dims,
+            benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dst_md,
             dnnl_primitive_kind_t prim_kind = dnnl_undefined_primitive,
             const sparse_options_t *sparse_options = nullptr);
 

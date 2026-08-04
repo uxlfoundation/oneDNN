@@ -22,6 +22,7 @@
 #include "cpu/matmul/gemm_based_common.hpp"
 #include "cpu/matmul/matmul_utils.hpp"
 #include "cpu/platform.hpp"
+#include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/matmul/amx_blocking_heuristics.hpp"
 #include "cpu/x64/matmul/brgemm_matmul_utils.hpp"
@@ -50,6 +51,91 @@ using namespace dnnl::impl::utils;
 
 using namespace data_type;
 using namespace format_tag;
+
+namespace {
+
+// Describes a last-level cache that is partitioned into several independent
+// domains within a package (e.g. AMD CCD-style L3). A cache line resident in
+// one domain is not a local hit for cores of another domain.
+struct l3_domain_info_t {
+    bool partitioned = false;
+    size_t size = 0; // bytes of a single L3 domain
+    unsigned cores = 0; // physical cores sharing that domain
+};
+
+// Note: currently only AMD CCD-style partitioned L3 caches are recognized.
+l3_domain_info_t get_amd_partitioned_l3_info() {
+    const auto &cpu_info = cpu();
+    const auto cache_levels = cpu_info.getDataCacheLevels();
+    if (!cpu_info.has(Xbyak::util::Cpu::tAMD) || cache_levels < 3) return {};
+
+    const unsigned l3_cache_index = cache_levels - 1;
+    const auto l3_core_count
+            = cpu_info.getCoresSharingDataCache(l3_cache_index);
+    const auto package_core_count
+            = cpu_info.getNumCores(Xbyak::util::CoreLevel);
+    if (l3_core_count <= 1 || l3_core_count >= package_core_count) return {};
+
+    l3_domain_info_t info;
+    info.partitioned = true;
+    info.size = cpu_info.getDataCacheSize(l3_cache_index);
+    info.cores = l3_core_count;
+    return info;
+}
+
+// Decide whether thread chunks should be traversed vertically (along M) instead
+// of horizontally (along N).
+//
+// Vertical traversal groups the consumers of the same B panel on neighbouring
+// thread indices so that the panel is reused within a single L3 domain instead
+// of being replicated across domains. It only pays off on CPUs with a per-CCD
+// partitioned L3 and compact thread affinity, and is restricted to the (dt, isa)
+// combinations it was measured on.
+//
+// Note: must be called after `init_aux_values()` so that the chunk counts and
+// buffer sizes the traversal iterates over are available.
+bool use_vertical_chunk_traversal(const brgemm_matmul_conf_t &bgmmc,
+        const brgemm_matmul_conf_utils_t &bm_conf_utils) {
+    if (bgmmc.is_amx || bgmmc.is_runtime_M || bgmmc.is_runtime_N) return false;
+
+    const bool is_validated_dt_isa = is_superset(bgmmc.isa, avx512_core)
+            && (bm_conf_utils.is_bf16() || bm_conf_utils.is_f16()
+                    || bm_conf_utils.is_int8());
+    if (!is_validated_dt_isa) return false;
+
+    // The traversal order is only observable when there is more than one chunk
+    // along both M and N and more than one thread iterating over them.
+    const bool traversal_order_matters = bgmmc.M_chunks > 1
+            && bgmmc.N_chunks > 1 && (bgmmc.nthr / bgmmc.nthr_k) > 1;
+    if (!traversal_order_matters) return false;
+
+    const auto l3_domain = get_amd_partitioned_l3_info();
+    if (!l3_domain.partitioned) return false;
+
+    // Bytes of each operand consumed by one chunk over the whole K reduction.
+    // Vertical traversal favors B reuse, so it only helps when B is the operand
+    // worth keeping resident.
+    const size_t b_panel_bytes = bgmmc.N_chunk_elems * bgmmc.K * bgmmc.b_dt_sz;
+    const size_t a_panel_bytes = bgmmc.M_chunk_elems * bgmmc.K * bgmmc.a_dt_sz;
+    // When B is copied, every thread keeps its own packed copy, so the domain
+    // has to host one copy per core sharing it.
+    const size_t resident_b_bytes = bgmmc.use_buffer_b
+            ? l3_domain.cores * (size_t)bgmmc.buffer_b_per_thread_sz
+            : b_panel_bytes;
+    // Leave headroom in the domain for A, C and the copy buffers.
+    const size_t b_budget = l3_domain.size / 2;
+    const size_t b_total_bytes = (size_t)bgmmc.N * bgmmc.K * bgmmc.b_dt_sz;
+
+    return b_panel_bytes > a_panel_bytes
+            // If the whole B already fits a domain it stays resident for any
+            // traversal order and reordering brings nothing.
+            && b_total_bytes > l3_domain.size
+            // If a single panel does not fit either, vertical traversal cannot
+            // create reuse and only hurts A locality.
+            && resident_b_bytes <= b_budget;
+}
+
+} // namespace
 
 int get_n_block_from_tag(format_tag_t matrix_b_tag) {
     // Note: consider using weights mem_descriptor 'inner_blks' to
@@ -1842,7 +1928,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.s8s8_compensation_required = bgmmc.src_dt == s8 && !isa_has_s8s8(isa);
     bgmmc.ndims = dst_d.ndims();
 
-    bgmmc.is_thread_chunks_exec_order_horizontal = true;
     bgmmc.mem_advice
             = brgemm_kernel_hint_mem_advice_t::brgemm_hint_mem_advice_undef;
 
@@ -2514,6 +2599,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     // Sets things related to chunks and others
     init_aux_values(bgmmc, src_d, weights_d, dst_d);
+
+    bgmmc.is_thread_chunks_exec_order_horizontal
+            = !use_vertical_chunk_traversal(bgmmc, bm_conf_utils);
 
     const bool need_store_prfw = bgmmc.N <= 14528
             && ((bgmmc.M <= 768 && bgmmc.K <= 128)

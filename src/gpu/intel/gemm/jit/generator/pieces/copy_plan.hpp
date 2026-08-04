@@ -394,11 +394,9 @@ void CopyInstruction::execute(Generator &g)
                 g.math(ngenModifiers(), fc, dst.ngen(), src0.ngen(), src1.ngen());
             break;
         }
-        case Opcode::dnscl: {
-            uint8_t mode = 0;
-            g.dnscl(ngenModifiers(), mode, RoundingType::rne, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen());
+        case Opcode::dnscl:
+            g.dnscl(ngenModifiers(), ctrl, RoundingType::rne, dst.ngen(), src0.ngen(), src1.ngen(), src2.ngen());
             break;
-	    }
         case Opcode::shfl:
             g.shfl.idx4(ngenModifiers(), dst.ngen(), src0.ngen(), src1.ngen());
             break;

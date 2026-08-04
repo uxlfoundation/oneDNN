@@ -2278,6 +2278,7 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
         ie[1]->src0.stride = 2;
 
         ie[2]->op = Opcode::dnscl;
+        ie[2]->ctrl = 0;
         ie[2]->simd = simd / 4;
         ie[2]->dst = t0;
         ie[2]->dst.type = y.type;
@@ -4133,7 +4134,7 @@ void CopyInstruction::dump(std::ostream &os, const CopyPlan &plan, bool sortInfo
     if (op == Opcode::shfl)
         os << "shfl.idx4";
     else if (op == Opcode::dnscl)
-        os << "dnscl";
+        os << "dnscl.mode" << (int)ctrl;
     else
         os << getMnemonic(op, HW::Gen9);
     switch (op) {

@@ -359,14 +359,71 @@ bool check_quant_dequant_scales_zps(const op_t *n) {
 // unlike Quantize/Dequantize, scales and zps are inputs here.
 bool check_dyn_quant_dequant_scales_zps(const op_t *n) {
     const int64_t inputs_num = n->num_inputs();
-    const int64_t sz_scales = n->get_input_logical_tensor(1).dims[0];
+    const auto &src_lt = n->get_input_logical_tensor(0);
+    const auto &scales_lt = n->get_input_logical_tensor(1);
+    const int64_t sz_scales = scales_lt.dims[0];
     // in case of not setting value for scales
     if (sz_scales == DNNL_GRAPH_UNKNOWN_DIM) { return true; }
+
+    // FP8 quantization does not support zps regardless of mask or qtype.
+    if (inputs_num == 3) {
+        const auto &dst_lt = n->get_output_logical_tensor(0);
+        const bool f8_src = utils::one_of(
+                src_lt.data_type, data_type::f8_e5m2, data_type::f8_e4m3);
+        const bool f8_dst = utils::one_of(
+                dst_lt.data_type, data_type::f8_e5m2, data_type::f8_e4m3);
+        VCHECK_SHAPE_INFER(!(f8_src || f8_dst),
+                "%s, f8 quantization or dequantization does not support zps.",
+                op_t::kind2str(n->get_kind()).c_str());
+    }
 
     // qtype is not a required attribute.
     const auto qtype = n->has_attr(op_attr::qtype)
             ? n->get_attr<std::string>(op_attr::qtype)
             : "per_tensor";
+    if (n->has_attr(op_attr::mask)) {
+        const int64_t mask = n->get_attr<int64_t>(op_attr::mask);
+        VCHECK_SHAPE_INFER(mask >= 0,
+                "%s, mask must be non-negative, given mask: %d.",
+                op_t::kind2str(n->get_kind()).c_str(), static_cast<int>(mask));
+        VCHECK_SHAPE_INFER((mask >> src_lt.ndims) == 0,
+                "%s, mask must not select dimensions outside the source rank. "
+                "given mask: %d, source rank: %d.",
+                op_t::kind2str(n->get_kind()).c_str(), static_cast<int>(mask),
+                src_lt.ndims);
+        VCHECK_SHAPE_INFER(qtype == "per_tensor",
+                "%s, qtype must be per_tensor when mask is specified.",
+                op_t::kind2str(n->get_kind()).c_str());
+
+        int64_t scale_dim = 0;
+        for (int64_t dim = 0; dim < src_lt.ndims; ++dim) {
+            if ((mask & (1LL << dim)) == 0) continue;
+            VCHECK_SHAPE_INFER(scale_dim < scales_lt.ndims,
+                    "%s, scales rank does not match mask.",
+                    op_t::kind2str(n->get_kind()).c_str());
+            VCHECK_SHAPE_INFER(scales_lt.dims[scale_dim] == src_lt.dims[dim],
+                    "%s, scales shape does not match masked source dimensions.",
+                    op_t::kind2str(n->get_kind()).c_str());
+            ++scale_dim;
+        }
+        VCHECK_SHAPE_INFER(scale_dim == scales_lt.ndims,
+                "%s, scales rank does not match mask.",
+                op_t::kind2str(n->get_kind()).c_str());
+
+        if (inputs_num == 3) {
+            const auto &zps_lt = n->get_input_logical_tensor(2);
+            VCHECK_SHAPE_INFER(zps_lt.ndims == scales_lt.ndims,
+                    "%s, zps rank does not match scales rank.",
+                    op_t::kind2str(n->get_kind()).c_str());
+            VCHECK_SHAPE_INFER(
+                    std::equal(scales_lt.dims, scales_lt.dims + scales_lt.ndims,
+                            zps_lt.dims),
+                    "%s, zps shape does not match scales shape.",
+                    op_t::kind2str(n->get_kind()).c_str());
+        }
+
+        return true;
+    }
     // zps is not a required input.
     if (inputs_num == 2) {
         if (qtype == "per_tensor") {

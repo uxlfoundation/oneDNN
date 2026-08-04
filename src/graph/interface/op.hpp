@@ -328,6 +328,7 @@ public:
             CASE(axis);
             CASE(begin_norm_axis);
             CASE(groups);
+            CASE(mask);
             CASE(group_shape);
             CASE(axes);
             CASE(dilations);

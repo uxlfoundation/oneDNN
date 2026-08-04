@@ -26,6 +26,9 @@ __kernel void fill_random(
 
     uint b = (uint)(start >> 2);
     uint4 rnd = philox_4x32_vec4(b, b ^ seed) & (uint4)(mask);
+#ifdef FILL_ZEROS
+    rnd = 0;
+#endif
 
     if (start + 16 <= byte_count) {
         vstore4(rnd, get_global_id(0), buf);

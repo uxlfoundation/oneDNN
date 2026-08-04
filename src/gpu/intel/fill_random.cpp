@@ -34,6 +34,7 @@ static status_t get_cached_kernel(
         intel::engine_t *engine, compute::kernel_t &kernel) {
     static std::unordered_map<engine_id_t, compute::kernel_t> cache;
     static std::mutex mutex;
+    static const bool fill_zeros = getenv_int("DNNL_FILL_ZEROS", 0) != 0;
 
     std::lock_guard<std::mutex> lock(mutex);
     auto it = cache.find(engine->engine_id());
@@ -43,6 +44,7 @@ static status_t get_cached_kernel(
     }
 
     compute::kernel_ctx_t ctx;
+    if (fill_zeros) ctx.define_int("FILL_ZEROS", 1);
     std::vector<compute::kernel_t> kernels;
     CHECK(engine->create_kernels(&kernels, {"fill_random"}, ctx));
     kernel = cache.emplace(engine->engine_id(), kernels[0]).first->second;

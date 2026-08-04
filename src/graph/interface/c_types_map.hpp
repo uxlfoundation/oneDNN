@@ -289,6 +289,7 @@ const op_attr_t scales = dnnl_graph_op_attr_scales;
 const op_attr_t axis = dnnl_graph_op_attr_axis;
 const op_attr_t begin_norm_axis = dnnl_graph_op_attr_begin_norm_axis;
 const op_attr_t groups = dnnl_graph_op_attr_groups;
+const op_attr_t mask = dnnl_graph_op_attr_mask;
 
 const op_attr_t axes = dnnl_graph_op_attr_axes;
 const op_attr_t dilations = dnnl_graph_op_attr_dilations;

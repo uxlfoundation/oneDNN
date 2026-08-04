@@ -80,7 +80,7 @@ void brgemm_desc_t::cleanup_dst_md() {
     dst_md_ = nullptr;
 }
 
-void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
     brgemm_kernel_params_t brgemm_p;
@@ -108,7 +108,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const void *addr_A, const void *addr_B,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
@@ -136,7 +136,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *ptr_D,
         const brgemm_post_ops_data_t &post_ops_data, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
@@ -179,7 +179,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const void *addr_A, const void *addr_B,
         const brgemm_batch_element_t *batch, void *ptr_C, void *ptr_D,
         const brgemm_post_ops_data_t &post_ops_data, void *scratch,
@@ -347,9 +347,10 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
 
     brg->with_bias = (dt_bias == data_type::undef) ? false : true;
     brg->dt_bias = dt_bias;
+    // Type sizes are always 1/2/4/8, safe to narrow.
     brg->typesize_bias = (dt_bias == data_type::undef)
             ? 0
-            : types::data_type_size(brg->dt_bias);
+            : static_cast<int>(types::data_type_size(brg->dt_bias));
 
     brg->LDD = LDD;
     brg->is_runtime_ldd = is_runtime_value(LDD);
@@ -427,7 +428,8 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         return status::unimplemented;
 
     brg->dt_d = dt_d;
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    // Type sizes are always 1/2/4/8, safe to narrow.
+    brg->typesize_D = static_cast<int>(types::data_type_size(brg->dt_d));
 
     if (!IMPLICATION(brg->is_int8 && brg->dt_d == bf16,
                 is_superset(brg->isa_impl, avx512_core)
@@ -637,7 +639,7 @@ status_t brgemm_desc_set_attr(
 status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (brg == nullptr) return status::invalid_arguments;
 
-    const int max_vpad = nstl::max(
+    const dim_t max_vpad = nstl::max(
             brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
 
     if (brg->is_dgmm)
@@ -648,7 +650,7 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (!brg->is_dgmm) {
         // virtual padding is restricted by bd_block size due to
         // brgemm_kernel implementation. TODO: remove this restriction
-        const int min_bd_block
+        const dim_t min_bd_block
                 = brg->bdb_tail > 0 ? brg->bdb_tail : brg->bd_block;
         if ((max_vpad > min_bd_block)) return status::unimplemented;
     }
@@ -912,12 +914,12 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.K_koef);
 
     if (lhs.brgattr.bd_mask_level > 0)
-        for (int i = 0; i < lhs.bcast_dim; i++) {
+        for (dim_t i = 0; i < lhs.bcast_dim; i++) {
             CMP_BRGEMM_FIELD(brgattr.bd_mask[i]);
         }
 
     if (lhs.type == brgemm_static_offs)
-        for (int i = 0; i < lhs.brgattr.max_bs; i++) {
+        for (dim_t i = 0; i < lhs.brgattr.max_bs; i++) {
             CMP_BRGEMM_FIELD(brgattr.static_offsets[i].offset.A);
             CMP_BRGEMM_FIELD(brgattr.static_offsets[i].offset.B);
         }

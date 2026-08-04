@@ -509,8 +509,11 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
         CHECK(brgemm_desc_finalize(&brg));
 
-        bgmmc_.wsp_tile_per_thr_bytes = nstl::max(
+        const dim_t wsp_tile_per_thr_bytes = nstl::max<dim_t>(
                 brg.get_wsp_buffer_size(), bgmmc_.wsp_tile_per_thr_bytes);
+        assert(wsp_tile_per_thr_bytes <= INT_MAX);
+        bgmmc_.wsp_tile_per_thr_bytes
+                = static_cast<int>(wsp_tile_per_thr_bytes);
     }
 
     auto scratchpad = scratchpad_registry().registrar();

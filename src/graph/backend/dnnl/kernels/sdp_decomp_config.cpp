@@ -881,12 +881,9 @@ dnnl::primitive_attr sdp_decomp_config_t::make_primitive_attr(
         attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     if (op && op->get_kind() == op_kind::_reorder) {
-        // generate mask
         int mask = 0;
-        if (op->has_attr(op_attr::axis) && op->has_attr(op_attr::qtype)) {
-            int64_t axis = op->get_attr<int64_t>(op_attr::axis);
-            std::string qtype = op->get_attr<std::string>(op_attr::qtype);
-            mask = qtype == "per_tensor" ? 0 : 1 << axis;
+        if (op->has_attr(op_attr::mask)) {
+            mask = static_cast<int>(op->get_attr<int64_t>(op_attr::mask));
         }
 
         if (op->has_attr(op_attr::with_runtime_dst_zps)

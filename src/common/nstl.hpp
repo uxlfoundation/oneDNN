@@ -136,8 +136,10 @@ struct numeric_limits<float4_e2m1_t> {
     static constexpr int bias = 0x1;
     static constexpr int digits = 2; // 1+1 implicit bits
 
+    // Can't be computed as a normal value due to short exponent. Uses a
+    // subnormal value in f4_e2m1 data type range.
     static constexpr float4_e2m1_t epsilon() {
-        return float4_e2m1_t(0x2, true);
+        return float4_e2m1_t(0x1, true);
     }
 };
 

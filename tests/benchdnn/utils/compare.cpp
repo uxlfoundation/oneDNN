@@ -456,26 +456,12 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
                             || args.rel_diff <= binary_comp_po_rdiff_trh);
             if (ok) break;
 
-            // Some drivers (like pooling or resampling) on integer data types
-            // may result in sporadic order of operations. This may cause a
-            // difference around `x.5f` value, and can be rounded either way to
-            // `x` or `x + 1` which can't be fixed by filling.
-            const auto is_int8_round_good = [&]() -> bool {
-                // Check that original value is close to x.5f.
-                static constexpr float small_eps = 9e-6f;
-                const float floor_val = floorf(args.exp_f32);
-                const float ceil_val = ceilf(args.exp_f32);
-                if (fabsf((floor_val + 0.5f) - args.exp_f32) >= small_eps)
-                    return false;
+            // A check for `off-by-1` errors for both integral data types and
+            // low-precision floating-point data types.
+            ok = (is_integral_dt(args.dt) || bits_dt(args.dt) <= 8)
+                    && is_off_by_one(args);
+            if (ok) break;
 
-                // If it is, check exp and got values are on opposite sides.
-                if (args.exp == floor_val) {
-                    return got_val == ceil_val;
-                } else if (args.exp == ceil_val) {
-                    return got_val == floor_val;
-                }
-                return false;
-            };
             // Another class of `off-by-1` issues coming from optimized
             // reference when transcendental operation present in the chain. In
             // such cases, there's no way to test original output as both
@@ -507,8 +493,7 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
                 return true;
             };
             ok = is_integral_dt(args.dt)
-                    && (is_int8_round_good()
-                            || is_int8_prim_ref_and_transcedental()
+                    && (is_int8_prim_ref_and_transcedental()
                             || is_nan_to_int_good());
             if (ok) break;
 
@@ -640,6 +625,35 @@ void compare_t::dump_p2p_errors() const {
     for (size_t i = 0; i < max_dump_size; i++) {
         dump_point_values(get_kind_str(), p2p_dumps_[i]);
     }
+}
+
+bool compare_t::is_off_by_one(const driver_check_func_args_t &args) const {
+    // Preserve testing floor/ceil for integral types and not a stricter
+    // threshold
+    if (is_integral_dt(args.dt)) {
+        static constexpr float small_eps = 9e-6f;
+        const float floor_val = floorf(args.exp_f32);
+        const float ceil_val = ceilf(args.exp_f32);
+        if (fabsf((floor_val + 0.5f) - args.exp_f32) >= small_eps) return false;
+        if (args.exp == floor_val) return args.got == ceil_val;
+        if (args.exp == ceil_val) return args.got == floor_val;
+        return false;
+    }
+
+    // Low-precision floats (fp8/fp4) use half their epsilon as the window
+    const float half_eps = epsilon_dt(args.dt) / 2.f;
+    const float next
+            = round_to_nearest_representable(args.dt, args.exp_f32 + half_eps);
+    const float prev
+            = round_to_nearest_representable(args.dt, args.exp_f32 - half_eps);
+
+    // Important conditions:
+    // * Expected f32 value shoudn't be equal to expected `float` value.
+    // * Expected and got values should be either `next` or `prev`.
+    // * Got value and expected values are different from one another.
+    if (args.exp_f32 == args.exp) return false;
+    return (args.got == next && args.exp == prev)
+            || (args.got == prev && args.exp == next);
 }
 
 int compare_t::compare(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,

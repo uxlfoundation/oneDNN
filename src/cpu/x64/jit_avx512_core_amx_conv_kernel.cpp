@@ -2486,7 +2486,6 @@ status_t jit_avx512_core_amx_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
     const int binary_ind = p.find(primitive_kind::binary);
     const int prelu_ind = p.find(primitive_kind::prelu);
     jcp.with_binary = !everyone_is(-1, binary_ind, prelu_ind);
-    jcp.sum_dt = p.get_sum_dt(jcp.dst_dt);
 
     jcp.post_ops = p;
 

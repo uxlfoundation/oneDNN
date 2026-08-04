@@ -1593,7 +1593,6 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
 
     const int sum_ind = post_ops.find(primitive_kind::sum);
     jcp.with_sum = sum_ind != -1;
-    jcp.sum_dt = post_ops.get_sum_dt(jcp.dst_dt);
 
     jcp.post_ops = post_ops;
 

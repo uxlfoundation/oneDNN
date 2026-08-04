@@ -366,7 +366,8 @@ status_t insert_permute_for_dynamic_mul_scale_sub_zp(
                 && cur_op->get_kind() != op_kind::_mul_scales)
             continue;
 
-        if (cur_op->get_attr<std::string>(op_attr::qtype) == "per_tensor")
+        if (!cur_op->has_attr(op_attr::mask)
+                || cur_op->get_attr<int64_t>(op_attr::mask) == 0)
             continue;
 
         // This pass only handle dynamic quantization
@@ -419,7 +420,7 @@ status_t insert_permute_for_dynamic_mul_scale_sub_zp(
 
     for (auto &cur_op : permute_op_group) {
         auto ndims = cur_op->get_input_logical_tensor(0).ndims;
-        if (cur_op->get_attr<std::string>(op_attr::qtype) == "per_group") {
+        if (utils::has_group_shape(cur_op.get())) {
             op_ptr permute_op = std::make_shared<op_t>(op_kind::_permute);
             auto perm = get_last_two_dims_permutation(ndims);
             permute_op->set_attr<std::vector<int64_t>>(
@@ -464,10 +465,13 @@ status_t insert_permute_for_matmul(std::shared_ptr<subgraph_t> &sg) {
                 fusion_info_t fusion_info
                         = cur_op->get_attr<fusion_info_t>(op_attr::fusion_info);
                 op_t *scales_op = fusion_info.get_mutable_scales(true, i);
-                if (scales_op
-                        && scales_op->get_attr<std::string>(op_attr::qtype)
-                                == "per_channel") {
-                    scales_op->set_attr<int64_t>(op_attr::axis, ndims - 1);
+                const bool is_per_group
+                        = scales_op && utils::has_group_shape(scales_op);
+                if (scales_op && scales_op->has_attr(op_attr::mask)
+                        && scales_op->get_attr<int64_t>(op_attr::mask) != 0
+                        && !is_per_group) {
+                    scales_op->set_attr<int64_t>(
+                            op_attr::mask, 1LL << (ndims - 1));
                 }
                 cur_op->set_attr<fusion_info_t>(
                         op_attr::fusion_info, fusion_info);
@@ -563,12 +567,11 @@ status_t insert_reshape_for_ndx2d_matmul(std::shared_ptr<subgraph_t> &sg) {
                         op_attr::shape, expected_dims3);
                 rewriter.insert_op_before(reshape_op3, cur_op, offset);
             }
-            // update weight axis
+            // update weight mask
             op_t *scales_op = fusion_info.get_mutable_scales(true, 1);
-            if (scales_op
-                    && scales_op->get_attr<std::string>(op_attr::qtype)
-                            == "per_channel") {
-                scales_op->set_attr<int64_t>(op_attr::axis, 1);
+            if (scales_op && scales_op->has_attr(op_attr::mask)
+                    && scales_op->get_attr<int64_t>(op_attr::mask) != 0) {
+                scales_op->set_attr<int64_t>(op_attr::mask, 1LL << 1);
             }
             // update fusion info
             cur_op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
@@ -852,16 +855,18 @@ status_t insert_unsqueeze_and_squeeze_for_matmul(
                 rewriter.insert_op_before(unsqueeze_op, op, i);
             }
 
-            // update the axis
+            // update the mask for per-channel scales only
             if (i == 1 && op->has_attr(op_attr::fusion_info)) {
                 fusion_info_t fusion_info
                         = op->get_attr<fusion_info_t>(op_attr::fusion_info);
                 op_t *scales_op = fusion_info.get_mutable_scales(true, 1);
-                if (scales_op
-                        && scales_op->get_attr<std::string>(op_attr::qtype)
-                                == "per_channel") {
-                    scales_op->set_attr<int64_t>(op_attr::axis,
-                            unsqueezed_dst_ndims - 1); // the 2nd dim;
+                const bool is_per_group
+                        = scales_op && utils::has_group_shape(scales_op);
+                if (scales_op && scales_op->has_attr(op_attr::mask)
+                        && scales_op->get_attr<int64_t>(op_attr::mask) != 0
+                        && !is_per_group) {
+                    scales_op->set_attr<int64_t>(
+                            op_attr::mask, 1LL << (unsqueezed_dst_ndims - 1));
                 }
                 op->set_attr<fusion_info_t>(op_attr::fusion_info, fusion_info);
             }
@@ -932,8 +937,7 @@ impl::status_t insert_runtime_u8_to_s8_for_matmul(
                     "only support insert input for wei at the end of inputs");
             std::vector<int64_t> zp {-128};
             auto zps_op = std::make_shared<op_t>(op_kind::_add_zps);
-            zps_op->set_attr<std::string>(op_attr::qtype, "per_tensor");
-            zps_op->set_attr<int64_t>(op_attr::axis, 0);
+            zps_op->set_attr<int64_t>(op_attr::mask, int64_t(0));
             zps_op->set_attr(op_attr::with_runtime_zps, true);
             op_ptr const_data_op;
             const_data_op = std::make_shared<op_t>(op_kind::_constant_zps);
@@ -985,7 +989,7 @@ impl::status_t insert_runtime_u8_to_s8_for_matmul(
         const_zps_dst_value->set_layout_type(layout_type::strided);
         const_zps_dst_value->set_strides({1});
         const_zps_op->add_output(const_zps_dst_value);
-        u8_to_s8_op->set_attr<std::string>(op_attr::qtype, "per_tensor");
+        u8_to_s8_op->set_attr<int64_t>(op_attr::mask, int64_t(0));
         u8_to_s8_op->set_attr(op_attr::with_runtime_dst_zps, true);
         rewriter.insert_op_before(u8_to_s8_op, cur_op, 1);
         u8_to_s8_op->connect_input(1, const_zps_dst_value);
@@ -1036,8 +1040,7 @@ status_t insert_u8_to_s8_for_matmul(std::shared_ptr<subgraph_t> &sg) {
         } else { // fuse a 128 zps
             std::vector<int64_t> zp {-128};
             auto zps_op = std::make_shared<op_t>(op_kind::_add_zps);
-            zps_op->set_attr<std::string>(op_attr::qtype, "per_tensor");
-            zps_op->set_attr<int64_t>(op_attr::axis, 0);
+            zps_op->set_attr<int64_t>(op_attr::mask, int64_t(0));
             zps_op->set_attr<std::vector<int64_t>>(op_attr::zps, zp);
             fusion_info.set_zero_points(zps_op, true, /*the wei index*/ 1);
         }

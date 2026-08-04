@@ -338,6 +338,64 @@ private:
     std::vector<std::shared_ptr<meta_op_t>> post_ops_;
 };
 
+// Compute the quantization mask from any quantization-related op. Handles both
+// op_attr::mask and legacy op_attr::qtype/axis for backward compatibility.
+inline int get_quant_mask(const op_t *quant_op) {
+    // Primary path: mask attribute is set.
+    if (quant_op->has_attr(op_attr::mask))
+        return static_cast<int>(quant_op->get_attr<int64_t>(op_attr::mask));
+
+    // Fallback: derive mask from qtype/axis for backward compatibility.
+    // If qtype is not set, it's per-tensor by default.
+    if (!quant_op->has_attr(op_attr::qtype)) return 0;
+
+    const auto &qtype = quant_op->get_attr<std::string>(op_attr::qtype);
+    if (qtype == "per_tensor") return 0;
+
+    if (qtype == "per_channel") {
+        int64_t axis = quant_op->has_attr(op_attr::axis)
+                ? quant_op->get_attr<int64_t>(op_attr::axis)
+                : 1;
+        if (axis < 0) axis += quant_op->get_input_logical_tensor(0).ndims;
+        return 1LL << axis;
+    }
+
+    if (qtype == "per_group") {
+        // For per_group, mask bit i is set when scale_dims[i] > 1.
+        // Dynamic ops have the scale tensor as input 1.
+        if (quant_op->num_inputs() >= 2) {
+            const auto &scale_lt = quant_op->get_input_logical_tensor(1);
+            const int ndims = scale_lt.ndims;
+            if (ndims > 0) {
+                int mask = 0;
+                for (int i = 0; i < ndims; ++i) {
+                    if (scale_lt.dims[i] > 1) mask |= (1 << i);
+                }
+                // Primitive API requires mask to cover last two dims
+                // when groups are specified.
+                if (ndims >= 2) {
+                    mask |= (1 << (ndims - 1)) | (1 << (ndims - 2));
+                }
+                return mask;
+            }
+        }
+        if (utils::has_group_shape(quant_op)) {
+            const auto &group_shape = quant_op->get_attr<std::vector<int64_t>>(
+                    op_attr::group_shape);
+            int mask = 0;
+            const int ndims = static_cast<int>(group_shape.size());
+            for (int i = 0; i < ndims; ++i) {
+                if (group_shape[i] > 1) mask |= (1 << i);
+            }
+            if (ndims >= 2) { mask |= (1 << (ndims - 1)) | (1 << (ndims - 2)); }
+            return mask;
+        }
+        return 1;
+    }
+
+    return 0;
+}
+
 // This function is used to make a dnnl::primitive_attr from the fusion info.
 // Note that the op and fusion_info arguments must be matched since a fusion
 // info make sense only when it belongs to a specific op.

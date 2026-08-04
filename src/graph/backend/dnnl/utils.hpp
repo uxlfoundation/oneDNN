@@ -28,6 +28,8 @@
 
 #include "graph/utils/utils.hpp"
 
+#include "graph/interface/op.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace graph {
@@ -67,6 +69,11 @@ inline dim_t offset_compute(
         off += idx[i] * strides[i];
     }
     return off;
+}
+
+inline bool has_group_shape(const op_t *op) {
+    return op->has_attr(op_attr::group_shape)
+            && !op->get_attr<dims>(op_attr::group_shape).empty();
 }
 
 } // namespace utils

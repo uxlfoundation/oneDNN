@@ -137,6 +137,7 @@ Team: @uxlfoundation/onednn-cpu-x64
 | Name                | Github ID             | Affiliation       | Role       |
 | ------------------- | --------------------- | ----------------- | ---------- |
 | Andrey Kalinin      | @ankalinin            | Intel Corporation | Maintainer |
+| Denis Samoilov      | @densamoilov          | Intel Corporation | Maintainer |
 | Tatyana Primak      | @tprimak              | Intel Corporation | Maintainer |
 | Alexander Simonov   | @asimonov1            | Intel Corporation | Code Owner |
 | Alexey Makarevich   | @amakarev             | Intel Corporation | Code Owner |

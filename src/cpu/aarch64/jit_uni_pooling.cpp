@@ -516,13 +516,16 @@ status_t jit_uni_pooling_fwd_t<isa>::init_ncsp_trans_ctx() {
     const dim_t &c_tail = res.rem;
     const memory_desc_wrapper indices_d = pd()->workspace_md();
     const bool have_indices = indices_d.data_type() != data_type::undef;
+    // Needed in C++14 for the linker to find these symbols.
+    // See https://stackoverflow.com/questions/40690260/undefined-reference-error-for-static-constexpr-member
     static constexpr auto wsp_dt = wsp_dt_;
+    static constexpr auto dt = d_type;
 
     if (nb_c) {
         trans_ctx_->src_trans_ = utils::make_unique<trans_wrapper_t>(
-                d_type, src_sp, wsp_dt, jpp.c_block, jpp.c_block, src_sp);
+                dt, src_sp, wsp_dt, jpp.c_block, jpp.c_block, src_sp);
         trans_ctx_->dst_trans_ = utils::make_unique<trans_wrapper_t>(
-                wsp_dt, jpp.c_block, d_type, dst_sp, dst_sp, jpp.c_block);
+                wsp_dt, jpp.c_block, dt, dst_sp, dst_sp, jpp.c_block);
         if (have_indices)
             trans_ctx_->ind_trans_ = utils::make_unique<trans_wrapper_t>(
                     indices_d.data_type(), jpp.c_block, indices_d.data_type(),
@@ -531,9 +534,9 @@ status_t jit_uni_pooling_fwd_t<isa>::init_ncsp_trans_ctx() {
 
     if (c_tail) {
         trans_ctx_->src_tail_trans_ = utils::make_unique<trans_wrapper_t>(
-                d_type, src_sp, wsp_dt, jpp.c_block, c_tail, src_sp);
+                dt, src_sp, wsp_dt, jpp.c_block, c_tail, src_sp);
         trans_ctx_->dst_tail_trans_ = utils::make_unique<trans_wrapper_t>(
-                wsp_dt, jpp.c_block, d_type, dst_sp, dst_sp, c_tail);
+                wsp_dt, jpp.c_block, dt, dst_sp, dst_sp, c_tail);
         if (have_indices)
             trans_ctx_->ind_tail_trans_ = utils::make_unique<trans_wrapper_t>(
                     indices_d.data_type(), jpp.c_block, indices_d.data_type(),
@@ -847,13 +850,16 @@ status_t jit_uni_pooling_bwd_t<isa>::init_ncsp_trans_ctx() {
     const dim_t &c_tail = res.rem;
     const memory_desc_wrapper indices_d = pd()->workspace_md();
     const bool have_indices = indices_d.data_type() != data_type::undef;
+    // Needed in C++14 for the linker to find these symbols.
+    // See https://stackoverflow.com/questions/40690260/undefined-reference-error-for-static-constexpr-member
     static constexpr auto wsp_dt = wsp_dt_;
+    static constexpr auto dt = d_type;
 
     if (nb_c) {
-        trans_ctx_->dst_trans_ = utils::make_unique<trans_wrapper_t>(d_type,
-                diff_dst_sp, wsp_dt, jpp.c_block, jpp.c_block, diff_dst_sp);
-        trans_ctx_->src_trans_ = utils::make_unique<trans_wrapper_t>(wsp_dt,
-                jpp.c_block, d_type, diff_src_sp, diff_src_sp, jpp.c_block);
+        trans_ctx_->dst_trans_ = utils::make_unique<trans_wrapper_t>(
+                dt, diff_dst_sp, wsp_dt, jpp.c_block, jpp.c_block, diff_dst_sp);
+        trans_ctx_->src_trans_ = utils::make_unique<trans_wrapper_t>(
+                wsp_dt, jpp.c_block, dt, diff_src_sp, diff_src_sp, jpp.c_block);
         if (have_indices)
             trans_ctx_->ind_trans_ = utils::make_unique<trans_wrapper_t>(
                     indices_d.data_type(), diff_dst_sp, indices_d.data_type(),
@@ -861,9 +867,9 @@ status_t jit_uni_pooling_bwd_t<isa>::init_ncsp_trans_ctx() {
     }
     if (c_tail) {
         trans_ctx_->dst_tail_trans_ = utils::make_unique<trans_wrapper_t>(
-                d_type, diff_dst_sp, wsp_dt, jpp.c_block, c_tail, diff_dst_sp);
+                dt, diff_dst_sp, wsp_dt, jpp.c_block, c_tail, diff_dst_sp);
         trans_ctx_->src_tail_trans_ = utils::make_unique<trans_wrapper_t>(
-                wsp_dt, jpp.c_block, d_type, diff_src_sp, diff_src_sp, c_tail);
+                wsp_dt, jpp.c_block, dt, diff_src_sp, diff_src_sp, c_tail);
         if (have_indices)
             trans_ctx_->ind_tail_trans_ = utils::make_unique<trans_wrapper_t>(
                     indices_d.data_type(), diff_dst_sp, indices_d.data_type(),

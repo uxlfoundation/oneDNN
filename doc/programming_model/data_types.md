@@ -22,10 +22,6 @@ in comparison to `f32`.
 | f8\_e4m3  | [OFP8 standard 8-bit floating-point](https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-06-20-pdf) with 4 exponent and 3 mantissa bits |
 | e8m0      | [MX standard 8-bit scaling type](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)                                                                 |
 | f4\_e2m1  | [MX standard 4-bit floating-point](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) with 2 exponent and 1 mantissa bits                           |
-| f4\_e3m0  | 4-bit floating-point with 3 exponent bits and no mantissa bit(1)                                                                                                                        |
-
-Footnotes:
-1. `f4_e3m0` is deprecated, and will be removed in a future release.
 
 ## Inference and Training
 
@@ -42,7 +38,6 @@ oneDNN supports training and inference with the following data types:
 | s8        | `+`       |          |
 | u8        | `+`       |          |
 | f4\_e2m1  | `+`       |          |
-| f4\_e3m0  | (3)       | (3)      |
 | s4        | `+`(2)    |          |
 | u4        | `+`(2)    |          |
 
@@ -52,7 +47,6 @@ Footnotes:
 2. `s4`/`u4` data types are only supported as a storage data type for weights argument
    in case of weight-only quantization. For more details, refer to
    [Matmul Tutorial: weight-only quantization](@ref matmul_with_weight_only_quantization_cpp).
-3. `f4_e3m0` is deprecated, and will be removed in a future release.
 
 @note
     Data type support may also be limited by hardware capabilities. Refer to
@@ -91,7 +85,7 @@ a primitive computation:
 
 The `Op` output datatype depends on the datatype of its inputs:
 - if `src`, `weights`, ... are floating-point datatype (`f32`, `f16`,
-  `bf16`, `f8_e5m2`, `f8_e4m3`, `f4_e2m1`, `f4_e3m0`), then the `Op` outputs `f32` elements.
+  `bf16`, `f8_e5m2`, `f8_e4m3`, `f4_e2m1`), then the `Op` outputs `f32` elements.
 - if `src`, `weights`, ... are integral datatypes (`s8`, `u8`, `s32`), then
   the `Op` outputs `s32` elements.
 - if the primitive allows to mix input datatypes, the `Op` outputs

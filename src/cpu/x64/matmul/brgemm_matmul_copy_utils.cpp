@@ -2551,7 +2551,6 @@ protected:
                 prepare_loaded_int4(reg, vmm_permd, /* is_signed = */ false);
                 break;
             case data_type::f4_e2m1:
-            case data_type::f4_e3m0:
                 uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
                 copy_half_reg(vmm_in, vmm_lower);
                 vpermd(vmm_in, vmm_permd, vmm_in);
@@ -4515,8 +4514,7 @@ struct jit_brgemm_matmul_copy_b_f32_t
         : jit_brgemm_matmul_copy_b_common_t(conf)
         , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
-        , is_src_f4_(one_of(
-                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+        , is_src_f4_(conf->orig_wei_dt == data_type::f4_e2m1)
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , req_zp_b_shift_(
                   conf->has_zero_point_b && conf->with_wei_decompression)
@@ -4745,19 +4743,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
         alignas(64) static constexpr const float f4_e2m1_table[16]
                 = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -.5f,
                         -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
-        alignas(64) static constexpr const float f4_e3m0_table[16]
-                = {0.0f, .25f, .5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f, -0.0f, -.25f,
-                        -.5f, -1.0f, -2.0f, -4.0f, -8.0f, -16.0f};
-        switch (dt_in_) {
-            case data_type::f4_e2m1:
-                mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
-                break;
-            case data_type::f4_e3m0:
-                mov(reg_tmp, reinterpret_cast<size_t>(f4_e3m0_table));
-                break;
-
-            default: break;
-        }
+        mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
         vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
     }
 

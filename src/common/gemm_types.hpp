@@ -80,7 +80,7 @@ struct gemm_desc_t : public op_desc_t {
 
         // Leading dimension must be byte-aligned
         using namespace data_type;
-        bool is_4bit = utils::one_of(md.data_type, f4_e2m1, f4_e3m0, s4, u4);
+        bool is_4bit = utils::one_of(md.data_type, f4_e2m1, s4, u4);
         dim_t last_dim = md.dims[md.ndims - 1];
         auto strides = md.format_desc.blocking.strides;
         dim_t notranspose_ld

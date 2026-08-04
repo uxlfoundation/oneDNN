@@ -58,10 +58,6 @@
 #define SRC_TO_REF(x) into_float(x)
 #define SRC_TO_REF8(x) into_float(x)
 #define REF_TO_SRC(x) into_f4_e2m1(x)
-#elif SRC_DT_F4_E3M0
-#define SRC_TO_REF(x) into_float(x)
-#define SRC_TO_REF8(x) into_float(x)
-#define REF_TO_SRC(x) into_f4_e3m0(x)
 #elif SRC_DT_U4
 #define SRC_TO_REF(x) into_float(x)
 #elif SRC_DT_S4
@@ -81,8 +77,6 @@
 #define TO_SRC(x) into_f8_e4m3(x)
 #elif SRC_DT_F4_E2M1
 #define TO_SRC(x) into_f4_e2m1(x)
-#elif SRC_DT_F4_E3M0
-#define TO_SRC(x) into_f4_e3m0(x)
 #elif SRC_DT_U8
 #define TO_SRC(x) convert_uchar_sat_rte(x)
 #elif SRC_DT_S8
@@ -111,10 +105,6 @@
 #define A_TO_REF(x) into_float(x)
 #define A_TO_REF8(x) into_float(x)
 #define REF_TO_A(x) into_f4_e2m1(x)
-#elif A_DT_F4_E3M0
-#define A_TO_REF(x) into_float(x)
-#define A_TO_REF8(x) into_float(x)
-#define REF_TO_A(x) into_f4_e3m0(x)
 #else
 #define A_TO_REF(x) (x)
 #define A_TO_REF8(x) (x)
@@ -128,8 +118,6 @@
 #define TO_A(x) into_f8_e4m3(x)
 #elif A_DT_F4_E2M1
 #define TO_A(x) into_f4_e2m1(x)
-#elif A_DT_F4_E3M0
-#define TO_A(x) into_f4_e3m0(x)
 #elif A_DT_U8
 #define TO_A(x) convert_uchar_sat_rte(x)
 #elif A_DT_S8
@@ -154,9 +142,6 @@
 #elif WEI_DT_F4_E2M1
 #define WEI_TO_REF(x) into_float(x)
 #define REF_TO_WEI(x) into_f4_e2m1(x)
-#elif WEI_DT_F4_E3M0
-#define WEI_TO_REF(x) into_float(x)
-#define REF_TO_WEI(x) into_f4_e3m0(x)
 #elif WEI_DT_S8
 #define WEI_TO_REF(x) convert_int_sat_rte(x)
 #define REF_TO_WEI(x) convert_char_sat_rte(x)
@@ -179,8 +164,6 @@
 #define TO_WEI(x) into_f8_e4m3(x)
 #elif WEI_DT_F4_E2M1
 #define TO_WEI(x) into_f4_e2m1(x)
-#elif WEI_DT_F4_E3M0
-#define TO_WEI(x) into_f4_e3m0(x)
 #elif WEI_DT_U8
 #define TO_WEI(x) convert_uchar_sat_rte(x)
 #elif WEI_DT_S8
@@ -287,10 +270,6 @@
 #define B_TO_REF(x) into_float(x)
 #define REF_TO_B(x) into_f4_e2m1(x)
 #define TO_B(x) into_f4_e2m1(x)
-#elif B_DT_F4_E3M0
-#define B_TO_REF(x) into_float(x)
-#define REF_TO_B(x) into_f4_e3m0(x)
-#define TO_B(x) into_f4_e3m0(x)
 #elif B_DT_U8
 #define B_TO_REF(x) (x)
 #define REF_TO_B(x) (x)
@@ -324,9 +303,6 @@
 #elif BIA_DT_F4_E2M1
 #define BIA_TO_REF(x) into_float(x)
 #define REF_TO_BIA(x) into_f4_e2m1(x)
-#elif BIA_DT_F4_E3M0
-#define BIA_TO_REF(x) into_float(x)
-#define REF_TO_BIA(x) into_f4_e3m0(x)
 #else
 #define BIA_TO_REF(x) (x)
 #define REF_TO_BIA(x) (x)
@@ -340,8 +316,6 @@
 #define TO_BIA(x) into_f8_e4m3(x)
 #elif BIA_DT_F4_E2M1
 #define TO_BIA(x) into_f4_e2m1(x)
-#elif BIA_DT_F4_E3M0
-#define TO_BIA(x) into_f4_e3m0(x)
 #elif BIA_DT_U8
 #define TO_BIA(x) convert_uchar_sat_rte(x)
 #elif BIA_DT_S8
@@ -513,12 +487,6 @@
 #define REF_TO_DST(x) into_f4_e2m1(x)
 #define DST_DATA_MAX (uchar)0x07
 #define DST_DATA_MIN (uchar)0x01
-#elif DST_DT_F4_E3M0
-#define DST_TO_REF(x) into_float(x)
-#define DST_TO_REF8(x) into_float(x)
-#define REF_TO_DST(x) into_f4_e3m0(x)
-#define DST_DATA_MAX (uchar)0x07
-#define DST_DATA_MIN (uchar)0x08
 #elif DST_DT_F16
 #define REF_TO_DST(x) convert_half(x)
 #define DST_TO_REF(x) convert_float(x)
@@ -595,12 +563,6 @@
 #define DST_DATA_FMAX 6.0f
 #define DST_DATA_FMIN 1.0f
 #define DST_DATA_FLOW -6.0f
-#elif DST_DT_F4_E3M0
-#define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
-#define TO_DST(x) into_f4_e3m0(convert_float(x))
-#define DST_DATA_FMAX 16.0f
-#define DST_DATA_FMIN 0.25f
-#define DST_DATA_FLOW -16.0f
 #elif DST_DT_U8
 #define TO_DST(x) convert_uchar_sat_rte(x)
 #define TO_DST2(x) convert_uchar2_sat_rte(x)
@@ -670,11 +632,6 @@
 #define C_TO_REF8(x) cvt_f4_e2m1_to_f32(x)
 #define REF_TO_C(x) into_f4_e2m1(x)
 #define REF_TO_C8(x) cvt_f32_to_f4_e2m1(x)
-#elif C_DT_F4_E3M0
-#define C_TO_REF(x) into_float(x)
-#define C_TO_REF8(x) cvt_f4_e3m0_to_f32(x)
-#define REF_TO_C(x) into_f4_e3m0(x)
-#define REF_TO_C8(x) cvt_f32_to_f4_e3m0(x)
 #else
 #define C_TO_REF(x) (x)
 #define C_TO_REF8(x) (x)
@@ -693,9 +650,6 @@
 #elif C_DT_F4_E2M1
 #define TO_C(x) into_f4_e2m1(x)
 #define TO_C8(x) cvt_f32_to_f4_e2m1(x)
-#elif C_DT_F4_E3M0
-#define TO_C(x) into_f4_e3m0(x)
-#define TO_C8(x) cvt_f32_to_f4_e3m0(x)
 #elif C_DT_F16
 #define TO_C(x) convert_half(x)
 #define TO_C8(x) convert_half8(x)
@@ -754,8 +708,6 @@
 #elif SUM_DT_HF8
 #define SUM_TO_REF(x) into_float(x)
 #elif SUM_DT_F4_E2M1
-#define SUM_TO_REF(x) into_float(x)
-#elif SUM_DT_F4_E3M0
 #define SUM_TO_REF(x) into_float(x)
 #else
 #define SUM_TO_REF AS_SUM_DATA_T

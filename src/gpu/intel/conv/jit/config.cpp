@@ -887,8 +887,7 @@ bool data_types_ok(const problem_t &prb, const dsl::hw_t &hw,
     auto bia = prb.bia_data_type;
     bool is_fp8 = utils::one_of(data_type::f8_e5m2, src, wei, dst, bia)
             || utils::one_of(data_type::f8_e4m3, src, wei, dst, bia);
-    bool is_fp4 = utils::one_of(data_type::f4_e2m1, src, wei, dst, bia)
-            || utils::one_of(data_type::f4_e3m0, src, wei, dst, bia);
+    bool is_fp4 = utils::one_of(data_type::f4_e2m1, src, wei, dst, bia);
     if (!prb.is_f64_accumulator()
             && utils::one_of(data_type::f64, src, wei, dst, bia))
         return false;
@@ -905,8 +904,8 @@ bool data_types_ok(const problem_t &prb, const dsl::hw_t &hw,
         data_type_t default_acc_type
                 = src == data_type::f64 ? data_type::f64 : data_type::f32;
         ok &= utils::one_of(src, data_type::f8_e5m2, data_type::f8_e4m3,
-                data_type::f4_e3m0, data_type::f4_e2m1, data_type::bf16,
-                data_type::f16, data_type::f32, data_type::f64);
+                data_type::f4_e2m1, data_type::bf16, data_type::f16,
+                data_type::f32, data_type::f64);
         ok &= (dst == src);
         ok &= (utils::one_of(wei, src, default_acc_type)
                 || (utils::one_of(src, data_type::f8_e4m3, data_type::f8_e5m2,

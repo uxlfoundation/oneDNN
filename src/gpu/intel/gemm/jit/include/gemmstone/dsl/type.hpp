@@ -124,9 +124,6 @@ public:
         return type_t::undef();
     }
 
-    static type_t f4_e3m0(int elems = 1, attr_t attr = attr_t::undef) {
-        return type_t(kind_t::f4_e3m0, elems, attr);
-    }
     static type_t f4_e2m1(int elems = 1, attr_t attr = attr_t::undef) {
         return type_t(kind_t::f4_e2m1, elems, attr);
     }
@@ -251,7 +248,6 @@ public:
                 || is_f32() || is_f64();
     }
 
-    bool is_f4_e3m0() const { return kind() == kind_t::f4_e3m0; }
     bool is_f4_e2m1() const { return kind() == kind_t::f4_e2m1; }
     bool is_bf8() const { return kind() == kind_t::bf8; }
     bool is_hf8() const { return kind() == kind_t::hf8; }
@@ -261,7 +257,7 @@ public:
     bool is_f32() const { return kind() == kind_t::f32; }
     bool is_f64() const { return kind() == kind_t::f64; }
 
-    bool is_fp4() const { return is_f4_e3m0() || is_f4_e2m1(); }
+    bool is_fp4() const { return is_f4_e2m1(); }
     bool is_fp8() const { return is_bf8() || is_hf8(); }
 
     bool is_int() const {
@@ -390,7 +386,6 @@ protected:
         s64,
 
         // Floating point types.
-        f4_e3m0,
         f4_e2m1,
         bf8,
         f8_e5m2 = bf8,

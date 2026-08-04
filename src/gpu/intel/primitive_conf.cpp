@@ -275,7 +275,6 @@ const char *get_type_name(data_type_t dt) {
         case data_type::f8_e4m3: return "f8_e4m3";
         case data_type::f8_e5m2: return "f8_e5m2";
         case data_type::f4_e2m1: return "f4_e2m1";
-        case data_type::f4_e3m0: return "f4_e3m0";
         case data_type::e8m0: return "e8m0";
         case data_type::s4: return "s4";
         case data_type::u4: return "u4";
@@ -332,10 +331,6 @@ void def_data_type(
         case data_type::f4_e2m1:
             kernel_ctx.add_option(utils::format(
                     "-D%s_DATA_T=%s -D%s_DT_F4_E2M1", str, name, str));
-            break;
-        case data_type::f4_e3m0:
-            kernel_ctx.add_option(utils::format(
-                    "-D%s_DATA_T=%s -D%s_DT_F4_E3M0", str, name, str));
             break;
         case data_type::e8m0:
             kernel_ctx.add_option(utils::format(

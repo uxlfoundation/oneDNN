@@ -321,8 +321,7 @@ status_t problem_t::init_acc_data_type() {
     auto c = c_data_type;
     bool is_fp8 = (utils::one_of(data_type::f8_e5m2, a, b, c)
             || utils::one_of(data_type::f8_e4m3, a, b, c));
-    bool is_fp4 = (utils::one_of(data_type::f4_e2m1, a, b, c)
-            || utils::one_of(data_type::f4_e3m0, a, b, c));
+    bool is_fp4 = (utils::one_of(data_type::f4_e2m1, a, b, c));
     acc_data_type = data_type::undef;
     if (utils::one_of(a, data_type::s8, data_type::u8)
             && utils::one_of(b, data_type::s8, data_type::u8)) {

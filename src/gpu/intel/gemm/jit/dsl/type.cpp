@@ -42,7 +42,6 @@ const std::unordered_map<kind_t, std::string> &kind_names() {
             {kind_t::s32, "s32"},
             {kind_t::u64, "u64"},
             {kind_t::s64, "s64"},
-            {kind_t::f4_e3m0, "f4_e3m0"},
             {kind_t::f4_e2m1, "f4_e2m1"},
             {kind_t::bf8, "bf8"},
             {kind_t::hf8, "hf8"},
@@ -147,7 +146,6 @@ int type_t::mantissa_bits() const {
         case kind_t::hf8: return 3;
         case kind_t::bf8: return 2;
         case kind_t::f4_e2m1: return 1;
-        case kind_t::f4_e3m0: return 0;
         default: stub();
     }
     return 0;

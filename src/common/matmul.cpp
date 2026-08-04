@@ -279,8 +279,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             = utils::one_of(src_dt, data_type::s8, data_type::u8);
     const bool src_is_fp8
             = utils::one_of(src_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    const bool src_is_fp4
-            = utils::one_of(src_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool src_is_fp4 = utils::one_of(src_dt, data_type::f4_e2m1);
     if (src_is_int8 || src_is_fp8 || src_is_fp4)
         attr_mask |= smask_t::zero_points;
     if (src_is_int8) attr_mask |= smask_t::precomputed_reductions;
@@ -291,8 +290,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             wei_dt, data_type::s8, data_type::u8, data_type::s4, data_type::u4);
     const bool wei_is_fp8
             = utils::one_of(wei_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    const bool wei_is_fp4
-            = utils::one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool wei_is_fp4 = utils::one_of(wei_dt, data_type::f4_e2m1);
     if (wei_is_int || wei_is_fp8 || wei_is_fp4) {
         attr_mask |= smask_t::zero_points_data_type;
         attr_mask |= smask_t::zero_points_groups;
@@ -301,8 +299,7 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
 
     const bool dst_is_fp8
             = utils::one_of(dst_dt, data_type::f8_e5m2, data_type::f8_e4m3);
-    const bool dst_is_fp4
-            = utils::one_of(dst_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool dst_is_fp4 = utils::one_of(dst_dt, data_type::f4_e2m1);
     // grouped dst scales are supported for MXFP
     if (dst_is_fp8 || dst_is_fp4) attr_mask |= smask_t::scales_groups;
 

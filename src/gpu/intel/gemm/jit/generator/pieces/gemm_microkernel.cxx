@@ -351,7 +351,6 @@ static inline microkernel::StructuredType::Type microType(Type T)
         CASE(hf8)
         CASE(f8_e8m0)
         CASE(f4_e2m1)
-        CASE(f4_e3m0)
         default: stub("Unsupported type");
     }
 #undef CASE

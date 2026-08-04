@@ -146,13 +146,13 @@ __kernel void ref_grouped_gemm_matmul(__global const SRC_DATA_T *src,
                             + (i_group * wei_zp_ngroups_k / n_k_groups) * N
                             + n);
 #endif
-#if SRC_DT_F4_E2M1 || SRC_DT_F4_E3M0
+#if SRC_DT_F4_E2M1
             ACC_DATA_T s
                     = TO_ACC(SRC_TO_REF(GET_HALF_BYTE(src, src_idx)) - src_zp);
 #else
             ACC_DATA_T s = TO_ACC(SRC_TO_REF(src[src_idx]) - src_zp);
 #endif
-#if WEI_DT_S4 || WEI_DT_U4 || WEI_DT_F4_E2M1 || WEI_DT_F4_E3M0
+#if WEI_DT_S4 || WEI_DT_U4 || WEI_DT_F4_E2M1
             ACC_DATA_T w
                     = TO_ACC(WEI_TO_REF(GET_HALF_BYTE(wei, wei_idx)) - wei_zp);
 #else

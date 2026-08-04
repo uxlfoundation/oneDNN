@@ -161,8 +161,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
             && one_of(wei_dt, s8, u8, s4, u4) && one_of(dst_dt, bf16, f32);
     const bool is_f16_with_int_wei = src_dt == f16
             && one_of(wei_dt, s8, u8, s4, u4) && one_of(dst_dt, f16, f32);
-    const bool is_f4
-            = utils::one_of(wei_dt, data_type::f4_e2m1, data_type::f4_e3m0);
+    const bool is_f4 = wei_dt == f4_e2m1;
     const bool is_f32_with_int_wei
             = src_dt == f32 && one_of(wei_dt, s8, u8, s4, u4) && dst_dt == f32;
     // int8 grouped (dynamic) quantization: int8 src x {s4,u4,s8,u8} wei,

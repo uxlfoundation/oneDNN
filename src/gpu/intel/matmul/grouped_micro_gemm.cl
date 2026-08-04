@@ -222,8 +222,7 @@ DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
 /* 4-bit and 8-bit struct types (BF8=f8_e5m2, HF8=f8_e4m3) are packed in uchar.
  * bf16 uses its ushort representation (FMA_TYPE). */
 #if defined(WEI_DT_S4) || defined(WEI_DT_U4) || defined(WEI_DT_F4_E2M1) \
-        || defined(WEI_DT_F4_E3M0) || defined(WEI_DT_BF8) \
-        || defined(WEI_DT_HF8) || defined(WEI_DT_E8M0)
+        || defined(WEI_DT_BF8) || defined(WEI_DT_HF8) || defined(WEI_DT_E8M0)
 #define AS_WEI_TILE_PTR(p) ((const global uchar *)(p))
 #elif defined(WEI_DT_BF16)
 #define AS_WEI_TILE_PTR(p) ((const global FMA_TYPE *)(p))
@@ -232,8 +231,7 @@ DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
 #endif
 
 #if defined(SRC_DT_S4) || defined(SRC_DT_U4) || defined(SRC_DT_F4_E2M1) \
-        || defined(SRC_DT_F4_E3M0) || defined(SRC_DT_BF8) \
-        || defined(SRC_DT_HF8) || defined(SRC_DT_E8M0)
+        || defined(SRC_DT_BF8) || defined(SRC_DT_HF8) || defined(SRC_DT_E8M0)
 #define AS_SRC_TILE_PTR(p) ((const global uchar *)(p))
 #elif defined(SRC_DT_BF16)
 #define AS_SRC_TILE_PTR(p) ((const global FMA_TYPE *)(p))

@@ -106,7 +106,6 @@ inline compute::gpu_arch_t convert_ngen_arch_to_dnnl(ngen::HW gpu_arch) {
 inline data_type_t to_dnnl(const gemmstone::dsl::type_t &type) {
     gpu_assert(type.elems() == 1) << type;
     gpu_assert(!type.is_ptr() == 1) << type;
-    if (type.is_f4_e3m0()) return data_type::f4_e3m0;
     if (type.is_f4_e2m1()) return data_type::f4_e2m1;
     if (type.is_bf8()) return data_type::f8_e5m2;
     if (type.is_hf8()) return data_type::f8_e4m3;
@@ -127,7 +126,6 @@ inline gemmstone::dsl::type_t to_ir(const data_type_t &dt) {
     switch ((int)dt) {
 #define CASE(x) \
     case data_type::x: return gemmstone::dsl::type_t::x();
-        CASE(f4_e3m0);
         CASE(f4_e2m1);
         CASE(f8_e5m2);
         CASE(f8_e4m3);

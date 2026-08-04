@@ -39,10 +39,6 @@ template <primitive_kind_t>
 struct pkind_traits_t {}; /* ::desc_type, ::query_d */
 
 template <>
-struct prec_traits_t<data_type::f4_e3m0> {
-    using type = float4_e3m0_t;
-};
-template <>
 struct prec_traits_t<data_type::f4_e2m1> {
     using type = float4_e2m1_t;
 };
@@ -103,10 +99,6 @@ struct prec_traits_t<data_type::boolean> {
     using type = bool;
 };
 
-template <>
-struct data_traits_t<float4_e3m0_t> {
-    static constexpr data_type_t data_type = data_type::f4_e3m0;
-};
 template <>
 struct data_traits_t<float4_e2m1_t> {
     static constexpr data_type_t data_type = data_type::f4_e2m1;

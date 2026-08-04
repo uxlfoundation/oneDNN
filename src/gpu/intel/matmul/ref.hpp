@@ -99,9 +99,8 @@ struct ref_t : public primitive_t {
 
             const bool is_f8 = utils::one_of(src_dt_, f8_e5m2, f8_e4m3)
                     || utils::one_of(wei_dt_, f8_e5m2, f8_e4m3);
-            const bool is_f4
-                    = utils::one_of(src_dt_, f4_e2m1, f4_e3m0, f32, bf16, f16)
-                    || utils::one_of(wei_dt_, f4_e2m1, f4_e3m0);
+            const bool is_f4 = utils::one_of(src_dt_, f4_e2m1, f32, bf16, f16)
+                    || utils::one_of(wei_dt_, f4_e2m1);
             const bool is_int8 = utils::one_of(src_dt_, u8, s8)
                     && utils::one_of(wei_dt_, u8, s8, u4, s4);
             // Note: fp4 bias will require sub-byte reads in the kernel.

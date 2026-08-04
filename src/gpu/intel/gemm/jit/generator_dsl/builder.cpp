@@ -33,7 +33,6 @@ inline type_t into_ir(Type t, int elems = 1) {
     switch (t) {
         case Type::invalid: return type_t::undef();
 
-        case Type::f4_e3m0: return type_t::f4_e3m0(elems);
         case Type::f4_e2m1: return type_t::f4_e2m1(elems);
         case Type::bf8: return type_t::bf8(elems);
         case Type::hf8: return type_t::hf8(elems);

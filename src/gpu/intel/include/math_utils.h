@@ -89,13 +89,6 @@ long __attribute__((overloadable)) rnd_down(long a, unsigned int b) {
 #define MATH_UTILS_DECLARE_F4_E2M1 1
 #endif
 
-#if DT_F4_E3M0 || SRC_DT_F4_E3M0 || WEI_DT_F4_E3M0 || DST_DT_F4_E3M0 \
-        || BIA_DT_F4_E3M0 || A_DT_F4_E3M0 || A_DT_F4_E3M0 || B_DT_F4_E3M0 \
-        || C_DT_F4_E3M0 || DATA_DT_F4_E3M0 || POST_OP_USING_F4_E3M0 \
-        || BIAS_DT_F4_E3M0
-#define MATH_UTILS_DECLARE_F4_E3M0 1
-#endif
-
 #if DT_S4 || SRC_DT_S4 || WEI_DT_S4 || DST_DT_S4 || BIA_DT_S4 || A_DT_S4 \
         || B_DT_S4 || C_DT_S4 || DATA_DT_S4 || WEI_ZP_DT_S4 || SRC_ZP_DT_S4
 #define MATH_UTILS_DECLARE_S4 1
@@ -764,51 +757,6 @@ float __attribute__((overloadable)) cvt_f4_e2m1_to_f32(uchar a) {
 }
 
 #endif
-#if MATH_UTILS_DECLARE_F4_E3M0
-
-// OCL translation of common fp4 methods.
-uchar __attribute__((overloadable)) cvt_f32_to_f4_e3m0(float a) {
-    const float f4_e3m0_max = as_float(0x41800000);
-    const float exp_shift = as_float(0x01800000);
-
-    // clamp
-    // sel (lt)f0.0 t0:f (abs)x:f 0x41800000:f
-    float intermediate = fmin(fabs(a), f4_e3m0_max);
-    if (isnan(intermediate)) intermediate = f4_e3m0_max;
-
-    // shift high exp bit down
-    // mul t0:f t0:f 0x01800000:f
-    intermediate *= exp_shift;
-
-    // rtne logic
-    // add t0:ud to:ud -0x00400000:ud
-    // and (nz)f0.0 null t0:ud 0x00ffffff:ud
-    uint bits = as_uint(intermediate);
-    bits -= 0x00400000;
-    uint round_up = bits & 0x00ffffff;
-
-    // shr t0:ud t0:ud 23
-    bits >>= 23;
-
-    // round
-    // (f0.0) add t0:ud t0:ud 1
-    if (round_up) bits += 1;
-
-    // copy sign
-    // shr y:ud x:ud 28
-    // bfn.0xCA y:ud y:ud t0:ud 0x07
-    uint dst = as_uint(a) >> 28;
-    return ((dst & ~0x07) | (bits & 0x07)) & 0xf;
-}
-
-float __attribute__((overloadable)) cvt_f4_e3m0_to_f32(uchar a) {
-    // List of e3m0 values. The index of each value maps to its encoding.
-    const float e3m0_table[16] = {0.0f, .25f, .5f, 1.0f, 2.0f, 4.0f, 8.0f,
-            16.0f, -0.0f, -.25f, -.5f, -1.0f, -2.0f, -4.0f, -8.0f, -16.0f};
-    return e3m0_table[a];
-}
-
-#endif
 
 #define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 
@@ -862,13 +810,6 @@ void __attribute__((overloadable)) set_double_half_byte(
 f4_e2m1 __attribute__((overloadable)) get_half_byte(
         const __global f4_e2m1 *x, off_t y) {
     return as_f4_e2m1(get_half_byte((__global const uchar *)x, y));
-}
-#endif
-
-#if MATH_UTILS_DECLARE_F4_E3M0
-f4_e3m0 __attribute__((overloadable)) get_half_byte(
-        const __global f4_e3m0 *x, off_t y) {
-    return as_f4_e3m0(get_half_byte((__global const uchar *)x, y));
 }
 #endif
 

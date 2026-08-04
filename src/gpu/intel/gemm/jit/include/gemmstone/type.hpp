@@ -44,7 +44,6 @@ public:
         u64      = 0x011A0803,
         s64      = 0x011B0803,
         f4_e2m1  = 0x21040100,
-        f4_e3m0  = 0x21050100,
         nf4      = 0x21060100,
         f8_e8m0  = 0x01080100,
         bf8      = 0x010E0100,
@@ -111,7 +110,7 @@ public:
         using DT = ngen::DataType;
         auto none = DT::invalid;
         static const DT table[32] = {DT::hf,      DT::f,       DT::df,      none,
-                                     DT::e2m1,  DT::e3m0,  ngen_nf4(),  none,
+                                     DT::e2m1,  none,      ngen_nf4(),  none,
                                      ngen_e8m0(), none,        none,        none,
                                      DT::bf,      DT::tf32,    DT::bf8,     DT::hf8,
                                      none,        none,        DT::u4,      DT::s4,
@@ -161,7 +160,6 @@ inline char typeToChar(Type T)
         case Type::bf16:    return 'B';
         case Type::tf32:    return 'T';
         case Type::f4_e2m1: return 'E';
-        case Type::f4_e3m0: return 'e';
         case Type::nf4:     return 'N';
         case Type::f8_e8m0: return 'X';
         default:            return '?';
@@ -187,7 +185,6 @@ inline Type charToType(char c)
         case 'B': return Type::bf16;
         case 'T': return Type::tf32;
         case 'E': return Type::f4_e2m1;
-        case 'e': return Type::f4_e3m0;
         case 'N': return Type::nf4;
         case 'X': return Type::f8_e8m0;
         default:  return Type::invalid;

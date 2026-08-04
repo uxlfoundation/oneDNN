@@ -299,10 +299,17 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
             dst_scale
                     = round_to_nearest_representable(p.dst_scale_dt, dst_scale);
         } else if (p.has_dst_dynamic_fp) {
-            dst_scale = dst_scale == 0.f
-                    ? 1.f
-                    : round_to_nearest_representable(
-                              p.dst_scale_dt, dst_scale / max_dt(p.dst_dt));
+            // Clamp the scale value to epsilon(dst_scale_dt) from the down and
+            // to max(dst_scale_dt) from the up.
+            // This is done to deal with zero block and small values obtained
+            // after dividing a group max value.
+            // See the following link for more details:
+            // https://github.com/pytorch/ao/blob/main/torchao/prototype/mx_formats/nvfp4_tensor.py
+            dst_scale = MAX2(
+                    MIN2(dst_scale / max_dt(p.dst_dt), max_dt(p.dst_scale_dt)),
+                    epsilon_dt(p.dst_scale_dt));
+            dst_scale
+                    = round_to_nearest_representable(p.dst_scale_dt, dst_scale);
         }
         const auto dst_off
                 = (dst_row_base + mc * p.dst_M_group) * N + nc * p.dst_N_group;

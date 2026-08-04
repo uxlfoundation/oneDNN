@@ -350,14 +350,18 @@ status_t ref_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
                             = types::round_to_dt(dst_scale_dt, dst_group_scale);
                 }
                 if (attr_scales.get(DNNL_ARG_DST).is_dynamic_fp()) {
-                    // In case of a dst group produced a zero `max_dst_group`,
-                    // clamp the scale value to the minimal normal e4m3 value.
-                    dst_group_scale = max_dst_group == 0.f
-                            ? 1.f
-                            : types::round_to_dt(dst_scale_dt,
-                                      max_dst_group
-                                              / types::max_value<float>(
-                                                      dst_d.data_type()));
+                    // Clamp the scale value to epsilon(dst_scale_dt) from the
+                    // down and to max(dst_scale_dt) from the up.
+                    // This is done to deal with zero block and small values
+                    // obtained after dividing a group max value.
+                    dst_group_scale = max_dst_group
+                            / types::max_value<float>(dst_d.data_type());
+                    dst_group_scale = nstl::min(dst_group_scale,
+                            types::max_value<float>(dst_scale_dt));
+                    dst_group_scale = nstl::max(dst_group_scale,
+                            types::epsilon_value<float>(dst_scale_dt));
+                    dst_group_scale
+                            = types::round_to_dt(dst_scale_dt, dst_group_scale);
                 }
 
                 dims_t dst_dims_idx;

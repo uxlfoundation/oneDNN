@@ -223,6 +223,7 @@ void CopyInstruction::moveToIntegerPipe()
             break;
         default: break;
     }
+    dst.range = src0.range = DataType::invalid;
 }
 
 // Retrieve nGEN instruction modifiers for an instruction.

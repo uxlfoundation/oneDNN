@@ -530,13 +530,13 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
     const auto needs_ternary_input = post_op.is_binary_with_ternary_op();
     const auto &vmm_tail_idx = rhs_arg_params.vmm_tail_idx_;
     const bool tail_exists_in_range = !vmm_tail_idx.empty();
-    const bool bcast_f32_non_avx512 = !is_avx512_
+    const bool bcast_f32_non_avx512 = !has_avx512_core_
             && utils::one_of(rhs_broadcasting_strategy,
                     broadcasting_strategy_t::scalar,
                     broadcasting_strategy_t::per_oc_spatial)
             && rhs_arg_data_type == data_type::f32;
     const bool should_preserve_vmm_tail = tail_exists_in_range
-            && (!is_avx512_
+            && (!has_avx512_core_
                     || !utils::one_of(rhs_broadcasting_strategy,
                             broadcasting_strategy_t::scalar,
                             broadcasting_strategy_t::per_oc_spatial)
@@ -636,7 +636,8 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
 
     bool vmm0_was_preserved = false;
     static const Vmm zero_vmm(0);
-    if (post_op.is_prelu() && is_avx512_) push_opmask(host_, get_aux_kmask());
+    if (post_op.is_prelu() && has_avx512_core_)
+        push_opmask(host_, get_aux_kmask());
 
     Xbyak::Address rhs1_arg_addr {};
     Xbyak::Address rhs2_arg_addr {};
@@ -716,7 +717,8 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
     }
     // ...and restored afterwards
     if (vmm0_was_preserved) pop_vmm(host_, zero_vmm);
-    if (post_op.is_prelu() && is_avx512_) pop_opmask(host_, get_aux_kmask());
+    if (post_op.is_prelu() && has_avx512_core_)
+        pop_opmask(host_, get_aux_kmask());
 }
 
 template <typename Vmm>
@@ -2848,10 +2850,12 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary(
     const bool cmp_op_with_tail_vector_mem_operand
             = cmp_op && with_tail && !rhs_addr.isBroadcast();
     const bool process_rhs_arg_using_tmp_vmm
-            = rhs_arg_data_type != data_type::f32 || (scalar_f32 && !is_avx512_)
+            = rhs_arg_data_type != data_type::f32
+            || (scalar_f32 && !has_avx512_core_)
             || with_tail_not_fusable_to_binary_op
             || !binary_op_with_unaligned_mem_operand_allowed_
-            || (cmp_op && !is_avx512_) || cmp_op_with_tail_vector_mem_operand;
+            || (cmp_op && !has_avx512_core_)
+            || cmp_op_with_tail_vector_mem_operand;
 
     if (process_rhs_arg_using_tmp_vmm) {
 
@@ -2969,8 +2973,8 @@ void jit_uni_binary_injector_t<Vmm>::execute_broadcast(
     if (with_tail) {
         if (tail_load_mode == tail_lode_mode_t::DYNAMIC
                 || (tail_load_mode == tail_lode_mode_t::DEFAULT
-                        && is_avx512_)) {
-            if (is_avx512_)
+                        && has_avx512_core_)) {
+            if (has_avx512_core_)
                 execute_broadcast_tail_with_opmask(
                         data_type, tmp_reg, rhs_addr);
             else
@@ -2989,8 +2993,8 @@ void jit_uni_binary_injector_t<Vmm>::load_rhs(const data_type_t &data_type,
     if (with_tail) {
         if (tail_load_mode == tail_lode_mode_t::DYNAMIC
                 || (tail_load_mode == tail_lode_mode_t::DEFAULT
-                        && is_avx512_)) {
-            if (is_avx512_)
+                        && has_avx512_core_)) {
+            if (has_avx512_core_)
                 load_rhs_tail_dynamically_with_opmask(
                         data_type, tmp_reg, rhs_addr);
             else
@@ -3018,7 +3022,8 @@ void jit_uni_binary_injector_t<Vmm>::load_acc_as_f32(const Vmm &dst,
     //      ignores the operand.
     //   2. A byte offset that doesn't fit int range.
     // No-tail and AVX-512 opmask tail loads take the operand directly.
-    const bool need_scratch_reg = (with_tail && !is_avx512_) || !byte_off_fits;
+    const bool need_scratch_reg
+            = (with_tail && !has_avx512_core_) || !byte_off_fits;
 
     // This is a direct entry point so the register-preserve guard is not in
     // effect here. Since we need to follow the defined ABI we preserve the
@@ -3082,7 +3087,7 @@ void jit_uni_binary_injector_t<Vmm>::execute_broadcast_no_tail(
             execute_broadcast_s8u8_no_tail(data_type, tmp_vmm, rhs_addr);
             break;
         case data_type::f16:
-            if (is_avx512_core_fp16_)
+            if (has_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm, host_->ptr_b[rhs_addr.getRegExp()]);
             else if (is_superset(isa_, avx2_vnni_2))
                 host_->vbcstnesh2ps(tmp_vmm, rhs_addr);
@@ -3098,7 +3103,7 @@ void jit_uni_binary_injector_t<Vmm>::execute_broadcast_no_tail(
             f8_e4m3_cvt_->bcst_f8_to_f32(tmp_vmm, rhs_addr);
             break;
         case data_type::bf16:
-            if (is_avx512_) {
+            if (has_avx512_core_) {
                 host_->vpbroadcastw(tmp_vmm, rhs_addr);
                 host_->vpslld(tmp_vmm, tmp_vmm, 0x10);
             } else if (is_superset(isa_, avx2_vnni_2)) {
@@ -3191,7 +3196,7 @@ void jit_uni_binary_injector_t<Vmm>::execute_broadcast_tail_with_opmask(
             break;
         }
         case data_type::f16:
-            if (is_avx512_core_fp16_)
+            if (has_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm | tail_opmask | host_->T_z,
                         host_->ptr_b[rhs_addr.getRegExp()]);
             else
@@ -3306,7 +3311,7 @@ void jit_uni_binary_injector_t<Vmm>::execute_broadcast_tail_statically(
     // An opmask-capable ISA has no static tail path. `execute_broadcast` sends
     // its tails to `execute_broadcast_tail_with_opmask`, so arriving here means
     // the caller asked for a tail mode this ISA does not implement.
-    if (is_avx512_) {
+    if (has_avx512_core_) {
         assert(!"unsupported tail load mode");
         return;
     }
@@ -3427,7 +3432,7 @@ void jit_uni_binary_injector_t<Vmm>::load_rhs_no_tail(
             load_rhs_i8_no_tail(data_type, tmp_vmm, rhs_addr);
             break;
         case data_type::f16:
-            if (is_avx512_core_fp16_)
+            if (has_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm, rhs_addr);
             else if (is_superset(isa_, avx2_vnni_2))
                 host_->vcvtph2ps(tmp_vmm, rhs_addr);
@@ -3443,7 +3448,7 @@ void jit_uni_binary_injector_t<Vmm>::load_rhs_no_tail(
             f8_e4m3_cvt_->vcvt_f8_to_f32(tmp_vmm, rhs_addr);
             break;
         case data_type::bf16:
-            if (is_avx512_ || is_superset(isa_, avx2_vnni_2)) {
+            if (has_avx512_core_ || is_superset(isa_, avx2_vnni_2)) {
                 host_->vpmovzxwd(tmp_vmm, rhs_addr);
                 host_->vpslld(tmp_vmm, tmp_vmm, 0x10);
                 break;
@@ -3512,7 +3517,7 @@ void jit_uni_binary_injector_t<Vmm>::load_rhs_tail_dynamically_with_opmask(
             host_->vpmovzxbd(tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
             break;
         case data_type::f16:
-            if (is_avx512_core_fp16_)
+            if (has_avx512_core_fp16_)
                 host_->vcvtph2psx(tmp_vmm | tail_opmask | host_->T_z, rhs_addr);
             else
                 assert(!"unsupported masked tail processing");
@@ -3563,7 +3568,7 @@ void jit_uni_binary_injector_t<Vmm>::load_rhs_tail_statically(
     // An opmask-capable ISA has no static tail path. `load_rhs` sends its tails
     // to `load_rhs_tail_dynamically_with_opmask`, so arriving here means the
     // caller asked for a tail mode this ISA does not implement.
-    if (is_avx512_) {
+    if (has_avx512_core_) {
         assert(!"unsupported tail load mode");
         return;
     }
@@ -3684,7 +3689,7 @@ void jit_uni_binary_injector_t<Vmm>::execute_cmp_binary(const Vmm &dst,
     const bool rhs_requires_opmask = std::is_same<T, Xbyak::Zmm>::value
             || std::is_same<T, Xbyak::Address>::value;
     if (rhs_requires_opmask) {
-        assert(is_avx512_ && "compare with an opmask requires AVX-512");
+        assert(has_avx512_core_ && "compare with an opmask requires AVX-512");
         // For GreaterEqual op, replace 0xFFFFFFFF by 1
         // which was returned by vcmpps.
         const auto &cmp_mask = rhs_arg_static_params_.tail_opmask;

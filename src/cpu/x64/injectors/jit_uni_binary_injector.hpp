@@ -641,8 +641,8 @@ private:
     const Xbyak::Reg64 param1_;
     const bcast_set_t supported_strategy_set_;
     const cpu_isa_t isa_ = host_->max_cpu_isa();
-    const bool is_avx512_ = is_superset(isa_, avx512_core);
-    const bool is_avx512_core_fp16_ = is_superset(isa_, avx512_core_fp16);
+    const bool has_avx512_core_ = is_superset(isa_, avx512_core);
+    const bool has_avx512_core_fp16_ = is_superset(isa_, avx512_core_fp16);
     const bool has_avx2_ = is_superset(isa_, avx2);
     const bool is_avx_ = is_superset(isa_, avx) && !has_avx2_;
     const bool is_sse41_ = !is_superset(isa_, avx);

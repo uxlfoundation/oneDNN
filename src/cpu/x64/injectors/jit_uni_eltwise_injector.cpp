@@ -360,7 +360,7 @@ void jit_uni_eltwise_injector_t<Wmm>::vec_shift(const Vmm &vmm_dst,
 template <typename Wmm>
 void jit_uni_eltwise_injector_t<Wmm>::compute_cmp_mask(const Vmm &vmm_src,
         const Xbyak::Operand &compare_operand, int cmp_predicate) {
-    if (is_avx512_) {
+    if (has_avx512_core_) {
         h->vcmpps(k_mask_, vmm_src, compare_operand, cmp_predicate);
     } else {
         h->uni_vcmpps(vmm_mask_, vmm_src, compare_operand, cmp_predicate);
@@ -372,7 +372,7 @@ void jit_uni_eltwise_injector_t<Wmm>::compute_cmp_mask(const Vmm &vmm_src,
 template <typename Wmm>
 void jit_uni_eltwise_injector_t<Wmm>::blend_with_mask(
         const Vmm &vmm_dst, const Xbyak::Operand &src) {
-    if (is_avx512_) {
+    if (has_avx512_core_) {
         h->vblendmps(vmm_dst | k_mask_, vmm_dst, src);
     } else {
         h->uni_vblendvps(vmm_dst, vmm_dst, src, vmm_mask_);
@@ -384,7 +384,7 @@ void jit_uni_eltwise_injector_t<Wmm>::blend_with_mask(
 // Nicely combines with jump_if_zero (jz).
 template <typename Wmm>
 void jit_uni_eltwise_injector_t<Wmm>::test_mask() {
-    if (is_avx512_) {
+    if (has_avx512_core_) {
         h->kortestw(k_mask_, k_mask_);
     } else {
         h->uni_vtestps(vmm_mask_, vmm_mask_);
@@ -506,8 +506,9 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
     Vmm vmm_coeff = vmm_aux(0);
     Vmm vmm_pol = vmm_aux(1);
     Vmm vmm_indices = vmm_aux(2);
-    Vmm vmm_tmp = is_avx512_ ? vmm_aux(2) // index `2` works for AVX512_CORE
-                             : vmm_mask_; // TODO: why `vmm_mask_` directly?
+    Vmm vmm_tmp = has_avx512_core_
+            ? vmm_aux(2) // index `2` works for AVX512_CORE
+            : vmm_mask_; // TODO: why `vmm_mask_` directly?
     Vmm vmm_src_original = vmm_aux(3);
     Vmm vmm_sign = vmm_aux(3);
     Reg64 gpr_idx[XMM_float_elems_count];
@@ -557,7 +558,7 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
             Xmm xmm_pol_idx = Xmm(vmm_pol_idx.getIdx());
             for (int i = 0; i < XMM_float_elems_count; ++i)
                 h->vpextrd(gpr_idx[i].cvt32(), xmm_pol_idx, i);
-        } else if (has_avx2_ && !is_avx512_) {
+        } else if (has_avx2_ && !has_avx512_core_) {
             // Zero the mask so that the `_cmp_eq_oq` compare in
             // `gather_coefficient` yields all ones. A NaN left over in the
             // register would compare unequal to itself.
@@ -580,7 +581,7 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
                         + gpr_idx[idx] * sizeof(float)];
                 h->vpinsrd(xmm_coeff, xmm_coeff, coeff_addr, idx);
             }
-        } else if (has_avx2_ && !is_avx512_) {
+        } else if (has_avx2_ && !has_avx512_core_) {
             Xbyak::Address idx_addr = ptr[p_table_ + coeffs_off(coeff_idx)
                     + vmm_pol_idx * sizeof(float)];
             // Set the mask to all ones to gather a full register. A
@@ -836,7 +837,7 @@ void jit_uni_eltwise_injector_t<Wmm>::soft_relu_compute_vector_fwd(
     // compute 2^-(n-1)
     // vmm_src now represents n-1
     h->uni_vsubps(vmm_src, vmm_src, table_val(one));
-    if (is_avx512_) {
+    if (has_avx512_core_) {
         h->vmulps(vmm_aux(1), vmm_src, table_val(minus_one));
         h->vcvtps2dq(vmm_aux(1), vmm_aux(1));
     } else if (is_avx_) {
@@ -931,7 +932,7 @@ void jit_uni_eltwise_injector_t<Wmm>::logistic_compute_vector_fwd(
     // Now we have to apply the "symmetry" based on original sign
     h->uni_vmovups(vmm_aux(1), table_val(one));
     h->uni_vsubps(vmm_aux(1), vmm_aux(1), vmm_src);
-    if (is_avx512_) {
+    if (has_avx512_core_) {
         h->vptestmd(k_mask_, vmm_aux(2), vmm_aux(2));
     } else {
         h->uni_vmovups(vmm_mask_, vmm_aux(2));
@@ -1032,7 +1033,7 @@ void jit_uni_eltwise_injector_t<Wmm>::log_compute_vector_fwd(
             = [&](const Vmm &vmm_dst, const Vmm &vmm_idxs, size_t offt = 0) {
         Xbyak::Address table_idx = h->ptr[p_table_ + table_start_idx + offt
                 + vmm_idxs * sizeof(float)];
-        if (is_avx512_) {
+        if (has_avx512_core_) {
             h->kmovw(k_mask_, table_val(log_full_k_reg_mask));
             h->vgatherdps(vmm_dst | k_mask_, table_idx);
         } else if (has_avx2_) {
@@ -1180,7 +1181,7 @@ void jit_uni_eltwise_injector_t<Wmm>::pow_compute_vector_fwd(
         // caller obligation to save k-regs as callee may use them
         static constexpr int k_mask_size = 8;
         size_t n_k_regs_to_save = 8;
-        if (is_avx512_) {
+        if (has_avx512_core_) {
             h->sub(h->rsp, n_k_regs_to_save * k_mask_size);
             for (size_t i = 0; i < n_k_regs_to_save; ++i) {
                 if (mayiuse(avx512_core))
@@ -1241,7 +1242,7 @@ void jit_uni_eltwise_injector_t<Wmm>::pow_compute_vector_fwd(
         h->uni_vmovups(vmm_src, h->ptr[reg_vmm_stack_ptr_ + 0 * vlen_]);
 
         // restore k registers
-        if (is_avx512_) {
+        if (has_avx512_core_) {
             for (int i = n_k_regs_to_save - 1; i >= 0; --i) {
                 if (mayiuse(avx512_core))
                     h->kmovq(Opmask(i), h->ptr[h->rsp + i * k_mask_size]);
@@ -1266,7 +1267,7 @@ void jit_uni_eltwise_injector_t<
     using namespace Xbyak::util;
 
     // TODO: consider enabling for lower ISA
-    if (!is_avx512_) return;
+    if (!has_avx512_core_) return;
 
     // register mapping
     Vmm vmm_pol = vmm_aux(0);
@@ -1331,7 +1332,7 @@ void jit_uni_eltwise_injector_t<
 template <typename Wmm>
 void jit_uni_eltwise_injector_t<Wmm>::gelu_erf_compute_vector_fwd(
         const Vmm &vmm_src) {
-    if (is_avx512_) {
+    if (has_avx512_core_) {
         gelu_erf_minimax_approx_compute_vector_fwd(vmm_src);
         return;
     }
@@ -2883,8 +2884,9 @@ void jit_uni_eltwise_injector_t<Wmm>::register_table_entries() {
     if (need.gelu_tanh()) push_entries_of(gelu_tanh_consts);
     if (need.gelu_erf()) push_entries_of(gelu_erf_Abramowitz_Stegun_consts);
     if (need.gelu_erf()) push_entries_of(gelu_erf_Abramowitz_Stegun_polynomial);
-    if (need.gelu_erf() && is_avx512_) push_entries_of(gelu_erf_minimax_consts);
-    if (need.gelu_erf() && is_avx512_)
+    if (need.gelu_erf() && has_avx512_core_)
+        push_entries_of(gelu_erf_minimax_consts);
+    if (need.gelu_erf() && has_avx512_core_)
         push_entries_of(gelu_erf_minimax_polynomial);
 
     if (need.log()) push_entries_of(log_consts);

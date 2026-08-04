@@ -17,6 +17,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include <algorithm>
 #include <cctype>
@@ -25,6 +26,12 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 #include "oneapi/dnnl/dnnl.h"
 
@@ -88,6 +95,52 @@ dir_t str2dir(const char *str) {
     return DIR_UNDEF;
 }
 
+bool stdout_is_tty() {
+    static const int is_tty = [] {
+#ifdef _WIN32
+        return _isatty(_fileno(stdout));
+#else
+        return isatty(fileno(stdout));
+#endif
+    }();
+    return is_tty != 0;
+}
+
+bool interactive_heartbeat_enabled() {
+    if (!stdout_is_tty()) return false;
+    if (verbose > 0) return false;
+
+    for (const char *prefix : {"ONEDNN_", "DNNL_"}) {
+        const std::string dnnl_verbose = benchdnn_getenv_string(
+                (std::string(prefix) + "VERBOSE").c_str());
+        if (!dnnl_verbose.empty() && dnnl_verbose != "0"
+                && dnnl_verbose != "none")
+            return false;
+    }
+    return true;
+}
+
+int heartbeat_len = 0;
+void print_heartbeat(int64_t tests_done) {
+    if (tests_done <= 0) return;
+
+    if (interactive_heartbeat_enabled()) {
+        heartbeat_len = printf("\rcompleted tests: %" PRId64, tests_done) - 1;
+        fflush(stdout);
+    } else if (tests_done % 1000 == 0) {
+        printf("completed tests: %" PRId64 "\n", tests_done);
+        fflush(stdout);
+    }
+}
+
+void maybe_clear_heartbeat() {
+    if (!heartbeat_len) return;
+
+    printf("\r%*s\r", heartbeat_len, "");
+    fflush(stdout);
+    heartbeat_len = 0;
+}
+
 void parse_result(res_t &res, const char *pstr) {
     auto &bs = benchdnn_stat;
 
@@ -131,6 +184,8 @@ void parse_result(res_t &res, const char *pstr) {
             SAFE_V(FAIL);
     }
 
+    if (concise && !is_failed) print_me = false;
+
     std::string reason;
     if (res.reason != reason_t::none) {
         reason = " (" + reason2str(res.reason) + ")";
@@ -169,12 +224,17 @@ void parse_result(res_t &res, const char *pstr) {
                     "salt, and proceed with extra caution.");
         }
     }
-    if (print_me) { BENCHDNN_PRINT(0, "%s\n", full_repro.c_str()); }
+    if (print_me) {
+        maybe_clear_heartbeat();
+        BENCHDNN_PRINT(0, "%s\n", full_repro.c_str());
+    }
 
     // Update this after collecting stats.
     bs.tests++;
     assert(bs.tests
             == bs.passed + bs.skipped + bs.mistrusted + bs.failed + bs.listed);
+
+    if (concise) print_heartbeat(bs.tests);
 
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         const auto &t = res.timer_map.perf_timer();

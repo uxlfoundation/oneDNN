@@ -1362,6 +1362,27 @@ static bool parse_canonical(
             canonical, false, parsers::str2bool, str, option_name, help);
 }
 
+static bool parse_concise(
+        const char *str, const std::string &option_name = "concise") {
+    static const std::string help
+            = ", -c    (Default: not set)\n    Instructs the driver to "
+              "suppress the full repro line for non-failing cases.\n";
+    utils::add_option_to_help(option_name, help, /* with_args = */ false);
+
+    const std::string pattern = utils::get_pattern(option_name, false);
+    if (utils::option_matched(pattern, str)) {
+        concise = true;
+        return true;
+    }
+
+    // Short form, exact match only (no suffix/value expected).
+    if (!strcmp(str, "-c")) {
+        concise = true;
+        return true;
+    }
+    return false;
+}
+
 static bool parse_check_ref_impl(
         const char *str, const std::string &option_name = "check-ref-impl") {
     static const std::string help
@@ -1899,13 +1920,13 @@ bool parse_bench_settings(const char *str) {
 
     bool parsed = parse_allow_enum_tags_only(str)
             || parse_attr_same_pd_check(str) || parse_canonical(str)
-            || parse_check_ref_impl(str) || parse_cold_cache(str)
-            || parse_cpu_isa_hints(str) || parse_engine(str)
-            || parse_fast_ref(str) || parse_fix_times_per_prb(str)
-            || parse_global_impl(str) || parse_global_skip_impl(str)
-            || parse_max_ms_per_prb(str) || parse_num_streams(str)
-            || parse_repeats_per_prb(str) || parse_mem_check(str)
-            || parse_memory_kind(str) || parse_mode(str)
+            || parse_check_ref_impl(str) || parse_concise(str)
+            || parse_cold_cache(str) || parse_cpu_isa_hints(str)
+            || parse_engine(str) || parse_fast_ref(str)
+            || parse_fix_times_per_prb(str) || parse_global_impl(str)
+            || parse_global_skip_impl(str) || parse_max_ms_per_prb(str)
+            || parse_num_streams(str) || parse_repeats_per_prb(str)
+            || parse_mem_check(str) || parse_memory_kind(str) || parse_mode(str)
             || parse_mode_modifier(str) || parse_start(str)
             || parse_stream_kind(str) || parse_summary(str)
             || parse_verbose(str) || parse_execution_mode(str)

@@ -1,0 +1,1000 @@
+--reset ic2iw2ow6
+--reset --sdt=bf16 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih6iw24oh6ow24
+--reset --sdt=f16 --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --dir=BWD_D --ddt=bf16 --tag=aBx16b --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s32 --ddt=s32 --tag=axb ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=u8 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32iw151ow300
+--reset --sdt=s8 --ddt=s8 --tag=aBx16b ic64iw32ow64
+--reset --dir=BWD_D --sdt=bf16 --tag=axb ic17iw17ow20
+--reset --sdt=s32 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16id6od3
+--reset --sdt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=abcd ic1280ih24oh48n"176ce1366284f289490d98b1fe63a045"
+--reset --sdt=u8 --ddt=u8 --tag=aBx16b ic8ih3iw7oh6ow21
+--reset --sdt=f16 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic64iw32ow64
+--reset --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic23ih60iw30oh60ow75
+--reset --sdt=u8 --ddt=f16 --tag=axb --alg=linear ic16id6od3
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 mb1ic512iw65536ow32768
+--reset --sdt=bf16 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6od3
+--reset --sdt=s32 --ddt=f16 --alg=linear ic17iw17ow20
+--reset --sdt=s8 --ddt=u8 --tag=axb ic16id6od3
+--reset --sdt=s32 --tag=aBx16b ic32id31ih50iw31od16oh77ow16
+--reset --sdt=f16 --ddt=bf16 --tag=axb ic2iw2ow6
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --dir=BWD_D ic8ih6iw24oh6ow24
+--reset --allow-enum-tags-only=false --tag=abcd --alg=linear mb64ic256ih12oh23n"bc2bc7a89b65aa6c3613c3e5a00d9fba"
+--reset --sdt=bf16 --ddt=f16 ic32iw151ow300
+--reset --sdt=s8 --ddt=bf16 ic17iw17ow20
+--reset --sdt=s32 --ddt=u8 ic64iw32ow64
+--reset --sdt=s8 --ddt=s32 ic32iw151ow300
+--reset --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17iw17ow20
+--reset --ddt=f16 ic64iw32ow64
+--reset --sdt=u8 ic64iw32ow64
+--reset --sdt=f16 ic32iw151ow300
+--reset --sdt=bf16 --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17iw17ow20
+--reset --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=s32 --ddt=bf16 ic2iw2ow6
+--reset --sdt=u8 --ddt=bf16 ic2iw2ow6
+--reset --sdt=s8 --ddt=f16 ic2iw2ow6
+--reset --sdt=u8 --ddt=s32 ic2iw2ow6
+--reset --sdt=bf16 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic2iw2ow6
+--reset --sdt=f16 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic2iw2ow6
+--reset --sdt=f16 --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic2iw2ow6
+--reset --dir=BWD_D ic2iw2ow6
+--reset --allow-enum-tags-only=false --sdt=s8 --ddt=s8 --tag=ABcd32a32b mb32ic128ih26oh52n"3f008184cbea702149fe27f4dcf5c9c1"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=aBcd16b mb1ic1280ih16oh32n"0ae4b5221d06be03974f45315f15e106*2"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb --alg=linear mb4ic24ih160iw256oh320ow512n"d51ba2c993a69248e5cfc5044364ae4f*3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic40ih40iw64oh80ow128n"4266e3445724eeec024c899ca5555d65*3"
+--reset ic8ih5iw7oh3ow11
+--reset --allow-enum-tags-only=false --tag=acdb --alg=linear mb4ic48ih20iw32oh40ow64n"8bdfe81cbc474ffbcb95d21267c6de7e*3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=ABcd32a16b mb32ic192ih40oh80n"f6b7fc2a5dff6438f8835fe61843adc9"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb --alg=linear mb4ic40ih40iw64oh80ow128n"afc85f075ec81c39dc86f04b1d6515c1*3"
+--reset ic19id6od4
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=aBcd16b mb1ic1280ih8oh16n"b49a27838107b47879990226c995acfe*2"
+--reset ic8ih14iw7oh6ow3
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb --alg=linear mb4ic56ih10iw16oh20ow32n"14d40ae1ad1fe15756c6b800f11e8b53*3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb --alg=linear mb4ic32ih80iw128oh160ow256n"b356fcdb3369c3b9f76144dd533f5699*3"
+--reset --dir=BWD_D --tag=acb --alg=linear ic3iw5ow35
+--reset ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=aBcd16b mb8ic32ih256oh512n"db8e40a20cf14da2c7b2c185dafe83e0"
+--reset --allow-enum-tags-only=false --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic24ih160iw256oh320ow512n"c9f48e4dbf4dd0bbd4b1d31b918e586a*3"
+--reset --allow-enum-tags-only=false --tag=acdb --alg=linear mb4ic40ih40iw64oh80ow128n"e267f19802ac821d76b3f509a9a1e9ea*3"
+--reset --allow-enum-tags-only=false --tag=acdb --alg=linear mb4ic32ih80iw128oh160ow256n"a6aed1fce290c8870bc7240cc7b5afcc*3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=abcd ic640ih48oh96n"fea1f5af2676952d0037f46ba2e973c3"
+--reset ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic16ih320iw512oh640ow1024n"fdc991f9334151c44b3069522c7dbcd2*3"
+--reset ic8ih15iw5oh3ow11
+--reset --allow-enum-tags-only=false --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic56ih10iw16oh20ow32n"ddd5ecd4811aaa1e66f059252501fab9*3"
+--reset --allow-enum-tags-only=false --tag=acdb --alg=linear mb4ic16ih320iw512oh640ow1024n"fb6cb8b296cb119c84f7cc0d113aa154*3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=aBcd16b mb8ic128ih64oh128n"c38f2734713e7f8e20379e6b8369fd27*3"
+--reset --allow-enum-tags-only=false --sdt=u8 --ddt=u8 --tag=ABcd32a32b mb64ic128ih26oh52n"65abc14ea73709d33336a3c2086a7171"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=ABcd32a16b --alg=linear mb64ic256ih45oh90n"0d91d77350893b5f68e7df99fad33d62"
+--reset --allow-enum-tags-only=false --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic32ih80iw128oh160ow256n"2b1e1a9f6d86468b338815a184f489cc*3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=ABcd32a16b mb32ic256ih13oh26n"e3b0f455f827f3eadac284e0d2cba87b"
+--reset ic5iw42ow14
+--reset --allow-enum-tags-only=false --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic32ih80iw128oh160ow256n"d661c3e30879fcc4128a7202295dda68*3"
+--reset --dir=BWD_D --tag=acb --alg=linear ic3iw5ow30
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=aBcd16b mb8ic256ih32oh64n"e6972289b9e5f730b0470589966ff7cd*2"
+--reset ic16ih15iw10oh73ow11
+--reset ic8iw14ow7
+--reset ic16id6ih6iw6od12oh6ow3
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb --alg=linear mb4ic16ih320iw512oh640ow1024n"25893d1e832aa0581ab416ac4d93c59a*3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=ABcd32a16b mb32ic128ih26oh52n"63f475da8e44898af78b4adce82ee2fb"
+--reset --allow-enum-tags-only=false --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic48ih20iw32oh40ow64n"742bfb0ace292963cafe8c1d6d23bef4*3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=aBcd16b mb8ic64ih128oh256n"34899f609f020494d75e979d6e59b115*4"
+--reset --allow-enum-tags-only=false --tag=abcd --alg=linear mb64ic256ih23oh45n"e0fc3d05316da39543dab619429e1cb5"
+--reset ic18ih14iw7oh6ow12
+--reset --allow-enum-tags-only=false --sdt=s8 --ddt=s8 --tag=ABcd32a32b mb32ic256ih13oh26n"48b5ae8a2f3cabdfbd113827578891e3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=aBcd16b mb1ic640ih32oh64n"729c2617bbd9857e201d73af87e36f26*2"
+--reset --allow-enum-tags-only=false --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic48ih20iw32oh40ow64n"b0895cc8292314275d5d715e306a0221*3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb --alg=linear mb4ic48ih20iw32oh40ow64n"de93de11202feea3dddaa3209208d93f*3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=acdb ic1280ih12oh24n"c9f9907a4610826a34e8f28e165ead99"
+--reset ic8ih4iw9oh63ow13
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=aBcd16b mb8ic512ih16oh32n"756fc999f8fac9157b6566a375d19166"
+--reset ic3iw20ow17
+--reset ic1iw21ow13
+--reset --allow-enum-tags-only=false --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic56ih10iw16oh20ow32n"ad9d732ff6b2fd099b4aac46627626a9*3"
+--reset --allow-enum-tags-only=false --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic40ih40iw64oh80ow128n"e03414851a668ef14c8c92bcb550b9bf*3"
+--reset ic23iw525ow5
+--reset --allow-enum-tags-only=false --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic16ih320iw512oh640ow1024n"44da833f7227fa30a6c6a113cad8b0ae*3"
+--reset --allow-enum-tags-only=false --sdt=f16 --ddt=f16 --tag=ABcd32a16b mb32ic384ih20oh40n"2809363e9f8a64a93c74d6863fb306c6"
+--reset --allow-enum-tags-only=false --tag=acdb --alg=linear mb4ic24ih160iw256oh320ow512n"8c5e9f60f329b1daebd878b33726545c*3"
+--reset ic16ih5iw10oh3ow11
+--reset --allow-enum-tags-only=false --tag=acdb --alg=linear mb4ic56ih10iw16oh20ow32n"3b58e6d3dd7391691dcd48fe066540a0*3"
+--reset ic8ih14iw7oh14ow7
+--reset --allow-enum-tags-only=false --sdt=u8 --ddt=u8 --tag=ABcd32a32b mb64ic256ih13oh26n"c7473c922ccb5a54742e18b08a6cace5"
+--reset ic9id3ih6iw4od4oh8ow9
+--reset --allow-enum-tags-only=false --sdt=bf16 --ddt=bf16 --tag=acdb --alg=linear mb4ic24ih160iw256oh320ow512n"9e55c2895aa55993cf7d6e01f469a731*3"
+--reset ic32iw32ow6
+--reset ic17ih6iw12oh7ow14
+--reset --sdt=s32 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32iw32ow6
+--reset --sdt=s32 --ddt=bf16 --alg=linear ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih14iw7oh6ow3
+--reset --sdt=u8 --ddt=u8 --tag=aBx16b ic1iw21ow13
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b ic17iw17ow20
+--reset --sdt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32id31ih50iw31od16oh77ow16
+--reset --sdt=bf16 --ddt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic9id3ih6iw4od4oh8ow9
+--reset --dir=BWD_D --sdt=bf16 --tag=axb --alg=linear ic5iw42ow14
+--reset --sdt=s32 --ddt=s8 --alg=linear ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic64iw32ow64
+--reset --sdt=f16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s8 --tag=aBx16b --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=bf16 --ddt=f16 --tag=aBx16b --alg=linear ic32iw32ow6
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s32 --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih5iw10oh3ow11
+--reset --sdt=f16 --ddt=f16 --alg=linear ic19id6od4
+--reset --dir=BWD_D --ddt=bf16 --alg=linear ic32iw32ow6
+--reset --sdt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic2iw2ow6
+--reset --dir=BWD_D --ddt=bf16 --alg=linear ic8ih14iw7oh14ow7
+--reset --sdt=u8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8iw14ow7
+--reset --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=u8 --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8iw14ow7
+--reset --dir=BWD_D --tag=axb ic17ih6iw12oh7ow14
+--reset --sdt=s8 --ddt=f16 ic32iw32ow6
+--reset --sdt=f16 --tag=axb --alg=linear ic8ih3iw7oh6ow21
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b ic16id6od3
+--reset --sdt=u8 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16id6od3
+--reset --sdt=s8 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17iw17ow20
+--reset --ddt=f16 --alg=linear ic16ih5iw10oh3ow11
+--reset --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic32iw151ow300
+--reset --sdt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23iw525ow5
+--reset --sdt=s32 --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih4iw9oh63ow13
+--reset --sdt=s8 --ddt=u8 --tag=axb ic8ih3iw7oh6ow21
+--reset --sdt=u8 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic64iw32ow64
+--reset --sdt=u8 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic23ih60iw30oh60ow75
+--reset --sdt=f16 --ddt=f16 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=u8 --ddt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic2iw2ow6
+--reset --dir=BWD_D --sdt=bf16 --alg=linear ic8ih15iw5oh3ow11
+--reset --ddt=f16 --tag=aBx16b ic2iw2ow6
+--reset --sdt=u8 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih3iw7oh6ow21
+--reset --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih3iw7oh6ow21
+--reset --sdt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic2iw2ow6
+--reset --sdt=s8 --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih6iw24oh6ow24
+--reset --sdt=u8 --ddt=bf16 --tag=aBx16b ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s32 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih15iw5oh3ow11
+--reset --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih5iw7oh3ow11
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s8 --ddt=bf16 --alg=linear ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih15iw10oh73ow11
+--reset --sdt=bf16 --tag=axb --alg=linear ic32iw151ow300
+--reset --ddt=f16 --tag=aBx16b --alg=linear ic9id3ih6iw4od4oh8ow9
+--reset --dir=BWD_D ic8ih14iw7oh6ow3
+--reset --sdt=bf16 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih6iw24oh6ow24
+--reset --sdt=s8 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic1iw21ow13
+--reset --sdt=bf16 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8iw14ow7
+--reset --sdt=u8 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh14ow7
+--reset --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih5iw7oh3ow11
+--reset --sdt=u8 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic23ih60iw30oh60ow75
+--reset --ddt=bf16 --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s32 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih15iw10oh73ow11
+--reset --sdt=s8 --ddt=f16 --tag=axb ic8iw14ow7
+--reset --sdt=u8 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=s8 --ddt=s8 --alg=linear ic23iw525ow5
+--reset --sdt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih4iw9oh63ow13
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b ic16ih15iw10oh73ow11
+--reset --sdt=s32 --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17ih6iw12oh7ow14
+--reset --sdt=s32 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw32ow6
+--reset --sdt=bf16 --ddt=bf16 --tag=aBx16b --alg=linear ic16ih5iw10oh3ow11
+--reset --sdt=s32 --ddt=s32 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s32 --ddt=s32 --tag=aBx16b --alg=linear ic1iw21ow13
+--reset --sdt=s8 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6od3
+--reset --sdt=u8 --ddt=f16 --tag=aBx16b ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=bf16 --alg=linear ic5iw42ow14
+--reset --sdt=s32 --ddt=u8 ic1iw21ow13
+--reset --sdt=f16 --ddt=f16 --alg=linear ic9id3ih6iw4od4oh8ow9
+--reset --sdt=bf16 --ddt=bf16 --tag=aBx16b ic2iw2ow6
+--reset --sdt=f16 --tag=axb ic16id6ih6iw6od12oh6ow3
+--reset --sdt=u8 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih3iw7oh6ow21
+--reset --sdt=s8 --ddt=u8 --alg=linear ic8ih5iw7oh3ow11
+--reset --sdt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=u8 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic23ih60iw30oh60ow75
+--reset --sdt=bf16 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic3iw20ow17
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --sdt=u8 --ddt=u8 --tag=axb ic8iw14ow7
+--reset --sdt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw151ow300
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih5iw10oh3ow11
+--reset --sdt=s32 --ddt=f16 --tag=aBx16b --alg=linear ic8id2ih4iw6od4oh8ow12
+--reset --sdt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih5iw10oh3ow11
+--reset --sdt=bf16 --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=s8 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih5iw7oh3ow11
+--reset --sdt=s32 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8iw14ow7
+--reset --sdt=s8 --ddt=s8 --alg=linear ic19id6od4
+--reset --sdt=s32 --ddt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic5iw42ow14
+--reset --ddt=bf16 --tag=axb --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=f16 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih5iw7oh3ow11
+--reset --sdt=u8 --ddt=f16 --alg=linear ic8ih15iw5oh3ow11
+--reset --sdt=s32 --ddt=u8 --tag=axb ic32iw32ow6
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b ic23ih60iw30oh60ow75
+--reset --sdt=u8 --ddt=u8 --tag=aBx16b ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih15iw10oh73ow11
+--reset --sdt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6od3
+--reset --sdt=u8 --ddt=f16 --tag=aBx16b ic16id6ih6iw6od12oh6ow3
+--reset --sdt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=s8 --ddt=u8 --tag=axb --alg=linear ic9id3ih6iw4od4oh8ow9
+--reset --sdt=s32 --tag=axb --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --ddt=f16 --tag=aBx16b ic18ih14iw7oh6ow12
+--reset --sdt=s8 --tag=axb --alg=linear ic64iw32ow64
+--reset --sdt=s32 ic64iw32ow64
+--reset --sdt=bf16 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17iw17ow20
+--reset --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih5iw7oh3ow11
+--reset --sdt=s32 --ddt=s32 --tag=aBx16b --alg=linear ic8ih5iw7oh3ow11
+--reset --sdt=f16 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic3iw20ow17
+--reset --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23iw525ow5
+--reset --sdt=u8 --ddt=s8 --tag=axb --alg=linear ic32iw32ow6
+--reset --sdt=bf16 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic2iw2ow6
+--reset --sdt=s8 --ddt=s8 --tag=axb --alg=linear ic19id6od4
+--reset --sdt=s32 --ddt=bf16 --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear ic16ih5iw10oh3ow11
+--reset --sdt=s32 --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih4iw9oh63ow13
+--reset --sdt=u8 --ddt=bf16 --tag=axb --alg=linear ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=bf16 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic2iw2ow6
+--reset --sdt=f16 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh6ow3
+--reset --sdt=s32 --ddt=f16 --tag=axb ic1iw21ow13
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=aBx16b ic2iw2ow6
+--reset --ddt=bf16 --tag=aBx16b ic18ih14iw7oh6ow12
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --alg=linear ic17iw17ow20
+--reset --sdt=s32 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=f16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=u8 --ddt=bf16 --alg=linear ic8ih4iw9oh63ow13
+--reset --sdt=u8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17iw17ow20
+--reset --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih4iw9oh63ow13
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=f16 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s32 --ddt=f16 --tag=axb ic8id2ih4iw6od4oh8ow12
+--reset --sdt=bf16 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=bf16 --ddt=bf16 ic3iw20ow17
+--reset --sdt=s32 --ddt=s32 --tag=axb --alg=linear ic19id6od4
+--reset --sdt=u8 --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s8 --ddt=s32 --tag=axb --alg=linear ic8iw14ow7
+--reset --sdt=s8 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=u8 --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic2iw2ow6
+--reset --tag=aBx16b --alg=linear ic64iw32ow64
+--reset --sdt=s8 --alg=linear ic32iw32ow6
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b --alg=linear ic2iw2ow6
+--reset --sdt=f16 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8iw14ow7
+--reset --sdt=s8 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic64iw32ow64
+--reset --sdt=f16 ic16id6od3
+--reset --sdt=u8 --ddt=s8 ic1iw21ow13
+--reset --sdt=u8 --ddt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih15iw5oh3ow11
+--reset --sdt=f16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17ih6iw12oh7ow14
+--reset --sdt=u8 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic64iw32ow64
+--reset --sdt=s8 --ddt=s32 --tag=aBx16b ic8ih14iw7oh6ow3
+--reset --sdt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic1iw21ow13
+--reset --dir=BWD_D --ddt=bf16 --tag=axb --alg=linear ic8ih5iw7oh3ow11
+--reset --sdt=bf16 --ddt=f16 --alg=linear ic2iw2ow6
+--reset --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih3iw7oh6ow21
+--reset --sdt=s8 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih3iw7oh6ow21
+--reset --sdt=bf16 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --sdt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=bf16 --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic5iw42ow14
+--reset --sdt=bf16 --ddt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw32ow6
+--reset --sdt=f16 --tag=aBx16b ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b --alg=linear ic3iw20ow17
+--reset --sdt=s32 --tag=aBx16b --alg=linear ic3iw20ow17
+--reset --sdt=u8 --ddt=f16 ic32iw32ow6
+--reset --sdt=s32 --ddt=s8 ic8ih5iw7oh3ow11
+--reset --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic1iw21ow13
+--reset mb1ic512iw65536ow32768
+--reset --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic5iw42ow14
+--reset --sdt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic3iw20ow17
+--reset --sdt=u8 --ddt=u8 --alg=linear ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --ddt=bf16 ic8ih15iw5oh3ow11
+--reset --sdt=s32 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17iw17ow20
+--reset --sdt=s32 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih5iw7oh3ow11
+--reset --sdt=s8 --ddt=s8 --alg=linear ic32iw32ow6
+--reset --sdt=s8 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih15iw5oh3ow11
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic64iw32ow64
+--reset --sdt=bf16 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s8 --ddt=bf16 --tag=axb ic23ih60iw30oh60ow75
+--reset --sdt=f16 --ddt=bf16 --alg=linear ic8ih6iw24oh6ow24
+--reset --sdt=s8 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih14iw7oh14ow7
+--reset --sdt=u8 --ddt=s32 --tag=axb --alg=linear ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=bf16 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic3iw20ow17
+--reset --sdt=s8 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --sdt=u8 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17ih6iw12oh7ow14
+--reset --sdt=f16 --ddt=f16 --tag=aBx16b ic2iw2ow6
+--reset --sdt=bf16 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic2iw2ow6
+--reset --sdt=s8 --ddt=u8 --tag=axb ic8ih6iw24oh6ow24
+--reset --sdt=s8 --ddt=f16 --alg=linear ic8ih14iw7oh14ow7
+--reset --sdt=f16 --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic32iw151ow300
+--reset --sdt=bf16 --tag=axb --alg=linear ic18ih14iw7oh6ow12
+--reset --dir=BWD_D --ddt=bf16 --alg=linear ic3iw20ow17
+--reset --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=s32 --ddt=s32 --tag=axb --alg=linear ic8ih6iw24oh6ow24
+--reset --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23iw525ow5
+--reset --sdt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=s32 --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic5iw42ow14
+--reset --sdt=s8 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih15iw10oh73ow11
+--reset --sdt=s8 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih6iw24oh6ow24
+--reset --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --sdt=f16 --ddt=f16 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=u8 ic2iw2ow6
+--reset --sdt=s32 --ddt=s32 --tag=axb ic32iw151ow300
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=aBx16b --alg=linear ic3iw20ow17
+--reset --sdt=s8 --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=u8 --ddt=bf16 --tag=aBx16b ic16id6ih6iw6od12oh6ow3
+--reset --sdt=bf16 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=s8 --ddt=bf16 --tag=axb ic8ih14iw7oh6ow3
+--reset --sdt=bf16 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih15iw5oh3ow11
+--reset --sdt=bf16 --ddt=f16 --alg=linear ic8id2ih4iw6od4oh8ow12
+--reset --dir=BWD_D --ddt=bf16 --tag=aBx16b ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih3iw7oh6ow21
+--reset --sdt=bf16 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6ih6iw6od12oh6ow3
+--reset --ddt=f16 --alg=linear ic17iw17ow20
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --sdt=s32 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw32ow6
+--reset --sdt=s8 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --dir=BWD_D --alg=linear ic8ih4iw9oh63ow13
+--reset --sdt=s32 --ddt=bf16 --tag=axb --alg=linear ic8ih14iw7oh6ow3
+--reset --sdt=bf16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic23iw525ow5
+--reset --sdt=u8 --ddt=s8 --tag=axb ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=bf16 --tag=axb --alg=linear ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=bf16 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --dir=BWD_D --tag=axb ic19id6od4
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8iw14ow7
+--reset --tag=aBx16b --alg=linear ic23iw525ow5
+--reset --sdt=f16 --ddt=f16 --tag=aBx16b ic19id6od4
+--reset --sdt=f16 --ddt=f16 --alg=linear ic23iw525ow5
+--reset --sdt=u8 --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih15iw5oh3ow11
+--reset --sdt=f16 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh14ow7
+--reset --sdt=f16 --ddt=bf16 --tag=axb ic8ih14iw7oh6ow3
+--reset --sdt=bf16 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic9id3ih6iw4od4oh8ow9
+--reset --ddt=bf16 --alg=linear ic18ih14iw7oh6ow12
+--reset --sdt=s8 --ddt=bf16 --tag=axb ic23iw525ow5
+--reset --sdt=bf16 --ddt=bf16 --alg=linear ic5iw42ow14
+--reset --sdt=u8 --alg=linear ic8ih4iw9oh63ow13
+--reset --sdt=f16 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17ih6iw12oh7ow14
+--reset --sdt=s8 --ddt=s32 --tag=axb --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=f16 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic32id31ih50iw31od16oh77ow16
+--reset --sdt=u8 --ddt=bf16 --tag=axb --alg=linear ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=u8 --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6ih6iw6od12oh6ow3
+--reset --tag=aBx16b --alg=linear ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s32 --ddt=f16 --tag=axb --alg=linear ic32iw151ow300
+--reset --sdt=bf16 --alg=linear ic8ih14iw7oh14ow7
+--reset --sdt=s32 --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic5iw42ow14
+--reset --sdt=s8 ic17ih6iw12oh7ow14
+--reset --sdt=bf16 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16ih5iw10oh3ow11
+--reset --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32iw151ow300
+--reset --sdt=f16 --ddt=bf16 ic23iw525ow5
+--reset --ddt=bf16 --tag=aBx16b ic23iw525ow5
+--reset --sdt=u8 --ddt=f16 --tag=aBx16b --alg=linear ic9id3ih6iw4od4oh8ow9
+--reset --sdt=bf16 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s8 --ddt=bf16 --tag=axb ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b --alg=linear ic32iw32ow6
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b --alg=linear ic8ih4iw9oh63ow13
+--reset --sdt=s32 --ddt=f16 ic8ih15iw5oh3ow11
+--reset --sdt=s8 --ddt=f16 --tag=axb --alg=linear ic32iw151ow300
+--reset --sdt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic5iw42ow14
+--reset --sdt=s32 --tag=aBx16b --alg=linear ic16ih5iw10oh3ow11
+--reset --ddt=bf16 ic16id6od3
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=f16 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --sdt=bf16 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih6iw24oh6ow24
+--reset --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=u8 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih15iw5oh3ow11
+--reset --sdt=f16 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic18ih14iw7oh6ow12
+--reset --sdt=s32 --tag=axb --alg=linear ic8ih14iw7oh6ow3
+--reset --sdt=u8 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --alg=linear ic8ih3iw7oh6ow21
+--reset --sdt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw151ow300
+--reset --sdt=bf16 --ddt=f16 --tag=axb --alg=linear ic17ih6iw12oh7ow14
+--reset --sdt=s32 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17ih6iw12oh7ow14
+--reset --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic19id6od4
+--reset --sdt=u8 --ddt=s32 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=bf16 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic23iw525ow5
+--reset --sdt=bf16 --ddt=f16 --alg=linear ic8iw14ow7
+--reset --dir=BWD_D --sdt=bf16 --tag=axb --alg=linear ic8ih4iw9oh63ow13
+--reset --sdt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s8 --ddt=s8 --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23iw525ow5
+--reset --sdt=u8 --tag=aBx16b --alg=linear ic32iw32ow6
+--reset --sdt=f16 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh6ow3
+--reset --sdt=bf16 --ddt=bf16 ic8iw14ow7
+--reset --sdt=u8 --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=u8 --ddt=bf16 --alg=linear ic23ih60iw30oh60ow75
+--reset --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic1iw21ow13
+--reset --sdt=s32 ic17ih6iw12oh7ow14
+--reset --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic1iw21ow13
+--reset --sdt=f16 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8iw14ow7
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=u8 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih4iw9oh63ow13
+--reset --sdt=f16 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic64iw32ow64
+--reset --sdt=s32 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17iw17ow20
+--reset --sdt=f16 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic3iw20ow17
+--reset --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=s8 --tag=axb --alg=linear ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b ic18ih14iw7oh6ow12
+--reset --sdt=bf16 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6od3
+--reset --sdt=s8 --ddt=u8 ic16id6od3
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b ic8ih3iw7oh6ow21
+--reset --sdt=bf16 --ddt=f16 --tag=aBx16b ic17ih6iw12oh7ow14
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --ddt=f16 --tag=axb ic16ih15iw10oh73ow11
+--reset --sdt=s8 --ddt=s8 --tag=aBx16b ic17ih6iw12oh7ow14
+--reset --sdt=f16 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh6ow3
+--reset --sdt=s32 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17ih6iw12oh7ow14
+--reset --sdt=s8 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih4iw9oh63ow13
+--reset --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6od3
+--reset --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic5iw42ow14
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17iw17ow20
+--reset --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --sdt=s8 --ddt=s32 ic8ih6iw24oh6ow24
+--reset --sdt=u8 --ddt=u8 --tag=axb --alg=linear ic32iw151ow300
+--reset --sdt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih6iw24oh6ow24
+--reset --sdt=s32 --ddt=u8 ic2iw2ow6
+--reset --ddt=f16 --tag=aBx16b --alg=linear ic64iw32ow64
+--reset --ddt=f16 --alg=linear ic5iw42ow14
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 ic32iw32ow6
+--reset --sdt=u8 --ddt=s32 --tag=axb ic3iw20ow17
+--reset --sdt=s32 --ddt=s8 --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s32 --alg=linear ic5iw42ow14
+--reset --sdt=bf16 --ddt=bf16 --tag=axb ic8ih6iw24oh6ow24
+--reset --sdt=bf16 --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17ih6iw12oh7ow14
+--reset --sdt=s32 --ddt=s32 ic23iw525ow5
+--reset --sdt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih5iw7oh3ow11
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b ic16ih5iw10oh3ow11
+--reset --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6od3
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b ic64iw32ow64
+--reset --sdt=s8 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih5iw10oh3ow11
+--reset --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17ih6iw12oh7ow14
+--reset --sdt=s8 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih5iw7oh3ow11
+--reset --sdt=u8 --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic18ih14iw7oh6ow12
+--reset --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih6iw24oh6ow24
+--reset --sdt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --sdt=u8 --tag=axb --alg=linear ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s8 --ddt=s8 --tag=axb ic2iw2ow6
+--reset --sdt=s8 --tag=axb ic5iw42ow14
+--reset --sdt=f16 --tag=aBx16b ic23ih60iw30oh60ow75
+--reset --sdt=f16 --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --alg=linear ic2iw2ow6
+--reset --sdt=f16 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16ih15iw10oh73ow11
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=s32 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --ddt=f16 --tag=axb ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=u8 --ddt=s32 --tag=aBx16b ic17iw17ow20
+--reset --sdt=bf16 --ddt=bf16 ic8ih4iw9oh63ow13
+--reset --sdt=s8 --ddt=s8 --alg=linear ic32iw151ow300
+--reset --sdt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6od3
+--reset --sdt=s8 --ddt=f16 --tag=axb --alg=linear ic64iw32ow64
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b ic18ih14iw7oh6ow12
+--reset --sdt=s32 --ddt=bf16 ic8ih5iw7oh3ow11
+--reset --sdt=u8 --ddt=u8 --tag=axb --alg=linear ic17ih6iw12oh7ow14
+--reset --sdt=s32 --ddt=u8 --alg=linear ic17iw17ow20
+--reset --sdt=u8 --tag=aBx16b --alg=linear ic17ih6iw12oh7ow14
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b --alg=linear ic9id3ih6iw4od4oh8ow9
+--reset --sdt=f16 --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic3iw20ow17
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=axb ic8iw14ow7
+--reset --sdt=f16 --ddt=f16 --tag=axb ic16id6od3
+--reset --sdt=s8 --ddt=s8 ic32iw151ow300
+--reset --sdt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=u8 --ddt=f16 --tag=axb ic19id6od4
+--reset --sdt=f16 --tag=axb ic8ih14iw7oh6ow3
+--reset --sdt=s8 --ddt=s8 --tag=axb --alg=linear ic3iw20ow17
+--reset --dir=BWD_D --tag=aBx16b ic16ih5iw10oh3ow11
+--reset --sdt=u8 --ddt=f16 --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih3iw7oh6ow21
+--reset --sdt=s8 --ddt=f16 --tag=axb --alg=linear ic17iw17ow20
+--reset --tag=axb ic23ih60iw30oh60ow75
+--reset --sdt=s32 --ddt=s8 --alg=linear ic64iw32ow64
+--reset --sdt=u8 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih14iw7oh6ow3
+--reset --sdt=f16 --tag=aBx16b --alg=linear ic8ih4iw9oh63ow13
+--reset --sdt=u8 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=u8 --tag=aBx16b --alg=linear ic16id6od3
+--reset --dir=BWD_D --sdt=bf16 --tag=aBx16b ic17iw17ow20
+--reset --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=u8 --tag=axb ic23ih60iw30oh60ow75
+--reset --sdt=bf16 --ddt=bf16 --tag=axb ic18ih14iw7oh6ow12
+--reset --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic3iw20ow17
+--reset --sdt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih15iw10oh73ow11
+--reset --sdt=bf16 --tag=axb ic1iw21ow13
+--reset --sdt=u8 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --dir=BWD_D --ddt=bf16 --tag=axb --alg=linear ic18ih14iw7oh6ow12
+--reset --sdt=u8 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih15iw10oh73ow11
+--reset --sdt=s8 --ddt=bf16 --tag=aBx16b ic19id6od4
+--reset --sdt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic1iw21ow13
+--reset --sdt=f16 --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic23iw525ow5
+--reset --sdt=bf16 --ddt=f16 --tag=axb ic2iw2ow6
+--reset --sdt=u8 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic19id6od4
+--reset --sdt=u8 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17iw17ow20
+--reset --sdt=u8 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23iw525ow5
+--reset --sdt=u8 --ddt=s32 --tag=aBx16b --alg=linear ic8ih4iw9oh63ow13
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=bf16 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=bf16 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih15iw5oh3ow11
+--reset --sdt=s32 --ddt=f16 --tag=aBx16b --alg=linear ic8ih14iw7oh6ow3
+--reset --sdt=bf16 --ddt=bf16 ic32iw151ow300
+--reset --sdt=s32 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --tag=aBx16b ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s8 --ddt=u8 --tag=axb --alg=linear ic16ih5iw10oh3ow11
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b --alg=linear ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=u8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=bf16 --tag=aBx16b ic3iw20ow17
+--reset --sdt=s32 --ddt=bf16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=u8 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic2iw2ow6
+--reset --sdt=s8 --ddt=f16 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s8 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32iw151ow300
+--reset --sdt=s32 --ddt=s8 ic17ih6iw12oh7ow14
+--reset --dir=BWD_D --alg=linear ic64iw32ow64
+--reset --dir=BWD_D --sdt=bf16 --tag=axb --alg=linear ic2iw2ow6
+--reset --sdt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=s8 --tag=axb --alg=linear ic32iw32ow6
+--reset --sdt=f16 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16ih5iw10oh3ow11
+--reset --sdt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic3iw20ow17
+--reset --sdt=bf16 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh14ow7
+--reset --dir=BWD_D ic18ih14iw7oh6ow12
+--reset --sdt=bf16 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8iw14ow7
+--reset --ddt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s8 --ddt=s32 ic17ih6iw12oh7ow14
+--reset --sdt=s32 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw32ow6
+--reset --sdt=f16 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic32iw32ow6
+--reset --sdt=s32 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih6iw24oh6ow24
+--reset --sdt=s8 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic2iw2ow6
+--reset ic32iw151ow300
+--reset --sdt=s8 --ddt=s32 ic8ih4iw9oh63ow13
+--reset --sdt=bf16 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic5iw42ow14
+--reset --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s8 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s8 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih15iw5oh3ow11
+--reset --sdt=f16 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic5iw42ow14
+--reset --ddt=bf16 --tag=aBx16b --alg=linear ic8ih4iw9oh63ow13
+--reset --sdt=u8 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --sdt=f16 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic19id6od4
+--reset --sdt=s32 --tag=aBx16b ic3iw20ow17
+--reset --dir=BWD_D --ddt=bf16 --tag=axb ic16ih5iw10oh3ow11
+--reset --sdt=f16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic19id6od4
+--reset --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6ih6iw6od12oh6ow3
+--reset --ddt=f16 --tag=aBx16b ic9id3ih6iw4od4oh8ow9
+--reset --sdt=s8 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw151ow300
+--reset --sdt=bf16 --ddt=bf16 --tag=axb ic2iw2ow6
+--reset --sdt=s8 --tag=aBx16b ic16ih5iw10oh3ow11
+--reset --sdt=u8 --ddt=s8 --tag=axb --alg=linear ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic64iw32ow64
+--reset --sdt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic1iw21ow13
+--reset --sdt=s8 --ddt=bf16 --tag=axb --alg=linear ic17iw17ow20
+--reset --sdt=s32 --tag=aBx16b ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=bf16 --tag=axb --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=u8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic3iw20ow17
+--reset --sdt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih5iw10oh3ow11
+--reset --sdt=f16 --ddt=bf16 --tag=axb --alg=linear ic8ih14iw7oh14ow7
+--reset --sdt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=s32 --ddt=s8 --alg=linear ic8ih5iw7oh3ow11
+--reset --sdt=s32 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8iw14ow7
+--reset --sdt=u8 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih5iw10oh3ow11
+--reset --sdt=f16 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s32 --ddt=s8 --tag=axb ic3iw20ow17
+--reset --sdt=f16 --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6od3
+--reset --sdt=u8 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic19id6od4
+--reset --sdt=s8 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic3iw20ow17
+--reset --sdt=s8 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s8 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8iw14ow7
+--reset --sdt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw32ow6
+--reset --sdt=s32 --ddt=u8 --tag=axb --alg=linear ic5iw42ow14
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17ih6iw12oh7ow14
+--reset --sdt=bf16 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih3iw7oh6ow21
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b ic8ih4iw9oh63ow13
+--reset --sdt=bf16 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih15iw5oh3ow11
+--reset --dir=BWD_D ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s32 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23iw525ow5
+--reset --sdt=f16 --tag=axb --alg=linear ic8id2ih4iw6od4oh8ow12
+--reset --sdt=bf16 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=bf16 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic3iw20ow17
+--reset --sdt=u8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32iw151ow300
+--reset --sdt=f16 --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic23iw525ow5
+--reset --sdt=s32 --ddt=u8 --tag=axb --alg=linear ic8ih5iw7oh3ow11
+--reset --sdt=s32 --ddt=f16 --alg=linear ic9id3ih6iw4od4oh8ow9
+--reset --sdt=f16 --ddt=bf16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=u8 --ddt=bf16 --tag=axb --alg=linear ic64iw32ow64
+--reset --sdt=f16 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh14ow7
+--reset --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s32 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih15iw5oh3ow11
+--reset --sdt=s32 --ddt=s32 --tag=aBx16b ic17iw17ow20
+--reset --sdt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --dir=BWD_D --tag=axb ic8iw14ow7
+--reset --sdt=bf16 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=u8 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --sdt=s8 --ddt=s8 --tag=axb ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=u8 --alg=linear ic8ih6iw24oh6ow24
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b --alg=linear ic8ih6iw24oh6ow24
+--reset --sdt=u8 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=bf16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh6ow3
+--reset --sdt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6ih6iw6od12oh6ow3
+--reset --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=f16 --ddt=f16 --tag=axb ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=f16 --ddt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic5iw42ow14
+--reset --sdt=s32 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh14ow7
+--reset --sdt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh14ow7
+--reset --dir=BWD_D --sdt=bf16 --tag=axb ic8iw14ow7
+--reset --sdt=u8 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --sdt=f16 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b ic17ih6iw12oh7ow14
+--reset --ddt=f16 --alg=linear ic8ih3iw7oh6ow21
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b ic8ih14iw7oh6ow3
+--reset --sdt=u8 --ddt=s8 --tag=axb ic23ih60iw30oh60ow75
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=axb --alg=linear ic18ih14iw7oh6ow12
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --sdt=f16 --ddt=f16 --tag=axb --alg=linear ic1iw21ow13
+--reset --sdt=bf16 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih15iw10oh73ow11
+--reset --sdt=bf16 --ddt=f16 ic64iw32ow64
+--reset --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17iw17ow20
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b --alg=linear ic8ih6iw24oh6ow24
+--reset --sdt=s32 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32iw151ow300
+--reset --sdt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23ih60iw30oh60ow75
+--reset --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=u8 --ddt=f16 --tag=axb --alg=linear ic8ih14iw7oh6ow3
+--reset --sdt=u8 --ddt=s8 --alg=linear ic3iw20ow17
+--reset --sdt=u8 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic18ih14iw7oh6ow12
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b ic23iw525ow5
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih6iw24oh6ow24
+--reset --sdt=s8 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32iw151ow300
+--reset --sdt=bf16 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8id2ih4iw6od4oh8ow12
+--reset --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --sdt=s8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih6iw24oh6ow24
+--reset --dir=BWD_D --ddt=bf16 --tag=aBx16b --alg=linear ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=u8 --tag=aBx16b --alg=linear ic5iw42ow14
+--reset --sdt=s32 --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih3iw7oh6ow21
+--reset --sdt=s32 --ddt=s8 --tag=axb ic16id6od3
+--reset --sdt=s8 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17ih6iw12oh7ow14
+--reset --sdt=s32 --tag=axb ic17iw17ow20
+--reset --sdt=bf16 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic5iw42ow14
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --alg=linear ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s8 ic8iw14ow7
+--reset --ddt=f16 --tag=axb --alg=linear ic8ih14iw7oh6ow3
+--reset --sdt=bf16 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih5iw7oh3ow11
+--reset --dir=BWD_D --sdt=bf16 --alg=linear ic8ih3iw7oh6ow21
+--reset --sdt=s8 --ddt=s32 --alg=linear ic1iw21ow13
+--reset --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s32 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih6iw24oh6ow24
+--reset --sdt=s8 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=s32 --ddt=bf16 ic23ih60iw30oh60ow75
+--reset --sdt=bf16 --ddt=bf16 --alg=linear mb1ic512iw65536ow32768
+--reset --ddt=bf16 --tag=aBx16b --alg=linear ic16id6od3
+--reset --dir=BWD_D --tag=axb ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset ic64iw32ow64
+--reset --sdt=f16 --alg=linear ic8ih3iw7oh6ow21
+--reset --sdt=f16 --ddt=bf16 ic16id6ih6iw6od12oh6ow3
+--reset --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=u8 --ddt=s32 --tag=axb ic8ih15iw5oh3ow11
+--reset --sdt=s8 --ddt=s8 --tag=axb ic8ih3iw7oh6ow21
+--reset --sdt=s32 --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=bf16 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s8 --ddt=u8 --tag=axb --alg=linear ic16ih15iw10oh73ow11
+--reset --sdt=bf16 --ddt=bf16 --tag=aBx16b --alg=linear ic8ih14iw7oh14ow7
+--reset --sdt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih4iw9oh63ow13
+--reset --dir=BWD_D --tag=aBx16b ic32iw151ow300
+--reset --sdt=s8 --ddt=bf16 --tag=axb --alg=linear ic64iw32ow64
+--reset --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --tag=axb --alg=linear ic8ih14iw7oh14ow7
+--reset --sdt=u8 --ddt=s8 --tag=axb ic23iw525ow5
+--reset --sdt=s8 --ddt=bf16 --tag=aBx16b --alg=linear ic8ih15iw5oh3ow11
+--reset --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic1iw21ow13
+--reset --sdt=bf16 --ddt=bf16 ic17iw17ow20
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 ic8iw14ow7
+--reset --ddt=bf16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh14ow7
+--reset --sdt=u8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic18ih14iw7oh6ow12
+--reset --dir=BWD_D --ddt=bf16 --tag=aBx16b ic8id2ih4iw6od4oh8ow12
+--reset --sdt=u8 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic2iw2ow6
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b --alg=linear ic16id6od3
+--reset --sdt=bf16 --ddt=bf16 ic8ih14iw7oh14ow7
+--reset --sdt=s32 --ddt=u8 --alg=linear ic8ih3iw7oh6ow21
+--reset --sdt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8iw14ow7
+--reset --sdt=u8 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih4iw9oh63ow13
+--reset --sdt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic1iw21ow13
+--reset --sdt=bf16 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih4iw9oh63ow13
+--reset --sdt=f16 --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih15iw10oh73ow11
+--reset --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh6ow3
+--reset --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic18ih14iw7oh6ow12
+--reset --sdt=s8 --ddt=f16 --alg=linear ic8ih6iw24oh6ow24
+--reset --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih4iw9oh63ow13
+--reset --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s32 --ddt=u8 --tag=axb --alg=linear ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=s32 --tag=axb ic64iw32ow64
+--reset --sdt=f16 --ddt=bf16 --tag=axb --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=u8 --ddt=f16 ic8ih6iw24oh6ow24
+--reset --sdt=bf16 --ddt=bf16 --tag=axb ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=f16 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih4iw9oh63ow13
+--reset --sdt=f16 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16ih15iw10oh73ow11
+--reset --sdt=u8 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23iw525ow5
+--reset --sdt=f16 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh14ow7
+--reset --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih4iw9oh63ow13
+--reset --sdt=s8 --ddt=s8 --tag=aBx16b --alg=linear ic9id3ih6iw4od4oh8ow9
+--reset --sdt=s8 --ddt=bf16 --tag=aBx16b ic16ih15iw10oh73ow11
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=axb --alg=linear ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=f16 --ddt=bf16 --tag=axb ic32id31ih50iw31od16oh77ow16
+--reset --dir=BWD_D --sdt=bf16 --alg=linear ic9id3ih6iw4od4oh8ow9
+--reset --sdt=s32 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17ih6iw12oh7ow14
+--reset --sdt=u8 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32id31ih50iw31od16oh77ow16
+--reset --sdt=bf16 --ddt=f16 --tag=axb --alg=linear ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s32 --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=u8 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw151ow300
+--reset --sdt=u8 --ddt=s32 --alg=linear ic16ih15iw10oh73ow11
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --sdt=f16 --ddt=bf16 --tag=axb ic3iw20ow17
+--reset --ddt=f16 --tag=axb --alg=linear ic23iw525ow5
+--reset --sdt=bf16 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw32ow6
+--reset --sdt=bf16 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih15iw10oh73ow11
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh14ow7
+--reset --sdt=f16 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8iw14ow7
+--reset --sdt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --sdt=s32 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --sdt=s8 --ddt=bf16 --tag=aBx16b --alg=linear ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=s32 --alg=linear ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=f16 --tag=axb --alg=linear ic8ih14iw7oh6ow3
+--reset --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic18ih14iw7oh6ow12
+--reset --sdt=s32 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6od3
+--reset --sdt=u8 --ddt=f16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic9id3ih6iw4od4oh8ow9
+--reset --ddt=f16 --alg=linear ic17ih6iw12oh7ow14
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --alg=linear ic8ih14iw7oh6ow3
+--reset --ddt=bf16 --tag=axb --alg=linear ic8ih3iw7oh6ow21
+--reset --sdt=s8 --ddt=u8 --tag=axb ic17ih6iw12oh7ow14
+--reset --sdt=s8 --ddt=f16 --tag=axb ic1iw21ow13
+--reset --sdt=u8 --ddt=s32 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=f16 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic3iw20ow17
+--reset --sdt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih15iw5oh3ow11
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --alg=linear ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=bf16 --ddt=bf16 --tag=axb --alg=linear ic8iw14ow7
+--reset --dir=BWD_D --tag=aBx16b --alg=linear ic8ih6iw24oh6ow24
+--reset --sdt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic64iw32ow64
+--reset --sdt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --dir=BWD_D --ddt=bf16 --tag=axb --alg=linear ic8id2ih4iw6od4oh8ow12
+--reset --dir=BWD_D --tag=axb ic8ih3iw7oh6ow21
+--reset --sdt=u8 --ddt=s32 --tag=aBx16b ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=f16 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic23iw525ow5
+--reset --sdt=s32 --ddt=s8 --tag=axb ic1iw21ow13
+--reset --ddt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw32ow6
+--reset --sdt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=bf16 --ddt=s8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6od3
+--reset --sdt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih15iw10oh73ow11
+--reset --sdt=bf16 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic23iw525ow5
+--reset --sdt=bf16 --tag=axb ic17iw17ow20
+--reset --sdt=bf16 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih6iw24oh6ow24
+--reset --sdt=s8 --ddt=s8 --tag=aBx16b --alg=linear ic8ih6iw24oh6ow24
+--reset --sdt=bf16 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=s32 --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s8 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic3iw20ow17
+--reset --sdt=s8 --ddt=bf16 --tag=aBx16b ic8ih5iw7oh3ow11
+--reset --sdt=f16 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic3iw20ow17
+--reset --sdt=u8 --ddt=bf16 --tag=aBx16b ic8iw14ow7
+--reset --dir=BWD_D --sdt=bf16 ic1iw21ow13
+--reset --sdt=u8 --ddt=s32 --tag=aBx16b ic23iw525ow5
+--reset --sdt=s8 --ddt=s8 --tag=axb --alg=linear ic5iw42ow14
+--reset --sdt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s8 --ddt=bf16 --tag=axb ic8iw14ow7
+--reset --sdt=s8 ic64iw32ow64
+--reset --sdt=u8 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=bf16 --ddt=f16 --tag=aBx16b --alg=linear ic8ih15iw5oh3ow11
+--reset --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic32iw151ow300
+--reset --dir=BWD_D --sdt=bf16 --alg=linear ic8ih14iw7oh6ow3
+--reset --sdt=s32 --ddt=s8 --alg=linear ic23iw525ow5
+--reset --sdt=bf16 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic64iw32ow64
+--reset --sdt=u8 --ddt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih6iw24oh6ow24
+--reset --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic18ih14iw7oh6ow12
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b --alg=linear ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=bf16 --tag=aBx16b ic16ih15iw10oh73ow11
+--reset --ddt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic17ih6iw12oh7ow14
+--reset --dir=BWD_D ic16id6od3
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=axb ic19id6od4
+--reset --sdt=bf16 --tag=axb --alg=linear ic5iw42ow14
+--reset --sdt=f16 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic64iw32ow64
+--reset --sdt=f16 --ddt=bf16 --tag=axb ic16ih15iw10oh73ow11
+--reset --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=bf16 --tag=aBx16b ic18ih14iw7oh6ow12
+--reset --ddt=bf16 --tag=aBx16b --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=u8 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih15iw10oh73ow11
+--reset --sdt=f16 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic3iw20ow17
+--reset --tag=axb ic3iw20ow17
+--reset --sdt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih5iw7oh3ow11
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b ic5iw42ow14
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --alg=linear ic8ih6iw24oh6ow24
+--reset --sdt=s32 --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic32iw32ow6
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s8 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih3iw7oh6ow21
+--reset --sdt=s8 --ddt=s32 --tag=axb ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=bf16 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih15iw5oh3ow11
+--reset --ddt=f16 --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16id6od3
+--reset --sdt=u8 --ddt=bf16 --tag=aBx16b ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic3iw20ow17
+--reset --sdt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --sdt=s8 --ddt=s32 --tag=axb --alg=linear ic18ih14iw7oh6ow12
+--reset --sdt=s32 --ddt=f16 --tag=aBx16b --alg=linear ic8iw14ow7
+--reset --sdt=s32 --ddt=f16 --tag=axb --alg=linear ic8ih5iw7oh3ow11
+--reset --sdt=f16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic1iw21ow13
+--reset --sdt=f16 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=s32 --tag=axb ic8ih14iw7oh6ow3
+--reset --sdt=s32 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic1iw21ow13
+--reset --dir=BWD_D --ddt=bf16 --tag=axb ic8ih14iw7oh6ow3
+--reset --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih5iw7oh3ow11
+--reset --sdt=bf16 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic23ih60iw30oh60ow75
+--reset --sdt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --ddt=f16 --tag=aBx16b ic64iw32ow64
+--reset --sdt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih6iw24oh6ow24
+--reset --sdt=s8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih5iw10oh3ow11
+--reset --sdt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh14ow7
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b ic8ih6iw24oh6ow24
+--reset --sdt=f16 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic32iw151ow300
+--reset --sdt=u8 --ddt=s8 --tag=axb --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=s8 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic18ih14iw7oh6ow12
+--reset --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih15iw5oh3ow11
+--reset --sdt=bf16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh14ow7
+--reset --sdt=bf16 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=bf16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic19id6od4
+--reset --sdt=bf16 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic2iw2ow6
+--reset --sdt=s8 --ddt=f16 --tag=axb ic16ih5iw10oh3ow11
+--reset --sdt=bf16 --tag=aBx16b --alg=linear ic16ih5iw10oh3ow11
+--reset --ddt=f16 --tag=axb ic8iw14ow7
+--reset --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh14ow7
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=f16 --tag=axb --alg=linear ic16id6ih6iw6od12oh6ow3
+--reset --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s32 --ddt=bf16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=s8 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=u8 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih14iw7oh6ow3
+--reset --sdt=f16 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=f16 --ddt=f16 ic1iw21ow13
+--reset --sdt=f16 --ddt=bf16 --alg=linear ic9id3ih6iw4od4oh8ow9
+--reset --sdt=s8 --ddt=u8 --alg=linear ic8ih14iw7oh6ow3
+--reset --sdt=s8 --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic1iw21ow13
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic3iw20ow17
+--reset --sdt=u8 --tag=aBx16b --alg=linear ic17iw17ow20
+--reset --sdt=bf16 --ddt=f16 --tag=axb --alg=linear ic8ih6iw24oh6ow24
+--reset --sdt=u8 --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6od3
+--reset --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic9id3ih6iw4od4oh8ow9
+--reset --sdt=bf16 --tag=axb ic23iw525ow5
+--reset --sdt=u8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic2iw2ow6
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih4iw9oh63ow13
+--reset --sdt=bf16 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic5iw42ow14
+--reset --sdt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=f16 --ddt=bf16 --alg=linear ic3iw20ow17
+--reset --sdt=s8 --ddt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih5iw10oh3ow11
+--reset --sdt=s32 --ddt=bf16 --tag=axb --alg=linear ic17iw17ow20
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=aBx16b --alg=linear ic16ih15iw10oh73ow11
+--reset --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic23ih60iw30oh60ow75
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17ih6iw12oh7ow14
+--reset --sdt=s32 --ddt=s32 ic8ih6iw24oh6ow24
+--reset --sdt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=u8 --ddt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s32 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh6ow3
+--reset --dir=BWD_D --tag=aBx16b ic8ih5iw7oh3ow11
+--reset --sdt=s32 --ddt=bf16 --tag=axb --alg=linear ic32iw151ow300
+--reset --sdt=s32 --ddt=s32 --tag=axb --alg=linear ic18ih14iw7oh6ow12
+--reset --sdt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih4iw9oh63ow13
+--reset --sdt=s8 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic64iw32ow64
+--reset --sdt=u8 --ddt=u8 --alg=linear ic18ih14iw7oh6ow12
+--reset --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s32 --ddt=bf16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw32ow6
+--reset --sdt=bf16 --ddt=bf16 --tag=aBx16b ic32iw151ow300
+--reset --sdt=s32 --ddt=s32 --tag=aBx16b --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=f16 --ddt=bf16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=f16 --ddt=s32 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic3iw20ow17
+--reset --sdt=f16 --tag=aBx16b ic16id6od3
+--reset --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8iw14ow7
+--reset --sdt=bf16 --tag=aBx16b ic8ih3iw7oh6ow21
+--reset --sdt=u8 --ddt=s8 --tag=aBx16b --alg=linear ic23iw525ow5
+--reset --sdt=s8 --ddt=f16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih6iw24oh6ow24
+--reset --sdt=s8 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17ih6iw12oh7ow14
+--reset --sdt=u8 --ddt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic1iw21ow13
+--reset --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh14ow7
+--reset --tag=axb --alg=linear ic256ih136iw100oh272ow200n"maskrcnn3"
+--reset --sdt=s32 --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s8 --ddt=bf16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih3iw7oh6ow21
+--reset --sdt=s32 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih15iw10oh73ow11
+--reset --sdt=bf16 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih3iw7oh6ow21
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic256ih34iw25oh68ow50n"maskrcnn1"
+--reset --sdt=u8 --tag=aBx16b --alg=linear ic64iw32ow64
+--reset --sdt=f16 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s8 --ddt=bf16 --alg=linear ic2iw2ow6
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b --alg=linear ic32id31ih50iw31od16oh77ow16
+--reset --sdt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic23iw525ow5
+--reset --sdt=s8 --ddt=s8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17ih6iw12oh7ow14
+--reset --sdt=s32 --ddt=f16 --tag=axb --alg=linear ic23iw525ow5
+--reset --sdt=bf16 --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih5iw7oh3ow11
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic64iw32ow64
+--reset --sdt=bf16 ic5iw42ow14
+--reset --ddt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=f16 --ddt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16ih5iw10oh3ow11
+--reset --sdt=s8 --ddt=u8 --tag=axb ic23ih60iw30oh60ow75
+--reset --sdt=s8 --alg=linear ic8ih3iw7oh6ow21
+--reset --sdt=f16 ic19id6od4
+--reset --sdt=u8 --ddt=bf16 --tag=aBx16b --alg=linear ic8ih14iw7oh6ow3
+--reset --ddt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh14ow7
+--reset --sdt=s8 --ddt=s32 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16id6od3
+--reset --sdt=u8 --ddt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic64iw32ow64
+--reset --sdt=s32 --ddt=s8 --tag=aBx16b ic16ih15iw10oh73ow11
+--reset --sdt=bf16 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih14iw7oh6ow3
+--reset --sdt=f16 --ddt=u8 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic8ih3iw7oh6ow21
+--reset --sdt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih3iw7oh6ow21
+--reset --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic19id6od4
+--reset --sdt=s8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih15iw5oh3ow11
+--reset --sdt=s32 --ddt=f16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17ih6iw12oh7ow14
+--reset --sdt=bf16 --ddt=bf16 ic5iw42ow14
+--reset --sdt=bf16 --ddt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih5iw7oh3ow11
+--reset --sdt=f16 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw32ow6
+--reset --sdt=s32 --ddt=f16 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s32 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic18ih14iw7oh6ow12
+--reset --ddt=bf16 --alg=linear ic8ih14iw7oh14ow7
+--reset --dir=BWD_D --ddt=bf16 ic8ih4iw9oh63ow13
+--reset --sdt=f16 --ddt=bf16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic64iw32ow64
+--reset --sdt=f16 --ddt=bf16 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=s8 --ddt=f16 --alg=linear ic8ih4iw9oh63ow13
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32iw151ow300
+--reset --sdt=s8 --ddt=s32 --tag=aBx16b --alg=linear ic256ih68iw50oh136ow100n"maskrcnn2"
+--reset --sdt=bf16 --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih15iw10oh73ow11
+--reset --sdt=bf16 --ddt=bf16 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8ih14iw7oh14ow7
+--reset --sdt=u8 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8iw14ow7
+--reset --sdt=u8 --ddt=f16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic64iw32ow64
+--reset --dir=BWD_D --sdt=bf16 ic2iw2ow6
+--reset --sdt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic3iw20ow17
+--reset --sdt=s8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic19id6od4
+--reset --sdt=bf16 --ddt=bf16 --tag=axb ic5iw42ow14
+--reset --sdt=bf16 --ddt=f16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih15iw10oh73ow11
+--reset --sdt=s8 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16ih15iw10oh73ow11
+--reset --sdt=s8 --ddt=u8 --tag=aBx16b --alg=linear ic8ih5iw7oh3ow11
+--reset --sdt=s32 --ddt=u8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih6iw24oh6ow24
+--reset --sdt=s32 --ddt=bf16 --tag=axb --alg=linear ic8ih5iw7oh3ow11
+--reset --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s32 --tag=aBx16b --alg=linear ic8ih15iw5oh3ow11
+--reset --sdt=s32 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih14iw7oh6ow3
+--reset --dir=BWD_D --sdt=bf16 --ddt=bf16 --tag=axb --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic8id2ih4iw6od4oh8ow12
+--reset --sdt=bf16 --ddt=u8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic32iw151ow300
+--reset --dir=BWD_D --sdt=bf16 --tag=aBx16b ic16ih15iw10oh73ow11
+--reset --sdt=s8 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s32 --ddt=s32 --tag=aBx16b ic8ih4iw9oh63ow13
+--reset --ddt=u8 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic64iw32ow64
+--reset --sdt=s8 --ddt=bf16 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic5iw42ow14
+--reset --sdt=u8 --ddt=s8 --tag=axb --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic17ih6iw12oh7ow14
+--reset --sdt=bf16 --ddt=bf16 ic16ih15iw10oh73ow11
+--reset --sdt=s32 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih3iw7oh6ow21
+--reset --sdt=bf16 --alg=linear ic17iw17ow20
+--reset --sdt=s32 --tag=aBx16b --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=bf16 --tag=axb ic64iw32ow64
+--reset --sdt=bf16 --ddt=bf16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih5iw10oh3ow11
+--reset --ddt=f16 --tag=aBx16b ic32id31ih50iw31od16oh77ow16
+--reset --sdt=s32 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic16ih15iw10oh73ow11
+--reset --sdt=f16 --ddt=u8 --tag=aBx16b --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic32iw32ow6
+--reset --sdt=s8 --tag=axb --alg=linear ic23ih60iw30oh60ow75
+--reset --sdt=s32 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8iw14ow7
+--reset --sdt=s8 --ddt=u8 ic8ih14iw7oh6ow3
+--reset --sdt=f16 --ddt=u8 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic3iw20ow17
+--reset --sdt=f16 --ddt=bf16 --tag=aBx16b ic8ih6iw24oh6ow24
+--reset --sdt=s32 --ddt=bf16 --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic32id31ih50iw31od16oh77ow16
+--reset --dir=BWD_D --sdt=bf16 --tag=aBx16b ic8ih14iw7oh6ow3
+--reset --sdt=s32 --ddt=s32 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic8ih15iw5oh3ow11
+--reset --sdt=s32 --ddt=s8 --tag=axb --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.25 ic16id6ih6iw6od12oh6ow3
+--reset --sdt=s32 --ddt=bf16 --tag=aBx16b --alg=linear ic2iw2ow6
+--reset --sdt=f16 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5 ic17iw17ow20
+--reset --sdt=f16 --ddt=s32 --alg=linear --attr-post-ops=sum+add:f32:per_tensor+linear:1.5:-1.2 ic16ih5iw10oh3ow11
+--reset --sdt=s32 --ddt=s32 --tag=axb --alg=linear ic1iw21ow13

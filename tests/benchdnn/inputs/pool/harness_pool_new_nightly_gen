@@ -1,0 +1,1000 @@
+--reset ic64iw32ow16kw3sw2pw0
+--reset --dir=BWD_D --dt=bf16:bf16 --tag=aBx16b --alg=avg_np ic128ih4oh2kh3ph0
+--reset --dir=FWD_I --dt=s8:s8 --tag=axb --alg=avg_p --attr-post-ops=add:f32+sub:s8:per_tensor+linear:-0.5:1.5 ic8id20ih40iw60od11oh21ow31kd2kh3kw4sd2sh2sw2pd1ph1pw1
+--reset --dir=FWD_I --dt=s32:s32 --tag=ABx16a16b --attr-post-ops=add:s32:per_oc+sub:s8:per_tensor mb16ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=f16:f16 --tag=axb --alg=avg_np --attr-post-ops=linear:0.5:-1 ic5id12od4kd3sd3pd0n"pool_ci_3d:kd_equals_sd"
+--reset --dir=BWD_D --dt=f64:f64 --alg=avg_p ic1iw2ow1kw1pw0
+--reset --dir=FWD_I --dt=s8:u8 --tag=axb --attr-post-ops=add:f32:per_oc ic8iw14ow8kw3sw2pw1
+--reset --dir=FWD_I --dt=u8:u8 --alg=avg_np --attr-post-ops=add:s32:per_oc+sub:s8:per_tensor ic8id20ih40iw60od11oh21ow31kd2kh3kw4sd2sh2sw2pd1ph1pw1
+--reset --dir=FWD_I --dt=u8:s8 --tag=axb --alg=avg_p --attr-post-ops=add:f32:per_oc ic64ih32oh16kh3sh2ph0
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdeb mb4ic128id32od16kd2sd2pd0n"bb1bce5e959dac61fa9e3181d2286c88*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abcd --alg=avg_p mb1ic16ih7oh1kh7sh2ph0n"a20652f613ee15262b8d84389db44732"
+--reset --dir=FWD_I --tag=aBx16b --alg=avg_np --attr-post-ops=add:f32+linear:-0.5:1.5 ic32id15ih20iw20od14oh17ow5kd3kh4kw4sd1sh1sw4pd1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:s8 --tag=aBcd16b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic112ih256oh128kh2sh2ph0n"6b53744004977fb0eae16443cea3b817*5"
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --attr-post-ops=add:f32:per_oc ic4ih4oh4kh3ph1
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=dacb mb16ic1024ih1iw15000oh1ow1kh1kw15000sh1sw15000ph0pw0n"ae6f279471488a88a068142a1c244c96*3"
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --alg=avg_p ic16id10od6kd3sd2pd1n"pool_ci_3d:asymmetric"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx16a16b --alg=avg_p mb16ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=f16:f16 --tag=ABx16a16b --attr-post-ops=add:f32+linear:-0.5:1.5 mb16ic64ih32oh16kh3sh2ph0
+--reset --dir=FWD_I --dt=f32:s8 --tag=axb --alg=avg_np ic64iw32ow16kw3sw2pw0
+--reset --dir=FWD_I --dt=bf16:bf16 --tag=axb --alg=avg_p --attr-post-ops=linear:0.5:-1 ic64iw32ow16kw3sw2pw0n"pool_ci_1d:regular"
+--reset --dir=FWD_I --dt=s8:s8 ic128ih4oh2kh3ph0
+--reset --dir=FWD_I --dt=u8:f16 --tag=axb ic64iw32ow16kw3sw2pw0
+--reset --dir=FWD_I --dt=f16:u8 --tag=axb ic64iw32ow16kw3sw2pw0
+--reset --dir=FWD_I --dt=s8:f16 --tag=axb ic64iw32ow16kw3sw2pw0
+--reset --dir=FWD_I --dt=u8:u8 --tag=axb --attr-post-ops=linear:0.5:-1 ic8ih14oh8kh3sh2ph1n"pool_ci_2d:asymmetric_pad"
+--reset --dir=FWD_I --dt=s32:s32 --alg=avg_np --attr-post-ops=add:f32+linear:-0.5:1.5 ic8id20ih40iw60od11oh21ow31kd2kh3kw4sd2sh2sw2pd1ph1pw1
+--reset --dt=f64:f64 --tag=aBx16b ic128ih4oh2kh3ph0
+--reset --dir=FWD_I --dt=s8:s8 --tag=ABx16a16b --alg=avg_np mb16ic1iw2ow1kw1pw0
+--reset --dir=FWD_I --dt=f16:s8 --tag=axb ic64iw32ow16kw3sw2pw0
+--reset --dir=BWD_D --dt=f16:f16 ic64iw32ow16kw3sw2pw0n"pool_ci_1d:regular"
+--reset --dir=FWD_I --dt=s32:s32 --tag=axb --alg=avg_p ic64iw32ow16kw3sw2pw0n"pool_ci_1d:regular"
+--reset --dir=BWD_D --dt=f64:f64 --alg=avg_np ic8id20ih40iw60od11oh21ow31kd2kh3kw4sd2sh2sw2pd1ph1pw1
+--reset --dir=FWD_I --dt=u8:u8 --tag=axb --attr-post-ops=add:f32+sub:s8:per_tensor+linear:-0.5:1.5 mb1ic1iw2ow1kw1pw0
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --alg=avg_np ic64iw32ow16kw3sw2pw0
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --attr-post-ops=add:f32:per_oc ic64iw32ow16kw3sw2pw0
+--reset --dir=FWD_I --dt=u8:s8 --tag=axb ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --alg=avg_np --attr-post-ops=add:f32:per_oc ic128ih4oh2kh3ph0
+--reset --dir=FWD_I --dt=f32:s8 --tag=axb --attr-post-ops=add:f32:per_oc ic128ih4oh2kh3ph0
+--reset --dir=FWD_I --dt=u8:f16 --tag=axb --alg=avg_np --attr-post-ops=add:f32:per_oc ic128ih4oh2kh3ph0
+--reset --dir=FWD_I --dt=f16:u8 --tag=axb --alg=avg_np --attr-post-ops=add:f32:per_oc ic128ih4oh2kh3ph0
+--reset --dir=FWD_I --dt=s8:f16 --tag=axb --alg=avg_np --attr-post-ops=add:f32:per_oc ic128ih4oh2kh3ph0
+--reset --dir=FWD_I --dt=s8:u8 --tag=axb --alg=avg_np ic4ih4oh4kh3ph1
+--reset --dir=FWD_I --tag=axb --alg=avg_p --attr-post-ops=add:f32:per_oc ic8iw14ow8kw3sw2pw1n"pool_ci_1d:asymmetric_pad"
+--reset --dir=FWD_I --dt=bf16:bf16 --attr-post-ops=add:s32:per_oc+sub:s8:per_tensor ic8id20ih40iw60od11oh21ow31kd2kh3kw4sd2sh2sw2pd1ph1pw1
+--reset --dir=FWD_I --dt=f16:s8 --tag=axb --alg=avg_p --attr-post-ops=add:f32:per_oc ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb --alg=avg_np ic4ih4oh4kh3ph1
+--reset --dir=FWD_I --dt=s8:u8 --tag=axb --alg=avg_p ic32id16od8kd3sd2pd0n"pool_ci_3d:regular"
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb --alg=avg_p ic32id16od8kd3sd2pd0n"pool_ci_3d:regular"
+--reset --dir=FWD_I --dt=u8:s8 --tag=axb --alg=avg_np ic16id10od6kd3sd2pd1n"pool_ci_3d:asymmetric"
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb --alg=avg_p ic16id10od6kd3sd2pd1n"pool_ci_3d:asymmetric"
+--reset --dir=FWD_I --dt=f32:s8 --tag=axb --alg=avg_p ic5id12od4kd3sd3pd0n"pool_ci_3d:kd_equals_sd"
+--reset --dir=FWD_I --dt=s8:f16 --tag=axb --alg=avg_p ic5id12od4kd3sd3pd0n"pool_ci_3d:kd_equals_sd"
+--reset --dir=FWD_I --dt=u8:f16 --tag=axb --alg=avg_p ic5id12od4kd3sd3pd0n"pool_ci_3d:kd_equals_sd"
+--reset --dir=FWD_I --dt=f16:u8 --tag=axb --alg=avg_p ic5id12od4kd3sd3pd0n"pool_ci_3d:kd_equals_sd"
+--reset --dt=f64:f64 ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dt=f64:f64 --tag=axb mb1ic64ih32oh16kh3sh2ph0
+--reset --dir=FWD_I --dt=s8:s8 --attr-post-ops=add:s32:per_oc+sub:s8:per_tensor ic32id15ih20iw20od14oh17ow5kd3kh4kw4sd1sh1sw4pd1ph0pw0
+--reset --dir=FWD_I --dt=s32:s32 --tag=ABx16a16b --attr-post-ops=add:f32+linear:-0.5:1.5 mb16ic4ih4oh4kh3ph1
+--reset --dir=FWD_I --dt=f16:f16 --tag=ABx16a16b --attr-post-ops=add:s32:per_oc+sub:s8:per_tensor mb16ic4ih4oh4kh3ph1
+--reset --dir=FWD_I --dt=bf16:bf16 --tag=ABx16a16b --attr-post-ops=add:f32+linear:-0.5:1.5 mb16ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=f16:s8 --tag=axb ic16id10od6kd3sd2pd1n"pool_ci_3d:asymmetric"
+--reset --dir=FWD_I --tag=axb --attr-post-ops=linear:0.5:-1 ic5id12od4kd3sd3pd0n"pool_ci_3d:kd_equals_sd"
+--reset --dir=FWD_I --dt=s32:s32 --tag=axb --attr-post-ops=linear:0.5:-1 ic5id12od4kd3sd3pd0n"pool_ci_3d:kd_equals_sd"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic128ih55oh27kh2sh2ph0n"e82f1b1308cf634228fb46a0145d0208"
+--reset ic32iw300ow151kw3sw2pw1
+--reset --dt=bf16:bf16 ic1iw2ow1kw1pw0
+--reset --dir=FWD_I --dt=u8:u8 ic64ih32oh16kh3sh2ph0
+--reset --dir=FWD_I --dt=s8:u8 --tag=axb ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=f32:s8 --tag=axb ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=u8:f16 --tag=axb ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=f16:u8 --tag=axb ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=s8:f16 --tag=axb ic32iw300ow151kw3sw2pw1
+--reset --dir=FWD_I --dt=u8:s8 --tag=axb ic1iw2ow1kw1pw0
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb ic1iw2ow1kw1pw0
+--reset --dir=FWD_I --dt=f16:s8 --tag=axb ic1iw2ow1kw1pw0
+--reset --dir=FWD_I --dt=s8:u8 --tag=axb ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=u8:s8 --tag=axb ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=u8:f32 --tag=axb ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=f32:u8 --tag=axb ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=s8:f32 --tag=axb ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=f32:s8 --tag=axb ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=u8:f16 --tag=axb ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=f16:u8 --tag=axb ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=s8:f16 --tag=axb ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=dacb mb16ic1024ih1iw15000oh1ow1kh1kw15000sh1sw15000ph0pw0n"fc34ac6b14b5492e5e35d800ae93e6c3*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=abcd mb1ic2ih112oh56kh3sh2ph1n"a146d275bdf84bba6a7aa081881c7184"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_p --attr-post-ops=linear:0.25 mb1ic256ih64iw128oh32ow64kh2kw2sh2sw2ph0pw0n"038cab235bd49c5c452ced5a66f07b94*5"
+--reset --tag=axb mb1ic32id13ih7iw10od3oh2ow3kd2kh2kw3sd6sh5sw4pd1ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic320ih20oh20kh9ph4n"3810bf869c5274d0f25b4820d940b6f4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic480ih28oh14kh3sh2ph0n"af351a5e277cce853ed021f6fbcaa902"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcde32a16b --alg=avg_np mb32ic672id4ih7iw7od4oh1ow1kd1kh7kw7pd0ph0pw0n"14b4eda4f2ca01a24014b8f5ccf8d751"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih300iw512oh150ow256kh3kw3sh2sw2ph0pw0n"fe5f801523ab536c74138cf9ac4828de&amp;4828e154f0d6d99ce5e280b63566ec70"
+--reset --tag=axb mb1ic32iw300ow151kw3sw2pw1
+--reset --tag=ABx16a16b mb16ic64iw32ow16kw3sw2pw2dw2
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic768ih17oh8kh3sh2ph0n"713a4527580b92a14ba5083f3db66965"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32id20ih32iw13od11oh17ow14kd2kh4kw6sd2sh2sw1pd2ph4pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic128ih128oh64kh2sh2ph0n"96d01c5a2aea2722ef26b248f91ed6d7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb3200ic1088ih17oh8kh3sh2ph0n"b4ed421c9b62f8b4471628a2fc0c7aa9"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic128ih14oh7kh2sh2ph0n"2a6e3f06ed9b26d83cccc1da8494d4bc*2"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb mb32ic64ih150oh75kh3sh2ph1n"f7a1eb7a82466726b6431f57f282cc11"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_p --attr-post-ops=linear:0.25:0.375 mb1ic256ih32oh16kh2sh2ph0n"d1e6327b8a181963ff7db52986b32f13*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih104oh52kh2sh2ph0n"3dae660f421713862c5da4521660c13d*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic336ih64oh32kh2sh2ph0n"9975bdaf7fdd6fcb33951e02d35e557c"
+--reset ic5iw15ow14kw3pw1dw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic56ih56oh28kh2sh2ph0n"3f1587ff9db1dd1dfe6add5d297155e3*6&amp;52ed5d4f982f3255d123d0448ad6a1e4*6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih56oh28kh3sh2ph0n"780731cafd558cffd375babac2865cbd*5&amp;251eab73f9b211bfeaddd3b376b67ede"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb mb4ic40ih40iw64oh20ow32kh2kw2sh2sw2ph0pw0n"d66e292282c72f40b5551e1eae836d64*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih13oh13kh13ph6n"1696bf39025d5918c5b64f0622422702"
+--reset --tag=ABx16a16b mb16ic32ih37iw19oh17ow14kh4kw6sh2sw1ph0pw0
+--reset --allow-enum-tags-only=false --tag=acdb mb14ic32ih80iw128oh40ow64kh2kw2sh2sw2ph0pw0n"e701d3cf36d2c9f0786975f1e6d9f5d3*3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdeb mb4ic256id16od8kd2sd2pd0n"6174333e2e48ea2779bacd127d6e82c9*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb14ic32ih80iw128oh40ow64kh2kw2sh2sw2ph0pw0n"3e1ff52cb68e4609476c78dde1ba5f85*6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic256ih75iw128oh75ow128kh3kw3ph1pw1n"f5dcaf5aebf8c6720631e350857e3a11*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic256ih56oh28kh2sh2ph0n"dbf668ecb9bc82e6033f94666c644a62"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic1024ih17oh8kh3sh2ph0n"289202a61375473b7948d93385a59f88*5&amp;b0e3a037891f1f37aa9a4179ecaced5f*5&amp;5d63889d4a42a557c7e9fb8e4d49b281"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih17oh8kh3sh2ph0n"5ac8e59d81a0f16a787f7c192c8a3ce3*5&amp;233737a2c138a174941e6d6137a0f710"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32ih36iw13oh17ow14kh4kw6sh2sw1ph0pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih113oh56kh3sh2ph0n"1e9bf98ca6317f4891a7111f7d65ec88*5&amp;b665bdbb1c64566d8e234caac494ea29"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic256ih35oh35kh3ph1n"e4361a6721325c8f747965c232ed84f7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih320oh160kh3sh2ph0n"a3f30fa7ed9d1af6cbb62460f3d4fe9f"
+--reset --tag=ABx16a16b mb16ic32id15ih20iw20od14oh17ow5kd3kh4kw4sd1sh1sw4pd1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic512ih13oh13kh9ph4n"aa0d1389aa1f7ac0d2e1e12b513709b8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih150iw256oh75ow128kh1kw1sh2sw2ph0pw0n"d4067de107e6b55753d11a058797dbe7"
+--reset --allow-enum-tags-only=false --tag=acdeb mb4ic128id32od16kd2sd2pd0n"fee1ac130148fb8caf0826ea2c7d508d*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic24ih112oh56kh3sh2ph1n"35144dc2b861878d1ae8f7799d6aa9fa"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic448ih28oh14kh2sh2ph0n"92abb63a2ddfed463b35928c77a1a9e4*5&amp;32802bfc257b1134bf7705158e3dbf13*25"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih253oh126kh3sh2ph0n"4b1647afb341c6525cf60a623b7148ed&amp;70f1e9d500b8aff524d7730e72697dad"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic32ih28oh14kh2sh2ph0n"0b8d8d62de02141b38f0afea205e9a26&amp;203a06f07efbba783c39b5f0619c459a"
+--reset --tag=axb mb1ic35iw33ow14kw6sw2pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih400iw569oh200ow285kh3kw3sh2sw2ph1pw1n"1f249afe145ffd5cc96aee87a6b02b3b*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic2048ih14oh14kh3ph1n"46feacfd4779756395d50f7aa66174ff"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic576ih38oh38kh3ph1n"cf2af8572c8de160c38b362bd53f2ee0*20"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih28oh14kh3sh2ph0n"876e65e328faf5d775417f1183c142a8*5&amp;9d6cfdaa4e8dae9f57c9db2426d8c6a4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb64ic64ih180oh90kh3sh2ph1n"4dd7554e9d1d0c09114f3cd6250726bc"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih128oh64kh2sh2ph0n"895531a8794fe256bb09231ff0adb5d0*5&amp;030b0fe4065c9ebd7aa345f55a0689a8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic48ih192oh96kh2sh2ph0n"8a04880530e8e01f1318d3d7d4344a00"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih667oh334kh3sh2ph1n"c76cc0b6b5e8ab09ad1d2ce783b5e8ea&amp;2ea90751f6c19d80f32a7f2bc65eb805"
+--reset --tag=axb mb1ic35ih20iw15oh17ow14kh4kw3ph0pw1
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32id36ih7iw19od17oh4ow14kd4kh5kw6sd2sh1sw1pd1ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic1024ih32iw64oh2ow2kh16kw32sh16sw32ph0pw0n"d402f72a64a26cd510b70f3483c7755a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic3ih512oh256kh2sh2ph0n"8437d5804284e6232d98bc0d081b796b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdb --alg=avg_np mb512ic1ih56oh28kh2sh2ph0n"08f51a78049f88e5600f7db50bdc568d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdeb mb4ic512id8od4kd2sd2pd0n"dbd5d3b5b3b02f14cf4478ed7a327390*128"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic256ih64oh32kh2sh2ph0n"6b0ea9e29031e9f730ed73fa33015d08*8"
+--reset --tag=axb mb1ic32id36ih7iw16od17oh4ow14kd4kh5kw3sd2sh1sw1pd1ph1pw0
+--reset --allow-enum-tags-only=false --tag=acdb mb14ic40ih40iw64oh20ow32kh2kw2sh2sw2ph0pw0n"3176f2f3c647ef604610052960496b92*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih17oh8kh3sh2ph0n"40959a859836d1829e7131a0b01e17a8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb5ic64ih224oh112kh3sh2ph1n"4c8ae9956802562bb00d533bf6ed7d6e"
+--reset --tag=axb mb1ic2048ih7oh1kh7ph0n"resnet_50:ave_pool5"
+--reset ic20ih16oh3kh16sh16ph16
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcde32b --alg=avg_np --attr-post-ops=mul:f32:2 mb1ic1024id10ih7iw7od9oh1ow1kd2kh7kw7pd0ph0pw0n"79a898ee4bdc06c91a6f32c5439fccda*5"
+--reset ic5iw42ow14kw3sw3pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic384ih20oh20kh9ph4n"68925f7b4793b06c9dc4e493f5458efb*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih8iw30oh4ow30kh2kw1sh2sw1ph0pw0n"30f58d0f67e0484c8427bdbb100170f8*5"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb4ic24ih160iw256oh80ow128kh2kw2sh2sw2ph0pw0n"a77e31d1e19c590e69fb709d7ff43194*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih17oh8kh3sh2ph0n"256dfe41b92f07f3c950a183a7e0b78a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic512ih13oh13kh5ph2n"06cc932059505e39408cad5b481e1dc4"
+--reset --allow-enum-tags-only=false --tag=acdb mb32ic256ih118iw1oh29ow1kh4kw1sh4sw1ph0pw0n"9c58c24a5836216cb1cfa962c347562e&amp;4010b6fad959899b6139586d08237666"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic256ih26oh13kh2sh2ph0n"0831f07cec1f080546264b229158b5ee&amp;bca4cf100d0b88caa08f5b5d2d61aef8"
+--reset ic33id11ih12iw7od3oh3ow2kd3kh4kw2sd4sh4sw5pd0ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic32ih256oh128kh2sh2ph0n"c74e3eafbab57351ef482ca213dce996"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic128ih32oh32kh3ph1n"e7b2fc75e60489c25794be3eaf6ca875*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic480ih13oh13kh3ph1n"9c708a99c223bb41e09fe26d5d94e7df"
+--reset --tag=ABx16a16b mb16ic1024ih7oh1kh7ph0n"googlenet_v1:avg_pool5/7x7_s1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcde32b mb1ic192id40ih56iw56od40oh28ow28kd1kh3kw3sd1sh2sw2pd0ph0pw0n"95d46c2ea2dd0370153ab733def95c0e*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic48ih256oh128kh2sh2ph0n"e27117f2cb487ece43adcb1b26027002&amp;a778d9893b7771d85e7727e06452363f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih27oh13kh3sh2ph0n"4231b104d4bafaf929084bd9a55aa0e1"
+--reset ic32ih37iw33oh17ow14kh4kw6sh2sw2ph0pw0
+--reset --tag=ABx16a16b mb16ic17iw60ow31kw3sw2pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic320ih20oh20kh9ph4n"e674267322cff86d90b7265e9a0ac26e*5&amp;b3bd37812a8304faf16467ac6b3b1484"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic128ih65oh32kh3sh2ph0n"9ed0a7e26b2ced8d9b2959b69f0443ca"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic128ih56oh28kh3sh2ph1n"6ca0d05499c27a9853021799318f4e2a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic512ih13oh6kh2sh2ph0n"d2e0f94683864549831a5e82971c510e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih28oh14kh1sh2ph0n"6b3d1a427ce8d4f0582ee10ac6d1026f&amp;51ab08431b63c15c5075c6a43b1e1c71"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdb --alg=avg_np mb2048ic256ih14oh7kh2sh2ph0n"a879c48cb7b6bb012a8b65ae580414b5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic24ih112oh56kh3sh2ph0n"83a7502a5b28eca2036d19b3fd747eb5*5&amp;f7fcaa632fafb4633347dfb45da8595f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd16a16b mb16ic256ih26iw42oh13ow21kh1kw1sh2sw2ph0pw0n"1a199fbe3d992621bf3b36deb239b9bf"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih400oh200kh3sh2ph0n"9bf7940fdd511a7069a3ade3caafac92*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic128ih32oh32kh3ph1n"8aa04e0138efba7f4bdc5f8ee4d6ca45*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic768ih14oh7kh2sh2ph0n"baf7bf4c68aac2950d8d6a0f90b8719e*23"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32id15ih20iw20od14oh17ow5kd3kh4kw4sd1sh1sw4pd1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih334oh167kh1sh2ph0n"8efbe07922390721a8f7c2c2d9e754b2&amp;346a0449eb5230aded8b7e89a204dab1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic320ih20oh20kh9ph4n"aca3fab8017a3cafa0d047a5cf083fbe"
+--reset --tag=axb mb1ic35iw13ow14kw6pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih75iw128oh38ow64kh1kw1sh2sw2ph0pw0n"4cf75543e833dca21b721a2ff7df3866"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdb mb4ic256ih32oh16kh1sh2ph0n"2a642d1c3afcc229184131bbdc3297f6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic2048ih7oh1kh7ph0n"2f097964d143b69ae9b9e723ce23c6ea"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic112ih256oh128kh2sh2ph0n"7b13489fb8f36bb274d3d552da0f8add"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic832ih13oh6kh3sh2ph0n"e775800e74492e42dc1d9de08c24f765"
+--reset --tag=ABx16a16b mb16ic16ih3iw100oh1ow51kh3kw3sh1sw2ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic1280ih14oh14kh3ph1n"68dfc723fbd37c76f062b61b16764663"
+--reset ic1ih32oh6kh6sh6ph2
+--reset ic16ih103iw9oh52ow7kh3kw3sh2sw1ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic256ih35oh35kh3ph1n"f588fea0e9f2176a4f951ae27c67bdcb"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih300iw512oh150ow256kh3kw3sh2sw2ph0pw0n"4d8671e53b0c7c9e3d144f983d41539a&amp;aa5d8df461b82b9505d050a7d1274d16"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic320ih20oh20kh5ph2n"7a2c479063ed9612f60f953593b67da4*5&amp;acea385079bc707a85baef66ed5b9759"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=acdb --alg=avg_p mb1ic2048ih7oh1kh7ph0n"09f0a97254cc883fe9c50c2f083580f8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb300ic1024ih14oh7kh2sh2ph0n"6d7c69d7d2b183bcb1b2c77f7e5bee26"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih13oh13kh2ph0n"69c0ac52a9d6625fcf8b36887a38be21*5&amp;7a90d70e870c0a05ce8c2d68287dc256*5&amp;4bf23fb64e970a0b6fdc00c789a848c9&amp;ae86105510bb3da36d3a74d1f7b3751b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih13oh13kh9ph4n"7e1bf56c48b3d0d294c651746270c643"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb --alg=avg_np mb2048ic256ih14oh7kh2sh2ph0n"55cc61cbd276b5cc49d3b26988de8cd1"
+--reset --tag=ABx16a16b mb16ic64iw32ow16kw3sw2pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic1280ih8oh8kh3ph1n"6cb0d4f97a546c6916f3a5028002e669"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic832ih14oh7kh3sh2ph0n"5843aee76520e5a5524e79cac4f5d7b7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic320ih75iw128oh75ow128kh3kw3ph1pw1n"8efe3b31f230bf846f54f3abbb233d20"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic32ih512oh256kh2sh2ph0n"4c7c9db6618ff533bd46cacf4dba6560&amp;aa1956ecbe79dee41218078e602cf029"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih104oh52kh2sh2ph0n"13d105cc25a86fe1f74db68c33ab0d9b*5&amp;c1748b8cb7f7640304aee5fdba2a4814*5&amp;55eee8138c9144dd7670ad140099743e&amp;675b99e1177ae2ee0d1a2268f7973604"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb1024ic64ih112oh56kh3sh2ph0n"98e54978931f8c07b56a35469cbd1b15&amp;2f38684148f81517f0e0993e70fee499"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic2048ih8oh8kh3ph1n"8fc6633578c108f5a7a0433cc02efbc0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic256ih61oh61kh3ph1n"7a90d2ebecebb3b05f588de1864b153a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic160ih64oh32kh2sh2ph0n"c1b6305c85e022ee3a6632aabac575a3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic192ih56oh28kh2sh2ph0n"abf0babe544da50c0471909211006477*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic96ih96oh48kh2sh2ph0n"a1ddf6150cd12d1df553d9eb3b9c56df"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih28oh28kh3ph1n"f690a385f72abf316477e18161bf3679"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcde32b mb1ic256id40ih28iw28od40oh28ow28kd3kh3kw3pd1ph1pw1n"fbeccb86dcedc5958c7a6e38ec9a0d41*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --attr-post-ops=add:f16:14:aBcd16b+relu mb1ic256ih56oh28kh1sh2ph0n"e81f02f1d22af28027f75cdef5843774*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih111oh55kh3sh2ph0n"6a94d0bcb0ada3b71743fc2d33801b75"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih56oh28kh3sh2ph0n"3a4d46be6251e0117f607bdfdcf4b1ff"
+--reset --tag=axb mb1ic8id20ih40iw60od11oh21ow31kd2kh3kw4sd2sh2sw2pd1ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic768ih30oh30kh3ph1n"6459ee88d3ba6be7a01e3bff6cc5cffd*4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb3200ic1088ih17oh17kh1ph0n"bc9a7981f467dc99cf37227debfd3904"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic64ih28oh14kh2sh2ph0n"80fb03b7f7a3c412466756a5517eb888*2"
+--reset --tag=axb mb1ic17ih13oh37kh17ph20
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic320ih20oh20kh5ph2n"efa2843f2f148342b3f098a17d099562*5&amp;140518a2a020e8727b5faf5718bcf96b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic48ih256oh128kh2sh2ph0n"4d5d7406991c60ae8462bdbbd35f520a*5&amp;aaa4b2e9717f4e7783985f4640170772"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb8ic64ih256oh128kh3sh2ph1n"c9c85736bdb462b98282c060494b93a4"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=axb mb4ic16ih16iw8oh1ow1kh16kw8sh16sw8ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic128ih128oh64kh2sh2ph0n"8bfe4cdeadbbc45a6fb69bb51975b950"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdeb mb4ic256id16od8kd2sd2pd0n"f8ddd72d6e243abacd16cd40444e2f03*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --attr-post-ops=mul:f16:2+add:f16:2+relu mb32ic320ih28oh14kh1sh2ph0n"c0dacbde5dbef7e04632bde0021bb679"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb4ic16ih320iw512oh160ow256kh2kw2sh2sw2ph0pw0n"5f07febdcb10dbf8f99e1697eab55c08*3"
+--reset --allow-enum-tags-only=false --tag=acdb mb32ic128ih2014iw1oh503ow1kh4kw1sh4sw1ph0pw0n"e9ff6cc3b51b2a2e159449b6339b9c13&amp;e5ad5b848692c1bbc6d7b91576c48c4e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic96ih112oh55kh3sh2ph0n"67533b5344fe1de0136338848b661695"
+--reset --tag=ABx16a16b mb16ic32iw300ow151kw3sw2pw1dw3
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic192ih56oh28kh2sh2ph0n"726a410e3a86597fc0396278277a6dab"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic128ih64oh32kh2sh2ph0n"b28eba8e504e1485448d8544fca0a05b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --attr-post-ops=linear:0.25:0.375 mb1ic64ih16oh8kh3sh2ph0n"064d4aa6cd50ee7fff26164b8b3cf3e7*15&amp;9712f7675e254bb291ee21a6d1f7e08b*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic1024ih14oh7kh2sh2ph0n"cbce69f5d24f3730abacc2222c8ff40d&amp;6384e8eb8ea750d3c27d054a34f6904e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic384ih20oh20kh13ph6n"213c84c06852e542f7ecaa29e3958340"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih368iw480oh184ow240kh2kw2sh2sw2ph0pw0n"40bfbc386db0fc3e7c866550b60c3d93"
+--reset ic32iw100ow51kw3sw2pw1n"pool_ci_1d:asymmetric"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic192ih71oh35kh3sh2ph0n"dfe4f48ba6809cbf01e357408e25bc48&amp;d3c6098ffb15380a492bdacf16df37a7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic128ih16iw60oh8ow30kh2kw2sh2sw2ph0pw0n"eb7659af993302bad77eb093e538383a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic768ih30oh30kh3ph1n"fe71028dcd78e2542e318bd3d37f0f89*4&amp;becd6e66df391b26ebeecfcb71672b84*4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic192ih35oh35kh3ph1n"424f8a9e8abb1416f59cb8c9736fc653"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic128ih128iw256oh64ow128kh1kw1sh2sw2ph0pw0n"c511acfb06189e003a11a79c8ac781ec"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic128ih56oh28kh2sh2ph0n"b4e118b468caa75bf53c6a0553f28a95*5&amp;02511bb0c72d69d87d2e2332a3ee9285*5&amp;af8b6a6697cea79ed3425da1fe58426f&amp;9563e7f10111acc5e7b42a7c3d403218&amp;f69607c2b628311892447ef0a491da93&amp;96981ebc5103ef4bb00779ca1aec92c6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic320ih75iw128oh75ow128kh3kw3ph1pw1n"25b495bc8394072cdd826df0f7dec75b"
+--reset ic1024ih7oh1kh7ph0n"googlenet_v1:avg_pool5/7x7_s1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih16oh8kh3sh2ph0n"c74a8bcadfdf1dc74cd421e4c55d914b*5&amp;b6f63cc05e0b6a2ebd7aefe8a04c60eb"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic35iw30ow14kw3sw2pw0
+--reset --tag=axb mb1ic16ih103iw9oh52ow7kh3kw3sh2sw1ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih256iw512oh128ow256kh3kw3sh2sw2ph0pw0n"b00856f50451fb16c34df12bdff1d6b9*5&amp;c504ebdc93686193f11aafe95d18f0f0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic192ih75oh75kh3ph1n"40712f7387fd3d36e21443092f2bfe2f*5"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic5iw42ow14kw3sw3pw0
+--reset --tag=ABx16a16b mb16ic1ih32iw2oh6ow1kh6kw1sh6sw1ph2pw0
+--reset ic17iw60ow31kw3sw2pw1dw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih19oh19kh5ph2n"b0e1e3d8d41ca8aaaece2246d5e9eec1*5&amp;7701d58b0411bb09f7c66ed4e4ac62a1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic512ih32oh16kh2sh2ph0n"7e3e8a16b2b0fe0b8c8cc2446f6eb487"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic512ih26oh13kh2sh2ph0n"870abd3cbeaab45c568ebf91ae511739*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic32ih112oh56kh2sh2ph0n"36fae76ff6f2c05df5f1b62b4b8b684d&amp;12890f786cfc1d964b172c3d50c9f7ab"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdb mb32ic256ih473iw1oh118ow1kh4kw1sh4sw1ph0pw0n"817ef432f90656a11b33a1de1fc628e4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih64oh32kh2sh2ph0n"21756b7ae42215ce0e91860e324d4e1f*8"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdeb mb4ic64id64od32kd2sd2pd0n"35a81db7e417d18e3873b4cac8fdc160*64"
+--reset ic16ih13oh14kh3ph3n"pool_ci_2d:kh_equals_ph"
+--reset ic5ih15oh14kh3ph1n"pool_ci_2d:only_pad_l"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --attr-post-ops=mul:f16:0+add:f16:14:aBcd16b+swish:1 mb1ic64ih8oh4kh3sh2ph0n"5d1c666bc13c3431be188eead40b6dff*15&amp;484b302427ca3853b2e7d8f7719ffbfd*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih114oh56kh3sh2ph0n"ba1c47e024c019dc01c98070d0886330*5&amp;d628033b65274aaea9195f9dcb50852c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih128iw240oh64ow120kh1kw1sh2sw2ph0pw0n"8d4b02a193539c68cd1bda260fc50698"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic2048ih8oh8kh3ph1n"eeb6df66a001474a6a69269a76ceed2c"
+--reset --tag=axb mb1ic8iw14ow8kw3sw2pw1
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb32ic256ih473iw1oh118ow1kh4kw1sh4sw1ph0pw0n"6b54d3872e558b5b89894195c522bc08&amp;6639282a5730bd45067e6d697bdd2115"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih160iw272oh80ow136kh3kw3sh2sw2ph0pw0n"292e62a0b0ac6172adc076d2b026b14b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic576ih38iw64oh38ow64kh3kw3ph1pw1n"575698cb4be75c10b4bb83fc096b3249*20"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic35iw13ow14kw6pw6
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb mb32ic128ih2014iw1oh503ow1kh4kw1sh4sw1ph0pw0n"3b3b05fd0be5b02927fd27521e9088d0"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic35ih52iw16oh17ow14kh4kw3sh3sw1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic1280ih14oh14kh3ph1n"962292cef655de9912d67e31963a7c6f&amp;ac9578fd7698c8512b63604e267a19e4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_p mb1024ic2048ih7oh1kh7ph0n"07bd9287c5cbf3871f94b5c2f29134f0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic384ih14oh7kh2sh2ph0n"c2952670a8b3366ce2811092bc538cde*46"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic384ih28oh14kh2sh2ph0n"21467ad8d0b2cb1884e95bc01c3adb34*6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic256ih28oh14kh3sh2ph0n"ef1a8333c71eccbad0349b85b5743963"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb --alg=avg_np mb512ic256ih28oh14kh2sh2ph0n"12425babf6c86a58d33359c59ac2654b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_p mb1ic256ih64iw128oh32ow64kh2kw2sh2sw2ph0pw0n"c7f20fe9573f8a378ce1419178bbc23d*5"
+--reset --tag=ABx16a16b mb16ic2048ih7oh1kh7ph0n"resnet_50:ave_pool5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic512ih13oh6kh2sh2ph0n"a148b984328aae6d4af366b142f424dc"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic128ih16iw60oh8ow30kh2kw2sh2sw2ph0pw0n"3eac16d9e86f177a90047352246a3de1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih112oh56kh3sh2ph0n"f68c1e9b61b75269b97c81dff50d331d&amp;6930e11342a08ad403826e374d327544&amp;2781008a8c9061708199741bb549921f&amp;b8bd88115733ec5748422c7d84a945b4"
+--reset ic23ih60iw60oh31ow31kh3kw4sh2sw2ph1pw1
+--reset ic16ih10oh6kh5sh5ph10
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic320ih20oh20kh13ph6n"e258814ae9d8e02743dc78f3ced4aa57"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih512iw1024oh256ow512kh3kw3sh2sw2ph1pw1n"e9937fe19ee93cf428120cd62814ba2b*5"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic192ih57oh28kh3sh2ph0n"googlenet_v1:max_pool2/3x3_s2"
+--reset ic32id18ih20iw20od14oh17ow5kd6kh4kw4sd1sh1sw4pd1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb64ic512ih13oh13kh9ph4n"e6c5227c81995f7e1632a3c2b989d20d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih13oh13kh5ph2n"594899a1129fc030f7d093a6d4cc8cc7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic32ih208oh104kh2sh2ph0n"1c6ddcb375a843c6c8bdb490c807dfcb*5&amp;f9c18417a2eef23c02c1ce09af8b4e9b*5&amp;12621bd1299fc2a7d8fbf298cb0c32ce&amp;4767ec6dc86523a4a2840ae961889164"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic336ih64oh32kh2sh2ph0n"51badada12aaa79223b191681b318cef*5"
+--reset --tag=ABx16a16b mb16ic35iw13ow14kw3pw3
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb14ic8ih640iw1024oh320ow512kh2kw2sh2sw2ph0pw0n"faaaef1c87f70d97dcffc63a1d323b1c*6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic16ih28oh14kh2sh2ph0n"84b28a9da127ef737c0a463969f664f2&amp;a72fc428e41fe79325d42c2573b87430"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb100ic1024ih14oh7kh2sh2ph0n"5f7b5cd81f12859e53326b4614e18791*10&amp;2b5b9975d87d0176e6c1a2cb4e168ec1*10&amp;3b22167e93a6e316a01d43c8aff20fe4*10&amp;987aaefdcb56d783302dd35eb054f780*10&amp;b64e302a770dbbfe59d10b82f6760db6&amp;ed2845fb20f6663e8140b1c629c7a231*2"
+--reset --allow-enum-tags-only=false --tag=acdb mb100ic10ih5905iw1oh590ow1kh10kw1sh10sw1ph0pw0n"5ce68d71321d8d307d52b01207341be0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih128oh64kh2sh2ph0n"31600e7bd4dc8531d1cc02bf866987c2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic1536ih8oh8kh3ph1n"8922c34fd23ab83ce6cd949b8a864beb*3&amp;f31108d507596058481ac26371ecd17b*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b --alg=avg_np mb1ic480id4ih14iw14od4oh1ow1kd1kh14kw14pd0ph0pw0n"cfe276ea3b7f30cf1d2320f131c3f1f5*5&amp;d7fb1f59322f050ee96c2185b3123e6f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic1280ih8oh8kh3ph1n"913f14778512f816fedb670a88d3c27a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic384ih35oh17kh3sh2ph0n"5e101f8f5a078afcb1c0058d4ef66a74*5&amp;7846e042f358c183f02d8c3b6de6a245*5&amp;8a6b48331dd7e3ceea9a227dd07d16f0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih28oh28kh3ph1n"5fbccc8c8394a8ce38d2e06c3894024e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih71oh35kh3sh2ph0n"8e81bee846543a82244524d6ed3094b9*5&amp;9ed0949b23f72b94b6202b29a7afdd2f*5&amp;1faf5932e548c74bd6b979370c45d5a7&amp;751bc2b8415294c5cb0ba885c87b84ea"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic128ih56oh28kh2sh2ph0n"e08c16dfefb1911083fb557ab788dbc8&amp;ef24a39206962f86c691542253d8e810&amp;4f9d32c0d5d37652d239636d0b3b1359"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic10ih112oh56kh3sh2ph1n"4f2d9bdb3a7e2e475544cfce0557ddf8*5&amp;4a2d3aa2a52f9574bc9bbb00bf4a3e39"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih300oh150kh3sh2ph0n"409f382a1cfe84fe8848fb75f7f70519*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic384ih20oh20kh5ph2n"fe8cf859135333ca00f0e22fb4d33905*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic304ih32oh16kh2sh2ph0n"d374185b7b931583cd7f1fe78a2091c9*5&amp;c70811786506c454554c5203a8e970c2*5&amp;c63be2cd219da00a32c136282fa06bb7&amp;b5b5819da821009c1878deecba92a7ea"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih256iw512oh128ow256kh3kw3sh2sw2ph0pw0n"7515aa67a544a1ee150869ca69079b54*5&amp;db24d4930645099f14f62217b67bb416"
+--reset --tag=ABx16a16b mb16ic8iw14ow8kw3sw2pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih75iw128oh38ow64kh1kw1sh2sw2ph0pw0n"eecace30cd4407b6de3c8f96887e91cf"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b --alg=avg_np mb1ic24id8ih56iw56od4oh56ow56kd2kh1kw1sd2sh1sw1pd0ph0pw0n"8941f4ff39f2c322ad089417ea86278c*5&amp;3f00142f8967135d00752cb8c7a05c82"
+--reset --tag=axb mb1ic32id15ih20iw20od14oh17ow5kd3kh4kw4sd1sh1sw4pd1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic128ih52oh26kh2sh2ph0n"f7e45a63d2c420228848f8cbddb953bc&amp;f401157ffab8673614f7df68cb6b8d35"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic288ih35oh35kh3ph1n"a13fb51d17c1ff1c1eaf5a075e5dfcad"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih64oh32kh2sh2ph0n"2b88dd3bb04febb4555e47703a428d6b*8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih8oh4kh3sh2ph0n"27a50f1de8913dafedb102b8b76985bb*5&amp;2979dd962a1fbb7b9a6b3d246d6fed9f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih69iw55oh34ow27kh2kw2sh2sw2ph0pw0n"1cbadb6ec75844e9ce4dd15594b385ff*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic512ih14oh7kh2sh2ph0n"b2ae26f064c37c2c2106b77720173d68*5&amp;910213546d0443875c5677ecae52c14d*5&amp;9d267451174914fc1f5e0b588fd27436&amp;46929158080817e6b7fa9b5b8b99d3c7&amp;3b828a0fe06418e33b81dd2b73988398&amp;b8f5fa26ba814a115f22e0fcf132ae4e&amp;8a16d57b4c94d2ec98ac4800443fb410"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih128iw240oh64ow120kh1kw1sh2sw2ph0pw0n"229449375e234665196d3153f5d2a68f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic512ih27oh13kh3sh2ph0n"6add76b3633bc168f986a74f3b252146"
+--reset ic16id13od14kd3pd3n"pool_ci_3d:kd_equals_pd"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdeb mb4ic128id32od16kd2sd2pd0n"0b1c284a89dea61069c070eb1712341a*128"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic192ih56oh28kh2sh2ph0n"5c9ca133d934e5307c3f83ce71d4e608*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih20oh20kh9ph4n"e897e1ceec2a2b9f270429233aa7dfdc"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih112oh56kh3sh2ph0n"1ff825c47afaf3933c96441c0ecb0cd8&amp;a216ea7e0ce9e24d0540634d33928dba&amp;4d093a69b6e9d6ba09fc11c3fa52e4d1&amp;ab8d65e8271e27443bf74a8fcbc7d956&amp;8c3b3b1a4093d8cfac9194d9011782f3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic768ih17oh8kh3sh2ph0n"a9a4b99fdabe6bee3f7668a421a27720"
+--reset --tag=ABx16a16b mb16ic32id20ih32iw13od11oh17ow14kd2kh4kw6sd2sh2sw1pd2ph4pw6
+--reset --tag=ABx16a16b mb16ic5iw16ow14kw3pw0dw4
+--reset --tag=axb mb1ic33id11ih12iw7od3oh3ow2kd3kh4kw2sd4sh4sw5pd0ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic32ih256oh128kh2sh2ph0n"cff379d62e36a7a89a84e75f9ce85e8f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih13oh13kh3ph1n"ede757124889afc192d320febaae1786*3"
+--reset --tag=ABx16a16b mb16ic17iw60ow31kw3sw2pw1dw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic384ih35oh17kh3sh2ph0n"1f4230703a5ce9cbc5116f46e85e17bf&amp;8400ff1215772d2cfd0ffe2b46eefcb4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih112oh56kh3sh2ph0n"1eba771cb298d88c2a9a77d47a7500c4&amp;73342675fae8bd6f8b4696d67ad07e9f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic288ih35oh35kh3ph1n"7657b14ab94b04bb6507f169a8ab2105"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic384ih35oh17kh3sh2ph0n"3d48552ad3ad90afa9bc9abed0c454c1*5&amp;0a2fde7cdb001ec867bc7ba40de167a2*5&amp;5b907637f725a73ef85031e761dd4a5e"
+--reset --tag=axb mb1ic8ih3iw14oh1ow8kh3kw3sh1sw2ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih16iw60oh8ow30kh2kw2sh2sw2ph0pw0n"8afb37f28f9b9e1b49587fd7cc16634f*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih71oh35kh3sh2ph0n"610d32f962bff56851d904995050bde6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic256ih92iw120oh46ow60kh2kw2sh2sw2ph0pw0n"2a6fa7fa6b642af43ab5e786751354e5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic512ih16oh8kh2sh2ph0n"5ada8908eb5009ea1fc8e882c6e7db59*5&amp;e13520fea928ad044fd16eb2c8629136*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_p mb1ic128ih56oh28kh2sh2ph0n"17165bcd909d0f23d63456a424312624*5"
+--reset ic16ih20oh11kh3sh2ph0n"pool_ci_2d:kh_equals_ph_r"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb --alg=avg_np mb2048ic256ih14oh7kh2sh2ph0n"727daaee37493d7e230e8d92411cc918"
+--reset --tag=ABx16a16b mb16ic5iw42ow14kw3sw3pw0
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb4ic48ih20iw32oh10ow16kh2kw2sh2sw2ph0pw0n"dbabf04a8daf485055e243f6c25866ec*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih28oh14kh1sh2ph0n"ff13d4a23e15054ddbf0f39d83c5d8b3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic3ih256oh128kh2sh2ph0n"238c0e375010982c5f043eb3f7259225&amp;463a908113e7936203739b2067fb3db4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih56oh28kh2sh2ph0n"7134ee6167b51b8a172a2ac289fabd14"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb14ic48ih20iw32oh10ow16kh2kw2sh2sw2ph0pw0n"9b96147ad93e46a5fe6c6d4e232106b0*6"
+--reset ic14ih60iw60oh31ow31kh2kw3sh2sw2ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih20oh20kh5ph2n"cbd521d68682f156f1c5a38334efffce*5&amp;bf8ff23522b7b83c0d0e6cbbc973cbb4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb --alg=avg_np mb512ic256ih28oh14kh2sh2ph0n"c3d475673f1f29c637298ff30120d7fd"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic128ih48oh24kh2sh2ph0n"5199ded7c9ba6f1ed6ecfe74d7958fad"
+--reset --tag=axb mb1ic32ih37iw33oh17ow14kh4kw6sh2sw2ph0pw0
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic8id20ih40iw60od11oh21ow31kd2kh3kw4sd2sh2sw2pd1ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic112ih256oh128kh2sh2ph0n"7ecc9d0829bc3ecaec91e68a7d8a4382&amp;b6f3bc5256dfb01697ebb737f650305a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih20oh20kh13ph6n"b72e69d480508e91545ce1689050bb65"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32ih19iw33oh17ow14kh4kw6sh1sw2ph1pw0
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32id52ih20iw16od17oh5ow14kd4kh4kw3sd3sh4sw1pd0ph0pw0
+--reset --allow-enum-tags-only=false --tag=acdeb mb4ic64id64od32kd2sd2pd0n"7f0bd1a31ad615960a7b93d8e903adf7*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_p mb1ic512ih14oh7kh2sh2ph0n"fec6e6d3505942c19e5c99475816f519*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic32ih192oh96kh2sh2ph0n"945f4e1d1e70a85169acdae6e75276fc"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb4ic256ih32oh16kh1sh2ph0n"1fb1d0b5232b246fb591290cd97c5c32"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic320ih75oh38kh3sh2ph1n"9f0d7f3e471f11f96561ccb019aa7ef4*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic128ih32oh32kh3ph1n"db81f76715d69e5becffa2bbe3bf0408*3"
+--reset --tag=ABx16a16b mb16ic16ih10oh6kh5sh5ph10
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih28oh14kh1sh2ph0n"540ff676297cfbf9a4a89306aa848947*5&amp;6065648fa573f1ade84453d826bbc284*5&amp;e7e0e3e663b350e409c362dc1d232dec*5&amp;c45b4d291b28633409d6902a11295fe1&amp;590fd67105e0ed6866f374a4f8c2d990&amp;4dc1cd6dde370a77b908487ee053b00a&amp;3f2f0765ab8557f0d1eb066cae333023"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic128ih184iw240oh92ow120kh2kw2sh2sw2ph0pw0n"5972f45cd887651264f7398f0990103b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic1024ih14oh7kh2sh2ph0n"cb38d7a67894f439d95be52cf507a10c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic256ih64iw128oh32ow64kh2kw2sh2sw2ph0pw0n"b10fa20ad187dba7697c461e78fbd401"
+--reset --tag=ABx16a16b mb16ic480ih14oh14kh3ph1n"googlenet_v1:inception_4a/max_pool"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --attr-post-ops=mul:f32:0+linear:0.25:0.375 mb1ic64ih32oh16kh3sh2ph0n"08ec8361516ea581dc65398f923e8a5d*5&amp;a33ba0694bc707e546f9417015e7160d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih200iw342oh100ow171kh1kw1sh2sw2ph0pw0n"e598f4d2d762906e858211a683e924cd*5&amp;4e796296258a27cec429d46a693dc7ab*5&amp;05f0516ceffa4d151f8749491883a871"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb100ic1088ih17oh8kh3sh2ph0n"667a854602241177cb18d450759be29d"
+--reset ic32iw300ow151kw3sw2pw1dw3
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb32ic128ih2014iw1oh503ow1kh4kw1sh4sw1ph0pw0n"4903f55f489aa3ddc512675cdc5402ac&amp;8771a6680c788243e8f11bbd7f0b5c0b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic1024ih32iw64oh2ow2kh16kw32sh16sw32ph0pw0n"71d4025665a40f0c7793878355480492"
+--reset ic32id52ih20iw16od17oh5ow14kd4kh4kw3sd3sh4sw1pd0ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih56oh28kh2sh2ph0n"4043db982cd6e56577cf1d5539e6ba32"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd16b mb1ic96ih55oh27kh3sh2ph0n"3dcaa4de00c8ae997f6e48a8424c0da3*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih32iw100oh16ow50kh2kw2sh2sw2ph0pw0n"1dc28dc2a9fd2e2bb26950e5f410619a*5"
+--reset --tag=axb mb1ic35iw30ow14kw3sw2pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic192ih128oh64kh2sh2ph0n"bba4c6c3bec6b58c6ec8e305925d03f3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic192ih48oh24kh2sh2ph0n"35dc3b9357b880151aa8614de347d1a3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdb mb32ic256ih473iw1oh118ow1kh4kw1sh4sw1ph0pw0n"f7b0cf695590acfab6e7880396ee86e7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic256ih16oh8kh2sh2ph0n"9551faad03ad33746b2df2fc40f1710c*8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic48ih256oh128kh2sh2ph0n"d4fb19a8b1b2625b8d11bee4463500aa*5&amp;823ca035cdf4eb5a934d7a797df4bf81*5&amp;7b0b5ccf35db554a5a4387e93ad24079&amp;579cb8a581ab21e4feb4dc5b022e753d"
+--reset ic16ih32iw16oh16ow8kh3kw3sh2sw2ph0pw0n"pool_ci_2d:non_square"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih14oh7kh2sh2ph0n"7c16befec2392bdd791f1f0d86cbf329"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdeb mb4ic64id64od32kd2sd2pd0n"7561997b19ff2b3716ad4e4b8d5e8e2f*128"
+--reset --tag=axb mb1ic32id30ih16iw13od11oh17ow14kd3kh4kw6sd3sh1sw1pd3ph4pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic128ih55oh27kh2sh2ph0n"cedc7aaa727454e89694aad349895c04*5&amp;52aff952d79c6427ae365d27219c4ea0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcde32a16b --alg=avg_np mb32ic72id4ih28iw28od4oh1ow1kd1kh28kw28pd0ph0pw0n"36f13b0072c20def2a983df5bf079ce2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic768ih14oh7kh2sh2ph0n"ebc9ad934363308cd01e4951deb3b75c*23"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic128ih56oh28kh2sh2ph0n"3f03e6cd04a6e44b3fab1b31db170c98*5&amp;7c0a8a373e2de615164c2e6fe6acb6ea*5&amp;e10b390303cf823526eef45d5bfe7266&amp;2d9d32089699775f27e52402539d7dc8&amp;bddf7e4125cb2fc5152969546d6642d6&amp;7101e11eeddc931167fa90e683ea91ee"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic32ih14oh7kh2sh2ph0n"2377001d9650c095719f16b3c57f1342&amp;eeca6e2b55b6f0cff0d49c6cae09bf78"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic16ih10oh6kh5sh5ph10
+--reset --tag=ABx16a16b mb16ic35ih20iw15oh17ow14kh4kw3ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb4ic64ih512oh256kh3sh2ph0n"70468b7c21cc219f12e4684e348e6f23"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic256ih8oh4kh2sh2ph0n"b82f6952a5843f2264581a1e3f465fa0*8"
+--reset --tag=ABx16a16b mb16ic5iw15ow14kw3pw1dw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic64ih56oh28kh2sh2ph0n"8ebe1f6eeaa8c1b6ed4783eff617aa20*2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic192ih48oh24kh2sh2ph0n"699ee1ab38b5129579e01b06f7a95aab"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih4iw30oh2ow30kh2kw1sh2sw1ph0pw0n"b4729c77fbf3ec499ca5d87981347f4d*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih32oh16kh2sh2ph0n"54c57b8846d32e46047f7e2fa576c479*8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih65oh32kh3sh2ph0n"24cba945125853c8b311ce33aed5b955*5&amp;8d41d0cce3588873845c444492563259"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic48ih256oh128kh3sh2ph0n"37355c55d2760bb4936062acf18b9890"
+--reset --tag=ABx16a16b mb16ic32ih36iw30oh17ow14kh4kw3sh2sw2ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np mb256ic2048ih7oh1kh7ph0n"53828be9f050823af9bc16403715ff5a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic256ih32oh16kh2sh2ph0n"acaaab27435914f27fdbf01154bfe402"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=acdb --alg=avg_np mb1000ic256ih14oh7kh2sh2ph0n"602497284a26881121630bde20f4f7b7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b mb1ic64id40ih112iw112od40oh56ow56kd1kh3kw3sd1sh2sw2pd0ph0pw0n"3f494371399fdaf9a00593fc5d5afecb*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih114oh56kh3sh2ph0n"3f685eb90607933b48f7cbeae4582c11*5&amp;a2402fce23b54e1d8fa5bb910661b538&amp;d6781d91f106a11906f3f5c965848e6e"
+--reset --allow-enum-tags-only=false --tag=acdb mb100ic10ih117iw1oh11ow1kh10kw1sh10sw1ph0pw0n"ec49038f85e7a4a87e497b53a885d0ea"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic256ih27oh13kh2sh2ph0n"b68b11dcd76d3b13e826093685c32f52"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic35ih20iw45oh17ow14kh4kw6sh1sw3ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih55oh27kh3sh2ph0n"20ebf67e05e0b06745635e0e44ea1ac2"
+--reset ic5iw16ow14kw3pw0dw4
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih128oh64kh2sh2ph0n"9620b5f2d62c27c1aae132ba61b72e2c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb256ic64ih112oh56kh3sh2ph0n"f91cec44377b521290e79c5e09c24ede"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb4ic8ih640iw1024oh320ow512kh2kw2sh2sw2ph0pw0n"6e8c9281a46fd73687eb33ca6f78517d*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic512ih13oh13kh13ph6n"44251fcf3b8bc6908b4d6e8a823257fd"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic32ih208oh104kh2sh2ph0n"b7c9886b2b315b9ae94c226b0642d571&amp;a725bb0b5e20c33e665c41e87c16f927"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih32oh32kh3ph1n"705e26aecf37fe37e83374475b3917a7*15&amp;1d87cc73482f53bd443c80527b9339e6*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih28oh14kh3sh2ph0n"15483e837638cb6ad92e2ba41be86588"
+--reset ic32ih16iw19oh17ow14kh4kw6ph4pw0
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb mb4ic16ih320iw512oh160ow256kh2kw2sh2sw2ph0pw0n"ae7da784facc4bebd860cd5ed29e99a5*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih16iw50oh8ow25kh2kw2sh2sw2ph0pw0n"aab6d30d609a933079c3aae82e71d32e*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih112oh55kh3sh2ph0n"1dad14e74b12c61fd9bc11a34909d2c9"
+--reset --tag=ABx16a16b mb16ic1ih32oh6kh6sh6ph2
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic384ih14oh7kh2sh2ph0n"96fb0eccc2341b4c9ca2b26341300b5c*24"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih13oh13kh2ph0n"15532e5d54768f05966eceb96dab4e17*5&amp;05b6f67b481ef0ce4f2bcf6cee0db29e*5&amp;55295c7fb1e4bded6e2e8f65b9a0c437&amp;ec31738e085b69adeb74e2d6fbc6451b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic192ih150iw256oh75ow128kh3kw3sh2sw2ph0pw0n"1673e33ff298da171a73df414f08f9df"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic512ih46iw60oh23ow30kh2kw2sh2sw2ph0pw0n"6a4937b3aa79469563904ffe01a99939*5"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdb mb4ic32ih80iw128oh40ow64kh2kw2sh2sw2ph0pw0n"42eb6004f0d3fa33e89cd18b7353baff*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih113oh56kh3sh2ph0n"938d99f2f558c38c67b522a187cc1ef8"
+--reset ic32id13ih7iw10od3oh2ow3kd2kh2kw3sd6sh5sw4pd1ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih55oh27kh3sh2ph0n"2ccb8851f5b466906f818c6459887862*5&amp;37d38edff0d1b42df9c915f35da42c46"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic320ih20oh20kh5ph2n"fc3f5616c4284bf9f1d0a9b54c9c840b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic2048ih14oh14kh3ph1n"388ac86043a3051f4fe1ef019c333268"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih8iw30oh4ow30kh2kw1sh2sw1ph0pw0n"810dc49380c044a06fefd9e1c8367729*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic384ih20oh20kh13ph6n"57446202935147da3e8c5272662fb1b3*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic3ih1024iw2048oh512ow1024kh2kw2sh2sw2ph0pw0n"0b118d05193c5e1a20b61eeced14feea"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih55oh27kh3sh2ph0n"67a5b0c304d9c629fef35f365dec982a*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih130iw102oh65ow51kh2kw2sh2sw2ph0pw0n"b8b353a348878acf1c6ab21866ec1495*5&amp;b7a81a7453888e32a27436238f9dc6c4"
+--reset --tag=axb mb1ic8iw14ow8kw3sw2pw1dw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic192ih75iw128oh75ow128kh3kw3ph1pw1n"5d112f40311fecbc12020086bb6a57d8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih64oh32kh2sh2ph0n"d7de40fc83d590a9982f17679140d9e6*5&amp;784cc02f70bab504ab6688feb85cfab9"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic384ih20oh20kh13ph6n"92437dc76153f77b297c697720451527*5"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic64iw32ow16kw3sw2pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic384ih20oh20kh5ph2n"65d603ab6ead882b72f818f95e337462*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic48ih256oh128kh3sh2ph0n"86ff4f912942405f15dfbf662b471501"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdb mb16ic1024ih1iw15000oh1ow1kh1kw15000sh1sw15000ph0pw0n"f3301b768220ee038237576cea03751c*3"
+--reset --tag=axb mb1ic17iw60ow31kw3sw2pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih64oh32kh2sh2ph0n"cceda43a83c038562f083417f2c3e77e*5"
+--reset --tag=ABx16a16b mb16ic5iw15ow14kw3pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --attr-post-ops=mul:f16:0 mb1ic90ih256oh256kh3ph1n"087563c4176ef533c58fb4d50160c0df*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic256ih56oh28kh1sh2ph0n"4329e52fb5e5d603793483a6af9f006d&amp;49f4e0e3f24730291b57af9cb630e861"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic1024ih7oh1kh7ph0n"googlenet_v1:avg_pool5/7x7_s1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --attr-post-ops=linear:0.25:0.375 mb1ic64ih32oh16kh3sh2ph0n"8bfc7ef857637c932e14fd953f0c8ca5*10&amp;771cca8ee0372d03000158490bfbe22b*2"
+--reset --tag=ABx16a16b mb16ic14ih60iw60oh31ow31kh2kw3sh2sw2ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih20oh20kh5ph2n"98405b65561544e7e80510a04410aa10*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b --alg=avg_np mb1ic72id4ih28iw28od4oh1ow1kd1kh28kw28pd0ph0pw0n"9d9c8f883d2b13b4fef68e3aa7d22a43*5&amp;e599a9c8200cc0fef8f785165cc58142"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic96ih112oh56kh3sh2ph1n"57e29efd66e59f3e2b196445b278dcd3"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdb mb4ic48ih20iw32oh10ow16kh2kw2sh2sw2ph0pw0n"3b2d1a70f71cf6ad55b1ecbe9dbcb5ad*3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb32ic256ih118iw1oh29ow1kh4kw1sh4sw1ph0pw0n"a4223cafa2194736c0723523acd92804&amp;fa07c89c62ef481bd7132deede144361"
+--reset ic32ih36iw13oh17ow14kh4kw6sh2sw1ph0pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic512ih28oh14kh1sh2ph0n"169649467225a75a118ec2a2b8d4923e&amp;00aaa3e82293e4ff1d3c90b616dfc06d"
+--reset --tag=axb mb1ic32ih16iw13oh17ow14kh4kw3ph4pw3
+--reset ic2048ih8oh1kh8ph0n"googlenet_v3:ave_global_pool"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih600oh300kh3sh2ph1n"fb9afdb4f4b40bb8c5eec41d471fd4f1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --attr-post-ops=mul:f16:2+add:f16:2+relu mb32ic704ih14oh7kh1sh2ph0n"b1285ea0b23607d663f84d08535d4cf0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih112oh55kh3sh2ph0n"af9927e77a7001df2bb98b218079664f*5&amp;0697afe5529ce4c5ead5635ecd32660e&amp;b6b6d0159a8a810c6dcdfebd7605b075"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih256iw480oh128ow240kh1kw1sh2sw2ph0pw0n"67d070715a91a6a5496655b109536c1c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic96ih55oh27kh3sh2ph0n"14fd47c6a67756543bb0c994eac3d5e1*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic256ih32oh16kh2sh2ph0n"5a3f083067e11de671bd0ac9974ba56c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:s8 --tag=aBcd16b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic336ih64oh32kh2sh2ph0n"c1a322075c235fa94629869fd33b4727*5"
+--reset --dir=FWD_I --dt=u8:u8 --tag=axb mb3ic17ih13oh37kh17ph20
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic304ih32oh16kh2sh2ph0n"6504f89e73eb4a460a82c37a33a3054c&amp;b97eab3888c203de45082dc3b65abd74&amp;71d7a3680024452f788552eb9a7a3eef"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih667oh334kh3sh2ph1n"98e3146d0dcca9da9c0c0c7ce9916520"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih112oh56kh3sh2ph0n"de52067ca4ad32fc28d57819c17591b5*5&amp;06d16e203e94c142dc63e6f9e7ad06a5*5&amp;6d73e2e2ce9b934f893f170319481d01*5&amp;9d42a120b2bb11733acbb1c9eebc7dbc*5&amp;4e1732505bb53ca0f926095753b42e07*5&amp;b45d96c2b7c0be5b985dc95c97f0efc5&amp;b109b617ab30992d555884bbdb4b3617&amp;ce4155d55c4a4ed19473240b28dde31c&amp;dd43dcfb2ddd7e79be57843e9aa5486f&amp;990b7bf0a26a3751161abd9af7cab835&amp;7ae912209854489c3d3a29e26e5327c2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic3ih1024iw2048oh512ow1024kh2kw2sh2sw2ph0pw0n"2ff1c8e29bfec1cac49cf1ef9c4505e4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih77oh38kh3sh2ph0n"f185cd15920d11a2315b2f8cef1f9bcb*5&amp;91ba30d5c3bc1dc5f92b99daf1ee983d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b --alg=avg_np mb1ic672id4ih14iw14od4oh1ow1kd1kh14kw14pd0ph0pw0n"d324b2fef5109855daad6e48a8361dbb*10&amp;b6b9ac47429ec98253f085df3cc18f71*2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic1024ih14oh7kh1sh2ph0n"b9042e962b642689822aa35b88ee0896"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih55oh27kh3sh2ph0n"c7ecbf861711b8a975e394e9897e4572*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih20oh20kh5ph2n"2ee997e8e7ce16dfb2e1197342e53e41"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic16ih416oh208kh2sh2ph0n"8b996598ea1a94d8afedfb6e57a3b939&amp;d7b911a8b91b6df56012b7c94a4cb7c0"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic35ih20iw15oh17ow14kh4kw3ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic1024ih17oh17kh3ph1n"3e44c90f5bb9d0b753b51dd5c2836fbf*35&amp;5f59ac05940f76243e2e866040a39cdb*7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic96ih56oh28kh2sh2ph0n"35b71f42eaeeb12797661d12ff741ec2*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih600oh300kh3sh2ph1n"07da6ef57f08e2c1e284262aefdcc833"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic23ih60iw60oh31ow31kh3kw4sh2sw2ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic64ih128oh64kh2sh2ph0n"85162ea0626546063132b58a1860da7b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic320ih20oh20kh9ph4n"21d3ded9ce90e5e35c10d3e90ab06577*5&amp;b0a4e60e4fa606b4ffd78e755d247d0f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic768ih30oh14kh3sh2ph0n"63e5ba544a571a6d0322241870224272"
+--reset ic35iw30ow14kw3sw2pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic512ih32oh16kh2sh2ph0n"72f977acbe7cdad140c172010b6858fa*5"
+--reset --tag=ABx16a16b mb16ic2048ih8oh1kh8ph0n"googlenet_v3:ave_global_pool"
+--reset --tag=axb mb1ic14ih60iw60oh31ow31kh2kw3sh2sw2ph1pw1
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32iw300ow151kw3sw2pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic64ih28oh14kh2sh2ph0n"bb70ab7a81cf72023eed65da6356b7c4*2"
+--reset --tag=ABx16a16b mb16ic32ih19iw33oh17ow14kh4kw6sh1sw2ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic512ih13oh13kh13ph6n"9b3e815a548a73ff6a0e4d4ded4a60b9"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih46iw60oh23ow30kh2kw2sh2sw2ph0pw0n"f1b56872f6c52287a043a5464da3dfe9"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic16ih103iw9oh52ow7kh3kw3sh2sw1ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcde32a16b --alg=avg_np mb32ic960id4ih7iw7od4oh1ow1kd1kh7kw7pd0ph0pw0n"5f275fd15feaad45820df3893d85a46f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih32iw120oh16ow60kh2kw2sh2sw2ph0pw0n"d5b38acf58ed5f01bc109341fc23ae26*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic512ih14oh7kh2sh2ph0n"73d2147b0900c2dd06af6875008fca9a&amp;b5c0f83608f31465d08a677b90b0b432&amp;8e6f84e858a5294ebf2884b950d1c015"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb4ic32ih80iw128oh40ow64kh2kw2sh2sw2ph0pw0n"513da4921c8d06de7c89225176df7e8f*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic512ih28oh14kh2sh2ph0n"7d600e5b79e51b85da1da6ed128b0839"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic512ih32oh16kh2sh2ph0n"83bbd0ce7343b08e8158c758345f25e7&amp;1c01a2443ddc0d3e4191cccadc6804d7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb3200ic1088ih17oh8kh3sh2ph0n"52b6a16b5a56912d31357046eb46d866"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih112oh56kh3sh2ph1n"ffbcbfff1c4923f9eea41419483d9f5d*5&amp;24869112b4ea304f54b736ca7c2bc9e8*5&amp;6ef9d98216368e881f6fc09f501340ed*5&amp;1ead994900f5d7050fdef20db9de62ba*5&amp;bfcc58c7fe28fd48b6cebaa02fe87b2a&amp;57400d99d9838cb46e01e26bb0f852ec&amp;5cac61772f665746237be4be48d18961&amp;6bb0181ea7ad9344457b03c3f7ab539e&amp;18f91d84c48daa99d0e3dd61919950cd&amp;ef85c2eb4fca6382444d81760f915a5f&amp;840cc176786a3d5a72232404115c6beb&amp;b046575e65afc84c39b459f28e5db7e7&amp;26f29e98c5a6193a60b4c68c539d96f2&amp;d07c7fc8fffdbde55e444f5d24cd7b8e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb300ic1024ih28oh14kh2sh2ph0n"d7580e7a4e0c16bba02479837edd70f1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcde32b mb1ic480id40ih28iw28od20oh14ow14kd3kh3kw3sd2sh2sw2pd0ph0pw0n"37ac630e263199a54cd572279ab466c8*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih667oh334kh3sh2ph1n"6bd7d21679fb5333d943aec6fe64a513&amp;bcdb6c0d273a008c7a5785ae00b32e74"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic160ih64oh32kh2sh2ph0n"a09e4ac16ae889aee256f0f793b5cec1*5&amp;63248504908711dce8a913132ec49769*5&amp;2a06e7aa0ee3f54f3af1fd4f67cc10d3&amp;f41446cb6917d872468b9b6431dacfb0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic384ih20oh20kh13ph6n"37e880c2ac187af4d7d40cfd2b34a600"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic3ih512oh256kh2sh2ph0n"70d24ad1b56d81a140aa1931c315acab"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdeb mb4ic32id128od64kd2sd2pd0n"d34da4a79107d17271a53a5c27fe3391*128"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih52oh26kh2sh2ph0n"6f2a28b8c23dc7c265380e54303ec2ab*5&amp;dbbbe40bad91a64fbf264ed93835a80e*5&amp;50124d3cfc84126f97ccb32db9cf9ed3&amp;bcad7c82c03951bf45aec7f2406c4eb3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic128ih32oh32kh3ph1n"ec39a23b4e7c0ae18aac9f90028aba42*3"
+--reset --tag=ABx16a16b mb16ic32ih32iw13oh17ow14kh4kw6sh2sw1ph4pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic32ih512oh256kh2sh2ph0n"8898c642bc4b86b882671e0bb3828385"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcde32b mb1ic528id20ih14iw14od20oh14ow14kd3kh3kw3pd1ph1pw1n"bf0664dda3cbac30e63a1fbec2649f70*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih69iw55oh34ow27kh2kw2sh2sw2ph0pw0n"a4a343500deb86a12c54c3a4d2d28797*5&amp;7771a07974cdc586d33c55e6dc4729c4"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic64iw32ow16kw3sw2pw2dw2
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih55oh27kh3sh2ph0n"d459123f7ba439a716289c3264c743d9"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic64ih96oh48kh2sh2ph0n"30d37514a7a21d87f5a8d317ffeaa66c"
+--reset --tag=axb mb1ic16id60ih60iw60od31oh31ow31kd4kh2kw3sd2sh2sw2pd1ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic256ih256iw512oh128ow256kh2kw2sh2sw2ph0pw0n"944eccb806c63cc7712d2f0b63f05e0a*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih20oh20kh5ph2n"c2005c5dcb8f16728fecb6b2d49b9ff0*15"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b --alg=avg_np mb1ic672id4ih7iw7od4oh1ow1kd1kh7kw7pd0ph0pw0n"50b5518b1d2326ce15c5e0509c331ef0*5&amp;babcb6a854d6a348bb0c39a831afd448"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic48ih192oh96kh2sh2ph0n"e14cf6f26d82175d1284acc4f967058f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdeb mb4ic512id8od4kd2sd2pd0n"edd326bbcd695afd9b46bf566ac27dea*128"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic512ih75iw128oh38ow64kh1kw1sh2sw2ph0pw0n"19b1d48134816b29831369a8abe55bdb"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32id30ih16iw13od11oh17ow14kd3kh4kw6sd3sh1sw1pd3ph4pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih14oh7kh2sh2ph0n"4235e9bb04d3e9cd9f60c632476036c0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic64ih96oh48kh2sh2ph0n"faf25e5ac74b0b6ade026e3c1ba5572d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic48ih256oh128kh3sh2ph1n"d9d1ce8b573dbd490dac97a0f4c6da2a*5&amp;b1eab69e950cbe34d72482886114ef5f"
+--reset --tag=axb mb1ic1ih32oh6kh6sh6ph2
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb32ic64ih8177iw1oh2044ow1kh4kw1sh4sw1ph0pw0n"aaec3adb44dc8097eacbee31cb975ff0&amp;f48b98102ec7b1e333cb4fd78235b452"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih16oh8kh2sh2ph0n"941fd2e1fe2a60fe6e4d3b03db74f8d8*8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic512ih14oh7kh3sh2ph1n"61f16a7007f15523f246f5a4907a53f7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic256ih6oh6kh1ph0n"88a5ee28a1798894263569d72ccefe7a*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic512ih7oh1kh7ph0n"6c0870709f3c3b667e80ef23aaada072"
+--reset --tag=axb mb1ic32ih19iw33oh17ow14kh4kw6sh1sw2ph1pw0
+--reset --tag=ABx16a16b mb16ic32id36ih7iw16od17oh4ow14kd4kh5kw3sd2sh1sw1pd1ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih147oh73kh3sh2ph0n"940ca278cf2efb5ee2391e738997c34d*5&amp;f78692ea1db61c896781c077dacd6809*5&amp;a1d6a624b77d4a9119bf21b9ef6ad19c&amp;cd7759784c1e7c285408cc68b60648c3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic192ih28oh14kh2sh2ph0n"c53289e54cee941fee57b105ae293967*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb3200ic1088ih17oh17kh1ph0n"5c7427134662f4cb4c7098d8b96c4177"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih92iw120oh46ow60kh2kw2sh2sw2ph0pw0n"861a9ac6d089c1fc8bf17ad71e46a3fc"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih224oh112kh3sh2ph0n"9d65db54bfd5eaf6bcc6c28e978d3ba3*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih368iw480oh184ow240kh2kw2sh2sw2ph0pw0n"e43cd1af1df9d3a9b451051cb7e972b1"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np mb1024ic2048ih7oh1kh7sh7ph0n"eaee3215490b5bf8dec46d7f7798a6bf&amp;7c647ae89d6aecb7abad2cf29ea8aeec"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih20oh20kh13ph6n"a3cf7b3cb54f11accc69768ee3cf50ef*5&amp;c62343d0c91470f5586aa602c02e9459"
+--reset --dir=FWD_I --dt=u8:u8 --tag=axb mb4ic17iw60ow31kw3sw2pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih27oh27kh3ph1n"6044df6f71af9d8155ec2fe180f2384d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic192ih61oh61kh3ph1n"414c318fc7aa54df7e2357fc8dcf8b17&amp;c5e716d5d24f8c139354a46f3037564a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a32b mb100ic1024ih14oh7kh2sh2ph0n"502286e9e19a590ee7b56c95bd858132*2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic48ih192oh96kh2sh2ph0n"6501f0932b7ebc25ce2b42323cf0ebc9*5&amp;79c9cf309ad86b1f065bbe0083c00d2d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih253oh126kh3sh2ph0n"57c23d0690249e00bdb60fbdc3dee3b9"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic96ih112oh55kh3sh2ph0n"f812e34d40fb819f6491c594dfd81639*5&amp;aa81faa36b05f3b2418d6962b2567044"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic304ih32oh16kh2sh2ph0n"b349d00c982987f622b9dc48c41c1ad5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic64ih96oh48kh2sh2ph0n"347389d0950109dec2ae549a145d1e2a*5&amp;57a6855e700d71b0af7966ccfa5ad30a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb100ic1088ih17oh17kh1ph0n"70e51fb558ee7180fbdda9f3be4c0f5c"
+--reset --tag=ABx16a16b mb16ic32ih16iw13oh17ow14kh4kw3ph4pw3
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic192ih28oh14kh2sh2ph0n"9a3e36bd703502a66528db298ec0ee53*8"
+--reset ic16id32ih16iw8od16oh8ow4kd3kh3kw3sd2sh2sw2pd0ph0pw0n"pool_ci_3d:non_cubic"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih32iw120oh16ow60kh2kw2sh2sw2ph0pw0n"be4e920bc6a9d688b092eca2433f6661*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic256ih256iw480oh128ow240kh1kw1sh2sw2ph0pw0n"b07face6e0516e6e9838ec89aa5674db"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih26oh13kh2sh2ph0n"d97f558c930d6a5698444bf9220c26a6*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic4096ih166iw1oh167ow1kh2kw1ph1pw0n"0f815f02d536c85f0583d03843b156ac"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic24ih112oh56kh3sh2ph0n"665a3a8a1c8643745f7526cecba38fc2*5&amp;f35d92d1ead58de7284688795b4e18a4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih400iw683oh200ow342kh3kw3sh2sw2ph0pw1n"378324c6bdb9531823e25e436a3b0659*5&amp;e07466e2efcb50f43b1dd9d1f384c46f*5&amp;a6f658ec6a2d04623512a9086b0b4369"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic336ih64oh32kh2sh2ph0n"ed1c644d551df51c964a54369f38ecb5&amp;8ab7d3722d6ffe3d833ceba1fbe1941d"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic16ih3iw100oh1ow51kh3kw3sh1sw2ph0pw1
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic33id11ih12iw7od3oh3ow2kd3kh4kw2sd4sh4sw5pd0ph0pw0
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic1iw2ow1kw1pw0dw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih28oh14kh2sh2ph0n"74c10520026e33b6beba260e64622e34"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic480ih14oh14kh3ph1n"3219d45cdce36637cf7e5bb58b10634f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic64ih512oh256kh2sh2ph0n"d3d1dbaa1e7ccd5bffe512dc7ecd219e&amp;974f7e394921e0fe6faa3d49ad42d122"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic1024ih14oh7kh1sh2ph0n"22d40930878b6e9f86d4153dfc25f51e&amp;b466f83ef25a19344e01fee4dfcdafde"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih27oh13kh3sh2ph0n"1afbd7e7d26eceb9a88627df07ddf37f*5&amp;2cdbc72b53c04f7f56b93c30227f364d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic48ih256oh128kh3sh2ph0n"17ca8aae686b3dae28517ff0aa30ac16*5&amp;73e898f8f6d8a8650b406c416145147c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih8iw30oh4ow30kh2kw1sh2sw1ph0pw0n"2f9aa7f7b36940be9be3f2d7e1c85442"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic128ih52oh26kh2sh2ph0n"d5dc5eb98c20a8e06711e79ab11293e8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih13oh13kh2ph0n"49fe35028ae64a8b5fafa6cb3c057c34&amp;57371e5eda95fcc0400a0037eef6fc13"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b mb1ic832id20ih14iw14od10oh7ow7kd2kh2kw2sd2sh2sw2pd0ph0pw0n"1687a6804b238fda1b0762ed00f96f5e*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb100ic10ih5905iw1oh590ow1kh10kw1sh10sw1ph0pw0n"32c2f246c6398d7acf04f0b19efea6a3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic64ih104oh52kh2sh2ph0n"ce5a241ec597adab9faef57ef74ddb2b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb100ic1088ih17oh8kh3sh2ph0n"a976bcc581c3501a4ba03e6e24216aab"
+--reset --allow-enum-tags-only=false --tag=acdb mb14ic8ih640iw1024oh320ow512kh2kw2sh2sw2ph0pw0n"a833f8a35b3afdc159c1e30e6a3b9cf9*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih256oh128kh1sh2ph0n"0e47ee19266be95722d98cc675e6173a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih128oh64kh2sh2ph0n"560d2fb14cc0bcaca2c6daaf09e4754d*5"
+--reset ic16iw13ow14kw3pw3n"pool_ci_1d:kw_equals_pw"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic512ih19oh19kh5ph2n"acb2cab2745292adbc2637d71af0a2e3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb --alg=avg_np mb2048ic256ih14oh7kh2sh2ph0n"c4c2c417aa6b93850ca8692160db43b8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih55oh27kh3sh2ph0n"9aa045bb65dcb68c6c5c4f8f887d7a02*5&amp;57006eb0de6788ee3b9de48f38389183"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic192ih28oh14kh2sh2ph0n"59bc7450a7bf3c668fa56cea65a27222*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic224ih14oh7kh2sh2ph0n"4f9844665193e328c4ebc394fd916f05*46&amp;d05acb0f1cce74ac82e1f00c3e4613b3*72"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb mb24ic64ih112oh56kh3sh2ph1n"b1ebd80c7b91259d5c7d83e505bb6aed"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic32ih112oh56kh2sh2ph0n"0438cda260ddfadbe8a37348387a26ed"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih112oh55kh3sh2ph0n"401be4d75c7940d1c1e8e09d19842236"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_p --attr-post-ops=linear:0.25 mb1ic128ih32oh32kh3ph1n"d2f9a904077372bb39675b23ec1c54c2*15"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic112ih256oh128kh2sh2ph0n"37c5b8d58c3e707e4afc1ee550607041*5&amp;463461774a2338ec070132db42ea4a96"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_p mb1ic2048ih7oh1kh7ph0n"ceca1a0469c9469c42c8df48933e2b19"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih13oh13kh9ph4n"30ee83af80a9a8422089c34c7639c611"
+--reset --tag=ABx16a16b mb16ic32id18ih20iw20od14oh17ow5kd6kh4kw4sd1sh1sw4pd1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic288ih35oh17kh3sh2ph0n"701d545961630789b352bf0cc9ff720d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic256ih8iw30oh4ow30kh2kw1sh2sw1ph0pw0n"3de12951156dbe6ffdb8aea8953e2ab4"
+--reset ic8iw14ow8kw3sw2pw1dw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdb --alg=avg_np mb512ic256ih28oh14kh2sh2ph0n"20b2f63fc5ffbe39a1ff50fb56e964e7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic24ih112oh56kh3sh2ph0n"8c5db329ff0115698f1443bfc4f85a16"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih14oh14kh3ph1n"e7573405401ce3b6f4911e5a79a74879*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdeb mb4ic256id16od8kd2sd2pd0n"aca2790333f08f0a98995f9282d94e8c*128"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih112oh56kh3sh2ph0n"92d644e93ff41d9ea7dc0c5aa082fea0*5&amp;d796b189e672330d92758adfab8fea3d*5&amp;d4792e31a7d598b1ee00facffe774d73*5&amp;a5e2c0b920a78f623065b5680b88d976*5&amp;fb388b45cd435d1c95897f05515e8130*5&amp;8736ea62f3fe58e46a4a376aeae20538&amp;0d44ac0f309412f37809976bf10cd5f5&amp;99dfdbf566f208484b576a4885eb8435&amp;19852975ed436d9310cf890e18903271&amp;f5a90ee56f093d3bd0d04444eeb1c819&amp;771ea1ec14c4a14928ff78d7ce34f7bb"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic768ih17oh17kh3ph1n"8620890650a49d2967a5e5ff3680814b*4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic528ih13oh13kh3ph1n"fb4771e8a9a8298ef76f36f89ca498e6"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic5iw16ow14kw3pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih55oh27kh3sh2ph0n"a22824de31d47d2f2b3a49a3ace03326*5&amp;dd7b1f2366a9c89e325f72841781939a"
+--reset --tag=ABx16a16b mb16ic16id60ih60iw60od31oh31ow31kd4kh2kw3sd2sh2sw2pd1ph1pw1
+--reset ic5iw42ow14kw3sw3pw0n"pool_ci_1d:kw_equals_sw"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih113oh56kh3sh2ph0n"cab82e7de247c9659f3ac7c9e6d4796f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic192ih61oh61kh3ph1n"2d29c9bcf1a3a2d43eb4a10b09b23a1b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih13oh13kh9ph4n"c7d1f37de25bfe62f5de5de8d82b209b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd16a16b mb16ic64ih416iw672oh208ow336kh3kw3sh2sw2ph0pw0n"3b71241953b1a1bcadf55149c5af587f"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdb mb4ic256ih32oh16kh1sh2ph0n"47f3bed13dba4f088eba93f4b2548c32"
+--reset ic35ih20iw15oh17ow14kh4kw3ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic288ih35oh17kh3sh2ph0n"b51324be4b1590bb49600d3212570a8c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih400iw683oh200ow342kh3kw3sh2sw2ph0pw1n"f29869bf662874cbc6ebaf56f7e99fcd*5&amp;b3bd227139c79a49ed87d01336d4b7ae*5&amp;a6b4eedb2b2766ac63ff0ea9c2a3a5da"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32ih37iw33oh17ow14kh4kw6sh2sw2ph0pw0
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=axb mb32ic16ih4iw8oh1ow1kh4kw8sh4sw8ph0pw0
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32id52ih20iw19od17oh5ow14kd4kh4kw6sd3sh4sw1pd0ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdb mb4ic64ih512oh256kh3sh2ph0n"6d198105513472842e408ee678b55e8c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic896ih8oh3kh3sh2ph0n"3ebc0b1663b9ef2b160198d19acc455a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic768ih17oh17kh3ph1n"1d3a4cda04726a0fb084a45994588588*4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic128ih184iw240oh92ow120kh2kw2sh2sw2ph0pw0n"f1af9ac86818cdf6f1c26eedadf3aa57*5"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic17iw60ow31kw3sw2pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic384ih35oh35kh3ph1n"d01998f9e7e7c246d6a7254058b2b99c*20&amp;96f4ee5e4832357d4cf69185d8b639fe*4"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32iw300ow151kw3sw2pw1dw3
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic48ih256oh128kh2sh2ph0n"d34f192d7068fb6c2d9445c57425a5e2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic512ih13oh6kh2sh2ph0n"22c9eaa4e9d59bf3b253bb2b7bcbfa53*5&amp;d034edb6f68072bc49b6f3ee50473020"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic192ih71oh35kh3sh2ph0n"51dd09637d042e28aff2cd6c95f6a29b*5&amp;6c8c9fa8077dc4dda909166c88a4562a*5&amp;da3db6f6f2d3f0885ad0894a1a2bda5b&amp;1257b0078bea43810f6059c6285eeabb"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic1024ih17oh8kh3sh2ph0n"a1430d822a0dd379bf88ef5ae6451c1c&amp;daa38d2942fc25f8e6242b0fb23ed7a2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb300ic1024ih28oh14kh2sh2ph0n"1984b39a77453dbe6ee3d52efa7a89ea"
+--reset ic480ih14oh14kh3ph1n"googlenet_v1:inception_4a/max_pool"
+--reset ic32ih19iw33oh17ow14kh4kw6sh1sw2ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic128ih64oh32kh3sh2ph1n"254ff88da516baac9f039d30dd814ce2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic320ih75iw128oh75ow128kh3kw3ph1pw1n"aa3ad75734467317de8f72c1c51edb49"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic128ih64oh32kh2sh2ph0n"e9f295ab80eb2bbe3f024d4875bf1296"
+--reset ic32id36ih7iw16od17oh4ow14kd4kh5kw3sd2sh1sw1pd1ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih56oh28kh1sh2ph0n"4a0732f60cb7d2a3574aa585c2234fa1*5&amp;7a3b39ae9f6566e414fffe11813aafb1*5&amp;f0b486a7e84d91d0e006ce07317fb869*5&amp;99052034b25aa96bf2137611e8752a68&amp;687fae9d716d73d16657e6f34171f091&amp;d2a57f491503430c0201c4ab384128aa&amp;18c54a7a45e54c5f77af142d2c6cac97"
+--reset ic8ih3iw14oh1ow8kh3kw3sh1sw2ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih8oh4kh2sh2ph0n"c1b40c2e356beaa84ca3e00351a38c6e*8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih19oh19kh5ph2n"755b6b202a212ce0a7dfca55ad152941"
+--reset ic5ih27oh9kh3sh3ph0n"pool_ci_2d:kh_equals_sh"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb1024ic64ih112oh56kh3sh2ph0n"224a34f1e7d42293ea8c486d04614eef"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb mb4ic256ih32oh16kh1sh2ph0n"61077933c5dde755a25ee7e9959ea3e9"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih64oh32kh3sh2ph1n"af7ebcfdca77c2d0b9ee67ccfe379c73*5&amp;f6d5db5a6eaacd7735e16f1c95940fc8"
+--reset --allow-enum-tags-only=false --tag=acdeb mb4ic512id8od4kd2sd2pd0n"f12b2b6f6c2466b8444aee949cc3ee32*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --attr-post-ops=add:f16:14:aBcd16b+relu mb1ic1024ih14oh7kh1sh2ph0n"23f305e4c2eb9058866d23eb82765bfb*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic1024ih32iw64oh3ow3kh12kw22sh11sw22ph0pw0n"06972424c25365e34d84dc635b685abd"
+--reset --tag=axb mb1ic5iw42ow14kw3sw3pw0
+--reset --allow-enum-tags-only=false --tag=acdb mb4ic16ih320iw512oh160ow256kh2kw2sh2sw2ph0pw0n"49c5b230546c17e11e40eb725b158dea*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih27oh13kh3sh2ph0n"4b4b7fe5ec463a7d4a304b074c004dce*5"
+--reset ic8id14od8kd3sd2pd1n"pool_ci_3d:asymmetric_pad"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --attr-post-ops=add:f16:14:aBcd16b+relu mb1ic512ih28oh14kh1sh2ph0n"f798673781e921d32d850a93142cf957*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih184iw240oh92ow120kh2kw2sh2sw2ph0pw0n"a19db1094181f725cf4ab0f42bb862da*5&amp;d2311c370e93a865dfa49f59d6b9581e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic112ih56oh28kh2sh2ph0n"c5b9ddcd4b9f5f3ecf2d9b5731a27d1d&amp;481fff538aea7598f578e9a4aff73d4c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic64ih16oh8kh3sh2ph0n"eb777d5c3a8b90325476f759bde880ea*5&amp;9d74a51b2d92eea137733708f40e1d89"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic512ih19oh19kh13ph6n"349bfbf97cc7cb8f4bfd324381919963"
+--reset --tag=ABx16a16b mb16ic35ih19iw19oh17ow14kh4kw6ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih147oh73kh3sh2ph0n"14e2309a0a906630b5c2923c0c920af4&amp;77771f89ce627e4d2640068b99a6365e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic304ih32oh16kh2sh2ph0n"74743f8b86b0f5a184280cdfbed7a725&amp;85a89d2c87b983d763c60191cda573fa"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic384ih20oh20kh5ph2n"d46e76ae252888b585ea4bf7e91c7d28*3"
+--reset ic35ih19iw19oh17ow14kh4kw6ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih320oh160kh3sh2ph0n"aa63cfae6a2cd9a0c02b49551e76e3a2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_p --attr-post-ops=linear:0.25 mb1ic1024ih17oh17kh3ph1n"122b428d2340798b6af5a2cc30ef6538*35"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic128ih55oh27kh2sh2ph0n"d8e51e6a64f0f117d1f482b50662b435*5&amp;6b2335aa9da82a88f19a2da1a1bb7f83"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic16id60ih60iw60od31oh31ow31kd4kh2kw3sd2sh2sw2pd1ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb32ic128ih2014iw1oh503ow1kh4kw1sh4sw1ph0pw0n"7b46bf9806fff8fc34975d72930f0c20&amp;8babd3a8cce9da9451cc095057db524a"
+--reset --allow-enum-tags-only=false --tag=acdeb mb4ic32id128od64kd2sd2pd0n"d486374403ac92e071161fe6fb69f163*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic512ih12oh6kh2sh2ph0n"35add7403d8d5238d5a7da23e288c725&amp;71566410f1d3ed6a907a62eb7b61837d"
+--reset ic2048ih7oh1kh7ph0n"resnet_50:ave_pool5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic384ih20oh20kh5ph2n"23aadfb0da0a998c499634621958cc2b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih52oh26kh2sh2ph0n"1ee267ed3918c266610859f406332b0d*5&amp;6591058d07331462fbed30f3399c5eef*5&amp;63a5f65cd20ef5ecd3f28dc370382d53&amp;11a72b43bd1601c1c7b24b6554efc000"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb mb32ic256ih473iw1oh118ow1kh4kw1sh4sw1ph0pw0n"112eecd16f553d83975887b6f9c437a0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic128ih128iw256oh64ow128kh1kw1sh2sw2ph0pw0n"8b50d4d352d3b227234173d3036cfeb9*5&amp;5efe90468d444d91d63bb14c2f782f1d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic256ih27oh13kh2sh2ph0n"f9807c12cbfde8282bc4b6c0e08ca23a*5&amp;267e6e9bcf64aca6f6c2c22cd01c075b"
+--reset --tag=axb mb1ic17iw60ow31kw3sw2pw1dw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic1024ih32iw64oh6ow6kh6kw12sh6sw11ph0pw0n"0742c2f2c55491aa72a1fabc35b1c42a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih8iw25oh4ow25kh2kw1sh2sw1ph0pw0n"233d7e3e5e3a290e228c233beaee392e*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih19oh19kh13ph6n"c5311c354a90a01062a91c03af3bdfa5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih147oh73kh3sh2ph0n"3727bd388e4ad1ff107a3ef10294fbca"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdeb mb4ic128id32od16kd2sd2pd0n"1e0f06fb2232fd492415ad51f78da162*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=acdb --alg=avg_np mb8ic1024ih1iw49oh1ow1kh1kw49sh1sw49ph0pw0n"3b352fa1702fc6e21506aec4139e21e5*20"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih112oh56kh3sh2ph1n"df87ab03c82385efade15fa2093bf52e&amp;4600f73f2c6f01585e904c0f6fd01ca7&amp;34f498720ce9aba12f61cef6ff3d6cd6&amp;67b7556613c91a45acc427bdf873847a&amp;be615a047c2c9c6a33f74590da17b937&amp;f201d9666b2588e331af0429dd9d745c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b mb1ic192id40ih56iw56od40oh28ow28kd1kh3kw3sd1sh2sw2pd0ph0pw0n"4c91d566485bf417398ac88bdbef95a3*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih64oh32kh3sh2ph1n"4ab52132b7443e0c6caffba2879b435f*5&amp;b73474fde818aa920bf5bfeb859a7594"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic1024ih14oh7kh2sh2ph0n"6dbd2edbb8a41d54688c15a93f0b5ddf"
+--reset ic16ih3iw100oh1ow51kh3kw3sh1sw2ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b mb1ic192id40ih28iw28od40oh28ow28kd3kh3kw3pd1ph1pw1n"56382dfebad3e5f4ba40b61c7f287543*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih112oh56kh3sh2ph1n"e880ef91ad7a851bca12a2f357668696"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_p --attr-post-ops=linear:0.25:0.375 mb1ic512ih14oh7kh2sh2ph0n"7f06b3be8e127b3e7334ee5dd8e3630b*5"
+--reset --tag=axb mb1ic64iw32ow16kw3sw2pw0
+--reset --tag=ABx16a16b mb16ic35iw13ow14kw6pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb1024ic64ih112oh56kh3sh2ph1n"9bbe8686fb6dc85fcb64a2b64bef1865&amp;23e84045465a89ac5a8f0be006607332"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic128ih48oh24kh2sh2ph0n"fd373f0c6cb3b3575a689dddc7541072*5&amp;ca390dab408949e81caeeb6aa844e331"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic1024ih14oh7kh2sh2ph0n"61f647b40adc53a4ef4e6fea58a8c975"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic1024ih14oh7kh1sh2ph0n"dfa0c15fc3c4be68c80bd74dc034c671*5&amp;f76c31024bc359410f42242f2d98fc37*5&amp;e802657c419038f1709d27111ee95a23*5&amp;14fcced98dd7396d446ceb21c221fd2e&amp;89788641055430e8a92a00781b7f9c32"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb32ic64ih8177iw1oh2044ow1kh4kw1sh4sw1ph0pw0n"4c9ede39cfdf9e4112c2ad4db8877434&amp;91256831b645a02acc5c895ae38dd780"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic1024ih7oh1kh7ph0n"de5d635e72dbc54494922330b5424ced"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih26oh13kh2sh2ph0n"e74a8a67eef5fdd58a5a0c2a917b92c8*5&amp;80992e579b8ae2f297dbc712c679d1d0*5&amp;c267da7240f7ebb20456e9a5864dc2e5&amp;a1557446eb03e894c0ac4e3c738046ae"
+--reset --tag=axb mb1ic35iw13ow14kw3pw3
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic2048ih8oh1kh8ph0n"googlenet_v3:ave_global_pool"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic128ih104oh52kh2sh2ph0n"e2e15fa6cdabe79c7914029d1dc627ea*5"
+--reset --tag=axb mb1ic32id18ih20iw20od14oh17ow5kd6kh4kw4sd1sh1sw4pd1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic512ih19oh19kh13ph6n"5a770a62977f950599ec99745c490a20"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic256ih17oh8kh3sh2ph0n"435fdcff0db4e3e25f9685dd876c7447"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih32iw120oh16ow60kh2kw2sh2sw2ph0pw0n"de0bc28eab8e1a2913359aef79c26c3f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb100ic1024ih4oh4kh3ph1n"f22faa9c8db878b61f5139461f68e357*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih128iw256oh64ow128kh1kw1sh2sw2ph0pw0n"aa8293e94c7dac0c90a01116b88c7959*5&amp;3ded053f1f1f8c25c10814fb813bcef0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic256ih35oh35kh3ph1n"a29a328c984d0244da90e50e1e917579"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih77oh38kh3sh2ph0n"e5f28476fcdb501d2daadba729a595f3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic2048ih8oh8kh3ph1n"03dc6f74ce52987ca891a1d113b5b536"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic192ih27oh13kh3sh2ph0n"91587bd571134b5b204e1a29b7356040*5"
+--reset --tag=ABx16a16b mb16ic16ih103iw9oh52ow7kh3kw3sh2sw1ph1pw0
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb14ic40ih40iw64oh20ow32kh2kw2sh2sw2ph0pw0n"758c9145a9c67e82cc50683b346dead7*3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb mb32ic64ih8177iw1oh2044ow1kh4kw1sh4sw1ph0pw0n"4e4deb5c044ca6320ae7773087b40050"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic320ih20oh20kh13ph6n"9754c1e87f10f2f113b209aca216391d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic512ih14oh7kh2sh2ph0n"45141e1466dfcfeb99be7f613cec635d*5&amp;c35b753369004db39c0e1a6255d8bad9*5&amp;2554a3270066f7cde73d12a170c1a9b4&amp;2e205e74aaf8fce27ff54123187f1386&amp;10b98903ad5317fab82d2d76d705ab05"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic224ih28oh14kh2sh2ph0n"6aa1244eae78f7f094cd763c1b5bc330*2&amp;ce7d27664ce7a6c2f353e8a4e55f4c15*2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic512ih7oh1kh7ph0n"47df83c7bc9d16a60f0d23375316585d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic48ih256oh128kh3sh2ph0n"87596f0fb23e8c2bb66ea2ef5b037a27*5&amp;1f972d403871feee8e488e6667bac6b5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih368iw480oh184ow240kh2kw2sh2sw2ph0pw0n"a19d7a014800814dfc22865ae196d94e*5&amp;a86a19f444e4a4460b5b5aa8af87f747"
+--reset ic16iw30ow16kw3sw2pw0n"pool_ci_1d:kw_equals_pw_r"
+--reset ic17id30od16kd3sd2pd1n"pool_ci_3d:ic_tail"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih32iw120oh16ow60kh2kw2sh2sw2ph0pw0n"6a05a9816bc0601f032f8be31bac5ca2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb14ic40ih40iw64oh20ow32kh2kw2sh2sw2ph0pw0n"2ed063a3a60fd43978f5c6a13c70f0f6*6"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32ih16iw13oh17ow14kh4kw3ph4pw3
+--reset --allow-enum-tags-only=false --tag=acdb mb14ic16ih320iw512oh160ow256kh2kw2sh2sw2ph0pw0n"4e50583bb2657c2765c87673706c0d9e*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_p mb1ic1536ih8oh8kh3ph1n"d5957e802f6c1b713984704a9e379230*15"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic512ih13oh13kh9ph4n"e7f991b799ba23fb8f621ba87336ae14"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic32ih512oh256kh2sh2ph0n"08fee98330771635756368e142fe9714*5&amp;c187570fc1ac0255d053a0b087f7590e*5&amp;411c1182bc4e9a5fa915baac091041cd&amp;d905238c49b7afe0eb761c4c8a401c1f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic192ih48oh24kh2sh2ph0n"141cebd2b50be761e55363c029907ea7"
+--reset --allow-enum-tags-only=false --tag=ABcd16a16b mb1024ic64ih112oh56kh3sh2ph1n"521e3aceef6bbc9f66a3858e861a855c"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdeb mb4ic128id32od16kd2sd2pd0n"cda22c9ea8929b1f226c2b929b1c4700*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih147oh73kh3sh2ph0n"0983a075b5b5ba8467346eba6bbacb98&amp;9e0f253da44c91898fd3b3abc3faddba"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic192ih75iw128oh75ow128kh3kw3ph1pw1n"bd975a2da97491a1f4ef5b89af884196"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih77oh38kh3sh2ph0n"96d7fb746c29aa0540d1e211612bc191"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb3200ic1024ih14oh7kh2sh2ph0n"1bcfff421faa56017029716841a8a88c"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic128ih4oh2kh3ph0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic1024ih6oh1kh7ph0n"4d94dab9412ebabf2ab82d67b89c8b8a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b mb1ic528id20ih14iw14od20oh14ow14kd3kh3kw3pd1ph1pw1n"f207ab3240c861f6ef1b0fcc9d429d2f*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih23iw19oh11ow9kh2kw2sh2sw2ph0pw0n"bfdf9f06ba5b0943808c27bd1c8e72d8*5&amp;b01e67329db48ef6dc8790f117839f49"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic64ih128oh64kh2sh2ph0n"f77e29e4c79f5def3a19ad47b454d88b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcde16b mb1ic256id40ih28iw28od40oh28ow28kd3kh3kw3pd1ph1pw1n"58655c5203945d540e6369a66edde425*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic128ih14oh7kh2sh2ph0n"e834993c6e7dafce74e5ca41c5cb3afc*2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic512ih16oh8kh2sh2ph0n"a101afdfb32b74a1998a01f1aa9afa2f*5&amp;eed70883b22cb2fc106e7467aec8116b"
+--reset --tag=axb mb1ic128ih4oh2kh3ph0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih16iw50oh8ow25kh2kw2sh2sw2ph0pw0n"1c23a3175ddce7e21557f8da8b66e7df*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih13oh6kh3sh2ph0n"e9fa7ae47c5b854afcd3b33cf1e4204d*5&amp;17c08f70bd2b1a2e7d99f57cf829d67e*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb100ic1024ih14oh7kh2sh2ph0n"faf4d765b7d174e878b4a339738019a0*10"
+--reset ic35iw13ow14kw3pw3
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic384ih14oh7kh2sh2ph0n"060a30e8f71bf0ee92f75e43f3f88a65*24"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic832ih6oh6kh3ph1n"e0ce3672e6a946379721d255e1363f0a*2"
+--reset ic5iw15ow14kw3pw1n"pool_ci_1d:only_pad_l"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih200iw342oh100ow171kh1kw1sh2sw2ph0pw0n"6211d7219519329739893a3d94ebe837*5&amp;391a3ef387dac4697ccecbe05b450938*5&amp;b238c9ac78aa87f06131ed6c9127db17"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic256ih64iw128oh32ow64kh2kw2sh2sw2ph0pw0n"437430bcccfb550445365be8fc8c4c8e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih46iw60oh23ow30kh2kw2sh2sw2ph0pw0n"2f8ca9552af5094c2aa06fa81f5b813a*5&amp;ec3540d56f255d42968d24fddac80e4b"
+--reset --tag=axb mb1ic2048ih8oh1kh8ph0n"googlenet_v3:ave_global_pool"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic512ih14oh7kh2sh2ph0n"a9e36e801e076c3ebee0592876d06943&amp;437186d44b2aa3cbb691805f9be57ff3&amp;8ccb7b309027dbd45f8696ec9e471b47"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih150iw256oh75ow128kh1kw1sh2sw2ph0pw0n"ee7d2706a9be007433874297247a4e3d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdeb mb4ic64id64od32kd2sd2pd0n"c84a9ee621f9388fff6ab591887e26ae*128"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih23iw19oh11ow9kh2kw2sh2sw2ph0pw0n"906637b3d0d7fc79f0a56d2d839e2dea*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih111oh55kh3sh2ph0n"dcec13f9a82df49ac90b31f8a23dab16"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic64ih192oh96kh2sh2ph0n"f9f524355bb096a2e3035f5bd4e35256&amp;d8612140558a15ecaba4b7642cfd3cfc"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic192ih35oh35kh3ph1n"4ab3accca087550616f4f49b4606ec02"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic128ih56oh28kh3sh2ph0n"f60cf83bd0785918dd5800e41dcad77e"
+--reset ic32id52ih20iw19od17oh5ow14kd4kh4kw6sd3sh4sw1pd0ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic4096ih166iw1oh167ow1kh2kw1ph1pw0n"993b90a0bcdf7490bdb93204ed944c26"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic35ih19iw19oh17ow14kh4kw6ph1pw0
+--reset --tag=axb mb1ic32ih36iw13oh17ow14kh4kw6sh2sw1ph0pw6
+--reset --tag=axb mb1ic5iw16ow14kw3pw0dw4
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=acdb mb5ic64ih224oh112kh3sh2ph1n"1116596ebe9777c610f54520ee620bf7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic336ih64oh32kh2sh2ph0n"f6fba7a9692638de8a39834389c71c16&amp;6320b40d1796180e4e7d45b80790fbdd"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih111oh55kh3sh2ph0n"b15247a3e5739f0e034806bccc432dc9*5&amp;a3cea0605cd92fc64093af0ec4d42ba1"
+--reset --tag=ABx16a16b mb16ic32ih36iw13oh17ow14kh4kw6sh2sw1ph0pw6
+--reset --allow-enum-tags-only=false --tag=acdeb mb4ic256id16od8kd2sd2pd0n"14ab46a4b4f8073589b94c90ba61211c*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih19oh19kh9ph4n"319bb5d1dc145a243c7d7e8d7270f27a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic192ih128oh64kh2sh2ph0n"7b75e0f8c5032f035fa1bbf1e4151ee3&amp;bfe973ff54879cc56a6af7844f1dd81f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --attr-post-ops=mul:f16:2+add:f16:2+relu mb1ic144ih56oh28kh1sh2ph0n"7b709205ecacf086a95c489b0f0df145*5&amp;6ed72319eafe77f6953e03a3175dee30"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic512ih13oh6kh2sh2ph0n"85224f7bce39780795539f3768d33834*5&amp;13cd7b870e6090b2e50b0959ca8cf469"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdeb mb4ic32id128od64kd2sd2pd0n"427bf6994d916c83f183eefc0a938ab9*64"
+--reset --tag=ABx16a16b mb16ic35ih9iw10oh3ow3kh2kw2sh4sw4ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic3ih256oh128kh2sh2ph0n"55f55cc4f618b7ec83d16ed4ba4e42b9&amp;68f1325e2e584fe1532fcc1603d041a3"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32id18ih20iw20od14oh17ow5kd6kh4kw4sd1sh1sw4pd1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic256ih8oh4kh2sh2ph0n"8ea093d55c3c0c2fb60456a63979918f*8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic1024ih15iw13oh7ow6kh2kw2sh2sw2ph0pw0n"1584870df8f7dba1aef2dbdb2f257e66*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic256ih52oh26kh2sh2ph0n"ffe443727d9ad065ca3182bc127380ce*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih114oh56kh3sh2ph0n"ddd1611f29f5d6e770ee59c662c7b0d8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic768ih14oh7kh2sh2ph0n"045539891a9413b6f5f935cc37baf61a*23"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih300iw512oh150ow256kh3kw3sh2sw2ph0pw0n"a4224b19102af5c046aba55ce1d82b7e*5&amp;52b8d7e7bc1ea26ff18fc404883a6aeb&amp;6724dd434f01535faf1cafb02ca70cfd"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih19oh19kh13ph6n"dd0b2a819b15e1a2eee9fbe381e029c2*5&amp;30db4a6375e687b154fb940893a17b53"
+--reset --allow-enum-tags-only=false --tag=acdb mb16ic1024ih1iw15000oh1ow1kh1kw15000sh1sw15000ph0pw0n"aafd31ade34bf261ec1a65284f47031b*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic256ih64iw128oh32ow64kh2kw2sh2sw2ph0pw0n"fc4254ef05b95c80943c790f74cee605"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic336ih24oh12kh2sh2ph0n"21535dce6e09daad013adfaa6bf55e15&amp;5603540f9f02b685f3a63b0d4560eb77"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic64ih512oh256kh2sh2ph0n"ed99df37ad056dc5f8d96308fa2235cc"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih104oh52kh2sh2ph0n"21189ae4d2aad596b71180182a817fa3*5&amp;ab243fbb3e98aef1b0ff98bfa6a9a8a3*5&amp;5b63efa7d235c21f011be2022e254310&amp;9574e08ce19d5c93001fbff8ccdf4e93"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --attr-post-ops=linear:0.25:0.375+round+linear:0.25:0.375+clip:-1:1+add:s8:14:aBcd32b+mul:f32:0+swish:1+mul:f16:2+add:f16:2+linear:0.25:0.375 mb1ic64ih8oh4kh3sh2ph0n"4f73bb0393f7e2726d697f7111fdb73b*15&amp;acc7529a3ed4316067237e3dfb89caaa*3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb24ic64ih112oh56kh3sh2ph1n"9b4d2716be7601478d5cb460a8c8e265&amp;f81598392f0188630aea5d1201c3371e"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdb mb24ic64ih112oh56kh3sh2ph1n"4444eefb5e04e8e723e52993ec626676"
+--reset ic17iw60ow31kw3sw2pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic128ih14oh7kh2sh2ph0n"c9e54df01417bcfd2ffeaad8f87fbb68*2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb32ic256ih118iw1oh29ow1kh4kw1sh4sw1ph0pw0n"281319f8d226053540aeb5bc0e1d7ff5&amp;b058fab5c9a6d2ee675f97959c97c5f3"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdeb mb4ic512id8od4kd2sd2pd0n"3c7ba33a1bda4ecc667b3f5d2af14814*64"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic384ih28oh14kh2sh2ph0n"cd7bf1dc1c65c5fe3384500466d92290*6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic112ih256oh128kh2sh2ph0n"d54d443e4913fb0ed54948b12284e8b1*5"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=axb ic5ih7iw11oh1ow1kh7kw11sh7sw11ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic576ih128iw256oh5ow11kh49kw49sh16sw20ph0pw0n"422235ebb29669aeb01f96817beff216*5&amp;6c9d37bdc78e4f665625c3fa5c88ff0b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=acdb mb5ic512ih14oh1kh14sh14ph0n"04f15f1ad11ee144e3fbad730f75c9f4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih56oh28kh3sh2ph0n"a7cfa8795456366110e07e2a21519522*5&amp;fd48f5f690e729f5eb21654fc1fb8b55"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic64ih112oh56kh3sh2ph1n"32c24f427f491fd39d2f9cf50942060e"
+--reset --tag=axb mb1ic192ih57oh28kh3sh2ph0n"googlenet_v1:max_pool2/3x3_s2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic64ih320oh160kh3sh2ph0n"87ceff2abc39abf643d19ad987d30d2d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb1024ic64ih112oh56kh3sh2ph1n"63e39a70087713e9966f3694dc173e75"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb4ic40ih40iw64oh20ow32kh2kw2sh2sw2ph0pw0n"1fc4e6094fc16e83ffe449366b7a874e*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic256ih256iw512oh128ow256kh2kw2sh2sw2ph0pw0n"e8cc240fd0dab63ef79d6b1473201d51*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=acdb mb1ic64ih112oh56kh3sh2ph1n"0d9b89c269e1e2c44c5bb811e1162b1d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih92iw120oh46ow60kh2kw2sh2sw2ph0pw0n"17639d16c37730d31649d582980e1299*5&amp;97b9f46ecf7d01362047be30a24c04da"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb4ic256ih32oh16kh1sh2ph0n"d930b3f222a2e38135a93c73327b978c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih19oh19kh9ph4n"a1871750273a0dc002d5e6277c4e181d*5&amp;83839289acd93d19417b2c8e0b80aeca"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdb mb32ic64ih8177iw1oh2044ow1kh4kw1sh4sw1ph0pw0n"c9aa1eaca15c5493c39da395a8944b7d"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic384ih28oh14kh2sh2ph0n"f32970c1ad30ecf7b7d067f71399cf05&amp;538346a6acb53c5317de2c2e8047c32b*6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih56oh28kh1sh2ph0n"7a3253be21c91de9d969a7b9c0248663&amp;e697457da9dc0dc215b58814c547e46a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_p mb1ic128ih32oh32kh3ph1n"bf3a3b6a7a778f1688ec960d3261d9b7*15"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic35iw33ow14kw6sw2pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb100ic576ih7oh4kh3sh2ph1n"77d02d46f300dcd4b84a11f76a2b3299*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih256iw480oh128ow240kh1kw1sh2sw2ph0pw0n"4e225e42fad74b6405ac05699e5cf974*5&amp;29068fa0d4dc7c8e5c03d7ebc9587893"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic128ih184iw240oh92ow120kh2kw2sh2sw2ph0pw0n"13aef0bcd05468eca4e5127039b5e0af"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic192ih150iw256oh75ow128kh3kw3sh2sw2ph0pw0n"dae0a74b4c3f9ac697a8227aafad8321"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic112ih256oh128kh2sh2ph0n"8f6d8459d93e1505bb1f8d843f51da7b&amp;15c43654bcddb47f634e62f141a49af7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih26oh13kh2sh2ph0n"15489825f195967cac87fbe5ea108922*5&amp;410746b9d9c4814321e5d4878373f46e*5&amp;c5f10346d9c9a81424379bead80fc785&amp;67c4e47a27c9a9d324756b6057ea813a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih13oh13kh13ph6n"efba5716df3cefe3c682d80ae6a2e9a8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdb mb32ic128ih2014iw1oh503ow1kh4kw1sh4sw1ph0pw0n"9165bf2218d8aa1fcb63f0edcfc63b77"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic256ih26oh13kh2sh2ph0n"043cc1801a5f95779beee3baabb1e811"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic32ih192oh96kh2sh2ph0n"89e818515914920a93fe3f04ead5efcd"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic384ih20oh20kh9ph4n"73723a09837f1b75cd9499943e8e073e*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih65oh32kh3sh2ph0n"459944fb4e77b38f2ef0e2b47bd6a9e6*5&amp;1752b672a7e570139b9b70077d632637"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_p mb1ic1024ih32iw64oh6ow6kh6kw12sh6sw11ph0pw0n"2af44de7f59da9c8cd6f34911446b3cf*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic896ih8oh3kh3sh2ph0n"6d5ea3a91e244b895064bef59760f022*5&amp;cb5e6354d0a6cf84dcd9e0b7917ce721"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic96ih96oh48kh2sh2ph0n"380c804320d33833a197d2d179e7a401*5&amp;ed7715c3f6d3b713689cd0460574490c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic512ih32oh16kh2sh2ph0n"737e1a2b4baeb1be67e6924d3d4044d4*5&amp;da05b437dd7a6d54dab391d11afd19e3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic512ih128iw240oh64ow120kh1kw1sh2sw2ph0pw0n"2af681b38c35b937ffe9d0955585e144"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih150oh75kh3sh2ph0n"c6f5abf5dd8b98968f0fc2af97f8790b*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic256ih92iw120oh46ow60kh2kw2sh2sw2ph0pw0n"3c40a86200a6b70655e051879f38ae95*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic64ih512oh256kh3sh2ph0n"e34302b8cef068315b61f0eed2ffea27"
+--reset ic5ih16oh14kh3ph0n"pool_ci_2d:no_pad"
+--reset --tag=axb mb1ic35ih9iw10oh3ow3kh2kw2sh4sw4ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic512ih16oh8kh2sh2ph0n"0552ae9f065720354d9ed2c7ecf13cbf"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih13oh13kh5ph2n"8d7b37674f1e9fa09ad3e68d1a0ad908"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih13oh6kh3sh2ph0n"70a853ce90c859d8b1e9ebb6fbd35214*5&amp;c2552bb206754eab7d71ef60eee344dd*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic448ih14oh7kh2sh2ph0n"34ce27a4c148ec3909c94fac697d8fac&amp;52578aa8dcc53a42a834731f544cc9da"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic256ih32oh16kh2sh2ph0n"518dd7d5e50781973542227e9c9f8a99"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb100ic10ih5905iw1oh590ow1kh10kw1sh10sw1ph0pw0n"29811864a42bbdd34abdd2eeaee87362"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic320ih20oh20kh5ph2n"3d36c2b41b2f994cc54b8ea649d76c7b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_p --attr-post-ops=linear:0.25:0.375 mb1ic128ih56oh28kh2sh2ph0n"3129f8157739fa7b8e1b38c9119c7e57*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic288ih35oh35kh3ph1n"2be66d5bb9f14ab3968cdb05d3c7ac3f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih112oh56kh3sh2ph0n"c6932603e53bad336e00f231c4601a80"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcde32a16b --alg=avg_np mb32ic480id4ih14iw14od4oh1ow1kd1kh14kw14pd0ph0pw0n"41066b537976969e25833cba905bd4b1"
+--reset --tag=ABx16a16b mb16ic32id30ih16iw13od11oh17ow14kd3kh4kw6sd3sh1sw1pd3ph4pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih92iw120oh46ow60kh2kw2sh2sw2ph0pw0n"8f96601c844a14508411dde7759d3eb0*5&amp;a2fe0933f32250e3395e76e69c7ca460"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic192ih71oh35kh3sh2ph0n"17c49dded0d569c45a904022eb963e5d&amp;f1c3bfc8f3f49e8c633913043cd20ec4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic64ih56oh28kh2sh2ph0n"97be12169c59f643db4d654d228ab8d2*2"
+--reset --tag=axb mb1ic32ih300iw500oh151ow251kh3kw3sh2sw2ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic32ih256oh128kh2sh2ph0n"47eb3d3082dbde4aa24d941f3354e7cd"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb100ic1024ih4oh4kh3ph1n"781f986218f6a4f2c8e97dc15f063285*5"
+--reset ic35ih9iw10oh3ow3kh2kw2sh4sw4ph1pw0
+--reset --allow-enum-tags-only=false --tag=acdb mb4ic40ih40iw64oh20ow32kh2kw2sh2sw2ph0pw0n"c8593e9940ae139426e1fd4c4000cdf8*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic96ih128oh64kh2sh2ph0n"85569173f03c483f3b541b61b94b65ac*5&amp;e88ee11020eeed12a9c3e5962b8ae445*5&amp;cefb2634ac0dd8dd41f40788222e26fc&amp;3c61d6706e46d044ab7b9bdc2fa05613"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic64ih96oh48kh2sh2ph0n"269bc8c46c8cb071a05d4a5ca17aea2a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb64ic512ih13oh13kh9ph4n"6f2252c3988c0c71579e4d9aeb8673d8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic3ih256oh128kh2sh2ph0n"8d3203dea1987031c17cbfaa7231880b"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic512ih16oh8kh2sh2ph0n"b11eb077ac2821445e205a52bd3ce658&amp;735604c34903dce031bc63b66a5b1b34"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=acdb --alg=avg_np mb1600ic256ih28oh14kh2sh2ph0n"8f34727d6320ea3e5410e4505d130dca"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih52oh26kh2sh2ph0n"ba586ea4ad6c904c308d72abcd9822df*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih150iw256oh75ow128kh3kw3sh2sw2ph0pw0n"d0551412238c8049488bea3b21a60afd*5&amp;d210647f61fa6ec1aba5a7043fe3791f"
+--reset --tag=ABx16a16b mb16ic5iw42ow14kw3sw3pw0dw2
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic192ih124oh61kh3sh2ph0n"7b6beef2762124f6ebeacf1eb15c7252"
+--reset --allow-enum-tags-only=false --tag=acdb mb4ic24ih160iw256oh80ow128kh2kw2sh2sw2ph0pw0n"bcd66d49d59c72ef2b484a73fd3b37fa*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb64ic512ih13oh13kh5ph2n"39833e723f5468faee746406478191aa"
+--reset --tag=axb mb1ic480ih14oh14kh3ph1n"googlenet_v1:inception_4a/max_pool"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25 mb32ic3ih512oh256kh2sh2ph0n"d4425a42d18faaca5cda530c234d7dfc&amp;2a4037444634d774808cf697fab70600"
+--reset ic35ih20iw45oh17ow14kh4kw6sh1sw3ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic64ih256iw512oh128ow256kh3kw3sh2sw2ph0pw0n"23abb01d0db07a64b9b352fea3826dab"
+--reset --tag=axb mb1ic32id52ih20iw16od17oh5ow14kd4kh4kw3sd3sh4sw1pd0ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih27oh13kh3sh2ph0n"17f43054d9cf1b4a6c9358eef18bd184*5&amp;96830e810b2cffb7c2fdb794acc8f12e*5&amp;227329f094ced7a5ff08169e9cf14f9c"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdb mb32ic128ih2014iw1oh503ow1kh4kw1sh4sw1ph0pw0n"17987ba6a6dc219170ff414d64fa12e7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=acdb --alg=avg_np mb16000ic256ih14oh7kh2sh2ph0n"564a925a479770655369a406a8877292"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb100ic1024ih14oh7kh2sh2ph0n"01dad08a7a70bd9bba6836bebb41d168"
+--reset --tag=axb mb1ic32ih16iw19oh17ow14kh4kw6ph4pw0
+--reset --tag=axb mb1ic1iw2ow1kw1pw0dw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic1536ih8oh8kh3ph1n"e7f5b1fa5596f3212e6b758a416a8aec*15&amp;e246093996b0c7d79c92ea380213563f*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic32ih208oh104kh2sh2ph0n"9220dc74799f0e44255eb2f72a2f5d3d&amp;91ec1bd783cea104666215756d258f8e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic384ih20oh20kh5ph2n"82fba1a138cfc3a46f3856ffc0f195f0"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b mb1ic256ih32oh16kh2sh2ph0n"b8c198712ee10871663287d756f1d8ac*8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic256ih7oh1kh7ph0n"18e2da1e0e4437096fb08ab90b914e7a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih200oh100kh1sh2ph0n"14d71e027dd09f24021047a6fd488508*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic512ih19oh19kh5ph2n"1bf9cf36c7f9b1e6b00c0513a2645a07*5&amp;ac3e964bb035eab3a3b49f7c9281154f"
+--reset --allow-enum-tags-only=false --dir=BWD_D --dt=bf16:bf16 --tag=acdb --alg=avg_np mb512ic256ih28oh14kh2sh2ph0n"b2806df8b42dbdb27056d59728eeeaeb"
+--reset ic32ih32oh16kh3sh2ph0n"pool_ci_2d:regular"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic128ih64oh32kh2sh2ph0n"4c7ea514e5b1c32a429bca2240d2e39e"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_p --attr-post-ops=linear:0.25 mb1ic1536ih8oh8kh3ph1n"39c11af3ec5f072e6a40eaa9598ac32a*15"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic320ih75iw128oh75ow128kh3kw3ph1pw1n"0e0c9fe0d4ef04bb6ef02dae1d7cc925"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic512ih46iw60oh23ow30kh2kw2sh2sw2ph0pw0n"302a90881dc8f154b42f8115860af7f7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdeb mb4ic256id16od8kd2sd2pd0n"f8d71c5c27acf1c9eb583414da02f808*128"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic24ih112oh56kh3sh2ph1n"61c55049844dc7fed6c996c7d5b7303c*5&amp;afe7b12db0e024afc55680480dfaf3c4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic256ih64oh32kh2sh2ph0n"a0e1acbe4d022fb1c921c8358d43a36c*8"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_p --attr-post-ops=linear:0.25 mb1ic384ih35oh35kh3ph1n"b82f2a040c72476911c28e5eee244a5a*20"
+--reset --tag=axb mb1ic23ih60iw60oh31ow31kh3kw4sh2sw2ph1pw1
+--reset ic35ih52iw16oh17ow14kh4kw3sh3sw1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdeb mb4ic32id128od64kd2sd2pd0n"50963ee8d36e41ba194929d0650b1d59*128"
+--reset --tag=axb mb1ic4ih4oh4kh3ph1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic288ih2iw320oh1ow160kh2kw2sh2sw2ph0pw0n"d0a03ee5c871c2fbe6f4533d179d23d7&amp;fa6dc95ef30c9dbf783a0b84968408b9"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih32oh16kh2sh2ph0n"2697a884bfdfb6d732417d3ac6f6610e*8"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32ih36iw30oh17ow14kh4kw3sh2sw2ph1pw0
+--reset --tag=axb mb1ic32id36ih7iw19od17oh4ow14kd4kh5kw6sd2sh1sw1pd1ph1pw0
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic20ih16oh3kh16sh16ph16
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic1024ih15iw13oh7ow6kh2kw2sh2sw2ph0pw0n"6ccd43631398fce7ad40d51157099346*5&amp;35813334b4e3c91bec2233626eed90a4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic256ih28oh14kh2sh2ph0n"72779cb5d4fcc707121b970f280069de*5&amp;7daed3ee400ce265f6456999b8b7c4c2*5&amp;6812e04e6781086fb1dba0ab5d3039ac&amp;4d08dc694aec1b447d2e0a4d071a2813&amp;18cf2688ee64a6aa20b99370ee49c926&amp;b1a846574dd9b43004708f7a31b14ef7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb32ic256ih473iw1oh118ow1kh4kw1sh4sw1ph0pw0n"24d4e7d168f0ac2668db6529e6eeaeb8&amp;c4af291209b7a12e236442216b7f8edc"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic256ih27oh13kh2sh2ph0n"56e7782691e90785e802f60419110771"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic2048ih14oh14kh3ph1n"f57719aaa5b18a318120ed9f5658d68f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb --alg=avg_np mb512ic1ih56oh28kh2sh2ph0n"7134ff9f9eb8c5559457caea90739787"
+--reset --tag=ABx16a16b mb16ic32id52ih20iw16od17oh5ow14kd4kh4kw3sd3sh4sw1pd0ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb1ic160ih64oh32kh2sh2ph0n"3515365f02a00d7beef1b172d067775b*5&amp;6c335974259fe8706f5b1e40bdc25730"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcde32b mb1ic192id40ih28iw28od40oh28ow28kd3kh3kw3pd1ph1pw1n"63a7fc519c5a371e7162570da5204042*5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic1024ih17oh17kh3ph1n"ef35d480b2e67f35ecc1019c879aef4c*35&amp;7793bb483823c90ec7444503249d3b59*7"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb5ic512ih14oh1kh14sh14ph0n"92bfaa4576e6dbf1d63031eefa74e801"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np mb1024ic2048ih7oh1kh7sh7ph0n"3c3c51b1d75f72d7f349f66d6915738c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic512ih27oh13kh3sh2ph0n"9907a60358d703a492e3e31cacf470d6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic256ih27oh27kh3ph1n"82e7e3a298b825f79b7e1e94ff0795ea"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=bf16:bf16 --tag=acdb mb32ic256ih118iw1oh29ow1kh4kw1sh4sw1ph0pw0n"9dc337ca399c68329b85499acf36a147"
+--reset --allow-enum-tags-only=false --dt=bf16:bf16 --tag=acdb mb32ic64ih150oh75kh3sh2ph1n"e65107dc95341a9352bf443ccf5235b7"
+--reset ic32ih37iw19oh17ow14kh4kw6sh2sw1ph0pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic1024ih17oh8kh3sh2ph0n"b45879438a6c540f6b49e118797f129b*5&amp;9dcbb3baf57c147262056a9b5d0a0f71*5&amp;f9734411f8f73ce87778c2aa6beba5f2"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic64ih368iw480oh184ow240kh2kw2sh2sw2ph0pw0n"3df62edb14a51983f7f42dd71fece039*5&amp;a937358211a63ff99fdc91ba2e280416"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic35ih9iw10oh3ow3kh2kw2sh4sw4ph1pw0
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic128ih56oh28kh2sh2ph0n"aa28c4e98369e46b6d04b464b63390d8&amp;5091236779110665b18431dc7ac22502&amp;75abe555f07348d94fc653f5b25d2051"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic768ih14oh7kh2sh2ph0n"0fbfca0df9fbe8bb02f86ab5761bc3d3*23"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic512ih19oh19kh9ph4n"bd543f1823fdcba2b67f3b22b0e51aac"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic512ih128iw240oh64ow120kh1kw1sh2sw2ph0pw0n"2015f6a3516d0b1ecf44adacd241f284*5&amp;549421a77ebec786569a16792a7c063b"
+--reset ic17ih13oh37kh17ph20
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic1024ih32iw64oh3ow3kh12kw22sh11sw22ph0pw0n"f30fbb6fd141aec56e3c6e94a204989e"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic2048ih7oh1kh7ph0n"resnet_50:ave_pool5"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic192ih56oh28kh2sh2ph0n"553f38f01f27df78bad054c140214c4c*5"
+--reset --tag=ABx16a16b mb16ic8ih3iw14oh1ow8kh3kw3sh1sw2ph0pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic256ih28oh14kh2sh2ph0n"0dc58fe1e16e821ed8aa71148f519afb"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic256ih256iw480oh128ow240kh1kw1sh2sw2ph0pw0n"a2773b00ba055b6bb303c5710195e6d3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic256ih28oh14kh2sh2ph0n"7d2df28c8c8cbe399c0f97827d2b7cc0&amp;586eea92374dbe882a47aabe459b4324&amp;b6adbb0374dd708291d4cb0826b77959"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=s8:s8 --tag=ABcd32a32b mb32ic128ih128oh64kh2sh2ph0n"0e7b0f70536ba985cf68d90d43d2657a"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b --alg=avg_np --attr-post-ops=linear:0.25 mb1ic384ih28oh14kh2sh2ph0n"b5d0f27a17fef7056e1124d2c8465712*6"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b --alg=avg_np mb32ic128ih55oh27kh2sh2ph0n"233dcae2dac66cd3234bf302e359ef90"
+--reset --allow-enum-tags-only=false --dir=BWD_D --tag=acdb mb14ic8ih640iw1024oh320ow512kh2kw2sh2sw2ph0pw0n"51bedf9af7f5331115ae89b303dc6d86*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --attr-post-ops=mul:f16:0+add:f16:14:aBcd16b+swish:1 mb1ic64ih32oh16kh3sh2ph0n"96a4aeb2ef10d50c067727b0c3934979*15&amp;87758dba286dc79e69a04653d89e278a*3"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic32ih37iw19oh17ow14kh4kw6sh2sw1ph0pw0
+--reset ic5id16od14kd3pd0n"pool_ci_3d:no_pad"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b --alg=avg_np --attr-post-ops=linear:0.25:0.375 mb32ic32ih512oh256kh2sh2ph0n"df34277276bfb7a866be285e861369a2&amp;d76b947ae7232b67594c2d380ed324ec&amp;3d716ff0505bbce4deee08df597c3e19"
+--reset --dir=FWD_I --dt=u8:u8 --tag=ABx32a32b mb32ic5iw42ow14kw3sw3pw0dw2
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic192ih124oh61kh3sh2ph0n"0f01964711beb3e0fee387fa00d7d8cc&amp;4b6108904ed3e7d4e03f55fbbc4cefb3"
+--reset --allow-enum-tags-only=false --tag=acdb mb4ic8ih640iw1024oh320ow512kh2kw2sh2sw2ph0pw0n"65f9d4f77e2c6f3af1ba0807e0f85e5d*3"
+--reset ic5iw15ow14kw3pw1
+--reset ic16id60ih60iw60od31oh31ow31kd4kh2kw3sd2sh2sw2pd1ph1pw1
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=aBcd32b mb1ic128ih32oh32kh3ph1n"c7b05f13f6b1ef869369ee72085275f9*15&amp;080847da58369ee461cf0594b36afc17*3"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b mb1ic480ih27oh13kh3sh2ph0n"87f5e8dfa2461870463b254fc3215b1c"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic128ih55oh27kh3sh2ph0n"0bd1093c6e2702b51929b21d4cb374cf"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic1024ih14oh7kh1sh2ph0n"cdce5a02fd055e0446c903bde81a7ab5&amp;452875e06f355ffb1be1c41f1eedec79"
+--reset --tag=ABx16a16b mb16ic17ih13oh37kh17ph20
+--reset ic32id20ih32iw13od11oh17ow14kd2kh4kw6sd2sh2sw1pd2ph4pw6
+--reset --allow-enum-tags-only=false --dir=FWD_I --tag=acdb mb100ic10ih117iw1oh11ow1kh10kw1sh10sw1ph0pw0n"8160f9f994c2c6117cde03cfe72933e4"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=u8:u8 --tag=ABcd32a32b mb32ic24ih112oh56kh3sh2ph1n"c58c870daf85dafd1cafb0eb6380ff06"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic256ih28oh14kh2sh2ph0n"05692b164f0ec1e8d6d55a39ef90921d*5&amp;60f4838e9c56d72bc4fd801f1f09cfc2*5&amp;28a9e4380bb9b067e63fe89fe977a499&amp;14be8da40b88e4990ab4d78d902b7a45&amp;a6102280f83b8587637b73648da94d61&amp;5573beaa6ae92bde85cf9310b2eae370"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=aBcd16b --alg=avg_np mb1ic336ih64oh32kh2sh2ph0n"3acdfda4205a032844c175490102bb7e*5&amp;a83dca16c8728994e91f92cdc89bdddf"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb100ic1088ih17oh17kh1ph0n"1d3e9e9bb74ca0bb22c28b3d7f94655f"
+--reset --allow-enum-tags-only=false --dir=FWD_I --dt=f16:f16 --tag=ABcd32a16b mb32ic896ih8oh3kh3sh2ph0n"d24bbb250b4ab6e003c600587242d0b1"

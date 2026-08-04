@@ -197,7 +197,7 @@
 --dt=f16:f16:f16
 --wtag=abc
 --grouped=0:4:8+8+8+8
---attr-post-ops=eltwise_swish:1.0,mul:f32:1:ab,mul:f16:1:ab,mul:bf16:1:ab,mul:f32:3:grouped,mul:f16:3:grouped,mul:bf16:3:grouped
+--attr-post-ops=eltwise_swish:1.0,mul:f32:1,mul:f16:1,mul:bf16:1,mul:f32:3:grouped,mul:f16:3:grouped,mul:bf16:3:grouped
 32x64:4x64x32
 
 # Post-ops: eltwise_swish /eltwise_gelu_tanh / eltwise_gelu_erf + binary_mul (grouped)
@@ -205,7 +205,7 @@
 --dt=f16:f16:f16
 --wtag=abc,acb
 --grouped=0:4:8+8+8+8,0:4:8+0+16+8
---attr-post-ops=eltwise_swish:1.0+mul:f32:3:grouped,eltwise_swish:1.0+mul:f16:3:grouped,eltwise_swish:1.0+mul:bf16:3:grouped,eltwise_swish:1.0+mul:f32:1:ab,eltwise_swish:1.0+mul:f16:1:ab,eltwise_gelu_tanh:1.0+mul:f16:3:grouped,eltwise_gelu_erf:1.0+mul:f16:3:grouped
+--attr-post-ops=eltwise_swish:1.0+mul:f32:3:grouped,eltwise_swish:1.0+mul:f16:3:grouped,eltwise_swish:1.0+mul:bf16:3:grouped,eltwise_swish:1.0+mul:f32:1,eltwise_swish:1.0+mul:f16:1,eltwise_gelu_tanh:1.0+mul:f16:3:grouped,eltwise_gelu_erf:1.0+mul:f16:3:grouped
 32x64:4x64x32
 
 # Post-ops: all eltwise
@@ -222,7 +222,7 @@
 --wtag=abc
 --grouped=0:4:8+8+8+8
 --bia-dt=f32 --bia_mask=2
---attr-post-ops=mul:f32:1:ab,mul:f32:3:grouped,mul:bf16:3:grouped,mul:f16:3:grouped
+--attr-post-ops=mul:f32:1,mul:f32:3:grouped,mul:bf16:3:grouped,mul:f16:3:grouped
 32x64:4x64x32
 
 # Post-ops + quantization: binary_mul per-row and grouped with WOQ scales
@@ -232,7 +232,7 @@
 --grouped=0:4:8+8+8+8
 --attr-fpmath=f16:true
 --attr-scales=wei:7:f16:32x1
---attr-post-ops=mul:f32:1:ab,mul:f16:1:ab,mul:f32:3:grouped,mul:f16:3:grouped
+--attr-post-ops=mul:f32:1,mul:f16:1,mul:f32:3:grouped,mul:f16:3:grouped
 32x128:4x128x64
 
 # Post-ops: multi-binary chains (grouped + dense, 3-op)
@@ -240,7 +240,7 @@
 --dt=f16:f16:f16
 --wtag=abc
 --grouped=0:4:8+8+8+8
---attr-post-ops=mul:f16:3:grouped+mul:f32:1:ab,eltwise_swish:1.0+mul:f16:3:grouped+mul:f32:1:ab
+--attr-post-ops=mul:f16:3:grouped+mul:f32:1,eltwise_swish:1.0+mul:f16:3:grouped+mul:f32:1
 32x64:4x64x32
 
 # Per-group binary_mul (mask 0) with variable group sizes

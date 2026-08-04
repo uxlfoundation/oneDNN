@@ -454,10 +454,10 @@ static status_t static_quant_handler(
     mul_scales_op->set_attr<std::vector<float>>(op_attr::scales, inv_scales);
     add_zps_op->set_attr<std::vector<int64_t>>(op_attr::zps, zps);
 
-    mul_scales_op->set_attr<int64_t>(op_attr::axis, axis);
-    mul_scales_op->set_attr<std::string>(op_attr::qtype, qtype);
-    add_zps_op->set_attr<int64_t>(op_attr::axis, axis);
-    add_zps_op->set_attr<std::string>(op_attr::qtype, qtype);
+    mul_scales_op->set_attr<int64_t>(
+            op_attr::mask, qtype == "per_tensor" ? 0 : (1LL << axis));
+    add_zps_op->set_attr<int64_t>(
+            op_attr::mask, qtype == "per_tensor" ? 0 : (1LL << axis));
 
     // reconnect
     in_vals[0]->remove_consumer(*op, 0);
@@ -507,10 +507,10 @@ static status_t static_dequant_handler(
     sub_zps_op->set_attr<std::vector<int64_t>>(op_attr::zps, zps);
     mul_scales_op->set_attr<std::vector<float>>(op_attr::scales, scales);
 
-    sub_zps_op->set_attr<int64_t>(op_attr::axis, axis);
-    sub_zps_op->set_attr<std::string>(op_attr::qtype, qtype);
-    mul_scales_op->set_attr<int64_t>(op_attr::axis, axis);
-    mul_scales_op->set_attr<std::string>(op_attr::qtype, qtype);
+    sub_zps_op->set_attr<int64_t>(
+            op_attr::mask, qtype == "per_tensor" ? 0 : (1LL << axis));
+    mul_scales_op->set_attr<int64_t>(
+            op_attr::mask, qtype == "per_tensor" ? 0 : (1LL << axis));
 
     // reconnect
     in_vals[0]->remove_consumer(*cur_op, 0);
@@ -554,13 +554,20 @@ static status_t dynamic_quant_handler(
     value_ptr src = in_vals[0], scales = in_vals[1], dst = out_vals[0], zps;
     if (has_zps) zps = in_vals[2];
 
+    // Compute the unified mask from the source op's attributes.
+    int64_t mask = 0;
+    if (cur_op->has_attr(op_attr::mask)) {
+        mask = cur_op->get_attr<int64_t>(op_attr::mask);
+    } else if (qtype == "per_channel") {
+        mask = 1LL << axis;
+    }
+
     // int8 = f32 / scales + zps
     op_ptr mul_scales = std::make_shared<op_t>(op_kind::_mul_scales);
 
     mul_scales->connect_input(1, scales);
     scales->remove_consumer(*cur_op, 1);
-    mul_scales->set_attr<int64_t>(op_attr::axis, axis);
-    mul_scales->set_attr<std::string>(op_attr::qtype, qtype);
+    mul_scales->set_attr<int64_t>(op_attr::mask, mask);
     mul_scales->set_attr<bool>(op_attr::with_runtime_scales, true);
 
     // connect mul_scales to subgraph
@@ -583,8 +590,7 @@ static status_t dynamic_quant_handler(
         op_ptr add_zps = std::make_shared<op_t>(op_kind::_add_zps);
         add_zps->connect_input(1, zps);
         zps->remove_consumer(*cur_op, 2);
-        add_zps->set_attr<int64_t>(op_attr::axis, axis);
-        add_zps->set_attr<std::string>(op_attr::qtype, qtype);
+        add_zps->set_attr<int64_t>(op_attr::mask, mask);
         add_zps->set_attr<bool>(op_attr::with_runtime_zps, true);
 
         // connect add_zps to subgraph
@@ -616,10 +622,20 @@ static status_t dynamic_dequant_handler(
     value_ptr src = in_vals[0], scales = in_vals[1], dst = out_vals[0], zps;
     if (has_zps) zps = in_vals[2];
 
-    int64_t group_mask = 0;
-    if (is_group_quantization) {
+    // Compute the unified mask from the source op's attributes.
+    int64_t mask = 0;
+    if (cur_op->has_attr(op_attr::mask)) {
+        mask = cur_op->get_attr<int64_t>(op_attr::mask);
+    } else if (qtype == "per_tensor") {
+        mask = 0;
+    } else if (qtype == "per_channel") {
+        mask = 1LL << axis;
+    }
+    // per_group mask is computed from group_shape below.
 
-        const auto &group_shape
+    std::vector<int64_t> group_shape;
+    if (is_group_quantization) {
+        group_shape
                 = cur_op->get_attr<std::vector<int64_t>>(op_attr::group_shape);
         const auto src_lt = src->get_logical_tensor();
         const auto scale_lt = scales->get_logical_tensor();
@@ -647,10 +663,7 @@ static status_t dynamic_dequant_handler(
                     static_cast<int>(scale_dims[idx]),
                     static_cast<int>(group_shape[idx]));
 
-            if (group_shape[idx] != 1) {
-                group_mask += 1ULL << idx;
-                //Currently group quantization only happens on one dimension
-            }
+            if (scale_dims[idx] > 1) { mask |= 1LL << idx; }
         }
     }
 
@@ -660,14 +673,10 @@ static status_t dynamic_dequant_handler(
     op_ptr mul_scales = std::make_shared<op_t>(op_kind::_mul_scales);
     mul_scales->connect_input(1, scales);
     scales->remove_consumer(*cur_op, 1);
-    mul_scales->set_attr<int64_t>(op_attr::axis, axis);
-    mul_scales->set_attr<std::string>(op_attr::qtype, qtype);
+    mul_scales->set_attr<int64_t>(op_attr::mask, mask);
     if (is_group_quantization) {
-        const auto &group_shape
-                = cur_op->get_attr<std::vector<int64_t>>(op_attr::group_shape);
         mul_scales->set_attr<std::vector<int64_t>>(
                 op_attr::group_shape, group_shape);
-        mul_scales->set_attr<int64_t>(op_attr::group_mask, group_mask);
     }
     mul_scales->set_attr<int64_t>(op_attr::data_type, scales_data_type);
     mul_scales->set_attr<bool>(op_attr::with_runtime_scales, true);
@@ -683,8 +692,7 @@ static status_t dynamic_dequant_handler(
         op_ptr sub_zps = std::make_shared<op_t>(op_kind::_sub_zps);
         sub_zps->connect_input(1, zps);
         zps->remove_consumer(*cur_op, 2);
-        sub_zps->set_attr<int64_t>(op_attr::axis, axis);
-        sub_zps->set_attr<std::string>(op_attr::qtype, qtype);
+        sub_zps->set_attr<int64_t>(op_attr::mask, mask);
         sub_zps->set_attr<int64_t>(op_attr::data_type, zps_data_type);
         if (is_group_quantization) {
             const auto &scale_dims = ltw(scales->get_logical_tensor()).vdims();
@@ -694,11 +702,8 @@ static status_t dynamic_dequant_handler(
                         "scale and zero point tensors should have the same "
                         "shape");
             }
-            const auto &group_shape = cur_op->get_attr<std::vector<int64_t>>(
-                    op_attr::group_shape);
             sub_zps->set_attr<std::vector<int64_t>>(
                     op_attr::group_shape, group_shape);
-            sub_zps->set_attr<int64_t>(op_attr::group_mask, group_mask);
         }
         sub_zps->set_attr<bool>(op_attr::with_runtime_zps, true);
         // connect sub_zps op to subgraph

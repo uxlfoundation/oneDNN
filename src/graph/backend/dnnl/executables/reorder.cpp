@@ -153,21 +153,20 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
         }
     };
 
-    if (op->has_attr(op_attr::qtype)) {
-        std::string qtype = op->get_attr<std::string>(op_attr::qtype);
-        int64_t axis = op->has_attr(op_attr::axis)
-                ? op->get_attr<int64_t>(op_attr::axis)
-                : 1;
-
+    if (op->has_attr(op_attr::mask)) {
         // For per group quantization, extra handling is needed for setting
         // group shape and size.
-        if (qtype == "per_group") {
+        const bool is_per_group = op->has_attr(op_attr::group_shape)
+                && !op->get_attr<std::vector<int64_t>>(op_attr::group_shape)
+                            .empty();
+        if (is_per_group) {
             const auto &scale_lt = op->get_input_logical_tensor(1);
             const auto scales_data_type = scale_lt.data_type;
             const auto &group_shape
                     = op->get_attr<std::vector<int64_t>>(op_attr::group_shape);
             const auto ndims = group_shape.size();
-            const int mask = (1 << ndims) - 1;
+            const int mask
+                    = static_cast<int>(op->get_attr<int64_t>(op_attr::mask));
 
             const std::vector<int64_t> groups
                     = {group_shape[ndims - 2], group_shape[ndims - 1]};
@@ -182,9 +181,8 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
                         static_cast<dnnl::memory::data_type>(zps_data_type));
             }
 
-        } else { // per channel and per tensor quantization
-            int mask = 0;
-            if (qtype == "per_channel") { mask = 1 << axis; }
+        } else {
+            int mask = static_cast<int>(op->get_attr<int64_t>(op_attr::mask));
             set_reorder_mask(mask);
         }
     }

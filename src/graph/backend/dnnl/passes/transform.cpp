@@ -193,18 +193,14 @@ status_t replace_quant_data_with_binary_post_op(
             insert_empty_scratchpad(bin_op);
 
             // add quant data as a constant input
-            const auto qtype
-                    = quant_data_op->get_attr<std::string>(op_attr::qtype);
+            const int64_t mask
+                    = quant_data_op->get_attr<int64_t>(op_attr::mask);
             const std::vector<int64_t> out_shape
                     = ltw(out_val->get_logical_tensor()).vdims();
             std::vector<int64_t> new_shape(out_shape.size(), 1);
 
-            // axis in  [-r, r-1], it may less 0
-            const auto axis = (quant_data_op->get_attr<int64_t>(op_attr::axis)
-                                      + out_shape.size())
-                    % out_shape.size();
-
-            if (qtype != "per_tensor") new_shape[axis] = out_shape[axis];
+            for (size_t d = 0; d < out_shape.size(); ++d)
+                if (mask & (1LL << d)) new_shape[d] = out_shape[d];
             op_ptr const_data_op;
             if (quant_data_op->get_kind() == op_kind::_mul_scales) {
                 const auto scales = quant_data_op->get_attr<std::vector<float>>(
@@ -474,10 +470,9 @@ status_t fold_mul_scales(std::shared_ptr<subgraph_t> &sg) {
                 for (size_t i = 0; i < new_scales.size(); ++i)
                     new_scales[i] = scales_base[0] * scales_next[i];
                 // set attrs
-                base_op->set_attr<int64_t>(op_attr::axis,
-                        next_op->get_attr<int64_t>(op_attr::axis));
-                base_op->set_attr<std::string>(op_attr::qtype,
-                        next_op->get_attr<std::string>(op_attr::qtype));
+                if (next_op->has_attr(op_attr::mask))
+                    base_op->set_attr<int64_t>(op_attr::mask,
+                            next_op->get_attr<int64_t>(op_attr::mask));
             }
             base_op->set_attr<std::vector<float>>(op_attr::scales, new_scales);
 
@@ -542,10 +537,9 @@ impl::status_t fold_sub_zps_add_zps(std::shared_ptr<subgraph_t> &sg) {
                 for (size_t i = 0; i < new_zps.size(); ++i)
                     new_zps[i] = zps_base[0] - zps_previous[i];
                 // set attrs
-                base_op->set_attr<int64_t>(op_attr::axis,
-                        previous_op->get_attr<int64_t>(op_attr::axis));
-                base_op->set_attr<std::string>(op_attr::qtype,
-                        previous_op->get_attr<std::string>(op_attr::qtype));
+                if (previous_op->has_attr(op_attr::mask))
+                    base_op->set_attr<int64_t>(op_attr::mask,
+                            previous_op->get_attr<int64_t>(op_attr::mask));
             }
             base_op->set_attr<std::vector<int64_t>>(op_attr::zps, new_zps);
 
@@ -1331,27 +1325,29 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
         if (offset == 0 || offset == 1) {
             // Matmul only support applying scale per channel along the last
             // dimension for DNNL_ARG_WEIGHTS.
+            const bool is_per_channel = scale_op->has_attr(op_attr::mask)
+                    && scale_op->get_attr<int64_t>(op_attr::mask) != 0;
+            const bool is_per_group = scale_op->has_attr(op_attr::group_shape)
+                    && !scale_op->get_attr<std::vector<int64_t>>(
+                                        op_attr::group_shape)
+                                .empty();
             if (offset == 1 && next_op.get_kind() == op_kind::_matmul
-                    && scale_op->has_attr(op_attr::qtype)
-                    && scale_op->get_attr<std::string>(op_attr::qtype)
-                            == "per_channel"
-                    && scale_op->has_attr(op_attr::axis)) {
-                int64_t axis = scale_op->get_attr<int64_t>(op_attr::axis);
+                    && is_per_channel && !is_per_group) {
+                int64_t mask = scale_op->get_attr<int64_t>(op_attr::mask);
                 bool trans_flag = next_op.has_attr(op_attr::transpose_b)
                         ? next_op.get_attr<bool>(op_attr::transpose_b)
                         : false;
                 int ndims = scale_op->get_input_value(0)
                                     ->get_logical_tensor()
                                     .ndims;
-                VCHECK_TRANSFORM(
-                        (!trans_flag && (axis == ndims - 1 || axis == -1))
-                                || (trans_flag
-                                        && (axis == ndims - 2 || axis == -2)),
-                        status::unimplemented,
+                const int64_t expected_mask = trans_flag ? (1LL << (ndims - 2))
+                                                         : (1LL << (ndims - 1));
+                VCHECK_TRANSFORM(mask == expected_mask, status::unimplemented,
                         "Matmul only support applying per channel scale "
                         "along the last dimension for DNNL_ARG_WEIGHTS. "
-                        "trans_flag: %d, axis: %ld, ndims: %d",
-                        trans_flag, static_cast<long int>(axis), ndims);
+                        "mask: %ld, expected: %ld, ndims: %d",
+                        static_cast<long int>(mask),
+                        static_cast<long int>(expected_mask), ndims);
             }
             if (!next_op.has_attr(op_attr::fusion_info)) {
                 fusion_info_t fusion_info;
@@ -1773,9 +1769,8 @@ status_t expand_convtranspose_scales(std::shared_ptr<subgraph_t> &sg) {
                     || in1.get_kind() != op_kind::_mul_scales)
                 continue;
 
-            if (in1.has_attr(op_attr::qtype)
-                    && in1.get_attr<std::string>(op_attr::qtype)
-                            == "per_tensor")
+            if (in1.has_attr(op_attr::mask)
+                    && in1.get_attr<int64_t>(op_attr::mask) == 0)
                 continue;
             auto dq_wei_scales
                     = in1.get_attr<std::vector<float>>(op_attr::scales);
@@ -2695,15 +2690,15 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
                 return status::success;
             }
 
-            // if reorder do per channel scaling, their axis should be
-            // same
-            int64_t cur_axis = op->has_attr(op_attr::axis)
-                    ? op->get_attr<int64_t>(op_attr::axis)
-                    : -1;
-            int64_t next_axis = next_op.has_attr(op_attr::axis)
-                    ? next_op.get_attr<int64_t>(op_attr::axis)
-                    : -1;
-            if (cur_axis != -1 && next_axis != -1 && cur_axis != next_axis) {
+            // if reorder do per channel scaling, their mask should be
+            // compatible
+            int64_t cur_mask = op->has_attr(op_attr::mask)
+                    ? op->get_attr<int64_t>(op_attr::mask)
+                    : 0;
+            int64_t next_mask = next_op.has_attr(op_attr::mask)
+                    ? next_op.get_attr<int64_t>(op_attr::mask)
+                    : 0;
+            if (cur_mask != 0 && next_mask != 0 && cur_mask != next_mask) {
                 return status::success;
             }
 
@@ -2810,13 +2805,11 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
                         + dst_zps2[i]));
             }
 
-            int64_t axis = -1;
-            if (op1->has_attr(op_attr::axis)) {
-                axis = op1->get_attr<int64_t>(op_attr::axis);
-            }
-            if (op2->has_attr(op_attr::axis)) {
-                axis = op2->get_attr<int64_t>(op_attr::axis);
-            }
+            int64_t mask = 0;
+            if (op1->has_attr(op_attr::mask))
+                mask = op1->get_attr<int64_t>(op_attr::mask);
+            if (op2->has_attr(op_attr::mask))
+                mask = op2->get_attr<int64_t>(op_attr::mask);
 
             bool change_layout
                     = (op1->has_attr(op_attr::change_layout)
@@ -2827,7 +2820,7 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
             // create fused op
             op_ptr fused_op = std::make_shared<op_t>(op_kind::_reorder);
             fused_op->set_attr<bool>(op_attr::change_layout, change_layout);
-            if (axis != -1) fused_op->set_attr<int64_t>(op_attr::axis, axis);
+            if (mask != 0) fused_op->set_attr<int64_t>(op_attr::mask, mask);
 
             if (!std::all_of(fused_scales.begin(), fused_scales.end(),
                         [](const float &s) { return s == 1.f; })) {
@@ -3044,14 +3037,10 @@ status_t fuse_dynamic_mul_scales_add_zps(std::shared_ptr<subgraph_t> &sg) {
         op_ptr &mul_scales = fuse_ops.first; // mul_scales
         op_ptr &add_zps = fuse_ops.second; // add_zps
 
-        const int64_t axis = mul_scales->get_attr<int64_t>(op_attr::axis);
-        const std::string &qtype
-                = mul_scales->get_attr<std::string>(op_attr::qtype);
-
         op_ptr fused_op = std::make_shared<op_t>(op_kind::_reorder);
         fused_op->set_attr<bool>(op_attr::change_layout, false);
-        fused_op->set_attr<int64_t>(op_attr::axis, axis);
-        fused_op->set_attr<std::string>(op_attr::qtype, qtype);
+        fused_op->set_attr<int64_t>(
+                op_attr::mask, mul_scales->get_attr<int64_t>(op_attr::mask));
 
         // src must be the 0-th input
         auto src = mul_scales->get_input_value(0);
@@ -3120,20 +3109,16 @@ status_t fuse_dynamic_sub_zps_mul_scales(std::shared_ptr<subgraph_t> &sg) {
         op_ptr &op1 = fuse_ops.first; // sub_zps
         op_ptr &op2 = fuse_ops.second; // mul_scales
 
-        const int64_t axis = op1->get_attr<int64_t>(op_attr::axis);
-        const std::string &qtype = op1->get_attr<std::string>(op_attr::qtype);
-
         op_ptr fused_op = std::make_shared<op_t>(op_kind::_reorder);
         fused_op->set_attr<bool>(op_attr::change_layout, false);
-        fused_op->set_attr<int64_t>(op_attr::axis, axis);
-        fused_op->set_attr<std::string>(op_attr::qtype, qtype);
-        if (qtype == "per_group") {
+        fused_op->set_attr<int64_t>(
+                op_attr::mask, op2->get_attr<int64_t>(op_attr::mask));
+        if (op2->has_attr(op_attr::group_shape)
+                && !op2->get_attr<std::vector<int64_t>>(op_attr::group_shape)
+                            .empty()) {
             const auto &group_shape
                     = op2->get_attr<std::vector<int64_t>>(op_attr::group_shape);
-            const int64_t group_mask
-                    = op2->get_attr<int64_t>(op_attr::group_mask);
 
-            fused_op->set_attr<int64_t>(op_attr::group_mask, group_mask);
             fused_op->set_attr<std::vector<int64_t>>(
                     op_attr::group_shape, group_shape);
         }
@@ -3199,21 +3184,16 @@ impl::status_t convert_dynamic_quantize_ops(std::shared_ptr<subgraph_t> &sg) {
 
     subgraph_rewriter_t rewriter(sg);
     for (auto &cur_op : convert_ops) {
-        const int64_t axis = cur_op->get_attr<int64_t>(op_attr::axis);
-        const std::string &qtype
-                = cur_op->get_attr<std::string>(op_attr::qtype);
-
         op_ptr fused_op = std::make_shared<op_t>(op_kind::_reorder);
         fused_op->set_attr<bool>(op_attr::change_layout, false);
-        fused_op->set_attr<int64_t>(op_attr::axis, axis);
-        fused_op->set_attr<std::string>(op_attr::qtype, qtype);
-        if (qtype == "per_group") {
+        fused_op->set_attr<int64_t>(
+                op_attr::mask, cur_op->get_attr<int64_t>(op_attr::mask));
+        if (cur_op->has_attr(op_attr::group_shape)
+                && !cur_op->get_attr<std::vector<int64_t>>(op_attr::group_shape)
+                            .empty()) {
             const auto &group_shape = cur_op->get_attr<std::vector<int64_t>>(
                     op_attr::group_shape);
-            const int64_t group_mask
-                    = cur_op->get_attr<int64_t>(op_attr::group_mask);
 
-            fused_op->set_attr<int64_t>(op_attr::group_mask, group_mask);
             fused_op->set_attr<std::vector<int64_t>>(
                     op_attr::group_shape, group_shape);
         }
@@ -3449,9 +3429,10 @@ status_t reorder_canonicalization(std::shared_ptr<subgraph_t> &sg) {
 
     for (auto &cur_op : sg->get_ops()) {
         if (cur_op->get_kind() != op_kind::_reorder) continue;
-        const std::string &qtype = cur_op->has_attr(op_attr::qtype)
-                ? cur_op->get_attr<std::string>(op_attr::qtype)
-                : "";
+        const int64_t mask = cur_op->has_attr(op_attr::mask)
+                ? cur_op->get_attr<int64_t>(op_attr::mask)
+                : 0;
+        const bool is_per_channel = (mask != 0);
 
         size_t index = 1; // the start index of optional runtime scales and zps
         // optionally skip the runtime scales
@@ -3464,7 +3445,11 @@ status_t reorder_canonicalization(std::shared_ptr<subgraph_t> &sg) {
             return dt == graph::data_type::s4 || dt == graph::data_type::u4;
         };
 
-        if (qtype == "per_channel") {
+        const bool is_per_group = cur_op->has_attr(op_attr::group_shape)
+                && !cur_op->get_attr<std::vector<int64_t>>(op_attr::group_shape)
+                            .empty();
+
+        if (is_per_channel && !is_per_group) {
             VCHECK_TRANSFORM((!(cur_op->has_attr(op_attr::with_runtime_src_zps)
                                      || cur_op->has_attr(
                                              op_attr::with_runtime_dst_zps))),
@@ -3654,19 +3639,15 @@ status_t combine_binary_post_op_scales(std::shared_ptr<subgraph_t> &sg) {
         }
         return fused_scales;
     };
-    const auto fuse_scales_attributes = [](const std::vector<op_t *> &scale_ops)
-            -> std::pair<std::string, int64_t> {
+    const auto fuse_scales_mask
+            = [](const std::vector<op_t *> &scale_ops) -> int64_t {
         for (size_t i = 0; i < scale_ops.size(); ++i) {
-            if (scale_ops[i]->get_attr<std::string>(op_attr::qtype)
-                    == "per_channel") {
-                // assumption: at least one scales per channel will make
-                // combined scales per channel
-                return std::make_pair("per_channel",
-                        scale_ops[i]->get_attr<int64_t>(op_attr::axis));
+            if (scale_ops[i]->has_attr(op_attr::mask)
+                    && scale_ops[i]->get_attr<int64_t>(op_attr::mask) != 0) {
+                return scale_ops[i]->get_attr<int64_t>(op_attr::mask);
             }
         }
-        // scales per tensor, defaulting axis
-        return std::make_pair("per_tensor", static_cast<int64_t>(1));
+        return 0;
     };
 
     std::vector<op_ptr> bin_ops;
@@ -3758,10 +3739,8 @@ status_t combine_binary_post_op_scales(std::shared_ptr<subgraph_t> &sg) {
                 bin_op->get_attr<int64_t>(op_attr::alg_kind));
 
         std::vector<float> new_scales_in1, new_scales_in0;
-        std::string new_qtype_in1;
-        std::string new_qtype_in0;
-        int64_t new_axis_in1 = 0;
-        int64_t new_axis_in0 = 0;
+        int64_t new_mask_in1 = 0;
+        int64_t new_mask_in0 = 0;
         bool drop_other_scales = false;
         const auto multiplier = std::multiplies<float>();
         switch (bin_kind) {
@@ -3774,10 +3753,10 @@ status_t combine_binary_post_op_scales(std::shared_ptr<subgraph_t> &sg) {
                         = fuse_scales(in0_scales, inv_out_scales, multiplier);
                 new_scales_in1
                         = fuse_scales(in1_scales, inv_out_scales, multiplier);
-                std::tie(new_qtype_in1, new_axis_in1) = fuse_scales_attributes(
-                        {&scales_in1_op, &scales_out_op});
-                std::tie(new_qtype_in0, new_axis_in0) = fuse_scales_attributes(
-                        {&scales_in0_op, &scales_out_op});
+                new_mask_in1
+                        = fuse_scales_mask({&scales_in1_op, &scales_out_op});
+                new_mask_in0
+                        = fuse_scales_mask({&scales_in0_op, &scales_out_op});
                 break;
             case dnnl::algorithm::binary_mul:
                 drop_other_scales = true;
@@ -3785,7 +3764,7 @@ status_t combine_binary_post_op_scales(std::shared_ptr<subgraph_t> &sg) {
                         = fuse_scales(in0_scales, in1_scales, multiplier);
                 new_scales_in0 = fuse_scales(
                         new_scales_in0, inv_out_scales, multiplier);
-                std::tie(new_qtype_in0, new_axis_in0) = fuse_scales_attributes(
+                new_mask_in0 = fuse_scales_mask(
                         {&scales_in0_op, &scales_in1_op, &scales_out_op});
                 break;
             default:
@@ -3803,14 +3782,12 @@ status_t combine_binary_post_op_scales(std::shared_ptr<subgraph_t> &sg) {
             rewriter.fuse_op_to_successor(other_scales_op.shared_from_this());
         } else {
             other_scales_op.set_attr(op_attr::scales, new_scales_in1)
-                    .set_attr(op_attr::qtype, new_qtype_in1)
-                    .set_attr(op_attr::axis, new_axis_in1);
+                    .set_attr(op_attr::mask, new_mask_in1);
         }
 
         // update output scales data
         base_scales_op.set_attr(op_attr::scales, new_scales_in0)
-                .set_attr(op_attr::qtype, new_qtype_in0)
-                .set_attr(op_attr::axis, new_axis_in0);
+                .set_attr(op_attr::mask, new_mask_in0);
     }
 
     rewriter.run();
@@ -3944,9 +3921,8 @@ impl::status_t lift_up_quantize(std::shared_ptr<subgraph_t> &sg) {
                     && op->get_input_value(0)->has_producer();
             if (!ok) continue;
 
-            ok = op->has_attr(op_attr::qtype)
-                    && op->get_attr<std::string>(op_attr::qtype)
-                            == "per_tensor";
+            ok = op->has_attr(op_attr::mask)
+                    && op->get_attr<int64_t>(op_attr::mask) == 0;
             if (!ok) continue;
 
             op_t *producer = op->get_input_op(0);
@@ -4076,7 +4052,7 @@ impl::status_t lift_up_weight_reshape_for_depthwiseconv(
                         op_kind::_sub_zps, op_kind::_mul_scales))
                 break;
             if (wei_format == "XIO") {
-                producer->set_attr<int64_t>(op_attr::axis, ndims - 1);
+                producer->set_attr<int64_t>(op_attr::mask, 1LL << (ndims - 1));
             }
             if (to_be_swapped.count(reshape_op))
                 to_be_swapped[reshape_op].emplace_back(producer);

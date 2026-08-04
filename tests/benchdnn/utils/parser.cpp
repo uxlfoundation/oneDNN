@@ -305,9 +305,6 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
             // In that case, we check for the ':' delimiter that separates src1
             // and src2 args, split the string for the two tensors and parse
             // them individually.
-            // TODO: Currently, there is no broadcasting support for the src2
-            // tensor - specifying src2 mask inputs and tags therefore has no
-            // effect on the operation.
 
             if (e.is_binary_kind_with_ternary_op()) {
                 src_delim = '.';

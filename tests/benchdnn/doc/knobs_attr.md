@@ -336,9 +336,6 @@ the third tensor is fixed at `s8`.
 dimensions of the conditional (third) tensor, so it may be broadcast against the
 destination: `common` (`mask = 0`) is a single-value condition applied to the
 whole tensor, while unset (no `S2_MASK_INPUT`) spans the full destination shape.
-Note that a broadcast condition is only supported by the reference
-implementation; optimized implementations that cannot fuse it fall back to the
-reference path.
 
 ### Prelu
 `PRELU` post operation kind applies forward algorithm to the operations result

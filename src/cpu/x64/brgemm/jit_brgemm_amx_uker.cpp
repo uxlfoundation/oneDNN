@@ -536,11 +536,9 @@ private:
             reg64_t reg_base, dim_t offset, reg64_t reg_stride,
             matrix_kind_t mk);
 
-    bool maybe_pre_process_k_tail(brgemm_iteration_t &bi, int bdb,
-            const Tmm &t1, reg64_t reg_base, dim_t offset, reg64_t reg_stride,
+    bool maybe_pre_process_k_tail(brgemm_iteration_t &bi, const Tmm &t1,
+            reg64_t reg_base, dim_t offset, reg64_t reg_stride,
             matrix_kind_t mk, bool use_memadvice);
-
-    bool process_k_tail_only_last_tile();
 
     void pre_process_k_tail_fused_copy_a(brgemm_iteration_t &bi, int bdb,
             const Tmm &t1, reg64_t reg_base, dim_t offset_src, dim_t offset_dst,
@@ -2049,7 +2047,7 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
     }
 
     if (maybe_pre_process_k_tail(
-                bi, xdb, t1, reg_base, offset, reg_stride, mk, has_mem_advice))
+                bi, t1, reg_base, offset, reg_stride, mk, has_mem_advice))
         return;
 
     if (load_nt) {
@@ -2461,28 +2459,22 @@ void jit_brgemm_amx_uker_base_t::pre_process_k_tail_fused_copy_a(
     if (offset_dst) sub(reg_buf, offset_dst);
 }
 
-bool jit_brgemm_amx_uker_base_t::process_k_tail_only_last_tile() {
-    // Check whether loading from the original A matrix will cause out of bounds exception.
-    // The check is on the last tile on K dim and tile before last on M dim. If
-    // loading that tile exceeds the A matrix, then we need to process K tail
-    // on every M tile.
-    int last_bd_block = brg.bdb_tail == 0 ? brg.bd_block : brg.bdb_tail;
-    return brg.rd_block - brg.rdb_tail <= last_bd_block * brg.reduce_dim;
-}
-
 bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
-        brgemm_iteration_t &bi, int bdb, const Tmm &t1, reg64_t reg_base,
-        dim_t offset, reg64_t reg_stride, matrix_kind_t mk,
-        bool use_memadvice) {
+        brgemm_iteration_t &bi, const Tmm &t1, reg64_t reg_base, dim_t offset,
+        reg64_t reg_stride, matrix_kind_t mk, bool use_memadvice) {
     const auto &tloop = imap_[bi.apply_postops];
 
-    bool need_k_tail_processing = mk == matrix_A && brg.amx_wary_k_tail()
+    // With the extendable_k strategy matrix B is zero-padded along the K
+    // dimension, so brgemm reads the full K-tail tile from matrix A and relies
+    // on B's zeros to cancel the columns beyond the valid K range. Reading past
+    // the valid K columns of A, however, pulls in bytes that belong to adjacent
+    // rows of A. If those bytes contain NaN/Inf the identity 'NaN * 0 == 0' no
+    // longer holds and the garbage leaks into otherwise clean output rows. To
+    // avoid this the K-tail of A is copied into a zero-padded scratch buffer
+    // for every M tile (not only the last one) before it is loaded into the
+    // AMX tile.
+    const bool need_k_tail_processing = mk == matrix_A && brg.amx_wary_k_tail()
             && brg.rdb_tail != 0 && tloop.is_last_rdi(bi.rdi);
-
-    if (process_k_tail_only_last_tile()) {
-        need_k_tail_processing &= bi.bdi->idx == tloop.bdis.size() - 1
-                && bdb == bi.bdi->block2() - 1 && bi.last_bsi;
-    }
 
     if (!need_k_tail_processing) return false;
 
@@ -2492,10 +2484,7 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
     if (transform_offset) add(reg_buf, transform_offset);
     mov(reg_converted_stride, zmm_width_in_bytes);
 
-    // reuse transformed data from matrix A for ldi > 0 if using only one tile
-    if (bi.ldi->idx == 0 || !process_k_tail_only_last_tile()) {
-        copy_k_tail_to_wsp(t1, reg_base, offset, reg_stride, use_memadvice);
-    }
+    copy_k_tail_to_wsp(t1, reg_base, offset, reg_stride, use_memadvice);
     // load into tmm from the transformed data.
     tileloadd(t1, ptr[reg_buf + reg_converted_stride]);
 

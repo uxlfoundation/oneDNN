@@ -32,3 +32,8 @@ mb1_ic96oc96_ih6oh6kh1sh1dh0ph0_iw6ow6kw1sw1dw0pw0_n"1x1_with_nb_os_tail"
 # sh > 1 with sw=1: H-only stride, exec_trans path (not RTUS)
 mb1_ic32oc48_ih67oh23kh1sh3dh0ph0_iw4ow5kw1sw1dw0pw1_n"sh3_sw1_multi_oh_block"
 mb16_ic32oc139_ih111oh37kh1sh3dh0ph0_iw4ow5kw1sw1dw0pw1_n"sh3_sw1_tall_input"
+
+# mb1 small-mb 1x1 with ic not a multiple of simd_w (ic%16!=0) exercises the
+# non-uker AMX brgemm kernel with extendable_k / wary_A_k_tail_read enabled
+# (regression guard for the K-tail NaN leak, issue #5717).
+mb1_ic72oc80_ih6oh6kh1sh1dh0ph0_iw6ow6kw1sw1dw0pw0_n"1x1_extendable_k_tail:5717"

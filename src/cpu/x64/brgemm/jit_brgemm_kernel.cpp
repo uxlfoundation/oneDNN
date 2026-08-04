@@ -467,11 +467,11 @@ private:
     void maybe_pre_process_data(matrix_kind_t matrix_kind, const Tmm &t1,
             reg64_t reg_base, dim_t offset, reg64_t reg_stride, dim_t num_rows,
             dim_t num_col_bytes, bool is_rd_tail);
-    bool maybe_pre_process_k_tail(bool last_bdb, bool is_rd_tail, const Tmm &t1,
+    bool maybe_pre_process_k_tail(bool is_rd_tail, const Tmm &t1,
             reg64_t reg_base, dim_t offset, reg64_t reg_stride,
             matrix_kind_t mk);
     void maybe_tileloadd_nt(matrix_kind_t matrix_kind, dim_t idx, dim_t offset,
-            bool is_rd_tail, bool is_tail, bool last_bdb);
+            bool is_rd_tail, bool is_tail);
     void load_scales_to_vmm(const data_type_t type_in, const Vmm &scales,
             const Xbyak::Operand &op, bool is_ld_tail, bool is_single_scale);
     void dot_product(Vmm v1, Vmm v2, Vmm v3);
@@ -480,7 +480,7 @@ private:
             dim_t rows_for_rd_tail);
     void gemv_microkernel(bool is_bdb_tail, dim_t ld_block, bool is_rd_tail);
     void gemm_microkernel_amx(dim_t bd_block2, bool is_bdb_tail,
-            dim_t ld_block2, bool is_rd_tail, bool is_ld_tail, bool last_bdb);
+            dim_t ld_block2, bool is_rd_tail, bool is_ld_tail);
 
     void bs_loop(dim_t bd_block2, bool is_bdb_tail, dim_t ld_block,
             bool is_ld_tail, bool first_bdb, bool last_bdb,
@@ -2729,7 +2729,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_data(matrix_kind_t matrix_kind,
 
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
-        dim_t idx, dim_t offset, bool is_rd_tail, bool is_tail, bool last_bdb) {
+        dim_t idx, dim_t offset, bool is_rd_tail, bool is_tail) {
 
     const bool is_A = matrix_kind == matrix_kind_t::matrix_A;
 
@@ -2770,8 +2770,8 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
                 is_A ? A_row : B_row, is_A ? A_col : B_col, is_rd_tail);
 
     } else {
-        if (maybe_pre_process_k_tail(last_bdb || is_tail, is_rd_tail, t1,
-                    reg_base, offset, reg_stride, matrix_kind))
+        if (maybe_pre_process_k_tail(
+                    is_rd_tail, t1, reg_base, offset, reg_stride, matrix_kind))
             return;
 
         const size_t cache_footprint = static_cast<size_t>(brg.typesize_A)
@@ -2789,13 +2789,21 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
 }
 
 template <typename Wmm>
-bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool last_bdb,
-        bool is_rd_tail, const Tmm &t1, reg64_t reg_base, dim_t offset,
-        reg64_t reg_stride, matrix_kind_t mk) {
+bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool is_rd_tail,
+        const Tmm &t1, reg64_t reg_base, dim_t offset, reg64_t reg_stride,
+        matrix_kind_t mk) {
 
-    // TODO: check is it last bs to calculate need_k_tail_processing
+    // With the extendable_k strategy matrix B is zero-padded along the K
+    // dimension, so brgemm reads the full K-tail tile from matrix A and relies
+    // on B's zeros to cancel the columns beyond the valid K range. Reading past
+    // the valid K columns of A, however, pulls in bytes that belong to adjacent
+    // rows of A. If those bytes contain NaN/Inf the identity 'NaN * 0 == 0' no
+    // longer holds and the garbage leaks into otherwise clean output rows. To
+    // avoid this the K-tail of A is copied into a zero-padded scratch buffer
+    // for every M tile (not only the last one) before it is loaded into the
+    // AMX tile.
     const auto need_k_tail_processing = mk == matrix_A && brg.amx_wary_k_tail()
-            && brg.rdb_tail != 0 && last_bdb && is_rd_tail;
+            && brg.rdb_tail != 0 && is_rd_tail;
     if (!need_k_tail_processing) return false;
 
     const auto zmm_width_in_bytes = cpu_isa_traits_t<avx512_core>::vlen;
@@ -2855,8 +2863,7 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool last_bdb,
 
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
-        bool is_bdb_tail, dim_t ld_block2, bool is_rd_tail, bool is_ld_tail,
-        bool last_bdb) {
+        bool is_bdb_tail, dim_t ld_block2, bool is_rd_tail, bool is_ld_tail) {
     auto tdpbxxd = [this](const Tmm &x1, const Tmm &x2, const Tmm &x3) {
         using namespace data_type;
         if (brg.is_tf32) {
@@ -2892,14 +2899,14 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(dim_t bd_block2,
         for (dim_t bdb = 0; bdb < bd_block2; bdb++) {
             maybe_tileloadd_nt(matrix_kind_t::matrix_A, bdb,
                     rdb * rdb_A_offset() + A_offset(bdb, 0, true), is_rd_tail,
-                    is_bdb_tail, last_bdb && bdb == bd_block2 - 1);
+                    is_bdb_tail);
         }
         for (dim_t ldb = 0; ldb < ld_block2; ldb++) {
 
             const dim_t idx = (is_ld_tail) ? brg.ld_block2 : ldb;
             maybe_tileloadd_nt(matrix_kind_t::matrix_B, idx,
                     rdb * rdb_B_offset() + B_offset(ldb, 0, true), is_rd_tail,
-                    is_ld_tail, false);
+                    is_ld_tail);
             for (dim_t bdb = 0; bdb < bd_block2; bdb++) {
                 tdpbxxd(Tmm(brg.get_C_tensor(
                                 bdb, idx, is_bdb_tail, is_ld_tail)),
@@ -3388,7 +3395,7 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
         dim_t ld_block2, bool is_ld_tail, bool first_bdb, bool last_bdb,
         dim_t rows_for_rd_tail, bool skip_accumulation) {
 
-    auto bs_loop_body = [&](dim_t vpad, bool last_bdb) {
+    auto bs_loop_body = [&](dim_t vpad) {
         set_A_B_matrices();
 
         dim_t bd_block = (is_bdb_tail) ? brg.bdb_tail : brg.bd_block;
@@ -3400,8 +3407,8 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
 
         if (brg.is_tmm) {
             const bool is_rd_tail = false;
-            gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2, is_rd_tail,
-                    is_ld_tail, last_bdb);
+            gemm_microkernel_amx(
+                    bd_block2, is_bdb_tail, ld_block2, is_rd_tail, is_ld_tail);
         } else {
             if (brg.rdb > 0) {
                 Label rdb_loop_label;
@@ -3428,7 +3435,7 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
             const bool is_rd_tail = true;
             if (brg.is_tmm) {
                 gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2,
-                        is_rd_tail, is_ld_tail, last_bdb);
+                        is_rd_tail, is_ld_tail);
             } else {
                 if (brg.is_gemv)
                     gemv_microkernel(is_bdb_tail, ld_block2, is_rd_tail);
@@ -3503,14 +3510,14 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(dim_t bd_block2, bool is_bdb_tail,
                     }
                     cmp(reg_aux_A_vpad, vpad);
                     jne(Vpad_loop_iter_label[label_vpad + 1], T_NEAR);
-                    bs_loop_body(real_vpad, last_bdb);
+                    bs_loop_body(real_vpad);
                     jmp(Vpad_loop_end_label, T_NEAR);
                 }
                 L(Vpad_loop_iter_label[n_vpads - 1]);
-                bs_loop_body(0, last_bdb);
+                bs_loop_body(0);
                 L(Vpad_loop_end_label);
             } else {
-                bs_loop_body(0, last_bdb);
+                bs_loop_body(0);
             }
             if (brg.brgattr.max_bs > 1) {
                 dec(reg_BS_loop);

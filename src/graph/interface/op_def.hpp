@@ -1313,6 +1313,7 @@ DNNL_GRAPH_OP_SCHEMA(DynamicQuantize, 1,
                 .set_attr(
                         op_attr::qtype, false, attribute_kind::s, "per_tensor")
                 .set_attr(op_attr::axis, false, attribute_kind::i, int64_t(1))
+                .set_attr(op_attr::mask, false, attribute_kind::i)
                 .set_type_constraints("T1", {data_type::f32})
                 .set_type_constraints(
                         "T2", {data_type::u8, data_type::s8, data_type::s32})
@@ -1333,6 +1334,7 @@ DNNL_GRAPH_OP_SCHEMA(DynamicDequantize, 1,
                 .set_attr(
                         op_attr::qtype, false, attribute_kind::s, "per_tensor")
                 .set_attr(op_attr::axis, false, attribute_kind::i, int64_t(1))
+                .set_attr(op_attr::mask, false, attribute_kind::i)
                 .set_attr(op_attr::group_shape, false, attribute_kind::is)
                 .set_type_constraints("T1",
                         {data_type::u8, data_type::s8, data_type::s4,

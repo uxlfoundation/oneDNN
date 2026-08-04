@@ -1406,13 +1406,9 @@ DNNL_GRAPH_OP_SCHEMA(_mul_scales, 1,
                 .set_input(1, "scales")
                 .set_output(0, "y")
                 .set_output(1, "scratchpad")
-                .set_attr(
-                        op_attr::qtype, false, attribute_kind::s, "per_tensor")
-                .set_attr(op_attr::axis, false, attribute_kind::i, int64_t(1))
+                .set_attr(op_attr::mask, false, attribute_kind::i, int64_t(0))
                 .set_attr(op_attr::group_shape, false, attribute_kind::is,
                         std::vector<int64_t>())
-                .set_attr(op_attr::group_mask, false, attribute_kind::i,
-                        int64_t(0))
                 .set_attr(op_attr::data_type, false, attribute_kind::i,
                         int64_t(0))
                 .set_attr(op_attr::scales, false, attribute_kind::fs,
@@ -1453,17 +1449,13 @@ DNNL_GRAPH_OP_SCHEMA(_add_zps, 1,
                 .set_input(0, "x")
                 .set_input(1, "zps")
                 .set_output(0, "y")
-                .set_attr(
-                        op_attr::qtype, false, attribute_kind::s, "per_tensor")
-                .set_attr(op_attr::axis, false, attribute_kind::i, int64_t(1))
+                .set_attr(op_attr::mask, false, attribute_kind::i, int64_t(0))
                 .set_attr(op_attr::zps, false, attribute_kind::is,
                         std::vector<int64_t>())
                 .set_attr(op_attr::with_runtime_zps, false, attribute_kind::b,
                         false)
                 .set_attr(op_attr::group_shape, false, attribute_kind::is,
                         std::vector<int64_t>())
-                .set_attr(op_attr::group_mask, false, attribute_kind::i,
-                        int64_t(0))
                 .set_attr(op_attr::data_type, false, attribute_kind::i,
                         int64_t(0))
                 .set_shape_inference_function(infer_identity_output_shape))
@@ -1476,17 +1468,13 @@ DNNL_GRAPH_OP_SCHEMA(_sub_zps, 1,
                 .set_input(0, "x")
                 .set_input(1, "zps")
                 .set_output(0, "y")
-                .set_attr(
-                        op_attr::qtype, false, attribute_kind::s, "per_tensor")
-                .set_attr(op_attr::axis, false, attribute_kind::i, int64_t(1))
+                .set_attr(op_attr::mask, false, attribute_kind::i, int64_t(0))
                 .set_attr(op_attr::zps, false, attribute_kind::is,
                         std::vector<int64_t>())
                 .set_attr(op_attr::with_runtime_zps, false, attribute_kind::b,
                         false)
                 .set_attr(op_attr::group_shape, false, attribute_kind::is,
                         std::vector<int64_t>())
-                .set_attr(op_attr::group_mask, false, attribute_kind::i,
-                        int64_t(0))
                 .set_attr(op_attr::data_type, false, attribute_kind::i,
                         int64_t(0))
                 .set_shape_inference_function(infer_identity_output_shape))
@@ -2278,11 +2266,7 @@ DNNL_GRAPH_OP_SCHEMA(_reorder, 1,
                 .set_input(0, "input")
                 .set_output(0, "output")
                 .set_output(1, "scratchpad")
-                // TODO(xxx) Multiple ops will be mapped to dnnl_reorder
-                // finally, how to deal with the attrs?
-                .set_attr(
-                        op_attr::qtype, false, attribute_kind::s, "per_tensor")
-                // Attributes
+                .set_attr(op_attr::mask, false, attribute_kind::i, int64_t(0))
                 .set_attr(op_attr::fusion_info, false,
                         attribute_kind::fusion_info)
                 .set_attr(
@@ -2291,15 +2275,12 @@ DNNL_GRAPH_OP_SCHEMA(_reorder, 1,
                 .set_attr(op_attr::src_zps, false, attribute_kind::is)
                 .set_attr(op_attr::dst_zps, false, attribute_kind::is)
                 .set_attr(op_attr::group_shape, false, attribute_kind::is)
-                .set_attr(op_attr::group_mask, false, attribute_kind::i,
-                        int64_t(0))
                 .set_attr(op_attr::with_runtime_scales, false,
                         attribute_kind::b, false)
                 .set_attr(op_attr::with_runtime_src_zps, false,
                         attribute_kind::b, false)
                 .set_attr(op_attr::with_runtime_dst_zps, false,
                         attribute_kind::b, false)
-                .set_attr(op_attr::axis, false, attribute_kind::i, int64_t(-1))
                 .SET_ATTR_IS_CONSTANT // used for constant prop and cache
                 // Analysis rules
                 .set_shape_inference_function(infer_identity_output_shape))

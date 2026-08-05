@@ -750,7 +750,8 @@ std::string generateShim(const Package &package, HostLanguage language,
 
     /* Insert binary code in comment for fuser */
     const char hexChars[] = "0123456789abcdef";
-    shim << "    // " << sigilBinary << options.microkernelID << ' ';
+    shim << "    // " << sigilBinary << options.microkernelID << ':'
+         << package.argumentBase << ' ';
     for (auto b : package.binary)
         shim << hexChars[(b >> 4) & 0xF] << hexChars[b & 0xF];
     shim << '\n';

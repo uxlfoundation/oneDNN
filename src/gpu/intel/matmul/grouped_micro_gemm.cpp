@@ -38,6 +38,13 @@ namespace gpu {
 namespace intel {
 namespace matmul {
 
+namespace {
+
+// grouped_micro_gemm cross-thread argument bytes, plus headroom.
+constexpr int host_argument_bytes = 256;
+
+} // namespace
+
 status_t grouped_micro_gemm_t::pd_t::init_microkernels(
         const impl::engine_t *engine) {
     using namespace jit;
@@ -94,6 +101,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     opts.offsetB = src_quant_.with_zp();
     opts.slmPtr = true;
     opts.kParallelLocal = is_gemv_;
+    const HostPayload host {sg_size_, host_argument_bytes};
 
     if (opts.scaleA) {
         data_type_t wei_scale_dt = wei_quant_.scale_dt();
@@ -215,7 +223,8 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     };
 
     try {
-        gemm_ = selectGEMM(opts, hw_info, sizes, problem, {}, strat_override);
+        gemm_ = selectGEMM(
+                opts, host, hw_info, sizes, problem, {}, strat_override);
     } catch (const std::runtime_error &) {
         std::vector<StrategyRequirement> reqs;
 
@@ -270,7 +279,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
                         std::min((dim_t)(avg_m / reqs[1].value), max_wg_n))));
         try {
             gemm_ = selectGEMM(
-                    opts, hw_info, sizes, problem, reqs, strat_override);
+                    opts, host, hw_info, sizes, problem, reqs, strat_override);
         } catch (const std::runtime_error &ex) {
             VDISPATCH_MATMUL_IC(false,
                     "gemm microkernel generation failure with message: %s",

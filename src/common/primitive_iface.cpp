@@ -175,6 +175,7 @@ status_t primitive_execute(
                     && stream->engine()->kind() == engine_kind::cpu;
             block_on_wait = !is_async_cpu;
 #endif
+
             if (block_on_wait) stream->wait();
             double start_ms = get_msec();
             status = stream->enqueue_primitive(primitive_iface, ctx);
@@ -183,8 +184,8 @@ status_t primitive_execute(
             VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(),
                     duration_ms);
         } else {
-            // For OpenCL/SYCL GPU and async CPU streams, the verbose logs
-            // print device-measured execution times in a non-blocking manner.
+            // For OpenCL/SYCL GPU streams, the verbose logs print device-
+            // measured execution times in a non-blocking manner.
             double start_ms = get_msec();
             status = stream->enqueue_primitive(primitive_iface, ctx);
             CHECK(stream->run_verbose_profiler(pd_info, start_ms));

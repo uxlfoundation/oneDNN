@@ -24,7 +24,7 @@
 #include "common/pooling_pd.hpp"
 
 #include "cpu/aarch64/jit_uni_pool_kernel.hpp"
-#include "cpu/aarch64/utils/jit_io_helper_v2.hpp"
+#include "cpu/aarch64/utils/jit_io_helper.hpp"
 
 #include "xbyak_aarch64/xbyak_aarch64_util.h"
 
@@ -55,8 +55,7 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
     const io::saturation_conf_t<TReg> sat_conf(sat_lbound, sat_ubound);
     const io::tail_conf_t tail_conf(jpp.c_tail, k_c_tail_mask_s);
     safe_ptr_assign(io_,
-            new io::jit_io_helper_v2_t<isa>(
-                    this, sat_conf, tail_conf, X_TMP_2));
+            new io::jit_io_helper_t<isa>(this, sat_conf, tail_conf, X_TMP_2));
 
     if (jpp.with_postops) {
         static constexpr bool preserve_gpr = true;

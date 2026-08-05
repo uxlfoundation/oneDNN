@@ -28,7 +28,7 @@
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/jit_primitive_conf.hpp"
-#include "cpu/aarch64/utils/jit_io_helper_v2.hpp"
+#include "cpu/aarch64/utils/jit_io_helper.hpp"
 
 using namespace Xbyak_aarch64;
 
@@ -176,7 +176,7 @@ private:
 
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
-    std::unique_ptr<io::jit_io_helper_v2_t<isa>> io_;
+    std::unique_ptr<io::jit_io_helper_t<isa>> io_;
 };
 
 } // namespace aarch64

@@ -88,7 +88,7 @@ jit_uni_binary_kernel_t<isa>::jit_uni_binary_kernel_t(
     , io_tail_conf_(tail_size_, tail_opmask_) {
 
     safe_ptr_assign(io_,
-            new io::jit_io_helper_v2_t<to_vla_sve(isa)>(
+            new io::jit_io_helper_t<to_vla_sve(isa)>(
                     this, io_sat_conf_, io_tail_conf_, reg_tmp_));
 
     if (conf_.with_postops) init_post_ops_injector();

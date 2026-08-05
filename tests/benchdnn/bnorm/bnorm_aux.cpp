@@ -41,23 +41,24 @@ const char *check_alg2str(check_alg_t alg) {
 
 flags_t str2flags(const char *str) {
     flags_t flags = NONE;
-    while (str && *str) {
-        if (*str == 'G') {
+    // Iterate with a separate cursor so `str` still points at the whole value and the
+    // error below can report what the user actually passed rather than its tail.
+    for (const char *s = str; s && *s; s++) {
+        if (*s == 'G') {
             flags |= GLOB_STATS;
-        } else if (*str == 'C') {
+        } else if (*s == 'C') {
             flags |= USE_SCALE;
-        } else if (*str == 'H') {
+        } else if (*s == 'H') {
             flags |= USE_SHIFT;
-        } else if (*str == 'R') {
+        } else if (*s == 'R') {
             flags |= FUSE_NORM_RELU;
-        } else if (*str == 'A') {
+        } else if (*s == 'A') {
             flags |= FUSE_NORM_ADD_RELU;
         } else {
-            BENCHDNN_PRINT(0, "%s \'%c\'\n",
-                    "Error: --flags option doesn't support value", *str);
+            BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                    "Error: --flags option doesn't support value", str);
             SAFE_V(FAIL);
         }
-        str++;
     }
     return flags;
 }

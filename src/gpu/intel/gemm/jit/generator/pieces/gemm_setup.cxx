@@ -1695,6 +1695,12 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         if (strategy.kInterleave)
             period = gcd(period, strategy.kInterleaveChunk);
 
+        // C is repacked (and late scales applied) every `period` k-elements, but
+        // advances in units of opCountAB. If opCountAB does not divide period,
+        // scale groups can be silently skipped.
+        if (period % opCountAB != 0)
+            stub("C repack period incompatible with outer product count");
+
         state.Cr_layout = RegisterLayout(hw, Tc_compute, Cr_unrollM * mx, Cr_unrollN * nx, globalCM, 1, strategy.C.tileR, strategy.C.tileC, true);
     }
 

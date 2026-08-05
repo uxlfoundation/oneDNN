@@ -109,6 +109,9 @@ int sg_size(const impl::engine_t *engine) {
     return intel_engine->device_info()->min_subgroup_size();
 }
 
+// micro_gated_mlp_horz cross-thread argument bytes, plus headroom.
+constexpr int host_argument_bytes = 320;
+
 } // anonymous namespace
 
 status_t micro_horz_t::pd_t::init(const impl::engine_t *engine) {
@@ -262,9 +265,12 @@ status_t micro_horz_t::pd_t::init_microkernels(
     opts_wgu.scaleA = with_wts_gate_scales(this) && !wgu_common_scales;
     opts_wgu.offsetA = with_wts_gate_zp(this);
 
+    const gemmstone::microkernel::HostPayload host {
+            sg_size(engine), host_argument_bytes};
+
     try {
-        gemm_gate_up_pkg_
-                = selectGEMM(opts_wgu, hw_info, sizes, problem_wgu, reqs_wgu);
+        gemm_gate_up_pkg_ = selectGEMM(
+                opts_wgu, host, hw_info, sizes, problem_wgu, reqs_wgu);
     } catch (std::exception &e) {
         VDISPATCH_GATED_MLP(false,
                 "gemm_gateup microkernel generation failed with message: %s",

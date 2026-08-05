@@ -72,10 +72,13 @@ std::string GEMMProblem::toString() const
         case BatchMode::Variable:   ss << "batchnv "; break;
     }
 
-    auto appendQString = [&](char matrix, Type T, int ptrDims, int xqGroupR, int xqGroupC) {
+    auto appendQString = [&](char matrix, Type T, int ptrDims, int xqGroupR, int xqGroupC, bool precalc = false) {
         ss << matrix;
-        if (ptrDims < 0 || ptrDims > 2) return;
-        ss << "[" << "pvg"[ptrDims];
+        if (ptrDims < -1 || ptrDims > 2) return;
+        ss << "[";
+        char tchar = "spvg"[ptrDims + 1];
+        if (precalc) tchar = std::toupper(tchar);
+        ss << tchar;
         if (ptrDims == 2)
             ss << std::max(xqGroupR, 1) << 'x' << std::max(xqGroupC, 1);
         ss << ',';
@@ -88,9 +91,9 @@ std::string GEMMProblem::toString() const
     bool offsetc = (cOffset == COffset::Post);
     if (offseta || offsetb || offsetc) {
         ss << "offset";
-        if (offseta) appendQString('a', Tao, aoPtrDims, aqGroupM, aqGroupK);
-        if (offsetb) appendQString('b', Tbo, boPtrDims, bqGroupK, bqGroupN);
-        if (offsetc) appendQString('c', Tco, -1, 0, 0);
+        if (offseta) appendQString('a', Tao, aoPtrDims, aqGroupM, aqGroupK, (aOffset == ABOffset::Load));
+        if (offsetb) appendQString('b', Tbo, boPtrDims, bqGroupK, bqGroupN, (bOffset == ABOffset::Load));
+        if (offsetc) appendQString('c', Tco, coPtrDims, 0, 0);
         ss << ' ';
     }
 

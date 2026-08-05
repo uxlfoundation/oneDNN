@@ -1100,9 +1100,24 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     return out;
 }
 
-static std::unique_ptr<dnnl::engine> sdpa_eng;
+namespace {
 
-dnnl::engine get_sdpa_test_engine() {
+std::unique_ptr<dnnl::engine> sdpa_eng;
+
+struct sdpa_engine_cleanup_t : public ::testing::EmptyTestEventListener {
+    void OnTestProgramEnd(const ::testing::UnitTest &) override {
+        sdpa_eng.reset();
+    }
+};
+
+} // namespace
+
+const dnnl::engine &get_sdpa_test_engine() {
+    if (!sdpa_eng) {
+        sdpa_eng.reset(new dnnl::engine(engine::kind::gpu, 0));
+        ::testing::UnitTest::GetInstance()->listeners().Append(
+                new sdpa_engine_cleanup_t());
+    }
     return *sdpa_eng;
 }
 
@@ -2202,7 +2217,6 @@ public:
 #ifndef DNNL_TEST_WITH_ENGINE_PARAM
         SKIP_IF(engine::get_count(engine::kind::gpu) == 0,
                 "SDPA tests require gpus.");
-        sdpa_eng.reset(new dnnl::engine(engine::kind::gpu, 0));
 #endif
     }
 
@@ -2233,12 +2247,6 @@ public:
         for (dnnl_memory_t &mem : doubled_memory) {
             CHECK(dnnl_memory_destroy(mem));
         }
-    }
-
-    static void TearDownTestSuite() {
-#ifndef DNNL_TEST_WITH_ENGINE_PARAM
-        sdpa_eng.reset();
-#endif
     }
 
     void compare() {

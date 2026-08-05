@@ -23,21 +23,10 @@
 #include "c_types_map.hpp"
 #include "dnnl_thread.hpp"
 #include "utils.hpp"
-#include "verbose.hpp"
 
 dnnl_status_t dnnl_threadpool_interop_set_max_concurrency(int max_concurrency) {
     using namespace dnnl::impl;
     threadpool_utils::get_threadlocal_max_concurrency() = max_concurrency;
-    return status::success;
-}
-
-dnnl_status_t dnnl_threadpool_interop_verbose_log(
-        const char *pd_info, double start_ms, double duration_ms) {
-    using namespace dnnl::impl;
-    if (pd_info == nullptr) return status::invalid_arguments;
-    if (get_verbose(verbose_t::exec_profile)) {
-        VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info, duration_ms);
-    }
     return status::success;
 }
 

@@ -164,38 +164,16 @@ status_t primitive_execute(
         }
 
         if (!stream->is_verbose_profiler_enabled()) {
-            bool block_on_wait = true;
-            bool is_async_cpu = false;
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-            dnnl::threadpool_interop::threadpool_iface *tp = nullptr;
-            auto st = stream->get_threadpool(&tp);
-            is_async_cpu = st == status::success && tp
-                    && (tp->get_flags()
-                            & dnnl::threadpool_interop::threadpool_iface::
-                                    ASYNCHRONOUS)
-                    && stream->engine()->kind() == engine_kind::cpu;
-            block_on_wait = !is_async_cpu;
-#endif
-
-            if (is_async_cpu) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-                // Delegate timing to the threadpool for async execution.
-                tp->begin_profiling(pd_info.c_str());
-                status = stream->enqueue_primitive(primitive_iface, ctx);
-                tp->end_profiling();
-#endif
-            } else {
-                if (block_on_wait) stream->wait();
-                double start_ms = get_msec();
-                status = stream->enqueue_primitive(primitive_iface, ctx);
-                if (block_on_wait) stream->wait();
-                double duration_ms = get_msec() - start_ms;
-                VPROF(start_ms, primitive, exec, VERBOSE_profile,
-                        pd_info.c_str(), duration_ms);
-            }
+            stream->wait();
+            double start_ms = get_msec();
+            status = stream->enqueue_primitive(primitive_iface, ctx);
+            stream->wait();
+            double duration_ms = get_msec() - start_ms;
+            VPROF(start_ms, primitive, exec, VERBOSE_profile,
+                    pd_info.c_str(), duration_ms);
         } else {
-            // For OpenCL/SYCL GPU streams, the verbose logs print device-
-            // measured execution times in a non-blocking manner.
+            // For OpenCL/SYCL GPU and async CPU streams, the verbose logs
+            // print device-measured execution times in a non-blocking manner.
             double start_ms = get_msec();
             status = stream->enqueue_primitive(primitive_iface, ctx);
             CHECK(stream->run_verbose_profiler(pd_info, start_ms));

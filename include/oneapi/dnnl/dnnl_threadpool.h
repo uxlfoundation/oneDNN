@@ -79,15 +79,6 @@ dnnl_status_t DNNL_API dnnl_threadpool_interop_set_max_concurrency(
 dnnl_status_t DNNL_API dnnl_threadpool_interop_get_max_concurrency(
         int *max_concurrency);
 
-/// Emits a verbose exec profile line for a primitive timed externally by an
-/// ASYNCHRONOUS threadpool. No-op unless exec profiling verbose is enabled.
-///
-/// @param pd_info Primitive descriptor verbose string.
-/// @param start_ms Execution start timestamp (ms, same epoch as verbose).
-/// @param duration_ms Measured execution time in milliseconds.
-dnnl_status_t DNNL_API dnnl_threadpool_interop_verbose_log(
-        const char *pd_info, double start_ms, double duration_ms);
-
 /// @copydoc dnnl_sgemm()
 /// @param threadpool A pointer to a threadpool interface (only when built with
 ///     the THREADPOOL CPU runtime).

@@ -111,11 +111,21 @@ Protocol makeProtocol(const GEMMOptions &o) {
     return {"ugemm", arguments(o), settings()};
 }
 
-InterfaceHandler GEMMOptions::generateInterface(HW hw) const {
+InterfaceHandler GEMMOptions::generateInterface(HW hw, HostPayload host) const {
     /* Set up arguments for microkernel */
     InterfaceHandler interface(hw);
 
-    interface.setArgumentBase(ngen::GRF(8));
+    if (host.simd <= 0 || host.argumentBytes <= 0) {
+        /* Transitional: legacy callers keep the fixed base and r0-r9 claim. */
+        interface.setArgumentBase(ngen::GRF(8));
+    } else {
+        /* Place microkernel arguments above the host kernel's thread payload:
+           r0, the local IDs, then the cross-thread arguments. */
+        interface.requireLocalID(3);
+        interface.requireSIMD(host.simd);
+        interface.setArgumentBase(GRF(interface.getCrossthreadBase().getBase()
+                                      + GRF::bytesToGRFs(hw, host.argumentBytes)));
+    }
     interface.newArgument("A", localA ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
     interface.newArgument("lda", DataType::d);
     interface.newArgument("B", localB ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
@@ -160,7 +170,7 @@ std::string strategyToString(HW hw, const GEMMProblem &problem, const GEMMStrate
     return ss.str();
 }
 
-Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
+Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation hwInfo, SizeParams sizes,
                    const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
                    StrategyAdjuster strategyAdjuster, SelectionObserver *observer)
 {
@@ -241,7 +251,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     evalParams.euCount = hwInfo.euCount;
 
     /* Generate interface */
-    InterfaceHandler interface = effOptions.generateInterface(hw);
+    InterfaceHandler interface = effOptions.generateInterface(hw, host);
 
     kcatalog::Catalog catalog = [&]() {
         if (localA)
@@ -399,6 +409,14 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         }
     }
     throw std::runtime_error("No matching kernel");
+}
+
+Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
+                   const GEMMProblem &problem, const std::vector<StrategyRequirement> &reqs,
+                   StrategyAdjuster strategyAdjuster, SelectionObserver *observer)
+{
+    return selectGEMM(options, HostPayload(0, 0), hwInfo, sizes, problem, reqs,
+                      strategyAdjuster, observer);
 }
 
 static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool localA, bool localB,

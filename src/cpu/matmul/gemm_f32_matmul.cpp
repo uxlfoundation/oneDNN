@@ -77,6 +77,8 @@ status_t gemm_f32_matmul_t::pd_t::init(const engine_t *engine) {
                                 post_ops.entry_, dst_md()),
                         broadcasting_strategy_t::per_oc);
         const bool has_prelu = post_ops.find(prelu) != -1;
+        for (const auto &entry : post_ops.entry_)
+            if (entry.is_binary_with_ternary_op()) return false;
         return cpu::inner_product_utils::post_ops_ok(
                        post_ops, dst_md(), enabled_bcast_strategy)
                 && IMPLICATION(is_binary_po_per_oc,

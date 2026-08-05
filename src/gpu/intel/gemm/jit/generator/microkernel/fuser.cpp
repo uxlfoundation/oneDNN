@@ -15,13 +15,16 @@
 *******************************************************************************/
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "generator/microkernel/elf.hpp"
+#include "generator/microkernel/payload.hpp"
 #include "gemmstone/microkernel/fuser.hpp"
 
 GEMMSTONE_NAMESPACE_START
@@ -29,8 +32,19 @@ namespace microkernel {
 
 static void fixupJumpTargets(uint8_t *start, size_t len, ptrdiff_t adjust);
 
-void fuse(std::vector<uint8_t> &binary,
-        const std::vector<uint8_t> &microkernel, long id) {
+/* Host payloads, checked against the microkernel's register placement. */
+struct PayloadCheck {
+    const std::vector<KernelInfo> *kernels;
+    uint32_t argumentBase;
+    int grfBytes;
+    bool *validated;
+};
+
+static void checkPayload(const PayloadCheck &check, const char *kernelName);
+
+static void fuse(std::vector<uint8_t> &binary,
+        const std::vector<uint8_t> &microkernel, long id,
+        const PayloadCheck *check) {
     auto base = binary.data();
     auto bytes = binary.size();
 
@@ -106,6 +120,9 @@ void fuse(std::vector<uint8_t> &binary,
 
         if (!spliceStart || !spliceEnd) continue;
 
+        // Validate the argument placement against the selected base.
+        if (check && snames) checkPayload(*check, snames + text->name + 6);
+
         int relSectionID = -1;
         std::string rname = ".rel";
         rname += (snames + text->name);
@@ -172,7 +189,7 @@ void fuse(std::vector<uint8_t> &binary,
         std::swap(binary, newBinary);
 
         // Tail-recurse to handle any further instances of this microkernel
-        fuse(binary, microkernel, id);
+        fuse(binary, microkernel, id, check);
         return;
     }
 }
@@ -198,7 +215,57 @@ static void stripIntermediateRepresentation(std::vector<uint8_t> &binary) {
             sheaders[s].type = SectionHeader::Null;
 }
 
-void fuse(std::vector<uint8_t> &binary, const char *source) {
+static bool findZeInfo(
+        const std::vector<uint8_t> &binary, const char *&text, size_t &length) {
+    auto base = binary.data();
+    auto bytes = binary.size();
+
+    if (bytes < sizeof(FileHeader)) return false;
+    auto *fheader = reinterpret_cast<const FileHeader *>(base);
+    if (fheader->magic != ELFMagic || fheader->elfClass != ELFClass64)
+        return false;
+    if (fheader->sectionHeaderSize != sizeof(SectionHeader)) return false;
+    if (fheader->sectionTableOff > bytes) return false;
+    if ((bytes - fheader->sectionTableOff) / sizeof(SectionHeader)
+            < fheader->sectionCount)
+        return false;
+
+    auto *sheaders = reinterpret_cast<const SectionHeader *>(
+            base + fheader->sectionTableOff);
+    for (int s = 0; s < fheader->sectionCount; s++) {
+        if (sheaders[s].type != SectionHeader::Type::ZeInfo) continue;
+        if (sheaders[s].offset > bytes
+                || sheaders[s].size > bytes - sheaders[s].offset)
+            return false;
+        text = reinterpret_cast<const char *>(base + sheaders[s].offset);
+        length = size_t(sheaders[s].size);
+        return true;
+    }
+    return false;
+}
+
+// vISA does not reserve registers against IGC's thread payload, so a microkernel
+// placed too low silently corrupts the host kernel's arguments.
+static void checkPayload(const PayloadCheck &check, const char *kernelName) {
+    for (auto &kernel : *check.kernels) {
+        if (kernel.name != kernelName) continue;
+        *check.validated = true;
+
+        auto payloadEnd = payloadEndBytes(kernel, check.grfBytes);
+        if (payloadEnd <= check.argumentBase) return;
+
+        auto argumentBytes = payloadEnd - crossthreadBase(kernel, check.grfBytes);
+        throw std::runtime_error("Microkernel registers (r"
+                + std::to_string(check.argumentBase / check.grfBytes)
+                + " and up) overlap the thread payload of kernel "
+                + kernel.name + ", which ends at r"
+                + std::to_string((payloadEnd - 1) / check.grfBytes)
+                + ". Raise HostPayload::argumentBytes to "
+                + std::to_string(argumentBytes) + " or more");
+    }
+}
+
+bool fuse(std::vector<uint8_t> &binary, const char *source, int grfBytes) {
     std::vector<uint8_t> microkernel;
     const auto sigilLen = strlen(sigilBinary);
 
@@ -206,20 +273,34 @@ void fuse(std::vector<uint8_t> &binary, const char *source) {
         return ((c >= 'A') ? (c - 'A' + 10) : (c - '0')) & 0xF;
     };
 
+    /* Read the payload layout before fusing moves the .ze_info section. */
+    std::vector<KernelInfo> kernels;
+    const char *zeInfo = nullptr;
+    size_t zeInfoLength = 0;
+    bool haveLayout = grfBytes > 0 && findZeInfo(binary, zeInfo, zeInfoLength)
+            && parseZeInfo(zeInfo, zeInfoLength, kernels);
+    bool validated = false;
+
     for (const char *s = std::strstr(source, sigilBinary); s;
             s = std::strstr(s, sigilBinary)) {
         s += sigilLen;
         char *after;
         long id = strtol(s, &after, 10);
+        uint32_t argumentBase = 0;
+        if (*after == ':')
+            argumentBase = uint32_t(strtoul(after + 1, &after, 10));
         microkernel.clear();
         for (s = after + 1; *s != '\n'; s += 2) {
             if (!s[0] || !s[1]) break;
             microkernel.push_back(static_cast<uint8_t>(
                     (toNybble(s[0]) << 4) | toNybble(s[1])));
         }
-        fuse(binary, microkernel, id);
+        PayloadCheck check {&kernels, argumentBase, grfBytes, &validated};
+        fuse(binary, microkernel, id,
+                (haveLayout && argumentBase > 0) ? &check : nullptr);
     }
     stripIntermediateRepresentation(binary);
+    return validated;
 }
 
 static void fixupJumpTargets(uint8_t *start, size_t len, ptrdiff_t adjust) {

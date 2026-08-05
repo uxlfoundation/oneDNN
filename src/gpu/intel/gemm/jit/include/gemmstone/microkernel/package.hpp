@@ -99,6 +99,7 @@ struct Package {
     /* Register usage */
     std::vector<Argument> arguments; // Input and output arguments for microkernel
     std::vector<RegisterRange> clobbers; // Registers clobbered by microkernel (includes arguments) [*]
+    uint32_t argumentBase = 0; // First GRF byte used by microkernel; host thread payload lies below
 
     /* Requirements */
     uint32_t gmdidCompat; // Compatible GMDID

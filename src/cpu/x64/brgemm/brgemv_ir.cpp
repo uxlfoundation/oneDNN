@@ -82,7 +82,7 @@ namespace {
 //   dt_bias      - element data type of the bias
 //   dt_sz_bias   - element size in bytes of the bias
 //   mblk_bias_off - byte offset to advance the bias pointer between M blocks
-//   with_injector_postops - whether attribute post-ops (eltwise/binary) are
+//   with_injector_postops - whether attribute post-ops (eltwise/binary/sum) are
 //                    requested
 //   with_src_scales - whether a source scale multiplies the output. Always a
 //                    single common scalar for this kernel
@@ -124,7 +124,8 @@ struct brgemv_ir_conf_t {
         , dt_bias(brg.dt_bias)
         , dt_sz_bias(brg.typesize_bias)
         , mblk_bias_off(dt_sz_bias * m_block)
-        , with_injector_postops(brg.with_eltwise || brg.with_binary)
+        , with_injector_postops(
+                  brg.with_eltwise || brg.with_binary || brg.with_sum)
         , with_src_scales(brg.with_src_scales)
         , with_wei_scales(brg.with_wei_scales)
         , single_wei_scale(brg.gemv_single_wei_scale())
@@ -175,8 +176,15 @@ struct brgemv_ir_conf_t {
 
 // Registers that advance each M-block iteration by a fixed byte offset.
 struct advancing_regs_t {
-    // Current output pointer. Advances by `mblk_y_off` per M-block.
+    // Current `y` pointer, the vector `beta` accumulates into. Advances by
+    // `mblk_y_off` per M-block.
     ir::vreg_t y_ptr = ir::vreg_t::none;
+    // Pointer used to store the M-block result. Usually this is `y_ptr`, but
+    // when post-ops run it holds `ptr_D`, which may be a separate output
+    // buffer. The accumulation and output buffers share the same type and
+    // stride (enforced by `brgemv_ir_supported()`), so `store_ptr` advances
+    // together with `y_ptr`.
+    ir::vreg_t store_ptr = ir::vreg_t::none;
     // Byte offset into A for the current M-block. Starts at 0 and advances by
     // `mblk_a_off` each iteration.
     ir::vreg_t a_off = ir::vreg_t::none;
@@ -265,6 +273,16 @@ m_loop_input_regs_t init_m_loop_input_regs(
     if (cfg.has_post_ops()) {
         regs.invariant.do_post_ops = ir.new_gpr();
         ir.load_param(regs.invariant.do_post_ops, GET_OFF(do_post_ops));
+
+        regs.advancing.store_ptr = ir.new_gpr();
+        ir.mov_reg(regs.advancing.store_ptr, regs.advancing.y_ptr);
+
+        const ir::label_t store_ptr_done = ir.new_label();
+        ir.jz(regs.invariant.do_post_ops, store_ptr_done);
+        ir.load_param(regs.advancing.store_ptr, GET_OFF(ptr_D));
+        ir.label(store_ptr_done);
+    } else {
+        regs.advancing.store_ptr = regs.advancing.y_ptr;
     }
 
     return regs;
@@ -369,6 +387,9 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         // The current implementation supports only 0 and 1 for beta so for the
         // case where beta = 1 we load `y` into the accumulator registers and
         // then the microkernel adds the results of the multiplication to them.
+        //
+        // This reads `y_ptr` while a sum post-op reads `store_ptr`, so the two
+        // never count the same value twice.
         if (cfg.beta == 0.0f)
             ir.vzero(acc[r]);
         else
@@ -454,12 +475,14 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         if (cfg.with_injector_postops) {
             // Each accumulator is horizontally reduced to one scalar, so the
             // injector sees a single active element with no mask register. Its
-            // output offset matches the store displacement below.
+            // output offset matches the store displacement below, so a sum
+            // post-op reads each element from the address its result is
+            // written to.
             std::vector<dim_t> out_byte_off(m_block);
             for (int r = 0; r < m_block; r++)
                 out_byte_off[r] = cfg.dt_sz_y * (dim_t)r * cfg.incy;
 
-            ir.inject_postops(acc, regs.advancing.y_ptr, out_byte_off,
+            ir.inject_postops(acc, regs.advancing.store_ptr, out_byte_off,
                     ir::vreg_t::none, /*elems=*/1);
         }
 
@@ -467,12 +490,16 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     }
 
     for (int r = 0; r < m_block; r++)
-        ir.vstore_masked(regs.advancing.y_ptr,
+        ir.vstore_masked(regs.advancing.store_ptr,
                 cfg.dt_sz_y * (dim_t)r * cfg.incy, acc[r], ir::vreg_t::none, 1);
 
     // Advance to next M block
     ir.add_imm(regs.advancing.a_off, cfg.mblk_a_off);
     ir.add_imm(regs.advancing.y_ptr, cfg.mblk_y_off);
+    // When `!has_post_ops()`, `store_ptr` is the same IR vreg as `y_ptr` (see
+    // `init_m_loop_input_regs`), so advancing `y_ptr` above covers both.
+    if (cfg.has_post_ops())
+        ir.add_imm(regs.advancing.store_ptr, cfg.mblk_y_off);
 
     if (cfg.with_bias && cfg.treat_y_as_row)
         ir.add_imm(regs.advancing.bias_ptr, cfg.mblk_bias_off);
@@ -554,7 +581,7 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         std::unique_ptr<ir::postops_injector_t> postops_injector;
         ir::inject_postops_fn_t emit_injector;
 
-        if (brg_.with_eltwise || brg_.with_binary) {
+        if (brg_.with_eltwise || brg_.with_binary || brg_.with_sum) {
             // A partial right-hand-side load reads the vector tail, or one
             // element for a scalar accumulator.
             const int postops_tail_elems
@@ -594,7 +621,7 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         ir::emit_data_section(*this, data);
 
         // Emit the injector's constant table (a no-op unless the chain has
-        // eltwise).
+        // eltwise or sum).
         if (postops_injector) postops_injector->maybe_prepare_table();
     }
 
@@ -639,13 +666,26 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     VCONDCHECK_BRGEMV_IR(
             !brg.transA, VERBOSE_UNSUPPORTED_FEATURE, "transposed A");
 
-    // Post-ops go through the JIT injector. Accept only eltwise and binary, and
-    // only binary arguments the injector can handle on this ISA. Sum and other
-    // kinds fall back.
+    // With post-ops the kernel stores to D instead of C. It cannot convert the
+    // accumulator on the way out, so it takes only `dt_d == dt_c`. The check is
+    // unconditional because `dt_c != dt_d` alone already routes the descriptor
+    // through the store-to-D path (see `are_post_ops_applicable()`), which the
+    // `has_post_ops` below does not cover.
+    VCONDCHECK_BRGEMV_IR(brg.dt_d == brg.dt_c, VERBOSE_UNSUPPORTED_DT);
+
+    const bool has_post_ops = brg.with_bias || brg.with_eltwise
+            || brg.with_binary || brg.with_sum || brg.with_src_scales
+            || brg.with_wei_scales;
+    VCONDCHECK_BRGEMV_IR(IMPLICATION(has_post_ops, brg.LDC == brg.LDD),
+            VERBOSE_UNSUPPORTED_FEATURE, "LDC != LDD");
+
+    // Post-ops go through the JIT injector. Accept eltwise, binary and sum, and
+    // only binary arguments the injector can handle on this ISA. Other kinds
+    // fall back.
     if (brg.attr()) {
         const memory_desc_wrapper dst_d(brg.dst_md());
         const std::vector<injector::post_op_type> accepted
-                = {injector::eltwise, injector::binary};
+                = {injector::eltwise, injector::binary, injector::sum};
         VCONDCHECK_BRGEMV_IR(
                 injector::post_ops_ok({brg.isa_impl, accepted,
                         brg.attr()->post_ops_, &dst_d,

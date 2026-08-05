@@ -289,7 +289,15 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
         for (int64_t n = nc * p.dst_N_group;
                 n < MIN2((nc + 1) * p.dst_N_group, N); ++n) {
             const auto dst_off = (dst_row_base + m) * N + n;
-            dst_scale = MAX2(fabsf(p.dst_m->get_f32_elem(dst_off)), dst_scale);
+            const float dst = fabsf(p.dst_m->get_f32_elem(dst_off));
+            // The following check and explicit set of scale to NAN is done on
+            // purpose to highlight the test case to adjust it as there's no
+            // practical application of NAN scales.
+            if (std::isnan(dst) || std::isnan(dst_scale)) {
+                dst_scale = NAN;
+                continue;
+            }
+            dst_scale = MAX2(dst, dst_scale);
         }
         if (p.has_dst_mx) {
             dst_scale

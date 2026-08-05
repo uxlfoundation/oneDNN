@@ -571,6 +571,7 @@ GRFRange RegisterAllocator::tryAllocRange(int nregs, BundleGroup baseBundle, Bun
             // Find the first free base register.
             int firstBit = utils::bsf(freeBase);
             int rbase = firstBit + (rchunk << 6);
+            if (rbase + nregs > regCount) break;
 
             // Check if required # of registers are available.
             bool ok = true;

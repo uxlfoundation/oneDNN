@@ -1,0 +1,71 @@
+# Late-applied 2D (K-grouped) scales vs. systolic k-chain length.
+#
+# On Xe3p/CRI, f8:f8 with block scales on BOTH src and wei takes the "late
+# quantization" path: scales are applied while repacking C, once every
+# gcd(aqGroupK, bqGroupK) k-elements. The systolic k-chain advances
+# ksys * kChain k-elements at a time (32 * 2 = 64 for f8). If the chain spans
+# more k-elements than the scale period, C is flushed less often than the
+# scales change and whole scale groups are silently dropped, producing a
+# wrong result with no error reported.
+#
+# The cases below sweep the scale group size against the k-chain span and
+# include single-sided and no-scale controls, so a regression shows up as a
+# specific subset failing rather than everything at once.
+#
+# K is always >= 2 * group so that multiple scale groups exist along K, and
+# group < K so the scales are not folded away as a single per-tensor value.
+
+--reset
+--dt=f8_e4m3:f8_e4m3:bf16
+--wtag=acb
+--grouped=0:4:8+8+8+8
+
+# group == ksys (32): k-chain must be trimmed, else every other group is lost
+--attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+32x128:4x128x64
+32x256:4x256x64
+32x512:4x512x64
+
+# group == 2 * ksys (64): a k-chain of 2 is legal here and must be preserved
+--attr-scales=src:3:e8m0:1x64+wei:7:e8m0:64x1
+32x128:4x128x64
+32x256:4x256x64
+32x512:4x512x64
+
+# group == 4 * ksys (128)
+--attr-scales=src:3:e8m0:1x128+wei:7:e8m0:128x1
+32x256:4x256x64
+32x512:4x512x64
+
+# asymmetric groups: repack period is gcd(aqGroupK, bqGroupK)
+--attr-scales=src:3:e8m0:1x32+wei:7:e8m0:64x1
+32x256:4x256x64
+--attr-scales=src:3:e8m0:1x64+wei:7:e8m0:32x1
+32x256:4x256x64
+
+# single-sided controls: these take a different path and must stay correct
+--attr-scales=src:3:e8m0:1x32
+32x256:4x256x64
+--attr-scales=wei:7:e8m0:32x1
+32x256:4x256x64
+
+# no-scale control: k-chaining itself must remain unaffected
+--attr-scales=
+32x256:4x256x64
+
+# non-e8m0 scale types bypass BDPAS and force the late-quant path
+--reset
+--dt=f8_e4m3:f8_e4m3:bf16
+--wtag=acb
+--grouped=0:4:8+8+8+8
+--attr-scales=src:3:f16:1x32+wei:7:f16:32x1,src:3:f16:1x64+wei:7:f16:64x1
+32x256:4x256x64
+
+# f4_e2m1: ksys is 64, so the group/chain relationship differs from f8
+--reset
+--dt=f4_e2m1:f4_e2m1:bf16
+--wtag=acb
+--grouped=0:4:8+8+8+8
+--attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+32x256:4x256x64
+32x512:4x512x64

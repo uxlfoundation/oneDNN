@@ -292,6 +292,10 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
                                     VERBOSE_ISA_DT_MISMATCH);
                             VCHECK_PO_INJ_BOOL(dst_d->is_dense(),
                                     VERBOSE_UNSUPPORTED_FORMAT_KIND);
+                            VCHECK_PO_INJ_BOOL(
+                                    binary_injector::is_ternary_bcast_supported(
+                                            src2_d, *dst_d),
+                                    VERBOSE_UNSUPPORTED_POSTOP);
                         }
                         return ok;
                     }

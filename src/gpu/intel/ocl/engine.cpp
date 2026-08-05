@@ -27,6 +27,7 @@
 
 #include "gemmstone/dsl/runtime.hpp"
 #include "gemmstone/microkernel/fuser.hpp"
+#include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/logging.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
@@ -236,7 +237,8 @@ cl_int maybe_print_debug_info(
 }
 
 inline status_t fuse_microkernels(cl_context context, cl_device_id device,
-        xpu::ocl::wrapper_t<cl_program> &program, const char *code) {
+        xpu::ocl::wrapper_t<cl_program> &program, const char *code,
+        int grf_size) {
     if (gemmstone::microkernel::hasMicrokernels(code)) {
         cl_int status = CL_SUCCESS;
         size_t binary_size = 0;
@@ -248,9 +250,7 @@ inline status_t fuse_microkernels(cl_context context, cl_device_id device,
         OCL_CHECK(xpu::ocl::clGetProgramInfo(program, CL_PROGRAM_BINARIES,
                 sizeof(binary_data), &binary_data, nullptr));
 
-        try {
-            gemmstone::microkernel::fuse(binary, code);
-        } catch (...) { return status::runtime_error; }
+        CHECK(compute::fuse_microkernels(binary, code, grf_size));
 
         auto nbinary_size = binary.size();
         auto nbinary_data = const_cast<const uint8_t *>(binary.data());
@@ -320,7 +320,8 @@ status_t engine_t::build_program_from_source(
     OCL_CHECK(maybe_print_debug_info(err, program, dev));
 
     if (kernel_ctx.has_custom_headers())
-        CHECK(fuse_microkernels(ctx, dev, program, pp_code_str_ptr));
+        CHECK(fuse_microkernels(
+                ctx, dev, program, pp_code_str_ptr, dev_info->grf_size()));
 
     return status::success;
 }

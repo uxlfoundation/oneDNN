@@ -323,41 +323,88 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(dispatch_compile_params_t);
 class dispatch_runtime_params_t {
 public:
     dispatch_runtime_params_t() = default;
-    dispatch_runtime_params_t(
-            const nd_range_t &nd_range, const gws_term_list_t &terms)
-        : nd_range(nd_range), num_terms(terms.size()) {
+    dispatch_runtime_params_t(const nd_range_t &nd_range, bool use_int32_offset,
+            const gws_term_list_t &terms)
+        : nd_range(nd_range)
+        , use_int32_offset(use_int32_offset)
+        , num_terms(terms.size()) {
         for (size_t i = 0; i < num_terms; i++) {
             const gws_indexing_term_t::runtime_params_t &params
                     = terms[i].runtime_params();
-            rt_params.sizes[i] = params.size;
-            rt_params.strides[i] = static_cast<int64_t>(params.stride);
-            rt_params.blocks[i] = params.block;
+            if (use_int32_offset) {
+                rt32.sizes[i] = into<int32_t>(params.size);
+                rt32.strides[i]
+                        = into<int32_t>(static_cast<int64_t>(params.stride));
+                rt32.blocks[i] = into<int32_t>(params.block);
+            } else {
+                rt64.sizes[i] = params.size;
+                rt64.strides[i] = static_cast<int64_t>(params.stride);
+                rt64.blocks[i] = params.block;
+            }
         }
         for (size_t i = num_terms; i < MAX_INDEXING_TERMS; i++) {
-            rt_params.sizes[i] = 1;
-            rt_params.strides[i] = 1;
-            rt_params.blocks[i] = 1;
+            if (use_int32_offset) {
+                rt32.sizes[i] = 1;
+                rt32.strides[i] = 1;
+                rt32.blocks[i] = 1;
+            } else {
+                rt64.sizes[i] = 1;
+                rt64.strides[i] = 1;
+                rt64.blocks[i] = 1;
+            }
         }
     }
-    dispatch_gws_rt_params_t get() const { return rt_params; }
+    dispatch_gws_rt_params64_t get64() const {
+        gpu_assert(!use_int32_offset);
+        return rt64;
+    }
+    dispatch_gws_rt_params32_t get32() const {
+        gpu_assert(use_int32_offset);
+        return rt32;
+    }
 
     std::string str() const {
         stringstream_t ss;
         ss << "<dispatch_runtime_params_t (size/stride/block): ";
         for (size_t i = 0; i < num_terms; i++) {
-            ss << rt_params.sizes[i] << "/" << rt_params.strides[i] << "/"
-               << rt_params.blocks[i] << ", ";
+            if (use_int32_offset) {
+                ss << rt32.sizes[i] << "/" << rt32.strides[i] << "/"
+                   << rt32.blocks[i] << ", ";
+            } else {
+                ss << rt64.sizes[i] << "/" << rt64.strides[i] << "/"
+                   << rt64.blocks[i] << ", ";
+            }
         }
         ss << ">";
         return ss.str();
     }
 
     nd_range_t nd_range;
+    bool use_int32_offset = false;
 
 private:
     size_t num_terms = 0;
-    dispatch_gws_rt_params_t rt_params;
+    union {
+        dispatch_gws_rt_params64_t rt64;
+        dispatch_gws_rt_params32_t rt32;
+    };
 };
+
+inline void set_rt_params(compute::kernel_arg_list_t &arg_list, int index,
+        const dispatch_runtime_params_t &params) {
+    if (params.use_int32_offset)
+        arg_list.set(index, params.get32());
+    else
+        arg_list.set(index, params.get64());
+}
+
+inline void append_rt_params(compute::kernel_arg_list_t &arg_list,
+        const dispatch_runtime_params_t &params) {
+    if (params.use_int32_offset)
+        arg_list.append(params.get32());
+    else
+        arg_list.append(params.get64());
+}
 
 struct named_dim_t {
 public:
@@ -639,7 +686,8 @@ public:
         compile_params.subgroup = subgroup;
 
         // Set runtime params
-        runtime_params = dispatch_runtime_params_t(nd_range, term_list);
+        runtime_params = dispatch_runtime_params_t(
+                nd_range, compile_params.use_int32_offset, term_list);
     }
 
     const dispatch_compile_params_t &get_compile_params() const {

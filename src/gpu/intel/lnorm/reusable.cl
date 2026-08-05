@@ -103,9 +103,6 @@ __kernel void lnorm_reusable_bwd_scaleshift(__global SRC_SS_DT *src,
     src = GWS_GET_BUFFER_POS_NAMED(SRC, SS, gws_params, src);
     diff_dst = GWS_GET_BUFFER_POS_NAMED(DST, SS, gws_params, diff_dst);
 
-    diff_scale = GWS_GET_BUFFER_POS_NAMED(SS, SS, gws_params, diff_scale);
-    diff_shift = GWS_GET_BUFFER_POS_NAMED(SS, SS, gws_params, diff_shift);
-
     float gamma = 0.0f;
     float beta = 0.0f;
     for (int i = 0; i < stat_size; i++) {
@@ -119,8 +116,14 @@ __kernel void lnorm_reusable_bwd_scaleshift(__global SRC_SS_DT *src,
         gamma += dst_val * (src_val - mean_val) / sqrt(var_val + eps);
     }
 
-    if (diff_shift) write(diff_shift, &beta);
-    if (diff_scale) write(diff_scale, &gamma);
+    if (diff_shift) {
+        diff_shift = GWS_GET_BUFFER_POS_NAMED(SS, SS, gws_params, diff_shift);
+        write(diff_shift, &beta);
+    }
+    if (diff_scale) {
+        diff_scale = GWS_GET_BUFFER_POS_NAMED(SS, SS, gws_params, diff_scale);
+        write(diff_scale, &gamma);
+    }
 }
 
 NAMED_KERNEL_ATTR(STAT)

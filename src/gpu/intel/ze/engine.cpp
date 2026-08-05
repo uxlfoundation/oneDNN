@@ -149,11 +149,8 @@ status_t engine_t::create_kernels(std::vector<compute::kernel_t> *kernels,
             device(), context(), code, options, binary));
 
     if (kernel_ctx.has_custom_headers()
-            && gemmstone::microkernel::hasMicrokernels(code_c)) {
-        try {
-            gemmstone::microkernel::fuse(binary, code_c);
-        } catch (...) { return status::runtime_error; }
-    }
+            && gemmstone::microkernel::hasMicrokernels(code_c))
+        CHECK(compute::fuse_microkernels(binary, code_c, dev_info->grf_size()));
 
     CHECK(convert_to_ze(*kernels, kernel_names, binary));
 

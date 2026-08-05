@@ -23,6 +23,7 @@
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/engine.hpp"
+#include "xpu/utils.hpp"
 
 namespace gemmstone {
 namespace microkernel {
@@ -67,6 +68,11 @@ private:
     uint32_t next_id_ = 0;
     int grf_min_ = 0;
 };
+
+// Splices the machine code of the microkernels embedded in `code` into the
+// program binary IGC compiled from it. Callers check hasMicrokernels() first.
+status_t fuse_microkernels(
+        xpu::binary_t &binary, const char *code, int grf_size);
 
 } // namespace compute
 } // namespace intel

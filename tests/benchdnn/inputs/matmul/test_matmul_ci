@@ -16,3 +16,11 @@
 --reset --dt=s8:s8:f32 --attr-scales=src:2 3x17x64:3x64x19
 --reset --dt=s8:s8:bf16 --attr-scales=src:2+wei:0:2 5x32x64:5x64x48
 --reset --dt=u8:s8:f32 --attr-scales=src:2+wei:4 3x17x64:3x64x19
+
+# Binary select post-op with broadcast
+--reset
+--dt=f32,bf16
+--stag=abcd --wtag=abcd --dtag=abcd
+--attr-post-ops=select:f32:common
+1x16x32x256:1x16x256x33n"sdpa_cond_bcast"
+1x16x33x257:1x16x257x37n"sdpa_cond_bcast_tail"

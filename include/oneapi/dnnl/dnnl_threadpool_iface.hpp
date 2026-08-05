@@ -60,6 +60,13 @@ struct threadpool_iface {
     // Does nothing if SYNCHRONOUS, waits for all jobs for ASYNCHRONOUS
     virtual void wait() = 0;
 
+    /// Verbose profiling hooks for ASYNCHRONOUS threadpools. Called around
+    /// enqueue_primitive() so the threadpool can time deferred execution and
+    /// emit the verbose line on completion. Non-pure for ABI compatibility.
+    /// @param pd_info Primitive descriptor string (only valid during the call).
+    virtual void begin_profiling(const char *pd_info) {}
+    virtual void end_profiling() {}
+
     /// If set, parallel_for() returns immediately and oneDNN needs implement
     /// waiting for the submitted closures to finish execution on its own.
     static constexpr uint64_t ASYNCHRONOUS = 1;

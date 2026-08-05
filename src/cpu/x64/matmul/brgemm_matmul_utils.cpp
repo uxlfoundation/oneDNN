@@ -264,10 +264,11 @@ status_t check_isa_with_datatype(
                     one_of(isa, avx512_core_fp16, avx2_vnni_2, avx512_core,
                             avx2))
             // `avx512_core_amx` is not supported for plain upconversion as HW
-            // supports native compute.
+            // supports native compute, which `is_src_bf32()` relies on.
             && IMPLICATION(bm_conf_utils.is_f32_bf16(),
                     one_of(isa, avx512_core_bf16, avx2_vnni_2, avx512_core,
-                            avx2))
+                            avx2)
+                            || bm_conf_utils.is_src_bf32())
             && IMPLICATION(bm_conf_utils.is_int8_with_bf16_dst(),
                     is_superset(isa, avx512_core) || isa == avx2_vnni_2)
             && IMPLICATION(bm_conf_utils.is_bf16_with_int_wei(),
@@ -376,6 +377,12 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     // and avx2 as there's no kernel for such combination.
     , f32_bf16_dt(bgmmc.src_dt == f32 && bgmmc.wei_dt == bf16
               && one_of(bgmmc.dst_dt, bf16, f32))
+    // AMX computes `bf16` natively, so a `bf16` fpmath mode makes
+    // down-converting `A` cheaper than up-converting `B` to `f32`. Mirrors
+    // `bf32_dt` for the `A` operand only, hence the same ISA requirement.
+    , src_bf32_dt(f32_bf16_dt
+              && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
+              && isa == avx512_core_amx)
     , f16_with_int_wei_dt(weights_decompression_support && bgmmc.src_dt == f16
               && one_of(bgmmc.dst_dt, f16, f32))
     , f32_with_int_wei_dt(weights_decompression_support
@@ -1893,6 +1900,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_f32_with_int_wei = bm_conf_utils.is_f32_with_int_wei();
     bgmmc.is_f32_f16 = bm_conf_utils.is_f32_f16();
     bgmmc.is_f32_bf16 = bm_conf_utils.is_f32_bf16();
+    bgmmc.is_src_bf32 = bm_conf_utils.is_src_bf32();
     bgmmc.is_xf16_fp8
             = bm_conf_utils.is_bf16_fp8() || bm_conf_utils.is_f16_fp8();
     bgmmc.with_wei_decompression = bm_conf_utils.with_weights_decompression();
@@ -1906,8 +1914,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.tr_b_dt_sz = types::data_type_size(f32);
     }
     // Make BRGeMM compute MatMul as if it were in bfloat16, while down-convert
-    // happens during copy-buffer computations
-    if (bgmmc.is_bf32 || bgmmc.is_bf16_with_int_wei) {
+    // happens during copy-buffer computations. For `is_src_bf32` only `A` is
+    // down-converted, `B` is stored as bf16 already.
+    if (bgmmc.is_bf32 || bgmmc.is_bf16_with_int_wei || bgmmc.is_src_bf32) {
         bgmmc.src_dt = bf16;
         bgmmc.wei_dt = bf16;
         bgmmc.tr_a_dt_sz = types::data_type_size(bf16);
@@ -2282,8 +2291,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             || bgmmc.wei_tag == adbc;
     bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b();
 
+    // `is_src_bf32` is excluded: it computes in bf16 and down-converts `A`
+    // instead of up-converting `B`.
     if ((bm_conf_utils.is_f32_f16() || bm_conf_utils.is_f32_bf16())
-            && is_superset(bgmmc.isa, avx2) && bm_conf_utils.use_buffer_b()) {
+            && !bm_conf_utils.is_src_bf32() && is_superset(bgmmc.isa, avx2)
+            && bm_conf_utils.use_buffer_b()) {
         // ANCHOR: `CONVERT_F32_XF16_DATA_TYPES`
         bgmmc.src_dt = f32;
         bgmmc.wei_dt = f32;
@@ -2403,7 +2415,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const bool is_copy_a_required = !bgmmc.is_gemv
             && ((bgmmc.is_amx
-                        && (bm_conf_utils.is_bf32() || bm_conf_utils.is_tf32()))
+                        && (bm_conf_utils.is_bf32() || bm_conf_utils.is_tf32()
+                                || bm_conf_utils.is_src_bf32()))
                     || ((bm_conf_utils.is_f16()
                                 || bm_conf_utils.is_f16_with_int_wei())
                             && isa == avx512_core_fp16)

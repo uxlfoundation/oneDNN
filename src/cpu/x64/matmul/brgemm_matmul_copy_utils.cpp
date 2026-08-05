@@ -60,6 +60,8 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
         , use_fp16_instructions_(conf_->isa == avx512_core_fp16
                   && conf_->orig_src_dt == data_type::f16
                   && conf_->src_dt == data_type::f32)
+        , req_cvtps2bf16_(conf_->orig_src_dt == data_type::f32
+                  && conf_->src_dt == data_type::bf16)
         , k_loop_unroll_(is_ymm_ ? 7 : 16)
         , vmm_copy_idx_(is_ymm_                      ? 13
                           : avx512_core_dot_product_ ? 27
@@ -90,6 +92,7 @@ private:
     const bool do_compute_compensation_;
     const bool avx512_core_dot_product_;
     const bool use_fp16_instructions_;
+    const bool req_cvtps2bf16_;
 
     const int k_loop_unroll_;
     const int vmm_copy_idx_;
@@ -187,7 +190,7 @@ template <>
 void jit_brgemm_matmul_copy_a_impl_t<Zmm>::load_tail(
         int k_tail, size_t offset) {
     const auto kmovx = [this](Opmask k, size_t q) {
-        if (conf_->is_bf32) {
+        if (req_cvtps2bf16_) {
             mov(regq_tmp.cvt32(), q);
             jit_generator_t::kmovw(k, regq_tmp.cvt32());
         } else {
@@ -197,12 +200,12 @@ void jit_brgemm_matmul_copy_a_impl_t<Zmm>::load_tail(
     };
 
     const size_t dt_step
-            = conf_->is_bf32 || use_fp16_instructions_ ? 1 : typesize_;
+            = req_cvtps2bf16_ || use_fp16_instructions_ ? 1 : typesize_;
     const size_t tail_mask_load = size_t(((size_t)1 << (dt_step * k_tail)) - 1);
     kmovx(kTail_load, tail_mask_load);
     const int k_tail_st = rnd_up(k_tail, vnni_granularity_);
     const size_t full_mask
-            = conf_->is_bf32 ? ((size_t)1 << 16) - 1 : 0xffffffffffffffff;
+            = req_cvtps2bf16_ ? ((size_t)1 << 16) - 1 : 0xffffffffffffffff;
     const size_t tail_mask_store = k_tail_st == k_step_
             ? full_mask
             : size_t(((size_t)1 << (dt_step * k_tail_st)) - 1);
@@ -210,7 +213,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Zmm>::load_tail(
 
     auto zmm_tail = get_vmm_copy(0) | kTail_load | T_z;
     auto load_addr = EVEX_compress_addr(reg_src, offset * typesize_);
-    if (conf_->is_bf32)
+    if (req_cvtps2bf16_)
         vmovups(zmm_tail, load_addr);
     else if (use_fp16_instructions_)
         vcvtph2psx(zmm_tail, load_addr);
@@ -229,7 +232,7 @@ template <>
 void jit_brgemm_matmul_copy_a_impl_t<Zmm>::store_tail(
         int k_tail, size_t offset) {
     auto tr_src_addr = EVEX_compress_addr(reg_tr_src, offset * tr_typesize_);
-    if (conf_->is_bf32) {
+    if (req_cvtps2bf16_) {
         Ymm ymm_downcvt_bf16 = Ymm(get_vmm_copy(0).getIdx());
         vcvtneps2bf16(ymm_downcvt_bf16, get_vmm_copy(0));
         vmovdqu16(tr_src_addr, ymm_downcvt_bf16 | kTail_store);
@@ -302,7 +305,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
             for (int k = 0; k < k_end; k++)
                 vpaddb(get_vmm_copy(k), get_vmm_copy(k), vmm_comp_add);
         }
-        if (conf_->is_bf32) {
+        if (req_cvtps2bf16_) {
             assert(typesize_ != tr_typesize_);
             int k = 0;
             const int k_end_2 = rnd_dn(k_end, 2);
@@ -551,7 +554,10 @@ struct jit_brgemm_matmul_copy_a_transposed_impl_t
         , is_f32(conf_->src_dt == data_type::f32)
         , is_bf16(conf_->src_dt == data_type::bf16)
         , is_f16(conf_->src_dt == data_type::f16)
-        , is_bf32(conf_->is_bf32)
+        // `A` is stored as f32 and down-converted to bf16 while transposing.
+        // Holds for both `is_bf32` and `is_src_bf32` configurations.
+        , is_bf32(conf_->orig_src_dt == data_type::f32
+                  && conf_->src_dt == data_type::bf16)
         , is_f8(utils::one_of(
                   conf_->src_dt, data_type::f8_e4m3, data_type::f8_e5m2))
         , is_dynamic_src_ld(conf_->is_runtime_M)

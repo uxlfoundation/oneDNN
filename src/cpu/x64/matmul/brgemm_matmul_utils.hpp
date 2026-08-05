@@ -243,6 +243,7 @@ struct brgemm_matmul_conf_t {
     bool is_f32_with_int_wei = false;
     bool is_f32_f16 = false;
     bool is_f32_bf16 = false;
+    bool is_src_bf32 = false;
     bool is_xf16_fp8 = false;
     bool is_int4_weights = false;
     bool is_f4_via_convert = false;
@@ -462,6 +463,12 @@ struct brgemm_matmul_conf_utils_t {
 
     inline bool is_f32_bf16() const { return f32_bf16_dt; }
 
+    // A subset of `is_f32_bf16()` where only `A` is `bf32`: it is stored as
+    // `f32` and down-converted to `bf16`, while `B` is already `bf16`. The
+    // complementary `is_f32_bf16()` configurations up-convert `B` to `f32` and
+    // compute in `f32` instead.
+    inline bool is_src_bf32() const { return src_bf32_dt; }
+
     inline bool is_f16_with_int_wei() const { return f16_with_int_wei_dt; }
 
     inline bool is_f32_with_int_wei() const { return f32_with_int_wei_dt; }
@@ -514,7 +521,7 @@ private:
     const bool f32_dt, bf16_dt, f16_dt, f4_via_convert_dt, f8_dt, bf8_dt,
             int8_dt, bf32_dt, tf32_dt;
     const bool weights_decompression_support, bf16_with_int_wei_dt, f32_f16_dt,
-            f32_bf16_dt, f16_with_int_wei_dt, f32_with_int_wei_dt,
+            f32_bf16_dt, src_bf32_dt, f16_with_int_wei_dt, f32_with_int_wei_dt,
             int8_grouped_quantization_dt, bf16_fp8_dt, f16_fp8_dt;
     const bool A_any_layout;
     const bool B_any_layout;

@@ -30,12 +30,11 @@ static constexpr uint32_t sigilStart = 0xCAFEFADE;
 static constexpr uint32_t sigilEnd = 0xFADECAFE;
 static constexpr const char *sigilBinary = "@_u_@";
 
-// Fuse the microkernel machine code into the program binary of a compiled host kernel.
-void fuse(std::vector<uint8_t> &binary,
-        const std::vector<uint8_t> &microkernel, int id = 0);
-
-// Fusing microkernels that were embedded directly in source code.
-void fuse(std::vector<uint8_t> &binary, const char *source);
+// Fuse source-embedded microkernels into the compiled host kernel's binary.
+// Each is checked against the host thread payload; an overlap throws, leaving
+// `binary` partially fused. Returns false if none could be checked (fused but
+// unvalidated).
+bool fuse(std::vector<uint8_t> &binary, const char *source, int grfBytes);
 bool hasMicrokernels(const char *source);
 
 }

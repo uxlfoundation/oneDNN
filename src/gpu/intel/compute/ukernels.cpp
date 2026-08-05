@@ -16,8 +16,13 @@
 
 #include "gpu/intel/compute/ukernels.hpp"
 
+#include <exception>
+#include <string>
+
 #include "common/verbose.hpp"
+#include "gemmstone/microkernel/fuser.hpp"
 #include "gemmstone/microkernel/shim.hpp"
+#include "gpu/intel/utils.hpp"
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include "gpu/intel/ocl/engine.hpp"
@@ -133,6 +138,20 @@ void microkernel_shims_t::finalize() {
         kernel_ctx_.add_option("-cl-intel-512-GRF-per-thread");
     else if (grf_min_ > 128)
         kernel_ctx_.add_option("-cl-intel-256-GRF-per-thread");
+}
+
+status_t fuse_microkernels(
+        xpu::binary_t &binary, const char *code, int grf_size) {
+    try {
+        if (!gemmstone::microkernel::fuse(binary, code, grf_size))
+            VWARN(common, runtime,
+                    "could not check microkernel registers against the host "
+                    "kernel thread payload");
+    } catch (const std::exception &e) {
+        VERROR(common, runtime, "microkernel fusion failed: %s", e.what());
+        return status::runtime_error;
+    } catch (...) { return status::runtime_error; }
+    return status::success;
 }
 
 } // namespace compute

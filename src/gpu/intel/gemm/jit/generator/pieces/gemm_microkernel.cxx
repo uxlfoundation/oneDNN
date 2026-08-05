@@ -341,6 +341,7 @@ microkernel::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &pr
     package.settings.push_back({"slm_size", int(slmSize)});
 
     package.barrierCount = interface.getBarrierCount();
+    package.argumentBase = interface.getArgumentBase().getBase() * GRF::bytes(hw);
 
     package.finalize(knownClobbers);
 

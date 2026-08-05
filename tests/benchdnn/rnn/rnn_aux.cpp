@@ -117,8 +117,8 @@ flags_t str2flags(const char *str) {
         if (*str == 'O') {
             flags |= DIFF_WEIGHTS_OVERWRITE;
         } else {
-            BENCHDNN_PRINT(0, "%s \'%c\'\n",
-                    "Error: --flags option doesn't support value", *str);
+            BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                    "Error: --flags option doesn't support value", str);
             SAFE_V(FAIL);
         }
         str++;

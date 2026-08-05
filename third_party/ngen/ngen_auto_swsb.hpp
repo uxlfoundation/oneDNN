@@ -181,7 +181,7 @@ struct Dependency {
     uint32_t tokenMaskSrc, tokenMaskDst;                // Bitmasks of token src/dst dependencies
     DependencyRegion region;                            // GRF region covered
 
-    Dependency() : label{0}, pipe{}, tokenTime{0},
+    Dependency() : label{0}, pipe{}, tokenTime{0}, inum{0xffffffff},
         rw{false}, swsb{false}, active{true}, tokenTBD{false},
         tokenMaskSrc{0u}, tokenMaskDst{0u}, region{} { counters.fill(0); dists.fill(0); }
 

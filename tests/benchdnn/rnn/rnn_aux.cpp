@@ -114,9 +114,13 @@ const char *direction2str(dnnl_rnn_direction_t direction) {
 flags_t str2flags(const char *str) {
     flags_t flags = NONE;
     while (str && *str) {
-        if (*str == 'O')
+        if (*str == 'O') {
             flags |= DIFF_WEIGHTS_OVERWRITE;
-        else { BENCHDNN_PRINT(0, "%s\n", "Error: unsupported flags value."); }
+        } else {
+            BENCHDNN_PRINT(0, "%s \'%c\'\n",
+                    "Error: --flags option doesn't support value", *str);
+            SAFE_V(FAIL);
+        }
         str++;
     }
     return flags;

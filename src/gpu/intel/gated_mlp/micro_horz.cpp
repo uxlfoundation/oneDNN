@@ -419,18 +419,12 @@ status_t micro_horz_t::init(impl::engine_t *engine) {
     if (lda % 4 == 0 && (pd()->OC() % tile_wgu_m) == 0)
         kernel_ctx.define_int("BLOCK_DST", 1);
 
-    gemmstone::microkernel::ShimOptions shimOptions;
-    shimOptions.subgroupSize = sg_size(engine);
-    shimOptions.useTileOps = true;
-    shimOptions.decorator = "wgu";
-
-    auto header = generateShim(pd()->gemm_gate_up_pkg(),
-            gemmstone::microkernel::HostLanguage::OpenCL_C, shimOptions);
-    kernel_ctx.add_custom_header("gemm_gateup.h", std::move(header));
-
-    if (pd()->gemm_gate_up_pkg().grfMin > 128) {
-        kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
-    }
+    compute::microkernel_shims_t shims(kernel_ctx, sg_size(engine),
+            utils::downcast<const intel::engine_t *>(engine)
+                    ->device_info()
+                    ->gpu_arch());
+    shims.add("gemm_gateup.h", "wgu", pd()->gemm_gate_up_pkg());
+    shims.finalize();
 
     CHECK(create_kernel(
             engine, &gemm_gate_up_, "micro_gated_mlp_horz", kernel_ctx));

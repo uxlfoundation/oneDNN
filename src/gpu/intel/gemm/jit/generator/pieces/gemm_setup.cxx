@@ -1856,6 +1856,18 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     allocAddrRegs(state.C_scaleAddrs, state.C_scaleLayout, state);
     allocAddrRegs(state.Ag_addrs, state.Ag_layout, state);
     allocAddrRegs(state.Bg_addrs, state.Bg_layout, state);
+    if (strategy.pfaux) {
+        if (strategy.prefetchA) {
+            allocAddrRegs(state.Ap_offsetAddrs, state.A_offsetLayout, state);
+            allocAddrRegs(state.Ap_scaleAddrs,  state.A_scaleLayout,  state);
+            allocAddrRegs(state.Agp_addrs,      state.Ag_layout,      state);
+        }
+        if (strategy.prefetchB) {
+            allocAddrRegs(state.Bp_offsetAddrs, state.B_offsetLayout, state);
+            allocAddrRegs(state.Bp_scaleAddrs,  state.B_scaleLayout,  state);
+            allocAddrRegs(state.Bgp_addrs,      state.Bg_layout,      state);
+        }
+    }
 
     // Free up some C registers temporarily for use in address calculations.
     releaseRanges(state.C_regs, state);
@@ -1965,32 +1977,50 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         auto &A_h0o = lateOffsetA ? A_h0qLate : A_h0q;
         setupQAddr(Tao, state.A_offsetAddrs, state.A_offsetLayout, state.inputs.aoPtr,
                    i0o, A_h0o, state.inputs.ldao, state.offsetAo);
+        if (strategy.pfaux && strategy.prefetchA)
+            setupQAddr(Tao, state.Ap_offsetAddrs, state.A_offsetLayout, state.inputs.aoPtr,
+                       i0o, A_h0o, state.inputs.ldao, state.offsetAo);
     }
     if (as2D) {
         auto &i0s   = state.lateScale2DA ? i0qLate : i0q;
         auto &A_h0s = state.lateScale2DA ? A_h0qLate : A_h0q;
         setupQAddr(Ta_scale, state.A_scaleAddrs, state.A_scaleLayout, state.inputs.aScalePtr,
                    i0s, A_h0s, state.inputs.ldaScale, state.offsetAs);
+        if (strategy.pfaux && strategy.prefetchA)
+            setupQAddr(Ta_scale, state.Ap_scaleAddrs, state.A_scaleLayout, state.inputs.aScalePtr,
+                       i0s, A_h0s, state.inputs.ldaScale, state.offsetAs);
     }
     if (ag2D) {
         setupQAddr(Tag, state.Ag_addrs, state.Ag_layout, state.inputs.agPtr,
                    i0qLate, A_h0qLate, state.inputs.ldag, state.inputs.offsetAg);
+        if (strategy.pfaux && strategy.prefetchA)
+            setupQAddr(Tag, state.Agp_addrs, state.Ag_layout, state.inputs.agPtr,
+                       i0qLate, A_h0qLate, state.inputs.ldag, state.inputs.offsetAg);
     }
     if (bo2D) {
         auto &j0o   = lateOffsetB ? j0qLate   : j0q;
         auto &B_h0o = lateOffsetB ? B_h0qLate : B_h0q;
         setupQAddr(Tbo, state.B_offsetAddrs, state.B_offsetLayout, state.inputs.boPtr,
                    B_h0o, j0o, state.inputs.ldbo, state.offsetBo);
+        if (strategy.pfaux && strategy.prefetchB)
+            setupQAddr(Tbo, state.Bp_offsetAddrs, state.B_offsetLayout, state.inputs.boPtr,
+                       B_h0o, j0o, state.inputs.ldbo, state.offsetBo);
     }
     if (bs2D) {
         auto &j0s   = state.lateScale2DB ? j0qLate   : j0q;
         auto &B_h0s = state.lateScale2DB ? B_h0qLate : B_h0q;
         setupQAddr(Tb_scale, state.B_scaleAddrs, state.B_scaleLayout, state.inputs.bScalePtr,
                    B_h0s, j0s, state.inputs.ldbScale, state.offsetBs);
+        if (strategy.pfaux && strategy.prefetchB)
+            setupQAddr(Tb_scale, state.Bp_scaleAddrs, state.B_scaleLayout, state.inputs.bScalePtr,
+                       B_h0s, j0s, state.inputs.ldbScale, state.offsetBs);
     }
     if (bg2D) {
         setupQAddr(Tbg, state.Bg_addrs, state.Bg_layout, state.inputs.bgPtr,
                    B_h0qLate, j0qLate, state.inputs.ldbg, state.inputs.offsetBg);
+        if (strategy.pfaux && strategy.prefetchB)
+            setupQAddr(Tbg, state.Bgp_addrs, state.Bg_layout, state.inputs.bgPtr,
+                       B_h0qLate, j0qLate, state.inputs.ldbg, state.inputs.offsetBg);
     }
 
     if (problem.hasCMXScale()) {
@@ -2224,6 +2254,12 @@ void Generator<hw>::gemmAccumulateCTeardown(GEMMProblem &problem, GEMMStrategy &
     safeReleaseRanges(state.B_scaleAddrs, state);
     safeReleaseRanges(state.Ag_addrs, state);
     safeReleaseRanges(state.Bg_addrs, state);
+    safeReleaseRanges(state.Ap_offsetAddrs, state);
+    safeReleaseRanges(state.Bp_offsetAddrs, state);
+    safeReleaseRanges(state.Ap_scaleAddrs, state);
+    safeReleaseRanges(state.Bp_scaleAddrs, state);
+    safeReleaseRanges(state.Agp_addrs, state);
+    safeReleaseRanges(state.Bgp_addrs, state);
 
     safeReleaseRanges(state.A_regs, state);
     safeReleaseRanges(state.Ar_regs, state);

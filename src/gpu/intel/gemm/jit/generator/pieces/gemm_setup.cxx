@@ -2605,6 +2605,14 @@ void Generator<hw>::gemmInitInterface(GEMMProblem &problem, GEMMStrategy &strate
 
     interface.finalize();
 
+    if (getenv("DUMP_IFACE")) {
+        for (size_t ai = 0; ai < interface.numAssignments(); ai++) {
+            auto &as = interface.getAssignment(int(ai));
+            fprintf(stderr, "IFACE %2d %-20s type=%d r%d.%d\\n", int(ai),
+                    as.name.c_str(), int(as.type), as.reg.getBase(), as.reg.getOffset());
+        }
+    }
+
     for (int dim = 0; dim < 3; dim++) {
         localID[dim] = interface.getLocalID(dim);
         localSize[dim] = interface.getLocalSize(dim);

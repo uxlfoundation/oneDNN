@@ -34,6 +34,14 @@ struct HWInformation {
     bool isEfficient64Bit;
 };
 
+/* Host kernel thread payload. Microkernel registers are placed above it. */
+struct HostPayload {
+    HostPayload(int simd, int argumentBytes) : simd(simd), argumentBytes(argumentBytes) {}
+
+    int simd;             /* host kernel SIMD width */
+    int argumentBytes;    /* cross-thread argument bytes, with headroom */
+};
+
 struct GEMMOptions {
     bool localA = false;
     bool localB = false;
@@ -46,13 +54,20 @@ struct GEMMOptions {
     bool kParallelLocal = false;
 
     GEMMOptions() = default;
-    ngen::InterfaceHandler generateInterface(ngen::HW hw) const;
+    ngen::InterfaceHandler generateInterface(ngen::HW hw, HostPayload host) const;
     GEMMOptions transpose() const;
 };
 
 /* Main entrypoint for microkernel auto-selection */
 using StrategyAdjuster = std::function<void(GEMMStrategy&)>;
-Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes, const GEMMProblem &problem,
+Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation hwInfo, SizeParams sizes,
+                                     const GEMMProblem &problem,
+                                     const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
+                                     StrategyAdjuster strategyAdjuster = {}, SelectionObserver *observer = nullptr);
+
+/* Transitional overload for callers that do not yet pass a HostPayload. */
+Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
+                                     const GEMMProblem &problem,
                                      const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
                                      StrategyAdjuster strategyAdjuster = {}, SelectionObserver *observer = nullptr);
 

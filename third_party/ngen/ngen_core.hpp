@@ -2071,6 +2071,19 @@ static inline bool isSend(Opcode op)
     }
 }
 
+static inline bool isSendg(Opcode op)
+{
+    switch (op) {
+        case Opcode::sendg:
+        case Opcode::sendgc:
+        case Opcode::sendgx:
+        case Opcode::sendgxc:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static inline bool trackedByToken(HW hw, Opcode op, unsigned dstTypecode)
 {
     switch (op) {

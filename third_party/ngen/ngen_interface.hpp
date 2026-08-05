@@ -141,6 +141,7 @@ public:
                           size_t z = 1)                  { wg[0] = x; wg[1] = y; wg[2] = z; }
 
     void setArgumentBase(RegData base)                   { baseOverride = base; }
+    RegData getArgumentBase() const                      { return baseOverride; }
     void setInlineGRFCount(int grfs)                     { requestedInlineBytes = grfs * GRF::bytes(hw); }
     int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
     std::array<int32_t, 2> getCTPatchOffsets() const     { return offsetCTPatches; }

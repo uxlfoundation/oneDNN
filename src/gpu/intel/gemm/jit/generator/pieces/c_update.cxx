@@ -577,7 +577,14 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
             and_(1 | ze | f1[0], null.ud(), state.inputs.flags, FlagKPartitioned);
 
         if (checkBeta1 && !beta.fixed()) {
-            cmp(1 | eq | f0[1], vbetar.getReg(0), cast(problem.Ts, 1.0));
+            auto immediate = cast(problem.Ts, 1.0);
+            if (problem.Ts.size() > 4) {
+                auto temp = state.ra.alloc_sub(problem.Ts.ngen());
+                mov(1, temp, immediate);
+                cmp(1 | eq | f0[1], vbetar.getReg(0), temp);
+                state.ra.safeRelease(temp);
+            } else
+                cmp(1 | eq | f0[1], vbetar.getReg(0), immediate);
         }
 
         if (checkBeta0 && !beta.fixed()) {

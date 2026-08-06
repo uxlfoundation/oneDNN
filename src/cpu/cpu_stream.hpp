@@ -37,16 +37,7 @@ namespace cpu {
 
 struct cpu_stream_t : public stream_t {
     cpu_stream_t(engine_t *engine, impl::stream_impl_t *stream_impl)
-        : stream_t(engine, stream_impl) {
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-        if (is_verbose_profiler_enabled()) {
-            dnnl::threadpool_interop::threadpool_iface *tp;
-            if (this->get_threadpool(&tp) == status::success && tp)
-                tp->set_verbose_profiling(
-                        get_verbose(verbose_t::exec_profile));
-        }
-#endif
-    }
+        : stream_t(engine, stream_impl) {}
 
     ~cpu_stream_t() override {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
@@ -78,10 +69,7 @@ struct cpu_stream_t : public stream_t {
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     cpu_stream_t(engine_t *engine,
             dnnl::threadpool_interop::threadpool_iface *threadpool)
-        : stream_t(engine, new impl::stream_impl_t(threadpool)) {
-        if (is_verbose_profiler_enabled())
-            threadpool->set_verbose_profiling(get_verbose(verbose_t::exec_profile));
-    }
+        : stream_t(engine, new impl::stream_impl_t(threadpool)) {}
 
     void before_exec_hook() override {
         dnnl::threadpool_interop::threadpool_iface *tp;

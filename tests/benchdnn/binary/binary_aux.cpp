@@ -25,7 +25,6 @@ std::string prb_t::set_repro_line() {
     using ::operator<<;
 
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     if (canonical || sdt != def.sdt[0]) s << "--sdt=" << sdt << " ";

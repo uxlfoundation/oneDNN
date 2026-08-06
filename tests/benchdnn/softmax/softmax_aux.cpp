@@ -46,7 +46,6 @@ const char *alg2str(alg_t alg) {
 
 std::string prb_t::set_repro_line() {
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     if (canonical || dir != def.dir[0]) s << "--dir=" << dir << " ";

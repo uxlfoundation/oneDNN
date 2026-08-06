@@ -23,7 +23,6 @@ namespace zeropad {
 
 std::string prb_t::set_repro_line() {
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     if (canonical || dt != def.dt[0]) s << "--dt=" << dt << " ";

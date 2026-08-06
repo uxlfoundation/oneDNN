@@ -273,7 +273,6 @@ std::string prb_t::set_repro_line() {
     using ::operator<<;
 
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     if (canonical || prop != prop2prop_kind(def.prop[0]))

@@ -368,7 +368,6 @@ std::string case_to_str(const std::string &json_file,
         const std::map<size_t, std::string> &op_kind_map,
         const std::map<size_t, std::string> &tensor_property) {
     stringstream_t s;
-    dump_global_params(s);
 
     if (mb != 0) { s << "--mb=" << mb << " "; }
 

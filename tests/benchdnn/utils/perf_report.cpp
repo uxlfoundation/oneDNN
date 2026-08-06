@@ -24,6 +24,12 @@
 void base_perf_report_t::report(res_t *res, const char *prb_str) const {
     dump_perf_header();
 
+    // `prb_str` carries only driver-specific settings. Prepend the global
+    // (driver-agnostic) parameters so that `%prb%` stays a complete reproducer.
+    stringstream_t global_params_ss;
+    dump_global_params(global_params_ss);
+    const std::string full_prb_str = global_params_ss.str() + prb_str;
+
     stringstream_t ss;
 
     const char *pt = pt_;
@@ -33,7 +39,7 @@ void base_perf_report_t::report(res_t *res, const char *prb_str) const {
             ss << c;
             continue;
         }
-        handle_option(ss, pt, res, prb_str);
+        handle_option(ss, pt, res, full_prb_str.c_str());
     }
 
     std::string str = ss.str();

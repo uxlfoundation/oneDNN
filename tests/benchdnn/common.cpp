@@ -29,10 +29,12 @@
 #include "oneapi/dnnl/dnnl.h"
 
 #include "common.hpp"
+#include "dnn_types.hpp"
 
 #include "utils/fill.hpp"
 #include "utils/parallel.hpp"
 #include "utils/parser.hpp"
+#include "utils/stringstream.hpp"
 
 /* result structure */
 const char *state2str(res_state_t state) {
@@ -151,10 +153,15 @@ void parse_result(res_t &res, const char *pstr) {
     const int64_t tct_ms = static_cast<int64_t>(tct.ms(bt::mode_t::sum));
     std::string tct_str = " (" + std::to_string(tct_ms) + " ms)";
 
+    // Global (driver-agnostic) parameters are dumped here so that each driver's
+    // `set_repro_line` only needs to collect its own settings.
+    stringstream_t ss;
+    dump_global_params(ss);
+
     // This is the common format of the repro line ([] - for optional entries):
     // case_num:status[ (reason)][ (error_stats)] (time) __REPRO: prb_str
     std::string full_repro = std::to_string(bs.tests) + ":" + std::string(state)
-            + reason + error_stat + tct_str + " __REPRO: " + pstr;
+            + reason + error_stat + tct_str + " __REPRO: " + ss.str() + pstr;
     if (is_failed) {
         bs.failed++;
         bs.failed_cases.emplace(bs.tests, full_repro);

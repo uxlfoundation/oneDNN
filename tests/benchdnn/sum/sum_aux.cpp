@@ -39,7 +39,6 @@ std::string prb_t::set_repro_line() {
     using sum::operator<<;
 
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     bool has_default_tags = true;

@@ -195,7 +195,6 @@ std::ostream &operator<<(std::ostream &s, const desc_t &d) {
 
 std::string prb_t::set_repro_line() {
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     if (canonical || dir != def.dir[0]) s << "--dir=" << dir << " ";

@@ -205,7 +205,6 @@ void prb_t::skip_invalid(res_t *res) const {
 
 std::string prb_t::set_repro_line() {
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     bool has_default_dts = true;

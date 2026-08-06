@@ -171,6 +171,10 @@ private:
 
     const data_type_t d_type_;
 
+    bool is_swish_lut_enabled() const {
+        return is_fwd_ && alg_ == alg_kind::eltwise_swish && alpha_ == 1.f;
+    }
+
     // if only the injector was inherited from jit_generator...
     enum {
         _cmp_eq_oq = jit_generator_t::_cmp_eq_oq,
@@ -240,7 +244,14 @@ private:
     void mish_compute_vector_fwd(const TRegS &vmm_src);
     void logistic_compute_vector_fwd(const TRegS &vmm_src);
     void gelu_tanh_compute_vector_fwd(const TRegS &vmm_src);
-    void swish_compute_vector_fwd(const TRegS &vmm_src);
+    void swish_compute_vector_fwd_signed_lut(const TRegS &vmm_src);
+    void swish_compute_vector_pair_fwd_signed_lut(
+            const TRegS &vmm_src0, const TRegS &vmm_src1);
+    size_t swish_lut_base_offset();
+    void swish_compute_vector_fwd(const TRegS &vmm_src,
+            injector_utils::vmm_index_set_iterator_t &next_idx_it,
+            const injector_utils::vmm_index_set_iterator_t &end_idx_it);
+    void swish_compute_vector_fwd_fallback(const TRegS &vmm_src);
     void log_compute_vector_fwd(const TRegS &vmm_src);
     void clip_compute_vector_fwd(const TReg &vmm_src);
     void gelu_erf_compute_vector_fwd(const TRegS &vmm_src);
@@ -332,6 +343,10 @@ private:
         gelu_erf_lut, // ERF LUT: [erf(r), scale(r)], 513 pairs
         gelu_erf_lut_erf, // ERF LUT: erf(r), 513 entries
         gelu_erf_lut_scale, // ERF LUT: scale(r), 513 entries
+        swish_lut_max,
+        swish_lut_min,
+        swish_lut_signed_bias, // 2^18 + 16: FP32 rounding bias for 1/32 grid
+        swish_lut_signed, // sigmoid(x), 1025 entries at a 1/32 step
         log_minus_inf, // -inf
         log_qnan, // qnan
         log_mantissa_mask, // gets mantissa bits

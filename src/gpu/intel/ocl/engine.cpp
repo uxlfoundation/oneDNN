@@ -57,11 +57,12 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
 void maybe_print_build_info(const std::vector<const char *> &kernel_names,
         const compute::kernel_ctx_t &kernel_ctx) {
 
-    ostringstream_t names;
-    for (const char *name : kernel_names)
-        names << " " << name;
-
-    gpu_info() << "build kernels:" << names;
+    gpu_info() << "build kernels:" << [&]() {
+        ostringstream_t names;
+        for (const char *name : kernel_names)
+            if (name) names << " " << name;
+        return names.str();
+    }();
     gpu_info() << "build options: " << kernel_ctx.options();
 }
 

@@ -40,7 +40,8 @@ public:
     ~stream_impl_t() override = default;
 
     status_t init(ze_context_handle_t context = nullptr,
-            ze_device_handle_t device = nullptr);
+            ze_device_handle_t device = nullptr,
+            engine_kind_t kind = engine_kind::gpu);
 
     status_t wait();
 
@@ -52,6 +53,8 @@ public:
             size_t size, const xpu::event_t &deps, xpu::event_t &out_dep);
 
     status_t barrier();
+
+    status_t init_verbose_profiler(engine_kind_t eng) override;
 
     const xpu::ze::context_t &ze_ctx() const;
     xpu::ze::context_t &ze_ctx();

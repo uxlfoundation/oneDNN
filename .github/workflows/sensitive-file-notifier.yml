@@ -1,0 +1,192 @@
+#===============================================================================
+# Copyright 2026 Intel Corporation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#===============================================================================
+
+# Sensitive File Notifier
+#
+# Posts a per-file GitHub review comment when a PR touches internal GPU API
+# headers that downstream projects depend on.
+#
+# HOW IT WORKS
+# ------------
+# For every configured project and every sensitive file it owns, the workflow
+# checks whether the file was changed in the PR. If yes, and no matching review
+# comment already exists for that file+project pair, a review comment is posted
+# anchored to the first visible line in the diff.
+#
+# DEDUPLICATION
+# -------------
+# Each comment embeds the marker "<!-- COMMENT_MARKER:ProjectName -->".
+# On every run the workflow fetches all existing bot comments, then skips any
+# file+project combination that already has a matching marker. This means:
+#   - Subsequent commits to the same PR do NOT re-post comments.
+#   - Resolving a review comment in the UI does NOT reset dedup (the comment
+#     body persists). Once flagged, the file stays flagged for the PR lifetime.
+#
+# CONFIGURATION
+# -------------
+# All user-editable settings are in the `env:` block below. The script body
+# should not need to be changed to add projects or adjust the comment text.
+
+name: "Sensitive File Notifier"
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+# Declare default permissions as read only.
+permissions: read-all
+
+# Cancel a stale run when a new commit is pushed.
+# Safe because posting is idempotent — a cancelled run for already-marked
+# files simply does nothing on the next run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# ==============================================================================
+# CONFIGURATION — edit this section; do not change the script body below.
+# ==============================================================================
+env:
+  # Base marker string embedded in every posted comment.
+  # Format in the comment body: <!-- COMMENT_MARKER:ProjectName -->
+  # Changing this value invalidates all existing comments — they will be
+  # re-posted on the next PR synchronize event.
+  COMMENT_MARKER: onednn-sensitive-file-notifier
+
+  # Downstream projects and the oneDNN source files they consume.
+  # To add a project, append an object: {"name":"…","url":"…","files":["…"]}
+  # A file can appear in multiple projects — each gets its own comment.
+  PROJECTS_CONFIG: |
+    [
+      {
+        "name": "OpenVINO Intel GPU Plugin",
+        "url":  "https://github.com/openvinotoolkit/openvino/tree/master/src/plugins/intel_gpu",
+        "files": [
+          "src/gpu/intel/gemm/jit/include/gemmstone/kernel_selector.hpp",
+          "src/gpu/intel/gemm/jit/include/gemmstone/microkernel/fuser.hpp",
+          "src/gpu/intel/gemm/jit/include/gemmstone/microkernel/package.hpp",
+          "src/gpu/intel/gemm/jit/include/gemmstone/microkernel_selector.hpp",
+          "src/gpu/intel/gemm/jit/include/gemmstone/microkernel/shim.hpp",
+          "src/gpu/intel/jit/generator.hpp"
+        ]
+      }
+    ]
+
+  # Review comment body template.
+  # Placeholders replaced at runtime:
+  #   {{MARKER}}  — value of COMMENT_MARKER above
+  #   {{PROJECT}} — project name  (from PROJECTS_CONFIG)
+  #   {{URL}}     — project URL   (from PROJECTS_CONFIG)
+  #   {{FILE}}    — changed file path
+  COMMENT_TEMPLATE: |
+    <!-- {{MARKER}}:{{PROJECT}} -->
+    ## :warning: Sensitive File Modified &mdash; [{{PROJECT}}]({{URL}})
+
+    `{{FILE}}` is consumed by [{{PROJECT}}]({{URL}}) for integration with oneDNN.
+    Changes to this file may silently break downstream builds.
+
+#    **What to do:**
+#    - **Intentional change:** resolve this comment once the change has been reviewed and approved.
+#    - **Accidental change:** revert or refactor before merging.
+
+# ==============================================================================
+
+jobs:
+  notify:
+    name: Check sensitive files
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Post per-file review comments for sensitive changes
+        env:
+          GH_TOKEN:  ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA:  ${{ github.event.pull_request.head.sha }}
+          REPO:      ${{ github.repository }}
+        run: |
+          # Fetch list of files changed in this PR (paginated, no checkout needed).
+          CHANGED=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" \
+            --paginate --jq '.[].filename')
+
+          # Fetch all review comments already posted by this bot that contain
+          # our marker. Stored as [{path, body}] for per-project dedup below.
+          # jq env.COMMENT_MARKER reads the env var directly — no shell quoting needed.
+          EXISTING=$(gh api "repos/$REPO/pulls/$PR_NUMBER/comments" \
+            --paginate \
+            --jq '[.[] | select(
+                    .user.login == "github-actions[bot]" and
+                    (.body | contains(env.COMMENT_MARKER))
+                  ) | {path: .path, body: .body}]')
+
+          # Iterate over each configured downstream project.
+          echo "$PROJECTS_CONFIG" | jq -c '.[]' | while IFS= read -r project; do
+            PROJECT_NAME=$(echo "$project" | jq -r '.name')
+            PROJECT_URL=$(echo "$project"  | jq -r '.url')
+            # Full marker for this project — used for per-project dedup.
+            PROJECT_MARKER="<!-- ${COMMENT_MARKER}:${PROJECT_NAME} -->"
+
+            echo "$project" | jq -r '.files[]' | while IFS= read -r file_path; do
+              # Skip files not changed in this PR.
+              if ! echo "$CHANGED" | grep -qxF "$file_path"; then
+                continue
+              fi
+
+              # Skip if a comment for this file+project already exists.
+              ALREADY=$(echo "$EXISTING" | jq \
+                --arg p "$file_path" --arg m "$PROJECT_MARKER" \
+                'map(select(.path == $p and (.body | contains($m)))) | length > 0')
+              if [ "$ALREADY" = "true" ]; then
+                echo "Already marked: $file_path (${PROJECT_NAME}) — skipping"
+                continue
+              fi
+
+              echo "Posting: $file_path → ${PROJECT_NAME}"
+
+              # Get the diff patch for this file to find the first visible line.
+              PATCH=$(gh api "repos/$REPO/pulls/$PR_NUMBER/files" \
+                --paginate --jq ".[] | select(.filename == \"$file_path\") | .patch // \"\"")
+              if [ -z "$PATCH" ]; then
+                echo "No patch for $file_path (binary or mode-only change) — skipping"
+                continue
+              fi
+              # Extract new-file start line from the first "@@ -X,Y +LINE,Y @@" header.
+              FIRST_LINE=$(echo "$PATCH" | grep -m1 '^@@' | sed 's/.*+\([0-9]*\).*/\1/')
+
+              # Apply template substitutions to build the comment body.
+              BODY=$(printf '%s' "$COMMENT_TEMPLATE" \
+                | sed -e "s|{{MARKER}}|${COMMENT_MARKER}|g" \
+                      -e "s|{{PROJECT}}|${PROJECT_NAME}|g" \
+                      -e "s|{{URL}}|${PROJECT_URL}|g" \
+                      -e "s|{{FILE}}|${file_path}|g")
+
+              # Build the JSON payload and POST the review comment.
+              # Anchored to FIRST_LINE on the right (new) side of the diff.
+              jq -n \
+                --arg  commit_id "$HEAD_SHA" \
+                --arg  path      "$file_path" \
+                --arg  body      "$BODY" \
+                --argjson line   "$FIRST_LINE" \
+                '{commit_id: $commit_id, event: "COMMENT",
+                  comments: [{path: $path, line: $line, side: "RIGHT", body: $body}]}' \
+              | gh api "repos/$REPO/pulls/$PR_NUMBER/reviews" \
+                  --method POST --input -
+
+              echo "OK: posted for $file_path (${PROJECT_NAME})"
+            done
+          done

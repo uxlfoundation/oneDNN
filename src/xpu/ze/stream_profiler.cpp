@@ -58,8 +58,8 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
     // and the end time of the last primitive event
     for (const auto &ev : evts) {
         const ze::event_t &ze_event = ze::event_t::from(*ev);
+        assert(ze_event.size() > 0);
         size_t last_idx = ze_event.size() - 1;
-        assert(last_idx >= 0);
 
         ze_kernel_timestamp_result_t timestamp_result;
         ZE_CHECK(xpu::ze::zeEventQueryKernelTimestamp(
@@ -89,8 +89,8 @@ bool verbose_profiler_t::is_event_complete(
     if (!event) return true;
 
     const ze::event_t &ze_event = ze::event_t::from(*event);
+    assert(ze_event.size() > 0);
     size_t last_idx = ze_event.size() - 1;
-    assert(last_idx >= 0);
 
     ze_result_t result = xpu::ze::zeEventQueryStatus(ze_event[last_idx]);
 
@@ -103,8 +103,8 @@ void verbose_profiler_t::wait_for_event_completion(
     if (!event) return;
 
     const ze::event_t &ze_event = ze::event_t::from(*event);
+    assert(ze_event.size() > 0);
     size_t last_idx = ze_event.size() - 1;
-    assert(last_idx >= 0);
 
     ze_result_t result = xpu::ze::zeEventHostSynchronize(
             ze_event[last_idx], std::numeric_limits<uint64_t>::max());

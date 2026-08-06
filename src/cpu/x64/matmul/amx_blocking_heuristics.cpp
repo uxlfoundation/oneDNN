@@ -1191,27 +1191,38 @@ bool matmul_amx_blocking_params_macro_t::set_blocking_parameters(
         use_fused_copy_a_ = false;
 
         // Collapse to a single K-chunk only when one thread owns the whole K
-        // reduction (nthr_k_ == 1) and the heuristic split K (best_k_v > 1).
-        if (nthr_k_ == 1 && best_k_v > 1) {
+        // reduction (nthr_k_ == 1) and the heuristic split K into more than one
+        // chunk (best_k_v > 1). Restricted to int8 (GNR-calibrated). The
+        // postops-bound branch above leaves best_k_v == 1, so best_k_v > 1 also
+        // keeps these two paths mutually exclusive.
+        if (nthr_k_ == 1 && best_k_v > 1 && one_of(src_dt, s8, u8)) {
             // Keep C resident in the AMX tiles across the whole K reduction
             // instead of chunking K, which forces a C read-modify-write
             // (tilestored/tileloadd of every C tile) at each chunk boundary
             // that contends with the tmul and B-load ops on the AMX port. Here
             // C fits in tiles and B is streamed once, so chunking only bounds
             // the unrolled kernel size -- collapse to one K-chunk while the
-            // full-K working set fits L2 and the unrolled tmul count stays
-            // capped.
+            // caps below hold.
             const dim_t k_tiles_full = k_per_thread / wei_k_blk;
+            // c_tiles = 16x16 output sub-tiles in the m_blk_ x n_blk_ block (the
+            // output work grid), not AMX register occupancy.
             const dim_t c_tiles = div_up(m_blk_, 16) * div_up(n_blk_, 16);
             const size_t full_k_working_set
-                    = (size_t)(m_blk_ + n_blk_) * k_per_thread * gemm_dt_sz;
-            // k_tiles_full * c_tiles = unrolled tmul count, a proxy for code
-            // size (~50 B/op). The collapse saves one C RMW regardless of K,
-            // but this footprint grows with K; past the cap I-cache pressure
-            // outweighs the win. Calibrated on GNR (int8 M=64/K=7168): 896 ops
-            // wins ~2x, >= 1344 neutral. Re-tune per-uarch vs L1i.
+                    = (m_blk_ + n_blk_) * k_per_thread * gemm_dt_sz;
+            // k_tiles_full * c_tiles is the total tmul count, a proxy for the
+            // unrolled kernel size; past this cap the collapse stops paying off.
             constexpr dim_t max_unrolled_tmuls = 1024;
+            // Collapsing removes the per-chunk C read-modify-write (fixed
+            // saving) but serializes the cold B-tile loads in one call, so the
+            // out-of-order engine can no longer overlap that DRAM latency. The
+            // exposed cost scales with aggregate concurrent demand ~
+            // nthr_ * k_tiles_full (reduction depth x threads streaming B at
+            // once); collapse wins while that product stays under the value
+            // below (measured cold on GNR, int8). At 32 threads this is
+            // k_tiles_full <= 96; fewer threads tolerate deeper reductions.
+            constexpr dim_t max_load_concurrency = 32 * 96;
             if (k_tiles_full * c_tiles <= max_unrolled_tmuls
+                    && nthr_ * k_tiles_full <= max_load_concurrency
                     && full_k_working_set <= L2_threshold()) {
                 k_blk_v = k_per_thread;
                 best_k_v = 1;

@@ -345,12 +345,13 @@ void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const
 
             if (astrategy.address2D) {
                 if (params.rows.isInvalid() && params.fixedRows == 0) stub("Unknown matrix size.");
+                if (T.is3()) stub("u3 does not support native 2D block addressing; unpack to u8 first.");
 
                 nx.isValid() ? addScaled(1, addr[0].ud(2), -1, nx, T, state, true)
                              : mov(1, addr[0].ud(2), fixedX * T - 1);
                 ny.isValid() ? add(1, addr[0].ud(3), ny, -1)
                              : mov(1, addr[0].ud(3), fixedY - 1);
-                offX.isValid() ? addScaled(1, addr[0].ud(5), boffX, offX, int(T.paddedSize()), block.ebytes * T.perByte(), state) :
+                offX.isValid() ? addScaled(1, addr[0].ud(5), boffX, offX, int(T.paddedSize()), (block.ebytes * 8) / T.bits(), state) :
                   doBaseAdjust ? add(1, addr[0].ud(5), baseAdjustElems, boffX)
                                : mov(1, addr[0].ud(5), boffX);
                 offY.isValid() ? add(1, addr[0].ud(6), offY, boffY)

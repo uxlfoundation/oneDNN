@@ -275,6 +275,7 @@ protected:
     void planUnpack4To16(CopyInstruction &i);
     void planUnpack8To16High(CopyInstruction &i);
     void planInt4Upconversion(CopyInstruction &i);
+    void planInt3Upconversion(CopyInstruction &i);
     void plan4BitShifts(CopyInstruction &i);
     void planInt4Downconversion(CopyInstruction &i);
     void planEmulatedSIMD1(CopyInstruction &i);

@@ -477,15 +477,16 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                 bool qword = mustQW || (canQW && (rblock * cblock * T >= 4 * maxSIMD));
                 npack = std::max<int>(1, (qword ? 8 : 4) / T);
                 if (byte1PerSlot) {
+                    if (T.is3()) stub("u3 does not support masked/atomic byte-per-slot pseudo-block access; unpack to u8 first.");
                     if (isLargeCrosspack(T, crosspack)) {
                         if (crosspack == (colMajor ? cblock : rblock))
                             colMajor = effCM;
                         else
                             stub();
                     }
-                    crosspack = npack / T.perByte();
+                    crosspack = (npack * T.bits()) / 8;
                     byteGlue = (T.bits() < 8);
-                    npack = T.perByte();
+                    npack = (T.bits() < 8) ? (8 / T.bits()) : 1;
                     (effCM ? cblock : rblock) = 1;
                 }
                 maskGranularity = qword ? 8 :
@@ -722,8 +723,9 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             auto bytes = align_up((colMajor ? cblock : rblock) / count, crosspack) * ld * count * T;
             msgRegs = GRF::bytesToGRFs(hw, bytes);
             if (vnni && (T.bits() < 8)) {
+                if (T.is3()) stub("u3 does not support native VNNI/DPAS packing; unpack to u8 first.");
                 byteGlue = true;
-                crosspack /= T.perByte();
+                crosspack /= (8 / T.bits());
             }
 
             // Xe2: manually mask in the height dimension to work around slow LSC
@@ -965,14 +967,36 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
     int xx = colMajor ? ii : jj;
     int yy = colMajor ? jj : ii;
     int nx = colMajor ? nr : nc;
+
+    // u3 elements cannot be individually addressed (no native 8/16/32-bit
+    // hardware register type for 3-bit data, and 8 elements/3 bytes doesn't
+    // align to any single power-of-2 region). Instead, return the start of
+    // the (byte-aligned) 3-byte group of 8 elements containing (ii, jj),
+    // tagged with the pseudo-type Type::ngen_u3(); this operand is only
+    // legal as the source of a mov handled by CopyPlan::planInt3Upconversion,
+    // which unpacks whole groups into real u8 elements before any other use.
+    if (T.is3()) {
+        if (crosspack != 1 || byteGlue)
+            stub("u3 blocks with crosspack or byte-glued packing are not supported; unpack to u8 first.");
+        int elIndex = xx + yy * ld;
+        if (elIndex & 7)
+            stub("u3 element index must be aligned to an 8-element (3-byte) group boundary.");
+        int byteOff = offsetBytes + (elIndex >> 3) * 3;
+        int consecutive;
+        auto result = regs.sub(hw, byteOff, Te.ngen(), &consecutive);
+        if (nelems) *nelems = nx - xx;
+        return result;
+    }
+
     int ne = nx - xx;
 
     int yyx = yy % crosspack;
     yy -= yyx;
 
     if (byteGlue) {
-        int xxx = xx & (T.perByte() - 1);
-        yyx = yyx * T.perByte() + xxx;
+        int perByte = 8 / T.bits();
+        int xxx = xx & (perByte - 1);
+        yyx = yyx * perByte + xxx;
         xx -= xxx;
         ne = 1;
     }
@@ -996,6 +1020,13 @@ static RegisterRegion blockRegion(Type T, const Subregister &reg, const Register
                                   int rr, int cc, int *nelems, int cxComponent, bool allow2D)
 {
     auto cp = block.crosspack;
+
+    // u3 operands from find() reference the start of a packed 3-byte group
+    // (tagged with the ngen_u3() pseudo-type); return them with a plain
+    // stride of 1, matching what CopyPlan::planInt3Upconversion expects as
+    // its only legal source region.
+    if (T.is3())
+        return reg(1);
 
     if (block.byteGlue && allow2D && T.bits() < 8) {
         if (nelems)

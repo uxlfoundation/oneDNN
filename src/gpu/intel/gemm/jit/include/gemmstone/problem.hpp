@@ -362,8 +362,8 @@ void GEMMProblem::autoTypeConversions(bool systolicAvailable)
     using namespace ngen;
     auto hw = getCore(product.family);
     // Weights decompression
-    if ((Ta.isInt8() || Ta.isInt4()) && Tb.isFP() && Tc.isFP()) Ta = Tb;
-    if ((Tb.isInt8() || Tb.isInt4()) && Ta.isFP() && Tc.isFP()) Tb = Ta;
+    if ((Ta.isInt8() || Ta.isInt4() || Ta.isInt3()) && Tb.isFP() && Tc.isFP()) Ta = Tb;
+    if ((Tb.isInt8() || Tb.isInt4() || Tb.isInt3()) && Ta.isFP() && Tc.isFP()) Tb = Ta;
 
     if (Ta.isFP() && Tb.isFP() && Tc.isFP()) {
         if (Ta.bits() < Tb.bits()) Ta = Tb;

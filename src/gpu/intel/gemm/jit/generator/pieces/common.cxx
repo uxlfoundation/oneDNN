@@ -405,6 +405,19 @@ GRFRange Generator<hw>::loadVector(Type Tsrc, Type Tdst, Subregister ptr, int n,
         }
         Tsrc = Tdst = Type::u8;
         n = (n + 1) >> 1;
+    } else if (Tsrc.isInt3() && Tdst.isInt3()) {
+        // Temporary u3 path until copyRegisters supports int3->int3 copies.
+        // u3 packs 8 elements into 3 bytes; load the raw packed bytes here and
+        // let the caller unpack the individual 3-bit elements afterwards.
+        if (rem.isValid()) {
+            remTemp = state.ra.alloc_sub<int32_t>();
+            mulConstant(1, remTemp, rem, 3);
+            add(1, remTemp, remTemp, 7);
+            shr(1, remTemp, remTemp, 3);
+            rems[0] = remTemp;
+        }
+        Tsrc = Tdst = Type::u8;
+        n = (n * 3 + 7) >> 3;
     }
 
     atype.layout = MatrixLayout::N;

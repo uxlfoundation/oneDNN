@@ -33,6 +33,7 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                                         int fixedOffQ, const Subregister &variableOffQ)
 {
     if (T.paddedSize() > 4) T = Type::u32;
+    if (T.is3()) stub("u3 does not support remainder masking; unpack to u8 first.");
 
     if (setup) {
         bool halfByte = T.is4();

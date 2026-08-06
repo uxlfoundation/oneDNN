@@ -35,6 +35,7 @@ public:
         f64      = 0x01020803,
         u4       = 0x21120100,
         s4       = 0x21130100,
+        u3       = 0x41100300,
         u8       = 0x01140100,
         s8       = 0x01150100,
         u16      = 0x01160201,
@@ -68,19 +69,23 @@ public:
     constexpr bool isInteger()        const { return uint32_t(val) & 0x100000; }
     constexpr bool isFP()             const { return !isInteger(); }
     constexpr bool is4()              const { return uint32_t(val) & 0x20000000; }
+    constexpr bool is3()              const { return uint32_t(val) & 0x40000000; }
+    constexpr bool isSubByte()        const { return is4() || is3(); }
     constexpr bool isInt4()           const { return is4() && isInteger(); }
+    constexpr bool isInt3()           const { return is3() && isInteger(); }
     constexpr bool isInt8()           const { return (val == Type::u8)  || (val == Type::s8);  }
     constexpr bool isInt16()          const { return (val == Type::u16) || (val == Type::s16); }
     constexpr bool isF8()             const { return (val == Type::bf8) || (val == Type::hf8) || (val == Type::f8_e8m0); }
     constexpr bool isF4()             const { return is4() && isFP(); }
     constexpr bool isSigned()         const { return (uint32_t(val) & 0x110000) != 0x100000; }
-    constexpr int bits()              const { return (paddedSize() * 8) >> log2PerByte(); }
+    // Size, in bits, of a single element. u3 (3 bits/element) does not divide evenly
+    // into a byte, so byte-offset arithmetic for it is done via total-bit accounting
+    // (see operator* / operator/ below) rather than through a whole-byte paddedSize().
+    constexpr int bits()              const { return is3() ? 3 : ((paddedSize() * 8) >> int(is4())); }
     constexpr int paddedSize()        const { return (uint32_t(val) >> 8) & 0xFF; }
     int log2Size()                    const { subByteCheck(); return uint32_t(val) & 0xFF; }
     int size()                        const { subByteCheck(); return paddedSize(); }
-    constexpr int log2PerByte()       const { return int(is4()); }
-    constexpr int perByte()           const { return is4() ? 2 : 1; }
-    void subByteCheck()               const { if (is4()) stub(); }
+    void subByteCheck()               const { if (is3() || is4()) stub(); }
 
     constexpr Type arithmetic() const {
         return (val == tf32) ? Type(f32) : real();
@@ -94,17 +99,24 @@ public:
     constexpr Type baseType() const { return *this; }
 
     template <typename U> constexpr friend decltype(std::declval<U>()*1) operator*(U a, Type t) {
-        return t.is4() ? (a + 2 * (a >= 0) - 1) / 2 : a * int(1u << t.log2Size());
+        return t.isSubByte() ? ((a >= 0) ? (a * t.bits() + 7) / 8 : (a * t.bits() - 7) / 8)
+                             : a * int(1u << t.log2Size());
     }
     template <typename U> constexpr friend decltype(std::declval<U>()*1) operator*(Type t, U a) { return a * t; }
     template <typename U>           friend U operator*=(U &a, Type t) { a = a * t; return a; }
     template <typename U> constexpr friend decltype(std::declval<U>()/1) operator/(U a, Type t) {
-        return t.is4() ? a * 2 : a / int(1u << t.log2Size());
+        return t.isSubByte() ? (a * 8) / t.bits() : a / int(1u << t.log2Size());
     }
 
     // Not valid nGEN DataTypes; for gemmstone internal use only
     static constexpr ngen::DataType ngen_nf4()  { return static_cast<ngen::DataType>(0x58); }
     static constexpr ngen::DataType ngen_e8m0() { return static_cast<ngen::DataType>(0x79); }
+    // Tag for a CopyOperand (in the copy planner) representing packed u3
+    // data (8 elements/3 bytes, per int3.hpp's contiguous layout). There is
+    // no native hardware register type for 3-bit elements: this pseudo type
+    // is recognized by planTypeConversions() and rewritten into real byte
+    // (ub) shift/mask sequences before any real instruction is emitted.
+    static constexpr ngen::DataType ngen_u3()   { return static_cast<ngen::DataType>(0x59); }
 
     ngen::DataType ngen() const
     {
@@ -114,7 +126,7 @@ public:
                                      DT::e2m1,  DT::e3m0,  ngen_nf4(),  none,
                                      ngen_e8m0(), none,        none,        none,
                                      DT::bf,      DT::tf32,    DT::bf8,     DT::hf8,
-                                     none,        none,        DT::u4,      DT::s4,
+                                     ngen_u3(),   none,        DT::u4,      DT::s4,
                                      DT::ub,      DT::b,       DT::uw,      DT::w,
                                      DT::ud,      DT::d,       DT::uq,      DT::q,
                                      none,        none,        none,        none};
@@ -150,6 +162,7 @@ inline char typeToChar(Type T)
         case Type::f64:     return 'D';
         case Type::u4:      return 'f';
         case Type::s4:      return 'F';
+        case Type::u3:      return 'k';
         case Type::u8:      return 'o';
         case Type::s8:      return 'O';
         case Type::u16:     return 'w';
@@ -178,6 +191,7 @@ inline Type charToType(char c)
         case 'D': return Type::f64;
         case 'f': return Type::u4;
         case 'F': return Type::s4;
+        case 'k': return Type::u3;
         case 'o': return Type::u8;
         case 'O': return Type::s8;
         case 'w': return Type::u16;

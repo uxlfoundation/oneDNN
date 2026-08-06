@@ -57,6 +57,7 @@ static inline gemmstone::Type convert_dnnl_to_kernel_type(data_type_t type) {
         case data_type::s8: return Type::s8;
         case data_type::u4: return Type::u4;
         case data_type::s4: return Type::s4;
+        case data_type::u3: return Type::u3;
         case data_type::undef: return Type::invalid;
     }
 }

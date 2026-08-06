@@ -215,6 +215,8 @@ void Generator<hw>::setupTeardownAccumulateSumSystolic(bool setup, Type T, const
             sysSumAll1s = state.ra.alloc();
             sysSumAll1s.setType(T.ngen());
 
+            if (T.isInt3())
+                stub("u3 does not support native systolic (DPAS) sum accumulation; unpack to u8 first.");
             int ne = elementsPerGRF(hw, T);
             if (T.isInt4())
                 mov(ne / 8, sysSumAll1s.ud(), uint32_t(0x11111111));

@@ -1199,7 +1199,6 @@ std::ostream &dump_global_params(std::ostream &s) {
     if (canonical || execution_mode != default_execution_mode)
         s << "--execution-mode=" << execution_mode << " ";
 
-    s << "--" << driver_name << " ";
     if (canonical) s << "--canonical=" << bool2str(canonical) << " ";
     if (canonical || engine_tgt_kind != dnnl_cpu) {
         s << "--engine=" << engine_tgt_kind;
@@ -1230,6 +1229,8 @@ std::ostream &dump_global_params(std::ostream &s) {
         s << "--cold-cache=" << cold_cache_input << " ";
     if (canonical || !buffer_prefix.empty())
         s << "--buffer-prefix=" << buffer_prefix << " ";
+
+    s << "--" << driver_name << " ";
 
     return s;
 }

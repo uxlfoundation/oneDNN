@@ -275,6 +275,11 @@ public:
         tsl::BlockUntilReady(done_event_);
     }
 
+    std::shared_ptr<threadpool_interop::threadpool_event_iface_t>
+    get_event() override {
+        return nullptr;
+    }
+
     tsl::AsyncValueRef<tsl::Chain> done_event() const { return done_event_; }
 };
 

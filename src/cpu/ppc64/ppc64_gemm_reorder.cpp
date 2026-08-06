@@ -72,7 +72,7 @@ status_t ppc64_matrixA_reorder_t::pd_t::init(const engine_t *engine,
 }
 
 status_t ppc64_matrixA_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
-        engine_t *engine, const primitive_attr_t *attr,
+        const engine_t *engine, const primitive_attr_t *attr,
         const engine_t *src_engine, const memory_desc_t *src_md,
         const engine_t *dst_engine, const memory_desc_t *dst_md) {
     auto _pd = make_unique_pd<pd_t>(

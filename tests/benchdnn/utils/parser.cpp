@@ -1870,7 +1870,8 @@ static bool parse_execution_mode(
                     parsers::str2execution_mode, str, option_name, help);
 
 #if !defined(DNNL_WITH_SYCL)
-    if (parsed) {
+    // Default execution mode is legit for any build configuration.
+    if (parsed && execution_mode != default_execution_mode) {
         BENCHDNN_PRINT(0,
                 "Error: option `--%s` is supported with DPC++ "
                 "builds only, exiting...\n",

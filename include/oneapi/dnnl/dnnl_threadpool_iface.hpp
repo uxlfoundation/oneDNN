@@ -38,11 +38,11 @@ namespace dnnl {
 
 namespace threadpool_interop {
 
-/// Completion event for async threadpool work. oneDNN's verbose profiler
-/// polls these to determine when deferred execution has finished and to
-/// extract timing information.
-struct threadpool_event_t {
-    virtual ~threadpool_event_t() = default;
+/// Completion event interface for async threadpool work. oneDNN's verbose
+/// profiler polls these to determine when deferred execution has finished
+/// and to extract timing information.
+struct threadpool_event_iface_t {
+    virtual ~threadpool_event_iface_t() = default;
     /// Returns true if the associated work has completed.
     virtual bool is_complete() const = 0;
     /// Blocks until completion.
@@ -74,15 +74,10 @@ struct threadpool_iface {
     // Does nothing if SYNCHRONOUS, waits for all jobs for ASYNCHRONOUS
     virtual void wait() = 0;
 
-    /// Enables or disables verbose profiling event tracking. When enabled,
-    /// the threadpool creates completion events that oneDNN can poll.
-    /// Called by the stream during initialization.
-    virtual void set_verbose_profiling(bool) {}
-
-    /// Returns a completion event for the work submitted since the last call.
+    /// Returns a completion event for the most recently submitted work.
     /// oneDNN's verbose profiler polls this to detect completion and extract
     /// timing. Returns nullptr if profiling is disabled or unsupported.
-    virtual std::shared_ptr<threadpool_event_t> get_completion_event() {
+    virtual std::shared_ptr<threadpool_event_iface_t> get_event() {
         return nullptr;
     }
 

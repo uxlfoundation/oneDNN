@@ -112,7 +112,7 @@ struct cpu_stream_t : public stream_t {
         auto rc = this->get_threadpool(&tp);
         if (rc != status::success || !tp) return status::success;
 
-        auto event = tp->get_completion_event();
+        auto event = tp->get_event();
         pending_primitives_.push_back({start_ms, pd_info, std::move(event)});
         return status::success;
     }
@@ -121,7 +121,7 @@ private:
     struct pending_primitive_t {
         double start_ms;
         std::string pd_info;
-        std::shared_ptr<threadpool_interop::threadpool_event_t> event;
+        std::shared_ptr<threadpool_interop::threadpool_event_iface_t> event;
     };
     std::vector<pending_primitive_t> pending_primitives_;
 #endif

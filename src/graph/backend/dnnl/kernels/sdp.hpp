@@ -26,6 +26,7 @@
 #include "graph/backend/dnnl/kernels/kernel_base.hpp"
 #include "graph/backend/dnnl/kernels/large_partition.hpp"
 #include "graph/backend/dnnl/kernels/sdp_decomp.hpp"
+#include "graph/backend/dnnl/kernels/sdp_decomp_training.hpp"
 #include "graph/backend/dnnl/kernels/sdp_primitive.hpp"
 
 #include "graph/backend/dnnl/dnnl_partition_impl.hpp"
@@ -71,6 +72,12 @@ public:
 
         if (ret != status::success && enable_decomp) {
             kernel = std::make_shared<sdp_decomp_kernel_t<quantized, dt>>();
+            ret = kernel->compile_impl(part, eng, inputs, outputs);
+        }
+
+        // TODO(xxx): merge with the above decomp kernel.
+        if (ret != status::success && enable_decomp && !quantized) {
+            kernel = std::make_shared<sdp_decomp_training_kernel_t>();
             ret = kernel->compile_impl(part, eng, inputs, outputs);
         }
 

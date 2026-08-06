@@ -914,16 +914,91 @@ void jit_uni_eltwise_injector_t<isa>::logistic_compute_vector_fwd(
 }
 
 template <cpu_isa_t isa>
+void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_fwd_signed_lut(
+        const TRegS &vmm_src) {
+    h->mov(ZRegD(vmm_aux0.getIdx()), ZRegD(IDX(vmm_src)));
+    h->fmaxnm(vmm_src, p_all / T_m, table_val(swish_lut_min, vmm_aux1));
+    h->fminnm(vmm_src, p_all / T_m, table_val(swish_lut_max, vmm_aux1));
+
+    // Quantize x to the nearest 1/32 grid point. The floating-point
+    // subtraction recovers that point; the integer subtraction yields the
+    // signed table index. The residual is used for a first-order correction.
+    table_val(swish_lut_signed_bias, vmm_aux1);
+    h->fadd(vmm_aux2, vmm_src, vmm_aux1);
+    h->fsub(z_tmp, vmm_aux2, vmm_aux1);
+    h->fsub(vmm_src, p_all / T_m, z_tmp);
+    h->sub(vmm_aux2, vmm_aux2, vmm_aux1);
+
+    h->add_imm(h->X_TMP_1, x_table,
+            table_off(swish_lut_signed) + 512 * sizeof(float), h->X_TMP_0);
+    h->ld1w(vmm_aux1, p_all / T_z, ptr(h->X_TMP_1, vmm_aux2, SXTW, 2));
+
+    // sigmoid(x) ~= q + q * (1 - q) * (x - grid(x)).
+    h->mov(ZRegD(z_tmp.getIdx()), ZRegD(vmm_aux1.getIdx()));
+    h->fmls(z_tmp, p_all / T_m, vmm_aux1, vmm_aux1);
+    h->fmla(vmm_aux1, p_all / T_m, z_tmp, vmm_src);
+    h->fmul(vmm_src, vmm_aux0, vmm_aux1);
+}
+
+template <cpu_isa_t isa>
+void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_pair_fwd_signed_lut(
+        const TRegS &vmm_src0, const TRegS &vmm_src1) {
+    h->mov(ZRegD(vmm_aux0.getIdx()), ZRegD(IDX(vmm_src0)));
+    h->mov(ZRegD(vmm_aux1.getIdx()), ZRegD(IDX(vmm_src1)));
+
+    table_val(swish_lut_min, z_tmp);
+    h->fmaxnm(vmm_src0, p_all / T_m, z_tmp);
+    h->fmaxnm(vmm_src1, p_all / T_m, z_tmp);
+    table_val(swish_lut_max, z_tmp);
+    h->fminnm(vmm_src0, p_all / T_m, z_tmp);
+    h->fminnm(vmm_src1, p_all / T_m, z_tmp);
+
+    table_val(swish_lut_signed_bias, z_tmp);
+    h->fadd(vmm_aux2, vmm_src0, z_tmp);
+    h->fadd(vmm_aux3, vmm_src1, z_tmp);
+    h->fsub(vmm_aux4, vmm_aux2, z_tmp);
+    h->fsub(vmm_src0, p_all / T_m, vmm_aux4);
+    h->fsub(vmm_aux4, vmm_aux3, z_tmp);
+    h->fsub(vmm_src1, p_all / T_m, vmm_aux4);
+    h->sub(vmm_aux2, vmm_aux2, z_tmp);
+    h->sub(vmm_aux3, vmm_aux3, z_tmp);
+
+    h->add_imm(h->X_TMP_1, x_table,
+            table_off(swish_lut_signed) + 512 * sizeof(float), h->X_TMP_0);
+    h->ld1w(vmm_aux4, p_all / T_z, ptr(h->X_TMP_1, vmm_aux2, SXTW, 2));
+    h->ld1w(z_tmp, p_all / T_z, ptr(h->X_TMP_1, vmm_aux3, SXTW, 2));
+
+    h->mov(ZRegD(vmm_aux2.getIdx()), ZRegD(vmm_aux4.getIdx()));
+    h->mov(ZRegD(vmm_aux3.getIdx()), ZRegD(z_tmp.getIdx()));
+    h->fmls(vmm_aux2, p_all / T_m, vmm_aux4, vmm_aux4);
+    h->fmls(vmm_aux3, p_all / T_m, z_tmp, z_tmp);
+    h->fmla(vmm_aux4, p_all / T_m, vmm_aux2, vmm_src0);
+    h->fmla(z_tmp, p_all / T_m, vmm_aux3, vmm_src1);
+    h->fmul(vmm_src0, vmm_aux0, vmm_aux4);
+    h->fmul(vmm_src1, vmm_aux1, z_tmp);
+}
+
+template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::swish_compute_vector_fwd(
         const TRegS &vmm_src) {
-    // IMPORTANT: we use vmm_aux2 to save src as logistic does not use it.
+    // Preserve x for the branch-dependent numerator.
     h->mov(ZRegD(vmm_aux2.getIdx()), ZRegD(IDX(vmm_src)));
-    // x*alpha
+
+    // t = alpha * x
     if (alpha_ != 1.f) { h->fmul(vmm_src, vmm_src, table_val(alpha, z_tmp)); }
-    // sigmoid(x*alpha)
-    logistic_compute_vector_fwd(vmm_src);
-    // x*sigmoid(alpha*x)
-    h->fmul(vmm_src, vmm_src, vmm_aux2);
+
+    constexpr unsigned sign_mask = 0x80000000;
+    h->fcmlt(p_mask.s, p_all / T_z, vmm_src, 0.);
+    h->orr(vmm_src, sign_mask);
+    exp_compute_vector_fwd(vmm_src, min_input_, 0.f);
+
+    // With e = exp(-abs(t)), evaluate x * sigmoid(t) as
+    //   x / (1 + e)       for t >= 0,
+    //   x * e / (1 + e)   for t < 0.
+    h->fmul(vmm_aux2, p_mask / T_m, vmm_src);
+    h->fadd(vmm_aux0, vmm_src, table_val(one, z_tmp));
+    h->fdiv(z_tmp, p_all, vmm_aux0);
+    h->fmul(vmm_src, vmm_aux2, z_tmp);
 }
 
 template <cpu_isa_t isa>
@@ -1588,7 +1663,8 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
             case eltwise_gelu_tanh:
                 return (isa == asimd) ? 8 : 6; /* = tanh + 1 */
             case eltwise_swish:
-                return (isa == asimd) ? 7 : 4; /* = logistic + 1 */
+                if (is_swish_lut_enabled()) return isa == asimd ? 7 : 6;
+                return isa == asimd ? 7 : 4;
             case eltwise_log: return 6;
             case eltwise_clip:
             case eltwise_clip_v2_use_dst_for_bwd:
@@ -1639,6 +1715,28 @@ void jit_uni_eltwise_injector_t<isa>::compute_body(
         const injector_utils::vmm_index_set_iterator_t &start_idx_it,
         const injector_utils::vmm_index_set_iterator_t &end_idx_it) {
     using namespace alg_kind;
+    if (is_swish_lut_enabled()) {
+        auto it = start_idx_it;
+        while (it != end_idx_it) {
+            const size_t idx0 = *it++;
+            if (it == end_idx_it) {
+                swish_compute_vector_fwd_signed_lut(TRegS(idx0));
+                if (scale_ != 1.f)
+                    h->fmul(TRegS(idx0), TRegS(idx0),
+                            table_val(scale, vmm_mask));
+                break;
+            }
+
+            const size_t idx1 = *it++;
+            swish_compute_vector_pair_fwd_signed_lut(TRegS(idx0), TRegS(idx1));
+            if (scale_ != 1.f) {
+                h->fmul(TRegS(idx0), TRegS(idx0), table_val(scale, vmm_mask));
+                h->fmul(TRegS(idx1), TRegS(idx1), table_val(scale, vmm_mask));
+            }
+        }
+        return;
+    }
+
     std::for_each(start_idx_it, end_idx_it, [&](size_t idx) {
         if (is_fwd_) {
             switch (alg_) {
@@ -2160,6 +2258,11 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
             {gelu_erf_lut_bias, {0x47800000, true}}, // 65536.f
             {gelu_erf_lut_max_index, {0x00000200, true}}, // 512
     };
+    static const table_t swish_lut_consts {
+            {swish_lut_max, {0x41800000, true}}, // 16.f
+            {swish_lut_min, {0xc1800000, true}}, // -16.f
+            {swish_lut_signed_bias, {0x48800200, true}}, // 2^18 + 16
+    };
 
     // gelu_erf(x) polynomial approximation
     static const table_t gelu_erf_polynomial {
@@ -2426,6 +2529,8 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
     };
 
     need_t need(alg_);
+    const bool use_swish_lut = is_swish_lut_enabled();
+    if (use_swish_lut) need.exp_ = false;
 
     auto push_arg_entry_of = [&](const key_t key, const table_entry_val_t val,
                                      const bool broadcast) {
@@ -2484,6 +2589,18 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
                 push_arg_entry_of(
                         gelu_erf_lut_scale, float2int(scale_val), false);
             }
+        }
+    }
+    if (use_swish_lut) {
+        push_entries_of(swish_lut_consts);
+        constexpr float lut_step = 1.f / 32.f;
+        constexpr int lut_entries = 1025;
+        for (int i = 0; i < lut_entries; ++i) {
+            const float x = (i - 512) * lut_step;
+            const float q = i == 0         ? 0.f
+                    : i == lut_entries - 1 ? 1.f
+                                           : 1.f / (1.f + std::exp(-x));
+            push_arg_entry_of(swish_lut_signed, float2int(q), false);
         }
     }
     // Now that we registered the entries, we set the offsets.  No
@@ -3017,16 +3134,116 @@ void jit_uni_eltwise_injector_t<asimd>::logistic_compute_vector_fwd(
 }
 
 template <>
+void jit_uni_eltwise_injector_t<asimd>::swish_compute_vector_fwd_signed_lut(
+        const TRegS &vmm_src) {
+    h->mov(VReg16B(vmm_aux5.getIdx()), VReg16B(vmm_src.getIdx()));
+    h->fmaxnm(vmm_src, vmm_src, table_val(swish_lut_min, z_tmp));
+    h->fminnm(vmm_src, vmm_src, table_val(swish_lut_max, z_tmp));
+
+    table_val(swish_lut_signed_bias, z_tmp);
+    h->fadd(vmm_aux2, vmm_src, z_tmp);
+    h->fsub(vmm_aux3, vmm_aux2, z_tmp);
+    h->fsub(vmm_src, vmm_src, vmm_aux3);
+    h->sub(vmm_aux2, vmm_aux2, z_tmp);
+
+    const XReg x_lut_base = h->X_TMP_0;
+    const XReg x_idx = h->X_TMP_1;
+    h->add_imm(x_lut_base, x_table,
+            table_off(swish_lut_signed) + 512 * sizeof(float), h->X_TMP_1);
+    auto load_value = [&](const int lane, const SReg &dst) {
+        h->umov(WReg(IDX(x_idx)), vmm_aux2[lane]);
+        h->ldr(dst, ptr(x_lut_base, WReg(IDX(x_idx)), SXTW, 2));
+    };
+    load_value(0, SReg(IDX(vmm_aux0)));
+    load_value(1, SReg(IDX(vmm_aux1)));
+    load_value(2, SReg(IDX(vmm_aux3)));
+    load_value(3, SReg(IDX(vmm_aux4)));
+    h->ins(vmm_aux0[1], vmm_aux1[0]);
+    h->ins(vmm_aux0[2], vmm_aux3[0]);
+    h->ins(vmm_aux0[3], vmm_aux4[0]);
+
+    h->mov(VReg16B(vmm_aux1.getIdx()), VReg16B(vmm_aux0.getIdx()));
+    h->fmls(vmm_aux1, vmm_aux0, vmm_aux0);
+    h->fmla(vmm_aux0, vmm_aux1, vmm_src);
+    h->fmul(vmm_src, vmm_aux5, vmm_aux0);
+}
+
+template <>
+void jit_uni_eltwise_injector_t<
+        asimd>::swish_compute_vector_pair_fwd_signed_lut(const TRegS &vmm_src0,
+        const TRegS &vmm_src1) {
+    h->mov(VReg16B(vmm_aux0.getIdx()), VReg16B(vmm_src0.getIdx()));
+    h->mov(VReg16B(vmm_aux1.getIdx()), VReg16B(vmm_src1.getIdx()));
+
+    table_val(swish_lut_min, z_tmp);
+    h->fmaxnm(vmm_src0, vmm_src0, z_tmp);
+    h->fmaxnm(vmm_src1, vmm_src1, z_tmp);
+    table_val(swish_lut_max, z_tmp);
+    h->fminnm(vmm_src0, vmm_src0, z_tmp);
+    h->fminnm(vmm_src1, vmm_src1, z_tmp);
+
+    table_val(swish_lut_signed_bias, z_tmp);
+    h->fadd(vmm_aux2, vmm_src0, z_tmp);
+    h->fadd(vmm_aux3, vmm_src1, z_tmp);
+    h->fsub(vmm_aux4, vmm_aux2, z_tmp);
+    h->fsub(vmm_src0, vmm_src0, vmm_aux4);
+    h->fsub(vmm_aux4, vmm_aux3, z_tmp);
+    h->fsub(vmm_src1, vmm_src1, vmm_aux4);
+    h->sub(vmm_aux2, vmm_aux2, z_tmp);
+    h->sub(vmm_aux3, vmm_aux3, z_tmp);
+
+    const XReg x_lut_base = h->X_TMP_0;
+    const XReg x_idx = h->X_TMP_1;
+    h->add_imm(x_lut_base, x_table,
+            table_off(swish_lut_signed) + 512 * sizeof(float), h->X_TMP_1);
+    auto load_lane
+            = [&](const TRegS &indices, const int lane, const TRegS &values) {
+        h->umov(WReg(IDX(x_idx)), indices[lane]);
+        if (lane == 0) {
+            h->ldr(SReg(IDX(values)),
+                    ptr(x_lut_base, WReg(IDX(x_idx)), SXTW, 2));
+        } else {
+            h->ldr(SReg(IDX(z_tmp)),
+                    ptr(x_lut_base, WReg(IDX(x_idx)), SXTW, 2));
+            h->ins(values[lane], z_tmp[0]);
+        }
+    };
+    for (int lane = 0; lane < 4; ++lane) {
+        load_lane(vmm_aux2, lane, vmm_aux4);
+        load_lane(vmm_aux3, lane, vmm_aux5);
+    }
+
+    h->mov(VReg16B(vmm_aux2.getIdx()), VReg16B(vmm_aux4.getIdx()));
+    h->mov(VReg16B(vmm_aux3.getIdx()), VReg16B(vmm_aux5.getIdx()));
+    h->fmls(vmm_aux2, vmm_aux4, vmm_aux4);
+    h->fmls(vmm_aux3, vmm_aux5, vmm_aux5);
+    h->fmla(vmm_aux4, vmm_aux2, vmm_src0);
+    h->fmla(vmm_aux5, vmm_aux3, vmm_src1);
+    h->fmul(vmm_src0, vmm_aux0, vmm_aux4);
+    h->fmul(vmm_src1, vmm_aux1, vmm_aux5);
+}
+
+template <>
 void jit_uni_eltwise_injector_t<asimd>::swish_compute_vector_fwd(
         const TRegS &vmm_src) {
-    // IMPORTANT: we use vmm_aux5 to save src as logistic does not use it.
+    // Preserve x for the branch-dependent numerator.
     h->mov(VReg16B(vmm_aux5.getIdx()), VReg16B(vmm_src.getIdx()));
-    // x*alpha
+
+    // t = alpha * x
     if (alpha_ != 1.f) { h->fmul(vmm_src, vmm_src, table_val(alpha, z_tmp)); }
-    // sigmoid(x*alpha)
-    logistic_compute_vector_fwd(vmm_src);
-    // x*sigmoid(alpha*x)
-    h->fmul(vmm_src, vmm_src, vmm_aux5);
+
+    h->fcmlt(vmm_aux4, vmm_src, 0.);
+    h->orr(VReg16B(IDX(vmm_src)), VReg16B(IDX(vmm_src)),
+            VReg16B(IDX(table_val(sign_mask, z_tmp))));
+    exp_compute_vector_fwd(vmm_src, min_input_, 0.f);
+
+    // Select x * e for negative t and x otherwise.
+    h->fmul(vmm_aux1, vmm_aux5, vmm_src);
+    h->bit(VReg16B(IDX(vmm_aux5)), VReg16B(IDX(vmm_aux1)),
+            VReg16B(IDX(vmm_aux4)));
+    h->fadd(vmm_aux0, vmm_src, table_val(one, z_tmp));
+    h->fdiv(z_tmp, z_tmp, vmm_aux0);
+    h->fmul(vmm_src, vmm_aux5, z_tmp);
 }
 
 template <>

@@ -91,14 +91,6 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
     maskMod |= mask;
     mod |= mask;
 
-    // Look up preassigned token.
-    for (auto &entry: state.tokenMap) {
-        if (entry.first == dest.getBase() || entry.first == addr.getBase()) {
-            mod |= SBID(entry.second);
-            break;
-        }
-    }
-
     if (astrategy.newDP) switch (block.implAccessType(atype, astrategy)) {
         case AccessType::Block:
         case AccessType::Scattered:
@@ -197,14 +189,6 @@ void Generator<hw>::storeMatrixBlock(const GRF &src, const RegisterBlock &block,
     // Get mask to apply, if any.
     FlagRegister flag;
     mod |= registerBlockMasking(block, state, &flag);
-
-    // Look up preassigned token.
-    for (auto &entry: state.tokenMap) {
-        if (entry.first == src.getBase()) {
-            mod |= SBID(entry.second);
-            break;
-        }
-    }
 
     if (block.descAssigned)
         send(mod, static_cast<SharedFunction>(block.sfid), null, addr, src, a0.ud(1), a0.ud(0));

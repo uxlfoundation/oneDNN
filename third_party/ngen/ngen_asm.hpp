@@ -1874,7 +1874,7 @@ void AsmCodeGenerator::getCode(std::ostream &out)
 {
     finalize();
 
-    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hardware, declaredGRFs, streamStack.back()->buffer, cancelAutoSWSB_.get());
+    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(product, declaredGRFs, streamStack.back()->buffer, cancelAutoSWSB_.get());
     std::multimap<int32_t, autoswsb::SyncInsertion*> syncs;      // Syncs inserted by auto-SWSB.
     std::multimap<int32_t, autoswsb::DummyMovInsertion*> movs;   // Dummy moves inserted by auto-SWSB.
 

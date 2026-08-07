@@ -2039,7 +2039,7 @@ std::vector<uint8_t> BinaryCodeGenerator<hw>::getCode()
     rootStream.fixLabels(labelManager);
 
     Program program(rootStream);
-    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(hw, declaredGRFs, program, cancelAutoSWSB_.get());
+    autoswsb::BasicBlockList analysis = autoswsb::autoSWSB(product, declaredGRFs, program, cancelAutoSWSB_.get());
     std::vector<uint8_t> result;
 
     if (analysis.empty()) {

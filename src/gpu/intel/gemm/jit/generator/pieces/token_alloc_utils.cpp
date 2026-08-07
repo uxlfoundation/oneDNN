@@ -20,47 +20,9 @@
 GEMMSTONE_NAMESPACE_START
 
 using namespace ngen;
-using std::vector;
-
-
-bool allocateTokens(const RegisterLayout &layout, const GRFMultirange &regs, CommonState &state, const vector<GRFRange> &addrs)
-{
-    bool success = true;
-    size_t origSize = state.tokenMap.size();
-    auto saveTA = state.tokenAllocator;
-
-    for (int l = 0; l < layout.blocks(); l++) {
-        if (!layout[l].isLoadBlock()) continue;
-
-        auto token = state.tokenAllocator.tryAlloc();
-        if (token < 0)
-            success = false;
-        else {
-            auto regKey = !regs.empty() ? regs[layout[l].offsetReg()]
-                                        : addrs[l];
-            if (regKey.isInvalid()) continue;
-            state.tokenMap.push_back(std::make_pair(regKey.getBase(), token));
-        }
-    }
-
-    if (!success) {
-        state.tokenAllocator = saveTA;
-        state.tokenMap.resize(origSize);
-    }
-
-    return success;
-}
-
-void clearMappedTokenAllocations(HW hw, CommonState &state)
-{
-    for (auto &entry: state.tokenMap)
-        state.tokenAllocator.release(entry.second);
-    state.tokenMap.clear();
-}
 
 void clearTokenAllocations(HW hw, CommonState &state)
 {
-    state.tokenMap.clear();
     state.tokenAllocator = TokenAllocator(hw);
 }
 

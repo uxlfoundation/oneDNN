@@ -325,7 +325,6 @@ protected:
     bool gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
     void gemmAccumulateCTeardown(GEMMProblem &problem, GEMMStrategy &strategy, GEMMState &state);
 
-    void gemmAllocateTokens(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmABPrefetchAddrSetup(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state, bool doA = true, bool doB = true);
 
     void gemmOffsetAm(const ngen::Subregister &i, const ngen::Subregister &effA, const MatrixAddressing &globalA, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);

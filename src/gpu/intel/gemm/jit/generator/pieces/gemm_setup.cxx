@@ -2123,9 +2123,6 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
     reclaimRanges(state.C_regs, state);
 
-    // Allocate tokens.
-    gemmAllocateTokens(problem, strategy, state);
-
     // Preloading C and fused beta scaling need some extra registers for C headers.
     // Temporarily free up A/B data registers for that purpose.
     releaseRanges(state.A_regs, state);
@@ -2501,39 +2498,6 @@ void Generator<hw>::gemmABPrefetchAddrSetup(const GEMMProblem &problem, const GE
             gemmOffsetAk(strategy.ka_load - strategy.ka_prefetch, state.effAp, problem.A, problem, strategy, state);
         if (doB && strategy.prefetchB)
             gemmOffsetBk(strategy.kb_load - strategy.kb_prefetch, state.effBp, problem.B, problem, strategy, state);
-    }
-}
-
-// Allocate tokens for k loop loads/stores.
-template <HW hw>
-void Generator<hw>::gemmAllocateTokens(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
-{
-    bool success = true;
-    for (int q = 0; q < strategy.A_copies; q++)
-        success &= allocateTokens(state.A_layout, state.A_regs[q], state);
-    for (int q = 0; q < strategy.B_copies; q++)
-        success &= allocateTokens(state.B_layout, state.B_regs[q], state);
-    for (int q = 0; q < strategy.slmCopies; q++) {
-        if (strategy.slmA) success &= allocateTokens(state.Ai_layout, state.Ai_regs[q], state);
-        if (strategy.slmB) success &= allocateTokens(state.Bi_layout, state.Bi_regs[q], state);
-    }
-    if (strategy.slmA && !state.aioShare)
-        success &= allocateTokens(state.Ao_layout, state.Ao_regs, state);
-    if (strategy.slmB && !state.bioShare)
-        success &= allocateTokens(state.Bo_layout, state.Bo_regs, state);
-    success &= allocateTokens(state.Ap_layout, state.Ap_regs, state, state.Ap_addrs);
-    success &= allocateTokens(state.Bp_layout, state.Bp_regs, state, state.Bp_addrs);
-
-    success &= allocateTokens(state.A_offsetLayout, state.A_offsetRegs, state);
-    success &= allocateTokens(state.B_offsetLayout, state.B_offsetRegs, state);
-    success &= allocateTokens(state.A_scaleLayout, state.A_scaleRegs, state);
-    success &= allocateTokens(state.B_scaleLayout, state.B_scaleRegs, state);
-    success &= allocateTokens(state.Ag_layout, state.Ag_regs, state);
-    success &= allocateTokens(state.Bg_layout, state.Bg_regs, state);
-
-    if (!success) {
-        status << "Not enough tokens for k loop." << status_stream::endl;
-        clearMappedTokenAllocations(hw, state);
     }
 }
 

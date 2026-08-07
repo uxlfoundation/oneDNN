@@ -635,16 +635,68 @@ inline int timeout(GeneralizedPipe pipe)
     }
 }
 
+// Extract dpas repeat count (rcount) from an assembled (in-memory string) instruction.
+template <typename Instruction>
+inline auto dpasRepeatCount(const Instruction &insn) -> decltype(unsigned(insn.ext) & 0xFFu)
+{
+    return (unsigned(insn.ext) & 0xFFu);
+}
+
+// Extract dpas repeat count (rcount) from a binary-encoded instruction (Instruction12/InstructionXeHPC/...).
+template <typename Instruction>
+inline auto dpasRepeatCount(const Instruction &insn) -> decltype(insn.dpas.rcount, unsigned())
+{
+    return 1 + insn.dpas.rcount;
+}
+
 // Approximate upper bound on cycle count for an OOO instruction.
 template <typename Instruction>
-inline int estimateLatency(HW hw, const Instruction &insn)
+inline int estimateLatency(Product product, const Instruction &insn)
 {
+    const HW hw = getCore(product.family);
     switch (insn.opcode()) {
         default:
         case Opcode::math: return (hw == HW::Gen12LP) ? 20 : 17;
         case Opcode::bdpas:
         case Opcode::dpas:
-        case Opcode::dpasw: return 20;   // need correct value
+        case Opcode::dpasw: {
+            unsigned rcount = dpasRepeatCount(insn);
+            switch (product.family) {
+                case ProductFamily::GenericXeHP:
+                    return 20 + int(rcount) - 1;
+                case ProductFamily::GenericXeHPG:
+                case ProductFamily::DG2:
+                case ProductFamily::MTL:
+                case ProductFamily::ARL:
+                    switch (rcount) {
+                        case 1: return 21;
+                        case 2: return 22;
+                        default: return 32;
+                    }
+                case ProductFamily::GenericXeHPC:
+                case ProductFamily::PVC:
+                    return 21 + int(rcount) - 1;
+                case ProductFamily::PVCVG:
+                    return 21 + int(rcount);
+                case ProductFamily::GenericXe2:
+                case ProductFamily::BMG:
+                case ProductFamily::LNL:
+                case ProductFamily::GenericXe3:
+                case ProductFamily::NVLP:
+                case ProductFamily::CRI:
+                case ProductFamily::GenericXe3p:
+                    switch (rcount) {
+                        case 1: return 22;
+                        case 2: return 23;
+                        default: return 33;
+                    }
+                default:
+#ifdef NGEN_SAFE
+                    throw unsupported_instruction();
+#endif
+                    return 33;
+            }
+        }
         case Opcode::sendg:
         case Opcode::sendgc:
         case Opcode::sendgx:
@@ -1637,7 +1689,6 @@ inline uint8_t preferredSBID(int tokens, uint16_t base)
 template <typename Program>
 inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock &bb, int32_t inum, int32_t counterC, const DependencyTable<false> &incoming, const DependencyTable<false> &producers, uint32_t maskDst)
 {
-    uint32_t unclaimed = (uint64_t(1) << tokens) - 1;
     std::array<int32_t, 32> pastExpiration;
     constexpr int32_t infinite = std::numeric_limits<int32_t>::max();
 
@@ -1654,8 +1705,6 @@ inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock 
         auto depSWSB = program[dep.inum].swsb();
         int token;
         if (getTokenSet(depSWSB, token)) {
-            unclaimed &= ~(1 << token);
-
             int32_t pe = counterC - (dep.counters[PipeBitC] + dep.tokenTime);
             pastExpiration[token] = std::min<int32_t>(pastExpiration[token], pe);
         }
@@ -1672,23 +1721,6 @@ inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock 
             bestPESBID = token;
         }
     }
-
-    // Priority 2: assign SBID based on base register of dst, src1, src0 (in that order),
-    //  if it's unclaimed or expired.
-    for (int opNum : {-1, 1, 0, 2, 3}) {
-        auto &region = bb.getOperandRegion(inum, opNum);
-        if (region.size > 0) {
-            auto sbid = preferredSBID(tokens, region.base);
-            if (pastExpiration[sbid] >= 0)
-                return sbid;
-        }
-    }
-
-    // Priority 3: choose highest-numbered unclaimed SBID.
-    if (unclaimed)
-        return utils::bsr(unclaimed);
-
-    // Priority 4: choose token that's longest expired or closest to expiring.
     return bestPESBID;
 }
 
@@ -1887,8 +1919,9 @@ PVCWARWA analyzePVCWARWA(HW hw, Program &program, BasicBlock &bb, int phase,
 //   Input: complete list of live dependencies.
 //   All unscoreboarded instructions are reanalyzed and scoreboarded now.
 template <typename Program>
-inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int phase, std::atomic<bool> *cancel)
+inline void analyze(Product product, int tokens, Program &program, BasicBlock &bb, int phase, std::atomic<bool> *cancel)
 {
+    const HW hw = getCore(product.family);
     if (cancel && *cancel) return;
     const bool final = (phase == 2);
     const bool computeSWSB = (phase > 0);
@@ -2439,7 +2472,7 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
             auto produceOp = consumeOp.cast();
             if (tokenInfo.hasToken()) {
                 produceOp.tokenTBD = tokenInfo.tokenTBD;
-                produceOp.tokenTime = estimateLatency(hw, insn);
+                produceOp.tokenTime = estimateLatency(product, insn);
             }
 
             for (int srcN = -1; srcN < 5; srcN++) {
@@ -2679,8 +2712,9 @@ inline void adjustTargets(HW hw, Program &program, BasicBlockList &list)
 // Entrypoint for automatic software scoreboarding.
 // Returns the list of basic blocks, containing information on sync instructions to insert.
 template <typename Program>
-inline BasicBlockList autoSWSB(HW hw, int grfCount, Program &program, std::atomic<bool> *cancel)
+inline BasicBlockList autoSWSB(Product product, int grfCount, Program &program, std::atomic<bool> *cancel)
 {
+    const HW hw = getCore(product.family);
     if (!hasAutoSWSB(hw, program)) {
         return BasicBlockList();
     }
@@ -2712,7 +2746,7 @@ inline BasicBlockList autoSWSB(HW hw, int grfCount, Program &program, std::atomi
 
     // Analysis round 0: gather OOO instruction usage.
     for (auto &bb : bbList)
-        analyze(hw, tokens, program, bb, 0, cancel);
+        analyze(product, tokens, program, bb, 0, cancel);
 
 #ifdef NGEN_DEBUG
     std::cerr << "ANALYZE PHASE 0\n";
@@ -2744,7 +2778,7 @@ inline BasicBlockList autoSWSB(HW hw, int grfCount, Program &program, std::atomi
 
     // Analysis round 1: assign SBIDs and perform intra-BB analysis.
     for (auto &bb : bbList) {
-        analyze(hw, tokens, program, bb, 1, cancel);
+        analyze(product, tokens, program, bb, 1, cancel);
         bb.incoming.clear();
     }
 
@@ -2783,7 +2817,7 @@ inline BasicBlockList autoSWSB(HW hw, int grfCount, Program &program, std::atomi
 
     // Analysis round 2: final SWSB assignment.
     for (auto &bb : bbList)
-        analyze(hw, tokens, program, bb, 2, cancel);
+        analyze(product, tokens, program, bb, 2, cancel);
 
 #ifdef NGEN_DEBUG
     std::cerr << "ANALYZE PHASE 2\n";

@@ -1212,7 +1212,8 @@ void jit_brgemm_kernel_t<Wmm>::fp8_to_f16_upconvert(
     if (dt == data_type::f8_e4m3)
         f8_e4m3_cvt_->vcvt_f8_to_f16(vmm_out, op_in);
     else if (dt == data_type::f8_e5m2)
-        f8_e5m2_cvt_->vcvt_f8_to_f16(vmm_out, op_in);
+        // skip setting q nan bit for performance purpose
+        f8_e5m2_cvt_->vcvt_f8_to_f16_skip_q_nan(vmm_out, op_in);
 }
 
 // This method up-converts the data from bf8 to f16 and saves at reg_buf.

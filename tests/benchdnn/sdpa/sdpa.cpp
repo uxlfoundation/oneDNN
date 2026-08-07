@@ -478,13 +478,15 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
-
-    // Reference-only buffer holding the per-element conditioning magnitude
-    // sum_k prob_k*|V_k| (same layout as the reference DST). compute_ref fills
-    // it; setup_cmp reads it to size a per-element DST threshold. Forward only.
-    const auto &ref_dst = ref_mem_map.at(DNNL_ARG_DST);
-    ref_mem_map.emplace(SDPA_REF_ARG_OUT_ABSMAG,
-            dnn_mem_t(ref_dst.md_, get_cpu_engine(), /* prefill = */ false));
+    if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+        // Reference-only buffer holding the per-element conditioning magnitude
+        // sum_k prob_k*|V_k| (same layout as the reference DST). compute_ref fills
+        // it; setup_cmp reads it to size a per-element DST threshold. Forward only.
+        const auto &ref_dst = ref_mem_map.at(DNNL_ARG_DST);
+        ref_mem_map.emplace(SDPA_REF_ARG_OUT_ABSMAG,
+                dnn_mem_t(
+                        ref_dst.md_, get_cpu_engine(), /* prefill = */ false));
+    }
 
     args_t args(mem_map), ref_args(ref_mem_map);
 

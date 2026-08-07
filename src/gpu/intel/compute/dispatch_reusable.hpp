@@ -42,12 +42,6 @@ namespace compute {
 #define MAX_REGISTERED_BUFFERS 4
 // Maximum length of each indexed dim's name
 #define MAX_DIM_NAME_LENGTH 15
-// Maximum length of each buffer's name
-#define MAX_BUFFER_NAME_LENGTH 7
-
-// Ensure that we don't have padding in our structures
-static_assert(MAX_REGISTERED_BUFFERS * (MAX_BUFFER_NAME_LENGTH + 1) % 4 == 0,
-        "Padding will be introduced due to registered buffers.");
 
 enum class gws_op_t : uint32_t {
     ZERO,
@@ -208,6 +202,63 @@ protected:
     uint64_t size_ = 0;
 };
 
+enum class name_id_t : uint64_t {
+    // Common buffer names
+    src = 1,
+    wei = uint64_t(1) << 1,
+    dst = uint64_t(1) << 2,
+    diff_src = uint64_t(1) << 3,
+    diff_wei = uint64_t(1) << 4,
+    diff_dst = uint64_t(1) << 5,
+    stat = uint64_t(1) << 6,
+
+    // Common dimension names
+    a = uint64_t(1) << 12,
+    b = uint64_t(1) << 13,
+    c = uint64_t(1) << 14,
+    d = uint64_t(1) << 15,
+    e = uint64_t(1) << 16,
+    f = uint64_t(1) << 17,
+
+    // Implementation Specific Names
+    original = uint64_t(1) << 24,
+    ss = uint64_t(1) << 25,
+    buffer = uint64_t(1) << 26,
+    atomic = uint64_t(1) << 27,
+    local = uint64_t(1) << 28,
+    ic_dim = uint64_t(1) << 29,
+
+};
+
+inline const std::string &to_string(name_id_t value) {
+    static const std::unordered_map<name_id_t, std::string> names {
+            {name_id_t::src, "SRC"},
+            {name_id_t::wei, "WEI"},
+            {name_id_t::dst, "DST"},
+            {name_id_t::diff_src, "DIFF_SRC"},
+            {name_id_t::diff_wei, "DIFF_WEI"},
+            {name_id_t::diff_dst, "DIFF_DST"},
+            {name_id_t::a, "A"},
+            {name_id_t::b, "B"},
+            {name_id_t::c, "C"},
+            {name_id_t::d, "D"},
+            {name_id_t::e, "E"},
+            {name_id_t::f, "F"},
+            {name_id_t::stat, "STAT"},
+            {name_id_t::original, "ORIGINAL"},
+            {name_id_t::ss, "SS"},
+            {name_id_t::buffer, "BUFFER"},
+            {name_id_t::atomic, "ATOMIC"},
+            {name_id_t::local, "LOCAL"},
+            {name_id_t::ic_dim, "IC_DIM"},
+    };
+    auto ret = names.find(value);
+    gpu_assert(ret != names.end());
+    return ret->second;
+}
+
+GPU_DEFINE_BIT_MASK_ENUM_OPS(name_id_t);
+
 // The reusable dispatcher interface involves a number of terms like (idx / stride % max) * block,
 // and a mapping from several equations into these terms. Equations can share terms,
 // and generally correspond to offset calculation for a buffer or dimension index
@@ -231,11 +282,16 @@ struct dispatch_compile_params_t {
         }
         ss << "], num_buffers=" << num_buffers;
         ss << ": [";
-        for (size_t i = 0; i < num_buffers; i++) {
-            ss << buffer_names[i] << " - [";
-            for (size_t j = 0; j < buffer_num_terms[i]; j++) {
-                ss << buffer_term_index[i][j] << "/";
+        auto term_idx = 0;
+        for (size_t bit_idx = 0; bit_idx < 8 * sizeof(name_id_t); bit_idx++) {
+            name_id_t name_id = name_id_t(uint64_t(1) << bit_idx);
+            if (!static_cast<uint64_t>(buffer_set & name_id)) continue;
+
+            ss << to_string(name_id) << " - [";
+            for (size_t j = 0; j < buffer_num_terms[term_idx]; j++) {
+                ss << buffer_term_index[term_idx][j] << "/";
             }
+            term_idx++;
             ss << "], ";
         }
         ss << "]>";
@@ -253,8 +309,10 @@ struct dispatch_compile_params_t {
     // Buffer definitions (each buffer has a name, and a collection of terms
     // used to compute the offset)
     uint64_t num_buffers = 0;
-    char buffer_names[MAX_REGISTERED_BUFFERS][MAX_BUFFER_NAME_LENGTH + 1]
-            = {{'\0'}};
+    name_id_t buffer_set = {}; // Bitset representing supported buffers
+
+    // Buffer data, these map to the elements buffer_set, but with non-register
+    // buffers filtered out.
     uint64_t buffer_term_index[MAX_REGISTERED_BUFFERS][MAX_INDEXING_TERMS]
             = {{0}};
     uint64_t buffer_num_terms[MAX_REGISTERED_BUFFERS] = {0};
@@ -265,41 +323,88 @@ DNNL_ASSERT_TRIVIALLY_SERIALIZABLE(dispatch_compile_params_t);
 class dispatch_runtime_params_t {
 public:
     dispatch_runtime_params_t() = default;
-    dispatch_runtime_params_t(
-            const nd_range_t &nd_range, const gws_term_list_t &terms)
-        : nd_range(nd_range), num_terms(terms.size()) {
+    dispatch_runtime_params_t(const nd_range_t &nd_range, bool use_int32_offset,
+            const gws_term_list_t &terms)
+        : nd_range(nd_range)
+        , use_int32_offset(use_int32_offset)
+        , num_terms(terms.size()) {
         for (size_t i = 0; i < num_terms; i++) {
             const gws_indexing_term_t::runtime_params_t &params
                     = terms[i].runtime_params();
-            rt_params.sizes[i] = params.size;
-            rt_params.strides[i] = static_cast<int64_t>(params.stride);
-            rt_params.blocks[i] = params.block;
+            if (use_int32_offset) {
+                rt32.sizes[i] = into<int32_t>(params.size);
+                rt32.strides[i]
+                        = into<int32_t>(static_cast<int64_t>(params.stride));
+                rt32.blocks[i] = into<int32_t>(params.block);
+            } else {
+                rt64.sizes[i] = params.size;
+                rt64.strides[i] = static_cast<int64_t>(params.stride);
+                rt64.blocks[i] = params.block;
+            }
         }
         for (size_t i = num_terms; i < MAX_INDEXING_TERMS; i++) {
-            rt_params.sizes[i] = 1;
-            rt_params.strides[i] = 1;
-            rt_params.blocks[i] = 1;
+            if (use_int32_offset) {
+                rt32.sizes[i] = 1;
+                rt32.strides[i] = 1;
+                rt32.blocks[i] = 1;
+            } else {
+                rt64.sizes[i] = 1;
+                rt64.strides[i] = 1;
+                rt64.blocks[i] = 1;
+            }
         }
     }
-    dispatch_gws_rt_params_t get() const { return rt_params; }
+    dispatch_gws_rt_params64_t get64() const {
+        gpu_assert(!use_int32_offset);
+        return rt64;
+    }
+    dispatch_gws_rt_params32_t get32() const {
+        gpu_assert(use_int32_offset);
+        return rt32;
+    }
 
     std::string str() const {
         stringstream_t ss;
         ss << "<dispatch_runtime_params_t (size/stride/block): ";
         for (size_t i = 0; i < num_terms; i++) {
-            ss << rt_params.sizes[i] << "/" << rt_params.strides[i] << "/"
-               << rt_params.blocks[i] << ", ";
+            if (use_int32_offset) {
+                ss << rt32.sizes[i] << "/" << rt32.strides[i] << "/"
+                   << rt32.blocks[i] << ", ";
+            } else {
+                ss << rt64.sizes[i] << "/" << rt64.strides[i] << "/"
+                   << rt64.blocks[i] << ", ";
+            }
         }
         ss << ">";
         return ss.str();
     }
 
     nd_range_t nd_range;
+    bool use_int32_offset = false;
 
 private:
     size_t num_terms = 0;
-    dispatch_gws_rt_params_t rt_params;
+    union {
+        dispatch_gws_rt_params64_t rt64;
+        dispatch_gws_rt_params32_t rt32;
+    };
 };
+
+inline void set_rt_params(compute::kernel_arg_list_t &arg_list, int index,
+        const dispatch_runtime_params_t &params) {
+    if (params.use_int32_offset)
+        arg_list.set(index, params.get32());
+    else
+        arg_list.set(index, params.get64());
+}
+
+inline void append_rt_params(compute::kernel_arg_list_t &arg_list,
+        const dispatch_runtime_params_t &params) {
+    if (params.use_int32_offset)
+        arg_list.append(params.get32());
+    else
+        arg_list.append(params.get64());
+}
 
 struct named_dim_t {
 public:
@@ -361,21 +466,28 @@ struct dim_id_hash_t {
 constexpr dim_idx_t dim_not_found = std::numeric_limits<dim_idx_t>::max();
 
 struct named_buffer_t : public memory_desc_t {
-    named_buffer_t(const char *name, const memory_desc_t &md,
+    named_buffer_t(name_id_t name_id, const memory_desc_t &md,
             const std::vector<dim_idx_t> &dims)
-        : memory_desc_t(md), name(name), dim_ids(dims) {
-        gpu_assert(this->name.size() <= MAX_BUFFER_NAME_LENGTH);
+        : memory_desc_t(md), name_id(name_id), dim_ids(dims) {
         gpu_assert(format_kind == format_kind::blocked);
         gpu_assert(static_cast<size_t>(md.ndims) <= dim_ids.size());
     }
-    named_buffer_t(const char *name) : name(name) {
+    named_buffer_t(name_id_t name_id) : name_id(name_id) {
         format_kind = format_kind::blocked;
     }
+    named_buffer_t(name_id_t name_id, const memory_desc_t &md)
+        : named_buffer_t(name_id, md, default_dims(md.ndims)) {};
 
     // Copy the named_buffer_t, while changing the name
-    named_buffer_t(const char *name, const named_buffer_t &buf)
-        : memory_desc_t(buf), name(name), dim_ids(buf.get_dim_ids()) {};
+    named_buffer_t(name_id_t name_id, const named_buffer_t &buf)
+        : memory_desc_t(buf), name_id(name_id), dim_ids(buf.get_dim_ids()) {};
 
+    static std::vector<dim_idx_t> default_dims(int ndims) {
+        std::vector<dim_idx_t> dims(ndims);
+        for (int i = 0; i < ndims; i++)
+            dims[i] = i;
+        return dims;
+    }
     dim_t nelems(bool with_padding = false) const {
         return memory_desc_wrapper(static_cast<memory_desc_t>(*this))
                 .nelems(with_padding);
@@ -387,7 +499,8 @@ struct named_buffer_t : public memory_desc_t {
                 .size(index, include_additional_size, include_offset0);
     }
 
-    const std::string &get_name() const { return name; }
+    const std::string &name() const { return to_string(get_name_id()); }
+    const name_id_t &get_name_id() const { return name_id; }
     const std::vector<dim_idx_t> &get_dim_ids() const { return dim_ids; }
 
     void remove_dim(dim_idx_t dim, bool update_strides = true) {
@@ -478,7 +591,7 @@ struct named_buffer_t : public memory_desc_t {
     }
 
 private:
-    std::string name;
+    name_id_t name_id;
     std::vector<dim_idx_t> dim_ids;
 
     void remove_blocking(dim_idx_t dim) {
@@ -534,33 +647,47 @@ public:
         // Save buffer information
         dim_t max_buffer_size = 0;
         compile_params.num_buffers = buffers.size();
-        for (size_t buf_idx = 0; buf_idx < buffers.size(); buf_idx++) {
+
+        auto &buffer_set = compile_params.buffer_set;
+        for (size_t i = 0; i < buffers.size(); i++)
+            buffer_set = buffer_set | buffers[i].get_name_id();
+
+        auto term_idx = 0;
+        for (size_t bit_idx = 0; bit_idx < 8 * sizeof(name_id_t); bit_idx++) {
+            auto name_id = name_id_t(uint64_t(1) << bit_idx);
+            if (!static_cast<uint64_t>(buffer_set & name_id)) continue;
+
+            auto buf_idx = [&]() {
+                for (size_t j = 0; j < buffers.size(); j++) {
+                    if (buffers[j].get_name_id() == name_id) return j;
+                }
+                gpu_error_not_expected();
+                return size_t(UINT_MAX);
+            }();
+
             const named_buffer_t &buffer = buffers[buf_idx];
-            // Copy buffer name into params
-            const auto &buf_name = buffer.get_name();
-            for (size_t i = 0; i < buf_name.size(); i++) {
-                compile_params.buffer_names[buf_idx][i] = buf_name[i];
-            }
 
             // Copy buffer terms into params
             const std::vector<size_t> &buf_terms = buffer_term_map[buf_idx];
-            compile_params.buffer_num_terms[buf_idx] = buf_terms.size();
+            compile_params.buffer_num_terms[term_idx] = buf_terms.size();
             for (size_t j = 0; j < buf_terms.size(); j++) {
-                compile_params.buffer_term_index[buf_idx][j] = buf_terms[j];
+                compile_params.buffer_term_index[term_idx][j] = buf_terms[j];
             }
 
             // Save the data type
-            compile_params.buffer_types[buf_idx] = buffer.data_type;
+            compile_params.buffer_types[term_idx] = buffer.data_type;
 
             // Check buffer sizes to see if we can use int32_t offsets
             max_buffer_size = std::max(max_buffer_size, buffer.nelems(true));
+            term_idx++;
         }
 
         compile_params.use_int32_offset = max_buffer_size <= INT32_MAX;
         compile_params.subgroup = subgroup;
 
         // Set runtime params
-        runtime_params = dispatch_runtime_params_t(nd_range, term_list);
+        runtime_params = dispatch_runtime_params_t(
+                nd_range, compile_params.use_int32_offset, term_list);
     }
 
     const dispatch_compile_params_t &get_compile_params() const {
@@ -575,7 +702,7 @@ private:
     dispatch_runtime_params_t runtime_params;
 };
 // TODO: Add a strategy pattern for this, in case the mapping
-// leads to performance degredation
+// leads to performance degradation
 class gws_bin_mapping_t {
 public:
     gws_bin_mapping_t(subgroup_data_t sg) : sg(sg) {}
@@ -657,9 +784,8 @@ public:
     status_t generate(
             reusable_dispatch_t &dispatch, const lws_strategy_t &lws_strategy);
     status_t register_buffer(const named_buffer_t &buffer);
-    status_t define_dim_index(
-            const char *dim_name, dim_idx_t dim_id, dim_t size);
-    status_t use_subgroup(const std::string &buf_name, size_t size);
+    status_t define_dim_index(name_id_t dim_name, dim_idx_t dim_id, dim_t size);
+    status_t use_subgroup(name_id_t buf_name, size_t size);
 
 private:
     std::vector<named_buffer_t> buffers;

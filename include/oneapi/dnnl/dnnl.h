@@ -3980,7 +3980,8 @@ dnnl_status_t DNNL_API dnnl_set_jit_profiling_jitdumpdir(const char *dir);
 ///         - AVX10_1_512 < AVX10_1_512_AMX < AVX10_1_512_AMX_FP16
 ///           < AVX10_2_AMX_2,
 ///         - AVX2_VNNI < AVX10_1_512,
-///         - AVX10_2 < AVX10_2_AMX_2
+///         - AVX10_2 < AVX10_2_AMX_2,
+///         - AVX10_2 < AVX10_2_ACE
 ///
 ///     Aliases:
 ///         - AVX512_CORE_FP16 = AVX10_1_512

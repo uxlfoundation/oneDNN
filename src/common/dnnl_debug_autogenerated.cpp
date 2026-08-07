@@ -1967,6 +1967,7 @@ const char *dnnl_cpu_isa2str(dnnl_cpu_isa_t v) {
     if (v == dnnl_cpu_isa_avx10_2_512) return "cpu_isa_avx10_2_512";
     if (v == dnnl_cpu_isa_avx10_2_amx_2) return "cpu_isa_avx10_2_amx_2";
     if (v == dnnl_cpu_isa_avx10_2_512_amx_2) return "cpu_isa_avx10_2_512_amx_2";
+    if (v == dnnl_cpu_isa_avx10_2_ace) return "cpu_isa_avx10_2_ace";
     assert(!"unknown cpu_isa");
     return "unknown cpu_isa";
 }

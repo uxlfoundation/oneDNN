@@ -256,9 +256,15 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     }
     const dnn_mem_t &exp_f32 = exp_f32_plain ? exp_f32_plain : exp_mem;
 
+    // Note: the section below has some adjustable settings but they all seem
+    // to target DST kind_.
+    // TODO: add a list of allowed kinds to get into, and adjust settings to
+    // apply only to kinds they aim. So far, play it safe and remove DST_SCALES
+    // when not applicable.
     const auto dt = got_mem.dt();
-    const bool has_eltwise
-            = attr.post_ops.eltwise_index() != -1 || has_eltwise_post_op_;
+    const bool kind_is_dst_scales = kind_ == DST_SCALES;
+    const bool has_eltwise = !kind_is_dst_scales
+            && (attr.post_ops.eltwise_index() != -1 || has_eltwise_post_op_);
     // Output fp8 data types expected to have dynamic dst scaling. When such
     // scaling is enabled, it saturates, doesn't overflow, thus, NaNs are not
     // expected in the output. No dynamic scaling - NaN may happen.
@@ -269,8 +275,8 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             || eltwise::eltwise_alg_returns_nan_or_inf(attr)
             || has_binary_po_algs(attr, {attr_t::post_ops_t::kind_t::DIV})
             || dt == dnnl_f16 || non_scaled_fp8_output;
-    const bool has_exp_eltwise
-            = attr.post_ops.find(attr_t::post_ops_t::kind_t::EXP) >= 0;
+    const bool has_exp_eltwise = !kind_is_dst_scales
+            && attr.post_ops.find(attr_t::post_ops_t::kind_t::EXP) >= 0;
     const auto &dst_scale = attr.scales.get(DNNL_ARG_DST);
     const bool has_dst_scale = !dst_scale.is_def();
 

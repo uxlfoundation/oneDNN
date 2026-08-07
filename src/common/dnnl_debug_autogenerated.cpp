@@ -58,6 +58,8 @@ const char *dnnl_dt2str(dnnl_data_type_t v) {
     if (v == dnnl_f8_e4m3) return "f8_e4m3";
     if (v == dnnl_s4) return "s4";
     if (v == dnnl_u4) return "u4";
+    if (v == dnnl_s2) return "s2";
+    if (v == dnnl_u2) return "u2";
     if (v == dnnl_e8m0) return "e8m0";
     if (v == dnnl_f4_e2m1) return "f4_e2m1";
     if (v == dnnl_s64) return "s64";

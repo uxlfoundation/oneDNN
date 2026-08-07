@@ -419,9 +419,10 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     s.ka_load = s.kb_load = 16;
     if (!systolic) {
         s.ka_load = s.kb_load = 4;
-        if (problem.Ta_ext.isInt4() || problem.Tb_ext.isInt4()){
-            s.ka_load *= 2;
-            s.kb_load *= 2;
+        if (problem.Ta_ext.isSubByte() || problem.Tb_ext.isSubByte()){
+            int per_byte = std::max(problem.Ta_ext.perByte(), problem.Tb_ext.perByte());
+            s.ka_load *= per_byte;
+            s.kb_load *= per_byte;
         }
     }
 
@@ -440,7 +441,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
                                 (problem.aOffset2D() ? (1.f * problem.Tao) : 0)));
         s.ka_load = utils::roundup_pow2(s.ka_load);
     } else if (problem.A.layout == MatrixLayout::N) {
-        if(problem.Ta.isInt4()) {
+        if(problem.Ta.isSubByteInt()) {
             s.A.accessType = AccessType::Block2D;
             s.A_copies = 2;
         } else {

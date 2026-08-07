@@ -49,6 +49,8 @@ dnnl_data_type_t str2dt(const char *str) {
     CASE(f8_e4m3);
     CASE(s4);
     CASE(u4);
+    CASE(s2);
+    CASE(u2);
     CASE(e8m0);
     CASE(f4_e2m1);
     CASE(s64);

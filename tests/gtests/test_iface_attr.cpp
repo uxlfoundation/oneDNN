@@ -497,6 +497,23 @@ HANDLE_EXCEPTIONS_FOR_TEST_F(attr_test_t, TestPostOps) {
     ASSERT_EQ(mask, prelu_mask);
 }
 
+TEST_F(attr_test_t, TestPostOpsPreluExpectFailure) {
+    dnnl::post_ops ops;
+    ops.append_eltwise(algorithm::eltwise_relu, 0.f, 0.f);
+
+    const int prelu_mask = 1;
+    ops.append_prelu(prelu_mask);
+
+    int mask = INT_MAX;
+    EXPECT_ANY_THROW(ops.get_params_prelu(-1, mask));
+    EXPECT_ANY_THROW(ops.get_params_prelu(ops.len(), mask));
+    // The entry at index 0 is an eltwise post-op, not a prelu one.
+    EXPECT_ANY_THROW(ops.get_params_prelu(0, mask));
+
+    EXPECT_NO_THROW(ops.get_params_prelu(1, mask));
+    ASSERT_EQ(mask, prelu_mask);
+}
+
 TEST_F(attr_test_t, TestPostOpsCheckLimit) {
     dnnl::post_ops ops_sum, ops_eltwise, ops_binary, ops_prelu;
 

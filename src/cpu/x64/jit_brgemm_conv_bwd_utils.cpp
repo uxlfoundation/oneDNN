@@ -117,16 +117,18 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
         const auto vnni_block_dt
                 = get_mac_emu_data_type(jcp.wei_dt, jcp.isa, req_emulation);
         const auto vnni_block = data_type_vnni_granularity(vnni_block_dt);
+        constexpr int vnni_block_8bit = 4; // s8, u8, fp8: 4 elements per dword
+        constexpr int vnni_block_16bit = 2; // bf16, f16: 2 elements per dword
         if (jcp.ic_block == 64) {
             if (is_3d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIdhwo64i : Idhwo64i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIdhwO16o64i4o : IdhwO16o64i4o;
                     else
                         wei_tag = with_groups ? gIdhwO64i4o : IdhwO64i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIdhwO16o64i2o : IdhwO16o64i2o;
                     else
@@ -136,12 +138,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
             } else if (is_1d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIwo64i : Iwo64i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIwO16o64i4o : IwO16o64i4o;
                     else
                         wei_tag = with_groups ? gIwO64i4o : IwO64i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIwO16o64i2o : IwO16o64i2o;
                     else
@@ -153,12 +155,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
                 UNUSED(is_2d);
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIhwo64i : Ihwo64i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIhwO16o64i4o : IhwO16o64i4o;
                     else
                         wei_tag = with_groups ? gIhwO64i4o : IhwO64i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIhwO16o64i2o : IhwO16o64i2o;
                     else
@@ -170,12 +172,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
             if (is_3d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIdhwo48i : Idhwo48i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIdhwO16o48i4o : IdhwO16o48i4o;
                     else
                         wei_tag = with_groups ? gIdhwO48i4o : IdhwO48i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIdhwO16o48i2o : IdhwO16o48i2o;
                     else
@@ -185,12 +187,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
             } else if (is_1d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIwo48i : Iwo48i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIwO16o48i4o : IwO16o48i4o;
                     else
                         wei_tag = with_groups ? gIwO48i4o : IwO48i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIwO16o48i2o : IwO16o48i2o;
                     else
@@ -202,12 +204,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
                 UNUSED(is_2d);
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIhwo48i : Ihwo48i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIhwO16o48i4o : IhwO16o48i4o;
                     else
                         wei_tag = with_groups ? gIhwO48i4o : IhwO48i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIhwO16o48i2o : IhwO16o48i2o;
                     else
@@ -219,12 +221,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
             if (is_3d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIdhwo32i : Idhwo32i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIdhwO16o32i4o : IdhwO16o32i4o;
                     else
                         wei_tag = with_groups ? gIdhwO32i4o : IdhwO32i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIdhwO16o32i2o : IdhwO16o32i2o;
                     else
@@ -234,12 +236,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
             } else if (is_1d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIwo32i : Iwo32i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIwO16o32i4o : IwO16o32i4o;
                     else
                         wei_tag = with_groups ? gIwO32i4o : IwO32i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIwO16o32i2o : IwO16o32i2o;
                     else
@@ -251,12 +253,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
                 UNUSED(is_2d);
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIhwo32i : Ihwo32i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIhwO16o32i4o : IhwO16o32i4o;
                     else
                         wei_tag = with_groups ? gIhwO32i4o : IhwO32i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIhwO16o32i2o : IhwO16o32i2o;
                     else
@@ -268,18 +270,18 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
             if (is_3d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIdhwo24i : Idhwo24i;
-                else if (vnni_block == 4)
+                else if (vnni_block == vnni_block_8bit)
                     wei_tag = with_groups ? gIdhwO24i4o : IdhwO24i4o;
-                else if (vnni_block == 2)
+                else if (vnni_block == vnni_block_16bit)
                     wei_tag = with_groups ? gIdhwO24i2o : IdhwO24i2o;
                 else
                     return status::unimplemented;
             } else if (is_1d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIwo24i : Iwo24i;
-                else if (vnni_block == 4)
+                else if (vnni_block == vnni_block_8bit)
                     wei_tag = with_groups ? gIwO24i4o : IwO24i4o;
-                else if (vnni_block == 2)
+                else if (vnni_block == vnni_block_16bit)
                     wei_tag = with_groups ? gIwO24i2o : IwO24i2o;
                 else
                     return status::unimplemented;
@@ -289,9 +291,9 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
 
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIhwo24i : Ihwo24i;
-                else if (vnni_block == 4)
+                else if (vnni_block == vnni_block_8bit)
                     wei_tag = with_groups ? gIhwO24i4o : IhwO24i4o;
-                else if (vnni_block == 2)
+                else if (vnni_block == vnni_block_16bit)
                     wei_tag = with_groups ? gIhwO24i2o : IhwO24i2o;
                 else
                     return status::unimplemented;
@@ -300,12 +302,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
             if (is_3d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIdhwo16i : Idhwo16i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIdhwO16o16i4o : IdhwO16o16i4o;
                     else
                         wei_tag = with_groups ? gIdhwO16i4o : IdhwO16i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIdhwO16o16i2o : IdhwO16o16i2o;
                     else
@@ -315,12 +317,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
             } else if (is_1d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIwo16i : Iwo16i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIwO16o16i4o : IwO16o16i4o;
                     else
                         wei_tag = with_groups ? gIwO16i4o : IwO16i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIwO16o16i2o : IwO16o16i2o;
                     else
@@ -333,12 +335,12 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
 
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIhwo16i : Ihwo16i;
-                else if (vnni_block == 4) {
+                else if (vnni_block == vnni_block_8bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIhwO16o16i4o : IhwO16o16i4o;
                     else
                         wei_tag = with_groups ? gIhwO16i4o : IhwO16i4o;
-                } else if (vnni_block == 2) {
+                } else if (vnni_block == vnni_block_16bit) {
                     if (jcp.is_oc_padded)
                         wei_tag = with_groups ? gIhwO16o16i2o : IhwO16o16i2o;
                     else
@@ -350,18 +352,18 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
             if (is_3d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIdhwo8i : Idhwo8i;
-                else if (vnni_block == 4)
+                else if (vnni_block == vnni_block_8bit)
                     wei_tag = with_groups ? gIdhwO8i4o : IdhwO8i4o;
-                else if (vnni_block == 2)
+                else if (vnni_block == vnni_block_16bit)
                     wei_tag = with_groups ? gIdhwO8i2o : IdhwO8i2o;
                 else
                     return status::unimplemented;
             } else if (is_1d) {
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIwo8i : Iwo8i;
-                else if (vnni_block == 4)
+                else if (vnni_block == vnni_block_8bit)
                     wei_tag = with_groups ? gIwO8i4o : IwO8i4o;
-                else if (vnni_block == 2)
+                else if (vnni_block == vnni_block_16bit)
                     wei_tag = with_groups ? gIwO8i2o : IwO8i2o;
                 else
                     return status::unimplemented;
@@ -371,9 +373,9 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &diff_dst_md,
 
                 if (no_vnni_format)
                     wei_tag = with_groups ? gIhwo8i : Ihwo8i;
-                else if (vnni_block == 4)
+                else if (vnni_block == vnni_block_8bit)
                     wei_tag = with_groups ? gIhwO8i4o : IhwO8i4o;
-                else if (vnni_block == 2)
+                else if (vnni_block == vnni_block_16bit)
                     wei_tag = with_groups ? gIhwO8i2o : IhwO8i2o;
                 else
                     return status::unimplemented;

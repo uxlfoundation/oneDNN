@@ -41,3 +41,11 @@
 --attr-post-ops=select:f32:common
 1x16x32x256:1x16x256x33n"sdpa_cond_bcast"
 1x16x33x257:1x16x257x37n"sdpa_cond_bcast_tail"
+
+# Select post-op, per_hw condition [1,1,h,w] (mask 12); fused, incl. tail N.
+--reset
+--dt=f32,bf16
+--stag=abcd --wtag=abcd --dtag=abcd
+--attr-post-ops=select:f32:12
+2x16x32x256:2x16x256x33n"sdpa_cond_per_hw"
+2x16x33x257:2x16x257x37n"sdpa_cond_per_hw_tail"

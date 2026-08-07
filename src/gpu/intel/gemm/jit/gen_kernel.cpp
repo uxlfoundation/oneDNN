@@ -357,6 +357,14 @@ status_t gen_desc_t::finalize(const char *tags) {
         aux_params_.wgK = strategy_.wg[LoopK];
     update_driver_info();
 
+    // Disable sum application methods that dont support computing
+    // C MX scale values afterward as required.
+    if (problem_.hasCMXScale() && !problem_.beta0()
+            && (strategy_.C.atomic
+                    || (strategy_.kParallel && !strategy_.fuseBeta))) {
+        return status::unimplemented;
+    }
+
     return status::success;
 }
 

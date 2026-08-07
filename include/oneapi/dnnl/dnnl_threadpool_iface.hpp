@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 /// @addtogroup dnnl_api
 /// @{
@@ -36,6 +37,19 @@ namespace dnnl {
 /// @{
 
 namespace threadpool_interop {
+
+/// Completion event interface for async threadpool work. oneDNN's verbose
+/// profiler polls these to determine when deferred execution has finished
+/// and to extract timing information.
+struct threadpool_event_iface_t {
+    virtual ~threadpool_event_iface_t() = default;
+    /// Returns true if the associated work has completed.
+    virtual bool is_complete() const = 0;
+    /// Blocks until completion.
+    virtual void wait() const = 0;
+    /// Measured execution time in milliseconds. Valid only after completion.
+    virtual double exec_time_ms() const = 0;
+};
 
 /// Abstract threadpool interface. The users are expected to subclass this
 /// interface and pass an object to the library during CPU stream creation or
@@ -59,6 +73,13 @@ struct threadpool_iface {
 
     // Does nothing if SYNCHRONOUS, waits for all jobs for ASYNCHRONOUS
     virtual void wait() = 0;
+
+    /// Returns a completion event for the most recently submitted work.
+    /// oneDNN's verbose profiler polls this to detect completion and extract
+    /// timing. Returns nullptr if profiling is disabled or unsupported.
+    virtual std::shared_ptr<threadpool_event_iface_t> get_event() {
+        return nullptr;
+    }
 
     /// If set, parallel_for() returns immediately and oneDNN needs implement
     /// waiting for the submitted closures to finish execution on its own.

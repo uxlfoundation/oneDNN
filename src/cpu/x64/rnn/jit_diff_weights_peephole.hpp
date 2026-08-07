@@ -54,7 +54,7 @@ private:
     void compute_loop();
     void compute_dst(size_t unrolling, bool tail);
 
-    static constexpr dim_t simd_w_ = 16;
+    static constexpr int simd_w_ = 16;
     static constexpr dim_t max_unrolling = 10;
 
     const data_type_t c_states_dt_;
@@ -71,7 +71,7 @@ private:
     const Xbyak::Opmask &tail_opmask_ = k3;
 
     const dim_t compute_block_size_;
-    const dim_t tail_size_;
+    const int tail_size_;
 
     io::jit_io_multi_dt_helper_t<Xbyak::Zmm> io_;
 };

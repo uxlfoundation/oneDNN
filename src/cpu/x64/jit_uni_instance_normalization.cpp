@@ -127,7 +127,7 @@ struct kernel_t : public jit_uni_instance_normalization_fwd_t::kernel_base_t,
                     tmp_vmm_injector, this->r14, this->r15, this->r13,
                     preserve_gpr, preserve_vmm,
                     PARAM_OFF(post_ops_binary_rhs_arg_vec), PARAM_OFF(dst),
-                    dst_d_, static_cast<int>(axis_simd_tail_), tail_opmask,
+                    dst_d_, axis_simd_tail_, tail_opmask,
                     use_exact_tail_scalar_bcast};
 
             const binary_injector::static_params_t bsp {
@@ -237,9 +237,9 @@ protected:
     io::jit_io_multi_dt_helper_t<Vmm> io_;
     const memory_desc_wrapper src_d_, dst_d_;
     const dim_t C_;
-    const size_t simd_w_;
+    const int simd_w_;
     const dim_t axis_simd_full_;
-    const dim_t axis_simd_tail_;
+    const int axis_simd_tail_;
     const bool use_scale_ = false;
     const bool use_shift_ = false;
     const float eps_;
@@ -500,8 +500,8 @@ protected:
     const memory_desc_wrapper src_d_;
     bool compute_var_;
     const dim_t C_;
-    const size_t simd_w_;
-    const dim_t axis_simd_tail_;
+    const int simd_w_;
+    const int axis_simd_tail_;
     const dim_t unroll_c_;
     const dim_t c_block_;
     const dim_t nc_blocks_;

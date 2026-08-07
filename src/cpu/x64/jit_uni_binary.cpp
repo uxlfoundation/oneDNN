@@ -796,7 +796,7 @@ void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
         std::vector<unsigned> indices(simd_w);
 
         const dim_t src1_different_layout_stride = conf.src1_stride;
-        for (size_t i = 0; i < simd_w; i++)
+        for (int i = 0; i < simd_w; i++)
             indices[i] = i * src1_different_layout_stride * src1_type_size;
 
         const dim_t batch = src0_d.dims()[0];

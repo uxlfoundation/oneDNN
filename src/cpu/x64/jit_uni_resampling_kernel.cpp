@@ -58,8 +58,8 @@ jit_uni_resampling_kernel_t<isa, Vmm>::jit_uni_resampling_kernel_t(
         const binary_injector::rhs_arg_static_params_t rhs_sp {
                 vmm_post_op_helper_.getIdx(), r14, r15, r13, preserve_gpr,
                 preserve_vmm, GET_OFF(post_ops_binary_rhs_arg_vec),
-                GET_OFF(dst_orig), dst_d, static_cast<int>(tail_size_),
-                k_tail_mask_, use_exact_tail_scalar_bcast};
+                GET_OFF(dst_orig), dst_d, tail_size_, k_tail_mask_,
+                use_exact_tail_scalar_bcast};
 
         const bcast_set_t accepted_broadcasts
                 = {broadcasting_strategy_t::scalar,

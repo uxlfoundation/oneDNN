@@ -63,8 +63,7 @@ jit_avx512_dw_conv_fwd_kernel_f16_t::jit_avx512_dw_conv_fwd_kernel_f16_t(
             jcp.src_dt, jcp.dst_dt};
     io_ = utils::make_unique<io::jit_io_multi_dt_helper_t<Xbyak::Zmm>>(this,
             jcp.isa, data_types, io::io_conf_t {},
-            io::io_tail_conf_t {simd_w, static_cast<std::size_t>(tail_size),
-                    k_oc_tail_mask, 0, reg_tmp});
+            io::io_tail_conf_t {simd_w, tail_size, k_oc_tail_mask, 0, reg_tmp});
 }
 
 static bool check_if_tail(const bool is_ch_tail, const dim_t c_tail,

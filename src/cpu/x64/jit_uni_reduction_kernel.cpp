@@ -361,7 +361,7 @@ void jit_uni_reduction_kernel_t<isa, Vmm>::apply_postops(const int data_idx) {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_reduction_kernel_t<isa, Vmm>::finalize() {
-    if (static_cast<std::size_t>(conf_.reduce_size) > load_tail_size_) {
+    if (conf_.reduce_size > load_tail_size_) {
         reduce_vmm_to_scalar(
                 vmm_acc_, vmm_tmp1_, vmm_tmp2_, vmm_tmp3_, simd_w_);
     }

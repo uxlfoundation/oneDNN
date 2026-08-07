@@ -42,7 +42,7 @@ public:
     };
 
     void generate() override;
-    size_t simd_w() const;
+    int simd_w() const;
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_prelu_reduction_kernel_t)
 
     void operator()(const jit_prelu_reduction_kernel_t::call_params_t *params) {
@@ -68,9 +68,9 @@ protected:
     Xbyak::Address diff_scratch_ptr(int unrolling_group) const;
     int reserve_vmm();
 
-    const size_t simd_w_ = 0;
+    const int simd_w_ = 0;
     const data_type_t data_type_;
-    const size_t tail_size_ = 0;
+    const int tail_size_ = 0;
     const Xbyak::Reg64 &reg_offset_ = r9;
     const Xbyak::Reg64 &reg_weights_diff_ = r11;
     const Xbyak::Reg8 &reg_last_c_blk_byte_ = r13b;

@@ -37,9 +37,8 @@ jit_diff_weights_peephole_t::jit_diff_weights_peephole_t(
                       : mayiuse(avx512_core_bf16) ? avx512_core_bf16
                                                   : avx512_core,
               {c_states_dt_, scratch_dt_, dst_dt_}, {},
-              io::io_tail_conf_t {static_cast<std::size_t>(simd_w_),
-                      static_cast<std::size_t>(tail_size_), tail_opmask_, 0,
-                      reg_tmp_}) {}
+              io::io_tail_conf_t {
+                      simd_w_, tail_size_, tail_opmask_, 0, reg_tmp_}) {}
 
 void jit_diff_weights_peephole_t::generate() {
     preamble();

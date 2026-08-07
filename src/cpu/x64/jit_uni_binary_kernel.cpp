@@ -54,7 +54,7 @@ binary_kernel_t::binary_kernel_t(const size_t vlen, const binary_pd_t *pd,
     , padding_tail_size_(
               pd->src_md(0)->padded_dims[1] - pd->src_md(0)->dims[1]) {}
 
-size_t binary_kernel_t::get_tail_size() const {
+int binary_kernel_t::get_tail_size() const {
     memory_desc_wrapper src0_d(pd_->src_md(0));
     const auto &dims = src0_d.dims();
     const auto &ndims = src0_d.ndims();
@@ -143,8 +143,8 @@ void jit_uni_binary_kernel_t<isa, Vmm>::init_post_ops_injector() {
     const binary_injector::rhs_arg_static_params_t rhs_arg_bsp {10, reg_tmp_,
             reg_elt_inj_table_, r13, true /*preserve gpr*/,
             true /*preserve vmm*/, PARAM_OFF(post_ops_binary_rhs_arg_vec),
-            PARAM_OFF(dst_orig), dst_d, static_cast<int>(tail_size_),
-            tail_opmask_, false /*use_exact_tail_scalar_bcast*/};
+            PARAM_OFF(dst_orig), dst_d, tail_size_, tail_opmask_,
+            false /*use_exact_tail_scalar_bcast*/};
     const binary_injector::static_params_t bsp(this->param1,
             get_supported_postops_bcast_strategies(), rhs_arg_bsp);
 

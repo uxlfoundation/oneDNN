@@ -51,21 +51,21 @@ struct binary_kernel_t : public jit_generator_t {
         jit_generator_t::operator()(p);
     }
 
-    size_t simd_w() const noexcept { return simd_w_; }
+    int simd_w() const noexcept { return simd_w_; }
     size_t vlen() const noexcept { return vlen_; }
 
 protected:
-    size_t get_tail_size() const;
+    int get_tail_size() const;
 
     const size_t vlen_;
-    const size_t simd_w_;
+    const int simd_w_;
     constexpr static int vmm_start_idx_ = 1;
     const binary_pd_t *pd_;
     const jit_binary_conf_t conf_;
     const bool is_tail_kernel_;
     const bool is_src1_outer_dims_tail_;
-    const size_t tail_size_;
-    const size_t padding_tail_size_;
+    const int tail_size_;
+    const int padding_tail_size_;
 };
 
 template <cpu_isa_t isa, typename Vmm>

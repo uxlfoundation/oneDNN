@@ -235,6 +235,24 @@
 --attr-post-ops=mul:f32:1,mul:f16:1,mul:f32:3:grouped,mul:f16:3:grouped
 32x128:4x128x64
 
+# gelu_tanh/gelu_erf + binary_mul (grouped) with WOQ scales, both orders
+--reset
+--dt=f16:s4:f16
+--wtag=abc,acb
+--grouped=0:4:8+8+8+8,0:4:8+0+16+8
+--attr-fpmath=f16:true
+--attr-scales=wei:7:f16:32x1
+--attr-post-ops=eltwise_gelu_tanh+mul:f16:3:grouped,eltwise_gelu_erf+mul:f16:3:grouped,mul:f16:3:grouped+eltwise_gelu_tanh,mul:f16:3:grouped+eltwise_gelu_erf
+32x128:4x128x64
+
+# gelu_tanh/gelu_erf + binary_mul (grouped) - f32/bf16
+--reset
+--dt=f32:f32:f32,bf16:bf16:bf16
+--wtag=abc
+--grouped=0:4:8+8+8+8
+--attr-post-ops=eltwise_gelu_tanh+mul:f32:3:grouped,eltwise_gelu_erf+mul:f32:3:grouped
+32x64:4x64x32
+
 # Post-ops: multi-binary chains (grouped + dense, 3-op)
 --reset
 --dt=f16:f16:f16

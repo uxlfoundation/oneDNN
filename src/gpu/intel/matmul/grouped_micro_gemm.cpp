@@ -398,6 +398,19 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
     VDISPATCH_MATMUL(compute::mayiuse_microkernels(intel_engine),
             VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "microkernels");
 
+    // XXX: gelu_erf/gelu_tanh are miscompiled by IGC on XeHPG, fall back to
+    // reference.
+    if (dev_info->gpu_arch() == compute::gpu_arch_t::xe_hpg) {
+        for (int i = 0; i < attr()->post_ops_.len(); ++i) {
+            const auto &e = attr()->post_ops_.entry_[i];
+            VDISPATCH_MATMUL(!e.is_eltwise()
+                            || !utils::one_of(e.eltwise.alg,
+                                    alg_kind::eltwise_gelu_erf,
+                                    alg_kind::eltwise_gelu_tanh),
+                    VERBOSE_UNSUPPORTED_POSTOP);
+        }
+    }
+
     // Check for supported quantization schemes
     if (src_quant_.with_scale()) {
         VDISPATCH_MATMUL(utils::one_of(src_quant_.scale_dt(), f32, f16, bf16,

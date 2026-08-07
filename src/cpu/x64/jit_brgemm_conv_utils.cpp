@@ -2146,8 +2146,8 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     const auto rd_wi = jcp.kw * jcp.ic;
     const auto rnd_rd_wi = (float)rnd_up(rd_wi, jcp.simd_w);
     // TODO: enable relo for fp8 with f16 vnni block later
-    if (!jcp.wei_plain && !jcp.is_fp8 && relo_supported_isa
-            && relo_reasonable_isa) {
+    if (!jcp.wei_plain && !(jcp.is_fp8 && jcp.vnni_block == 2)
+            && relo_supported_isa && relo_reasonable_isa) {
         if (jcp.vnni_block == 1 /* For f32 weights are in needed layout */
                 || (jcp.ic % jcp.vnni_block == 0
                         && IMPLICATION(

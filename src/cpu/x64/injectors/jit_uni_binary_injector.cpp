@@ -217,6 +217,12 @@ bool any_binary_postop_rhs_with_ternary_scalar_bcast(
     });
 }
 
+bool is_ternary_bcast_supported(
+        const memory_desc_t &src2_md, const memory_desc_wrapper &dst_d) {
+    if (src2_md.ndims != dst_d.ndims()) return false;
+    return utils::array_cmp(src2_md.dims, dst_d.dims(), dst_d.ndims());
+}
+
 bool any_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
         const memory_desc_wrapper &dst_d,
         const bcast_set_t &supported_strategy_set) {

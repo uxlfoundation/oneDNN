@@ -64,7 +64,13 @@
 #endif
 
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
+// TBB_INTERFACE_VERSION lives in tbb/version.h since oneTBB 2021 and in
+// tbb/tbb_stddef.h in older TBB releases.
+#if __has_include("tbb/version.h")
 #include "tbb/version.h"
+#else
+#include "tbb/tbb_stddef.h"
+#endif
 #if defined(TBB_INTERFACE_VERSION) && (TBB_INTERFACE_VERSION >= 12060)
 #include "tbb/global_control.h"
 #define DNNL_TBB_NEED_EXPLICIT_FINALIZE

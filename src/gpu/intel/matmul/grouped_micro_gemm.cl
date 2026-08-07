@@ -99,11 +99,14 @@ void load_bias(
 
 #if WITH_POST_OP
 #if WITH_BINARY_GROUPED_SCALE
+// One column-block of the [M,N] grouped scale, applied a block at a time.
+DECLARE_2D_TILE(binary_group_chunk_type, float, SUBGROUP_SIZE,
+        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
+        ugemm_grouped_c_type_nblock0, 1)
 #if !BINARY_SCALE_GROUPED_DT_F32
-// Intermediate tile for loading non-float binary scale data before converting
-DECLARE_2D_TILE(binary_group_in_tile_type, BINARY_SCALE_GROUPED_TILE_DATA_T,
+DECLARE_2D_TILE(binary_group_chunk_in_type, BINARY_SCALE_GROUPED_TILE_DATA_T,
         SUBGROUP_SIZE, ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
-        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
+        ugemm_grouped_c_type_nblock0, 1)
 #endif
 #endif
 

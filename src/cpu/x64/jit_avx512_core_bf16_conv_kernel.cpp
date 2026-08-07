@@ -106,8 +106,8 @@ jit_avx512_core_bf16_fwd_kernel_vmm_t<
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = false;
         static constexpr size_t helper_vmm_idx = 31;
-        const size_t oc_block_tail = jcp.oc_block % isa_simd_width_;
-        const size_t tail_size = oc_block_tail
+        const dim_t oc_block_tail = jcp.oc_block % isa_simd_width_;
+        const dim_t tail_size = oc_block_tail
                 ? oc_block_tail
                 : jcp.oc_without_padding % isa_simd_width_;
         static constexpr bool use_exact_tail_scalar_bcast = true;

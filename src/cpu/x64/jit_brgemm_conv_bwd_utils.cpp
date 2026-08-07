@@ -2118,6 +2118,9 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
     }
 
+    jcp.fp8_convert_wsp_size = static_cast<dim_t>(sizeof(float16_t))
+            * isa_max_vlen(jcp.isa)
+            * nstl::max(isa_num_vregs(jcp.isa), jcp.iw_block);
     return status::success;
 }
 
@@ -2165,6 +2168,12 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
         // See brgemm_types.hpp comment for `with_dst_scales`.
         scratchpad.book(key_conv_dst_scales,
                 static_cast<size_t>(jcp.nthr) * sizeof(float), P4K);
+    }
+
+    if (jcp.req_fp8_convert_wsp) {
+        scratchpad.book(key_brgemm_primitive_fp8_convert_wsp,
+                static_cast<size_t>(jcp.nthr) * jcp.fp8_convert_wsp_size,
+                sizeof(float16_t), 0, P4K);
     }
 }
 

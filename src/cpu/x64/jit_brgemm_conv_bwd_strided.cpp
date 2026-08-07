@@ -837,6 +837,11 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
                                     : s8s8_compensation)
             : nullptr;
 
+    auto *fp8_convert_wsp_base = jcp.req_fp8_convert_wsp
+            ? scratchpad.template get<char>(
+                      key_brgemm_primitive_fp8_convert_wsp)
+            : nullptr;
+
     cal_compensation(wei, src_zp_comp_base, s8s8_comp_base);
 
     char *const wsp_tile_global = is_amx
@@ -871,6 +876,10 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
                 ? wsp_tile_global + ithr * 2 * brgemm_convolution_bwd_utils::P4K
                 : nullptr;
 
+        char *const fp8_convert_wsp = jcp.req_fp8_convert_wsp
+                ? fp8_convert_wsp_base + ithr * jcp.fp8_convert_wsp_size
+                : nullptr;
+
         float *dst_scales_inv_ptr = nullptr;
         if (jcp.with_dst_scales) {
             const float *dst_scales_ptr
@@ -897,8 +906,8 @@ status_t brgemm_convolution_bwd_strided_t<isa>::execute(
         else
             assert(!"Unknown loop order");
 
-        brgemm_bwd_thread_ctx_t btc(
-                brgemm_ctx, ithr, brg_batch, c_buffer, out_buffer, wsp_tile);
+        brgemm_bwd_thread_ctx_t btc(brgemm_ctx, ithr, brg_batch, c_buffer,
+                out_buffer, wsp_tile, fp8_convert_wsp);
 
         int last_n = -1;
         int last_g = -1;
@@ -1232,7 +1241,9 @@ void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
                 btc.dst_scales};
 
         void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
-                               : static_cast<void *>(s8s8_comp);
+                : jcp.req_fp8_convert_wsp
+                ? static_cast<void *>(btc.fp8_convert_wsp)
+                : static_cast<void *>(s8s8_comp);
 
         if (do_postops || do_skip_accm) {
             brgemm_kernel_execute_postops(brg_ker, batch_size, btc.brg_batch,
@@ -1240,9 +1251,12 @@ void brgemm_convolution_bwd_strided_t<isa>::call_brgemm_kernel(
         } else
             brgemm_kernel_execute_postops(brg_ker, batch_size, btc.brg_batch,
                     ptr_C, ptr_C, post_ops_data, scratch);
-    } else
-        brgemm_kernel_execute(brg_ker, batch_size, btc.brg_batch, ptr_C,
-                static_cast<void *>(btc.wsp_tile));
+    } else {
+        void *scratch = is_amx ? static_cast<void *>(btc.wsp_tile)
+                               : static_cast<void *>(btc.fp8_convert_wsp);
+        brgemm_kernel_execute(
+                brg_ker, batch_size, btc.brg_batch, ptr_C, scratch);
+    }
 }
 
 template <cpu_isa_t isa>

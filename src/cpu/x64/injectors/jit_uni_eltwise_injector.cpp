@@ -338,18 +338,18 @@ void jit_uni_eltwise_injector_t<Wmm>::vec_shift(const Vmm &vmm_dst,
         else
             h->uni_vpsrld(vmm_dst, vmm_src, imm);
     } else {
-        // Declare appropriate vectors to use non-uni instructions
+        // AVX lacks 256-bit integer shifts, so shift each 128-bit half apart.
         Xmm xmm_dst = Xmm(vmm_dst.getIdx());
         Ymm ymm_dst = Ymm(vmm_dst.getIdx());
         Ymm ymm_src = Ymm(vmm_src.getIdx());
         if (vmm_dst.getIdx() != vmm_src.getIdx()) h->vmovups(ymm_dst, ymm_src);
         h->vextractf128(xmm_tmp_, ymm_dst, 1);
         if (shift_left) {
-            h->vpslld(xmm_dst, xmm_dst, static_cast<uint8_t>(imm));
-            h->vpslld(xmm_tmp_, xmm_tmp_, static_cast<uint8_t>(imm));
+            h->uni_vpslld(xmm_dst, xmm_dst, imm);
+            h->uni_vpslld(xmm_tmp_, xmm_tmp_, imm);
         } else {
-            h->vpsrld(xmm_dst, xmm_dst, static_cast<uint8_t>(imm));
-            h->vpsrld(xmm_tmp_, xmm_tmp_, static_cast<uint8_t>(imm));
+            h->uni_vpsrld(xmm_dst, xmm_dst, imm);
+            h->uni_vpsrld(xmm_tmp_, xmm_tmp_, imm);
         }
         h->vinsertf128(ymm_dst, ymm_dst, xmm_tmp_, 1);
     }
@@ -554,13 +554,11 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
     auto gather_coefficient_init = [&](Vmm vmm_pol_idx, int nelems) {
         if (is_sse41_) {
             for (int i = 0; i < XMM_float_elems_count; ++i)
-                h->pextrd(gpr_idx[i].cvt32(), vmm_pol_idx,
-                        static_cast<uint8_t>(i));
+                h->uni_vpextrd(gpr_idx[i].cvt32(), vmm_pol_idx, i);
         } else if (is_avx_) {
             Xmm xmm_pol_idx = Xmm(vmm_pol_idx.getIdx());
             for (int i = 0; i < XMM_float_elems_count; ++i)
-                h->vpextrd(gpr_idx[i].cvt32(), xmm_pol_idx,
-                        static_cast<uint8_t>(i));
+                h->uni_vpextrd(gpr_idx[i].cvt32(), xmm_pol_idx, i);
         } else if (has_avx2_ && !has_avx512_core_) {
             // Zero the mask so that the `_cmp_eq_oq` compare in
             // `gather_coefficient` yields all ones. A NaN left over in the
@@ -575,15 +573,14 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
             for (int idx = 0; idx < 4; ++idx) {
                 Xbyak::Address coeff_addr = ptr[p_table_ + coeffs_off(coeff_idx)
                         + gpr_idx[idx] * sizeof(float)];
-                h->pinsrd(vmm_coeff, coeff_addr, static_cast<uint8_t>(idx));
+                h->uni_vpinsrd(vmm_coeff, vmm_coeff, coeff_addr, idx);
             }
         } else if (is_avx_) {
             Xmm xmm_coeff = Xmm(vmm_coeff.getIdx());
             for (int idx = 0; idx < 4; ++idx) {
                 Xbyak::Address coeff_addr = ptr[p_table_ + coeffs_off(coeff_idx)
                         + gpr_idx[idx] * sizeof(float)];
-                h->vpinsrd(xmm_coeff, xmm_coeff, coeff_addr,
-                        static_cast<uint8_t>(idx));
+                h->uni_vpinsrd(xmm_coeff, xmm_coeff, coeff_addr, idx);
             }
         } else if (has_avx2_ && !has_avx512_core_) {
             Xbyak::Address idx_addr = ptr[p_table_ + coeffs_off(coeff_idx)

@@ -751,7 +751,7 @@ private:
         if (tail_size_ != 0) resample_nearest(true);
     }
 
-    static constexpr std::size_t simd_w() {
+    static constexpr int simd_w() {
         return cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
     }
 
@@ -791,7 +791,7 @@ private:
     dim_t stride_w_ = 0;
     dim_t inner_stride_ = 0;
     unsigned number_of_loops_ = 0;
-    size_t tail_size_ = 0;
+    int tail_size_ = 0;
     bool is_saturation_needed_ = false;
     unsigned stack_size_needed_ = 0;
 };

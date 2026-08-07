@@ -31,7 +31,7 @@ public:
             const prelu::bcast &bcast, const memory_desc_wrapper &tensor_md,
             const size_t number_vmm_single_compute, const char *name);
 
-    size_t simd_w() const noexcept;
+    int simd_w() const noexcept;
     prelu::bcast get_bcast() const noexcept;
 
 protected:
@@ -41,9 +41,9 @@ protected:
     size_t get_number_reserved_vmms() const noexcept;
 
     const cpu_isa_t isa_;
-    const size_t simd_w_ = 0;
+    const int simd_w_ = 0;
     const prelu::bcast bcast_ = prelu::bcast::unsupported;
-    const size_t tail_size_ = 0u;
+    const int tail_size_ = 0;
     const Xbyak::Reg64 &reg_data_size_ = r8;
     const Xbyak::Reg64 &reg_offset_ = r9;
 

@@ -236,9 +236,9 @@ protected:
     io::jit_io_multi_dt_helper_t<Vmm> io_;
     const memory_desc_wrapper src_d_, dst_d_;
     const dim_t C_;
-    const size_t simd_w_;
+    const int simd_w_;
     const dim_t axis_simd_full_;
-    const dim_t axis_simd_tail_;
+    const int axis_simd_tail_;
     const bool use_scale_ = false;
     const bool use_shift_ = false;
     const float eps_;
@@ -499,8 +499,8 @@ protected:
     const memory_desc_wrapper src_d_;
     bool compute_var_;
     const dim_t C_;
-    const size_t simd_w_;
-    const dim_t axis_simd_tail_;
+    const int simd_w_;
+    const int axis_simd_tail_;
     const dim_t unroll_c_;
     const dim_t c_block_;
     const dim_t nc_blocks_;

@@ -106,8 +106,8 @@ struct kernel_t : public jit_uni_group_normalization_fwd_t::kernel_base_t,
 
         VDEBUGINFO(1, primitive, group_normalization,
                 "%s:\n    C_=%" PRId64 "\n    C_PER_G_=%" PRId64
-                "\n    simd_w_=%zu\n    axis_simd_full_=%" PRId64
-                "\n    axis_simd_tail_=%" PRId64
+                "\n    simd_w_=%d\n    axis_simd_full_=%" PRId64
+                "\n    axis_simd_tail_=%d"
                 "\n    use_scale_=%d\n    use_shift_=%d",
                 jit_name(), C_, C_PER_G_, simd_w_, axis_simd_full_,
                 axis_simd_tail_, use_scale_, use_shift_);
@@ -247,9 +247,9 @@ protected:
     const memory_desc_wrapper src_d_, dst_d_;
     const dim_t C_;
     const dim_t C_PER_G_;
-    const size_t simd_w_;
+    const int simd_w_;
     const dim_t axis_simd_full_;
-    const dim_t axis_simd_tail_;
+    const int axis_simd_tail_;
     const bool use_scale_ = false;
     const bool use_shift_ = false;
     const float eps_;
@@ -427,7 +427,7 @@ struct kernel_stat_t
         VDEBUGINFO(1, primitive, group_normalization,
                 "%s:\n    compute_var_=%d\n    C_=%" PRId64
                 "\n    C_PER_G_=%" PRId64
-                "\n    simd_w_=%zu\n    axis_simd_tail_=%" PRId64
+                "\n    simd_w_=%d\n    axis_simd_tail_=%d"
                 "\n    unroll_c_=%" PRId64 "\n    c_block_=%" PRId64
                 "\n    nc_blocks_=%" PRId64 "\n    c_block_tail_=%" PRId64
                 "\n    unroll_c_tail_=%" PRId64,
@@ -591,8 +591,8 @@ protected:
     const dim_t C_;
     const dim_t C_PER_G_;
     const dim_t SP_;
-    const size_t simd_w_;
-    const dim_t axis_simd_tail_;
+    const int simd_w_;
+    const int axis_simd_tail_;
     static constexpr dim_t unroll_c_ = 4;
     const dim_t c_block_;
     const dim_t nc_blocks_;

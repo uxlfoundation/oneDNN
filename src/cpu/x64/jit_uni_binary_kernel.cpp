@@ -54,7 +54,7 @@ binary_kernel_t::binary_kernel_t(const size_t vlen, const binary_pd_t *pd,
     , padding_tail_size_(
               pd->src_md(0)->padded_dims[1] - pd->src_md(0)->dims[1]) {}
 
-size_t binary_kernel_t::get_tail_size() const {
+int binary_kernel_t::get_tail_size() const {
     memory_desc_wrapper src0_d(pd_->src_md(0));
     const auto &dims = src0_d.dims();
     const auto &ndims = src0_d.ndims();

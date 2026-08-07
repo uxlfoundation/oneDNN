@@ -49,18 +49,17 @@ public:
 
 class io_tail_conf_t {
 public:
-    io_tail_conf_t(const std::size_t simd_w, const std::size_t tail_size,
+    io_tail_conf_t(const int simd_w, const int tail_size,
             const Xbyak::Opmask &tail_opmask, const int tail_vmm_mask_idx,
             const Xbyak::Reg64 &reg_tmp);
-    io_tail_conf_t(const std::size_t simd_w, const std::size_t tail_size,
-            int tail_opmask_idx, const int tail_vmm_mask_idx,
-            const Xbyak::Reg64 &reg_tmp);
+    io_tail_conf_t(const int simd_w, const int tail_size, int tail_opmask_idx,
+            const int tail_vmm_mask_idx, const Xbyak::Reg64 &reg_tmp);
     io_tail_conf_t(const io_tail_conf_t &other) = default;
 
     io_tail_conf_t &operator=(const io_tail_conf_t &other) = default;
 
-    std::size_t simd_w_ = 0;
-    std::size_t tail_size_ = 0;
+    int simd_w_ = 0;
+    int tail_size_ = 0;
     Xbyak::Opmask tail_opmask_;
     int tail_vmm_mask_idx_ = 0;
     Xbyak::Reg64 reg_tmp_;
@@ -130,7 +129,7 @@ public:
 
 class io_gather_conf_t {
 public:
-    io_gather_conf_t(const std::size_t simd_w, const Xbyak::Opmask &full_opmask,
+    io_gather_conf_t(const int simd_w, const Xbyak::Opmask &full_opmask,
             const int full_vmm_mask_idx, const Xbyak::Reg64 &reg_tmp,
             const Xbyak::Reg64 &reg_tmp1,
             const utils::optional_t<int> &vmm_tmp_idx = utils::nullopt);
@@ -138,7 +137,7 @@ public:
 
     io_gather_conf_t &operator=(const io_gather_conf_t &other) = default;
 
-    std::size_t simd_w_ = 0;
+    int simd_w_ = 0;
     Xbyak::Opmask full_opmask_;
     int full_vmm_mask_idx_ = 0;
     Xbyak::Reg64 reg_tmp_;
@@ -203,11 +202,10 @@ public:
 
 private:
     bool is_data_type_supported(const data_type_t dt);
-    void prepare_opmask(const std::size_t how_many_bits_to_set,
+    void prepare_opmask(const int how_many_bits_to_set,
             const Xbyak::Reg64 &reg_tmp, const Xbyak::Opmask &mask);
-    void prepare_vmm_mask(const std::size_t how_many_bits_to_set,
-            const std::size_t simd_w, const Xbyak::Reg64 &reg_tmp,
-            const Vmm &mask);
+    void prepare_vmm_mask(const int how_many_bits_to_set, const int simd_w,
+            const Xbyak::Reg64 &reg_tmp, const Vmm &mask);
     void prepare_i8_data_to_store(const Vmm &i8_vmm);
     void prepare_xf16_data_to_store(const Vmm &vmm);
     // Emulates the behavior of vgatherdps for architectures

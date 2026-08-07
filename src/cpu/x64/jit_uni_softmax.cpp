@@ -122,7 +122,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     size_t unroll_regs_ = 4;
 
     size_t axis_simd_full_;
-    size_t axis_simd_tail_;
+    int axis_simd_tail_;
     size_t n_loops_;
     size_t loop_tail_;
     size_t process_n_elems_;
@@ -1009,7 +1009,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                                   accumulation_mode::any)))
         , use_ext_aux_vmms_(!is_logsoftmax_ && n_vregs > 16)
         , axis_simd_full_(pd_->axis_size() / simd_w_)
-        , axis_simd_tail_(pd_->axis_size() % simd_w_) {
+        , axis_simd_tail_(static_cast<int>(pd_->axis_size() % simd_w_)) {
 
         const auto &post_ops = pd_->attr()->post_ops_;
         with_postops_ = post_ops.len() != 0;
@@ -1107,7 +1107,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     size_t axis_size_unroll_tail_;
     size_t axis_stride_;
     size_t axis_simd_full_;
-    size_t axis_simd_tail_;
+    int axis_simd_tail_;
     size_t n_loops_;
     size_t loop_tail_;
     size_t src_next_vreg_stride_;
@@ -1593,7 +1593,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         // different pieces from the dense version.
         , axis_stride_(pd_->axis_stride())
         , axis_simd_full_(axis_stride_ / simd_w_)
-        , axis_simd_tail_(axis_stride_ % simd_w_) {
+        , axis_simd_tail_(static_cast<int>(axis_stride_ % simd_w_)) {
 
         // Scratchpad size is limited to a single simd_w, thus, no unrolling
         // for such cases.

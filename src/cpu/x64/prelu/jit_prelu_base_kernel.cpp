@@ -33,7 +33,7 @@ jit_prelu_base_kernel_t::jit_prelu_base_kernel_t(const cpu_isa_t &isa, int vlen,
     , tensor_md_(tensor_md)
     , number_vmm_single_compute_(number_vmm_single_compute) {}
 
-size_t jit_prelu_base_kernel_t::simd_w() const noexcept {
+int jit_prelu_base_kernel_t::simd_w() const noexcept {
     return simd_w_;
 }
 

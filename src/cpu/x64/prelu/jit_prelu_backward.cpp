@@ -164,7 +164,7 @@ status_t jit_prelu_bwd_t::execute(const exec_ctx_t &ctx) const {
 
     const auto kernel = kernel_.get();
     const auto &bcast = kernel->get_bcast();
-    const auto &simd_w = kernel->simd_w();
+    const dim_t simd_w = kernel->simd_w();
     int nthr = pd()->nthr_;
 
     if (bcast == prelu::bcast::full) {

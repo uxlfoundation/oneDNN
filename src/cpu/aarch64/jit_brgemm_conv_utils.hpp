@@ -1,6 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,14 +19,9 @@
 #define CPU_AARCH64_JIT_BRGEMM_CONV_UTILS_HPP
 
 #include "common/c_types_map.hpp"
-#include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 
-#include "cpu/aarch64/brgemm/brgemm.hpp"
 #include "cpu/aarch64/jit_primitive_conf.hpp"
-#include "cpu/cpu_convolution_pd.hpp"
-#include "cpu/cpu_engine.hpp"
-#include "cpu/platform.hpp"
 
 namespace dnnl {
 namespace impl {

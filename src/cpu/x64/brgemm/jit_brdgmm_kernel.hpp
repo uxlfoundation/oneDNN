@@ -261,17 +261,17 @@ private:
 
     bool with_binary_non_scalar_bcast_ = false;
 
-    inline int M() { return brg.bcast_dim; }
-    inline int N() { return brg.load_dim; }
+    inline dim_t M() { return brg.bcast_dim; }
+    inline dim_t N() { return brg.load_dim; }
     inline int m_block2() { return brg.bd_block2; }
-    inline int nb_m_block2() { return brg.bdb2; }
+    inline dim_t nb_m_block2() { return brg.bdb2; }
     inline int m_block2_tail() { return brg.bdb2_tail; }
 
     inline int n_block1() { return brg.ld_block; }
-    inline int nb_n_block1() { return brg.ldb; }
+    inline dim_t nb_n_block1() { return brg.ldb; }
     inline int n_block1_tail() { return brg.ldb_tail; }
     inline int n_block2() { return brg.ld_block2; }
-    inline int nb_n_block2() { return brg.ldb2; }
+    inline dim_t nb_n_block2() { return brg.ldb2; }
     inline int n_block2_tail() { return brg.ldb2_tail; }
     int tail_length() { return n_block1_tail() % simd_w_; }
 
@@ -361,10 +361,10 @@ private:
             bool has_bottom_padding, bool has_tail, int shift_a);
     void compute_loop();
     void get_batch_padding_info();
-    void get_vertical_padding_info(const int m_blocks);
-    void call_brdgmm_microkernel(const int m_blocks, const int n_blocks,
-            bool has_n_tail, int shift_a);
-    void batch_loop(const int m_blocks, const int n_blocks, bool has_n_tail);
+    void get_vertical_padding_info(int m_blocks);
+    void call_brdgmm_microkernel(
+            int m_blocks, int n_blocks, bool has_n_tail, int shift_a);
+    void batch_loop(int m_blocks, int n_blocks, bool has_n_tail);
     void cvt2ps(data_type_t type_in, const Vmm vmm_in, const Xbyak::Operand &op,
             bool mask_flag, bool store);
     void apply_post_ops(int m_blocks, int n_blocks, bool has_n_tail);
@@ -378,25 +378,25 @@ private:
     void store_accumulators_apply_post_ops(
             int m_blocks, int n_blocks, bool has_n_tail);
     bool check_effective_padding() { return has_vpad_ && M() > m_block2(); }
-    int oc_logical_offset(int n) { return n * n_block1(); }
-    int A_offset(int m, int n) {
+    dim_t oc_logical_offset(dim_t n) { return n * n_block1(); }
+    dim_t A_offset(int m, dim_t n) {
         return brg.typesize_A * (m * brg.LDA + n * n_block1());
     }
-    int B_offset(int n) { return brg.typesize_B * n * n_block1(); }
-    int C_offset(int m, int n, int v) {
+    dim_t B_offset(dim_t n) { return brg.typesize_B * n * n_block1(); }
+    dim_t C_offset(int m, dim_t n, int v) {
         return brg.typesize_C * (m * brg.LDC + n * n_block1() + v * simd_w_);
     }
-    int D_offset(int m, int n, int v) {
+    dim_t D_offset(int m, dim_t n, int v) {
         return brg.typesize_D * (m * brg.LDD + n * n_block1() + v * simd_w_);
     }
-    int bias_offset(int n, int v) {
+    dim_t bias_offset(dim_t n, int v) {
         return brg.typesize_bias * (n * n_block1() + v * simd_w_);
     }
-    int wei_scales_offset(int n, int v) {
-        return sizeof(float) * brg.is_per_n_wei_scales
+    dim_t wei_scales_offset(dim_t n, int v) {
+        return static_cast<dim_t>(sizeof(float)) * brg.is_per_n_wei_scales
                 * (n * n_block1() + v * simd_w_);
     }
-    size_t comp_offset(int n) { return sizeof(int32_t) * n * n_block1(); }
+    dim_t comp_offset(dim_t n) { return sizeof(int32_t) * n * n_block1(); }
 
     void generate() override;
 };

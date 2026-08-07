@@ -652,7 +652,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
     for (int n = 0; n < n_blocks; n++) {
         const int substep_simd = get_substep_simd(n, v_i, has_n_tail);
         if (substep_simd <= 0) continue;
-        const size_t offset = comp_offset(n);
+        const dim_t offset = comp_offset(n);
         if (brg.req_s8s8_compensation) {
             const Vmm vmm_comp = vmm_s8s8_comp();
             uni_vmovups(vmm_comp,
@@ -844,7 +844,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
             const Vmm vmm_zp = isa_has_masks(brg.isa_impl)
                     ? maybe_mask(vmm_zp_comp(), is_tail_block, false)
                     : vmm_zp_comp();
-            const size_t offset = comp_offset(n);
+            const dim_t offset = comp_offset(n);
             if (IMPLICATION(is_tail_block, isa_has_masks(brg.isa_impl))) {
                 if (is_src_zp_bcast_) {
                     if (is_superset(brg.isa_impl, avx512_core))
@@ -1127,8 +1127,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(
-        const int m_blocks) {
+void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(int m_blocks) {
     const bool do_check_effective_padding = check_effective_padding();
     Label no_top_padding;
 
@@ -1136,7 +1135,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(
         if (do_check_effective_padding) {
             Label done_adjust_bottom_padding;
             mov(reg_aux_A_vpad_bottom, reg_aux_M);
-            add(reg_aux_A_vpad_bottom, m_blocks - M());
+            sub(reg_aux_A_vpad_bottom, M() - m_blocks);
             add(reg_aux_A_vpad_bottom,
                     ptr[reg_aux_batch_addr
                             + GET_OFF_BATCH_ELEMENT(vvpad.bottom)]);
@@ -1177,7 +1176,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::get_batch_padding_info() {
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::vertical_pad_kernel(
-        const int m_blocks, const int n_blocks, bool has_n_tail) {
+        int m_blocks, int n_blocks, bool has_n_tail) {
     const int tpad = brg.brgattr.max_top_vpad;
     const int bpad = brg.brgattr.max_bottom_vpad;
     if (tpad > 0) {
@@ -1206,7 +1205,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::vertical_pad_kernel(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::call_brdgmm_microkernel(
-        const int m_blocks, const int n_blocks, bool has_n_tail, int shift_a) {
+        int m_blocks, int n_blocks, bool has_n_tail, int shift_a) {
 
     // padding for vertical dimensions
     const int tpad = brg.brgattr.max_top_vpad;
@@ -1236,7 +1235,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::call_brdgmm_microkernel(
 
 template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::batch_loop(
-        const int m_blocks, const int n_blocks, bool has_n_tail) {
+        int m_blocks, int n_blocks, bool has_n_tail) {
 
     Label bs_loop_label, done_bs_loop;
     load_accumulators(m_blocks, n_blocks);
@@ -1282,14 +1281,14 @@ template <typename Wmm>
 void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
 
     const bool has_m_block2_tail = m_block2_tail() > 0;
-    const int loop_m = (nb_m_block2() - has_m_block2_tail);
+    const dim_t loop_m = nb_m_block2() - has_m_block2_tail;
     const bool do_loop_m = loop_m > 1;
 
     const bool has_n_block2_tail = n_block2_tail() > 0;
     const bool need_separate_n_block1_tail_block = n_block1_tail() != 0
             && !has_n_block2_tail && nb_n_block2() > 1
             && !isa_has_masks(brg.isa_impl);
-    const int loop_n = nb_n_block2() - has_n_block2_tail
+    const dim_t loop_n = nb_n_block2() - has_n_block2_tail
             - need_separate_n_block1_tail_block;
     const bool do_loop_n = loop_n > 1;
     const bool loop_n_update_aux_ptrs = do_loop_n || (loop_n < nb_n_block2());
@@ -1297,8 +1296,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
     auto n_loop = [&](int m_blocks) {
         Label n_loop_label;
         const int n_blocks = n_block2();
-        const int n_loop_step = oc_logical_offset(n_blocks);
-        const int n_loop_work = loop_n * n_blocks * n_block1();
+        const dim_t n_loop_step = oc_logical_offset(n_blocks);
+        const dim_t n_loop_work = loop_n * n_blocks * n_block1();
         const bool vlen_tail_in_loop = n_block1_tail() != 0
                 && !need_separate_n_block1_tail_block && !has_n_block2_tail;
 
@@ -1360,7 +1359,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
 
             if (do_loop_m || has_m_block2_tail) {
                 add(reg_aux_M, m_blocks);
-                const int n_loop_offset
+                const dim_t n_loop_offset
                         = loop_n_update_aux_ptrs * loop_n * n_block2();
                 add(reg_a_offset, A_offset(m_blocks, -n_loop_offset));
                 reg_aux_C.restore();

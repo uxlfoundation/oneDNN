@@ -232,7 +232,7 @@ struct brgemm_matmul_conf_t {
     // were changed.
     bool adjust_a_strides = false;
 
-    int wsp_tile_per_thr_bytes;
+    dim_t wsp_tile_per_thr_bytes;
     int brgemm_batch_element_per_thr_sz;
     bool is_amx;
 

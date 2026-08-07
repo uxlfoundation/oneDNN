@@ -46,11 +46,12 @@ struct jit_brgemm_primitive_conf_t {
     bool with_eltwise;
     bool with_binary;
     bool req_s8s8_compensation;
-    int nb_ic, ic_block, ic_block_ext;
-    int nb_oc, oc_block, oc_block_ext;
-    int nb_iw, iw_block;
-    int nb_ow, ow_block;
-    int nb_os, os_block;
+    dim_t nb_ic, nb_oc, nb_iw, nb_ow, nb_os;
+    int ic_block, ic_block_ext;
+    int oc_block, oc_block_ext;
+    int iw_block;
+    int ow_block;
+    int os_block;
     int nb_oc_blocking;
     int nb_ic_blocking;
     int nb_os_blocking;
@@ -72,9 +73,9 @@ struct jit_brgemm_primitive_conf_t {
     bool with_dst_scales;
     int is_oc_scale;
 
-    int LDA, LDB, LDC, LDD;
-    int M, N, K, M_tail, N_tail, K_tail;
-    int gemm_batch_size, adjusted_batch_size;
+    dim_t LDA, LDB, LDC, LDD;
+    dim_t M, N, K, M_tail, N_tail, K_tail;
+    dim_t gemm_batch_size, adjusted_batch_size;
     brgemm_batch_kind_t brg_type;
     int num_gemm_kernels;
     int nthr, nthr_mb, nthr_oc_b, nthr_ic_b;
@@ -82,7 +83,7 @@ struct jit_brgemm_primitive_conf_t {
     cpu_isa_t isa;
     bool use_uker;
     bool use_interleave_stores;
-    int amx_buf_size_per_thread;
+    dim_t amx_buf_size_per_thread;
     brgemm_kernel_prefetching_t hint_prefetching
             = brgemm_kernel_prefetching_t::brgemm_prf_default;
 

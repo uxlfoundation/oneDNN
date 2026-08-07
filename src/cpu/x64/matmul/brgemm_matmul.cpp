@@ -528,7 +528,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
         // are applied because that is what can_dispatch_uker() reads.
         assert(IMPLICATION(bgmmc_.is_c_buf_dst_dt, brg.can_dispatch_uker()));
 
-        bgmmc_.wsp_tile_per_thr_bytes = nstl::max(
+        bgmmc_.wsp_tile_per_thr_bytes = nstl::max<dim_t>(
                 brg.get_wsp_buffer_size(), bgmmc_.wsp_tile_per_thr_bytes);
     }
 

@@ -1,0 +1,67 @@
+# *******************************************************************************
+# Copyright 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# *******************************************************************************
+
+name: "Dispatch test_pt"
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions: read-all
+
+jobs:
+  dispatch_test_pt:
+    name: dispatch_test_pt
+    if: github.event.issue.pull_request && contains(github.event.comment.body, 'make test_pt')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check collaborator permission
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: context.payload.comment.user.login,
+            });
+            if (!['admin', 'write'].includes(data.permission)) {
+              core.setFailed('User does not have write access');
+            }
+
+      - name: Get PR details
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            core.setOutput('number', pr.number);
+            core.setOutput('head_sha', pr.head.sha);
+            core.setOutput('base_sha', pr.base.sha);
+            core.setOutput('head_ref', pr.head.ref);
+            core.setOutput('base_ref', pr.base.ref);
+
+      - name: Repository Dispatch
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.PT_DISPATCH_TOKEN }}
+          repository: intel/torch-xpu-ops
+          event-type: onednn-test-pt
+          client-payload: '{"pr_number": "${{ steps.pr.outputs.number }}", "head_sha": "${{ steps.pr.outputs.head_sha }}", "base_sha": "${{ steps.pr.outputs.base_sha }}", "head_ref": "${{ steps.pr.outputs.head_ref }}", "base_ref": "${{ steps.pr.outputs.base_ref }}", "repo": "${{ github.repository }}"}'

@@ -145,3 +145,7 @@
 --batch=harness_matmul_precomp_reductions
 
 --batch=harness_matmul_sparse
+
+# u3 weights decompression
+--reset
+--batch=harness_matmul_decompression_u3

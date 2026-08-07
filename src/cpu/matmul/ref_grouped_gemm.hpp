@@ -85,7 +85,7 @@ struct ref_grouped_t : public primitive_t {
             const bool is_fp_wei = utils::one_of(
                     wei_type, f32, bf16, f16, f8_e5m2, f8_e4m3, f4_e2m1);
             const bool is_int_src = utils::one_of(src_type, u8, s8);
-            const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4);
+            const bool is_int_wei = utils::one_of(wei_type, u8, s8, s4, u4, u3);
 
             // Supported configurations: fp src + int wei (weight-only quantization),
             // int src + int wei, fp src + fp wei
@@ -188,7 +188,7 @@ struct ref_grouped_t : public primitive_t {
                 VDISPATCH_MATMUL(is_int_wei, VERBOSE_UNSUPPORTED_ZP_CFG);
                 VDISPATCH_MATMUL(
                         utils::one_of(attr_zps.get_data_type(DNNL_ARG_WEIGHTS),
-                                u8, s8, u4, s4, s32),
+                                u8, s8, u4, s4, u3, s32),
                         VERBOSE_UNSUPPORTED_ZP_CFG);
                 const int zp_mask = attr_zps.get_mask(DNNL_ARG_WEIGHTS);
                 const int colwise_mask = wei_qmask_N();

@@ -86,6 +86,10 @@ template <>
 struct prec_traits<dnnl_u4> {
     using type = dnnl::impl::uint4_t;
 };
+template <>
+struct prec_traits<dnnl_u3> {
+    using type = dnnl::impl::uint3_t;
+};
 #define CASE_ALL(dt) \
     switch (dt) { \
         CASE(dnnl_f4_e2m1); \
@@ -101,6 +105,7 @@ struct prec_traits<dnnl_u4> {
         CASE(dnnl_u8); \
         CASE(dnnl_s4); \
         CASE(dnnl_u4); \
+        CASE(dnnl_u3); \
         default: assert(!"bad data_type"); SAFE_V(FAIL); \
     }
 
@@ -168,7 +173,7 @@ float saturate_and_round(float value) {
 
 bool is_integral_dt(dnnl_data_type_t dt) {
     return dt == dnnl_s32 || dt == dnnl_s8 || dt == dnnl_u8 || dt == dnnl_s4
-            || dt == dnnl_u4;
+            || dt == dnnl_u4 || dt == dnnl_u3;
 }
 
 template <dnnl_data_type_t dt>
@@ -207,7 +212,8 @@ float round_to_nearest_representable_templ(float value) {
         case dnnl_s8:
         case dnnl_u8:
         case dnnl_s4:
-        case dnnl_u4: value = maybe_saturate_templ<dt>(value); break;
+        case dnnl_u4:
+        case dnnl_u3: value = maybe_saturate_templ<dt>(value); break;
         default: SAFE_V(FAIL);
     }
 
@@ -226,7 +232,8 @@ float round_to_nearest_representable(dnnl_data_type_t dt, float value) {
 #undef CASE_ALL
 
 bool is_subbyte_type(dnnl_data_type_t type) {
-    return type == dnnl_f4_e2m1 || type == dnnl_u4 || type == dnnl_s4;
+    return type == dnnl_f4_e2m1 || type == dnnl_u4 || type == dnnl_s4
+            || type == dnnl_u3;
 }
 
 size_t bits_dt(dnnl_data_type_t dt) {
@@ -245,6 +252,7 @@ size_t bits_dt(dnnl_data_type_t dt) {
         case dnnl_f4_e2m1:
         case dnnl_s4:
         case dnnl_u4: return 4;
+        case dnnl_u3: return 3;
         case dnnl_boolean: return 1;
         default: assert(!"unsupported data type"); SAFE_V(FAIL);
     }
@@ -291,6 +299,10 @@ float get_element(dnnl_data_type_t dt, int64_t idx, void *ptr) {
             elem = dnnl::impl::float4_e2m1_t(nibble_pair.get(idx % 2));
             break;
         }
+        case dnnl_u3:
+            elem = dnnl::impl::uint3_t(dnnl::impl::uint3_unpack(
+                    reinterpret_cast<uint8_t *>(ptr), idx));
+            break;
         default: assert(!"bad data type");
     }
 #undef CASE
@@ -332,6 +344,10 @@ void set_element(dnnl_data_type_t dt, int64_t idx, void *ptr, float value) {
             ((dnnl::impl::nibble2_t *)ptr)[idx / 2] = dst_val;
             break;
         }
+        case dnnl_u3:
+            dnnl::impl::uint3_pack(reinterpret_cast<uint8_t *>(ptr), idx,
+                    dnnl::impl::uint3_t(value).raw_bits_);
+            break;
         default: assert(!"bad data type");
     }
 #undef CASE

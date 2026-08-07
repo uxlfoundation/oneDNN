@@ -1,0 +1,73 @@
+--reset
+--dt=f16,bf16
+--activation=swish,gelu_erf,gelu_tanh
+--batch=shapes_basic
+
+--reset
+--dt=f16,bf16
+--batch=shapes_llm
+
+# Quantized weights: u4 with grouped scales (group_size=128)
+--reset
+--dt=f16:u4:u4:u4:f16
+--stag=ab
+--wtag=ba
+--dtag=ab
+--attr-fpmath=any:true
+--attr-scales=wei:per_dim_01:f16:128x1+wei_up:per_dim_01:f16:128x1+wei_down:per_dim_01:f16:128x1
+64x128x4864
+64x896x4864
+
+# Quantized weights: u4 with grouped scales and zero-points (group_size=128)
+--reset
+--dt=f16:u4:u4:u4:f16
+--stag=ab
+--wtag=ba
+--dtag=ab
+--attr-fpmath=any:true
+--attr-scales=wei:per_dim_01:f16:128x1+wei_up:per_dim_01:f16:128x1+wei_down:per_dim_01:f16:128x1
+--attr-zero-points=wei:per_dim_01:s4:128x1+wei_up:per_dim_01:s4:128x1+wei_down:per_dim_01:s4:128x1
+64x128x4864
+64x896x4864
+
+# Quantized bf16 weights: exercises abs_trh with bf16 epsilon (larger tolerance)
+--reset
+--dt=bf16:u4:u4:u4:bf16
+--stag=ab
+--wtag=ba
+--dtag=ab
+--attr-fpmath=any:true
+--attr-scales=wei:per_dim_01:bf16:128x1+wei_up:per_dim_01:bf16:128x1+wei_down:per_dim_01:bf16:128x1
+64x128x4864
+
+# INT8 SRC with per-tensor SRC scale and quantized weights
+--reset
+--dt=s8:u4:u4:u4:f16
+--stag=ab
+--wtag=ba
+--dtag=ab
+--attr-fpmath=any:true
+--attr-scales=src:common:0.125+wei:per_dim_01:f16:128x1+wei_up:per_dim_01:f16:128x1+wei_down:per_dim_01:f16:128x1
+64x128x4864
+64x256x4864
+
+# INT8 SRC without SRC scale (coeff applied through WEI gate/up scales)
+--reset
+--dt=s8:u4:u4:u4:f16
+--stag=ab
+--wtag=ba
+--dtag=ab
+--attr-fpmath=any:true
+--attr-scales=wei:per_dim_01:f16:128x1+wei_up:per_dim_01:f16:128x1+wei_down:per_dim_01:f16:128x1
+64x128x4864
+
+# Binary post-ops on the down matmul
+--reset
+--dt=f16:u4:u4:u4:f16
+--stag=ab
+--wtag=ba
+--dtag=ab
+--attr-fpmath=any:true
+--attr-scales=wei:per_dim_01:f16:128x1+wei_up:per_dim_01:f16:128x1+wei_down:per_dim_01:f16:128x1
+--attr-post-ops=binary_add:f16:2:ab
+64x128x4864

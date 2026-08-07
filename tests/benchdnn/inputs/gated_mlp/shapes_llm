@@ -1,0 +1,8 @@
+# LLM GatedMLP shapes for GPU testing.
+# Format: MBxICxOC
+
+# Exemplary LLM shapes
+1024x3584x18944
+1024x896x4864
+1024x4096x14336
+1024x4096x27392

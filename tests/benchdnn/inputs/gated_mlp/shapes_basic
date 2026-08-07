@@ -1,0 +1,14 @@
+# Basic GatedMLP shapes for smoke and CI testing.
+# Format: MBxICxOC
+
+# Small
+32x32x32
+64x64x128
+
+# Medium
+128x256x512
+256x512x1024
+
+# LLM-like (from internal test suite)
+32x128x32
+64x896x4864

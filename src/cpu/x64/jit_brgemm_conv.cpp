@@ -324,8 +324,8 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
     CHECK(brgemm_desc_set_postops(&brg, attr(), &dst_md_, LDD, jcp_.bia_dt));
     CHECK(brgemm_desc_finalize(&brg));
 
-    jcp_.amx_buf_size_per_thread = nstl::max(
-            brg.get_wsp_buffer_size(), jcp_.amx_buf_size_per_thread);
+    jcp_.amx_buf_size_per_thread = static_cast<int>(nstl::max<dim_t>(
+            brg.get_wsp_buffer_size(), jcp_.amx_buf_size_per_thread));
 
     brg_idx = brgemm_descriptors_->insert(brg, bd_mask, stoffs);
 
@@ -950,7 +950,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         ajcp.nb_ic_int = 1;
         ajcp.is_nspc = true;
         ajcp.is_bf32 = jcp.is_bf32;
-        ajcp.typesize_in = jcp.src_dsz;
+        ajcp.typesize_in = static_cast<int>(jcp.src_dsz);
         ajcp.ic_block_int = jcp.amx_w;
 
         ajcp.src_dt = jcp.src_dt;
@@ -1164,10 +1164,10 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 
     if (jcp.req_cal_comp_pad && jcp.exec_type != exec_vpad) {
         comp_owb.resize(jcp.nb_ow, -1);
-        std::vector<int> ow_kw_b(jcp.ow, -1);
-        std::vector<int> ow_kw_e(jcp.ow, -1);
-        std::vector<int> comp_ow_kw_s(jcp.comp_ow_size, -1);
-        std::vector<int> comp_ow_kw_f(jcp.comp_ow_size, -1);
+        std::vector<dim_t> ow_kw_b(jcp.ow, -1);
+        std::vector<dim_t> ow_kw_e(jcp.ow, -1);
+        std::vector<dim_t> comp_ow_kw_s(jcp.comp_ow_size, -1);
+        std::vector<dim_t> comp_ow_kw_f(jcp.comp_ow_size, -1);
         dim_t comp_ow_l = 0;
 
         for (int ow = 0; ow < OW;) {

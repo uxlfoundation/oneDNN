@@ -157,24 +157,35 @@ inline void apply_post_ops_chain(ugemm_grouped_c_type *c_tile, long n, long m, l
                     to_ocl_float(e.eltwise.alpha).c_str(), i, i);
         } else if (e.is_binary()) {
             if (po_chain[i] == po_kind_t::binary_grouped_scale) {
-                s += utils::format(R"(
-#define CONCAT_I(var) var##_%d
-    const global BINARY_SCALE_GROUPED_TILE_DATA_T *group_scale_ptr = grouped_scale + src_offset * lddst;
-
-    ugemm_grouped_c_type CONCAT_I(binary_group_tile);
+                s += R"(
+    {
+        const global BINARY_SCALE_GROUPED_TILE_DATA_T *group_scale_ptr
+                = grouped_scale + src_offset * lddst;
+#define GRP_BC ugemm_grouped_c_type_block1
+#define GRP_NBR ugemm_grouped_c_type_nblock0
+#define GRP_NBC ugemm_grouped_c_type_nblock1
+#pragma unroll
+        for (int gcb = 0; gcb < GRP_NBC; gcb++) {
+            binary_group_chunk_type binary_group_chunk;
 #if BINARY_SCALE_GROUPED_DT_F32
-    tile_load(&CONCAT_I(binary_group_tile), group_scale_ptr, n, m, lddst, sg_i0, sg_j0);
+            tile_load(&binary_group_chunk, group_scale_ptr, n, m, lddst, sg_i0,
+                    sg_j0 + gcb * GRP_BC);
 #else
-    binary_group_in_tile_type CONCAT_I(binary_group_in_tile);
-    tile_load(&CONCAT_I(binary_group_in_tile), group_scale_ptr, n, m, lddst, sg_i0, sg_j0);
-    tile_convert(CONCAT_I(binary_group_in_tile), CONCAT_I(binary_group_tile), BINARY_SCALE_GROUPED_TO_FLOAT);
+            binary_group_chunk_in_type binary_group_chunk_in;
+            tile_load(&binary_group_chunk_in, group_scale_ptr, n, m, lddst,
+                    sg_i0, sg_j0 + gcb * GRP_BC);
+            tile_convert(binary_group_chunk_in, binary_group_chunk,
+                    BINARY_SCALE_GROUPED_TO_FLOAT);
 #endif
-#define binary_mul_%d(a, b) ((a) * (b))
-    tile_binary((*c_tile), CONCAT_I(binary_group_tile), CONCAT_I(binary_mul));
-#undef binary_mul_%d
-#undef CONCAT_I
-                         )",
-                        i, i, i);
+#pragma unroll
+            for (int gbb = 0; gbb < GRP_NBR; gbb++)
+                (*c_tile).x[GRP_NBR * gcb + gbb] *= binary_group_chunk.x[gbb];
+        }
+#undef GRP_BC
+#undef GRP_NBR
+#undef GRP_NBC
+    }
+                         )";
             } else if (po_chain[i] == po_kind_t::binary_dense_scale) {
                 s += utils::format(
                         R"(

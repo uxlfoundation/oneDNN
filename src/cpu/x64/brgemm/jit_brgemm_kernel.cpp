@@ -3181,8 +3181,11 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (one_of(dt, data_type::f8_e5m2, data_type::f8_e4m3)) {
                 if (brg.fp8_with_f16_vnni_block) {
-                    vpbroadcastw(vmm_bcast, ptr[reg_aux_A + offset]);
-                    fp8_to_f16_upconvert(dt, vmm_bcast, vmm_bcast);
+                    reg_buf_A.restore();
+                    const auto buf_offset = buf_A_offset(bd, rd);
+                    uni_vpbroadcastd(vmm_bcast, ptr[reg_buf_A + buf_offset]);
+                    //vpbroadcastw(vmm_bcast, ptr[reg_aux_A + offset]);
+                    //fp8_to_f16_upconvert(dt, vmm_bcast, vmm_bcast);
                 } else
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (dt == data_type::f16) {

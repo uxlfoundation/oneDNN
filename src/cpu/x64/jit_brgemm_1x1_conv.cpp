@@ -230,8 +230,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init_brgemm_desc() {
                 &brg, attr(), &dst_md_, LDD, jcp_.bia_dt));
         CHECK(brgemm_desc_finalize(&brg));
 
-        jcp_.amx_buf_size_per_thread = nstl::max(
-                brg.get_wsp_buffer_size(), jcp_.amx_buf_size_per_thread);
+        jcp_.amx_buf_size_per_thread = static_cast<int>(nstl::max<dim_t>(
+                brg.get_wsp_buffer_size(), jcp_.amx_buf_size_per_thread));
         brgs_->insert(brg_idx, brg);
     }
     return status::success;

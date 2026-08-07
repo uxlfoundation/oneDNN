@@ -64,7 +64,9 @@ protected:
         return utils::one_of(
                 data_type(), data_type::f8_e5m2, data_type::f8_e4m3);
     }
-    int dtype_size() const { return types::data_type_size(data_type()); }
+    int dtype_size() const {
+        return static_cast<int>(types::data_type_size(data_type()));
+    }
     cpu_isa_t get_io_isa(cpu_isa_t isa) const {
         // reusing avx512_core instantiation for bf16
         return is_bf16() && is_superset(isa, avx512_core)

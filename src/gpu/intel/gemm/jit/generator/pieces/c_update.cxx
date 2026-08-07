@@ -113,6 +113,9 @@ bool Generator<hw>::gemmUpdateC(GEMMProblem &problem, GEMMStrategy &strategy, GE
     if (!gemmAccessC(COperation::UpdateStore, problem, strategy, state))
         return false;
 
+    // Compute MX scales if required.
+    gemmApplyMXScale(problem, strategy, state);
+
     // Postop cleanup.
     if (useEltwiseInjector(problem)) {
         postOpInjector.reset();

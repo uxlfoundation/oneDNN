@@ -844,7 +844,7 @@ struct jit_brgemm_conv_conf_t {
 
     int max_batch;
     int max_vpad;
-    int amx_buf_size_per_thread;
+    dim_t amx_buf_size_per_thread;
 
     bool wei_plain;
     bool is_rd_padded_to_block {false}, is_rd_padded_to_vnni {false},

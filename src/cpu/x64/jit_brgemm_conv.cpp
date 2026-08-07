@@ -322,7 +322,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
     CHECK(brgemm_desc_set_postops(&brg, attr(), &dst_md_, LDD, jcp_.bia_dt));
     CHECK(brgemm_desc_finalize(&brg));
 
-    jcp_.amx_buf_size_per_thread = nstl::max(
+    jcp_.amx_buf_size_per_thread = nstl::max<dim_t>(
             brg.get_wsp_buffer_size(), jcp_.amx_buf_size_per_thread);
 
     brg_idx = brgemm_descriptors_->insert(brg, bd_mask, stoffs);
@@ -949,7 +949,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         ajcp.is_nspc = true;
         ajcp.is_bf32 = jcp.is_bf32;
         ajcp.is_tf32 = jcp.is_tf32;
-        ajcp.typesize_in = jcp.src_dsz;
+        ajcp.typesize_in = static_cast<int>(jcp.src_dsz);
         ajcp.ic_block_int = jcp.amx_w;
 
         ajcp.src_dt = jcp.src_dt;

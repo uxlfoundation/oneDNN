@@ -266,13 +266,13 @@ inline status_t init_tag(format_tag_t &tag, memory_desc_t &md,
 }
 
 bool is_amx(cpu_isa_t isa) {
-    return is_superset(isa, avx512_core_amx);
+    // Tile accumulators drive blocking and kernel choice; ACE uses them too.
+    return isa_has_tile_accumulators(isa);
 }
 
 bool uses_batch_elements(
         brgemm_batch_kind_t brg_type, conv_brgemm_exec_type_t exec_type) {
-    // Batch elements are required for all batch kinds except fixed strides.
-    // Batch elements are also required for virtual padding.
+    // Batch elements are required except for fixed-stride batches and virtual padding.
     return IMPLICATION(brg_type == brgemm_strd, exec_type == exec_vpad);
 }
 
@@ -292,11 +292,9 @@ bool post_ops_ok(jit_brgemm_conv_conf_t &jcp, primitive_attr_t &attr,
 }
 
 bool is_groups_ok(jit_brgemm_conv_conf_t &jcp) {
-    // Enable grouped convs for the shapes not supported in direct convs
-    // direct approach only supports int8/bf16 grouped conv
-    // when channels per groups is at least multiple of 4
-    // and bf16 grouped conv with layout nxc on jit_bf16 impl
-    // TODO: remove this condition after the restriction on small ic is removed
+    // Grouped convs are allowed where direct convs reject them.
+    // This is limited to int8/bf16 groups with IC/OC multiples of 4.
+    // TODO: drop this once the small-IC restriction is removed.
     return jcp.ngroups > 1
             && IMPLICATION(one_of(jcp.src_dt, u8, s8, bf16),
                     jcp.ic % 4 == 0 && jcp.oc % 4 == 0);
@@ -668,6 +666,8 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
             : 0;
     brgattr.max_top_vpad = max_vpad;
     brgattr.max_bottom_vpad = max_vpad;
+    brgattr.use_ace = is_ace;
+    brgattr.use_uker = use_uker;
     CHECK(brgemm_desc_set_attr(&brg, brgattr));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     // AMX kernel may fall back to VMM, in which case bd_block2 == 0
@@ -686,6 +686,8 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
                     ? brgemm_broadcast_t::per_tensor
                     : brgemm_broadcast_t::none;
         }
+        brgattr.use_ace = is_ace;
+        brgattr.use_uker = use_uker;
         CHECK(brgemm_desc_set_attr(&brg_sp_tail, brgattr));
         CHECK(brgemm_utils::brgemm_blocking(&brg_sp_tail));
         ur_block_tail = brg_sp_tail.bd_block;
@@ -774,6 +776,8 @@ status_t brg_blocking_t::get_brgemm_ur(
         brgattr.max_top_vpad = max_vpad;
         brgattr.max_bottom_vpad = max_vpad;
         brgattr.fpmath_mode = attr->fpmath_.mode_;
+        brgattr.use_ace = is_ace;
+        brgattr.use_uker = use_uker;
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
 
         brg.with_sum = with_sum;
@@ -1322,9 +1326,15 @@ bool brg_blocking_t::fast_check_oc_block_1x1() const {
 float brg_blocking_t::est_eff_1x1() {
 
     auto calc_ave_blk = [&](dim_t dim, dim_t block, bool use_ave) -> float {
+        if (block <= 0) return 0.f;
         const dim_t nb = dim / block;
-        constexpr int max_nb = 2; // only consider 2x2 tile blocking
+        // only consider 2x2 tile blocking
+        // TODO: ACE selects bd_block2/ld_block2 by search (ld_block2 can
+        // reach 6 or 8), so this estimate does not model ACE blocking
+        // correctly.
+        constexpr int max_nb = 2;
         const dim_t block2 = nstl::min<dim_t>(max_nb, nb);
+        if (block2 == 0) return 0.f;
         const dim_t nb2 = nb / block2;
         const dim_t nb2_tail = nb % block2;
         if (!use_ave) return static_cast<float>(block2);
@@ -1339,6 +1349,7 @@ float brg_blocking_t::est_eff_1x1() {
     const auto M_n_sp_blks = ur_block > 0 ? nstl::max(M, M_tail) / ur_block : 0;
     const auto M_tail_n_sp_blks
             = ur_block_tail > 0 ? M_tail / ur_block_tail : 0;
+    const auto n_sp_blks = nstl::max<dim_t>(1, M_n_sp_blks + M_tail_n_sp_blks);
 
     // heuristic for maskrcnn workaround: use old blocking for some convolutions
     // TODO: remove this condition
@@ -1347,9 +1358,9 @@ float brg_blocking_t::est_eff_1x1() {
             || (ic == 512 && oc == 1024) || (ic == 512 && oc == 2048);
     const auto amx_fac = maskrcnn_cond
             ? (static_cast<float>(div_up(M + M_tail, 16))
-                      / static_cast<float>(M_n_sp_blks + M_tail_n_sp_blks))
+                      / static_cast<float>(n_sp_blks))
             : (static_cast<float>(div_up(M + M_tail, 16))
-                      / static_cast<float>(M_n_sp_blks + M_tail_n_sp_blks));
+                      / static_cast<float>(n_sp_blks));
 
     const auto brgemm_microkernel_eff = is_amx(isa)
             ? amx_fac * (static_cast<float>(ocb_ave) * spb_ave)
@@ -1360,7 +1371,7 @@ float brg_blocking_t::est_eff_1x1() {
             / static_cast<float>(rnd_up(sp_block, ur));
 
     // heuristic sp_block: for reduced rtus, prioritize a smaller sp_block
-    const auto heur_sp_block = is_reduced_rtus
+    const auto heur_sp_block = is_reduced_rtus && sp_block != 0
             ? 1.f / static_cast<float>(sp_block)
             : static_cast<float>(sp_block);
     const auto brgemm_eff = squeeze_val(static_cast<float>(ur)
@@ -1569,12 +1580,12 @@ void brg_blocking_t::calc_blocks_1x1() {
     is_rtus = is_ic_zero_padded || (!is_os_blocking_ok && is_amx(isa));
     const bool is_int8_convolution = everyone_is(true, one_of(src_dt, u8, s8),
             wei_dt == s8, one_of(dst_dt, f32, s32, s8, u8, bf16));
-    // reduced_rtus zero-pads the input-channel when IC is not in a
-    // vnni-friendly block size. It decreases the footprint of RTUS by using a
-    // reduced copy-buffer size i.e. it is only used for the last os_spatial
-    // block and the last ic_channel computation of size '16 * vnni_block'.
+    // reduced_rtus shrinks the RTUS copy buffer for the last OS/IC block.
+    // It assumes non-grouped layout and AMX tile geometry; ACE loads A via ZMMs,
+    // so the AMX assumption is invalid and we must fall back to regular RTUS.
     is_reduced_rtus = is_rtus && is_int8_convolution && ic > ic_without_padding
-            && everyone_is(1, stride_d, stride_h, stride_w);
+            && everyone_is(1, stride_d, stride_h, stride_w) && ngroups == 1
+            && !is_ace;
 
     if (is_os_blocking_ok || is_rtus) {
         sp = os;
@@ -1593,7 +1604,7 @@ void brg_blocking_t::calc_blocks_1x1() {
     const auto thr_eff_threshold = 0.9f;
 
     const auto max_sp_block_L2 = os;
-    // TODO: nb_os_blocking always is 1 for now. Update this code
+    // TODO: nb_os_blocking is currently hard-coded to 1.
     nb_os_blocking = 1;
     dim_t start_sp_block = 0;
 
@@ -1817,10 +1828,15 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     if (jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
 
-    const auto vnni_dt = jcp.prop_kind == prop_kind::backward_weights
-            ? jcp.dst_dt
+    const bool is_bwd_w = jcp.prop_kind == prop_kind::backward_weights;
+
+    const auto vnni_dt = is_bwd_w                                  ? jcp.dst_dt
             : utils::one_of(true, jcp.is_f32_bf16, jcp.is_f32_f16) ? jcp.src_dt
                                                                    : jcp.wei_dt;
+    jcp.is_ace = is_superset(isa, avx10_2_ace)
+            && brgemm_utils::ace_dt_ok(
+                    jcp.src_dt, is_bwd_w ? jcp.dst_dt : jcp.wei_dt);
+
     const bool req_emulation = utils::one_of(isa, avx10_1_512, avx10_2);
     const data_type_t vnni_block_dt
             = get_mac_emu_data_type(vnni_dt, isa, req_emulation);
@@ -2575,6 +2591,15 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         const bool use_loop_ngcdhw = max_size < static_cast<float>(wei_size)
                 || (jcp.mb == 1 && os < os_cutoff);
         jcp.loop_order = use_loop_ngcdhw ? loop_ngcdhw : loop_ndhwgc;
+
+        // The blocking search below dispatches on both flags, so for ACE they
+        // have to be set before the search rather than after it.
+        if (jcp.is_ace) {
+            jcp.use_uker = brgemm_utils::ace_prefer_uker();
+            // The unrolled kernel already disables interleaved stores on ACE,
+            // setting it here keeps the blocking search on the same value.
+            jcp.use_interleave_stores = false;
+        }
     }
 
     const auto min_oc_block = jcp.acc_simd_w;
@@ -2651,7 +2676,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.adjusted_batch_size
             = div_up(rnd_up(jcp.gemm_batch_size * sc_size, P4K), sc_size);
 
-    if (is_amx(isa)) {
+    if (is_amx(isa) && !jcp.is_ace) {
         // heuristic for small mb
         const bool is_small_mb = jcp.nthr > 1 && jcp.mb == 1
                 && jcp.ic * jcp.oh <= 28 * 1024 && jcp.oc * jcp.oh <= 14 * 1024;
@@ -3213,9 +3238,17 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
             && one_of(diff_weights_d.data_type(), f32, f16, f8_e5m2, f8_e4m3)
             && one_of(diff_dst_d.data_type(), f8_e5m2, f8_e4m3);
 
-    jcp.isa = is_fp8
-            ? (mayiuse(avx10_2_amx_2) ? avx10_2_amx_2 : avx512_core_amx_fp16)
-            : (is_f16 ? avx512_core_amx_fp16 : avx512_core_amx);
+    // The ACE kernels compute bf16 and int8 only, so every other datatype has
+    // to keep its existing AMX flavor. This mirrors the jcp.is_ace condition in
+    // init_jcp().
+    const bool is_ace_dt = brgemm_utils::ace_dt_ok(
+            src_d.data_type(), diff_dst_d.data_type());
+
+    jcp.isa = (is_ace_dt && mayiuse(avx10_2_ace))
+            ? avx10_2_ace
+            : (is_fp8 ? (mayiuse(avx10_2_amx_2) ? avx10_2_amx_2
+                                                : avx512_core_amx_fp16)
+                      : (is_f16 ? avx512_core_amx_fp16 : avx512_core_amx));
 
     // disabling verbose dispatch messages for unsupported isa for better readability
     if (!mayiuse(jcp.isa)) return status::unimplemented;

@@ -7164,7 +7164,10 @@ status_t create_brgemm_matmul_copy_b(
             CHECK(safe_ptr_assign(copy_ker,
                     new jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t(conf)));
         } else {
-            if (mayiuse(avx512_core_amx))
+            // No AMX here: this path uses vpermi2b. AVX10.2 ACE gets VBMI explicitly.
+            const bool has_vbmi_copy_b = mayiuse(avx512_core_amx)
+                    || is_superset(conf->isa, avx10_2_ace);
+            if (has_vbmi_copy_b)
                 CHECK(safe_ptr_assign(copy_ker,
                         new jit_amx_brgemm_matmul_copy_b_int8_t(conf)));
             else if (is_superset(conf->isa, avx512_core))

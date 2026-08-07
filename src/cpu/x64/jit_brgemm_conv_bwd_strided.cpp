@@ -371,6 +371,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::pd_t::add_brg_descriptor(
         brgattr.max_bottom_vpad = jcp_.max_vpad;
     }
     brgattr.generate_skip_accumulation = true;
+    brgattr.use_ace = jcp_.is_ace;
     CHECK(brgemm_desc_set_attr(&brg, brgattr));
 
     auto LDD = jcp_.stride_w * jcp_.ic_without_padding;
@@ -422,7 +423,7 @@ status_t brgemm_convolution_bwd_strided_t<isa>::add_brg_kernel(int brg_idx) {
     if (!brg_kernels_[brg_idx] && brg && brg->bcast_dim > 0 && brg->load_dim > 0
             && brg->reduce_dim > 0) {
         CHECK(brg_kernels_.insert(brg_idx, brg));
-        if (is_amx) brgemm_palettes_.insert(brg_idx, brg);
+        if (is_amx && brg->is_tmm) brgemm_palettes_.insert(brg_idx, brg);
     }
     return status::success;
 }
@@ -1918,6 +1919,7 @@ template struct brgemm_convolution_bwd_strided_t<avx512_core_bf16>;
 template struct brgemm_convolution_bwd_strided_t<avx512_core_fp16>;
 template struct brgemm_convolution_bwd_strided_t<avx10_2>;
 template struct brgemm_convolution_bwd_strided_t<avx10_2_amx_2>;
+template struct brgemm_convolution_bwd_strided_t<avx10_2_ace>;
 
 } // namespace x64
 

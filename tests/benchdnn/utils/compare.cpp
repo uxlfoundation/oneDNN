@@ -256,9 +256,15 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
     }
     const dnn_mem_t &exp_f32 = exp_f32_plain ? exp_f32_plain : exp_mem;
 
+    // Note: the section below has some adjustable settings but they all seem
+    // to target DST kind_.
+    // TODO: add a list of allowed kinds to get into, and adjust settings to
+    // apply only to kinds they aim. So far, play it safe and remove DST_SCALES
+    // when not applicable.
     const auto dt = got_mem.dt();
-    const bool has_eltwise
-            = attr.post_ops.eltwise_index() != -1 || has_eltwise_post_op_;
+    const bool kind_is_dst_scales = kind_ == DST_SCALES;
+    const bool has_eltwise = !kind_is_dst_scales
+            && (attr.post_ops.eltwise_index() != -1 || has_eltwise_post_op_);
     // Output fp8 data types expected to have dynamic dst scaling. When such
     // scaling is enabled, it saturates, doesn't overflow, thus, NaNs are not
     // expected in the output. No dynamic scaling - NaN may happen.
@@ -269,8 +275,8 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             || eltwise::eltwise_alg_returns_nan_or_inf(attr)
             || has_binary_po_algs(attr, {attr_t::post_ops_t::kind_t::DIV})
             || dt == dnnl_f16 || non_scaled_fp8_output;
-    const bool has_exp_eltwise
-            = attr.post_ops.find(attr_t::post_ops_t::kind_t::EXP) >= 0;
+    const bool has_exp_eltwise = !kind_is_dst_scales
+            && attr.post_ops.find(attr_t::post_ops_t::kind_t::EXP) >= 0;
     const auto &dst_scale = attr.scales.get(DNNL_ARG_DST);
     const bool has_dst_scale = !dst_scale.is_def();
 
@@ -456,26 +462,12 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
                             || args.rel_diff <= binary_comp_po_rdiff_trh);
             if (ok) break;
 
-            // Some drivers (like pooling or resampling) on integer data types
-            // may result in sporadic order of operations. This may cause a
-            // difference around `x.5f` value, and can be rounded either way to
-            // `x` or `x + 1` which can't be fixed by filling.
-            const auto is_int8_round_good = [&]() -> bool {
-                // Check that original value is close to x.5f.
-                static constexpr float small_eps = 9e-6f;
-                const float floor_val = floorf(args.exp_f32);
-                const float ceil_val = ceilf(args.exp_f32);
-                if (fabsf((floor_val + 0.5f) - args.exp_f32) >= small_eps)
-                    return false;
+            // A check for `off-by-1` errors for both integral data types and
+            // low-precision floating-point data types.
+            ok = (is_integral_dt(args.dt) || bits_dt(args.dt) <= 8)
+                    && is_off_by_one(args);
+            if (ok) break;
 
-                // If it is, check exp and got values are on opposite sides.
-                if (args.exp == floor_val) {
-                    return got_val == ceil_val;
-                } else if (args.exp == ceil_val) {
-                    return got_val == floor_val;
-                }
-                return false;
-            };
             // Another class of `off-by-1` issues coming from optimized
             // reference when transcendental operation present in the chain. In
             // such cases, there's no way to test original output as both
@@ -507,8 +499,7 @@ int compare_t::compare_p2p(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
                 return true;
             };
             ok = is_integral_dt(args.dt)
-                    && (is_int8_round_good()
-                            || is_int8_prim_ref_and_transcedental()
+                    && (is_int8_prim_ref_and_transcedental()
                             || is_nan_to_int_good());
             if (ok) break;
 
@@ -640,6 +631,24 @@ void compare_t::dump_p2p_errors() const {
     for (size_t i = 0; i < max_dump_size; i++) {
         dump_point_values(get_kind_str(), p2p_dumps_[i]);
     }
+}
+
+bool compare_t::is_off_by_one(const driver_check_func_args_t &args) const {
+    const float half_eps = epsilon_dt(args.dt) / 2.f;
+    const float next = round_to_nearest_representable(args.dt,
+            is_integral_dt(args.dt) ? std::nextafter(args.exp_f32, INFINITY)
+                                    : args.exp_f32 + half_eps);
+    const float prev = round_to_nearest_representable(args.dt,
+            is_integral_dt(args.dt) ? std::nextafter(args.exp_f32, -INFINITY)
+                                    : args.exp_f32 - half_eps);
+
+    // Important conditions:
+    // * Expected f32 value shoudn't be equal to expected `float` value.
+    // * Expected and got values should be either `next` or `prev`.
+    // * Got value and expected values are different from one another.
+    if (args.exp_f32 == args.exp) return false;
+    return (args.got == next && args.exp == prev)
+            || (args.got == prev && args.exp == next);
 }
 
 int compare_t::compare(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,

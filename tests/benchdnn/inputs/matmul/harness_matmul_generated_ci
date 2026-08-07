@@ -1560,7 +1560,7 @@
 --reset --dt=bf16:bf16:bf16 --stag=abx --dtag=abx --attr-scales=wei:common:2:bf16 --attr-post-ops=min:u8:common 148x367:367x2008
 --reset --dt=f4_e2m1:f4_e2m1:f16 --stag=abx --wtag=acb --dtag=abx --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:f8_e4m3:16x1 --attr-post-ops=sum:1.0 5x37x2080:5x2080x1
 --reset --dt=f8_e5m2:f8_e5m2:f4_e2m1 --stag=abx --wtag=ba --dtag=abx --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:f32:64x1+dst:mx:e8m0:1x32 828x192:192x1504
---reset --dt=f8_e4m3:f8_e4m3:f8_e4m3 --stag=abx --wtag=ba --dtag=abx --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x32+dst:mx:e8m0:1x32 --attr-post-ops=sqrt --bia-dt=f32 --bia_mask=1 112x2720:2720x320
+--reset --dt=f8_e4m3:f8_e4m3:f8_e4m3 --stag=abx --wtag=ba --dtag=abx --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x32+dst:mx:e8m0:1x32 --bia-dt=f32 --bia_mask=1 112x2720:2720x320
 --reset --dt=u8:u8:f32 --stag=abx --wtag=ba --dtag=abx --attr-scales=src:per_tensor:bf16:1x32+wei:per_oc:bf16 --attr-zero-points=src:host_scalar:2:u8+wei:common:2:u8 --attr-post-ops=elu:0.5 588x640:640x408
 --reset --dt=u8:u8:f32 --stag=abx --dtag=abx --strides=:1x1: --attr-scales=wei:per_tensor:f16:128x1 --attr-zero-points=wei:per_tensor:u8:64x1 --attr-precomputed-reductions=src:per_tensor:s32:1x64 --attr-post-ops=add:u8:common 1116x128:128x1
 --reset --dt=s8:u8:s8 --stag=abx --wtag=abx --dtag=abx --attr-scales=src:common:4:bf16+wei:per_oc:bf16+dst:common:4:f16 --attr-zero-points=src:host_scalar:2:s8+wei:common:2:s32 --attr-post-ops=swish:4.0 5x1x3x8x448:1x2x3x448x1588

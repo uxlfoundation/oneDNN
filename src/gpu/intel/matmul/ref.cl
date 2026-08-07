@@ -209,7 +209,9 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 #else
             ACC_DATA_T s = TO_ACC(SRC_TO_REF(A[src_off]) - src_zp);
 #endif
-#if WEI_DT_S4 || WEI_DT_U4 || WEI_DT_F4_E2M1
+#if WEI_DT_S2 || WEI_DT_U2
+            ACC_DATA_T w_raw = WEI_TO_REF(GET_QUARTER_BYTE(B, wei_off));
+#elif WEI_DT_S4 || WEI_DT_U4 || WEI_DT_F4_E2M1
             ACC_DATA_T w_raw = WEI_TO_REF(GET_HALF_BYTE(B, wei_off));
 #else
             ACC_DATA_T w_raw = WEI_TO_REF(B[wei_off]);

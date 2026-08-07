@@ -233,6 +233,8 @@ struct memory_desc_wrapper {
         if (utils::one_of(data_type(), data_type::s4, data_type::u4,
                     data_type::f4_e2m1))
             return 2;
+        if (utils::one_of(data_type(), data_type::s2, data_type::u2))
+            return 4;
         return 1;
     }
 

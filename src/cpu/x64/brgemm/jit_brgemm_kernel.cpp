@@ -3290,6 +3290,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
 
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.save();
 
+    maybe_pre_process_buf_A(
+            reg_aux_A, bd_b, bd_e, is_rd_tail ? brg.rdb_tail : rd_loop);
+
     for (dim_t rd = 0; rd < rd_loop; rd += brg.rd_step) {
         if (brg.n_bcast_1_load) {
             for (dim_t bd = bd_b; bd < bd_e && !is_emdbd; bd++)

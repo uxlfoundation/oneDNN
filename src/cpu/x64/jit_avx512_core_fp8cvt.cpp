@@ -215,6 +215,15 @@ void fp8_conversion_e5m2_t::vcvt_f8_to_f16(
     }
 }
 
+void fp8_conversion_e5m2_t::vcvt_f8_to_f16_skip_q_nan(
+        const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
+    assert(utils::one_of(
+            true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
+    // f16 <- f8_e5m2
+    host_->vpmovzxbw(xmm_out, op_in);
+    host_->vpsllw(xmm_out, xmm_out, 8);
+}
+
 void fp8_conversion_e5m2_t::vcvt_f8_to_bf16(
         const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
     assert(utils::one_of(

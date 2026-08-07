@@ -51,8 +51,8 @@ injector_t<Vmm> *cast2tgt(void *injector) {
 
 postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
         const post_ops_t &post_ops, const memory_desc_t &dst_md,
-        const Xbyak::Reg64 &param_reg, size_t rhs_arg_offset,
-        size_t dst_orig_off, int tail_elems)
+        const Xbyak::Reg64 &param_reg, int rhs_arg_offset, dim_t dst_orig_off,
+        int tail_elems)
     : is_zmm_(is_superset(isa, avx512_core)), tail_elems_(tail_elems) {
     const memory_desc_wrapper dst_d(dst_md);
 
@@ -72,8 +72,8 @@ postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
     // enabled yet.
     const binary_injector::rhs_arg_static_params_t rhs_sp {
             rhs_dt_helper_vmm_idx, gen.r14, gen.r15, gen.r13, preserve_gpr,
-            preserve_vmm, rhs_arg_offset, dst_orig_off, dst_d,
-            (size_t)tail_elems, use_exact_tail_scalar_bcast};
+            preserve_vmm, rhs_arg_offset, dst_orig_off, dst_d, tail_elems,
+            use_exact_tail_scalar_bcast};
 
     const binary_injector::static_params_t bsp {param_reg,
             binary_injector::get_all_strategies_supported_by_injector(),

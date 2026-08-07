@@ -429,7 +429,7 @@ jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
     , ker_max_regs_(jcp_.has_vnni ? 14 : 12) {
 
     if (jcp_.with_eltwise || jcp_.with_binary || jcp_.with_sum) {
-        const std::size_t tail_size = get_tail_size();
+        const int tail_size = get_tail_size();
 
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;

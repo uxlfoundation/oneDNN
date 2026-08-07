@@ -82,11 +82,10 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         static constexpr bool use_exact_tail_scalar_bcast = false;
 
         const binary_injector::rhs_arg_static_params_t rhs_sp {
-                static_cast<size_t>(vmm_tmp(4).getIdx()), this->r14, this->r15,
-                this->r13, preserve_gpr, preserve_vmm,
-                GET_OFF(ptr_binary_post_ops_rhs), GET_OFF(dst_orig),
-                memory_desc_wrapper(brg_.dst_md()),
-                static_cast<size_t>(brg_.load_dim % brg_.ld_block), k_tail_mask,
+                vmm_tmp(4).getIdx(), this->r14, this->r15, this->r13,
+                preserve_gpr, preserve_vmm, GET_OFF(ptr_binary_post_ops_rhs),
+                GET_OFF(dst_orig), memory_desc_wrapper(brg_.dst_md()),
+                static_cast<int>(brg_.load_dim % brg_.ld_block), k_tail_mask,
                 use_exact_tail_scalar_bcast};
         const binary_injector::static_params_t bsp(this->param1,
                 binary_injector::get_all_strategies_supported_by_injector(),

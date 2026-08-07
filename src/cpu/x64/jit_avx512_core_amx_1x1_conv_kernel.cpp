@@ -50,7 +50,7 @@ jit_avx512_core_amx_1x1_fwd_kernel_t::jit_avx512_core_amx_1x1_fwd_kernel_t(
         const auto &rhs_addr_cache_reg = bin_injector_helper_reg_3;
         static constexpr bool preserve_gpr = false;
         static constexpr bool preserve_vmm = false;
-        const size_t tail_size = jcp.oc_without_padding % isa_simd_width_;
+        const int tail_size = jcp.oc_without_padding % isa_simd_width_;
         static constexpr bool use_exact_tail_scalar_bcast = true;
 
         const rhs_arg_static_params_t rhs_arg_static_params {31, rhs_addr_reg,

@@ -39,7 +39,7 @@ jit_avx512_dw_conv_fwd_kernel_f16_t::jit_avx512_dw_conv_fwd_kernel_f16_t(
         const jit_conv_conf_t &ajcp, const memory_desc_t &dst_md)
     : jit_generator_t(jit_name(), ajcp.isa), jcp(ajcp) {
     const auto simd_w = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
-    const auto tail_size = jcp.oc_without_padding % simd_w;
+    const int tail_size = jcp.oc_without_padding % simd_w;
     if (jcp.with_eltwise || jcp.with_binary) {
         using namespace binary_injector;
         static constexpr auto preserve_gpr = true;
@@ -63,11 +63,12 @@ jit_avx512_dw_conv_fwd_kernel_f16_t::jit_avx512_dw_conv_fwd_kernel_f16_t(
             jcp.src_dt, jcp.dst_dt};
     io_ = utils::make_unique<io::jit_io_multi_dt_helper_t<Xbyak::Zmm>>(this,
             jcp.isa, data_types, io::io_conf_t {},
-            io::io_tail_conf_t {simd_w, tail_size, k_oc_tail_mask, 0, reg_tmp});
+            io::io_tail_conf_t {simd_w, static_cast<std::size_t>(tail_size),
+                    k_oc_tail_mask, 0, reg_tmp});
 }
 
-static bool check_if_tail(const bool is_ch_tail, const int c_tail, const int ch,
-        const int ur_ch_blocks, const int simd_w) {
+static bool check_if_tail(const bool is_ch_tail, const dim_t c_tail,
+        const int ch, const int ur_ch_blocks, const int simd_w) {
     return is_ch_tail && (ch + 1 == ur_ch_blocks) && simd_w > c_tail;
 }
 

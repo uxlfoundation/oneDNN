@@ -67,8 +67,8 @@ struct postops_injector_t {
     // tail_elems     - right-hand-side elements a partial (tail) load reads
     DNNL_API postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
             const post_ops_t &post_ops, const memory_desc_t &dst_md,
-            const Xbyak::Reg64 &param_reg, size_t rhs_arg_offset,
-            size_t dst_orig_off, int tail_elems);
+            const Xbyak::Reg64 &param_reg, int rhs_arg_offset,
+            dim_t dst_orig_off, int tail_elems);
 
     postops_injector_t(const postops_injector_t &) = delete;
     postops_injector_t &operator=(const postops_injector_t &) = delete;

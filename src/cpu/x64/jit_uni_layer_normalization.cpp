@@ -549,7 +549,7 @@ protected:
             static constexpr bool preserve_gpr = true;
             static constexpr bool preserve_vmm = true;
             static constexpr bool use_exact_tail_scalar_bcast = true;
-            static const std::size_t tmp_vmm_injector = this->vmm_tmp.getIdx();
+            static const int tmp_vmm_injector = this->vmm_tmp.getIdx();
 
             const eltwise_injector::static_params_t esp(true /*save_state*/,
                     reg_po_injector_helper_, elt_inj_opmask, true /*is_fwd*/,
@@ -559,7 +559,7 @@ protected:
                     tmp_vmm_injector, this->r14, this->r15, this->r13,
                     preserve_gpr, preserve_vmm,
                     PARAM_OFF(post_ops_binary_rhs_arg_vec), PARAM_OFF(dst),
-                    dst_d_, static_cast<size_t>(axis_simd_tail_), tail_opmask,
+                    dst_d_, static_cast<int>(axis_simd_tail_), tail_opmask,
                     use_exact_tail_scalar_bcast};
 
             const binary_injector::static_params_t bsp {reg_param,

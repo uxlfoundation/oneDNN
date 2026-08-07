@@ -54,7 +54,7 @@ jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa,
         using namespace binary_injector;
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;
-        const size_t tail_size = get_tail_size();
+        const int tail_size = get_tail_size();
         static constexpr bool use_exact_tail_scalar_bcast = false;
         rhs_arg_static_params_t rhs_arg_static_params {15, r13, r14, r15,
                 preserve_gpr, preserve_vmm,

@@ -239,7 +239,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
         if (jpp.with_postops) {
 
             const int simd_w = cpu_isa_traits_t<isa>::vlen / sizeof(float);
-            const std::size_t c_tail_elems = jpp.c % simd_w;
+            const int c_tail_elems = jpp.c % simd_w;
             post_op_tail_opmask_idx_ = 0;
             if (c_tail_elems) {
                 for (int ll = max_num_ll - 1; ll >= 0; ll--) {
@@ -253,7 +253,7 @@ struct jit_uni_i8i8_pooling_fwd_ker_t : public jit_generator_t {
             static constexpr bool preserve_gpr = true;
             static constexpr bool preserve_vmm = true;
             static constexpr bool use_exact_tail_scalar_bcast = false;
-            static constexpr std::size_t tmp_vmm_injector = 0u;
+            static constexpr int tmp_vmm_injector = 0;
 
             const binary_injector::rhs_arg_static_params_t rhs_sp {
                     tmp_vmm_injector, r14, r15, r13, preserve_gpr, preserve_vmm,

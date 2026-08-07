@@ -63,10 +63,9 @@ jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::jit_uni_x8s8s32x_fwd_kernel_vmm_t(
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = false;
         static constexpr size_t helper_vmm_idx = 15;
-        const size_t block_tail
-                = (jcp.is_depthwise ? jcp.ch_block : jcp.oc_block)
+        const int block_tail = (jcp.is_depthwise ? jcp.ch_block : jcp.oc_block)
                 % isa_simd_width_;
-        const size_t tail_size = block_tail
+        const int tail_size = block_tail
                 ? block_tail
                 : (jcp.is_depthwise ? jcp.ngroups : jcp.oc_without_padding)
                         % isa_simd_width_;

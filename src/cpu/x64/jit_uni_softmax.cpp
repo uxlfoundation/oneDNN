@@ -638,7 +638,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                             = jit_uni_eltwise_injector_t<Vmm>::aux_vecs_count(
                                     isa, alg_kind::eltwise_exp, pd_->is_fwd(),
                                     0.f);
-                    for (size_t j = 0; j < exp_vmm_aux_count; j++) {
+                    for (int j = 0; j < exp_vmm_aux_count; j++) {
                         // Insert the next idx starting after `vreg_tmp_sum`.
                         exp_aux_indices.insert(static_cast<size_t>(
                                 get_aux_vmm(vreg_tmp_sum, (j + 1) * max_unroll)
@@ -959,7 +959,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                     tmp_vmm_injector, this->r14, this->r15, this->r13,
                     preserve_gpr, preserve_vmm,
                     PARAM_OFF(post_ops_binary_rhs_arg_vec), PARAM_OFF(dst_orig),
-                    dst_d_, axis_simd_tail_, tail_opmask,
+                    dst_d_, static_cast<int>(axis_simd_tail_), tail_opmask,
                     use_exact_tail_scalar_bcast};
 
             const binary_injector::static_params_t bsp {
@@ -1544,7 +1544,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
                     tmp_vmm_injector, this->r14, this->r15, this->r13,
                     preserve_gpr, preserve_vmm,
                     PARAM_OFF(post_ops_binary_rhs_arg_vec), PARAM_OFF(dst_orig),
-                    dst_d_, axis_simd_tail_, tail_opmask,
+                    dst_d_, static_cast<int>(axis_simd_tail_), tail_opmask,
                     use_exact_tail_scalar_bcast};
 
             const binary_injector::static_params_t bsp {

@@ -294,7 +294,8 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
                                     VERBOSE_UNSUPPORTED_FORMAT_KIND);
                             VCHECK_PO_INJ_BOOL(
                                     binary_injector::is_ternary_bcast_supported(
-                                            src2_d, *dst_d),
+                                            src2_d, *dst_d,
+                                            enabled_bcast_strategy),
                                     VERBOSE_UNSUPPORTED_POSTOP);
                         }
                         return ok;

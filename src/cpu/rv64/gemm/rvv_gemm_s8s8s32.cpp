@@ -49,11 +49,12 @@ static bool dst_supports_k_split(data_type_t dt) {
     return one_of(dt, data_type::s32, data_type::f32);
 }
 
-// Scalar copy of A (s8 weights) into a cache-friendly workspace. After copy,
-// ws holds K blocks of m_unroll contiguous s8 values:
+// Scalar copy of A (s8/u8 weights) into a cache-friendly workspace. After
+// copy, ws holds K blocks of m_unroll contiguous byte values:
 //   ws[k * m_unroll + i] = A_logical[i, k]
-void copy_A_s8(bool isTransA, dim_t K, const int8_t *A, dim_t lda, int8_t *ws,
-        dim_t m) {
+// The copy is byte-wise, so it is agnostic to A's signedness.
+void copy_A_i8(
+        bool isTransA, dim_t K, const char *A, dim_t lda, int8_t *ws, dim_t m) {
     for (dim_t k = 0; k < K; k++) {
         if (isTransA) {
             for (dim_t i = 0; i < m; i++)
@@ -66,7 +67,7 @@ void copy_A_s8(bool isTransA, dim_t K, const int8_t *A, dim_t lda, int8_t *ws,
 }
 
 template <bool isTransA, bool isTransB>
-void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
+void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const char *A,
         const dim_t lda, const void *B, const dim_t ldb, void *C,
         const dim_t ldc, const float alpha, const float beta, int8_t *ws,
         bool do_copy, int ithr, const float *bias, bool bias_is_scalar,
@@ -106,7 +107,7 @@ void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
     };
 
     auto invoke_kernel
-            = [&](const int8_t *a_orig, const void *b, void *c, dim_t tile_m,
+            = [&](const char *a_orig, const void *b, void *c, dim_t tile_m,
                       dim_t tile_n, dim_t j_col, const float *bias_tile) {
         const void *a_eff;
         dim_t lda_eff;
@@ -114,7 +115,7 @@ void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
 
         if (do_copy && tile_m == m_unroll) {
             if (j_col == 0) {
-                copy_A_s8(isTransA, K, a_orig, lda, ws, m_unroll);
+                copy_A_i8(isTransA, K, a_orig, lda, ws, m_unroll);
             }
             a_eff = ws;
             lda_eff = m_unroll;
@@ -132,7 +133,7 @@ void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
     };
 
     for (dim_t i = 0; i < Mu; i += m_unroll) {
-        const int8_t *a = isTransA ? &A[i * lda] : &A[i];
+        const char *a = isTransA ? &A[i * lda] : &A[i];
         // Scalar bias broadcasts over M: every tile reads the same base float.
         const float *bias_tile
                 = bias ? (bias_is_scalar ? bias : bias + i) : nullptr;
@@ -154,7 +155,7 @@ void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
     }
 
     if (m_tail > 0) {
-        const int8_t *a_tail = isTransA ? &A[Mu * lda] : &A[Mu];
+        const char *a_tail = isTransA ? &A[Mu * lda] : &A[Mu];
         const float *bias_tile
                 = bias ? (bias_is_scalar ? bias : bias + Mu) : nullptr;
 
@@ -182,7 +183,7 @@ void block_ker_s8(const dim_t M, const dim_t N, const dim_t K, const int8_t *A,
 
 template <bool isTransA, bool isTransB>
 void gemm_ithr_s8(const dim_t M, const dim_t N, const dim_t K,
-        const float alpha, const int8_t *A, const dim_t lda, const void *B,
+        const float alpha, const char *A, const dim_t lda, const void *B,
         const dim_t ldb, const float beta, void *C, const dim_t ldc,
         bool do_copy, int8_t *ws, int ithr, const float *bias,
         bool bias_is_scalar, const dim_t m_unroll, bool b_signed,
@@ -197,7 +198,7 @@ void gemm_ithr_s8(const dim_t M, const dim_t N, const dim_t K,
             ? K
             : gemm_traits_t<float, isTransA, isTransB>::BK;
 
-    const int8_t *curA;
+    const char *curA;
     const void *curB;
     char *curC;
 
@@ -293,9 +294,9 @@ void gemm_ithr_s8(const dim_t M, const dim_t N, const dim_t K,
 
 status_t rvv_gemm_s8s8s32(const char *transa_, const char *transb_,
         const dim_t *M_, const dim_t *N_, const dim_t *K_, const float *alpha_,
-        const int8_t *A, const dim_t *lda_, const void *B, const dim_t *ldb_,
+        const void *A, const dim_t *lda_, const void *B, const dim_t *ldb_,
         const float *beta_, void *C, const dim_t *ldc_, const float *bias,
-        bool b_signed, data_type_t dst_dt, int32_t *c_buffers_in,
+        bool a_signed, bool b_signed, data_type_t dst_dt, int32_t *c_buffers_in,
         int8_t *ws_buffers_in, bool bias_is_scalar,
         const gemm_partition_t *part) {
 
@@ -400,9 +401,9 @@ status_t rvv_gemm_s8s8s32(const char *transa_, const char *transb_,
     // inner work fns reuse a single 12-pointer struct rather than
     // rebuilding it per tile.
     const auto trans_a_table = get_jit_rvv_gemm_s8_kernel_table(
-            isTransA, isTransB, b_signed, dst_dt);
+            isTransA, isTransB, a_signed, b_signed, dst_dt);
     const auto nontrans_a_table = get_jit_rvv_gemm_s8_kernel_table(
-            false, isTransB, b_signed, dst_dt);
+            false, isTransB, a_signed, b_signed, dst_dt);
 
     auto get_thr_block = [&](dim_t &from, dim_t &to, dim_t &myN, dim_t NB,
                                  dim_t N, int ithr) {
@@ -446,8 +447,9 @@ status_t rvv_gemm_s8s8s32(const char *transa_, const char *transb_,
                 myBeta = 0.0f;
                 ld = MB;
             }
-            const int8_t *myA = isTransA ? &(A[k_from + m_from * lda])
-                                         : &(A[m_from + k_from * lda]);
+            const char *A_bytes = static_cast<const char *>(A);
+            const char *myA = isTransA ? &A_bytes[k_from + m_from * lda]
+                                       : &A_bytes[m_from + k_from * lda];
             const char *B_bytes = static_cast<const char *>(B);
             const void *myB = isTransB
                     ? static_cast<const void *>(B_bytes + n_from + k_from * ldb)

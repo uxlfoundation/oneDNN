@@ -128,7 +128,7 @@ status_t jit_prelu_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     if (bcast == prelu::bcast::full) {
         const auto nelems = src_d.nelems(true);
-        const auto simd_w = kernel->simd_w();
+        const dim_t simd_w = kernel->simd_w();
         const auto res = std::div(nelems, simd_w);
         const auto &nelems_simd = res.quot;
         const auto &nelems_tail = res.rem;

@@ -44,7 +44,7 @@ struct direct_copy_kernel_t
 
         const memory_desc_wrapper src_d(pd_->src_md());
 
-        tail_size_ = src_d.nelems() % simd_w_;
+        tail_size_ = static_cast<int>(src_d.nelems() % simd_w_);
 
         io::io_conf_t io_conf;
         io::io_tail_conf_t io_tail_conf(
@@ -220,7 +220,7 @@ private:
     cpu_isa_t isa_;
     data_type_t src_dt_, dst_dt_;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
-    size_t tail_size_;
+    int tail_size_;
 
     const Reg64 reg_tmp_ = rax;
     const Reg64 reg_src = r8;

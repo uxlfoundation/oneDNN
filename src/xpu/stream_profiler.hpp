@@ -145,6 +145,7 @@ struct verbose_profiler_t {
     virtual ~verbose_profiler_t() = default;
 
     struct prim_profile_data_t {
+        uint64_t component_kind_ = 0;
         double start_ms_ = 0.0;
         std::string pd_info_;
         std::vector<std::shared_ptr<xpu::event_t>> prim_events_;
@@ -186,7 +187,7 @@ struct verbose_profiler_t {
     // populates profiling metadata for the last primitive entry in
     // profiling_data_
     void add_to_pending_primitive_list(
-            double start_ms, const std::string &pd_info);
+            double start_ms, const std::string &pd_info, uint64_t component);
 
     // Completed primitive executions are periodically checked and logged
     // during after_exec_hook() calls and during stream destruction.

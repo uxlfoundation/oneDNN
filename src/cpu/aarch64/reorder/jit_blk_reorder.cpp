@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2022-2025 Arm Ltd. and affiliates
+* Copyright 2022-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #include <cassert>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/nstl.hpp"
@@ -135,7 +136,7 @@ status_t jit_blk_reorder_t::execute(const exec_ctx_t &ctx) const {
     auto itype_sz_ = data_type_size(pd()->prb_.itype);
     auto otype_sz_ = data_type_size(pd()->prb_.otype);
 
-    parallel_nd(BH, FL, [&](dim_t bh, dim_t fl) {
+    parallel_nd(BH, FL, [= COMPAT_THIS_CAPTURE](dim_t bh, dim_t fl) {
         auto fl_b = fl * block_sz;
         auto bh_b = bh_stride * bh;
         auto *i = in + (bh_b + fl_b * i1) * itype_sz_;

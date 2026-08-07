@@ -60,6 +60,11 @@
 --stag=aBx4b,aBx8b --dtag=aBx16b 2x71x16x16 2x72x16x16 2x73x16x16
 --stag=aBx16b      --dtag=aBx8b  2x71x16x16 2x72x16x16 2x73x16x16
 
+# Isolated jit:blk coverage with no jit:uni execution
+--reset
+--sdt=f32 --ddt=f32
+--stag=abx --dtag=aBx4b 8x64x15000
+
 # f16
 --batch=test_reorder_float16
 

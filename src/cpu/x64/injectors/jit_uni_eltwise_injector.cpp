@@ -337,7 +337,7 @@ void jit_uni_eltwise_injector_t<isa, Wmm>::vec_shift(const Vmm &vmm_dst,
         else
             h->uni_vpsrld(vmm_dst, vmm_src, imm);
     } else {
-        // Declare appropriate vectors to use non-uni instructions
+        // AVX lacks 256-bit integer shifts, so shift each 128-bit half apart.
         Xmm xmm_dst = Xmm(vmm_dst.getIdx());
         Ymm ymm_dst = Ymm(vmm_dst.getIdx());
         Ymm ymm_src = Ymm(vmm_src.getIdx());

@@ -4,13 +4,14 @@
 --bia_dt=undef,f32,bf16
 --beta=0,1
 --attr-post-ops=,sum:2,relu
---brgemm-attr=,use_uker:1
+--brgemm-attr=,use_uker:1,use_mmla:1,use_mmla:1+use_mmla_packed_a:1
 --batch=option_set_bf16
 
 # Separate cases for non-default alpha
 --reset
 --dt=bf16
 --alpha=2
+--brgemm-attr=,use_mmla:1,use_mmla:1+use_mmla_packed_a:1
 --batch=shapes_2d_no_tail_bf16
 
 # Skip-acc feature

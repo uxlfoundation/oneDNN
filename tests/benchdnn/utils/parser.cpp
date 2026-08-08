@@ -301,7 +301,7 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
             // For binary algorithms with ternary inputs, specifications can
             // be provided for both binary (src1) and ternary (src2) tensors in
             // the form:
-            // --attr-post-ops=BINARY:DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]].
+            // --attr-post-ops=BINARY:{INPLACE|DT[.S1_MASK_INPUT[.S1_TAG]][:S2_MASK_INPUT[.S2_TAG]]}.
             // In that case, we check for the ':' delimiter that separates src1
             // and src2 args, split the string for the two tensors and parse
             // them individually.
@@ -327,10 +327,16 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                     e.binary.src1_dt = str2dt(dt_str.c_str());
 
                     if (e.binary.src1_dt == dnnl_data_type_undef) {
-                        BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
-                                "Error: binary post-op data type",
-                                dt_str.c_str(), "is not recognized.");
-                        SAFE_V(FAIL);
+                        if (dt_str == "inplace") {
+                            // in-place binary spotted, returning dt_1 = undef
+                            assert(src_subpos == std::string::npos);
+                            return;
+                        } else {
+                            BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
+                                    "Error: binary post-op data type",
+                                    dt_str.c_str(), "is not recognized.");
+                            SAFE_V(FAIL);
+                        }
                     }
                 }
 
@@ -972,8 +978,8 @@ bool parse_attr_post_ops(std::vector<attr_t::post_ops_t> &po, const char *str,
             = "POST-OPS\n    Specifies post-ops attribute. `POST-OPS` syntax "
               "is one of those:\n    * SUM[:SCALE[:ZERO_POINT[:DATA_TYPE]]]\n  "
               "  * ELTWISE[:ALPHA[:BETA[:SCALE]]]\n    * DW:KkSsPp[:DST_DT]\n  "
-              "  * BINARY:DT[:MASK_INPUT[:TAG]]\n    * PRELU[:MASK_INPUT]\n    "
-              "More details at "
+              "  * BINARY:{INPLACE|DT[:MASK_INPUT[:TAG]]}\n  "
+              "  * PRELU[:MASK_INPUT]\n    More details at "
             + doc_url + "knobs_attr.md\n";
     std::vector<attr_t::post_ops_t> def {attr_t::post_ops_t()};
     return parse_vector_option(

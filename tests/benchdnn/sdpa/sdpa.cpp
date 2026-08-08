@@ -95,8 +95,8 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     // Build attr_args for dropout mask md if configured.
     attr_args_t attr_args;
     if (!prb->attr.dropout.is_def()) {
-        attr_args.prepare_post_ops_mds(
-                prb->attr, prb->ndims, prb->score_dims.data());
+        attr_args.prepare_post_ops_mds(prb->attr, prb->ndims,
+                prb->score_dims.data(), prb->get_md(DNNL_ARG_DST));
     }
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args, prb->ndims));

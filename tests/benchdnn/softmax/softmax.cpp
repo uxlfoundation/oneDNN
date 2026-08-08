@@ -63,7 +63,8 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
                 dnnl::impl::alg_kind::softmax_accurate_inf_as_zero);
 
     attr_args_t attr_args;
-    attr_args.prepare_post_ops_mds(prb->attr, prb->ndims, prb->dims.data());
+    attr_args.prepare_post_ops_mds(
+            prb->attr, prb->ndims, prb->dims.data(), prb->get_md(DNNL_ARG_DST));
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args, prb->ndims));
 

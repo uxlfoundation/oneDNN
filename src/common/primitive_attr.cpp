@@ -141,6 +141,8 @@ bool primitive_attr_t::has_default_values(dnnl_primitive_attr::skip_mask_t mask,
             (bool)(~mask & smask_t::dropout), dropout_.has_default_values()));
     CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::rounding_mode),
             rounding_mode_.has_default_values()));
+    CHECK_ARG(IMPLICATION((bool)(~mask & smask_t::inplace_binary_post_ops),
+            !post_ops_.has_inplace_binary_po()));
     CHECK_ARG(this->defined(smask_t::none));
     bool fpmath_mode_ok = IMPLICATION(
             (bool)(~mask & smask_t::fpmath_mode) && fpmath_.apply_to_int_,
@@ -227,7 +229,7 @@ status_t post_ops_t::append_dw(data_type_t wei_dt, data_type_t bias_dt,
 
 status_t post_ops_t::validate_binary(alg_kind_t alg,
         const memory_desc_t *user_src1_desc,
-        const memory_desc_t *user_src2_desc) const {
+        const memory_desc_t *user_src2_desc, bool inplace) const {
 
     if (len() == post_ops_limit) return out_of_memory;
     using namespace alg_kind;
@@ -237,6 +239,8 @@ status_t post_ops_t::validate_binary(alg_kind_t alg,
     bool is_ternary_op = (alg == binary_select);
 
     VCHECK_ATTR(alg_ok, VERBOSE_BAD_ALGORITHM);
+    VCHECK_ATTR(IMPLICATION(inplace, !is_ternary_op), VERBOSE_BAD_PARAM,
+            "src2_desc");
     CHECK(memory_desc_sanity_check(*user_src1_desc));
 
     // Additional check to restrict run-time dimension usage until supported.
@@ -259,8 +263,8 @@ status_t post_ops_t::validate_binary(alg_kind_t alg,
 
 status_t post_ops_t::append_binary(alg_kind_t alg,
         const memory_desc_t *user_src1_desc,
-        const memory_desc_t *user_src2_desc) {
-    CHECK(validate_binary(alg, user_src1_desc, user_src2_desc));
+        const memory_desc_t *user_src2_desc, bool inplace) {
+    CHECK(validate_binary(alg, user_src1_desc, user_src2_desc, inplace));
 
     entry_.emplace_back();
     auto &e = entry_.back();
@@ -269,6 +273,7 @@ status_t post_ops_t::append_binary(alg_kind_t alg,
 
     e.binary.user_src1_desc = *user_src1_desc;
     e.binary.src1_desc = *user_src1_desc;
+    e.binary.src1_from_dst = inplace;
 
     if (user_src2_desc) {
         e.binary.user_src2_desc = *user_src2_desc;
@@ -279,8 +284,8 @@ status_t post_ops_t::append_binary(alg_kind_t alg,
 
 status_t post_ops_t::prepend_binary(alg_kind_t alg,
         const memory_desc_t *user_src1_desc,
-        const memory_desc_t *user_src2_desc) {
-    CHECK(validate_binary(alg, user_src1_desc, user_src2_desc));
+        const memory_desc_t *user_src2_desc, bool inplace) {
+    CHECK(validate_binary(alg, user_src1_desc, user_src2_desc, inplace));
 
     entry_.emplace(entry_.begin());
     auto &e = entry_[0];
@@ -289,6 +294,7 @@ status_t post_ops_t::prepend_binary(alg_kind_t alg,
 
     e.binary.user_src1_desc = *user_src1_desc;
     e.binary.src1_desc = *user_src1_desc;
+    e.binary.src1_from_dst = inplace;
 
     if (alg == alg_kind::binary_select) {
         e.binary.user_src2_desc = *user_src2_desc;
@@ -893,6 +899,15 @@ status_t dnnl_post_ops_append_binary_v2(post_ops_t *post_ops,
     return post_ops->append_binary(alg_kind, user_src1_desc, user_src2_desc);
 }
 
+status_t dnnl_post_ops_append_binary_v3(post_ops_t *post_ops,
+        alg_kind_t alg_kind, const memory_desc_t *user_src1_desc,
+        const memory_desc_t *user_src2_desc, int inplace) {
+    if (post_ops == nullptr) return invalid_arguments;
+
+    return post_ops->append_binary(
+            alg_kind, user_src1_desc, user_src2_desc, inplace);
+}
+
 status_t dnnl_post_ops_get_params_binary(const post_ops_t *post_ops, int index,
         alg_kind_t *alg_kind, const memory_desc_t **user_src1_desc) {
     CHECK(simple_get_params_check(post_ops, index, primitive_kind::binary));
@@ -913,6 +928,20 @@ status_t dnnl_post_ops_get_params_binary_v2(const post_ops_t *post_ops,
     if (alg_kind) *alg_kind = b.alg;
     if (user_src1_desc) *user_src1_desc = &b.user_src1_desc;
     if (user_src2_desc) *user_src2_desc = &b.user_src2_desc;
+
+    return success;
+}
+
+status_t dnnl_post_ops_get_params_binary_v3(const post_ops_t *post_ops,
+        int index, alg_kind_t *alg_kind, const memory_desc_t **user_src1_desc,
+        const memory_desc_t **user_src2_desc, int *inplace) {
+    CHECK(simple_get_params_check(post_ops, index, primitive_kind::binary));
+
+    const auto &b = post_ops->entry_[index].binary;
+    if (alg_kind) *alg_kind = b.alg;
+    if (user_src1_desc) *user_src1_desc = &b.user_src1_desc;
+    if (user_src2_desc) *user_src2_desc = &b.user_src2_desc;
+    if (inplace) *inplace = b.src1_from_dst;
 
     return success;
 }

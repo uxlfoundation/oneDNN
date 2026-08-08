@@ -326,6 +326,11 @@ struct dnnl_post_ops {
 
         struct binary_t {
             dnnl::impl::alg_kind_t alg;
+
+            // Binary ops with this flag set use DST as RHS which may interfere
+            // with some writes; declare this to let the parent primitive know.
+            bool src1_from_dst;
+
             // This is an unmodifiable user copy of attributes which is used in
             // caching mechanism. Not to be used internally.
             dnnl::impl::memory_desc_t user_src1_desc, user_src2_desc;
@@ -458,12 +463,14 @@ struct dnnl_post_ops {
             dnnl::impl::dim_t padding_l_size);
     dnnl::impl::status_t append_binary(dnnl::impl::alg_kind_t alg,
             const dnnl::impl::memory_desc_t *user_src1_desc,
-            const dnnl::impl::memory_desc_t *user_src2_desc = nullptr);
+            const dnnl::impl::memory_desc_t *user_src2_desc = nullptr,
+            bool inplace = false);
     dnnl::impl::status_t append_prelu(int mask);
 
     dnnl::impl::status_t prepend_binary(dnnl::impl::alg_kind_t alg,
             const dnnl::impl::memory_desc_t *user_src1_desc,
-            const dnnl::impl::memory_desc_t *user_src2_desc = nullptr);
+            const dnnl::impl::memory_desc_t *user_src2_desc = nullptr,
+            bool inplace = false);
 
     int find(dnnl::impl::primitive_kind_t kind, int start = 0,
             int stop = -1) const {
@@ -500,6 +507,12 @@ struct dnnl_post_ops {
             return false;
         }
         return true;
+    }
+
+    bool has_inplace_binary_po() const {
+        for (auto &e : entry_)
+            if (e.is_binary() && e.binary.src1_from_dst) return true;
+        return false;
     }
 
     dnnl::impl::status_t set_default_formats(
@@ -539,7 +552,8 @@ struct dnnl_post_ops {
 private:
     dnnl::impl::status_t validate_binary(dnnl::impl::alg_kind_t alg,
             const dnnl::impl::memory_desc_t *user_src1_desc,
-            const dnnl::impl::memory_desc_t *user_src2_desc) const;
+            const dnnl::impl::memory_desc_t *user_src2_desc,
+            bool inplace) const;
 
     bool check_sum_consistent_dt(const dnnl::impl::data_type_t dst_dt,
             const bool diverse_sum_dt_allowed = false) const;
@@ -645,6 +659,7 @@ struct dnnl_primitive_attr {
         dropout = 1u << 16,
         rounding_mode = 1u << 17,
         precomputed_reductions = 1u << 18,
+        inplace_binary_post_ops = (unsigned)post_ops | (1u << 19),
     };
 
     /** Returns true if the attributes have default values.

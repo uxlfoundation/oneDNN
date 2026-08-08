@@ -4004,6 +4004,31 @@ struct post_ops : public handle<dnnl_post_ops_t> {
                 "could not append a binary post-op with ternary operators");
     }
 
+    /// Appends a potentially in-place binary post-op.
+    ///
+    /// This post operation is categorized as #dnnl_binary.
+    ///
+    /// In the simplest case when this is the only post operation, the
+    /// computations will be:
+    ///
+    ///     dst[:] <- binary_op (dst[:], another_input1[:], another_input2[:])
+    ///
+    /// where binary_op is configured with the given parameters. binary_op
+    /// supports broadcast semantics only for the second operand and not for the
+    /// third operand.
+    ///
+    /// @param aalgorithm Binary algorithm for the post-op.
+    /// @param src1_desc Memory descriptor of the second operand.
+    /// @param inplace Indicates whether to mark the post-op as an in-place
+    /// binary.
+    void append_binary(
+            algorithm aalgorithm, const memory::desc &src1_desc, bool inplace) {
+        error::wrap_c_api(
+                dnnl_post_ops_append_binary_v3(get(), convert_to_c(aalgorithm),
+                        src1_desc.get(), nullptr, inplace),
+                "could not append an in-place binary post-op");
+    }
+
     /// Returns the parameters of a binary post-op.
     ///
     /// @param index Index of the binary post-op.
@@ -4038,6 +4063,39 @@ struct post_ops : public handle<dnnl_post_ops_t> {
                 "could not get parameters of a binary post-op with ternary "
                 "operators");
         aalgorithm = static_cast<dnnl::algorithm>(c_alg);
+        dnnl_memory_desc_t cloned_md1 = nullptr;
+        dnnl_memory_desc_t cloned_md2 = nullptr;
+
+        error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md1, cdesc1),
+                "could not clone a memory descriptor");
+        src1_desc = memory::desc(cloned_md1);
+
+        error::wrap_c_api(dnnl_memory_desc_clone(&cloned_md2, cdesc2),
+                "could not clone a memory descriptor");
+        src2_desc = memory::desc(cloned_md2);
+    }
+
+    /// Returns the parameters of a potentially in-place binary post-op with
+    /// ternary operators.
+    ///
+    /// @param index Index of the binary post-op.
+    /// @param aalgorithm Output binary algorithm kind.
+    /// @param src1_desc Output memory descriptor of the second operand.
+    /// @param src2_desc Output memory descriptor of the third operand.
+    /// @param inplace Indicates whether to mark the post-op as an in-place
+    /// binary.
+    void get_params_binary(int index, algorithm &aalgorithm,
+            memory::desc &src1_desc, memory::desc &src2_desc,
+            bool &inplace) const {
+        dnnl_alg_kind_t c_alg;
+        const_dnnl_memory_desc_t cdesc1, cdesc2;
+        int c_inplace;
+        error::wrap_c_api(dnnl_post_ops_get_params_binary_v3(get(), index,
+                                  &c_alg, &cdesc1, &cdesc2, &c_inplace),
+                "could not get parameters of a potentially in-place binary "
+                "post-op with ternary operators");
+        aalgorithm = static_cast<dnnl::algorithm>(c_alg);
+        inplace = !!c_inplace;
         dnnl_memory_desc_t cloned_md1 = nullptr;
         dnnl_memory_desc_t cloned_md2 = nullptr;
 

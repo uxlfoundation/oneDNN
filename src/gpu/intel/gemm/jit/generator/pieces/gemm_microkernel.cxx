@@ -54,7 +54,9 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     auto argumentBase = interface.getArgumentBase();
     if (argumentBase.isInvalid() || argumentBase.getBase() < 1)
         stub("Microkernel argument base not set");
-    state.ra.claim(GRFRange(0, argumentBase.getBase()));
+    /* Also reserve the first two argument registers so they are not recycled
+       into the compute loop, which regresses microkernel performance. */
+    state.ra.claim(GRFRange(0, argumentBase.getBase() + 2));
 
     moveR0(strategy, state);
 

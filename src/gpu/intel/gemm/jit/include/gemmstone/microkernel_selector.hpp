@@ -34,12 +34,14 @@ struct HWInformation {
     bool isEfficient64Bit;
 };
 
-/* Host kernel thread payload. Microkernel registers are placed above it. */
+/* Host kernel facts constraining microkernel register allocation. */
 struct HostPayload {
-    HostPayload(int simd, int argumentBytes) : simd(simd), argumentBytes(argumentBytes) {}
+    HostPayload(int simd, int argumentBytes, int liveBytes = 0)
+        : simd(simd), argumentBytes(argumentBytes), liveBytes(liveBytes) {}
 
     int simd;             /* host kernel SIMD width */
-    int argumentBytes;    /* cross-thread argument bytes, with headroom */
+    int argumentBytes;    /* payload bytes; microkernel registers are placed above it */
+    int liveBytes;        /* host bytes live across the call, competing for the rest */
 };
 
 struct GEMMOptions {

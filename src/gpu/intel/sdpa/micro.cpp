@@ -1193,8 +1193,17 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     deserialize_config_to_gemmstone(hw_info, problem_kq, problem_vs, opts_kq,
             opts_vs, sizes_kq, sizes_vs, ukernel_config);
 
-    const micro::HostPayload host {
-            subgroup_size, host_argument_bytes_fwd_for(hw_info)};
+    /* Survives the ugemm calls, so their GRF mode must leave room for it. */
+    const int kq_c_bytes = ukernel_config.unroll_m_kq
+            * ukernel_config.unroll_n_kq * problem_kq.Tc.size();
+    const int vs_c_bytes = ukernel_config.unroll_m_vs
+            * ukernel_config.unroll_n_vs * problem_vs.Tc.size();
+    const int softmax_bytes
+            = 3 * ukernel_config.unroll_n_kq * int(sizeof(float));
+    const int host_live_bytes = kq_c_bytes + vs_c_bytes + softmax_bytes;
+
+    const micro::HostPayload host {subgroup_size,
+            host_argument_bytes_fwd_for(hw_info), host_live_bytes};
     const auto hw_arch = gpu_arch(hw_info);
 
     micro::Package gemm_kq, gemm_vs;

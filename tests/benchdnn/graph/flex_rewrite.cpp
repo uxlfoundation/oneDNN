@@ -231,6 +231,9 @@ int flex_rewrite_t::rewrite(deserialized_graph_t &dgraph) {
     // infer output shapes of the graph.
     SAFE(infer_output_shape(dgraph, change_stride), WARN);
 
+    // rewrite output shapes/strides based on user input.
+    SAFE(outports_shape_rewrite(dgraph), WARN);
+
     // set the scales and zero points properly based on user input.
     SAFE(quantized_graph_rewrite(dgraph), WARN);
 
@@ -1136,16 +1139,22 @@ int flex_rewrite_t::inports_shape_rewrite(
     };
 
     const auto &input_ports = dgraph.get_input_ports();
+    const auto &output_ports = dgraph.get_output_ports();
     for_(auto &aop : dgraph.ops_)
     for (auto &lt : aop.in_lts_) {
         // if 'lt' is not a inport, set default logical tensor info
         if (std::find(input_ports.begin(), input_ports.end(), lt.id_)
                 == input_ports.end()) {
             // At the same time check if in_shapes contain non-inport tensors.
-            if (in_shapes_.find(lt.id_) != in_shapes_.end()) {
+            // Output port tensors are allowed (they will be handled later).
+            if (in_shapes_.find(lt.id_) != in_shapes_.end()
+                    && std::find(
+                               output_ports.begin(), output_ports.end(), lt.id_)
+                            == output_ports.end()) {
                 BENCHDNN_PRINT(0,
                         "Error: \'in-shapes\' option contains a tensor with "
-                        "id=\'%zu\' which is not an input for a given graph.\n",
+                        "id=\'%zu\' which is not an input or output for a "
+                        "given graph.\n",
                         lt.id_);
                 SAFE(FAIL, WARN);
             }
@@ -1264,6 +1273,109 @@ int flex_rewrite_t::inports_shape_rewrite(
     for_(auto &aop : dgraph.ops_)
     for (auto &lt : aop.out_lts_) {
         set_default_deserialized_lt_t(lt);
+    }
+    return OK;
+}
+
+int flex_rewrite_t::outports_shape_rewrite(deserialized_graph_t &dgraph) {
+    const auto &output_ports = dgraph.get_output_ports();
+
+    // check stride provided from cml, return false, if one is not a valid tag
+    const auto is_valid_tag = [](const std::string &stride) -> bool {
+        assert(!stride.empty());
+        for (size_t i = 0; i < stride.size(); ++i) {
+            if (stride.find(char('a' + i)) == std::string::npos) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    for_(auto &aop : dgraph.ops_)
+    for (auto &lt : aop.out_lts_) {
+        if (std::find(output_ports.begin(), output_ports.end(), lt.id_)
+                == output_ports.end())
+            continue;
+        if (in_shapes_.find(lt.id_) == in_shapes_.end()
+                || in_shapes_[lt.id_] == "default")
+            continue;
+
+        std::string new_shape, new_mtag, new_stride, message;
+        bool result = get_inport_shape_stride(
+                in_shapes_[lt.id_], new_shape, new_stride, new_mtag, message);
+        if (!result) {
+            BENCHDNN_PRINT(0,
+                    "Error: `--in-shapes` is not valid for output tensor "
+                    "id=\'%zu\'. Reason: %s\n",
+                    lt.id_, message.c_str());
+            SAFE(FAIL, WARN);
+        }
+
+        size_t ndims = lt.shape_.size();
+
+        // Handle rank-0 scalar output.
+        if (new_shape == "-") {
+            lt.shape_ = dims_t {};
+            lt.stride_ = dims_t {};
+            dgraph.graph_tensors_[lt.id_] = dims_t {};
+            dgraph.lt_2_mtag_[lt.id_] = "";
+            continue;
+        }
+
+        if (!new_shape.empty()) {
+            auto new_shape_dims = string_to_shape(new_shape);
+            lt.shape_ = new_shape_dims;
+            ndims = new_shape_dims.size();
+            dgraph.graph_tensors_[lt.id_] = new_shape_dims;
+
+            // if only shape is provided, use dense format
+            if (new_mtag.empty() && new_stride.empty()) {
+                dgraph.lt_2_mtag_[lt.id_]
+                        = get_default_tag(new_shape_dims.size());
+            }
+        }
+
+        if (!new_mtag.empty()) {
+            if (new_mtag.size() != ndims) {
+                BENCHDNN_PRINT(0,
+                        "Error: the tag provided for output tensor "
+                        "id=\'%zu\' is not valid: `%s`, the tag size must "
+                        "be `%d`.\n",
+                        lt.id_, new_mtag.c_str(), static_cast<int>(ndims));
+                SAFE(FAIL, WARN);
+            }
+            if (!is_valid_tag(new_mtag)) {
+                BENCHDNN_PRINT(0,
+                        "Error: the tag provided for output tensor "
+                        "id=\'%zu\' is not valid: `%s`: unexpected letters "
+                        "encountered.\n",
+                        lt.id_, new_mtag.c_str());
+                SAFE(FAIL, WARN);
+            }
+            dgraph.lt_2_mtag_[lt.id_] = new_mtag;
+            lt.stride_ = memory_tag2strides(lt.shape_, new_mtag);
+        } else if (!new_stride.empty()) {
+            auto new_stride_dims = string_to_shape(new_stride);
+            if (new_stride_dims.size() != ndims) {
+                BENCHDNN_PRINT(0,
+                        "Error: the strides provided for output tensor "
+                        "id=\'%zu\' is not valid: `%s`, the strides size "
+                        "must be `%d`.\n",
+                        lt.id_, new_stride.c_str(), static_cast<int>(ndims));
+                SAFE(FAIL, WARN);
+            }
+            std::string tmp_mtag
+                    = strides2memory_tag(lt.shape_, new_stride_dims, false);
+            if (!is_contiguous_memory(new_stride_dims, lt.shape_, tmp_mtag)) {
+                dgraph.lt_2_mtag_[lt.id_] = "not_available";
+            } else {
+                dgraph.lt_2_mtag_[lt.id_] = tmp_mtag;
+            }
+            lt.stride_ = new_stride_dims;
+        } else {
+            lt.stride_
+                    = memory_tag2strides(lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+        }
     }
     return OK;
 }
@@ -1721,7 +1833,6 @@ int flex_rewrite_t::update_output_info(deserialized_op_t &aop,
         case dnnl::graph::op::kind::Select:
         case dnnl::graph::op::kind::Sigmoid:
         case dnnl::graph::op::kind::SigmoidBackward:
-        case dnnl::graph::op::kind::SoftMax:
         case dnnl::graph::op::kind::SoftMaxBackward:
         case dnnl::graph::op::kind::SoftPlus:
         case dnnl::graph::op::kind::SoftPlusBackward:
@@ -1744,6 +1855,42 @@ int flex_rewrite_t::update_output_info(deserialized_op_t &aop,
                 }
                 lt.stride_ = memory_tag2strides(
                         lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+            }
+            break;
+        }
+        // SoftMax: primary output inherits input tag; stats output reuses
+        // its original tag if available, otherwise inherits from input.
+        case dnnl::graph::op::kind::SoftMax: {
+            for (size_t idx = 0; idx < aop.out_lts_.size(); idx++) {
+                auto &lt = aop.out_lts_[idx];
+                lt.shape_ = gi[lt.id_];
+                if (idx == 0) {
+                    // Primary output: always inherit from input.
+                    if (is_mtag_available) {
+                        dgraph.lt_2_mtag_[lt.id_] = dominate_tag;
+                    } else {
+                        dgraph.lt_2_mtag_[lt.id_]
+                                = get_default_tag(lt.shape_.size());
+                    }
+                    lt.stride_ = memory_tag2strides(
+                            lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+                } else {
+                    // Stats output: reuse original tag if available,
+                    // otherwise inherit from input.
+                    const auto &orig_tag = dgraph.lt_2_mtag_[lt.id_];
+                    if (!orig_tag.empty()) {
+                        lt.stride_ = memory_tag2strides(lt.shape_, orig_tag);
+                    } else if (is_mtag_available) {
+                        dgraph.lt_2_mtag_[lt.id_] = dominate_tag;
+                        lt.stride_ = memory_tag2strides(
+                                lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+                    } else {
+                        dgraph.lt_2_mtag_[lt.id_]
+                                = get_default_tag(lt.shape_.size());
+                        lt.stride_ = memory_tag2strides(
+                                lt.shape_, dgraph.lt_2_mtag_[lt.id_]);
+                    }
+                }
             }
             break;
         }

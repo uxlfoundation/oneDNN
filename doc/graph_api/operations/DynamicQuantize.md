@@ -22,6 +22,11 @@ For per-channel quantization, taking channel axis = 1 as an example:
 |:-------------------------------------------|:---------------------------------------------------------------------|:-----------|:------------------------------------------------------------------------------------------------------------------------------------------------|:---------------------|
 | [qtype](@ref dnnl::graph::op::attr::qtype) | Specifies which de-quantization type is used.                        | string     | `per_tensor` (default), `per_channel`                                                                                                           | Optional             |
 | [axis](@ref dnnl::graph::op::attr::axis)   | Specifies dimension on which per-channel de-quantization is applied. | s64        | A s64 value in the range of [-r, r-1] where r = rank(src), `1` by default. Negative value means counting the dimension backwards from the end.  | Optional             |
+| [mask](@ref dnnl::graph::op::attr::mask)   | Specifies which dimensions the scales/zps vary over. Bit `i` set means scales vary on dimension `i`. When set, `qtype` must be not set or set to the default. | s64 | A non-negative integer where set bits index source dimensions. | Optional |
+
+@note The `mask` attribute is the recommended way to specify quantization
+granularity. The `qtype` and `axis` attributes are retained for backward
+compatibility and will be deprecated in the future.
 
 ## Execution arguments
 
@@ -39,12 +44,15 @@ constructing an operation.
 @note `scales` is an `f32` 1D tensor to be applied to the quantization formula. For
 `qtype` = `per-tensor`, there should be only one element in the scales tensor.
 For `qtype` = `per-channel`, the element number should be equal to the element
-number of src tensor along the dimension axis.
+number of src tensor along the dimension axis. When `mask` is specified, the
+`scales` tensor is a packed tensor whose dimensions correspond to the source
+dimensions selected by the mask bits.
 
 @note `zps` is a 1D tensor with offset values that map to zero. For `qtype` =
 `per-tensor`, there should be only one element in the zps tensor. For `qtype` =
 `per-channel`, the element number should be equal to the element number of input
-tensor along the dimension axis. If omitted, zps values are assumed to be zero.
+tensor along the dimension axis. When `mask` is specified, `zps` must have the
+same shape as `scales`. If omitted, zps values are assumed to be zero.
 
 ### Outputs
 

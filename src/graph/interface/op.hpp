@@ -328,7 +328,6 @@ public:
             CASE(axis);
             CASE(begin_norm_axis);
             CASE(groups);
-            CASE(group_shape);
             CASE(axes);
             CASE(dilations);
             CASE(weights_shape);
@@ -343,6 +342,7 @@ public:
             CASE(sizes);
             CASE(strides);
             CASE(zps);
+            CASE(group_shape);
             CASE(exclude_pad);
             CASE(keep_dims);
             CASE(keep_stats);
@@ -360,17 +360,14 @@ public:
             CASE(mode);
             CASE(qtype);
             CASE(rounding_type);
-            CASE(matched);
-            CASE(backend);
-            CASE(partition_id);
-            CASE(op_depth);
             CASE(accumulation_mode);
+            CASE(matched);
             CASE(canonicalized);
             CASE(change_layout);
             CASE(is_constant);
             CASE(is_convtranspose);
             CASE(is_training);
-            CASE(fwd_alg_kind);
+            CASE(with_dropout);
             CASE(fuse_relu);
             CASE(with_bias);
             CASE(with_runtime_scales);
@@ -383,20 +380,25 @@ public:
             CASE(with_scale);
             CASE(is_invert_scale);
             CASE(mask_type);
+            CASE(is_rms);
+            CASE(partition_id);
+            CASE(op_depth);
             CASE(alg_kind);
+            CASE(group_mask);
+            CASE(data_type);
             CASE(axis_row);
             CASE(axis_col);
+            CASE(fwd_alg_kind);
+            CASE(backend);
             CASE(dw_type);
             CASE(kind);
+            CASE(qk_acc_mode);
+            CASE(vs_acc_mode);
             CASE(p);
             CASE(dst_zps);
             CASE(src_zps);
             CASE(permutation);
             CASE(fusion_info);
-            CASE(qk_acc_mode);
-            CASE(vs_acc_mode);
-            CASE(is_rms);
-            CASE(with_dropout);
             default: return "undefined_attr";
         }
 #undef CASE

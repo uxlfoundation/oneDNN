@@ -2009,38 +2009,65 @@ bool get_reorder_attrs(const deserialized_op_t &base_op_ref,
     else
         return false;
 
-    // scale
-    attr_t::policy_t scale_policy = attr_t::policy_t::COMMON;
-    int64_t axis = 1;
-    std::vector<dnnl_dim_t> groups;
-    dnnl_data_type_t scale_dt, zp_dt;
+    // Determine mask, groups, and policy from op attributes.
+    // Prefer explicit mask attribute over qtype/axis derivation.
+    int64_t mask = 0;
+    bool has_explicit_mask = false;
+    if (base_op_ref.get_attr_s64(mask, "mask")) has_explicit_mask = true;
 
     const int ndims
             = static_cast<int>(base_op_ref.in_lts_.front().shape_.size());
-    base_op_ref.get_attr_s64(axis, "axis");
-    if (axis < 0) axis += ndims;
 
-    // per dimension
-    if (qtype == "per_channel") {
-        if (axis < 0) axis += ndims;
-        if (axis == 0) {
-            scale_policy = attr_t::PER_DIM_0;
-        } else if (axis == 1) {
-            scale_policy = attr_t::PER_DIM_1;
-        } else if (axis == 2) {
-            scale_policy = attr_t::PER_DIM_2;
-        } else if (axis == 3) {
-            scale_policy = attr_t::PER_DIM_3;
-        } else {
-            assert(!"unsupported axis");
-        }
-    } else if (qtype == "per_group") {
-        scale_policy = attr_t::PER_TENSOR;
+    std::vector<int64_t> group_shape;
+    base_op_ref.get_attr_s64_vector(group_shape, "group_shape");
+    const bool is_per_group = !group_shape.empty() || qtype == "per_group";
 
-        std::vector<int64_t> group_shape;
-        base_op_ref.get_attr_s64_vector(group_shape, "group_shape");
+    std::vector<dnnl_dim_t> groups;
+    if (is_per_group && !group_shape.empty()) {
         groups = {group_shape[ndims - 2], group_shape[ndims - 1]};
     }
+
+    // Derive mask from qtype/axis if not explicitly provided
+    if (!has_explicit_mask) {
+        int64_t axis = 1;
+        base_op_ref.get_attr_s64(axis, "axis");
+        if (axis < 0) axis += ndims;
+
+        if (qtype == "per_channel") {
+            mask = 1LL << axis;
+        } else if (is_per_group) {
+            // For per_group without explicit mask, derive from scale dims
+            if (base_op_ref.in_lts_.size() >= 2) {
+                const auto &scale_shape = base_op_ref.in_lts_[1].shape_;
+                for (int i = 0; i < ndims; ++i) {
+                    if (static_cast<size_t>(i) < scale_shape.size()
+                            && scale_shape[i] > 1)
+                        mask |= (1LL << i);
+                }
+            }
+        }
+        // else per_tensor: mask stays 0
+    }
+
+    // Map mask to scale policy for benchdnn
+    attr_t::policy_t scale_policy = attr_t::policy_t::COMMON;
+    if (mask != 0 && !is_per_group) {
+        // Per-channel: map single-bit mask to PER_DIM_N
+        if (mask == (1LL << 0))
+            scale_policy = attr_t::PER_DIM_0;
+        else if (mask == (1LL << 1))
+            scale_policy = attr_t::PER_DIM_1;
+        else if (mask == (1LL << 2))
+            scale_policy = attr_t::PER_DIM_2;
+        else if (mask == (1LL << 3))
+            scale_policy = attr_t::PER_DIM_3;
+        else
+            scale_policy = attr_t::PER_TENSOR;
+    } else if (is_per_group) {
+        scale_policy = attr_t::PER_TENSOR;
+    }
+
+    dnnl_data_type_t scale_dt, zp_dt;
 
     if (op_kind == "Dequantize" || op_kind == "Quantize") {
         std::vector<float> scales {};
@@ -2060,9 +2087,9 @@ bool get_reorder_attrs(const deserialized_op_t &base_op_ref,
         //  TODO: benchdnn needs to alloc memory based on is_def() function.
         //  so add tmp value for per_tensor scales && zps to make is_def()
         //  return false to alloc memory.
-        if (qtype == "per_tensor") {
+        if (mask == 0) {
             arg_scales.set(arg, {scale_policy, 2});
-        } else if (qtype == "per_group") {
+        } else if (is_per_group) {
             arg_scales.set(arg, {scale_policy, 1.f, scale_dt, groups});
         } else {
             arg_scales.set(arg, {scale_policy});
@@ -2070,7 +2097,7 @@ bool get_reorder_attrs(const deserialized_op_t &base_op_ref,
         // zps is optional for DynamicDequantize/DynamicQuantize, default is
         // symmetric quantization
         if (base_op_ref.in_lts_.size() == 3) {
-            if (qtype == "per_group") {
+            if (is_per_group) {
                 zp_dt = static_cast<dnnl_data_type_t>(
                         base_op_ref.in_lts_[2].get_data_type());
                 zp.set(arg, {scale_policy, 0, zp_dt, groups});

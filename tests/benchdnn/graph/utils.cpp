@@ -428,6 +428,7 @@ dnnl::graph::op::attr attrstr2kind(const std::string &attr_name) {
             {"begin_norm_axis", dnnl::graph::op::attr::begin_norm_axis},
             {"groups", dnnl::graph::op::attr::groups},
             {"group_shape", dnnl::graph::op::attr::group_shape},
+            {"mask", dnnl::graph::op::attr::mask},
             // int64_t vector attributes. The value of these attributes can be a
             // vector of int64 numbers.
             {"axes", dnnl::graph::op::attr::axes},
@@ -500,6 +501,7 @@ const std::string &attrstr2type(const std::string &attr_name) {
             {"begin_norm_axis", "s64"},
             {"groups", "s64"},
             {"group_shape", "s64"},
+            {"mask", "s64"},
             // int64_t vector attributes. The value of these attributes can be a
             // vector of int64 numbers.
             {"axes", "s64[]"},

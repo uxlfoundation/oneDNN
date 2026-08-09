@@ -74,12 +74,6 @@
 --reset --in-shapes=1:1x128x56x56 --op-attrs=0:auto_pad:SAME_LOWER --case=op/f32/deconv_bwd_w.json
 --reset --in-shapes=1:1x128x57x57 --op-attrs=0:auto_pad:VALID --case=op/f32/deconv_bwd_w.json
 --reset --in-shapes=0:1x28x28x32+1:1x16x16x128 --op-attrs=0:data_format:NXC --case=op/f32/deconv_bwd_w.json
---reset --case=op/f32/dequantize_s8.json
---reset --case=op/f32/dequantize_u8.json
---reset --case=op/f32/dequantize_f8_e4m3.json
---reset --case=op/f32/dequantize_f8_e5m2.json
---reset --case=op/f32/dynamicdq_s4.json
---reset --case=op/f32/dynamicdq_u4.json
 --reset --in-shapes=,0:64x16x28x28 --op-kind=0:Elu,0:LeakyReLU --case=op/f32/elu.json
 --reset --case=op/f32/elu_bwd.json
 --reset --case=op/f32/hardsigmoid.json
@@ -140,9 +134,6 @@
 --reset --op-attrs=0:data_format:NXC --case=op/f32/prelu.json
 --reset --case=op/f32/prelu_bwd.json
 --reset --op-attrs=0:data_format:NXC --case=op/f32/prelu_bwd.json
---reset --case=op/f32/quantize.json
---reset --case=op/f32/quantize_f8_e4m3.json
---reset --case=op/f32/quantize_f8_e5m2.json
 --reset --case=op/f32/reducel1.json
 --reset --case=op/f32/reducel2.json
 --reset --case=op/f32/reducemax.json
@@ -313,8 +304,7 @@
 --reset --in-shapes=0:2x17x5x5x5+1:17x1x3x3x3 --op-attrs=0:strides:1x1x1*dilations:1x1x1*pads_begin:1x1x1*pads_end:1x1x1*groups:17 --case=op/f32/deconv_bwd_d.json
 --reset --in-shapes=0:2x16x5x5x5+1:16x4x3x3x3 --op-attrs=0:strides:1x1x1*dilations:1x1x1*pads_begin:1x1x1*pads_end:1x1x1*groups:4 --case=op/f32/deconv_bwd_d.json
 --reset --in-shapes=0:2x20x5x5x5+1:16x5x3x3x3 --op-attrs=0:strides:1x1x1*dilations:1x1x1*pads_begin:1x1x1*pads_end:1x1x1*groups:4 --case=op/f32/deconv_bwd_d.json
---reset --case=op/f32/dynamicq.json
---reset --case=op/f32/dynamicdq.json
+
 # case from large scope
 --reset --in-shapes=0:*abcd --case=op/f32/reorder.json
 --reset --in-shapes=0:*cdba --case=op/f32/reorder.json
@@ -874,3 +864,22 @@
 --reset --op-attrs=0:mode:gelu_erf,0:mode:gelu_tanh --case=op/f32/gelu.json
 --reset --case=op/f32/rmsnorm.json
 --reset --op-attrs=0:epsilon:0.00001 --case=op/f32/rmsnorm.json
+
+# quantization
+--reset --case=op/f32/quantize.json
+--reset --case=op/f32/quantize_f8_e4m3.json
+--reset --case=op/f32/quantize_f8_e5m2.json
+--reset --case=op/f32/dequantize_s8.json
+--reset --case=op/f32/dequantize_u8.json
+--reset --case=op/f32/dequantize_f8_e4m3.json
+--reset --case=op/f32/dequantize_f8_e5m2.json
+--reset --case=op/f32/dynamicdq_s4.json
+--reset --case=op/f32/dynamicdq_u4.json
+--reset --case=op/f32/dynamicq.json
+--reset --case=op/f32/dynamicdq.json
+--reset --op-attrs=0:qtype:per_tensor*mask:2 --case=op/f32/dynamicq.json
+--reset --op-attrs=0:qtype:per_tensor*mask:2 --case=op/f32/dynamicdq.json
+--reset --op-attrs=0:qtype:per_tensor*mask:3 --in-shapes=1:2x64 --case=op/f32/dynamicq.json
+--reset --op-attrs=0:qtype:per_tensor*mask:3 --in-shapes=1:2x64 --case=op/f32/dynamicdq.json
+--reset --op-attrs=0:qtype:per_tensor*mask:0 --in-shapes=1:- --case=op/f32/dynamicq.json
+--reset --op-attrs=0:qtype:per_tensor*mask:0 --in-shapes=1:- --case=op/f32/dynamicdq.json

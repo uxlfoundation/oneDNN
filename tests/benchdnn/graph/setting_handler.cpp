@@ -1999,8 +1999,6 @@ bool get_reorder_attrs(const deserialized_op_t &base_op_ref,
         attr_t::arg_scales_t &arg_scales, attr_t::zero_points_t &zp) {
 
     const auto &op_kind = base_op_ref.kind_;
-    std::string qtype {};
-    base_op_ref.get_attr_string(qtype, "qtype");
     int arg = 0;
     if (op_kind == "Dequantize" || op_kind == "DynamicDequantize")
         arg = DNNL_ARG_SRC;
@@ -2009,71 +2007,117 @@ bool get_reorder_attrs(const deserialized_op_t &base_op_ref,
     else
         return false;
 
-    // scale
-    attr_t::policy_t scale_policy = attr_t::policy_t::COMMON;
-    int64_t axis = 1;
-    std::vector<dnnl_dim_t> groups;
-    dnnl_data_type_t scale_dt, zp_dt;
+    if (op_kind == "Dequantize" || op_kind == "Quantize") {
+        // Static quantization: scales and zps are op attributes. And there is
+        // no mask attribute.
+        std::string qtype {};
+        base_op_ref.get_attr_string(qtype, "qtype");
 
-    const int ndims
-            = static_cast<int>(base_op_ref.in_lts_.front().shape_.size());
-    base_op_ref.get_attr_s64(axis, "axis");
-    if (axis < 0) axis += ndims;
-
-    // per dimension
-    if (qtype == "per_channel") {
-        if (axis < 0) axis += ndims;
-        if (axis == 0) {
-            scale_policy = attr_t::PER_DIM_0;
-        } else if (axis == 1) {
-            scale_policy = attr_t::PER_DIM_1;
-        } else if (axis == 2) {
-            scale_policy = attr_t::PER_DIM_2;
-        } else if (axis == 3) {
-            scale_policy = attr_t::PER_DIM_3;
-        } else {
-            assert(!"unsupported axis");
+        attr_t::policy_t scale_policy = attr_t::policy_t::COMMON;
+        if (qtype == "per_channel") {
+            int64_t axis = 1;
+            base_op_ref.get_attr_s64(axis, "axis");
+            const int ndims = static_cast<int>(
+                    base_op_ref.in_lts_.front().shape_.size());
+            if (axis < 0) axis += ndims;
+            if (axis == 0)
+                scale_policy = attr_t::PER_DIM_0;
+            else if (axis == 1)
+                scale_policy = attr_t::PER_DIM_1;
+            else if (axis == 2)
+                scale_policy = attr_t::PER_DIM_2;
+            else if (axis == 3)
+                scale_policy = attr_t::PER_DIM_3;
+            else
+                assert(!"unsupported axis");
         }
-    } else if (qtype == "per_group") {
-        scale_policy = attr_t::PER_TENSOR;
+
+        std::vector<float> scales {};
+        if (base_op_ref.get_attr_f32_vector(scales, "scales"))
+            arg_scales.set(arg, {scale_policy, scales.front()});
+
+        std::vector<int64_t> zps;
+        if (base_op_ref.get_attr_s64_vector(zps, "zps") && !zps.empty())
+            zp.set(arg, attr_t::policy_t::COMMON, zps.front());
+
+    } else if (op_kind == "DynamicDequantize" || op_kind == "DynamicQuantize") {
+        // Dynamic quantization: scales and zps are runtime inputs.
+        // Use explicit mask to avoid lossy policy round-trips.
+        const int ndims
+                = static_cast<int>(base_op_ref.in_lts_.front().shape_.size());
+
+        // Determine mask from explicit attribute or legacy qtype/axis.
+        int64_t mask = 0;
+        bool has_explicit_mask = false;
+        if (base_op_ref.get_attr_s64(mask, "mask")) has_explicit_mask = true;
 
         std::vector<int64_t> group_shape;
         base_op_ref.get_attr_s64_vector(group_shape, "group_shape");
-        groups = {group_shape[ndims - 2], group_shape[ndims - 1]};
-    }
+        std::string qtype {};
+        base_op_ref.get_attr_string(qtype, "qtype");
+        const bool is_per_group = !group_shape.empty() || qtype == "per_group";
 
-    if (op_kind == "Dequantize" || op_kind == "Quantize") {
-        std::vector<float> scales {};
-        const auto has_scales
-                = base_op_ref.get_attr_f32_vector(scales, "scales");
-        if (has_scales) arg_scales.set(arg, {scale_policy, scales.front()});
-
-        std::vector<int64_t> zps;
-        const auto has_zps = base_op_ref.get_attr_s64_vector(zps, "zps");
-        // currently, zps only support per_tensor quantization in primitive
-        if (has_zps && !zps.empty())
-            zp.set(arg, attr_t::policy_t::COMMON, zps.front());
-    } else if (op_kind == "DynamicDequantize" || op_kind == "DynamicQuantize") {
-        // For reference path, it always use f32 for computation.
-        scale_dt = dnnl_f32;
-
-        //  TODO: benchdnn needs to alloc memory based on is_def() function.
-        //  so add tmp value for per_tensor scales && zps to make is_def()
-        //  return false to alloc memory.
-        if (qtype == "per_tensor") {
-            arg_scales.set(arg, {scale_policy, 2});
-        } else if (qtype == "per_group") {
-            arg_scales.set(arg, {scale_policy, 1.f, scale_dt, groups});
-        } else {
-            arg_scales.set(arg, {scale_policy});
+        // Validate the explicit mask which should cover the last two dimensions
+        // as required by the primitive API.
+        if (has_explicit_mask && !group_shape.empty()) {
+            if (ndims < 2) return false;
+            const int64_t grouped_mask
+                    = (1LL << (ndims - 2)) | (1LL << (ndims - 1));
+            if ((mask & grouped_mask) != grouped_mask) return false;
         }
+
+        if (!has_explicit_mask) {
+            int64_t axis = 1;
+            base_op_ref.get_attr_s64(axis, "axis");
+            if (axis < 0) axis += ndims;
+
+            if (qtype == "per_channel") {
+                mask = 1LL << axis;
+            } else if (is_per_group && base_op_ref.in_lts_.size() >= 2) {
+                const auto &scale_shape = base_op_ref.in_lts_[1].shape_;
+                for (int i = 0; i < ndims; ++i) {
+                    if (static_cast<size_t>(i) < scale_shape.size()
+                            && scale_shape[i] > 1)
+                        mask |= (1LL << i);
+                }
+                // Primitive API requires mask to cover last two dims
+                // when groups are specified.
+                if (ndims >= 2)
+                    mask |= (1LL << (ndims - 1)) | (1LL << (ndims - 2));
+            }
+        }
+
+        std::vector<dnnl_dim_t> groups;
+        if (is_per_group && !group_shape.empty())
+            groups = {group_shape[ndims - 2], group_shape[ndims - 1]};
+
+        // Build scale entry with explicit mask.
+        attr_t::arg_scales_t::entry_t scale_entry;
+        if (is_per_group) {
+            scale_entry = {attr_t::COMMON, 1.f, dnnl_f32, groups};
+        } else {
+            // Dummy value (2) ensures is_def() returns false for memory alloc.
+            scale_entry = {attr_t::COMMON, mask == 0 ? 2.f : 1.f};
+        }
+        if (mask != 0) {
+            scale_entry.mask = mask;
+            scale_entry.mask_input = attr_t::mask_input_t::mask;
+        }
+        arg_scales.set(arg, scale_entry);
+
         // zps is optional for DynamicDequantize/DynamicQuantize, default is
         // symmetric quantization
         if (base_op_ref.in_lts_.size() == 3) {
-            if (qtype == "per_group") {
-                zp_dt = static_cast<dnnl_data_type_t>(
+            if (is_per_group) {
+                auto zp_dt = static_cast<dnnl_data_type_t>(
                         base_op_ref.in_lts_[2].get_data_type());
-                zp.set(arg, {scale_policy, 0, zp_dt, groups});
+                attr_t::zero_points_t::entry_t zp_entry(
+                        attr_t::COMMON, 0, zp_dt, groups);
+                if (mask != 0) {
+                    zp_entry.mask = mask;
+                    zp_entry.mask_input = attr_t::mask_input_t::mask;
+                }
+                zp.set(arg, zp_entry);
             } else {
                 zp.set(arg, attr_t::policy_t::COMMON, 1);
             }

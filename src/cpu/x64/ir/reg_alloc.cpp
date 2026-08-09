@@ -153,22 +153,25 @@ namespace {
 // read at 1 on the next turn. One backward pass finds most of it. The entry to
 // loop_end needs the back-edge, so it appears only on the second pass. A third
 // pass changes nothing, which is the fixed point.
-void compute_liveness(
-        const ir_t &ir, std::vector<std::vector<int8_t>> &live_in) {
+// Time: O(p * n_ops * n_vregs), where p is the number of fixed-point passes.
+// Space: O(n_ops * n_vregs).
+void compute_liveness(const ir_t &ir, std::vector<int8_t> &live_in) {
     const int n_ops = ir.n_ops();
     const int n_vregs = ir.n_vregs();
+    const size_t n_live_entries
+            = static_cast<size_t>(n_ops) * static_cast<size_t>(n_vregs);
 
     // Phase 1: build per-operation def/use sets and the control-flow graph.
     //
     // def_at[i][v] is 1 if operation `i` defines (writes) vreg `v`.
     // use_at[i][v] is 1 if operation `i` uses (reads) vreg `v`.
     // successors[i] lists all operations that may execute immediately after i.
-    std::vector<std::vector<int8_t>> def_at(
-            n_ops, std::vector<int8_t>(n_vregs, 0));
-    std::vector<std::vector<int8_t>> use_at(
-            n_ops, std::vector<int8_t>(n_vregs, 0));
+    std::vector<int8_t> def_at(n_live_entries, 0);
+    std::vector<int8_t> use_at(n_live_entries, 0);
 
-    std::vector<std::vector<int>> successors(n_ops);
+    constexpr int max_successors = 2;
+    std::vector<int> successors(
+            static_cast<size_t>(n_ops) * max_successors, -1);
     std::vector<int> def_vregs, use_vregs;
 
     // Map label IDs to operation indices so jmp/jz can resolve their target
@@ -181,54 +184,55 @@ void compute_liveness(
     for (int i = 0; i < n_ops; i++) {
         const op_t &op = ir.ops()[i];
         ir.def_use(op, def_vregs, use_vregs);
+        const size_t row = static_cast<size_t>(i) * n_vregs;
+        const size_t successor_row = static_cast<size_t>(i) * max_successors;
 
         for (int v : def_vregs)
-            def_at[i][v] = 1;
+            def_at[row + v] = 1;
         for (int v : use_vregs)
-            use_at[i][v] = 1;
+            use_at[row + v] = 1;
 
         // Successor edges include fall-through to `i+1` and any explicit
         // control-flow transfers (branches and loop back-edges).
         if (op.kind == op_kind_t::loop_end) {
-            if (i + 1 < n_ops) successors[i].push_back(i + 1);
-            successors[i].push_back(op.match + 1);
+            if (i + 1 < n_ops) successors[successor_row] = i + 1;
+            successors[successor_row + 1] = op.match + 1;
         } else if (op.kind == op_kind_t::jmp) {
-            successors[i].push_back(label_to_op[(int)op.label_id]);
+            successors[successor_row] = label_to_op[(int)op.label_id];
         } else if (op.kind == op_kind_t::jz) {
-            if (i + 1 < n_ops) successors[i].push_back(i + 1);
-            successors[i].push_back(label_to_op[(int)op.label_id]);
+            if (i + 1 < n_ops) successors[successor_row] = i + 1;
+            successors[successor_row + 1] = label_to_op[(int)op.label_id];
         } else if (i + 1 < n_ops) {
-            successors[i].push_back(i + 1);
+            successors[successor_row] = i + 1;
         }
     }
 
     // Phase 2: compute `live_in` and `live_out` using backward dataflow
     // analysis. Iterate until reaching a fixed point (no changes in a full
     // pass).
-    live_in.assign(n_ops, std::vector<int8_t>(n_vregs, 0));
-    std::vector<std::vector<int8_t>> live_out(
-            n_ops, std::vector<int8_t>(n_vregs, 0));
+    live_in.assign(n_live_entries, 0);
 
     bool changed = true;
     while (changed) {
         changed = false;
         for (int i = n_ops - 1; i >= 0; i--) {
+            const size_t row = static_cast<size_t>(i) * n_vregs;
+            const size_t successor_row
+                    = static_cast<size_t>(i) * max_successors;
             // live_out[i] = OR over successors `s` of live_in[s]
             for (int v = 0; v < n_vregs; v++) {
                 int8_t live_out_v = 0;
-                for (int s : successors[i])
-                    live_out_v |= live_in[s][v];
-                if (live_out_v != live_out[i][v]) {
-                    live_out[i][v] = live_out_v;
-                    changed = true;
+                for (int j = 0; j < max_successors; j++) {
+                    const int successor = successors[successor_row + j];
+                    if (successor >= 0)
+                        live_out_v |= live_in[static_cast<size_t>(successor)
+                                        * n_vregs
+                                + v];
                 }
-            }
-            // live_in[i] = use[i] OR (live_out[i] AND NOT def[i])
-            for (int v = 0; v < n_vregs; v++) {
-                const char live_in_v
-                        = use_at[i][v] || (live_out[i][v] && !def_at[i][v]);
-                if (live_in_v != live_in[i][v]) {
-                    live_in[i][v] = live_in_v;
+                const int8_t live_in_v
+                        = use_at[row + v] || (live_out_v && !def_at[row + v]);
+                if (live_in_v != live_in[row + v]) {
+                    live_in[row + v] = live_in_v;
                     changed = true;
                 }
             }
@@ -400,7 +404,7 @@ reg_alloc_result_t allocate_registers(
     // Step 1: compute operation-level liveness.
     // live_in[i][v] is 1 when virtual register `v` is needed on entry to
     // operation `i`.
-    std::vector<std::vector<int8_t>> live_in;
+    std::vector<int8_t> live_in;
     compute_liveness(ir, live_in);
 
     // Step 2: build a single live interval per virtual register.
@@ -425,7 +429,8 @@ reg_alloc_result_t allocate_registers(
         for (int v : use_vregs)
             extend_interval(v);
         for (int v = 0; v < n_vregs; v++)
-            if (live_in[i][v]) extend_interval(v);
+            if (live_in[static_cast<size_t>(i) * n_vregs + v])
+                extend_interval(v);
     }
 
     // Step 3: run linear-scan register allocation per physical register file,

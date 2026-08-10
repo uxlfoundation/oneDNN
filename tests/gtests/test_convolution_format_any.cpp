@@ -175,6 +175,41 @@ bool has_bf16_mmla(const engine &eng) {
     return pd.get() != nullptr && is_bf16_mmla_weights(pd.weights_desc());
 }
 
+convolution_forward::primitive_desc make_int8_mmla_conv_pd(const engine &eng,
+        memory::data_type src_type, const memory::desc &weights_md,
+        memory::dim ih = 16, memory::dim iw = 16, memory::dim stride = 1,
+        memory::dim padding = 1, memory::dim mb = 1,
+        bool source_zero_point = false, bool allow_empty = false) {
+    const auto weights_dims = weights_md.get_dims();
+    const auto oc = weights_dims[0];
+    const auto ic = weights_dims[1];
+    const auto kh = weights_dims[2];
+    const auto kw = weights_dims[3];
+    const auto oh = (ih + 2 * padding - kh) / stride + 1;
+    const auto ow = (iw + 2 * padding - kw) / stride + 1;
+    const auto src_md = memory::desc({mb, ic, ih, iw}, src_type, tag::nhwc);
+    const auto dst_md
+            = memory::desc({mb, oc, oh, ow}, memory::data_type::f32, tag::nhwc);
+    primitive_attr attr;
+    if (source_zero_point) attr.set_zero_points_mask(DNNL_ARG_SRC, 0);
+    return convolution_forward::primitive_desc(eng,
+            prop_kind::forward_inference, algorithm::convolution_direct, src_md,
+            weights_md, memory::desc(), dst_md, {stride, stride},
+            {padding, padding}, {padding, padding}, attr, allow_empty);
+}
+
+bool is_int8_mmla_weights(const memory::desc &desc) {
+    return aarch64_mmla_test::matches_weights_desc(desc, 1, 0, 8);
+}
+
+bool has_int8_mmla(const engine &eng) {
+    const auto any
+            = memory::desc({64, 64, 3, 3}, memory::data_type::s8, tag::any);
+    const auto pd = make_int8_mmla_conv_pd(
+            eng, memory::data_type::u8, any, 16, 16, 1, 1, 1, false, true);
+    return pd.get() != nullptr && is_int8_mmla_weights(pd.weights_desc());
+}
+
 } // namespace
 
 TEST(AArch64MmlaConvolution, Bf16SelectionAndFallbacks) {
@@ -240,5 +275,48 @@ TEST(AArch64MmlaConvolution, Bf16ExplicitWeights) {
     EXPECT_EQ(dot_pd.weights_desc(), dot);
     EXPECT_FALSE(is_bf16_mmla_weights(dot_pd.weights_desc()));
 }
+
+TEST(AArch64MmlaConvolution, Int8SelectionAndExplicitWeights) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "This test targets the CPU convolution implementation.");
+
+    auto eng = get_test_engine();
+    SKIP_IF(!has_int8_mmla(eng), "This test targets AArch64 SVE-I8MM.");
+
+    const auto any_3x3
+            = memory::desc({64, 64, 3, 3}, memory::data_type::s8, tag::any);
+    const auto selected_3x3
+            = make_int8_mmla_conv_pd(eng, memory::data_type::u8, any_3x3);
+    EXPECT_TRUE(is_int8_mmla_weights(selected_3x3.weights_desc()));
+
+    const auto any_5x5
+            = memory::desc({64, 64, 5, 5}, memory::data_type::s8, tag::any);
+    const auto kernel_fallback = make_int8_mmla_conv_pd(
+            eng, memory::data_type::u8, any_5x5, 16, 16, 1, 2);
+    EXPECT_FALSE(is_int8_mmla_weights(kernel_fallback.weights_desc()));
+
+    const auto any_1x1
+            = memory::desc({64, 64, 1, 1}, memory::data_type::s8, tag::any);
+    const auto below_threshold = make_int8_mmla_conv_pd(
+            eng, memory::data_type::u8, any_1x1, 21, 19, 1, 0);
+    EXPECT_FALSE(is_int8_mmla_weights(below_threshold.weights_desc()));
+
+    const auto at_threshold = make_int8_mmla_conv_pd(
+            eng, memory::data_type::u8, any_1x1, 20, 20, 1, 0);
+    EXPECT_TRUE(is_int8_mmla_weights(at_threshold.weights_desc()));
+
+    // Explicit layouts remain authoritative across the profitability
+    // boundary in either direction.
+    const auto explicit_mmla = make_int8_mmla_conv_pd(eng,
+            memory::data_type::u8, at_threshold.weights_desc(), 21, 19, 1, 0);
+    EXPECT_EQ(explicit_mmla.weights_desc(), at_threshold.weights_desc());
+    EXPECT_TRUE(is_int8_mmla_weights(explicit_mmla.weights_desc()));
+
+    const auto explicit_dot = make_int8_mmla_conv_pd(eng, memory::data_type::u8,
+            below_threshold.weights_desc(), 20, 20, 1, 0);
+    EXPECT_EQ(explicit_dot.weights_desc(), below_threshold.weights_desc());
+    EXPECT_FALSE(is_int8_mmla_weights(explicit_dot.weights_desc()));
+}
+
 #endif
 } // namespace dnnl

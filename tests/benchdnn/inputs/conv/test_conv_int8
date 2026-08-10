@@ -14,3 +14,24 @@
 --batch=harness_conv_depthwise_int8
 
 --batch=harness_conv_zero_points
+
+# Native 1x1/3x3 paths, including stride and an input-channel block tail.
+--reset
+--dir=FWD_I
+--dt=u8:s8:f32
+--stag=nhwc
+--wtag=any
+--dtag=nhwc
+mb1ic64ih16oc64oh16kh3ph1
+mb1ic72ih17oc64oh9kh3sh2ph1
+mb1ic64ih20oc64oh20kh1
+
+# 1x1 source zero point.
+--reset
+--dir=FWD_I
+--dt=u8:s8:f32
+--stag=nhwc
+--wtag=any
+--dtag=nhwc
+--attr-zero-points=src:common:5
+mb1ic64ih20oc64oh20kh1

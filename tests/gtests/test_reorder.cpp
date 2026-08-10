@@ -62,11 +62,12 @@ TEST_P(reorder_simple_test_t_s8_s8, TestsReorder) {
 #if DNNL_AARCH64
 namespace {
 
-memory::desc make_bf16_mmla_conv_weights_desc(const engine &eng) {
-    const auto src_md = memory::desc(
-            {1, 64, 16, 16}, memory::data_type::bf16, memory::format_tag::nhwc);
+memory::desc make_mmla_conv_weights_desc(const engine &eng,
+        memory::data_type src_type, memory::data_type weights_type) {
+    const auto src_md
+            = memory::desc({1, 64, 16, 16}, src_type, memory::format_tag::nhwc);
     const auto weights_md = memory::desc(
-            {64, 64, 3, 3}, memory::data_type::bf16, memory::format_tag::any);
+            {64, 64, 3, 3}, weights_type, memory::format_tag::any);
     const auto dst_md = memory::desc(
             {1, 64, 16, 16}, memory::data_type::f32, memory::format_tag::nhwc);
     const auto pd = convolution_forward::primitive_desc(eng,
@@ -79,13 +80,13 @@ memory::desc make_bf16_mmla_conv_weights_desc(const engine &eng) {
 template <typename data_t>
 void check_mmla_weights_round_trip(const engine &eng,
         const memory::desc &packed_md, memory::format_tag plain_tag, int k_dim,
-        int n_dim) {
+        int n_dim, int k_block = 0) {
     using namespace aarch64_mmla_test;
 
     auto strm = stream(eng);
     const auto plain_md = memory::desc(
             packed_md.get_dims(), packed_md.get_data_type(), plain_tag);
-    EXPECT_TRUE(matches_weights_desc(packed_md, k_dim, n_dim));
+    EXPECT_TRUE(matches_weights_desc(packed_md, k_dim, n_dim, k_block));
     EXPECT_EQ(packed_md.get_size(), plain_md.get_size());
 
     auto plain = memory(plain_md, eng);
@@ -114,18 +115,34 @@ void check_mmla_weights_round_trip(const engine &eng,
 
 } // namespace
 
-TEST(AArch64MmlaWeights, DescriptorSizeAndRoundTrip) {
+TEST(AArch64MmlaWeights, Bf16DescriptorSizeAndRoundTrip) {
     SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
             "This test targets AArch64 CPU weight preparation.");
 
     using namespace aarch64_mmla_test;
     auto eng = get_test_engine();
-    const auto packed_md = make_bf16_mmla_conv_weights_desc(eng);
+    const auto packed_md = make_mmla_conv_weights_desc(
+            eng, memory::data_type::bf16, memory::data_type::bf16);
     SKIP_IF(packed_md.is_zero() || !matches_weights_desc(packed_md, 1, 0),
             "This test targets AArch64 BF16 MMLA.");
 
     check_mmla_weights_round_trip<bfloat16_t>(
             eng, packed_md, memory::format_tag::oihw, 1, 0);
+}
+
+TEST(AArch64MmlaWeights, Int8DescriptorSizeAndRoundTrip) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "This test targets AArch64 CPU weight preparation.");
+
+    using namespace aarch64_mmla_test;
+    auto eng = get_test_engine();
+    const auto packed_md = make_mmla_conv_weights_desc(
+            eng, memory::data_type::u8, memory::data_type::s8);
+    SKIP_IF(packed_md.is_zero() || !matches_weights_desc(packed_md, 1, 0, 8),
+            "This test targets AArch64 SVE-I8MM.");
+
+    check_mmla_weights_round_trip<int8_t>(
+            eng, packed_md, memory::format_tag::oihw, 1, 0, 8);
 }
 #endif
 

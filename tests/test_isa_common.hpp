@@ -241,27 +241,46 @@ inline bool is_superset(dnnl_cpu_isa_t isa_1, dnnl_cpu_isa_t isa_2) {
 namespace aarch64_mmla_test {
 
 inline memory::dim weights_n_block(
-        const memory::desc &desc, int k_dim, int n_dim) {
-    if (desc.get_data_type() != memory::data_type::bf16
-            || desc.get_format_kind() != memory::format_kind::blocked)
-        return 0;
+        const memory::desc &desc, int k_dim, int n_dim, int k_block = 0) {
+    if (desc.get_format_kind() != memory::format_kind::blocked) return 0;
 
-    // BF16 MMLA packs each K8 block as K2 x N x K4, where N is one
-    // ISA-sized output-channel tile.
+    int k_chunk = 0;
+    switch (desc.get_data_type()) {
+        case memory::data_type::bf16: k_chunk = 4; break;
+        case memory::data_type::s8: k_chunk = 8; break;
+        default: return 0;
+    }
+    if (k_block == 0)
+        k_block = desc.get_data_type() == memory::data_type::s8 ? k_chunk
+                                                                : 2 * k_chunk;
+
+    // BF16 packs two K chunks around one N tile; INT8 packs a single K chunk
+    // after N.
     const auto inner_blks = desc.get_inner_blks();
     const auto inner_idxs = desc.get_inner_idxs();
-    if (inner_blks.size() != 3 || inner_idxs.size() != 3 || inner_blks[0] != 2
-            || inner_idxs[0] != k_dim || inner_idxs[1] != n_dim
-            || inner_blks[2] != 4 || inner_idxs[2] != k_dim)
+    memory::dim n_block = 0;
+    if (k_block == k_chunk) {
+        if (inner_blks.size() != 2 || inner_idxs.size() != 2
+                || inner_idxs[0] != n_dim || inner_blks[1] != k_chunk
+                || inner_idxs[1] != k_dim)
+            return 0;
+        n_block = inner_blks[0];
+    } else if (k_block == 2 * k_chunk) {
+        if (inner_blks.size() != 3 || inner_idxs.size() != 3
+                || inner_blks[0] != 2 || inner_idxs[0] != k_dim
+                || inner_idxs[1] != n_dim || inner_blks[2] != k_chunk
+                || inner_idxs[2] != k_dim)
+            return 0;
+        n_block = inner_blks[1];
+    } else {
         return 0;
-
-    const auto n_block = inner_blks[1];
+    }
     return n_block == 16 || n_block == 32 ? n_block : 0;
 }
 
 inline bool matches_weights_desc(
-        const memory::desc &desc, int k_dim, int n_dim) {
-    return weights_n_block(desc, k_dim, n_dim) != 0;
+        const memory::desc &desc, int k_dim, int n_dim, int k_block = 0) {
+    return weights_n_block(desc, k_dim, n_dim, k_block) != 0;
 }
 
 } // namespace aarch64_mmla_test

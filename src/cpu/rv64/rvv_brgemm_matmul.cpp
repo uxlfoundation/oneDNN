@@ -26,6 +26,7 @@
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 
+#include "cpu/binary_injector_utils.hpp"
 #include "cpu/platform.hpp"
 #include "cpu/rv64/jit_generator.hpp"
 #include "cpu/rv64/rvv_brgemm_matmul.hpp"
@@ -496,17 +497,10 @@ status_t rvv_brgemm_matmul_t::execute(const exec_ctx_t &ctx) const {
 
     // Binary post-op src1 bases, one per binary in chain order (scalar or per-N;
     // each broadcasts over M/batch so the same array serves every row). Empty
-    // when the chain has no binary entry. Shift each base by src1's own offset0
-    // (off_l(0)) so a submemory rhs is read from its logical origin, not the
-    // buffer base — the kernel only adds the in-row column offset on top.
-    std::vector<const void *> po_rhs;
-    for (int i = 0; i < post_ops.len(); i++)
-        if (post_ops.entry_[i].is_binary()) {
-            const memory_desc_wrapper s1_d(post_ops.entry_[i].binary.src1_desc);
-            const auto *base = static_cast<const char *>(ctx.host_ptr(
-                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1));
-            po_rhs.push_back(base + s1_d.off_l(0) * sizeof(float));
-        }
+    // when the chain has no binary entry. The raw handles from the common
+    // helper (x64 model) -- the kernel only adds the in-row column offset.
+    const std::vector<const void *> po_rhs
+            = binary_injector_utils::prepare_binary_args(post_ops, ctx);
     const void *const *po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     parallel_nd(batch, [&](dim_t b) {

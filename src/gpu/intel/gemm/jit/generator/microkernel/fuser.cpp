@@ -26,6 +26,7 @@
 #include "generator/microkernel/elf.hpp"
 #include "generator/microkernel/payload.hpp"
 #include "gemmstone/microkernel/fuser.hpp"
+#include "ngen_elf.hpp"
 
 GEMMSTONE_NAMESPACE_START
 namespace microkernel {
@@ -42,9 +43,33 @@ struct PayloadCheck {
 
 static void checkPayload(const PayloadCheck &check, const char *kernelName);
 
+/* Compacted no-op, used to keep microkernel instructions 16-byte aligned.
+   Encodings are per-arch compaction table entries; verify additions with
+   iga64 (sync.nop {Compacted} / mov (1|M0) null:ud r0.0:ud {Compacted}). */
+static const uint8_t *alignmentFiller(ngen::HW hw) {
+    static const uint8_t syncNop[8] = {0x01, 0, 0, 0xE8, 0x01, 0, 0x11, 0};
+    static const uint8_t movNull[8] = {0x61, 0, 0x84, 0xBC, 0, 0, 0, 0};
+    static const uint8_t movNullXe2[8] = {0x61, 0, 0x84, 0xFC, 0, 0, 0x10, 0};
+    static const uint8_t movNullXe3p[8] = {0x61, 0, 0x84, 0xA4, 0, 0, 0, 0};
+    switch (hw) {
+        case ngen::HW::Unknown:
+        case ngen::HW::Gen9:
+        case ngen::HW::Gen10:
+        case ngen::HW::Gen11:
+        case ngen::HW::XeLP:
+        case ngen::HW::XeHP: return nullptr;
+        case ngen::HW::XeHPG: return syncNop;
+        case ngen::HW::XeHPC: return movNull;
+        case ngen::HW::Xe2:
+        case ngen::HW::Xe3: return movNullXe2;
+        case ngen::HW::Xe3p: return movNullXe3p;
+    }
+    return nullptr;
+}
+
 static void fuse(std::vector<uint8_t> &binary,
         const std::vector<uint8_t> &microkernel, long id,
-        const PayloadCheck *check) {
+        const PayloadCheck *check, const uint8_t *filler) {
     auto base = binary.data();
     auto bytes = binary.size();
 
@@ -139,22 +164,30 @@ static void fuse(std::vector<uint8_t> &binary,
 
         size_t before = spliceStart - base;
         auto after = bytes - before - removeBytes;
-        ptrdiff_t sizeAdjust = microkernel.size() - removeBytes;
 
         auto kbefore = before - text->offset;
+
+        /* Keep the microkernel's (uncompacted) instructions 16-byte aligned
+           so they do not straddle instruction cache lines. */
+        std::vector<uint8_t> blob;
+        if (filler && (kbefore & 8)) blob.assign(filler, filler + 8);
+        blob.insert(blob.end(), microkernel.begin(), microkernel.end());
+
+        ptrdiff_t sizeAdjust = blob.size() - removeBytes;
+
         auto kafter = text->size - kbefore - removeBytes;
 
         std::vector<uint8_t> newBinary(bytes + sizeAdjust);
         auto newBase = newBinary.data();
 
         memmove(newBase, base, before);
-        memmove(newBase + before, microkernel.data(), microkernel.size());
-        memmove(newBase + before + microkernel.size(),
+        memmove(newBase + before, blob.data(), blob.size());
+        memmove(newBase + before + blob.size(),
                 spliceStart + removeBytes, after);
 
         fixupJumpTargets(newBase + text->offset, kbefore, +sizeAdjust);
         fixupJumpTargets(
-                newBase + before + microkernel.size(), kafter, -sizeAdjust);
+                newBase + before + blob.size(), kafter, -sizeAdjust);
 
         fheaderPtr = reinterpret_cast<FileHeader *>(newBase);
 
@@ -189,7 +222,7 @@ static void fuse(std::vector<uint8_t> &binary,
         std::swap(binary, newBinary);
 
         // Tail-recurse to handle any further instances of this microkernel
-        fuse(binary, microkernel, id, check);
+        fuse(binary, microkernel, id, check, filler);
         return;
     }
 }
@@ -269,6 +302,9 @@ bool fuse(std::vector<uint8_t> &binary, const char *source, int grfBytes) {
     std::vector<uint8_t> microkernel;
     const auto sigilLen = strlen(sigilBinary);
 
+    auto filler = alignmentFiller(
+            ngen::ELFCodeGenerator<ngen::HW::Unknown>::getBinaryArch(binary));
+
     auto toNybble = [](char c) {
         return ((c >= 'A') ? (c - 'A' + 10) : (c - '0')) & 0xF;
     };
@@ -297,7 +333,7 @@ bool fuse(std::vector<uint8_t> &binary, const char *source, int grfBytes) {
         }
         PayloadCheck check {&kernels, argumentBase, grfBytes, &validated};
         fuse(binary, microkernel, id,
-                (haveLayout && argumentBase > 0) ? &check : nullptr);
+                (haveLayout && argumentBase > 0) ? &check : nullptr, filler);
     }
     stripIntermediateRepresentation(binary);
     return validated;

@@ -33,6 +33,7 @@
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/jit/ir/hw.hpp"
 #include "gpu/intel/jit/utils/type_bridge.hpp"
+#include "gpu/intel/logging.hpp"
 #include "gpu/intel/utils.hpp"
 
 namespace dnnl {
@@ -48,10 +49,7 @@ using namespace intel::jit;
 namespace {
 void entryObserver(
         const kcatalog::Entry *entry, double score, EvaluateAuxOutput aux) {
-    if (get_verbose(verbose_t::debuginfo) >= 5) {
-        dnnl::impl::verbose_printf("info,gpu,gemm,consider:%s,score:%f\n",
-                entry->str().c_str(), score);
-    }
+    gpu_debug() << "consider:" << entry->str() << ",score:" << score;
 }
 } // anonymous namespace
 
@@ -127,6 +125,7 @@ status_t gen_desc_t::finalize(const char *tags) {
     std::string ovr_strategy;
     ovr_strategy = gpu_utils::dev_getenv("GEMM_KERNEL", ovr_strategy);
     if (!ovr_strategy.empty()) {
+        entry_ = nullptr;
         std::stringstream ss(ovr_strategy);
         std::string val;
         ss >> val;
@@ -1039,16 +1038,9 @@ status_t gen_kernel_t::get_kernel(
 }
 
 void gen_kernel_t::maybe_print_verbose() {
-    int level = get_verbose(verbose_t::debuginfo);
-    if (level < 2) return;
-
-    if (level >= 10)
-        verbose_printf("info,gpu,gemm,catalog entry:%s\n",
-                desc()->entry().str().c_str());
-
-    verbose_printf("info,gpu,gemm,kernel:%s\n",
-            dump_kernel(desc()->hw_, desc()->problem_, desc()->strategy_)
-                    .c_str());
+    gpu_debug() << "kernel:"
+                << dump_kernel(
+                           desc()->hw_, desc()->problem_, desc()->strategy_);
 }
 
 } // namespace jit

@@ -83,7 +83,7 @@ struct gen_desc_t {
     }
     compute::gpu_arch_t arch() const { return arch_; }
 
-    bool has_entry() { return entry_ != nullptr; }
+    bool has_entry() const { return entry_ != nullptr; }
 
     const gemmstone::kcatalog::Entry &entry() const {
         assert(entry_ != nullptr);

@@ -289,6 +289,84 @@ struct jit_resampling_args_t {
     dim_t post_op_off0 = 0;
 };
 
+enum class binary_op_t : unsigned { none, c_blocked, n_spatial_c, n_c_spatial };
+
+enum class binary_bcast_t : unsigned {
+    none, // tensor operation
+    scalar,
+    per_batch,
+    per_c,
+    per_w
+};
+
+// Binary configuration, mirroring the x64/aarch64 jit_binary_conf_t. Fields that
+// only make sense for x86 (i8/bf16/f16 selection, per_w scratchpad expansion,
+// isa/ternary-vmm budgeting) are dropped; RVV keeps a single f32 compute domain
+// and lets the driver's strategies compute all offsets from the mds at run time
+// (like x64), so no rv64-specific run-decomposition plan is stored here.
+struct jit_binary_conf_t {
+    binary_op_t op_type = binary_op_t::none;
+    binary_bcast_t bcast_type = binary_bcast_t::none;
+    bool do_scale_src0 = false;
+    bool do_scale_src1 = false;
+    bool do_sum = false;
+    bool with_eltwise = false;
+    bool with_binary = false;
+    bool with_postops = false;
+    float sum_scale = 0.f;
+    // src1 is a single value broadcast over the whole run: the kernel keeps it
+    // in a scalar FP register and uses the .vf instruction forms (x64 broadcasts
+    // it into a full vector register instead).
+    bool broadcast_src1_value = false;
+    // src1 advances 1:1 with the run (contiguous vle, or strided vlse when the
+    // src0/src1 plain layouts differ). When neither this nor broadcast is set,
+    // the driver slices the call so a fixed src1 vector maps to each run.
+    bool use_stride_src1 = false;
+    // x64 parity: a per_oc/per_oc_spatial post-op rhs exists. The dispatch
+    // then routes to the channel-aligned per_c/per_w strategies and the
+    // kernel addresses the rhs with a per-call channel offset (x64's model)
+    // instead of the general per-lane gather; an op_t::none src0 cannot be
+    // routed and keeps the gather-addressed flat path. x64's
+    // use_stride_rhs_postops is not needed: the dst_l_off the kernel already
+    // maintains advances with the run.
+    bool postops_per_oc_broadcast_exists = false;
+    bool is_ternary_op = false; // select: dst = src2 ? src0 : src1 (src2 is s8)
+    bool is_i8 = false; // dst is s8/u8 (x64-parity gating; kernel saturates)
+    bool is_src_different_layouts = false;
+    dim_t outer_dims = 1;
+    // src1 element stride along the run when layouts differ: 1 = contiguous
+    // (vle), >1 = strided (vlse; e.g. nchw:nhwc — x64 gathers with an indices
+    // vector instead). dim_t rather than x64's int: the byte stride is
+    // materialized in a 64-bit GPR, no narrowing needed.
+    dim_t src1_stride = 1;
+    int not_bcasted_sp_dims = 0;
+
+    data_type_t src0_type = data_type::undef;
+    data_type_t src1_type = data_type::undef;
+    data_type_t dst_type = data_type::undef;
+};
+
+// Per-call arguments. Pointer/size fields mirror x64/aarch64
+// jit_uni_binary_args_t names; divergences (element-count work_amount, scale
+// values instead of pointers) are noted in place.
+struct jit_uni_binary_args_t {
+    const void *src0;
+    const void *src1;
+    const void *src2; // ternary select condition (s8), else null
+    const void *dst;
+    // Per-binary post-op rhs base array, or null.
+    const void *post_ops_binary_rhs_arg_vec;
+    // Elements to process in this call. The VLA loop consumes elements via
+    // vsetvli, unlike x64's byte-based spat_offt_count.
+    dim_t work_amount;
+    // Per-tensor scale and sum values, resolved by the driver (x64 passes
+    // scale pointers and broadcasts in-kernel; sum_scale is baked into code).
+    float scales_src0, scales_src1, sum_scale;
+    // x64: the dst tensor origin; the binary post-op injector recovers each
+    // chunk's element offset as (dst address - dst_orig) >> log2(dt size).
+    const void *dst_orig;
+};
+
 struct jit_1x1_conv_conf_t {
     prop_kind_t prop_kind;
     int mb;

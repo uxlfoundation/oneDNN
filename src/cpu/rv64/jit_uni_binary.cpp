@@ -1,4 +1,5 @@
 /*******************************************************************************
+* Copyright 2019 Intel Corporation
 * Copyright 2026 Institute of Software, Chinese Academy of Sciences
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,18 +14,21 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#include <algorithm>
-#include <cstddef>
+
+#include <cassert>
 #include <cstring>
+#include <limits>
 #include <vector>
 
+#include "common/broadcast_strategy.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
+#include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
 
+#include "cpu/binary_injector_utils.hpp"
 #include "cpu/rv64/injectors/jit_uni_postops_injector.hpp"
-#include "cpu/rv64/jit_generator.hpp"
 #include "cpu/rv64/jit_uni_binary.hpp"
 
 namespace dnnl {
@@ -32,753 +36,1007 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-using namespace Xbyak_riscv;
+// The x64 binary primitive's set. The rv64 injector itself realizes the wider
+// aarch64 set (get_all_strategies_supported_by_injector adds per_mb_spatial/
+// per_mb_w via the per-lane gather), but as on x64 the binary primitive does
+// not advertise those: such a post-op rhs classifies as unsupported here and
+// the primitive defers to ref.
+static bcast_set_t get_supported_postops_bcast_strategies() {
+    return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
+            broadcasting_strategy_t::per_oc_spatial,
+            broadcasting_strategy_t::per_w,
+            broadcasting_strategy_t::no_broadcast};
+}
 
-// Config baked into the kernel (broadcast/dtype/attr shape is compile-time; the
-// scale/sum values and pointers arrive at run time via call_params_t).
-struct binary_kernel_conf_t {
-    alg_kind_t alg;
-    bool scalar_src1; // src1 broadcasts the vectorized (inner) dim
-    data_type_t dt_s0, dt_s1, dt_dst;
-    bool do_scale0, do_scale1, do_sum;
-    bool has_binary_po; // chain contains a binary post-op (advance rhs off)
-    // src1 inner-dim element stride: 1 = contiguous (vle); >1 = strided (vlse,
-    // src0/src1 different layouts, e.g. nchw:nhwc); ignored when scalar_src1.
-    dim_t s1_inner_stride;
-    bool is_select; // ternary select: dst = src2 ? src0 : src1 (src2 is s8)
-    post_ops_t post_ops; // full post-op chain (sums applied in attribute order)
-    const memory_desc_t *dst_md = nullptr; // for per_oc binary post-op rhs
-    // Emit the unrolled (three src0/src1 pairs per step) f32 main loop; the
-    // host enables it only for the streaming f32 case it applies to.
-    bool unrolled = false;
-    // Emit the narrow (single m1-vector, strictly interleaved) f32 main loop
-    // instead — same streaming gate, selected per call at low thread counts.
-    bool narrow = false;
-};
+static bool compare_layouts(const memory_desc_wrapper &src0_md,
+        const memory_desc_wrapper &src1_md) {
+    const strides_t &strides0 = src0_md.blocking_desc().strides;
+    const strides_t &strides1 = src1_md.blocking_desc().strides;
+    const dims_t &dims0 = src0_md.dims();
+    const dims_t &dims1 = src1_md.dims();
+    const int ndims = src0_md.ndims();
 
-struct jit_uni_binary_kernel_t : public jit_generator_t {
-    struct call_params_t {
-        const void *src0;
-        const void *src1;
-        const void *src2; // ternary select condition (s8), else null
-        const void *dst;
-        const void *const *rhs_ptrs; // binary post-op rhs base array, or null
-        dim_t len;
-        size_t rhs_off; // element offset of the first lane for binary post-op rhs
-        float scale0, scale1, sum_scale;
-    };
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_binary_kernel_t)
+    bool is_bcast = false;
+    for (int d = 1; d < ndims; d++)
+        is_bcast = is_bcast || dims0[d] != dims1[d];
+    if (is_bcast) return true;
 
-    jit_uni_binary_kernel_t(const binary_kernel_conf_t &c)
-        : jit_generator_t("jit_uni_binary"), c_(c) {}
-    void operator()(const call_params_t *p) const {
-        jit_generator_t::operator()(p);
+    bool same_layouts = true;
+    // For batch size == 1, the first dimension is ignored for stride checks,
+    // as non-contiguous strides in this dimension do not affect correctness.
+    int start_dim = (dims0[0] == 1 && dims1[0] == 1) ? 1 : 0;
+    for (int d = start_dim; d < ndims; ++d)
+        same_layouts = same_layouts && strides0[d] == strides1[d];
+    return same_layouts;
+}
+
+static dim_t get_different_layout_stride(
+        const strides_t &strides0, const strides_t &strides1, const int ndims) {
+    for (int d = 0; d < ndims; d++)
+        if (strides0[d] == 1) return strides1[d];
+    return strides1[ndims - 1];
+}
+
+static dim_t get_outer_dims_product(
+        const strides_t &strides0, const dims_t &dims, const int ndims) {
+    // nchw:nhwc->nchw
+    if (strides0[1] == 1) return dims[1];
+    // nhwc:nchw->nhwc
+    else if (strides0[ndims - 1] == 1)
+        return utils::array_product(dims + 2, ndims - 2);
+    else
+        return dims[ndims - 1];
+}
+
+// Runtime-dispatch analog of x64's data_type_supported(dtype, isa): this
+// primitive is pure JIT registered via CPU_INSTANCE_RV64, so the dtype gate
+// carries the mayiuse checks for the f16 (zvfh) and bf16 (zvfbfwma) paths.
+// f32/s32/s8/u8 are always supported (as on x64).
+static bool data_type_supported(const data_type_t dtype) {
+    switch (dtype) {
+        case data_type::f16: return mayiuse(zvfh);
+        case data_type::bf16: return mayiuse(zvfbfwma);
+        case data_type::f32:
+        case data_type::s32:
+        case data_type::s8:
+        case data_type::u8: return true;
+        default: return false;
+    }
+}
+
+static bool data_format_supported(const memory_desc_wrapper &mdw) {
+    if (mdw.is_plain()) return true;
+    // The {16, 8, 4} channel-block family x64 supports on its widest isa;
+    // RVV's VLA code has no per-isa block split.
+    const auto blk_size = mdw.blocking_desc().inner_blks[0];
+    return utils::one_of(blk_size, 16, 8, 4);
+}
+
+status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
+    UNUSED(engine);
+    using sm = primitive_attr_t::skip_mask_t;
+
+    conf_.dst_type = dst_md()->data_type;
+    conf_.src0_type = src_md(0)->data_type;
+    conf_.src1_type = src_md(1)->data_type;
+
+    memory_desc_wrapper dst_md_(dst_md());
+    memory_desc_wrapper src0_md_(src_md(0));
+    memory_desc_wrapper src1_md_(src_md(1));
+
+    const auto &po = attr()->post_ops_;
+    const int elt_idx = po.find(primitive_kind::eltwise);
+    conf_.is_i8 = utils::one_of(conf_.dst_type, data_type::s8, data_type::u8);
+
+    // RVV is not part of the rv64gc baseline: gate the whole primitive on the
+    // V extension at runtime.
+    VDISPATCH_BINARY(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
+
+    // The supported algorithms are checked explicitly (instead of accepting
+    // whatever the common layer validated) to avoid silently taking on new,
+    // unsupported algorithms in the future; the set matches x64 (aarch64
+    // additionally excludes binary_select).
+    const bool alg_ok = utils::one_of(desc()->alg_kind, alg_kind::binary_add,
+            alg_kind::binary_sub, alg_kind::binary_mul, alg_kind::binary_div,
+            alg_kind::binary_ge, alg_kind::binary_gt, alg_kind::binary_le,
+            alg_kind::binary_lt, alg_kind::binary_eq, alg_kind::binary_ne,
+            alg_kind::binary_max, alg_kind::binary_min,
+            alg_kind::binary_select);
+    VDISPATCH_BINARY(alg_ok, VERBOSE_BAD_ALGORITHM);
+
+    VDISPATCH_BINARY(
+            data_type_supported(conf_.dst_type), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_BINARY(
+            data_type_supported(conf_.src0_type), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_BINARY(
+            data_type_supported(conf_.src1_type), VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_BINARY(data_format_supported(src0_md_), VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_BINARY_SC(set_default_params(), VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_BINARY(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src0");
+    // x64's non-int8 rule: src0 and dst share one memory desc (layout and
+    // dtype). i8 (quantized) dst may differ from src0 (e.g. f32 src0 -> s8 dst).
+    VDISPATCH_BINARY(IMPLICATION(!conf_.is_i8, src0_md_ == dst_md_),
+            VERBOSE_INCONSISTENT_MDS, "src", "dst");
+    VDISPATCH_BINARY(
+            is_applicable(), "not applicable for current implementation");
+    VDISPATCH_BINARY(attr()->has_default_values(sm::post_ops | sm::scales),
+            VERBOSE_UNSUPPORTED_ATTR);
+    // Resolve formats before classifying the post-op chain: the post-op
+    // binary rhs may arrive as `any`, and post_ops_ok() compares the rhs
+    // layout to dst -- x64's ordering, so a dst-shaped (per_element) rhs is
+    // not spuriously rejected.
+    VDISPATCH_BINARY_SC(
+            attr_.set_default_formats(dst_md(0)), VERBOSE_UNSUPPORTED_POSTOP);
+
+    // All operations over blocking descriptors should have md initialized.
+    conf_.is_src_different_layouts = !compare_layouts(src0_md_, src1_md_);
+    const cpu_isa_t postops_isa = mayiuse(zvfbfwma)
+            ? zvfbfwma
+            : (mayiuse(zvfh) ? zvfh : v);
+    VDISPATCH_BINARY(
+            post_ops_ok(attr(), src_md(0), dst_md(),
+                    conf_.is_src_different_layouts, postops_isa),
+            VERBOSE_UNSUPPORTED_POSTOP);
+    VDISPATCH_BINARY(
+            (conf_.is_i8 || elt_idx == -1
+                    || IMPLICATION(!dst_md_.is_dense(),
+                            cpu_eltwise_fwd_pd_t::eltwise_preserves_zero(
+                                    po.entry_[elt_idx].eltwise))),
+            "unsupported datatype or sparse configuration");
+    VDISPATCH_BINARY(IMPLICATION((!attr()->scales_.has_default_values()),
+                             check_scales_mask()),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+    conf_.postops_per_oc_broadcast_exists
+            = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
+                    po, src0_md_, get_supported_postops_bcast_strategies());
+    conf_.op_type = get_op_type(src0_md_);
+    conf_.do_scale_src0 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_0);
+    conf_.do_scale_src1 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_1);
+    const auto sum_idx = po.find(primitive_kind::sum);
+    conf_.do_sum = sum_idx != -1 && po.entry_[sum_idx].sum.scale != 0.f;
+    conf_.with_eltwise = po.find(primitive_kind::eltwise) != -1;
+    conf_.with_binary = po.find(primitive_kind::binary) != -1;
+    conf_.with_postops
+            = conf_.with_binary || conf_.with_eltwise || conf_.do_sum;
+    conf_.sum_scale = conf_.do_sum ? po.entry_[sum_idx].sum.scale : 0.f;
+    const auto &bcast_dims = broadcast_dims();
+    conf_.bcast_type = is_tensor_op() ? bcast_t::none
+                                      : get_bcast_type(src1_md_, bcast_dims);
+    // op_type only matters for broadcasted operation
+    VDISPATCH_BINARY(IMPLICATION(conf_.bcast_type != bcast_t::none,
+                             conf_.op_type != op_t::none),
+            "unsupported src0 layout for broadcast operation");
+    // src1 addressing mode (x64 parity): a single value broadcast across the
+    // run, or advancing 1:1 with it (else a fixed src1 vector maps to each run,
+    // which the driver slices for).
+    conf_.broadcast_src1_value = (conf_.op_type == op_t::n_c_spatial
+                                         && conf_.bcast_type == bcast_t::per_c)
+            || (utils::one_of(conf_.op_type, op_t::n_spatial_c, op_t::c_blocked)
+                    && conf_.bcast_type == bcast_t::per_w)
+            || conf_.bcast_type == bcast_t::scalar;
+    conf_.use_stride_src1 = !conf_.broadcast_src1_value
+            && (utils::one_of(
+                        conf_.bcast_type, bcast_t::none, bcast_t::per_batch)
+                    || (conf_.op_type == op_t::n_spatial_c
+                            && conf_.bcast_type == bcast_t::per_c)
+                    || (conf_.op_type == op_t::n_c_spatial
+                            && conf_.bcast_type == bcast_t::per_w));
+
+    const auto ndims = src0_md_.ndims();
+    if (conf_.is_src_different_layouts) {
+        const auto &strides0 = src0_md_.blocking_desc().strides;
+        const auto &strides1 = src1_md_.blocking_desc().strides;
+        conf_.src1_stride
+                = get_different_layout_stride(strides0, strides1, ndims);
+        conf_.outer_dims
+                = get_outer_dims_product(strides0, src0_md_.dims(), ndims);
+    }
+    if (conf_.bcast_type == bcast_t::per_w) {
+        for (int d = 2; d < ndims; ++d)
+            conf_.not_bcasted_sp_dims += !bcast_dims[d];
     }
 
-#define GET_OFF(f) (int)offsetof(call_params_t, f)
-    void generate() override {
-        ld(a1, a0, GET_OFF(src0));
-        ld(a2, a0, GET_OFF(src1));
-        ld(a5, a0, GET_OFF(src2));
-        ld(a3, a0, GET_OFF(dst));
-        ld(a6, a0, GET_OFF(rhs_ptrs));
-        ld(a4, a0, GET_OFF(len));
-        ld(a7, a0, GET_OFF(rhs_off));
-        flw(fa4, a0, GET_OFF(scale0));
-        flw(fa5, a0, GET_OFF(scale1));
-        flw(fa6, a0, GET_OFF(sum_scale));
-        emit_binary(); // handles the ordinary ops and ternary select
-        ret();
-    }
-#undef GET_OFF
-
-private:
-    const binary_kernel_conf_t c_;
-
-    // Registers (e32/m4 compute): a1=src0 a2=src1 a3=dst a4=len a5=src2
-    // a6=rhs_ptrs a7=rhs_off(elems); t0=vl t1=bytes t2/t3=scratch; t4/t5/t6
-    // hold the unrolled-loop strides (f32 bytes / step elements / stream
-    // step); v0=mask
-    // v4=acc v8=src1f32 v12/v16=narrow staging v20=binary-rhs; fa2=const
-    // fa3=scalar-src1 fa4/fa5=scales fa6=sum fa7=binary-rhs-scalar
-    // fa0/fa1=eltwise injector scratch; ft0/ft1=compare-result constants.
-    const Reg p0 = a1, p1 = a2, pd = a3, len = a4, p2 = a5, rhs_ptrs = a6,
-              off = a7, vl = t0, bytes = t1, gpr = t2;
-    const VReg vd {4}, vs1 {8}, st0 {12}, st1 {16}, vrhs {20};
-    const FReg f_s1 = fa3, f_sc0 = fa4, f_sc1 = fa5, f_sum = fa6, fc = fa2,
-               f_zero = ft0, f_one = ft1;
-
-    void setf(const FReg &f, float val) {
-        uint32_t b;
-        std::memcpy(&b, &val, sizeof(b));
-        li(gpr, b);
-        fmv_w_x(f, gpr);
+    if (is_ternary_op()) {
+        conf_.is_ternary_op = true;
+        // The common binary descriptor forces the condition src2 to s8; keep
+        // the check explicit (x64 validates the src2 dtype the same way).
+        VDISPATCH_BINARY(
+                src_md(2)->data_type == data_type::s8, VERBOSE_UNSUPPORTED_DT);
     }
 
-    // Set vl for `len` elements at the e32/m4 compute vtype.
-    void set_compute_vl() {
-        vsetvli(vl, len, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
-    }
-    void to_compute_vtype() {
-        vsetvli(x0, vl, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+    return status::success;
+}
+
+op_t jit_uni_binary_t::pd_t::get_op_type(const memory_desc_wrapper &src0_d) {
+    const auto &strides = src0_d.blocking_desc().strides;
+    const auto ndims = src0_d.ndims();
+
+    if (!src0_d.is_plain() && src0_d.blocking_desc().inner_idxs[0] == 1)
+        return op_t::c_blocked;
+    else if (strides[1] == 1)
+        return op_t::n_spatial_c;
+    else if (strides[0] >= strides[1]
+            && IMPLICATION(ndims >= 3, strides[1] >= strides[2]))
+        return op_t::n_c_spatial;
+    return op_t::none;
+}
+
+bool jit_uni_binary_t::pd_t::is_only_dim0_bcasted(
+        const dims_t &bcast_dims, const int ndims) {
+    bool only_dim0_bcasted = true;
+    for (int d = 1; d < ndims; d++)
+        only_dim0_bcasted = only_dim0_bcasted && bcast_dims[d] == 0;
+    return only_dim0_bcasted;
+}
+
+// non-blocked: nxc || ncx
+bool jit_uni_binary_t::pd_t::is_format_non_blocked(
+        const memory_desc_wrapper &mdw) const {
+    const auto &dims = mdw.dims();
+    const auto &strides = mdw.blocking_desc().strides;
+    const auto &ndims = mdw.ndims();
+
+    const bool is_ncx
+            = IMPLICATION(strides[0] != 0,
+                      strides[0] >= utils::array_product(dims + 1, ndims - 1))
+            && IMPLICATION(ndims >= 3 && strides[1] != 0,
+                    strides[1] >= utils::array_product(dims + 2, ndims - 2))
+            && IMPLICATION(ndims >= 4 && strides[2] != 0,
+                    strides[2] >= utils::array_product(dims + 3, ndims - 3))
+            && IMPLICATION(ndims >= 5 && strides[3] != 0,
+                    strides[3] >= utils::array_product(dims + 4, ndims - 4))
+            && IMPLICATION(strides[ndims - 1] != 0, strides[ndims - 1] == 1);
+    const bool is_nxc
+            = IMPLICATION(strides[0] != 0,
+                      strides[0] >= utils::array_product(dims + 1, ndims - 1))
+            && IMPLICATION(ndims >= 3 && strides[2] != 0,
+                    strides[2] >= dims[1]
+                                    * utils::array_product(dims + 3, ndims - 3))
+            && IMPLICATION(ndims >= 4 && strides[3] != 0,
+                    strides[3] >= dims[1]
+                                    * utils::array_product(dims + 4, ndims - 4))
+            && IMPLICATION(ndims >= 5 && strides[4] != 0,
+                    strides[4] >= dims[1]
+                                    * utils::array_product(dims + 5, ndims - 5))
+            && IMPLICATION(strides[1] != 0, strides[1] == 1);
+    return is_nxc || is_ncx;
+}
+
+bcast_t jit_uni_binary_t::pd_t::get_bcast_type(
+        const memory_desc_wrapper &src1_d, const dims_t &bcast_dims) {
+    if (src1_d.nelems() == 1)
+        return bcast_t::scalar;
+    else if (bcast_dims[1] == 1)
+        return bcast_t::per_w;
+    else if (is_only_dim0_bcasted(bcast_dims, src1_d.ndims()))
+        return bcast_t::per_batch;
+    else
+        return bcast_t::per_c;
+}
+
+bool jit_uni_binary_t::pd_t::alg_preserves_zero() const {
+    using namespace utils;
+    using namespace alg_kind;
+    return utils::one_of(desc()->alg_kind, binary_add, binary_max, binary_min,
+            binary_mul, binary_sub, binary_ge, binary_gt, binary_le, binary_lt,
+            binary_eq, binary_ne, binary_select);
+}
+
+bool jit_uni_binary_t::pd_t::check_scales_mask() const {
+    const std::vector<int> supported_args = {DNNL_ARG_SRC_0, DNNL_ARG_SRC_1};
+    return attr_scales_ok(supported_args);
+}
+
+bool jit_uni_binary_t::pd_t::is_bcast_pattern(const dims_t &bcast_dims,
+        const dim_t ndims, const dim_t N_bcast, const dim_t C_bcast,
+        const dim_t W_bcast) const {
+    return bcast_dims[0] == N_bcast && bcast_dims[1] == C_bcast
+            && bcast_dims[ndims - 1] == W_bcast;
+}
+
+bool jit_uni_binary_t::pd_t::is_bcast_allowed(const int ndims) const {
+    // supported cases: NxCxDxHxW:{NxCx1x1x1,1xCx1x1x1,Nx1xDxHxW,Nx1x1xHxW,
+    //                            Nx1x1x1xW,1xCxDxHxW,1x1xDxHxW,1x1x1xHxW,
+    //                            1x1x1x1xW,1x1x1x1x1}
+    const auto &bcast_dims = broadcast_dims();
+    // check if there is continuous broadcast between non-broadcast dims
+    // if next_bcast_expected == 1, not broadcast dim not met
+    int next_bcast_expected = 1;
+    bool sp_not_bcasted = true;
+    bool ok = true;
+    for (int d = 2; d < ndims; ++d) {
+        if (bcast_dims[d] == 0)
+            next_bcast_expected = 0;
+        else
+            sp_not_bcasted = false;
+        ok = ok && bcast_dims[d] == next_bcast_expected;
     }
 
-    // Load `vl` elements of dtype dt from `ptr` into f32 group vf (e32/m4),
-    // using `stage` for narrow staging. Ends at the e32/m4 vtype. stride_elems>1
-    // reads with an element stride (vlse) — src0/src1 different plain layouts.
-    void load_vec(data_type_t dt, const VReg &vf, const VReg &stage,
-            const Reg &ptr, dim_t stride_elems = 1) {
-        using namespace data_type;
-        const bool strided = stride_elems > 1;
-        if (strided) li(t3, stride_elems * (int)types::data_type_size(dt));
-        auto ld = [&](int w, const VReg &v) {
-            if (w == 32)
-                strided ? vlse32_v(v, ptr, t3) : vle32_v(v, ptr);
-            else if (w == 16)
-                strided ? vlse16_v(v, ptr, t3) : vle16_v(v, ptr);
-            else
-                strided ? vlse8_v(v, ptr, t3) : vle8_v(v, ptr);
+#define BCAST_PATTERN(N, C, W, condition) \
+    (is_bcast_pattern(bcast_dims, ndims, N, C, W) && (condition))
+    if (ndims > 2)
+        ok = ok
+                && (BCAST_PATTERN(0, 1, 0, true) || BCAST_PATTERN(1, 1, 0, true)
+                        || BCAST_PATTERN(1, 0, 0, sp_not_bcasted)
+                        || BCAST_PATTERN(0, 0, 1, !!next_bcast_expected)
+                        || BCAST_PATTERN(1, 0, 1, !!next_bcast_expected)
+                        || BCAST_PATTERN(1, 1, 1, !!next_bcast_expected));
+#undef BCAST_PATTERN
+    return ok;
+}
+
+// check for different src formats with same dims
+// broadcast can be accepted if src_dim == src1_dims (1 == 1)
+bool jit_uni_binary_t::pd_t::is_different_layouts_allowed(
+        const memory_desc_wrapper &src0_d,
+        const memory_desc_wrapper &src1_d) const {
+    const dims_t &src0_dims = src0_d.dims();
+    const dims_t &src1_dims = src1_d.dims();
+    const int ndims = src0_d.ndims();
+
+    bool without_bcast = true;
+    for (int d = 0; d < ndims; d++)
+        without_bcast = without_bcast && src0_dims[d] == src1_dims[d];
+    if (!without_bcast) return false;
+
+    // allow nchw:nhwc and nhwc:nchw and disable for blocked layouts
+    return src0_d.is_plain() && src1_d.is_plain()
+            && is_format_non_blocked(src0_d) && is_format_non_blocked(src1_d);
+}
+
+bool jit_uni_binary_t::pd_t::is_applicable() {
+    const memory_desc_wrapper src0_d(src_md(0));
+    const memory_desc_wrapper src1_d(src_md(1));
+    const memory_desc_wrapper src2_d(src_md(2));
+    const memory_desc_wrapper dst_d(dst_md());
+    const auto ndims = src0_d.ndims();
+
+    // check density first to avoid same non-dense src0 and src1 to pass
+    // the next check
+    bool ok = src0_d.is_dense(true) && src1_d.is_dense(true)
+            && dst_d.is_dense(true);
+    ok = ok
+            && IMPLICATION(
+                    is_ternary_op(), src2_d.similar_to(src0_d, true, false, 0));
+    if (!ok) return false;
+
+    // Keep x64's padded-tensor family: a single blocking with block size <= 16.
+    const auto &blk_d = dst_d.blocking_desc();
+    if (!dst_d.is_dense()
+            && (blk_d.inner_nblks > 1 || blk_d.inner_blks[0] > 16))
+        return false;
+
+    const bool is_src_different_layouts = !compare_layouts(src0_d, src1_d);
+    const bool different_layouts_allowed
+            = is_different_layouts_allowed(src0_d, src1_d);
+    if (!conf_.is_i8) {
+        // Non-i8: padded tensors require a zero-preserving algorithm. (x64
+        // computes the padded lanes and relies on 0 OP 0 == 0; the rv64 driver
+        // explicitly zeroes the padded tail, but mirrors the accept surface.)
+        const bool has_padding = utils::one_of(true,
+                src0_d.nelems(true) != src0_d.nelems(false),
+                src1_d.nelems(true) != src1_d.nelems(false),
+                dst_d.nelems(true) != dst_d.nelems(false));
+        ok = IMPLICATION(has_padding, alg_preserves_zero());
+        if (!ok) return false;
+
+        // full tensor operation
+        bool same_dims = true;
+        const auto &src0_dims = src0_d.dims();
+        const auto &src1_dims = src1_d.dims();
+        for (int d = 0; d < ndims; d++)
+            same_dims = same_dims && src0_dims[d] == src1_dims[d];
+        if (same_dims
+                && IMPLICATION(
+                        is_src_different_layouts, different_layouts_allowed))
+            return true;
+    } else {
+        const dim_t C = ndims >= 2 ? src0_d.dims()[1] : 1;
+        const bool has_oc_tail = C != src0_d.padded_dims()[1];
+        const bool has_outer_dims_tail = is_src_different_layouts
+                && get_outer_dims_product(src0_d.blocking_desc().strides,
+                        src0_d.dims(), src0_d.ndims());
+
+        // Disable compare operations when blocked tag with tail. Tail
+        // processing is not supported and the comparison overwrites the output.
+        if (utils::one_of(desc()->alg_kind, alg_kind::binary_ge,
+                    alg_kind::binary_gt, alg_kind::binary_le,
+                    alg_kind::binary_lt, alg_kind::binary_eq,
+                    alg_kind::binary_ne)
+                && (has_oc_tail || has_outer_dims_tail))
+            return false;
+
+        // The kernel walks src0/src1/dst in flat physical lockstep, so an i8
+        // dst -- whose md is allowed to differ from src0's (f32 src0 -> s8 dst)
+        // -- must still share src0's physical layout; only the dtype may
+        // differ. This has to precede the full-tensor early return below:
+        // otherwise a same-shaped src1 lets a differently-laid-out dst through
+        // and the three walks desynchronize. It also keeps the original
+        // meaning for the broadcast path (source0 broadcast not supported).
+        if (!src0_d.similar_to(dst_d, true, false, 0)) return false;
+
+        // full tensor operation
+        if (src0_d.similar_to(src1_d, true, false, 0)
+                || different_layouts_allowed)
+            return true;
+    }
+
+    // broadcast or different layouts operation
+    if (!(is_bcast_allowed(ndims)
+                && IMPLICATION(
+                        is_src_different_layouts, different_layouts_allowed)))
+        return false;
+
+    // only nspc and ncsp formats are supported for bcast
+    if (src0_d.is_plain() && src1_d.is_plain())
+        return is_format_non_blocked(src0_d) && is_format_non_blocked(src1_d)
+                && get_op_type(src0_d) != op_t::none;
+
+    // blocked formats
+    if (!conf_.is_i8) {
+        // x64 additionally requires the channel block to equal the machine simd
+        // width; the VLA analog keeps the {16, 8, 4} single-C-block family (the
+        // driver handles the exact src1/dst block compatibility incl. a scalar
+        // src1).
+        const auto valid_bd = [&](const memory_desc_wrapper &mdw) {
+            const auto &bd = mdw.blocking_desc();
+            return bd.inner_nblks == 1
+                    && utils::one_of(bd.inner_blks[0], 16, 8, 4)
+                    && bd.inner_idxs[0] == 1;
         };
-        if (dt == f32) {
-            to_compute_vtype();
-            ld(32, vf);
-        } else if (dt == s32) {
-            to_compute_vtype();
-            ld(32, vf);
-            vfcvt_f_x_v(vf, vf);
-        } else if (dt == f16 || dt == bf16) {
-            vsetvli(x0, vl, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-            ld(16, stage);
-            // e16m2 -> e32m4; Zvfbfmin for bf16, Zvfh for f16.
-            if (dt == bf16)
-                vfwcvtbf16_f_f_v(vf, stage);
-            else
-                vfwcvt_f_f_v(vf, stage);
-            to_compute_vtype();
-        } else { // s8 / u8
-            vsetvli(x0, vl, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
-            ld(8, stage);
-            to_compute_vtype();
-            if (dt == s8) {
-                vsext_vf4(vf, stage);
-                vfcvt_f_x_v(vf, vf);
-            } else {
-                vzext_vf4(vf, stage);
-                vfcvt_f_xu_v(vf, vf);
+        return valid_bd(src0_d) && valid_bd(src1_d);
+    } else {
+        const auto &bd0 = src0_d.blocking_desc();
+        const auto &bd1 = src1_d.blocking_desc();
+        const auto &bcast_dims = broadcast_dims();
+        // disable blocked tag for source1 when W is not broadcast
+        return bd0.strides[1] == 1 && bd0.inner_nblks == 0
+                && IMPLICATION(
+                        bcast_dims[ndims - 1] == 0, bd1.inner_nblks == 0);
+    }
+}
+
+bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
+        const memory_desc_wrapper &src0_d, const memory_desc_wrapper &dst_d,
+        const bool is_src_different_layouts, const cpu_isa_t isa) {
+    using namespace injector;
+    using namespace primitive_kind;
+
+    const auto &p = attr->post_ops_;
+    const auto supported_strategies = get_supported_postops_bcast_strategies();
+    // The kernel supplies 4 eltwise aux groups (heavy algs available) and
+    // keeps v0 dead across the inject point, so the select (ternary) post-op
+    // is enabled (x64 accepts it unconditionally).
+    if (!injector::post_ops_ok(post_ops_ok_args_t(isa, {binary, eltwise, sum},
+                p, &dst_d, false /*sum_at_pos_0_only*/,
+                false /*sum_requires_scale_one*/, true /*sum_requires_zp_zero*/,
+                true /*sum_requires_same_params*/, supported_strategies,
+                4 /*n_vaux*/, true /*allow_binary_select*/)))
+        return false;
+
+    // data type of int8 dst is allowed to differ from src0 unless there is a sum postop
+    if (p.find(primitive_kind::sum) != -1) {
+        if (src0_d.data_type() != dst_d.data_type()) return false;
+        // the in-kernel sum reads the old dst back at the dst dtype
+        for (int i = 0; i < p.len(); i++) {
+            if (!p.entry_[i].is_sum(false, false)) continue;
+            const auto &s = p.entry_[i].sum;
+            if (s.dt != data_type::undef && s.dt != dst_d.data_type())
+                return false;
+        }
+    }
+
+    // no prelu support
+    if (p.find(primitive_kind::prelu) != -1) return false;
+
+    const auto is_binary = [&](int idx) { return p.entry_[idx].is_binary(); };
+    const bool is_i8
+            = utils::one_of(dst_d.data_type(), data_type::s8, data_type::u8);
+
+    for (int i = 0; i < p.len(); i++) {
+        if (is_binary(i)) {
+            const auto &post_ops_mem = p.entry_[i].binary.src1_desc;
+            const bool is_src1_xf16 = utils::one_of(post_ops_mem.data_type,
+                    data_type::f16, data_type::bf16);
+            // x64 parity: an i8 dst rejects an xf16 binary post-op rhs.
+            if (is_i8 && is_src1_xf16) return false;
+            // TODO: eliminate in favor of check in injectors::post_ops_ok
+            // (conditions are slightly different, need to check corner cases)
+            if (get_rhs_arg_broadcasting_strategy(
+                        post_ops_mem, dst_d, supported_strategies)
+                    == broadcasting_strategy_t::no_broadcast) {
+                const memory_desc_wrapper post_op_mem_d(post_ops_mem);
+                if (!post_op_mem_d.similar_to(dst_d, true, false)) return false;
             }
         }
     }
 
-    // Load one scalar of dtype dt from ptr as f32 into FReg f.
-    void load_scalar(data_type_t dt, const FReg &f, const Reg &ptr) {
-        using namespace data_type;
-        if (dt == f32)
-            flw(f, ptr, 0);
-        else if (dt == s32) {
-            lw(gpr, ptr, 0);
-            fcvt_s_w(f, gpr);
-        } else if (dt == s8) {
-            lb(gpr, ptr, 0);
-            fcvt_s_w(f, gpr);
-        } else if (dt == u8) {
-            lbu(gpr, ptr, 0);
-            fcvt_s_wu(f, gpr);
-        } else { // f16 / bf16: widen via the vector unit, extract lane 0
-            li(gpr, 1);
-            vsetvli(x0, gpr, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-            vle16_v(vrhs, ptr);
-            if (dt == bf16)
-                vfwcvtbf16_f_f_v(vs1, vrhs); // e16m1 -> e32m2
-            else
-                vfwcvt_f_f_v(vs1, vrhs); // e16m1 -> e32m2
-            vsetvli(x0, gpr, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-            vfmv_f_s(f, vs1);
-        }
+    const bool postops_per_oc_broadcast_exists
+            = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
+                    p, src0_d, supported_strategies);
+    if (postops_per_oc_broadcast_exists && is_src_different_layouts)
+        return false;
+
+    const bool blocked_format = !src0_d.is_plain() && src0_d.is_blocking_desc();
+
+    if (postops_per_oc_broadcast_exists && blocked_format) {
+        /*
+         * check blocking_desc consistency: with a per_oc rhs the per-C driver
+         * slicing and the injector's channel recovery assume the only inner
+         * block is C (x64 additionally pins it to the machine simd width; the
+         * VLA analog keeps the {16, 8, 4} family, as in is_applicable()).
+         */
+        const auto &blocking_desc = src0_d.blocking_desc();
+        if (blocking_desc.inner_nblks != 1
+                || !utils::one_of(blocking_desc.inner_blks[0], 16, 8, 4)
+                || blocking_desc.inner_idxs[0] != 1)
+            return false;
     }
 
-    // Convert f32 result group vd (e32/m4) to dt and store `vl` elements to ptr.
-    void store_vec(
-            data_type_t dt, const VReg &v, const VReg &stage, const Reg &ptr) {
-        using namespace data_type;
-        if (dt == f32) {
-            to_compute_vtype();
-            vse32_v(v, ptr);
-        } else if (dt == s32) {
-            setf(fc, -2147483648.0f);
-            vfmax_vf(v, v, fc);
-            // RISC-V vfcvt.x.f saturates; max f32 below 2^31 is 2147483520.
-            setf(fc, 2147483520.0f);
-            vfmin_vf(v, v, fc);
-            vfcvt_x_f_v(v, v);
-            vse32_v(v, ptr);
-        } else if (dt == f16 || dt == bf16) {
-            vsetvli(x0, vl, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-            // e32m4 -> e16m2; Zvfbfmin for bf16 (RNE), Zvfh for f16.
-            if (dt == bf16)
-                vfncvtbf16_f_f_w(stage, v);
-            else
-                vfncvt_f_f_w(stage, v);
-            vse16_v(stage, ptr);
-        } else { // s8 / u8
-            const bool is_s8 = dt == s8;
-            setf(fc, is_s8 ? -128.0f : 0.0f);
-            vfmax_vf(v, v, fc);
-            setf(fc, is_s8 ? 127.0f : 255.0f);
-            vfmin_vf(v, v, fc);
-            if (is_s8)
-                vfcvt_x_f_v(v, v);
-            else
-                vfcvt_xu_f_v(v, v);
-            vsetvli(x0, vl, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-            vnsrl_wi(stage, v, 0); // e32m4 -> e16m2
-            vsetvli(x0, vl, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
-            vnsrl_wi(st0, stage, 0); // e16m2 -> e8m1 (st0 as byte temp)
-            vse8_v(st0, ptr);
-        }
-    }
+    const dim_t n_dims = src0_d.ndims();
+    const dim_t &oc = n_dims >= 2 ? src0_d.dims()[1] : 1;
 
-    // v(acc) = v OP src1, comparisons yield 0.0/1.0. vtype is e32/m4.
-    // f_zero/f_one are prepared once per kernel (see emit_binary).
-    void cmp_to_01(const VReg &v) {
-        vfmv_v_f(v, f_zero);
-        vfmerge_vfm(v, v, f_one); // v[i] = v0[i] ? 1.0 : 0.0
-    }
-    // scratch takes the scalar-broadcast src1 of the max/min algorithms; it is
-    // a dead vector group of the caller (vs1 in the generic loop).
-    void binop_vf(const VReg &v, const FReg &f, const VReg &scratch) {
-        using namespace alg_kind;
-        switch (c_.alg) {
-            case binary_add: vfadd_vf(v, v, f); break;
-            case binary_sub: vfsub_vf(v, v, f); break;
-            case binary_mul: vfmul_vf(v, v, f); break;
-            case binary_div: vfdiv_vf(v, v, f); break;
-            case binary_max:
-                // nstl::max(src0,src1) = (src1 < src0) ? src0 : src1 (picks src1
-                // on ties/unordered, matching the reference and x86 vmaxps).
-                vfmv_v_f(scratch, f);
-                vmflt_vv(VReg(0), scratch, v);
-                vmerge_vvm(v, scratch, v);
-                break;
-            case binary_min:
-                // nstl::min(src0,src1) = (src0 < src1) ? src0 : src1.
-                vfmv_v_f(scratch, f);
-                vmflt_vv(VReg(0), v, scratch);
-                vmerge_vvm(v, scratch, v);
-                break;
-            case binary_ge:
-                vmfge_vf(VReg(0), v, f);
-                cmp_to_01(v);
-                break;
-            case binary_gt:
-                vmfgt_vf(VReg(0), v, f);
-                cmp_to_01(v);
-                break;
-            case binary_le:
-                vmfle_vf(VReg(0), v, f);
-                cmp_to_01(v);
-                break;
-            case binary_lt:
-                vmflt_vf(VReg(0), v, f);
-                cmp_to_01(v);
-                break;
-            case binary_eq:
-                vmfeq_vf(VReg(0), v, f);
-                cmp_to_01(v);
-                break;
-            case binary_ne:
-                vmfne_vf(VReg(0), v, f);
-                cmp_to_01(v);
-                break;
-            default: break;
-        }
-    }
-    void binop_vv(const VReg &v, const VReg &v1) {
-        using namespace alg_kind;
-        switch (c_.alg) {
-            case binary_add: vfadd_vv(v, v, v1); break;
-            case binary_sub: vfsub_vv(v, v, v1); break;
-            case binary_mul: vfmul_vv(v, v, v1); break;
-            case binary_div: vfdiv_vv(v, v, v1); break;
-            case binary_max:
-                // nstl::max(src0,src1) = (src1 < src0) ? src0 : src1 (picks src1
-                // on ties/unordered, matching the reference and x86 vmaxps).
-                vmflt_vv(VReg(0), v1, v);
-                vmerge_vvm(v, v1, v);
-                break;
-            case binary_min:
-                // nstl::min(src0,src1) = (src0 < src1) ? src0 : src1.
-                vmflt_vv(VReg(0), v, v1);
-                vmerge_vvm(v, v1, v);
-                break;
-            // vmfgt/vmfge have no vv form: swap operands.
-            case binary_ge:
-                vmfle_vv(VReg(0), v1, v);
-                cmp_to_01(v);
-                break;
-            case binary_gt:
-                vmflt_vv(VReg(0), v1, v);
-                cmp_to_01(v);
-                break;
-            case binary_le:
-                vmfle_vv(VReg(0), v, v1);
-                cmp_to_01(v);
-                break;
-            case binary_lt:
-                vmflt_vv(VReg(0), v, v1);
-                cmp_to_01(v);
-                break;
-            case binary_eq:
-                vmfeq_vv(VReg(0), v, v1);
-                cmp_to_01(v);
-                break;
-            case binary_ne:
-                vmfne_vv(VReg(0), v, v1);
-                cmp_to_01(v);
-                break;
-            default: break;
-        }
-    }
+    /*
+     * TODO: Remove limitation supporting tail with blocked format for i8i8
+     */
+    const dim_t blksize
+            = blocked_format ? src0_d.blocking_desc().inner_blks[0] : 1;
+    const bool blocked_tail = p.len() && blocked_format && oc % blksize;
 
-    // Ternary select condition: set v0 = (src2 == 0), reading vl elements into
-    // `stage`. src2 is s8 (forced by the common binary descriptor). Ends at the
-    // e32/m4 compute vtype (the mask is valid across the SEW switch: same vl).
-    void select_mask(const VReg &stage) {
-        vsetvli(x0, vl, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
-        vle8_v(stage, p2);
-        vmseq_vx(VReg(0), stage, x0); // v0 = (src2 == 0)
-        to_compute_vtype();
-    }
-
-    void emit_binary() {
-        using namespace data_type;
-        // Post-op injectors (eltwise + binary chain) have five aux groups
-        // (v8/v12/v16 + v24/v28); v24/v28 are free at m4 (vd=v4,
-        // vs1=v8, staging v12/v16, binary rhs v20), so log/soft_relu/gelu_erf
-        // eltwise post-ops fit here too.
-        eltwise_injector::static_params_t esp(VReg(8), VReg(12), VReg(16),
-                VReg(24), VReg(28), fa0, fa1, gpr, /*is_fwd=*/true);
-        // Dynamic rhs addressing: the injector computes the rhs address from the
-        // per-register output element offset (kept in `off`=a7 below) + the rhs
-        // dtype/strategy in static params. `bytes` and t3 are address scratch.
-        binary_injector::static_params_t bsp(vrhs, fa7, rhs_ptrs, bytes, t3);
-        // default rhs dtype; the postops injector overrides it per binary from
-        // src1_desc. Every rhs dtype is converted to f32 at load: scalar via
-        // scalar loads (f16 via a stride-0 broadcast load), per_element and
-        // per_oc/per_w gather via a narrow load + in-place widen.
-        bsp.rhs_dt = f32;
-        // per_oc gather index scratch (v24; the eltwise aux3 shares it but runs
-        // in a different post-op entry, so there is no temporal overlap).
-        bsp.v_idx = VReg(24);
-        // narrow-rhs staging (v12 = st0, dead during post-ops; distinct from
-        // v_rhs=v20 and v_idx=v24 so the widen into v_rhs is a legal overlap).
-        bsp.v_tmp = VReg(12);
-        // A select post-op loads its independent condition into v8. It reuses
-        // the gather/narrow/address scratch after src1 has been materialized in
-        // v20; all are dead from the main binary operation at this point.
-        binary_injector::static_params_t select_bsp(
-                VReg(8), fa0, rhs_ptrs, bytes, t3);
-        select_bsp.v_idx = VReg(24);
-        select_bsp.v_tmp = VReg(12);
-        injector::jit_uni_postops_injector_t<v> po_inj(this, c_.post_ops, esp,
-                c_.has_binary_po ? &bsp : nullptr, c_.dst_md, &select_bsp);
-        binary_injector::rhs_arg_dynamic_params_t rhs_dyn;
-        if (c_.has_binary_po) rhs_dyn.vmm_idx_to_out_off[vd.getIdx()] = off;
-
-        // Preload the broadcast scalar src1 into f_s1 (f32), scaled once.
-        if (c_.scalar_src1) {
-            load_scalar(c_.dt_s1, f_s1, p1);
-            if (c_.do_scale1) fmul_s(f_s1, f_s1, f_sc1);
-        }
-
-        // Comparison results are 0.0/1.0: the constants live in f_zero/f_one,
-        // which no injector touches, so they are set once here instead of per
-        // vector (see cmp_to_01).
-        using namespace alg_kind;
-        if (utils::one_of(c_.alg, binary_ge, binary_gt, binary_le, binary_lt,
-                    binary_eq, binary_ne)) {
-            fmv_w_x(f_zero, x0);
-            setf(f_one, 1.0f);
-        }
-
-        Label loop, done;
-
-        // Tuned f32 main loops (second kernels; the driver picks per call by
-        // the thread count). Both cover only chains whose post-ops need no
-        // injector aux (none, or only zero-alpha relu) and a contiguous f32
-        // src1, so a zero-aux chain never reads the aux slots and they may
-        // all alias the one group the loops leave unused.
-        if (c_.unrolled || c_.narrow) {
-            // All five eltwise aux vector groups are aliased to VReg(28):
-            // the init-time gate below restricts the chain to empty or
-            // zero-alpha relu, neither of which reads any aux vector group,
-            // so a single group can be shared. Any future relaxation of
-            // that gate must break this aliasing before forward-aux
-            // algorithms become visible here.
-            eltwise_injector::static_params_t esp_u(VReg(28), VReg(28),
-                    VReg(28), VReg(28), VReg(28), fa0, fa1, gpr,
-                    /*is_fwd=*/true);
-            injector::jit_uni_postops_injector_t<v> po_u(
-                    this, c_.post_ops, esp_u);
-            binary_injector::rhs_arg_dynamic_params_t no_rhs;
-
-            if (c_.unrolled) {
-                // Three independent src0/src1 pairs keep six full-width loads
-                // in flight. The loop needs the six m4 data groups. Fastest
-                // when enough threads share the memory system.
-                const VReg vdu[3] = {VReg(4), VReg(12), VReg(20)};
-                const VReg vsu[3] = {VReg(8), VReg(16), VReg(24)};
-                const Reg b = t4; // vl * 4 bytes (f32 element stride)
-                const Reg n3 = t5; // 3 * vl elements per step
-                const Reg b3 = t6; // 3 * vl * 4 bytes (stream step)
-                const Reg a1r = t1, a2r = t2; // step-1/step-2 addresses
-                vsetvli(vl, x0, SEW::e32, LMUL::m4, VTA::ta,
-                        VMA::ma); // vl = VLMAX
-                slli(b, vl, 2);
-                slli(n3, vl, 1);
-                add(n3, n3, vl);
-                slli(b3, b, 1);
-                add(b3, b3, b);
-                Label main_loop, tail;
-                L(main_loop);
-                bltu(len, n3, tail);
-                add(a1r, p0, b);
-                add(a2r, a1r, b);
-                vle32_v(vdu[0], p0);
-                vle32_v(vdu[1], a1r);
-                vle32_v(vdu[2], a2r);
-                add(p0, p0, b3);
-                if (!c_.scalar_src1) {
-                    add(a1r, p1, b);
-                    add(a2r, a1r, b);
-                    vle32_v(vsu[0], p1);
-                    vle32_v(vsu[1], a1r);
-                    vle32_v(vsu[2], a2r);
-                    add(p1, p1, b3);
-                }
-                for (int i = 0; i < 3; i++) {
-                    if (c_.do_scale0) vfmul_vf(vdu[i], vdu[i], f_sc0);
-                    if (!c_.scalar_src1 && c_.do_scale1)
-                        vfmul_vf(vsu[i], vsu[i], f_sc1);
-                    if (c_.scalar_src1)
-                        binop_vf(vdu[i], f_s1, vsu[0]);
-                    else
-                        binop_vv(vdu[i], vsu[i]);
-                    po_u.compute_vector(vdu[i].getIdx(), no_rhs);
-                }
-                add(a1r, pd, b);
-                add(a2r, a1r, b);
-                vse32_v(vdu[0], pd);
-                vse32_v(vdu[1], a1r);
-                vse32_v(vdu[2], a2r);
-                add(pd, pd, b3);
-                sub(len, len, n3);
-                j_(main_loop);
-                L(tail);
-            } else {
-                // Strictly interleaved single m1-vector loop with a hoisted
-                // vsetvli: on an in-order core the vector queue drains in
-                // order, so per-access width — not the number of groups —
-                // sets the DRAM-visible request pattern, and the narrow
-                // pattern extracts the most memory throughput when few
-                // threads drive the memory system.
-                const Reg b = t4; // vl * 4 bytes (f32 element stride)
-                vsetvli(vl, x0, SEW::e32, LMUL::m1, VTA::ta,
-                        VMA::ma); // vl = VLMAX
-                slli(b, vl, 2);
-                Label narrow_loop;
-                L(narrow_loop);
-                bltu(len, vl, loop);
-                vle32_v(vd, p0);
-                if (!c_.scalar_src1) vle32_v(vs1, p1);
-                if (c_.do_scale0) vfmul_vf(vd, vd, f_sc0);
-                if (!c_.scalar_src1 && c_.do_scale1) vfmul_vf(vs1, vs1, f_sc1);
-                if (c_.scalar_src1)
-                    binop_vf(vd, f_s1, vs1);
-                else
-                    binop_vv(vd, vs1);
-                po_u.compute_vector(vd.getIdx(), no_rhs);
-                vse32_v(vd, pd);
-                add(p0, p0, b);
-                if (!c_.scalar_src1) add(p1, p1, b);
-                add(pd, pd, b);
-                sub(len, len, vl);
-                j_(narrow_loop);
-            }
-        }
-
-        L(loop);
-        beqz(len, done);
-
-        set_compute_vl();
-        load_vec(c_.dt_s0, vd, st0, p0); // src0 -> vd (f32)
-        if (c_.do_scale0) vfmul_vf(vd, vd, f_sc0);
-        if (!c_.scalar_src1) {
-            // src1 -> vs1 (f32); strided for different plain layouts.
-            load_vec(c_.dt_s1, vs1, st1, p1, c_.s1_inner_stride);
-            if (c_.do_scale1) vfmul_vf(vs1, vs1, f_sc1);
-        }
-
-        if (c_.is_select) {
-            // dst = src2 ? src0 : src1. Materialize a scalar-broadcast src1, then
-            // v0 = (src2 == 0) and merge (v0 ? src1 : src0).
-            if (c_.scalar_src1) vfmv_v_f(vs1, f_s1);
-            select_mask(st1); // sets v0 = (src2 == 0), ends at e32/m4
-            vmerge_vvm(vd, vd, vs1);
-        } else if (c_.scalar_src1) {
-            binop_vf(vd, f_s1, vs1);
-        } else {
-            binop_vv(vd, vs1);
-        }
-
-        // Apply the post-op chain in attribute order. Every sum entry invokes
-        // the same old-dst lambda (the PD requires identical sum parameters),
-        // matching the x64/AArch64 post-op injector contract.
-        const int n_po = c_.post_ops.len();
-        if (c_.do_sum) {
-            int begin = 0;
-            for (int i = 0; i < n_po; i++) {
-                if (!c_.post_ops.entry_[i].is_sum(false, false)) continue;
-                po_inj.compute_vector(vd.getIdx(), rhs_dyn, begin, i);
-                load_vec(c_.dt_dst, st1, st0, pd); // old dst -> st1 (f32)
-                vfmacc_vf(vd, f_sum, st1);
-                begin = i + 1;
-            }
-            po_inj.compute_vector(vd.getIdx(), rhs_dyn, begin, n_po);
-        } else {
-            po_inj.compute_vector(vd.getIdx(), rhs_dyn, 0, n_po);
-        }
-
-        store_vec(c_.dt_dst, vd, st1, pd);
-
-        // advance pointers by vl elements
-        auto adv = [&](const Reg &p, data_type_t dt) {
-            const int es = (int)types::data_type_size(dt);
-            const int sh = es == 4 ? 2 : (es == 2 ? 1 : 0);
-            if (sh)
-                slli(bytes, vl, sh);
-            else
-                mv(bytes, vl);
-            add(p, p, bytes);
-        };
-        // strided src1: advance by vl * stride * sizeof(dt).
-        auto adv_strided = [&](const Reg &p, data_type_t dt, dim_t stride) {
-            li(t3, stride * (int)types::data_type_size(dt));
-            mul(bytes, vl, t3);
-            add(p, p, bytes);
-        };
-        adv(p0, c_.dt_s0);
-        adv(pd, c_.dt_dst);
-        if (!c_.scalar_src1) {
-            if (c_.s1_inner_stride > 1)
-                adv_strided(p1, c_.dt_s1, c_.s1_inner_stride);
-            else
-                adv(p1, c_.dt_s1);
-        }
-        if (c_.is_select) adv(p2, data_type::s8); // src2 full, s8 (1 B/elem)
-        // advance the rhs output ELEMENT offset by vl (the injector scales by
-        // the rhs dtype size).
-        if (c_.has_binary_po) add(off, off, vl);
-        sub(len, len, vl);
-        j_(loop);
-        L(done);
-    }
-};
+    return binary_injector::binary_args_broadcast_supported(
+                   p, src0_d, get_supported_postops_bcast_strategies())
+            && IMPLICATION(utils::one_of(src0_d.data_type(), data_type::s8,
+                                   data_type::u8),
+                    !blocked_tail);
+}
 
 jit_uni_binary_t::jit_uni_binary_t(const pd_t *apd) : primitive_t(apd) {}
-jit_uni_binary_t::~jit_uni_binary_t() = default;
 
 status_t jit_uni_binary_t::init(engine_t *engine) {
     UNUSED(engine);
-    const auto *p = pd();
-    binary_kernel_conf_t c;
-    c.alg = p->desc()->alg_kind;
-    c.scalar_src1 = p->scalar_whole_ || p->scalar_inner_;
-    c.dt_s0 = p->src_md(0)->data_type;
-    c.dt_s1 = p->src_md(1)->data_type;
-    c.dt_dst = p->dst_md()->data_type;
-    c.do_scale0 = p->do_scale0_;
-    c.do_scale1 = p->do_scale1_;
-    c.do_sum = p->do_sum_;
-    c.s1_inner_stride = p->s1_inner_stride_;
-    c.is_select = p->desc()->alg_kind == alg_kind::binary_select;
-    c.post_ops = p->po_;
-    c.has_binary_po = c.post_ops.find(primitive_kind::binary) != -1;
-    c.dst_md = p->dst_md(); // per_oc binary post-op rhs classification
-    kernel_.reset(new jit_uni_binary_kernel_t(c));
-    status_t status = kernel_->create_kernel();
-    if (status != status::success) return status;
+    CHECK(safe_ptr_assign(kernel_,
+            new jit_uni_binary_kernel_t(
+                    pd(), pd()->get_conf(), false /*tail_kernel*/)));
 
-    // The tuned f32 streaming kernels (unrolled + narrow): the unrolled loop
-    // needs the six m4 data groups, so they cover only chains whose post-ops
-    // use no injector aux (none, or just zero-alpha relu) and a contiguous
-    // f32 src1.
-    const bool unrolled_ok = !c.is_select && !c.do_sum && !c.has_binary_po
-            && c.s1_inner_stride == 1 && c.dt_s0 == data_type::f32
-            && c.dt_s1 == data_type::f32 && c.dt_dst == data_type::f32
-            && std::all_of(c.post_ops.entry_.begin(), c.post_ops.entry_.end(),
-                    [](const post_ops_t::entry_t &e) {
-        return e.is_eltwise() && e.eltwise.alg == alg_kind::eltwise_relu
-                && e.eltwise.alpha == 0.f;
-    });
-    if (unrolled_ok) {
-        // Both tuned kernels alias all five eltwise aux slots to VReg(28):
-        // their post-op chain is empty or only zero-alpha relu, which never
-        // reads the aux vector groups (relu_zero_ns uses only f_aux0 + vmask).
-        // The 6 m4 data groups used by the unrolled loop likewise do not
-        // collide with this aliasing.
-        c.unrolled = true;
-        kernel_unrolled_.reset(new jit_uni_binary_kernel_t(c));
-        status = kernel_unrolled_->create_kernel();
-        if (status != status::success) return status;
-        c.unrolled = false;
-        c.narrow = true;
-        kernel_narrow_.reset(new jit_uni_binary_kernel_t(c));
-        status = kernel_narrow_->create_kernel();
+    // The tail kernel stores the valid lanes of each channel block and zeroes
+    // the padded tail in-kernel. x64 builds it only for a non-i8 dst, yet its
+    // execute() selects the tail kernel without looking at the dst dtype, so an
+    // i8 dst with a blocked oc tail dereferences a null kernel there. The rv64
+    // tail kernel is dtype-generic (store_vector covers s8/u8, zero_pad_tail
+    // writes zero BYTES), so build it whenever the dispatch can ask for it --
+    // the creation predicate must equal the execute-side one.
+    const memory_desc_wrapper src0_d(pd_->src_md(0));
+    const auto oc = src0_d.ndims() >= 2 ? src0_d.dims()[1] : 1;
+
+    if (op_t::c_blocked == pd()->get_conf().op_type
+            && oc % src0_d.blocking_desc().inner_blks[0]) {
+        CHECK(safe_ptr_assign(kernel_tail_,
+                new jit_uni_binary_kernel_t(
+                        pd(), pd()->get_conf(), true /*tail_kernel*/)));
+        CHECK(kernel_tail_->create_kernel());
     }
-    return status;
+
+    return kernel_->create_kernel();
 }
 
-// Collect the per-binary rhs base pointers (post-op src1), advanced by their own
-// logical origin, matching the x64/aarch64 post_ops_binary_rhs_arg_vec scheme.
-static std::vector<const void *> collect_binary_rhs(
-        const post_ops_t &po, const exec_ctx_t &ctx) {
-    std::vector<const void *> rhs;
-    for (int i = 0; i < po.len(); i++)
-        if (po.entry_[i].is_binary()) {
-            const memory_desc_wrapper s1_d(po.entry_[i].binary.src1_desc);
-            const auto *base = static_cast<const char *>(ctx.host_ptr(
-                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1));
-            rhs.push_back(base + s1_d.off_l(0) * s1_d.data_type_size());
-            if (po.entry_[i].is_binary_with_ternary_op()) {
-                const memory_desc_wrapper s2_d(po.entry_[i].binary.src2_desc);
-                const auto *base2 = static_cast<const char *>(ctx.host_ptr(
-                        DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_2));
-                rhs.push_back(base2 + s2_d.off_l(0) * s2_d.data_type_size());
+void jit_uni_binary_t::execute_no_bcast_strategy(const data_t *src0,
+        const data_t *src1, const data_t *src2, data_t *dst, float scale0,
+        float scale1,
+        const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
+        const bcast_t bcast_type) const {
+    const auto conf = pd()->get_conf();
+    const memory_desc_wrapper src0_d(pd()->src_md(0));
+    const memory_desc_wrapper src1_d(pd()->src_md(1));
+
+    const size_t es0 = types::data_type_size(conf.src0_type);
+    const size_t es1 = types::data_type_size(conf.src1_type);
+    const size_t esd = types::data_type_size(conf.dst_type);
+    const size_t es2 = conf.is_ternary_op
+            ? types::data_type_size(pd()->src_md(2)->data_type)
+            : 0;
+    const void *const *rhs_ptrs = post_ops_binary_rhs_arg_vec.empty()
+            ? nullptr
+            : post_ops_binary_rhs_arg_vec.data();
+
+    auto call = [&](dim_t off0, dim_t off1, dim_t offd, dim_t work) {
+        jit_uni_binary_args_t p = {};
+        p.src0 = src0 + off0 * es0;
+        p.src1 = src1 + off1 * es1;
+        if (conf.is_ternary_op) p.src2 = src2 + offd * es2;
+        p.dst = dst + offd * esd;
+        p.post_ops_binary_rhs_arg_vec = rhs_ptrs;
+        p.work_amount = work;
+        p.dst_orig = dst;
+        p.scales_src0 = scale0;
+        p.scales_src1 = scale1;
+        p.sum_scale = conf.sum_scale;
+        (*kernel_)(&p);
+    };
+
+    if (conf.is_src_different_layouts) {
+        // Different plain layouts (nchw:nhwc): src0/dst are contiguous, src1
+        // is read with the element stride conf.src1_stride (vlse). x64
+        // batches whole-run chunks per thread and lets the kernel iterate the
+        // runs, resetting src1 to the next contiguous element after each
+        // stride range; the rv64 kernel does the same with outer_dims and
+        // src1_stride baked as codegen constants (instead of x64's indices
+        // vector + runtime stride-range register). Consecutive runs start at
+        // consecutive src1 elements within a batch, so a chunk's src1 base is
+        // batch base + first run index.
+        const dim_t batch = src0_d.dims()[0];
+        const dim_t run_len = conf.outer_dims;
+        const dim_t batch_stride = src1_d.blocking_desc().strides[0];
+        const dim_t nelems_per_batch = src0_d.nelems(true) / batch;
+        const dim_t runs_per_batch = nelems_per_batch / run_len;
+
+        const int nthr = dnnl_get_current_num_threads();
+        const dim_t thr_per_run_group = nstl::min(
+                nstl::max((dim_t)nthr / batch, (dim_t)1), runs_per_batch);
+
+        // Compute strategy:
+        // Iterate over batch and over runs. Divide number of threads by batch
+        // size and limit it by the number of runs to parallelize over them
+        // when needed (x64's thr_per_nelems_group).
+        parallel_nd(batch, thr_per_run_group, [&](dim_t b, dim_t run_group) {
+            dim_t start = 0, end = 0;
+            balance211(
+                    runs_per_batch, thr_per_run_group, run_group, start, end);
+            if (start >= end) return;
+
+            const dim_t off = b * nelems_per_batch + start * run_len;
+            call(off, b * batch_stride + start, off, (end - start) * run_len);
+        });
+        return;
+    }
+
+    // Plain no-broadcast (or point broadcast): one flat pass, split by threads.
+    const dim_t nelems = src0_d.nelems(true);
+    const bool point_broadcast = bcast_type == bcast_t::scalar;
+    parallel(0, [&](const int ithr, const int nthr) {
+        dim_t start = 0, end = 0;
+        balance211(nelems, nthr, ithr, start, end);
+        if (start >= end) return;
+        call(start, point_broadcast ? 0 : start, start, end - start);
+    });
+}
+
+void jit_uni_binary_t::execute_bcast_per_batch_strategy(const data_t *src0,
+        const data_t *src1, const data_t *src2, data_t *dst, float scale0,
+        float scale1,
+        const std::vector<const void *> &post_ops_binary_rhs_arg_vec) const {
+    const auto conf = pd()->get_conf();
+    const memory_desc_wrapper src0_d(pd()->src_md(0));
+
+    const size_t es0 = types::data_type_size(conf.src0_type);
+    const size_t es1 = types::data_type_size(conf.src1_type);
+    const size_t esd = types::data_type_size(conf.dst_type);
+    const size_t es2 = conf.is_ternary_op
+            ? types::data_type_size(pd()->src_md(2)->data_type)
+            : 0;
+    const void *const *rhs_ptrs = post_ops_binary_rhs_arg_vec.empty()
+            ? nullptr
+            : post_ops_binary_rhs_arg_vec.data();
+
+    const dim_t MB = src0_d.dims()[0];
+    const dim_t nelems_per_b = src0_d.nelems(true) / MB;
+
+    // Compute strategy: src1 is one per-batch block reused for every batch;
+    // parallelize over MB and chunks of the per-batch elements (src1 advances
+    // 1:1 within a chunk, resetting per batch).
+    const dim_t nthr
+            = nstl::min(nelems_per_b, (dim_t)dnnl_get_current_num_threads());
+    parallel_nd(MB, nthr, [&](dim_t b, dim_t ithr) {
+        dim_t start = 0, end = 0;
+        balance211(nelems_per_b, nthr, ithr, start, end);
+        if (start >= end) return;
+        const dim_t off = b * nelems_per_b + start;
+        jit_uni_binary_args_t p = {};
+        p.src0 = src0 + off * es0;
+        p.src1 = src1 + start * es1;
+        if (conf.is_ternary_op) p.src2 = src2 + off * es2;
+        p.dst = dst + off * esd;
+        p.post_ops_binary_rhs_arg_vec = rhs_ptrs;
+        p.work_amount = end - start;
+        p.dst_orig = dst;
+        p.scales_src0 = scale0;
+        p.scales_src1 = scale1;
+        p.sum_scale = conf.sum_scale;
+        (*kernel_)(&p);
+    });
+}
+
+void jit_uni_binary_t::execute_bcast_per_c_strategy(const data_t *src0,
+        const data_t *src1, const data_t *src2, data_t *dst, float scale0,
+        float scale1,
+        const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
+        const op_t op_type, const bcast_t bcast_type,
+        const bool blocked_oc_tail) const {
+    const auto conf = pd()->get_conf();
+    const memory_desc_wrapper src0_d(pd()->src_md(0));
+    const memory_desc_wrapper src1_d(pd()->src_md(1));
+    const memory_desc_wrapper dst_d(pd()->dst_md());
+
+    const size_t es0 = types::data_type_size(conf.src0_type);
+    const size_t es1 = types::data_type_size(conf.src1_type);
+    const size_t esd = types::data_type_size(conf.dst_type);
+    const size_t es2 = conf.is_ternary_op
+            ? types::data_type_size(pd()->src_md(2)->data_type)
+            : 0;
+    const void *const *rhs_ptrs = post_ops_binary_rhs_arg_vec.empty()
+            ? nullptr
+            : post_ops_binary_rhs_arg_vec.data();
+
+    const auto ndims = src0_d.ndims();
+    const auto &dims = src0_d.dims();
+    const dim_t MB = dims[0];
+    const dim_t C = ndims >= 2 ? dims[1] : 1;
+    const dim_t SP = ndims >= 3 ? utils::array_product(dims + 2, ndims - 2) : 1;
+    const auto &bcast_dims = pd()->broadcast_dims();
+
+    const dim_t nelems_slice_src0
+            = utils::array_product(src0_d.padded_dims() + 1, ndims - 1);
+    const dim_t nelems_slice_src1 = bcast_type == bcast_t::none
+            ? nelems_slice_src0
+            : ((bcast_dims[0] == 0)
+                              ? utils::array_product(
+                                        src1_d.padded_dims() + 1, ndims - 1)
+                              : 0);
+
+    auto call = [&](binary_kernel_t *kernel, dim_t off0, dim_t off1, dim_t offd,
+                        dim_t work) {
+        jit_uni_binary_args_t p = {};
+        p.src0 = src0 + off0 * es0;
+        p.src1 = src1 + off1 * es1;
+        if (conf.is_ternary_op) p.src2 = src2 + offd * es2;
+        p.dst = dst + offd * esd;
+        p.post_ops_binary_rhs_arg_vec = rhs_ptrs;
+        p.work_amount = work;
+        p.dst_orig = dst;
+        p.scales_src0 = scale0;
+        p.scales_src1 = scale1;
+        p.sum_scale = conf.sum_scale;
+        (*kernel)(&p);
+    };
+
+    if (op_type == op_t::c_blocked) {
+        const dim_t c_block = dst_d.blocking_desc().inner_blks[0];
+        const dim_t C_blocks = utils::div_up(dst_d.padded_dims()[1], c_block);
+        // Compute strategy:
+        // Each block is individual - parallel over MB and C_blocks safely.
+        // One kernel call covers the whole SP run (x64 granularity); the
+        // kernel steps one channel block per iteration, re-reading the fixed
+        // per_c src1 vector each block (x64's offt_src1_ == 0). The last
+        // block goes to kernel_tail_, which stores the valid lanes and zeroes
+        // the padded tail in-kernel.
+        const auto src1_off = [&](dim_t mb, dim_t C_blk, dim_t off) -> dim_t {
+            switch (bcast_type) {
+                case bcast_t::scalar: return mb * nelems_slice_src1;
+                case bcast_t::per_batch: return C_blk * SP * c_block;
+                case bcast_t::none: return off;
+                default: return mb * nelems_slice_src1 + C_blk * c_block;
             }
-        }
-    return rhs;
+        };
+        parallel_nd(MB, C_blocks, [&](dim_t mb, dim_t C_blk) {
+            const dim_t off = mb * nelems_slice_src0 + C_blk * SP * c_block;
+            auto *kernel = blocked_oc_tail && C_blk == (C_blocks - 1)
+                    ? kernel_tail_.get()
+                    : kernel_.get();
+            call(kernel, off, src1_off(mb, C_blk, off), off, SP * c_block);
+        });
+    } else if (op_type == op_t::n_spatial_c) {
+        // Each line of channels is individual, parallel over MB and spatial.
+        // src1 (per_c) is the C-vector reused per spatial position, advancing
+        // 1:1 with the run (use_stride_src1).
+        const auto src1_off = [&](dim_t mb, dim_t off) -> dim_t {
+            switch (bcast_type) {
+                case bcast_t::per_batch: return off - mb * nelems_slice_src0;
+                case bcast_t::none: return off;
+                default: return mb * nelems_slice_src1;
+            }
+        };
+        parallel_nd(MB, SP, [&](dim_t mb, dim_t sp) {
+            const dim_t off = mb * nelems_slice_src0 + sp * C;
+            call(kernel_.get(), off, src1_off(mb, off), off, C);
+        });
+    } else if (op_type == op_t::n_c_spatial) {
+        // Each line of spatial is individual, parallel over MB and C. src1
+        // (per_c) is one value per channel broadcast over the SP run
+        // (broadcast_src1_value).
+        const auto src1_off = [&](dim_t mb, dim_t c, dim_t off) -> dim_t {
+            switch (bcast_type) {
+                case bcast_t::scalar: return mb * nelems_slice_src1;
+                case bcast_t::per_batch: return c * SP;
+                case bcast_t::none: return off;
+                default: return mb * nelems_slice_src1 + c;
+            }
+        };
+        parallel_nd(MB, C, [&](dim_t mb, dim_t c) {
+            const dim_t off = mb * nelems_slice_src0 + c * SP;
+            call(kernel_.get(), off, src1_off(mb, c, off), off, SP);
+        });
+    }
+}
+
+void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
+        const data_t *src1, const data_t *src2, data_t *dst, float scale0,
+        float scale1,
+        const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
+        const op_t op_type, const bool blocked_oc_tail) const {
+    const auto conf = pd()->get_conf();
+    const memory_desc_wrapper src0_d(pd()->src_md(0));
+    const memory_desc_wrapper dst_d(pd()->dst_md());
+
+    const size_t es0 = types::data_type_size(conf.src0_type);
+    const size_t es1 = types::data_type_size(conf.src1_type);
+    const size_t esd = types::data_type_size(conf.dst_type);
+    const size_t es2 = conf.is_ternary_op
+            ? types::data_type_size(pd()->src_md(2)->data_type)
+            : 0;
+    const void *const *rhs_ptrs = post_ops_binary_rhs_arg_vec.empty()
+            ? nullptr
+            : post_ops_binary_rhs_arg_vec.data();
+
+    const auto ndims = src0_d.ndims();
+    const auto &dims = src0_d.dims();
+    const auto &bcast_dims = pd()->broadcast_dims();
+    const int not_bcasted_sp_dims = conf.not_bcasted_sp_dims;
+    const dim_t MB = dims[0];
+    const dim_t SP_no_bcast = ndims >= 3
+            ? utils::array_product(
+                      dims + (ndims - not_bcasted_sp_dims), not_bcasted_sp_dims)
+            : 1;
+    const dim_t C = ndims >= 2 ? dims[1] : 1;
+    const dim_t SP = ndims >= 3 ? utils::array_product(dims + 2, ndims - 2) : 1;
+    const dim_t N = SP / SP_no_bcast; // broadcasted spatial dims
+    const dim_t nelems_slice_src0
+            = utils::array_product(src0_d.padded_dims() + 1, ndims - 1);
+
+    auto call = [&](binary_kernel_t *kernel, dim_t off0, dim_t off1, dim_t offd,
+                        dim_t work) {
+        jit_uni_binary_args_t p = {};
+        p.src0 = src0 + off0 * es0;
+        p.src1 = src1 + off1 * es1;
+        if (conf.is_ternary_op) p.src2 = src2 + offd * es2;
+        p.dst = dst + offd * esd;
+        p.post_ops_binary_rhs_arg_vec = rhs_ptrs;
+        p.work_amount = work;
+        p.dst_orig = dst;
+        p.scales_src0 = scale0;
+        p.scales_src1 = scale1;
+        p.sum_scale = conf.sum_scale;
+        (*kernel)(&p);
+    };
+
+    if (op_type == op_t::c_blocked) {
+        const dim_t c_block = dst_d.blocking_desc().inner_blks[0];
+        const dim_t C_blocks = utils::div_up(dst_d.padded_dims()[1], c_block);
+        // Each (mb, C_blk, n, sp) block: one src1 value (per_w, broadcast over
+        // C) broadcast across the c_block channels (broadcast_src1_value).
+        // The per_w src1 value is real data, so the last block's padded lanes
+        // must not compute 0 OP src1: they go to kernel_tail_, which stores
+        // the valid lanes and zeroes the padded tail in-kernel (x64 shape).
+        parallel_nd(MB, C_blocks, N, SP_no_bcast,
+                [&](dim_t mb, dim_t C_blk, dim_t n, dim_t sp) {
+            const dim_t off = mb * nelems_slice_src0
+                    + c_block * (C_blk * SP + n * SP_no_bcast + sp);
+            const dim_t s1 = bcast_dims[0] == 1
+                    ? sp * c_block
+                    : (mb * SP_no_bcast + sp) * c_block;
+            auto *kernel = blocked_oc_tail && C_blk == (C_blocks - 1)
+                    ? kernel_tail_.get()
+                    : kernel_.get();
+            call(kernel, off, s1, off, c_block);
+        });
+    } else if (op_type == op_t::n_spatial_c) {
+        // Each line of channels: one src1 value (per_w) broadcast over C
+        // (broadcast_src1_value).
+        parallel_nd(MB, N, SP_no_bcast, [&](dim_t mb, dim_t n, dim_t sp) {
+            const dim_t off
+                    = mb * nelems_slice_src0 + n * SP_no_bcast * C + sp * C;
+            const dim_t s1 = bcast_dims[0] == 1 ? sp : mb * SP_no_bcast + sp;
+            call(kernel_.get(), off, s1, off, C);
+        });
+    } else if (op_type == op_t::n_c_spatial) {
+        // Each line of width: the src1 W-vector advances 1:1 over SP_no_bcast
+        // (use_stride_src1), reused across C and the broadcasted spatial dims.
+        parallel_nd(MB, C, N, [&](dim_t mb, dim_t c, dim_t n) {
+            const dim_t off = mb * nelems_slice_src0 + c * N * SP_no_bcast
+                    + n * SP_no_bcast;
+            const dim_t s1 = bcast_dims[0] == 1 ? 0 : mb * SP_no_bcast;
+            call(kernel_.get(), off, s1, off, SP_no_bcast);
+        });
+    }
 }
 
 status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
-    const auto *pp = pd();
-    const auto *s0 = CTX_IN_MEM(const char *, DNNL_ARG_SRC_0);
-    const auto *s1 = CTX_IN_MEM(const char *, DNNL_ARG_SRC_1);
-    auto *d = CTX_OUT_MEM(char *, DNNL_ARG_DST);
+    auto src0 = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC_0);
+    auto src1 = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC_1);
+    auto dst = CTX_OUT_MEM(data_t *, DNNL_ARG_DST);
 
-    const data_type_t dt_dst = pp->dst_md()->data_type;
-    const data_type_t dt_s0 = pp->src_md(0)->data_type;
-    const data_type_t dt_s1 = pp->src_md(1)->data_type;
-    const size_t es0 = types::data_type_size(dt_s0);
-    const size_t es1 = types::data_type_size(dt_s1);
-    const size_t esd = types::data_type_size(dt_dst);
+    const auto &post_ops = pd()->attr()->post_ops_;
+    const auto &post_ops_binary_rhs_arg_vec
+            = binary_injector::prepare_binary_args(post_ops, ctx);
 
-    // scale values (per-tensor, mask 0)
+    const auto conf = pd()->get_conf();
+
+    // Per-tensor scale values are resolved once here and passed by value (x64
+    // forwards the scale pointers to the kernel instead).
     float scale0 = 1.f, scale1 = 1.f;
-    if (pp->do_scale0_)
+    if (conf.do_scale_src0)
         scale0 = *CTX_IN_MEM(
                 const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_0);
-    if (pp->do_scale1_)
+    if (conf.do_scale_src1)
         scale1 = *CTX_IN_MEM(
                 const float *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC_1);
-    const float sum_scale = pp->sum_scale_;
-
-    std::vector<const void *> po_rhs = collect_binary_rhs(pp->po_, ctx);
-    const void *const *rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     // Honor md offsets (dense submemory views).
-    s0 += (size_t)pp->src_md(0)->offset0 * es0;
-    s1 += (size_t)pp->src_md(1)->offset0 * es1;
-    d += (size_t)pp->dst_md()->offset0 * esd;
+    src0 += (size_t)pd()->src_md(0)->offset0
+            * types::data_type_size(conf.src0_type);
+    src1 += (size_t)pd()->src_md(1)->offset0
+            * types::data_type_size(conf.src1_type);
+    dst += (size_t)pd()->dst_md()->offset0
+            * types::data_type_size(conf.dst_type);
 
-    // Ternary select reads a full (dst-shaped) src2 condition, advancing with
-    // the run like src0/dst (the kernel folds select into the general path). s2
-    // is null for non-select.
-    const bool is_select = pp->desc()->alg_kind == alg_kind::binary_select;
-    const char *s2 = nullptr;
-    size_t es2 = 0;
-    if (is_select) {
-        s2 = CTX_IN_MEM(const char *, DNNL_ARG_SRC_2);
-        es2 = types::data_type_size(pp->src_md(2)->data_type);
-        s2 += (size_t)pp->src_md(2)->offset0 * es2;
+    const data_t *src2 = nullptr;
+    if (conf.is_ternary_op) {
+        src2 = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC_2);
+        src2 += (size_t)pd()->src_md(2)->offset0
+                * types::data_type_size(pd()->src_md(2)->data_type);
     }
 
-    auto fill = [&](jit_uni_binary_kernel_t::call_params_t &cp) {
-        cp.scale0 = scale0;
-        cp.scale1 = scale1;
-        cp.sum_scale = sum_scale;
-        cp.rhs_ptrs = rhs_arr;
-        cp.src2 = nullptr;
-    };
-    // The tuned kernels cover the streaming f32 case. The unrolled kernel
-    // issues per-stream bursts of loads/stores, which extracts more memory
-    // throughput once enough threads share the memory system; below that the
-    // narrow single-vector interleave is fastest, so pick per call by the
-    // thread count.
-    auto pick_kernel = [&](int nthr) -> const jit_uni_binary_kernel_t & {
-        if (nthr >= unrolled_kernel_min_nthrs && kernel_unrolled_)
-            return *kernel_unrolled_;
-        if (kernel_narrow_) return *kernel_narrow_;
-        return *kernel_;
-    };
+    const auto op_type = conf.op_type;
+    const auto bcast_type = conf.bcast_type;
+    const bool point_broadcast = bcast_type == bcast_t::scalar;
+    const memory_desc_wrapper dst_d(pd()->dst_md());
+    const dim_t C = dst_d.ndims() >= 2 ? dst_d.dims()[1] : 1;
+    const bool with_postops = !post_ops.entry_.empty();
+    const bool has_oc_tail = op_type == op_t::c_blocked
+            && (C % dst_d.blocking_desc().inner_blks[0]);
+    const bool point_broadcast_no_oc_tail = point_broadcast && !has_oc_tail;
+    const auto alg = pd()->desc()->alg_kind;
 
-    if (pp->whole_) {
-        // one flat pass; parallelize the range. src1 is scalar or matches dst.
-        const dim_t total = pp->total_;
-        const bool scalar = pp->scalar_whole_;
-        parallel(0, [&](int ithr, int nthr) {
-            dim_t start = 0, end = 0;
-            balance211(total, nthr, ithr, start, end);
-            if (start >= end) return;
-            jit_uni_binary_kernel_t::call_params_t cp = {};
-            fill(cp);
-            cp.src0 = s0 + start * es0;
-            cp.src1 = scalar ? s1 : s1 + start * es1;
-            if (is_select) cp.src2 = s2 + start * es2;
-            cp.dst = d + start * esd;
-            cp.len = end - start;
-            cp.rhs_off = (size_t)start; // element offset (injector scales)
-            pick_kernel(nthr)(&cp);
-        });
-        return status::success;
-    }
+    // Use the tail-handling per_c/per_w strategies for compare ops with
+    // oc_tail and blocked format due to overwriting the padded lanes, and
+    // whenever post-ops could write them (x64 routes the same cases to its
+    // kernel_tail_; the rv64 driver computes the valid lanes and zeroes the
+    // padded tail itself).
+    const bool vector_overwrite = utils::one_of(alg, alg_kind::binary_ge,
+            alg_kind::binary_gt, alg_kind::binary_le, alg_kind::binary_lt,
+            alg_kind::binary_eq, alg_kind::binary_ne);
+    const bool blocked_oc_tail = op_type == op_t::c_blocked && has_oc_tail
+            && (with_postops || point_broadcast || bcast_type == bcast_t::per_w
+                    || vector_overwrite);
+    // init()'s creation predicate must cover every case this dispatch routes to
+    // kernel_tail_ (it is strictly weaker: c_blocked && oc % blk).
+    assert(IMPLICATION(blocked_oc_tail, kernel_tail_ != nullptr));
 
-    // General broadcast: iterate runs of `inner` elements; offset src1 by the
-    // per-dim broadcast strides. The inner dim is either contiguous in src1
-    // (vector) or broadcast (scalar), captured by pp->scalar_inner_.
-    const dim_t inner = pp->inner_;
-    const dim_t n_outer = pp->n_outer_;
-    const int nd = pp->nd_;
-    parallel(0, [&](int ithr, int nthr) {
-        dim_t bstart = 0, bend = 0;
-        balance211(n_outer, nthr, ithr, bstart, bend);
-        for (dim_t b = bstart; b < bend; b++) {
-            // decompose the run index b over dst dims [0..nd-2] to compute the
-            // src1 element offset via broadcast strides.
-            dim_t s1_off = 0, rem = b;
-            bool tail_run = false;
-            for (int i = nd - 2; i >= 0; i--) {
-                const dim_t dim = pp->out_dims_[i];
-                const dim_t idx = rem % dim;
-                rem /= dim;
-                s1_off += idx * pp->s1_str_[i];
-                if (i == pp->tail_axis_) tail_run = idx == dim - 1;
-            }
-            if (pp->s1_same_layout_) s1_off = b * inner;
-            const dim_t run = tail_run ? pp->tail_ : inner;
-            jit_uni_binary_kernel_t::call_params_t cp = {};
-            fill(cp);
-            cp.src0 = s0 + b * inner * es0;
-            cp.src1 = s1 + s1_off * es1;
-            if (is_select) cp.src2 = s2 + b * inner * es2;
-            cp.dst = d + b * inner * esd;
-            cp.len = run;
-            cp.rhs_off = (size_t)b * inner; // element offset (injector scales)
-            pick_kernel(nthr)(&cp);
-            if (run < inner)
-                std::memset(
-                        d + (b * inner + run) * esd, 0, (inner - run) * esd);
-        }
-    });
+    // x64 also forces the per_c/per_w strategies whenever a per_oc post-op
+    // rhs exists so its per-call channel addressing stays valid; the rv64
+    // kernel uses the same channel-aligned addressing under the identical
+    // routing (see conf). An op_t::none src0 cannot be routed (no per_c
+    // strategy branch would run) and keeps the gather-addressed flat path;
+    // x64's per_w-rhs condition is not needed (the per-lane gather stays in
+    // bounds without the expanded scratchpad copy).
+    const bool route_postops_per_oc
+            = conf.postops_per_oc_broadcast_exists && op_type != op_t::none;
+
+    if ((bcast_type == bcast_t::none || point_broadcast_no_oc_tail)
+            && !route_postops_per_oc && !blocked_oc_tail)
+        execute_no_bcast_strategy(src0, src1, src2, dst, scale0, scale1,
+                post_ops_binary_rhs_arg_vec, bcast_type);
+    else if (bcast_type == bcast_t::per_batch && !route_postops_per_oc
+            && !blocked_oc_tail)
+        execute_bcast_per_batch_strategy(src0, src1, src2, dst, scale0, scale1,
+                post_ops_binary_rhs_arg_vec);
+    else if (bcast_type == bcast_t::per_w)
+        execute_bcast_per_w_strategy(src0, src1, src2, dst, scale0, scale1,
+                post_ops_binary_rhs_arg_vec, op_type, blocked_oc_tail);
+    else
+        execute_bcast_per_c_strategy(src0, src1, src2, dst, scale0, scale1,
+                post_ops_binary_rhs_arg_vec, op_type, bcast_type,
+                blocked_oc_tail);
+
     return status::success;
 }
 

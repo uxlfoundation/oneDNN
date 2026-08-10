@@ -28,9 +28,6 @@
             status::unimplemented, "%s," msg, this->info(engine), \
             ##__VA_ARGS__)
 
-#define VDISPATCH_LNORM_SC(f, msg, ...) \
-    VCHECK(primitive, create, dispatch, layer_normalization, (f), "%s," msg, \
-            this->info(engine), ##__VA_ARGS__)
 
 #define VDISPATCH_LNORM_IC(cond, msg, ...) \
     VCONDCHECK(primitive, create, dispatch, layer_normalization, (cond), \

@@ -769,11 +769,6 @@ void Generator<hw>::updateC(const GRFMultirange &C_acc, const GRFMultirange &C_a
         }); \
     } while (false)
 
-#define FOR_EACH_C_CX(f) do { \
-        map(hw, state.Tacc.real(), C_load, C_acc, C_accSwap, strategy, [&](int esize, GRF loaded, GRF acc, GRF accswap) { \
-            f; \
-        }); \
-    } while (false)
 
     if (!beta0) {
         if (alpha1 || alphaM1) {
@@ -828,7 +823,6 @@ void Generator<hw>::updateC(const GRFMultirange &C_acc, const GRFMultirange &C_a
     }
 
 #undef FOR_EACH_C
-#undef FOR_EACH_C_CX
 }
 
 

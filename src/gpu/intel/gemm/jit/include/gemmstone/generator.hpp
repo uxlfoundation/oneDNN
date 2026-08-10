@@ -17,7 +17,6 @@
 #ifndef GEMMSTONE_INCLUDE_GEMMSTONE_GENERATOR_HPP
 #define GEMMSTONE_INCLUDE_GEMMSTONE_GENERATOR_HPP
 
-#define BINARY_OUTPUT
 
 #include <array>
 #include <bitset>

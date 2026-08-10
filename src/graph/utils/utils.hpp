@@ -51,12 +51,7 @@ using namespace dnnl::impl::utils;
 #endif
 
 #ifndef NDEBUG
-#define DEBUG_PRINT_ERROR(message) \
-    do { \
-        std::cout << (message) << std::endl; \
-    } while (0)
 #else
-#define DEBUG_PRINT_ERROR(message)
 #endif
 
 #define DNNL_HOST_SCALAR_TYPE_SWITCH(type, DType, ...) \

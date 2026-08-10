@@ -363,13 +363,9 @@
 #endif // DST_DT_BF16
 
 #if NVECT == 1 || IS_PLAIN_LAYOUT
-#define ELEM_DATA_T float
 #elif NVECT == 2
-#define ELEM_DATA_T float2
 #elif NVECT == 4
-#define ELEM_DATA_T float4
 #elif NVECT == 8
-#define ELEM_DATA_T float8
 #endif
 
 #define DEF_binary_op(dt, special_dt) \

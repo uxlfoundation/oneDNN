@@ -33,7 +33,6 @@ std::atomic<dim_t> rvv_gemm_s8_m_unroll {0};
 #define BM_NOCOPY_RVV 64
 #define BN_NOCOPY_RVV 48
 #define BK_NOCOPY_RVV 384
-#define BN_LARGE_NOCOPY_RVV 192
 #define BM_SMALL_NOCOPY_RVV 16
 #define BN_SMALL_NOCOPY_RVV 1
 #define BK_SMALL_NOCOPY_RVV 4
@@ -144,7 +143,6 @@ void calc_nthr_nocopy_rvv(dim_t m, dim_t n, dim_t k, int nthrs, int *nthrs_m,
 #undef BM_NOCOPY_RVV
 #undef BN_NOCOPY_RVV
 #undef BK_NOCOPY_RVV
-#undef BN_LARGE_NOCOPY_RVV
 #undef BM_SMALL_NOCOPY_RVV
 #undef BN_SMALL_NOCOPY_RVV
 #undef BK_SMALL_NOCOPY_RVV

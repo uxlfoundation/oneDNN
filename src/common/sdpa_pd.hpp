@@ -32,9 +32,6 @@ namespace impl {
             status::unimplemented, "%s," msg, this->info(engine), \
             ##__VA_ARGS__)
 
-#define VDISPATCH_SDPA_SC(f, msg, ...) \
-    VCHECK(primitive, create, dispatch, sdpa, (f), "%s," msg, \
-            this->info(engine), ##__VA_ARGS__)
 
 // NOLINTBEGIN(google-default-arguments)
 

@@ -44,9 +44,6 @@
     VCONDCHECK(graph, create, check, compile, (cond), \
             status::invalid_arguments, msg, ##__VA_ARGS__);
 
-#define VCHECK_UNIMPLEMENTED(cond, msg, ...) \
-    VCONDCHECK(graph, create, check, compile, (cond), status::unimplemented, \
-            msg, ##__VA_ARGS__);
 
 namespace dnnl {
 namespace impl {

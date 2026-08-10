@@ -39,24 +39,6 @@ namespace impl {
 namespace gpu {
 namespace nvidia {
 
-#define CTX_OUT_ACCESSOR(arg) \
-    utils::downcast<xpu::sycl::buffer_memory_storage_t *>( \
-            &CTX_OUT_STORAGE(arg)) \
-            ->buffer() \
-            .get_access<::sycl::access::mode::write>(cgh)
-
-#define CTX_IN_ACCESSOR(arg) \
-    utils::downcast<xpu::sycl::buffer_memory_storage_t *>( \
-            &CTX_IN_STORAGE(arg)) \
-            ->buffer() \
-            .get_access<::sycl::access::mode::read>(cgh)
-
-#define CTX_SCRATCH_ACCESSOR(arg) \
-    utils::downcast<xpu::sycl::buffer_memory_storage_t *>( \
-            ctx.get_scratchpad_grantor().get_memory_storage(arg).get()) \
-            ->buffer() \
-            .get_access<::sycl::access::mode::read_write>(cgh)
-
 bool compare_cuda_devices(const ::sycl::device &lhs, const ::sycl::device &rhs);
 cudaDeviceProp query_device_properties(const ::sycl::device &dev);
 bool has_bf16_support(const ::sycl::device &dev);
@@ -471,8 +453,6 @@ static status_t cuda_to_dnnl_status(CUresult cu_result) {
 #define CUDNN_EXECUTE_FUNC(name, ...) \
     TRY_AND_THROW_FUNC(CUDNN_STATUS_SUCCESS, cudnn_error, name, __VA_ARGS__)
 
-#define CUDA_EXECUTE_FUNC_V(name, ...) \
-    TRY_AND_REPORT_FUNC(CUDA_SUCCESS, cuda_error, name, __VA_ARGS__)
 #define CUBLAS_EXECUTE_FUNC_V(name, ...) \
     TRY_AND_REPORT_FUNC(CUBLAS_STATUS_SUCCESS, cublas_error, name, __VA_ARGS__)
 #define CUDNN_EXECUTE_FUNC_V(name, ...) \

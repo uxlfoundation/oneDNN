@@ -220,8 +220,6 @@ static inline void gemv_kernel_driver(const int trans, const dim_t m,
 #define MN_MIN_N 1536
 #define MN_MIN_T 2048
 #define M_LARGE 20000
-#define N_LARGE 20000
-#define M_SMALL 200
 #define N_SMALL 200
 #define CONST1_AVX2 288
 #define CONST2_AVX2 41700
@@ -306,8 +304,6 @@ static inline int thread_checker(
 #undef MN_MIN_N
 #undef MN_MIN_T
 #undef M_LARGE
-#undef N_LARGE
-#undef M_SMALL
 #undef N_SMALL
 #undef CONST1_AVX2
 #undef CONST2_AVX2

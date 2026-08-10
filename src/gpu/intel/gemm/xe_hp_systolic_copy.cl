@@ -25,13 +25,10 @@
 #define ELEMENT ushort
 #define ELEMENT2 ushort2
 #define ELEMENT4 ushort4
-#define ELEMENT8 ushort8
-#define ELEMENT16 ushort16
 #define ELEMENT_INT ushort2
 #define ELEMENT_INT4 ushort8
 #define VLOAD_ELEMENT_INT vload2
 #define ELEMENTS_PER_INT 2
-#define BLOCK_READ_ELEMENT2 intel_sub_group_block_read_us2
 #define BLOCK_READ_ELEMENT4 intel_sub_group_block_read_us4
 #define BLOCK_READ_ELEMENT_INT intel_sub_group_block_read_us2
 #define MASKED_BLOCK_READ_ELEMENT_INT masked_block_read_element2
@@ -40,12 +37,9 @@
 #define ELEMENT uchar
 #define ELEMENT2 uchar2
 #define ELEMENT4 uchar4
-#define ELEMENT8 uchar8
-#define ELEMENT16 uchar16
 #define ELEMENT_INT uchar4
 #define ELEMENT_INT4 uchar16
 #define VLOAD_ELEMENT_INT vload4
-#define BLOCK_READ_ELEMENT2 intel_sub_group_block_read_uc2
 #define BLOCK_READ_ELEMENT4 intel_sub_group_block_read_uc4
 #define BLOCK_READ_ELEMENT_INT intel_sub_group_block_read_uc4
 #define MASKED_BLOCK_READ_ELEMENT_INT masked_block_read_element4
@@ -59,12 +53,10 @@
 #define AS_SIGNED_ELEMENT as_char
 #define AS_SIGNED_ELEMENT4 as_char4
 #define AS_SIGNED_ELEMENT_INT as_char4
-#define SIGNED_ELEMENT_INT char4
 #else
 #define AS_SIGNED_ELEMENT as_uchar
 #define AS_SIGNED_ELEMENT4 as_uchar4
 #define AS_SIGNED_ELEMENT_INT as_uchar4
-#define SIGNED_ELEMENT_INT uchar4
 #endif
 #else
 #error Unsupported element size.

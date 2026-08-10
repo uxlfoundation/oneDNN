@@ -98,12 +98,7 @@
     const long QRY_D0, const long QRY_D1, const long QRY_D2, \
             const long QRY_D3, const long QRY_S0, const long QRY_S1, \
             const long QRY_S2, const long QRY_S3
-#define DA_OFFSETS const long DA_S0, const long DA_S1, const long DA_S2
-#define DK_STRIDES \
-    const long DK_S0, const long DK_S1, const long DK_S2, const long DK_S3
 #define DQ_STRIDES \
     const long DQ_S0, const long DQ_S1, const long DQ_S2, const long DQ_S3
-#define DV_STRIDES \
-    const long DV_S0, const long DV_S1, const long DV_S2, const long DV_S3
 
 #endif

@@ -21,11 +21,8 @@
 #include "gpu/intel/reduction/common.h"
 
 #if defined(IS_MAX)
-#define ATOMIC_ACCUMULATE(atomic_p, data) atomic_max_global(atomic_p, data)
 #elif defined(IS_MIN)
-#define ATOMIC_ACCUMULATE(atomic_p, data) atomic_min_global(atomic_p, data)
 #elif defined(IS_MEAN) || defined(IS_SUM)
-#define ATOMIC_ACCUMULATE(atomic_p, data) atomic_add_global(atomic_p, data)
 #endif
 
 // Define accumulation functions
@@ -55,18 +52,12 @@ DEF_atomic_accumulate(float);
 #endif
 
 #if VECT_DT_N == 1
-#define TO_VECT_DST TO_DST
-#define VECT_DST_DATA_T DST_DATA_T
 #define VECT_DEF_ACC_TO_FLOAT convert_float
 #else
-#define VECT_DST_DATA_T CONCAT2(DST_DATA_T, VECT_DT_N)
 #define VECT_DEF_ACC_TO_FLOAT CONCAT2(convert_float, VECT_DT_N)
 #if VECT_DT_N == 2
-#define TO_VECT_DST TO_DST2
 #elif VECT_DT_N == 4
-#define TO_VECT_DST TO_DST4
 #elif VECT_DT_N == 8
-#define TO_VECT_DST TO_DST8
 #endif
 #endif
 

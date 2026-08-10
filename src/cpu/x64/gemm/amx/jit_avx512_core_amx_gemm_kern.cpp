@@ -56,7 +56,6 @@ namespace x64 {
 #define STACKSIZE 256
 #define TILEB(X) byte[rsp + ((X) + 0xc0)]
 #define TILEW(X) word[rsp + ((X) + 0xc0)]
-#define TILED(X) dword[rsp + ((X) + 0xc0)]
 #define TILEQ(X) qword[rsp + ((X) + 0xc0)]
 
 void jit_avx512_core_amx_gemm_kern_t::generate() {

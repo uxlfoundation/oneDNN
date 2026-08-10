@@ -94,13 +94,10 @@
 #include "gpu/intel/include/utils.h"
 
 #define auto __auto_type
-#define typeof(x) __typeof__(x)
 
 #define unroll_for __attribute__((opencl_unroll_hint)) for
 #define unroll_for_by(factor) __attribute__((opencl_unroll_hint(factor))) for
-#define unroll_2_for unroll_for_by(2)
 #define unroll_4_for unroll_for_by(4)
-#define unroll_8_for unroll_for_by(8)
 #define unroll_16_for unroll_for_by(16)
 
 #define for_ for
@@ -406,11 +403,6 @@
 #define AS_BLOCK_DATA4_T as_uchar4
 #define AS_BLOCK_DATA8_T as_uchar8
 
-#define MMAD_DATA_T half
-#define MMAD_DATA4_T half4
-#define MMAD_DATA8_T half8
-#define MMAD_ACC_DATA4_T half4
-#define MMAD_ACC_DATA8_T half8
 
 #define FLT_ACC_DATA_T float
 #define TO_FLT_ACC_DATA_T into_float
@@ -468,11 +460,6 @@
 #define AS_BLOCK_DATA4_T as_uchar4
 #define AS_BLOCK_DATA8_T as_uchar8
 
-#define MMAD_DATA_T half
-#define MMAD_DATA4_T half4
-#define MMAD_DATA8_T half8
-#define MMAD_ACC_DATA4_T half4
-#define MMAD_ACC_DATA8_T half8
 
 #define FLT_ACC_DATA_T float
 #define TO_FLT_ACC_DATA_T(v) into_float(v)
@@ -549,7 +536,6 @@
 #define DATA_MIN CHAR_MIN
 #define DATA_ZERO 0
 #define DATA_ONE 1
-#define INT8_T int8
 #define DEF_ACC_DATA_T int
 #define DEF_ACC_DATA2_T int2
 #define DEF_ACC_DATA4_T int4
@@ -606,7 +592,6 @@
 #define DATA_MIN 0
 #define DATA_ZERO 0
 #define DATA_ONE 1
-#define INT8_T uint8
 #define DEF_ACC_DATA_T int
 #define DEF_ACC_DATA2_T int2
 #define DEF_ACC_DATA4_T int4
@@ -665,7 +650,6 @@
 #define DATA_ONE 1
 #define DATA_TO_REF convert_float
 #define TO_DATA_T(v) convert_int_sat_rte
-#define TO_DATA8_T(v) convert_int8_sat_rte
 #define CONVERT_DATA_T convert_int_sat_rte
 #define CONVERT_DATA2_T convert_int2_sat_rte
 #define CONVERT_DATA4_T convert_int4_sat_rte
@@ -726,10 +710,8 @@
 #define VECT_BLOCK_WRITE BLOCK_WRITE
 #define VECT_DST_BLOCK_WRITE BLOCK_WRITE_DST
 #define VECT_UINT_READ intel_sub_group_block_read
-#define VECT_UINT_WRITE intel_sub_group_block_write
 #define VECT_UCHAR_READ intel_sub_group_block_read_uc
 #define VECT_UCHAR_WRITE intel_sub_group_block_write_uc
-#define VECT_BLOCK_DATA_T BLOCK_DATA_T
 #define AS_VECT_BLOCK_DATA_T AS_BLOCK_DATA_T
 #define CONVERT_VECT_FLOAT_T CONVERT_FLOAT_T
 #define CONVERT_VECTOR_DATA_T CONVERT_DATA_T
@@ -737,7 +719,6 @@
 #define CONVERT_VECT_CHAR_T convert_char
 #define CONVERT_VECT_INT_T convert_int
 #define VECT_INT_T int
-#define VECT_UINT_T uint
 #define VECT_FLOAT_T float
 #define VECT_CHAR_T char
 #define AS_VECT_INT_T as_int
@@ -754,10 +735,8 @@
 #define VECT_BLOCK_WRITE BLOCK_WRITE2
 #define VECT_DST_BLOCK_WRITE BLOCK_WRITE_DST2
 #define VECT_UINT_READ intel_sub_group_block_read2
-#define VECT_UINT_WRITE intel_sub_group_block_write2
 #define VECT_UCHAR_READ intel_sub_group_block_read_uc2
 #define VECT_UCHAR_WRITE intel_sub_group_block_write_uc2
-#define VECT_BLOCK_DATA_T BLOCK_DATA2_T
 #define AS_VECT_BLOCK_DATA_T AS_BLOCK_DATA2_T
 #define CONVERT_VECT_FLOAT_T CONVERT_FLOAT2_T
 #define CONVERT_VECTOR_DATA_T CONVERT_DATA2_T
@@ -765,7 +744,6 @@
 #define CONVERT_VECT_CHAR_T convert_char2
 #define CONVERT_VECT_INT_T convert_int2
 #define VECT_INT_T int2
-#define VECT_UINT_T uint2
 #define VECT_FLOAT_T float2
 #define VECT_CHAR_T char2
 #define AS_VECT_INT_T as_int2
@@ -782,10 +760,8 @@
 #define VECT_BLOCK_WRITE BLOCK_WRITE4
 #define VECT_DST_BLOCK_WRITE BLOCK_WRITE_DST4
 #define VECT_UINT_READ intel_sub_group_block_read4
-#define VECT_UINT_WRITE intel_sub_group_block_write4
 #define VECT_UCHAR_READ intel_sub_group_block_read_uc4
 #define VECT_UCHAR_WRITE intel_sub_group_block_write_uc4
-#define VECT_BLOCK_DATA_T BLOCK_DATA4_T
 #define AS_VECT_BLOCK_DATA_T AS_BLOCK_DATA4_T
 #define CONVERT_VECT_FLOAT_T CONVERT_FLOAT4_T
 #define CONVERT_VECTOR_DATA_T CONVERT_DATA4_T
@@ -793,7 +769,6 @@
 #define CONVERT_VECT_CHAR_T convert_char4
 #define CONVERT_VECT_INT_T convert_int4
 #define VECT_INT_T int4
-#define VECT_UINT_T uint4
 #define VECT_FLOAT_T float4
 #define VECT_CHAR_T char4
 #define AS_VECT_INT_T as_int4
@@ -810,10 +785,8 @@
 #define VECT_BLOCK_WRITE BLOCK_WRITE8
 #define VECT_DST_BLOCK_WRITE BLOCK_WRITE_DST8
 #define VECT_UINT_READ intel_sub_group_block_read8
-#define VECT_UINT_WRITE intel_sub_group_block_write8
 #define VECT_UCHAR_READ intel_sub_group_block_read_uc8
 #define VECT_UCHAR_WRITE intel_sub_group_block_write_uc8
-#define VECT_BLOCK_DATA_T BLOCK_DATA8_T
 #define AS_VECT_BLOCK_DATA_T AS_BLOCK_DATA8_T
 #define CONVERT_VECT_FLOAT_T CONVERT_FLOAT8_T
 #define CONVERT_VECTOR_DATA_T CONVERT_DATA8_T
@@ -821,7 +794,6 @@
 #define CONVERT_VECT_CHAR_T convert_char8
 #define CONVERT_VECT_INT_T convert_int8
 #define VECT_INT_T int8
-#define VECT_UINT_T uint8
 #define VECT_FLOAT_T float8
 #define VECT_CHAR_T char8
 #define AS_VECT_INT_T as_int8

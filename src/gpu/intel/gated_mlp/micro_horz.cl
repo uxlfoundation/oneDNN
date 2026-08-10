@@ -29,7 +29,6 @@
 #define sg_per_wg (ugemm_wgu_sg_per_wg_m * ugemm_wgu_sg_per_wg_n)
 #define wgu_tile_sg_n DIV_UP(ugemm_wgu_wg_tile_n, sg_per_wg)
 
-#define wgu_tile_sg_m DIV_UP(ugemm_wgu_wg_tile_m, sg_per_wg)
 
 typedef ugemm_wgu_c_type s_tile_type;
 
@@ -69,12 +68,9 @@ DECLARE_2D_TILE_LOAD_PACKED_VEC(wgu_tile_type, SRC_DATA_T, VEC_TYPE2,
 
 #if REMAINDER_SRC
 #define tile_load_block_rem_src tile_load_block
-#define tile_store_block_rem_wgu tile_store_block
 #else
 #define tile_load_block_rem_src(t, ptr, n, ld, off_r, off_c) \
     tile_load_block(t, ptr, ld, off_r, off_c)
-#define tile_store_block_rem_wgu(t, ptr, n, ld, off_r, off_c) \
-    tile_store_block(t, ptr, ld, off_r, off_c)
 #endif
 
 #define binary_add(x, y) ((x) + (y))

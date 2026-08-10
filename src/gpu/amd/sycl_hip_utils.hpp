@@ -314,18 +314,6 @@ static status_t miopen_to_dnnl_status(miopenStatus_t miopen_status) {
         } \
     }
 
-#define HIP_EXECUTE_FUNC_V(name, ...) \
-    { \
-        auto err = name(__VA_ARGS__); \
-        if (err != HIP_SUCCESS) { \
-            std::cout << hip_error(std::string("At :") \
-                            + std::string(HIP_ERROR_LOCATION) \
-                            + std::string(#name) + std::string(" : "), \
-                    err) \
-                                 .what() \
-                      << std::endl; \
-        } \
-    }
 
 #define MIOPEN_EXECUTE_FUNC_V(name, ...) \
     { \
@@ -353,18 +341,6 @@ static status_t miopen_to_dnnl_status(miopenStatus_t miopen_status) {
         } \
     }
 
-#define MIOPEN_CHECK_V(e) \
-    { \
-        auto status = (e); \
-        if (status != miopenStatusSuccess) { \
-            std::cout << miopen_error(std::string("At :") \
-                            + std::string(HIP_ERROR_LOCATION) \
-                            + std::string(" : "), \
-                    status) \
-                                 .what() \
-                      << std::endl; \
-        } \
-    }
 
 #define MIOPEN_EXECUTE_FUNC_S(name, ...) \
     [&]() { \

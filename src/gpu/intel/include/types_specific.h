@@ -91,41 +91,23 @@
 #ifdef A_DATA_T
 #if A_DT_BF16
 #define A_TO_REF(x) into_float(x)
-#define A_TO_REF8(x) into_float(x)
-#define REF_TO_A(x) into_bf16(x)
 #elif A_DT_BF8
 #define A_TO_REF(x) into_half(x)
-#define A_TO_REF8(x) into_half(x)
-#define REF_TO_A(x) into_f8_e5m2(x)
 #elif A_DT_HF8
 #define A_TO_REF(x) into_half(x)
-#define A_TO_REF8(x) into_half(x)
-#define REF_TO_A(x) into_f8_e4m3(x)
 #elif A_DT_F4_E2M1
 #define A_TO_REF(x) into_float(x)
-#define A_TO_REF8(x) into_float(x)
-#define REF_TO_A(x) into_f4_e2m1(x)
 #else
 #define A_TO_REF(x) (x)
-#define A_TO_REF8(x) (x)
-#define REF_TO_A(x) (x)
 #endif
 #if A_DT_BF16
-#define TO_A(x) into_bf16(x)
 #elif A_DT_BF8
-#define TO_A(x) into_f8_e5m2(x)
 #elif A_DT_HF8
-#define TO_A(x) into_f8_e4m3(x)
 #elif A_DT_F4_E2M1
-#define TO_A(x) into_f4_e2m1(x)
 #elif A_DT_U8
-#define TO_A(x) convert_uchar_sat_rte(x)
 #elif A_DT_S8
-#define TO_A(x) convert_char_sat_rte(x)
 #elif A_DT_S32
-#define TO_A(x) convert_int_sat_rte(x)
 #else
-#define TO_A(x) (x)
 #endif
 #endif
 
@@ -157,31 +139,19 @@
 #define REF_TO_WEI(x) (x)
 #endif
 #if WEI_DT_BF16
-#define TO_WEI(x) into_bf16(x)
 #elif WEI_DT_BF8
-#define TO_WEI(x) into_f8_e5m2(x)
 #elif WEI_DT_HF8
-#define TO_WEI(x) into_f8_e4m3(x)
 #elif WEI_DT_F4_E2M1
-#define TO_WEI(x) into_f4_e2m1(x)
 #elif WEI_DT_U8
-#define TO_WEI(x) convert_uchar_sat_rte(x)
 #elif WEI_DT_S8
-#define TO_WEI(x) convert_char_sat_rte(x)
 #elif WEI_DT_S32
-#define TO_WEI(x) convert_int_sat_rte(x)
 #else
-#define TO_WEI(x) (x)
 #endif
 #endif
 
 #ifdef DIFF_WEI_DATA_T
 #if DIFF_WEI_DT_BF16
-#define DIFF_WEI_TO_REF(x) into_float(x)
-#define REF_TO_DIFF_WEI(x) into_bf16(x)
 #else
-#define DIFF_WEI_TO_REF(x) (x)
-#define REF_TO_DIFF_WEI(x) (x)
 #endif
 #if DIFF_WEI_DT_BF16
 #define TO_DIFF_WEI(x) into_bf16(x)
@@ -256,41 +226,24 @@
 #ifdef B_DATA_T
 #if B_DT_BF16
 #define B_TO_REF(x) into_float(x)
-#define REF_TO_B(x) into_bf16(x)
-#define TO_B(x) into_bf16(x)
 #elif B_DT_BF8
 #define B_TO_REF(x) into_half(x)
-#define REF_TO_B(x) into_f8_e5m2(x)
-#define TO_B(x) into_f8_e5m2(x)
 #elif B_DT_HF8
 #define B_TO_REF(x) into_half(x)
-#define REF_TO_B(x) into_f8_e4m3(x)
-#define TO_B(x) into_f8_e4m3(x)
 #elif B_DT_F4_E2M1
 #define B_TO_REF(x) into_float(x)
-#define REF_TO_B(x) into_f4_e2m1(x)
-#define TO_B(x) into_f4_e2m1(x)
 #elif B_DT_U8
 #define B_TO_REF(x) (x)
-#define REF_TO_B(x) (x)
-#define TO_B(x) convert_uchar_sat_rte(x)
 #elif B_DT_S8
 #define B_TO_REF(x) (x)
-#define REF_TO_B(x) (x)
-#define TO_B(x) convert_char_sat_rte(x)
 #elif B_DT_S32
 #define B_TO_REF(x) (x)
-#define REF_TO_B(x) (x)
-#define TO_B(x) convert_int_sat_rte(x)
 #else
 #define B_TO_REF(x) (x)
-#define REF_TO_B(x) (x)
-#define TO_B(x) (x)
 #endif
 #endif
 
 #ifdef BIA_DATA_T
-#define BIA_DATA2_T CONCAT2(BIA_DATA_T, 2)
 #if BIA_DT_BF16
 #define BIA_TO_REF(x) into_float(x)
 #define REF_TO_BIA(x) into_bf16(x)
@@ -344,48 +297,35 @@
 #define CONVERT_DST_DATA2_T CONCAT2(convert_, DST_DATA2_T)
 #define CONVERT_DST_DATA4_T CONCAT2(convert_, DST_DATA4_T)
 #define CONVERT_DST_DATA8_T CONCAT2(convert_, DST_DATA8_T)
-#define CONVERT_DST_DATA16_T CONCAT2(convert_, DST_DATA16_T)
 #elif DST_DT_BF16
 #define CONVERT_DST_DATA_T TO_DST
 #define CONVERT_DST_DATA2_T TO_DST2
 #define CONVERT_DST_DATA4_T TO_DST4
 #define CONVERT_DST_DATA8_T TO_DST8
-#define CONVERT_DST_DATA16_T TO_DST16
 #else
 #define CONVERT_DST_DATA_T CONCAT3(convert_, DST_DATA_T, _sat_rte)
 #define CONVERT_DST_DATA2_T CONCAT3(convert_, DST_DATA2_T, _sat_rte)
 #define CONVERT_DST_DATA4_T CONCAT3(convert_, DST_DATA4_T, _sat_rte)
 #define CONVERT_DST_DATA8_T CONCAT3(convert_, DST_DATA8_T, _sat_rte)
-#define CONVERT_DST_DATA16_T CONCAT3(convert_, DST_DATA16_T, _sat_rte)
 #endif
 
 // Block read/write macros for dst.
 #if DST_DT_U8 || DST_DT_S8
-#define BLOCK_READ_DST2(ptr) \
-    AS_DST_DATA2_T(intel_sub_group_block_read_uc2((__global uchar *)ptr))
 #define BLOCK_WRITE_DST2(ptr, v) \
     intel_sub_group_block_write_uc2((__global uchar *)ptr, as_uchar2(v))
 
-#define BLOCK_READ_DST(ptr) \
-    AS_DST_DATA_T(intel_sub_group_block_read_uc((__global uchar *)ptr))
 #define BLOCK_WRITE_DST(ptr, v) \
     intel_sub_group_block_write_uc((__global uchar *)ptr, as_uchar(v))
 
-#define BLOCK_READ_DST2(ptr) \
-    AS_DST_DATA2_T(intel_sub_group_block_read_uc2((__global uchar *)ptr))
 #define BLOCK_WRITE_DST2(ptr, v) \
     intel_sub_group_block_write_uc2((__global uchar *)ptr, as_uchar2(v))
 
-#define BLOCK_READ_DST4(ptr) \
-    AS_DST_DATA4_T(intel_sub_group_block_read_uc4((__global uchar *)ptr))
 #define BLOCK_WRITE_DST4(ptr, v) \
     intel_sub_group_block_write_uc4((__global uchar *)ptr, as_uchar4(v))
 
 #define BLOCK_WRITE_DST8(ptr, v) \
     intel_sub_group_block_write_uc8((__global uchar *)ptr, as_uchar8(v))
 
-#define BLOCK_WRITE_DST16(ptr, v) \
-    intel_sub_group_block_write_uc16((__global uchar *)ptr, as_uchar16(v))
 
 #elif DST_DT_F16
 #define BLOCK_WRITE_DST(ptr, v) \
@@ -400,11 +340,6 @@
 #define BLOCK_WRITE_DST8(ptr, v) \
     intel_sub_group_block_write_us8((__global ushort *)ptr, as_ushort8(v))
 
-#define BLOCK_WRITE_DST16(ptr, v) \
-    do { \
-        BLOCK_WRITE_DST8(ptr, (v).s01234567); \
-        BLOCK_WRITE_DST8(ptr + 8 * SUB_GROUP_SIZE, (v).s89abcdef); \
-    } while (0)
 
 #elif DST_DT_BF16
 #define BLOCK_WRITE_DST(ptr, v) \
@@ -419,11 +354,6 @@
 #define BLOCK_WRITE_DST8(ptr, v) \
     intel_sub_group_block_write_us8((__global ushort *)ptr, as_ushort8(v))
 
-#define BLOCK_WRITE_DST16(ptr, v) \
-    do { \
-        BLOCK_WRITE_DST8(ptr, (v).s01234567); \
-        BLOCK_WRITE_DST8(ptr + 8 * SUB_GROUP_SIZE, (v).s89abcdef); \
-    } while (0)
 
 #elif DST_DT_S32 || DST_DT_F32
 
@@ -439,11 +369,6 @@
 #define BLOCK_WRITE_DST8(ptr, v) \
     intel_sub_group_block_write8((__global uint *)ptr, as_uint8(v))
 
-#define BLOCK_WRITE_DST16(ptr, v) \
-    do { \
-        BLOCK_WRITE_DST8(ptr, (v).s01234567); \
-        BLOCK_WRITE_DST8(ptr + 8 * SUB_GROUP_SIZE, (v).s89abcdef); \
-    } while (0)
 
 #elif DST_DT_F16 || DST_DT_BF16
 
@@ -459,11 +384,6 @@
 #define BLOCK_WRITE_DST8(ptr, v) \
     intel_sub_group_block_write_us8((__global ushort *)ptr, as_ushort8(v))
 
-#define BLOCK_WRITE_DST16(ptr, v) \
-    do { \
-        BLOCK_WRITE_DST8(ptr, (v).s01234567); \
-        BLOCK_WRITE_DST8(ptr + 8 * SUB_GROUP_SIZE, (v).s89abcdef); \
-    } while (0)
 
 #endif
 
@@ -546,19 +466,16 @@
 #define DST_DATA_FMIN into_float(as_f8_e4m3((uchar)0x08))
 #define DST_DATA_FLOW into_float(as_f8_e4m3((uchar)0xFE))
 #elif DST_DT_U4
-#define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
 #define TO_DST(x) into_u4(convert_float(x))
 #define DST_DATA_FMAX 15.0f
 #define DST_DATA_FMIN 0.0f
 #define DST_DATA_FLOW DST_DATA_FMIN
 #elif DST_DT_S4
-#define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
 #define TO_DST(x) into_s4(convert_float(x))
 #define DST_DATA_FMAX 7.0f
 #define DST_DATA_FMIN 1f
 #define DST_DATA_FLOW -8.0f
 #elif DST_DT_F4_E2M1
-#define SET_DOUBLE_HALF_BYTE(x, y, z) set_double_half_byte(x, y, z)
 #define TO_DST(x) into_f4_e2m1(convert_float(x))
 #define DST_DATA_FMAX 6.0f
 #define DST_DATA_FMIN 1.0f
@@ -568,7 +485,6 @@
 #define TO_DST2(x) convert_uchar2_sat_rte(x)
 #define TO_DST4(x) convert_uchar4_sat_rte(x)
 #define TO_DST8(x) convert_uchar8_sat_rte(x)
-#define TO_DST16(x) convert_uchar16_sat_rte(x)
 #define DST_DATA_FMAX convert_float(UCHAR_MAX)
 #define DST_DATA_FMIN 1
 #define DST_DATA_FLOW 0
@@ -577,7 +493,6 @@
 #define TO_DST2(x) convert_char2_sat_rte(x)
 #define TO_DST4(x) convert_char4_sat_rte(x)
 #define TO_DST8(x) convert_char8_sat_rte(x)
-#define TO_DST16(x) convert_char16_sat_rte(x)
 #define DST_DATA_FMAX convert_float(CHAR_MAX)
 #define DST_DATA_FMIN 1
 #define DST_DATA_FLOW -DST_DATA_FMAX
@@ -611,63 +526,37 @@
 #endif
 
 #ifdef C_DATA_T
-#define C_DATA8_T CONCAT2(C_DATA_T, 8)
 #if C_DT_BF16
 #define C_TO_REF(x) into_float(x)
-#define C_TO_REF8(x) into_float(x)
-#define REF_TO_C(x) into_bf16(x)
-#define REF_TO_C8(x) cvt_f32_to_bf16(convert_float8(x))
 #elif C_DT_BF8
 #define C_TO_REF(x) into_half(x)
-#define C_TO_REF8(x) cvt_f8_e5m2_to_hf(convert_half8(x))
-#define REF_TO_C(x) into_f8_e5m2(x)
-#define REF_TO_C8(x) cvt_hf_to_f8_e5m2(convert_half8(x))
 #elif C_DT_HF8
 #define C_TO_REF(x) into_half(x)
-#define C_TO_REF8(x) cvt_f8_e4m3_to_hf(convert_half8(x))
-#define REF_TO_C(x) into_f8_e4m3(x)
-#define REF_TO_C8(x) cvt_hf_to_f8_e4m3(convert_half8(x))
 #elif C_DT_F4_E2M1
 #define C_TO_REF(x) into_float(x)
-#define C_TO_REF8(x) cvt_f4_e2m1_to_f32(x)
-#define REF_TO_C(x) into_f4_e2m1(x)
-#define REF_TO_C8(x) cvt_f32_to_f4_e2m1(x)
 #else
 #define C_TO_REF(x) (x)
-#define C_TO_REF8(x) (x)
-#define REF_TO_C(x) (x)
-#define REF_TO_C8(x) (x)
 #endif
 #if C_DT_BF16
 #define TO_C(x) into_bf16(x)
-#define TO_C8(x) cvt_f32_to_bf16(convert_float8(x))
 #elif C_DT_BF8
 #define TO_C(x) into_f8_e5m2(x)
-#define TO_C8(x) cvt_hf_to_f8_e5m2(convert_half8(x))
 #elif C_DT_HF8
 #define TO_C(x) into_f8_e4m3(x)
-#define TO_C8(x) cvt_hf_to_f8_e4m3(convert_half8(x))
 #elif C_DT_F4_E2M1
 #define TO_C(x) into_f4_e2m1(x)
-#define TO_C8(x) cvt_f32_to_f4_e2m1(x)
 #elif C_DT_F16
 #define TO_C(x) convert_half(x)
-#define TO_C8(x) convert_half8(x)
 #elif C_DT_U8
 #define TO_C(x) convert_uchar_sat_rte(x)
-#define TO_C8(x) convert_uchar8_sat_rte(x)
 #elif C_DT_S8
 #define TO_C(x) convert_char_sat_rte(x)
-#define TO_C8(x) convert_char8_sat_rte(x)
 #elif C_DT_S32
 #define TO_C(x) convert_int_sat_rte(x)
-#define TO_C8(x) convert_int8_sat_rte(x)
 #elif C_DT_F32
 #define TO_C(x) convert_float(x)
-#define TO_C8(x) convert_float8(x)
 #elif C_DT_F64
 #define TO_C(x) convert_double(x)
-#define TO_C8(x) convert_double8(x)
 #else
 #error "Not expected"
 #endif
@@ -738,19 +627,14 @@
 #ifdef WEI_SCALES_DATA_T
 #if WEI_SCALES_DT_HF8
 #define WEI_SCALES_TO_REF(x) into_float(x)
-#define REF_TO_WEI_SCALES(x) into_f8_e4m3(x)
 #elif WEI_SCALES_DT_BF8
 #define WEI_SCALES_TO_REF(x) into_float(x)
-#define REF_TO_WEI_SCALES(x) into_f8_e5m2(x)
 #elif WEI_SCALES_DT_F16
 #define WEI_SCALES_TO_REF(x) convert_float(x)
-#define REF_TO_WEI_SCALES(x) convert_half(x)
 #elif WEI_SCALES_DT_BF16
 #define WEI_SCALES_TO_REF(x) into_float(x)
-#define REF_TO_WEI_SCALES(x) into_bf16(x)
 #elif WEI_SCALES_DT_E8M0
 #define WEI_SCALES_TO_REF(x) into_float(x)
-#define REF_TO_WEI_SCALES(x) into_e8m0(x)
 #else
 #define WEI_SCALES_TO_REF(x) (x)
 #endif
@@ -759,19 +643,14 @@
 #ifdef SRC_SCALES_DATA_T
 #if SRC_SCALES_DT_HF8
 #define SRC_SCALES_TO_REF(x) into_float(x)
-#define REF_TO_SRC_SCALES(x) into_f8_e4m3(x)
 #elif SRC_SCALES_DT_BF8
 #define SRC_SCALES_TO_REF(x) into_float(x)
-#define REF_TO_SRC_SCALES(x) into_f8_e5m2(x)
 #elif SRC_SCALES_DT_F16
 #define SRC_SCALES_TO_REF(x) convert_float(x)
-#define REF_TO_SRC_SCALES(x) convert_half(x)
 #elif SRC_SCALES_DT_BF16
 #define SRC_SCALES_TO_REF(x) into_float(x)
-#define REF_TO_SRC_SCALES(x) into_bf16(x)
 #elif SRC_SCALES_DT_E8M0
 #define SRC_SCALES_TO_REF(x) into_float(x)
-#define REF_TO_SRC_SCALES(x) into_e8m0(x)
 #else
 #define SRC_SCALES_TO_REF(x) (x)
 #endif

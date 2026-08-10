@@ -27,7 +27,6 @@ namespace gemm_utils {
 #define BM_NOCOPY_AVX 64
 #define BN_NOCOPY_AVX 48
 #define BK_NOCOPY_AVX 384
-#define BN_LARGE_NOCOPY_AVX 192
 #define BM_SMALL_NOCOPY_AVX 16
 #define BN_SMALL_NOCOPY_AVX 1
 #define BK_SMALL_NOCOPY_AVX 4
@@ -138,7 +137,6 @@ void calc_nthr_nocopy_avx(dim_t m, dim_t n, dim_t k, int nthrs, int *nthrs_m,
 #undef BM_NOCOPY_AVX
 #undef BN_NOCOPY_AVX
 #undef BK_NOCOPY_AVX
-#undef BN_LARGE_NOCOPY_AVX
 #undef BM_SMALL_NOCOPY_AVX
 #undef BN_SMALL_NOCOPY_AVX
 #undef BK_SMALL_NOCOPY_AVX
@@ -146,7 +144,6 @@ void calc_nthr_nocopy_avx(dim_t m, dim_t n, dim_t k, int nthrs, int *nthrs_m,
 #define BM_NOCOPY_AVX512_COMMON 32
 #define BN_NOCOPY_AVX512_COMMON 64
 #define BK_NOCOPY_AVX512_COMMON 192
-#define BN_LARGE_NOCOPY_AVX512_COMMON 192
 #define BM_SMALL_NOCOPY_AVX512_COMMON 16
 #define BN_SMALL_NOCOPY_AVX512_COMMON 1
 #define BK_SMALL_NOCOPY_AVX512_COMMON 4
@@ -321,7 +318,6 @@ void calc_nthr_nocopy_avx512_common(dim_t m, dim_t n, dim_t k, int nthrs,
 #undef BM_NOCOPY_AVX512_COMMON
 #undef BN_NOCOPY_AVX512_COMMON
 #undef BK_NOCOPY_AVX512_COMMON
-#undef BN_LARGE_NOCOPY_AVX512_COMMON
 #undef BM_SMALL_NOCOPY_AVX512_COMMON
 #undef BN_SMALL_NOCOPY_AVX512_COMMON
 #undef BK_SMALL_NOCOPY_AVX512_COMMON

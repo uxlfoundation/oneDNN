@@ -1094,7 +1094,6 @@ void jit_uni_reorder_kernel_f32_t::process_unroll_generic_step(int reg_unroll,
                 for (int ur = 0; ur < reg_unroll; ur += ur_step)
                     fmul(VReg4S(ur), VReg4S(ur), vreg_scales);
             } else if (scale_type == scale_type_t::MANY) {
-#define DUMMY_IDX_ (99)
                 std::vector<uint32_t> idx_list;
                 std::vector<int> offt_list;
                 std::vector<uint32_t> vec_reg;
@@ -1147,7 +1146,6 @@ void jit_uni_reorder_kernel_f32_t::process_unroll_generic_step(int reg_unroll,
                     ur += std::min(cnt, max_cnt_per_loop);
                 }
             }
-#undef DUMMY_IDX_
         };
 
         /* xmm[0] <-- src_scales * xmm[0] */

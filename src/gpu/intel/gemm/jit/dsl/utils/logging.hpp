@@ -132,17 +132,7 @@ private:
                     __FILE__, __LINE__)
 
 // Trace can result in overhead making measurement meaningless
-#define dsl_perf_no_trace() \
-    gemmstone::logger_t<gemmstone::log_level_t::perf>::is_enabled() \
-            && !gemmstone::logger_t< \
-                    gemmstone::log_level_t::trace>::is_enabled() \
-            && gemmstone::logger_t<gemmstone::log_level_t::perf>( \
-                    __FILE__, __LINE__)
 
-#define dsl_info() \
-    gemmstone::logger_t<gemmstone::log_level_t::info>::is_enabled() \
-            && gemmstone::logger_t<gemmstone::log_level_t::info>( \
-                    __FILE__, __LINE__)
 
 #define dsl_debug() \
     gemmstone::logger_t<gemmstone::log_level_t::debug>::is_enabled() \
@@ -154,21 +144,12 @@ private:
             && gemmstone::logger_t<gemmstone::log_level_t::warning>( \
                     __FILE__, __LINE__)
 
-#define dsl_suggestion() \
-    gemmstone::logger_t<gemmstone::log_level_t::suggestion>::is_enabled() \
-            && gemmstone::logger_t<gemmstone::log_level_t::suggestion>( \
-                    __FILE__, __LINE__)
 
 #define dsl_trace() \
     gemmstone::logger_t<gemmstone::log_level_t::trace>::is_enabled() \
             && gemmstone::logger_t<gemmstone::log_level_t::trace>( \
                     __FILE__, __LINE__)
 
-#define dsl_check(cond) \
-    if (!(cond)) \
-    return gemmstone::logger_t<gemmstone::log_level_t::trace>::is_enabled() \
-            && gemmstone::logger_t<gemmstone::log_level_t::trace, false>( \
-                    __FILE__, __LINE__)
 
 GEMMSTONE_NAMESPACE_END
 

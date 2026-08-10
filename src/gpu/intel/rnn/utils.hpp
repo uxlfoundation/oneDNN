@@ -29,7 +29,6 @@
     (((((i0) * (d1) + (i1)) * (d2) + (i2)) * (d3) + (i3)) * (d4) + (i4))
 #define OFF4(i0, d0, i1, d1, i2, d2, i3, d3) \
     ((((i0) * (d1) + (i1)) * (d2) + (i2)) * (d3) + (i3))
-#define OFF3(i0, d0, i1, d1, i2, d2) (((i0) * (d1) + (i1)) * (d2) + (i2))
 #define OFF2(i0, d0, i1, d1) ((i0) * (d1) + (i1))
 
 #define elemwise_sig(f) \

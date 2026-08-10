@@ -91,13 +91,11 @@ long __attribute__((overloadable)) rnd_down(long a, unsigned int b) {
 
 #if DT_S4 || SRC_DT_S4 || WEI_DT_S4 || DST_DT_S4 || BIA_DT_S4 || A_DT_S4 \
         || B_DT_S4 || C_DT_S4 || DATA_DT_S4 || WEI_ZP_DT_S4 || SRC_ZP_DT_S4
-#define MATH_UTILS_DECLARE_S4 1
 #endif
 
 #if DT_U4 || SRC_DT_U4 || WEI_DT_U4 || DST_DT_U4 || BIA_DT_U4 || A_DT_U4 \
         || A_DT_U4 || B_DT_U4 || C_DT_U4 || DATA_DT_U4 || WEI_ZP_DT_U4 \
         || SRC_ZP_DT_U4
-#define MATH_UTILS_DECLARE_U4 1
 #endif
 
 #if DT_BF16 || SRC_DT_BF16 || WEI_DT_BF16 || DST_DT_BF16 || BIA_DT_BF16 \

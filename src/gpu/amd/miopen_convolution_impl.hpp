@@ -31,7 +31,6 @@
 #include <vector>
 #include <miopen/miopen.h>
 
-#define MIOPEN_MAX_WK_SIZE 6341787648
 
 namespace dnnl {
 namespace impl {

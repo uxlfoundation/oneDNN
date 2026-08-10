@@ -28,8 +28,6 @@
 namespace dnnl {
 namespace impl {
 
-#define VCHECK_SDPA(f, msg, ...) \
-    VCHECK(primitive, create, check, sdpa, (f), msg, ##__VA_ARGS__);
 
 #define VCHECK_SDPA_COND(cond, msg, ...) \
     VCONDCHECK(primitive, create, check, sdpa, (cond), \

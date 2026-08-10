@@ -115,12 +115,6 @@ private:
     std::vector<std::string> lines_;
 };
 
-#define gpu_perf() \
-    dnnl::impl::gpu::intel::logger_t< \
-            dnnl::impl::gpu::intel::log_level_t::perf>::is_enabled() \
-            && dnnl::impl::gpu::intel::logger_t< \
-                    dnnl::impl::gpu::intel::log_level_t::perf>( \
-                    __FILENAME__, __LINE__)
 
 // Trace can result in overhead making measurement meaningless
 #define gpu_perf_no_trace() \

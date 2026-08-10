@@ -16,7 +16,6 @@
 
 #include "gemmstone/config.hpp"
 
-#define BINARY_OUTPUT
 
 #include "gemmstone/microkernel_selector.hpp"
 #include "gemmstone/generator.hpp"

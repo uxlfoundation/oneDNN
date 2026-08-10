@@ -31,7 +31,6 @@
 #define LWY 8
 #define LWX (WINO_IC_BLOCK / 2)
 
-#define COMP_UNITS ((OC_BLOCK * WINO_D))
 // Basically COMP_UNITS/(LWY * LWX) except for rounding from WINO_D / LWY
 #define COMP_OC_STRIDE LWX
 #define COMP_OC_COUNT (OC_BLOCK / COMP_OC_STRIDE)
@@ -60,7 +59,6 @@
 #define COMP_BLOCK VECT_DT_N
 #define COMP_DATA_T VECT_DATA_T
 #define AS_COMP_DATA_T AS_VECT_DATA_T
-#define COMP_READ(ptr) CONCAT2(vload, COMP_BLOCK)(0, ptr)
 #define COMP_WRITE(data, ptr) CONCAT2(vstore, COMP_BLOCK)(data, 0, ptr)
 #define COMP_BLOCK_READ(ptr) \
     AS_COMP_DATA_T(VECT_BLOCK_READ((const __global BLOCK_DATA_T *)ptr))

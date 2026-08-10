@@ -170,13 +170,7 @@ inline int dnnl_get_current_num_threads() {
 }
 
 #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
-#define PRAGMA_OMP(...) PRAGMA_MACRO(CHAIN2(omp, __VA_ARGS__))
-#define OMP_GET_THREAD_NUM() omp_get_thread_num()
-#define OMP_GET_NUM_THREADS() omp_get_num_threads()
 #else
-#define PRAGMA_OMP(...)
-#define OMP_GET_THREAD_NUM() 0
-#define OMP_GET_NUM_THREADS() 1
 #endif
 
 // Disabling OMP SIMD feature for MSVC as it only supports OpenMP 2.0

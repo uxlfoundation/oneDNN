@@ -1030,7 +1030,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     if (bgmmc.use_mmla && apply_mmla_heuristic) {
         const double work = static_cast<double>(bgmmc.batch) * bgmmc.M * bgmmc.N
                 * bgmmc.K;
-        bgmmc.use_mmla = brgemm_utils::has_sufficient_mmla_work(
+        bgmmc.use_mmla = brgemm_utils::has_sufficient_bf16_mmla_work(
                 work, bgmmc.nthr, mmla_n_block);
     }
     if (bgmmc.use_mmla) bm_conf_utils.set_n_blk_fixed();

@@ -115,11 +115,16 @@ inline int mmla_n_block(cpu_isa_t isa) {
     return mmla_default_ld_block2_plain_a() * simd_elems(data_type::f32, isa);
 }
 
-// Small OpenMP workloads can favor BFDOT. Scale the measured crossover by
-// the ISA-specific N tile while leaving the requested thread team unchanged.
-inline bool has_sufficient_mmla_work(double work, int nthr, int n_block) {
+inline bool has_sufficient_mmla_work(
+        double work, int nthr, double min_work_per_thread) {
+    return work >= min_work_per_thread * nstl::max(1, nthr);
+}
+
+// Small OpenMP workloads can favor BFDOT. Scale the work threshold by
+// the ISA-specific N tile without changing the requested thread team.
+inline bool has_sufficient_bf16_mmla_work(double work, int nthr, int n_block) {
     return DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_OMP || nthr <= 1
-            || work >= 16. * 1024 * n_block * nthr;
+            || has_sufficient_mmla_work(work, nthr, 16. * 1024 * n_block);
 }
 
 status_t init_mmla_wei_md(memory_desc_t &md, int k_dim, int n_dim, int n_block);

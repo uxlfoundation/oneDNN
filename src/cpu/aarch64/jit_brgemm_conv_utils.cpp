@@ -51,17 +51,20 @@ bool allow_perf_heuristics(const jit_brgemm_conv_conf_t &jcp) {
     return true;
 }
 
-// MMLA selection: kernel requirements and supported shapes/layouts.
-bool use_bf16_mmla(const jit_brgemm_conv_conf_t &jcp,
+constexpr int int8_mmla_1x1_min_ic = 64;
+constexpr int int8_mmla_1x1_min_os = 400;
+
+bool use_mmla(const jit_brgemm_conv_conf_t &jcp,
         const memory_desc_t &weights_md, bool is_1x1_path) {
-    if (!mayiuse(sve) || !mayiuse_bf16()) return false;
-    if (!one_of(jcp.isa, sve_128, sve_256)) return false;
-    if (!everyone_is(bf16, jcp.src_dt, jcp.wei_dt)) return false;
+    const bool is_bf16 = everyone_is(bf16, jcp.src_dt, jcp.wei_dt);
+    const bool is_int8 = jcp.src_dt == u8 && jcp.wei_dt == s8;
+    if (!one_of(jcp.isa, sve_128, sve_256) || !(is_bf16 || is_int8))
+        return false;
+    if (is_bf16 && (!mayiuse(sve) || !mayiuse_bf16())) return false;
+    if (is_int8 && !mayiuse_sve_i8mm()) return false;
 
     // Packing expects ungrouped 2D weights.
     if (jcp.ndims != 4 || weights_md.ndims != jcp.ndims) return false;
-
-    // Initial scope: undilated inference with 1x1 or 3x3 kernels.
     if (jcp.prop_kind != forward_inference
             || !everyone_is(0, jcp.dilate_h, jcp.dilate_w))
         return false;
@@ -79,26 +82,43 @@ bool use_bf16_mmla(const jit_brgemm_conv_conf_t &jcp,
             return false;
     }
 
-    // Native inputs need full K8 tiles; OC tails are unsupported.
+    // Convolution packing requires full N tiles and K8-aligned input channels.
     const int n_block = brgemm_utils::mmla_n_block(jcp.isa);
     const int k_block = brgemm_utils::mmla_wei_k_block();
     if (jcp.ic % k_block || jcp.oc % n_block) return false;
 
-    // Explicit weights must match MMLA packing; 'any' permits either path.
-    const auto wei_tag = n_block == 16 ? OhwI2i16o4i : OhwI2i32o4i;
     auto want_weights_md = weights_md;
-    CHECK_BOOL(memory_desc_init_by_tag(want_weights_md, wei_tag));
+    if (is_bf16) {
+        const auto wei_tag = n_block == 16 ? OhwI2i16o4i : OhwI2i32o4i;
+        CHECK_BOOL(memory_desc_init_by_tag(want_weights_md, wei_tag));
+    } else {
+        CHECK_BOOL(
+                brgemm_utils::init_mmla_wei_md(want_weights_md, 1, 0, n_block));
+        want_weights_md.extra = weights_md.extra;
+    }
+    // Apply utilization checks only when weights are 'any'.
     if (weights_md.format_kind != format_kind::any)
         return weights_md == want_weights_md;
 
     const double work = static_cast<double>(jcp.mb) * jcp.os * jcp.oc * jcp.ic
             * jcp.kh * jcp.kw;
-    return brgemm_utils::has_sufficient_mmla_work(work, jcp.nthr, n_block);
+    if (is_bf16)
+        return brgemm_utils::has_sufficient_bf16_mmla_work(
+                work, jcp.nthr, n_block);
+    if (is_1x1_path) {
+        if (jcp.ic >= int8_mmla_1x1_min_ic && jcp.os >= int8_mmla_1x1_min_os)
+            return true;
+        return jcp.os >= brgemm_utils::mmla_bd_blk()
+                && jcp.ic >= brgemm_utils::mmla_rd_block(jcp.src_dsz)
+                && brgemm_utils::has_sufficient_mmla_work(
+                        work, jcp.nthr, 8. * 1024 * n_block);
+    }
+    return true;
 }
 
-// MMLA convolution requires packed weights and complete N/K tiles. It does
-// not support BRGEMM masks for irregular output-spatial rows or internally
-// padded input channels. The 3x3 path handles borders through virtual padding.
+// MMLA convolution requires packed weights, full N tiles and K8-aligned
+// reductions. BRGEMM masks for irregular spatial rows and internally padded
+// input channels are unsupported. The 3x3 path uses virtual padding.
 bool native_mmla_blocking_ok(
         const jit_brgemm_conv_conf_t &jcp, bool require_vpad) {
     const int n_block = brgemm_utils::mmla_n_block(jcp.isa);
@@ -217,10 +237,18 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &src_md,
     } else {
         jcp.LDB = jcp.oc_block;
         if (jcp.use_mmla) {
-            const bool layout_ok = is_2d && !with_groups && !jcp.is_ic_padded
-                    && jcp.oc_block == brgemm_utils::mmla_n_block(jcp.isa);
-            if (!layout_ok) return status::unimplemented;
-            wei_tag = jcp.oc_block == 16 ? OhwI2i16o4i : OhwI2i32o4i;
+            if (jcp.wei_dt == data_type::bf16) {
+                wei_tag = jcp.oc_block == 16 ? OhwI2i16o4i : OhwI2i32o4i;
+            } else {
+                auto want_weights_md = weights_md;
+                CHECK(brgemm_utils::init_mmla_wei_md(
+                        want_weights_md, 1, 0, jcp.oc_block));
+                want_weights_md.extra = weights_md.extra;
+                if (weights_d.format_kind() == format_kind::any)
+                    weights_md = want_weights_md;
+                else if (weights_md != want_weights_md)
+                    return status::unimplemented;
+            }
         } else if (jcp.oc_block == 64) {
             if (is_3d) {
                 switch (vnni_granularity) {
@@ -530,7 +558,10 @@ status_t pick_tags(jit_brgemm_conv_conf_t &jcp, memory_desc_t &src_md,
     const bool any_eligible = is_any_eligible(jcp);
     CHECK(init_tag(jcp.src_tag, src_md, src_d, src_tag, any_eligible));
     CHECK(init_tag(jcp.dst_tag, dst_md, dst_d, dst_tag, any_eligible));
-    CHECK(init_tag(jcp.wei_tag, weights_md, weights_d, wei_tag, true));
+    if (jcp.use_mmla && jcp.wei_dt == data_type::s8)
+        jcp.wei_tag = format_tag::undef;
+    else
+        CHECK(init_tag(jcp.wei_tag, weights_md, weights_d, wei_tag, true));
 
     return status::success;
 }
@@ -623,6 +654,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
 
     void update_blocks();
     bool fast_check_oc_block() const;
+    float get_ur_eff() const;
     float est_eff();
     void iterate_ker_block(brg_blocking_t &best_brgb, int kd_block,
             int kh_block, bool maybe_use_buffer, int max_ow_block_thr);
@@ -910,18 +942,22 @@ bool brg_blocking_t::fast_check_oc_block() const {
     return res;
 }
 
+float brg_blocking_t::get_ur_eff() const {
+    // MMLA executes full row pairs, even in the tail.
+    const auto issued_rows = use_mmla
+            ? (sp_block / ur) * rnd_up(ur, brgemm_utils::mmla_bd_blk())
+                    + rnd_up(sp_block % ur, brgemm_utils::mmla_bd_blk())
+            : rnd_up(sp_block, ur);
+    return static_cast<float>(sp_block) / issued_rows;
+}
+
 float brg_blocking_t::est_eff() {
     const auto ocblock = oc_block / acc_simd_w;
 
     const auto brgemm_microkernel_eff
             = (static_cast<float>(ocblock) * ur) / ((ur + ocblock) * max_regs);
 
-    // MMLA executes full row pairs, even in the tail.
-    const auto issued_rows = use_mmla
-            ? (sp_block / ur) * rnd_up(ur, brgemm_utils::mmla_bd_blk())
-                    + rnd_up(sp_block % ur, brgemm_utils::mmla_bd_blk())
-            : rnd_up(sp_block, ur);
-    const auto ur_eff = static_cast<float>(sp_block) / issued_rows;
+    const auto ur_eff = get_ur_eff();
     const auto brgemm_eff = squeeze_val(ur
                     * (2.f - nstl::min(1.9f, static_cast<float>(ur) / sp_block))
                     / 64,
@@ -1331,12 +1367,7 @@ float brg_blocking_t::est_eff_1x1() {
 
     const auto brgemm_microkernel_eff
             = (static_cast<float>(ocblock) * ur) / ((ur + ocblock) * max_regs);
-    // MMLA executes full row pairs, even in the tail.
-    const auto issued_rows = use_mmla
-            ? (sp_block / ur) * rnd_up(ur, brgemm_utils::mmla_bd_blk())
-                    + rnd_up(sp_block % ur, brgemm_utils::mmla_bd_blk())
-            : rnd_up(sp_block, ur);
-    const auto ur_eff = static_cast<float>(sp_block) / issued_rows;
+    const auto ur_eff = get_ur_eff();
     const auto brgemm_eff = squeeze_val(ur
                     * (2.f - nstl::min(1.9f, static_cast<float>(ur) / sp_block))
                     / 64,
@@ -1856,7 +1887,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             VERBOSE_UNSUPPORTED_ZP_CFG);
 
     jcp.nthr = nthreads;
-    jcp.use_mmla = use_bf16_mmla(jcp, weights_md, false);
+    jcp.use_mmla = use_mmla(jcp, weights_md, false);
     brg_blocking_t::last_ic_block_size = jcp.use_mmla
             ? brgemm_utils::mmla_wei_k_block()
             : data_type_vnni_granularity(jcp.wei_dt);
@@ -2122,6 +2153,13 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             && IMPLICATION(jcp.exec_type == exec_vpad, with_pad);
     jcp.req_brg_comp_pad = comp_with_pads && output_sz <= 8192 && jcp.oc < 512;
     jcp.req_cal_comp_pad = comp_with_pads && !jcp.req_brg_comp_pad;
+    const bool is_int8_mmla = jcp.use_mmla && jcp.src_dt == data_type::u8
+            && jcp.wei_dt == data_type::s8;
+    // Padded source zero points require MMLA weight compensation.
+    if (is_int8_mmla && jcp.src_zero_point
+            && (jcp.req_brg_comp_pad || jcp.req_cal_comp_pad
+                    || jcp.max_vpad > 0))
+        return status::unimplemented;
 
     // estimate the number of kernel range combination for compensation
     const auto kd_cnt = 1 + utils::div_up(abs(jcp.f_pad), jcp.dilate_d + 1)
@@ -2169,7 +2207,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     if (!jcp.is_1x1) return status::unimplemented;
 
-    jcp.use_mmla = use_bf16_mmla(jcp, weights_md, true);
+    jcp.use_mmla = use_mmla(jcp, weights_md, true);
     brg_blocking_t::last_ic_block_size = jcp.use_mmla
             ? brgemm_utils::mmla_wei_k_block()
             : data_type_vnni_granularity(jcp.wei_dt);

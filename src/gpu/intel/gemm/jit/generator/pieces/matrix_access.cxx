@@ -104,7 +104,7 @@ void Generator<hw>::loadMatrixBlock(const Register &dest, const RegisterBlock &b
         case AccessType::Scattered:
         case AccessType::ChannelScattered: {
             auto spec = getDataSpecLSC(atype, astrategy, block, AccessClass::Read, astrategy.atomic);
-            if(hw >= HW::Xe3p) spec |= Overfetch;
+            if(hw >= HW::Xe3p && !astrategy.atomic) spec |= Overfetch;
             if (astrategy.atomic && hw >= HW::Xe2) {
                 atomic(AtomicOp::load, mod, dest, spec, astrategy.base, getAddress(addr, block, astrategy));
             } else if (block.descAssigned) {

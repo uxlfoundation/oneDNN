@@ -31,6 +31,15 @@ namespace rv64 {
 
 using namespace Xbyak_riscv;
 
+// The broadcasts the resampling kernel can position itself (the injector runs
+// in host-positioned byte-offset mode). Keep in sync with the pd's set in
+// jit_uni_resampling.hpp.
+static bcast_set_t get_supported_postops_bcast_strategies() {
+    return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
+            broadcasting_strategy_t::per_oc_spatial,
+            broadcasting_strategy_t::no_broadcast};
+}
+
 template <cpu_isa_t isa, data_type_t d_type>
 jit_uni_resampling_kernel_t<isa, d_type>::jit_uni_resampling_kernel_t(
         const jit_resampling_conf_t &conf)
@@ -127,9 +136,12 @@ status_t jit_uni_resampling_kernel_t<isa, d_type>::init_conf(
             } else
                 po_no_sum.entry_.push_back(e);
         }
-        const bool inj_ok
-                = injector::jit_uni_postops_injector_t<isa>::post_ops_ok(
-                        po_no_sum);
+        const bool inj_ok = injector::post_ops_ok(injector::post_ops_ok_args_t(
+                isa, {injector::eltwise, injector::binary}, po_no_sum, &dst_d,
+                false /*sum_at_pos_0_only*/, false /*sum_requires_scale_one*/,
+                true /*sum_requires_zp_zero*/,
+                true /*sum_requires_same_params*/,
+                get_supported_postops_bcast_strategies(), /*n_vaux=*/3));
         bool has_binary = false, has_eltwise = false;
         for (int i = 0; i < po_no_sum.len(); i++) {
             if (po_no_sum.entry_[i].is_binary()) has_binary = true;
@@ -206,29 +218,65 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f32() {
     ld(s11, reg_param, static_cast<int>(offsetof(p_t, src_vec_byte_stride)));
     ld(a1, reg_param, static_cast<int>(offsetof(p_t, dst_vec_byte_stride)));
     if (conf_.fuse_binary) {
-        // a4 = rhs ORIGIN pointer array; a5 = shared byte offset (advanced per
-        // channel chunk). The injector runs in indirect mode.
-        ld(a4, reg_param, static_cast<int>(offsetof(p_t, post_op_rhs)));
+        // a5 = shared byte offset (advanced per channel chunk); the injector
+        // reads the rhs pointer array through the args pointer (x64 model).
         ld(a5, reg_param, static_cast<int>(offsetof(p_t, post_op_off0)));
     }
 
     addi(t2, x0, 4); // element size, for the unit-stride fast path
 
     // Post-op injector (built once; the binary rhs base is read from the
-    // pointer array in a4 at the offset in a5, advanced per chunk).
+    // pointer array through the args pointer, at the offset in a5, advanced
+    // per chunk).
     injector::jit_uni_postops_injector_t<isa> *po_inj = nullptr;
     // v24 doubles as the binary rhs scratch; entries execute serially, and
     // post_ops_ok(n_vaux = 3) rejects the algs that would read v_aux3/v_aux4.
     eltwise_injector::static_params_t esp(VReg(12), VReg(16), VReg(20),
             VReg(24), VReg(24), ft0, ft1, t3, /*is_fwd=*/true);
-    binary_injector::static_params_t bsp_contig(VReg(24), ft2, a4, a5, a3);
-    binary_injector::static_params_t bsp_strided(VReg(24), ft2, a4, a5, a3, a1);
-    bsp_contig.off_is_bytes = bsp_strided.off_is_bytes = true;
-    injector::jit_uni_postops_injector_t<isa> po_inj_obj(this, conf_.post_ops,
-            esp,
-            conf_.fuse_binary ? (bin_strided ? &bsp_strided : &bsp_contig)
-                              : nullptr);
-    if (po) po_inj = &po_inj_obj;
+    // Host-positioned injector mode (null dst_d): the kernel maintains the
+    // shared byte offset in a5 itself, so the rhs classifies as scalar /
+    // no_broadcast from its element count. The rhs pointer array is read
+    // through the args pointer (x64 model), so a4 is now only the injector's
+    // address scratch. The rhs is f32 (pd-gated), so neither the narrow-dtype
+    // staging group nor the gather index group is needed. preserve_gpr shields
+    // a5 -- the live per-chunk offset -- and the injector's fixed X_TMP
+    // scratch (t4, which this kernel uses for the sum scale).
+    binary_injector::rhs_arg_static_params_t rhs_arg_bsp(VReg(24).getIdx(), a4,
+            a5, a3, true /*preserve gpr*/, false /*preserve vmm*/,
+            static_cast<std::size_t>(offsetof(p_t, post_op_rhs)),
+            memory_desc_wrapper(nullptr));
+    rhs_arg_bsp.rhs_dt_helper_freg = ft2;
+    rhs_arg_bsp.off_is_bytes = true;
+    if (bin_strided) {
+        rhs_arg_bsp.is_strided = true;
+        rhs_arg_bsp.rhs_stride = a1;
+    }
+    const binary_injector::static_params_t bsp(reg_param, rhs_arg_bsp);
+    // The in-kernel sum runs as a host lambda at its exact chain position (the
+    // x64/aarch64 scheme), so a single compute_vector covers the whole chain --
+    // replacing the old split into two entry sub-ranges around the sum.
+    injector::lambda_jit_injectors_t lambda_jit_injectors;
+    if (conf_.fuse_sum)
+        lambda_jit_injectors.emplace(primitive_kind::sum, [&]() {
+            // dst is read back with the same access form as the store.
+            Label sum_strided, sum_done;
+            bne(a1, t2, sum_strided);
+            vle32_v(v_tmp, s9);
+            j_(sum_done);
+            L(sum_strided);
+            vlse32_v(v_tmp, s9, a1);
+            L(sum_done);
+            if (conf_.sum_scale == 1.f)
+                vfadd_vv(v_acc, v_acc, v_tmp);
+            else {
+                li(t4, (int32_t)utils::bit_cast<uint32_t>(conf_.sum_scale));
+                fmv_w_x(ft3, t4);
+                vfmacc_vf(v_acc, ft3, v_tmp);
+            }
+        });
+    injector::jit_uni_postops_injector_t<isa> po_inj_obj(
+            this, conf_.post_ops, bsp, esp, lambda_jit_injectors);
+    if (po || conf_.fuse_sum) po_inj = &po_inj_obj;
 
     auto load_vec = [&](const VReg &vd, const Reg &ptr) {
         Label strided, done;
@@ -258,34 +306,12 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f32() {
 
     if (po || conf_.fuse_sum) {
         // a5 is the per-chunk byte offset of the first active lane
-        // (off_is_bytes); the injector derives each rhs address from it.
+        // (off_is_bytes); the injector derives each rhs address from it. The
+        // sum lands in attribute order via its lambda injector.
         binary_injector::rhs_arg_dynamic_params_t rhs_dyn;
-        rhs_dyn.vmm_idx_to_out_off[v_acc.getIdx()] = a5;
-        const int n_po = conf_.post_ops.len();
-        const int s_idx = conf_.fuse_sum ? conf_.sum_idx : -1;
-        // The injector skips sum, so apply the chain around it in two ranges.
-        if (po)
-            po_inj->compute_vector(
-                    v_acc.getIdx(), rhs_dyn, 0, s_idx < 0 ? n_po : s_idx);
-        if (conf_.fuse_sum) {
-            // dst is read back with the same access form as the store.
-            Label sum_strided, sum_done;
-            bne(a1, t2, sum_strided);
-            vle32_v(v_tmp, s9);
-            j_(sum_done);
-            L(sum_strided);
-            vlse32_v(v_tmp, s9, a1);
-            L(sum_done);
-            if (conf_.sum_scale == 1.f)
-                vfadd_vv(v_acc, v_acc, v_tmp);
-            else {
-                li(t4, (int32_t)utils::bit_cast<uint32_t>(conf_.sum_scale));
-                fmv_w_x(ft3, t4);
-                vfmacc_vf(v_acc, ft3, v_tmp);
-            }
-        }
-        if (po && s_idx >= 0)
-            po_inj->compute_vector(v_acc.getIdx(), rhs_dyn, s_idx + 1, n_po);
+        rhs_dyn.vmm_idx_to_out_reg.emplace(v_acc.getIdx(), a5);
+        // The f32 path computes at e32/m1 (group_stride 1).
+        po_inj->compute_vector(v_acc.getIdx(), rhs_dyn, 1 /*group_stride*/);
     }
 
     {
@@ -404,9 +430,40 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
     injector::jit_uni_postops_injector_t<isa> *po_inj = nullptr;
     eltwise_injector::static_params_t esp(VReg(12), VReg(16), VReg(20),
             VReg(24), VReg(24), ft0, ft1, t3, /*is_fwd=*/true);
+    // The pd rejects a binary for f16, so the (mandatory) binary static params
+    // are never consumed; pass placeholder scratch.
+    binary_injector::rhs_arg_static_params_t rhs_arg_bsp(VReg(24).getIdx(), x0,
+            x0, x0, false /*preserve gpr*/, false /*preserve vmm*/,
+            0 /*abi_param_offset*/, memory_desc_wrapper(nullptr));
+    rhs_arg_bsp.rhs_dt_helper_freg = ft2;
+    const binary_injector::static_params_t bsp(x0, rhs_arg_bsp);
+    // The in-kernel sum runs as a host lambda at its exact chain position, so a
+    // single compute_vector covers the whole chain. It is entered and left at
+    // e32/m2; dst is read back with the same access form as the store.
+    injector::lambda_jit_injectors_t lambda_jit_injectors;
+    if (conf_.fuse_sum)
+        lambda_jit_injectors.emplace(primitive_kind::sum, [&]() {
+            vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+            Label sum_strided, sum_done;
+            bne(a1, t2, sum_strided);
+            vle16_v(v_f16, s9);
+            j_(sum_done);
+            L(sum_strided);
+            vlse16_v(v_f16, s9, a1);
+            L(sum_done);
+            vfwcvt_f_f_v(v_wide, v_f16); // f16 m1 -> f32 m2
+            vsetvli(t0, s10, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+            if (conf_.sum_scale == 1.f)
+                vfadd_vv(v_acc, v_acc, v_wide);
+            else {
+                li(t4, (int32_t)utils::bit_cast<uint32_t>(conf_.sum_scale));
+                fmv_w_x(ft3, t4);
+                vfmacc_vf(v_acc, ft3, v_wide);
+            }
+        });
     injector::jit_uni_postops_injector_t<isa> po_inj_obj(
-            this, conf_.post_ops, esp);
-    if (po) po_inj = &po_inj_obj;
+            this, conf_.post_ops, bsp, esp, lambda_jit_injectors);
+    if (po || conf_.fuse_sum) po_inj = &po_inj_obj;
     // Eltwise-only here: no binary rhs to address.
     binary_injector::rhs_arg_dynamic_params_t rhs_dyn;
 
@@ -426,32 +483,9 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
     // sum reads dst back as f16 and widens it (same access form as the store).
     const bool need_f32 = po || conf_.fuse_sum;
     auto apply_chain = [&]() {
-        const int n_po = conf_.post_ops.len();
-        const int s_idx = conf_.fuse_sum ? conf_.sum_idx : -1;
-        if (po)
-            po_inj->compute_vector(
-                    v_acc.getIdx(), rhs_dyn, 0, s_idx < 0 ? n_po : s_idx);
-        if (conf_.fuse_sum) {
-            vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-            Label sum_strided, sum_done;
-            bne(a1, t2, sum_strided);
-            vle16_v(v_f16, s9);
-            j_(sum_done);
-            L(sum_strided);
-            vlse16_v(v_f16, s9, a1);
-            L(sum_done);
-            vfwcvt_f_f_v(v_wide, v_f16); // f16 m1 -> f32 m2
-            vsetvli(t0, s10, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-            if (conf_.sum_scale == 1.f)
-                vfadd_vv(v_acc, v_acc, v_wide);
-            else {
-                li(t4, (int32_t)utils::bit_cast<uint32_t>(conf_.sum_scale));
-                fmv_w_x(ft3, t4);
-                vfmacc_vf(v_acc, ft3, v_wide);
-            }
-        }
-        if (po && s_idx >= 0)
-            po_inj->compute_vector(v_acc.getIdx(), rhs_dyn, s_idx + 1, n_po);
+        // The f16 path computes at e32/m2 (group_stride 2); the sum lands in
+        // attribute order via its lambda injector.
+        po_inj->compute_vector(v_acc.getIdx(), rhs_dyn, 2 /*group_stride*/);
     };
 
     Label ch_loop, ch_done;

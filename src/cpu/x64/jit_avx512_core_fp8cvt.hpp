@@ -147,6 +147,8 @@ struct fp8_conversion_e5m2_t : public fp8_conversion_base_t {
     void vcvt_f8_to_bf16_vnni_block(int num_rows,
             const Xbyak::Reg64 &reg_data_in, const Xbyak::Reg64 &reg_stride_in,
             const Xbyak::Reg64 &reg_data_out) override;
+    void vcvt_f8_to_f16_skip_q_nan(
+            const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in);
 
 private:
     const Xbyak::Opmask kmask_aux_;

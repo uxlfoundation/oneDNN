@@ -203,7 +203,14 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     // subsumes the tail case).
     void compute_dst() {
         load_vector();
-        eltwise_injector_->compute_vector(vmm_src.getIdx());
+        // load_vector() leaves the vtype at e32 / the dtype's compute LMUL:
+        // f32 -> m1, f16 -> m2 (widened), s32/s8/u8 -> m4. The eltwise injector
+        // is LMUL-agnostic, but pass the matching stride so its interface can
+        // validate the accumulator group.
+        const data_type_t dt = data_type();
+        const size_t group_stride
+                = dt == data_type::f32 ? 1 : (dt == data_type::f16 ? 2 : 4);
+        eltwise_injector_->compute_vector(vmm_src.getIdx(), group_stride);
         if (!is_fwd_) vfmul_vv(vmm_src, vmm_src, vmm_diff_dst);
         store_vector();
     }

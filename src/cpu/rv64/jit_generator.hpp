@@ -106,6 +106,27 @@ public:
         return status::runtime_error;
     }
 
+    // x64's `mov(Reg64, imm64)` analog: materialize an arbitrary 64-bit
+    // immediate without a scratch register (Xbyak_riscv's li covers
+    // sign-extended 32-bit immediates only). Standard lui/addi + slli/addi
+    // recursion, at most ~8 instructions; values in the signed 32-bit range
+    // emit exactly what li would.
+    void load_imm64(const Xbyak_riscv::Reg &rd, int64_t imm) {
+        if (imm >= INT32_MIN && imm <= INT32_MAX) {
+            li(rd, (uint32_t)(int32_t)imm);
+            return;
+        }
+        // Sign-extend the low 12 bits (well-defined, no signed-shift UB) and
+        // recurse on the remaining upper part. The subtraction is done in
+        // 128-bit arithmetic: for imm near INT64_MAX with a negative lo12,
+        // imm - lo12 exceeds int64_t (the result still fits -- it is at most
+        // a 53-bit quantity after the >> 12).
+        const int64_t lo12 = ((imm & 0xfff) ^ 0x800) - 0x800;
+        load_imm64(rd, (int64_t)(((__int128)imm - lo12) >> 12));
+        slli(rd, rd, 12);
+        if (lo12 != 0) addi(rd, rd, (int32_t)lo12);
+    }
+
     inline cpu_isa_t max_cpu_isa() const noexcept { return max_cpu_isa_; }
 
     // Helper to check that a requested ISA is both within the per‑kernel limit

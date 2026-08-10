@@ -372,6 +372,13 @@ protected:
 
     void setEfficient64Bit(bool def = true)         { useEfficient64Bit = def; }
     bool getEfficient64Bit() const                  { return useEfficient64Bit; }
+    AddressBase getScratchSurface() const {
+        if (getEfficient64Bit()) {
+            return AddressBase::createSS(0);    // scratch surface state at IND0
+        } else {
+            return AddressBase::createBSS(0);
+        }
+    }
 
     // Stream handling.
     void pushStream()                               { pushStream(new InstructionStream()); }
@@ -1278,14 +1285,16 @@ public:
         auto udst = dst, usrc0 = src0;
         udst.setType(unsignedType(dst.getType()));
         usrc0.setType(unsignedType(src0.getType()));
-        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, unsignedType(getDataType<DT>()), mod, udst, usrc0, src1, loc);
+        auto utype = unsignedType(getDataType<DT>());
+        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, utype, mod, udst, usrc0, src1, loc);
     }
     template <typename DT = void>
     void shr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
         auto udst = dst, usrc0 = src0;
         udst.setType(unsignedType(dst.getType()));
         usrc0.setType(unsignedType(src0.getType()));
-        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, unsignedType(getDataType<DT>()), mod, udst, usrc0, src1, loc);
+        auto utype = unsignedType(getDataType<DT>());
+        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, utype, mod, udst, usrc0, src1, loc);
     }
     template <typename DT = void>
     void smov(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
@@ -1516,7 +1525,7 @@ public:
         wrdep(r-r, loc);
     }
     void fencedep(Label &fenceLocation, SourceLocation loc = {}) {
-        addFixup(LabelFixup(fenceLocation.getID(labelManager), LabelFixup::JIPOffset));
+            addFixup(LabelFixup(fenceLocation.getID(labelManager), LabelFixup::JIPOffset));
         opDirective(Directive::fencedep, null, Immediate::ud(0), loc);
     }
     void disablePVCWARWA(SourceLocation loc = {}) {
@@ -1543,6 +1552,8 @@ void requireGRF(int grfs) { scope::requireGRF(grfs); }
 #define NGEN_PENTARY_OP(op, scope) template <typename A0, typename A1, typename A2, typename A3, typename A4> void op(A0 &&a0, A1 &&a1, A2 &&a2, A3 &&a3, A4 &&a4, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::op(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), std::forward<A3>(a3), std::forward<A4>(a4), loc);}
 #define NGEN_HEXARY_OP(op, scope) template <typename A0, typename A1, typename A2, typename A3, typename A4, typename A5> void op(A0 &&a0, A1 &&a1, A2 &&a2, A3 &&a3, A4 &&a4, A5 &&a5, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::op(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), std::forward<A3>(a3), std::forward<A4>(a4), std::forward<A5>(a5), loc);}
 #define NGEN_SEPTARY_OP(op, scope) template <typename A0, typename A1, typename A2, typename A3, typename A4, typename A5, typename A6> void op(A0 &&a0, A1 &&a1, A2 &&a2, A3 &&a3, A4 &&a4, A5 &&a5, A6 &&a6, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::op(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), std::forward<A3>(a3), std::forward<A4>(a4), std::forward<A5>(a5), std::forward<A6>(a6), loc);}
+#define NGEN_DODECARY_OP(op, scope) template <typename A0, typename A1, typename A2, typename A3, typename A4, typename A5, typename A6,typename A7, typename A8, typename A9, typename A10, typename A11> void op(A0 &&a0, A1 &&a1, A2 &&a2, A3 &&a3, A4 &&a4, A5 &&a5, A6 &&a6, A7 &&a7, A8 &&a8, A9 &&a9, A10 &&a10, A11 &&a11,      NGEN_NAMESPACE::SourceLocation loc = {}) {scope::op(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), std::forward<A3>(a3), std::forward<A4>(a4), std::forward<A5>(a5), std::forward<A6>(a6), std::forward<A7>(a7), std::forward<A8>(a8), std::forward<A9>(a9), std::forward<A10>(a10), std::forward<A11>(a11), loc);}
+
 
 #define NGEN_FORWARD_SCOPE_OP(op, scope) \
     NGEN_UNARY_OP(op, scope)       \
@@ -1552,6 +1563,7 @@ void requireGRF(int grfs) { scope::requireGRF(grfs); }
     NGEN_PENTARY_OP(op, scope)     \
     NGEN_HEXARY_OP(op, scope)      \
     NGEN_SEPTARY_OP(op, scope)     \
+    NGEN_DODECARY_OP(op, scope)     \
 
 #define NGEN_BINARY_DT_OP(op, scope) template <typename DT = void, typename A0, typename A1> void op(A0 &&a0, A1 &&a1, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::template op<DT>(std::forward<A0>(a0), std::forward<A1>(a1), loc);}
 #define NGEN_TERNARY_DT_OP(op, scope) template <typename DT = void, typename A0, typename A1, typename A2> void op(A0 &&a0, A1 &&a1, A2 &&a2, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::template op<DT>(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), loc);}
@@ -1559,7 +1571,9 @@ void requireGRF(int grfs) { scope::requireGRF(grfs); }
 #define NGEN_PENTARY_DT_OP(op, scope) template <typename DT = void, typename A0, typename A1, typename A2, typename A3, typename A4> void op(A0 &&a0, A1 &&a1, A2 &&a2, A3 &&a3, A4 &&a4, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::template op<DT>(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), std::forward<A3>(a3), std::forward<A4>(a4), loc);}
 #define NGEN_HEXARY_DT_OP(op, scope) template <typename DT = void, typename A0, typename A1, typename A2, typename A3, typename A4, typename A5> void op(A0 &&a0, A1 &&a1, A2 &&a2, A3 &&a3, A4 &&a4, A5 &&a5, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::template op<DT>(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), std::forward<A3>(a3), std::forward<A4>(a4), std::forward<A5>(a5), loc);}
 #define NGEN_HEPTARY_DT_OP(op, scope) template <typename DT = void, typename A0, typename A1, typename A2, typename A3, typename A4, typename A5, typename A6> void op(A0 &&a0, A1 &&a1, A2 &&a2, A3 &&a3, A4 &&a4, A5 &&a5, A6 &&a6, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::template op<DT>(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), std::forward<A3>(a3), std::forward<A4>(a4), std::forward<A5>(a5), std::forward<A6>(a6), loc);}
+#define NGEN_OCTARY_DT_OP(op, scope) template <typename DT = void, typename A0, typename A1, typename A2, typename A3, typename A4, typename A5, typename A6, typename A7> void op(A0 &&a0, A1 &&a1, A2 &&a2, A3 &&a3, A4 &&a4, A5 &&a5, A6 &&a6, A7 &&a7, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::template op<DT>(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), std::forward<A3>(a3),std::forward<A4>(a4), std::forward<A5>(a5), std::forward<A6>(a6), std::forward<A7>(a7), loc);}
 #define NGEN_NONARY_DT_OP(op, scope) template <typename DT = void, typename A0, typename A1, typename A2, typename A3, typename A4, typename A5, typename A6, typename A7, typename A8> void op(A0 &&a0, A1 &&a1, A2 &&a2, A3 &&a3, A4 &&a4, A5 &&a5, A6 &&a6, A7 &&a7, A8 &&a8, NGEN_NAMESPACE::SourceLocation loc = {}) {scope::template op<DT>(std::forward<A0>(a0), std::forward<A1>(a1), std::forward<A2>(a2), std::forward<A3>(a3), std::forward<A4>(a4), std::forward<A5>(a5), std::forward<A6>(a6), std::forward<A7>(a7), std::forward<A8>(a8), loc);}
+
 
 #define NGEN_FORWARD_SCOPE_DT_OP(op, scope) \
     NGEN_BINARY_DT_OP(op, scope)      \
@@ -1568,6 +1582,7 @@ void requireGRF(int grfs) { scope::requireGRF(grfs); }
     NGEN_PENTARY_DT_OP(op, scope)     \
     NGEN_HEXARY_DT_OP(op, scope)      \
     NGEN_HEPTARY_DT_OP(op, scope)     \
+    NGEN_OCTARY_DT_OP(op, scope)      \
     NGEN_NONARY_DT_OP(op, scope)      \
 
 #define NGEN_FORWARD_SCOPE_NO_ELF_OVERRIDES(scope) \
@@ -1688,6 +1703,7 @@ using scope::store; \
 using scope::atomic; \
 NGEN_FORWARD_SCOPE_OP(memfence, scope) \
 NGEN_FORWARD_SCOPE_OP(slmfence, scope) \
+NGEN_NILARY_OP(slmfence, scope) \
 NGEN_NILARY_OP(fencewait, scope) \
 NGEN_FORWARD_SCOPE_OP(loadlid, scope) \
 NGEN_FORWARD_SCOPE_OP(loadargs, scope) \
@@ -1975,6 +1991,7 @@ inline void BinaryCodeGenerator<hw>::unsupported()
 #endif
 }
 
+
 template <HW hw>
 typename BinaryCodeGenerator<hw>::InstructionStream *BinaryCodeGenerator<hw>::popStream()
 {
@@ -2068,12 +2085,12 @@ std::vector<uint8_t> BinaryCodeGenerator<hw>::getCode()
         auto nextMov = movs.begin();
 
         for (uint32_t isrc = 0; isrc < program.size(); isrc++, psrc++) {
-            if (psrc->opcode() == Opcode::directive)
-                continue;
             while ((nextSync != syncs.end()) && (nextSync->second->inum == isrc))
                 *pdst++ = encodeSyncInsertion<hw>(*(nextSync++)->second);
             while ((nextMov != movs.end()) && (nextMov->second->inum == isrc))
                 *pdst++ = encodeDummyMovInsertion<hw>(*(nextMov++)->second);
+            if (psrc->opcode() == Opcode::directive)
+                continue;
 
             if(!srcLines.empty())
                 srcLines[psrc - psrc_start].address = sizeof(*pdst) * (pdst - pdst_start);
@@ -2188,7 +2205,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     if (getBytes(src0.getType()) == 8)
         i.imm64.value = static_cast<uint64_t>(src0);
     else
-        i.imm32.value = (uint32_t)static_cast<uint64_t>(src0);
+        i.imm32.value = (int32_t)static_cast<uint64_t>(src0);
 
     db(i, loc);
 }
@@ -2358,7 +2375,7 @@ BinaryCodeGenerator<hw>::opX(Opcode op, DataType defaultType, const InstructionM
     i.binary.src0RegFile = src0.getRegFile();
     i.binary.src1RegFile = src1.getRegFile();
 
-    i.imm32.value = (uint32_t)static_cast<uint64_t>(src1);
+    i.imm32.value = (int32_t)static_cast<uint64_t>(src1);
 
     db(i, loc);
 }

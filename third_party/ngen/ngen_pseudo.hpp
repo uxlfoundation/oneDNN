@@ -593,6 +593,7 @@ void fencewait(SourceLocation loc = {})
         mov<uint32_t>(8 | NoMask, null, _lastFenceDst, loc);
 }
 
+
 // XeHP+ prologues.
 void loadlid(int argBytes, int dims = 3, int simd = 8, const GRF &temp = GRF(127), int paddedSize = 0, SourceLocation loc = {})
 {
@@ -825,7 +826,13 @@ struct Load {
             encodeLoadDescriptors(parent.hardware, desc, exdesc, mod, dst, spec, base, addr);
             if (sfid != SharedFunction::automatic)
                 exdesc.parts.sfid = static_cast<unsigned>(sfid);
-            parent.send(mod, dst, addr.getBase(), exdesc.all, desc.all, loc);
+            if (base.getModel() == ModelBSS) {
+                auto bso_sfid = static_cast<SharedFunction>(exdesc.parts.sfid);
+                parent.send(mod | ExBSO, bso_sfid, dst, addr.getBase(), GRFRange(NullRegister(), 0),
+                            AddressRegister(0).ud(base.getBSORegister()), desc.all, loc);
+            } else {
+                parent.send(mod, dst, addr.getBase(), exdesc.all, desc.all, loc);
+            }
         }
     }
 
@@ -906,7 +913,14 @@ struct Store {
             encodeStoreDescriptors(parent.hardware, desc, exdesc, mod, spec, base, addr);
             if (sfid != SharedFunction::automatic)
                 exdesc.parts.sfid = static_cast<unsigned>(sfid);
-            parent.sends(mod, NullRegister(), addr.getBase(), data, exdesc.all, desc.all, loc);
+            if (base.getModel() == ModelBSS) {
+                auto bso_sfid = static_cast<SharedFunction>(exdesc.parts.sfid);
+                int dataLen = exdesc.parts.extMessageLen;
+                parent.send(mod | ExBSO, bso_sfid, NullRegister(), addr.getBase(), GRFRange(data, dataLen),
+                            AddressRegister(0).ud(base.getBSORegister()), desc.all, loc);
+            } else {
+                parent.sends(mod, NullRegister(), addr.getBase(), data, exdesc.all, desc.all, loc);
+            }
         }
     }
 

@@ -22,7 +22,38 @@
 
 #include "npack/neo_packager.hpp"
 
+#if defined(NGEN_DUMP) && !defined(NGEN_DISABLE_GETENV)
+#include <atomic>
+#include <cstdlib>
+#include <fstream>
+#include <string>
+#endif
+
 namespace NGEN_NAMESPACE {
+
+#if defined(NGEN_DUMP) && !defined(NGEN_DISABLE_GETENV)
+inline void dumpKernelBinary(const std::string &name,
+                             const std::vector<uint8_t> &kernel,
+                             const std::vector<uint8_t> &program)
+{
+    static const bool dumpEnabled = []() {
+        if (auto e = ::getenv("NGEN_DUMP"))
+            return !(e[0] == '\0' || (e[0] == '0' && e[1] == '\0'));
+        return false;
+    }();
+    if (!dumpEnabled) return;
+    static std::atomic<size_t> dumpCounter{0};
+    std::string base = "ngen_" + name + "." + std::to_string(dumpCounter++);
+    auto write = [](const std::string &fname, const std::vector<uint8_t> &data) {
+        std::ofstream ofs(fname, std::ios::binary);
+        if (ofs)
+            ofs.write(reinterpret_cast<const char *>(data.data()),
+                      static_cast<std::streamsize>(data.size()));
+    };
+    write(base + ".bin", kernel);
+    write(base + ".elf", program);
+}
+#endif
 
 // ELF binary format generator class.
 template <HW hw>
@@ -103,6 +134,9 @@ public:
     Subregister getSIMD1LocalID(int dim) const                           { return interface_.getSIMD1LocalID(dim); }
     Subregister getLocalSize(int dim) const                              { return interface_.getLocalSize(dim); }
     Subregister getGroupID(int dim) const                                { return interface_.getGroupID(dim); }
+    AddressBase getScratchSurface() const                                { return BinaryCodeGenerator<hw>::getScratchSurface(); }
+    RegData getScratchPointer() const                                    { return interface_.getScratchPointer(); }
+    size_t getScratchSize() const                                        { return interface_.getScratchSize(); }
 
     void prologue()                                                      { interface_.generatePrologue(*this); }
     void epilogue(RegData r0_info = RegData())
@@ -552,6 +586,9 @@ const std::string &getExternalName() const { return NGEN_NAMESPACE::ELFCodeGener
 int getSIMD() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSIMD(); } \
 int getGRFCount() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getGRFCount(); } \
 size_t getSLMSize() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getSLMSize(); } \
+NGEN_NAMESPACE::AddressBase getScratchSurface() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getScratchSurface(); } \
+NGEN_NAMESPACE::RegData getScratchPointer() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getScratchPointer(); } \
+size_t getScratchSize() const { return NGEN_NAMESPACE::ELFCodeGenerator<hw>::getScratchSize(); } \
 template <typename... Targs> void require32BitBuffers(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::require32BitBuffers(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireArbitrationMode(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireArbitrationMode(std::forward<Targs>(args)...); } \
 template <typename... Targs> void requireBarrier(Targs&&... args) { NGEN_NAMESPACE::ELFCodeGenerator<hw>::requireBarrier(std::forward<Targs>(args)...); } \
@@ -610,7 +647,7 @@ std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary(const std::vector<uint8_t> 
     // Generate metadata.
     metadata = interface_.generateZeInfo();
 
-    auto debugLine_ = super::debugLine.createDebugLine();
+    auto debugLine_ = super::debugLine.createDebugLine(interface_.prologueEnd());
     std::vector<char> debugLine = debugLine_.first;
     uint64_t kernelRela = 1 | (1ull << 32);
     typename ZebinELF::Rela debugLineRelocation = {
@@ -652,6 +689,11 @@ std::vector<uint8_t> ELFCodeGenerator<hw>::getBinary(const std::vector<uint8_t> 
     utils::copy_into(binary, offset, debugLineRelocation);
     offset += paddedSzRelDebugLine;
     utils::copy_into(binary, offset, debugInfoRelocation);
+
+#if defined(NGEN_DUMP) && !defined(NGEN_DISABLE_GETENV)
+    dumpKernelBinary(interface_.getExternalName(), kernel, binary);
+#endif
+
     return binary;
 }
 
@@ -668,6 +710,8 @@ inline Product ELFCodeGenerator<hw>::getBinaryHWInfo(const std::vector<uint8_t> 
 
     Product outProduct;
     HW hw_ = HW::Unknown;
+    outProduct.family = ProductFamily::Unknown;
+    outProduct.stepping = 0;
 
     auto zebinELF = reinterpret_cast<const ZebinELF *>(binary.data());
     if (zebinELF->valid()) {

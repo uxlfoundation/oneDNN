@@ -181,7 +181,7 @@ struct Dependency {
     uint32_t tokenMaskSrc, tokenMaskDst;                // Bitmasks of token src/dst dependencies
     DependencyRegion region;                            // GRF region covered
 
-    Dependency() : label{0}, pipe{}, tokenTime{0},
+    Dependency() : label{0}, pipe{}, tokenTime{0}, inum{0xffffffff},
         rw{false}, swsb{false}, active{true}, tokenTBD{false},
         tokenMaskSrc{0u}, tokenMaskDst{0u}, region{} { counters.fill(0); dists.fill(0); }
 
@@ -346,7 +346,6 @@ template <typename Instruction>
 inline GeneralizedPipe getPipe(HW hw, const Instruction &insn, bool checkOOO = true)
 {
     auto op = insn.opcode();
-
 
     // Check jumps and no-ops
     if (isBranch(op) || op == Opcode::nop_gen12 || op == Opcode::sync || op == Opcode::illegal || op == Opcode::directive)
@@ -1595,8 +1594,10 @@ inline SWSBInfo encodeSWSB(HW hw, const Instruction *insn, const Producer &produ
             defaultPipeMask = consume.pipe.inOrderPipe();
     }
 
-    consume.tokenMaskSrc &= ~produce.tokenMaskSrc;
-    consume.tokenMaskDst &= ~produce.tokenMaskDst;
+    {
+        consume.tokenMaskSrc &= ~produce.tokenMaskSrc;
+        consume.tokenMaskDst &= ~produce.tokenMaskDst;
+    }
 
     auto swsb = encodeSWSBItems<2>(consume, defaultPipeMask);
     if (produce.hasToken())
@@ -1673,7 +1674,7 @@ inline uint8_t chooseSBID(HW hw, int tokens, Program &program, const BasicBlock 
         }
     }
 
-    // Priority 2: assign SBID based on base register of dst, src1, src0 (in that order),
+    // Priority 2: assign SBID based on base register of dst, src1, src0, src2, src3 (in that order),
     //  if it's unclaimed or expired.
     for (int opNum : {-1, 1, 0, 2, 3}) {
         auto &region = bb.getOperandRegion(inum, opNum);
@@ -2193,8 +2194,10 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                 insn.setSWSB({SBID(newToken).set});
                 preconsumeTokenSrc |= generated.tokenMaskSrc;
                 preconsumeTokenDst |= generated.tokenMaskDst;
-                tokenMaskSrc &= ~generated.tokenMaskSrc;
-                tokenMaskDst &= ~generated.tokenMaskDst;
+                {
+                    tokenMaskSrc &= ~generated.tokenMaskSrc;
+                    tokenMaskDst &= ~generated.tokenMaskDst;
+                }
             }
 
             // Finalize SWSB computation.
@@ -2244,9 +2247,12 @@ inline void analyze(HW hw, int tokens, Program &program, BasicBlock &bb, int pha
                 // For {Atomic} chains, do the same, but for a different reason -- it's possible
                 //   our token may be in use and we must clear it prior to entering the chain.
                 // In all other cases, remove dependencies on our own token.
-                if (tokenAssigned && inumChain < 0)
+                if (tokenAssigned && inumChain < 0
+                )
                     tokenMaskDst &= ~(1 << tokenInfo.getToken());
-                if (tokenAssigned && (insn.predicated() || inumChain >= 0) && tokenMayBeActive)
+                if (tokenAssigned && tokenMayBeActive
+                    && (insn.predicated() || inumChain >= 0
+                       ))
                     tokenMaskDst |=  (1 << tokenInfo.getToken());
 
                 tokenMaskSrc &= ~tokenMaskDst;

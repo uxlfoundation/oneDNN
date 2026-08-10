@@ -38,10 +38,6 @@ class unsupported_compaction : public std::runtime_error {
 public:
     unsupported_compaction() : std::runtime_error("Compacted instructions are not supported") {}
 };
-class unimplemented : public std::runtime_error {
-public:
-    unimplemented() : std::runtime_error("Operation is not implemented") {}
-};
 #endif
 
 class Decoder
@@ -86,11 +82,8 @@ bool Decoder::getOperandRegion(autoswsb::DependencyRegion &region, int opNum) co
         return get<InstructionXeHPC>().getOperandRegion(region, opNum);
     if (hw >= HW::Gen12LP)
         return get<Instruction12>().getOperandRegion(region, opNum);
-#ifdef NGEN_SAFE
-    throw unimplemented();
-#else
+    unimplemented();
     return false;
-#endif
 }
 
 } /* namespace NGEN_NAMESPACE */

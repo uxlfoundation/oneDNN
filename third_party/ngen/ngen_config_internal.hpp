@@ -36,6 +36,10 @@
 #define NGEN_ASM
 #endif
 
+#ifndef NGEN_DUMP
+#define NGEN_DUMP
+#endif
+
 #if (__cplusplus >= 202002L || _MSVC_LANG >= 202002L)
 #if __has_include(<version>)
 #include <version>
@@ -50,5 +54,6 @@
 #endif
 
 #endif
+
 
 #endif /* header guard */

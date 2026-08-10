@@ -107,6 +107,9 @@ class InstructionModifier;
 struct Instruction12;
 enum class Opcode;
 
+inline void unimplemented();
+inline void unsupported();
+
 struct EncodingTag12;
 static inline void encodeCommon12(Instruction12 &i, Opcode opcode, const InstructionModifier &mod, const RegData &dst, EncodingTag12 tag);
 struct EncodingTagXeHPC;
@@ -210,6 +213,10 @@ public:
 class asm_unsupported_message : public std::runtime_error {
 public:
     asm_unsupported_message() : std::runtime_error("Cannot format this message as assembly text") {}
+};
+class unimplemented_exception : public std::runtime_error {
+public:
+    unimplemented_exception(SourceLocation loc = {}) : std::runtime_error("Operation is not implemented" + loc.str(" at ")) {}
 };
 class iga_align16_exception : public std::runtime_error {
 public:
@@ -390,23 +397,37 @@ enum {
 // Data types. Bits[0:4] are the ID, bits[5:7] hold log2(width in bits).
 enum class DataType : uint8_t {
     ud = 0xA0,
+    u32 = ud,
     d  = 0xA1,
+    s32 = d,
     uw = 0x82,
+    u16 = uw,
     w  = 0x83,
+    s16 = w,
     ub = 0x64,
+    u8 = ub,
     b  = 0x65,
+    s8 = b,
     df = 0xC6,
+    f64 = df,
     f  = 0xA7,
+    f32 = f,
     uq = 0xC8,
+    u64 = uq,
     q  = 0xC9,
+    s64 = q,
     hf = 0x8A,
+    f16 = hf,
     bf = 0x8B,
+    bf16 = bf,
     uv = 0xAD,
     v  = 0xAE,
     vf = 0xAF,
     bf8 = 0x6C,
+    e5m2 = bf8,
     tf32 = 0xB0,
     hf8 = 0x71,
+    e4m3 = hf8,
     u4 = 0x5C,
     s4 = 0x5D,
     u2 = 0x3E,
@@ -495,13 +516,12 @@ template <> inline DataType getDataType<e2m1>() { return DataType::e2m1; }
 template <> inline DataType getDataType<e3m0>() { return DataType::e3m0; }
 #endif
 
-
 static inline constexpr14 DataType rawType(DataType dt) {
     switch (getLog2Bits(dt)) {
-        case 6:  return DataType::uq;
-        case 5:  return DataType::ud;
-        case 4:  return DataType::uw;
-        case 3:  return DataType::ub;
+        case 6:  return DataType::u64;
+        case 5:  return DataType::u32;
+        case 4:  return DataType::u16;
+        case 3:  return DataType::u8;
         default: return dt;
     }
 }
@@ -894,6 +914,7 @@ public:
         return static_cast<RegFile8>(rf);
     }
     constexpr bool isARF()             const { return rf == RegFileARF; }
+    constexpr bool isGRF()             const { return rf == RegFileGRF; }
     constexpr int getARFBase()         const { return base & 0xF; }
     constexpr ARFType getARFType()     const { return static_cast<ARFType>(base >> 4); }
     constexpr bool isIndirect()        const { return indirect; }
@@ -1368,7 +1389,7 @@ public:
     static constexpr int maxRegs()                         { return 512; }
     static constexpr int maxRegs(HW hw) {
         return (hw < HW::XeHP) ? 128
-            : (hw >= HW::Xe3p) ? 512
+            : (hw == HW::Xe3p) ? 512
             : 256;
     }
 };
@@ -1519,6 +1540,10 @@ public:
     }
 
     int index() const { return (getARFBase() << 1) + getOffset(); }
+
+    int index(ngen::HW hw) const {
+        return index();
+    }
 
     static inline constexpr14 int count(HW hw) {
         return (hw >= HW::XeHPC) ? 4 : 2;
@@ -1680,7 +1705,6 @@ inline GRFDisp operator+(ScalarRegister s, GRFDisp addr) {
 inline GRFDisp operator+(GRF base,     ScalarRegister s) { return s + base; }
 inline GRFDisp operator+(GRFDisp addr, ScalarRegister s) { return s + addr; }
 
-
 GRFDisp Subregister::operator+(int offset) const
 {
 #ifdef NGEN_SAFE
@@ -1788,15 +1812,19 @@ protected:
     uint16_t len;
 
     static constexpr uint16_t invalidLen = 0xFFFF;
+    DataType type;
 
 public:
     GRFRange() : GRFRange(0, invalidLen) {}
-    GRFRange(int base_, int len_) : base(base_), len(len_) {}
+    GRFRange(int base_, int len_) : base(base_), len(len_), type(DataType::invalid) {}
+    GRFRange(int base_, int len_, DataType type_) : base(base_), len(len_), type(type_) {}
     GRFRange(RegData base_, int len_) : base(base_.getBase())
-                                      , len(base_.isValid() ? len_ : invalidLen) {}
+                                      , len(base_.isValid() ? len_ : invalidLen)
+                                      , type(base_.getType()) {}
 
     int getBase()    const { return base; }
     int getLen()     const { return len; }
+    DataType getDataType()     const { return type; }
     bool isEmpty()   const { return len == 0; }
     bool isNull()    const { return false; }
 
@@ -1810,10 +1838,11 @@ public:
 #ifdef NGEN_SAFE
         if (isInvalid()) throw invalid_object_exception();
 #endif
-        return GRF(base + i);
+
+        return GRF(base + i).retype(type);
     }
 
-    operator GRF() const { return (*this)[0]; }
+    operator GRF() const { return isInvalid() ? GRF() : (*this)[0]; }
 
     inline Subregister sub(HW hw, int offset, DataType type) const;
 
@@ -2039,7 +2068,6 @@ enum class Opcode {
     nop = 0x7E,
     directive = 0x7F,   /* not a valid opcode; used internally by nGEN */
 };
-
 
 enum class Operand {dst = 0, src0 = 1, src1 = 2, src2 = 3, src3 = 4, src4 = 5};
 
@@ -2960,7 +2988,8 @@ class AddressBase {
 protected:
     uint32_t index;
     AddressModel model;
-    uint8_t pad0[3] = {};
+    uint8_t bsoReg = 0;
+    uint8_t pad0[2] = {};
 
     constexpr AddressBase(uint8_t index_, AddressModel model_) : index(index_), model(model_) {}
 
@@ -2969,8 +2998,9 @@ protected:
 public:
     constexpr AddressBase() : AddressBase(invalidIndex, ModelInvalid) {}
 
-    constexpr uint32_t getIndex()     const { return index; }
-    constexpr AddressModel getModel() const { return model; }
+    constexpr uint32_t getIndex()      const { return index; }
+    constexpr AddressModel getModel()  const { return model; }
+    constexpr uint8_t getBSORegister() const { return bsoReg; }
 
     void setIndex(uint8_t newIndex)         { index = newIndex; }
 
@@ -3001,8 +3031,13 @@ public:
     static constexpr AddressBase createSS(uint32_t index) {
         return AddressBase(index, ModelSS);
     }
-    static constexpr AddressBase createBSS(uint32_t index) {
-        return AddressBase(index, ModelBSS);
+    static constexpr14 AddressBase createBSS(uint32_t index, uint8_t bsoSubreg = 0) {
+        AddressBase a(index, ModelBSS);
+        a.bsoReg = bsoSubreg;
+        return a;
+    }
+    static constexpr AddressBase createScratch() {
+        return AddressBase(0, ModelScratch);
     }
 
     inline constexpr bool isRO() const {
@@ -3729,7 +3764,6 @@ enum GatewayOpcode {
     sip_bar = 12,
 };
 
-
 union SendgMessageDescriptor {
     uint64_t all;
     struct {
@@ -3813,7 +3847,6 @@ union SendgMessageDescriptor {
         return dsDecode[mem.dataSize];
     }
 
-
     // Return # destination registers if known, and -1 if not.
     inline int dstLen(HW hw, int execSize, SharedFunction sfid) const
     {
@@ -3866,7 +3899,7 @@ union SendgMessageDescriptor {
                     case LSCOpcode::atomic_bfmin:
                     case LSCOpcode::atomic_bfmax:
                     case LSCOpcode::atomic_bfcmpxchg:
-                         return effSIMDGRFs * (1 + (elementBytesReg() >> 3));
+                        return effSIMDGRFs * (1 + (elementBytesReg() >> 3));
                     default:
                         return 0;
                 }
@@ -4055,7 +4088,7 @@ void DataSpecLSC::getDescriptor(HW hw, int execSize, SharedFunction &sfid, Addre
         dataLen = GRF::bytesToGRFs(hw, dbytes() * vc);
     } else {
         auto effSIMDGRFs = 1 + (execSize >> (GRF::log2Bytes(hw) - 1));
-        addrLen = effSIMDGRFs * (base.isA64() ? 2 : 1);
+        addrLen = effSIMDGRFs * (model == ModelA64 ? 2 : 1);
         dataLen = effSIMDGRFs * vc * (1 + (dbytes() >> 3));
     }
 
@@ -4116,6 +4149,19 @@ static inline void encodeAtomicDescriptor(HW hw, SendgMessageDescriptor &desc, S
     spec.template getDescriptor<Access::AtomicInteger>(hw, mod.getExecSize(), sfid, base, desc, src0Len, src1Len, addr);
     spec.applyAtomicOp(op, desc);
 }
+
+inline void unimplemented() {
+#ifdef NGEN_SAFE
+    throw unimplemented_exception();
+#endif
+}
+
+inline void unsupported() {
+#ifdef NGEN_SAFE
+    throw unsupported_instruction();
+#endif
+}
+
 
 } /* namespace NGEN_NAMESPACE */
 

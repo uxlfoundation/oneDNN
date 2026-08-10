@@ -1236,7 +1236,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     break;
                 }
                 case 3: {
-                    if(op != Opcode::bdpas) return false;
+                    if (op != Opcode::bdpas) return false;
                     unsigned reg = bdpas.src3Reg0;
                     reg |= bdpas.src3Reg1_2 << 1;
                     reg |= bdpas.src3Reg3_6 << 3;
@@ -1247,7 +1247,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     break;
                 }
                 case 4: {
-                    if(op != Opcode::bdpas) return false;
+                    if (op != Opcode::bdpas) return false;
                     unsigned reg = bdpas.src4Reg0_3;
                     reg |= bdpas.src4Reg4_8 << 4;
                     o.direct.regNum = reg;      // low 8 bits

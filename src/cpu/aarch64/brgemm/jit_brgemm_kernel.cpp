@@ -1265,24 +1265,36 @@ void jit_brgemm_kernel_t::apply_compensation(
 
         add_imm(X_DEFAULT_ADDR, sp, reg_aux_zp_comp_a_offs_, X_TMP_1);
         ldr(reg_aux_zp_comp_a, ptr(X_DEFAULT_ADDR));
-        for (int ld = 0; ld < ld_block2; ld++) {
+        auto vmm_zp_comp_a = z_tmp_1();
+        const auto load_zp_a_compensation = [&](int offset, int ld) {
             const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
             const auto k_mask = is_tail ? ld_tail_mask : P_ALL_ONE;
-            auto vmm_zp_comp_a = z_tmp_1();
-            int zp_comp_a_off = zp_comp_a_offset(ld);
-            // apply src zero points value to the accumulated values
             if (IMPLICATION(is_tail, isa_has_masks(brg.isa_impl))) {
-                add_imm(X_DEFAULT_ADDR, reg_aux_zp_comp_a, zp_comp_a_off,
-                        X_TMP_1);
+                add_imm(X_DEFAULT_ADDR, reg_aux_zp_comp_a, offset, X_TMP_1);
                 ld1w(vmm_zp_comp_a.s, k_mask / T_z, ptr(X_DEFAULT_ADDR));
             } else {
                 assert(!"Unreachable\n");
             }
             mul(vmm_zp_comp_a.s, P_ALL_ONE / T_m, vmm_zp_a_val.s);
+        };
 
+        if (brg.zp_a_compensation_per_m) {
+            // Each M row needs its own N-vector because virtual padding changes
+            // which BRGEMM batch elements contribute to that row.
             for (int bd = 0; bd < bd_block; bd++) {
-                auto vmm = accm(ld_block2, bd, ld);
-                add(vmm.s, vmm.s, vmm_zp_comp_a.s);
+                for (int ld = 0; ld < ld_block2; ld++) {
+                    load_zp_a_compensation(zp_comp_a_vpad_offset(ld, bd), ld);
+                    auto vmm = accm(ld_block2, bd, ld);
+                    add(vmm.s, vmm.s, vmm_zp_comp_a.s);
+                }
+            }
+        } else {
+            for (int ld = 0; ld < ld_block2; ld++) {
+                load_zp_a_compensation(zp_comp_a_offset(ld), ld);
+                for (int bd = 0; bd < bd_block; bd++) {
+                    auto vmm = accm(ld_block2, bd, ld);
+                    add(vmm.s, vmm.s, vmm_zp_comp_a.s);
+                }
             }
         }
     }
@@ -2510,6 +2522,13 @@ void jit_brgemm_kernel_t::bdb_loop() {
         do_ldb_loop(bd_block2, is_bdb_tail, check_top_vpad, check_bottom_vpad,
                 rows_for_rd_tail, skip_accumulation);
 
+        if (brg.zp_a_compensation_per_m) {
+            LDR_IMM(reg_zp_comp_a, sp, reg_zp_comp_a_offs_);
+            add_imm(reg_zp_comp_a, reg_zp_comp_a,
+                    bdb_zp_comp_a_offset(bd_block2), X_TMP_0);
+            STR_IMM(reg_zp_comp_a, sp, reg_zp_comp_a_offs_);
+        }
+
         add_imm(reg_C, reg_C,
                 use_gemv_path ? brg.bd_block * brg.typesize_C
                               : bdb_C_offset(bd_block2),
@@ -2698,8 +2717,8 @@ void jit_brgemm_kernel_t::generate() {
             = brg.brgattr.max_top_vpad > 0 || brg.brgattr.max_bottom_vpad > 0;
     const bool has_int8_compensation = brg.req_s8s8_compensation
             || brg.zp_type_a != brgemm_broadcast_t::none;
-    need_comp_pads
-            = has_int8_compensation && (vpad_exist || brg.req_cal_comp_pads);
+    need_comp_pads = !brg.zp_a_compensation_per_m && has_int8_compensation
+            && (vpad_exist || brg.req_cal_comp_pads);
 
     set_preg(ld_tail_mask.s, brg.ldb_tail, X_TMP_0);
     if (brg.is_int8 && !brg.has_int8_vnni) { assert(!"unsupported\n"); }

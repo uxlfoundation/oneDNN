@@ -51,8 +51,35 @@ bool allow_perf_heuristics(const jit_brgemm_conv_conf_t &jcp) {
     return true;
 }
 
+bool use_in_loop_compensation(const jit_brgemm_conv_conf_t &jcp) {
+    const auto output_size = static_cast<dim_t>(jcp.mb) * jcp.ngroups * jcp.oc
+            * jcp.od * jcp.oh * jcp.ow;
+    return output_size <= 8192 && jcp.oc < 512;
+}
+
 constexpr int int8_mmla_1x1_min_ic = 64;
 constexpr int int8_mmla_1x1_min_os = 400;
+
+// Require enough convolution work to amortize source-ZP compensation.
+constexpr int int8_mmla_vpad_comp_min_ic = 16;
+constexpr int int8_mmla_vpad_comp_min_boundary_to_table_ratio = 8;
+constexpr dim_t int8_mmla_vpad_comp_min_spatial_work = 160;
+constexpr dim_t int8_mmla_vpad_comp_min_compute_work_per_thread = 192 * 1024;
+
+bool has_sufficient_int8_vpad_comp_work(const jit_brgemm_conv_conf_t &jcp) {
+    // Compare repeated DOT boundary compensation with MMLA table construction.
+    // Both estimates omit OC and fixed kernel factors.
+    const auto boundary_work = static_cast<dim_t>(jcp.mb) * jcp.oh * jcp.ic;
+    const auto table_work = static_cast<dim_t>(jcp.ic) + jcp.ow;
+    const auto spatial_work = static_cast<dim_t>(jcp.mb) * jcp.oh * jcp.ow;
+    const auto compute_work = spatial_work * jcp.ic * jcp.oc;
+    return jcp.ic >= int8_mmla_vpad_comp_min_ic
+            && boundary_work
+            >= int8_mmla_vpad_comp_min_boundary_to_table_ratio * table_work
+            && spatial_work >= int8_mmla_vpad_comp_min_spatial_work
+            && brgemm_utils::has_sufficient_mmla_work(compute_work, jcp.nthr,
+                    int8_mmla_vpad_comp_min_compute_work_per_thread);
+}
 
 bool use_mmla(const jit_brgemm_conv_conf_t &jcp,
         const memory_desc_t &weights_md, bool is_1x1_path) {
@@ -87,6 +114,15 @@ bool use_mmla(const jit_brgemm_conv_conf_t &jcp,
     const int k_block = brgemm_utils::mmla_wei_k_block();
     if (jcp.ic % k_block || jcp.oc % n_block) return false;
 
+    const bool horizontal_pad = jcp.l_pad > 0 || jcp.r_pad > 0;
+    if (is_int8 && !is_1x1_path && jcp.src_zero_point) {
+        const bool vertical_pad = jcp.t_pad > 0 || jcp.b_pad > 0;
+        // Small padded outputs use in-loop compensation, unsupported by MMLA.
+        if (vertical_pad && use_in_loop_compensation(jcp)) return false;
+        // Horizontal-only padding has no driver compensation buffer.
+        if (horizontal_pad && !vertical_pad) return false;
+    }
+
     auto want_weights_md = weights_md;
     if (is_bf16) {
         const auto wei_tag = n_block == 16 ? OhwI2i16o4i : OhwI2i32o4i;
@@ -113,7 +149,8 @@ bool use_mmla(const jit_brgemm_conv_conf_t &jcp,
                 && brgemm_utils::has_sufficient_mmla_work(
                         work, jcp.nthr, 8. * 1024 * n_block);
     }
-    return true;
+    return !jcp.src_zero_point || !horizontal_pad
+            || has_sufficient_int8_vpad_comp_work(jcp);
 }
 
 // MMLA convolution requires packed weights, full N tiles and K8-aligned
@@ -888,6 +925,9 @@ status_t brg_blocking_t::get_brgemm_ur(
                 brg.with_sum = with_sum;
                 CHECK(brgemm_desc_set_postops(
                         &brg, attr, &dst_md, LDD, bia_dt));
+                // Match the driver's compensation per M row for virtual padding.
+                brg.zp_a_compensation_per_m
+                        = use_mmla && src_zero_point && max_vpad > 0;
                 CHECK(brgemm_desc_finalize(&brg));
             }
         }
@@ -2143,23 +2183,14 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     if (one_of(jcp.src_dt, u8, s8) && !is_ok_large_spatial)
         if (allow_perf_heuristics(jcp)) return status::unimplemented;
 
-    // For padding shapes, we calculate the comp along with the computation
-    // inside brgemm kernel when output size is small to get optimal perf
-    // Or we calculate the comp using brgemm_coomp_pad kernel
-    const auto output_sz = static_cast<dim_t>(jcp.mb) * jcp.ngroups * jcp.oc
-            * jcp.od * jcp.oh * jcp.ow;
+    // Use in-loop compensation for small outputs and a separate kernel otherwise.
     const auto comp_with_pads
             = (jcp.src_zero_point || jcp.s8s8_compensation_required)
             && IMPLICATION(jcp.exec_type == exec_vpad, with_pad);
-    jcp.req_brg_comp_pad = comp_with_pads && output_sz <= 8192 && jcp.oc < 512;
+    jcp.req_brg_comp_pad = comp_with_pads && use_in_loop_compensation(jcp);
     jcp.req_cal_comp_pad = comp_with_pads && !jcp.req_brg_comp_pad;
-    const bool is_int8_mmla = jcp.use_mmla && jcp.src_dt == data_type::u8
-            && jcp.wei_dt == data_type::s8;
-    // Padded source zero points require MMLA weight compensation.
-    if (is_int8_mmla && jcp.src_zero_point
-            && (jcp.req_brg_comp_pad || jcp.req_cal_comp_pad
-                    || jcp.max_vpad > 0))
-        return status::unimplemented;
+    jcp.use_mmla_vpad_comp = jcp.use_mmla && jcp.src_zero_point
+            && jcp.req_cal_comp_pad && jcp.max_vpad > 0;
 
     // estimate the number of kernel range combination for compensation
     const auto kd_cnt = 1 + utils::div_up(abs(jcp.f_pad), jcp.dilate_d + 1)
@@ -2175,9 +2206,11 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.ker_ranges_size = jcp.exec_type == exec_base ? kd_cnt * kh_cnt * kw_cnt
                                                      : kd_cnt * kh_cnt;
-    jcp.comp_a_buffer_size
+    const auto comp_ow_size = jcp.use_mmla_vpad_comp ? jcp.ow : 1;
+    jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
+            * comp_ow_size * jcp.oc_block;
+    jcp.s8s8_comp_buffer_size
             = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size * jcp.oc_block;
-    jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
 
     // enable ununroll_bd_loop for big shapes to reduce kernel sizes
     jcp.ununroll_bd_loop

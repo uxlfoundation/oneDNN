@@ -449,10 +449,17 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
 
     const bool is_int8_mmla = brgattr.use_mmla && brg->is_int8;
     const bool has_src_zp = brg->zp_type_a != brgemm_broadcast_t::none;
+    const bool has_per_m_zp_comp = brg->zp_a_compensation_per_m;
+    if (has_per_m_zp_comp
+            && !(is_int8_mmla && has_src_zp && !brg->req_s8s8_compensation
+                    && !brg->req_cal_comp_pads))
+        return status::unimplemented;
+
     const bool needs_int8_comp_pads = brg->req_cal_comp_pads
             || (max_vpad > 0 && (brg->req_s8s8_compensation || has_src_zp));
-    // INT8 MMLA does not support in-loop padding compensation.
-    if (is_int8_mmla && needs_int8_comp_pads) return status::unimplemented;
+    // INT8 MMLA uses caller-supplied padding compensation for each M row.
+    if (is_int8_mmla && needs_int8_comp_pads && !has_per_m_zp_comp)
+        return status::unimplemented;
 
     return status::success;
 }
@@ -525,6 +532,7 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(is_dgmm);
     CMP_BRGEMM_FIELD(with_sum);
     CMP_BRGEMM_FIELD(req_cal_comp_pads);
+    CMP_BRGEMM_FIELD(zp_a_compensation_per_m);
 
     CMP_BRGEMM_FIELD(sum_scale);
     CMP_BRGEMM_FIELD(sum_zp);

@@ -224,6 +224,9 @@ struct brgemm_desc_t {
     bool is_dgmm = false; // set to true in brdgmm_desc_init
     bool with_sum = false;
     bool req_cal_comp_pads = false;
+    // Use an M-by-N s32 compensation table with row stride LDB elements.
+    // The kernel applies the source zero-point value.
+    bool zp_a_compensation_per_m = false;
 
     float sum_scale = 0.0f;
     int32_t sum_zp = 0;

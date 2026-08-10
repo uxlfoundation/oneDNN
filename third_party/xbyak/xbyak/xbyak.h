@@ -2769,6 +2769,12 @@ private:
 		}
 		XBYAK_THROW(ERR_BAD_COMBINATION);
 	}
+	// (x, x, x/m), (x, y, y/m), (x, z, z/m) ; 4:1 narrowing with a bias operand
+	void opCvt7(const Xmm& x1, const Xmm& x2, const Operand& op, uint64_t type, int code)
+	{
+		if (!(x1.isXMM() && (x2.getBit() == op.getBit() || op.isMEM()))) XBYAK_THROW(ERR_BAD_COMBINATION)
+		opVex(x1, &x2, op, type, code);
+	}
 	const Xmm& cvtIdx0(const Operand& x) const
 	{
 		return x.isZMM() ? zm0 : x.isYMM() ? ym0 : xm0;

@@ -66,6 +66,16 @@ bool with_quantize_common(const quant_entry_t &entry) {
 constexpr int host_argument_bytes_fwd = 320;
 constexpr int host_argument_bytes_bwd = 256;
 
+// XXX: Use the adjusted argument base as a workaround to avoid performance
+// regressions in some cases.
+int host_argument_bytes_fwd_for(
+        const micro::HWInformation &hw_info, bool systolic) {
+    auto family = ngen::npack::decodeHWIPVersion(hw_info.gmdid).family;
+    if (family == ngen::ProductFamily::NVLP) return 256;
+    if (systolic && ngen::getCore(family) == ngen::HW::XeHPG) return 288;
+    return host_argument_bytes_fwd;
+}
+
 compute::gpu_arch_t gpu_arch(const micro::HWInformation &hw_info) {
     return jit::convert_ngen_arch_to_dnnl(
             getCore(ngen::npack::decodeHWIPVersion(hw_info.gmdid).family));
@@ -1185,7 +1195,8 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     deserialize_config_to_gemmstone(hw_info, problem_kq, problem_vs, opts_kq,
             opts_vs, sizes_kq, sizes_vs, ukernel_config);
 
-    const micro::HostPayload host {subgroup_size, host_argument_bytes_fwd};
+    const micro::HostPayload host {subgroup_size,
+            host_argument_bytes_fwd_for(hw_info, use_systolic_ukernel)};
     const auto hw_arch = gpu_arch(hw_info);
 
     micro::Package gemm_kq, gemm_vs;

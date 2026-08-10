@@ -73,22 +73,14 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_thr_nspc(
     const conv_gemm_conf_t &jcp = pd()->jcp_;
 
     // Binary post-op src1 bases (scalar or per-oc), one per binary in chain
-    // order. The contiguous oc-slice reads each at base + channel-base off0, so
-    // the same array serves every slice. Each base is shifted by src1's own
-    // offset0 (off_l(0)) so a submemory rhs reads from its logical origin (the
-    // per-slice channel-base off0 is added by the kernel on top). Empty unless
-    // the in-kernel post-op path is active and the chain has a binary entry.
+    // order -- the raw handles from the common helper (x64 model); the
+    // per-slice channel-base offset is added by the kernel on top. Empty
+    // unless the in-kernel post-op path is active and the chain has a binary
+    // entry.
     std::vector<const void *> po_rhs;
-    if (jit_postops_kernel_ && jcp.with_binary) {
-        const auto &po = pd()->attr()->post_ops_;
-        for (int i = 0; i < po.len(); i++)
-            if (po.entry_[i].is_binary()) {
-                const memory_desc_wrapper s1_d(po.entry_[i].binary.src1_desc);
-                const auto *base = static_cast<const char *>(ctx.host_ptr(
-                        DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1));
-                po_rhs.push_back(base + s1_d.off_l(0) * sizeof(float));
-            }
-    }
+    if (jit_postops_kernel_ && jcp.with_binary)
+        po_rhs = binary_injector_utils::prepare_binary_args(
+                pd()->attr()->post_ops_, ctx);
     const void *const *po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     // Src Format: mb-spatial-groups-input_channels

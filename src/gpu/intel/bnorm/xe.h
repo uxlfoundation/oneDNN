@@ -49,12 +49,7 @@
 #define LOAD_FLOAT_1x16(ptr) \
     as_float(intel_sub_group_block_read((const __global uint *)(ptr)))
 
-#define LOAD_UINT_1x16(ptr) \
-    as_uint(intel_sub_group_block_read((const __global uint *)(ptr)))
 
-#define LOAD_UINT_8x16(ptr) \
-    convert_uint8(as_uint8( \
-            intel_sub_group_block_read8((const __global uint *)(ptr))))
 
 #define LOAD_CHAR_1x16(ptr) \
     as_char(intel_sub_group_block_read_uc((const __global uchar *)(ptr)))
@@ -96,8 +91,6 @@
 #define STORE_FLOAT_1x16(ptr, val) \
     intel_sub_group_block_write((__global uint *)(ptr), as_uint(val))
 
-#define STORE_FLOAT_8x16(ptr, val) \
-    intel_sub_group_block_write8((__global uint *)(ptr), as_uint8(val))
 
 #define STORE_CHAR_1x16(ptr, val) \
     intel_sub_group_block_write_uc((__global uchar *)(ptr), as_uchar(val))
@@ -143,7 +136,6 @@
 #if IS_FWD
 #if USE_STATS_ONE_PASS
 #define ACCUM_DATA_T float
-#define ACCUM_DATA8_T float8
 #define ACCUM_DATA2_T float2
 #define SUM_DATA_T ACCUM_DATA2_T
 

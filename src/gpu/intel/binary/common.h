@@ -362,16 +362,6 @@
     intel_sub_group_block_write_us8((__global ushort *)(dst), as_ushort8(val))
 #endif // DST_DT_BF16
 
-#if NVECT == 1 || IS_PLAIN_LAYOUT
-#define ELEM_DATA_T float
-#elif NVECT == 2
-#define ELEM_DATA_T float2
-#elif NVECT == 4
-#define ELEM_DATA_T float4
-#elif NVECT == 8
-#define ELEM_DATA_T float8
-#endif
-
 #define DEF_binary_op(dt, special_dt) \
     dt __attribute__((overloadable)) binary_op(int alg, dt src0, dt src1) { \
         switch (alg) { \

@@ -52,12 +52,10 @@
 
 #if OUT_TYPE_S8
 #define CONVERT_F32_TO_OUT convert_char_sat_rte
-#define CONVERT_F32_TO_OUT8 convert_char8_sat_rte
 #else
 #error Unimplemented
 #endif
 
-#define CONVERT_IN_TO_OUT(x) CONVERT_F32_TO_OUT(x)
 #define QZ_B0(v, scale) CONVERT_F32_TO_OUT(v *scale)
 
 #define REORDER(_out, _in, _s) \

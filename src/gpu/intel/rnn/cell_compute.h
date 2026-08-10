@@ -31,8 +31,6 @@
 #define N_THR_BLOCK CELL_DHC_THR
 #define N_OUTER_BLOCK n_gates
 
-#define K_TG_BLOCK SUBGROUP_SIZE
-#define K_THR_BLOCK 1
 const int gemm_k_block = SUBGROUP_SIZE;
 typedef int64_t cell_offset_t;
 typedef int64_t grid_offset_t;

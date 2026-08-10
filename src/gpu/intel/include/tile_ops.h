@@ -395,8 +395,6 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
         } \
     } while (0)
 
-#define tile_copy_to_vec2(t, t_new, type) \
-    tile_copy_to_vec2_cvt(t, t_new, type, CONVERT_DATA_T)
 
 #define tile_copy_to_vec2_cvt(t, t_new, type, cvt) \
     do { \

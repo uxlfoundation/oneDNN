@@ -342,9 +342,6 @@ void norm_kernel_t<isa, d_type>::generate() {
     flw(ft1, reg_param, (int)offsetof(norm_call_params_t, inv_std));
     if (use_scale_) ld(s2, reg_param, (int)offsetof(norm_call_params_t, scale));
     if (use_shift_) ld(s3, reg_param, (int)offsetof(norm_call_params_t, shift));
-    if (with_binary_)
-        ld(s4, reg_param,
-                (int)offsetof(norm_call_params_t, post_ops_binary_rhs));
     ld(s5, reg_param, (int)offsetof(norm_call_params_t, c_per_g));
     ld(s6, reg_param, (int)offsetof(norm_call_params_t, sp));
 
@@ -352,9 +349,18 @@ void norm_kernel_t<isa, d_type>::generate() {
     // binary uses indirect (rhs pointer array) scalar broadcast (off unused).
     eltwise_injector::static_params_t esp(VReg(16), VReg(20), VReg(24),
             VReg(12), VReg(12), fa4, fa5, t3, /*is_fwd=*/true);
-    binary_injector::static_params_t bsp(VReg(28), fa6, s4, x0, t4);
-    injector::jit_uni_postops_injector_t<isa> po_inj(
-            this, post_ops_, esp, with_binary_ ? &bsp : nullptr);
+    // Host-positioned injector mode (null dst_d): the binary rhs is scalar
+    // (per_tensor) only, so no offset machinery is needed (the helper reg is
+    // the never-written x0), and the rhs pointer array is read through the
+    // args pointer (x64 model). The hosted scalar path clobbers only the
+    // injector's t4 scratch, which is free here -> no GPR preservation.
+    binary_injector::rhs_arg_static_params_t rhs_arg_bsp(28, t3, x0, x0,
+            false /*preserve gpr*/, false /*preserve vmm*/,
+            (int)offsetof(norm_call_params_t, post_ops_binary_rhs),
+            memory_desc_wrapper(nullptr));
+    rhs_arg_bsp.rhs_dt_helper_freg = fa6;
+    const binary_injector::static_params_t bsp(reg_param, rhs_arg_bsp);
+    injector::jit_uni_postops_injector_t<isa> po_inj(this, post_ops_, bsp, esp);
     // gnorm binary post-ops are scalar (per_tensor) broadcast, so the dynamic
     // rhs params carry no offset (the scalar path ignores it).
     binary_injector::rhs_arg_dynamic_params_t rhs_dyn;
@@ -392,7 +398,11 @@ void norm_kernel_t<isa, d_type>::generate() {
             } else
                 vfadd_vf(v_dst, v_dst, ft3);
         }
-        if (with_postops_) po_inj.compute_vector(v_dst.getIdx(), rhs_dyn);
+        // Normalization computes at e32/m1 (f32) or e32/m2 (f16 widened); the
+        // injector uses the matching group_stride for a narrow rhs load.
+        if (with_postops_)
+            po_inj.compute_vector(
+                    v_dst.getIdx(), rhs_dyn, is_f16 ? 2 : 1 /*group_stride*/);
         if (!is_f16) {
             vse32_v(v_dst, reg_rdst);
         } else {
@@ -552,8 +562,14 @@ status_t jit_uni_group_normalization_fwd_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_GNORM(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
     const auto &po = attr()->post_ops_;
-    VDISPATCH_GNORM(injector::jit_uni_postops_injector_t<v>::post_ops_ok(
-                            po, /*n_vaux=*/4),
+    const memory_desc_wrapper dst_d(dst_md(0));
+    VDISPATCH_GNORM(injector::post_ops_ok(injector::post_ops_ok_args_t(v,
+                            {injector::eltwise, injector::binary}, po, &dst_d,
+                            false /*sum_at_pos_0_only*/,
+                            false /*sum_requires_scale_one*/,
+                            true /*sum_requires_zp_zero*/,
+                            true /*sum_requires_same_params*/,
+                            {broadcasting_strategy_t::scalar}, /*n_vaux=*/4)),
             VERBOSE_UNSUPPORTED_POSTOP);
     for (int i = 0; i < po.len(); i++) {
         if (!po.entry_[i].is_binary()) continue;
@@ -618,16 +634,11 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
     const dim_t src_off0 = src_d.off_l(0);
     const dim_t dst_off0 = dst_d.off_l(0);
 
-    // Binary post-op src1 bases (scalar broadcast), one per binary in attr order.
+    // Binary post-op src1 bases (scalar broadcast), one per binary in attr
+    // order -- the raw handles from the common helper (x64 model).
     const auto &po = pd()->attr()->post_ops_;
-    std::vector<const void *> po_rhs;
-    for (int i = 0; i < po.len(); i++)
-        if (po.entry_[i].is_binary()) {
-            const memory_desc_wrapper s1_d(po.entry_[i].binary.src1_desc);
-            const auto *base = static_cast<const char *>(ctx.host_ptr(
-                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1));
-            po_rhs.push_back(base + s1_d.off_l(0) * sizeof(float));
-        }
+    const std::vector<const void *> po_rhs
+            = binary_injector::prepare_binary_args(po, ctx);
     const void *const *po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     parallel_nd(N, G, [&](dim_t n, dim_t g) {

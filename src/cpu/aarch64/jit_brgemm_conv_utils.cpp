@@ -81,7 +81,7 @@ bool use_bf16_mmla(const jit_brgemm_conv_conf_t &jcp,
 
     // Native inputs need full K8 tiles; OC tails are unsupported.
     const int n_block = brgemm_utils::mmla_n_block(jcp.isa);
-    const int k_block = brgemm_utils::mmla_rd_block();
+    const int k_block = brgemm_utils::mmla_wei_k_block();
     if (jcp.ic % k_block || jcp.oc % n_block) return false;
 
     // Explicit weights must match MMLA packing; 'any' permits either path.
@@ -102,7 +102,7 @@ bool use_bf16_mmla(const jit_brgemm_conv_conf_t &jcp,
 bool native_mmla_blocking_ok(
         const jit_brgemm_conv_conf_t &jcp, bool require_vpad) {
     const int n_block = brgemm_utils::mmla_n_block(jcp.isa);
-    const int k_block = brgemm_utils::mmla_rd_block();
+    const int k_block = brgemm_utils::mmla_wei_k_block();
     return IMPLICATION(require_vpad, jcp.exec_type == exec_vpad)
             && !jcp.use_M_mask && !jcp.wei_plain && !jcp.is_ic_padded
             && jcp.oc_block == n_block && jcp.N == n_block && jcp.N_tail == 0
@@ -1858,7 +1858,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.nthr = nthreads;
     jcp.use_mmla = use_bf16_mmla(jcp, weights_md, false);
     brg_blocking_t::last_ic_block_size = jcp.use_mmla
-            ? brgemm_utils::mmla_rd_block()
+            ? brgemm_utils::mmla_wei_k_block()
             : data_type_vnni_granularity(jcp.wei_dt);
 
     jcp.kh_sets = 1;
@@ -2171,7 +2171,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.use_mmla = use_bf16_mmla(jcp, weights_md, true);
     brg_blocking_t::last_ic_block_size = jcp.use_mmla
-            ? brgemm_utils::mmla_rd_block()
+            ? brgemm_utils::mmla_wei_k_block()
             : data_type_vnni_granularity(jcp.wei_dt);
 
     using namespace data_type;

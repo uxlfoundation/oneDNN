@@ -238,9 +238,11 @@ private:
         return brgemm_utils::mmla_rd_chunk_elems(brg.typesize_A);
     }
     int mmla_rd_chunks_per_block() const {
-        return brgemm_utils::mmla_rd_chunks_per_block(brg.typesize_A);
+        return brgemm_utils::mmla_rd_chunks_per_block();
     }
-    int mmla_rd_block() const { return brgemm_utils::mmla_rd_block(); }
+    int mmla_rd_block() const {
+        return brgemm_utils::mmla_rd_block(brg.typesize_A);
+    }
     PReg rd_tail_mask = PReg(2);
     PReg ld_tail_mask = PReg(3);
 
@@ -363,6 +365,9 @@ private:
             bool row1_valid);
     void mmla_load_plain_a(int rd_chunk, int bd_pair, const ZReg &z_a,
             const ZReg &z_a_tmp, int rd_tail, bool row0_valid, bool row1_valid);
+    void mmla_load_plain_a_k16(int bd_pair, const ZReg &z_a_lo,
+            const ZReg &z_a_hi, const ZReg &z_a_tmp, bool row0_valid,
+            bool row1_valid);
     void mmla_load_b(const XReg &b_base, int ld, int z_idx);
 
     // FMLA/DOT
@@ -487,8 +492,9 @@ int jit_brgemm_kernel_t::rdb_B_offset(int ld_block2) const noexcept {
 int jit_brgemm_kernel_t::ldb_B_offset(
         int ld_block2, bool is_tail) const noexcept {
     if (use_mmla) {
-        return mmla_rdb_B_offset(ld_block2)
-                * div_up(brg.reduce_dim, mmla_rd_block());
+        return brg.typesize_B
+                * rnd_up(brg.reduce_dim, brgemm_utils::mmla_wei_k_block())
+                * ld_block2 * brg.ld_block;
     }
 
     return (is_tail) ? brg.typesize_B * brg.ldb_tail * brg.ld_step
@@ -896,8 +902,14 @@ void jit_brgemm_kernel_t::apply_alpha_beta(
             }
             LD_MUL_VL(ld1w, vmm_c.s, k_mask, x_addr, offset - base_offset, 4);
 
-            if (brg.beta != 1.f) { fmul(vmm_c.s, vmm_c.s, vmm_beta.s); }
-            fadd(vmm.s, vmm.s, vmm_c.s);
+            if (brg.is_int8 && !dq2ps_required) {
+                // alpha == beta == 1 permits an exact s32 accumulation.
+                add(vmm.s, vmm.s, vmm_c.s);
+            } else {
+                if (brg.is_int8) scvtf(vmm_c.s, P_ALL_ONE / T_m, vmm_c.s);
+                if (brg.beta != 1.f) fmul(vmm_c.s, vmm_c.s, vmm_beta.s);
+                fadd(vmm.s, vmm.s, vmm_c.s);
+            }
         }
     }
 }
@@ -1247,7 +1259,6 @@ void jit_brgemm_kernel_t::apply_compensation(
 
     if (!brg.req_cal_comp_pads && brg.zp_type_a != brgemm_broadcast_t::none) {
         auto vmm_zp_a_val = z_tmp_2();
-        add_imm(X_DEFAULT_ADDR, sp, reg_zp_a_val_offs_, X_TMP_0);
         add_imm(reg_zp_a_val, sp, reg_zp_a_val_offs_, X_TMP_0);
         ldr(W_TMP_0, ptr(reg_zp_a_val));
         dup(vmm_zp_a_val.s, W_TMP_0);
@@ -1627,6 +1638,9 @@ void jit_brgemm_kernel_t::dot_product(
 void jit_brgemm_kernel_t::mmla(ZReg v_acc, ZReg v_a, ZReg v_b) {
     if (brg.is_bf16) {
         bfmmla(v_acc.s, v_a.h, v_b.h);
+    } else if (brg.is_int8 && brg.dt_a == data_type::u8
+            && brg.dt_b == data_type::s8) {
+        usmmla(v_acc.s, v_a.b, v_b.b);
     } else {
         assert(!"unsupported");
     }
@@ -1822,7 +1836,8 @@ void jit_brgemm_kernel_t::mmla_load_plain_a(int rd_chunk, int bd_pair,
         }
     };
 
-    if (!is_full_rd_chunk) set_preg(rd_tail_mask.h, valid_rd_elems, X_TMP_0);
+    if (!is_full_rd_chunk)
+        set_preg(rd_tail_mask.b, valid_rd_elems * brg.typesize_A, X_TMP_0);
 
     const auto load_a_row = [&](const ZReg &z, bool row_valid, int row) {
         if (!row_valid) {
@@ -1838,7 +1853,7 @@ void jit_brgemm_kernel_t::mmla_load_plain_a(int rd_chunk, int bd_pair,
             if (is_full_rd_chunk) {
                 ld1rd(z.d, P_ALL_ONE / T_z, ptr(X_TMP_1));
             } else {
-                ld1h(z.h, rd_tail_mask / T_z, ptr(X_TMP_1));
+                ld1b(z.b, rd_tail_mask / T_z, ptr(X_TMP_1));
                 dup(z.d, z.d[0]);
             }
         }
@@ -1847,6 +1862,39 @@ void jit_brgemm_kernel_t::mmla_load_plain_a(int rd_chunk, int bd_pair,
     load_a_row(z_a, row0_valid, bd);
     load_a_row(z_a_tmp, row1_valid, bd + 1);
     zip1(z_a.d, z_a.d, z_a_tmp.d);
+}
+
+void jit_brgemm_kernel_t::mmla_load_plain_a_k16(int bd_pair, const ZReg &z_a_lo,
+        const ZReg &z_a_hi, const ZReg &z_a_tmp, bool row0_valid,
+        bool row1_valid) {
+    constexpr int qreg_bytes = 16;
+    assert(brg.is_int8
+            && static_cast<int>(simd_bytes(brg.isa_impl)) == qreg_bytes);
+    assert(mmla_rd_block() * brg.typesize_A == qreg_bytes);
+    assert(brg.LDA % mmla_rd_block() == 0);
+
+    const auto load_a_row = [&](const QReg &q, bool row_valid, int row) {
+        if (!row_valid) {
+            const auto z = ZReg(q.getIdx());
+            eor(z.d, z.d, z.d);
+            return;
+        }
+
+        const int off = A_offset(row, 0);
+        constexpr int ldr_q_max_offset = ((1 << 12) - 1) * qreg_bytes;
+        if (off >= 0 && off <= ldr_q_max_offset && off % qreg_bytes == 0) {
+            ldr(q, ptr(reg_aux_A, off));
+        } else {
+            add_imm(X_TMP_1, reg_aux_A, off, X_TMP_0);
+            ldr(q, ptr(X_TMP_1));
+        }
+    };
+
+    const int bd = mmla_bd_blk() * bd_pair;
+    load_a_row(QReg(z_a_tmp.getIdx()), row0_valid, bd);
+    load_a_row(QReg(z_a_hi.getIdx()), row1_valid, bd + 1);
+    trn1(z_a_lo.d, z_a_tmp.d, z_a_hi.d);
+    trn2(z_a_hi.d, z_a_tmp.d, z_a_hi.d);
 }
 
 void jit_brgemm_kernel_t::mmla_load_b(const XReg &b_base, int ld, int z_idx) {
@@ -1872,7 +1920,7 @@ void jit_brgemm_kernel_t::gemm_microkernel_mmla(bool is_bdb_tail, int ld_block2,
 
     const int bd_pair_count = mmla_bd_pairs(bd_block);
     const int rd_tail = is_rd_tail ? brg.rdb_tail : mmla_rd_block();
-    // mmla traverses the rd dimension in 64-bit chunks
+    // MMLA traverses the reduction dimension in 64-bit chunks.
     const int rd_chunks = is_rd_tail ? div_up(rd_tail, mmla_rd_chunk_elems())
                                      : mmla_rd_chunks_per_block();
 
@@ -1907,6 +1955,7 @@ void jit_brgemm_kernel_t::gemm_microkernel_mmla(bool is_bdb_tail, int ld_block2,
     };
 
     const auto advance_after_rd_chunk = [&](int rd_chunk) {
+        // Advance after the final loads; MMLA continues using their registers.
         const bool is_last_rd_chunk = (rd_chunk == rd_chunks - 1);
         if (is_last_rd_chunk)
             add_vl_or_imm(reg_aux_A, reg_aux_A,
@@ -1920,7 +1969,22 @@ void jit_brgemm_kernel_t::gemm_microkernel_mmla(bool is_bdb_tail, int ld_block2,
         add_vl_or_imm(reg_aux_B, reg_aux_B, b_advance, X_TMP_0);
     };
 
-    if (all_a_in_regs) {
+    const bool use_plain_int8_k16 = all_a_in_regs && brg.is_int8
+            && !use_mmla_packed_a && !is_rd_tail
+            && static_cast<int>(simd_bytes(brg.isa_impl))
+                    == mmla_rd_block() * brg.typesize_A
+            && brg.LDA % mmla_rd_block() == 0;
+    if (use_plain_int8_k16) {
+        // Load each K16 row once, then split it into two K8 operands.
+        for (int bd_pair = 0; bd_pair < bd_pair_count; ++bd_pair) {
+            const int bd = mmla_bd_blk() * bd_pair;
+            const bool row0_valid = bd_b <= bd && bd < bd_e;
+            const bool row1_valid = bd_b <= bd + 1 && bd + 1 < bd_e;
+            mmla_load_plain_a_k16(bd_pair, ZReg(bd_pair),
+                    ZReg(bd_pair_count + bd_pair), ZReg(tmp_reg_0), row0_valid,
+                    row1_valid);
+        }
+    } else if (all_a_in_regs) {
         for (int rd_chunk = 0; rd_chunk < rd_chunks; ++rd_chunk) {
             if (use_mmla_packed_a) prepare_packed_a_base(rd_chunk);
             for (int bd_pair = 0; bd_pair < bd_pair_count; ++bd_pair) {
@@ -2213,6 +2277,7 @@ void jit_brgemm_kernel_t::ldb_loop(int bd_block2, bool is_bdb_tail,
                             is_rd_tail, is_ld_tail, vpad, rows_for_rd_tail);
                 }
 
+                // MMLA advances A/B inside gemm_microkernel_mmla().
                 if (!use_mmla) {
                     int A_rdb_off = use_gemv_path ? cpu_sveLen
                                                   : rdb_A_offset(bd_block);
@@ -2631,9 +2696,10 @@ void jit_brgemm_kernel_t::generate() {
 
     vpad_exist
             = brg.brgattr.max_top_vpad > 0 || brg.brgattr.max_bottom_vpad > 0;
-    need_comp_pads = IMPLICATION(brg.zp_type_a == brgemm_broadcast_t::none,
-                             brg.req_s8s8_compensation)
-            && IMPLICATION(!vpad_exist, brg.req_cal_comp_pads);
+    const bool has_int8_compensation = brg.req_s8s8_compensation
+            || brg.zp_type_a != brgemm_broadcast_t::none;
+    need_comp_pads
+            = has_int8_compensation && (vpad_exist || brg.req_cal_comp_pads);
 
     set_preg(ld_tail_mask.s, brg.ldb_tail, X_TMP_0);
     if (brg.is_int8 && !brg.has_int8_vnni) { assert(!"unsupported\n"); }

@@ -86,19 +86,22 @@ inline constexpr int mmla_bd_blk() {
 inline constexpr int mmla_ld_blk() {
     return 2;
 }
-// BFMMLA consumes K4 chunks of 8 bytes; two chunks form a K8 block.
+// Two 64-bit chunks per reduction block: K8 for BF16, K16 for INT8.
 inline constexpr int mmla_rd_chunk_bytes() {
     return 8;
 }
-inline constexpr int mmla_rd_block() {
-    return 8;
-}
-
 inline constexpr int mmla_rd_chunk_elems(int dt_a_sz) {
     return mmla_rd_chunk_bytes() / dt_a_sz;
 }
-inline constexpr int mmla_rd_chunks_per_block(int dt_a_sz) {
-    return mmla_rd_block() / mmla_rd_chunk_elems(dt_a_sz);
+inline constexpr int mmla_rd_chunks_per_block() {
+    return 2;
+}
+inline constexpr int mmla_rd_block(int dt_a_sz) {
+    return mmla_rd_chunks_per_block() * mmla_rd_chunk_elems(dt_a_sz);
+}
+// Packed weights use K8 panels for both BF16 and INT8.
+inline constexpr int mmla_wei_k_block() {
+    return 8;
 }
 
 // Preferred blocking for large plain-A problems: 24 accumulator registers.

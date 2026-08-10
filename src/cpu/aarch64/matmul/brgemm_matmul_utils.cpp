@@ -1004,9 +1004,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const int mmla_m_block = brgemm_utils::mmla_bd_blk();
     const int mmla_n_block = brgemm_utils::mmla_n_block(isa);
-    const int mmla_k_block = brgemm_utils::mmla_rd_block();
+    const int mmla_k_block = brgemm_utils::mmla_rd_block(bgmmc.a_dt_sz);
     // MMLA packing and blocking in matmul currently assume full N/K tiles.
     // TODO: Enable N/K tails, which are already supported by the BRGEMM kernel.
+    // TODO: Enable u8 x s8 MMLA in matmul, including packing and compensation.
+    // Calibrate the DOT fallback including packing costs.
     if (one_of(isa, sve_128, sve_256) && bm_conf_utils.is_bf16()
             && bgmmc.M >= mmla_m_block && bgmmc.N >= mmla_n_block
             && bgmmc.K >= mmla_k_block && bgmmc.N % mmla_n_block == 0
@@ -1043,7 +1045,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL, "");
     // Non-MMLA weight tags pack 16 groups of VNNI elements along K.
     bgmmc.wei_k_blk = bgmmc.use_mmla
-            ? mmla_k_block
+            ? brgemm_utils::mmla_wei_k_block()
             : 16 * data_type_vnni_granularity(bgmmc.wei_dt);
 
     VCHECK_BG(bm_conf_utils.set_or_check_B_tag(weights_md),

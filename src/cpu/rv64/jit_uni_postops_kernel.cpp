@@ -54,16 +54,14 @@ struct jit_uni_postops_kernel_t::impl_t : public jit_generator_t {
         const Reg reg_param = a0;
         const Reg reg_dst = a1;
         const Reg reg_bias = a2;
-        const Reg reg_rhs = a3; // base of the per-binary rhs pointer array
         const Reg reg_len = a4;
         const Reg reg_vl = t0;
         const Reg reg_bytes = t1;
         const Reg reg_off = t3; // element offset of the chunk within the unit
-        const Reg reg_gpr = t4; // binary injector scratch
+        const Reg reg_gpr = a5; // binary injector address scratch
 
         ld(reg_dst, reg_param, GET_OFF(dst));
         ld(reg_bias, reg_param, GET_OFF(bias));
-        ld(reg_rhs, reg_param, GET_OFF(rhs));
         ld(reg_len, reg_param, GET_OFF(len));
 
         // Accumulator group v24 (m4). The injectors may use v0 as a mask
@@ -79,15 +77,25 @@ struct jit_uni_postops_kernel_t::impl_t : public jit_generator_t {
         // per-binary pointer array; the injector computes each rhs address from
         // the per-chunk output element offset (reg_off) it is handed at call
         // time. reg_bytes is the injector's address scratch.
-        binary_injector::static_params_t bsp(
-                VReg(16), fa2, reg_rhs, reg_bytes, reg_gpr);
-        injector::jit_uni_postops_injector_t<v> inj(this, po_, esp, &bsp);
+        // Host-positioned injector mode (null dst_d): the epilogue works on
+        // flat units, so the rhs classifies as scalar / no_broadcast from its
+        // element count and the unit offset is handed in at call time.
+        // The rhs pointer array is read through the args pointer (x64 model).
+        // The hosted scalar/no_broadcast paths clobber only the injector's t4
+        // scratch, which is free here -> no GPR preservation.
+        binary_injector::rhs_arg_static_params_t rhs_arg_bsp(16, reg_gpr,
+                reg_bytes, reg_bytes, false /*preserve gpr*/,
+                false /*preserve vmm*/, GET_OFF(rhs),
+                memory_desc_wrapper(nullptr));
+        rhs_arg_bsp.rhs_dt_helper_freg = fa2;
+        const binary_injector::static_params_t bsp(reg_param, rhs_arg_bsp);
+        injector::jit_uni_postops_injector_t<v> inj(this, po_, bsp, esp);
         binary_injector::rhs_arg_dynamic_params_t rhs_dyn;
 
         if (has_per_elem_binary_) {
             ld(reg_off, reg_param, GET_OFF(off0)); // byte offset
             srli(reg_off, reg_off, 2); // -> element offset (rhs is f32)
-            rhs_dyn.vmm_idx_to_out_off[v_data.getIdx()] = reg_off;
+            rhs_dyn.vmm_idx_to_out_reg.emplace(v_data.getIdx(), reg_off);
         }
 
         Label loop, done;
@@ -108,7 +116,8 @@ struct jit_uni_postops_kernel_t::impl_t : public jit_generator_t {
             }
         }
 
-        inj.compute_vector(v_data.getIdx(), rhs_dyn);
+        // Epilogue computes at e32/m4 (group_stride 4).
+        inj.compute_vector(v_data.getIdx(), rhs_dyn, 4 /*group_stride*/);
         vse32_v(v_data, reg_dst);
 
         slli(reg_bytes, reg_vl, 2);
@@ -177,19 +186,36 @@ bool jit_uni_postops_kernel_t::binary_per_last_dim_ok(
     return true;
 }
 
+// Chain-level injector acceptance. The epilogue works on flat units without a
+// dst descriptor, so it cannot use injector::post_ops_ok (which classifies the
+// binary rhs against dst); the chain entry kinds are checked directly: eltwise
+// with a 4-aux budget (heavy algs included), any non-ternary binary alg
+// (select needs a condition scratch group this host does not reserve), no
+// other kinds.
+static bool injector_chain_ok(const post_ops_t &po) {
+    for (int i = 0; i < po.len(); i++) {
+        const auto &e = po.entry_[i];
+        if (e.is_eltwise()) {
+            if (!eltwise_injector::is_supported(e.eltwise.alg)) return false;
+        } else if (e.is_binary()) {
+            if (e.is_binary_with_ternary_op()) return false;
+        } else
+            return false;
+    }
+    return true;
+}
+
 bool jit_uni_postops_kernel_t::post_ops_supported(
         const post_ops_t &po, dim_t unit_nelems) {
-    return injector::jit_uni_postops_injector_t<v>::post_ops_ok(
-                   po, /*n_vaux=*/4)
-            && binary_broadcast_ok(po, unit_nelems) && binary_rhs_dt_ok(po);
+    return injector_chain_ok(po) && binary_broadcast_ok(po, unit_nelems)
+            && binary_rhs_dt_ok(po);
 }
 
 status_t jit_uni_postops_kernel_t::create(
         std::shared_ptr<jit_uni_postops_kernel_t> &kernel, const post_ops_t &po,
         const conf_t &conf) {
     if (conf.dst_dt != data_type::f32) return status::unimplemented;
-    if (!injector::jit_uni_postops_injector_t<v>::post_ops_ok(po, /*n_vaux=*/4))
-        return status::unimplemented;
+    if (!injector_chain_ok(po)) return status::unimplemented;
     // The injector loads the binary rhs as f32 only (flw/vle32/vlse32).
     if (!binary_rhs_dt_ok(po)) return status::unimplemented;
 

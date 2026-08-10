@@ -668,6 +668,8 @@ struct jit_brgemm_conv_conf_t {
 
     bool use_uker;
     bool use_mmla {false};
+    // Use execution-precomputed source zero-point compensation per M row.
+    bool use_mmla_vpad_comp {false};
     bool var_bs {false};
     bool use_interleave_stores;
     brgemm_kernel_prefetching_t hint_prefetching;

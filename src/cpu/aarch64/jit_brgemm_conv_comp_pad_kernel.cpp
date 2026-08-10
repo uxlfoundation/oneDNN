@@ -18,6 +18,8 @@
 
 #include "cpu/aarch64/jit_brgemm_conv_comp_pad_kernel.hpp"
 
+#include "cpu/aarch64/brgemm/brgemm_utils.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -33,6 +35,16 @@ namespace jit_uni_brgemm_conv_comp_pad_kernel {
 #define GET_OFF(field) \
     (uint32_t) offsetof(jit_brgemm_conv_comp_pad_args_t, field)
 
+static bool is_int8_mmla(const jit_brgemm_conv_conf_t &jcp) noexcept {
+    return jcp.use_mmla && jcp.src_dt == data_type::u8;
+}
+
+static int comp_pad_ic_block(const jit_brgemm_conv_conf_t &jcp) noexcept {
+    return is_int8_mmla(jcp)
+            ? brgemm_utils::mmla_rd_chunk_elems(jcp.wei_dsz)
+            : static_cast<int>(data_type_vnni_granularity(data_type::s8));
+}
+
 template <cpu_isa_t isa>
 jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::
         jit_uni_brgemm_conv_comp_pad_kernel_t(
@@ -40,12 +52,14 @@ jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::
     : jcp_(ajcp)
     , inp_dsz_(jcp_.wei_dsz)
     , out_dsz_(jcp_.acc_dsz)
-    , nb_ic_(utils::div_up(jcp_.ic, 4))
-    , inp_ic_sz_(static_cast<size_t>(inp_dsz_) * jcp_.oc_block * 4)
+    , nb_ic_(utils::div_up(jcp_.ic, comp_pad_ic_block(jcp_)))
+    , inp_ic_sz_(static_cast<size_t>(inp_dsz_) * jcp_.oc_block
+              * comp_pad_ic_block(jcp_))
     , inp_kw_sz_(static_cast<size_t>(inp_dsz_) * jcp_.icp * jcp_.oc_block)
     , inp_kh_sz_(static_cast<size_t>(jcp_.kw) * inp_kw_sz_)
     , inp_kd_sz_(static_cast<size_t>(jcp_.kh) * inp_kh_sz_)
-    , isa_max_regs(isa_num_vregs(jcp_.isa)) {}
+    , isa_max_regs(isa_num_vregs(jcp_.isa))
+    , ic_block_(comp_pad_ic_block(jcp_)) {}
 
 template <cpu_isa_t isa>
 size_t jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::out_oc_offset(
@@ -56,7 +70,7 @@ size_t jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::out_oc_offset(
 template <cpu_isa_t isa>
 size_t jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::inp_ic_offset(
         const int m_block, const int icb, const int m, const int n) const {
-    return static_cast<size_t>(inp_dsz_) * n * m_block2_ * last_ic_block_
+    return static_cast<size_t>(inp_dsz_) * n * m_block2_ * ic_block_
             + ((icb * m_block) + m) * inp_ic_sz_;
 }
 
@@ -132,8 +146,21 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::compute(const int ic_step,
             auto vmm = accum(n_block, m, n);
             const auto oc_offset = inp_ic_offset(m_block, ic, m, n);
             add_imm(X_DEFAULT_ADDR, reg_aux_in, oc_offset, X_TMP_0);
-            ldr(vmm_tmp, ptr(X_DEFAULT_ADDR));
-            sdot(vmm.s, vmm_one_bytes.b, vmm_tmp.b);
+            if (is_int8_mmla(jcp_)) {
+                const auto sum01 = zmm_one_words;
+                const auto sum23 = zmm_int8_temp;
+                ldr(vmm_tmp, ptr(X_DEFAULT_ADDR));
+                eor(sum01.d, sum01.d, sum01.d);
+                usmmla(sum01.s, vmm_one_bytes.b, vmm_tmp.b);
+                ldr(vmm_tmp, ptr(X_DEFAULT_ADDR, 1, MUL_VL));
+                eor(sum23.d, sum23.d, sum23.d);
+                usmmla(sum23.s, vmm_one_bytes.b, vmm_tmp.b);
+                uzp1(vmm_tmp.d, sum01.d, sum23.d);
+                add(vmm.s, vmm.s, vmm_tmp.s);
+            } else {
+                ldr(vmm_tmp, ptr(X_DEFAULT_ADDR));
+                sdot(vmm.s, vmm_one_bytes.b, vmm_tmp.b);
+            }
         }
     }
 }
@@ -221,7 +248,7 @@ int jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::compute_ic_step(
                 / ((n_block + blocks) * max_ic_step);
         const float block_eff = block_disb * eff;
         float block_footprint = static_cast<float>(inp_dsz_) * blocks
-                * jcp_.oc_block * last_ic_block_;
+                * jcp_.oc_block * ic_block_;
         if (block_footprint <= static_cast<float>(
                     platform::get_per_core_cache_size(1))
                 && (block_eff > best_block_eff)) {
@@ -258,8 +285,11 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<isa>::generate() {
         dup(zmm_one_words.h, reg32_scratch);
     }
 
-    const int max_regs = isa_max_regs
-            - (is_int8_sve ? 6 : (jcp_.s8s8_compensation_required ? 4 : 3));
+    // MMLA reserves z26-z27 for the two K8 partial weight sums.
+    const int max_regs = is_int8_mmla(jcp_) ? zmm_int8_temp.getIdx()
+                                            : isa_max_regs
+                    - (is_int8_sve ? 6
+                                   : (jcp_.s8s8_compensation_required ? 4 : 3));
     const int nb = div_up(nstl::min(jcp_.oc, jcp_.oc_block), m_block2_);
     const int nb2 = nb / n_max_regs_;
     const int nb2_tail = nb % n_block2_;

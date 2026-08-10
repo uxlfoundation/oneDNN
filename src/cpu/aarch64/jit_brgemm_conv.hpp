@@ -271,7 +271,9 @@ private:
             KD_BLOCK_PAD, KH_BLOCK_PAD, ID, IH, IW, IDP, IHP, IWP, OD, OH, OW,
             SD, SH, SW, FP, TP, LP, DD, DH, DW;
     dim_t src_w_sz, src_h_sz, src_d_sz, dst_w_sz, dst_h_sz, dst_d_sz;
-    dim_t ker_vpad_sz, comp_ocb_sz, comp_ker_sz, comp_kw_sz;
+    dim_t ker_vpad_sz;
+    // Compensation-buffer strides in int32_t elements.
+    dim_t comp_group_stride, comp_ocb_stride, comp_range_stride;
 
     bool need_compensation;
 };

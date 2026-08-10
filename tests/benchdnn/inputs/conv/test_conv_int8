@@ -35,3 +35,27 @@ mb1ic64ih20oc64oh20kh1
 --dtag=nhwc
 --attr-zero-points=src:common:5
 mb1ic64ih20oc64oh20kh1
+
+# Source-zero-point virtual-padding compensation and epilogue.
+--reset
+--dir=FWD_I
+--dt=u8:s8:u8
+--bia-dt=f32
+--stag=nhwc
+--wtag=any
+--dtag=nhwc
+--attr-scales=src:common:0.5+wei:per_oc+dst:common:2
+--attr-zero-points=src:common:3+dst:common:5
+--attr-post-ops=swish:1
+mb1ic72ih31iw33oc64oh16ow17kh3kw3sh2sw2ph1pw1
+
+# Execution-owned compensation and one DOT fallback.
+--reset
+--dir=FWD_I
+--dt=u8:s8:f32
+--stag=nhwc
+--wtag=any
+--dtag=nhwc
+--attr-zero-points=src:common:3
+mb3ic64ih8oc64oh8kh3ph1
+mb1ic64ih8iw8oc64oh8ow6kh3kw3ph1pw0

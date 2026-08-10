@@ -99,6 +99,17 @@ bool use_bf16_mmla(const jit_brgemm_conv_conf_t &jcp,
 constexpr int int8_mmla_1x1_min_ic = 64;
 constexpr int int8_mmla_1x1_min_os = 400;
 
+// Source-zero-point MMLA builds per-M virtual-padding compensation outside
+// BRGEMM. The work ratio amortizes the compensation table, the spatial floor
+// rejects short M dimensions, and the normalized work-per-thread floor avoids
+// spreading too little compute across the configured workers. These are
+// performance-policy guards derived from SVE128 and SVE256 measurements, not
+// kernel correctness constraints. Normalized work omits the fixed 3x3 factor.
+constexpr int int8_mmla_vpad_comp_min_ic = 16;
+constexpr int int8_mmla_vpad_comp_min_work_ratio = 8;
+constexpr dim_t int8_mmla_vpad_comp_min_spatial_work = 160;
+constexpr dim_t int8_mmla_vpad_comp_min_work_per_thread = 192 * 1024;
+
 // Byte-MMLA currently requires the default weight zero point (zero). Keep
 // nonzero weight zero points off this path until compensation is validated.
 bool use_int8_mmla_3x3(
@@ -2196,12 +2207,33 @@ static status_t init_conf_impl(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             && IMPLICATION(jcp.exec_type == exec_vpad, with_pad);
     jcp.req_brg_comp_pad = comp_with_pads && output_sz <= 8192 && jcp.oc < 512;
     jcp.req_cal_comp_pad = comp_with_pads && !jcp.req_brg_comp_pad;
+    // Integer MMLA cannot calculate padding compensation in its reduction
+    // loop. Build per-M compensation when profitable; otherwise init_conf
+    // retries DOT.
+    const auto vpad_comp_boundary_work
+            = static_cast<dim_t>(jcp.mb) * jcp.oh * jcp.ic;
+    const auto vpad_comp_table_work = static_cast<dim_t>(jcp.ic) + jcp.ow;
+    const auto vpad_comp_spatial_work
+            = static_cast<dim_t>(jcp.mb) * jcp.oh * jcp.ow;
+    const auto vpad_comp_compute_work
+            = vpad_comp_spatial_work * jcp.ic * jcp.oc;
+    const auto vpad_comp_thread_work
+            = static_cast<dim_t>(nstl::max(1, jcp.nthr))
+            * int8_mmla_vpad_comp_min_work_per_thread;
+    const bool is_vpad_comp_profitable = jcp.ic >= int8_mmla_vpad_comp_min_ic
+            && vpad_comp_boundary_work
+                    >= int8_mmla_vpad_comp_min_work_ratio * vpad_comp_table_work
+            && vpad_comp_spatial_work >= int8_mmla_vpad_comp_min_spatial_work
+            && vpad_comp_compute_work >= vpad_comp_thread_work;
     const bool is_int8_mmla = jcp.use_mmla && jcp.src_dt == data_type::u8
             && jcp.wei_dt == data_type::s8;
-    // Source-zero-point virtual padding requires row-specific compensation,
-    // which is added separately from basic byte-MMLA convolution support.
+    jcp.use_mmla_vpad_comp = is_int8_mmla && jcp.exec_type == exec_vpad
+            && jcp.src_zero_point && !jcp.s8s8_compensation_required
+            && jcp.req_cal_comp_pad && jcp.max_vpad > 0
+            && is_vpad_comp_profitable;
     if (is_int8_mmla && jcp.src_zero_point
-            && (jcp.req_brg_comp_pad || jcp.max_vpad > 0))
+            && (jcp.req_brg_comp_pad
+                    || (jcp.max_vpad > 0 && !jcp.use_mmla_vpad_comp)))
         return status::unimplemented;
 
     // estimate the number of kernel range combination for compensation
@@ -2218,9 +2250,11 @@ static status_t init_conf_impl(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.ker_ranges_size = jcp.exec_type == exec_base ? kd_cnt * kh_cnt * kw_cnt
                                                      : kd_cnt * kh_cnt;
-    jcp.comp_a_buffer_size
+    const auto comp_a_spatial_size = jcp.use_mmla_vpad_comp ? jcp.ow : 1;
+    jcp.comp_a_buffer_size = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size
+            * comp_a_spatial_size * jcp.oc_block;
+    jcp.s8s8_comp_buffer_size
             = jcp.ngroups * jcp.nb_oc * jcp.ker_ranges_size * jcp.oc_block;
-    jcp.s8s8_comp_buffer_size = jcp.comp_a_buffer_size;
 
     // enable ununroll_bd_loop for big shapes to reduce kernel sizes
     jcp.ununroll_bd_loop

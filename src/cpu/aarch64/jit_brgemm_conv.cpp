@@ -17,6 +17,7 @@
 *******************************************************************************/
 
 #include <cassert>
+#include <cstring>
 
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
@@ -292,6 +293,9 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(int vM,
     brg.with_sum = with_sum;
     brg.with_weights_scale_adjust = jcp_.scale_adjust_factor != 1.0f;
     CHECK(brgemm_desc_set_postops(&brg, attr(), &dst_md_, LDD, jcp_.bia_dt));
+
+    brg.zp_a_compensation_m_stride
+            = jcp_.use_mmla_vpad_comp ? jcp_.oc_block : 0;
 
     CHECK(brgemm_desc_finalize(&brg));
 
@@ -734,9 +738,13 @@ inline int brgemm_convolution_fwd_t<isa>::get_comp_offset(const int g,
     const auto comp_idx = get_comp_ker_idx(kd_b, kd_e, kh_b, kh_e, kw_b, kw_e);
     assert(IMPLICATION(jcp.req_cal_comp_pad, comp_idx >= 0));
 
-    return jcp.req_cal_comp_pad
-            ? g * comp_ocb_sz + ocb * comp_ker_sz + comp_idx * comp_kw_sz
-            : (g * jcp.nb_oc + ocb) * jcp.oc_block;
+    if (!jcp.req_cal_comp_pad) return (g * jcp.nb_oc + ocb) * jcp.oc_block;
+
+    const auto ow_off = jcp.use_mmla_vpad_comp
+            ? static_cast<dim_t>(ow) * jcp.oc_block
+            : 0;
+    return g * comp_group_stride + ocb * comp_ocb_stride
+            + comp_idx * comp_range_stride + ow_off;
 }
 
 template <cpu_isa_t isa>
@@ -796,9 +804,10 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
     dst_h_sz = OH * dst_w_sz;
     dst_d_sz = OD * dst_h_sz;
 
-    comp_kw_sz = static_cast<dim_t>(jcp.oc_block);
-    comp_ker_sz = jcp.ker_ranges_size * comp_kw_sz;
-    comp_ocb_sz = jcp.nb_oc * comp_ker_sz;
+    comp_range_stride = static_cast<dim_t>(jcp.oc_block)
+            * (jcp.use_mmla_vpad_comp ? OW : 1);
+    comp_ocb_stride = jcp.ker_ranges_size * comp_range_stride;
+    comp_group_stride = jcp.nb_oc * comp_ocb_stride;
 
     need_compensation = (jcp.src_zero_point || jcp.s8s8_compensation_required)
             && !jcp.req_brg_comp_pad;
@@ -1285,6 +1294,9 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
     const auto &jcp = _pd->jcp_;
 
     if (!jcp.req_cal_comp_pad) return status::success;
+    assert(IMPLICATION(jcp.use_mmla_vpad_comp,
+            jcp.oc_block == brgemm_utils::mmla_n_block(jcp.isa)
+                    && !jcp.s8s8_compensation_required));
 
     if (jcp.src_zero_point)
         std::memset(src_zp_buffer, 0, sizeof(int32_t) * jcp.comp_a_buffer_size);
@@ -1294,7 +1306,8 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
 
     const auto work_amount
             = static_cast<dim_t>(jcp.ngroups) * jcp.nb_oc * ker_vpad_sz;
-    const auto is_small_shape = work_amount <= jcp.nthr
+    const auto is_small_shape = !jcp.use_mmla_vpad_comp
+            && work_amount <= jcp.nthr
             && (work_amount * jcp.oc_block * jcp.icp
                     <= platform::get_per_core_cache_size(1));
     const int nthr = is_small_shape ? 1 : jcp.nthr;
@@ -1308,34 +1321,69 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
         nd_iterator_init(start, g, jcp.ngroups, ocb, jcp.nb_oc, k, ker_vpad_sz);
         for (auto work = start; work < end; work++) {
             const dim_t kd_bb {kd_bs[k]}, kd_ee {kd_es[k]}, kh_bb {kh_bs[k]},
-                    kh_ee {kh_es[k]}, kw_bb {kw_bs[k]}, kw_ee {kw_es[k]};
-            assert(kd_ee > kd_bb && kh_ee > kh_bb && kw_ee > kw_bb);
+                    kh_ee {kh_es[k]};
+            assert(kd_ee > kd_bb && kh_ee > kh_bb);
 
             const auto kd_b = maybe_invert_range(kd_bb, kd_ee, KD);
             const auto kd_e = maybe_invert_range(kd_ee, kd_bb, KD);
             const auto kh_b = maybe_invert_range(kh_bb, kh_ee, KH);
             const auto kh_e = maybe_invert_range(kh_ee, kh_bb, KH);
-            const auto kw_b = maybe_invert_range(kw_bb, kw_ee, KW);
-            const auto kw_e = maybe_invert_range(kw_ee, kw_bb, KW);
+            const auto base_buffer_offs = g * comp_group_stride
+                    + ocb * comp_ocb_stride + k * comp_range_stride;
 
-            const auto buffer_offs
-                    = g * comp_ocb_sz + ocb * comp_ker_sz + k * comp_kw_sz;
-            const auto wei_offs = g * _pd->wei_g_stride
-                    + ocb * _pd->wei_ocb_stride + kd_b * _pd->wei_kd_stride
-                    + kh_b * _pd->wei_kh_stride + kw_b * _pd->wei_kw_stride;
+            const auto run_comp = [&](dim_t kw_bb, dim_t kw_ee, int32_t *zp_out,
+                                          int32_t *cp_out) {
+                assert(kw_ee > kw_bb);
+                const auto kw_b = maybe_invert_range(kw_bb, kw_ee, KW);
+                const auto kw_e = maybe_invert_range(kw_ee, kw_bb, KW);
+                const auto wei_offs = g * _pd->wei_g_stride
+                        + ocb * _pd->wei_ocb_stride + kd_b * _pd->wei_kd_stride
+                        + kh_b * _pd->wei_kh_stride + kw_b * _pd->wei_kw_stride;
 
-            jit_brgemm_conv_comp_pad_args_t p;
+                jit_brgemm_conv_comp_pad_args_t p {};
+                p.kd_l = kd_e - kd_b;
+                p.kh_l = kh_e - kh_b;
+                p.kw_l = kw_e - kw_b;
+                p.ptr_in = &weights[wei_offs];
+                p.ptr_zp_out = zp_out;
+                p.ptr_cp_out = cp_out;
+                (*comp_vpad_pbuffer_)(&p);
+            };
 
-            p.kd_l = kd_e - kd_b;
-            p.kh_l = kh_e - kh_b;
-            p.kw_l = kw_e - kw_b;
-            p.ptr_in = &weights[wei_offs];
-            p.ptr_zp_out = jcp.src_zero_point ? &src_zp_buffer[buffer_offs]
-                                              : nullptr;
-            p.ptr_cp_out = jcp.s8s8_compensation_required
-                    ? &s8s8_comp_buffer[buffer_offs]
-                    : nullptr;
-            (*comp_vpad_pbuffer_)(&p);
+            if (jcp.use_mmla_vpad_comp) {
+                // Virtual padding changes the valid KW range by output column.
+                // Reuse the full range for interior columns and recompute only
+                // the boundary columns.
+                constexpr int mmla_oc_block = brgemm_utils::mmla_ld_block2()
+                        * cpu_isa_traits<isa>::vlen / sizeof(int32_t);
+                alignas(64) int32_t full_comp[mmla_oc_block] = {};
+                run_comp(0, KW, full_comp, nullptr);
+
+                for (int ow = 0; ow < OW; ow++) {
+                    const int iw = ow * SW - LP;
+                    const dim_t kw_bb = div_up(nstl::max(0, -iw), DW);
+                    const dim_t kw_ee = KW
+                            - div_up(nstl::max(0, iw - IW + (KW - 1) * DW + 1),
+                                    DW);
+                    auto *const row_out = &src_zp_buffer[base_buffer_offs
+                            + static_cast<dim_t>(ow) * jcp.oc_block];
+                    if (kw_bb == 0 && kw_ee == KW) {
+                        std::memcpy(row_out, full_comp,
+                                sizeof(int32_t) * jcp.oc_block);
+                    } else if (kw_ee > kw_bb) {
+                        run_comp(kw_bb, kw_ee, row_out, nullptr);
+                    } else {
+                        std::memset(row_out, 0, sizeof(int32_t) * jcp.oc_block);
+                    }
+                }
+            } else {
+                run_comp(kw_bs[k], kw_es[k],
+                        jcp.src_zero_point ? &src_zp_buffer[base_buffer_offs]
+                                           : nullptr,
+                        jcp.s8s8_compensation_required
+                                ? &s8s8_comp_buffer[base_buffer_offs]
+                                : nullptr);
+            }
 
             nd_iterator_step(g, jcp.ngroups, ocb, jcp.nb_oc, k, ker_vpad_sz);
         }

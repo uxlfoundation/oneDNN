@@ -61,8 +61,8 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
 
         bool has_f8_e5m2_binary_postops = false;
         bool has_f8_e4m3_binary_postops = false;
-        bool has_f8_dst_dt
-                = one_of(brg.dt_d, data_type::f8_e5m2, data_type::f8_e4m3);
+        bool has_f8_dt = one_of(data_type::f8_e5m2, brg.dt_d, brg.dt_bias)
+                || one_of(data_type::f8_e4m3, brg.dt_d, brg.dt_bias);
         if (brg.with_binary) {
             const auto &post_ops = brg.attr()->post_ops_;
             for (int i = 0; i < post_ops.len(); i++) {
@@ -78,9 +78,9 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
         }
 
         if (brg.is_fp8 || has_f8_e5m2_binary_postops
-                || has_f8_e4m3_binary_postops || has_f8_dst_dt) {
+                || has_f8_e4m3_binary_postops || has_f8_dt) {
             if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d)
+                        brg.dt_d, brg.dt_bias)
                     || has_f8_e5m2_binary_postops)
                 // Note: avoid using 'vmm0' since it is used as
                 // 'fp8_to_f16_upconvert()' param and would collision with these
@@ -89,7 +89,7 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
                         vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),
                         vmm_fp8_emu_aux3(), kmask_fp8_aux, reg64_fp8_aux);
             if (one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_c,
-                        brg.dt_d)
+                        brg.dt_d, brg.dt_bias)
                     || has_f8_e4m3_binary_postops)
                 f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(this,
                         vmm_fp8_emu_aux1(), vmm_fp8_emu_aux2(),

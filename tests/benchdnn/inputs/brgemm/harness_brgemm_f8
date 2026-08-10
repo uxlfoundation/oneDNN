@@ -19,3 +19,14 @@
 --bs=1
 --batch=shapes_2d_no_tail_int8
 --batch=shapes_2d_tail_n_int8
+
+# f16 inputs with f8 output -- requires native f8 ISA (avx10_2+)
+# Add tests for matmul with pre-converted f8->f16
+--reset
+--dt=f16:f16:f8_e5m2,\
+     f16:f16:f8_e4m3
+--bia_dt=undef,f32,f8_e5m2,f8_e4m3
+--beta=0,1
+--attr-post-ops=,sum:2,relu
+--attr-scales=,dst:common:5
+--batch=option_set_bf16

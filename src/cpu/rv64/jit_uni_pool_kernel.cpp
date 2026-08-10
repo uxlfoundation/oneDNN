@@ -80,6 +80,14 @@ static Xbyak_riscv::LMUL pool_lmul_to_enum(int lmul) {
     }
 }
 
+// The strategies the pool kernels can position themselves (the injector runs
+// in host-positioned byte-offset mode): scalar / per-oc(-spatial) / full-dst.
+static bcast_set_t get_supported_postops_bcast_strategies() {
+    return {broadcasting_strategy_t::scalar, broadcasting_strategy_t::per_oc,
+            broadcasting_strategy_t::per_oc_spatial,
+            broadcasting_strategy_t::no_broadcast};
+}
+
 // Fill the shape/stride/kernel/padding fields shared verbatim by all three
 // init_conf paths (baked, native forward, native backward). Channel bookkeeping
 // (c / c_block / c_without_padding) differs per path and stays with the caller.
@@ -186,22 +194,28 @@ bool jit_uni_pool_kernel_t<isa>::post_ops_ok(jit_pool_conf_t &jpp,
 
     if (jpp.is_backward) return post_ops.len() == 0;
 
-    // Accept an injector-supported chain: any number of forward eltwise ops plus
-    // any number of binaries. Binaries fuse at f32 (for f16 the accumulator is
-    // already widened to f32 at the inject point, and the rhs is loaded as f32).
-    // The rv64 injector positions every binary in a chain at ONE shared byte
-    // offset, so all binaries must share the same broadcast category (scalar /
-    // per-oc / full-dst); a mixed chain would need per-entry offsets and is left
-    // to the reference. src1 must be f32.
+    // Injector-level acceptance (x64 pattern): any number of forward eltwise
+    // ops plus any number of binaries, no sum; the kernels supply 4 eltwise
+    // aux groups.
+    if (!injector::post_ops_ok(injector::post_ops_ok_args_t(isa,
+                {injector::eltwise, injector::binary}, post_ops, &dst_d,
+                false /*sum_at_pos_0_only*/, false /*sum_requires_scale_one*/,
+                true /*sum_requires_zp_zero*/,
+                true /*sum_requires_same_params*/,
+                get_supported_postops_bcast_strategies(), /*n_vaux=*/4)))
+        return false;
+
+    // Pool-specific residue. Binaries fuse at f32 (for f16 the accumulator is
+    // already widened to f32 at the inject point, and the rhs is loaded as
+    // f32 -- no narrow staging group is reserved). The kernels position every
+    // binary in a chain at ONE shared byte offset, so all binaries must share
+    // the same broadcast category (scalar / per-oc / full-dst); a mixed chain
+    // would need per-entry offsets and is left to the reference.
     pool_binary_bcast_t bcast = pool_binary_bcast_t::none;
     for (const auto &e : post_ops.entry_) {
         if (e.is_eltwise()) {
-            if (!eltwise_injector::is_alg_supported(e.eltwise.alg)
-                    && !eltwise_injector::needs_extra_aux(e.eltwise.alg))
-                return false;
             jpp.with_eltwise = true;
         } else if (e.is_binary()) {
-            if (!binary_injector::is_alg_supported(e.binary.alg)) return false;
             if (e.binary.src1_desc.data_type != data_type::f32) return false;
             const memory_desc_wrapper s1(e.binary.src1_desc);
             const pool_binary_bcast_t k = classify_binary_src1(s1, dst_d);
@@ -826,11 +840,11 @@ void jit_uni_pool_kernel_t<isa>::apply_postops(int ur_w, int c_off) {
             addr_off(t2, t5, jj * c_off); // element index of output column jj
             slli(t2, t2, 2); // * sizeof(f32)
         }
-        // dynamic-params: t2 is the (byte) rhs offset for this column, exactly
-        // what the legacy static path read from bsp.off.
+        // dynamic-params: t2 is the (byte) rhs offset for this column. The
+        // baked kernel computes at e32/m1 (group_stride 1).
         binary_injector::rhs_arg_dynamic_params_t rd;
-        rd.vmm_idx_to_out_off[acc] = t2;
-        postops_injector_->compute_vector(acc, rd);
+        rd.vmm_idx_to_out_reg.emplace(acc, t2);
+        postops_injector_->compute_vector(acc, rd, 1 /*group_stride*/);
     }
 }
 
@@ -861,8 +875,6 @@ void jit_uni_pool_kernel_t<isa>::generate() {
     ld(reg_k_shift, reg_param, GET_OFF(kh_padding_shift));
     flw(f_area, reg_param, GET_OFF(ker_area_h));
     ld(reg_bc, reg_param, GET_OFF(b_c));
-    if (jpp.with_binary)
-        ld(reg_rhs, reg_param, GET_OFF(post_ops_binary_rhs_arg_vec));
 
     // Channel AVL for this block: c_block, or c_tail for the nspc last block.
     li(reg_vl, jpp.c_block);
@@ -885,12 +897,22 @@ void jit_uni_pool_kernel_t<isa>::generate() {
         // eltwise aux at the post-op inject point.
         eltwise_injector::static_params_t esp(v_eltw0, v_eltw1, v_eltw2, v_tmp,
                 v_tmp, f_eltw0, f_eltw1, t4, /*is_fwd=*/true);
-        binary_injector::static_params_t bsp(v_bin_rhs, f_bin, reg_rhs, t2, t3);
-        bsp.off_is_bytes = true; // t2 is the per-column byte offset
+        // Host-positioned injector mode (null dst_d): the kernel computes the
+        // per-column byte offset itself, so the rhs classifies as scalar /
+        // no_broadcast from the rhs element count. rhs is f32 (no gather/narrow).
+        // The rhs pointer array is read through the args pointer (x64 model);
+        // preserve_gpr shields the injector's fixed X_TMP scratch (t4 is this
+        // kernel's aux_ih and t5 the bcast==3 base).
+        binary_injector::rhs_arg_static_params_t rhs_arg_bsp(v_bin_rhs.getIdx(),
+                t3, t2, t2, true /*preserve gpr*/, false /*preserve vmm*/,
+                GET_OFF(post_ops_binary_rhs_arg_vec),
+                memory_desc_wrapper(nullptr));
+        rhs_arg_bsp.rhs_dt_helper_freg = f_bin;
+        rhs_arg_bsp.off_is_bytes = true; // t2 is the per-column byte offset
+        const binary_injector::static_params_t bsp(reg_param, rhs_arg_bsp);
         postops_injector_
                 = utils::make_unique<injector::jit_uni_postops_injector_t<isa>>(
-                        this, jpp.post_ops, esp,
-                        jpp.with_binary ? &bsp : nullptr);
+                        this, jpp.post_ops, bsp, esp);
     }
 
     prev_kw = 0;
@@ -1081,8 +1103,11 @@ status_t jit_uni_pool_ncsp_kernel_t<isa, d_type>::init_conf(
     // contains the binary is routed by the driver through the channel-vectorized
     // single-position path so the rhs broadcast is uniform; the injector loads
     // the rhs (f32) per channel chunk. post_ops_ok already gated the chain.
-    const bool inj_ok = injector::jit_uni_postops_injector_t<isa>::post_ops_ok(
-            po, /*n_vaux=*/4);
+    const bool inj_ok = injector::post_ops_ok(injector::post_ops_ok_args_t(isa,
+            {injector::eltwise, injector::binary}, po, &dst_d,
+            false /*sum_at_pos_0_only*/, false /*sum_requires_scale_one*/,
+            true /*sum_requires_zp_zero*/, true /*sum_requires_same_params*/,
+            get_supported_postops_bcast_strategies(), /*n_vaux=*/4));
     bool po_has_binary = false;
     for (int i = 0; i < po.len(); i++)
         if (po.entry_[i].is_binary()) po_has_binary = true;
@@ -1195,9 +1220,8 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_f32() {
     ld(s8, reg_param, GET_OFF_P(src_vec_byte_stride));
     ld(s9, reg_param, GET_OFF_P(dst_vec_byte_stride));
     if (jpp_.fuse_binary && !max_train) {
-        // s10 = rhs origin pointer array; s11 = shared byte offset (advanced per
-        // channel chunk). The injector runs in indirect mode.
-        ld(s10, reg_param, GET_OFF_P(post_op_rhs));
+        // s11 = shared byte offset (advanced per channel chunk); the injector
+        // reads the rhs pointer array through the args pointer (x64 model).
         ld(s11, reg_param, GET_OFF_P(post_op_off0));
     }
     if (max_train) {
@@ -1323,27 +1347,34 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_f32() {
         // so it is free as the fourth eltwise aux during an eltwise entry.
         eltwise_injector::static_params_t esp(VReg(12), VReg(16), VReg(20),
                 VReg(24), VReg(24), fa3, fa4, t2, /*is_fwd=*/true);
-        // Indirect injector mode (any number of binaries): rhs origin array in
-        // s10 (or a4 when max-training, since s10 is then the ws pointer), s11 =
-        // shared byte offset, a3 = per-binary scratch. Binary rhs scratch v24/fa5
-        // (clear of v_ind = v28). full-dst uses a strided (vlse) load keyed on the
-        // dst channel stride (s9 == the f32 rhs channel stride); per-oc/scalar the
-        // contiguous form.
-        const Reg reg_rhs = mt_bin ? a4 : s10;
-        if (mt_bin) ld(a4, reg_param, GET_OFF_P(post_op_rhs));
-        binary_injector::static_params_t bsp_contig(
-                VReg(24), fa5, reg_rhs, s11, a3);
-        binary_injector::static_params_t bsp_strided(
-                VReg(24), fa5, reg_rhs, s11, a3, s9);
-        bsp_contig.off_is_bytes = bsp_strided.off_is_bytes = true;
-        injector::jit_uni_postops_injector_t<isa> po_inj(this, jpp_.post_ops,
-                esp,
-                jpp_.fuse_binary ? (bin_strided ? &bsp_strided : &bsp_contig)
-                                 : nullptr);
+        // Indirect injector mode (any number of binaries): the rhs pointer
+        // array is read through the args pointer (x64 model; max-training
+        // needs no dedicated array-base register anymore), s11 = shared byte
+        // offset, a3 = per-binary scratch. Binary rhs scratch v24/fa5 (clear
+        // of v_ind = v28). full-dst uses a strided (vlse) load keyed on the
+        // dst channel stride (s9 == the f32 rhs channel stride);
+        // per-oc/scalar the contiguous form.
+        // Host-positioned injector mode (null dst_d): the kernel maintains
+        // the shared byte offset itself; preserve_gpr shields the injector's
+        // fixed X_TMP scratch (t4 holds the live unit-stride comparison
+        // constant here).
+        binary_injector::rhs_arg_static_params_t rhs_arg_bsp(24, a3, s11, s11,
+                true /*preserve gpr*/, false /*preserve vmm*/,
+                GET_OFF_P(post_op_rhs), memory_desc_wrapper(nullptr));
+        rhs_arg_bsp.rhs_dt_helper_freg = fa5;
+        rhs_arg_bsp.off_is_bytes = true;
+        if (bin_strided) {
+            rhs_arg_bsp.is_strided = true;
+            rhs_arg_bsp.rhs_stride = s9;
+        }
+        const binary_injector::static_params_t bsp(reg_param, rhs_arg_bsp);
+        injector::jit_uni_postops_injector_t<isa> po_inj(
+                this, jpp_.post_ops, bsp, esp);
         // dynamic-params: s11 is the per-chunk byte offset (off_is_bytes).
         binary_injector::rhs_arg_dynamic_params_t rhs_dyn;
-        rhs_dyn.vmm_idx_to_out_off[v_acc.getIdx()] = s11;
-        po_inj.compute_vector(v_acc.getIdx(), rhs_dyn);
+        rhs_dyn.vmm_idx_to_out_reg.emplace(v_acc.getIdx(), s11);
+        // ncsp channel-vec computes at e32/m1 (group_stride 1).
+        po_inj.compute_vector(v_acc.getIdx(), rhs_dyn, 1 /*group_stride*/);
     }
     // Store result — use vse32_v for unit stride
     {
@@ -1525,11 +1556,11 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
     } else if (jpp_.fuse_binary) {
         // fuse_binary => the driver routes each output column through the
         // single-position path (n_pos == 1), so no position loop is needed.
-        // Indirect injector mode: s10 = rhs origin array, s11 = shared byte
-        // offset, t3 = f32 rhs channel stride for full-dst (= 2 * the f16 dst
-        // channel stride s9; the rhs is f32 while the dst is f16). t3 held
-        // inD_stride only until s5 was derived above, so it is free here.
-        ld(s10, reg_param, GET_OFF_P(post_op_rhs));
+        // Indirect injector mode: the rhs pointer array is read through the
+        // args pointer (x64 model), s11 = shared byte offset, t3 = f32 rhs
+        // channel stride for full-dst (= 2 * the f16 dst channel stride s9;
+        // the rhs is f32 while the dst is f16). t3 held inD_stride only until
+        // s5 was derived above, so it is free here.
         ld(s11, reg_param, GET_OFF_P(post_op_off0));
         slli(t3, s9, 1);
     } else {
@@ -1546,27 +1577,33 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
     // v28 is the binary rhs scratch and is temporally free for eltwise entries.
     eltwise_injector::static_params_t esp(VReg(12), VReg(16), VReg(20),
             VReg(28), VReg(28), fa3, fa4, t1, /*is_fwd=*/true);
-    // Indirect mode (any number of binaries): rhs origin array in s10 (or a4 when
-    // max-training, since s10 is then the ws pointer), s11 = shared byte offset,
-    // a3 = per-binary scratch. full-dst uses a strided (vlse) f32 load keyed on
-    // the f32 rhs channel stride (t3, or a6 when max-training); per-oc/scalar vle.
-    const Reg reg_rhs = mt_bin ? a4 : s10;
+    // Indirect mode (any number of binaries): the rhs pointer array is read
+    // through the args pointer (x64 model; max-training needs no dedicated
+    // array-base register anymore), s11 = shared byte offset, a3 = per-binary
+    // scratch. full-dst uses a strided (vlse) f32 load keyed on the f32 rhs
+    // channel stride (t3, or a6 when max-training); per-oc/scalar vle.
     const Reg reg_stride = mt_bin ? a6 : t3;
-    binary_injector::static_params_t bsp_contig(
-            VReg(28), fa5, reg_rhs, s11, a3);
-    binary_injector::static_params_t bsp_strided(
-            VReg(28), fa5, reg_rhs, s11, a3, reg_stride);
-    bsp_contig.off_is_bytes = bsp_strided.off_is_bytes = true;
+    // Host-positioned injector mode (null dst_d): the kernel maintains the
+    // shared byte offset itself; preserve_gpr shields the injector's fixed
+    // X_TMP scratch (t4 holds the live unit-stride comparison constant here).
+    binary_injector::rhs_arg_static_params_t rhs_arg_bsp(28, a3, s11, s11,
+            true /*preserve gpr*/, false /*preserve vmm*/,
+            GET_OFF_P(post_op_rhs), memory_desc_wrapper(nullptr));
+    rhs_arg_bsp.rhs_dt_helper_freg = fa5;
+    rhs_arg_bsp.off_is_bytes = true;
+    if (bin_strided) {
+        rhs_arg_bsp.is_strided = true;
+        rhs_arg_bsp.rhs_stride = reg_stride;
+    }
+    const binary_injector::static_params_t bsp(reg_param, rhs_arg_bsp);
     injector::jit_uni_postops_injector_t<isa> po_inj(this,
             (jpp_.fuse_eltwise || jpp_.fuse_binary) ? jpp_.post_ops : no_po,
-            esp,
-            jpp_.fuse_binary ? (bin_strided ? &bsp_strided : &bsp_contig)
-                             : nullptr);
+            bsp, esp);
     // dynamic-params: s11 is the per-chunk byte offset (off_is_bytes). Both the
     // avg (v_acc) and max (v24) post-op registers use the same offset.
     binary_injector::rhs_arg_dynamic_params_t rhs_dyn;
-    rhs_dyn.vmm_idx_to_out_off[v_acc.getIdx()] = s11;
-    rhs_dyn.vmm_idx_to_out_off[24] = s11;
+    rhs_dyn.vmm_idx_to_out_reg.emplace(v_acc.getIdx(), s11);
+    rhs_dyn.vmm_idx_to_out_reg.emplace(24, s11);
 
     Label pos_loop, pos_done;
     if (!jpp_.fuse_binary && !max_train) {
@@ -1716,7 +1753,7 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
                 ld(a4, reg_param, GET_OFF_P(post_op_rhs));
                 slli(a6, s9, 1);
             }
-            po_inj.compute_vector(v_acc.getIdx(), rhs_dyn);
+            po_inj.compute_vector(v_acc.getIdx(), rhs_dyn, 2 /*group_stride*/);
         }
         vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         if (is_bf16)
@@ -1726,17 +1763,17 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
     } else if (jpp_.fuse_eltwise || jpp_.fuse_binary) {
         // max: the accumulator is f16; widen to f32 (v24/m2), apply the post-op
         // chain (eltwise and/or binary, rhs in v28), then narrow back in place
-        // so the store path is unchanged. For max-training the rhs origin array
-        // (a4) and f32 rhs stride (a6) are positioned here (s10/t3 hold the ws
-        // pointer / argmax scratch), free after the window sweep.
+        // so the store path is unchanged. For max-training the f32 rhs stride
+        // (a6) is positioned here (t3 holds the argmax scratch), free after
+        // the window sweep.
         if (mt_bin) {
-            ld(a4, reg_param, GET_OFF_P(post_op_rhs));
             slli(a6, s9, 1); // f32 rhs channel stride (= 2 * f16 dst stride)
         }
         vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vfwcvt_f_f_v(VReg(24), v_acc);
         vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-        po_inj.compute_vector(24, rhs_dyn);
+        // f16 max widened to f32 at e32/m2 (group_stride 2).
+        po_inj.compute_vector(24, rhs_dyn, 2 /*group_stride*/);
         vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vfncvt_f_f_w(v_acc, VReg(24));
     }
@@ -1933,8 +1970,15 @@ void jit_uni_pool_interior_kernel_t<isa, d_type>::generate_nspc() {
     post_ops_t no_po;
     eltwise_injector::static_params_t esp(VReg(12), VReg(16), VReg(20),
             VReg(24), VReg(24), fa4, fa5, t6, /*is_fwd=*/true);
+    // The chain here is eltwise-only, so the (mandatory) binary static params
+    // are never consumed; pass placeholder scratch.
+    binary_injector::rhs_arg_static_params_t rhs_arg_bsp(24, x0, x0, x0,
+            false /*preserve gpr*/, false /*preserve vmm*/,
+            0 /*abi_param_offset*/, memory_desc_wrapper(nullptr));
+    rhs_arg_bsp.rhs_dt_helper_freg = fa5;
+    const binary_injector::static_params_t bsp(x0, rhs_arg_bsp);
     injector::jit_uni_postops_injector_t<isa> po_inj(
-            this, jpp_.fuse_eltwise ? jpp_.post_ops : no_po, esp);
+            this, jpp_.fuse_eltwise ? jpp_.post_ops : no_po, bsp, esp);
     binary_injector::rhs_arg_dynamic_params_t rhs_dyn; // eltwise-only here
 
     Label block_loop, block_done;
@@ -1999,7 +2043,9 @@ void jit_uni_pool_interior_kernel_t<isa, d_type>::generate_nspc() {
     mv(a1, a5); // dst_ptr
     for (int j = 0; j < ur_w; j++) {
         if (!is_max) vfmul_vf(acc(j), acc(j), fa1);
-        if (jpp_.fuse_eltwise) po_inj.compute_vector(acc(j).getIdx(), rhs_dyn);
+        // nspc interior computes at e32/m1 (group_stride 1); eltwise-only here.
+        if (jpp_.fuse_eltwise)
+            po_inj.compute_vector(acc(j).getIdx(), rhs_dyn, 1 /*group_stride*/);
         vse32_v(acc(j), a1);
         if (j + 1 < ur_w) add(a1, a1, s5); // dst column stride == w_stride
     }

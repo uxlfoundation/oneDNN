@@ -17,3 +17,7 @@
 
 # 1x1 with a source zero point.
 --reset --impl=brgconv --dir=FWD_I --dt=u8:s8:f32 --stag=nhwc --dtag=nhwc --attr-zero-points=src:common:3 mb1ic72ih20oc64oh20kh1
+
+# Padding, stride-2, and a single-pixel output with a source zero point.
+--reset --impl=brgconv --dir=FWD_I --dt=u8:s8:f32 --stag=nhwc --dtag=nhwc --attr-zero-points=src:common:3 mb32ic72ih31iw33oc64oh16ow17kh3kw3sh2sw2ph1pw1
+mb1ic24ih1iw1oc512oh1ow1kh3kw3ph1pw1

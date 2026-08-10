@@ -322,9 +322,34 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(po.check_sum_consistency(dst_dt, is_int8),
             VERBOSE_UNSUPPORTED_POSTOP);
 
+    // Scalar-broadcast ternary (select) post-ops fuse on avx512_core and
+    // below (get_aux_kmask avoids the src1 tail_opmask collision). The AMX
+    // brgemm post-op path doesn't handle this case, so gate on the AMX ISA
+    // and fall back to avx512_core/ref. Anchor: TERNARY_SCALAR_BCAST_AVX512_ONLY.
+    // TODO(perf): support scalar-broadcast ternary select on AMX.
     VDISPATCH_MATMUL(
-            !binary_injector::any_binary_postop_rhs_with_ternary_scalar_bcast(
-                    po, dst_d),
+            !(is_superset(isa, avx512_core_amx)
+                    && binary_injector::
+                            any_binary_postop_rhs_with_ternary_scalar_bcast(
+                                    po, dst_d)),
+            VERBOSE_UNSUPPORTED_POSTOP);
+
+    // Broadcast-condition ternary (select) post-ops fuse on avx512_core and
+    // below; the AMX brgemm post-op path segfaults on this case, so reject
+    // it here and let the iterator fall back.
+    const auto any_ternary_bcast_cond = [&]() {
+        for (int i = 0; i < po.len(); ++i) {
+            const auto &e = po.entry_[i];
+            if (!e.is_binary_with_ternary_op()) continue;
+            const auto &src2_md = binary_injector::get_src2_desc(e, dst_d);
+            if (src2_md.ndims != dst_d.ndims()) return true;
+            if (!utils::array_cmp(src2_md.dims, dst_d.dims(), dst_d.ndims()))
+                return true;
+        }
+        return false;
+    };
+    VDISPATCH_MATMUL(
+            !(is_superset(isa, avx512_core_amx) && any_ternary_bcast_cond()),
             VERBOSE_UNSUPPORTED_POSTOP);
 
     CHECK(check_attr_scales());

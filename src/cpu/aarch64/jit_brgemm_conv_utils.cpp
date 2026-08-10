@@ -58,7 +58,7 @@ bool allow_perf_heuristics(const jit_brgemm_conv_conf_t &jcp) {
 bool use_bf16_mmla(const jit_brgemm_conv_conf_t &jcp,
         const memory_desc_t &weights_md, bool is_1x1_path) {
     const int n_block = brgemm_utils::mmla_n_block(jcp.isa);
-    const int k_block = brgemm_utils::mmla_rd_block();
+    const int k_block = brgemm_utils::mmla_rd_block(jcp.wei_dsz);
     const bool isa_ok
             = mayiuse_bf16() && utils::one_of(jcp.isa, sve_128, sve_256);
     const bool problem_ok = jcp.prop_kind == prop_kind::forward_inference
@@ -92,7 +92,7 @@ bool use_bf16_mmla(const jit_brgemm_conv_conf_t &jcp,
 bool native_mmla_blocking_ok(
         const jit_brgemm_conv_conf_t &jcp, bool require_vpad) {
     const int n_block = brgemm_utils::mmla_n_block(jcp.isa);
-    const int k_block = brgemm_utils::mmla_rd_block();
+    const int k_block = brgemm_utils::mmla_rd_block(jcp.wei_dsz);
     const bool execution_ok
             = IMPLICATION(require_vpad, jcp.exec_type == exec_vpad)
             && !jcp.use_M_mask;
@@ -1809,7 +1809,7 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.use_mmla = allow_mmla && use_bf16_mmla(jcp, weights_md, false);
     brg_blocking_t::last_ic_block_size = jcp.use_mmla
-            ? brgemm_utils::mmla_rd_block()
+            ? brgemm_utils::mmla_rd_block(jcp.wei_dsz)
             : data_type_vnni_granularity(jcp.wei_dt);
 
     // TODO: optimize depthwise convolutions (for now direct approach is faster)
@@ -2205,7 +2205,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     jcp.use_mmla = use_bf16_mmla(jcp, weights_md, true);
     brg_blocking_t::last_ic_block_size = jcp.use_mmla
-            ? brgemm_utils::mmla_rd_block()
+            ? brgemm_utils::mmla_rd_block(jcp.wei_dsz)
             : data_type_vnni_granularity(jcp.wei_dt);
 
     using namespace data_type;

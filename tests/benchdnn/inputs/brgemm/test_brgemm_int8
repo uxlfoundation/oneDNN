@@ -28,6 +28,55 @@
 --dt=u8:s8:f32
 --batch=shapes_2d_no_tail_int8
 
+# AArch64 SVE-I8MM MMLA path: aligned, exact-K8, and partial-tail shapes,
+# integer beta, and optional packed A.
+--reset
+--dt=u8:s8:s32
+--beta=0,1,2
+--brgemm-attr=use_mmla:1,use_mmla:1+use_mmla_packed_a:1
+6x8:8x33 6x16:16x16 10x63:63x17
+
+# Non-unit alpha and beta convert both the integer accumulator and C input.
+--reset
+--dt=u8:s8:f32
+--alpha=0.5,2
+--beta=2
+--brgemm-attr=use_mmla:1,use_mmla:1+use_mmla_packed_a:1
+5x15:15x17
+
+# Source zero point uses weight-sum compensation passed to the kernel.
+--reset
+--dt=u8:s8:s32
+--bs=3
+--batch-kind=addr,offs
+--attr-zero-points=src:common:3
+--brgemm-attr=use_mmla:1,use_mmla:1+use_mmla_packed_a:1
+10x63:63x17
+
+# The SVE128 Q-load shortcut must materialize non-encodable A row offsets.
+--reset
+--dt=u8:s8:s32
+--ld=20000:16:16
+--brgemm-attr=use_mmla:1,use_mmla:1+use_mmla_packed_a:1
+6x16:16x16
+
+# Fused bias, scales, eltwise, sum, conversion, and destination tails.
+--reset
+--dt=u8:s8:f32
+--bia_dt=f32
+--attr-post-ops=relu
+--attr-scales=src:common:0.5+wei:per_oc
+--brgemm-attr=use_mmla:1
+6x64:64x16
+
+--reset
+--dt=u8:s8:u8
+--bia_dt=f32
+--attr-post-ops=sum:2+relu
+--attr-scales=src:common:0.5+wei:per_oc+dst:common:5
+--brgemm-attr=use_mmla:1
+5x15:15x17
+
 # s8 src
 ## Bias check
 --reset

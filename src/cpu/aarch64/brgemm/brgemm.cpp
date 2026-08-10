@@ -425,7 +425,7 @@ status_t brgemm_desc_set_attr(
         const int compute_ld_blocks = brg->ld_block2;
         const int acc_regs = rnd_up(brg->bd_block, brgemm_utils::mmla_bd_blk())
                 * compute_ld_blocks;
-        if (brg->rd_block != brgemm_utils::mmla_rd_block()
+        if (brg->rd_block != brgemm_utils::mmla_rd_block(brg->typesize_A)
                 || brg->bd_block > max_mmla_bd_block
                 || !is_mmla_ld_blocks_supported(compute_ld_blocks)
                 || acc_regs > max_mmla_acc_regs)
@@ -460,7 +460,31 @@ status_t brgemm_desc_set_attr(
 }
 
 status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
-    // TODO: implement functionality here similar to corresponding one in x64
+    if (brg == nullptr) return status::invalid_arguments;
+    if (brg->zp_a_compensation_m_stride < 0) return status::invalid_arguments;
+
+    const bool has_src_zp = brg->zp_type_a != brgemm_broadcast_t::none;
+    const bool has_per_m_zp_comp = brg->has_zp_a_compensation_per_m();
+    if (has_per_m_zp_comp) {
+        const bool per_m_compensation_ok = brg->brgattr.use_mmla && brg->is_int8
+                && brg->dt_a == data_type::u8 && brg->dt_b == data_type::s8
+                && has_src_zp && !brg->req_s8s8_compensation
+                && !brg->req_cal_comp_pads
+                && brg->zp_a_compensation_m_stride >= brg->load_dim;
+        if (!per_m_compensation_ok) return status::unimplemented;
+    }
+
+    const bool with_vpad
+            = brg->brgattr.max_top_vpad > 0 || brg->brgattr.max_bottom_vpad > 0;
+    const bool needs_int8_comp_pads = brg->req_cal_comp_pads
+            || (with_vpad && (brg->req_s8s8_compensation || has_src_zp));
+    // Integer MMLA does not use BRGEMM's in-loop padding compensation. A
+    // virtual-padding caller with a source zero point may instead supply
+    // source zero-point compensation per M row.
+    if (brg->brgattr.use_mmla && brg->is_int8 && needs_int8_comp_pads
+            && !has_per_m_zp_comp)
+        return status::unimplemented;
+
     return status::success;
 }
 
@@ -532,6 +556,7 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(is_dgmm);
     CMP_BRGEMM_FIELD(with_sum);
     CMP_BRGEMM_FIELD(req_cal_comp_pads);
+    CMP_BRGEMM_FIELD(zp_a_compensation_m_stride);
 
     CMP_BRGEMM_FIELD(sum_scale);
     CMP_BRGEMM_FIELD(sum_zp);

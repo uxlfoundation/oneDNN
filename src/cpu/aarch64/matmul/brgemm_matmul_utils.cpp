@@ -1001,7 +1001,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     const int mmla_m_block = brgemm_utils::mmla_bd_blk();
     const int mmla_n_block = brgemm_utils::mmla_n_block(isa);
-    const int mmla_k_block = brgemm_utils::mmla_rd_block();
+    const int mmla_k_block = brgemm_utils::mmla_rd_block(bgmmc.a_dt_sz);
+    // TODO: Extend this selector to U8S8 and S8S8 MMLA once byte-MMLA MatMul
+    // packing and primitive-level coverage are ready. Until then, INT8 MatMul
+    // retains its existing packed-B contract and BRGEMM path.
     // Matmul handles batch dimensions outside the BRGEMM kernel. Select MMLA
     // when each BF16 matrix has complete N and K tiles; M tails are supported.
     const bool mmla_shape_ok = utils::one_of(isa, sve_128, sve_256)

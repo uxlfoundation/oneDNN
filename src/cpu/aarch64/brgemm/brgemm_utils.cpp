@@ -87,11 +87,20 @@ void init_common_conf(brgemm_desc_t *brg, brgemm_batch_kind_t type, float alpha,
 namespace brgemm_utils {
 
 status_t init_mmla_wei_md(
-        memory_desc_t &md, int k_dim, int n_dim, int n_block) {
+        memory_desc_t &md, int k_dim, int n_dim, int n_block, int k_block) {
+    const bool dt_ok
+            = utils::one_of(md.data_type, data_type::bf16, data_type::s8);
     const int dt_sz = types::data_type_size(md.data_type);
+    if (!dt_ok || dt_sz <= 0 || mmla_rd_chunk_bytes() % dt_sz != 0)
+        return status::invalid_arguments;
+
+    const int k_chunk = mmla_rd_chunk_elems(dt_sz);
+    const int full_k_block = mmla_rd_block(dt_sz);
+    const bool single_chunk = md.data_type == data_type::s8;
+    const int expected_k_block = single_chunk ? k_chunk : full_k_block;
+    if (k_block == 0) k_block = expected_k_block;
     if (k_dim < 0 || k_dim >= md.ndims || n_dim < 0 || n_dim >= md.ndims
-            || k_dim == n_dim || n_block <= 0 || dt_sz <= 0
-            || mmla_rd_chunk_bytes() % dt_sz != 0)
+            || k_dim == n_dim || n_block <= 0 || k_block != expected_k_block)
         return status::invalid_arguments;
 
     blocking_desc_t blk {};
@@ -100,13 +109,21 @@ status_t init_mmla_wei_md(
     for (int d = 0; d < md.ndims; ++d)
         if (d != k_dim) blk.strides[d] = order--;
     blk.strides[k_dim] = order;
-    blk.inner_nblks = 3;
-    blk.inner_blks[0] = mmla_rd_chunks_per_block(dt_sz);
-    blk.inner_idxs[0] = k_dim;
-    blk.inner_blks[1] = n_block;
-    blk.inner_idxs[1] = n_dim;
-    blk.inner_blks[2] = mmla_rd_chunk_elems(dt_sz);
-    blk.inner_idxs[2] = k_dim;
+    if (single_chunk) {
+        blk.inner_nblks = 2;
+        blk.inner_blks[0] = n_block;
+        blk.inner_idxs[0] = n_dim;
+        blk.inner_blks[1] = k_chunk;
+        blk.inner_idxs[1] = k_dim;
+    } else {
+        blk.inner_nblks = 3;
+        blk.inner_blks[0] = mmla_rd_chunks_per_block();
+        blk.inner_idxs[0] = k_dim;
+        blk.inner_blks[1] = n_block;
+        blk.inner_idxs[1] = n_dim;
+        blk.inner_blks[2] = k_chunk;
+        blk.inner_idxs[2] = k_dim;
+    }
     return memory_desc_init_by_blocking_desc(md, blk);
 }
 
@@ -120,9 +137,12 @@ void maybe_try_bf32(brgemm_desc_t *brg) {
 // FMMLA requires FEAT_F32MM, which the current AArch64 ISA dispatch does not
 // enable. FP32 BRGEMM therefore retains the existing SVE FMLA path.
 status_t validate_mmla_compute(const brgemm_desc_t &brg) {
-    const bool is_valid = brg.is_bf16 && !brg.is_bf16_emu && !brg.is_dgmm
-            && brg.is_row_major()
-            && utils::one_of(brg.isa_impl, sve_128, sve_256);
+    const bool isa_ok = utils::one_of(brg.isa_impl, sve_128, sve_256);
+    const bool is_bf16_mmla = brg.is_bf16 && !brg.is_bf16_emu;
+    const bool is_int8_mmla = brg.is_int8 && brg.dt_a == data_type::u8
+            && brg.dt_b == data_type::s8 && mayiuse_sve_i8mm();
+    const bool is_valid = isa_ok && (is_bf16_mmla || is_int8_mmla)
+            && !brg.is_dgmm && brg.is_row_major();
     return is_valid ? status::success : status::unimplemented;
 }
 
@@ -259,21 +279,18 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
                 ? brg->brgattr.hint_ld_block2
                 : default_mmla_ld_block2(brg);
         calculate_ldb_params(brg, ld_block2);
-        auto set_mmla_blocking = [&]() {
-            brg->bdb = brg->bcast_dim / brg->bd_block;
-            brg->bdb_tail = brg->bcast_dim % brg->bd_block;
-            brg->rd_block = mmla_rd_block();
-            brg->rdb = brg->reduce_dim / brg->rd_block;
-            brg->rdb_tail = brg->reduce_dim % brg->rd_block;
-            brg->is_M_tail = false;
-        };
         brg->bd_block = brg->brgattr.hint_bd_block != 0
                 ? brg->brgattr.hint_bd_block
                 : (brg->brgattr.use_mmla_packed_a
                                           || brg->bcast_dim <= mmla_max_bd_block
                                   ? nstl::min(brg->bcast_dim, mmla_max_bd_block)
                                   : nstl::min(brg->bcast_dim, 6));
-        set_mmla_blocking();
+        brg->bdb = brg->bcast_dim / brg->bd_block;
+        brg->bdb_tail = brg->bcast_dim % brg->bd_block;
+        brg->rd_block = mmla_rd_block(brg->typesize_A);
+        brg->rdb = brg->reduce_dim / brg->rd_block;
+        brg->rdb_tail = brg->reduce_dim % brg->rd_block;
+        brg->is_M_tail = false;
         return status::success;
     }
 

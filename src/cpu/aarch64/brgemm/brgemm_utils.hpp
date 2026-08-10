@@ -40,18 +40,19 @@ inline constexpr int mmla_bd_blk() {
 inline constexpr int mmla_ld_blk() {
     return 2;
 }
+// Each packed MMLA K chunk contributes 64 bits per input row.
 inline constexpr int mmla_rd_chunk_bytes() {
     return 8;
 }
-inline constexpr int mmla_rd_block() {
-    return 8;
-}
-
 inline constexpr int mmla_rd_chunk_elems(int dt_a_sz) {
     return mmla_rd_chunk_bytes() / dt_a_sz;
 }
-inline constexpr int mmla_rd_chunks_per_block(int dt_a_sz) {
-    return mmla_rd_block() / mmla_rd_chunk_elems(dt_a_sz);
+// A kernel reduction block comprises two 64-bit K chunks.
+inline constexpr int mmla_rd_chunks_per_block() {
+    return 2;
+}
+inline constexpr int mmla_rd_block(int dt_a_sz) {
+    return mmla_rd_chunks_per_block() * mmla_rd_chunk_elems(dt_a_sz);
 }
 
 // MMLA BRGEMM and its weight reorder share a four-vector N tile. Keep the
@@ -68,8 +69,11 @@ inline int mmla_n_block(cpu_isa_t isa) {
     return mmla_ld_block2() * simd_elems(data_type::f32, isa);
 }
 
-// Build the packed-weight layout consumed by MMLA BRGEMM and reorders.
-status_t init_mmla_wei_md(memory_desc_t &md, int k_dim, int n_dim, int n_block);
+// Build the packed-weight layout consumed by MMLA BRGEMM and reorders. A zero
+// K block selects the canonical layout: two K chunks for BF16 and one K chunk
+// for int8. An explicit K block must match that datatype-specific layout.
+status_t init_mmla_wei_md(
+        memory_desc_t &md, int k_dim, int n_dim, int n_block, int k_block = 0);
 
 status_t validate_mmla_compute(const brgemm_desc_t &brg);
 

@@ -26,6 +26,7 @@
 
 // TODO: refactor the driver to avoid using extra flags of a memory descriptor.
 #include "src/common/memory_desc.hpp"
+#include "src/common/memory_desc_wrapper.hpp"
 
 #include "tests/test_isa_common.hpp"
 
@@ -209,8 +210,15 @@ std::string prepare_wei_format_string(
 }
 
 #if defined(brg_aarch64)
-// packing helpers to test mmla brgemm kernel
-constexpr const char *mmla_src_tag = "AB2a4b";
+// Packing helpers for the MMLA BRGEMM kernels.
+const char *get_mmla_src_tag(dnnl_data_type_t dt) {
+    switch (dt) {
+        case dnnl_u8:
+        case dnnl_s8: return "AB2a8b";
+        case dnnl_bf16: return "AB2a4b";
+        default: assert(!"unsupported MMLA source data type"); return "";
+    }
+}
 
 int get_mmla_ld_block() {
     using namespace namespace_impl;
@@ -221,28 +229,33 @@ int get_mmla_ld_block() {
                       : cpu_isa_traits<sve_128>::vlen / sizeof(float);
 }
 
-std::string prepare_mmla_wei_format_string(int ld_blocks) {
-    return std::string("BA2a") + std::to_string(ld_blocks * get_mmla_ld_block())
-            + "b4a";
+std::string prepare_mmla_wei_format_string(int ld_blocks, dnnl_data_type_t dt) {
+    const int n_block = ld_blocks * get_mmla_ld_block();
+    switch (dt) {
+        case dnnl_s8:
+            return std::string("BA") + std::to_string(n_block) + "b8a";
+        case dnnl_bf16:
+            return std::string("BA2a") + std::to_string(n_block) + "b4a";
+        default: assert(!"unsupported MMLA weights data type"); return {};
+    }
 }
 
 int pack_for_mmla(const prb_t *prb, data_kind_t kind, const char *src_ptr,
-        std::vector<uint16_t> &packed_mem, size_t &batch_elems,
+        std::vector<uint8_t> &packed_mem, size_t &batch_bytes,
         const dims_t &dims, const dims_t &strides, const std::string &tag,
         size_t batch_offset, res_t *res) {
-    const size_t batch_offset_elems = batch_offset / sizeof(uint16_t);
     auto src_md = dnn_mem_t::init_md(
             2, dims.data(), prb->get_dt(kind), "", strides);
     auto dst_md = dnn_mem_t::init_md(2, dims.data(), prb->get_dt(kind), tag);
     dnn_mem_t dst_size_mem(dst_md, get_test_engine(), /* prefill = */ false);
 
-    batch_elems = dst_size_mem.size() / sizeof(uint16_t);
-    packed_mem.assign(prb->batch_size * batch_elems, 0);
+    batch_bytes = dst_size_mem.size();
+    packed_mem.assign(prb->batch_size * batch_bytes, 0);
 
-    const auto *src = reinterpret_cast<const uint16_t *>(src_ptr);
+    const auto *src = reinterpret_cast<const uint8_t *>(src_ptr);
     for (int bs = 0; bs < prb->batch_size; bs++) {
-        auto *src_batch = const_cast<uint16_t *>(src + bs * batch_offset_elems);
-        auto *dst_batch = packed_mem.data() + bs * batch_elems;
+        auto *src_batch = const_cast<uint8_t *>(src + bs * batch_offset);
+        auto *dst_batch = packed_mem.data() + bs * batch_bytes;
 
         auto src_mem = dnn_mem_t::create_from_host_ptr(
                 src_md, get_test_engine(), src_batch);
@@ -252,6 +265,20 @@ int pack_for_mmla(const prb_t *prb, data_kind_t kind, const char *src_ptr,
     }
 
     return OK;
+}
+
+void prepare_mmla_src_zp_compensation(const prb_t *prb,
+        const dnn_mem_t &weights_mem, std::vector<int32_t> &compensation) {
+    compensation.assign(prb->n, 0);
+    const dnnl::impl::memory_desc_wrapper weights_d(weights_mem.md_);
+    const auto *weights = (const int8_t *)weights_mem;
+    for_(int64_t bs = 0; bs < prb->batch_size; ++bs)
+    for_(int64_t k = 0; k < prb->k; ++k)
+    for (int64_t n = 0; n < prb->n; ++n) {
+        const auto logical_offset = (bs * prb->k + k) * prb->n + n;
+        const auto physical_offset = weights_d.off_l(logical_offset);
+        compensation[n] -= static_cast<int32_t>(weights[physical_offset]);
+    }
 }
 #endif
 
@@ -649,7 +676,8 @@ void init_memory_args(
     const bool pack_mmla_wei_per_batch
             = kernel_args.use_mmla_ && prb->batch_size > 1;
     const auto wtag = kernel_args.use_mmla_
-            ? prepare_mmla_wei_format_string(kernel_args.mmla_ld_block2_)
+            ? prepare_mmla_wei_format_string(
+                      kernel_args.mmla_ld_block2_, prb->wei_dt())
             : prepare_wei_format_string(prb->wei_dt(), prb->get_ldb(),
                       kernel_args.is_b_data_layout_vnni_);
     dims_t plain_wei_strides = {prb->get_ldb(), 1};
@@ -677,7 +705,15 @@ void init_memory_args(
     static_cast<dnnl_memory_desc_t>(wei_md)->extra = wei_md_extra;
 
     const bool need_src_comp = !prb->attr.zero_points.is_def(DNNL_ARG_SRC);
-    if (need_src_comp) {
+    bool prepare_src_comp_with_reorder = need_src_comp;
+#if defined(brg_aarch64)
+    // Custom MMLA tags do not support reorder-owned compensation buffers.
+    const bool mmla_uses_manual_src_comp
+            = kernel_args.use_mmla_ && prb->wei_dt() == dnnl_s8;
+    prepare_src_comp_with_reorder
+            = prepare_src_comp_with_reorder && !mmla_uses_manual_src_comp;
+#endif
+    if (prepare_src_comp_with_reorder) {
         wei_md_extra.flags |= dnnl::impl::memory_extra_flags::
                 compensation_conv_asymmetric_src;
         wei_md_extra.asymm_compensation_mask = 2; // N dimension
@@ -1165,32 +1201,33 @@ int doit(const prb_t *prb, res_t *res) {
     size_t src_batch_offset = prb->get_src_batch_offset();
     size_t wei_batch_offset = prb->get_wei_batch_offset();
 #if defined(brg_aarch64)
-    std::vector<uint16_t> packed_src;
-    std::vector<uint16_t> packed_wei;
+    std::vector<uint8_t> packed_src;
+    std::vector<uint8_t> packed_wei;
     if (kernel_args.use_mmla_ && kernel_args.use_mmla_packed_a_) {
-        size_t src_batch_elems = 0;
+        size_t src_batch_bytes = 0;
         const dims_t src_dims = {prb->m, prb->k};
         const dims_t src_strides = {prb->get_lda(), 1};
-        BENCHDNN_PRINT(6, "stag: %s\n", mmla_src_tag);
-        SAFE(pack_for_mmla(prb, SRC, src_ptr, packed_src, src_batch_elems,
-                     src_dims, src_strides, mmla_src_tag,
+        const char *src_tag = get_mmla_src_tag(prb->src_dt());
+        BENCHDNN_PRINT(6, "stag: %s\n", src_tag);
+        SAFE(pack_for_mmla(prb, SRC, src_ptr, packed_src, src_batch_bytes,
+                     src_dims, src_strides, src_tag,
                      prb->get_src_batch_offset(), res),
                 WARN);
         src_ptr = reinterpret_cast<const char *>(packed_src.data());
-        src_batch_offset = src_batch_elems * sizeof(uint16_t);
+        src_batch_offset = src_batch_bytes;
     }
     if (kernel_args.use_mmla_ && prb->batch_size > 1) {
-        size_t wei_batch_elems = 0;
+        size_t wei_batch_bytes = 0;
         const dims_t wei_dims = {prb->k, prb->n};
         const dims_t wei_strides = {prb->get_ldb(), 1};
-        SAFE(pack_for_mmla(prb, WEI, wei_ptr, packed_wei, wei_batch_elems,
+        SAFE(pack_for_mmla(prb, WEI, wei_ptr, packed_wei, wei_batch_bytes,
                      wei_dims, wei_strides,
                      prepare_mmla_wei_format_string(
-                             kernel_args.mmla_ld_block2_),
+                             kernel_args.mmla_ld_block2_, prb->wei_dt()),
                      prb->get_wei_batch_offset(), res),
                 WARN);
         wei_ptr = reinterpret_cast<const char *>(packed_wei.data());
-        wei_batch_offset = wei_batch_elems * sizeof(uint16_t);
+        wei_batch_offset = wei_batch_bytes;
     }
 #endif
 
@@ -1236,6 +1273,16 @@ int doit(const prb_t *prb, res_t *res) {
                             ? prb->get_ldb() * sizeof(int32_t)
                             : 0);
     char *src_comp_ptr = const_cast<char *>(wei_ptr) + wei_offset_zp;
+#if defined(brg_aarch64)
+    std::vector<int32_t> mmla_src_zp_compensation;
+    if (kernel_args.use_mmla_ && prb->wei_dt() == dnnl_s8
+            && !prb->attr.zero_points.is_def(DNNL_ARG_SRC)) {
+        prepare_mmla_src_zp_compensation(
+                prb, mem_map.at(DNNL_ARG_WEIGHTS), mmla_src_zp_compensation);
+        src_comp_ptr
+                = reinterpret_cast<char *>(mmla_src_zp_compensation.data());
+    }
+#endif
 
 #if defined(brg_x64)
     namespace_impl::brgemm_post_ops_data_t post_ops_data(

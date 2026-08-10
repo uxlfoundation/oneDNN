@@ -209,7 +209,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::init(engine_t *engine) {
     const auto src_type = pd()->src_md(0)->data_type;
 
     const auto last_ic_block = jcp.use_mmla
-            ? brgemm_utils::mmla_rd_block()
+            ? brgemm_utils::mmla_rd_block(jcp.wei_dsz)
             : data_type_vnni_granularity(src_type);
 
     wei_ic_stride = jcp.wei_plain ? jcp.oc_without_padding : jcp.oc_block;

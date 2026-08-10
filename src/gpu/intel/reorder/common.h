@@ -246,7 +246,6 @@
 #define ZP_SHIFT(x, x0) (x) - (float)(x0)
 #define ZP_UNSHIFT(x, x0) (x) + (float)(x0)
 #define ZP_NO_SHIFT(x, x0) (x)
-#define ZP_READ_VAL(x) x
 #define ZP_READ_PTR(x) x[0]
 #define ZP_ZERO(x) 0
 
@@ -268,10 +267,8 @@
 
 #if WITH_SUM_ZPOINT
 #define SUM_SHIFT ZP_SHIFT
-#define GET_SUM_ZP ZP_READ_VAL
 #else
 #define SUM_SHIFT ZP_NO_SHIFT
-#define GET_SUM_ZP ZP_ZERO
 #endif
 
 #define SRC_AXPY(a, x, x0) SRC_SCALE(SRC_SHIFT(x, x0), a)

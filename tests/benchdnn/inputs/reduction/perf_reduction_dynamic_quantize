@@ -1,0 +1,10 @@
+# Representative LLM activation shapes for performance measurements.
+--mode=P
+--perf-template=perf,%impl%,%sdt%,%ddt%,%desc%,%0time%
+
+--reset --mode=P --alg=dynamic_quantize --p=0 --sdt=bf16 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:1x4096 1x4096:1x4096
+--reset --mode=P --alg=dynamic_quantize --p=0 --sdt=bf16 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:1x4096 8x4096:8x4096
+--reset --mode=P --alg=dynamic_quantize --p=0 --sdt=bf16 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:1x4096 32x4096:32x4096
+
+--reset --mode=P --alg=dynamic_quantize --p=0 --sdt=bf16 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:1x128 8x4096:8x4096
+--reset --mode=P --alg=dynamic_quantize --p=0 --sdt=bf16 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:1x128 32x4096:32x4096

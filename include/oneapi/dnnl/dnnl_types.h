@@ -2248,6 +2248,9 @@ typedef enum {
     dnnl_reduction_norm_lp_power_p_max,
     /// Reduction using lp norm without final pth-root
     dnnl_reduction_norm_lp_power_p_sum,
+    /// Fused symmetric dynamic quantization with an `s8` destination and
+    /// `f32` scale output.
+    dnnl_reduction_dynamic_quantize,
     /// Softmax
     dnnl_softmax_accurate = 0x30000,
     /// Logsoftmax
@@ -2481,7 +2484,9 @@ typedef enum {
     dnnl_quantization_mode_dynamic_mx,
     /// dynamic quantization mode where quantization parameter is computed by
     /// oneDNN as \f$scale\_dt(amax(X) / max(dst\_dt))\f$ in `f32` then
-    /// converted to a scale type and written as an output.
+    /// converted to a scale type and written as an output. For
+    /// #dnnl_reduction_dynamic_quantize, the `f32` output scale is
+    /// \f$amax(X) / 127\f$ and the destination data type is `s8`.
     dnnl_quantization_mode_dynamic_fp,
 } dnnl_quantization_mode_t;
 

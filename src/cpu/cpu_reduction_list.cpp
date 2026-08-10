@@ -17,9 +17,13 @@
 
 #include "cpu/cpu_engine.hpp"
 
+#include "cpu/ref_dynamic_quantize.hpp"
 #include "cpu/ref_reduction.hpp"
 
 #if DNNL_X64
+#if !defined(_MSC_VER) && (defined(__GNUC__) || defined(__clang__))
+#include "cpu/x64/dynamic_quantize.hpp"
+#endif
 #include "cpu/x64/jit_uni_reduction.hpp"
 using namespace dnnl::impl::cpu::x64;
 #elif DNNL_RV64
@@ -36,6 +40,11 @@ using namespace dnnl::impl::data_type;
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REDUCTION_P({
+#if DNNL_X64 && !defined(_MSC_VER) \
+        && (defined(__GNUC__) || defined(__clang__))
+    CPU_INSTANCE_X64(dynamic_quantize_reduction_t)
+#endif
+    CPU_INSTANCE(ref_dynamic_quantize_reduction_t)
     CPU_INSTANCE_X64(jit_uni_reduction_t)
     CPU_INSTANCE_RV64(jit_uni_reduction_t)
     CPU_INSTANCE(ref_reduction_t)

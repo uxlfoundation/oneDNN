@@ -54,7 +54,12 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     auto argumentBase = interface.getArgumentBase();
     if (argumentBase.isInvalid() || argumentBase.getBase() < 1)
         stub("Microkernel argument base not set");
-    state.ra.claim(GRFRange(0, argumentBase.getBase()));
+    int claimGRFs = argumentBase.getBase();
+    // XXX: Keep the legacy claim as a workaround for NVL-P to avoid
+    // performance regressions. IGC is sensitive to register range changes.
+    if (getProductFamily() == ngen::ProductFamily::NVLP)
+        claimGRFs = std::max<int>(claimGRFs, 10);
+    state.ra.claim(GRFRange(0, claimGRFs));
 
     moveR0(strategy, state);
 

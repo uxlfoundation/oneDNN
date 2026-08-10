@@ -3160,7 +3160,11 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(dim_t bd_block2,
                 = have_to_load_bytes ? rows_for_rd_tail : 0;
         const auto bd_by_load_bytes = (bd >= bd_e - rows_by_load_bytes
                 || brg.brgattr.wary_A_k_tail_read);
-        const auto is_tail = have_to_load_bytes && bd_by_load_bytes;
+        const auto pre_process_fp8
+                = one_of(dt, data_type::f8_e5m2, data_type::f8_e4m3)
+                && brg.fp8_with_f16_vnni_block;
+        const auto is_tail
+                = have_to_load_bytes && bd_by_load_bytes && !pre_process_fp8;
         if (is_tail) {
             Xmm xmm_tmp = Xmm(vmm_bcast.getIdx());
             load_bytes(

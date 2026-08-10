@@ -141,24 +141,6 @@ dim_t binary_off0(
     return elem_off * (dim_t)sizeof(float);
 }
 
-// Per-binary src1 origin pointer array (in attribute order) for the indirect
-// injector mode: each entry is the binary's src1 base advanced to its logical
-// origin (off_l(0)), in f32 units since src1 is always f32. Shared by the baked
-// blocked/nspc drivers and the native forward path.
-static std::vector<const void *> collect_binary_rhs(
-        const jit_pool_conf_t &jpp, const exec_ctx_t &ctx) {
-    std::vector<const void *> rhs;
-    for (int i = 0; i < jpp.post_ops.len(); i++)
-        if (jpp.post_ops.entry_[i].is_binary()) {
-            const memory_desc_wrapper s1_d(
-                    jpp.post_ops.entry_[i].binary.src1_desc);
-            const auto *base = static_cast<const char *>(ctx.host_ptr(
-                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(i) | DNNL_ARG_SRC_1));
-            rhs.push_back(base + s1_d.off_l(0) * sizeof(float));
-        }
-    return rhs;
-}
-
 // Vectorize along C (strided) for a single ncsp output column.
 template <cpu_isa_t isa, data_type_t d_type>
 void pool_column_vec_c(const ncsp_kernel_t<isa, d_type> &kernel,
@@ -832,7 +814,8 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_blk(const data_t *src,
             = indices ? (int)types::data_type_size(indices_d.data_type()) : 0;
     const auto &jpp = pd()->jpp_;
 
-    std::vector<const void *> po_rhs = collect_binary_rhs(jpp, ctx);
+    std::vector<const void *> po_rhs
+            = binary_injector::prepare_binary_args(jpp.post_ops, ctx);
     const void *const *po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     const int c_mult
@@ -850,9 +833,9 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_blk(const data_t *src,
         arg.dst = &dst[dst_d.blk_off(n, c_off, oh)];
         // full-dst binary offset = (arg.dst - dst_orig); dst_orig must be the
         // dst LOGICAL origin (raw base + off_l(0)) so the offset excludes the
-        // md's offset0. blk_off() already includes offset0, and the rhs base is
-        // advanced by its own off_l(0) in collect_binary_rhs(); a raw-base
-        // dst_orig would double-count offset0 for a non-zero-offset submemory.
+        // md's offset0 (blk_off() already includes it). The rhs bases are the
+        // raw handles from the common prepare_binary_args -- like x64, a
+        // nonzero rhs offset0 is not folded in.
         arg.dst_orig = dst + dst_d.off_l(0);
         if (indices)
             arg.indices
@@ -890,7 +873,8 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_blk_3d(const data_t *src,
             = indices ? (int)types::data_type_size(indices_d.data_type()) : 0;
     const auto &jpp = pd()->jpp_;
 
-    std::vector<const void *> po_rhs = collect_binary_rhs(jpp, ctx);
+    std::vector<const void *> po_rhs
+            = binary_injector::prepare_binary_args(jpp.post_ops, ctx);
     const void *const *po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     const int c_mult
@@ -958,7 +942,9 @@ status_t jit_uni_pooling_fwd_t<isa>::execute_forward(
         // mode (one f32 pointer per binary, in attribute order). The kernel adds
         // the shared per-call offset (post_op_off0 + channel offset).
         std::vector<const void *> po_rhs_vec;
-        if (jpp.fuse_binary) po_rhs_vec = collect_binary_rhs(jpp, ctx);
+        if (jpp.fuse_binary)
+            po_rhs_vec
+                    = binary_injector::prepare_binary_args(jpp.post_ops, ctx);
         const void *po_rhs = po_rhs_vec.empty()
                 ? nullptr
                 : (const void *)po_rhs_vec.data();

@@ -17,6 +17,7 @@
 *******************************************************************************/
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
@@ -203,7 +204,7 @@ void jit_sve_convolution_fwd_t<src_type, wei_type, dst_type,
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.nb_ow;
     int nthr = jcp.aligned_threads;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -328,7 +329,7 @@ void jit_sve_convolution_fwd_t<src_type, wei_type, dst_type,
     int work_amount = jcp.mb * nb_groups * oc_chunks * jcp.oh * jcp.nb_ow;
     int nthr = jcp.aligned_threads;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -489,7 +490,7 @@ void jit_sve_convolution_fwd_t<src_type, wei_type, dst_type,
             = jcp.mb * nb_groups * oc_chunks * jcp.od * jcp.oh * jcp.nb_ow;
     int nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -656,7 +657,7 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
     int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.nb_iw;
     int nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -772,7 +773,7 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
     int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.ih * jcp.nb_iw;
     int nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -940,7 +941,7 @@ void jit_sve_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
     int work_amount = nb_groups * jcp.mb * ic_chunks * jcp.id * jcp.ih;
     int nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0}, start_copy;
         balance211(work_amount, nthr, ithr, start, end);
         start_copy = start;
@@ -1793,7 +1794,7 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
         }
     });
 #else
-    parallel(nthr_, [&](const int ithr, const int nthr) {
+    parallel(nthr_, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         thread_info_t thread_info(this, ctx, ithr);
         switch (pd()->jcp_.harness) {
             case harness_2d_reduction:
@@ -1810,7 +1811,7 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
         }
     });
 
-    parallel(nthr_, [&](const int ithr, const int nthr) {
+    parallel(nthr_, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         thread_info_t thread_info(this, ctx, ithr);
         if (nthr_mb_ > 1) {
             switch (pd()->jcp_.harness) {
@@ -1847,21 +1848,23 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
     });
 #endif
 
-    /* TODO: put that into compute_diff_bias() */
-    auto &jcp = pd()->jcp_;
-    if (pd()->with_bias() && jcp.oc_without_padding % jcp.oc_block != 0) {
-        auto diff_bias = ctx.get_scratchpad_grantor()
-                                 .template get<const diff_weights_data_t>(
-                                         key_conv_padded_bias);
-        auto diff_bias_in
-                = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_BIAS);
-        const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
-        const int stride = jcp.oc_without_padding;
-        for (int g = 0; g < jcp.ngroups; ++g) {
-            utils::array_copy(diff_bias_in + g * stride,
-                    diff_bias + g * padded_stride, stride);
+    parallel(1, [=](int, int) {
+        /* TODO: put that into compute_diff_bias() */
+        auto &jcp = pd()->jcp_;
+        if (pd()->with_bias() && jcp.oc_without_padding % jcp.oc_block != 0) {
+            auto diff_bias = ctx.get_scratchpad_grantor()
+                                     .template get<const diff_weights_data_t>(
+                                             key_conv_padded_bias);
+            auto diff_bias_in
+                    = CTX_OUT_MEM(diff_weights_data_t *, DNNL_ARG_DIFF_BIAS);
+            const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
+            const int stride = jcp.oc_without_padding;
+            for (int g = 0; g < jcp.ngroups; ++g) {
+                utils::array_copy(diff_bias_in + g * stride,
+                        diff_bias + g * padded_stride, stride);
+            }
         }
-    }
+    });
 }
 
 template struct jit_sve_convolution_bwd_weights_t<data_type::f32,

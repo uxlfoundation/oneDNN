@@ -263,7 +263,12 @@ status_t set_cpu_isa_hints(dnnl_cpu_isa_hints_t isa_hints) {
 namespace amx {
 
 int get_max_palette() {
-    if (mayiuse(amx_tile)) {
+    // Guard on the raw AMX-TILE CPUID bit (not mayiuse(amx_tile)) for two
+    // reasons: (1) CPUID leaf 0x1D is only defined when AMX-TILE is present, so
+    // this avoids reading an out-of-range leaf on older CPUs; (2) mayiuse(
+    // amx_tile) itself calls this function, so guarding on it here would cause
+    // infinite recursion.
+    if (cpu().has(Xbyak::util::Cpu::tAMX_TILE)) {
         static const unsigned int EAX = []() {
             unsigned int data[4] = {};
             Xbyak::util::Cpu::getCpuidEx(0x1D, 0, data);

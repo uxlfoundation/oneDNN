@@ -392,6 +392,11 @@ inline bool is_available() {
 
 namespace amx {
 
+// Return the maximum tile palette supported by the CPU (CPUID.1D:EAX), or `0`
+// when AMX is not supported. Exported because it is referenced from the inline
+// mayiuse() below, which is instantiated across separately-linked modules.
+int DNNL_API get_max_palette();
+
 // Return the target palette for AMX instructions. Currently this is `0` if AMX
 // instructions are not supported, and `1` if they are.
 int get_target_palette();
@@ -464,8 +469,14 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
                     && cpu().has(Cpu::tAPX_F) && cpu().has(Cpu::tMOVRS)
                     && x64::apx::is_available());
         case amx_tile:
+            // Some (mis-configured) hypervisors/VMs advertise AMX support via
+            // CPUID (AMX-TILE bit) and XCR0, but report zero supported tile
+            // palettes in CPUID.1D:EAX. Executing any AMX instruction on such a
+            // system raises #UD (illegal instruction). Require a non-zero
+            // palette so AMX is reported unavailable there.
             REG_AMX_ISA(return cpu().has(Cpu::tAMX_TILE)
-                    && x64::amx::is_available());
+                    && x64::amx::is_available()
+                    && x64::amx::get_max_palette() != 0);
         case amx_int8:
             REG_AMX_ISA(return mayiuse(amx_tile, soft)
                     && cpu().has(Cpu::tAMX_INT8));

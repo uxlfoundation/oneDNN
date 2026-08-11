@@ -23,6 +23,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <limits>
 
 GEMMSTONE_NAMESPACE_START
@@ -381,6 +383,21 @@ double evaluateECore(const kcatalog::Entry &e, const DerivedEvaluateParams &dp, 
     }
 
     double time = ctime + std::max(mtime, etime);
+
+    if (std::getenv("GEMM_EDBG")) {
+        std::fprintf(stderr,
+            "GEMM_EDBG uM=%d uN=%d grf=%d wg=%dx%dx%d wgK=%d tpEU=%d cap=%g "
+            "m=%ld n=%ld k=%ld b=%ld Ma=%.6g Mb=%.6g ctime=%.6g mtime=%.6g "
+            "etime=%.6g maxme=%.6g score=%.6g noKR=%d eff=%d\n",
+            int(e.driverInfo.unroll[LoopM]), int(e.driverInfo.unroll[LoopN]),
+            int(e.driverInfo.grfCount), int(e.driverInfo.wg[LoopM]),
+            int(e.driverInfo.wg[LoopN]), int(e.driverInfo.wg[LoopK]),
+            int(aux.wgK), int(dp.threadsPerEU), double(dp.hwThreadCapacity),
+            long(dp.sizes.m), long(dp.sizes.n), long(dp.sizes.k),
+            long(dp.sizes.batch), double(PARAM(Ma)), double(PARAM(Mb)),
+            ctime, mtime, etime, std::max(mtime, etime), time,
+            int(noKR), int(dp.effective));
+    }
 
     return time;
 #undef PARAM

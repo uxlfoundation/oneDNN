@@ -245,7 +245,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
                 bool is_xelpg = (product.family == ngen::ProductFamily::ARL
                         || product.family == ngen::ProductFamily::MTL);
                 if (!dev_info->mayiuse_systolic()) max_wg_n = 2;
-                max_n_unroll = (problem.Ta_ext.bits() < 8
+                max_n_unroll = (problem.Ta_ext.bits() <= 8
                                        && problem.Ta_ext.isInteger())
                         ? sg_size_ * problem.Ta_ext
                         : 16;

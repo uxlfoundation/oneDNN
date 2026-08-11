@@ -98,3 +98,19 @@
 --wtag=acb
 --match=gs128
 --batch=shapes_grouped_moe
+
+########################################
+# WoQ F16/U8/F16                       #
+# scale_b: f16 block (E, 1, N)         #
+# zero-point_b: u8 block (E, 1, N)     #
+# + bias f16                           #
+########################################
+
+--reset
+--dt=f16:u8:f16
+--bia-dt=f16 --bia_mask=2
+--attr-scales=wei:5:f16
+--attr-zero-points=wei:5:u8
+--attr-fpmath=f16:true
+--wtag=acb
+--batch=shapes_grouped_moe

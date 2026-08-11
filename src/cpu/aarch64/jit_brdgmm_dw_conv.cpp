@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024-2026 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/utils.hpp"
@@ -553,7 +554,7 @@ status_t brdgmm_dw_convolution_fwd_t<isa>::execute(
     const int n_rpad_blks
             = 1 + div_up(nstl::max(0, jcp.r_pad - (rpad_1 - w_shift)), w_shift);
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
         int n {0}, chb {0}, od {0}, oh {0}, owb {0};

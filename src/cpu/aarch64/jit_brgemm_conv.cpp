@@ -19,9 +19,11 @@
 #include <cassert>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
+
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/jit_brgemm_conv.hpp"
 #include "cpu/aarch64/jit_brgemm_conv_comp_pad_kernel.hpp"
@@ -1061,7 +1063,7 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
 }
 template <cpu_isa_t isa>
 struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
-    brgemm_thread_ctx_t(brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
+    brgemm_thread_ctx_t(const brgemm_exec_ctx_t &brgemm_ctx_, int ithr_,
             brgemm_batch_element_t *__restrict brg_batch_, char *c_buffer_,
             char *wsp_tile_)
         : brgemm_ctx(brgemm_ctx_)
@@ -1070,7 +1072,7 @@ struct brgemm_convolution_fwd_t<isa>::brgemm_thread_ctx_t {
         , c_buffer(c_buffer_)
         , wsp_tile(wsp_tile_) {}
 
-    brgemm_exec_ctx_t &brgemm_ctx;
+    const brgemm_exec_ctx_t &brgemm_ctx;
     int ithr {0};
     brgemm_batch_element_t *__restrict brg_batch {nullptr};
     char *c_buffer {nullptr};
@@ -1163,7 +1165,7 @@ status_t brgemm_convolution_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     // or made ic_chunks = 1 if use_buffer
     // or (looks more general) increase buffer size to store several rows
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         brgemm_batch_element_t *const __restrict brg_batch = brg_batch_global
@@ -1292,7 +1294,7 @@ status_t brgemm_convolution_fwd_t<isa>::cal_compensation(
                     <= platform::get_per_core_cache_size(1));
     const int nthr = is_small_shape ? 1 : jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         if (ithr >= work_amount) return;
 
         dim_t start {0}, end {0};

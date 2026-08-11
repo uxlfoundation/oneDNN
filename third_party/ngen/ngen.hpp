@@ -2606,8 +2606,9 @@ static inline void encodeDPAS(Instruction12 &i, Opcode op, DataType defaultType,
 
     encodeCommon12(i, op, emod, dst, tag);
 
-    i.ternary.dst  = encodeTernaryOperand12<true,  false>(dst,  tag).bits;
-    i.ternary.src0 = encodeTernaryOperand12<false, false>(src0, tag).bits;
+    // same as (i.ternary.dst/src0 = ...), update directly to avoid gcc13 bug
+    i.qword[0] |= uint64_t(encodeTernaryOperand12<true,  false>(dst,  tag).bits) << 48;
+    i.qword[1] |= uint64_t(encodeTernaryOperand12<false, false>(src0, tag).bits);
     i.ternary.src1 = encodeTernaryOperand12<false, false>(src1, tag).bits;
     i.ternary.src2 = encodeTernaryOperand12<false, false>(src2, tag).bits;
 

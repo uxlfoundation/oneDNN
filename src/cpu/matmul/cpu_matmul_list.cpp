@@ -34,6 +34,9 @@
 #include "cpu/x64/matmul/jit_uni_sparse_matmul.hpp"
 #if DNNL_X64_USE_ZEN
 #include "cpu/x64/zen64/matmul/zen_matmul.hpp"
+#if DNNL_EXPERIMENTAL_GROUPED_MEMORY
+#include "cpu/x64/zen64/matmul/zen_grouped_matmul.hpp"
+#endif
 #endif
 using namespace dnnl::impl::cpu::x64::matmul;
 using namespace dnnl::impl::cpu::x64;
@@ -99,6 +102,7 @@ constexpr impl_list_item_t impl_list[] = REG_MATMUL_P({
         CPU_INSTANCE(ref_matmul_int8_t)
         CPU_INSTANCE_X64(jit_uni_sparse_matmul_t)
         CPU_INSTANCE(ref_sparse_matmul_t)
+        CPU_INSTANCE_X64_ZEN_GROUPED(zen_grouped_matmul_t)
         CPU_INSTANCE_GROUPED(ref_grouped_t)
         /* eol */
         nullptr,

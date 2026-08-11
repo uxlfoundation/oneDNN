@@ -17,6 +17,7 @@
 #ifndef GPU_INTEL_LOGGING_HPP
 #define GPU_INTEL_LOGGING_HPP
 
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -39,6 +40,19 @@ enum class log_level_t {
     perf = 170,
     trace = 200,
 };
+
+// Parses `ONEDNN_VERBOSE` for a `xe=<level>` token independently of the generic
+// `debuginfo=<level>` verbose infrastructure. This provides a mechanism to
+// isolate gpu specific logs.
+inline int get_xe_debug_level() {
+    if (!is_dev_mode()) return 0;
+    static const int level = [] {
+        for (auto &tok : gpu_utils::split(getenv_string_user("VERBOSE"), ","))
+            if (tok.rfind("xe=", 0) == 0) return std::atoi(tok.c_str() + 3);
+        return 0;
+    }();
+    return level;
+}
 
 template <typename T, typename = void>
 struct print_helper_t {
@@ -74,8 +88,10 @@ public:
     }
 
     static bool is_enabled() {
-        return get_verbose_dev_mode(verbose_t::debuginfo)
-                >= static_cast<int>(level);
+        static const int lvl = std::max(
+                static_cast<int>(get_verbose_dev_mode(verbose_t::debuginfo)),
+                get_xe_debug_level());
+        return lvl >= static_cast<int>(level);
     }
 
     log_level_t get_level() const { return level; }

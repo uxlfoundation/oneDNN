@@ -80,8 +80,8 @@ struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
     int attn_mask_undef, attn_mask_buffer, attn_mask_top_left,
             attn_mask_bottom_right;
     bool invert_scale, with_attn_scale, with_host_scale, with_attn_mask,
-            broadcast_mask_q, with_causal_mask;
-    uint8_t padding1[2] = {0};
+            broadcast_mask_q, broadcast_mask_k, with_causal_mask;
+    uint8_t padding1[1] = {0};
     int subgroup_size, d_max_kq, d_max_v;
 
     bool d_full, arch_gte_hpc;
@@ -210,9 +210,21 @@ struct micro_fwd_t : public primitive_t {
                                 desc()->attn_mask_md()->dims[mask_q_index],
                                 desc()->queries(), 1),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_q_index);
-                VDISPATCH_SDPA(desc()->attn_mask_md()->dims[mask_k_index]
-                                == desc()->keys(),
+                VDISPATCH_SDPA(
+                        utils::one_of(
+                                desc()->attn_mask_md()->dims[mask_k_index],
+                                desc()->keys(), 1),
                         VERBOSE_INVALID_BROADCAST, "attn_mask", mask_k_index);
+                if (broadcast_mask_k()) {
+                    VDISPATCH_SDPA(
+                            desc()->attn_mask_md()->dims[mask_q_index] != 1,
+                            VERBOSE_INVALID_BROADCAST, "attn_mask",
+                            mask_q_index);
+                    const memory_desc_wrapper msk_mdw(desc()->attn_mask_md());
+                    VDISPATCH_SDPA(msk_mdw.is_plain()
+                                    && msk_mdw.strides()[mask_q_index] == 1,
+                            VERBOSE_UNSUPPORTED_TAG);
+                }
                 if (desc()->qry_md()->data_type == data_type::f32) {
                     VDISPATCH_SDPA(desc()->attn_mask_md()->data_type
                                     == desc()->qry_md()->data_type,
@@ -394,6 +406,12 @@ struct micro_fwd_t : public primitive_t {
 
         int sg_size() const { return sg_size_; }
         bool use_systolic_ukernel() const { return use_systolic_ukernel_; }
+
+        bool broadcast_mask_k() const {
+            return with_attn_mask() && !with_causal_mask()
+                    && desc()->attn_mask_md()->dims[mask_k_index] == 1
+                    && desc()->keys() != 1;
+        }
 
         // Block size for the Q/K head dim, baked into the kernel.
         int d_max_kq() const {

@@ -33,7 +33,7 @@
 using mdt = memory::data_type;
 using dnnl::accumulation_mode;
 
-enum class mask_type { no_mask, oneD, twoD, causal_br, causal_tl };
+enum class mask_type { no_mask, oneD, twoD, perQ, causal_br, causal_tl };
 enum class scale_type { host_side, device_side };
 constexpr scale_type default_scale_type = scale_type::device_side;
 
@@ -43,6 +43,7 @@ std::ostream &operator<<(std::ostream &ss, const mask_type &p) {
         case mask_type::no_mask: ss << "no mask"; break;
         case mask_type::oneD: ss << "1D"; break;
         case mask_type::twoD: ss << "2D"; break;
+        case mask_type::perQ: ss << "per query"; break;
         case mask_type::causal_br: ss << "causal bottom right"; break;
         case mask_type::causal_tl: ss << "causal top left"; break;
     }
@@ -178,6 +179,7 @@ std::ostream &operator<<(std::ostream &ss, const mask_config_t &m) {
         case mask_type::no_mask: ss << "no mask"; break;
         case mask_type::oneD: ss << "1D:" << m.dt; break;
         case mask_type::twoD: ss << "2D:" << m.dt; break;
+        case mask_type::perQ: ss << "perQ:" << m.dt; break;
         case mask_type::causal_br: ss << "causalbr"; break;
         case mask_type::causal_tl: ss << "causaltl"; break;
     }
@@ -363,6 +365,7 @@ std::ostream &operator<<(std::ostream &ss, const sdpa_dims_t &p) {
         case mask_type::no_mask: ss << "_no_mask"; break;
         case mask_type::oneD: ss << "_mask1D_" << p.mask.dt; break;
         case mask_type::twoD: ss << "_mask2D_" << p.mask.dt; break;
+        case mask_type::perQ: ss << "_maskperQ_" << p.mask.dt; break;
         case mask_type::causal_br: ss << "_maskcausalbr"; break;
         case mask_type::causal_tl: ss << "_maskcausaltl"; break;
     }
@@ -440,6 +443,7 @@ std::string print_row(const sdpa_dims_t &p) {
         case mask_type::no_mask: ss << "no"; break;
         case mask_type::oneD: ss << "1D"; break;
         case mask_type::twoD: ss << "2D"; break;
+        case mask_type::perQ: ss << "perQ"; break;
         case mask_type::causal_br: ss << "causalbr"; break;
         case mask_type::causal_tl: ss << "causaltl"; break;
     }
@@ -484,6 +488,14 @@ void fill_mask(std::vector<float> &mask, const memory::desc &desc) {
     size_t seq_len = dims[3];
     size_t query_num = dims[2];
     size_t batches = dims[1] * dims[0];
+    if (seq_len == 1) {
+        for (size_t b = 0; b < batches; b++) {
+            for (size_t q = 0; q < query_num; q++) {
+                mask[b * query_num + q] = -1.f * (float)(q % 8);
+            }
+        }
+        return;
+    }
     for (size_t b = 0; b < batches; b++) {
         for (size_t q = 0; q < query_num; q++) {
             for (size_t i = 0; i < seq_len; i++) {
@@ -623,6 +635,7 @@ sdpa_tensors_t get_descriptors(dnnl::engine &eng, dnnl::stream &strm,
     switch (p.mask.type) {
         case mask_type::no_mask: mask_sz = {}; break;
         case mask_type::oneD: mask_sz = {1, 1, 1, p.seq_len.kv}; break;
+        case mask_type::perQ: mask_sz = {1, 1, p.seq_len.q, 1}; break;
         case mask_type::causal_br:
         case mask_type::causal_tl:
         case mask_type::twoD:
@@ -2236,7 +2249,8 @@ public:
             case mask_type::causal_tl:
             case mask_type::causal_br: mask_ptr = nullptr; break;
             case mask_type::oneD:
-            case mask_type::twoD: mask_ptr = &mask; break;
+            case mask_type::twoD:
+            case mask_type::perQ: mask_ptr = &mask; break;
         }
 
         sdpa::primitive_desc sdpa_quantized_pd;
@@ -2381,7 +2395,8 @@ public:
             case mask_type::causal_tl:
             case mask_type::causal_br: mask_ptr = nullptr; break;
             case mask_type::oneD:
-            case mask_type::twoD: mask_ptr = &mask; break;
+            case mask_type::twoD:
+            case mask_type::perQ: mask_ptr = &mask; break;
         }
 
         auto dS_desc = t.m_dS.get_desc();
@@ -2585,7 +2600,8 @@ public:
             case mask_type::causal_tl:
             case mask_type::causal_br: mask_ptr = nullptr; break;
             case mask_type::oneD:
-            case mask_type::twoD: mask_ptr = &mask; break;
+            case mask_type::twoD:
+            case mask_type::perQ: mask_ptr = &mask; break;
         }
 
         sdpa::primitive_desc sdpa_quantized_pd;
@@ -2673,6 +2689,7 @@ public:
                 mask_slice_elements = p.seq_len.kv * p.seq_len.q;
                 break;
             case mask_type::oneD: mask_slice_elements = p.seq_len.kv; break;
+            case mask_type::perQ: mask_slice_elements = p.seq_len.q; break;
             default: mask_slice_elements = 0; break;
         }
 
@@ -2743,7 +2760,8 @@ public:
             case mask_type::causal_tl:
             case mask_type::causal_br: mask_ptr = nullptr; break;
             case mask_type::oneD:
-            case mask_type::twoD: mask_ptr = &mask; break;
+            case mask_type::twoD:
+            case mask_type::perQ: mask_ptr = &mask; break;
         }
 
         // Forward training pass (needed for workspace)
@@ -2852,6 +2870,7 @@ public:
                 mask_slice_elements = p.seq_len.kv * p.seq_len.q;
                 break;
             case mask_type::oneD: mask_slice_elements = p.seq_len.kv; break;
+            case mask_type::perQ: mask_slice_elements = p.seq_len.q; break;
             default: mask_slice_elements = 0; break;
         }
         size_t batch_elements = p.mb * std::max(p.heads.q, p.heads.kv);
@@ -3086,7 +3105,7 @@ INSTANTIATE_TEST_SUITE_P(AllMaskTypes, sdpa_test_datatypes,
                 ::testing::Values(tensor_type_t("V", mdt::s8, mdt::f16, mdt::s8)), // vdt
                 ::testing::Values(quantize_type::per_token), // qtype
                 ::testing::Values(dnnl::memory::format_tag::abdc), // key_format_tag
-                ::testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}), // mask_type
+                ::testing::Values(mask_config_t {mask_type::no_mask}, mask_config_t {mask_type::causal_tl}, mask_config_t {mask_type::causal_br}, mask_config_t {mask_type::oneD, mdt::f16}, mask_config_t {mask_type::twoD, mdt::f16}, mask_config_t {mask_type::perQ, mdt::f16}), // mask_type
                 ::testing::Values(default_scale_type), // scale_type
                 ::testing::Values(accumulation_t {accumulation_mode::f32, accumulation_mode::f32}), // accumulation_mode
                 ::testing::Values(no_dropout) // dropout

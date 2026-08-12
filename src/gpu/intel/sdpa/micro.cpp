@@ -864,6 +864,7 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
 status_t micro_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     using namespace micro;
     init_conf_common(conf, this);
+    conf.broadcast_mask_k = broadcast_mask_k();
     conf.d_max_kq = d_max_kq();
     conf.d_max_v = d_max_v();
 
@@ -1138,6 +1139,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
 
     kernel_ctx.define_int("WITH_ATTN_MASK", with_attn_mask);
     kernel_ctx.define_int("BROADCAST_MASK_Q", broadcast_mask_q);
+    kernel_ctx.define_int("BROADCAST_MASK_K", broadcast_mask_k);
     kernel_ctx.define_int("WITH_CAUSAL_MASK", with_causal_mask);
 
     kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);

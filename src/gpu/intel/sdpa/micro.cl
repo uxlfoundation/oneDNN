@@ -265,6 +265,11 @@ DECLARE_2D_TILE(
 #define mask_bc 1
 #define mask_nbr 1
 #define mask_nbc 1
+#elif BROADCAST_MASK_K
+#define mask_br ugemm_kq_sg_tile_n
+#define mask_bc 1
+#define mask_nbr 1
+#define mask_nbc 1
 #else
 #define mask_br ugemm_kq_c_type_block0
 #define mask_bc ugemm_kq_c_type_block1
@@ -317,10 +322,17 @@ DECLARE_2D_TILE_HREDUCE(s_tile_type_float, SUBGROUP_SIZE,
         ugemm_kq_c_type_nblock1, kmask_tile_type_float, SUBGROUP_SIZE,
         ugemm_kq_sg_tile_m, 1, 1, 1)
 #if WITH_ATTN_MASK
+#if BROADCAST_MASK_K
+DECLARE_2D_TILE_VREDUCE(s_tile_type_float, SUBGROUP_SIZE,
+        ugemm_kq_c_type_block0, ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1, mask_tile_type_float, SUBGROUP_SIZE, mask_br,
+        mask_bc, mask_nbr, mask_nbc)
+#else
 DECLARE_2D_TILE_HREDUCE(s_tile_type_float, SUBGROUP_SIZE,
         ugemm_kq_c_type_block0, ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
         ugemm_kq_c_type_nblock1, mask_tile_type_float, SUBGROUP_SIZE, mask_br,
         mask_bc, mask_nbr, mask_nbc)
+#endif
 #endif
 
 #else
@@ -341,10 +353,17 @@ DECLARE_2D_TILE_HREDUCE(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_nblock1, kmask_tile_type_float, SUBGROUP_SIZE,
         ugemm_kq_sg_tile_m, 1, 1, 1)
 #if WITH_ATTN_MASK
+#if BROADCAST_MASK_K
+DECLARE_2D_TILE_VREDUCE(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
+        ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1, mask_tile_type_float, SUBGROUP_SIZE, mask_br,
+        mask_bc, mask_nbr, mask_nbc)
+#else
 DECLARE_2D_TILE_HREDUCE(s_tile_type, SUBGROUP_SIZE, ugemm_kq_c_type_block0,
         ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
         ugemm_kq_c_type_nblock1, mask_tile_type_float, SUBGROUP_SIZE, mask_br,
         mask_bc, mask_nbr, mask_nbc)
+#endif
 #endif
 #endif
 
@@ -789,6 +808,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             tile_load(&mask_tile, (const global MSK_TILE_DATA_T *)msk, k, 1,
                     MSK_S2, k0 + sg_i0_kq, 0);
         }
+#elif BROADCAST_MASK_K
+        tile_load(&mask_tile, (const global MSK_TILE_DATA_T *)msk, q, 1, MSK_S2,
+                wg_j0 + sg_j0_kq, 0);
 #else
         tile_load_t(&mask_tile, (const global MSK_TILE_DATA_T *)msk, q, k,
                 MSK_S2, sg_j0_kq + wg_j0, k0 + sg_i0_kq);
@@ -857,6 +879,8 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 #if BROADCAST_MASK_Q
         tile_hbroadcast_add(&S_tile, mask_tile_float);
+#elif BROADCAST_MASK_K
+        tile_vbroadcast_add(&S_tile, mask_tile_float);
 #else
         tile_binary(S_tile, mask_tile_float, binary_add);
 #endif
@@ -1074,7 +1098,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         }
 #endif
 
-#if WITH_ATTN_MASK && PREFETCH_MASK
+#if WITH_ATTN_MASK && PREFETCH_MASK && !BROADCAST_MASK_K
         /* Prefetch next mask tile. */
         if (!last) {
 #if BROADCAST_MASK_Q

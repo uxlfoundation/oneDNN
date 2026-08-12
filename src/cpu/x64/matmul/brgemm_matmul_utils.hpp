@@ -182,12 +182,12 @@ struct brgemm_matmul_conf_t {
     // from FP32 implementation)
     dim_t tr_a_dt_sz, tr_b_dt_sz;
 
-    int M_chunks;
-    int N_chunks;
-    int K_chunks;
-    int num_M_blocks;
-    int num_N_blocks;
-    int num_K_blocks;
+    dim_t M_chunks;
+    dim_t N_chunks;
+    dim_t K_chunks;
+    dim_t num_M_blocks;
+    dim_t num_N_blocks;
+    dim_t num_K_blocks;
     dim_t M_chunk_elems;
     dim_t N_chunk_elems;
     dim_t K_chunk_elems;

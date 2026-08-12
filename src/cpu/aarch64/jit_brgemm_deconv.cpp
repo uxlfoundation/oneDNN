@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -104,6 +104,9 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     auto skip_mask = smask_t::post_ops | smask_t::sum_dt;
     if (is_int8) skip_mask |= smask_t::scales | smask_t::zero_points;
 
+    VDISPATCH_DECONVOLUTION(
+            DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
     VDISPATCH_DECONVOLUTION(is_fwd(), VERBOSE_BAD_PROPKIND);
     VDISPATCH_DECONVOLUTION((desc()->alg_kind & alg_kind::deconvolution_direct),
             VERBOSE_BAD_ALGORITHM);

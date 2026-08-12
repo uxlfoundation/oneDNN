@@ -19,6 +19,7 @@
 #include <cmath>
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/reorder.hpp"
 #include "common/stream.hpp"
@@ -631,7 +632,7 @@ status_t jit_uni_layer_normalization_fwd_t<isa>::execute_forward(
     const dim_t C_padded = src_d.padded_dims()[pd()->ndims() - 1];
     const dim_t C = src_d.dims()[pd()->ndims() - 1];
 
-    parallel(pd()->nthr_, [&](int ithr, int nthr) {
+    parallel(pd()->nthr_, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
         dim_t N_start_idx = 0, N_end_idx = 0;
         balance211(N, nthr, ithr, N_start_idx, N_end_idx);
         const char *const src_ptr = reinterpret_cast<const char *>(src)

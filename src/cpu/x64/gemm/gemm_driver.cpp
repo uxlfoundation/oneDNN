@@ -135,7 +135,8 @@ static inline void add_results(const dim_t m, const dim_t n, const float alpha,
                         c_float += (double)ctemp;
                         round_to_nearest(&c_data[i + j * ldc], c_float);
                     } else {
-                        c_data[i + j * ldc] *= beta;
+                        c_data[i + j * ldc] = static_cast<c_type>(
+                                c_data[i + j * ldc] * beta);
                         c_data[i + j * ldc] += ctemp;
                     }
                 }
@@ -149,7 +150,8 @@ static inline void add_results(const dim_t m, const dim_t n, const float alpha,
                         c_float -= (double)ctemp;
                         round_to_nearest(&c_data[i + j * ldc], c_float);
                     } else {
-                        c_data[i + j * ldc] *= beta;
+                        c_data[i + j * ldc] = static_cast<c_type>(
+                                c_data[i + j * ldc] * beta);
                         c_data[i + j * ldc] -= ctemp;
                     }
                 }
@@ -159,7 +161,8 @@ static inline void add_results(const dim_t m, const dim_t n, const float alpha,
                         double c_float = alpha * (double)ctemp;
                         round_to_nearest(&c_data[i + j * ldc], c_float);
                     } else {
-                        c_data[i + j * ldc] = alpha * ctemp;
+                        c_data[i + j * ldc]
+                                = static_cast<c_type>(alpha * ctemp);
                     }
 
                 } else {
@@ -168,8 +171,10 @@ static inline void add_results(const dim_t m, const dim_t n, const float alpha,
                                 + beta * (double)c_data[i + j * ldc];
                         round_to_nearest(&c_data[i + j * ldc], c_float);
                     } else {
-                        c_data[i + j * ldc] *= beta;
-                        c_data[i + j * ldc] += alpha * ctemp;
+                        c_data[i + j * ldc] = static_cast<c_type>(
+                                c_data[i + j * ldc] * beta);
+                        c_data[i + j * ldc] = static_cast<c_type>(
+                                c_data[i + j * ldc] + alpha * ctemp);
                     }
                 }
             }
@@ -1281,11 +1286,11 @@ static inline void set_thread_opts_pack(int nthrs,
         block_z = utils::rnd_up(block_z, block_align);
         thread_z = num_blk * block_z;
         if (thread_z * nthr_z > size_z)
-            nthr_z = utils::div_up(size_z, thread_z);
+            nthr_z = static_cast<int>(utils::div_up(size_z, thread_z));
     };
 
     auto choose_m_blocking = [&]() {
-        auto align = get_vector_length<c_type>();
+        dim_t align = get_vector_length<c_type>();
         align = do_m_blocking_only ? arg->um : align;
         choose_blocking(m, thread_m, nthr_m, arg->bm, block_m, align);
     };
@@ -1623,7 +1628,7 @@ static inline void adjust_thread_count(dim_t m, dim_t n, dim_t k, int *nthrs) {
     if (is_only_avx2)
         if (m > 10 * n && n < *nthrs)
             if (m / *nthrs < veclen * 3)
-                *nthrs = nstl::max(m / veclen / 3, dim_t(1));
+                *nthrs = static_cast<int>(nstl::max(m / veclen / 3, dim_t(1)));
 
     double gemm_cycles = m * n * k / fp_per_cycle;
     gemm_cycles *= is_f32 ? 2.0 : 8.0;

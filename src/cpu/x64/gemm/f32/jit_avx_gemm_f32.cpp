@@ -1445,7 +1445,7 @@ struct xbyak_gemm_t : public jit_generator_t {
                             = AO1 + (ld_step + section * 4 - OFFSET) * SIZE;
                     for (int off = 0; off < 4; ++off)
                         pextrd(ptr[dst_addr + unroll_m * off * SIZE],
-                                Xmm(ld_step % 2), off);
+                                Xmm(ld_step % 2), static_cast<uint8_t>(off));
                 };
 
                 el_cp(0, 0);
@@ -2133,7 +2133,7 @@ private:
 #else
     const Reg64 ARG_A = r8;
     const Reg64 ARG_LDA = r9;
-    const int stackOffset = STACKSIZE;
+    const int stackOffset = static_cast<int>(STACKSIZE);
     const Reg64 A = ARG_A;
     const Reg64 LDA = ARG_LDA;
 #endif

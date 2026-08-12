@@ -18,6 +18,7 @@
 
 #include <cstdint>
 
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 
 #include "cpu/primitive_attr_postops.hpp"
@@ -62,7 +63,7 @@ status_t eltwise_lut_fwd_t::execute(const exec_ctx_t &ctx) const {
     src += data_d.offset0();
     dst += data_d.offset0();
 
-    dnnl::impl::parallel(0, [&](int ithr, int nthr) {
+    dnnl::impl::parallel(0, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
         dim_t begin = 0, end = 0;
         dnnl::impl::balance211(n, nthr, ithr, begin, end);
         if (begin == end) return;

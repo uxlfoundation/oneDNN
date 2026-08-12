@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2022, 2024 Arm Ltd. and affiliates
+* Copyright 2021-2022, 2024, 2026 Arm Ltd. and affiliates
 * Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,8 @@
 *******************************************************************************/
 
 #include "acl_eltwise.hpp"
+
+#include "common/dnnl_thread.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -71,6 +73,9 @@ status_t acl_eltwise_fwd_t::pd_t::init(const engine_t *engine) {
     using namespace utils;
     using namespace data_type;
     const memory_desc_wrapper src_d(src_md());
+
+    VDISPATCH_ELTWISE(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
     bool ok = is_fwd() && one_of(src_d.data_type(), f32, f16, s32, s8)
             && !has_zero_dim_memory() && attr()->has_default_values()

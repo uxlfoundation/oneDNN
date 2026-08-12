@@ -19,6 +19,8 @@
 
 #include "arm_compute/core/utils/quantization/AsymmHelpers.h"
 
+#include "common/dnnl_thread.hpp"
+
 #include "cpu/aarch64/acl_utils.hpp"
 
 namespace dnnl {
@@ -64,6 +66,8 @@ status_t acl_lowp_matmul_sq_t::init(engine_t *engine) {
 }
 
 status_t acl_lowp_matmul_sq_t::pd_t::init(const engine_t *engine) {
+    VDISPATCH_MATMUL(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
     VDISPATCH_MATMUL(set_default_formats(), "failed to set default formats");
     using smask_t = primitive_attr_t::skip_mask_t;

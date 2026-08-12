@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2021-2024 Arm Ltd. and affiliates
+* Copyright 2021-2024, 2026 Arm Ltd. and affiliates
 * Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,8 @@
 
 #include "cpu/aarch64/acl_softmax.hpp"
 
+#include "common/dnnl_thread.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -27,6 +29,9 @@ const acl_softmax_fwd_t::pd_t *acl_softmax_fwd_t::pd() const {
 }
 
 status_t acl_softmax_fwd_t::pd_t::init(const engine_t *engine) {
+
+    VDISPATCH_SOFTMAX(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
     bool ok = is_fwd()
             && set_default_formats() == status::success

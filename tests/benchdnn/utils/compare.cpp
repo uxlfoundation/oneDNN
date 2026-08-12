@@ -634,13 +634,24 @@ void compare_t::dump_p2p_errors() const {
 }
 
 bool compare_t::is_off_by_one(const driver_check_func_args_t &args) const {
+    // Preserve testing floor/ceil for integral types and not a stricter
+    // threshold
+    if (is_integral_dt(args.dt)) {
+        static constexpr float small_eps = 9e-6f;
+        const float floor_val = floorf(args.exp_f32);
+        const float ceil_val = ceilf(args.exp_f32);
+        if (fabsf((floor_val + 0.5f) - args.exp_f32) >= small_eps) return false;
+        if (args.exp == floor_val) return args.got == ceil_val;
+        if (args.exp == ceil_val) return args.got == floor_val;
+        return false;
+    }
+
+    // Low-precision floats (fp8/fp4) use half their epsilon as the window
     const float half_eps = epsilon_dt(args.dt) / 2.f;
-    const float next = round_to_nearest_representable(args.dt,
-            is_integral_dt(args.dt) ? std::nextafter(args.exp_f32, INFINITY)
-                                    : args.exp_f32 + half_eps);
-    const float prev = round_to_nearest_representable(args.dt,
-            is_integral_dt(args.dt) ? std::nextafter(args.exp_f32, -INFINITY)
-                                    : args.exp_f32 - half_eps);
+    const float next
+            = round_to_nearest_representable(args.dt, args.exp_f32 + half_eps);
+    const float prev
+            = round_to_nearest_representable(args.dt, args.exp_f32 - half_eps);
 
     // Important conditions:
     // * Expected f32 value shoudn't be equal to expected `float` value.

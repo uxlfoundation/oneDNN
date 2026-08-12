@@ -140,7 +140,7 @@ private:
     void array_add(const dim_t n, const ker_data_t *src, ker_data_t *dst) const;
     void array_nhwc_max(const dim_t n, ker_data_t *dst, const ker_data_t *src,
             unsigned char *ws, const size_t ws_offset, const data_type_t ws_dt,
-            const int index) const;
+            const dim_t index) const;
     void array_nhwc_initialize(const dim_t n, ker_data_t *dst,
             unsigned char *ws, const size_t ws_offset,
             const data_type_t ws_dt) const;

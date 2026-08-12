@@ -72,6 +72,13 @@ private:
     Zmm zreg(int idx) const noexcept { return Zmm(reg_idx(idx)); }
     Vmm vreg(int idx) const noexcept { return Vmm(reg_idx(idx)); }
 
+    // Narrows a small, fixed-range value (SIMD lane index or blend mask) to the
+    // Xbyak 8-bit immediate at the single instruction-emit boundary.
+    static uint8_t to_imm_uint8_t(int v) noexcept {
+        assert(v >= 0 && v <= UINT8_MAX);
+        return static_cast<uint8_t>(v);
+    }
+
     const Xbyak::AddressFrame &vmmword = (isa == sse41)  ? xword
             : utils::one_of(isa, avx, avx2, avx2_vnni_2) ? yword
                                                          : zword;
@@ -137,33 +144,33 @@ private:
     bool sse_high_half = false;
     bool disable_postops_when_sse_high_half_processed_ = false;
 
-    int prev_kw = 0;
+    dim_t prev_kw = 0;
 
     void put_one_in_vmm();
     void uni_broadcast_reg_val(const int reg_idx, const int vmm_idx);
     void push_vmm_val(const int idx);
     void pop_vmm_val(const int idx);
     void load(const data_type_t dt, const int idx, const reg64_t &reg_ptr,
-            const int offset, const bool is_c_tail_proccessing);
+            const dim_t offset, const bool is_c_tail_proccessing);
     void store(const data_type_t dt, const int idx, const reg64_t &reg_ptr,
-            const int offset, const bool is_c_tail_proccessing);
+            const dim_t offset, const bool is_c_tail_proccessing);
     void pad_with_zeros(int idx);
-    void load_indices(int indr_i, int step_index, bool is_c_tail_processing);
-    void store_indices(int indr_i, int step_index, bool is_c_tail_processing,
+    void load_indices(int indr_i, dim_t step_index, bool is_c_tail_processing);
+    void store_indices(int indr_i, dim_t step_index, bool is_c_tail_processing,
             bool is_first_w_block);
 
-    void maybe_recalculate_divisor(int jj, int ur_w, int pad_l, int pad_r,
+    void maybe_recalculate_divisor(int jj, int ur_w, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_proccessing);
-    void avg_step(int ur_w, int ur_bc, int pad_l, int pad_r,
+    void avg_step(int ur_w, int ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_proccessing);
-    void max_step_fwd(int ur_w, int ur_bc, int pad_l, int pad_r,
+    void max_step_fwd(int ur_w, int ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_proccessing);
-    void max_step_bwd(int ur_w, int ur_bc, int pad_l, int pad_r,
+    void max_step_bwd(int ur_w, int ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_proccessing);
 
     void zero_diff_src(int ur_bc, bool with_c_tail_proccessing);
 
-    void step(int ur_w, int ur_bc, int pad_l, int pad_r,
+    void step(int ur_w, int ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_proccessing) {
         if (jpp.alg == alg_kind::pooling_max) {
             if (jpp.is_backward)
@@ -176,7 +183,7 @@ private:
             avg_step(ur_w, ur_bc, pad_l, pad_r, with_c_tail_proccessing);
     }
 
-    void step_high_half(int ur_w, int ur_bc, int pad_l, int pad_r,
+    void step_high_half(int ur_w, int ur_bc, dim_t pad_l, dim_t pad_r,
             bool with_c_tail_processing) {
         add(reg_input, sizeof(float) * 4);
         add(reg_output, sizeof(float) * 4);
@@ -186,7 +193,8 @@ private:
                 assert(!"Unknown data type for indices");
                 return;
             }
-            add(reg_index, types::data_type_size(jpp.ind_dt) * 4);
+            add(reg_index,
+                    static_cast<int>(types::data_type_size(jpp.ind_dt)) * 4);
         }
 
         step(ur_w, ur_bc, pad_l, pad_r, with_c_tail_processing);

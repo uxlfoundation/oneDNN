@@ -16,6 +16,7 @@
 *******************************************************************************/
 
 #include "cpu/aarch64/matmul/acl_lowp_matmul.hpp"
+#include "common/dnnl_thread.hpp"
 #include "cpu/cpu_primitive.hpp"
 
 namespace dnnl {
@@ -42,6 +43,9 @@ const std::vector<lowp_matmul_key_t> lowp_matmul_keys = {
 };
 } // namespace
 status_t acl_lowp_matmul_t::pd_t::init(const engine_t *engine) {
+    VDISPATCH_MATMUL(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
     VDISPATCH_MATMUL(set_default_formats(), "failed to set default formats");
     using smask_t = primitive_attr_t::skip_mask_t;
     VDISPATCH_MATMUL(attr()->has_default_values(smask_t::scales

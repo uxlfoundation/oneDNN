@@ -192,7 +192,7 @@ dnnl_status_t pack_no_copy(const T *src, dim_t ld_src, dim_t nrows, dim_t ncols,
             if (is_f32) {
                 PRAGMA_OMP_SIMD()
                 for (dim_t i = 0; i < nrows_dst; i++)
-                    dst_col[i] = alpha * src_col[i];
+                    dst_col[i] = static_cast<T>(alpha * src_col[i]);
             } else {
                 PRAGMA_OMP_SIMD()
                 for (dim_t i = 0; i < nrows_dst; i++)
@@ -208,7 +208,7 @@ dnnl_status_t pack_no_copy(const T *src, dim_t ld_src, dim_t nrows, dim_t ncols,
             if (is_f32) {
                 PRAGMA_OMP_SIMD()
                 for (dim_t i = 0; i < nrows_dst; i++)
-                    dst_col[i] = alpha * src_col[i * ld_src];
+                    dst_col[i] = static_cast<T>(alpha * src_col[i * ld_src]);
             } else {
                 PRAGMA_OMP_SIMD()
                 for (dim_t i = 0; i < nrows_dst; i++)

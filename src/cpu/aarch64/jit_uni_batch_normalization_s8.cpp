@@ -414,6 +414,9 @@ status_t jit_uni_batch_normalization_s8_fwd_t<isa>::pd_t::init(
         const engine_t *engine) {
     auto desired_fmt_tag = (ndims() == 4) ? nhwc : ndhwc;
 
+    VDISPATCH_BNORM(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
     bool ok = true && mayiuse(isa) && is_fwd() && !has_zero_dim_memory()
             && one_of(ndims(), 4, 5) && stats_is_src()
             && src_md()->data_type == s8 && check_scale_shift_data_type()

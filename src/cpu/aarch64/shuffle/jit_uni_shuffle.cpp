@@ -48,6 +48,9 @@ status_t jit_uni_shuffle_t<isa>::pd_t::init(const engine_t *engine) {
 
     conf_.data_type = src_d.data_type();
 
+    VDISPATCH_SHUFFLE(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
     const bool ok = is_superset(get_max_cpu_isa(), isa)
             && utils::one_of(conf_.data_type, f32, s32, bf16)
             && src_d.data_type() == dst_d.data_type()

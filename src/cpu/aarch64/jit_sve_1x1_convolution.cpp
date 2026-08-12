@@ -22,7 +22,6 @@
 #include "common/utils.hpp"
 
 #include "cpu/aarch64/jit_generator.hpp"
-
 #include "cpu/aarch64/jit_sve_1x1_convolution.hpp"
 
 namespace dnnl {
@@ -658,8 +657,12 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
     const int wei_size = jcp.ngroups * rnd_up(jcp.oc, jcp.oc_block)
             * rnd_up(jcp.ic, jcp.ic_block);
 
-    simple_barrier::ctx_t reduction_barrier;
-    simple_barrier::ctx_init(&reduction_barrier);
+    simple_barrier::ctx_t *reduction_barrier
+            = scratchpad.template get<simple_barrier::ctx_t>(
+                    key_conv_wei_reduction_bctx);
+    if (dnnl_thr_syncable() && jcp.nthr_mb > 1) {
+        simple_barrier::ctx_init(reduction_barrier);
+    }
 
     memory_tracking::grantor_t reducer_bia_scratchpad(
             scratchpad, prefix_reducer_bia);
@@ -866,7 +869,7 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
 
         /* diff_weights[:] += sum(wei_reduction[thr_mb][:]) */
         if (dnnl_thr_syncable() && jcp.nthr_mb > 1) {
-            simple_barrier::barrier(&reduction_barrier, jcp.nthr);
+            simple_barrier::barrier(reduction_barrier, jcp.nthr);
             const int work = g_work * oc_b_work * ic_b_work;
             int start {0}, end {0};
             balance211(work, jcp.nthr_mb, ithr_mb, start, end);

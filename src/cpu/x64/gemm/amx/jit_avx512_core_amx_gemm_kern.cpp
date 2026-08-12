@@ -63,13 +63,13 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
 
     int kerneltype = ((typea << 1) | typeb);
 
-    dim_t SHIFT_UNROLL_M = 4, SHIFT_UNROLL_N = 4, SHIFT_UNROLL_K = 2;
-    dim_t SHIFT_UNROLL_MM = 5, SHIFT_UNROLL_NN = 5, SHIFT_UNROLL_KK = 6;
-    dim_t SHIFT_A = 0, SHIFT_B = 0, SHIFT_C = 2;
+    int SHIFT_UNROLL_M = 4, SHIFT_UNROLL_N = 4, SHIFT_UNROLL_K = 2;
+    int SHIFT_UNROLL_MM = 5, SHIFT_UNROLL_NN = 5, SHIFT_UNROLL_KK = 6;
+    int SHIFT_A = 0, SHIFT_B = 0, SHIFT_C = 2;
 
-    dim_t UNROLL_M = 0, UNROLL_N = 0, UNROLL_K = 0;
-    dim_t UNROLL_MM = 0, UNROLL_NN = 0, UNROLL_KK = 0;
-    dim_t SIZE_A = 0, SIZE_B = 0, SIZE_C = 0;
+    int UNROLL_M = 0, UNROLL_N = 0, UNROLL_K = 0;
+    int UNROLL_MM = 0, UNROLL_NN = 0, UNROLL_KK = 0;
+    int SIZE_A = 0, SIZE_B = 0, SIZE_C = 0;
 
     if (typec == 0) {
         // Floatingpoint Operation
@@ -81,17 +81,17 @@ void jit_avx512_core_amx_gemm_kern_t::generate() {
         kerneltype = 4;
     }
 
-    UNROLL_M = (((dim_t)1) << SHIFT_UNROLL_M);
-    UNROLL_N = (((dim_t)1) << SHIFT_UNROLL_N);
-    UNROLL_K = (((dim_t)1) << SHIFT_UNROLL_K);
+    UNROLL_M = (1 << SHIFT_UNROLL_M);
+    UNROLL_N = (1 << SHIFT_UNROLL_N);
+    UNROLL_K = (1 << SHIFT_UNROLL_K);
 
-    UNROLL_MM = (((dim_t)1) << SHIFT_UNROLL_MM);
-    UNROLL_NN = (((dim_t)1) << SHIFT_UNROLL_NN);
-    UNROLL_KK = (((dim_t)1) << SHIFT_UNROLL_KK);
+    UNROLL_MM = (1 << SHIFT_UNROLL_MM);
+    UNROLL_NN = (1 << SHIFT_UNROLL_NN);
+    UNROLL_KK = (1 << SHIFT_UNROLL_KK);
 
-    SIZE_A = (((dim_t)1) << SHIFT_A);
-    SIZE_B = (((dim_t)1) << SHIFT_B);
-    SIZE_C = (((dim_t)1) << SHIFT_C);
+    SIZE_A = (1 << SHIFT_A);
+    SIZE_B = (1 << SHIFT_B);
+    SIZE_C = (1 << SHIFT_C);
 
     Xbyak::Label loopE, loopM, loopN, loopK;
     Xbyak::Label l0, l1, l2, l3, l4, l5, l6, l7, l8, l9, la, lb;

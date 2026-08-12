@@ -1,0 +1,396 @@
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 4x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 8x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 16x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 32x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 64x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 128x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 256x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 384x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 512x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 640x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 768x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 896x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1024x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1152x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1280x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1408x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1536x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1664x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1792x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1920x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2048x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2176x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2304x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2432x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2560x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2688x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2816x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2944x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3072x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3200x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3328x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3456x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3584x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3712x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3840x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3968x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 4096x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 8192x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 10240x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 12288x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 14336x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 16384x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 18432x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 20480x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 22528x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 24576x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 26624x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 28672x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 30720x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 32768x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 4x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 32x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 64x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 128x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 256x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 384x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 512x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 640x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 768x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 896x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1024x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1152x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1280x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1408x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1536x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1664x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1792x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1920x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2048x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2176x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2304x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2432x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2560x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2688x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2816x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2944x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3072x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3200x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3328x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3456x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3584x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3712x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3840x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3968x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 4096x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 8192x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 10240x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 12288x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 14336x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 16384x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 18432x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 20480x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 22528x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 24576x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 26624x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 28672x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 30720x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 32768x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 4x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 8x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 32x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 64x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 128x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 256x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 384x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 512x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 640x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 768x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 896x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1024x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1152x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1280x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1408x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1536x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1664x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1792x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1920x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2048x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2176x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2304x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2432x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2560x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2688x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2816x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2944x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3072x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3200x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3328x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3456x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3584x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3712x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3840x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3968x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 4096x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 8192x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 10240x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 12288x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 14336x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 16384x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 18432x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 20480x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 22528x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 24576x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 26624x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 28672x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 30720x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 32768x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 4x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 8x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 16x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 32x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 64x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 128x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 256x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 384x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 512x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 640x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 768x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 896x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1024x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1152x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1280x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1408x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1536x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1664x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1792x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1920x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2048x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2176x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2304x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2432x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2560x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2688x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2816x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2944x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3072x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3200x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3328x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3456x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3584x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3712x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3840x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 3968x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 4096x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 8192x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 10240x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 12288x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 14336x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 16384x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 18432x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 20480x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 22528x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 24576x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 26624x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 28672x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 30720x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 32768x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 32x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 64x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 128x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 256x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 384x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 512x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 640x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 768x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 896x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1024x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1152x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1280x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1408x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1536x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1664x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1792x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1920x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2048x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2176x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2304x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2432x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2560x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2688x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2816x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2944x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3072x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3200x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3328x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3456x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3584x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3712x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3840x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3968x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 4096x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 8192x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 10240x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 12288x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 14336x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 16384x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 18432x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 20480x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 22528x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 24576x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 26624x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 28672x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 30720x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 32768x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 2x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 8x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 16x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 32x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 64x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 128x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 256x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 384x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 512x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 640x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 768x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 896x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1024x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1152x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1280x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1408x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1536x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1664x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1792x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1920x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2048x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2176x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2304x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2432x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2560x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2688x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2816x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2944x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3072x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3200x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3328x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3456x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3584x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3712x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3840x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3968x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 4096x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 8192x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 10240x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 12288x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 14336x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 16384x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 18432x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 20480x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 22528x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 24576x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 26624x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 28672x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 30720x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 32768x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 16x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 32x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 64x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 128x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 256x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 384x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 512x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 640x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 768x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 896x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1024x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1152x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1280x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1408x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1536x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1664x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1792x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1920x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2048x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2176x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2304x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2432x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2560x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2688x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2816x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2944x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3072x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3200x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3328x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3456x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3584x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3712x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3840x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3968x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 4096x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 8192x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 10240x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 12288x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 14336x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 16384x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 18432x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 20480x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 22528x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 24576x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 26624x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 28672x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 30720x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 32768x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 1x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 32x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 64x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 128x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 256x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 384x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 512x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 640x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 768x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 896x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1024x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1152x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1280x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1408x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1536x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1664x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1792x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 1920x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2048x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2176x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2304x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2432x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2560x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2688x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2816x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 2944x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3072x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3200x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3328x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3456x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3584x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3712x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3840x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 3968x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 4096x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 8192x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 10240x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 12288x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 14336x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 16384x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 18432x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 20480x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 22528x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 24576x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 26624x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 28672x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 30720x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f32 --attr-fpmath=tf32 32768x1024:1024x8192

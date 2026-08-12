@@ -1,0 +1,6 @@
+--reset
+--batch=test_matmul_cri_f16
+--batch=test_matmul_cri_f32
+--batch=test_matmul_cri_bf16
+--batch=test_matmul_cri_f8_e4m3
+--batch=test_matmul_cri_f4_e2m1

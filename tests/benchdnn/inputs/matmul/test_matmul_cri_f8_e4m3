@@ -1,0 +1,1092 @@
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2048x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 7680x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2048x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 7680x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2048x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 7680x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8192x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16384x3584:3584x384
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2048x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 7680x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8192x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16384x3584:3584x11264
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2048x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 7680x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2048x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 7680x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8192x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16384x8192:8192x3584
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 256x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 768x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1536x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 3584x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 7168x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 20480x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 40960x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 131072x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 256x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 768x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1536x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 3584x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 7168x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 20480x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 40960x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 131072x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 128x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 512x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 3072x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 14336x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 81920x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 262144x1024:1024x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 128x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 512x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 3072x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 14336x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 81920x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 262144x2048:2048x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 192x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 5120x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 256x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 768x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1536x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 3584x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 7168x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 20480x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 40960x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 131072x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 128x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 512x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1536x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 3072x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 7168x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 14336x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 40960x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 81920x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 262144x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x2560
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x3072
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x6144
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x12288
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x12800
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x13824
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x25600
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x27648
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x51200
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x5120:5120x55296
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x2560:2560x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x2048:2048x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x4096:4096x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x6400:6400x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x6912:6912x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x8192:8192x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x10240:10240x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x12800:12800x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x13824:13824x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x25600:25600x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 192x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 5120x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x27648:27648x5120
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 256x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 768x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1536x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 3584x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 7168x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16384x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 20480x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 40960x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 131072x4096:4096x9216
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 128x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 512x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1536x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 3072x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 7168x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8192x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 14336x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 40960x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 81920x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 262144x4096:4096x10240
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 128x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 256x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 512x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 640x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 768x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1280x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1536x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2048x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 6192x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 12288x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 14336x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 18432x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 20480x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 22528x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 24576x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 26624x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 28672x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 30720x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 40960x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 49152x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 57344x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 65536x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 73728x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 81920x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 90112x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 98304x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 106496x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 114688x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 122880x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 131072x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 128x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 256x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 512x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 640x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 768x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1280x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1536x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2048x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 6192x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 12288x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 14336x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 18432x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 20480x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 22528x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 24576x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 26624x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 28672x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 30720x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 40960x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 49152x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 57344x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 65536x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 73728x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 81920x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 90112x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 98304x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 106496x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 114688x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 122880x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 131072x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 128x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 256x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 512x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 640x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 768x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1280x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1536x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2048x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 6192x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 12288x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 14336x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 18432x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 20480x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 22528x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 24576x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 26624x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 28672x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 30720x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 40960x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 49152x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 57344x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 65536x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 73728x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 81920x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 90112x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 98304x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 106496x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 114688x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 122880x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 131072x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 64x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 128x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 256x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 384x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 512x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 640x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 768x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 896x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1024x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1280x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1536x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 1792x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 2048x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 4096x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 6192x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 8192x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 10240x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 12288x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 14336x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 16384x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 18432x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 20480x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 22528x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 24576x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 26624x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 28672x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 30720x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 32768x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 40960x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 49152x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 57344x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 65536x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 73728x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 81920x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 90112x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 98304x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 106496x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 114688x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 122880x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 131072x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 128x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 256x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 512x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 640x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 768x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1280x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1536x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2048x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 6192x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8192x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 12288x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 14336x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16384x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 18432x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 20480x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 22528x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 24576x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 26624x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 28672x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 30720x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 40960x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 49152x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 57344x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 65536x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 73728x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 81920x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 90112x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 98304x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 106496x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 114688x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 122880x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 131072x4096:4096x4096
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 128x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 256x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 512x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 640x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 768x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1280x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1536x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2048x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 6192x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8192x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 12288x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 14336x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16384x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 18432x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 20480x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 22528x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 24576x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 26624x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 28672x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 30720x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 40960x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 49152x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 57344x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 65536x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 73728x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 81920x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 90112x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 98304x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 106496x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 114688x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 122880x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 131072x8192:8192x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 128x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 256x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 512x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 640x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 768x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1280x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1536x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2048x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 6192x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8192x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 12288x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 14336x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16384x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 18432x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 20480x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 22528x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 24576x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 26624x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 28672x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 30720x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 40960x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 49152x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 57344x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 65536x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 73728x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 81920x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 90112x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 98304x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 106496x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 114688x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 122880x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 131072x8192:8192x1024
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 64x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 128x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 256x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 384x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 512x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 640x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 768x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 896x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1024x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1280x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1536x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 1792x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 2048x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 4096x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 6192x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 8192x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 10240x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 12288x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 14336x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 16384x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 18432x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 20480x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 22528x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 24576x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 26624x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 28672x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 30720x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 32768x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 40960x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 49152x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 57344x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 65536x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 73728x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 81920x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 90112x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 98304x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 106496x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 114688x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 122880x1024:1024x8192
+--reset --stag=ab --wtag=ba --dtag=ab --dt=f8_e4m3:f8_e4m3:bf16 --attr-scales=src:per_tensor:e8m0:1x32+wei:per_tensor:e8m0:32x1 131072x1024:1024x8192

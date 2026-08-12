@@ -17,6 +17,7 @@
 
 #include "acl_indirect_gemm_convolution.hpp"
 #include "acl_convolution_utils.hpp"
+#include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
@@ -101,6 +102,9 @@ status_t acl_indirect_gemm_convolution_fwd_t::pd_t::init(
     const bool is_fp32_ok = expect_data_types(f32, f32, f32, f32, undef)
             && attr()->has_default_values(
                     smask_t::post_ops | smask_t::fpmath_mode, f32);
+    VDISPATCH_CONV(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && utils::one_of(true, is_fp16_ok, is_bf16_ok, is_fp32_ok)
             && !has_zero_dim_memory()

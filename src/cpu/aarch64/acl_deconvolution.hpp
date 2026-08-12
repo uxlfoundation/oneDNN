@@ -18,6 +18,8 @@
 #ifndef CPU_AARCH64_ACL_DECONVOLUTION_HPP
 #define CPU_AARCH64_ACL_DECONVOLUTION_HPP
 
+#include "common/dnnl_thread.hpp"
+
 #include "cpu/aarch64/acl_utils.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/post_ops_fallback.hpp"
@@ -104,6 +106,10 @@ struct acl_deconvolution_fwd_t : public primitive_t {
             const auto wei_data_t = wei_d.data_type();
             const auto dst_data_t = dst_d.data_type();
             const auto bia_data_t = bia_d.data_type();
+
+            VDISPATCH_DECONVOLUTION(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
             const bool ok = is_fwd() // Only forward deconvolutions
                     && utils::one_of(

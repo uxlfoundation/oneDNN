@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023-2024 Arm Ltd. and affiliates
+* Copyright 2023-2024, 2026 Arm Ltd. and affiliates
 * Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +16,8 @@
 *******************************************************************************/
 
 #include "cpu/aarch64/acl_depthwise_convolution.hpp"
+
+#include "common/dnnl_thread.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -49,6 +51,9 @@ status_t acl_depthwise_convolution_fwd_t::pd_t::init(const engine_t *engine) {
     const bool is_fp32_ok = expect_data_types(f32, f32, f32, f32, undef)
             && attr()->has_default_values(
                     primitive_attr_t::skip_mask_t::post_ops, f32);
+    VDISPATCH_CONV(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && utils::one_of(true, is_fp16_ok, is_fp32_ok)
             && !has_zero_dim_memory()

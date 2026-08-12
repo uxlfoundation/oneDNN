@@ -108,24 +108,13 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
                 if (st == status::success) return status::success;
             }
 
-            // Baked kernel: blocked (all fwd props) and the plain training cases
-            // native declined (f16/post-op max training).
+            // Baked kernel: blocked (all fwd props), the plain training cases
+            // native declined (f16/post-op max training), and f32 nspc forward
+            // inference, whose channel vector the baked kernel widens via LMUL.
             auto scratchpad = scratchpad_registry().registrar();
             status_t st = jit_uni_pool_kernel_t<isa>::init_conf(
                     jpp_, scratchpad, attr_, this);
             VDISPATCH_POOLING(st == status::success, VERBOSE_UNSUPPORTED_TAG);
-
-            // f32 nspc reaching the baked kernel (a case the native kernel
-            // declined) issues many narrow per-channel-block calls with little
-            // per-element work, so it defers to the nhwc_pooling reduction. f16
-            // nspc keeps the baked kernel (its f16<->f32 conversion outweighs the
-            // call overhead), and blocked has no reduction fallback, so both
-            // stay.
-            VDISPATCH_POOLING(
-                    !(d_type == data_type::f32
-                            && jpp_.tag_kind == jit_pool_tag_kind_t::nspc),
-                    VERBOSE_IMPL_HEURISTIC_FAIL,
-                    "f32 nspc forward defers to the nhwc_pooling reduction");
             return status::success;
         }
 

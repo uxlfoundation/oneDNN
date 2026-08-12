@@ -48,10 +48,10 @@ regular_impl_list_map() {
             {{f32, u4, 0}, &regular_u4_impl_list_map()},
             {{s4, data_type::undef, 0}, &regular_s4_impl_list_map()},
             {{u4, data_type::undef, 0}, &regular_u4_impl_list_map()},
-            {{f32, s2, 0}, &regular_s2_impl_list_map()},
-            {{f32, u2, 0}, &regular_u2_impl_list_map()},
-            {{s2, data_type::undef, 0}, &regular_s2_impl_list_map()},
-            {{u2, data_type::undef, 0}, &regular_u2_impl_list_map()},
+            //{{f32, s2, 0}, &regular_s2_impl_list_map()},
+            //{{f32, u2, 0}, &regular_u2_impl_list_map()},
+            //{{s2, data_type::undef, 0}, &regular_s2_impl_list_map()},
+            //{{u2, data_type::undef, 0}, &regular_u2_impl_list_map()},
     };
     return the_map;
 }

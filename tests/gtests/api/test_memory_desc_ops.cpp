@@ -103,11 +103,16 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeSubByte) {
     const memory::dim M = 10;
     const memory::dim K = 256;
     const size_t nelems = static_cast<size_t>(M * K);
-    const size_t ref_size = (nelems + 1) / 2;
+    const size_t ref_size_4 = (nelems + 1) / 2;
+    const size_t ref_size_2 = (nelems + 3) / 4;
 
-    const std::vector<dt> sub_byte_types = {dt::s4, dt::u4, dt::f4_e2m1};
+    const std::vector<dt> sub_byte_types
+            = {dt::s2, dt::u2, dt::s4, dt::u4, dt::f4_e2m1};
 
     for (auto data_type : sub_byte_types) {
+        auto ref_size = (data_type == dt::s2 || data_type == dt::u2)
+                ? ref_size_2
+                : ref_size_4;
         auto md = memory::desc({M, K}, data_type, fmt::ab);
         ASSERT_EQ(md.get_size(), ref_size) << "Dense 2D size mismatch for dt="
                                            << static_cast<int>(data_type);
@@ -116,6 +121,9 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeSubByte) {
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
     const int ngroups = 3;
     for (auto data_type : sub_byte_types) {
+        auto ref_size = (data_type == dt::s2 || data_type == dt::u2)
+                ? ref_size_2
+                : ref_size_4;
         auto md = memory::desc::grouped({M, K}, data_type, 0, ngroups);
         ASSERT_EQ(md.get_size(0), ref_size)
                 << "Grouped size(0) mismatch for dt="

@@ -846,17 +846,11 @@ void CopyPlan::planTypeConversions()
         } else if (isInt(st) && isInt4(dt)) {
             planInt4Downconversion(i);
             rerun = true;
-        } else if (isInt2(st) && one_of(dt, { DataType::hf, DataType::bf })) {
+        } else if ((isInt2(st) || isInt4(st)) && one_of(dt, {DataType::hf, DataType::bf})) {
             if (bfArithmeticOK(i))
-                copyThrough(i, ngen_b16_l2x());
+                copyThrough(i, isInt2(st) ? ngen_b16_l2x() : ngen_b16_l4x());
             else
-                copyThrough(i, (st == DataType::s2) ? DataType::b : DataType::ub);
-            rerunZip = true;
-        } else if (isInt4(st) && one_of(dt, {DataType::hf, DataType::bf})) {
-            if (bfArithmeticOK(i))
-                copyThrough(i, ngen_b16_l4x());
-            else
-                copyThrough(i, (st == DataType::s4) ? DataType::b : DataType::ub);
+                copyThrough(i, isSigned(st) ? DataType::b : DataType::ub);
             rerunZip = true;
         } else if (one_of(st, {ngen_b16_l2x(), ngen_b16_l4x()}) && one_of(dt, { DataType::hf, DataType::bf }))
             planSubByteIntToF16(i);
@@ -1099,8 +1093,8 @@ void CopyPlan::legalizeShfl()
         if (!one_of(i.simd, {16, 32})) stub();
         if (i.simd == 32) {
             i.src0.stride = 1;
-                i.src0.width = 16;
-                i.src0.vs = 0;
+            i.src0.width = 16;
+            i.src0.vs = 0;
         }else{
             i.src0.stride = 0;
             i.src0.width = 1;
@@ -1465,7 +1459,7 @@ void CopyPlan::planEarlySubByteIntUpconversions()
 //    shr (4)    r0.3<4>:ub   r1.0<1>:ub   6:uw
 //    and (4)    r0.3<4>:ub   r0.3<4>:ub   0x3:uw
 //
-void CopyPlan::planInt2Upconversion(CopyInstruction& i)
+void CopyPlan::planInt2Upconversion(CopyInstruction &i)
 {
     if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
     i.sat = false;
@@ -1657,7 +1651,7 @@ void CopyPlan::planInt4Upconversion(CopyInstruction &i)
 //    shl (4)    r0.2<4>:uw       r1.0<1>:ub     10:uw
 //    shl (4)    r0.3<4>:uw       r1.0<1>:ub     8:uw
 //
-void CopyPlan::plan2BitShifts(CopyInstruction& i)
+void CopyPlan::plan2BitShifts(CopyInstruction &i)
 {
     if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
     i.sat = false;
@@ -1666,18 +1660,25 @@ void CopyPlan::plan2BitShifts(CopyInstruction& i)
 
     std::array<CopyInstruction*, 4> ie = { &i, nullptr, nullptr, nullptr };
 
-    // Split into high and low nybble conversions if both are present.
+    // Split into 4 2-bit conversions.
     if (i.src0.stride == 1 && i.simd >= 4) {
+        ie = splitMultiple<4>(i);
         ie[0]->dst.stride *= 4;
         ie[0]->src0.stride *= 4;
         ie[0]->simd /= 4;
-        ie[1] = &split(i, false);
+        ie[1]->dst.stride *= 4;
+        ie[1]->src0.stride *= 4;
+        ie[1]->simd /= 4;
         ie[1]->dst.offset += ie[1]->dst.stride / 4;
         ie[1]->src0.offset += ie[1]->src0.stride / 4;
-        ie[2] = &split(i, false);
+        ie[2]->dst.stride *= 4;
+        ie[2]->src0.stride *= 4;
+        ie[2]->simd /= 4;
         ie[2]->dst.offset += (2 * ie[2]->dst.stride) / 4;
         ie[2]->src0.offset += (2 * ie[2]->src0.stride) / 4;
-        ie[3] = &split(i, false);
+        ie[3]->dst.stride *= 4;
+        ie[3]->src0.stride *= 4;
+        ie[3]->simd /= 4;
         ie[3]->dst.offset += (3 * ie[3]->dst.stride) / 4;
         ie[3]->src0.offset += (3 * ie[3]->src0.stride) / 4;
     }
@@ -1749,7 +1750,7 @@ void CopyPlan::plan4BitShifts(CopyInstruction &i)
     }
 }
 
-void CopyPlan::planInt2Downconversion(CopyInstruction& i)
+void CopyPlan::planInt2Downconversion(CopyInstruction &i)
 {
     if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
     int simd = i.simd;

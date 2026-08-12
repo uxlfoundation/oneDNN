@@ -274,11 +274,11 @@ protected:
     void planSubByteIntToF16(CopyInstruction &i);
     void planUnpack4To16(CopyInstruction &i);
     void planUnpack8To16High(CopyInstruction &i);
-    void planInt2Upconversion(CopyInstruction& i);
+    void planInt2Upconversion(CopyInstruction &i);
     void planInt4Upconversion(CopyInstruction &i);
-    void plan2BitShifts(CopyInstruction& i);
+    void plan2BitShifts(CopyInstruction &i);
     void plan4BitShifts(CopyInstruction &i);
-    void planInt2Downconversion(CopyInstruction& i);
+    void planInt2Downconversion(CopyInstruction &i);
     void planInt4Downconversion(CopyInstruction &i);
     void planEmulatedSIMD1(CopyInstruction &i);
     void planEmulatedHF8ToHF(CopyInstruction &i);

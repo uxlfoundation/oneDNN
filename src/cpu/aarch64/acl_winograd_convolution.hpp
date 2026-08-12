@@ -88,7 +88,9 @@ struct acl_wino_convolution_fwd_t : public primitive_t {
                     && utils::one_of(true, is_fp16_ok, is_fp32_ok)
                     && !has_zero_dim_memory();
 
-            ok = ok && DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL;
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
             if (!ok) return status::unimplemented;
 
             CHECK(acl_convolution_utils::init_conf_wino(acp_, src_md_,

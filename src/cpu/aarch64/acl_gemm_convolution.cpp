@@ -17,6 +17,7 @@
 
 #include "acl_gemm_convolution.hpp"
 #include "acl_convolution_utils.hpp"
+#include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
 
@@ -55,6 +56,9 @@ status_t acl_gemm_convolution_fwd_t<src_t, wei_t, dst_t, bia_t>::pd_t::init(
         const engine_t *engine) {
     using namespace data_type;
     using smask_t = primitive_attr_t::skip_mask_t;
+
+    VDISPATCH_CONV(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
     bool ok = is_fwd() && set_default_alg_kind(alg_kind::convolution_direct)
             && expect_data_types(src_t, wei_t, bia_t, dst_t, undef)

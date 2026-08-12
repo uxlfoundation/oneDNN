@@ -17,6 +17,8 @@
 
 #include "cpu/aarch64/acl_inner_product.hpp"
 
+#include "common/dnnl_thread.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -109,6 +111,10 @@ status_t acl_inner_product_fwd_t::pd_t::init(const engine_t *engine) {
     const bool is_weights_md_format_ok
             = utils::one_of(weights_format_kind_received, format_kind::any,
                     format_kind::blocked);
+    VDISPATCH_INNER_PRODUCT(
+            DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
     const bool ok = is_fwd() && !has_zero_dim_memory()
             && utils::one_of(true, is_fp16_ok, is_fp32_ok, is_bf16_ok)
             && is_weights_md_format_ok

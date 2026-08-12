@@ -23,6 +23,7 @@
 #include <memory>
 
 #include "common/c_types_map.hpp"
+#include "common/dnnl_thread.hpp"
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
 
@@ -52,6 +53,10 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
 
         status_t init(const engine_t *engine) {
             using namespace utils;
+
+            VDISPATCH_POOLING(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
             const bool ok = mayiuse(isa) && is_fwd() && !has_zero_dim_memory()
                     && everyone_is(
@@ -124,6 +129,10 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
 
         status_t init(const engine_t *engine) {
             using namespace utils;
+
+            VDISPATCH_POOLING(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
             const bool ok = mayiuse(isa)
                     && set_default_params() == status::success && !is_fwd()

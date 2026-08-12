@@ -62,7 +62,7 @@ status_t eltwise_lut_fwd_t::execute(const exec_ctx_t &ctx) const {
     src += data_d.offset0();
     dst += data_d.offset0();
 
-    dnnl::impl::parallel(0, [&](int ithr, int nthr) {
+    dnnl::impl::parallel(0, [=](int ithr, int nthr) {
         dim_t begin = 0, end = 0;
         dnnl::impl::balance211(n, nthr, ithr, begin, end);
         if (begin == end) return;

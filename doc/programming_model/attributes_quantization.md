@@ -23,8 +23,14 @@ oneDNN supports two main categories of quantization:
 - Static Quantization (see @ref quantization_mode::dnnl_quantization_mode_static_sazp)
   with scales only (symmetric) or scales and zero-points (asymmetric),
   where scales are applied after zero-point.
-- Dynamic Quantization (see @ref quantization_mode::dnnl_quantization_mode_dynamic_mx)
-  compliant with the [OCP Microscaling (MX) Formats Specification][mx-spec].
+- Dynamic Quantization, where the library computes the scales at execution time,
+  in two modes:
+  - `dynamic_mx`
+  (see @ref quantization_mode::dnnl_quantization_mode_dynamic_mx), compliant with
+  the [OCP Microscaling (MX) Formats Specification][mx-spec]
+  - `dynamic_fp`
+  (see @ref quantization_mode::dnnl_quantization_mode_dynamic_fp), producing an
+  `f8_e4m3` block scale.
 
 To support quantization, primitives should be created and executed as
 follows:
@@ -340,19 +346,41 @@ See examples:
 - [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
 - @ref matmul_with_weight_only_quantization_cpp
 
-##### Special Case: MX-compatible Block Scaling (or Dynamic Quantization)
+##### Special Case: Dynamic Block Scaling (MXFP8 and NVFP4-compatible)
 
-MX-compatible block scaling uses `e8m0` scaling factors and `dynamic_mx`
-quantization mode per the [OCP MX Formats Specification][mx-spec].
+With `dynamic_mx` (per the [OCP MX Formats Specification][mx-spec]) and
+`dynamic_fp` the block scaling factors are computed by the primitive at
+execution time. User must allocate scales memory, pass it as
+`DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST`, and the primitive populates it.
+Each mode would compute one block scale per group: `dynamic_mx` following the
+OCP MX formula, and `dynamic_fp` as `amax(block) / max(dst_dt)`.
 
 ~~~cpp
-// Weights [K, N] = [1024, 512], K-grouped by 32
-attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) | (1 << 1), {32, 1},
+// MXFP8: e8m0 scale, grouped by 32
+attr.set_scales(DNNL_ARG_DST, (1 << 0) | (1 << 1), {1, 32},
                 dnnl::memory::data_type::e8m0,
                 false /*on device*/, dnnl::quantization_mode::dynamic_mx);
-// Scaling factors: (1024 / 32) * 512 = 16,384 values
+
+// FP4 (NVFP4-compatible block): f8_e4m3 scale, grouped by 16
+attr.set_scales(DNNL_ARG_DST, (1 << 0) | (1 << 1), {1, 16},
+                dnnl::memory::data_type::f8_e4m3,
+                false /*on device*/, dnnl::quantization_mode::dynamic_fp);
 ~~~
 See example @ref mxfp_matmul_cpp.
+
+##### Special Case: NVFP4 Two-Level Scaling
+
+NVFP4 uses `f4_e2m1` data with two scale levels: an `f8_e4m3` block scale
+(group 16) and a second-level `f32` global scale, see more details at
+[Introducing NVFP4 for Efficient and Accurate Low-Precision Inference][nvfp4-intro].
+The block scale is passed as a regular `src`/`wei` scale on inputs,
+and `dynamic_fp` mode described above produces the same block level for output.
+Neither would include the global scale. In order to supply the global scale,
+user must use `binary_mul` post-op.
+
+@warning A `binary_mul` post-op runs after bias, so `(acc + bias) * global`
+ would scale the bias too. To keep bias correct, apply bias as a `binary_add`
+ post-op placed after the `binary_mul`.
 
 #### Multi-Dimensional Scaling
 
@@ -882,3 +910,5 @@ as applying them during computations would cause accuracy loss.
 [f8-spec]: https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-06-20-pdf
 
 [mx-spec]: https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf
+
+[nvfp4-intro]: https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference

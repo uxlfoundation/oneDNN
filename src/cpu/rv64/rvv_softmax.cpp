@@ -36,18 +36,25 @@ rvv_softmax_fwd_t::rvv_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {
 
 namespace {
 
-// f32 compute kernel
+// f32 compute kernel. jit_exp selects the vectorized exp/sub/sum kernel for the
+// reduction; the caller gates it on axis length and stride so that very short
+// or memory-bound (large-stride) reductions keep the scalar exp path.
 void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
         bool is_logsoftmax, bool is_softmax_inf_as_zero,
-        const jit_rvv_softmax_affine_kernel_t *affine_kernel) {
+        const jit_rvv_softmax_affine_kernel_t *affine_kernel, bool jit_exp) {
     float max_val = -INFINITY;
     for (dim_t i = 0; i < len; ++i)
         max_val = src[i] > max_val ? src[i] : max_val;
 
     if (is_logsoftmax) {
         float sum_exp = 0.f;
-        for (dim_t i = 0; i < len; ++i) {
-            sum_exp += expf(src[i] - max_val);
+        if (jit_exp) {
+            jit_rvv_softmax_f32_exp_sub_sum(
+                    src, dst, len, max_val, &sum_exp, false);
+        } else {
+            for (dim_t i = 0; i < len; ++i) {
+                sum_exp += expf(src[i] - max_val);
+            }
         }
         const float log_sum = logf(sum_exp);
 
@@ -67,10 +74,20 @@ void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
         float sum_exp = 0.f;
         const bool all_minus_inf
                 = is_softmax_inf_as_zero && (max_val == -INFINITY);
-        for (dim_t i = 0; i < len; ++i) {
-            float e = all_minus_inf ? 0.f : expf(src[i] - max_val);
-            dst[i] = e;
-            sum_exp += e;
+        if (jit_exp) {
+            if (all_minus_inf) {
+                for (dim_t i = 0; i < len; ++i)
+                    dst[i] = 0.f;
+            } else {
+                jit_rvv_softmax_f32_exp_sub_sum(
+                        src, dst, len, max_val, &sum_exp, true);
+            }
+        } else {
+            for (dim_t i = 0; i < len; ++i) {
+                float e = all_minus_inf ? 0.f : expf(src[i] - max_val);
+                dst[i] = e;
+                sum_exp += e;
+            }
         }
 
         const float inv_sum = sum_exp ? (1.0f / sum_exp) : 1.0f;
@@ -186,12 +203,24 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             const dim_t outer_stride = pd()->axis_size(true) * rsp.inner_size;
             const int nthr = pd()->nthr_;
 
+            // Use the vectorized exp kernel only when it pays off: the axis
+            // must fill at least one LMUL=4 e32 vector (16 elements at VLEN=128;
+            // on larger VLEN the kernel still runs a correct partial vector),
+            // and a strided axis must have a moderate stride so the reduction is
+            // not dominated by the gather/scatter memory traffic.
+            constexpr dim_t exp_jit_min_len = 16;
+            constexpr dim_t exp_jit_max_inner = 8192;
+            const bool jit_exp = affine_kernel_.get()
+                    && rsp.axis_size >= exp_jit_min_len
+                    && rsp.inner_size <= exp_jit_max_inner;
+
             if (rsp.inner_size == 1) {
                 parallel_nd(rsp.outer_size, [&](dim_t outer) {
                     const dim_t base = outer * outer_stride;
                     compute_softmax_f32_rvv(src_f32 + base, dst_f32 + base,
                             rsp.axis_size, rsp.is_logsoftmax,
-                            is_softmax_inf_as_zero, affine_kernel_.get());
+                            is_softmax_inf_as_zero, affine_kernel_.get(),
+                            jit_exp);
                 });
             } else {
                 auto scratch = ctx.get_scratchpad_grantor().template get<char>(
@@ -217,7 +246,7 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                         // contiguous kernel (in-place)
                         compute_softmax_f32_rvv(tmp, tmp, rsp.axis_size,
                                 rsp.is_logsoftmax, is_softmax_inf_as_zero,
-                                affine_kernel_.get());
+                                affine_kernel_.get(), jit_exp);
 
                         // write back
                         for (dim_t a = 0; a < rsp.axis_size; ++a)

@@ -882,6 +882,8 @@ status_t jit_int8_matmul_t<isa>::pd_t::init(const engine_t *engine) {
 
     VDISPATCH_MATMUL(
             no_runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VDISPATCH_MATMUL(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
     VDISPATCH_MATMUL(is_dense_format_kind(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     bool is_u8 = utils::everyone_is(u8, src_type, wei_type);

@@ -804,43 +804,53 @@ static std::ostream &print_attr(std::ostream &ss, const primitive_attr_t *attr,
                 case primitive_kind::binary: {
                     const post_ops_t::entry_t::binary_t &eb = e.binary;
                     const auto &md = eb.user_src1_desc;
-                    int mask = 0;
-                    for (int d = 0; d < md.ndims; ++d)
-                        mask += md.dims[d] != 1 ? (1 << d) : 0;
+                    ss << delim << eb.alg << ":" << md.data_type;
+
+                    auto dump = [&](const memory_desc_t &md) {
+                        int mask = 0;
+                        for (int d = 0; d < md.ndims; ++d)
+                            mask += md.dims[d] != 1 ? (1 << d) : 0;
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
-                    // For the grouped matmul with grouped dst,
-                    // both per-group [G, 1] and per-token [M, 1] shapes would get mask 1 above.
-                    // However, per-group [G, 1] requires mask `0` for binary_mul
-                    // if grouped dst is used (mainly NVFP4 global scale case)
-                    const memory_desc_wrapper dst_mdw(dst_md);
-                    if (dst_mdw.is_grouped_desc()) {
-                        const auto &dst_g = dst_mdw.sparse_desc().grouped_desc;
-                        if (md.dims[0] == dst_g.group_count && md.dims[1] == 1)
-                            mask = 0;
-                    }
+                        // For the grouped matmul with grouped dst, both
+                        // per-group [G, 1] and per-token [M, 1] shapes would
+                        // get mask 1 above. However, per-group [G, 1] requires
+                        // mask `0` for binary_mul if grouped dst is used
+                        // (mainly NVFP4 global scale case)
+                        const memory_desc_wrapper dst_mdw(dst_md);
+                        if (dst_mdw.is_grouped_desc()) {
+                            const auto &dst_g
+                                    = dst_mdw.sparse_desc().grouped_desc;
+                            if (md.dims[0] == dst_g.group_count
+                                    && md.dims[1] == 1)
+                                mask = 0;
+                        }
 #endif
-                    ss << delim << eb.alg << ":" << md.data_type << ":" << mask;
-                    const memory_desc_wrapper mdw(md);
-                    switch (mdw.format_kind()) {
-                        case format_kind::blocked:
-                            if (!mdw.count_non_unit_dims(1)) {
-                                ss << ":" << md2fmt_tag_str(&eb.src1_desc);
-                                const auto &strides_str
-                                        = md2fmt_strides_str(&eb.src1_desc);
-                                if (!strides_str.empty())
-                                    ss << ":" << strides_str;
-                            }
-                            break;
-                        case format_kind::sparse:
-                            if (mdw.is_grouped_desc()) {
-                                ss << ":grouped";
+                        ss << ":" << mask;
+                        const memory_desc_wrapper mdw(md);
+                        switch (mdw.format_kind()) {
+                            case format_kind::blocked:
+                                if (!mdw.count_non_unit_dims(1)) {
+                                    ss << ":" << md2fmt_tag_str(&eb.src1_desc);
+                                    const auto &strides_str
+                                            = md2fmt_strides_str(&eb.src1_desc);
+                                    if (!strides_str.empty())
+                                        ss << ":" << strides_str;
+                                }
                                 break;
-                            }
-                            assert(!"unsupported sparse encoding");
-                            break;
-                        case format_kind::any: ss << ":any"; break;
-                        default: assert(!"unsupported format_kind");
-                    }
+                            case format_kind::sparse:
+                                if (mdw.is_grouped_desc()) {
+                                    ss << ":grouped";
+                                    break;
+                                }
+                                assert(!"unsupported sparse encoding");
+                                break;
+                            case format_kind::any: ss << ":any"; break;
+                            default: assert(!"unsupported format_kind");
+                        }
+                    };
+
+                    dump(md);
+                    if (e.is_binary_with_ternary_op()) dump(eb.user_src2_desc);
                 } break;
                 case primitive_kind::prelu: {
                     const auto &ep = e.prelu;

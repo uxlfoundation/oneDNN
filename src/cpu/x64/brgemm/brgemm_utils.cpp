@@ -1176,10 +1176,10 @@ status_t init_brgemm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->dt_d = brg->dt_c;
     brg->dt_bias = brg->dt_c;
 
-    brg->typesize_A = types::data_type_size(brg->dt_a);
-    brg->typesize_B = types::data_type_size(brg->dt_b);
-    brg->typesize_C = types::data_type_size(brg->dt_c);
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    brg->typesize_A = static_cast<int>(types::data_type_size(brg->dt_a));
+    brg->typesize_B = static_cast<int>(types::data_type_size(brg->dt_b));
+    brg->typesize_C = static_cast<int>(types::data_type_size(brg->dt_c));
+    brg->typesize_D = static_cast<int>(types::data_type_size(brg->dt_d));
 
     brg->isa_user = isa;
 
@@ -1250,10 +1250,10 @@ status_t init_brdgmm_conf(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->dt_d = brg->dt_c;
     brg->dt_bias = brg->dt_c;
 
-    brg->typesize_A = types::data_type_size(brg->dt_a);
-    brg->typesize_B = types::data_type_size(brg->dt_b);
-    brg->typesize_C = types::data_type_size(brg->dt_c);
-    brg->typesize_D = types::data_type_size(brg->dt_d);
+    brg->typesize_A = static_cast<int>(types::data_type_size(brg->dt_a));
+    brg->typesize_B = static_cast<int>(types::data_type_size(brg->dt_b));
+    brg->typesize_C = static_cast<int>(types::data_type_size(brg->dt_c));
+    brg->typesize_D = static_cast<int>(types::data_type_size(brg->dt_d));
 
     brg->isa_user = isa;
     auto is_isa_ok = [&](cpu_isa_t isa) {

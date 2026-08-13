@@ -2055,7 +2055,7 @@ void brgemm_convolution_fwd_t<isa>::maybe_conv_inp(brgemm_thread_ctx_t &btc,
                         size_to_sero = jcp.vnni_block;
                     if (_pd->rd > jcp.simd_w && _pd->rd % jcp.simd_w != 0)
                         size_to_sero = jcp.simd_w;
-                    size_to_sero *= jcp.src_dsz;
+                    size_to_sero *= static_cast<int>(jcp.src_dsz);
                     void *const __restrict p_zeroing = (char *)cp.dst
                             + src_dsz * cp.h_count * _pd->pbuf_w_sz;
                     if (size_to_sero > 0 && btc.inp_buffer_zero != p_zeroing) {

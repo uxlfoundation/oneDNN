@@ -3081,8 +3081,8 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t::maybe_zero_kernel() {
     Zmm zero = Zmm(0);
     vpxord(zero, zero, zero);
     const bool generate_icb_loop = jcp.nb_ic_blocking_max > 1;
-    const size_t kernel_block_bytes = (size_t)jcp.ic_block * jcp.oc_block
-            * jcp.kw * jcp.kh * jcp.kd * jcp.typesize_out;
+    const dim_t kernel_block_bytes = static_cast<dim_t>(jcp.ic_block)
+            * jcp.oc_block * jcp.kw * jcp.kh * jcp.kd * jcp.typesize_out;
     Label icb_block_label, icb_block_label_cb;
     if (generate_icb_loop) {
         push(reg_kernel);
@@ -3172,7 +3172,7 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t::bias_kernel_3d() {
     cmp(reg_oi, 0);
     jle(skip_bias, T_NEAR); // no iterations along depth dimension
 
-    const size_t oc_mult
+    const dim_t oc_mult
             = is_ddst_layout_nxc() ? jcp.ngroups * jcp.oc : jcp.oc_block;
     mov(reg_tmp, oc_mult * jcp.ow * jcp.oh * jcp.typesize_out);
     imul(reg_oi, reg_tmp);
@@ -3400,9 +3400,9 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t::
     const dim_t bottom_pad_input_correction
             = jcp.ih + jcp.t_pad - input_bottom_padding_overlap * jcp.stride_h;
 
-    const size_t filter_shift = jcp.typesize_out * jcp.kw * ic_block * oc_block;
-    const size_t input_shift = jcp.typesize_in * jcp.iw * inp_mult;
-    const size_t output_shift = jcp.typesize_out * jcp.ow * out_mult;
+    const dim_t filter_shift = jcp.typesize_out * jcp.kw * ic_block * oc_block;
+    const dim_t input_shift = jcp.typesize_in * jcp.iw * inp_mult;
+    const dim_t output_shift = jcp.typesize_out * jcp.ow * out_mult;
 
     Label loop_begin_label, loop_end_label, common_block_label,
             top_padding_end_label, bottom_padding_end_label,
@@ -3533,10 +3533,10 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t::
     const dim_t back_pad_input_correction
             = jcp.id + jcp.f_pad - input_backpad_overlap * jcp.stride_d;
 
-    const size_t filter_shift
+    const dim_t filter_shift
             = jcp.typesize_out * jcp.kh * jcp.kw * ic_block * oc_block;
-    const size_t input_shift = jcp.typesize_in * jcp.ih * iw * inp_mult;
-    const size_t output_shift = jcp.typesize_in * jcp.oh * ow * out_mult;
+    const dim_t input_shift = jcp.typesize_in * jcp.ih * iw * inp_mult;
+    const dim_t output_shift = jcp.typesize_in * jcp.oh * ow * out_mult;
 
     Label d_loop_label, loop_end_label, common_block_label, fpad_end_label,
             backpad_end_label, backpad_label;

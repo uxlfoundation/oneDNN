@@ -730,9 +730,10 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
 
     jcp.load_grp_count = 1;
 
-    const int L1_capacity
-            = platform::get_per_core_cache_size(1) / sizeof(float);
-    const int L2_size = platform::get_per_core_cache_size(2) / sizeof(float);
+    const int L1_capacity = static_cast<int>(
+            platform::get_per_core_cache_size(1) / sizeof(float));
+    const int L2_size = static_cast<int>(
+            platform::get_per_core_cache_size(2) / sizeof(float));
     const int L2_capacity = (L2_size * 3) / 4;
 
     if (one_of(jcp.prop_kind, forward_training, forward_inference,

@@ -3350,7 +3350,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::maybe_zero_kernel() {
             jmp(skip_zeroing, T_NEAR);
     }
 
-    const size_t kernel_block_bytes = get_kernel_offset(
+    const dim_t kernel_block_bytes = get_kernel_offset(
             0, static_cast<dim_t>(jcp.kw) * jcp.kh * jcp.kd);
     Label icb_block_label, icb_block_label_cb;
 

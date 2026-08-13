@@ -573,21 +573,23 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::generate() {
         if (jcp.signed_input) {
             mov(reg_comp_data, ptr[rsp + reg_comp_data_off]);
             add(reg_comp_data,
-                    load_loop_blk * jcp.load_block * sizeof(int32_t));
+                    static_cast<uint32_t>(
+                            load_loop_blk * jcp.load_block * sizeof(int32_t)));
             mov(ptr[rsp + reg_comp_data_off], reg_comp_data);
         }
         if (jcp.src_zero_point) {
             mov(reg_zp_compensation, ptr[rsp + reg_zp_compensation_off]);
             add(reg_zp_compensation,
-                    load_loop_blk * jcp.load_block * sizeof(int32_t));
+                    static_cast<uint32_t>(
+                            load_loop_blk * jcp.load_block * sizeof(int32_t)));
             mov(ptr[rsp + reg_zp_compensation_off], reg_zp_compensation);
         }
         mov(ptr[rsp + reg_bcast_data_off], reg_bcast_data);
         if (jcp.with_wei_scales) {
             mov(reg_wei_scales, ptr[rsp + reg_wei_scales_off]);
             add(reg_wei_scales,
-                    jcp.is_oc_scale * load_loop_blk * jcp.load_block
-                            * sizeof(float));
+                    static_cast<uint32_t>(jcp.is_oc_scale * load_loop_blk
+                            * jcp.load_block * sizeof(float)));
             mov(ptr[rsp + reg_wei_scales_off], reg_wei_scales);
         }
         mov(reg_bcast_data, ptr[rsp + reg_bcast_data_off]);
@@ -781,8 +783,8 @@ status_t jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_conf(
     int reduce_blocking_max = 0;
     jcp.load_grp_count = 1;
 
-    const int L2_size
-            = platform::get_per_core_cache_size(2) / sizeof(jcp.typesize_in);
+    const int L2_size = static_cast<int>(
+            platform::get_per_core_cache_size(2) / sizeof(jcp.typesize_in));
     const int L2_capacity = (L2_size * 3) / 4;
 
     int size_threshold = 28;

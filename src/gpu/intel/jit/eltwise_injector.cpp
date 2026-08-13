@@ -324,7 +324,7 @@ void eltwise_injector_f32_t<ngen_generator_t>::mx_scale_compute_fwd(int simd,
         const ngen::DataType dst_dt, int phase) {
     assert(simd == 32);
     assert(utils::one_of(dst_dt, ngen::DataType::bf8, ngen::DataType::hf8,
-            static_cast<ngen::DataType>(0x5A)));
+            ngen::DataType::e2m1));
 
     int scale_off = (phase / nreg * 4);
     int grf_bytes = GRF::bytes(hw());

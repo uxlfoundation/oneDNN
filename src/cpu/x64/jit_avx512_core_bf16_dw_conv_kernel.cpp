@@ -379,14 +379,14 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::compute_loop(
 
     // ch_loop currently happen only when data layout is nxc. The strides are
     // calculated for this layout only.
-    const size_t wei_ch_stride = (size_t)jcp.nb_ch_blocking * jcp.kh * jcp.kw
-            * jcp.ch_block * jcp.typesize_in;
-    const size_t inp_ch_stride
-            = (size_t)jcp.nb_ch_blocking * jcp.ch_block * jcp.typesize_in;
-    const size_t out_ch_stride
-            = (size_t)jcp.nb_ch_blocking * jcp.ch_block * jcp.typesize_out;
-    const size_t bias_stride
-            = (size_t)jcp.nb_ch_blocking * jcp.ch_block * sizeof(float);
+    const dim_t nb_ch_blocking = jcp.nb_ch_blocking;
+    const dim_t wei_ch_stride
+            = nb_ch_blocking * jcp.kh * jcp.kw * jcp.ch_block * jcp.typesize_in;
+    const dim_t inp_ch_stride = nb_ch_blocking * jcp.ch_block * jcp.typesize_in;
+    const dim_t out_ch_stride
+            = nb_ch_blocking * jcp.ch_block * jcp.typesize_out;
+    const dim_t bias_stride
+            = nb_ch_blocking * jcp.ch_block * static_cast<dim_t>(sizeof(float));
 
     auto compute = [&](int ur_ch_blocks, bool last_ch_block_flag = false) {
         if (jcp.is_fused_conv) {
@@ -470,8 +470,8 @@ void jit_avx512_dw_conv_fwd_kernel_bf16_t::loop_ow(int ur_ch_blocks) {
 
     const auto src_layout_nxc = is_src_layout_nxc();
     const auto dat_c_stride = src_layout_nxc ? jcp.ngroups : jcp.ch_block;
-    size_t inp_shift = (size_t)jcp.typesize_in * ur_w * stride_w * dat_c_stride;
-    size_t out_shift = (size_t)jcp.typesize_out * ur_w * dat_c_stride;
+    dim_t inp_shift = jcp.typesize_in * ur_w * stride_w * dat_c_stride;
+    dim_t out_shift = jcp.typesize_out * ur_w * dat_c_stride;
 
     const dim_t inp_shift_pad
             = jcp.typesize_in * (ur_w * stride_w - l_pad) * dat_c_stride;
@@ -644,8 +644,8 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::apply_filter(
     const dim_t stride_w = jcp.stride_w;
 
     const bool ddst_layout_nxc = is_ddst_layout_nxc();
-    const size_t ch_block_step = ch_blk * (ddst_layout_nxc ? 1 : oh * ow);
-    const size_t sp_step = ddst_layout_nxc ? jcp.ngroups : ch_blk;
+    const dim_t ch_block_step = ch_blk * (ddst_layout_nxc ? 1 : oh * ow);
+    const dim_t sp_step = ddst_layout_nxc ? jcp.ngroups : ch_blk;
 
     Label iter_exit_label;
 
@@ -677,9 +677,9 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::apply_filter(
                         ptr[aux1_reg_kernel + ker_off * jcp.typesize_in]);
 
                 for (int w = 0; w < ur_str_w; w++) {
-                    size_t sp_offset = w * sp_step;
-                    size_t ch_offset = ch * ch_block_step;
-                    size_t ddst_off = sp_offset + ch_offset;
+                    dim_t sp_offset = w * sp_step;
+                    dim_t ch_offset = ch * ch_block_step;
+                    dim_t ddst_off = sp_offset + ch_offset;
                     Zmm zmm_acc = get_acc_reg(ch * ur_str_w + w);
                     Zmm mm_zmm_dst // mm: maybe masked
                             = mask_flag ? zmm_dst_reg | k_ch_tail_mask | T_z
@@ -783,9 +783,10 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::ch_loop_body(
                 jcp.nb_ch - (utils::rnd_dn(nb_oc, jcp.nb_ch_blocking)));
         const int ch_step = static_cast<int>(jcp.nb_ch_blocking * jcp.ch_block);
 
-        const size_t wei_ch_stride
-                = (size_t)jcp.nb_ch_blocking * jcp.kh * jcp.kw * jcp.ch_block;
-        const size_t data_ch_stride = (size_t)jcp.nb_ch_blocking * jcp.ch_block;
+        const dim_t wei_ch_stride
+                = jcp.nb_ch_blocking * jcp.kh * jcp.kw * jcp.ch_block;
+        const dim_t data_ch_stride
+                = static_cast<dim_t>(jcp.nb_ch_blocking) * jcp.ch_block;
 
         mov(aux_reg_ch_blocks, reg_ch_blocks);
         push(reg_dsrc);
@@ -841,7 +842,7 @@ inline void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::unroll_width_body(
         Label unroll_w_label, skip_compute_label;
         L(unroll_w_label);
         {
-            const size_t ch_step = unroll_w
+            const dim_t ch_step = unroll_w
                     * (is_ddst_layout_nxc() ? jcp.ngroups : jcp.ch_block);
             cmp(reg_ur_str_w, unroll_w);
             jl(skip_compute_label, T_NEAR);
@@ -879,7 +880,7 @@ void jit_avx512_dw_conv_bwd_data_kernel_bf16_t::generate() {
     if (is_dsrc_layout_nxc()) {
         if (jcp.ch_tail) {
             Label masking_done;
-            const size_t channel_step = jcp.nb_ch_blocking * jcp.ch_block;
+            const dim_t channel_step = jcp.nb_ch_blocking * jcp.ch_block;
             kxnorw(k_ch_tail_mask, k_ch_tail_mask,
                     k_ch_tail_mask); // dummy mask all 1's
             cmp(reg_ch_blocks, channel_step);
@@ -1065,8 +1066,8 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_spatial_loop_bias(
     const int unroll_w_trips = static_cast<int>(jcp.ow / unroll_w);
     const int tail_w = jcp.ow > max_unroll_w_ ? jcp.ow % max_unroll_w_ : 0;
 
-    const size_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
-    const size_t ch_offset = ch_step * jcp.typesize_in;
+    const dim_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
+    const dim_t ch_offset = ch_step * jcp.typesize_in;
 
     mov(reg_oh, ptr[this->param1 + GET_OFF(oh_index)]);
     mov(reg_oh_worksize, ptr[this->param1 + GET_OFF(oh_count)]);
@@ -1209,8 +1210,8 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_bias() {
 
 void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::zero_filter_kh_loop() {
 
-    const size_t filter_offset_kw = jcp.kw * jcp.ch_block * jcp.typesize_out;
-    const size_t filter_offset_kh = jcp.kh * filter_offset_kw;
+    const dim_t filter_offset_kw = jcp.kw * jcp.ch_block * jcp.typesize_out;
+    const dim_t filter_offset_kh = jcp.kh * filter_offset_kw;
 
     Label kh_loop_label;
 
@@ -1249,9 +1250,9 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::deploy_zero_filter() {
 void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_kh_step(int unroll_w,
         int l_pad, int pad_offset, int ow_block, bool is_last_ch) {
 
-    const size_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
-    const size_t input_offset = jcp.iw * ch_step * jcp.typesize_in;
-    const size_t filter_offset = jcp.kw * jcp.ch_block * jcp.typesize_out;
+    const dim_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
+    const dim_t input_offset = jcp.iw * ch_step * jcp.typesize_in;
+    const dim_t filter_offset = jcp.kw * jcp.ch_block * jcp.typesize_out;
 
     Label kh_loop_label, skip_loop_label;
 
@@ -1326,10 +1327,10 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_h_loop(
     const dim_t input_bottom_padding_overlap
             = div_up(jcp.ih + jcp.t_pad - (jcp.kh - 1), jcp.stride_h);
 
-    const size_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
-    const size_t input_shift = jcp.typesize_in * jcp.iw * ch_step;
-    const size_t output_shift = jcp.typesize_in * jcp.ow * ch_step;
-    const size_t filter_shift = jcp.typesize_out * jcp.kw * jcp.ch_block;
+    const dim_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
+    const dim_t input_shift = jcp.typesize_in * jcp.iw * ch_step;
+    const dim_t output_shift = jcp.typesize_in * jcp.ow * ch_step;
+    const dim_t filter_shift = jcp.typesize_out * jcp.kw * jcp.ch_block;
 
     Label loop_begin_label, loop_end_label, common_block_label,
             top_padding_end_label, bottom_padding_end_label,
@@ -1460,9 +1461,8 @@ void jit_avx512_dw_conv_bwd_weights_kernel_bf16_t::compute_ow_block_unroll() {
     int unroll_trips = 0;
     calculate_w_unrolling(unroll_trips, unroll_w, unroll_w_tail);
 
-    const size_t ch_offset = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
-    const size_t data_offset
-            = static_cast<size_t>(unroll_w * ch_offset * jcp.typesize_in);
+    const dim_t ch_offset = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
+    const dim_t data_offset = unroll_w * ch_offset * jcp.typesize_in;
 
     if (jcp.with_bias) compute_bias();
 

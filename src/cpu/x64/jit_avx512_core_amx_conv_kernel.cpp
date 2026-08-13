@@ -271,7 +271,7 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::icb_loop(
         dim_t ur_w, dim_t pad_l, dim_t pad_r, bool handle_h_pad) {
 
     Label icb_label;
-    const size_t nb_ic = jcp.nb_ic_int;
+    const dim_t nb_ic = jcp.nb_ic_int;
     const bool do_icb_loop = nb_ic > 1;
 
     /* Initialize zmm_one for weight accumulation */
@@ -308,13 +308,14 @@ void jit_avx512_core_amx_compute_zp_pbuff_t::icb_loop(
     if (do_icb_loop) {
         const dim_t shift_wei_icb_step
                 = jcp.kd * jcp.kh * jcp.kw * jcp.oc_block * jcp.ic_block_int_np;
-        add(reg_filt, sizeof(char) * shift_wei_icb_step);
+        add(reg_filt, static_cast<dim_t>(sizeof(char)) * shift_wei_icb_step);
 
         dec(reg_icb);
         cmp(reg_icb, 0);
         jg(icb_label, T_NEAR);
 
-        sub(reg_filt, sizeof(char) * shift_wei_icb_step * nb_ic);
+        sub(reg_filt,
+                static_cast<dim_t>(sizeof(char)) * shift_wei_icb_step * nb_ic);
     }
 
     if (jcp.oc_without_padding != jcp.oc) {

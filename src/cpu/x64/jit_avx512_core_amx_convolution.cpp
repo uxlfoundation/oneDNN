@@ -2179,7 +2179,7 @@ void jit_avx512_core_amx_convolution_bwd_weights_t::prepare_scratchpad_data(
     // race condition due to buffer overflows from memory optimization where
     // buffers sharing padding
 
-    for (size_t ithr = 1; ithr <= jcp.tr_src_buf_count; ++ithr) {
+    for (dim_t ithr = 1; ithr <= jcp.tr_src_buf_count; ++ithr) {
         src_data_t *ts
                 = &tr_src[ithr * jcp.tr_src_buf_size * jcp.nb_ic_blocking];
         for (dim_t i = 0; i < jcp.tr_src_num_guard_elems; ++i)

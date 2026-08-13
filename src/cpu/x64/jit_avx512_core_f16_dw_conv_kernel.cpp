@@ -341,14 +341,14 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::compute_loop(
     const bool ch_loop = ur_ch_blocks > jcp.nb_ch_blocking;
     // ch_loop currently happen only when data layout is nxc. The strides are
     // calculated for this layout only.
-    const size_t wei_ch_stride = (size_t)jcp.nb_ch_blocking * jcp.kh * jcp.kw
-            * jcp.ch_block * jcp.typesize_in;
-    const size_t inp_ch_stride
-            = (size_t)jcp.nb_ch_blocking * jcp.ch_block * jcp.typesize_in;
-    const size_t out_ch_stride
-            = (size_t)jcp.nb_ch_blocking * jcp.ch_block * jcp.typesize_out;
-    const size_t bias_stride
-            = (size_t)jcp.nb_ch_blocking * jcp.ch_block * sizeof(float);
+    const dim_t nb_ch_blocking = jcp.nb_ch_blocking;
+    const dim_t wei_ch_stride
+            = nb_ch_blocking * jcp.kh * jcp.kw * jcp.ch_block * jcp.typesize_in;
+    const dim_t inp_ch_stride = nb_ch_blocking * jcp.ch_block * jcp.typesize_in;
+    const dim_t out_ch_stride
+            = nb_ch_blocking * jcp.ch_block * jcp.typesize_out;
+    const dim_t bias_stride
+            = nb_ch_blocking * jcp.ch_block * static_cast<dim_t>(sizeof(float));
 
     auto compute = [&](int ur_ch_blocks, bool is_ch_tail) {
         if (jcp.is_fused_conv) {
@@ -426,8 +426,8 @@ void jit_avx512_dw_conv_fwd_kernel_f16_t::ow_loop(int ur_ch_blocks) {
 
     const auto src_layout_nxc = is_src_layout_nxc();
     const auto dat_c_stride = src_layout_nxc ? jcp.ngroups : jcp.ch_block;
-    size_t inp_shift = (size_t)jcp.typesize_in * ur_w * stride_w * dat_c_stride;
-    size_t out_shift = (size_t)jcp.typesize_out * ur_w * dat_c_stride;
+    dim_t inp_shift = jcp.typesize_in * ur_w * stride_w * dat_c_stride;
+    dim_t out_shift = jcp.typesize_out * ur_w * dat_c_stride;
 
     const dim_t inp_shift_pad
             = jcp.typesize_in * (ur_w * stride_w - l_pad) * dat_c_stride;

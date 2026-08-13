@@ -146,8 +146,8 @@ struct jit_conv_conf_t {
     dim_t tr_src_num_guard_elems;
 
     // Transpose buffer management
-    size_t tr_src_buf_size, tr_src_buf_count;
-    size_t tr_diff_dst_buf_size, tr_diff_dst_buf_count;
+    dim_t tr_src_buf_size, tr_src_buf_count;
+    dim_t tr_diff_dst_buf_size, tr_diff_dst_buf_count;
     dim_t nthr_mb_work;
 
     int typesize_in;

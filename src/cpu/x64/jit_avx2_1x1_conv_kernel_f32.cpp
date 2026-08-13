@@ -606,9 +606,9 @@ void jit_avx2_1x1_conv_kernel_f32_t::generate() {
         generate_bcast_loop(load_loop_blk);
         add(reg_load_data,
                 static_cast<uint32_t>(load_loop_blk * jcp.load_loop_load_step));
-        const size_t offst_with_dw_conv
+        const dim_t offst_with_dw_conv
                 = get_load_loop_output_fwd_offset(jcp, load_loop_blk);
-        const size_t offst_wo_dw_conv
+        const dim_t offst_wo_dw_conv
                 = get_load_loop_output_fwd_offset(jcp, load_loop_blk, true);
         switch (jcp.prop_kind) {
             case forward_training:

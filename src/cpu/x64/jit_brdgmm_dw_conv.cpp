@@ -515,7 +515,8 @@ status_t brdgmm_dw_convolution_fwd_t::pd_t::init_brdgmm_conf() {
             jcp.chb_tail = jcp.ngroups % jcp.nb_ch_blocking;
         }
 
-        const int n_owb_kernels = static_cast<int>(std::ceil(log2(jcp.nb_ow)));
+        const int n_owb_kernels = static_cast<int>(
+                std::ceil(log2(static_cast<double>(jcp.nb_ow))));
         const int num_kernels = 1 /*full ow*/ + n_owb_kernels
                 + (jcp.chb_tail != 0) + (jcp.nb_ch_blocking != jcp.ngroups)
                 + (jcp.ow_tail != 0);

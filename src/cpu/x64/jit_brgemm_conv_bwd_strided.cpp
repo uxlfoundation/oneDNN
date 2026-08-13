@@ -438,9 +438,9 @@ status_t brgemm_convolution_bwd_strided_t<isa>::add_po_kernel(
     bcfg->dt_d = (is_init && jcp.use_buffer) ? jcp.acc_dt : jcp.dst_dt;
     bcfg->typesize_C = static_cast<int>(types::data_type_size(bcfg->dt_c));
     bcfg->typesize_D = static_cast<int>(types::data_type_size(bcfg->dt_d));
-    bcfg->alpha
-            = (!is_init && IMPLICATION(jcp.with_sum, jcp.use_buffer)) ? 1 : 0;
-    bcfg->beta = is_init ? 0 : 1;
+    bcfg->alpha = (!is_init && IMPLICATION(jcp.with_sum, jcp.use_buffer)) ? 1.f
+                                                                          : 0.f;
+    bcfg->beta = is_init ? 0.f : 1.f;
     CHECK(safe_ptr_assign(kernels_po_[ker_idx],
             jit_brgemm_kernel_post_ops_base_t::create(
                     isa, *bcfg, *_pd->attr())));
@@ -1541,7 +1541,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
                 kd_e = nstl::min<dim_t>(kd_f, kd_b + KD_BLOCK_PAD);
                 for (kh_b = kh_s; kh_b < kh_f; kh_b += KH_BLOCK_PAD) {
                     kh_e = nstl::min<dim_t>(kh_f, kh_b + KH_BLOCK_PAD);
-                    for (auto kw = kw_s; kw < kw_full_s; kw += SW) {
+                    for (dim_t kw = kw_s; kw < kw_full_s; kw += SW) {
                         kw_b = kw;
                         kw_e = kw + 1;
                         kdhw_loop();
@@ -1568,7 +1568,7 @@ void brgemm_convolution_bwd_strided_t<isa>::ker_base(
                 kd_e = nstl::min<dim_t>(kd_f, kd_b + KD_BLOCK_PAD);
                 for (kh_b = kh_s; kh_b < kh_f; kh_b += KH_BLOCK_PAD) {
                     kh_e = nstl::min<dim_t>(kh_f, kh_b + KH_BLOCK_PAD);
-                    for (int kw = kw_full_f; kw < kw_f; kw += SW) {
+                    for (dim_t kw = kw_full_f; kw < kw_f; kw += SW) {
                         kw_b = kw;
                         kw_e = kw + 1;
                         kdhw_loop();

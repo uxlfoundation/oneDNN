@@ -1378,7 +1378,7 @@ void jit_avx512_common_conv_bwd_data_kernel_f32_vmm_t<Vmm>::compute_loop_fma(
 
     const dim_t ic_block = jcp.ic_block;
     const dim_t oc_block = jcp.oc_block;
-    dim_t stride_w = jcp.stride_w;
+    const int stride_w = static_cast<int>(jcp.stride_w);
     dim_t stride_h = jcp.stride_h;
 
     int ker_pipeline_depth = 4;
@@ -1519,7 +1519,7 @@ void jit_avx512_common_conv_bwd_data_kernel_f32_vmm_t<
         dim_t r_overflow, int k_offset) {
     dim_t kw = jcp.kw;
     dim_t ow = jcp.ow;
-    dim_t stride_w = jcp.stride_w;
+    const int stride_w = static_cast<int>(jcp.stride_w);
     const dim_t ic_block = jcp.ic_block;
     const dim_t oc_block = jcp.oc_block;
     const int nb_ic_block = jcp.nb_ic_blocking;

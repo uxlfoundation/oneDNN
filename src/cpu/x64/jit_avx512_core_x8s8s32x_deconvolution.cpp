@@ -50,9 +50,9 @@ jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::
     , postops_injector_(nullptr) {
 
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
-        const int tail_size = jcp.is_depthwise
-                ? jcp.ngroups % jcp.ch_block
-                : jcp.oc_without_padding % jcp.oc_block;
+        const int tail_size = static_cast<int>(jcp.is_depthwise
+                        ? jcp.ngroups % jcp.ch_block
+                        : jcp.oc_without_padding % jcp.oc_block);
 
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;

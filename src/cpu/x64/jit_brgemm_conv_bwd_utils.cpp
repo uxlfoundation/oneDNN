@@ -392,10 +392,11 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         dim_t itersize;
         float repeatn;
         float overlap;
-        void set(dim_t iter_s, float rpt, float ovlp = 1.f) {
+        template <typename T, typename U = float>
+        void set(dim_t iter_s, T rpt, U ovlp = 1.f) {
             itersize = iter_s;
-            repeatn = rpt;
-            overlap = ovlp;
+            repeatn = static_cast<float>(rpt);
+            overlap = static_cast<float>(ovlp);
         }
     };
 
@@ -1190,7 +1191,7 @@ float brg_blocking_t::est_eff_1x1() {
         const dim_t block2 = nstl::min<dim_t>(max_nb, nb);
         const dim_t nb2 = nb / block2;
         const dim_t nb2_tail = nb % block2;
-        if (!use_ave) return block2;
+        if (!use_ave) return static_cast<float>(block2);
         return (float(nb2) * static_cast<float>(block2)
                        + static_cast<float>(nb2_tail))
                 / static_cast<float>(div_up(nb, block2));
@@ -1776,7 +1777,7 @@ void get_iw_range(const jit_brgemm_conv_conf_t &jcp, dim_t iw, dim_t iw_raw,
     if (ow_l_ovf < 0) {
         ow_l_ovf = nstl::abs(ow_l_ovf);
         ker_idx += ow_l_ovf;
-        iw_s += ker_idx;
+        iw_s += static_cast<int>(ker_idx);
     }
 
     if (ow_r_ovf > 0) ker_idx += ow_r_ovf;
@@ -1933,12 +1934,12 @@ dim_t precalculate_comp_pad_kernels(const jit_brgemm_conv_conf_t &jcp,
             if (kd_f > kd_s && kh_f > kh_s && kw_f > kw_s && kw_s < KW) {
                 if (jcp.exec_type == exec_base) {
                     if (kw_s < kw_full_s) {
-                        for (auto kw = kw_s; kw < kw_full_s; kw += SW) {
+                        for (dim_t kw = kw_s; kw < kw_full_s; kw += SW) {
                             update_kernels(kd_s, kd_f, kh_s, kh_f, kw, kw + 1);
                         }
                     }
                     if (kw_full_s < kw_full_f) {
-                        for (auto kw = kw_full_s; kw < kw_full_f;
+                        for (dim_t kw = kw_full_s; kw < kw_full_f;
                                 kw += KW_BLOCK) {
                             const auto kw_e = nstl::min<dim_t>(
                                     kw_full_f, kw + KW_BLOCK);
@@ -1946,7 +1947,7 @@ dim_t precalculate_comp_pad_kernels(const jit_brgemm_conv_conf_t &jcp,
                         }
                     }
                     if (kw_full_f < kw_f) {
-                        for (auto kw = kw_full_f; kw < kw_f; kw += SW) {
+                        for (dim_t kw = kw_full_f; kw < kw_f; kw += SW) {
                             update_kernels(kd_s, kd_f, kh_s, kh_f, kw, kw + 1);
                         }
                     }

@@ -53,7 +53,7 @@ void balance2D(U nthr, U ithr, T ny, T &ny_start, T &ny_end, T nx, T &nx_start,
     T grp_nthr = grp_size;
     T first_grps = nthr % grp_count;
     if (first_grps > 0 && grp >= first_grps) {
-        ithr -= first_grps * grp_size;
+        ithr -= static_cast<U>(first_grps * grp_size);
         grp_nthr--;
         grp = ithr / grp_nthr + first_grps;
         grp_ithr = ithr % grp_nthr;

@@ -910,7 +910,8 @@ void jit_trans_ow_oc_t::transpose_1b(
     assert(is_layout_nxc);
     assert(vnni_block == 4);
 
-    for (int i = 0; i < rnd_up(nrows, vnni_block); i += vnni_block) {
+    for (int i = 0; i < rnd_up(nrows, vnni_block);
+            i += static_cast<int>(vnni_block)) {
         const auto idx0 = i;
         const auto idx1 = i + 1;
         const auto idx2 = i + 2;
@@ -1380,8 +1381,8 @@ void jit_diff_wei_trans_to_vnni_t::generate() {
                     for_(int ocb = 0; ocb < oc_block_; ocb += simd_w)
                     for (int icc = 0; icc < ic_block_ / vnni_granularity;
                             icc++) {
-                        int ic_count
-                                = bc * (ic_block_ / vnni_granularity) + icc;
+                        int ic_count = static_cast<int>(
+                                bc * (ic_block_ / vnni_granularity) + icc);
 
                         auto zmm_out = get_zmm_bf16(icc);
 

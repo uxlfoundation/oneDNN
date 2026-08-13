@@ -845,7 +845,7 @@ void jit_avx512_core_amx_copy_to_pbuffer_t::copy_row_reduced_lowering() {
         L(label_khp_inner);
         {
             for (int ic = 0; ic < jcp.ic_without_padding;
-                    ic += jcp.ic_block_int) {
+                    ic += static_cast<int>(jcp.ic_block_int)) {
                 const int offset = ic * jcp.typesize_in;
                 const bool masked
                         = ic + jcp.ic_block_int > jcp.ic_without_padding;
@@ -3726,10 +3726,10 @@ void jit_avx512_core_amx_bwd_data_kernel_t::tile_configure(char *tcfg_buff) {
     const int a_col = static_cast<int>(jcp.oc_block_int);
     const int a_row = jcp.tile_width;
     // Weights tile dimensions
-    const dim_t b_col = jcp.ic_block * vnni_width;
-    const dim_t b_row = a_col / vnni_width;
+    const int b_col = static_cast<int>(jcp.ic_block) * vnni_width;
+    const int b_row = a_col / vnni_width;
     // Accumulator tile dimensions
-    const dim_t c_col = jcp.ic_block;
+    const int c_col = static_cast<int>(jcp.ic_block);
     const int c_row = a_row;
 
     for (size_t i = 0; i < 64; i++)
@@ -4091,14 +4091,14 @@ int jit_avx512_core_amx_bwd_weights_kernel_t::get_ddst_tensor(int ocb) const {
 
 void jit_avx512_core_amx_bwd_weights_kernel_t::tile_configure(char *tcfg_buff) {
     // Input tile dimensions
-    const dim_t a_col = jcp.ur_w;
-    const dim_t a_row = jcp.ic_block;
+    const int a_col = static_cast<int>(jcp.ur_w);
+    const int a_row = static_cast<int>(jcp.ic_block);
     // Weights tile dimensions
-    const dim_t b_col = jcp.oc_block * 2;
-    const dim_t b_row = a_col / 2;
+    const int b_col = static_cast<int>(jcp.oc_block) * 2;
+    const int b_row = a_col / 2;
     // Accumulator tile dimensions
-    const dim_t c_col = jcp.oc_block;
-    const dim_t c_row = a_row;
+    const int c_col = static_cast<int>(jcp.oc_block);
+    const int c_row = a_row;
 
     for (size_t i = 0; i < 64; i++)
         tcfg_buff[i] = 0;
@@ -4445,7 +4445,7 @@ void jit_avx512_core_amx_bwd_weights_kernel_t::compute_full_spat_loop(
 void jit_avx512_core_amx_bwd_weights_kernel_t::compute_ic_loop(
         int ic_block, int nb_ic_blocking, int nb_oc_blocking) {
     assert(jcp.ur_w % 2 == 0);
-    const dim_t str_w = jcp.stride_w;
+    const int str_w = static_cast<int>(jcp.stride_w);
     assert(jcp.tr_iw % str_w == 0);
     const dim_t src_stride_w_shift = jcp.tr_iw / str_w;
 

@@ -1960,7 +1960,7 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::
     assert(ur_w % 2 == 0);
     auto steps = ur_w / 2;
 
-    const dim_t str_w = jcp.stride_w;
+    const int str_w = static_cast<int>(jcp.stride_w);
     const int underflow_boundary = -1;
     const dim_t i_iw_shift
             = jcp.tr_ow - ur_w - ((jcp.l_pad != pad_l) ? jcp.l_pad : 0);
@@ -4413,7 +4413,7 @@ status_t jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::init_conf(
             = is_data_layout_nxc ? static_cast<int>(jcp.oc % jcp.oc_block) : 0;
 
     if (jcp.is_1stconv) {
-        jcp.ic_block_step = 24 / jcp.kw;
+        jcp.ic_block_step = static_cast<int>(24 / jcp.kw);
         while (jcp.ic_block % jcp.ic_block_step != 0)
             jcp.ic_block_step--;
     } else {

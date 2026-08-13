@@ -140,8 +140,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::interleave_store() {
 
         const Zmm zmm_r = zmm_out(row);
 
-        int oh = ((osb * jcp.tile_width + row) / jcp.ow);
-        int ow = ((osb * jcp.tile_width + row) % jcp.ow);
+        dim_t oh = ((osb * jcp.tile_width + row) / jcp.ow);
+        dim_t ow = ((osb * jcp.tile_width + row) % jcp.ow);
 
         {
             // preserve registers used by binary post_ops injector
@@ -163,8 +163,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::interleave_store() {
         int exp_row_count
                 = jcp.tile_width * jcp.nb_oc_blocking * jcp.nb_os_blocking;
         if (row_count_ == exp_row_count) {
-            int oh = ((jcp.nb_os_blocking * jcp.tile_width) / jcp.ow);
-            int ow = ((jcp.nb_os_blocking * jcp.tile_width) % jcp.ow);
+            dim_t oh = ((jcp.nb_os_blocking * jcp.tile_width) / jcp.ow);
+            dim_t ow = ((jcp.nb_os_blocking * jcp.tile_width) % jcp.ow);
             dim_t out_offset = jcp.typesize_out
                     * (oh * out_h_shift() + ow * out_w_shift());
             add(out_ptr, out_offset);
@@ -323,8 +323,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_int8(
         const auto p_sum_scale_val = *p_sum_scale;
         const auto p_sum_zp_val = *p_sum_zp;
         for (int j = 0; j < jcp.tile_width; j++) {
-            int h = ((osb * jcp.tile_width + j) / jcp.ow);
-            int w = ((osb * jcp.tile_width + j) % jcp.ow);
+            dim_t h = ((osb * jcp.tile_width + j) / jcp.ow);
+            dim_t w = ((osb * jcp.tile_width + j) % jcp.ow);
 
             const auto off = out_row_offset(h, w, ocb);
             const auto addr = EVEX_compress_addr(out_ptr, off);
@@ -375,8 +375,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_int8(
     }
 
     for (int j = 0; j < jcp.tile_width; j++) {
-        const int h = ((osb * jcp.tile_width + j) / jcp.ow);
-        const int w = ((osb * jcp.tile_width + j) % jcp.ow);
+        const dim_t h = ((osb * jcp.tile_width + j) / jcp.ow);
+        const dim_t w = ((osb * jcp.tile_width + j) % jcp.ow);
         const auto off = out_row_offset(h, w, ocb);
         const auto addr = EVEX_compress_addr(out_ptr, off);
 
@@ -395,7 +395,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_int8(
 }
 
 void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vector_int8(
-        const Zmm zmm_out, int ocb, int h, int w) {
+        const Zmm zmm_out, int ocb, dim_t h, dim_t w) {
 
     const auto off = out_row_offset(h, w, ocb);
     const auto addr = EVEX_compress_addr(out_ptr, off);
@@ -487,8 +487,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_bf16(
 
     if (jcp.with_sum) {
         for (int j = 0; j < jcp.tile_width; j++) {
-            int h = ((osb * jcp.tile_width + j) / jcp.ow);
-            int w = ((osb * jcp.tile_width + j) % jcp.ow);
+            dim_t h = ((osb * jcp.tile_width + j) / jcp.ow);
+            dim_t w = ((osb * jcp.tile_width + j) % jcp.ow);
             const auto off = out_row_offset(h, w, ocb);
             const auto addr = EVEX_compress_addr(out_ptr, off);
             const Zmm zmm_r = zmm_out(j);
@@ -505,8 +505,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_bf16(
     }
 
     for (int j = 0; j < jcp.tile_width; j++) {
-        const int h = ((osb * jcp.tile_width + j) / jcp.ow);
-        const int w = ((osb * jcp.tile_width + j) % jcp.ow);
+        const dim_t h = ((osb * jcp.tile_width + j) / jcp.ow);
+        const dim_t w = ((osb * jcp.tile_width + j) % jcp.ow);
         const auto off = out_row_offset(h, w, ocb);
         const auto addr = EVEX_compress_addr(out_ptr, off);
         const Zmm zmm_r = zmm_out(j);
@@ -519,7 +519,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors_bf16(
 }
 
 void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vector_bf16(
-        const Zmm zmm_out, int ocb, int h, int w) {
+        const Zmm zmm_out, int ocb, dim_t h, dim_t w) {
     const auto off = out_row_offset(h, w, ocb);
     const auto addr = EVEX_compress_addr(out_ptr, off);
 
@@ -573,7 +573,7 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vectors(
 
 // Store single row
 void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output_vector(
-        const Zmm zmm_out, int ocb, int h, int w) {
+        const Zmm zmm_out, int ocb, dim_t h, dim_t w) {
     if (is_bf16()) {
         store_output_vector_bf16(zmm_out, ocb, h, w);
     } else {
@@ -604,8 +604,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::store_output(
         is_buffer_empty_ = false;
         is_store_done_ = (do_store) ? true : false;
         for (int j = 0; j < jcp.tile_width && do_store; j++) {
-            int oh_ = ((osb * jcp.tile_width + j) / jcp.ow);
-            int ow_ = ((osb * jcp.tile_width + j) % jcp.ow);
+            dim_t oh_ = ((osb * jcp.tile_width + j) / jcp.ow);
+            dim_t ow_ = ((osb * jcp.tile_width + j) % jcp.ow);
 
             auto addr = ptr[wsp_ptr + jcp.typesize_acc * (j * jcp.oc_block)
                     + wsp_offset];
@@ -806,8 +806,8 @@ void jit_avx512_core_amx_1x1_fwd_kernel_t::osb_loop(int nb_os) {
 
         icb_loop(do_store);
 
-        int oh = (((osi + 1) * jcp.nb_os_blocking * jcp.tile_width) / jcp.ow);
-        int ow = (((osi + 1) * jcp.nb_os_blocking * jcp.tile_width) % jcp.ow);
+        dim_t oh = (((osi + 1) * jcp.nb_os_blocking * jcp.tile_width) / jcp.ow);
+        dim_t ow = (((osi + 1) * jcp.nb_os_blocking * jcp.tile_width) % jcp.ow);
         if (do_store) {
             dim_t out_offset = jcp.typesize_out
                     * (oh * out_h_shift() + ow * out_w_shift());
@@ -1228,8 +1228,9 @@ status_t jit_avx512_core_amx_1x1_fwd_kernel_t::init_conf(jit_conv_conf_t &jcp,
             = jcp.nb_oc_blocking * jcp.nb_os_blocking * jcp.tile_width;
     const dim_t avaliable_ops
             = jcp.nb_ic_int * jcp.nb_oc_blocking * jcp.nb_os_blocking;
-    jcp.per_one_pstore
-            = (avaliable_ops) ? ops_tile_store / avaliable_ops + 1 : 0;
+    jcp.per_one_pstore = (avaliable_ops)
+            ? static_cast<int>(ops_tile_store / avaliable_ops + 1)
+            : 0;
     if (jcp.per_one_pstore > 12) jcp.per_one_pstore = 0;
 
     jcp.is_oc_scale = attr.scales_.get_mask(DNNL_ARG_WEIGHTS) > 0;

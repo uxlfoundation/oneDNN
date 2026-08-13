@@ -67,10 +67,11 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
         dim_t itersize;
         float repeatn;
         float overlap;
-        void set(dim_t iter_s, float rpt, float ovlp = 1.f) {
+        template <typename T, typename U = float>
+        void set(dim_t iter_s, T rpt, U ovlp = 1.f) {
             itersize = iter_s;
-            repeatn = rpt;
-            overlap = ovlp;
+            repeatn = static_cast<float>(rpt);
+            overlap = static_cast<float>(ovlp);
         }
     };
 
@@ -720,7 +721,8 @@ status_t brg_blocking_t::get_brgemm_ur(
         if (M_tail) unique_vM.emplace(M_tail);
     } else {
         // For `exec_base` exec_type need to compute all relevant M values.
-        for (int ow = 0; ow < this->ow; ow += this->ow_block) {
+        for (int ow = 0; ow < this->ow;
+                ow += static_cast<int>(this->ow_block)) {
             int kw_s = 0;
             int kw_f = 0;
             int dummy; // `kw_full_s` and `kw_full_f` are not needed here.
@@ -1325,7 +1327,7 @@ float brg_blocking_t::est_eff_1x1() {
         const dim_t block2 = nstl::min<dim_t>(max_nb, nb);
         const dim_t nb2 = nb / block2;
         const dim_t nb2_tail = nb % block2;
-        if (!use_ave) return block2;
+        if (!use_ave) return static_cast<float>(block2);
         return (float(nb2) * static_cast<float>(block2)
                        + static_cast<float>(nb2_tail))
                 / static_cast<float>(div_up(nb, block2));
@@ -2994,7 +2996,7 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         enum bwd_w_dims { g, ic, oc, sp };
         constexpr int nd = 4;
         // Keep maximum values for each dimension as a map
-        std::map<bwd_w_dims, int> maxv;
+        std::map<bwd_w_dims, dim_t> maxv;
         maxv.emplace(bwd_w_dims::g, jcp.ngroups);
         maxv.emplace(bwd_w_dims::ic, div_up(jcp.nb_ic, 2));
         maxv.emplace(bwd_w_dims::oc, div_up(jcp.nb_oc, 2));
@@ -3016,7 +3018,8 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         v = 3 * static_cast<double>(div_up(jcp.oc, jcp.amx_h))
                 * static_cast<double>(ks);
         dv.emplace_back(v, bwd_w_dims::oc);
-        v = div_up(jcp.mb * jcp.od * jcp.oh * jcp.ow, jcp.amx_w);
+        v = static_cast<double>(
+                div_up(jcp.mb * jcp.od * jcp.oh * jcp.ow, jcp.amx_w));
         dv.emplace_back(v, bwd_w_dims::sp);
         // Estimate the size of "cubic" piece
         double xd = 1;
@@ -3078,7 +3081,8 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
                 const auto nvf = dv[i].first;
                 const auto n = cv[i].first;
                 const auto v = maxv[cv[i].second];
-                const auto disb = nvf * static_cast<double>(rnd_up(v, n)) / v;
+                const auto disb = nvf * static_cast<double>(rnd_up(v, n))
+                        / static_cast<double>(v);
                 const auto nf = static_cast<double>(n);
                 const auto var = ((nf > nvf) ? (nf / nvf) : (nvf / nf));
                 tot_n *= n;
@@ -3094,7 +3098,7 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         for (int i = 0; i < nd; i++) {
             const auto dvf = dv[i].first;
             const auto dvs = dv[i].second;
-            const auto maxvf = maxv[dvs];
+            const auto maxvf = static_cast<int>(maxv[dvs]);
             nv.emplace_back(
                     utils::saturate(1, maxvf, static_cast<int>(dvf + 0.5f)),
                     dvs);
@@ -3628,10 +3632,10 @@ void get_ow_range(const jit_brgemm_conv_conf_t &jcp, int ow, int kw, int &ow_s,
     int ker_idx = 0;
     if (iw_lp < 0) {
         iw_lp = nstl::abs(iw_lp);
-        ker_idx += div_up(iw_lp, SW);
+        ker_idx += static_cast<int>(div_up(iw_lp, SW));
         ow_s += ker_idx;
     }
-    if (iw_rp > 0) ker_idx += div_up(iw_rp, SW);
+    if (iw_rp > 0) ker_idx += static_cast<int>(div_up(iw_rp, SW));
     ow_f = static_cast<int>(nstl::max<dim_t>(ow_s, ow_s + (M - ker_idx)));
 
     ow_s = static_cast<int>(nstl::min<dim_t>(ow_s, ow + M));

@@ -1055,10 +1055,10 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::generate() {
         if (cur_ow + jcp.ur_w <= jcp.ow) {
             if (r_pad_fall_through_n_urw == 0) ++n_labels;
             const dim_t n_urw_r_pad_region = (jcp.ow - cur_ow) / jcp.ur_w;
-            n_labels += nstl::max<dim_t>(0,
+            n_labels += static_cast<int>(nstl::max<dim_t>(0,
                     div_up(r_pad_fall_through_n_urw + n_urw_r_pad_region,
                             n_urw_per_ow_block)
-                            - 1);
+                            - 1));
         }
 
         if (jcp.ur_w_tail != 0) {

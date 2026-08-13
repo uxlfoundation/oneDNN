@@ -621,7 +621,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
         // apply post-ops on final iteration by kw to padded areas in ow_block
         int kw_s {0}, kw_full_s {0}, kw_full_f {0}, kw_f {0}, ow_s {0},
                 ow_f {0};
-        for (int ow = 0; ow < OW; ow += jcp_.ow_block) {
+        for (int ow = 0; ow < OW; ow += static_cast<int>(jcp_.ow_block)) {
             brgemm_convolution_utils::get_kw_range(
                     jcp_, ow, kw_s, kw_full_s, kw_full_f, kw_f);
             for (int kw = kw_s; kw < kw_f; kw++) {
@@ -739,7 +739,7 @@ status_t brgemm_convolution_fwd_t<isa>::add_po_kernel(
     bcfg->typesize_C = static_cast<int>(types::data_type_size(bcfg->dt_c));
     bcfg->typesize_D = static_cast<int>(types::data_type_size(bcfg->dt_d));
     bcfg->alpha = !is_init && IMPLICATION(jcp.with_sum, jcp.use_buffer);
-    bcfg->beta = is_init ? 0 : 1;
+    bcfg->beta = is_init ? 0.f : 1.f;
     // See the comment in `add_po_kernels` why `*_pd->attr()` is needed so far.
     CHECK(safe_ptr_assign(kernels_po_[ker_idx],
             jit_brgemm_kernel_post_ops_base_t::create(

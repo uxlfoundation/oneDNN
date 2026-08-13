@@ -870,7 +870,7 @@ void jit_avx2_conv_bwd_data_kernel_f32_t::compute_loop(
 
     int oc_block = static_cast<int>(jcp.oc_block);
     int nb_ic_block = jcp.nb_ic_blocking;
-    const dim_t stride_w = jcp.stride_w;
+    const int stride_w = static_cast<int>(jcp.stride_w);
     const dim_t stride_h = jcp.stride_h;
     int oc_tail = jcp.oc_tail;
     int ic_tail = jcp.ic_tail;
@@ -1303,8 +1303,7 @@ status_t jit_avx2_conv_bwd_data_kernel_f32_t::init_conf(jit_conv_conf_t &jcp,
     for (int b = 1; b <= 4; b++) {
         if (jcp.nb_ic % b != 0) continue;
 
-        for (int u = static_cast<int>(jcp.stride_w);
-                u * b + u / jcp.stride_w <= max_regs
+        for (dim_t u = jcp.stride_w; u * b + u / jcp.stride_w <= max_regs
                 && u < jcp.iw + jcp.stride_w;
                 u += jcp.stride_w) {
             int ur_w = static_cast<int>(nstl::min<dim_t>(u, jcp.iw));

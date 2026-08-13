@@ -1122,7 +1122,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
         n_l_pad_labels
                 = static_cast<int>(div_up(n_urw_l_pad, n_urw_per_ow_block));
         n_labels = n_l_pad_labels;
-        cur_ow += n_urw_l_pad * jcp.ur_w;
+        cur_ow += static_cast<int>(n_urw_l_pad * jcp.ur_w);
 
         // middle_region:
         int n_urw_middle_block_loop = 0;
@@ -1144,10 +1144,10 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
             if (r_pad_fall_through_n_urw == 0) ++n_labels;
             const int n_urw_r_pad_region
                     = static_cast<int>((jcp.ow - cur_ow) / jcp.ur_w);
-            n_labels += nstl::max<dim_t>(0,
+            n_labels += static_cast<int>(nstl::max<dim_t>(0,
                     div_up(r_pad_fall_through_n_urw + n_urw_r_pad_region,
                             n_urw_per_ow_block)
-                            - 1);
+                            - 1));
         }
 
         if (jcp.ur_w_tail != 0) {
@@ -1219,7 +1219,7 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::generate() {
     if (jcp.l_pad > 0) {
         for (cur_l_pad = static_cast<int>(jcp.l_pad);
                 cur_l_pad > 0 && cur_ow + jcp.ur_w <= jcp.ow;
-                cur_l_pad -= urw_inp_stride) {
+                cur_l_pad -= static_cast<int>(urw_inp_stride)) {
             if (jcp.nb_ow > 1 && cur_n_oi == 0) {
                 // cur_n_oi == 0 signifies beginning of new ow_block
                 // (or end of previous block)

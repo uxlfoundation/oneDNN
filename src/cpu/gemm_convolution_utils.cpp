@@ -2113,9 +2113,9 @@ status_t init_conf(conv_gemm_conf_t &jcp,
                     // Required memory in this scenario overflows the
                     // available memory due to the large dimensions.
                     const int min_os_block = simd_w;
-                    const int max_os_block = (int)available_mem
+                    const int max_os_block = static_cast<int>((int)available_mem
                             / ((int)gemm_col_datatype_size * jcp.nthr
-                                    * (jcp.im2col_sz / jcp.os));
+                                    * (jcp.im2col_sz / jcp.os)));
                     // Choose an arbitrary small coeficient reduce spatial
                     // dimensions.
                     // TODO: better heuristic to determine os_block based

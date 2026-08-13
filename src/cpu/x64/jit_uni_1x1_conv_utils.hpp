@@ -313,8 +313,9 @@ struct rtus_driver_t : public jit_generator_t {
         if (isa == avx512_core) {
             push(rcx); // preserve rcx, used for shift
             mov(reg_icb_remainder, reg_icb);
+            // # of elements in tail
             and_(reg_icb_remainder,
-                    (vlen_ / typesize_) - 1); // # of elements in tail
+                    static_cast<uint32_t>((vlen_ / typesize_) - 1));
             mov(reg_tail_mask, 1);
             shl(reg_tail_mask, reg_icb_remainder.cvt8());
             dec(reg_tail_mask);

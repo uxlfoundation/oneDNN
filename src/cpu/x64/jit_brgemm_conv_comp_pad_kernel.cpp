@@ -305,7 +305,7 @@ void jit_uni_brgemm_conv_comp_pad_kernel_t<Vmm>::bwd_kw_iw_loop(const int icb,
         while (k_s % SW != s)
             k_s++;
 
-        for (int kw = k_s; kw < k_f; kw += SW) {
+        for (int kw = k_s; kw < k_f; kw += static_cast<int>(SW)) {
             const auto adj_kw = sw * KW + kw;
             ker_kw_ow_b[adj_kw]
                     = ker_kw_ow_b[adj_kw] == -1 ? ker_iw : ker_kw_ow_b[adj_kw];
@@ -649,7 +649,7 @@ void jit_uni_brgemm_conv_relo_comp_pad_kernel_t<Vmm>::kw_loop(
             store(n_block, prev_comp_ow, prev_comp_ow + ow_l);
         }
         ow = ow_e;
-        prev_comp_ow += ow_l;
+        prev_comp_ow += static_cast<int>(ow_l);
     }
 }
 

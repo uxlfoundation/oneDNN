@@ -833,7 +833,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 
     // TODO: maybe add 'KH' as another parallel dimension to increase partition
     // space
-    parallel_nd(jcp.nb_ch, [= COMPAT_THIS_CAPTURE](int NB_CH) {
+    parallel_nd(jcp.nb_ch, [= COMPAT_THIS_CAPTURE](dim_t NB_CH) {
         const size_t nb_ch_step
                 = static_cast<size_t>(jcp.kh * jcp.kw * jcp.ch_block);
         const size_t wei_offset = NB_CH * nb_ch_step;

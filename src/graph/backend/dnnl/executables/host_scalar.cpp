@@ -37,10 +37,24 @@ void host_scalar_executable_t::execute_impl(const stream &stream,
     const memory &src_mem = it_src->second;
     const memory &dst_mem = it_dst->second;
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    // Chain through TP so async execution order is preserved.
+    // Capture by value since the lambda may outlive this scope.
+    stream.get()->before_exec_hook();
+    dnnl::impl::parallel(1, [src_mem, dst_mem](int, int) {
+        DNNL_HOST_SCALAR_TYPE_SWITCH(
+                src_mem.get_desc().get_data_type(), DType, {
+                    const DType val = src_mem.get_host_scalar_value<DType>();
+                    std::memcpy(dst_mem.get_data_handle(), &val, sizeof(DType));
+                });
+    });
+    stream.get()->after_exec_hook();
+#else
     DNNL_HOST_SCALAR_TYPE_SWITCH(src_mem.get_desc().get_data_type(), DType, {
         const DType val = src_mem.get_host_scalar_value<DType>();
         std::memcpy(dst_mem.get_data_handle(), &val, sizeof(DType));
     });
+#endif
 }
 
 void host_scalar_executable_t::execute(const stream &stream,

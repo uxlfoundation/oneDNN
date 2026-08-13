@@ -47,6 +47,8 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
 
         bool has_f8_e5m2_binary_postops = false;
         bool has_f8_e4m3_binary_postops = false;
+        bool has_f8_dt = one_of(data_type::f8_e5m2, brg.dt_d, brg.dt_bias)
+                || one_of(data_type::f8_e4m3, brg.dt_d, brg.dt_bias);
         if (brg.with_binary) {
             const auto &post_ops = brg.attr()->post_ops_;
             for (int i = 0; i < post_ops.len(); i++) {
@@ -61,14 +63,16 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
             }
         }
 
-        if (brg.is_fp8 || has_f8_e5m2_binary_postops
+        if (brg.is_fp8 || has_f8_dt || has_f8_e5m2_binary_postops
                 || has_f8_e4m3_binary_postops) {
-            if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d)
+            if (one_of(data_type::f8_e5m2, brg.dt_a, brg.dt_b, brg.dt_d,
+                        brg.dt_bias)
                     || has_f8_e5m2_binary_postops)
                 f8_e5m2_cvt_ = utils::make_unique<fp8_conversion_e5m2_t>(this,
                         fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),
                         fp8_tmp_mask, fp8_tmp_reg);
-            if (one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d)
+            if (one_of(data_type::f8_e4m3, brg.dt_a, brg.dt_b, brg.dt_d,
+                        brg.dt_bias)
                     || has_f8_e4m3_binary_postops)
                 f8_e4m3_cvt_ = utils::make_unique<fp8_conversion_e4m3_t>(this,
                         fp8_emu_xmm_1(), fp8_emu_xmm_2(), fp8_emu_xmm_3(),

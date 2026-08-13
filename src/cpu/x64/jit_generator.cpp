@@ -36,8 +36,8 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
     // Only avx2 version is supported for now. TODO: support other cases.
     // The transpose size is always calculated for f32 because bf16 is
     // is supported via upconversion.
-    const int transpose_size = vreg_traits_t<Xbyak::Ymm>::vlen
-            / types::data_type_size(data_type::f32);
+    const int transpose_size = static_cast<int>(vreg_traits_t<Xbyak::Ymm>::vlen
+            / types::data_type_size(data_type::f32));
     assert(is_valid_isa(avx2));
     assert(nrows <= transpose_size && ncolumns <= transpose_size);
 

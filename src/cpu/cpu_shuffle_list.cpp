@@ -18,7 +18,6 @@
 
 #include "cpu/cpu_engine.hpp"
 
-#include "common/bfloat16.hpp"
 #include "cpu/ref_shuffle.hpp"
 
 #if DNNL_X64
@@ -27,6 +26,9 @@ using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/shuffle/jit_uni_shuffle.hpp"
 using namespace dnnl::impl::cpu::aarch64;
+#elif DNNL_RV64
+#include "cpu/rv64/shuffle/jit_uni_shuffle.hpp"
+using namespace dnnl::impl::cpu::rv64;
 #endif
 
 namespace dnnl {
@@ -43,6 +45,7 @@ constexpr impl_list_item_t impl_list[] = REG_SHUFFLE_P({
         CPU_INSTANCE_X64(jit_uni_shuffle_t<sse41>)
         CPU_INSTANCE_AARCH64(jit_uni_shuffle_t<sve>)
         CPU_INSTANCE_AARCH64(jit_uni_shuffle_t<asimd>)
+        CPU_INSTANCE_RV64(jit_uni_shuffle_t)
         CPU_INSTANCE(ref_shuffle_t)
         /* eol */
         nullptr,

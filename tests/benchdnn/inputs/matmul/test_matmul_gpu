@@ -136,12 +136,10 @@
 --reset
 --batch=option_set_fwks_ext_gpu
 
-# Test tf32 configuration
---reset
---batch=option_set_fwks_key_gpu_tf32
-
 # precomputed reductions for zero points
 --reset
 --batch=harness_matmul_precomp_reductions
 
---batch=harness_matmul_sparse
+# Test tf32 configuration
+--reset
+--batch=option_set_fwks_key_gpu_tf32

@@ -89,10 +89,19 @@ void genindex_executable_t::execute(const stream &stream,
         const std::unordered_map<int, memory> &args) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream.get()->wait();
+        bool block_on_wait = true;
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+        dnnl::threadpool_interop::threadpool_iface *tp = nullptr;
+        auto st = stream.get()->get_threadpool(&tp);
+        block_on_wait = st == dnnl::impl::status::success && tp
+                && !(tp->get_flags()
+                        & dnnl::threadpool_interop::threadpool_iface::
+                                ASYNCHRONOUS);
+#endif
+        if (block_on_wait) stream.get()->wait();
         double start_ms = dnnl::impl::get_msec();
         execute_impl(stream, args);
-        stream.get()->wait();
+        if (block_on_wait) stream.get()->wait();
         double duration_ms = dnnl::impl::get_msec() - start_ms;
         VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
                 duration_ms);

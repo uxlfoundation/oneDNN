@@ -16,6 +16,7 @@
 
 #include "graph/backend/dnnl/executables/host_scalar.hpp"
 
+#include "common/dnnl_thread.hpp"
 #include "common/stream.hpp"
 
 namespace dnnl {
@@ -35,6 +36,7 @@ void host_scalar_executable_t::execute_impl(const stream &stream,
 
     const memory &src_mem = it_src->second;
     const memory &dst_mem = it_dst->second;
+
     DNNL_HOST_SCALAR_TYPE_SWITCH(src_mem.get_desc().get_data_type(), DType, {
         const DType val = src_mem.get_host_scalar_value<DType>();
         std::memcpy(dst_mem.get_data_handle(), &val, sizeof(DType));
@@ -45,10 +47,19 @@ void host_scalar_executable_t::execute(const stream &stream,
         const std::unordered_map<int, memory> &args) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream.get()->wait();
+        bool block_on_wait = true;
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+        dnnl::threadpool_interop::threadpool_iface *tp = nullptr;
+        auto st = stream.get()->get_threadpool(&tp);
+        block_on_wait = st == dnnl::impl::status::success && tp
+                && !(tp->get_flags()
+                        & dnnl::threadpool_interop::threadpool_iface::
+                                ASYNCHRONOUS);
+#endif
+        if (block_on_wait) stream.get()->wait();
         double start_ms = dnnl::impl::get_msec();
         execute_impl(stream, args);
-        stream.get()->wait();
+        if (block_on_wait) stream.get()->wait();
         double duration_ms = dnnl::impl::get_msec() - start_ms;
         VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
                 duration_ms);

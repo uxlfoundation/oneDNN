@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@
 #include "common/primitive.hpp"
 #include "common/utils.hpp"
 
-#include "cpu/aarch64/cpu_barrier.hpp"
 #include "cpu/aarch64/cpu_reducer.hpp"
 #include "cpu/cpu_convolution_pd.hpp"
 
@@ -267,9 +266,9 @@ private:
 
     int nthr_, nthr_mb_, nthr_g_, nthr_oc_b_, nthr_ic_b_;
 
-    jit_sve_conv_bwd_weights_kernel_f32_t<isa> *kernel_;
-    cpu_accumulator_1d_t<diff_weights_type, isa> *acc_ker_;
-    cpu_reducer_t<diff_weights_type, isa> *reducer_bias_;
+    std::unique_ptr<jit_sve_conv_bwd_weights_kernel_f32_t<isa>> kernel_;
+    std::unique_ptr<cpu_accumulator_1d_t<diff_weights_type, isa>> acc_ker_;
+    std::unique_ptr<cpu_reducer_t<diff_weights_type, isa>> reducer_bias_;
 };
 
 } // namespace aarch64

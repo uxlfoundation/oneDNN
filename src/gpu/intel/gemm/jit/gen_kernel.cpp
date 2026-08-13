@@ -189,10 +189,10 @@ status_t gen_desc_t::finalize(const char *tags) {
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
         strategy_.unroll[LoopN] = entry_->driverInfo.unroll[LoopN];
         parseStrategy(entry_->strategy, hw_, problem_, strategy_);
-        modifyStrategy(strategy_, aux_params_);
 #ifdef DNNL_DEV_MODE
     }
 #endif
+    modifyStrategy(strategy_, aux_params_);
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
 

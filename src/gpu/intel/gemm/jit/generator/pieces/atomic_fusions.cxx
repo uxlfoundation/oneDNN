@@ -395,6 +395,8 @@ void Generator<hw>::gemmRedirectToTempC(GEMMProblem &problem, GEMMStrategy &stra
     problem.Tc_ext = problem.Tc;
     problem.C = state.tempC;
 
+    if (problem.cMXScale) stub("MX Scale unsupported with Temp C.");
+
     strategy.C = state.tempCStrategy;
     strategy.remHandling[LoopM] = RemainderHandling::Ignore;
     strategy.remHandling[LoopN] = RemainderHandling::Ignore;

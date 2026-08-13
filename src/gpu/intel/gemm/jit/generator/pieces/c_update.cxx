@@ -188,7 +188,8 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
                        :  ejmpi(1  | mod, labelSkip);
     }
 
-    bool splitUpdateStore = (problem.cOffset == COffset::Post);
+    // MX dst scaling must be applied after all other post-ops before store.
+    bool splitUpdateStore = (problem.cOffset == COffset::Post) || problem.hasCMXScale();
 
     // New post-op path: do all post-ops up to sum, if any.
     size_t poSum = 0;
@@ -219,6 +220,8 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
         if (newPostOps)
             gemmApplyPostOps(poSum + 1, problem.postOps.len(), problem, strategy, state);
         storeProblem.postOps = PostOps{};
+        gemmApplyMXScale(problem, strategy, state);
+        storeProblem.cMXScale = false;
 
         if (problem.cOffset == COffset::Post)
             ok = ok && gemmApplyCOffsetDispatch(problem, strategy, state);

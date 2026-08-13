@@ -189,7 +189,7 @@ status_t ref_deconvolution_fwd_t::compute_oscale(
     const auto ndims = pd()->desc()->src_desc.ndims;
 
     parallel_nd(MB, OCP, OD, OH, OW,
-            [=](dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
+            [=](dim_t mb, dim_t ocp, dim_t od, dim_t oh, dim_t ow) {
         auto dst_off = ref_conv_utils::get_data_off(
                 dst_d, ndims, mb, ocp, od, oh, ow);
         float tmp_result = 0;
@@ -240,7 +240,7 @@ status_t ref_deconvolution_fwd_t::compute_ref_attrs(const exec_ctx_t &ctx,
 
     parallel_nd(MB, OCP, OD, OH, OW,
             [= COMPAT_THIS_CAPTURE](
-                    dim_t mb, int ocp, dim_t od, dim_t oh, dim_t ow) {
+                    dim_t mb, dim_t ocp, dim_t od, dim_t oh, dim_t ow) {
         auto dst_off = ref_conv_utils::get_data_off(
                 dst_d, ndims, mb, ocp, od, oh, ow);
         float tmp_result = 0;

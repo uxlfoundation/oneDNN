@@ -184,6 +184,14 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             if (tileX > 0) maxXBlock = std::min(maxXBlock, tileX);
             if (tileY > 0) maxYBlock = std::min(maxYBlock, tileY);
 
+            // u3 has no native per-lane scattered-message element size (real
+            // hardware scattered/channel-scattered messages only support
+            // byte/word/dword/qword granularities), and this path always
+            // reads/writes whole 8-element/3-byte packing groups (see
+            // RegisterBlock::find()), never a partial group.
+            if (T.is3() && (remainderX || remainderY || atomic))
+                stub("u3 does not support remainder/atomic scattered access; unpack to u8 first.");
+
             // Allowed accesses:
             //   A64             Essentially max 256 bytes.
             //                    8 slots x (1,2,4,8) dwords [Gen12/surface: 1,2,4]
@@ -214,9 +222,21 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             if (atomic && hasNativeAtomicAdd(hw, T.real(), atype, astrategy))
                 qword &= (T.real().paddedSize() >= 8);
             int width = qword ? 8 : 4;
+            // The generic width/T crosspack is only meaningful for u3 if
+            // `width` bytes hold a whole number of u3 elements *and* that
+            // count is itself a multiple of u3's fixed 8-element/3-byte
+            // packing group (see RegisterBlock::find()); no standard message
+            // width (word/dword/qword) satisfies this for a 3-bit element,
+            // so u3 always takes the byte-granular path below, with the full
+            // group (8 elements) as its crosspack -- consistent with what
+            // hwMaxXBlock, count, and RegisterBlock::find() all expect.
+            bool u3CrosspackFits = !T.is3()
+                    || (((width * 8) % T.bits() == 0) && (((width * 8) / T.bits()) % 8 == 0));
+            if (T.is3() && !u3CrosspackFits)
+                byte = true;
             ebytes = byte ? 1 : width;
-            crosspack = std::max<int>(1, width / T);
-            int consecutive = std::max<int>(1, T.paddedSize() / width);
+            crosspack = (T.is3() && !u3CrosspackFits) ? 8 : std::max<int>(1, width / T);
+            int consecutive = (T.is3() && !u3CrosspackFits) ? 1 : std::max<int>(1, T.paddedSize() / width);
 
             if (prefetch) consecutive = 1;
 
@@ -359,7 +379,8 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             bool masking = (effCM ? remainderR : remainderC);
             bool bytePartialCP = (T.paddedSize() & 3) && ((colMajor ? C : R) % atype.crosspack);
             bool byte = (atype.alignment & 3) || (consecutive * T & 3) || bytePartialCP || ((T.paddedSize() & 3) && writable && masking);
-            bool byte1PerSlot = byte && (bytePartialCP || masking || atomic);
+            //if (T.is3()) byte = false;
+	    bool byte1PerSlot = byte && (bytePartialCP || masking || atomic);
             bool pseudo = (accessType == AccessType::PseudoBlock)
                         | needsPseudoblock(hw, T, R, C, atype, astrategy, writable, masking);
             int maxElements = 0;
@@ -378,6 +399,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
 
             if (astrategy.newDP && !pseudo) {
                 bool qword = ((atype.alignment | (consecutive * T)) % 8 == 0);
+		if (T.is3()) qword = ((consecutive * T) % 8 ) == 0;
                 ebytes = qword ? 8 : 4;
                 maxElements = (64 * ebytes) / T;
                 maskGranularity = T.paddedSize();         // Convenience value; LSC cannot mask individual elements
@@ -484,7 +506,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                         else
                             stub();
                     }
-                    crosspack = (npack * T.bits()) / 8;
+                    crosspack = (T.bits() < 8) ? (npack * T.bits()) / 8 : npack;
                     byteGlue = (T.bits() < 8);
                     npack = (T.bits() < 8) ? (8 / T.bits()) : 1;
                     (effCM ? cblock : rblock) = 1;

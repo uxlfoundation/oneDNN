@@ -244,6 +244,9 @@ InstructionModifier CopyInstruction::ngenModifiers() const
 // Run all transformation passes on a CopyPlan.
 void CopyPlan::transform()
 {
+/*    printf("before \n");
+    dump();
+    printf("---\n");*/
     distributePhases();
     planEarlyInt4Upconversions();
     split2DRegions();
@@ -259,6 +262,9 @@ void CopyPlan::transform()
 
     legalizeSIMD(true);
     planTypeConversions();
+  /*  printf("after -- \n");
+    dump();
+    printf(" \n");*/
     planBFNEmulation();
 
     sort(SortType::Register);
@@ -1496,8 +1502,8 @@ void CopyPlan::planInt3Upconversion(CopyInstruction &i)
 
     bool directU8 = (i.dst.type == DataType::ub);
     CopyOperand finalDst = i.dst;
-    CopyOperand u8Dst = directU8 ? finalDst : newTemp(DataType::ub, n, 2);
-    u8Dst.stride =2 ;
+    CopyOperand u8Dst = directU8 ? finalDst : newTemp(DataType::ub, n, 1);
+   // u8Dst.stride =2 ;
     CopyOperand srcBase = i.src0;
     srcBase.type = DataType::ub;
     srcBase.stride = 1;

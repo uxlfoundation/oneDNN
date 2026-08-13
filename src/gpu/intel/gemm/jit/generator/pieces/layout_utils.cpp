@@ -108,8 +108,14 @@ bool needsPseudoblock(HW hw, Type T, int r, int c,
     auto consecutive = consecutiveElements(r, c, atype);
     bool dwAligned = (atype.alignment & 0x3) == 0;
     bool owAligned = (atype.alignment & 0xF) == 0;
+    bool qword = ((atype.alignment | (consecutive * T)) % 8 == 0);
+    if (T.is3()) qword = ((consecutive * T) % 8 ) == 0;
+    int ebytes = qword ? 8 : 4;
+    int  block_count = (consecutive * T) / ebytes;
+    bool block_count_valid = block_count <= 4 || ngen::utils::is_zero_or_pow2(block_count); 
     bool pseudo = !dwAligned
-               || ((consecutive * T) & 0x3)
+	       || !block_count_valid
+	       || ((consecutive * T) & 0x3)
                || (writable && ((consecutive * T) & 0xF) && !astrategy.newDP)
                || (writable && !owAligned && !astrategy.newDP)
                || (writable && masked && (T.paddedSize() & 3))

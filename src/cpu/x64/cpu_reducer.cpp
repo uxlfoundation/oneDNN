@@ -101,8 +101,8 @@ template <impl::data_type_t data_type>
 struct reducer_2d_driver_t : public jit_generator_t {
     using data_t = typename prec_traits_t<data_type>::type;
 
-    reducer_2d_driver_t(int n_src, size_t src_ld, size_t src_step,
-            size_t dst_step, bool nullify_dst, const char *name)
+    reducer_2d_driver_t(int n_src, dim_t src_ld, dim_t src_step, dim_t dst_step,
+            bool nullify_dst, const char *name)
         : jit_generator_t(name)
         , n_src_(n_src)
         , src_ld_(src_ld)
@@ -115,7 +115,7 @@ struct reducer_2d_driver_t : public jit_generator_t {
 
 protected:
     int n_src_;
-    size_t src_ld_, src_step_, dst_step_;
+    dim_t src_ld_, src_step_, dst_step_;
     bool nullify_dst_;
 };
 
@@ -158,8 +158,8 @@ struct reducer_2d_driver_f_s_32_t : public reducer_2d_driver_t<data_type> {
     Xbyak::Reg64 reg_src_id = this->r10;
     Xbyak::Reg64 reg_long_offt = this->r11;
 
-    reducer_2d_driver_f_s_32_t(int n_src, size_t src_ld, size_t src_step,
-            size_t dst_step, bool nullify_dst)
+    reducer_2d_driver_f_s_32_t(int n_src, dim_t src_ld, dim_t src_step,
+            dim_t dst_step, bool nullify_dst)
         : reducer_2d_driver_t<data_type>(
                   n_src, src_ld, src_step, dst_step, nullify_dst, jit_name()) {}
 
@@ -330,8 +330,8 @@ struct reducer_2d_driver_xf16_t : public reducer_2d_driver_t<data_type> {
 
     Xbyak::Opmask k_tail_mask = Xbyak::Opmask(1);
 
-    reducer_2d_driver_xf16_t(int n_src, size_t src_ld, size_t src_step,
-            size_t dst_step, bool nullify_dst)
+    reducer_2d_driver_xf16_t(int n_src, dim_t src_ld, dim_t src_step,
+            dim_t dst_step, bool nullify_dst)
         : reducer_2d_driver_t<data_type>(
                   n_src, src_ld, src_step, dst_step, nullify_dst, jit_name()) {}
 
@@ -441,8 +441,8 @@ struct reducer_2d_driver_xf16_t : public reducer_2d_driver_t<data_type> {
 
         loop_x();
 
-        this->add(reg_dst, this->dst_step_ * (size_t)typesize);
-        this->add(reg_src, this->src_step_ * (size_t)typesize);
+        this->add(reg_dst, this->dst_step_ * typesize);
+        this->add(reg_src, this->src_step_ * typesize);
 
         this->dec(reg_ny);
         this->jnz(ny_loop, this->T_NEAR);
@@ -453,7 +453,7 @@ struct reducer_2d_driver_xf16_t : public reducer_2d_driver_t<data_type> {
 
 template <impl::data_type_t data_type>
 inline reducer_2d_driver_t<data_type> *create_reduce_2d_drv(int n_src,
-        size_t src_ld, size_t src_step, size_t dst_step, bool nullify_dst) {
+        dim_t src_ld, dim_t src_step, dim_t dst_step, bool nullify_dst) {
     if (utils::one_of(data_type, data_type::bf16, data_type::f16)) {
         // bf16 downconvert needs AVX512_BF16 (vcvtneps2bf16). f16 needs
         // F16C/AVX512F. Caller is expected to only request these types

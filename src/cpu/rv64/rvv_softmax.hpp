@@ -113,12 +113,25 @@ struct rvv_softmax_fwd_t : public primitive_t {
 
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
-            nthr_ = rsp_.inner_size > 1 ? dnnl_get_max_threads() : 1;
+            const bool is_f16 = rsp_.data_type == data_type::f16;
+            const dim_t work_amount = rsp_.inner_size > 1
+                    ? rsp_.outer_size * rsp_.inner_size
+                    : rsp_.outer_size;
+            nthr_ = rsp_.inner_size > 1 || is_f16
+                    ? static_cast<int>(nstl::min<dim_t>(dnnl_get_max_threads(),
+                              nstl::max<dim_t>(work_amount, 1)))
+                    : 1;
             const size_t dt_size = types::data_type_size(rsp_.data_type);
             if (rsp_.inner_size > 1) {
                 scratchpad.template book<char>(
                         memory_tracking::names::key_softmax_interim_store,
                         static_cast<size_t>(axis_size(true)) * dt_size
+                                * static_cast<size_t>(nthr_));
+            }
+            if (is_f16) {
+                scratchpad.template book<float>(
+                        memory_tracking::names::key_softmax_reduction,
+                        static_cast<size_t>(axis_size(true))
                                 * static_cast<size_t>(nthr_));
             }
         }

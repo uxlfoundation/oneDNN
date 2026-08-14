@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
 * Copyright 2020-2021 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -45,6 +45,10 @@ struct jit_uni_i8i8_pooling_fwd_t : public primitive_t {
                 jit_uni_i8i8_pooling_fwd_t);
 
         status_t init(const engine_t *engine) {
+            VDISPATCH_POOLING(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
             bool ok = true && mayiuse(isa) && utils::one_of(ndims(), 3, 4, 5)
                     && set_default_params() == status::success
                     && desc()->prop_kind == prop_kind::forward_inference

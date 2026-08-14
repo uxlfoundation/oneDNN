@@ -252,6 +252,9 @@ struct DNNL_API brgemm_attr_t {
     const brgemm_batch_element_t *static_offsets;
     // hint whether to use on the fly copy of A due to unaligned accesses
     bool hint_fused_copy_a = false;
+    // request the ACE compute path; honored only when the descriptor resolves
+    // to an ACE ISA, see brgemm_desc_t::is_ace()
+    bool use_ace = false;
 };
 
 struct brgemm_desc_t {
@@ -532,14 +535,18 @@ struct brgemm_desc_t {
     }
 
     // Tile register decomposition
+    // TMUL tails need their own tile because the tail geometry is baked into
+    // the palette. ACE tiles are fixed-size, so a tail reuses the last tile.
     int get_bd_block2() const noexcept {
-        return static_cast<int>(
-                (bdb <= bd_block2) ? bdb : (bd_block2 + (bdb_tail ? 1 : 0)));
+        return static_cast<int>((bdb <= bd_block2)
+                        ? bdb
+                        : (bd_block2 + ((bdb_tail && !is_ace()) ? 1 : 0)));
     }
 
     int get_ld_block2() const noexcept {
-        return static_cast<int>(
-                (ldb <= ld_block2) ? ldb : (ld_block2 + (ldb_tail ? 1 : 0)));
+        return static_cast<int>((ldb <= ld_block2)
+                        ? ldb
+                        : (ld_block2 + ((ldb_tail && !is_ace()) ? 1 : 0)));
     }
 
     int get_num_C_tiles() const noexcept {
@@ -553,6 +560,7 @@ struct brgemm_desc_t {
     }
 
     int get_num_A_tiles() const noexcept {
+        if (is_ace()) return 0;
         const auto req_tiles = (bdb_tail && bdb > 1) ? 2 : 1;
         const auto max_tiles = AMX_TILES_NUM - get_num_C_tiles() - 1;
         const auto n_tiles = nstl::min(get_bd_block2(), max_tiles);
@@ -568,6 +576,7 @@ struct brgemm_desc_t {
     }
 
     int get_num_B_tiles() const noexcept {
+        if (is_ace()) return 0;
         const auto req_tiles = (ldb_tail && ldb > 1) ? 2 : 1;
         const auto max_tiles
                 = AMX_TILES_NUM - get_num_C_tiles() - get_num_A_tiles();
@@ -581,6 +590,22 @@ struct brgemm_desc_t {
         auto N = (n_tail || full_B_tiles == 0) ? get_num_B_tiles() - 1
                                                : n % full_B_tiles;
         return (get_num_C_tiles() + get_num_A_tiles() + N);
+    }
+
+    bool can_reuse_input_transform() const noexcept {
+        // FP8 conversion and transform caching share temporary workspace, so
+        // caching would allow converted data to overwrite a saved transform.
+        return !is_fp8_via_convert();
+    }
+
+    bool save_transform_A() const noexcept {
+        return can_reuse_input_transform() && ldb2 > 1;
+    }
+
+    bool save_transform_B() const noexcept {
+        // ACE never caches B: it loads B straight from memory with vmovups,
+        // so no transform buffer is reserved for it.
+        return !is_ace() && can_reuse_input_transform() && bdb2 > 1;
     }
 
     dim_t get_convert_wsp_buffer_size() const noexcept {
@@ -600,9 +625,34 @@ struct brgemm_desc_t {
         return 0;
     }
 
+    int all_rdb() const noexcept {
+        return static_cast<int>(rdb + (rdb_tail != 0));
+    }
+
+    int rd_block_A_size() const noexcept { return rd_block * typesize_A; }
+    int rd_block_B_size() const noexcept { return rd_block * typesize_B; }
+
+    // ACE A transform stores each bd_block in 4 ZMM registers.
+    // It packs 16 rows into 4 ZMMs and transposes to one ZMM per rd_step.
+    static constexpr int ace_zmms_per_bd_block = 4;
+    int ace_transformed_A_bd_block_size() const noexcept {
+        return ace_zmms_per_bd_block
+                * static_cast<int>(cpu_isa_traits_t<avx512_core>::vlen);
+    }
+    int ace_transformed_A_bd_block2_size() const noexcept {
+        return bd_block2 * ace_transformed_A_bd_block_size();
+    }
+
     dim_t get_wsp_buffer_size() const noexcept {
         dim_t sz = 0;
-        if (is_tmm) {
+        if (is_ace()) {
+            // ACE transforms and caches A only; B is consumed directly from
+            // its source matrix by the ZMM load path. No C tile area is
+            // reserved either, ACE reads accumulators out with tilemovrow.
+            if (save_transform_A())
+                sz = static_cast<dim_t>(ace_transformed_A_bd_block2_size())
+                        * brgattr.max_bs * all_rdb();
+        } else if (is_tmm) {
             sz = get_num_C_tiles() * tilesize; // postops buffer
             sz += get_convert_wsp_buffer_size();
             if (amx_wary_k_tail()) sz += tilesize;
@@ -676,6 +726,10 @@ struct brgemm_desc_t {
                 && brgattr.use_uker
                 && everyone_is(false, is_runtime_lda, is_runtime_ldb,
                         is_runtime_ldc, is_runtime_ldd);
+    }
+
+    bool is_ace() const noexcept {
+        return brgattr.use_ace && is_superset(isa_impl, cpu_isa_t::avx10_2_ace);
     }
 
     bool is_xf16() const noexcept { return is_bf16 || is_f16; }

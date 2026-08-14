@@ -224,9 +224,9 @@ simple_resampling_kernel_t::create_nearest() const {
             };
             MAYBE_UNUSED(preserve_zero_padding);
 
-            const dim_t ow_start = ow_idx(iw) * stride_w_;
-            const dim_t oh_start = oh_idx(ih) * stride_h_;
-            const dim_t od_start = od_idx(id) * stride_d_;
+            const dim_t ow_start = ow_idx(static_cast<float>(iw)) * stride_w_;
+            const dim_t oh_start = oh_idx(static_cast<float>(ih)) * stride_h_;
+            const dim_t od_start = od_idx(static_cast<float>(id)) * stride_d_;
             const dim_t ow_end = ow_idx(iw + 1.f) * stride_w_;
             const dim_t oh_end = oh_idx(ih + 1.f) * stride_h_;
             const dim_t od_end = od_idx(id + 1.f) * stride_d_;

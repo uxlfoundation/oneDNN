@@ -2628,7 +2628,7 @@ void jit_uni_reorder_t::reduce_compensation(char *out,
     const size_t zp_offset
             = offset + (pd()->prb_.req_s8s8_comp ? GN * comp_dt_size : 0);
 
-    parallel_nd(GN, [=](int idx) {
+    parallel_nd(GN, [=](dim_t idx) {
         int32_t acc = 0;
         for (int ithr = 0; ithr < nthr; ithr++) {
             acc -= compensation_reduce_scratch[ithr * wspace_per_thr_size

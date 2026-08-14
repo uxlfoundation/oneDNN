@@ -43,7 +43,7 @@ inline bool is_prime(T n) {
 
     if (n % 2 == 0 || n % 3 == 0 || n % 5 == 0) { return false; }
 
-    const T sqrtn = static_cast<T>(std::sqrt(n));
+    const T sqrtn = static_cast<T>(std::sqrt(static_cast<double>(n)));
     // It is enough to check prime divisors up to `sqrt(n)`.
     // All potential prime divisors are represented with `6*i + k` for k={1, 5}.
     for (T i = 1; 6 * i + 5 <= sqrtn; i++) {

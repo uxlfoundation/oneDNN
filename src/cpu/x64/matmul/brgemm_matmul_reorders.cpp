@@ -97,9 +97,13 @@ status_t calculate_plain_transpose_blocks(dim_t &batch, dim_t &M, dim_t &K,
         sort_dst_indices[i] = i;
     }
     std::sort(sort_src_indices, sort_src_indices + id.ndims(),
-            [id](int a, int b) { return id.strides()[a] > id.strides()[b]; });
+            [id](dim_t a, dim_t b) {
+        return id.strides()[a] > id.strides()[b];
+    });
     std::sort(sort_dst_indices, sort_dst_indices + od.ndims(),
-            [od](int a, int b) { return od.strides()[a] > od.strides()[b]; });
+            [od](dim_t a, dim_t b) {
+        return od.strides()[a] > od.strides()[b];
+    });
     // make sure physical layout is dense and there is no magical
     // padding.
     for (dim_t i = id.ndims() - 1; i > 0; i--)

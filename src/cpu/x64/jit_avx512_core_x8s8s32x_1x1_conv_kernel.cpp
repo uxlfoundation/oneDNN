@@ -58,8 +58,8 @@ jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = false;
         static constexpr unsigned helper_vmm_idx = 31;
-        const size_t oc_block_tail = jcp.oc_block % isa_simd_width_;
-        const size_t tail_size = oc_block_tail
+        const int oc_block_tail = jcp.oc_block % isa_simd_width_;
+        const int tail_size = oc_block_tail
                 ? oc_block_tail
                 : jcp.oc_without_padding % isa_simd_width_;
         static constexpr bool use_exact_tail_scalar_bcast = true;

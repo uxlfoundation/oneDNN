@@ -46,7 +46,7 @@ namespace injector {
 using lambda_jit_injectors_t
         = std::map<dnnl_primitive_kind_t, std::function<void()>>;
 
-size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd);
+int aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd);
 
 // A base isa-agnostic post-ops injector abstract class.
 //
@@ -90,18 +90,18 @@ public:
     // Generates code of post_ops chain injected to host primitive. Applied to
     // range <start_idx, end_idx) of vector registers' indexes.
     // @rhs_arg_params: see jit_uni_binary_injector description
-    virtual void compute_vector_range(size_t start_idx, size_t end_idx,
+    virtual void compute_vector_range(int start_idx, int end_idx,
             const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
             = 0;
-    virtual void compute_vector_range(size_t start_idx, size_t end_idx) = 0;
+    virtual void compute_vector_range(int start_idx, int end_idx) = 0;
 
     // Generates code of post_ops chain injected to host primitive. Applied to
     // a single vector register index.
     // @rhs_arg_params: see jit_uni_binary_injector description
-    virtual void compute_vector(size_t idx,
+    virtual void compute_vector(int idx,
             const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
             = 0;
-    virtual void compute_vector(size_t idx) = 0;
+    virtual void compute_vector(int idx) = 0;
 
     // Thin wrapper for eltwise injector specific function
     virtual void prepare_table(bool gen_table) = 0;
@@ -154,17 +154,17 @@ public:
             const injector_utils::vmm_index_set_t &vmm_idxs) override;
 
     // See `jit_uni_postops_injector_base_t::compute_vector_range(...)`
-    void compute_vector_range(size_t start_idx, size_t end_idx,
+    void compute_vector_range(int start_idx, int end_idx,
             const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
             override;
 
-    void compute_vector_range(size_t start_idx, size_t end_idx) override;
+    void compute_vector_range(int start_idx, int end_idx) override;
 
     // See `jit_uni_postops_injector_base_t::compute_vector(...)`
-    void compute_vector(size_t idx,
+    void compute_vector(int idx,
             const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params)
             override;
-    void compute_vector(size_t idx) override;
+    void compute_vector(int idx) override;
 
     /*
      * Thin wrapper for eltwise injector specific function

@@ -428,8 +428,8 @@ void gemm_kernel(dim_t m, dim_t n, const dim_t k, const float alpha,
     c_type *row_offset = row_offset_ws ? row_offset_ws : row_offset_stk;
 
     if (is_int8) {
-        c_type ao = arg->ao;
-        c_type bo = arg->bo;
+        c_type ao = static_cast<c_type>(arg->ao);
+        c_type bo = static_cast<c_type>(arg->bo);
         c_type co_0 = offsetc == offset_type::none ? 0 : co[0];
 
         if (bo != 0 || offsetc == offset_type::column) col_req = true;

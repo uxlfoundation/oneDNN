@@ -177,9 +177,6 @@ status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
         // Prepare execution args and allocate real memory
         prepare_sub_args(var_grantor, tid, block_size, res->mem_map);
 
-        const size_t group_head = sdp_cfg_.num_head_q / sdp_cfg_.num_head_kv;
-        const size_t wei_head_offset = bi / group_head;
-
         // reorder0: set Q pointer
         auto &sub_src1_tid = res->mem_map[sdp_cfg_.sub_src1.get()][tid];
         const size_t sub_src1_offset = (bo * sdp_cfg_.src1_strides[0]
@@ -190,9 +187,8 @@ status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
         // reorder1: set K pointer
         auto &sub_wei1_user_tid
                 = res->mem_map[sdp_cfg_.sub_wei1_user.get()][tid];
-        const size_t sub_wei1_offset
-                = (bo * sdp_cfg_.wei1_strides[0]
-                          + wei_head_offset * sdp_cfg_.wei1_strides[1])
+        const size_t sub_wei1_offset = (bo * sdp_cfg_.wei1_strides[0]
+                                               + bi * sdp_cfg_.wei1_strides[1])
                 * get_mem_dt_size(sub_wei1_user_tid);
         sub_wei1_user_tid.set_data_handle(wei1_user_pointer + sub_wei1_offset);
 
@@ -209,9 +205,8 @@ status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
         // reorder2: set V pointer
         auto &sub_wei2_user_tid
                 = res->mem_map[sdp_cfg_.sub_wei2_user.get()][tid];
-        const size_t sub_wei2_offset
-                = (bo * sdp_cfg_.wei2_strides[0]
-                          + wei_head_offset * sdp_cfg_.wei2_strides[1])
+        const size_t sub_wei2_offset = (bo * sdp_cfg_.wei2_strides[0]
+                                               + bi * sdp_cfg_.wei2_strides[1])
                 * get_mem_dt_size(sub_wei2_user_tid);
         sub_wei2_user_tid.set_data_handle(wei2_user_pointer + sub_wei2_offset);
 

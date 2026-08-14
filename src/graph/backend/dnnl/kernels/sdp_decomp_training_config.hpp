@@ -38,7 +38,7 @@ public:
     sdp_decomp_training_config_t() = default;
 
     // SDP input dimension
-    dim_t ndims, batch_size, num_head_q, num_head_kv, seq_len_q, seq_len_kv;
+    dim_t ndims, batch_size, num_head_q, seq_len_q, seq_len_kv;
     dim_t head_size_qk, head_size_v;
 
     // SDP input and output strides

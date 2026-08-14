@@ -37,6 +37,7 @@ bool sdp_decomp_training_config_t::initial_check(
 
     dims src1_user_dims = ltw(inputs[graph_inport[mm1_src]]).vdims();
     ndims = src1_user_dims.size();
+    // TODO: support 5D GQA inputs (needs dimension extraction + offset logic)
     VCHECK_SDP_TRAIN(ndims == 4, false,
             "Training decomp only supports 4D input, but got %zu ndims",
             src1_user_dims.size());
@@ -69,9 +70,11 @@ bool sdp_decomp_training_config_t::initial_check(
 
     dims wei1_user_dims = ltw(inputs[graph_inport[mm1_wei]]).vdims();
     dims wei2_user_dims = ltw(inputs[graph_inport[mm2_wei]]).vdims();
-    num_head_kv = wei1_user_dims[1];
-    VCHECK_SDP_TRAIN(
-            num_head_kv == wei2_user_dims[1], false, "kv head number mismatch");
+    VCHECK_SDP_TRAIN(wei1_user_dims[1] == wei2_user_dims[1], false,
+            "kv head number mismatch");
+    // Without GQA, Q/K/V must have the same number of heads
+    VCHECK_SDP_TRAIN(num_head_q == wei1_user_dims[1], false,
+            "GQA not supported: num_head_q != num_head_kv");
 
     VCHECK_SDP_TRAIN(
             batch_size == wei1_user_dims[0] && batch_size == wei2_user_dims[0],

@@ -67,7 +67,7 @@ dim_t matmul_amx_blocking_params_t::get_actual_lda() const {
         return treat_A_as_plain ? K : A_strides[1 - transposed_A] / a_dt_sz;
 
     constexpr int bytes_in_cacheline = 64;
-    const int elems_in_cacheline = bytes_in_cacheline / a_dt_sz;
+    const dim_t elems_in_cacheline = bytes_in_cacheline / a_dt_sz;
     dim_t lda = rnd_up(k_blk_, elems_in_cacheline);
     const bool is_big_2_pow = lda >= 512 && math::is_pow2(lda);
     if (is_big_2_pow) lda += elems_in_cacheline;
@@ -481,14 +481,16 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     float temporal_matrix_l1_miss = strip_mid_size_shared * 2;
     float temporal_matrix_l1_hit = strip_mid_size_shared * (l1_reuse - 1);
 
-    float c_elem_per_strip = m_blk_ * n_blk_;
+    float c_elem_per_strip = static_cast<float>(m_blk_ * n_blk_);
 
     // C post write miss in bytes = m_blk_ * (#n_decompositions in BRGEMM) * (#cache lines per n_decomposition) * 64
-    float c_post_write_miss = m_blk_ * div_up(n_blk_, n_decomposition)
-            * rnd_up(n_decomposition * c_dt_sz, 64);
+    float c_post_write_miss
+            = static_cast<float>(m_blk_ * div_up(n_blk_, n_decomposition)
+                    * rnd_up(n_decomposition * c_dt_sz, 64));
     // C post write total in bytes = m_blk_ * (#n_decompositions in BRGEMM) * (#writes per n_decomposition) * 64
-    float c_post_write_total = m_blk_ * div_up(n_blk_, n_decomposition)
-            * div_up(n_decomposition, 16) * 64;
+    float c_post_write_total
+            = static_cast<float>(m_blk_ * div_up(n_blk_, n_decomposition)
+                    * div_up(n_decomposition, 16) * 64);
     float c_post_write_hit = c_post_write_total - c_post_write_miss;
 
     float c_post_read_c_tmp = c_elem_per_strip * acc_dt_sz;
@@ -572,8 +574,8 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
                         = reduction_read_bytes / bw_interpulator.llc_bw;
             }
 
-            float reduction_write_bytes
-                    = (M * N * c_dt_sz) / (nthr_m_ * nthr_n_);
+            float reduction_write_bytes = static_cast<float>(
+                    (M * N * c_dt_sz) / (nthr_m_ * nthr_n_));
             float reduction_write_cycles
                     = reduction_write_bytes / bw_interpulator.get_bw(1);
             // Add reduction const overhead - measured
@@ -588,7 +590,7 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
         reduction_cycles = 0;
     }
 
-    float total_macs = M * K * N * batch;
+    float total_macs = static_cast<float>(M * K * N * batch);
     float total_cycles = (gemm_cycles + reduction_cycles) * b_per_thread;
     float peak_macs_per_cycle = (macs_per_cycle_base / gemm_dt_sz) * nthr;
     float peak_cycles = total_macs / peak_macs_per_cycle;
@@ -1422,7 +1424,7 @@ float matmul_amx_blocking_params_micro_t::calculate_blocking_scores() const {
                 brgemm_batch_size_))
         return 0.0f;
 
-    const float nthr_coeff = nstl::min(nthr, 100);
+    const float nthr_coeff = static_cast<float>(nstl::min(nthr, 100));
     const float reusage_factor = 1.0f;
     // For runtume M the actual size is unknown, use independent on num_threads
     // balance factors

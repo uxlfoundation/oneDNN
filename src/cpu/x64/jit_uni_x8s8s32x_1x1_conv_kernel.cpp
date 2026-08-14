@@ -163,8 +163,8 @@ void jit_uni_x8s8s32x_1x1_conv_kernel_vmm_t<isa, Vmm>::apply_sum(const int ur,
 
             const auto r = vreg_accum(load_loop_blk, i_load, i_ur);
             cvt2ps(jcp.sum_dt, ymm_prev_dst, aux_reg_output_data,
-                    output_ptr(i_load, i_ur),
-                    mask_flag ? get_tail_size() : simd_w);
+                    static_cast<int>(output_ptr(i_load, i_ur)),
+                    static_cast<int>(mask_flag ? get_tail_size() : simd_w));
 
             if (sum_zp != 0) {
                 uni_vbroadcastss(vmm_tmp, ptr[reg_ptr_sum_zp]);

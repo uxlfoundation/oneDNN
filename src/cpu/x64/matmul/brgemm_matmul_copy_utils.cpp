@@ -3728,7 +3728,8 @@ void jit_brgemm_matmul_copy_b_int8_t<Vmm>::generate() {
     };
 
     auto compute_K_loop = [&](bool is_N_tail) {
-        int ncolumns = is_N_tail ? conf_->N_tail : conf_->N_blk;
+        int ncolumns
+                = static_cast<int>(is_N_tail ? conf_->N_tail : conf_->N_blk);
         // 'param1' register (rcx on Windows) re-written in compute_K_loop_body
         // so we need to read and keep 'current_K_pad' parameter in stack before
         // the call

@@ -187,7 +187,7 @@ struct brgemm_inner_product_fwd_t : public primitive_t {
                     ? 1
                     : ((is_bs_tail) ? (adj_ic / jbgp_.K) % jbgp_.gemm_batch_size
                                     : jbgp_.gemm_batch_size);
-            return bs;
+            return static_cast<int>(bs);
         }
 
         brgemm_desc_t

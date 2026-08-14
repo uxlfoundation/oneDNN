@@ -143,10 +143,12 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::apply_sum(
         const auto sum_injector_lam
                 = [this, oc_block, sum_scale, sum_zp](
                           const bool mask_flag, const int k, const int j) {
-            const int aux_output_offset = jcp.typesize_out
+            const dim_t aux_output_offset = jcp.typesize_out
                     * (k * oc_block + j * jcp.oc_without_padding * jcp.ngroups);
-            cvt2ps(jcp.sum_dt, vmm_prev_dst, reg_out, aux_output_offset,
-                    mask_flag ? get_tail_size() : get_blocking_size());
+            cvt2ps(jcp.sum_dt, vmm_prev_dst, reg_out,
+                    static_cast<int>(aux_output_offset),
+                    static_cast<int>(
+                            mask_flag ? get_tail_size() : get_blocking_size()));
             const Vmm vmm = vmm_out(j, k);
             if (sum_zp != 0) {
                 uni_vbroadcastss(vmm_tmp, ptr[reg_ptr_sum_zp]);

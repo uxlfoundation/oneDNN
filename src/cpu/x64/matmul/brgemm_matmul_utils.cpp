@@ -1567,8 +1567,8 @@ status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
                 ? rnd_up(bgmmc.K, bgmmc.required_k_granularity)
                 : fixed_K_tail_size ? bgmmc.wei_k_blk
                                     : bgmmc.K;
-        bgmmc.brgemm_batch_size
-                = nstl::max(bgmmc.K / bgmmc.K_blk, static_cast<dim_t>(1));
+        bgmmc.brgemm_batch_size = static_cast<int>(
+                nstl::max(bgmmc.K / bgmmc.K_blk, static_cast<dim_t>(1)));
 
         matmul_amx_blocking_params_micro_t best_blocking(bgmmc);
 
@@ -2330,7 +2330,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             } else {
                 const dim_t max_bs = nstl::max<dim_t>(1, k_group / bgmmc.K_blk);
                 if (bgmmc.brgemm_batch_size > max_bs)
-                    bgmmc.brgemm_batch_size = max_bs;
+                    bgmmc.brgemm_batch_size = static_cast<int>(max_bs);
             }
 
             const dim_t new_chunk_K = bgmmc.K_blk * bgmmc.brgemm_batch_size;

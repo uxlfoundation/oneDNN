@@ -172,8 +172,8 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Vmm>::apply_sum(dim_t ur_w,
         const int32_t sum_zp = *p_sum_zp;
         const auto sum_injector_lam
                 = [this, oc_block, sum_scale, sum_zp](
-                          const bool mask_flag, const int k, const int j) {
-            int aux_output_offset = jcp.typesize_out
+                          const bool mask_flag, const dim_t k, const dim_t j) {
+            dim_t aux_output_offset = jcp.typesize_out
                     * (k * oc_block + j * jcp.oc_without_padding * jcp.ngroups);
             auto addr = EVEX_compress_addr(reg_out, aux_output_offset);
             Vmm vmm = vmm_out(j, k);

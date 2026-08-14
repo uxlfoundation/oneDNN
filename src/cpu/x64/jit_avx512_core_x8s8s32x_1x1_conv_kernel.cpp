@@ -205,7 +205,7 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::apply_sum(
         const int32_t sum_zp = *p_sum_zp;
         const auto sum_injector_lam
                 = [this, sum_scale, sum_zp, load_loop_blk](const bool mask_flag,
-                          const int i_load, const int i_ur) {
+                          const dim_t i_load, const dim_t i_ur) {
             const auto r = vreg_accum(load_loop_blk, i_load, i_ur);
             cvt2ps(jcp.sum_dt, vmm_prev_dst, output_ptr(i_load, i_ur),
                     mask_flag);

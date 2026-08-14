@@ -1711,7 +1711,7 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(int bd_block, int ld_block2,
                         const dim_t ld_size
                                 = is_tail ? brg.ldb_tail : brg.ld_block;
                         cvt2ps(brg.sum_dt, vmm_prev_dst, addr, is_tail, false,
-                                k_mask, ld_size);
+                                k_mask, static_cast<int>(ld_size));
                     } else {
                         const bool use_partial_mask = !brg.gemv_acc_is_vector()
                                 || gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
@@ -1722,7 +1722,8 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(int bd_block, int ld_block2,
                                 ? brg.gemv_acc_is_vector() ? brg.gemv_tail : 1
                                 : brg.bd_block / brg.gemv_bd_block();
                         cvt2ps(brg.sum_dt, vmm_prev_dst, addr, use_partial_mask,
-                                false, k_mask, elements_to_load);
+                                false, k_mask,
+                                static_cast<int>(elements_to_load));
                     }
 
                     if (p_sum_zp_reg_set)
@@ -3938,7 +3939,7 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
     if (!is_superset(brg.isa_impl, avx512_core) && brg.with_sum
             && brg.sum_scale != 1.f) {
         L(sum_zp_scale_data_);
-        const dim_t scale_int = float2int(brg.sum_scale);
+        const int scale_int = float2int(brg.sum_scale);
         for (dim_t i = 0; i < simd; ++i)
             dd(scale_int);
     }

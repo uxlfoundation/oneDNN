@@ -69,7 +69,7 @@ struct jit_brgemm_copy_to_coarse_t : public jit_generator_t {
         , row_block_size_(is_fwd_dir_ ? conf_->ic_block : conf_->oc_block)
         , row_size_(is_fwd_dir_ ? conf_->ic_without_padding
                                 : conf_->oc_without_padding)
-        , tr_row_size_(conf_->LDA)
+        , tr_row_size_(static_cast<int>(conf_->LDA))
         , row_granularity_(granularity_in_bytes / typesize_)
         , row_step_(zmm_size_in_bytes / typesize_)
         , data_stride_(static_cast<dim_t>(is_fwd_dir_ ? conf_->ks() : 1)

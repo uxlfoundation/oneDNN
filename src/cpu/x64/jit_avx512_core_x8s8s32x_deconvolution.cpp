@@ -50,9 +50,9 @@ jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::
     , postops_injector_(nullptr) {
 
     if (jcp.with_eltwise || jcp.with_binary || jcp.with_sum) {
-        const int tail_size = jcp.is_depthwise
-                ? jcp.ngroups % jcp.ch_block
-                : jcp.oc_without_padding % jcp.oc_block;
+        const int tail_size = static_cast<int>(jcp.is_depthwise
+                        ? jcp.ngroups % jcp.ch_block
+                        : jcp.oc_without_padding % jcp.oc_block);
 
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;
@@ -1049,7 +1049,7 @@ void jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Vmm>::store_output(
                     const bool mask_flag
                             = last_oc_block == 1 && k == jcp.nb_oc_blocking - 1;
                     for (int j = 0; j < ur_w; j++) {
-                        int aux_output_offset = jcp.typesize_out
+                        dim_t aux_output_offset = jcp.typesize_out
                                 * (k * jcp.oc_block
                                         + j * jcp.oc_without_padding
                                                 * jcp.ngroups);

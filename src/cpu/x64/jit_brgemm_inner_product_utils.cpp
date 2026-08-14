@@ -38,16 +38,16 @@ namespace brgemm_inner_product_utils {
 using brgemm_utils::safe_dim_to_int;
 
 // Returns amount of work on a thread when using parallel reduction.
-static int comp_work(
-        int nthrs, int nthr_k, int n_chunks, int n_reduction_blocks) {
+static dim_t comp_work(
+        int nthrs, int nthr_k, dim_t n_chunks, dim_t n_reduction_blocks) {
     assert(nthrs >= nthr_k);
     int nthr_other = nthrs / nthr_k;
 
     // Work in reduction dimension.
-    int reduction_work = div_up(n_reduction_blocks, nthr_k);
+    dim_t reduction_work = div_up(n_reduction_blocks, nthr_k);
 
     // Work in other non-reduction dimensions.
-    int other_work = div_up(n_chunks, nthr_other);
+    dim_t other_work = div_up(n_chunks, nthr_other);
 
     return reduction_work * other_work;
 }
@@ -317,11 +317,12 @@ int jit_brgemm_ip_conf_t::get_nb_oc_blocking(bool is_adjustment) const {
 }
 
 // Check if work amount is balanced between threads.
-static bool is_balanced(int work, int min_work, int nthrs, int goal_nthrs = 0) {
+static bool is_balanced(
+        dim_t work, dim_t min_work, int nthrs, int goal_nthrs = 0) {
     if (goal_nthrs <= 0) goal_nthrs = nthrs;
-    int eff_nthrs = work % nthrs;
+    dim_t eff_nthrs = work % nthrs;
     if (!eff_nthrs) return true;
-    int work_per_thread = work / nthrs;
+    dim_t work_per_thread = work / nthrs;
 
     bool imbalanced = work_per_thread <= min_work && eff_nthrs < goal_nthrs;
 
@@ -476,7 +477,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     // Use single a single chunk in oc dimension in case of a single main block
     // + tail a block to save bandwidth.
     if (jbgp.nb_oc == 2 && jbgp.oc % jbgp.oc_block != 0) {
-        jbgp.nb_oc_blocking = jbgp.nb_oc;
+        jbgp.nb_oc_blocking = static_cast<int>(jbgp.nb_oc);
     }
 
     jbgp.os_block = get_os_block(false, false);
@@ -494,7 +495,8 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
                 nstl::min<dim_t>(8, jbgp.nb_os),
                 nstl::min<dim_t>(nstl::max<dim_t>(jbgp.oc / jbgp.os / 2, 1),
                         div_up(jbgp.nb_os * jbgp.nb_oc, 2 * jbgp.nthr))));
-        jbgp.nb_os_blocking = max_div(jbgp.nb_os, jbgp.nb_os_blocking);
+        jbgp.nb_os_blocking
+                = static_cast<int>(max_div(jbgp.nb_os, jbgp.nb_os_blocking));
     }
 
     if (jbgp.nthr == 1 && is_f32_compute) {
@@ -504,7 +506,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
                 = jbgp.os_block * jbgp.ic * types::data_type_size(jbgp.src_dt);
         size_t l2_sz = platform::get_per_core_cache_size(2);
         if (src_panel_sz > l2_sz && jbgp.nb_oc_blocking == 1)
-            jbgp.nb_os_blocking = jbgp.nb_os;
+            jbgp.nb_os_blocking = static_cast<int>(jbgp.nb_os);
     }
 
     // NOTE: comment about is_gigantic_shape is in get_os_block()
@@ -547,7 +549,7 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
     // For os > 256, compute all os blocks as a single chunk when performing
     // IC reduction. Note that this condition is empirical
     if (use_parallel_ic_reduction && jbgp.os > 256 && jbgp.nb_os_blocking > 1)
-        jbgp.nb_os_blocking = jbgp.nb_os;
+        jbgp.nb_os_blocking = static_cast<int>(jbgp.nb_os);
 
     jbgp.nb_ic_blocking = 1;
     jbgp.nthr_ic_b = 1;
@@ -561,11 +563,12 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
         // (K = rnd_dn(ic, ic_block), K_tail = ic % ic_block & batch = 1)
         // instead of K = ic_block & batch = nb_ic_blocking
         jbgp.K = jbgp.ic <= jbgp.ic_block ? jbgp.ic : rnd_dn(jbgp.ic, k_blk);
-        jbgp.nb_ic_blocking = jbgp.nb_ic;
+        jbgp.nb_ic_blocking = static_cast<int>(jbgp.nb_ic);
         jbgp.gemm_batch_size = 1;
     } else if (!jbgp.use_buffer_a && use_parallel_ic_reduction) {
         const int min_chunk_sz = 16;
-        const int num_min_chunk_sz = div_up(jbgp.nb_ic, min_chunk_sz);
+        const int num_min_chunk_sz
+                = static_cast<int>(div_up(jbgp.nb_ic, min_chunk_sz));
         int reduce_work = int(0.5f * num_min_chunk_sz * jbgp.nb_os
                 + (float)num_min_chunk_sz / jbgp.nb_oc + 0.5f);
         const int max_nthr_ic_b = nstl::min(
@@ -585,13 +588,13 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
 
         jbgp.nthr_ic_b = saturate(1, max_nthr_ic_b, reduce_work);
 
-        int prev_work
+        dim_t prev_work
                 = comp_work(jbgp.nthr, jbgp.nthr_ic_b, other_work, jbgp.nb_ic);
         while (jbgp.nthr_ic_b > 1) {
             int kthr = jbgp.nthr_ic_b - 1;
             int nthr_other = jbgp.nthr / kthr;
 
-            int work = comp_work(jbgp.nthr, kthr, other_work, jbgp.nb_ic);
+            dim_t work = comp_work(jbgp.nthr, kthr, other_work, jbgp.nb_ic);
 
             // Sacrifice a thread in reduce dimension if work amount will be
             // reduced on the thread with most work.
@@ -613,7 +616,8 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
         }
 
         assert(jbgp.nthr_ic_b >= 1);
-        jbgp.nb_ic_blocking = div_up(jbgp.nb_ic, jbgp.nthr_ic_b);
+        jbgp.nb_ic_blocking
+                = static_cast<int>(div_up(jbgp.nb_ic, jbgp.nthr_ic_b));
         jbgp.nb_ic_blocking /= div_up(jbgp.nb_ic_blocking, 64);
 
         jbgp.gemm_batch_size = jbgp.nb_ic_blocking;
@@ -622,7 +626,8 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
         // Note: Here, ic divided into K_blocks of gemm_batch
         const int ic_blks_per_k = div_up(k_blk, jbgp.ic_block);
         const int nb_k_blk = div_up(jbgp.ic, k_blk);
-        const int max_nb_k_blocking = div_up(max_nb_ic_blocking, ic_blks_per_k);
+        const int max_nb_k_blocking
+                = static_cast<int>(div_up(max_nb_ic_blocking, ic_blks_per_k));
         int nb_k_blocking = max_div(nb_k_blk, max_nb_k_blocking);
         const bool small_nb_k_blk = nb_k_blk <= max_nb_k_blocking;
         if (small_nb_k_blk && nb_k_blocking == 1)
@@ -654,7 +659,8 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
         jbgp.os_block = max_div(jbgp.os, max_os_block);
         jbgp.os_block = nstl::max(jbgp.os_block, min_os_block);
         jbgp.nb_os = div_up(jbgp.os, jbgp.os_block);
-        jbgp.nb_os_blocking = max_div(jbgp.nb_os, jbgp.nb_os_blocking);
+        jbgp.nb_os_blocking
+                = static_cast<int>(max_div(jbgp.nb_os, jbgp.nb_os_blocking));
         os_chunks = div_up(jbgp.nb_os, jbgp.nb_os_blocking);
         other_work = os_chunks * oc_chunks;
         balanced = is_balanced(other_work, min_work, nthrs_other);
@@ -751,9 +757,9 @@ status_t jit_brgemm_ip_fwd_conf_t::init_conf(cpu_isa_t isa,
 
     if (jbgp.is_bf32) {
         const float M = static_cast<float>(jbgp.M);
-        const float N = nstl::min<float>(jbgp.N, jbgp.oc);
-        const float K = nstl::min<float>(
-                static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size, jbgp.ic);
+        const float N = static_cast<float>(nstl::min<dim_t>(jbgp.N, jbgp.oc));
+        const float K = static_cast<float>(nstl::min<dim_t>(
+                static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size, jbgp.ic));
         const float tmul_efficiency = (M / 16) * (N / 16) * (K / 32);
         // TODO: Adjust blocking such that bigger M, N, K are generated.
         if (one_of(true, M <= 8, K <= 8, N < 16, tmul_efficiency <= 2.25))
@@ -825,11 +831,12 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
     jbgp.nb_os = div_up(jbgp.os, jbgp.os_block);
     jbgp.nb_os_blocking = 1;
     int os_blocking_max = 2;
-    jbgp.nb_os_blocking = max_div(jbgp.nb_os, os_blocking_max);
+    jbgp.nb_os_blocking
+            = static_cast<int>(max_div(jbgp.nb_os, os_blocking_max));
 
     if (is_amx_xf16 || jbgp.is_bf32) {
-        const int os_chunks = div_up(jbgp.nb_os, jbgp.nb_os_blocking);
-        const int work_amount = jbgp.nb_ic * os_chunks;
+        const dim_t os_chunks = div_up(jbgp.nb_os, jbgp.nb_os_blocking);
+        const dim_t work_amount = jbgp.nb_ic * os_chunks;
         float wb_ratio = (float)work_amount / (float)jbgp.nthr;
         if (wb_ratio != 1.f && wb_ratio < 2.f) {
             jbgp.ic_block
@@ -840,12 +847,13 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
 
     jbgp.nb_oc_blocking = 1;
     const int oc_chunk_max_size = max_ch_block;
-    jbgp.nb_oc_blocking = max_div(jbgp.nb_oc, oc_chunk_max_size);
+    jbgp.nb_oc_blocking
+            = static_cast<int>(max_div(jbgp.nb_oc, oc_chunk_max_size));
 
     if (jbgp.isa == avx2) {
         const auto L2_size = platform::get_per_core_cache_size(2) * jbgp.nthr;
-        for (int bl = jbgp.nb_oc; bl >= 1; bl--) {
-            jbgp.nb_oc_blocking = bl;
+        for (dim_t bl = jbgp.nb_oc; bl >= 1; bl--) {
+            jbgp.nb_oc_blocking = static_cast<int>(bl);
             if (L2_size >= types::data_type_size(jbgp.src_dt) * jbgp.os_block
                                     * jbgp.nb_os_blocking
                             + types::data_type_size(jbgp.wei_dt) * jbgp.oc
@@ -855,9 +863,9 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
     }
 
     jbgp.nthr_oc_b = 1;
-    const int ic_chunks = div_up(jbgp.nb_ic, jbgp.nb_ic_blocking);
-    const int os_chunks = div_up(jbgp.nb_os, jbgp.nb_os_blocking);
-    const int other_work = ic_chunks * os_chunks;
+    const dim_t ic_chunks = div_up(jbgp.nb_ic, jbgp.nb_ic_blocking);
+    const dim_t os_chunks = div_up(jbgp.nb_os, jbgp.nb_os_blocking);
+    const dim_t other_work = ic_chunks * os_chunks;
     // Use oc reduction if we have
     //   * very large output channels
     //   * small work amount available to each thread
@@ -866,7 +874,8 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
     if (use_oc_reduction) {
         const int min_chunk_sz
                 = (is_avx512_bf16) ? 2 * jbgp.simd_w : jbgp.simd_w;
-        const int num_min_chunk_sz = div_up(jbgp.nb_oc, min_chunk_sz);
+        const int num_min_chunk_sz
+                = static_cast<int>(div_up(jbgp.nb_oc, min_chunk_sz));
         int reduce_work = int(0.5f * num_min_chunk_sz * jbgp.nb_os
                 + (float)num_min_chunk_sz / jbgp.nb_ic + 0.5f);
 
@@ -893,13 +902,13 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
         bool is_1d_os = ic_chunks == 1 && os_chunks > 1;
         bool is_1d = is_1d_ic || is_1d_os;
         if (is_f32_compute && is_1d && jbgp.nthr_oc_b > 1) {
-            int n_chunks = is_1d_ic ? ic_chunks : os_chunks;
+            dim_t n_chunks = is_1d_ic ? ic_chunks : os_chunks;
             int nthr_1 = jbgp.nthr_oc_b;
             int nthr_2 = nthr_1 - 1;
             int nthr_other = jbgp.nthr / nthr_2;
 
-            int work_1 = comp_work(jbgp.nthr, nthr_1, n_chunks, jbgp.nb_oc);
-            int work_2 = comp_work(jbgp.nthr, nthr_2, n_chunks, jbgp.nb_oc);
+            dim_t work_1 = comp_work(jbgp.nthr, nthr_1, n_chunks, jbgp.nb_oc);
+            dim_t work_2 = comp_work(jbgp.nthr, nthr_2, n_chunks, jbgp.nb_oc);
 
             // Sacrifice a thread in reduce dimension if work amount will be
             // reduce on the thread with most work.
@@ -907,7 +916,8 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
         }
 
         if (jbgp.nthr_oc_b > 1) {
-            jbgp.nb_oc_blocking = div_up(jbgp.nb_oc, jbgp.nthr_oc_b);
+            jbgp.nb_oc_blocking
+                    = static_cast<int>(div_up(jbgp.nb_oc, jbgp.nthr_oc_b));
             jbgp.nb_oc_blocking
                     /= div_up(jbgp.nb_oc_blocking, oc_chunk_max_size);
         }
@@ -937,9 +947,9 @@ status_t jit_brgemm_ip_bwd_d_conf_t::init_conf(cpu_isa_t isa,
 
     if (jbgp.is_bf32) {
         const float M = static_cast<float>(jbgp.M);
-        const float N = nstl::min<float>(jbgp.N, jbgp.ic);
-        const float K = nstl::min<float>(
-                static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size, jbgp.oc);
+        const float N = static_cast<float>(nstl::min<dim_t>(jbgp.N, jbgp.ic));
+        const float K = static_cast<float>(nstl::min<dim_t>(
+                static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size, jbgp.oc));
         const float tmul_efficiency = (M / 16) * (N / 16) * (K / 32);
         // TODO: Adjust blocking such that bigger M, N, K are generated.
         if (one_of(true, M <= 8, K <= 8, N < 16, tmul_efficiency <= 2.25))
@@ -970,10 +980,10 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
         float src_size = static_cast<float>(j.ic) * j.mb;
         float dst_size = static_cast<float>(j.oc) * j.mb;
         float wei_size = static_cast<float>(j.ic) * j.oc;
-        int os_chunks = div_up(j.nb_os, nb_os_blocking);
-        int oc_chunks = div_up(j.nb_oc, nb_oc_blocking);
-        int ic_chunks = div_up(j.nb_ic, nb_ic_blocking);
-        int sp_ic_chunks = j.ks() * ic_chunks;
+        dim_t os_chunks = div_up(j.nb_os, nb_os_blocking);
+        dim_t oc_chunks = div_up(j.nb_oc, nb_oc_blocking);
+        dim_t ic_chunks = div_up(j.nb_ic, nb_ic_blocking);
+        dim_t sp_ic_chunks = j.ks() * ic_chunks;
 
         float wei_compensation_scale = 0.5f * (dst_size + src_size) / wei_size;
 
@@ -1028,11 +1038,11 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
                     low_limit, upper_limit, wei_compensation_scale);
         };
 
-        int sp_ic_chunks_per_thread = div_up(sp_ic_chunks, nthr_ic);
+        dim_t sp_ic_chunks_per_thread = div_up(sp_ic_chunks, nthr_ic);
 
         float src_tr = 0.0f;
         if (j.use_buffer_a && !is_f32) {
-            int src_tr_oc_par_work = div_up(os_chunks, nthr_mb)
+            dim_t src_tr_oc_par_work = div_up(os_chunks, nthr_mb)
                     * sp_ic_chunks_per_thread * nb_ic_blocking;
             src_tr = get_src_coef() * div_up(src_tr_oc_par_work, nthr_oc)
                     * nb_os_blocking * j.os_block * j.ic_block;
@@ -1040,7 +1050,7 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
 
         float dst_tr = 0.0f;
         if (j.use_buffer_b && !is_f32) {
-            int dst_tr_ic_par_work = div_up(os_chunks, nthr_mb)
+            dim_t dst_tr_ic_par_work = div_up(os_chunks, nthr_mb)
                     * div_up(oc_chunks, nthr_oc) * nb_oc_blocking;
             dst_tr = get_dst_coef() * div_up(dst_tr_ic_par_work, nthr_ic)
                     * nb_os_blocking * j.os_block * j.oc_block;
@@ -1061,7 +1071,7 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
         float wei_r = 0;
         if (nthr_mb > 1) {
             auto wei_dt_sz = types::data_type_size(j.wei_dt);
-            int wei_r_mb_par_work = div_up(oc_chunks, nthr_oc)
+            dim_t wei_r_mb_par_work = div_up(oc_chunks, nthr_oc)
                     * sp_ic_chunks_per_thread * nb_oc_blocking * nb_ic_blocking;
             wei_r = get_wei_coef() * div_up(wei_r_mb_par_work, nthr_mb)
                     * j.oc_block * j.ic_block
@@ -1081,9 +1091,10 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
        blocked weights layout stage
     */
     auto get_blk_values
-            = [](int max_blk_value, int init_blk, int dim_blk_limit) {
+            = [](int max_blk_value, int init_blk, dim_t dim_blk_limit) {
         int val_1st = rnd_up_pow2(init_blk);
-        int val_end = nstl::min(max_blk_value, dim_blk_limit);
+        int val_end = static_cast<int>(
+                nstl::min<dim_t>(max_blk_value, dim_blk_limit));
         std::vector<int> values;
         for (int val = val_1st; val <= val_end; val <<= 1)
             values.push_back(val);
@@ -1105,25 +1116,28 @@ void jit_brgemm_ip_bwd_w_conf_t::thread_balance(int &nb_os_blocking_,
             nstl::min<dim_t>(nthr, div_up(j.nb_os, min_osb_chunk)));
     for (int nthr_mb = 1; nthr_mb <= nthr_mb_max; ++nthr_mb) {
         int nb_os_blocking = j.nb_os_blocking;
-        int os_chunks = div_up(j.nb_os, nb_os_blocking);
+        dim_t os_chunks = div_up(j.nb_os, nb_os_blocking);
         if (os_chunks < nthr_mb) {
             int coef = static_cast<int>(saturate<dim_t>(
                     1, 4, (dim_t)2 * j.mb / (static_cast<dim_t>(j.oc) + j.ic)));
-            int os_blocking_max = div_up(div_up(j.nb_os, coef), nthr_mb);
-            nb_os_blocking = max_div(j.nb_os, os_blocking_max);
+            dim_t os_blocking_max = div_up(div_up(j.nb_os, coef), nthr_mb);
+            nb_os_blocking
+                    = static_cast<int>(max_div(j.nb_os, os_blocking_max));
         }
 
         const int nthr_par = nthr / nthr_mb;
 
         for (auto nb_oc_blocking : nb_oc_blocking_values) {
-            int num_oc_chunks = div_up(j.nb_oc, nb_oc_blocking);
-            const int nthr_oc_b_max = nstl::min(nthr_par, num_oc_chunks);
+            dim_t num_oc_chunks = div_up(j.nb_oc, nb_oc_blocking);
+            const int nthr_oc_b_max = static_cast<int>(
+                    nstl::min<dim_t>(nthr_par, num_oc_chunks));
             for_(int nthr_oc_b = 1; nthr_oc_b <= nthr_oc_b_max; ++nthr_oc_b)
             for (auto nb_ic_blocking : nb_ic_blocking_values) {
-                int ic_chunks = div_up(j.nb_ic, nb_ic_blocking);
-                int sp_ic_chunks = j.ks() * ic_chunks;
+                dim_t ic_chunks = div_up(j.nb_ic, nb_ic_blocking);
+                dim_t sp_ic_chunks = j.ks() * ic_chunks;
 
-                int nthr_ic_b = nstl::min(nthr_par / nthr_oc_b, sp_ic_chunks);
+                int nthr_ic_b = static_cast<int>(
+                        nstl::min<dim_t>(nthr_par / nthr_oc_b, sp_ic_chunks));
                 float mem_cost = calc_mem_cost(nb_os_blocking, nb_oc_blocking,
                         nb_ic_blocking, nthr_mb, nthr_oc_b, nthr_ic_b);
                 if (mem_cost <= best_mem_cost) {
@@ -1264,9 +1278,9 @@ status_t jit_brgemm_ip_bwd_w_conf_t::init_conf(cpu_isa_t isa,
 
     if (jbgp.is_bf32) {
         const float M = static_cast<float>(jbgp.M);
-        const float N = nstl::min<float>(jbgp.N, jbgp.oc);
-        const float K = nstl::min<float>(
-                static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size, jbgp.os);
+        const float N = static_cast<float>(nstl::min<dim_t>(jbgp.N, jbgp.oc));
+        const float K = static_cast<float>(nstl::min<dim_t>(
+                static_cast<dim_t>(jbgp.K) * jbgp.gemm_batch_size, jbgp.os));
         const float tmul_efficiency = (M / 16) * (N / 16) * (K / 32);
         // TODO: Adjust blocking such that bigger M, N, K are generated.
         if (one_of(true, M <= 8, K <= 8, N < 16, tmul_efficiency <= 2.25))
@@ -1707,28 +1721,28 @@ void jit_brgemm_ip_fwd_conf_t::choose_loop_order() {
     const int nthr_ic = nthr_ic_b <= nthr ? nthr_ic_b : 1;
     const int nthr_oc_mb = nthr / nthr_ic;
 
-    const int os_chunks = div_up(nb_os, nb_os_blocking);
-    const int oc_chunks = div_up(nb_oc, nb_oc_blocking);
-    const int ic_chunks = div_up(nb_ic, nb_ic_blocking);
-    const int work_amount = oc_chunks * os_chunks;
+    const dim_t os_chunks = div_up(nb_os, nb_os_blocking);
+    const dim_t oc_chunks = div_up(nb_oc, nb_oc_blocking);
+    const dim_t ic_chunks = div_up(nb_ic, nb_ic_blocking);
+    const dim_t work_amount = oc_chunks * os_chunks;
 
-    const int os_chunk_sz = os_block * nb_os_blocking;
-    const int oc_chunk_sz = oc_block * nb_oc_blocking;
-    const int ic_chunk_sz = ic_block * nb_ic_blocking;
-    const int n_blocks = div_up(work_amount, nthr_oc_mb);
-    const int n_ic_chunks = div_up(ic_chunks, nthr_ic);
+    const dim_t os_chunk_sz = os_block * nb_os_blocking;
+    const dim_t oc_chunk_sz = oc_block * nb_oc_blocking;
+    const dim_t ic_chunk_sz = ic_block * nb_ic_blocking;
+    const dim_t n_blocks = div_up(work_amount, nthr_oc_mb);
+    const dim_t n_ic_chunks = div_up(ic_chunks, nthr_ic);
 
-    int oc_span_osc_occ = nstl::min(n_blocks, oc_chunks) * oc_chunk_sz;
-    int os_span_osc_occ = div_up(n_blocks, oc_chunks) * os_chunk_sz;
-    oc_span_osc_occ = nstl::min(oc_span_osc_occ, oc);
-    os_span_osc_occ = nstl::min(os_span_osc_occ, os);
+    dim_t oc_span_osc_occ = nstl::min(n_blocks, oc_chunks) * oc_chunk_sz;
+    dim_t os_span_osc_occ = div_up(n_blocks, oc_chunks) * os_chunk_sz;
+    oc_span_osc_occ = nstl::min<dim_t>(oc_span_osc_occ, oc);
+    os_span_osc_occ = nstl::min<dim_t>(os_span_osc_occ, os);
 
-    int os_span_occ_osc = nstl::min(n_blocks, os_chunks) * os_chunk_sz;
-    int oc_span_occ_osc = div_up(n_blocks, os_chunks) * oc_chunk_sz;
-    os_span_occ_osc = nstl::min(os_span_occ_osc, os);
-    oc_span_occ_osc = nstl::min(oc_span_occ_osc, oc);
+    dim_t os_span_occ_osc = nstl::min(n_blocks, os_chunks) * os_chunk_sz;
+    dim_t oc_span_occ_osc = div_up(n_blocks, os_chunks) * oc_chunk_sz;
+    os_span_occ_osc = nstl::min<dim_t>(os_span_occ_osc, os);
+    oc_span_occ_osc = nstl::min<dim_t>(oc_span_occ_osc, oc);
 
-    int ic_span = nstl::min(n_ic_chunks * ic_chunk_sz, ic);
+    dim_t ic_span = nstl::min<dim_t>(n_ic_chunks * ic_chunk_sz, ic);
 
     auto eff = [](dim_t m, dim_t n, dim_t k) {
         return 2 * m * n * k / float(m * k + n * k + 2 * m * n);

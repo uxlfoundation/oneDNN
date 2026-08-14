@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2022 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -280,6 +280,10 @@ struct jit_sve_512_core_x8s8s32x_deconvolution_fwd_t : public primitive_t {
         status_t init(const engine_t *engine) {
             using namespace data_type;
             using skip_mask_t = primitive_attr_t::skip_mask_t;
+            VDISPATCH_DECONVOLUTION(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
             const bool ok = mayiuse(sve_512) && is_fwd()
                     && (desc()->alg_kind & alg_kind::deconvolution_direct)
                     && utils::one_of(src_md(0)->data_type, s8, u8)

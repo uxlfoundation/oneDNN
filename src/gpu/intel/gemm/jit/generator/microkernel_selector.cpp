@@ -115,16 +115,17 @@ InterfaceHandler GEMMOptions::generateInterface(HW hw, HostPayload host) const {
     /* Set up arguments for microkernel */
     InterfaceHandler interface(hw);
 
-    if (host.simd <= 0 || host.argumentBytes <= 0)
-        stub("Invalid host kernel thread payload");
-
-    /* Place microkernel arguments above the host kernel's thread payload:
-       r0, the local IDs, then the cross-thread arguments. */
-    interface.requireLocalID(3);
-    /* SIMD fixes the local-ID register stride, hence the cross-thread base. */
-    interface.requireSIMD(host.simd);
-    interface.setArgumentBase(GRF(interface.getCrossthreadBase().getBase()
-                                  + GRF::bytesToGRFs(hw, host.argumentBytes)));
+    if (host.simd <= 0 || host.argumentBytes <= 0) {
+        interface.setArgumentBase(ngen::GRF(8));
+    } else {
+        /* Place microkernel arguments above the host kernel's thread payload:
+           r0, the local IDs, then the cross-thread arguments. */
+        interface.requireLocalID(3);
+        /* SIMD fixes the local-ID register stride, hence the cross-thread base. */
+        interface.requireSIMD(host.simd);
+        interface.setArgumentBase(GRF(interface.getCrossthreadBase().getBase()
+                                      + GRF::bytesToGRFs(hw, host.argumentBytes)));
+    }
     interface.newArgument("A", localA ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
     interface.newArgument("lda", DataType::d);
     interface.newArgument("B", localB ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
@@ -408,6 +409,14 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
         }
     }
     throw std::runtime_error("No matching kernel");
+}
+
+Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
+                   const GEMMProblem &problem, const std::vector<StrategyRequirement> &reqs,
+                   StrategyAdjuster strategyAdjuster, SelectionObserver *observer)
+{
+    return selectGEMM(options, HostPayload(0, 0), hwInfo, sizes, problem, reqs,
+                      strategyAdjuster, observer);
 }
 
 static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool localA, bool localB,

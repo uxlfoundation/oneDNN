@@ -1067,7 +1067,7 @@ static dim_t divide_block_to_improve_thread_balance(
     static constexpr float tolerance = 0.01f;
 
     float max_decimal_factor = -1.0f;
-    dim_t best_candidate = -1.0;
+    dim_t best_candidate = -1;
     bool found_best_solution = false;
 
     if (decimal_initial_factor < thread_balance_threashold

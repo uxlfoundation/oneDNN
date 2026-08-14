@@ -43,18 +43,23 @@ std::ostream &operator<<(std::ostream &s, const impl_filter_t &impl_filter) {
     const bool is_def = is_global_def && impl_filter.is_def();
     if (is_def) return s;
 
-    const auto &option_name = !is_global_def
-            ? get_impl_filter_name(global_impl_filter)
-            : get_impl_filter_name(impl_filter);
-    s << option_name << "=";
-
     const auto &names = !is_global_def ? global_impl_filter.get_names()
                                        : impl_filter.get_names();
-    const size_t sz = names.size();
-    for (size_t i = 0; i < sz - 1; i++) {
-        s << names[i] << ",";
+    if (!names.empty()) {
+        const auto &option_name = !is_global_def
+                ? get_impl_filter_name(global_impl_filter)
+                : get_impl_filter_name(impl_filter);
+        s << option_name << "=";
+
+        const size_t sz = names.size();
+        for (size_t i = 0; i < sz - 1; i++) {
+            s << names[i] << ",";
+        }
+        s << names[sz - 1] << " ";
     }
-    s << names[sz - 1] << " ";
+
+    // Global counterpart is dumped once in `dump_global_params()`.
+    if (impl_filter.check_ref_impl()) s << "--check-ref-impl=true ";
 
     return s;
 }
@@ -80,4 +85,8 @@ bool need_next_impl(
         if (impl_name.find(e) != std::string::npos) return !use_impl;
     }
     return use_impl;
+}
+
+bool check_ref_impl_hit_enabled(const impl_filter_t &impl_filter) {
+    return impl_filter.check_ref_impl() || global_impl_filter.check_ref_impl();
 }

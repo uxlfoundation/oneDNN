@@ -28,11 +28,16 @@ struct impl_filter_t {
         , use_impl_(use_impl)
         , respect_global_filter_(respect_global_filter) {}
 
-    bool is_def() const { return impl_names_.empty(); }
+    bool is_def() const { return impl_names_.empty() && !check_ref_impl_; }
 
     const std::vector<std::string> &get_names() const { return impl_names_; }
     bool use_impl() const { return use_impl_; }
     bool respect_global_filter() const { return respect_global_filter_; }
+    // Piggybacks `--check-ref-impl` on this already-threaded object.
+    bool check_ref_impl() const { return check_ref_impl_; }
+    void set_check_ref_impl(bool check_ref_impl) {
+        check_ref_impl_ = check_ref_impl;
+    }
 
 private:
     std::vector<std::string> impl_names_;
@@ -44,6 +49,7 @@ private:
     // thus, to pick up values from global it should indicate the global is
     // respected.
     bool respect_global_filter_ = true;
+    bool check_ref_impl_ = false;
 };
 
 extern impl_filter_t global_impl_filter;
@@ -60,5 +66,8 @@ std::ostream &operator<<(std::ostream &s, const impl_filter_t &impl_filter);
 // Otherwise, returns `true`, meaning the next implementation is desired.
 bool need_next_impl(
         const std::string &impl_name, const impl_filter_t &impl_filter);
+
+// Returns `true` if local or global check-ref-impl is enabled.
+bool check_ref_impl_hit_enabled(const impl_filter_t &impl_filter);
 
 #endif

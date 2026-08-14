@@ -76,7 +76,6 @@ bool fast_ref {default_fast_ref};
 bool allow_enum_tags_only {true};
 int test_start {0};
 bool attr_same_pd_check {false};
-bool check_ref_impl {false};
 
 int main(int argc, char **argv) {
     using namespace parser;

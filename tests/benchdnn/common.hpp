@@ -95,8 +95,9 @@ extern int verbose;
 extern bool canonical;
 extern bool mem_check;
 extern bool attr_same_pd_check;
-extern bool check_ref_impl;
 extern std::string skip_impl; /* empty or "" means skip nothing */
+// `check_ref_impl` state lives on `impl_filter_t`/`global_impl_filter`;
+// see utils/impl_filter.hpp.
 extern std::string driver_name;
 
 // This is a safeguard for BENCHDNN_PRINTF macro against mismatches between

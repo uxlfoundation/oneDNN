@@ -559,7 +559,11 @@ bool str2impl_filter(impl_filter_t &impl_filter,
             }
         }
 
-        return impl_filter_t(v, use_impl, /* respect_global_filter = */ true);
+        // Preserve `check_ref_impl_` across an `--impl`/`--skip-impl` reparse.
+        impl_filter_t new_impl_filter(v, use_impl,
+                /* respect_global_filter = */ true);
+        new_impl_filter.set_check_ref_impl(impl_filter.check_ref_impl());
+        return new_impl_filter;
     };
     return parse_single_value_option(impl_filter, def_impl_filter,
             str2impl_filter, str, option_name, help);
@@ -1151,6 +1155,25 @@ bool parse_skip_impl(impl_filter_t &impl_filter,
             /* use_impl = */ false, str, option_name, help);
 }
 
+bool parse_check_ref_impl(impl_filter_t &impl_filter,
+        const impl_filter_t &def_impl_filter, const char *str,
+        const std::string &option_name) {
+    static const std::string help
+            = "BOOL    (Default: `false`)\n    Instructs the driver to compare "
+              "an implementation name against the \'ref\' string pattern.\n    "
+              "When set to `true`, the check would return an error if the "
+              "implementation name contains such pattern.\n    Reset along "
+              "with other driver options by `--reset`. See also "
+              "`--global-check-ref-impl`.\n";
+
+    bool check_ref_impl = impl_filter.check_ref_impl();
+    const bool parsed = parse_single_value_option(check_ref_impl,
+            def_impl_filter.check_ref_impl(), parsers::str2bool, str,
+            option_name, help);
+    if (parsed) impl_filter.set_check_ref_impl(check_ref_impl);
+    return parsed;
+}
+
 bool parse_inplace(std::vector<bool> &inplace,
         const std::vector<bool> &def_inplace, const char *str,
         const std::string &option_name /* = "inplace"*/) {
@@ -1359,15 +1382,18 @@ static bool parse_canonical(
             canonical, false, parsers::str2bool, str, option_name, help);
 }
 
-static bool parse_check_ref_impl(
-        const char *str, const std::string &option_name = "check-ref-impl") {
+static bool parse_global_check_ref_impl(const char *str,
+        const std::string &option_name = "global-check-ref-impl") {
     static const std::string help
-            = "BOOL    (Default: `false`)\n    Instructs the driver to compare "
-              "an implementation name against the \'ref\' string pattern.\n    "
-              "When set to `true`, the check would return an error if the "
-              "implementation name contains such pattern.\n";
-    return parse_single_value_option(
+            = "BOOL    (Default: `false`)\n    Same as `--check-ref-impl` but "
+              "applies globally to every driver/problem and is not affected "
+              "by `--reset`.\n";
+
+    bool check_ref_impl = global_impl_filter.check_ref_impl();
+    const bool parsed = parse_single_value_option(
             check_ref_impl, false, parsers::str2bool, str, option_name, help);
+    if (parsed) global_impl_filter.set_check_ref_impl(check_ref_impl);
+    return parsed;
 }
 
 static bool parse_cold_cache(
@@ -1897,7 +1923,7 @@ bool parse_bench_settings(const char *str) {
 
     bool parsed = parse_allow_enum_tags_only(str)
             || parse_attr_same_pd_check(str) || parse_canonical(str)
-            || parse_check_ref_impl(str) || parse_cold_cache(str)
+            || parse_global_check_ref_impl(str) || parse_cold_cache(str)
             || parse_cpu_isa_hints(str) || parse_engine(str)
             || parse_fast_ref(str) || parse_fix_times_per_prb(str)
             || parse_global_impl(str) || parse_global_skip_impl(str)

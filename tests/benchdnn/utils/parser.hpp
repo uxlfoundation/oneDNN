@@ -274,6 +274,9 @@ bool parse_impl(impl_filter_t &impl_filter,
 bool parse_skip_impl(impl_filter_t &impl_filter,
         const impl_filter_t &def_impl_filter, const char *str,
         const std::string &option_name = "skip-impl");
+bool parse_check_ref_impl(impl_filter_t &impl_filter,
+        const impl_filter_t &def_impl_filter, const char *str,
+        const std::string &option_name = "check-ref-impl");
 
 bool parse_axis(std::vector<int> &axis, const std::vector<int> &def_axis,
         const char *str, const std::string &option_name = "axis");
@@ -332,6 +335,7 @@ bool parse_driver_shared_settings(S &s, const S &def, const char *str) {
             || parse_test_pattern_match(s.pattern, str)
             || parse_impl(s.impl_filter, def.impl_filter, str)
             || parse_skip_impl(s.impl_filter, def.impl_filter, str)
+            || parse_check_ref_impl(s.impl_filter, def.impl_filter, str)
             || parse_perf_template(s.perf_template,
                     base_settings_t::perf_template_def, s.perf_template_csv(),
                     str)

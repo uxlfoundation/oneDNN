@@ -1018,8 +1018,8 @@ int check_same_pd(const dnnl_primitive_desc_t &pd_no_attr, res_t *res) {
 }
 
 // Checks if unexpected reference implementation was hit.
-int check_ref_impl_hit(res_t *res) {
-    if (!check_ref_impl) return OK;
+int check_ref_impl_hit(const base_prb_t *base_prb, res_t *res) {
+    if (!check_ref_impl_hit_enabled(base_prb->impl_filter)) return OK;
 
     // Nvidia, AMD and Generic backends use reference implementations to fill
     // gaps in feature support.
@@ -2340,7 +2340,7 @@ int init_prim(benchdnn_dnnl_wrapper_t<dnnl_primitive_t> &user_prim,
                      get_test_engine(), init_pd_func, base_prb, res, dir, hint),
                 WARN);
         // Check if unexpected ref impl was hit.
-        SAFE(check_ref_impl_hit(res), WARN);
+        SAFE(check_ref_impl_hit(base_prb, res), WARN);
     }
 
     user_prim.reset(primw.release());

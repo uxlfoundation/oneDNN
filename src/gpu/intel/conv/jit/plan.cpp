@@ -1211,8 +1211,17 @@ grf_usage_t plan_t::grf_usage() const {
 
     int zp_regs = zp.estimate_regs();
 
+    // SLM reduction can reuse the mainloop A/B registers. An extra register to
+    // account for a reusable message header.
+    int slm_reduce_load_regs = slm_reduce_regs ? slm_reduce_regs + 1 : 0;
+    int mainloop_regs = gmem_load_regs + slm_store_regs + slm_load_regs
+            + reorder_regs + reused_header_regs + zp_regs;
+    int slm_reduce_extra_regs
+            = std::max(0, slm_reduce_load_regs - mainloop_regs);
+
     grf_usage_t info(grf_size());
     info.add(grf_usage_label_t::out_buf, out_buf_regs);
+    info.add(grf_usage_label_t::slm_reduce, slm_reduce_extra_regs);
     info.add(grf_usage_label_t::gmem_load, gmem_load_regs);
     info.add(grf_usage_label_t::slm_store, slm_store_regs);
     info.add(grf_usage_label_t::slm_load, slm_load_regs);
@@ -1232,6 +1241,7 @@ void plan_t::reset() {
     split_factor = 1;
     reuse_headers = false;
     max_gmem_bufs = 1;
+    slm_reduce_regs = 0;
 }
 
 std::string plan_t::str() const {
@@ -2010,7 +2020,12 @@ private:
                     /*with_buffer=*/true, /*with_headers=*/false,
                     plan_.reuse_headers);
             int bound = cfg_.regs() - 5;
-            int free = std::max(0, bound - plan_.grf_usage().total());
+            auto usage = plan_.grf_usage();
+            // Exclude any SLM reduction contribution as gmem buffering
+            // is used by the mainloop only.
+            int free = std::max(0,
+                    bound - usage.total()
+                            + usage.get(grf_usage_label_t::slm_reduce));
             plan_.max_gmem_bufs
                     = gmem_buf_size == 0 ? 0 : 1 + free / gmem_buf_size;
         }
@@ -2030,6 +2045,7 @@ private:
         PLAN_CHECK(init_prefetch_plan(plan_.prefetch));
         PLAN_CHECK(init_x2r_plan(plan_.slm, plan_.x2r));
         PLAN_CHECK(init_fma_plan(plan_.x2r, fma_ctx_, plan_.fma));
+        plan_.slm_reduce_regs = slm_reduce_regs(plan_.fma);
         PLAN_CHECK(init_zp_plan(plan_.x2r, plan_.fma, plan_.zp));
         if (cfg_.subtiles().is_env_overridden()) {
             int a = cfg_.subtiles().a();
@@ -2376,6 +2392,18 @@ private:
         if (a_vnni_factor != b_vnni_factor)
             return plan_status_t::ab_layout_vnni_mismatch;
         return plan_status_t::success;
+    }
+
+    int slm_reduce_regs(const fma_plan_t &fma) const {
+        bmnk_dim_helper_t h(cfg_);
+        dim_t k_tg = h.thread_group_dim(pvars::k);
+        if (k_tg == 1) return 0;
+        grid_info_t split_grid;
+        split(fma.c_prb_layout, gemm_schedule_.tg_grid().sub_grid({2}),
+                &split_grid);
+        return into<int>(utils::div_up(
+                size_bytes(fma.c_prb_layout) * k_tg / split_grid.elems(),
+                cfg_.grf_size()));
     }
 
     plan_status_t verify_slm_k_slicing() const {

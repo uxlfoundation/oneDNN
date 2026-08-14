@@ -36,6 +36,7 @@ enum class grf_usage_label_t {
     reserved,
     reused_headers,
     slm_load,
+    slm_reduce,
     slm_store,
     tmp_vars,
     zero_points,

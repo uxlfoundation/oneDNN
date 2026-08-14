@@ -191,18 +191,21 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
         VDISPATCH_REORDER_IC(id.dims()[i] == od.dims()[i],
                 VERBOSE_INCONSISTENT_DIM, "src", i, "dst", i);
 
-    // Logical (K, N) of one slice and the batch count.
-    const dim_t K = od.dims()[ndims - 2];
-    const dim_t N = od.dims()[ndims - 1];
+    // Logical (K, N) of one slice and the batch count. The packed dst records
+    // the weights orientation: the last two dims are [.., K, N] for matmul and
+    // [.., N, K] for inner product (weights_transposed), so pick K/N accordingly.
+    const bool nk = od.zen_packed_desc().weights_transposed;
+    const int kdim = nk ? ndims - 1 : ndims - 2;
+    const int ndim = nk ? ndims - 2 : ndims - 1;
+    const dim_t K = od.dims()[kdim];
+    const dim_t N = od.dims()[ndim];
     const dim_t batch = batched ? od.dims()[0] : 1;
 
-    // execute() collapses a K==1 slice to contiguous row-major (`ab`) since a
-    // dense single row is layout-agnostic. A padded col-major (`acb`/`ba`) row
-    // (N stride != 1) is *not* contiguous, so that assumption would misread it;
-    // decline it here and let the reference reorder serve the (pathological)
-    // case instead.
-    VDISPATCH_REORDER_IC(K != 1 || src_strides[ndims - 1] == 1,
-            VERBOSE_UNSUPPORTED_TAG_S, "src");
+    // execute() collapses a K==1 slice to contiguous row-major since a dense
+    // single row is layout-agnostic; that assumption needs the N axis
+    // contiguous. A padded (non-contiguous) K==1 row is declined here.
+    VDISPATCH_REORDER_IC(
+            K != 1 || src_strides[ndim] == 1, VERBOSE_UNSUPPORTED_TAG_S, "src");
 
     // zen_weight_prepack takes int64_t K/N/ldb but the matmul that consumes the
     // packed buffer drives them through the int Zen API; reject oversized slices
@@ -277,30 +280,39 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
     // are always (K, N); the batch dim (if any) is outermost.
     const int ndims = src_d.ndims();
     const bool batched = ndims == 3;
-    const int64_t K = src_d.dims()[ndims - 2];
-    const int64_t N = src_d.dims()[ndims - 1];
+    // The packed dst records the weights orientation: the last two dims are
+    // [.., K, N] for matmul and [.., N, K] for inner product (weights_transposed).
+    // Map K/N onto the right physical axes.
+    const bool nk = dst_d.zen_packed_desc().weights_transposed;
+    const int kdim = nk ? ndims - 1 : ndims - 2;
+    const int ndim = nk ? ndims - 2 : ndims - 1;
+    const int64_t K = src_d.dims()[kdim];
+    const int64_t N = src_d.dims()[ndim];
     const int64_t batch = batched ? src_d.dims()[0] : 1;
 
-    // Detect transpose from the slice's last-two-dim strides:
-    //   ab -> strides[..]={ldb, 1}  -> trans='n', ldb = row stride
-    //   ba -> strides[..]={1, ldb}  -> trans='t', ldb = col stride
-    // When K==1 (degenerate row) and the row is contiguous (N stride == 1),
-    // both layouts coincide, so treat the src as `ab` (trans='n'); the byte
-    // stream is identical. A padded (non-contiguous) K==1 row is rejected in
-    // pd_t::init(), so it never reaches here.
+    // Describe the logical (K, N) matrix's physical layout to the packer via
+    // transposed + ldb, read from the actual strides so a padded leading dim is
+    // honored (pd_t::init guarantees one of the last two axes is unit-stride):
+    //   N axis contiguous -> row-major [K,N] -> trans='n', ldb = K-axis stride
+    //   K axis contiguous -> col-major [K,N] -> trans='t', ldb = N-axis stride
+    //   K==1 degenerate row -> both coincide -> row-major, ldb = N.
+    // For matmul (nk=false) this reduces to the plain ab/ba test.
     const auto &src_strides = src_d.blocking_desc().strides;
-    const bool src_is_ab = (src_strides[ndims - 1] == 1) || (K == 1);
-    const bool transposed = !src_is_ab;
-
-    // The leading dim is read from the actual inner stride (not the logical
-    // extent), so a padded leading dim is honored: ab -> row stride
-    // (strides[ndims-2]); ba -> col stride (strides[ndims-1]).
-    // Exception: when K==1 the slice is a single row and both layouts coincide
-    // (src_is_ab is forced true above), but the K-dimension stride is then
-    // degenerate (can be 1 for an `acb` source) rather than the row length, so
-    // fall back to the logical N -- the packer requires ldb >= N.
-    const int64_t ldb = src_is_ab ? (K == 1 ? N : src_strides[ndims - 2])
-                                  : src_strides[ndims - 1];
+    const int64_t k_stride = src_strides[kdim];
+    const int64_t n_stride = src_strides[ndim];
+    bool transposed;
+    int64_t ldb;
+    if (K == 1) {
+        transposed = false;
+        ldb = N;
+    } else if (n_stride == 1) {
+        transposed = false;
+        ldb = k_stride;
+    } else {
+        transposed = true;
+        ldb = n_stride;
+    }
+    const bool src_is_ab = !transposed;
 
     const auto src_dt = src_d.data_type();
     const auto dst_dt = dst_d.data_type();

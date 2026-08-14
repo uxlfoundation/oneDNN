@@ -664,7 +664,9 @@ inline bool operator==(const memory_desc_t &lhs, const memory_desc_t &rhs) {
                 && lhs.format_desc.zen_packed_desc.per_slice_size
                 == rhs.format_desc.zen_packed_desc.per_slice_size
                 && lhs.format_desc.zen_packed_desc.gemm_src_dt
-                == rhs.format_desc.zen_packed_desc.gemm_src_dt;
+                == rhs.format_desc.zen_packed_desc.gemm_src_dt
+                && lhs.format_desc.zen_packed_desc.weights_transposed
+                == rhs.format_desc.zen_packed_desc.weights_transposed;
     return true;
 }
 

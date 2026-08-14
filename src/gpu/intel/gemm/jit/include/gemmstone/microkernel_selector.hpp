@@ -65,6 +65,13 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
                                      const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
                                      StrategyAdjuster strategyAdjuster = {}, SelectionObserver *observer = nullptr);
 
+/* Transitional overload for callers that do not yet pass a HostPayload. */
+GEMMSTONE_DEPRECATED("Defaults host payload base to r8, which may mismatch the host kernel and clobber the OpenCL kernel arguments. Use selectGEMM overload with HostPayload")
+Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
+                                     const GEMMProblem &problem,
+                                     const std::vector<StrategyRequirement> &reqs = std::vector<StrategyRequirement>(),
+                                     StrategyAdjuster strategyAdjuster = {}, SelectionObserver *observer = nullptr);
+
 /* Helpers */
 static inline int alignmentForLD(int ld)
 {

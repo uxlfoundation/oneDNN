@@ -292,6 +292,16 @@ impl::status_t sdp_decomp_training_config_t::construct_params(
         sub_stats = memory(stats_md, p_engine, nullptr);
     }
 
+    // reorder_stats: dense stats -> user layout
+    primitive_attr sub_reorder_stats_attr;
+    sub_reorder_stats_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    auto sub_stats_user_md = memory::desc(stats_dims, dt_inter,
+            {stats_dst_strides[second_last_dim], stats_dst_strides[last_dim]});
+    auto sub_reorder_stats_pd = reorder::primitive_desc(p_engine, stats_md,
+            p_engine, sub_stats_user_md, sub_reorder_stats_attr);
+    sub_reorder_stats.init(sub_reorder_stats_pd);
+    sub_stats_user = memory(sub_stats_user_md, p_engine, nullptr);
+
     // reorder2: value strided -> dense
     primitive_attr sub_reorder2_attr;
     sub_reorder2_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
@@ -376,6 +386,7 @@ impl::status_t sdp_decomp_training_config_t::construct_params(
     }
     scratchpads.push_back(sub_reduce_max_src_scratchpad_md);
     scratchpads.push_back(sub_reduce_max_P_scratchpad_md);
+    scratchpads.push_back(sub_reorder_stats_pd.scratchpad_desc());
     for (auto &sp : scratchpads) {
         const size_t size = sp.get_size();
         if (size > max_scratchpad_size) {
@@ -437,6 +448,9 @@ impl::status_t sdp_decomp_training_config_t::construct_params(
             {DNNL_ARG_DST, sub_stats},
             {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1, sub_log_max_P},
             {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
+    sub_reorder_stats_args
+            = {{DNNL_ARG_SRC, sub_stats}, {DNNL_ARG_DST, sub_stats_user},
+                    {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
 
     // Reorder f32 softmax_out -> bf16/f16 mm2_src.
     if (needs_softmax_reorder) {
@@ -605,6 +619,10 @@ void sdp_decomp_training_config_t::memory_planning(registry_t &sdp_registry) {
 
     mem_key_map[sub_log_max_P.get()] = next_key;
     temporary_registrar.book(next_key, sub_log_max_P.get_desc().get_size());
+    next_key++;
+
+    mem_key_map[sub_stats.get()] = next_key;
+    temporary_registrar.book(next_key, sub_stats.get_desc().get_size());
     next_key++;
 }
 

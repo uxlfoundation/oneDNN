@@ -147,6 +147,8 @@ public:
                     sub_reduce_max_P_args);
             args_ctor(sdp_kernel->sdp_cfg_.sub_reduce_max_src_args,
                     sub_reduce_max_src_args);
+            args_ctor(sdp_kernel->sdp_cfg_.sub_reorder_stats_args,
+                    sub_reorder_stats_args);
             if (sdp_kernel->sdp_cfg_.needs_softmax_reorder) {
                 args_ctor(sdp_kernel->sdp_cfg_.sub_reorder_softmax_args,
                         sub_reorder_softmax_args);
@@ -166,6 +168,7 @@ public:
         std::vector<std::unordered_map<int, memory>> sub_reorder_softmax_args;
         std::vector<std::unordered_map<int, memory>> sub_reduce_max_P_args,
                 sub_reduce_max_src_args;
+        std::vector<std::unordered_map<int, memory>> sub_reorder_stats_args;
     };
 
     std::function<std::shared_ptr<sdp_args_set_t>()> resource_ctor_;

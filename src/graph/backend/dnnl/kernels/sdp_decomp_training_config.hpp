@@ -70,6 +70,8 @@ public:
     // Stats computation primitives (logsumexp = max(src) - log(max(P)))
     primitive sub_reduce_max_P_prim;
     primitive sub_reduce_max_src_prim;
+    // dense stats -> user layout
+    sdp_reorder_t sub_reorder_stats;
 
     // Args used in execution of primitives
     std::unordered_map<int, memory> sub_reorder0_args, sub_reorder1_args,
@@ -78,6 +80,7 @@ public:
     std::unordered_map<int, memory> sub_reorder_softmax_args;
     std::unordered_map<int, memory> sub_reduce_max_P_args,
             sub_reduce_max_src_args;
+    std::unordered_map<int, memory> sub_reorder_stats_args;
 
     // A map from memory to registry key
     std::unordered_map<dnnl_memory_t, registry_key> mem_key_map;
@@ -96,6 +99,7 @@ public:
     // stats
     memory sub_log_max_P;
     memory sub_stats;
+    memory sub_stats_user;
     // reorder2
     memory sub_wei2_user;
     // mm2

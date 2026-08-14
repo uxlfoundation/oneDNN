@@ -126,6 +126,7 @@ void sdp_decomp_training_kernel_t::prepare_sub_args(
     set_handle(sdp_cfg_.sub_scratchpad);
 
     set_handle(sdp_cfg_.sub_log_max_P);
+    set_handle(sdp_cfg_.sub_stats);
 }
 
 status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
@@ -236,11 +237,19 @@ status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
 
         // Compute stats: logsumexp = reduce_max(scores) - log(reduce_max(P))
         {
-            auto &sub_stats_tid = res->mem_map[sdp_cfg_.sub_stats.get()][tid];
-            sub_stats_tid.set_data_handle(stats_user_pointer
+            auto &sub_stats_user_tid
+                    = res->mem_map[sdp_cfg_.sub_stats_user.get()][tid];
+            sub_stats_user_tid.set_data_handle(stats_user_pointer
                     + (bo * sdp_cfg_.stats_dst_strides[0]
                               + bi * sdp_cfg_.stats_dst_strides[1])
                             * sizeof(float));
+
+            if (sdp_cfg_.sub_reorder_stats.get_inplace()) {
+                auto &sub_stats_tid
+                        = res->mem_map[sdp_cfg_.sub_stats.get()][tid];
+                sub_stats_tid.set_data_handle(
+                        sub_stats_user_tid.get_data_handle());
+            }
 
             dnnl_primitive_execute_without_tp_hook(
                     sdp_cfg_.sub_reduce_max_P_prim, p_stream,
@@ -248,6 +257,8 @@ status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
             dnnl_primitive_execute_without_tp_hook(
                     sdp_cfg_.sub_reduce_max_src_prim, p_stream,
                     res->sub_reduce_max_src_args[tid]);
+            sdp_cfg_.sub_reorder_stats.execute(
+                    p_stream, res->sub_reorder_stats_args[tid]);
         }
 
         // reorder_softmax: f32 P -> xf16 for mm2

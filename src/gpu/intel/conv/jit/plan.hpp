@@ -233,6 +233,7 @@ struct plan_t : public base_plan_t {
     bool reuse_headers = false;
     int max_gmem_bufs = 0;
     int reserved_regs = -1;
+    int slm_reduce_regs = 0;
 
     plan_t(const dsl::hw_t &hw)
         : base_plan_t(hw), slm(hw), prefetch(hw), x2r(hw), fma(hw), zp(hw) {}

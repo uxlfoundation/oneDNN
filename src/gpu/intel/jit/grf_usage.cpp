@@ -36,6 +36,7 @@ std::string to_string(grf_usage_label_t label) {
         CASE(reserved)
         CASE(reused_headers)
         CASE(slm_load)
+        CASE(slm_reduce)
         CASE(slm_store)
         CASE(tmp_vars)
         CASE(zero_points)

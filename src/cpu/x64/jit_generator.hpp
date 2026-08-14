@@ -2174,7 +2174,9 @@ public:
         if (odt == u8)
             uni_vpxor(vmm_lbound, vmm_lbound, vmm_lbound);
         else if (force_lbound) {
-            const float saturation_lbound = odt == s8 ? INT8_MIN : INT32_MIN;
+            const float saturation_lbound = odt == s8
+                    ? static_cast<float>(INT8_MIN)
+                    : static_cast<float>(INT32_MIN);
             init_vmm(vmm_lbound, reg_tmp, saturation_lbound);
         }
 

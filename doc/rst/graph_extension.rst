@@ -1,5 +1,5 @@
-Graph Extension
-###############
+Graph API
+#########
 
 .. toctree::
    :maxdepth: 1

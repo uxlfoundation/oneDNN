@@ -1,4 +1,4 @@
-Use Build Options {#dev_guide_build_options}
+Build Options {#dev_guide_build_options}
 ============================================
 
 oneDNN provides extensive configuration capabilities via build options:

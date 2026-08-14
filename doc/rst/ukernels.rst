@@ -1,5 +1,5 @@
-Ukernels
-#####################
+ukernel API
+###########
 
 .. toctree::
    :maxdepth: 1

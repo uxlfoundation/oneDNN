@@ -1,5 +1,5 @@
-Using oneDNN with Threadpool-Based Threading {#dev_guide_threadpool}
-====================================================================
+Using Threadpool-based Threading {#dev_guide_threadpool}
+========================================================
 
 When oneDNN is built with the threadpool CPU runtime (see @ref
 dev_guide_build_options), oneDNN requires the user to implement a threadpool

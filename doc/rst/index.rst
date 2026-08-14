@@ -20,7 +20,7 @@ interested in improving application performance on CPUs and GPUs.
    Introduction<self>
 
 .. toctree::
-   :caption: Get Started
+   :caption: Getting Started
    :hidden:
    :maxdepth: 1
 
@@ -28,32 +28,25 @@ interested in improving application performance on CPUs and GPUs.
    dev_guide_build
    dev_guide_build_options
    dev_guide_link
-
-.. toctree::
-   :caption: Learn oneDNN
-   :hidden:
-   :maxdepth: 1
-
-   Key Concepts<dev_guide_basic_concepts>
-   Functional API Basic Workflow<page_getting_started_cpp>
+   Basic Workflow<page_getting_started_cpp>
+   dev_guide_examples
 
 .. toctree::
    :caption: Developer Guide
    :hidden:
-   :maxdepth: 1
+   :maxdepth: 2
 
-   dev_guide_conventions
-   programming_model
-   supported_primitives
+   common_concepts
+   functional_api
    graph_extension
-   dev_guide_examples
+   ukernels
    performance_profiling_and_inspection
    advanced_topics
-   ukernels
 
 .. toctree::
-   :caption: Developer Reference
+   :caption: API Reference
    :hidden:
-   :maxdepth: 1
+   :maxdepth: 2
 
-   group_dnnl_api.rst
+   C++ API<group_dnnl_api_cpp>
+   C API<group_dnnl_api_c>

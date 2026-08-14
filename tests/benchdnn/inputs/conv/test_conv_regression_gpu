@@ -49,3 +49,5 @@ g16mb1ic16id120ih200iw340oc16od60oh100ow170kd3kh3kw3sd2sh2sw2pd0ph0pw0
 --reset --stag=abcd --dtag=abcd mb1ic1ih22oc1oh11kh8sh2ph3
 --reset --dir=BWD_W --dt=f64:f64:f64 --bia-dt=f64 --stag=abcd --wtag=abcde --dtag=abcd --attr-fpmath=tf32 g3ic6ih7iw8oc12oh3ow4kh3kw3ph0pw0dh1dw1
 --reset --dir=FWD_D --stag=abx --dtag=abx g64mb16ic64iw1oc64ow3kw2pw2dw1
+# SLM reduction GRF usage estimate (uxlfoundation/oneDNN#5730)
+--reset --dir=BWD_D --dt=f32 --stag=abcd --wtag=abcd --dtag=abcd mb1ic128ih3iw11oc512oh1ow11kh5kw1sh3sw1ph2pw0

@@ -134,7 +134,7 @@ struct gemm_bf16_inner_product_fwd_t : public primitive_t {
         auto sum_idx = pd()->attr()->post_ops_.find(primitive_kind::sum);
         beta_ = sum_idx >= 0 && !has_sum_as_postops
                 ? pd()->attr()->post_ops_.entry_[sum_idx].sum.scale
-                : 0.0;
+                : 0.0f;
 
         return (pp_kernel_) ? pp_kernel_->create_kernel() : status::success;
     }

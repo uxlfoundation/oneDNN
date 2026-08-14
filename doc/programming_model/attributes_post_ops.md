@@ -144,11 +144,6 @@ result, the computation will be:
     \dst(:) = scale \cdot (\operatorname{as\_data\_type}(\dst[:]) - zero\_point) + \operatorname{Op}(...)
 \f]
 
-@note
-* **GPU**
-    * Currently only a `u8`/`s8` data type parameter is supported.
-    * Zero point is not supported.
-
 @anchor dev_guide_attributes_post_ops_depthwise
 ### Depthwise Post-op
 

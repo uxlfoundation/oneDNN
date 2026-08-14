@@ -704,7 +704,8 @@ void jit_brgemm_trans_m_k_bf16_t::generate() {
     constexpr int amx_xf16_granularity = 2;
     const bool last_row_padded = is_superset(conf_->isa, avx512_core_amx)
             && conf_->os % amx_xf16_granularity != 0;
-    const int eff_K_tail = conf_->K_tail - (last_row_padded ? 1 : 0);
+    const int eff_K_tail
+            = static_cast<int>(conf_->K_tail) - (last_row_padded ? 1 : 0);
 
     const int os_block = conf_->os_block;
     const int last_os_block_tail = eff_K_tail % transpose_size;
@@ -1489,7 +1490,8 @@ void jit_trans_to_vnni_t::generate() {
         constexpr int amx_xf16_granularity = 2;
         const bool last_row_padded = is_superset(conf_->isa, avx512_core_amx)
                 && conf_->os % amx_xf16_granularity != 0;
-        const int eff_K_tail = conf_->K_tail - (last_row_padded ? 1 : 0);
+        const int eff_K_tail
+                = static_cast<int>(conf_->K_tail) - (last_row_padded ? 1 : 0);
 
         last_row_block_tail = eff_K_tail % transpose_size;
         col_tail = conf_->oc % transpose_size;

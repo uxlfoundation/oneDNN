@@ -410,70 +410,74 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
         size_t strip_dst_size = m_decomposition * n_per_thread
                 * (nthr_k_ == 1 ? c_dt_sz : acc_dt_sz);
         // Amount of compute
-        num_tmuls_per_strip = m_decomposition * k_per_thread * n_per_thread
-                / (m_tmul * k_tmul * n_tmul);
+        num_tmuls_per_strip = static_cast<float>(m_decomposition * k_per_thread
+                * n_per_thread / (m_tmul * k_tmul * n_tmul));
         // Amount of strips in the execution
-        num_strip = div_up(m_per_thread, m_decomposition);
+        num_strip = static_cast<float>(div_up(m_per_thread, m_decomposition));
         // B is blocked to the L2 in horizontal traversal, its loads are NT
-        nt_mat_l1_miss = b_size;
+        nt_mat_l1_miss = static_cast<float>(b_size);
         // Number of times A is reused from L1 in a strip
-        l1_reuse = div_up(n_blk_, n_decomposition);
+        l1_reuse = static_cast<float>(div_up(n_blk_, n_decomposition));
 
         // In horizontal multiple cores load the same B to L2
-        strip_1_size_shared = b_size;
+        strip_1_size_shared = static_cast<float>(b_size);
         // In strip 1 there is no sharing of A since there are no prefetches
         size_t strip_1_size_private_a
                 = m_decomposition * k_per_thread * gemm_dt_sz;
-        strip_1_size_private = strip_1_size_private_a + strip_dst_size;
+        strip_1_size_private
+                = static_cast<float>(strip_1_size_private_a + strip_dst_size);
         // The cores that share B
-        strip_1_share_coef = nthr_m_;
+        strip_1_share_coef = static_cast<float>(nthr_m_);
 
         // In the mid strips B is reused from L2 and
         // A is prefetched by multiple cores.
-        strip_mid_size_shared = m_decomposition * k_per_thread
-                * gemm_dt_sz; // A size per strip
+        strip_mid_size_shared = static_cast<float>(m_decomposition
+                * k_per_thread * gemm_dt_sz); // A size per strip
         // C is private to a core, since each core writes to a distinct buffer
-        strip_mid_size_private = strip_dst_size;
+        strip_mid_size_private = static_cast<float>(strip_dst_size);
         // share_coeff - the cores that share A
         strip_mid_share_coef = static_cast<float>(std::max(1, nthr_n_));
 
         // Calculate the number of cache lines to be processed in AVX postops
-        num_postop_cache_lines = m_decomposition * div_up(n_per_thread, n_tmul);
+        num_postop_cache_lines = static_cast<float>(
+                m_decomposition * div_up(n_per_thread, n_tmul));
 
     } else {
         // Amount of C/D bytes that are written per core
         size_t strip_dst_size = n_decomposition * m_per_thread
                 * (nthr_k_ == 1 ? c_dt_sz : acc_dt_sz);
         // Amount of compute
-        num_tmuls_per_strip = n_decomposition * k_per_thread * m_per_thread
-                / (m_tmul * k_tmul * n_tmul);
+        num_tmuls_per_strip = static_cast<float>(n_decomposition * k_per_thread
+                * m_per_thread / (m_tmul * k_tmul * n_tmul));
         // Amount of strips in the execution
-        num_strip = div_up(n_per_thread, n_decomposition);
+        num_strip = static_cast<float>(div_up(n_per_thread, n_decomposition));
         // A is blocked to the L2 in vertical traversal, its loads are NT
-        nt_mat_l1_miss = a_size;
+        nt_mat_l1_miss = static_cast<float>(a_size);
         // Number of times B is reused from L1 in a strip
-        l1_reuse = div_up(m_blk_, m_decomposition);
+        l1_reuse = static_cast<float>(div_up(m_blk_, m_decomposition));
 
         // In vertical multiple cores load the same A to L2
-        strip_1_size_shared = a_size;
+        strip_1_size_shared = static_cast<float>(a_size);
         // In strip 1 there is no sharing of B since there are no prefetches
         size_t strip_1_size_private_b
                 = n_decomposition * k_per_thread * gemm_dt_sz;
-        strip_1_size_private = strip_1_size_private_b + strip_dst_size;
+        strip_1_size_private
+                = static_cast<float>(strip_1_size_private_b + strip_dst_size);
         // The cores that share A
-        strip_1_share_coef = nthr_n_;
+        strip_1_share_coef = static_cast<float>(nthr_n_);
 
         // In the mid strips A is reused from L2 and
         // B is prefetched by multiple cores.
-        strip_mid_size_shared = n_decomposition * k_per_thread
-                * gemm_dt_sz; // B size per strip
+        strip_mid_size_shared = static_cast<float>(n_decomposition
+                * k_per_thread * gemm_dt_sz); // B size per strip
         // C is private to a core, since each core writes to a distinct buffer
-        strip_mid_size_private = strip_dst_size;
+        strip_mid_size_private = static_cast<float>(strip_dst_size);
         // share_coeff - the cores that share B
         strip_mid_share_coef = static_cast<float>(std::max(1, nthr_m_));
 
         // Calculate the number of cache lines to be processed in AVX postops
-        num_postop_cache_lines = m_per_thread * div_up(n_decomposition, n_tmul);
+        num_postop_cache_lines = static_cast<float>(
+                m_per_thread * div_up(n_decomposition, n_tmul));
     }
     // There are 2 L1 misses for the L1 matrix:
     //   1. For the prefetch to the L2 (==L1 miss)
@@ -513,12 +517,14 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
             + temporal_matrix_l1_hit / bw_interpulator.l1_load_hit_bw
             + nt_mat_l1_miss / bw_interpulator.l1_load_miss_bw + c_l1_cycles;
 
-    float b_transform_cycles_h = strip1_b_tranform_h
-            ? strip_1_size_shared / bw_interpulator.get_bw(strip_1_share_coef)
-            : 0;
+    float b_transform_cycles_h = strip1_b_tranform_h ? strip_1_size_shared
+                    / bw_interpulator.get_bw(
+                            static_cast<int>(strip_1_share_coef))
+                                                     : 0;
 
     float b_transform_cycles_v = strips_b_tranform_v ? strip_mid_size_shared
-                    / bw_interpulator.get_bw(strip_mid_share_coef)
+                    / bw_interpulator.get_bw(
+                            static_cast<int>(strip_mid_share_coef))
                                                      : 0;
 
     float strip_mid_dram;
@@ -528,7 +534,8 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
         strip_mid_llc = strip_mid_size_private / bw_interpulator.llc_bw;
     } else {
         strip_mid_dram = strip_mid_size_shared
-                        / bw_interpulator.get_bw(strip_mid_share_coef)
+                        / bw_interpulator.get_bw(
+                                static_cast<int>(strip_mid_share_coef))
                 + strip_mid_size_private / bw_interpulator.get_bw(1);
 
         strip_mid_llc = (strip_mid_size_private + strip_mid_size_shared)
@@ -547,7 +554,8 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     if (!strip1_b_tranform_h)
         // default for vertical and horizontal without b transform
         strip_1_cycles = strip_1_size_shared
-                        / bw_interpulator.get_bw(strip_1_share_coef)
+                        / bw_interpulator.get_bw(
+                                static_cast<int>(strip_1_share_coef))
                 + strip_1_size_private / bw_interpulator.get_bw(1);
     else if (strip1_b_in_mlc_h)
         strip_1_cycles = strip_mid_cycles; // strip 1 is regular strip;
@@ -563,8 +571,9 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
 
     if (nthr_k_ != 1) {
         if (c_size_per_core * 2 < L2_threshold() && batch == 1) {
-            float reduction_read_bytes = (M * rnd_up(N, 16) * acc_dt_sz)
-                    * ((nthr_k_ - 1)) / (nthr_m_ * nthr_n_);
+            float reduction_read_bytes
+                    = static_cast<float>((M * rnd_up(N, 16) * acc_dt_sz)
+                            * ((nthr_k_ - 1)) / (nthr_m_ * nthr_n_));
             float reduction_read_cycles;
             if (a_size + b_size + d_size < L2_threshold()) {
                 reduction_read_cycles
@@ -592,7 +601,8 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
 
     float total_macs = static_cast<float>(M * K * N * batch);
     float total_cycles = (gemm_cycles + reduction_cycles) * b_per_thread;
-    float peak_macs_per_cycle = (macs_per_cycle_base / gemm_dt_sz) * nthr;
+    float peak_macs_per_cycle
+            = static_cast<float>((macs_per_cycle_base / gemm_dt_sz) * nthr);
     float peak_cycles = total_macs / peak_macs_per_cycle;
     return peak_cycles / total_cycles;
 }
@@ -692,7 +702,7 @@ std::set<dim_t> matmul_amx_blocking_params_macro_t::blk_candidates(
 size_t matmul_amx_blocking_params_macro_t::l2_matrix_usage(size_t k_chunk_size,
         size_t m_or_n_blk, size_t k_blk, bool is_horizontal,
         bool force_transform_matrix_to_l2) const {
-    int decomposition = is_horizontal ? m_decomposition : n_decomposition;
+    dim_t decomposition = is_horizontal ? m_decomposition : n_decomposition;
     size_t l1_matrix_size = 2 * decomposition
             * nstl::min(k_blk * k_chunk_size, (size_t)k_per_thread)
             * gemm_dt_sz; // 2 for prefetch

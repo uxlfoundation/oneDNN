@@ -326,7 +326,7 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                                                          : 0;
                                 data_t *d_ = _dst + oc * M;
                                 PRAGMA_OMP_SIMD()
-                                for (int oS = 0; oS < m; ++oS) {
+                                for (dim_t oS = 0; oS < m; ++oS) {
                                     d_[oS] += b;
                                     if (d_[oS] < 0) d_[oS] *= eltwise.alpha;
                                     d_[oS] *= eltwise.scale;
@@ -345,7 +345,7 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                             args.dst_md = pd()->dst_md();
                             args.l_offset = d_ - dst;
 
-                            for (int oS = 0; oS < m; ++oS) {
+                            for (dim_t oS = 0; oS < m; ++oS) {
                                 d_[oS] += b;
                                 post_ops_->execute(d_[oS], args);
                                 args.l_offset++;
@@ -358,7 +358,7 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                         data_t b = bias[oc_start + oc];
                         data_t *d_ = _dst + oc * M;
                         PRAGMA_OMP_SIMD()
-                        for (int oS = 0; oS < m; ++oS) {
+                        for (dim_t oS = 0; oS < m; ++oS) {
                             d_[oS] += b;
                         }
                     });
@@ -390,7 +390,7 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
 
         if (jcp.loop_order == gemm_loop_rlb)
             for (curr.ic = 0; curr.ic < jcp.ic; curr.ic += step.ic)
-                for (int spatial = start.sp; spatial < end.sp;
+                for (dim_t spatial = start.sp; spatial < end.sp;
                         spatial += step.sp) {
                     nd_iterator_init(spatial, curr.n, jcp.mb, curr.g,
                             jcp.ngroups, curr.od, jcp.od, curr.sp, jcp.os);
@@ -405,7 +405,8 @@ status_t gemm_convolution_fwd_t::execute_forward_ncsp(
                     }
                 }
         else if (jcp.loop_order == gemm_loop_lrb)
-            for (int spatial = start.sp; spatial < end.sp; spatial += step.sp) {
+            for (dim_t spatial = start.sp; spatial < end.sp;
+                    spatial += step.sp) {
                 nd_iterator_init(spatial, curr.n, jcp.mb, curr.g, jcp.ngroups,
                         curr.od, jcp.od, curr.sp, jcp.os);
                 for (curr.ic = 0; curr.ic < jcp.ic; curr.ic += step.ic)
@@ -513,7 +514,7 @@ status_t gemm_convolution_bwd_data_t::execute_backward_data_thr_nspc(
                         = diff_src + is * diff_src_os_stride;
                 const data_t *__restrict acc_arr = acc + is * jcp.ic;
                 PRAGMA_OMP_SIMD()
-                for (int ic = 0; ic < jcp.ic; ic++) {
+                for (dim_t ic = 0; ic < jcp.ic; ic++) {
                     diff_src_arr[ic] = acc_arr[ic];
                 }
             });
@@ -682,7 +683,7 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
                     if (jcp.im2col_sz && is_problem_3d)
                         jit_gemm_convolution_utils::transpose_dt(
                                 jcp, _src, imtr);
-                    for (int od = 0; od < jcp.od; ++od) {
+                    for (dim_t od = 0; od < jcp.od; ++od) {
                         const data_t *_diff_dst = diff_dst
                                 + mb * jcp.ngroups * dst_step
                                 + od * k * jcp.ngroups * jcp.oc + g * jcp.oc;
@@ -771,7 +772,7 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_nspc(
                 const dim_t width_stride = jcp.ngroups * jcp.oc;
 
                 PRAGMA_OMP_SIMD(reduction(+ : db))
-                for (int ow = 0; ow < jcp.ow; ++ow) {
+                for (dim_t ow = 0; ow < jcp.ow; ++ow) {
                     db += diff_dst_arr[ow * width_stride];
                 }
             }
@@ -845,8 +846,8 @@ status_t gemm_convolution_bwd_weights_t::execute_backward_weights_ncsp(
                 for (size_t mb = mb_start; mb < mb_end; ++mb) {
                     const data_t *_src
                             = src + (mb * jcp.ngroups + g) * src_step;
-                    for_(int od = 0; od < jcp.od; ++od)
-                    for (int os_nb = 0; os_nb < jcp.os_nb_block; ++os_nb) {
+                    for_(dim_t od = 0; od < jcp.od; ++od)
+                    for (dim_t os_nb = 0; os_nb < jcp.os_nb_block; ++os_nb) {
                         auto out_off = os_nb * k + od * jcp.os;
                         const dim_t os_block = nstl::min(
                                 (dim_t)jcp.os_block, jcp.os - os_nb * k);

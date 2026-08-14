@@ -318,7 +318,7 @@ protected:
             }
 
             // unrolled loop remainder
-            for (int i = utils::rnd_dn(axis_simd_full_, unroll);
+            for (dim_t i = utils::rnd_dn(axis_simd_full_, unroll);
                     i < axis_simd_full_; i += 2) {
                 const bool can_load_two_simdw = axis_simd_full_ - i >= 2;
                 if (!can_load_two_simdw)
@@ -379,7 +379,7 @@ protected:
             }
 
             // unrolled loop remainder
-            for (int i = utils::rnd_dn(axis_simd_full_, unroll);
+            for (dim_t i = utils::rnd_dn(axis_simd_full_, unroll);
                     i < axis_simd_full_; i++) {
                 io_[src_d_.data_type()]->load(
                         src_ptr(i * simd_w_), Vmm(base_idx + 1), need_tail);

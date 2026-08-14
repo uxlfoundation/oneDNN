@@ -983,13 +983,14 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
         wjcp.wei_dt = jcp.wei_dt;
         wjcp.out_oc_block = static_cast<int>(jcp.oc_block);
         wjcp.inp_oc_block = 16;
-        wjcp.rd = _pd->rd;
+        wjcp.rd = static_cast<int>(_pd->rd);
         wjcp.is_rd_padded_to_block = jcp.is_rd_padded_to_block;
         wjcp.inp_ocb_offs = KH * KW * jcp.ic * wjcp.inp_oc_block * wei_dsz;
 
         const auto oc_chunks = jcp.oc_block / wjcp.inp_oc_block;
         const auto inp_nb_oc = div_up(jcp.oc, wjcp.inp_oc_block);
-        wjcp.last_occ_to_copy = inp_nb_oc - (jcp.nb_oc - 1) * oc_chunks;
+        wjcp.last_occ_to_copy
+                = static_cast<int>(inp_nb_oc - (jcp.nb_oc - 1) * oc_chunks);
 
         CHECK(safe_ptr_assign(copy_to_relo_wbuffer_,
                 new jit_brgemm_relo_copy_to_wbuffer_t(wjcp)));

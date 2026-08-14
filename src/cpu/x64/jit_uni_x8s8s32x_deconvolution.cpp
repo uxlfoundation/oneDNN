@@ -432,7 +432,7 @@ jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
     , ker_max_regs_(jcp_.has_vnni ? 14 : 12) {
 
     if (jcp_.with_eltwise || jcp_.with_binary || jcp_.with_sum) {
-        const int tail_size = get_tail_size();
+        const int tail_size = static_cast<int>(get_tail_size());
 
         static constexpr bool preserve_gpr = true;
         static constexpr bool preserve_vmm = true;
@@ -1028,14 +1028,16 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Vmm>::apply_postops(
             for (int k = 0; k < jcp_.nb_oc_blocking; k++) {
                 const bool mask_flag
                         = last_oc_block == 1 && k == jcp_.nb_oc_blocking - 1;
-                for (int j = 0; j < ur_w; j++) {
-                    const int aux_output_offset = jcp_.typesize_out
-                            * (k * jcp_.oc_block
-                                    + j * jcp_.oc_without_padding
-                                            * jcp_.ngroups);
+                for (dim_t j = 0; j < ur_w; j++) {
+                    const int aux_output_offset
+                            = static_cast<int>(jcp_.typesize_out
+                                    * (k * jcp_.oc_block
+                                            + j * jcp_.oc_without_padding
+                                                    * jcp_.ngroups));
                     cvt2ps(jcp_.dst_dt, vmm_prev_dst_, reg_dst_,
                             aux_output_offset,
-                            mask_flag ? get_tail_size() : get_blocking_size());
+                            static_cast<int>(mask_flag ? get_tail_size()
+                                                       : get_blocking_size()));
                     if (*p_sum_zp != 0) {
                         uni_vbroadcastss(vmm_sum_zp_, ptr[reg_ptr_sum_zp_]);
                         uni_vcvtdq2ps(vmm_sum_zp_, vmm_sum_zp_);

@@ -359,8 +359,8 @@ template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_diff_bias_t<
         Vmm>::generate_for_b() {
 
-    int nb = utils::div_up(brg_.load_dim, brg_.ld_block);
-    int nb_tail = brg_.load_dim % brg_.ld_block;
+    int nb = static_cast<int>(utils::div_up(brg_.load_dim, brg_.ld_block));
+    int nb_tail = static_cast<int>(brg_.load_dim % brg_.ld_block);
 
     int n_loop = nb / n_max_regs_;
     int n_loop_tail = nb % n_max_regs_;

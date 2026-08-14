@@ -55,7 +55,7 @@ jit_avx2_1x1_conv_kernel_f32_t::jit_avx2_1x1_conv_kernel_f32_t(
         static constexpr bool preserve_vmm = false;
         static constexpr size_t helper_vmm_idx = 15;
         static constexpr bool use_exact_tail_scalar_bcast = false;
-        const size_t tail_size = jcp.oc_without_padding % isa_simd_width_;
+        const int tail_size = jcp.oc_without_padding % isa_simd_width_;
 
         rhs_arg_static_params_t rhs_arg_static_params {helper_vmm_idx, r13, r14,
                 r15, preserve_gpr, preserve_vmm,

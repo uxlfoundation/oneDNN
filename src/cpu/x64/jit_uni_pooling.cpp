@@ -226,7 +226,7 @@ struct transpose_block_fmt_to_ncsp_t {
         , dst_nscp_desc_(dst_nscp_desc)
         , offset_multiplier_(offset_multiplier) {}
 
-    void operator()(std::size_t ithr, int n, int b_c) const {
+    void operator()(std::size_t ithr, dim_t n, dim_t b_c) const {
         const dim_t cs
                 = nstl::min(c_without_padding_ - b_c * c_block_, c_block_);
         const src_data_t *src_blocked
@@ -392,7 +392,7 @@ public:
                                     &trans_dst,
                             transpose_block_fmt_to_ncsp_t<char, char>
                                     &trans_indices,
-                            std::size_t ithr, int n, int b_c) {
+                            std::size_t ithr, dim_t n, dim_t b_c) {
                 trans_dst(ithr, n, b_c);
                 if (indices) trans_indices(ithr, n, b_c);
             },
@@ -441,7 +441,7 @@ public:
                                     &trans_dst,
                             transpose_ncsp_to_block_fmt_t<char, char>
                                     &trans_indices,
-                            std::size_t ithr, int n, int b_c) {
+                            std::size_t ithr, dim_t n, dim_t b_c) {
                 trans_dst(ithr, n, b_c);
                 if (indices) trans_indices(ithr, n, b_c);
             },

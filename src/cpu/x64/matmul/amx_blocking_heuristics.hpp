@@ -66,13 +66,13 @@ public:
 private:
     // This dictionary includes DRAM bandwidth for cores that share data.
     // The key represents the number of cores sharing, and the value is the bandwidth.
-    const std::map<int, float> multicore_bw = {
-            {32, 4.06}, {16, 3.31}, {8, 2.98}, {4, 2.39}, {2, 0.9}, {1, 2.28}};
+    const std::map<int, float> multicore_bw = {{32, 4.06f}, {16, 3.31f},
+            {8, 2.98f}, {4, 2.39f}, {2, 0.9f}, {1, 2.28f}};
 
     float linear_interpolation(
-            const std::map<int, float> &points, float x) const {
+            const std::map<int, float> &points, int x) const {
         // Find the interval [x0, x1] where x0 <= x <= x1
-        auto it = points.lower_bound(static_cast<int>(x));
+        auto it = points.lower_bound(x);
         if (it == points.end()) {
             return points.rbegin()
                     ->second; // x is greater than the largest x in the map
@@ -90,7 +90,9 @@ private:
         float y1 = it1->second;
 
         // Perform linear interpolation
-        return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+        return y0
+                + (y1 - y0) * static_cast<float>(x - x0)
+                / static_cast<float>(x1 - x0);
     }
 };
 

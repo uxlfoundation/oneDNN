@@ -67,7 +67,7 @@ dim_t matmul_amx_blocking_params_t::get_actual_lda() const {
         return treat_A_as_plain ? K : A_strides[1 - transposed_A] / a_dt_sz;
 
     constexpr int bytes_in_cacheline = 64;
-    const int elems_in_cacheline = bytes_in_cacheline / a_dt_sz;
+    const dim_t elems_in_cacheline = bytes_in_cacheline / a_dt_sz;
     dim_t lda = rnd_up(k_blk_, elems_in_cacheline);
     const bool is_big_2_pow = lda >= 512 && math::is_pow2(lda);
     if (is_big_2_pow) lda += elems_in_cacheline;
@@ -443,40 +443,46 @@ void matmul_amx_blocking_params_macro_t::calculate_layer_sizes(
                 * ((nthr_k_ == 1 || narrow_c_scoring_active()) ? c_dt_sz
                                                                : acc_dt_sz);
         // Amount of compute
-        layer_perf_characteristics.num_tmuls_per_strip = m_decomposition
-                * k_per_thread * n_per_thread / (m_tmul * k_tmul * n_tmul);
+        layer_perf_characteristics.num_tmuls_per_strip
+                = static_cast<float>(m_decomposition * k_per_thread
+                        * n_per_thread / (m_tmul * k_tmul * n_tmul));
         // Amount of strips in the execution
         layer_perf_characteristics.num_strip
-                = div_up(m_per_thread, m_decomposition);
+                = static_cast<float>(div_up(m_per_thread, m_decomposition));
         // B is blocked to the L2 in horizontal traversal, its loads are NT
         layer_perf_characteristics.nt_mat_l1_miss
-                = layer_perf_characteristics.b_size;
+                = static_cast<float>(layer_perf_characteristics.b_size);
         // Number of times A is reused from L1 in a strip
-        layer_perf_characteristics.l1_reuse = div_up(n_blk_, n_decomposition);
+        layer_perf_characteristics.l1_reuse
+                = static_cast<float>(div_up(n_blk_, n_decomposition));
 
         // In horizontal multiple cores load the same B to L2
         layer_perf_characteristics.strip_1_size_shared
-                = layer_perf_characteristics.b_size;
+                = static_cast<float>(layer_perf_characteristics.b_size);
         // In strip 1 there is no sharing of A since there are no prefetches
         size_t strip_1_size_private_a
                 = m_decomposition * k_per_thread * gemm_dt_sz;
         layer_perf_characteristics.strip_1_size_private
-                = strip_1_size_private_a + strip_dst_size;
+                = static_cast<float>(strip_1_size_private_a + strip_dst_size);
         // The cores that share B
-        layer_perf_characteristics.strip_1_share_coef = nthr_m_;
+        layer_perf_characteristics.strip_1_share_coef
+                = static_cast<float>(nthr_m_);
 
         // In the mid strips B is reused from L2 and
         // A is prefetched by multiple cores.
-        layer_perf_characteristics.strip_mid_size_shared = m_decomposition
-                * k_per_thread * gemm_dt_sz; // A size per strip
+        layer_perf_characteristics.strip_mid_size_shared
+                = static_cast<float>(m_decomposition * k_per_thread
+                        * gemm_dt_sz); // A size per strip
         // C is private to a core, since each core writes to a distinct buffer
-        layer_perf_characteristics.strip_mid_size_private = strip_dst_size;
+        layer_perf_characteristics.strip_mid_size_private
+                = static_cast<float>(strip_dst_size);
         // share_coeff - the cores that share A
-        layer_perf_characteristics.strip_mid_share_coef = std::max(1, nthr_n_);
+        layer_perf_characteristics.strip_mid_share_coef
+                = static_cast<float>(std::max(1, nthr_n_));
 
         // Calculate the number of cache lines to be processed in AVX postops
-        layer_perf_characteristics.num_postop_cache_lines
-                = m_decomposition * div_up(n_per_thread, n_tmul);
+        layer_perf_characteristics.num_postop_cache_lines = static_cast<float>(
+                m_decomposition * div_up(n_per_thread, n_tmul));
 
     } else {
         // Amount of C/D bytes that are written per core
@@ -484,40 +490,46 @@ void matmul_amx_blocking_params_macro_t::calculate_layer_sizes(
                 * ((nthr_k_ == 1 || narrow_c_scoring_active()) ? c_dt_sz
                                                                : acc_dt_sz);
         // Amount of compute
-        layer_perf_characteristics.num_tmuls_per_strip = n_decomposition
-                * k_per_thread * m_per_thread / (m_tmul * k_tmul * n_tmul);
+        layer_perf_characteristics.num_tmuls_per_strip
+                = static_cast<float>(n_decomposition * k_per_thread
+                        * m_per_thread / (m_tmul * k_tmul * n_tmul));
         // Amount of strips in the execution
         layer_perf_characteristics.num_strip
-                = div_up(n_per_thread, n_decomposition);
+                = static_cast<float>(div_up(n_per_thread, n_decomposition));
         // A is blocked to the L2 in vertical traversal, its loads are NT
         layer_perf_characteristics.nt_mat_l1_miss
-                = layer_perf_characteristics.a_size;
+                = static_cast<float>(layer_perf_characteristics.a_size);
         // Number of times B is reused from L1 in a strip
-        layer_perf_characteristics.l1_reuse = div_up(m_blk_, m_decomposition);
+        layer_perf_characteristics.l1_reuse
+                = static_cast<float>(div_up(m_blk_, m_decomposition));
 
         // In vertical multiple cores load the same A to L2
         layer_perf_characteristics.strip_1_size_shared
-                = layer_perf_characteristics.a_size;
+                = static_cast<float>(layer_perf_characteristics.a_size);
         // In strip 1 there is no sharing of B since there are no prefetches
         size_t strip_1_size_private_b
                 = n_decomposition * k_per_thread * gemm_dt_sz;
         layer_perf_characteristics.strip_1_size_private
-                = strip_1_size_private_b + strip_dst_size;
+                = static_cast<float>(strip_1_size_private_b + strip_dst_size);
         // The cores that share A
-        layer_perf_characteristics.strip_1_share_coef = nthr_n_;
+        layer_perf_characteristics.strip_1_share_coef
+                = static_cast<float>(nthr_n_);
 
         // In the mid strips A is reused from L2 and
         // B is prefetched by multiple cores.
-        layer_perf_characteristics.strip_mid_size_shared = n_decomposition
-                * k_per_thread * gemm_dt_sz; // B size per strip
+        layer_perf_characteristics.strip_mid_size_shared
+                = static_cast<float>(n_decomposition * k_per_thread
+                        * gemm_dt_sz); // B size per strip
         // C is private to a core, since each core writes to a distinct buffer
-        layer_perf_characteristics.strip_mid_size_private = strip_dst_size;
+        layer_perf_characteristics.strip_mid_size_private
+                = static_cast<float>(strip_dst_size);
         // share_coeff - the cores that share B
-        layer_perf_characteristics.strip_mid_share_coef = std::max(1, nthr_m_);
+        layer_perf_characteristics.strip_mid_share_coef
+                = static_cast<float>(std::max(1, nthr_m_));
 
         // Calculate the number of cache lines to be processed in AVX postops
-        layer_perf_characteristics.num_postop_cache_lines
-                = m_per_thread * div_up(n_decomposition, n_tmul);
+        layer_perf_characteristics.num_postop_cache_lines = static_cast<float>(
+                m_per_thread * div_up(n_decomposition, n_tmul));
     }
 }
 
@@ -533,14 +545,16 @@ float matmul_amx_blocking_params_macro_t::calculate_strip_mid_cycles(
             = layer_perf_characteristics.strip_mid_size_shared
             * (layer_perf_characteristics.l1_reuse - 1);
 
-    float c_elem_per_strip = m_blk_ * n_blk_;
+    float c_elem_per_strip = static_cast<float>(m_blk_ * n_blk_);
 
     // C post write miss in bytes = m_blk_ * (#n_decompositions in BRGEMM) * (#cache lines per n_decomposition) * 64
-    float c_post_write_miss = m_blk_ * div_up(n_blk_, n_decomposition)
-            * rnd_up(n_decomposition * c_dt_sz, 64);
+    float c_post_write_miss
+            = static_cast<float>(m_blk_ * div_up(n_blk_, n_decomposition)
+                    * rnd_up(n_decomposition * c_dt_sz, 64));
     // C post write total in bytes = m_blk_ * (#n_decompositions in BRGEMM) * (#writes per n_decomposition) * 64
-    float c_post_write_total = m_blk_ * div_up(n_blk_, n_decomposition)
-            * div_up(n_decomposition, 16) * 64;
+    float c_post_write_total
+            = static_cast<float>(m_blk_ * div_up(n_blk_, n_decomposition)
+                    * div_up(n_decomposition, 16) * 64);
     float c_post_write_hit = c_post_write_total - c_post_write_miss;
 
     float c_post_read_c_tmp = c_elem_per_strip
@@ -657,8 +671,9 @@ float matmul_amx_blocking_params_macro_t::calculate_reduction_cycles(
 
     if (nthr_k_ != 1) {
         if (c_size_per_core * 2 < L2_threshold() && batch == 1) {
-            float reduction_read_bytes = (M * rnd_up(N, 16) * reduction_c_dt_sz)
-                    * ((nthr_k_ - 1)) / (nthr_m_ * nthr_n_);
+            float reduction_read_bytes
+                    = static_cast<float>((M * rnd_up(N, 16) * reduction_c_dt_sz)
+                            * ((nthr_k_ - 1)) / (nthr_m_ * nthr_n_));
             float reduction_read_cycles;
             if (layer_perf_characteristics.a_size
                             + layer_perf_characteristics.b_size
@@ -671,8 +686,8 @@ float matmul_amx_blocking_params_macro_t::calculate_reduction_cycles(
                         = reduction_read_bytes / bw_interpolator.llc_bw;
             }
 
-            float reduction_write_bytes
-                    = (M * N * c_dt_sz) / (nthr_m_ * nthr_n_);
+            float reduction_write_bytes = static_cast<float>(
+                    (M * N * c_dt_sz) / (nthr_m_ * nthr_n_));
             float reduction_write_cycles
                     = reduction_write_bytes / bw_interpolator.get_bw(1);
             // Add reduction const overhead - measured
@@ -754,11 +769,12 @@ float matmul_amx_blocking_params_macro_t::calculate_blocking_scores() const {
     if (reduction_cycles < 0)
         return 0; //reduction is not feasible, so the score is 0
 
-    float total_macs = M * K * N * batch;
+    float total_macs = static_cast<float>(M * K * N * batch);
     float total_cycles = (gemm_cycles + reduction_cycles) * b_per_thread;
 
     int macs_per_cycle_base = 1024;
-    float peak_macs_per_cycle = (macs_per_cycle_base / gemm_dt_sz) * nthr;
+    float peak_macs_per_cycle
+            = static_cast<float>((macs_per_cycle_base / gemm_dt_sz) * nthr);
     float peak_cycles = total_macs / peak_macs_per_cycle;
     return peak_cycles / total_cycles;
 }
@@ -1599,7 +1615,7 @@ float matmul_amx_blocking_params_micro_t::calculate_blocking_scores() const {
                 brgemm_batch_size_))
         return 0.0f;
 
-    const float nthr_coeff = nstl::min(nthr, 100);
+    const float nthr_coeff = static_cast<float>(nstl::min(nthr, 100));
     const float reusage_factor = 1.0f;
     // For runtume M the actual size is unknown, use independent on num_threads
     // balance factors

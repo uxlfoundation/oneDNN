@@ -1004,7 +1004,7 @@ struct matmul_avx512_blocking_params_t {
         if (!use_buffer_a) return mp.K;
 
         constexpr int bytes_in_cacheline = 64;
-        const int elems_in_cacheline = bytes_in_cacheline / a_dt_sz;
+        const dim_t elems_in_cacheline = bytes_in_cacheline / a_dt_sz;
         dim_t lda = rnd_up(k_blk, elems_in_cacheline);
         const bool is_big_pow_2 = lda >= 512 && math::is_pow2(lda);
         if (is_big_pow_2) lda += elems_in_cacheline;
@@ -1443,7 +1443,8 @@ float compute_blocking_heuristic_avx2_f32(brgemm_matmul_conf_t &bgmmc,
     // for cases with low parallel work, reduce 'min_m_blk' to
     // increase potential parallelization balance.
     size_t max_parallel = matmul.batch * n_chunks;
-    const float req_additional_parallel = nthr / max_parallel;
+    const float req_additional_parallel
+            = static_cast<float>(nthr / max_parallel);
     if (req_additional_parallel > 1) {
         min_m_blk = saturate<dim_t>(nstl::min((dim_t)16, max_m_blk), max_m_blk,
                 static_cast<dim_t>(matmul.M / req_additional_parallel));

@@ -2876,7 +2876,7 @@ protected:
     const bool is_src_int4_;
     const bool has_vpermb_;
     const int comp_acc_idx_;
-    const dim_t src_elems_per_byte_;
+    const int src_elems_per_byte_;
 
     constexpr static int reg_src_offs_ = 0;
     constexpr static int reg_tr_src_offs_ = 8;
@@ -3237,7 +3237,7 @@ private:
 
         mov(ptr[rsp + reg_tr_src_offs_], reg_tr_src);
         xor_(reg_copy_block_n_shift, reg_copy_block_n_shift);
-        const auto typesize = sizeof(int8_t);
+        const dim_t typesize = sizeof(int8_t);
 
         Label loop_row_start, loop_row_tail, loop_row_done;
         cmp(reg_dynamic_tail, n_blk_step_);
@@ -4008,7 +4008,7 @@ private:
     const bool req_zp_b_shift;
     const bool req_apply_wei_scales;
     const bool is_wei_grouped_over_k;
-    const dim_t elems_per_byte;
+    const int elems_per_byte;
 
     constexpr static int reg_src_offs = 0;
     constexpr static int reg_tr_src_offs = 8;
@@ -4546,7 +4546,7 @@ private:
     const int simd_w_;
     const bool is_src_f4_, is_src_int4_, req_zp_b_shift_, req_apply_wei_scales_;
     const size_t typesize_in_;
-    const dim_t src_elems_per_byte_;
+    const int src_elems_per_byte_;
     const size_t typesize_out_ = sizeof(float);
     dim_t src_stride_, tr_src_stride_;
 
@@ -4882,7 +4882,8 @@ private:
     const bool use_bf16_instructions_;
     const int max_tmp_idx;
 
-    const dim_t src_stride_, tr_src_stride_, src_elems_per_byte_;
+    const dim_t src_stride_, tr_src_stride_;
+    const int src_elems_per_byte_;
     const bool is_dynamic_N_;
 
     constexpr static int ldb_step_idx_offs = 0;
@@ -6323,7 +6324,8 @@ private:
     enum { k_blk_step = 2, n_blk_step = 16 };
     const int typesize_, tr_typesize_, wei_scales_typesize_;
     const bool is_src_int4_;
-    const dim_t src_elems_per_byte_, src_stride_, tr_src_stride_;
+    const int src_elems_per_byte_;
+    const dim_t src_stride_, tr_src_stride_;
     const bool req_zp_b_shift_;
     const bool req_apply_wei_scales_;
     const int reserved_regs_;

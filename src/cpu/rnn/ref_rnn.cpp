@@ -1449,7 +1449,7 @@ void copy_init_iter_fwd_template(const rnn_conf_t &rnn, const rnn_pd_t *pd,
         } else
             return (src_data_t)f;
     };
-    const src_data_t zero = maybe_q(0.f);
+    const src_data_t zero = maybe_q(static_cast<input_data_t>(0.f));
     const auto zero_ws_iter_c
             = [&](dim_t lay, dim_t dir, dim_t mb_id, dim_t sic_id) {
         void *ws_states_iter_c = const_cast<void *>(
@@ -1884,7 +1884,7 @@ rnn_bias_prepare_sig_templ(copy_bias_to_ws) {
                 bias(i, d, p) = rnn.copy_bias
                         ? const_cast<T *>(&scratch_bias(i, d, offset_bias))
                         : const_cast<T *>(&b(i, d, offset_bias));
-                offset_bias += rnn.parts_bias[p] * rnn.dhc;
+                offset_bias += static_cast<int>(rnn.parts_bias[p] * rnn.dhc);
             }
         }
     }

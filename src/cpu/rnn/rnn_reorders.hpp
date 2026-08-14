@@ -159,9 +159,10 @@ static inline void compensate_igo(float *compensation,
                 // i = I-1
                 PRAGMA_OMP_SIMD()
                 for (dim_t go = GO_s; go < GO_e; go++)
-                    compensation[ld * G * O + go] = q10n::saturate<float>(
-                            compensation_s32[go]
-                            + scratch_quantized[go + G * O * (i + I * (ld))]);
+                    compensation[ld * G * O + go] = static_cast<float>(
+                            q10n::saturate<float>(compensation_s32[go]
+                                    + scratch_quantized[go
+                                            + G * O * (i + I * (ld))]));
             }
         }
     });
@@ -185,7 +186,8 @@ static inline void compensate_goi(float *compensation,
         // going to be added to a bias (e.g. like in lstm
         // projection where it is directly added to the s32
         // accumulators)
-        compensation[ld * G * O + go] = q10n::saturate<float>(compensation_s32);
+        compensation[ld * G * O + go]
+                = static_cast<float>(q10n::saturate<float>(compensation_s32));
     });
 }
 

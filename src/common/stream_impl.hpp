@@ -21,6 +21,7 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
+#include "common/verbose.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -32,7 +33,12 @@ public:
         : use_verbose_profiler_(false), flags_(flags) {}
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     stream_impl_t(threadpool_interop::threadpool_iface *threadpool)
-        : flags_(stream_flags::in_order), threadpool_(threadpool) {}
+        : use_verbose_profiler_(threadpool
+                  && (threadpool->get_flags()
+                          & threadpool_interop::threadpool_iface::ASYNCHRONOUS)
+                  && get_verbose(verbose_t::exec_profile))
+        , flags_(stream_flags::in_order)
+        , threadpool_(threadpool) {}
 #endif
 
     virtual ~stream_impl_t() = default;

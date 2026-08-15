@@ -18,8 +18,10 @@
 #include "common/c_types_map.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
+#include "common/nstl.hpp"
 #include "common/utils.hpp"
 #include "cpu/platform.hpp"
+#include "cpu/rv64/gemm/rvv_gemm_f16.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_f32.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_s8s8s32.hpp"
 #include "cpu/rv64/gemm/rvv_gemm_utils_f32.hpp"
@@ -48,9 +50,11 @@ void rvv_matmul_t::pd_t::init_scratchpad() {
     calc_nthr_nocopy_rvv(gemm_M, gemm_N, K_, max_nthr, &nthr_m_, &nthr_n_,
             &nthr_k_, &MB_, &NB_, &KB_);
 
-    // Pick the path's own m_unroll: f32 and int8 derive the factor independently
-    m_unroll_ = is_f32_path_ ? gemm_utils_traits<float>::get_m_unroll_factor()
-                             : gemm_utils_traits<int8_t>::get_m_unroll_factor();
+    // Pick the path's own m_unroll: f32 and int8 derive the factor
+    // independently; the half-precision kernel loads A at e16/m2, which holds
+    // the same element count as the f32 kernel's e32/m4.
+    m_unroll_ = is_int8_path_ ? gemm_utils_traits<int8_t>::get_m_unroll_factor()
+                              : gemm_utils_traits<float>::get_m_unroll_factor();
     do_copy_ = (NB_ / gemm_utils_traits<float>::get_n_unroll_factor() > 3);
 
     const int nthr_mn = nthr_m_ * nthr_n_;
@@ -60,33 +64,43 @@ void rvv_matmul_t::pd_t::init_scratchpad() {
 
     // K-split reduction buffer. Both f32 and s32 dst use 4-byte elements;
     // book<char> + byte count keeps the contract type-agnostic. Only needed
-    // when the K axis is split across threads.
-    if (nthr_k_ > 1) {
+    // when the K axis is split across threads; the half-precision GEMM never
+    // splits K (overwrite-only epilogue).
+    if (nthr_k_ > 1 && !is_hp_path_) {
         const size_t c_elems
                 = (size_t)nthr_m_ * nthr_n_ * (nthr_k_ - 1) * MB_ * NB_;
         scratchpad.template book<char>(key_gemm_accumulator, c_elems * 4);
     }
 
-    // Per-thread A-copy workspace. Size mirrors what rvv_gemm_f32 /
-    // rvv_gemm_s8s8s32 malloc in the fallback path: rnd_up(K*m_unroll*elem_size,
-    // PAGE_4K) bytes per thread.
-    if (do_copy_) {
-        const size_t elem_size = is_f32_path_ ? sizeof(float) : sizeof(int8_t);
-        const size_t ws_size_per_thr
+    // Per-thread A-copy workspace. Size mirrors what the GEMM drivers malloc
+    // in the fallback path: rnd_up(K*m_unroll*elem_size, PAGE_4K) bytes per
+    // thread. With per-batch weights, execute() may split the batch loop
+    // across workers, each driving a single-thread GEMM partition whose NB is
+    // the full gemm_N — the copy may trigger there even when the full
+    // partition's NB_ says otherwise, so cover both thread counts.
+    const dim_t batch_workers
+            = weights_are_broadcast_ ? 0 : nstl::min(batch_, (dim_t)max_nthr);
+    ws_thr_slices_
+            = static_cast<int>(nstl::max<dim_t>(nthr_to_use, batch_workers));
+    const bool per_batch_copy
+            = M_ / gemm_utils_traits<float>::get_n_unroll_factor() > 3;
+    if (do_copy_ || (batch_workers > 0 && per_batch_copy)) {
+        const size_t elem_size = is_int8_path_ ? sizeof(int8_t)
+                : is_hp_path_                  ? 2 // f16/bf16 elements
+                                               : sizeof(float);
+        ws_slice_bytes_
                 = utils::rnd_up((size_t)K_ * m_unroll_ * elem_size, PAGE_4K);
         scratchpad.template book<char>(
-                key_gemm_tmp_buffer, (size_t)nthr_to_use * ws_size_per_thr);
+                key_gemm_tmp_buffer, (size_t)ws_thr_slices_ * ws_slice_bytes_);
     }
 }
 
 status_t rvv_matmul_t::init(engine_t *engine) {
     UNUSED(engine);
-    // The int8 path has no post-op kernel yet; only build the per-row
-    // "bias + post-op chain" kernel for the f32 dispatch.
-    if (!pd()->is_int8_path_) {
-        // The post-ops kernel below hardcodes f32 dst_dt; gating it on
-        // is_f32_path_ ensures the f32-only invariant stays explicit.
-        assert(pd()->is_f32_path_);
+    // Only the f32 dispatch applies the per-row "bias + post-op chain"
+    // kernel (it hardcodes an f32 dst); the int8 path fuses bias inside its
+    // GEMM kernel and the half-precision path has no bias / post-ops yet.
+    if (pd()->is_f32_path_) {
         const memory_desc_wrapper bias_d(pd()->desc()->bias_desc);
         jit_uni_postops_kernel_t::conf_t conf;
         conf.dst_dt = data_type::f32;
@@ -133,6 +147,30 @@ gemm_axes_t make_gemm_axes(dim_t M, dim_t N, dim_t K, bool weights_col_major) {
     g.ldc = N;
     return g;
 }
+
+// Runs `call_one(b, ws, part)` for every batch element. With enough batch
+// entries the loop runs in parallel, each worker driving a single-thread GEMM
+// partition over its entries with its own A-copy workspace slice; otherwise
+// the batch is walked sequentially with the full partition. This makes the
+// batch dimension part of the parallel work for per-batch weights, like the
+// aarch64/x64 brgemm matmuls do, instead of an outer serial loop.
+template <typename F>
+void run_batch_gemm(dim_t batch, int ws_thr_slices, size_t ws_slice_bytes,
+        char *ws_base, const gemm_utils::gemm_partition_t *part_full,
+        const gemm_utils::gemm_partition_t *part_single, F call_one) {
+    dim_t nworkers = nstl::min(batch, (dim_t)dnnl_get_current_num_threads());
+    nworkers = nstl::min(nworkers, (dim_t)ws_thr_slices);
+    if (nworkers > 1) {
+        parallel(static_cast<int>(nworkers), [&](int ithr, int nthr) {
+            char *ws = ws_base ? ws_base + ithr * ws_slice_bytes : nullptr;
+            for (dim_t b = ithr; b < batch; b += nthr)
+                call_one(b, ws, part_single);
+        });
+    } else {
+        for (dim_t b = 0; b < batch; ++b)
+            call_one(b, ws_base, part_full);
+    }
+}
 } // namespace
 
 status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
@@ -162,6 +200,9 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     // different threadpool contexts.
     const gemm_utils::gemm_partition_t part {pd()->nthr_m_, pd()->nthr_n_,
             pd()->nthr_k_, pd()->MB_, pd()->NB_, pd()->KB_};
+    // Single-thread partition for the parallel batch loop (run_batch_gemm).
+    const gemm_utils::gemm_partition_t part_single {
+            1, 1, 1, g.M_gemm, g.N_gemm, g.K_gemm};
 
     const int src_batch_ndims = ndims > 2 ? ndims - 2 : 0;
     const int wei_batch_ndims = wei_ndims > 2 ? wei_ndims - 2 : 0;
@@ -170,14 +211,49 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     const dim_t N_dim = wei_dims[wei_ndims - 1];
     const dim_t wei_matrix_stride = K_dim * N_dim;
 
+    // Byte views of the operands so the per-dtype dispatches share one batch
+    // addressing scheme (strides in bytes, per-dtype element sizes).
+    const char *src_bytes
+            = static_cast<const char *>(CTX_IN_MEM(const void *, DNNL_ARG_SRC));
+    const char *wei_bytes = static_cast<const char *>(
+            CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS));
+    char *dst_bytes = static_cast<char *>(CTX_OUT_MEM(void *, DNNL_ARG_DST));
+    const dim_t src_batch_stride_bytes
+            = M * K * types::data_type_size(src_d.data_type());
+    const dim_t dst_batch_stride_bytes
+            = M * N * types::data_type_size(dst_d.data_type());
+
+    // Weights base for batch element b, honoring broadcast (size-1) batch
+    // dims. Local scratch: called from parallel workers.
+    auto wei_base = [&](dim_t b) -> const char * {
+        if (wei_batch_ndims == 0) return wei_bytes;
+        dim_t batch_indices[DNNL_MAX_NDIMS] = {};
+        utils::l_dims_by_l_offset(batch_indices, b, src_dims, src_batch_ndims);
+        dim_t weight_batch_index = 0;
+        for (int d = 0; d < wei_batch_ndims; ++d) {
+            const int src_dim_idx = d + batch_dim_shift;
+            dim_t idx = (src_dim_idx >= 0) ? batch_indices[src_dim_idx]
+                                           : dim_t(0);
+            const dim_t wei_dim = wei_dims[d];
+            idx = (wei_dim == 1) ? dim_t(0) : idx;
+            weight_batch_index = weight_batch_index * wei_dim + idx;
+        }
+        return wei_bytes
+                + weight_batch_index * wei_matrix_stride
+                * types::data_type_size(weights_d.data_type());
+    };
+
+    auto &grantor = ctx.get_scratchpad_grantor();
+    char *ws_bytes = pd()->ws_slice_bytes_
+            ? grantor.template get<char>(
+                      memory_tracking::names::key_gemm_tmp_buffer)
+            : nullptr;
+
     if (pd()->is_int8_path_) {
         // Int8 dispatch: (s8|u8) weights * (s8|u8) src ->
         // (s32|f32|s8|u8|f16|bf16) dst. No post-ops or scales (those attrs are
         // rejected in pd_t::init), so the only epilogue work is the optional
         // fused bias inside the GEMM kernel itself.
-        const void *weights = CTX_IN_MEM(const void *, DNNL_ARG_WEIGHTS);
-        const void *src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
-        void *dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
         const float *bias = bias_d.is_zero()
                 ? nullptr
                 : CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
@@ -191,18 +267,9 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
         const bool b_signed = src_d.data_type() == data_type::s8;
         const data_type_t dst_dt = dst_d.data_type();
 
-        const dim_t src_batch_stride = M * K;
-        const dim_t dst_batch_stride = M * N;
-
-        // Scratchpad buffers booked in pd_t::init_scratchpad().
-        auto &grantor = ctx.get_scratchpad_grantor();
         int32_t *c_buffer = pd()->nthr_k_ > 1
                 ? grantor.template get<int32_t>(
                           memory_tracking::names::key_gemm_accumulator)
-                : nullptr;
-        int8_t *ws_buffer = pd()->do_copy_
-                ? grantor.template get<int8_t>(
-                          memory_tracking::names::key_gemm_tmp_buffer)
                 : nullptr;
 
         if (pd()->weights_are_broadcast_) {
@@ -211,51 +278,61 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
             const dim_t N_gemm_all = batch * g.N_gemm; // batch * M
 
             status_t st = rvv_gemm_s8s8s32(&g.transa, &g.transb, &M_gemm_all,
-                    &N_gemm_all, &g.K_gemm, &alpha, weights, &g.lda, src,
-                    &g.ldb, &beta, dst, &g.ldc, /*bias=*/bias, a_signed,
-                    b_signed, dst_dt, c_buffer, ws_buffer, bias_is_scalar,
+                    &N_gemm_all, &g.K_gemm, &alpha, wei_bytes, &g.lda,
+                    src_bytes, &g.ldb, &beta, dst_bytes, &g.ldc,
+                    /*bias=*/bias, a_signed, b_signed, dst_dt, c_buffer,
+                    reinterpret_cast<int8_t *>(ws_bytes), bias_is_scalar,
                     &part);
             assert(st == status::success || st == status::unimplemented);
             MAYBE_UNUSED(st);
         } else {
-            for (dim_t b = 0; b < batch; ++b) {
-                const char *src_base = static_cast<const char *>(src)
-                        + b * src_batch_stride
-                                * types::data_type_size(src_d.data_type());
-                char *dst_base = static_cast<char *>(dst)
-                        + b * dst_batch_stride
-                                * types::data_type_size(dst_d.data_type());
-
-                dim_t batch_indices[DNNL_MAX_NDIMS] = {};
-                if (src_batch_ndims > 0) {
-                    utils::l_dims_by_l_offset(
-                            batch_indices, b, src_dims, src_batch_ndims);
-                }
-
-                dim_t weight_batch_index = 0;
-                if (wei_batch_ndims > 0) {
-                    for (int d = 0; d < wei_batch_ndims; ++d) {
-                        const int src_dim_idx = d + batch_dim_shift;
-                        dim_t idx = (src_dim_idx >= 0)
-                                ? batch_indices[src_dim_idx]
-                                : dim_t(0);
-                        const dim_t wei_dim = wei_dims[d];
-                        idx = (wei_dim == 1) ? dim_t(0) : idx;
-                        weight_batch_index = weight_batch_index * wei_dim + idx;
-                    }
-                }
-
-                const char *wei_base = static_cast<const char *>(weights)
-                        + weight_batch_index * wei_matrix_stride;
-
+            run_batch_gemm(batch, pd()->ws_thr_slices_, pd()->ws_slice_bytes_,
+                    ws_bytes, &part, &part_single,
+                    [&](dim_t b, char *ws,
+                            const gemm_utils::gemm_partition_t *p) {
                 status_t st = rvv_gemm_s8s8s32(&g.transa, &g.transb, &g.M_gemm,
-                        &g.N_gemm, &g.K_gemm, &alpha, wei_base, &g.lda,
-                        src_base, &g.ldb, &beta, dst_base, &g.ldc,
+                        &g.N_gemm, &g.K_gemm, &alpha, wei_base(b), &g.lda,
+                        src_bytes + b * src_batch_stride_bytes, &g.ldb, &beta,
+                        dst_bytes + b * dst_batch_stride_bytes, &g.ldc,
                         /*bias=*/bias, a_signed, b_signed, dst_dt, c_buffer,
-                        ws_buffer, bias_is_scalar, &part);
+                        reinterpret_cast<int8_t *>(ws), bias_is_scalar, p);
                 assert(st == status::success || st == status::unimplemented);
                 MAYBE_UNUSED(st);
-            }
+            });
+        }
+        return status::success;
+    }
+
+    if (pd()->is_hp_path_) {
+        // Half-precision dispatch: (f16|bf16) weights * (f16|bf16) src ->
+        // same-dtype dst with f32 accumulation inside the GEMM kernel. No
+        // bias / post-ops on this path (rejected in pd_t::init).
+        const data_type_t hp_dt = src_d.data_type();
+
+        if (pd()->weights_are_broadcast_) {
+            //   C(N x (batch * M)) = A(N x K) * B(K x (batch * M))
+            const dim_t M_gemm_all = g.M_gemm; // N
+            const dim_t N_gemm_all = batch * g.N_gemm; // batch * M
+
+            status_t st = rvv_gemm_f16(&g.transa, &g.transb, &M_gemm_all,
+                    &N_gemm_all, &g.K_gemm, &alpha, wei_bytes, &g.lda,
+                    src_bytes, &g.ldb, &beta, dst_bytes, &g.ldc, hp_dt,
+                    ws_bytes, &part);
+            assert(st == status::success || st == status::unimplemented);
+            MAYBE_UNUSED(st);
+        } else {
+            run_batch_gemm(batch, pd()->ws_thr_slices_, pd()->ws_slice_bytes_,
+                    ws_bytes, &part, &part_single,
+                    [&](dim_t b, char *ws,
+                            const gemm_utils::gemm_partition_t *p) {
+                status_t st = rvv_gemm_f16(&g.transa, &g.transb, &g.M_gemm,
+                        &g.N_gemm, &g.K_gemm, &alpha, wei_base(b), &g.lda,
+                        src_bytes + b * src_batch_stride_bytes, &g.ldb, &beta,
+                        dst_bytes + b * dst_batch_stride_bytes, &g.ldc, hp_dt,
+                        ws, p);
+                assert(st == status::success || st == status::unimplemented);
+                MAYBE_UNUSED(st);
+            });
         }
         return status::success;
     }
@@ -263,7 +340,6 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     // f32 dispatch (unchanged): bias + post-op chain is applied per output row
     // after the GEMM by jit_uni_postops_kernel_t.
     auto src = CTX_IN_MEM(const float *, DNNL_ARG_SRC);
-    auto weights = CTX_IN_MEM(const float *, DNNL_ARG_WEIGHTS);
     auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
 
     const post_ops_t &post_ops = pd()->attr()->post_ops_;
@@ -280,17 +356,11 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
     //     column-major [K, M] with leading dim K, so transb = 'N', ldb = K.
     //   - C is viewed as column-major [N, M] with leading dim N, which matches
     //     row-major [M, N] in memory.
-    const dim_t src_batch_stride = M * K;
     const dim_t dst_batch_stride = M * N;
 
-    auto &grantor = ctx.get_scratchpad_grantor();
     float *c_buffer = pd()->nthr_k_ > 1
             ? grantor.template get<float>(
                       memory_tracking::names::key_gemm_accumulator)
-            : nullptr;
-    float *ws_buffer = pd()->do_copy_
-            ? grantor.template get<float>(
-                      memory_tracking::names::key_gemm_tmp_buffer)
             : nullptr;
 
     if (pd()->weights_are_broadcast_) {
@@ -299,45 +369,32 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
         dim_t N_gemm_all = batch * g.N_gemm; // batch * M
 
         status_t st = rvv_gemm_f32(&g.transa, &g.transb, &M_gemm_all,
-                &N_gemm_all, &g.K_gemm, &alpha, weights, &g.lda, src, &g.ldb,
+                &N_gemm_all, &g.K_gemm, &alpha,
+                reinterpret_cast<const float *>(wei_bytes), &g.lda, src, &g.ldb,
                 &beta, dst, &g.ldc,
-                /*bias=*/nullptr, c_buffer, ws_buffer, &part);
+                /*bias=*/nullptr, c_buffer, reinterpret_cast<float *>(ws_bytes),
+                &part);
         assert(st == status::success || st == status::unimplemented);
         MAYBE_UNUSED(st);
 
     } else {
-        for (dim_t b = 0; b < batch; ++b) {
-            const float *src_base = src + b * src_batch_stride;
-            float *dst_base = dst + b * dst_batch_stride;
-
-            dim_t batch_indices[DNNL_MAX_NDIMS] = {};
-            if (src_batch_ndims > 0) {
-                utils::l_dims_by_l_offset(
-                        batch_indices, b, src_dims, src_batch_ndims);
-            }
-
-            dim_t weight_batch_index = 0;
-            if (wei_batch_ndims > 0) {
-                for (int d = 0; d < wei_batch_ndims; ++d) {
-                    const int src_dim_idx = d + batch_dim_shift;
-                    dim_t idx = (src_dim_idx >= 0) ? batch_indices[src_dim_idx]
-                                                   : dim_t(0);
-                    const dim_t wei_dim = wei_dims[d];
-                    idx = (wei_dim == 1) ? dim_t(0) : idx;
-                    weight_batch_index = weight_batch_index * wei_dim + idx;
-                }
-            }
-
-            const float *wei_base
-                    = weights + weight_batch_index * wei_matrix_stride;
-
+        run_batch_gemm(batch, pd()->ws_thr_slices_, pd()->ws_slice_bytes_,
+                ws_bytes, &part, &part_single,
+                [&](dim_t b, char *ws, const gemm_utils::gemm_partition_t *p) {
             status_t st = rvv_gemm_f32(&g.transa, &g.transb, &g.M_gemm,
-                    &g.N_gemm, &g.K_gemm, &alpha, wei_base, &g.lda, src_base,
-                    &g.ldb, &beta, dst_base, &g.ldc,
-                    /*bias=*/nullptr, c_buffer, ws_buffer, &part);
+                    &g.N_gemm, &g.K_gemm, &alpha,
+                    reinterpret_cast<const float *>(wei_base(b)), &g.lda,
+                    reinterpret_cast<const float *>(
+                            src_bytes + b * src_batch_stride_bytes),
+                    &g.ldb, &beta,
+                    reinterpret_cast<float *>(
+                            dst_bytes + b * dst_batch_stride_bytes),
+                    &g.ldc,
+                    /*bias=*/nullptr, c_buffer, reinterpret_cast<float *>(ws),
+                    p);
             assert(st == status::success || st == status::unimplemented);
             MAYBE_UNUSED(st);
-        }
+        });
     }
 
     if (!bias && post_ops.len() == 0) return status::success;

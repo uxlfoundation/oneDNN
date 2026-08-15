@@ -66,7 +66,9 @@ struct rvv_matmul_t : public primitive_t {
             // Determine which dispatch path this pd serves. f32 stays on the
             // existing f32 GEMM kernel; (s8|u8) src + (s8|u8) weights + a dst
             // in the int8-supported set (s32|f32|s8|u8|f16|bf16) runs through
-            // the int8 GEMM kernel. f16 and bf16 additionally require Zvfh /
+            // the int8 GEMM kernel. f16/bf16 src and weights with a dst of
+            // the same type runs through the half-precision GEMM kernel
+            // (f32 accumulation). f16 and bf16 additionally require Zvfh /
             // Zvfbfwma, which we gate below.
             const auto src_dt = src_mdw.data_type();
             const auto wei_dt = weights_mdw.data_type();
@@ -79,8 +81,10 @@ struct rvv_matmul_t : public primitive_t {
             is_int8_path_ = utils::one_of(src_dt, s8, u8)
                     && utils::one_of(wei_dt, s8, u8) && dst_in_int8_set
                     && acc_dt == s32;
-            VDISPATCH_MATMUL(
-                    is_f32_path_ || is_int8_path_, VERBOSE_UNSUPPORTED_DT);
+            is_hp_path_ = utils::one_of(src_dt, f16, bf16) && wei_dt == src_dt
+                    && dst_dt == src_dt && acc_dt == f32;
+            VDISPATCH_MATMUL(is_f32_path_ || is_int8_path_ || is_hp_path_,
+                    VERBOSE_UNSUPPORTED_DT);
             // Half-precision dst requires the corresponding vector fp
             // extension. The CPU is probed once in init() so this is cheap.
             if (is_int8_path_ && dst_dt == f16) {
@@ -88,6 +92,14 @@ struct rvv_matmul_t : public primitive_t {
             }
             if (is_int8_path_ && dst_dt == bf16) {
                 VDISPATCH_MATMUL(mayiuse(zvfbfwma), VERBOSE_UNSUPPORTED_ISA);
+            }
+            if (is_hp_path_) {
+                VDISPATCH_MATMUL(mayiuse(src_dt == f16 ? zvfh : zvfbfwma),
+                        VERBOSE_UNSUPPORTED_ISA);
+                // The half-precision GEMM kernel has no fused bias / post-ops
+                // yet.
+                VDISPATCH_MATMUL(
+                        bias_mdw.is_zero(), VERBOSE_UNSUPPORTED_BIAS_CFG);
             }
             // The int8 path rejects per-oc / per-tensor scales, zero-points,
             // and post-ops in this MVP; only optional f32 bias is supported.
@@ -251,9 +263,12 @@ struct rvv_matmul_t : public primitive_t {
         // Dispatch path selected in init(). is_f32_path_ keeps the historical
         // behavior; is_int8_path_ routes (s8|u8):(s8|u8):(s32|f32|s8|u8|f16|bf16)
         // through the int8 GEMM kernel and rejects non-default attrs except
-        // bias (and scales/zero-points/post-ops).
+        // bias (and scales/zero-points/post-ops); is_hp_path_ routes
+        // f16:f16:f16 / bf16:bf16:bf16 through the half-precision GEMM kernel
+        // and rejects all attrs including bias.
         bool is_f32_path_ = false;
         bool is_int8_path_ = false;
+        bool is_hp_path_ = false;
 
         int nthr_m_ = 1;
         int nthr_n_ = 1;
@@ -263,6 +278,11 @@ struct rvv_matmul_t : public primitive_t {
         dim_t KB_ = 0;
         dim_t m_unroll_ = 0;
         bool do_copy_ = false;
+        // A-copy workspace booked in the scratchpad: number of per-thread
+        // slices (0 = not booked) and the byte size of one slice. Covers both
+        // the full GEMM partition and the parallel batch loop in execute().
+        int ws_thr_slices_ = 0;
+        size_t ws_slice_bytes_ = 0;
 
     private:
         void init_scratchpad();

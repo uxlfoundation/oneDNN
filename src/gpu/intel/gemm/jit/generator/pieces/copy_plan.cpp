@@ -292,6 +292,7 @@ void CopyPlan::transform()
     sort(SortType::PhaseOnly);
 
     legalizeShfl();
+    legalizeDstStrides();
 
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
     const auto verbose = getVerbose(GEMMVerbose::DebugInfo);
@@ -834,6 +835,9 @@ void CopyPlan::planTypeConversions()
         else if (isInt4(st) && isInt4(dt) && st != dt) {
             copyThrough(i, DataType::w);
             rerun = true;
+        } else if (isInt2(st) && isInt2(dt)) {
+            copyThrough(i, DataType::w);
+            rerun = true;
         } else if (isInt2(st) && isInt(dt)) {
             planInt2Upconversion(i);
             rerun = true;
@@ -1099,6 +1103,29 @@ void CopyPlan::legalizeShfl()
             i.src0.stride = 0;
             i.src0.width = 1;
             i.src0.vs = 1;
+        }
+    }
+}
+
+void CopyPlan::legalizeDstStrides()
+{
+    for (auto &i: insns) {
+        if (i.dst.type != DataType::uw)
+            continue;
+        // dst stride can only go up to 4. If 8, switch to ud
+        if (i.dst.stride > 4) {
+            if (i.dst.stride > 8) {
+                stub("Invalid destination stride, cannot legalize");
+            }
+            if (i.dst.offset % 2 != 0) {
+                stub("Cannot legalize destination stride, odd offset");
+            }
+            if (!i.dst.overwriteStride) {
+                stub("Cannot overwrite destination padding to legalize stride");
+            }
+            i.dst.offset /= 2;
+            i.dst.stride /= 2;
+            i.dst.type = DataType::ud;
         }
     }
 }
@@ -1657,58 +1684,26 @@ void CopyPlan::plan2BitShifts(CopyInstruction &i)
     i.sat = false;
 
     bool high = (i.dst.type == ngen_b16_h2x());
+    const auto sstride = i.src0.stride;
+    const auto dstride = i.dst.stride;
+    const auto stride_adjustment = (3 + sstride) / sstride;
 
-    std::array<CopyInstruction*, 4> ie = { &i, nullptr, nullptr, nullptr };
+    i.op = high ? Opcode::shl : Opcode::shr;
+    i.dst.stride *= stride_adjustment;
+    i.dst.type = DataType::uw;
+    i.src0.stride = 1;
+    i.src0.type = DataType::ub;
+    i.simd /= stride_adjustment;
 
-    // Split into 4 2-bit conversions.
-    if (i.src0.stride == 1 && i.simd >= 4) {
-        ie = splitMultiple<4>(i);
-        ie[0]->dst.stride *= 4;
-        ie[0]->src0.stride *= 4;
-        ie[0]->simd /= 4;
-        ie[1]->dst.stride *= 4;
-        ie[1]->src0.stride *= 4;
-        ie[1]->simd /= 4;
-        ie[1]->dst.offset += ie[1]->dst.stride / 4;
-        ie[1]->src0.offset += ie[1]->src0.stride / 4;
-        ie[2]->dst.stride *= 4;
-        ie[2]->src0.stride *= 4;
-        ie[2]->simd /= 4;
-        ie[2]->dst.offset += (2 * ie[2]->dst.stride) / 4;
-        ie[2]->src0.offset += (2 * ie[2]->src0.stride) / 4;
-        ie[3]->dst.stride *= 4;
-        ie[3]->src0.stride *= 4;
-        ie[3]->simd /= 4;
-        ie[3]->dst.offset += (3 * ie[3]->dst.stride) / 4;
-        ie[3]->src0.offset += (3 * ie[3]->src0.stride) / 4;
+    for (int k = 0; k * sstride < 4; k++) {
+        auto &i1 = split(i, false);
+        i1.dst.offset += k * dstride;
+        i1.src0.offset += k * sstride;
+        auto offset = (i1.src0.offset % 4) * 2;
+        i1.src0.offset /= 4;
+        i1.src1 = high ? 14 - offset : offset;
     }
-
-    // Convert to shifts.
-    for (auto ip : ie) if (ip) {
-        int offset = (ip->src0.offset % 4) * 2;
-
-        ip->op = high ? Opcode::shl : Opcode::shr;
-        ip->src0.type = DataType::ub;
-        ip->src0.stride /= 4;
-        ip->src0.offset /= 4;
-        ip->src1 = high ? 14 - offset : offset;
-        ip->dst.type = DataType::uw;
-        // dst stride can only go up to 4. If 8, switch to ud
-        if (ip->dst.stride > 4) {
-            if (ip->dst.stride > 8) {
-                stub("Invalid destination stride, cannot legalize");
-            }
-            if (ip->dst.offset % 2 != 0) {
-                stub("Cannot legalize destination stride, odd offset");
-            }
-            if (!ip->dst.overwriteStride) {
-                stub("Cannot overwrite destination padding to legalize stride");
-            }
-            ip->dst.offset /= 2;
-            ip->dst.stride /= 2;
-            ip->dst.type = DataType::ud;
-        }
-    }
+    i.invalidate();
 }
 
 // Shift 4-bit data into high or low 4-bits of a 16-bit channel.
@@ -1806,7 +1801,7 @@ void CopyPlan::planInt2Downconversion(CopyInstruction &i)
     auto osrc = i.src0;
     auto stmp = newTemp(DataType::uw, simd, 1);
     auto dtmp = newTemp(DataType::uw, simd/4, 1);
-    auto sstmp = newTemp(DataType::uw, simd/2, 1);
+    auto sstmp = newTemp(DataType::uw, simd/2 * ddst.stride, 1);
     int sStride = ssrc.stride * getBytes(ssrc.type) * 4;
     int dStride = ddst.stride / (getBytes(ssrc.type) * 4);
 
@@ -1815,6 +1810,7 @@ void CopyPlan::planInt2Downconversion(CopyInstruction &i)
     ie[0]->src0 = osrc;
 
     if (simd >= 4 && ddst.stride == 1) {
+        // Dense destination, use bfn to pack values in bytes
         ie[1]->op = Opcode::mov;
         ie[1]->simd = simd/4;
         ie[1]->dst = dtmp;
@@ -1875,7 +1871,7 @@ void CopyPlan::planInt2Downconversion(CopyInstruction &i)
         ie[7]->src1.stride *= 2;
         ie[7]->src2 = Immediate::uw(0x3F);
 
-        if (simd > 4) {
+        if (true) {  // simd > 4) {
             ie[8]->op = Opcode::mov;
             ie[8]->simd = simd/4;
             ie[8]->dst = tmp;
@@ -1897,6 +1893,94 @@ void CopyPlan::planInt2Downconversion(CopyInstruction &i)
             ie[9]->src0.type = DataType::ub;
         } else {
             stub("Unsupported int2 downconversion configuration");
+        }
+    } else if (ddst.stride == 4) {
+        // Byte-aligned destination, use bfn to insert values without touching
+        // other data.
+        auto offset = (ddst.offset % 4) * 2;
+
+        ie[1]->op = Opcode::shl;
+        ie[1]->dst = sstmp;
+        ie[1]->dst.stride *= 2;
+        ie[1]->src0 = stmp;
+        ie[1]->src1 = Immediate::uw(offset);
+
+        ie[2]->op = Opcode::bfn;
+        ie[2]->ctrl = 0xCA;
+        ie[2]->dst = ddst;
+        ie[2]->dst.type = DataType::ub;
+        ie[2]->dst.stride = 1;
+        ie[2]->dst.offset /= 4;
+        ie[2]->src0 = ddst;
+        ie[2]->src0.type = DataType::ub;
+        ie[2]->src0.stride = 1;
+        ie[2]->src0.offset /= 4;
+        ie[2]->src1 = sstmp;
+        ie[2]->src1.stride *= 2;
+        ie[2]->src2 = Immediate::uw(0x3 << offset);
+
+        for (int j = 3; j < 10; ++j) {
+            ie[j]->invalidate();
+        }
+    } else if (ddst.stride == 2) {
+        // Misaligned destination, use multiple bfn instructions to insert
+        // values into the destination.
+        bool high = (ddst.offset % 4) >= 2;
+        auto offset = (ddst.offset % 2) * 2;
+
+        ie[1]->op = Opcode::shl;
+        ie[1]->simd = simd/2;
+        ie[1]->dst = sstmp;
+        ie[1]->dst.stride *= 2;
+        ie[1]->src0 = stmp;
+        ie[1]->src0.stride *= 2;
+        ie[1]->src1 = Immediate::uw(offset + (high ? 4 : 0));
+
+        ie[2]->op = Opcode::bfn;
+        ie[2]->simd = simd/2;
+        ie[2]->ctrl = 0xCA;
+        ie[2]->dst = ddst;
+        ie[2]->dst.type = DataType::ub;
+        ie[2]->dst.stride = 1;
+        ie[2]->dst.offset /= 4;
+        ie[2]->src0 = ddst;
+        ie[2]->src0.type = DataType::ub;
+        ie[2]->src0.stride = 1;
+        ie[2]->src0.offset /= 4;
+        ie[2]->src1 = sstmp;
+        ie[2]->src1.stride *= 2;
+        ie[2]->src2 = Immediate::uw((high ? 0x30 : 0x3) << offset);
+
+        ie[3]->op = Opcode::shl;
+        ie[3]->simd = simd/2;
+        ie[3]->dst = sstmp;
+        ie[3]->dst.stride *= 2;
+        ie[3]->src0 = stmp;
+        ie[3]->src0.offset += ie[3]->src0.stride;
+        ie[3]->src0.stride *= 2;
+        ie[3]->src1 = Immediate::uw(offset + (high ? 0 : 4));
+
+        ie[4]->op = Opcode::bfn;
+        ie[4]->simd = simd/2;
+        ie[4]->ctrl = 0xCA;
+        ie[4]->dst = ddst;
+        ie[4]->dst.type = DataType::ub;
+        ie[4]->dst.stride = 1;
+        ie[4]->dst.offset /= 4;
+        ie[4]->src0 = ddst;
+        ie[4]->src0.type = DataType::ub;
+        ie[4]->src0.stride = 1;
+        ie[4]->src0.offset /= 4;
+        if (high) {
+            ie[4]->dst.offset += 1;
+            ie[4]->src0.offset += 1;
+        }
+        ie[4]->src1 = sstmp;
+        ie[4]->src1.stride *= 2;
+        ie[4]->src2 = Immediate::uw((high ? 0x3 : 0x30) << offset);
+
+        for (int j = 5; j < 10; ++j) {
+            ie[j]->invalidate();
         }
     } else {
         stub("Unsupported int2 downconversion configuration");

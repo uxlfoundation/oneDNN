@@ -34,9 +34,29 @@ if (DOXYREST_FOUND)
         DESTINATION ${CMAKE_CURRENT_BINARY_DIR}
         )
     file(MAKE_DIRECTORY ${DOXYREST_FRAME_DIR})
+
+    # Adding doc/**/*.rst files to Doxyrest output and checking for name collisions
+    file(GLOB_RECURSE DOXYREST_RST_FILES ${CMAKE_CURRENT_SOURCE_DIR}/doc/*.rst)
+    set(_seen_rst_names "")
+    set(_dup_rst_names "")
+    foreach(_rst ${DOXYREST_RST_FILES})
+        get_filename_component(_rst_name ${_rst} NAME)
+        if(_rst_name IN_LIST _seen_rst_names)
+            list(APPEND _dup_rst_names ${_rst_name})
+        else()
+            list(APPEND _seen_rst_names ${_rst_name})
+        endif()
+    endforeach()
+    if(_dup_rst_names)
+        list(REMOVE_DUPLICATES _dup_rst_names)
+        message(FATAL_ERROR
+            "Duplicate documentation .rst file name(s) under doc/: "
+            "${_dup_rst_names}. Grouping .rst files are flattened into a single "
+            "Sphinx source directory and must have unique file names.")
+    endif()
     add_custom_command(
         OUTPUT ${DOXYREST_STAMP_FILE}
-        DEPENDS ${DOXYGEN_STAMP_FILE} ${DOXYREST_CONFIGS}
+        DEPENDS ${DOXYGEN_STAMP_FILE} ${DOXYREST_CONFIGS} ${DOXYREST_RST_FILES}
             COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/doc/doxyrest/frame
             ${DOXYREST_FRAME_DIR}
@@ -44,8 +64,7 @@ if (DOXYREST_FOUND)
             --frame-dir=${DOXYREST_FRAME_DIR}/common
             --frame-dir=${DOXYREST_FRAME_DIR}/cfamily
             --config=${CMAKE_CURRENT_BINARY_DIR}/doxyrest-config.lua
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/doc/rst ${DOXYREST_OUTPUT_DIR}/rst
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/doc/graph/rst ${DOXYREST_OUTPUT_DIR}/rst
+        COMMAND ${CMAKE_COMMAND} -E copy ${DOXYREST_RST_FILES} ${DOXYREST_OUTPUT_DIR}/rst
         COMMAND ${CMAKE_COMMAND} -E touch ${DOXYREST_STAMP_FILE}
         WORKING_DIRECTORY ${DOXYREST_OUTPUT_DIR}
         COMMENT "Translating documentation from .xml to .rst with Doxyrest" VERBATIM)

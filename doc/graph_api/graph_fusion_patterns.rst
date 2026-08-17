@@ -105,5 +105,5 @@ optimize performance and reduce memory bandwidth requirements.
 
 Pattern Structure:
 
-.. image:: images/other_pattern.png
+.. image:: other_pattern.png
     :alt: Other Fusion Patterns

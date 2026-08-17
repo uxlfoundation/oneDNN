@@ -1,9 +1,28 @@
 Experimental features {#dev_guide_experimental}
 ===============================================
 
-To test aggressive performance optimizations that might affect accuracy or new
-API and functionality without an impact to regular users, oneDNN provides
-experimental features.
+Experimental features in oneDNN are included to preview new functionality and
+collect feedback without committing to stable API.
+
+@warning
+Experimental features may change or be removed without prior notice.
+
+Experimental features are supported and validated to the same extent as regular
+functionality, with the following exceptions:
+* Experimental features do not abide by the [semantic versioning](https://semver.org)
+requirements on API and ABI stability. This means that the API and ABI of an
+experimental feature may change in minor releases, and users must be prepared to
+accommodate such changes.
+* Experimental features require a build-time opt-in (see
+[Build-time Controls](@ref dev_guide_experimental) below). This allows the
+library to preserve a stable API when only regular features are used.
+* Experimental features can be removed without following the regular
+deprecation process.
+
+The experimental status is used to allow downstream applications to evaluate a
+new design and accommodate potential API changes without triggering a major
+version bump of the library. The intent is to promote an experimental feature to
+regular (stable) status once its API stability is confirmed.
 
 ## Build-time Controls
 

@@ -64,16 +64,16 @@
     } while (0)
 #endif
 
-/// @addtogroup dnnl_api oneDNN API
-/// @{
-
 /// oneDNN namespace
 namespace dnnl {
 
-/// @addtogroup dnnl_api_common Common API
+/// @addtogroup dnnl_api_cpp
 /// @{
 
-/// @addtogroup dnnl_api_utils Utilities
+/// @addtogroup dnnl_api_cpp_common Common API
+/// @{
+
+/// @addtogroup dnnl_api_cpp_utils
 /// Utility types and definitions.
 /// @{
 
@@ -210,9 +210,9 @@ public:
     bool operator!=(const handle &other) const { return !(*this == other); }
 };
 
-/// @} dnnl_api_utils
+/// @} dnnl_api_cpp_utils
 
-/// @addtogroup dnnl_api_engine Engine
+/// @addtogroup dnnl_api_cpp_engine Engine
 ///
 /// An abstraction of a computational device: a CPU, a specific GPU
 /// card in the system, etc. Most primitives are created to execute
@@ -297,9 +297,9 @@ inline dnnl_engine_kind_t convert_to_c(engine::kind akind) {
     return static_cast<dnnl_engine_kind_t>(akind);
 }
 
-/// @} dnnl_api_engine
+/// @} dnnl_api_cpp_engine
 
-/// @addtogroup dnnl_api_stream Stream
+/// @addtogroup dnnl_api_cpp_stream Stream
 ///
 /// An encapsulation of execution context tied to a particular engine.
 ///
@@ -411,9 +411,9 @@ struct stream : public handle<dnnl_stream_t> {
 
 DNNL_DEFINE_BITMASK_OPS(stream::flags)
 
-/// @} dnnl_api_stream
+/// @} dnnl_api_cpp_stream
 
-/// @addtogroup dnnl_api_fpmath_mode Floating-point Math Mode
+/// @addtogroup dnnl_api_cpp_fpmath_mode Floating-point Math Mode
 /// @{
 
 /// Floating-point math mode
@@ -438,9 +438,9 @@ inline dnnl_fpmath_mode_t convert_to_c(fpmath_mode mode) {
     return static_cast<dnnl_fpmath_mode_t>(mode);
 }
 
-/// @} dnnl_api_fpmath_mode
+/// @} dnnl_api_cpp_fpmath_mode
 
-/// @addtogroup dnnl_api_accumulation_mode Accumulation Mode
+/// @addtogroup dnnl_api_cpp_accumulation_mode Accumulation Mode
 /// @{
 
 /// Accumulation mode
@@ -469,13 +469,13 @@ inline dnnl_accumulation_mode_t convert_to_c(accumulation_mode mode) {
     return static_cast<dnnl_accumulation_mode_t>(mode);
 }
 
-/// @} dnnl_api_accumulation_mode
+/// @} dnnl_api_cpp_accumulation_mode
 
-/// @} dnnl_api_common
+/// @} dnnl_api_cpp_common
+
+/// @} dnnl_api_cpp
 
 } // namespace dnnl
-
-/// @} dnnl_api
 
 // NOLINTEND(readability-identifier-naming)
 #endif /* ONEAPI_DNNL_DNNL_COMMON_HPP */

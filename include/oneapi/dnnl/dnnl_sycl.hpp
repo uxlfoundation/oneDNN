@@ -37,15 +37,15 @@
 
 /// @endcond
 
-/// @addtogroup dnnl_api
-/// @{
-
 namespace dnnl {
 
-/// @addtogroup dnnl_api_interop
+/// @addtogroup dnnl_api_cpp
 /// @{
 
-/// @addtogroup dnnl_api_sycl_interop SYCL interoperability API
+/// @addtogroup dnnl_api_cpp_interop
+/// @{
+
+/// @addtogroup dnnl_api_cpp_sycl_interop SYCL interoperability API
 /// API extensions to interact with the underlying SYCL run-time.
 ///
 /// @sa @ref dev_guide_dpcpp_interoperability in developer guide
@@ -331,12 +331,12 @@ inline sycl::event execute(const dnnl::primitive &aprimitive,
 
 } // namespace sycl_interop
 
-/// @} dnnl_api_sycl_interop
+/// @} dnnl_api_cpp_sycl_interop
 
-/// @} dnnl_api_interop
+/// @} dnnl_api_cpp_interop
+
+/// @} dnnl_api_cpp
 
 } // namespace dnnl
-
-/// @} dnnl_api
 
 #endif // ONEAPI_DNNL_DNNL_SYCL_HPP

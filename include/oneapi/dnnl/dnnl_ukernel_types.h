@@ -26,7 +26,7 @@ extern "C" {
 
 #include "oneapi/dnnl/dnnl_types.h"
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_api_ukernel
@@ -89,7 +89,7 @@ typedef const struct dnnl_transform *const_dnnl_transform_t;
 
 /// @} dnnl_api_ukernel
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

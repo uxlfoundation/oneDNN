@@ -24,15 +24,15 @@
 #include <cstdint>
 #include <functional>
 
-/// @addtogroup dnnl_api
-/// @{
-
 namespace dnnl {
 
-/// @addtogroup dnnl_api_interop
+/// @addtogroup dnnl_api_cpp
 /// @{
 
-/// @addtogroup dnnl_api_threadpool_interop
+/// @addtogroup dnnl_api_cpp_interop
+/// @{
+
+/// @addtogroup dnnl_api_cpp_threadpool_interop
 /// @{
 
 namespace threadpool_interop {
@@ -69,13 +69,13 @@ struct threadpool_iface {
 
 } // namespace threadpool_interop
 
-/// @} dnnl_api_threadpool_interop
+/// @} dnnl_api_cpp_threadpool_interop
 
-/// @} dnnl_api_interop
+/// @} dnnl_api_cpp_interop
+
+/// @} dnnl_api_cpp
 
 } // namespace dnnl
-
-/// @} dnnl_api
 
 // NOLINTEND(readability-identifier-naming)
 #endif /* ONEAPI_DNNL_DNNL_THREADPOOL_IFACE_HPP */

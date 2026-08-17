@@ -31,7 +31,7 @@ extern "C" {
 #include "oneapi/dnnl/dnnl_common_types.h"
 /// @endcond
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_graph_api
@@ -493,7 +493,7 @@ typedef const struct dnnl_graph_tensor *const_dnnl_graph_tensor_t;
 
 /// @} dnnl_graph_api
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

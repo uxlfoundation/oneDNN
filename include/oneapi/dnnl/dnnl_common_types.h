@@ -32,13 +32,13 @@ extern "C" {
 
 /// @endcond
 
-/// @addtogroup dnnl_api oneDNN API
+/// @addtogroup dnnl_api_c
 /// @{
 
-/// @addtogroup dnnl_api_common Common API
+/// @addtogroup dnnl_api_common
 /// @{
 
-/// @addtogroup dnnl_api_utils
+/// @addtogroup dnnl_api_utils Utilities
 /// @{
 
 /// Status values returned by the library functions.
@@ -130,7 +130,7 @@ typedef dnnl_dim_t dnnl_dims_t[DNNL_MAX_NDIMS];
 
 /// @} dnnl_api_data_types
 
-/// @addtogroup dnnl_api_fpmath_mode Floating-point Math Mode
+/// @addtogroup dnnl_api_fpmath_mode
 /// @{
 
 /// Floating-point math mode
@@ -173,7 +173,7 @@ typedef enum {
 
 /// @} dnnl_api_accumulation_mode
 
-/// @addtogroup dnnl_api_engine Engine
+/// @addtogroup dnnl_api_engine
 /// @{
 
 /// @brief Kinds of engines.
@@ -199,7 +199,7 @@ typedef const struct dnnl_engine *const_dnnl_engine_t;
 
 /// @} dnnl_api_engine
 
-/// @addtogroup dnnl_api_stream Stream
+/// @addtogroup dnnl_api_stream
 /// @{
 
 /// @brief Stream flags.
@@ -260,7 +260,7 @@ typedef struct {
 
 /// @} dnnl_api_common
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

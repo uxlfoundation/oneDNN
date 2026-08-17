@@ -39,13 +39,15 @@
 
 /// @endcond
 
-/// @addtogroup dnnl_api oneDNN API
-/// @{
+/// @defgroup dnnl_api_cpp C++ API
 
 /// oneDNN namespace
 namespace dnnl {
 
-/// @addtogroup dnnl_api_utils Utilities
+/// @addtogroup dnnl_api_cpp
+/// @{
+
+/// @addtogroup dnnl_api_cpp_utils Utilities
 /// Utility types and definitions.
 /// @{
 
@@ -90,18 +92,18 @@ struct handle_traits<dnnl_primitive_t> {
 
 /// @endcond
 
-/// @} dnnl_api_utils
+/// @} dnnl_api_cpp_utils
 
 struct stream;
 struct memory;
 struct primitive_desc;
 
-/// @addtogroup dnnl_api_primitives Primitives
+/// @addtogroup dnnl_api_cpp_primitives Primitives
 /// Compute primitives
 /// @sa @ref dev_guide_basic_concepts
 /// @{
 
-/// @addtogroup dnnl_api_primitives_common Common
+/// @addtogroup dnnl_api_cpp_primitives_common Common
 /// Common operations to create, destroy and inspect primitives
 /// @{
 
@@ -255,9 +257,9 @@ std::vector<uint8_t> primitive::get_cache_blob() const {
     return cache_blob;
 }
 
-/// @} dnnl_api_primitives_common
+/// @} dnnl_api_cpp_primitives_common
 
-/// @addtogroup dnnl_api_attributes
+/// @addtogroup dnnl_api_cpp_attributes
 ///
 /// A container for parameters that extend primitives behavior.
 ///
@@ -535,9 +537,9 @@ inline dnnl_alg_kind_t convert_to_c(algorithm aalgorithm) {
     return static_cast<dnnl_alg_kind_t>(aalgorithm);
 }
 
-/// @} dnnl_api_attributes
+/// @} dnnl_api_cpp_attributes
 
-/// @addtogroup dnnl_api_primitives_common
+/// @addtogroup dnnl_api_cpp_primitives_common
 /// @{
 
 /// Flags for normalization primitives.
@@ -613,9 +615,9 @@ inline dnnl_normalization_flags_t convert_to_c(normalization_flags flags) {
     return static_cast<dnnl_normalization_flags_t>(flags);
 }
 
-/// @} dnnl_api_primitives_common
+/// @} dnnl_api_cpp_primitives_common
 
-/// @addtogroup dnnl_api_rnn
+/// @addtogroup dnnl_api_cpp_rnn
 /// @{
 
 /// RNN cell flags.
@@ -659,9 +661,9 @@ inline dnnl_rnn_direction_t convert_to_c(rnn_direction dir) {
     return static_cast<dnnl_rnn_direction_t>(dir);
 }
 
-/// @} dnnl_api_rnn
+/// @} dnnl_api_cpp_rnn
 
-/// @addtogroup dnnl_api_primitives_common
+/// @addtogroup dnnl_api_cpp_primitives_common
 /// @{
 
 /// Primitive descriptor query specification.
@@ -806,11 +808,11 @@ inline dnnl_query_t convert_to_c(query aquery) {
     return static_cast<dnnl_query_t>(aquery);
 }
 
-/// @} dnnl_api_primitives_common
+/// @} dnnl_api_cpp_primitives_common
 
-/// @} dnnl_api_primitives
+/// @} dnnl_api_cpp_primitives
 
-/// @addtogroup dnnl_api_memory Memory
+/// @addtogroup dnnl_api_cpp_memory Memory
 ///
 /// A container that describes and stores data. Memory objects can contain
 /// data of various types and formats. There are two levels of abstraction:
@@ -3724,11 +3726,11 @@ inline bool operator!=(memory::format_tag a, dnnl_format_tag_t b) {
     return !(a == b);
 }
 
-/// @} dnnl_api_memory
+/// @} dnnl_api_cpp_memory
 
-/// @addtogroup dnnl_api_primitives
+/// @addtogroup dnnl_api_cpp_primitives
 /// @{
-/// @addtogroup dnnl_api_attributes Attributes
+/// @addtogroup dnnl_api_cpp_attributes Attributes
 ///
 /// A container for parameters that extend primitives behavior.
 ///
@@ -4724,9 +4726,9 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     }
 };
 
-/// @} dnnl_api_attributes
+/// @} dnnl_api_cpp_attributes
 
-/// @addtogroup dnnl_api_primitives_common
+/// @addtogroup dnnl_api_cpp_primitives_common
 /// @{
 
 /// Base class for all primitive descriptors.
@@ -5314,9 +5316,9 @@ protected:
     using base = primitive_desc_base;
 };
 
-/// @} dnnl_api_primitives_common
+/// @} dnnl_api_cpp_primitives_common
 
-/// @addtogroup dnnl_api_reorder Reorder
+/// @addtogroup dnnl_api_cpp_reorder Reorder
 ///
 /// A primitive to copy data between two memory objects. This primitive is
 /// typically used to change the way the data is laid out in memory.
@@ -5462,9 +5464,9 @@ struct reorder : public primitive {
     }
 };
 
-/// @} dnnl_api_reorder
+/// @} dnnl_api_cpp_reorder
 
-/// @addtogroup dnnl_api_concat Concat
+/// @addtogroup dnnl_api_cpp_concat Concat
 ///
 /// A primitive to concatenate data by arbitrary dimension.
 ///
@@ -5590,9 +5592,9 @@ struct concat : public primitive {
         : primitive(pd.get(), cache_blob) {}
 };
 
-/// @} dnnl_api_concat
+/// @} dnnl_api_cpp_concat
 
-/// @addtogroup dnnl_api_sum Sum
+/// @addtogroup dnnl_api_cpp_sum Sum
 ///
 /// A primitive to sum multiple tensors.
 ///
@@ -5711,9 +5713,9 @@ struct sum : public primitive {
         : primitive(pd.get(), cache_blob) {}
 };
 
-/// @} dnnl_api_sum
+/// @} dnnl_api_cpp_sum
 
-/// @addtogroup dnnl_api_primitives_common
+/// @addtogroup dnnl_api_cpp_primitives_common
 /// @{
 
 /// A base class for descriptors of all primitives that support iteration
@@ -5737,9 +5739,9 @@ struct primitive_desc : public primitive_desc_base {
     }
 };
 
-/// @} dnnl_api_primitives_common
+/// @} dnnl_api_cpp_primitives_common
 
-/// @addtogroup dnnl_api_convolution Convolution
+/// @addtogroup dnnl_api_cpp_convolution Convolution
 ///
 /// A primitive to perform 1D, 2D or 3D convolution. Supported variants are
 /// forward propagation, backward propagation, and weights gradient with or
@@ -6546,9 +6548,9 @@ struct convolution_backward_weights : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_convolution
+/// @} dnnl_api_cpp_convolution
 //
-/// @addtogroup dnnl_api_deconvolution Deconvolution
+/// @addtogroup dnnl_api_cpp_deconvolution Deconvolution
 ///
 /// A primitive to perform 1D, 2D or 3D deconvolution. Supported variants are
 /// forward propagation, backward propagation, and weights gradient with or
@@ -7338,9 +7340,9 @@ struct deconvolution_backward_weights : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_deconvolution
+/// @} dnnl_api_cpp_deconvolution
 
-/// @addtogroup dnnl_api_lrn LRN
+/// @addtogroup dnnl_api_cpp_lrn LRN
 ///
 /// A primitive to perform local response normalization (LRN) across or within
 /// channels.
@@ -7564,9 +7566,9 @@ struct lrn_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_lrn
+/// @} dnnl_api_cpp_lrn
 
-/// @addtogroup dnnl_api_eltwise Eltwise
+/// @addtogroup dnnl_api_cpp_eltwise Eltwise
 ///
 /// A primitive to perform elementwise operations such as the
 /// rectifier linear unit (ReLU).
@@ -7922,9 +7924,9 @@ struct eltwise_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_eltwise
+/// @} dnnl_api_cpp_eltwise
 
-/// @addtogroup dnnl_api_softmax Softmax
+/// @addtogroup dnnl_api_cpp_softmax Softmax
 ///
 /// A primitive to perform softmax.
 ///
@@ -8118,9 +8120,9 @@ struct softmax_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_softmax
+/// @} dnnl_api_cpp_softmax
 
-/// @addtogroup dnnl_api_batch_normalization Batch Normalization
+/// @addtogroup dnnl_api_cpp_batch_normalization Batch Normalization
 ///
 /// A primitive to perform batch normalization.
 ///
@@ -8398,9 +8400,9 @@ struct batch_normalization_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_batch_normalization
+/// @} dnnl_api_cpp_batch_normalization
 
-/// @addtogroup dnnl_api_group_normalization Group Normalization
+/// @addtogroup dnnl_api_cpp_group_normalization Group Normalization
 ///
 /// A primitive to perform group normalization.
 ///
@@ -8684,9 +8686,9 @@ struct group_normalization_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_group_normalization
+/// @} dnnl_api_cpp_group_normalization
 
-/// @addtogroup dnnl_api_layer_normalization Layer Normalization
+/// @addtogroup dnnl_api_cpp_layer_normalization Layer Normalization
 ///
 /// A primitive to perform layer normalization. Normalization is performed
 /// within the last logical dimension of data tensor.
@@ -9208,9 +9210,9 @@ struct layer_normalization_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_layer_normalization
+/// @} dnnl_api_cpp_layer_normalization
 
-/// @addtogroup dnnl_api_inner_product Inner Product
+/// @addtogroup dnnl_api_cpp_inner_product Inner Product
 ///
 /// A primitive to compute an inner product.
 ///
@@ -9582,9 +9584,9 @@ struct inner_product_backward_weights : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_inner_product
+/// @} dnnl_api_cpp_inner_product
 
-/// @addtogroup dnnl_api_rnn RNN
+/// @addtogroup dnnl_api_cpp_rnn RNN
 ///
 /// A primitive to compute recurrent neural network layers.
 ///
@@ -12786,9 +12788,9 @@ struct lbr_augru_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_rnn
+/// @} dnnl_api_cpp_rnn
 
-/// @addtogroup dnnl_api_shuffle Shuffle
+/// @addtogroup dnnl_api_cpp_shuffle Shuffle
 ///
 /// A primitive to shuffle tensor data along an axis.
 ///
@@ -12973,9 +12975,9 @@ struct shuffle_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_shuffle
+/// @} dnnl_api_cpp_shuffle
 
-/// @addtogroup dnnl_api_binary Binary
+/// @addtogroup dnnl_api_cpp_binary Binary
 ///
 /// A primitive to perform tensor operations over two tensors.
 ///
@@ -13102,9 +13104,9 @@ struct binary : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_binary
+/// @} dnnl_api_cpp_binary
 
-/// @addtogroup dnnl_api_matmul Matrix Multiplication
+/// @addtogroup dnnl_api_cpp_matmul Matrix Multiplication
 ///
 /// A primitive to perform matrix-matrix multiplication. The batched mode
 /// is supported with 3D tensors.
@@ -13220,9 +13222,9 @@ struct matmul : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_matmul
+/// @} dnnl_api_cpp_matmul
 
-/// @addtogroup dnnl_api_resampling Resampling
+/// @addtogroup dnnl_api_cpp_resampling Resampling
 ///
 /// A primitive to compute resampling operation on 1D, 2D or 3D data tensor
 /// using Nearest Neighbor, or Linear (Bilinear, Trilinear) interpolation
@@ -13515,9 +13517,9 @@ struct resampling_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_resampling
+/// @} dnnl_api_cpp_resampling
 
-/// @addtogroup dnnl_api_pooling Pooling
+/// @addtogroup dnnl_api_cpp_pooling Pooling
 ///
 /// A primitive to perform max or average pooling with dilation.
 ///
@@ -13780,9 +13782,9 @@ struct pooling_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_pooling
+/// @} dnnl_api_cpp_pooling
 
-/// @addtogroup dnnl_api_prelu PReLU
+/// @addtogroup dnnl_api_cpp_prelu PReLU
 ///
 /// PReLU primitive
 /// A primitive to perform PReLU (leaky ReLU with trainable alpha parameter)
@@ -13962,9 +13964,9 @@ struct prelu_backward : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_prelu
+/// @} dnnl_api_cpp_prelu
 
-/// @addtogroup dnnl_api_reduction Reduction
+/// @addtogroup dnnl_api_cpp_reduction Reduction
 ///
 /// A primitive to compute reduction operation on data tensor
 /// using min, max, mul, sum, mean and norm_lp operations.
@@ -14062,11 +14064,11 @@ struct reduction : public primitive {
         : primitive(pd, cache_blob) {}
 };
 
-/// @} dnnl_api_reduction
+/// @} dnnl_api_cpp_reduction
 
-/// @} dnnl_api_primitives
+/// @} dnnl_api_cpp_primitives
 
-/// @addtogroup dnnl_api_service Service
+/// @addtogroup dnnl_api_cpp_service Service
 ///
 /// A set of functions that aid in oneDNN debugging and profiling.
 ///
@@ -14209,10 +14211,10 @@ inline cpu_isa_hints get_cpu_isa_hints() {
     return static_cast<cpu_isa_hints>(dnnl_get_cpu_isa_hints());
 }
 
-/// @} dnnl_api_service
+/// @} dnnl_api_cpp_service
 
 #ifdef DNNL_EXPERIMENTAL_PROFILING
-/// @addtogroup dnnl_api_profiling Profiling
+/// @addtogroup dnnl_api_cpp_profiling Profiling
 /// @{
 
 /// Profiling data kind.
@@ -14266,10 +14268,10 @@ inline std::vector<uint64_t> get_profiling_data(
     return data;
 }
 
-/// @} dnnl_api_profiling
+/// @} dnnl_api_cpp_profiling
 #endif
 
-/// @addtogroup dnnl_api_primitive_cache Primitive Cache
+/// @addtogroup dnnl_api_cpp_primitive_cache Primitive Cache
 ///
 /// A set of functions that provide primitive cache control.
 ///
@@ -14290,9 +14292,9 @@ inline void set_primitive_cache_capacity(int capacity) {
             "could not set primitive cache capacity");
 }
 
-/// @} dnnl_api_primitive_cache
+/// @} dnnl_api_cpp_primitive_cache
 
-/// @addtogroup dnnl_api_blas BLAS functions
+/// @addtogroup dnnl_api_cpp_blas BLAS functions
 ///
 /// A subset of Basic Linear Algebra (BLAS) functions that perform
 /// matrix-matrix multiplication.
@@ -14325,7 +14327,7 @@ inline status gemm_s8s8s32(char transa, char transb, char offsetc, dnnl_dim_t M,
             K, alpha, A, lda, ao, B, ldb, bo, beta, C, ldc, co));
 }
 
-/// @} dnnl_api_blas
+/// @} dnnl_api_cpp_blas
 
 // implementation section
 
@@ -14367,6 +14369,8 @@ inline void primitive::execute(const stream &astream,
 
 /// @endcond
 
+/// @} dnnl_api_cpp
+
 } // namespace dnnl
 
 /// oneAPI namespace
@@ -14380,8 +14384,6 @@ namespace oneapi {
 namespace dnnl = ::dnnl;
 #endif
 } // namespace oneapi
-
-/// @} dnnl_api
 
 // NOLINTEND(readability-identifier-naming)
 #endif /* ONEAPI_DNNL_DNNL_HPP */

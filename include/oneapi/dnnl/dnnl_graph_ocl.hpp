@@ -30,10 +30,10 @@
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 /// @endcond
 
-/// @addtogroup dnnl_api
-/// @{
-
 namespace dnnl {
+
+/// @addtogroup dnnl_api_cpp
+/// @{
 
 /// @addtogroup dnnl_graph_api
 /// @{
@@ -187,8 +187,8 @@ inline cl_event execute(compiled_partition &c_partition, stream &astream,
 
 /// @} dnnl_graph_api
 
-} // namespace dnnl
+/// @} dnnl_api_cpp
 
-/// @} dnnl_api
+} // namespace dnnl
 
 #endif

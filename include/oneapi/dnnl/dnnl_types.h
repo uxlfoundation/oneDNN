@@ -35,7 +35,7 @@ extern "C" {
 
 #include "oneapi/dnnl/dnnl_common_types.h"
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_api_memory
@@ -3036,7 +3036,7 @@ typedef enum {
 
 /// @} dnnl_api_service
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

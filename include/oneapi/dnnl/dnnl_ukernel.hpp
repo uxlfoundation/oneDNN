@@ -24,15 +24,15 @@
 #include "oneapi/dnnl/dnnl.hpp"
 #include "oneapi/dnnl/dnnl_ukernel.h"
 
-/// @addtogroup dnnl_api oneDNN API
-/// @{
-
 /// oneDNN namespace
 namespace dnnl {
 
+/// @addtogroup dnnl_api_cpp
+/// @{
+
 #ifdef DNNL_EXPERIMENTAL_UKERNEL
 
-/// @addtogroup dnnl_api_utils
+/// @addtogroup dnnl_api_cpp_utils
 /// @{
 
 /// @cond DO_NOT_DOCUMENT_THIS
@@ -60,11 +60,11 @@ struct handle_traits<dnnl_ukernel_attr_params_t> {
 
 /// @endcond
 
-/// @} dnnl_api_utils
+/// @} dnnl_api_cpp_utils
 
 #endif
 
-/// @addtogroup dnnl_api_ukernel Ukernels
+/// @addtogroup dnnl_api_cpp_ukernel Ukernels
 /// Collection of ukernels
 /// @{
 
@@ -73,9 +73,9 @@ namespace ukernel {
 
 #ifdef DNNL_EXPERIMENTAL_UKERNEL
 
-/// @addtogroup dnnl_api_ukernel_utils ukernel utils
+/// @addtogroup dnnl_api_cpp_ukernel_utils ukernel utils
 /// ukernel utility functions
-/// \ingroup dnnl_api_ukernel
+/// \ingroup dnnl_api_cpp_ukernel
 /// @{
 
 /// Packing specification
@@ -146,10 +146,11 @@ struct attr_params : public handle<dnnl_ukernel_attr_params_t> {
             error::wrap_c_api(status, "could not set D scales argument");
     }
 };
-/// @} dnnl_api_ukernel_utils
+/// @} dnnl_api_cpp_ukernel_utils
 
-/// @addtogroup dnnl_api_ukernel_brgemm BRGeMM ukernel
+/// @addtogroup dnnl_api_cpp_ukernel_brgemm BRGeMM ukernel
 /// BRGeMM ukernel routines
+/// \ingroup dnnl_api_cpp_ukernel
 /// @{
 
 /// BRGeMM ukernel
@@ -396,10 +397,11 @@ struct brgemm : public handle<dnnl_brgemm_t> {
         return ap;
     }
 };
-/// @} dnnl_api_ukernel_brgemm
+/// @} dnnl_api_cpp_ukernel_brgemm
 
-/// @addtogroup dnnl_api_ukernel_transform Transform ukernel
+/// @addtogroup dnnl_api_cpp_ukernel_transform Transform ukernel
 /// Transform routines
+/// \ingroup dnnl_api_cpp_ukernel
 /// @{
 
 /// Transform ukernel
@@ -457,17 +459,17 @@ struct transform : public handle<dnnl_transform_t> {
     }
 };
 
-/// @} dnnl_api_ukernel_transform
+/// @} dnnl_api_cpp_ukernel_transform
 
 #endif
 
 } // namespace ukernel
 
-/// @} dnnl_api_ukernel
+/// @} dnnl_api_cpp_ukernel
+
+/// @} dnnl_api_cpp
 
 } // namespace dnnl
-
-/// @} dnnl_api
 
 // NOLINTEND(readability-identifier-naming)
 #endif /* ONEAPI_DNNL_DNNL_UKERNEL_HPP */

@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-/// @addtogroup dnnl_api  oneDNN API
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_api_common Common API
@@ -166,7 +166,7 @@ const dnnl_version_t DNNL_API *dnnl_version(void);
 
 /// @} dnnl_api_common
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

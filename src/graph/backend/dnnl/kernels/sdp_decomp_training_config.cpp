@@ -528,8 +528,10 @@ impl::status_t sdp_decomp_training_config_t::record_input_offset(
                 scale = post_op;
                 post_op = get_post_op(post_op);
             }
-            // Reject attention mask for now
-            if (post_op && post_op->get_kind() == graph::op_kind::Add) {
+            // Reject attention mask (Add or Select) for now
+            if (post_op
+                    && (post_op->get_kind() == graph::op_kind::Add
+                            || post_op->get_kind() == graph::op_kind::Select)) {
                 return status::unimplemented;
             }
         } else {

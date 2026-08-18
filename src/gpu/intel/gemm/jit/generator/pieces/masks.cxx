@@ -136,6 +136,23 @@ void Generator<hw>::loadMask(MaskAssignment assignment, Subregister index, const
         auto flagType = flag.getType();
         auto mask0Type = getBytes(flagType) >= 4 ? DataType::uq : flagType;
 
+	if(vmask.bitRep == 3){
+            auto temp = state.ra.alloc_sub(flagType, getHint(HintType::Bank0));
+            auto temp2 = state.ra.alloc_sub(flagType, getHint(HintType::Bank0));
+		auto size_bytes = vmask.rsize * 3 / 8;
+		auto maskSize = roundup_pow2(size_bytes);
+	        rep1Mask = (uint64_t(1) << maskSize) - 1;
+                add(1 | sat, temp, -index, vmask.rsize); 
+		mul(1, temp, temp, uint16_t(3));
+		shr(1, temp, temp, uint16_t(3));
+	        add(1, temp, temp, uint16_t(maskSize  - size_bytes));
+                mov(1, temp2, rep1Mask);
+	        shr(1, flag, temp2, temp);
+
+            state.ra.safeRelease(temp);
+	    state.ra.safeRelease(temp2);
+            return;
+	}     
         if (vmask.rsize == 1) {
             // Simple threshold comparison.
             offset += assignment.offset;

@@ -189,8 +189,8 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             // byte/word/dword/qword granularities), and this path always
             // reads/writes whole 8-element/3-byte packing groups (see
             // RegisterBlock::find()), never a partial group.
-            if (T.is3() && (remainderX || remainderY || atomic))
-                stub("u3 does not support remainder/atomic scattered access; unpack to u8 first.");
+           // if (T.is3() && (remainderX || remainderY || atomic))
+             //   stub("u3 does not support remainder/atomic scattered access; unpack to u8 first.");
 
             // Allowed accesses:
             //   A64             Essentially max 256 bytes.
@@ -379,7 +379,8 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             bool masking = (effCM ? remainderR : remainderC);
             bool bytePartialCP = (T.paddedSize() & 3) && ((colMajor ? C : R) % atype.crosspack);
             bool byte = (atype.alignment & 3) || (consecutive * T & 3) || bytePartialCP || ((T.paddedSize() & 3) && writable && masking);
-            //if (T.is3()) byte = false;
+            if (T.is3() && remainderR) byte = true;
+	    //if (T.is3()) byte = false;
 	    bool byte1PerSlot = byte && (bytePartialCP || masking || atomic);
             bool pseudo = (accessType == AccessType::PseudoBlock)
                         | needsPseudoblock(hw, T, R, C, atype, astrategy, writable, masking);
@@ -494,25 +495,26 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
 
             rblock = std::min(rblock, maxRBlock);
             cblock = std::min(cblock, maxCBlock);
-
+            //if (T.is3() && remainderR) rblock = 16;
             if (pseudo) {
                 bool qword = mustQW || (canQW && (rblock * cblock * T >= 4 * maxSIMD));
                 npack = std::max<int>(1, (qword ? 8 : 4) / T);
                 if (byte1PerSlot) {
-                    if (T.is3()) stub("u3 does not support masked/atomic byte-per-slot pseudo-block access; unpack to u8 first.");
+                   // if (T.is3()) stub("u3 does not support masked/atomic byte-per-slot pseudo-block access; unpack to u8 first.");
                     if (isLargeCrosspack(T, crosspack)) {
                         if (crosspack == (colMajor ? cblock : rblock))
                             colMajor = effCM;
                         else
                             stub();
                     }
-                    crosspack = (T.bits() < 8) ? (npack * T.bits()) / 8 : npack;
-                    byteGlue = (T.bits() < 8);
-                    npack = (T.bits() < 8) ? (8 / T.bits()) : 1;
+                    crosspack = T.is3() ? 1 :  (T.bits() < 8) ? (npack * T.bits()) / 8 : npack;
+                    byteGlue =  T.is3() ? true :(T.bits() < 8);
+                   
+		    npack = (T.bits() < 8) ? (8 / T.bits()) : 1;
                     (effCM ? cblock : rblock) = 1;
                 }
                 maskGranularity = qword ? 8 :
-                           byte1PerSlot ? T.paddedSize() :
+                           byte1PerSlot ? T.is3() ? 1:  T.paddedSize() :
                                           4;
             }
 
@@ -540,9 +542,9 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
 
                         vrmask.isFixed = false;
                         vrmask.rsize = rblock;
-                        vrmask.bitRep = std::max<int>(T.paddedSize() / maskGranularity, 1);
+                        vrmask.bitRep = T.is3() ? 3 :std::max<int>(T.paddedSize() / maskGranularity, 1);
                         vrmask.maskRep = cblock;
-                        vrmask.rshift = ilog2(std::max<int>(maskGranularity / T, 1));
+                        vrmask.rshift = T.is3() ? 0 :ilog2(std::max<int>(maskGranularity / T, 1));
                     }
                 } else {
                     if (avoidFragment) {
@@ -998,14 +1000,19 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
     // legal as the source of a mov handled by CopyPlan::planInt3Upconversion,
     // which unpacks whole groups into real u8 elements before any other use.
     if (T.is3()) {
-        if (crosspack != 1 || byteGlue)
-            stub("u3 blocks with crosspack or byte-glued packing are not supported; unpack to u8 first.");
+        //if (crosspack != 1 || byteGlue)
+          //  stub("u3 blocks with crosspack or byte-glued packing are not supported; unpack to u8 first.");
         int elIndex = xx + yy * ld;
         if (elIndex & 7)
             stub("u3 element index must be aligned to an 8-element (3-byte) group boundary.");
-        int byteOff = offsetBytes + (elIndex >> 3) * 3;
+        int byteOff =  (elIndex >> 3) * 3;
+	if (byteGlue) byteOff *= 4;
+	byteOff += offsetBytes;
         int consecutive;
         auto result = regs.sub(hw, byteOff, Te.ngen(), &consecutive);
+	if (byteGlue){
+	 //result = result.ub(result.off)(result.getWidth()*4, result.getWidth(),4);
+	}
         if (nelems) *nelems = nx - xx;
         return result;
     }
@@ -1048,6 +1055,9 @@ static RegisterRegion blockRegion(Type T, const Subregister &reg, const Register
     // stride of 1, matching what CopyPlan::planInt3Upconversion expects as
     // its only legal source region.
     if (T.is3())
+	if (block.byteGlue)
+		return reg(reg.getWidth()*4 ,reg.getWidth() , 4);
+	else
         return reg(1);
 
     if (block.byteGlue && allow2D && T.bits() < 8) {

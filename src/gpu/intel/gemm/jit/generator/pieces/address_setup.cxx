@@ -207,7 +207,8 @@ void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const
 
                 if (pseudo) {
                     stride = (block.ebytes * block.count * getPartialCrosspack(T, atype, block) * consecutive / tblock) >> preshift;
-                } else {
+                   // if (T.is3()) stride = 0;
+		} else {
                     int tile = isColMajor(atype.layout) ? atype.tileR : atype.tileC;
                     if (tile == 0)
                         tile = atype.packSize;
@@ -345,13 +346,13 @@ void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const
 
             if (astrategy.address2D) {
                 if (params.rows.isInvalid() && params.fixedRows == 0) stub("Unknown matrix size.");
-                if (T.is3()) stub("u3 does not support native 2D block addressing; unpack to u8 first.");
+               // if (T.is3()) stub("u3 does not support native 2D block addressing; unpack to u8 first.");
 
                 nx.isValid() ? addScaled(1, addr[0].ud(2), -1, nx, T, state, true)
                              : mov(1, addr[0].ud(2), fixedX * T - 1);
                 ny.isValid() ? add(1, addr[0].ud(3), ny, -1)
                              : mov(1, addr[0].ud(3), fixedY - 1);
-                offX.isValid() ? addScaled(1, addr[0].ud(5), boffX, offX, int(T.paddedSize()), (block.ebytes * 8) / T.bits(), state) :
+                offX.isValid() ? addScaled(1, addr[0].ud(5), boffX, offX, int(T.paddedSize()), T.is3() ? 8: (block.ebytes * 8) / T.bits(), state) :
                   doBaseAdjust ? add(1, addr[0].ud(5), baseAdjustElems, boffX)
                                : mov(1, addr[0].ud(5), boffX);
                 offY.isValid() ? add(1, addr[0].ud(6), offY, boffY)

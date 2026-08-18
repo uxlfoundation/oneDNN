@@ -1471,8 +1471,8 @@ void CopyPlan::planEarlyInt4Upconversions()
 void CopyPlan::planInt3Upconversion(CopyInstruction &i)
 {
     if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
-    if (i.src0.stride != 1 || i.src0.vs || i.src0.width)
-        stub("u3 source must reference the start of a contiguous packed group; unpack to u8 first.");
+   // if (i.src0.stride != 1 || i.src0.vs || i.src0.width)
+     //   stub("u3 source must reference the start of a contiguous packed group; unpack to u8 first.");
 
     struct U3Lane {
         uint8_t byte, shift;        // low (or only) source byte and shift amount
@@ -1505,13 +1505,15 @@ void CopyPlan::planInt3Upconversion(CopyInstruction &i)
     CopyOperand u8Dst = directU8 ? finalDst : newTemp(DataType::ub, n, 1);
    // u8Dst.stride =2 ;
     CopyOperand srcBase = i.src0;
-    srcBase.type = DataType::ub;
-    srcBase.stride = 1;
 
+    srcBase.type = DataType::ub;
+    if (srcBase.stride <= 1){
+    srcBase.stride = 1;
+    }
     // Add a literal (compile-time-known) byte offset to a scalar ub operand,
     // handling overflow into subsequent GRF registers.
     auto addByteOffset = [&](CopyOperand op, int bytes) {
-        op.offset += bytes;
+        op.offset += bytes * op.stride;
         int grfOffset = op.offset / grfBytes;
         op.grf += grfOffset;
         op.offset -= grfOffset * grfBytes;

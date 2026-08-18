@@ -2816,7 +2816,7 @@ void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_buf_A(
 
     reg_buf_A.restore();
 
-    for (dim_t bd = bd_b; bd < bd_e; bd++) {
+    for (int bd = bd_b; bd < bd_e; bd++) {
         const auto offset = A_offset(bd, 0);
         auto vmm = vmm_tmp(0);
         auto xmm_tmp = Xmm(vmm.getIdx());

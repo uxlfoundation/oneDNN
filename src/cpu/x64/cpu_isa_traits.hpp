@@ -647,7 +647,7 @@ inline data_type_t get_mac_emu_data_type(const data_type_t data_type,
             break;
         case f8_e4m3:
         case f8_e5m2:
-            if (utils::one_of(isa, avx10_2)) return f16;
+            if (isa == avx10_2) return f16;
             break;
         default: return data_type;
     }

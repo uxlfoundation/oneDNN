@@ -17,6 +17,7 @@
 #ifndef CPU_X64_JIT_PRIMITIVE_CONF_HPP
 #define CPU_X64_JIT_PRIMITIVE_CONF_HPP
 
+#include <limits>
 #include <queue>
 #include <stdint.h>
 
@@ -526,6 +527,24 @@ struct jit_1x1_conv_conf_t {
     cpu_isa_t isa;
     bool uses_permw_transposition;
 };
+
+// The 1x1 kernels advance data pointers with `add(reg64, imm)`, which encodes
+// only a 32-bit immediate, so a huge spatial silently produced a broken kernel.
+inline bool loop_steps_fit_int32(const jit_1x1_conv_conf_t &jcp) {
+    const dim_t max_imm = std::numeric_limits<int>::max();
+    // `load_loop_load_step` is multiplied by `load_loop_blk` inside generate().
+    // 6 is the maximum across all kernels that use this predicate
+    // (avx512_common / bf16 / x8s8s32x reach 6; avx2 / sse41 reach 3;
+    //  uni_x8s8s32x reaches 4).
+    const dim_t max_load_loop_blk = 6;
+    return jcp.reduce_loop_bcast_step <= max_imm
+            && jcp.reduce_loop_load_step <= max_imm
+            && jcp.bcast_loop_output_step <= max_imm
+            && jcp.bcast_loop_output_substep <= max_imm
+            && jcp.bcast_loop_bcast_step <= max_imm
+            && jcp.bcast_loop_bcast_substep <= max_imm
+            && jcp.load_loop_load_step <= max_imm / max_load_loop_blk;
+}
 
 struct jit_1x1_conv_args_t {
     const void *bcast_data = nullptr;

@@ -1032,6 +1032,9 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
                 VERBOSE_BLOCKING_FAIL, "bad argument for cpu reducer");
     }
 
+    VDISPATCH_CONV_IC(loop_steps_fit_int32(jcp), VERBOSE_BLOCKING_FAIL,
+            "loop step exceeds 32-bit immediate");
+
     return status::success;
 }
 

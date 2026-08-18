@@ -1785,6 +1785,9 @@ status_t jit_avx512_core_bf16_1x1_conv_kernel_t::init_conf(
         jcp.nthr = nstl::min(jcp.nthr, nthr);
     }
 
+    VDISPATCH_CONV_IC(loop_steps_fit_int32(jcp), VERBOSE_BLOCKING_FAIL,
+            "loop step exceeds 32-bit immediate");
+
     return status::success;
 }
 

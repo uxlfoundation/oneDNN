@@ -1156,6 +1156,9 @@ status_t jit_avx512_common_1x1_conv_kernel_t::init_conf(
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);
     jcp.nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
 
+    VDISPATCH_CONV_IC(loop_steps_fit_int32(jcp), VERBOSE_BLOCKING_FAIL,
+            "loop step exceeds 32-bit immediate");
+
     return status::success;
 }
 

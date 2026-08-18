@@ -824,6 +824,9 @@ status_t jit_sse41_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.nb_load = div_up(jcp.load_dim, jcp.load_block);
     jcp.nb_reduce = div_up(jcp.reduce_dim, jcp.reduce_block);
 
+    VDISPATCH_CONV_IC(loop_steps_fit_int32(jcp), VERBOSE_BLOCKING_FAIL,
+            "loop step exceeds 32-bit immediate");
+
     return status::success;
 }
 

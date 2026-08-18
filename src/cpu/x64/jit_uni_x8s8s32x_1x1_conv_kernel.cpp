@@ -943,6 +943,9 @@ status_t jit_uni_x8s8s32x_1x1_conv_kernel_t<isa>::init_conf(
             ? weights_d.extra().scale_adjust
             : 1.f;
 
+    VDISPATCH_CONV_IC(loop_steps_fit_int32(jcp), VERBOSE_BLOCKING_FAIL,
+            "loop step exceeds 32-bit immediate");
+
     return status::success;
 }
 

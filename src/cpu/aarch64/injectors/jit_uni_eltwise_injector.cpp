@@ -52,8 +52,6 @@ bool is_alg_supported(alg_kind_t alg) {
 
 bool is_supported(cpu_isa_t isa, alg_kind_t alg) {
     using namespace alg_kind;
-    // ASIMD does not currently support eltwise_log.
-    if (isa == asimd && alg == eltwise_log) return false;
     return is_isa_supported(isa) && is_alg_supported(alg);
 }
 
@@ -1589,7 +1587,7 @@ size_t jit_uni_eltwise_injector_t<isa>::aux_vecs_count() {
                 return (isa == asimd) ? 8 : 6; /* = tanh + 1 */
             case eltwise_swish:
                 return (isa == asimd) ? 7 : 4; /* = logistic + 1 */
-            case eltwise_log: return 6;
+            case eltwise_log: return 7;
             case eltwise_clip:
             case eltwise_clip_v2_use_dst_for_bwd:
             case eltwise_clip_v2: return 2;
@@ -2379,6 +2377,27 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
             {gelu_erf_minimax_pol, {0x00000000, false}}, // 0 padd
     };
 
+    // log(x) constants
+    static const table_t log_consts {
+            {log_const_127, {0x0000007f, true}},
+            {log_ln2, {0x3f317218, true}},
+            {log_qnan, {0x7fc00000, true}},
+            {log_inf, {0x7f800000, true}},
+            {log_minus_inf, {0xff800000, true}},
+    };
+
+    // log(x) polynomial approximation
+    static const table_t log_polynomial {
+            {log_pol, {0xc012eb5b, true}}, // -2.29561495781
+            {log_pol, {0xc01e2024, true}}, // -2.47071170807
+            {log_pol, {0xc0b5fb4c, true}}, // -5.68692588806
+            {log_pol, {0xbe29383a, true}}, // -0.165253549814
+            {log_pol, {0x40a5a113, true}}, // 5.17591238022
+            {log_pol, {0x3f5810d8, true}}, // 0.844007015228
+            {log_pol, {0x4092b3e3, true}}, // 4.58445882797
+            {log_pol, {0x3c677861, true}}, // 0.0141278216615
+    };
+
     // This object takes care about which constants and polynomials to include.
     struct need_t {
         need_t(alg_kind_t alg) {
@@ -2457,6 +2476,8 @@ void jit_uni_eltwise_injector_t<isa>::register_table_entries() {
     if (need.exp()) push_entries_of(exp_consts);
     if (need.exp()) push_entries_of(exp_polynomial);
     if (need.exp()) push_entries_of(exp_consts2);
+    if (need.log()) push_entries_of(log_consts);
+    if (need.log()) push_entries_of(log_polynomial);
     if (need.mish()) push_entries_of(mish_consts);
     if (need.tanh()) push_entries_of(tanh_consts);
     if (need.tanh()) push_entries_of(tanh_polynomial_table);
@@ -3030,6 +3051,145 @@ void jit_uni_eltwise_injector_t<asimd>::swish_compute_vector_fwd(
 }
 
 template <>
+void jit_uni_eltwise_injector_t<asimd>::log_compute_vector_fwd(
+        const TRegS &vmm_src) {
+    // ------------------------------------------------------------------------
+    // Based on ACL's vlogq_f32 implementation in core/NEON/NEMath.inl.
+    //
+    // For a positive normal f32 input, decompose:
+    //
+    //   x = 2^m * y, where y ∈ [1, 2)
+    //
+    // by extracting the IEEE-754 biased exponent:
+    //
+    //   m = exponent(x) - 127
+    //
+    // and constructing y from x's mantissa with exponent 127. Approximate
+    // log(y) using ACL's degree-7 Taylor-style polynomial, evaluated as:
+    //
+    //   P(y) = (c0 + c4*y + (c2 + c6*y)*y^2)
+    //        + (c1 + c5*y + (c3 + c7*y)*y^2)*y^4
+    //
+    // Then reconstruct:
+    //
+    //   log(x) ≈ P(y) + m * ln(2)
+    //
+    // Special cases are selected after the normal-input computation:
+    //   log(±0)  = -inf
+    //   log(x<0) = qNaN
+    //   log(+inf) = +inf
+    //   NaN inputs are propagated.
+    //
+    // The ACL source does not state a ULP accuracy bound.
+    // ------------------------------------------------------------------------
+    const auto &t0 = vmm_src;
+    const auto &t1 = vmm_aux0;
+    const auto &t2 = vmm_aux1;
+    const auto &t3 = vmm_aux2;
+    const auto &t4 = vmm_aux3;
+    const auto &t5 = vmm_aux4;
+    const auto &t6 = vmm_aux5;
+    const auto &t_tmp = vmm_tmp;
+
+    // Preserve a copy of the original to mask special cases
+    const auto &v_orig = t6;
+    h->mov(VReg16B(v_orig.getIdx()), VReg16B(t0.getIdx()));
+
+    // int32x4_t m = vsubq_s32(vreinterpretq_s32_u32(vshrq_n_u32(vreinterpretq_u32_f32(x), 23)), CONST_127);
+    const auto &v_const_127 = table_val(log_const_127, t_tmp); // 127
+    const auto &v_m = t5;
+    h->ushr(v_m, t0, n_mantissa_bits);
+    h->sub(v_m, v_m, v_const_127);
+
+    // float32x4_t val = vreinterpretq_f32_s32(vsubq_s32(vreinterpretq_s32_f32(x), vshlq_n_s32(m, 23)));
+    const auto &v_val = t1;
+    h->shl(v_val, v_m, n_mantissa_bits);
+    h->sub(v_val, t0, v_val);
+
+    // vtaylor_polyq_f32(...):
+
+    // float32x4_t A = vmlaq_f32(coeffs[0], coeffs[4], x);
+    const auto &v_A = t0;
+    const auto &v_c4 = t2;
+    table_val(log_pol, v_A, 0);
+    table_val(log_pol, v_c4, 4);
+    h->fmla(v_A, v_c4, v_val);
+
+    // float32x4_t B = vmlaq_f32(coeffs[2], coeffs[6], x);
+    const auto &v_B = t2;
+    const auto &v_c6 = t3;
+    table_val(log_pol, v_B, 2);
+    table_val(log_pol, v_c6, 6);
+    h->fmla(v_B, v_c6, v_val);
+
+    // float32x4_t x2  = vmulq_f32(x, x);
+    const auto &v_x2 = t_tmp;
+    h->fmul(v_x2, v_val, v_val);
+
+    // float32x4_t tmp1 = vmlaq_f32(A, B, x2)
+    const auto &v_tmp1 = v_A;
+    h->fmla(v_tmp1, v_B, v_x2);
+
+    // float32x4_t C = vmlaq_f32(coeffs[1], coeffs[5], x);
+    const auto &v_C = t2;
+    const auto &v_c1 = t3;
+    table_val(log_pol, v_C, 1);
+    table_val(log_pol, v_c1, 5);
+    h->fmla(v_C, v_c1, v_val);
+
+    // float32x4_t D = vmlaq_f32(coeffs[3], coeffs[7], x);
+    const auto &v_D = t3;
+    const auto &v_c7 = t4;
+    table_val(log_pol, v_D, 3);
+    table_val(log_pol, v_c7, 7);
+    h->fmla(v_D, v_c7, v_val);
+
+    // float32x4_t tmp2 = vmlaq_f32(C, D, x2)
+    const auto &v_tmp2 = v_C;
+    h->fmla(v_tmp2, v_D, v_x2);
+
+    // float32x4_t x4  = vmulq_f32(x2, x2);
+    const auto &v_x4 = v_x2;
+    h->fmul(v_x4, v_x2, v_x2);
+
+    // float32x4_t res = vmlaq_f32(tmp1, tmp2, x4);
+    const auto &v_poly = v_tmp1;
+    h->fmla(v_poly, v_tmp2, v_x4);
+
+    // Back to vlogq_f32:
+
+    // poly = vmlaq_f32(poly, vcvtq_f32_s32(m), CONST_LN2);
+    const auto &v_ln2 = table_val(log_ln2, t_tmp); // ln(2)
+    h->scvtf(v_m, v_m);
+    h->fmla(v_poly, v_m, v_ln2);
+
+    // Special case handling:
+
+    const auto &v_mask = t1;
+    const auto &v_new_val = t2;
+
+    // x = 0 --> log(x) = -inf
+    h->fcmeq(v_mask, v_orig, 0.0);
+    table_val(log_minus_inf, v_new_val);
+    h->bit(VReg16B(IDX(v_poly)), VReg16B(IDX(v_new_val)), VReg16B(IDX(v_mask)));
+
+    // x < 0 --> log(x) = NaN
+    h->fcmlt(v_mask, v_orig, 0.0);
+    table_val(log_qnan, v_new_val);
+    h->bit(VReg16B(IDX(v_poly)), VReg16B(IDX(v_new_val)), VReg16B(IDX(v_mask)));
+
+    // x = inf --> log(x) = +inf
+    table_val(log_inf, v_new_val);
+    h->fcmeq(v_mask, v_orig, v_new_val);
+    h->bit(VReg16B(IDX(v_poly)), VReg16B(IDX(v_new_val)), VReg16B(IDX(v_mask)));
+
+    // x = NaN --> log(x) = NaN
+    h->fcmeq(v_mask, v_orig, v_orig);
+    h->not_(VReg16B(IDX(v_mask)), VReg16B(IDX(v_mask)));
+    h->bit(VReg16B(IDX(v_poly)), VReg16B(IDX(v_orig)), VReg16B(IDX(v_mask)));
+}
+
+template <>
 void jit_uni_eltwise_injector_t<asimd>::gelu_erf_compute_vector_fwd(
         const TRegS &vmm_src) {
     // x = s / sqrt(2)
@@ -3145,7 +3305,6 @@ void jit_uni_eltwise_injector_t<sve>::load_vector(
 #define DEFINE_ASIMD_EMPTY_FUNC(func_name) \
     template <> \
     void jit_uni_eltwise_injector_t<asimd>::func_name(const TRegS &) {}
-DEFINE_ASIMD_EMPTY_FUNC(log_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(tanh_polynomial_approx_compute_vector_fwd);
 DEFINE_ASIMD_EMPTY_FUNC(gelu_erf_minimax_approx_compute_vector_fwd);
 
@@ -3171,11 +3330,11 @@ DEFINE_ASIMD_EMPTY_FUNC(hardsigmoid_compute_vector_bwd);
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::compute_cmp_mask(const TRegS &vmm_src,
-        const TRegS &compare_operand, int cmp_predicate) {};
+        const TRegS &compare_operand, int cmp_predicate) {}
 
 template <>
 void jit_uni_eltwise_injector_t<asimd>::blend_with_mask(
-        const TRegS &vmm_dst, const TRegS &src) {};
+        const TRegS &vmm_dst, const TRegS &src) {}
 
 template struct jit_uni_eltwise_injector_t<sve>;
 template struct jit_uni_eltwise_injector_t<asimd>;

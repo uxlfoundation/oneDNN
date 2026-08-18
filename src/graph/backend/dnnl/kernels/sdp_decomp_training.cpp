@@ -96,7 +96,7 @@ status_t sdp_decomp_training_kernel_t::compile_impl(
             = [this]() { return std::make_shared<sdp_args_set_t>(this); };
 
     return sdp_cfg_.construct_params(
-            subgraph_, sdp_registry_, p_engine_, inputs);
+            subgraph_, sdp_registry_, p_engine_, inputs, outputs);
 #endif
 }
 

@@ -127,7 +127,8 @@ public:
     // Construct all params needed for execution
     impl::status_t construct_params(std::shared_ptr<subgraph_t> &sg,
             registry_t &sdp_registry, const dnnl::engine &p_engine,
-            const std::vector<logical_tensor_t> &inputs);
+            const std::vector<logical_tensor_t> &inputs,
+            const std::vector<logical_tensor_t> &outputs);
 
 private:
     op_ptr get_post_op(const op_ptr &op) const;

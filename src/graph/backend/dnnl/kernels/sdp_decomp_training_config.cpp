@@ -47,21 +47,6 @@ bool sdp_decomp_training_config_t::initial_check(
             "Training decomp requires 2 outputs (attn + stats), but got %zu",
             outputs.size());
 
-    // Determine which output index is attention output vs stats
-    // Stats has last dim = 1, attention output has last dim = head_size_v
-    {
-        dims out0_dims = ltw(outputs[0]).vdims();
-        dims out1_dims = ltw(outputs[1]).vdims();
-        if (out0_dims.back() == 1) {
-            stats_out_index = 0;
-            attn_out_index = 1;
-        } else {
-            stats_out_index = 1;
-            attn_out_index = 0;
-        }
-        stats_dst_strides = ltw(outputs[stats_out_index]).vstrides();
-    }
-
     // Initialize SDP input dimensions
     batch_size = src1_user_dims[0];
     num_head_q = src1_user_dims[1];
@@ -136,7 +121,21 @@ bool sdp_decomp_training_config_t::initial_check(
 impl::status_t sdp_decomp_training_config_t::construct_params(
         std::shared_ptr<subgraph_t> &sg, registry_t &sdp_registry,
         const dnnl::engine &p_engine,
-        const std::vector<logical_tensor_t> &inputs) {
+        const std::vector<logical_tensor_t> &inputs,
+        const std::vector<logical_tensor_t> &outputs) {
+    // Determine which output index is attention output vs stats.
+    // Stats has last dim = 1, attention output has last dim = head_size_v.
+    {
+        dims out0_dims = ltw(outputs[0]).vdims();
+        dims out1_dims = ltw(outputs[1]).vdims();
+        if (out0_dims.back() == 1) {
+            stats_out_index = 0;
+            attn_out_index = 1;
+        } else {
+            stats_out_index = 1;
+            attn_out_index = 0;
+        }
+    }
 
     CHECK(record_sdp_ops(sg));
     const dim_t last_dim = ndims - 1, second_last_dim = ndims - 2;
@@ -295,6 +294,8 @@ impl::status_t sdp_decomp_training_config_t::construct_params(
     // reorder_stats: dense stats -> user layout
     primitive_attr sub_reorder_stats_attr;
     sub_reorder_stats_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    // Extract stats strides now that shape inference has filled outputs
+    stats_dst_strides = ltw(sdp_op[1]->get_output_logical_tensor(2)).vstrides();
     auto sub_stats_user_md = memory::desc(stats_dims, dt_inter,
             {stats_dst_strides[second_last_dim], stats_dst_strides[last_dim]});
     auto sub_reorder_stats_pd = reorder::primitive_desc(p_engine, stats_md,

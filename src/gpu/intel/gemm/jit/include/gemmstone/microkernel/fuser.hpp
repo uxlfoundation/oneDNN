@@ -37,6 +37,11 @@ static constexpr const char *sigilBinary = "@_u_@";
 bool fuse(std::vector<uint8_t> &binary, const char *source, int grfBytes);
 bool hasMicrokernels(const char *source);
 
+// Transitional overload for legacy callers: skips payload validation.
+inline bool fuse(std::vector<uint8_t> &binary, const char *source) {
+    return fuse(binary, source, 0);
+}
+
 }
 GEMMSTONE_NAMESPACE_END
 

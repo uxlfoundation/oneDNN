@@ -195,10 +195,21 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     sizes.n = is_gemv_ ? 1 : 32;
     sizes.k = static_cast<uint16_t>(K());
 
+    bool with_reqs = false;
     auto strat_override = [&](gemmstone::GEMMStrategy &strat) {
         std::string newStrat;
         using namespace gemmstone;
         strat.dpasw |= strat.fused;
+        // Rebalance workgroup size when the average group size is small.
+        if (!is_gemv_ && !with_reqs) {
+            dim_t avg_m = M() / ngroups_;
+            while (strat.wg[LoopN] > 1 && strat.wg[LoopN] % 2 == 0
+                    && strat.wg[LoopM] * strat.unroll[LoopM] < N()
+                    && strat.unroll[LoopN] * strat.wg[LoopN] >= 2 * avg_m) {
+                strat.wg[LoopN] /= 2;
+                strat.wg[LoopM] *= 2;
+            }
+        }
         newStrat = gpu_utils::dev_getenv("GRPGEMM_USTRATEGY", newStrat);
         if (!newStrat.empty()) {
             // Example: 16 16 1 0 aT32 aM32 aB wg 2x4 sys
@@ -226,6 +237,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
         gemm_ = selectGEMM(
                 opts, host, hw_info, sizes, problem, {}, strat_override);
     } catch (const std::runtime_error &) {
+        with_reqs = true;
         std::vector<StrategyRequirement> reqs;
 
         // TODO: These values should be based on the eu_count

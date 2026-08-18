@@ -516,8 +516,9 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 break;
         }
 
-        update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
-                cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)), res);
+        SAFE(update_ref_mem_map_from_prim(prim_ref, mem, ref_mem_map, exec_arg,
+                     cfg.get_swapped_dt(exec_arg2data_kind(exec_arg)), res),
+                WARN);
 
         // Don't keep reference memory if it is not used further.
         if (!has_bench_mode_bit(mode_bit_t::corr)) ref_mem_map.clear();

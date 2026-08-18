@@ -18,6 +18,10 @@ if not pageTitle or pageTitle == "" then
 	pageTitle = "<Untitled>"
 end
 
+}
+:orphan:
+
+%{
 if FORCE_INCLUDE_FILE then
 }
 .. include:: $FORCE_INCLUDE_FILE

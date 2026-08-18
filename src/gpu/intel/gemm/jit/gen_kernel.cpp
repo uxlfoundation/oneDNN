@@ -139,8 +139,13 @@ status_t gen_desc_t::finalize(const char *tags) {
         gpu_assert(ext_dt == problem_.Ta_ext) << "Invalid external A data type";
         pstr = parsePrecisions(pstr, ext_dt, problem_.Tb);
         gpu_assert(ext_dt == problem_.Tb_ext) << "Invalid external B data type";
-        pstr = parsePrecisions(pstr, problem_.Tc, ext_dt);
-        gpu_assert(ext_dt == problem_.Tc_ext) << "Invalid external C data type";
+        if (*pstr == '[') {
+            pstr = parsePrecisions(pstr, problem_.Tc, ext_dt);
+            gpu_assert(ext_dt == problem_.Tc_ext)
+                    << "Invalid external C data type";
+        } else {
+            pstr = parsePrecision(pstr, problem_.Tc);
+        }
         ss >> val;
         pstr = val.c_str();
         pstr = parseLayout(pstr, problem_.A);

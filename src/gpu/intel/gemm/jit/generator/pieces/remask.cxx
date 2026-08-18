@@ -33,16 +33,26 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                                         int fixedOffQ, const Subregister &variableOffQ)
 {
     if (T.paddedSize() > 4) T = Type::u32;
-//    if (T.is3()) stub("u3 does not support remainder masking; unpack to u8 first.");
 
     if (setup) {
         bool halfByte = T.is4();
+        // u3 packs 8 elements into 3 contiguous bytes with no native
+        // sub-byte hardware type (see Type::ngen_u3()), so exact per-element
+        // remainder masking isn't possible. Instead, mask at whole-group
+        // (8-element) granularity: build one 0xFF/0x00 byte per group of 8
+        // elements using the same machinery as the u4 (halfByte) path below,
+        // then replicate each byte 3x to cover that group's packed bytes.
+        bool thirdByte = T.is3();
         if (halfByte) {
             nq = div_up(nq, 2);
             T = Type::u8;
+        } else if (thirdByte) {
+            nq = div_up(nq, 8);
+            T = Type::u8;
         }
 
-        auto masks = state.remaskRegs[index] = state.ra.alloc_range(div_up(T.paddedSize(), 2) * div_up(nq * 2, GRF::bytes(hw)));
+        auto maskAlloc = state.ra.alloc_range(div_up(T.paddedSize(), 2) * div_up(nq * 2, GRF::bytes(hw)));
+        auto masks = thirdByte ? maskAlloc : (state.remaskRegs[index] = maskAlloc);
         int ne16 = elementsPerGRF(hw, Type::u16);
         int n16 = std::min(nq, ne16);
         int ne = elementsPerGRF(hw, T);
@@ -53,7 +63,7 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
         bool haveVariableOff = variableOffQ.isValid();
         bool haveFixedOff = (fixedOffQ != 0);
 
-        if (haveVariableOff || haveFixedOff || halfByte) {
+        if (haveVariableOff || haveFixedOff || halfByte || thirdByte) {
             auto nremQ = state.ra.alloc_sub<uint32_t>();
             freeRemQ = true;
 
@@ -65,6 +75,11 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                 add(1, nremQ, remQ, -fixedOffQ);
             if (halfByte)
                 avg(1, nremQ, (haveVariableOff || haveFixedOff) ? nremQ : remQ, 0);
+            else if (thirdByte) {
+                auto src = (haveVariableOff || haveFixedOff) ? nremQ : remQ;
+                add(1, nremQ, src, 7);
+                shr(1, nremQ, nremQ, 3);
+            }
             remQ = nremQ;
         }
 
@@ -102,6 +117,23 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                 asr(ne16 / 2, masks[0].d(), masks[0].w(), 15);
                 break;
             default: stub();
+        }
+
+        if (thirdByte) {
+            // masks[0..nq) now holds one 0xFF/0x00 byte per group of 8
+            // u3 elements. Expand each byte into the 3 packed bytes it
+            // covers, matching the real in-memory u3 layout, so the result
+            // can be AND-masked directly against packed u3 data.
+            int grfBytes = GRF::bytes(hw);
+            auto finalMasks = state.remaskRegs[index] = state.ra.alloc_range(div_up(nq * 3, grfBytes));
+            for (int g = 0; g < nq; g++) {
+                for (int k = 0; k < 3; k++) {
+                    int dstByte = g * 3 + k;
+                    mov(1, finalMasks[dstByte / grfBytes].ub(dstByte % grfBytes)(1),
+                           masks[g / grfBytes].ub(g % grfBytes)(1));
+                }
+            }
+            state.ra.safeRelease(masks);
         }
 
         if (freeRemQ) state.ra.safeRelease(remQ);

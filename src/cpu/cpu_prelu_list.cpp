@@ -25,7 +25,6 @@
 using namespace dnnl::impl::cpu::x64;
 #elif DNNL_AARCH64
 #include "cpu/aarch64/prelu/jit_uni_prelu_forward.hpp"
-
 using namespace dnnl::impl::cpu::aarch64;
 #elif DNNL_RV64
 #include "cpu/rv64/jit_uni_prelu.hpp"

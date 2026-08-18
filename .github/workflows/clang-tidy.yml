@@ -70,6 +70,7 @@ jobs:
           persist-credentials: false
           path: oneDNN
           fetch-depth: 0
+          submodules: true
 
       - if: ${{ matrix.config.compiler == 'clang' }}
         name: Install clang
@@ -155,7 +156,13 @@ jobs:
             exit 0
           else
             printf "File list:\n$analysis_list\n"
-            run-clang-tidy -j $(nproc) -format -p ./build $analysis_list 2>&1 | tee -a clang-tidy.log
+            tidy_args=(-j "$(nproc)" -format -p ./build)
+            if [[ "${{ matrix.config.arch }}" == "AArch64" ]]; then
+              tidy_args+=(
+                -header-filter '^(?!.*third_party/kleidiai/experimental/ops/).*/(examples|include|src|tests)/.*\.hpp'
+              )
+            fi
+            run-clang-tidy "${tidy_args[@]}" $analysis_list 2>&1 | tee -a clang-tidy.log
           fi
           grep -i -E "warning:|error:" clang-tidy.log | sort -u
           grep -q -i -E "warning:|error:" clang-tidy.log && exit 1 || true

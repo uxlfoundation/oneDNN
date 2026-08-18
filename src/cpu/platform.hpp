@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
-* Copyright 2020 Arm Ltd. and affiliates
+* Copyright 2020, 2026 Arm Ltd. and affiliates
 * Copyright 2026 Advanced Micro Devices, Inc.
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -90,12 +90,15 @@
 // Negation of the helper macros above
 #define DNNL_NON_X64_ONLY(...) Z_CONDITIONAL_DO(Z_NOT(DNNL_X64), __VA_ARGS__)
 
-// Using Arm Compute Library kernels is optional for AArch64 builds
-// and can be enabled with the DNNL_AARCH64_USE_ACL CMake option
-#if defined(DNNL_AARCH64) && defined(DNNL_AARCH64_USE_ACL)
-#define DNNL_AARCH64_ACL_ONLY(...) __VA_ARGS__
+// Using KleidiAI kernels is optional for AArch64 builds and can be disabled
+// with the DNNL_AARCH64_DISABLE_KAI CMake option.
+#ifndef DNNL_AARCH64_DISABLE_KAI
+#define DNNL_AARCH64_DISABLE_KAI 0
+#endif
+#if DNNL_AARCH64 && !DNNL_AARCH64_DISABLE_KAI
+#define DNNL_AARCH64_KAI_ONLY(...) __VA_ARGS__
 #else
-#define DNNL_AARCH64_ACL_ONLY(...)
+#define DNNL_AARCH64_KAI_ONLY(...)
 #endif
 
 // Using Zen kernels is optional for x64 builds

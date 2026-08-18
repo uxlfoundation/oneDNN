@@ -1,5 +1,5 @@
 # *******************************************************************************
-# Copyright 2025 Arm Limited and affiliates.
+# Copyright 2025-2026 Arm Limited and affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,6 +52,7 @@ runs:
       with:
         persist-credentials: false
         path: oneDNN
+        submodules: true
 
     - name: Read version file
       shell: bash
@@ -114,6 +115,7 @@ runs:
         persist-credentials: false
         path: oneDNN_build
         fetch-depth: 0
+        submodules: true
 
     - name: Checkout specified oneDNN
       if: ${{ inputs.onednn_hash != '' }}

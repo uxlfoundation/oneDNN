@@ -129,11 +129,6 @@ status_t convert_to_acl_act(alg_kind_t eltwise_alg, float alpha, float beta,
     return status::success;
 }
 
-status_t convert_to_acl_act(
-        const eltwise_desc_t &ed, arm_compute::ActivationLayerInfo &act_info) {
-    return convert_to_acl_act(ed.alg_kind, ed.alpha, ed.beta, act_info);
-}
-
 status_t convert_to_acl_act(const post_ops_t::entry_t::eltwise_t &elt,
         arm_compute::ActivationLayerInfo &act_info) {
     return convert_to_acl_act(elt.alg, elt.alpha, elt.beta, act_info);

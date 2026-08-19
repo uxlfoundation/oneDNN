@@ -92,8 +92,4 @@ if(CMAKE_COMPILER_IS_GNUCC)
     # Workaround for LTO bug in GCC 10, 11, 12 (possibly other versions)
     set_source_files_properties(generator/pieces/loop_sequencer.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
     set_source_files_properties(generator/generator.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
-
-
-    # Workaround for excessively long compile time in GCC 11, 12 (possibly other versions)
-    set_source_files_properties(gen_gemm_kernel_db.cpp PROPERTIES COMPILE_FLAGS -fno-var-tracking)
 endif()

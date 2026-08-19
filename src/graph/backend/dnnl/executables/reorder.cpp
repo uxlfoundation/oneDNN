@@ -120,72 +120,45 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
 
-    // generate mask
-    const auto set_reorder_mask = [&op, &prm_attr](int mask) {
+    if (op->has_attr(op_attr::mask)) {
+        const int mask = get_quant_mask(op.get());
+        const bool is_per_group = op->has_attr(op_attr::group_shape)
+                && !op->get_attr<std::vector<int64_t>>(op_attr::group_shape)
+                            .empty();
+        std::vector<int64_t> groups;
+        if (is_per_group) {
+            const auto &group_shape
+                    = op->get_attr<std::vector<int64_t>>(op_attr::group_shape);
+            const auto ndims = group_shape.size();
+            groups = {group_shape[ndims - 2], group_shape[ndims - 1]};
+        }
+
+        bool with_runtime_scales = false;
         if (op->has_attr(op_attr::with_runtime_scales)
                 && op->get_attr<bool>(op_attr::with_runtime_scales)) {
-            auto scale_dt = op->get_input_logical_tensor(1).data_type;
-            // For runtime arg scales, need to get data type information from
-            // the op
-            prm_attr.set_scales(DNNL_ARG_SRC, mask, {},
-                    static_cast<dnnl::memory::data_type>(scale_dt));
+            const auto scale_dt = static_cast<dnnl::memory::data_type>(
+                    op->get_input_logical_tensor(1).data_type);
+            prm_attr.set_scales(DNNL_ARG_FROM, mask, groups, scale_dt);
+            with_runtime_scales = true;
         } else if (op->has_attr(op_attr::scales)) {
             assertm(false, "only support runtime arg scales.\n");
         }
 
         if (op->has_attr(op_attr::with_runtime_src_zps)
                 && op->get_attr<bool>(op_attr::with_runtime_src_zps)) {
-            // For runtime src zps, as graph compilation will add extra
-            // typecast to convert int8 zero points to s32, we may still use
-            // the set_zero_points_mask API which specifies s32 zero point by
-            // default.
-            prm_attr.set_zero_points_mask(DNNL_ARG_FROM, mask);
+            const auto zps_dt = static_cast<dnnl::memory::data_type>(
+                    op->get_input_logical_tensor(with_runtime_scales ? 2 : 1)
+                            .data_type);
+            prm_attr.set_zero_points(DNNL_ARG_FROM, mask, groups, zps_dt);
         } else if (op->has_attr(op_attr::src_zps)) {
             assertm(false, "only support runtime src zero points.\n");
         }
 
         if (op->has_attr(op_attr::with_runtime_dst_zps)
                 && op->get_attr<bool>(op_attr::with_runtime_dst_zps)) {
-            // runtime dst zps
             prm_attr.set_zero_points_mask(DNNL_ARG_TO, mask);
         } else if (op->has_attr(op_attr::dst_zps)) {
             assertm(false, "only support runtime dst zero points.\n");
-        }
-    };
-
-    if (op->has_attr(op_attr::qtype)) {
-        std::string qtype = op->get_attr<std::string>(op_attr::qtype);
-        int64_t axis = op->has_attr(op_attr::axis)
-                ? op->get_attr<int64_t>(op_attr::axis)
-                : 1;
-
-        // For per group quantization, extra handling is needed for setting
-        // group shape and size.
-        if (qtype == "per_group") {
-            const auto &scale_lt = op->get_input_logical_tensor(1);
-            const auto scales_data_type = scale_lt.data_type;
-            const auto &group_shape
-                    = op->get_attr<std::vector<int64_t>>(op_attr::group_shape);
-            const auto ndims = group_shape.size();
-            const int mask = (1 << ndims) - 1;
-
-            const std::vector<int64_t> groups
-                    = {group_shape[ndims - 2], group_shape[ndims - 1]};
-
-            prm_attr.set_scales(DNNL_ARG_FROM, mask, groups,
-                    static_cast<dnnl::memory::data_type>(scales_data_type));
-            if (op->has_attr(op_attr::with_runtime_src_zps)
-                    && op->get_attr<bool>(op_attr::with_runtime_src_zps)) {
-                const auto &zps_lt = op->get_input_logical_tensor(2);
-                const auto zps_data_type = zps_lt.data_type;
-                prm_attr.set_zero_points(DNNL_ARG_FROM, mask, groups,
-                        static_cast<dnnl::memory::data_type>(zps_data_type));
-            }
-
-        } else { // per channel and per tensor quantization
-            int mask = 0;
-            if (qtype == "per_channel") { mask = 1 << axis; }
-            set_reorder_mask(mask);
         }
     }
 

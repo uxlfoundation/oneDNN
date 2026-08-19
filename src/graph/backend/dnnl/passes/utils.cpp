@@ -604,11 +604,8 @@ bool prelu_doable(const std::vector<dim_t> &src_dims,
 bool is_typecast(const op_t *op) {
     bool is_typecast = op->get_kind() == op_kind::_reorder
             && !op->get_attr<bool>(op_attr::change_layout)
-            && (!op->has_attr(op_attr::qtype)
-                    || op->get_attr<std::string>(op_attr::qtype)
-                            == "per_tensor")
-            && (!op->has_attr(op_attr::axis)
-                    || op->get_attr<int64_t>(op_attr::axis) == -1)
+            && (!op->has_attr(op_attr::mask)
+                    || op->get_attr<int64_t>(op_attr::mask) == 0)
             && !op->has_attr(op_attr::scales) && !op->has_attr(op_attr::src_zps)
             && !op->has_attr(op_attr::dst_zps)
             && (!op->has_attr(op_attr::with_runtime_scales)
@@ -645,11 +642,8 @@ bool with_runtime_scales(const op_ptr &op, bool is_input, size_t index) {
 bool is_layout_reorder(const op_t *op) {
     bool is_layout_reorder = op->get_kind() == op_kind::_reorder
             && op->get_attr<bool>(op_attr::change_layout)
-            && (!op->has_attr(op_attr::qtype)
-                    || op->get_attr<std::string>(op_attr::qtype)
-                            == "per_tensor")
-            && (!op->has_attr(op_attr::axis)
-                    || op->get_attr<int64_t>(op_attr::axis) == -1)
+            && (!op->has_attr(op_attr::mask)
+                    || op->get_attr<int64_t>(op_attr::mask) == 0)
             && !op->has_attr(op_attr::scales) && !op->has_attr(op_attr::src_zps)
             && !op->has_attr(op_attr::dst_zps)
             && (!op->has_attr(op_attr::with_runtime_scales)
@@ -672,9 +666,7 @@ std::shared_ptr<op_t> clone_mul_scales(const std::shared_ptr<op_t> &scale_op) {
     new_op->set_attr<std::vector<float>>(op_attr::scales,
             scale_op->get_attr<std::vector<float>>(op_attr::scales));
     new_op->set_attr<int64_t>(
-            op_attr::axis, scale_op->get_attr<int64_t>(op_attr::axis));
-    new_op->set_attr<std::string>(
-            op_attr::qtype, scale_op->get_attr<std::string>(op_attr::qtype));
+            op_attr::mask, scale_op->get_attr<int64_t>(op_attr::mask));
     return new_op;
 }
 

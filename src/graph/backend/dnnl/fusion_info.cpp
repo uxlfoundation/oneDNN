@@ -56,16 +56,10 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
         int mask = 0;
         int64_t dt = 0;
 
-        if (dst_scales_op->has_attr(op_attr::axis)
-                && dst_scales_op->has_attr(op_attr::qtype)) {
-            int64_t axis = dst_scales_op->get_attr<int64_t>(op_attr::axis);
-            std::string qtype
-                    = dst_scales_op->get_attr<std::string>(op_attr::qtype);
-            mask = qtype == "per_tensor" ? 0 : 1 << axis;
-            dt = dst_scales_op->has_attr(op_attr::data_type)
-                    ? dst_scales_op->get_attr<int64_t>(op_attr::data_type)
-                    : dnnl_f32;
-        }
+        mask = get_quant_mask(dst_scales_op);
+        dt = dst_scales_op->has_attr(op_attr::data_type)
+                ? dst_scales_op->get_attr<int64_t>(op_attr::data_type)
+                : dnnl_f32;
         attr.set_scales(DNNL_ARG_DST, mask, default_groups,
                 static_cast<dnnl::memory::data_type>(dt));
     }
@@ -82,47 +76,18 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                     "runtime src scales",
                     op->get_name().c_str());
             int mask = 0;
-            if (in_scales_op->has_attr(op_attr::qtype)) {
-                std::string qtype
-                        = in_scales_op->get_attr<std::string>(op_attr::qtype);
+            if (in_scales_op->has_attr(op_attr::mask)) {
                 const auto scales_data_type
                         = in_scales_op->has_attr(op_attr::data_type)
                         ? in_scales_op->get_attr<int64_t>(op_attr::data_type)
                         : dnnl_f32;
-                if (qtype == "per_tensor") {
-                    mask = 0;
-                    attr.set_scales(in_scales_indices == 0 ? DNNL_ARG_SRC
-                                                           : DNNL_ARG_WEIGHTS,
-                            mask, default_groups,
-                            static_cast<dnnl::memory::data_type>(
-                                    scales_data_type));
-                } else if (qtype == "per_channel") { // per-channel quantization
-                    int64_t axis = in_scales_op->has_attr(op_attr::axis)
-                            ? in_scales_op->get_attr<int64_t>(op_attr::axis)
-                            : 1;
-                    if (impl::utils::one_of(op->get_kind(),
-                                op_kind::_convolution, op_kind::_convtranspose)
-                            && in_scales_indices == 1) {
-                        bool with_groups = false;
-                        if (op->get_input_value(1)->has_producer()
-                                && op->get_input_op(1)->get_kind()
-                                        == op_kind::_to_group) {
-                            const auto &to_group = op->get_input_op(1);
-                            if (to_group->get_attr<int64_t>(op_attr::groups)
-                                    > 1) {
-                                with_groups = true;
-                            }
-                        }
-                        mask = with_groups ? 3 : 1;
-                    } else {
-                        mask = 1 << axis;
-                    }
-                    attr.set_scales(in_scales_indices == 0 ? DNNL_ARG_SRC
-                                                           : DNNL_ARG_WEIGHTS,
-                            mask, default_groups,
-                            static_cast<dnnl::memory::data_type>(
-                                    scales_data_type));
-                } else { // per-group quantization
+                const bool is_per_group
+                        = in_scales_op->has_attr(op_attr::group_shape)
+                        && !in_scales_op
+                                    ->get_attr<std::vector<int64_t>>(
+                                            op_attr::group_shape)
+                                    .empty();
+                if (is_per_group) {
                     // oneDNN only supports weights-decompressed matmul
                     if (in_scales_indices != 1
                             || op->get_kind() != op_kind::_matmul)
@@ -135,8 +100,33 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                     // last two dimensions.
                     std::vector<int64_t> groups(
                             group_shape.end() - 2, group_shape.end());
-                    mask = (1 << group_shape.size()) - 1;
+                    mask = get_quant_mask(in_scales_op);
                     attr.set_scales(DNNL_ARG_WEIGHTS, mask, groups,
+                            static_cast<dnnl::memory::data_type>(
+                                    scales_data_type));
+                } else {
+                    mask = get_quant_mask(in_scales_op);
+                    // Conv weights: per-OC scale uses mask=1 (or 3 with groups)
+                    if (mask != 0
+                            && impl::utils::one_of(op->get_kind(),
+                                    op_kind::_convolution,
+                                    op_kind::_convtranspose)
+                            && in_scales_indices == 1) {
+                        bool with_groups = false;
+                        if (op->get_input_value(1)->has_producer()
+                                && op->get_input_op(1)->get_kind()
+                                        == op_kind::_to_group) {
+                            const auto &to_group = op->get_input_op(1);
+                            if (to_group->get_attr<int64_t>(op_attr::groups)
+                                    > 1) {
+                                with_groups = true;
+                            }
+                        }
+                        mask = with_groups ? 3 : 1;
+                    }
+                    attr.set_scales(in_scales_indices == 0 ? DNNL_ARG_SRC
+                                                           : DNNL_ARG_WEIGHTS,
+                            mask, default_groups,
                             static_cast<dnnl::memory::data_type>(
                                     scales_data_type));
                 }
@@ -156,14 +146,18 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                     "supports runtime src zero points",
                     op->get_name().c_str());
 
-            if (in_zps_op->has_attr(op_attr::qtype)) {
-                std::string qtype
-                        = in_zps_op->get_attr<std::string>(op_attr::qtype);
+            if (in_zps_op->has_attr(op_attr::mask)) {
                 const auto zps_data_type
                         = in_zps_op->has_attr(op_attr::data_type)
                         ? in_zps_op->get_attr<int64_t>(op_attr::data_type)
                         : dnnl_s32;
-                if (qtype == "per_group") {
+                const bool is_per_group
+                        = in_zps_op->has_attr(op_attr::group_shape)
+                        && !in_zps_op
+                                    ->get_attr<std::vector<int64_t>>(
+                                            op_attr::group_shape)
+                                    .empty();
+                if (is_per_group) {
                     // oneDNN only supports weights-decompressed matmul
                     if (in_zps_indices != 1
                             || op->get_kind() != op_kind::_matmul)
@@ -176,15 +170,14 @@ dnnl::primitive_attr make_dnnl_primitive_attr(
                     // last two dimensions.
                     std::vector<int64_t> groups(
                             group_shape.end() - 2, group_shape.end());
-                    int mask = (1 << group_shape.size()) - 1;
+                    int mask = get_quant_mask(in_zps_op);
 
-                    // Currently oneDNN only supports grouped zps on last two dimensions.
                     attr.set_zero_points(DNNL_ARG_WEIGHTS, mask, groups,
                             static_cast<dnnl::memory::data_type>(
                                     zps_data_type));
 
                 } else {
-                    int mask = 0;
+                    int mask = get_quant_mask(in_zps_op);
                     attr.set_zero_points(in_zps_indices == 0 ? DNNL_ARG_SRC
                                                              : DNNL_ARG_WEIGHTS,
                             mask, default_groups,
@@ -404,32 +397,18 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
                     "runtime src scales",
                     op->get_name().c_str());
             int mask = 0;
-            if (in_scales_op->has_attr(op_attr::qtype)) {
-                std::string qtype
-                        = in_scales_op->get_attr<std::string>(op_attr::qtype);
+            if (in_scales_op->has_attr(op_attr::mask)) {
                 const auto scales_data_type
                         = in_scales_op->has_attr(op_attr::data_type)
                         ? in_scales_op->get_attr<int64_t>(op_attr::data_type)
                         : dnnl_f32;
-                if (qtype == "per_tensor") {
-                    mask = 0;
-                    attr.set_scales(
-                            static_cast<int>(arg_map.at(in_scales_indices)),
-                            mask, default_groups,
-                            static_cast<dnnl::memory::data_type>(
-                                    scales_data_type));
-                } else if (qtype == "per_channel") { // per-channel quantization
-                    int64_t axis = in_scales_op->has_attr(op_attr::axis)
-                            ? in_scales_op->get_attr<int64_t>(op_attr::axis)
-                            : 1;
-                    mask = 1 << axis;
-                    attr.set_scales(
-                            static_cast<int>(arg_map.at(in_scales_indices)),
-                            mask, default_groups,
-                            static_cast<dnnl::memory::data_type>(
-                                    scales_data_type));
-                } else {
-                    // per-group quantization
+                const bool is_per_group
+                        = in_scales_op->has_attr(op_attr::group_shape)
+                        && !in_scales_op
+                                    ->get_attr<std::vector<int64_t>>(
+                                            op_attr::group_shape)
+                                    .empty();
+                if (is_per_group) {
                     // oneDNN only supports weights-decompressed matmul or sdpa
                     if (arg_map.at(in_scales_indices) != DNNL_ARG_WEIGHTS)
                         continue;
@@ -441,8 +420,15 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
                     // last two dimensions.
                     std::vector<int64_t> groups(
                             group_shape.end() - 2, group_shape.end());
-                    mask = (1 << group_shape.size()) - 1;
+                    mask = get_quant_mask(in_scales_op);
                     attr.set_scales(DNNL_ARG_WEIGHTS, mask, groups,
+                            static_cast<dnnl::memory::data_type>(
+                                    scales_data_type));
+                } else {
+                    mask = get_quant_mask(in_scales_op);
+                    attr.set_scales(
+                            static_cast<int>(arg_map.at(in_scales_indices)),
+                            mask, default_groups,
                             static_cast<dnnl::memory::data_type>(
                                     scales_data_type));
                 }
@@ -470,14 +456,18 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
                     "supports runtime src zero points",
                     op->get_name().c_str());
 
-            if (in_zps_op->has_attr(op_attr::qtype)) {
-                std::string qtype
-                        = in_zps_op->get_attr<std::string>(op_attr::qtype);
+            if (in_zps_op->has_attr(op_attr::mask)) {
                 const auto zps_data_type
                         = in_zps_op->has_attr(op_attr::data_type)
                         ? in_zps_op->get_attr<int64_t>(op_attr::data_type)
                         : dnnl_s32;
-                if (qtype == "per_group") {
+                const bool is_per_group
+                        = in_zps_op->has_attr(op_attr::group_shape)
+                        && !in_zps_op
+                                    ->get_attr<std::vector<int64_t>>(
+                                            op_attr::group_shape)
+                                    .empty();
+                if (is_per_group) {
                     // oneDNN only supports weights-decompressed matmul
                     if (arg_map.at(in_zps_indices) != DNNL_ARG_WEIGHTS) break;
                     const auto &group_shape
@@ -488,17 +478,14 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
                     // last two dimensions.
                     std::vector<int64_t> groups(
                             group_shape.end() - 2, group_shape.end());
-                    int mask = (1 << group_shape.size()) - 1;
+                    int mask = get_quant_mask(in_zps_op);
 
-                    // Currently oneDNN only supports grouped zps on last two
-                    // dimensions.
                     attr.set_zero_points(DNNL_ARG_WEIGHTS, mask, groups,
                             static_cast<dnnl::memory::data_type>(
                                     zps_data_type));
 
                 } else {
-                    // Currently oneDNN doesn't support per_channel zps.
-                    int mask = 0;
+                    int mask = get_quant_mask(in_zps_op);
                     attr.set_zero_points(
                             static_cast<int>(arg_map.at(in_zps_indices)), mask,
                             default_groups,

@@ -262,9 +262,12 @@ int flex_rewrite_t::linked_shape_and_attr_rewrite(
     for (auto &aop : dgraph.ops_) {
         if (aop.kind_ == "DynamicDequantize") {
             auto &attr = aop.attrs_;
-            if (attr.find("qtype") == attr.end()
-                    || attr["qtype"].str_value_ != "per_group")
-                continue;
+            const bool is_per_group
+                    = (attr.find("qtype") != attr.end()
+                              && attr["qtype"].str_value_ == "per_group")
+                    || (attr.find("group_shape") != attr.end()
+                            && !attr["group_shape"].s64_vector_.empty());
+            if (!is_per_group) continue;
             if (attr.find("group_shape") == attr.end()) {
                 BENCHDNN_PRINT(0,
                         "Error: missed `group-shape` attribute for "

@@ -2955,12 +2955,6 @@ typedef enum {
     /// Library choice of ISA (excepting those listed as initial support)
     dnnl_cpu_isa_default = 0x0,
 
-    /// Intel Streaming SIMD Extensions 4.1 (Intel SSE4.1)
-    dnnl_cpu_isa_sse41 = 0x1,
-
-    /// Intel Advanced Vector Extensions (Intel AVX)
-    dnnl_cpu_isa_avx = 0x3,
-
     /// Intel Advanced Vector Extensions 2 (Intel AVX2)
     dnnl_cpu_isa_avx2 = 0x7,
 

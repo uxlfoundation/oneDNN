@@ -194,7 +194,7 @@ private:
 
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
-    std::unique_ptr<io::jit_io_helper_t<TReg>> indices_io_;
+    std::unique_ptr<io::jit_io_helper_t<to_vla_sve(isa)>> indices_io_;
 };
 
 } // namespace aarch64

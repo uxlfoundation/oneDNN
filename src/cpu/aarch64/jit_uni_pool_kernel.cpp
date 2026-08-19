@@ -50,15 +50,11 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
         const jit_pool_conf_t &ajpp, const memory_desc_t *dst_md)
     : jit_generator_t(nullptr, MAX_CODE_SIZE, true), jpp(ajpp) {
     if ((jpp.is_training || jpp.is_backward) && jpp.ind_dt == data_type::u8) {
-        const io::io_tail_conf_t tail_conf(jpp.c_block, jpp.c_tail,
-                k_c_tail_mask_s, static_cast<int>(vmm_c_tail_mask.getIdx()),
-                X_TMP_1, X_TMP_0);
-        const io::io_saturation_conf_t saturation_conf(
-                static_cast<int>(vmm_tmp_1.getIdx()),
-                static_cast<int>(vmm_k_offset.getIdx()), X_TMP_0);
-        indices_io_ = utils::make_unique<io::jit_io_helper_t<TReg>>(this, isa,
-                data_type::u8, io::io_conf_t(false), tail_conf,
-                saturation_conf);
+        const io::tail_conf_t tail_conf(jpp.c_tail, k_c_tail_mask_s);
+        const io::saturation_conf_t<TReg> saturation_conf(
+                TReg(vmm_tmp_1.getIdx()), TReg(vmm_k_offset.getIdx()));
+        indices_io_ = utils::make_unique<io::jit_io_helper_t<to_vla_sve(isa)>>(
+                this, saturation_conf, tail_conf, X_TMP_0);
     }
 
     if (jpp.with_postops) {
@@ -465,7 +461,7 @@ void jit_uni_pool_kernel_t<isa>::load_indices_u8(const TReg &vmm,
     add_imm(X_DEFAULT_ADDR, reg_index, step_index, X_TMP_0);
     const bool tail = is_c_tail_processing && !jpp.is_c_padded;
     assert(indices_io_);
-    indices_io_->load(X_DEFAULT_ADDR, 0, vmm, tail);
+    indices_io_->load(data_type::u8, vmm, X_DEFAULT_ADDR, tail);
     uni_fcvtzs(TRegS(vmm.getIdx()), TRegS(vmm.getIdx()));
 }
 
@@ -478,7 +474,7 @@ void jit_uni_pool_kernel_t<isa>::store_indices_u8(const TReg &vmm,
     add_imm(X_DEFAULT_ADDR, reg_index, step_index, X_TMP_0);
     const bool tail = is_c_tail_processing && !jpp.is_c_padded;
     assert(indices_io_);
-    indices_io_->store(vmm, X_DEFAULT_ADDR, 0, tail);
+    indices_io_->store(data_type::u8, vmm, X_DEFAULT_ADDR, tail);
 }
 
 template <cpu_isa_t isa>
@@ -828,9 +824,15 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int ur_bc,
     if (jpp.with_postops)
         apply_postops(ur_bc, ur_w, c_block, is_tail_processing);
 
+    // Saturation registers may be reused while computing the pooling result.
+    // Reset the helper for each generated store path so its lazy initialization
+    // is emitted immediately before the workspace indices are stored.
     if (jpp.is_training && jpp.ind_dt == data_type::u8) {
-        assert(indices_io_);
-        indices_io_->init_saturate_f32();
+        const io::tail_conf_t tail_conf(jpp.c_tail, k_c_tail_mask_s);
+        const io::saturation_conf_t<TReg> saturation_conf(
+                TReg(vmm_tmp_1.getIdx()), TReg(vmm_k_offset.getIdx()));
+        indices_io_ = utils::make_unique<io::jit_io_helper_t<to_vla_sve(isa)>>(
+                this, saturation_conf, tail_conf, X_TMP_0);
     }
 
     for_(int jj = 0; jj < ur_w; jj++)
@@ -871,6 +873,16 @@ inline void jit_uni_pool_kernel_t<isa>::max_step_bwd(int ur_w, int ur_bc,
     const auto is_tail_processing = [&](int bc) {
         return with_c_tail_processing && bc == (ur_bc - 1);
     };
+
+    // Each generated backward path must initialize its own tail predicate.
+    // A helper initialized on another runtime branch may not have executed.
+    if (jpp.ind_dt == data_type::u8) {
+        const io::tail_conf_t tail_conf(jpp.c_tail, k_c_tail_mask_s);
+        const io::saturation_conf_t<TReg> saturation_conf(
+                TReg(vmm_tmp_1.getIdx()), TReg(vmm_k_offset.getIdx()));
+        indices_io_ = utils::make_unique<io::jit_io_helper_t<to_vla_sve(isa)>>(
+                this, saturation_conf, tail_conf, X_TMP_0);
+    }
 
     for_(int jj = 0; jj < ur_w; jj++)
     for (int bci = 0; bci < ur_bc; bci++) {

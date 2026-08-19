@@ -157,8 +157,7 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
     // dtype). i8 (quantized) dst may differ from src0 (e.g. f32 src0 -> s8 dst).
     VDISPATCH_BINARY(IMPLICATION(!conf_.is_i8, src0_md_ == dst_md_),
             VERBOSE_INCONSISTENT_MDS, "src", "dst");
-    VDISPATCH_BINARY(
-            is_applicable(), "not applicable for current implementation");
+    bool use_standard_strategy = is_applicable();
     VDISPATCH_BINARY(attr()->has_default_values(sm::post_ops | sm::scales),
             VERBOSE_UNSUPPORTED_ATTR);
     // Resolve formats before classifying the post-op chain: the post-op
@@ -170,15 +169,36 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
 
     // All operations over blocking descriptors should have md initialized.
     conf_.is_src_different_layouts = !compare_layouts(src0_md_, src1_md_);
-    const cpu_isa_t postops_isa = mayiuse(zvfbfwma)
-            ? zvfbfwma
-            : (mayiuse(zvfh) ? zvfh : v);
+    const bool postops_per_oc_broadcast_exists
+            = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
+                    po, src0_md_, get_supported_postops_bcast_strategies());
+    const auto &src0_blocking = src0_md_.blocking_desc();
+    // The synchronized driver is efficient for flat tensor/scalar work, but
+    // slices a plain broadcast into short x64-shaped calls. RVV can retain a
+    // longer VLA run by coalescing the physical dimensions instead.
+    const bool generic_plain_bcast_strategy = src0_md_.is_plain()
+            && src1_md_.is_plain() && !is_tensor_op()
+            && src1_md_.nelems(false) != 1;
+    const bool generic_postops_strategy
+            = (elt_idx != -1 && !dst_md_.is_dense()
+                      && !cpu_eltwise_fwd_pd_t::eltwise_preserves_zero(
+                              po.entry_[elt_idx].eltwise))
+            || (postops_per_oc_broadcast_exists
+                    && (conf_.is_src_different_layouts
+                            || (!src0_md_.is_plain()
+                                    && src0_blocking.inner_nblks != 1)));
+    if (generic_plain_bcast_strategy || generic_postops_strategy)
+        use_standard_strategy = false;
+    const cpu_isa_t postops_isa
+            = mayiuse(zvfbfwma) ? zvfbfwma : (mayiuse(zvfh) ? zvfh : v);
     VDISPATCH_BINARY(
             post_ops_ok(attr(), src_md(0), dst_md(),
-                    conf_.is_src_different_layouts, postops_isa),
+                    use_standard_strategy ? conf_.is_src_different_layouts
+                                          : false,
+                    postops_isa, !use_standard_strategy),
             VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_BINARY(
-            (conf_.is_i8 || elt_idx == -1
+            (conf_.is_i8 || elt_idx == -1 || !use_standard_strategy
                     || IMPLICATION(!dst_md_.is_dense(),
                             cpu_eltwise_fwd_pd_t::eltwise_preserves_zero(
                                     po.entry_[elt_idx].eltwise))),
@@ -187,10 +207,6 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
                              check_scales_mask()),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-    conf_.postops_per_oc_broadcast_exists
-            = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
-                    po, src0_md_, get_supported_postops_bcast_strategies());
-    conf_.op_type = get_op_type(src0_md_);
     conf_.do_scale_src0 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_0);
     conf_.do_scale_src1 = !attr()->scales_.has_default_values(DNNL_ARG_SRC_1);
     const auto sum_idx = po.find(primitive_kind::sum);
@@ -200,41 +216,64 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
     conf_.with_postops
             = conf_.with_binary || conf_.with_eltwise || conf_.do_sum;
     conf_.sum_scale = conf_.do_sum ? po.entry_[sum_idx].sum.scale : 0.f;
-    const auto &bcast_dims = broadcast_dims();
-    conf_.bcast_type = is_tensor_op() ? bcast_t::none
-                                      : get_bcast_type(src1_md_, bcast_dims);
-    // op_type only matters for broadcasted operation
-    VDISPATCH_BINARY(IMPLICATION(conf_.bcast_type != bcast_t::none,
-                             conf_.op_type != op_t::none),
-            "unsupported src0 layout for broadcast operation");
-    // src1 addressing mode (x64 parity): a single value broadcast across the
-    // run, or advancing 1:1 with it (else a fixed src1 vector maps to each run,
-    // which the driver slices for).
-    conf_.broadcast_src1_value = (conf_.op_type == op_t::n_c_spatial
-                                         && conf_.bcast_type == bcast_t::per_c)
-            || (utils::one_of(conf_.op_type, op_t::n_spatial_c, op_t::c_blocked)
-                    && conf_.bcast_type == bcast_t::per_w)
-            || conf_.bcast_type == bcast_t::scalar;
-    conf_.use_stride_src1 = !conf_.broadcast_src1_value
-            && (utils::one_of(
-                        conf_.bcast_type, bcast_t::none, bcast_t::per_batch)
-                    || (conf_.op_type == op_t::n_spatial_c
-                            && conf_.bcast_type == bcast_t::per_c)
-                    || (conf_.op_type == op_t::n_c_spatial
-                            && conf_.bcast_type == bcast_t::per_w));
 
-    const auto ndims = src0_md_.ndims();
-    if (conf_.is_src_different_layouts) {
-        const auto &strides0 = src0_md_.blocking_desc().strides;
-        const auto &strides1 = src1_md_.blocking_desc().strides;
-        conf_.src1_stride
-                = get_different_layout_stride(strides0, strides1, ndims);
-        conf_.outer_dims
-                = get_outer_dims_product(strides0, src0_md_.dims(), ndims);
-    }
-    if (conf_.bcast_type == bcast_t::per_w) {
-        for (int d = 2; d < ndims; ++d)
-            conf_.not_bcasted_sp_dims += !bcast_dims[d];
+    if (!use_standard_strategy) {
+        conf_.use_generic_strategy = true;
+        VDISPATCH_BINARY(init_generic_conf(),
+                "not applicable for current implementation");
+        // Generic calls are already sliced at a physical run boundary. Keep
+        // post-op RHS addressing in the general gather mode instead of routing
+        // it through a channel-aligned x64 strategy.
+        conf_.op_type = op_t::none;
+        conf_.bcast_type
+                = conf_.generic_scalar_inner ? bcast_t::scalar : bcast_t::none;
+        conf_.broadcast_src1_value = conf_.generic_scalar_inner;
+        conf_.use_stride_src1 = !conf_.generic_scalar_inner;
+        conf_.is_src_different_layouts = conf_.src1_stride > 1;
+        conf_.outer_dims = conf_.generic_inner;
+    } else {
+        conf_.postops_per_oc_broadcast_exists = postops_per_oc_broadcast_exists;
+        conf_.op_type = get_op_type(src0_md_);
+
+        const auto &bcast_dims = broadcast_dims();
+        conf_.bcast_type = is_tensor_op()
+                ? bcast_t::none
+                : get_bcast_type(src1_md_, bcast_dims);
+        // op_type only matters for broadcasted operation
+        VDISPATCH_BINARY(IMPLICATION(conf_.bcast_type != bcast_t::none,
+                                 conf_.op_type != op_t::none),
+                "unsupported src0 layout for broadcast operation");
+        // src1 addressing mode (x64 parity): a single value broadcast across the
+        // run, or advancing 1:1 with it (else a fixed src1 vector maps to each run,
+        // which the driver slices for).
+        conf_.broadcast_src1_value
+                = (conf_.op_type == op_t::n_c_spatial
+                          && conf_.bcast_type == bcast_t::per_c)
+                || (utils::one_of(
+                            conf_.op_type, op_t::n_spatial_c, op_t::c_blocked)
+                        && conf_.bcast_type == bcast_t::per_w)
+                || conf_.bcast_type == bcast_t::scalar;
+        conf_.use_stride_src1 = !conf_.broadcast_src1_value
+                && (utils::one_of(
+                            conf_.bcast_type, bcast_t::none, bcast_t::per_batch)
+                        || (conf_.op_type == op_t::n_spatial_c
+                                && conf_.bcast_type == bcast_t::per_c)
+                        || (conf_.op_type == op_t::n_c_spatial
+                                && conf_.bcast_type == bcast_t::per_w));
+
+        const auto ndims = src0_md_.ndims();
+        if (conf_.is_src_different_layouts) {
+            const auto &strides0 = src0_md_.blocking_desc().strides;
+            const auto &strides1 = src1_md_.blocking_desc().strides;
+            conf_.src1_stride
+                    = get_different_layout_stride(strides0, strides1, ndims);
+            conf_.outer_dims
+                    = get_outer_dims_product(strides0, src0_md_.dims(), ndims);
+        }
+        if (conf_.bcast_type == bcast_t::per_w) {
+            for (int d = 2; d < ndims; ++d)
+                conf_.not_bcasted_sp_dims += !bcast_dims[d];
+        }
     }
 
     if (is_ternary_op()) {
@@ -497,9 +536,153 @@ bool jit_uni_binary_t::pd_t::is_applicable() {
     }
 }
 
+bool jit_uni_binary_t::pd_t::init_generic_conf() {
+    const memory_desc_wrapper src0_d(src_md(0));
+    const memory_desc_wrapper src1_d(src_md(1));
+    const memory_desc_wrapper dst_d(dst_md());
+    if (!dst_d.is_dense(true) || !src0_d.is_dense(true)
+            || !src1_d.is_dense(true))
+        return false;
+    if (!src0_d.similar_to(dst_d, true, false)) return false;
+    if (is_ternary_op()) {
+        const memory_desc_wrapper src2_d(src_md(2));
+        if (!src2_d.is_dense(true)
+                || !src2_d.similar_to(src0_d, true, false, 0))
+            return false;
+    }
+
+    conf_.generic_ndims = dst_d.ndims();
+    conf_.generic_total = dst_d.nelems(false);
+    const bool has_padding = dst_d.nelems(true) != dst_d.nelems(false);
+
+    // Flat tensor and scalar cases keep one long VLA pass per thread.
+    if (!has_padding && src1_d.nelems(false) == 1) {
+        conf_.generic_whole = true;
+        conf_.generic_scalar_inner = true;
+        conf_.generic_inner = conf_.generic_total;
+        return true;
+    }
+    if (!has_padding && src1_d.similar_to(dst_d, true, false)) {
+        conf_.generic_whole = true;
+        conf_.generic_inner = conf_.generic_total;
+        return true;
+    }
+
+    // Build a physical-dimension iteration plan. dst is walked in contiguous
+    // order; each src1 dimension either broadcasts (stride 0) or follows its
+    // memory descriptor. A single channel inner block is represented as an
+    // extra unit-stride physical dimension.
+    const auto &dst_bd = dst_d.blocking_desc();
+    const auto &src1_bd = src1_d.blocking_desc();
+    const bool src1_scalar = src1_d.nelems(false) == 1;
+    if (dst_bd.inner_nblks > 1) return false;
+
+    const int blocked_dim = dst_bd.inner_nblks == 1 ? dst_bd.inner_idxs[0] : -1;
+    const dim_t block = dst_bd.inner_nblks == 1 ? dst_bd.inner_blks[0] : 1;
+    const bool src1_blocked = src1_bd.inner_nblks == 1 && blocked_dim >= 0
+            && src1_bd.inner_idxs[0] == blocked_dim
+            && src1_bd.inner_blks[0] == block;
+    if (src1_bd.inner_nblks != 0 && !src1_blocked && !src1_scalar) return false;
+
+    const dim_t *dst_dims = dst_d.dims();
+    const dim_t *src1_dims = src1_d.dims();
+    const auto &dst_strides = dst_bd.strides;
+    const auto &src1_strides = src1_bd.strides;
+    for (int d = 0; d < conf_.generic_ndims; ++d)
+        if (src1_dims[d] != 1 && src1_dims[d] != dst_dims[d]) return false;
+
+    if (has_padding) {
+        if (blocked_dim != 1 || block > 16 || (block & (block - 1)) != 0)
+            return false;
+        for (int d = 0; d < conf_.generic_ndims; ++d)
+            if (d != blocked_dim && dst_d.padded_dims()[d] != dst_dims[d])
+                return false;
+        if (dst_d.padded_dims()[blocked_dim]
+                != utils::rnd_up(dst_dims[blocked_dim], block))
+            return false;
+        conf_.generic_tail = dst_dims[blocked_dim] % block;
+    }
+
+    struct physical_dim_t {
+        dim_t size;
+        dim_t src1_stride;
+        dim_t dst_stride;
+        int logical_dim;
+    } physical_dims[DNNL_MAX_NDIMS + 1];
+    int nphysical = 0;
+    for (int d = 0; d < conf_.generic_ndims; ++d) {
+        const dim_t outer_size = d == blocked_dim
+                ? utils::div_up(dst_dims[d], block)
+                : dst_dims[d];
+        if (outer_size < 1) return false;
+        const dim_t src1_stride = src1_dims[d] == 1
+                ? 0
+                : (d == blocked_dim && !src1_blocked ? src1_strides[d] * block
+                                                     : src1_strides[d]);
+        physical_dims[nphysical++]
+                = {outer_size, src1_stride, dst_strides[d], d};
+    }
+    for (int a = 0; a < nphysical; ++a)
+        for (int b = a + 1; b < nphysical; ++b)
+            if (physical_dims[b].dst_stride > physical_dims[a].dst_stride) {
+                const auto tmp = physical_dims[a];
+                physical_dims[a] = physical_dims[b];
+                physical_dims[b] = tmp;
+            }
+    if (blocked_dim >= 0) {
+        const dim_t src1_inner_stride = src1_dims[blocked_dim] == 1
+                ? 0
+                : (src1_blocked ? 1 : src1_strides[blocked_dim]);
+        physical_dims[nphysical++] = {block, src1_inner_stride, 1, blocked_dim};
+    }
+
+    // Coalesce adjacent physical dimensions while both dst and src1 remain
+    // uniform. Preserve enough outer runs to expose all available threads and
+    // keep padded channel blocks separate for explicit tail zeroing.
+    const dim_t min_outer = dnnl_get_max_threads();
+    while (conf_.generic_tail == 0 && nphysical >= 2) {
+        const auto inner = physical_dims[nphysical - 1];
+        const auto outer = physical_dims[nphysical - 2];
+        if (outer.dst_stride != inner.dst_stride * inner.size) break;
+        const bool both_broadcast
+                = outer.src1_stride == 0 && inner.src1_stride == 0;
+        const bool uniform = inner.src1_stride != 0
+                && outer.src1_stride == inner.src1_stride * inner.size;
+        if (!both_broadcast && !uniform) break;
+        dim_t outer_runs = 1;
+        for (int d = 0; d + 2 < nphysical; ++d)
+            outer_runs *= physical_dims[d].size;
+        if (outer_runs < min_outer) break;
+        physical_dims[nphysical - 2].size = outer.size * inner.size;
+        physical_dims[nphysical - 2].src1_stride = inner.src1_stride;
+        physical_dims[nphysical - 2].dst_stride = inner.dst_stride;
+        --nphysical;
+    }
+
+    const auto &inner = physical_dims[nphysical - 1];
+    if (inner.dst_stride != 1) return false;
+    conf_.generic_inner = inner.size;
+    conf_.generic_scalar_inner = inner.src1_stride == 0;
+    conf_.src1_stride = nstl::max((dim_t)1, inner.src1_stride);
+    conf_.generic_n_outer = 1;
+    conf_.generic_ndims = nphysical;
+    for (int d = 0; d < nphysical - 1; ++d) {
+        conf_.generic_outer_dims[d] = physical_dims[d].size;
+        conf_.generic_src1_strides[d] = physical_dims[d].src1_stride;
+        conf_.generic_n_outer *= physical_dims[d].size;
+        if (conf_.generic_tail != 0
+                && physical_dims[d].logical_dim == blocked_dim)
+            conf_.generic_tail_axis = d;
+    }
+    if (conf_.generic_tail != 0 && conf_.generic_tail_axis < 0) return false;
+    conf_.generic_src1_same_layout = src1_d.similar_to(dst_d, true, false);
+    return true;
+}
+
 bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
         const memory_desc_wrapper &src0_d, const memory_desc_wrapper &dst_d,
-        const bool is_src_different_layouts, const cpu_isa_t isa) {
+        const bool is_src_different_layouts, const cpu_isa_t isa,
+        const bool use_generic_strategy) {
     using namespace injector;
     using namespace primitive_kind;
 
@@ -537,8 +720,8 @@ bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
     for (int i = 0; i < p.len(); i++) {
         if (is_binary(i)) {
             const auto &post_ops_mem = p.entry_[i].binary.src1_desc;
-            const bool is_src1_xf16 = utils::one_of(post_ops_mem.data_type,
-                    data_type::f16, data_type::bf16);
+            const bool is_src1_xf16 = utils::one_of(
+                    post_ops_mem.data_type, data_type::f16, data_type::bf16);
             // x64 parity: an i8 dst rejects an xf16 binary post-op rhs.
             if (is_i8 && is_src1_xf16) return false;
             // TODO: eliminate in favor of check in injectors::post_ops_ok
@@ -555,12 +738,14 @@ bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
     const bool postops_per_oc_broadcast_exists
             = binary_injector::any_binary_postop_rhs_per_oc_broadcast(
                     p, src0_d, supported_strategies);
-    if (postops_per_oc_broadcast_exists && is_src_different_layouts)
+    if (!use_generic_strategy && postops_per_oc_broadcast_exists
+            && is_src_different_layouts)
         return false;
 
     const bool blocked_format = !src0_d.is_plain() && src0_d.is_blocking_desc();
 
-    if (postops_per_oc_broadcast_exists && blocked_format) {
+    if (!use_generic_strategy && postops_per_oc_broadcast_exists
+            && blocked_format) {
         /*
          * check blocking_desc consistency: with a per_oc rhs the per-C driver
          * slicing and the injector's channel recovery assume the only inner
@@ -949,6 +1134,73 @@ void jit_uni_binary_t::execute_bcast_per_w_strategy(const data_t *src0,
     }
 }
 
+void jit_uni_binary_t::execute_generic_strategy(const data_t *src0,
+        const data_t *src1, const data_t *src2, data_t *dst, float scale0,
+        float scale1,
+        const std::vector<const void *> &post_ops_binary_rhs_arg_vec) const {
+    const auto conf = pd()->get_conf();
+    const size_t es0 = types::data_type_size(conf.src0_type);
+    const size_t es1 = types::data_type_size(conf.src1_type);
+    const size_t esd = types::data_type_size(conf.dst_type);
+    const size_t es2 = conf.is_ternary_op
+            ? types::data_type_size(pd()->src_md(2)->data_type)
+            : 0;
+    const void *const *rhs_ptrs = post_ops_binary_rhs_arg_vec.empty()
+            ? nullptr
+            : post_ops_binary_rhs_arg_vec.data();
+
+    auto call = [&](dim_t off0, dim_t off1, dim_t offd, dim_t work) {
+        jit_uni_binary_args_t p = {};
+        p.src0 = src0 + off0 * es0;
+        p.src1 = src1 + off1 * es1;
+        if (conf.is_ternary_op) p.src2 = src2 + offd * es2;
+        p.dst = dst + offd * esd;
+        p.post_ops_binary_rhs_arg_vec = rhs_ptrs;
+        p.work_amount = work;
+        p.scales_src0 = scale0;
+        p.scales_src1 = scale1;
+        p.sum_scale = conf.sum_scale;
+        p.dst_orig = dst;
+        (*kernel_)(&p);
+    };
+
+    if (conf.generic_whole) {
+        parallel(0, [&](int ithr, int nthr) {
+            dim_t start = 0, end = 0;
+            balance211(conf.generic_total, nthr, ithr, start, end);
+            if (start >= end) return;
+            call(start, conf.generic_scalar_inner ? 0 : start, start,
+                    end - start);
+        });
+        return;
+    }
+
+    parallel(0, [&](int ithr, int nthr) {
+        dim_t begin = 0, end = 0;
+        balance211(conf.generic_n_outer, nthr, ithr, begin, end);
+        for (dim_t outer = begin; outer < end; ++outer) {
+            dim_t src1_off = 0;
+            dim_t rem = outer;
+            bool tail_run = false;
+            for (int d = conf.generic_ndims - 2; d >= 0; --d) {
+                const dim_t dim = conf.generic_outer_dims[d];
+                const dim_t index = rem % dim;
+                rem /= dim;
+                src1_off += index * conf.generic_src1_strides[d];
+                if (d == conf.generic_tail_axis) tail_run = index == dim - 1;
+            }
+            if (conf.generic_src1_same_layout)
+                src1_off = outer * conf.generic_inner;
+            const dim_t run = tail_run ? conf.generic_tail : conf.generic_inner;
+            const dim_t dst_off = outer * conf.generic_inner;
+            call(dst_off, src1_off, dst_off, run);
+            if (run < conf.generic_inner)
+                std::memset(dst + (dst_off + run) * esd, 0,
+                        (conf.generic_inner - run) * esd);
+        }
+    });
+}
+
 status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
     auto src0 = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC_0);
     auto src1 = CTX_IN_MEM(const data_t *, DNNL_ARG_SRC_1);
@@ -1021,7 +1273,10 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
     const bool route_postops_per_oc
             = conf.postops_per_oc_broadcast_exists && op_type != op_t::none;
 
-    if ((bcast_type == bcast_t::none || point_broadcast_no_oc_tail)
+    if (conf.use_generic_strategy)
+        execute_generic_strategy(src0, src1, src2, dst, scale0, scale1,
+                post_ops_binary_rhs_arg_vec);
+    else if ((bcast_type == bcast_t::none || point_broadcast_no_oc_tail)
             && !route_postops_per_oc && !blocked_oc_tail)
         execute_no_bcast_strategy(src0, src1, src2, dst, scale0, scale1,
                 post_ops_binary_rhs_arg_vec, bcast_type);

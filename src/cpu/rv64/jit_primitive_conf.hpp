@@ -302,8 +302,9 @@ enum class binary_bcast_t : unsigned {
 // Binary configuration, mirroring the x64/aarch64 jit_binary_conf_t. Fields that
 // only make sense for x86 (i8/bf16/f16 selection, per_w scratchpad expansion,
 // isa/ternary-vmm budgeting) are dropped; RVV keeps a single f32 compute domain
-// and lets the driver's strategies compute all offsets from the mds at run time
-// (like x64), so no rv64-specific run-decomposition plan is stored here.
+// and lets the driver's strategies compute offsets from the mds at run time.
+// A compact RV64 physical run plan is retained for dense combinations outside
+// the synchronized x64 strategy matrix.
 struct jit_binary_conf_t {
     binary_op_t op_type = binary_op_t::none;
     binary_bcast_t bcast_type = binary_bcast_t::none;
@@ -340,6 +341,24 @@ struct jit_binary_conf_t {
     // materialized in a 64-bit GPR, no narrowing needed.
     dim_t src1_stride = 1;
     int not_bcasted_sp_dims = 0;
+
+    // RV64's VLA kernel can also execute dense broadcast/layout combinations
+    // outside the x64 strategy matrix. The PD coalesces the physical dst
+    // dimensions into contiguous inner runs and records the src1 stride for
+    // each outer dimension. This retains the pre-synchronization JIT coverage
+    // while keeping the x64-style driver paths as the primary implementation.
+    bool use_generic_strategy = false;
+    bool generic_whole = false;
+    bool generic_scalar_inner = false;
+    bool generic_src1_same_layout = false;
+    int generic_ndims = 0;
+    dim_t generic_inner = 0;
+    dim_t generic_n_outer = 0;
+    dim_t generic_total = 0;
+    dim_t generic_tail = 0;
+    int generic_tail_axis = -1;
+    dims_t generic_outer_dims = {};
+    dims_t generic_src1_strides = {};
 
     data_type_t src0_type = data_type::undef;
     data_type_t src1_type = data_type::undef;

@@ -87,6 +87,7 @@ struct jit_uni_binary_t : public primitive_t {
         bool is_different_layouts_allowed(const memory_desc_wrapper &src0_d,
                 const memory_desc_wrapper &src1_d) const;
         bool is_applicable();
+        bool init_generic_conf();
 
         jit_binary_conf_t conf_;
     };
@@ -121,6 +122,9 @@ struct jit_uni_binary_t : public primitive_t {
             const data_t *src2, data_t *dst, float scale0, float scale1,
             const std::vector<const void *> &post_ops_binary_rhs_arg_vec,
             const op_t op_type, const bool blocked_oc_tail) const;
+    void execute_generic_strategy(const data_t *src0, const data_t *src1,
+            const data_t *src2, data_t *dst, float scale0, float scale1,
+            const std::vector<const void *> &post_ops_binary_rhs_arg_vec) const;
 
     status_t execute(const exec_ctx_t &ctx) const override;
 
@@ -128,7 +132,8 @@ private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     static bool post_ops_ok(const primitive_attr_t *attr,
             const memory_desc_wrapper &src0_d, const memory_desc_wrapper &dst_d,
-            const bool is_src_different_layouts, const cpu_isa_t isa);
+            const bool is_src_different_layouts, const cpu_isa_t isa,
+            const bool use_generic_strategy);
 
     std::unique_ptr<binary_kernel_t> kernel_;
     // used only in bcast_c_blocked strategy if tail exists (the plain-shape

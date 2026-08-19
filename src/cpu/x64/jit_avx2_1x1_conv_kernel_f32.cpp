@@ -696,8 +696,8 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
         const memory_desc_wrapper &weights_d, const memory_desc_wrapper &dst_d,
         const primitive_attr_t &attr) {
     // disabling verbose dispatch messages for unsupported isa for better readability
-    if (!mayiuse(avx)) return status::unimplemented;
-    jcp.isa = mayiuse(avx2) ? avx2 : avx;
+    if (!mayiuse(avx2)) return status::unimplemented;
+    jcp.isa = avx2;
 
     // Values larger than INT_MAX are unsupported at JIT/API boundaries.
     VDISPATCH_CONV_IC(!has_large_size(cd, src_d, weights_d, dst_d),
@@ -842,7 +842,7 @@ status_t jit_avx2_1x1_conv_kernel_f32_t::init_conf(jit_1x1_conv_conf_t &jcp,
 
     jcp.ic_block = jcp.oc_block = simd_w;
 
-    jcp.ur = jcp.isa == avx2 ? 4 : 3; // Intel AVX support
+    jcp.ur = 4; // Intel AVX2
     if (jcp.with_dw_conv)
         jcp.ur = static_cast<int>(nstl::min<dim_t>(jcp.ow, jcp.ur));
 

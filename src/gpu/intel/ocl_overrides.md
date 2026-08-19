@@ -12,5 +12,5 @@ A few flags can be set at runtime (dev mode only) to affect the compilation of O
 
 Set `ONEDNN_VERBOSE=debuginfo=X` where `X` is in one of the ranges below, to get additional information regarding compilation of OpenCL kernels:
 
-- \>=5: Dump options and defines passed while building the kernel to the terminal.
-- \>=10: Dump preprocessed kernel source code to the terminal. Due to slight differences in the cpp and opencl proprocessors, this may differ slightly from the actual kernel.
+- \>=150: Dump options and defines passed while building the kernel to the terminal.
+- \>=200: Dump preprocessed kernel source code to the terminal. Due to slight differences in the cpp and OpenCL preprocessors, this may differ slightly from the actual kernel.

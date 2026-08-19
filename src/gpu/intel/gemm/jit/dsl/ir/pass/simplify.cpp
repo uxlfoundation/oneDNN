@@ -42,7 +42,7 @@ public:
 
     bool operator==(const pexpr_t &other) const { return id == other.id; }
 
-    size_t get_hash() const override { return hash(id); }
+    size_t compute_hash() const override { return hash(id); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -102,7 +102,7 @@ public:
         return (id == other.id) && (value == other.value);
     }
 
-    size_t get_hash() const override { return hash(id, value); }
+    size_t compute_hash() const override { return hash(id, value); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -721,7 +721,7 @@ public:
         return (op_kind == other.op_kind) && utils::is_equal(args, other.args);
     }
 
-    size_t get_hash() const override { return hash(op_kind, args); }
+    size_t compute_hash() const override { return hash(op_kind, args); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -1040,7 +1040,7 @@ public:
         return f_common.factors.size() == factors.size();
     }
 
-    size_t get_hash() const override { return hash(factors); }
+    size_t compute_hash() const override { return hash(factors); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -1513,7 +1513,8 @@ public:
         auto _b = nary_op_back_transform(b);
 
         // 0 <= a < b => (a / b) == 0
-        bool abs_a_lt_b = cset.can_prove(_a >= 0) && cset.can_prove(_a < _b);
+        bool abs_a_lt_b = cset.can_prove(_a >= 0, /*try_simplify=*/false)
+                && cset.can_prove(_a < _b, /*try_simplify=*/false);
 
         // 0 <= a < b => (a % b) == a
         if (abs_a_lt_b) {
@@ -1823,7 +1824,22 @@ private:
     constraint_set_t cset_;
 };
 
+expr_t simplify_expr_impl(const expr_t &_e, const constraint_set_t &cset);
+
 expr_t simplify_expr(const expr_t &_e, const constraint_set_t &cset) {
+    if (!cset.is_empty()) return simplify_expr_impl(_e, cset);
+    if (is_const(_e) || is_var(_e)) return _e;
+    static const size_t max_cache_size = 4096;
+    static thread_local object_eq_map_t<expr_t, expr_t> cache;
+    auto it = cache.find(_e);
+    if (it != cache.end()) return it->second;
+    auto ret = simplify_expr_impl(_e, cset);
+    if (cache.size() >= max_cache_size) cache.clear();
+    cache.emplace(_e, ret);
+    return ret;
+}
+
+expr_t simplify_expr_impl(const expr_t &_e, const constraint_set_t &cset) {
     expr_t e = _e;
 
     if (is_const(e) || is_var(e)) return e;
@@ -2421,7 +2437,6 @@ expr_t nary_op_canonicalize(const expr_t &_e) {
     e = mul_nary_op_expander_t().mutate(e);
 
     dsl_assert(is_nary_op_canonical(e)) << e;
-    maybe_unused(is_nary_op_canonical(e));
 
     return e;
 }

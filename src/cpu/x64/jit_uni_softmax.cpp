@@ -65,9 +65,9 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     const memory_desc_wrapper src_d_, dst_d_, diff_dst_d_;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
 
-    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> exp_injector_;
-    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> log_injector_;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<jit_uni_eltwise_injector_t<Vmm>> exp_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<Vmm>> log_injector_;
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 
     Reg64 reg_param = abi_param1;
@@ -119,17 +119,17 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     bool with_dst_scales_ = false;
     bool use_ext_aux_vmms_ = false;
 
-    size_t unroll_regs_ = 4;
+    int unroll_regs_ = 4;
 
-    size_t axis_simd_full_;
-    size_t axis_simd_tail_;
-    size_t n_loops_;
-    size_t loop_tail_;
-    size_t process_n_elems_;
-    size_t src_next_vreg_stride_;
-    size_t interim_next_vreg_stride_;
-    size_t dst_next_vreg_stride_;
-    size_t diff_dst_next_vreg_stride_;
+    dim_t axis_simd_full_;
+    int axis_simd_tail_;
+    dim_t n_loops_;
+    int loop_tail_;
+    dim_t process_n_elems_;
+    dim_t src_next_vreg_stride_;
+    dim_t interim_next_vreg_stride_;
+    dim_t dst_next_vreg_stride_;
+    dim_t diff_dst_next_vreg_stride_;
 
     const int bf16_emu_zmm_1_idx_ = 23;
     const int bf16_emu_zmm_2_idx_ = 24;
@@ -160,7 +160,8 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
 
     void compute_predefined_variables() {
         n_loops_ = axis_simd_full_ / unroll_regs_;
-        loop_tail_ = axis_simd_full_ - n_loops_ * unroll_regs_;
+        loop_tail_
+                = static_cast<int>(axis_simd_full_ - n_loops_ * unroll_regs_);
         process_n_elems_ = compute_process_n_elems(dst_d_);
         src_next_vreg_stride_ = compute_next_vreg_stride(src_d_);
         interim_next_vreg_stride_ = simd_w_ * sizeof(float);
@@ -281,9 +282,10 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         // `pre_body` and `post_body` functions are called with the maximum
         // unroll value of a `body` function as they operate over vmms,
         // which numeration depends on that value.
-        const auto max_body_unroll = n_loops_ ? unroll_regs_
-                : loop_tail_                  ? loop_tail_
-                                              : 1;
+        // `loop_tail_` is bounded by `unroll_regs_`.
+        const int max_body_unroll = n_loops_ ? unroll_regs_
+                : loop_tail_                 ? loop_tail_
+                                             : 1;
         pre_body(max_body_unroll);
 
         L(body_unroll_loop);
@@ -635,13 +637,14 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                     // Prepare indices for exp aux vmms.
                     injector_utils::vmm_index_set_t exp_aux_indices;
                     const auto exp_vmm_aux_count
-                            = jit_uni_eltwise_injector_t<isa>::aux_vecs_count(
-                                    alg_kind::eltwise_exp, pd_->is_fwd(), 0.f);
-                    for (size_t j = 0; j < exp_vmm_aux_count; j++) {
+                            = jit_uni_eltwise_injector_t<Vmm>::aux_vecs_count(
+                                    isa, alg_kind::eltwise_exp, pd_->is_fwd(),
+                                    0.f);
+                    for (int j = 0; j < exp_vmm_aux_count; j++) {
                         // Insert the next idx starting after `vreg_tmp_sum`.
-                        exp_aux_indices.insert(static_cast<size_t>(
+                        exp_aux_indices.insert(
                                 get_aux_vmm(vreg_tmp_sum, (j + 1) * max_unroll)
-                                        .getIdx()));
+                                        .getIdx());
                     }
                     exp_injector_->compute_vector(
                             vreg_tmp_src.getIdx(), exp_aux_indices);
@@ -940,11 +943,11 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     // initialization.
     void generate() override {
         if (pd_->is_fwd() || is_logsoftmax_)
-            exp_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
+            exp_injector_.reset(new jit_uni_eltwise_injector_t<Vmm>(this,
                     alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, data_type::f32,
                     !use_ext_aux_vmms_, reg_exp_injector_table, injector_mask));
         if (pd_->is_fwd() && is_logsoftmax_) {
-            log_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
+            log_injector_.reset(new jit_uni_eltwise_injector_t<Vmm>(this,
                     alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, data_type::f32,
                     true, reg_log_injector_table, injector_mask));
         }
@@ -965,8 +968,8 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<isa>>(
-                    this, pd_->attr()->post_ops_, bsp);
+                    injector::jit_uni_postops_injector_t<Vmm>>(this,
+                    pd_->attr()->post_ops_, bsp, /* inject_sum = */ false);
         }
 #undef PARAM_OFF
 
@@ -1009,7 +1012,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                                   accumulation_mode::any)))
         , use_ext_aux_vmms_(!is_logsoftmax_ && n_vregs > 16)
         , axis_simd_full_(pd_->axis_size() / simd_w_)
-        , axis_simd_tail_(pd_->axis_size() % simd_w_) {
+        , axis_simd_tail_(static_cast<int>(pd_->axis_size() % simd_w_)) {
 
         const auto &post_ops = pd_->attr()->post_ops_;
         with_postops_ = post_ops.len() != 0;
@@ -1051,14 +1054,14 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
             : is_superset(isa, avx)                             ? yword
                                                                 : xword;
     static constexpr auto vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr auto simd_w_ = vlen / sizeof(float); // bf16 works on ymms
+    static constexpr int simd_w_ = vlen / sizeof(float); // bf16 works on ymms
 
     const memory_desc_wrapper src_d_, dst_d_;
     io::jit_io_multi_dt_helper_t<Vmm> io_;
 
-    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> exp_injector_;
-    std::unique_ptr<jit_uni_eltwise_injector_t<isa>> log_injector_;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
+    std::unique_ptr<jit_uni_eltwise_injector_t<Vmm>> exp_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<Vmm>> log_injector_;
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 
     Reg64 reg_param = abi_param1;
@@ -1100,19 +1103,19 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     bool with_src_scales_ = false;
     bool with_dst_scales_ = false;
 
-    size_t unroll_inner_size_ = 4;
-    size_t unroll_axis_size_ = 8;
+    int unroll_inner_size_ = 4;
+    int unroll_axis_size_ = 8;
 
-    size_t axis_size_;
-    size_t axis_size_unroll_tail_;
-    size_t axis_stride_;
-    size_t axis_simd_full_;
-    size_t axis_simd_tail_;
-    size_t n_loops_;
-    size_t loop_tail_;
-    size_t src_next_vreg_stride_;
-    size_t interim_next_vreg_stride_;
-    size_t dst_next_vreg_stride_;
+    dim_t axis_size_;
+    int axis_size_unroll_tail_;
+    dim_t axis_stride_;
+    dim_t axis_simd_full_;
+    int axis_simd_tail_;
+    dim_t n_loops_;
+    int loop_tail_;
+    dim_t src_next_vreg_stride_;
+    dim_t interim_next_vreg_stride_;
+    dim_t dst_next_vreg_stride_;
 
     const int bf16_emu_zmm_1_idx_ = 23;
     const int bf16_emu_zmm_2_idx_ = 24;
@@ -1140,9 +1143,11 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     void compute_predefined_variables() {
         // `axis_simd_full_` is actually `inner_simd_full_`.
         n_loops_ = axis_simd_full_ / unroll_inner_size_;
-        loop_tail_ = axis_simd_full_ - n_loops_ * unroll_inner_size_;
+        loop_tail_ = static_cast<int>(
+                axis_simd_full_ - n_loops_ * unroll_inner_size_);
 
-        axis_size_unroll_tail_ = axis_size_ % unroll_axis_size_;
+        axis_size_unroll_tail_
+                = static_cast<int>(axis_size_ % unroll_axis_size_);
 
         src_next_vreg_stride_ = compute_next_vreg_stride(src_d_);
         interim_next_vreg_stride_ = vlen;
@@ -1441,10 +1446,10 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
 
         axis_size_loop_unroll(store_body, unroll_inner, tail);
 
-        add(reg_src_spat_offt,
-                unroll_inner * simd_w_ * src_d_.data_type_size());
-        add(reg_dst_spat_offt,
-                unroll_inner * simd_w_ * dst_d_.data_type_size());
+        const dim_t src_dt_size = src_d_.data_type_size();
+        const dim_t dst_dt_size = dst_d_.data_type_size();
+        add(reg_src_spat_offt, unroll_inner * simd_w_ * src_dt_size);
+        add(reg_dst_spat_offt, unroll_inner * simd_w_ * dst_dt_size);
     }
 
     // The function provides unrolling over inner size. A single compute block
@@ -1525,11 +1530,11 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
 
     void generate() override {
         if (pd_->is_fwd() || is_logsoftmax_)
-            exp_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
+            exp_injector_.reset(new jit_uni_eltwise_injector_t<Vmm>(this,
                     alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, data_type::f32,
                     true, reg_exp_injector_table, injector_mask));
         if (pd_->is_fwd() && is_logsoftmax_) {
-            log_injector_.reset(new jit_uni_eltwise_injector_t<isa>(this,
+            log_injector_.reset(new jit_uni_eltwise_injector_t<Vmm>(this,
                     alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, data_type::f32,
                     true, reg_log_injector_table, injector_mask));
         }
@@ -1550,8 +1555,8 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
                     reg_param, get_supported_bcast_strategies(), rhs_sp};
 
             postops_injector_ = utils::make_unique<
-                    injector::jit_uni_postops_injector_t<isa>>(
-                    this, pd_->attr()->post_ops_, bsp);
+                    injector::jit_uni_postops_injector_t<Vmm>>(this,
+                    pd_->attr()->post_ops_, bsp, /* inject_sum = */ false);
         }
 #undef PARAM_OFF
 
@@ -1593,7 +1598,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         // different pieces from the dense version.
         , axis_stride_(pd_->axis_stride())
         , axis_simd_full_(axis_stride_ / simd_w_)
-        , axis_simd_tail_(axis_stride_ % simd_w_) {
+        , axis_simd_tail_(static_cast<int>(axis_stride_ % simd_w_)) {
 
         // Scratchpad size is limited to a single simd_w, thus, no unrolling
         // for such cases.

@@ -343,6 +343,7 @@ enum {
     key_wino_V,
     key_wino_M,
     key_binary_post_ops_expanded_rhs,
+    key_binary_post_ops_rhs_ptrs,
     // These two keys should always be the last ones,
     // even though they are not in alphabetical order
     key_nested,

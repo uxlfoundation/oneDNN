@@ -82,11 +82,10 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         static constexpr bool use_exact_tail_scalar_bcast = false;
 
         const binary_injector::rhs_arg_static_params_t rhs_sp {
-                static_cast<size_t>(vmm_tmp(4).getIdx()), this->r14, this->r15,
-                this->r13, preserve_gpr, preserve_vmm,
-                GET_OFF(ptr_binary_post_ops_rhs), GET_OFF(dst_orig),
-                memory_desc_wrapper(brg_.dst_md()),
-                static_cast<size_t>(brg_.load_dim % brg_.ld_block), k_tail_mask,
+                vmm_tmp(4).getIdx(), this->r14, this->r15, this->r13,
+                preserve_gpr, preserve_vmm, GET_OFF(ptr_binary_post_ops_rhs),
+                GET_OFF(dst_orig), memory_desc_wrapper(brg_.dst_md()),
+                static_cast<int>(brg_.load_dim % brg_.ld_block), k_tail_mask,
                 use_exact_tail_scalar_bcast};
         const binary_injector::static_params_t bsp(this->param1,
                 binary_injector::get_all_strategies_supported_by_injector(),
@@ -99,12 +98,9 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         const eltwise_injector::static_params_t esp {
                 save_state, reserved_eltwise_gpr, reserved_eltwise_maskr};
 
-        auto st = safe_ptr_assign(postops_injector_,
-                po_injector_t::create(
-                        this, brg_.isa_impl, attr_.post_ops_, bsp, esp));
-        if (st != status::success) {
-            assert(!"postops_injector creation failed");
-        }
+        postops_injector_ = utils::make_unique<po_injector_t>(this,
+                attr_.post_ops_, bsp, esp,
+                /* inject_sum = */ brg_.with_sum);
     }
 
     inp_dt_ = brg_.dt_c;
@@ -117,8 +113,9 @@ dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
 }
 
 template <typename Vmm>
-int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::zp_c_values_offset(
-        int n, bool is_tail /*= false*/) const noexcept {
+dim_t dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
+        Vmm>::zp_c_values_offset(int n,
+        bool is_tail /*= false*/) const noexcept {
     if (brg_.zp_type_c == brgemm_broadcast_t::per_n) {
         return (is_tail) ? sizeof(int32_t) * brg_.ldb_tail
                          : sizeof(int32_t) * n * brg_.ld_block;
@@ -128,7 +125,7 @@ int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::zp_c_values_offset(
 }
 
 template <typename Vmm>
-int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
+dim_t dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::zp_comp_a_vpad_offset(int n, int m,
         bool is_tail /*= false*/) const noexcept {
     return (is_tail) ? sizeof(int32_t) * (brg_.ldb_tail + m * brg_.LDB)
@@ -136,13 +133,13 @@ int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
 }
 
 template <typename Vmm>
-int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
+dim_t dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::mb_zp_comp_a_offset(int m_block) const noexcept {
     return sizeof(int32_t) * m_block * brg_.LDB;
 }
 
 template <typename Vmm>
-int dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
+dim_t dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::compensation_vpad_offset(int n, int m,
         bool is_tail /*= false*/) const noexcept {
     return (is_tail) ? sizeof(int32_t) * (brg_.ldb_tail + m * brg_.LDB)
@@ -190,58 +187,10 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::cvt2ps(
 template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::inject_attr_postops(int m_block, int n_block, int tail /*= 0*/) {
-    const auto &p = attr_.post_ops_;
-    const int sum_idx = p.find(primitive_kind::sum);
-    const auto k_mask = tail == 0 ? k_full_mask : k_tail_mask;
-    const auto sum_dt = p.get_sum_dt(out_dt_);
-
-    const auto sum_injector = [&] {
-        const float *p_sum_scale = &p.entry_[sum_idx].sum.scale;
-        const int32_t *p_sum_zp = &p.entry_[sum_idx].sum.zero_point;
-        if (*p_sum_scale != 1.f) mov(reg_ptr_sum_scale, (size_t)p_sum_scale);
-        auto vmm_sum_zp = vmm_tmp(1);
-        if (*p_sum_zp != 0) {
-            mov(reg_ptr_sum_zp, (size_t)p_sum_zp);
-            if (is_superset(brg_.isa_impl, avx512_core)) {
-                vcvtdq2ps(vmm_sum_zp, ptr_b[reg_ptr_sum_zp]);
-            } else {
-                vpbroadcastd(vmm_sum_zp, ptr[reg_ptr_sum_zp]);
-                uni_vcvtdq2ps(vmm_sum_zp, vmm_sum_zp);
-            }
-        }
-
-        for_(int m = 0; m < m_block; m++)
-        for (int n = 0; n < n_block; n++) {
-            const auto vmm = vector(m, n, n_block);
-            const auto addr = ptr[aux_reg_out
-                    + out_typesize_ * (m * brg_.LDD + n * brg_.ld_block)];
-
-            const auto vmm_prev_dst = vmm_tmp(0);
-            cvt2ps(sum_dt, vmm_prev_dst, addr, tail, false, k_mask);
-            if (*p_sum_zp != 0)
-                uni_vsubps(vmm_prev_dst, vmm_prev_dst, vmm_sum_zp);
-            if (*p_sum_scale == 1.f)
-                uni_vaddps(vmm, vmm, vmm_prev_dst);
-            else {
-                if (is_superset(brg_.isa_impl, avx512_core)) {
-                    vfmadd231ps(vmm, vmm_prev_dst, ptr_b[reg_ptr_sum_scale]);
-                } else {
-                    auto vmm_sum_scale = vmm_tmp(2);
-                    vpbroadcastd(vmm_sum_scale, ptr[reg_ptr_sum_scale]);
-                    vfmadd231ps(vmm, vmm_prev_dst, vmm_sum_scale);
-                }
-            }
-        }
-    };
-
-    if (brg_.with_sum) {
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
-    }
-
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
 
-    if (with_binary_non_scalar_bcast_) {
+    // Sum post-op requires binary parameters to be set.
+    if (with_binary_non_scalar_bcast_ || brg_.with_sum) {
         for_(int m = 0; m < m_block; m++)
         for (int n = 0; n < n_block; n++) {
             const auto vmm_idx = vector(m, n, n_block).getIdx();
@@ -475,7 +424,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
         }
         for (int n = 0; n < n_block; n++) {
             if (brg_.zp_type_c == brgemm_broadcast_t::per_n) {
-                int zp_c_off = zp_c_values_offset(n);
+                const dim_t zp_c_off = zp_c_values_offset(n);
                 auto zp_c_addr = is_superset(brg_.isa_impl, avx512_core)
                         ? EVEX_compress_addr(aux_reg_zp_c_values, zp_c_off)
                         : ptr[aux_reg_zp_c_values + zp_c_off];
@@ -578,7 +527,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::apply_post_ops(
 template <typename Vmm>
 void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
         int m_block, int nb2, int nb2_tail, int nb_tail) {
-    if (brg_.alpha) { mov(aux_reg_in, reg_in); }
+    if (brg_.alpha != 0) { mov(aux_reg_in, reg_in); }
     if (brg_.beta != 0) {
         if (brg_.with_bias) mov(aux_reg_bias, reg_bias);
         if (brg_.zp_type_c != brgemm_broadcast_t::none) {
@@ -613,17 +562,21 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             }
             if (brg_.zp_type_a != brgemm_broadcast_t::none) {
                 mov(aux_reg_zp_a_comp, ptr[rsp + aux_reg_zp_a_comp_offs_]);
-                add(aux_reg_zp_a_comp, sizeof(int32_t) * oc_l_offset);
+                add(aux_reg_zp_a_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_zp_a_comp_offs_], aux_reg_zp_a_comp);
             }
             if (brg_.req_s8s8_compensation) {
                 mov(aux_reg_s8s8_comp, ptr[rsp + aux_reg_s8s8_comp_offs_]);
-                add(aux_reg_s8s8_comp, sizeof(int32_t) * oc_l_offset);
+                add(aux_reg_s8s8_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
             if (brg_.with_wei_scales)
                 add(aux_reg_wei_scales,
-                        brg_.is_per_n_wei_scales * sizeof(float) * oc_l_offset);
+                        static_cast<dim_t>(
+                                brg_.is_per_n_wei_scales * sizeof(float))
+                                * oc_l_offset);
         }
     }
     if (nb2_tail > 0) {
@@ -641,17 +594,21 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             }
             if (brg_.zp_type_a != brgemm_broadcast_t::none) {
                 mov(aux_reg_zp_a_comp, ptr[rsp + aux_reg_zp_a_comp_offs_]);
-                add(aux_reg_zp_a_comp, sizeof(int32_t) * oc_l_offset);
+                add(aux_reg_zp_a_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_zp_a_comp_offs_], aux_reg_zp_a_comp);
             }
             if (brg_.req_s8s8_compensation) {
                 mov(aux_reg_s8s8_comp, ptr[rsp + aux_reg_s8s8_comp_offs_]);
-                add(aux_reg_s8s8_comp, sizeof(int32_t) * oc_l_offset);
+                add(aux_reg_s8s8_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * oc_l_offset);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
             if (brg_.with_wei_scales)
                 add(aux_reg_wei_scales,
-                        brg_.is_per_n_wei_scales * sizeof(float) * oc_l_offset);
+                        static_cast<dim_t>(
+                                brg_.is_per_n_wei_scales * sizeof(float))
+                                * oc_l_offset);
         }
     }
     if (nb_tail > 0) {
@@ -667,12 +624,14 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::loop_by_N(
             }
             if (brg_.zp_type_a != brgemm_broadcast_t::none) {
                 mov(aux_reg_zp_a_comp, ptr[rsp + aux_reg_zp_a_comp_offs_]);
-                add(aux_reg_zp_a_comp, sizeof(int32_t) * nb_tail);
+                add(aux_reg_zp_a_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * nb_tail);
                 mov(ptr[rsp + aux_reg_zp_a_comp_offs_], aux_reg_zp_a_comp);
             }
             if (brg_.req_s8s8_compensation) {
                 mov(aux_reg_s8s8_comp, ptr[rsp + aux_reg_s8s8_comp_offs_]);
-                add(aux_reg_s8s8_comp, sizeof(int32_t) * nb_tail);
+                add(aux_reg_s8s8_comp,
+                        static_cast<dim_t>(sizeof(int32_t)) * nb_tail);
                 mov(ptr[rsp + aux_reg_s8s8_comp_offs_], aux_reg_s8s8_comp);
             }
             if (brg_.with_wei_scales)
@@ -689,21 +648,22 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
 
     sub(rsp, stack_space_needed_);
 
-    int nb = brg_.load_dim / brg_.ld_block;
-    int nb_tail = brg_.load_dim % brg_.ld_block;
+    const int nb = static_cast<int>(brg_.load_dim / brg_.ld_block);
+    const int nb_tail = static_cast<int>(brg_.load_dim % brg_.ld_block);
 
-    int nb2 = nb / n_block2_;
-    int nb2_tail = nb % n_block2_;
+    const int nb2 = nb / n_block2_;
+    const int nb2_tail = nb % n_block2_;
     int n_block = (nb2 == 0) ? nstl::max(1, nb2_tail) : n_block2_;
 
     int m_max_regs = (brg_.is_bf16_emu
                     ? 24
                     : (brg_.is_fp8_via_convert() ? 23 : max_vregs_ - 4));
     m_max_regs /= n_block;
-    int m_block = nstl::min(brg_.bcast_dim, m_max_regs);
+    int m_block
+            = static_cast<int>(nstl::min<dim_t>(brg_.bcast_dim, m_max_regs));
 
-    int mb = brg_.bcast_dim / m_block;
-    int mb_tail = brg_.bcast_dim % m_block;
+    const dim_t mb = brg_.bcast_dim / m_block;
+    const int mb_tail = static_cast<int>(brg_.bcast_dim % m_block);
 
     if (isa_has_masks(brg_.isa_impl)) {
         const auto full_mask = size_t {0xffffffffffffffff};
@@ -751,7 +711,7 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<Vmm>::generate() {
     }
     mov(reg_out, ptr[param1 + GET_OFF(ptr_out)]);
 
-    for (int mb_ = 0; mb_ < mb; mb_++) {
+    for (dim_t mb_ = 0; mb_ < mb; mb_++) {
         loop_by_N(m_block, nb2, nb2_tail, nb_tail);
 
         if (brg_.alpha != 0) add(reg_in, inp_typesize_ * (m_block * brg_.LDC));

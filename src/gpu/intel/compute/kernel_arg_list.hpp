@@ -45,7 +45,6 @@ enum class scalar_type_t {
     undef,
     _char,
     _f4_e2m1,
-    _f4_e3m0,
     _hfloat8,
     _bfloat8,
     _bfloat16,
@@ -67,7 +66,8 @@ enum class scalar_type_t {
     _int64x4_t,
     _int64x5_t,
     _int64x6_t,
-    _dispatch_gws_rt_params_t,
+    _dispatch_gws_rt_params32_t,
+    _dispatch_gws_rt_params64_t,
 };
 
 inline std::string to_string(scalar_type_t type) {
@@ -78,7 +78,6 @@ inline std::string to_string(scalar_type_t type) {
         CASE(undef);
         CASE(_char);
         CASE(_f4_e2m1);
-        CASE(_f4_e3m0);
         CASE(_hfloat8);
         CASE(_bfloat8);
         CASE(_bfloat16);
@@ -100,7 +99,8 @@ inline std::string to_string(scalar_type_t type) {
         CASE(_int64x4_t);
         CASE(_int64x5_t);
         CASE(_int64x6_t);
-        CASE(_dispatch_gws_rt_params_t);
+        CASE(_dispatch_gws_rt_params32_t);
+        CASE(_dispatch_gws_rt_params64_t);
     }
     return "unexpected";
 #undef CASE

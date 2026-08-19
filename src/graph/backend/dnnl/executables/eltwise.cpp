@@ -171,12 +171,13 @@ std::optional<::sycl::event> binary_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event binary_executable_t::execute_ocl(const stream &stream,
+ocl_event_t binary_executable_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
+        const std::vector<ocl_event_t> &deps) const {
     if (is_dummy_) { return dummy_impl_.execute_ocl(stream, args, deps); }
 
-    auto ocl_deps = deps;
+    std::vector<cl_event> ocl_deps(deps.begin(), deps.end());
+    ocl_event_t reorder_event;
     if (with_sum_) {
         auto it_dst = args.find(DNNL_ARG_DST);
         auto it_src = args.find(DNNL_GRAPH_ARG_POST_SRC);
@@ -190,16 +191,15 @@ cl_event binary_executable_t::execute_ocl(const stream &stream,
 
         if (psrc_mem.get_data_handle() != dst_mem.get_data_handle()) {
             auto prim = dnnl::reorder(psrc_mem, dst_mem);
-            auto e = dnnl::ocl_interop::execute(prim, stream,
+            reorder_event = ocl_event_t(dnnl::ocl_interop::execute(prim, stream,
                     {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
                             {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
-                    deps);
-            // WA: ocl_deps = {e}; may cause compiler warining with GCC 13+.
-            ocl_deps.assign(1, e);
+                    ocl_deps));
+            ocl_deps.assign(1, reorder_event.get());
         }
     }
     auto e = dnnl::ocl_interop::execute(prim_, stream, args, ocl_deps);
-    return e;
+    return ocl_event_t(e);
 }
 #endif
 

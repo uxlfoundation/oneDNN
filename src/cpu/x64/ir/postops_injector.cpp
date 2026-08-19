@@ -28,30 +28,31 @@ namespace x64 {
 namespace ir {
 
 template <typename Vmm>
-using injector_base_t = injector::jit_uni_postops_injector_base_t<Vmm>;
+using injector_t = injector::jit_uni_postops_injector_t<Vmm>;
 
 namespace {
 
-// Create an injector for the target ISA and return it type-erased.
+// Create an injector and return it type-erased. The ISA it generates for comes
+// from the host generator.
 template <typename Vmm>
-std::shared_ptr<void> create_injector(jit_generator_t &gen, cpu_isa_t isa,
+std::shared_ptr<void> create_injector(jit_generator_t &gen,
         const post_ops_t &post_ops,
         const binary_injector::static_params_t &bsp) {
-    return std::shared_ptr<injector_base_t<Vmm>>(
-            injector_base_t<Vmm>::create(&gen, isa, post_ops, bsp));
+    return std::make_shared<injector_t<Vmm>>(
+            &gen, post_ops, bsp, /* inject_sum = */ true);
 }
 
 template <typename Vmm>
-injector_base_t<Vmm> *cast2tgt(void *injector) {
-    return static_cast<injector_base_t<Vmm> *>(injector);
+injector_t<Vmm> *cast2tgt(void *injector) {
+    return static_cast<injector_t<Vmm> *>(injector);
 }
 
 } // namespace
 
 postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
         const post_ops_t &post_ops, const memory_desc_t &dst_md,
-        const Xbyak::Reg64 &param_reg, size_t rhs_arg_offset,
-        size_t dst_orig_off, int tail_elems)
+        const Xbyak::Reg64 &param_reg, int rhs_arg_offset, dim_t dst_orig_off,
+        int tail_elems)
     : is_zmm_(is_superset(isa, avx512_core)), tail_elems_(tail_elems) {
     const memory_desc_wrapper dst_d(dst_md);
 
@@ -62,30 +63,33 @@ postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
 
     const size_t rhs_dt_helper_vmm_idx = 0;
 
-    // Right-hand-side argument config for binary post-ops. Eltwise does not use
-    // it. `rhs_arg_offset` locates the argument pointer array in the parameter
+    // Right-hand-side argument config, used by binary post-ops and, for the
+    // load path only, by sum. Eltwise does not use it.
+    // `rhs_arg_offset` locates the argument pointer array in the parameter
     // struct. `dst_orig_off` locates the destination origin, used to turn an
     // accumulator address into its destination position. `tail_elems` is the
     // element count a partial load reads on avx2. The avx512 opmask path is not
     // enabled yet.
     const binary_injector::rhs_arg_static_params_t rhs_sp {
             rhs_dt_helper_vmm_idx, gen.r14, gen.r15, gen.r13, preserve_gpr,
-            preserve_vmm, rhs_arg_offset, dst_orig_off, dst_d,
-            (size_t)tail_elems, use_exact_tail_scalar_bcast};
+            preserve_vmm, rhs_arg_offset, dst_orig_off, dst_d, tail_elems,
+            use_exact_tail_scalar_bcast};
 
     const binary_injector::static_params_t bsp {param_reg,
             binary_injector::get_all_strategies_supported_by_injector(),
             rhs_sp};
 
-    injector_ = is_zmm_ ? create_injector<Xbyak::Zmm>(gen, isa, post_ops, bsp)
-                        : create_injector<Xbyak::Ymm>(gen, isa, post_ops, bsp);
+    injector_ = is_zmm_ ? create_injector<Xbyak::Zmm>(gen, post_ops, bsp)
+                        : create_injector<Xbyak::Ymm>(gen, post_ops, bsp);
     assert(injector_ && "ir post-ops injector creation failed");
 
     with_eltwise_ = post_ops.find(primitive_kind::eltwise) != -1;
+    with_sum_ = post_ops.find(primitive_kind::sum) != -1;
     // Prelu is injected through the binary injector and needs the same
-    // right-hand-side arguments, so treat it like a binary post-op.
-    with_binary_ = post_ops.find(primitive_kind::binary) != -1
-            || post_ops.find(primitive_kind::prelu) != -1;
+    // right-hand-side arguments, so treat it like a binary post-op. The sum
+    // reads the previous destination value through those same arguments.
+    needs_rhs_args_ = post_ops.find(primitive_kind::binary) != -1
+            || post_ops.find(primitive_kind::prelu) != -1 || with_sum_;
 }
 
 void postops_injector_t::apply(const std::vector<int> &acc_phys, int base_phys,
@@ -94,8 +98,9 @@ void postops_injector_t::apply(const std::vector<int> &acc_phys, int base_phys,
     for (int idx : acc_phys)
         vmm_idxs.insert((size_t)idx);
 
-    if (!with_binary_) {
-        // Eltwise-only chains have no right-hand-side arguments to address.
+    if (!needs_rhs_args_) {
+        // Chains without a binary, prelu or sum post-op have nothing to address
+        // relative to the destination.
         if (is_zmm_)
             cast2tgt<Xbyak::Zmm>(injector_.get())
                     ->compute_vector_range(vmm_idxs);
@@ -117,8 +122,9 @@ void postops_injector_t::apply(const std::vector<int> &acc_phys, int base_phys,
     JIT_ASSERT((!is_tail || elems == tail_elems_)
             && "inject_postops: tail count does not match the injector");
 
-    // Map each accumulator to its destination address so the injector locates
-    // the matching right-hand-side slice.
+    // Map each accumulator to its destination address. A binary post-op uses it
+    // to locate the corresponding right-hand-side slice, and the sum operation
+    // uses it to access the previous destination value.
     binary_injector::rhs_arg_dynamic_params_t rhs_args;
     const Xbyak::Reg64 out_reg(base_phys);
     for (size_t i = 0; i < acc_phys.size(); i++) {
@@ -137,8 +143,8 @@ void postops_injector_t::apply(const std::vector<int> &acc_phys, int base_phys,
 }
 
 void postops_injector_t::maybe_prepare_table() {
-    // The constant table is only needed for eltwise.
-    if (!with_eltwise_) return;
+    // The constant table is needed for eltwise and sum.
+    if (!with_eltwise_ && !with_sum_) return;
 
     const bool generate = true;
     if (is_zmm_)

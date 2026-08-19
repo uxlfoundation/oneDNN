@@ -113,11 +113,16 @@ const char *direction2str(dnnl_rnn_direction_t direction) {
 
 flags_t str2flags(const char *str) {
     flags_t flags = NONE;
-    while (str && *str) {
-        if (*str == 'O')
+    // Iterate with a separate cursor so `str` still points at the whole value and the
+    // error below can report what the user actually passed rather than its tail.
+    for (const char *s = str; s && *s; s++) {
+        if (*s == 'O') {
             flags |= DIFF_WEIGHTS_OVERWRITE;
-        else { BENCHDNN_PRINT(0, "%s\n", "Error: unsupported flags value."); }
-        str++;
+        } else {
+            BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                    "Error: --flags option doesn't support value", str);
+            SAFE_V(FAIL);
+        }
     }
     return flags;
 }
@@ -273,7 +278,6 @@ std::string prb_t::set_repro_line() {
     using ::operator<<;
 
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     if (canonical || prop != prop2prop_kind(def.prop[0]))

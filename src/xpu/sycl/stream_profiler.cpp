@@ -100,8 +100,8 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
         if (!ev) continue;
 
         const auto &sycl_event = xpu::sycl::event_t::from(*ev);
+        assert(sycl_event.size() > 0);
         size_t last_idx = sycl_event.size() - 1;
-        assert(last_idx >= 0);
 
         auto evbeg
                 = sycl_event[0]
@@ -128,8 +128,8 @@ bool verbose_profiler_t::is_event_complete(
     if (!event) return true;
 
     const auto &sycl_event = xpu::sycl::event_t::from(*event);
+    assert(sycl_event.size() > 0);
     size_t last_idx = sycl_event.size() - 1;
-    assert(last_idx >= 0);
 
     auto status
             = sycl_event[last_idx]
@@ -144,8 +144,8 @@ void verbose_profiler_t::wait_for_event_completion(
     if (!event) return;
 
     const auto &sycl_event = xpu::sycl::event_t::from(*event);
+    assert(sycl_event.size() > 0);
     size_t last_idx = sycl_event.size() - 1;
-    assert(last_idx >= 0);
 
     try {
         ::sycl::event::wait({sycl_event[last_idx]});

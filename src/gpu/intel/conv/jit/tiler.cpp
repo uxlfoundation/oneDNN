@@ -634,7 +634,7 @@ private:
             return false;
         }
 
-        blocking_t blk;
+        const blocking_t &blk;
         dim_t b_iter;
         dim_t m_iter;
         dim_t n_iter;
@@ -1207,26 +1207,27 @@ dim_t grf_usage_bytes(const config_t &cfg, const blocking_params_t &params) {
 
 void sort_by_model_scores(params_generator_t &params_gen, const config_t &cfg,
         tiler_mode_t mode) {
-    std::unordered_map<int, float> eff_scores;
+    std::vector<float> eff_scores(params_gen.configs());
+    auto shape = cfg.shape(/*pad=*/true);
     for (int i = 0; i < params_gen.configs(); i++) {
         auto &p = params_gen.at(i);
         float score = model::get_score(cfg, p);
-        float eff = p.blocking().get_efficiency(cfg.shape(/*pad=*/true));
-        eff_scores.emplace(p.id(), score * eff);
+        float eff = p.blocking().get_efficiency(shape);
+        eff_scores[p.id()] = score * eff;
     }
     if (mode == tiler_mode_t::lookup) {
         // Give the lookup entry the highest score.
         eff_scores[params_gen.at(0).id()] = 1.0f;
     }
     params_gen.sort(0, params_gen.configs(),
-            [&](const blocking_params_t &p) { return -eff_scores.at(p.id()); });
+            [&](const blocking_params_t &p) { return -eff_scores[p.id()]; });
 
     // Heuristics when model tie is detected
     auto &params_vec = params_gen.params_vec();
     auto &p_best = params_vec[0];
     for (auto &p_next : params_gen.params_vec()) {
         if (&p_best == &p_next) continue;
-        if (eff_scores.at(p_best.id()) != eff_scores.at(p_next.id())) break;
+        if (eff_scores[p_best.id()] != eff_scores[p_next.id()]) break;
 
         if (cfg.prb().is_bwd_w && cfg.allow_global_reduction()) {
             // As the model estimate is the same, prefer fewer atomic reductions
@@ -1246,6 +1247,7 @@ void sort_by_model_scores(params_generator_t &params_gen, const config_t &cfg,
     }
 
 #ifdef DNNL_DEV_MODE
+    if (!logger_t<log_level_t::trace>::is_enabled()) return;
     using namespace ir_utils;
     std::vector<std::string> headers
             = {"Config", "Score", "Eff", "Regs", "SLM size"};

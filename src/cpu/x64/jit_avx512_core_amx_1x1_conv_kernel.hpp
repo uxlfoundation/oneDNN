@@ -53,7 +53,7 @@ struct jit_avx512_core_amx_1x1_fwd_kernel_t : public jit_generator_t {
 private:
     constexpr static int isa_simd_width_
             = cpu_isa_traits_t<avx512_core>::vlen / sizeof(float);
-    std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Xbyak::Zmm>>
             postops_injector_;
 
     enum {
@@ -122,10 +122,10 @@ private:
     int get_wei_tensor(int i) const;
     int get_ic_tail() const;
 
-    size_t out_h_shift() const;
-    size_t out_w_shift() const;
-    size_t inp_offset(int ih, int iw, int icb) const;
-    size_t out_row_offset(int h, int w, int ocb) const;
+    dim_t out_h_shift() const;
+    dim_t out_w_shift() const;
+    dim_t inp_offset(dim_t ih, dim_t iw, dim_t icb) const;
+    dim_t out_row_offset(dim_t h, dim_t w, dim_t ocb) const;
 
     void prepare_output();
 
@@ -145,23 +145,25 @@ private:
 
     void update_buffer_pointers();
     void interleave_store();
-    void apply_sum(const Xbyak::Zmm zmm_out, const float *p_sum_scale,
-            const int32_t *p_sum_zp, const Xbyak::Address &addr,
-            const bool mask_flag);
-    void apply_postops(const Xbyak::Zmm zmm_out, const float *p_sum_scale,
-            const int32_t *p_sum_zp, const Xbyak::Address &addr,
-            const size_t off, const bool mask_flag);
+    // Sum goes through the post-ops injector on the int8 single-row store path
+    // only. The bf16 path folds it into the accumulator by hand, see
+    // `store_output_vector_bf16`, and the `is_fast_postops` whole-tile paths
+    // bypass the injector altogether.
+    bool is_sum_via_postops() const { return jcp.with_sum && !is_bf16(); }
+    void apply_postops(
+            const Xbyak::Zmm zmm_out, const size_t off, const bool mask_flag);
     static bool is_fast_postops(const jit_conv_conf_t &jcp);
     void store_output_vectors_int8(int ocb, int osb);
     void store_output_vector_int8(
-            const Xbyak::Zmm zmm_out, int ocb, int h, int w);
+            const Xbyak::Zmm zmm_out, int ocb, dim_t h, dim_t w);
     inline void store_output_ymm_bf16(
             const int idx, const Xbyak::Address &addr, const bool mask_flag);
     void store_output_vectors_bf16(int ocb, int osb);
     void store_output_vector_bf16(
-            const Xbyak::Zmm zmm_out, int ocb, int h, int w);
+            const Xbyak::Zmm zmm_out, int ocb, dim_t h, dim_t w);
     void store_output_vectors(int ocb, int osb);
-    void store_output_vector(const Xbyak::Zmm zmm_out, int ocb, int h, int w);
+    void store_output_vector(
+            const Xbyak::Zmm zmm_out, int ocb, dim_t h, dim_t w);
     void store_output(bool do_store, bool is_tail);
     void icb_loop(bool do_store);
     void osb_loop(int nb_os = 1);

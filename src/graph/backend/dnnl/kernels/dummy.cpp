@@ -94,22 +94,25 @@ status_t dummy_kernel_t::sycl_execute_impl(stream_t *strm,
 status_t dummy_kernel_t::ocl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
-        const std::vector<cl_event> &cl_deps, cl_event *ret_event) {
+        const std::vector<ocl_event_t> &cl_deps, ocl_event_t &ret_event) {
 
     dnnl::stream p_stream = make_dnnl_stream(*strm);
 
-    if (ret_event) {
-        // Fast path: if only one event, return it.
+    ret_event = {};
+    if (!cl_deps.empty()) {
+        // Fast path: if only one event, return it (copy retains).
         if (cl_deps.size() == 1) {
-            *ret_event = cl_deps[0];
+            ret_event = cl_deps[0];
         } else {
             // Otherwise, gather all dependencies.
             auto q = dnnl::ocl_interop::get_command_queue(p_stream);
+            std::vector<cl_event> raw_deps(cl_deps.begin(), cl_deps.end());
+            cl_event e;
             auto err = xpu::ocl::clEnqueueMarkerWithWaitList(q,
-                    static_cast<cl_uint>(cl_deps.size()), cl_deps.data(),
-                    ret_event);
+                    static_cast<cl_uint>(raw_deps.size()), raw_deps.data(), &e);
             assert(err == CL_SUCCESS);
             if (err != CL_SUCCESS) return status::runtime_error;
+            ret_event = ocl_event_t(e);
         }
     }
 

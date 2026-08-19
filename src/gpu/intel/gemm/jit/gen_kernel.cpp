@@ -80,7 +80,6 @@ compute::scalar_type_t gen_desc_t::scalar_type() const {
         case Type::s64: return compute::scalar_type_t::_long;
         case Type::u64: return compute::scalar_type_t::_ulong;
         case Type::f4_e2m1: return compute::scalar_type_t::_f4_e2m1;
-        case Type::f4_e3m0: return compute::scalar_type_t::_f4_e3m0;
         case Type::bf8: return compute::scalar_type_t::_bfloat8;
         case Type::hf8: return compute::scalar_type_t::_hfloat8;
         case Type::bf16: return compute::scalar_type_t::_bfloat16;
@@ -190,10 +189,10 @@ status_t gen_desc_t::finalize(const char *tags) {
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
         strategy_.unroll[LoopN] = entry_->driverInfo.unroll[LoopN];
         parseStrategy(entry_->strategy, hw_, problem_, strategy_);
-        modifyStrategy(strategy_, aux_params_);
 #ifdef DNNL_DEV_MODE
     }
 #endif
+    modifyStrategy(strategy_, aux_params_);
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
 

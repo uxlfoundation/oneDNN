@@ -162,8 +162,7 @@ struct logical_tensor_wrapper_t {
      * For the rest data types returns 1. */
     size_t sub_byte_data_type_multiplier() const {
         if (utils::one_of(data_type(), data_type::s4, data_type::u4,
-                    dnnl::impl::data_type::f4_e2m1,
-                    dnnl::impl::data_type::f4_e3m0))
+                    dnnl::impl::data_type::f4_e2m1))
             return 2;
         return 1;
     }

@@ -138,8 +138,13 @@ inline bool is_zen_packed(const memory_desc_t &md) {
 // configs (uniform f32, uniform bf16, bf16 src/wei -> f32 dst) it equals the
 // weights compute type; it is recorded so packed descriptors for different
 // GEMM source types stay distinct in the primitive cache.
+// K and N are the GEMM dimensions (contraction, output). weights_transposed
+// tells how the md's dims map to them: false => [K, N] (matmul); true =>
+// [N, K] = [OC, IC] (inner product). It only affects how zen_reorder reads the
+// source -- packed bytes are normalized either way. Default false = matmul.
 inline status_t init_zen_packed_md(memory_desc_t &weights_md,
-        data_type_t gemm_src_dt, dim_t K, dim_t N, dim_t batch = 1) {
+        data_type_t gemm_src_dt, dim_t K, dim_t N, dim_t batch = 1,
+        bool weights_transposed = false) {
     const dim_t per_slice = zen_packed_bytes(K, N, weights_md.data_type);
     if (per_slice <= 0) return status::unimplemented;
 
@@ -156,6 +161,8 @@ inline status_t init_zen_packed_md(memory_desc_t &weights_md,
     weights_md.format_desc.zen_packed_desc.per_slice_size = per_slice_sz;
     weights_md.format_desc.zen_packed_desc.size = per_slice_sz * batch_sz;
     weights_md.format_desc.zen_packed_desc.gemm_src_dt = gemm_src_dt;
+    weights_md.format_desc.zen_packed_desc.weights_transposed
+            = weights_transposed;
     return status::success;
 }
 

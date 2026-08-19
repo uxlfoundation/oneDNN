@@ -24,7 +24,7 @@ namespace x64 {
 
 jit_prelu_backward_kernel_t::jit_prelu_backward_kernel_t(
         const cpu_prelu_bwd_pd_t *pd, const cpu_isa_t &isa, const int vlen,
-        const size_t number_vmm_single_compute)
+        const int number_vmm_single_compute)
     : jit_prelu_base_kernel_t(isa, vlen,
               prelu::get_bcast_type(memory_desc_wrapper(pd->diff_src_md(0)),
                       memory_desc_wrapper(pd->diff_weights_md(0))),
@@ -58,7 +58,7 @@ void jit_prelu_backward_kernel_t::load_kernel_call_params() {
 Xbyak::Address jit_prelu_backward_kernel_t::data_ptr(int arg_num, size_t offt) {
     const auto get_addr
             = [&](const Xbyak::Reg64 &reg_base, const data_type_t dt) {
-        const auto dt_size = types::data_type_size(dt);
+        const int dt_size = static_cast<int>(types::data_type_size(dt));
         return ptr[reg_base + reg_offset_ * dt_size + offt * dt_size];
     };
 
@@ -149,16 +149,16 @@ void jit_uni_prelu_backward_kernel_t<Vmm>::prepare_kernel_const_vars() {
 
 template <typename Vmm>
 void jit_uni_prelu_backward_kernel_t<Vmm>::compute_dst(
-        size_t unrolling_factor, bool tail) {
+        int unrolling_factor, bool tail) {
 
-    static constexpr size_t dst_diff_idx = 0;
-    static constexpr size_t src_idx = 1;
-    static constexpr size_t src_le_zero_idx = 2;
-    static constexpr size_t src_gt_zero_idx = 3;
-    static constexpr size_t weights_diff_idx = 4;
-    static constexpr size_t weights_idx = 5;
+    static constexpr int dst_diff_idx = 0;
+    static constexpr int src_idx = 1;
+    static constexpr int src_le_zero_idx = 2;
+    static constexpr int src_gt_zero_idx = 3;
+    static constexpr int weights_diff_idx = 4;
+    static constexpr int weights_idx = 5;
 
-    for (size_t unroll_group = 0; unroll_group < unrolling_factor;
+    for (int unroll_group = 0; unroll_group < unrolling_factor;
             ++unroll_group) {
 
         const Vmm dst_diff_vmm {get_compute_vmm(dst_diff_idx, unroll_group)};
@@ -206,24 +206,24 @@ void jit_uni_prelu_backward_kernel_t<Vmm>::compute_dst(
 
 template <>
 void jit_uni_prelu_backward_kernel_t<Xbyak::Zmm>::compute_dst(
-        size_t unrolling_factor, bool tail) {
+        int unrolling_factor, bool tail) {
 
-    size_t opmask_counter = 2;
+    int opmask_counter = 2;
     auto get_next_opmask = [opmask_counter]() mutable {
-        static constexpr size_t opmask_range_begin = 2;
-        static constexpr size_t opmask_range_end = 8;
+        static constexpr int opmask_range_begin = 2;
+        static constexpr int opmask_range_end = 8;
         const auto opmask = Xbyak::Opmask(opmask_counter++);
         if (opmask_counter == opmask_range_end)
             opmask_counter = opmask_range_begin;
         return opmask;
     };
 
-    static constexpr size_t dst_diff_idx = 0;
-    static constexpr size_t src_idx = 1;
-    static constexpr size_t weights_diff_idx = 2;
-    static constexpr size_t weights_idx = 3;
+    static constexpr int dst_diff_idx = 0;
+    static constexpr int src_idx = 1;
+    static constexpr int weights_diff_idx = 2;
+    static constexpr int weights_idx = 3;
 
-    for (size_t unroll_group = 0; unroll_group < unrolling_factor;
+    for (int unroll_group = 0; unroll_group < unrolling_factor;
             ++unroll_group) {
 
         const auto offset = unroll_group * simd_w_;

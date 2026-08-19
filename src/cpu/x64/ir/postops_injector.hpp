@@ -67,15 +67,17 @@ struct postops_injector_t {
     // tail_elems     - right-hand-side elements a partial (tail) load reads
     DNNL_API postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
             const post_ops_t &post_ops, const memory_desc_t &dst_md,
-            const Xbyak::Reg64 &param_reg, size_t rhs_arg_offset,
-            size_t dst_orig_off, int tail_elems);
+            const Xbyak::Reg64 &param_reg, int rhs_arg_offset,
+            dim_t dst_orig_off, int tail_elems);
 
     postops_injector_t(const postops_injector_t &) = delete;
     postops_injector_t &operator=(const postops_injector_t &) = delete;
 
     // Apply the post-ops to the accumulators in `acc_phys` (physical vec
-    // register indices). For binary post-ops, `base_phys` and `out_byte_off`
-    // give each accumulator's output address. `elems` is the active element
+    // register indices). For binary and sum post-ops, `base_phys` and
+    // `out_byte_off` give each accumulator's output address: binary reaches its
+    // right-hand-side argument through it, sum reads the previous destination
+    // value from it. `elems` is the active element
     // count, `-1` for a full vector, and limits how many right-hand-side
     // elements are read. `mask_phys` is the tail opmask (a K register), used
     // only by the avx512 emitter, which is not enabled yet.
@@ -83,18 +85,22 @@ struct postops_injector_t {
             const std::vector<dim_t> &out_byte_off, int mask_phys, int elems);
 
     // Emit the post-ops constant table. Call once, after the postamble. Only
-    // eltwise post-ops have a table, so this is a no-op without one.
+    // eltwise and sum post-ops have a table, so this is a no-op without one.
     void DNNL_API maybe_prepare_table();
 
 private:
-    // Type-erased `jit_uni_postops_injector_base_t<Vmm>`. Cast to the target
+    // Type-erased `jit_uni_postops_injector_t<Vmm>`. Cast to the target
     // type when used, based on `is_zmm_`.
     std::shared_ptr<void> injector_;
     bool is_zmm_ = false;
-    // Whether the chain has an eltwise post-op (the only kind with a table).
+    // Whether the chain has an eltwise post-op.
     bool with_eltwise_ = false;
-    // Whether the chain has a binary post-op (the only kind needing rhs args).
-    bool with_binary_ = false;
+    // Whether the chain has a sum post-op.
+    bool with_sum_ = false;
+    // Whether any post-op needs the per-accumulator destination address: binary
+    // and prelu to reach their right-hand-side argument, sum to read the
+    // previous destination value.
+    bool needs_rhs_args_ = false;
     // Number of right-hand-side elements a tail load reads.
     int tail_elems_ = 0;
 };

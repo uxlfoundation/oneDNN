@@ -37,9 +37,9 @@ Package::Status Package::finalize(const ClobberSet &knownClobbers) {
     }
 
     Decoder decoder(hw, binary);
-    DependencyRegion dstRegion;
 
     auto clobbered = knownClobbers;
+    int maxAccIdx = -1;
 
     for (; !decoder.done(); decoder.advance()) {
         // Check for systolic usage.
@@ -49,13 +49,36 @@ Package::Status Package::finalize(const ClobberSet &knownClobbers) {
         // Get destination region and add to clobbers. This indeterminate for
         // indirect or variable sized destinations. In this case, rely on
         // knownClobbers.
-        if (decoder.getOperandRegion(dstRegion, -1)) {
+        DependencyRegion dstRegion;
+        if (!decoder.getOperandRegion(dstRegion, -1)) continue;
+
+        if (dstRegion.rf == RegFileGRF) {
             if (dstRegion.unspecified
                 && !(dstRegion.isValid() && knownClobbers[dstRegion.base])) {
                     status = Status::UncertainClobbers;
             } else
                 for (int j = 0; j < dstRegion.size; j++)
                     clobbered[dstRegion.base + j] = true;
+        }
+
+        // Allow acc/flag ARF destinations only if declared in knownClobbers.
+        if (dstRegion.rf == RegFileARF) {
+            ARFType dstType = static_cast<ARFType>(dstRegion.base >> 4);
+            int arfIdx = dstRegion.base & 0xF;
+            int arfLen = dstRegion.size;
+            bool known = false;
+            if (dstType == ARFType::acc) {
+                known = true;
+                for (int j = arfIdx; j < arfIdx + arfLen; j++)
+                    known &= knownClobbers.acc(j);
+                maxAccIdx = std::max(maxAccIdx, arfIdx + arfLen - 1);
+            } else if (dstType == ARFType::f) {
+                known = true;
+                for (int j = arfIdx; j < arfIdx + arfLen; j++)
+                    known &= knownClobbers.flag(j);
+            }
+            if (!known)
+                status = Status::UncertainClobbers;
         }
     }
 
@@ -90,6 +113,12 @@ Package::Status Package::finalize(const ClobberSet &knownClobbers) {
             last = std::max(last, range.boffset + range.blen);
 
     grfMin = (last + regBytes - 1) / regBytes;
+
+    int nacc = AccumulatorRegister::count(hw, grfMin);
+    if (nacc <= maxAccIdx) {
+        // Upgrade to 8 accumulators
+        grfMin = 256;
+    }
 
     // Generate LUID from hash of kernel. Later, the cataloguer can update it in case of collisions.
     uint32_t luid = 0;

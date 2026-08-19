@@ -53,11 +53,12 @@ struct groupnorm_executable_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream &stream,
+    ocl_event_t execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
-            const std::vector<cl_event> &deps) const override {
-        auto e = dnnl::ocl_interop::execute(prim_, stream, args, deps);
-        return e;
+            const std::vector<ocl_event_t> &deps) const override {
+        std::vector<cl_event> raw_deps(deps.begin(), deps.end());
+        auto e = dnnl::ocl_interop::execute(prim_, stream, args, raw_deps);
+        return ocl_event_t(e);
     }
 #endif
 

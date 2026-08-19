@@ -602,15 +602,31 @@ class LegacyParserImpl(ParserImpl):
 @register(version=1)
 class V1ParserImpl(ParserImpl):
     def parse_md(self, descriptor):
-        fields = descriptor.split(":")
+        grouped: Optional[ir.MemoryDescriptor.GroupedDesc] = None
+        tag = strides = ""
+        arg, dt, props, format_kind, *others = descriptor.split(":")
+        if format_kind == "sparse" and others[:1] == ["grouped"]:
+            # arg:dt:props:sparse:grouped:var_dim_idx:group_count::flags
+            _, dim, count, _empty, flags, *fields = others
+            grouped = self.parse_md_grouped_desc(dim, count)
+        else:
+            # non-grouped sparse (csr/coo) puts its encoding in the tag field
+            tag, strides, flags, *fields = others
         return ir.MemoryDescriptor(
-            arg=fields[0],
-            data_type=fields[1],
-            properties=fields[2],
-            format_kind=fields[3],
-            tag=fields[4],
-            strides=fields[5],
-            flags=self.parse_md_flags(fields[6], fields[7:]),
+            arg=arg,
+            data_type=dt,
+            properties=props,
+            format_kind=format_kind,
+            tag=tag,
+            strides=strides,
+            flags=self.parse_md_flags(flags, fields),
+            grouped=grouped,
+        )
+
+    def parse_md_grouped_desc(self, dim: str, count: str):
+        return ir.MemoryDescriptor.GroupedDesc(
+            variable_dim_idx=int(dim),
+            group_count=int(count),
         )
 
 

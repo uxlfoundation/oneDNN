@@ -76,11 +76,11 @@ struct ref_t : public primitive_t {
 
             VDISPATCH_REORDER(
                     utils::one_of(sdt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                            f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
+                            f4_e2m1, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_REORDER(
                     utils::one_of(ddt, f32, f16, bf16, f8_e5m2, f8_e4m3,
-                            f4_e2m1, f4_e3m0, s32, s8, u8, s4, u4, f64),
+                            f4_e2m1, s32, s8, u8, s4, u4, f64),
                     VERBOSE_UNSUPPORTED_DT);
 
             const auto *intel_engine = utils::downcast<const intel::engine_t *>(
@@ -136,15 +136,11 @@ struct ref_t : public primitive_t {
 
         const auto &conf = pd()->conf;
         if (conf.nelems == 0) return status::success;
-        kernels_.resize(2);
 
-        CHECK(create_kernel(engine, &kernels_[0], "ref_reorder", kernel_ctx));
-        if (conf.subbyte_pack)
-            CHECK(create_kernel(
-                    engine, &kernels_[1], "subbyte_pack", kernel_ctx));
+        CHECK(create_kernel(engine, &kernel_, "ref_reorder", kernel_ctx));
+        if (conf.pack_desc) CHECK(pack_.create(conf.pack_desc, *this, engine));
 
-        if (!kernels_[0]) return status::runtime_error;
-        if (conf.subbyte_pack && !kernels_[1]) return status::runtime_error;
+        if (!kernel_) return status::runtime_error;
         return status::success;
     }
 
@@ -152,7 +148,8 @@ struct ref_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    std::vector<compute::kernel_t> kernels_;
+    compute::kernel_t kernel_;
+    subbyte_pack_t pack_;
     std::shared_ptr<impl::primitive_t> zp_precomp_conv_;
 };
 

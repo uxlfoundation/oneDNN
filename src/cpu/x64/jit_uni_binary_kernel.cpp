@@ -40,7 +40,7 @@ static bool is_ne_xf16_supported(cpu_isa_t isa, const data_type_t dtype) {
     return isa == avx2_vnni_2 && is_xf16(dtype);
 }
 
-binary_kernel_t::binary_kernel_t(const size_t vlen, const binary_pd_t *pd,
+binary_kernel_t::binary_kernel_t(const int vlen, const binary_pd_t *pd,
         const jit_binary_conf_t &conf, const char *name, bool tail_kernel)
     : jit_generator_t(name, conf.isa)
     , vlen_(vlen)
@@ -51,10 +51,10 @@ binary_kernel_t::binary_kernel_t(const size_t vlen, const binary_pd_t *pd,
     , is_src1_outer_dims_tail_(
               conf_.is_src_different_layouts && conf_.outer_dims % simd_w_)
     , tail_size_(get_tail_size())
-    , padding_tail_size_(
-              pd->src_md(0)->padded_dims[1] - pd->src_md(0)->dims[1]) {}
+    , padding_tail_size_(static_cast<int>(
+              pd->src_md(0)->padded_dims[1] - pd->src_md(0)->dims[1])) {}
 
-size_t binary_kernel_t::get_tail_size() const {
+int binary_kernel_t::get_tail_size() const {
     memory_desc_wrapper src0_d(pd_->src_md(0));
     const auto &dims = src0_d.dims();
     const auto &ndims = src0_d.ndims();
@@ -148,71 +148,16 @@ void jit_uni_binary_kernel_t<isa, Vmm>::init_post_ops_injector() {
     const binary_injector::static_params_t bsp(this->param1,
             get_supported_postops_bcast_strategies(), rhs_arg_bsp);
 
-    postops_injector_ = utils::make_unique<
-            injector::jit_uni_postops_injector_t<inject_isa, Vmm>>(
-            this, po, bsp, esp);
+    postops_injector_
+            = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
+                    this, po, bsp, esp, /* inject_sum = */ conf_.do_sum);
 }
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::apply_postops(int unroll, bool tail) {
-    const auto sum_ne_xf16_injector = [&]() {
-        const Vmm vreg_dst_even_tmp = conf_.is_src_different_layouts
-                ? vmm_gathered_src_
-                : Vmm(unroll + vmm_start_idx_);
-        const Vmm vreg_dst_odd_tmp = Vmm(unroll + 1 + vmm_start_idx_);
-        const Vmm vmm_aux = vreg_saturation_ubound_;
-        for (int i = 0; i < unroll; i += 2) {
-            const bool can_load_two_simdw = unroll - i >= 2;
-            const int offt_base = simd_w_ * i;
-            const Vmm vreg_tmp_even_src0 = Vmm(i + vmm_start_idx_);
-            const Vmm vreg_tmp_odd_src0 = Vmm(i + 1 + vmm_start_idx_);
-            if (can_load_two_simdw) {
-                io_.at(conf_.dst_type)
-                        ->load_two_simdw_xf16(dst_ptr(offt_base
-                                                      * types::data_type_size(
-                                                              conf_.dst_type)),
-                                vreg_dst_even_tmp, vreg_dst_odd_tmp);
-                io_.at(conf_.dst_type)
-                        ->merge_interleaved_to_plain(
-                                vreg_dst_even_tmp, vreg_dst_odd_tmp, vmm_aux);
-            } else
-                io_.at(conf_.dst_type)
-                        ->load(dst_ptr(offt_base
-                                       * types::data_type_size(conf_.dst_type)),
-                                vreg_dst_even_tmp, false);
-            uni_vfmadd231ps(
-                    vreg_tmp_even_src0, vreg_dst_even_tmp, vreg_sum_scale_);
-            if (can_load_two_simdw)
-                uni_vfmadd231ps(
-                        vreg_tmp_odd_src0, vreg_dst_odd_tmp, vreg_sum_scale_);
-        }
-    };
-
-    const auto sum_injector = [&]() {
-        for (int i = 0; i < unroll; i++) {
-            const int offt = simd_w_ * i;
-            const Vmm vreg_tmp_src0 = Vmm(i + vmm_start_idx_);
-            const Vmm vreg_tmp = conf_.is_src_different_layouts
-                    ? vmm_gathered_src_
-                    : Vmm(unroll + i + vmm_start_idx_);
-            io_.at(conf_.dst_type)
-                    ->load(dst_ptr(offt
-                                   * types::data_type_size(conf_.dst_type)),
-                            vreg_tmp, tail);
-            uni_vfmadd231ps(vreg_tmp_src0, vreg_tmp, vreg_sum_scale_);
-        }
-    };
-
-    if (conf_.do_sum) {
-        if (is_ne_xf16_supported(isa, conf_.dst_type) && !tail)
-            postops_injector_->set_lambda_injector(
-                    primitive_kind::sum, sum_ne_xf16_injector);
-        else
-            postops_injector_->set_lambda_injector(
-                    primitive_kind::sum, sum_injector);
-    }
-
-    if (conf_.with_binary) {
+    // The sum post-op reads the destination through the same rhs parameters as
+    // a binary post-op, so they have to be filled for either one.
+    if (conf_.with_binary || conf_.do_sum) {
         binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
         const Reg64 &reg_offt_dst
                 = conf_.is_i8 ? reg_offt_dst_ : reg_offt_src0_;
@@ -225,18 +170,13 @@ void jit_uni_binary_kernel_t<isa, Vmm>::apply_postops(int unroll, bool tail) {
         if (!conf_.is_i8) shl(reg_tmp_, is_xf16(conf_.dst_type) ? 1 : 2);
         add(reg_tmp1_, reg_tmp_);
 
-        const auto postops_per_w_broadcast_exists
-                = conf_.postops_per_w_broadcast_exists;
         for (int vmm_idx = 1; vmm_idx < unroll + vmm_start_idx_; vmm_idx++) {
             const auto vmm_l_off = (vmm_idx - vmm_start_idx_) * simd_w_;
-            const auto dst_dt_size = types::data_type_size(conf_.dst_type);
+            const int dst_dt_size
+                    = static_cast<int>(types::data_type_size(conf_.dst_type));
             rhs_arg_params.vmm_idx_to_out_reg.emplace(vmm_idx, reg_tmp1_);
-            if (postops_per_w_broadcast_exists)
-                rhs_arg_params.vmm_idx_to_out_addr.emplace(
-                        vmm_idx, dst_ptr(vmm_l_off * dst_dt_size));
-            else
-                rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
-                        vmm_idx, vmm_l_off * dst_dt_size);
+            rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
+                    vmm_idx, vmm_l_off * dst_dt_size);
             if (tail) rhs_arg_params.vmm_tail_idx_.emplace(vmm_idx);
         }
         postops_injector_->compute_vector_range(
@@ -247,9 +187,6 @@ void jit_uni_binary_kernel_t<isa, Vmm>::apply_postops(int unroll, bool tail) {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::load_kernel_params() {
-    mov(reg_tmp_, float2int(conf_.sum_scale));
-    uni_vmovq(xreg_sum_scale_, reg_tmp_);
-    uni_vbroadcastss(vreg_sum_scale_, xreg_sum_scale_);
     if (is_src1_outer_dims_tail_)
         mov(reg_outer_dims_range_,
                 ptr[reg_param_ + PARAM_OFF(spat_offt_count)]);
@@ -280,7 +217,8 @@ void jit_uni_binary_kernel_t<isa, Vmm>::load_kernel_params() {
 // `reg_offt_src0_` in the header file for more details.
 template <cpu_isa_t isa, typename Vmm>
 Address jit_uni_binary_kernel_t<isa, Vmm>::src0_ptr(size_t offt) {
-    const auto src0_type_size = types::data_type_size(conf_.src0_type);
+    const int src0_type_size
+            = static_cast<int>(types::data_type_size(conf_.src0_type));
     return vmmword[reg_src0_ + reg_offt_src0_ * src0_type_size
             + offt * src0_type_size];
 }
@@ -292,14 +230,16 @@ Address jit_uni_binary_kernel_t<isa, Vmm>::src1_ptr(size_t offt) {
 
 template <cpu_isa_t isa, typename Vmm>
 Address jit_uni_binary_kernel_t<isa, Vmm>::src2_ptr(size_t offt) {
-    const auto src2_type_size = types::data_type_size(conf_.src2_type);
+    const int src2_type_size
+            = static_cast<int>(types::data_type_size(conf_.src2_type));
     return vmmword[reg_src2_ + reg_offt_src0_ * src2_type_size
             + offt * src2_type_size];
 }
 
 template <cpu_isa_t isa, typename Vmm>
 Address jit_uni_binary_kernel_t<isa, Vmm>::dst_ptr(size_t offt) {
-    const auto src0_type_size = types::data_type_size(conf_.src0_type);
+    const int src0_type_size
+            = static_cast<int>(types::data_type_size(conf_.src0_type));
     const auto &reg_offt_dst
             = conf_.is_i8 ? reg_offt_dst_ : (reg_offt_src0_ * src0_type_size);
     return vmmword[reg_dst_ + reg_offt_dst + offt];
@@ -345,7 +285,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::perform_op(
     else if (alg == binary_sub)
         uni_vsubps(v0, v0, v1);
     else if (cmp_op) {
-        const unsigned int predicate = cmp_predicate(alg);
+        const uint8_t predicate = static_cast<uint8_t>(cmp_predicate(alg));
         if (is_avx512) {
             vcmpps(cmp_mask, v0, v1, predicate);
             vmovups(v0 | cmp_mask | T_z, vreg_one_);
@@ -443,12 +383,11 @@ void jit_uni_binary_kernel_t<isa, Vmm>::load_src1(
         // gather is using register instead of operand to read address
         // use reg_src1_ directly, without offset stored in second
         // register
-        add(reg_src1_,
-                types::data_type_size(conf_.src1_type) * conf_.src1_stride
-                        * simd_w_);
+        const int src1_type_size
+                = static_cast<int>(types::data_type_size(conf_.src1_type));
+        add(reg_src1_, src1_type_size * conf_.src1_stride * simd_w_);
         sub(reg_reverse_src1_stride_range_,
-                types::data_type_size(conf_.src1_type) * conf_.src1_stride
-                        * simd_w_);
+                src1_type_size * conf_.src1_stride * simd_w_);
 
         Label src1_stride_range_not_exceed, src1_C_tail_end;
 
@@ -456,7 +395,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::load_src1(
         jg(src1_stride_range_not_exceed, T_NEAR);
         {
             pop(reg_src1_);
-            add(reg_src1_, types::data_type_size(conf_.src1_type));
+            add(reg_src1_, src1_type_size);
             push(reg_src1_);
             mov(reg_reverse_src1_stride_range_, reg_src1_stride_range_);
         }
@@ -472,7 +411,8 @@ void jit_uni_binary_kernel_t<isa, Vmm>::store(int unroll, bool tail) {
     for (int i = 0; i < unroll; i++) {
         const Vmm vreg_tmp_src0 = Vmm(i + vmm_start_idx_);
         const int offt = simd_w_ * i;
-        const auto dt_size = types::data_type_size(conf_.dst_type);
+        const int dt_size
+                = static_cast<int>(types::data_type_size(conf_.dst_type));
 
         if (is_tail_kernel_ && padding_tail_size_) {
             // apply zero-padding
@@ -632,8 +572,10 @@ template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::forward() {
     Label unroll_loop, unroll_loop_tail, nelems_tail, end;
 
-    const auto src1_type_size = types::data_type_size(conf_.src1_type);
-    const auto dst_type_size = types::data_type_size(conf_.dst_type);
+    const int src1_type_size
+            = static_cast<int>(types::data_type_size(conf_.src1_type));
+    const int dst_type_size
+            = static_cast<int>(types::data_type_size(conf_.dst_type));
 
     if (conf_.is_src_different_layouts) push(reg_src1_);
 
@@ -681,7 +623,7 @@ void jit_uni_binary_kernel_t<isa, Vmm>::forward() {
 
     L(unroll_loop);
     {
-        const size_t offt = unroll_regs_ * simd_w_;
+        const int offt = unroll_regs_ * simd_w_;
         cmp(reg_reverse_spat_offt_, offt * dst_type_size);
         jl(unroll_loop_tail, T_NEAR);
 
@@ -747,8 +689,9 @@ void jit_uni_binary_kernel_t<isa, Vmm>::forward() {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_binary_kernel_t<isa, Vmm>::forward_over_outer_dims() {
-    const auto outer_dims_size
-            = conf_.outer_dims * types::data_type_size(conf_.dst_type);
+    const int dst_type_size
+            = static_cast<int>(types::data_type_size(conf_.dst_type));
+    const dim_t outer_dims_size = conf_.outer_dims * dst_type_size;
 
     if (conf_.is_i8 || conf_.dst_type == data_type::s32) {
         uni_vpxor(vreg_zero_, vreg_zero_, vreg_zero_);
@@ -785,7 +728,8 @@ void jit_uni_binary_kernel_t<isa, Vmm>::generate() {
         forward();
     postamble();
 
-    if ((conf_.with_eltwise || conf_.is_i8) && postops_injector_)
+    if ((conf_.with_eltwise || conf_.is_i8 || conf_.do_sum)
+            && postops_injector_)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

@@ -24,6 +24,7 @@
 #include "cpu/cpu_lrn_pd.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/jit_avx512_core_bf16cvt.hpp"
+#include "cpu/x64/lrn/jit_avx512_common_lrn_utils.hpp"
 #include "cpu/x64/lrn/lrn_executor.hpp"
 
 namespace dnnl {
@@ -36,16 +37,7 @@ struct jit_avx512_common_lrn_fwd_t : public primitive_t {
         using cpu_lrn_fwd_pd_t::cpu_lrn_fwd_pd_t;
 
         DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("lrn_jit:",
-                        utils::map(true, avx512_core,
-                                d_type == data_type::bf16
-                                        && mayiuse(avx512_core_bf16),
-                                avx512_core_bf16,
-                                d_type == data_type::bf16
-                                        && !mayiuse(avx512_core_bf16),
-                                bf16_emulation_t::get_isa(),
-                                d_type == data_type::f16, avx512_core_fp16),
-                        ""),
+                JIT_IMPL_NAME_HELPER("lrn_jit:", lrn::get_isa<d_type>(), ""),
                 jit_avx512_common_lrn_fwd_t);
 
         status_t init(const engine_t *engine);
@@ -76,16 +68,7 @@ struct jit_avx512_common_lrn_bwd_t : public primitive_t {
         using cpu_lrn_bwd_pd_t::cpu_lrn_bwd_pd_t;
 
         DECLARE_COMMON_PD_T(
-                JIT_IMPL_NAME_HELPER("lrn_jit:",
-                        utils::map(true, avx512_core,
-                                d_type == data_type::bf16
-                                        && mayiuse(avx512_core_bf16),
-                                avx512_core_bf16,
-                                d_type == data_type::bf16
-                                        && !mayiuse(avx512_core_bf16),
-                                bf16_emulation_t::get_isa(),
-                                d_type == data_type::f16, avx512_core_fp16),
-                        ""),
+                JIT_IMPL_NAME_HELPER("lrn_jit:", lrn::get_isa<d_type>(), ""),
                 jit_avx512_common_lrn_bwd_t);
 
         status_t init(const engine_t *engine);

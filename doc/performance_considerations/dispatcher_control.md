@@ -43,6 +43,11 @@ still take effect.
 | \                    | AVX10_2 or AVX10_2_512                       | Intel AVX10.2                                                                                                    |
 | \                    | AVX10_2_AMX_2 or AVX10_2_512_AMX_2           | Intel AVX10.2 and Intel AMX with 8-bit integer, bfloat16, float16, float8 support                                |
 | \                    | **DEFAULT**                                  | **No restrictions on the above ISAs, but excludes the below ISAs with preview support in the library (default)** |
+| \                    | AVX10_2_ACE                                  | Intel AVX10.2 with AI Compute Extensions (ACE)                                                                   |
+
+@note AVX10_2_ACE requires AI Compute Extensions (ACE) version 1. Refer to the
+[ACE v1 specification](https://x86ecosystem.org/wp-content/uploads/2026/06/ACE_v1_Specification_public_1_15.pdf)
+for the instruction set details.
 
 @note The ISAs are partially ordered:
 * SSE41 < AVX < AVX2 < AVX2_VNNI < AVX2_VNNI_2,
@@ -51,7 +56,8 @@ still take effect.
 * AVX10_1_512 < AVX10_1_512_AMX < AVX10_1_512_AMX_FP16
   < AVX10_2_AMX_2,
 * AVX2_VNNI < AVX10_1_512,
-* AVX10_2 < AVX10_2_AMX_2.
+* AVX10_2 < AVX10_2_AMX_2,
+* AVX10_2 < AVX10_2_ACE.
 
 The below values are aliased for backward compatibility with the introduction of
 AVX10.1:

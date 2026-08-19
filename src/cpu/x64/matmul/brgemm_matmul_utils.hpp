@@ -151,6 +151,9 @@ struct brgemm_matmul_conf_t {
     bool use_buffer_a_tail_only;
     bool use_buffer_b;
     bool use_buffer_c;
+    // Keep the intermediate C buffer in dst dtype (bf16/f16) when relaxed
+    // accumulation mode is enabled. AMX-only; gated on use_buffer_c and bf16/f16 dst.
+    bool is_c_buf_dst_dt = false;
     bool use_buffer_reduce;
 
     brgemm_matmul_bcast_desc_t bcast_A_desc;
@@ -179,12 +182,12 @@ struct brgemm_matmul_conf_t {
     // from FP32 implementation)
     dim_t tr_a_dt_sz, tr_b_dt_sz;
 
-    int M_chunks;
-    int N_chunks;
-    int K_chunks;
-    int num_M_blocks;
-    int num_N_blocks;
-    int num_K_blocks;
+    dim_t M_chunks;
+    dim_t N_chunks;
+    dim_t K_chunks;
+    dim_t num_M_blocks;
+    dim_t num_N_blocks;
+    dim_t num_K_blocks;
     dim_t M_chunk_elems;
     dim_t N_chunk_elems;
     dim_t K_chunk_elems;
@@ -229,7 +232,7 @@ struct brgemm_matmul_conf_t {
     // were changed.
     bool adjust_a_strides = false;
 
-    int wsp_tile_per_thr_bytes;
+    dim_t wsp_tile_per_thr_bytes;
     int brgemm_batch_element_per_thr_sz;
     bool is_amx;
 
@@ -243,7 +246,6 @@ struct brgemm_matmul_conf_t {
     bool is_xf16_fp8 = false;
     bool is_int4_weights = false;
     bool is_f4_via_convert = false;
-    bool is_tf32 = false;
     bool with_int8_grouped_quantization = false;
     // Enables the driver-side per-(M, N) f32 compensation tile that captures
     // the symmetric src/wei zero-point + 128-shift correction in the grouped
@@ -375,7 +377,6 @@ struct brgemm_matmul_conf_utils_t {
             // use b_buffer for AMX when:
             // - not bf32 && using non-blocked weights
             // - is bf32
-            // - is tf32
             return IMPLICATION(!wei_down_convert_to_vnni(), !bgmmc.blocked_B)
                     || bgmmc.packed_sparse_weights;
 
@@ -451,8 +452,6 @@ struct brgemm_matmul_conf_utils_t {
 
     inline bool is_bf32() const { return bf32_dt; }
 
-    inline bool is_tf32() const { return tf32_dt; }
-
     inline bool is_bf16_with_int_wei() const { return bf16_with_int_wei_dt; }
 
     inline bool is_f32_f16() const { return f32_f16_dt; }
@@ -478,8 +477,7 @@ struct brgemm_matmul_conf_utils_t {
     }
 
     inline bool wei_down_convert_to_vnni() const {
-        return (bf32_dt || tf32_dt || f16_with_int_wei_dt
-                       || bf16_with_int_wei_dt)
+        return (bf32_dt || f16_with_int_wei_dt || bf16_with_int_wei_dt)
                 && get_blocked_B();
     }
 
@@ -509,7 +507,7 @@ private:
     brgemm_matmul_conf_t &bgmmc;
 
     const bool f32_dt, bf16_dt, f16_dt, f4_via_convert_dt, f8_dt, bf8_dt,
-            int8_dt, bf32_dt, tf32_dt;
+            int8_dt, bf32_dt;
     const bool weights_decompression_support, bf16_with_int_wei_dt, f32_f16_dt,
             f32_bf16_dt, f16_with_int_wei_dt, f32_with_int_wei_dt,
             int8_grouped_quantization_dt, bf16_fp8_dt, f16_fp8_dt;

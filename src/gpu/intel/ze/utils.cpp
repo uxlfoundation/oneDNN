@@ -263,31 +263,19 @@ status_t create_kernels(ze_device_handle_t device, ze_context_handle_t context,
     for (size_t i = 0; i < kernel_names.size(); i++) {
         if (kernel_names[i] == nullptr) continue;
 
+        // If the kernel_name is empty, it likely means it's coming from ngen.
+        // In this case it's expected that an ngen-based program contains only
+        // 1 kernel.
+        //
+        // `xpu::ze::create_kernel` would query a name from a module.
         std::string kernel_name(kernel_names[i]);
         if (kernel_name.empty()) {
-            // (copied from OCL backend).
-            // Handle the ngen cases when kernel name is not available.
-            // Query the kernel name from the program. It's expected that
-            // an ngen based program contains only 1 kernel.
             if (kernel_names.size() != 1 || kernels.size() != 1)
                 return status::invalid_arguments;
-
-            uint32_t count = 1;
-            const char *name = nullptr;
-            ZE_CHECK(xpu::ze::zeModuleGetKernelNames(
-                    *module_ptr, &count, &name));
-
-            kernel_name = std::string(name);
-            assert(!kernel_name.empty());
-            if (kernel_name.empty()) return status::runtime_error;
         }
-        ze_kernel_desc_t kernel_desc {};
-        kernel_desc.stype = ZE_STRUCTURE_TYPE_KERNEL_DESC;
-        kernel_desc.pKernelName = kernel_name.c_str();
 
         ze_kernel_handle_t kernel;
-        ZE_CHECK(xpu::ze::zeKernelCreate(*module_ptr, &kernel_desc, &kernel));
-
+        CHECK(xpu::ze::create_kernel(kernel, *module_ptr, kernel_name));
         kernels[i] = kernel;
     }
 

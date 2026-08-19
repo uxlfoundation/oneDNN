@@ -915,7 +915,7 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
         if (strategy.dotVL > 1) s << strategy.dotVL;
     }
 
-    if (strategy.kChain > 1)                s << " kc" << strategy.kChain;
+    if (strategy.kChain > 0)                s << " kc" << strategy.kChain;
 
     if (strategy.atomicFMA)                 s << (strategy.extendedAtomicFMA ? " xaf" : " af");
     if (strategy.stallAfterLoad)            s << " st";
@@ -1085,6 +1085,7 @@ void unparseAddressBase(std::ostream &s, ngen::AddressBase base)
     switch (base.getModel()) {
         case ngen::AddressModel::ModelA64:     s << 'a'; break;
         case ngen::AddressModel::ModelCC:      s << 'c'; break;
+        case ngen::AddressModel::ModelSLM:     s << 'l'; break;
         case ngen::AddressModel::ModelSC:      s << 'm'; break;
         case ngen::AddressModel::ModelBTS:     s << 's'; break;
         case ngen::AddressModel::ModelInvalid: s << 'r'; break;

@@ -116,6 +116,34 @@ protected:
     void generate() override;
 };
 
+// f32 exp/sub/sum kernel. Computes exp(src - sub), accumulates the ordered
+// sum into *sum, and (when store_exp is set) writes the exp values to dst.
+// softmax uses store_exp=true (dst holds the exp result for the later scale);
+// logsoftmax uses store_exp=false (only the sum is required).
+struct jit_rvv_softmax_f32_exp_sub_sum_kernel_t : public jit_generator_t {
+    struct call_params_t {
+        const float *src;
+        float *dst;
+        dim_t len;
+        float sub;
+        float *sum;
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_f32_exp_sub_sum_kernel_t)
+
+    explicit jit_rvv_softmax_f32_exp_sub_sum_kernel_t(bool store_exp);
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override;
+
+private:
+    bool store_exp_;
+};
+
 void jit_rvv_softmax_f16_affine_from_f16(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, float sub, float mul);
 
@@ -130,6 +158,9 @@ void jit_rvv_softmax_f16_scatter(const dnnl::impl::float16_t *src,
 
 void jit_rvv_softmax_f16_exp_sub_sum(const dnnl::impl::float16_t *src,
         float *tmp, dim_t len, float sub, float *sum);
+
+void jit_rvv_softmax_f32_exp_sub_sum(const float *src, float *dst, dim_t len,
+        float sub, float *sum, bool store_exp);
 
 } // namespace rv64
 } // namespace cpu

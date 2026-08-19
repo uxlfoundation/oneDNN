@@ -39,6 +39,8 @@
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
 #include <CL/cl.h>
+
+#include "xpu/ocl/utils.hpp"
 #endif
 
 namespace dnnl {
@@ -195,7 +197,9 @@ public:
             const std::vector<graph::tensor_t> &inputs,
             const std::vector<graph::tensor_t> &outputs,
             const graph::tensor_t *scratchpad,
-            const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) const;
+            const std::vector<dnnl::impl::xpu::ocl::wrapper_t<cl_event>>
+                    &ocl_deps,
+            dnnl::impl::xpu::ocl::wrapper_t<cl_event> &ocl_event) const;
 #endif
 
     size_t get_scratchpad_size() const {

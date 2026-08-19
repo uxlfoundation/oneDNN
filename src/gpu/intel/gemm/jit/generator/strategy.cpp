@@ -238,16 +238,37 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     dpasw &= systolic && fused;
 
+    if (kChain == 0) {
+        kChain = 1;
+        if (!cAccumulators) {
+            if (!systolic && !dotVL && Ta.isFP() && Tb.isFP() && hw >= HW::XeHP)
+                kChain = gcd(ka_load, kb_load);
+            if (systolic && problem.product.family == ProductFamily::CRI) {
+                int minOPCount = minOuterProductCount(problem, *this);
+                kChain = std::max(1, gcd(ka_load, kb_load) / minOPCount);
+            }
+        }
+    }
+
+    if (!systolic && AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
+        kChain = 1;
+    // Late 2D scales are only read once per C repack, which occurs every
+    // gcd(aqGroupK, bqGroupK) k-elements. A k-chain spanning more than that would
+    // skip scale groups, so trim it to fit.
+    int minOPC = minOuterProductCount(problem, *this);
+    if (kChain > 1 && problem.forceLateQuant(minOPC)) {
+        int period = problem.aScale2D() ? problem.aqGroupK : 0;
+        if (problem.bScale2D())
+            period = period ? gcd(period, problem.bqGroupK) : problem.bqGroupK;
+        if (kInterleave) period = gcd(period, kInterleaveChunk);
+        if (period % minOPC == 0)
+            kChain = gcd(kChain, period / minOPC);
+    }
+    cAccumulators &= (kChain == 1);
+
     // Accumulator usage: 64-bit emulation, or k chaining, or extra C registers, or storage for r0 header.
     // Priority: k chaining > extra C registers > r0 header storage.
     //                         64-bit emulation > r0 header storage.
-    if (AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
-        kChain = 1;
-    // Fwd modifier not supported in below case
-    if (hw == HW::Xe3p && systolic && problem.product.family < ProductFamily::CRI)
-        kChain = 1;
-    cAccumulators &= (kChain == 1);
-
     bool emulateNeedsAcc = emulate.emulate64 || emulate.emulateDWxDW;
     if (moveR0 == MoveR0::Acc)
         if (cAccumulators || emulateNeedsAcc || xParallel || (kChain > 1) || barrierFreq || fuseBeta)
@@ -290,14 +311,10 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         // On CRI, dpas fwd modifier is required for optimal compute throughput
         maskedOPCount *= 2;
 
-    if (!slmA) {
-        ka_load = align_up(ka_load, opCount);
-        ka_load_masked = align_up(ka_load_masked, maskedOPCount);
-    }
-    if (!slmB) {
-        kb_load = align_up(kb_load, opCount);
-        kb_load_masked = align_up(kb_load_masked, maskedOPCount);
-    }
+    ka_load = align_up(ka_load, opCount);
+    kb_load = align_up(kb_load, opCount);
+    ka_load_masked = align_up(ka_load_masked, maskedOPCount);
+    kb_load_masked = align_up(kb_load_masked, maskedOPCount);
 
     if (ka_load == 0 || kb_load == 0)
         stub("Zero k-load granularity is invalid");
@@ -364,6 +381,20 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     A.address2D &= !isPacked(problem.A.layout);
     B.address2D &= !isPacked(problem.B.layout);
 
+    // SLM staging must cover the k-loads, on the main and the masked path.
+    int minUnrollKSLM = 1, minUnrollKSLMMasked = 1;
+    if (slmA) {
+        minUnrollKSLM = lcm(minUnrollKSLM, ka_load);
+        minUnrollKSLMMasked = lcm(minUnrollKSLMMasked, lcm(ka_load, ka_load_masked));
+    }
+    if (slmB) {
+        minUnrollKSLM = lcm(minUnrollKSLM, kb_load);
+        minUnrollKSLMMasked = lcm(minUnrollKSLMMasked, lcm(kb_load, kb_load_masked));
+    }
+
+    if (unrollKSLM > 0) minUnrollKSLM = unrollKSLM = lcm(unrollKSLM, minUnrollKSLM);
+    if (unrollKSLMMasked > 0) unrollKSLMMasked = lcm(unrollKSLMMasked, minUnrollKSLMMasked);
+
     // k interleaving chunk size.
     if (kInterleave) {
         int kchunk0 = lcm(ka_inc(), kb_inc());
@@ -390,14 +421,6 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     }
     if (ka_pfStride) ukAlign = lcm(ukAlign, ka_pfStride);
     if (kb_pfStride) ukAlign = lcm(ukAlign, kb_pfStride);
-
-    int minUnrollKSLM = 1;
-    if (unrollKSLM > 0)
-        minUnrollKSLM = unrollKSLM;
-    else {
-        if (slmA) minUnrollKSLM = lcm(minUnrollKSLM, ka_load);
-        if (slmB) minUnrollKSLM = lcm(minUnrollKSLM, kb_load);
-    }
 
     ukAlign = lcm(ukAlign, minUnrollKSLM * slmVersions);
 

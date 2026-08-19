@@ -25,6 +25,11 @@
 using namespace dnnl::impl::cpu::x64;
 #endif
 
+#if DNNL_RV64
+#include "cpu/rv64/jit_uni_resampling.hpp"
+using namespace dnnl::impl::cpu::rv64;
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -38,6 +43,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
     static std::map<pk_impl_key_t, std::vector<impl_list_item_t>> the_map = REG_RESAMPLING_P({
         {{forward}, {
             CPU_INSTANCE_X64(jit_uni_resampling_fwd_t)
+            CPU_INSTANCE_RV64(jit_uni_resampling_fwd_t<zvfh>)
+            CPU_INSTANCE_RV64(jit_uni_resampling_fwd_t<v>)
             CPU_INSTANCE(simple_resampling_fwd_t)
             CPU_INSTANCE(ref_resampling_fwd_t)
             nullptr,

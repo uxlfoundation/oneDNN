@@ -319,6 +319,33 @@ status_t get_kernel_binary(
     return status::success;
 }
 
+status_t get_kernel_bundle_binary(const gpu::intel::sycl::engine_t *engine,
+        const ::sycl::kernel_bundle<::sycl::bundle_state::executable> &bundle,
+        xpu::binary_t &binary) {
+    switch (xpu::sycl::get_backend(engine->device())) {
+        case xpu::sycl::backend_t::ze: {
+            auto ze_modules = ::sycl::get_native<
+                    ::sycl::backend::ext_oneapi_level_zero>(bundle);
+            if (ze_modules.empty()) return status::runtime_error;
+            CHECK(ze::get_module_binary(ze_modules[0], binary));
+            break;
+        }
+        case xpu::sycl::backend_t::opencl: {
+            auto ocl_programs
+                    = ::sycl::get_native<::sycl::backend::opencl>(bundle);
+            std::vector<xpu::ocl::wrapper_t<cl_program>> programs;
+            for (auto p : ocl_programs)
+                programs.push_back(xpu::ocl::make_wrapper(p));
+            if (programs.empty()) return status::runtime_error;
+            CHECK(ocl::get_ocl_program_binary(
+                    programs[0], engine->ocl_device(), binary));
+            break;
+        }
+        default: return status::runtime_error;
+    }
+    return status::success;
+}
+
 gpu_utils::device_id_t device_id(const ::sycl::device &dev) {
     if (xpu::sycl::is_host(dev))
         return std::make_tuple(

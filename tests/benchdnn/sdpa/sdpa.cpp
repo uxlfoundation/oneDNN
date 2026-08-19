@@ -120,8 +120,6 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
         auto diff_dst_d
                 = create_md(prb->ndims, prb->dst_dims, dst_dt, prb->dtag);
 
-        // Follow the implementation parameter order (mask/scale before
-        // diff descs) which differs from the .hpp declaration.
         TIME_C_PD(DNN_SAFE_STATUS(sdpa_primitive_desc_create(&init_pd_args.pd,
                 init_pd_args.engine, q_d, k_d, v_d, dst_d, mask_ptr, scale_d,
                 diff_q_d, diff_k_d, diff_v_d, diff_dst_d,
@@ -480,13 +478,15 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
-
-    // Reference-only buffer holding the per-element conditioning magnitude
-    // sum_k prob_k*|V_k| (same layout as the reference DST). compute_ref fills
-    // it; setup_cmp reads it to size a per-element DST threshold. Forward only.
-    const auto &ref_dst = ref_mem_map.at(DNNL_ARG_DST);
-    ref_mem_map.emplace(SDPA_REF_ARG_OUT_ABSMAG,
-            dnn_mem_t(ref_dst.md_, get_cpu_engine(), /* prefill = */ false));
+    if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+        // Reference-only buffer holding the per-element conditioning magnitude
+        // sum_k prob_k*|V_k| (same layout as the reference DST). compute_ref fills
+        // it; setup_cmp reads it to size a per-element DST threshold. Forward only.
+        const auto &ref_dst = ref_mem_map.at(DNNL_ARG_DST);
+        ref_mem_map.emplace(SDPA_REF_ARG_OUT_ABSMAG,
+                dnn_mem_t(
+                        ref_dst.md_, get_cpu_engine(), /* prefill = */ false));
+    }
 
     args_t args(mem_map), ref_args(ref_mem_map);
 

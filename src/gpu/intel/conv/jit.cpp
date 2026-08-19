@@ -18,6 +18,7 @@
 
 #include <utility>
 
+#include "common/reorder.hpp"
 #include "common/utils.hpp"
 #include "common/verbose.hpp"
 #include "gpu/gpu_zero_points_conv.hpp"
@@ -28,8 +29,7 @@
 #include "gpu/intel/jit/ir/kernel_info.hpp"
 #include "gpu/intel/jit/utils/utils.hpp"
 #include "gpu/intel/logging.hpp"
-#include "gpu/intel/reorder/jit/config.hpp"
-#include "gpu/intel/reorder/jit/kernel.hpp"
+#include "gpu/intel/primitive_attr.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -39,12 +39,45 @@ namespace conv {
 
 using namespace jit;
 
+// Nested reorder between the user layout and the scratchpad compute layout.
+struct reorder_data_t {
+    std::shared_ptr<primitive_desc_t> pd;
+    memory_desc_t compute_md;
+    int arg_key = DNNL_ARG_UNDEF;
+    uint32_t scratchpad_key = 0;
+    uint32_t nested_key = 0;
+    bool is_input = false;
+};
+
 struct pd_data_t {
     config_t pd_cfg;
     tensor_config_t tensor_cfg;
     std::vector<kernel_info_t> kernel_infos;
+    // Parallel to kernel_infos, set for pre/post reorder entries only.
+    std::vector<reorder_data_t> reorders;
     std::shared_ptr<primitive_desc_t> zp_pd;
 };
+
+struct tensor_ref_t {
+    const layout_param_t *layout;
+    const memory_desc_t *md;
+};
+
+static tensor_ref_t get_tensor_ref(const config_t &cfg,
+        const convolution_pd_t *pd, const std::string &name) {
+    if (name == "src") return {&cfg.src_layout(), pd->invariant_src_md()};
+    if (name == "wei") return {&cfg.wei_layout(), pd->invariant_wei_md()};
+    if (name == "bia") return {&cfg.bia_layout(), pd->invariant_bia_md()};
+    if (name == "dst") return {&cfg.dst_layout(), pd->invariant_dst_md()};
+    return {};
+}
+
+// GRF mode of the convolution kernel, see init_regs(). The pd-time config has
+// no GRF mode set yet unless it's overridden from the environment.
+static int conv_regs(const config_t &cfg) {
+    if (cfg.options_param().is_overridden("regs")) return cfg.regs();
+    return default_regs(cfg);
+}
 
 #define CONV_CHECK(_st) \
     do { \
@@ -111,7 +144,8 @@ public:
             pd->data->tensor_cfg
                     = get_tensor_config(pd->data->pd_cfg, zp_md_in(*pd->data));
             pd->data->kernel_infos.reserve(max_kernels);
-            CONV_CHECK(init_kernel_infos(pd));
+            pd->data->reorders.reserve(max_kernels);
+            CONV_CHECK(init_kernel_infos(pd, engine));
 
             return status::success;
         } catch (std::exception &err) {
@@ -125,7 +159,6 @@ public:
     status_t init(T *primitive, impl::engine_t *engine) {
         auto *pd = primitive->pd();
         auto &data = *pd->data;
-        auto &tensor_cfg = data.tensor_cfg;
         auto tiler = std::make_shared<tiler_t>(data.pd_cfg);
 
         if (primitive->cache_blob()) {
@@ -168,14 +201,26 @@ public:
                 init_nd_ranges(primitive, cfg);
                 auto &kernel_infos = data.kernel_infos;
 
-                // This absolutely HAS to be executed first if present,
-                // since it adds its own version mark to the cache blob
-                for (int i = 0; i < int(kernel_infos.size()); i++)
-                    if (kernel_infos[i].id() == kernel_id_t::zp_precalc) {
-                        gpu_assert(data.zp_pd);
-                        CONV_CHECK(primitive->create_nested_primitive(
-                                zp_prim_, data.zp_pd, engine));
-                    }
+                // Nested primitives have to be created before the kernels
+                // below: they register their cache blob blocks right away
+                // while the kernels are registered only after the loop.
+                // Does not depend on the tiler, create it once.
+                for (int i = 0; i < int(kernel_infos.size()) && !zp_prim_;
+                        i++) {
+                    if (kernel_infos[i].id() != kernel_id_t::zp_precalc)
+                        continue;
+                    gpu_assert(data.zp_pd);
+                    CONV_CHECK(primitive->create_nested_primitive(
+                            zp_prim_, data.zp_pd, engine));
+                }
+
+                reorder_prims_.resize(kernel_infos.size());
+                for (int i = 0; i < int(kernel_infos.size()); i++) {
+                    auto &pd = data.reorders[i].pd;
+                    if (!pd || reorder_prims_[i]) continue;
+                    CONV_CHECK(primitive->create_nested_primitive(
+                            reorder_prims_[i], pd, engine));
+                }
 
                 std::vector<compute::kernel_t> tmp_kernels;
                 for (int i = 0; i < int(kernel_infos.size()); i++) {
@@ -186,29 +231,6 @@ public:
                                     primitive, /*register_kernel=*/false,
                                     engine, cfg, info,
                                     nd_ranges_[i].local_range(), zp_dst));
-                            break;
-                        }
-                        case kernel_id_t::pre_reorder: {
-                            reorder::jit::config_t reorder_cfg(cfg.options(),
-                                    tensor_cfg.user_layout(info.arg_name(1)),
-                                    tensor_cfg.compute_layout(
-                                            info.arg_name(1)));
-                            tmp_kernels.push_back(
-                                    make_kernel<reorder::jit::kernel_t>(
-                                            primitive,
-                                            /*register_kernel=*/false, engine,
-                                            reorder_cfg, "conv_reorder", info));
-                            break;
-                        }
-                        case kernel_id_t::post_reorder: {
-                            reorder::jit::config_t reorder_cfg(cfg.options(),
-                                    tensor_cfg.compute_layout(info.arg_name(0)),
-                                    tensor_cfg.user_layout(info.arg_name(0)));
-                            tmp_kernels.push_back(
-                                    make_kernel<reorder::jit::kernel_t>(
-                                            primitive,
-                                            /*register_kernel=*/false, engine,
-                                            reorder_cfg, "conv_reorder", info));
                             break;
                         }
                         case kernel_id_t::zero_out:
@@ -222,6 +244,8 @@ public:
                                             cfg.options(), info, engine));
                             break;
 
+                        case kernel_id_t::pre_reorder:
+                        case kernel_id_t::post_reorder:
                         case kernel_id_t::zp_precalc:
                             tmp_kernels.emplace_back();
                             continue;
@@ -310,6 +334,9 @@ public:
                             zp_prim_->pd()->scratchpad_registry());
                     e_ctx.set_scratchpad_grantor(nested_grantor);
                     CONV_CHECK(zp_prim_->execute(e_ctx));
+                } else if (data.reorders[i].pd) {
+                    CONV_CHECK(execute_reorder(
+                            ctx, data.reorders[i], *reorder_prims_[i]));
                 }
                 nsubmitted++;
                 if (nsubmitted == nkernels) break;
@@ -320,6 +347,29 @@ public:
     }
 
 private:
+    static status_t execute_reorder(const exec_ctx_t &ctx,
+            const reorder_data_t &r, const impl::primitive_t &prim) {
+        auto storage = ctx.get_scratchpad_grantor().get_memory_storage(
+                r.scratchpad_key);
+        std::unique_ptr<memory_t, memory_deleter_t> compute_mem;
+        CHECK(safe_ptr_assign(compute_mem,
+                new memory_t(ctx.stream()->engine(), &r.compute_md,
+                        std::move(storage))));
+
+        exec_args_t r_args;
+        auto compute_arg = memory_arg_t {compute_mem.get(), !r.is_input};
+        r_args[DNNL_ARG_FROM]
+                = r.is_input ? ctx.args().at(r.arg_key) : compute_arg;
+        r_args[DNNL_ARG_TO]
+                = r.is_input ? compute_arg : ctx.args().at(r.arg_key);
+        exec_ctx_t r_ctx(ctx, std::move(r_args));
+        auto *nested_grantor
+                = create_nested_grantor(ctx.get_scratchpad_grantor(),
+                        r.nested_key, prim.pd()->scratchpad_registry());
+        r_ctx.set_scratchpad_grantor(nested_grantor);
+        return prim.execute(r_ctx);
+    }
+
     static const memory_desc_t *zp_md_in(const pd_data_t &data) {
         if (!data.zp_pd) return nullptr;
         const bool is_bwd_d
@@ -339,13 +389,55 @@ private:
         auto &infos = pd->data->kernel_infos;
         gpu_assert((int)infos.size() + 1 <= max_kernels);
         infos.emplace_back();
+        pd->data->reorders.emplace_back();
         auto &ret = infos.back();
         ret.set_id(kernel_id);
         return ret;
     }
 
     template <typename T>
-    static status_t init_kernel_infos(T *pd) {
+    static status_t init_reorder(T *pd, const impl::engine_t *engine,
+            kernel_id_t id, const std::string &name, int arg_key,
+            int scratchpad_key, size_t scratchpad_size) {
+        auto &data = *pd->data;
+        auto t = get_tensor_ref(data.pd_cfg, pd, name);
+        VDISPATCH_CONV_IC(
+                t.layout, VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, name.c_str());
+        // Unnormalized layout matches the user memory descriptor ndims.
+        auto &compute_layout = t.layout->compute_unnormalized();
+        // Compensation is handled by the conv, reorder the plain data only.
+        auto user_md = *t.md;
+        user_md.extra = {};
+        auto compute_md = to_md(compute_layout, user_md);
+        VDISPATCH_CONV_IC(
+                memory_desc_wrapper(compute_md).size() <= scratchpad_size,
+                VERBOSE_SCRATCHPAD_LIMIT);
+
+        create_kernel_info(pd, id);
+        auto &r = data.reorders.back();
+        r.compute_md = compute_md;
+        r.arg_key = arg_key;
+        r.scratchpad_key = into<uint32_t>(scratchpad_key);
+        r.nested_key
+                = into<uint32_t>(memory_tracking::names::key_nested_multiple
+                        + data.reorders.size());
+        r.is_input = (id == kernel_id_t::pre_reorder);
+        // Match the conv kernel's GRF and systolic mode to avoid a GPU state
+        // switch between the interleaved reorder and conv dispatches.
+        gpu_primitive_attr_t gpu_attr(
+                conv_regs(data.pd_cfg), data.pd_cfg.options().require_dpas());
+        primitive_attr_t attr;
+        CHECK(attr.set_gpu_attr(gpu_attr));
+        CHECK(reorder_primitive_desc_create(r.pd, engine,
+                r.is_input ? &user_md : &r.compute_md,
+                r.is_input ? &r.compute_md : &user_md, &attr));
+        pd->scratchpad_registry().registrar().book(
+                r.nested_key, r.pd->scratchpad_registry());
+        return status::success;
+    }
+
+    template <typename T>
+    static status_t init_kernel_infos(T *pd, const impl::engine_t *engine) {
         auto &data = *pd->data;
         auto &cfg = data.pd_cfg;
         auto &conv_info = create_kernel_info(pd, kernel_id_t::convolution);
@@ -426,26 +518,14 @@ private:
                 auto user_buf = make_buffer(t.name + "_user");
                 compute_arg_key = ++scratchpad_key;
 
-                if (!src_conv_precalc && t.is_input) {
-                    auto &reorder_info
-                            = create_kernel_info(pd, kernel_id_t::pre_reorder);
-                    reorder_info.register_user_arg(user_buf, user_arg_key,
-                            /*is_input=*/true);
-                    add_compute_arg(reorder_info, compute_buf, false);
-                    reorder::jit::config_t reorder_cfg(
-                            cfg.options(), t.user_layout, t.compute_layout);
-                    reorder_info.set_nd_range(reorder_cfg.nd_range());
-                }
-                if (!src_conv_precalc && t.is_output) {
-                    auto &reorder_info
-                            = create_kernel_info(pd, kernel_id_t::post_reorder);
-                    add_compute_arg(reorder_info, compute_buf, true);
-                    reorder_info.register_user_arg(user_buf, user_arg_key,
-                            /*is_input=*/false);
-                    reorder::jit::config_t reorder_cfg(
-                            cfg.options(), t.compute_layout, t.user_layout);
-                    reorder_info.set_nd_range(reorder_cfg.nd_range());
-                }
+                if (!src_conv_precalc && t.is_input)
+                    CHECK(init_reorder(pd, engine, kernel_id_t::pre_reorder,
+                            t.name, user_arg_key, compute_arg_key,
+                            compute_size));
+                if (!src_conv_precalc && t.is_output)
+                    CHECK(init_reorder(pd, engine, kernel_id_t::post_reorder,
+                            t.name, user_arg_key, compute_arg_key,
+                            compute_size));
                 if (src_conv_precalc) {
                     scratchpad_book(++scratchpad_key);
                     create_zero_out_info().register_scratchpad_arg(compute_buf,
@@ -500,11 +580,11 @@ private:
                     // we need to directly query config here.
                     nd_ranges_[i] = cfg.nd_range();
                     break;
-                case kernel_id_t::pre_reorder:
-                case kernel_id_t::post_reorder:
                 case kernel_id_t::zero_out:
                     nd_ranges_[i] = info.nd_range();
                     break;
+                case kernel_id_t::pre_reorder:
+                case kernel_id_t::post_reorder:
                 case kernel_id_t::zp_precalc: break;
                 default: gpu_error_not_expected();
             }
@@ -533,6 +613,8 @@ private:
     std::vector<compute::kernel_t> kernels_;
     std::vector<compute::nd_range_t> nd_ranges_;
     std::shared_ptr<impl::primitive_t> zp_prim_;
+    // Parallel to kernel_infos.
+    std::vector<std::shared_ptr<impl::primitive_t>> reorder_prims_;
 };
 
 status_t gen_fwd_t::pd_t::init(const impl::engine_t *engine) {

@@ -264,9 +264,6 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
             = std::max(std::max(zp_ngroups_k, scale_ngroups_k), gs_ngroups_k);
     const auto group_K = K / ngroups_k;
 
-    const bool subbyte_pack
-            = pd()->subbyte_pack_; //(c_d.data_type() == data_type::f4_e2m1);
-    const dim_t nelems = c_d.nelems();
     auto tmp = ctx.get_scratchpad_grantor().get_memory_storage(
             memory_tracking::names::key_matmul_pack_space);
     auto tmp_ds = ctx.get_scratchpad_grantor().get_memory_storage(
@@ -276,7 +273,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
     int arg_idx = 0;
     arg_list.set(arg_idx++, a);
     arg_list.set(arg_idx++, b);
-    arg_list.set(arg_idx++, dyn_scales ? *tmp_ds : (subbyte_pack ? *tmp : c));
+    arg_list.set(arg_idx++, dyn_scales ? *tmp_ds : (pack_ ? *tmp : c));
     arg_list.set(arg_idx++, bias);
     arg_list.set(arg_idx++, a0);
     arg_list.set(arg_idx++, src_zp_stride_k);
@@ -414,7 +411,7 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
         compute::kernel_arg_list_t arg_list;
         int arg_idx = 0;
         arg_list.set(arg_idx++, *tmp_ds);
-        arg_list.set(arg_idx++, subbyte_pack ? *tmp : c);
+        arg_list.set(arg_idx++, pack_ ? *tmp : c);
         arg_list.set(arg_idx++, dst_scales);
         arg_list.set(arg_idx++, group_size);
         arg_list.set(arg_idx++, D0);
@@ -431,17 +428,8 @@ status_t ref_t::execute_ref(const exec_ctx_t &ctx) const {
         compute::nd_range_t nd_range(gws);
         CHECK(parallel_for(ctx, nd_range, kernels_[1], arg_list));
     }
-
-    if (!subbyte_pack) return status_t::dnnl_success;
-    compute::kernel_arg_list_t repack_arg_list;
-    repack_arg_list.set(0, *tmp);
-    repack_arg_list.set(1, c);
-    repack_arg_list.set(2, into<dim_t>(nelems));
-    repack_arg_list.set(3, 4);
-    compute::range_t repack_gws((nelems * 4 + 7) / 8);
-    compute::nd_range_t repack_nd_range(repack_gws);
-    return large_parallel_for(
-            ctx, repack_nd_range, kernels_[2], repack_arg_list, 4);
+    if (!pack_) return status::success;
+    return pack_(ctx, *tmp, c);
 }
 
 } // namespace matmul

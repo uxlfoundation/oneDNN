@@ -1145,10 +1145,10 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 auto i = &input[get_blk_off(
                         input_d, batch, D0_blksize * D0, D1_blksize * D1)];
                 auto o = &output[get_blk_off(output_d, batch, D0, D1)];
-                const dim_t d0_block
-                        = nstl::min(D0_blksize, D0dim - D0 * D0_blksize);
-                const dim_t d1_block
-                        = nstl::min(D1_blksize, D1dim - D1 * D1_blksize);
+                const int d0_block = static_cast<int>(
+                        nstl::min(D0_blksize, D0dim - D0 * D0_blksize));
+                const int d1_block = static_cast<int>(
+                        nstl::min(D1_blksize, D1dim - D1 * D1_blksize));
                 dim_t _offset = batch * NB_D1dim * D1_blksize + D1 * D1_blksize;
                 int32_t *zp_ptr = (order_keep && has_asymmetric_comp)
                         ? &zp[_offset]
@@ -2413,8 +2413,8 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
-                src_zp_val = io::load_float_value(
-                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+                src_zp_val = static_cast<int>(io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off));
             }
 
             const auto o_off = output_d.off_l(idx);
@@ -2650,16 +2650,29 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                 const dim_t src_zps_off
                         = get_quant_off(input_idx, ndims, src_zps_mask,
                                 src_zps_group0, src_zps_group1, src_zps_md);
-                src_zp_val = io::load_float_value(
-                        src_zps_d.data_type(), src_zero_points, src_zps_off);
+                src_zp_val = static_cast<int>(io::load_float_value(
+                        src_zps_d.data_type(), src_zero_points, src_zps_off));
             }
 
             const auto i_off = input_d.off_l(idx);
             const auto o_off = output_d.off_l(idx);
-            float d = src_scale * (input[i_off] - src_zp_val);
-            if (beta) d += beta * output[o_off];
-            d = d / dst_scale + dst_zp;
-            output[o_off] = _qz_a1b0<data_type::f32, type_o>()(d);
+            if (type_i == data_type::e8m0) {
+                // Reorder from e8m0 to f32 is used for benchdnn correctness
+                // validation purpose only. Keep a separate branch where it has
+                // no support for any feature as this is the reorder of e8m0
+                // dynamic dst scales to f32 for comparison.
+                // A dedicated path is required to preserve a minimal e8m0 value
+                // which gets converted by any compiler to 0 if any
+                // floating-point operation (such as add or mul) or comparison
+                // operation is around the value.
+                auto s = io::load_float_value(type_i, input, i_off);
+                io::store_float_value(type_o, s, output, o_off);
+            } else {
+                float d = src_scale * (input[i_off] - src_zp_val);
+                if (beta) d += beta * output[o_off];
+                d = d / dst_scale + dst_zp;
+                output[o_off] = _qz_a1b0<data_type::f32, type_o>()(d);
+            }
         });
         return status::success;
     }

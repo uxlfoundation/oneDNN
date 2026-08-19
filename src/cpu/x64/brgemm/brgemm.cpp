@@ -80,7 +80,7 @@ void brgemm_desc_t::cleanup_dst_md() {
     dst_md_ = nullptr;
 }
 
-void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
     brgemm_kernel_params_t brgemm_p;
@@ -108,7 +108,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const void *addr_A, const void *addr_B,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
@@ -136,7 +136,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *ptr_D,
         const brgemm_post_ops_data_t &post_ops_data, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
@@ -179,7 +179,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const void *addr_A, const void *addr_B,
         const brgemm_batch_element_t *batch, void *ptr_C, void *ptr_D,
         const brgemm_post_ops_data_t &post_ops_data, void *scratch,
@@ -228,8 +228,7 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_b, bool transA, bool transB,
         brgemm_layout_t layout, float alpha, float beta, dim_t LDA, dim_t LDB,
-        dim_t LDC, dim_t M, dim_t N, dim_t K, const brgemm_strides_t *strides,
-        bool is_tf32) {
+        dim_t LDC, dim_t M, dim_t N, dim_t K, const brgemm_strides_t *strides) {
     /*
     m - number of rows of the matrix op(A) and number of rows of the matrix C
     n - number of columns of the matrix op(B) and number of columns of the matrix C
@@ -251,8 +250,7 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         return status::invalid_arguments;
 
     CHECK(brgemm_utils::init_brgemm_conf(brg, isa, type, dt_a, dt_b, layout,
-            alpha, beta, LDA, LDB, LDC, M, N, K, strides, false /* is_bf32 */,
-            is_tf32));
+            alpha, beta, LDA, LDB, LDC, M, N, K, strides, false /* is_bf32 */));
 
     if (utils::one_of(true, brg->is_runtime_lda, brg->is_runtime_ldb))
         return status::unimplemented;
@@ -301,8 +299,7 @@ status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
     brg->is_gemv = true;
 
     CHECK(brgemm_desc_init(brg, isa, type, dt_a, dt_x, false, false,
-            brgemm_row_major, alpha, beta, LDA, 1, INCY, M, 1, N, nullptr,
-            false));
+            brgemm_row_major, alpha, beta, LDA, 1, INCY, M, 1, N, nullptr));
 
     // Initialize transA here because `brgemm_desc_init` would otherwise return
     // unimplemented since brgemm doesn't support this case and we don't pass
@@ -365,13 +362,13 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
                             || is_superset(brg->isa_impl, avx2_vnni_2)))
             return status::unimplemented;
     } else {
-        // The GEMV code path requires avx512_core_bf16 for bf16 and avx512_core
-        // for f16.
+        // The GEMV code path requires avx512_core_bf16 for bf16 and
+        // avx512_core_fp16 for f16.
         if (!IMPLICATION(one_of(data_type::bf16, dt_bias, dt_d),
                     is_superset(brg->isa_impl, avx512_core_bf16)))
             return status::unimplemented;
         if (!IMPLICATION(one_of(data_type::f16, dt_bias, dt_d),
-                    is_superset(brg->isa_impl, avx512_core)))
+                    is_superset(brg->isa_impl, avx512_core_fp16)))
             return status::unimplemented;
     }
 
@@ -637,7 +634,7 @@ status_t brgemm_desc_set_attr(
 status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (brg == nullptr) return status::invalid_arguments;
 
-    const int max_vpad = nstl::max(
+    const dim_t max_vpad = nstl::max(
             brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
 
     if (brg->is_dgmm)
@@ -648,7 +645,7 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (!brg->is_dgmm) {
         // virtual padding is restricted by bd_block size due to
         // brgemm_kernel implementation. TODO: remove this restriction
-        const int min_bd_block
+        const dim_t min_bd_block
                 = brg->bdb_tail > 0 ? brg->bdb_tail : brg->bd_block;
         if ((max_vpad > min_bd_block)) return status::unimplemented;
     }
@@ -742,16 +739,20 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
     for (int i = 0; i < max_palette_size_in_bytes; i++)
         _tc[i] = 0;
 
-    const int typesize_A
-            = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_A;
-    const int typesize_B
-            = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_B;
+    const int typesize_A = brg.is_input_convert()
+            ? static_cast<int>(sizeof(int16_t))
+            : brg.typesize_A;
+    const int typesize_B = brg.is_input_convert()
+            ? static_cast<int>(sizeof(int16_t))
+            : brg.typesize_B;
 
     const int rd_step = 4 / typesize_A;
 
     const auto Ac = typesize_A * rd_block;
 
-    const auto Br = (brg.typesize_C != 0) ? Ac / brg.typesize_C : 0;
+    // AMX TMUL always writes 4-byte tile elements regardless of logical
+    // dt_c; use the fixed accumulator-tile element size for the palette.
+    const auto Br = Ac / brgemm_desc_t::amx_c_tile_elem_size;
 
     if (brg.get_num_A_tiles() + brg.get_num_B_tiles() + brg.get_num_C_tiles()
             > brgemm_desc_t::AMX_TILES_NUM) {
@@ -789,14 +790,14 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
             const bool is_ld_tail
                     = (brg.ldb_tail && n == (brg.get_ld_block2() - 1));
             const auto Cc = (is_ld_tail ? brg.ldb_tail : brg.ld_block)
-                    * brg.typesize_C;
+                    * brgemm_desc_t::amx_c_tile_elem_size;
             const auto C_tensor
                     = brg.get_C_tensor(m, n, is_bd_tail, is_ld_tail);
             tc_configure_tile(buff, C_tensor, Cr, Cc);
         }
     }
 
-    buff->palette_id = amx::get_target_palette();
+    buff->palette_id = static_cast<uint8_t>(amx::get_target_palette());
 
     return status::success;
 }

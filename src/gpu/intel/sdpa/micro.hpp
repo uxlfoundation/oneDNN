@@ -150,7 +150,9 @@ struct micro_bwd_params_t : trivially_serializable_t<micro_bwd_params_t> {
     bool with_dS;
     bool require_stateless_addressing;
     bool dropout, dropout_output_mask, dropout_offset, dropout_host_scalars;
-    uint8_t padding2[3] = {0};
+    bool k_in_slm;
+    bool direct_dQ;
+    uint8_t padding2[1] = {0};
 
     micro_bwd_ukernel_params_t ukernel_config;
 };
@@ -353,6 +355,28 @@ struct micro_fwd_t : public primitive_t {
                             attr()->dropout_.use_host_scalars_),
                     "fused SDPA FWD with device dropout not supported "
                     "for xe_hpg");
+
+            if (desc()->prop_kind == prop_kind::forward_training) {
+                const memory_desc_wrapper stats_mdw(desc()->stats_md());
+                if (!stats_mdw.is_zero()) {
+                    bool dense = stats_mdw.is_plain();
+                    if (dense) {
+                        const auto &strides = stats_mdw.strides();
+                        const auto *sdims = stats_mdw.dims();
+                        dim_t expected = 1;
+                        for (int i = stats_mdw.ndims() - 1; i >= 0; --i) {
+                            if (strides[i] != expected) {
+                                dense = false;
+                                break;
+                            }
+                            expected *= (sdims[i] > 0 ? sdims[i] : 1);
+                        }
+                    }
+                    VDISPATCH_SDPA(dense,
+                            "fused sdpa training requires densely packed "
+                            "softmax stats");
+                }
+            }
 
             CHECK(init_conf_microkernels(engine));
             CHECK(init_conf(engine));

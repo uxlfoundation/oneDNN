@@ -134,7 +134,7 @@ struct gemm_bf16_inner_product_fwd_t : public primitive_t {
         auto sum_idx = pd()->attr()->post_ops_.find(primitive_kind::sum);
         beta_ = sum_idx >= 0 && !has_sum_as_postops
                 ? pd()->attr()->post_ops_.entry_[sum_idx].sum.scale
-                : 0.0;
+                : 0.0f;
 
         return (pp_kernel_) ? pp_kernel_->create_kernel() : status::success;
     }
@@ -283,7 +283,7 @@ struct gemm_bf16_inner_product_bwd_weights_t : public primitive_t {
             dim_t OCB_per_thread = utils::div_up(OCB, bias_reduction_nthr_);
 
             OC_per_thread = OCB_per_thread * bias_blksize;
-            nthr_OCB = utils::div_up(OCB, OCB_per_thread);
+            nthr_OCB = static_cast<int>(utils::div_up(OCB, OCB_per_thread));
             nthr_MB = bias_reduction_nthr_ / nthr_OCB;
 
             assert(nthr_OCB * nthr_MB <= bias_reduction_nthr_);

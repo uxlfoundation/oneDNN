@@ -147,6 +147,8 @@ std::unique_ptr<prb_t> get_fused_conv_prb(const prb_t *prb) {
 int init_ref_memory_args(dnn_mem_map_t &mem_map0, dnn_mem_map_t &mem_map1,
         dnn_mem_map_t &mem_map, dnnl_primitive_t prim0, const prb_t *prb0,
         const prb_t *prb1, const prb_t *prb, res_t *res, dir_t dir) {
+    if (has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) return OK;
+
     const auto &ref_engine = get_cpu_engine();
 
     const int dw_idx = prb->attr.post_ops.convolution_index();

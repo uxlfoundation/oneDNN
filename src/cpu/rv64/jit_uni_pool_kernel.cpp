@@ -71,6 +71,15 @@ static pool_binary_bcast_t classify_binary_src1(
     return pool_binary_bcast_t::none;
 }
 
+// Map an effective channel-vector LMUL (1/2/4) to the xbyak_riscv LMUL enum.
+static Xbyak_riscv::LMUL pool_lmul_to_enum(int lmul) {
+    switch (lmul) {
+        case 2: return Xbyak_riscv::LMUL::m2;
+        case 4: return Xbyak_riscv::LMUL::m4;
+        default: return Xbyak_riscv::LMUL::m1;
+    }
+}
+
 // Fill the shape/stride/kernel/padding fields shared verbatim by all three
 // init_conf paths (baked, native forward, native backward). Channel bookkeeping
 // (c / c_block / c_without_padding) differs per path and stays with the caller.
@@ -135,6 +144,12 @@ jit_uni_pool_kernel_t<isa>::jit_uni_pool_kernel_t(
     // descriptor there. The rv64 kernel builds its injector in generate() from
     // jpp.post_ops instead, so it never reads dst_md.
     UNUSED(dst_md);
+    // jpp.c_block is the base SIMD block (vlen/32) for blocked/f16 paths, or
+    // base*LMUL for the widened f32 nspc forward-inference path (init_conf
+    // scales it there). Recover the effective LMUL for tile register spacing.
+    const int base = (int)(get_platform_vlen() / 32);
+    lmul_ = (base > 0) ? jpp.c_block / base : 1;
+    if (lmul_ != 1 && lmul_ != 2 && lmul_ != 4) lmul_ = 1;
 }
 
 static status_t set_binary_postops_formats(
@@ -309,6 +324,24 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(jit_pool_conf_t &jpp,
         CHECK(set_binary_postops_formats(attr.post_ops_, dst_d.md_));
     jpp.post_ops = attr.post_ops_;
 
+    // Widen the channel vector for f32 nspc forward inference to amortise the
+    // per-channel-block call count, the cost that made the plain baked kernel
+    // slower than the native full-C kernel.
+    if (jpp.tag_kind == jit_pool_tag_kind_t::nspc && !jpp.is_f16
+            && !jpp.is_backward && !jpp.is_training && !jpp.with_postops) {
+        const int base = (int)(vlen / 32);
+        int lmul = (base > 0) ? 16 / base : 1;
+        if (lmul != 1 && lmul != 2 && lmul != 4) lmul = 1;
+        if (lmul > 1) {
+            jpp.c_block *= lmul;
+            jpp.nb_c = utils::div_up(jpp.c, jpp.c_block);
+            jpp.c_tail = jpp.c % jpp.c_block;
+            const int max_ur
+                    = tile_size / 2 / lmul; // 2*ur*lmul <= tile_size (24)
+            if (jpp.ur > max_ur) jpp.ur = max_ur;
+        }
+    }
+
     UNUSED(scratchpad); // no plain<->blocked transpose on RVV
     return status::success;
 }
@@ -369,8 +402,9 @@ void jit_uni_pool_kernel_t<isa>::set_vl_e32() {
     // dependency. Mask-undisturbed (VMA::mu) is REQUIRED, not optional here:
     // max_step_bwd() runs a masked vfadd_vv under this vtype and then stores the
     // whole vector, so the masked-off (non-argmax) lanes must keep their loaded
-    // diff_src value. All other pool vsetvli sites use VMA::ma.
-    vsetvli(t0, reg_vl, SEW::e32, LMUL::m1, VTA::ta, VMA::mu);
+    // diff_src value. All other pool vsetvli sites use VMA::ma. LMUL follows the
+    // effective channel-vector width (lmul_); the f32 nspc fwd path widens it.
+    vsetvli(t0, reg_vl, SEW::e32, pool_lmul_to_enum(lmul_), VTA::ta, VMA::mu);
 }
 
 template <cpu_isa_t isa>
@@ -963,6 +997,12 @@ status_t jit_uni_pool_ncsp_kernel_t<isa, d_type>::init_conf(
     else
         return status::unimplemented;
     jpp.use_native = true;
+
+    // f32 nspc forward inference routes to the baked kernel. f16 nspc, ncsp,
+    // and f32 nspc training stay on this native kernel.
+    if (d_type == data_type::f32 && jpp.tag_kind == jit_pool_tag_kind_t::nspc
+            && !jpp.is_training)
+        return status::unimplemented;
 
     // f32 nspc builds the shape-baked interior kernel, which fully unrolls the
     // width sweep over max_p = (ur_w-1)*sw + kw input positions. Its per-channel

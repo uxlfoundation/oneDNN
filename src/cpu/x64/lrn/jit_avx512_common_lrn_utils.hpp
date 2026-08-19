@@ -17,6 +17,12 @@
 #ifndef CPU_X64_LRN_JIT_AVX512_COMMON_LRN_UTILS_HPP
 #define CPU_X64_LRN_JIT_AVX512_COMMON_LRN_UTILS_HPP
 
+#include "common/c_types_map.hpp"
+#include "common/utils.hpp"
+
+#include "cpu/x64/cpu_isa_traits.hpp"
+#include "cpu/x64/jit_avx512_core_bf16cvt.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -42,6 +48,16 @@ struct nChw16c_across_t {
 // NOLINTEND(readability-identifier-naming)
 
 enum class tail_mode { NoTail, NextTail, CurrentTail };
+
+template <data_type_t d_type>
+cpu_isa_t get_isa() {
+    return utils::map(true, avx512_core,
+            d_type == data_type::bf16 && mayiuse(avx512_core_bf16),
+            avx512_core_bf16,
+            d_type == data_type::bf16 && !mayiuse(avx512_core_bf16),
+            bf16_emulation_t::get_isa(), d_type == data_type::f16,
+            avx512_core_fp16);
+}
 
 } // namespace lrn
 } // namespace x64

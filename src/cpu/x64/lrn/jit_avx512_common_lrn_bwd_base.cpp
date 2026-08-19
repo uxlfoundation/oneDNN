@@ -16,6 +16,7 @@
 
 #include <numeric>
 #include "cpu/x64/lrn/jit_avx512_common_lrn_bwd_base.hpp"
+#include "cpu/x64/lrn/jit_avx512_common_lrn_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -217,7 +218,7 @@ void jit_avx512_common_lrn_kernel_bwd_t<f16>::store_tail(int tail_value,
 template <data_type_t d_type>
 jit_avx512_common_lrn_kernel_bwd_t<d_type>::jit_avx512_common_lrn_kernel_bwd_t(
         float alpha, float beta, int local_size, const char *name)
-    : jit_generator_t(name, avx512_core_bf16)
+    : jit_generator_t(name, get_isa<d_type>())
     , local_size_ {local_size - !(local_size % 2)}
     , z_prev_ {[this]() {
         std::vector<int> v(this->local_size_ / 2);

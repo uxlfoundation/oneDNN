@@ -101,6 +101,8 @@ status_t gemm_x8s8s32x_matmul_t::pd_t::init(const engine_t *engine) {
                                 post_ops.entry_, dst_md()),
                         broadcasting_strategy_t::per_oc);
         const bool has_prelu = post_ops.find(prelu) != -1;
+        for (const auto &entry : post_ops.entry_)
+            if (entry.is_binary_with_ternary_op()) return false;
         return cpu::inner_product_utils::post_ops_ok(
                        post_ops, dst_md(), enabled_bcast_strategy)
                 && IMPLICATION(is_binary_po_per_oc,
@@ -169,7 +171,7 @@ template <typename src_dt>
 void pp_src_and_weights_zero_points(std::vector<int32_t> &src_comp,
         std::vector<int32_t> &wei_comp, dim_t M, dim_t N, dim_t K,
         const src_dt *src, dim_t src_s0, dim_t src_s1, const int8_t *wei,
-        dim_t wei_s0, dim_t wei_s1, int32_t *acc, int ldc,
+        dim_t wei_s0, dim_t wei_s1, int32_t *acc, dim_t ldc,
         int32_t src_zero_point, int32_t wei_zero_point) {
     if (wei_zero_point) {
         for_(dim_t m = 0; m < M; ++m)

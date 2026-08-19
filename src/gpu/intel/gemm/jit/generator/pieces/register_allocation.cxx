@@ -559,14 +559,17 @@ void Generator<hw>::gemmAllocRegs(GEMMProblem &problem, GEMMStrategy &strategy, 
     if (state.Bp_layout.valid() && needsPFRegs(state.Bp_layout.addressingStrategy()))
         state.Bp_regs = state.ra.alloc_range(state.Bp_layout.regs());
 
+    // bdpas has additional GRF conflict requirements: A scales must be in the same bank as A.
+    auto Ascale_hint = state.useBDPAS ? getHint(HintType::A0, strategy) : Bundle();
+
     // Allocate registers for A/B quantization parameters.
     state.A_offsetRegs = state.ra.alloc_range(state.A_offsetLayout.regs());
     state.B_offsetRegs = state.ra.alloc_range(state.B_offsetLayout.regs());
     state.Ar_offsetRegs = state.ra.alloc_range(state.Ar_offsetLayout.regs());
     state.Br_offsetRegs = state.ra.alloc_range(state.Br_offsetLayout.regs());
-    state.A_scaleRegs = state.ra.alloc_range(state.A_scaleLayout.regs());
+    state.A_scaleRegs = state.ra.alloc_range(state.A_scaleLayout.regs(), state.Ar_scaleLayout.empty() ? Ascale_hint : Bundle());
     state.B_scaleRegs = state.ra.alloc_range(state.B_scaleLayout.regs());
-    state.Ar_scaleRegs = state.ra.alloc_range(state.Ar_scaleLayout.regs());
+    state.Ar_scaleRegs = state.ra.alloc_range(state.Ar_scaleLayout.regs(), Ascale_hint);
     state.Br_scaleRegs = state.ra.alloc_range(state.Br_scaleLayout.regs());
     state.Ag_regs = state.ra.alloc_range(state.Ag_layout.regs());
     state.Bg_regs = state.ra.alloc_range(state.Bg_layout.regs());

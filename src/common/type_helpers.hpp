@@ -95,7 +95,6 @@ namespace types {
 inline size_t data_type_size(data_type_t data_type) {
     using namespace data_type;
     switch ((int)data_type) {
-        case f4_e3m0: return sizeof(prec_traits_t<f4_e3m0>::type);
         case f4_e2m1: return sizeof(prec_traits_t<f4_e2m1>::type);
         case e8m0: return sizeof(prec_traits_t<e8m0>::type);
         case f8_e5m2: return sizeof(prec_traits_t<f8_e5m2>::type);
@@ -122,7 +121,6 @@ inline size_t elements_to_bytes(data_type_t data_type, size_t count) {
     using namespace data_type;
     switch ((int)data_type) {
         case f4_e2m1:
-        case f4_e3m0:
         case s4:
         case u4: return (count + 1) >> 1;
         default: return data_type_size(data_type) * count;
@@ -133,7 +131,6 @@ inline size_t bytes_to_elements(data_type_t data_type, size_t bytes) {
     using namespace data_type;
     switch ((int)data_type) {
         case f4_e2m1:
-        case f4_e3m0:
         case s4:
         case u4: return bytes * 2;
         default: return utils::div_up(bytes, data_type_size(data_type));
@@ -152,7 +149,6 @@ inline T min_value(data_type_t data_type) {
         return static_cast<T>( \
                 nstl::numeric_limits<prec_traits_t<x>::type>::min())
     switch (data_type) {
-        CASE(f4_e3m0);
         CASE(f4_e2m1);
         CASE(e8m0);
         CASE(f8_e5m2);
@@ -182,7 +178,6 @@ inline T max_value(data_type_t data_type) {
         return static_cast<T>( \
                 nstl::numeric_limits<prec_traits_t<x>::type>::max())
     switch (data_type) {
-        CASE(f4_e3m0);
         CASE(f4_e2m1);
         CASE(e8m0);
         CASE(f8_e5m2);
@@ -213,7 +208,6 @@ inline float max_value(data_type_t data_type) {
         return static_cast<float>( \
                 nstl::numeric_limits<prec_traits_t<x>::type>::max())
     switch (data_type) {
-        CASE(f4_e3m0);
         CASE(f4_e2m1);
         CASE(e8m0);
         CASE(f8_e5m2);
@@ -252,7 +246,6 @@ inline T lowest_value(data_type_t data_type) {
         return static_cast<T>( \
                 nstl::numeric_limits<prec_traits_t<x>::type>::lowest())
     switch (data_type) {
-        CASE(f4_e3m0);
         CASE(f4_e2m1);
         CASE(e8m0);
         CASE(f8_e5m2);
@@ -282,7 +275,35 @@ inline T digits(data_type_t data_type) {
         return static_cast<T>( \
                 nstl::numeric_limits<prec_traits_t<x>::type>::digits)
     switch (data_type) {
-        CASE(f4_e3m0);
+        CASE(f4_e2m1);
+        CASE(e8m0);
+        CASE(f8_e5m2);
+        CASE(f8_e4m3);
+        CASE(f16);
+        CASE(bf16);
+        CASE(f32);
+        CASE(f64);
+        CASE(s64);
+        CASE(s32);
+        CASE(s8);
+        CASE(u8);
+        CASE(s4);
+        CASE(u4);
+        case data_type::undef:
+        default: assert(!"unknown data_type");
+    }
+    return static_cast<T>(0); /* not supposed to be reachable */
+#undef CASE
+}
+
+template <typename T>
+inline T epsilon_value(data_type_t data_type) {
+    using namespace data_type;
+#define CASE(x) \
+    case x: \
+        return static_cast<T>( \
+                nstl::numeric_limits<prec_traits_t<x>::type>::epsilon())
+    switch (data_type) {
         CASE(f4_e2m1);
         CASE(e8m0);
         CASE(f8_e5m2);
@@ -313,7 +334,6 @@ inline float round_to_dt(data_type_t data_type, float val) {
                 static_cast<typename prec_traits_t<x>::type>(val))
 
     switch (data_type) {
-        CASE(f4_e3m0);
         CASE(f4_e2m1);
         CASE(e8m0);
         CASE(f8_e5m2);
@@ -476,7 +496,6 @@ inline data_type_t default_accum_data_type(
     // true
     if (one_of(src_dt, s8, u8, u4, s4) && (dst_dt != f32 || strict)) return s32;
 
-    if (one_of(f4_e3m0, src_dt, dst_dt)) return f32;
     if (one_of(f4_e2m1, src_dt, dst_dt)) return f32;
     if (one_of(f8_e5m2, src_dt, dst_dt)) return f32;
     if (one_of(f8_e4m3, src_dt, dst_dt)) return f32;
@@ -519,7 +538,6 @@ inline data_type_t default_accum_data_type(data_type_t src_dt,
             return f32;
     }
 
-    if (one_of(f4_e3m0, src_dt, wei_dt, dst_dt)) return f32;
     if (one_of(f4_e2m1, src_dt, wei_dt, dst_dt)) return f32;
     if (one_of(f8_e5m2, src_dt, wei_dt, dst_dt)) return f32;
     if (one_of(f8_e4m3, src_dt, wei_dt, dst_dt)) return f32;
@@ -675,7 +693,9 @@ inline bool operator==(const memory_desc_t &lhs, const memory_desc_t &rhs) {
                 && lhs.format_desc.zen_packed_desc.per_slice_size
                 == rhs.format_desc.zen_packed_desc.per_slice_size
                 && lhs.format_desc.zen_packed_desc.gemm_src_dt
-                == rhs.format_desc.zen_packed_desc.gemm_src_dt;
+                == rhs.format_desc.zen_packed_desc.gemm_src_dt
+                && lhs.format_desc.zen_packed_desc.weights_transposed
+                == rhs.format_desc.zen_packed_desc.weights_transposed;
     return true;
 }
 
@@ -1041,6 +1061,7 @@ inline bool operator==(const sdpa_desc_t &lhs, const sdpa_desc_t &rhs) {
             && COMPARE_DESC_MEMBERS(vs_zero_points)
             && COMPARE_DESC_MEMBERS(dS_desc)
             && COMPARE_DESC_MEMBERS(dst_desc)
+            && COMPARE_DESC_MEMBERS(stats_desc)
             && COMPARE_DESC_MEMBERS(diff_dst_desc)
             && COMPARE_DESC_MEMBERS(diff_q_desc)
             && COMPARE_DESC_MEMBERS(diff_k_desc)

@@ -17,7 +17,9 @@
 #define GRAPH_BACKEND_DNNL_EXECUTABLES_BASE_HPP
 
 #include <memory>
+#ifdef DNNL_WITH_SYCL
 #include <optional>
+#endif
 #include <string>
 #include <utility>
 #include <vector>
@@ -36,6 +38,7 @@
 #include "graph/utils/ocl_usm_utils.hpp"
 
 #include "xpu/ocl/usm_utils.hpp"
+#include "xpu/ocl/utils.hpp"
 
 #include "oneapi/dnnl/dnnl_ocl.hpp"
 #endif
@@ -62,6 +65,10 @@ namespace dnnl {
 namespace impl {
 namespace graph {
 namespace dnnl_impl {
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+using ocl_event_t = xpu::ocl::wrapper_t<cl_event>;
+#endif
 
 struct indices_t {
     // the type_t is used to indicate the indices is for input or output
@@ -134,9 +141,15 @@ struct op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    virtual cl_event execute_ocl(const stream &stream,
+    // The returned event is used to indicate when the execution is finished.
+    // The caller can use the event to build dependency for later execution. To
+    // avoid memory leaks and safely manage the lifetime of the returned
+    // `cl_event`, we use `wrapper_t<cl_event>` to wrap it. The
+    // `wrapper_t<cl_event>` is a RAII wrapper for `cl_event`, which will
+    // automatically release the `cl_event` when it goes out of scope.
+    virtual ocl_event_t execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
-            const std::vector<cl_event> &deps) const
+            const std::vector<ocl_event_t> &deps) const
             = 0;
 #endif
 };
@@ -227,12 +240,12 @@ struct dummy_impl_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream &stream,
+    ocl_event_t execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
-            const std::vector<cl_event> &deps) const override {
+            const std::vector<ocl_event_t> &deps) const override {
         UNUSED(stream);
 
-        // Fast path: if no event, return an immediate event.
+        // Fast path: if no event, return an empty wrapper.
         if (deps.empty()) return {};
 
         // Fast path: if only one event, return it.
@@ -240,12 +253,13 @@ struct dummy_impl_t : public op_executable_t {
 
         // Otherwise, gather all dependencies.
         auto q = dnnl::ocl_interop::get_command_queue(stream);
+        std::vector<cl_event> raw_deps(deps.begin(), deps.end());
         cl_event e;
         auto err = xpu::ocl::clEnqueueMarkerWithWaitList(
-                q, static_cast<cl_uint>(deps.size()), deps.data(), &e);
+                q, static_cast<cl_uint>(raw_deps.size()), raw_deps.data(), &e);
         assert(err == CL_SUCCESS);
         MAYBE_UNUSED(err);
-        return e;
+        return ocl_event_t(e);
     }
 #endif
 

@@ -88,7 +88,8 @@ public:
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
-            const std::vector<cl_event> &cl_deps, cl_event *ret_event) override;
+            const std::vector<ocl_event_t> &cl_deps,
+            ocl_event_t &ret_event) override;
 #endif
 
     status_t prepare_inplace_pairs_impl() override {

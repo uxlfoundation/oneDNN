@@ -74,7 +74,15 @@
     indicates the target operation kind. To specify the kind of multiple
     operations, use `+` to concatenate the `ID` and `KIND` pairs. An error will
     occur if `ID` is not contained in the JSON file. Currently, this override
-    behavior is only allowed for binary and eltwise operations. 
+    behavior is only allowed for binary and eltwise operations.
+
+    When `KIND` is set to `undef`, the specified operation is removed from the
+    graph. For unary operations, the input of the removed operation is connected
+    directly to its output consumers. For binary operations, the input that has
+    a producer (i.e., is connected from another operation's output) is passed
+    through to the output consumers. An error is raised if both inputs of a
+    binary operation have or don't have producers, as the passthrough input
+    cannot be determined.
 
   - `--tensor-property=ID:PROPERTY[+ID:PROPERTY+...]` -- Override the property
     type of a logical tensor with `ID` in the graph with `PROPERTY` value.

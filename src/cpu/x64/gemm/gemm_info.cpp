@@ -131,7 +131,7 @@ gemm_info_t<a_t, b_t, c_t>::gemm_info_t(const char *transA, const char *transB,
 
     constexpr bool is_int8 = utils::one_of(
             data_traits_t<a_t>::data_type, data_type::s8, data_type::u8);
-    if (is_int8) this->ao = oa ? *oa : a_t(0);
+    if (is_int8) this->ao = static_cast<int32_t>(oa ? *oa : a_t(0));
     prepare_bo<b_t>(this->bo, ob);
 
     if (offsetC != nullptr) {
@@ -378,7 +378,7 @@ void gemm_info_t<a_t, b_t, c_t>::jit_init(void) {
     }
 
     // Note: um is fixed for a given set of data types and ISA.
-    const int um = this->um;
+    const int um = static_cast<int>(this->um);
 
     static std::once_flag initialized;
     static std::atomic<dnnl_status_t> st(dnnl_success);

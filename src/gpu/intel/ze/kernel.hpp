@@ -21,6 +21,8 @@
 
 #include "xpu/ze/utils.hpp"
 
+#include "common/thread_local_storage.hpp"
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -35,11 +37,18 @@ public:
             ze_kernel_handle_t akernel, const std::string &kernel_name);
     ~kernel_t() override = default;
 
+    // Returns the main ze_kernel. The interface is `const` as the kernel is
+    // unmodifiable.
+    ze_kernel_handle_t ze_kernel() const { return ze_kernel_; }
+    // Returns a copy of the main kernel from the tls. The interface is not
+    // `const` as it modifies `kernel_tls_` state.
+    ze_kernel_handle_t thread_local_kernel();
+
     status_t check_alignment(
             const compute::kernel_arg_list_t &arg_list) const override;
 
-    status_t set_arg(
-            int arg_index, size_t arg_size, const void *arg_value) const;
+    status_t set_arg(ze_kernel_handle_t kernel, int arg_index, size_t arg_size,
+            const void *arg_value);
 
     status_t parallel_for(impl::stream_t &stream,
             const compute::nd_range_t &range,
@@ -71,9 +80,11 @@ private:
     // the last one through ref_counting.
     //
     // Additionally, it's important to initialize `module` first to ensure the
-    // order of destruction is `kernel_` first and then `module_`.
+    // order of destruction is `ze_kernel_` first and then `module_`.
     std::shared_ptr<xpu::ze::wrapper_t<ze_module_handle_t>> module_;
-    xpu::ze::wrapper_t<ze_kernel_handle_t> kernel_;
+    xpu::ze::wrapper_t<ze_kernel_handle_t> ze_kernel_;
+    utils::thread_local_storage_t<xpu::ze::wrapper_t<ze_kernel_handle_t>>
+            kernel_tls_;
     std::string kernel_name_;
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(kernel_t);

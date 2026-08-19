@@ -440,7 +440,7 @@ template <typename T, typename U, typename W, typename... Args>
 inline T nd_iterator_init(T start, U &x, const W &X, Args &&...tuple) {
     start = nd_iterator_init(start, utils::forward<Args>(tuple)...);
     x = start % X;
-    return start / X;
+    return static_cast<T>(start / X);
 }
 
 inline bool nd_iterator_step() {
@@ -467,7 +467,7 @@ inline bool nd_iterator_jump(U &cur, const U end, W &x, const Y &X) {
         return true;
     } else {
         cur += max_jump;
-        x += max_jump;
+        x += static_cast<W>(max_jump);
         return false;
     }
 }

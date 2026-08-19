@@ -30,10 +30,18 @@
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "xpu/ocl/utils.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace graph {
 namespace dnnl_impl {
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+using ocl_event_t = xpu::ocl::wrapper_t<cl_event>;
+#endif
 
 // Unified scratchpad class that handles both library-managed (temporary) and
 // user-provided buffer modes. When user_buf is non-null, the buffer lifecycle
@@ -61,7 +69,7 @@ public:
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
     void set_deps(cl_event event) {
-        if (!user_managed_) ocl_e_ = event;
+        if (!user_managed_) { ocl_e_ = ocl_event_t(event, true); }
     }
 #endif
 
@@ -75,7 +83,7 @@ private:
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event ocl_e_;
+    ocl_event_t ocl_e_;
 #endif
 };
 

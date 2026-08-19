@@ -239,9 +239,9 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
     return status::success;
 }
 
-static inline status_t sdpa_attr_check(const engine_t *engine,
-        const primitive_attr_t *attr, const memory_desc_t *dst_desc,
-        const memory_desc_t *k_desc) {
+static inline status_t sdpa_attr_check(const memory_desc_t *dst_desc,
+        const memory_desc_t *k_desc, const engine_t *engine,
+        const primitive_attr_t *attr) {
     using smask_t = primitive_attr_t::skip_mask_t;
 
     if (attr == nullptr) return status::success;
@@ -263,7 +263,8 @@ static inline status_t sdpa_attr_check(const engine_t *engine,
 static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         const memory_desc_t *k_md, const memory_desc_t *v_md,
         const memory_desc_t *dst_md, const memory_desc_t *attn_mask_md,
-        const memory_desc_t *scale_md, bool invert_scale, dim_t kv_head_number,
+        const memory_desc_t *scale_md, const memory_desc_t *stats_md,
+        bool invert_scale, dim_t kv_head_number,
         attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
         prop_kind_t prop, const primitive_attr_t *kq_attr,
         const primitive_attr_t *vs_attr) {
@@ -291,6 +292,7 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
     sdpa_desc.dst_desc = *dst_md;
     if (attn_mask_md) sdpa_desc.attn_mask_desc = *attn_mask_md;
     sdpa_desc.scale_desc = *scale_md;
+    if (stats_md) sdpa_desc.stats_desc = *stats_md;
     sdpa_desc.invert_scale = invert_scale;
     sdpa_desc.kv_head_number = kv_head_number;
     sdpa_desc.mask_type = attn_mask_type;
@@ -348,8 +350,8 @@ static inline status_t create_sdpa_pd(
             kq_attr, vs_attr));
 
     auto sdpa_desc = create_sdpa_desc(q_md, k_md, v_md, dst_md, attn_mask_md,
-            scale_md, invert_scale, kv_head_number, attn_mask_type, softmax_alg,
-            prop, kq_attr, vs_attr);
+            scale_md, /* stats_md = */ nullptr, invert_scale, kv_head_number,
+            attn_mask_type, softmax_alg, prop, kq_attr, vs_attr);
 
     primitive_attr_t sdpa_attr = attr ? *attr : default_attr();
 
@@ -366,10 +368,10 @@ static inline status_t create_sdpa_pd(
         std::shared_ptr<primitive_desc_t> &sdpa_pd_, engine_t *engine,
         const memory_desc_t *q_md, const memory_desc_t *k_md,
         const memory_desc_t *v_md, const memory_desc_t *dst_md,
+        const memory_desc_t *attn_mask_md, const memory_desc_t *scale_md,
         const memory_desc_t *diff_q_md, const memory_desc_t *diff_k_md,
         const memory_desc_t *diff_v_md, const memory_desc_t *diff_dst_md,
-        const memory_desc_t *dS_md, const memory_desc_t *attn_mask_md,
-        const memory_desc_t *scale_md, bool invert_scale, dim_t kv_head_number,
+        const memory_desc_t *dS_md, bool invert_scale, dim_t kv_head_number,
         attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
         const primitive_attr_t *attr, const primitive_desc_t *hint_fwd_pd,
         const primitive_attr_t *kq_attr = nullptr,

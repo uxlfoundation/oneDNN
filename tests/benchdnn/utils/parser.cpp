@@ -305,9 +305,6 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
             // In that case, we check for the ':' delimiter that separates src1
             // and src2 args, split the string for the two tensors and parse
             // them individually.
-            // TODO: Currently, there is no broadcasting support for the src2
-            // tensor - specifying src2 mask inputs and tags therefore has no
-            // effect on the operation.
 
             if (e.is_binary_kind_with_ternary_op()) {
                 src_delim = '.';
@@ -352,13 +349,6 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                     } else {
                         e.binary.src2_mask = src_mask;
                         e.binary.src2_mask_input = attr_t::mask_input_t::mask;
-                        if (e.binary.src2_mask > 0)
-                            BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
-                                    "Error: binary post-op policy for the "
-                                    "src2 tensor",
-                                    mask_input_str.c_str(),
-                                    "is not recognized - broadcasting is not "
-                                    "supported for the ternary tensor.");
                     }
                 } else {
                     // Otherwise, re-direct to policy parsing.
@@ -382,13 +372,13 @@ attr_t::post_ops_t str2attr_post_ops(const std::string &s) {
                         e.binary.src2_policy = src_policy;
                         e.binary.src2_mask_input = attr_t::mask_input_t::policy;
 
-                        if (e.binary.src2_policy != attr_t::policy_t::COMMON) {
+                        if (e.binary.src2_policy
+                                == attr_t::policy_t::POLICY_TOTAL) {
                             BENCHDNN_PRINT(0, "%s \'%s\' %s\n",
                                     "Error: binary post-op policy for the "
                                     "src2 tensor",
                                     mask_input_str.c_str(),
-                                    "is not supported - broadcasting is "
-                                    "not supported for the src2 tensor.");
+                                    "is not recognized.");
                             SAFE_V(FAIL);
                         }
                     }
@@ -1659,6 +1649,24 @@ static bool parse_memory_kind(
     return parsed;
 }
 
+// TODO: remove once the SYCL kernel compiler becomes thread-safe.
+static mode_modifier_t drop_par_create(mode_modifier_t modifier) {
+#ifdef DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER
+    if (static_cast<bool>(modifier & mode_modifier_t::par_create)) {
+        static bool reported = false;
+        if (!reported) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "INFO: `P` mode modifier is ignored in the build with "
+                    "DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER=ON.");
+            reported = true;
+        }
+        modifier = static_cast<mode_modifier_t>(static_cast<unsigned>(modifier)
+                & ~static_cast<unsigned>(mode_modifier_t::par_create));
+    }
+#endif
+    return modifier;
+}
+
 static bool parse_mode(
         const char *str, const std::string &option_name = "mode") {
     static const std::string help
@@ -1862,7 +1870,8 @@ static bool parse_execution_mode(
                     parsers::str2execution_mode, str, option_name, help);
 
 #if !defined(DNNL_WITH_SYCL)
-    if (parsed) {
+    // Default execution mode is legit for any build configuration.
+    if (parsed && execution_mode != default_execution_mode) {
         BENCHDNN_PRINT(0,
                 "Error: option `--%s` is supported with DPC++ "
                 "builds only, exiting...\n",
@@ -1910,6 +1919,9 @@ bool parse_bench_settings(const char *str) {
                 << driver_name << ".md)\n\n";
         end_msg = true;
     }
+
+    if (parsed) bench_mode_modifier = drop_par_create(bench_mode_modifier);
+
     return parsed;
 }
 

@@ -79,5 +79,4 @@
 2x20x30:2x30x4
 2x20x30:1x30x4
 
-# regression
---batch=harness_matmul_regression_float16
+--batch=harness_matmul_regression

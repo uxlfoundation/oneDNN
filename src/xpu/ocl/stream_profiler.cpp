@@ -102,8 +102,8 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
     // and the end time of the last primitive event
     for (const auto &ev : evts) {
         const auto &ocl_event = xpu::ocl::event_t::from(*ev);
+        assert(ocl_event.size() > 0);
         size_t last_idx = ocl_event.size() - 1;
-        assert(last_idx >= 0);
 
         cl_ulong evbeg, evend;
         OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
@@ -128,8 +128,8 @@ bool verbose_profiler_t::is_event_complete(
     if (!active_) return true;
     if (!event) return true;
     const auto &ocl_event = xpu::ocl::event_t::from(*event);
+    assert(ocl_event.size() > 0);
     size_t last_idx = ocl_event.size() - 1;
-    assert(last_idx >= 0);
     cl_int status;
     cl_int err = xpu::ocl::clGetEventInfo(ocl_event[last_idx],
             CL_EVENT_COMMAND_EXECUTION_STATUS, sizeof(cl_int), &status,
@@ -148,8 +148,8 @@ void verbose_profiler_t::wait_for_event_completion(
     if (!active_) return;
     if (!event) return;
     const auto &ocl_event = xpu::ocl::event_t::from(*event);
+    assert(ocl_event.size() > 0);
     size_t last_idx = ocl_event.size() - 1;
-    assert(last_idx >= 0);
     cl_event cl_ev = ocl_event[last_idx];
     cl_int err = xpu::ocl::clWaitForEvents(1, &cl_ev);
 

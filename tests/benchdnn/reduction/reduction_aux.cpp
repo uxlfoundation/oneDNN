@@ -76,7 +76,6 @@ dnnl_alg_kind_t alg2alg_kind(alg_t alg) {
 
 std::string prb_t::set_repro_line() {
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     if (canonical || sdt != def.sdt[0]) s << "--sdt=" << sdt << " ";

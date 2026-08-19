@@ -75,7 +75,14 @@ bool is_supported(cpu_isa_t isa, alg_kind_t alg, data_type_t dt);
 
 } // namespace eltwise_injector
 
-template <cpu_isa_t isa, typename Wmm = typename cpu_isa_traits_t<isa>::Vmm>
+/*
+ * Main mechanism responsible for injecting eltwise postops.
+ *
+ * The ISA to generate for is taken from the host generator, which already
+ * carries it as its `max_cpu_isa()` ceiling. `Wmm` stays a template parameter
+ * to keep the vector width statically typed.
+ */
+template <typename Wmm>
 struct jit_uni_eltwise_injector_t {
     using Vmm = Wmm;
 
@@ -111,8 +118,8 @@ struct jit_uni_eltwise_injector_t {
         , use_dst_(use_dst)
         , preserve_vmm_(preserve_vmm)
         , preserve_p_table_(preserve_p_table)
-        , n_vregs_to_preserve_(aux_vecs_count(alg_, is_fwd_, alpha_)) {
-        assert(eltwise_injector::is_supported(isa, alg_, dt_));
+        , n_vregs_to_preserve_(aux_vecs_count(isa_, alg_, is_fwd_, alpha_)) {
+        assert(eltwise_injector::is_supported(isa_, alg_, dt_));
 
         register_table_entries();
     }
@@ -128,12 +135,12 @@ struct jit_uni_eltwise_injector_t {
                   eltwise.beta, eltwise.scale, dt, save_state, p_table, k_mask,
                   is_fwd, use_dst, preserve_vmm, preserve_p_table) {}
 
-    void compute_vector_range(size_t start_compute_idx, size_t end_compute_idx,
+    void compute_vector_range(int start_compute_idx, int end_compute_idx,
             const injector_utils::vmm_index_set_t &vmm_aux_indices = {});
     void compute_vector_range(
             const injector_utils::vmm_index_set_t &vmm_compute_idxs,
             const injector_utils::vmm_index_set_t &vmm_aux_indices = {});
-    void compute_vector(size_t compute_idx,
+    void compute_vector(int compute_idx,
             const injector_utils::vmm_index_set_t &vmm_aux_indices = {}) {
         compute_vector_range({compute_idx}, vmm_aux_indices);
     }
@@ -142,8 +149,10 @@ struct jit_uni_eltwise_injector_t {
 
     // This call is `static` and `public` to make a decision on the injector's
     // saving state if the caller can supply the necessary number of vmms. The
-    // decision must be made BEFORE constructing the injector, thus, `static`.
-    static size_t aux_vecs_count(alg_kind_t alg, bool is_fwd, float alpha);
+    // decision must be made BEFORE constructing the injector, thus, `static`,
+    // and `isa` comes as an argument since there's no host to query yet.
+    static int aux_vecs_count(
+            cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha);
 
 private:
     const alg_kind_t alg_;
@@ -177,34 +186,41 @@ private:
         _op_mxcsr = jit_generator_t::_op_mxcsr
     };
 
-    const bool is_avx512_ = is_superset(isa, avx512_core);
+    const cpu_isa_t isa_ = h->max_cpu_isa();
+    const bool has_avx512_core_ = is_superset(isa_, avx512_core);
+    const bool has_avx2_ = is_superset(isa_, avx2);
+    const bool is_avx_ = is_superset(isa_, avx) && !has_avx2_;
+    const bool is_sse41_ = !is_superset(isa_, avx);
 
-    static constexpr size_t vlen_ = vreg_traits_t<Vmm>::vlen;
-    static constexpr size_t preserved_vecs_max_ = 6;
-    static constexpr size_t preserved_gprs_max_ = 5;
-    static constexpr size_t n_vregs_ = cpu_isa_traits_t<isa>::n_vregs;
+    static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
+    static constexpr int preserved_vecs_max_ = 6;
+    static constexpr int preserved_gprs_max_ = 5;
+    const int n_vregs_ = isa_num_vregs(isa_);
     static constexpr int n_mantissa_bits_ = 23;
 
-    const size_t n_vregs_to_preserve_;
-    size_t n_vregs_preserved_ = 0;
+    const int n_vregs_to_preserve_;
+    int n_vregs_preserved_ = 0;
     bool need_vmm_mask_register_ = false;
     // Default initialization will put zeros. Putting any value to trigger a
     // potential error to Xbyak is not working as Xbyak cycles vmm indices
     // over 32 value.
-    size_t preserved_vmm_indices_[preserved_vecs_max_] = {};
-    size_t preserved_vmm_tail_indices_[preserved_vecs_max_] = {};
-    size_t preserved_gpr_indices_[preserved_gprs_max_] = {};
+    int preserved_vmm_indices_[preserved_vecs_max_] = {};
+    int preserved_vmm_tail_indices_[preserved_vecs_max_] = {};
+    int preserved_gpr_indices_[preserved_gprs_max_] = {};
 
     Vmm vmm_mask_;
     Vmm vmm_tmp_;
     Xbyak::Ymm ymm_tmp_;
     Xbyak::Xmm xmm_tmp_;
 
-    static bool need_mask_register(alg_kind_t alg, bool is_fwd, float alpha);
-    static size_t aux_gprs_count(alg_kind_t alg, bool is_fwd, float alpha);
-    static bool need_vmm_stack_ptr(alg_kind_t alg, bool is_fwd, float alpha);
-    static size_t op_vecs_count(alg_kind_t alg, bool is_fwd);
-    size_t get_stack_vmm_space();
+    static bool need_mask_register(
+            cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha);
+    static int aux_gprs_count(
+            cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha);
+    static bool need_vmm_stack_ptr(
+            cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha);
+    static int op_vecs_count(cpu_isa_t isa, alg_kind_t alg, bool is_fwd);
+    int get_stack_vmm_space();
 
     void compute_body(
             const injector_utils::vmm_index_set_iterator_t &start_idx_it,
@@ -212,10 +228,10 @@ private:
     void injector_preamble(const injector_utils::vmm_index_set_t &vmm_idxs,
             injector_utils::vmm_index_set_iterator_t &start_idx_tail_it,
             const injector_utils::vmm_index_set_t &vmm_aux_indices);
-    void injector_preamble_tail(size_t n_vregs_not_preserved);
+    void injector_preamble_tail(int n_vregs_not_preserved);
     void injector_postamble();
     void assign_regs();
-    Wmm vmm_aux(size_t idx);
+    Wmm vmm_aux(int idx);
     void vec_shift(const Vmm &vmm_dst, const Vmm &vmm_src, bool shift_left,
             const int imm);
     void compute_cmp_mask(const Vmm &vmm_src,
@@ -327,7 +343,7 @@ private:
         undef_key,
     };
 
-    size_t table_off(key_t key, size_t key_off_val_shift = 0) {
+    dim_t table_off(key_t key, dim_t key_off_val_shift = 0) {
         // assumption: all table entries sharing the same key also
         // share their broadcast property
         // TODO: enforce through data structure
@@ -340,7 +356,7 @@ private:
         const auto scale = te.bcast ? vlen_ : sizeof(table_entry_val_t);
         return te.off + key_off_val_shift * scale;
     }
-    Xbyak::Address table_val(key_t key, size_t key_off_val_shift = 0) {
+    Xbyak::Address table_val(key_t key, dim_t key_off_val_shift = 0) {
         auto off = table_off(key, key_off_val_shift);
         return h->ptr[p_table_ + off];
     }

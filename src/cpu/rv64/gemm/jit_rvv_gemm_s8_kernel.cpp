@@ -31,11 +31,13 @@ using namespace Xbyak_riscv;
 using namespace dnnl::impl::utils;
 
 jit_rvv_gemm_s8_kernel_t::jit_rvv_gemm_s8_kernel_t(dim_t n_cols, bool isTransA,
-        bool isTransB, bool b_signed, data_type_t dst_dt, bool has_bias)
+        bool isTransB, bool a_signed, bool b_signed, data_type_t dst_dt,
+        bool has_bias)
     : jit_generator_t("rv64_gemm_kernel_s8_jit")
     , n_cols_(n_cols)
     , isTransA_(isTransA)
     , isTransB_(isTransB)
+    , a_signed_(a_signed)
     , b_signed_(b_signed)
     , dst_dt_(dst_dt)
     , has_bias_(has_bias) {
@@ -138,9 +140,16 @@ void jit_rvv_gemm_s8_kernel_t::generate() {
     };
 
     auto emit_extend_a = [&]() {
-        // Sign-extend v_a_e8 (e8 LMUL=m1) to v_a_e16 (e16 LMUL=m2).
+        // Widen v_a_e8 (e8 LMUL=m1) to v_a_e16 (e16 LMUL=m2). Sign-extend
+        // for s8 A (vwmul.vx by 1) or zero-extend for u8 A (vwmulu.vx by 1).
+        // vsext.vf2 / vzext.vf2 trap on SG2044, so the widening-multiply
+        // idiom is used instead (see jit_rvv_inner_product_kernel_t).
         li(reg_tmp0, 1);
-        vwmul_vx(v_a_e16, v_a_e8, reg_tmp0);
+        if (a_signed_) {
+            vwmul_vx(v_a_e16, v_a_e8, reg_tmp0);
+        } else {
+            vwmulu_vx(v_a_e16, v_a_e8, reg_tmp0);
+        }
     };
 
     auto emit_load_b_consecutive = [&]() {
@@ -467,9 +476,9 @@ int dst_kind_index(data_type_t dst_dt) {
     return -1;
 }
 
-// One (transA, transB, b_signed) combination's worth of kernel storage:
-// for each supported dst, an array of (n_cols -> unique_ptr<kernel>) for
-// both the no-bias (nb) and with-bias (b) variants. The [kNumDstKinds]
+// One (transA, transB, a_signed, b_signed) combination's worth of kernel
+// storage: for each supported dst, an array of (n_cols -> unique_ptr<kernel>)
+// for both the no-bias (nb) and with-bias (b) variants. The [kNumDstKinds]
 // outer dimension and the [8] inner dimension (with [0] and [7] unused
 // because n_cols ∈ [1, 6]) mirror the f32 GEMM dispatcher's shape so the
 // patterns read consistently across kernels in this directory.
@@ -482,7 +491,7 @@ struct jit_rvv_gemm_s8_kernel_storage_t {
             b;
 };
 
-template <bool isTransA, bool isTransB, bool b_signed>
+template <bool isTransA, bool isTransB, bool a_signed, bool b_signed>
 const jit_rvv_gemm_s8_kernel_storage_t &get_jit_rvv_gemm_s8_kernel_storage() {
     static jit_rvv_gemm_s8_kernel_storage_t storage;
     static std::once_flag initialized;
@@ -491,48 +500,58 @@ const jit_rvv_gemm_s8_kernel_storage_t &get_jit_rvv_gemm_s8_kernel_storage() {
         for (int dt = 0; dt < kNumDstKinds; ++dt) {
             const data_type_t dst_dt = dts[dt];
             for (dim_t n_cols = 1; n_cols <= 6; n_cols++) {
-                storage.nb[dt][n_cols].reset(new jit_rvv_gemm_s8_kernel_t(
-                        n_cols, isTransA, isTransB, b_signed, dst_dt, false));
-                storage.b[dt][n_cols].reset(new jit_rvv_gemm_s8_kernel_t(
-                        n_cols, isTransA, isTransB, b_signed, dst_dt, true));
+                storage.nb[dt][n_cols].reset(
+                        new jit_rvv_gemm_s8_kernel_t(n_cols, isTransA, isTransB,
+                                a_signed, b_signed, dst_dt, false));
+                storage.b[dt][n_cols].reset(new jit_rvv_gemm_s8_kernel_t(n_cols,
+                        isTransA, isTransB, a_signed, b_signed, dst_dt, true));
             }
         }
     });
     return storage;
 }
 
-// Pick the per-(transA, transB, b_signed) storage. Exhaustive over the 8
-// combinations; aborts on a combination the dispatcher macro doesn't
+// Pick the per-(transA, transB, a_signed, b_signed) storage. Exhaustive over
+// the 16 combinations; aborts on a combination the dispatcher macro doesn't
 // cover rather than silently picking a wrong kernel.
 const jit_rvv_gemm_s8_kernel_storage_t &pick_jit_rvv_gemm_s8_kernel_storage(
-        bool isTransA, bool isTransB, bool b_signed) {
-#define DISPATCH(SA, SB, BS) \
-    if (isTransA == (SA) && isTransB == (SB) && b_signed == (BS)) { \
-        return get_jit_rvv_gemm_s8_kernel_storage<SA, SB, BS>(); \
+        bool isTransA, bool isTransB, bool a_signed, bool b_signed) {
+#define DISPATCH(SA, SB, AS, BS) \
+    if (isTransA == (SA) && isTransB == (SB) && a_signed == (AS) \
+            && b_signed == (BS)) { \
+        return get_jit_rvv_gemm_s8_kernel_storage<SA, SB, AS, BS>(); \
     }
-    DISPATCH(false, false, true)
-    DISPATCH(false, false, false)
-    DISPATCH(false, true, true)
-    DISPATCH(false, true, false)
-    DISPATCH(true, false, true)
-    DISPATCH(true, false, false)
-    DISPATCH(true, true, true)
-    DISPATCH(true, true, false)
+    DISPATCH(false, false, true, true)
+    DISPATCH(false, false, true, false)
+    DISPATCH(false, false, false, true)
+    DISPATCH(false, false, false, false)
+    DISPATCH(false, true, true, true)
+    DISPATCH(false, true, true, false)
+    DISPATCH(false, true, false, true)
+    DISPATCH(false, true, false, false)
+    DISPATCH(true, false, true, true)
+    DISPATCH(true, false, true, false)
+    DISPATCH(true, false, false, true)
+    DISPATCH(true, false, false, false)
+    DISPATCH(true, true, true, true)
+    DISPATCH(true, true, true, false)
+    DISPATCH(true, true, false, true)
+    DISPATCH(true, true, false, false)
 #undef DISPATCH
-    assert(!"unsupported (transA, transB, b_signed) combination");
+    assert(!"unsupported (transA, transB, a_signed, b_signed) combination");
     // The assert above only fires in debug builds. In release, abort
     // rather than silently picking a wrong kernel (the previous fallback
     // returned the s32 table, which would write s32 values for any
     // dst_dt — exactly the class of bug we want to surface).
     std::abort();
     // unreachable; satisfies the compiler's control-flow analysis.
-    return get_jit_rvv_gemm_s8_kernel_storage<false, false, true>();
+    return get_jit_rvv_gemm_s8_kernel_storage<false, false, true, true>();
 }
 
 } // namespace
 
-jit_rvv_gemm_s8_kernel_table_t get_jit_rvv_gemm_s8_kernel_table(
-        bool isTransA, bool isTransB, bool b_signed, data_type_t dst_dt) {
+jit_rvv_gemm_s8_kernel_table_t get_jit_rvv_gemm_s8_kernel_table(bool isTransA,
+        bool isTransB, bool a_signed, bool b_signed, data_type_t dst_dt) {
     // Map the request to a dst index. Abort on an unsupported dst_dt
     // rather than silently substituting a different dst's kernel (the
     // previous code's s32 fallback had this exact hazard).
@@ -542,8 +561,8 @@ jit_rvv_gemm_s8_kernel_table_t get_jit_rvv_gemm_s8_kernel_table(
         std::abort();
     }
 
-    const auto &storage
-            = pick_jit_rvv_gemm_s8_kernel_storage(isTransA, isTransB, b_signed);
+    const auto &storage = pick_jit_rvv_gemm_s8_kernel_storage(
+            isTransA, isTransB, a_signed, b_signed);
 
     // Build the per-n_cols lookup by reading pointers out of the
     // function-local-static storage. The `unique_ptr`s are populated once

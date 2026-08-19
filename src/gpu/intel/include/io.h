@@ -47,7 +47,6 @@
 #define SIZE_f8_e5m2 1
 #define SIZE_f8_e4m3 1
 #define SIZE_f4_e2m1 0
-#define SIZE_f4_e3m0 0
 #define SIZE_s4 0
 #define SIZE_u4 0
 #define SIZE_e8m0 1
@@ -78,9 +77,6 @@
 
 #ifdef MATH_UTILS_DECLARE_F4_E2M1
 DECLARE_AS_STRUCT_BLOCK(f4_e2m1)
-#endif
-#ifdef MATH_UTILS_DECLARE_F4_E3M0
-DECLARE_AS_STRUCT_BLOCK(f4_e3m0)
 #endif
 DECLARE_AS_STRUCT_BLOCK(s4)
 DECLARE_AS_STRUCT_BLOCK(u4)
@@ -340,18 +336,6 @@ DEF_write(f4_e2m1, float);
 DEF_write(f4_e2m1, int);
 
 #endif // MATH_UTILS_DECLARE_F4_E2M1
-
-#ifdef MATH_UTILS_DECLARE_F4_E3M0
-// Loads
-DEF_load_half_byte(half, f4_e3m0);
-DEF_load_half_byte(float, f4_e3m0);
-
-// Writes
-DEF_write(f4_e3m0, half);
-DEF_write(f4_e3m0, float);
-DEF_write(f4_e3m0, int);
-
-#endif // MATH_UTILS_DECLARE_F4_E3M0
 
 // Loads
 DEF_load_half_byte(float, s4);

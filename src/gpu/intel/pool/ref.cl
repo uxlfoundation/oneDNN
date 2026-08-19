@@ -157,11 +157,11 @@ __kernel void ref_pooling_fwd(__global DATA_T *src, __global int *ws,
 #endif
 
         // post op service
-#if DT_BF16 || DT_F64
+#if DT_F16 || DT_BF16 || DT_F64
     POST_OP_DATA_T tmp = d;
 #else
     POST_OP_DATA_T tmp = (POST_OP_DATA_T)DATA_TO_REF(d);
-#endif // DT_BF16
+#endif // DT_F16 || DT_BF16 || DT_F64
     POST_OP_DATA_T sum_src;
 #if WITH_SUM
     sum_src = (POST_OP_DATA_T)DATA_TO_REF(dst[dst_off]);

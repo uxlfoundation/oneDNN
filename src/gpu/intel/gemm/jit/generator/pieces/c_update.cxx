@@ -188,7 +188,8 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
                        :  ejmpi(1  | mod, labelSkip);
     }
 
-    bool splitUpdateStore = (problem.cOffset == COffset::Post);
+    // MX dst scaling must be applied after all other post-ops before store.
+    bool splitUpdateStore = (problem.cOffset == COffset::Post) || problem.hasCMXScale();
 
     // New post-op path: do all post-ops up to sum, if any.
     size_t poSum = 0;
@@ -219,6 +220,8 @@ bool Generator<hw>::gemmAccessC(COperation op, const GEMMProblem &problem, const
         if (newPostOps)
             gemmApplyPostOps(poSum + 1, problem.postOps.len(), problem, strategy, state);
         storeProblem.postOps = PostOps{};
+        gemmApplyMXScale(problem, strategy, state);
+        storeProblem.cMXScale = false;
 
         if (problem.cOffset == COffset::Post)
             ok = ok && gemmApplyCOffsetDispatch(problem, strategy, state);
@@ -577,7 +580,14 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
             and_(1 | ze | f1[0], null.ud(), state.inputs.flags, FlagKPartitioned);
 
         if (checkBeta1 && !beta.fixed()) {
-            cmp(1 | eq | f0[1], vbetar.getReg(0), cast(problem.Ts, 1.0));
+            auto immediate = cast(problem.Ts, 1.0);
+            if (problem.Ts.size() > 4) {
+                auto temp = state.ra.alloc_sub(problem.Ts.ngen());
+                mov(1, temp, immediate);
+                cmp(1 | eq | f0[1], vbetar.getReg(0), temp);
+                state.ra.safeRelease(temp);
+            } else
+                cmp(1 | eq | f0[1], vbetar.getReg(0), immediate);
         }
 
         if (checkBeta0 && !beta.fixed()) {

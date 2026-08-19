@@ -68,11 +68,11 @@ struct sparse_matmul_kernel_t : public jit_generator_t {
     int data_type_size() const { return sizeof(float); }
     int index_type_size() const { return sizeof(int32_t); }
 
-    int block_size() const { return vlen(); }
+    int block_size() const { return static_cast<int>(vlen()); }
 
     int unroll_factor() const { return 2; }
 
-    int N() const { return N_; }
+    int N() const { return static_cast<int>(N_); }
 
 protected:
     size_t N_;
@@ -173,17 +173,17 @@ struct jit_uni_sparse_matmul_kernel_t : public sparse_matmul_kernel_t {
 
     Vmm get_wei_reg(int index, bool is_tail_block) {
         // Vmm(0) is reserved for mask.
-        const int nloads = is_tail_block
-                ? utils::div_up(tail_block_size(), simd_w())
-                : block_size() / simd_w();
+        const int nloads = static_cast<int>(is_tail_block
+                        ? utils::div_up(tail_block_size(), simd_w())
+                        : block_size() / simd_w());
         return Vmm(nloads + index + 1);
     }
 
     void loop_within_block_row(
             Vmm vreg_src_val, Reg64 reg_src_col_idx, bool is_tail_block) {
-        const int nloads = is_tail_block
-                ? utils::div_up(tail_block_size(), simd_w())
-                : block_size() / simd_w();
+        const int nloads = static_cast<int>(is_tail_block
+                        ? utils::div_up(tail_block_size(), simd_w())
+                        : block_size() / simd_w());
         for (int i_load = 0; i_load < nloads; i_load++) {
             Vmm vreg_tmp_wei = get_wei_reg(i_load, is_tail_block);
             // Load a row of weights.
@@ -239,7 +239,7 @@ struct jit_uni_sparse_matmul_kernel_t : public sparse_matmul_kernel_t {
 
     void loop_over_blocks(bool is_tail_block) {
         const size_t n_full_blocks = N() / block_size();
-        const size_t nblocks = n_full_blocks + is_tail_block;
+        const dim_t nblocks = n_full_blocks + is_tail_block;
         // Divide number of non-zero elements in the row by 2 (unroll factor).
         assert(unroll_factor() == 2);
         mov(reg_nnz_divided_by_2, reg_nnz);
@@ -260,9 +260,9 @@ struct jit_uni_sparse_matmul_kernel_t : public sparse_matmul_kernel_t {
             mov(reg_block_offset, reg_blocks_count);
             shl(reg_block_offset, math::ilog2q(block_size()));
 
-            const int nloads = is_tail_block
-                    ? utils::div_up(tail_block_size(), simd_w())
-                    : block_size() / simd_w();
+            const int nloads = static_cast<int>(is_tail_block
+                            ? utils::div_up(tail_block_size(), simd_w())
+                            : block_size() / simd_w());
             std::vector<Vmm> vregs_dst(nloads);
             for (int i_load = 0; i_load < nloads; i_load++) {
                 vregs_dst[i_load] = get_dst_reg(i_load);

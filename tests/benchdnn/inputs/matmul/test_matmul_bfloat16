@@ -86,8 +86,7 @@
 8x2664:2664x256
 3x4128:4128x128
 
-# regression
---batch=harness_matmul_regression_bf16
+--batch=harness_matmul_regression
 
 # runtime M or N (special values for runtime dimensions)
 --reset

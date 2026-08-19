@@ -42,8 +42,7 @@ struct StructuredType {
         bf8,
         hf8,
         f8_e8m0,
-        f4_e2m1,
-        f4_e3m0, //    floating-point
+        f4_e2m1, //    floating-point
         any, //    unspecified
     } type
             = Type::any;

@@ -27,7 +27,9 @@
 
 #include "gemmstone/dsl/runtime.hpp"
 #include "gemmstone/microkernel/fuser.hpp"
+#include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
+#include "gpu/intel/logging.hpp"
 #include "gpu/intel/ocl/device_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"
 #include "gpu/intel/ocl/stream.hpp"
@@ -55,20 +57,14 @@ status_t engine_create(impl::engine_t **engine, engine_kind_t engine_kind,
 
 void maybe_print_build_info(const std::vector<const char *> &kernel_names,
         const compute::kernel_ctx_t &kernel_ctx) {
-#if defined(DISABLE_VERBOSE)
-    return;
-#endif
 
-    // Print out kernel options if the correct verbosity is set
-    if (get_verbose(verbose_t::debuginfo) >= 5) {
-        ostringstream_t oss;
+    gpu_info() << "build kernels:" << [&]() {
+        ostringstream_t names;
         for (const char *name : kernel_names)
-            oss << name << " ";
-
-        VFORMAT(get_msec(), verbose_t::debuginfo, primitive, exec,
-                VERBOSE_debug, "kernel options,%s,%s", oss.str().c_str(),
-                kernel_ctx.options().c_str());
-    }
+            if (name) names << " " << name;
+        return names.str();
+    }();
+    gpu_info() << "build options: " << kernel_ctx.options();
 }
 
 status_t engine_t::init() {
@@ -241,7 +237,8 @@ cl_int maybe_print_debug_info(
 }
 
 inline status_t fuse_microkernels(cl_context context, cl_device_id device,
-        xpu::ocl::wrapper_t<cl_program> &program, const char *code) {
+        xpu::ocl::wrapper_t<cl_program> &program, const char *code,
+        int grf_size) {
     if (gemmstone::microkernel::hasMicrokernels(code)) {
         cl_int status = CL_SUCCESS;
         size_t binary_size = 0;
@@ -253,9 +250,7 @@ inline status_t fuse_microkernels(cl_context context, cl_device_id device,
         OCL_CHECK(xpu::ocl::clGetProgramInfo(program, CL_PROGRAM_BINARIES,
                 sizeof(binary_data), &binary_data, nullptr));
 
-        try {
-            gemmstone::microkernel::fuse(binary, code);
-        } catch (...) { return status::runtime_error; }
+        CHECK(compute::fuse_microkernels(binary, code, grf_size));
 
         auto nbinary_size = binary.size();
         auto nbinary_data = const_cast<const uint8_t *>(binary.data());
@@ -325,7 +320,8 @@ status_t engine_t::build_program_from_source(
     OCL_CHECK(maybe_print_debug_info(err, program, dev));
 
     if (kernel_ctx.has_custom_headers())
-        CHECK(fuse_microkernels(ctx, dev, program, pp_code_str_ptr));
+        CHECK(fuse_microkernels(
+                ctx, dev, program, pp_code_str_ptr, dev_info->grf_size()));
 
     return status::success;
 }

@@ -145,7 +145,11 @@ inline void Align16Operand::outputText(std::ostream &str, PrintDetail detail, La
 
 inline void GRFRange::outputText(std::ostream &str, PrintDetail detail, LabelManager &man) const
 {
-    str << 'r' << int(base) << ':' << int(len);
+    {
+        str << 'r' << int(base);
+        if (int(len) > 1)
+            str << "-r" << (int(base) + int(len) - 1);
+    }
 }
 
 inline void Label::outputText(std::ostream &str, PrintDetail detail, LabelManager &man) {
@@ -496,6 +500,7 @@ public:
     }
 
     explicit AsmCodeGenerator(HW hardware_, int stepping_ = 0) : AsmCodeGenerator({genericProductFamily(hardware_), 0, PlatformType::Unknown}) {}
+    AsmCodeGenerator(AsmCodeGenerator &&) = default;
 
     AsmCodeGenerator(HW hardware_, std::ostream &defaultOutput_, int stepping_ = 0) : AsmCodeGenerator(hardware_, stepping_) {
         defaultOutput = &defaultOutput_;
@@ -1010,10 +1015,13 @@ public:
     template <typename DT = void> void frc(const RegData &dst, const RegData &src0, SourceLocation loc = {}) {
         frc<DT>(defaultMods(), dst, src0);
     }
-    void goto_(const InstructionModifier &mod, Label &jip, Label &uip, bool branchCtrl = false, SourceLocation loc = {}) {
+    void goto_(const InstructionModifier &mod, Label &jip, Label &uip, bool branchCtrl, SourceLocation loc = {}) {
         (void) jip.getID(labelManager);
         (void) uip.getID(labelManager);
         opX(Opcode::goto_, DataType::invalid, mod, NoOperand(), jip, uip, NoOperand(), branchCtrl);
+    }
+    void goto_(const InstructionModifier &mod, Label &jip, Label &uip, SourceLocation loc = {}) {
+        goto_(mod, jip, uip, false);
     }
     void goto_(const InstructionModifier &mod, Label &jip, SourceLocation loc = {}) {
         goto_(mod, jip, jip);
@@ -1585,14 +1593,16 @@ public:
         auto udst = dst, usrc0 = src0;
         udst.setType(unsignedType(dst.getType()));
         usrc0.setType(unsignedType(src0.getType()));
-        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, unsignedType(getDataType<DT>()), mod, udst, usrc0, src1);
+        auto utype = unsignedType(getDataType<DT>());
+        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, utype, mod, udst, usrc0, src1);
     }
     template <typename DT = void>
     void shr(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
         auto udst = dst, usrc0 = src0;
         udst.setType(unsignedType(dst.getType()));
         usrc0.setType(unsignedType(src0.getType()));
-        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, unsignedType(getDataType<DT>()), mod, udst, usrc0, src1);
+        auto utype = unsignedType(getDataType<DT>());
+        opX(isGen12 ? Opcode::shr_gen12 : Opcode::shr, utype, mod, udst, usrc0, src1);
     }
     template <typename DT = void>
     void smov(const InstructionModifier &mod, const RegData &dst, const RegData &src0, const Immediate &src1, SourceLocation loc = {}) {
@@ -1701,7 +1711,6 @@ private:
     };
 public:
     Shfl shfl;
-
 
 private:
     struct Sync {
@@ -1981,7 +1990,6 @@ static const char *getMnemonic(Opcode op, HW hw)
         "cmp", "cmpn", "csel", "", "", "", "", "bfrev",
         "bfe", "bfi1", "bfi2", "", "", "", "nop", ""
     };
-
 
     const char *mnemonic = names[static_cast<int>(op) & 0x7F];
 

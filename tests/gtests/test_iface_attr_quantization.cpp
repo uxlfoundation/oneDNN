@@ -633,20 +633,20 @@ CPU_TEST_F(attr_quantization_test_t, TestMatmulBatch) {
             }
 
             if (a_dt != data_type::u8 && a_dt != data_type::s8) continue;
-            // scales: per_tensor mask for int8 type only.
-            const auto per_tensor_mask = (1 << ndims) - 1;
+            // scales: all_dims mask for int8 type only.
+            const auto all_dims_mask = (1 << ndims) - 1;
             const auto per_ocic_mask = (1 << (ndims - 1)) + (1 << (ndims - 2));
             if (arg == DNNL_ARG_WEIGHTS) {
                 CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                        gen_attr_with_scales(arg, per_tensor_mask,
-                                data_type::f32, {32, 1})));
+                        gen_attr_with_scales(
+                                arg, all_dims_mask, data_type::f32, {32, 1})));
             } else if (arg == DNNL_ARG_SRC) {
                 CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
                         gen_attr_with_scales(
                                 arg, per_ocic_mask, data_type::f32, {1, 32})));
             } else {
                 CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                        gen_attr_with_scales(arg, per_tensor_mask)));
+                        gen_attr_with_scales(arg, all_dims_mask)));
             }
         }
     }
@@ -662,23 +662,62 @@ CPU_TEST_F(attr_quantization_test_t, TestMatmulBatchMXFP) {
     memory::desc b_md {{2, 5, 64, 128}, b_dt, tag::abdc};
     memory::desc c_md {{2, 5, 10, 128}, data_type::f32, tag::abcd};
     const auto ndims = a_md.get_ndims();
-    const auto per_tensor_mask = (1 << ndims) - 1;
+    const auto all_dims_mask = (1 << ndims) - 1;
 
     // Plain without MX
     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md));
     // MX weights only
     primitive_attr attr;
-    attr.set_scales(
-            DNNL_ARG_WEIGHTS, per_tensor_mask, {32, 1}, data_type::e8m0);
+    attr.set_scales(DNNL_ARG_WEIGHTS, all_dims_mask, {32, 1}, data_type::e8m0);
     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md, attr));
     // MX input non-MX output
-    attr.set_scales(DNNL_ARG_SRC, per_tensor_mask, {1, 32}, data_type::e8m0);
+    attr.set_scales(DNNL_ARG_SRC, all_dims_mask, {1, 32}, data_type::e8m0);
     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md, attr));
     // Full MX
     memory::desc q_c_md {{2, 5, 10, 128}, data_type::f8_e4m3, tag::abcd};
-    attr.set_scales(DNNL_ARG_DST, per_tensor_mask, {1, 32}, data_type::e8m0,
+    attr.set_scales(DNNL_ARG_DST, all_dims_mask, {1, 32}, data_type::e8m0,
             false, quantization_mode::dynamic_mx);
     CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, q_c_md, attr));
+}
+
+TEST_F(attr_quantization_test_t, TestMatmulNVFP) {
+    SKIP_IF(unsupported_data_type(data_type::f4_e2m1),
+            "Engine does not support f4_e2m1 data type.");
+    SKIP_IF(unsupported_data_type(data_type::f8_e4m3),
+            "Engine does not support f8_e4m3 data type.");
+
+    const auto a_dt = data_type::f4_e2m1;
+    const auto b_dt = data_type::f4_e2m1;
+    memory::desc a_md {{10, 64}, a_dt, tag::ab};
+    memory::desc b_md {{64, 128}, b_dt, tag::ab};
+    memory::desc c_md {{10, 128}, data_type::f32, tag::ab};
+    const auto ndims = a_md.get_ndims();
+    const auto all_dims_mask = (1 << ndims) - 1;
+
+    // Plain without scales
+    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md));
+    // NVFP4 weights only
+    primitive_attr attr;
+    attr.set_scales(
+            DNNL_ARG_WEIGHTS, all_dims_mask, {16, 1}, data_type::f8_e4m3);
+    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md, attr));
+    // NVFP4 source and weights
+    attr.set_scales(DNNL_ARG_SRC, all_dims_mask, {1, 16}, data_type::f8_e4m3);
+    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md, attr));
+    // Full NVFP4 with dynamic_fp output
+    memory::desc q_c_md {{10, 128}, data_type::f4_e2m1, tag::ab};
+    attr.set_scales(DNNL_ARG_DST, all_dims_mask, {1, 16}, data_type::f8_e4m3,
+            false, quantization_mode::dynamic_fp);
+    CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, q_c_md, attr));
+
+    // dynamic_fp requires group size 16
+    attr.set_scales(DNNL_ARG_DST, all_dims_mask, {1, 32}, data_type::f8_e4m3,
+            false, quantization_mode::dynamic_fp);
+    CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, q_c_md, attr));
+    // dynamic_fp requires f8_e4m3 scale data type
+    attr.set_scales(DNNL_ARG_DST, all_dims_mask, {1, 16}, data_type::e8m0,
+            false, quantization_mode::dynamic_fp);
+    CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, q_c_md, attr));
 }
 
 TEST_F(attr_quantization_test_t, TestPool) {

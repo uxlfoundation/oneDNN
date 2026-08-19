@@ -50,11 +50,16 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
 
     state.isNested = true;
 
-    /* Leave some space for host kernel arguments */
-    // The host side arguments with 32 byte size registers (DG2)
-    // use 16 registers include padding bytes (aligned with 128 bytes)
-    // r0, r4 are reserved for system threads
-    state.ra.claim((GRF::bytes(hw) >= 64) ? r0-r9 : r0-r15);
+    /* Reserve the host kernel's thread payload, below the microkernel's arguments. */
+    auto argumentBase = interface.getArgumentBase();
+    if (argumentBase.isInvalid() || argumentBase.getBase() < 1)
+        stub("Microkernel argument base not set");
+    int claimGRFs = argumentBase.getBase();
+    // XXX: Keep the legacy claim as a workaround for NVL-P to avoid
+    // performance regressions. IGC is sensitive to register range changes.
+    if (getProductFamily() == ngen::ProductFamily::NVLP)
+        claimGRFs = std::max<int>(claimGRFs, 10);
+    state.ra.claim(GRFRange(0, claimGRFs));
 
     moveR0(strategy, state);
 
@@ -99,6 +104,18 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
         flagSave[i] = state.ra.alloc_sub<uint32_t>();
         mov(1, flagSave[i], FlagRegister(i));
     }
+
+    // Save accumulator registers used by the host kernel, if we'll use them here
+    // TODO: Only save the accumulators used by the kernel. Potentially move into the package,
+    // which already decodes/scans the microkernel binary for register usage.
+    const int accSaveCount = AccumulatorRegister::count(hw, strategy.GRFs, problem.Tc.real().ngen());
+    const int accElts = GRF::bytes(hw) >> 2;  // dwords per accumulator register
+    GRFRange accSave = state.ra.alloc_range(accSaveCount);
+    for (int i = 0; i < accSave.getLen(); i++)
+        mov<uint32_t>(accElts, accSave[i], AccumulatorRegister(i));
+
+    knownClobbers.addFlag(0, FlagRegister::count(hw));
+    knownClobbers.addAcc(0, accSaveCount);
 
     // Beginning of microkernel:
     //   - check32
@@ -186,6 +203,11 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
     if (strategy.prefetchB && state.effBp.isInvalid()) state.effBp = state.effB;
 
     gemmSubkernel(problem, strategy, state);
+
+    // Restore accumulator registers if saved above.
+    for (int i = 0; i < accSave.getLen(); i++)
+        mov<uint32_t>(accElts, AccumulatorRegister(i), accSave[i]);
+    state.ra.safeRelease(accSave);
 
     // Restore flag registers and dispatch mask and return to host kernel.
     for (int i = 0; i < FlagRegister::count(hw); i++)
@@ -324,6 +346,7 @@ microkernel::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &pr
     package.settings.push_back({"slm_size", int(slmSize)});
 
     package.barrierCount = interface.getBarrierCount();
+    package.argumentBase = interface.getArgumentBase().getBase() * GRF::bytes(hw);
 
     package.finalize(knownClobbers);
 
@@ -351,7 +374,6 @@ static inline microkernel::StructuredType::Type microType(Type T)
         CASE(hf8)
         CASE(f8_e8m0)
         CASE(f4_e2m1)
-        CASE(f4_e3m0)
         default: stub("Unsupported type");
     }
 #undef CASE

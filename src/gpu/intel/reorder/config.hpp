@@ -16,6 +16,7 @@
 
 #include "gpu/gpu_reorder_pd.hpp"
 #include "gpu/intel/primitive_conf.hpp"
+#include "gpu/intel/subbyte_pack.hpp"
 #include "gpu/intel/utils.hpp"
 
 #ifndef GPU_INTEL_REORDER_CONFIG_HPP
@@ -104,7 +105,7 @@ struct conf_t {
     custom_kernel_t implementation;
     int ndims;
     size_t nelems;
-    bool subbyte_pack = false;
+    subbyte_pack_desc_t pack_desc;
     bool require_stateless_addressing;
 
     compute::dispatch_t dispatch;

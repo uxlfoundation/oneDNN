@@ -182,20 +182,20 @@ inline void replaceKernel(std::vector<uint8_t> &binary, const std::vector<uint8_
 inline HW decodeGfxCoreFamily(GfxCoreFamily family)
 {
     switch (family) {
-        case GfxCoreFamily::Gen9:         return HW::Gen9;
-        case GfxCoreFamily::Gen10:        return HW::Gen10;
-        case GfxCoreFamily::Gen10LP:      return HW::Gen10;
-        case GfxCoreFamily::Gen11:        return HW::Gen11;
-        case GfxCoreFamily::Gen11LP:      return HW::Gen11;
-        case GfxCoreFamily::Gen12LP:      return HW::Gen12LP;
+        case GfxCoreFamily::Gen9:     return HW::Gen9;
+        case GfxCoreFamily::Gen10:    return HW::Gen10;
+        case GfxCoreFamily::Gen10LP:  return HW::Gen10;
+        case GfxCoreFamily::Gen11:    return HW::Gen11;
+        case GfxCoreFamily::Gen11LP:  return HW::Gen11;
+        case GfxCoreFamily::Gen12LP:  return HW::Gen12LP;
         case GfxCoreFamily::Gen12:
-        case GfxCoreFamily::XeHP:         return HW::XeHP;
-        case GfxCoreFamily::XeHPG:        return HW::XeHPG;
-        case GfxCoreFamily::XeHPC:        return HW::XeHPC;
-        case GfxCoreFamily::Xe2:          return HW::Xe2;
-        case GfxCoreFamily::Xe3:          return HW::Xe3;
-        case GfxCoreFamily::Xe3p:         return HW::Xe3p;
-        default:                          return HW::Unknown;
+        case GfxCoreFamily::XeHP:     return HW::XeHP;
+        case GfxCoreFamily::XeHPG:    return HW::XeHPG;
+        case GfxCoreFamily::XeHPC:    return HW::XeHPC;
+        case GfxCoreFamily::Xe2:      return HW::Xe2;
+        case GfxCoreFamily::Xe3:      return HW::Xe3;
+        case GfxCoreFamily::Xe3p:     return HW::Xe3p;
+        default:                      return HW::Unknown;
     }
 }
 
@@ -242,7 +242,6 @@ inline NGEN_NAMESPACE::ProductFamily decodeProductFamily(ProductFamily family)
     if (family == ProductFamily::PTL) return NGEN_NAMESPACE::ProductFamily::GenericXe3;
     if (family == ProductFamily::NVLP) return NGEN_NAMESPACE::ProductFamily::NVLP;
     if (family == ProductFamily::CRI) return NGEN_NAMESPACE::ProductFamily::CRI;
-    if (family >= ProductFamily::CRI) return NGEN_NAMESPACE::ProductFamily::GenericXe3p;
     return NGEN_NAMESPACE::ProductFamily::Unknown;
 }
 
@@ -298,7 +297,7 @@ inline NGEN_NAMESPACE::Product decodeHWIPVersion(uint32_t rawVersion)
         };
     } version;
 
-    NGEN_NAMESPACE::Product outProduct;
+    NGEN_NAMESPACE::Product outProduct = {NGEN_NAMESPACE::ProductFamily::Unknown, 0, NGEN_NAMESPACE::PlatformType::Unknown};
 
     version.raw = rawVersion;
     switch (version.architecture) {

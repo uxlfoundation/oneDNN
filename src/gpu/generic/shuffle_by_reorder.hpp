@@ -40,19 +40,19 @@ struct shuffle_by_reorder_t : public gpu::primitive_t {
         DECLARE_COMMON_PD_T("reorder-based:any", shuffle_by_reorder_t);
 
         status_t init(const impl::engine_t *engine) {
-            const auto &md_src = is_fwd() ? src_md() : diff_src_md();
-            const auto &md_dst = is_fwd() ? dst_md() : diff_dst_md();
+            const auto &md_src = is_fwd() ? src_md() : diff_dst_md();
+            const auto &md_dst = is_fwd() ? dst_md() : diff_src_md();
             const memory_desc_wrapper src_d(md_src);
             const memory_desc_wrapper dst_d(md_dst);
 
             VDISPATCH_SHUFFLE(src_d.data_type() == dst_d.data_type(),
                     VERBOSE_INCONSISTENT_DT, "src_d", "dst_d");
-            VDISPATCH_SHUFFLE(md_src->format_kind == format_kind::blocked,
-                    VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_SHUFFLE(
                     attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_SHUFFLE(
                     set_default_formats_common(), VERBOSE_UNSUPPORTED_TAG);
+            VDISPATCH_SHUFFLE(md_src->format_kind == format_kind::blocked,
+                    VERBOSE_UNSUPPORTED_TAG);
             VDISPATCH_SHUFFLE(
                     src_d == dst_d, VERBOSE_INCONSISTENT_MDS, "src", "dst");
             VDISPATCH_SHUFFLE(src_d.is_dense(), VERBOSE_UNSUPPORTED_SPARSE_CFG);

@@ -39,72 +39,18 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-// Kernel wrapper storing a per-thread copy of cl_kernel.
-class kernel_wrapper_t {
-public:
-    kernel_wrapper_t(cl_kernel kernel = nullptr) : kernel_(kernel) {}
-
-    operator cl_kernel() const { return kernel_; }
-
-    status_t set_arg(int arg_index, size_t arg_size, const void *arg_value) {
-        cl_int err = xpu::ocl::clSetKernelArg(
-                kernel_, arg_index, arg_size, arg_value);
-        return xpu::ocl::convert_to_dnnl(err);
-    }
-
-    status_t set_usm_arg(
-            impl::engine_t *engine, int arg_index, const void *arg_value) {
-        return xpu::ocl::usm::set_kernel_arg(
-                engine, kernel_, arg_index, arg_value);
-    }
-
-private:
-    cl_kernel kernel_;
-};
-
-class kernel_cache_t {
-public:
-    kernel_cache_t(cl_kernel main_kernel) : main_kernel_(main_kernel) {}
-
-    ~kernel_cache_t() {
-        for (auto &kv : kernels_) {
-            // See the comment in 'src/xpu/ocl/utils.hpp' next to
-            // `xpu::ocl::clReleaseKernel(t)` call. It explains the logic behind
-            // such handling.
-            auto cl_st = xpu::ocl::clReleaseKernel(kv.second);
-            if (cl_st != CL_SUCCESS && cl_st != CL_INVALID_OPERATION) {
-                OCL_CHECK_V(cl_st);
-            }
-        }
-    }
-
-    status_t get(kernel_wrapper_t **kernel) {
-        auto id = std::this_thread::get_id();
-        {
-            utils::lock_read_t lock_read(mutex_);
-            auto it = kernels_.find(id);
-            if (it != kernels_.end()) {
-                *kernel = &it->second;
-                return status::success;
-            }
-        }
-
-        // No copy for this thread, clone the original kernel and save the
-        // copy.
+cl_kernel kernel_t::thread_local_kernel() {
+    if (!kernel_tls_.is_set()) {
+        // No copy for this thread, clone the original kernel and save the copy.
         cl_kernel cloned_kernel;
-        CHECK(xpu::ocl::clone_kernel(main_kernel_, &cloned_kernel));
+        auto st = xpu::ocl::clone_kernel(ocl_kernel(), &cloned_kernel);
+        assert(st == status::success);
+        if (st != status::success) return nullptr;
 
-        utils::lock_write_t lock_write(mutex_);
-        auto ret = kernels_.emplace(id, cloned_kernel);
-        *kernel = &ret.first->second;
-        return status::success;
+        kernel_tls_.set(cloned_kernel);
     }
-
-private:
-    cl_kernel main_kernel_;
-    std::unordered_map<std::thread::id, kernel_wrapper_t> kernels_;
-    utils::rw_mutex_t mutex_;
-};
+    return kernel_tls_.get();
+}
 
 status_t kernel_t::get_binary(
         const impl::engine_t *engine, xpu::binary_t &binary) const {
@@ -123,6 +69,17 @@ status_t kernel_t::get_binary_size(
             ocl_kernel(), ocl_engine->device(), binary_size);
 }
 
+status_t kernel_t::set_arg(cl_kernel kernel, int arg_index, size_t arg_size,
+        const void *arg_value) {
+    OCL_CHECK(xpu::ocl::clSetKernelArg(kernel, arg_index, arg_size, arg_value));
+    return status::success;
+}
+
+status_t kernel_t::set_usm_arg(impl::engine_t *engine, cl_kernel kernel,
+        int arg_index, const void *arg_value) {
+    return xpu::ocl::usm::set_kernel_arg(engine, kernel, arg_index, arg_value);
+}
+
 status_t kernel_t::parallel_for(impl::stream_t &stream,
         const compute::nd_range_t &range,
         const compute::kernel_arg_list_t &arg_list, const xpu::event_t &deps,
@@ -131,8 +88,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     auto *ocl_stream = utils::downcast<stream_t *>(&stream);
     cl_command_queue queue = ocl_stream->queue();
 
-    kernel_wrapper_t *kernel = nullptr;
-    CHECK(cache_->get(&kernel));
+    const auto &kernel = thread_local_kernel();
     CHECK(check_scalar_arguments(arg_list));
     CHECK(check_alignment(arg_list));
 
@@ -170,7 +126,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                                 const xpu::ocl::buffer_memory_storage_t *>(
                                 ocl_mem_storage);
                         auto ocl_mem = m->mem_object();
-                        CHECK(kernel->set_arg(i, sizeof(cl_mem), &ocl_mem));
+                        CHECK(set_arg(kernel, i, sizeof(cl_mem), &ocl_mem));
                         param_bytes += pointer_size;
                         break;
                     }
@@ -179,7 +135,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                                 const xpu::ocl::usm_memory_storage_t *>(
                                 ocl_mem_storage);
                         auto *usm_ptr = m->usm_ptr();
-                        CHECK(kernel->set_usm_arg(stream.engine(), i, usm_ptr));
+                        CHECK(set_usm_arg(stream.engine(), kernel, i, usm_ptr));
                         param_bytes += pointer_size;
                         break;
                     }
@@ -187,21 +143,21 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                 }
             } else {
                 if (xpu::ocl::usm::is_usm_supported(stream.engine())) {
-                    CHECK(kernel->set_usm_arg(stream.engine(), i, nullptr));
+                    CHECK(set_usm_arg(stream.engine(), kernel, i, nullptr));
                     param_bytes += pointer_size;
                 } else {
                     cl_mem null_mem = nullptr;
-                    CHECK(kernel->set_arg(i, sizeof(cl_mem), &null_mem));
+                    CHECK(set_arg(kernel, i, sizeof(cl_mem), &null_mem));
                     param_bytes += pointer_size;
                 }
             }
         } else if (arg.is_local()) {
-            CHECK(kernel->set_arg(i, arg.size(), arg.value()));
+            CHECK(set_arg(kernel, i, arg.size(), arg.value()));
             // Assuming local memory arguments contribute to
             // the CL_DEVICE_MAX_PARAMETER_SIZE limit as a pointer type
             param_bytes += pointer_size;
         } else {
-            CHECK(kernel->set_arg(i, arg.size(), arg.value()));
+            CHECK(set_arg(kernel, i, arg.size(), arg.value()));
             param_bytes += arg.size();
         }
     }
@@ -224,7 +180,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
 
         cl_uint num_events = (cl_uint)events.size();
         const cl_event *events_data = num_events ? events.data() : nullptr;
-        cl_int err = xpu::ocl::clEnqueueNDRangeKernel(queue, *kernel, ndims,
+        cl_int err = xpu::ocl::clEnqueueNDRangeKernel(queue, kernel, ndims,
                 nullptr, range.global_range().data(),
                 range.local_range() ? range.local_range().data() : nullptr,
                 num_events, events_data, &event.unwrap());
@@ -233,7 +189,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
     } else {
         bool save_event = save_events_ || stream.is_profiling_enabled()
                 || stream.is_verbose_profiler_enabled();
-        cl_int err = xpu::ocl::clEnqueueNDRangeKernel(queue, *kernel, ndims,
+        cl_int err = xpu::ocl::clEnqueueNDRangeKernel(queue, kernel, ndims,
                 nullptr, range.global_range().data(),
                 range.local_range() ? range.local_range().data() : nullptr, 0,
                 nullptr, save_event ? &event.unwrap() : nullptr);
@@ -314,9 +270,7 @@ kernel_t::kernel_t(xpu::ocl::wrapper_t<cl_kernel> &&ocl_kernel,
     : ocl_kernel_(std::move(ocl_kernel))
     , arg_types_(arg_types)
     , src_(src)
-    , save_events_(false) {
-    cache_ = std::make_shared<kernel_cache_t>(ocl_kernel_);
-}
+    , save_events_(false) {}
 
 } // namespace ocl
 } // namespace intel

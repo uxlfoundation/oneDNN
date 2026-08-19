@@ -118,10 +118,11 @@ std::optional<::sycl::event> conv_fwd_executable_t::execute_sycl(
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-cl_event conv_fwd_executable_t::execute_ocl(const stream &stream,
+ocl_event_t conv_fwd_executable_t::execute_ocl(const stream &stream,
         const std::unordered_map<int, memory> &args,
-        const std::vector<cl_event> &deps) const {
-    auto ocl_deps = deps;
+        const std::vector<ocl_event_t> &deps) const {
+    std::vector<cl_event> ocl_deps(deps.begin(), deps.end());
+    ocl_event_t reorder_event;
     if (with_sum_) {
         const memory &psrc_mem = args.find(DNNL_GRAPH_ARG_POST_SRC)->second;
         const memory &dst_mem = args.find(DNNL_ARG_DST)->second;
@@ -158,23 +159,25 @@ cl_event conv_fwd_executable_t::execute_ocl(const stream &stream,
                                           dst_mem.get_data_handle()));
 
                 auto prim = dnnl::reorder(psrc_mem, to_mem);
-                auto e = dnnl::ocl_interop::execute(prim, stream,
+                reorder_event = ocl_event_t(dnnl::ocl_interop::execute(prim,
+                        stream,
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
                                 {DNNL_ARG_TO, const_cast<memory &>(to_mem)}},
-                        ocl_deps);
-                ocl_deps = {e};
+                        ocl_deps));
+                ocl_deps = {reorder_event.get()};
             } else {
                 auto prim = dnnl::reorder(psrc_mem, dst_mem);
-                auto e = dnnl::ocl_interop::execute(prim, stream,
+                reorder_event = ocl_event_t(dnnl::ocl_interop::execute(prim,
+                        stream,
                         {{DNNL_ARG_FROM, const_cast<memory &>(psrc_mem)},
                                 {DNNL_ARG_TO, const_cast<memory &>(dst_mem)}},
-                        ocl_deps);
-                ocl_deps = {e};
+                        ocl_deps));
+                ocl_deps = {reorder_event.get()};
             }
         }
     }
     auto e = dnnl::ocl_interop::execute(prim_, stream, args, ocl_deps);
-    return e;
+    return ocl_event_t(e);
 }
 #endif
 

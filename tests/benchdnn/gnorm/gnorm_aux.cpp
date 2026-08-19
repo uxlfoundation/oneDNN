@@ -21,19 +21,20 @@ namespace gnorm {
 
 flags_t str2flags(const char *str) {
     flags_t flags = NONE;
-    while (str && *str) {
-        if (*str == 'G') {
+    // Iterate with a separate cursor so `str` still points at the whole value and the
+    // error below can report what the user actually passed rather than its tail.
+    for (const char *s = str; s && *s; s++) {
+        if (*s == 'G') {
             flags |= GLOB_STATS;
-        } else if (*str == 'C') {
+        } else if (*s == 'C') {
             flags |= USE_SCALE;
-        } else if (*str == 'H') {
+        } else if (*s == 'H') {
             flags |= USE_SHIFT;
         } else {
-            BENCHDNN_PRINT(0, "%s \'%c\'\n",
-                    "Error: --flags option doesn't support value", *str);
+            BENCHDNN_PRINT(0, "%s \'%s\'\n",
+                    "Error: --flags option doesn't support value", str);
             SAFE_V(FAIL);
         }
-        str++;
     }
     return flags;
 }
@@ -163,7 +164,6 @@ std::ostream &operator<<(std::ostream &s, const desc_t &d) {
 
 std::string prb_t::set_repro_line() {
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     bool has_default_dts = true;

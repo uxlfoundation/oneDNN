@@ -127,8 +127,14 @@ public:
 
     stream create_stream(const engine &eng) const {
         key_t key(reinterpret_cast<uint64_t>(eng.get()));
-        return create_object<stream>(
-                reuse_stream_, key, stream_mgr_, [&] { return stream(eng); });
+        return create_object<stream>(reuse_stream_, key, stream_mgr_, [&] {
+            stream::flags stream_flags = stream::flags::default_flags;
+#ifdef DNNL_EXPERIMENTAL_PROFILING
+            const bool is_gpu = get_test_engine_kind() == engine::kind::gpu;
+            if (is_gpu) stream_flags |= stream::flags::profiling;
+#endif
+            return stream(eng, stream_flags);
+        });
     }
 
     template <typename T>
@@ -286,12 +292,6 @@ protected:
         // submitted to different queues from from different threads.
         if (get_test_engine_kind() == engine::kind::gpu)
             set_primitive_cache_capacity(0);
-#endif
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
-        // Note: necessary abstractions to support concurrent kernel generation
-        // are not introduced for Level Zero backend.
-        SKIP_IF(true,
-                "Concurrent execution is not supported by Level Zero backend.");
 #endif
         // This test doesn't work properly under SDE.
         const int len = 1024;

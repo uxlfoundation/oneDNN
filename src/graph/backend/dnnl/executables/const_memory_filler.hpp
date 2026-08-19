@@ -86,22 +86,23 @@ struct const_memory_filler_t : public op_executable_t {
 #endif
 
 #if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    cl_event execute_ocl(const stream &stream,
+    ocl_event_t execute_ocl(const stream &stream,
             const std::unordered_map<int, memory> &args,
-            const std::vector<cl_event> &deps) const override {
+            const std::vector<ocl_event_t> &deps) const override {
         void *data_handle = static_cast<void *>(
                 const_cast<target_dt *>(attr_data_.data()));
         const memory &dst_mem = args.find(DNNL_ARG_TO)->second;
         assert(deps.size() <= 1);
         // Passing the empty event to memcpy below causes failure.
-        const bool empty = deps.empty() || deps[0] == nullptr;
-        const cl_uint num = empty ? 0 : static_cast<cl_uint>(deps.size());
+        std::vector<cl_event> raw_deps(deps.begin(), deps.end());
+        const bool empty = raw_deps.empty() || raw_deps[0] == nullptr;
+        const cl_uint num = empty ? 0 : static_cast<cl_uint>(raw_deps.size());
         cl_event e;
         UNUSED_STATUS(
                 xpu::ocl::usm::memcpy(stream.get(), dst_mem.get_data_handle(),
                         data_handle, dst_mem.get_desc().get_size(), num,
-                        empty ? nullptr : deps.data(), &e));
-        return e;
+                        empty ? nullptr : raw_deps.data(), &e));
+        return ocl_event_t(e);
     }
 #endif
 

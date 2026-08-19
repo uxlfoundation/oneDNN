@@ -582,7 +582,7 @@ struct Instruction12 {
     Opcode opcode() const         { return static_cast<Opcode>(common.opcode & 0x7F); }
     SyncFunction syncFC() const   { return static_cast<SyncFunction>(binary.cmod); }
     SharedFunction sfid() const   { return static_cast<SharedFunction>(send.sfid); }
-    bool eot() const              { return (opcode() == Opcode::send || opcode() == Opcode::sendc) && send.eot; }
+    bool eot() const              { return isSend(opcode()) && (isSendg(opcode()) ? sendg.eot : send.eot); }
     bool predicated() const       { return !common.maskCtrl || (static_cast<PredCtrl>(common.predCtrl) != PredCtrl::None); }
     bool atomic() const           { return common.atomicCtrl; }
     unsigned dstTypecode() const  { return binary.dstType; }
@@ -629,17 +629,8 @@ struct InstructionXeHPC : public Instruction12 {
         return Instruction12::getCModDepRegion<EncodingTagXeHPC>(region);
     }
 
-    bool isSendg() const {
-        return (opcode() == Opcode::sendg || opcode() == Opcode::sendgc || opcode() == Opcode::sendgx || opcode() == Opcode::sendgxc);
-    }
-
-    bool eot() const {
-        if (isSendg()) return sendg.eot;
-        return Instruction12::eot();
-    }
-
     bool atomic() const {
-        if (isSendg()) return false;    /* no atomic field */
+        if (isSendg(opcode())) return false;    /* no atomic field */
         return Instruction12::atomic();
     }
 };
@@ -1245,7 +1236,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     break;
                 }
                 case 3: {
-                    if(op != Opcode::bdpas) return false;
+                    if (op != Opcode::bdpas) return false;
                     unsigned reg = bdpas.src3Reg0;
                     reg |= bdpas.src3Reg1_2 << 1;
                     reg |= bdpas.src3Reg3_6 << 3;
@@ -1256,7 +1247,7 @@ bool Instruction12::getOperandRegion(autoswsb::DependencyRegion &region, int opN
                     break;
                 }
                 case 4: {
-                    if(op != Opcode::bdpas) return false;
+                    if (op != Opcode::bdpas) return false;
                     unsigned reg = bdpas.src4Reg0_3;
                     reg |= bdpas.src4Reg4_8 << 4;
                     o.direct.regNum = reg;      // low 8 bits
@@ -1736,9 +1727,8 @@ autoswsb::DestinationMask Instruction12::destinations(int &jip, int &uip) const
     using namespace autoswsb;
 
     if (!isBranch(opcode())) {
-        if (opcode() == Opcode::send || opcode() == Opcode::sendc)
-            if (send.eot && !predicated())
-                return DestNone;
+        if (eot() && !predicated())
+            return DestNone;
         return DestNextIP;
     }
 

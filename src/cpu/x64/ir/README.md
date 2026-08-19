@@ -82,10 +82,11 @@ step. They are omitted above for clarity.
 * **Post-ops injector.** The existing Xbyak post-ops injector is reused unchanged,
   plugged in as a single `inject_postops` operation. Its variable-length arguments
   live in a side table indexed from the operation's immediate field, so the
-  operation itself carries only that index. For binary post-ops the table also
-  holds each accumulator's output offset and active-element count, which the
-  injector needs to address its right-hand-side argument. The injector saves and
-  restores its own registers and does not participate in IR allocation.
+  operation itself carries only that index. The table also holds each
+  accumulator's output offset and active-element count, which a binary post-op
+  needs to address its right-hand-side argument and a sum post-op needs to read
+  the previous destination value. The injector saves and restores its own
+  registers and does not participate in IR allocation.
 
 ### Control and Data Flow
 

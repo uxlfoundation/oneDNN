@@ -36,11 +36,7 @@ scratchpad_t::scratchpad_t(
     : buffer_(nullptr)
     , size_(size)
     , user_managed_(user_buf != nullptr)
-    , eng_(eng.get())
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-    , ocl_e_(nullptr)
-#endif
-{
+    , eng_(eng.get()) {
     if (user_buf) {
         buffer_ = reinterpret_cast<char *>(user_buf->get_data_handle());
     } else if (size > 0) {

@@ -30,9 +30,6 @@ using namespace dnnl::impl::cpu::x64;
 #include "cpu/aarch64/jit_uni_i8i8_pooling.hpp"
 #include "cpu/aarch64/jit_uni_pooling.hpp"
 using namespace dnnl::impl::cpu::aarch64;
-#if defined(DNNL_AARCH64_USE_ACL)
-#include "cpu/aarch64/acl_pooling.hpp"
-#endif // DNNL_AARCH64_USE_ACL
 #elif DNNL_RV64
 #include "cpu/rv64/jit_uni_pooling.hpp"
 using namespace dnnl::impl::cpu::rv64;
@@ -61,8 +58,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx2, f32>)
             CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<avx, f32>)
             CPU_INSTANCE_X64(jit_uni_pooling_fwd_t<sse41, f32>)
-            CPU_INSTANCE_AARCH64(jit_uni_pooling_fwd_t<sve, f32>)
-            CPU_INSTANCE_AARCH64_ACL(acl_pooling_fwd_t)
+            CPU_INSTANCE_AARCH64(jit_uni_pooling_fwd_t<sve>)
+            CPU_INSTANCE_AARCH64(jit_uni_pooling_fwd_t<asimd>)
             CPU_INSTANCE_RV64(jit_uni_pooling_fwd_t<v>)
             CPU_INSTANCE_RV64(jit_uni_pooling_fwd_t<zvfh>)
             CPU_INSTANCE(nchw_pooling_fwd_t<bf16>)
@@ -90,7 +87,8 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<avx2, f32>)
             CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<avx, f32>)
             CPU_INSTANCE_X64(jit_uni_pooling_bwd_t<sse41, f32>)
-            CPU_INSTANCE_AARCH64(jit_uni_pooling_bwd_t<sve, f32>)
+            CPU_INSTANCE_AARCH64(jit_uni_pooling_bwd_t<sve>)
+            CPU_INSTANCE_AARCH64(jit_uni_pooling_bwd_t<asimd>)
             CPU_INSTANCE_RV64(jit_uni_pooling_bwd_t<v>)
             CPU_INSTANCE_RV64(jit_uni_pooling_bwd_t<zvfh>)
             CPU_INSTANCE(nchw_pooling_bwd_t<bf16>)

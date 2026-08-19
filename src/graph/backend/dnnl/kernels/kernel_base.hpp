@@ -31,10 +31,18 @@
 #include "oneapi/dnnl/dnnl_sycl.hpp"
 #endif
 
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+#include "xpu/ocl/utils.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace graph {
 namespace dnnl_impl {
+
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
+using ocl_event_t = xpu::ocl::wrapper_t<cl_event>;
+#endif
 
 class dnnl_partition_impl_t;
 
@@ -86,7 +94,7 @@ struct kernel_base_t {
     status_t execute_ocl(stream_t *astream, const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
-            const std::vector<cl_event> &ocl_deps, cl_event *ocl_event) {
+            const std::vector<ocl_event_t> &ocl_deps, ocl_event_t &ocl_event) {
         return ocl_execute_impl(
                 astream, inputs, outputs, scratchpad_buf, ocl_deps, ocl_event);
     }
@@ -95,7 +103,7 @@ struct kernel_base_t {
             const std::vector<tensor_t> &inputs,
             const std::vector<tensor_t> &outputs,
             const tensor_t *scratchpad_buf,
-            const std::vector<cl_event> &ocl_deps, cl_event *ocl_event)
+            const std::vector<ocl_event_t> &ocl_deps, ocl_event_t &ocl_event)
             = 0;
 #endif
 

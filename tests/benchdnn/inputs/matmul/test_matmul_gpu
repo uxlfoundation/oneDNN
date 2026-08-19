@@ -68,8 +68,7 @@
 --attr-post-ops=sum+add:f32+add:u8:per_dim_01+mul:f32:per_dim_0+add:s8:per_tensor+add:f32:per_dim_01+linear:2:-1
 3x30x1:3x1x20
 
-# test regressions
---batch=harness_matmul_regression_f32
+--batch=harness_matmul_regression
 
 --reset
 --dt=f64,f32
@@ -137,18 +136,10 @@
 --reset
 --batch=option_set_fwks_ext_gpu
 
-# Test tf32 configuration
---reset
---batch=option_set_fwks_key_gpu_tf32
-
 # precomputed reductions for zero points
 --reset
 --batch=harness_matmul_precomp_reductions
 
-# float16 regressions
---batch=harness_matmul_regression_float16
-
-# regressions
---check-ref-impl=
---reset --dt=f16:s4:f32 --stag=ab --wtag=ab --dtag=ba --attr-fpmath=strict:true 2x2:2x2
---reset --dt=s8:u8:f16 --attr-scales=src:common:2:f16+wei:per_oc 3x6x1x2x4:1x6x7x4x1
+# Test tf32 configuration
+--reset
+--batch=option_set_fwks_key_gpu_tf32

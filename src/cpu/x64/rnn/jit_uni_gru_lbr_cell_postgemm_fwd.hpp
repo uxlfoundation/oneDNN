@@ -30,9 +30,8 @@ template <cpu_isa_t isa, impl::data_type_t src_data_t,
 struct jit_uni_gru_lbr_cell_postgemm_fwd : public jit_uni_rnn_postgemm_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_gru_lbr_cell_postgemm_fwd)
 
-    using injector_t = typename utils::conditional<isa == avx512_core,
-            jit_uni_eltwise_injector_t<avx512_core>,
-            jit_uni_eltwise_injector_t<isa>>::type;
+    using injector_t
+            = jit_uni_eltwise_injector_t<typename cpu_isa_traits_t<isa>::Vmm>;
 
     jit_uni_gru_lbr_cell_postgemm_fwd(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
@@ -56,18 +55,24 @@ protected:
     std::unique_ptr<injector_t> tanh_injector_;
 
     // register size in bytes
-    using Vmm = typename jit_uni_eltwise_injector_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
+    static constexpr int vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr int f32_dt_size = sizeof(float);
 
-    const size_t vlen_dst
-            = vlen / (sizeof(float) / types::data_type_size(src_data_t));
-    const size_t vlen_bias_ = vlen / (sizeof(float) / bias_dt_size_);
-    const size_t hstate_dt_size = types::data_type_size(src_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
-    const size_t gate_dt_size = types::data_type_size(src_data_t);
-    const size_t vlen_elems = vlen / scratch_dt_size;
-    const size_t loop_len = rnn_.dhc;
-    const size_t loop_tail = loop_len % nstl::max(size_t(1), vlen_elems);
+    const int vlen_dst = vlen
+            / (f32_dt_size
+                    / static_cast<int>(types::data_type_size(src_data_t)));
+    const int vlen_bias_ = vlen / (f32_dt_size / bias_dt_size_);
+    const int hstate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int scratch_dt_size
+            = static_cast<int>(types::data_type_size(scratch_data_t));
+    const int gate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int vlen_elems = vlen / scratch_dt_size;
+    const dim_t loop_len = rnn_.dhc;
+    const int loop_tail
+            = static_cast<int>(loop_len % nstl::max<dim_t>(1, vlen_elems));
 
     void generate() override {
         using namespace Xbyak;
@@ -138,8 +143,8 @@ protected:
             return ptr[addr_scratch_cell_reg + i * rnn_.dhc * scratch_dt_size];
         };
 
-        auto compute_loop = [&](size_t current_vlen_elems) {
-            const auto current_vlen = current_vlen_elems * scratch_dt_size;
+        auto compute_loop = [&](int current_vlen_elems) {
+            const int current_vlen = current_vlen_elems * scratch_dt_size;
             Label loop_start_label, loop_inc_regs_or_finish;
             L(loop_start_label);
             {
@@ -235,7 +240,7 @@ protected:
                 if (current_vlen_elems != loop_tail) {
                     const auto current_gate_size
                             = current_vlen == vlen ? vlen_dst : gate_dt_size;
-                    const auto current_states_size
+                    const dim_t current_states_size
                             = current_vlen == vlen ? vlen_dst : hstate_dt_size;
                     add(addr_scratch_gates_reg, current_vlen);
                     add(addr_ws_h_reg, current_gate_size);

@@ -511,6 +511,7 @@ protected:
     bool gemmApplyCOffsetDispatch(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     void gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
+    void gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
     void gemmLoadBinaryOpArgs(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state);
 
     // quantization.cxx

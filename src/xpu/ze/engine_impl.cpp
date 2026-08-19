@@ -100,7 +100,7 @@ status_t engine_impl_t::create_stream_impl(
     auto *si = new xpu::ze::stream_impl_t(flags);
     if (!si) return status::out_of_memory;
 
-    CHECK(si->init(context_, device_));
+    CHECK(si->init(context_, device_, kind()));
 
     *stream_impl = si;
 

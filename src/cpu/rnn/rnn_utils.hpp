@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
+* Copyright 2026 FUJITSU LIMITED
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -28,9 +29,12 @@
 #include "cpu/platform.hpp"
 
 #include "cpu/gemm/gemm_pack.hpp"
+#include "cpu/simple_q10n.hpp"
 
 #if DNNL_X64
 #include "cpu/x64/cpu_isa_traits.hpp"
+#elif DNNL_AARCH64
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #endif
 
 #define rnn_postgemm_sig_args \
@@ -44,18 +48,22 @@
             gemm_acc_t *diff_dst_layer_, gemm_acc_t *diff_dst_iter_, \
             gemm_acc_t *diff_dst_iter_c_, const float *weights_peephole_, \
             const void *bias_, gates_t *ws_grid_, scratch_t *scratch_cell_, \
-            dst_iter_t *dst_iter_, float *weights_scales_, int block_step
+            dst_iter_t *dst_iter_, float *weights_scales_, dim_t block_step
 
 #define rnn_postgemm_sig(f) void f(rnn_postgemm_sig_args) const
 
-#if DNNL_X64
+// gemm_acc_scratchpad is a GEMM accumulation scratchpad used by tile-based
+// brgemm kernels (AMX on x64, MMLA/SME on aarch64). It can be nullptr on
+// implementations that don't need it (e.g. current AArch64 SVE kernels).
+
+#if DNNL_X64 || DNNL_AARCH64
 #define rnn_merged_layer_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
             rnn_utils::cell_position_t cell_position, weights_t **w_layer_, \
             const src_layer_t *src_layer_, scratch_t *scratch_gates_, \
             gemm_acc_t *diff_src_layer_, gemm_acc_t *diff_w_layer_, \
-            gemm_acc_t *amx_scratchpad, \
-            x64::brgemm_batch_element_t *addr_batch_global
+            gemm_acc_t *gemm_acc_scratchpad, \
+            brgemm_batch_element_t *addr_batch_global
 
 #define rnn_cell_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
@@ -75,8 +83,8 @@
             ht_t *proj_ht_, gemm_acc_t *scratch_diff_ht_, gates_t *ws_grid_, \
             scratch_t *scratch_cell_, scratch_t *scratch_gates_blocked_, \
             scratch_t *scratch_src_layer_, scratch_t *scratch_src_iter_, \
-            dst_iter_t *dst_iter_, gemm_acc_t *amx_scratchpad, \
-            x64::brgemm_batch_element_t *addr_batch_global
+            dst_iter_t *dst_iter_, gemm_acc_t *gemm_acc_scratchpad, \
+            brgemm_batch_element_t *addr_batch_global
 
 #define rnn_grid_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
@@ -98,8 +106,8 @@
             gemm_acc_t *diff_augru_attention_, \
             gemm_acc_t *diff_weights_layer_, gemm_acc_t *diff_weights_iter_, \
             float *diff_weights_projection_, float *diff_weights_peephole_, \
-            float *diff_bias_, gemm_acc_t *amx_scratchpad, \
-            x64::brgemm_batch_element_t *addr_batch_global
+            float *diff_bias_, gemm_acc_t *gemm_acc_scratchpad, \
+            brgemm_batch_element_t *addr_batch_global
 
 #else
 
@@ -126,7 +134,7 @@
             float *diff_bias_, gates_t *ws_gates_, scratch_t *scratch_gates_, \
             ht_t *proj_ht_, gemm_acc_t *scratch_diff_ht_, gates_t *ws_grid_, \
             scratch_t *scratch_cell_, dst_iter_t *dst_iter_, \
-            gemm_acc_t *amx_scratchpad
+            gemm_acc_t *gemm_acc_scratchpad
 
 #define rnn_grid_execution_sig_args \
     const exec_ctx_t &ctx, const rnn_utils::rnn_conf_t &rnn, \
@@ -146,7 +154,7 @@
             scratch_t *scratch_cell_, gemm_acc_t *diff_augru_attention_, \
             gemm_acc_t *diff_weights_layer_, gemm_acc_t *diff_weights_iter_, \
             float *diff_weights_projection_, float *diff_weights_peephole_, \
-            float *diff_bias_, gemm_acc_t *amx_scratchpad
+            float *diff_bias_, gemm_acc_t *gemm_acc_scratchpad
 
 #endif
 
@@ -199,6 +207,12 @@
 namespace dnnl {
 namespace impl {
 namespace cpu {
+
+#if DNNL_X64
+using namespace x64;
+#elif DNNL_AARCH64
+using namespace aarch64;
+#endif
 
 namespace rnn_utils {
 
@@ -276,13 +290,13 @@ struct diff_src_brgemm_conf_t {
     dim_t N_iter_blocks = 0, n_iter_tail = 0;
     dim_t LDA = 0, LDB = 0, LDC = 0;
 
-#if DNNL_X64
-    x64::cpu_isa_t isa = x64::isa_undef;
+#if DNNL_X64 || DNNL_AARCH64
+    cpu_isa_t isa = isa_undef;
 #endif
 
     brgemm_rnn_execute_loop_order_t loop_order
             = brgemm_rnn_execute_loop_order_t::undefined;
-    int gates_block;
+    dim_t gates_block;
 };
 
 struct diff_wei_brgemm_conf_t {
@@ -297,8 +311,8 @@ struct diff_wei_brgemm_conf_t {
 
     bool global_transpose = false;
 
-#if DNNL_X64
-    x64::cpu_isa_t isa = x64::isa_undef;
+#if DNNL_X64 || DNNL_AARCH64
+    cpu_isa_t isa = isa_undef;
 #endif
 
     brgemm_rnn_execute_loop_order_t loop_order
@@ -313,9 +327,9 @@ struct rnn_conf_t {
     data_type_t src_iter_c_dt = data_type::undef;
     data_type_t dst_iter_c_dt = data_type::undef;
 
-    int n_layer = 0, n_iter = 0, n_dir = 0, n_gates = 0, n_states = 0;
-    int mb = 0;
-    int slc = 0, sic = 0, dhc = 0, dic = 0, dlc = 0;
+    dim_t n_layer = 0, n_iter = 0, n_dir = 0, n_gates = 0, n_states = 0;
+    dim_t mb = 0;
+    dim_t slc = 0, sic = 0, dhc = 0, dic = 0, dlc = 0;
     //int gates_ld, gates_nld, gates_ws_ld;
 
     int n_parts_weights_layer = 0;
@@ -330,7 +344,9 @@ struct rnn_conf_t {
     int parts_weights_projection[DNNL_RNN_MAX_N_PARTS];
     size_t part_weights_projection_pack_size[DNNL_RNN_MAX_N_PARTS];
 
-    int n_bias = 0, n_parts_bias = 0, parts_bias[DNNL_RNN_MAX_N_PARTS];
+    dim_t n_bias = 0;
+    int n_parts_bias = 0;
+    int parts_bias[DNNL_RNN_MAX_N_PARTS];
 
     /* Size of packed data in bytes */
     size_t weights_layer_comp_offset = 0, weights_layer_pack_size = 0;
@@ -338,36 +354,37 @@ struct rnn_conf_t {
     size_t weights_projection_comp_offset = 0, weights_projection_pack_size = 0;
 
     bool copy_bias = false;
-    int weights_layer_ld = 0, weights_layer_nld = 0;
-    int diff_weights_layer_ld = 0, diff_weights_layer_nld = 0;
-    int weights_iter_ld = 0, weights_iter_nld = 0;
-    int diff_weights_iter_ld = 0, diff_weights_iter_nld = 0;
-    int weights_projection_ld = 0, weights_projection_nld = 0;
-    int diff_weights_projection_ld = 0, diff_weights_projection_nld = 0;
+    dim_t weights_layer_ld = 0, weights_layer_nld = 0;
+    dim_t diff_weights_layer_ld = 0, diff_weights_layer_nld = 0;
+    dim_t weights_iter_ld = 0, weights_iter_nld = 0;
+    dim_t diff_weights_iter_ld = 0, diff_weights_iter_nld = 0;
+    dim_t weights_projection_ld = 0, weights_projection_nld = 0;
+    dim_t diff_weights_projection_ld = 0, diff_weights_projection_nld = 0;
 
-    int proj_ht_ld = 0, proj_ht_nld = 0;
+    dim_t proj_ht_ld = 0, proj_ht_nld = 0;
 
-    int ws_gates_ld = 0, ws_gates_nld = 0;
-    int ws_ht_ld = 0, ws_ht_nld = 0;
-    int ws_states_layer_ld = 0, ws_states_layer_nld = 0;
-    int ws_states_iter_ld = 0, ws_states_iter_nld = 0;
-    int ws_states_iter_c_ld = 0, ws_states_iter_c_nld = 0;
-    int ws_diff_states_layer_ld = 0, ws_diff_states_layer_nld = 0;
-    int ws_diff_states_iter_ld = 0, ws_diff_states_iter_nld = 0;
-    int ws_diff_states_iter_c_ld = 0, ws_diff_states_iter_c_nld = 0;
+    dim_t ws_gates_ld = 0, ws_gates_nld = 0;
+    dim_t ws_ht_ld = 0, ws_ht_nld = 0;
+    dim_t ws_states_layer_ld = 0, ws_states_layer_nld = 0;
+    dim_t ws_states_iter_ld = 0, ws_states_iter_nld = 0;
+    dim_t ws_states_iter_c_ld = 0, ws_states_iter_c_nld = 0;
+    dim_t ws_diff_states_layer_ld = 0, ws_diff_states_layer_nld = 0;
+    dim_t ws_diff_states_iter_ld = 0, ws_diff_states_iter_nld = 0;
+    dim_t ws_diff_states_iter_c_ld = 0, ws_diff_states_iter_c_nld = 0;
 
-    int scratch_gates_ld = 0, scratch_gates_nld = 0;
-    int scratch_ht_ld = 0, scratch_ht_nld = 0;
-    int scratch_diff_ht_ld = 0, scratch_diff_ht_nld = 0;
+    dim_t scratch_gates_ld = 0, scratch_gates_nld = 0;
+    dim_t scratch_ht_ld = 0, scratch_ht_nld = 0;
+    dim_t scratch_diff_ht_ld = 0, scratch_diff_ht_nld = 0;
 
-    int src_layer_ld_ = 0, src_layer_nld_ = 0;
-    int src_iter_ld_ = 0, src_iter_nld_ = 0;
-    int src_iter_c_ld_ = 0, src_iter_c_nld_ = 0;
-    int dst_layer_ld_ = 0, dst_layer_nld_ = 0;
-    int dst_iter_ld_ = 0, dst_iter_nld_ = 0;
-    int dst_iter_c_ld_ = 0, dst_iter_c_nld_ = 0;
+    dim_t src_layer_ld_ = 0, src_layer_nld_ = 0;
+    dim_t src_iter_ld_ = 0, src_iter_nld_ = 0;
+    dim_t src_iter_c_ld_ = 0, src_iter_c_nld_ = 0;
+    dim_t dst_layer_ld_ = 0, dst_layer_nld_ = 0;
+    dim_t dst_iter_ld_ = 0, dst_iter_nld_ = 0;
+    dim_t dst_iter_c_ld_ = 0, dst_iter_c_nld_ = 0;
 
-    int weights_iter_compensation_size = 0, weights_layer_compensation_size = 0;
+    dim_t weights_iter_compensation_size = 0,
+          weights_layer_compensation_size = 0;
     bool is_fwd = false, is_training = false, is_lbr = false,
          is_lstm_peephole = false, is_lstm_projection = false, is_augru = false,
          is_orig_gru = false;
@@ -406,7 +423,7 @@ struct rnn_conf_t {
     bool merge_gemm_iter = false, merge_gemm_layer = false,
          force_nocopy = false, use_layer_packed_gemm = false,
          use_iter_packed_gemm = false, use_projection_packed_gemm = false;
-    int n_iter_scratch_gates = 0;
+    dim_t n_iter_scratch_gates = 0;
 
     bool diff_weights_overwrite = false;
     bool use_matmul = false;
@@ -650,12 +667,12 @@ struct rnn_conf_t {
 
     dim_t Nproj, Nproj_blocks, nproj_tail;
     dim_t LDAproj, LDBproj, LDCproj[4];
-    int dhc_block_peephole, dhc_tail_peephole, dhc_blocks_peephole;
+    dim_t dhc_block_peephole, dhc_tail_peephole, dhc_blocks_peephole;
     bool brgemm_fwd_iter_layer_fuse_possible = false;
 
     int nthr;
-#if DNNL_X64
-    x64::cpu_isa_t brgemm_isa;
+#if DNNL_X64 || DNNL_AARCH64
+    cpu_isa_t brgemm_isa = isa_undef;
 #endif
     bool unfused_post_gemm;
     brgemm_rnn_execute_loop_order_t loop_order
@@ -677,7 +694,7 @@ bool is_ldgoi_blocked(const memory_desc_wrapper &md);
 bool is_ldio_blocked(const memory_desc_wrapper &md);
 bool is_ldoi_blocked(const memory_desc_wrapper &md);
 
-int get_good_ld(int dim, int sizeof_dt);
+dim_t get_good_ld(dim_t dim, int sizeof_dt);
 
 template <typename T>
 bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
@@ -726,6 +743,8 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
 #if DNNL_X64
         if (!(x64::mayiuse(x64::avx512_core) || x64::mayiuse(x64::avx2_vnni_2)))
             return false;
+#elif DNNL_AARCH64
+        if (!aarch64::mayiuse_bf16()) return false;
 #endif
         rnn.dt_conf = all_bf16;
     } else if (utils::everyone_is(data_type::f16, src_layer_d.data_type(),
@@ -866,18 +885,19 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     rnn.is_orig_gru = utils::one_of(
             rd.cell_kind, alg_kind::vanilla_gru, alg_kind::vanilla_augru);
     rnn.n_parts_weights_layer = 1;
-    rnn.parts_weights_layer[0] = rnn.n_gates;
+    rnn.parts_weights_layer[0] = static_cast<int>(rnn.n_gates);
     rnn.parts_weights_layer[1] = 0;
 
     rnn.n_parts_weights_iter = rnn.is_orig_gru ? 2 : 1;
-    rnn.parts_weights_iter[0] = rnn.is_orig_gru ? 2 : rnn.n_gates;
+    rnn.parts_weights_iter[0]
+            = rnn.is_orig_gru ? 2 : static_cast<int>(rnn.n_gates);
     rnn.parts_weights_iter[1] = rnn.is_orig_gru ? 1 : 0;
 
     rnn.n_parts_weights_projection = 1;
     rnn.parts_weights_projection[0] = 1;
 
     rnn.n_parts_bias = 1;
-    rnn.parts_bias[0] = rnn.n_bias;
+    rnn.parts_bias[0] = static_cast<int>(rnn.n_bias);
     rnn.parts_bias[1] = 0;
 
     rnn.use_matmul = !rnn.is_brgemm && rnn.is_fwd // TODO: Enable BWD
@@ -976,7 +996,7 @@ bool init_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
     const auto set_pack_sizes
             = [&](bool merge, bool &do_pack, size_t &weights_pack_size,
                       int &n_parts, int *parts, size_t *parts_pack_size,
-                      size_t &comp_offset, int ic, int oc, int weights_oc,
+                      size_t &comp_offset, dim_t ic, dim_t oc, dim_t weights_oc,
                       dim_t data_ld) -> bool {
         bool pack = true;
         weights_pack_size = 0;
@@ -1075,21 +1095,21 @@ void set_conf(rnn_conf_t &rnn, const rnn_desc_t &rd,
 
     // Set leading dimensions for input weights arrays depending on input format
     const auto set_dims
-            = [&](const memory_desc_wrapper &md, int &ld, int &nld) {
+            = [&](const memory_desc_wrapper &md, dim_t &ld, dim_t &nld) {
         ld = 0;
         nld = 0;
         if (md.is_blocking_desc()) {
             if (is_ldigo(md)) {
-                ld = (int)md.blocking_desc().strides[2];
+                ld = md.blocking_desc().strides[2];
                 nld = md.dims()[2];
             } else if (is_ldgoi(md)) {
-                ld = (int)md.blocking_desc().strides[4];
+                ld = md.blocking_desc().strides[4];
                 nld = md.dims()[3] * md.dims()[4];
             } else if (is_ldoi(md)) {
-                ld = (int)md.blocking_desc().strides[3];
+                ld = md.blocking_desc().strides[3];
                 nld = md.dims()[3];
             } else if (is_ldio(md)) {
-                ld = (int)md.blocking_desc().strides[2];
+                ld = md.blocking_desc().strides[2];
                 nld = md.dims()[2];
             } else
                 assert(!"unsupported weights format");
@@ -1246,7 +1266,7 @@ private:
 
     const byte *const base_ptr_;
     const size_t dt_size_;
-    const int dims_[Tdims];
+    const dim_t dims_[Tdims];
 };
 
 template <typename... Targs>
@@ -1261,13 +1281,13 @@ template <typename T>
 struct ws_gates_aoc_t {
     ws_gates_aoc_t(const rnn_conf_t &rnn, T *data)
         : gates_(data, rnn.ws_gates_nld, rnn.ws_gates_ld), DHC_(rnn.dhc) {}
-    T &operator()(int batch, int gate, int dhc) const {
+    T &operator()(dim_t batch, dim_t gate, dim_t dhc) const {
         return gates_(batch, gate * DHC_ + dhc);
     }
 
 private:
     const dnnl::impl::utils::array_offset_calculator<T, 2> gates_;
-    const int DHC_;
+    const dim_t DHC_;
 };
 
 template <typename T>
@@ -1275,20 +1295,22 @@ struct scratch_gates_aoc_t {
     scratch_gates_aoc_t(const rnn_conf_t &rnn, T *data)
         : gates_(data, rnn.scratch_gates_nld, rnn.scratch_gates_ld)
         , DHC_(rnn.dhc) {}
-    T &operator()(int batch, int gate, int dhc) const {
+    T &operator()(dim_t batch, dim_t gate, dim_t dhc) const {
         return gates_(batch, gate * DHC_ + dhc);
     }
 
 private:
     const dnnl::impl::utils::array_offset_calculator<T, 2> gates_;
-    const int DHC_;
+    const dim_t DHC_;
 };
 
 template <typename T>
 struct weights_peephole_aoc_t {
     weights_peephole_aoc_t(const rnn_conf_t &rnn, T *data)
         : weights_peephole_(data, 3, rnn.dhc) {}
-    T &operator()(int g, int dhc) const { return weights_peephole_(g, dhc); }
+    T &operator()(dim_t g, dim_t dhc) const {
+        return weights_peephole_(g, dhc);
+    }
 
 private:
     const utils::array_offset_calculator<T, 2> weights_peephole_;
@@ -1319,7 +1341,7 @@ struct bias_linear_exec_aoc_t {
             assert(!"unsupported data type");
     }
 
-    void **operator()(int layer, int dir) const {
+    void **operator()(dim_t layer, dim_t dir) const {
         if (bias_present_) {
             if (bias_dt_ == data_type::f32)
                 return reinterpret_cast<void **>(
@@ -1364,11 +1386,11 @@ private:
 
 template <typename T>
 struct ws_states_layer_aoc_t {
-    ws_states_layer_aoc_t(const rnn_conf_t &rnn, T *data, int leading_dim)
+    ws_states_layer_aoc_t(const rnn_conf_t &rnn, T *data, dim_t leading_dim)
         : state_(data, rnn.ws_states_layer_nld, leading_dim) {}
     ws_states_layer_aoc_t(const rnn_conf_t &rnn, T *data)
         : state_(data, rnn.ws_states_layer_nld, rnn.ws_states_layer_ld) {}
-    T &operator()(int batch, int dhc) const { return state_(batch, dhc); }
+    T &operator()(dim_t batch, dim_t dhc) const { return state_(batch, dhc); }
 
 private:
     const dnnl::impl::utils::array_offset_calculator<T, 2> state_;
@@ -1376,11 +1398,11 @@ private:
 
 template <typename T>
 struct ws_states_iter_aoc_t {
-    ws_states_iter_aoc_t(const rnn_conf_t &rnn, T *data, int leading_dim)
+    ws_states_iter_aoc_t(const rnn_conf_t &rnn, T *data, dim_t leading_dim)
         : state_(data, rnn.ws_states_iter_nld, leading_dim) {}
     ws_states_iter_aoc_t(const rnn_conf_t &rnn, T *data)
         : state_(data, rnn.ws_states_iter_nld, rnn.ws_states_iter_ld) {}
-    T &operator()(int batch, int dhc) const { return state_(batch, dhc); }
+    T &operator()(dim_t batch, dim_t dhc) const { return state_(batch, dhc); }
 
 private:
     const dnnl::impl::utils::array_offset_calculator<T, 2> state_;
@@ -1390,7 +1412,7 @@ template <typename T>
 struct augru_attention_aoc_t {
     augru_attention_aoc_t(const rnn_conf_t &rnn, T *data)
         : state_(data, rnn.mb) {}
-    T &operator()(int batch) const { return state_(batch); }
+    T &operator()(dim_t batch) const { return state_(batch); }
 
 private:
     const dnnl::impl::utils::array_offset_calculator<T, 1> state_;
@@ -1401,7 +1423,7 @@ struct ws_diff_states_layer_aoc_t {
     ws_diff_states_layer_aoc_t(const rnn_conf_t &rnn, T *data)
         : diff_states_layer_(data, rnn.ws_diff_states_layer_nld,
                   rnn.ws_diff_states_layer_ld) {}
-    T &operator()(int batch, int dhc) const {
+    T &operator()(dim_t batch, dim_t dhc) const {
         return diff_states_layer_(batch, dhc);
     }
 
@@ -1414,7 +1436,7 @@ struct ws_diff_states_iter_aoc_t {
     ws_diff_states_iter_aoc_t(const rnn_conf_t &rnn, T *data)
         : diff_states_iter_(data, rnn.ws_diff_states_iter_nld,
                   rnn.ws_diff_states_iter_ld) {}
-    T &operator()(int batch, int dhc) const {
+    T &operator()(dim_t batch, dim_t dhc) const {
         return diff_states_iter_(batch, dhc);
     }
 
@@ -1427,7 +1449,7 @@ struct ws_diff_states_iter_c_aoc_t {
     ws_diff_states_iter_c_aoc_t(const rnn_conf_t &rnn, T *data)
         : diff_states_iter_c_(data, rnn.ws_diff_states_iter_c_nld,
                   rnn.ws_diff_states_iter_c_ld) {}
-    T &operator()(int batch, int dhc) const {
+    T &operator()(dim_t batch, dim_t dhc) const {
         return diff_states_iter_c_(batch, dhc);
     }
 
@@ -1440,18 +1462,18 @@ struct ws_diff_w_iter_aoc_t {
         : diff_weights_iter_(
                   data, rnn.diff_weights_iter_nld, rnn.diff_weights_iter_ld)
         , DHC_(rnn.dhc) {}
-    float &operator()(int sic, int gate, int dhc) const {
+    float &operator()(dim_t sic, dim_t gate, dim_t dhc) const {
         return diff_weights_iter_(sic, gate * DHC_ + dhc);
     }
 
 private:
     const dnnl::impl::utils::array_offset_calculator<float, 2>
             diff_weights_iter_;
-    const int DHC_;
+    const dim_t DHC_;
 };
 
-const void *inc_ptr(const void *data, data_type_t data_type, int offset);
-void *inc_ptr(void *data, data_type_t data_type, int offset);
+const void *inc_ptr(const void *data, data_type_t data_type, dim_t offset);
+void *inc_ptr(void *data, data_type_t data_type, dim_t offset);
 
 } // namespace rnn_utils
 } // namespace cpu

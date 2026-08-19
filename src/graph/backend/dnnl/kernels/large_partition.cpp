@@ -389,9 +389,9 @@ status_t larger_partition_kernel_t::sycl_execute_impl(stream_t *strm,
 status_t larger_partition_kernel_t::ocl_execute_impl(stream_t *strm,
         const std::vector<tensor_t> &inputs,
         const std::vector<tensor_t> &outputs, const tensor_t *scratchpad_buf,
-        const std::vector<cl_event> &ocl_deps, cl_event *event) {
+        const std::vector<ocl_event_t> &ocl_deps, ocl_event_t &event) {
     auto deps = ocl_deps;
-    cl_event returned_event {};
+    ocl_event_t returned_event;
     dnnl::stream p_stream = make_dnnl_stream(*strm);
 
     thread_local_cache_t<execution_args_set_t> res_cache;
@@ -435,7 +435,7 @@ status_t larger_partition_kernel_t::ocl_execute_impl(stream_t *strm,
                 if (!subgraph_->is_constant_[i]) continue;
                 returned_event = subgraph_->execs_[i]->execute_ocl(
                         p_stream, res->get_exec_args()[i], deps);
-                deps.assign(1, returned_event);
+                deps = {returned_event};
             }
 
             c_promise.set_value(c_buffer);
@@ -446,11 +446,11 @@ status_t larger_partition_kernel_t::ocl_execute_impl(stream_t *strm,
         if (subgraph_->is_constant_[i]) continue;
         returned_event = subgraph_->execs_[i]->execute_ocl(
                 p_stream, res->get_exec_args()[i], deps);
-        deps.assign(1, returned_event);
+        deps = {returned_event};
     }
 
-    scratchpad->set_deps(returned_event);
-    if (event) *event = returned_event;
+    scratchpad->set_deps(returned_event.get());
+    event = std::move(returned_event);
 
     return status::success;
 }

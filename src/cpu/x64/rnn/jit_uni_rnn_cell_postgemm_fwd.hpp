@@ -30,9 +30,8 @@ template <cpu_isa_t isa, impl::data_type_t src_data_t,
 struct jit_uni_rnn_cell_postgemm_fwd : public jit_uni_rnn_postgemm_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_rnn_cell_postgemm_fwd)
 
-    using injector_t = typename utils::conditional<isa == avx512_core,
-            jit_uni_eltwise_injector_t<avx512_core>,
-            jit_uni_eltwise_injector_t<isa>>::type;
+    using injector_t
+            = jit_uni_eltwise_injector_t<typename cpu_isa_traits_t<isa>::Vmm>;
 
     jit_uni_rnn_cell_postgemm_fwd(
             const rnn_utils::rnn_conf_t &rnn, const rnn_pd_t *pd)
@@ -51,17 +50,20 @@ protected:
     std::unique_ptr<injector_t> injector_;
 
     // register size in bytes
-    using Vmm = typename jit_uni_eltwise_injector_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t cstate_dt_size = sizeof(float);
-    static constexpr size_t qscale_dt_size = sizeof(float);
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
+    static constexpr int vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr int cstate_dt_size = sizeof(float);
+    static constexpr int qscale_dt_size = sizeof(float);
 
-    const size_t vlen_dst
+    const int vlen_dst
             = vlen / (sizeof(float) / types::data_type_size(src_data_t));
-    const size_t vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
-    const size_t hstate_dt_size = types::data_type_size(src_data_t);
-    const size_t gate_dt_size = types::data_type_size(src_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
+    const int vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
+    const int hstate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int gate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int scratch_dt_size
+            = static_cast<int>(types::data_type_size(scratch_data_t));
 
     void generate() override {
         using namespace Xbyak;
@@ -188,7 +190,8 @@ protected:
             deq_w(src_data_t, G, tmp1_vmm, tmp2_vmm, 0, mask, scratch_dt_size);
 
             // add biases
-            to_float(tmp1_vmm, B_addr, rnn_.bias_dt, sizeof(float));
+            to_float(tmp1_vmm, B_addr, rnn_.bias_dt,
+                    static_cast<int>(sizeof(float)));
             uni_vaddps(Gs, Gs, tmp1s_vmm);
 
             // inject eltwise code

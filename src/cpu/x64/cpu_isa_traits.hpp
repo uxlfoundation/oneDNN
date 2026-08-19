@@ -96,6 +96,7 @@ enum cpu_isa_bit_t : unsigned {
     amx_bf16_bit = 1u << 16,
     amx_fp16_bit = 1u << 17,
     amx_2_bit = 1u << 18,
+    ace_bit = 1u << 19,
 
     // Fill in hints from most significant bit to least significant bit
     prefer_ymm_bit = 1u << (cpu_isa_total_bits - 1),
@@ -159,8 +160,16 @@ enum cpu_isa_t : unsigned {
     avx10_2_amx_2
     = avx10_2 | amx_tile | amx_int8 | amx_bf16 | amx_fp16 | amx_2_bit,
     avx10_2_512_amx_2 = avx10_2_amx_2,
+    // ACE includes amx_tile because it shares the tile register file and the
+    // tile management instructions with AMX. It is not derived from
+    // avx10_2_amx_2: the TMUL and ACE palettes are independent, so that would
+    // claim TMUL compute support an ACE-only part does not have.
+    avx10_2_ace = avx10_2 | amx_tile | ace_bit,
     // NOTES: 1. isa_all by default has no isa specific hints
-    isa_all = ~0u & ~cpu_isa_hints_utils::hints_mask,
+    //        2. avx10_2_ace is under preview support and turned off by
+    //           default. It is enabled only when the max CPU ISA is explicitly
+    //           set to avx10_2_ace.
+    isa_all = ~0u & ~ace_bit & ~cpu_isa_hints_utils::hints_mask,
 };
 
 std::string isa2str(cpu_isa_t isa);
@@ -266,6 +275,15 @@ struct palette_config_t {
     uint8_t rows[max_size];
 };
 #pragma pack(pop)
+
+// AMX/ACE tile palette identifiers.
+// Palette 0 selects the INIT state, palette 1 the AMX TMUL tile configuration
+// and palette 2 the ACE configuration with fixed 16x64B tiles.
+enum : uint8_t {
+    amx_palette_init = 0,
+    amx_palette_tmul = 1,
+    amx_palette_ace = 2,
+};
 
 template <>
 struct cpu_isa_traits_t<isa_all> {
@@ -373,6 +391,12 @@ struct cpu_isa_traits_t<avx10_2_amx_2> : public cpu_isa_traits_t<avx10_2> {
     static constexpr const char *user_option_env = "avx10_2_amx_2";
 };
 
+template <>
+struct cpu_isa_traits_t<avx10_2_ace> : public cpu_isa_traits_t<avx10_2> {
+    static constexpr dnnl_cpu_isa_t user_option_val = dnnl_cpu_isa_avx10_2_ace;
+    static constexpr const char *user_option_env = "avx10_2_ace";
+};
+
 inline const Xbyak::util::Cpu &cpu() {
     const static Xbyak::util::Cpu cpu_;
     return cpu_;
@@ -409,6 +433,15 @@ inline int get_max_palette_size() {
 }
 
 } // namespace amx
+
+namespace ace {
+
+// ACE adds the SCALEDATA (Block Scale Register) XSAVE state component on top
+// of the AMX TILECFG/TILEDATA components. ACE instructions require
+// XCR0[20,18:17] == 0b111, so AMX state alone is not sufficient.
+bool DNNL_API is_available();
+
+} // namespace ace
 
 namespace {
 
@@ -486,6 +519,20 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
             REG_AMX_ISA(return mayiuse(avx10_2, soft) && mayiuse(amx_tile, soft)
                     && cpu().has(Cpu::tAMX_TF32) && cpu().has(Cpu::tAMX_AVX512)
                     && cpu().has(Cpu::tAMX_MOVRS) && cpu().has(Cpu::tAMX_FP8));
+        case avx10_2_ace:
+            // ACE v1 detection:
+            //   1. AVX10.2
+            //   2. AVX10_V2_AUX
+            //   3. ACE
+            //   4. ACE_VSN >= 1 (and MAX_PALETTE >= 2)
+            //   5. XCR0[20,18:17] = 0b111  (ace::is_available)
+            //   6. XCR0[7:5] = 0b111       (implied by the AVX10 checks)
+            //   7. CR4.OSXSAVE = 1         (implied by the XCR0 queries)
+            REG_AMX_ISA(return mayiuse(avx10_2, soft) && mayiuse(amx_tile, soft)
+                    && cpu().has(Cpu::tACE) && cpu().getACEversion() >= 1
+                    && cpu().getMaxPalette() >= amx_palette_ace
+                    && cpu().has(Cpu::tAVX10_V2_AUX)
+                    && x64::ace::is_available());
         case isa_all: return false;
         case isa_undef: return true;
     }
@@ -512,6 +559,13 @@ inline bool isa_has_f16(cpu_isa_t isa) {
 
 inline bool isa_has_masks(cpu_isa_t isa) {
     return is_superset(isa, avx512_core);
+}
+
+// True when matrix multiplication accumulates into tile registers, through
+// TMUL, through the ACE outer products, or through both. This is "has tiles",
+// not "can emit TMUL": the latter is false on an ACE-only part.
+inline bool isa_has_tile_accumulators(cpu_isa_t isa) {
+    return is_superset(isa, avx512_core_amx) || is_superset(isa, avx10_2_ace);
 }
 
 // Check if the ISA has saturating conversion support
@@ -572,6 +626,7 @@ inline int isa_num_vregs(cpu_isa_t isa) {
     (isa) == avx10_1_512_amx_fp16 ? prefix STRINGIFY(avx10_1_512_amx_fp16) : \
     (isa) == avx10_2 ? prefix STRINGIFY(avx10_2) : \
     (isa) == avx10_2_amx_2 ? prefix STRINGIFY(avx10_2_amx_2) : \
+    (isa) == avx10_2_ace ? prefix STRINGIFY(avx10_2_ace) : \
     prefix suffix_if_any)
 /* clang-format on */
 

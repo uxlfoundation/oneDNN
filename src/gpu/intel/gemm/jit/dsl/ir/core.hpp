@@ -364,7 +364,7 @@ public:
                                 && a.is_equal(other.b)));
     }
 
-    size_t get_hash() const override {
+    size_t compute_hash() const override {
         if (is_commutative_op(op_kind)) {
             size_t a_hash = hash(a);
             size_t b_hash = hash(b);
@@ -400,7 +400,7 @@ public:
         return value == other.value;
     }
 
-    size_t get_hash() const override { return hash(value); }
+    size_t compute_hash() const override { return hash(value); }
 
     bool value;
 
@@ -434,7 +434,7 @@ public:
                 && (saturate == other.saturate);
     }
 
-    size_t get_hash() const override { return hash(type, expr, saturate); }
+    size_t compute_hash() const override { return hash(type, expr, saturate); }
 
     bool is_bool_vec_u16() const {
         if (is_bool_vec(expr.type()) && is_u16_or_u32_scalar(type)) return true;
@@ -472,7 +472,7 @@ public:
 
     bool operator==(const const_var_t &other) const { return this == &other; }
 
-    size_t get_hash() const override { return hash(name); }
+    size_t compute_hash() const override { return hash(name); }
 
     std::string name;
 
@@ -494,7 +494,7 @@ public:
         return type == other.type && (value == other.value);
     }
 
-    size_t get_hash() const override { return hash(value); }
+    size_t compute_hash() const override { return hash(value); }
 
     double value;
 
@@ -517,7 +517,7 @@ public:
         return type == other.type && (value == other.value);
     }
 
-    size_t get_hash() const override { return hash(value); }
+    size_t compute_hash() const override { return hash(value); }
 
     static expr_t shrink_type(const expr_t &e) {
         auto &imm = e.as<int_imm_t>();
@@ -563,7 +563,7 @@ public:
                 && false_expr.is_equal(other.false_expr);
     }
 
-    size_t get_hash() const override {
+    size_t compute_hash() const override {
         return hash(cond, true_expr, false_expr);
     }
 
@@ -609,7 +609,7 @@ public:
                 && utils::is_equal(v_vec, other.v_vec);
     }
 
-    size_t get_hash() const override { return hash(c, u_vec, v_vec); }
+    size_t compute_hash() const override { return hash(c, u_vec, v_vec); }
 
     expr_t c;
     std::vector<expr_t> u_vec;
@@ -648,7 +648,9 @@ public:
                 && off.is_equal(other.off) && (stride == other.stride);
     }
 
-    size_t get_hash() const override { return hash(type, buf, off, stride); }
+    size_t compute_hash() const override {
+        return hash(type, buf, off, stride);
+    }
 
     bool has_default_stride() const { return stride == default_stride; }
 
@@ -680,7 +682,7 @@ public:
         return base.is_equal(other.base) && off.is_equal(other.off);
     }
 
-    size_t get_hash() const override { return hash(base, off); }
+    size_t compute_hash() const override { return hash(base, off); }
 
     // Normalizes (base op off) pointer so that the new base is a variable and
     // off is an offset expression.
@@ -777,7 +779,7 @@ public:
                 && utils::is_equal(idx, other.idx);
     }
 
-    size_t get_hash() const override { return hash(vec, idx); }
+    size_t compute_hash() const override { return hash(vec, idx); }
 
     int elems() const { return int(idx.size()); }
 
@@ -846,7 +848,7 @@ public:
                 && b.is_equal(other.b) && c.is_equal(other.c);
     }
 
-    size_t get_hash() const override { return hash(op_kind, a, b, c); }
+    size_t compute_hash() const override { return hash(op_kind, a, b, c); }
 
     op_kind_t op_kind;
     expr_t a;
@@ -887,7 +889,7 @@ public:
         return (op_kind == other.op_kind) && a.is_equal(other.a);
     }
 
-    size_t get_hash() const override { return hash(op_kind, a); }
+    size_t compute_hash() const override { return hash(op_kind, a); }
 
     op_kind_t op_kind;
     expr_t a;
@@ -909,7 +911,9 @@ public:
         return this == &other;
     }
 
-    size_t get_hash() const override { return std::hash<std::string> {}(name); }
+    size_t compute_hash() const override {
+        return std::hash<std::string> {}(name);
+    }
 
     std::string name;
     bool is_mutable = false;
@@ -948,7 +952,7 @@ public:
         return oss.str();
     }
 
-    size_t get_hash() const override { return hash(var, off, elems); }
+    size_t compute_hash() const override { return hash(var, off, elems); }
 
     expr_t var;
     int off;
@@ -1135,7 +1139,7 @@ public:
         return this == &obj;
     }
 
-    size_t get_hash() const override { return hash(buf_sizes); }
+    size_t compute_hash() const override { return hash(buf_sizes); }
 
     // List of buffers accessed from instructions.
     std::vector<expr_t> bufs;
@@ -1195,7 +1199,7 @@ public:
                 && body.is_equal(other.body);
     }
 
-    size_t get_hash() const override {
+    size_t compute_hash() const override {
         return hash(buf, size, kind, attrs, body);
     }
 
@@ -1257,7 +1261,7 @@ public:
         return var.is_equal(other.var) && value.is_equal(other.value);
     }
 
-    size_t get_hash() const override { return hash(var, value); }
+    size_t compute_hash() const override { return hash(var, value); }
 
     std::string str() const override {
         std::ostringstream oss;
@@ -1314,7 +1318,7 @@ public:
                 && (stride == other.stride) && (fill_mask0 == other.fill_mask0);
     }
 
-    size_t get_hash() const override {
+    size_t compute_hash() const override {
         return hash(buf, off, value, stride, mask, fill_mask0);
     }
 
@@ -1377,7 +1381,7 @@ public:
                 && step.is_equal(other.step) && (unroll == other.unroll);
     }
 
-    size_t get_hash() const override {
+    size_t compute_hash() const override {
         return hash(var, init, bound, body, step, unroll);
     }
 
@@ -1426,7 +1430,7 @@ public:
                 && else_body.is_equal(other.else_body);
     }
 
-    size_t get_hash() const override { return hash(cond, body, else_body); }
+    size_t compute_hash() const override { return hash(cond, body, else_body); }
 
     std::string line_str() const {
         ostringstream_t oss;
@@ -1461,7 +1465,7 @@ public:
                 && body.is_equal(other.body);
     }
 
-    size_t get_hash() const override { return hash(var, value, body); }
+    size_t compute_hash() const override { return hash(var, value, body); }
 
     std::string line_str() const {
         ostringstream_t out;
@@ -1587,7 +1591,7 @@ public:
         return (label == other.label) && body.is_equal(other.body);
     }
 
-    size_t get_hash() const override { return hash(label, body); }
+    size_t compute_hash() const override { return hash(label, body); }
 
     stmt_label_t label;
     stmt_t body;
@@ -1616,7 +1620,7 @@ public:
         return utils::is_equal(vec, other.vec);
     }
 
-    size_t get_hash() const override { return hash(vec); }
+    size_t compute_hash() const override { return hash(vec); }
 
     std::vector<stmt_t> vec;
 
@@ -1639,7 +1643,7 @@ public:
         return cond.is_equal(other.cond) && body.is_equal(other.body);
     }
 
-    size_t get_hash() const override { return hash(cond, body); }
+    size_t compute_hash() const override { return hash(cond, body); }
 
     std::string line_str() const {
         ostringstream_t out;
@@ -1701,7 +1705,7 @@ public:
         return mod.getAll() == other.mod.getAll();
     }
 
-    size_t get_hash() const override { return hash(mod.getAll()); }
+    size_t compute_hash() const override { return hash(mod.getAll()); }
 
     std::string str() const override {
         ostringstream_t oss;
@@ -1748,8 +1752,8 @@ class func_impl_t : public object::impl_t {
 public:
     func_impl_t(object::impl_t::info_t type_info) : object::impl_t(type_info) {}
 
-    size_t get_hash() const override {
-        dsl_error() << "get_hash() is not implemented.";
+    size_t compute_hash() const override {
+        dsl_error() << "compute_hash() is not implemented.";
         return 0;
     }
 
@@ -1813,7 +1817,7 @@ public:
                 && attr.is_equal(other.attr);
     }
 
-    size_t get_hash() const override { return hash(args, attr); }
+    size_t compute_hash() const override { return hash(args, attr); }
 
     std::string line_str() const {
         ostringstream_t out;

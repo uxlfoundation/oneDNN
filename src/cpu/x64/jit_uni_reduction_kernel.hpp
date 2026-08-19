@@ -37,16 +37,13 @@ struct jit_uni_reduction_kernel_base_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_reduction)
 
     jit_uni_reduction_kernel_base_t(const jit_reduction_conf_t &conf)
-        : jit_generator_t(jit_name(), conf.isa)
-        , conf_(conf)
-        , sum_scales_(conf_.sum_scales) {}
+        : jit_generator_t(jit_name(), conf.isa), conf_(conf) {}
     ~jit_uni_reduction_kernel_base_t() override = default;
 
     virtual std::size_t get_simd_w() = 0;
 
 protected:
     const jit_reduction_conf_t &conf_;
-    std::queue<float> sum_scales_;
 };
 
 template <cpu_isa_t isa, typename Vmm = typename cpu_isa_traits_t<isa>::Vmm>
@@ -86,7 +83,6 @@ private:
     void reduce_ne_convert_xf16();
 
     void load_params();
-    void apply_sum(const int data_idx);
     void apply_postops(const int data_idx);
     void finalize();
     void generate() override;
@@ -100,7 +96,6 @@ private:
     const Vmm vmm_tmp2_ = Vmm(6);
     const Vmm vmm_tmp3_ = Vmm(7);
     const Vmm vmm_tmp4_ = Vmm(8);
-    const Vmm vmm_sum_scale_ = Vmm(9);
     const Vmm rhs_dt_helper_vmm_ = Vmm(10);
     const Xbyak::Zmm vmm_bf16_emu_1_ = Xbyak::Zmm(28);
     const Xbyak::Zmm vmm_bf16_emu_2_ = Xbyak::Zmm(29);
@@ -115,17 +110,16 @@ private:
     const Xbyak::Reg64 reg_dst_ = rdx;
     const Xbyak::Reg64 reg_param_ = abi_param1;
     const Xbyak::Reg64 reg_tmp_ = abi_not_param1;
-    const Xbyak::Reg64 reg_tmp1_ = r13;
 
     static constexpr bool is_zmm_ = std::is_same<Vmm, Xbyak::Zmm>::value;
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     static constexpr std::size_t vlen_ = is_zmm_ ? 64 : is_ymm_ ? 32 : 16;
-    static constexpr std::size_t simd_w_ = vlen_ / sizeof(float);
+    static constexpr int simd_w_ = vlen_ / sizeof(float);
     static constexpr std::size_t number_of_f32_in_xmm_ = 4;
     static constexpr std::size_t number_of_f32_in_ymm_ = 8;
     static constexpr std::size_t number_of_f32_in_zmm_ = 16;
-    const std::size_t load_tail_size_;
-    static constexpr std::size_t store_tail_size_ = 1;
+    const int load_tail_size_;
+    static constexpr int store_tail_size_ = 1;
 
     io::jit_io_helper_t<Vmm> io_load_;
     io::jit_io_helper_t<Vmm> io_store_;
@@ -138,10 +132,7 @@ private:
     const Xbyak::Reg64 reg_po_injector_helper_2_ = r15;
     const Xbyak::Reg64 reg_po_injector_helper_3_ = r12;
 
-    // post-ops injector does not use avx512_core_bf16 instructions
-    static constexpr cpu_isa_t inject_isa_
-            = isa == avx512_core_bf16 ? avx512_core : isa;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<inject_isa_, Vmm>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 };
 

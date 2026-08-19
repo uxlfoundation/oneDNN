@@ -39,13 +39,14 @@ void verbose_profiler_t::cleanup() {
 }
 
 void verbose_profiler_t::add_to_pending_primitive_list(
-        double start_ms, const std::string &pd_info) {
+        double start_ms, const std::string &pd_info, uint64_t component) {
     assert(!profiling_data_.empty());
 
     // Adds metadata to the last entry
     auto &last_entry = profiling_data_.back();
     last_entry.start_ms_ = start_ms;
     last_entry.pd_info_ = pd_info;
+    last_entry.component_kind_ = component;
 }
 
 void verbose_profiler_t::check_for_completed_primitives() {
@@ -53,6 +54,27 @@ void verbose_profiler_t::check_for_completed_primitives() {
     // and resumed again at the next check. This ensures the
     // primitives are logged in the same order they were enqueued
     size_t first_pending = profiling_data_.size();
+
+    auto log_profile
+            = [](const prim_profile_data_t &prof_data, double duration_ms) {
+        // allows execution time-tracking for different component kinds
+        switch (static_cast<component_t::flag_kind>(
+                prof_data.component_kind_)) {
+            case component_t::graph:
+                VPROF(prof_data.start_ms_, graph, exec, VERBOSE_profile,
+                        prof_data.pd_info_.c_str(), duration_ms);
+                break;
+            case component_t::ukernel:
+                VPROF(prof_data.start_ms_, ukernel, exec, VERBOSE_profile,
+                        prof_data.pd_info_.c_str(), duration_ms);
+                break;
+            case component_t::primitive:
+            default:
+                VPROF(prof_data.start_ms_, primitive, exec, VERBOSE_profile,
+                        prof_data.pd_info_.c_str(), duration_ms);
+                break;
+        }
+    };
 
     for (size_t index = 0; index < profiling_data_.size(); ++index) {
         const auto &prof_data = profiling_data_[index];
@@ -63,10 +85,12 @@ void verbose_profiler_t::check_for_completed_primitives() {
         if (evts.empty()) {
             // Will be erased in second pass
             if (!prof_data.pd_info_.empty())
-                VPROF(prof_data.start_ms_, primitive, exec, VERBOSE_profile,
-                        prof_data.pd_info_.c_str(), duration_ms);
+                log_profile(prof_data, duration_ms);
             continue;
         }
+
+        // No point in logging entries without info strings
+        if (prof_data.pd_info_.empty()) continue;
 
         // Check if the current primitive has finished executing and break
         // the loop if it is pending completion
@@ -76,8 +100,7 @@ void verbose_profiler_t::check_for_completed_primitives() {
         }
         status_t status = get_aggregate_exec_time(index, duration_ms);
         if (status == status::success) {
-            VPROF(prof_data.start_ms_, primitive, exec, VERBOSE_profile,
-                    prof_data.pd_info_.c_str(), duration_ms);
+            log_profile(prof_data, duration_ms);
         } else {
             VERROR(common, runtime,
                     "%s, profiling error: failures in exec time computation",

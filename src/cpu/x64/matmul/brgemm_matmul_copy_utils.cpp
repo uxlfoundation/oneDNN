@@ -43,9 +43,10 @@ struct jit_brgemm_matmul_copy_a_impl_t : public jit_brgemm_matmul_copy_a_t,
     jit_brgemm_matmul_copy_a_impl_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_a_t(conf)
         , jit_generator_t(jit_name())
-        , typesize_(conf_->a_dt_sz)
-        , tr_typesize_(conf_->tr_a_dt_sz)
-        , vnni_granularity_(data_type_vnni_granularity(conf_->src_dt))
+        , typesize_(static_cast<int>(conf_->a_dt_sz))
+        , tr_typesize_(static_cast<int>(conf_->tr_a_dt_sz))
+        , vnni_granularity_(
+                  static_cast<int>(data_type_vnni_granularity(conf_->src_dt)))
         , k_step_(vlen_ / nstl::max(typesize_, tr_typesize_))
         , src_stride_(conf_->copy_A_src_stride)
         , tr_src_stride_((conf_->use_buffer_a_tail_only
@@ -265,8 +266,9 @@ void jit_brgemm_matmul_copy_a_impl_t<
 template <typename Vmm>
 void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
         bool is_K_tail, bool is_first_K_iter, bool is_last_K_iter) {
-    const int K_blk = is_K_tail ? conf_->K % conf_->K_blk
-                                : nstl::min(conf_->K, conf_->K_blk);
+    const int K_blk = static_cast<int>(is_K_tail
+                    ? conf_->K % conf_->K_blk
+                    : nstl::min<dim_t>(conf_->K, conf_->K_blk));
     const int k_tail = K_blk % k_step_;
     const int num_k_iters = K_blk / k_step_;
     const int num_acc = utils::saturate(1, (int)num_comp_acc_, num_k_iters);
@@ -295,7 +297,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
             const int k_idx = kb * k_loop_unroll_ + k;
             const size_t offset
                     = static_cast<size_t>(k_idx) * k_step_ * typesize_;
-            load_vmm(k, offset);
+            load_vmm(k, static_cast<int>(offset));
             maybe_compute_compensation(k_idx, get_vmm_copy(k));
         }
         if (allow_input_shift_for_s8s8 && conf_->s8s8_compensation_required) {
@@ -330,7 +332,7 @@ void jit_brgemm_matmul_copy_a_impl_t<Vmm>::copy_K_loop(
                 const size_t offset
                         = (static_cast<size_t>(kb) * k_loop_unroll_ + k)
                         * k_step_ * tr_typesize_;
-                store_vmm(k, offset);
+                store_vmm(k, static_cast<int>(offset));
             }
         }
     }
@@ -2551,7 +2553,6 @@ protected:
                 prepare_loaded_int4(reg, vmm_permd, /* is_signed = */ false);
                 break;
             case data_type::f4_e2m1:
-            case data_type::f4_e3m0:
                 uni_vpmovzxbd(maybe_mask(vmm_lower, is_tail), op);
                 copy_half_reg(vmm_in, vmm_lower);
                 vpermd(vmm_in, vmm_permd, vmm_in);
@@ -2875,7 +2876,7 @@ protected:
     const bool is_src_int4_;
     const bool has_vpermb_;
     const int comp_acc_idx_;
-    const dim_t src_elems_per_byte_;
+    const int src_elems_per_byte_;
 
     constexpr static int reg_src_offs_ = 0;
     constexpr static int reg_tr_src_offs_ = 8;
@@ -3236,7 +3237,7 @@ private:
 
         mov(ptr[rsp + reg_tr_src_offs_], reg_tr_src);
         xor_(reg_copy_block_n_shift, reg_copy_block_n_shift);
-        const auto typesize = sizeof(int8_t);
+        const dim_t typesize = sizeof(int8_t);
 
         Label loop_row_start, loop_row_tail, loop_row_done;
         cmp(reg_dynamic_tail, n_blk_step_);
@@ -3547,7 +3548,7 @@ private:
 
     Xbyak::Ymm get_ymm(int idx) { return get_vmm(0, idx); }
 
-    void load_ymm(int ymm_idx, size_t offset, bool is_tail, size_t tail_sz) {
+    void load_ymm(int ymm_idx, size_t offset, bool is_tail, int tail_sz) {
         Xbyak::Ymm vmm_src = Xbyak::Ymm(ymm_idx);
         if (is_tail) {
             load_bytes(vmm_src, reg_src, offset, tail_sz);
@@ -3566,8 +3567,8 @@ private:
             if (pass == 0 && ncolumns >= simd_w_) mov(reg_src_backup, reg_src);
             assert(one_of(pass, 0, 1));
             const dim_t tr_src_off_base = k * tr_src_stride_;
-            const int set_1_tr_src_offset
-                    = tr_src_off_base + pass * 2 * n_blk_step_;
+            const int set_1_tr_src_offset = static_cast<int>(
+                    tr_src_off_base + pass * 2 * n_blk_step_);
             const int row_start = k * k_blk_step_;
             const int row_end = nstl::min(row_start + k_blk_step_, nrows);
             if (!zeropad) {
@@ -3965,9 +3966,9 @@ struct jit_brgemm_matmul_copy_b_bf16_t
 
     jit_brgemm_matmul_copy_b_bf16_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_common_t(conf)
-        , typesize(conf->b_dt_sz)
-        , tr_typesize(conf->tr_b_dt_sz)
-        , wei_scales_typesize(conf->wei_scales_dt_sz)
+        , typesize(static_cast<int>(conf->b_dt_sz))
+        , tr_typesize(static_cast<int>(conf->tr_b_dt_sz))
+        , wei_scales_typesize(static_cast<int>(conf->wei_scales_dt_sz))
         , src_stride(conf->copy_B_wei_stride)
         , tr_src_stride(conf_->LDB * k_blk_step * tr_typesize)
         , is_src_int4(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
@@ -4007,7 +4008,7 @@ private:
     const bool req_zp_b_shift;
     const bool req_apply_wei_scales;
     const bool is_wei_grouped_over_k;
-    const dim_t elems_per_byte;
+    const int elems_per_byte;
 
     constexpr static int reg_src_offs = 0;
     constexpr static int reg_tr_src_offs = 8;
@@ -4315,7 +4316,8 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::copy_block(
     mov(ptr[rsp + reg_tr_src_offs], reg_tr_src);
     xor_(reg_copy_block_n_shift, reg_copy_block_n_shift);
 
-    int current_n_blk_step = do_N_loop ? conf_->LDB : n_blk_step;
+    int current_n_blk_step
+            = do_N_loop ? static_cast<int>(conf_->LDB) : n_blk_step;
 
     Label loop_row_start, loop_row_tail, loop_row_done;
     cmp(reg_dynamic_tail, current_n_blk_step);
@@ -4417,8 +4419,8 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::generate() {
         // Otherwise default K-loop is used
         if (is_wei_grouped_over_k) {
             const int k_group_size = conf_->is_wei_zp_per_k
-                    ? conf_->wei_zp_k_gsize
-                    : conf_->wei_scales_k_gsize;
+                    ? static_cast<int>(conf_->wei_zp_k_gsize)
+                    : static_cast<int>(conf_->wei_scales_k_gsize);
             if (k_group_size < k_blk_step) {
                 if (zeropad) return;
                 copy_block(
@@ -4472,7 +4474,8 @@ void jit_brgemm_matmul_copy_b_bf16_t<Vmm>::generate() {
     };
 
     auto compute_K_loop = [&](bool is_N_tail) {
-        int ncolumns = is_N_tail ? conf_->N_tail : conf_->N_blk;
+        int ncolumns = is_N_tail ? static_cast<int>(conf_->N_tail)
+                                 : static_cast<int>(conf_->N_blk);
         // 'param1' register (rcx on Windows) re-written in compute_K_loop_body
         // so we need to read and keep 'current_K_pad' parameter in stack before
         // the call
@@ -4515,8 +4518,7 @@ struct jit_brgemm_matmul_copy_b_f32_t
         : jit_brgemm_matmul_copy_b_common_t(conf)
         , dt_in_(conf->orig_wei_dt)
         , simd_w_(vreg_traits_t<Vmm>::vlen / sizeof(float))
-        , is_src_f4_(one_of(
-                  conf->orig_wei_dt, data_type::f4_e2m1, data_type::f4_e3m0))
+        , is_src_f4_(conf->orig_wei_dt == data_type::f4_e2m1)
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , req_zp_b_shift_(
                   conf->has_zero_point_b && conf->with_wei_decompression)
@@ -4543,7 +4545,8 @@ private:
     const data_type_t dt_in_;
     const int simd_w_;
     const bool is_src_f4_, is_src_int4_, req_zp_b_shift_, req_apply_wei_scales_;
-    const size_t typesize_in_, src_elems_per_byte_;
+    const size_t typesize_in_;
+    const int src_elems_per_byte_;
     const size_t typesize_out_ = sizeof(float);
     dim_t src_stride_, tr_src_stride_;
 
@@ -4600,7 +4603,8 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
                 (k * src_stride_ + n * typesize_in_) / src_elems_per_byte_);
         if (is_tail && !isa_has_masks(conf_->isa)) {
             load_bytes(src_vmm, addr,
-                    (ncolumns % simd_w_) * typesize_in_ / src_elems_per_byte_);
+                    static_cast<int>((ncolumns % simd_w_) * typesize_in_
+                            / src_elems_per_byte_));
             load_value(src_vmm, src_vmm, vmm_permd, conf_->orig_wei_dt, false);
         } else
             load_value(src_vmm, addr, vmm_permd, conf_->orig_wei_dt, is_tail);
@@ -4624,7 +4628,8 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         const auto addr = maybe_EVEX_compress_addr(reg_zp_ptr, offset);
         if (is_tail && !isa_has_masks(conf_->isa)) {
             load_bytes(vmm_zp_b_shift, addr,
-                    (ncolumns % simd_w_) * zp_dt_sz / elems_per_byte);
+                    static_cast<int>(
+                            (ncolumns % simd_w_) * zp_dt_sz / elems_per_byte));
             load_value(vmm_zp_b_shift, vmm_zp_b_shift, vmm_permd, zp_dt, false);
         } else
             load_value(vmm_zp_b_shift, addr, vmm_permd, zp_dt, is_tail);
@@ -4643,8 +4648,8 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::copy_16_x_n_block(
         const auto offset = n * scales_dt_sz;
         const auto addr = maybe_EVEX_compress_addr(reg_wei_scales, offset);
         if (is_tail && !isa_has_masks(conf_->isa)) {
-            load_bytes(
-                    vmm_wei_scales, addr, (ncolumns % simd_w_) * scales_dt_sz);
+            load_bytes(vmm_wei_scales, addr,
+                    static_cast<int>((ncolumns % simd_w_) * scales_dt_sz));
             load_scale_value(vmm_wei_scales, vmm_wei_scales, scales_dt, false);
         } else
             load_scale_value(vmm_wei_scales, addr, scales_dt, is_tail);
@@ -4745,19 +4750,7 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
         alignas(64) static constexpr const float f4_e2m1_table[16]
                 = {0.0f, .5f, 1.0f, 1.5f, 2.0f, 3.0f, 4.0f, 6.0f, -0.0f, -.5f,
                         -1.0f, -1.5f, -2.0f, -3.0f, -4.0f, -6.0f};
-        alignas(64) static constexpr const float f4_e3m0_table[16]
-                = {0.0f, .25f, .5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f, -0.0f, -.25f,
-                        -.5f, -1.0f, -2.0f, -4.0f, -8.0f, -16.0f};
-        switch (dt_in_) {
-            case data_type::f4_e2m1:
-                mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
-                break;
-            case data_type::f4_e3m0:
-                mov(reg_tmp, reinterpret_cast<size_t>(f4_e3m0_table));
-                break;
-
-            default: break;
-        }
+        mov(reg_tmp, reinterpret_cast<size_t>(f4_e2m1_table));
         vmovdqa32(vmm_f4_lut, ptr[reg_tmp]);
     }
 
@@ -4769,13 +4762,13 @@ void jit_brgemm_matmul_copy_b_f32_t<Vmm>::generate() {
         Label not_N_tail;
         cmp(reg_N_blk, conf_->N_tail);
         jne(not_N_tail, T_NEAR);
-        compute_k_loop(conf_->N_tail);
+        compute_k_loop(static_cast<int>(conf_->N_tail));
         jmp(done, T_NEAR);
 
         L(not_N_tail);
     }
 
-    compute_k_loop(conf_->N_blk);
+    compute_k_loop(static_cast<int>(conf_->N_blk));
     L(done);
 
     postamble();
@@ -4791,10 +4784,11 @@ struct jit_brgemm_matmul_copy_b_transposed_t
 
     jit_brgemm_matmul_copy_b_transposed_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_common_t(conf)
-        , typesize_(conf_->b_dt_sz)
-        , tr_typesize_(conf_->tr_b_dt_sz)
-        , wei_scales_typesize_(conf_->wei_scales_dt_sz)
-        , vnni_granularity_(data_type_vnni_granularity(conf_->wei_dt))
+        , typesize_(static_cast<int>(conf_->b_dt_sz))
+        , tr_typesize_(static_cast<int>(conf_->tr_b_dt_sz))
+        , wei_scales_typesize_(static_cast<int>(conf_->wei_scales_dt_sz))
+        , vnni_granularity_(
+                  static_cast<int>(data_type_vnni_granularity(conf_->wei_dt)))
         , k_blk_step_(vlen_ / tr_typesize_)
         , is_wei_grouped_over_k_(
                   conf_->is_wei_zp_per_k || conf_->is_wei_scale_per_k)
@@ -4888,7 +4882,8 @@ private:
     const bool use_bf16_instructions_;
     const int max_tmp_idx;
 
-    const dim_t src_stride_, tr_src_stride_, src_elems_per_byte_;
+    const dim_t src_stride_, tr_src_stride_;
+    const int src_elems_per_byte_;
     const bool is_dynamic_N_;
 
     constexpr static int ldb_step_idx_offs = 0;
@@ -5354,7 +5349,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::init_tail_mask(
                 ? size_t(((size_t)1 << div_up(dt_step * columns_tail, 2)) - 1)
                 : size_t(((size_t)1 << dt_step * columns_tail) - 1);
         if (req_cvtps2xf16_)
-            kmovw(kTail, tail_mask);
+            kmovw(kTail, static_cast<uint32_t>(tail_mask));
         else
             kmovq(kTail, tail_mask);
     }
@@ -6047,7 +6042,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_N_loop(
 
     if (conf_->is_wei_scale_per_n) {
         const auto &scales_dt_sz = conf_->wei_scales_dt_sz;
-        const auto offset = n_blk_step_ * scales_dt_sz;
+        const dim_t offset = n_blk_step_ * scales_dt_sz;
         add(reg_wei_scales, offset);
     }
 
@@ -6056,7 +6051,7 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::compute_N_loop(
         const auto zp_dt_sz = types::data_type_size(zp_dt);
         const auto elems_per_byte
                 = one_of(zp_dt, data_type::s4, data_type::u4) ? 2 : 1;
-        const auto offset = n_blk_step_ * zp_dt_sz / elems_per_byte;
+        const dim_t offset = n_blk_step_ * zp_dt_sz / elems_per_byte;
         // For int8 grouped quantization the zp pointer is consumed via the
         // stack-saved copy (because `reg_zp_ptr` aliases `reg_comp_ptr` and
         // gets repurposed by the s8s8/src-zp compensation code path inside
@@ -6214,7 +6209,8 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
         }
 
         if (is_wei_grouped_over_k_ && grouped_k < k_blk_step_) {
-            compute_N_loop(grouped_k, is_first_K_iter, is_last_K_iter);
+            compute_N_loop(static_cast<int>(grouped_k), is_first_K_iter,
+                    is_last_K_iter);
             return;
         }
 
@@ -6223,13 +6219,15 @@ void jit_brgemm_matmul_copy_b_transposed_t<Vmm>::generate() {
             Label not_K_tail;
             cmp(reg_K_iters, k_blk);
             je(not_K_tail, T_NEAR);
-            compute_N_loop(K_tail_tail, is_first_K_iter, is_last_K_iter);
+            compute_N_loop(static_cast<int>(K_tail_tail), is_first_K_iter,
+                    is_last_K_iter);
             jmp(compute_body_done, T_NEAR);
 
             L(not_K_tail);
         }
 
-        compute_N_loop(K_blk_tail, is_first_K_iter, is_last_K_iter);
+        compute_N_loop(
+                static_cast<int>(K_blk_tail), is_first_K_iter, is_last_K_iter);
         L(compute_body_done);
     };
 
@@ -6290,9 +6288,9 @@ struct jit_brgemm_matmul_copy_b_cvt_bf16_t
 
     jit_brgemm_matmul_copy_b_cvt_bf16_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_common_t(conf)
-        , typesize_(conf->b_dt_sz)
-        , tr_typesize_(conf->tr_b_dt_sz)
-        , wei_scales_typesize_(conf_->wei_scales_dt_sz)
+        , typesize_(static_cast<int>(conf->b_dt_sz))
+        , tr_typesize_(static_cast<int>(conf->tr_b_dt_sz))
+        , wei_scales_typesize_(static_cast<int>(conf_->wei_scales_dt_sz))
         , is_src_int4_(one_of(conf->orig_wei_dt, data_type::s4, data_type::u4))
         , src_elems_per_byte_(is_src_int4_ ? 2 : 1)
         , src_stride_(
@@ -6326,7 +6324,8 @@ private:
     enum { k_blk_step = 2, n_blk_step = 16 };
     const int typesize_, tr_typesize_, wei_scales_typesize_;
     const bool is_src_int4_;
-    const dim_t src_elems_per_byte_, src_stride_, tr_src_stride_;
+    const int src_elems_per_byte_;
+    const dim_t src_stride_, tr_src_stride_;
     const bool req_zp_b_shift_;
     const bool req_apply_wei_scales_;
     const int reserved_regs_;
@@ -6592,8 +6591,8 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
         // Otherwise default K-loop is used
         if (is_wei_grouped_over_k_) {
             const int k_group_size = conf_->is_wei_zp_per_k
-                    ? conf_->wei_zp_k_gsize
-                    : conf_->wei_scales_k_gsize;
+                    ? static_cast<int>(conf_->wei_zp_k_gsize)
+                    : static_cast<int>(conf_->wei_scales_k_gsize);
             if (k_group_size == 1) {
                 if (zeropad) return;
                 copy_block(k_group_size, ncolumns, /*zeropad= */ false);
@@ -6659,7 +6658,7 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
 
     if (conf_->LDB2 != 0) {
         Label main_N_loop, main_N_loop_tail;
-        int tail = conf_->N % conf_->LDB;
+        int tail = static_cast<int>(conf_->N % conf_->LDB);
 
         if (tail != 0) {
             cmp(reg_N_blk, conf_->LDB);
@@ -6667,7 +6666,7 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
         }
 
         L(main_N_loop);
-        compute_K_loop(conf_->LDB);
+        compute_K_loop(static_cast<int>(conf_->LDB));
         add(reg_src, conf_->LDB2 * typesize_);
         add(reg_tr_src, conf_->LDB2 * tr_typesize_);
 
@@ -6687,13 +6686,13 @@ void jit_brgemm_matmul_copy_b_cvt_bf16_t<Vmm>::generate() {
             Label main_N_blk;
             cmp(reg_N_blk, conf_->N_blk);
             je(main_N_blk, T_NEAR);
-            compute_K_loop(conf_->N_tail);
+            compute_K_loop(static_cast<int>(conf_->N_tail));
             jmp(done, T_NEAR);
 
             L(main_N_blk);
         }
 
-        compute_K_loop(conf_->N_blk);
+        compute_K_loop(static_cast<int>(conf_->N_blk));
     }
     L(done);
     postamble();
@@ -6761,8 +6760,8 @@ struct jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t
     jit_brgemm_matmul_copy_cvt_fp8_to_xf16_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
         , jit_generator_t(jit_name())
-        , typesize_(conf->b_dt_sz)
-        , tr_typesize_(conf->tr_b_dt_sz)
+        , typesize_(static_cast<int>(conf->b_dt_sz))
+        , tr_typesize_(static_cast<int>(conf->tr_b_dt_sz))
         , src_stride_(conf->LDB * k_blk_step * typesize_)
         , tr_src_stride_(conf->LDB * tr_k_blk_step * tr_typesize_)
         , cvt_helper_(this, conf) {}
@@ -6956,7 +6955,7 @@ private:
         assert(conf_->LDB2 != 0);
 
         Label main_N_loop, main_N_loop_tail;
-        int tail = conf_->N % conf_->LDB;
+        int tail = static_cast<int>(conf_->N % conf_->LDB);
 
         if (tail != 0) {
             cmp(reg_N_blk, conf_->LDB);
@@ -6964,7 +6963,7 @@ private:
         }
 
         L(main_N_loop);
-        compute_K_loop(conf_->LDB);
+        compute_K_loop(static_cast<int>(conf_->LDB));
         add(reg_src, conf_->B_strides[0]);
         add(reg_tr_src, conf_->LDB2 * tr_typesize_);
 

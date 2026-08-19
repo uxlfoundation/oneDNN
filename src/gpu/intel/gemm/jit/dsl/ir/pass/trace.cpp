@@ -46,7 +46,7 @@ void trace_stop(const char *pass_name) {
     if (get_trace_profiler()) get_trace_profiler()->stop(pass_name);
 }
 void trace_perf() {
-    dsl_perf() << get_trace_profiler();
+    if (get_trace_profiler()) dsl_perf() << *get_trace_profiler();
 }
 
 void trace_pass(

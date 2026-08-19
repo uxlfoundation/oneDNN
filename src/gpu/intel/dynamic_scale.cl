@@ -33,8 +33,9 @@ inline float mx_recipe(float group_max) {
 }
 
 inline float fp_recipe(float group_max) {
-    float clamped = clamp_scale(group_max / DST_DATA_FMAX);
-    return group_max == 0.f ? 1.f : clamped;
+    float unclamped = max(min(group_max / DST_DATA_FMAX, DST_SCALES_DATA_FMAX),
+            DST_SCALES_DATA_FEPS);
+    return clamp_scale(unclamped);
 }
 
 #if DST_SCALES_DT_E8M0
@@ -97,7 +98,9 @@ __kernel void dynamic_scale_dst(__global float *restrict src,
         off = DST_OFF(m, n_iter, 0, 0, 0);
 #endif
 #endif
-        dst[off] = TO_DST(src[off] / scale_val);
+        // Saturate to the max/low data type value instead of overflowing.
+        dst[off] = TO_DST(
+                max(min(src[off] / scale_val, DST_DATA_FMAX), DST_DATA_FLOW));
     }
 
     long scale_off = 0;

@@ -47,7 +47,7 @@ private:
     using Vmm_down_t =
             typename utils::conditional<std::is_same<Vmm, Xbyak::Zmm>::value,
                     Xbyak::Ymm, Xbyak::Xmm>::type;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<avx512_core, Vmm>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 
     /* register mapping */
@@ -60,7 +60,6 @@ private:
     const Xbyak::Reg64 reg_ptr_saturation_ubound = r8;
     const Xbyak::Reg64 reg_output_data = r9;
     const Xbyak::Reg64 reg_load_data = r10;
-    const Xbyak::Reg64 reg_ptr_sum_scale = r10;
     const Xbyak::Reg64 reg_reduce_loop_work = r11;
     const Xbyak::Reg64 reg_bias_data = r12;
     const Xbyak::Reg64 reg_comp_data = r12;
@@ -92,7 +91,6 @@ private:
     const Vmm vmm_saturation = Vmm(28);
     const Vmm vmm_one = Vmm(29);
     const Vmm vmm_zero = Vmm(30);
-    const Vmm vmm_prev_dst = Vmm(30);
     const Vmm vmm_shift = Vmm(30);
     const Vmm vmm_bcast = Vmm(31);
     /* zero-point */
@@ -114,17 +112,15 @@ private:
     constexpr static int bcast_loop_work_off = 0;
     constexpr static int reg_bias_data_off = 1 * reg64_size_;
     constexpr static int reg_bcast_data_off = 2 * reg64_size_;
-    constexpr static int reg_load_data_off = 3 * reg64_size_;
-    constexpr static int reg_src_scales_off = 4 * reg64_size_;
-    constexpr static int reg_wei_scales_off = 5 * reg64_size_;
-    constexpr static int reg_dst_scales_off = 6 * reg64_size_;
-    constexpr static int reg_ptr_sum_zp_off = 7 * reg64_size_;
-    constexpr static int reg_comp_data_off = 8 * reg64_size_;
-    constexpr static int reg_zp_compensation_off = 9 * reg64_size_;
-    constexpr static int reg_src_zero_point_off = 10 * reg64_size_;
-    constexpr static int reg_dst_zero_point_off = 11 * reg64_size_;
-    constexpr static int reg_abi_param1_backup = 12 * reg64_size_;
-    constexpr static int stack_space_needed = 13 * reg64_size_;
+    constexpr static int reg_src_scales_off = 3 * reg64_size_;
+    constexpr static int reg_wei_scales_off = 4 * reg64_size_;
+    constexpr static int reg_dst_scales_off = 5 * reg64_size_;
+    constexpr static int reg_comp_data_off = 6 * reg64_size_;
+    constexpr static int reg_zp_compensation_off = 7 * reg64_size_;
+    constexpr static int reg_src_zero_point_off = 8 * reg64_size_;
+    constexpr static int reg_dst_zero_point_off = 9 * reg64_size_;
+    constexpr static int reg_abi_param1_backup = 10 * reg64_size_;
+    constexpr static int stack_space_needed = 11 * reg64_size_;
 
     inline Vmm maybe_mask_vmm(Vmm vmm, bool mask_flag) {
         return mask_flag ? vmm | k_load_dim_mask_extended : vmm;
@@ -134,18 +130,13 @@ private:
     }
     inline Vmm_down_t vmm_store() { return Vmm_down_t(ymm_store.getIdx()); }
 
-    void bcast_loop(int load_loop_blk);
-    void reduce_loop(int load_loop_blk, int ur, bool wraparound);
+    void bcast_loop(dim_t load_loop_blk);
+    void reduce_loop(dim_t load_loop_blk, dim_t ur, bool wraparound);
 
-    Xbyak::Address output_ptr(const int i_load, const int i_ur);
-    int vreg_accum_idx(const int load_loop_blk, int i_load, int i_ur) const;
-    Vmm vreg_accum(const int load_loop_blk, int i_load, int i_ur) const;
-    void apply_sum(const int load_loop_blk, const int ur,
-            const bool mask_flag_in, const float *p_sum_scale,
-            const int32_t *p_sum_zp);
-    void apply_postops(const int load_loop_blk, const int ur,
-            const bool mask_flag_in, const float *p_sum_scale,
-            const int32_t *p_sum_zp);
+    Xbyak::Address output_ptr(dim_t i_load, dim_t i_ur);
+    int vreg_accum_idx(dim_t load_loop_blk, dim_t i_load, dim_t i_ur) const;
+    Vmm vreg_accum(dim_t load_loop_blk, dim_t i_load, dim_t i_ur) const;
+    void apply_postops(dim_t load_loop_blk, dim_t ur);
     void generate() override;
     void cvt2ps(data_type_t type_in, const Vmm vmm_in, const Xbyak::Operand &op,
             bool mask_flag);
@@ -155,7 +146,7 @@ struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_t {
     jit_avx512_core_x8s8s32x_1x1_conv_kernel_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md)
         : kernel_(nullptr) {
-        int ch_block = ajcp.ic_block;
+        const dim_t ch_block = ajcp.ic_block;
         switch (ch_block) {
             case 16:
                 kernel_ = utils::make_unique<

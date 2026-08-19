@@ -134,7 +134,25 @@ private:
             const attr_t &attr, res_t *res) const;
     int compare_norm(const dnn_mem_t &exp_mem, const dnn_mem_t &got_mem,
             const attr_t &attr, res_t *res) const;
+
     void dump_p2p_errors() const;
+    // There's a class of rounding errors when two representable values of a dst
+    // data type are on some distance in terms of `float` data type (e.g., int8
+    // `0.f` and `1.f`), and the `exp_f32` comes right in the middle between
+    // those values (e.g., `0.5f`).
+    //
+    // In this case it's possible that the library ends up with a `float` value
+    // to the right/left end of it (e.g., `0.500002f`) due to hardware design or
+    // non-transitive floating-point effects (such as order of accumulation).
+    //
+    // Due to the Round Nearest, ties to Even, or RNE mode, final expected and
+    // got values will be on different ends.
+    //
+    // In benchdnn such error are called `off-by-1` for any data types.
+    //
+    // Examples include pooling and resampling problems on integer data
+    // types, or matmul's fp4 dynamic scaling.
+    bool is_off_by_one(const driver_check_func_args_t &args) const;
 
     std::string get_kind_str() const {
         std::string kind_str;

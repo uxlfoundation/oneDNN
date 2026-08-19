@@ -332,6 +332,11 @@ for the third tensor positioned after that of the second and are separated by `:
 The arguments are optional for the third tensor and the data type value for
 the third tensor is fixed at `s8`.
 
+`S2_MASK_INPUT` follows the same `MASK_INPUT` semantics as above and defines the
+dimensions of the conditional (third) tensor, so it may be broadcast against the
+destination: `common` (`mask = 0`) is a single-value condition applied to the
+whole tensor, while unset (no `S2_MASK_INPUT`) spans the full destination shape.
+
 ### Prelu
 `PRELU` post operation kind applies forward algorithm to the operations result
 and then stores it. Weights `DT` is always implicitly f32.

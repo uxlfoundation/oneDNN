@@ -56,10 +56,10 @@ jit_uni_resampling_kernel_t<isa, Vmm>::jit_uni_resampling_kernel_t(
         static constexpr bool use_exact_tail_scalar_bcast = true;
 
         const binary_injector::rhs_arg_static_params_t rhs_sp {
-                static_cast<size_t>(vmm_post_op_helper_.getIdx()), r14, r15,
-                r13, preserve_gpr, preserve_vmm,
-                GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(dst_orig), dst_d,
-                tail_size_, k_tail_mask_, use_exact_tail_scalar_bcast};
+                vmm_post_op_helper_.getIdx(), r14, r15, r13, preserve_gpr,
+                preserve_vmm, GET_OFF(post_ops_binary_rhs_arg_vec),
+                GET_OFF(dst_orig), dst_d, tail_size_, k_tail_mask_,
+                use_exact_tail_scalar_bcast};
 
         const bcast_set_t accepted_broadcasts
                 = {broadcasting_strategy_t::scalar,
@@ -68,9 +68,10 @@ jit_uni_resampling_kernel_t<isa, Vmm>::jit_uni_resampling_kernel_t(
         const binary_injector::static_params_t bsp {
                 reg_param, accepted_broadcasts, rhs_sp};
 
-        postops_injector_ = utils::make_unique<
-                injector::jit_uni_postops_injector_t<isa, Vmm>>(
-                this, conf_.post_ops, bsp);
+        postops_injector_
+                = utils::make_unique<injector::jit_uni_postops_injector_t<Vmm>>(
+                        this, conf_.post_ops, bsp,
+                        /* inject_sum = */ conf_.with_sum);
 
         std::tie(any_binary_postop_is_per_oc_bcast_type_,
                 any_binary_postop_is_per_oc_sp_bcast_type_)
@@ -128,8 +129,8 @@ bool jit_uni_resampling_kernel_t<isa, Vmm>::can_movntps_be_used() const {
 }
 
 template <cpu_isa_t isa, typename Vmm>
-std::size_t jit_uni_resampling_kernel_t<isa, Vmm>::calculate_tail_size() const {
-    std::size_t tail_size = 0;
+int jit_uni_resampling_kernel_t<isa, Vmm>::calculate_tail_size() const {
+    dim_t tail_size = 0;
 
     if (conf_.tag_kind == tag_kind::nspc
             || conf_.tag_kind == tag_kind::blocked) {
@@ -142,16 +143,17 @@ std::size_t jit_uni_resampling_kernel_t<isa, Vmm>::calculate_tail_size() const {
     } else
         assert(!"Incorrect memory tag passed to resampling primitive.");
 
-    return tail_size;
+    return static_cast<int>(tail_size);
 }
 
 template <cpu_isa_t isa, typename Vmm>
-int jit_uni_resampling_kernel_t<isa, Vmm>::get_channels_to_compute_without_tail(
-        const bool is_tail_in_blocked_format) const {
+dim_t jit_uni_resampling_kernel_t<isa,
+        Vmm>::get_channels_to_compute_without_tail(const bool
+                is_tail_in_blocked_format) const {
     assert(utils::one_of(conf_.tag_kind, tag_kind::blocked, tag_kind::nspc)
             && "Incorrect memory tag.");
 
-    int c_to_compute_without_tail = 0;
+    dim_t c_to_compute_without_tail = 0;
 
     if (conf_.tag_kind == tag_kind::blocked && is_tail_in_blocked_format) {
         // Example:
@@ -225,53 +227,8 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::preserve_zero_padding_in_post_ops(
     else {
         std::bitset<8> tail_mask((1 << tail_size_) - 1);
         tail_mask.flip();
-        uni_vblendps(vmm_data, vmm_data, vmm_zeros, tail_mask.to_ulong());
-    }
-}
-
-template <cpu_isa_t isa, typename Vmm>
-void jit_uni_resampling_kernel_t<isa, Vmm>::apply_sum(
-        const int data_idx, const bool is_tail, const size_t offset) {
-    if (conf_.with_sum) {
-        assert(!conf_.sum_scales.empty()
-                && "No scales for sum post operation.");
-        const auto sum_injector = [this, data_idx, is_tail, offset]() {
-            const Vmm vmm_prev_dst(vmm_tmp_.getIdx());
-            const Vmm vmm_dst(data_idx);
-
-            // Zeroing previous dst is needed to preserve zero padding.
-            if (is_tail && conf_.tag_kind == tag_kind::blocked)
-                uni_vxorps(vmm_prev_dst, vmm_prev_dst, vmm_prev_dst);
-
-            io_.at(conf_.dst_data_type)
-                    ->load(ptr[reg_dst_ + offset], vmm_prev_dst, is_tail);
-            const float sum_scale = sum_scales_.front();
-            if (sum_scale == 1.f)
-                uni_vaddps(vmm_dst, vmm_dst, vmm_prev_dst);
-            else {
-                const Xmm xmm_sum_scale = Xmm(vmm_sum_scale_.getIdx());
-
-                // If the algorithm used is the linear algorithm, and the shape
-                // has 5 dimensions, then we have not enough gpr registers to use
-                // tmp registers. Therefore, if there is a need to use them it is
-                // needed to save their state and restore it after execution of all
-                // needed operations.
-                if (conf_.alg == alg_kind::resampling_linear
-                        && conf_.ndims == 5)
-                    push(reg_tmp1_);
-                mov(reg_tmp1_.cvt32(), float2int(sum_scale));
-                uni_vmovd(xmm_sum_scale, reg_tmp1_.cvt32());
-                if (conf_.alg == alg_kind::resampling_linear
-                        && conf_.ndims == 5)
-                    pop(reg_tmp1_);
-                uni_vbroadcastss(vmm_sum_scale_, xmm_sum_scale);
-                uni_vfmadd231ps(vmm_dst, vmm_prev_dst, vmm_sum_scale_);
-            }
-            sum_scales_.push(sum_scale);
-            sum_scales_.pop();
-        };
-        postops_injector_->set_lambda_injector(
-                primitive_kind::sum, sum_injector);
+        uni_vblendps(vmm_data, vmm_data, vmm_zeros,
+                static_cast<int>(tail_mask.to_ulong()));
     }
 }
 
@@ -285,9 +242,8 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::apply_postops(
             && (any_binary_postop_is_per_oc_bcast_type_
                     || any_binary_postop_is_per_oc_sp_bcast_type_);
 
-    if (conf_.with_sum) apply_sum(data_idx, is_tail, offset);
-
-    if (apply_rhs_binary) {
+    // Sum post-op requires binary parameters to be set.
+    if (apply_rhs_binary || conf_.with_sum) {
         rhs_arg_params.vmm_idx_to_out_reg.emplace(data_idx, reg_dst_);
         rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(data_idx, offset);
         if (is_tail) rhs_arg_params.vmm_tail_idx_.emplace(data_idx);
@@ -301,17 +257,17 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::apply_postops(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa, Vmm>::preserve_zero_padding(
-        const int c_to_compute_without_tail, const bool is_tail) {
-    const int c_to_compute_with_tail
+        const dim_t c_to_compute_without_tail, const bool is_tail) {
+    const dim_t c_to_compute_with_tail
             = is_tail ? utils::rnd_up(tail_size_, simd_w_) : 0;
-    const int c_to_zeroing = conf_.inner_stride - c_to_compute_without_tail
+    const dim_t c_to_zeroing = conf_.inner_stride - c_to_compute_without_tail
             - c_to_compute_with_tail;
 
     if (c_to_zeroing > 0) {
         assert(c_to_zeroing % simd_w_ == 0);
         const Vmm vmm_zeros(vmm_tmp_.getIdx());
 
-        for (int c = 0; c < c_to_zeroing; c += simd_w_) {
+        for (dim_t c = 0; c < c_to_zeroing; c += simd_w_) {
             uni_vxorps(vmm_zeros, vmm_zeros, vmm_zeros);
             const auto dst_address = ptr[reg_dst_ + c * conf_.dst_dt_size];
             io_.at(conf_.dst_data_type)->store(vmm_zeros, dst_address, false);
@@ -324,8 +280,8 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::preserve_zero_padding(
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa, Vmm>::interpolate_c_oriented_format(
         const c_oriented_generation_fn_t &generation_fn) {
-    const unsigned c_with_padding = utils::rnd_up(conf_.c, conf_.inner_stride);
-    const unsigned padding_size_to_preserve = c_with_padding - conf_.c;
+    const dim_t c_with_padding = utils::rnd_up(conf_.c, conf_.inner_stride);
+    const dim_t padding_size_to_preserve = c_with_padding - conf_.c;
 
     if (padding_size_to_preserve > 0 && conf_.tag_kind == tag_kind::blocked) {
         Label tail_label;
@@ -410,7 +366,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::nearest_ncsp_format() {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa, Vmm>::compute_nearest_c_interpolate(
-        const int c_to_compute_without_tail, const bool is_tail) {
+        const dim_t c_to_compute_without_tail, const bool is_tail) {
     const Reg64 &reg_c = reg_tmp_;
     const Reg64 &reg_src_shifted = reg_aux_src_0_;
 
@@ -454,7 +410,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::compute_nearest_c_interpolate(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa,
-        Vmm>::compute_ne_xf16_nearest_c_interpolate(const int
+        Vmm>::compute_ne_xf16_nearest_c_interpolate(const dim_t
                 c_to_compute_without_tail) {
     const Reg64 &reg_c = reg_tmp_;
     const Reg64 &reg_src_shifted = reg_aux_src_0_;
@@ -501,12 +457,12 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::nearest_c_oriented_format(
     const bool has_ne_xf16_supported = isa == avx2_vnni_2
             && utils::one_of(
                     conf_.src_data_type, data_type::bf16, data_type::f16);
-    const int total_c_to_compute_without_tail
+    const dim_t total_c_to_compute_without_tail
             = get_channels_to_compute_without_tail(is_tail_in_blocked_format);
-    const int c_to_compute_ne_xf16_without_tail = has_ne_xf16_supported
+    const dim_t c_to_compute_ne_xf16_without_tail = has_ne_xf16_supported
             ? utils::rnd_dn(total_c_to_compute_without_tail, 2 * simd_w_)
             : 0;
-    const int c_to_compute_without_tail = total_c_to_compute_without_tail
+    const dim_t c_to_compute_without_tail = total_c_to_compute_without_tail
             - c_to_compute_ne_xf16_without_tail;
     const bool insert_tail_processsing_code
             = (conf_.tag_kind == tag_kind::nspc && tail_size_ > 0)
@@ -549,10 +505,9 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::nearest_c_oriented_format(
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa, Vmm>::linear_ncsp_format() {
-    const unsigned indices_stride
+    const dim_t indices_stride
             = conf_.ow * conf_.oh * conf_.od * conf_.el_size_of_indices;
-    const unsigned weights_stride
-            = conf_.ow * conf_.oh * conf_.od * sizeof(float);
+    const dim_t weights_stride = conf_.ow * conf_.oh * conf_.od * sizeof(float);
 
     auto linear_interpolation = [&](const bool is_tail) {
         const Vmm vmm_dst(vmm_idx(0));
@@ -608,7 +563,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::linear_ncsp_format() {
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa,
-        Vmm>::compute_ne_xf16_linear_c_interpolate(const int
+        Vmm>::compute_ne_xf16_linear_c_interpolate(const dim_t
                 c_to_compute_without_tail) {
     const Reg64 &reg_c = reg_tmp_;
 
@@ -692,7 +647,7 @@ void jit_uni_resampling_kernel_t<isa,
 
 template <cpu_isa_t isa, typename Vmm>
 void jit_uni_resampling_kernel_t<isa, Vmm>::compute_linear_c_interpolate(
-        const int c_to_compute_without_tail, const bool is_tail) {
+        const dim_t c_to_compute_without_tail, const bool is_tail) {
     const Reg64 &reg_c = reg_tmp_;
 
     const std::vector<std::reference_wrapper<const Vmm>> src_vmms
@@ -786,12 +741,12 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::linear_c_oriented_format(
     const bool has_ne_xf16_supported = isa == avx2_vnni_2 && conf_.ndims <= 4
             && utils::one_of(
                     conf_.src_data_type, data_type::bf16, data_type::f16);
-    const int total_c_to_compute_without_tail
+    const dim_t total_c_to_compute_without_tail
             = get_channels_to_compute_without_tail(is_tail_in_blocked_format);
-    const int c_to_compute_ne_xf16_without_tail = has_ne_xf16_supported
+    const dim_t c_to_compute_ne_xf16_without_tail = has_ne_xf16_supported
             ? utils::rnd_dn(total_c_to_compute_without_tail, 2 * simd_w_)
             : 0;
-    const int c_to_compute_without_tail = total_c_to_compute_without_tail
+    const dim_t c_to_compute_without_tail = total_c_to_compute_without_tail
             - c_to_compute_ne_xf16_without_tail;
     const bool insert_tail_processsing_code
             = (conf_.tag_kind == tag_kind::nspc && tail_size_ > 0)
@@ -909,7 +864,7 @@ void jit_uni_resampling_kernel_t<isa, Vmm>::generate() {
 
     postamble();
 
-    if (conf_.with_eltwise && postops_injector_)
+    if ((conf_.with_eltwise || conf_.with_sum) && postops_injector_)
         postops_injector_->prepare_table(/* generate = */ true);
 }
 

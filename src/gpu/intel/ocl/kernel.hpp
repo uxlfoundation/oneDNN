@@ -21,8 +21,11 @@
 #include <CL/cl.h>
 
 #include "gpu/intel/compute/kernel.hpp"
+
 #include "xpu/ocl/utils.hpp"
 #include "xpu/utils.hpp"
+
+#include "common/thread_local_storage.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -30,13 +33,16 @@ namespace gpu {
 namespace intel {
 namespace ocl {
 
-class kernel_cache_t;
-
 class kernel_t : public compute::kernel_impl_t {
 public:
     ~kernel_t() override = default;
 
+    // Returns the main cl_kernel. The interface is `const` as the kernel is
+    // unmodifiable.
     cl_kernel ocl_kernel() const { return ocl_kernel_; }
+    // Returns a copy of the main kernel from the tls. The interface is not
+    // `const` as it modifies `kernel_tls_` state.
+    cl_kernel thread_local_kernel();
 
     status_t get_binary(
             const impl::engine_t *engine, xpu::binary_t &binary) const override;
@@ -44,6 +50,10 @@ public:
     status_t get_binary_size(
             const impl::engine_t *engine, size_t *binary_size) const override;
 
+    status_t set_arg(cl_kernel kernel, int arg_index, size_t arg_size,
+            const void *arg_value);
+    status_t set_usm_arg(impl::engine_t *engine, cl_kernel kernel,
+            int arg_index, const void *arg_value);
     status_t parallel_for(impl::stream_t &stream,
             const compute::nd_range_t &range,
             const compute::kernel_arg_list_t &arg_list,
@@ -76,7 +86,7 @@ private:
 
     xpu::ocl::wrapper_t<cl_kernel> ocl_kernel_;
     std::vector<gpu::intel::compute::scalar_type_t> arg_types_;
-    std::shared_ptr<kernel_cache_t> cache_;
+    utils::thread_local_storage_t<xpu::ocl::wrapper_t<cl_kernel>> kernel_tls_;
     compute::program_src_t src_;
     bool save_events_;
 };

@@ -289,7 +289,15 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
         for (int64_t n = nc * p.dst_N_group;
                 n < MIN2((nc + 1) * p.dst_N_group, N); ++n) {
             const auto dst_off = (dst_row_base + m) * N + n;
-            dst_scale = MAX2(fabsf(p.dst_m->get_f32_elem(dst_off)), dst_scale);
+            const float dst = fabsf(p.dst_m->get_f32_elem(dst_off));
+            // The following check and explicit set of scale to NAN is done on
+            // purpose to highlight the test case to adjust it as there's no
+            // practical application of NAN scales.
+            if (std::isnan(dst) || std::isnan(dst_scale)) {
+                dst_scale = NAN;
+                continue;
+            }
+            dst_scale = MAX2(dst, dst_scale);
         }
         if (p.has_dst_mx) {
             dst_scale
@@ -299,10 +307,17 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
             dst_scale
                     = round_to_nearest_representable(p.dst_scale_dt, dst_scale);
         } else if (p.has_dst_dynamic_fp) {
-            dst_scale = dst_scale == 0.f
-                    ? 1.f
-                    : round_to_nearest_representable(
-                              p.dst_scale_dt, dst_scale / max_dt(p.dst_dt));
+            // Clamp the scale value to epsilon(dst_scale_dt) from the down and
+            // to max(dst_scale_dt) from the up.
+            // This is done to deal with zero block and small values obtained
+            // after dividing a group max value.
+            // See the following link for more details:
+            // https://github.com/pytorch/ao/blob/main/torchao/prototype/mx_formats/nvfp4_tensor.py
+            dst_scale = MAX2(
+                    MIN2(dst_scale / max_dt(p.dst_dt), max_dt(p.dst_scale_dt)),
+                    epsilon_dt(p.dst_scale_dt));
+            dst_scale
+                    = round_to_nearest_representable(p.dst_scale_dt, dst_scale);
         }
         const auto dst_off
                 = (dst_row_base + mc * p.dst_M_group) * N + nc * p.dst_N_group;
@@ -334,6 +349,20 @@ static void compute_ref_matmul_chunk(const chunk_params_t &p, int64_t M,
         }
         float dst = p.dst_m->get_f32_elem(dst_off);
         float dst_val = dst_scale * dst + dst_zp;
+        if (p.has_dst_dynamic) {
+            // When the computed dst_scale is < 1.f, its inverse is > 1.f and
+            // may push the value beyond the representable range of the dst dt,
+            // including NaN or inf.
+            // Saturate to the max/min representable value preserving sign
+            // instead of overflowing according to spec.
+            if (std::isnan(dst_val) || std::isinf(dst_val)) {
+                float dst_val_sign = std::signbit(dst_val) ? -1 : 1;
+                dst_val = max_dt(p.dst_dt) * dst_val_sign;
+            } else {
+                dst_val = MAX2(
+                        MIN2(dst_val, max_dt(p.dst_dt)), lowest_dt(p.dst_dt));
+            }
+        }
         maybe_round(attr, DNNL_ARG_DST, dst_val, dst_off, p.dst_dt);
         p.dst_m->set_f32_elem(dst_off, dst_val);
     }

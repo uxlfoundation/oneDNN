@@ -16,6 +16,7 @@
 
 #include <numeric>
 #include "cpu/x64/lrn/jit_avx512_common_lrn_fwd_base.hpp"
+#include "cpu/x64/lrn/jit_avx512_common_lrn_utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -215,7 +216,7 @@ template <data_type_t d_type>
 jit_avx512_common_lrn_kernel_fwd_t<d_type>::jit_avx512_common_lrn_kernel_fwd_t(
         prop_kind_t prop_kind, float alpha, float beta, float k, int local_size,
         const char *name)
-    : jit_generator_t(name, avx512_core_bf16)
+    : jit_generator_t(name, get_isa<d_type>())
     , pk_(prop_kind)
     , alpha_(alpha)
     , beta_(beta)

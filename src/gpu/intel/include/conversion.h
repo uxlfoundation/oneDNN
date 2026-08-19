@@ -214,22 +214,6 @@ IF_DOUBLE_SUPPORTED(def_two_step_conversion(f4_e2m1, double, float));
 IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f4_e2m1, float));
 #endif // MATH_UTILS_DECLARE_F4_E2M1
 
-#ifdef MATH_UTILS_DECLARE_F4_E3M0
-f4_e3m0 __attribute__((overloadable)) into_f4_e3m0(float f) {
-    return as_f4_e3m0(cvt_f32_to_f4_e3m0(f));
-}
-
-float __attribute__((overloadable)) into_float(f4_e3m0 b) {
-    return cvt_f4_e3m0_to_f32(b.data);
-}
-
-def_two_step_conversion(f4_e3m0, half, float);
-def_two_step_conversion(f4_e3m0, int, float);
-def_two_step_conversion(half, f4_e3m0, float);
-
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(f4_e3m0, double, float));
-IF_DOUBLE_SUPPORTED(def_two_step_conversion(double, f4_e3m0, float));
-#endif // MATH_UTILS_DECLARE_F4_E3M0
 
 s4 __attribute__((overloadable)) into_s4(s4 val) { return val; }
 

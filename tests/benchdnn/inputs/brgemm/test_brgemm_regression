@@ -1,2 +1,10 @@
 # Incorrect mask comparison in lazy hw config, need two problems to run back-to-back
 --reset --dt=bf16 128x448:448x32 42x608:608x32
+
+# NaN leak in AMX extendable_k K-tail handling on the non-uker kernel (issue
+# #5717). Forces the K-tail zero-pad path (need_k_tail_processing == true) via
+# use_uker:0 + extendable_k:1 + wary_A_k_tail_read:1 with K % 32 != 0.
+--reset --dt=bf16:bf16:bf16
+--brgemm-attr=use_uker:0+extendable_k:1+wary_A_k_tail_read:1
+64x33:33x64 48x65:65x80 16x97:97x64 32x129:129x48
+

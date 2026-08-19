@@ -66,7 +66,7 @@ struct jit_brgemm_kernel_post_ops_base_t {
     virtual void operator()(const brgemm_kernel_post_ops_args_t *args) const
             = 0;
 
-    virtual int get_bcast_dim() const = 0;
+    virtual dim_t get_bcast_dim() const = 0;
 };
 
 // An implementation class for post-ops based on `Vmm` template argument.
@@ -97,7 +97,7 @@ struct jit_brgemm_kernel_post_ops_t : public jit_brgemm_kernel_post_ops_base_t,
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_post_ops_t)
 
     // Used for assertion on implementation side in debug mode.
-    int get_bcast_dim() const override { return brg_.bcast_dim; }
+    dim_t get_bcast_dim() const override { return brg_.bcast_dim; }
 
 private:
     // This can't be a reference, otherwise, `get_bcast_dim()` would return
@@ -114,7 +114,7 @@ private:
 
     using Vmm_lower_t = typename vreg_traits_t<Vmm>::Vmm_lower_t;
     using Vmm_lower2_t = typename vreg_traits_t<Vmm_lower_t>::Vmm_lower_t;
-    using po_injector_t = injector::jit_uni_postops_injector_base_t<Vmm>;
+    using po_injector_t = injector::jit_uni_postops_injector_t<Vmm>;
     std::unique_ptr<po_injector_t> postops_injector_;
     std::unique_ptr<bf16_emulation_t> bf16_emu_;
     std::unique_ptr<fp8_conversion_e5m2_t> f8_e5m2_cvt_;
@@ -142,9 +142,6 @@ private:
 
     const reg64_t reg_wei_scales = r9;
     const reg64_t aux_reg_wei_scales = r8;
-
-    const reg64_t reg_ptr_sum_scale = rdx;
-    const reg64_t reg_ptr_sum_zp = rsi;
 
     const reg64_t reg_zp_c_values = rbx;
     const reg64_t aux_reg_zp_c_values = rbx;
@@ -189,13 +186,13 @@ private:
 
     Vmm vmm_tmp(int i) const { return Vmm(max_vregs_ - 1 - i); }
 
-    int zp_c_values_offset(int n, bool is_tail = false) const noexcept;
-    int zp_comp_a_vpad_offset(
+    dim_t zp_c_values_offset(int n, bool is_tail = false) const noexcept;
+    dim_t zp_comp_a_vpad_offset(
             int n, int m, bool is_tail = false) const noexcept;
-    int mb_zp_comp_a_offset(int m_block) const noexcept;
-    int compensation_vpad_offset(
+    dim_t mb_zp_comp_a_offset(int m_block) const noexcept;
+    dim_t compensation_vpad_offset(
             int n, int m, bool is_tail = false) const noexcept;
-    int mb_compensation_offset(int m_block) const noexcept {
+    dim_t mb_compensation_offset(int m_block) const noexcept {
         return sizeof(int32_t) * m_block * brg_.LDB;
     }
 

@@ -28,6 +28,7 @@
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+#include "gpu/intel/jit/utils/type_bridge.hpp"
 #include "gpu/intel/primitive_conf.hpp"
 #include "gpu/intel/utils.hpp"
 
@@ -61,7 +62,24 @@ bool with_quantize_common(const quant_entry_t &entry) {
     return !entry.has_default_values() && ((entry.get_mask() & 12) == 0);
 }
 
-} /* anonymous namespace */
+// micro_sdpa/micro_sdpa_bwd cross-thread argument bytes, plus headroom.
+constexpr int host_argument_bytes_fwd = 320;
+constexpr int host_argument_bytes_bwd = 256;
+
+// XXX: Use the adjusted argument base as a workaround to avoid performance
+// regressions in some cases.
+int host_argument_bytes_fwd_for(const micro::HWInformation &hw_info) {
+    auto family = ngen::npack::decodeHWIPVersion(hw_info.gmdid).family;
+    if (family == ngen::ProductFamily::NVLP) return 256;
+    return host_argument_bytes_fwd;
+}
+
+compute::gpu_arch_t gpu_arch(const micro::HWInformation &hw_info) {
+    return jit::convert_ngen_arch_to_dnnl(
+            getCore(ngen::npack::decodeHWIPVersion(hw_info.gmdid).family));
+}
+
+} // namespace
 
 status_t update_config_from_devenv_values(
         fwd_config_t *config, bool quantized) {
@@ -446,8 +464,10 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
     bool is_f32 = (desc()->qry_md()->data_type == data_type::f32);
 
     bool use_fma_config = !use_systolic_ukernel_;
+    const dim_t batch_heads = d->batch() * d->num_q_heads();
     config = choose_bwd_config(arch_, d->head_size(), d->queries(), d->keys(),
-            thin_q, quantized, is_integrated, use_fma_config, is_f32);
+            batch_heads, thin_q, quantized, is_integrated, use_fma_config,
+            is_f32, with_causal_mask());
 
     VDISPATCH_SDPA(config != nullptr,
             "No suitable kernel configuration found for the given problem "
@@ -595,11 +615,19 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
             gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
     auto ldq = static_cast<int>(
             gemm_desc_t::get_ld(*desc()->qry_md()) * qry_mdw.data_type_size());
-    problem_kq.A.setAlignment(64); // Q is packed in VNNI format in SLM
-    if (use_systolic_ukernel()) {
-        problem_kq.A.crosspack = 2;
-        problem_kq.A.tileR = into<uint16_t>(sg_size_);
-        problem_kq.A.tileC = into<uint16_t>(d_max());
+
+    conf.k_in_slm = !utils::one_of(
+            arch_, compute::gpu_arch_t::xe_hpc, compute::gpu_arch_t::xe2);
+    if (conf.k_in_slm) {
+        problem_kq.A.setAlignment(64); // K is packed in VNNI format in SLM
+        if (use_systolic_ukernel()) {
+            problem_kq.A.crosspack = 2;
+            problem_kq.A.tileR = into<uint16_t>(sg_size_);
+            problem_kq.A.tileC = into<uint16_t>(d_max());
+        }
+    } else {
+        problem_kq.A.layout = convert_dnnl_to_kernel_layout(desc()->key_md());
+        problem_kq.A.setAlignment(micro::alignmentForLD(int(ldk)));
     }
     problem_kq.B.setAlignment(micro::alignmentForLD(int(ldq)));
 
@@ -607,7 +635,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
 
     /* Set up microkernel options */
     micro::GEMMOptions opts_kq;
-    opts_kq.localA = true;
+    opts_kq.localA = conf.k_in_slm;
     opts_kq.slmPtr = true;
     opts_kq.scaleA = false;
     opts_kq.offsetA = false;
@@ -731,7 +759,11 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
     problem_ktq.B.layout = MatrixLayout::Pr;
     problem_ktq.C.layout = MatrixLayout::N;
 
-    problem_ktq.A.setAlignment(micro::alignmentForLD(int(ldk)));
+    constexpr int ktq_nondense_align = 2;
+    problem_ktq.A.setAlignment(key_mdw.is_dense()
+                    ? micro::alignmentForLD(int(ldk))
+                    : std::min(ktq_nondense_align,
+                              micro::alignmentForLD(int(ldk))));
     problem_ktq.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_ktq.B.crosspack = 16; }
 
@@ -1003,7 +1035,7 @@ status_t micro_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     if (d_full) {
         bool can_block_load_k
                 = (ldk % 4 == 0) && (desc()->keys() % tile_k == 0);
-        conf.block_k = can_block_load_k;
+        conf.block_k = can_block_load_k && conf.k_in_slm;
         if (conf.transpose_k) {
             // tile_store_dK_t uses lddk = max(DK_S2, DK_S3)
             const memory_desc_wrapper dk_mdw(desc()->diff_key_md());
@@ -1016,6 +1048,14 @@ status_t micro_bwd_t::pd_t::init_conf(const impl::engine_t *engine) {
         conf.block_dV = (ldv % 4 == 0) && (dv_full);
     }
 
+    // check if dQ can be computed without atomics
+    {
+        const memory_desc_wrapper diff_qry_mdw(desc()->diff_qry_md());
+        const bool single_k_block = (desc()->keys() <= tile_k);
+        conf.direct_dQ = single_k_block && diff_qry_mdw.is_plain()
+                && diff_qry_mdw.strides()[3] == 1;
+    }
+
     return status::success;
 }
 
@@ -1026,7 +1066,7 @@ status_t micro_bwd_t::pd_t::init_scratchpad(const impl::engine_t *engine) {
     size_t wspace_size = memory_desc_wrapper(desc()->diff_qry_md()).nelems();
     // f32 can directly atomic add to output
     // others need intermediate scratchpad before conversion
-    if (conf.data_t != data_type::f32) {
+    if (conf.data_t != data_type::f32 && !conf.direct_dQ) {
         scratchpad.book(memory_tracking::names::key_sdpa_dQ_reduction,
                 wspace_size, sizeof(float), gpu_align);
     }
@@ -1153,6 +1193,10 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     deserialize_config_to_gemmstone(hw_info, problem_kq, problem_vs, opts_kq,
             opts_vs, sizes_kq, sizes_vs, ukernel_config);
 
+    const micro::HostPayload host {
+            subgroup_size, host_argument_bytes_fwd_for(hw_info)};
+    const auto hw_arch = gpu_arch(hw_info);
+
     micro::Package gemm_kq, gemm_vs;
 
     /* Set up microkernel strategy */
@@ -1194,8 +1238,8 @@ status_t micro_fwd_params_t::get_kernel_ctx(
         }
     };
     try {
-        gemm_kq = micro::selectGEMM(opts_kq, hw_info, sizes_kq, problem_kq,
-                reqs_kq, kq_strat_override);
+        gemm_kq = micro::selectGEMM(opts_kq, host, hw_info, sizes_kq,
+                problem_kq, reqs_kq, kq_strat_override);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_kq microkernel generation failure with message: %s",
@@ -1229,11 +1273,11 @@ status_t micro_fwd_params_t::get_kernel_ctx(
                 strategy.dpasw |= strategy.fused;
                 vs_strat_override(strategy);
             };
-            gemm_vs = micro::selectGEMM(
-                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs, adjust_vs);
+            gemm_vs = micro::selectGEMM(opts_vs, host, hw_info, sizes_vs,
+                    problem_vs, reqs_vs, adjust_vs);
         } else {
-            gemm_vs = micro::selectGEMM(opts_vs, hw_info, sizes_vs, problem_vs,
-                    reqs_vs, vs_strat_override);
+            gemm_vs = micro::selectGEMM(opts_vs, host, hw_info, sizes_vs,
+                    problem_vs, reqs_vs, vs_strat_override);
         }
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
@@ -1246,28 +1290,10 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             problem_kq.toString().c_str(), problem_vs.toString().c_str());
 
     /* Generate microkernel shims */
-    micro::ShimOptions shimOptions;
-    shimOptions.subgroupSize = subgroup_size;
-    shimOptions.useTileOps = true;
-    shimOptions.decorator = "kq";
-
-    kernel_ctx.add_custom_header("gemm_kq.h",
-            micro::generateShim(gemm_kq, HostLanguage::OpenCL_C, shimOptions));
-
-    shimOptions.microkernelID++;
-    shimOptions.decorator = "vs";
-
-    kernel_ctx.add_custom_header("gemm_vs.h",
-            micro::generateShim(gemm_vs, HostLanguage::OpenCL_C, shimOptions));
-
-    const int grf_min = std::max(gemm_kq.grfMin, gemm_vs.grfMin);
-    const auto product = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
-    const bool is_xe3p = getCore(product.family) >= ngen::HW::Xe3p;
-    if (is_xe3p && grf_min > 256) {
-        kernel_ctx.add_option("-cl-intel-512-GRF-per-thread");
-    } else if (grf_min > 128) {
-        kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
-    }
+    compute::microkernel_shims_t shims(kernel_ctx, subgroup_size, hw_arch);
+    shims.add("gemm_kq.h", "kq", gemm_kq);
+    shims.add("gemm_vs.h", "vs", gemm_vs);
+    shims.finalize();
 
     return status::success;
 }
@@ -1313,9 +1339,11 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     kernel_ctx.define_int("SUBGROUP_SIZE", subgroup_size);
     kernel_ctx.define_int("D_MAX", d_max);
 
-    kernel_ctx.define_int("BLOCK_K", block_k);
     kernel_ctx.define_int("BLOCK_DK", block_dK);
     kernel_ctx.define_int("BLOCK_DV", block_dV);
+    kernel_ctx.define_int("BLOCK_K", block_k);
+    kernel_ctx.define_int("K_IN_SLM", k_in_slm);
+    kernel_ctx.define_int("DIRECT_DQ", direct_dQ);
 
     kernel_ctx.define_int("USE_SYSTOLIC_UKERNEL", use_systolic_ukernel);
     kernel_ctx.define_int("WITH_DROPOUT", dropout);
@@ -1334,6 +1362,9 @@ status_t micro_bwd_params_t::get_kernel_ctx(
             problem_vtdA, problem_ktq, problem_qdSt, opts_kq, opts_vs,
             opts_vtdA, opts_ktq, opts_qdSt, sizes_kq, sizes_vs, sizes_vtdA,
             sizes_ktq, sizes_qdSt, ukernel_config);
+
+    const micro::HostPayload host {subgroup_size, host_argument_bytes_bwd};
+    const auto hw_arch = gpu_arch(hw_info);
 
     micro::Package gemm_kq, gemm_vs, gemm_vtdA, gemm_ktq, gemm_qdSt;
 
@@ -1379,7 +1410,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     /* Ask microkernel provider for microkernel */
     try {
         gemm_kq = micro::selectGEMM(
-                opts_kq, hw_info, sizes_kq, problem_kq, reqs_kq);
+                opts_kq, host, hw_info, sizes_kq, problem_kq, reqs_kq);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_kq microkernel generation failure with message: %s",
@@ -1393,11 +1424,11 @@ status_t micro_bwd_params_t::get_kernel_ctx(
                 /* Enable dpasw */
                 strategy.dpasw |= strategy.fused;
             };
-            gemm_vs = micro::selectGEMM(
-                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs, adjust_vs);
+            gemm_vs = micro::selectGEMM(opts_vs, host, hw_info, sizes_vs,
+                    problem_vs, reqs_vs, adjust_vs);
         } else {
             gemm_vs = micro::selectGEMM(
-                    opts_vs, hw_info, sizes_vs, problem_vs, reqs_vs);
+                    opts_vs, host, hw_info, sizes_vs, problem_vs, reqs_vs);
         }
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
@@ -1413,25 +1444,13 @@ status_t micro_bwd_params_t::get_kernel_ctx(
             problem_qdSt.toString().c_str());
 
     /* Generate microkernel shims */
-    micro::ShimOptions shimOptions;
-    shimOptions.subgroupSize = subgroup_size;
-    shimOptions.useTileOps = true;
-    shimOptions.decorator = "kq";
-
-    std::string gemm_kq_header
-            = micro::generateShim(gemm_kq, HostLanguage::OpenCL_C, shimOptions);
-    kernel_ctx.add_custom_header("gemm_kq.h", std::move(gemm_kq_header));
-
-    shimOptions.microkernelID++;
-    shimOptions.decorator = "vs";
-
-    std::string gemm_vs_header
-            = micro::generateShim(gemm_vs, HostLanguage::OpenCL_C, shimOptions);
-    kernel_ctx.add_custom_header("gemm_vs.h", std::move(gemm_vs_header));
+    compute::microkernel_shims_t shims(kernel_ctx, subgroup_size, hw_arch);
+    shims.add("gemm_kq.h", "kq", gemm_kq);
+    shims.add("gemm_vs.h", "vs", gemm_vs);
 
     try {
         gemm_vtdA = micro::selectGEMM(
-                opts_vtdA, hw_info, sizes_vtdA, problem_vtdA, reqs_vtdA);
+                opts_vtdA, host, hw_info, sizes_vtdA, problem_vtdA, reqs_vtdA);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_vtdA microkernel generation failure with message: %s",
@@ -1439,16 +1458,11 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     }
     CHECK(compute::validate_microkernel(gemm_vtdA, "gemm_vtdA"));
 
-    shimOptions.microkernelID++;
-    shimOptions.decorator = "vtdA";
-
-    std::string gemm_vtdA_header = micro::generateShim(
-            gemm_vtdA, HostLanguage::OpenCL_C, shimOptions);
-    kernel_ctx.add_custom_header("gemm_vtdA.h", std::move(gemm_vtdA_header));
+    shims.add("gemm_vtdA.h", "vtdA", gemm_vtdA);
 
     try {
         gemm_ktq = micro::selectGEMM(
-                opts_ktq, hw_info, sizes_ktq, problem_ktq, reqs_ktq);
+                opts_ktq, host, hw_info, sizes_ktq, problem_ktq, reqs_ktq);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_ktq microkernel generation failure with message: %s",
@@ -1456,16 +1470,11 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     }
     CHECK(compute::validate_microkernel(gemm_ktq, "gemm_ktq"));
 
-    shimOptions.microkernelID++;
-    shimOptions.decorator = "ktq";
-
-    std::string gemm_ktq_header = micro::generateShim(
-            gemm_ktq, HostLanguage::OpenCL_C, shimOptions);
-    kernel_ctx.add_custom_header("gemm_ktq.h", std::move(gemm_ktq_header));
+    shims.add("gemm_ktq.h", "ktq", gemm_ktq);
 
     try {
         gemm_qdSt = micro::selectGEMM(
-                opts_qdSt, hw_info, sizes_qdSt, problem_qdSt, reqs_qdSt);
+                opts_qdSt, host, hw_info, sizes_qdSt, problem_qdSt, reqs_qdSt);
     } catch (const std::runtime_error &ex) {
         VCHECK_SDPA_COND(false,
                 "gemm_qdSt microkernel generation failure with message: %s",
@@ -1473,22 +1482,9 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     }
     CHECK(compute::validate_microkernel(gemm_qdSt, "gemm_qdSt"));
 
-    shimOptions.microkernelID++;
-    shimOptions.decorator = "qdSt";
+    shims.add("gemm_qdSt.h", "qdSt", gemm_qdSt);
 
-    std::string gemm_qdSt_header = micro::generateShim(
-            gemm_qdSt, HostLanguage::OpenCL_C, shimOptions);
-    kernel_ctx.add_custom_header("gemm_qdSt.h", std::move(gemm_qdSt_header));
-
-    const int grf_min = std::max({gemm_kq.grfMin, gemm_vs.grfMin,
-            gemm_vtdA.grfMin, gemm_ktq.grfMin, gemm_qdSt.grfMin});
-    const auto product = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
-    const bool is_xe3p = getCore(product.family) >= ngen::HW::Xe3p;
-    if (is_xe3p && grf_min > 256) {
-        kernel_ctx.add_option("-cl-intel-512-GRF-per-thread");
-    } else if (grf_min > 128) {
-        kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
-    }
+    shims.finalize();
 
     return status::success;
 }
@@ -1664,7 +1660,8 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     } else {
         arg_list.append(scale);
     }
-    arg_list.append((int)((D_qk & 0xFFFF) | ((D_v & 0xFFFF) << 16)));
+    arg_list.append((int)D_qk);
+    arg_list.append((int)D_v);
     arg_list.append((int)K);
     arg_list.append((int)Q);
     arg_list.append(key_scales);
@@ -1734,10 +1731,16 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     const dim_t D = pd()->desc()->head_size();
 
     const data_type_t data_t = pd()->dst_md()->data_type;
-    const bool needs_intermediate_dQ = (data_t != data_type::f32);
+    const bool direct_dQ = pd()->conf.direct_dQ;
+    const bool needs_intermediate_dQ = (data_t != data_type::f32) && !direct_dQ;
     const bool needs_intermediate_dKV
             = (kv_group_size > 1 && data_t != data_type::f32);
     const bool needs_zero_dKV = (kv_group_size > 1);
+
+    const bool all_q_visited
+            = (pd()->desc()->mask_type != attn_mask_type::bottom_right)
+            || (Q <= K);
+    const bool needs_zero_dQ = !direct_dQ || !all_q_visited;
 
     const auto &conf = pd()->conf;
 
@@ -1876,7 +1879,6 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
 
     auto *d = pd()->desc();
     // zero f32 intermediates before atomic adds in the main kernel
-    // dQ always needs atomics, dK/dV only for GQA cases
     {
         auto compute_stream = utils::downcast<intel::stream_t *>(ctx.stream());
         auto &fill_deps = compute_stream->ctx().get_deps();
@@ -1890,12 +1892,14 @@ status_t micro_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
             return compute_stream->fill(buf, 0, bytes, fill_deps, fill_deps);
         };
 
-        // always zero dQ
-        auto &dQ_buf = needs_intermediate_dQ ? *diff_q_scratch : diff_q;
-        const size_t dQ_bytes = needs_intermediate_dQ
-                ? size_t(batch * num_q_heads * Q * D) * sizeof(float)
-                : diff_qry_mdw.size();
-        CHECK(zero_fill(dQ_buf, dQ_bytes));
+        // zero dQ
+        if (needs_zero_dQ) {
+            auto &dQ_buf = needs_intermediate_dQ ? *diff_q_scratch : diff_q;
+            const size_t dQ_bytes = needs_intermediate_dQ
+                    ? size_t(batch * num_q_heads * Q * D) * sizeof(float)
+                    : diff_qry_mdw.size();
+            CHECK(zero_fill(dQ_buf, dQ_bytes));
+        }
 
         // zero dK/dV for GQA cases
         if (needs_zero_dKV) {

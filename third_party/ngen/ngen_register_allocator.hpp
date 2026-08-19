@@ -215,8 +215,8 @@ protected:
     using mtype = uint16_t;
 
     HW hw;                                      // HW generation.
-    uint8_t freeGRF[GRF::maxRegs() / 8]{};      // Bitmap of free whole GRFs.
-    mtype freeSub[GRF::maxRegs()]{};            // Bitmap of free partial GRFs, at dword granularity.
+    uint8_t freeGRF[GRF::maxRegs() / 8]{};        // Bitmap of free whole GRFs.
+    mtype freeSub[GRF::maxRegs()]{};              // Bitmap of free partial GRFs, at dword granularity.
     uint16_t regCount;                          // # of registers.
     uint8_t freeFlag;                           // Bitmap of free flag registers.
     mtype fullSubMask;
@@ -380,6 +380,7 @@ void RegisterAllocator::init()
 
     freeFlag = (1u << FlagRegister::subcount(hw)) - 1;
     regCount = maxRegs;
+
 }
 
 void RegisterAllocator::claim(GRF reg)
@@ -571,6 +572,7 @@ GRFRange RegisterAllocator::tryAllocRange(int nregs, BundleGroup baseBundle, Bun
             // Find the first free base register.
             int firstBit = utils::bsf(freeBase);
             int rbase = firstBit + (rchunk << 6);
+            if (rbase + nregs > regCount) break;
 
             // Check if required # of registers are available.
             bool ok = true;

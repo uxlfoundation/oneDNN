@@ -224,6 +224,8 @@ private:
 	uint32_t coresSharingDataCache_[maxNumberCacheLevels];
 	uint32_t dataCacheLevels_;
 	uint32_t avx10version_;
+	uint32_t aceVersion_;
+	uint32_t maxPalette_;
 
 	uint32_t get32bitAsBE(const char *x) const
 	{
@@ -635,6 +637,9 @@ public:
 	XBYAK_DEFINE_TYPE(96, tMOVRS);
 	XBYAK_DEFINE_TYPE(97, tHYBRID);
 	XBYAK_DEFINE_TYPE(98, tAMX_COMPLEX);
+	XBYAK_DEFINE_TYPE(99, tACE); // AI Compute Extensions (ACE)
+	XBYAK_DEFINE_TYPE(100, tAVX10_V1_AUX);
+	XBYAK_DEFINE_TYPE(101, tAVX10_V2_AUX);
 
 #undef XBYAK_SPLIT_ID
 #undef XBYAK_DEFINE_TYPE
@@ -646,6 +651,8 @@ public:
 		, coresSharingDataCache_()
 		, dataCacheLevels_(0)
 		, avx10version_(0)
+		, aceVersion_(0)
+		, maxPalette_(0)
 	{
 		uint32_t data[4] = {};
 		const uint32_t& eax = data[0];
@@ -793,6 +800,8 @@ public:
 				if (edx & (1U << 14)) type_ |= tPREFETCHITI;
 				if (edx & (1U << 19)) type_ |= tAVX10;
 				if (edx & (1U << 21)) type_ |= tAPX_F;
+				// ACE: CPUID.(EAX=07H, ECX=1):ECX[11]
+				if (ecx & (1U << 11)) type_ |= tACE;
 
 				getCpuidEx(0x1e, 1, data);
 				if (eax & (1U << 4)) type_ |= tAMX_FP8;
@@ -811,6 +820,21 @@ public:
 		if (has(tAVX10) && maxNum >= 0x24) {
 			getCpuidEx(0x24, 0, data);
 			avx10version_ = ebx & mask(7);
+			// Converged Vector ISA Sub-Leaf 1
+			if (eax >= 1) {
+				getCpuidEx(0x24, 1, data);
+				if (ecx & (1U << 2)) type_ |= tAVX10_V1_AUX;
+				if (ecx & (1U << 3)) type_ |= tAVX10_V2_AUX;
+			}
+		}
+		// Tile Information: MAX_PALETTE and, for palette 2, the ACE version.
+		if (has(tAMX_TILE) && maxNum >= 0x1d) {
+			getCpuidEx(0x1d, 0, data);
+			maxPalette_ = eax;
+			if (maxPalette_ >= 2) {
+				getCpuidEx(0x1d, 2, data);
+				aceVersion_ = eax & mask(8);
+			}
 		}
 		setFamily();
 		setNumCores();
@@ -829,6 +853,10 @@ public:
 		return (type & type_) == type;
 	}
 	int getAVX10version() const { return avx10version_; }
+	// ACE ISA major version (CPUID.(EAX=1DH, ECX=2):EAX[7:0]); 0 if no ACE.
+	int getACEversion() const { return aceVersion_; }
+	// MAX_PALETTE (CPUID.(EAX=1DH, ECX=0):EAX); 0 if AMX tile is unsupported.
+	int getMaxPalette() const { return maxPalette_; }
 };
 #ifdef _MSC_VER
 	#pragma warning(pop)

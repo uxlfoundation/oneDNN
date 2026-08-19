@@ -486,12 +486,12 @@ private:
 
 } // namespace jit_uni_pooling_utils
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
-jit_uni_pooling_fwd_t<isa, d_type>::jit_uni_pooling_fwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_pooling_fwd_t<isa>::jit_uni_pooling_fwd_t(const pd_t *apd)
     : primitive_t(apd), kernel_(nullptr), trans_ctx_(nullptr) {}
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
-status_t jit_uni_pooling_fwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_pooling_fwd_t<isa>::init(engine_t *engine) {
 
     CHECK(safe_ptr_assign(kernel_,
             new jit_uni_pool_kernel_t<isa>(
@@ -502,8 +502,8 @@ status_t jit_uni_pooling_fwd_t<isa, d_type>::init(engine_t *engine) {
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_pooling_fwd_t<isa, d_type>::init_ncsp_trans_ctx() {
+template <cpu_isa_t isa>
+status_t jit_uni_pooling_fwd_t<isa>::init_ncsp_trans_ctx() {
     using namespace dnnl::impl;
     using namespace jit_uni_pooling_utils;
 
@@ -516,13 +516,16 @@ status_t jit_uni_pooling_fwd_t<isa, d_type>::init_ncsp_trans_ctx() {
     const dim_t &c_tail = res.rem;
     const memory_desc_wrapper indices_d = pd()->workspace_md();
     const bool have_indices = indices_d.data_type() != data_type::undef;
+    // Needed in C++14 for the linker to find these symbols.
+    // See https://stackoverflow.com/questions/40690260/undefined-reference-error-for-static-constexpr-member
     static constexpr auto wsp_dt = wsp_dt_;
+    static constexpr auto dt = d_type;
 
     if (nb_c) {
         trans_ctx_->src_trans_ = utils::make_unique<trans_wrapper_t>(
-                d_type, src_sp, wsp_dt, jpp.c_block, jpp.c_block, src_sp);
+                dt, src_sp, wsp_dt, jpp.c_block, jpp.c_block, src_sp);
         trans_ctx_->dst_trans_ = utils::make_unique<trans_wrapper_t>(
-                wsp_dt, jpp.c_block, d_type, dst_sp, dst_sp, jpp.c_block);
+                wsp_dt, jpp.c_block, dt, dst_sp, dst_sp, jpp.c_block);
         if (have_indices)
             trans_ctx_->ind_trans_ = utils::make_unique<trans_wrapper_t>(
                     indices_d.data_type(), jpp.c_block, indices_d.data_type(),
@@ -531,9 +534,9 @@ status_t jit_uni_pooling_fwd_t<isa, d_type>::init_ncsp_trans_ctx() {
 
     if (c_tail) {
         trans_ctx_->src_tail_trans_ = utils::make_unique<trans_wrapper_t>(
-                d_type, src_sp, wsp_dt, jpp.c_block, c_tail, src_sp);
+                dt, src_sp, wsp_dt, jpp.c_block, c_tail, src_sp);
         trans_ctx_->dst_tail_trans_ = utils::make_unique<trans_wrapper_t>(
-                wsp_dt, jpp.c_block, d_type, dst_sp, dst_sp, c_tail);
+                wsp_dt, jpp.c_block, dt, dst_sp, dst_sp, c_tail);
         if (have_indices)
             trans_ctx_->ind_tail_trans_ = utils::make_unique<trans_wrapper_t>(
                     indices_d.data_type(), jpp.c_block, indices_d.data_type(),
@@ -543,12 +546,12 @@ status_t jit_uni_pooling_fwd_t<isa, d_type>::init_ncsp_trans_ctx() {
     return trans_ctx_->create_kernel();
 }
 
-template <cpu_isa_t isa, impl::data_type_t d_type>
-jit_uni_pooling_fwd_t<isa, d_type>::~jit_uni_pooling_fwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_pooling_fwd_t<isa>::~jit_uni_pooling_fwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(const data_t *src,
-        data_t *dst, char *indices, const exec_ctx_t &ctx) const {
+template <cpu_isa_t isa>
+void jit_uni_pooling_fwd_t<isa>::execute_forward(const data_t *src, data_t *dst,
+        char *indices, const exec_ctx_t &ctx) const {
 
     const memory_desc_wrapper src_d = pd()->src_md();
     const memory_desc_wrapper dst_d = pd()->dst_md();
@@ -672,8 +675,8 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward(const data_t *src,
     }
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(const data_t *src,
+template <cpu_isa_t isa>
+void jit_uni_pooling_fwd_t<isa>::execute_forward_3d(const data_t *src,
         data_t *dst, char *indices, const exec_ctx_t &ctx) const {
 
     const auto &jpp = pd()->jpp_;
@@ -823,18 +826,18 @@ void jit_uni_pooling_fwd_t<isa, d_type>::execute_forward_3d(const data_t *src,
     }
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_pooling_bwd_t<isa, d_type>::jit_uni_pooling_bwd_t(const pd_t *apd)
+template <cpu_isa_t isa>
+jit_uni_pooling_bwd_t<isa>::jit_uni_pooling_bwd_t(const pd_t *apd)
     : primitive_t(apd)
     , kernel_(utils::make_unique<jit_uni_pool_kernel_t<isa>>(
               pd()->jpp_, pd()->invariant_dst_md()))
     , trans_ctx_(nullptr) {}
 
-template <cpu_isa_t isa, data_type_t d_type>
-jit_uni_pooling_bwd_t<isa, d_type>::~jit_uni_pooling_bwd_t() = default;
+template <cpu_isa_t isa>
+jit_uni_pooling_bwd_t<isa>::~jit_uni_pooling_bwd_t() = default;
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_pooling_bwd_t<isa, d_type>::init_ncsp_trans_ctx() {
+template <cpu_isa_t isa>
+status_t jit_uni_pooling_bwd_t<isa>::init_ncsp_trans_ctx() {
     using namespace dnnl::impl;
     using namespace jit_uni_pooling_utils;
 
@@ -847,13 +850,16 @@ status_t jit_uni_pooling_bwd_t<isa, d_type>::init_ncsp_trans_ctx() {
     const dim_t &c_tail = res.rem;
     const memory_desc_wrapper indices_d = pd()->workspace_md();
     const bool have_indices = indices_d.data_type() != data_type::undef;
+    // Needed in C++14 for the linker to find these symbols.
+    // See https://stackoverflow.com/questions/40690260/undefined-reference-error-for-static-constexpr-member
     static constexpr auto wsp_dt = wsp_dt_;
+    static constexpr auto dt = d_type;
 
     if (nb_c) {
-        trans_ctx_->dst_trans_ = utils::make_unique<trans_wrapper_t>(d_type,
-                diff_dst_sp, wsp_dt, jpp.c_block, jpp.c_block, diff_dst_sp);
-        trans_ctx_->src_trans_ = utils::make_unique<trans_wrapper_t>(wsp_dt,
-                jpp.c_block, d_type, diff_src_sp, diff_src_sp, jpp.c_block);
+        trans_ctx_->dst_trans_ = utils::make_unique<trans_wrapper_t>(
+                dt, diff_dst_sp, wsp_dt, jpp.c_block, jpp.c_block, diff_dst_sp);
+        trans_ctx_->src_trans_ = utils::make_unique<trans_wrapper_t>(
+                wsp_dt, jpp.c_block, dt, diff_src_sp, diff_src_sp, jpp.c_block);
         if (have_indices)
             trans_ctx_->ind_trans_ = utils::make_unique<trans_wrapper_t>(
                     indices_d.data_type(), diff_dst_sp, indices_d.data_type(),
@@ -861,9 +867,9 @@ status_t jit_uni_pooling_bwd_t<isa, d_type>::init_ncsp_trans_ctx() {
     }
     if (c_tail) {
         trans_ctx_->dst_tail_trans_ = utils::make_unique<trans_wrapper_t>(
-                d_type, diff_dst_sp, wsp_dt, jpp.c_block, c_tail, diff_dst_sp);
+                dt, diff_dst_sp, wsp_dt, jpp.c_block, c_tail, diff_dst_sp);
         trans_ctx_->src_tail_trans_ = utils::make_unique<trans_wrapper_t>(
-                wsp_dt, jpp.c_block, d_type, diff_src_sp, diff_src_sp, c_tail);
+                wsp_dt, jpp.c_block, dt, diff_src_sp, diff_src_sp, c_tail);
         if (have_indices)
             trans_ctx_->ind_tail_trans_ = utils::make_unique<trans_wrapper_t>(
                     indices_d.data_type(), diff_dst_sp, indices_d.data_type(),
@@ -873,17 +879,16 @@ status_t jit_uni_pooling_bwd_t<isa, d_type>::init_ncsp_trans_ctx() {
     return trans_ctx_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-status_t jit_uni_pooling_bwd_t<isa, d_type>::init(engine_t *engine) {
+template <cpu_isa_t isa>
+status_t jit_uni_pooling_bwd_t<isa>::init(engine_t *engine) {
     if (pd()->jpp_.tag_kind == jit_memory_tag_kind_t::ncsp)
         CHECK(init_ncsp_trans_ctx());
     return kernel_->create_kernel();
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward(
-        const data_t *diff_dst, const char *indices, data_t *diff_src,
-        const exec_ctx_t &ctx) const {
+template <cpu_isa_t isa>
+void jit_uni_pooling_bwd_t<isa>::execute_backward(const data_t *diff_dst,
+        const char *indices, data_t *diff_src, const exec_ctx_t &ctx) const {
 
     using namespace jit_uni_pooling_utils;
     using wsp_data_t = typename prec_traits_t<wsp_dt_>::type;
@@ -999,10 +1004,9 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward(
     });
 }
 
-template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
-        const data_t *diff_dst, const char *indices, data_t *diff_src,
-        const exec_ctx_t &ctx) const {
+template <cpu_isa_t isa>
+void jit_uni_pooling_bwd_t<isa>::execute_backward_3d(const data_t *diff_dst,
+        const char *indices, data_t *diff_src, const exec_ctx_t &ctx) const {
     const memory_desc_wrapper diff_src_d(pd()->diff_src_md());
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
     const memory_desc_wrapper indices_d(pd()->workspace_md());
@@ -1251,9 +1255,11 @@ void jit_uni_pooling_bwd_t<isa, d_type>::execute_backward_3d(
     }
 }
 
-template struct jit_uni_pooling_fwd_t<sve, data_type::f32>;
+template struct jit_uni_pooling_fwd_t<sve>;
+template struct jit_uni_pooling_fwd_t<asimd>;
 
-template struct jit_uni_pooling_bwd_t<sve, data_type::f32>;
+template struct jit_uni_pooling_bwd_t<sve>;
+template struct jit_uni_pooling_bwd_t<asimd>;
 
 } // namespace aarch64
 } // namespace cpu

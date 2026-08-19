@@ -38,9 +38,7 @@ struct jit_uni_resampling_kernel_base_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_resampling)
 
     jit_uni_resampling_kernel_base_t(const jit_resampling_conf_t &conf)
-        : jit_generator_t(jit_name(), conf.isa)
-        , conf_(conf)
-        , sum_scales_(conf_.sum_scales) {}
+        : jit_generator_t(jit_name(), conf.isa), conf_(conf) {}
 
     ~jit_uni_resampling_kernel_base_t() override = default;
 
@@ -48,7 +46,6 @@ struct jit_uni_resampling_kernel_base_t : public jit_generator_t {
 
 protected:
     const jit_resampling_conf_t &conf_;
-    std::queue<float> sum_scales_;
 };
 
 template <cpu_isa_t isa, typename Vmm>
@@ -74,8 +71,8 @@ private:
     }
 
     bool can_movntps_be_used() const;
-    std::size_t calculate_tail_size() const;
-    int get_channels_to_compute_without_tail(
+    int calculate_tail_size() const;
+    dim_t get_channels_to_compute_without_tail(
             bool is_tail_in_blocked_format) const;
 
     std::map<data_type_t, io::io_saturation_conf_t>
@@ -84,13 +81,11 @@ private:
     void get_params_for_linear_in_c_oriented_format();
 
     void preserve_zero_padding_in_post_ops(int data_idx);
-    void apply_sum(
-            const int data_idx, const bool is_tail, const size_t offset = 0);
     void apply_postops(
             const int data_idx, const bool is_tail, const size_t offset = 0);
 
     void preserve_zero_padding(
-            int c_to_compute_without_tail, const bool is_tail);
+            dim_t c_to_compute_without_tail, const bool is_tail);
 
     void interpolate_c_oriented_format(
             const c_oriented_generation_fn_t &generation_fn);
@@ -99,13 +94,13 @@ private:
     void linear_ncsp_format();
     void linear_c_oriented_format(const bool is_tail_in_blocked_format);
     void compute_nearest_c_interpolate(
-            const int c_to_compute_without_tail, const bool is_tail);
+            const dim_t c_to_compute_without_tail, const bool is_tail);
     void compute_ne_xf16_nearest_c_interpolate(
-            const int c_to_compute_without_tail);
+            const dim_t c_to_compute_without_tail);
     void compute_linear_c_interpolate(
-            const int c_to_compute_without_tail, const bool is_tail);
+            const dim_t c_to_compute_without_tail, const bool is_tail);
     void compute_ne_xf16_linear_c_interpolate(
-            const int c_to_compute_without_tail);
+            const dim_t c_to_compute_without_tail);
 
     void generate() override;
 
@@ -120,7 +115,6 @@ private:
     const Vmm vmm_weights_ = Vmm(3);
     const Vmm vmm_indices_ = Vmm(4);
     const Vmm vmm_tmp_gather_ = Vmm(5);
-    const Vmm vmm_sum_scale_ = Vmm(7);
     const Vmm vmm_tmp_ = Vmm(8);
     const Vmm vmm_post_op_helper_ = Vmm(9);
     const Vmm vmm_zero_saturation_ = isa == avx512_core ? Vmm(18) : Vmm(10);
@@ -200,14 +194,14 @@ private:
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     static constexpr bool is_xmm_ = std::is_same<Vmm, Xbyak::Xmm>::value;
     static constexpr std::size_t vlen_ = is_zmm_ ? 64 : is_ymm_ ? 32 : 16;
-    static constexpr std::size_t simd_w_ = vlen_ / sizeof(float);
-    const std::size_t tail_size_;
+    static constexpr int simd_w_ = vlen_ / sizeof(float);
+    const int tail_size_;
 
     bool any_binary_postop_is_per_oc_bcast_type_ = false;
     bool any_binary_postop_is_per_oc_sp_bcast_type_ = false;
 
     io::jit_io_multi_dt_helper_t<Vmm> io_;
-    std::unique_ptr<injector::jit_uni_postops_injector_t<isa, Vmm>>
+    std::unique_ptr<injector::jit_uni_postops_injector_t<Vmm>>
             postops_injector_;
 };
 } // namespace x64

@@ -75,11 +75,18 @@ private:
     using Reg = Xbyak_riscv::Reg;
     using FReg = Xbyak_riscv::FReg;
 
-    // Tile registers: 24-register acc/input/index space at v8..v31.
+    // Tile registers: 24-register acc/input/index space at v8..v31. With LMUL>1
+    // (f32 nspc forward inference only) each logical tile vector is a group of
+    // lmul_ consecutive physical registers, so tile indices are spaced by lmul_.
     static constexpr int tile_base = 8;
     static constexpr int tile_size = 24;
-    Vmm vreg(int idx) const { return Vmm(tile_base + idx); }
+    Vmm vreg(int idx) const { return Vmm(tile_base + idx * lmul_); }
     static int reg_ind(int shift, int j, int ur_w) { return shift * ur_w + j; }
+    // Effective channel-vector LMUL (1, 2, or 4). 1 everywhere except the f32 nspc
+    // forward-inference path, where the channel vector is widened (c_block grows
+    // past vlen/32) to amortise the per-channel-block call count. Derived in the
+    // ctor from jpp.c_block.
+    int lmul_ = 1;
 
     // Reserved scratch (see class comment).
     const Vmm v_mask = Vmm(0);

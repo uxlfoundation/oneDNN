@@ -228,6 +228,63 @@ struct jit_uni_pool_bwd_args_t {
     dim_t ws_vec_byte_stride; // ws channel stride (max; ncsp: OD*OH*OW*ind_sz)
 };
 
+// Resampling forward configuration, filled by init_conf, read by the driver
+// and the kernel.
+struct jit_resampling_conf_t {
+    int ndims;
+    int mb, c;
+    int id, ih, iw, od, oh, ow;
+    alg_kind_t alg; // resampling_nearest or resampling_linear
+    data_type_t data_type; // f32 or f16
+    int dt_size;
+    // Layout, in elements, taken from the blocking descriptors (not tags). The
+    // vector runs along C; the kernel tests c_stride at run time to pick
+    // unit-stride or strided access. block is the channel inner block, 1 when
+    // plain: channels are contiguous inside a block (c_stride 1, cb_stride
+    // steps between blocks), while a plain layout is one group (cb_stride 0).
+    int block;
+    dim_t src_c_stride, dst_c_stride;
+    dim_t src_cb_stride, dst_cb_stride;
+    dim_t src_mb_stride, dst_mb_stride;
+    dim_t src_d_stride, src_h_stride, src_w_stride;
+    dim_t dst_d_stride, dst_h_stride, dst_w_stride;
+    cpu_isa_t isa;
+    // Source points combined per output point: 1 for nearest; for linear
+    // 1 << (spatial dims) = 2 (1D) / 4 (2D) / 8 (3D).
+    int num_corners;
+    // Injector-fused post-ops: an eltwise chain (f32/f16, computed at f32) plus
+    // at most one binary (f32 only).
+    bool with_postops;
+    bool fuse_eltwise;
+    bool fuse_binary;
+    // sum (dst = sum_scale * dst + result). The injector skips sum entries, so
+    // the kernel applies it itself at sum_idx; -1 when there is no sum.
+    bool fuse_sum;
+    int sum_idx;
+    float sum_scale;
+    post_ops_t post_ops;
+};
+
+// Per-output-point kernel arguments. The driver resolves the corner pointers
+// and weights on the host via resampling_utils (the same math as ref); the
+// kernel combines their channel vectors.
+struct jit_resampling_args_t {
+    // Channel-0 of each source corner; conf.num_corners of them are live.
+    const void *src[8];
+    void *dst;
+    // Product of the 1D linear weights per corner; unused for nearest.
+    float weights[8];
+    dim_t channels; // channels to combine (the vector work)
+    dim_t src_vec_byte_stride; // byte stride between consecutive channels in src
+    dim_t dst_vec_byte_stride; // byte stride between consecutive channels in dst
+    // Binary rhs for the injector's indirect mode, as in pooling: post_op_rhs
+    // is the per-binary src1 origin pointer array, post_op_off0 the shared byte
+    // offset of the first active lane (0 scalar, channel-group per-oc, this
+    // point's channel-0 element offset full-dst). The kernel advances it.
+    const void *post_op_rhs = nullptr;
+    dim_t post_op_off0 = 0;
+};
+
 struct jit_1x1_conv_conf_t {
     prop_kind_t prop_kind;
     int mb;

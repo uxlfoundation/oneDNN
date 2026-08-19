@@ -95,7 +95,7 @@ void Generator<hw>::outerProductFMA(int h, int ha_period, int hb_period, int opC
 
     // Emit an FMA instruction.
     auto outputFMA = [&](InstructionModifier mod, const Subregister &A, const Subregister &B, const Subregister &C, const RegData &bcastSrc, bool colMajor, int hh, bool ivfirst, bool ivlast) {
-        auto Cacc = AccumulatorRegister(accNum).sub(0, Tc.real().ngen());
+        auto Cacc = AccumulatorRegister(accNum).sub(C.getOffset(), Tc.real().ngen());
         auto Csrc = (hh == 0                    && ivfirst) ? C : Cacc;
         auto Cdst = (hh == opCount - minOPCount && ivlast)  ? C : Cacc;
         if (startRepackC && hh == 0)
@@ -165,13 +165,18 @@ void Generator<hw>::outerProductFMA(int h, int ha_period, int hb_period, int opC
     accPerFMA = std::max(accPerFMA, minAccPerFMA);
     int independentAccs = div_up(accCount, accPerFMA);
 
+    // Mirror canColMajor/canRowMajor logic below. If neither, downgrade simd to 1.
+    bool fmaVectorized = (isRegisterColMajor(problem.Ta, problem.A, strategy.A) && globalCM)
+                      || (!isRegisterColMajor(problem.Tb, problem.B, strategy.B) && !globalCM);
+    int fmaExpected = fmaVectorized ? fmaSIMD : 1;
+
     int nx1i = 1, ny1 = 1;
     if (kChain > 1) {
         if (independentAccs < icompCount) hw_unsupported();
         int indepAccComp = div_up(independentAccs, icompCount);
 
-        nx1i = std::min(nx1, indepAccComp * fmaSIMD);
-        ny1 = div_up(indepAccComp, div_up(nx1i, fmaSIMD));
+        nx1i = std::min(nx1, indepAccComp * fmaExpected);
+        ny1 = div_up(indepAccComp, div_up(nx1i, fmaExpected));
 
         noAccSBSet &= Tc.isFP()
                    && (div_up(nx1i, necAcc) * ny1 * icompCount >= 8)
@@ -459,7 +464,12 @@ void Generator<hw>::outerProductSystolic(int h, int ha_period, int hb_period, in
                 if (rc != 8 && strategy.extendedAtomicFMA) hw_unsupported();
             }
 
-            if (hhbase + ksys < opCount && rc == 8) mod |= Fwd;
+            bool canFwd = (hw == ngen::HW::Xe3p)
+                && (getProductFamily() >= ngen::ProductFamily::CRI)
+                && (rc == 8)
+                && mod.isAtomic()
+                && (Tc != Type::f16);
+            if (hhbase + ksys < opCount && canFwd) mod |= Fwd;
 
             if (startRepackC && hhbase == 0)
                 srcC0 = null.retype(C0.getType());

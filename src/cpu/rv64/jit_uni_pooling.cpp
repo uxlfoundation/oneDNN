@@ -867,8 +867,17 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_blk(const data_t *src,
         (*kernel_)(&arg);
     };
 
-    parallel_nd(jpp.mb, (dim_t)jpp.nb_c, (dim_t)jpp.oh,
-            [&](dim_t n, dim_t b_c, dim_t oh) { ker(n, b_c, oh); });
+    // Parallelise over (mb, oh) and loop the channel blocks inside each task.
+    // The fine-grained (mb, nb_c, oh) split made one tiny task per channel block,
+    // which scaled poorly on multi-core (per-call preamble amortised over little
+    // work, plus output false-sharing between adjacent, contiguous channel blocks
+    // handed to different threads). One task per (mb, oh) row matches the native
+    // kernel's spatial parallelism; a single thread then writes the row's
+    // contiguous nspc channels without contention.
+    parallel_nd(jpp.mb, (dim_t)jpp.oh, [&](dim_t n, dim_t oh) {
+        for (dim_t b_c = 0; b_c < (dim_t)jpp.nb_c; ++b_c)
+            ker(n, b_c, oh);
+    });
 }
 
 template <cpu_isa_t isa>
@@ -915,15 +924,15 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_blk_3d(const data_t *src,
         (*kernel_)(&arg);
     };
 
-    parallel_nd(jpp.mb, (dim_t)jpp.nb_c, (dim_t)jpp.od,
-            [&](dim_t n, dim_t b_c, dim_t od) {
+    parallel_nd(jpp.mb, (dim_t)jpp.od, [&](dim_t n, dim_t od) {
         const int ik = od * jpp.stride_d;
         const int d_t_over = nstl::max(0, jpp.f_pad - ik);
         const int d_b_over
                 = nstl::max(jpp.id, ik + jpp.kd - jpp.f_pad) - jpp.id;
         const dim_t id = nstl::max(ik - jpp.f_pad, 0);
-        for (dim_t oh = 0; oh < jpp.oh; ++oh)
-            ker(n, b_c, od, oh, id, d_t_over, d_b_over);
+        for (dim_t b_c = 0; b_c < (dim_t)jpp.nb_c; ++b_c)
+            for (dim_t oh = 0; oh < jpp.oh; ++oh)
+                ker(n, b_c, od, oh, id, d_t_over, d_b_over);
     });
 }
 

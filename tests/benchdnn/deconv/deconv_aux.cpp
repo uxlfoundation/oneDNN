@@ -400,7 +400,6 @@ void prb_t::count_ops() {
 
 std::string prb_t::set_repro_line() {
     stringstream_t s;
-    dump_global_params(s);
     settings_t def;
 
     bool has_default_dts = true;

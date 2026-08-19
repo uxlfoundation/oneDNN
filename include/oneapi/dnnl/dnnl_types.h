@@ -3019,6 +3019,10 @@ typedef enum {
     dnnl_cpu_isa_avx10_2_amx_2 = 0x22fff,
     /// @copydoc dnnl_cpu_isa_avx10_2_amx_2
     dnnl_cpu_isa_avx10_2_512_amx_2 = dnnl_cpu_isa_avx10_2_amx_2,
+
+    /// Intel AVX10.2 with AI Compute Extensions (ACE).
+    /// This ISA has preview support in the library and is disabled by default.
+    dnnl_cpu_isa_avx10_2_ace = 0xa03ff,
 } dnnl_cpu_isa_t;
 
 /// CPU ISA hints flags

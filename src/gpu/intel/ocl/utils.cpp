@@ -20,6 +20,7 @@
 #include <mutex>
 #include <CL/cl_ext.h>
 
+#include "gpu/intel/logging.hpp"
 #include "gpu/intel/ocl/engine.hpp"
 #include "gpu/intel/ocl/hw_info.hpp"
 #include "gpu/intel/ocl/kernel.hpp"

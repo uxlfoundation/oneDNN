@@ -29,6 +29,11 @@ The @ref dnnl::fpmath_mode primitive attribute can take 3 types of values:
 This attribute is ignored if a primitive computation data-type is
 integral.
 
+@note
+The `tf32` mode is accelerated on Intel GPUs only. Intel CPUs do not implement
+`tf32` arithmetic; setting `tf32` on a CPU engine is accepted but has no effect,
+and computations are performed in `f32`.
+
 ## Enforcing the floating-point math mode to an integral primitive.
 
 A user can enforce an integral primitive to comply with the floating-point math

@@ -29,6 +29,7 @@
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_generator.hpp"
 #include "cpu/aarch64/jit_primitive_conf.hpp"
+#include "cpu/aarch64/utils/jit_io_helper.hpp"
 
 using namespace Xbyak_aarch64;
 
@@ -130,8 +131,34 @@ private:
     void pop_vmm_val(const int idx);
     void load(const int idx, const xreg_t &reg_ptr, const int offset,
             const bool is_c_tail_proccessing);
+    void load_impl(const Xbyak_aarch64::VReg4S &vmm, const xreg_t &reg_ptr,
+            const int offset, const bool is_c_tail_processing);
+    void load_impl(const Xbyak_aarch64::ZRegS &vmm, const xreg_t &reg_ptr,
+            const int offset, const bool is_c_tail_processing);
     void store(const int idx, const xreg_t &reg_ptr, const int offset,
             const bool is_c_tail_proccessing);
+    void store_impl(const Xbyak_aarch64::VReg4S &vmm, const xreg_t &reg_ptr,
+            const int offset, const bool is_c_tail_processing);
+    void store_impl(const Xbyak_aarch64::ZRegS &vmm, const xreg_t &reg_ptr,
+            const int offset, const bool is_c_tail_processing);
+    void load_indices_u8(const TReg &vmm, const size_t step_index,
+            const bool is_c_tail_processing);
+    void store_indices_u8(const TReg &vmm, const size_t step_index,
+            const bool is_c_tail_processing);
+    void zero_tail(const Xbyak_aarch64::VReg4S &vmm);
+    void zero_tail(const Xbyak_aarch64::ZRegS &vmm);
+    void max_fwd_update(const Xbyak_aarch64::VReg4S &accvr,
+            const Xbyak_aarch64::VReg4S &inpvr,
+            const Xbyak_aarch64::VReg4S &indvr, bool is_training);
+    void max_fwd_update(const Xbyak_aarch64::ZRegS &accvr,
+            const Xbyak_aarch64::ZRegS &inpvr,
+            const Xbyak_aarch64::ZRegS &indvr, bool is_training);
+    void max_bwd_update(const Xbyak_aarch64::VReg4S &inpvr,
+            const Xbyak_aarch64::VReg4S &outvr,
+            const Xbyak_aarch64::VReg4S &indvr);
+    void max_bwd_update(const Xbyak_aarch64::ZRegS &inpvr,
+            const Xbyak_aarch64::ZRegS &outvr,
+            const Xbyak_aarch64::ZRegS &indvr);
 
     void maybe_recalculate_divisor(int jj, int ur_w, int pad_l, int pad_r,
             bool with_c_tail_proccessing);
@@ -167,6 +194,7 @@ private:
 
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
+    std::unique_ptr<io::jit_io_helper_t<TReg>> indices_io_;
 };
 
 } // namespace aarch64

@@ -44,7 +44,7 @@ struct jit_uni_lstm_cell_projection_postgemm_fwd_t
 
 protected:
     // register size in bytes
-    using Vmm = typename jit_uni_eltwise_injector_t<isa>::Vmm;
+    using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr size_t qscale_dt_size = sizeof(float);
     const size_t vlen_dst

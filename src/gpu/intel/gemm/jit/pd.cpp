@@ -85,7 +85,7 @@ status_t pd_t::init_post_ops(const impl::engine_t *engine) {
             case binary:
                 ok &= supported_binary_op(e.binary.alg)
                         && is_md_gemm_compatible_plain_format(
-                                &e.binary.src1_desc);
+                                &e.binary.src1_desc, false, true);
                 binary_srcs_.push_back(
                         binary_src_t {binary_src_t::binary, int(i)});
                 non_scale_po_ = true;
@@ -236,7 +236,7 @@ bool pd_t::wei_decomp() const {
     using namespace data_type;
     return (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
                    && utils::one_of(d->a_type(), u8, s8, s4, u4, f8_e4m3,
-                           f8_e5m2, f4_e2m1, f4_e3m0)
+                           f8_e5m2, f4_e2m1)
                    && utils::one_of(
                            d->b_type(), f16, f32, bf16, f8_e5m2, f8_e4m3))
             && types::data_type_bits(d->a_type())

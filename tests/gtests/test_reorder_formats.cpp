@@ -50,7 +50,7 @@ protected:
 
 #if DNNL_X64 && DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
         static auto isa = get_effective_cpu_isa();
-        // to be removed once {sse41, avx2} are enabled
+        // to be removed once the AVX2 implementation is enabled
         bool has_int8_zp_support = is_superset(isa, cpu_isa::avx512_core);
 #else
         bool has_int8_zp_support = false;

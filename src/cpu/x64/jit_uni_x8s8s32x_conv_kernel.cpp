@@ -368,9 +368,7 @@ void jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Vmm>::compute_ker_dw(int ur_w,
         dim_t pad_l, dim_t pad_r, ic_block_t last_ic_block_flag,
         bool h_padded) {
 
-    if (!(utils::one_of(isa, avx2) && std::is_same<Vmm, Xbyak::Ymm>::value)
-            && !(utils::one_of(isa, sse41)
-                    && std::is_same<Vmm, Xbyak::Xmm>::value))
+    if (!(utils::one_of(isa, avx2) && std::is_same<Vmm, Xbyak::Ymm>::value))
         assert(!"invalid group blocking for depthwise convolution");
 
     const bool compute_kernel = IMPLICATION(h_padded, jcp.signed_input);
@@ -1652,9 +1650,7 @@ void jit_uni_x8s8s32x_fwd_kernel_t<isa>::init_scratchpad(
 
 template struct jit_uni_x8s8s32x_fwd_kernel_vmm_t<avx2, Ymm>;
 template struct jit_uni_x8s8s32x_fwd_kernel_vmm_t<avx2, Xmm>;
-template struct jit_uni_x8s8s32x_fwd_kernel_vmm_t<sse41, Xmm>;
 template struct jit_uni_x8s8s32x_fwd_kernel_t<avx2>;
-template struct jit_uni_x8s8s32x_fwd_kernel_t<sse41>;
 
 } // namespace x64
 } // namespace cpu

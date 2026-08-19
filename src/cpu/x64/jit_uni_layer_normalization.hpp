@@ -225,8 +225,7 @@ struct jit_uni_layer_normalization_bwd_t : public primitive_t {
             VDISPATCH_LNORM(
                     !has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "src");
             // disabling verbose dispatch checks for unsupported isa for better readability
-            if (!mayiuse(avx2))
-                return status::unimplemented; // sse41 is not supported yet
+            if (!mayiuse(avx2)) return status::unimplemented;
 
             VDISPATCH_LNORM(utils::one_of(src_md()->data_type, f32, bf16, f16),
                     VERBOSE_UNSUPPORTED_DT);

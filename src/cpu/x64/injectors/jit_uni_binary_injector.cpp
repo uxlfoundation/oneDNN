@@ -3067,11 +3067,7 @@ Xbyak::Opmask jit_uni_binary_injector_t<Vmm>::get_aux_kmask() const {
 
 template <typename Vmm>
 void jit_uni_binary_injector_t<Vmm>::cvt_to_f32(const Vmm &tmp_vmm) const {
-    if (is_sse41_) {
-        const Xbyak::Xmm tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
-        host_->cvtdq2ps(tmp_xmm, tmp_xmm);
-    } else
-        host_->uni_vcvtdq2ps(tmp_vmm, tmp_vmm);
+    host_->uni_vcvtdq2ps(tmp_vmm, tmp_vmm);
 }
 
 template <typename Vmm>
@@ -3122,48 +3118,14 @@ void jit_uni_binary_injector_t<Vmm>::execute_broadcast_s8u8_no_tail(
     assert(utils::one_of(data_type, data_type::s8, data_type::u8)
             && "unsupported data type");
 
-    const auto rhs_helper_reg_idx
-            = rhs_arg_static_params_.rhs_helper_reg.getIdx();
-    const Xbyak::Reg8 tmp_reg8 = Xbyak::Reg8(rhs_helper_reg_idx);
-    const Xbyak::Reg32 tmp_reg32 = Xbyak::Reg32(rhs_helper_reg_idx);
     const Xbyak::Xmm tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
 
-    if (has_avx2_) {
-        host_->uni_vpinsrb(tmp_xmm, tmp_xmm, rhs_addr, 0);
-        if (data_type == data_type::s8)
-            host_->uni_vpmovsxbd(tmp_xmm, tmp_xmm);
-        else if (data_type == data_type::u8)
-            host_->uni_vpmovzxbd(tmp_vmm, tmp_xmm);
-        host_->uni_vpbroadcastd(tmp_vmm, tmp_xmm);
-    } else if (is_avx_) {
-        // AVX has no register-source dword broadcast, so the byte is
-        // duplicated across the low half by an unpack and a shuffle before the
-        // extension spreads it over the four dwords.
-        host_->mov(tmp_reg8, rhs_addr);
-        host_->vmovd(tmp_xmm, tmp_reg32);
-        host_->vpunpcklbw(tmp_xmm, tmp_xmm, tmp_xmm);
-        host_->vpshuflw(tmp_xmm, tmp_xmm, 0);
-        if (data_type == data_type::s8)
-            host_->vpmovsxbd(tmp_xmm, tmp_xmm);
-        else
-            host_->vpmovzxbd(tmp_xmm, tmp_xmm);
-        // AVX has no 256-bit integer operations either, so a Ymm destination
-        // gets its upper half from a float-domain copy of the lower one.
-        if (std::is_same<Vmm, Xbyak::Ymm>::value) {
-            const Xbyak::Ymm tmp_ymm = Xbyak::Ymm(tmp_vmm.getIdx());
-            host_->vinsertf128(tmp_ymm, tmp_ymm, tmp_xmm, 1);
-        }
-    } else if (is_sse41_) {
-        host_->mov(tmp_reg8, rhs_addr);
-        host_->movd(tmp_xmm, tmp_reg32);
-        host_->punpcklbw(tmp_xmm, tmp_xmm);
-        host_->pshuflw(tmp_xmm, tmp_xmm, 0);
-        if (data_type == data_type::s8)
-            host_->pmovsxbd(tmp_xmm, tmp_xmm);
-        else
-            host_->pmovzxbd(tmp_xmm, tmp_xmm);
-    } else
-        assert(!"unsupported ISA");
+    host_->uni_vpinsrb(tmp_xmm, tmp_xmm, rhs_addr, 0);
+    if (data_type == data_type::s8)
+        host_->uni_vpmovsxbd(tmp_xmm, tmp_xmm);
+    else
+        host_->uni_vpmovzxbd(tmp_vmm, tmp_xmm);
+    host_->uni_vpbroadcastd(tmp_vmm, tmp_xmm);
 }
 
 template <typename Vmm>
@@ -3251,13 +3213,6 @@ static void load_tail_avx(jit_generator_t *host, int ymm_idx, int tail_size,
     }
 }
 
-static void load_tail_avx(jit_generator_t *host, int ymm_idx, int tail_size,
-        const std::function<void(int, bool)> &ymm_upper_half_op,
-        const std::function<void(int)> &ymm_lower_half_op) {
-    load_tail_avx(host, ymm_idx, tail_size, nullptr, ymm_upper_half_op,
-            ymm_lower_half_op);
-}
-
 static Xbyak::uint8 MM_SHUFFLE(
         Xbyak::uint8 z, Xbyak::uint8 y, Xbyak::uint8 x, Xbyak::uint8 w) {
     return static_cast<Xbyak::uint8>(
@@ -3314,90 +3269,34 @@ void jit_uni_binary_injector_t<Vmm>::execute_broadcast_tail_statically(
         return;
     }
 
-    const auto vmm_idx = tmp_vmm.getIdx();
-    const auto tmp_xmm = Xbyak::Xmm(vmm_idx);
-    static const std::array<Xbyak::uint8, 2> imms {
-            {MM_SHUFFLE(3, 2, 0, 0), MM_SHUFFLE(3, 0, 0, 0)}};
-
-    // Sub-dword floating point is widened in place from a packed tail, so it
-    // shares neither the zeroing nor the element assembly the integer and f32
-    // paths below need.
     if (is_superset(isa_, avx2_vnni_2)
-            && utils::one_of(data_type, data_type::bf16, data_type::f16,
-                    data_type::f8_e5m2, data_type::f8_e4m3)) {
+            && utils::one_of(data_type, data_type::bf16, data_type::f16)) {
         const auto tmp_lower_vmm =
-                typename vreg_traits_t<Vmm>::Vmm_lower_t(vmm_idx);
+                typename vreg_traits_t<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
         host_->load_bytes(tmp_lower_vmm, rhs_addr,
                 static_cast<int>(tail_size * types::data_type_size(data_type)));
         if (data_type == data_type::bf16) {
             host_->vpmovzxwd(tmp_vmm, tmp_lower_vmm);
             host_->vpslld(tmp_vmm, tmp_vmm, 16);
-        } else if (data_type == data_type::f16)
+        } else {
             host_->vcvtph2ps(tmp_vmm, tmp_lower_vmm);
-        else
-            assert(!"unsupported data type");
+        }
         return;
     }
 
     host_->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
 
     if (data_type == data_type::f32 || data_type == data_type::s32) {
-        if (is_sse41_) {
-            host_->movss(tmp_xmm, rhs_addr);
-            if (tail_size > 1)
-                host_->shufps(tmp_xmm, tmp_xmm, imms[tail_size - 2]);
-        } else
-            execute_broadcast_f32_tail_avx(host_, tmp_vmm, rhs_addr, tail_size);
+        execute_broadcast_f32_tail_avx(host_, tmp_vmm, rhs_addr, tail_size);
     } else if (data_type == data_type::u8 || data_type == data_type::s8) {
-        if (is_sse41_) {
-            for (int i = 0; i < tail_size; i++)
-                host_->uni_vpinsrb(tmp_xmm, tmp_xmm, rhs_addr, i);
+        const auto tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
+        for (int i = 0; i < tail_size; i++)
+            host_->uni_vpinsrb(tmp_xmm, tmp_xmm, rhs_addr, i);
 
-            if (data_type == data_type::s8)
-                host_->pmovsxbd(tmp_xmm, tmp_xmm);
-            else
-                host_->pmovzxbd(tmp_xmm, tmp_xmm);
-        } else if (is_avx_ && std::is_same<Vmm, Xbyak::Ymm>::value) {
-            // AVX has no 256-bit integer operations, so the value is extended
-            // to dwords in the lower half and the halves are then joined in
-            // the float domain by `load_tail_avx`.
-            const auto cvt_to_dword = [&] {
-                if (data_type == data_type::s8)
-                    host_->vpmovsxbd(tmp_xmm, tmp_xmm);
-                else
-                    host_->vpmovzxbd(tmp_xmm, tmp_xmm);
-            };
-
-            const auto init_op = [&] {
-                host_->vpinsrb(tmp_xmm, tmp_xmm, rhs_addr, 0);
-                cvt_to_dword();
-            };
-
-            const auto upper_half_op = [&](int upper_half_data_size,
-                                               bool should_load_lower_half) {
-                if (upper_half_data_size > 1)
-                    host_->vshufps(tmp_xmm, tmp_xmm, tmp_xmm,
-                            imms.at(upper_half_data_size - 2));
-            };
-
-            const auto lower_half_op = [&](int upper_half_data_size) {
-                host_->vshufps(tmp_xmm, tmp_xmm, tmp_xmm, 0);
-            };
-
-            load_tail_avx(host_, vmm_idx, tail_size, init_op, upper_half_op,
-                    lower_half_op);
-        } else {
-            // The destination is at most 128 bits wide, or the ISA extends
-            // bytes straight to a wider destination, so the tail is inserted
-            // element by element and extended in one step.
-            for (int i = 0; i < tail_size; i++)
-                host_->uni_vpinsrb(tmp_xmm, tmp_xmm, rhs_addr, i);
-
-            if (data_type == data_type::s8)
-                host_->vpmovsxbd(tmp_vmm, tmp_xmm);
-            else
-                host_->vpmovzxbd(tmp_vmm, tmp_xmm);
-        }
+        if (data_type == data_type::s8)
+            host_->uni_vpmovsxbd(tmp_vmm, tmp_xmm);
+        else
+            host_->uni_vpmovzxbd(tmp_vmm, tmp_xmm);
     } else
         assert(!"unsupported data type");
 }
@@ -3459,32 +3358,6 @@ template <typename Vmm>
 void jit_uni_binary_injector_t<Vmm>::load_rhs_i8_no_tail(
         const data_type_t &data_type, const Vmm &tmp_vmm,
         const Xbyak::Address &rhs_addr) const {
-    if (is_avx_ && std::is_same<Vmm, Xbyak::Ymm>::value) {
-        // AVX has no 256-bit integer operations, so each 128-bit half is
-        // extended to dwords on its own and the two are joined in the float
-        // domain.
-        static constexpr int one_load_size = xmm_size_elem * sizeof(uint8_t);
-        const auto &rhs_addr_reg = rhs_arg_static_params_.rhs_addr_reg;
-        const auto tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
-        const auto tmp_ymm = Xbyak::Ymm(tmp_vmm.getIdx());
-
-        auto load_i8_fn = [&](const Xbyak::Address &addr) {
-            if (data_type == data_type::s8)
-                host_->uni_vpmovsxbd(tmp_xmm, addr);
-            else if (data_type == data_type::u8)
-                host_->uni_vpmovzxbd(tmp_xmm, addr);
-            else
-                assert(!"unsupported data type");
-        };
-
-        load_i8_fn(host_->ptr[rhs_addr_reg + one_load_size]);
-        push_vmm(host_, tmp_xmm);
-        load_i8_fn(rhs_addr);
-        host_->vinsertf128(tmp_ymm, tmp_ymm, host_->ptr[host_->rsp], 1);
-        restore_stack(host_, tmp_xmm);
-        return;
-    }
-
     if (data_type == data_type::s8)
         host_->uni_vpmovsxbd(tmp_vmm, rhs_addr);
     else if (data_type == data_type::u8)
@@ -3591,85 +3464,11 @@ void jit_uni_binary_injector_t<Vmm>::load_rhs_tail_statically(
         return;
     }
 
-    if (!is_avx_) {
-        // SSE4.1 and AVX2 both load the whole tail with one `load_data` call,
-        // which picks the widening sequence from the data type.
-        if (!utils::one_of(data_type, data_type::f32, data_type::s32,
-                    data_type::s8, data_type::u8))
-            assert(!"unsupported data type");
-
-        host_->load_data(data_type, tmp_vmm, rhs_addr_reg, 0, tail_size);
-        return;
-    }
-
-    // AVX from here on. The tail is assembled in the lower half, and a Ymm
-    // destination has its upper half joined in the float domain by
-    // `load_tail_avx` because AVX has no 256-bit integer operations.
-    const bool is_ymm = std::is_same<Vmm, Xbyak::Ymm>::value;
-    const auto vmm_idx = tmp_vmm.getIdx();
-    const auto tmp_xmm = Xbyak::Xmm(vmm_idx);
-
-    host_->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
-
-    if (data_type == data_type::f32 || data_type == data_type::s32) {
-        if (is_ymm) {
-            const auto res = std::div(tail_size, xmm_size_elem);
-            const auto upper_half_op = [&](int upper_half_data_size,
-                                               bool should_load_lower_half) {
-                const int offset = should_load_lower_half
-                        ? xmm_size_elem * sizeof(float)
-                        : 0;
-                for (int i = 0; i < res.rem; i++)
-                    host_->uni_vpinsrd(tmp_xmm, tmp_xmm,
-                            host_->ptr[rhs_addr_reg + offset
-                                    + i * sizeof(float)],
-                            i);
-            };
-
-            const auto lower_half_op = [&](int upper_half_data_size) {
-                host_->vmovups(tmp_xmm, rhs_addr);
-            };
-
-            load_tail_avx(
-                    host_, vmm_idx, tail_size, upper_half_op, lower_half_op);
-        } else {
-            for (int i = 0; i < tail_size; i++)
-                host_->uni_vpinsrd(tmp_xmm, tmp_xmm,
-                        host_->ptr[rhs_addr_reg + i * sizeof(float)], i);
-        }
-    } else if (data_type == data_type::u8 || data_type == data_type::s8) {
-        const auto cvt_to_dword = [&](const Xbyak::Operand &operand) {
-            if (data_type == data_type::s8)
-                host_->vpmovsxbd(tmp_xmm, operand);
-            else
-                host_->vpmovzxbd(tmp_xmm, operand);
-        };
-
-        if (is_ymm) {
-            const auto upper_half_op = [&](int upper_half_data_size,
-                                               bool should_load_lower_half) {
-                const int offset = should_load_lower_half ? xmm_size_elem : 0;
-                for (int i = 0; i < upper_half_data_size; i++)
-                    host_->uni_vpinsrb(tmp_xmm, tmp_xmm,
-                            host_->ptr[rhs_addr_reg + offset
-                                    + i * sizeof(int8_t)],
-                            i);
-                cvt_to_dword(tmp_xmm);
-            };
-
-            const auto lower_half_op
-                    = [&](int upper_half_data_size) { cvt_to_dword(rhs_addr); };
-
-            load_tail_avx(
-                    host_, vmm_idx, tail_size, upper_half_op, lower_half_op);
-        } else {
-            for (int i = 0; i < tail_size; i++)
-                host_->uni_vpinsrb(tmp_xmm, tmp_xmm,
-                        host_->ptr[rhs_addr_reg + i * sizeof(int8_t)], i);
-            cvt_to_dword(tmp_xmm);
-        }
-    } else
+    if (!utils::one_of(data_type, data_type::f32, data_type::s32, data_type::s8,
+                data_type::u8))
         assert(!"unsupported data type");
+
+    host_->load_data(data_type, tmp_vmm, rhs_addr_reg, 0, tail_size);
 }
 
 template <typename Vmm>
@@ -3763,28 +3562,10 @@ void jit_uni_binary_injector_t<Vmm>::execute_prelu(
         host_->vcmpps(aux_kmask | maybe_tail_kmask, dst_vmm, tmp_vmm,
                 jit_generator_t::_cmp_le_os);
         host_->vmulps(dst_vmm | aux_kmask, dst_vmm, rhs);
-    } else if (is_superset(isa_, avx)) {
+    } else {
         // Three operand version
         host_->uni_vmulps(tmp_vmm, dst, rhs);
         host_->uni_vblendvps(dst, dst, tmp_vmm, dst);
-    } else {
-        // SSE41
-        const auto vmm0 = Vmm(0);
-        const auto aux_vmm = rhs.isMEM() ? tmp_vmm : Vmm(rhs.getIdx());
-
-        if (dst.getIdx() == 0) {
-            if (rhs.isMEM()) host_->movups(aux_vmm, rhs);
-            host_->mulps(aux_vmm, dst);
-            host_->blendvps(dst, aux_vmm);
-        } else {
-            if (aux_vmm.getIdx() != 0) push_vmm(host_, vmm0);
-            push_vmm(host_, dst);
-            host_->mulps(dst, rhs);
-            pop_vmm(host_, vmm0);
-            host_->blendvps(vmm0, dst);
-            host_->movups(dst, vmm0);
-            if (aux_vmm.getIdx() != 0) pop_vmm(host_, vmm0);
-        }
     }
 }
 

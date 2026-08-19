@@ -189,8 +189,6 @@ private:
     const cpu_isa_t isa_ = h->max_cpu_isa();
     const bool has_avx512_core_ = is_superset(isa_, avx512_core);
     const bool has_avx2_ = is_superset(isa_, avx2);
-    const bool is_avx_ = is_superset(isa_, avx) && !has_avx2_;
-    const bool is_sse41_ = !is_superset(isa_, avx);
 
     static constexpr int vlen_ = vreg_traits_t<Vmm>::vlen;
     static constexpr int preserved_vecs_max_ = 6;
@@ -209,10 +207,6 @@ private:
     int preserved_gpr_indices_[preserved_gprs_max_] = {};
 
     Vmm vmm_mask_;
-    Vmm vmm_tmp_;
-    Xbyak::Ymm ymm_tmp_;
-    Xbyak::Xmm xmm_tmp_;
-
     static bool need_mask_register(
             cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha);
     static int aux_gprs_count(

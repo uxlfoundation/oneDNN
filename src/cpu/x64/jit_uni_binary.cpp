@@ -97,7 +97,6 @@ static cpu_isa_t get_supported_isa() {
     if (mayiuse(avx512_core)) return avx512_core;
     if (mayiuse(avx2_vnni_2)) return avx2_vnni_2;
     if (mayiuse(avx2)) return avx2;
-    if (mayiuse(sse41)) return sse41;
 
     return isa_undef;
 }
@@ -108,7 +107,7 @@ static bool data_format_supported(
     const auto blk_size = mdw.blocking_desc().inner_blks[0];
     return (is_superset(isa, avx512_core) && utils::one_of(blk_size, 16, 8, 4))
             || (is_superset(isa, avx2) && utils::one_of(blk_size, 8, 4))
-            || (is_superset(isa, sse41) && blk_size == 4);
+            || (blk_size == 4);
 }
 
 status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
@@ -257,7 +256,7 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
         conf_.src2_type = src_md(2)->data_type;
         VDISPATCH_BINARY(data_type_supported(conf_.src2_type, conf_.isa),
                 VERBOSE_ISA_DT_MISMATCH);
-        // The kernel does not work for AVX, SSE41
+        // The kernel requires AVX2 or newer.
         VDISPATCH_BINARY(mayiuse(avx2), "unsupported isa for ternary op");
     }
     init_scratchpad();
@@ -569,7 +568,7 @@ bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
         /*
          * check blocking_desc consistency, currently when among postops exists
          * per_oc broadcast, binary kernel doesn't support situations when blocked
-         * format size is smaller then vlen. example: sse41 vlen size is 4 and format
+         * format size is smaller than vlen.
          * is nChw8c - not supported, avx2 vlen size is 8 and format is
          * nChw8c - supported.
          */
@@ -731,13 +730,6 @@ binary_kernel_t *create_binary_kernel(
                 return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
             } else if (blk_size == 4) {
                 using kernel_t = jit_uni_binary_kernel_t<avx2, Xbyak::Xmm>;
-                return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
-            }
-            break;
-        }
-        case sse41: {
-            if (blk_size == 4 || is_plain_layout) {
-                using kernel_t = jit_uni_binary_kernel_t<sse41, Xbyak::Xmm>;
                 return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
             }
             break;

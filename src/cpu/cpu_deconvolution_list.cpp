@@ -64,8 +64,6 @@ const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
             CPU_INSTANCE_AVX2(brgemm_deconvolution_fwd_t<avx2>)
             CPU_INSTANCE_AVX2(jit_uni_x8s8s32x_1x1_deconvolution_fwd_t<avx2>)
             CPU_INSTANCE_AVX2(jit_uni_x8s8s32x_deconvolution_fwd_t<avx2>)
-            CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_1x1_deconvolution_fwd_t<sse41>)
-            CPU_INSTANCE_SSE41(jit_uni_x8s8s32x_deconvolution_fwd_t<sse41>)
             CPU_INSTANCE_AARCH64(brgemm_deconvolution_fwd_t<sve_256>)
             CPU_INSTANCE_AARCH64(brgemm_deconvolution_fwd_t<sve_128>)
             CPU_INSTANCE_AARCH64(jit_sve_512_core_x8s8s32x_deconvolution_fwd_t)

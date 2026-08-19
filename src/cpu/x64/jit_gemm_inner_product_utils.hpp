@@ -39,7 +39,7 @@ inline cpu_isa_t get_max_jit_pp_kernel_supported_isa() {
     CASE(avx512_core);
     CASE(avx2);
 #undef CASE
-    return sse41;
+    return avx2;
 }
 
 } // namespace inner_product_utils

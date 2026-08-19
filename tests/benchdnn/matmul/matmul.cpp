@@ -506,7 +506,7 @@ static void fill_dense_fp_values(data_kind_t kind, const prb_t *prb,
 static int fill_grouped_offsets(
         dnn_mem_t &mem, const sparse_options_t &sparse_options) {
     const int64_t group_count = sparse_options.get_group_count();
-    const auto &group_sizes = sparse_options.get_group_sizes();
+    const auto &group_sizes = sparse_options.get_group_sizes(DNNL_ARG_SRC);
 
     int64_t cumulative = 0;
     for (int64_t g = 0; g < group_count; g++) {

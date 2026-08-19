@@ -53,6 +53,25 @@ where *matmul-knobs* are:
             are sizes of each group with total `32+0+32+96 = 160`.
             Example: `--grouped=0:4:8+8+8+8:8` specifies max group size of `8`.
             Example: `--grouped=0:4:8+8+8+8,0:3:2+6+8` iterates over two configs.
+ - `--grouped=DIM_IDX:NUM_GROUPS:PROFILE[.PARAM][:HINT]` -- alternative form
+            that generates per-group sizes from a `PROFILE`. The total variable
+            dimension is taken from the problem shape (e.g. `total_M`).
+            Generation is deterministic. Supported profiles:
+            - `balanced[.seed]`, tokens are distributed across all `NUM_GROUPS`
+              like a balanced router. `seed` (default `0`) selects the draw.
+            * `hot[.pct]`, one hot expert absorbs `pct`% of the tokens (default
+              `50`; `pct=100` is absorb-all), the rest are spread evenly across.
+              `pct` must be in `[1, 100]`.
+            * `decode`, one token per active expert (`total_M` groups of size
+              `1`, the rest of the groups are empty).
+              Requires `total_M <= NUM_GROUPS`.
+            Optional `PARAM` is attached to `PROFILE` with a `.`.
+            Optional `HINT` is the max_variable_dim dispatch hint, if not
+            provided, it defaults to the largest generated group.
+            Example: `--grouped=0:64:balanced 512x512:64x512x256`
+            Example: `--grouped=0:64:balanced:512 512x512:64x512x256`
+            Example: `--grouped=0:32:hot.80 256x512:32x512x256`
+            Example: `--grouped=0:16:decode 8x512:16x512x256`
             Note: a binary post-op with `mask = 0` (e.g.
             `--attr-post-ops=mul:f32:0`) is applied per group (`[G, 1]`,
             e.g. NVFP4 global scale), not a whole-tensor.

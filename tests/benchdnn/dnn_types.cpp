@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <random>
 #include <sstream>
 
 #include "oneapi/dnnl/dnnl.h"
@@ -1128,13 +1129,25 @@ std::ostream &operator<<(
                 int var_idx = sparse_options.get_variable_dim_idx(arg);
                 s << "--grouped=" << var_idx << ":"
                   << sparse_options.get_group_count() << ":";
-                const auto &dims = sparse_options.get_group_sizes(arg);
-                for (size_t i = 0; i < dims.size(); i++) {
-                    s << dims[i];
-                    if (i != dims.size() - 1) s << "+";
+                using gd_t = sparse_options_t::grouped_data_t;
+                const auto profile = sparse_options.get_profile(arg);
+                if (profile.kind != gd_t::profile_none) {
+                    s << (profile.kind == gd_t::profile_balanced ? "balanced"
+                                    : profile.kind == gd_t::profile_hot
+                                    ? "hot"
+                                    : "decode");
+                    // optional param is attached via "."
+                    if (profile.param >= 0) s << "." << profile.param;
+                } else {
+                    const auto &dims = sparse_options.get_group_sizes(arg);
+                    for (size_t i = 0; i < dims.size(); i++) {
+                        s << dims[i];
+                        if (i != dims.size() - 1) s << "+";
+                    }
                 }
-                const auto max_var_dim = sparse_options.get_max_variable_dim();
-                if (max_var_dim > 0) s << ":" << max_var_dim;
+                // optional hint follows after next ":"
+                const auto hint = sparse_options.get_max_variable_dim();
+                if (hint > 0) s << ":" << hint;
                 s << " ";
                 break;
             }
@@ -2204,4 +2217,84 @@ int sparse_options_t::from_str(const std::string &s) {
     }
     static const int expected_num_options = 3;
     return options_count == expected_num_options ? OK : FAIL;
+}
+
+int sparse_options_t::resolve_profile(dnnl_dim_t total_size) {
+    grouped_data_t::profile_spec_t spec;
+    dnnl_dim_t G = 0, user_hint = 0;
+    for (const auto &kv : grouped_data_) {
+        if (kv.second.profile.kind != grouped_data_t::profile_none) {
+            spec = kv.second.profile;
+            G = kv.second.group_count;
+            user_hint = kv.second.max_variable_dim;
+            break;
+        }
+    }
+
+    std::vector<dnnl_dim_t> sizes(G, 0);
+    switch (spec.kind) {
+        case grouped_data_t::profile_balanced: {
+            // expected that total_size tokens distributed over G groups
+            // more or less evenly
+            const dnnl_dim_t seed = spec.get_param_val();
+            std::minstd_rand msr(G * total_size + seed + 1);
+            msr.discard(1);
+            for (dnnl_dim_t i = 0; i < total_size; i++)
+                sizes[msr() % (uint64_t)G]++;
+            break;
+        }
+        case grouped_data_t::profile_hot: {
+            // one group takes pctg% of the tokens, the rest spreads evenly
+            // over the remaining groups
+            // pctg == 100 is the extreme where one
+            // group takes all and the rest are 0
+            const dnnl_dim_t pctg = spec.get_param_val();
+            const dnnl_dim_t hot_total
+                    = (G > 1) ? total_size * pctg / 100 : total_size;
+            sizes[0] = hot_total;
+            const dnnl_dim_t rest = total_size - hot_total, cnt = G - 1;
+            if (cnt > 0) {
+                const dnnl_dim_t q = rest / cnt, r = rest % cnt;
+                for (dnnl_dim_t j = 0; j < cnt; j++)
+                    sizes[1 + j] = q + (j < r ? 1 : 0);
+            }
+            break;
+        }
+        case grouped_data_t::profile_decode: {
+            // each of the total_size tokens gets its own group
+            if (total_size > G) {
+                BENCHDNN_PRINT(0,
+                        "Error: decode profile requires total_M (%lld) <= "
+                        "NUM_GROUPS (%lld)\n",
+                        (long long)total_size, (long long)G);
+                return FAIL;
+            }
+            for (dnnl_dim_t i = 0; i < total_size; i++)
+                sizes[i * G / total_size] = 1;
+            break;
+        }
+        default:
+            BENCHDNN_PRINT(0, "%s\n", "Error: unknown grouped profile");
+            return FAIL;
+    }
+
+    // max_variable_dim dispatcher hint,
+    // if not provided, use the largest group size from generated
+    const dnnl_dim_t max_gen = *std::max_element(sizes.begin(), sizes.end());
+    if (user_hint > 0 && user_hint < max_gen) {
+        BENCHDNN_PRINT(0,
+                "Error: grouped max_variable dim hint (%lld) is smaller "
+                "than the max generated group size (%lld)\n",
+                (long long)user_hint, (long long)max_gen);
+        return FAIL;
+    }
+    const dnnl_dim_t chosen_hint = user_hint > 0 ? user_hint : max_gen;
+
+    for (auto &kv : grouped_data_) {
+        if (kv.second.profile.kind != grouped_data_t::profile_none) {
+            kv.second.group_sizes = sizes;
+            kv.second.max_variable_dim = chosen_hint;
+        }
+    }
+    return OK;
 }

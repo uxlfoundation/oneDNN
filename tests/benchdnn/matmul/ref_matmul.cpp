@@ -386,7 +386,7 @@ void compute_ref_grouped_matmul(const prb_t *prb, const args_t &args) {
     const bool var_M = prb->sparse_options.is_grouped(DNNL_ARG_DST);
 
     const int64_t group_count = prb->sparse_options.get_group_count();
-    const auto &group_sizes = prb->sparse_options.get_group_sizes();
+    const auto &group_sizes = prb->sparse_options.get_group_sizes(DNNL_ARG_SRC);
 
     std::vector<int64_t> group_offsets(group_count + 1);
     group_offsets[0] = 0;

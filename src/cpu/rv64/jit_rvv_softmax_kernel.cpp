@@ -38,6 +38,9 @@ using namespace Xbyak_riscv;
 #define F32_EXP_SUB_SUM_OFF(field) \
     static_cast<int32_t>(offsetof( \
             jit_rvv_softmax_f32_exp_sub_sum_kernel_t::call_params_t, field))
+#define F16_REDUCE_MAX_OFF(field) \
+    static_cast<int32_t>(offsetof( \
+            jit_rvv_softmax_f16_reduce_max_kernel_t::call_params_t, field))
 
 namespace {
 
@@ -65,6 +68,12 @@ template <bool store_exp>
 void dispatch_f32_exp_sub_sum(
         const jit_rvv_softmax_f32_exp_sub_sum_kernel_t::call_params_t *p) {
     static const jit_rvv_softmax_f32_exp_sub_sum_kernel_t kernel(store_exp);
+    kernel(p);
+}
+
+void dispatch_f16_reduce_max(
+        const jit_rvv_softmax_f16_reduce_max_kernel_t::call_params_t *p) {
+    static const jit_rvv_softmax_f16_reduce_max_kernel_t kernel;
     kernel(p);
 }
 
@@ -167,6 +176,108 @@ void jit_rvv_softmax_f16_exp_sub_sum(const dnnl::impl::float16_t *src,
     const jit_rvv_softmax_f16_exp_sub_sum_kernel_t::call_params_t p {
             src, tmp, len, sub, sum};
     dispatch_f16_exp_sub_sum(&p);
+}
+
+jit_rvv_softmax_f16_reduce_max_kernel_t::
+        jit_rvv_softmax_f16_reduce_max_kernel_t()
+    : jit_generator_t("jit_rvv_softmax_f16_reduce_max_kernel") {
+    create_kernel();
+}
+
+void jit_rvv_softmax_f16_reduce_max(const dnnl::impl::float16_t *src, dim_t len,
+        float *max_val, uint32_t *has_nan) {
+    const jit_rvv_softmax_f16_reduce_max_kernel_t::call_params_t p {
+            src, len, max_val, has_nan};
+    dispatch_f16_reduce_max(&p);
+}
+
+void jit_rvv_softmax_f16_reduce_max_kernel_t::generate() {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const Reg reg_param = a0;
+    const Reg reg_src = a1;
+    const Reg reg_len = a2;
+    const Reg reg_max_ptr = a3;
+    const Reg reg_nan_ptr = a4;
+    const Reg reg_vl = t0;
+    const Reg reg_bytes = t1;
+    const Reg reg_tmp = t2;
+    const Reg reg_has = t3;
+    const Reg reg_imm = t4;
+
+    const FReg f_seed = ft1;
+    const FReg f_max = ft2;
+
+    const VReg v_f16(4);
+    const VReg v_nan_acc(2);
+    const VReg v_x(8);
+    const VReg v_red(28);
+
+    auto load_f32_bits = [&](const FReg &freg, uint32_t bits) {
+        li(reg_imm, static_cast<int64_t>(bits));
+        fmv_w_x(freg, reg_imm);
+    };
+
+    ld(reg_src, reg_param, F16_REDUCE_MAX_OFF(src));
+    ld(reg_len, reg_param, F16_REDUCE_MAX_OFF(len));
+    ld(reg_max_ptr, reg_param, F16_REDUCE_MAX_OFF(max_val));
+    ld(reg_nan_ptr, reg_param, F16_REDUCE_MAX_OFF(has_nan));
+
+    // Seed for the max reduction: (float)numeric_limits<float16_t>::lowest()
+    // == -65504.0f == 0xC77FE000u. It only ever wins the reduction when every
+    // element is -65504, -inf or NaN, which matches the scalar `> max_val`
+    // loop seeded the same way.
+    load_f32_bits(f_seed, 0xC77FE000u);
+
+    // Clear the f16 tail lanes to +0.0 so a partial final chunk does not feed
+    // stale NaNs into the NaN-detection pass (the loop below loads with
+    // VTA::tu, i.e. tail undisturbed).
+    vsetvli(reg_vl, x0, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
+    vmv_v_i(v_f16, 0);
+    // Accumulator for the OR of all per-chunk NaN masks.
+    vmclr_m(v_nan_acc);
+
+    // Seed the vector max accumulator with float16 lowest.
+    vsetvli(reg_vl, x0, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+    vfmv_v_f(v_red, f_seed);
+
+    Label loop, finish;
+    L(loop);
+    beqz(reg_len, finish);
+
+    vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m2, VTA::tu, VMA::ma);
+    vle16_v(v_f16, reg_src);
+    slli(reg_bytes, reg_vl, 1);
+    add(reg_src, reg_src, reg_bytes);
+
+    // A half is NaN iff (raw & 0x7fff) > 0x7c00, which is exactly the set of
+    // values for which x != x. Accumulate the per-chunk NaN masks.
+    vmfne_vv(v0, v_f16, v_f16);
+    vmor_mm(v_nan_acc, v_nan_acc, v0);
+
+    vfwcvt_f_f_v(v_x, v_f16);
+    vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+    // Exclude NaN lanes from the max (matches the scalar `val > max_val` test,
+    // under which a NaN never updates max_val).
+    vfmerge_vfm(v_x, v_x, f_seed);
+    vfredmax_vs(v_red, v_x, v_red);
+
+    sub(reg_len, reg_len, reg_vl);
+    j_(loop);
+
+    L(finish);
+    vfmv_f_s(f_max, v_red);
+    fsw(f_max, reg_max_ptr, 0);
+
+    // has_nan = any set bit in the accumulated NaN mask.
+    vsetvli(reg_vl, x0, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
+    vfirst_m(reg_tmp, v_nan_acc);
+    slti(reg_has, reg_tmp, 0);
+    xori(reg_has, reg_has, 1);
+    sw(reg_has, reg_nan_ptr, 0);
+    ret();
+#else
+    ret();
+#endif
 }
 
 void jit_rvv_softmax_f16_affine_kernel_t::generate() {

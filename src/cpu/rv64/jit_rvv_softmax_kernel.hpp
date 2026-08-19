@@ -144,6 +144,26 @@ private:
     bool store_exp_;
 };
 
+struct jit_rvv_softmax_f16_reduce_max_kernel_t : public jit_generator_t {
+    struct call_params_t {
+        const dnnl::impl::float16_t *src;
+        dim_t len;
+        float *max_val;
+        uint32_t *has_nan;
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_f16_reduce_max_kernel_t)
+
+    jit_rvv_softmax_f16_reduce_max_kernel_t();
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override;
+};
+
 void jit_rvv_softmax_f16_affine_from_f16(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, float sub, float mul);
 
@@ -161,6 +181,9 @@ void jit_rvv_softmax_f16_exp_sub_sum(const dnnl::impl::float16_t *src,
 
 void jit_rvv_softmax_f32_exp_sub_sum(const float *src, float *dst, dim_t len,
         float sub, float *sum, bool store_exp);
+
+void jit_rvv_softmax_f16_reduce_max(const dnnl::impl::float16_t *src, dim_t len,
+        float *max_val, uint32_t *has_nan);
 
 } // namespace rv64
 } // namespace cpu

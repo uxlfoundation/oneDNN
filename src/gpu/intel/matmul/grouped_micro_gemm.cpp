@@ -83,16 +83,51 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     problem.Ta = problem.Ta_ext;
     problem.Tb = problem.Tb_ext;
 
-    problem.A.setAlignment(
-            alignmentForLD(static_cast<int>(gemm_desc_t::get_ld(*wei_mdw.md_))
-                    * problem.Ta_ext));
-    problem.B.setAlignment(
-            alignmentForLD(static_cast<int>(K()) * problem.Tb_ext));
-    problem.C.setAlignment(problem.Tc.size());
+    dim_t lda, ldb;
+    SizeParams sizes;
 
-    problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
-    problem.B.layout = MatrixLayout::N;
+    switch (grouped_axis_) {
+        case grouped_axis_t::m_axis:
+            // src is the B operand: [total_M, K] row-major -> ldb = K, contiguous
+            // along k (layout N). gemm_desc_t helpers read the blocking desc,
+            // which is only populated for the dense 3D weights of this workload.
+            sizes.m = static_cast<uint16_t>(N());
+            sizes.n = is_gemv_ ? 1 : 32;
+            sizes.k = static_cast<uint16_t>(K());
+            lda = gemm_desc_t::get_ld(*wei_mdw.md_);
+            ldb = K();
+            problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
+            problem.B.layout = MatrixLayout::N;
+            break;
+        case grouped_axis_t::k_axis: {
+            // The C tile is col-major, so the operand order follows the
+            // dst transposition:
+            //   notrans (N contiguous): A = wei [total_K, N] -> tile is N x M
+            //   trans   (M contiguous): A = src [M, total_K] -> tile is M x N
+            // Both operands are k-major, hence A layout N and B layout T either
+            // way; only the leading dimensions and extents swap.
+            const bool trans_c = transc();
+            sizes.m = static_cast<uint16_t>(trans_c ? M() : N());
+            sizes.n = static_cast<uint16_t>(trans_c ? N() : M());
+            // use the average k size to avoid unnecessary unrolls
+            sizes.k = static_cast<uint16_t>(utils::div_up(K(), ngroups_));
+            lda = sizes.m;
+            ldb = sizes.n;
+            problem.A.layout = MatrixLayout::N;
+            problem.B.layout = MatrixLayout::T;
+        } break;
+        default:
+            assert(!"grouped_axis::n_axis is not implemented");
+            return status::unimplemented;
+    }
+
     problem.C.layout = MatrixLayout::N;
+
+    problem.A.setAlignment(
+            alignmentForLD(static_cast<int>(lda) * problem.Ta_ext));
+    problem.B.setAlignment(
+            alignmentForLD(static_cast<int>(ldb) * problem.Tb_ext));
+    problem.C.setAlignment(problem.Tc.size());
 
     GEMMOptions opts;
     opts.scaleA = wei_quant_.with_scale() && wei_group_sizes_[1] < K();
@@ -190,11 +225,6 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
         }
     }
 
-    SizeParams sizes;
-    sizes.m = static_cast<uint16_t>(N());
-    sizes.n = is_gemv_ ? 1 : 32;
-    sizes.k = static_cast<uint16_t>(K());
-
     auto strat_override = [&](gemmstone::GEMMStrategy &strat) {
         std::string newStrat;
         using namespace gemmstone;
@@ -230,7 +260,14 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
 
         // TODO: These values should be based on the eu_count
         dim_t m_unroll = sg_size_;
+
+        // Extent of the microkernel's n dimension: tokens per group for the
+        // m_axis workload; for k_axis it follows the operand order above.
         float avg_m = float(M()) / ngroups_;
+        if (grouped_axis_ == grouped_axis_t::k_axis) {
+            avg_m = float(transc() ? N() : M());
+        }
+
         dim_t n_unroll = std::max<dim_t>(2, utils::rnd_up_pow2(dim_t(avg_m)));
         dim_t min_n_unroll = 1;
         dim_t max_n_unroll = 0;
@@ -312,7 +349,64 @@ void calc_group_sizes(std::array<int, N> &dims, const quant_entry_t &entry,
     });
 }
 
-status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
+status_t grouped_micro_gemm_t::pd_t::init_k_axis(const impl::engine_t *engine) {
+    using namespace data_type;
+
+    memory_desc_wrapper src_d(src_md());
+    memory_desc_wrapper wei_d(weights_md(0));
+    memory_desc_wrapper dst_d(dst_md());
+
+    const data_type_t src_dt = src_d.data_type();
+
+    VDISPATCH_MATMUL(!with_reduce(), VERBOSE_UNSUPPORTED_FEATURE, "reduce");
+    VDISPATCH_MATMUL(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_MATMUL(!with_bias(), VERBOSE_UNSUPPORTED_BIAS_CFG);
+
+    // src is col-major, wei is row-major
+    const sparse_desc_t::grouped_desc_t &src_grouped
+            = src_d.sparse_desc().grouped_desc;
+    const sparse_desc_t::grouped_desc_t &wei_grouped
+            = wei_d.sparse_desc().grouped_desc;
+
+    VDISPATCH_MATMUL(src_grouped.variable_dim_idx == 1
+                    && wei_grouped.variable_dim_idx == 0,
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    VDISPATCH_MATMUL(src_grouped.group_count == wei_grouped.group_count,
+            VERBOSE_INCONSISTENT_NDIMS_WITH_VALS, "src ngroups", "wei ngroups",
+            (int)src_grouped.group_count, (int)wei_grouped.group_count);
+    VDISPATCH_MATMUL(utils::everyone_is(s32, src_d.metadata_type(0),
+                             wei_d.metadata_type(0)),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
+    const dims_t &src_strides = src_d.strides();
+    const dims_t &wei_strides = wei_d.strides();
+    VDISPATCH_MATMUL(src_strides[0] == 1 && src_strides[1] == src_d.dims()[0],
+            VERBOSE_UNSUPPORTED_TAG_S, "src");
+    VDISPATCH_MATMUL(wei_strides[1] == 1 && wei_strides[0] == wei_d.dims()[1],
+            VERBOSE_UNSUPPORTED_TAG_S, "weights");
+
+    VDISPATCH_MATMUL(!dst_d.is_sparse_desc() && !dst_d.is_grouped_desc(),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    if (dst_d.format_any())
+        CHECK(memory_desc_init_by_strides(dst_md_, nullptr));
+
+    VDISPATCH_MATMUL(dst_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
+            VERBOSE_UNSUPPORTED_TAG_S, "dst");
+
+    VDISPATCH_MATMUL(
+            utils::everyone_is(src_dt, wei_d.data_type(), dst_d.data_type()),
+            VERBOSE_UNSUPPORTED_DT_CFG);
+    VDISPATCH_MATMUL(
+            utils::one_of(src_dt, f32, f16, bf16), VERBOSE_UNSUPPORTED_DT_CFG);
+
+    ngroups_ = src_grouped.group_count;
+    is_gemv_ = false;
+    with_post_op_ = false;
+
+    return status::success;
+}
+
+status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
     using namespace data_type;
 
     memory_desc_wrapper src_d(src_md());
@@ -322,12 +416,9 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
     data_type_t src_dt = src_d.data_type();
     data_type_t wei_dt = wei_d.data_type();
     data_type_t dst_dt = dst_d.data_type();
-    src_quant_ = quantization_t(attr(), src_d, DNNL_ARG_SRC);
-    wei_quant_ = quantization_t(attr(), wei_d, DNNL_ARG_WEIGHTS);
 
-    // Check for grouped encoding on src and dst
-    VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
-            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    // Check for grouped encoding on dst
+    VDISPATCH_MATMUL(dst_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     // Weights should be dense
     VDISPATCH_MATMUL(!wei_d.is_sparse_desc() && !wei_d.is_grouped_desc(),
@@ -399,12 +490,6 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
         VDISPATCH_MATMUL(bia_d.dims()[1] == wei_d.dims()[2],
                 VERBOSE_INCONSISTENT_DIM, "bia_d", 1, "wei_d", 2);
     }
-
-    assert(engine->kind() == engine_kind::gpu);
-    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
-    auto *dev_info = intel_engine->device_info();
-    VDISPATCH_MATMUL(compute::mayiuse_microkernels(intel_engine),
-            VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "microkernels");
 
     // Check for supported quantization schemes
     if (src_quant_.with_scale()) {
@@ -479,18 +564,45 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
         calc_group_sizes(wei_group_sizes_,
                 attr()->zero_points_.get(DNNL_ARG_WEIGHTS), wei_d);
     }
-    sg_size_ = dev_info->min_subgroup_size();
 
-    CHECK(init_microkernels(engine));
+    return status::success;
+}
 
-    src_quant_.define_macros(kernel_ctx_, "SRC");
-    wei_quant_.define_macros(kernel_ctx_, "WEI");
+// The k_axis kernel names its inputs after the microkernel operand roles,
+// since transc() decides which tensor is which. Define the types by role too,
+// so the kernel never has to assume that src and wei share one.
+status_t grouped_micro_gemm_t::pd_t::init_kernel_ctx_k_axis() {
+    const data_type_t src_dt = src_md()->data_type;
+    const data_type_t wei_dt = weights_md(0)->data_type;
 
-    kernel_ctx_.set_data_type(dst_dt);
+    const data_type_t a_dt = transc() ? src_dt : wei_dt;
+    const data_type_t b_dt = transc() ? wei_dt : src_dt;
+
+    def_data_type(kernel_ctx_, a_dt, "A");
+    def_data_type(kernel_ctx_, b_dt, "B");
+    kernel_ctx_.define_int(
+            "A_ELEMS_PER_BYTE", types::bytes_to_elements(a_dt, 1));
+    kernel_ctx_.define_int(
+            "B_ELEMS_PER_BYTE", types::bytes_to_elements(b_dt, 1));
+
+    return status::success;
+}
+
+// The m_axis kernel additionally carries quantization, bias, GEMV k-slicing
+// and post-ops.
+status_t grouped_micro_gemm_t::pd_t::init_kernel_ctx_m_axis() {
+    const data_type_t src_dt = src_md()->data_type;
+    const data_type_t wei_dt = weights_md(0)->data_type;
 
     def_data_type(kernel_ctx_, src_dt, "SRC");
     def_data_type(kernel_ctx_, wei_dt, "WEI");
-    def_data_type(kernel_ctx_, dst_dt, "DST");
+    kernel_ctx_.define_int(
+            "SRC_ELEMS_PER_BYTE", types::bytes_to_elements(src_dt, 1));
+    kernel_ctx_.define_int(
+            "WEI_ELEMS_PER_BYTE", types::bytes_to_elements(wei_dt, 1));
+
+    src_quant_.define_macros(kernel_ctx_, "SRC");
+    wei_quant_.define_macros(kernel_ctx_, "WEI");
 
     kernel_ctx_.define_int("WITH_SRC_SCALES", src_quant_.with_scale());
     kernel_ctx_.define_int("WITH_WEI_SCALES", wei_quant_.with_scale());
@@ -507,10 +619,6 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
             src_quant_.with_scale() && src_group_sizes_[1] < K());
     kernel_ctx_.define_int("WEI_SCALES_GROUPED",
             wei_quant_.with_scale() && wei_group_sizes_[1] < K());
-    kernel_ctx_.define_int(
-            "SRC_ELEMS_PER_BYTE", types::bytes_to_elements(src_dt, 1));
-    kernel_ctx_.define_int(
-            "WEI_ELEMS_PER_BYTE", types::bytes_to_elements(wei_dt, 1));
 
     if (src_quant_.with_zp()) {
         kernel_ctx_.define_int("SRC_ZP_ELEMS_PER_BYTE",
@@ -535,7 +643,6 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
     kernel_ctx_.define_int("WITH_BIAS", with_bias());
     kernel_ctx_.define_int("K_PARALLEL_LOCAL", is_gemv_);
     kernel_ctx_.define_int("WITH_SPARSE_GROUPS", is_gemv_);
-    kernel_ctx_.define_int("WITH_SLM", gemm_.getSetting("slm_size") > 0);
     kernel_ctx_.define_int("NUM_GROUPS", ngroups_);
     kernel_ctx_.define_int("WITH_POST_OP", with_post_op_);
     kernel_ctx_.define_int(
@@ -544,7 +651,6 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
     kernel_ctx_.define_int("WITH_BINARY_NVFP4_SCALE", with_binary_nvfp4_scale);
     kernel_ctx_.add_custom_header("grouped_post_ops.h",
             generate_post_ops_microgemm_header(*attr(), po_chain_));
-    kernel_ctx_.add_option("-cl-std=CL3.0");
     if (with_binary_grouped_scale || with_binary_dense_scale) {
         def_data_type(
                 kernel_ctx_, binary_scale_dts_[0], "BINARY_SCALE_GROUPED");
@@ -554,16 +660,168 @@ status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
     return status::success;
 }
 
+status_t grouped_micro_gemm_t::pd_t::init(const impl::engine_t *engine) {
+    assert(engine->kind() == engine_kind::gpu);
+    const auto *intel_engine = utils::downcast<const intel::engine_t *>(engine);
+    auto *dev_info = intel_engine->device_info();
+    VDISPATCH_MATMUL(compute::mayiuse_microkernels(intel_engine),
+            VERBOSE_UNSUPPORTED_DEVICE_FEATURE, "microkernels");
+    sg_size_ = dev_info->min_subgroup_size();
+
+    memory_desc_wrapper src_d(src_md());
+    memory_desc_wrapper wei_d(weights_md(0));
+    memory_desc_wrapper dst_d(dst_md());
+
+    const data_type_t dst_dt = dst_d.data_type();
+    src_quant_ = quantization_t(attr(), src_d, DNNL_ARG_SRC);
+    wei_quant_ = quantization_t(attr(), wei_d, DNNL_ARG_WEIGHTS);
+
+    // Grouped src is common to both workloads; the tensor grouped alongside it
+    // selects which axis is partitioned.
+    VDISPATCH_MATMUL(src_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    auto get_var_dim_axis = [](const memory_desc_wrapper &md) {
+        if (md.is_grouped_desc()) {
+            return md.sparse_desc().grouped_desc.variable_dim_idx;
+        } else {
+            return -1;
+        }
+    };
+
+    int src_var_dim_axis = get_var_dim_axis(src_d);
+    int wei_var_dim_axis = get_var_dim_axis(wei_d);
+    int dst_var_dim_axis = get_var_dim_axis(dst_d);
+
+    VDISPATCH_MATMUL(src_var_dim_axis != -1, VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
+    if (wei_var_dim_axis == -1) {
+        VDISPATCH_MATMUL(src_var_dim_axis == dst_var_dim_axis,
+                VERBOSE_UNSUPPORTED_SPARSE_CFG
+                "src axis(%d) and dst axis(%d) must vary along the same axis "
+                "when weights are dense",
+                src_var_dim_axis, dst_var_dim_axis);
+    } else {
+        VDISPATCH_MATMUL(src_var_dim_axis == 1 && wei_var_dim_axis == 0,
+                VERBOSE_UNSUPPORTED_SPARSE_CFG
+                "src axis(%d) and weights axis(%d) must vary along the k "
+                "axis when weights are grouped",
+                src_var_dim_axis, wei_var_dim_axis);
+    }
+
+    switch (src_var_dim_axis) {
+        case 0:
+            grouped_axis_ = grouped_axis_t::m_axis;
+            kernel_name_ = "grouped_gemm:micro:m_axis";
+            CHECK(init_m_axis(engine));
+            break;
+        case 1:
+            grouped_axis_ = grouped_axis_t::k_axis;
+            kernel_name_ = "grouped_gemm:micro:k_axis";
+            CHECK(init_k_axis(engine));
+            break;
+        default: return status::unimplemented;
+    }
+
+    CHECK(init_microkernels(engine));
+
+    // Definitions shared by the m_axis and k_axis kernels
+    kernel_ctx_.set_data_type(dst_dt);
+    def_data_type(kernel_ctx_, dst_dt, "DST");
+    kernel_ctx_.define_int("WITH_SLM", gemm_.getSetting("slm_size") > 0);
+    kernel_ctx_.add_option("-cl-std=CL3.0");
+
+    switch (grouped_axis_) {
+        case grouped_axis_t::m_axis: return init_kernel_ctx_m_axis();
+        case grouped_axis_t::k_axis: return init_kernel_ctx_k_axis();
+        default: return status::unimplemented;
+    }
+}
+
 status_t grouped_micro_gemm_t::init(impl::engine_t *engine) {
-    return create_kernel(
-            engine, &kernel_, "grouped_micro_gemm", pd()->kernel_ctx_);
+    const char *kernel_name;
+    switch (pd()->grouped_axis_) {
+        case grouped_axis_t::m_axis:
+            kernel_name = "grouped_micro_gemm_m_axis";
+            break;
+        case grouped_axis_t::k_axis:
+            kernel_name = "grouped_micro_gemm_k_axis";
+            break;
+        default: return status::unimplemented;
+    }
+    return create_kernel(engine, &kernel_, kernel_name, pd()->kernel_ctx_);
+}
+
+status_t grouped_micro_gemm_t::execute_k_axis(const exec_ctx_t &ctx) const {
+    const auto &src_data = CTX_IN_STORAGE(DNNL_ARG_SRC, 0);
+    const auto &src_offsets = CTX_IN_STORAGE(DNNL_ARG_SRC, 1);
+    const auto &wei_data = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS, 0);
+    auto &dst_data = CTX_OUT_STORAGE(DNNL_ARG_DST, 0);
+
+    const memory_desc_t *src_md = ctx.input(DNNL_ARG_SRC)->md();
+    const memory_desc_t *wei_md = ctx.input(DNNL_ARG_WEIGHTS)->md();
+    const memory_desc_t *dst_md = ctx.output(DNNL_ARG_DST)->md();
+
+    const dim_t M = dst_md->dims[1];
+    const dim_t N = dst_md->dims[2];
+
+    const dim_t ldsrc = memory_desc_wrapper(src_md).strides()[1];
+    const dim_t ldwei = memory_desc_wrapper(wei_md).strides()[0];
+    const dim_t ldc = gemm_desc_t::get_ld(*dst_md);
+
+    // Assign the microkernel operands so that the C tile stores contiguously:
+    // its m dimension has to be the contiguous dst dimension. This must match
+    // the layouts and extents init_microkernels() described to the generator.
+    //   notrans: a = wei, tile is N x M, ldc = N
+    //   trans:   a = src, tile is M x N, ldc = M
+    const bool trans_c = pd()->transc();
+    const memory_storage_t &a_data = trans_c ? src_data : wei_data;
+    const memory_storage_t &b_data = trans_c ? wei_data : src_data;
+    const dim_t lda = trans_c ? ldsrc : ldwei;
+    const dim_t ldb = trans_c ? ldwei : ldsrc;
+    const dim_t m = trans_c ? M : N;
+    const dim_t n = trans_c ? N : M;
+
+    compute::kernel_arg_list_t arg_list;
+    arg_list.append(a_data);
+    arg_list.append(lda);
+    arg_list.append(b_data);
+    arg_list.append(ldb);
+    arg_list.append(dst_data);
+    arg_list.append(ldc);
+    arg_list.append(src_offsets);
+    arg_list.append(m);
+    arg_list.append(n);
+
+    const size_t wg_tile_m = pd()->gemm_.getSetting("wg_tile_m");
+    const size_t wg_tile_n = pd()->gemm_.getSetting("wg_tile_n");
+
+    compute::range_t lws = compute::range_t::one(3);
+    lws[0] *= pd()->sg_size_ * pd()->gemm_.getSetting("sg_per_wg_m");
+    lws[1] *= pd()->gemm_.getSetting("sg_per_wg_n");
+    lws[2] *= pd()->gemm_.getSetting("sg_per_wg_k");
+
+    compute::range_t gws = lws;
+    gws[0] *= utils::div_up(m, wg_tile_m);
+    gws[1] *= utils::div_up(n, wg_tile_n);
+    gws[2] *= pd()->ngroups_;
+
+    return parallel_for(ctx, compute::nd_range_t(gws, lws), kernel_, arg_list);
 }
 
 status_t grouped_micro_gemm_t::execute(const exec_ctx_t &ctx) const {
+    switch (pd()->grouped_axis_) {
+        case grouped_axis_t::m_axis: return execute_m_axis(ctx);
+        case grouped_axis_t::k_axis: return execute_k_axis(ctx);
+        default:
+            assert(!"unknown grouped workload");
+            return status::invalid_arguments;
+    }
+}
+
+status_t grouped_micro_gemm_t::execute_m_axis(const exec_ctx_t &ctx) const {
     // buffer 0: values, buffer 1: offsets
     const auto &src_data = CTX_IN_STORAGE(DNNL_ARG_SRC, 0);
     const auto &src_offsets = CTX_IN_STORAGE(DNNL_ARG_SRC, 1);
-    const auto &wei_data = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS);
+    const auto &wei_data = CTX_IN_STORAGE(DNNL_ARG_WEIGHTS, 0);
     auto &dst_data = CTX_OUT_STORAGE(DNNL_ARG_DST, 0);
     const auto &dst_offsets = CTX_OUT_STORAGE(DNNL_ARG_DST, 1);
 

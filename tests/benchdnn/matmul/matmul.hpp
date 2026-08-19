@@ -108,6 +108,14 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
         m = srcdims[ndims - 2];
         k = srcdims.back();
         n = weidims.back();
+
+        // Generate group_sizes according to the profile, if they are not read
+        if (this->sparse_options.has_deferred_profile()) {
+            const int vdi
+                    = this->sparse_options.get_variable_dim_idx(DNNL_ARG_SRC);
+            SAFE_V(this->sparse_options.resolve_profile(srcdims[vdi]));
+        }
+
         dst_dims[ndims - 2] = m;
         dst_dims[ndims - 1] = n;
 

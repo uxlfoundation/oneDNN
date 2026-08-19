@@ -31,9 +31,6 @@ public:
 
 protected:
     bool has_avx512_;
-    bool has_avx2_;
-    bool has_avx_;
-    bool has_sse41_;
 
     int unroll_m_, unroll_n_;
 
@@ -83,7 +80,7 @@ private:
     Xbyak::Reg64 A1_, A2_, Y1_, LDA3_, I_;
 
     // Vector register assignments
-    Xbyak::Xmm scratch_, alpha_;
+    Xbyak::Xmm alpha_;
     Xbyak::Xmm a_, x_[max_unroll_n_], y_[max_um_vecs_];
     Xbyak::Xmm acc_[max_um_vecs_];
 

@@ -102,6 +102,7 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
     const memory_desc_wrapper weights_d(&weights_md);
     const memory_desc_wrapper dst_d(&dst_md);
     const memory_desc_wrapper bias_d(&bias_md);
+    const auto dst_dt = dst_d.data_type();
 
     const int ndims = src_d.ndims();
     // Currently this kernel only supports 2D convolutions.
@@ -128,7 +129,7 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
             wei_tag = Goihw4g;
             jcp.ur_w = 8;
             jcp.nb_ch_blocking
-                    = (src_d.dims()[2] == 1 && kernel_dt == data_type::f32)
+                    = (src_d.dims()[2] == 1 && dst_dt == data_type::f32)
                     ? 1
                     : 3; // set blocking = 1 for f32 1d convs
             break;
@@ -316,15 +317,15 @@ void jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_scratchpad(
     }
 }
 
-template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f16>;
-template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f16>;
-template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::f16>;
-template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f32>;
-template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f32>;
-template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::f32>;
-template struct jit_uni_dw_conv_fwd_kernel_t<asimd, data_type::f32>;
-template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::bf16>;
-template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::bf16>;
+extern template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f16>;
+extern template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f16>;
+extern template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::f16>;
+extern template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f32>;
+extern template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f32>;
+extern template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::f32>;
+extern template struct jit_uni_dw_conv_fwd_kernel_t<asimd, data_type::f32>;
+extern template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::bf16>;
+extern template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::bf16>;
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
 struct jit_uni_dw_conv_bwd_data_kernel_t {
@@ -455,8 +456,10 @@ void jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_scratchpad(
     UNUSED(jcp);
 }
 
-template struct jit_uni_dw_conv_bwd_data_kernel_t<sve_512, data_type::f32>;
-template struct jit_uni_dw_conv_bwd_data_kernel_t<sve_256, data_type::f32>;
+extern template struct jit_uni_dw_conv_bwd_data_kernel_t<sve_512,
+        data_type::f32>;
+extern template struct jit_uni_dw_conv_bwd_data_kernel_t<sve_256,
+        data_type::f32>;
 
 template <cpu_isa_t isa, data_type_t kernel_dt>
 struct jit_uni_dw_conv_bwd_weights_kernel_t {
@@ -628,8 +631,10 @@ void jit_uni_dw_conv_bwd_weights_kernel_t<isa, kernel_dt>::balance(
     jcp.nthr = jcp.nthr_g * jcp.nthr_mb;
 }
 
-template struct jit_uni_dw_conv_bwd_weights_kernel_t<sve_512, data_type::f32>;
-template struct jit_uni_dw_conv_bwd_weights_kernel_t<sve_256, data_type::f32>;
+extern template struct jit_uni_dw_conv_bwd_weights_kernel_t<sve_512,
+        data_type::f32>;
+extern template struct jit_uni_dw_conv_bwd_weights_kernel_t<sve_256,
+        data_type::f32>;
 } // namespace aarch64
 } // namespace cpu
 } // namespace impl

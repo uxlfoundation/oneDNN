@@ -33,6 +33,13 @@ using namespace dnnl::impl::status;
 using namespace dnnl::impl::memory_tracking::names;
 using namespace dnnl::impl::utils;
 
+static int get_f16_exec_num_of_threads(const memory_desc_wrapper &dst_d) {
+    const int max_nthr = dnnl_get_current_num_threads();
+    // Minimum approximate work per thread chosen from experimental data.
+    const dim_t min_work_per_thread = 128;
+    return dst_d.nelems() <= max_nthr * min_work_per_thread ? 1 : max_nthr;
+}
+
 template <cpu_isa_t isa, data_type_t src_type, data_type_t dst_type>
 void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
         const exec_ctx_t &ctx) const {
@@ -79,83 +86,82 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
     const auto is_src_layout_nxc = jcp.src_tag == format_tag::nhwc;
     const auto is_dst_layout_nxc = jcp.dst_tag == format_tag::nhwc;
 
-    const int work_amount = jcp.mb * chb_work * jcp.oh;
-    const auto nthr = jcp.nthr;
+    const dim_t work_amount = jcp.mb * chb_work * jcp.oh;
+    const auto nthr = src_type == data_type::f16
+            ? get_f16_exec_num_of_threads(dst_d)
+            : jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
-        int start {0}, end {0};
+    auto ker = [&](const int ithr, const int nthr, const dim_t n,
+                       const dim_t chb, const dim_t oh) {
+        dim_t start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
-        int n {0}, chb {0}, oh {0};
+        dim_t iwork {0};
         if (jcp.loop_order == loop_ngcw)
-            utils::nd_iterator_init(
-                    start, n, jcp.mb, chb, chb_work, oh, jcp.oh);
+            iwork = (n * chb_work + chb) * jcp.oh + oh;
         else if (jcp.loop_order == loop_nhwcg)
-            utils::nd_iterator_init(
-                    start, n, jcp.mb, oh, jcp.oh, chb, chb_work);
+            iwork = (n * jcp.oh + oh) * chb_work + chb;
         else
             assert(!"unsupported loop order");
 
-        auto iwork = start;
-        while (iwork < end) {
+        if (jcp.loop_order == loop_nhwcg && chb != 0 && iwork != start) return;
 
-            int ch = chb * ch_step;
+        const int ch = chb * ch_step;
 
-            const int i_t_overflow
-                    = nstl::max(0, (int)(jcp.t_pad - oh * str_h));
-            const int i_b_overflow
-                    = nstl::max(jcp.ih,
-                              (int)(oh * str_h + (jcp.kh - 1) * dil_h
-                                      - jcp.t_pad + 1))
-                    - jcp.ih;
+        const int i_t_overflow = nstl::max(0, (int)(jcp.t_pad - oh * str_h));
+        const int i_b_overflow = nstl::max(jcp.ih,
+                                         (int)(oh * str_h + (jcp.kh - 1) * dil_h
+                                                 - jcp.t_pad + 1))
+                - jcp.ih;
 
-            const int ih
-                    = nstl::max((int)(oh * str_h - jcp.t_pad
-                                        + div_up(i_t_overflow, dil_h) * dil_h),
-                            0);
-            const int kh = div_up(i_t_overflow, dil_h);
-            const int kh_padding = jcp.kh - div_up(i_t_overflow, dil_h)
-                    - div_up(i_b_overflow, dil_h);
+        const int ih = nstl::max((int)(oh * str_h - jcp.t_pad
+                                         + div_up(i_t_overflow, dil_h) * dil_h),
+                0);
+        const int kh = div_up(i_t_overflow, dil_h);
+        const int kh_padding = jcp.kh - div_up(i_t_overflow, dil_h)
+                - div_up(i_b_overflow, dil_h);
 
-            const auto ic_off_idx = is_src_layout_nxc ? ch * jcp.ch_block : ch;
-            const auto oc_off_idx = is_dst_layout_nxc ? ch * jcp.ch_block : ch;
+        const auto ic_off_idx = is_src_layout_nxc ? ch * jcp.ch_block : ch;
+        const auto oc_off_idx = is_dst_layout_nxc ? ch * jcp.ch_block : ch;
 
-            auto par_conv = jit_conv_args_t();
-            par_conv.src = jcp.is_fused_conv
-                    ? src
-                    : &src[src_d.blk_off(n, ic_off_idx, ih, iw)];
-            par_conv.dst = &dst[dst_d.blk_off(n, oc_off_idx, oh, ow)];
+        auto par_conv = jit_conv_args_t();
+        par_conv.src = jcp.is_fused_conv
+                ? src
+                : &src[src_d.blk_off(n, ic_off_idx, ih, iw)];
+        par_conv.dst = &dst[dst_d.blk_off(n, oc_off_idx, oh, ow)];
 
-            par_conv.filt = &weights[weights_d.blk_off(ch, 0, 0, kh, kw)];
-            if (bias) par_conv.bias = &bias[bias_d.blk_off(ch * jcp.ch_block)];
+        par_conv.filt = &weights[weights_d.blk_off(ch, 0, 0, kh, kw)];
+        if (bias) par_conv.bias = &bias[bias_d.blk_off(ch * jcp.ch_block)];
 
-            par_conv.kh_padding = (size_t)nstl::max(0, kh_padding);
+        par_conv.kh_padding = (size_t)nstl::max(0, kh_padding);
 
-            if (is_src_layout_nxc) {
-                // maximize jit work along contiguous dimension
-                int work_rem = end - iwork;
-                par_conv.ch_blocks = ch + work_rem * ch_step >= jcp.nb_ch
-                        ? jcp.nb_ch - ch
-                        : work_rem * ch_step;
-                assert(jcp.loop_order == loop_nhwcg);
-            } else {
-                par_conv.ch_blocks
-                        = utils::this_block_size(ch, jcp.nb_ch, ch_step);
-                assert(jcp.loop_order != loop_nhwcg);
-            }
-
-            (*kernel_)(&par_conv);
-
-            if (jcp.loop_order == loop_ngcw) {
-                ++iwork;
-                utils::nd_iterator_step(n, jcp.mb, chb, chb_work, oh, jcp.oh);
-            } else if (jcp.loop_order == loop_nhwcg) {
-                utils::nd_iterator_jump(
-                        iwork, end, n, jcp.mb, oh, jcp.oh, chb, chb_work);
-            } else
-                assert(!"unsupported loop order");
+        if (is_src_layout_nxc) {
+            // Maximize JIT work along the contiguous dimension.
+            const dim_t work_rem = end - iwork;
+            par_conv.ch_blocks = ch + work_rem * ch_step >= jcp.nb_ch
+                    ? jcp.nb_ch - ch
+                    : work_rem * ch_step;
+            assert(jcp.loop_order == loop_nhwcg);
+        } else {
+            par_conv.ch_blocks = utils::this_block_size(ch, jcp.nb_ch, ch_step);
+            assert(jcp.loop_order != loop_nhwcg);
         }
-    });
+
+        (*kernel_)(&par_conv);
+    };
+
+    if (jcp.loop_order == loop_ngcw)
+        parallel_nd_ext(nthr, jcp.mb, chb_work, jcp.oh,
+                [&](int ithr, int nthr, dim_t n, dim_t chb, dim_t oh) {
+            ker(ithr, nthr, n, chb, oh);
+        });
+    else if (jcp.loop_order == loop_nhwcg)
+        parallel_nd_ext(nthr, jcp.mb, jcp.oh, chb_work,
+                [&](int ithr, int nthr, dim_t n, dim_t oh, dim_t chb) {
+            ker(ithr, nthr, n, chb, oh);
+        });
+    else
+        assert(!"unsupported loop order");
 
     if (pd()->wants_zero_pad_dst()) ctx.zero_pad_output(DNNL_ARG_DST);
 }
@@ -541,6 +547,22 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
 
 template struct jit_uni_dw_convolution_bwd_weights_t<sve_512, data_type::f32>;
 template struct jit_uni_dw_convolution_bwd_weights_t<sve_256, data_type::f32>;
+
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f16>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f16>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::f16>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f32>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f32>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::f32>;
+template struct jit_uni_dw_conv_fwd_kernel_t<asimd, data_type::f32>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::bf16>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::bf16>;
+
+template struct jit_uni_dw_conv_bwd_data_kernel_t<sve_512, data_type::f32>;
+template struct jit_uni_dw_conv_bwd_data_kernel_t<sve_256, data_type::f32>;
+
+template struct jit_uni_dw_conv_bwd_weights_kernel_t<sve_512, data_type::f32>;
+template struct jit_uni_dw_conv_bwd_weights_kernel_t<sve_256, data_type::f32>;
 } // namespace aarch64
 } // namespace cpu
 } // namespace impl

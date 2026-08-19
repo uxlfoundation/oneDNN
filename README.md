@@ -78,8 +78,8 @@ oneDNN supports platforms based on the following architectures:
 
 The library is optimized for the following CPUs:
 * Intel 64/AMD64 architecture
-  * **[deprecated]** Intel Atom(R) processor (at least Intel SSE4.1 support is required)
-  * **[deprecated]** Intel Core(TM) processor (at least Intel SSE4.1 support is required)
+  * **[deprecated]** Intel Atom(R) processor (reference implementations only)
+  * **[deprecated]** Intel Core(TM) processor (reference implementations only)
   * **[deprecated]** Intel Xeon(R) processor E3, E5, and E7 family v1 and v2 lineups
     (formerly Sandy Bridge, Ivy Bridge and Westmere)
   * Intel Xeon(R) processor E3, E5, and E7 family v3+ lineups (formerly Haswell and Broadwell)
@@ -126,7 +126,9 @@ The library is optimized for the following GPUs:
   * Intel Graphics for future Intel Core Ultra processors (code name Nova Lake)
 
 > **NOTE**
-> Optimizations for processors with Intel SSE4.1 support and Intel AVX support are deprecated and will be removed in the future releases.
+> Dedicated GEMM and convolution implementations for processors limited to
+> Intel SSE4.1 or Intel AVX are no longer included. Older CPUs use reference
+> implementations where available.
 
 [CPU dispatcher control]: https://uxlfoundation.github.io/oneDNN/dev_guide_cpu_dispatcher_control.html
 [Linking Guide]: https://uxlfoundation.github.io/oneDNN/dev_guide_link.html

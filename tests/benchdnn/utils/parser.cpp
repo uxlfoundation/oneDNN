@@ -798,33 +798,41 @@ bool parse_encoding(std::vector<sparse_options_t> &sparse_options,
             str, option_name, help);
 }
 
-// Format: DIM_IDX:NUM_GROUPS:size0+size1+...+sizeN[:max_size][,config2,...]
-// - DIM_IDX is the dimension index, where src MxK * weights KxN = dst MxN
-//   0 = M,  1 = K
-// - NUM_GROUPS is the number of tensors in the group (number of experts)
-// - size0+size1+...+sizeN are the '+'-separated sizes for each in the group,
-//   with sum equal to the total size along DIM_IDX
-// - max_size (optional) is the max_variable_dim hint for optimal dispatch
-// Multiple configs can be comma-separated to iterate over them.
+// Format: DIM_IDX:NUM_GROUPS:{size0+...+sizeN[:max_size] | PROFILE[:PARAM]}
+// - DIM_IDX is the variable dim (0=M, 1=K)
+// - NUM_GROUPS is the experts/groups count
+// - the rest is either explicit '+'-separated sizes or a generated PROFILE,
+//   see doc/driver_matmul.md (--grouped) for the full info
 //
 // TODO: move to parse_single_value_option once feature is moved out of experimental
 bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
         const char *str, const std::string &option_name /* = "grouped"*/) {
     static const std::string help
-            = "DIM_IDX:NUM_GROUPS:size0+size1+...+sizeN[:max_size]"
-              "[,config2,...]\n   "
+            = "DIM_IDX:NUM_GROUPS:size0+size1+...+sizeN[:max_size]\n   "
+              "DIM_IDX:NUM_GROUPS:PROFILE[:PARAM]  [,config2,...]\n   "
               "Specifies grouped encoding for MoE workloads.\n"
-              "    DIM_IDX is the dimension index (0=M, 1=K, 2=N)\n"
+              "    DIM_IDX is the dimension index (0=M, 1=K)\n"
               "    NUM_GROUPS is the number of expert groups\n"
-              "    size0+size1+...+sizeN are the sizes for each in the group "
-              "('+'-separated)\n"
-              "    max_size (optional) is the max_variable_dim hint for "
-              "    the optimal dispatch\n"
+              "    Explicit sizes: size0+...+sizeN ('+'-separated, sum along "
+              "DIM_IDX); max_size (optional) is the max_variable_dim dispatch "
+              "hint.\n"
+              "    PROFILE synthesizes the per-group sizes from the shape's "
+              "variable dim (total_M):\n"
+              "      balanced  - tokens distributed across all NUM_GROUPS "
+              "like a balanced router\n"
+              "      hot[:n]   - n hot experts absorb ~half the tokens, rest "
+              "spread evenly (default n=1, n in [1, NUM_GROUPS])\n"
+              "      decode    - total_M active experts, 1 token each, rest "
+              "empty (needs total_M <= NUM_GROUPS)\n"
+              "    For profiles the max_variable_dim dispatch hint is "
+              "auto-derived from the draw (largest group).\n"
               "    Multiple configs can be comma-separated to iterate over "
               "them.\n"
               "    Example: --grouped=0:8:32+64+32+96+48+80+56+72\n"
               "    Example: --grouped=0:8:32+64+32+96+48+80+56+72:96\n"
-              "    Example: --grouped=0:4:8+8+8+8,0:3:2+6+8\n";
+              "    Example: --grouped=0:256:balanced\n"
+              "    Example: --grouped=0:64:hot:2\n"
+              "    Example: --grouped=0:256:decode\n";
 
     utils::add_option_to_help(option_name, help);
     const std::string pattern = utils::get_pattern(option_name);
@@ -888,30 +896,98 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
         }
 
         dnnl_dim_t group_count = utils::stoll_safe(group_count_str);
-
-        // Get sizes string: "size0+size1+...+sizeN" or
-        // "size0+size1+...+sizeN:max_size" (optional max_variable_dim at end)
-        const std::string sizes_str = get_substr(s, start_pos, ':');
-
-        // Get the sizes ('+'-separated)
-        std::vector<dnnl_dim_t> sizes;
-        size_t size_pos = 0;
-        while (size_pos != std::string::npos) {
-            sizes.push_back(
-                    utils::stoll_safe(get_substr(sizes_str, size_pos, '+')));
+        if (group_count <= 0) {
+            BENCHDNN_PRINT(0,
+                    "Error: grouped NUM_GROUPS must be > 0, got %lld\n",
+                    (long long)group_count);
+            SAFE_V(FAIL);
         }
 
-        dnnl_dim_t max_variable_dim = 0;
-        if (start_pos != std::string::npos)
-            max_variable_dim = utils::stoll_safe(s.substr(start_pos));
+        // Next field is either an explicit '+'-separated size list or a profile
+        // name (balanced, hot, decode)
+        const std::string sizes_str = get_substr(s, start_pos, ':');
 
-        // Validate number of sizes
-        if (sizes.size() != (size_t)group_count) {
-            BENCHDNN_PRINT(0,
-                    "Error: number of sizes (%zu) doesn't match "
-                    "group_count (%lld)\n",
-                    sizes.size(), (long long)group_count);
-            SAFE_V(FAIL);
+        std::vector<dnnl_dim_t> sizes;
+        dnnl_dim_t max_variable_dim = 0;
+        auto profile = sparse_options_t::grouped_data_t::profile_none;
+        dnnl_dim_t profile_param = -1;
+
+        if (!sizes_str.empty()
+                && std::isalpha(static_cast<unsigned char>(sizes_str[0]))) {
+            if (sizes_str == "balanced")
+                profile = sparse_options_t::grouped_data_t::profile_balanced;
+            else if (sizes_str == "hot")
+                profile = sparse_options_t::grouped_data_t::profile_hot;
+            else if (sizes_str == "decode")
+                profile = sparse_options_t::grouped_data_t::profile_decode;
+            else {
+                BENCHDNN_PRINT(0,
+                        "Error: unknown grouped profile '%s' (expected "
+                        "balanced|hot|decode)\n",
+                        sizes_str.c_str());
+                SAFE_V(FAIL);
+            }
+        }
+
+        if (profile != sparse_options_t::grouped_data_t::profile_none) {
+            // PROFILE[:PARAM] decomposition:
+            // - balanced -> seed (>= 0)
+            // - hot -> percentage of tokens absorbed by the hot expert (1..100)
+            // - decode takes none
+            if (start_pos != std::string::npos) {
+                const std::string param_str = get_substr(s, start_pos, ':');
+                if (!param_str.empty()) {
+                    if (profile
+                            == sparse_options_t::grouped_data_t::
+                                    profile_decode) {
+                        BENCHDNN_PRINT(0, "%s\n",
+                                "Error: 'decode' profile takes no parameter");
+                        SAFE_V(FAIL);
+                    }
+                    profile_param = utils::stoll_safe(param_str);
+                    if (profile
+                                    == sparse_options_t::grouped_data_t::
+                                            profile_balanced
+                            && profile_param < 0) {
+                        BENCHDNN_PRINT(0,
+                                "Error: 'balanced' seed must be >= 0, got "
+                                "%lld\n",
+                                (long long)profile_param);
+                        SAFE_V(FAIL);
+                    }
+                    if (profile == sparse_options_t::grouped_data_t::profile_hot
+                            && (profile_param < 1 || profile_param > 100)) {
+                        BENCHDNN_PRINT(0,
+                                "Error: 'hot' percent must be in [1, 100], got "
+                                "%lld\n",
+                                (long long)profile_param);
+                        SAFE_V(FAIL);
+                    }
+                }
+                if (start_pos != std::string::npos) {
+                    BENCHDNN_PRINT(0, "%s\n",
+                            "Error: grouped profile takes at most "
+                            "PROFILE:PARAM");
+                    SAFE_V(FAIL);
+                }
+            }
+        } else {
+            // Explicit '+'-separated sizes, optional trailing max_size hint
+            size_t size_pos = 0;
+            while (size_pos != std::string::npos) {
+                sizes.push_back(utils::stoll_safe(
+                        get_substr(sizes_str, size_pos, '+')));
+            }
+            if (start_pos != std::string::npos)
+                max_variable_dim = utils::stoll_safe(s.substr(start_pos));
+
+            if (sizes.size() != (size_t)group_count) {
+                BENCHDNN_PRINT(0,
+                        "Error: number of sizes (%zu) doesn't match "
+                        "group_count (%lld)\n",
+                        sizes.size(), (long long)group_count);
+                SAFE_V(FAIL);
+            }
         }
 
         // Set grouped encoding based on the src varying dim:
@@ -921,17 +997,23 @@ bool parse_grouped(std::vector<sparse_options_t> &sparse_options,
         //  - dim 1 (K/contraction varies, 2Dx2D variant)
         //    src is [M, total_K] (var_dim_idx=1), wei is [total_K, N] (var_dim_idx=0),
         //    dst is dense 3D [G, M, N]
-        if (variable_dim_idx == 0) {
-            v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes,
-                    max_variable_dim);
-            v.set_grouped(DNNL_ARG_DST, variable_dim_idx, group_count, sizes,
-                    max_variable_dim);
-        } else if (variable_dim_idx == 1) {
-            v.set_grouped(DNNL_ARG_SRC, variable_dim_idx, group_count, sizes,
-                    max_variable_dim);
-            v.set_grouped(DNNL_ARG_WEIGHTS,
-                    /* var_dim_idx is different here */ 0, group_count, sizes,
-                    max_variable_dim);
+        if (variable_dim_idx == 0 || variable_dim_idx == 1) {
+            sparse_options_t::grouped_data_t gd;
+            gd.group_count = group_count;
+            if (profile != sparse_options_t::grouped_data_t::profile_none) {
+                gd.profile.kind = profile;
+                gd.profile.param = profile_param;
+            } else {
+                gd.group_sizes = sizes;
+                gd.max_variable_dim = max_variable_dim;
+            }
+            gd.variable_dim_idx = variable_dim_idx;
+            v.set_grouped(DNNL_ARG_SRC, gd);
+            // dst (for 2Dx3D) / weights (for 2Dx2D) always vary along dim 0
+            gd.variable_dim_idx = 0;
+            v.set_grouped(
+                    variable_dim_idx == 0 ? DNNL_ARG_DST : DNNL_ARG_WEIGHTS,
+                    gd);
         }
 
         sparse_options.push_back(v);

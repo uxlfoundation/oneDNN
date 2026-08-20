@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2017 Intel Corporation
 * Copyright 2021-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 
 #include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
@@ -560,7 +561,7 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     src += offset_bytes;
     dst += offset_bytes;
 
-    parallel(0, [&](const int ithr, const int nthr) {
+    parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
         balance211(
@@ -657,7 +658,7 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     diff_dst += diff_off_bytes;
     diff_src += diff_off_bytes;
 
-    parallel(0, [&](const int ithr, const int nthr) {
+    parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         dim_t start {0}, end {0};
 
         balance211(

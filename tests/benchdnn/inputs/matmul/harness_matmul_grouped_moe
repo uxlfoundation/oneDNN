@@ -1,0 +1,194 @@
+# Grouped GEMM MoE / frameworks harness (nightly)
+#
+# Section A - synthetic per-model token distributions via named profiles.
+# Section B - frameworks real-data coverage over captured MoE shapes
+#             (shapes_grouped_moe / _large): scaled/quantized dt matrix.
+#
+# Batched only by test_matmul_grouped_gpu. Section B runs at real-model scale,
+# so it is GPU-nightly only; CPU coverage of the profile machinery lives in
+# harness_matmul_grouped (Section A, CI).
+#
+# --- Section A: synthetic per-model profile sweep --------------------------
+# Uses --grouped=DIM_IDX:E:PROFILE[:PARAM]. Per-group sizes are synthesized
+# from the shape's variable dim (total_M); only the shape changes to sweep the
+# token count. Profiles:
+#   balanced - load-balanced prefill draw (ragged, ~total_M/E per expert)
+#   hot      - 1 hot expert absorbs 50% of the tokens (worst-case imbalance)
+#   hot:100  - 1 expert absorbs everything, the rest empty (absorb-all)
+#   decode   - total_M active experts, 1 token each (needs total_M <= E)
+#
+# K/N are kept modest (512/256) so the reference impl runs quickly; E and
+# top-k mirror real MoE models. Weights are dense 3D [E, K, N] (abc).
+#
+# Models: Llama4 Scout (E=16, k=1), GPT-OSS-20b (E=32, k=4),
+#         Qwen2-57B (E=64, k=8), Qwen3-30B (E=128, k=8),
+#         DeepSeek-V3 (E=256, k=8).
+
+--reset
+--dt=f32:f32:f32,bf16:bf16:bf16,f16:f16:f16
+--wtag=abc
+
+# --- Llama4 Scout: E=16, top-k=1 --------------------------------------------
+--grouped=0:16:balanced
+256x512:16x512x256nLlama4-Scout-balanced
+--grouped=0:16:hot
+256x512:16x512x256nLlama4-Scout-hot
+--grouped=0:16:hot:100
+256x512:16x512x256nLlama4-Scout-hot-all
+--grouped=0:16:decode
+1x512:16x512x256nLlama4-Scout-decode
+
+# --- GPT-OSS-20b: E=32, top-k=4 ---------------------------------------------
+--grouped=0:32:balanced
+256x512:32x512x256nGPT-OSS-20b-balanced
+--grouped=0:32:hot
+256x512:32x512x256nGPT-OSS-20b-hot
+--grouped=0:32:hot:100
+256x512:32x512x256nGPT-OSS-20b-hot-all
+--grouped=0:32:decode
+4x512:32x512x256nGPT-OSS-20b-decode
+
+# --- Qwen2-57B-A14B: E=64, top-k=8 ------------------------------------------
+--grouped=0:64:balanced
+512x512:64x512x256nQwen2-57B-balanced
+--grouped=0:64:hot
+512x512:64x512x256nQwen2-57B-hot
+--grouped=0:64:hot:100
+512x512:64x512x256nQwen2-57B-hot-all
+--grouped=0:64:decode
+8x512:64x512x256nQwen2-57B-decode
+
+# --- Qwen3-30B-A3B: E=128, top-k=8 ------------------------------------------
+--grouped=0:128:balanced
+512x512:128x512x256nQwen3-30B-balanced
+--grouped=0:128:hot
+512x512:128x512x256nQwen3-30B-hot
+--grouped=0:128:hot:100
+512x512:128x512x256nQwen3-30B-hot-all
+--grouped=0:128:decode
+8x512:128x512x256nQwen3-30B-decode
+
+# --- DeepSeek-V3: E=256, top-k=8 --------------------------------------------
+--grouped=0:256:balanced
+1024x512:256x512x256nDeepSeek-V3-balanced
+--grouped=0:256:hot
+1024x512:256x512x256nDeepSeek-V3-hot
+--grouped=0:256:hot:100
+1024x512:256x512x256nDeepSeek-V3-hot-all
+--grouped=0:256:decode
+8x512:256x512x256nDeepSeek-V3-decode
+
+# --- Section B: frameworks real-data coverage ------------------------------
+# grouped_mm:        bf16/f16, mat2 row-major (abc) and col-major (acb)
+# scaled_grouped_mm: mat2 col-major (acb), mat1 row-major (default stag)
+
+--reset
+
+########################################
+# grouped_mm: BF16/FP16                #
+########################################
+
+# mat2 row-major
+--dt=f16:f16:f16,bf16:bf16:bf16
+--wtag=abc
+--attr-fpmath=f16:true
+--batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_large
+
+# mat2 col-major
+--reset
+--dt=f16:f16:f16,bf16:bf16:bf16
+--wtag=acb
+--attr-fpmath=f16:true
+--batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_large
+
+########################################
+# scaled_grouped_mm: FP8               #
+# scale_a: row-wise f32 (M,)           #
+# scale_b: col-wise f32 (E, N)         #
+########################################
+
+--reset
+--dt=f8_e5m2:f8_e5m2:bf16,f8_e4m3:f8_e4m3:bf16
+--wtag=acb
+--attr-scales=src:1:f32+wei:5:f32
+--attr-fpmath=f16:true
+--batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_large
+
+########################################
+# scaled_grouped_mm: MxFP8             #
+# scale_a: e8m0 block (M, K/32)        #
+# scale_b: e8m0 block (E, K/32, N)     #
+########################################
+
+--reset
+--dt=f8_e4m3:f8_e4m3:bf16
+--wtag=acb
+--attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+--attr-fpmath=f16:true
+--batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_large
+
+########################################
+# scaled_grouped_mm: MxFP4             #
+# scale_a: e8m0 block (M, K/32)        #
+# scale_b: e8m0 block (E, K/32, N)     #
+########################################
+
+--reset
+--dt=f4_e2m1:f4_e2m1:bf16
+--wtag=acb
+--attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
+--attr-fpmath=f16:true
+--batch=shapes_grouped_moe
+
+########################################
+# scaled_grouped_mm: NvFP4             #
+# scale_a: f8_e4m3 block (M, K/16)     #
+# scale_b: f8_e4m3 block (E, K/16, N)  #
+# + per-group global f32 scale         #
+########################################
+
+--reset
+--dt=f4_e2m1:f4_e2m1:bf16
+--wtag=acb
+--attr-scales=src:3:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
+--attr-post-ops=mul:f32:0
+--attr-fpmath=f16:true
+--batch=shapes_grouped_moe
+
+########################################
+# WoQ F16/U4/F16                       #
+# scale_b: f16 block (E, K/128, N)     #
+# zero-point_b: u4 block (E, K/128, N) #
+# + bias f16                           #
+########################################
+
+--reset
+--dt=f16:u4:f16
+--bia-dt=f16 --bia_mask=2
+--attr-scales=wei:7:f16:128x1
+--attr-zero-points=wei:7:u4:128x1
+--attr-fpmath=f16:true
+--wtag=acb
+--match=gs128
+--batch=shapes_grouped_moe
+
+########################################
+# WoQ F16/U8/F16                       #
+# scale_b: f16 block (E, 1, N)         #
+# zero-point_b: u8 block (E, 1, N)     #
+# + bias f16                           #
+########################################
+
+--reset
+--dt=f16:u8:f16
+--bia-dt=f16 --bia_mask=2
+--attr-scales=wei:5:f16
+--attr-zero-points=wei:5:u8
+--attr-fpmath=f16:true
+--wtag=acb
+--batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_large

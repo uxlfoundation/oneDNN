@@ -44,6 +44,7 @@
 #include "utils/dnnl_query.hpp"
 #include "utils/memory.hpp"
 #include "utils/parallel.hpp"
+#include "utils/perf_lock.hpp"
 #include "utils/stream_kind.hpp"
 
 extern "C" dnnl_status_t dnnl_memory_desc_create_with_string_tag(
@@ -245,6 +246,8 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst, res_t *res,
     // custom flag for a narrow use case.
     stream_t stream(query_engine(query_pd(prim)));
     std::vector<dnnl_exec_arg_t> dnnl_args;
+
+    perf_lock_t gpu_lock(src.engine().is_gpu() || dst.engine().is_gpu());
 
     // Copy-paste to avoid exposing symbol.
     // execute_unmap_args(args, dnnl_args);

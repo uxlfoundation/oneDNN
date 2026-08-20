@@ -484,8 +484,8 @@ inline bool mayiuse(const cpu_isa_t cpu_isa, bool soft = false) {
                     && mayiuse(amx_fp16, soft));
         case avx10_2_amx_2:
             REG_AMX_ISA(return mayiuse(avx10_2, soft) && mayiuse(amx_tile, soft)
-                    && cpu().has(Cpu::tAMX_TF32) && cpu().has(Cpu::tAMX_AVX512)
-                    && cpu().has(Cpu::tAMX_MOVRS) && cpu().has(Cpu::tAMX_FP8));
+                    && cpu().has(Cpu::tAMX_AVX512) && cpu().has(Cpu::tAMX_MOVRS)
+                    && cpu().has(Cpu::tAMX_FP8));
         case isa_all: return false;
         case isa_undef: return true;
     }

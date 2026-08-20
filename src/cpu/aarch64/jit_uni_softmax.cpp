@@ -703,6 +703,7 @@ jit_softmax_sve_t::jit_softmax_sve_t(const softmax_pd_t *pd, int vlen)
 // ASIMD JIT softmax generator
 struct jit_softmax_asimd_t : public jit_softmax_base_t {
     std::unique_ptr<jit_uni_eltwise_injector_t<asimd>> exp_injector_;
+    std::unique_ptr<jit_uni_eltwise_injector_t<asimd>> log_injector_;
 
     const VReg vneg_flt_max = VReg(vneg_flt_max_idx);
     const VReg vone = VReg(vone_idx);
@@ -851,6 +852,15 @@ void jit_softmax_asimd_t::accumulate_vsum() {
             load(vreg_tmp_src, src_ptr(src_axis_stride_ * i),
                     src_d_.data_type(), tail, vzero);
             fsub(vreg_tmp_src.s, vreg_tmp_src.s, vmax.s);
+            if (is_logsoftmax_) { // store before applying exp
+                if (need_scratchpad_) {
+                    store(interim_ptr(interim_axis_stride_ * i), vreg_tmp_src,
+                            data_type::f32, tail);
+                } else {
+                    store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
+                            dst_d_.data_type(), tail);
+                }
+            }
         }
 
         exp_injector_->compute_vector_range(vmm_start, vmm_end);
@@ -859,18 +869,21 @@ void jit_softmax_asimd_t::accumulate_vsum() {
             VReg vreg_tmp_src = VReg(data_vreg_start_idx + i);
             if (tail) clear_unused_tail_lanes(vreg_tmp_src);
             fadd(vsum.s, vsum.s, vreg_tmp_src.s);
-            if (need_scratchpad_) {
-                store(interim_ptr(interim_axis_stride_ * i), vreg_tmp_src,
-                        data_type::f32, tail);
-            } else {
-                store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
-                        dst_d_.data_type(), tail);
+            if (is_softmax_) { // store after applying exp
+                if (need_scratchpad_) {
+                    store(interim_ptr(interim_axis_stride_ * i), vreg_tmp_src,
+                            data_type::f32, tail);
+                } else {
+                    store(dst_ptr(dst_axis_stride_ * i), vreg_tmp_src,
+                            dst_d_.data_type(), tail);
+                }
             }
         }
     });
 
     get_horizontal_op(vsum, op_t::sum);
-    fdiv(vsum.s, vone.s, vsum.s);
+    if (is_softmax_) { fdiv(vsum.s, vone.s, vsum.s); }
+    if (is_logsoftmax_) log_injector_->compute_vector(vsum.getIdx());
 }
 
 void jit_softmax_asimd_t::compute_dst() {
@@ -884,7 +897,13 @@ void jit_softmax_asimd_t::compute_dst() {
                 load(vreg_tmp_src, dst_ptr(dst_axis_stride_ * i),
                         dst_d_.data_type(), tail, vzero);
             }
-            fmul(vreg_tmp_src.s, vreg_tmp_src.s, vsum.s);
+            if (is_softmax_) { fmul(vreg_tmp_src.s, vreg_tmp_src.s, vsum.s); }
+            if (is_logsoftmax_) {
+                fsub(vreg_tmp_src.s, vreg_tmp_src.s, vsum.s);
+                if (tail && axis_is_blocked_) {
+                    clear_unused_tail_lanes(vreg_tmp_src);
+                }
+            }
 
             if (need_src_scale_) {
                 const auto &v_src_scale = vmax;
@@ -905,22 +924,30 @@ void jit_softmax_asimd_t::compute_dst() {
 }
 
 void jit_softmax_asimd_t::generate() {
-    assert(pd_->is_fwd() && is_softmax_);
+    assert(pd_->is_fwd());
 
     exp_injector_.reset(new jit_uni_eltwise_injector_t<asimd>(this,
             alg_kind::eltwise_exp, 0.0f, 0.0f, 1.0f, false,
             reg_exp_injector_table, injector_mask, injector_tmp));
     exp_injector_->set_input_range(-INFINITY, 0.f);
 
+    if (is_logsoftmax_) {
+        log_injector_.reset(new jit_uni_eltwise_injector_t<asimd>(this,
+                alg_kind::eltwise_log, 0.0f, 0.0f, 1.0f, true,
+                reg_log_injector_table, injector_mask, injector_tmp));
+    }
+
     compute_predefined_variables();
     preamble();
 
     exp_injector_->load_table_addr();
+    if (log_injector_) log_injector_->load_table_addr();
     load_common_params();
     forward();
 
     postamble();
     exp_injector_->prepare_table();
+    if (log_injector_) log_injector_->prepare_table();
 }
 
 jit_softmax_asimd_t::jit_softmax_asimd_t(const softmax_pd_t *pd)

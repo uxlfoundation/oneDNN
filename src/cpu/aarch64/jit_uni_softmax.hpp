@@ -80,8 +80,7 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                             utils::one_of(bf16, src_dt, dst_dt), mayiuse_bf16())
                     && IMPLICATION(isa == asimd,
                             utils::one_of(src_dt, f32, f16)
-                                    && utils::one_of(dst_dt, f32, f16)
-                                    && is_softmax())
+                                    && utils::one_of(dst_dt, f32, f16))
                     && attr()->has_default_values(skip_mask_t::scales)
                     && attr_scales_ok()
                     && set_default_formats() == status::success;

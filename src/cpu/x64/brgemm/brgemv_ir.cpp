@@ -848,8 +848,11 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     VCONDCHECK_BRGEMV_IR(utils::everyone_is(f32, brg.dt_a, brg.dt_b, brg.dt_c),
             VERBOSE_UNSUPPORTED_DT);
     VCONDCHECK_BRGEMV_IR(brg.isa_impl == avx2, VERBOSE_UNSUPPORTED_ISA);
-    VCONDCHECK_BRGEMV_IR(
-            !brg.transA, VERBOSE_UNSUPPORTED_FEATURE, "transposed A");
+
+    // A vector accumulator stores neighboring outputs with a single
+    // instruction, so `y` has to be contiguous.
+    VCONDCHECK_BRGEMV_IR(IMPLICATION(brg.gemv_acc_is_vector(), brg.LDC == 1),
+            VERBOSE_UNSUPPORTED_FEATURE, "strided y with a vector accumulator");
 
     // With post-ops the kernel stores to D instead of C. It cannot convert the
     // accumulator on the way out, so it takes only `dt_d == dt_c`. The check is
@@ -908,7 +911,8 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     VCONDCHECK_BRGEMV_IR(
             !brg.is_runtime_ldc, VERBOSE_UNSUPPORTED_FEATURE, "runtime ldc");
 
-    const int m_block = brg.gemv_bd_block();
+    const int m_block
+            = brg.gemv_acc_is_vector() ? brg.bd_block : brg.gemv_bd_block();
     const int dt_sz_a = brg.typesize_A;
     const int dt_sz_y = brg.typesize_C;
     const dim_t incy = brg.LDC;
@@ -916,8 +920,17 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     // Ensure indexed displacements fit in 32-bit
     auto fits = [](dim_t v) { return v <= INT32_MAX && v >= INT32_MIN; };
 
-    VCONDCHECK_BRGEMV_IR(fits(dt_sz_a * (dim_t)m_block * brg.LDA),
-            VERBOSE_UNSUPPORTED_FEATURE, "A block offset overflows int32");
+    // A is K-major when it is transposed, which swaps the M and K strides.
+    const dim_t mblk_a_off = brg.transA ? dt_sz_a * (dim_t)m_block
+                                        : dt_sz_a * (dim_t)m_block * brg.LDA;
+    const dim_t kblk_a_off = brg.transA
+            ? dt_sz_a * (dim_t)brg.rd_block * brg.LDA
+            : dt_sz_a * (dim_t)brg.rd_block;
+
+    VCONDCHECK_BRGEMV_IR(fits(mblk_a_off), VERBOSE_UNSUPPORTED_FEATURE,
+            "A block offset overflows int32");
+    VCONDCHECK_BRGEMV_IR(fits(kblk_a_off), VERBOSE_UNSUPPORTED_FEATURE,
+            "A reduction step overflows int32");
     VCONDCHECK_BRGEMV_IR(fits(dt_sz_y * (dim_t)m_block * incy),
             VERBOSE_UNSUPPORTED_FEATURE, "y block offset overflows int32");
 

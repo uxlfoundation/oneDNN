@@ -375,6 +375,28 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
     EXPECT_NE(std::find(uses.begin(), uses.end(), (int)acc), uses.end());
 }
 
+// A broadcast reads the base pointer and overwrites its destination. Unlike an
+// accumulator it must not be reported as reading the destination, otherwise the
+// allocator would keep a dead value alive.
+TEST(IRBuilderTests, BroadcastDefUse) {
+    ir_t ir;
+    const vreg_t ptr = ir.new_gpr();
+    ir.load_param(ptr, 0);
+
+    const vreg_t b = ir.new_vec(data_type::f32);
+    ir.vbcast(b, ptr, (dim_t)sizeof(float));
+
+    ASSERT_EQ(ir.n_ops(), 2);
+    EXPECT_EQ(ir.ops()[1].kind, op_kind_t::vbcast);
+    EXPECT_EQ(ir.ops()[1].mem.base, ptr);
+    EXPECT_EQ(ir.ops()[1].mem.disp, (dim_t)sizeof(float));
+
+    std::vector<int> defs, uses;
+    ir.def_use(ir.ops()[1], defs, uses);
+    EXPECT_EQ(defs, std::vector<int>({(int)b}));
+    EXPECT_EQ(uses, std::vector<int>({(int)ptr}));
+}
+
 // Validates loop construction. A real loop links its end back to its begin and
 // shares one counter register, while a loop that would run only once is inlined
 // rather than emitted as a branch that is never taken.
@@ -933,6 +955,35 @@ TEST(IntegrationTests, MaskedAccessCoversActiveElementsOnly) {
         EXPECT_FLOAT_EQ(c_buf[i], a_buf[i] * b_buf[i]) << " at element " << i;
     for (int i = tail; i < simd_w(); i++)
         EXPECT_FLOAT_EQ(c_buf[i], sentinel) << " at element " << i;
+}
+
+TEST(IntegrationTests, BroadcastScalesWholeVector) {
+    SKIP_IF_NO_AVX2();
+
+    ir_t ir;
+    const vreg_t input_ptr = ir.new_gpr();
+    ir.load_param(input_ptr, offsetof(dot_args_t, a));
+    const vreg_t scale_ptr = ir.new_gpr();
+    ir.load_param(scale_ptr, offsetof(dot_args_t, b));
+    const vreg_t output_ptr = ir.new_gpr();
+    ir.load_param(output_ptr, offsetof(dot_args_t, c));
+    const vreg_t input = ir.new_vec(data_type::f32);
+    ir.vload(input, input_ptr, 0, data_type::f32);
+    const vreg_t scale = ir.new_vec(data_type::f32);
+    ir.vbcast(scale, scale_ptr, sizeof(float), data_type::f32);
+    ir.vmul(input, scale);
+    ir.vstore(output_ptr, 0, input, data_type::f32);
+
+    ir_kernel_t kernel(ir);
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+    std::vector<float> input_data(simd_w()), output_data(simd_w(), -12345.f);
+    const float scales[] = {100.f, 3.f};
+    for (int index = 0; index < simd_w(); index++)
+        input_data[index] = (float)(index + 1);
+    dot_args_t args {input_data.data(), scales, output_data.data()};
+    kernel.run(&args);
+    for (int index = 0; index < simd_w(); index++)
+        EXPECT_FLOAT_EQ(output_data[index], input_data[index] * scales[1]);
 }
 
 // Computes a dot product where one vector is multiplied by n vectors into

@@ -112,6 +112,14 @@ struct avx512_backend_t {
         else { JIT_ASSERT(!"vstore_scalar: dtype not implemented"); }
     }
 
+    void vbcast(int d, int base, dim_t disp, data_type_t mem_dt,
+            data_type_t reg_dt) {
+        const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
+            gen().vbroadcastss(Xbyak::Zmm(d), addr);
+        else { JIT_ASSERT(!"vbcast: dtype not implemented"); }
+    }
+
     void vadd(int d, int s, data_type_t dt) { // dst += s0
         if (dt == data_type::f32)
             gen().vaddps(Xbyak::Zmm(d), Xbyak::Zmm(d), Xbyak::Zmm(s));

@@ -133,13 +133,23 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
         dnnl::impl::float16_t *dst, dim_t len, bool is_logsoftmax,
         bool is_softmax_inf_as_zero, float *scratchpad) {
 
-    float max_val = 0.f;
-    uint32_t has_nan = 0;
-    // Vectorized pass that replaces the former scalar loop with per-element
-    // f16->f32 widening (vfwcvt) and a vector max reduction. The seed and the
-    // NaN semantics reproduce the scalar `val > max_val` loop: a NaN never
-    // updates the max, and has_nan is set for any (raw & 0x7fff) > 0x7c00.
-    jit_rvv_softmax_f16_reduce_max(src, len, &max_val, &has_nan);
+    constexpr dim_t reduce_max_jit_min_len = 16;
+    float max_val
+            = (float)nstl::numeric_limits<dnnl::impl::float16_t>::lowest();
+    bool has_nan = false;
+    if (len >= reduce_max_jit_min_len) {
+        // The vectorized pass widens f16 to f32 and performs a vector max
+        // reduction. Its seed and NaN semantics reproduce the scalar loop.
+        uint32_t jit_has_nan = 0;
+        jit_rvv_softmax_f16_reduce_max(src, len, &max_val, &jit_has_nan);
+        has_nan = jit_has_nan;
+    } else {
+        for (dim_t i = 0; i < len; ++i) {
+            has_nan = has_nan || ((src[i].raw & 0x7fffu) > 0x7c00u);
+            const float val = (float)src[i];
+            if (val > max_val) max_val = val;
+        }
+    }
     const bool max_is_pos_inf = max_val == INFINITY;
 
     if (len == 1 && isfinite((float)src[0])) {

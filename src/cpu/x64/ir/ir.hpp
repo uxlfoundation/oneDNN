@@ -100,6 +100,8 @@ enum class op_kind_t {
     vzero,
     // dst = [base + disp] (load full vector)
     vload,
+    // dst[i] = [base + disp] for every i (broadcast one element)
+    vbcast,
     // dst += sum_{i=0}^{N-1} (s0[i] * s1[i]), where N is the dot length
     vdot,
     // dst += s0 (vector add)
@@ -292,6 +294,9 @@ struct DNNL_API ir_t {
     // vec
     void vzero(vreg_t dst);
     void vload(vreg_t dst, vreg_t base, dim_t disp);
+    // Unlike `vload_masked` with a single element, this fills every element of
+    // `dst`, so the value can be combined with a full-vector operand.
+    void vbcast(vreg_t dst, vreg_t base, dim_t disp);
     void vdot(vreg_t dst, vreg_t a, vreg_t b);
     void vadd(vreg_t dst, vreg_t src);
     void vmul(vreg_t dst, vreg_t src);

@@ -375,6 +375,28 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
     EXPECT_NE(std::find(uses.begin(), uses.end(), (int)acc), uses.end());
 }
 
+// A broadcast reads the base pointer and overwrites its destination. Unlike an
+// accumulator it must not be reported as reading the destination, otherwise the
+// allocator would keep a dead value alive.
+TEST(IRBuilderTests, BroadcastDefUse) {
+    ir_t ir;
+    const vreg_t ptr = ir.new_gpr();
+    ir.load_param(ptr, 0);
+
+    const vreg_t b = ir.new_vec(data_type::f32);
+    ir.vbcast(b, ptr, (dim_t)sizeof(float));
+
+    ASSERT_EQ(ir.n_ops(), 2);
+    EXPECT_EQ(ir.ops()[1].kind, op_kind_t::vbcast);
+    EXPECT_EQ(ir.ops()[1].mem.base, ptr);
+    EXPECT_EQ(ir.ops()[1].mem.disp, (dim_t)sizeof(float));
+
+    std::vector<int> defs, uses;
+    ir.def_use(ir.ops()[1], defs, uses);
+    EXPECT_EQ(defs, std::vector<int>({(int)b}));
+    EXPECT_EQ(uses, std::vector<int>({(int)ptr}));
+}
+
 // Validates loop construction. A real loop links its end back to its begin and
 // shares one counter register, while a loop that would run only once is inlined
 // rather than emitted as a branch that is never taken.
@@ -834,6 +856,48 @@ TEST(IntegrationTests, BuildsLoopReduction) {
     kernel.run(&args);
 
     EXPECT_FLOAT_EQ(c, ref_dot(a.data(), b.data(), k));
+}
+
+// A broadcast must fill every element of the destination, so that the value can
+// be combined with a full-vector operand. Scaling a vector by a single scalar
+// checks exactly that.
+TEST(IntegrationTests, BroadcastScalesWholeVector) {
+    SKIP_IF_NO_AVX2();
+
+    ir_t ir;
+
+    const vreg_t a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(dot_args_t, a));
+
+    const vreg_t b_ptr = ir.new_gpr();
+    ir.load_param(b_ptr, offsetof(dot_args_t, b));
+
+    const vreg_t c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(dot_args_t, c));
+
+    const vreg_t v = ir.new_vec(data_type::f32);
+    ir.vload(v, a_ptr, 0);
+
+    const vreg_t s = ir.new_vec(data_type::f32);
+    ir.vbcast(s, b_ptr, (dim_t)sizeof(float));
+    ir.vmul(v, s);
+
+    ir.vstore_masked(c_ptr, 0, v, vreg_t::none, simd_w);
+
+    ir_kernel_t kernel(ir);
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+
+    std::vector<float> a(simd_w), b(2), c(simd_w, -12345.f);
+    for (int i = 0; i < simd_w; i++)
+        a[i] = (float)(i + 1);
+    b[0] = 100.f; // must be ignored, the broadcast reads b[1]
+    b[1] = 3.f;
+
+    dot_args_t args {a.data(), b.data(), c.data()};
+    kernel.run(&args);
+
+    for (int i = 0; i < simd_w; i++)
+        EXPECT_FLOAT_EQ(c[i], a[i] * b[1]);
 }
 
 // Computes a dot product where one vector is multiplied by n vectors into

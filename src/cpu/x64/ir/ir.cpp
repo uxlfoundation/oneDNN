@@ -97,6 +97,15 @@ void ir_t::vload(vreg_t dst, vreg_t base, dim_t disp) {
     ops_.push_back(op);
 }
 
+void ir_t::vbcast(vreg_t dst, vreg_t base, dim_t disp) {
+    op_t op;
+    op.kind = op_kind_t::vbcast;
+    op.dst = dst;
+    op.mem.base = base;
+    op.mem.disp = disp;
+    ops_.push_back(op);
+}
+
 void ir_t::vdot(vreg_t dst, vreg_t a, vreg_t b) {
     op_t op;
     op.kind = op_kind_t::vdot;
@@ -283,6 +292,7 @@ void ir_t::def_use(
             break;
         case op_kind_t::vzero: d(op.dst); break;
         case op_kind_t::vload:
+        case op_kind_t::vbcast:
             u(op.mem.base);
             d(op.dst);
             break;

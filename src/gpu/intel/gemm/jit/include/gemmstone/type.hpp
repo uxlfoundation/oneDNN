@@ -30,44 +30,53 @@ class Type {
 public:
     /*
     * Bitfield type ID, consists of following flags/ranges:
-    * 0 - int/fp
-    * 1 - (if int) u/s
-    * 2 - byte/bit size
-    * 3 - reserved
-    * 4-7 - log2 of size in bytes / bit size (depends on flag in bit 2)
-    * 8-13 - ngen reference table
-    * 14-15 - reserved
-    * 16 - real/complex
-    * 17 - 1 if split complex
+    * // nibble 0: type meta-information
+    * 0 - fp=1, int=0
+    * 1 - signed=1, unsigned=0
+    * 2-3 - reserved
+    * // nibble 1: complexity meta-information
+    * 4 - complex=1, real=0
+    * 5 - split complex=1
+    * 6-7 - reserved
+    * // nibble 2-4: size meta-information
+    * 8-11 - size of the block (units based on following flags)
+    * 12-15 - number of values per block
+    * 16 - block size in bits=0, block size in bytes=1
+    * 17 - log2 block size=0, actual block size=1
     * 18-19 - reserved
-    * 20-23 - vector component number
-    * 24-31 - reserved
+    * // nibble 5-6: index in ngen mapping table
+    * 20-27 - ngen reference
+    * // nibble 7: vector meta-information
+    * 28-31 - vector component number
     */
     enum _Type : uint32_t {
         invalid  = 0,
-        f16      = 0x00100011,
-        f32      = 0x00100121,
-        f64      = 0x00100231,
-        u2       = 0x00101024,
-        s2       = 0x00101126,
-        u4       = 0x00101244,
-        s4       = 0x00101346,
-        u8       = 0x00101400,
-        s8       = 0x00101502,
-        u16      = 0x00101610,
-        s16      = 0x00101712,
-        u32      = 0x00101820,
-        s32      = 0x00101922,
-        u64      = 0x00101A30,
-        s64      = 0x00101B32,
-        f4_e2m1  = 0x00100445,
-        nf4      = 0x00100645,
-        f8_e8m0  = 0x00100801,
+        f16      = 0x10011101,
+        f32      = 0x10111201,
+        f64      = 0x10211301,
+        u2       = 0x11001100,
+        s2       = 0x11101102,
+        u4       = 0x11201200,
+        s4       = 0x11301202,
+        u8       = 0x11411000,
+        s8       = 0x11511002,
+        u16      = 0x11611100,
+        s16      = 0x11711102,
+        u32      = 0x11811200,
+        s32      = 0x11911202,
+        u64      = 0x11A11300,
+        s64      = 0x11B11302,
+        u8x2     = 0x21411000,
+        s8x2     = 0x21511002,
+        f4_e2m1  = 0x10401201,
+        f4_e3m0  = 0x10501201,
+        nf4      = 0x10601201,
+        f8_e8m0  = 0x10811001,
 
-        bf8      = 0x00100E01,
-        hf8      = 0x00100F01,
-        bf16     = 0x00100C11,
-        tf32     = 0x00100D21,
+        bf8      = 0x10E11001,
+        hf8      = 0x10F11001,
+        bf16     = 0x10C11101,
+        tf32     = 0x10D11201,
     };
 
 private:
@@ -90,33 +99,47 @@ public:
     constexpr bool isF8()             const { return (val == Type::bf8) || (val == Type::hf8) || (val == Type::f8_e8m0); }
     constexpr bool isF4()             const { return bits() == 4 && isFP(); }
     constexpr bool isSigned()         const { return (uint32_t(val) & 0x3) != 0x0; }
-    constexpr int bits()              const { return isSubByte() ? (uint32_t(val) >> 4) & 0xF : paddedSize() * 8; }
-    constexpr int paddedSize()        const { return isSubByte() ? 1 : 1 << ((uint32_t(val) >> 4) & 0xF); }
-    int log2Size()                    const { subByteCheck(); return (uint32_t(val) >> 4) & 0xF; }
-    int size()                        const { subByteCheck(); return paddedSize(); }
-    constexpr int isSubByte()         const { return uint32_t(val) & 0x4; }
+    constexpr int blockSize()         const { return (uint32_t(val) >> 12) & 0xF; }
+    constexpr bool isBlocked()        const { return blockSize() > 1; }
+    constexpr bool isLog2Size()       const { return !(uint32_t(val) & (1 << 17)); }
+    constexpr bool isByteSize()       const { return uint32_t(val) & (1 << 16); }
+    constexpr int bits()              const {
+        return (isByteSize() ? 8 : 1) * (isLog2Size() ? (1 << ((uint32_t(val) >> 8) & 0xF)) : ((uint32_t(val) >> 8) & 0xF)); }
+    constexpr int paddedSize()        const { return (bits() + 7) / 8; }
+    int log2Size()                    const {
+        subByteCheck();
+        auto temp = bits() / 8;
+        int val = 0;
+        while (temp > 1) {
+            temp >>= 1;
+            val += 1;
+        }
+        return val; }
+    int size()                        const { subByteCheck(); blockCheck(); return paddedSize(); }
+    constexpr bool isSubByte()        const { return bits() < 8; }
     constexpr int perByte()           const { return isSubByte() ? 8 / bits() : 1; }
     uint16_t logPerByte()             const { if (!isSubByte()) stub(); return (perByte() == 4) ? 2 : 1; }
     void subByteCheck()               const { if (isSubByte()) stub(); }
+    void blockCheck()                 const { if (isBlocked()) stub(); }
 
     constexpr Type arithmetic() const {
         return (val == tf32) ? Type(f32) : real();
     }
     constexpr Type asUnsigned() const {
-        return static_cast<_Type>(uint32_t(val) & ~(isInteger() ? 0x102 : 0));
+        return static_cast<_Type>(uint32_t(val) & ~(isInteger() ? 0x100002 : 0));
     }
     constexpr Type asSigned() const {
-        return static_cast<_Type>(uint32_t(val) | (isInteger() ? 0x102 : 0));
+        return static_cast<_Type>(uint32_t(val) | (isInteger() ? 0x100002 : 0));
     }
     constexpr Type baseType() const { return *this; }
 
     template <typename U> constexpr friend decltype(std::declval<U>()*1) operator*(U a, Type t) {
-        return t.isSubByte() ? (a * t.bits() + (a >= 0 ? 7 : -7)) / 8 : a * int(1u << t.log2Size());
+        return (a * t.bits() + (a >= 0 ? 7 : -7)) / 8;
     }
     template <typename U> constexpr friend decltype(std::declval<U>()*1) operator*(Type t, U a) { return a * t; }
     template <typename U>           friend U operator*=(U &a, Type t) { a = a * t; return a; }
     template <typename U> constexpr friend decltype(std::declval<U>()/1) operator/(U a, Type t) {
-        return t.isSubByte() ? a * 8 / t.bits() : a / int(1u << t.log2Size());
+        return a * 8 / t.bits();
     }
 
     // Not valid nGEN DataTypes; for gemmstone internal use only
@@ -125,12 +148,12 @@ public:
 
     ngen::DataType ngen() const
     {
-        uint32_t index = (uint32_t(val) >> 8) & 0x3F;
+        uint32_t index = (uint32_t(val) >> 20) & 0xFF;
         using DT = ngen::DataType;
         auto none = DT::invalid;
         static const DT table[64] = {
             DT::hf,      DT::f,       DT::df,      none,
-            DT::e2m1,    none,        ngen_nf4(),  none,
+            DT::e2m1,    DT::e3m0 ,   ngen_nf4(),  none,
             ngen_e8m0(), none,        none,        none,
             DT::bf,      DT::tf32,    DT::bf8,     DT::hf8,
             DT::u2,      DT::s2,      DT::u4,      DT::s4,
@@ -146,6 +169,12 @@ public:
             none,        none,        none,        none,
             none,        none,        none,        none
         };
+        // While 8 bits are allocated for ngen reference encoding,
+        // the actual reference table is smaller and no type should
+        // normally reference outside it
+        if (index >= 64) {
+            stub("Invalid ngen reference encoding in type ID");
+        }
         return table[index];
     }
 

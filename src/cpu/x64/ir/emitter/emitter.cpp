@@ -284,8 +284,8 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 JIT_ASSERT(!spilled(args.base_ptr)
                         && "inject_postops: base pointer spilled");
                 JIT_ASSERT(postops && "inject_postops: missing injector");
-                postops->inject(
-                        acc_phys, phys(args.base_ptr), args.out_byte_off);
+                postops->inject(acc_phys, phys(args.base_ptr),
+                        args.out_byte_off, args.is_tail);
                 break;
             }
 

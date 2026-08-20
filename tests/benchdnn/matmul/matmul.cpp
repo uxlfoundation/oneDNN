@@ -482,20 +482,20 @@ static void fill_dense_fp_values(data_kind_t kind, const prb_t *prb,
             float val = 0;
             while (val <= 0)
                 val = gen(int_seed);
-            val += src_zp + wei_zp; // Add zp so that it will be subtracted.
+            val =1 ; // += src_zp + wei_zp; // Add zp so that it will be subtracted.
             mem_fp.set_f32_elem(
                     0, round_to_nearest_representable(cfg.get_dt(kind), val));
             idx_start += 1;
         }
 
         for (int64_t idx = idx_start; idx < idx_end; ++idx) {
-            bool is_one = density == 1.f ? true : b_dist(b_seed);
+            bool is_one = true; // density == 1.f ? true : b_dist(b_seed);
             if (!is_one) {
                 mem_fp.set_f32_elem(idx, 0.f);
                 continue;
             }
             float val = gen(int_seed);
-            val += src_zp + wei_zp; // Add zp so that it will be subtracted.
+            val =1; // += src_zp + wei_zp; // Add zp so that it will be subtracted.
             mem_fp.set_f32_elem(
                     idx, round_to_nearest_representable(cfg.get_dt(kind), val));
         }

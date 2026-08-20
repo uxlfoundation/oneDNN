@@ -244,7 +244,7 @@ InstructionModifier CopyInstruction::ngenModifiers() const
 // Run all transformation passes on a CopyPlan.
 void CopyPlan::transform()
 {
-/*    printf("before \n");
+    /*printf("before \n");
     dump();
     printf("---\n");*/
     distributePhases();
@@ -1473,7 +1473,7 @@ void CopyPlan::planInt3Upconversion(CopyInstruction &i)
     if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
    // if (i.src0.stride != 1 || i.src0.vs || i.src0.width)
      //   stub("u3 source must reference the start of a contiguous packed group; unpack to u8 first.");
-
+    return;
     struct U3Lane {
         uint8_t byte, shift;        // low (or only) source byte and shift amount
         uint8_t hiByte, hiShift;    // high source byte and shift amount, if straddling
@@ -1592,6 +1592,7 @@ void CopyPlan::planInt3Upconversion(CopyInstruction &i)
                 setOp(ops[next++], Opcode::and_, dst, tmp, CopyOperand(int(7)));
             }
         }
+//	mergeChanges();
     }
 
     if (!directU8) {

@@ -95,7 +95,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
     if (isPacked(atype.layout)) {
         // Don't cross nonconsecutive tiles in a packed layout.
         bool cm = isColMajor(atype.layout) ^ isTransposing(astrategy.accessType);
-        if (cm) {
+    	if (cm) {
             if (static_cast<uint32_t>(maxRBlock) < atype.packSize && atype.tileC > 0)
                 maxCBlock = std::min<int>(maxCBlock, atype.tileC);
         } else {
@@ -125,7 +125,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
     bytes = 0;
     hasNoLoad = false;
     offsetAddr = 0;
-
+    
     auto &vrmask = rowMask.variable;
     auto &vcmask = colMask.variable;
 
@@ -736,16 +736,18 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             else if (atype.crosspack == icrosspack)
                 crosspack = 1;
             else return;
-
+            if (T.is3()) crosspack = 1;
             // Convert size from underlying type to our actual type.
             xblock = (xblock * Tblock) / T;
 
             simdSize = 1;
             ld = roundup_pow2(transpose ? yblock : xblock);
-            ebytes = Tblock.paddedSize();
+            ebytes = T.is3() ? 1: Tblock.paddedSize();
             extra = T.bits();
             auto bytes = align_up((colMajor ? cblock : rblock) / count, crosspack) * ld * count * T;
-            msgRegs = GRF::bytesToGRFs(hw, bytes);
+            if (T.is3())
+		    bytes = ((colMajor ? cblock : rblock) / count) * roundup_pow2(ld *T) * count;
+	    msgRegs = GRF::bytesToGRFs(hw, bytes);
             if (vnni && (T.bits() < 8)) {
                 if (T.is3()) stub("u3 does not support native VNNI/DPAS packing; unpack to u8 first.");
                 byteGlue = true;
@@ -755,12 +757,12 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             // Xe2: manually mask in the height dimension to work around slow LSC
             //      out-of-bounds checks.
             bool remainderH = memCM ? remainderC : remainderR;
-            if (hw >= HW::Xe2 && remainderH) {
+            /*if (hw >= HW::Xe2 && remainderH) {
                 auto &vymask = memCM ? colMask.variable : rowMask.variable;
                 vymask.isFixed = false;
                 vymask.bitRep = vymask.maskRep = vymask.rsize = 1;
                 vymask.rshift = 0;
-            }
+            }*/
             break;
         }
         case AccessType::CacheLine: {
@@ -1006,6 +1008,16 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
         if (elIndex & 7)
             stub("u3 element index must be aligned to an 8-element (3-byte) group boundary.");
         int byteOff =  (elIndex >> 3) * 3;
+	if (false) { //msgRegs > 0){ // isBlock2D(astrategy.type)){ 
+		if (colMajor){
+		int rowbytes = yy *ld * T; // roundup_pow2((ld *3)/8);
+		byteOff = rowbytes + (xx >> 3) * 3;
+		}else{
+		int rowbytes = yy * roundup_pow2((ld *3)/8);
+		byteOff = rowbytes + (xx >> 3) * 3;
+               }
+
+	}
 	if (byteGlue) byteOff *= 4;
 	byteOff += offsetBytes;
         int consecutive;
@@ -1088,6 +1100,8 @@ void RegisterBlock::calcBytes(Type T)
     if (cxComponent != Interleaved)
         T = T.real();
     bytes = align_up(colMajor ? nc : nr, crosspack) * ld * T;
+    if (T.is3())
+	bytes = ((colMajor ? nc : nr)) * roundup_pow2(ld *T);
     if (isLoadBlock() && msgRegs == 0)
         msgRegs = GRF::bytesToGRFs(hw, bytes);
 }

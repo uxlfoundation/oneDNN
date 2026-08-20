@@ -47,7 +47,7 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
             nq = div_up(nq, 2);
             T = Type::u8;
         } else if (thirdByte) {
-            nq = div_up(nq, 8);
+            nq = div_up(nq * 3, 8);
             T = Type::u8;
         }
 
@@ -104,7 +104,7 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                         asr(simd, r1, r1, 15);
                     });
                 }
-                if (T.paddedSize() == 1) for (int q0 = 0; q0 < nq; q0 += n16)
+                if (T.paddedSize() == 1 && !T.is3()) for (int q0 = 0; q0 < nq; q0 += n16)
                     mov(n16, masks[q0 / ne].ub(q0 % ne)(1), masks[q0 / n16].ub(1)(2));
                 break;
             case 4:
@@ -125,6 +125,16 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
             // covers, matching the real in-memory u3 layout, so the result
             // can be AND-masked directly against packed u3 data.
             int grfBytes = GRF::bytes(hw);
+            auto finalMasks = state.remaskRegs[index] = state.ra.alloc_range(div_up(nq, grfBytes));
+            for (int g = 0; g < nq; g++) {
+              //  for (int k = 0; k < 3; k++) {
+                    int dstByte = g ;
+		    int srcByte = (g / 3)*8;
+                    mov(1, finalMasks[dstByte / grfBytes].ub(dstByte % grfBytes)(1),
+                           masks[srcByte / grfBytes].ub(srcByte% grfBytes)(1));
+               // }
+            }
+            /*int grfBytes = GRF::bytes(hw);
             auto finalMasks = state.remaskRegs[index] = state.ra.alloc_range(div_up(nq * 3, grfBytes));
             for (int g = 0; g < nq; g++) {
                 for (int k = 0; k < 3; k++) {
@@ -132,7 +142,7 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                     mov(1, finalMasks[dstByte / grfBytes].ub(dstByte % grfBytes)(1),
                            masks[g / grfBytes].ub(g % grfBytes)(1));
                 }
-            }
+            }*/
             state.ra.safeRelease(masks);
         }
 
@@ -170,11 +180,11 @@ void Generator<hw>::remaskLayout(int index, bool column,
 
                 auto necp = ne * crosspack;
                 necp = std::min(necp, 2 * elementsPerGRF(hw, Tr));
-                if ((necp * Tr) & 3) stub();
+                if (!T.is3() && ((necp * Tr) & 3)) stub();
 
                 int mstride;
                 Type mtype = Type::u32;
-                int dwCrosspack = std::max(1, 4 / Tr);
+                int dwCrosspack = T.is3() ? 1 : std::max(1, 4 / Tr);
 
                 if (colMajor != column && crosspack == 1)
                     mstride = 1;

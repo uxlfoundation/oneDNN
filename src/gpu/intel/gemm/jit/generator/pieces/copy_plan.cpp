@@ -1897,89 +1897,105 @@ void CopyPlan::planInt2Downconversion(CopyInstruction &i)
     } else if (ddst.stride == 4) {
         // Byte-aligned destination, use bfn to insert values without touching
         // other data.
+        bool high = (ddst.offset % 8) >= 4;
         auto offset = (ddst.offset % 4) * 2;
 
         ie[1]->op = Opcode::shl;
+        ie[1]->simd = std::max(simd/2, 1);
         ie[1]->dst = sstmp;
         ie[1]->dst.stride *= 2;
         ie[1]->src0 = stmp;
-        ie[1]->src1 = Immediate::uw(offset);
+        ie[1]->src0.stride *= 2;
+        ie[1]->src1 = Immediate::uw(offset + (high ? 8 : 0));
 
         ie[2]->op = Opcode::bfn;
+        ie[2]->simd = std::max(simd/2, 1);
         ie[2]->ctrl = 0xCA;
         ie[2]->dst = ddst;
-        ie[2]->dst.type = DataType::ub;
+        ie[2]->dst.type = DataType::uw;
         ie[2]->dst.stride = 1;
-        ie[2]->dst.offset /= 4;
+        ie[2]->dst.offset /= 8;
         ie[2]->src0 = ddst;
-        ie[2]->src0.type = DataType::ub;
+        ie[2]->src0.type = DataType::uw;
         ie[2]->src0.stride = 1;
-        ie[2]->src0.offset /= 4;
+        ie[2]->src0.offset /= 8;
         ie[2]->src1 = sstmp;
         ie[2]->src1.stride *= 2;
-        ie[2]->src2 = Immediate::uw(0x3 << offset);
+        ie[2]->src2 = Immediate::uw((high ? 0x300 : 0x3) << offset);
 
-        for (int j = 3; j < 10; ++j) {
+        if (simd >= 2) {
+            ie[3]->op = Opcode::shl;
+            ie[3]->simd = simd/2;
+            ie[3]->dst = sstmp;
+            ie[3]->dst.stride *= 2;
+            ie[3]->src0 = stmp;
+            ie[3]->src0.offset += ie[3]->src0.stride;
+            ie[3]->src0.stride *= 2;
+            ie[3]->src1 = Immediate::uw(offset + (high ? 0 : 8));
+
+            ie[4]->op = Opcode::bfn;
+            ie[4]->simd = simd/2;
+            ie[4]->ctrl = 0xCA;
+            ie[4]->dst = ddst;
+            ie[4]->dst.type = DataType::ub;
+            ie[4]->dst.stride = 1;
+            ie[4]->dst.offset /= 4;
+            ie[4]->src0 = ddst;
+            ie[4]->src0.type = DataType::ub;
+            ie[4]->src0.stride = 1;
+            ie[4]->src0.offset /= 4;
+            if (high) {
+                ie[4]->dst.offset += 1;
+                ie[4]->src0.offset += 1;
+            }
+            ie[4]->src1 = sstmp;
+            ie[4]->src1.stride *= 2;
+            ie[4]->src2 = Immediate::uw((high ? 0x3 : 0x300) << offset);
+        } else {
+            ie[3]->invalidate();
+            ie[4]->invalidate();
+        }
+
+        for (int j = 5; j < 10; ++j) {
             ie[j]->invalidate();
         }
     } else if (ddst.stride == 2) {
         // Misaligned destination, use multiple bfn instructions to insert
         // values into the destination.
-        bool high = (ddst.offset % 4) >= 2;
-        auto offset = (ddst.offset % 2) * 2;
+        auto offset = (ddst.offset % 8) * 2;
+        int new_ins = std::min(simd, 4);
 
-        ie[1]->op = Opcode::shl;
-        ie[1]->simd = simd/2;
-        ie[1]->dst = sstmp;
-        ie[1]->dst.stride *= 2;
-        ie[1]->src0 = stmp;
-        ie[1]->src0.stride *= 2;
-        ie[1]->src1 = Immediate::uw(offset + (high ? 4 : 0));
+        for (int j = 0; j < new_ins; ++j) {
+            ie[2*j + 1]->op = Opcode::shl;
+            ie[2*j + 1]->simd = std::max(simd/4, 1);
+            ie[2*j + 1]->dst = sstmp;
+            ie[2*j + 1]->dst.stride *= 2;
+            ie[2*j + 1]->src0 = stmp;
+            ie[2*j + 1]->src0.offset += j * ie[3]->src0.stride;
+            ie[2*j + 1]->src0.stride *= 4;
+            ie[2*j + 1]->src1 = Immediate::uw((offset + 4*j) % 16);
 
-        ie[2]->op = Opcode::bfn;
-        ie[2]->simd = simd/2;
-        ie[2]->ctrl = 0xCA;
-        ie[2]->dst = ddst;
-        ie[2]->dst.type = DataType::ub;
-        ie[2]->dst.stride = 1;
-        ie[2]->dst.offset /= 4;
-        ie[2]->src0 = ddst;
-        ie[2]->src0.type = DataType::ub;
-        ie[2]->src0.stride = 1;
-        ie[2]->src0.offset /= 4;
-        ie[2]->src1 = sstmp;
-        ie[2]->src1.stride *= 2;
-        ie[2]->src2 = Immediate::uw((high ? 0x30 : 0x3) << offset);
-
-        ie[3]->op = Opcode::shl;
-        ie[3]->simd = simd/2;
-        ie[3]->dst = sstmp;
-        ie[3]->dst.stride *= 2;
-        ie[3]->src0 = stmp;
-        ie[3]->src0.offset += ie[3]->src0.stride;
-        ie[3]->src0.stride *= 2;
-        ie[3]->src1 = Immediate::uw(offset + (high ? 0 : 4));
-
-        ie[4]->op = Opcode::bfn;
-        ie[4]->simd = simd/2;
-        ie[4]->ctrl = 0xCA;
-        ie[4]->dst = ddst;
-        ie[4]->dst.type = DataType::ub;
-        ie[4]->dst.stride = 1;
-        ie[4]->dst.offset /= 4;
-        ie[4]->src0 = ddst;
-        ie[4]->src0.type = DataType::ub;
-        ie[4]->src0.stride = 1;
-        ie[4]->src0.offset /= 4;
-        if (high) {
-            ie[4]->dst.offset += 1;
-            ie[4]->src0.offset += 1;
+            ie[2*j + 2]->op = Opcode::bfn;
+            ie[2*j + 2]->simd = std::max(simd/4, 1);
+            ie[2*j + 2]->ctrl = 0xCA;
+            ie[2*j + 2]->dst = ddst;
+            ie[2*j + 2]->dst.type = DataType::uw;
+            ie[2*j + 2]->dst.stride = 1;
+            ie[2*j + 2]->dst.offset /= 8;
+            ie[2*j + 2]->src0 = ddst;
+            ie[2*j + 2]->src0.type = DataType::uw;
+            ie[2*j + 2]->src0.stride = 1;
+            ie[2*j + 2]->src0.offset /= 8;
+            if (offset + 4*j >= 16) {
+                ie[2*j + 2]->dst.offset += 1;
+                ie[2*j + 2]->src0.offset += 1;
+            }
+            ie[2*j + 2]->src1 = sstmp;
+            ie[2*j + 2]->src1.stride *= 2;
+            ie[2*j + 2]->src2 = Immediate::uw(0x3 << ((offset + 4*j) % 16));
         }
-        ie[4]->src1 = sstmp;
-        ie[4]->src1.stride *= 2;
-        ie[4]->src2 = Immediate::uw((high ? 0x3 : 0x30) << offset);
 
-        for (int j = 5; j < 10; ++j) {
+        for (int j = new_ins * 2 + 1; j < 10; ++j) {
             ie[j]->invalidate();
         }
     } else {

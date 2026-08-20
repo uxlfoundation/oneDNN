@@ -33,8 +33,7 @@ oneDNN supports training and inference with the following data types:
 | f32       | `+`       | `+`      |
 | bf16      | `+`       | `+`      |
 | f16       | `+`       | `+`      |
-| f8\_e5m2  | `+`       | `+`      |
-| f8\_e4m3  | `+`       | `+`      |
+| fp8(3)    | `+`       | `+`      |
 | s8        | `+`       |          |
 | u8        | `+`       |          |
 | f4\_e2m1  | `+`       |          |
@@ -47,6 +46,7 @@ Footnotes:
 2. `s4`/`u4` data types are only supported as a storage data type for weights argument
    in case of weight-only quantization. For more details, refer to
    [Matmul Tutorial: weight-only quantization](@ref matmul_with_weight_only_quantization_cpp).
+3. `fp8` data type includes `f8_e5m2` and `f8_e4m3`.
 
 @note
     Data type support may also be limited by hardware capabilities. Refer to
@@ -169,20 +169,20 @@ oneDNN performance optimizations for Intel Architecture Processors are
 specialized based on Instruction Set Architecture (ISA). The following
 table indicates data types support for every supported ISA:
 
-| ISA                                                  | f64     | f32     | bf16    | f16     | s8/u8   | f8_e4m3 | f8_e5m2 | f4_e2m1 | s4/u4   |
-| ---------------------------------------------------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | 
-| Intel SSE4.1                                         |         | `+`     |         |         |         |         |         |         |         |
-| Intel AVX                                            |         | `+`     |         |         |         |         |         |         |         |
-| Intel AVX2                                           |         | `+`     |         |         | `+`(1)  |         |         |         |         |
-| Intel AVX2 with Intel DL Boost (int8)                |         | `+`     |         |         | `+`     |         |         |         |         |
-| Intel AVX-512                                        |         | `+`     | `.`(2)  |         | `+`(1)  |         |         |         |         |
-| Intel AVX-512 with Intel DL Boost (int8)             |         | `+`     | `.`(2)  |         | `+`     |         |         |         |         |
-| Intel AVX-512 with Intel DL Boost (int8, bf16)       |         | `+`     | `+`     |         | `+`     |         |         |         |         |
-| Intel AVX2 with Intel DL Boost (int8) and NE_CONVERT |         | `+`     | `.`     | `.`     | `+`     |         |         |         |         |
-| Intel AVX10.1 with Intel AMX (int8, bf16)            |         | `+`     | `+`     | `.`(3)  | `+`     |         |         |         | `.`     |
-| Intel AVX10.1 with Intel AMX (int8, bf16, f16)       |         | `+`     | `+`     | `+`     | `+`     | `.`     | `.`     |         | `.`     |
-| Intel AVX10.2                                        |         | `+`     | `+`     | `+`     | `+`     | `.`     |         |         | `.`     |
-| Intel AVX10.2 with Intel AMX (int8, bf16, fp16, fp8) |         | `+`     | `+`     | `+`     | `+`     | `+`     | `+`     |         | `.`     |
+| ISA                                                  | f64     | f32     | bf16    | f16     | s8/u8   | fp8     | f4_e2m1 | s4/u4   |
+| ---------------------------------------------------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | 
+| Intel SSE4.1                                         |         | `+`     |         |         |         |         |         |         |
+| Intel AVX                                            |         | `+`     |         |         |         |         |         |         |
+| Intel AVX2                                           |         | `+`     |         |         | `+`(1)  |         |         |         |
+| Intel AVX2 with Intel DL Boost (int8)                |         | `+`     |         |         | `+`     |         |         |         |
+| Intel AVX-512                                        |         | `+`     | `.`(2)  |         | `+`(1)  |         |         |         |
+| Intel AVX-512 with Intel DL Boost (int8)             |         | `+`     | `.`(2)  |         | `+`     |         |         |         |
+| Intel AVX-512 with Intel DL Boost (int8, bf16)       |         | `+`     | `+`     |         | `+`     |         |         |         |
+| Intel AVX2 with Intel DL Boost (int8) and NE_CONVERT |         | `+`     | `.`     | `.`     | `+`     |         |         |         |
+| Intel AVX10.1 with Intel AMX (int8, bf16)            |         | `+`     | `+`     | `.`(3)  | `+`     |         |         | `.`     |
+| Intel AVX10.1 with Intel AMX (int8, bf16, f16)       |         | `+`     | `+`     | `+`     | `+`     | `.`     |         | `.`     |
+| Intel AVX10.2                                        |         | `+`     | `+`     | `+`     | `+`     | `.`     |         | `.`     |
+| Intel AVX10.2 with Intel AMX (int8, bf16, fp16, fp8) |         | `+`     | `+`     | `+`     | `+`     | `+`     |         | `.`     |
 
 Legend:
 * `+` indicates oneDNN uses hardware-native compute support for this data type.

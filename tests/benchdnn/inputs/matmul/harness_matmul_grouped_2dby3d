@@ -33,7 +33,7 @@
 
 # Basic correctness
 --dt=f32:f32:f32,f16:f16:f16,bf16:bf16:bf16,bf16:bf16:f32
---wtag=abc,acb
+--wtag=any,abc,acb
 --batch=shapes_grouped
 
 # Transposed weights with bias - f32
@@ -46,7 +46,7 @@
 # Blocked wei scales with different block sizes - u8/s8
 --reset
 --dt=u8:s4:bf16,s8:s4:bf16,u8:u8:bf16
---wtag=abc
+--wtag=any,abc
 --grouped=0:4:8+8+8+8
 --attr-scales=wei:7:bf16:128x1,wei:7:bf16:32x1
 32x512:4x512x256
@@ -54,7 +54,7 @@
 # Combined row-wise src + blocked weight scales - u8/s8
 --reset
 --dt=u8:s4:bf16,s8:s4:bf16,u8:s4:bf16
---wtag=abc,acb
+--wtag=any,abc,acb
 --grouped=0:4:8+8+8+8
 --attr-scales=src:1+wei:7:bf16:128x1,src:1+wei:7:bf16:32x1
 32x512:4x512x256

@@ -72,6 +72,9 @@ status_t zen_grouped_matmul_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(src_d.is_grouped_desc() && dst_d.is_grouped_desc(),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
+    VDISPATCH_MATMUL(
+            !has_runtime_dims_or_strides(), VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+
     const dim_t total_M = dst_d.dims()[0];
     const dim_t K = src_d.dims()[1];
     const dim_t N = dst_d.dims()[1];
@@ -98,8 +101,6 @@ status_t zen_grouped_matmul_t::pd_t::init(const engine_t *engine) {
     // dst [total_M, N]: N contiguous and row stride == ldc == N.
     VDISPATCH_MATMUL(
             dst_str[1] == 1 && dst_str[0] == N, VERBOSE_UNSUPPORTED_TAG);
-    // Weights must be dense, abc or acb format is already enforced by the
-    // common grouped gate (grouped_matmul_desc_init).
 
     // Supported floating-point configurations (aligned with zen_matmul_t):
     //  1. uniform f32  (f32 src/wei/dst)
@@ -114,6 +115,28 @@ status_t zen_grouped_matmul_t::pd_t::init(const engine_t *engine) {
             = utils::everyone_is(bf16, src_dt, wei_dt) && dst_dt == f32;
     VDISPATCH_MATMUL(utils::one_of(true, all_f32, all_bf16, bf16_mixed),
             VERBOSE_UNSUPPORTED_DT_CFG);
+
+    // Weight layout resolution. When the framework leaves the weights layout
+    // open (format_any), advertise the opaque Zen packed format: the weights
+    // are pre-packed once per expert by zen_reorder_t (AOCL-blocked layout) and
+    // consumed at execute() with mem_format_b='r' and is_weights_const=true, so
+    // ZenDNN reuses the packed weights across calls. Concrete abc/acb weights
+    // keep the plain path and are packed by the backend per call (is_weights_const=false).
+    if (memory_desc_wrapper(weights_md(0)).format_any()) {
+        const dim_t G = weights_md(0)->dims[0];
+        VDISPATCH_MATMUL_SC(
+                init_zen_packed_md(weights_md_, src_dt, K, N, /*batch=*/G),
+                VERBOSE_UNSUPPORTED_TAG);
+    } else {
+        // Concrete weights: the plain path in execute() derives transB/ldb and
+        // the per-expert slice span from an exact abc/acb layout (unit inner
+        // stride, K*N contiguous per expert), so reject any other tag here.
+        VDISPATCH_MATMUL(is_zen_packed(*weights_md(0))
+                        || memory_desc_wrapper(weights_md(0))
+                                   .matches_one_of_tag(
+                                           format_tag::abc, format_tag::acb),
+                VERBOSE_UNSUPPORTED_TAG);
+    }
 
     if (with_bias()) {
         const auto bia_dt = weights_md(1)->data_type;
@@ -264,11 +287,25 @@ status_t zen_grouped_matmul_t::execute(const exec_ctx_t &ctx) const {
     const size_t dst_dsz = types::data_type_size(dst_dt);
     const size_t bia_dsz = with_bias ? types::data_type_size(bia_dt) : 0;
 
-    // Weight layout: abc -> B is [K, N] row-major (no transpose, ldb = N);
-    // acb -> B stored as [N, K] (transposed view, ldb = K).
-    const dim_t wei_stride_n = wei_d.blocking_desc().strides[2];
-    const bool transB = (wei_stride_n != 1);
-    const int ldb = transB ? static_cast<int>(K) : static_cast<int>(N);
+    // Weight layout. Pre-packed (Zen packed) weights are consumed as AOCL
+    // blocked: untransposed, ldb = N, one fixed-size packed slot per expert.
+    // Plain abc -> B is [K, N] row-major (ldb = N); acb -> [N, K] transposed
+    // view (ldb = K), one K*N element slice per expert.
+    const bool wei_packed = is_zen_packed(*pd()->weights_md(0));
+    bool transB;
+    int ldb;
+    size_t wei_slice_bytes;
+    if (wei_packed) {
+        transB = false;
+        ldb = static_cast<int>(N);
+        wei_slice_bytes = pd()->weights_md(0)
+                                  ->format_desc.zen_packed_desc.per_slice_size;
+    } else {
+        const dim_t wei_stride_n = wei_d.blocking_desc().strides[2];
+        transB = (wei_stride_n != 1);
+        ldb = transB ? static_cast<int>(K) : static_cast<int>(N);
+        wei_slice_bytes = static_cast<size_t>(K) * N * wei_dsz;
+    }
 
     // Build per-group (per-expert) descriptors for ZenDNN,
     // skipping empty groups (M == 0).
@@ -333,13 +370,14 @@ status_t zen_grouped_matmul_t::execute(const exec_ctx_t &ctx) const {
         ldas.push_back(static_cast<int>(K));
         ldbs.push_back(ldb);
         ldcs.push_back(static_cast<int>(N));
-        // is_weights_const=false: oneDNN's matmul contract does not guarantee
-        // the weights buffer is immutable/stable across executes, so we must
-        // not let ZenDNN cache the reordered weights keyed by pointer.
-        wconst.push_back(false);
+        // Pre-packed weights are produced once by zen_reorder_t and are stable,
+        // so mark them const to enable ZenDNN's weight cache (packed once,
+        // reused across calls). Plain weights are not guaranteed immutable
+        // across executes, so they must not be cached by pointer.
+        wconst.push_back(wei_packed);
 
         srcs.push_back(src_data + static_cast<size_t>(start) * K * src_dsz);
-        weis.push_back(wei_data + static_cast<size_t>(g) * K * N * wei_dsz);
+        weis.push_back(wei_data + static_cast<size_t>(g) * wei_slice_bytes);
         dsts.push_back(dst_data + static_cast<size_t>(dst_start) * N * dst_dsz);
         biases.push_back(with_bias
                         ? static_cast<const void *>(bias_data
@@ -352,6 +390,10 @@ status_t zen_grouped_matmul_t::execute(const exec_ctx_t &ctx) const {
         p.dtypes.dst = zdst;
         p.dtypes.bias = zbia;
         p.dtypes.compute = zd::f32;
+        if (wei_packed) {
+            p.mem_format_b = 'r';
+            p.lowoha_algo = zendnnl::ops::matmul_algo_t::aocl_dlp_blocked;
+        }
         p.postop_ = postop_template_;
         // Patch this expert's dense [M_g, N] src1 slice into each binary_mul
         // entry (ZenDNN applies it as a per-element MATRIX_MUL).

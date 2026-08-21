@@ -210,6 +210,11 @@ Refer to [implementation filtering](knob_impl_filter.md) for details.
 `--start=N` specifies the test index `N` to start testing from. All tests
 before the index `N` will be skipped.
 
+### --concise
+`--concise`, or a short form `-c`, instructs the driver to suppress the full
+reproducer line for non-failing cases. A lightweight progress counter is
+occasionally printed to demonstrate forward progress.
+
 ### --summary
 `--summary=VALUE` provides additional specific statistics output. Refer to
 [summary documentation](knob_summary.md) for details.

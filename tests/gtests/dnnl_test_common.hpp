@@ -452,7 +452,7 @@ static inline data_t set_value(
 }
 
 template <typename data_t>
-static void fill_data(const memory::dim nelems, data_t *data, data_t mean,
+void fill_data(const memory::dim nelems, data_t *data, data_t mean,
         data_t deviation, double sparsity = 1.) {
     dnnl::impl::parallel_nd(nelems, [=](memory::dim n) {
         data[n] = set_value<data_t>(n, mean, deviation, sparsity);
@@ -460,7 +460,7 @@ static void fill_data(const memory::dim nelems, data_t *data, data_t mean,
 }
 
 template <typename data_t>
-static void fill_data(const memory::dim nelems, const memory &mem, data_t mean,
+void fill_data(const memory::dim nelems, const memory &mem, data_t mean,
         data_t deviation, double sparsity = 1.) {
     auto data_ptr = map_memory<data_t>(mem);
     fill_data<data_t>(nelems, data_ptr, mean, deviation, sparsity);
@@ -502,8 +502,8 @@ inline void fill_data(memory::data_type dt, const memory &mem, float mean,
 }
 
 template <typename data_t>
-static void fill_data(const memory::dim nelems, data_t *data,
-        double sparsity = 1., bool init_negs = false) {
+void fill_data(const memory::dim nelems, data_t *data, double sparsity = 1.,
+        bool init_negs = false) {
     dnnl::impl::parallel_nd(nelems, [=](memory::dim n) {
         data[n] = set_value<data_t>(n, data_t(1), data_t(0.2f), sparsity);
 
@@ -514,7 +514,7 @@ static void fill_data(const memory::dim nelems, data_t *data,
 }
 
 template <typename data_t>
-static void fill_data(const memory::dim nelems, const memory &mem,
+void fill_data(const memory::dim nelems, const memory &mem,
         double sparsity = 1., bool init_negs = false) {
     auto data_ptr = map_memory<data_t>(mem);
 #if !defined(TEST_DNNL_DPCPP_BUFFER)
@@ -540,7 +540,7 @@ static void fill_data(const memory::dim nelems, const memory &mem,
 }
 
 template <typename data_t>
-static void remove_zeroes(const memory &mem) {
+void remove_zeroes(const memory &mem) {
     size_t nelems = mem.get_desc().get_size() / sizeof(data_t);
     auto mem_data = map_memory<data_t>(mem);
     data_t *data_ptr = mem_data;
@@ -550,7 +550,7 @@ static void remove_zeroes(const memory &mem) {
 }
 
 template <typename data_t>
-static void compare_data(
+void compare_data(
         const memory &ref, const memory &dst, data_t threshold = (data_t)1e-4) {
     using data_type = memory::data_type;
 

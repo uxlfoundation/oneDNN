@@ -13,6 +13,7 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
+#include <algorithm>
 #include <cstddef>
 #include <cstring>
 #include <vector>
@@ -47,6 +48,12 @@ struct binary_kernel_conf_t {
     bool is_select; // ternary select: dst = src2 ? src0 : src1 (src2 is s8)
     post_ops_t post_ops; // full post-op chain (sums applied in attribute order)
     const memory_desc_t *dst_md = nullptr; // for per_oc binary post-op rhs
+    // Emit the unrolled (three src0/src1 pairs per step) f32 main loop; the
+    // host enables it only for the streaming f32 case it applies to.
+    bool unrolled = false;
+    // Emit the narrow (single m1-vector, strictly interleaved) f32 main loop
+    // instead — same streaming gate, selected per call at low thread counts.
+    bool narrow = false;
 };
 
 struct jit_uni_binary_kernel_t : public jit_generator_t {
@@ -89,14 +96,17 @@ private:
     const binary_kernel_conf_t c_;
 
     // Registers (e32/m4 compute): a1=src0 a2=src1 a3=dst a4=len a5=src2
-    // a6=rhs_ptrs a7=rhs_off(elems); t0=vl t1=bytes t2/t3=scratch; v0=mask
+    // a6=rhs_ptrs a7=rhs_off(elems); t0=vl t1=bytes t2/t3=scratch; t4/t5/t6
+    // hold the unrolled-loop strides (f32 bytes / step elements / stream
+    // step); v0=mask
     // v4=acc v8=src1f32 v12/v16=narrow staging v20=binary-rhs; fa2=const
     // fa3=scalar-src1 fa4/fa5=scales fa6=sum fa7=binary-rhs-scalar
-    // fa0/fa1=eltwise injector scratch.
+    // fa0/fa1=eltwise injector scratch; ft0/ft1=compare-result constants.
     const Reg p0 = a1, p1 = a2, pd = a3, len = a4, p2 = a5, rhs_ptrs = a6,
               off = a7, vl = t0, bytes = t1, gpr = t2;
     const VReg vd {4}, vs1 {8}, st0 {12}, st1 {16}, vrhs {20};
-    const FReg f_s1 = fa3, f_sc0 = fa4, f_sc1 = fa5, f_sum = fa6, fc = fa2;
+    const FReg f_s1 = fa3, f_sc0 = fa4, f_sc1 = fa5, f_sum = fa6, fc = fa2,
+               f_zero = ft0, f_one = ft1;
 
     void setf(const FReg &f, float val) {
         uint32_t b;
@@ -216,104 +226,103 @@ private:
         }
     }
 
-    // dst(acc) = acc OP src1, comparisons yield 0.0/1.0. vtype is e32/m4.
-    void cmp_to_01() {
-        const FReg f_zero = fa0, f_one = fa1;
-        fmv_w_x(f_zero, x0);
-        li(gpr, 0x3f800000);
-        fmv_w_x(f_one, gpr);
-        vfmv_v_f(vd, f_zero);
-        vfmerge_vfm(vd, vd, f_one); // vd[i] = v0[i] ? 1.0 : 0.0
+    // v(acc) = v OP src1, comparisons yield 0.0/1.0. vtype is e32/m4.
+    // f_zero/f_one are prepared once per kernel (see emit_binary).
+    void cmp_to_01(const VReg &v) {
+        vfmv_v_f(v, f_zero);
+        vfmerge_vfm(v, v, f_one); // v[i] = v0[i] ? 1.0 : 0.0
     }
-    void binop_vf(const FReg &f) {
+    // scratch takes the scalar-broadcast src1 of the max/min algorithms; it is
+    // a dead vector group of the caller (vs1 in the generic loop).
+    void binop_vf(const VReg &v, const FReg &f, const VReg &scratch) {
         using namespace alg_kind;
         switch (c_.alg) {
-            case binary_add: vfadd_vf(vd, vd, f); break;
-            case binary_sub: vfsub_vf(vd, vd, f); break;
-            case binary_mul: vfmul_vf(vd, vd, f); break;
-            case binary_div: vfdiv_vf(vd, vd, f); break;
+            case binary_add: vfadd_vf(v, v, f); break;
+            case binary_sub: vfsub_vf(v, v, f); break;
+            case binary_mul: vfmul_vf(v, v, f); break;
+            case binary_div: vfdiv_vf(v, v, f); break;
             case binary_max:
                 // nstl::max(src0,src1) = (src1 < src0) ? src0 : src1 (picks src1
                 // on ties/unordered, matching the reference and x86 vmaxps).
-                vfmv_v_f(vs1, f);
-                vmflt_vv(VReg(0), vs1, vd);
-                vmerge_vvm(vd, vs1, vd);
+                vfmv_v_f(scratch, f);
+                vmflt_vv(VReg(0), scratch, v);
+                vmerge_vvm(v, scratch, v);
                 break;
             case binary_min:
                 // nstl::min(src0,src1) = (src0 < src1) ? src0 : src1.
-                vfmv_v_f(vs1, f);
-                vmflt_vv(VReg(0), vd, vs1);
-                vmerge_vvm(vd, vs1, vd);
+                vfmv_v_f(scratch, f);
+                vmflt_vv(VReg(0), v, scratch);
+                vmerge_vvm(v, scratch, v);
                 break;
             case binary_ge:
-                vmfge_vf(VReg(0), vd, f);
-                cmp_to_01();
+                vmfge_vf(VReg(0), v, f);
+                cmp_to_01(v);
                 break;
             case binary_gt:
-                vmfgt_vf(VReg(0), vd, f);
-                cmp_to_01();
+                vmfgt_vf(VReg(0), v, f);
+                cmp_to_01(v);
                 break;
             case binary_le:
-                vmfle_vf(VReg(0), vd, f);
-                cmp_to_01();
+                vmfle_vf(VReg(0), v, f);
+                cmp_to_01(v);
                 break;
             case binary_lt:
-                vmflt_vf(VReg(0), vd, f);
-                cmp_to_01();
+                vmflt_vf(VReg(0), v, f);
+                cmp_to_01(v);
                 break;
             case binary_eq:
-                vmfeq_vf(VReg(0), vd, f);
-                cmp_to_01();
+                vmfeq_vf(VReg(0), v, f);
+                cmp_to_01(v);
                 break;
             case binary_ne:
-                vmfne_vf(VReg(0), vd, f);
-                cmp_to_01();
+                vmfne_vf(VReg(0), v, f);
+                cmp_to_01(v);
                 break;
             default: break;
         }
     }
-    void binop_vv(const VReg &v1) {
+    void binop_vv(const VReg &v, const VReg &v1) {
         using namespace alg_kind;
         switch (c_.alg) {
-            case binary_add: vfadd_vv(vd, vd, v1); break;
-            case binary_sub: vfsub_vv(vd, vd, v1); break;
-            case binary_mul: vfmul_vv(vd, vd, v1); break;
-            case binary_div: vfdiv_vv(vd, vd, v1); break;
+            case binary_add: vfadd_vv(v, v, v1); break;
+            case binary_sub: vfsub_vv(v, v, v1); break;
+            case binary_mul: vfmul_vv(v, v, v1); break;
+            case binary_div: vfdiv_vv(v, v, v1); break;
             case binary_max:
                 // nstl::max(src0,src1) = (src1 < src0) ? src0 : src1 (picks src1
                 // on ties/unordered, matching the reference and x86 vmaxps).
-                vmflt_vv(VReg(0), v1, vd);
-                vmerge_vvm(vd, v1, vd);
+                vmflt_vv(VReg(0), v1, v);
+                vmerge_vvm(v, v1, v);
                 break;
             case binary_min:
                 // nstl::min(src0,src1) = (src0 < src1) ? src0 : src1.
-                vmflt_vv(VReg(0), vd, v1);
-                vmerge_vvm(vd, v1, vd);
+                vmflt_vv(VReg(0), v, v1);
+                vmerge_vvm(v, v1, v);
                 break;
             // vmfgt/vmfge have no vv form: swap operands.
             case binary_ge:
-                vmfle_vv(VReg(0), v1, vd);
-                cmp_to_01();
+                vmfle_vv(VReg(0), v1, v);
+                cmp_to_01(v);
                 break;
             case binary_gt:
-                vmflt_vv(VReg(0), v1, vd);
-                cmp_to_01();
+                vmflt_vv(VReg(0), v1, v);
+                cmp_to_01(v);
                 break;
             case binary_le:
-                vmfle_vv(VReg(0), vd, v1);
-                cmp_to_01();
+                vmfle_vv(VReg(0), v, v1);
+                cmp_to_01(v);
                 break;
             case binary_lt:
-                vmflt_vv(VReg(0), vd, v1);
-                cmp_to_01();
+                vmflt_vv(VReg(0), v, v1);
+                cmp_to_01(v);
                 break;
             case binary_eq:
-                vmfeq_vv(VReg(0), vd, v1);
-                cmp_to_01();
+                vmfeq_vv(VReg(0), v, v1);
+                cmp_to_01(v);
                 break;
             case binary_ne:
-                vmfne_vv(VReg(0), vd, v1);
-                cmp_to_01();
+                vmfne_vv(VReg(0), v, v1);
+                cmp_to_01(v);
                 break;
             default: break;
         }
@@ -370,7 +379,122 @@ private:
             if (c_.do_scale1) fmul_s(f_s1, f_s1, f_sc1);
         }
 
+        // Comparison results are 0.0/1.0: the constants live in f_zero/f_one,
+        // which no injector touches, so they are set once here instead of per
+        // vector (see cmp_to_01).
+        using namespace alg_kind;
+        if (utils::one_of(c_.alg, binary_ge, binary_gt, binary_le, binary_lt,
+                    binary_eq, binary_ne)) {
+            fmv_w_x(f_zero, x0);
+            setf(f_one, 1.0f);
+        }
+
         Label loop, done;
+
+        // Tuned f32 main loops (second kernels; the driver picks per call by
+        // the thread count). Both cover only chains whose post-ops need no
+        // injector aux (none, or only zero-alpha relu) and a contiguous f32
+        // src1, so a zero-aux chain never reads the aux slots and they may
+        // all alias the one group the loops leave unused.
+        if (c_.unrolled || c_.narrow) {
+            // All five eltwise aux vector groups are aliased to VReg(28):
+            // the init-time gate below restricts the chain to empty or
+            // zero-alpha relu, neither of which reads any aux vector group,
+            // so a single group can be shared. Any future relaxation of
+            // that gate must break this aliasing before forward-aux
+            // algorithms become visible here.
+            eltwise_injector::static_params_t esp_u(VReg(28), VReg(28),
+                    VReg(28), VReg(28), VReg(28), fa0, fa1, gpr,
+                    /*is_fwd=*/true);
+            injector::jit_uni_postops_injector_t<v> po_u(
+                    this, c_.post_ops, esp_u);
+            binary_injector::rhs_arg_dynamic_params_t no_rhs;
+
+            if (c_.unrolled) {
+                // Three independent src0/src1 pairs keep six full-width loads
+                // in flight. The loop needs the six m4 data groups. Fastest
+                // when enough threads share the memory system.
+                const VReg vdu[3] = {VReg(4), VReg(12), VReg(20)};
+                const VReg vsu[3] = {VReg(8), VReg(16), VReg(24)};
+                const Reg b = t4; // vl * 4 bytes (f32 element stride)
+                const Reg n3 = t5; // 3 * vl elements per step
+                const Reg b3 = t6; // 3 * vl * 4 bytes (stream step)
+                const Reg a1r = t1, a2r = t2; // step-1/step-2 addresses
+                vsetvli(vl, x0, SEW::e32, LMUL::m4, VTA::ta,
+                        VMA::ma); // vl = VLMAX
+                slli(b, vl, 2);
+                slli(n3, vl, 1);
+                add(n3, n3, vl);
+                slli(b3, b, 1);
+                add(b3, b3, b);
+                Label main_loop, tail;
+                L(main_loop);
+                bltu(len, n3, tail);
+                add(a1r, p0, b);
+                add(a2r, a1r, b);
+                vle32_v(vdu[0], p0);
+                vle32_v(vdu[1], a1r);
+                vle32_v(vdu[2], a2r);
+                add(p0, p0, b3);
+                if (!c_.scalar_src1) {
+                    add(a1r, p1, b);
+                    add(a2r, a1r, b);
+                    vle32_v(vsu[0], p1);
+                    vle32_v(vsu[1], a1r);
+                    vle32_v(vsu[2], a2r);
+                    add(p1, p1, b3);
+                }
+                for (int i = 0; i < 3; i++) {
+                    if (c_.do_scale0) vfmul_vf(vdu[i], vdu[i], f_sc0);
+                    if (!c_.scalar_src1 && c_.do_scale1)
+                        vfmul_vf(vsu[i], vsu[i], f_sc1);
+                    if (c_.scalar_src1)
+                        binop_vf(vdu[i], f_s1, vsu[0]);
+                    else
+                        binop_vv(vdu[i], vsu[i]);
+                    po_u.compute_vector(vdu[i].getIdx(), no_rhs);
+                }
+                add(a1r, pd, b);
+                add(a2r, a1r, b);
+                vse32_v(vdu[0], pd);
+                vse32_v(vdu[1], a1r);
+                vse32_v(vdu[2], a2r);
+                add(pd, pd, b3);
+                sub(len, len, n3);
+                j_(main_loop);
+                L(tail);
+            } else {
+                // Strictly interleaved single m1-vector loop with a hoisted
+                // vsetvli: on an in-order core the vector queue drains in
+                // order, so per-access width — not the number of groups —
+                // sets the DRAM-visible request pattern, and the narrow
+                // pattern extracts the most memory throughput when few
+                // threads drive the memory system.
+                const Reg b = t4; // vl * 4 bytes (f32 element stride)
+                vsetvli(vl, x0, SEW::e32, LMUL::m1, VTA::ta,
+                        VMA::ma); // vl = VLMAX
+                slli(b, vl, 2);
+                Label narrow_loop;
+                L(narrow_loop);
+                bltu(len, vl, loop);
+                vle32_v(vd, p0);
+                if (!c_.scalar_src1) vle32_v(vs1, p1);
+                if (c_.do_scale0) vfmul_vf(vd, vd, f_sc0);
+                if (!c_.scalar_src1 && c_.do_scale1) vfmul_vf(vs1, vs1, f_sc1);
+                if (c_.scalar_src1)
+                    binop_vf(vd, f_s1, vs1);
+                else
+                    binop_vv(vd, vs1);
+                po_u.compute_vector(vd.getIdx(), no_rhs);
+                vse32_v(vd, pd);
+                add(p0, p0, b);
+                if (!c_.scalar_src1) add(p1, p1, b);
+                add(pd, pd, b);
+                sub(len, len, vl);
+                j_(narrow_loop);
+            }
+        }
+
         L(loop);
         beqz(len, done);
 
@@ -390,9 +514,9 @@ private:
             select_mask(st1); // sets v0 = (src2 == 0), ends at e32/m4
             vmerge_vvm(vd, vd, vs1);
         } else if (c_.scalar_src1) {
-            binop_vf(f_s1);
+            binop_vf(vd, f_s1, vs1);
         } else {
-            binop_vv(vs1);
+            binop_vv(vd, vs1);
         }
 
         // Apply the post-op chain in attribute order. Every sum entry invokes
@@ -470,7 +594,37 @@ status_t jit_uni_binary_t::init(engine_t *engine) {
     c.has_binary_po = c.post_ops.find(primitive_kind::binary) != -1;
     c.dst_md = p->dst_md(); // per_oc binary post-op rhs classification
     kernel_.reset(new jit_uni_binary_kernel_t(c));
-    return kernel_->create_kernel();
+    status_t status = kernel_->create_kernel();
+    if (status != status::success) return status;
+
+    // The tuned f32 streaming kernels (unrolled + narrow): the unrolled loop
+    // needs the six m4 data groups, so they cover only chains whose post-ops
+    // use no injector aux (none, or just zero-alpha relu) and a contiguous
+    // f32 src1.
+    const bool unrolled_ok = !c.is_select && !c.do_sum && !c.has_binary_po
+            && c.s1_inner_stride == 1 && c.dt_s0 == data_type::f32
+            && c.dt_s1 == data_type::f32 && c.dt_dst == data_type::f32
+            && std::all_of(c.post_ops.entry_.begin(), c.post_ops.entry_.end(),
+                    [](const post_ops_t::entry_t &e) {
+        return e.is_eltwise() && e.eltwise.alg == alg_kind::eltwise_relu
+                && e.eltwise.alpha == 0.f;
+    });
+    if (unrolled_ok) {
+        // Both tuned kernels alias all five eltwise aux slots to VReg(28):
+        // their post-op chain is empty or only zero-alpha relu, which never
+        // reads the aux vector groups (relu_zero_ns uses only f_aux0 + vmask).
+        // The 6 m4 data groups used by the unrolled loop likewise do not
+        // collide with this aliasing.
+        c.unrolled = true;
+        kernel_unrolled_.reset(new jit_uni_binary_kernel_t(c));
+        status = kernel_unrolled_->create_kernel();
+        if (status != status::success) return status;
+        c.unrolled = false;
+        c.narrow = true;
+        kernel_narrow_.reset(new jit_uni_binary_kernel_t(c));
+        status = kernel_narrow_->create_kernel();
+    }
+    return status;
 }
 
 // Collect the per-binary rhs base pointers (post-op src1), advanced by their own
@@ -544,6 +698,17 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
         cp.rhs_ptrs = rhs_arr;
         cp.src2 = nullptr;
     };
+    // The tuned kernels cover the streaming f32 case. The unrolled kernel
+    // issues per-stream bursts of loads/stores, which extracts more memory
+    // throughput once enough threads share the memory system; below that the
+    // narrow single-vector interleave is fastest, so pick per call by the
+    // thread count.
+    auto pick_kernel = [&](int nthr) -> const jit_uni_binary_kernel_t & {
+        if (nthr >= unrolled_kernel_min_nthrs && kernel_unrolled_)
+            return *kernel_unrolled_;
+        if (kernel_narrow_) return *kernel_narrow_;
+        return *kernel_;
+    };
 
     if (pp->whole_) {
         // one flat pass; parallelize the range. src1 is scalar or matches dst.
@@ -561,7 +726,7 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
             cp.dst = d + start * esd;
             cp.len = end - start;
             cp.rhs_off = (size_t)start; // element offset (injector scales)
-            (*kernel_)(&cp);
+            pick_kernel(nthr)(&cp);
         });
         return status::success;
     }
@@ -597,7 +762,7 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
             cp.dst = d + b * inner * esd;
             cp.len = run;
             cp.rhs_off = (size_t)b * inner; // element offset (injector scales)
-            (*kernel_)(&cp);
+            pick_kernel(nthr)(&cp);
             if (run < inner)
                 std::memset(
                         d + (b * inner + run) * esd, 0, (inner - run) * esd);

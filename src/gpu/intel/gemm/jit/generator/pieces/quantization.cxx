@@ -16,6 +16,7 @@
 
 
 #include "alloc_utils.hpp"
+#include "compute_utils.hpp"
 #include "gemmstone/generator.hpp"
 #include "hw_utils.hpp"
 #include "layout_utils.hpp"
@@ -85,7 +86,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     if (Txo_int.isInt8()) Txo_int = Type::s16, cpoDiv = 2;
     // Use lateScale for cases of applying scale to inputs that will be natively dpas'd
     // but do not support add/mul.
-    if (xs2D && ((Txs.paddedSize() > Tx.paddedSize() && Tx.isInteger()) || problem.forceLateQuant(minOuterProductCount(problem, strategy)) || state.useBDPAS)) {
+    if (xs2D && usesLateScale(problem, strategy, isA)) {
         lateScale = true;
         Txs_int = problem.Tc;
     }

@@ -49,7 +49,7 @@ namespace rv64 {
 namespace binary_injector {
 using dnnl::impl::cpu::binary_injector_utils::get_src1_desc;
 using dnnl::impl::cpu::binary_injector_utils::get_src2_desc;
-using dnnl::impl::cpu::binary_injector_utils::prepare_binary_args;
+using dnnl::impl::cpu::binary_injector_utils::prepare_binary_args_with_offset0;
 
 bool binary_args_matches_tag(format_tag_t tag, const post_ops_t &post_ops);
 

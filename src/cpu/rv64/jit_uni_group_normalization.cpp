@@ -634,11 +634,11 @@ status_t jit_uni_group_normalization_fwd_t::execute_forward(
     const dim_t src_off0 = src_d.off_l(0);
     const dim_t dst_off0 = dst_d.off_l(0);
 
-    // Binary post-op src1 bases (scalar broadcast), one per binary in attr
-    // order -- the raw handles from the common helper (x64 model).
+    // Binary post-op src1 logical origins (scalar broadcast), one per binary
+    // in attribute order.
     const auto &po = pd()->attr()->post_ops_;
     const std::vector<const void *> po_rhs
-            = binary_injector::prepare_binary_args(po, ctx);
+            = binary_injector::prepare_binary_args_with_offset0(po, ctx);
     const void *const *po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     parallel_nd(N, G, [&](dim_t n, dim_t g) {

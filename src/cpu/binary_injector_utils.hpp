@@ -41,6 +41,12 @@ std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
         const dnnl::impl::exec_ctx_t &ctx,
         const unsigned first_arg_idx_offset = 0);
 
+// Returns binary arguments positioned at their memory descriptors' logical
+// origins. Consumers must add only logical per-call offsets to these pointers.
+std::vector<const void *> prepare_binary_args_with_offset0(
+        const post_ops_t &post_ops, const dnnl::impl::exec_ctx_t &ctx,
+        const unsigned first_arg_idx_offset = 0);
+
 bool bcast_strategy_present(
         const std::vector<broadcasting_strategy_t> &post_ops_bcasts,
         const broadcasting_strategy_t bcast_strategy);

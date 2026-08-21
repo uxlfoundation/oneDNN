@@ -815,7 +815,8 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_blk(const data_t *src,
     const auto &jpp = pd()->jpp_;
 
     std::vector<const void *> po_rhs
-            = binary_injector::prepare_binary_args(jpp.post_ops, ctx);
+            = binary_injector::prepare_binary_args_with_offset0(
+                    jpp.post_ops, ctx);
     const void *const *po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     const int c_mult
@@ -833,9 +834,8 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_blk(const data_t *src,
         arg.dst = &dst[dst_d.blk_off(n, c_off, oh)];
         // full-dst binary offset = (arg.dst - dst_orig); dst_orig must be the
         // dst LOGICAL origin (raw base + off_l(0)) so the offset excludes the
-        // md's offset0 (blk_off() already includes it). The rhs bases are the
-        // raw handles from the common prepare_binary_args -- like x64, a
-        // nonzero rhs offset0 is not folded in.
+        // md's offset0 (blk_off() already includes it). RHS pointers are at
+        // their own logical origins, so the offset applies to both tensors.
         arg.dst_orig = dst + dst_d.off_l(0);
         if (indices)
             arg.indices
@@ -874,7 +874,8 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_blk_3d(const data_t *src,
     const auto &jpp = pd()->jpp_;
 
     std::vector<const void *> po_rhs
-            = binary_injector::prepare_binary_args(jpp.post_ops, ctx);
+            = binary_injector::prepare_binary_args_with_offset0(
+                    jpp.post_ops, ctx);
     const void *const *po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();
 
     const int c_mult
@@ -943,8 +944,8 @@ status_t jit_uni_pooling_fwd_t<isa>::execute_forward(
         // the shared per-call offset (post_op_off0 + channel offset).
         std::vector<const void *> po_rhs_vec;
         if (jpp.fuse_binary)
-            po_rhs_vec
-                    = binary_injector::prepare_binary_args(jpp.post_ops, ctx);
+            po_rhs_vec = binary_injector::prepare_binary_args_with_offset0(
+                    jpp.post_ops, ctx);
         const void *po_rhs = po_rhs_vec.empty()
                 ? nullptr
                 : (const void *)po_rhs_vec.data();

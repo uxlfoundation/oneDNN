@@ -1206,7 +1206,7 @@ status_t jit_uni_binary_t::execute(const exec_ctx_t &ctx) const {
 
     const auto &post_ops = pd()->attr()->post_ops_;
     const auto &post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(post_ops, ctx);
+            = binary_injector::prepare_binary_args_with_offset0(post_ops, ctx);
 
     const auto conf = pd()->get_conf();
 

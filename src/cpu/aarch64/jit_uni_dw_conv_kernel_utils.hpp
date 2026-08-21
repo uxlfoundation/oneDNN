@@ -171,7 +171,8 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
     jcp.dst_dt = cd.dst_desc.data_type;
     jcp.isa = isa;
 
-    if (!mayiuse(isa)) return status::unimplemented;
+    if (!mayiuse(isa) || (kernel_dt == data_type::f16 && !mayiuse_f16()))
+        return status::unimplemented;
 
     const int simd_w = cpu_isa_traits<isa>::vlen / sizeof(float);
     jcp.prop_kind = cd.prop_kind;
@@ -315,6 +316,9 @@ void jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_scratchpad(
     }
 }
 
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f16>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f16>;
+template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::f16>;
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_512, data_type::f32>;
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_256, data_type::f32>;
 template struct jit_uni_dw_conv_fwd_kernel_t<sve_128, data_type::f32>;

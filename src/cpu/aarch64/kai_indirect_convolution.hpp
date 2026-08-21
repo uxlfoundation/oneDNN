@@ -35,6 +35,8 @@ struct kai_indirect_convolution_fwd_t : public kai_convolution_fwd_base_t {
             return kai_convolution_fwd_base_t::pd_t::init(engine);
         }
 
+        bool supports_spatial_inversion() const override { return true; }
+
     private:
         const char *impl_base_name() const override {
             return "indirect_gemm:kai";

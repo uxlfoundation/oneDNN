@@ -19,10 +19,12 @@
 #include <functional>
 
 #include "common/dnnl_thread.hpp"
-#include "cpu/cpu_primitive.hpp"
 
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/aarch64/jit_uni_binary.hpp"
+#include "cpu/cpu_eltwise_pd.hpp"
+#include "cpu/cpu_primitive.hpp"
+#include "cpu/platform.hpp"
 
 #define VDISPATCH_BINARY(cond, msg, ...) \
     VCONDCHECK(primitive, create, dispatch, binary, (cond), \
@@ -83,7 +85,8 @@ static dim_t get_outer_dims_product(
 using namespace data_type;
 
 static bool data_type_supported(const data_type_t dtype) {
-    return utils::one_of(dtype, f32, s8, u8);
+    return utils::one_of(dtype, f32, s32, f16, bf16, s8, u8)
+            && platform::has_data_type_support(dtype);
 }
 
 static bool data_format_supported(
@@ -91,9 +94,9 @@ static bool data_format_supported(
     if (mdw.is_plain()) return true;
     if (!mdw.is_blocking_desc()) return false;
     const auto blk_size = mdw.blocking_desc().inner_blks[0];
-    return (is_superset(isa, sve_512) && utils::one_of(blk_size, 16, 8, 4))
+    return ((is_superset(isa, sve_512) && utils::one_of(blk_size, 16, 8, 4))
             || (is_superset(isa, sve_256) && utils::one_of(blk_size, 8, 4))
-            || (is_superset(isa, asimd) && blk_size == 4);
+            || (is_superset(isa, asimd) && blk_size == 4));
 }
 
 static int get_exec_num_of_threads(const memory_desc_wrapper &dst_d) {
@@ -118,7 +121,15 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
     const int elt_idx = po.find(primitive_kind::eltwise);
     conf_.is_i8 = utils::one_of(conf_.dst_type, s8, u8);
 
-    conf_.isa = get_max_cpu_isa();
+    switch (get_sve_length()) {
+        case 64: conf_.isa = sve_512; break;
+        case 32: conf_.isa = sve_256; break;
+        case 16: conf_.isa = sve_128; break;
+        case 0: conf_.isa = asimd; break;
+        default: assert(!"unreachable isa");
+    }
+
+    assert(conf_.isa != isa_undef);
 
     // This primitive currently (as of oneDNN v3.9) supports all binary
     // algorithms except binary_select. However we check the supported
@@ -574,7 +585,7 @@ status_t jit_uni_binary_t::init(engine_t *engine) {
     CHECK(safe_ptr_assign(
             kernel_, create_binary_kernel(pd(), false /*tail_kernel*/)));
 
-    if (utils::one_of(pd()->dst_md(0)->data_type, f32)) {
+    if (utils::one_of(pd()->dst_md(0)->data_type, f32, s32, f16, bf16)) {
         const memory_desc_wrapper src0_d(pd_->src_md(0));
         const auto &simd_w = kernel_->simd_w();
         const auto oc = src0_d.ndims() >= 2 ? src0_d.dims()[1] : 1;

@@ -308,8 +308,7 @@ status_t gen_desc_t::finalize(const char *tags) {
 
     strategy_.relaxedAccumulation |= relaxed_acc_;
     strategy_.systolicAvailable &= !disable_systolic_;
-    if (problem_.needsAGroupSums() || problem_.needsBGroupSums())
-        problem_.autoTypeConversions(strategy_.systolicAvailable);
+    problem_.autoTypeConversions(strategy_.systolicAvailable);
     adjustStrategy(hw_, problem_, strategy_, tags);
     try {
         strategy_.preflight(hw_, problem_);

@@ -52,6 +52,36 @@ std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
     return post_ops_binary_rhs_arg_vec;
 }
 
+std::vector<const void *> prepare_binary_args_with_offset0(
+        const post_ops_t &post_ops, const exec_ctx_t &ctx,
+        const unsigned first_arg_idx_offset) {
+    auto args = prepare_binary_args(post_ops, ctx, first_arg_idx_offset);
+    size_t arg_idx = 0;
+
+    auto apply_offset0 = [&](const memory_desc_t &md) {
+        if (args[arg_idx]) {
+            const memory_desc_wrapper mdw(md);
+            args[arg_idx] = static_cast<const char *>(args[arg_idx])
+                    + mdw.offset0() * mdw.data_type_size();
+        }
+        ++arg_idx;
+    };
+
+    for (const auto &post_op : post_ops.entry_) {
+        if (post_op.is_binary()) {
+            apply_offset0(post_op.binary.src1_desc);
+            if (post_op.is_binary_with_ternary_op())
+                apply_offset0(post_op.binary.src2_desc);
+        } else if (post_op.is_prelu()) {
+            // PReLU weights have no user-provided memory descriptor.
+            ++arg_idx;
+        }
+    }
+    assert(arg_idx == args.size());
+
+    return args;
+}
+
 bool bcast_strategy_present(
         const std::vector<broadcasting_strategy_t> &post_ops_bcasts,
         const broadcasting_strategy_t bcast_strategy) {

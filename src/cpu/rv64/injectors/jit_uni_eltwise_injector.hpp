@@ -163,9 +163,24 @@ struct jit_uni_eltwise_injector_t {
         : jit_uni_eltwise_injector_t(
                   host, e.alg, e.alpha, e.beta, e.scale, sp) {}
 
-    void compute_vector_range(size_t start_idx, size_t end_idx);
-    void compute_vector_range(const injector_utils::vmm_index_set_t &vmm_idxs);
-    void compute_vector(size_t idx) { compute_vector_range(idx, idx + 1); }
+    // [start_idx, end_idx) is the half-open physical register span (x64
+    // semantics); group_stride is the registers per accumulator (LMUL/EMUL,
+    // one of 1/2/4), stepped to enumerate the run's true group bases (see
+    // make_vmm_group_set). Mandatory so an x64 compute_vector_range(start, end)
+    // is not copied as a silent stride-1 enumeration.
+    void compute_vector_range(
+            size_t start_idx, size_t end_idx, size_t group_stride);
+    // group_stride is each accumulator's e32 LMUL (1/2/4). The eltwise injector
+    // issues no vsetvli (it computes at the host vtype and is LMUL-agnostic), so
+    // it is used only to validate the set geometry and reject an illegal (e.g.
+    // m8) request at the interface -- symmetric with the binary injector.
+    void compute_vector_range(const injector_utils::vmm_index_set_t &vmm_idxs,
+            size_t group_stride);
+    void compute_vector(size_t idx, size_t group_stride) {
+        // A single accumulator spans group_stride registers ([idx, idx+stride)),
+        // not one, so the half-open range is a whole group at this LMUL.
+        compute_vector_range(idx, idx + group_stride, group_stride);
+    }
 
     // This call is `static` and `public` so a host can size its
     // static_params_t before constructing the injector. Unlike x64 (which

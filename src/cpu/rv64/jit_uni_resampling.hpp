@@ -115,10 +115,22 @@ struct jit_uni_resampling_fwd_t : public primitive_t {
                 if (!utils::one_of(e.sum.dt, data_type::undef, d_type))
                     return false;
             }
-            if (!injector::jit_uni_postops_injector_t<isa>::post_ops_ok(
-                        po_no_sum))
-                return false;
             const memory_desc_wrapper dst_d(dst_md());
+            // The kernel positions every rhs host-side, so it advertises only
+            // the broadcasts it can place. n_vaux = 3: v_aux3/v_aux4 alias the
+            // binary rhs scratch, so the heavy eltwise algs stay out.
+            if (!injector::post_ops_ok(injector::post_ops_ok_args_t(isa,
+                        {injector::eltwise, injector::binary}, po_no_sum,
+                        &dst_d, false /*sum_at_pos_0_only*/,
+                        false /*sum_requires_scale_one*/,
+                        true /*sum_requires_zp_zero*/,
+                        true /*sum_requires_same_params*/,
+                        bcast_set_t {broadcasting_strategy_t::scalar,
+                                broadcasting_strategy_t::per_oc,
+                                broadcasting_strategy_t::per_oc_spatial,
+                                broadcasting_strategy_t::no_broadcast},
+                        /*n_vaux=*/3)))
+                return false;
             int n_binary = 0;
             for (int i = 0; i < po.len(); i++) {
                 if (!po.entry_[i].is_binary()) continue;

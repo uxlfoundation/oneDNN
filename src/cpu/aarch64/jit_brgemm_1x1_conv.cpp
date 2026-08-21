@@ -17,6 +17,7 @@
 *******************************************************************************/
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/nstl.hpp"
 #include "common/type_helpers.hpp"
@@ -25,7 +26,6 @@
 #include "cpu/cpu_primitive.hpp"
 #include "cpu/scale_utils.hpp"
 
-#include "cpu/aarch64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/aarch64/jit_brgemm_1x1_conv.hpp"
 
 namespace dnnl {
@@ -484,7 +484,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
         const int work_amount = jcp.mb * jcp.ngroups * jcp.nb_oc * os_chunks;
 
 #define BRGC_WO(...) \
-    parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) { \
+    parallel(pd()->jcp_.nthr, \
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) { \
         if (ithr >= work_amount) return; \
         brgemm_batch_element_t *const brg_batch \
                 = brg_batch_global + (size_t)ithr * jcp.adjusted_batch_size; \
@@ -549,7 +550,8 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::execute_forward_all(
                 = jcp.mb * jcp.ngroups * jcp.nb_oc * OD * OH * jcp.nb_ow;
 
 #define BRGC_WO(...) \
-    parallel(pd()->jcp_.nthr, [&](const int ithr, const int nthr) { \
+    parallel(pd()->jcp_.nthr, \
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) { \
         if (ithr >= work_amount) return; \
         brgemm_batch_element_t *const brg_batch \
                 = brg_batch_global + (size_t)ithr * jcp.adjusted_batch_size; \

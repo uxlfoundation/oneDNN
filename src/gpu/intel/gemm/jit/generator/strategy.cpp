@@ -120,6 +120,19 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (kParallelVariable && problem.batch != BatchMode::None)
         C.atomic = CO.atomic = kParallelVariable = kParallelLocal = false;
 
+    // Variable k-parallelization (stream-K) combines per-workgroup partial C
+    // contributions via an atomic add straight into memory once each workgroup's
+    // slice has been late-scale-dequantized and rounded to Tc. With grouped 2D
+    // scaling/offsets, several workgroups may independently round their own
+    // partial contribution to the same output element before those roundings are
+    // summed, whereas a single-workgroup-per-tile strategy rounds only once
+    // (after accumulating the full K reduction). This makes the result depend on
+    // how work happened to be split across workgroups and introduces incorrect,
+    // K-split-dependent error beyond ordinary quantization rounding. Disable
+    // stream-K for such problems so C is always produced by one final rounding.
+    if (kParallelVariable && (problem.quantized2DA() || problem.quantized2DB()))
+        C.atomic = CO.atomic = kParallelVariable = kParallelLocal = false;
+
     C.atomic |= useAutoAtomic(hw, problem, *this);
 
     if (C.atomic && !C.base.isStateless() && !C.newDP)

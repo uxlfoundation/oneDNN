@@ -515,10 +515,13 @@ void jit_uni_binary_kernel_t::forward_over_outer_dims() {
     const int es1 = (int)types::data_type_size(conf_.src1_type);
     load_imm64(reg_src1_stride_, (conf_.src1_stride * es1));
 
-    Label run_loop, inner_loop, end;
+    Label run_loop, inner_loop, run_avl_ready, end;
     L(run_loop);
     beqz(reg_work_amount_, end);
     load_imm64(reg_blk_avl_, conf_.outer_dims); // remaining in this run
+    bge(reg_work_amount_, reg_blk_avl_, run_avl_ready);
+    mv(reg_blk_avl_, reg_work_amount_);
+    L(run_avl_ready);
     L(inner_loop);
     vsetvli(reg_vl_, reg_blk_avl_, SEW::e32, compute_lmul_, VTA::ta, VMA::ma);
     compute_dst();

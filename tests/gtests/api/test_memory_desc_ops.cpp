@@ -124,6 +124,47 @@ TEST(memory_desc_properties_test, TestMemoryDescSizeSubByte) {
 #endif
 }
 
+TEST(memory_desc_properties_test, TestMemoryDescSizeU3) {
+    using dt = memory::data_type;
+
+    const std::vector<memory::dims> shapes = {
+            {10, 256}, // nelems multiple of 8
+            {1, 8}, // exactly one group
+            {1, 9}, // partial trailing group
+            {1, 1}, // single element
+    };
+
+    for (const auto &dims : shapes) {
+        const size_t nelems = static_cast<size_t>(dims[0]) * dims[1];
+#if DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
+        const size_t ref_size = (nelems * 3 + 7) / 8;
+#else
+        const size_t ref_size = 3 * ((nelems + 7) / 8);
+#endif
+        auto md = memory::desc(dims, dt::u3, fmt::ab);
+        ASSERT_EQ(md.get_size(), ref_size)
+                << "u3 dense size mismatch for nelems=" << nelems;
+    }
+}
+
+TEST(memory_desc_properties_test, TestMemoryDescDimsU3) {
+    using dt = memory::data_type;
+
+    // u3 packs 8 values per 3 bytes,
+    // so the packed axis must be a multiple of 8
+    EXPECT_NO_THROW(memory::desc({10, 256}, dt::u3, fmt::ab));
+    EXPECT_NO_THROW(memory::desc({256, 10}, dt::u3, fmt::ba));
+    EXPECT_NO_THROW(memory::desc({7, 32, 64}, dt::u3, fmt::abc));
+
+    catch_expected_failures([&]() { memory::desc({10, 20}, dt::u3, fmt::ab); },
+            true, dnnl_invalid_arguments);
+    catch_expected_failures([&]() { memory::desc({20, 32}, dt::u3, fmt::ba); },
+            true, dnnl_invalid_arguments);
+    catch_expected_failures([&]() {
+        memory::desc({1, 32, 66}, dt::u3, fmt::abc);
+    }, true, dnnl_invalid_arguments);
+}
+
 TEST(memory_desc_properties_test, TestOOBTensorDimensions) {
     using dt = memory::data_type;
 

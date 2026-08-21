@@ -133,11 +133,6 @@ status_t grouped_matmul_desc_init(matmul_desc_t *matmul_desc,
             wei_d.ndims() - 1);
 
     if (is_2dby3d) {
-        // Weights must be dense, abc or acb format
-        VCHECK_MATMUL_UNIMPL(
-                wei_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
-                VERBOSE_UNSUPPORTED_TAG);
-
         // Bias supported with shape [G, N]
         const bool with_bias = op_d.bias_desc.ndims != 0;
         if (with_bias) {

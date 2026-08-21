@@ -70,14 +70,19 @@ struct ref_grouped_t : public primitive_t {
             const auto wei_type = weights_md(0)->data_type;
             const auto dst_type = dst_md(0)->data_type;
 
+            // Resolve format_any to plain dense
+            if (memory_desc_wrapper(weights_md(0)).format_any())
+                CHECK(memory_desc_init_by_strides(weights_md_, nullptr));
+
             memory_desc_wrapper wei_d(weights_md(0));
             memory_desc_wrapper dst_d(dst_md());
 
-            // Supported configurations: grouped src/dst, dense 3D weights
+            // Supported configurations: grouped src/dst, abc/acb 3D weights
             VDISPATCH_MATMUL(
                     dst_d.is_grouped_desc(), VERBOSE_UNSUPPORTED_SPARSE_CFG);
-            VDISPATCH_MATMUL(wei_d.is_blocking_desc() && wei_d.ndims() == 3,
-                    VERBOSE_UNSUPPORTED_SPARSE_CFG);
+            VDISPATCH_MATMUL(
+                    wei_d.matches_one_of_tag(format_tag::abc, format_tag::acb),
+                    VERBOSE_UNSUPPORTED_TAG);
 
             // Supported data types: fp and int for src/wei
             const bool is_fp_src = utils::one_of(

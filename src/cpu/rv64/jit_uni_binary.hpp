@@ -448,9 +448,17 @@ struct jit_uni_binary_t : public primitive_t {
     status_t init(engine_t *engine) override;
     status_t execute(const exec_ctx_t &ctx) const override;
 
+    // Threads at or above this count switch to the unrolled (per-stream-burst)
+    // f32 main loop; below, the narrow (m1-interleaved) loop is faster.
+    static constexpr int unrolled_kernel_min_nthrs = 4;
+
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<jit_uni_binary_kernel_t> kernel_;
+    // Unrolled / narrow f32 streaming variants; null when the shape/attr
+    // does not fit them. The driver selects one by the call's thread count.
+    std::unique_ptr<jit_uni_binary_kernel_t> kernel_unrolled_;
+    std::unique_ptr<jit_uni_binary_kernel_t> kernel_narrow_;
 };
 
 } // namespace rv64

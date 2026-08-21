@@ -925,8 +925,7 @@ status_t dnnl_post_ops_append_prelu(post_ops_t *post_ops, int mask) {
 
 status_t dnnl_post_ops_get_params_prelu(
         const post_ops_t *post_ops, int index, int *mask) {
-    if (post_ops == nullptr || index >= post_ops->len())
-        return invalid_arguments;
+    CHECK(simple_get_params_check(post_ops, index, primitive_kind::prelu));
 
     const auto &prelu_entry = post_ops->entry_[index].prelu;
     if (mask) *mask = prelu_entry.mask;

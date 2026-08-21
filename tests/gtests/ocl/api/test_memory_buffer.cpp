@@ -267,6 +267,10 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     ASSERT_EQ(mem.get_data_handle(0), nullptr);
     ASSERT_EQ(mem.get_data_handle(1), nullptr);
     ASSERT_EQ(mem.get_data_handle(2), nullptr);
+
+    TEST_OCL_CHECK(clReleaseMemObject(ocl_values));
+    TEST_OCL_CHECK(clReleaseMemObject(ocl_row_indices));
+    TEST_OCL_CHECK(clReleaseMemObject(ocl_col_indices));
 }
 
 HANDLE_EXCEPTIONS_FOR_TEST(
@@ -329,6 +333,10 @@ HANDLE_EXCEPTIONS_FOR_TEST(
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_coo_values, 0));
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_row_indices, 1));
     ASSERT_NO_THROW(coo_mem.unmap_data(mapped_col_indices, 2));
+
+    TEST_OCL_CHECK(clReleaseMemObject(ocl_values));
+    TEST_OCL_CHECK(clReleaseMemObject(ocl_row_indices));
+    TEST_OCL_CHECK(clReleaseMemObject(ocl_col_indices));
 }
 
 } // namespace dnnl

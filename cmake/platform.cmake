@@ -136,6 +136,59 @@ if (DNNL_TARGET_ARCH STREQUAL "RV64")
     endif()
 endif()
 
+macro(enable_sanitizers)
+    if(DNNL_USE_CLANG_SANITIZER MATCHES "Memory(WithOrigin)?")
+        if(NOT DNNL_CPU_THREADING_RUNTIME STREQUAL "SEQ")
+            message(WARNING "Clang OpenMP is not compatible with MSan! "
+                "Expect a lot of false positives!")
+        endif()
+        append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=memory")
+        if(DNNL_USE_CLANG_SANITIZER STREQUAL "MemoryWithOrigin")
+            append(CMAKE_CCXX_SANITIZER_FLAGS
+                "-fsanitize-memory-track-origins=2")
+            # Already enabled for x64
+            if(NOT DNNL_TARGET_ARCH STREQUAL "X64")
+                append(CMAKE_CCXX_SANITIZER_FLAGS
+                    "-fno-omit-frame-pointer")
+            endif()
+        endif()
+        set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
+    elseif(DNNL_USE_CLANG_SANITIZER STREQUAL "Undefined")
+        append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=undefined")
+        append(CMAKE_CCXX_SANITIZER_FLAGS
+            "-fno-sanitize=function,vptr")  # work around linking problems
+        set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
+    elseif(DNNL_USE_CLANG_SANITIZER STREQUAL "Address")
+        append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=address")
+        set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
+    elseif(DNNL_USE_CLANG_SANITIZER STREQUAL "Thread")
+        append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=thread")
+        set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
+    elseif(DNNL_USE_CLANG_SANITIZER STREQUAL "Leak")
+        append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=leak")
+        set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
+    elseif(NOT DNNL_USE_CLANG_SANITIZER STREQUAL "")
+        message(FATAL_ERROR
+            "Unsupported Clang sanitizer '${DNNL_USE_CLANG_SANITIZER}'")
+    endif()
+    if(DNNL_ENABLED_CLANG_SANITIZER)
+        message(STATUS
+            "Using Clang ${DNNL_ENABLED_CLANG_SANITIZER} "
+            "sanitizer (experimental!)")
+        append(CMAKE_CCXX_SANITIZER_FLAGS "-DDNNL_ENABLED_CLANG_SANITIZER")
+        append(CMAKE_CCXX_SANITIZER_FLAGS "-g")
+        # Already enabled for x64
+        if(NOT DNNL_TARGET_ARCH STREQUAL "X64")
+            append(CMAKE_CCXX_SANITIZER_FLAGS "-fno-omit-frame-pointer")
+        endif()
+
+        # Blacklist to ignore false-positive cases. Each case may be
+        # assigned to a specific sanitizer. See online doc for help.
+        append(CMAKE_CCXX_SANITIZER_FLAGS
+               "-fsanitize-blacklist=${PROJECT_SOURCE_DIR}/.clang-ignorelist")
+    endif()
+endmacro()
+
 if(MSVC)
     set(USERCONFIG_PLATFORM "x64")
     append_if(DNNL_WERROR CMAKE_CCXX_FLAGS "/WX")
@@ -272,6 +325,8 @@ elseif(UNIX OR MINGW)
 
         # Align with GCC -Wall
         append(CMAKE_CCXX_FLAGS "-Wsign-compare")
+
+        enable_sanitizers()
     endif()
 
     # Generating frame pointers for easier performance profiling
@@ -319,56 +374,7 @@ elseif(UNIX OR MINGW)
         endif()
         platform_clang_nowarn_ccxx_flags(CMAKE_CCXX_NOWARN_FLAGS)
 
-        if(DNNL_USE_CLANG_SANITIZER MATCHES "Memory(WithOrigin)?")
-            if(NOT DNNL_CPU_THREADING_RUNTIME STREQUAL "SEQ")
-                message(WARNING "Clang OpenMP is not compatible with MSan! "
-                    "Expect a lot of false positives!")
-            endif()
-            append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=memory")
-            if(DNNL_USE_CLANG_SANITIZER STREQUAL "MemoryWithOrigin")
-                append(CMAKE_CCXX_SANITIZER_FLAGS
-                    "-fsanitize-memory-track-origins=2")
-                # Already enabled for x64
-                if(NOT DNNL_TARGET_ARCH STREQUAL "X64")
-                    append(CMAKE_CCXX_SANITIZER_FLAGS
-                        "-fno-omit-frame-pointer")
-                endif()
-            endif()
-            set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
-        elseif(DNNL_USE_CLANG_SANITIZER STREQUAL "Undefined")
-            append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=undefined")
-            append(CMAKE_CCXX_SANITIZER_FLAGS
-                "-fno-sanitize=function,vptr")  # work around linking problems
-            set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
-        elseif(DNNL_USE_CLANG_SANITIZER STREQUAL "Address")
-            append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=address")
-            set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
-        elseif(DNNL_USE_CLANG_SANITIZER STREQUAL "Thread")
-            append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=thread")
-            set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
-        elseif(DNNL_USE_CLANG_SANITIZER STREQUAL "Leak")
-            append(CMAKE_CCXX_SANITIZER_FLAGS "-fsanitize=leak")
-            set(DNNL_ENABLED_CLANG_SANITIZER "${DNNL_USE_CLANG_SANITIZER}")
-        elseif(NOT DNNL_USE_CLANG_SANITIZER STREQUAL "")
-            message(FATAL_ERROR
-                "Unsupported Clang sanitizer '${DNNL_USE_CLANG_SANITIZER}'")
-        endif()
-        if(DNNL_ENABLED_CLANG_SANITIZER)
-            message(STATUS
-                "Using Clang ${DNNL_ENABLED_CLANG_SANITIZER} "
-                "sanitizer (experimental!)")
-            append(CMAKE_CCXX_SANITIZER_FLAGS "-DDNNL_ENABLED_CLANG_SANITIZER")
-            append(CMAKE_CCXX_SANITIZER_FLAGS "-g")
-            # Already enabled for x64
-            if(NOT DNNL_TARGET_ARCH STREQUAL "X64")
-                append(CMAKE_CCXX_SANITIZER_FLAGS "-fno-omit-frame-pointer")
-            endif()
-
-            # Blacklist to ignore false-positive cases. Each case may be
-            # assigned to a specific sanitizer. See online doc for help.
-            append(CMAKE_CCXX_SANITIZER_FLAGS
-                   "-fsanitize-blacklist=${PROJECT_SOURCE_DIR}/.clang-ignorelist")
-        endif()
+        enable_sanitizers()
 
         if(DNNL_USE_CLANG_TIDY MATCHES "(CHECK|FIX)")
             find_program(CLANG_TIDY NAMES clang-tidy)

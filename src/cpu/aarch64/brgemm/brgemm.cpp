@@ -41,6 +41,20 @@ using namespace prop_kind;
 using namespace data_type;
 using namespace brgemm_utils;
 
+namespace {
+status_t validate_vpad_blocking(const brgemm_desc_t *brg) {
+    if (brg->is_dgmm) return status::success;
+
+    const int max_vpad = nstl::max(
+            brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
+
+    // virtual padding is restricted by bd_block size due to
+    // brgemm_kernel implementation. TODO: remove this restriction
+    const int min_bd_block = brg->bdb_tail > 0 ? brg->bdb_tail : brg->bd_block;
+    return max_vpad > min_bd_block ? status::unimplemented : status::success;
+}
+} // namespace
+
 void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch) {
     brgemm_kernel_params_t brgemm_p;
@@ -288,6 +302,7 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
                                     broadcasting_strategy_t::no_broadcast})))
         return status::unimplemented;
 
+    const bool had_sum_zp = brg->with_sum && brg->sum_zp != 0;
     const auto sum_idx = post_ops.find(primitive_kind::sum);
     const bool with_sum = sum_idx != -1;
     brg->with_sum = with_sum;
@@ -357,10 +372,16 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
 
     // src zero points require additional register in brgemm kernel
     const bool is_zp_src = brg->zp_type_a != brgemm_broadcast_t::none;
+    const bool sum_zp = brg->with_sum && brg->sum_zp != 0;
+
     if (brg->is_dgmm) {
         if (is_zp_src) CHECK(brdgmm_blocking(brg));
-    } else if (is_zp_src || brg->is_bf16_emu)
-        CHECK(brgemm_blocking(brg));
+    } else {
+        if (is_zp_src || brg->is_bf16_emu || had_sum_zp != sum_zp)
+            CHECK(brgemm_blocking(brg));
+
+        CHECK(validate_vpad_blocking(brg));
+    }
 
     return status::success;
 }
@@ -405,13 +426,7 @@ status_t brgemm_desc_set_attr(
             CHECK(brgemm_blocking(brg));
     }
 
-    if (!brg->is_dgmm) {
-        // virtual padding is restricted by bd_block size due to
-        // brgemm_kernel implementation. TODO: remove this restriction
-        const int min_bd_block
-                = brg->bdb_tail > 0 ? brg->bdb_tail : brg->bd_block;
-        if ((max_vpad > min_bd_block)) return status::unimplemented;
-    }
+    CHECK(validate_vpad_blocking(brg));
 
     brg->LDA2 = (brgattr.LDA2 != 0) ? brgattr.LDA2 : brg->LDA;
     brg->LDB2 = (brgattr.LDB2 != 0) ? brgattr.LDB2 : brg->LDB;

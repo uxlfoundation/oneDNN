@@ -43,9 +43,9 @@ static bcast_set_t get_all_strategies_supported_by_injector() {
             broadcasting_strategy_t::no_broadcast};
 }
 
-bool is_data_supported(cpu_isa_t isa, data_type_t data_type) {
-    UNUSED(isa);
-    return !(data_type == data_type::bf16);
+bool is_data_supported(cpu_isa_t, data_type_t data_type) {
+    using namespace data_type;
+    return utils::one_of(data_type, f32, s32, u8, s8);
 }
 
 bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,

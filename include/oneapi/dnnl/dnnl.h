@@ -925,6 +925,33 @@ dnnl_status_t DNNL_API dnnl_post_ops_append_binary_v2(dnnl_post_ops_t post_ops,
         dnnl_alg_kind_t alg_kind, const_dnnl_memory_desc_t src1_desc,
         const_dnnl_memory_desc_t src2_desc);
 
+/// Appends a potentially in-place binary post-op with ternary operators.
+///
+/// This post operation is categorized as #dnnl_binary.
+///
+/// In the simplest case when the binary is the only post operation, the
+/// computations will be:
+///
+///     dst[:] <- binary_op (dst[:], another_input1[:], another_input2[:])
+///
+/// where binary_op is configured with the given parameters. binary_op supports
+/// broadcast semantics only for the second operand and not for the third
+/// operand.
+///
+/// @param post_ops Post-ops.
+/// @param alg_kind Binary algorithm for the post-op.
+/// @param src1_desc Memory descriptor of a second operand.
+/// @param src2_desc Memory descriptor of a third operand. If the specificed
+/// algorithm is not one that requires a ternary input, src2_desc will be
+/// ignored.
+/// @param inplace Indicates whether to mark the post-op as an in-place binary.
+
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+dnnl_status_t DNNL_API dnnl_post_ops_append_binary_v3(dnnl_post_ops_t post_ops,
+        dnnl_alg_kind_t alg_kind, const_dnnl_memory_desc_t src1_desc,
+        const_dnnl_memory_desc_t src2_desc, int inplace);
+
 /// Returns the parameters of a binary post-op.
 ///
 /// @param post_ops Post-ops.
@@ -957,6 +984,27 @@ dnnl_status_t DNNL_API dnnl_post_ops_get_params_binary_v2(
         const_dnnl_post_ops_t post_ops, int index, dnnl_alg_kind_t *alg_kind,
         const_dnnl_memory_desc_t *src1_desc,
         const_dnnl_memory_desc_t *src2_desc);
+
+/// Returns the parameters of a potentially in-place binary post-op with
+/// ternary operators.
+///
+/// @param post_ops Post-ops.
+/// @param index Index of the binary post-op.
+/// @param alg_kind Output binary algorithm kind.
+/// @param src1_desc Output memory descriptor of a second operand.
+/// @param src2_desc Output memory descriptor of a third operand. If the
+/// specified algorithm is not one that requires a ternary input, src2_desc
+/// will be ignored.
+/// @param inplace Indicates whether to mark the post-op as an in-place binary.
+
+/// @returns #dnnl_success on success and a status describing the error
+///     otherwise.
+/// @returns #dnnl_invalid_arguments if @p index does not refer to a binary
+///     post-op.
+dnnl_status_t DNNL_API dnnl_post_ops_get_params_binary_v3(
+        const_dnnl_post_ops_t post_ops, int index, dnnl_alg_kind_t *alg_kind,
+        const_dnnl_memory_desc_t *src1_desc,
+        const_dnnl_memory_desc_t *src2_desc, int *inplace);
 
 /// Appends a prelu forward post-op.
 ///

@@ -973,6 +973,10 @@ std::ostream &operator<<(std::ostream &s, const attr_t::post_ops_t &post_ops) {
             else if (e.eltwise.alpha != 0.f)
                 s << ":" << e.eltwise.alpha;
         } else if (e.is_binary_kind()) {
+            if (e.binary.src1_dt == dnnl_data_type_undef) {
+                s << ":inplace";
+                continue;
+            }
             s << ":" << e.binary.src1_dt;
             const auto src_delim
                     = e.is_binary_kind_with_ternary_op() ? "." : ":";
@@ -1362,7 +1366,9 @@ post_ops_rhs_tensor_entry_t get_po_rhs_tensor_entry(
 } // namespace
 
 int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
-        const dnnl_dims_t prb_dims, dnnl_primitive_kind_t prim_kind,
+        const dnnl_dims_t prb_dims,
+        benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dst_md,
+        dnnl_primitive_kind_t prim_kind,
         const sparse_options_t *sparse_options) {
     const auto &po = attr.post_ops;
     dnnl_dims_t dims;
@@ -1385,6 +1391,13 @@ int attr_args_t::prepare_post_ops_mds(const attr_t &attr, int ndims,
                     = get_po_rhs_tensor_entry(e, ndims, prim_kind);
             const int mask = po_rhs_tensor_entry.mask;
 
+            if (po_rhs_tensor_entry.dt == dnnl_data_type_undef) {
+                // in-place binary
+                mds.emplace((DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx)
+                                    | po_rhs_tensor_entry.arg_attr_mask),
+                        std::move(dst_md));
+                continue;
+            }
             // deduce binary, prelu dims based on input policy
             dnnl_dims_t rhs_tensor_dims = {};
             // Overload mask 0 meaning for when binary post-op is applied
@@ -1591,6 +1604,7 @@ dnnl_primitive_attr_t create_dnnl_attr(
                 DNN_SAFE_V(dnnl_post_ops_append_eltwise(
                         ops, e.eltwise.alg, e.eltwise.alpha, e.eltwise.beta));
             } else if (e.is_binary_kind()) {
+                const bool inplace = e.binary.src1_dt == dnnl_data_type_undef;
                 const auto &src1_md = attr_args.get_md(
                         (DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1));
                 const auto &src2_md = attr_args.get_md(
@@ -1599,10 +1613,11 @@ dnnl_primitive_attr_t create_dnnl_attr(
 
                 if (e.is_binary_kind_with_ternary_op()) {
                     assert(query_md_ndims(src2_md) != 0);
+                    assert(!inplace);
                 }
 
-                DNN_SAFE_V(dnnl_post_ops_append_binary_v2(
-                        ops, e.binary.alg, src1_md, src2_md));
+                DNN_SAFE_V(dnnl_post_ops_append_binary_v3(
+                        ops, e.binary.alg, src1_md, src2_md, inplace));
 
             } else if (e.is_prelu_kind()) {
                 const auto mask = attr_args.get_mask(
@@ -2153,7 +2168,8 @@ void update_cpu_ref_attrs(attr_t &attr, dnnl_data_type_t dst_dt) {
     for (int idx = 0; idx < po.len(); ++idx) {
         auto &e = po.entry[idx];
         if (e.is_binary_kind()) {
-            e.binary.src1_dt = dnnl_f32;
+            if (e.binary.src1_dt != dnnl_data_type_undef)
+                e.binary.src1_dt = dnnl_f32;
             e.binary.tag = tag::any;
         } else if (e.is_sum_kind()) {
             if (dst_dt == dnnl_f32) e.sum.dt = dnnl_data_type_undef;

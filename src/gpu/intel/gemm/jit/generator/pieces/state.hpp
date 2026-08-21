@@ -285,6 +285,11 @@ struct GEMMState : public CommonState {
     std::vector<ngen::GRFRange> A_offsetAddrs, B_offsetAddrs;
     std::vector<ngen::GRFRange> A_scaleAddrs, B_scaleAddrs, C_scaleAddrs;
     std::vector<ngen::GRFRange> Ag_addrs, Bg_addrs;
+    // Auxiliary (quantization) prefetch addresses -- independent copies of the above address
+    // ranges, advanced in lockstep with the A/B prefetch schedule (strategy.pfaux).
+    std::vector<ngen::GRFRange> Ap_offsetAddrs, Bp_offsetAddrs;
+    std::vector<ngen::GRFRange> Ap_scaleAddrs, Bp_scaleAddrs;
+    std::vector<ngen::GRFRange> Agp_addrs, Bgp_addrs;
     std::vector<GRFMultirange> A_regs, B_regs, C_regs;
     GRFMultirange Ar_regs, Br_regs;                         // Repacked A/B registers.
     GRFMultirange Cr_regs;                                  // C registers to be repacked.

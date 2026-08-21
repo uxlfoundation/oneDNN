@@ -424,6 +424,7 @@ void parseStrategy(const std::string &str, HW hw, const GEMMProblem &problem, GE
         {"up", [](ParserContext& ctx) { ctx.strategy.panelCheck = true; }},
         {"ek", [](ParserContext& ctx) { ctx.strategy.slmEarlyKMask = true; }},
         {"di", [](ParserContext& ctx) { ctx.strategy.delayABInc = true; }},
+        {"pfaux", [](ParserContext& ctx) { ctx.strategy.pfaux = true; }},
         {"nq", [](ParserContext& ctx) {
             auto &strategy = ctx.strategy;
             strategy.A.noExtraPad = strategy.A_prefetch.noExtraPad = true;
@@ -948,6 +949,7 @@ std::string unparseStrategy(HW hw, const GEMMProblem &problem, const GEMMStrateg
     if (strategy.cAccumulators)             s << " ac";
     if (strategy.cLoadAhead)                s << " el";
     if (strategy.delayABInc)                s << " di";
+    if (strategy.pfaux)                     s << " pfaux";
     if (strategy.loadBFirst)                s << " ba";
     if (strategy.doubleMasking)             s << " dm";
     if (strategy.kDescRem)                  s << " kd";

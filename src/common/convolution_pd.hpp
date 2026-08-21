@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -372,6 +373,12 @@ struct convolution_fwd_pd_t : public convolution_pd_t {
     }
 
     int n_outputs() const override { return 1; }
+
+    // Deconvolution can be expressed as a forward convolution for unit
+    // strides by adjusting the padding and reversing the spatial weight
+    // indices. Implementations must opt in before they can be selected for
+    // such an internal convolution descriptor.
+    virtual bool supports_spatial_inversion() const { return false; }
 
 protected:
     memory_desc_t src_md_;

@@ -35,6 +35,10 @@ struct kai_direct_1x1_convolution_fwd_t : public kai_convolution_fwd_base_t {
             return kai_convolution_fwd_base_t::pd_t::init(engine);
         }
 
+        bool supports_spatial_inversion() const override {
+            return KH() == 1 && KW() == 1;
+        }
+
     private:
         const char *impl_base_name() const override { return "direct_1x1:kai"; }
         status_t init_datapath(const engine_t *engine) override;

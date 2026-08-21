@@ -91,6 +91,53 @@ static status_t conv_descr_create(const deconvolution_desc_t *dd,
             dd->padding[1]);
 }
 
+static status_t fwd_conv_descr_create(const deconvolution_desc_t *dd,
+        convolution_desc_t *cd, const memory_desc_t *bias_md = nullptr,
+        data_type_t dst_dt = data_type::undef) {
+    if (!utils::one_of(dd->prop_kind, prop_kind::forward_training,
+                prop_kind::forward_inference))
+        return status::invalid_arguments;
+    if (dd->alg_kind != alg_kind::deconvolution_direct)
+        return status::unimplemented;
+
+    const int sp_ndims = dd->dst_desc.ndims - 2;
+    dims_t padding_l {};
+    dims_t padding_r {};
+    dim_t kernel_size = 1;
+    for (int d = 0; d < sp_ndims; ++d) {
+        if (dd->strides[d] != 1) return status::unimplemented;
+
+        const int wei_d = dd->weights_desc.ndims - sp_ndims + d;
+        const dim_t kernel = dd->weights_desc.dims[wei_d];
+        const dim_t effective_kernel = (kernel - 1) * (dd->dilates[d] + 1);
+        padding_l[d] = effective_kernel - dd->padding[0][d];
+        padding_r[d] = effective_kernel - dd->padding[1][d];
+        if (padding_l[d] < 0 || padding_r[d] < 0) return status::unimplemented;
+        kernel_size *= kernel;
+    }
+
+    memory_desc_t dst_md;
+    const memory_desc_t *conv_dst_md = &dd->dst_desc;
+    if (dst_dt != data_type::undef) {
+        CHECK(memory_desc_init_by_md_and_dt(dst_md, dd->dst_desc, dst_dt));
+        conv_dst_md = &dst_md;
+    }
+
+    CHECK(conv_desc_init(cd, prop_kind::forward_training,
+            alg_kind::convolution_direct, &dd->src_desc, &dd->weights_desc,
+            bias_md, conv_dst_md, dd->strides, dd->dilates, padding_l,
+            padding_r));
+
+    // Keep this internal descriptor distinct and tell an opted-in forward
+    // implementation to reverse its spatial weight indices.
+    if (kernel_size > 1) {
+        cd->diff_src_desc = cd->src_desc;
+        cd->diff_dst_desc = cd->dst_desc;
+    }
+    cd->use_inversion = true;
+    return status::success;
+}
+
 struct ref_deconvolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_deconvolution_fwd_pd_t {
         using cpu_deconvolution_fwd_pd_t::cpu_deconvolution_fwd_pd_t;
@@ -99,10 +146,63 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             : cpu_deconvolution_fwd_pd_t(other)
             , conv_pd_(other.conv_pd_->clone())
             , conv_supports_bias_(other.conv_supports_bias_)
+            , conv_is_fwd_(other.conv_is_fwd_)
             , dst_tag_(other.dst_tag_)
             , name_(other.name_) {}
 
         DECLARE_COMMON_PD_T(name_.c_str(), ref_deconvolution_fwd_t);
+
+        status_t try_fwd_convolution(const engine_t *engine,
+                const primitive_attr_t &conv_attr, const memory_desc_t *bias_md,
+                data_type_t dst_dt) {
+            convolution_desc_t cd;
+            const status_t desc_status
+                    = fwd_conv_descr_create(desc(), &cd, bias_md, dst_dt);
+            if (desc_status != status::success) return status::unimplemented;
+
+            primitive_desc_iterator_t it(
+                    engine, (op_desc_t *)&cd, &conv_attr, nullptr);
+            if (!it.is_initialized()) return status::out_of_memory;
+
+            while (++it != it.end()) {
+                auto *fwd_pd
+                        = dynamic_cast<convolution_fwd_pd_t *>((*it).get());
+                if (!fwd_pd || !fwd_pd->supports_spatial_inversion()) continue;
+
+                conv_pd_ = *it;
+                conv_is_fwd_ = true;
+                conv_supports_bias_ = with_bias() && bias_md != nullptr;
+                return status::success;
+            }
+            return status::unimplemented;
+        }
+
+        status_t try_bwd_data_convolution(const engine_t *engine,
+                const primitive_attr_t &conv_attr, const memory_desc_t *bias_md,
+                data_type_t dst_dt) {
+            convolution_desc_t cd;
+            CHECK(conv_descr_create(desc(), &cd, bias_md, dst_dt));
+
+            primitive_desc_iterator_t it(
+                    engine, (op_desc_t *)&cd, &conv_attr, nullptr);
+            if (!it.is_initialized()) return status::out_of_memory;
+
+            while (++it != it.end()) {
+                conv_pd_ = *it;
+                conv_is_fwd_ = false;
+                conv_supports_bias_ = false;
+                if (with_bias() && bias_md != nullptr) {
+                    conv_supports_bias_
+                            = utils::downcast<cpu_convolution_bwd_data_pd_t *>(
+                                    conv_pd_.get())
+                                      ->support_bias();
+                    if (!conv_supports_bias_) continue;
+                }
+                if (conv_pd_->weights_md()->extra.flags == 0)
+                    return status::success;
+            }
+            return status::unimplemented;
+        }
 
         status_t init_convolution(const engine_t *engine) {
             using namespace format_tag;
@@ -113,30 +213,20 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             // this impl via simple loop.
             primitive_attr_t conv_attr;
 
-            convolution_desc_t cd;
-            // When no attributes were requested, try to find a bwd_d conv impl
-            // which supports bias update in-place, if requested, in requested
-            // dst_dt. If appropriate conv impl was not found, enforce f32
-            // diff_src for conv for correct result. If attributes are
-            // requested, enforce conv impl to return f32 output no matter what.
+            // For unit strides, first try an opted-in forward convolution with
+            // adjusted padding and spatially inverted weights. Otherwise use
+            // the traditional backward-data convolution mapping.
             if (attr()->has_default_values()) {
-                CHECK(conv_descr_create(
-                        desc(), &cd, weights_md(1), dst_md()->data_type));
-                primitive_desc_iterator_t it(
-                        engine, (op_desc_t *)&cd, &conv_attr, nullptr);
-                if (!it.is_initialized()) return status::out_of_memory;
+                const auto *bias_md = with_bias() ? weights_md(1) : nullptr;
+                auto status = try_fwd_convolution(
+                        engine, conv_attr, bias_md, dst_md()->data_type);
+                if (status == status::success) return status;
+                if (status == status::out_of_memory) return status;
 
-                while (++it != it.end()) {
-                    conv_pd_ = *it;
-                    if (with_bias()) {
-                        conv_supports_bias_ = utils::downcast<
-                                cpu_convolution_bwd_data_pd_t *>(conv_pd_.get())
-                                                      ->support_bias();
-                        if (!conv_supports_bias_) continue;
-                    }
-                    bool ok = conv_pd_->weights_md()->extra.flags == 0;
-                    if (ok) return status::success;
-                }
+                status = try_bwd_data_convolution(
+                        engine, conv_attr, bias_md, dst_md()->data_type);
+                if (status == status::success) return status;
+                if (status == status::out_of_memory) return status;
             }
 
             // Intermediate f32 buffer is supported only for given condition.
@@ -144,16 +234,15 @@ struct ref_deconvolution_fwd_t : public primitive_t {
                     && dst_md()->data_type != f64) {
                 // Enforce f32 dt for diff src and work with f32 output for bias
                 // update or post ops after conv execution.
-                CHECK(conv_descr_create(desc(), &cd, nullptr, data_type::f32));
-                primitive_desc_iterator_t it(
-                        engine, (op_desc_t *)&cd, &conv_attr, nullptr);
-                if (!it.is_initialized()) return status::out_of_memory;
+                auto status = try_fwd_convolution(
+                        engine, conv_attr, nullptr, data_type::f32);
+                if (status == status::success) return status;
+                if (status == status::out_of_memory) return status;
 
-                while (++it != it.end()) {
-                    conv_pd_ = *it;
-                    bool ok = conv_pd_->weights_md()->extra.flags == 0;
-                    if (ok) return status::success;
-                }
+                status = try_bwd_data_convolution(
+                        engine, conv_attr, nullptr, data_type::f32);
+                if (status == status::success) return status;
+                if (status == status::out_of_memory) return status;
             }
             return status::unimplemented;
         }
@@ -191,16 +280,20 @@ struct ref_deconvolution_fwd_t : public primitive_t {
 
             CHECK(init_convolution(engine));
 
-            if (weights_md_.format_kind == format_kind::any)
-                CHECK(weights_axes_permutation(
-                        &weights_md_, conv_pd_->weights_md(), with_groups()));
+            if (weights_md_.format_kind == format_kind::any) {
+                if (conv_is_fwd_)
+                    weights_md_ = *conv_pd_->weights_md();
+                else
+                    CHECK(weights_axes_permutation(&weights_md_,
+                            conv_pd_->weights_md(), with_groups()));
+            }
             if (src_md_.format_kind == format_kind::any)
-                src_md_ = *conv_pd_->diff_dst_md();
+                src_md_ = *nested_src_md();
             if (dst_md_.format_kind == format_kind::any) {
                 // re-apply dt manually since it could be changed due to bias
                 const auto dst_dt = dst_md_.data_type;
                 memory_desc_init_by_md_and_dt(
-                        dst_md_, *conv_pd_->diff_src_md(), dst_dt);
+                        dst_md_, *nested_dst_md(), dst_dt);
             }
             if (bias_md_.format_kind == format_kind::any)
                 CHECK(memory_desc_init_by_tag(bias_md_, x));
@@ -218,7 +311,16 @@ struct ref_deconvolution_fwd_t : public primitive_t {
 
         std::shared_ptr<primitive_desc_t> conv_pd_;
         bool conv_supports_bias_ = false;
+        bool conv_is_fwd_ = false;
         format_tag_t dst_tag_;
+
+        const memory_desc_t *nested_src_md() const {
+            return conv_is_fwd_ ? conv_pd_->src_md() : conv_pd_->diff_dst_md();
+        }
+
+        const memory_desc_t *nested_dst_md() const {
+            return conv_is_fwd_ ? conv_pd_->dst_md() : conv_pd_->diff_src_md();
+        }
 
     private:
         std::string name_ = "conv:any+"; // convolution-based deconvolution
@@ -235,10 +337,10 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             // out of boundary access.
             if ((with_bias() && !conv_supports_bias_)
                     || !attr()->has_default_values()) {
-                const memory_desc_wrapper diff_src_d(conv_pd_->diff_src_md());
-                assert(diff_src_d.data_type_size() == sizeof(float));
-                scratchpad.book(key_deconv_bias, diff_src_d.nelems(true),
-                        diff_src_d.data_type_size());
+                const memory_desc_wrapper conv_dst_d(nested_dst_md());
+                assert(conv_dst_d.data_type_size() == sizeof(float));
+                scratchpad.book(key_deconv_bias, conv_dst_d.nelems(true),
+                        conv_dst_d.data_type_size());
             }
             // This scratchpad is required to stash original dst memory for sum
             // post-op. It will be overwritten by conv execution and will not

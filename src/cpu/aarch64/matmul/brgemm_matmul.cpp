@@ -16,7 +16,10 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <memory>
+
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/type_helpers.hpp"
@@ -297,19 +300,26 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     const float *oscales = precompute_scales(
             scratchpad, src_scales, wei_scales, pd()->N(), pd()->attr());
 
-    brg_matmul_exec_ctx_t brgmm_ctx(ctx, pd(), oscales, dst_scales, helper);
+    const auto &brgmm_ctx_ptr = std::make_shared<brg_matmul_exec_ctx_t>(
+            ctx, pd(), oscales, dst_scales, helper);
 
-    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    const bool use_buffer_a
-            = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
-    const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
+    const int num_threads
+            = brgmm_ctx_ptr->get_num_threads_for_parallelization();
 
-    const int M_chunks = brgmm_ctx.get_M_chunks();
-    const int M_chunk_size = brgmm_ctx.get_M_chunk_size();
-    const int M_chunk_tail = brgmm_ctx.get_M_chunk_tail();
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+    parallel(num_threads,
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
+
         const int ithr_bmn = brgmm_ctx.get_thread_idx_for_bmn(ithr);
         const int ithr_k = brgmm_ctx.get_thread_idx_for_k(ithr);
+        const int M_chunks = brgmm_ctx.get_M_chunks();
+        const int M_chunk_size = brgmm_ctx.get_M_chunk_size();
+        const int M_chunk_tail = brgmm_ctx.get_M_chunk_tail();
+
+        const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+        const bool use_buffer_a
+                = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
+
         if (ithr_bmn < 0 || ithr_k < 0) return;
         int start {0}, end {0};
         balance211(brgmm_ctx.get_parallel_work_amount(),
@@ -363,7 +373,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         }
     });
 
-    maybe_reduce_partial_results_and_apply_postops(brgmm_ctx);
+    maybe_reduce_partial_results_and_apply_postops(brgmm_ctx_ptr);
 
     return status::success;
 }
@@ -506,13 +516,17 @@ void brgemm_matmul_t<isa>::compute_kernel(
 
 template <cpu_isa_t isa>
 void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
-        const brg_matmul_exec_ctx_t &brgmm_ctx) const {
-    if (!brgmm_ctx.parallel_reduction_is_used()) return;
+        const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const {
+    if (!brgmm_ctx_ptr->parallel_reduction_is_used()) return;
 
     const auto &bgmmc = pd()->get_brgemm_matmul_conf();
-    const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();
+    const int num_threads
+            = brgmm_ctx_ptr->get_num_threads_for_parallelization();
 
-    parallel(num_threads, [&](const int ithr, const int nthr) {
+    parallel(num_threads,
+            [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
+        const auto &brgmm_ctx = *brgmm_ctx_ptr;
+
         const int nthr_k = brgmm_ctx.get_num_threads_for_k();
         const int ithr_bmn = brgmm_ctx.get_thread_idx_for_bmn(ithr);
         const int ithr_k = brgmm_ctx.get_thread_idx_for_k(ithr);

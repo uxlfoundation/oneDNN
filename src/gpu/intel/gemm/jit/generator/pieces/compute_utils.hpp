@@ -83,6 +83,18 @@ static inline int outerProductCount(const GEMMProblem &problem, const GEMMStrate
     return minOuterProductCount(problem, strategy) * strategy.kChain;
 }
 
+static inline bool usesLateScale(const GEMMProblem &problem, const GEMMStrategy &strategy, bool isA)
+{
+    return isA ? (problem.aScale2D()
+            && ((problem.Ta_scale.paddedSize() > problem.Ta.paddedSize() && problem.Ta.isInteger())
+                    || problem.forceLateQuant(minOuterProductCount(problem, strategy))
+                    || (problem.preferBDPAS() && strategy.systolic)))
+    : (problem.bScale2D()
+            && ((problem.Tb_scale.paddedSize() > problem.Tb.paddedSize() && problem.Tb.isInteger())
+                    || problem.forceLateQuant(minOuterProductCount(problem, strategy))
+                    || (problem.preferBDPAS() && strategy.systolic)));
+}
+
 // Get the A and B crosspacks needed by the kernel. 0 indicates any crosspack is OK.
 static inline std::tuple<int,int> targetKernelCrosspack(ngen::HW hw, const GEMMProblem &problem, const GEMMStrategy &strategy)
 {

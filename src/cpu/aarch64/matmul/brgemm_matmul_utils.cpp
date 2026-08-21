@@ -222,10 +222,10 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(
                     = bgmmc.b_dt_sz * B_d.blocking_desc().strides[dim];
         }
     } else {
-        // Allows tranposed only for sve_256, since it has a copy_b_transpose
-        // implemented, and for gemv cases since they do not use copy_b.
-        // TODO: a working copy_b_transpose for sve_128
-        const bool allow_transposed_b = bgmmc.isa == sve_256
+        // Allow transposed for sve_128 and sve_256, which have
+        // copy_b_transposed implemented, and for gemv cases since they
+        // do not use copy_b_transposed.
+        const bool allow_transposed_b = one_of(bgmmc.isa, sve_128, sve_256)
                 || (bgmmc.M == 1
                         && transposed_tensor_layout_tag == format_tag::ba)
                 || bgmmc.N == 1;

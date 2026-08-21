@@ -654,20 +654,14 @@ struct jit_brgemm_matmul_copy_b_transposed_t
 
     jit_brgemm_matmul_copy_b_transposed_t(const brgemm_matmul_conf_t *conf)
         : jit_brgemm_matmul_copy_b_t(conf)
-        , typesize_(conf_->b_dt_sz)
-        , tr_typesize_(conf_->tr_b_dt_sz)
-        , vnni_granularity_(data_type_vnni_granularity(conf_->wei_dt))
-        , k_blk_step_(vlen_ / tr_typesize_)
-        , do_compute_compensation_(
-                  conf_->has_zero_point_a || conf_->s8s8_compensation_required)
-        , is_bf32_(conf->is_bf32)
-        , req_zp_comp_(conf_->has_zero_point_a)
-        , req_s8s8_comp_(conf_->s8s8_compensation_required)
-        , max_tmp_idx(16 - (do_compute_compensation_ ? 6 : 0))
+        , src_typesize_(conf_->b_dt_sz)
+        , tr_src_typesize_(conf_->tr_b_dt_sz)
+        , block_step_(simd_elems(conf_->wei_dt, isa))
         , src_stride_(conf_->wei_tag == format_tag::adbc
                           ? conf_->copy_B_wei_stride
-                          : conf_->K * typesize_)
-        , tr_src_stride_(conf_->LDB * vnni_granularity_ * tr_typesize_) {}
+                          : conf_->K * src_typesize_)
+        , tr_src_stride_(conf_->LDB * tr_src_typesize_)
+        , N_tail_(conf_->N % block_step_) {}
 
     void operator()(ctx_t *ctx) override { jit_generator_t::operator()(ctx); }
     status_t create_kernel() override {
@@ -676,418 +670,188 @@ struct jit_brgemm_matmul_copy_b_transposed_t
 
 private:
     using reg64_t = const Xbyak_aarch64::XReg;
-    using reg32_t = const Xbyak_aarch64::WReg;
-    using opmask_t = const Xbyak_aarch64::PReg;
 
-    static constexpr bool is_sve256_ = isa == sve_256;
-    static constexpr cpu_isa_t isa_ = isa;
-    static constexpr int max_vmm_regs_ = cpu_isa_traits<isa_>::n_vregs;
-    static constexpr int vlen_ = cpu_isa_traits<isa>::vlen;
-    static constexpr int n_blk_step_ = is_sve256_ ? 8 : 16;
-    static constexpr int bf32_k_blk_step_ = 16;
-    static constexpr size_t comp_shift_ = vlen_;
+    const int src_typesize_;
+    const int tr_src_typesize_;
+    const int block_step_;
 
-    const int typesize_;
-    const int tr_typesize_;
-    const int vnni_granularity_;
-    const int k_blk_step_;
-    const bool do_compute_compensation_;
-    const bool is_bf32_;
-    const bool req_zp_comp_;
-    const bool req_s8s8_comp_;
-    const int max_tmp_idx;
-
-    const dim_t src_stride_, tr_src_stride_;
-
-    opmask_t k3333 = p1;
-    opmask_t k5555 = p2;
-    opmask_t kAAAA = p3;
-    opmask_t kCCCC = p4;
-    opmask_t k0F0F = p5;
-    opmask_t kF0F0 = p6;
-    opmask_t kTail = p7;
+    const dim_t src_stride_, tr_src_stride_, N_tail_;
 
     reg64_t reg_src_base = x1;
     reg64_t reg_tr_src_base = x2;
-    reg64_t reg_comp_ptr = x3;
 
     reg64_t reg_K_iters = x8;
     reg64_t reg_N_iters = x9;
     reg64_t reg_src = x10;
     reg64_t reg_tr_src = x11;
-    reg64_t reg_zp_comp_ptr = x12;
-    reg64_t reg_zp_a_neg_val_ptr = x13;
-    reg64_t reg_K_start = x14;
 
-    reg64_t regq_tmp = x15;
-    reg32_t regw_tmp = w15;
-    reg64_t imm_addr64 = abi_not_param1;
-
-    // Note: for the SVE256 implementation, reserve ZReg(8) and ZReg(9) as
-    // temporary compute registers.
-    const ZReg vmm_comp_mul {max_vmm_regs_ - 1};
-    const ZReg vmm_comp_acc {max_vmm_regs_ - 2};
-    const ZReg vmm_zp_a_neg_val {max_vmm_regs_ - 3};
-    const ZReg vmm_s8s8_comp_acc {max_vmm_regs_ - 4};
-    const ZReg vmm_all_bits_1 {max_vmm_regs_ - 5};
-    const ZReg vmm_one_s32 {max_vmm_regs_ - 6};
-    const ZReg vmm_ones_words {max_vmm_regs_ - 7};
-    const ZReg vmm_dot_product_temp {max_vmm_regs_ - 8};
-
-    const ZReg z_tmp_0 {28};
-    const ZReg z_tmp_1 {29};
-    const ZReg z_tmp_3 {30};
-    const ZReg z_tmp_2 {27};
-
-    PReg p_tmp_0 = p7;
-    PReg p_02 = p8;
-    PReg p_AA = p9;
-    PReg p_55 = p10;
-    PReg p_FF = p5;
     PReg p_0F = p4;
-    PReg p_33 = p3;
-    PReg p_F0 = p2;
-    PReg p_CC = p1;
-    PReg p_E0 = p6;
+    PReg p_tail = p5;
+    const ZReg z_tmp = ZReg(31);
 
-    void kmovw(Xbyak_aarch64::PReg k, unsigned w) {
-        assert(!"under construction");
+    void load_src_row(int i, int nrows, int columns_tail) {
+        if (i >= nrows) {
+            eor(ZReg(i).d, ZReg(i).d, ZReg(i).d);
+            return;
+        }
+
+        add_imm(X_DEFAULT_ADDR, reg_src, i * src_stride_, X_TMP_0);
+        if (columns_tail > 0)
+            ld1w(ZReg(i).s, p_tail / T_z, ptr(X_DEFAULT_ADDR));
+        else
+            ldr(ZReg(i), ptr(X_DEFAULT_ADDR));
     }
 
-    void kmovq(Xbyak_aarch64::PReg k, size_t q) {
-        assert(!"under construction");
+    void transpose_s_pair(int i, int j) {
+        trn1(z_tmp.s, ZReg(i).s, ZReg(j).s);
+        trn2(ZReg(j).s, ZReg(i).s, ZReg(j).s);
+        mov(ZReg(i).d, z_tmp.d);
     }
 
-    ZReg src_vmm(int i) {
-        assert(i >= 0 && i < n_blk_step_);
-        return ZReg(i);
+    void transpose_d_pair(int i, int j) {
+        trn1(z_tmp.d, ZReg(i).d, ZReg(j).d);
+        trn2(ZReg(j).d, ZReg(i).d, ZReg(j).d);
+        mov(ZReg(i).d, z_tmp.d);
     }
 
-    ZReg tmp_vmm(int i) {
-        // If compensation compute is required - last 6 zregs are reserved for it
-        assert(i >= 0 && IMPLICATION(!is_sve256_, i < max_tmp_idx)
-                && IMPLICATION(is_sve256_, i < 2));
-        return ZReg(n_blk_step_ + i);
+    // xbyak_aarch64 does not expose the 128-bit trn form, so
+    // exchange quadwords using the original splice sequence
+    void transpose_q_pair(int i, int j) {
+        mov(z_tmp.d, ZReg(i).d);
+        ext(z_tmp.b, ZReg(i).b, 16);
+        splice(ZReg(i).s, p_0F, ZReg(j).s);
+        mov(ZReg(j).s, p_0F / T_m, z_tmp.s);
     }
 
     void copy_row_x_col(int nrows, int ncolumns);
-    void compute_K_loop(bool is_N_tail, int curr_K_tail, bool is_first_K_iter,
-            bool is_last_K_iter);
-    void compute_N_loop(
-            int curr_K_tail, bool is_first_K_iter, bool is_last_K_iter);
-
-    inline void dot_product(ZReg v1, ZReg v2, ZReg v3) {
-        fmla(v1.s, P_ALL_ONE / T_m, v2.s, v3.s);
-    }
+    void compute_K_loop(bool is_N_tail, int curr_K_tail);
+    void compute_N_loop(int curr_K_tail);
     void generate() override;
 };
 
 template <cpu_isa_t isa>
 void jit_brgemm_matmul_copy_b_transposed_t<isa>::copy_row_x_col(
         int nrows, int ncolumns) {
-    assert(!"under construction");
-}
+    const int columns_tail = ncolumns % block_step_;
+    if (columns_tail > 0) set_preg(p_tail.s, columns_tail, X_TMP_0);
 
-template <>
-void jit_brgemm_matmul_copy_b_transposed_t<sve_256>::copy_row_x_col(
-        int nrows, int ncolumns) {
-    assert(nrows >= 0 && nrows <= n_blk_step_ && ncolumns >= 0
-            && ncolumns <= k_blk_step_);
-    if (!nrows) return;
-
-    const int columns_tail = ncolumns % k_blk_step_;
-    auto load = [this, nrows, columns_tail](int i) {
-        auto vmm_src = src_vmm(i);
-        if (i >= nrows) {
-            eor(vmm_src.d, vmm_src.d, vmm_src.d);
-            return;
-        }
-        if (columns_tail > 0) {
-            add_imm(X_DEFAULT_ADDR, reg_src, i * src_stride_, X_TMP_0);
-            set_preg(P_TMP.b, columns_tail * typesize_, X_TMP_0);
-            ld1b(vmm_src.b, P_TMP / T_z, ptr(X_DEFAULT_ADDR));
-        } else {
-            add_imm(X_DEFAULT_ADDR, reg_src, i * src_stride_, X_TMP_0);
-            ldr(vmm_src, ptr(X_DEFAULT_ADDR));
-        }
-    };
-
-    // swap 1
-    for (int i = 0; i < 4; ++i) {
-        const int src_idx0 = i * 2;
-        const int src_idx1 = src_idx0 + 1;
-
-        const int next_src_idx0 = src_idx0 + 2;
-        const int next_src_idx1 = src_idx1 + 2;
-        const bool load_next = i < 3;
-
-        if (i == 0) {
-
-            load(src_idx0);
-            load(src_idx1);
-        }
-        const auto tmp0 = tmp_vmm(0);
-        const auto tmp1 = tmp_vmm(1);
-        const auto src0 = src_vmm(src_idx0);
-        const auto src1 = src_vmm(src_idx1);
-
-        if (next_src_idx0 < nrows && load_next) { load(next_src_idx0); }
-        mov(tmp0.d, src0.d);
-        ext(tmp0.b, src0.b, 16);
-        splice(tmp0.s, p_E0, tmp0.s);
-
-        if (next_src_idx1 < nrows && load_next) { load(next_src_idx1); }
-        set_preg(p_tmp_0.s, 1, X_TMP_0);
-        mov(tmp1.d, src1.d);
-        splice(tmp1.s, p_tmp_0, tmp1.s);
-
-        mov(src0.s, p_AA / T_m, tmp1.s);
-        mov(src1.s, p_55 / T_m, tmp0.s);
+    for (int i = 0; i < block_step_; i += 2) {
+        load_src_row(i, nrows, columns_tail);
+        load_src_row(i + 1, nrows, columns_tail);
+        transpose_s_pair(i, i + 1);
     }
-    // swap 2
-    for (int i = 0; i < 4; ++i) {
-        const int select_half = (i < 2) ? 0 : 2;
-        const int src_idx0 = i + select_half;
-        const int src_idx2 = src_idx0 + 2;
-
-        const auto tmp0 = tmp_vmm(0);
-        const auto tmp1 = tmp_vmm(1);
-        const auto src0 = src_vmm(src_idx0);
-        const auto src2 = src_vmm(src_idx2);
-
-        not_(p_tmp_0.b, p_FF, p_02.b);
-        mov(tmp0.d, src0.d);
-        splice(tmp0.s, p_tmp_0, tmp0.s);
-
-        rev(p_tmp_0.s, p_02.s);
-        mov(tmp1.d, src2.d);
-        splice(tmp1.s, p_tmp_0, tmp1.s);
-
-        mov(src2.s, p_33 / T_m, tmp0.s);
-        mov(src0.s, p_CC / T_m, tmp1.s);
+    for (int i = 0; i < block_step_; i += 4) {
+        transpose_d_pair(i, i + 2);
+        transpose_d_pair(i + 1, i + 3);
     }
-    // swap 4
-    for (int i = 0; i < 4; ++i) {
-        const int src_idx0 = i;
-        const int src_idx4 = src_idx0 + 4;
 
-        const auto tmp0 = tmp_vmm(0);
-        const auto src0 = src_vmm(src_idx0);
-        const auto src4 = src_vmm(src_idx4);
-
-        mov(tmp0.d, src0.d);
-        ext(tmp0.b, src0.b, 16);
-
-        splice(src0.s, p_0F, src4.s);
-        mov(src4.s, p_0F / T_m, tmp0.s);
+    switch (simd_bytes(isa)) {
+        case util::SVE_128: break;
+        case util::SVE_256:
+            for (int i = 0; i < block_step_ / 2; ++i)
+                transpose_q_pair(i, i + block_step_ / 2);
+            break;
+        default: assert(!"unsupported SVE vector length");
     }
-    // swap 8
-    for (int i = 0; i < 8; i++) {
-        const auto src0 = src_vmm(i);
-        if (do_compute_compensation_)
-            dot_product(vmm_comp_acc, vmm_comp_mul, src0);
+
+    for (int i = 0; i < block_step_; ++i) {
         add_imm(X_DEFAULT_ADDR, reg_tr_src, i * tr_src_stride_, X_TMP_0);
-        str(src0, ptr(X_DEFAULT_ADDR));
+        str(ZReg(i), ptr(X_DEFAULT_ADDR));
     }
 }
 
 template <cpu_isa_t isa>
-void jit_brgemm_matmul_copy_b_transposed_t<isa>::compute_K_loop(bool is_N_tail,
-        int curr_K_tail, bool is_first_K_iter, bool is_last_K_iter) {
-
-    MAYBE_UNUSED(is_first_K_iter);
-    MAYBE_UNUSED(is_last_K_iter);
-
-    const int N_chunk_tail = conf_->N % n_blk_step_;
-    const int nrows = is_N_tail ? N_chunk_tail : n_blk_step_;
-    if (do_compute_compensation_)
-        eor(vmm_comp_acc.d, vmm_comp_acc.d, vmm_comp_acc.d);
-
+void jit_brgemm_matmul_copy_b_transposed_t<isa>::compute_K_loop(
+        bool is_N_tail, int curr_K_tail) {
     Label K_loop, K_loop_tail_or_done;
     LDR_IMM(reg_K_iters, param1, GET_OFF(current_K_iters));
 
     mov(reg_src, reg_src_base);
     mov(reg_tr_src, reg_tr_src_base);
     if (curr_K_tail > 0) {
-        cmp_imm(reg_K_iters, k_blk_step_, X_TMP_0);
+        cmp_imm(reg_K_iters, block_step_, X_TMP_0);
         b(LT, K_loop_tail_or_done);
     }
 
+    const int nrows = is_N_tail ? N_tail_ : block_step_;
     L(K_loop);
-    copy_row_x_col(nrows, k_blk_step_);
-    add_imm(reg_src, reg_src, k_blk_step_ * typesize_, X_TMP_0);
-    add_imm(reg_tr_src, reg_tr_src,
-            k_blk_step_ / vnni_granularity_ * tr_src_stride_, X_TMP_0);
+    copy_row_x_col(nrows, block_step_);
+    add_imm(reg_src, reg_src, block_step_ * src_typesize_, X_TMP_0);
+    add_imm(reg_tr_src, reg_tr_src, block_step_ * tr_src_stride_, X_TMP_0);
 
-    sub_imm(reg_K_iters, reg_K_iters, k_blk_step_, X_TMP_0);
-    cmp_imm(reg_K_iters, k_blk_step_, X_TMP_0);
+    sub_imm(reg_K_iters, reg_K_iters, block_step_, X_TMP_0);
+    cmp_imm(reg_K_iters, block_step_, X_TMP_0);
     b(GE, K_loop);
 
     L(K_loop_tail_or_done);
-
     if (curr_K_tail > 0) copy_row_x_col(nrows, curr_K_tail);
-
-    if (req_zp_comp_) {
-        const auto addr = ptr(reg_zp_comp_ptr);
-        if (!is_first_K_iter) ld1rw(vmm_comp_acc.s, P_ALL_ONE / T_z, addr);
-        if (is_last_K_iter)
-            mul(vmm_comp_acc.s, P_ALL_ONE / T_m, vmm_zp_a_neg_val.s);
-        st1w(vmm_comp_acc.s, P_ALL_ONE / T_m, addr);
-    }
 }
 
 template <cpu_isa_t isa>
 void jit_brgemm_matmul_copy_b_transposed_t<isa>::compute_N_loop(
-        int curr_K_tail, bool is_first_K_iter, bool is_last_K_iter) {
-
-    const int N_chunk_tail = conf_->N % n_blk_step_;
-
+        int curr_K_tail) {
     Label N_loop, N_loop_tail_or_done;
-    if (N_chunk_tail > 0) {
-        cmp_imm(reg_N_iters, n_blk_step_, X_TMP_0);
+    if (N_tail_ > 0) {
+        cmp_imm(reg_N_iters, block_step_, X_TMP_0);
         b(LT, N_loop_tail_or_done);
     }
 
     L(N_loop);
-    compute_K_loop(false, curr_K_tail, is_first_K_iter, is_last_K_iter);
-    add_imm(reg_src_base, reg_src_base, n_blk_step_ * src_stride_, X_TMP_0);
-    add_imm(reg_tr_src_base, reg_tr_src_base,
-            n_blk_step_ * vnni_granularity_ * tr_typesize_, X_TMP_0);
+    compute_K_loop(false, curr_K_tail);
+    add_imm(reg_src_base, reg_src_base, block_step_ * src_stride_, X_TMP_0);
+    add_imm(reg_tr_src_base, reg_tr_src_base, block_step_ * tr_src_typesize_,
+            X_TMP_0);
 
-    if (req_zp_comp_)
-        add_imm(reg_zp_comp_ptr, reg_zp_comp_ptr, comp_shift_, X_TMP_0);
-    if (req_s8s8_comp_)
-        add_imm(reg_comp_ptr, reg_comp_ptr, comp_shift_, X_TMP_0);
-
-    sub_imm(reg_N_iters, reg_N_iters, n_blk_step_, X_TMP_0);
-    cmp_imm(reg_N_iters, n_blk_step_, X_TMP_0);
+    sub_imm(reg_N_iters, reg_N_iters, block_step_, X_TMP_0);
+    cmp_imm(reg_N_iters, block_step_, X_TMP_0);
     b(GE, N_loop);
 
     L(N_loop_tail_or_done);
-    if (N_chunk_tail > 0) {
+    if (N_tail_ > 0) {
         Label N_loop_done;
         cmp_imm(reg_N_iters, 0, X_TMP_0);
         b(LE, N_loop_done);
 
-        compute_K_loop(true, curr_K_tail, is_first_K_iter, is_last_K_iter);
+        compute_K_loop(true, curr_K_tail);
         L(N_loop_done);
     }
 }
 
 template <cpu_isa_t isa>
 void jit_brgemm_matmul_copy_b_transposed_t<isa>::generate() {
-
     preamble();
 
-    ptrue(p_FF.s);
-    set_preg(p_0F.s, 4, X_TMP_0);
-    rev(p_F0.s, p_0F.s);
-    set_preg(p_33.s, 2, X_TMP_0);
-    rev(p_tmp_0.s, p_33.s);
-    orr(p_33.b, p_FF, p_33.b, p_F0.b);
-    eor(p_33.b, p_FF, p_33.b, p_tmp_0.b);
-    rev(p_CC.s, p_33.s);
-    pfalse(p_AA.b);
-    ptrue(p_tmp_0.s);
-    trn1(p_AA.s, p_AA.s, p_tmp_0.s);
-    rev(p_55.s, p_AA.s);
-    set_preg(p_E0.s, 3, X_TMP_0);
-    rev(p_E0.s, p_E0.s);
-    set_preg(p_02.s, 2, X_TMP_0);
+    switch (simd_bytes(isa)) {
+        case util::SVE_128: break;
+        case util::SVE_256: set_preg(p_0F.s, 4, X_TMP_0); break;
+        default: assert(!"unsupported SVE vector length");
+    }
 
     LDR_IMM(reg_src_base, param1, GET_OFF(src));
     LDR_IMM(reg_tr_src_base, param1, GET_OFF(tr_src));
     LDR_IMM(reg_K_iters, param1, GET_OFF(current_K_iters));
     LDR_IMM(reg_N_iters, param1, GET_OFF(current_N_blk));
 
-    const dim_t N_chunk_elems = conf_->N_chunk_elems;
-    assert(N_chunk_elems % n_blk_step_ == 0 || N_chunk_elems == conf_->N);
-    UNUSED(N_chunk_elems);
+    const auto K_blk_tail = nstl::min(conf_->K, conf_->K_blk) % block_step_;
+    const auto K_tail_tail = (conf_->K % conf_->K_blk) % block_step_;
 
-    const auto K_blk_tail = nstl::min(conf_->K, conf_->K_blk) % k_blk_step_;
-    const auto K_tail_tail = (conf_->K % conf_->K_blk) % k_blk_step_;
+    Label compute_body_done;
+    if (conf_->K_tail > 0 && K_blk_tail != K_tail_tail) {
+        Label not_K_tail;
+        cmp_imm(reg_K_iters, conf_->K_blk, X_TMP_0);
+        b(EQ, not_K_tail);
+        compute_N_loop(K_tail_tail);
+        b(compute_body_done);
 
-    auto compute_body = [&](bool is_first_K_iter, bool is_last_K_iter) {
-        if (is_last_K_iter) {
-            if (req_s8s8_comp_) {
-                mov_imm(imm_addr64, 0xffffffff);
-                auto wreg_tmp_1 = WReg(imm_addr64.getIdx());
-                dup(vmm_all_bits_1.s, wreg_tmp_1);
-                mov_imm(imm_addr64, 0x1);
-                dup(vmm_one_s32.s, wreg_tmp_1);
-            }
-            if (req_zp_comp_) {
-                LDR_IMM(reg_zp_a_neg_val_ptr, param1,
-                        GET_OFF(zp_a_neg_value_ptr));
-                ldr(W_TMP_0, ptr(reg_zp_a_neg_val_ptr));
-                dup(vmm_zp_a_neg_val.s, W_TMP_0);
-            }
-        }
-
-        Label compute_body_done;
-        if (conf_->K_tail > 0 && K_blk_tail != K_tail_tail) {
-            Label not_K_tail;
-            cmp_imm(reg_K_iters, conf_->K_blk, X_TMP_0);
-            b(EQ, not_K_tail);
-            compute_N_loop(K_tail_tail, is_first_K_iter, is_last_K_iter);
-            bl(compute_body_done);
-
-            L(not_K_tail);
-        }
-
-        compute_N_loop(K_blk_tail, is_first_K_iter, is_last_K_iter);
-        L(compute_body_done);
-    };
-
-    Label done;
-    if (do_compute_compensation_) {
-        assert(IMPLICATION(req_zp_comp_,
-                conf_->src_zp_type == brgemm_broadcast_t::per_tensor));
-
-        LDR_IMM(reg_K_start, param1, GET_OFF(current_K_start));
-        if (req_s8s8_comp_)
-            LDR_IMM(reg_comp_ptr, param1, GET_OFF(compensation_ptr));
-        if (req_zp_comp_)
-            LDR_IMM(reg_zp_comp_ptr, param1, GET_OFF(zp_a_compensation_ptr));
-        mov_imm(regq_tmp, 1);
-        auto wreg_tmp_2 = WReg(regq_tmp.getIdx());
-        dup(vmm_comp_mul.s, wreg_tmp_2);
-
-        const auto last_K_threshold
-                = rnd_up(conf_->K, conf_->K_blk) - conf_->K_blk;
-        Label not_first, not_first_not_last;
-        cmp_imm(reg_K_start, 0, X_TMP_0);
-        b(NE, not_first);
-        {
-            // first K iteration
-            Label first_not_last;
-            cmp_imm(reg_K_start, last_K_threshold, X_TMP_0);
-            b(LT, first_not_last);
-            compute_body(true, true);
-            bl(done);
-
-            L(first_not_last);
-            compute_body(true, false);
-            bl(done);
-        }
-
-        L(not_first);
-        cmp_imm(reg_K_start, last_K_threshold, X_TMP_0);
-        b(LT, not_first_not_last);
-
-        compute_body(false, true);
-        bl(done);
-        L(not_first_not_last);
+        L(not_K_tail);
     }
 
-    compute_body(false, false);
-    L(done);
+    compute_N_loop(K_blk_tail);
+    L(compute_body_done);
     postamble();
 }
 
-template struct jit_brgemm_matmul_copy_b_transposed_t<sve_512>;
-template struct jit_brgemm_matmul_copy_b_transposed_t<sve_256>;
-template struct jit_brgemm_matmul_copy_b_transposed_t<sve_128>;
+template struct jit_brgemm_matmul_copy_b_transposed_t<sve>;
 
 status_t create_brgemm_matmul_copy_b(
         std::unique_ptr<jit_brgemm_matmul_copy_b_t> &copy_ker,
@@ -1100,21 +864,15 @@ status_t create_brgemm_matmul_copy_b(
     const bool is_f32 = everyone_is(data_type::f32, conf->src_dt, conf->wei_dt);
 
     const bool is_f16 = everyone_is(data_type::f16, conf->src_dt, conf->wei_dt);
-    assert(is_f32);
-    assert(!(is_bf16 || is_f16));
 
     if (is_B_transposed) {
-        if (is_superset(conf->isa, sve_512))
-            CHECK(safe_ptr_assign(copy_ker,
-                    new jit_brgemm_matmul_copy_b_transposed_t<sve_512>(conf)));
-        else {
-            assert(is_superset(conf->isa, sve_256));
-            CHECK(safe_ptr_assign(copy_ker,
-                    new jit_brgemm_matmul_copy_b_transposed_t<sve_256>(conf)));
-        }
+        if (!one_of(conf->isa, sve_128, sve_256) || !is_f32)
+            return status::unimplemented;
+        CHECK(safe_ptr_assign(copy_ker,
+                new jit_brgemm_matmul_copy_b_transposed_t<sve>(conf)));
     } else {
         if (is_bf16 || is_f16 || conf->is_bf32) {
-            assert(!"unreacable");
+            return status::unimplemented;
         } else if (is_f32) {
             CHECK(safe_ptr_assign(
                     copy_ker, new jit_brgemm_matmul_copy_b_f32_t(conf)));

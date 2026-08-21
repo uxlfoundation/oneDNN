@@ -69,10 +69,23 @@ status_t kai_indirect_convolution_fwd_t::setup_kernel_arrays(
     const auto &pd = static_cast<const kai_indirect_convolution_fwd_t::pd_t &>(
             args.pd);
 
-    args.kernel.set_convolution_parameters(
-            kai::ops::ConvolutionParameters {pd.IW(), pd.IH(), pd.IC(), pd.KW(),
-                    pd.KH(), pd.OW(), pd.OH(), pd.KSW(), pd.KSH(), pd.KDW() + 1,
-                    pd.KDH() + 1, pd.padT(), pd.padL(), 0.f});
+    const bool invert = pd.desc()->use_inversion;
+    const dim_t dilation_w = pd.KDW() + 1;
+    const dim_t dilation_h = pd.KDH() + 1;
+
+    // Negative dilation reverses the spatial offsets. Shift the origin so the
+    // first kernel point remains aligned with deconvolution padding.
+    const dim_t kai_dilation_w = invert ? -dilation_w : dilation_w;
+    const dim_t kai_dilation_h = invert ? -dilation_h : dilation_h;
+    const dim_t kai_padding_l
+            = invert ? pd.padL() - (pd.KW() - 1) * dilation_w : pd.padL();
+    const dim_t kai_padding_t
+            = invert ? pd.padT() - (pd.KH() - 1) * dilation_h : pd.padT();
+
+    args.kernel.set_convolution_parameters(kai::ops::ConvolutionParameters {
+            pd.IW(), pd.IH(), pd.IC(), pd.KW(), pd.KH(), pd.OW(), pd.OH(),
+            pd.KSW(), pd.KSH(), kai_dilation_w, kai_dilation_h, kai_padding_t,
+            kai_padding_l, 0.f});
     args.kernel.set_arrays_generic(args.src_base, args.ld_src,
             args.src_batch_stride, 0, args.wei_base, args.ld_wei, 0,
             args.kernel_dst_base, args.ld_dst, args.dst_batch_stride, 0,

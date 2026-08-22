@@ -226,7 +226,7 @@ bool pd_t::dy_quant_enabled() const {
             && utils::one_of(d->b_type(), f8_e5m2, f8_e4m3)
             && utils::one_of(d->c_type(), f8_e5m2, f8_e4m3, f16, bf16, f32));
     return (utils::one_of(d->c_type(), f32, f16, bf16, u8, s8)
-                   && utils::one_of(d->a_type(), u8, s8, s4, u4)
+                   && utils::one_of(d->a_type(), u8, s8, s4, u4, s2, u2)
                    && utils::one_of(d->b_type(), u8, s8))
             || all_f8;
 }
@@ -235,8 +235,8 @@ bool pd_t::wei_decomp() const {
     const auto d = desc();
     using namespace data_type;
     return (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
-                   && utils::one_of(d->a_type(), u8, s8, s4, u4, f8_e4m3,
-                           f8_e5m2, f4_e2m1)
+                   && utils::one_of(d->a_type(), u8, s8, s4, u4, s2, u2,
+                           f8_e4m3, f8_e5m2, f4_e2m1)
                    && utils::one_of(
                            d->b_type(), f16, f32, bf16, f8_e5m2, f8_e4m3))
             && types::data_type_bits(d->a_type())
@@ -367,10 +367,10 @@ status_t pd_t::zp_ok(const impl::engine_t *engine) {
     auto &c_zps = attr_zps.get(DNNL_ARG_C);
 
     int ndims = desc()->a_desc.ndims;
-    const bool a_int4 = utils::one_of(desc()->a_type(), s4, u4);
-    const bool b_int4 = utils::one_of(desc()->b_type(), s4, u4);
+    const bool a_smallint = utils::one_of(desc()->a_type(), s4, u4, s2, u2);
+    const bool b_smallint = utils::one_of(desc()->b_type(), s4, u4, s2, u2);
     const bool weights_upconversion
-            = wei_decomp_ || (a_int4 && dy_quant_enabled_);
+            = wei_decomp_ || (a_smallint && dy_quant_enabled_);
 
     if (!a_zps.has_default_values()) {
         const bool has_prB
@@ -392,7 +392,7 @@ status_t pd_t::zp_ok(const impl::engine_t *engine) {
             // Zero points with non-trivial groups only supported with
             // precomputed reductions or when target tensor is being dequantized.
             // TODO: Re-examine this condition
-            bool is_dequantized = !dy_quant_enabled_ || !b_int4 || a_int4;
+            bool is_dequantized = !dy_quant_enabled_ || !b_smallint || a_smallint;
             VDISPATCH_GEMM(IMPLICATION(a_zp_2d(), is_dequantized || has_prB),
                     "%s: Nontrivial groups on A matrix, and no precomputed "
                     "reductions or dequantization",
@@ -403,7 +403,7 @@ status_t pd_t::zp_ok(const impl::engine_t *engine) {
             // Weights zp can only be performantly enabled during upconversion
             // for cases that perform decompression.
             VDISPATCH_GEMM(IMPLICATION(a_scales_2d(),
-                                   !(b_int4 && !wei_decomp_ && !a_int4)),
+                                   !(b_smallint && !wei_decomp_ && !a_smallint)),
                     "%s: 2D scales on A matrix, but no weights "
                     "decompression",
                     VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -411,8 +411,8 @@ status_t pd_t::zp_ok(const impl::engine_t *engine) {
     }
 
     if (!b_zps.has_default_values()) {
-        // INT4 ZPs on SRC do not expand the range in a meaningful way, skipping
-        VDISPATCH_GEMM(!utils::one_of(b_zps.get_data_type(), s4, u4),
+        // INT4/2 ZPs on SRC do not expand the range in a meaningful way, skipping
+        VDISPATCH_GEMM(!utils::one_of(b_zps.get_data_type(), s4, u4, s2, u2),
                 VERBOSE_UNSUPPORTED_ZP_CFG);
 
         // Groups determine supported masks.
@@ -427,7 +427,7 @@ status_t pd_t::zp_ok(const impl::engine_t *engine) {
             // Zero points with non-trivial groups only supported
             // when target tensor is being dequantized.
             // TODO: Re-examine this condition
-            bool is_dequantized = !dy_quant_enabled_ || !a_int4 || b_int4;
+            bool is_dequantized = !dy_quant_enabled_ || !a_smallint || b_smallint;
             VDISPATCH_GEMM(IMPLICATION(b_zp_2d(), is_dequantized),
                     "%s: Grouped B zero points, and no dequantization",
                     VERBOSE_UNSUPPORTED_ZP_CFG);
@@ -772,11 +772,11 @@ status_t pd_t::init_GEMMProblem(
     // - Xe3p: Not supported, require s4->s8 upconversion
     // - pre-Xe3p: supported, but only when s4 matrix doesn't have zero points
     bool has_s8s4_dpas = getCore(problem.product.family) != ngen::HW::Xe3p;
-    if (problem.Ta_ext.isInt4() && problem.Tb_ext.isInt8()) {
+    if (problem.Ta_ext.isInteger() && (problem.Ta_ext.bits() == 4) && problem.Tb_ext.isInt8()) {
         bool s8s4_dpas_ok = has_s8s4_dpas && (a_quant.zp_ndims < 0);
         if (!s8s4_dpas_ok) problem.Ta = Type::s8;
     }
-    if (problem.Tb_ext.isInt4() && problem.Ta_ext.isInt8()) {
+    if (problem.Tb_ext.isInteger() && (problem.Tb_ext.bits() == 4) && problem.Ta_ext.isInt8()) {
         bool s8s4_dpas_ok = has_s8s4_dpas && (b_quant.zp_ndims < 0);
         if (!s8s4_dpas_ok) problem.Tb = Type::s8;
     }

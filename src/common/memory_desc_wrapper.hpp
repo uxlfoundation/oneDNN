@@ -233,6 +233,8 @@ struct memory_desc_wrapper {
         if (utils::one_of(data_type(), data_type::s4, data_type::u4,
                     data_type::f4_e2m1))
             return 2;
+        if (utils::one_of(data_type(), data_type::s2, data_type::u2))
+            return 4;
         return 1;
     }
 
@@ -373,10 +375,7 @@ struct memory_desc_wrapper {
         } else if (is_blocking_desc()) {
             const size_t max_size = span();
 
-            // `div_up` guarantees a spot in memory for odd number of half-byte
-            // elements. Crucial case is `1` when simple division returns 0.
-            size_t data_size = utils::div_up(max_size * data_type_size(),
-                    sub_byte_data_type_multiplier());
+            size_t data_size = types::elements_to_bytes(data_type(), max_size);
             if (is_additional_buffer()) {
                 // The additional buffers, typically of data type int32_t, float
                 // are stored at the end of data. Pad the data, so that the
@@ -487,9 +486,7 @@ struct memory_desc_wrapper {
         if (utils::one_of(format_kind(), format_kind::undef, format_kind::any))
             return false;
         if (has_runtime_dims_or_strides() || has_broadcast()) return false;
-        return nelems(with_padding) * data_type_size()
-                / sub_byte_data_type_multiplier()
-                == size(0, /* include_additional_size = */ false);
+        return types::elements_to_bytes(data_type(), nelems(with_padding));
     }
 
     /** returns true if format is set to `any` */

@@ -604,6 +604,98 @@ status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
     return status::success;
 }
 
+status_t def_post_ops_cfg(compute::kernel_ctx_t &kernel_ctx,
+        const gpu_post_ops_t &post_ops, int ndims) {
+    std::string po_kernel_args = "-DPOST_OP_ARGS=\"";
+
+    bool post_op_uses_bf16 = false;
+    bool post_op_uses_bf8 = false;
+    bool post_op_uses_hf8 = false;
+
+    auto set_post_op_uses = [&](data_type_t type) {
+        post_op_uses_bf16 |= (type == data_type::bf16);
+        post_op_uses_bf8 |= (type == data_type::f8_e5m2);
+        post_op_uses_hf8 |= (type == data_type::f8_e4m3);
+    };
+
+    auto define_float = [&](const std::string &name, float value,
+                                std::initializer_list<float> inlines = {}) {
+        for (float v : inlines) {
+            if (v == value) {
+                kernel_ctx.define_float(name.c_str(), value);
+                return;
+            }
+        }
+        po_kernel_args += std::string(", float " + name);
+    };
+    auto define_int = [&](const std::string &name, int value,
+                              std::initializer_list<int> inlines = {}) {
+        for (int v : inlines) {
+            if (v == value) {
+                kernel_ctx.define_int(name.c_str(), value);
+                return;
+            }
+        }
+        po_kernel_args += std::string(", int " + name);
+    };
+
+    auto add_po_defines = [&](const gpu_post_ops_t::entry_t &e, int idx_) {
+        std::string idx = std::to_string(idx_);
+        if (e.is_binary()) {
+            kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_BINARY");
+
+            auto &src_rmd = e.as_binary().src1_desc;
+            kernel_ctx.define_int("PO_" + idx + "_ALG", e.as_binary().alg);
+
+            std::array<std::string, MAX_NDIMS> stride_vars;
+            for (int i = 0; i < ndims; i++) {
+                stride_vars[i] = "po" + idx + "_stride" + std::to_string(i);
+            }
+            kernel_ctx.add_option(
+                    src_rmd.ocl_defines("PO_" + idx, stride_vars, ndims));
+            set_post_op_uses(src_rmd.dt);
+
+            po_kernel_args += std::string(", const __global ")
+                    + get_type_name(src_rmd.dt) + " *po" + idx + "_binary_arg";
+            for (int i = 0; i < ndims; i++) {
+                if (!src_rmd.is_broadcast(i, ndims)
+                        && !src_rmd.is_inner_dim(i, ndims))
+                    po_kernel_args += std::string(", dim_t " + stride_vars[i]);
+            }
+        } else if (e.is_eltwise()) {
+            define_float("po" + idx + "_alpha", e.as_eltwise().alpha);
+            define_float("po" + idx + "_beta", e.as_eltwise().beta);
+            define_float("po" + idx + "_scale", e.as_eltwise().scale, {0, 1});
+
+            kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_ELTWISE");
+            kernel_ctx.define_int("PO_" + idx + "_ALG", e.as_eltwise().alg);
+        } else if (e.is_sum()) {
+            define_int("po" + idx + "_zp", e.as_sum().zero_point, {0});
+            define_float("po" + idx + "_scale", e.as_sum().scale, {0, 1});
+
+            kernel_ctx.add_option("-DAPPLY_PO_" + idx + "=APPLY_PO_SUM");
+            kernel_ctx.define_int("PO_" + idx + "_ALG", alg_kind::undef);
+        } else {
+            return status::runtime_error;
+        }
+        return status::success;
+    };
+
+    for (size_t idx = 0; idx < post_ops.len(); ++idx) {
+        CHECK(add_po_defines(post_ops[idx], static_cast<int>(idx)));
+    }
+
+    kernel_ctx.define_int("WITH_POST_OP", post_ops.len() > 0);
+    kernel_ctx.define_int("POST_OP_CHAIN_LENGTH", post_ops.len());
+    if (post_op_uses_bf16) kernel_ctx.define_int("POST_OP_USING_BF16", 1);
+    if (post_op_uses_bf8) kernel_ctx.define_int("POST_OP_USING_BF8", 1);
+    if (post_op_uses_hf8) kernel_ctx.define_int("POST_OP_USING_HF8", 1);
+
+    po_kernel_args += "\"";
+    kernel_ctx.add_option(po_kernel_args);
+    return status::success;
+}
+
 int append_post_ops_to_arg_list_base(const exec_args_t &args,
         compute::kernel_arg_list_t &arg_list, int post_op_idx,
         const post_ops_t &post_ops, memory_desc_wrapper dst_mdw) {

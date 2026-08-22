@@ -1,0 +1,10 @@
+# Fused dynamic quantization through the reduction primitive.
+# Scale tensors are outputs defined by destination quantization attributes.
+
+--reset --alg=dynamic_quantize --p=0 --sdt=f32 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:1x128 8x128:8x128
+--reset --alg=dynamic_quantize --p=0 --sdt=bf16 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:1x64 8x256:8x256
+--reset --alg=dynamic_quantize --p=0 --sdt=f16 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:1x80 5x80:5x80
+
+# Reference-only granularities: per-column and grouped rows.
+--reset --alg=dynamic_quantize --p=0 --sdt=f32 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:4x1 4x16:4x16
+--reset --alg=dynamic_quantize --p=0 --sdt=f32 --ddt=s8 --attr-scales=dst:dynamic_fp:f32:2x1 4x16:4x16

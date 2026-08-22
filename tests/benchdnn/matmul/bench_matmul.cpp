@@ -152,30 +152,8 @@ int verify_grouped_input(const settings_t &s) {
         SAFE_V(FAIL);
     }
 
-    // The library cannot validate group sizes at primitive creation time,
-    // so benchdnn checks them here
-    int64_t total_var = 0;
-    const auto &group_sizes = s.sparse_options[0].get_group_sizes(DNNL_ARG_SRC);
-    for (size_t i = 0; i < group_sizes.size(); i++) {
-        if (group_sizes[i] < 0) {
-            BENCHDNN_PRINT(0,
-                    "ERROR: group_sizes[%zu] must be non-negative, got %lld\n",
-                    i, (long long)group_sizes[i]);
-            SAFE_V(FAIL);
-        }
-        total_var += group_sizes[i];
-    }
-
     // The variable dim is encoded in the src tensor at variable_dim_idx
     const auto &src_dims = s.prb_vdims.vdims[0];
-    const int64_t expected = src_dims[variable_dim_idx];
-    if (total_var != expected) {
-        BENCHDNN_PRINT(0,
-                "ERROR: sum of group sizes (%lld) doesn't match src "
-                "variable dim (%lld)\n",
-                (long long)total_var, (long long)expected);
-        SAFE_V(FAIL);
-    }
 
     // The 2Dx2D variant additionally requires wei dim 0 == src dim 1
     // (i.e., shared contraction dim)
@@ -194,6 +172,33 @@ int verify_grouped_input(const settings_t &s) {
                     (long long)wei_dims[0], (long long)src_dims[1]);
             SAFE_V(FAIL);
         }
+    }
+
+    // Deferred profiles build their sizes later in the prb_t ctor, so explicit
+    // checks below don't apply
+    if (s.sparse_options[0].has_deferred_profile()) return OK;
+
+    // The library cannot validate group sizes at primitive creation time,
+    // so benchdnn checks them here
+    const int64_t expected = src_dims[variable_dim_idx];
+    int64_t total_var = 0;
+    const auto &group_sizes = s.sparse_options[0].get_group_sizes(DNNL_ARG_SRC);
+    for (size_t i = 0; i < group_sizes.size(); i++) {
+        if (group_sizes[i] < 0) {
+            BENCHDNN_PRINT(0,
+                    "ERROR: group_sizes[%zu] must be non-negative, got %lld\n",
+                    i, (long long)group_sizes[i]);
+            SAFE_V(FAIL);
+        }
+        total_var += group_sizes[i];
+    }
+
+    if (total_var != expected) {
+        BENCHDNN_PRINT(0,
+                "ERROR: sum of group sizes (%lld) doesn't match src "
+                "variable dim (%lld)\n",
+                (long long)total_var, (long long)expected);
+        SAFE_V(FAIL);
     }
     return OK;
 }

@@ -605,23 +605,40 @@ struct sparse_options_t {
     static constexpr float def_sparsity = 0.9f;
 
     struct grouped_data_t {
-        // Buffer indices for multi-handle grouped memory
+        // Group sizes distribution profiles:
+        // - profile_none means group_sizes are given explicitly
+        // - for the rest of the profiles (deferred, with generated offsets)
+        //   see --grouped in MatMul Driver documentation
+        enum profile_t {
+            profile_none = 0,
+            profile_balanced,
+            profile_hot,
+            profile_decode
+        };
+
+        // kind: see above
+        // param: seed for balanced, and percentage for hot; both have default
+        struct profile_spec_t {
+            profile_t kind = profile_none;
+            dnnl_dim_t param = -1;
+        };
+
+        // Grouped Data Specification
+        // buffer indices for multi-handle grouped memory
         static constexpr int grouped_values_idx = 0;
         static constexpr int grouped_offsets_idx = 1;
-
         // index of the dimension with variable size (0 for M)
         int variable_dim_idx = -1;
         // total number of grouped blocks
         dnnl_dim_t group_count = 0;
         // sizes for each group along the variable dimension
         std::vector<dnnl_dim_t> group_sizes;
-        // optional dispatch hint (0 = unused)
+        // resolved dispatch hint that goes to the library (0 = unused)
+        // used only with profile_none (i.e. explicitly provided sizes)
         dnnl_dim_t max_variable_dim = 0;
 
-        bool is_def() const {
-            return variable_dim_idx == -1 && group_count == 0
-                    && group_sizes.empty();
-        }
+        // Offsets Generation Specification
+        profile_spec_t profile;
     };
 
     sparse_options_t() = default;
@@ -633,18 +650,25 @@ struct sparse_options_t {
         options_.insert({arg, {encoding, sparsity}});
     }
 
-    void set_grouped(int arg, int var_dim_idx, dnnl_dim_t count,
-            const std::vector<dnnl_dim_t> &sizes, dnnl_dim_t max_var_dim = 0) {
+    void set_grouped(int arg, const grouped_data_t &gd) {
 #if DNNL_EXPERIMENTAL_GROUPED_MEMORY
         add(arg, dnnl_grouped, 0.0f);
 #endif
-        grouped_data_t gd;
-        gd.variable_dim_idx = var_dim_idx;
-        gd.group_count = count;
-        gd.group_sizes = sizes;
-        gd.max_variable_dim = max_var_dim;
         grouped_data_[arg] = gd;
     }
+
+    grouped_data_t::profile_spec_t get_profile(int arg = DNNL_ARG_SRC) const {
+        const auto it = grouped_data_.find(arg);
+        return it == grouped_data_.end() ? grouped_data_t::profile_spec_t {}
+                                         : it->second.profile;
+    }
+
+    bool has_deferred_profile() const {
+        return get_profile().kind != grouped_data_t::profile_none;
+    }
+
+    // Generate group_sizes for deferred profiles
+    int resolve_profile(dnnl_dim_t total_size);
 
     int get_variable_dim_idx(int arg = DNNL_ARG_SRC) const {
         const auto it = grouped_data_.find(arg);

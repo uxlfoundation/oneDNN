@@ -148,6 +148,8 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         {{forward, "bf16:bf16:*"}, {
             CPU_INSTANCE_AVX512(brdgmm_dw_convolution_fwd_t)
             CPU_INSTANCE_X64(ip_convolution_fwd_t)
+            CPU_INSTANCE_AMX(brgemm_1x1_convolution_fwd_t<avx10_2_ace>)
+            CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_2_ace>)
             CPU_INSTANCE_AMX(brgemm_1x1_convolution_fwd_t<avx512_core_amx>)
             CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx512_core_amx>)
             CPU_INSTANCE_AMX(jit_avx512_core_amx_1x1_convolution_fwd_t)
@@ -246,6 +248,8 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         })},
         {{backward_data, "*:bf16:bf16"}, REG_BWD_D_PK({
             CPU_INSTANCE_X64(ip_convolution_bwd_data_t)
+            CPU_INSTANCE_AMX(brgemm_convolution_bwd_t<avx10_2_ace>)
+            CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx10_2_ace>)
             CPU_INSTANCE_AMX(brgemm_convolution_bwd_t<avx512_core_amx>)
             CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx512_core_amx>)
             CPU_INSTANCE_AMX(jit_avx512_core_amx_convolution_bwd_data_t)
@@ -339,6 +343,8 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         {{forward, "xi8:s8:*"}, {
             CPU_INSTANCE_AVX512(brdgmm_dw_convolution_fwd_t)
             CPU_INSTANCE_X64(ip_convolution_fwd_t)
+            CPU_INSTANCE_AMX(brgemm_1x1_convolution_fwd_t<avx10_2_ace>)
+            CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_2_ace>)
             CPU_INSTANCE_AMX(brgemm_1x1_convolution_fwd_t<avx10_2_amx_2>)
             CPU_INSTANCE_AMX(brgemm_1x1_convolution_fwd_t<avx512_core_amx>)
             CPU_INSTANCE_AMX(brgemm_convolution_fwd_t<avx10_2_amx_2>)
@@ -383,6 +389,7 @@ const std::map<pk_dt_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map()
         }},
         // BWD int8
         {{backward_data, "*:s8:xi8"}, REG_BWD_D_PK({
+            CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx10_2_ace>)
             CPU_INSTANCE_AMX(brgemm_convolution_bwd_strided_t<avx512_core_amx>)
             CPU_INSTANCE_AVX512(brgemm_convolution_bwd_strided_t<avx512_core_vnni>)
             CPU_INSTANCE_AVX512(brgemm_convolution_bwd_strided_t<avx512_core>)

@@ -373,7 +373,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     const int max_n_ker_idx
             = bgmmc_.is_runtime_N ? max_num_dynamic_n_tails + 1 : 2;
 
-    const bool is_amx = is_superset(isa, avx512_core_amx);
+    const bool is_amx = isa_has_tile_accumulators(isa);
     const bool is_s8s8 = src_dt == s8 && wei_dt == s8;
     // In the case of dynamic M for amx the last tail kernel generate using
     // non-amx isa. s8s8 proplem type is exception to avoid compensations
@@ -491,9 +491,13 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
         brgattr.mem_advice = bgmmc_.mem_advice;
         brgattr.max_bs = bs;
         brgattr.hint_prefetchw = bgmmc_.hint_prefetchw;
-        if (is_superset(kernel_isa, avx512_core_amx)) {
-            brgattr.use_uker = true;
-            brgattr.use_interleave_stores = true;
+        if (is_superset(kernel_isa, avx512_core_amx)
+                || is_superset(kernel_isa, avx10_2_ace)) {
+            // For ACE the kernel flavor comes from a single policy helper.
+            brgattr.use_uker = IMPLICATION(
+                    bgmmc_.is_ace, brgemm_utils::ace_prefer_uker());
+            brgattr.use_ace = bgmmc_.is_ace;
+            brgattr.use_interleave_stores = !bgmmc_.is_ace;
             brgattr.max_bs = bs;
             brgattr.wary_A_k_tail_read = bgmmc_.extendable_k;
             brgattr.extendable_k = bgmmc_.extendable_k;
@@ -563,7 +567,7 @@ status_t brgemm_matmul_t<isa>::init(engine_t *engine) {
         brgemm_kernel_t *ker = nullptr;
         CHECK(brgemm_kernel_create(&ker, pd()->get_brg_desc(idx)));
         CHECK(safe_ptr_assign(brg_kernels_[idx], ker));
-        if (is_superset(pd()->get_brg_desc(idx).isa_impl, avx512_core_amx))
+        if (isa_has_tile_accumulators(pd()->get_brg_desc(idx).isa_impl))
             brgemm_palettes_.insert(idx, pd()->get_brg_desc(idx));
 
         if (pd()->with_reduce()) {
@@ -673,7 +677,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         const auto &bgmmc = pd()->get_brgemm_matmul_conf();
         const bool use_buffer_a
                 = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
-        const bool is_amx = is_superset(isa, avx512_core_amx);
+        const bool is_amx = isa_has_tile_accumulators(isa);
         const dim_t M_chunks = brgmm_ctx.get_M_chunks();
         const int M_chunk_size = brgmm_ctx.get_M_chunk_size();
         const dim_t M_chunk_tail = brgmm_ctx.get_M_chunk_tail();
@@ -876,8 +880,9 @@ void brgemm_matmul_t<isa>::compute_kernel(
             ithr, b_idx, m_blk_idx, n_blk_idx);
 
     auto is_brg_amx = [&](const int brg_idx) {
-        return is_superset(
-                pd()->get_brg_desc(brg_idx).isa_impl, avx512_core_amx);
+        // Tile accumulators (and therefore the tile workspace) are used by
+        // both AMX and ACE, so this must not test for TMUL support alone.
+        return isa_has_tile_accumulators(pd()->get_brg_desc(brg_idx).isa_impl);
     };
 
     // Execute the kernel for one K-block. Pure accumulation into C goes through
@@ -1749,7 +1754,7 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                           key_brgemm_primitive_buffer_reduce)
                 : nullptr;
 
-        is_amx_ = is_superset(isa, avx512_core_amx);
+        is_amx_ = isa_has_tile_accumulators(isa);
         wsp_tile_ptr_ = is_amx_
                 ? ctx.get_scratchpad_grantor().template get<char>(
                           key_conv_amx_tile_buffer)
@@ -2997,6 +3002,7 @@ template struct brgemm_matmul_t<avx10_2_amx_2>;
 template struct brgemm_matmul_t<avx512_core_amx_fp16>;
 template struct brgemm_matmul_t<avx512_core_amx>;
 template struct brgemm_matmul_t<avx10_2>;
+template struct brgemm_matmul_t<avx10_2_ace>;
 template struct brgemm_matmul_t<avx512_core_fp16>;
 template struct brgemm_matmul_t<avx512_core_bf16>;
 template struct brgemm_matmul_t<avx512_core_vnni>;

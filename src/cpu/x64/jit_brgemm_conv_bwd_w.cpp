@@ -131,6 +131,7 @@ status_t brgemm_convolution_bwd_weights_t::pd_t::init(const engine_t *engine) {
                 brgattr.hint_innermost_loop = jcp_.brgemm_bd_loop_innermost
                         ? brgemm_bd_loop_innermost
                         : brgemm_innermost_undef;
+                brgattr.use_ace = jcp_.is_ace;
 
                 brgattr.hint_expected_A_size = 0;
                 brgattr.hint_expected_B_size = 0;
@@ -862,7 +863,9 @@ void brgemm_convolution_bwd_weights_t::call_brgemm_kernel(
     const auto brg_ker = brg_kernels_[brg_idx];
     assert(brg_ker != nullptr);
 
-    brgemm_palettes_.maybe_tile_configure(true, btc.cur_brg_idx, brg_idx);
+    const auto &jcp = pd()->jcp_;
+    const bool is_amx = brgemm_convolution_utils::is_amx(jcp.isa);
+    brgemm_palettes_.maybe_tile_configure(is_amx, btc.cur_brg_idx, brg_idx);
 
     brgemm_kernel_execute(brg_ker, batch_size, btc.brg_batch, ptr_C,
             static_cast<void *>(btc.wsp_tile));

@@ -221,6 +221,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::pd_t::init_brgemm_desc() {
         // brgemm kernel
         if (need_postwork_ && ic_chunks_ == 1 && (!jcp_.is_reduced_rtus))
             brgattr.postops_only = true;
+        brgattr.use_ace = jcp_.is_ace;
 
         CHECK(brgemm_desc_set_attr(&brg, brgattr));
         auto LDD = jcp_.oc_without_padding;
@@ -297,7 +298,7 @@ status_t brgemm_1x1_convolution_fwd_t<isa>::init(engine_t *engine) {
                 && brg->reduce_dim > 0 && !brg_kernels_[brg_idx]) {
             CHECK(brg_kernels_.insert(brg_idx, brg));
             const bool is_amx = brgemm_convolution_utils::is_amx(isa);
-            if (is_amx) brgemm_palettes_.insert(brg_idx, brg);
+            if (is_amx && brg->is_tmm) brgemm_palettes_.insert(brg_idx, brg);
         }
     }
     return status::success;
@@ -828,6 +829,7 @@ template struct brgemm_1x1_convolution_fwd_t<avx512_core_amx>;
 template struct brgemm_1x1_convolution_fwd_t<avx512_core_amx_fp16>;
 template struct brgemm_1x1_convolution_fwd_t<avx10_2>;
 template struct brgemm_1x1_convolution_fwd_t<avx10_2_amx_2>;
+template struct brgemm_1x1_convolution_fwd_t<avx10_2_ace>;
 
 } // namespace x64
 } // namespace cpu

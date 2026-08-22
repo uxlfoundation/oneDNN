@@ -148,6 +148,12 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
 private:
     brgemm_desc_t brg;
 
+    // The packed ACE B tensor is a sequence of N panels of brg.LDB columns,
+    // consecutive panels being brgattr.LDB2 elements apart.
+    bool ace_has_b_panels() const {
+        return brg.is_ace() && brg.brgattr.LDB2 != 0 && brg.load_dim > brg.LDB;
+    }
+
     enum matrix_kind_t { matrix_A, matrix_B };
     static constexpr int zmm_width_in_bytes_
             = cpu_isa_traits_t<avx512_core>::vlen;
@@ -250,6 +256,11 @@ private:
     const reg64_savable_backup_t reg_aux_D_bdb_loop_backup {reg_aux_D, r19};
     const reg64_savable_t reg_D_bdb_loop_shift {regscratchpad_, rbx, r21};
 
+    // ld columns already consumed in the current N panel of packed ACE B.
+    // Only used when the ld loop can cross a panel, see ldb_regs_shift().
+    const reg64_savable_t reg_ace_ldb_pos {
+            regscratchpad_, rbx, ace_has_b_panels()};
+
     /* bf16 emulation */
     const reg64_t bf16_emu_scratch = rbx;
 
@@ -264,16 +275,22 @@ private:
     bool with_binary_non_scalar_bcast_ = false;
     const int max_effective_vregs;
 
-    // Opmask(2) and Opmask(3) have slightly different semantics in the GEMM
-    // and GEMV code paths. This is why we have GEMV-specific aliases.
+    // Number of ZMM registers per bd block for ACE microkernel.
+    static constexpr int ace_zmms_per_bd_block
+            = brgemm_desc_t::ace_zmms_per_bd_block;
+
+    // Mask register allocation:
+    // k1: ld_full_mask (B matrix full blocks)
+    // k2: ace_load_A_mask (A matrix loading)
+    // k7: ld_tail_mask (B matrix tail blocks)
     //
     // GEMM:
     //   ld_full_mask - all bits in the mask are set; used along the load
     //                  dimension.
     //   ld_tail_mask - only bits corresponding to the load dimension tail
     //                  are set.
-    Xbyak::Opmask ld_full_mask = Xbyak::Opmask(2);
-    Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(3);
+    Xbyak::Opmask ld_full_mask = Xbyak::Opmask(1);
+    Xbyak::Opmask ld_tail_mask = Xbyak::Opmask(7);
 
     // GEMV:
     //   gemv_full_mask    - all bits in the mask are set; used along the
@@ -290,6 +307,10 @@ private:
     // Used for both AMX GEMM and GEMV code paths.
     Xbyak::Opmask rd_tail_mask = Xbyak::Opmask(6);
     Xbyak::Opmask fp8_tail_mask = Xbyak::Opmask(7);
+
+    // Aliases gemv_full_mask. That is only safe because ACE implements GEMM
+    // only, so the gemv path is never generated together with it.
+    Xbyak::Opmask ace_load_A_mask = Xbyak::Opmask(2);
 
     static int get_max_effective_vregs(const brgemm_desc_t &brg) {
         auto used_vregs = 0;
@@ -351,6 +372,44 @@ private:
     Vmm vmm_beta() const noexcept { return vmm_tmp(1); }
     Vmm vmm_lbound() const noexcept { return vmm_tmp(1); }
     Vmm vmm_ubound() const noexcept { return vmm_tmp(0); }
+
+    // ace_rd_steps is the number of rd steps in the ACE micro-kernel loop.
+    // It is the number of ZMM registers used for each block of the A and B
+    // matrices.
+    int ace_rd_steps(int rd_block) const noexcept {
+        return div_up(rd_block, brg.rd_step);
+    }
+
+    Xbyak::Zmm ace_zmm_tmp(int i) {
+        assert(1 <= i && i <= 4);
+        return Xbyak::Zmm(i);
+    }
+
+    // Returns the Zmm register for matrix A for ACE microkernel.
+    // bdb: block index in bd dimension
+    // rds: register index within the block
+    Xbyak::Zmm ace_zmm_A(int bdb, int rds) {
+        const int base_idx
+                = ace_rd_steps(brg.rd_block) * (brg.n_bcast_1_load ? bdb : 0);
+        const int idx = 5 + base_idx + rds;
+        assert(idx < 32 && "ZMM register index overflow in ace_zmm_A");
+        return Xbyak::Zmm(idx);
+    }
+
+    // Returns the Zmm register for matrix B for ACE microkernel.
+    // bd_block2: number of bd blocks the caller is currently generating for
+    // ldb: block index in ld dimension
+    // rds: register index within the block
+    Xbyak::Zmm ace_zmm_B(int bd_block2, int ldb, int rds) {
+        // With n_bcast_1_load the A blocks sit below and every ldb is loaded
+        // and consumed before the next one, so all ldb reuse one B slot.
+        // Indexing by ldb here would run past zmm31 once ld_block2 >= 6.
+        const int base_idx = ace_rd_steps(brg.rd_block)
+                * (brg.n_bcast_1_load ? bd_block2 : (1 + ldb));
+        const int idx = 5 + base_idx + rds;
+        assert(idx < 32 && "ZMM register index overflow in ace_zmm_B");
+        return Xbyak::Zmm(idx);
+    }
 
     Vmm vmm_one_bytes() const noexcept { return Vmm(3); }
     Vmm vmm_zp_a_shift() const noexcept { return Vmm(2); }
@@ -419,7 +478,7 @@ private:
     void advance_bdb_post_op_regs(int adj_bd_block);
     void restore_bdb_post_op_regs(int bd_block2);
     void ldb_regs_shift(int ld_block2, bool is_tail = false);
-    void advance_bd_block2_post_op_regs(int bd_block2);
+    void advance_bd_block2_post_op_regs(int bd_block2, bool is_tail = false);
 
     void copy_post_ops_stack_values_to_aux(bool is_reg_tail);
     void read_params();
@@ -481,6 +540,16 @@ private:
     void gemv_microkernel(bool is_bdb_tail, int ld_block, bool is_rd_tail);
     void gemm_microkernel_amx(int bd_block2, bool is_bdb_tail, int ld_block2,
             bool is_rd_tail, bool is_ld_tail);
+    void gemm_microkernel_ace(int bd_block2, bool is_bdb_tail, int ld_block2,
+            bool is_rd_tail, bool is_ld_tail);
+
+    void ace_load_A_4x16bytes(
+            const Zmm &zmm, size_t mask, const Reg64 &reg_A, dim_t offset);
+    void ace_load_A(int bdb, dim_t offset, bool is_bdb_tail, int bd_block,
+            bool is_rd_tail = false);
+    void ace_load_B(int ldb, dim_t offset, int rdstep, bool is_ld_tail,
+            int rd_block, int bd_block2);
+    void outer_product(const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm);
 
     void bs_loop(int bd_block2, bool is_bdb_tail, int ld_block, bool is_ld_tail,
             bool first_bdb, bool last_bdb, int rows_for_rd_tail,
@@ -510,23 +579,26 @@ private:
     dim_t ldb_D_offset(int ld_block2, bool is_tail = false) const noexcept;
     dim_t ldb_po_offset(int ld_block2, bool is_tail = false) const noexcept;
 
-    dim_t bdb_A_offset(int bd_block2) const noexcept;
-    dim_t bdb_C_offset(int bd_block2) const noexcept;
-    dim_t bdb_D_offset(int bd_block2) const noexcept;
-    dim_t bdb_po_offset(int bd_block2) const noexcept;
+    dim_t bdb_A_offset(int bd_block2, bool is_tail = false) const noexcept;
+    dim_t bdb_C_offset(int bd_block2, bool is_tail = false) const noexcept;
+    dim_t bdb_D_offset(int bd_block2, bool is_tail = false) const noexcept;
+    dim_t bdb_po_offset(int bd_block2, bool is_tail = false) const noexcept;
 
     dim_t bias_offset(int ld, bool is_tail = false) const noexcept;
     dim_t oc_logical_offset(int ld, bool is_tail = false) const noexcept;
 
     dim_t compensations_offset(int ld, bool is_tail = false) const noexcept;
-    dim_t bdb_compensation_offset(int bd_block2) const noexcept;
+    dim_t bdb_compensation_offset(
+            int bd_block2, bool is_tail = false) const noexcept;
     dim_t bd_compensation_offset(int ld, int bd) const noexcept;
     dim_t wei_scales_offset(int ld, bool is_tail = false) const noexcept;
     dim_t zp_comp_a_offset(int ld, bool is_tail = false) const noexcept;
     dim_t bd_zp_comp_a_offset(int ld, int bd) const noexcept;
-    dim_t bdb_zp_comp_a_offset(int bd_block2) const noexcept;
+    dim_t bdb_zp_comp_a_offset(
+            int bd_block2, bool is_tail = false) const noexcept;
     dim_t zp_comp_b_offset(int bd) const noexcept;
-    dim_t bdb_zp_comp_b_offset(int bd_block2) const noexcept;
+    dim_t bdb_zp_comp_b_offset(
+            int bd_block2, bool is_tail = false) const noexcept;
     dim_t zp_c_values_offset(int ld, bool is_tail = false) const noexcept;
 
     // Offsets into the per-(M,N) f32 compensation buffer. The buffer mirrors
@@ -627,21 +699,23 @@ template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_A_offset() const noexcept {
     if (brg.is_gemv && brg.gemv_acc_is_vector())
         return static_cast<dim_t>(brg.rd_block) * brg.LDA * brg.typesize_A;
-    return static_cast<dim_t>(brg.typesize_A) * brg.rd_block;
+    return brg.rd_block_A_size();
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::rdb_B_offset() const noexcept {
     if (brg.is_gemv && brg.gemv_acc_is_vector())
         return static_cast<dim_t>(brg.rd_block) * brg.typesize_B;
-    return static_cast<dim_t>(brg.typesize_B) * brg.rd_block * brg.LDB;
+    return brg.rd_block_B_size() * brg.LDB;
 }
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::ldb_B_offset(
         int ld_block2, bool is_tail) const noexcept {
-    return (is_tail) ? brg.typesize_B * brg.ldb_tail * brg.ld_step
-                     : brg.typesize_B * ld_block2 * brg.ld_block * brg.ld_step;
+    // For TMM/AMX with blocked format, use rd_step instead of ld_step
+    const auto step = brg.is_tmm ? brg.rd_step : brg.ld_step;
+    return (is_tail) ? brg.typesize_B * brg.ldb_tail * step
+                     : brg.typesize_B * ld_block2 * brg.ld_block * step;
 }
 
 template <typename Wmm>
@@ -665,31 +739,39 @@ dim_t jit_brgemm_kernel_t<Wmm>::ldb_po_offset(
 }
 
 template <typename Wmm>
-dim_t jit_brgemm_kernel_t<Wmm>::bdb_A_offset(int bd_block2) const noexcept {
+dim_t jit_brgemm_kernel_t<Wmm>::bdb_A_offset(
+        int bd_block2, bool is_tail) const noexcept {
+    const auto bd_block = is_tail ? brg.bdb_tail : brg.bd_block;
     if (brg.is_gemv && brg.gemv_acc_is_vector())
-        return brg.typesize_A * bd_block2 * brg.bd_block;
-    return brg.typesize_A * bd_block2 * brg.bd_block * brg.LDA;
+        return brg.typesize_A * bd_block2 * bd_block;
+    return brg.typesize_A * bd_block2 * bd_block * brg.LDA;
 }
 
 template <typename Wmm>
-dim_t jit_brgemm_kernel_t<Wmm>::bdb_C_offset(int bd_block2) const noexcept {
+dim_t jit_brgemm_kernel_t<Wmm>::bdb_C_offset(
+        int bd_block2, bool is_tail) const noexcept {
+    const auto bd_block = is_tail ? brg.bdb_tail : brg.bd_block;
     if (brg.is_gemv && brg.gemv_acc_is_vector())
-        return brg.typesize_C * bd_block2 * brg.bd_block * brg.LDC;
-    return bd_block2 * brg.bd_block
+        return brg.typesize_C * bd_block2 * bd_block * brg.LDC;
+    return bd_block2 * bd_block
             * (brg.is_runtime_ldc ? 1 : brg.typesize_C * brg.LDC);
 }
 
 template <typename Wmm>
-dim_t jit_brgemm_kernel_t<Wmm>::bdb_D_offset(int bd_block2) const noexcept {
+dim_t jit_brgemm_kernel_t<Wmm>::bdb_D_offset(
+        int bd_block2, bool is_tail) const noexcept {
+    const auto bd_block = is_tail ? brg.bdb_tail : brg.bd_block;
     if (brg.is_gemv && brg.gemv_acc_is_vector())
-        return brg.typesize_D * bd_block2 * brg.bd_block * brg.LDD;
-    return bd_block2 * brg.bd_block
+        return brg.typesize_D * bd_block2 * bd_block * brg.LDD;
+    return bd_block2 * bd_block
             * (brg.is_runtime_ldd ? 1 : brg.typesize_D * brg.LDD);
 }
 
 template <typename Wmm>
-dim_t jit_brgemm_kernel_t<Wmm>::bdb_po_offset(int bd_block2) const noexcept {
-    return bd_block2 * brg.bd_block * brg.LDD;
+dim_t jit_brgemm_kernel_t<Wmm>::bdb_po_offset(
+        int bd_block2, bool is_tail) const noexcept {
+    const auto bd_block = is_tail ? brg.bdb_tail : brg.bd_block;
+    return bd_block2 * bd_block * brg.LDD;
 }
 
 template <typename Wmm>
@@ -717,8 +799,9 @@ dim_t jit_brgemm_kernel_t<Wmm>::compensations_offset(
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bdb_compensation_offset(
-        int bd_block2) const noexcept {
-    return sizeof(int32_t) * bd_block2 * brg.bd_block * brg.LDB;
+        int bd_block2, bool is_tail) const noexcept {
+    const auto bd_block = is_tail ? brg.bdb_tail : brg.bd_block;
+    return sizeof(int32_t) * bd_block2 * bd_block * brg.LDB;
 }
 
 template <typename Wmm>
@@ -749,8 +832,9 @@ dim_t jit_brgemm_kernel_t<Wmm>::zp_comp_a_offset(
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bdb_zp_comp_a_offset(
-        int bd_block2) const noexcept {
-    return sizeof(int32_t) * bd_block2 * brg.bd_block * brg.LDB;
+        int bd_block2, bool is_tail) const noexcept {
+    const auto bd_block = is_tail ? brg.bdb_tail : brg.bd_block;
+    return sizeof(int32_t) * bd_block2 * bd_block * brg.LDB;
 }
 
 template <typename Wmm>
@@ -766,8 +850,9 @@ dim_t jit_brgemm_kernel_t<Wmm>::zp_comp_b_offset(int bd) const noexcept {
 
 template <typename Wmm>
 dim_t jit_brgemm_kernel_t<Wmm>::bdb_zp_comp_b_offset(
-        int bd_block2) const noexcept {
-    return zp_comp_b_offset(bd_block2 * brg.bd_block);
+        int bd_block2, bool is_tail) const noexcept {
+    const auto bd_block = is_tail ? brg.bdb_tail : brg.bd_block;
+    return zp_comp_b_offset(bd_block2 * bd_block);
 }
 
 template <typename Wmm>
@@ -958,8 +1043,37 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(int ld_block2, bool is_tail) {
     add(reg_aux_C, C_offset);
     add(reg_aux_D, D_offset);
 
-    add(reg_b_offset,
-            (is_tail) ? ldb_B_offset(0, true) : ldb_B_offset(ld_block2));
+    // Packed ACE B shifts non-linearly: N panels of brg.LDB columns sit
+    // brgattr.LDB2 elements apart, columns inside a panel brg.rd_step apart.
+    // The ld tail shift is unused, so only full blocks need the panel jump.
+    if (ace_has_b_panels() && !is_tail) {
+        const dim_t col_bytes = brg.typesize_B * brg.rd_step;
+        const dim_t ld_cols = ld_block2 * brg.ld_block;
+        const dim_t panel_cols = brg.LDB;
+        const dim_t panel_bytes = brg.typesize_B * brg.brgattr.LDB2;
+
+        if (ld_cols % panel_cols == 0) {
+            // Whole panels per step: the position in the panel never changes.
+            add(reg_b_offset, (ld_cols / panel_cols) * panel_bytes);
+        } else {
+            assert(panel_cols % ld_cols == 0);
+            Xbyak::Label ld_no_panel_crossing, ld_shift_done;
+            reg_ace_ldb_pos.restore();
+            add(reg_ace_ldb_pos, ld_cols);
+            cmp(reg_ace_ldb_pos, panel_cols);
+            jl(ld_no_panel_crossing, T_NEAR);
+            sub(reg_ace_ldb_pos, panel_cols);
+            add(reg_b_offset, panel_bytes - (panel_cols - ld_cols) * col_bytes);
+            jmp(ld_shift_done, T_NEAR);
+            L(ld_no_panel_crossing);
+            add(reg_b_offset, ld_cols * col_bytes);
+            L(ld_shift_done);
+            reg_ace_ldb_pos.save();
+        }
+    } else {
+        add(reg_b_offset,
+                (is_tail) ? ldb_B_offset(0, true) : ldb_B_offset(ld_block2));
+    }
 
     if (brg.with_bias) {
         reg_aux_bias.restore();
@@ -1005,23 +1119,24 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(int ld_block2, bool is_tail) {
 }
 
 template <typename Wmm>
-void jit_brgemm_kernel_t<Wmm>::advance_bd_block2_post_op_regs(int bd_block2) {
+void jit_brgemm_kernel_t<Wmm>::advance_bd_block2_post_op_regs(
+        int bd_block2, bool is_tail) {
     if (brg.req_comp_pads_with_bcast && brg.req_s8s8_compensation) {
         reg_buf.restore();
-        add(reg_buf, bdb_compensation_offset(bd_block2));
+        add(reg_buf, bdb_compensation_offset(bd_block2, is_tail));
         reg_buf.save();
     }
 
     if (brg.req_comp_pads_with_bcast
             && brg.zp_type_a != brgemm_broadcast_t::none) {
         reg_zp_comp_a.restore();
-        add(reg_zp_comp_a, bdb_zp_comp_a_offset(bd_block2));
+        add(reg_zp_comp_a, bdb_zp_comp_a_offset(bd_block2, is_tail));
         reg_zp_comp_a.save();
     }
 
     if (brg.zp_type_b != brgemm_broadcast_t::none) {
         reg_zp_comp_b.restore();
-        add(reg_zp_comp_b, bdb_zp_comp_b_offset(bd_block2));
+        add(reg_zp_comp_b, bdb_zp_comp_b_offset(bd_block2, is_tail));
         reg_zp_comp_b.save();
     }
     if (brg.with_per_mn_compensation) {
@@ -1038,6 +1153,10 @@ void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
         mov(reg_aux_C, reg_C);
         mov(reg_aux_D, reg_D);
         xor_(reg_b_offset, reg_b_offset);
+        if (ace_has_b_panels()) {
+            xor_(reg_ace_ldb_pos, reg_ace_ldb_pos);
+            reg_ace_ldb_pos.save();
+        }
         if (brg.with_bias) {
             reg_bias.restore();
             reg_bias.saveTo(reg_aux_bias);
@@ -2385,6 +2504,14 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(int bd_block2,
                                 auto vreg_acc = accm(1, bd, 0);
                                 uni_vpxor(vreg_acc, vreg_acc, vreg_acc);
                             }
+                        } else if (brg.is_ace()) {
+                            // For ACE, extract the rows directly from the
+                            // tile with tilemovrow.
+                            for (int bd = 0; bd < adj_bd_block; bd++) {
+                                const auto vreg_idx = accm(1, bd, 0).getIdx();
+                                const auto vreg_zmm = Zmm(vreg_idx);
+                                tilemovrow(vreg_zmm, Tmm(c_tensor), bd);
+                            }
                         } else {
                             tilestored(ptr[reg_buf + reg_stride_ld_block],
                                     Tmm(c_tensor));
@@ -2429,12 +2556,42 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators(int bd_block2,
                     } else {
                         auto tmm = Tmm(c_tensor);
                         if (skip_accumulation) tilezero(tmm);
-                        tilestored(ptr[reg_aux_C + reg_stride_ld_block], tmm);
-                        if (ldb < ld_block2 - 1)
-                            add(reg_aux_C, ldb_C_offset(1));
+                        if (brg.is_ace()) {
+                            // For ACE, extract and store rows using tilemovrow.
+                            // tilemovrow returns one dword per element (f32 for
+                            // bf16, s32 for int8), so a dword-granular vmovups
+                            // stores a full row; the tail uses ld_tail_mask.
+                            const size_t ldb_offset = ldb * ldb_C_offset(1);
+                            for (int bd = 0; bd < adj_bd_block; bd++) {
+                                const size_t c_offset = ldb_offset
+                                        + (bd * brg.LDC) * brg.typesize_C;
+                                const auto vreg_zmm
+                                        = Zmm(31); // Use temp register
+                                tilemovrow(vreg_zmm, tmm, bd);
+                                if (is_ld_tail) {
+                                    uni_vmovups(ptr[reg_aux_C + c_offset]
+                                                    | ld_tail_mask | T_z,
+                                            vreg_zmm);
+                                } else {
+                                    uni_vmovups(ptr[reg_aux_C + c_offset],
+                                            vreg_zmm);
+                                }
+                            }
+                        } else {
+                            tilestored(
+                                    ptr[reg_aux_C + reg_stride_ld_block], tmm);
+                            if (ldb < ld_block2 - 1)
+                                add(reg_aux_C, ldb_C_offset(1));
+                        }
                     }
                 }
-                if (ld_block2 > 1) sub(reg_aux_C, ldb_C_offset(ld_block2 - 1));
+                // Reset reg_aux_C back to column 0 after ldb loop.
+                // The do_accum_ops path and the non-ACE tilestored path
+                // advance reg_aux_C by ldb_C_offset(1) per ldb iteration.
+                // The ACE do_accum_ops=false path uses compile-time offsets
+                // and does not modify reg_aux_C.
+                if (ld_block2 > 1 && (do_accum_ops || !brg.is_ace()))
+                    sub(reg_aux_C, ldb_C_offset(ld_block2 - 1));
                 if (bdb < bd_block2 - 1) {
                     if (brg.is_runtime_ldc)
                         reg_dynamic_C_offset.addTo(reg_aux_C);
@@ -2885,6 +3042,230 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_amx(int bd_block2,
 }
 
 template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::ace_load_A_4x16bytes(
+        const Zmm &zmm, size_t mask, const Reg64 &reg_A, dim_t offset) {
+    constexpr size_t full_mask = 0xFFFF;
+    constexpr size_t all_full_mask = 0xFFFFFFFFFFFFFFFF;
+
+    const auto zmm_tmp1 = ace_zmm_tmp(1);
+    const auto xmm_tmp = Xmm(zmm_tmp1.getIdx());
+    if (mask != all_full_mask) vpxord(zmm, zmm, zmm);
+
+    for (int i = 0; i < 4; ++i) {
+        const auto cur_offset
+                = offset + i * brg.LDA * ace_zmms_per_bd_block * brg.typesize_A;
+        const size_t cur_mask = (mask >> (16 * i)) & full_mask;
+        if (cur_mask == 0) continue;
+
+        // Always use masked load to handle M < 16 safely
+        mov(reg_tmp_gpr, cur_mask);
+        kmovq(ace_load_A_mask, reg_tmp_gpr);
+        vmovdqu8(xmm_tmp | ace_load_A_mask | T_z, ptr[reg_A + cur_offset]);
+        vinserti64x2(zmm, zmm, xmm_tmp, i);
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::ace_load_A(int bdb, dim_t offset,
+        bool is_bdb_tail, int bd_block, bool is_rd_tail) {
+    const auto rd_block = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+    const int mask_stride = 16; // 16 bytes per row
+
+    for (int rb = 0; rb < ace_zmms_per_bd_block; ++rb) {
+        auto zmm = ace_zmm_A(bdb, rb);
+        if (rb >= bd_block) {
+            vpxord(zmm, zmm, zmm);
+            continue;
+        }
+        size_t mask = 0;
+        int mask_row_offs = 0;
+        for (int row = rb; row < bd_block; row += ace_zmms_per_bd_block) {
+            for (int col = 0; col < rd_block; ++col) {
+                if (brg.typesize_A == 2) {
+                    // bf16, f16
+                    mask |= (size_t)0b11 << (mask_row_offs + col * 2);
+                } else if (brg.typesize_A == 1) {
+                    // f8_e5m2, f8_e4m3, s8, u8
+                    mask |= (size_t)0b1 << (mask_row_offs + col);
+                } else {
+                    assert(!"Unsupported data type for ace_load_A");
+                }
+            }
+            mask_row_offs += mask_stride;
+        }
+        ace_load_A_4x16bytes(
+                zmm, mask, reg_aux_A, offset + rb * brg.LDA * brg.typesize_A);
+    }
+    // transpose four 4x4 blocks
+    const auto base_zmm_idx = ace_zmm_A(bdb, 0).getIdx();
+    const auto a_zmm1 = Zmm(base_zmm_idx + 0);
+    const auto a_zmm2 = Zmm(base_zmm_idx + 1);
+    const auto a_zmm3 = Zmm(base_zmm_idx + 2);
+    const auto a_zmm4 = Zmm(base_zmm_idx + 3);
+    const auto tmp_zmm1 = ace_zmm_tmp(1);
+    const auto tmp_zmm2 = ace_zmm_tmp(2);
+    const auto tmp_zmm3 = ace_zmm_tmp(3);
+    const auto tmp_zmm4 = ace_zmm_tmp(4);
+    vpunpckldq(tmp_zmm1, a_zmm1, a_zmm2);
+    vpunpckhdq(tmp_zmm2, a_zmm1, a_zmm2);
+    vpunpckldq(tmp_zmm3, a_zmm3, a_zmm4);
+    vpunpckhdq(tmp_zmm4, a_zmm3, a_zmm4);
+    vpunpcklqdq(a_zmm1, tmp_zmm1, tmp_zmm3);
+    vpunpckhqdq(a_zmm2, tmp_zmm1, tmp_zmm3);
+    vpunpcklqdq(a_zmm3, tmp_zmm2, tmp_zmm4);
+    vpunpckhqdq(a_zmm4, tmp_zmm2, tmp_zmm4);
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::ace_load_B(int ldb, dim_t offset, int rdstep,
+        bool is_ld_tail, int rd_block, int bd_block2) {
+    const auto start_rdstep = (rdstep == -1) ? 0 : rdstep;
+    const auto finish_rdstep
+            = (rdstep == -1) ? ace_rd_steps(rd_block) : rdstep + 1;
+
+    // Use ukernel formula: rd_step * LDB * typesize
+    const auto rds_stride = brg.rd_step * brg.LDB * brg.typesize_B;
+
+    for (int rds = start_rdstep; rds < finish_rdstep; rds++) {
+        auto zmm = ace_zmm_B(bd_block2, ldb, rds);
+        const auto total_offset = offset + rds * rds_stride;
+        const auto zmm_B = is_ld_tail ? (zmm | ld_tail_mask | T_z) : zmm;
+        // Use dword-granular vmovups: each ld element occupies one dword of
+        // the B register, and ld_tail_mask has one bit per element. A
+        // qword-granular load would fetch twice the tail bytes and can read
+        // past the end of B.
+        vmovups(zmm_B, ptr[reg_aux_B + total_offset]);
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::outer_product(
+        const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm) {
+    using namespace data_type;
+    if (brg.dt_a == bf16 && brg.dt_b == bf16) {
+        top2bf16ps(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == u8 && brg.dt_b == u8) {
+        top4buud(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == u8 && brg.dt_b == s8) {
+        top4busd(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == s8 && brg.dt_b == u8) {
+        top4bsud(accm, zmm_a, zmm_b);
+    } else if (brg.dt_a == s8 && brg.dt_b == s8) {
+        top4bssd(accm, zmm_a, zmm_b);
+    } else {
+        assert(!"Unsupported data type for outer product");
+    }
+}
+
+template <typename Wmm>
+void jit_brgemm_kernel_t<Wmm>::gemm_microkernel_ace(int bd_block2,
+        bool is_bdb_tail, int ld_block2, bool is_rd_tail, bool is_ld_tail) {
+    dim_t rbd_block = (is_rd_tail) ? 1 : brg.rdb;
+    for (dim_t rdb = 0; rdb < rbd_block; rdb++) {
+        if (brg.n_bcast_1_load) {
+            // Load A once for all bdb
+            for (int bdb = 0; bdb < bd_block2; bdb++) {
+                int bd_block = (is_bdb_tail && bdb == bd_block2 - 1)
+                        ? brg.bdb_tail
+                        : brg.bd_block;
+                // The tail uses rdb=0, and reg_aux_A has already
+                // advanced past the full blocks.
+                const auto rd_offset = rdb * rdb_A_offset();
+                ace_load_A(bdb, rd_offset + A_offset(bdb, 0, true),
+                        is_bdb_tail && bdb == bd_block2 - 1, bd_block,
+                        is_rd_tail);
+            }
+
+            // Load B one rds at a time, compute with all bdb
+            for (int ldb = 0; ldb < ld_block2; ldb++) {
+                // The offset is relative to reg_aux_B, which has already
+                // been advanced for the tail.
+                const auto rd_pos = rdb;
+                const auto ldb_offs = ldb * brg.ld_block;
+                auto b_offset_base
+                        = rd_pos * brg.rd_block * brg.LDB * brg.typesize_B
+                        + brg.typesize_B
+                                * ((ldb_offs / brg.LDB) * brg.brgattr.LDB2
+                                        + (ldb_offs % brg.LDB) * brg.rd_step);
+
+                const auto rd_block_cur
+                        = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+                for (int rds = 0; rds < ace_rd_steps(rd_block_cur); rds++) {
+                    // Load one rds line from B into ace_zmm_B(bd_block2, ldb,
+                    // rds); ace_load_B adds rds * rds_stride internally.
+                    ace_load_B(ldb, b_offset_base, rds, is_ld_tail,
+                            rd_block_cur, bd_block2);
+
+                    // Compute with all bdb
+                    for (int bdb = 0; bdb < bd_block2; bdb++) {
+                        const int idx = (is_ld_tail) ? brg.ld_block2 : ldb;
+                        const auto &accm = Tmm(brg.get_C_tensor(
+                                bdb, idx, is_bdb_tail, is_ld_tail));
+                        outer_product(ace_zmm_A(bdb, rds),
+                                ace_zmm_B(bd_block2, ldb, rds), accm);
+                    }
+                }
+            }
+        } else {
+            // For the non-n_bcast path, load all the B matrices first and
+            // then compute with A.
+            for (int ldb = 0; ldb < ld_block2; ldb++) {
+                // The offset is relative to reg_aux_B, which has already
+                // been advanced for the tail.
+                const auto rd_pos = rdb;
+                const auto ldb_offs = ldb * brg.ld_block;
+                const auto b_offset
+                        = rd_pos * brg.rd_block * brg.LDB * brg.typesize_B
+                        + brg.typesize_B
+                                * ((ldb_offs / brg.LDB) * brg.brgattr.LDB2
+                                        + (ldb_offs % brg.LDB) * brg.rd_step);
+                const auto rd_block_cur
+                        = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+                ace_load_B(
+                        ldb, b_offset, -1, is_ld_tail, rd_block_cur, bd_block2);
+            }
+
+            // Compute with loaded B
+            for (int bdb = 0; bdb < bd_block2; bdb++) {
+                int bd_block = (is_bdb_tail && bdb == bd_block2 - 1)
+                        ? brg.bdb_tail
+                        : brg.bd_block;
+                // The tail uses rdb=0, and reg_aux_A has already
+                // advanced past the full blocks.
+                const auto rd_offset = rdb * rdb_A_offset();
+                ace_load_A(bdb, rd_offset + A_offset(bdb, 0, true),
+                        is_bdb_tail && bdb == bd_block2 - 1, bd_block,
+                        is_rd_tail);
+                for (int ldb = 0; ldb < ld_block2; ldb++) {
+                    const int idx = (is_ld_tail) ? brg.ld_block2 : ldb;
+                    const auto &accm = Tmm(brg.get_C_tensor(
+                            bdb, idx, is_bdb_tail, is_ld_tail));
+                    const auto rd_block_cur
+                            = is_rd_tail ? brg.rdb_tail : brg.rd_block;
+                    for (int rds = 0; rds < ace_rd_steps(rd_block_cur); rds++) {
+                        outer_product(ace_zmm_A(bdb, rds),
+                                ace_zmm_B(bd_block2, ldb, rds), accm);
+                    }
+                }
+            }
+        }
+    }
+    if (!is_rd_tail) {
+        add(reg_aux_A, brg.rdb * rdb_A_offset());
+        // For ACE with BA16a64b2a: The rdb loop runs brg.rdb times,
+        // each iteration processes rd_block elements.
+        // So advance by brg.rdb * rd_block * LDB * typesize
+        if (brg.is_ace()) {
+            const auto rdb_B_stride
+                    = brg.rdb * brg.rd_block * brg.LDB * brg.typesize_B;
+            add(reg_aux_B, rdb_B_stride);
+        } else {
+            add(reg_aux_B, brg.rdb * rdb_B_offset());
+        }
+    }
+}
+
+template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::dot_product(Vmm v1, Vmm v2, Vmm v3) {
     if (brg.is_f16 && brg.isa_impl == avx10_2)
         vdpphps(v1, v2, v3);
@@ -3287,7 +3668,7 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
     // `reg_aux_C` and `reg_tmp_microkernel` are aliases for `r14` so we need to
     // save its content.
     const dim_t max_prefetch_offset = B_offset(ld_block2 - 1, rd_loop - 1)
-            + static_cast<dim_t>(brg.LDB) * brg.rd_block * brg.typesize_B;
+            + static_cast<dim_t>(brg.LDB) * brg.rd_block_B_size();
     if (max_prefetch_offset > INT_MAX) reg_aux_C.save();
 
     if (brg.is_fp8_via_convert()) reg64_fp8_aux.save();
@@ -3337,8 +3718,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                 if (prefetch_count_B < ld_block2) {
                     const dim_t prefetch_offset
                             = B_offset(prefetch_count_B++, rd)
-                            + static_cast<dim_t>(brg.LDB) * brg.rd_block
-                                    * brg.typesize_B;
+                            + static_cast<dim_t>(brg.LDB)
+                                    * brg.rd_block_B_size();
                     // Only use EVEX_compress_addr_safe/make_safe_addr
                     // when prefetch_offset > INT_MAX forr perf purpose
                     if (prefetch_offset <= INT_MAX) {
@@ -3396,8 +3777,12 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(int bd_block2, bool is_bdb_tail,
 
         if (brg.is_tmm) {
             const bool is_rd_tail = false;
-            gemm_microkernel_amx(
-                    bd_block2, is_bdb_tail, ld_block2, is_rd_tail, is_ld_tail);
+            if (brg.is_ace())
+                gemm_microkernel_ace(bd_block2, is_bdb_tail, ld_block2,
+                        is_rd_tail, is_ld_tail);
+            else
+                gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2,
+                        is_rd_tail, is_ld_tail);
         } else {
             if (brg.rdb > 0) {
                 Label rdb_loop_label;
@@ -3423,8 +3808,12 @@ void jit_brgemm_kernel_t<Wmm>::bs_loop(int bd_block2, bool is_bdb_tail,
         if (brg.rdb_tail != 0) {
             const bool is_rd_tail = true;
             if (brg.is_tmm) {
-                gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2,
-                        is_rd_tail, is_ld_tail);
+                if (brg.is_ace())
+                    gemm_microkernel_ace(bd_block2, is_bdb_tail, ld_block2,
+                            is_rd_tail, is_ld_tail);
+                else
+                    gemm_microkernel_amx(bd_block2, is_bdb_tail, ld_block2,
+                            is_rd_tail, is_ld_tail);
             } else {
                 if (brg.is_gemv)
                     gemv_microkernel(is_bdb_tail, ld_block2, is_rd_tail);
@@ -3575,6 +3964,10 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
     auto do_ldb_loop = [this](int bd_block2, bool is_bdb_tail, bool first_bdb,
                                bool last_bdb, int rows_for_rd_tail,
                                bool skip_accumulation) {
+        // For the ACE rd tail every bdb iteration starts fresh with
+        // reg_b_offset = 0. No restore is needed here because
+        // copy_post_ops_stack_values_to_aux already zeroes it.
+
         if (brg.ldb2 > 0) {
             const bool is_ld_reg_tail = false;
             const bool is_ld_tail = false;
@@ -3607,20 +4000,22 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
         if (brg.is_runtime_ldc) {
             reg_C.saveTo(reg_C_backup);
             xor_(reg_C, reg_C);
-            reg_stride_ld_block.imulTo(reg_C, bdb_C_offset(bd_block2));
+            reg_stride_ld_block.imulTo(
+                    reg_C, bdb_C_offset(bd_block2, is_bdb_tail));
             reg_C_backup.addTo(reg_C);
         } else {
-            add(reg_C, bdb_C_offset(bd_block2));
+            add(reg_C, bdb_C_offset(bd_block2, is_bdb_tail));
         }
         if (brg.is_runtime_ldd) {
             reg_D.saveTo(reg_aux_D_backup);
             xor_(reg_D, reg_D);
-            reg_D_shift_bytes.imulTo(reg_D, bdb_D_offset(bd_block2));
+            reg_D_shift_bytes.imulTo(
+                    reg_D, bdb_D_offset(bd_block2, is_bdb_tail));
             reg_aux_D_backup.addTo(reg_D);
         } else {
-            add(reg_D, bdb_D_offset(bd_block2));
+            add(reg_D, bdb_D_offset(bd_block2, is_bdb_tail));
         }
-        add(reg_a_offset, bdb_A_offset(bd_block2));
+        add(reg_a_offset, bdb_A_offset(bd_block2, is_bdb_tail));
 
         if (brg.is_per_k_src_scales) {
             const auto adj_bd_block = is_bdb_tail ? brg.bdb_tail : brg.bd_block;
@@ -3647,7 +4042,7 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
             }
         }
 
-        advance_bd_block2_post_op_regs(bd_block2);
+        advance_bd_block2_post_op_regs(bd_block2, is_bdb_tail);
     };
 
     int rows_for_rd_tail, bd_blocks_for_rd_tail;
@@ -3859,9 +4254,10 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
     if (is_superset(brg.isa_impl, avx512_core)) {
         const auto full_mask = size_t {0xffffffffffffffff};
 
+        reg64_t reg_mask = rax;
+
         if (!brg.is_gemv) {
             const auto tail_mask = size_t((1 << brg.ldb_tail) - 1);
-            reg64_t reg_mask = rax;
 
             mov(reg_mask, full_mask);
             kmovq(ld_full_mask, reg_mask);
@@ -3876,7 +4272,6 @@ void jit_brgemm_kernel_t<Wmm>::generate() {
         } else {
             const auto partial_mask
                     = brg.transA ? size_t((1 << brg.gemv_tail) - 1) : 1;
-            reg64_t reg_mask = rax;
 
             mov(reg_mask, full_mask);
             kmovq(gemv_full_mask, reg_mask);

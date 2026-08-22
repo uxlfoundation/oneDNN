@@ -22,6 +22,7 @@
 #include "cpu/x64/cpu_isa_traits.hpp"
 
 #include "common/c_types_map.hpp"
+#include "common/utils.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -40,6 +41,22 @@ void set_isa_impl(brgemm_desc_t *brg);
 status_t brgemm_blocking(brgemm_desc_t *brg);
 
 status_t brdgmm_blocking(brgemm_desc_t *brg);
+
+/* The ACE kernels compute bf16 and int8 only, see set_isa_impl(). */
+inline bool ace_dt_ok(data_type_t dt_a, data_type_t dt_b) {
+    using namespace data_type;
+    return utils::everyone_is(bf16, dt_a, dt_b)
+            || (utils::one_of(dt_a, u8, s8) && utils::one_of(dt_b, u8, s8));
+}
+
+/* ACE picks the unrolled kernel by default; it is usually fastest, but its
+ * per-bd/ld block expansion can bloat code. TODO: when M*N*K*max_bs grows,
+ * switch from the unconditional `true` to a size-based criterion that falls
+ * back to the base kernel. Some needed dimensions are not available everywhere,
+ * so they must be threaded through with the criterion. */
+inline bool ace_prefer_uker() {
+    return true;
+}
 
 /* The purpose of this function is to enable initialization of brgemm values
  * and then call additional functions like blocking heuristics without

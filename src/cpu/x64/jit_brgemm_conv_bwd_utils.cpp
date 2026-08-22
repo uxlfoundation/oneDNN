@@ -60,7 +60,9 @@ inline status_t init_tag(format_tag_t &tag, memory_desc_t &md,
 }
 
 bool is_amx(cpu_isa_t isa) {
-    return is_superset(isa, avx512_core_amx);
+    // See the note on the forward is_amx(): this asks whether accumulators
+    // live in tile registers, which is true for ACE as well as for TMUL.
+    return isa_has_tile_accumulators(isa);
 }
 
 bool post_ops_ok(jit_brgemm_conv_conf_t &jcp, primitive_attr_t &attr,
@@ -413,10 +415,7 @@ struct brg_blocking_t : public jit_brgemm_conv_conf_t {
     };
 
     brg_blocking_t() {
-        // TODO: This is a broken form of initialization for a base class.
-        // Either set default values in a base class, or provide a proper
-        // default ctor, or take a `jit_brgemm_conv_conf_t` object to initialize
-        // a base class object.
+        // TODO: base-class init is wrong here; use default values or a real ctor.
         jit_brgemm_conv_conf_t *base
                 = static_cast<jit_brgemm_conv_conf_t *>(this);
         *base = jit_brgemm_conv_conf_t();
@@ -599,6 +598,13 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
     CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brgemm_addr, src_dt, wei_dt,
             brgemm_row_major, alpha, beta, LDA, LDB, LDC, vM, vN, vK, nullptr,
             is_bf32));
+    // Blocking dispatches on use_ace, so the attribute has to reach the
+    // descriptor before brgemm_blocking(), otherwise this simulation would
+    // estimate VMM/TMUL blocks for an ACE kernel.
+    brgemm_attr_t brgattr;
+    brgattr.use_ace = is_ace;
+    brgattr.use_uker = use_uker;
+    CHECK(brgemm_desc_set_attr(&brg, brgattr));
     CHECK(brgemm_utils::brgemm_blocking(&brg));
     // AMX kernel may fall back to VMM, in which case bd_block2 == 0
     ur = brg.bd_block * nstl::max<dim_t>(1, brg.bd_block2);
@@ -609,6 +615,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
         CHECK(brgemm_utils::init_brgemm_conf(&brg_sp_tail, isa, brgemm_addr,
                 src_dt, wei_dt, brgemm_row_major, alpha, beta, LDA, LDB, LDC,
                 M_tail, vN, vK, nullptr, is_bf32));
+        CHECK(brgemm_desc_set_attr(&brg_sp_tail, brgattr));
         CHECK(brgemm_utils::brgemm_blocking(&brg_sp_tail));
         ur_block_tail = brg_sp_tail.bd_block;
     } else {
@@ -656,9 +663,15 @@ status_t brg_blocking_t::get_brgemm_ur(
                     CHECK(brgemm_utils::init_brgemm_conf(&brg, isa, brg_type,
                             src_dt, wei_dt, brgemm_row_major, alpha, vbeta, LDA,
                             LDB, LDC, vM, vN, vK, strides_ptr, is_bf32));
-                    CHECK(brgemm_utils::brgemm_blocking(&brg));
 
                     brgemm_attr_t brgattr;
+                    // Blocking dispatches on use_ace, so this pair has to be
+                    // applied before brgemm_blocking() rather than after it.
+                    brgattr.use_ace = is_ace;
+                    brgattr.use_uker = use_uker;
+                    CHECK(brgemm_desc_set_attr(&brg, brgattr));
+                    CHECK(brgemm_utils::brgemm_blocking(&brg));
+
                     brgattr.max_bs = max_batch;
                     const int max_vpad = (exec_type == exec_vpad)
                             ? static_cast<int>(nstl::max(l_pad, r_pad))
@@ -1566,6 +1579,9 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.vnni_block
             = static_cast<int>(data_type_vnni_granularity(last_oc_block_dt));
 
+    jcp.is_ace = is_superset(isa, avx10_2_ace)
+            && brgemm_utils::ace_dt_ok(jcp.src_dt, jcp.wei_dt);
+
     // TODO: optimize grouped convolutions with small oc
     const bool is_grouped_small_oc
             = jcp.prop_kind != prop_kind::backward_weights && with_groups
@@ -1725,8 +1741,15 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.use_M_mask = 0;
     jcp.is_is_blocking = false;
     jcp.oskip = 0;
-    jcp.use_uker = is_amx(isa) && !jcp.is_1x1;
-    jcp.use_interleave_stores = jcp.use_uker;
+    if (jcp.is_ace) {
+        jcp.use_uker = brgemm_utils::ace_prefer_uker();
+        // The unrolled kernel already disables interleaved stores on ACE,
+        // setting it here keeps the blocking search on the same value.
+        jcp.use_interleave_stores = false;
+    } else {
+        jcp.use_uker = is_amx(isa) && !jcp.is_1x1;
+        jcp.use_interleave_stores = jcp.use_uker;
+    }
     jcp.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf_default;
     jcp.brgemm_bd_loop_innermost = false;
 

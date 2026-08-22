@@ -316,6 +316,7 @@ status_t brgemm_convolution_fwd_t<isa>::pd_t::add_brg_descriptor(dim_t vM,
     }
     brgattr.fpmath_mode = attr()->fpmath_.mode_;
     brgattr.K_koef = (float)bs / static_cast<float>(KW);
+    brgattr.use_ace = jcp_.is_ace;
 
     CHECK(brgemm_desc_set_attr(&brg, brgattr));
 
@@ -722,7 +723,7 @@ status_t brgemm_convolution_fwd_t<isa>::add_brg_kernel(int brg_idx) {
     if (!brgemm_kernels_[brg_idx] && brg && brg->bcast_dim > 0
             && brg->load_dim > 0 && brg->reduce_dim > 0) {
         CHECK(brgemm_kernels_.insert(brg_idx, brg));
-        if (is_amx) brgemm_palettes_.insert(brg_idx, brg);
+        if (is_amx && brg->is_tmm) brgemm_palettes_.insert(brg_idx, brg);
     }
     return status::success;
 }
@@ -2553,6 +2554,7 @@ template struct brgemm_convolution_fwd_t<avx512_core_amx>;
 template struct brgemm_convolution_fwd_t<avx512_core_amx_fp16>;
 template struct brgemm_convolution_fwd_t<avx10_2>;
 template struct brgemm_convolution_fwd_t<avx10_2_amx_2>;
+template struct brgemm_convolution_fwd_t<avx10_2_ace>;
 } // namespace x64
 
 } // namespace cpu

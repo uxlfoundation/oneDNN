@@ -146,6 +146,7 @@ struct brgemm_matmul_conf_t {
     bool packed_sparse_weights;
     bool with_wei_decompression;
     int postops_inst_count;
+    bool is_ace {false};
 
     bool use_buffer_a;
     bool use_buffer_a_tail_only;

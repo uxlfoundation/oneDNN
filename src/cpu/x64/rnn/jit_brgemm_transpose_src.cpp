@@ -245,7 +245,7 @@ void jit_brgemm_trans_m_k_f32_t::transpose_16x16_avx2(int nrows, int ncolumns) {
     // mask stores.
     assert(conf_->os_block % transpose_size == 0);
     auto load_src = [&](Xmm vmm, int r, int c) {
-        const int simd_w = vmm.getBit() / (sizeof(float) * 8);
+        const int simd_w = static_cast<int>(vmm.getBit() / (sizeof(float) * 8));
         const auto addr = ptr[reg_src + r * src_stride + c * sizeof(float)];
         if (r >= nrows) {
             uni_vxorps(vmm, vmm, vmm);

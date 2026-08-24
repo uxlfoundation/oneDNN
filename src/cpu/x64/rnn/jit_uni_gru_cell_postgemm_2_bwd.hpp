@@ -46,9 +46,8 @@ protected:
     static constexpr int vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr int hstate_dt_size = sizeof(float);
     const int vlen_scratch = vlen
-            / (sizeof(float)
-                    / static_cast<dim_t>(
-                            types::data_type_size(scratch_data_t)));
+            / static_cast<int>(
+                    sizeof(float) / types::data_type_size(scratch_data_t));
     const int gate_dt_size
             = static_cast<int>(types::data_type_size(scratch_data_t));
     const int scratch_dt_size

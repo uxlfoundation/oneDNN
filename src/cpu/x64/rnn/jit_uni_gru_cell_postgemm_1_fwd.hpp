@@ -57,9 +57,11 @@ protected:
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
     static constexpr int vlen = cpu_isa_traits_t<isa>::vlen;
     static constexpr int qscale_dt_size = sizeof(float);
-    const int vlen_dst
-            = vlen / (sizeof(float) / types::data_type_size(src_data_t));
-    const int vlen_bias_ = vlen / (sizeof(float) / bias_dt_size_);
+    const int vlen_dst = vlen
+            / static_cast<int>(
+                    sizeof(float) / types::data_type_size(src_data_t));
+    const int vlen_bias_
+            = vlen / static_cast<int>(sizeof(float) / bias_dt_size_);
     const int hstate_dt_size
             = static_cast<int>(types::data_type_size(src_data_t));
     const int gate_dt_size

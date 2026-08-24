@@ -1,6 +1,7 @@
 #===============================================================================
 # Copyright 2017 Intel Corporation
 # Copyright 2021 FUJITSU LIMITED
+# Copyright 2026 Arm Ltd. and affiliates
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -68,9 +69,9 @@ if(UNIX)
                                   CMAKE_CXX_COMPILER_VERSION)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "(Apple)?[Cc]lang")
         get_filename_component(CXX_CMD_NAME ${CMAKE_CXX_COMPILER} NAME)
-        # Fujitsu CXX compiler does not support "-fstack-protector-all".
+        # Fujitsu CXX compiler does not document/guarantee operation of stack protector flags
         if(NOT CXX_CMD_NAME STREQUAL "FCC")
-            append(ONEDNN_SDL_COMPILER_FLAGS "-fstack-protector-all")
+            append(ONEDNN_SDL_COMPILER_FLAGS "-fstack-protector-strong")
         endif()
     elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
         append(ONEDNN_SDL_COMPILER_FLAGS "-fstack-protector")
@@ -98,9 +99,9 @@ elseif(WIN32)
             append(ONEDNN_SDL_COMPILER_FLAGS "-D_FORTIFY_SOURCE=2")
         endif()
         get_filename_component(CXX_CMD_NAME ${CMAKE_CXX_COMPILER} NAME)
-        # Fujitsu CXX compiler does not support "-fstack-protector-all".
+        # Fujitsu CXX compiler does not document/guarantee operation of stack protector flags
         if(NOT CXX_CMD_NAME STREQUAL "FCC")
-            append(ONEDNN_SDL_COMPILER_FLAGS "-fstack-protector-all")
+            append(ONEDNN_SDL_COMPILER_FLAGS "-fstack-protector-strong")
         endif()
         append(ONEDNN_SDL_LINKER_FLAGS "-Xlinker /NXCOMPAT")
         if(NOT UPPERCASE_CMAKE_BUILD_TYPE STREQUAL "DEBUG")

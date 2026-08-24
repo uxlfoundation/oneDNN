@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2016 Intel Corporation
+* Copyright 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -190,6 +191,16 @@ status_t conv_attr_check(const convolution_desc_t &desc, const engine_t *engine,
 
         auto fwd_attr_mask = smask_t::post_ops | smask_t::sum_dt
                 | smask_t::fpmath_mode | smask_t::rounding_mode;
+        const auto &wei_desc = desc.weights_desc;
+        const bool is_2d_depthwise = desc.src_desc.ndims == 4
+                && wei_desc.ndims == 5 && wei_desc.dims[1] == 1
+                && wei_desc.dims[2] == 1;
+        if (engine->kind() == engine_kind::cpu && is_2d_depthwise
+                && attr->acc_mode_ == accumulation_mode::f16
+                && src_dt == data_type::f16
+                && wei_desc.data_type == data_type::f16
+                && dst_dt == data_type::f16)
+            fwd_attr_mask |= smask_t::accumulation_mode;
         const bool is_gpu = engine->kind() == engine_kind::gpu;
 
         const bool is_int8 = utils::one_of(src_dt, data_type::s8, data_type::u8)

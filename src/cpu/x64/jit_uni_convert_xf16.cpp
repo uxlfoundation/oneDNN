@@ -54,8 +54,12 @@ void jit_uni_cvt_ps_to_xf16_t<isa>::generate() {
                 for (int j = 0; j < simd_w_ * unroll; j += simd_w_) {
                     cvt_ps_to_xf16(j, false);
                 }
-                add(reg_input, simd_w_ * unroll * sizeof(float));
-                add(reg_output, simd_w_ * unroll * sizeof(float16_t));
+                add(reg_input,
+                        static_cast<uint32_t>(
+                                simd_w_ * unroll * sizeof(float)));
+                add(reg_output,
+                        static_cast<uint32_t>(
+                                simd_w_ * unroll * sizeof(float16_t)));
                 sub(reg_nelems, simd_w_ * unroll);
                 jmp(l_simd_loop[i + 1], T_NEAR);
             }
@@ -276,8 +280,11 @@ void jit_uni_cvt_xf16_to_ps_t<isa>::generate() {
             jl(l_simd_loop[i], T_NEAR);
             for (int j = 0; j < utils::div_up(unroll, elem_granularity); ++j)
                 convert_xf16(j, unroll > 1);
-            add(reg_input, simd_w_ * unroll * sizeof(float16_t));
-            add(reg_output, simd_w_ * unroll * sizeof(float));
+            add(reg_input,
+                    static_cast<uint32_t>(
+                            simd_w_ * unroll * sizeof(float16_t)));
+            add(reg_output,
+                    static_cast<uint32_t>(simd_w_ * unroll * sizeof(float)));
             sub(reg_nelems, simd_w_ * unroll);
             if (i == n_unroll && n_unroll != 0) jmp(l_simd_loop[i + 1], T_NEAR);
         }

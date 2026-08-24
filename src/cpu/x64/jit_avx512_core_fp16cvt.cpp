@@ -65,9 +65,13 @@ void jit_avx512_core_fp16_add_cvt_ps_to_f16_t::generate() {
             for (int j = 0; j < simd_w_ * unroll; j += simd_w_) {
                 add_cvt(j, ktail_mask);
             }
-            add(reg_inp, simd_w_ * unroll * sizeof(float));
-            add(reg_add, simd_w_ * unroll * sizeof(float));
-            add(reg_out, simd_w_ * unroll * sizeof(float16_t));
+            add(reg_inp,
+                    static_cast<uint32_t>(simd_w_ * unroll * sizeof(float)));
+            add(reg_add,
+                    static_cast<uint32_t>(simd_w_ * unroll * sizeof(float)));
+            add(reg_out,
+                    static_cast<uint32_t>(
+                            simd_w_ * unroll * sizeof(float16_t)));
 
             sub(reg_nelems, simd_w_ * unroll);
             jmp(l_simd_loop[i + 1], T_NEAR);

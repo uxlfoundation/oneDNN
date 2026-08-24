@@ -96,7 +96,7 @@ void postops_injector_t::apply(const std::vector<int> &acc_phys, int base_phys,
         const std::vector<dim_t> &out_byte_off, int mask_phys, int elems) {
     injector_utils::vmm_index_set_t vmm_idxs;
     for (int idx : acc_phys)
-        vmm_idxs.insert((size_t)idx);
+        vmm_idxs.insert(idx);
 
     if (!needs_rhs_args_) {
         // Chains without a binary, prelu or sum post-op have nothing to address

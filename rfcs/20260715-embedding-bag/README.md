@@ -30,8 +30,8 @@ based kernels that reuse the same API without any framework changes.
 
 Embedding lookups and bag reductions are the dominant CPU operation in
 recommendation models (DLRM, DCNv2, MMoE) and token-id-consuming NLP models.
-PyTorch `nn.EmbeddingBag` (https://docs.pytorch.org/docs/2.13/generated/torch.nn.EmbeddingBag.html),
-and TensorFlow `embedding_lookup_sparse` (https://www.tensorflow.org/api_docs/python/tf/nn/embedding_lookup_sparse),
+[PyTorch nn.EmbeddingBag](https://docs.pytorch.org/docs/2.13/generated/torch.nn.EmbeddingBag.html),
+and [TensorFlow embedding_lookup_sparse](https://www.tensorflow.org/api_docs/python/tf/nn/embedding_lookup_sparse),
 each implement this on CPU today — either
 through per-framework hand-rolled kernels or FBGEMM — because oneDNN offers no
 equivalent primitive.
@@ -47,12 +47,6 @@ Different frameworks repeatedly re-implement this. Centralizing it in
 oneDNN keeps the optimizations in one place and gives AMD and Intel a single
 tuning target.
 
-Embedding bag is a memory bound operator. **It is shown
-([Parallelization Strategies for DLRM
-Embedding Bag Operator on AMD CPUs] (https://dl.acm.org/doi/10.1109/MM.2024.3423785) )
-that embedding bag bandwidth can be improved by 9x over state of the art
-implementations using different threading strategies.**
-
 Effect of the above threading strategies is measured on the primitive performance. The above
 strategies improve the primitive latency performance by 1.2X to 1.5X on native PyTorch performance, as
 shown on few representative loads in the table below.
@@ -62,8 +56,15 @@ shown on few representative loads in the table below.
 | fp32 | 40000000 | 128 | 4096 | 0.0458 | 0.0300 | 1.53x |
 | bf16 | 40000000 | 128 | 4096 | 0.0452 | 0.0287 | 1.58x |
 
-This performance gain in the primimitive results in a performance gain of ~5% in DLRM V2, having 26
-embedding tables. In production grade DLRM code, the embedding tables are more than 100 so we expect
+Throughput gain in MLPERF DLRM V2, having 26 embedding bags, and running 127 instances
+is given below for few representative loads.
+
+| Precision | Bach Size | PyTorch Throughput (QPS)| ZenDNN Throughput (QPS) | Speedup |
+|---|---|---|---|---|---|---|
+| fp32 | 512 | 1035 | 1931 | 1.87x |
+| bf16 | 512 | 3480 | 3858 | 1.11x |
+
+In production grade DLRM code, the embedding tables are more than 100 so we expect
 a performance gain of ~15% due to this operator on such networks.
 
 First PR aims to add only reference kernel. Subsequent PRs aim to add optimized kernels with vector
@@ -141,6 +142,30 @@ shape Y = [B, D]
 - When `include_last_offset == true`, `O` has length `B+1` and `O[B]` is read
   from data; otherwise the implicit terminator `O[B] = N` is used
 
+#### 3.2.1 Comparison with PyTorch nn.EmbeddingBag semantics
+
+PyTorch nn.EmbeddingBag semantics are given in [PyTorch nn.EmbeddingBag](https://docs.pytorch.org/docs/2.13/generated/torch.nn.EmbeddingBag.html).
+
+The operator matches PyTorch nn.EmbedddingBag semantics except the following
+
+- The operator supports `per-sample weights` for all three reduction methods
+  (sum, mean and max). By contrast PyTorch `nn.EmbeddingBag` supports per-sample
+  weights only for `sum`.
+
+#### 3.2.2 Comparison with TensorFlow nn.embedding_lookup_sparse semantics
+
+TensorFlow nn.embeddding_lookup_sparse semantics are given in
+[tf.nn.embedding_lookup_sparse](https://www.tensorflow.org/api_docs/python/tf/nn/embedding_lookup_sparse)
+
+The operator can be used to implement it by mapping its inputs to the operator as follows
+
+- params can be mapped to the embedding table.
+- indices and offsets can be derived from sp_ids sparse matrix.
+- per-sample weights can be derived from sp_weights.
+- combiner is `sum` or `mean`.
+- padding_idx is -1.
+- include_last_offset is `false`.
+
 ### 3.3 Public C++ API
 
 Add `dnnl::embedding_bag` and its `primitive_desc` to
@@ -192,11 +217,11 @@ New algorithm values in `dnnl_alg_kind_t` (`0x40000` band to avoid collisions):
 
 | Argument | Memory | When required |
 |---|---|---|
-| `DNNL_ARG_EMBEDDING_BAG_TABLE` | embedding table `[V, D]` | always |
-| `DNNL_ARG_EMBEDDING_BAG_INDICES` | indices `[N]`, `s32` | always |
-| `DNNL_ARG_EMBEDDING_BAG_OFFSETS` | offsets `[B]` or `[B+1]`, same dtype as indices | bag modes only |
-| `DNNL_ARG_EMBEDING_BAG_WEIGHTS` | per-sample weights `[N]`, `f32` | optional; ingnored if `max` |
-| `DNNL_ARG_EMBEDDING_BAG_DST` | output `[B, D]` (bag) or `[N, D]` (lookup) | always |
+| `DNNL_ARG_WEIGHTS` | embedding table `[V, D]` | always |
+| `DNNL_ARG_SRC` | indices `[N]`, `s32` | always |
+| `DNNL_ARG_SRC_1` | offsets `[B]` or `[B+1]`, same dtype as indices | bag modes only |
+| `DNNL_ARG_SRC_2` | per-sample weights `[N]`, `f32` | optional; ingnored if `max` |
+| `DNNL_ARG_DST` | output `[B, D]` (bag) or `[N, D]` (lookup) | always |
 
 ### 3.5 CPU registration and reference kernel
 
@@ -302,9 +327,37 @@ paths, quantized tables (Phase 3), and GPU support (future).
 - Implement via Graph API gather + reduction fusion. Does not cover
   variable-length bag semantics or per-sample weights without a bespoke graph
   pattern.
-- Add a public primitive with a CPU reference implementation. This is the
-  proposed option: it gives frameworks a stable entry point immediately and
-  leaves optimized implementations as follow-up work behind the same API.
+- Implement using existing oneDNN sparse matrix multiplication
+
+  Both embedding bag (EMB), with `sum` as reduction method, algorithmically resembles
+  dense-sparse matrix multiplication (DSMM), where embedding tables act as a dense
+  matrix, and indices-offsets pair with per-sample-weights could be taken
+  as a sparse matrix.
+
+  Though tempting, DSMM and EMB serve different purposes, and it is advisable
+  not to roll their implementation into one kernel (separation of concerns).
+
+  - In a production grade recommender system, there are hundreds of embedding
+    table, with each table being of sizes of widely varying orders from ~10
+    to 10^6. The tables may be spread accross different distributed memories.
+    By contrast, DSMM may not be needed to
+    support such a widely varying order, can can be highly optimized for the
+    orders it is supposed to support.
+
+  - Depending on the work-load, EMB and DSMM have different latency, throughput
+    and scaling requirements.
+    It is difficult to achieve these in only one kernel without making the
+    kernel complex to read and reason.
+
+  - Future requirements from EMB, and DSMM may make their optimization paths
+    diverge. This will again be problematic with one kernel for both the
+    operators.
+
+  - EMB `max` reduction can not be implemented by DSMM, and a separate path
+    will have to be created for it.
+
+  - The top level API will still need an input for reduction method, and DSMM
+    kernel can only be used inside an embedding bag wrapper API.
 
 ## 9. Open Questions
 

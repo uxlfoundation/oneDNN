@@ -48,7 +48,8 @@ struct jit_uni_binary_kernel_t;
 // (scale0*src0) OP (scale1*src1) in f32, applies the sum + eltwise + binary
 // post-op chain, and stores to dst (converted/saturated at the boundary),
 // mirroring x64/aarch64 jit_uni_binary_t. Supports:
-//   - dtypes f32/f16/s32/s8/u8, freely mixed across src0/src1/dst (f16 needs zvfh)
+//   - dtypes f32/f16/bf16/s32/s8/u8, freely mixed across src0/src1/dst (f16
+//     needs zvfh, bf16 needs zvfbfwma)
 //   - arbitrary src1 broadcast over plain (nchw/nhwc/...) and single-inner-block
 //     (nChw4c/8c/16c, including a padded channel tail) dst, plus src0/src1
 //     different plain layouts (nchw:nhwc, read via a strided src1 load)
@@ -74,15 +75,20 @@ struct jit_uni_binary_t : public primitive_t {
             const data_type_t d1 = src_md(1)->data_type;
 
             // Pure JIT, registered via CPU_INSTANCE_RV64 (runtime dispatch):
-            // gate on the V extension, and on zvfh if any f16 operand is present.
+            // gate on the V extension, on zvfh if any f16 operand is present,
+            // and on zvfbfwma (which implies the Zvfbfmin conversions the bf16
+            // path emits) if any bf16 operand is present.
             VDISPATCH_BINARY(mayiuse(v), VERBOSE_UNSUPPORTED_ISA);
             auto dt_ok = [](data_type_t dt) {
-                return utils::one_of(dt, f32, f16, s32, s8, u8);
+                return utils::one_of(dt, f32, f16, bf16, s32, s8, u8);
             };
             VDISPATCH_BINARY(dt_ok(dd) && dt_ok(d0) && dt_ok(d1),
                     VERBOSE_UNSUPPORTED_DT);
             const bool any_f16 = utils::one_of(f16, dd, d0, d1);
             VDISPATCH_BINARY(IMPLICATION(any_f16, mayiuse(zvfh)),
+                    VERBOSE_UNSUPPORTED_ISA);
+            const bool any_bf16 = utils::one_of(bf16, dd, d0, d1);
+            VDISPATCH_BINARY(IMPLICATION(any_bf16, mayiuse(zvfbfwma)),
                     VERBOSE_UNSUPPORTED_ISA);
             VDISPATCH_BINARY(platform::has_data_type_support(dd)
                             && platform::has_data_type_support(d0)
@@ -209,10 +215,12 @@ struct jit_uni_binary_t : public primitive_t {
                         const memory_desc_wrapper rhs_d(md);
                         const data_type_t rdt = md.data_type;
                         if (!utils::one_of(rdt, data_type::f32, data_type::f16,
-                                    data_type::s32, data_type::s8,
-                                    data_type::u8))
+                                    data_type::bf16, data_type::s32,
+                                    data_type::s8, data_type::u8))
                             return false;
                         if (rdt == data_type::f16 && !mayiuse(zvfh))
+                            return false;
+                        if (rdt == data_type::bf16 && !mayiuse(zvfbfwma))
                             return false;
                         // The RVV address paths consume a packed logical rhs.
                         // Explicit descriptors with holes must fall through,

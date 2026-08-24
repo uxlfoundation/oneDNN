@@ -136,10 +136,14 @@ private:
             to_compute_vtype();
             ld(32, vf);
             vfcvt_f_x_v(vf, vf);
-        } else if (dt == f16) {
+        } else if (dt == f16 || dt == bf16) {
             vsetvli(x0, vl, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
             ld(16, stage);
-            vfwcvt_f_f_v(vf, stage); // e16m2 -> e32m4
+            // e16m2 -> e32m4; Zvfbfmin for bf16, Zvfh for f16.
+            if (dt == bf16)
+                vfwcvtbf16_f_f_v(vf, stage);
+            else
+                vfwcvt_f_f_v(vf, stage);
             to_compute_vtype();
         } else { // s8 / u8
             vsetvli(x0, vl, SEW::e8, LMUL::m1, VTA::ta, VMA::ma);
@@ -169,11 +173,14 @@ private:
         } else if (dt == u8) {
             lbu(gpr, ptr, 0);
             fcvt_s_wu(f, gpr);
-        } else { // f16: widen via the vector unit, extract lane 0
+        } else { // f16 / bf16: widen via the vector unit, extract lane 0
             li(gpr, 1);
             vsetvli(x0, gpr, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
             vle16_v(vrhs, ptr);
-            vfwcvt_f_f_v(vs1, vrhs); // e16m1 -> e32m2
+            if (dt == bf16)
+                vfwcvtbf16_f_f_v(vs1, vrhs); // e16m1 -> e32m2
+            else
+                vfwcvt_f_f_v(vs1, vrhs); // e16m1 -> e32m2
             vsetvli(x0, gpr, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
             vfmv_f_s(f, vs1);
         }
@@ -194,9 +201,13 @@ private:
             vfmin_vf(v, v, fc);
             vfcvt_x_f_v(v, v);
             vse32_v(v, ptr);
-        } else if (dt == f16) {
+        } else if (dt == f16 || dt == bf16) {
             vsetvli(x0, vl, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
-            vfncvt_f_f_w(stage, v); // e32m4 -> e16m2
+            // e32m4 -> e16m2; Zvfbfmin for bf16 (RNE), Zvfh for f16.
+            if (dt == bf16)
+                vfncvtbf16_f_f_w(stage, v);
+            else
+                vfncvt_f_f_w(stage, v);
             vse16_v(stage, ptr);
         } else { // s8 / u8
             const bool is_s8 = dt == s8;

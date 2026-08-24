@@ -55,9 +55,11 @@ protected:
     static constexpr int cstate_dt_size = sizeof(float);
     static constexpr int qscale_dt_size = sizeof(float);
 
-    const int vlen_dst
-            = vlen / (sizeof(float) / types::data_type_size(src_data_t));
-    const int vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
+    const int vlen_dst = vlen
+            / static_cast<int>(
+                    sizeof(float) / types::data_type_size(src_data_t));
+    const int vlen_bias
+            = vlen / static_cast<int>(sizeof(float) / bias_dt_size_);
     const int hstate_dt_size
             = static_cast<int>(types::data_type_size(src_data_t));
     const int gate_dt_size

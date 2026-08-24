@@ -63,9 +63,9 @@ void jit_uni_sum_injector_t<Vmm>::compute_vector_range(
     int tmp_idx = scratch;
     bool scratch_changed = false;
 
-    if (vmm_idxs.find((size_t)scratch) != vmm_idxs.end()) {
+    if (vmm_idxs.find(scratch) != vmm_idxs.end()) {
         for (int idx = max_idx; idx >= 0; idx--) {
-            if (vmm_idxs.find((size_t)idx) == vmm_idxs.end()) {
+            if (vmm_idxs.find(idx) == vmm_idxs.end()) {
                 // Found a free register.
                 tmp_idx = idx;
                 scratch_changed = true;
@@ -74,7 +74,7 @@ void jit_uni_sum_injector_t<Vmm>::compute_vector_range(
         }
     }
 
-    assert(vmm_idxs.find((size_t)tmp_idx) == vmm_idxs.end()
+    assert(vmm_idxs.find(tmp_idx) == vmm_idxs.end()
             && "native sum could not find a free scratch vector register");
 
     // Preserve when the caller asked to or whenever we picked a new scratch.

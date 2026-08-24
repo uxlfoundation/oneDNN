@@ -86,6 +86,7 @@ private:
     inline void ow_loop(int ur_ch_blocks);
     inline void apply_filter_unrolled(
             int ur_ch_blocks, int ur_w, int pad_l, int pad_r);
+    inline void apply_f16_bias_and_sum(int ur_ch_blocks, int ur_w);
     inline void apply_activation(int ur_ch_blocks, int ur_w);
     inline void store_dst(int ur_ch_blocks, int ur_w);
 
@@ -113,6 +114,15 @@ private:
     inline ZRegS get_acc_reg_s(int idx) {
         assert((idx + 4) <= 31);
         return ZRegS(idx + 4);
+    }
+
+    int fwd_acc_idx(int ch, int ow, int ur_w, bool upper = false) {
+        const bool is_asimd_f16 = isa == asimd && jcp.src_dt == data_type::f16;
+        assert(!upper || is_asimd_f16);
+        // F16 keeps the full width for each block, including width tails.
+        const int ch_stride = is_asimd_f16 ? jcp.ur_w : ur_w;
+        const int acc_ch = ch + (upper ? jcp.nb_ch_blocking : 0);
+        return get_acc_reg(acc_ch * ch_stride + ow).getIdx();
     }
 
     int get_ow_start(int ki, int pad_l) {

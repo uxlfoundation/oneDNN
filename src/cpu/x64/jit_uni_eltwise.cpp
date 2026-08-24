@@ -339,7 +339,7 @@ status_t jit_uni_eltwise_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
     const memory_desc_wrapper data_d(pd()->src_md());
     const auto nelems = data_d.nelems(true);
-    const int simd_w = 64 / data_d.data_type_size();
+    const int simd_w = static_cast<int>(64 / data_d.data_type_size());
 
     src += data_d.data_type_size() * data_d.offset0();
     dst += data_d.data_type_size() * data_d.offset0();
@@ -435,7 +435,7 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     const memory_desc_wrapper data_d(pd()->data_md());
     const memory_desc_wrapper diff_data_d(pd()->diff_src_md());
     const auto nelems = data_d.nelems(true);
-    const int simd_w = 64 / data_d.data_type_size();
+    const int simd_w = static_cast<int>(64 / data_d.data_type_size());
 
     src += data_d.data_type_size() * data_d.offset0();
     diff_dst += diff_data_d.data_type_size() * diff_data_d.offset0();

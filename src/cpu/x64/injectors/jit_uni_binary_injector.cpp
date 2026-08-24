@@ -217,11 +217,25 @@ bool any_binary_postop_rhs_with_ternary_scalar_bcast(
     });
 }
 
+bool any_binary_postop_rhs_with_ternary_bcast_cond(
+        const post_ops_t &post_ops, const memory_desc_wrapper &dst_d) {
+    return std::any_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
+            [&](const post_ops_t::entry_t &entry) -> bool {
+        return entry.is_binary_with_ternary_op()
+                && !is_ternary_cond_no_broadcast(
+                        get_src2_desc(entry, dst_d), dst_d);
+    });
+}
+
+bool is_ternary_cond_no_broadcast(
+        const memory_desc_t &src2_md, const memory_desc_wrapper &dst_d) {
+    return src2_md.ndims == dst_d.ndims()
+            && utils::array_cmp(src2_md.dims, dst_d.dims(), dst_d.ndims());
+}
+
 bool is_ternary_bcast_strategy_supported(broadcasting_strategy_t strategy) {
-    // Only strategies whose address math yields a full memory operand are
-    // supported for the condition. The ptr_b[] based ones would need a
-    // broadcast capable load first: the bf16 (vpmovzxwd) and s8 (vpmovsxbd)
-    // condition loads have no broadcast encoding.
+    // ptr_b[] based strategies would need a broadcast capable load first: the
+    // bf16 (vpmovzxwd) and s8 (vpmovsxbd) condition loads have no such encoding.
     return utils::one_of(strategy, broadcasting_strategy_t::per_hw,
             broadcasting_strategy_t::per_mb_spatial);
 }
@@ -230,11 +244,23 @@ bool is_ternary_bcast_supported(const memory_desc_t &src2_md,
         const memory_desc_wrapper &dst_d,
         const bcast_set_t &supported_strategy_set) {
     if (src2_md.ndims != dst_d.ndims()) return false;
-    if (utils::array_cmp(src2_md.dims, dst_d.dims(), dst_d.ndims()))
-        return true;
+    if (is_ternary_cond_no_broadcast(src2_md, dst_d)) return true;
     return is_ternary_bcast_strategy_supported(
             get_rhs_arg_broadcasting_strategy(
                     src2_md, dst_d, supported_strategy_set));
+}
+
+broadcasting_strategy_t get_ternary_bcast_strategy(
+        const dnnl_post_ops::entry_t &post_op, const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set) {
+    if (!post_op.is_binary_with_ternary_op())
+        return broadcasting_strategy_t::no_broadcast;
+    const auto strategy = get_rhs_arg_broadcasting_strategy(
+            get_src2_desc(post_op, dst_d), dst_d, supported_strategy_set);
+    // Unsupported strategies keep reading the condition at the full dst shape.
+    return is_ternary_bcast_strategy_supported(strategy)
+            ? strategy
+            : broadcasting_strategy_t::no_broadcast;
 }
 
 bool any_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
@@ -540,21 +566,8 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
             src1_desc, rhs_arg_static_params_.dst_d, supported_strategy_set_);
     const auto rhs_arg_data_type = src1_desc.data_type;
     const auto needs_ternary_input = post_op.is_binary_with_ternary_op();
-
-    // Broadcasting strategy of the ternary condition input (src2). Supported
-    // broadcast strategies get their own address math, anything else keeps
-    // reading the condition at the full destination shape.
-    const auto resolve_ternary_strategy = [&]() {
-        const auto strategy = get_rhs_arg_broadcasting_strategy(
-                get_src2_desc(post_op, dst_d), dst_d, supported_strategy_set_);
-        return is_ternary_bcast_strategy_supported(strategy)
-                ? strategy
-                : broadcasting_strategy_t::no_broadcast;
-    };
-    const auto ternary_broadcasting_strategy = needs_ternary_input
-            ? resolve_ternary_strategy()
-            : broadcasting_strategy_t::no_broadcast;
-
+    const auto ternary_broadcasting_strategy = get_ternary_bcast_strategy(
+            post_op, dst_d, supported_strategy_set_);
     const auto &vmm_tail_idx = rhs_arg_params.vmm_tail_idx_;
     const bool tail_exists_in_range = !vmm_tail_idx.empty();
     const bool bcast_f32_non_avx512 = !has_avx512_core_
@@ -588,10 +601,9 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
     const bool shoud_preserve_oc_d_offset_conversion_regs
             = use_offset_conversions
             && rhs_broadcasting_strategy == broadcasting_strategy_t::per_oc_d;
-    // These strategies use the mb/spatial conversion registers. The guard
-    // covers both the src1 and the ternary condition (src2) address math.
-    const auto strategy_needs_mb_sp_regs = [](broadcasting_strategy_t s) {
-        return utils::one_of(s, broadcasting_strategy_t::per_mb_spatial,
+    const auto strategy_needs_mb_sp_regs
+            = [](broadcasting_strategy_t strategy) {
+        return utils::one_of(strategy, broadcasting_strategy_t::per_mb_spatial,
                 broadcasting_strategy_t::per_mb_w,
                 broadcasting_strategy_t::per_mb,
                 broadcasting_strategy_t::per_hw,
@@ -2938,9 +2950,8 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
         // blending the tensors, the current approach reserves
         // fewer registers for operation.
         if (is_superset(isa_, avx512_core)) {
-            // A dedicated auxiliary opmask, not tail_opmask: the
-            // scalar-broadcast src1 load below needs tail_opmask preserved
-            // (execute_broadcast_*_with_opmask reads it).
+            // Not tail_opmask: the scalar-broadcast src1 load below reads it
+            // (execute_broadcast_*_with_opmask), so keep the two separate.
             const auto cmp_mask = get_aux_kmask();
             push_opmask(host_, cmp_mask);
             push_vmm(host_, dst);

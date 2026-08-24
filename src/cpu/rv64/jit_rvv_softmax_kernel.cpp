@@ -26,41 +26,42 @@ namespace rv64 {
 
 using namespace Xbyak_riscv;
 
-#define F16_AFFINE_OFF(field) \
+#define XF16_AFFINE_OFF(field) \
     static_cast<int32_t>(offsetof( \
-            jit_rvv_softmax_f16_affine_kernel_t::call_params_t, field))
-#define F16_STRIDED_OFF(field) \
+            jit_rvv_softmax_xf16_affine_kernel_t::call_params_t, field))
+#define XF16_STRIDED_OFF(field) \
     static_cast<int32_t>(offsetof( \
-            jit_rvv_softmax_f16_strided_kernel_t::call_params_t, field))
-#define F16_EXP_SUB_SUM_OFF(field) \
+            jit_rvv_softmax_xf16_strided_kernel_t::call_params_t, field))
+#define XF16_EXP_SUB_SUM_OFF(field) \
     static_cast<int32_t>(offsetof( \
-            jit_rvv_softmax_f16_exp_sub_sum_kernel_t::call_params_t, field))
+            jit_rvv_softmax_xf16_exp_sub_sum_kernel_t::call_params_t, field))
 #define F32_EXP_SUB_SUM_OFF(field) \
     static_cast<int32_t>(offsetof( \
             jit_rvv_softmax_f32_exp_sub_sum_kernel_t::call_params_t, field))
-#define F16_REDUCE_MAX_OFF(field) \
+#define XF16_REDUCE_MAX_OFF(field) \
     static_cast<int32_t>(offsetof( \
-            jit_rvv_softmax_f16_reduce_max_kernel_t::call_params_t, field))
+            jit_rvv_softmax_xf16_reduce_max_kernel_t::call_params_t, field))
 
 namespace {
 
-template <bool src_f32>
-void dispatch_f16_affine(
-        const jit_rvv_softmax_f16_affine_kernel_t::call_params_t *p) {
-    static const jit_rvv_softmax_f16_affine_kernel_t kernel(src_f32);
+template <bool src_f32, data_type_t dt>
+void dispatch_xf16_affine(
+        const jit_rvv_softmax_xf16_affine_kernel_t::call_params_t *p) {
+    static const jit_rvv_softmax_xf16_affine_kernel_t kernel(src_f32, dt);
     kernel(p);
 }
 
 template <bool gather>
-void dispatch_f16_strided(
-        const jit_rvv_softmax_f16_strided_kernel_t::call_params_t *p) {
-    static const jit_rvv_softmax_f16_strided_kernel_t kernel(gather);
+void dispatch_xf16_strided(
+        const jit_rvv_softmax_xf16_strided_kernel_t::call_params_t *p) {
+    static const jit_rvv_softmax_xf16_strided_kernel_t kernel(gather);
     kernel(p);
 }
 
-void dispatch_f16_exp_sub_sum(
-        const jit_rvv_softmax_f16_exp_sub_sum_kernel_t::call_params_t *p) {
-    static const jit_rvv_softmax_f16_exp_sub_sum_kernel_t kernel;
+template <data_type_t dt>
+void dispatch_xf16_exp_sub_sum(
+        const jit_rvv_softmax_xf16_exp_sub_sum_kernel_t::call_params_t *p) {
+    static const jit_rvv_softmax_xf16_exp_sub_sum_kernel_t kernel(dt);
     kernel(p);
 }
 
@@ -71,9 +72,10 @@ void dispatch_f32_exp_sub_sum(
     kernel(p);
 }
 
-void dispatch_f16_reduce_max(
-        const jit_rvv_softmax_f16_reduce_max_kernel_t::call_params_t *p) {
-    static const jit_rvv_softmax_f16_reduce_max_kernel_t kernel;
+template <data_type_t dt>
+void dispatch_xf16_reduce_max(
+        const jit_rvv_softmax_xf16_reduce_max_kernel_t::call_params_t *p) {
+    static const jit_rvv_softmax_xf16_reduce_max_kernel_t kernel(dt);
     kernel(p);
 }
 
@@ -131,67 +133,81 @@ void jit_rvv_softmax_affine_kernel_t::generate() {
 #endif
 }
 
-jit_rvv_softmax_f16_affine_kernel_t::jit_rvv_softmax_f16_affine_kernel_t(
-        bool src_f32)
-    : jit_generator_t("jit_rvv_softmax_f16_affine_kernel"), src_f32_(src_f32) {
+jit_rvv_softmax_xf16_affine_kernel_t::jit_rvv_softmax_xf16_affine_kernel_t(
+        bool src_f32, data_type_t dt)
+    : jit_generator_t("jit_rvv_softmax_xf16_affine_kernel")
+    , src_f32_(src_f32)
+    , dt_(dt) {
     create_kernel();
 }
 
-jit_rvv_softmax_f16_strided_kernel_t::jit_rvv_softmax_f16_strided_kernel_t(
+jit_rvv_softmax_xf16_strided_kernel_t::jit_rvv_softmax_xf16_strided_kernel_t(
         bool gather)
-    : jit_generator_t("jit_rvv_softmax_f16_strided_kernel"), gather_(gather) {
+    : jit_generator_t("jit_rvv_softmax_xf16_strided_kernel"), gather_(gather) {
     create_kernel();
 }
 
-void jit_rvv_softmax_f16_affine_from_f16(const dnnl::impl::float16_t *src,
-        dnnl::impl::float16_t *dst, dim_t len, float sub, float mul) {
-    const jit_rvv_softmax_f16_affine_kernel_t::call_params_t p {
+void jit_rvv_softmax_xf16_affine_from_xf16(data_type_t dt, const void *src,
+        void *dst, dim_t len, float sub, float mul) {
+    const jit_rvv_softmax_xf16_affine_kernel_t::call_params_t p {
             src, dst, len, sub, mul};
-    dispatch_f16_affine<false>(&p);
+    if (dt == data_type::bf16)
+        dispatch_xf16_affine<false, data_type::bf16>(&p);
+    else
+        dispatch_xf16_affine<false, data_type::f16>(&p);
 }
 
-void jit_rvv_softmax_f16_affine_from_f32(const float *src,
-        dnnl::impl::float16_t *dst, dim_t len, float sub, float mul) {
-    const jit_rvv_softmax_f16_affine_kernel_t::call_params_t p {
+void jit_rvv_softmax_xf16_affine_from_f32(data_type_t dt, const float *src,
+        void *dst, dim_t len, float sub, float mul) {
+    const jit_rvv_softmax_xf16_affine_kernel_t::call_params_t p {
             src, dst, len, sub, mul};
-    dispatch_f16_affine<true>(&p);
+    if (dt == data_type::bf16)
+        dispatch_xf16_affine<true, data_type::bf16>(&p);
+    else
+        dispatch_xf16_affine<true, data_type::f16>(&p);
 }
 
-void jit_rvv_softmax_f16_gather(const dnnl::impl::float16_t *src,
-        dnnl::impl::float16_t *dst, dim_t len, dim_t stride_bytes) {
-    const jit_rvv_softmax_f16_strided_kernel_t::call_params_t p {
+void jit_rvv_softmax_xf16_gather(
+        const void *src, void *dst, dim_t len, dim_t stride_bytes) {
+    const jit_rvv_softmax_xf16_strided_kernel_t::call_params_t p {
             src, dst, len, stride_bytes};
-    dispatch_f16_strided<true>(&p);
+    dispatch_xf16_strided<true>(&p);
 }
 
-void jit_rvv_softmax_f16_scatter(const dnnl::impl::float16_t *src,
-        dnnl::impl::float16_t *dst, dim_t len, dim_t stride_bytes) {
-    const jit_rvv_softmax_f16_strided_kernel_t::call_params_t p {
+void jit_rvv_softmax_xf16_scatter(
+        const void *src, void *dst, dim_t len, dim_t stride_bytes) {
+    const jit_rvv_softmax_xf16_strided_kernel_t::call_params_t p {
             src, dst, len, stride_bytes};
-    dispatch_f16_strided<false>(&p);
+    dispatch_xf16_strided<false>(&p);
 }
 
-void jit_rvv_softmax_f16_exp_sub_sum(const dnnl::impl::float16_t *src,
+void jit_rvv_softmax_xf16_exp_sub_sum(data_type_t dt, const void *src,
         float *tmp, dim_t len, float sub, float *sum) {
-    const jit_rvv_softmax_f16_exp_sub_sum_kernel_t::call_params_t p {
+    const jit_rvv_softmax_xf16_exp_sub_sum_kernel_t::call_params_t p {
             src, tmp, len, sub, sum};
-    dispatch_f16_exp_sub_sum(&p);
+    if (dt == data_type::bf16)
+        dispatch_xf16_exp_sub_sum<data_type::bf16>(&p);
+    else
+        dispatch_xf16_exp_sub_sum<data_type::f16>(&p);
 }
 
-jit_rvv_softmax_f16_reduce_max_kernel_t::
-        jit_rvv_softmax_f16_reduce_max_kernel_t()
-    : jit_generator_t("jit_rvv_softmax_f16_reduce_max_kernel") {
+jit_rvv_softmax_xf16_reduce_max_kernel_t::
+        jit_rvv_softmax_xf16_reduce_max_kernel_t(data_type_t dt)
+    : jit_generator_t("jit_rvv_softmax_xf16_reduce_max_kernel"), dt_(dt) {
     create_kernel();
 }
 
-void jit_rvv_softmax_f16_reduce_max(const dnnl::impl::float16_t *src, dim_t len,
+void jit_rvv_softmax_xf16_reduce_max(data_type_t dt, const void *src, dim_t len,
         float *max_val, uint32_t *has_nan) {
-    const jit_rvv_softmax_f16_reduce_max_kernel_t::call_params_t p {
+    const jit_rvv_softmax_xf16_reduce_max_kernel_t::call_params_t p {
             src, len, max_val, has_nan};
-    dispatch_f16_reduce_max(&p);
+    if (dt == data_type::bf16)
+        dispatch_xf16_reduce_max<data_type::bf16>(&p);
+    else
+        dispatch_xf16_reduce_max<data_type::f16>(&p);
 }
 
-void jit_rvv_softmax_f16_reduce_max_kernel_t::generate() {
+void jit_rvv_softmax_xf16_reduce_max_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
     const Reg reg_src = a1;
@@ -217,18 +233,20 @@ void jit_rvv_softmax_f16_reduce_max_kernel_t::generate() {
         fmv_w_x(freg, reg_imm);
     };
 
-    ld(reg_src, reg_param, F16_REDUCE_MAX_OFF(src));
-    ld(reg_len, reg_param, F16_REDUCE_MAX_OFF(len));
-    ld(reg_max_ptr, reg_param, F16_REDUCE_MAX_OFF(max_val));
-    ld(reg_nan_ptr, reg_param, F16_REDUCE_MAX_OFF(has_nan));
+    ld(reg_src, reg_param, XF16_REDUCE_MAX_OFF(src));
+    ld(reg_len, reg_param, XF16_REDUCE_MAX_OFF(len));
+    ld(reg_max_ptr, reg_param, XF16_REDUCE_MAX_OFF(max_val));
+    ld(reg_nan_ptr, reg_param, XF16_REDUCE_MAX_OFF(has_nan));
 
-    // Seed for the max reduction: (float)numeric_limits<float16_t>::lowest()
-    // == -65504.0f == 0xC77FE000u. It only ever wins the reduction when every
-    // element is -65504, -inf or NaN, which matches the scalar `> max_val`
-    // loop seeded the same way.
-    load_f32_bits(f_seed, 0xC77FE000u);
+    // Seed for the max reduction: (float)numeric_limits<T>::lowest(), i.e.
+    // -65504.0f (0xC77FE000u) for f16 and -3.38953139e38f (0xFF7F0000u) for
+    // bf16. It only ever wins the reduction when every element is that lowest
+    // value, -inf or NaN, which matches the scalar `> max_val` loop seeded the
+    // same way.
+    const bool is_bf16 = dt_ == data_type::bf16;
+    load_f32_bits(f_seed, is_bf16 ? 0xFF7F0000u : 0xC77FE000u);
 
-    // Clear the f16 tail lanes to +0.0 so a partial final chunk does not feed
+    // Clear the xf16 tail lanes to +0.0 so a partial final chunk does not feed
     // stale NaNs into the NaN-detection pass (the loop below loads with
     // VTA::tu, i.e. tail undisturbed).
     vsetvli(reg_vl, x0, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
@@ -236,7 +254,7 @@ void jit_rvv_softmax_f16_reduce_max_kernel_t::generate() {
     // Accumulator for the OR of all per-chunk NaN masks.
     vmclr_m(v_nan_acc);
 
-    // Seed the vector max accumulator with float16 lowest.
+    // Seed the vector max accumulator with the dtype's lowest value.
     vsetvli(reg_vl, x0, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
     vfmv_v_f(v_red, f_seed);
 
@@ -249,13 +267,20 @@ void jit_rvv_softmax_f16_reduce_max_kernel_t::generate() {
     slli(reg_bytes, reg_vl, 1);
     add(reg_src, reg_src, reg_bytes);
 
-    // A half is NaN iff (raw & 0x7fff) > 0x7c00, which is exactly the set of
-    // values for which x != x. Accumulate the per-chunk NaN masks.
-    vmfne_vv(v0, v_f16, v_f16);
-    vmor_mm(v_nan_acc, v_nan_acc, v0);
-
-    vfwcvt_f_f_v(v_x, v_f16);
-    vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+    // Accumulate the per-chunk NaN masks (x != x). f16 tests at e16 directly;
+    // bf16 has no e16 arithmetic, so it widens first -- the widen is exact and
+    // preserves NaN, so the f32 test is equivalent.
+    if (is_bf16) {
+        vfwcvtbf16_f_f_v(v_x, v_f16);
+        vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+        vmfne_vv(v0, v_x, v_x);
+        vmor_mm(v_nan_acc, v_nan_acc, v0);
+    } else {
+        vmfne_vv(v0, v_f16, v_f16);
+        vmor_mm(v_nan_acc, v_nan_acc, v0);
+        vfwcvt_f_f_v(v_x, v_f16);
+        vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+    }
     // Exclude NaN lanes from the max (matches the scalar `val > max_val` test,
     // under which a NaN never updates max_val).
     vfmerge_vfm(v_x, v_x, f_seed);
@@ -280,7 +305,7 @@ void jit_rvv_softmax_f16_reduce_max_kernel_t::generate() {
 #endif
 }
 
-void jit_rvv_softmax_f16_affine_kernel_t::generate() {
+void jit_rvv_softmax_xf16_affine_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
     const Reg reg_src = a1;
@@ -297,15 +322,17 @@ void jit_rvv_softmax_f16_affine_kernel_t::generate() {
     const VReg v_f32(8);
     const VReg v_dst(4);
 
-    ld(reg_src, reg_param, F16_AFFINE_OFF(src));
-    ld(reg_dst, reg_param, F16_AFFINE_OFF(dst));
-    ld(reg_len, reg_param, F16_AFFINE_OFF(len));
-    flw(f_sub, reg_param, F16_AFFINE_OFF(sub));
-    flw(f_mul, reg_param, F16_AFFINE_OFF(mul));
+    ld(reg_src, reg_param, XF16_AFFINE_OFF(src));
+    ld(reg_dst, reg_param, XF16_AFFINE_OFF(dst));
+    ld(reg_len, reg_param, XF16_AFFINE_OFF(len));
+    flw(f_sub, reg_param, XF16_AFFINE_OFF(sub));
+    flw(f_mul, reg_param, XF16_AFFINE_OFF(mul));
 
     Label loop, done;
     L(loop);
     beqz(reg_len, done);
+
+    const bool is_bf16 = dt_ == data_type::bf16;
 
     if (src_f32_) {
         vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
@@ -313,14 +340,20 @@ void jit_rvv_softmax_f16_affine_kernel_t::generate() {
     } else {
         vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vle16_v(v_src, reg_src);
-        vfwcvt_f_f_v(v_f32, v_src);
+        if (is_bf16)
+            vfwcvtbf16_f_f_v(v_f32, v_src);
+        else
+            vfwcvt_f_f_v(v_f32, v_src);
         vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
     }
 
     vfsub_vf(v_f32, v_f32, f_sub);
     vfmul_vf(v_f32, v_f32, f_mul);
     vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-    vfncvt_f_f_w(v_dst, v_f32);
+    if (is_bf16)
+        vfncvtbf16_f_f_w(v_dst, v_f32);
+    else
+        vfncvt_f_f_w(v_dst, v_f32);
     vse16_v(v_dst, reg_dst);
 
     slli(reg_dst_bytes, reg_vl, 1);
@@ -341,7 +374,7 @@ void jit_rvv_softmax_f16_affine_kernel_t::generate() {
 #endif
 }
 
-void jit_rvv_softmax_f16_strided_kernel_t::generate() {
+void jit_rvv_softmax_xf16_strided_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
     const Reg reg_src = a1;
@@ -353,10 +386,10 @@ void jit_rvv_softmax_f16_strided_kernel_t::generate() {
 
     const VReg v_data(4);
 
-    ld(reg_src, reg_param, F16_STRIDED_OFF(src));
-    ld(reg_dst, reg_param, F16_STRIDED_OFF(dst));
-    ld(reg_len, reg_param, F16_STRIDED_OFF(len));
-    ld(reg_stride, reg_param, F16_STRIDED_OFF(stride_bytes));
+    ld(reg_src, reg_param, XF16_STRIDED_OFF(src));
+    ld(reg_dst, reg_param, XF16_STRIDED_OFF(dst));
+    ld(reg_len, reg_param, XF16_STRIDED_OFF(len));
+    ld(reg_stride, reg_param, XF16_STRIDED_OFF(stride_bytes));
 
     Label loop, done;
     L(loop);
@@ -389,13 +422,13 @@ void jit_rvv_softmax_f16_strided_kernel_t::generate() {
 #endif
 }
 
-jit_rvv_softmax_f16_exp_sub_sum_kernel_t::
-        jit_rvv_softmax_f16_exp_sub_sum_kernel_t()
-    : jit_generator_t("jit_rvv_softmax_f16_exp_sub_sum_kernel") {
+jit_rvv_softmax_xf16_exp_sub_sum_kernel_t::
+        jit_rvv_softmax_xf16_exp_sub_sum_kernel_t(data_type_t dt)
+    : jit_generator_t("jit_rvv_softmax_xf16_exp_sub_sum_kernel"), dt_(dt) {
     create_kernel();
 }
 
-void jit_rvv_softmax_f16_exp_sub_sum_kernel_t::generate() {
+void jit_rvv_softmax_xf16_exp_sub_sum_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
     const Reg reg_src = a1;
@@ -438,11 +471,11 @@ void jit_rvv_softmax_f16_exp_sub_sum_kernel_t::generate() {
         load_f32_bits(freg, utils::bit_cast<uint32_t>(value));
     };
 
-    ld(reg_src, reg_param, F16_EXP_SUB_SUM_OFF(src));
-    ld(reg_tmp, reg_param, F16_EXP_SUB_SUM_OFF(tmp));
-    ld(reg_len, reg_param, F16_EXP_SUB_SUM_OFF(len));
-    ld(reg_sum, reg_param, F16_EXP_SUB_SUM_OFF(sum));
-    lw(reg_sub_tmp, reg_param, F16_EXP_SUB_SUM_OFF(sub));
+    ld(reg_src, reg_param, XF16_EXP_SUB_SUM_OFF(src));
+    ld(reg_tmp, reg_param, XF16_EXP_SUB_SUM_OFF(tmp));
+    ld(reg_len, reg_param, XF16_EXP_SUB_SUM_OFF(len));
+    ld(reg_sum, reg_param, XF16_EXP_SUB_SUM_OFF(sum));
+    lw(reg_sub_tmp, reg_param, XF16_EXP_SUB_SUM_OFF(sub));
     fmv_w_x(f_sub, reg_sub_tmp);
 
     fmv_w_x(f_zero, x0);
@@ -467,7 +500,10 @@ void jit_rvv_softmax_f16_exp_sub_sum_kernel_t::generate() {
     vle16_v(v_in16, reg_src);
     slli(reg_bytes, reg_vl, 1);
     add(reg_src, reg_src, reg_bytes);
-    vfwcvt_f_f_v(v_x, v_in16);
+    if (dt_ == data_type::bf16)
+        vfwcvtbf16_f_f_v(v_x, v_in16);
+    else
+        vfwcvt_f_f_v(v_x, v_in16);
 
     vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4, VTA::tu, VMA::ma);
     vfsub_vf(v_x, v_x, f_sub);

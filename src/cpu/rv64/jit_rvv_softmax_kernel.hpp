@@ -18,6 +18,7 @@
 #ifndef CPU_RV64_JIT_RVV_SOFTMAX_KERNEL_HPP
 #define CPU_RV64_JIT_RVV_SOFTMAX_KERNEL_HPP
 
+#include "common/bfloat16.hpp"
 #include "common/c_types_map.hpp"
 #include "common/float16.hpp"
 #include "cpu/rv64/jit_generator.hpp"
@@ -26,6 +27,11 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace rv64 {
+
+// The xf16 kernels below serve both 16-bit float types. They are identical
+// apart from the widen/narrow pair -- Zvfh vfwcvt/vfncvt for f16, Zvfbfmin
+// vfwcvtbf16/vfncvtbf16 for bf16 -- and the NaN/lowest constants, so each one
+// takes the dtype at construction and the caller passes raw pointers.
 
 struct jit_rvv_softmax_affine_kernel_t : public jit_generator_t {
     struct call_params_t {
@@ -48,18 +54,18 @@ protected:
     void generate() override;
 };
 
-struct jit_rvv_softmax_f16_affine_kernel_t : public jit_generator_t {
+struct jit_rvv_softmax_xf16_affine_kernel_t : public jit_generator_t {
     struct call_params_t {
         const void *src;
-        dnnl::impl::float16_t *dst;
+        void *dst;
         dim_t len;
         float sub;
         float mul;
     };
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_f16_affine_kernel_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_xf16_affine_kernel_t)
 
-    explicit jit_rvv_softmax_f16_affine_kernel_t(bool src_f32);
+    jit_rvv_softmax_xf16_affine_kernel_t(bool src_f32, data_type_t dt);
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);
@@ -70,19 +76,21 @@ protected:
 
 private:
     bool src_f32_;
+    data_type_t dt_;
 };
 
-struct jit_rvv_softmax_f16_strided_kernel_t : public jit_generator_t {
+// Pure 16-bit gather/scatter: no arithmetic, so one kernel serves f16 and bf16.
+struct jit_rvv_softmax_xf16_strided_kernel_t : public jit_generator_t {
     struct call_params_t {
-        const dnnl::impl::float16_t *src;
-        dnnl::impl::float16_t *dst;
+        const void *src;
+        void *dst;
         dim_t len;
         dim_t stride_bytes;
     };
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_f16_strided_kernel_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_xf16_strided_kernel_t)
 
-    explicit jit_rvv_softmax_f16_strided_kernel_t(bool gather);
+    explicit jit_rvv_softmax_xf16_strided_kernel_t(bool gather);
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);
@@ -95,18 +103,18 @@ private:
     bool gather_;
 };
 
-struct jit_rvv_softmax_f16_exp_sub_sum_kernel_t : public jit_generator_t {
+struct jit_rvv_softmax_xf16_exp_sub_sum_kernel_t : public jit_generator_t {
     struct call_params_t {
-        const dnnl::impl::float16_t *src;
+        const void *src;
         float *tmp;
         dim_t len;
         float sub;
         float *sum;
     };
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_f16_exp_sub_sum_kernel_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_xf16_exp_sub_sum_kernel_t)
 
-    jit_rvv_softmax_f16_exp_sub_sum_kernel_t();
+    explicit jit_rvv_softmax_xf16_exp_sub_sum_kernel_t(data_type_t dt);
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);
@@ -114,6 +122,9 @@ struct jit_rvv_softmax_f16_exp_sub_sum_kernel_t : public jit_generator_t {
 
 protected:
     void generate() override;
+
+private:
+    data_type_t dt_;
 };
 
 // f32 exp/sub/sum kernel. Computes exp(src - sub), accumulates the ordered
@@ -144,17 +155,17 @@ private:
     bool store_exp_;
 };
 
-struct jit_rvv_softmax_f16_reduce_max_kernel_t : public jit_generator_t {
+struct jit_rvv_softmax_xf16_reduce_max_kernel_t : public jit_generator_t {
     struct call_params_t {
-        const dnnl::impl::float16_t *src;
+        const void *src;
         dim_t len;
         float *max_val;
         uint32_t *has_nan;
     };
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_f16_reduce_max_kernel_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_xf16_reduce_max_kernel_t)
 
-    jit_rvv_softmax_f16_reduce_max_kernel_t();
+    explicit jit_rvv_softmax_xf16_reduce_max_kernel_t(data_type_t dt);
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);
@@ -162,27 +173,30 @@ struct jit_rvv_softmax_f16_reduce_max_kernel_t : public jit_generator_t {
 
 protected:
     void generate() override;
+
+private:
+    data_type_t dt_;
 };
 
-void jit_rvv_softmax_f16_affine_from_f16(const dnnl::impl::float16_t *src,
-        dnnl::impl::float16_t *dst, dim_t len, float sub, float mul);
+void jit_rvv_softmax_xf16_affine_from_xf16(data_type_t dt, const void *src,
+        void *dst, dim_t len, float sub, float mul);
 
-void jit_rvv_softmax_f16_affine_from_f32(const float *src,
-        dnnl::impl::float16_t *dst, dim_t len, float sub, float mul);
+void jit_rvv_softmax_xf16_affine_from_f32(data_type_t dt, const float *src,
+        void *dst, dim_t len, float sub, float mul);
 
-void jit_rvv_softmax_f16_gather(const dnnl::impl::float16_t *src,
-        dnnl::impl::float16_t *dst, dim_t len, dim_t stride_bytes);
+void jit_rvv_softmax_xf16_gather(
+        const void *src, void *dst, dim_t len, dim_t stride_bytes);
 
-void jit_rvv_softmax_f16_scatter(const dnnl::impl::float16_t *src,
-        dnnl::impl::float16_t *dst, dim_t len, dim_t stride_bytes);
+void jit_rvv_softmax_xf16_scatter(
+        const void *src, void *dst, dim_t len, dim_t stride_bytes);
 
-void jit_rvv_softmax_f16_exp_sub_sum(const dnnl::impl::float16_t *src,
+void jit_rvv_softmax_xf16_exp_sub_sum(data_type_t dt, const void *src,
         float *tmp, dim_t len, float sub, float *sum);
 
 void jit_rvv_softmax_f32_exp_sub_sum(const float *src, float *dst, dim_t len,
         float sub, float *sum, bool store_exp);
 
-void jit_rvv_softmax_f16_reduce_max(const dnnl::impl::float16_t *src, dim_t len,
+void jit_rvv_softmax_xf16_reduce_max(data_type_t dt, const void *src, dim_t len,
         float *max_val, uint32_t *has_nan);
 
 } // namespace rv64

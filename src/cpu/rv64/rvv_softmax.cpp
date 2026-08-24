@@ -17,6 +17,7 @@
 
 #include <math.h>
 
+#include "common/bfloat16.hpp"
 #include "common/float16.hpp"
 #include "common/nstl.hpp"
 
@@ -107,9 +108,9 @@ void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
 }
 
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
-void compute_softmax_f16_scalar(const dnnl::impl::float16_t *src,
-        dnnl::impl::float16_t *dst, dim_t len, bool is_logsoftmax,
-        float max_val) {
+template <typename T>
+void compute_softmax_xf16_scalar(
+        const T *src, T *dst, dim_t len, bool is_logsoftmax, float max_val) {
     float sum_exp = 0.f;
 
     for (dim_t i = 0; i < len; ++i) {
@@ -128,24 +129,28 @@ void compute_softmax_f16_scalar(const dnnl::impl::float16_t *src,
     }
 }
 
-// f16 compute kernel
-void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
-        dnnl::impl::float16_t *dst, dim_t len, bool is_logsoftmax,
-        bool is_softmax_inf_as_zero, float *scratchpad) {
+// 16-bit float compute kernel, shared by f16 (T = float16_t) and bf16
+// (T = bfloat16_t). Both compute at f32; only the convert instructions the
+// kernels emit and the NaN/lowest constants differ.
+template <typename T, data_type_t dt>
+void compute_softmax_xf16_rvv(const T *src, T *dst, dim_t len,
+        bool is_logsoftmax, bool is_softmax_inf_as_zero, float *scratchpad) {
 
     constexpr dim_t reduce_max_jit_min_len = 16;
-    float max_val
-            = (float)nstl::numeric_limits<dnnl::impl::float16_t>::lowest();
+    // A 16-bit float is NaN iff (raw & 0x7fff) exceeds its +inf encoding.
+    constexpr uint16_t nan_thresh = dt == data_type::bf16 ? 0x7f80u : 0x7c00u;
+    float max_val = (float)nstl::numeric_limits<T>::lowest();
     bool has_nan = false;
     if (len >= reduce_max_jit_min_len) {
-        // The vectorized pass widens f16 to f32 and performs a vector max
+        // The vectorized pass widens to f32 and performs a vector max
         // reduction. Its seed and NaN semantics reproduce the scalar loop.
         uint32_t jit_has_nan = 0;
-        jit_rvv_softmax_f16_reduce_max(src, len, &max_val, &jit_has_nan);
+        jit_rvv_softmax_xf16_reduce_max(dt, src, len, &max_val, &jit_has_nan);
         has_nan = jit_has_nan;
     } else {
+        const uint16_t *raw = reinterpret_cast<const uint16_t *>(src);
         for (dim_t i = 0; i < len; ++i) {
-            has_nan = has_nan || ((src[i].raw & 0x7fffu) > 0x7c00u);
+            has_nan = has_nan || ((raw[i] & 0x7fffu) > nan_thresh);
             const float val = (float)src[i];
             if (val > max_val) max_val = val;
         }
@@ -158,19 +163,19 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
     }
 
     if (has_nan || max_is_pos_inf) {
-        compute_softmax_f16_scalar(src, dst, len, is_logsoftmax, max_val);
+        compute_softmax_xf16_scalar(src, dst, len, is_logsoftmax, max_val);
         return;
     }
 
     if (is_logsoftmax) {
         float sum_exp = 0.f;
 
-        jit_rvv_softmax_f16_exp_sub_sum(
-                src, scratchpad, len, max_val, &sum_exp);
+        jit_rvv_softmax_xf16_exp_sub_sum(
+                dt, src, scratchpad, len, max_val, &sum_exp);
         const float log_sum = logf(sum_exp);
 
         const float sub = max_val + log_sum;
-        jit_rvv_softmax_f16_affine_from_f16(src, dst, len, sub, 1.0f);
+        jit_rvv_softmax_xf16_affine_from_xf16(dt, src, dst, len, sub, 1.0f);
     } else {
         float sum_exp = 0.f;
         const bool all_minus_inf
@@ -180,14 +185,73 @@ void compute_softmax_f16_rvv(const dnnl::impl::float16_t *src,
             for (dim_t i = 0; i < len; ++i)
                 scratchpad[i] = 0.f;
         } else {
-            jit_rvv_softmax_f16_exp_sub_sum(
-                    src, scratchpad, len, max_val, &sum_exp);
+            jit_rvv_softmax_xf16_exp_sub_sum(
+                    dt, src, scratchpad, len, max_val, &sum_exp);
         }
         const float inv_sum = sum_exp ? (1.0f / sum_exp) : 1.0f;
 
-        jit_rvv_softmax_f16_affine_from_f32(
-                scratchpad, dst, len, 0.0f, inv_sum);
+        jit_rvv_softmax_xf16_affine_from_f32(
+                dt, scratchpad, dst, len, 0.0f, inv_sum);
     }
+}
+
+// Driver for the 16-bit float path: contiguous axis runs the compute kernel in
+// place; a strided axis gathers into a packed buffer first. `scratch` is the
+// packed xf16 buffer (only used when inner_size > 1), `reduction` the per-thread
+// f32 exp buffer.
+template <typename T, data_type_t dt>
+void execute_xf16(const void *src, void *dst, const rvv_softmax_conf_t &rsp,
+        dim_t outer_stride, int nthr, bool is_softmax_inf_as_zero,
+        float *reduction, char *scratch) {
+    const T *src_p = static_cast<const T *>(src);
+    T *dst_p = static_cast<T *>(dst);
+
+    if (rsp.inner_size == 1) {
+        parallel(nthr, [&](int ithr, int nthr) {
+            float *tmp = reduction
+                    + static_cast<size_t>(ithr)
+                            * static_cast<size_t>(rsp.axis_size);
+            dim_t start {0}, end {0};
+            balance211(rsp.outer_size, nthr, ithr, start, end);
+            for (dim_t outer = start; outer < end; ++outer) {
+                const dim_t base = outer * outer_stride;
+                compute_softmax_xf16_rvv<T, dt>(src_p + base, dst_p + base,
+                        rsp.axis_size, rsp.is_logsoftmax,
+                        is_softmax_inf_as_zero, tmp);
+            }
+        });
+        return;
+    }
+
+    parallel(nthr, [&](int ithr, int nthr) {
+        auto *tmp = reinterpret_cast<T *>(scratch)
+                + static_cast<size_t>(ithr)
+                        * static_cast<size_t>(rsp.axis_size);
+        float *reduction_tmp = reduction
+                + static_cast<size_t>(ithr)
+                        * static_cast<size_t>(rsp.axis_size);
+
+        const dim_t work_amount = rsp.outer_size * rsp.inner_size;
+        dim_t start {0}, end {0};
+        balance211(work_amount, nthr, ithr, start, end);
+
+        const dim_t stride_bytes = rsp.inner_size * sizeof(T);
+
+        for (dim_t idx = start; idx < end; ++idx) {
+            const dim_t outer = idx / rsp.inner_size;
+            const dim_t i = idx % rsp.inner_size;
+            const dim_t base = outer * outer_stride + i;
+
+            jit_rvv_softmax_xf16_gather(
+                    src_p + base, tmp, rsp.axis_size, stride_bytes);
+
+            compute_softmax_xf16_rvv<T, dt>(tmp, tmp, rsp.axis_size,
+                    rsp.is_logsoftmax, is_softmax_inf_as_zero, reduction_tmp);
+
+            jit_rvv_softmax_xf16_scatter(
+                    tmp, dst_p + base, rsp.axis_size, stride_bytes);
+        }
+    });
 }
 #endif
 
@@ -262,67 +326,25 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             }
         } break;
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
-        case data_type::f16: {
-            const auto *src_f16
-                    = static_cast<const dnnl::impl::float16_t *>(src);
-            auto *dst_f16 = static_cast<dnnl::impl::float16_t *>(dst);
-
+        case data_type::f16:
+        case data_type::bf16: {
             const dim_t outer_stride = pd()->axis_size(true) * rsp.inner_size;
             const int nthr = pd()->nthr_;
             auto reduction = ctx.get_scratchpad_grantor().template get<float>(
                     memory_tracking::names::key_softmax_reduction);
+            char *scratch = rsp.inner_size > 1
+                    ? ctx.get_scratchpad_grantor().template get<char>(
+                              memory_tracking::names::key_softmax_interim_store)
+                    : nullptr;
 
-            if (rsp.inner_size == 1) {
-                parallel(nthr, [&](int ithr, int nthr) {
-                    float *tmp = reduction
-                            + static_cast<size_t>(ithr)
-                                    * static_cast<size_t>(rsp.axis_size);
-                    dim_t start {0}, end {0};
-                    balance211(rsp.outer_size, nthr, ithr, start, end);
-                    for (dim_t outer = start; outer < end; ++outer) {
-                        const dim_t base = outer * outer_stride;
-                        compute_softmax_f16_rvv(src_f16 + base, dst_f16 + base,
-                                rsp.axis_size, rsp.is_logsoftmax,
-                                is_softmax_inf_as_zero, tmp);
-                    }
-                });
-            } else {
-                auto scratch = ctx.get_scratchpad_grantor().template get<char>(
-                        memory_tracking::names::key_softmax_interim_store);
-
-                parallel(nthr, [&](int ithr, int nthr) {
-                    auto *tmp
-                            = reinterpret_cast<dnnl::impl::float16_t *>(scratch)
-                            + static_cast<size_t>(ithr)
-                                    * static_cast<size_t>(rsp.axis_size);
-                    float *reduction_tmp = reduction
-                            + static_cast<size_t>(ithr)
-                                    * static_cast<size_t>(rsp.axis_size);
-
-                    const dim_t work_amount = rsp.outer_size * rsp.inner_size;
-                    dim_t start {0}, end {0};
-                    balance211(work_amount, nthr, ithr, start, end);
-
-                    dim_t stride_bytes
-                            = rsp.inner_size * sizeof(dnnl::impl::float16_t);
-
-                    for (dim_t idx = start; idx < end; ++idx) {
-                        const dim_t outer = idx / rsp.inner_size;
-                        const dim_t i = idx % rsp.inner_size;
-                        const dim_t base = outer * outer_stride + i;
-
-                        jit_rvv_softmax_f16_gather(src_f16 + base, tmp,
-                                rsp.axis_size, stride_bytes);
-
-                        compute_softmax_f16_rvv(tmp, tmp, rsp.axis_size,
-                                rsp.is_logsoftmax, is_softmax_inf_as_zero,
-                                reduction_tmp);
-
-                        jit_rvv_softmax_f16_scatter(tmp, dst_f16 + base,
-                                rsp.axis_size, stride_bytes);
-                    }
-                });
-            }
+            if (rsp.data_type == data_type::bf16)
+                execute_xf16<dnnl::impl::bfloat16_t, data_type::bf16>(src, dst,
+                        rsp, outer_stride, nthr, is_softmax_inf_as_zero,
+                        reduction, scratch);
+            else
+                execute_xf16<dnnl::impl::float16_t, data_type::f16>(src, dst,
+                        rsp, outer_stride, nthr, is_softmax_inf_as_zero,
+                        reduction, scratch);
         } break;
 #endif
         default: return status::unimplemented;

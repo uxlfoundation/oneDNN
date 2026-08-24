@@ -65,14 +65,16 @@ protected:
 
     // register size in bytes
     static constexpr int vlen_ = cpu_isa_traits_t<isa>::vlen;
-    const int vlen_c_states_ = vlen_ / (sizeof(float) / cstate_dt_size_);
+    const int vlen_c_states_
+            = vlen_ / static_cast<int>(sizeof(float) / cstate_dt_size_);
 
     static constexpr int diff_cstate_dt_size_ = sizeof(float);
     static constexpr int hstate_dt_size_ = sizeof(float);
     static constexpr int weights_peephole_dt_size_ = sizeof(float);
 
-    const int vlen_scratch_
-            = vlen_ / (sizeof(float) / types::data_type_size(scratch_data_t));
+    const int vlen_scratch_ = vlen_
+            / static_cast<int>(
+                    sizeof(float) / types::data_type_size(scratch_data_t));
     const int gate_dt_size_
             = static_cast<int>(types::data_type_size(scratch_data_t));
     const int scratch_dt_size_

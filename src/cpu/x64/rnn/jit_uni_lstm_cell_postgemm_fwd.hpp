@@ -72,10 +72,13 @@ protected:
     static constexpr int vlen_ = cpu_isa_traits_t<isa>::vlen;
     static constexpr int qscale_dt_size = sizeof(float);
     static constexpr int weights_peephole_dt_size_ = sizeof(float);
-    const int vlen_dst_
-            = vlen_ / (sizeof(float) / types::data_type_size(src_data_t));
-    const int vlen_bias_ = vlen_ / (sizeof(float) / bias_dt_size_);
-    const int vlen_c_states_ = vlen_ / (sizeof(float) / cstate_dt_size_);
+    const int vlen_dst_ = vlen_
+            / static_cast<int>(
+                    sizeof(float) / types::data_type_size(src_data_t));
+    const int vlen_bias_
+            = vlen_ / static_cast<int>(sizeof(float) / bias_dt_size_);
+    const int vlen_c_states_
+            = vlen_ / static_cast<int>(sizeof(float) / cstate_dt_size_);
     const int hstate_dt_size_
             = static_cast<int>(types::data_type_size(src_data_t));
     const int gate_dt_size_

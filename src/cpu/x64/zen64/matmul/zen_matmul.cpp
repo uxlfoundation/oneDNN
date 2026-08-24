@@ -163,6 +163,7 @@ status_t zen_matmul_t::pd_t::init(const engine_t *engine) {
     //  2. Uniform bf16: bf16 src, bf16 wei, bf16 dst
     //  3. bf16 mixed:   bf16 src, bf16 wei, f32 dst
     // Explicitly unsupported: f32 src with bf16 dst.
+    // int8 static quant is handled by the dedicated zen_lowp_matmul_t impl.
     const bool all_f32 = utils::everyone_is(f32, src_dt, wei_dt, dst_dt);
     const bool all_bf16 = utils::everyone_is(bf16, src_dt, wei_dt, dst_dt);
     const bool bf16_mixed
@@ -253,6 +254,7 @@ status_t zen_matmul_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(check_postops(), VERBOSE_UNSUPPORTED_POSTOP);
 
     // ---- Scales / zero-points validation ----
+    // f32/bf16 path does not support scales or zero-points.
     VDISPATCH_MATMUL(attr()->scales_.has_default_values(),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
     VDISPATCH_MATMUL(attr()->zero_points_.has_default_values(),
@@ -651,7 +653,8 @@ status_t zen_matmul_t::execute_body(const exec_ctx_t &ctx) const {
     const dim_t K = helper.K();
     const char transA = helper.transA();
     const dim_t lda = helper.lda();
-    const dim_t ldc = helper.ldc();
+    // ZenDNN uses row-major dst, so ldc must be at least N.
+    const dim_t ldc = nstl::max(N, helper.ldc());
 
     // If weights are Zen pre-packed (opaque format_kind::zen_packed,
     // produced by zen_reorder_t), the backend expects:

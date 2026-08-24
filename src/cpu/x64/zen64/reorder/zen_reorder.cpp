@@ -17,9 +17,11 @@
 #include "cpu/x64/zen64/reorder/zen_reorder.hpp"
 
 #include "common/c_types_map.hpp"
+#include "common/int4.hpp"
 #include "common/memory_desc.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/memory_tracking.hpp"
+#include "common/nibble.hpp"
 #include "common/primitive_desc.hpp"
 #include "common/primitive_exec_types.hpp"
 #include "common/type_helpers.hpp"
@@ -28,6 +30,7 @@
 #include <cstdint>
 #include <limits>
 
+#include "cpu/ref_io_helper.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp" // cpu().has(tAMD)
 #include "cpu/x64/zen64/common/zen_format_tag.hpp" // is_zen_packed
 
@@ -56,13 +59,16 @@ using zendnnl::ops::matmul_algo_t;
 
 // Zen weight prepack via reorder_direct (is_prepack=true); see
 // ZenDNN/zendnnl/src/lowoha_operators/reorder/lowoha_reorder.hpp.
-status_t zen_weight_prepack(const void *src, void *dst, zd wei_dt, int64_t K,
-        int64_t N, int64_t ldb, bool transposed) {
+// src_dt is the matmul source dtype: for f32/bf16 it equals wei_dt, but for
+// int8 configs it may differ (e.g. u8 source with s8 weights), and the AOCL-DLP
+// blocked layout can depend on it, so it is passed explicitly.
+status_t zen_weight_prepack(const void *src, void *dst, zd wei_dt, zd src_dt,
+        int64_t K, int64_t N, int64_t ldb, bool transposed) {
     zendnnl::lowoha::reorder::reorder_params_t rp;
     rp.is_prepack = true;
     rp.prepack.algo = matmul_algo_t::aocl_dlp_blocked;
     rp.prepack.wei_dtype = wei_dt;
-    rp.prepack.src_dtype = wei_dt;
+    rp.prepack.src_dtype = src_dt;
     rp.prepack.K = K;
     rp.prepack.N = N;
     rp.prepack.ldb = ldb;
@@ -95,6 +101,67 @@ status_t f32_to_bf16_plain(const void *src, void *dst, int64_t K, int64_t N,
 
     return to_dnnl_status(
             zendnnl::lowoha::reorder::reorder_direct(src, dst, rp));
+}
+
+// Plain f32 -> s8 element conversion (saturating round-to-nearest). Writes K
+// rows of N elements contiguously into `dst` (row-major `ab`). `ldb` is the
+// source leading dim (in elements), read from the actual src strides so a
+// padded leading dim is honored:
+//   * ab (row-major): src_strides = {ldb, 1}  -> element (k,n) at k*ldb + n
+//   * ba (col-major): src_strides = {1, ldb}  -> element (k,n) at k + n*ldb
+// Used by the int8 prepack path when the caller supplies an f32 weight
+// reference (e.g. benchdnn keeps integer-valued weights in f32); the values
+// are exact int8s so the cast is lossless. No quantization scale is applied
+// here -- the matmul applies the weight scale.
+status_t f32_to_s8_plain(const void *src, void *dst, int64_t K, int64_t N,
+        int64_t ldb, bool src_is_ab) {
+    const float *s = static_cast<const float *>(src);
+    int8_t *d = static_cast<int8_t *>(dst);
+    for (int64_t k = 0; k < K; k++) {
+        for (int64_t n = 0; n < N; n++) {
+            const int64_t soff = src_is_ab ? (k * ldb + n) : (k + n * ldb);
+            const float v = io::load_float_value(
+                    data_type::f32, s, static_cast<dim_t>(soff));
+            io::store_float_value(
+                    data_type::s8, v, d, static_cast<dim_t>(k * N + n));
+        }
+    }
+    return status::success;
+}
+
+// Plain f32 -> packed s4/u4 element conversion (saturating round-to-nearest),
+// writing a contiguous row-major (`ab`) K*N nibble stream (2 values per byte,
+// low nibble = even element index -- oneDNN's nibble packing). Used by the WOQ
+// prepack path when the caller supplies an f32 weight reference (e.g. benchdnn
+// keeps the integer-valued 4-bit codes in f32). No scale is applied -- the
+// matmul applies the weight scale. `out_dt` is s4 or u4.
+status_t f32_to_int4_plain(const void *src, void *dst, int64_t K, int64_t N,
+        int64_t ldb, bool src_is_ab, data_type_t out_dt) {
+    // NOTE: io::store_float_value() has no s4/u4 case (it hits default:
+    // assert(!"bad data_type") in debug builds), so convert with the
+    // reference reorder's saturate-and-round semantics, then pack the
+    // resulting 4-bit value directly via nibble2_t.
+    const float *s = static_cast<const float *>(src);
+    auto *d = reinterpret_cast<nibble2_t *>(dst);
+    for (int64_t k = 0; k < K; k++) {
+        for (int64_t n = 0; n < N; n++) {
+            const int64_t soff = src_is_ab ? (k * ldb + n) : (k + n * ldb);
+            const float v = io::load_float_value(
+                    data_type::f32, s, static_cast<dim_t>(soff));
+            const uint8_t raw = out_dt == data_type::u4
+                    ? q10n::saturate_and_round<uint4_t>(v).raw_bits_
+                    : q10n::saturate_and_round<int4_t>(v).raw_bits_;
+            const int64_t oidx = k * N + n;
+            const int nibble = static_cast<int>(oidx % 2);
+            nibble2_t pair(0);
+            // An even element starts a new byte. Preserve the existing low
+            // nibble only when writing the following odd element.
+            if (nibble != 0) pair = d[oidx / 2];
+            pair.set(raw, nibble);
+            d[oidx / 2] = pair;
+        }
+    }
+    return status::success;
 }
 
 } // namespace
@@ -135,9 +202,23 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     //   f32  -> f32   : reorder_direct prepack (Zen blocked algo)
     //   f32  -> bf16  : f32->bf16 plain reorder_direct, then bf16 prepack
     //                   (avoids the backend f32->bf16 fringe-N bug; see execute)
+    //   s8   -> s8    : int8 static-quant weight prepack (Zen blocked algo)
+    //   f32  -> s8    : f32->s8 plain cast, then s8 prepack (for callers that
+    //                   keep integer-valued weights in f32, e.g. benchdnn)
+    //   s4   -> s4    : WOQ 4-bit weight prepack (bf16 gemm source)
+    //   u4   -> u4    : WOQ 4-bit weight prepack (bf16 gemm source)
+    //   f32  -> s4/u4 : f32->4-bit plain cast, then WOQ prepack (for callers
+    //                   that keep integer-valued 4-bit codes in f32, e.g.
+    //                   benchdnn)
     const bool dt_ok = (type_i == data_type::bf16 && type_o == data_type::bf16)
             || (type_i == data_type::f32 && type_o == data_type::f32)
-            || (type_i == data_type::f32 && type_o == data_type::bf16);
+            || (type_i == data_type::f32 && type_o == data_type::bf16)
+            || (type_i == data_type::s8 && type_o == data_type::s8)
+            || (type_i == data_type::f32 && type_o == data_type::s8)
+            || (type_i == data_type::s4 && type_o == data_type::s4)
+            || (type_i == data_type::u4 && type_o == data_type::u4)
+            || (type_i == data_type::f32
+                    && utils::one_of(type_o, data_type::s4, data_type::u4));
     VDISPATCH_REORDER_IC(dt_ok, VERBOSE_UNSUPPORTED_DT);
 
     // Dispatch trigger: only fire when the dst uses the dedicated opaque
@@ -185,6 +266,16 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
                     || (src_strides[0] >= src_strides[1]
                             && src_strides[0] >= src_strides[2]),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
+    // A batched sub-byte source can be advanced with a raw byte pointer only
+    // when every slice starts on a byte boundary. An odd logical-element batch
+    // stride starts the next slice in the high nibble, which this direct
+    // prepack interface cannot represent.
+    const size_t src_sub_byte_multiplier = id.sub_byte_data_type_multiplier();
+    VDISPATCH_REORDER_IC(!batched || src_sub_byte_multiplier == 1
+                    || static_cast<size_t>(src_strides[0])
+                                    % src_sub_byte_multiplier
+                            == 0,
+            VERBOSE_UNSUPPORTED_TAG_S, "src");
 
     // src and dst logical dims must agree (oneDNN reorder API contract).
     for (int i = 0; i < ndims; i++)
@@ -219,7 +310,11 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     // per-slice size to turn a silent overrun into a clean dispatch failure.
     // The opaque dst carries per_slice_size and size == per_slice_size * batch.
     const auto &zpd = od.zen_packed_desc();
-    const dim_t expected_per_slice = zen_packed_bytes(K, N, type_o);
+    // The per-slice packed size can depend on the matmul source dtype (recorded
+    // in the packed descriptor as gemm_src_dt), so query with
+    // (wei=type_o, src=gemm_src_dt) -- for f32/bf16 gemm_src_dt == type_o.
+    const dim_t expected_per_slice
+            = zen_prepack_size(type_o, zpd.gemm_src_dt, K, N);
     VDISPATCH_REORDER_IC(expected_per_slice > 0
                     && zpd.per_slice_size
                             == static_cast<size_t>(expected_per_slice),
@@ -236,13 +331,22 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
             zpd.size == zpd.per_slice_size * batch_sz && od.size() == zpd.size,
             VERBOSE_INCONSISTENT_MDS, "dst", "packed-size");
 
-    // The f32 -> bf16 prepack path needs a K*N bf16 conversion buffer. Book it
-    // on the primitive scratchpad (declared here, consumed in execute() via the
-    // grantor) so execution stays allocation-free.
-    if (type_i == data_type::f32 && type_o == data_type::bf16) {
-        // One (K, N) bf16 slice; reused across batches in execute().
-        const size_t conv_bytes = static_cast<size_t>(K)
-                * static_cast<size_t>(N) * sizeof(int16_t);
+    // The f32 -> {bf16, s8, s4, u4} prepack paths need a per-slice K*N
+    // conversion buffer (bf16 = 2 bytes/elem, s8 = 1 byte/elem, s4/u4 =
+    // 2 elems/byte). Book it on the primitive scratchpad (declared here,
+    // consumed in execute() via the grantor), reused across batches so
+    // execution stays allocation-free.
+    if (type_i == data_type::f32
+            && utils::one_of(type_o, data_type::bf16, data_type::s8,
+                    data_type::s4, data_type::u4)) {
+        const size_t nelems = static_cast<size_t>(K) * static_cast<size_t>(N);
+        size_t conv_bytes;
+        if (type_o == data_type::bf16)
+            conv_bytes = nelems * sizeof(int16_t);
+        else if (type_o == data_type::s8)
+            conv_bytes = nelems * sizeof(int8_t);
+        else // s4 / u4: two 4-bit values per byte
+            conv_bytes = (nelems + 1) / 2;
         auto scratchpad = scratchpad_registry().registrar();
         scratchpad.book(memory_tracking::names::key_reorder_space, conv_bytes,
                 /*data_size=*/1, /*alignment=*/64);
@@ -317,33 +421,58 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
     const auto src_dt = src_d.data_type();
     const auto dst_dt = dst_d.data_type();
 
-    // Per-batch advance: src by its leading-dim stride (elements), dst by one
-    // fixed-size packed slot (per_slice_size bytes).
+    // Per-batch advance: source strides are expressed in logical elements.
+    // Convert to bytes explicitly because s4/u4 store two elements per byte.
+    // pd_t::init() rejects a sub-byte stride that starts on a high nibble.
     const size_t src_elem = src_d.data_type_size();
-    const size_t src_slice_bytes
-            = batched ? static_cast<size_t>(src_strides[0]) * src_elem : 0;
+    const size_t src_sub_byte_multiplier
+            = src_d.sub_byte_data_type_multiplier();
+    const size_t src_slice_bytes = batched ? static_cast<size_t>(src_strides[0])
+                    * src_elem / src_sub_byte_multiplier
+                                           : 0;
     const size_t dst_slice_bytes = dst_d.zen_packed_desc().per_slice_size;
 
     const auto *src_base = CTX_IN_MEM(const uint8_t *, DNNL_ARG_FROM);
     auto *dst_base = CTX_OUT_MEM(uint8_t *, DNNL_ARG_TO);
 
-    // f32 -> bf16 prepack needs a per-slice bf16 conversion buffer (booked in
-    // pd_t::init), reused across batches so execute() stays allocation-free.
+    // f32 -> {bf16, s8, s4, u4} prepack needs a per-slice conversion buffer
+    // (booked in pd_t::init), reused across batches so execute() stays
+    // allocation-free.
     void *conv = nullptr;
-    if (src_dt == data_type::f32 && dst_dt == data_type::bf16) {
-        conv = ctx.get_scratchpad_grantor().get<int16_t>(
+    if (src_dt == data_type::f32
+            && utils::one_of(dst_dt, data_type::bf16, data_type::s8,
+                    data_type::s4, data_type::u4)) {
+        conv = ctx.get_scratchpad_grantor().get<void>(
                 memory_tracking::names::key_reorder_space);
         if (conv == nullptr) return status::out_of_memory;
     }
+
+    // The matmul source dtype (u8/s8 for int8; f32/bf16 otherwise) is recorded
+    // in the packed descriptor; the AOCL-DLP blocked layout can depend on it,
+    // so forward it explicitly to the packer.
+    const zd gemm_src = to_zen_dt(dst_d.zen_packed_desc().gemm_src_dt);
 
     // Pack one (K, N) slice from `src` into `dst`.
     auto prepack_slice = [&](const void *src, void *dst) -> status_t {
         if (src_dt == data_type::bf16 && dst_dt == data_type::bf16)
             return zen_weight_prepack(
-                    src, dst, zd::bf16, K, N, ldb, transposed);
+                    src, dst, zd::bf16, zd::bf16, K, N, ldb, transposed);
 
         if (src_dt == data_type::f32 && dst_dt == data_type::f32)
-            return zen_weight_prepack(src, dst, zd::f32, K, N, ldb, transposed);
+            return zen_weight_prepack(
+                    src, dst, zd::f32, zd::f32, K, N, ldb, transposed);
+
+        if (src_dt == data_type::s8 && dst_dt == data_type::s8)
+            // int8 static-quant weight prepack.
+            return zen_weight_prepack(
+                    src, dst, zd::s8, gemm_src, K, N, ldb, transposed);
+
+        if ((src_dt == data_type::s4 && dst_dt == data_type::s4)
+                || (src_dt == data_type::u4 && dst_dt == data_type::u4))
+            // WOQ 4-bit weight prepack; the gemm source (bf16) is recorded in
+            // the packed descriptor and forwarded to the packer.
+            return zen_weight_prepack(src, dst, to_zen_dt(src_dt), gemm_src, K,
+                    N, ldb, transposed);
 
         if (src_dt == data_type::f32 && dst_dt == data_type::bf16) {
             // Convert f32 -> plain bf16 (contiguous `ab`), then prepack that
@@ -351,8 +480,31 @@ status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {
             // backend's f32->bf16 fringe-N bug (see header note).
             status_t st = f32_to_bf16_plain(src, conv, K, N, ldb, src_is_ab);
             if (st == success)
-                st = zen_weight_prepack(conv, dst, zd::bf16, K, N,
+                st = zen_weight_prepack(conv, dst, zd::bf16, zd::bf16, K, N,
                         /*ldb=*/N, /*transposed=*/false);
+            return st;
+        }
+
+        if (src_dt == data_type::f32 && dst_dt == data_type::s8) {
+            // int8 prepack from an f32 weight reference: cast f32 -> plain s8
+            // (contiguous `ab`), then prepack that s8 slice into the Zen
+            // blocked layout.
+            status_t st = f32_to_s8_plain(src, conv, K, N, ldb, src_is_ab);
+            if (st == success)
+                st = zen_weight_prepack(conv, dst, zd::s8, gemm_src, K, N,
+                        /*ldb=*/N, /*transposed=*/false);
+            return st;
+        }
+
+        if (src_dt == data_type::f32
+                && utils::one_of(dst_dt, data_type::s4, data_type::u4)) {
+            // WOQ prepack from an f32 weight reference: cast f32 -> packed
+            // 4-bit (contiguous `ab`), then prepack that 4-bit slice.
+            status_t st = f32_to_int4_plain(
+                    src, conv, K, N, ldb, src_is_ab, dst_dt);
+            if (st == success)
+                st = zen_weight_prepack(conv, dst, to_zen_dt(dst_dt), gemm_src,
+                        K, N, /*ldb=*/N, /*transposed=*/false);
             return st;
         }
 

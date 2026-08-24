@@ -76,6 +76,7 @@ inline zendnnl::common::data_type_t to_zen_dt(data_type_t dt) {
         case data_type::s8: return zd::s8;
         case data_type::s32: return zd::s32;
         case data_type::s4: return zd::s4;
+        case data_type::u4: return zd::u4;
         default: return zd::none;
     }
 }
@@ -107,21 +108,6 @@ inline dim_t zen_prepack_size(
 }
 #endif
 
-// Zen packer required buffer size (bytes) for weights of type `dt`, with the
-// matmul source data type equal to the weight type (the f32/bf16 Zen matmul
-// configs). The exact size is obtained from the backend's weight_prepack_size()
-// API; returns 0 for unsupported types or when Zen is disabled.
-inline dim_t zen_packed_bytes(dim_t K, dim_t N, data_type_t dt) {
-#if DNNL_X64_USE_ZEN
-    return zen_prepack_size(dt, dt, K, N);
-#else
-    MAYBE_UNUSED(K);
-    MAYBE_UNUSED(N);
-    MAYBE_UNUSED(dt);
-    return 0;
-#endif
-}
-
 // True when the weights memory descriptor uses the dedicated Zen packed
 // opaque format. Execute uses mem_format_b='r', transB='N', ldb=N for such
 // weights.
@@ -134,10 +120,13 @@ inline bool is_zen_packed(const memory_desc_t &md) {
 // (they must already be set, e.g. by set_default_formats()); only
 // `format_kind` and `format_desc` are overwritten.
 //
-// gemm_src_dt is the matmul source/compute data type. For the supported Zen
+// gemm_src_dt is the matmul source/compute data type. For the f32/bf16 Zen
 // configs (uniform f32, uniform bf16, bf16 src/wei -> f32 dst) it equals the
-// weights compute type; it is recorded so packed descriptors for different
-// GEMM source types stay distinct in the primitive cache.
+// weights compute type; for the int8 static-quant configs it may differ from
+// the weights type (e.g. u8 src with s8 weights). It is used to size the
+// packed buffer (the AOCL-DLP blocked layout can depend on the source dtype)
+// and recorded so packed descriptors for different GEMM source types stay
+// distinct in the primitive cache.
 // K and N are the GEMM dimensions (contraction, output). weights_transposed
 // tells how the md's dims map to them: false => [K, N] (matmul); true =>
 // [N, K] = [OC, IC] (inner product). It only affects how zen_reorder reads the
@@ -145,7 +134,15 @@ inline bool is_zen_packed(const memory_desc_t &md) {
 inline status_t init_zen_packed_md(memory_desc_t &weights_md,
         data_type_t gemm_src_dt, dim_t K, dim_t N, dim_t batch = 1,
         bool weights_transposed = false) {
-    const dim_t per_slice = zen_packed_bytes(K, N, weights_md.data_type);
+#if DNNL_X64_USE_ZEN
+    const dim_t per_slice
+            = zen_prepack_size(weights_md.data_type, gemm_src_dt, K, N);
+#else
+    MAYBE_UNUSED(gemm_src_dt);
+    MAYBE_UNUSED(K);
+    MAYBE_UNUSED(N);
+    const dim_t per_slice = 0;
+#endif
     if (per_slice <= 0) return status::unimplemented;
 
     // Guard the total-size multiplication: a non-positive batch or a

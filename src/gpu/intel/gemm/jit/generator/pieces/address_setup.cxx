@@ -695,10 +695,10 @@ void Generator<hw>::incAddrShifted(const GRFRange &addrDst, const GRFRange &addr
                 mov<uint32_t>(8, addrDst[0], addrSrc[0]);
             if (astrategy.address2D) {
                 if (isColMajor(atype.layout)) {
-                    if (cincR != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincR, blockDst.extra, blockDst.ebytes * 8, state, true);
+                    if (cincR != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincR, blockDst.extra, blockDst.ebytes * 8, state, astrategy.prefetch ? false: true);
                     if (cincC != 0) add(1, addrDst[0].d(6), addrDst[0].d(6), cincC);
                 } else {
-                    if (cincC != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincC, blockDst.extra, blockDst.ebytes * 8, state, true);
+                    if (cincC != 0) addScaled(1, addrDst[0].d(5), addrDst[0].d(5), cincC, blockDst.extra, blockDst.ebytes * 8, state, astrategy.prefetch ? false : true);
                     if (cincR != 0) add(1, addrDst[0].d(6), addrDst[0].d(6), cincR);
                 }
             } else

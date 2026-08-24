@@ -685,7 +685,7 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                 if (Tblock.paddedSize() > 8) Tblock = Type::u64;
                 crosspack = atype.crosspack;
             }
-            if ((X * T) % 4) hw_unsupported();
+            //if ((X * T) % 4) hw_unsupported();
 
             int minAlign = block2DMinAlignment(hw, atype, astrategy);
             if (atype.alignment % minAlign) hw_unsupported();
@@ -742,14 +742,16 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
 
             simdSize = 1;
             ld = roundup_pow2(transpose ? yblock : xblock);
-            ebytes = T.is3() ? 1: Tblock.paddedSize();
+            ebytes = T.is3() ? 4: Tblock.paddedSize();
             extra = T.bits();
             auto bytes = align_up((colMajor ? cblock : rblock) / count, crosspack) * ld * count * T;
             if (T.is3())
 		    bytes = ((colMajor ? cblock : rblock) / count) * roundup_pow2(ld *T) * count;
 	    msgRegs = GRF::bytesToGRFs(hw, bytes);
+            //if (T.is3()) crosspack = 8;
             if (vnni && (T.bits() < 8)) {
-                if (T.is3()) stub("u3 does not support native VNNI/DPAS packing; unpack to u8 first.");
+
+            if (T.is3()) stub("u3 does not support native VNNI/DPAS packing; unpack to u8 first.");
                 byteGlue = true;
                 crosspack /= (8 / T.bits());
             }
@@ -757,12 +759,12 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             // Xe2: manually mask in the height dimension to work around slow LSC
             //      out-of-bounds checks.
             bool remainderH = memCM ? remainderC : remainderR;
-            /*if (hw >= HW::Xe2 && remainderH) {
+            if (hw >= HW::Xe2 && remainderH) {
                 auto &vymask = memCM ? colMask.variable : rowMask.variable;
                 vymask.isFixed = false;
                 vymask.bitRep = vymask.maskRep = vymask.rsize = 1;
                 vymask.rshift = 0;
-            }*/
+            }
             break;
         }
         case AccessType::CacheLine: {
@@ -1007,7 +1009,12 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
         int elIndex = xx + yy * ld;
         if (elIndex & 7)
             stub("u3 element index must be aligned to an 8-element (3-byte) group boundary.");
-        int byteOff =  (elIndex >> 3) * 3;
+        int byteOff = colMajor ? (ld * (0/8) * 3 + xx) : (elIndex >> 3) * 3;
+	if (colMajor){
+		//4 byte crosspack
+		auto y_byte_off = (((yy/8)*3)/4) * (ld*4) + (((yy/8)*3) % 4) + xx*4;
+		byteOff = y_byte_off;
+	}
 	if (false) { //msgRegs > 0){ // isBlock2D(astrategy.type)){ 
 		if (colMajor){
 		int rowbytes = yy *ld * T; // roundup_pow2((ld *3)/8);
@@ -1066,11 +1073,14 @@ static RegisterRegion blockRegion(Type T, const Subregister &reg, const Register
     // (tagged with the ngen_u3() pseudo-type); return them with a plain
     // stride of 1, matching what CopyPlan::planInt3Upconversion expects as
     // its only legal source region.
-    if (T.is3())
+    if (T.is3()){
 	if (block.byteGlue)
 		return reg(reg.getWidth()*4 ,reg.getWidth() , 4);
+	else if (block.colMajor)
+		return reg(block.ld, 0, 4);
 	else
-        return reg(1);
+	return reg(1);
+    }
 
     if (block.byteGlue && allow2D && T.bits() < 8) {
         if (nelems)

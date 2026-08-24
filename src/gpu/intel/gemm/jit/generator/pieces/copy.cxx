@@ -116,11 +116,14 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
     auto RegisterBlock::*nx = sCM ? &RegisterBlock::nr : &RegisterBlock::nc;
     auto RegisterBlock::*ny = sCM ? &RegisterBlock::nc : &RegisterBlock::nr;
 
+
+
+
+    for (auto &sblock : layoutSrc) {
+    for (int eoffY = 0; eoffY < sblock.*ny; Ts.is3() ? eoffY+=8 :eoffY++) {
     // Accumulate copy pseudo-instructions.
     CopyPlan plan(hw, strategy.systolicAvailable);
 
-    for (auto &sblock : layoutSrc) {
-    for (int eoffY = 0; eoffY < sblock.*ny; eoffY++) {
     for (int eoffX = 0; eoffX < sblock.*nx;) {
         auto eoffR = sblock.colMajor ? eoffX : eoffY;
         auto eoffC = sblock.colMajor ? eoffY : eoffX;
@@ -135,7 +138,7 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
         CopyOperand dOp = layoutDst.findRegion(sblock.offsetR + eoffR + dOffR, sblock.offsetC + eoffC + dOffC, dst, &nd, &dblock, cxComp, 0, true);
         dOp.type = Td.real().ngen();
         int n = std::min(ns, nd);
-
+      //  if (Ts.is3()) n= n*8;
         if (!preserveSrc) {
             sOp.overwrite = true;
             sOp.overwriteStride = (sblock.*ny == 1 && sblock.crosspack > 1);
@@ -167,10 +170,13 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
 
         eoffX += n;
     } /* eoffX loop */
+    copyExecute(std::move(plan), state);
+
     } /* eoffY loop */
     } /* sblock loop */
 
-    copyExecute(std::move(plan), state);
+
+
 }
 
 template <HW hw>

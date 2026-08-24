@@ -104,8 +104,8 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                         asr(simd, r1, r1, 15);
                     });
                 }
-                if (T.paddedSize() == 1 && !T.is3()) for (int q0 = 0; q0 < nq; q0 += n16)
-                    mov(n16, masks[q0 / ne].ub(q0 % ne)(1), masks[q0 / n16].ub(1)(2));
+                if (T.paddedSize() == 1 && !T.is3()) {for (int q0 = 0; q0 < nq; q0 += n16)
+                    mov(n16, masks[q0 / ne].ub(q0 % ne)(1), masks[q0 / n16].ub(1)(2));}
                 break;
             case 4:
                 for (int qq0 = div_up(nq, ne16) - 1; qq0 >= 1; qq0--) {

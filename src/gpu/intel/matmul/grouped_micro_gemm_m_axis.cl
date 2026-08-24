@@ -114,7 +114,7 @@ DECLARE_2D_TILE(binary_group_chunk_in_type, BINARY_SCALE_GROUPED_TILE_DATA_T,
 #endif
 
 #if WITH_BINARY_DENSE_SCALE
-#define binary_dense_scale_br MAX(SUBGROUP_SIZE, ugemm_grouped_sg_tile_n)
+#define binary_dense_scale_br MAX(SUBGROUP_SIZE, ugemm_grouped_sg_tile_m)
 #define binary_dense_scale_bc 1
 #define binary_dense_scale_nbr 1
 #define binary_dense_scale_nbc 1

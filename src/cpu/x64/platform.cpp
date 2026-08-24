@@ -117,7 +117,7 @@ uint32_t calculate_per_core_cache(size_t cpu_index, int level) {
     // Physical cores sharing this cache (mirrors legacy smt_width division).
     size_t sharing_cores = std::max(sharing_logical / smt_width, size_t(1));
 
-    return cache.size / sharing_cores;
+    return static_cast<uint32_t>(cache.size / sharing_cores);
 }
 
 struct cache_level_info_t {

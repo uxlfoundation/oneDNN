@@ -1051,6 +1051,7 @@ void jit_uni_eltwise_injector_t<isa>::compute_vector_range(
 
 template struct jit_uni_eltwise_injector_t<v>;
 template struct jit_uni_eltwise_injector_t<zvfh>;
+template struct jit_uni_eltwise_injector_t<zvfbfwma>;
 
 } // namespace rv64
 } // namespace cpu

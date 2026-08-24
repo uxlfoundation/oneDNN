@@ -367,6 +367,7 @@ void jit_uni_binary_injector_t<isa>::apply_op(const Vmm &dst, bool scalar) {
 
 template struct jit_uni_binary_injector_t<v>;
 template struct jit_uni_binary_injector_t<zvfh>;
+template struct jit_uni_binary_injector_t<zvfbfwma>;
 
 } // namespace rv64
 } // namespace cpu

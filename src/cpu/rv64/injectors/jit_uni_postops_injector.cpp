@@ -185,6 +185,7 @@ bool jit_uni_postops_injector_t<isa>::post_ops_ok(
 
 template struct jit_uni_postops_injector_t<v>;
 template struct jit_uni_postops_injector_t<zvfh>;
+template struct jit_uni_postops_injector_t<zvfbfwma>;
 
 } // namespace injector
 } // namespace rv64

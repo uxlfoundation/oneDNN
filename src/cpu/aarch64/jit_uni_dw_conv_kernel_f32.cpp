@@ -76,6 +76,12 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::load_src(
                     // Convert BF16 input to FP32
                     lsl(ZRegS(0), ZRegS(0), 16);
                     fadd(zregs_acc, zregs_acc, ZRegS(0));
+                } else if (jcp.dst_dt == data_type::f16) {
+                    LD_MUL_VL(ld1h, ZRegS(0), P_ALL_ONE, reg_tmp_addr,
+                            o_off * jcp.typesize_out, jcp.typesize_out);
+                    // Convert existing FP16 destination to FP32 for sum.
+                    fcvt(ZRegS(0), P_ALL_ONE, ZReg(0).h);
+                    fadd(zregs_acc, zregs_acc, ZRegS(0));
                 } else {
                     assert(!"Unsupported: data type");
                 }
@@ -115,11 +121,18 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<asimd>::load_src(
 
             int o_off = ow * ow_stride;
             if (this->jcp.with_sum) {
-                auto z_tmp = QReg(0);
-                assert(jcp.dst_dt == data_type::f32);
-                ldr(z_tmp,
-                        ptr(addr_off(reg_tmp_addr, o_off * jcp.typesize_out,
-                                X_DEFAULT_ADDR, reg_tmp_imm)));
+                if (jcp.dst_dt == data_type::f32) {
+                    ldr(QReg(0),
+                            ptr(addr_off(reg_tmp_addr, o_off * jcp.typesize_out,
+                                    X_DEFAULT_ADDR, reg_tmp_imm)));
+                } else if (jcp.dst_dt == data_type::f16) {
+                    ldr(DReg(0),
+                            ptr(addr_off(reg_tmp_addr, o_off * jcp.typesize_out,
+                                    X_DEFAULT_ADDR, reg_tmp_imm)));
+                    fcvtl(VReg4S(0), VReg4H(0));
+                } else {
+                    assert(!"Unsupported: data type");
+                }
                 fadd(VReg4S(acc_idx), VReg4S(acc_idx), VReg4S(0));
             }
         }
@@ -141,6 +154,9 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
     const auto icb_stride = src_layout_nxc
             ? ch_blk
             : (jcp.is_fused_conv ? 1 : jcp.ih) * jcp.iw * ch_blk;
+    const bool use_f16_channel_pairs
+            = isa == asimd && jcp.dst_dt == data_type::f16 && src_layout_nxc;
+    const int wei_block_stride = jcp.kh * jcp.kw * ch_blk * jcp.typesize_in;
 
     Label iter_exit_label;
 
@@ -156,7 +172,9 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
             add(aux_reg_input, aux_reg_input, reg_iw_offset);
         }
 
-        for (int ch = 0; ch < ur_ch_blocks; ch++) {
+        for (int ch = 0; ch < ur_ch_blocks;) {
+            const bool use_channel_pair
+                    = use_f16_channel_pairs && ch + 1 < ur_ch_blocks;
             // adjust the src offset so it's always within the range expected by LD_MUL_VL.
             add_imm(reg_tmp_addr, aux_reg_input,
                     (ch * icb_stride) * jcp.typesize_in, reg_tmp_imm);
@@ -166,12 +184,27 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
             for (int kw = 0; kw < jcp.kw; kw++) {
                 int ker_off = kw * ch_blk;
                 if (isa == asimd) {
-                    QReg zregs_ker = QReg(0);
-                    assert(jcp.dst_dt == data_type::f32);
-                    ldr(zregs_ker,
-                            ptr(addr_off(reg_tmp2_addr,
-                                    ker_off * jcp.typesize_in, X_DEFAULT_ADDR,
-                                    reg_tmp_imm)));
+                    if (jcp.dst_dt == data_type::f32) {
+                        ldr(QReg(0),
+                                ptr(addr_off(reg_tmp2_addr,
+                                        ker_off * jcp.typesize_in,
+                                        X_DEFAULT_ADDR, reg_tmp_imm)));
+                    } else if (jcp.dst_dt == data_type::f16) {
+                        ldr(DReg(0),
+                                ptr(addr_off(reg_tmp2_addr,
+                                        ker_off * jcp.typesize_in,
+                                        X_DEFAULT_ADDR, reg_tmp_imm)));
+                        if (use_channel_pair) {
+                            ldr(DReg(2),
+                                    ptr(addr_off(reg_tmp2_addr,
+                                            wei_block_stride
+                                                    + ker_off * jcp.typesize_in,
+                                            X_DEFAULT_ADDR, reg_tmp_imm)));
+                            ins(VReg2D(0)[1], VReg2D(2)[0]);
+                        }
+                    } else {
+                        assert(!"Unsupported: data type");
+                    }
                 } else {
                     ZReg zregs_ker = get_ker_reg(0);
                     if (jcp.dst_dt == data_type::f32) {
@@ -180,6 +213,10 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
                     } else if (jcp.dst_dt == data_type::bf16) {
                         LD_MUL_VL(ld1h, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
                                 ker_off * jcp.typesize_in, jcp.typesize_in);
+                    } else if (jcp.dst_dt == data_type::f16) {
+                        LD_MUL_VL(ld1h, zregs_ker.s, P_ALL_ONE, reg_tmp2_addr,
+                                ker_off * jcp.typesize_in, jcp.typesize_in);
+                        fcvt(zregs_ker.s, P_ALL_ONE, zregs_ker.h);
                     } else {
                         assert(!"Unsupported: data type");
                     }
@@ -191,14 +228,37 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
                     int inp_off = (ow * stride_w - pad_l) * iw_stride
                             + kw * dilate_w * iw_stride;
                     if (isa == asimd) {
-                        QReg zregs_src = QReg(1);
-                        ldr(zregs_src,
-                                ptr(addr_off(reg_tmp_addr,
-                                        inp_off * jcp.typesize_in,
-                                        X_DEFAULT_ADDR, reg_tmp_imm)));
                         const int acc_idx
                                 = get_acc_reg(ch * ur_w + ow).getIdx();
-                        fmla(VReg4S(acc_idx), VReg4S(1), VReg4S(0));
+                        if (jcp.dst_dt == data_type::f32) {
+                            ldr(QReg(1),
+                                    ptr(addr_off(reg_tmp_addr,
+                                            inp_off * jcp.typesize_in,
+                                            X_DEFAULT_ADDR, reg_tmp_imm)));
+                            fmla(VReg4S(acc_idx), VReg4S(1), VReg4S(0));
+                        } else if (jcp.dst_dt == data_type::f16) {
+                            if (use_channel_pair) {
+                                ldr(QReg(1),
+                                        ptr(addr_off(reg_tmp_addr,
+                                                inp_off * jcp.typesize_in,
+                                                X_DEFAULT_ADDR, reg_tmp_imm)));
+                            } else {
+                                ldr(DReg(1),
+                                        ptr(addr_off(reg_tmp_addr,
+                                                inp_off * jcp.typesize_in,
+                                                X_DEFAULT_ADDR, reg_tmp_imm)));
+                            }
+                            fmlal(VReg4S(acc_idx), VReg4H(1), VReg4H(0));
+                            if (use_channel_pair) {
+                                const int upper_acc_idx
+                                        = get_acc_reg((ch + 1) * ur_w + ow)
+                                                  .getIdx();
+                                fmlal2(VReg4S(upper_acc_idx), VReg4H(1),
+                                        VReg4H(0));
+                            }
+                        } else {
+                            assert(!"Unsupported: data type");
+                        }
                     } else {
                         ZReg zregs_ker = get_ker_reg(0);
                         ZReg zregs_src = get_src_reg(1);
@@ -215,12 +275,21 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
                                     jcp.typesize_in);
                             ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
                             bfmlalb(zregs_acc, zregs_src.h, zregs_ker.h);
+                        } else if (jcp.dst_dt == data_type::f16) {
+                            LD_MUL_VL(ld1h, zregs_src.s, P_ALL_ONE,
+                                    reg_tmp_addr, inp_off * jcp.typesize_in,
+                                    jcp.typesize_in);
+                            ZRegS zregs_acc = get_acc_reg_s(ch * ur_w + ow);
+                            fcvt(zregs_src.s, P_ALL_ONE, zregs_src.h);
+                            fmla(zregs_acc, P_ALL_ONE, zregs_src.s,
+                                    zregs_ker.s);
                         } else {
                             assert(!"Unsupported: data type");
                         }
                     }
                 }
             }
+            ch += use_channel_pair ? 2 : 1;
         }
 
         add_imm(aux_reg_kernel, aux_reg_kernel,
@@ -276,6 +345,13 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::store_dst(
                 // Store the bf16 value doing the downcast
                 ST_MUL_VL(st1h, zreg_dst.s, P_ALL_ONE, reg_tmp_addr,
                         o_off * jcp.typesize_out, jcp.typesize_out);
+            } else if (jcp.dst_dt == data_type::f16) {
+                ZReg zreg_dst = get_acc_reg(ch * ur_w + ow);
+                // Convert fp32 to f16
+                fcvt(zreg_dst.h, P_ALL_ONE, zreg_dst.s);
+                // Store the f16 value doing the downcast
+                ST_MUL_VL(st1h, zreg_dst.s, P_ALL_ONE, reg_tmp_addr,
+                        o_off * jcp.typesize_out, jcp.typesize_out);
             } else {
                 assert(!"Unsupported: data type");
             }
@@ -297,11 +373,19 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<asimd>::store_dst(
                 reg_tmp_imm);
         for (int ow = 0; ow < ur_w; ow++) {
             const int o_off = ow * ow_stride;
-            assert(jcp.dst_dt == data_type::f32);
             const int acc_idx = get_acc_reg(ch * ur_w + ow).getIdx();
-            str(QReg(acc_idx),
-                    ptr(addr_off(reg_tmp_addr, o_off * jcp.typesize_out,
-                            X_DEFAULT_ADDR, reg_tmp_imm)));
+            if (jcp.dst_dt == data_type::f32) {
+                str(QReg(acc_idx),
+                        ptr(addr_off(reg_tmp_addr, o_off * jcp.typesize_out,
+                                X_DEFAULT_ADDR, reg_tmp_imm)));
+            } else if (jcp.dst_dt == data_type::f16) {
+                fcvtn(VReg4H(acc_idx), VReg4S(acc_idx));
+                str(DReg(acc_idx),
+                        ptr(addr_off(reg_tmp_addr, o_off * jcp.typesize_out,
+                                X_DEFAULT_ADDR, reg_tmp_imm)));
+            } else {
+                assert(!"Unsupported: data type");
+            }
         }
     }
 }

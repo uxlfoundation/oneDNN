@@ -35,13 +35,16 @@ namespace rv64 {
 
 // Forward pooling. The retained native kernel (jit_uni_pool_ncsp_kernel_t)
 // handles the plain nspc and ncsp layouts for both inference and training (f32
-// via v, f16 via zvfh; max and avg). The x64/aarch64-style baked kernel
-// (jit_uni_pool_kernel_t) handles the blocked (nChw{c_block}c) layout. rv64 has
-// no JIT plain<->blocked transpose, so the two layout families never mix.
+// via v, f16 via zvfh, bf16 via zvfbfwma; max and avg). The x64/aarch64-style
+// baked kernel (jit_uni_pool_kernel_t) handles the blocked (nChw{c_block}c)
+// layout. rv64 has no JIT plain<->blocked transpose, so the two layout families
+// never mix. bf16 backward stays off the baked kernel (see its init_conf), so
+// blocked bf16 backward falls to the reference.
 template <cpu_isa_t isa>
 struct jit_uni_pooling_fwd_t : public primitive_t {
-    static constexpr data_type_t d_type
-            = (isa == zvfh) ? data_type::f16 : data_type::f32;
+    static constexpr data_type_t d_type = (isa == zvfh) ? data_type::f16
+            : (isa == zvfbfwma)                         ? data_type::bf16
+                                                        : data_type::f32;
 
     struct pd_t : public cpu_pooling_fwd_pd_t {
         using cpu_pooling_fwd_pd_t::cpu_pooling_fwd_pd_t;
@@ -68,10 +71,13 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
             VDISPATCH_POOLING(
                     platform::has_data_type_support(src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            constexpr bool is_f16 = d_type == data_type::f16;
+            // Both 16-bit float types accumulate at f32 (common/pooling.cpp
+            // derives accum_data_type = f32 for them).
+            constexpr bool is_xf16
+                    = one_of(d_type, data_type::f16, data_type::bf16);
             VDISPATCH_POOLING(
                     IMPLICATION(
-                            is_f16, desc()->accum_data_type == data_type::f32),
+                            is_xf16, desc()->accum_data_type == data_type::f32),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
@@ -97,10 +103,10 @@ struct jit_uni_pooling_fwd_t : public primitive_t {
                 init_default_ws();
 
             // Plain layouts (nspc/ncsp) use the retained native kernel. It
-            // handles forward inference and training for both layouts, f32 and
-            // f16, max (max training writes the argmax workspace) and avg. It
-            // declines blocked, and f16 max training with a window too large for
-            // a 16-bit index, which fall to the baked kernel below.
+            // handles forward inference and training for both layouts, f32,
+            // f16 and bf16, max (max training writes the argmax workspace) and
+            // avg. It declines blocked, and xf16 max training with a window too
+            // large for a 16-bit index, which fall to the baked kernel below.
             {
                 status_t st
                         = jit_uni_pool_ncsp_kernel_t<isa, d_type>::init_conf(
@@ -153,8 +159,9 @@ private:
 // Both handle max (via the index workspace) and avg.
 template <cpu_isa_t isa>
 struct jit_uni_pooling_bwd_t : public primitive_t {
-    static constexpr data_type_t d_type
-            = (isa == zvfh) ? data_type::f16 : data_type::f32;
+    static constexpr data_type_t d_type = (isa == zvfh) ? data_type::f16
+            : (isa == zvfbfwma)                         ? data_type::bf16
+                                                        : data_type::f32;
 
     struct pd_t : public cpu_pooling_bwd_pd_t {
         using cpu_pooling_bwd_pd_t::cpu_pooling_bwd_pd_t;
@@ -178,10 +185,11 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
             VDISPATCH_POOLING(
                     platform::has_data_type_support(diff_src_md()->data_type),
                     VERBOSE_UNSUPPORTED_DT);
-            constexpr bool is_f16 = d_type == data_type::f16;
+            constexpr bool is_xf16
+                    = one_of(d_type, data_type::f16, data_type::bf16);
             VDISPATCH_POOLING(
                     IMPLICATION(
-                            is_f16, desc()->accum_data_type == data_type::f32),
+                            is_xf16, desc()->accum_data_type == data_type::f32),
                     VERBOSE_UNSUPPORTED_DT);
             VDISPATCH_POOLING(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
             VDISPATCH_POOLING(!is_dilated(), VERBOSE_UNSUPPORTED_FEATURE,
@@ -196,13 +204,13 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
                 if (!compare_ws(hint_fwd_pd_)) return status::unimplemented;
             }
 
-            // The native gather backward kernel is used only for f16 nspc, where
-            // its vectorized f16<->f32 conversion outweighs the extra traffic.
-            // f32 (both layouts) and f16 ncsp keep the pre-existing dispatch
-            // (baked for blocked/nspc, the nhwc/nchw reference otherwise). For a
-            // non-nspc f16 layout init_conf still populates jpp_, but the baked
-            // path below repopulates it.
-            if (d_type == data_type::f16) {
+            // The native gather backward kernel is used only for xf16 nspc,
+            // where its vectorized xf16<->f32 conversion outweighs the extra
+            // traffic. f32 (both layouts) and xf16 ncsp keep the pre-existing
+            // dispatch (baked for blocked/nspc, the nhwc/nchw reference
+            // otherwise). For a non-nspc xf16 layout init_conf still populates
+            // jpp_, but the baked path below repopulates it.
+            if (is_xf16) {
                 status_t st = jit_uni_pool_bwd_kernel_t<isa, d_type>::init_conf(
                         jpp_, this);
                 if (st == status::success
@@ -221,7 +229,7 @@ struct jit_uni_pooling_bwd_t : public primitive_t {
             // is updated once per covering output window, ~ceil(K/S)^ndims x the
             // diff_src traffic), which loses to the nhwc_pooling gather (each
             // input written once); with no dtype conversion to amortize it, defer
-            // to that reference. f16 nspc took the native kernel above, and
+            // to that reference. xf16 nspc took the native kernel above, and
             // blocked has no gather fallback, so it stays on the baked kernel.
             VDISPATCH_POOLING(
                     !(d_type == data_type::f32

@@ -274,8 +274,18 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(jit_pool_conf_t &jpp,
     jpp.src_dt = ppd->is_fwd() ? src_d.data_type() : dst_d.data_type();
     jpp.dst_dt = ppd->is_fwd() ? dst_d.data_type() : src_d.data_type();
     jpp.is_f16 = (src_d.data_type() == data_type::f16);
+    jpp.is_bf16 = (src_d.data_type() == data_type::bf16);
     jpp.dt_size = types::data_type_size(src_d.data_type());
     jpp.isa = isa;
+
+    // This kernel accumulates diff_src in memory: one load-modify-store per
+    // covering output window, so the running sum is rounded to the storage
+    // dtype at every window. With bf16's 8-bit significand that drifts by 1 ulp
+    // from the f32-accumulated reference, which pooling's exact-match check
+    // rejects (seen on 3D blocked shapes, where the depth window forces one
+    // round-trip per kd). Decline; the plain layouts already take the native
+    // gather kernel, which keeps one f32 accumulator per input and stores once.
+    if (jpp.is_bf16 && jpp.is_backward) return status::unimplemented;
 
     // Blocked with padded channels (is_c_padded) is left to the reference: the
     // RVV tail is a vl reduction, which cleanly covers nspc but not the padded
@@ -327,7 +337,7 @@ status_t jit_uni_pool_kernel_t<isa>::init_conf(jit_pool_conf_t &jpp,
     // Widen the channel vector for f32 nspc forward inference to amortise the
     // per-channel-block call count, the cost that made the plain baked kernel
     // slower than the native full-C kernel.
-    if (jpp.tag_kind == jit_pool_tag_kind_t::nspc && !jpp.is_f16
+    if (jpp.tag_kind == jit_pool_tag_kind_t::nspc && !jpp.is_f16 && !jpp.is_bf16
             && !jpp.is_backward && !jpp.is_training && !jpp.with_postops) {
         const int base = (int)(vlen / 32);
         int lmul = (base > 0) ? 16 / base : 1;
@@ -410,12 +420,16 @@ void jit_uni_pool_kernel_t<isa>::set_vl_e32() {
 template <cpu_isa_t isa>
 void jit_uni_pool_kernel_t<isa>::load(int idx, const Reg &reg_ptr, int offset) {
     addr_off(t1, reg_ptr, offset);
-    if (jpp.is_f16) {
-        // vfwcvt.f.f.v takes the NARROW (source) vtype: run it under e16/mf2 so
-        // it widens f16->f32 (dest e32/m1), not f32->f64. Restore e32 after.
+    if (jpp.is_f16 || jpp.is_bf16) {
+        // The widening convert takes the NARROW (source) vtype: run it under
+        // e16/mf2 so it widens xf16->f32 (dest e32/m1), not f32->f64. Restore
+        // e32 after. bf16 uses the Zvfbfmin convert, f16 the Zvfh one.
         vsetvli(t0, reg_vl, SEW::e16, LMUL::mf2, VTA::ta, VMA::ma);
         vle16_v(v_tmp, t1);
-        vfwcvt_f_f_v(vreg(idx), v_tmp);
+        if (jpp.is_bf16)
+            vfwcvtbf16_f_f_v(vreg(idx), v_tmp);
+        else
+            vfwcvt_f_f_v(vreg(idx), v_tmp);
         set_vl_e32();
     } else {
         vle32_v(vreg(idx), t1);
@@ -426,9 +440,12 @@ template <cpu_isa_t isa>
 void jit_uni_pool_kernel_t<isa>::store(
         int idx, const Reg &reg_ptr, int offset) {
     addr_off(t1, reg_ptr, offset);
-    if (jpp.is_f16) {
+    if (jpp.is_f16 || jpp.is_bf16) {
         vsetvli(t0, reg_vl, SEW::e16, LMUL::mf2, VTA::ta, VMA::ma);
-        vfncvt_f_f_w(v_tmp, vreg(idx));
+        if (jpp.is_bf16)
+            vfncvtbf16_f_f_w(v_tmp, vreg(idx));
+        else
+            vfncvt_f_f_w(v_tmp, vreg(idx));
         vse16_v(v_tmp, t1);
         set_vl_e32();
     } else {
@@ -580,10 +597,12 @@ void jit_uni_pool_kernel_t<isa>::max_step_fwd(int ur_w, int pad_l, int pad_r) {
             = (jpp.tag_kind == jit_pool_tag_kind_t::nspc) ? jpp.c : jpp.c_block;
     const int dt = jpp.dt_size;
 
-    // Init accumulators to the dtype lowest (f16 lowest for f16 so an all-pad
-    // window narrows exactly); zero the index accumulators for training.
-    const float init_val
-            = jpp.is_f16 ? -65504.0f : nstl::numeric_limits<float>::lowest();
+    // Init accumulators to the dtype lowest (the xf16 lowest for f16/bf16 so an
+    // all-pad window narrows exactly); zero the index accumulators for training.
+    const float init_val = jpp.is_f16
+            ? -65504.0f
+            : (jpp.is_bf16 ? (float)nstl::numeric_limits<bfloat16_t>::lowest()
+                           : nstl::numeric_limits<float>::lowest());
     load_f32_const(f_tmp, init_val, t2);
     for (int jj = 0; jj < ur_w; jj++) {
         vfmv_v_f(vreg(reg_ind(0, jj, ur_w)), f_tmp);
@@ -735,7 +754,7 @@ void jit_uni_pool_kernel_t<isa>::zero_diff_src() {
     const Reg aux_ptr = t3;
     const Reg aux_ih = t4;
 
-    vmv_v_x(v_tmp, x0); // zero vector (f32) / f16 store narrows zero anyway
+    vmv_v_x(v_tmp, x0); // zero vector (f32); an xf16 store narrows zero anyway
 
     ld(reg_zero_ptr, reg_param, GET_OFF(zero_ptr));
     ld(reg_zero_id, reg_param, GET_OFF(zero_id));
@@ -751,7 +770,7 @@ void jit_uni_pool_kernel_t<isa>::zero_diff_src() {
     // C apart and each stores c_block (=vl) channels; for blocked c_off==c_block
     // (contiguous). Either way this zeroes iw columns * c_block channels.
     for (int i = 0; i < width; i += c_off) {
-        if (jpp.is_f16) {
+        if (jpp.is_f16 || jpp.is_bf16) {
             vsetvli(t0, reg_vl, SEW::e16, LMUL::mf2, VTA::ta, VMA::ma);
             vmv_v_x(v_tmp, x0);
             addr_off(t1, aux_ptr, dt * i);
@@ -942,6 +961,7 @@ void jit_uni_pool_kernel_t<isa>::generate() {
 
 template struct jit_uni_pool_kernel_t<v>;
 template struct jit_uni_pool_kernel_t<zvfh>;
+template struct jit_uni_pool_kernel_t<zvfbfwma>;
 
 // ================== native VLA forward kernel (nspc/ncsp) ==================
 
@@ -983,6 +1003,7 @@ status_t jit_uni_pool_ncsp_kernel_t<isa, d_type>::init_conf(
     jpp.dst_dt = dst_d.data_type();
     jpp.dt_size = types::data_type_size(jpp.src_dt);
     jpp.is_f16 = d_type == data_type::f16;
+    jpp.is_bf16 = d_type == data_type::bf16;
     jpp.isa = isa;
     jpp.nthr = dnnl_get_max_threads();
     jpp.ur_w = 4;
@@ -1036,7 +1057,7 @@ status_t jit_uni_pool_ncsp_kernel_t<isa, d_type>::init_conf(
     // the (never-hit-by-real-pooling) window volume that would overflow a signed
     // 16-bit index.
     if (jpp.alg == alg_kind::pooling_max && jpp.is_training
-            && d_type == data_type::f16
+            && utils::one_of(d_type, data_type::f16, data_type::bf16)
             && (int64_t)jpp.kd * jpp.kh * jpp.kw > 32768)
         return status::unimplemented;
     jpp.with_relu = false;
@@ -1099,8 +1120,8 @@ status_t jit_uni_pool_ncsp_kernel_t<isa, d_type>::init_conf(
 
 template <cpu_isa_t isa, data_type_t d_type>
 void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate() {
-    if (d_type == data_type::f16)
-        generate_f16();
+    if (utils::one_of(d_type, data_type::f16, data_type::bf16))
+        generate_xf16();
     else
         generate_f32();
 }
@@ -1423,14 +1444,22 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_f32() {
 }
 
 template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_f16() {
+void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_xf16() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
     const VReg v_mask(0);
-    // max: v_acc(f16m1)=v4, v_tmp(f16m1)=v8.
-    // avg: v_acc(f32m2)=v4-v5, v_tmp(f16m1)=v8 (load buffer + narrowed result).
+    // f16 max: v_acc(f16m1)=v4, v_tmp(f16m1)=v8.
+    // avg (both dtypes) and bf16 max: v_acc(f32m2)=v4-v5, v_tmp(f16m1)=v8
+    // (load buffer + narrowed result).
     const VReg v_acc(4), v_tmp(8);
-    const VReg v_res = is_max_pool_ ? v_acc : v_tmp;
+    // bf16 has no e16 arithmetic, so its max compares at f32 like avg already
+    // does: every load is widened into v_wide and the accumulator stays f32/m2.
+    // v24 is otherwise only the f16-max post-op widen buffer, which the bf16
+    // path does not need (its accumulator is already f32), so it is free here.
+    constexpr bool is_bf16 = d_type == data_type::bf16;
+    const VReg v_wide(24);
+    const bool acc_is_f32 = !is_max_pool_ || is_bf16;
+    const VReg v_res = (is_max_pool_ && !is_bf16) ? v_acc : v_tmp;
     // Max forward-training tracks the per-channel argmax. The index fits e16 for
     // any realistic pooling window (< 32768), so v_ind stays e16/m1 — the same
     // vtype as the f16 data, avoiding a per-window-element vtype switch. It is
@@ -1557,9 +1586,18 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_f16() {
     // Initialize accumulator. Use vmv.v.x with the raw bit pattern to avoid
     // f16 scalar NaN-boxing concerns.
     if (is_max_pool_) {
-        vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        li(t1, 0xFBFF); // f16 lowest (-65504.0)
-        vmv_v_x(v_acc, t1);
+        if (is_bf16) {
+            // f32 accumulator seeded with the lowest *bf16* value, so an
+            // all-padding window narrows back exactly.
+            vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+            li(t1, 0xFF7F0000); // (float)bf16 lowest (-3.3895314e38)
+            vmv_v_x(v_acc, t1);
+            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        } else {
+            vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+            li(t1, 0xFBFF); // f16 lowest (-65504.0)
+            vmv_v_x(v_acc, t1);
+        }
         if (max_train) {
             vmv_v_x(v_ind, x0); // argmax index accumulator = 0 (e16m1)
             if (mt_bin) {
@@ -1607,13 +1645,32 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_f16() {
         vlse16_v(v_tmp, a7, s8);
         L(src_ld_done);
     }
-    if (is_max_pool_) {
+    if (is_max_pool_ && !is_bf16) {
         vmflt_vv(v_mask, v_acc, v_tmp);
         vmerge_vvm(v_acc, v_acc, v_tmp);
         if (max_train) {
             vmerge_vxm(v_ind, v_ind, t3); // ind = (acc < tmp) ? cur_idx : ind
             addi(t3, t3, 1); // advance window position (every iw)
         }
+    } else if (is_max_pool_) {
+        // bf16 max: widen then compare at f32. e16/m1 and e32/m2 share a vl, so
+        // the mask produced at e32 selects the same lanes when v_ind is merged
+        // back under the e16 vtype.
+        vfwcvtbf16_f_f_v(v_wide, v_tmp); // reads the e16 narrow vtype
+        vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+        vmflt_vv(v_mask, v_acc, v_wide);
+        vmerge_vvm(v_acc, v_acc, v_wide);
+        vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+        if (max_train) {
+            vmerge_vxm(v_ind, v_ind, t3);
+            addi(t3, t3, 1);
+        }
+    } else if (is_bf16) {
+        // bf16 avg: no widening add exists, so widen then add at f32.
+        vfwcvtbf16_f_f_v(v_wide, v_tmp); // reads the e16 narrow vtype
+        vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+        vfadd_vv(v_acc, v_acc, v_wide);
+        vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
     } else {
         // f32m2 += widen(f16m1), evaluated under the e16 vtype.
         vfwadd_wv(v_acc, v_acc, v_tmp);
@@ -1644,15 +1701,28 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_f16() {
     j_(id_loop);
     L(id_done);
 
-    // avg: scale (e32/m2), apply the fused eltwise post-op (at f32), then narrow
-    // to f16 (e16/m1).
-    if (!is_max_pool_) {
+    // f32 accumulator (avg for both dtypes, and bf16 max): scale for avg
+    // (e32/m2), apply the fused post-op chain at f32, then narrow to xf16
+    // (e16/m1). bf16 max needs no widen/narrow round trip here -- the compare
+    // already ran at f32 -- so the chain applies to v_acc directly.
+    if (acc_is_f32) {
         vsetvli(t0, s2, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-        vfmul_vf(v_acc, v_acc, ft1);
-        if (jpp_.fuse_eltwise || jpp_.fuse_binary)
+        if (!is_max_pool_) vfmul_vf(v_acc, v_acc, ft1);
+        if (jpp_.fuse_eltwise || jpp_.fuse_binary) {
+            if (is_max_pool_ && mt_bin) {
+                // Max-training positions the rhs origin array / f32 rhs stride
+                // at the inject point (s10 and t3 are the ws pointer and the
+                // argmax scratch until the window sweep ends).
+                ld(a4, reg_param, GET_OFF_P(post_op_rhs));
+                slli(a6, s9, 1);
+            }
             po_inj.compute_vector(v_acc.getIdx(), rhs_dyn);
+        }
         vsetvli(t0, s2, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        vfncvt_f_f_w(v_tmp, v_acc);
+        if (is_bf16)
+            vfncvtbf16_f_f_w(v_tmp, v_acc);
+        else
+            vfncvt_f_f_w(v_tmp, v_acc);
     } else if (jpp_.fuse_eltwise || jpp_.fuse_binary) {
         // max: the accumulator is f16; widen to f32 (v24/m2), apply the post-op
         // chain (eltwise and/or binary, rhs in v28), then narrow back in place
@@ -1776,6 +1846,7 @@ void jit_uni_pool_ncsp_kernel_t<isa, d_type>::generate_f16() {
 
 template struct jit_uni_pool_ncsp_kernel_t<v, data_type::f32>;
 template struct jit_uni_pool_ncsp_kernel_t<zvfh, data_type::f16>;
+template struct jit_uni_pool_ncsp_kernel_t<zvfbfwma, data_type::bf16>;
 
 // === Shape-baked interior kernel (nspc, ur_w input reuse) ===
 
@@ -1999,6 +2070,7 @@ status_t jit_uni_pool_bwd_kernel_t<isa, d_type>::init_conf(
     jpp.dst_dt = dst_d.data_type();
     jpp.dt_size = types::data_type_size(jpp.src_dt);
     jpp.is_f16 = d_type == data_type::f16;
+    jpp.is_bf16 = d_type == data_type::bf16;
     jpp.isa = isa;
     jpp.nthr = dnnl_get_max_threads();
 
@@ -2034,8 +2106,8 @@ status_t jit_uni_pool_bwd_kernel_t<isa, d_type>::init_conf(
 
 template <cpu_isa_t isa, data_type_t d_type>
 void jit_uni_pool_bwd_kernel_t<isa, d_type>::generate() {
-    if (d_type == data_type::f16)
-        generate_f16();
+    if (utils::one_of(d_type, data_type::f16, data_type::bf16))
+        generate_xf16();
     else
         generate_f32();
 }
@@ -2160,13 +2232,16 @@ void jit_uni_pool_bwd_kernel_t<isa, d_type>::generate_f32() {
 }
 
 template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_pool_bwd_kernel_t<isa, d_type>::generate_f16() {
+void jit_uni_pool_bwd_kernel_t<isa, d_type>::generate_xf16() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     using a_t = jit_uni_pool_bwd_args_t;
     using c_t = jit_uni_pool_bwd_contrib_t;
     const Reg reg_param = a0;
-    // acc/wide/ws/zero are f32/e32m2 (v4,v12,v16,v24); the f16 load and the
+    // acc/wide/ws/zero are f32/e32m2 (v4,v12,v16,v24); the xf16 load and the
     // narrowed store result share v8 (e16m1); v_ws_raw (v20) is the raw u8 load.
+    // Everything is accumulated at f32, so f16 and bf16 differ only in the
+    // widen/narrow pair (Zvfh vfwcvt/vfncvt vs Zvfbfmin vfwcvtbf16/vfncvtbf16).
+    constexpr bool is_bf16 = d_type == data_type::bf16;
     const VReg v_mask(0), v_acc(4), v_ddst(8), v_wide(12), v_ws(16),
             v_ws_raw(20), v_zero(24);
     const bool ind_u8 = jpp_.ind_dt == data_type::u8;
@@ -2185,7 +2260,7 @@ void jit_uni_pool_bwd_kernel_t<isa, d_type>::generate_f16() {
     if (is_max_pool_) ld(s6, reg_param, GET_OFF_A(ws_vec_byte_stride));
     mv(s7, x0);
     if (is_max_pool_) mv(s8, x0);
-    li(t4, 2); // f16 unit-stride comparison constant
+    li(t4, 2); // xf16 unit-stride comparison constant
 
     Label ch_loop, ch_done;
     L(ch_loop);
@@ -2204,7 +2279,7 @@ void jit_uni_pool_bwd_kernel_t<isa, d_type>::generate_f16() {
     ld(a3, a1, GET_OFF_C(diff_dst));
     add(a3, a3, s7);
     vsetvli(t2, s3, SEW::e16, LMUL::m1, VTA::ta,
-            VMA::ma); // f16 load vtype (vl == t0)
+            VMA::ma); // xf16 load vtype (vl == t0)
     {
         Label str, done;
         bne(s5, t4, str);
@@ -2214,7 +2289,11 @@ void jit_uni_pool_bwd_kernel_t<isa, d_type>::generate_f16() {
         vlse16_v(v_ddst, a3, s5);
         L(done);
     }
-    vfwcvt_f_f_v(v_wide, v_ddst); // f16 -> f32m2 (reads the e16 narrow vtype)
+    // xf16 -> f32m2 (reads the e16 narrow vtype)
+    if (is_bf16)
+        vfwcvtbf16_f_f_v(v_wide, v_ddst);
+    else
+        vfwcvt_f_f_v(v_wide, v_ddst);
     if (is_max_pool_) {
         ld(a4, a1, GET_OFF_C(ws));
         add(a4, a4, s8);
@@ -2255,9 +2334,12 @@ void jit_uni_pool_bwd_kernel_t<isa, d_type>::generate_f16() {
     j_(c_loop);
     L(c_done);
 
-    // Narrow the f32 accumulator to f16 and store.
+    // Narrow the f32 accumulator back to xf16 and store.
     vsetvli(t2, s3, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-    vfncvt_f_f_w(v_ddst, v_acc);
+    if (is_bf16)
+        vfncvtbf16_f_f_w(v_ddst, v_acc);
+    else
+        vfncvt_f_f_w(v_ddst, v_acc);
     {
         Label str, done;
         bne(s4, t4, str);
@@ -2289,6 +2371,7 @@ void jit_uni_pool_bwd_kernel_t<isa, d_type>::generate_f16() {
 
 template struct jit_uni_pool_bwd_kernel_t<v, data_type::f32>;
 template struct jit_uni_pool_bwd_kernel_t<zvfh, data_type::f16>;
+template struct jit_uni_pool_bwd_kernel_t<zvfbfwma, data_type::bf16>;
 
 } // namespace rv64
 } // namespace cpu

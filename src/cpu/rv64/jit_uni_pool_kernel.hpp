@@ -202,20 +202,24 @@ private:
     jit_pool_conf_t jpp_;
     bool is_max_pool_;
     void generate_f32();
-    // f16 path: max accumulates in f16; avg widens to f32 (vfwadd_wv), scales,
-    // and narrows back to f16 (vfncvt). Requires the zvfh extension. Eltwise and
-    // (at f32) binary post-ops are fused here.
-    void generate_f16();
+    // 16-bit float path. f16: max accumulates in f16 (native e16 compare); avg
+    // widens to f32 (vfwadd_wv), scales, and narrows back (vfncvt). Requires
+    // zvfh. bf16 has no e16 arithmetic, so BOTH max and avg accumulate at f32,
+    // widening each load with the Zvfbfmin vfwcvtbf16 and narrowing once on
+    // store. Eltwise and (at f32) binary post-ops are fused here.
+    void generate_xf16();
 };
 
 // Native gather backward kernel for the nspc and ncsp (plain) layouts (f32 via
-// the v ISA, f16 via zvfh). Backward pooling is a gather: the driver enumerates,
+// the v ISA, f16 via zvfh, bf16 via the Zvfbfmin converts the zvfbfwma bit
+// tracks). Backward pooling is a gather: the driver enumerates,
 // per input position, the output positions whose window covers it (see
 // jit_uni_pool_bwd_contrib_t) and this kernel accumulates their diff_dst channel
 // rows into the input's diff_src row, then stores it once. max adds diff_dst only
 // where the stored argmax matches; avg adds diff_dst * (1/num_summands). f16
 // accumulates in f32. Channels are the vector dim (VLA vsetvli); unit-stride for
-// nspc, strided (vlse/vsse) for ncsp. No post-ops (backward has default attrs).
+// nspc, strided (vlse/vsse) for ncsp. bf16 accumulates in f32 the same way.
+// No post-ops (backward has default attrs).
 template <cpu_isa_t isa, impl::data_type_t d_type>
 struct jit_uni_pool_bwd_kernel_t : public jit_generator_t {
 
@@ -244,7 +248,7 @@ private:
     jit_pool_conf_t jpp_;
     bool is_max_pool_;
     void generate_f32();
-    void generate_f16();
+    void generate_xf16();
 };
 
 // Shape-baked interior kernel for the full-window interior of an nspc row (f32

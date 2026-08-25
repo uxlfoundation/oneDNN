@@ -184,7 +184,7 @@ public:
   explicit AdrScSc(const XReg &xn, const XReg &xm) : Adr(SC_SC), xn_(xn), xm_(xm), mod_(LSL), sh_(0), init_mod_(false) {}
   // AdrScSc(const AdrNoOfs &a) :Adr(SC_SC), xn_(a.getXn()), xm_(XReg(31)),
   // mod_(LSL), sh_(0) {}
-  AdrScSc(const AdrReg &a) : Adr(SC_SC), xn_(a.getXn()), xm_(a.getXm()), mod_(a.getMod()), sh_(a.getSh()) {}
+  AdrScSc(const AdrReg &a) : Adr(SC_SC), xn_(a.getXn()), xm_(a.getXm()), mod_(a.getMod()), sh_(a.getSh()), init_mod_(a.getInitSh()) {}
   const XReg &getXn() const { return xn_; }
   const XReg &getXm() const { return xm_; }
   uint32_t getSh() const { return sh_; }

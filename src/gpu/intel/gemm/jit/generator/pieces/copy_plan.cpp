@@ -244,7 +244,7 @@ InstructionModifier CopyInstruction::ngenModifiers() const
 // Run all transformation passes on a CopyPlan.
 void CopyPlan::transform()
 {
-    /*printf("before \n");
+  /*  printf("before \n");
     dump();
     printf("---\n");*/
     distributePhases();
@@ -262,9 +262,9 @@ void CopyPlan::transform()
 
     legalizeSIMD(true);
     planTypeConversions();
-    printf("after \n");
+/*    printf("after \n");
     dump();
-    printf("---\n");
+    printf("---\n");*/
 
     planBFNEmulation();
 
@@ -1740,7 +1740,12 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     // crosspack-2 destination) instead of forcing a packed (stride-1)
     // layout; the unpacked values are then spread out accordingly.
     CopyOperand finalDst = i.dst;
-    CopyOperand u8Dst = directU8 ? finalDst : newTemp(DataType::ub, n * 8, 1);
+    // When the ultimate destination is not u8, only a single lane's worth
+    // (n elements) of u8 scratch is needed at a time: each lane's shr/and
+    // sequence writes into it, an immediate mov copies that lane out to its
+    // place in finalDst, and then the same scratch is reused by the next
+    // lane.
+    CopyOperand u8Dst = directU8 ? finalDst : newTemp(DataType::ub, n, 2);
 
     CopyOperand srcBase = i.src0;
     srcBase.type = DataType::ub;
@@ -1786,7 +1791,7 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     // compile-time op count instead of splitting lane-by-lane inside the
     // loop.
     constexpr int totalOps = 20;
-    constexpr int numLanes = 1; //8;
+    constexpr int numLanes = 8;
 
     // When the results need copying out of the u8 scratch (!directU8), a
     // mov is issued per lane (right after that lane's values are computed)
@@ -1813,8 +1818,9 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     // within a single lane, so a pair of full-width temporaries (holding
     // lo/hi scratch) suffices for all 8 lanes instead of allocating a fresh
     // temporary each time.
-    auto tmp = newTemp(DataType::ub, n, 1);
-    auto tmpHi = newTemp(DataType::ub, n, 1);
+    auto tmp = newTemp(DataType::uw, n, 2);
+    auto tmpHi = newTemp(DataType::uw, n, 2);
+    auto tmpDst = newTemp(DataType::uw, n, 2);
     //tmp.offset = 0;
     //tmpHi.offset = 0;
 
@@ -1837,12 +1843,20 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     }
 
     int next = 0;
+            
+
     for (int lane = 0; lane < 8; lane++) {
         const auto &L = lanes[lane];
 
         CopyInstruction *ops[4] = {};
         int opsThisLane = L.straddle ? 4 : 2;
         for (int k = 0; k < opsThisLane; k++) ops[k] = allOps[next++];
+
+        // The mov for this lane (if any) is claimed here, immediately after
+        // this lane's shr/and/or slots, so that its phase (and thus its
+        // final position in program order) falls directly after this
+        // lane's last op instead of after the whole loop.
+        CopyInstruction *movOp = directU8 ? nullptr : allOps[next++];
 
         // Explicit crosspack-2 interleaving: each lane's row (all n columns)
         // is unpacked in one shot, but its columns are not written densely
@@ -1856,7 +1870,58 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         int dstStride = finalDst.stride;
 	int pairIdx = lane / dstStride;
         int parity  = lane % dstStride;
-        auto dst = u8Dst;
+        /*auto dst = u8Dst;
+	dst.stride =1;
+        if (directU8) {
+            // Writing straight to finalDst: place this lane's n columns at
+            // their final interleaved location directly.
+            dst.stride = dstStride;
+            dst.offset += pairIdx * n * dst.stride + parity * 1;
+            int grfOffset = dst.offset / grfBytes;
+            dst.grf += grfOffset;
+            dst.offset -= grfOffset * grfBytes;
+        }*/
+        // Otherwise (!directU8), dst stays as the plain, lane-sized
+        // (n-element) u8 scratch -- reused as-is by every lane -- and the
+        // interleaved placement is applied below when copying it out to
+        // finalDst.
+
+        const auto &rowLo = rows[L.byte];
+           auto finalDstLane = finalDst; 
+	   finalDstLane.stride =  dstStride;
+            auto type_size = 2;
+	    finalDstLane.offset += pairIdx * n * finalDstLane.stride  + parity ;
+            {
+                int grfOffset = (finalDstLane.offset * type_size) / grfBytes;
+                finalDstLane.grf += grfOffset;
+                finalDstLane.offset -= ((grfOffset * grfBytes) / type_size);
+            }
+/*        tmpDst.offset = finalDstLane.offset;
+       tmp.offset = finalDstLane.offset;
+       tmpHi.offset = finalDstLane.offset;*/
+       if (!L.straddle) {
+            setOp(ops[0], Opcode::shr, n, tmp, rowLo, CopyOperand(int(L.shift)));
+            setOp(ops[1], Opcode::and_, n, tmpDst, tmp, CopyOperand(int(7)));
+        } else {
+            const auto &rowHi = rows[L.hiByte];
+            setOp(ops[0], Opcode::shr, n, tmp, rowLo, CopyOperand(int(L.shift)));
+            setOp(ops[1], Opcode::shl, n, tmpHi, rowHi, CopyOperand(int(L.hiShift)));
+            setOp(ops[2], Opcode::or_, n, tmp, tmp, tmpHi);
+            setOp(ops[3], Opcode::and_, n, tmpDst, tmp, CopyOperand(int(7)));
+        }
+
+        // Copy this lane's n elements out of the u8 scratch and into their
+        // final destination immediately, rather than waiting to bulk-copy
+        // the whole n*8-element scratch region after the loop. Because the
+        // scratch is reused across lanes, this mov must happen here, before
+        // the next lane's iteration overwrites it.
+        if (!directU8) {
+
+
+            //tmpDst.stride =2;
+	    setOp(movOp, Opcode::mov, n, finalDstLane, tmpDst, CopyOperand());
+        }
+        /*
         dst.stride = dstStride;
         dst.offset += pairIdx * n * dst.stride + parity * 1;
         {
@@ -1881,7 +1946,7 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         // Copy this lane's n elements out of the u8 scratch and into their
         // final destination immediately, rather than waiting to bulk-copy
         // the whole n*8-element scratch region after the loop.
-       /* if (!directU8) {
+        if (!directU8) {
             auto finalDstLane = finalDst;
             finalDstLane.stride = dstStride;
             finalDstLane.offset += pairIdx * n * finalDstLane.stride + parity * 1;
@@ -1892,11 +1957,13 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
             }
             dst.stride = dstStride *2;
             setOp(allOps[totalOps + lane], Opcode::mov, n, finalDstLane, dst, CopyOperand());
-        }*/
+        }
+        */
     }
 
  //   }
 
+    /*
     if (!directU8) {
         auto *mv = allOps[20]; //movSeed;
         mv->op = Opcode::mov;
@@ -1910,6 +1977,7 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         mv->sat = false;
         mv->cmod = ConditionModifier::none;
     }
+    */
 }
 
 // Rewrite int4 -> int upconversion using byte operations.
@@ -3282,7 +3350,7 @@ void CopyPlan::legalizeRegions()
             if (hfIntConvert)
                 canSwizzle = false;
         }
-
+        //canSwizzle = false; //true;
         if (!canSwizzle) {
             bool strict = isFP(dt) || (hw >= HW::Xe3p && i.op != Opcode::mov);
             int dboMask = GRF::bytes(hw) - (strict ? 1 : 4);

@@ -30,10 +30,11 @@ namespace impl {
 namespace cpu {
 namespace binary_injector_utils {
 /*
- * Extracts pointers to tensors passed by user as binary postops rhs (right-hand-side)
- * arguments (arg1 from binary postop) from execution context. Those pointers are placed
- * in vector in order of binary post-op appearance inside post_ops_t structure. Returned vector
- * usually is passed to kernel during execution phase in runtime params.
+ * Extracts pointers to tensors passed by user as binary postops rhs
+ * (right-hand-side) arguments from execution context and advances them to
+ * their memory descriptors' logical origins. Those pointers are placed in a
+ * vector in order of binary post-op appearance inside post_ops_t structure.
+ * The returned vector usually is passed to a kernel in runtime parameters.
  * @param first_arg_idx_offset - offset for indexation of binary postop arguments
  * (used for fusions with dw convolutions)
  */

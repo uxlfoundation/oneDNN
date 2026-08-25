@@ -31,12 +31,19 @@ std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
     unsigned idx = first_arg_idx_offset;
     for (const auto &post_op : post_ops.entry_) {
         if (post_op.is_binary()) {
-            post_ops_binary_rhs_arg_vec.emplace_back(CTX_IN_MEM(const void *,
-                    DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1));
+            auto append_arg = [&](int arg, const memory_desc_t &md) {
+                const auto *base = static_cast<const char *>(ctx.host_ptr(arg));
+                const memory_desc_wrapper mdw(md);
+                post_ops_binary_rhs_arg_vec.emplace_back(base
+                                ? base + mdw.offset0() * mdw.data_type_size()
+                                : nullptr);
+            };
+
+            append_arg(DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_1,
+                    post_op.binary.src1_desc);
             if (post_op.is_binary_with_ternary_op()) {
-                post_ops_binary_rhs_arg_vec.emplace_back(CTX_IN_MEM(
-                        const void *,
-                        DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2));
+                append_arg(DNNL_ARG_ATTR_MULTIPLE_POST_OP(idx) | DNNL_ARG_SRC_2,
+                        post_op.binary.src2_desc);
             }
         } else if (post_op.is_prelu()) {
             auto *arg = CTX_IN_MEM(const void *,

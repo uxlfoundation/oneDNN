@@ -321,6 +321,49 @@ INSTANTIATE_TEST_SUITE_P(BinaryTensorDims, binary_attr_test_t,
                         memory::dims {1, 1024, 1, 1},
                         memory::format_tag::abcd)));
 
+TEST(binary_attr_test, BinaryPostOpHonorsRhsOffset0) {
+    SKIP_IF(get_test_engine_kind() != engine::kind::cpu,
+            "The test requires host-accessible memory.");
+
+    auto eng = get_test_engine();
+    auto strm = make_stream(eng);
+
+    const memory::desc data_md({1, 16}, data_type::f32, memory::format_tag::ab);
+    const memory::desc rhs_parent_md(
+            {1, 4}, data_type::f32, memory::format_tag::ab);
+    const memory::desc rhs_md = rhs_parent_md.submemory_desc({1, 1}, {0, 2});
+
+    post_ops ops;
+    ops.append_binary(algorithm::binary_add, rhs_md);
+    primitive_attr attr;
+    attr.set_post_ops(ops);
+
+    const binary::primitive_desc pd(
+            eng, algorithm::binary_add, data_md, data_md, data_md, attr);
+#if DNNL_X64 || DNNL_AARCH64 || DNNL_RV64
+    ASSERT_NE(std::string(pd.impl_info_str()).find("jit"), std::string::npos);
+#endif
+
+    std::vector<float> src0(16, 0.f);
+    std::vector<float> src1(16, 0.f);
+    std::vector<float> dst(16, -1.f);
+    std::vector<float> rhs_parent {100.f, 101.f, 12.f, 103.f};
+    memory src0_mem(data_md, eng, src0.data());
+    memory src1_mem(data_md, eng, src1.data());
+    memory dst_mem(data_md, eng, dst.data());
+    memory rhs_mem(rhs_md, eng, rhs_parent.data());
+
+    binary(pd).execute(strm,
+            {{DNNL_ARG_SRC_0, src0_mem}, {DNNL_ARG_SRC_1, src1_mem},
+                    {DNNL_ARG_DST, dst_mem},
+                    {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                            rhs_mem}});
+    strm.wait();
+
+    for (const float value : dst)
+        EXPECT_FLOAT_EQ(value, rhs_parent[2]);
+}
+
 static auto expected_failures = []() {
     return ::testing::Values(
             // test tag::any support

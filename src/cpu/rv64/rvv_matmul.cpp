@@ -406,8 +406,8 @@ status_t rvv_matmul_t::execute(const exec_ctx_t &ctx) const {
 
     // Binary post-op src1 bases, one per binary in chain order (per-N or scalar;
     // each broadcasts over M/batch so the same array serves every row). Empty
-    // when the chain has no binary entry. The raw handles from the common
-    // helper (x64 model) -- the kernel only adds the in-row column offset.
+    // when the chain has no binary entry. Each pointer starts at its memory
+    // descriptor's logical origin; the kernel adds the in-row column offset.
     const std::vector<const void *> po_rhs
             = binary_injector_utils::prepare_binary_args(post_ops, ctx);
     const void *const *po_rhs_arr = po_rhs.empty() ? nullptr : po_rhs.data();

@@ -833,9 +833,8 @@ void jit_uni_pooling_fwd_t<isa>::execute_forward_blk(const data_t *src,
         arg.dst = &dst[dst_d.blk_off(n, c_off, oh)];
         // full-dst binary offset = (arg.dst - dst_orig); dst_orig must be the
         // dst LOGICAL origin (raw base + off_l(0)) so the offset excludes the
-        // md's offset0 (blk_off() already includes it). The rhs bases are the
-        // raw handles from the common prepare_binary_args -- like x64, a
-        // nonzero rhs offset0 is not folded in.
+        // md's offset0 (blk_off() already includes it). RHS pointers are at
+        // their own logical origins, so the offset applies to both tensors.
         arg.dst_orig = dst + dst_d.off_l(0);
         if (indices)
             arg.indices

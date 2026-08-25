@@ -72,11 +72,10 @@ status_t riscv_gemm_convolution_fwd_t::execute_forward_thr_nspc(
         data_t *dst_base, const memory_tracking::grantor_t &scratchpad) const {
     const conv_gemm_conf_t &jcp = pd()->jcp_;
 
-    // Binary post-op src1 bases (scalar or per-oc), one per binary in chain
-    // order -- the raw handles from the common helper (x64 model); the
-    // per-slice channel-base offset is added by the kernel on top. Empty
-    // unless the in-kernel post-op path is active and the chain has a binary
-    // entry.
+    // Binary post-op src1 logical origins (scalar or per-oc), one per binary
+    // in chain order; the per-slice channel-base offset is added by the kernel
+    // on top. Empty unless the in-kernel post-op path is active and the chain
+    // has a binary entry.
     std::vector<const void *> po_rhs;
     if (jit_postops_kernel_ && jcp.with_binary)
         po_rhs = binary_injector_utils::prepare_binary_args(

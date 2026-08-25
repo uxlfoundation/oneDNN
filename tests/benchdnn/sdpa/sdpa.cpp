@@ -478,7 +478,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
     TIME_FILL(SAFE(
             init_ref_memory_args(ref_mem_map, mem_map, v_prim[0], prb, res),
             WARN));
-    if (!has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
+    if (has_bench_mode_bit(mode_bit_t::corr)
+            && !has_bench_mode_modifier(mode_modifier_t::no_ref_memory)) {
         // Reference-only buffer holding the per-element conditioning magnitude
         // sum_k prob_k*|V_k| (same layout as the reference DST). compute_ref fills
         // it; setup_cmp reads it to size a per-element DST threshold. Forward only.

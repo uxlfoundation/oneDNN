@@ -1,4 +1,4 @@
-# TODO: add smoke coverage here for proper waterfall validation.
+--batch=test_matmul_smoke
 
 --batch=harness_matmul_generated_ci
 

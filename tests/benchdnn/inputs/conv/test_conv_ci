@@ -98,3 +98,6 @@
 --dtag=any,axb
 --attr-fpmath=bf16,tf32
 --batch=shapes_basic
+
+# fwks_01
+--batch=option_set_fwks_key_01_gpu

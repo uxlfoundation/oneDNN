@@ -66,7 +66,8 @@ endif()
 
 if(NOT DNNL_EXPERIMENTAL_GROUPED_MEMORY)
     list(REMOVE_ITEM sources
-        ${CMAKE_CURRENT_SOURCE_DIR}/matmul_grouped.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/matmul_grouped.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/matmul_grouped_nvfp4.cpp)
 endif()
 
 # Remove tests for CUDA which use unimplemented primitives

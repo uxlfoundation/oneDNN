@@ -839,7 +839,12 @@ void CopyPlan::planTypeConversions()
             copyThrough(i, DataType::w);
             rerun = true;
         } else if (isInt2(st) && isInt(dt)) {
-            planInt2Upconversion(i);
+            // Zip optimizations for int2-to-byte upconversions create illegal
+            // instructions, use a word intermediate
+            if (isB(dt))
+                copyThrough(i, isSigned(st) ? DataType::w : DataType::uw);
+            else
+                planInt2Upconversion(i);
             rerun = true;
         } else if (isInt(st) && isInt2(dt)) {
             planInt2Downconversion(i);

@@ -78,12 +78,14 @@ status_t zen_grouped_matmul_t::pd_t::init(const engine_t *engine) {
     const dim_t total_M = dst_d.dims()[0];
     const dim_t K = src_d.dims()[1];
     const dim_t N = dst_d.dims()[1];
+    const dim_t G = weights_md(0)->dims[0];
 
     // ZenDNN's group_matmul_direct takes M/N/K and the leading dims
     // (lda == K, ldb == N|K, ldc == N) as int. larger shapes are
     // declined to the reference implementation.
     const dim_t int_max = std::numeric_limits<int>::max();
-    VDISPATCH_MATMUL(total_M <= int_max && N <= int_max && K <= int_max,
+    VDISPATCH_MATMUL(
+            total_M <= int_max && N <= int_max && K <= int_max && G <= int_max,
             VERBOSE_UNSUPPORTED_FEATURE,
             "dimension > INT_MAX is not supported");
 
@@ -123,7 +125,6 @@ status_t zen_grouped_matmul_t::pd_t::init(const engine_t *engine) {
     // ZenDNN reuses the packed weights across calls. Concrete abc/acb weights
     // keep the plain path and are packed by the backend per call (is_weights_const=false).
     if (memory_desc_wrapper(weights_md(0)).format_any()) {
-        const dim_t G = weights_md(0)->dims[0];
         VDISPATCH_MATMUL_SC(
                 init_zen_packed_md(weights_md_, src_dt, K, N, /*batch=*/G),
                 VERBOSE_UNSUPPORTED_TAG);

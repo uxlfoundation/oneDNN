@@ -315,13 +315,49 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
             "supports at most one sum post op");
     const post_ops_fusion_t post_ops_fusion = create_post_ops_fusion(
             attr_.post_ops_, !with_bias() && !_reorder_dst_ab_to_ba);
-    CHECK(post_ops.init(engine, attr_.post_ops_, *dst_md(),
-            post_ops_fusion.fallback_start_index));
     _has_post_ops_fallback = post_ops_fusion.has_fallback(attr_.post_ops_);
 
+    // Strict/F32 mode applies post-ops before the final low-precision cast.
+    const bool strict_f32_post_ops = utils::one_of(attr()->acc_mode_,
+            accumulation_mode::strict, accumulation_mode::f32);
+    // A fallback post-op runs in oneDNN after the KAI kernel.
+    const bool fallback_rounds_low_precision_dst = _has_post_ops_fallback
+            && utils::one_of(ddt, data_type::bf16, data_type::f16);
+    // This combination needs F32 storage to avoid rounding before the post-op.
+    const bool needs_f32_post_ops_intermediate
+            = strict_f32_post_ops && fallback_rounds_low_precision_dst;
+
+    // Unsupported strict low-precision cases use another implementation.
+    const bool can_use_f32_post_ops_intermediate
+            = desc()->accum_data_type == data_type::f32
+            && utils::everyone_is(ddt, sdt, wdt) && !with_bias()
+            && num_sum_post_ops(attr_.post_ops_) == 0 && !_reorder_dst_ab_to_ba;
+    VDISPATCH_MATMUL(!needs_f32_post_ops_intermediate
+                    || can_use_f32_post_ops_intermediate,
+            "unsupported f32 fallback intermediate configuration");
+
+    _use_f32_post_ops_intermediate = needs_f32_post_ops_intermediate;
+    if (_use_f32_post_ops_intermediate) {
+        // Make KAI write its unrounded result to an F32 temporary buffer.
+        _kai_dst_dt = data_type::f32;
+        // Keep the user's destination shape and layout, changing only its type.
+        dst_f32_md_ = *dst_md();
+        dst_f32_md_.data_type = data_type::f32;
+        CHECK(post_ops.init(engine, attr_.post_ops_, dst_f32_md_,
+                post_ops_fusion.fallback_start_index));
+        // Prepare the one final cast from F32 to the user's BF16/F16 output.
+        VDISPATCH_MATMUL_SC(
+                reorder_primitive_desc_create(dst_f32_to_user_reorder_pd_,
+                        engine, &dst_f32_md_, dst_md()),
+                VERBOSE_PRIMITIVE_CREATION_FAIL, "f32 dst reorder");
+    } else {
+        CHECK(post_ops.init(engine, attr_.post_ops_, *dst_md(),
+                post_ops_fusion.fallback_start_index));
+    }
+
     const int max_threads = dnnl_get_current_num_threads();
-    const int num_threads
-            = threads_for_kernel_execute(kernel_execute_work(*this), max_threads);
+    const int num_threads = threads_for_kernel_execute(
+            kernel_execute_work(*this), max_threads);
     _args = std::make_shared<kai::ops::GemmArgs>(get_cpu_info(), M(), N(), K(),
             sections, _ag_nbatches, _ag_nmulti, indirect,
             post_ops_fusion.activation, num_threads, _fixed_format, fast_mode,
@@ -418,10 +454,17 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
         scratchpad.book(memory_tracking::names::key_matmul_wei_trans,
                 kernel->get_B_pretransposed_array_size(), 1);
 
-    if (post_ops.has_sum()) {
-        const memory_desc_wrapper final_dst_d(dst_md());
+    if (_use_f32_post_ops_intermediate || post_ops.has_sum()) {
+        // Reserve temp dst, the new path sizes it as F32.
+        const memory_desc_wrapper tmp_dst_d(
+                _use_f32_post_ops_intermediate ? &dst_f32_md_ : dst_md());
         scratchpad.book(memory_tracking::names::key_matmul_dst_in_acc_dt,
-                final_dst_d.size(), 1, 64, 64);
+                tmp_dst_d.size(), 1, 64, 64);
+    }
+    if (_use_f32_post_ops_intermediate) {
+        // Reserve any temporary memory needed by the final cast.
+        scratchpad.book(reorder_nested_key(nested_reorder_t::dst_f32_to_user),
+                dst_f32_to_user_reorder_pd_->scratchpad_registry());
     }
     post_ops.init_scratchpad(scratchpad);
 
@@ -438,6 +481,9 @@ status_t kai_matmul_t::init(engine_t *engine) {
     if (pd()->dst_ab_to_ba_reorder_pd_)
         CHECK(pd()->dst_ab_to_ba_reorder_pd_->create_primitive(
                 dst_ab_to_ba_reorder_, engine));
+    if (pd()->dst_f32_to_user_reorder_pd_)
+        CHECK(pd()->dst_f32_to_user_reorder_pd_->create_primitive(
+                dst_f32_to_user_reorder_, engine));
     post_ops_ = pd()->post_ops;
     CHECK(post_ops_.init_primitives(engine));
     return status::success;
@@ -481,9 +527,10 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
     void *wei_base = const_cast<void *>(raw_wei);
 
     auto dst_arg = CTX_OUT_MEM(void *, DNNL_ARG_DST);
+    // The guarded path makes KAI and fallback post-ops share the F32 buffer.
     auto dst_base = pd()->_reorder_dst_ab_to_ba
             ? scratchpad.get<void>(memory_tracking::names::key_matmul_dst_trans)
-            : (post_ops.has_sum()
+            : (pd()->_use_f32_post_ops_intermediate || post_ops.has_sum()
                               ? scratchpad.get<void>(memory_tracking::names::
                                                 key_matmul_dst_in_acc_dt)
                               : dst_arg);
@@ -524,8 +571,11 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
     const memory_desc_t *kernel_wei_md = pd()->_reorder_weights_ba_to_ab
             ? &pd()->weights_ab_md_
             : pd()->weights_md();
-    const memory_desc_t *kernel_dst_md
-            = pd()->_reorder_dst_ab_to_ba ? &pd()->dst_ab_md_ : pd()->dst_md();
+    // Describe the temporary output to KAI as F32 as well.
+    const memory_desc_t *kernel_dst_md = pd()->_use_f32_post_ops_intermediate
+            ? &pd()->dst_f32_md_
+            : (pd()->_reorder_dst_ab_to_ba ? &pd()->dst_ab_md_
+                                           : pd()->dst_md());
 
     const memory_desc_wrapper src_d(kernel_src_md);
     const memory_desc_wrapper wei_d(kernel_wei_md);
@@ -593,6 +643,14 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
             CHECK(post_ops.execute(ctx, dst_base, dst_arg));
         else
             CHECK(post_ops.execute(ctx, dst_base));
+    }
+
+    if (pd()->_use_f32_post_ops_intermediate) {
+        // Post-ops are complete, so cast once into the user's BF16/F16 buffer.
+        CHECK(execute_reorder(ctx, dst_f32_to_user_reorder_, &pd()->dst_f32_md_,
+                pd()->dst_md(), dst_base, dst_arg,
+                pd()->reorder_nested_key(
+                        pd_t::nested_reorder_t::dst_f32_to_user)));
     }
 
     return status::success;

@@ -79,6 +79,8 @@ struct kai_matmul_t : public primitive_t {
         bool _reorder_src_ba_to_ab = false;
         bool _reorder_weights_ba_to_ab = false;
         bool _reorder_dst_ab_to_ba = false;
+        // Keep KAI and fallback post-ops in F32 until the final BF16/F16 cast.
+        bool _use_f32_post_ops_intermediate = false;
         unsigned int _ag_nbatches = 1;
         unsigned int _ag_nmulti = 1;
         bool _src_broadcast_batch_dims = false;
@@ -86,7 +88,8 @@ struct kai_matmul_t : public primitive_t {
         enum class nested_reorder_t : memory_tracking::key_t {
             src,
             weights,
-            dst
+            dst,
+            dst_f32_to_user
         };
         memory_tracking::key_t reorder_nested_key(
                 nested_reorder_t reorder) const;
@@ -94,9 +97,11 @@ struct kai_matmul_t : public primitive_t {
         memory_desc_t src_ab_md_;
         memory_desc_t weights_ab_md_;
         memory_desc_t dst_ab_md_;
+        memory_desc_t dst_f32_md_;
         std::shared_ptr<primitive_desc_t> src_ba_to_ab_reorder_pd_;
         std::shared_ptr<primitive_desc_t> weights_ba_to_ab_reorder_pd_;
         std::shared_ptr<primitive_desc_t> dst_ab_to_ba_reorder_pd_;
+        std::shared_ptr<primitive_desc_t> dst_f32_to_user_reorder_pd_;
         // Rename to post_ops_fallback_ to avoid confusion with the post_ops object in the base class
         post_ops_fallback_t post_ops;
 
@@ -116,6 +121,7 @@ private:
     std::shared_ptr<primitive_t> src_ba_to_ab_reorder_;
     std::shared_ptr<primitive_t> weights_ba_to_ab_reorder_;
     std::shared_ptr<primitive_t> dst_ab_to_ba_reorder_;
+    std::shared_ptr<primitive_t> dst_f32_to_user_reorder_;
     post_ops_fallback_t post_ops_;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

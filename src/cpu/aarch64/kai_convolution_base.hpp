@@ -60,6 +60,7 @@ struct kai_convolution_fwd_base_t : public primitive_t {
 
         std::shared_ptr<kai::ops::GemmConfig> cfg_ = nullptr;
         std::shared_ptr<kai::ops::GemmArgs> args_ = nullptr;
+        int kernel_max_threads_ = 1;
         bool fixed_format_ = false;
         bool run_weight_reorder_ = false;
         data_type_t gemm_weights_dt_ = data_type::undef;

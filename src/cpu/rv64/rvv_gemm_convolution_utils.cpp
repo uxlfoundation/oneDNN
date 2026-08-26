@@ -618,7 +618,14 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
     const dim_t tp = jcp.t_pad;
     const dim_t lp = jcp.l_pad;
 
-    if (jcp.outer_threading && sh == 1 && sw == 1 && dh == 1 && dw == 1) {
+    // The transposing path stages im[ih][iw][ic] into imtr[ic][ih][iw] so the
+    // per-(kh,kw,ic) copies into col become contiguous and can be vectorized.
+    // Reading `im` directly is contiguous along ic but never along ow (the w
+    // step is ic*ngroups elements), so this staging is what makes a vectorized
+    // copy legal at all. Used whenever the geometry allows it; when the caller
+    // is not already threaded the loops below carry the parallelism instead.
+    if (sh == 1 && sw == 1 && dh == 1 && dw == 1) {
+        const bool thread_here = !jcp.outer_threading;
         /* im[ih][iw][ic] --> imtr[ic][ih][iw] --> col[kh][kw][ic][oh][ow] */
         const dim_t hp = hs - tp;
         const dim_t wp = ws - lp;
@@ -632,7 +639,7 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
 
         const dim_t imtr_ic_stride = ihb * iwb;
         const ptrdiff_t imtr_idx_shift = ih_start * iwb + iw_start;
-        for (dim_t ic = 0; ic < jcp.ic; ic++) {
+        auto transpose_ic = [&](dim_t ic) {
             const ptrdiff_t imtr_idx_ic = ic * imtr_ic_stride - imtr_idx_shift;
             for (dim_t ih = ih_start; ih < ih_end; ih++) {
                 const ptrdiff_t im_idx_ih = ic + ih * im_ih_stride;
@@ -640,7 +647,12 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
                 for (dim_t iw = iw_start; iw < iw_end; iw++)
                     imtr[imtr_idx_ih + iw] = im[im_idx_ih + iw * im_iw_stride];
             }
-        }
+        };
+        if (thread_here)
+            parallel_nd(jcp.ic, transpose_ic);
+        else
+            for (dim_t ic = 0; ic < jcp.ic; ic++)
+                transpose_ic(ic);
 
         const dim_t col_ic_str = hb * wb;
         const dim_t col_kw_stride = jcp.ic * col_ic_str;
@@ -648,54 +660,69 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
 
         const dim_t oh_init = ih_start - hp;
         const dim_t ow_init = iw_start - wp;
-        for (dim_t kh = 0; kh < jcp.kh; kh++) {
-            const ptrdiff_t col_idx_kh = kh * col_kh_stride;
+        // Loop-invariants of one (kh, kw) kernel position, hoisted out of the
+        // ic loop so the serial driver below keeps the original structure.
+        struct kpos_t {
+            ptrdiff_t col_idx_kw;
+            dim_t oh_start, oh_end, ow_start, ow_end, imtr_shift;
+        };
+        auto make_kpos = [&](dim_t kh, dim_t kw) {
             const dim_t oh_kh = oh_init - kh;
-            const dim_t oh_start = saturate(dim_t(0), hb, oh_kh);
-            const dim_t oh_end = saturate(dim_t(0), hb, oh_kh + ihb);
-            for (dim_t kw = 0; kw < jcp.kw; kw++) {
-                const ptrdiff_t col_idx_kw
-                        = col_idx_kh + kw * jcp.ic * col_ic_str;
-                const dim_t ow_kw = ow_init - kw;
-                const dim_t imtr_shift = oh_kh * iwb + ow_kw;
-                const dim_t ow_start = saturate(dim_t(0), wb, ow_kw);
-                const dim_t ow_end = saturate(dim_t(0), wb, ow_kw + iwb);
-                for (dim_t ic = 0; ic < jcp.ic; ic++) {
-                    const ptrdiff_t col_idx_ic = col_idx_kw + ic * col_ic_str;
-                    const dim_t imtr_idx_ic = ic * imtr_ic_stride - imtr_shift;
-                    for (dim_t oh = 0; oh < oh_start; oh++) {
-                        const ptrdiff_t col_idx_oh = col_idx_ic + oh * wb;
-                        for (dim_t ow = 0; ow < wb; ++ow)
-                            col[col_idx_oh + ow] = shift;
-                    }
-                    for (dim_t oh = oh_start; oh < oh_end; oh++) {
-                        const ptrdiff_t col_idx_oh = col_idx_ic + oh * wb;
-                        const ptrdiff_t imtr_idx_oh = imtr_idx_ic + oh * iwb;
-                        for (dim_t ow = 0; ow < ow_start; ++ow)
-                            col[col_idx_oh + ow] = shift;
-                        // Vectorized data copy for contiguous regions
-                        if (ow_end - ow_start >= 4) {
-                            jit_rvv_gemm_convolution_copy_f32(
-                                    reinterpret_cast<const float *>(
-                                            imtr + imtr_idx_oh + ow_start),
-                                    reinterpret_cast<float *>(
-                                            col + col_idx_oh + ow_start),
-                                    ow_end - ow_start);
-                        } else {
-                            for (dim_t ow = ow_start; ow < ow_end; ++ow)
-                                col[col_idx_oh + ow]
-                                        = imtr[imtr_idx_oh + ow] + shift;
-                        }
-                        for (dim_t ow = ow_end; ow < wb; ++ow)
-                            col[col_idx_oh + ow] = shift;
-                    }
-                    for (dim_t oh = oh_end; oh < hb; oh++) {
-                        const ptrdiff_t col_idx_oh = col_idx_ic + oh * wb;
-                        for (dim_t ow = 0; ow < wb; ++ow)
-                            col[col_idx_oh + ow] = shift;
-                    }
-                }
+            const dim_t ow_kw = ow_init - kw;
+            return kpos_t {kh * col_kh_stride + kw * jcp.ic * col_ic_str,
+                    saturate(dim_t(0), hb, oh_kh),
+                    saturate(dim_t(0), hb, oh_kh + ihb),
+                    saturate(dim_t(0), wb, ow_kw),
+                    saturate(dim_t(0), wb, ow_kw + iwb), oh_kh * iwb + ow_kw};
+        };
+        auto copy_ic = [&](const kpos_t &k, dim_t ic) {
+            const dim_t oh_start = k.oh_start, oh_end = k.oh_end;
+            const dim_t ow_start = k.ow_start, ow_end = k.ow_end;
+            const ptrdiff_t col_idx_ic = k.col_idx_kw + ic * col_ic_str;
+            const dim_t imtr_idx_ic = ic * imtr_ic_stride - k.imtr_shift;
+            for (dim_t oh = 0; oh < oh_start; oh++) {
+                const ptrdiff_t col_idx_oh = col_idx_ic + oh * wb;
+                for (dim_t ow = 0; ow < wb; ++ow)
+                    col[col_idx_oh + ow] = shift;
             }
+            for (dim_t oh = oh_start; oh < oh_end; oh++) {
+                const ptrdiff_t col_idx_oh = col_idx_ic + oh * wb;
+                const ptrdiff_t imtr_idx_oh = imtr_idx_ic + oh * iwb;
+                for (dim_t ow = 0; ow < ow_start; ++ow)
+                    col[col_idx_oh + ow] = shift;
+                // Vectorized data copy for contiguous regions
+                if (ow_end - ow_start >= 4) {
+                    jit_rvv_gemm_convolution_copy_f32(
+                            reinterpret_cast<const float *>(
+                                    imtr + imtr_idx_oh + ow_start),
+                            reinterpret_cast<float *>(
+                                    col + col_idx_oh + ow_start),
+                            ow_end - ow_start);
+                } else {
+                    for (dim_t ow = ow_start; ow < ow_end; ++ow)
+                        col[col_idx_oh + ow] = imtr[imtr_idx_oh + ow] + shift;
+                }
+                for (dim_t ow = ow_end; ow < wb; ++ow)
+                    col[col_idx_oh + ow] = shift;
+            }
+            for (dim_t oh = oh_end; oh < hb; oh++) {
+                const ptrdiff_t col_idx_oh = col_idx_ic + oh * wb;
+                for (dim_t ow = 0; ow < wb; ++ow)
+                    col[col_idx_oh + ow] = shift;
+            }
+        };
+        if (thread_here) {
+            parallel_nd(
+                    jcp.kh, jcp.kw, jcp.ic, [&](dim_t kh, dim_t kw, dim_t ic) {
+                copy_ic(make_kpos(kh, kw), ic);
+            });
+        } else {
+            for (dim_t kh = 0; kh < jcp.kh; kh++)
+                for (dim_t kw = 0; kw < jcp.kw; kw++) {
+                    const kpos_t k = make_kpos(kh, kw);
+                    for (dim_t ic = 0; ic < jcp.ic; ic++)
+                        copy_ic(k, ic);
+                }
         }
     } else {
         parallel_nd(jcp.kh, jcp.kw, jcp.ic, hb,
@@ -717,21 +744,13 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
                     col[col_idx_base + ow] = shift;
                 const dim_t iw_base = ws * sw - wp;
                 const ptrdiff_t im_idx_base = ih * im_ih_stride + ic;
-                // Vectorized data copy for stride=1
-                if (sw == 1 && ow_end - ow_start >= 4) {
-                    jit_rvv_gemm_convolution_copy_f32(
-                            reinterpret_cast<const float *>(
-                                    im + im_idx_base + iw_base + ow_start),
-                            reinterpret_cast<float *>(
-                                    col + col_idx_base + ow_start),
-                            ow_end - ow_start);
-                } else {
-                    for (dim_t ow = ow_start; ow < ow_end; ow++) {
-                        const dim_t iw = iw_base + ow * sw;
-                        const ptrdiff_t im_idx
-                                = im_idx_base + iw * im_iw_stride;
-                        col[col_idx_base + ow] = im[im_idx] + shift;
-                    }
+                // Only strided/dilated geometry reaches here; consecutive ow
+                // are im_iw_stride elements apart in `im`, so this cannot use
+                // the contiguous copy kernel.
+                for (dim_t ow = ow_start; ow < ow_end; ow++) {
+                    const dim_t iw = iw_base + ow * sw;
+                    const ptrdiff_t im_idx = im_idx_base + iw * im_iw_stride;
+                    col[col_idx_base + ow] = im[im_idx] + shift;
                 }
                 for (dim_t ow = ow_end; ow < wb; ow++)
                     col[col_idx_base + ow] = shift;

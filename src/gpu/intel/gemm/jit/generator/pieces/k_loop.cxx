@@ -966,7 +966,7 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
             // byte register expands to 128 elements. To avoid emitting extra
             // instructions, perform element-wise operations here.
             if (canDequantizeInt4(layout, state.Ar_layout, {}, {})) {
-                if (ha == 0) dequantizeInt4Shift(Ta_load, regs, strategy);
+                if (ha == 0 && !Ta_load.is3()) dequantizeInt4Shift(Ta_load, regs, strategy);
                 s4Shift = false;
             }
         }

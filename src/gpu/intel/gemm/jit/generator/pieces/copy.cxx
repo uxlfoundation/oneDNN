@@ -118,11 +118,12 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
 
 
 
+    CopyPlan plan(hw, strategy.systolicAvailable);
 
     for (auto &sblock : layoutSrc) {
     for (int eoffY = 0; eoffY < sblock.*ny; Ts.is3() ? eoffY+=8 :eoffY++) {
     // Accumulate copy pseudo-instructions.
-    CopyPlan plan(hw, strategy.systolicAvailable);
+
 
     for (int eoffX = 0; eoffX < sblock.*nx;) {
         auto eoffR = sblock.colMajor ? eoffX : eoffY;
@@ -170,11 +171,12 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
 
         eoffX += n;
     } /* eoffX loop */
-    copyExecute(std::move(plan), state);
+
 
     } /* eoffY loop */
     } /* sblock loop */
 
+    copyExecute(std::move(plan), state);
 
 
 }

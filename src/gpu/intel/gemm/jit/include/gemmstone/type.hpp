@@ -73,6 +73,7 @@ public:
     constexpr bool isSubByte()        const { return is4() || is3(); }
     constexpr bool isInt4()           const { return is4() && isInteger(); }
     constexpr bool isInt3()           const { return is3() && isInteger(); }
+    constexpr bool isIntSubByte()     const { return isSubByte() && isInteger(); }
     constexpr bool isInt8()           const { return (val == Type::u8)  || (val == Type::s8);  }
     constexpr bool isInt16()          const { return (val == Type::u16) || (val == Type::s16); }
     constexpr bool isF8()             const { return (val == Type::bf8) || (val == Type::hf8) || (val == Type::f8_e8m0); }

@@ -1111,7 +1111,7 @@ void RegisterBlock::calcBytes(Type T)
         T = T.real();
     bytes = align_up(colMajor ? nc : nr, crosspack) * ld * T;
     if (T.is3())
-	bytes = ((colMajor ? nc : nr)) * roundup_pow2(ld *T);
+	bytes = ((colMajor ? nc : nr)) * ld * T; // roundup_pow2(ld *T);
     if (isLoadBlock() && msgRegs == 0)
         msgRegs = GRF::bytesToGRFs(hw, bytes);
 }

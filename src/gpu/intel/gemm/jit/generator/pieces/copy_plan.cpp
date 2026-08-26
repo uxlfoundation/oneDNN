@@ -244,9 +244,9 @@ InstructionModifier CopyInstruction::ngenModifiers() const
 // Run all transformation passes on a CopyPlan.
 void CopyPlan::transform()
 {
-  /*  printf("before \n");
-    dump();
-    printf("---\n");*/
+    //printf("before \n");
+    //dump();
+    //printf("---\n");
     distributePhases();
     planEarlyInt4Upconversions();
     split2DRegions();
@@ -1735,17 +1735,18 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     if (n <= 0) stub("u3 upconversion requires a positive SIMD width.");
     int grfBytes = GRF::bytes(hw);
 
-    bool directU8 = (i.dst.type == DataType::ub);
+    // If the ultimate destination is an integer type (not just u8), the
+    // final and_ in each lane's shr/and sequence can write its result
+    // straight into that destination -- the unpacked value (0-7) is
+    // numerically correct in any integer width/signedness -- so no
+    // intermediate scratch + mov is needed. Only genuinely non-integer
+    // destinations (e.g. hf/bf) require going through an integer scratch
+    // followed by a converting mov.
+    bool directWrite = isInt(i.dst.type);
     // Preserve the caller-requested dst stride (e.g. stride 2 to indicate a
     // crosspack-2 destination) instead of forcing a packed (stride-1)
     // layout; the unpacked values are then spread out accordingly.
     CopyOperand finalDst = i.dst;
-    // When the ultimate destination is not u8, only a single lane's worth
-    // (n elements) of u8 scratch is needed at a time: each lane's shr/and
-    // sequence writes into it, an immediate mov copies that lane out to its
-    // place in finalDst, and then the same scratch is reused by the next
-    // lane.
-    CopyOperand u8Dst = directU8 ? finalDst : newTemp(DataType::ub, n, 2);
 
     CopyOperand srcBase = i.src0;
     srcBase.type = DataType::ub;
@@ -1793,10 +1794,11 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     constexpr int totalOps = 20;
     constexpr int numLanes = 8;
 
-    // When the results need copying out of the u8 scratch (!directU8), a
-    // mov is issued per lane (right after that lane's values are computed)
-    // rather than a single bulk mov after the whole loop.
-    int nOpsNeeded = totalOps + (directU8 ? 0 : numLanes);
+    // When the destination isn't directly writable (!directWrite), a mov
+    // is issued per lane (right after that lane's values are computed) to
+    // copy out of the int scratch, rather than a single bulk mov after the
+    // whole loop.
+    int nOpsNeeded = totalOps + (directWrite ? 0 : numLanes);
 
     // Reserve capacity up front: split()/splitMultiple() push into the shared
     // `newInsns` vector, and a reallocation triggered by a later call would
@@ -1817,10 +1819,11 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     // Scratch rows for the shift/mask sequence are strictly write-then-read
     // within a single lane, so a pair of full-width temporaries (holding
     // lo/hi scratch) suffices for all 8 lanes instead of allocating a fresh
-    // temporary each time.
+    // temporary each time. tmpDst is only needed when the final result
+    // can't be written directly to the destination (!directWrite).
     auto tmp = newTemp(DataType::uw, n, 2);
     auto tmpHi = newTemp(DataType::uw, n, 2);
-    auto tmpDst = newTemp(DataType::uw, n, 2);
+    auto tmpDst = directWrite ? CopyOperand() : newTemp(DataType::uw, n, 2);
     //tmp.offset = 0;
     //tmpHi.offset = 0;
 
@@ -1828,13 +1831,13 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     //tmpHi.stride = 1;
     // All ops needed across the 8 lanes come from a single splitMultiple
     // call on the seed instruction, rather than splitting lane-by-lane.
-    // When the results need copying out of the u8 scratch (!directU8), the
+    // When the destination isn't directly writable (!directWrite), the
     // extra numLanes ops (one mov per lane) are folded into that same
     // splitMultiple call, so the mov for each lane can be issued right after
     // that lane's values are computed, instead of as one bulk mov after the
     // whole loop.
     std::vector<CopyInstruction*> allOps;
-    if (directU8) {
+    if (directWrite) {
         auto ops = splitMultiple<totalOps>(i);
         allOps.assign(ops.begin(), ops.end());
     } else {
@@ -1856,7 +1859,7 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         // this lane's shr/and/or slots, so that its phase (and thus its
         // final position in program order) falls directly after this
         // lane's last op instead of after the whole loop.
-        CopyInstruction *movOp = directU8 ? nullptr : allOps[next++];
+        CopyInstruction *movOp = directWrite ? nullptr : allOps[next++];
 
         // Explicit crosspack-2 interleaving: each lane's row (all n columns)
         // is unpacked in one shot, but its columns are not written densely
@@ -1870,21 +1873,6 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         int dstStride = finalDst.stride;
 	int pairIdx = lane / dstStride;
         int parity  = lane % dstStride;
-        /*auto dst = u8Dst;
-	dst.stride =1;
-        if (directU8) {
-            // Writing straight to finalDst: place this lane's n columns at
-            // their final interleaved location directly.
-            dst.stride = dstStride;
-            dst.offset += pairIdx * n * dst.stride + parity * 1;
-            int grfOffset = dst.offset / grfBytes;
-            dst.grf += grfOffset;
-            dst.offset -= grfOffset * grfBytes;
-        }*/
-        // Otherwise (!directU8), dst stays as the plain, lane-sized
-        // (n-element) u8 scratch -- reused as-is by every lane -- and the
-        // interleaved placement is applied below when copying it out to
-        // finalDst.
 
         const auto &rowLo = rows[L.byte];
            auto finalDstLane = finalDst; 
@@ -1896,29 +1884,31 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
                 finalDstLane.grf += grfOffset;
                 finalDstLane.offset -= ((grfOffset * grfBytes) / type_size);
             }
-/*        tmpDst.offset = finalDstLane.offset;
+        // The final and_'s destination: when the ultimate dst is an
+        // integer type, write straight into finalDstLane (skipping the
+        // scratch + mov below); otherwise fall back to the uw scratch.
+        auto &andDst = directWrite ? finalDstLane : tmpDst;
+        if (!directWrite) tmpDst.offset = finalDstLane.offset;
        tmp.offset = finalDstLane.offset;
-       tmpHi.offset = finalDstLane.offset;*/
+       tmpHi.offset = finalDstLane.offset;
        if (!L.straddle) {
             setOp(ops[0], Opcode::shr, n, tmp, rowLo, CopyOperand(int(L.shift)));
-            setOp(ops[1], Opcode::and_, n, tmpDst, tmp, CopyOperand(int(7)));
+            setOp(ops[1], Opcode::and_, n, andDst, tmp, CopyOperand(int(7)));
         } else {
             const auto &rowHi = rows[L.hiByte];
             setOp(ops[0], Opcode::shr, n, tmp, rowLo, CopyOperand(int(L.shift)));
             setOp(ops[1], Opcode::shl, n, tmpHi, rowHi, CopyOperand(int(L.hiShift)));
             setOp(ops[2], Opcode::or_, n, tmp, tmp, tmpHi);
-            setOp(ops[3], Opcode::and_, n, tmpDst, tmp, CopyOperand(int(7)));
+            setOp(ops[3], Opcode::and_, n, andDst, tmp, CopyOperand(int(7)));
         }
 
-        // Copy this lane's n elements out of the u8 scratch and into their
+        // Copy this lane's n elements out of the scratch and into their
         // final destination immediately, rather than waiting to bulk-copy
         // the whole n*8-element scratch region after the loop. Because the
         // scratch is reused across lanes, this mov must happen here, before
-        // the next lane's iteration overwrites it.
-        if (!directU8) {
-
-
-            //tmpDst.stride =2;
+        // the next lane's iteration overwrites it. Skipped entirely when
+        // directWrite, since the and_ above already wrote finalDstLane.
+        if (!directWrite) {
 	    setOp(movOp, Opcode::mov, n, finalDstLane, tmpDst, CopyOperand());
         }
         /*

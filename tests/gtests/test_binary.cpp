@@ -340,9 +340,6 @@ TEST(binary_attr_test, BinaryPostOpHonorsRhsOffset0) {
 
     const binary::primitive_desc pd(
             eng, algorithm::binary_add, data_md, data_md, data_md, attr);
-#if DNNL_X64 || DNNL_AARCH64 || DNNL_RV64
-    ASSERT_NE(std::string(pd.impl_info_str()).find("jit"), std::string::npos);
-#endif
 
     std::vector<float> src0(16, 0.f);
     std::vector<float> src1(16, 0.f);

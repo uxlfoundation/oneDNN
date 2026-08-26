@@ -1,4 +1,8 @@
-### TODO: add Nightly test list here to enable proper waterfall.
+--batch=test_matmul_nightly
+
+#### TODO: merge WoQ u2 problems into one of files below through the model
+#### verbose file.
+--batch=harness_matmul_int2
 
 #### Harnesses below collect their problems via verbose logs manually.
 #### All of them are obtained from GPU workloads, thus, `_gpu` prefix is

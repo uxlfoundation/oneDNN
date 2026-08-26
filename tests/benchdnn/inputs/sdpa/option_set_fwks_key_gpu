@@ -1,0 +1,5 @@
+--reset --allow-enum-tags-only=0 --dt=bf16 --qtag=abcd --ktag=abcd --vtag=abcd --dtag=abcd 1x1x256x512:1x1x512x256:1x1x256x512
+--reset --allow-enum-tags-only=0 --mask=causal:top_left --dt=bf16 --qtag=abcd --ktag=abcd --vtag=abcd --dtag=abcd 4x16x128x128:4x16x128x128:4x16x128x128
+--reset --allow-enum-tags-only=0 --dt=bf16 --qtag=abcd --ktag=abcd --vtag=abcd --dtag=abcd 4x16x1x128:4x16x128x129:4x16x129x128
+--reset --allow-enum-tags-only=0 --mask=causal:top_left --dt=bf16 --qtag=abcd --ktag=abcd --vtag=abcd --dtag=abcd 4x32x1024x128:4x32x128x1024:4x32x1024x128
+--reset --allow-enum-tags-only=0 --dt=bf16 --qtag=abcd --ktag=abcd --vtag=abcd --dtag=abcd 4x32x1x128:4x32x128x1025:4x32x1025x128

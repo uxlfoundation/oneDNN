@@ -9,7 +9,8 @@
 # Note: post any manually added test cases below this point.
 
 ## Int8 src logical-M scales
-## TODO: integrate into a generator once per_m policy is introduced.
+## TODO: introduce a per_m named policy for benchdnn matmul.
+## TODO: integrate into a generator once item above is done.
 --reset --dt=s8:s8:f32 --attr-scales=src:1 32x64:64x48
 --reset --dt=s8:s8:bf16 --attr-scales=src:1+wei:0:2 17x64:64x19
 --reset --dt=u8:s8:f32 --attr-scales=src:1+wei:2 32x64:64x48
@@ -17,10 +18,30 @@
 --reset --dt=s8:s8:bf16 --attr-scales=src:2+wei:0:2 5x32x64:5x64x48
 --reset --dt=u8:s8:f32 --attr-scales=src:2+wei:4 3x17x64:3x64x19
 
+## Non-trivial strides for binary post-op md.
+## TODO: extend test case generator to support such configuration.
+--reset --dt=f16:f16:f32 --stag=abx --wtag=abdc --dtag=abx --attr-post-ops=binary_div:f16:0+binary_add:f16:13:abx:16512x16512x129x1 --attr-scratchpad=user 2x16x128x64:2x16x64x128
+--reset --dt=f16:f16:f32 --stag=abx --wtag=abdc --dtag=abx --attr-post-ops=binary_add:f16:13:abx:4160x4160x65x1 --attr-scratchpad=user 4x32x64x64:4x32x64x64
+--reset --dt=f16:f16:f32 --stag=abx --wtag=abdc --dtag=abx --attr-post-ops=binary_div:f16:0+binary_add:f16:12:abx:147840x147840x385x1 --attr-scratchpad=user 1x16x384x64:1x16x64x384
+--reset --dt=bf16:bf16:f32 --stag=abx --wtag=abdc --dtag=abx --attr-post-ops=binary_add:bf16:13:abx:16512x16512x129x1 --attr-scratchpad=user 2x16x128x64:2x16x64x128
+--reset --dt=bf16:bf16:f32 --stag=abx --wtag=abdc --dtag=abx --attr-post-ops=binary_add:bf16:13:abx:65792x65792x257x1+binary_mul:bf16:13:abx:65792x65792x257x1 --attr-scratchpad=user 2x8x256x64:2x8x64x256
+--reset --dt=s8:s8:f32 --stag=abx --wtag=abdc --dtag=abx --attr-post-ops=binary_add:f32:13:abx:16512x16512x129x1 --attr-scratchpad=user 2x16x128x64:2x16x64x128
+--reset --dt=s8:s8:f32 --stag=abx --wtag=abdc --dtag=abx --attr-post-ops=binary_add:f32:13:abx:16512x16512x129x1+binary_mul:f32:13:abx:16512x16512x129x1 --attr-scratchpad=user 4x16x128x64:4x16x64x128
+
+## prelu:per_oc post-op.
+## TODO: extend test case generator to support such configuration.
+--reset --dt=bf16:bf16:f32 --stag=ab --wtag=ab --dtag=ab --bia-dt=f32 --bia_mask=2 --attr-scales=src:common:0.25+wei:common:0.5+dst:common:4 --attr-post-ops=prelu:per_oc 10x30:30x20
+
+## Sum with explicit DT.
+## TODO: extend test case generator to support such configuration.
+--reset --dt=s8:s8:f32 --stag=abx --wtag=abx --dtag=abx --attr-post-ops=sum:1:0:s32 2x10x30:2x30x1
+--reset --dt=u8:s8:s8 --stag=abx --wtag=abx --dtag=abx --attr-post-ops=sum:1:0:u8 16x324:324x64
+--reset --dt=s8:s8:s8 --stag=abx --wtag=abx --dtag=abx --attr-post-ops=sum:1:0:s8 1x1024:1024x1
+
 # Binary select post-op with broadcast
 --reset
 --dt=f32,bf16
---stag=abcd --wtag=abcd --dtag=abcd
+--stag=abx --wtag=abx --dtag=abx
 --attr-post-ops=select:f32:common
 1x16x32x256:1x16x256x33n"sdpa_cond_bcast"
 1x16x33x257:1x16x257x37n"sdpa_cond_bcast_tail"

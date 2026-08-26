@@ -319,13 +319,12 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
             post_ops_fusion.fallback_start_index));
     _has_post_ops_fallback = post_ops_fusion.has_fallback(attr_.post_ops_);
 
-    const int max_threads = dnnl_get_current_num_threads();
-    const int num_threads
-            = threads_for_kernel_execute(kernel_execute_work(*this), max_threads);
+    _kernel_max_threads = threads_for_kernel_execute(
+            kernel_execute_work(*this), dnnl_get_max_threads());
     _args = std::make_shared<kai::ops::GemmArgs>(get_cpu_info(), M(), N(), K(),
             sections, _ag_nbatches, _ag_nmulti, indirect,
-            post_ops_fusion.activation, num_threads, _fixed_format, fast_mode,
-            post_ops_fusion.accumulate, _cfg.get());
+            post_ops_fusion.activation, _kernel_max_threads, _fixed_format,
+            fast_mode, post_ops_fusion.accumulate, _cfg.get());
 
     std::unique_ptr<kai::ops::IGemmCommon> kernel = nullptr;
 
@@ -339,6 +338,26 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
     }
     VDISPATCH_MATMUL(kernel, VERBOSE_UNSUPPORTED_DT_CFG);
 
+    // Copy the resulting config object constructed from kernel
+    _cfg = std::make_shared<kai::ops::GemmConfig>(kernel->get_config());
+    // Some generated filters do not match the impl list, so it ends up rejecting
+    // the second time around. This could be removed if this is fixed in KleidiAI
+    _cfg->filter.clear();
+
+    // Recreate the kernel after normalizing the selected configuration.
+    // Clearing the implementation filter can make KAI select a different
+    // kernel with different packing and workspace requirements.
+    if (is_dequant()) {
+        kai::ops::DequantizeFloat dequant(0.5);
+        kernel = create_kai_gemm_dequant(dequant);
+    } else {
+        kernel = create_kai_gemm();
+    }
+    VDISPATCH_MATMUL(kernel, VERBOSE_UNSUPPORTED_DT_CFG);
+
+    // execute() recreates from this same filter-free configuration and stored
+    // thread cap, then limits only the active thread count. This keeps kernel
+    // selection and its workspace size stable across execution contexts.
     const bool weights_are_transposed
             = !_fixed_format && helper.transB() == 'T';
     _pack_weights = !_fixed_format && kernel->B_is_pretransposed();
@@ -346,12 +365,6 @@ status_t kai_matmul_t::pd_t::init(const engine_t *engine) {
             && kernel->B_pretranspose_supports_transpose();
     _reorder_weights_ba_to_ab
             = weights_are_transposed && !_pack_transposed_weights;
-
-    // Copy the resulting config object constructed from kernel
-    _cfg = std::make_shared<kai::ops::GemmConfig>(kernel->get_config());
-    // Some generated filters do not match the impl list, so it ends up rejecting
-    // the second time around. This could be removed if this is fixed in KleidiAI
-    _cfg->filter.clear();
 
     if (_fixed_format) {
         // Logical dimension indices
@@ -445,7 +458,9 @@ status_t kai_matmul_t::init(engine_t *engine) {
 
 status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
 
-    const int max_threads = dnnl_get_current_num_threads();
+    const int current_max_threads = dnnl_get_current_num_threads();
+    const int max_threads
+            = nstl::min(pd()->_kernel_max_threads, current_max_threads);
     int num_threads = threads_for_kernel_execute(
             kernel_execute_work(*pd()), max_threads);
 
@@ -454,9 +469,10 @@ status_t kai_matmul_t::execute(const exec_ctx_t &ctx) const {
         DEFINE_ARG_SCALES_BUFFER(src_scale, DNNL_ARG_SRC);
         DEFINE_ARG_SCALES_BUFFER(wei_scale, DNNL_ARG_WEIGHTS);
         kai::ops::DequantizeFloat dequant(src_scale[0] * wei_scale[0]);
-        _kernel = pd()->create_kai_gemm_dequant(dequant, num_threads);
+        _kernel = pd()->create_kai_gemm_dequant(
+                dequant, pd()->_kernel_max_threads);
     } else {
-        _kernel = pd()->create_kai_gemm(num_threads);
+        _kernel = pd()->create_kai_gemm(pd()->_kernel_max_threads);
     }
     if (!_kernel) return status::runtime_error;
 

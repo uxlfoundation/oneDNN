@@ -81,6 +81,7 @@ struct kai_matmul_t : public primitive_t {
         bool _reorder_dst_ab_to_ba = false;
         unsigned int _ag_nbatches = 1;
         unsigned int _ag_nmulti = 1;
+        int _kernel_max_threads = 1;
         bool _src_broadcast_batch_dims = false;
         bool _has_post_ops_fallback = false;
         enum class nested_reorder_t : memory_tracking::key_t {

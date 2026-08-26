@@ -81,28 +81,37 @@ status_t init_unflattened_ip_weights_md(memory_desc_t &ip_wei_md,
 
     const dim_t O_dim = 0;
     const dim_t inner_k_dim = k_dims[0];
-    const int interleaved_by = inner_block(mm_wei_md, 1);
     const int block_by = inner_block(mm_wei_md, 0);
+    // Access matmul's strides and inner blocks.
+    const auto &mm_blk = mm_wei_md.format_desc.blocking;
 
     auto &blk = ip_wei_md.format_desc.blocking;
-    blk.strides[inner_k_dim] = interleaved_by * block_by;
+    // Use matmul's K stride so the expanded descriptor keeps the same
+    // physical weight layout.
+    blk.strides[inner_k_dim] = mm_blk.strides[0];
     ip_wei_md.padded_dims[inner_k_dim]
             = utils::rnd_up(ip_wei_md.dims[inner_k_dim], block_by);
 
-    dim_t outer_stride = interleaved_by * ip_wei_md.padded_dims[inner_k_dim];
+    dim_t expanded_padded_k = 1; // Total size of all padded K dimensions.
+    for (const dim_t k_dim : k_dims)
+        expanded_padded_k *= ip_wei_md.padded_dims[k_dim];
+    if (expanded_padded_k != mm_wei_md.padded_dims[0])
+        return status::unimplemented;
+
+    dim_t outer_stride
+            = mm_blk.strides[0] * ip_wei_md.padded_dims[inner_k_dim] / block_by;
     for (size_t i = 1; i < k_dims.size(); ++i) {
         const dim_t k_dim = k_dims[i];
         blk.strides[k_dim] = outer_stride;
         outer_stride *= ip_wei_md.padded_dims[k_dim];
     }
 
-    blk.strides[O_dim] = outer_stride;
-    ip_wei_md.padded_dims[O_dim]
-            = utils::rnd_up(ip_wei_md.dims[O_dim], interleaved_by);
+    // Keep the output dimension's stride and padding from matmul.
+    blk.strides[O_dim] = mm_blk.strides[1];
+    ip_wei_md.padded_dims[O_dim] = mm_wei_md.padded_dims[1];
 
     // Keep the nested matmul inner-block sequence intact. Only remap matmul's
     // 2D K/N indices to the corresponding unflattened IP dimensions.
-    const auto &mm_blk = mm_wei_md.format_desc.blocking;
     for (int i = 0; i < mm_blk.inner_nblks; ++i) {
         const dim_t mm_inner_idx = mm_blk.inner_idxs[i];
         if (!utils::one_of(mm_inner_idx, 0, 1)) return status::unimplemented;

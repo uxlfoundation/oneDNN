@@ -56,7 +56,6 @@ protected:
 #elif DNNL_AARCH64 && DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL
         const bool is_cpu = get_test_engine_kind() == engine::kind::cpu;
         input_f32.wino_supported = is_cpu;
-        input_f16.wino_supported = is_cpu;
 #endif
     }
 };

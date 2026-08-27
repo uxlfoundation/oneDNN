@@ -328,10 +328,10 @@ TEST(binary_attr_test, BinaryPostOpHonorsRhsOffset0) {
     auto eng = get_test_engine();
     auto strm = make_stream(eng);
 
-    const memory::desc data_md({1, 16}, data_type::f32, memory::format_tag::ab);
+    const memory::desc data_md({1, 2}, data_type::f32, memory::format_tag::ab);
     const memory::desc rhs_parent_md(
             {1, 4}, data_type::f32, memory::format_tag::ab);
-    const memory::desc rhs_md = rhs_parent_md.submemory_desc({1, 1}, {0, 2});
+    const memory::desc rhs_md = rhs_parent_md.submemory_desc({1, 2}, {0, 2});
 
     post_ops ops;
     ops.append_binary(algorithm::binary_add, rhs_md);
@@ -341,13 +341,13 @@ TEST(binary_attr_test, BinaryPostOpHonorsRhsOffset0) {
     const binary::primitive_desc pd(
             eng, algorithm::binary_add, data_md, data_md, data_md, attr);
 
-    std::vector<float> src0(16, 0.f);
-    std::vector<float> src1(16, 0.f);
-    std::vector<float> dst(16, -1.f);
-    std::vector<float> rhs_parent {100.f, 101.f, 12.f, 103.f};
+    std::vector<float> src0(2, 0.f);
+    std::vector<float> src1(2, 0.f);
+    std::vector<float> dst(4, 0.f);
+    std::vector<float> rhs_parent {100.f, 101.f, 12.f, 13.f};
     memory src0_mem(data_md, eng, src0.data());
     memory src1_mem(data_md, eng, src1.data());
-    memory dst_mem(data_md, eng, dst.data());
+    memory dst_mem(data_md, eng, dst.data() + 2);
     memory rhs_mem(rhs_md, eng, rhs_parent.data());
 
     binary(pd).execute(strm,
@@ -357,8 +357,10 @@ TEST(binary_attr_test, BinaryPostOpHonorsRhsOffset0) {
                             rhs_mem}});
     strm.wait();
 
-    for (const float value : dst)
-        EXPECT_FLOAT_EQ(value, rhs_parent[2]);
+    EXPECT_FLOAT_EQ(dst[0], 0.f);
+    EXPECT_FLOAT_EQ(dst[1], 0.f);
+    EXPECT_FLOAT_EQ(dst[2], rhs_parent[2]);
+    EXPECT_FLOAT_EQ(dst[3], rhs_parent[3]);
 }
 
 static auto expected_failures = []() {

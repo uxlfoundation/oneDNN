@@ -38,6 +38,26 @@ the type of tracing information to display.
 | `ONEDNN_VERBOSE_TIMESTAMP` | **0**               | **display timestamps disabled (default)**         |
 | \                          | 1                   | display timestamps enabled                        |
 
+The oneDNN verbose can also be managed at run-time with the following
+functions:
+* @ref dnnl::set_verbose
+* @ref dnnl::verbose_profiling_enabled
+
+@warning
+User-managed SYCL or OpenCL queue must have profiling enabled for oneDNN verbose
+to report performance data:
+* `CL_QUEUE_PROFILING_ENABLE` flag for OpenCL
+* `sycl::property::queue::enable_profiling` for SYCL
+Use @ref dnnl::verbose_profiling_enabled function to query whether verbose
+profiling mode is enabled using `ONEDNN_VERBOSE` environment variable or
+@ref dnnl::set_verbose API.
+
+@warning
+Verbose mode has non-negligible performance impact on oneDNN calls when
+enabled.
+Enabling profiling on SYCL or OpenCL queue has non-negligible application level
+performance impact.
+
 The verbose flags can be combined,
 e.g. `ONEDNN_VERBOSE=profile,dispatch` will enable printing both
 performance profiling information, and information relative to why a
@@ -69,11 +89,6 @@ oneDNN supports the following legacy settings:
 | ONEDNN_VERBOSE       | 0     | no verbose output, replaced by `none`                             |
 | \                    | 1     | primitive execution profiling timings, replaced by `profile_exec` |
 | \                    | 2     | primitive creation and execution timings, replaced by `profile`   |
-
-
-The oneDNN verbose can also be managed at run-time with the following
-functions:
-* @ref dnnl_set_verbose
 
 The function setting takes precedence over the environment variable.
 
@@ -252,7 +267,3 @@ When oneDNN verbose mode is enabled for builds with
 [Compute Library for the Arm architecture](https://uxlfoundation.github.io/oneDNN/dev_guide_build.html#gcc-with-arm-compute-library-acl-on-aarch64-host),
 any failures in the validation of Compute Library primitives will be detailed
 in the verbose output.
-
-@warning
-Verbose mode has non-negligible performance impact especially on GPU or if the
-output rate is high.

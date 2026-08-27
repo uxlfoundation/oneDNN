@@ -108,6 +108,10 @@ if(NOT DNNL_ENABLE_PRIMITIVE_CACHE)
     add_definitions_with_host_compiler(-DDNNL_DISABLE_PRIMITIVE_CACHE)
 endif()
 
+if(NOT DNNL_VERBOSE)
+    add_definitions_with_host_compiler(-DDISABLE_VERBOSE)
+endif()
+
 set(TEST_THREAD ${CMAKE_CURRENT_SOURCE_DIR}/test_thread.cpp)
 
 # Switch on threading layer for GPU only configurations to speed up testing.

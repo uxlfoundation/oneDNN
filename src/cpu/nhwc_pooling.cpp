@@ -82,7 +82,7 @@ void nhwc_pooling_fwd_t<d_type>::array_add(
 template <data_type_t d_type>
 void nhwc_pooling_fwd_t<d_type>::array_nhwc_max(const dim_t n, ker_data_t *dst,
         const ker_data_t *src, unsigned char *ws, const size_t ws_offset,
-        const data_type_t ws_dt, const int index) const {
+        const data_type_t ws_dt, const dim_t index) const {
     assert(ws);
 #if SAFE_TO_USE_OMP_SIMD
     PRAGMA_OMP_SIMD()

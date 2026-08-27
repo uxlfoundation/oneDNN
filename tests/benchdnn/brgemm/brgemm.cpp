@@ -143,6 +143,10 @@ dnnl_status_t brgemm_attr_init(
         // PROCESS_KEY_VAL(bd_mask_level);
         PROCESS_KEY_VAL(use_uker);
         PROCESS_KEY_VAL(use_interleave_stores);
+#if defined(brg_x64)
+        // ACE is an x64-only compute path.
+        PROCESS_KEY_VAL(use_ace);
+#endif
         PROCESS_KEY_VAL(b_is_vnni);
         PROCESS_KEY_VAL(postops_only);
         PROCESS_KEY_VAL(hint_bd_block);

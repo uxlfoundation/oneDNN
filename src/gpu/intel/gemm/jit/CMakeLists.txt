@@ -64,7 +64,7 @@ if(DPCPP_HOST_COMPILER_KIND STREQUAL "DEFAULT")
      )
 
     if (DNNL_ENABLE_PRIMITIVE_GPU_ISA STREQUAL "ALL")
-        set(DNNL_GPU_ISA_LIST "XELP;XEHP;XEHPG;XEHPC;XE2;XE3;XE3P")
+        set(DNNL_GPU_ISA_LIST "XEHPG;XEHPC;XE2;XE3;XE3P")
     else()
         foreach(isa ${DNNL_ENABLE_PRIMITIVE_GPU_ISA})
             string(TOUPPER ${isa} ISA)
@@ -92,8 +92,4 @@ if(CMAKE_COMPILER_IS_GNUCC)
     # Workaround for LTO bug in GCC 10, 11, 12 (possibly other versions)
     set_source_files_properties(generator/pieces/loop_sequencer.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
     set_source_files_properties(generator/generator.cpp PROPERTIES COMPILE_FLAGS -fno-lto)
-
-
-    # Workaround for excessively long compile time in GCC 11, 12 (possibly other versions)
-    set_source_files_properties(gen_gemm_kernel_db.cpp PROPERTIES COMPILE_FLAGS -fno-var-tracking)
 endif()

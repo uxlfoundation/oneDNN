@@ -71,8 +71,8 @@ private:
     }
 
     bool can_movntps_be_used() const;
-    std::size_t calculate_tail_size() const;
-    int get_channels_to_compute_without_tail(
+    int calculate_tail_size() const;
+    dim_t get_channels_to_compute_without_tail(
             bool is_tail_in_blocked_format) const;
 
     std::map<data_type_t, io::io_saturation_conf_t>
@@ -85,7 +85,7 @@ private:
             const int data_idx, const bool is_tail, const size_t offset = 0);
 
     void preserve_zero_padding(
-            int c_to_compute_without_tail, const bool is_tail);
+            dim_t c_to_compute_without_tail, const bool is_tail);
 
     void interpolate_c_oriented_format(
             const c_oriented_generation_fn_t &generation_fn);
@@ -94,13 +94,13 @@ private:
     void linear_ncsp_format();
     void linear_c_oriented_format(const bool is_tail_in_blocked_format);
     void compute_nearest_c_interpolate(
-            const int c_to_compute_without_tail, const bool is_tail);
+            const dim_t c_to_compute_without_tail, const bool is_tail);
     void compute_ne_xf16_nearest_c_interpolate(
-            const int c_to_compute_without_tail);
+            const dim_t c_to_compute_without_tail);
     void compute_linear_c_interpolate(
-            const int c_to_compute_without_tail, const bool is_tail);
+            const dim_t c_to_compute_without_tail, const bool is_tail);
     void compute_ne_xf16_linear_c_interpolate(
-            const int c_to_compute_without_tail);
+            const dim_t c_to_compute_without_tail);
 
     void generate() override;
 
@@ -194,8 +194,8 @@ private:
     static constexpr bool is_ymm_ = std::is_same<Vmm, Xbyak::Ymm>::value;
     static constexpr bool is_xmm_ = std::is_same<Vmm, Xbyak::Xmm>::value;
     static constexpr std::size_t vlen_ = is_zmm_ ? 64 : is_ymm_ ? 32 : 16;
-    static constexpr std::size_t simd_w_ = vlen_ / sizeof(float);
-    const std::size_t tail_size_;
+    static constexpr int simd_w_ = vlen_ / sizeof(float);
+    const int tail_size_;
 
     bool any_binary_postop_is_per_oc_bcast_type_ = false;
     bool any_binary_postop_is_per_oc_sp_bcast_type_ = false;

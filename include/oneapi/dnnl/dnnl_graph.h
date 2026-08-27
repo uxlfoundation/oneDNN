@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_graph_api
@@ -841,7 +841,7 @@ dnnl_status_t DNNL_API dnnl_graph_set_dump_mode(dnnl_graph_dump_mode_t modes);
 
 /// @} dnnl_graph_api
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

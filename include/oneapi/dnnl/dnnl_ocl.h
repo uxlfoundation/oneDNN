@@ -27,13 +27,13 @@
 extern "C" {
 #endif
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
-/// @addtogroup dnnl_api_interop
+/// @addtogroup dnnl_api_interop Runtime interoperability API
 /// @{
 
-/// @addtogroup dnnl_api_ocl_interop
+/// @addtogroup dnnl_api_ocl_interop OpenCL interoperability API
 /// @{
 
 /// Creates a memory object.
@@ -258,7 +258,7 @@ dnnl_status_t DNNL_API dnnl_ocl_interop_primitive_execute(
 
 /// @} dnnl_api_interop
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

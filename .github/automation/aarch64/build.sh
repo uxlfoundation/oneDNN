@@ -1,7 +1,7 @@
 #! /bin/bash
 
 # *******************************************************************************
-# Copyright 2024-2025 Arm Limited and affiliates.
+# Copyright 2024-2026 Arm Limited and affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,7 +31,7 @@ export ACL_ROOT_DIR=${ACL_ROOT_DIR:-"${PWD}/ComputeLibrary"}
 CMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE:-"Release"}
 ONEDNN_TEST_SET=${ONEDNN_TEST_SET:-"SMOKE"}
 ONEDNN_BUILD_GRAPH=${ONEDNN_BUILD_GRAPH:-"ON"}
-ONEDNN_EXPERIMENTAL_UKERNEL=${ONEDNN_EXPERIMENTAL_UKERNEL:-"ON"}
+ONEDNN_EXPERIMENTAL_UKERNEL=${ONEDNN_EXPERIMENTAL_UKERNEL:-"OFF"}
 
 if [[ "$ONEDNN_ACTION" == "configure" ]]; then
     if [[ "$GITHUB_JOB" == "pr-clang-tidy" ]]; then
@@ -46,7 +46,7 @@ if [[ "$ONEDNN_ACTION" == "configure" ]]; then
             -DONEDNN_TEST_SET=NO_CORR \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-            -DDNNL_EXPERIMENTAL_UKERNEL=ON
+            -DDNNL_EXPERIMENTAL_UKERNEL=OFF
         set +x
     else
         set -x

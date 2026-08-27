@@ -304,19 +304,6 @@ if(UNIX AND DNNL_INSTALL_MODE STREQUAL "BUNDLE")
 endif()
 
 # Install custom find modules for transitive dependencies
-if(DNNL_CPU_THREADING_RUNTIME STREQUAL "TBB")
-    if(WIN32)
-        install(FILES "../cmake/win/TBBConfig.cmake" RENAME "FindTBB.cmake"
-            DESTINATION ${LIB_CONFIG_INSTALL_DIR})
-    elseif(APPLE)
-        install(FILES "../cmake/mac/TBBConfig.cmake" RENAME "FindTBB.cmake"
-            DESTINATION ${LIB_CONFIG_INSTALL_DIR})
-    elseif(UNIX)
-        install(FILES "../cmake/lnx/TBBConfig.cmake" RENAME "FindTBB.cmake"
-            DESTINATION ${LIB_CONFIG_INSTALL_DIR})
-    endif()
-endif()
-
 if(DNNL_BLAS_VENDOR STREQUAL "ACCELERATE")
     install(FILES
     "../cmake/FindBLAS.cmake"

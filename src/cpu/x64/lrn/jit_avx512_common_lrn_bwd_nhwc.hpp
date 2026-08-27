@@ -48,13 +48,13 @@ private:
     void compute_loop(across_version version, tail_mode tail_proc,
             unsigned C_tail = 0, int loop_size_param = 1);
     void compute(int loop_size_param, tail_mode tail_proc);
-    void increment_loop_params(std::size_t offset);
+    void increment_loop_params(int offset);
     void load_compute_data(
             across_version version, tail_mode tail_proc, int loop_size_param);
     void store_compute_data(
             int loop_size_param, tail_mode tail_m, unsigned C_tail);
-    void reserve_stack_space(std::size_t space);
-    void unreserve_stack_space(std::size_t space);
+    void reserve_stack_space(int space);
+    void unreserve_stack_space(int space);
     void load_data_to_stack(
             unsigned C_tail, across_version version, tail_mode tail_proc);
     int get_stack_offset(const Reg64 reg, tail_mode tail_proc);

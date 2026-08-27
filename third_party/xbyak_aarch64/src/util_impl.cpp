@@ -216,6 +216,7 @@ bool Cpu::has(Type type) const { return (type & info->getType()) == type; }
 bool Cpu::isAtomicSupported() const { return has(XBYAK_AARCH64_HWCAP_ATOMIC); }
 bool Cpu::isBf16Supported() const { return has(XBYAK_AARCH64_HWCAP_BF16); }
 bool Cpu::isF16Supported() const { return has(XBYAK_AARCH64_HWCAP_FPHP); }
+bool Cpu::isFhmSupported() const { return has(XBYAK_AARCH64_HWCAP_FHM); }
 
 } // namespace util
 } // namespace Xbyak_aarch64

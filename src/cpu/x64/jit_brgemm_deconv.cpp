@@ -311,6 +311,7 @@ template struct brgemm_deconvolution_fwd_t<avx10_2>;
 template struct brgemm_deconvolution_fwd_t<avx512_core_amx>;
 template struct brgemm_deconvolution_fwd_t<avx512_core_amx_fp16>;
 template struct brgemm_deconvolution_fwd_t<avx10_2_amx_2>;
+template struct brgemm_deconvolution_fwd_t<avx10_2_ace>;
 
 } // namespace x64
 } // namespace cpu

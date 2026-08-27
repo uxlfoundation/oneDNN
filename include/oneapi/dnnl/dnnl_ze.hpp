@@ -29,15 +29,15 @@
 #include "oneapi/dnnl/dnnl_ze.h"
 /// @endcond
 
-/// @addtogroup dnnl_api
-/// @{
-
 namespace dnnl {
 
-/// @addtogroup dnnl_api_interop
+/// @addtogroup dnnl_api_cpp
 /// @{
 
-/// @addtogroup dnnl_api_ze_interop Level Zero interoperability API
+/// @addtogroup dnnl_api_cpp_interop
+/// @{
+
+/// @addtogroup dnnl_api_cpp_ze_interop Level Zero interoperability API
 /// API extensions to interact with the underlying Level Zero run-time.
 ///
 /// @sa @ref dev_guide_level_zero_interoperability in developer guide
@@ -297,12 +297,12 @@ inline ze_event_handle_t execute(const dnnl::primitive &aprimitive,
 
 } // namespace ze_interop
 
-/// @} dnnl_api_ze_interop
+/// @} dnnl_api_cpp_ze_interop
 
-/// @} dnnl_api_interop
+/// @} dnnl_api_cpp_interop
+
+/// @} dnnl_api_cpp
 
 } // namespace dnnl
-
-/// @} dnnl_api
 
 #endif // ONEAPI_DNNL_DNNL_ZE_HPP

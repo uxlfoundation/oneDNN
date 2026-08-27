@@ -26,9 +26,9 @@ namespace impl {
 namespace cpu {
 namespace rv64 {
 
-// RVV int8 GEMM driver. Mirrors rvv_gemm_f32() in structure but accepts s8
-// weights, s8/u8 src, and a wider set of dst types: s32, f32, s8, u8, f16,
-// bf16. The dst element width is no longer uniform (1, 2 or 4 bytes), so
+// RVV int8 GEMM driver. Mirrors rvv_gemm_f32() in structure but accepts
+// s8/u8 weights, s8/u8 src, and a wider set of dst types: s32, f32, s8, u8,
+// f16, bf16. The dst element width is no longer uniform (1, 2 or 4 bytes), so
 // `dst_dt` selects both the type and the element size; `dst_dt_sz` is derived
 // internally.
 //
@@ -45,8 +45,9 @@ namespace rv64 {
 //   - bf16  : any alpha; beta must be 0. K-split forced off. Requires
 //             Zvfbfwma; caller gates on mayiuse(zvfbfwma).
 //
-// b_signed selects between s8 and u8 on the B (src) axis; A (weights) is
-// always s8.
+// a_signed selects between s8 and u8 on the A (weights) axis; b_signed
+// selects between s8 and u8 on the B (src) axis. All four {s8,u8}x{s8,u8}
+// combinations are supported.
 //
 // `bias` is an optional f32 vector of length M, broadcast across the N axis.
 // When non-null it is fused into the JIT kernel's C-update phase, matching the
@@ -76,10 +77,11 @@ namespace rv64 {
 // before passing them through.
 status_t rvv_gemm_s8s8s32(const char *transa, const char *transb,
         const dim_t *M, const dim_t *N, const dim_t *K, const float *alpha,
-        const int8_t *A, const dim_t *lda, const void *B, const dim_t *ldb,
+        const void *A, const dim_t *lda, const void *B, const dim_t *ldb,
         const float *beta, void *C, const dim_t *ldc, const float *bias,
-        bool b_signed, data_type_t dst_dt, int32_t *c_buffers = nullptr,
-        int8_t *ws_buffers = nullptr, bool bias_is_scalar = false,
+        bool a_signed, bool b_signed, data_type_t dst_dt,
+        int32_t *c_buffers = nullptr, int8_t *ws_buffers = nullptr,
+        bool bias_is_scalar = false,
         const gemm_utils::gemm_partition_t *part = nullptr);
 
 } // namespace rv64

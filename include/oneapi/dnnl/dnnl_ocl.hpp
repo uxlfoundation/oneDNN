@@ -33,16 +33,16 @@
 #include <CL/cl.h>
 /// @endcond
 
-/// @addtogroup dnnl_api
-/// @{
-
 namespace dnnl {
 
-/// @addtogroup dnnl_api_interop Runtime interoperability API
+/// @addtogroup dnnl_api_cpp
+/// @{
+
+/// @addtogroup dnnl_api_cpp_interop Runtime interoperability API
 /// API extensions to interact with the underlying run-time.
 /// @{
 
-/// @addtogroup dnnl_api_ocl_interop OpenCL interoperability API
+/// @addtogroup dnnl_api_cpp_ocl_interop OpenCL interoperability API
 /// API extensions to interact with the underlying OpenCL run-time.
 ///
 /// @sa @ref dev_guide_opencl_interoperability in developer guide
@@ -378,12 +378,12 @@ inline cl_event execute(const dnnl::primitive &aprimitive,
 
 } // namespace ocl_interop
 
-/// @} dnnl_api_ocl_interop
+/// @} dnnl_api_cpp_ocl_interop
 
-/// @} dnnl_api_interop
+/// @} dnnl_api_cpp_interop
+
+/// @} dnnl_api_cpp
 
 } // namespace dnnl
-
-/// @} dnnl_api
 
 #endif

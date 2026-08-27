@@ -181,6 +181,11 @@ struct zen_packed_desc_t {
     // for different GEMM source types stay distinct in the primitive cache and
     // so the reorder can pick the matching packer variant.
     dnnl_data_type_t gemm_src_dt;
+    // Source weights orientation: false => [K, N] (matmul); true => [N, K] =
+    // [OC, IC] (inner product). Packed bytes are orientation-normalized, so this
+    // only tells zen_reorder how to read the source; stored explicitly since the
+    // opaque format has no strides.
+    bool weights_transposed;
 };
 
 struct sparse_desc_t {

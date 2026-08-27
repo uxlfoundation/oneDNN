@@ -89,10 +89,19 @@ void genindex_executable_t::execute(const stream &stream,
         const std::unordered_map<int, memory> &args) const {
     if (get_verbose(dnnl::impl::verbose_t::exec_profile,
                 dnnl::impl::component_t::graph)) {
-        stream.get()->wait();
+        bool block_on_wait = true;
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+        dnnl::threadpool_interop::threadpool_iface *tp = nullptr;
+        auto st = stream.get()->get_threadpool(&tp);
+        block_on_wait = st == dnnl::impl::status::success && tp
+                && !(tp->get_flags()
+                        & dnnl::threadpool_interop::threadpool_iface::
+                                ASYNCHRONOUS);
+#endif
+        if (block_on_wait) stream.get()->wait();
         double start_ms = dnnl::impl::get_msec();
         execute_impl(stream, args);
-        stream.get()->wait();
+        if (block_on_wait) stream.get()->wait();
         double duration_ms = dnnl::impl::get_msec() - start_ms;
         VPROF(start_ms, graph, exec, VERBOSE_profile, info_.c_str(),
                 duration_ms);
@@ -141,7 +150,8 @@ std::optional<::sycl::event> genindex_executable_t::execute_sycl_impl(
             sycl_stream->sycl_ctx().get_deps());
     auto return_event = sycl_stream->get_output_event();
     if (sycl_stream->is_verbose_profiler_enabled())
-        sycl_stream->run_verbose_profiler(info_, start_ms);
+        sycl_stream->run_verbose_profiler(info_, start_ms,
+                static_cast<uint64_t>(dnnl::impl::component_t::graph));
     sycl_stream->after_exec_hook();
     return return_event;
 #else
@@ -211,7 +221,8 @@ ocl_event_t genindex_executable_t::execute_ocl_impl(const stream &stream,
         return_event = last.release();
     }
     if (ocl_stream->is_verbose_profiler_enabled())
-        ocl_stream->run_verbose_profiler(info_, start_ms);
+        ocl_stream->run_verbose_profiler(info_, start_ms,
+                static_cast<uint64_t>(dnnl::impl::component_t::graph));
     ocl_stream->after_exec_hook();
     return ocl_event_t(return_event);
 #else

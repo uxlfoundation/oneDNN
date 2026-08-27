@@ -25,13 +25,13 @@
 extern "C" {
 #endif
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_api_interop
 /// @{
 
-/// @addtogroup dnnl_api_sycl_interop
+/// @addtogroup dnnl_api_sycl_interop SYCL interoperability API
 /// @{
 
 /// Creates an engine associated with a SYCL device and a SYCL context.
@@ -188,7 +188,7 @@ dnnl_status_t DNNL_API dnnl_sycl_interop_primitive_execute(
 
 /// @} dnnl_api_interop
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

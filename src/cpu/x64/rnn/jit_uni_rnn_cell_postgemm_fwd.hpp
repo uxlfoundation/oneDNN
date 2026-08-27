@@ -51,16 +51,19 @@ protected:
 
     // register size in bytes
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t cstate_dt_size = sizeof(float);
-    static constexpr size_t qscale_dt_size = sizeof(float);
+    static constexpr int vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr int cstate_dt_size = sizeof(float);
+    static constexpr int qscale_dt_size = sizeof(float);
 
-    const size_t vlen_dst
+    const int vlen_dst
             = vlen / (sizeof(float) / types::data_type_size(src_data_t));
-    const size_t vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
-    const size_t hstate_dt_size = types::data_type_size(src_data_t);
-    const size_t gate_dt_size = types::data_type_size(src_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
+    const int vlen_bias = vlen / (sizeof(float) / bias_dt_size_);
+    const int hstate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int gate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int scratch_dt_size
+            = static_cast<int>(types::data_type_size(scratch_data_t));
 
     void generate() override {
         using namespace Xbyak;
@@ -187,7 +190,8 @@ protected:
             deq_w(src_data_t, G, tmp1_vmm, tmp2_vmm, 0, mask, scratch_dt_size);
 
             // add biases
-            to_float(tmp1_vmm, B_addr, rnn_.bias_dt, sizeof(float));
+            to_float(tmp1_vmm, B_addr, rnn_.bias_dt,
+                    static_cast<int>(sizeof(float)));
             uni_vaddps(Gs, Gs, tmp1s_vmm);
 
             // inject eltwise code

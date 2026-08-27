@@ -65,8 +65,8 @@ void compensation_compute(bool transa, dim_t m, dim_t k, float alpha,
                 val += a[(i + j * blocking_factor * lda) + jb * lda];
             }
             if (alpha != 1.0f) {
-                val = q10n::out_round<int32_t>(
-                        q10n::saturate<int32_t>((double)val * alpha * -128.0));
+                val = q10n::out_round<int32_t>(static_cast<float>(
+                        q10n::saturate<int32_t>((double)val * alpha * -128.0)));
             } else {
                 val *= -128;
             }
@@ -80,8 +80,9 @@ void compensation_compute(bool transa, dim_t m, dim_t k, float alpha,
                     val += a[i + j * lda];
                 }
                 if (alpha != 1.0f) {
-                    val = q10n::out_round<int32_t>(q10n::saturate<int32_t>(
-                            (double)val * alpha * -128.0));
+                    val = q10n::out_round<int32_t>(
+                            static_cast<float>(q10n::saturate<int32_t>(
+                                    (double)val * alpha * -128.0)));
                 } else {
                     val *= -128;
                 }
@@ -95,8 +96,8 @@ void compensation_compute(bool transa, dim_t m, dim_t k, float alpha,
                 val += a[j + i * lda];
             }
             if (alpha != 1.0f) {
-                val = q10n::out_round<int32_t>(
-                        q10n::saturate<int32_t>((double)val * alpha * -128.0));
+                val = q10n::out_round<int32_t>(static_cast<float>(
+                        q10n::saturate<int32_t>((double)val * alpha * -128.0)));
             } else {
                 val *= -128;
             }

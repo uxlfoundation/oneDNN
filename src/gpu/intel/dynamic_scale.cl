@@ -33,8 +33,9 @@ inline float mx_recipe(float group_max) {
 }
 
 inline float fp_recipe(float group_max) {
-    float clamped = clamp_scale(group_max / DST_DATA_FMAX);
-    return group_max == 0.f ? 1.f : clamped;
+    float unclamped = max(min(group_max / DST_DATA_FMAX, DST_SCALES_DATA_FMAX),
+            DST_SCALES_DATA_FEPS);
+    return clamp_scale(unclamped);
 }
 
 #if DST_SCALES_DT_E8M0

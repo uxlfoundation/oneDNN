@@ -36,7 +36,7 @@ namespace cpu {
 namespace x64 {
 namespace injector {
 
-size_t aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd);
+int aux_vec_count(const post_ops_t &post_ops, cpu_isa_t isa, bool is_fwd);
 
 // The main mechanism of handling various post-ops types. It utilizes internally
 // specialized injectors to generate post-ops code to host primitive. Random
@@ -88,16 +88,16 @@ public:
     // Generates code of post_ops chain injected to host primitive. Applied to
     // range <start_idx, end_idx) of vector registers' indexes.
     // @rhs_arg_params: see jit_uni_binary_injector description
-    void compute_vector_range(size_t start_idx, size_t end_idx,
+    void compute_vector_range(int start_idx, int end_idx,
             const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params);
-    void compute_vector_range(size_t start_idx, size_t end_idx);
+    void compute_vector_range(int start_idx, int end_idx);
 
     // Generates code of post_ops chain injected to host primitive. Applied to
     // a single vector register index.
     // @rhs_arg_params: see jit_uni_binary_injector description
-    void compute_vector(size_t idx,
+    void compute_vector(int idx,
             const binary_injector::rhs_arg_dynamic_params_t &rhs_arg_params);
-    void compute_vector(size_t idx);
+    void compute_vector(int idx);
 
     // Thin wrapper for eltwise injector specific function
     void prepare_table(bool gen_table);

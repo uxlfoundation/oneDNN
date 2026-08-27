@@ -76,9 +76,10 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
     // - DST: SRC, but with one dim reduced and ic moved to the innermost position
     // - [variance only] MEAN: just the ic dim, stores the mean per ic
     std::vector<dim_idx_t> dim_ids = get_dims(ndims);
-    compute::named_buffer_t src_buf("SRC", *data_mdw.md_, dim_ids);
+    compute::named_buffer_t src_buf(
+            compute::name_id_t::src, *data_mdw.md_, dim_ids);
 
-    compute::named_buffer_t dst_buf("DST", src_buf);
+    compute::named_buffer_t dst_buf(compute::name_id_t::dst, src_buf);
     dst_buf.remove_dim(dim_ids[reduce_dim_idx]);
 
     // Move ic interior
@@ -117,7 +118,7 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
                     == status::success,
             "failed to register dst buffer");
     VDISPATCH_BNORM_IC(calc_stat_dispatch_config.define_dim_index(
-                               "IC_DIM", dims::ic, rt_conf.ic)
+                               compute::name_id_t::ic_dim, dims::ic, rt_conf.ic)
                     == status::success,
             "cannot define dim index for dispatch config");
 
@@ -130,7 +131,7 @@ static status_t init_calculate_stats_conf(reusable_params_t &conf,
     conf.calc_stat_params = dispatch_calc_stat.get_compile_params();
     rt_conf.calc_stat_params = dispatch_calc_stat.get_runtime_params();
 
-    compute::named_buffer_t reduce_buffer("BUFFER", dst_buf);
+    compute::named_buffer_t reduce_buffer(compute::name_id_t::buffer, dst_buf);
     for (const auto &dim : dim_ids) {
         if (dim != dims::ic) reduce_buffer.remove_dim(dim);
     }
@@ -180,7 +181,8 @@ static status_t init_conf_common(reusable_params_t &conf,
 
     size_t ndims = static_cast<size_t>(data_mdw.ndims());
     std::vector<dim_idx_t> dims = get_dims(ndims);
-    compute::named_buffer_t buffer("BUFFER", *data_mdw.md_, dims);
+    compute::named_buffer_t buffer(
+            compute::name_id_t::buffer, *data_mdw.md_, dims);
 
     // Dispatch to all dims
     compute::reusable_dispatch_config_t dispatch_config(
@@ -188,8 +190,8 @@ static status_t init_conf_common(reusable_params_t &conf,
     VDISPATCH_BNORM_IC(
             dispatch_config.register_buffer(buffer) == status::success,
             "failed to register buffer");
-    VDISPATCH_BNORM_IC(
-            dispatch_config.define_dim_index("IC_DIM", dims::ic, rt_conf.ic)
+    VDISPATCH_BNORM_IC(dispatch_config.define_dim_index(
+                               compute::name_id_t::ic_dim, dims::ic, rt_conf.ic)
                     == status::success,
             "cannot define dim index for dispatch config");
 
@@ -316,7 +318,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_mean_arg_list.set(1, *temp_reduce);
         append_off(calc_mean_arg_list, rt_conf.reduce_dim_stride);
         append_off(calc_mean_arg_list, rt_conf.reduction_nelems);
-        calc_mean_arg_list.append(rt_conf.calc_stat_params.get());
+        append_rt_params(calc_mean_arg_list, rt_conf.calc_stat_params);
 
         auto &nd_range_calc = rt_conf.calc_stat_params.nd_range;
 
@@ -330,7 +332,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         append_off(
                 reduce_mean_arg_list, rt_conf.div / rt_conf.reduction_nelems);
         append_off(reduce_mean_arg_list, rt_conf.div);
-        reduce_mean_arg_list.append(rt_conf.reduce_stat_params.get());
+        append_rt_params(reduce_mean_arg_list, rt_conf.reduce_stat_params);
 
         auto &nd_range_reduce = rt_conf.reduce_stat_params.nd_range;
 
@@ -343,7 +345,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         calc_var_arg_list.set(2, *temp_reduce);
         append_off(calc_var_arg_list, rt_conf.reduce_dim_stride);
         append_off(calc_var_arg_list, rt_conf.reduction_nelems);
-        calc_var_arg_list.append(rt_conf.calc_stat_params.get());
+        append_rt_params(calc_var_arg_list, rt_conf.calc_stat_params);
 
         CHECK(parallel_for(ctx, nd_range_calc, calculate_variance_kernel_,
                 calc_var_arg_list));
@@ -354,7 +356,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
         append_off(reduce_var_arg_list, rt_conf.ic);
         append_off(reduce_var_arg_list, rt_conf.div / rt_conf.reduction_nelems);
         append_off(reduce_var_arg_list, rt_conf.div);
-        reduce_var_arg_list.append(rt_conf.reduce_stat_params.get());
+        append_rt_params(reduce_var_arg_list, rt_conf.reduce_stat_params);
 
         CHECK(parallel_for(ctx, nd_range_reduce, reduce_variance_kernel_,
                 reduce_var_arg_list));
@@ -371,7 +373,7 @@ status_t reusable_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.set(7, rt_conf.eps);
     arg_list.set(8, src_add);
     arg_list.set(9, rt_conf.relu_negative_slope);
-    arg_list.append(rt_conf.gws_params.get());
+    append_rt_params(arg_list, rt_conf.gws_params);
 
     auto &nd_range = rt_conf.gws_params.nd_range;
 
@@ -442,7 +444,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     calc_stats_arg_list.set(5, *temp_reduce_shift);
     append_off(calc_stats_arg_list, rt_conf.reduce_dim_stride);
     append_off(calc_stats_arg_list, rt_conf.reduction_nelems);
-    calc_stats_arg_list.append(rt_conf.calc_stat_params.get());
+    append_rt_params(calc_stats_arg_list, rt_conf.calc_stat_params);
 
     auto &nd_range_calc = rt_conf.calc_stat_params.nd_range;
 
@@ -460,7 +462,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     reduce_stats_arg_list.set(5, rt_conf.eps);
     append_off(reduce_stats_arg_list, rt_conf.ic);
     append_off(reduce_stats_arg_list, rt_conf.div / rt_conf.reduction_nelems);
-    reduce_stats_arg_list.append(rt_conf.reduce_stat_params.get());
+    append_rt_params(reduce_stats_arg_list, rt_conf.reduce_stat_params);
 
     auto &nd_range_reduce_stat = rt_conf.reduce_stat_params.nd_range;
 
@@ -480,7 +482,7 @@ status_t reusable_bwd_t::execute_backward(const exec_ctx_t &ctx) const {
     arg_list.set(9, rt_conf.eps);
     arg_list.set(10, diff_src_add);
     append_off(arg_list, rt_conf.div);
-    arg_list.append(rt_conf.gws_params.get());
+    append_rt_params(arg_list, rt_conf.gws_params);
 
     auto &nd_range = rt_conf.gws_params.nd_range;
 

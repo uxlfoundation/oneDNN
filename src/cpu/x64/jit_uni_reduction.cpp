@@ -61,9 +61,9 @@ status_t jit_uni_reduction_t::pd_t::init(const engine_t *engine) {
     conf_.dst_type = dst_md()->data_type;
     conf_.acc_type
             = types::default_accum_data_type(conf_.src_type, conf_.dst_type);
-    conf_.src_dt_size = types::data_type_size(conf_.src_type);
-    conf_.dst_dt_size = types::data_type_size(conf_.dst_type);
-    conf_.acc_dt_size = types::data_type_size(conf_.acc_type);
+    conf_.src_dt_size = static_cast<int>(types::data_type_size(conf_.src_type));
+    conf_.dst_dt_size = static_cast<int>(types::data_type_size(conf_.dst_type));
+    conf_.acc_dt_size = static_cast<int>(types::data_type_size(conf_.acc_type));
 
     VDISPATCH_REDUCTION(
             impl_supports_datatype(conf_.src_type), VERBOSE_UNSUPPORTED_DT);
@@ -172,8 +172,8 @@ status_t jit_uni_reduction_t::execute(const exec_ctx_t &ctx) const {
 
     const dim_t idle_size = pd()->get_conf().idle_size;
     const dim_t reduce_size = pd()->get_conf().reduce_size;
-    const std::size_t src_dt_size = pd()->get_conf().src_dt_size;
-    const std::size_t dst_dt_size = pd()->get_conf().dst_dt_size;
+    const int src_dt_size = pd()->get_conf().src_dt_size;
+    const int dst_dt_size = pd()->get_conf().dst_dt_size;
     const auto &post_ops = pd()->attr()->post_ops_;
     const auto &post_ops_binary_rhs_arg_vec
             = binary_injector::prepare_binary_args(post_ops, ctx);

@@ -33,7 +33,7 @@ status_t primitive_t::create_kernel(impl::engine_t *engine,
                 VERBOSE_KERNEL_CREATION_FAIL,
                 jitter ? jitter->kernel_name() : "cached");
         kernel->hash_dump("blob");
-        CHECK(register_kernels({*kernel}));
+        if (register_kernel) CHECK(register_kernels({*kernel}));
         return status::success;
     }
     VCHECK_KERNEL(intel_engine->create_kernel(kernel, jitter),

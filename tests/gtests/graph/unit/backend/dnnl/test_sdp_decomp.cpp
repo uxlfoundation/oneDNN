@@ -443,7 +443,7 @@ TEST(test_sdp_decomp_execute, Int8Bf16SdpDecomp_CPU) {
 }
 
 // Test multiple thread execute
-TEST(test_sdp_decomp_execute, MultithreaSdpDecomp_CPU) {
+TEST(test_sdp_decomp_execute, MultithreadSdpDecomp_CPU) {
     graph::engine_t *eng = get_engine();
 
     SKIP_IF(eng->kind() == graph::engine_kind::gpu, "skip on gpu");
@@ -1486,7 +1486,7 @@ TEST(test_sdp_decomp_execute, Int8Bf16DistilBertSdpCorr_CPU) {
 }
 
 // Test correctness
-TEST(test_sdp_decomp_execute, MultithreaSdpDecompCorr_CPU) {
+TEST(test_sdp_decomp_execute, MultithreadSdpDecompCorr_CPU) {
     graph::engine_t *eng = get_engine();
     graph::stream_t *strm = get_stream();
     SKIP_IF(eng->kind() == graph::engine_kind::gpu, "skip on gpu");
@@ -1509,6 +1509,14 @@ TEST(test_sdp_decomp_execute, MultithreaSdpDecompCorr_CPU) {
             {seq_len * head_dim, size_per_head, 1, head_dim},
             {seq_len * head_dim, size_per_head * seq_len, size_per_head, 1}};
     std::vector<bool> transpose_b = {false, true};
+
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_OMP
+    // 4 concurrent threads will be executed below. Limiting the number of OMP
+    // threads to avoid oversubscription.
+    const int nthr = dnnl_get_current_num_threads() / 4;
+    SKIP_IF(nthr == 0, "skip as not enough threads for test");
+    omp_set_num_threads(nthr);
+#endif
 
     for (size_t i = 0; i < KEY_STRIDES.size(); ++i) {
         graph::graph_t g(eng->kind());

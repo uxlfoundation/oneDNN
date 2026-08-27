@@ -58,6 +58,14 @@ inline bool prefer_large_grf(
     return gpu_attr->grf_per_thread() > 128;
 }
 
+inline bool prefer_dpas(
+        const dsl::hw_t &hw, const gpu_primitive_attr_t *gpu_attr) {
+    if (!gpu_attr || !gpu_attr->use_dpas()) return false;
+    gpu_assert(hw.systolic_support())
+            << "dpas requested on hardware without systolic support";
+    return true;
+}
+
 } // namespace jit
 } // namespace intel
 } // namespace gpu

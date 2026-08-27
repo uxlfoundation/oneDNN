@@ -19,7 +19,12 @@
 
 #include "ngen_config_internal.hpp"
 
-#include "level_zero/ze_api.h"
+
+#if defined(__has_include) && __has_include(<ze_api.h>)
+#include <ze_api.h>
+#else
+#include <level_zero/ze_api.h>
+#endif
 
 #include <sstream>
 
@@ -100,7 +105,7 @@ public:
 
     DEPRECATED explicit LevelZeroCodeGenerator(int stepping_ = 0, DebugConfig debugConfig = {}) : LevelZeroCodeGenerator({genericProductFamily(hw), stepping_, PlatformType::Unknown}, debugConfig) {}
 
-    explicit LevelZeroCodeGenerator(DebugConfig debugConfig) : LevelZeroCodeGenerator({genericProductFamily(hw), 0}, debugConfig) {}
+    explicit LevelZeroCodeGenerator(DebugConfig debugConfig) : LevelZeroCodeGenerator({genericProductFamily(hw), 0, PlatformType::Unknown}, debugConfig) {}
     LevelZeroCodeGenerator(LevelZeroCodeGenerator&&) = default;
 
     inline std::pair<ze_module_handle_t, ze_kernel_handle_t> getModuleAndKernel(ze_context_handle_t context, ze_device_handle_t device, const std::string &options = "");

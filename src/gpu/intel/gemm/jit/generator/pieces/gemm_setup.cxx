@@ -1695,6 +1695,12 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         if (strategy.kInterleave)
             period = gcd(period, strategy.kInterleaveChunk);
 
+        // C is repacked (and late scales applied) every `period` k-elements, but
+        // advances in units of opCountAB. If opCountAB does not divide period,
+        // scale groups can be silently skipped.
+        if (period % opCountAB != 0)
+            stub("C repack period incompatible with outer product count");
+
         state.Cr_layout = RegisterLayout(hw, Tc_compute, Cr_unrollM * mx, Cr_unrollN * nx, globalCM, 1, strategy.C.tileR, strategy.C.tileC, true);
     }
 
@@ -1885,7 +1891,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
     auto i0qLate = i0q, j0qLate = j0q;
     auto A_h0qLate = A_h0q, B_h0qLate = B_h0q;
-    auto cMX_j0q = j0q;
+    auto cMX_i0q = i0q, cMX_j0q = j0q;
 
     if (slmA && (((ao2D || aoTo2D) && !lateOffsetA) || (as2D && !state.lateScale2DA))) {
         if (state.ma_slm < unrollM) {
@@ -1989,7 +1995,7 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
     if (problem.hasCMXScale()) {
         auto i0qs = state.ra.alloc_sub(cMX_j0q.getType(), getHint(HintType::LongTerm, strategy));
-        divDown(i0qs, i0q, problem.cqGroupM, strategy, state);
+        divDown(i0qs, cMX_i0q, problem.cqGroupM, strategy, state);
         setupQAddr(Type::u8, state.C_scaleAddrs, state.C_scaleLayout, state.inputs.cScalePtr,
                i0qs, cMX_j0q, state.inputs.ldcScale, state.offsetCs);
     }
@@ -2124,7 +2130,8 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
     reclaimRanges(state.C_regs, state);
 
     // Allocate tokens.
-    gemmAllocateTokens(problem, strategy, state);
+    if (strategy.tokenAlloc)
+        gemmAllocateTokens(problem, strategy, state);
 
     // Preloading C and fused beta scaling need some extra registers for C headers.
     // Temporarily free up A/B data registers for that purpose.

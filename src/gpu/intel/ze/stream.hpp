@@ -55,6 +55,9 @@ public:
     status_t get_profiling_data(profiling_data_kind_t data_kind,
             int *num_entries, uint64_t *data) const override;
 
+    status_t run_verbose_profiler(const std::string &pd_info, double start_ms,
+            uint64_t component) override;
+
     status_t copy(const impl::memory_storage_t &src,
             const impl::memory_storage_t &dst, size_t size,
             const xpu::event_t &deps, xpu::event_t &out_dep) override {
@@ -78,6 +81,9 @@ private:
     status_t init();
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(stream_t);
+
+    status_t get_device_properties(ze_device_handle_t dev,
+            double &timer_frequency, uint64_t &max_timestamp_value) const;
 };
 
 } // namespace ze

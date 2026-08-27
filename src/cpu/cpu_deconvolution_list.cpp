@@ -48,6 +48,7 @@ using namespace dnnl::impl::prop_kind;
 const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> &impl_list_map() {
     static const std::map<pk_impl_key_t, std::vector<impl_list_item_t>> the_map = REG_DECONV_P({
         {{forward}, {
+            CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx10_2_ace>)
             CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx10_2_amx_2>)
             CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx512_core_amx_fp16>)
             CPU_INSTANCE_AMX(brgemm_deconvolution_fwd_t<avx512_core_amx>)

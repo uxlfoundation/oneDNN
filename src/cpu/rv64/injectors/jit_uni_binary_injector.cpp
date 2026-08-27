@@ -82,7 +82,7 @@ void jit_uni_binary_injector_t<isa>::compute_vector(
 // Returns whether the result is a broadcast scalar (true) vs a vector (false).
 //
 // Non-f32 rhs and the gather are only enabled by the binary primitive, which
-// computes at e32/m4; the s8/u8/f16 paths briefly switch SEW (e8/m1, e16/m2 and
+// computes at e32/m4; the s8/u8/xf16 paths briefly switch SEW (e8/m1, e16/m2 and
 // e32/m4 share VLMAX, so `vsetvli x0,x0` keeps vl) and widen v_rhs_ in place,
 // restoring e32/m4. v_idx_ holds the gather byte-index; other consumers use only
 // scalar/per_element f32, which take the no-switch paths.
@@ -141,7 +141,7 @@ bool jit_uni_binary_injector_t<isa>::load_operand(
                 h_->vzext_vf4(op.v_rhs, op.v_tmp);
                 h_->vfcvt_f_xu_v(op.v_rhs, op.v_rhs);
             }
-        } else { // f16
+        } else { // f16 / bf16
             h_->vsetvli(
                     x0, x0, SEW::e16, LMUL::m2, VTA::ta, VMA::ma); // keep vl
             if (is_gather)
@@ -150,14 +150,18 @@ bool jit_uni_binary_injector_t<isa>::load_operand(
                 h_->vlse16_v(op.v_tmp, base, op.rhs_stride);
             else
                 h_->vle16_v(op.v_tmp, base);
-            h_->vfwcvt_f_f_v(op.v_rhs, op.v_tmp); // e16m2 -> e32m4
+            // e16m2 -> e32m4; Zvfbfmin for bf16, Zvfh for f16.
+            if (op.rhs_dt == data_type::bf16)
+                h_->vfwcvtbf16_f_f_v(op.v_rhs, op.v_tmp);
+            else
+                h_->vfwcvt_f_f_v(op.v_rhs, op.v_tmp);
             h_->vsetvli(x0, x0, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
         }
     };
 
     if (op.bcast == bt::scalar) {
         // One rhs value broadcast to all lanes. Integer/f32 use scalar loads ->
-        // f_rhs_ (no vl change); f16 broadcast-loads (stride 0) -> v_rhs_.
+        // f_rhs_ (no vl change); f16/bf16 broadcast-load (stride 0) -> v_rhs_.
         const Reg base = load_base();
         if (op.rhs_dt == data_type::f32) {
             h_->flw(op.f_rhs, base, 0);
@@ -178,15 +182,18 @@ bool jit_uni_binary_injector_t<isa>::load_operand(
             h_->fcvt_s_wu(op.f_rhs, op.gpr);
             return true;
         }
-        // f16: broadcast one value to every lane (stride 0) into v_tmp_, then
-        // widen into v_rhs_ (staged, since a widen cannot overlap its source).
+        // f16/bf16: broadcast one value to every lane (stride 0) into v_tmp_,
+        // then widen into v_rhs_ (staged, a widen cannot overlap its source).
         assert(op.v_tmp != VReg(0)
-                && "f16 binary rhs requires explicit staging scratch");
+                && "xf16 binary rhs requires explicit staging scratch");
         assert(op.v_tmp != op.v_rhs
                 && "binary rhs staging scratch overlaps rhs result");
         h_->vsetvli(x0, x0, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
         h_->vlse16_v(op.v_tmp, base, x0);
-        h_->vfwcvt_f_f_v(op.v_rhs, op.v_tmp);
+        if (op.rhs_dt == data_type::bf16)
+            h_->vfwcvtbf16_f_f_v(op.v_rhs, op.v_tmp);
+        else
+            h_->vfwcvt_f_f_v(op.v_rhs, op.v_tmp);
         h_->vsetvli(x0, x0, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
         return false;
     }
@@ -360,6 +367,7 @@ void jit_uni_binary_injector_t<isa>::apply_op(const Vmm &dst, bool scalar) {
 
 template struct jit_uni_binary_injector_t<v>;
 template struct jit_uni_binary_injector_t<zvfh>;
+template struct jit_uni_binary_injector_t<zvfbfwma>;
 
 } // namespace rv64
 } // namespace cpu

@@ -106,12 +106,14 @@ public:
     inline Subregister getSIMD1LocalID(int dim) const;
     inline Subregister getLocalSize(int dim) const;
     inline Subregister getGroupID(int dim) const;
+    inline RegData getScratchPointer() const;
 
     const std::string &getExternalName() const           { return kernelName; }
     int getSIMD() const                                  { return simd; }
     int getBarrierCount() const                          { return barrierCount; }
     int getGRFCount() const                              { return needGRF; }
     size_t getSLMSize() const                            { return slmSize; }
+    size_t getScratchSize() const                        { return scratchSize; }
     bool getEfficient64Bit() const                       { return useEfficient64Bit; }
 
     void require32BitBuffers()                           { allow64BitBuffers = false; }
@@ -139,6 +141,7 @@ public:
                           size_t z = 1)                  { wg[0] = x; wg[1] = y; wg[2] = z; }
 
     void setArgumentBase(RegData base)                   { baseOverride = base; }
+    RegData getArgumentBase() const                      { return baseOverride; }
     void setInlineGRFCount(int grfs)                     { requestedInlineBytes = grfs * GRF::bytes(hw); }
     int32_t getSkipCrossThreadOffset() const             { return offsetSkipCrossThread; }
     std::array<int32_t, 2> getCTPatchOffsets() const     { return offsetCTPatches; }
@@ -153,6 +156,7 @@ public:
     inline void generatePrologue(CodeGenerator &generator, const GRF &temp = GRF(127)) const;
 
     inline void setPrologueLabels(InterfaceLabels &labels, LabelManager &man);
+    inline int32_t prologueEnd() const { return offsetSkipPerThread; };
 
     inline void generateDummyCL(std::ostream &stream) const;
     inline std::string generateZeInfo() const;
@@ -176,8 +180,12 @@ public:
         bool globalStatelessAccess() const { return (static_cast<int>(access) & static_cast<int>(GlobalAccessType::Stateless)); }
     };
 
-    const Assignment &getAssignment(int idx) const   { return assignments[idx]; }
-    size_t numAssignments() const   { return assignments.size(); }
+    const Assignment &getAssignment(int idx)           const { return assignments[idx]; }
+
+    ExternalArgumentType getAssignmentExtType(int idx) const { return assignments[idx].exttype; }
+    DataType getAssignmentType(int idx)                const { return assignments[idx].type; }
+    const std::string& getAssignmentName(int idx)      const { return assignments[idx].name; }
+    size_t numAssignments()                            const { return assignments.size(); }
 
 protected:
     HW hw;
@@ -341,6 +349,15 @@ Subregister InterfaceHandler::getGroupID(int dim) const
     }
 
     return Subregister();
+}
+
+RegData InterfaceHandler::getScratchPointer() const
+{
+#ifdef NGEN_SAFE
+    if (scratchSize == 0) throw unknown_argument_exception();
+    if (!useEfficient64Bit) throw unknown_argument_exception();
+#endif
+    return GRF(getCrossthreadBase().getBase()).uq(24 / 8);
 }
 
 void InterfaceHandler::requireSIMD(int simd_)
@@ -508,10 +525,12 @@ void InterfaceHandler::finalize()
                     }
                 }
 
-                offset = (offset + size - 1) & -size;
-                if (offset >= regSize) {
-                    base += offset / regSize;
-                    offset = 0;
+                {
+                    offset = (offset + size - 1) & -size;
+                    if (offset >= regSize) {
+                        base += offset / regSize;
+                        offset = 0;
+                    }
                 }
 
                 assignment.reg = base.sub(offset / bytes, assignment.type);
@@ -641,7 +660,7 @@ void InterfaceHandler::setPrologueLabels(InterfaceLabels &labels, LabelManager &
     };
 
     int immOffset = 0xC;
-    if (hw >= HW::Xe3p) immOffset = 0x8;
+    if (hw == HW::Xe3p) immOffset = 0x8;
 
     setOffset(labels.localIDsLoaded, offsetSkipPerThread);
     setOffset(labels.argsLoaded, offsetSkipCrossThread);
@@ -694,6 +713,8 @@ std::string InterfaceHandler::generateZeInfo() const
         md << "      has_global_atomics: true\n";
     if (slmSize > 0)
         md << "      slm_size: " << slmSize << '\n';
+    if (scratchSize > 0)
+        md << "      private_size: " << scratchSize << '\n';
     if (!needStatelessWrites)
         md << "      has_no_stateless_write: true\n";
     if (needNoPreemption)
@@ -731,6 +752,11 @@ std::string InterfaceHandler::generateZeInfo() const
     if (useEfficient64Bit) {
         md << "      - arg_type: indirect_data_pointer\n"
               "        offset: 0\n"
+              "        size: 8\n";
+    }
+    if (useEfficient64Bit && scratchSize > 0) {
+        md << "      - arg_type: scratch_pointer\n"
+              "        offset: 24\n"
               "        size: 8\n";
     }
     for (auto &assignment : assignments) {
@@ -837,6 +863,16 @@ std::string InterfaceHandler::generateZeInfo() const
                   "        size: " << localIDBytes << "\n"
                   "  \n";
         }
+    }
+
+    // Per-thread scratch allocation (drives HW surface sizing).
+    if (scratchSize > 0) {
+        md << "\n"
+              "    per_thread_memory_buffers: \n"
+              "      - type: scratch\n"
+              "        usage: spill_fill_space\n"
+              "        size: " << scratchSize << "\n"
+              "\n";
     }
 
     md << "\n"; // ensure file ends with newline

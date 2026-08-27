@@ -22,8 +22,8 @@ namespace impl {
 namespace xpu {
 namespace ze {
 
-status_t stream_impl_t::init(
-        ze_context_handle_t context, ze_device_handle_t device) {
+status_t stream_impl_t::init(ze_context_handle_t context,
+        ze_device_handle_t device, engine_kind_t kind) {
     if (!list_) {
         assert(context && device);
 
@@ -41,17 +41,28 @@ status_t stream_impl_t::init(
         ZE_CHECK(ze::zeCommandListGetContextHandle(list_, &context));
     }
 
+    // Initializes the verbose profiler for supported runtimes for non-blocked
+    // logging. The profiler initialization must precede stream initialization
+    // to ensure the event pool is created with the correct
+    // ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP flag to query profiling info during
+    // logging operation.
+    // Note: The verbose profiler state is fixed at stream initialization and
+    // does not respond to runtime changes made via set_dnnl_verbose().
+    // TODO: allow runtime control of the asynchronous verbose mode via
+    // set_dnnl_verbose()
+    init_verbose_profiler(kind);
+
     if ((flags() & stream_flags::out_of_order) && is_profiling_enabled()) {
         VERROR(common, ze,
                 "Level Zero kernel profiling is not supported with "
                 "out-of-order queues");
         return status::invalid_arguments;
-    } else if ((flags() & stream_flags::out_of_order)
-            || is_profiling_enabled()) {
+    } else if ((flags() & stream_flags::out_of_order) || is_profiling_enabled()
+            || is_verbose_profiler_enabled()) {
         ze_event_pool_desc_t event_pool_desc {};
         event_pool_desc.stype = ZE_STRUCTURE_TYPE_EVENT_POOL_DESC;
         event_pool_desc.flags = ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
-        if (is_profiling_enabled())
+        if (is_profiling_enabled() || is_verbose_profiler_enabled())
             event_pool_desc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
         // Note: 16K number is taken randomly as big enough to fit mode=F perf
         // validation or a single model profiling.
@@ -116,6 +127,16 @@ status_t stream_impl_t::wait() {
 status_t stream_impl_t::barrier() {
     ZE_CHECK(ze::zeCommandListAppendBarrier(list_, nullptr, 0, nullptr));
 
+    return status::success;
+}
+
+status_t stream_impl_t::init_verbose_profiler(engine_kind_t eng) {
+    use_verbose_profiler_ = false;
+    if (!get_verbose(verbose_t::exec_profile)) return status::success;
+    if (eng != engine_kind::gpu) return status::success;
+    // verbose profiling support is only for in-order queues
+    if (flags() & stream_flags::out_of_order) return status::success;
+    use_verbose_profiler_ = true;
     return status::success;
 }
 

@@ -420,6 +420,8 @@ private:
       type_ |= (Type)XBYAK_AARCH64_HWCAP_FP;
     if (hwcap & HWCAP_FPHP)
       type_ |= (Type)XBYAK_AARCH64_HWCAP_FPHP;
+    if (hwcap & HWCAP_ASIMDFHM)
+      type_ |= (Type)XBYAK_AARCH64_HWCAP_FHM;
     if (hwcap & HWCAP_ASIMD)
       type_ |= (Type)XBYAK_AARCH64_HWCAP_ADVSIMD;
     if (hwcap & HWCAP_CRC32)

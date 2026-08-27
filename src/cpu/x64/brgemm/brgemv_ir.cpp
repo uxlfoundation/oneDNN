@@ -137,7 +137,7 @@ struct brgemv_ir_conf_t {
         , mblk_wei_scale_off(dt_sz_wei_scales * m_block) {}
 
     const dim_t m, k, lda, incy;
-    const int max_bs;
+    const dim_t max_bs;
     const int m_block, k_block;
     const int dt_sz_a, dt_sz_x, dt_sz_y;
     const data_type_t dt_a, dt_x, dt_y, dt_acc;
@@ -726,7 +726,7 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     const int m_block = brg.gemv_bd_block();
     const int dt_sz_a = brg.typesize_A;
     const int dt_sz_y = brg.typesize_C;
-    const int incy = brg.LDC;
+    const dim_t incy = brg.LDC;
 
     // Ensure indexed displacements fit in 32-bit
     auto fits = [](dim_t v) { return v <= INT32_MAX && v >= INT32_MIN; };

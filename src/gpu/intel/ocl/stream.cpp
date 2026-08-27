@@ -152,7 +152,7 @@ void stream_t::after_exec_hook() {
 }
 
 status_t stream_t::run_verbose_profiler(
-        const std::string &pd_info, double start_ms) {
+        const std::string &pd_info, double start_ms, uint64_t component) {
     if (!is_verbose_profiler_enabled()) {
         VERROR(primitive, exec,
                 "running verbose profiler while it is not enabled");
@@ -160,7 +160,7 @@ status_t stream_t::run_verbose_profiler(
     }
 
     auto *vp = verbose_profiler();
-    vp->add_to_pending_primitive_list(start_ms, pd_info);
+    vp->add_to_pending_primitive_list(start_ms, pd_info, component);
     return status::success;
 }
 

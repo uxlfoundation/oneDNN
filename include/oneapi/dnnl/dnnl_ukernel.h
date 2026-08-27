@@ -27,10 +27,10 @@
 extern "C" {
 #endif
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
-/// @addtogroup dnnl_api_ukernel
+/// @addtogroup dnnl_api_ukernel Ukernels
 /// @{
 
 #ifdef DNNL_EXPERIMENTAL_UKERNEL
@@ -91,7 +91,7 @@ dnnl_status_t DNNL_API dnnl_ukernel_attr_params_set_D_scales(
 dnnl_status_t DNNL_API dnnl_ukernel_attr_params_destroy(
         dnnl_ukernel_attr_params_t attr_params);
 
-/// @addtogroup dnnl_api_ukernel_brgemm
+/// @addtogroup dnnl_api_ukernel_brgemm BRGeMM ukernel
 /// @{
 
 /// Creates a BRGeMM ukernel object. Operates by the following formula:
@@ -285,7 +285,7 @@ dnnl_status_t DNNL_API dnnl_brgemm_destroy(dnnl_brgemm_t brgemm);
 
 /// @} dnnl_api_ukernel_brgemm
 
-/// @addtogroup dnnl_api_ukernel_transform
+/// @addtogroup dnnl_api_ukernel_transform Transform ukernel
 /// @{
 
 /// Creates a transform object.
@@ -336,7 +336,7 @@ dnnl_status_t DNNL_API dnnl_transform_destroy(dnnl_transform_t transform);
 
 /// @} dnnl_api_ukernel
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

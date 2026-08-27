@@ -109,10 +109,12 @@ status_t jit_uni_resampling_fwd_t::pd_t::init(const engine_t *engine) {
     conf_.ndims = ndims();
 
     if (conf_.alg == alg_kind::resampling_linear)
-        conf_.number_of_corners = pow(2, conf_.ndims - 2);
+        conf_.number_of_corners = 1u << (conf_.ndims - 2);
 
-    conf_.src_dt_size = types::data_type_size(conf_.src_data_type);
-    conf_.dst_dt_size = types::data_type_size(conf_.dst_data_type);
+    conf_.src_dt_size
+            = static_cast<int>(types::data_type_size(conf_.src_data_type));
+    conf_.dst_dt_size
+            = static_cast<int>(types::data_type_size(conf_.dst_data_type));
 
     conf_.is_saturation_needed
             = utils::one_of(conf_.dst_data_type, s32, s8, u8);
@@ -300,18 +302,21 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_nearest() {
             + utils::rnd_up(pd()->OW(), kernel_->get_simd_w()));
 
     for (dim_t od = 0; od < pd()->OD(); od++) {
-        const int offset_id = nearest_idx(od, pd()->OD(), pd()->ID())
-                * pd()->get_conf().stride_d;
+        const unsigned offset_id
+                = static_cast<unsigned>(nearest_idx(od, pd()->OD(), pd()->ID())
+                        * pd()->get_conf().stride_d);
         indices_.emplace_back(offset_id);
     }
     for (dim_t oh = 0; oh < pd()->OH(); oh++) {
-        const int offset_ih = nearest_idx(oh, pd()->OH(), pd()->IH())
-                * pd()->get_conf().stride_h;
+        const unsigned offset_ih
+                = static_cast<unsigned>(nearest_idx(oh, pd()->OH(), pd()->IH())
+                        * pd()->get_conf().stride_h);
         indices_.emplace_back(offset_ih);
     }
     for (dim_t ow = 0; ow < pd()->OW(); ow++) {
-        const int offset_iw = nearest_idx(ow, pd()->OW(), pd()->IW())
-                * pd()->get_conf().stride_w;
+        const unsigned offset_iw
+                = static_cast<unsigned>(nearest_idx(ow, pd()->OW(), pd()->IW())
+                        * pd()->get_conf().stride_w);
         indices_.emplace_back(offset_iw);
     }
 
@@ -322,11 +327,11 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
     using namespace resampling_utils;
 
     const unsigned number_of_corners = pd()->get_conf().number_of_corners;
-    const unsigned stride_w = pd()->get_conf().stride_w;
-    const unsigned stride_h = pd()->get_conf().stride_h;
-    const unsigned stride_d = pd()->get_conf().stride_d;
+    const dim_t stride_w = pd()->get_conf().stride_w;
+    const dim_t stride_h = pd()->get_conf().stride_h;
+    const dim_t stride_d = pd()->get_conf().stride_d;
 
-    unsigned num_of_elements = 0;
+    dim_t num_of_elements = 0;
     if (pd()->get_conf().tag_kind == jit_memory_tag_kind_t::ncsp) {
         // In kernel is used vmovdqu to get indices. This instruction don't have
         // tail processing possibilities on sse41 and avx. To avoid problems
@@ -356,9 +361,11 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
                 for (unsigned i = 0; i < number_of_corners; i++) {
                     std::bitset<3> corners(i);
                     indices_[i * indices_stride + offset]
-                            = coeffs_id.idx[corners.test(2)] * stride_d
-                            + coeffs_ih.idx[corners.test(1)] * stride_h
-                            + coeffs_iw.idx[corners.test(0)] * stride_w;
+                            = static_cast<unsigned>(
+                                    coeffs_id.idx[corners.test(2)] * stride_d
+                                    + coeffs_ih.idx[corners.test(1)] * stride_h
+                                    + coeffs_iw.idx[corners.test(0)]
+                                            * stride_w);
                     weights_[i * weights_stride + offset]
                             = coeffs_id.wei[corners.test(2)]
                             * coeffs_ih.wei[corners.test(1)]
@@ -389,8 +396,10 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
             // to read and makes the operation faster.
             weights_w[2 * ow] = coeffs_iw.wei[0];
             weights_w[2 * ow + 1] = coeffs_iw.wei[1];
-            indices_w[2 * ow] = coeffs_iw.idx[0] * stride_w;
-            indices_w[2 * ow + 1] = coeffs_iw.idx[1] * stride_w;
+            indices_w[2 * ow]
+                    = static_cast<unsigned>(coeffs_iw.idx[0] * stride_w);
+            indices_w[2 * ow + 1]
+                    = static_cast<unsigned>(coeffs_iw.idx[1] * stride_w);
         }
 
         for (dim_t oh = 0; oh < pd()->OH(); oh++) {
@@ -398,8 +407,9 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
 
             weights_h[oh] = coeffs_ih.wei[0];
             weights_h[pd()->OH() + oh] = coeffs_ih.wei[1];
-            indices_h[oh] = coeffs_ih.idx[0] * stride_h;
-            indices_h[pd()->OH() + oh] = coeffs_ih.idx[1] * stride_h;
+            indices_h[oh] = static_cast<unsigned>(coeffs_ih.idx[0] * stride_h);
+            indices_h[pd()->OH() + oh]
+                    = static_cast<unsigned>(coeffs_ih.idx[1] * stride_h);
         }
 
         for (dim_t od = 0; od < pd()->OD(); od++) {
@@ -407,8 +417,9 @@ status_t jit_uni_resampling_fwd_t::fill_data_for_linear() {
 
             weights_d[od] = coeffs_id.wei[0];
             weights_d[pd()->OD() + od] = coeffs_id.wei[1];
-            indices_d[od] = coeffs_id.idx[0] * stride_d;
-            indices_d[pd()->OD() + od] = coeffs_id.idx[1] * stride_d;
+            indices_d[od] = static_cast<unsigned>(coeffs_id.idx[0] * stride_d);
+            indices_d[pd()->OD() + od]
+                    = static_cast<unsigned>(coeffs_id.idx[1] * stride_d);
         }
     } else {
         assert(!"Invalid memory format kind.");
@@ -439,8 +450,8 @@ status_t jit_uni_resampling_fwd_t::execute(const exec_ctx_t &ctx) const {
 
 status_t jit_uni_resampling_fwd_t::interpolate_nearest(const uint8_t *src,
         uint8_t *dst, const std::vector<const void *> &post_ops_args) const {
-    const size_t src_dt_size = pd()->get_conf().src_dt_size;
-    const size_t dst_dt_size = pd()->get_conf().dst_dt_size;
+    const int src_dt_size = pd()->get_conf().src_dt_size;
+    const int dst_dt_size = pd()->get_conf().dst_dt_size;
     const size_t inner_stride = pd()->get_conf().inner_stride;
 
     const dim_t MB = pd()->MB();
@@ -509,8 +520,8 @@ status_t jit_uni_resampling_fwd_t::interpolate_nearest(const uint8_t *src,
 
 status_t jit_uni_resampling_fwd_t::interpolate_linear(const uint8_t *src,
         uint8_t *dst, const std::vector<const void *> &post_ops_args) const {
-    const size_t src_dt_size = pd()->get_conf().src_dt_size;
-    const size_t dst_dt_size = pd()->get_conf().dst_dt_size;
+    const int src_dt_size = pd()->get_conf().src_dt_size;
+    const int dst_dt_size = pd()->get_conf().dst_dt_size;
     const size_t inner_stride = pd()->get_conf().inner_stride;
 
     const dim_t MB = pd()->MB();

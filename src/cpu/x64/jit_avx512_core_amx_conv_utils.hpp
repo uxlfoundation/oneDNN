@@ -47,40 +47,43 @@ struct spatial_features_3d_t {
         , init_overflow_(0)
         , end_overflow_(0) {}
 
-    inline int get_init_overflow(const int in) const {
+    inline dim_t get_init_overflow(const dim_t in) const {
         if (is_fast_path_)
-            return nstl::max(0, filter_size_ - 1 - in - init_pad_);
+            return nstl::max<dim_t>(0, filter_size_ - 1 - in - init_pad_);
         if (dilate_ != 1)
             return div_up(
-                    nstl::max(0, (filter_size_ - 1) * dilate_ - in - init_pad_),
+                    nstl::max<dim_t>(
+                            0, (filter_size_ - 1) * dilate_ - in - init_pad_),
                     dilate_);
-        return nstl::max(0, (filter_size_ - 1 - in - init_pad_) / stride_);
+        return nstl::max<dim_t>(
+                0, (filter_size_ - 1 - in - init_pad_) / stride_);
     }
 
-    inline int get_end_overflow(const int in) const {
+    inline dim_t get_end_overflow(const dim_t in) const {
         if (is_fast_path_)
-            return nstl::max(0, filter_size_ - input_size_ + in - end_pad_);
+            return nstl::max<dim_t>(
+                    0, filter_size_ - input_size_ + in - end_pad_);
         if (dilate_ != 1)
-            return div_up(nstl::max(0,
+            return div_up(nstl::max<dim_t>(0,
                                   (filter_size_ - 1) * dilate_ + 1 - input_size_
                                           + in - end_pad_),
                     dilate_);
-        return nstl::max(
+        return nstl::max<dim_t>(
                 0, (filter_size_ - input_size_ + in - end_pad_) / stride_);
     }
 
-    void update_params(const int in) {
+    void update_params(const dim_t in) {
 
         init_overflow_ = get_init_overflow(in);
         end_overflow_ = get_end_overflow(in);
 
         // overflow_kd_hi
-        const int overflow_filter_hi_ = compute_extended_features_
+        const dim_t overflow_filter_hi_ = compute_extended_features_
                 ? filter_size_ - 1
                         - nstl::modulo(input_size_ - 1 + end_pad_ - in, stride_)
                 : 0;
         // overflow_kd_lo
-        const int overflow_filter_lo_
+        const dim_t overflow_filter_lo_
                 = compute_extended_features_ ? (in + init_pad_) % stride_ : 0;
 
         filter_ = compute_extended_features_
@@ -96,30 +99,30 @@ struct spatial_features_3d_t {
                 : in + init_pad_ - end_overflow_ * dilate_;
     }
 
-    inline int get_filter_padding() const {
+    inline dim_t get_filter_padding() const {
         return filter_ - init_overflow_ - end_overflow_;
     }
 
-    inline int get_lower_offset() const { return lower_offset_; }
+    inline dim_t get_lower_offset() const { return lower_offset_; }
 
-    inline int get_output_offset() const { return output_offset_; }
+    inline dim_t get_output_offset() const { return output_offset_; }
 
 private:
-    int input_size_;
-    int filter_size_;
-    int dilate_;
-    int stride_;
-    int init_pad_; // f_pad
-    int end_pad_; // back_pad
+    dim_t input_size_;
+    dim_t filter_size_;
+    dim_t dilate_;
+    dim_t stride_;
+    dim_t init_pad_; // f_pad
+    dim_t end_pad_; // back_pad
     bool is_fast_path_; // 'dilate_ == 1 && stride_ == 1'
     bool compute_extended_features_; // eq. '(!is_fast_path_) && dilate_ == 1'
 
-    int filter_;
-    int lower_offset_; // d_lo
-    int output_offset_; // d_oj
+    dim_t filter_;
+    dim_t lower_offset_; // d_lo
+    dim_t output_offset_; // d_oj
 
-    int init_overflow_; // d_t_overflow
-    int end_overflow_; // d_b_overflow
+    dim_t init_overflow_; // d_t_overflow
+    dim_t end_overflow_; // d_b_overflow
 };
 
 } // namespace amx_utils

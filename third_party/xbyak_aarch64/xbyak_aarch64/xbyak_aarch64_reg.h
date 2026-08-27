@@ -643,7 +643,7 @@ class ZAReg : public _ZAReg {
   uint32_t _wvIdx;
   uint32_t _offs;
 public:
-  explicit ZAReg(uint32_t index) : _ZAReg(index), s(index), d(index) {}
+  explicit ZAReg(uint32_t index) : _ZAReg(index), _wvIdx(0), _offs(0), s(index), d(index) {}
   explicit ZAReg(uint32_t index, uint32_t bits, const WReg &wv, uint32_t offs) : _ZAReg(index, bits), _wvIdx(wv.getIdx()), _offs(offs), s(index), d(index) {}
   ZAReg operator()(const WReg &wv, uint32_t offs) const { return ZAReg(getIdx(), getBit(), wv, offs); }
   uint32_t getWvIdx() const { return _wvIdx; }

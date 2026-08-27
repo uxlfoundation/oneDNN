@@ -31,6 +31,16 @@ namespace matmul {
     VCONDCHECK(primitive, create, check, matmul, (cond), \
             status::unimplemented, msg, ##__VA_ARGS__);
 
+bool is_eltwise_alg_supported(alg_kind_t alg) {
+    using namespace alg_kind;
+    return utils::one_of(alg, eltwise_relu, eltwise_linear, eltwise_soft_relu,
+            eltwise_mish, eltwise_logistic, eltwise_tanh, eltwise_elu,
+            eltwise_square, eltwise_sqrt, eltwise_abs, eltwise_exp,
+            eltwise_gelu_tanh, eltwise_swish, eltwise_log, eltwise_clip,
+            eltwise_clip_v2, eltwise_pow, eltwise_gelu_erf, eltwise_round,
+            eltwise_hardswish, eltwise_hardsigmoid);
+}
+
 int find_po_in_chain(const po_kind_t *po_chain, po_kind_t kind) {
     for (int i = 0; i < 3; ++i) {
         if (po_chain[i] == kind) return i;
@@ -50,7 +60,7 @@ status_t check_post_op_chain(const primitive_attr_t &attr,
         VCHECK_MATMUL(
                 e.is_eltwise() || e.is_binary(), VERBOSE_UNSUPPORTED_POSTOP);
         if (e.is_eltwise()) {
-            VCHECK_MATMUL(e.eltwise.alg == alg_kind::eltwise_swish,
+            VCHECK_MATMUL(is_eltwise_alg_supported(e.eltwise.alg),
                     VERBOSE_UNSUPPORTED_POSTOP);
             po_chain[i] = po_kind_t::eltwise;
         } else if (e.is_binary()) {
@@ -149,32 +159,45 @@ inline void apply_post_ops_chain(ugemm_grouped_c_type *c_tile, long n, long m, l
         const auto &e = po.entry_[i];
         if (e.is_eltwise()) {
             s += utils::format(R"(
-#define eltwise_apply_%d(v) ((%s) * ((v) / (1.0f + exp(-(%s) * (v)))))
+#define eltwise_apply_%d(v) fwd_eltwise_common(%d, v, %s, %s, %s)
     tile_elementwise((*c_tile), eltwise_apply_%d);
 #undef eltwise_apply_%d
                      )",
-                    i, to_ocl_float(e.eltwise.scale).c_str(),
-                    to_ocl_float(e.eltwise.alpha).c_str(), i, i);
+                    i, static_cast<int>(e.eltwise.alg),
+                    to_ocl_float(e.eltwise.alpha).c_str(),
+                    to_ocl_float(e.eltwise.beta).c_str(),
+                    to_ocl_float(e.eltwise.scale).c_str(), i, i);
         } else if (e.is_binary()) {
             if (po_chain[i] == po_kind_t::binary_grouped_scale) {
-                s += utils::format(R"(
-#define CONCAT_I(var) var##_%d
-    const global BINARY_SCALE_GROUPED_TILE_DATA_T *group_scale_ptr = grouped_scale + src_offset * lddst;
-
-    ugemm_grouped_c_type CONCAT_I(binary_group_tile);
+                s += R"(
+    {
+        const global BINARY_SCALE_GROUPED_TILE_DATA_T *group_scale_ptr
+                = grouped_scale + src_offset * lddst;
+#define GRP_BC ugemm_grouped_c_type_block1
+#define GRP_NBR ugemm_grouped_c_type_nblock0
+#define GRP_NBC ugemm_grouped_c_type_nblock1
+#pragma unroll
+        for (int gcb = 0; gcb < GRP_NBC; gcb++) {
+            binary_group_chunk_type binary_group_chunk;
 #if BINARY_SCALE_GROUPED_DT_F32
-    tile_load(&CONCAT_I(binary_group_tile), group_scale_ptr, n, m, lddst, sg_i0, sg_j0);
+            tile_load(&binary_group_chunk, group_scale_ptr, n, m, lddst, sg_i0,
+                    sg_j0 + gcb * GRP_BC);
 #else
-    binary_group_in_tile_type CONCAT_I(binary_group_in_tile);
-    tile_load(&CONCAT_I(binary_group_in_tile), group_scale_ptr, n, m, lddst, sg_i0, sg_j0);
-    tile_convert(CONCAT_I(binary_group_in_tile), CONCAT_I(binary_group_tile), BINARY_SCALE_GROUPED_TO_FLOAT);
+            binary_group_chunk_in_type binary_group_chunk_in;
+            tile_load(&binary_group_chunk_in, group_scale_ptr, n, m, lddst,
+                    sg_i0, sg_j0 + gcb * GRP_BC);
+            tile_convert(binary_group_chunk_in, binary_group_chunk,
+                    BINARY_SCALE_GROUPED_TO_FLOAT);
 #endif
-#define binary_mul_%d(a, b) ((a) * (b))
-    tile_binary((*c_tile), CONCAT_I(binary_group_tile), CONCAT_I(binary_mul));
-#undef binary_mul_%d
-#undef CONCAT_I
-                         )",
-                        i, i, i);
+#pragma unroll
+            for (int gbb = 0; gbb < GRP_NBR; gbb++)
+                (*c_tile).x[GRP_NBR * gcb + gbb] *= binary_group_chunk.x[gbb];
+        }
+#undef GRP_BC
+#undef GRP_NBR
+#undef GRP_NBC
+    }
+                         )";
             } else if (po_chain[i] == po_kind_t::binary_dense_scale) {
                 s += utils::format(
                         R"(

@@ -117,14 +117,20 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
                     VMA::ma);
             vle32_v(vmm_src, reg_src);
             if (!is_fwd_) vle32_v(vmm_diff_dst, reg_diff_dst);
-        } else if (dt == data_type::f16) {
+        } else if (dt == data_type::f16 || dt == data_type::bf16) {
             vsetvli(reg_vl, reg_work_amount, SEW::e16, LMUL::m1, VTA::ta,
                     VMA::ma);
             vle16_v(vmm_tmp, reg_src);
-            vfwcvt_f_f_v(vmm_src, vmm_tmp); // e16m1 -> e32m2
+            if (dt == data_type::bf16)
+                vfwcvtbf16_f_f_v(vmm_src, vmm_tmp); // Zvfbfmin: e16m1 -> e32m2
+            else
+                vfwcvt_f_f_v(vmm_src, vmm_tmp); // Zvfh: e16m1 -> e32m2
             if (!is_fwd_) {
                 vle16_v(vmm_tmp, reg_diff_dst);
-                vfwcvt_f_f_v(vmm_diff_dst, vmm_tmp);
+                if (dt == data_type::bf16)
+                    vfwcvtbf16_f_f_v(vmm_diff_dst, vmm_tmp);
+                else
+                    vfwcvt_f_f_v(vmm_diff_dst, vmm_tmp);
             }
             vsetvli(x0, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
         } else if (dt == data_type::s32) {
@@ -156,9 +162,12 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         const data_type_t dt = data_type();
         if (dt == data_type::f32) {
             vse32_v(vmm_src, reg_dst);
-        } else if (dt == data_type::f16) {
+        } else if (dt == data_type::f16 || dt == data_type::bf16) {
             vsetvli(x0, reg_vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-            vfncvt_f_f_w(vmm_tmp, vmm_src); // e32m2 -> e16m1
+            if (dt == data_type::bf16)
+                vfncvtbf16_f_f_w(vmm_tmp, vmm_src); // Zvfbfmin: e32m2 -> e16m1
+            else
+                vfncvt_f_f_w(vmm_tmp, vmm_src); // Zvfh: e32m2 -> e16m1
             vse16_v(vmm_tmp, reg_dst);
         } else if (dt == data_type::s32) {
             load_f32_const(freg_tmp, -2147483648.0f);
@@ -285,13 +294,14 @@ status_t jit_uni_eltwise_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     const data_type_t d_type = src_md()->data_type;
 
     // Runtime ISA dispatch (this primitive is pure JIT and registered via
-    // CPU_INSTANCE_RV64). The zvfh instance owns f16; the v instance owns f32
-    // and the integer dtypes, which reuse the f32 kernel through
-    // convert-on-load / saturate-on-store.
+    // CPU_INSTANCE_RV64). The zvfh instance owns f16; the zvfbfwma instance
+    // owns bf16; the v instance owns f32 and the integer dtypes, which reuse
+    // the f32 kernel through convert-on-load / saturate-on-store.
     VDISPATCH_ELTWISE(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_ELTWISE(is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_ELTWISE(isa == zvfh
-                    ? d_type == data_type::f16
+    VDISPATCH_ELTWISE(isa == zvfh ? d_type == data_type::f16
+                    : isa == zvfbfwma
+                    ? d_type == data_type::bf16
                     : utils::one_of(d_type, data_type::f32, data_type::s32,
                               data_type::s8, data_type::u8),
             VERBOSE_UNSUPPORTED_DT);
@@ -378,11 +388,12 @@ status_t jit_uni_eltwise_bwd_t<isa>::pd_t::init(const engine_t *engine) {
 
     // Backward is float-only, matching x64/aarch64 (whose jit_uni_eltwise_bwd
     // JITs only floating dtypes and routes integers to ref_eltwise): zvfh owns
-    // f16, v owns f32.
+    // f16, zvfbfwma owns bf16, v owns f32.
     VDISPATCH_ELTWISE(mayiuse(isa), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_ELTWISE(!is_fwd(), VERBOSE_BAD_PROPKIND);
-    VDISPATCH_ELTWISE(
-            isa == zvfh ? d_type == data_type::f16 : d_type == data_type::f32,
+    VDISPATCH_ELTWISE(isa == zvfh     ? d_type == data_type::f16
+                    : isa == zvfbfwma ? d_type == data_type::bf16
+                                      : d_type == data_type::f32,
             VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_ELTWISE(utils::everyone_is(d_type, diff_src_md()->data_type,
                               diff_dst_md()->data_type),
@@ -465,9 +476,11 @@ status_t jit_uni_eltwise_bwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
 template struct jit_uni_eltwise_fwd_t<v>;
 template struct jit_uni_eltwise_fwd_t<zvfh>;
+template struct jit_uni_eltwise_fwd_t<zvfbfwma>;
 
 template struct jit_uni_eltwise_bwd_t<v>;
 template struct jit_uni_eltwise_bwd_t<zvfh>;
+template struct jit_uni_eltwise_bwd_t<zvfbfwma>;
 
 } // namespace rv64
 } // namespace cpu

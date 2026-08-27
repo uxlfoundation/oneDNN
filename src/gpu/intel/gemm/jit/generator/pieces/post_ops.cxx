@@ -645,22 +645,38 @@ void Generator<hw>::gemmApplyPostOps(size_t poMin, size_t poMax, const GEMMProbl
     if(problem.postOps.cStochasticRound) {
         problem.postOps.injectStochasticRound(this, state.ra, C_grfs, C_ngrf, state.inputs.sroundSeed, problem.Tc_ext.ngen());
     }
-    if(problem.hasCMXScale()) {
-        auto unrollM = strategy.unroll[LoopM];
-        auto unrollN = strategy.unroll[LoopN];
-        int n_elems = (unrollN / problem.cqGroupN) * (unrollM / problem.cqGroupM);
-        int m_stride = state.C_scaleLayout[0].ld / 4;
-        int n_regs = std::max(1, (n_elems * m_stride) / GRF::bytes(hw));
-        auto tmpCScales = state.ra.alloc_range(n_regs);
-        vector<MaskAssignment> masks;
-        assignMasks(state.C_scaleLayout,  LoopNone, LoopN,       masks, strategy, state);
-        loadMasks(masks,        state.remainders,        strategy, state);
 
-        problem.postOps.injectMXScale(this, state.ra, C_grfs, C_ngrf, tmpCScales.sub(hw, 0, ngen::DataType::ub), problem.Tc_ext.ngen(), unrollN);
-        storeMatrix(tmpCScales, state.C_scaleLayout, state.C_scaleAddrs, strategy, state);
-        state.ra.safeRelease(tmpCScales);
-        safeReleaseMaskAssignments(masks, state);
-    }
+    mark(lSkip);
+}
+
+template <HW hw>
+void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrategy &strategy, GEMMState &state)
+{
+    if (!problem.hasCMXScale()) return;
+    Label lSkip;
+    and_(1 | nz | state.flagAP, null.ud(), state.inputs.flags, FlagNonfinalKBlock);
+
+    jmpi(1 | state.flagAP, lSkip);
+
+    int C_grfs[GRF::maxRegs()];
+    int C_ngrf = state.C_regs[0].getLen();
+    for (int r = 0; r < C_ngrf; r++)
+        C_grfs[r] = state.C_regs[0][r].getBase();
+
+    auto unrollM = strategy.unroll[LoopM];
+    auto unrollN = strategy.unroll[LoopN];
+    int n_elems = (unrollN / problem.cqGroupN) * (unrollM / problem.cqGroupM);
+    int m_stride = state.C_scaleLayout[0].ld / 4;
+    int n_regs = std::max(1, (n_elems * m_stride) / GRF::bytes(hw));
+    auto tmpCScales = state.ra.alloc_range(n_regs);
+    vector<MaskAssignment> masks;
+    assignMasks(state.C_scaleLayout, LoopNone, LoopN, masks, strategy, state);
+    loadMasks(masks, state.remainders, strategy, state);
+
+    problem.postOps.injectMXScale(this, state.ra, C_grfs, C_ngrf, tmpCScales.sub(hw, 0, ngen::DataType::ub), problem.Tc_ext.ngen(), unrollN);
+    storeMatrix(tmpCScales, state.C_scaleLayout, state.C_scaleAddrs, strategy, state);
+    state.ra.safeRelease(tmpCScales);
+    safeReleaseMaskAssignments(masks, state);
 
     mark(lSkip);
 }

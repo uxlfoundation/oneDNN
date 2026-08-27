@@ -146,6 +146,7 @@ struct brgemm_matmul_conf_t {
     bool packed_sparse_weights;
     bool with_wei_decompression;
     int postops_inst_count;
+    bool is_ace {false};
 
     bool use_buffer_a;
     bool use_buffer_a_tail_only;
@@ -182,12 +183,12 @@ struct brgemm_matmul_conf_t {
     // from FP32 implementation)
     dim_t tr_a_dt_sz, tr_b_dt_sz;
 
-    int M_chunks;
-    int N_chunks;
-    int K_chunks;
-    int num_M_blocks;
-    int num_N_blocks;
-    int num_K_blocks;
+    dim_t M_chunks;
+    dim_t N_chunks;
+    dim_t K_chunks;
+    dim_t num_M_blocks;
+    dim_t num_N_blocks;
+    dim_t num_K_blocks;
     dim_t M_chunk_elems;
     dim_t N_chunk_elems;
     dim_t K_chunk_elems;
@@ -232,11 +233,12 @@ struct brgemm_matmul_conf_t {
     // were changed.
     bool adjust_a_strides = false;
 
-    int wsp_tile_per_thr_bytes;
+    dim_t wsp_tile_per_thr_bytes;
     int brgemm_batch_element_per_thr_sz;
     bool is_amx;
 
     int required_k_granularity;
+    bool is_f8 = false;
     bool is_bf32 = false;
     bool is_bf16_with_int_wei = false;
     bool is_f16_with_int_wei = false;
@@ -389,7 +391,7 @@ struct brgemm_matmul_conf_utils_t {
                 && !bgmmc.blocked_B;
         bool use_copy_buffer = IMPLICATION(
                 this->is_f32(), use_heuristic && (big_LDB && is_pow2));
-        return is_avx2_simd_tail
+        return is_avx2_simd_tail || (this->is_f8() && bgmmc.isa == avx10_2)
                 || (this->is_f16() && bgmmc.isa == avx512_core_fp16)
                 || (use_copy_buffer && this->check_is_plain(bgmmc.wei_tag))
                 || this->check_is_transposed(bgmmc.wei_tag)

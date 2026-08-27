@@ -26,30 +26,43 @@ namespace gpu {
 namespace intel {
 
 struct gpu_primitive_attr_t : public primitive_attr_item_t {
-    gpu_primitive_attr_t(int grf_per_thread = 0)
-        : grf_per_thread_(grf_per_thread) {}
+    gpu_primitive_attr_t(int grf_per_thread = 0, bool use_dpas = false)
+        : grf_per_thread_(grf_per_thread), use_dpas_(use_dpas) {}
 
     std::unique_ptr<primitive_attr_item_t> clone() const override {
-        return utils::make_unique<gpu_primitive_attr_t>(grf_per_thread_);
+        return utils::make_unique<gpu_primitive_attr_t>(
+                grf_per_thread_, use_dpas_);
     }
 
-    bool has_default_values() const override { return grf_per_thread_ == 0; }
+    bool has_default_values() const override {
+        return grf_per_thread_ == 0 && !use_dpas_;
+    }
 
     bool is_equal(const primitive_attr_item_t &other) const override {
         auto *other_ptr = utils::downcast<const gpu_primitive_attr_t *>(&other);
-        return grf_per_thread_ == other_ptr->grf_per_thread_;
+        return grf_per_thread_ == other_ptr->grf_per_thread_
+                && use_dpas_ == other_ptr->use_dpas_;
     }
 
-    size_t get_hash() const override { return grf_per_thread_; }
+    size_t get_hash() const override {
+        size_t seed = 0;
+        seed = hash_combine(seed, grf_per_thread_);
+        seed = hash_combine(seed, use_dpas_);
+        return seed;
+    }
 
     void serialize(serialization_stream_t &stream) const override {
         stream.append(grf_per_thread_);
+        stream.append(use_dpas_);
     }
 
     int grf_per_thread() const { return grf_per_thread_; }
+    bool use_dpas() const { return use_dpas_; }
+    void set_use_dpas(bool value) { use_dpas_ = value; }
 
 private:
     int grf_per_thread_;
+    bool use_dpas_ = false;
 };
 
 } // namespace intel

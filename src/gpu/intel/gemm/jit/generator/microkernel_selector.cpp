@@ -50,6 +50,34 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
                                            GEMMProblem &problem, HWInformation hwInfo, SizeParams sizes,
                                            const std::vector<StrategyRequirement> &reqs);
 
+static constexpr int smallGRF = 128, largeGRF = 256;
+
+// Choose a microkernel's GRF mode from an estimate of its register footprint.
+// Returns true if small GRF was selected, i.e. a large-GRF retry would differ.
+static inline bool chooseMicrokernelGRFMode(HW hw, const GEMMProblem &problem, GEMMStrategy &s,
+                                            int hostLiveBytes)
+{
+    /* Mode governs the host kernel too; reserve measured only on 32-byte GRFs. */
+    int hostReserve = (hw < HW::XeHPC)
+            ? GRF::bytesToGRFs(hw, std::max(hostLiveBytes, 0))
+            : 0;
+
+    int aElems = s.unroll[LoopM] * s.ka_load;
+    int bElems = s.unroll[LoopN] * s.kb_load;
+    int aRegs = GRF::bytesToGRFs(hw, aElems * std::max(s.A_copies, 1) * problem.Ta_ext);
+    int bRegs = GRF::bytesToGRFs(hw, bElems * std::max(s.B_copies, 1) * problem.Tb_ext);
+
+    /* Upconverted A/B keep a second, wider buffer alongside the loaded one. */
+    if (problem.Ta_ext != problem.Ta) aRegs += GRF::bytesToGRFs(hw, aElems * problem.Ta);
+    if (problem.Tb_ext != problem.Tb) bRegs += GRF::bytesToGRFs(hw, bElems * problem.Tb);
+
+    int cRegs = GRF::bytesToGRFs(hw, s.unroll[LoopM] * s.unroll[LoopN] * problem.Tc_compute());
+
+    bool useSmallGRF = (aRegs + bRegs + cRegs) <= (smallGRF - hostReserve);
+    s.GRFs = useSmallGRF ? smallGRF : largeGRF;
+    return useSmallGRF;
+}
+
 std::vector<Protocol::Argument> arguments(const GEMMOptions &o) {
     auto In = Protocol::Argument::In;
     auto Out = Protocol::Argument::Out;
@@ -111,11 +139,21 @@ Protocol makeProtocol(const GEMMOptions &o) {
     return {"ugemm", arguments(o), settings()};
 }
 
-InterfaceHandler GEMMOptions::generateInterface(HW hw) const {
+InterfaceHandler GEMMOptions::generateInterface(HW hw, HostPayload host) const {
     /* Set up arguments for microkernel */
     InterfaceHandler interface(hw);
 
-    interface.setArgumentBase(ngen::GRF(8));
+    if (host.simd <= 0 || host.argumentBytes <= 0) {
+        interface.setArgumentBase(ngen::GRF(8));
+    } else {
+        /* Place microkernel arguments above the host kernel's thread payload:
+           r0, the local IDs, then the cross-thread arguments. */
+        interface.requireLocalID(3);
+        /* SIMD fixes the local-ID register stride, hence the cross-thread base. */
+        interface.requireSIMD(host.simd);
+        interface.setArgumentBase(GRF(interface.getCrossthreadBase().getBase()
+                                      + GRF::bytesToGRFs(hw, host.argumentBytes)));
+    }
     interface.newArgument("A", localA ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
     interface.newArgument("lda", DataType::d);
     interface.newArgument("B", localB ? ExternalArgumentType::LocalPtr : ExternalArgumentType::GlobalPtr);
@@ -160,7 +198,7 @@ std::string strategyToString(HW hw, const GEMMProblem &problem, const GEMMStrate
     return ss.str();
 }
 
-Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
+Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation hwInfo, SizeParams sizes,
                    const GEMMProblem &problem_, const std::vector<StrategyRequirement> &reqs_,
                    StrategyAdjuster strategyAdjuster, SelectionObserver *observer)
 {
@@ -241,7 +279,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
     evalParams.euCount = hwInfo.euCount;
 
     /* Generate interface */
-    InterfaceHandler interface = effOptions.generateInterface(hw);
+    InterfaceHandler interface = effOptions.generateInterface(hw, host);
 
     kcatalog::Catalog catalog = [&]() {
         if (localA)
@@ -285,7 +323,66 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         }
     }
 
-    for(const kcatalog::Entry *entry : entries) {
+    /* Run the caller's adjuster, preflight, and code generation for one sized strategy.
+       Returns true on success, with the microkernel written to `out`. */
+    auto generate = [&](const kcatalog::Entry *entry, GEMMStrategy strategy, Package &out) -> bool {
+        /* Allow caller to adjust strategy further */
+        if (strategyAdjuster) strategyAdjuster(strategy);
+
+        try {
+            strategy.preflight(hw, problem);
+        } catch (const std::runtime_error &ex) {
+            if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
+                std::cout << "preflight failed(" << ex.what() << "):"
+                          << strategyToString(hw, problem, strategy) << std::endl;
+            }
+            return false;
+        }
+
+        /* Update problem from strategy */
+        if (isPacked(problem.A.layout))
+            problem.A.packSize = strategy.unroll[LoopM];
+        if (isPacked(problem.B.layout))
+            problem.B.packSize = strategy.unroll[LoopN];
+
+        if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
+            std::cout << "attempting " << (entry ? "db " : "heuristic ")
+                      << "strategy: " << strategyToString(hw, problem, strategy) << std::endl;
+        }
+
+        try {
+            /* Generate microkernel */
+            #define ARCH_DISPATCH(arch)                                                         \
+                case HW::arch: {                                                                \
+                    Generator<HW::arch> generator(product);                                     \
+                    generator.setStepping(stepping);                                            \
+                    out = generator.gemmMicrokernelPackage(problem, strategy, interface,        \
+                                                           makeProtocol(options), hwInfo.gmdid, \
+                                                           transC);                             \
+                    return true;                                                                \
+                }
+            switch (hw) {
+                REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
+                REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
+                REG_XE2_ISA(ARCH_DISPATCH(Xe2))
+                REG_XE3_ISA(ARCH_DISPATCH(Xe3))
+                REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
+                default: throw std::runtime_error("Unsupported architecture");
+            }
+            #undef ARCH_DISPATCH
+        } catch (const std::runtime_error &ex) {
+            /* Try next strategy */
+            if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
+                std::cout << "strategy failed(" << ex.what() << "):"
+                          << strategyToString(hw, problem, strategy) << std::endl;
+            }
+            return false;
+        }
+        return false;
+    };
+
+    /* Build one candidate strategy and generate it. */
+    auto tryCandidate = [&](const kcatalog::Entry *entry, Package &out) -> bool {
         GEMMStrategy strategy(hw, stepping);
 
         if (entry) {
@@ -322,7 +419,7 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
             }
         } else if (!reqs.empty() &&
                    !getStrategyByHeuristics(hw, strategy, localA, localB, problem, hwInfo, sizes, reqs))
-            continue; /* No heuristic strategy found */
+            return false; /* No heuristic strategy found */
 
         strategy.systolicAvailable &= hwInfo.systolicAvailable;
 
@@ -346,59 +443,32 @@ Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams 
         /* C output in registers */
         strategy.C.base = AddressBase{};
 
-        /* Allow caller to adjust strategy further */
-        if (strategyAdjuster) strategyAdjuster(strategy);
+        /* Size the GRF mode for inlining into the host kernel, for both catalog and heuristic
+           strategies, and generate. If the estimate selected the small mode, retry in large GRF
+           in case it was low and we ran out of registers. */
+        GEMMStrategy smallGRFStrategy = strategy;
+        if (chooseMicrokernelGRFMode(hw, problem, smallGRFStrategy, host.liveBytes)
+                && generate(entry, smallGRFStrategy, out))
+            return true;
 
-        try {
-            strategy.preflight(hw, problem);
-        } catch (const std::runtime_error &ex) {
-            if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
-                std::cout << "preflight failed(" << ex.what() << "):"
-                          << strategyToString(hw, problem, strategy) << std::endl;
-            }
-            continue;
-        }
+        GEMMStrategy largeGRFStrategy = strategy;
+        largeGRFStrategy.GRFs = largeGRF;
+        return generate(entry, largeGRFStrategy, out);
+    };
 
-        /* Update problem from strategy */
-        if (isPacked(problem.A.layout))
-            problem.A.packSize = strategy.unroll[LoopM];
-        if (isPacked(problem.B.layout))
-            problem.B.packSize = strategy.unroll[LoopN];
-
-        if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
-            std::cout << "attempting " << (entry ? "db " : "heuristic ")
-                      << "strategy: " << strategyToString(hw, problem, strategy) << std::endl;
-        }
-
-        try {
-            /* Generate microkernel */
-            #define ARCH_DISPATCH(arch)                                                         \
-                case HW::arch: {                                                                \
-                    Generator<HW::arch> generator(product);                                     \
-                    generator.setStepping(stepping);                                            \
-                    return generator.gemmMicrokernelPackage(problem, strategy, interface,       \
-                                                            makeProtocol(options), hwInfo.gmdid,\
-                                                            transC);                            \
-                }
-            switch (hw) {
-                REG_XEHPG_ISA(ARCH_DISPATCH(XeHPG))
-                REG_XEHPC_ISA(ARCH_DISPATCH(XeHPC))
-                REG_XE2_ISA(ARCH_DISPATCH(Xe2))
-                REG_XE3_ISA(ARCH_DISPATCH(Xe3))
-                REG_XE3P_ISA(ARCH_DISPATCH(Xe3p))
-                default: throw std::runtime_error("Unsupported architecture");
-            }
-            #undef ARCH_DISPATCH
-        } catch (const std::runtime_error &ex) {
-            /* Try next strategy */
-            if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 2) {
-                std::cout << "strategy failed(" << ex.what() << "):"
-                          << strategyToString(hw, problem, strategy) << std::endl;
-            }
-            continue;
-        }
-    }
+    Package package;
+    for(const kcatalog::Entry *entry : entries)
+        if (tryCandidate(entry, package))
+            return package;
     throw std::runtime_error("No matching kernel");
+}
+
+Package selectGEMM(const GEMMOptions &options, HWInformation hwInfo, SizeParams sizes,
+                   const GEMMProblem &problem, const std::vector<StrategyRequirement> &reqs,
+                   StrategyAdjuster strategyAdjuster, SelectionObserver *observer)
+{
+    return selectGEMM(options, HostPayload(0, 0), hwInfo, sizes, problem, reqs,
+                      strategyAdjuster, observer);
 }
 
 static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool localA, bool localB,
@@ -549,18 +619,7 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     }
     s.registerScheme = GEMMStrategy::VAvoid;
 
-    // TODO: Refine GRF limits further. This should be based on the
-    // GRF requirements of the A/B/C GRF requirements.
-    int grf_limit = 512;
-    if(hw < HW::XeHPC) {
-        if (problem.A.layout == MatrixLayout::T) {
-            grf_limit = 256 * problem.Ta_ext;
-        } else {
-            grf_limit = 256;
-        }
-    }
-    if (std::max(s.ka_load * problem.Ta_ext, s.wgTile(LoopM)) * s.wgTile(LoopN) >= grf_limit)
-        s.GRFs = 256;
+    /* GRF mode is chosen by the caller via chooseMicrokernelGRFMode(). */
     if (localA && !localB)
         s.loadBFirst = true;
 

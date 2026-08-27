@@ -68,6 +68,7 @@ cpu_isa_t init_max_cpu_isa() {
         ELSEIF_HANDLE_CASE(avx512_core_amx_fp16);
         ELSEIF_HANDLE_CASE(avx10_2);
         ELSEIF_HANDLE_CASE(avx10_2_amx_2);
+        ELSEIF_HANDLE_CASE(avx10_2_ace);
 
 #undef IF_HANDLE_CASE
 #undef ELSEIF_HANDLE_CASE
@@ -104,13 +105,14 @@ set_once_before_first_get_setting_t<dnnl_cpu_isa_hints_t> &cpu_isa_hints() {
 } // namespace
 
 struct isa_info_t {
-    isa_info_t(cpu_isa_t aisa) : isa(aisa) {};
+    isa_info_t(cpu_isa_t aisa) : isa(aisa) {}
 
     // this converter is needed as code base defines certain ISAs
     // that the library does not expose (e.g. avx512_core_bf16_ymm),
     // so the internal and external enum types do not coincide.
     dnnl_cpu_isa_t convert_to_public_enum(void) const {
         switch (isa) {
+            case avx10_2_ace: return dnnl_cpu_isa_avx10_2_ace;
             case avx10_2_amx_2: return dnnl_cpu_isa_avx10_2_amx_2;
             case avx10_2: return dnnl_cpu_isa_avx10_2;
             case avx512_core_amx_fp16: return dnnl_cpu_isa_avx512_core_amx_fp16;
@@ -131,6 +133,7 @@ struct isa_info_t {
 
     const char *get_name() const {
         switch (isa) {
+            case avx10_2_ace: return "Intel AVX10.2 and ACE support (preview)";
             case avx10_2_amx_2:
                 return "Intel AVX10.2 and Intel AMX with float8, float16, "
                        "bfloat16 and 8-bit integer support";
@@ -174,7 +177,10 @@ static isa_info_t get_isa_info_t(void) {
     // descending order due to mayiuse check
 #define HANDLE_CASE(cpu_isa) \
     if (mayiuse(cpu_isa)) return isa_info_t(cpu_isa);
+    // Note: avx10_2_amx_2 and avx10_2_ace are not ordered with respect to each
+    // other. Probe TMUL first as it carries the compute-heavy AMX features.
     HANDLE_CASE(avx10_2_amx_2);
+    HANDLE_CASE(avx10_2_ace);
     HANDLE_CASE(avx10_2);
     HANDLE_CASE(avx512_core_amx_fp16);
     HANDLE_CASE(avx512_core_amx);
@@ -234,6 +240,7 @@ status_t set_max_cpu_isa(dnnl_cpu_isa_t isa) {
         HANDLE_CASE(avx512_core_amx_fp16);
         HANDLE_CASE(avx10_2);
         HANDLE_CASE(avx10_2_amx_2);
+        HANDLE_CASE(avx10_2_ace);
         default: return invalid_arguments;
     }
     assert(isa_to_set != isa_undef);
@@ -275,7 +282,9 @@ int get_max_palette() {
     }
 }
 int get_target_palette() {
-    constexpr int max_supported_palette = 1;
+    // Only the TMUL palette is returned here; ACE code paths select
+    // amx_palette_ace explicitly instead.
+    constexpr int max_supported_palette = amx_palette_tmul;
     return nstl::min(max_supported_palette, get_max_palette());
 }
 
@@ -399,6 +408,61 @@ bool is_available() {
     return amx_setting().get();
 }
 } // namespace amx
+
+namespace ace {
+
+namespace {
+#if defined(__linux__) || defined(_WIN32)
+// SCALEDATA (Block Scale Register) XSAVE state component.
+constexpr int xfeature_scaledata = 20;
+#endif
+
+#ifdef __linux__
+bool init() {
+    // ACE requires XCR0[20,18:17] == 0b111: the AMX TILECFG/TILEDATA state
+    // must be enabled in addition to SCALEDATA.
+    if (!amx::is_available()) return false;
+
+    unsigned long bitmask = 0;
+    long status = syscall(SYS_arch_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
+    if (0 != status) return false;
+    if (bitmask & (1UL << xfeature_scaledata)) return true;
+
+    status = syscall(SYS_arch_prctl, ARCH_REQ_XCOMP_PERM, xfeature_scaledata);
+    if (0 != status) return false; // SCALEDATA setup failed, ACE is not allowed
+
+    status = syscall(SYS_arch_prctl, ARCH_GET_XCOMP_PERM, &bitmask);
+    if (0 != status || !(bitmask & (1UL << xfeature_scaledata))) return false;
+
+    return true;
+}
+#elif defined(_WIN32)
+bool init() {
+    if (!amx::is_available()) return false;
+
+    const bool xsave_supported = cpu().has(Xbyak::util::Cpu::tOSXSAVE);
+    if (!xsave_supported) return false;
+
+    const uint64_t xcr0_features = Xbyak::util::Cpu::getXfeature();
+    return ((xcr0_features >> xfeature_scaledata) & 1) == 1;
+}
+#else
+bool init() {
+    // Disable ACE by default to avoid potential crashes.
+    return false;
+}
+#endif
+
+set_once_before_first_get_setting_t<bool> &ace_setting() {
+    static set_once_before_first_get_setting_t<bool> setting(init());
+    return setting;
+}
+} // namespace
+
+bool is_available() {
+    return ace_setting().get();
+}
+} // namespace ace
 
 } // namespace x64
 } // namespace cpu

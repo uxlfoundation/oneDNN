@@ -84,7 +84,7 @@ void jit_generator_t::transpose(const Xbyak::Reg64 &reg_src,
         } else {
             // Load the remaining xf16 values one by one.
             for (int i = 0; i < rem; i++) {
-                vpinsrw(xmm_tmp, xmm_tmp,
+                uni_vpinsrw(xmm_tmp, xmm_tmp,
                         ptr[reg_src + r * src_stride + (c + i) * dt_size], i);
             }
         }

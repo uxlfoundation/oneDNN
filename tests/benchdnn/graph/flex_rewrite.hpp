@@ -60,6 +60,7 @@ private:
     int infer_output_shape(deserialized_graph_t &dgraph, bool change_stride);
     int inports_shape_rewrite(
             deserialized_graph_t &dgraph, bool &change_stride);
+    int outports_shape_rewrite(deserialized_graph_t &dgraph);
     bool get_inport_shape_stride(const std::string &in_shape,
             std::string &shape, std::string &stride, std::string &mtag,
             std::string &msg);
@@ -71,6 +72,8 @@ private:
     int dt_rewrite(deserialized_graph_t &dgraph);
     int dt_map_rewrite(deserialized_graph_t &dgraph);
     int op_kind_rewrite(deserialized_graph_t &dgraph);
+    int remove_op(deserialized_graph_t &dgraph,
+            std::vector<deserialized_op_t>::iterator op_it);
     int tensor_property_rewrite(deserialized_graph_t &dgraph);
     // Rewrite some linked attribute and shapes, such as group-shape and
     // scale/zp shape of dynamic dequantization for per-group quantization, to

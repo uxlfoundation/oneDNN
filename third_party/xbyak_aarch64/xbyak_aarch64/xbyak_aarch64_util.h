@@ -72,6 +72,7 @@ enum hwCap_t {
   XBYAK_AARCH64_HWCAP_SME_F16F16 = 1 << 10,
   XBYAK_AARCH64_HWCAP_SME_F64F64 = 1 << 11,
   XBYAK_AARCH64_HWCAP_FPHP = 1 << 12,
+  XBYAK_AARCH64_HWCAP_FHM = 1 << 13,
 };
 
 struct implementer_t {
@@ -105,6 +106,7 @@ public:
   bool isAtomicSupported() const;
   bool isBf16Supported() const;
   bool isF16Supported() const;
+  bool isFhmSupported() const;
 };
 
 } // namespace util

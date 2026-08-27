@@ -58,6 +58,10 @@ status_t create_ocl_engine(
 
 status_t get_kernel_binary(const ::sycl::kernel &kernel, xpu::binary_t &binary);
 
+status_t get_kernel_bundle_binary(const gpu::intel::sycl::engine_t *engine,
+        const ::sycl::kernel_bundle<::sycl::bundle_state::executable> &bundle,
+        xpu::binary_t &binary);
+
 gpu_utils::device_id_t device_id(const ::sycl::device &dev);
 
 bool mayiuse_microkernels(const gpu::intel::sycl::engine_t *engine);

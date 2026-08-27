@@ -80,7 +80,7 @@ void brgemm_desc_t::cleanup_dst_md() {
     dst_md_ = nullptr;
 }
 
-void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
     brgemm_kernel_params_t brgemm_p;
@@ -108,7 +108,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const void *addr_A, const void *addr_B,
         const brgemm_batch_element_t *batch, void *ptr_C, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
@@ -136,7 +136,7 @@ void brgemm_kernel_execute(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const brgemm_batch_element_t *batch, void *ptr_C, void *ptr_D,
         const brgemm_post_ops_data_t &post_ops_data, void *scratch,
         const brgemm_dynamic_values_t *dynamic_values) {
@@ -179,7 +179,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
     (*brg_kernel)(&brgemm_p);
 }
 
-void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, int bs,
+void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
         const void *addr_A, const void *addr_B,
         const brgemm_batch_element_t *batch, void *ptr_C, void *ptr_D,
         const brgemm_post_ops_data_t &post_ops_data, void *scratch,
@@ -272,9 +272,12 @@ status_t brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
             || (max_c_stride >= max_stride && !brg->is_runtime_ldc))
         return status::unimplemented;
 
-    // Only amx_int8 kernel supports u8 weights.
-    if (!IMPLICATION(
-                brg->dt_b == u8, is_superset(brg->isa_impl, avx512_core_amx)))
+    // u8 weights need an outer product taking an unsigned second operand,
+    // which only the tile ISAs have. This is an early ISA screen; whether a
+    // tile kernel is really used is re-checked in brgemm_desc_finalize().
+    if (!IMPLICATION(brg->dt_b == u8,
+                is_superset(brg->isa_impl, avx512_core_amx)
+                        || is_superset(brg->isa_impl, avx10_2_ace)))
         return status::unimplemented;
 
     return status::success;
@@ -405,9 +408,10 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
         return status::unimplemented;
     if (!IMPLICATION(brg->is_f16,
                 one_of(dt_d, data_type::f32, data_type::f16, data_type::u8,
-                        data_type::s8)
+                        data_type::s8, data_type::f8_e5m2, data_type::f8_e4m3)
                         && one_of(dt_bias, data_type::undef, data_type::f32,
-                                data_type::bf16, data_type::f16)))
+                                data_type::bf16, data_type::f16,
+                                data_type::f8_e5m2, data_type::f8_e4m3)))
         return status::unimplemented;
     const auto bias_f8_e5m2_compatible
             = one_of(dt_d, data_type::f32, data_type::f16, data_type::bf16,
@@ -584,7 +588,7 @@ status_t brgemm_desc_set_attr(
 
     // virtual padding is not supported for "amx"
     if ((brgattr.max_top_vpad > 0 || brgattr.max_bottom_vpad > 0)
-            && (brg->is_tmm))
+            && (brg->is_tmm || brg->is_ace()))
         return status::unimplemented;
 
     // Sprinkled prefetch is supported for brgemm_batch_size is 1
@@ -628,13 +632,22 @@ status_t brgemm_desc_set_attr(
                     is_superset(brg->isa_impl, avx10_2)))
         return status::unimplemented;
 
+    if (!IMPLICATION(brgattr.use_ace, brg->is_ace()))
+        return status::unimplemented;
+
+    // The ACE kernels cover bf16 and int8 only, see set_isa_impl(). Reject the
+    // remaining types so that dispatch falls through to an implementation that
+    // supports them.
+    if (brgattr.use_ace && (brg->is_f16 || brg->is_fp8))
+        return status::unimplemented;
+
     return status::success;
 }
 
 status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (brg == nullptr) return status::invalid_arguments;
 
-    const int max_vpad = nstl::max(
+    const dim_t max_vpad = nstl::max(
             brg->brgattr.max_top_vpad, brg->brgattr.max_bottom_vpad);
 
     if (brg->is_dgmm)
@@ -645,10 +658,15 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (!brg->is_dgmm) {
         // virtual padding is restricted by bd_block size due to
         // brgemm_kernel implementation. TODO: remove this restriction
-        const int min_bd_block
+        const dim_t min_bd_block
                 = brg->bdb_tail > 0 ? brg->bdb_tail : brg->bd_block;
         if ((max_vpad > min_bd_block)) return status::unimplemented;
     }
+
+    // Tile paths take unsigned B (TMUL under AMX-INT8, TOP4BUUD/TOP4BSUD
+    // under ACE); vector kernels read B as signed. is_tmm is final here.
+    if (!IMPLICATION(brg->dt_b == u8, brg->is_tmm))
+        return status::unimplemented;
 
     // Required for EVEX encoding for offsets
     // The kernel brgemm_amx_uker_t has support of large offsets in post-ops
@@ -724,13 +742,7 @@ status_t brgemm_kernel_destroy(brgemm_kernel_t *brg_kernel) {
 }
 
 status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
-    if (!brg.is_tmm) return status::unimplemented;
-
-    auto rd_block = (!brg.rdb && brg.rdb_tail) ? brg.rdb_tail : brg.rd_block;
-    if (brg.is_input_convert())
-        rd_block = utils::rnd_up(rd_block, 2 /*vnni_granularity*/);
-    else
-        rd_block = utils::rnd_up(rd_block, brg.rd_step);
+    if (!brg.is_tmm && !brg.is_ace()) return status::unimplemented;
 
     palette_config_t *buff = (palette_config_t *)(palette);
 
@@ -739,10 +751,25 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
     for (int i = 0; i < max_palette_size_in_bytes; i++)
         _tc[i] = 0;
 
-    const int typesize_A
-            = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_A;
-    const int typesize_B
-            = brg.is_input_convert() ? sizeof(int16_t) : brg.typesize_B;
+    // ACE uses a fixed 8x16x64 tile geometry; bytes 1-63 are zero.
+    // The descriptor was already cleared, so only the palette ID is set here.
+    if (brg.is_ace()) {
+        buff->palette_id = amx_palette_ace;
+        return status::success;
+    }
+
+    auto rd_block = (!brg.rdb && brg.rdb_tail) ? brg.rdb_tail : brg.rd_block;
+    if (brg.is_input_convert())
+        rd_block = utils::rnd_up(rd_block, 2 /*vnni_granularity*/);
+    else
+        rd_block = utils::rnd_up(rd_block, brg.rd_step);
+
+    const int typesize_A = brg.is_input_convert()
+            ? static_cast<int>(sizeof(int16_t))
+            : brg.typesize_A;
+    const int typesize_B = brg.is_input_convert()
+            ? static_cast<int>(sizeof(int16_t))
+            : brg.typesize_B;
 
     const int rd_step = 4 / typesize_A;
 
@@ -795,7 +822,7 @@ status_t brgemm_init_tiles(const brgemm_desc_t &brg, char palette[64]) {
         }
     }
 
-    buff->palette_id = amx::get_target_palette();
+    buff->palette_id = static_cast<uint8_t>(amx::get_target_palette());
 
     return status::success;
 }
@@ -909,6 +936,7 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(brgattr.hint_load_nt_A);
     CMP_BRGEMM_FIELD(brgattr.hint_load_nt_B);
     CMP_BRGEMM_FIELD(brgattr.K_koef);
+    CMP_BRGEMM_FIELD(brgattr.use_ace);
 
     if (lhs.brgattr.bd_mask_level > 0)
         for (int i = 0; i < lhs.bcast_dim; i++) {

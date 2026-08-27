@@ -718,9 +718,13 @@
 #if DST_SCALES_DT_HF8
 #define DST_SCALES_TO_REF(x) into_float(x)
 #define REF_TO_DST_SCALES(x) into_f8_e4m3(x)
+#define DST_SCALES_DATA_FMAX into_float(as_f8_e4m3((uchar)0x7E))
+#define DST_SCALES_DATA_FEPS into_float(as_f8_e4m3((uchar)0x20))
 #elif DST_SCALES_DT_BF8
 #define DST_SCALES_TO_REF(x) into_float(x)
 #define REF_TO_DST_SCALES(x) into_f8_e5m2(x)
+#define DST_SCALES_DATA_FMAX into_float(as_f8_e5m2((uchar)0x7B))
+#define DST_SCALES_DATA_FEPS into_float(as_f8_e5m2((uchar)0x34))
 #elif DST_SCALES_DT_F16
 #define DST_SCALES_TO_REF(x) convert_float(x)
 #define REF_TO_DST_SCALES(x) convert_half(x)
@@ -730,6 +734,8 @@
 #elif DST_SCALES_DT_E8M0
 #define DST_SCALES_TO_REF(x) into_float(x)
 #define REF_TO_DST_SCALES(x) into_e8m0(x)
+#define DST_SCALES_DATA_FMAX into_float(as_e8m0((uchar)0xFE))
+#define DST_SCALES_DATA_FEPS into_float(as_e8m0((uchar)0x80))
 #else
 #define DST_SCALES_TO_REF(x) (x)
 #endif

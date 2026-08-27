@@ -77,6 +77,12 @@ template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::load_f32_const(const FReg &f, float val) {
     uint32_t bits;
     std::memcpy(&bits, &val, sizeof(bits));
+    // +0.0 (all-zero bit pattern) moves straight from x0, skipping the
+    // immediate load.
+    if (bits == 0) {
+        h_->fmv_w_x(f, x0);
+        return;
+    }
     h_->li(gpr_aux0_, bits);
     h_->fmv_w_x(f, gpr_aux0_);
 }
@@ -1051,6 +1057,7 @@ void jit_uni_eltwise_injector_t<isa>::compute_vector_range(
 
 template struct jit_uni_eltwise_injector_t<v>;
 template struct jit_uni_eltwise_injector_t<zvfh>;
+template struct jit_uni_eltwise_injector_t<zvfbfwma>;
 
 } // namespace rv64
 } // namespace cpu

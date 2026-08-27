@@ -29,9 +29,11 @@
 #include "gpu/intel/compute/kernel_ctx.hpp"
 #include "gpu/intel/compute/zero_pool.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+#include "gpu/intel/gemm/jit/gen_kernel_db.hpp"
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "gpu/intel/gemm/primitive.hpp"
 #include "gpu/intel/gemm/utils.hpp"
+#include "gpu/intel/logging.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -299,7 +301,6 @@ struct gen_t : public primitive_t {
             if (arch_ >= arch_t::xe3p)
                 kernel_desc_.set_efficient_64b(dev_info_->is_efficient_64bit());
 
-            bool print_verbose = get_verbose(verbose_t::debuginfo) >= 5;
             bool kernel_success = false;
             auto lda = ld(DNNL_ARG_A);
             auto ldb = ld(DNNL_ARG_B);
@@ -314,11 +315,9 @@ struct gen_t : public primitive_t {
                 auto status = kernel_desc_.finalize();
                 // select_kernel can return a strategy that failed in the finalize call
                 bool valid = status == status::success;
-                if (!valid && print_verbose)
-                    dnnl::impl::verbose_printf(
-                            "info,gpu,gemm,skipping:%s,Strategy finalization "
-                            "failed.\n",
-                            kernel_desc_.entry().str().c_str());
+                if (!valid)
+                    gpu_debug() << "skipping:" << entry->str()
+                                << ",Strategy finalization failed.";
                 // Global k-parallel kernels don't support post-ops or non-f32/s32
                 //   accumulation unless fusion is enabled.
                 if (kernel_desc_.driver_info()->kParallel()
@@ -326,10 +325,9 @@ struct gen_t : public primitive_t {
                     bool po_valid = !non_scale_po_
                             && !(with_sum_ && with_c_scales())
                             && utils::one_of(d->c_type(), f32, s32);
-                    if (!po_valid && print_verbose)
-                        dnnl::impl::verbose_printf(
-                                "info,gpu,gemm,skipping:%s,Invalid post op.\n",
-                                kernel_desc_.entry().str().c_str());
+                    if (!po_valid)
+                        gpu_debug() << "skipping:" << entry->str()
+                                    << ",Invalid post op.";
                     valid &= po_valid;
                 }
                 // Limited post-op support for low-precision accumulation.
@@ -337,21 +335,18 @@ struct gen_t : public primitive_t {
                     bool need_x32_acc = with_binary
                             || !IMPLICATION(with_sum_, sum_at_begin_);
                     valid &= !need_x32_acc;
-                    if (need_x32_acc && print_verbose)
-                        dnnl::impl::verbose_printf(
-                                "info,gpu,gemm,skipping:%s,Invalid post op.\n",
-                                kernel_desc_.entry().str().c_str());
+                    if (need_x32_acc)
+                        gpu_debug() << "skipping:" << entry->str()
+                                    << ",Invalid post op.";
                 }
                 // Ensure kernel can be run deterministically if required.
                 if (attr()->deterministic_) {
                     bool deterministic
                             = !kernel_desc_.driver_info()->nondeterministic();
                     valid &= deterministic;
-                    if (!deterministic && print_verbose)
-                        dnnl::impl::verbose_printf(
-                                "info,gpu,gemm,skipping:%s,Non deterministic "
-                                "kernel.\n",
-                                kernel_desc_.entry().str().c_str());
+                    if (!deterministic)
+                        gpu_debug() << "skipping:" << entry->str()
+                                    << ",Non deterministic kernel.";
                 }
 
                 if (valid) {
@@ -387,6 +382,14 @@ struct gen_t : public primitive_t {
                     status = try_create();
                     if (status == status::success) {
                         kernel_success = true;
+                        if (kernel_desc_.has_entry()) {
+                            gpu_info() << "catalog entry["
+                                       << (entry - jit::catalog().entries)
+                                       << "]:" << entry->str();
+                        } else {
+                            gpu_info() << "catalog entry[overridden]:"
+                                       << entry->str();
+                        }
                         break;
                     }
                 }

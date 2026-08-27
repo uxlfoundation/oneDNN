@@ -252,6 +252,18 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
 
     if (!systolic && AccumulatorRegister::count(hw, GRFs, problem.Tc.real().ngen()) == 0)
         kChain = 1;
+    // Late 2D scales are only read once per C repack, which occurs every
+    // gcd(aqGroupK, bqGroupK) k-elements. A k-chain spanning more than that would
+    // skip scale groups, so trim it to fit.
+    int minOPC = minOuterProductCount(problem, *this);
+    if (kChain > 1 && problem.forceLateQuant(minOPC)) {
+        int period = problem.aScale2D() ? problem.aqGroupK : 0;
+        if (problem.bScale2D())
+            period = period ? gcd(period, problem.bqGroupK) : problem.bqGroupK;
+        if (kInterleave) period = gcd(period, kInterleaveChunk);
+        if (period % minOPC == 0)
+            kChain = gcd(kChain, period / minOPC);
+    }
     cAccumulators &= (kChain == 1);
 
     // Accumulator usage: 64-bit emulation, or k chaining, or extra C registers, or storage for r0 header.

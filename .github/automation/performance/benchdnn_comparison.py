@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 # *******************************************************************************
-# Copyright 2025 Arm Limited and affiliates.
+# Copyright 2025-2026 Arm Limited and affiliates.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,6 +46,14 @@ def print_to_github_out(message):
             print(message.replace("\n", "%0A"), file=f)
 
 
+def normalize_problem_key(key):
+    """Normalize equivalent benchdnn repro lines for comparison."""
+    tokens = key.replace("_", "-").split()
+    options = sorted(token for token in tokens if token.startswith("--"))
+    operands = [token for token in tokens if not token.startswith("--")]
+    return " ".join(options + operands)
+
+
 def compare_two_benchdnn(file1, file2, out_file=None):
     """
     Compare two benchdnn output files
@@ -72,19 +80,18 @@ def compare_two_benchdnn(file1, file2, out_file=None):
     r1_ctime = defaultdict(list)
     r2_exec = defaultdict(list)
     r2_ctime = defaultdict(list)
+    r1_problem = {}
 
     for key, exec_time, ctime in r1:
-        # Older versions of benchdnn outputs underscores
-        # instead of hyphens for some ops leading to
-        # mismatches in problems with newer versions
-        key = key.replace("_", "-")
-        r1_exec[key].append(float(exec_time))
-        r1_ctime[key].append(float(ctime))
+        normalized_key = normalize_problem_key(key)
+        r1_problem.setdefault(normalized_key, key.replace("_", "-").strip())
+        r1_exec[normalized_key].append(float(exec_time))
+        r1_ctime[normalized_key].append(float(ctime))
 
     for key, exec_time, ctime in r2:
-        key = key.replace("_", "-")
-        r2_exec[key].append(float(exec_time))
-        r2_ctime[key].append(float(ctime))
+        normalized_key = normalize_problem_key(key)
+        r2_exec[normalized_key].append(float(exec_time))
+        r2_ctime[normalized_key].append(float(ctime))
 
     exec_failures, ctime_failures = [], []
     if out_file is not None:
@@ -101,14 +108,15 @@ def compare_two_benchdnn(file1, file2, out_file=None):
         with open(out_file, "w") as f:
             f.write(headers + "| :---: | :---: | :---: | :---:|\n")
 
-    for prb in r1_exec:
-        if prb not in r2_exec:
+    for normalized_key in r1_exec:
+        prb = r1_problem[normalized_key]
+        if normalized_key not in r2_exec:
             raise Exception(f"{prb} exists in {file1} but not {file2}")
 
-        exec1 = r1_exec[prb]
-        exec2 = r2_exec[prb]
-        ctime1 = r1_ctime[prb]
-        ctime2 = r2_ctime[prb]
+        exec1 = r1_exec[normalized_key]
+        exec2 = r2_exec[normalized_key]
+        ctime1 = r1_ctime[normalized_key]
+        ctime2 = r2_ctime[normalized_key]
         exec_regressed_ttest = ttest_ind(exec2, exec1, alternative="greater")
         exec_improved_ttest = ttest_ind(exec2, exec1, alternative="less")
         ctime_ttest = ttest_ind(ctime2, ctime1, alternative="greater")

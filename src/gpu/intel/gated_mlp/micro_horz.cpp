@@ -109,6 +109,9 @@ int sg_size(const impl::engine_t *engine) {
     return intel_engine->device_info()->min_subgroup_size();
 }
 
+// micro_gated_mlp_horz cross-thread argument bytes, plus headroom.
+constexpr int host_argument_bytes = 320;
+
 } // anonymous namespace
 
 status_t micro_horz_t::pd_t::init(const impl::engine_t *engine) {
@@ -262,9 +265,12 @@ status_t micro_horz_t::pd_t::init_microkernels(
     opts_wgu.scaleA = with_wts_gate_scales(this) && !wgu_common_scales;
     opts_wgu.offsetA = with_wts_gate_zp(this);
 
+    const gemmstone::microkernel::HostPayload host {
+            sg_size(engine), host_argument_bytes};
+
     try {
-        gemm_gate_up_pkg_
-                = selectGEMM(opts_wgu, hw_info, sizes, problem_wgu, reqs_wgu);
+        gemm_gate_up_pkg_ = selectGEMM(
+                opts_wgu, host, hw_info, sizes, problem_wgu, reqs_wgu);
     } catch (std::exception &e) {
         VDISPATCH_GATED_MLP(false,
                 "gemm_gateup microkernel generation failed with message: %s",
@@ -419,18 +425,12 @@ status_t micro_horz_t::init(impl::engine_t *engine) {
     if (lda % 4 == 0 && (pd()->OC() % tile_wgu_m) == 0)
         kernel_ctx.define_int("BLOCK_DST", 1);
 
-    gemmstone::microkernel::ShimOptions shimOptions;
-    shimOptions.subgroupSize = sg_size(engine);
-    shimOptions.useTileOps = true;
-    shimOptions.decorator = "wgu";
-
-    auto header = generateShim(pd()->gemm_gate_up_pkg(),
-            gemmstone::microkernel::HostLanguage::OpenCL_C, shimOptions);
-    kernel_ctx.add_custom_header("gemm_gateup.h", std::move(header));
-
-    if (pd()->gemm_gate_up_pkg().grfMin > 128) {
-        kernel_ctx.add_option("-cl-intel-256-GRF-per-thread");
-    }
+    compute::microkernel_shims_t shims(kernel_ctx, sg_size(engine),
+            utils::downcast<const intel::engine_t *>(engine)
+                    ->device_info()
+                    ->gpu_arch());
+    shims.add("gemm_gateup.h", "wgu", pd()->gemm_gate_up_pkg());
+    shims.finalize();
 
     CHECK(create_kernel(
             engine, &gemm_gate_up_, "micro_gated_mlp_horz", kernel_ctx));

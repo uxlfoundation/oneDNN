@@ -118,7 +118,8 @@ status_t xe_hp_systolic_t::pd_t::init(const impl::engine_t *engine) {
                            utils::one_of(d->bias_type(), d->a_type(), f32)
                                    && d->bias_mask() < 8),
             VERBOSE_UNSUPPORTED_BIAS_CFG);
-
+    VDISPATCH_GEMM(!attr()->scales_.has_host_scalars(),
+            VERBOSE_UNSUPPORTED_FEATURE, "host scalars");
     // Limit scope of large buffer implementation support as the ability test
     // large buffers is limited by testing time.
     VDISPATCH_GEMM(std::max({memory_desc_wrapper(src_md(0)).size(),

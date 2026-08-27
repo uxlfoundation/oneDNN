@@ -226,24 +226,37 @@ template <std::size_t N>
 constexpr std::array<Entry, N> toArray(Entry (&&a)[N]) {
     return std::to_array(std::move(a));
 }
-#elif __cplusplus >= 201402L && __cpp_lib_integer_sequence >= 201304L
+#else
+#if __cplusplus >= 201402L && __cpp_lib_integer_sequence >= 201304L
+template <std::size_t... I> using IndexSequence = std::index_sequence<I...>;
+template <std::size_t N> using MakeIndexSequence = std::make_index_sequence<N>;
+#else
+// C++11 fallback for std::make_index_sequence
+template <std::size_t... I> struct IndexSequence {};
+template <typename S1, typename S2> struct ConcatSequence;
+template <std::size_t... I1, std::size_t... I2>
+struct ConcatSequence<IndexSequence<I1...>, IndexSequence<I2...>> {
+    using type = IndexSequence<I1..., (sizeof...(I1) + I2)...>;
+};
+template <std::size_t N> struct MakeIndexSequenceImpl {
+    using type = typename ConcatSequence<
+            typename MakeIndexSequenceImpl<N / 2>::type,
+            typename MakeIndexSequenceImpl<N - N / 2>::type>::type;
+};
+template <> struct MakeIndexSequenceImpl<0> { using type = IndexSequence<>; };
+template <> struct MakeIndexSequenceImpl<1> { using type = IndexSequence<0>; };
+template <std::size_t N>
+using MakeIndexSequence = typename MakeIndexSequenceImpl<N>::type;
+#endif
+
 template <std::size_t N, std::size_t... I>
 constexpr std::array<Entry, N>
-toArrayImpl(Entry (&&a)[N], std::index_sequence<I...>) {
-    return {{std::move(a[I])...}};
+toArrayImpl(const Entry (&a)[N], IndexSequence<I...>) {
+    return {{a[I]...}};
 }
 template <std::size_t N>
 constexpr std::array<Entry, N> toArray(Entry (&&a)[N]) {
-    return toArrayImpl(std::move(a), std::make_index_sequence<N>{});
-}
-#else
-template <std::size_t N>
-std::array<Entry, N> toArray(Entry (&&a)[N]) {
-    std::array<Entry, N> ret;
-    for(size_t i = 0; i < N; i++) {
-        ret[i] = std::move(a[i]);
-    }
-    return ret;
+    return toArrayImpl(a, MakeIndexSequence<N>{});
 }
 #endif
 

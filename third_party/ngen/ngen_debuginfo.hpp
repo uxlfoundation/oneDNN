@@ -156,8 +156,21 @@ struct DebugLine {
         uint8_t defaultIsStmt = 1;
         int8_t lineBase = -32;
         uint8_t lineRange = 192;
-        uint8_t opcodeBase = 5;
-        uint8_t opCodeLengths[4] = {0, 1, 1, 1};
+        uint8_t opcodeBase = 13;
+        uint8_t opCodeLengths[12] = {
+            0, // copy
+            1, // advance_pc
+            1, // advance_line
+            1, // set_file
+            1, // set_column
+            0, // negate_stmt
+            0, // set_basic_block
+            0, // const_add_pc
+            1, // fixed_advance_pc, standard specifies number of LEB128 operands, but this takes a u16 operand. Value is aligned with GCC.
+            0, // set_prologue_end
+            0, // set_epilogue_begin
+            1, // set_isa
+        };
 
         enum DWARF_FORM : uint8_t {
             DATA2 = 0x05,
@@ -227,7 +240,7 @@ struct DebugLine {
         return ret;
     };
 
-    std::pair<std::vector<char>, uint64_t> encodeLineStatements(const DebugLineHeaderBase & base) const {
+    std::pair<std::vector<char>, uint64_t> encodeLineStatements(const DebugLineHeaderBase & base, size_t prologueEnd) const {
         struct {
             uint64_t address = 0;
             uint64_t line = 1;
@@ -236,6 +249,7 @@ struct DebugLine {
             uint32_t isa = 0;
             uint32_t discriminator = 0;
 
+            uint64_t prologueEnd = 0;
             int8_t lineBase;
             uint8_t lineRange;
             uint8_t opcodeBase;
@@ -247,6 +261,7 @@ struct DebugLine {
                 advancePC = 2,
                 advanceLine = 3,
                 setFile = 4,
+                setPrologueEnd = 10,
             };
 
             enum ExtendedOps { endSequence = 1, setAddress = 2 };
@@ -279,6 +294,10 @@ struct DebugLine {
                     file = l.fileEntry;
                 }
 
+                if (prologueEnd && l.address == prologueEnd) {
+                    out.emplace_back(setPrologueEnd);
+                }
+
                 if (l.line >= line + lineBase &&
                     l.line < line + lineBase + lineRange) {
                     int64_t specialOp = (l.line - line) - lineBase +
@@ -308,6 +327,7 @@ struct DebugLine {
             }
         } encodeState;
 
+        encodeState.prologueEnd=prologueEnd;
         encodeState.isStmt = base.defaultIsStmt;
         encodeState.lineBase = base.lineBase;
         encodeState.lineRange = base.lineRange;
@@ -324,7 +344,7 @@ struct DebugLine {
         return {ret, relocation_offset};
     }
 
-    std::pair<std::vector<char>, uint64_t> createDebugLine() const {
+    std::pair<std::vector<char>, uint64_t> createDebugLine(size_t prologueEnd) const {
 
         DebugLineHeaderBase base;
         DebugLineHeaderBase::DirEntriesHeader dirHeader;
@@ -333,7 +353,7 @@ struct DebugLine {
         DebugLineHeaderBase::FileEntriesHeader fileHeader;
         std::vector<char> filenamesCount = toULEB128(fileEntries.size());
         uint32_t fileEntriesBytes = static_cast<uint32_t>(fileEntries.size() * sizeof(fileEntries[0]));
-        auto encode = encodeLineStatements(base);
+        auto encode = encodeLineStatements(base, prologueEnd);
         std::vector<char> lineStatements = encode.first;
         uint64_t relocation_offset = encode.second;
 

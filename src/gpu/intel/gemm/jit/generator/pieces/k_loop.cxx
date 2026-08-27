@@ -2152,8 +2152,14 @@ void Generator<hw>::kLoopActivateSLMRemainder(bool active, bool preactivate, con
     }
 
     bool mayAccessAllK = (minOPCount > 1) || problem.needsASums() || problem.needsBSums();
-    bool asIfMaskedAi = Ai_lateKRem && state.Ai_strategy.padded;
-    bool asIfMaskedBi = Bi_lateKRem && state.Bi_strategy.padded;
+    // When A/B is early-dequantized through SLM (offset subtracted before use), the raw
+    // padding (typically zero) becomes -zp after dequantization, corrupting any zero-point
+    // sum trick relying on padding being exactly zero. Force remasking in that case even if
+    // the underlying block's own remainder marking says otherwise.
+    bool slmDequantizeA = problem.earlyDequantizeA() && slmA;
+    bool slmDequantizeB = problem.earlyDequantizeB() && slmB;
+    bool asIfMaskedAi = (Ai_lateKRem && state.Ai_strategy.padded) || (slmDequantizeA && problem.needsASums());
+    bool asIfMaskedBi = (Bi_lateKRem && state.Bi_strategy.padded) || (slmDequantizeB && problem.needsBSums());
     slmRemaskA = slmA && mayAccessAllK && !Ai_remIncrCopy && needsRemask(Ta_ext, true,  state.Ai_layoutRem, state.Ai, state.Ai_strategy, asIfMaskedAi);
     slmRemaskB = slmB && mayAccessAllK && !Bi_remIncrCopy && needsRemask(Tb_ext, false, state.Bi_layoutRem, state.Bi, state.Bi_strategy, asIfMaskedBi);
 }

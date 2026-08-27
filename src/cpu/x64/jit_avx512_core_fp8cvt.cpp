@@ -37,9 +37,9 @@ void fp8_conversion_e5m2_t::prepare_table() {
     host_->align(64);
     host_->L(label_vnni_permute_index_table_);
     // Data for f16
-    for (size_t i = 0; i < 64; ++i) {
+    for (int i = 0; i < 64; ++i) {
         // 2, 0, 3, 1, ...
-        size_t index = i;
+        int index = i;
         switch (i % 4) {
             case 0: index = i + 2; break;
             case 1: index = i - 1; break;
@@ -49,12 +49,12 @@ void fp8_conversion_e5m2_t::prepare_table() {
         host_->db(index);
     }
     // Data for bf16
-    for (size_t i = 0; i < 32; ++i) {
-        size_t index = 4 * (i / 2) + (i % 2);
+    for (int i = 0; i < 32; ++i) {
+        int index = 4 * (i / 2) + (i % 2);
         host_->db(index);
     }
-    for (size_t i = 32; i < 64; ++i) {
-        size_t index = 4 * ((i - 32) / 2) + (i % 2) + 2;
+    for (int i = 32; i < 64; ++i) {
+        int index = 4 * ((i - 32) / 2) + (i % 2) + 2;
         host_->db(index);
     }
 
@@ -85,12 +85,12 @@ void fp8_conversion_e5m2_t::prepare_table() {
 void fp8_conversion_e4m3_t::prepare_table() {
     host_->align(64);
     host_->L(label_vnni_permute_index_table_);
-    for (size_t i = 0; i < 32; ++i) {
-        size_t index = 4 * (i / 2) + (i % 2);
+    for (int i = 0; i < 32; ++i) {
+        int index = 4 * (i / 2) + (i % 2);
         host_->db(index);
     }
-    for (size_t i = 32; i < 64; ++i) {
-        size_t index = 4 * ((i - 32) / 2) + (i % 2) + 2;
+    for (int i = 32; i < 64; ++i) {
+        int index = 4 * ((i - 32) / 2) + (i % 2) + 2;
         host_->db(index);
     }
 
@@ -213,6 +213,15 @@ void fp8_conversion_e5m2_t::vcvt_f8_to_f16(
         // f16 <- f32
         host_->vcvtps2phx(ymm_out, zmm_out);
     }
+}
+
+void fp8_conversion_e5m2_t::vcvt_f8_to_f16_skip_q_nan(
+        const Xbyak::Xmm &xmm_out, const Xbyak::Operand &op_in) {
+    assert(utils::one_of(
+            true, op_in.isXMM(), op_in.isYMM(), op_in.isZMM(), op_in.isMEM()));
+    // f16 <- f8_e5m2
+    host_->vpmovzxbw(xmm_out, op_in);
+    host_->vpsllw(xmm_out, xmm_out, 8);
 }
 
 void fp8_conversion_e5m2_t::vcvt_f8_to_bf16(

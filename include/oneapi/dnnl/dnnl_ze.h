@@ -27,13 +27,13 @@
 extern "C" {
 #endif // __cplusplus
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_api_interop
 /// @{
 
-/// @addtogroup dnnl_api_ze_interop
+/// @addtogroup dnnl_api_ze_interop Level Zero interoperability API
 /// @{
 
 /// Retrieves a cache blob ID for the Level Zero device.
@@ -209,7 +209,7 @@ dnnl_status_t DNNL_API dnnl_ze_interop_primitive_execute(
 
 /// @} dnnl_api_interop
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

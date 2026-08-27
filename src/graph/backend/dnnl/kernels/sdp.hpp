@@ -26,6 +26,7 @@
 #include "graph/backend/dnnl/kernels/kernel_base.hpp"
 #include "graph/backend/dnnl/kernels/large_partition.hpp"
 #include "graph/backend/dnnl/kernels/sdp_decomp.hpp"
+#include "graph/backend/dnnl/kernels/sdp_decomp_training.hpp"
 #include "graph/backend/dnnl/kernels/sdp_primitive.hpp"
 
 #include "graph/backend/dnnl/dnnl_partition_impl.hpp"
@@ -65,11 +66,18 @@ public:
                 ret = kernel->compile_impl(part, eng, inputs, outputs);
             }
 
+            // TODO(xxx): merge with the decomp kernel above.
+            if (ret != status::success) {
+                kernel = std::make_shared<sdp_decomp_training_kernel_t>();
+                ret = kernel->compile_impl(part, eng, inputs, outputs);
+            }
+
             if (ret != status::success) {
                 kernel = std::make_shared<larger_partition_kernel_t>();
                 ret = kernel->compile_impl(part, eng, inputs, outputs);
             }
         }
+
         if (ret == status::success)
             VDISPATCH_GRAPH_SDP(
                     "sdpa is dispatched to %s", kernel->str().c_str());

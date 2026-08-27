@@ -24,13 +24,13 @@
 extern "C" {
 #endif
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_api_interop
 /// @{
 
-/// @addtogroup dnnl_api_threadpool_interop
+/// @addtogroup dnnl_api_threadpool_interop Threadpool interoperability API
 /// @{
 
 /// Creates an execution stream with specified threadpool.
@@ -109,7 +109,7 @@ dnnl_status_t DNNL_API dnnl_threadpool_interop_gemm_s8s8s32(char transa,
 
 /// @} dnnl_api_interop
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

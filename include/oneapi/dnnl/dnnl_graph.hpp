@@ -30,10 +30,10 @@
 #include <utility>
 #include <vector>
 
-/// @addtogroup dnnl_api
-/// @{
-
 namespace dnnl {
+
+/// @addtogroup dnnl_api_cpp
+/// @{
 
 /// @addtogroup dnnl_graph_api Graph API
 /// oneDNN Graph API
@@ -1717,6 +1717,8 @@ inline status set_dump_mode(graph_dump_mode modes) {
 
 /// @} dnnl_graph_api
 
+/// @} dnnl_api_cpp
+
 } // namespace dnnl
 
 /// @cond DO_NOT_DOCUMENT_THIS
@@ -1732,8 +1734,6 @@ namespace dnnl = ::dnnl;
 } // namespace oneapi
 
 /// @endcond
-
-/// @} dnnl_api
 
 // NOLINTEND(readability-identifier-naming)
 #endif /* ONEAPI_DNNL_DNNL_GRAPH_HPP */

@@ -89,9 +89,9 @@ protected:
     virtual int tmp_vreg_idx(int i_unroll, int i_acc_iter) = 0;
     virtual void pre_compute_init() = 0;
     virtual void broadcast_scale(int scale_iter) = 0;
-    virtual void read_iter(int acc_iter, int u_idx, int src_shift) = 0;
+    virtual void read_iter(int acc_iter, int u_idx, dim_t src_shift) = 0;
     virtual void add_iter(int acc_iter, int u_idx) = 0;
-    virtual void write_iter(int u_idx, int dst_shift) = 0;
+    virtual void write_iter(int u_idx, dim_t dst_shift) = 0;
     void loop_iteration(int current_unroll);
     virtual void tail_iteration() = 0;
     virtual void index_tables() = 0;
@@ -192,9 +192,9 @@ protected:
 
     void pre_compute_init() override;
     void broadcast_scale(int scale_iter) override;
-    void read_iter(int acc_iter, int u_idx, int shift) override;
+    void read_iter(int acc_iter, int u_idx, dim_t shift) override;
     void add_iter(int acc_iter, int u_idx) override;
-    void write_iter(int u_idx, int shift) override;
+    void write_iter(int u_idx, dim_t shift) override;
     void tail_iteration() override;
     void index_tables() override;
 };
@@ -240,9 +240,9 @@ protected:
 
     void pre_compute_init() override {}
     void broadcast_scale(int scale_iter) override;
-    void read_iter(int acc_iter, int u_idx, int shift) override;
+    void read_iter(int acc_iter, int u_idx, dim_t shift) override;
     void add_iter(int acc_iter, int u_idx) override;
-    void write_iter(int u_idx, int shift) override;
+    void write_iter(int u_idx, dim_t shift) override;
     void tail_iteration() override;
     void index_tables() override {}
 };
@@ -298,9 +298,10 @@ struct jit_xf16_sum_t : public primitive_t {
 
             return is_superset(isa, avx512_core)
                     ? jit_avx512_core_bf16_sum_kernel_t::init_conf(
-                              jsp_, src_mds_.size(), dst_md_)
-                    : jit_avx2_vnni_2_xf16_sum_kernel_t::init_conf(
-                              jsp_, src_mds_.size(), src_mds_, dst_md_);
+                              jsp_, static_cast<int>(src_mds_.size()), dst_md_)
+                    : jit_avx2_vnni_2_xf16_sum_kernel_t::init_conf(jsp_,
+                              static_cast<int>(src_mds_.size()), src_mds_,
+                              dst_md_);
         }
         jit_sum_conf_t jsp_;
     };

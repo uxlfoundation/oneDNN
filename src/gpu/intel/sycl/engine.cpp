@@ -19,6 +19,8 @@
 #include "xpu/sycl/memory_storage.hpp"
 
 #include "gemmstone/dsl/runtime.hpp"
+#include "gemmstone/microkernel/fuser.hpp"
+#include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/jit/generator_base.hpp"
 #include "gpu/intel/sycl/compat.hpp"
 #include "gpu/intel/sycl/device_info.hpp"
@@ -135,6 +137,23 @@ status_t engine_t::create_kernels(
     auto kb_exe = syclex::build(
             kb_src, syclex::properties {syclex::build_options(build_options)});
     *kernels = std::vector<compute::kernel_t>(kernel_names.size());
+
+    if (kernel_ctx.has_custom_headers()
+            && gemmstone::microkernel::hasMicrokernels(code_str.c_str())) {
+        xpu::binary_t binary;
+        CHECK(get_kernel_bundle_binary(this, kb_exe, binary));
+        CHECK(compute::fuse_microkernels(
+                binary, code_str.c_str(), device_info()->grf_size()));
+
+        std::vector<std::unique_ptr<::sycl::kernel>> sycl_kernels;
+        CHECK(compat::make_kernels(sycl_kernels, kernel_names, this, binary));
+        for (size_t i = 0; i < kernel_names.size(); ++i) {
+            if (!sycl_kernels[i]) continue;
+            CHECK(interop_kernel_t::make((*kernels)[i], *sycl_kernels[i], src));
+        }
+        return status::success;
+    }
+
     for (size_t i = 0; i < kernel_names.size(); ++i) {
         if (!kernel_names[i]) continue;
 

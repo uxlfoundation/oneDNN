@@ -21,6 +21,7 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
+#include "cpu/aarch64/cpu_barrier.hpp"
 #include "cpu/aarch64/jit_sve_convolution.hpp"
 
 namespace dnnl {
@@ -1660,7 +1661,7 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
         const {
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
 
-    auto rb = this->reducer_bias_;
+    const auto &rb = reducer_bias_;
     assert(nthr_ == rb->balancer().nthr_);
 
     memory_tracking::grantor_t reducer_bia_scratchpad(
@@ -1756,7 +1757,7 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
 
     memory_tracking::grantor_t reducer_bia_scratchpad(
             scratchpad, prefix_reducer_bia);
-    auto rb = this->reducer_bias_;
+    const auto &rb = reducer_bias_;
     rb->init(reducer_bia_scratchpad);
 }
 
@@ -1833,7 +1834,7 @@ void jit_sve_convolution_bwd_weights_t<src_type, diff_dst_type,
                     break;
                 case harness_nxc:
                 case harness_mb_reduction: {
-                    auto rb = this->reducer_bias_;
+                    const auto &rb = reducer_bias_;
                     assert(nthr == rb->balancer().nthr_);
                     if (rb->balancer().ithr_njobs(ithr) == 0) return;
                     memory_tracking::grantor_t reducer_bia_scratchpad(

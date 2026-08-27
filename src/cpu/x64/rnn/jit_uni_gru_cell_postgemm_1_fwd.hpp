@@ -55,16 +55,19 @@ protected:
 
     // register size in bytes
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
-    static constexpr size_t vlen = cpu_isa_traits_t<isa>::vlen;
-    static constexpr size_t qscale_dt_size = sizeof(float);
-    const size_t vlen_dst
+    static constexpr int vlen = cpu_isa_traits_t<isa>::vlen;
+    static constexpr int qscale_dt_size = sizeof(float);
+    const int vlen_dst
             = vlen / (sizeof(float) / types::data_type_size(src_data_t));
-    const size_t vlen_bias_ = vlen / (sizeof(float) / bias_dt_size_);
-    const size_t hstate_dt_size = types::data_type_size(src_data_t);
-    const size_t gate_dt_size = types::data_type_size(src_data_t);
-    const size_t scratch_dt_size = types::data_type_size(scratch_data_t);
-    const size_t vlen_qscale = vlen / qscale_dt_size;
-    const size_t vlen_elems = vlen / scratch_dt_size;
+    const int vlen_bias_ = vlen / (sizeof(float) / bias_dt_size_);
+    const int hstate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int gate_dt_size
+            = static_cast<int>(types::data_type_size(src_data_t));
+    const int scratch_dt_size
+            = static_cast<int>(types::data_type_size(scratch_data_t));
+    const int vlen_qscale = vlen / qscale_dt_size;
+    const int vlen_elems = vlen / scratch_dt_size;
 
     const int loop_ur_max = 4;
     // We skip vmm0 as it can be used by the injector for masks on sse4.1
@@ -126,16 +129,16 @@ protected:
             return ptr[addr_bias_reg + i * rnn_.dhc * bias_dt_size_ + j * vlen];
         };
 
-        const size_t loop_len = rnn_.dhc;
-        const size_t loop_tail = loop_len % vlen_elems;
+        const dim_t loop_len = rnn_.dhc;
+        const int loop_tail = static_cast<int>(loop_len % vlen_elems);
         // initialize registers with addresses and constants
         init_regs(weights_scales, vlen, loop_tail);
 
         // both sigmoid and tanh use the same table so load address just once in rax
         sigmoid_injector_->load_table_addr();
 
-        const size_t nb_loop_len = loop_len / vlen_elems;
-        size_t loop_ur_val = 1;
+        const dim_t nb_loop_len = loop_len / vlen_elems;
+        int loop_ur_val = 1;
         const bool is_brgemm = rnn_.is_brgemm && !rnn_.unfused_post_gemm;
         if (is_brgemm) {
 #ifdef _WIN32
@@ -153,15 +156,15 @@ protected:
 
             mov(loop_cnt, loop_len);
         }
-        const size_t loop_ur = loop_ur_val;
+        const int loop_ur = loop_ur_val;
 
         auto compute_loop
-                = [&](size_t current_vlen_elem, size_t current_loop_unroll) {
+                = [&](int current_vlen_elem, int current_loop_unroll) {
             const auto current_vlen = current_vlen_elem * scratch_dt_size;
             Label loop_start_label;
             L(loop_start_label);
             {
-                for (size_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
+                for (int loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
                         ++loop_ur_idx) {
                     const Vmm G0(G0_idx(loop_ur_idx));
                     const Vmm G1(G1_idx(loop_ur_idx));
@@ -195,14 +198,14 @@ protected:
                 // Compute sigmoid of unrolled G0 and G1 regs together
                 // (this allows to not save any registers during eltwise)
                 injector_utils::vmm_index_set_t vmm_idxs;
-                for (size_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
+                for (int loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
                         ++loop_ur_idx) {
                     vmm_idxs.emplace(G0_idx(loop_ur_idx));
                     vmm_idxs.emplace(G1_idx(loop_ur_idx));
                 }
                 sigmoid_injector_->compute_vector_range(vmm_idxs);
 
-                for (size_t loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
+                for (int loop_ur_idx = 0; loop_ur_idx < current_loop_unroll;
                         ++loop_ur_idx) {
                     const Vmm G0(G0_idx(loop_ur_idx));
                     const Vmm G1(G1_idx(loop_ur_idx));
@@ -258,10 +261,10 @@ protected:
                     add(addr_states_t_l_copy_reg, current_states_size);
                     add(addr_states_tm1_l_reg, current_states_size);
                     if (is_training) add(addr_ws_gates_reg, current_gate_size);
-                    inc_regs(mask,
-                            current_vlen == vlen
-                                    ? current_vlen * current_loop_unroll
-                                    : qscale_dt_size);
+                    const int qscale_shift = current_vlen == vlen
+                            ? current_vlen * current_loop_unroll
+                            : qscale_dt_size;
+                    inc_regs(mask, qscale_shift);
 
                     // increment loop counter
                     sub(loop_cnt, current_vlen_elem * current_loop_unroll);

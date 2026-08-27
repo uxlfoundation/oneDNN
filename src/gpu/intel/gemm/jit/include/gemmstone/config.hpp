@@ -55,4 +55,12 @@ inline int getVerbose(GEMMVerbose v) { return 0; }
 #define GEMMSTONE_NAMESPACE_END }
 #endif
 
+#ifndef GEMMSTONE_DEPRECATED
+#if __cplusplus >= 201402L || (defined(_MSVC_LANG) && _MSVC_LANG >= 201402L)
+#define GEMMSTONE_DEPRECATED(msg) [[deprecated(msg)]]
+#else
+#define GEMMSTONE_DEPRECATED(msg)
+#endif
+#endif
+
 #endif /* header guard */

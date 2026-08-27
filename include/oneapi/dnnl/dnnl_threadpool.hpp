@@ -22,15 +22,15 @@
 
 #include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
 
-/// @addtogroup dnnl_api
-/// @{
-
 namespace dnnl {
 
-/// @addtogroup dnnl_api_interop
+/// @addtogroup dnnl_api_cpp
 /// @{
 
-/// @addtogroup dnnl_api_threadpool_interop Threadpool interoperability API
+/// @addtogroup dnnl_api_cpp_interop
+/// @{
+
+/// @addtogroup dnnl_api_cpp_threadpool_interop Threadpool interoperability API
 /// API extensions to interact with the underlying Threadpool run-time.
 /// @{
 
@@ -102,12 +102,12 @@ inline status gemm_s8s8s32(char transa, char transb, char offsetc, dnnl_dim_t M,
 
 } // namespace threadpool_interop
 
-/// @} dnnl_api_threadpool_interop
+/// @} dnnl_api_cpp_threadpool_interop
 
-/// @} dnnl_api_interop
+/// @} dnnl_api_cpp_interop
+
+/// @} dnnl_api_cpp
 
 } // namespace dnnl
-
-/// @} dnnl_api
 
 #endif

@@ -50,11 +50,16 @@ void Generator<hw>::gemmMicrokernel(GEMMProblem problem, GEMMStrategy strategy, 
 
     state.isNested = true;
 
-    /* Leave some space for host kernel arguments */
-    // The host side arguments with 32 byte size registers (DG2)
-    // use 16 registers include padding bytes (aligned with 128 bytes)
-    // r0, r4 are reserved for system threads
-    state.ra.claim((GRF::bytes(hw) >= 64) ? r0-r9 : r0-r15);
+    /* Reserve the host kernel's thread payload, below the microkernel's arguments. */
+    auto argumentBase = interface.getArgumentBase();
+    if (argumentBase.isInvalid() || argumentBase.getBase() < 1)
+        stub("Microkernel argument base not set");
+    int claimGRFs = argumentBase.getBase();
+    // XXX: Keep the legacy claim as a workaround for NVL-P to avoid
+    // performance regressions. IGC is sensitive to register range changes.
+    if (getProductFamily() == ngen::ProductFamily::NVLP)
+        claimGRFs = std::max<int>(claimGRFs, 10);
+    state.ra.claim(GRFRange(0, claimGRFs));
 
     moveR0(strategy, state);
 
@@ -341,6 +346,7 @@ microkernel::Package Generator<hw>::gemmMicrokernelPackage(const GEMMProblem &pr
     package.settings.push_back({"slm_size", int(slmSize)});
 
     package.barrierCount = interface.getBarrierCount();
+    package.argumentBase = interface.getArgumentBase().getBase() * GRF::bytes(hw);
 
     package.finalize(knownClobbers);
 

@@ -80,6 +80,10 @@ struct jit_pool_conf_t {
     data_type_t dst_dt;
     int dt_size;
     bool is_f16; // f16 data (f32 accumulation; requires zvfh)
+    // bf16 data (f32 accumulation; requires the Zvfbfmin converts, tracked by
+    // the zvfbfwma bit). Mutually exclusive with is_f16; both imply a 2-byte
+    // element that is widened on load and narrowed on store.
+    bool is_bf16;
 
     // Blocked/nspc vectorization: one m1 register == c_block f32 lanes.
     int c_block, c_tail, nb_c;

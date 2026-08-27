@@ -23,7 +23,7 @@
 extern "C" {
 #endif
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_graph_api
@@ -112,7 +112,7 @@ dnnl_status_t DNNL_API dnnl_graph_sycl_interop_compiled_partition_execute_v2(
 
 /// @} dnnl_graph_api
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

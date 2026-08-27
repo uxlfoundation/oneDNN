@@ -332,6 +332,9 @@ private:
         gelu_erf_lut, // ERF LUT: [erf(r), scale(r)], 513 pairs
         gelu_erf_lut_erf, // ERF LUT: erf(r), 513 entries
         gelu_erf_lut_scale, // ERF LUT: scale(r), 513 entries
+        log_const_127, // 127
+        log_ln2, // ln(2) = 0.6931471805599453
+        log_inf, // +inf
         log_minus_inf, // -inf
         log_qnan, // qnan
         log_mantissa_mask, // gets mantissa bits

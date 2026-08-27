@@ -20,6 +20,8 @@
 #include "gpu/intel/include/generic_vector_ops.h"
 #include "gpu/intel/include/types.h"
 
+#define IS_POWER_OF_2(x) (((x) != 0) && (((x) & ((x) - 1)) == 0))
+
 float __builtin_IB_atomic_max_local_f32(__local float *, float);
 float __builtin_IB_atomic_add_local_f32(__local float *, float);
 float __builtin_IB_atomic_add_global_f32(__global float *, float);
@@ -1230,6 +1232,9 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
     typedef element_type \
             __attribute__((ext_vector_type(br * bc / sg))) _e_##tile_type; \
     typedef struct { \
+        _Static_assert(IS_POWER_OF_2(br * bc / sg), \
+                "Tile vector length (" #br " * " #bc " / " #sg \
+                ") must be a power of 2"); \
         _e_##tile_type x[nbr * nbc]; \
     } tile_type; \
     DECLARE_2D_TILE_OPS(tile_type, element_type, sg, br, bc, nbr, nbc)

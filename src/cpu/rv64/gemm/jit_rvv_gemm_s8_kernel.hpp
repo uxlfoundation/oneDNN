@@ -33,6 +33,11 @@ namespace gemm_utils {
 //   C[0:m, 0:n_cols] = sum_k A[0:m, 0:K] * B[0:K, 0:n_cols]
 //                    + (has_bias ? bias[0:m] : 0)
 //
+// A (GEMM A axis) and B (GEMM B axis) are each independently s8 or u8,
+// selected by a_signed / b_signed: A is widened with vwmul.vx (sign-extend)
+// or vwmulu.vx (zero-extend); B scalars are loaded with lb (s8) or lbu (u8).
+// All four {s8,u8}x{s8,u8} combinations are therefore correct.
+//
 // dst_dt (data_type_t) selects the C element type and epilogue strategy.
 // The driver (rvv_gemm_s8s8s32) enforces the alpha/beta contract for each
 // destination before invoking the kernel, so this table only needs to
@@ -74,7 +79,7 @@ namespace gemm_utils {
 //   v28..v31  bias loader (f32, e32 LMUL=m4)
 struct jit_rvv_gemm_s8_kernel_t : public jit_generator_t {
     struct call_params_t {
-        const void *A; // weights, s8 (M x K GEMM A axis)
+        const void *A; // weights, s8 or u8 (M x K GEMM A axis)
         const void *B; // src, s8 or u8 (K x N GEMM B axis)
         void *C; // dst, see dst_dt above
         dim_t lda;
@@ -98,7 +103,7 @@ struct jit_rvv_gemm_s8_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_gemm_s8_kernel_t)
 
     jit_rvv_gemm_s8_kernel_t(dim_t n_cols, bool isTransA, bool isTransB,
-            bool b_signed, data_type_t dst_dt, bool has_bias);
+            bool a_signed, bool b_signed, data_type_t dst_dt, bool has_bias);
 
     void operator()(const call_params_t *p) const {
         jit_generator_t::operator()(p);
@@ -111,6 +116,7 @@ private:
     dim_t n_cols_;
     bool isTransA_;
     bool isTransB_;
+    bool a_signed_; // true: A is s8 (sign-extend); false: A is u8 (zero-extend)
     bool b_signed_; // true: B is s8; false: B is u8
     // dst_dt selects the C element type and epilogue strategy. Mirrors the
     // public data_type_t enum (see common/c_types_map.hpp) so the JIT kernel
@@ -122,22 +128,22 @@ private:
 
 // Per-n_cols lookup table of (with/without-bias) kernel pointers. The
 // kernel pointers reference kernels owned by the per-(transA, transB,
-// b_signed) function-local-static storage inside jit_rvv_gemm_s8_kernel.cpp;
-// they remain valid for the program's lifetime (the storage is built once
-// under std::call_once and never destroyed).
+// a_signed, b_signed) function-local-static storage inside
+// jit_rvv_gemm_s8_kernel.cpp; they remain valid for the program's lifetime
+// (the storage is built once under std::call_once and never destroyed).
 struct jit_rvv_gemm_s8_kernel_table_t {
     std::array<const jit_rvv_gemm_s8_kernel_t *, 8> nb {};
     std::array<const jit_rvv_gemm_s8_kernel_t *, 8> b {};
 };
 
 // Returns the per-n_cols lookup table of JIT kernels specialized for the
-// given (transA, transB, B-signedness, dst_dt) combination. dst_dt must be
-// one of {s32, f32, s8, u8, f16, bf16}; rvv_gemm_s8s8s32() guards that set
-// before calling. The result is built on the fly (twelve pointer copies)
-// from the owned kernels, so callers should cache the returned value at
-// the dispatch site rather than calling per-tile.
-jit_rvv_gemm_s8_kernel_table_t get_jit_rvv_gemm_s8_kernel_table(
-        bool isTransA, bool isTransB, bool b_signed, data_type_t dst_dt);
+// given (transA, transB, A-signedness, B-signedness, dst_dt) combination.
+// dst_dt must be one of {s32, f32, s8, u8, f16, bf16}; rvv_gemm_s8s8s32()
+// guards that set before calling. The result is built on the fly (twelve
+// pointer copies) from the owned kernels, so callers should cache the
+// returned value at the dispatch site rather than calling per-tile.
+jit_rvv_gemm_s8_kernel_table_t get_jit_rvv_gemm_s8_kernel_table(bool isTransA,
+        bool isTransB, bool a_signed, bool b_signed, data_type_t dst_dt);
 
 } // namespace gemm_utils
 } // namespace rv64

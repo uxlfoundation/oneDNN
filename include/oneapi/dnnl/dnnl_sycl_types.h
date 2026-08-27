@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-/// @addtogroup dnnl_api
+/// @addtogroup dnnl_api_c
 /// @{
 
 /// @addtogroup dnnl_api_interop
@@ -42,7 +42,7 @@ typedef enum {
 
 /// @} dnnl_api_interop
 
-/// @} dnnl_api
+/// @} dnnl_api_c
 
 #ifdef __cplusplus
 }

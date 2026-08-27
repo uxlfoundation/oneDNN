@@ -122,10 +122,10 @@ private:
     int get_wei_tensor(int i) const;
     int get_ic_tail() const;
 
-    size_t out_h_shift() const;
-    size_t out_w_shift() const;
-    size_t inp_offset(int ih, int iw, int icb) const;
-    size_t out_row_offset(int h, int w, int ocb) const;
+    dim_t out_h_shift() const;
+    dim_t out_w_shift() const;
+    dim_t inp_offset(dim_t ih, dim_t iw, dim_t icb) const;
+    dim_t out_row_offset(dim_t h, dim_t w, dim_t ocb) const;
 
     void prepare_output();
 
@@ -155,14 +155,15 @@ private:
     static bool is_fast_postops(const jit_conv_conf_t &jcp);
     void store_output_vectors_int8(int ocb, int osb);
     void store_output_vector_int8(
-            const Xbyak::Zmm zmm_out, int ocb, int h, int w);
+            const Xbyak::Zmm zmm_out, int ocb, dim_t h, dim_t w);
     inline void store_output_ymm_bf16(
             const int idx, const Xbyak::Address &addr, const bool mask_flag);
     void store_output_vectors_bf16(int ocb, int osb);
     void store_output_vector_bf16(
-            const Xbyak::Zmm zmm_out, int ocb, int h, int w);
+            const Xbyak::Zmm zmm_out, int ocb, dim_t h, dim_t w);
     void store_output_vectors(int ocb, int osb);
-    void store_output_vector(const Xbyak::Zmm zmm_out, int ocb, int h, int w);
+    void store_output_vector(
+            const Xbyak::Zmm zmm_out, int ocb, dim_t h, dim_t w);
     void store_output(bool do_store, bool is_tail);
     void icb_loop(bool do_store);
     void osb_loop(int nb_os = 1);

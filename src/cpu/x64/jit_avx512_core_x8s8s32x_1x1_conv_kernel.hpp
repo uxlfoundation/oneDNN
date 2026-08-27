@@ -130,13 +130,13 @@ private:
     }
     inline Vmm_down_t vmm_store() { return Vmm_down_t(ymm_store.getIdx()); }
 
-    void bcast_loop(int load_loop_blk);
-    void reduce_loop(int load_loop_blk, int ur, bool wraparound);
+    void bcast_loop(dim_t load_loop_blk);
+    void reduce_loop(dim_t load_loop_blk, dim_t ur, bool wraparound);
 
-    Xbyak::Address output_ptr(const int i_load, const int i_ur);
-    int vreg_accum_idx(const int load_loop_blk, int i_load, int i_ur) const;
-    Vmm vreg_accum(const int load_loop_blk, int i_load, int i_ur) const;
-    void apply_postops(const int load_loop_blk, const int ur);
+    Xbyak::Address output_ptr(dim_t i_load, dim_t i_ur);
+    int vreg_accum_idx(dim_t load_loop_blk, dim_t i_load, dim_t i_ur) const;
+    Vmm vreg_accum(dim_t load_loop_blk, dim_t i_load, dim_t i_ur) const;
+    void apply_postops(dim_t load_loop_blk, dim_t ur);
     void generate() override;
     void cvt2ps(data_type_t type_in, const Vmm vmm_in, const Xbyak::Operand &op,
             bool mask_flag);
@@ -146,7 +146,7 @@ struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_t {
     jit_avx512_core_x8s8s32x_1x1_conv_kernel_t(const jit_1x1_conv_conf_t &ajcp,
             const primitive_attr_t &attr, const memory_desc_t &dst_md)
         : kernel_(nullptr) {
-        int ch_block = ajcp.ic_block;
+        const dim_t ch_block = ajcp.ic_block;
         switch (ch_block) {
             case 16:
                 kernel_ = utils::make_unique<

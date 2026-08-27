@@ -55,18 +55,18 @@ struct jit_uni_cvt_ps_to_xf16_t : public jit_generator_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_cvt_ps_to_xf16_t)
 
-    jit_uni_cvt_ps_to_xf16_t(impl::data_type_t dt, size_t nelems = 0)
+    jit_uni_cvt_ps_to_xf16_t(impl::data_type_t dt, dim_t nelems = 0)
         : jit_generator_t(jit_name())
         , output_dt_(dt)
         , nelems_(nelems)
         , is_dynamic_size_(nelems_ == 0)
-        , tail_size_(nelems_ % simd_w_) {}
+        , tail_size_(static_cast<int>(nelems_ % simd_w_)) {}
 
     void generate() override;
 
 protected:
     const impl::data_type_t output_dt_; // bf16 or f16
-    const size_t nelems_;
+    const dim_t nelems_;
     const bool is_dynamic_size_;
     const int tail_size_;
 
@@ -104,7 +104,7 @@ protected:
 struct jit_avx512_core_cvt_ps_to_bf16_t
     : public jit_uni_cvt_ps_to_xf16_t<avx512_core> {
 
-    jit_avx512_core_cvt_ps_to_bf16_t(impl::data_type_t dt, size_t nelems = 0)
+    jit_avx512_core_cvt_ps_to_bf16_t(impl::data_type_t dt, dim_t nelems = 0)
         : jit_uni_cvt_ps_to_xf16_t<avx512_core>(dt, nelems)
         , use_bf16_emu_(!mayiuse(avx512_core_bf16))
         , bf16_emu_(use_bf16_emu_ ? utils::make_unique<bf16_emulation_t>(this,
@@ -126,7 +126,7 @@ private:
 
 struct jit_cvt_ps_to_xf16_t {
 
-    jit_cvt_ps_to_xf16_t(impl::data_type_t data_type, size_t nelems = 0)
+    jit_cvt_ps_to_xf16_t(impl::data_type_t data_type, dim_t nelems = 0)
         : nelems_(nelems) {
         if (data_type == data_type::f16 && mayiuse(avx512_core_fp16))
             kernel_ = utils::make_unique<
@@ -153,7 +153,7 @@ struct jit_cvt_ps_to_xf16_t {
 
 private:
     std::unique_ptr<jit_generator_t> kernel_;
-    const size_t nelems_;
+    const dim_t nelems_;
 };
 
 template <cpu_isa_t isa>

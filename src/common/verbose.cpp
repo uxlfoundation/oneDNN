@@ -1917,6 +1917,18 @@ dnnl_status_t dnnl_set_verbose(int level) {
     return success;
 }
 
+dnnl_status_t dnnl_verbose_profiling_enabled(int *enabled) {
+    using namespace dnnl::impl::status;
+    using namespace dnnl::impl;
+    if (enabled == nullptr) return invalid_arguments;
+
+    const uint32_t profiling
+            = verbose_t::create_profile | verbose_t::exec_profile;
+    *enabled = get_verbose(static_cast<verbose_t::flag_kind>(profiling));
+
+    return success;
+}
+
 const dnnl_version_t *dnnl_version(void) {
     static const dnnl_version_t ver
             = {DNNL_VERSION_MAJOR, DNNL_VERSION_MINOR, DNNL_VERSION_PATCH,

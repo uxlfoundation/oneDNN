@@ -107,6 +107,9 @@ private:
     std::vector<size_t> partition_in_ids_;
     // partition out logical tensors' ids
     std::vector<size_t> partition_out_ids_;
+    // Partition input/output logical tensors already accounted to GRAPH_USER.
+    // Multiple ops may reference a port, but graph memory allocates it once.
+    std::unordered_set<size_t> accounted_graph_lt_ids_;
 
     // reference primitives for a single partition
     std::unordered_map<size_t, ::std::shared_ptr<ref_primitive_t>> ref_prims_;

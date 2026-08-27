@@ -572,6 +572,7 @@ int ref_partition_t::check_partition_total_size(
     const auto partition_in_out_lts = get_in_out_lt_ids(op);
     for (const auto &lt_id : partition_in_out_lts) {
         if (lt_id_2_lt_.find(lt_id) == lt_id_2_lt_.end()) return FAIL;
+        if (!accounted_graph_lt_ids_.insert(lt_id).second) continue;
         new_mem_req += lt_id_2_lt_.at(lt_id).create().get_mem_size();
     }
 

@@ -166,14 +166,14 @@
 --attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
 32x128:4x128x64
 
-# NVFP4: f4_e2m1 dt with f8_e4m3 block scales + per-group global f32 scale
-# via binary mul
+# NVFP4: f4_e2m1 dt with f8_e4m3 block scales + per-group global scale
+# via binary mul (f32/f16/bf16)
 --reset
 --dt=f4_e2m1:f4_e2m1:bf16
 --wtag=abc,acb
 --grouped=0:4:8+8+8+8
 --attr-scales=src:3:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
---attr-post-ops=mul:f32:0
+--attr-post-ops=mul:f32:0,mul:f16:0,mul:bf16:0
 32x128:4x128x64
 
 # DNNL_ARG_HINT_MAX_GROUP_SIZE usage
@@ -261,10 +261,10 @@
 --attr-post-ops=mul:f16:3:grouped+mul:f32:1,eltwise_swish:1.0+mul:f16:3:grouped+mul:f32:1
 32x64:4x64x32
 
-# Per-group binary_mul (mask 0) with variable group sizes
+# Per-group binary_mul (mask 0), f32 + 16-bit operands, variable group sizes
 --reset
 --dt=f32:f32:f32,bf16:bf16:bf16,f16:f16:f16
 --wtag=abc
 --grouped=0:4:10+0+50+40
---attr-post-ops=mul:f32:0
+--attr-post-ops=mul:f32:0,mul:f16:0,mul:bf16:0
 100x64:4x64x32

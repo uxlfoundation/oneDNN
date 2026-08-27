@@ -631,17 +631,14 @@ int ref_partition_t::check_partition_total_size(
     const bool is_corr = has_bench_mode_bit(mode_bit_t::corr);
     const bool is_bitwise = has_bench_mode_bit(mode_bit_t::bitwise);
 
-    // The size of reference memory with tag abx and f32.
-    size_t input_ref_mem_size = 0, output_ref_mem_size = 0;
-    if (is_corr || is_bitwise) {
-        input_ref_mem_size = check_mem_size_args.total_ref_md_size[0];
-        output_ref_mem_size = check_mem_size_args.total_ref_md_size[1];
-    }
+    // The size of output reference memory with tag abx and f32.
+    const size_t output_ref_mem_size = (is_corr || is_bitwise)
+            ? check_mem_size_args.total_ref_md_size[1]
+            : 0;
 
     // total size cpu includes:
     // 1. Memory allocated for a test obj( such as the memory for input and outputs, saved in total_size_device )
-    // 2. Memory allocated for reference computation, which will be released
-    // after reference path data filling(`C` mode only)
+    // 2. Memory allocated for reference computation (`C` mode only)
     // 3. Memory to be allocated for comparing results(`C` mode only)
     // 4. Memory to be allocated for mapping device memory(GPU backend only)
     size_t new_cpu_req = check_mem_size_args.total_size_ref
@@ -690,14 +687,7 @@ int ref_partition_t::check_partition_total_size(
                 WARN);
     }
 
-    // STEP 3: Temprorary memory release stage
-    if (is_corr) {
-        // Release reference path memory for `C` mode
-        total_cpu_req -= input_ref_mem_size;
-        total_cpu_req -= output_ref_mem_size;
-    }
-
-    // Update the required memory size
+    // STEP 3: Update the required memory size
     graph_mem_req.increase_mem_req(CPU_REQ, REF, new_cpu_req);
 
     return res->state == FAILED ? FAIL : OK;

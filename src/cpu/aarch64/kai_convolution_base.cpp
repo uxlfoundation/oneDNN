@@ -250,13 +250,15 @@ status_t kai_convolution_fwd_base_t::pd_t::init(const engine_t *engine) {
 
     if (fixed_format_) cfg_->weight_format = kai::ops::WeightFormat::ANY;
 
+    kernel_max_threads_ = threads_for_kernel_execute(
+            kernel_execute_work(*this), dnnl_get_max_threads());
+
     const auto make_args = [&]() {
         return std::make_shared<kai::ops::GemmArgs>(get_cpu_info(), gemm_m(),
                 OC(), gemm_k(), gemm_k_sections(), gemm_n_batches(),
                 gemm_n_multi(), uses_indirect_gemm(),
-                post_ops_fusion.activation, dnnl_get_current_num_threads(),
-                fixed_format_, fast_mode, post_ops_fusion.accumulate,
-                cfg_.get());
+                post_ops_fusion.activation, kernel_max_threads_, fixed_format_,
+                fast_mode, post_ops_fusion.accumulate, cfg_.get());
     };
 
     args_ = make_args();
@@ -278,6 +280,15 @@ status_t kai_convolution_fwd_base_t::pd_t::init(const engine_t *engine) {
     // the second time around. This could be removed if this is fixed in KleidiAI.
     cfg_->filter.clear();
 
+    // Recreate the kernel after normalizing the selected configuration.
+    // Clearing the implementation filter can make KAI select a different
+    // kernel with different packing and workspace requirements.
+    kernel = create_kai_gemm(kernel_max_threads_);
+    VDISPATCH_CONV(kernel, VERBOSE_UNSUPPORTED_DT_CFG);
+
+    // execute() recreates from this same filter-free configuration and stored
+    // thread cap, then limits only the active thread count. This keeps kernel
+    // selection and its workspace size stable across execution contexts.
     if (fixed_format_) {
         constexpr dim_t O_dim = 0;
         constexpr dim_t I_dim = 1;
@@ -355,13 +366,15 @@ status_t kai_convolution_fwd_base_t::execute(const exec_ctx_t &ctx) const {
     const dim_t OW = pd->OW();
     const auto &scratchpad = ctx.get_scratchpad_grantor();
 
-    const int max_threads = dnnl_get_current_num_threads();
+    const int current_max_threads = dnnl_get_current_num_threads();
+    const int max_threads
+            = nstl::min(pd->kernel_max_threads_, current_max_threads);
     // KAI kernels are configured for either one thread or the runtime maximum.
     int kernel_num_threads
             = threads_for_kernel_execute(kernel_execute_work(*pd), max_threads);
 
     std::unique_ptr<kai::ops::IGemmCommon> kernel
-            = pd->create_kai_gemm(kernel_num_threads);
+            = pd->create_kai_gemm(pd->kernel_max_threads_);
     if (!kernel) return status::runtime_error;
 
     if (get_verbose(verbose_t::profile_externals)) {

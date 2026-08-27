@@ -154,6 +154,15 @@ dnnl_status_t DNNL_API dnnl_set_default_fpmath_mode(dnnl_fpmath_mode_t mode);
 ///     success.
 dnnl_status_t DNNL_API dnnl_set_verbose(int level);
 
+/// Checks if verbose profiling mode is enabled.
+///
+/// @param enabled Output flag set to 1 if any verbose profiling output is
+///     enabled and 0 otherwise.
+/// @returns #dnnl_invalid_arguments/#dnnl::status::invalid_arguments if the
+///     @p enabled pointer is NULL, and #dnnl_success/#dnnl::status::success on
+///     success.
+dnnl_status_t DNNL_API dnnl_verbose_profiling_enabled(int *enabled);
+
 /// Returns library version information.
 /// @returns Pointer to a constant structure containing
 ///  - major: major version number,

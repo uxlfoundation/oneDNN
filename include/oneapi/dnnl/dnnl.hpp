@@ -14094,6 +14094,16 @@ inline status set_verbose(int level) {
     return static_cast<status>(dnnl_set_verbose(level));
 }
 
+/// Checks if verbose profiling mode is enabled.
+///
+/// @returns @c true if verbose profiling is enabled and @c false
+///     otherwise.
+inline bool verbose_profiling_enabled() {
+    int enabled = 0;
+    dnnl_verbose_profiling_enabled(&enabled);
+    return enabled != 0;
+}
+
 /// @copydoc dnnl_version()
 inline const version_t *version() {
     return dnnl_version();

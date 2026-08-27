@@ -698,16 +698,8 @@ int doit(const prb_t *prb, res_t *res) {
                 outputs, c_partitions.back(), id_to_queried_logical_tensors);
     }
 
-    // Allocate scratchpad buffer for each compiled partition.
     scratchpad_ts_all.reserve(c_partitions.size());
-    for (auto &cp : c_partitions) {
-        auto scratchpad_lt = cp.get_scratchpad_logical_tensor();
-        if (scratchpad_lt.get_mem_size() > 0) {
-            scratchpad_ts_all.emplace_back(scratchpad_lt, eng);
-        } else {
-            scratchpad_ts_all.emplace_back();
-        }
-    }
+    auto &graph_mem_mgr = graph_mem_manager_t::get_instance();
 
     if (bench_mode == bench_mode_t::init) return res->state = INITIALIZED, OK;
 
@@ -795,30 +787,41 @@ int doit(const prb_t *prb, res_t *res) {
         input_ts_all.emplace_back(input_ts);
         output_ts_all.emplace_back(output_ts);
 
-        auto &graph_mem_mgr = graph_mem_manager_t::get_instance();
-        graph_mem_mgr.start_graph_mem_check();
-        BENCHDNN_PRINT(3, "[INFO]: Start execution of partition #%zd.\n", i);
+        {
+            graph_mem_check_guard_t graph_mem_check_guard(graph_mem_mgr);
+            auto scratchpad_lt = c_partitions[i - idx_offset]
+                                         .get_scratchpad_logical_tensor();
+            if (scratchpad_lt.get_mem_size() > 0) {
+                DNN_GRAPH_SAFE(
+                        scratchpad_ts_all.emplace_back(scratchpad_lt, eng),
+                        (WARN | NEED_CLEANUP), res);
+            } else {
+                scratchpad_ts_all.emplace_back();
+            }
+            if (res->state == SKIPPED) return OK;
 
-        if (use_sycl_graph_exec(eng)) {
-            std::function<void()> record_fn = std::bind(
-                    compiled_partition_executor, c_partitions[i - idx_offset],
-                    std::ref(strm), input_ts, output_ts,
-                    scratchpad_ts_all[i - idx_offset]);
-            SAFE(execute_in_graph_mode(strm, record_fn, res), WARN);
-        } else {
-            stream_staller_t staller(strm);
-            // Need following clean-up steps as the memories have been mappped
-            // to device. Otherwise the deconstruction will fail.
-            DNN_GRAPH_SAFE(
-                    c_partitions[i - idx_offset].execute(strm, input_ts,
-                            output_ts, scratchpad_ts_all[i - idx_offset]),
-                    (WARN | NEED_CLEANUP), res);
-            staller.release();
+            BENCHDNN_PRINT(
+                    3, "[INFO]: Start execution of partition #%zd.\n", i);
 
-            DNN_GRAPH_SAFE(strm.wait(), WARN, res);
+            if (use_sycl_graph_exec(eng)) {
+                std::function<void()> record_fn
+                        = std::bind(compiled_partition_executor,
+                                c_partitions[i - idx_offset], std::ref(strm),
+                                input_ts, output_ts, scratchpad_ts_all.back());
+                SAFE(execute_in_graph_mode(strm, record_fn, res), WARN);
+            } else {
+                stream_staller_t staller(strm);
+                // Need following clean-up steps as the memories have been mappped
+                // to device. Otherwise the deconstruction will fail.
+                DNN_GRAPH_SAFE(
+                        c_partitions[i - idx_offset].execute(strm, input_ts,
+                                output_ts, scratchpad_ts_all.back()),
+                        (WARN | NEED_CLEANUP), res);
+                staller.release();
+
+                DNN_GRAPH_SAFE(strm.wait(), WARN, res);
+            }
         }
-        graph_mem_mgr.stop_graph_mem_check();
-
         // map memory from device back to host
         SAFE(map_unmap_partition_mem(partition_mem_map_v[i], inputs, MAP, res),
                 WARN);

@@ -138,8 +138,18 @@ TEST(onednn_default_fpmath_mode_env_var_test, TestEnvVars) {
     EXPECT_EQ(func_got_val, dnnl_fpmath_mode_strict);
 }
 
-// There's no a separate test for VERBOSE variable as there's no programmable
-// public API to identify if it was set through env var or not.
-// Same situation with the rest of variables.
+TEST(onednn_verbose_env_var_test, TestEnvVars) {
+    custom_setenv("ONEDNN_VERBOSE", "profile", 1);
+#if !defined(DISABLE_VERBOSE)
+    EXPECT_TRUE(verbose_profiling_enabled());
+#endif
+
+    // The setting function takes precedence over the environment variable.
+    EXPECT_EQ(set_verbose(0), status::success);
+    EXPECT_FALSE(verbose_profiling_enabled());
+}
+
+// The rest of the variables have no programmable public API to identify if
+// they were set through env var or not, so they are not tested here.
 
 } // namespace dnnl

@@ -68,11 +68,11 @@ status_t check_post_op_chain(const primitive_attr_t &attr,
                     VERBOSE_UNSUPPORTED_POSTOP);
 
             const memory_desc_wrapper po_mdw(po.entry_[i].binary.src1_desc);
-            if (po_mdw.nelems() == ngroups
-                    && po_mdw.data_type() == data_type::f32
-                    && !po_mdw.is_host_scalar_desc()) {
+            if (po_mdw.nelems() == ngroups && !po_mdw.is_host_scalar_desc()) {
                 // [G, 1] operand: one scale per group (expert), e.g. nvfp4
-                // per-expert global scale.
+                // per-expert global f32 scale
+                VCHECK_MATMUL(po_mdw.data_type() == data_type::f32,
+                        VERBOSE_UNSUPPORTED_POSTOP);
                 po_chain[i] = po_kind_t::binary_nvfp4_scale;
             } else {
                 if (po_mdw.is_grouped_desc()) {

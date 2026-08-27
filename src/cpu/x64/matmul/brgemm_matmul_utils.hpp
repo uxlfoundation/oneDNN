@@ -142,6 +142,7 @@ struct brgemm_matmul_conf_t {
     bool with_src_scales;
     bool with_wei_scales;
     bool with_dst_scales;
+    bool is_dst_scale_per_n = false;
     bool s8s8_compensation_required;
     bool packed_sparse_weights;
     bool with_wei_decompression;

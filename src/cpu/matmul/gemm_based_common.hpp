@@ -98,6 +98,16 @@ inline bool check_gemm_output_format(const memory_desc_t &md) {
     return mdw.is_plain() && mdw.blocking_desc().strides[ndims - 1] == 1;
 }
 
+inline bool check_gemm_dst_scales(const matmul_pd_t &pd) {
+    const auto &dst_scales = pd.attr()->scales_.get(DNNL_ARG_DST);
+    // The GEMM post-processing kernel accepts one destination scale value.
+    const bool is_degenerate_per_n = pd.N() == 1
+            && dst_scales.get_mask() == pd.dst_qmask_N()
+            && dst_scales.has_default_groups();
+    return dst_scales.has_default_values() || dst_scales.get_mask() == 0
+            || is_degenerate_per_n;
+}
+
 inline bool check_gemm_compatible_formats(const matmul_pd_t &pd) {
     return check_gemm_input_format(*(pd.src_md()))
             && check_gemm_input_format(*(pd.weights_md()))

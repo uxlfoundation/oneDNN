@@ -17,6 +17,37 @@
 --reset --dt=s8:s8:bf16 --attr-scales=src:2+wei:0:2 5x32x64:5x64x48
 --reset --dt=u8:s8:f32 --attr-scales=src:2+wei:4 3x17x64:3x64x19
 
+## Per-dimension destination scales
+--reset
+--dt=f32,bf16,f16,s8:s8:f32,s8:s8:u8
+--stag=ab --wtag=ab --dtag=ab
+--attr-scales=dst:per_dim_1
+1x64:64x65 1x64:64x129 4x8:8x4 33x77:77x55 64x64:64x1
+
+--reset
+--dt=f32
+--stag=ab --wtag=ab --dtag=ab
+--attr-scales=dst:per_dim_1:bf16,dst:per_dim_1:f16
+4x8:8x4 33x77:77x55
+
+--reset
+--dt=f32
+--stag=abc --wtag=abc --dtag=abc
+--attr-scales=dst:4
+2x4x8:1x8x4
+
+--reset
+--dt=f32,bf16,f16
+--stag=ab --wtag=ba --dtag=ab
+--attr-scales=dst:per_dim_1
+1x37:37x17 1x37:37x65
+
+--reset
+--dt=f32
+--stag=abc --wtag=abc --dtag=abc
+--attr-scales=dst:4
+5x1x64:1x64x65
+
 # Binary select post-op with broadcast
 --reset
 --dt=f32,bf16

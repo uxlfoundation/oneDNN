@@ -2031,12 +2031,6 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
                           bgmmc.wei_scales_dt == f32),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
-    const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
-    bgmmc.with_dst_scales = !dst_scales.has_default_values();
-    // only common scales are supported
-    VCONDCHECK_BG(!(bgmmc.with_dst_scales && dst_scales.get_mask() > 0),
-            VERBOSE_UNSUPPORTED_SCALES_CFG);
-
     const auto &src_zp = attr.zero_points_.get(DNNL_ARG_SRC);
     const auto has_src_zp = !src_zp.has_default_values();
     if (has_src_zp) {
@@ -2195,6 +2189,24 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.is_gemv = is_gemv_applicable(
             bgmmc, bm_conf_utils, src_md, weights_md, dst_md, attr);
+
+    const auto &dst_scales = attr.scales_.get(DNNL_ARG_DST);
+    bgmmc.with_dst_scales = !dst_scales.has_default_values();
+    const int dst_scale_mask = dst_scales.get_mask();
+    bgmmc.is_dst_scale_per_n = bgmmc.with_dst_scales
+            && dst_scale_mask == (1 << (bgmmc.ndims - 1))
+            && dst_scales.has_default_groups() && bgmmc.N > 1;
+    const bool is_degenerate_per_n_dst_scale = bgmmc.with_dst_scales
+            && dst_scale_mask == (1 << (bgmmc.ndims - 1))
+            && dst_scales.has_default_groups() && bgmmc.N == 1;
+    // Per-N scales are supported for static N only. Other non-scalar masks
+    // remain unsupported by this implementation.
+    VCONDCHECK_BG(!bgmmc.is_dst_scale_per_n || !bgmmc.is_runtime_N,
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    VCONDCHECK_BG(!(bgmmc.with_dst_scales && dst_scale_mask > 0
+                          && !bgmmc.is_dst_scale_per_n
+                          && !is_degenerate_per_n_dst_scale),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     // At this point, GEMV applicability is known so we decide how to interpret
     // the (isa, dt) check statuses:
@@ -3022,7 +3034,9 @@ void init_scratchpad(memory_tracking::registrar_t &scratchpad,
     if (bgmmc.with_dst_scales) {
         // See brgemm_types.hpp comment for `with_dst_scales`.
         scratchpad.book(key_matmul_dst_scales,
-                static_cast<size_t>(bgmmc.nthr) * sizeof(float),
+                (bgmmc.is_dst_scale_per_n ? static_cast<size_t>(bgmmc.N)
+                                          : static_cast<size_t>(bgmmc.nthr))
+                        * sizeof(float),
                 default_data_align);
     }
 }

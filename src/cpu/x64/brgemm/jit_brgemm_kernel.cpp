@@ -221,6 +221,8 @@ private:
     const reg64_savable_t reg_src_scales {regscratchpad_, rbx, r23};
     const reg64_savable_t reg_wei_scales {regscratchpad_, rbx, r22};
     const reg64_savable_t reg_dst_scales {regscratchpad_, rbx, r20};
+    const reg64_savable_t reg_dst_scales_base {
+            regscratchpad_, r10, brg.is_per_n_dst_scales};
     const reg64_savable_t reg_aux_bias {regscratchpad_, rbx, r18};
     const reg64_savable_t reg_zp_comp_a {regscratchpad_, rbx};
     const reg64_savable_t reg_aux_zp_comp_a {regscratchpad_, rbx};
@@ -953,6 +955,11 @@ void jit_brgemm_kernel_t<Wmm>::advance_ldb_post_op_regs() {
         add(reg_aux_wei_scales, wei_scales_offset(1));
         reg_aux_wei_scales.save();
     }
+    if (brg.is_per_n_dst_scales) {
+        reg_dst_scales.restore();
+        add(reg_dst_scales, brg.ld_block * sizeof(float));
+        reg_dst_scales.save();
+    }
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         reg_aux_zp_comp_a.restore();
         add(reg_aux_zp_comp_a, zp_comp_a_offset(1));
@@ -981,6 +988,11 @@ void jit_brgemm_kernel_t<Wmm>::restore_ldb_post_op_regs(int ld_block2) {
         reg_aux_wei_scales.restore();
         sub(reg_aux_wei_scales, wei_scales_offset(ld_block2 - 1));
         reg_aux_wei_scales.save();
+    }
+    if (brg.is_per_n_dst_scales) {
+        reg_dst_scales.restore();
+        sub(reg_dst_scales, (ld_block2 - 1) * brg.ld_block * sizeof(float));
+        reg_dst_scales.save();
     }
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         reg_aux_zp_comp_a.restore();
@@ -1095,6 +1107,13 @@ void jit_brgemm_kernel_t<Wmm>::ldb_regs_shift(int ld_block2, bool is_tail) {
                           : wei_scales_offset(ld_block2));
         reg_aux_wei_scales.save();
     }
+    if (brg.is_per_n_dst_scales) {
+        reg_dst_scales.restore();
+        const auto dst_scale_offset
+                = (is_tail) ? brg.ldb_tail : ld_block2 * brg.ld_block;
+        add(reg_dst_scales, dst_scale_offset * sizeof(float));
+        reg_dst_scales.save();
+    }
     if (brg.zp_type_a != brgemm_broadcast_t::none) {
         reg_aux_zp_comp_a.restore();
         add(reg_aux_zp_comp_a,
@@ -1168,6 +1187,10 @@ void jit_brgemm_kernel_t<Wmm>::copy_post_ops_stack_values_to_aux(
         if (brg.with_wei_scales) {
             reg_wei_scales.restore();
             reg_wei_scales.saveTo(reg_aux_wei_scales);
+        }
+        if (brg.is_per_n_dst_scales) {
+            reg_dst_scales_base.restoreTo(reg_dst_scales);
+            reg_dst_scales.save();
         }
 
         if (brg.zp_type_a != brgemm_broadcast_t::none) {
@@ -1256,6 +1279,7 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
     if (brg.with_dst_scales) {
         mov(reg_dst_scales, ptr[param1 + GET_OFF(ptr_dst_scales)]);
         reg_dst_scales.save();
+        if (brg.is_per_n_dst_scales) reg_dst_scales.saveTo(reg_dst_scales_base);
     }
 
     if (brg.is_runtime_ldc) {
@@ -2058,13 +2082,73 @@ void jit_brgemm_kernel_t<Wmm>::store_accumulators_apply_post_ops(int bd_block,
 
     if (brg.with_dst_scales) {
         reg_dst_scales.restore();
-        auto vmm_dst_scales = vmm_tmp(0);
-        vbroadcastss(vmm_dst_scales, ptr[reg_dst_scales]);
+        if (brg.is_per_n_dst_scales) {
+            if (brg.is_gemv) {
+                assert(ld_block2 == 1);
+                if (brg.gemv_acc_is_vector()) {
+                    const int scale_block = gemv_elems_per_vector_acc();
+                    for (int bd = 0; bd < bd_block; bd++) {
+                        const bool is_tail
+                                = gemv_is_tail_acc(bd, bd_block, is_bdb_tail);
+                        const auto dst_scales_addr = ptr[reg_dst_scales
+                                + bd * scale_block * sizeof(float)];
+                        auto vmm_dst_scales = vmm_tmp(0);
+                        if (is_tail && isa_has_masks(brg.isa_impl)) {
+                            const auto scale_mask = vmm_mask(vmm_dst_scales,
+                                    true, false, gemv_partial_mask);
+                            uni_vmovups(scale_mask, dst_scales_addr);
+                            const auto vmm = accm(1, bd, 0);
+                            const auto vmm_masked = vmm | gemv_partial_mask;
+                            vmulps(vmm_masked, vmm_masked, vmm_dst_scales);
+                        } else if (is_tail) {
+                            uni_vpxor(vmm_dst_scales, vmm_dst_scales,
+                                    vmm_dst_scales);
+                            vmaskmovps(vmm_dst_scales, vmm_tail_mask(),
+                                    dst_scales_addr);
+                            auto vmm = accm(1, bd, 0);
+                            vmulps(vmm, vmm, vmm_dst_scales);
+                        } else {
+                            uni_vmovups(vmm_dst_scales, dst_scales_addr);
+                            auto vmm = accm(1, bd, 0);
+                            vmulps(vmm, vmm, vmm_dst_scales);
+                        }
+                    }
+                } else {
+                    for (int bd = 0; bd < bd_block; bd++) {
+                        auto vmm_dst_scale = vmm_tmp(0);
+                        const auto dst_scale_addr
+                                = ptr[reg_dst_scales + bd * sizeof(float)];
+                        vbroadcastss(vmm_dst_scale, dst_scale_addr);
+                        auto vmm = accm(1, bd, 0);
+                        vmulps(vmm, vmm, vmm_dst_scale);
+                    }
+                }
+            } else {
+                for (int ld = 0; ld < ld_block2; ld++) {
+                    const bool is_tail = is_ld_tail && ld + 1 == ld_block2;
+                    const auto dst_scales_addr = ptr[reg_dst_scales
+                            + ld * brg.ld_block * sizeof(float)];
+                    auto vmm_dst_scales = vmm_tmp(0);
+                    load_scales_to_vmm(data_type::f32, vmm_dst_scales,
+                            dst_scales_addr, is_tail, false);
 
-        for_(int ld = 0; ld < ld_block2; ld++)
-        for (int bd = 0; bd < bd_block; bd++) {
-            auto vmm = accm(ld_block2, bd, ld);
-            vmulps(vmm, vmm, vmm_dst_scales);
+                    for (int bd = 0; bd < bd_block; bd++) {
+                        auto vmm = accm(ld_block2, bd, ld);
+                        const auto vmm_masked
+                                = vmm_mask(vmm, is_tail, false, k_mask);
+                        vmulps(vmm_masked, vmm_masked, vmm_dst_scales);
+                    }
+                }
+            }
+        } else {
+            auto vmm_dst_scales = vmm_tmp(0);
+            vbroadcastss(vmm_dst_scales, ptr[reg_dst_scales]);
+
+            for_(int ld = 0; ld < ld_block2; ld++)
+            for (int bd = 0; bd < bd_block; bd++) {
+                auto vmm = accm(ld_block2, bd, ld);
+                vmulps(vmm, vmm, vmm_dst_scales);
+            }
         }
     }
 
@@ -4040,6 +4124,14 @@ void jit_brgemm_kernel_t<Wmm>::bdb_loop() {
                 add(reg_wei_scales, wei_scales_offset(brg.gemv_bd_block()));
                 reg_wei_scales.save();
             }
+        }
+
+        if (brg.is_gemv && brg.is_per_n_dst_scales) {
+            const dim_t scale_offset
+                    = is_bdb_tail ? brg.bdb_tail : brg.bd_block;
+            reg_dst_scales_base.restoreTo(reg_dst_scales);
+            add(reg_dst_scales, scale_offset * sizeof(float));
+            reg_dst_scales.saveTo(reg_dst_scales_base);
         }
 
         advance_bd_block2_post_op_regs(bd_block2, is_bdb_tail);

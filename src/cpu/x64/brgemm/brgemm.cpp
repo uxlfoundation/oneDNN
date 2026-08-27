@@ -520,12 +520,19 @@ status_t brgemm_desc_set_postops(brgemm_desc_t *brg,
 
     const auto &dst_scales = attr->scales_.get(DNNL_ARG_DST);
     brg->with_dst_scales = !dst_scales.has_default_values();
+    const bool is_per_n_dst_scales = brg->is_per_n_dst_scales
+            && dst_scales.get_mask() == (1 << (dst_md->ndims - 1));
+    const bool is_degenerate_per_n_dst_scales
+            = dst_scales.get_mask() == (1 << (dst_md->ndims - 1))
+            && dst_md->dims[dst_md->ndims - 1] == 1
+            && dst_scales.has_default_groups();
     const bool scales_ok = attr->scales_.has_default_values({DNNL_ARG_SRC,
                                    DNNL_ARG_WEIGHTS, DNNL_ARG_DST})
             && IMPLICATION(!src_scales.has_default_values(),
                     src_scales.get_mask() == 0 || brg->is_per_k_src_scales)
             && IMPLICATION(!dst_scales.has_default_values(),
-                    dst_scales.get_mask() == 0);
+                    dst_scales.get_mask() == 0 || is_per_n_dst_scales
+                            || is_degenerate_per_n_dst_scales);
     if (!scales_ok) return status::unimplemented;
 
     auto init_zp_type
@@ -888,6 +895,7 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(dt_src_scales);
     CMP_BRGEMM_FIELD(with_wei_scales);
     CMP_BRGEMM_FIELD(with_dst_scales);
+    CMP_BRGEMM_FIELD(is_per_n_dst_scales);
     CMP_BRGEMM_FIELD(dt_wei_scales);
     CMP_BRGEMM_FIELD(bs_group);
 

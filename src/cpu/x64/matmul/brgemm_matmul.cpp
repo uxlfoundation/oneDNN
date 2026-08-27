@@ -230,8 +230,8 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
             VDISPATCH_MATMUL(
                     one_of(asc.get_data_type(DNNL_ARG_WEIGHTS), undef, f32),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
-            VDISPATCH_MATMUL(
-                    one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32),
+            VDISPATCH_MATMUL(one_of(asc.get_data_type(DNNL_ARG_DST), undef, f32,
+                                     bf16, f16),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
         // Implementation has limited support w.r.t. scales groups.
@@ -458,6 +458,7 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
             brg.is_per_k_wei_scales = bgmmc_.is_wei_scale_per_k;
             brg.dt_wei_scales = bgmmc_.wei_scales_dt;
         }
+        brg.is_per_n_dst_scales = bgmmc_.is_dst_scale_per_n;
         if (bgmmc_.with_src_scales) {
             brg.dt_src_scales = bgmmc_.src_scales_dt;
             if (bgmmc_.is_src_scale_per_k) {
@@ -670,11 +671,27 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
 
     const int num_threads
             = brgmm_ctx_ptr->get_num_threads_for_parallelization();
+    const auto dst_scale_dt = pd()->attr()->scales_.get_data_type(DNNL_ARG_DST);
+    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+    if (bgmmc.with_dst_scales && bgmmc.is_dst_scale_per_n)
+        parallel(num_threads, [=](int ithr, int nthr) {
+            const void *dst_scales_ptr = brgmm_ctx_ptr->get_dst_scales_ptr();
+            float *dst_scales_inv_ptr = static_cast<float *>(const_cast<void *>(
+                    brgmm_ctx_ptr->get_dst_scales_inv_ptr(0)));
+            const dim_t dst_scales_count
+                    = bgmmc.is_dst_scale_per_n ? bgmmc.N : 1;
+            dim_t start {}, end {};
+            balance211(dst_scales_count, nthr, ithr, start, end);
+            for (dim_t i = start; i < end; ++i) {
+                const float dst_scale = cpu::io::load_float_value(
+                        dst_scale_dt, dst_scales_ptr, i);
+                dst_scales_inv_ptr[i] = 1.f / dst_scale;
+            }
+        });
     parallel(num_threads,
             [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         const auto &brgmm_ctx = *brgmm_ctx_ptr;
 
-        const auto &bgmmc = pd()->get_brgemm_matmul_conf();
         const bool use_buffer_a
                 = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
         const bool is_amx = isa_has_tile_accumulators(isa);
@@ -704,12 +721,13 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         brgemm_palettes_.maybe_tile_configure(
                 is_amx, prev_ker_idx, brgmm_ctx.get_base_brgemm_kernel_idx());
 
-        if (bgmmc.with_dst_scales) {
-            const float *dst_scales_ptr = static_cast<const float *>(
-                    brgmm_ctx.get_dst_scales_ptr());
+        if (bgmmc.with_dst_scales && !bgmmc.is_dst_scale_per_n) {
+            const void *dst_scales_ptr = brgmm_ctx.get_dst_scales_ptr();
             float *dst_scales_inv_ptr = static_cast<float *>(
                     const_cast<void *>(brgmm_ctx.get_dst_scales_inv_ptr(ithr)));
-            dst_scales_inv_ptr[0] = 1.f / dst_scales_ptr[0];
+            const float dst_scale = cpu::io::load_float_value(
+                    dst_scale_dt, dst_scales_ptr, 0);
+            dst_scales_inv_ptr[0] = 1.f / dst_scale;
         }
 
         dim_t b {0}, mc {0}, nc {0}, b_per_t {0}, mc_per_t {0}, nc_per_t {0},
@@ -956,7 +974,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
                 = bgmmc.is_wei_scale_per_k && !bgmmc.apply_scales_in_buffer_b
                 ? brgmm_ctx.get_wei_scales_ptr(b_idx, k, n)
                 : brgmm_ctx.get_wei_scales_ptr(b_idx, /*k=*/0, n);
-        const void *dst_scales = brgmm_ctx.get_dst_scales_inv_ptr(ithr);
+        const void *dst_scales = brgmm_ctx.get_dst_scales_inv_ptr(ithr, n);
         void *scratch = is_brg_amx(brg_idx)
                 ? (void *)wsp_tile
                 : (void *)brgmm_ctx.get_s8s8_comp_ptr(ithr, b_idx, n_blk_idx);
@@ -1465,7 +1483,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                             brgmm_ctx.get_zp_c_ptr(), skip_accumulation, 1,
                             false, false, brgmm_ctx.get_src_scales_ptr(b),
                             brgmm_ctx.get_wei_scales_ptr(b, 0, n),
-                            brgmm_ctx.get_dst_scales_inv_ptr(ithr)};
+                            brgmm_ctx.get_dst_scales_inv_ptr(ithr, n)};
 
                     brgemm_kernel_execute_postops(brg_kernel, 0, nullptr,
                             (void *)ptr_C, (void *)ptr_D, post_ops_data,
@@ -2461,13 +2479,14 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
     const void *get_dst_scales_ptr() const { return dst_scales_; }
 
-    // Since `dst_scales_inv_` is a scratchpad memory, @p ithr points to the
-    // correspondent piece of that memory.
-    const void *get_dst_scales_inv_ptr(int ithr) const {
+    // Since `dst_scales_inv_` is a scratchpad memory, it is valid for the
+    // duration of this execution.
+    const void *get_dst_scales_inv_ptr(int ithr, dim_t n = 0) const {
         if (!bgmmc_.with_dst_scales) return nullptr;
 
+        const dim_t scale_offset = bgmmc_.is_dst_scale_per_n ? n : ithr;
         return reinterpret_cast<const char *const>(dst_scales_inv_)
-                + ithr * sizeof(float);
+                + scale_offset * sizeof(float);
     }
 
     int32_t get_neg_zp_a() const {

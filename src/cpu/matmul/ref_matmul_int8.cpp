@@ -142,6 +142,11 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
 
     const bool with_dst_scales = !attr_scales.has_default_values(DNNL_ARG_DST);
     const auto dst_scale_dt = attr_scales.get_data_type(DNNL_ARG_DST);
+    const int dst_scale_mask = attr_scales.get_mask(DNNL_ARG_DST);
+    const auto dst_scale_group_m = attr_scales.get_group(DNNL_ARG_DST, -2);
+    const auto dst_scale_group_n = attr_scales.get_group(DNNL_ARG_DST, -1);
+    memory_desc_t dst_scale_md {};
+    CHECK(attr_scales.get(DNNL_ARG_DST).get_md(dst_scale_md, *dst_d.md_));
 
     // precomputed reductions section
     const auto &attr_pr = pd()->attr()->precomputed_reductions_;
@@ -291,8 +296,11 @@ status_t ref_matmul_int8_t::execute_ref(const exec_ctx_t &ctx) const {
             ref_post_ops->execute(d, args);
 
             if (with_dst_scales) {
-                const float dst_scale
-                        = io::load_float_value(dst_scale_dt, dst_scales, 0);
+                const dim_t dst_scale_off = matmul_helper_t::get_quant_off(
+                        dst_dims_idx, ndims, dst_scale_mask, dst_scale_group_m,
+                        dst_scale_group_n, dst_scale_md);
+                const float dst_scale = io::load_float_value(
+                        dst_scale_dt, dst_scales, dst_scale_off);
                 d /= dst_scale;
             }
             if (dst_zero_points) {

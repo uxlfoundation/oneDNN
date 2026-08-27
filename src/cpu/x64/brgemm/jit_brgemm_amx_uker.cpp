@@ -1819,12 +1819,31 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
     if (brg.with_dst_scales) {
         reg_dst_scales.restore();
         auto zmm_dst_scales = zmm_tmp_1();
-        vbroadcastss(zmm_dst_scales, ptr[reg_dst_scales]);
-        for (auto bd = bd_start; bd < bd_finish; bd++) {
-            if (!is_out_bd(bi.bdi, bdb, bd)) continue;
+        if (brg.is_per_n_dst_scales) {
+            const auto dst_scale_offset
+                    = bi.ldi->pos(ldb) * brg.ld_block * sizeof(float);
+            const auto dst_scale_addr
+                    = EVEX_compress_addr(reg_dst_scales, dst_scale_offset);
+            const auto zmm_dst_scales_masked = vmm_mask(
+                    zmm_dst_scales, bi.ldi->is_tail(ldb), false, k_mask);
+            vmovups(zmm_dst_scales_masked, dst_scale_addr);
 
-            auto zmm = accm(bd);
-            vmulps(zmm, zmm, zmm_dst_scales);
+            for (auto bd = bd_start; bd < bd_finish; bd++) {
+                if (!is_out_bd(bi.bdi, bdb, bd)) continue;
+
+                auto zmm = accm(bd);
+                const auto zmm_masked
+                        = vmm_mask(zmm, bi.ldi->is_tail(ldb), false, k_mask);
+                vmulps(zmm_masked, zmm_masked, zmm_dst_scales);
+            }
+        } else {
+            vbroadcastss(zmm_dst_scales, ptr[reg_dst_scales]);
+            for (auto bd = bd_start; bd < bd_finish; bd++) {
+                if (!is_out_bd(bi.bdi, bdb, bd)) continue;
+
+                auto zmm = accm(bd);
+                vmulps(zmm, zmm, zmm_dst_scales);
+            }
         }
     }
 

@@ -331,10 +331,10 @@ struct brgemm_desc_t {
     // `dst_scales` passed as a bare pointer making kernel change multiplication
     // to division was proved to be significantly slower, both for pure divps
     // instruction, or for emulation through rcpps. Therefore, each
-    // implementation dealing with `dst_scales` must prepare a per thread
-    // scratchpad memory and inverse values (usually, just one) inside a
-    // parallel task.
+    // implementation dealing with `dst_scales` must prepare scratchpad memory
+    // and inverse values before executing the kernel.
     bool with_dst_scales = false;
+    bool is_per_n_dst_scales = false;
     data_type_t dt_wei_scales = data_type::undef;
     // Grouping in batch used by brdgmm kernel
     int bs_group {0};
@@ -935,9 +935,10 @@ private:
 ///     A zero point only and skip the rest post-ops.
 /// @param zp_a_val - zero point value for A, required to adjust compensation
 ///     values if do_only_zp_a_val = true.
-/// @param dst_scales - Vector of inverted scale factor values for matix C,
-///     common scale vector type only is supported, it must be broadcasted to
-///     vector of simd width length.
+/// @param dst_scales - Vector of inverted scale factor values for matrix C.
+///     Common scales must be broadcasted to a vector of SIMD width length;
+///     per-N scales are passed as a vector corresponding to the current N
+///     block.
 ///
 struct brgemm_post_ops_data_t {
     brgemm_post_ops_data_t() = default;

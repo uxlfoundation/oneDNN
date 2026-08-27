@@ -150,8 +150,32 @@ TEST(dnnl_default_fpmath_mode_env_var_test, TestEnvVars) {
     EXPECT_EQ(func_got_val, dnnl_fpmath_mode_strict);
 }
 
-// There's no a separate test for VERBOSE variable as there's no programmable
-// public API to identify if it was set through env var or not.
-// Same situation with the rest of variables.
+TEST(dnnl_verbose_env_var_test, TestEnvVars) {
+    // Variables with "ONEDNN_" prefix have higher precedence, so unset a
+    // potentially set "ONEDNN_VERBOSE".
+    custom_unsetenv("ONEDNN_VERBOSE");
+    custom_setenv("DNNL_VERBOSE", "profile", 1);
+    int enabled = -1;
+    auto st = dnnl_verbose_profiling_enabled(&enabled);
+    EXPECT_EQ(st, dnnl_success);
+#if !defined(DISABLE_VERBOSE)
+    EXPECT_EQ(enabled, 1);
+    EXPECT_TRUE(verbose_profiling_enabled());
+#endif
+
+    // The setting function takes precedence over the environment variable.
+    st = dnnl_set_verbose(0);
+    EXPECT_EQ(st, dnnl_success);
+    st = dnnl_verbose_profiling_enabled(&enabled);
+    EXPECT_EQ(st, dnnl_success);
+    EXPECT_EQ(enabled, 0);
+    EXPECT_FALSE(verbose_profiling_enabled());
+
+    // A NULL output pointer is rejected.
+    EXPECT_EQ(dnnl_verbose_profiling_enabled(nullptr), dnnl_invalid_arguments);
+}
+
+// The rest of the variables have no programmable public API to identify if
+// they were set through env var or not, so they are not tested here.
 
 } // namespace dnnl

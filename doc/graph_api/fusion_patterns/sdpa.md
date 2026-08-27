@@ -12,7 +12,7 @@ output is computed as:
 
 \f[
 
-    attention(Q,K,V) = V \cdot softmax(\frac{QK^T}{\sqrt{d_k}})
+    attention(Q,K,V) = softmax(\frac{QK^T}{\sqrt{d_k}}) \cdot V
 
 \f]
 

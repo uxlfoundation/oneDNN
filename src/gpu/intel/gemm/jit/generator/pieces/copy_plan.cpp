@@ -107,7 +107,7 @@ static bool isSubsetOf(DataType dt1, DataType dt2)
     if (dt1 == dt2) return true;
     if (isFP(dt1) && isInt(dt2)) return false;
     if (isW(dt1) && dt2 == DataType::tf32) return false;
-    if ((isInt2(dt1) || isInt4(dt1)) && (isB(dt2) || dt2 == DataType::hf8)) return true;
+    if (isSubByteInt(dt1) && (isB(dt2) || dt2 == DataType::hf8)) return true;
     if (dt1 == DataType::s2 && dt2 == DataType::bf8) return true;
     if (dt1 == DataType::s4 && dt2 == DataType::bf8) return true;
     if (dt1 == DataType::e2m1 && isFP8(dt2)) return true;
@@ -289,11 +289,11 @@ void CopyPlan::transform()
     optimizeWriteSpread();
 
     legalizeImmediateTypes();
+    legalizeDstStrides();
 
     sort(SortType::PhaseOnly);
 
     legalizeShfl();
-    legalizeDstStrides();
 
 #if GEMMSTONE_ENABLE_COPY_PLAN_DUMP
     const auto verbose = getVerbose(GEMMVerbose::DebugInfo);
@@ -856,7 +856,7 @@ void CopyPlan::planTypeConversions()
         } else if (isInt(st) && isInt4(dt)) {
             planInt4Downconversion(i);
             rerun = true;
-        } else if ((isInt2(st) || isInt4(st)) && one_of(dt, {DataType::hf, DataType::bf})) {
+        } else if (isSubByteInt(st) && one_of(dt, {DataType::hf, DataType::bf})) {
             if (bfArithmeticOK(i))
                 copyThrough(i, isInt2(st) ? ngen_b16_l2x() : ngen_b16_l4x());
             else
@@ -870,10 +870,10 @@ void CopyPlan::planTypeConversions()
         } else if (isFP4(dt)) {
             copyThrough(i, DataType::hf);
             rerun = true;
-        } else if ((isInt2(st) || isInt4(st)) && isFP(dt)) {
+        } else if (isSubByteInt(st) && isFP(dt)) {
             copyThrough(i, DataType::hf, 1);
             rerun = true;
-        } else if (isFP(st) && (isInt2(dt) || isInt4(dt))) {
+        } else if (isFP(st) && isSubByteInt(dt)) {
             copyThrough(i, DataType::w);
             rerun = true;
         } else if (is4(dt))
@@ -1116,24 +1116,46 @@ void CopyPlan::legalizeShfl()
 void CopyPlan::legalizeDstStrides()
 {
     for (auto &i: insns) {
+        bool disaggregate = false;
         if (i.dst.type != DataType::uw)
             continue;
         // dst stride can only go up to 4. If 8, switch to ud
         if (i.dst.stride > 4) {
             if (i.dst.stride > 8) {
-                stub("Invalid destination stride, cannot legalize");
+                disaggregate = true;
             }
             if (i.dst.offset % 2 != 0) {
-                stub("Cannot legalize destination stride, odd offset");
+                disaggregate = true;
             }
             if (!i.dst.overwriteStride) {
-                stub("Cannot overwrite destination padding to legalize stride");
+                disaggregate = true;
             }
-            i.dst.offset /= 2;
-            i.dst.stride /= 2;
-            i.dst.type = DataType::ud;
+            if (!disaggregate) {
+                i.dst.offset /= 2;
+                i.dst.stride /= 2;
+                i.dst.type = DataType::ud;
+            } else {
+                for (int k = 0; k < i.simd; k++) {
+                    auto &i1 = split(i, false);
+                    i1.dst.offset += k * i.dst.stride;
+                    i1.dst.stride = 1;
+                    i1.src0.offset += k * i.src0.stride;
+                    i1.src0.stride = 1;
+                    if (!i1.src1.isNull()) {
+                        i1.src1.offset += k * i.src1.stride;
+                        i1.src1.stride = 1;
+                    }
+                    if (!i1.src2.isNull()) {
+                        i1.src2.offset += k * i.src2.stride;
+                        i1.src2.stride = 1;
+                    }
+                    i1.simd = 1;
+                }
+                i.invalidate();
+            }
         }
     }
+    mergeChanges();
 }
 
 // Unpack 4-bit src type into 16 bits (zero extended), used in many conversion sequences.
@@ -1520,8 +1542,7 @@ void CopyPlan::planInt2Upconversion(CopyInstruction &i)
         split(i, false);
         i0.dst.offset += i0.dst.stride / 4;
         i0.src0.offset += i0.src0.stride / 4;
-    }
-    else {
+    } else {
         int offset = (i.src0.offset % 4);
         i.src0.stride /= 4;
         i.src0.offset /= 4;
@@ -1900,89 +1921,25 @@ void CopyPlan::planInt2Downconversion(CopyInstruction &i)
         } else {
             stub("Unsupported int2 downconversion configuration");
         }
-    } else if (ddst.stride == 4) {
-        // Byte-aligned destination, use bfn to insert values without touching
-        // other data.
-        bool high = (ddst.offset % 8) >= 4;
-        auto offset = (ddst.offset % 4) * 2;
-
-        ie[1]->op = Opcode::shl;
-        ie[1]->simd = std::max(simd/2, 1);
-        ie[1]->dst = sstmp;
-        ie[1]->dst.stride *= 2;
-        ie[1]->src0 = stmp;
-        ie[1]->src0.stride *= 2;
-        ie[1]->src1 = Immediate::uw(offset + (high ? 8 : 0));
-
-        ie[2]->op = Opcode::bfn;
-        ie[2]->simd = std::max(simd/2, 1);
-        ie[2]->ctrl = 0xCA;
-        ie[2]->dst = ddst;
-        ie[2]->dst.type = DataType::uw;
-        ie[2]->dst.stride = 1;
-        ie[2]->dst.offset /= 8;
-        ie[2]->src0 = ddst;
-        ie[2]->src0.type = DataType::uw;
-        ie[2]->src0.stride = 1;
-        ie[2]->src0.offset /= 8;
-        ie[2]->src1 = sstmp;
-        ie[2]->src1.stride *= 2;
-        ie[2]->src2 = Immediate::uw((high ? 0x300 : 0x3) << offset);
-
-        if (simd >= 2) {
-            ie[3]->op = Opcode::shl;
-            ie[3]->simd = simd/2;
-            ie[3]->dst = sstmp;
-            ie[3]->dst.stride *= 2;
-            ie[3]->src0 = stmp;
-            ie[3]->src0.offset += ie[3]->src0.stride;
-            ie[3]->src0.stride *= 2;
-            ie[3]->src1 = Immediate::uw(offset + (high ? 0 : 8));
-
-            ie[4]->op = Opcode::bfn;
-            ie[4]->simd = simd/2;
-            ie[4]->ctrl = 0xCA;
-            ie[4]->dst = ddst;
-            ie[4]->dst.type = DataType::ub;
-            ie[4]->dst.stride = 1;
-            ie[4]->dst.offset /= 4;
-            ie[4]->src0 = ddst;
-            ie[4]->src0.type = DataType::ub;
-            ie[4]->src0.stride = 1;
-            ie[4]->src0.offset /= 4;
-            if (high) {
-                ie[4]->dst.offset += 1;
-                ie[4]->src0.offset += 1;
-            }
-            ie[4]->src1 = sstmp;
-            ie[4]->src1.stride *= 2;
-            ie[4]->src2 = Immediate::uw((high ? 0x3 : 0x300) << offset);
-        } else {
-            ie[3]->invalidate();
-            ie[4]->invalidate();
-        }
-
-        for (int j = 5; j < 10; ++j) {
-            ie[j]->invalidate();
-        }
-    } else if (ddst.stride == 2) {
-        // Misaligned destination, use multiple bfn instructions to insert
+    } else if (ddst.stride == 2 || ddst.stride == 4) {
+        // Use multiple bfn instructions to insert
         // values into the destination.
         auto offset = (ddst.offset % 8) * 2;
-        int new_ins = std::min(simd, 4);
+        int simd_factor = 8 / ddst.stride;
+        int new_ins = std::min(simd, simd_factor);
 
         for (int j = 0; j < new_ins; ++j) {
             ie[2*j + 1]->op = Opcode::shl;
-            ie[2*j + 1]->simd = std::max(simd/4, 1);
+            ie[2*j + 1]->simd = std::max(simd/simd_factor, 1);
             ie[2*j + 1]->dst = sstmp;
             ie[2*j + 1]->dst.stride *= 2;
             ie[2*j + 1]->src0 = stmp;
             ie[2*j + 1]->src0.offset += j * ie[3]->src0.stride;
-            ie[2*j + 1]->src0.stride *= 4;
-            ie[2*j + 1]->src1 = Immediate::uw((offset + 4*j) % 16);
+            ie[2*j + 1]->src0.stride *= simd_factor;
+            ie[2*j + 1]->src1 = Immediate::uw((offset + 2*ddst.stride*j) % 16);
 
             ie[2*j + 2]->op = Opcode::bfn;
-            ie[2*j + 2]->simd = std::max(simd/4, 1);
+            ie[2*j + 2]->simd = std::max(simd/simd_factor, 1);
             ie[2*j + 2]->ctrl = 0xCA;
             ie[2*j + 2]->dst = ddst;
             ie[2*j + 2]->dst.type = DataType::uw;
@@ -1992,13 +1949,13 @@ void CopyPlan::planInt2Downconversion(CopyInstruction &i)
             ie[2*j + 2]->src0.type = DataType::uw;
             ie[2*j + 2]->src0.stride = 1;
             ie[2*j + 2]->src0.offset /= 8;
-            if (offset + 4*j >= 16) {
+            if (offset + 2*ddst.stride*j >= 16) {
                 ie[2*j + 2]->dst.offset += 1;
                 ie[2*j + 2]->src0.offset += 1;
             }
             ie[2*j + 2]->src1 = sstmp;
             ie[2*j + 2]->src1.stride *= 2;
-            ie[2*j + 2]->src2 = Immediate::uw(0x3 << ((offset + 4*j) % 16));
+            ie[2*j + 2]->src2 = Immediate::uw(0x3 << ((offset + 2*ddst.stride*j) % 16));
         }
 
         for (int j = new_ins * 2 + 1; j < 10; ++j) {
@@ -2864,8 +2821,8 @@ void CopyPlan::legalizeSIMD(bool initial)
 
         if (initial) {
             bool skip = isInt(i.dst.type) && isInt(i.src0.type) && !i.sat;
-            skip |= isInt2(i.dst.type) || isInt2(i.src0.type) || isInt2(i.src1.type) || isInt2(i.src2.type);
-            skip |= isInt4(i.dst.type) || isInt4(i.src0.type) || isInt4(i.src1.type) || isInt4(i.src2.type);
+            skip |= isSubByteInt(i.dst.type) || isSubByteInt(i.src0.type)
+                || isSubByteInt(i.src1.type) || isSubByteInt(i.src2.type);
             if (skip) {
                 n++; continue;
             }
@@ -3891,7 +3848,7 @@ void CopyPlan::optimizeIntegerDownconvert()
     for (auto &i: insns) {
         if (i.op != Opcode::mov || i.sat) continue;
         if (!isInt(i.dst.type) || !isInt(i.src0.type)) continue;
-        if (isInt4(i.dst.type) || isInt4(i.src0.type)) continue;
+        if (isSubByteInt(i.dst.type) || isSubByteInt(i.src0.type)) continue;
 
         int expand = getBytes(i.src0.type) / getBytes(i.dst.type);
         if (expand > 1) {

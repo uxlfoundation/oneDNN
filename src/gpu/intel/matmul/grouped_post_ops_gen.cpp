@@ -148,7 +148,7 @@ static std::string to_ocl_float(float v) {
 std::string generate_post_ops_microgemm_header(
         const primitive_attr_t &attr, const po_kind_t *po_chain) {
     std::string s = R"(
-inline void apply_post_ops_chain(ugemm_grouped_c_type *c_tile, long n, long m, long lddst,
+inline void apply_post_ops_chain(c_tile_type_float *c_tile, long n, long m, long lddst,
     off_t sg_i0, off_t sg_j0, off_t src_offset, off_t batch,
     const global BINARY_SCALE_GROUPED_TILE_DATA_T *grouped_scale,
     const global BINARY_SCALE_DENSE_TILE_DATA_T *dense_scale,

@@ -402,11 +402,11 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
         if (prefetchB) kchunk0 = lcm(kchunk0, kb_pfStride);
         if (problem.quantized2DA()) {
             if (problem.aqGroupK % wg[LoopK]) stub();
-            kchunk0 = lcm(kchunk0, std::max(1, problem.aqGroupK / wg[LoopK]));
+            kchunk0 = lcm(kchunk0, problem.aqGroupK);
         }
         if (problem.quantized2DB()) {
             if (problem.bqGroupK % wg[LoopK]) stub();
-            kchunk0 = lcm(kchunk0, std::max(1, problem.bqGroupK / wg[LoopK]));
+            kchunk0 = lcm(kchunk0, problem.bqGroupK);
         }
         kInterleaveChunk = align_up(kInterleaveChunk, kchunk0);
         kInterleaveChunk = std::max(kInterleaveChunk, kchunk0);

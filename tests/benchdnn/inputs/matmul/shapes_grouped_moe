@@ -37,7 +37,7 @@
 --grouped=0:64:decode
 8x2560:64x2560x3584nQwen2-57B-A14B-down-proj-decode-gs128
 --grouped=0:64:balanced
-2048x2560:64x2560x3584nQwen2-57B-A14B-down-proj-prefill-gs128
+2048x2560:64x2560x3584nQwen2-57B-A14B-gate/down-proj-prefill-gs128
 
 # ── Qwen3-30B-A3B gate/up projection: K=2048, N=768 (E=128 exact) ───────────
 # decode  (B=1 token)

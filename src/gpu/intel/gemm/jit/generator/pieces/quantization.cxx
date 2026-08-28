@@ -166,17 +166,44 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     }
 
     bool wantCM = state.useBDPAS ? isA : isA ^ (xqGroupMN > 1);
-    auto chooseAccess = [=](const MatrixAddressing &Xq) {
-        return (wantCM == isColMajor(Xq.layout)) ? AccessType::Block : AccessType::Scattered;
+    auto chooseAccess = [=](const MatrixAddressing &Xq, Type T, int r, int c) {
+        bool transposing = (wantCM != isColMajor(Xq.layout));
+        auto access2D = transposing ? AccessType::Block2DTranspose : AccessType::Block2D;
+        auto access1D = transposing ? AccessType::Scattered : AccessType::Block;
+        MatrixAddressingStrategy s2d;
+        s2d.accessType = access2D;
+        int xElems = isColMajor(Xq.layout) ? r : c;    // block 2D width dimension
+        if (r > 1 && c > 1 && hw >= HW::XeHPC
+                && r * c * T >= 2 * GRF::bytes(hw)
+                && (xElems * T) % 4 == 0
+                && Xq.alignment % block2DMinAlignment(hw, Xq, s2d) == 0)
+            return access2D;
+        return access1D;
+    };
+    auto use2DAddressing = [](MatrixAddressingStrategy &s) {
+        if (!isBlock2D(s.accessType)) return;
+        s.newDP = true;
+        s.address2D = true;
     };
 
-    X_offsetStrategy.accessType = chooseAccess(XO);
-    X_scaleStrategy.accessType  = chooseAccess(XS);
-    Xg_strategy.accessType      = chooseAccess(Xg);
+    X_offsetStrategy.accessType = chooseAccess(XO, Txo, ro,     co);
+    X_scaleStrategy.accessType  = chooseAccess(XS, Txs, rs,     cs);
+    Xg_strategy.accessType      = chooseAccess(Xg, Txg, rNoSLM, cNoSLM);
+    use2DAddressing(X_offsetStrategy);
+    use2DAddressing(X_scaleStrategy);
+    use2DAddressing(Xg_strategy);
 
-    if (xo2D && !(X_offsetLayout = RegisterLayout::tryCreate(hw, Txo, ro,     co,     XO, X_offsetStrategy, remR, remC))) return false;
-    if (xs2D &&  !(X_scaleLayout = RegisterLayout::tryCreate(hw, Txs, rs,     cs,     XS, X_scaleStrategy,  remR, remC))) return false;
-    if (xg2D &&      !(Xg_layout = RegisterLayout::tryCreate(hw, Txg, rNoSLM, cNoSLM, Xg, Xg_strategy,      remR, remC))) return false;
+    auto makeQLayout = [&](RegisterLayout &l, Type T, int r, int c, MatrixAddressing Xq,
+                           MatrixAddressingStrategy &Xq_strategy) {
+        bool is2D = isBlock2D(Xq_strategy.accessType);
+        if (!is2D) Xq.setAlignment(T.paddedSize());    // raised alignment is only for block 2D
+        l = RegisterLayout::tryCreate(hw, T, r, c, Xq, Xq_strategy, remR && !is2D, remC && !is2D);
+        if (l.empty() && is2D) stub();
+        return !l.empty();
+    };
+    if (xo2D && !makeQLayout(X_offsetLayout, Txo, ro,     co,     XO, X_offsetStrategy)) return false;
+    if (xs2D && !makeQLayout(X_scaleLayout,  Txs, rs,     cs,     XS, X_scaleStrategy))  return false;
+    if (xg2D && !makeQLayout(Xg_layout,      Txg, rNoSLM, cNoSLM, Xg, Xg_strategy))      return false;
 
     // Adjust masks for m/n grouping.
     auto adjustMask = [=](MaskInfo &mask) {

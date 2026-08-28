@@ -1948,15 +1948,40 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
 
     auto setupQAddr = [&](Type T, vector<GRFRange> &addrs, const RegisterLayout &layout,
                           Subregister ptr, Subregister r0, Subregister c0, Subregister ld,
+                          Subregister nr, Subregister nc, int gr, int gc,
                           Subregister base = Subregister())
     {
         auto tmpBase = state.ra.alloc_sub(ptr.getType());
-        if (!isColMajor(layout.addressing().layout)) std::swap(r0, c0);
-        if (r0.isValid()) eaddScaled(1, tmpBase, ptr, r0, T, strategy, state);
-        if (c0.isValid()) emad(1, tmpBase, r0.isValid() ? tmpBase : ptr, c0, ld, strategy, state);
-        if (r0.isInvalid() && c0.isInvalid()) emov(1, tmpBase, ptr, strategy, state);
-        if (base.isValid()) eadd(1, tmpBase, tmpBase, base, strategy, state);
-        setupAddr(addrs, tmpBase, layout, ld, strategy, state);
+        if (layout.addressingStrategy().address2D) {
+            auto qdim = [&](Subregister n, int g) {
+                auto q = state.ra.alloc_sub<uint32_t>();
+                if (g > 1) {
+                    add(1, q, n, g - 1);
+                    divDown(q, q, uint32_t(g), strategy, state);
+                } else
+                    mov(1, q, n);
+                return q;
+            };
+            Address2DParams params;
+            params.rows = qdim(nr, gr);
+            params.cols = qdim(nc, gc);
+            params.offR = r0;
+            params.offC = c0;
+            if (base.isValid())
+                eadd(1, tmpBase, ptr, base, strategy, state);
+            else
+                emov(1, tmpBase, ptr, strategy, state);
+            setupAddr(addrs, tmpBase, layout, ld, strategy, state, params);
+            state.ra.safeRelease(params.rows);
+            state.ra.safeRelease(params.cols);
+        } else {
+            if (!isColMajor(layout.addressing().layout)) std::swap(r0, c0);
+            if (r0.isValid()) eaddScaled(1, tmpBase, ptr, r0, T, strategy, state);
+            if (c0.isValid()) emad(1, tmpBase, r0.isValid() ? tmpBase : ptr, c0, ld, strategy, state);
+            if (r0.isInvalid() && c0.isInvalid()) emov(1, tmpBase, ptr, strategy, state);
+            if (base.isValid()) eadd(1, tmpBase, tmpBase, base, strategy, state);
+            setupAddr(addrs, tmpBase, layout, ld, strategy, state);
+        }
         state.ra.safeRelease(tmpBase);
     };
 
@@ -1964,40 +1989,47 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
         auto &i0o   = lateOffsetA ? i0qLate   : i0q;
         auto &A_h0o = lateOffsetA ? A_h0qLate : A_h0q;
         setupQAddr(Tao, state.A_offsetAddrs, state.A_offsetLayout, state.inputs.aoPtr,
-                   i0o, A_h0o, state.inputs.ldao, state.offsetAo);
+                   i0o, A_h0o, state.inputs.ldao,
+                   state.inputs.m, state.fullK, problem.aqGroupM, problem.aqGroupK, state.offsetAo);
     }
     if (as2D) {
         auto &i0s   = state.lateScale2DA ? i0qLate : i0q;
         auto &A_h0s = state.lateScale2DA ? A_h0qLate : A_h0q;
         setupQAddr(Ta_scale, state.A_scaleAddrs, state.A_scaleLayout, state.inputs.aScalePtr,
-                   i0s, A_h0s, state.inputs.ldaScale, state.offsetAs);
+                   i0s, A_h0s, state.inputs.ldaScale,
+                   state.inputs.m, state.fullK, problem.aqGroupM, problem.aqGroupK, state.offsetAs);
     }
     if (ag2D) {
         setupQAddr(Tag, state.Ag_addrs, state.Ag_layout, state.inputs.agPtr,
-                   i0qLate, A_h0qLate, state.inputs.ldag, state.inputs.offsetAg);
+                   i0qLate, A_h0qLate, state.inputs.ldag,
+                   state.inputs.m, state.fullK, problem.aqGroupM, problem.aqGroupK, state.inputs.offsetAg);
     }
     if (bo2D) {
         auto &j0o   = lateOffsetB ? j0qLate   : j0q;
         auto &B_h0o = lateOffsetB ? B_h0qLate : B_h0q;
         setupQAddr(Tbo, state.B_offsetAddrs, state.B_offsetLayout, state.inputs.boPtr,
-                   B_h0o, j0o, state.inputs.ldbo, state.offsetBo);
+                   B_h0o, j0o, state.inputs.ldbo,
+                   state.fullK, state.inputs.n, problem.bqGroupK, problem.bqGroupN, state.offsetBo);
     }
     if (bs2D) {
         auto &j0s   = state.lateScale2DB ? j0qLate   : j0q;
         auto &B_h0s = state.lateScale2DB ? B_h0qLate : B_h0q;
         setupQAddr(Tb_scale, state.B_scaleAddrs, state.B_scaleLayout, state.inputs.bScalePtr,
-                   B_h0s, j0s, state.inputs.ldbScale, state.offsetBs);
+                   B_h0s, j0s, state.inputs.ldbScale,
+                   state.fullK, state.inputs.n, problem.bqGroupK, problem.bqGroupN, state.offsetBs);
     }
     if (bg2D) {
         setupQAddr(Tbg, state.Bg_addrs, state.Bg_layout, state.inputs.bgPtr,
-                   B_h0qLate, j0qLate, state.inputs.ldbg, state.inputs.offsetBg);
+                   B_h0qLate, j0qLate, state.inputs.ldbg,
+                   state.fullK, state.inputs.n, problem.bqGroupK, problem.bqGroupN, state.inputs.offsetBg);
     }
 
     if (problem.hasCMXScale()) {
         auto i0qs = state.ra.alloc_sub(cMX_j0q.getType(), getHint(HintType::LongTerm, strategy));
         divDown(i0qs, cMX_i0q, problem.cqGroupM, strategy, state);
         setupQAddr(Type::u8, state.C_scaleAddrs, state.C_scaleLayout, state.inputs.cScalePtr,
-               i0qs, cMX_j0q, state.inputs.ldcScale, state.offsetCs);
+               i0qs, cMX_j0q, state.inputs.ldcScale,
+               state.inputs.m, state.inputs.n, problem.cqGroupM, problem.cqGroupN, state.offsetCs);
     }
 
     if (i0qLate != state.i0) state.ra.safeRelease(i0qLate);

@@ -17,6 +17,7 @@
 #include "gpu/intel/gemm/jit/pd.hpp"
 #include "common/c_types_map.hpp"
 #include "common/primitive_attr_quant.hpp"
+#include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/exec_types.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
 #include "gpu/intel/gemm/utils.hpp"
@@ -757,6 +758,31 @@ status_t pd_t::init_GEMMProblem(
     if (b_quant.scales_type != data_type::undef) {
         problem.Tb_scale = convert_dnnl_to_kernel_type(b_quant.scales_type);
         problem.B_scale.setAlignment(
+                int(types::data_type_size(b_quant.scales_type)));
+    }
+
+    auto set_q_align = [](MatrixAddressing &X, dim_t ld_elems, int type_size) {
+        if (ld_elems <= 0 || ld_elems == DNNL_RUNTIME_DIM_VAL) return;
+        int a = int(math::gcd<dim_t>(
+                compute::min_buffer_alignment, ld_elems * type_size));
+        X.setAlignment(nstl::max<int>(X.alignment, a));
+    };
+    dim_t sm = swap_ab() ? desc()->n() : desc()->m();
+    dim_t sn = swap_ab() ? desc()->m() : desc()->n();
+    if (a_quant.scales_type != data_type::undef) {
+        dim_t ld = (problem.A_scale.layout == MatrixLayout::N)
+                ? utils::div_up(sm, nstl::max<dim_t>(1, a_quant.group_m))
+                : utils::div_up(
+                          desc()->k(), nstl::max<dim_t>(1, a_quant.group_k));
+        set_q_align(problem.A_scale, ld,
+                int(types::data_type_size(a_quant.scales_type)));
+    }
+    if (b_quant.scales_type != data_type::undef) {
+        dim_t ld = (problem.B_scale.layout == MatrixLayout::N)
+                ? utils::div_up(
+                          desc()->k(), nstl::max<dim_t>(1, b_quant.group_k))
+                : utils::div_up(sn, nstl::max<dim_t>(1, b_quant.group_n));
+        set_q_align(problem.B_scale, ld,
                 int(types::data_type_size(b_quant.scales_type)));
     }
 

@@ -378,8 +378,11 @@ void Generator<hw>::setupAddr(Type T, const GRFRange &addr, const BO &ptr, const
                 auto pitch = bw * bcount * block.ebytes;
                 if (pitch < 64 || pitch & 0xF) hw_unsupported();
                 mov(1, addr[0].ud(4), pitch - 1);
-            } else
+            } else {
                 add(1, addr[0].ud(4), bld, -1);
+                if (!doBaseAdjust)
+                    max_<uint32_t>(1, addr[0].ud(4), addr[0].ud(4), addr[0].ud(2));
+	    }
 
             mov(1, addr[0].ud(7), (bw - 1) | ((bh - 1) << 8) | ((bcount - 1) << 16));
 
@@ -779,7 +782,9 @@ void Generator<hw>::incAddrK(const vector<GRFRange> &addr, bool column, int k,
                              const SubregisterPair &ld, const LDIncrements &incs, const RegisterLayout &layout,
                              const CommonStrategy &strategy, CommonState &state)
 {
-    if (isColMajor(layout.addressing().layout) == column) {
+    if (layout.addressingStrategy().address2D)
+        incAddr(addr, 0, column ? 0 : k, column ? k : 0, layout, strategy, state);
+    else if (isColMajor(layout.addressing().layout) == column) {
         bool release = false;
         auto inc = lookupIncrement(incs, ld, k, strategy, state, &release);
         incAddr(addr, inc, layout, strategy, state);

@@ -273,6 +273,53 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
                     return true;
                 };
 
+                // u3 has no dedicated catalog entries (no native hardware
+                // register representation for 3-bit data; u3 operands are
+                // unpacked to/from u8 via CopyPlan::planInt3Upconvert
+                // around the matched kernel). Fall back to u4 ('f') kernel
+                // strategies, since both are sub-byte compressed integer
+                // types requiring similar unroll/copy handling.
+                //
+                // u3 can also appear as the external type of a bracketed
+                // mixed-precision tag, e.g. "[kO]", when jit/pd.cpp promotes
+                // a u3 operand paired with an int8 operand to compute
+                // directly as int8 (its mixed s8/s4-DPAS support, used when
+                // native s8/s4 DPAS isn't available/legal). In that case the
+                // generated kernel never dequantizes through u4 at all --
+                // CopyPlan::planInt3Upconvert unpacks u3 straight to the
+                // int8 compute type -- so match the "[FO]"-bracketed int8
+                // catalog strategies directly (using the bracket's
+                // compute-type character) instead of falling back to u4.
+                auto isU3 = [](kcatalog::string str) {
+                    char c = (str[0] == '[') ? str[1] : str[0];
+                    return c && ((c & ~0x20) == 'K');
+                };
+                auto fallbackU3 = [&](kcatalog::string &str) {
+                    if (!isU3(str)) return false;
+                    if (str[0] == '[') {
+                        switch (str[2]) {
+                            // Prefer the dedicated int4-as-int8 bracketed
+                            // strategies (e.g. "[FO]") over plain "O"/"o":
+                            // they cover a much larger, more specifically
+                            // tuned pool of mixed sub-byte/int8 catalog
+                            // entries, and u3 unpacks to int8 the same way
+                            // int4 does in this path.
+                            case 'O': str = "[FO]"; return true;
+                            case 'o': str = "[Fo]"; return true;
+                            default: break;
+                        }
+                    }
+                    str = "f";
+                    return true;
+                };
+                bool u3Fallback = false;
+                u3Fallback |= fallbackU3(p.selector.precisions[0]);
+                u3Fallback |= fallbackU3(p.selector.precisions[1]);
+                if (u3Fallback) {
+                    changed = true;
+                    continue;
+                }
+
                 if (match("FO"))
                     p.selector.precisions[0] = "[FO]";
                 else if (match("BB"))
@@ -337,6 +384,12 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, const ngen
     }
     if(problem.Tbo.is4() || problem.Tb_scale.is4()){
         unrollReq[LoopN] = 2;
+    }
+    if(problem.Tao.is3() || problem.Ta_scale.is3()){
+        unrollReq[LoopM] = 8;
+    }
+    if(problem.Tbo.is3() || problem.Tb_scale.is3()){
+        unrollReq[LoopN] = 8;
     }
 
     ReqBDPASDims = problem.preferBDPAS();

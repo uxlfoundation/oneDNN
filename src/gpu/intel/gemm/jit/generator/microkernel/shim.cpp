@@ -135,21 +135,21 @@ const char *typeName(
             case StructuredType::u32: return "uint";
             case StructuredType::u16: return "ushort";
             case StructuredType::u8: return "uchar";
-            case StructuredType::s4: return "uchar";
-            case StructuredType::u4: return "uchar";
+            case StructuredType::s4: return "s4";
+            case StructuredType::u4: return "u4";
             case StructuredType::f64: return "double";
             case StructuredType::f32: return "float";
             case StructuredType::f16: return "half";
             case StructuredType::bf16:
-                return (language == HostLanguage::None) ? "bfloat16" : "ushort";
+                return (language == HostLanguage::None) ? "bfloat16" : "bf16";
             case StructuredType::bf8:
-                return (language == HostLanguage::None) ? "bfloat8" : "uchar";
+                return (language == HostLanguage::None) ? "bfloat8" : "f8_e5m2";
             case StructuredType::hf8:
-                return (language == HostLanguage::None) ? "hfloat8" : "uchar";
+                return (language == HostLanguage::None) ? "hfloat8" : "f8_e4m3";
             case StructuredType::f8_e8m0:
-                return (language == HostLanguage::None) ? "e8m0" : "uchar";
+                return (language == HostLanguage::None) ? "e8m0" : "e8m0";
             case StructuredType::f4_e2m1:
-                return (language == HostLanguage::None) ? "e2m1" : "uchar";
+                return (language == HostLanguage::None) ? "e2m1" : "f4_e2m1";
             default: return "char";
         }
 }

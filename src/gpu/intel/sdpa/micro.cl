@@ -60,32 +60,6 @@
 #define CONVERT_TILE_FMA_T CONVERT_DATA_T
 #endif
 
-/* Conditional casts for ugemm pointer arguments: cast when the data type
- * is a struct, since the ugemm microkernels use punned scalar types. */
-#ifdef KEY_DT_BF16
-#define AS_KEY_TILE_PTR(p) ((const global FMA_TYPE *)(p))
-#elif defined(KEY_DT_S4) || defined(KEY_DT_U4)
-#define AS_KEY_TILE_PTR(p) ((const global uchar *)(p))
-#else
-#define AS_KEY_TILE_PTR(p) (p)
-#endif
-
-#ifdef VAL_DT_BF16
-#define AS_VAL_TILE_PTR(p) ((const global FMA_TYPE *)(p))
-#elif defined(VAL_DT_S4) || defined(VAL_DT_U4)
-#define AS_VAL_TILE_PTR(p) ((const global uchar *)(p))
-#else
-#define AS_VAL_TILE_PTR(p) (p)
-#endif
-
-#ifdef QRY_DT_BF16
-#define AS_QRY_TILE_PTR(p) ((const global FMA_TYPE *)(p))
-#define AS_QRY_SLM_TILE_PTR(p) ((const local FMA_TYPE *)(p))
-#else
-#define AS_QRY_TILE_PTR(p) (p)
-#define AS_QRY_SLM_TILE_PTR(p) (p)
-#endif
-
 #define sg_per_wg (ugemm_kq_sg_per_wg_m * ugemm_kq_sg_per_wg_n)
 #define q_tile_sg_n DIV_UP(ugemm_kq_wg_tile_n, sg_per_wg)
 
@@ -169,22 +143,6 @@ inline void apply_dropout_s_tile(
 #define SCALES_TO_FLOAT into_float
 #else
 #define SCALES_TO_FLOAT convert_float
-#endif
-
-#ifdef VAL_ATTR_SCALES_DT_BF16
-#define VAL_SCALES_TO_FLOAT into_float
-#define AS_VAL_SCALES_PTR(p) ((const global ushort *)(p))
-#else
-#define VAL_SCALES_TO_FLOAT convert_float
-#define AS_VAL_SCALES_PTR(p) (p)
-#endif
-
-#if KEY_ATTR_SCALES_DT_BF16
-#define KEY_SCALES_TO_FLOAT into_float
-#define AS_KEY_SCALES_PTR(p) ((const global ushort *)(p))
-#else
-#define KEY_SCALES_TO_FLOAT convert_float
-#define AS_KEY_SCALES_PTR(p) (p)
 #endif
 
 #if USE_SYSTOLIC_UKERNEL
@@ -460,16 +418,15 @@ inline void tile_load_src1(q_tile_type *Q_tile, const global QRY_DATA_T *Q,
 #else // FMA
 
 #if BLOCK_Q
-    tile_load_block_rem_q(
-            Q_tile, AS_QRY_TILE_PTR(Q), n, ldq, offset_r, offset_c);
+    tile_load_block_rem_q(Q_tile, Q, n, ldq, offset_r, offset_c);
 #else
-    tile_load(Q_tile, AS_QRY_TILE_PTR(Q), m, n, ldq, offset_r, offset_c);
+    tile_load(Q_tile, Q, m, n, ldq, offset_r, offset_c);
 #endif
 
 #endif
 }
 
-inline void tile_store_t_slm_src1(q_tile_type *Q_tile, local FMA_TYPE *Q_slm,
+inline void tile_store_t_slm_src1(q_tile_type *Q_tile, local QRY_DATA_T *Q_slm,
         int panel, int ld, int offset_r, int offset_c) {
 #if USE_SYSTOLIC_UKERNEL
     tile_store_t_sys_src1(
@@ -584,13 +541,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     local char slm[Q_slm_size + S_slm_size + S_sum_slm_size + S_max_slm_size
             + ugemm_slm_size];
 
-    local FMA_TYPE *Q_slm = (local FMA_TYPE *)&slm[0];
-    local FMA_TYPE *S_slm = (local FMA_TYPE *)&slm[Q_slm_size];
+    local QRY_DATA_T *Q_slm = (local QRY_DATA_T *)&slm[0];
+    local QRY_DATA_T *S_slm = (local QRY_DATA_T *)&slm[Q_slm_size];
     local float *S_sum_slm = (local float *)&slm[Q_slm_size + S_slm_size];
     local float *S_max_slm
             = (local float *)&slm[Q_slm_size + S_slm_size + S_sum_slm_size];
-    local uint *ugemm_slm = (local uint *)&slm[Q_slm_size + S_slm_size
-            + S_sum_slm_size + S_max_slm_size];
+    local char *ugemm_slm = (local char *)(&slm[Q_slm_size + S_slm_size
+            + S_sum_slm_size + S_max_slm_size]);
 
     const bool need_sum_barrier = (ugemm_vs_barrier_count == 0);
 
@@ -816,15 +773,14 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #else
         s_tile_type S_tile
 #endif
-                = ugemm_kq(AS_KEY_TILE_PTR(K), ldk, AS_QRY_SLM_TILE_PTR(Q_slm),
-                        D_MAX_KQ, k0end, ugemm_kq_wg_tile_n, d_qk, k0, 0, 0,
-                        sg_i_kq, sg_j_kq, (local char *)ugemm_slm
+                = ugemm_kq(K, ldk, Q_slm, D_MAX_KQ, k0end, ugemm_kq_wg_tile_n,
+                        d_qk, k0, 0, 0, sg_i_kq, sg_j_kq, ugemm_slm
 #if KEY_SCALES == QUANTIZE_2D
                         ,
-                        AS_KEY_SCALES_PTR(K_scales)
+                        K_scales
 #endif
 #if KEY_ZERO_POINTS
-                                ,
+                        ,
                         K_zp
 #endif
 #if (KEY_SCALES == QUANTIZE_2D) || KEY_ZERO_POINTS
@@ -1114,15 +1070,15 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #else
         a_tile_type A_tile1
 #endif
-                = ugemm_vs(AS_VAL_TILE_PTR(V), ldv, AS_QRY_SLM_TILE_PTR(S_slm),
-                        ugemm_kq_wg_tile_m, d_v, ugemm_kq_wg_tile_n, k_chunk, 0,
-                        0, 0, sg_i_vs, sg_j_vs, (local char *)ugemm_slm
+                = ugemm_vs(V, ldv, S_slm, ugemm_kq_wg_tile_m, d_v,
+                        ugemm_kq_wg_tile_n, k_chunk, 0, 0, 0, sg_i_vs, sg_j_vs,
+                        ugemm_slm
 #if VAL_SCALES == QUANTIZE_2D
                         ,
-                        AS_VAL_SCALES_PTR(V_scales)
+                        V_scales
 #endif
 #if VAL_ZERO_POINTS
-                                ,
+                        ,
                         V_zp
 #endif
 #if (VAL_SCALES == QUANTIZE_2D) || VAL_ZERO_POINTS

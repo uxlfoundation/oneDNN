@@ -223,61 +223,14 @@ DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
 #define FMA_TYPE ushort
 #endif
 
-/* Cast macros for ugemm_grouped pointer arguments: cast when the data type
- * is a struct, since the ugemm microkernels use punned scalar types. */
-/* 4-bit and 8-bit struct types (BF8=f8_e5m2, HF8=f8_e4m3) are packed in uchar.
- * bf16 uses its ushort representation (FMA_TYPE). */
-#if defined(WEI_DT_S4) || defined(WEI_DT_U4) || defined(WEI_DT_F4_E2M1) \
-        || defined(WEI_DT_BF8) || defined(WEI_DT_HF8) || defined(WEI_DT_E8M0)
-#define AS_WEI_TILE_PTR(p) ((const global uchar *)(p))
-#elif defined(WEI_DT_BF16)
-#define AS_WEI_TILE_PTR(p) ((const global FMA_TYPE *)(p))
-#else
-#define AS_WEI_TILE_PTR(p) (p)
-#endif
-
-#if defined(SRC_DT_S4) || defined(SRC_DT_U4) || defined(SRC_DT_F4_E2M1) \
-        || defined(SRC_DT_BF8) || defined(SRC_DT_HF8) || defined(SRC_DT_E8M0)
-#define AS_SRC_TILE_PTR(p) ((const global uchar *)(p))
-#elif defined(SRC_DT_BF16)
-#define AS_SRC_TILE_PTR(p) ((const global FMA_TYPE *)(p))
-#else
-#define AS_SRC_TILE_PTR(p) (p)
-#endif
-
-#if defined(WEI_SCALES_DT_BF16)
-#define AS_WEI_SCALES_PTR(p) ((const global ushort *)(p))
-#elif defined(WEI_SCALES_DT_E8M0) || defined(WEI_SCALES_DT_HF8)
-#define AS_WEI_SCALES_PTR(p) ((const global uchar *)(p))
-#else
-#define AS_WEI_SCALES_PTR(p) (p)
-#endif
-
-#if defined(SRC_SCALES_DT_BF16)
-#define AS_SRC_SCALES_PTR(p) ((const global ushort *)(p))
-#elif defined(SRC_SCALES_DT_E8M0) || defined(SRC_SCALES_DT_HF8)
-#define AS_SRC_SCALES_PTR(p) ((const global uchar *)(p))
-#else
-#define AS_SRC_SCALES_PTR(p) (p)
-#endif
-
-/* Subbyte zero-point types are packed in uchar. */
-#if defined(WEI_ZP_DT_U4) || defined(WEI_ZP_DT_S4)
-#define AS_WEI_ZP_PTR(p) ((const global uchar *)(p))
-#else
-#define AS_WEI_ZP_PTR(p) (p)
-#endif
-
 /* Optional quantization parameters */
 #define SRC_SCALE_ARGS \
-    OPTIONAL(AND(WITH_SRC_SCALES, SRC_SCALES_GROUPED), \
-            AS_SRC_SCALES_PTR(src_attr_scales))
+    OPTIONAL(AND(WITH_SRC_SCALES, SRC_SCALES_GROUPED), src_attr_scales)
 #define SRC_ZP_ARGS OPTIONAL(WITH_SRC_ZP, src_attr_zp)
 #define SRC_LD_ARGS OPTIONAL(OR(WITH_SRC_ZP, SRC_SCALES_GROUPED), ldsrcq)
 #define WEI_SCALE_ARGS \
-    OPTIONAL(AND(WITH_WEI_SCALES, WEI_SCALES_GROUPED), \
-            AS_WEI_SCALES_PTR(wei_attr_scales))
-#define WEI_ZP_ARGS OPTIONAL(WITH_WEI_ZP, AS_WEI_ZP_PTR(wei_attr_zp))
+    OPTIONAL(AND(WITH_WEI_SCALES, WEI_SCALES_GROUPED), wei_attr_scales)
+#define WEI_ZP_ARGS OPTIONAL(WITH_WEI_ZP, wei_attr_zp)
 #define WEI_LD_ARGS OPTIONAL(OR(WITH_WEI_ZP, WEI_SCALES_GROUPED), ldweiq)
 #define K_PARALLEL_LOCAL_ARGS OPTIONAL(K_PARALLEL_LOCAL, sg_k)
 
@@ -440,9 +393,8 @@ grouped_micro_gemm_m_axis(const global SRC_DATA_T *src, long ldsrc,
     wei_attr_zp += batch * n * (k / WEI_GROUP_SIZE) / WEI_ZP_ELEMS_PER_BYTE;
 #endif
 
-    ugemm_grouped_c_type c_tile = ugemm_grouped(AS_WEI_TILE_PTR(wei), ldwei,
-            AS_SRC_TILE_PTR(src), ldsrc, n, m, k, wg_i0, wg_j0, 0, sg_i,
-            sg_j K_PARALLEL_LOCAL_ARGS,
+    ugemm_grouped_c_type c_tile = ugemm_grouped(wei, ldwei, src, ldsrc, n, m, k,
+            wg_i0, wg_j0, 0, sg_i, sg_j K_PARALLEL_LOCAL_ARGS,
             slm WEI_SCALE_ARGS WEI_ZP_ARGS WEI_LD_ARGS SRC_SCALE_ARGS
                     SRC_ZP_ARGS SRC_LD_ARGS);
 

@@ -34,74 +34,12 @@ namespace deconv {
 
 using namespace conv;
 
-static status_t weights_axes_permutation(
-        memory_desc_t *o_md, const memory_desc_t *i_md, bool with_groups) {
-    int perm[DNNL_MAX_NDIMS] {}; // deconv to conv weight permutation
-    for (int d = 0; d < DNNL_MAX_NDIMS; ++d)
-        perm[d] = d;
-    nstl::swap(perm[0 + with_groups], perm[1 + with_groups]);
-
-    return memory_desc_permute_axes(*o_md, *i_md, perm);
-}
-
-static status_t conv_descr_create(const deconv::desc_t *dd, conv::desc_t *cd) {
-    using namespace prop_kind;
-    alg_kind_t alg_kind = alg_kind::convolution_direct;
-
-    const memory_desc_t *src_md, *dst_md, *d_weights_d;
-    prop_kind_t prop_kind;
-
-    switch (dd->prop_kind) {
-        case forward:
-        case forward_inference:
-            prop_kind = backward_data;
-            src_md = &dd->dst_desc;
-            dst_md = &dd->src_desc;
-            d_weights_d = &dd->weights_desc;
-            break;
-        case backward_data:
-            prop_kind = forward_training;
-            src_md = &dd->diff_dst_desc;
-            dst_md = &dd->diff_src_desc;
-            d_weights_d = &dd->weights_desc;
-            break;
-        case backward_weights:
-            prop_kind = dd->prop_kind;
-            src_md = &dd->diff_dst_desc;
-            dst_md = &dd->src_desc;
-            d_weights_d = &dd->diff_weights_desc;
-            break;
-        default: assert(!"unknown prop kind"); return status::invalid_arguments;
-    }
-
-    // Create weights desc for convolution
-    memory_desc_t c_weights_d;
-    const bool with_groups = d_weights_d->ndims == src_md->ndims + 1;
-    CHECK(weights_axes_permutation(&c_weights_d, d_weights_d, with_groups));
-
-    return conv_desc_init(cd, prop_kind, alg_kind, src_md, &c_weights_d,
-            prop_kind != backward_weights ? &dd->bias_desc : nullptr, dst_md,
-            dd->strides, dd->dilates, dd->padding[0], dd->padding[1]);
-}
-
 struct conv_bwd_weights_t : public primitive_t {
     using primitive_t::primitive_t;
     struct pd_t : public bwd_weights_pd_t {
         using bwd_weights_pd_t::bwd_weights_pd_t;
 
         DECLARE_COMMON_PD_T(name_.c_str(), conv_bwd_weights_t);
-
-        status_t init_convolution(const impl::engine_t *engine) {
-            conv::desc_t cd;
-            CHECK(conv_descr_create(desc(), &cd));
-            primitive_attr_t conv_attr(*attr());
-            if (!conv_attr.is_initialized()) return status::out_of_memory;
-            primitive_desc_iterator_t it(
-                    engine, (op_desc_t *)&cd, &conv_attr, nullptr);
-            if (!it.is_initialized()) return status::out_of_memory;
-            conv_pd_ = *(++it);
-            return (conv_pd_) ? status::success : status::unimplemented;
-        }
 
         status_t init(const impl::engine_t *engine) {
             using namespace format_tag;
@@ -136,7 +74,9 @@ struct conv_bwd_weights_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_DT);
 
             VDISPATCH_DECONVOLUTION_SC(
-                    init_convolution(engine), "init_convolution()");
+                    create_conv_pd(conv_pd_, engine, this, data_type::undef,
+                            /* force_empty_bias = */ true),
+                    "create_conv_pd()");
             if (diff_weights_md_.format_kind == format_kind::any) {
                 VDISPATCH_DECONVOLUTION_SC(
                         weights_axes_permutation(&diff_weights_md_,

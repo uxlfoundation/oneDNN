@@ -15,11 +15,15 @@
 *******************************************************************************/
 
 #include <assert.h>
+
+#include "deconvolution_pd.hpp"
 #include "oneapi/dnnl/dnnl.h"
 #include "opdesc.hpp"
 #include "primitive_desc_iface.hpp"
+#include "primitive_desc_iterator.hpp"
 
 #include "c_types_map.hpp"
+#include "memory_desc.hpp"
 #include "type_helpers.hpp"
 #include "utils.hpp"
 
@@ -249,7 +253,94 @@ status_t deconv_attr_check(const deconvolution_desc_t &desc,
     return status::success;
 }
 
+status_t conv_descr_create(convolution_desc_t &cd,
+        const deconvolution_desc_t &dd, const memory_desc_t *bias_md,
+        data_type_t src_dt) {
+    using namespace prop_kind;
+    alg_kind_t alg_kind = dd.alg_kind == alg_kind::deconvolution_direct
+            ? alg_kind::convolution_direct
+            : alg_kind::convolution_winograd;
+
+    const memory_desc_t *src_md, *dst_md, *d_weights_d;
+    memory_desc_t src_md_patched;
+    prop_kind_t prop_kind;
+
+    if (utils::one_of(dd.prop_kind, forward_training, forward_inference)) {
+        prop_kind = backward_data;
+        assert(src_dt != data_type::undef);
+        CHECK(memory_desc_init_by_md_and_dt(
+                src_md_patched, dd.dst_desc, src_dt));
+        src_md = &src_md_patched;
+        dst_md = &dd.src_desc;
+        d_weights_d = &dd.weights_desc;
+    } else if (dd.prop_kind == backward_data) {
+        assert(src_dt == data_type::undef);
+        prop_kind = forward_training;
+        src_md = &dd.diff_dst_desc;
+        dst_md = &dd.diff_src_desc;
+        d_weights_d = &dd.weights_desc;
+    } else {
+        assert(src_dt == data_type::undef);
+        prop_kind = dd.prop_kind;
+        src_md = &dd.diff_dst_desc;
+        dst_md = &dd.src_desc;
+        d_weights_d = &dd.diff_weights_desc;
+    }
+
+    /* create weights desc for convolution by swapping OC and IC axes */
+    memory_desc_t c_weights_d;
+    const bool with_groups = d_weights_d->ndims == src_md->ndims + 1;
+    int perm[DNNL_MAX_NDIMS] {}; // deconv to conv weight permutation
+    for (int d = 0; d < DNNL_MAX_NDIMS; ++d)
+        perm[d] = d;
+    nstl::swap(perm[0 + with_groups], perm[1 + with_groups]);
+    CHECK(memory_desc_permute_axes(c_weights_d, *d_weights_d, perm));
+
+    return conv_desc_init(&cd, prop_kind, alg_kind, src_md, &c_weights_d,
+            bias_md, dst_md, dd.strides, dd.dilates, dd.padding[0],
+            dd.padding[1]);
+}
+
 } // namespace
+
+namespace dnnl {
+namespace impl {
+
+status_t create_conv_pd(std::shared_ptr<primitive_desc_t> &conv_pd,
+        const engine_t *engine, const deconvolution_pd_t *deconv_pd,
+        data_type_t src_dt, bool force_empty_bias,
+        bool allow_wei_compensation) {
+    // The nested convolution is created with default attributes: forward
+    // deconvolution applies post-ops and/or bias afterwards, and backward
+    // deconvolution does not support attributes.
+    primitive_attr_t conv_attr;
+
+    const memory_desc_t *bias_md = nullptr;
+    if (!force_empty_bias && deconv_pd->with_bias())
+        bias_md = deconv_pd->invariant_bia_md();
+
+    convolution_desc_t cd;
+    CHECK(conv_descr_create(cd, *deconv_pd->desc(), bias_md, src_dt));
+
+    primitive_desc_iterator_t it(engine, (op_desc_t *)&cd, &conv_attr, nullptr);
+    if (!it.is_initialized()) return status::out_of_memory;
+
+    while (++it != it.end()) {
+        conv_pd = *it;
+        // The nested convolution is expected to produce plain weights: the
+        // deconvolution reorders them itself and does not expect any weights
+        // compensation to be applied. Skip implementations that request extra
+        // weights handling unless the caller explicitly allows it.
+        if (!allow_wei_compensation
+                && conv_pd->invariant_wei_md()->extra.flags != 0)
+            continue;
+        return status::success;
+    }
+    return status::unimplemented;
+}
+
+} // namespace impl
+} // namespace dnnl
 
 status_t dnnl_deconvolution_forward_primitive_desc_create(
         primitive_desc_iface_t **primitive_desc_iface, engine_t *engine,

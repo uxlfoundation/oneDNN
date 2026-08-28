@@ -40,7 +40,26 @@
 namespace dnnl {
 namespace impl {
 
+struct deconvolution_pd_t;
 struct deconvolution_fwd_pd_t;
+
+// Creates the nested convolution primitive descriptor used to implement the
+// deconvolution `deconv_pd`, iterating convolution implementations and
+// selecting the first suitable one. The nested convolution is created with
+// default attributes: forward deconvolution applies post-ops and/or bias
+// afterwards, and backward deconvolution does not support attributes. `src_dt`
+// enforces the convolution diff_src (i.e. deconvolution dst) data type and is
+// only meaningful for the forward (deconvolution) prop_kind. When
+// `force_empty_bias` is false and the deconvolution has a bias, the convolution
+// is created with that bias; otherwise it is created without one, leaving bias
+// handling to the caller. By default implementations that request weights
+// compensation (or any other weights extra flags) are skipped since the
+// deconvolution does not expect compensation to be applied; set
+// `allow_wei_compensation` to true to accept them.
+status_t create_conv_pd(std::shared_ptr<primitive_desc_t> &conv_pd,
+        const engine_t *engine, const deconvolution_pd_t *deconv_pd,
+        data_type_t src_dt, bool force_empty_bias,
+        bool allow_wei_compensation = false);
 
 struct deconvolution_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::deconvolution;

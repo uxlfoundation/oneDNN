@@ -37,58 +37,16 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
+// Permutes the OC and IC axes (accounting for groups) of `i_md` into `o_md`.
+// Used to map a convolution weights layout back onto deconvolution weights.
 static status_t weights_axes_permutation(
         memory_desc_t *o_md, const memory_desc_t *i_md, bool with_groups) {
-    int perm[DNNL_MAX_NDIMS] {}; // deconv to conv weight permutation
+    int perm[DNNL_MAX_NDIMS] {}; // conv to deconv weight permutation
     for (int d = 0; d < DNNL_MAX_NDIMS; ++d)
         perm[d] = d;
     nstl::swap(perm[0 + with_groups], perm[1 + with_groups]);
 
     return memory_desc_permute_axes(*o_md, *i_md, perm);
-}
-
-static status_t conv_descr_create(const deconvolution_desc_t *dd,
-        convolution_desc_t *cd, const memory_desc_t *bias_md = nullptr,
-        data_type_t src_dt = data_type::undef) {
-    using namespace prop_kind;
-    alg_kind_t alg_kind = dd->alg_kind == alg_kind::deconvolution_direct
-            ? alg_kind::convolution_direct
-            : alg_kind::convolution_winograd;
-
-    const memory_desc_t *src_md, *dst_md, *d_weights_d;
-    memory_desc_t src_md_patched;
-    prop_kind_t prop_kind;
-
-    if (utils::one_of(dd->prop_kind, forward_training, forward_inference)) {
-        prop_kind = backward_data;
-        assert(src_dt != data_type::undef);
-        CHECK(memory_desc_init_by_md_and_dt(
-                src_md_patched, dd->dst_desc, src_dt));
-        src_md = &src_md_patched;
-        dst_md = &dd->src_desc;
-        d_weights_d = &dd->weights_desc;
-    } else if (dd->prop_kind == backward_data) {
-        assert(src_dt == data_type::undef);
-        prop_kind = forward_training;
-        src_md = &dd->diff_dst_desc;
-        dst_md = &dd->diff_src_desc;
-        d_weights_d = &dd->weights_desc;
-    } else {
-        assert(src_dt == data_type::undef);
-        prop_kind = dd->prop_kind;
-        src_md = &dd->diff_dst_desc;
-        dst_md = &dd->src_desc;
-        d_weights_d = &dd->diff_weights_desc;
-    }
-
-    /* create weights desc for convolution */
-    memory_desc_t c_weights_d;
-    const bool with_groups = d_weights_d->ndims == src_md->ndims + 1;
-    CHECK(weights_axes_permutation(&c_weights_d, d_weights_d, with_groups));
-
-    return conv_desc_init(cd, prop_kind, alg_kind, src_md, &c_weights_d,
-            bias_md, dst_md, dd->strides, dd->dilates, dd->padding[0],
-            dd->padding[1]);
 }
 
 struct ref_deconvolution_fwd_t : public primitive_t {
@@ -108,34 +66,21 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             using namespace format_tag;
             using namespace data_type;
 
-            // Create empty attributes for bwd_d conv to pick up the fastest
-            // impl available and apply post-ops and/or bias update later in
-            // this impl via simple loop.
-            primitive_attr_t conv_attr;
-
-            convolution_desc_t cd;
             // When no attributes were requested, try to find a bwd_d conv impl
             // which supports bias update in-place, if requested, in requested
             // dst_dt. If appropriate conv impl was not found, enforce f32
             // diff_src for conv for correct result. If attributes are
             // requested, enforce conv impl to return f32 output no matter what.
             if (attr()->has_default_values()) {
-                CHECK(conv_descr_create(
-                        desc(), &cd, weights_md(1), dst_md()->data_type));
-                primitive_desc_iterator_t it(
-                        engine, (op_desc_t *)&cd, &conv_attr, nullptr);
-                if (!it.is_initialized()) return status::out_of_memory;
-
-                while (++it != it.end()) {
-                    conv_pd_ = *it;
-                    if (with_bias()) {
-                        conv_supports_bias_ = utils::downcast<
-                                cpu_convolution_bwd_data_pd_t *>(conv_pd_.get())
-                                                      ->support_bias();
-                        if (!conv_supports_bias_) continue;
-                    }
-                    bool ok = conv_pd_->weights_md()->extra.flags == 0;
-                    if (ok) return status::success;
+                if (create_conv_pd(conv_pd_, engine, this, dst_md()->data_type,
+                            /* force_empty_bias = */ false)
+                        == status::success) {
+                    conv_supports_bias_ = with_bias()
+                            && utils::downcast<
+                                    const cpu_convolution_bwd_data_pd_t *>(
+                                    conv_pd_.get())
+                                       ->support_bias();
+                    return status::success;
                 }
             }
 
@@ -144,16 +89,10 @@ struct ref_deconvolution_fwd_t : public primitive_t {
                     && dst_md()->data_type != f64) {
                 // Enforce f32 dt for diff src and work with f32 output for bias
                 // update or post ops after conv execution.
-                CHECK(conv_descr_create(desc(), &cd, nullptr, data_type::f32));
-                primitive_desc_iterator_t it(
-                        engine, (op_desc_t *)&cd, &conv_attr, nullptr);
-                if (!it.is_initialized()) return status::out_of_memory;
-
-                while (++it != it.end()) {
-                    conv_pd_ = *it;
-                    bool ok = conv_pd_->weights_md()->extra.flags == 0;
-                    if (ok) return status::success;
-                }
+                if (create_conv_pd(conv_pd_, engine, this, data_type::f32,
+                            /* force_empty_bias = */ true)
+                        == status::success)
+                    return status::success;
             }
             return status::unimplemented;
         }
@@ -339,22 +278,8 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
         status_t init_convolution(const engine_t *engine) {
             using namespace types;
 
-            convolution_desc_t cd;
-            status_t status = conv_descr_create(desc(), &cd);
-            if (status != status::success) return status;
-            primitive_attr_t conv_attr(*attr());
-            if (!conv_attr.is_initialized()) return status::out_of_memory;
-
-            primitive_desc_iterator_t it(
-                    engine, (op_desc_t *)&cd, &conv_attr, nullptr);
-            if (!it.is_initialized()) return status::out_of_memory;
-            while (++it != it.end()) {
-                conv_pd_ = *it;
-                if (conv_pd_->weights_md()->extra.flags == 0)
-                    return status::success;
-            }
-
-            return status::unimplemented;
+            return create_conv_pd(conv_pd_, engine, this, data_type::undef,
+                    /* force_empty_bias = */ true);
         }
 
         status_t init(const engine_t *engine) {
@@ -447,33 +372,9 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
 
         status_t init_convolution(const engine_t *engine) {
             using namespace types;
-            using namespace format_tag;
 
-            convolution_desc_t cd;
-            status_t status = conv_descr_create(desc(), &cd);
-            if (status != status::success) return status;
-            primitive_attr_t conv_attr(*attr());
-            if (!conv_attr.is_initialized()) return status::out_of_memory;
-
-            primitive_desc_iterator_t it(
-                    engine, (op_desc_t *)&cd, &conv_attr, nullptr);
-            if (!it.is_initialized()) return status::out_of_memory;
-            while (++it != it.end()) {
-                conv_pd_ = *it;
-                bool bf16_ref_deconv_supports_bias = IMPLICATION(with_bias()
-                                && desc()->src_desc.data_type
-                                        == data_type::bf16,
-                        memory_desc_matches_one_of_tag(*conv_pd_->src_md(),
-                                utils::pick(ndims() - 3, ncw, nchw, ncdhw),
-                                utils::pick(ndims() - 3, nwc, nhwc, ndhwc),
-                                utils::pick(ndims() - 3, nCw16c, nChw16c,
-                                        nCdhw16c)));
-                if (conv_pd_->diff_weights_md()->extra.flags == 0
-                        && bf16_ref_deconv_supports_bias) {
-                    return status::success;
-                }
-            }
-            return status::unimplemented;
+            return create_conv_pd(conv_pd_, engine, this, data_type::undef,
+                    /* force_empty_bias = */ true);
         }
 
         status_t init(const engine_t *engine) {
@@ -558,7 +459,7 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
 
 private:
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
-    void compute_bwd_bias(float *diff_bias, const float *diff_dst) const;
+    void compute_bwd_bias(void *diff_bias, const void *diff_dst) const;
 
     template <data_type_t dbia_type, data_type_t ddst_type>
     void compute_bwd_bias_ncdhw(

@@ -569,8 +569,10 @@ status_t ref_deconvolution_bwd_data_t::execute(const exec_ctx_t &ctx) const {
 }
 
 void ref_deconvolution_bwd_weights_t::compute_bwd_bias(
-        float *diff_bias, const float *diff_dst) const {
+        void *diff_bias, const void *diff_dst) const {
     const memory_desc_wrapper diff_dst_d(pd()->diff_dst_md());
+    const auto ddst_dt = diff_dst_d.data_type();
+    const auto dbia_dt = pd()->diff_weights_md(1)->data_type;
 
     const auto G = pd()->G();
     const auto MB = pd()->MB();
@@ -588,9 +590,9 @@ void ref_deconvolution_bwd_weights_t::compute_bwd_bias(
         for (dim_t ow = 0; ow < OW; ++ow) {
             const auto d_dst_off = ref_conv_utils::get_data_off(
                     diff_dst_d, ndims, mb, g * OC + oc, od, oh, ow);
-            db += diff_dst[d_dst_off];
+            db += io::load_float_value(ddst_dt, diff_dst, d_dst_off);
         }
-        diff_bias[g * OC + oc] = db;
+        io::store_float_value(dbia_dt, db, diff_bias, g * OC + oc);
     });
 }
 
@@ -706,10 +708,7 @@ void ref_deconvolution_bwd_weights_t::compute_bias(
             compute_bwd_bias_nCdhwXc<dbia_type, ddst_type, 16>(
                     diff_bias, diff_dst);
             break;
-        default:
-            assert(!utils::one_of(data_type::bf16, dbia_type, ddst_type));
-            compute_bwd_bias((float *)diff_bias, (const float *)diff_dst);
-            break;
+        default: compute_bwd_bias(diff_bias, diff_dst); break;
     }
 }
 

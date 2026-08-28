@@ -160,7 +160,7 @@ struct gen_t : public primitive_t {
 
             // Check parameters.
             if (utils::one_of(d->c_type(), s32, f16, bf16, f32, u8, s8)
-                    && utils::one_of(d->a_type(), u8, s8, u4, s4)) {
+                    && utils::one_of(d->a_type(), u8, s8, u4, s4, u3)) {
                 VDISPATCH_GEMM(
                         (utils::one_of(d->b_type(), u8, s8) || wei_decomp_),
                         VERBOSE_UNSUPPORTED_DT);

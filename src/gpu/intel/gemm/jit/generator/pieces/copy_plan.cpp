@@ -756,6 +756,12 @@ void CopyPlan::split2DRegions()
         if (is2D(i.src0)) {
             if (i.dst.stride > 4)
                 continue;
+            // u3 sources are handled entirely by planInt3Upconvert(), which
+            // expects the group-addressed (non-2D) region produced by
+            // RegisterBlock::find()/blockRegion(); skip 2D-region splitting
+            // for them.
+            if (i.src0.type == Type::ngen_u3())
+                continue;
             if (i.flag) stub("Unsupported predication");
             int w = i.src0.width, vs = i.src0.vs, hs = i.src0.stride;
             bool splitH = (w * w >= i.simd || (hw == ngen::HW::Xe3p && i.dst.stride * w >= 8));
@@ -822,7 +828,14 @@ void CopyPlan::planTypeConversions()
             if (planShflUpconvertXe3p(i))
                 continue;
 
-        if (is4(st) && one_of(dt, {ngen_b16_h4x(), ngen_b16_l4x()}))
+        // u3 -> {u8, integer, hf/bf} upconversion, used for Block2DTranspose
+        // accesses. Handled before any other (width-based) generic logic
+        // below, since Type::ngen_u3() is a pseudo type with no consistent
+        // bit-width encoding (there is no native hardware register type for
+        // 3-bit elements).
+        if (st == Type::ngen_u3()) {
+            planInt3Upconvert(i);
+        } else if (is4(st) && one_of(dt, {ngen_b16_h4x(), ngen_b16_l4x()}))
             plan4BitShifts(i);
         else if (isInt4(st) && isInt4(dt) && st != dt) {
             copyThrough(i, DataType::w);
@@ -1426,6 +1439,289 @@ void CopyPlan::planEarlyInt4Upconversions()
     }
 
     mergeChanges();
+}
+
+// Rewrite u3 -> {u8, integer, hf/bf} upconversion.
+//
+// u3 register operands (as produced by RegisterBlock::find()/blockRegion()
+// for Block2DTranspose accesses -- this is the only access type
+// combination currently supported for u3) address the whole GEMM-tile
+// "row-spread" packing used by the 2D block message: a group of 8 elements
+// is packed into 3 bytes, one byte per row, at the same column offset,
+// i.e. columns are stride-4 (crosspack-4) and rows are 1 byte apart. The
+// per-group bit layout is: element e occupies bits [3e, 3e+2] of the
+// 24-bit (byte0, byte1, byte2) group:
+//   e0: byte0[2:0]   e1: byte0[5:3]   e2: byte0[7:6]|byte1[0:0]
+//   e3: byte1[3:1]   e4: byte1[6:4]   e5: byte1[7:7]|byte2[1:0]
+//   e6: byte2[4:2]   e7: byte2[7:5]
+//
+// Elements 2 and 5 straddle a byte boundary; all others are fully
+// contained within one byte. Since rows are stride-1 (contiguous columns
+// within a row), an entire row's worth of columns can be unpacked with a
+// single vectorized (SIMD width = i.simd) shift/mask sequence per lane (8
+// lanes total): lanes 0/1 (row 0, byte 0) and 6/7 (row 2, byte 2) share a
+// source row and are merged into one SIMD-2n shr sequence each using a
+// packed alternating shift immediate; lanes 3/4 (row 1) and the two
+// straddling lanes 2/5 are computed individually. Every element of the
+// n*8-element destination block is written by exactly one lane, so the
+// 0x7 mask is applied once, in bulk, over the whole block afterwards
+// rather than per-lane.
+//
+// If the ultimate destination type is not an integer type (e.g. hf/bf),
+// the unpacked values are written to finalDst reinterpreted as raw uw,
+// followed by a single bulk mov to the real destination type after
+// masking.
+void CopyPlan::planInt3Upconvert(CopyInstruction &i)
+{
+    if (i.src0.neg || i.hasCMod()) stub("Unsupported modifier");
+
+    struct U3Lane {
+        uint8_t byte, shift;        // low (or only) source row and shift amount
+        uint8_t hiByte, hiShift;    // high source row and shift amount, if straddling
+        bool straddle;
+    };
+    static const U3Lane lanes[8] = {
+        {0, 0, 0, 0, false},
+        {0, 3, 0, 0, false},
+        {0, 6, 1, 2, true},
+        {1, 1, 0, 0, false},
+        {1, 4, 0, 0, false},
+        {1, 7, 2, 1, true},
+        {2, 2, 0, 0, false},
+        {2, 5, 0, 0, false},
+    };
+
+    int n = i.simd;
+    if (n <= 0) stub("u3 upconversion requires a positive SIMD width.");
+    int grfBytes = GRF::bytes(hw);
+
+    // If the ultimate destination is an integer type, the unpacked value
+    // (0-7) is numerically correct in any integer width/signedness, so
+    // each lane's result can be written straight into finalDst; only
+    // genuinely non-integer destinations (e.g. hf/bf) require going
+    // through a raw-uw reinterpretation of finalDst followed by a
+    // converting mov.
+    bool directWrite = isInt(i.dst.type);
+    // Preserve the caller-requested dst stride (e.g. stride 2 to indicate a
+    // crosspack-2 destination) instead of forcing a packed (stride-1)
+    // layout; the unpacked values are then spread out accordingly.
+    CopyOperand finalDst = i.dst;
+
+    CopyOperand srcBase = i.src0;
+    srcBase.type = DataType::ub;
+
+    // Column pitch, in bytes: the width of the packed column quad within a
+    // row (see blockRegion(): u3 sources use a <ld;0,colPitchBytes> region,
+    // so srcBase.stride already holds this column pitch).
+    int colPitchBytes = srcBase.stride;
+
+    // Row stride, in bytes: the distance from a column's byte0 to the next
+    // row's byte0 for the same column (srcBase.vs holds this row pitch).
+    int rowStrideBytes = srcBase.vs * colPitchBytes;
+
+    // Add a literal (compile-time-known) raw byte offset to a scalar ub
+    // operand, handling overflow of the column quad (carried into the next
+    // row, rowStrideBytes away) as well as overflow into subsequent GRF
+    // registers.
+    auto addByteOffset = [&](CopyOperand op, int bytes) {
+        if ((op.offset % colPitchBytes + bytes) >= colPitchBytes)
+            op.offset = op.offset - (op.offset % colPitchBytes)
+                    + (op.offset % colPitchBytes + bytes) % colPitchBytes
+                    + rowStrideBytes;
+        else
+            op.offset += bytes;
+
+        int grfOffset = op.offset / grfBytes;
+        op.grf += grfOffset;
+        op.offset -= grfOffset * grfBytes;
+        return op;
+    };
+
+    CopyOperand rows[3];
+    rows[0] = srcBase;
+    rows[1] = addByteOffset(srcBase, 1);
+    rows[2] = addByteOffset(srcBase, 2);
+    for (auto &r : rows) r.stride = colPitchBytes;
+
+    // Lane pairs (0,1) and (6,7) are non-straddling lanes that read the
+    // *same* row (byte 0/2 respectively) and differ only in their shift
+    // amount; each such pair is handled as a single merged SIMD-2n shr
+    // sequence (1 op) instead of two separate SIMD-n sequences. The
+    // middle pair (3, 4 / row 1) is left unmerged, and lanes 2 and 5
+    // straddle two rows; all four are processed individually (1 op for
+    // non-straddling, 3 ops for straddling). Total: 2 merged pairs x 1 op
+    // + 2 unmerged lanes x 1 op + 2 straddling lanes x 3 op = 10 ops, plus
+    // 1 final and_ 0x7 applied across the whole destination block.
+    constexpr int totalOps = 10 + 1;
+    // When the destination isn't directly writable (!directWrite), one
+    // additional bulk mov converts the whole n*8-element masked block to
+    // the real destination type in a single shot.
+    constexpr int finalMovOps = 1;
+
+    // Reserve capacity up front: split()/splitMultiple() push into the
+    // shared `newInsns` vector, and a reallocation triggered by a later
+    // call would invalidate CopyInstruction* pointers obtained from
+    // earlier calls.
+    int nOpsNeeded = totalOps + (directWrite ? 0 : finalMovOps);
+    newInsns.reserve(newInsns.size() + nOpsNeeded - 1);
+
+    auto setOp = [&](CopyInstruction *ci, Opcode op, int simd, const CopyOperand &d, const CopyOperand &s0, const CopyOperand &s1) {
+        ci->op = op;
+        ci->simd = simd;
+        ci->dst = d;
+        ci->src0 = s0;
+        ci->src1 = s1;
+        ci->src2 = CopyOperand();
+        ci->sat = false;
+        ci->cmod = ConditionModifier::none;
+    };
+
+    // Scratch rows for the shift/or sequence of straddling lanes are
+    // strictly write-then-read within a single lane, so a pair of
+    // full-width temporaries (holding lo/hi scratch) suffices for both
+    // straddling lanes instead of allocating a fresh temporary each time.
+    auto tmp = newTemp(DataType::uw, n, 2);
+    auto tmpHi = newTemp(DataType::uw, n, 2);
+
+    // All ops needed across the 8 lanes come from a single splitMultiple
+    // call on the seed instruction, rather than splitting lane-by-lane.
+    // When the destination isn't directly writable (!directWrite), the
+    // extra final bulk-mov op is folded into that same splitMultiple call.
+    std::vector<CopyInstruction*> allOps;
+    if (directWrite) {
+        auto ops = splitMultiple<totalOps>(i);
+        allOps.assign(ops.begin(), ops.end());
+    } else {
+        auto ops = splitMultiple<totalOps + finalMovOps>(i);
+        allOps.assign(ops.begin(), ops.end());
+    }
+
+    int next = 0;
+
+    // Explicit crosspack-2 interleaving: each lane's row (all n columns) is
+    // unpacked in one shot, but its columns are not written densely on
+    // their own -- they are interleaved, column by column, with the row
+    // belonging to its pair partner (lanes 0&1, 2&3, 4&5, 6&7 -- the second
+    // element of each pair in the 8-lane group). The addressing stride
+    // used to place a lane's columns is always dstStride (the pair pitch).
+    int dstStride = finalDst.stride;
+    int type_size = 2;
+
+    // Compute the final (GRF-normalized) destination region for a single
+    // lane's n columns, given its position (pairIdx/parity) in the
+    // crosspack-2 interleaving scheme described above. When !directWrite,
+    // the type is overridden to raw uw, since that's what the (deferred
+    // masking, deferred converting) shr/shl/or_ instructions actually
+    // write -- the real dst type's bits are only materialized by the final
+    // converting mov, once, after the whole-block and_ mask.
+    auto computeFinalDstLane = [&](int lane) {
+        int pairIdx = lane / dstStride;
+        int parity  = lane % dstStride;
+        auto fd = finalDst;
+        fd.stride = dstStride;
+        fd.offset += pairIdx * n * fd.stride + parity;
+        int grfOffset = (fd.offset * type_size) / grfBytes;
+        fd.grf += grfOffset;
+        fd.offset -= ((grfOffset * grfBytes) / type_size);
+        if (!directWrite) fd.type = DataType::uw;
+        return fd;
+    };
+
+    // Absolute element index (in type_size units) of a GRF-normalized
+    // operand, used to find the raw element gap between two lanes' final
+    // destinations (which need not be adjacent, e.g. lanes 3 & 4).
+    auto elemIndex = [&](const CopyOperand &op) {
+        return (int64_t) op.grf * (grfBytes / type_size) + op.offset;
+    };
+
+    // Merge two non-straddling lanes that read the same source row into a
+    // single SIMD-2n shr instruction. The source is read twice per column
+    // (via a <rowStride;2,0> region) so each output pair sees the same row
+    // byte; the two shift amounts are packed into a single alternating
+    // (loShift, hiShift, loShift, hiShift, ...) immediate via
+    // zipImmediates() -- the same mechanism the generic zip pass uses for
+    // e.g. int4 unpacking -- and the destination uses an explicit
+    // <dstStride;2,hstride> region so each lane's n columns land at their
+    // true (possibly non-adjacent) final location. The 0x7 mask is applied
+    // later, once, over the whole destination block.
+    auto mergeRowPair = [&](int laneA, int laneB, CopyInstruction *shrOp) {
+        const auto &LA = lanes[laneA];
+        const auto &LB = lanes[laneB];
+        const auto &rowLo = rows[LA.byte];
+
+        auto dstA = computeFinalDstLane(laneA);
+        auto dstB = computeFinalDstLane(laneB);
+        int hstride = int(elemIndex(dstB) - elemIndex(dstA));
+
+        auto dstMerged = dstA;
+        dstMerged.width = 2;
+        dstMerged.stride = hstride;
+        dstMerged.vs = dstStride;
+
+        auto rowDup = rowLo;
+        rowDup.width = 2;
+        rowDup.vs = rowLo.stride;
+        rowDup.stride = 0;
+
+        CopyOperand shiftLo(int(LA.shift)), shiftHi(int(LB.shift));
+        shiftLo.type = shiftHi.type = DataType::uw;
+        auto packedShift = zipImmediates(shiftLo, shiftHi, 1);
+        if (!packedShift) stub("Failed to pack u3 shift immediates.");
+
+        setOp(shrOp, Opcode::shr, 2 * n, dstMerged, rowDup, packedShift);
+    };
+
+    // Lanes 0&1 (row 0) and 6&7 (row 2) each merge into one SIMD-2n shr.
+    // The middle pair (3, 4 / row 1) is left unmerged and processed
+    // individually below, alongside the straddling lanes.
+    static const int mergePairs[2][2] = {{0, 1}, {6, 7}};
+    for (auto &pr : mergePairs)
+        mergeRowPair(pr[0], pr[1], allOps[next++]);
+
+    // Lanes 2, 3, 4, and 5 are processed individually: 2 and 5 straddle two
+    // rows (shr/shl/or_, 3 ops each), while 3 and 4 (the middle row-1 pair)
+    // are left unmerged (a single shr, like any other non-straddling
+    // lane).
+    for (int lane : {2, 3, 4, 5}) {
+        const auto &L = lanes[lane];
+        auto finalDstLane = computeFinalDstLane(lane);
+        const auto &rowLo = rows[L.byte];
+
+        if (!L.straddle) {
+            setOp(allOps[next++], Opcode::shr, n, finalDstLane, rowLo, CopyOperand(int(L.shift)));
+        } else {
+            const auto &rowHi = rows[L.hiByte];
+            tmp.offset = finalDstLane.offset;
+            tmpHi.offset = finalDstLane.offset;
+            setOp(allOps[next++], Opcode::shr, n, tmp, rowLo, CopyOperand(int(L.shift)));
+            setOp(allOps[next++], Opcode::shl, n, tmpHi, rowHi, CopyOperand(int(L.hiShift)));
+            setOp(allOps[next++], Opcode::or_, n, finalDstLane, tmp, tmpHi);
+        }
+    }
+
+    // Every lane above wrote its unmasked shr/or_ result straight to its
+    // final destination slot -- reinterpreted in place as raw uw when
+    // !directWrite -- and, between all 8 lanes, every element of the
+    // n*8-element destination block gets written exactly once. Apply the
+    // 0x7 mask once here, in a single and_ spanning the whole block --
+    // legalizeSIMD() will later fracture this into hardware-legal SIMD
+    // chunks (e.g. SIMD32) as needed, so there's no need to chunk it
+    // manually here.
+    auto finalDstFlat = finalDst;
+    finalDstFlat.stride = 1;
+    if (!directWrite) finalDstFlat.type = DataType::uw;
+    setOp(allOps[next++], Opcode::and_, n * 8, finalDstFlat, finalDstFlat, CopyOperand(int(7)));
+
+    // When the real destination type isn't itself an integer type (e.g.
+    // hf/bf), the masked uw values now sitting in finalDst's memory must
+    // be converted, in place, to the real destination type. This single
+    // bulk mov (uw -> i.dst.type) runs once, after the whole-block and_
+    // above, instead of one mov per lane/pair.
+    if (!directWrite) {
+        auto realDstFlat = finalDst;
+        realDstFlat.stride = 1;
+        setOp(allOps[next++], Opcode::mov, n * 8, realDstFlat, finalDstFlat, CopyOperand());
+    }
 }
 
 // Rewrite int4 -> int upconversion using byte operations.

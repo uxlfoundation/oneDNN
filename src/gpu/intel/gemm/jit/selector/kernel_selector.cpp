@@ -273,6 +273,26 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
                     return true;
                 };
 
+                // u3 has no dedicated catalog entries (no native hardware
+                // register representation for 3-bit data; u3 operands are
+                // unpacked to/from u8 via CopyPlan::planInt3Upconvert
+                // around the matched kernel). Fall back to u4 ('f') kernel
+                // strategies, since both are sub-byte compressed integer
+                // types requiring similar unroll/copy handling.
+                bool u3Fallback = false;
+                if (iequal(p.selector.precisions[0], 'k')) {
+                    p.selector.precisions[0] = "f";
+                    u3Fallback = true;
+                }
+                if (iequal(p.selector.precisions[1], 'k')) {
+                    p.selector.precisions[1] = "f";
+                    u3Fallback = true;
+                }
+                if (u3Fallback) {
+                    changed = true;
+                    continue;
+                }
+
                 if (match("FO"))
                     p.selector.precisions[0] = "[FO]";
                 else if (match("BB"))
@@ -337,6 +357,12 @@ MatchParamsBase::MatchParamsBase(ngen::HW hw, bool systolicAvailable, const ngen
     }
     if(problem.Tbo.is4() || problem.Tb_scale.is4()){
         unrollReq[LoopN] = 2;
+    }
+    if(problem.Tao.is3() || problem.Ta_scale.is3()){
+        unrollReq[LoopM] = 8;
+    }
+    if(problem.Tbo.is3() || problem.Tb_scale.is3()){
+        unrollReq[LoopN] = 8;
     }
 
     ReqBDPASDims = problem.preferBDPAS();

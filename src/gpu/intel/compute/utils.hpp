@@ -34,6 +34,9 @@ namespace gpu {
 namespace intel {
 namespace compute {
 
+// Minimum alignment for GPU buffer base pointers for non-reference kernels.
+static constexpr int min_buffer_alignment = 64;
+
 class range_t {
 public:
     static constexpr size_t max_ndims = 3;

@@ -188,9 +188,8 @@ public:
             = 0;
 
     status_t check_alignment(const void *ptr, int arg_idx) const {
-        const int min_alignment = 64;
         auto addr = reinterpret_cast<uint64_t>(ptr);
-        if (addr % min_alignment == 0) return status::success;
+        if (addr % min_buffer_alignment == 0) return status::success;
         // Reference kernels support element-wise alignment.
         if (name().find("ref_") == 0) return status::success;
         // Report a warning otherwise.

@@ -138,6 +138,9 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
         case AccessType::ChannelScattered:
         case AccessType::Scattered:
         {
+            if (T.is3())
+                stub("u3 is only supported with Block2DTranspose access.");
+
             bool channelScattered = (accessType == AccessType::ChannelScattered);
 
             // Detect large crosspack case.
@@ -339,6 +342,9 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
         case AccessType::Block:
         case AccessType::PseudoBlock:
         {
+            if (T.is3())
+                stub("u3 is only supported with Block2DTranspose access.");
+
             // Three types of block messages:
             //    block_oword: 16 byte align, BLK masking (= dw)
             //  aligned_oword:  4 byte align, no masking, read only
@@ -657,10 +663,20 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                 if ((Y * Tblock) % 4) hw_unsupported();
                 maxXBlock = std::min(maxXBlock, 16);
             } else {
+                // find()/blockRegion()'s u3 group addressing assumes the
+                // row-spread packing produced by a transposing 2D block
+                // message; a plain (non-transpose) Block2D message doesn't
+                // produce that layout, so u3 isn't supported here.
+                if (T.is3() && !prefetch)
+                    stub("u3 is only supported with Block2DTranspose access.");
                 if (Tblock.paddedSize() > 8) Tblock = Type::u64;
                 crosspack = atype.crosspack;
             }
-            if ((X * T) % 4) hw_unsupported();
+            if (T.is3()) {
+                // u3 is not addressable at native GRF granularity (see
+                // RegisterBlock::find()), so the byte-alignment check below
+                // (which assumes X*T lands on a whole byte) doesn't apply.
+            } else if ((X * T) % 4) hw_unsupported();
 
             int minAlign = block2DMinAlignment(hw, atype, astrategy);
             if (atype.alignment % minAlign) hw_unsupported();
@@ -711,16 +727,35 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             else if (atype.crosspack == icrosspack)
                 crosspack = 1;
             else return;
+            // u3's packed group addressing (see RegisterBlock::find()) is
+            // incompatible with crosspack rearrangement. crosspack is
+            // instead repurposed to record the 4-byte column pitch of the
+            // packed group layout, consumed directly by find()/blockRegion()
+            // below instead of an unrelated hardcoded constant.
+            if (T.is3() && transpose) crosspack = 4;
 
             // Convert size from underlying type to our actual type.
             xblock = (xblock * Tblock) / T;
 
             simdSize = 1;
             ld = roundup_pow2(transpose ? yblock : xblock);
-            ebytes = Tblock.paddedSize();
+            // u3 has no native per-element hardware register type, so the
+            // block message is described in terms of whole 8-element/3-byte
+            // packing groups: ebytes must reflect the column pitch of that
+            // packing (crosspack, forced to 4 above), not Tblock's own byte
+            // size.
+            ebytes = T.is3() ? crosspack : Tblock.paddedSize();
             extra = T.bits();
             auto bytes = align_up((colMajor ? cblock : rblock) / count, crosspack) * ld * count * T;
+            // u3's row pitch (ld * T, in bytes) is not necessarily a power
+            // of 2 even though ld itself is, since u3 is 3 bits/element.
+            // Round the byte pitch up to a power of 2 so the block message's
+            // register footprint is sized correctly.
+            if (T.is3())
+                bytes = ((colMajor ? cblock : rblock) / count) * roundup_pow2(ld * T) * count;
             msgRegs = GRF::bytesToGRFs(hw, bytes);
+            if (T.is3() && vnni)
+                stub("u3 does not support Block2DVNNI access; use Block2D or Block2DTranspose instead.");
             if (vnni && (T.bits() < 8)) {
                 byteGlue = true;
                 crosspack /= T.perByte();
@@ -738,6 +773,9 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             break;
         }
         case AccessType::CacheLine: {
+            if (T.is3())
+                stub("u3 is only supported with Block2DTranspose access.");
+
             // Let X be the contiguous dimension in memory, Y the scattered dimension.
             int x = colMajor ? r : c;
             int y = colMajor ? c : r;
@@ -965,6 +1003,41 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
     int xx = colMajor ? ii : jj;
     int yy = colMajor ? jj : ii;
     int nx = colMajor ? nr : nc;
+
+    // u3 elements cannot be individually addressed (no native 8/16/32-bit
+    // hardware register type for 3-bit data, and 8 elements/3 bytes doesn't
+    // align to any single power-of-2 region). Instead, return the start of
+    // the (byte-aligned) 3-byte group of 8 elements containing (ii, jj),
+    // tagged with the pseudo-type Type::ngen_u3(); this operand is only
+    // legal as the source of a mov, handled by CopyPlan::planInt3Upconvert,
+    // which unpacks whole groups into the real destination type before any
+    // other use.
+    if (T.is3()) {
+        int elIndex = xx + yy * ld;
+        if (elIndex & 7)
+            stub("u3 element index must be aligned to an 8-element (3-byte) group boundary.");
+
+        int byteOff;
+        if (colMajor) {
+            // Groups of 8 rows are packed into 3 bytes per column, and
+            // those 3-byte columns are laid out in crosspack-byte quads
+            // down the ld dimension (crosspack holds the column pitch, in
+            // bytes, of this packing -- see Block2D bytes/ebytes
+            // calculation above).
+            int group = yy / 8;
+            byteOff = (group * 3 / crosspack) * (ld * crosspack)
+                    + (group * 3 % crosspack) + xx * crosspack;
+        } else {
+            byteOff = (elIndex >> 3) * 3;
+        }
+        byteOff += offsetBytes;
+
+        int consecutive;
+        auto result = regs.sub(hw, byteOff, Te.ngen(), &consecutive);
+        if (nelems) *nelems = nx - xx;
+        return result;
+    }
+
     int ne = nx - xx;
 
     int yyx = yy % crosspack;
@@ -996,6 +1069,15 @@ static RegisterRegion blockRegion(Type T, const Subregister &reg, const Register
                                   int rr, int cc, int *nelems, int cxComponent, bool allow2D)
 {
     auto cp = block.crosspack;
+
+    // u3 operands from find() reference the start of a packed 3-byte group
+    // (tagged with the ngen_u3() pseudo-type); return them with the region
+    // matching that layout -- a <ld;0,cp> region for colMajor (row-spread
+    // packing, cp == crosspack == the packed group's column pitch in
+    // bytes), or a plain stride of 1 otherwise -- which is what
+    // CopyPlan::planInt3Upconvert expects as its only legal source region.
+    if (T.is3())
+        return block.colMajor ? reg(block.ld, 0, cp) : reg(1);
 
     if (block.byteGlue && allow2D && T.bits() < 8) {
         if (nelems)

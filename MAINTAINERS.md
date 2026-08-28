@@ -114,19 +114,10 @@ Team: @uxlfoundation/onednn-arch
 | -----------------  | --------------------- | ----------------- | ---------- |
 | Denis Samoilov     | @densamoilov          | Intel Corporation | Maintainer |
 | Dmitry Zarukin     | @dzarukin             | Intel Corporation | Maintainer |
+| Tao Lv             | @TaoLv                | Intel Corporation | Maintainer |
 | Vadim Pirogov      | @vpirogov             | Intel Corporation | Maintainer |
 | Ankit Manerikar    | @avmanerikar          | Intel Corporation | Code Owner |
 | Maria Zhukova      | @mzhukova             | Intel Corporation | Code Owner |
-
-## Graph API
-
-Team: @uxlfoundation/onednn-graph
-
-| Name               | Github ID             | Affiliation       | Role       |
-| ------------------ | --------------------- | ----------------- | ---------- |
-| Tao Lv             | @TaoLv                | Intel Corporation | Maintainer |
-| Rong Zhang         | @rongzha1             | Intel Corporation | Code Owner |
-| Yixin Bao          | @ElaineBao            | Intel Corporation | Code Owner |
 
 ## CPU Engine
 

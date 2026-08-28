@@ -2110,7 +2110,7 @@ void Generator<hw>::convert(const GRFMultirange &range, Type Told, Type Tnew, co
 {
     if (Told == Tnew)
         return;
-    if (Told.isInt4() || Tnew.isInt4()) stub();
+    if (Told.isInt4() || Tnew.isInt4() || Told.isInt3() || Tnew.isInt3()) stub();
     if (Told == Type::hf8) stub();
 
     // Special path: x32->FP.

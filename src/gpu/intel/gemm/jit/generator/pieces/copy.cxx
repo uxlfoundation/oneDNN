@@ -120,7 +120,11 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
     CopyPlan plan(hw, strategy.systolicAvailable);
 
     for (auto &sblock : layoutSrc) {
-    for (int eoffY = 0; eoffY < sblock.*ny; eoffY++) {
+    // u3 groups 8 consecutive elements of the outer (slow) dimension into a
+    // single packed 3-byte unit (see RegisterBlock::find()); iterate the
+    // outer loop a whole group at a time so each CopyPlan mov operates on
+    // one or more complete groups, matching what planInt3Upconvert expects.
+    for (int eoffY = 0; eoffY < sblock.*ny; eoffY += (Ts.is3() ? 8 : 1)) {
     for (int eoffX = 0; eoffX < sblock.*nx;) {
         auto eoffR = sblock.colMajor ? eoffX : eoffY;
         auto eoffC = sblock.colMajor ? eoffY : eoffX;

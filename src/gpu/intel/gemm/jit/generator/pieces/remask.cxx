@@ -36,12 +36,17 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
 
     if (setup) {
         bool halfByte = T.is4();
-        if (halfByte) {
-            nq = div_up(nq, 2);
-            T = Type::u8;
-        }
+        // u3 packs 8 elements into 3 contiguous bytes with no native
+        // sub-byte hardware type (see Type::ngen_u3()), so exact per-element
+        // remainder masking isn't possible. Instead, mask at whole-group
+        // (8-element) granularity: build one 0xFF/0x00 byte per group of 8
+        // elements using the same machinery as the u4 (halfByte) path below.
+        bool thirdByte = T.is3();
+        if (halfByte) nq = div_up(nq, 2);
+        if (halfByte || thirdByte) T = Type::u8;
 
-        auto masks = state.remaskRegs[index] = state.ra.alloc_range(div_up(T.paddedSize(), 2) * div_up(nq * 2, GRF::bytes(hw)));
+        auto maskAlloc = state.ra.alloc_range(div_up(T.paddedSize(), 2) * div_up(nq * 2, GRF::bytes(hw)));
+        auto masks = state.remaskRegs[index] = maskAlloc;
         int ne16 = elementsPerGRF(hw, Type::u16);
         int n16 = std::min(nq, ne16);
         int ne = elementsPerGRF(hw, T);
@@ -88,8 +93,9 @@ void Generator<hw>::setupTeardownRemask(Type T, int index, bool setup, int nq, S
                         asr(simd, r1, r1, 15);
                     });
                 }
-                if (T.paddedSize() == 1) for (int q0 = 0; q0 < nq; q0 += n16)
-                    mov(n16, masks[q0 / ne].ub(q0 % ne)(1), masks[q0 / n16].ub(1)(2));
+                if (T.paddedSize() == 1)
+                    for (int q0 = 0; q0 < nq; q0 += n16)
+                        mov(n16, masks[q0 / ne].ub(q0 % ne)(1), masks[q0 / n16].ub(1)(2));
                 break;
             case 4:
                 for (int qq0 = div_up(nq, ne16) - 1; qq0 >= 1; qq0--) {
@@ -137,11 +143,11 @@ void Generator<hw>::remaskLayout(int index, bool column,
 
                 auto necp = ne * crosspack;
                 necp = std::min(necp, 2 * elementsPerGRF(hw, Tr));
-                if ((necp * Tr) & 3) stub();
+                if (!T.is3() && ((necp * Tr) & 3)) stub();
 
                 int mstride;
                 Type mtype = Type::u32;
-                int dwCrosspack = std::max(1, 4 / Tr);
+                int dwCrosspack = T.is3() ? crosspack : std::max(1, 4 / Tr);
 
                 if (colMajor != column && crosspack == 1)
                     mstride = 1;

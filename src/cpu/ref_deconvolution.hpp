@@ -37,18 +37,6 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 
-// Permutes the OC and IC axes (accounting for groups) of `i_md` into `o_md`.
-// Used to map a convolution weights layout back onto deconvolution weights.
-static status_t weights_axes_permutation(
-        memory_desc_t *o_md, const memory_desc_t *i_md, bool with_groups) {
-    int perm[DNNL_MAX_NDIMS] {}; // conv to deconv weight permutation
-    for (int d = 0; d < DNNL_MAX_NDIMS; ++d)
-        perm[d] = d;
-    nstl::swap(perm[0 + with_groups], perm[1 + with_groups]);
-
-    return memory_desc_permute_axes(*o_md, *i_md, perm);
-}
-
 struct ref_deconvolution_fwd_t : public primitive_t {
     struct pd_t : public cpu_deconvolution_fwd_pd_t {
         using cpu_deconvolution_fwd_pd_t::cpu_deconvolution_fwd_pd_t;
@@ -131,8 +119,11 @@ struct ref_deconvolution_fwd_t : public primitive_t {
             CHECK(init_convolution(engine));
 
             if (weights_md_.format_kind == format_kind::any)
-                CHECK(weights_axes_permutation(
-                        &weights_md_, conv_pd_->weights_md(), with_groups()));
+                weights_md_
+                        = utils::downcast<convolution_pd_t *>(conv_pd_.get())
+                                  ->weights_md_with_permute_channels();
+            VDISPATCH_DECONVOLUTION(!types::is_zero_md(&weights_md_),
+                    VERBOSE_DESC_CREATION_FAIL, "weights");
             if (src_md_.format_kind == format_kind::any)
                 src_md_ = *conv_pd_->diff_dst_md();
             if (dst_md_.format_kind == format_kind::any) {
@@ -308,8 +299,11 @@ struct ref_deconvolution_bwd_data_t : public primitive_t {
 
             CHECK(init_convolution(engine));
             if (weights_md_.format_kind == format_kind::any)
-                CHECK(weights_axes_permutation(
-                        &weights_md_, conv_pd_->weights_md(), with_groups()));
+                weights_md_
+                        = utils::downcast<convolution_pd_t *>(conv_pd_.get())
+                                  ->weights_md_with_permute_channels();
+            VDISPATCH_DECONVOLUTION(!types::is_zero_md(&weights_md_),
+                    VERBOSE_DESC_CREATION_FAIL, "weights");
             if (diff_src_md_.format_kind == format_kind::any)
                 diff_src_md_ = *conv_pd_->dst_md();
             if (diff_dst_md_.format_kind == format_kind::any)
@@ -414,8 +408,11 @@ struct ref_deconvolution_bwd_weights_t : public primitive_t {
 
             CHECK(init_convolution(engine));
             if (diff_weights_md_.format_kind == format_kind::any)
-                CHECK(weights_axes_permutation(&diff_weights_md_,
-                        conv_pd_->diff_weights_md(), with_groups()));
+                diff_weights_md_
+                        = utils::downcast<convolution_pd_t *>(conv_pd_.get())
+                                  ->weights_md_with_permute_channels();
+            VDISPATCH_DECONVOLUTION(!types::is_zero_md(&diff_weights_md_),
+                    VERBOSE_DESC_CREATION_FAIL, "weights");
             if (src_md_.format_kind == format_kind::any)
                 src_md_ = *conv_pd_->diff_dst_md();
             if (diff_dst_md_.format_kind == format_kind::any)

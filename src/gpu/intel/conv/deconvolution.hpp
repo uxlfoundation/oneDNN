@@ -78,10 +78,12 @@ struct conv_bwd_weights_t : public primitive_t {
                             /* force_empty_bias = */ true),
                     "create_conv_pd()");
             if (diff_weights_md_.format_kind == format_kind::any) {
-                VDISPATCH_DECONVOLUTION_SC(
-                        weights_axes_permutation(&diff_weights_md_,
-                                conv_pd_->diff_weights_md(), with_groups()),
-                        "weights_axes_permutation()");
+                diff_weights_md_
+                        = utils::downcast<dnnl::impl::convolution_pd_t *>(
+                                conv_pd_.get())
+                                  ->weights_md_with_permute_channels();
+                VDISPATCH_DECONVOLUTION(!types::is_zero_md(&diff_weights_md_),
+                        "weights_md_with_permute_channels()");
             }
             if (src_md_.format_kind == format_kind::any)
                 src_md_ = *conv_pd_->diff_dst_md();

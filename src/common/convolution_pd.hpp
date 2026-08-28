@@ -178,6 +178,20 @@ struct convolution_pd_t : public primitive_desc_t {
         return s_d.has_zero_dim() || d_d.has_zero_dim();
     }
 
+    // Used by the deconvolution logic to set formats for deconv weights desc.
+    memory_desc_t weights_md_with_permute_channels() const {
+        memory_desc_t perm_wei_md;
+        const auto &wei_md = *invariant_weights_md();
+
+        int perm[DNNL_MAX_NDIMS] {};
+        for (int d = 0; d < DNNL_MAX_NDIMS; ++d)
+            perm[d] = d;
+        nstl::swap(perm[0 + with_groups()], perm[1 + with_groups()]);
+        auto st = memory_desc_permute_axes(perm_wei_md, wei_md, perm);
+        if (st != status::success) return glob_zero_md;
+        return perm_wei_md;
+    }
+
 protected:
     convolution_desc_t desc_;
     const convolution_fwd_pd_t *hint_fwd_pd_;

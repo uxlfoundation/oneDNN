@@ -134,9 +134,12 @@ status_t brgemm_convolution_bwd_t<isa>::pd_t::init(const engine_t *engine) {
     }
     if (it == it.end()) return status::unimplemented;
 
-    if (weights_md_.format_kind == format_kind::any)
-        CHECK(weights_axes_permutation(
-                &weights_md_, fwd_pd_->weights_md(), with_groups()));
+    if (weights_md_.format_kind == format_kind::any) {
+        weights_md_ = utils::downcast<convolution_pd_t *>(fwd_pd_.get())
+                              ->weights_md_with_permute_channels();
+        VDISPATCH_CONV(!types::is_zero_md(&weights_md_),
+                VERBOSE_DESC_CREATION_FAIL, "weights");
+    }
     if (diff_src_md_.format_kind == format_kind::any)
         diff_src_md_ = *fwd_pd_->dst_md();
     if (diff_dst_md_.format_kind == format_kind::any)

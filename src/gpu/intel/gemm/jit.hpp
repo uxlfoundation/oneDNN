@@ -518,8 +518,14 @@ struct gen_t : public primitive_t {
                         md, md.ndims, dims, md.data_type, strides));
                 return status::success;
             };
-            if (a_any) CHECK(cache_line_align_md(a_desc));
-            if (b_any) CHECK(cache_line_align_md(b_desc));
+            // u3 is only supported with a natural (non-cache-line-aligned)
+            // Block2DTranspose layout; cache_line_align_md's stride
+            // computation assumes a whole-byte kernel type and isn't valid
+            // for u3.
+            if (a_any && a_desc.data_type != u3)
+                CHECK(cache_line_align_md(a_desc));
+            if (b_any && b_desc.data_type != u3)
+                CHECK(cache_line_align_md(b_desc));
 
             if ((is_f16 || is_bf16) && is_xe_hp_plus && use_tn) {
                 if (a_any && b_any) {

@@ -64,10 +64,11 @@ struct ref_deconvolution_fwd_t : public primitive_t {
                             /* force_empty_bias = */ false)
                         == status::success) {
                     conv_supports_bias_ = with_bias()
-                            && utils::downcast<
-                                    const cpu_convolution_bwd_data_pd_t *>(
-                                    conv_pd_.get())
-                                       ->support_bias();
+                            && IMPLICATION(!is_conv_fwd(),
+                                    utils::downcast<
+                                            const cpu_convolution_bwd_data_pd_t
+                                                    *>(conv_pd_.get())
+                                            ->support_bias());
                     return status::success;
                 }
             }
@@ -118,19 +119,23 @@ struct ref_deconvolution_fwd_t : public primitive_t {
 
             CHECK(init_convolution(engine));
 
-            if (weights_md_.format_kind == format_kind::any)
+            if (weights_md_.format_kind == format_kind::any) {
                 weights_md_
                         = utils::downcast<convolution_pd_t *>(conv_pd_.get())
                                   ->weights_md_with_permute_channels();
-            VDISPATCH_DECONVOLUTION(!types::is_zero_md(&weights_md_),
-                    VERBOSE_DESC_CREATION_FAIL, "weights");
+                VDISPATCH_DECONVOLUTION(!types::is_zero_md(&weights_md_),
+                        VERBOSE_DESC_CREATION_FAIL, "weights");
+            }
             if (src_md_.format_kind == format_kind::any)
-                src_md_ = *conv_pd_->diff_dst_md();
+                src_md_ = is_conv_fwd() ? *conv_pd_->src_md()
+                                        : *conv_pd_->diff_dst_md();
             if (dst_md_.format_kind == format_kind::any) {
                 // re-apply dt manually since it could be changed due to bias
                 const auto dst_dt = dst_md_.data_type;
-                memory_desc_init_by_md_and_dt(
-                        dst_md_, *conv_pd_->diff_src_md(), dst_dt);
+                memory_desc_init_by_md_and_dt(dst_md_,
+                        is_conv_fwd() ? *conv_pd_->dst_md()
+                                      : *conv_pd_->diff_src_md(),
+                        dst_dt);
             }
             if (bias_md_.format_kind == format_kind::any)
                 CHECK(memory_desc_init_by_tag(bias_md_, x));
@@ -149,6 +154,11 @@ struct ref_deconvolution_fwd_t : public primitive_t {
         std::shared_ptr<primitive_desc_t> conv_pd_;
         bool conv_supports_bias_ = false;
         format_tag_t dst_tag_;
+
+        bool is_conv_fwd() const {
+            return utils::one_of(conv_pd_->get_prop_kind(),
+                    prop_kind::forward_training, prop_kind::forward_inference);
+        }
 
     private:
         std::string name_ = "conv:any+"; // convolution-based deconvolution

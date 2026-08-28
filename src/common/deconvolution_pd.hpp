@@ -55,11 +55,21 @@ struct deconvolution_fwd_pd_t;
 // handling to the caller. By default implementations that request weights
 // compensation (or any other weights extra flags) are skipped since the
 // deconvolution does not expect compensation to be applied; set
-// `allow_wei_compensation` to true to accept them.
+// `allow_wei_compensation` to true to accept them. By default the convolution
+// is created with default (empty) attributes; set `copy_attr` to true to
+// forward the deconvolution attributes to the convolution, e.g. when the
+// nested convolution is expected to apply post-ops itself. `filter` is the
+// mechanism to fetch a desired implementation from the iterator while
+// traversing the whole list: when provided, iteration keeps skipping accepted
+// convolution pds until `filter` returns true for one of them. This lets the
+// common code own the iteration while the caller, which is the only one that
+// knows the concrete implementation types, selects the acceptable convolution
+// pd (e.g. by `dynamic_cast`-ing to a specific implementation's pd type).
 status_t create_conv_pd(std::shared_ptr<primitive_desc_t> &conv_pd,
         const engine_t *engine, const deconvolution_pd_t *deconv_pd,
         data_type_t src_dt, bool force_empty_bias,
-        bool allow_wei_compensation = false);
+        bool allow_wei_compensation = false, bool copy_attr = false,
+        bool (*filter)(const primitive_desc_t *conv_pd) = nullptr);
 
 struct deconvolution_pd_t : public primitive_desc_t {
     static constexpr auto base_pkind = primitive_kind::deconvolution;

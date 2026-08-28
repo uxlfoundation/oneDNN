@@ -474,7 +474,8 @@ status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
 
     const auto &args = ctx.args();
     exec_args_t conv_args;
-    conv_args[DNNL_ARG_DIFF_DST] = args.at(DNNL_ARG_SRC);
+    conv_args[pd()->is_conv_fwd() ? DNNL_ARG_SRC : DNNL_ARG_DIFF_DST]
+            = args.at(DNNL_ARG_SRC);
     conv_args[DNNL_ARG_WEIGHTS] = args.at(DNNL_ARG_WEIGHTS);
     if (pd()->with_bias() && pd()->conv_supports_bias_)
         conv_args[DNNL_ARG_BIAS] = args.at(DNNL_ARG_BIAS);
@@ -483,11 +484,12 @@ status_t ref_deconvolution_fwd_t::execute(const exec_ctx_t &ctx) const {
     const auto &dst = args.at(DNNL_ARG_DST);
     std::unique_ptr<memory_t, memory_deleter_t> tmp_memory;
     CHECK(safe_ptr_assign(tmp_memory,
-            new memory_t(dst.mem()->engine(), pd()->conv_pd_->diff_src_md(),
+            new memory_t(dst.mem()->engine(),
+                    pd()->conv_pd_->invariant_src_md(),
                     scratchpad.get_memory_storage(key_deconv_bias))));
     memory_arg_t tmp_conv_output = {tmp_memory.get(), false};
 
-    conv_args[DNNL_ARG_DIFF_SRC]
+    conv_args[pd()->is_conv_fwd() ? DNNL_ARG_DST : DNNL_ARG_DIFF_SRC]
             = ref_bias || non_default_attr ? tmp_conv_output : dst;
 
     // When sum post-op happens, we need to copy original destination memory

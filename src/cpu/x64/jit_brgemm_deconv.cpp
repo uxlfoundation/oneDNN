@@ -29,124 +29,10 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-namespace {
-status_t weights_axes_permutation(
-        memory_desc_t *o_md, const memory_desc_t *i_md, bool with_groups) {
-    int perm[DNNL_MAX_NDIMS] {}; // deconv to conv weight permutation
-    for (int d = 0; d < DNNL_MAX_NDIMS; ++d)
-        perm[d] = d;
-    nstl::swap(perm[0 + with_groups], perm[1 + with_groups]);
-
-    return memory_desc_permute_axes(*o_md, *i_md, perm);
-}
-
-status_t fwd_conv_desc_create(const deconvolution_desc_t *fwd_deconv_d,
-        convolution_desc_t *fwd_conv_d) {
-    const memory_desc_t &fwd_weights_md = fwd_deconv_d->weights_desc;
-    // create a fwd convolution descriptor with padding adjusted
-    // to the perspective of backward propagation, namely:
-    // - left padding replaced by left overflow
-    // - right padding replaced by right overflow
-    const int ndims_spatial = fwd_deconv_d->dst_desc.ndims - 2;
-    dims_t overflow_l;
-    dims_t overflow_r;
-    dim_t ks = 1;
-    for (int i = 0; i < ndims_spatial; i++) {
-        VDISPATCH_DECONVOLUTION_IC(fwd_deconv_d->strides[i] == 1,
-                VERBOSE_UNSUPPORTED_FEATURE,
-                "only unit strides are allowed for bwd-to-fwd conversion");
-        const dim_t K
-                = fwd_weights_md.dims[fwd_weights_md.ndims - ndims_spatial + i];
-        ks *= K;
-        const dim_t D = fwd_deconv_d->dilates[i];
-        const dim_t PL = fwd_deconv_d->padding[0][i]; // left padding
-        const dim_t PR = fwd_deconv_d->padding[1][i]; // right padding
-        constexpr dim_t S = 1;
-        // the following relations hold for unit stride only
-        overflow_l[i] = ((K - 1) * (D + 1) - PL) / S;
-        overflow_r[i] = ((K - 1) * (D + 1) - PR) / S;
-    }
-
-    const status_t desc_init_status = conv_desc_init(fwd_conv_d,
-            prop_kind::forward_training, alg_kind::convolution_direct,
-            &fwd_deconv_d->src_desc, &fwd_weights_md, &fwd_deconv_d->bias_desc,
-            &fwd_deconv_d->dst_desc, fwd_deconv_d->strides,
-            fwd_deconv_d->dilates, overflow_l, overflow_r);
-
-    VDISPATCH_DECONVOLUTION_IC(desc_init_status == status::success,
-            VERBOSE_PRIMITIVE_CREATION_FAIL, "fwd_conv");
-
-    // HACK: Set diff_src_desc and diff_dst_desc as a signal to the primitive
-    //       descriptor cache that we are using the bwd-via-fwd version of
-    //       fwd conv and thus need a separate cache entry. Only needed for
-    //       non-1x1 convs due to spatial inversion of weights. This assumes
-    //       that external users only use the API to create conv descs, and
-    //       relies on common/convolution.cpp only setting the expected mem descs.
-    // TODO: Pass this information via attributes or integrate the bwd-via-fwd
-    //       method directly into fwd conv implementations.
-    const bool with_spatial_inversion = ks > 1;
-    if (with_spatial_inversion) {
-        fwd_conv_d->diff_src_desc = fwd_conv_d->src_desc;
-        fwd_conv_d->diff_dst_desc = fwd_conv_d->dst_desc;
-    }
-    // Note: internal field to hint this conv is created from deconv.
-    fwd_conv_d->use_inversion = true;
-    return status::success;
-}
-
-status_t bwd_conv_desc_create(const deconvolution_desc_t *fwd_deconv_d,
-        convolution_desc_t *bwd_conv_d) {
-    const memory_desc_t *src_md, *dst_md, *deconv_weights_d;
-    memory_desc_t src_md_patched;
-    const auto src_dt = fwd_deconv_d->dst_desc.data_type;
-
-    VDISPATCH_DECONVOLUTION_IC(memory_desc_init_by_md_and_dt(src_md_patched,
-                                       fwd_deconv_d->dst_desc, src_dt)
-                    == status::success,
-            VERBOSE_DESC_CREATION_FAIL, "memory");
-    src_md = &src_md_patched;
-    dst_md = &fwd_deconv_d->src_desc;
-    deconv_weights_d = &fwd_deconv_d->weights_desc;
-
-    /* create weights desc for convolution */
-    memory_desc_t conv_weights_d;
-    const bool with_groups = deconv_weights_d->ndims == src_md->ndims + 1;
-
-    VDISPATCH_DECONVOLUTION_IC(weights_axes_permutation(&conv_weights_d,
-                                       deconv_weights_d, with_groups)
-                    == status::success,
-            VERBOSE_DESC_CREATION_FAIL, "weights");
-
-    const status_t desc_init_status = conv_desc_init(bwd_conv_d,
-            prop_kind::backward_data, alg_kind::convolution_direct, src_md,
-            &conv_weights_d, &fwd_deconv_d->bias_desc, dst_md,
-            fwd_deconv_d->strides, fwd_deconv_d->dilates,
-            fwd_deconv_d->padding[0], fwd_deconv_d->padding[1]);
-    VDISPATCH_DECONVOLUTION_IC(desc_init_status == status::success,
-            VERBOSE_PRIMITIVE_CREATION_FAIL, "bwd_conv");
-
-    // HACK: Set src_desc and dst_desc as a signal to the primitive
-    //       descriptor cache that we are using the deconv version of bwd conv
-    //       and thus need a separate cache entry (this will also disallow calling
-    //       bwd_d conv with postops). This assumes that external users only use
-    //       the API to create conv descs, and relies on common/convolution.cpp
-    //       only setting the expected mem descs.
-    // TODO: Pass this information via attributes or integrate this method
-    //       directly into bwd conv implementations.
-    bwd_conv_d->src_desc = bwd_conv_d->diff_src_desc;
-    bwd_conv_d->dst_desc = bwd_conv_d->diff_dst_desc;
-
-    // Note: internal field to hint this conv is created from deconv.
-    bwd_conv_d->use_inversion = true;
-
-    return status::success;
-}
-} // namespace
-
 template <typename implementation_pd>
-status_t check_embedded_impl_init(primitive_desc_iterator_t &it) {
-    const auto pd = dynamic_cast<implementation_pd *>((*it).get());
-    if (pd != nullptr) return status::success; // implementation found
+status_t check_embedded_impl_init(const primitive_desc_t *pd) {
+    if (dynamic_cast<const implementation_pd *>(pd) != nullptr)
+        return status::success; // implementation found
     return status::unimplemented;
 }
 
@@ -181,8 +67,6 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
                     diff_weights_md(1), diff_dst_md(0), dst_md(0)}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
-    convolution_desc_t conv_d = convolution_desc_t();
-
     assert(src_type != data_type::undef);
 
     const int ndims_spatial = fwd_deconv_d->dst_desc.ndims - 2;
@@ -194,45 +78,48 @@ status_t brgemm_deconvolution_fwd_t<isa>::pd_t::init(const engine_t *engine) {
     }
 
     if (has_strides_) {
-        CHECK(bwd_conv_desc_create(fwd_deconv_d, &conv_d));
-        primitive_desc_iterator_t it(engine,
-                reinterpret_cast<const op_desc_t *>(&conv_d), attr(), nullptr);
-        if (!it.is_initialized()) return status::out_of_memory;
-
-        while (++it != it.end()) {
-            conv_pd_ = *it;
-            if (check_embedded_impl_init<
-                        typename brgemm_convolution_bwd_strided_t<isa>::pd_t>(
-                        it)
-                    == status::success)
-                break;
-        }
-        if (it == it.end())
-            VDISPATCH_DECONVOLUTION_IC(false,
-                    "brgemm implementation not found for strided convolution");
+        // The strided deconvolution is implemented via a backward-by-data
+        // convolution with spatially-inverted weights. The nested convolution
+        // applies the deconvolution attributes (post-ops, scales) itself, thus
+        // the attributes are forwarded and weights compensation is allowed. The
+        // filter fetches the brgemm strided implementation while iterating over
+        // the convolution implementations list.
+        const auto filter = [](const primitive_desc_t *conv_pd) {
+            using strided_pd_t =
+                    typename brgemm_convolution_bwd_strided_t<isa>::pd_t;
+            return check_embedded_impl_init<strided_pd_t>(conv_pd)
+                    == status::success;
+        };
+        const status_t create_status = create_conv_pd(conv_pd_, engine, this,
+                dst_md()->data_type, /* force_empty_bias = */ false,
+                /* allow_wei_compensation = */ true, /* copy_attr = */ true,
+                filter);
+        VDISPATCH_DECONVOLUTION_IC(create_status == status::success,
+                "brgemm implementation not found for strided convolution");
     } else {
-        CHECK(fwd_conv_desc_create(fwd_deconv_d, &conv_d));
-
-        primitive_desc_iterator_t it(engine,
-                reinterpret_cast<const op_desc_t *>(&conv_d), attr(), nullptr);
-        if (!it.is_initialized()) return status::out_of_memory;
-
-        while (++it != it.end()) {
-            conv_pd_ = *it;
-            // try 1x1 fwd convolution
-            if (check_embedded_impl_init<
-                        typename brgemm_1x1_convolution_fwd_t<isa>::pd_t>(it)
-                    == status::success)
-                break;
-            // try non-1x1 fwd convolution with invert weights' spatial indices
-            if (check_embedded_impl_init<
-                        typename brgemm_convolution_fwd_t<isa>::pd_t>(it)
-                    == status::success)
-                break;
-        }
-        if (it == it.end())
-            VDISPATCH_DECONVOLUTION_IC(false,
-                    "brgemm implementation not found for strided convolution");
+        // The non-strided deconvolution is implemented via a forward
+        // convolution with spatially-inverted weights. The nested convolution
+        // applies the deconvolution attributes (post-ops, scales) itself, thus
+        // the attributes are forwarded. The filter fetches a brgemm forward
+        // implementation that honors the weights spatial inversion while
+        // iterating over the convolution implementations list. Add more
+        // inversion-aware forward implementations to the filter as needed.
+        const auto filter = [](const primitive_desc_t *conv_pd) {
+            return check_embedded_impl_init<
+                           typename brgemm_1x1_convolution_fwd_t<isa>::pd_t>(
+                           conv_pd)
+                    == status::success
+                    || check_embedded_impl_init<
+                               typename brgemm_convolution_fwd_t<isa>::pd_t>(
+                               conv_pd)
+                    == status::success;
+        };
+        const status_t create_status = create_conv_pd(conv_pd_, engine, this,
+                dst_md()->data_type, /* force_empty_bias = */ false,
+                /* allow_wei_compensation = */ false, /* copy_attr = */ true,
+                filter);
+        VDISPATCH_DECONVOLUTION_IC(create_status == status::success,
+                "brgemm implementation not found for forward convolution");
     }
 
     if (weights_md_.format_kind == format_kind::any) {

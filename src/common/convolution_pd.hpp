@@ -181,7 +181,7 @@ struct convolution_pd_t : public primitive_desc_t {
     // Used by the deconvolution logic to set formats for deconv weights desc.
     memory_desc_t weights_md_with_permute_channels() const {
         memory_desc_t perm_wei_md;
-        const auto &wei_md = *invariant_weights_md();
+        const auto &wei_md = *invariant_wei_md();
 
         int perm[DNNL_MAX_NDIMS] {};
         for (int d = 0; d < DNNL_MAX_NDIMS; ++d)

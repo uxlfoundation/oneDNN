@@ -253,6 +253,65 @@ status_t deconv_attr_check(const deconvolution_desc_t &desc,
     return status::success;
 }
 
+status_t fwd_conv_descr_create(convolution_desc_t &cd,
+        const deconvolution_desc_t &dd, const memory_desc_t *bias_md,
+        data_type_t dst_dt) {
+    VDISPATCH_DECONVOLUTION_IC(
+            utils::one_of(dd.prop_kind, prop_kind::forward_training,
+                    prop_kind::forward_inference),
+            VERBOSE_BAD_PROPKIND);
+    VDISPATCH_DECONVOLUTION_IC(dd.alg_kind == alg_kind::deconvolution_direct,
+            VERBOSE_BAD_ALGORITHM);
+
+    // create a fwd convolution descriptor with padding adjusted
+    // to the perspective of backward propagation, namely:
+    // - left padding replaced by left overflow
+    // - right padding replaced by right overflow
+    const int ndims_spatial = dd.dst_desc.ndims - 2;
+    dims_t overflow_l;
+    dims_t overflow_r;
+    dim_t ks = 1;
+    for (int i = 0; i < ndims_spatial; i++) {
+        VDISPATCH_DECONVOLUTION_IC(dd.strides[i] == 1,
+                VERBOSE_UNSUPPORTED_FEATURE,
+                "only unit strides are allowed for bwd-to-fwd conversion");
+
+        const dim_t K
+                = dd.weights_desc
+                          .dims[dd.weights_desc.ndims - ndims_spatial + i];
+        ks *= K;
+        const dim_t D = dd.dilates[i];
+        const dim_t PL = dd.padding[0][i]; // left padding
+        const dim_t PR = dd.padding[1][i]; // right padding
+        constexpr dim_t S = 1;
+        // the following relations hold for unit stride only
+        overflow_l[i] = ((K - 1) * (D + 1) - PL) / S;
+        overflow_r[i] = ((K - 1) * (D + 1) - PR) / S;
+        VDISPATCH_DECONVOLUTION_IC(overflow_l[i] >= 0 && overflow_r[i] >= 0,
+                VERBOSE_UNSUPPORTED_FEATURE,
+                "Unsupported padding was provided");
+    }
+
+    assert(dst_dt != data_type::undef);
+    memory_desc_t dst_md_patched;
+    CHECK(memory_desc_init_by_md_and_dt(dst_md_patched, dd.dst_desc, dst_dt));
+
+    CHECK(conv_desc_init(&cd, prop_kind::forward_training,
+            alg_kind::convolution_direct, &dd.src_desc, &dd.weights_desc,
+            bias_md, &dst_md_patched, dd.strides, dd.dilates, overflow_l,
+            overflow_r));
+
+    // Keep this internal descriptor distinct and tell an opted-in forward
+    // implementation to reverse its spatial weight indices.
+    if (ks > 1) {
+        cd.diff_src_desc = cd.src_desc;
+        cd.diff_dst_desc = cd.dst_desc;
+    }
+    // Note: internal field to hint this conv is created from deconv.
+    cd.use_inversion = true;
+    return status::success;
+}
+
 status_t conv_descr_create(convolution_desc_t &cd,
         const deconvolution_desc_t &dd, const memory_desc_t *bias_md,
         data_type_t src_dt) {
@@ -265,7 +324,14 @@ status_t conv_descr_create(convolution_desc_t &cd,
     memory_desc_t src_md_patched;
     prop_kind_t prop_kind;
 
-    if (utils::one_of(dd.prop_kind, forward_training, forward_inference)) {
+    // The forward deconvolution is implemented as a backward-by-data
+    // convolution: only in that case the created convolution descriptor carries
+    // the backward memory descriptors that forward-only implementations cannot
+    // read, and only that case relies on the spatial weights inversion.
+    const bool is_fwd_deconv
+            = utils::one_of(dd.prop_kind, forward_training, forward_inference);
+
+    if (is_fwd_deconv) {
         prop_kind = backward_data;
         assert(src_dt != data_type::undef);
         CHECK(memory_desc_init_by_md_and_dt(
@@ -296,9 +362,22 @@ status_t conv_descr_create(convolution_desc_t &cd,
     nstl::swap(perm[0 + with_groups], perm[1 + with_groups]);
     CHECK(memory_desc_permute_axes(c_weights_d, *d_weights_d, perm));
 
-    return conv_desc_init(&cd, prop_kind, alg_kind, src_md, &c_weights_d,
+    CHECK(conv_desc_init(&cd, prop_kind, alg_kind, src_md, &c_weights_d,
             bias_md, dst_md, dd.strides, dd.dilates, dd.padding[0],
-            dd.padding[1]);
+            dd.padding[1]));
+
+    if (is_fwd_deconv) {
+        // Manually update forward descriptors since certain implementations
+        // might not handle backward ones.
+        cd.src_desc = cd.diff_src_desc;
+        cd.dst_desc = cd.diff_dst_desc;
+
+        // Note: internal field to indicate the conv opdesc is created from
+        // deconv.
+        cd.use_inversion = true;
+    }
+
+    return status::success;
 }
 
 } // namespace
@@ -308,18 +387,48 @@ namespace impl {
 
 status_t create_conv_pd(std::shared_ptr<primitive_desc_t> &conv_pd,
         const engine_t *engine, const deconvolution_pd_t *deconv_pd,
-        data_type_t src_dt, bool force_empty_bias,
-        bool allow_wei_compensation) {
-    // The nested convolution is created with default attributes: forward
-    // deconvolution applies post-ops and/or bias afterwards, and backward
-    // deconvolution does not support attributes.
-    primitive_attr_t conv_attr;
+        data_type_t src_dt, bool force_empty_bias, bool allow_wei_compensation,
+        bool copy_attr, bool (*filter)(const primitive_desc_t *conv_pd)) {
+    // By default the nested convolution is created with default attributes:
+    // forward deconvolution applies post-ops and/or bias afterwards, and
+    // backward deconvolution does not support attributes. When `copy_attr` is
+    // set, the deconvolution attributes are forwarded to the convolution, e.g.
+    // when the nested convolution is expected to apply post-ops itself.
+    primitive_attr_t conv_attr = copy_attr
+            ? primitive_attr_t(*deconv_pd->attr())
+            : primitive_attr_t();
+    if (!conv_attr.is_initialized()) return status::out_of_memory;
 
     const memory_desc_t *bias_md = nullptr;
     if (!force_empty_bias && deconv_pd->with_bias())
         bias_md = deconv_pd->invariant_bia_md();
 
     convolution_desc_t cd;
+    while (true) {
+        auto fwd_desc_st = fwd_conv_descr_create(
+                cd, *deconv_pd->desc(), bias_md, src_dt);
+        if (fwd_desc_st != status::success) break;
+
+        primitive_desc_iterator_t it(
+                engine, (op_desc_t *)&cd, &conv_attr, nullptr);
+        if (!it.is_initialized()) break;
+
+        while (++it != it.end()) {
+            conv_pd = *it;
+            // The forward-convolution-with-inversion descriptor produces a
+            // correct deconvolution result only with implementations that honor
+            // the `use_inversion` hint (i.e. reverse their spatial weight
+            // indices). Common code cannot identify such implementations, hence
+            // the caller must supply a `filter` selecting one. Without a filter,
+            // skip the forward path entirely and fall back to the backward-data
+            // descriptor below, which is correct for any implementation. See a
+            // longer comment for a `filter` below.
+            if (!filter || !filter(conv_pd.get())) continue;
+            return status::success;
+        }
+        break;
+    }
+
     CHECK(conv_descr_create(cd, *deconv_pd->desc(), bias_md, src_dt));
 
     primitive_desc_iterator_t it(engine, (op_desc_t *)&cd, &conv_attr, nullptr);
@@ -334,6 +443,15 @@ status_t create_conv_pd(std::shared_ptr<primitive_desc_t> &conv_pd,
         if (!allow_wei_compensation
                 && conv_pd->invariant_wei_md()->extra.flags != 0)
             continue;
+        // `filter` is the mechanism to fetch a desired implementation from the
+        // iterator while traversing the whole list: the iterator yields every
+        // accepted convolution implementation in turn, and the caller-provided
+        // predicate keeps skipping candidates until one it recognizes (e.g. a
+        // specific implementation type via a `dynamic_cast`) is found. This
+        // lets the common code own the iteration while the caller, which is the
+        // only one that knows the concrete implementation types, decides which
+        // convolution pd is acceptable.
+        if (filter && !filter(conv_pd.get())) continue;
         return status::success;
     }
     return status::unimplemented;

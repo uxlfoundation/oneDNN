@@ -45,7 +45,18 @@ struct GRFMultirange {
     }
 
     ngen::Subregister sub(int log2GRFBytes, int offset, ngen::DataType type, int *consecutive = nullptr) const {
-        const int lg2Len = log2GRFBytes + 3 - ngen::getLog2Bits(type);
+        // u3 (Type::ngen_u3()) is a packed 3-bit pseudo type: 8 elements are
+        // packed into 3 contiguous bytes, with no native power-of-two element
+        // width, so getLog2Bits() has no valid answer for it. Per
+        // RegisterBlock::find(), `offset` for a u3 operand is always a *byte*
+        // offset to the start of one of these 3-byte groups (not an element
+        // count), so the GRF this offset falls into -- and the intra-GRF
+        // remainder -- are computed using byte granularity (log2Len ==
+        // log2GRFBytes, i.e. 1 offset unit == 1 byte, same as ub) rather than
+        // the generic element-width-based formula below.
+        const int lg2Len = (type == Type::ngen_u3())
+                ? log2GRFBytes
+                : log2GRFBytes + 3 - ngen::getLog2Bits(type);
         const int roffset = offset >> lg2Len;
         offset -= (roffset << lg2Len);
         int rconsecutive;

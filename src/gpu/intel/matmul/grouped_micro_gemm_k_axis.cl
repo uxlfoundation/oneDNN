@@ -35,18 +35,6 @@ DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
 #endif
 
-#if defined(A_DT_BF16)
-#define AS_A_TILE_PTR(p) ((const global ushort *)(p))
-#else
-#define AS_A_TILE_PTR(p) (p)
-#endif
-
-#if defined(B_DT_BF16)
-#define AS_B_TILE_PTR(p) ((const global ushort *)(p))
-#else
-#define AS_B_TILE_PTR(p) (p)
-#endif
-
 void store_results(ugemm_grouped_c_type *tile, global DST_DATA_T *ptr, int m,
         int n, int ldc, int sg_i0, int sg_j0) {
 #if DST_DT_F32
@@ -100,8 +88,8 @@ grouped_micro_gemm_k_axis(const global A_DATA_T *a, long lda,
         a += k_offset * lda / A_ELEMS_PER_BYTE;
         b += k_offset * ldb / B_ELEMS_PER_BYTE;
 
-        c_tile = ugemm_grouped(AS_A_TILE_PTR(a), lda, AS_B_TILE_PTR(b), ldb, m,
-                n, kg, wg_i0, wg_j0, 0, sg_i, sg_j, slm);
+        c_tile = ugemm_grouped(
+                a, lda, b, ldb, m, n, kg, wg_i0, wg_j0, 0, sg_i, sg_j, slm);
     }
 
     store_results(&c_tile, dst, m, n, ldc, sg_i0, sg_j0);

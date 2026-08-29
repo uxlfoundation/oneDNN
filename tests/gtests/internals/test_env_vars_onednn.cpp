@@ -50,35 +50,35 @@ TEST(onednn_max_cpu_isa_env_var_test, TestEnvVars) {
     const bool has_cpu = DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE;
 
     custom_setenv("ONEDNN_MAX_CPU_ISA", "SSE41", 1);
-    auto got = dnnl_get_effective_cpu_isa();
+    auto got = get_effective_cpu_isa();
     (void)got;
 
 #if defined(DNNL_ENABLE_MAX_CPU_ISA)
     // Expect env var value to be set when env variable feature is enabled.
-    EXPECT_EQ(got, has_cpu ? dnnl_cpu_isa_sse41 : dnnl_cpu_isa_default);
+    EXPECT_EQ(got, has_cpu ? cpu_isa::sse41 : cpu_isa::isa_default);
 #elif DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     // Native SSE41 will issue an error. Don't check for it.
     if (mayiuse(impl::cpu::x64::avx)) {
         // Otherwise, don't expect it to be set.
-        EXPECT_NE(got, dnnl_cpu_isa_sse41);
+        EXPECT_NE(got, cpu_isa::sse41);
     }
 #endif
 
     if (has_cpu) {
-        // `dnnl_get_effective_cpu_isa` freezes the isa value, any call to set
+        // `get_effective_cpu_isa` freezes the isa value, any call to set
         // again results in invalid_arguments.
-        auto st = dnnl_set_max_cpu_isa(dnnl_cpu_isa_sse41);
-        EXPECT_EQ(st, dnnl_invalid_arguments);
+        auto st = set_max_cpu_isa(cpu_isa::sse41);
+        EXPECT_EQ(st, status::invalid_arguments);
     }
     // Check that second pass of env var doesn't take any effect.
     custom_setenv("ONEDNN_MAX_CPU_ISA", "AVX", 1);
-    got = dnnl_get_effective_cpu_isa();
+    got = get_effective_cpu_isa();
 #if defined(DNNL_ENABLE_MAX_CPU_ISA)
-    EXPECT_EQ(got, has_cpu ? dnnl_cpu_isa_sse41 : dnnl_cpu_isa_default);
+    EXPECT_EQ(got, has_cpu ? cpu_isa::sse41 : cpu_isa::isa_default);
 #elif DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
     if (mayiuse(impl::cpu::x64::avx2)) {
-        EXPECT_NE(got, dnnl_cpu_isa_sse41);
-        EXPECT_NE(got, dnnl_cpu_isa_avx);
+        EXPECT_NE(got, cpu_isa::sse41);
+        EXPECT_NE(got, cpu_isa::avx);
     }
 #endif
 }
@@ -90,21 +90,22 @@ TEST(onednn_cpu_isa_hints_var_test, TestEnvVars) {
     (void)has_cpu;
 
     custom_setenv("ONEDNN_CPU_ISA_HINTS", "PREFER_YMM", 1);
-    auto got = dnnl_get_cpu_isa_hints();
+    auto got = get_cpu_isa_hints();
 
 #if defined(DNNL_ENABLE_CPU_ISA_HINTS)
     // Expect env var value to be set when env variable feature is enabled.
-    EXPECT_EQ(got, has_cpu ? dnnl_cpu_isa_prefer_ymm : dnnl_cpu_isa_no_hints);
+    EXPECT_EQ(
+            got, has_cpu ? cpu_isa_hints::prefer_ymm : cpu_isa_hints::no_hints);
 #else
     // Otherwise, don't expect it to be set.
-    EXPECT_NE(got, dnnl_cpu_isa_prefer_ymm);
+    EXPECT_NE(got, cpu_isa_hints::prefer_ymm);
 #endif
 
 #if (DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE)
-    // `dnnl_get_cpu_isa_hints` freezes the hints value, any call to set it
+    // `get_cpu_isa_hints` freezes the hints value, any call to set it
     // again results in runtime_error.
-    auto st = dnnl_set_cpu_isa_hints(dnnl_cpu_isa_no_hints);
-    EXPECT_EQ(st, dnnl_runtime_error);
+    auto st = set_cpu_isa_hints(cpu_isa_hints::no_hints);
+    EXPECT_EQ(st, status::runtime_error);
 #endif
 }
 #endif // DNNL_X64
@@ -125,17 +126,10 @@ TEST(onednn_primitive_cache_capacity_env_var_test, TestEnvVars) {
 
 TEST(onednn_default_fpmath_mode_env_var_test, TestEnvVars) {
     custom_setenv("ONEDNN_DEFAULT_FPMATH_MODE", "BF16", 1);
-    dnnl_fpmath_mode_t got_val;
-    auto st = dnnl_get_default_fpmath_mode(&got_val);
-    EXPECT_EQ(st, dnnl_success);
-    EXPECT_EQ(got_val, dnnl_fpmath_mode_bf16);
+    EXPECT_EQ(get_default_fpmath_mode(), fpmath_mode::bf16);
 
-    st = dnnl_set_default_fpmath_mode(dnnl_fpmath_mode_strict);
-    EXPECT_EQ(st, dnnl_success);
-    dnnl_fpmath_mode_t func_got_val;
-    st = dnnl_get_default_fpmath_mode(&func_got_val);
-    EXPECT_EQ(st, dnnl_success);
-    EXPECT_EQ(func_got_val, dnnl_fpmath_mode_strict);
+    EXPECT_EQ(set_default_fpmath_mode(fpmath_mode::strict), status::success);
+    EXPECT_EQ(get_default_fpmath_mode(), fpmath_mode::strict);
 }
 
 TEST(onednn_verbose_env_var_test, TestEnvVars) {

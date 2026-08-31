@@ -35,3 +35,32 @@ TEST(CAPI, CreateGraphWithEngine) {
     CREATE_GRAPH_WITH_ENGINE_DESTROY;
 #undef CREATE_GRAPH_WITH_ENGINE_DESTROY
 }
+
+TEST(CAPI, SetAndGetDeterministic) {
+    dnnl_graph_graph_t graph = nullptr;
+    ASSERT_EQ(dnnl_graph_graph_create(&graph, dnnl_cpu), dnnl_success);
+
+    int deterministic = -1;
+    EXPECT_EQ(dnnl_graph_graph_get_deterministic(graph, &deterministic),
+            dnnl_success);
+    EXPECT_EQ(deterministic, 0);
+
+    EXPECT_EQ(dnnl_graph_graph_set_deterministic(graph, 1), dnnl_success);
+    EXPECT_EQ(dnnl_graph_graph_get_deterministic(graph, &deterministic),
+            dnnl_success);
+    EXPECT_EQ(deterministic, 1);
+
+    EXPECT_EQ(dnnl_graph_graph_get_deterministic(nullptr, &deterministic),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(dnnl_graph_graph_get_deterministic(graph, nullptr),
+            dnnl_invalid_arguments);
+    EXPECT_EQ(dnnl_graph_graph_set_deterministic(nullptr, 1),
+            dnnl_invalid_arguments);
+
+    ASSERT_EQ(dnnl_graph_graph_finalize(graph), dnnl_success);
+    EXPECT_EQ(dnnl_graph_graph_get_deterministic(graph, &deterministic),
+            dnnl_success);
+    EXPECT_EQ(dnnl_graph_graph_set_deterministic(graph, 0), dnnl_invalid_graph);
+
+    EXPECT_EQ(dnnl_graph_graph_destroy(graph), dnnl_success);
+}

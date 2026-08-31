@@ -89,6 +89,8 @@ public:
         return pimpl_->get_engine_kind();
     }
 
+    const graph::graph_attr_t &get_attr() const { return pimpl_->get_attr(); }
+
     const graph::fpmath_t &get_fpmath_mode() const {
         return pimpl_->get_fpmath_mode();
     }

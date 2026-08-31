@@ -37,6 +37,21 @@ struct fpmath_t {
     bool apply_to_int_ = false;
 };
 
+struct graph_attr_t {
+    graph_attr_t() = default;
+
+    graph_attr_t(fpmath_mode_t mode, bool apply_to_int)
+        : fpmath_ {mode, apply_to_int} {}
+
+    graph_attr_t(const fpmath_t &fpmath) : fpmath_(fpmath) {}
+
+    bool operator==(const graph_attr_t &rhs) const {
+        return fpmath_ == rhs.fpmath_;
+    }
+
+    fpmath_t fpmath_;
+};
+
 } // namespace graph
 } // namespace impl
 } // namespace dnnl

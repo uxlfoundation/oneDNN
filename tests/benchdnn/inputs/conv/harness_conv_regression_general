@@ -417,6 +417,11 @@ mb1_g50ic50oc50_ih28oh26_kh3sh1ph0_n"dw_post-op_ngroups-tail"
 --reset
 --dir=FWD_I --dt=f32:f32:f32 --stag=acdb --wtag=any --dtag=acdb ic48oc134_ih23oh12kh2sh2dh0ph1_iw12ow4kw1sw13dw0pw14_n"brgemm_perform_outwork"
 
+# github #5942
+--reset --allow-enum-tags-only=0 --dt=f32:f32:f32 --bia-dt=f32
+--dir=FWD_D --stag=acdb --wtag=any --dtag=acdb --attr-scratchpad=user
+mb100_ic64oc1_ih1oh2kh125sh2dh0ph63_iw1ow64kw1sw2dw0pw63
+
 # tests JIT bf16 depthwise convolution with bf16 bias
 --reset
 --dt=bf16 --bia-dt=bf16 --dir=FWD_I g4mb2_ic4oc4_ih6oh4kh3sh1dh0ph0_iw6ow4kw3sw1dw0pw0_n"aarch64_jit_dw_bia_dt_bf16"

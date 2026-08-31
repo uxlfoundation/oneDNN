@@ -283,8 +283,12 @@ std::string get_jit_profiling_jitdumpdir() {
     if (!jit_profiling_jitdumpdir.initialized()) {
         auto status = init_jit_profiling_jitdumpdir(nullptr, false);
         if (status != status::success) return std::string();
+    } else {
+        static std::mutex m;
+        std::lock_guard<std::mutex> g(m);
+
+        jitdumpdir = jit_profiling_jitdumpdir.get();
     }
-    jitdumpdir = jit_profiling_jitdumpdir.get();
 #endif
     return jitdumpdir;
 }

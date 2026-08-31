@@ -40,14 +40,16 @@ struct fpmath_t {
 struct graph_attr_t {
     graph_attr_t() = default;
 
-    graph_attr_t(fpmath_mode_t mode, bool apply_to_int)
-        : fpmath_ {mode, apply_to_int} {}
+    graph_attr_t(
+            fpmath_mode_t mode, bool apply_to_int, bool deterministic = false)
+        : fpmath_ {mode, apply_to_int}, deterministic_(deterministic) {}
 
     bool operator==(const graph_attr_t &rhs) const {
-        return fpmath_ == rhs.fpmath_;
+        return fpmath_ == rhs.fpmath_ && deterministic_ == rhs.deterministic_;
     }
 
     fpmath_t fpmath_;
+    bool deterministic_ = false;
 };
 
 } // namespace graph

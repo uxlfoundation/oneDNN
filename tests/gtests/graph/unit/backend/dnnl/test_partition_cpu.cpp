@@ -144,6 +144,15 @@ TEST(test_partition, SetFpmathMode) {
     }
 }
 
+TEST(test_partition, Deterministic) {
+    const graph::graph_attr_t attr {fpmath_mode::strict, false, true};
+    dnnl::impl::graph::dnnl_impl::dnnl_partition_impl_t partition(
+            engine_kind::cpu, attr, partition_kind_t::undef);
+
+    ASSERT_TRUE(partition.get_deterministic());
+    ASSERT_TRUE(partition.clone()->get_deterministic());
+}
+
 TEST(test_partition, InferShape) {
     std::vector<engine_kind_t> engine_kinds
             = {engine_kind::cpu, engine_kind::gpu};

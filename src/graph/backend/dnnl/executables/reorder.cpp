@@ -120,6 +120,7 @@ reorder_executable_t::desc_t reorder_executable_t::create_desc(
                 = op->get_attr<fusion_info_t>(op_attr::fusion_info);
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
+    set_graph_attributes(prm_attr, graph_attr);
 
     // generate mask
     const auto set_reorder_mask = [&op, &prm_attr](int mask) {

@@ -31,6 +31,16 @@ namespace graph = dnnl::impl::graph;
 namespace utils = dnnl::graph::tests::unit::utils;
 namespace dnnl_impl = graph::dnnl_impl;
 
+TEST(test_common, SetGraphAttributes) {
+    dnnl::primitive_attr primitive_attr;
+    const graph::graph_attr_t graph_attr {
+            graph::fpmath_mode::strict, false, true};
+
+    dnnl_impl::set_graph_attributes(primitive_attr, graph_attr);
+
+    ASSERT_TRUE(primitive_attr.get_deterministic());
+}
+
 TEST(test_common, GetNxcStride) {
     graph::dims shape {1, 2, 3, 4, 5, 6};
     graph::dims shape_def {720, 1, 240, 60, 12, 2};

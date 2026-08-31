@@ -33,6 +33,21 @@ TEST(test_interface_partition_hashing, ThreadId) {
     dnnl::impl::parallel(1, [](int, int) {});
 }
 
+TEST(test_interface_partition_hashing, Deterministic) {
+    graph::engine_t &engine = *get_engine();
+    const graph::graph_attr_t default_attr;
+    const graph::graph_attr_t deterministic_attr {
+            graph::fpmath_mode::strict, false, true};
+    graph::partition_hashing::key_t default_key {
+            &engine, {}, {}, {}, default_attr};
+    graph::partition_hashing::key_t deterministic_key {
+            &engine, {}, {}, {}, deterministic_attr};
+
+    ASSERT_FALSE(default_key == deterministic_key);
+    ASSERT_NE(std::hash<graph::partition_hashing::key_t> {}(default_key),
+            std::hash<graph::partition_hashing::key_t> {}(deterministic_key));
+}
+
 TEST(test_interface_partition_hashing, GetArrayHash) {
     size_t seed = 10000;
     const size_t num = 3;

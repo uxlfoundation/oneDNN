@@ -53,6 +53,7 @@ sdpa_executable_t::sdpa_executable_t(std::shared_ptr<op_t> &op,
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
     attr.set_fpmath_mode(
             static_cast<dnnl::fpmath_mode>(graph_attr.fpmath_.mode_));
+    attr.set_deterministic(graph_attr.deterministic_);
     if (with_dropout_) {
         dnnl::memory::desc dropout_mask_desc;
         auto prop_type

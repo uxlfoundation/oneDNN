@@ -102,6 +102,7 @@ reduction_executable_t::desc_t reduction_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
 
     const algorithm alg = static_cast<dnnl::algorithm>(
             op->get_attr<int64_t>(op_attr::alg_kind));

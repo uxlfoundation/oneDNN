@@ -107,6 +107,7 @@ resampling_executable_t::desc_t resampling_executable_t::create_desc(
         prm_attr = make_dnnl_primitive_attr(op, fusion_info);
     }
     prm_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
+    set_graph_attributes(prm_attr, graph_attr);
     // resampling src doesn't support any
     auto src = make_dnnl_memory_desc(op->get_input_logical_tensor(0));
     auto dst = make_dnnl_memory_desc(op->get_output_logical_tensor(0));

@@ -118,6 +118,8 @@ public:
 
     const graph::fpmath_t &get_fpmath_mode() const { return attr_.fpmath_; }
 
+    bool get_deterministic() const { return attr_.deterministic_; }
+
     /*!
      * \brief Check whether an operator can be added
      * \param l_n An operator in frameworks' graph.
@@ -152,6 +154,11 @@ public:
             graph::fpmath_mode_t mode, bool apply_to_int) {
         attr_.fpmath_.mode_ = mode;
         attr_.fpmath_.apply_to_int_ = apply_to_int;
+        return graph::status::success;
+    }
+
+    graph::status_t set_deterministic(bool deterministic) {
+        attr_.deterministic_ = deterministic;
         return graph::status::success;
     }
 

@@ -1935,6 +1935,7 @@ status_t layout_propagator_for_sdpa_bwd(std::shared_ptr<op_t> &op,
         attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
         attr.set_fpmath_mode(
                 static_cast<dnnl::fpmath_mode>(graph_attr.fpmath_.mode_));
+        attr.set_deterministic(graph_attr.deterministic_);
 
         dim_t kv_head_number = op->get_input_logical_tensor(1).dims[1];
         const alg_kind_t softmax_alg = alg_kind::softmax_accurate_inf_as_zero;

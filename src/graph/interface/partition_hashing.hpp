@@ -167,6 +167,8 @@ struct hash<dnnl::impl::graph::partition_hashing::key_t> {
                 seed, static_cast<size_t>(key.attr_.fpmath_.mode_));
         seed = dnnl::impl::hash_combine(
                 seed, static_cast<size_t>(key.attr_.fpmath_.apply_to_int_));
+        seed = dnnl::impl::hash_combine(
+                seed, static_cast<size_t>(key.attr_.deterministic_));
 
         return seed;
     }

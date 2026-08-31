@@ -95,6 +95,9 @@ public:
     /// The getter for floating-point math mode
     const fpmath_t &get_fpmath_mode() const { return attr_.fpmath_; }
 
+    /// The getter for deterministic mode
+    bool get_deterministic() const { return attr_.deterministic_; }
+
     /// The getter for partition kind
     partition_kind_t get_kind() const { return pkind_; }
 

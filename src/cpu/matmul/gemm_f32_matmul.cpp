@@ -111,8 +111,21 @@ status_t gemm_f32_matmul_t::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(set_default_formats(), VERBOSE_UNSUPPORTED_TAG);
     // Should be followed by `set_default_formats`.
     VDISPATCH_MATMUL(check_attr_post_ops(), VERBOSE_UNSUPPORTED_POSTOP);
-    VDISPATCH_MATMUL(gemm_based::check_gemm_compatible_formats(*this),
-            VERBOSE_INCOMPATIBLE_GEMM_FMT);
+#if DNNL_X64
+    const memory_desc_wrapper dst_d(dst_md());
+    const bool is_transposed_dst_2d = ndims() == 2
+            && !has_runtime_dims_or_strides() && !with_bias()
+            && attr()->has_default_values()
+            && dst_d.matches_tag(format_tag::ba);
+#else
+    const bool is_transposed_dst_2d = false;
+#endif
+    const bool compatible_formats
+            = gemm_based::check_gemm_compatible_formats(*this)
+            || (is_transposed_dst_2d
+                    && gemm_based::check_gemm_input_format(*src_md())
+                    && gemm_based::check_gemm_input_format(*weights_md()));
+    VDISPATCH_MATMUL(compatible_formats, VERBOSE_INCOMPATIBLE_GEMM_FMT);
 
     bool po_format_ok = attr_.set_default_formats(dst_md(0)) == status::success;
     VDISPATCH_MATMUL(po_format_ok, VERBOSE_UNSUPPORTED_POSTOP);
@@ -162,10 +175,12 @@ status_t gemm_f32_matmul_t::pd_t::configure_attributes() {
             && utils::one_of(po.entry_[sum_idx].sum.dt, dst_md()->data_type,
                     data_type::undef);
 
-    // `C_is_abx` limitation comes from `extended_sgemm`.
-    const bool C_is_abx
-            = !is_runtime_value(helper.ldc()) && helper.ldc() >= helper.N();
-    params_.dst_is_acc_ = C_is_abx
+    // The required leading dimension depends on whether extended_sgemm writes
+    // C or its transposition.
+    const dim_t min_ldc = helper.transC() == 'N' ? helper.N() : helper.M();
+    const bool C_is_gemm_compatible
+            = !is_runtime_value(helper.ldc()) && helper.ldc() >= min_ldc;
+    params_.dst_is_acc_ = C_is_gemm_compatible
             && IMPLICATION(attr()->post_ops_.find(primitive_kind::sum) != -1,
                     sum_po_via_gemm_beta);
 
@@ -256,10 +271,10 @@ status_t gemm_f32_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
         need_free_acc = true;
     }
 
-    // `ldc` is the destination row stride. When `M == 1`, a degenerate stride
-    // (e.g. `acb` gives `ldc == 1`) can violate the `ldc >= N` requirement.
-    // Clamp `ldc` to `N`. This is safe for `M == 1` and has no effect for `M > 1`.
-    const dim_t acc_ldc = dst_is_acc ? nstl::max(ldc, N) : N;
+    // A degenerate stride can violate the extended_sgemm leading-dimension
+    // requirement. Clamp it to the number of physical rows in the output.
+    const dim_t min_acc_ldc = helper.transC() == 'N' ? N : M;
+    const dim_t acc_ldc = dst_is_acc ? nstl::max(ldc, min_acc_ldc) : N;
     const int scale_idx_mult
             = this->pd()->attr()->scales_.get_mask(DNNL_ARG_WEIGHTS)
             == (1 << (ndims - 1));
@@ -372,8 +387,19 @@ status_t gemm_f32_matmul_t::execute_ref(const exec_ctx_t &ctx) const {
         // collapse batch into M, if weights batch dimensions are broadcasted.
         M = batch * M;
 
-        st = extended_sgemm(&transB, &transA, &N, &M, &K, &alpha, weights, &ldb,
-                src, &lda, &beta, acc, &acc_ldc, nullptr, false);
+        if (helper.transC() == 'N') {
+            st = extended_sgemm(&transB, &transA, &N, &M, &K, &alpha, weights,
+                    &ldb, src, &lda, &beta, acc, &acc_ldc, nullptr, false);
+        } else {
+            // A row-major input is a transposed column-major matrix and vice
+            // versa. Compute C directly using the column-major identity rather
+            // than materializing an output transposition.
+            const char trans_src = transA == 'N' ? 'T' : 'N';
+            const char trans_weights = transB == 'N' ? 'T' : 'N';
+            st = extended_sgemm(&trans_src, &trans_weights, &M, &N, &K, &alpha,
+                    src, &lda, weights, &ldb, &beta, acc, &acc_ldc, nullptr,
+                    false);
+        }
 
         if (st == status::success && params.has_pp_kernel_) {
             const bool force_sequential = pp_kernel_->sequential_kernel();

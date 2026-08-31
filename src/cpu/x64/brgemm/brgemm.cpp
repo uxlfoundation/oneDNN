@@ -668,6 +668,13 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
     if (!IMPLICATION(brg->dt_b == u8, brg->is_tmm))
         return status::unimplemented;
 
+    // Per-K (block-wise) scales and per-(M,N) compensation are applied to the
+    // partial result of every brgemm call. Only the AMX uker implements that
+    // for tile accumulators; the base kernel would silently drop them.
+    if (brg->is_tmm && !brg->can_dispatch_uker()
+            && (brg->has_per_k_scales() || brg->with_per_mn_compensation))
+        return status::unimplemented;
+
     // Required for EVEX encoding for offsets
     // The kernel brgemm_amx_uker_t has support of large offsets in post-ops
     if (!brg->can_dispatch_uker()) {

@@ -322,10 +322,6 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(po.check_sum_consistency(dst_dt, is_int8),
             VERBOSE_UNSUPPORTED_POSTOP);
 
-    // Ternary (select) post-ops with a scalar-broadcast src1 or a broadcast
-    // condition fuse on avx512_core and below; the AMX brgemm post-op path
-    // does not handle them. Anchor: TERNARY_SCALAR_BCAST_AVX512_ONLY.
-    // TODO: support broadcast ternary select on AMX.
     const bool with_bcast_ternary_po
             = binary_injector::any_binary_postop_rhs_with_ternary_scalar_bcast(
                       po, dst_d)

@@ -161,6 +161,7 @@ foreach(driver ${all_drivers})
     file(GLOB test_files_gpu RELATIVE ${driver_dir} inputs/${driver}/test_*_gpu)
     file(GLOB test_files_ci RELATIVE ${driver_dir} inputs/${driver}/test_*_ci)
     file(GLOB test_files_smoke RELATIVE ${driver_dir} inputs/${driver}/test_*_smoke)
+    file(GLOB test_files_weekly RELATIVE ${driver_dir} inputs/${driver}/test_*_weekly)
     file(GLOB test_files_cpu RELATIVE ${driver_dir} inputs/${driver}/test_*)
     file(GLOB test_files_with_all RELATIVE ${driver_dir}
         inputs/brgemm/test_brgemm_all inputs/conv/test_conv_all
@@ -202,11 +203,12 @@ foreach(driver ${all_drivers})
             list(REMOVE_ITEM test_files_cpu "test_matmul_grouped")
         endif()
 
-        ## Filter out gpu, large cpu and invalid inputs from cpu
+        ## Filter out gpu, large cpu, weekly and invalid inputs from cpu
         ##
         ## Note: put longer/specialized names first to keep filtering working.
         foreach(test_file ${test_files_large_cpu} ${test_files_gpu_ci}
-            ${test_files_gpu} ${test_files_ci} ${test_files_smoke})
+            ${test_files_gpu} ${test_files_ci} ${test_files_smoke}
+            ${test_files_weekly})
             string(REPLACE "${test_file}" "" test_files_cpu "${test_files_cpu}")
         endforeach()
         ## Then filter files with "all" suffix by exact name since there may
@@ -223,6 +225,14 @@ foreach(driver ${all_drivers})
         endif()
         if(has_cpu)
             register_all_tests(cpu "${driver}" "${test_files_cpu}")
+        endif()
+    elseif(DNNL_TEST_SET_COVERAGE EQUAL DNNL_TEST_SET_WEEKLY)
+        # Weekly coverage registers only the dedicated `_weekly` inputs.
+        if(has_gpu)
+            register_all_tests(gpu "${driver}" "${test_files_weekly}")
+        endif()
+        if(has_cpu)
+            register_all_tests(cpu "${driver}" "${test_files_weekly}")
         endif()
     endif()
 endforeach()

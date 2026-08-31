@@ -150,7 +150,7 @@ Graph API (enabled via `ONEDNN_BUILD_GRAPH`) is not compatible with
 |:-----------------------------|:----------|:-----------------------------------------------------------|:-----------------------------------------------------------------------------|
 | ONEDNN_BUILD_EXAMPLES        | **ON**    | OFF                                                        | Controls building the examples                                               |
 | ONEDNN_BUILD_TESTS           | **ON**    | OFF                                                        | Controls building the tests                                                  |
-| [ONEDNN_TEST_SET]            | **CI**    | SMOKE, NIGHTLY, \<list\>                                   | Specifies the testing coverage enabled through the generated testing targets |
+| [ONEDNN_TEST_SET]            | **CI**    | SMOKE, NIGHTLY, WEEKLY, \<list\>                           | Specifies the testing coverage enabled through the generated testing targets |
 | ONEDNN_CODE_COVERAGE         | **NONE**  | GCOV                                                       | Enables code coverage instrumentation                                        |
 | [ONEDNN_USE_CLANG_SANITIZER] | \         | Address, Leak, Memory, MemoryWithOrigin, Thread, Undefined | Instructs build system to use a Clang sanitizer                              |
 | [ONEDNN_USE_CLANG_TIDY]      | **NONE**  | CHECK, FIX                                                 | Instructs build system to use clang-tidy                                     |
@@ -172,8 +172,8 @@ defines the number of test cases, and the modifiers for testing commands. The
 final string must contain a single value for a set and as many compatible values
 for modifiers.
 
-The set value is defined by one of: `SMOKE`, `CI`, or `NIGHTLY`. These may
-be used with one of the following modifier values: `NO_CORR`, `ADD_BITWISE`.
+The set value is defined by one of: `SMOKE`, `CI`, `NIGHTLY`, or `WEEKLY`. These
+may be used with one of the following modifier values: `NO_CORR`, `ADD_BITWISE`.
 The set and modifiers are passed as a semicolon separated list. For example:
 ~~~sh
 -DONEDNN_TEST_SET=CI;NO_CORR
@@ -183,9 +183,11 @@ When `SMOKE` value is specified, it enables a short set of test cases which
 verifies that basic library functionality works as expected.
 When `CI` value is specified, it enables a regular set of test cases which
 verifies that all library supported functionality works as expected.
-When `NIGHTLY` value is specified, it enables the largest set of test cases
-which verifies that all library supported functionality and all kernel
+When `NIGHTLY` value is specified, it enables more comprehensive set of test
+cases which verifies that all library supported functionality and all kernel
 optimizations work as expected.
+When `WEEKLY` value is specified, it enables the most comprehensive set
+including real workload problems.
 
 When `NO_CORR` modifier value is specified, it removes correctness validation,
 which is set by default, from benchdnn testing targets. It helps to save time

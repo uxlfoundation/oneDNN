@@ -339,9 +339,9 @@ ctest
 The [`ONEDNN_TEST_SET`](https://uxlfoundation.github.io/oneDNN/dev_guide_build_options.html#onednn-test-set)
 build option set during the build configuration determines the scope
 and depth of the test set. Useful values are `SMOKE` (smallest set), `CI`
-(default), and `NIGHTLY` (most comprehensive). The test set can be reconfigured
-after the entire project has been built, and only the missing tests will be
-compiled.
+(default), `NIGHTLY` (more comprehensive), and `WEEKLY` (the most
+comprehensive). The test set can be reconfigured after the entire project has
+been built, and only the missing tests will be compiled.
 ~~~sh
 cmake .. -DONEDNN_TEST_SET=NIGHTLY
 cmake --build .

@@ -1,0 +1,9 @@
+#### Harnesses below collect their problems via verbose logs manually.
+#### Not included in Nightly coverage since this coverage is already huge.
+
+--batch=harness_matmul_fwks_ext_gpu
+--batch=harness_matmul_fwks_key_gpu
+--batch=harness_matmul_fwks_key_gpu_tf32
+--batch=harness_matmul_fwks_key_perf_gpu
+--batch=harness_matmul_fwks_llm_gpu
+--batch=harness_matmul_generated_large

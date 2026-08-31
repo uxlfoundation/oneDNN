@@ -1069,8 +1069,9 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                         jcp, static_cast<int>(ow), kw_s, ow_s, ow_f);
                 const auto init_bcast_dim
                         = (i_side == 0) ? (ow_s - ow) : (ow + M - ow_f);
+                const auto kw_po = kw_f > kw_s ? kw_f - 1 : kw_s;
                 brgemm_convolution_utils::get_ow_range(
-                        jcp, static_cast<int>(ow), kw_f - 1, ow_s, ow_f);
+                        jcp, static_cast<int>(ow), kw_po, ow_s, ow_f);
                 const auto po_bcast_dim
                         = (i_side == 0) ? (ow_s - ow) : (ow + M - ow_f);
                 CHECK(add_po_kernels(i_N, init_bcast_dim, po_bcast_dim));
@@ -1094,8 +1095,9 @@ status_t brgemm_convolution_fwd_t<isa>::init(engine_t *engine) {
                         jcp, static_cast<int>(ow), kw_s, ow_s, ow_f);
                 const auto init_bcast_dim
                         = (i_side == 0) ? (ow_s - ow) : (ow + M - ow_f);
+                const auto kw_po = kw_f > kw_s ? kw_f - 1 : kw_s;
                 brgemm_convolution_utils::get_ow_range(
-                        jcp, static_cast<int>(ow), kw_f - 1, ow_s, ow_f);
+                        jcp, static_cast<int>(ow), kw_po, ow_s, ow_f);
                 const auto po_bcast_dim
                         = (i_side == 0) ? (ow_s - ow) : (ow + M - ow_f);
                 CHECK(add_po_kernels(i_N, init_bcast_dim, po_bcast_dim));

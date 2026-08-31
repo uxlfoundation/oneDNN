@@ -40,6 +40,7 @@ include_directories_with_host_compiler(${DNNL_OCL_INCLUDE_DIR})
 
 # Tests and examples link dynamically against OpenCL ICD loader
 if(DNNL_GPU_RUNTIME STREQUAL "OCL" AND (DNNL_BUILD_TESTS OR DNNL_BUILD_EXAMPLES))
+    set(OpenCL_INCLUDE_DIR ${DNNL_OCL_INCLUDE_DIR})
     find_package(OpenCL QUIET)
     if(OpenCL_FOUND)
         message(STATUS "Found OpenCL ICD: ${OpenCL_LIBRARY} (found version \"${OpenCL_VERSION_STRING}\")")

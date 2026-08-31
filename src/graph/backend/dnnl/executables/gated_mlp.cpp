@@ -25,8 +25,9 @@ namespace dnnl_impl {
 
 gated_mlp_executable_t::gated_mlp_executable_t(std::shared_ptr<op_t> &op,
         const dnnl::engine &p_engine, pd_cache_t &pd_cache,
-        const fpmath_t &fpmath, bool use_block_layout) {
-    auto desc = create_desc(op, p_engine, pd_cache, fpmath, use_block_layout);
+        const graph_attr_t &graph_attr, bool use_block_layout) {
+    auto desc
+            = create_desc(op, p_engine, pd_cache, graph_attr, use_block_layout);
 
     if (desc) {
         // create primitive
@@ -38,7 +39,8 @@ gated_mlp_executable_t::gated_mlp_executable_t(std::shared_ptr<op_t> &op,
 
 gated_mlp_executable_t::desc_t gated_mlp_executable_t::create_desc(
         std::shared_ptr<op_t> &op, const dnnl::engine &p_engine,
-        pd_cache_t &pd_cache, const fpmath_t &fpmath, bool use_block_layout) {
+        pd_cache_t &pd_cache, const graph_attr_t &graph_attr,
+        bool use_block_layout) {
     UNUSED(use_block_layout);
 
     // first look up the cache
@@ -56,8 +58,7 @@ gated_mlp_executable_t::desc_t gated_mlp_executable_t::create_desc(
 
     dnnl::primitive_attr attr;
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-    attr.set_fpmath_mode(
-            static_cast<dnnl::fpmath_mode>(fpmath.mode_), fpmath.apply_to_int_);
+    set_graph_attributes(attr, graph_attr);
     auto act_algo = op->has_attr(op_attr::alg_kind)
             ? static_cast<dnnl::algorithm>(
                       op->get_attr<int64_t>(op_attr::alg_kind))

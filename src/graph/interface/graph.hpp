@@ -105,8 +105,8 @@ public:
 
     dnnl_graph_graph(const std::vector<op_ptr> &ops,
             graph::engine_kind_t kind = graph::engine_kind::cpu,
-            graph::fpmath_mode_t fpmath_mode = graph::fpmath_mode::strict)
-        : ops_(ops), engine_kind_(kind), attr_ {fpmath_mode, false} {}
+            graph::graph_attr_t attr = {})
+        : ops_(ops), engine_kind_(kind), attr_(std::move(attr)) {}
 
     dnnl_graph_graph &operator=(const dnnl_graph_graph &other) = delete;
 

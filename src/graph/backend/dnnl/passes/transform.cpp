@@ -2662,7 +2662,7 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
     auto fuse_two_adjacent_reorders = [&](bool &changed) -> status_t {
         auto &p_engine = sg->p_engine_;
         auto &pd_cache = sg->pd_cache_;
-        auto &fpm = sg->get_fpmath_mode();
+        auto &graph_attr = sg->get_attributes();
         bool use_block_layout = sg->can_use_blocked_layout_;
 
         std::vector<std::pair<op_t *, op_t *>> fuse_groups;
@@ -2863,8 +2863,8 @@ status_t fuse_adjacent_reorders(std::shared_ptr<subgraph_t> &sg) {
             if (pd_cache.find(fused_op.get()) != pd_cache.end()) {
                 pd_cache.erase(fused_op.get());
             }
-            const auto &pd = reorder_executable_t::create_desc(
-                    fused_op, *p_engine, pd_cache, fpm, use_block_layout);
+            const auto &pd = reorder_executable_t::create_desc(fused_op,
+                    *p_engine, pd_cache, graph_attr, use_block_layout);
             const memory::desc scratchpad_desc = pd.scratchpad_desc();
             CHECK(fill_layout_info(scratchpad_val, scratchpad_desc));
 

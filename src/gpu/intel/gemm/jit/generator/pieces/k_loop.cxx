@@ -792,8 +792,8 @@ void Generator<hw>::kLoop(KLoop type, const GEMMProblem &problem, GEMMStrategy &
         ls.swapLast2();
 
     // A/B remasking in k dimension, during remainder handling.
-    bool remaskA = false; // !slmA && readA && (minOPCount > 1) && needsRemask(Ta_load, true,  state.A_layoutRem, problem.A, strategy.A, state.A_lateKRem);
-    bool remaskB = false; //!slmB && readB && (minOPCount > 1) && needsRemask(Tb_load, false, state.B_layoutRem, problem.B, strategy.B, state.B_lateKRem);
+    bool remaskA = !slmA && readA && (minOPCount > 1) && needsRemask(Ta_load, true,  state.A_layoutRem, problem.A, strategy.A, state.A_lateKRem);
+    bool remaskB = !slmB && readB && (minOPCount > 1) && needsRemask(Tb_load, false, state.B_layoutRem, problem.B, strategy.B, state.B_lateKRem);
 
     if (Ta.isInteger() && Tb.isInteger() && !calcASums && !calcBSums) {
         // Only need to remask one operand for integer A/B. Choose the smaller one.

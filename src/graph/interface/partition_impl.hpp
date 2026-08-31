@@ -69,20 +69,19 @@ class backend_t;
 
 class partition_impl_t : public std::enable_shared_from_this<partition_impl_t> {
 public:
-    explicit partition_impl_t(engine_kind_t engine_kind, fpmath_t fpmath_mode,
+    explicit partition_impl_t(engine_kind_t engine_kind, graph_attr_t attr,
             partition_kind_t pkind)
         : engine_kind_(engine_kind)
-        , fpmath_mode_(fpmath_mode)
+        , attr_(std::move(attr))
         , pkind_(pkind)
         , can_use_blocked_layout_(false) {}
 
-    explicit partition_impl_t(
-            engine_kind_t engine_kind, fpmath_t fpmath_mode = {})
+    explicit partition_impl_t(engine_kind_t engine_kind, graph_attr_t attr = {})
         : engine_kind_(engine_kind)
-        , fpmath_mode_(fpmath_mode)
+        , attr_(std::move(attr))
         , pkind_(partition_kind_t::undef)
         , can_use_blocked_layout_(false) {
-        fpmath_mode_.mode_ = graph::fpmath_mode::strict;
+        attr_.fpmath_.mode_ = graph::fpmath_mode::strict;
     }
 
     virtual ~partition_impl_t() = default;
@@ -90,8 +89,11 @@ public:
     /// The getter for engine_kind_, which is used in C API
     engine_kind_t get_engine_kind() const { return engine_kind_; }
 
-    /// The getter for fpmath_mode_
-    const fpmath_t &get_fpmath_mode() const { return fpmath_mode_; }
+    /// The getter for graph attributes
+    const graph_attr_t &get_attributes() const { return attr_; }
+
+    /// The getter for floating-point math mode
+    const fpmath_t &get_fpmath_mode() const { return attr_.fpmath_; }
 
     /// The getter for partition kind
     partition_kind_t get_kind() const { return pkind_; }
@@ -199,8 +201,8 @@ protected:
     // Engine kind
     engine_kind_t engine_kind_;
 
-    // floating-point math mode
-    fpmath_t fpmath_mode_;
+    // Graph attributes
+    graph_attr_t attr_;
 
     // Partition kind
     partition_kind_t pkind_;

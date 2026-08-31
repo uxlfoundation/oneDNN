@@ -73,8 +73,8 @@ private:
     /*! \brief The engine kind on which the operator will be evaluated */
     graph::engine_kind_t engine_kind_ {};
 
-    /*! \brief The floating-point math mode */
-    graph::fpmath_t fpmath_;
+    /*! \brief The graph attributes */
+    graph::graph_attr_t attr_;
 
     std::vector<std::shared_ptr<graph::partition_impl_t>> partition_impls_;
 
@@ -86,13 +86,13 @@ private:
 public:
     dnnl_graph_graph(graph::engine_kind_t kind = graph::engine_kind::cpu)
         : engine_kind_(kind) {
-        fpmath_.mode_ = dnnl::impl::get_fpmath_mode();
+        attr_.fpmath_.mode_ = dnnl::impl::get_fpmath_mode();
     }
 
     dnnl_graph_graph(
             graph::engine_kind_t kind, graph::fpmath_mode_t fpmath_mode)
         : engine_kind_(kind) {
-        fpmath_.mode_ = fpmath_mode;
+        attr_.fpmath_.mode_ = fpmath_mode;
     }
 
     // deep copy (except that the partition_impls_ is shallow copy)
@@ -100,13 +100,13 @@ public:
         : id_t(other)
         , ops_(deep_copy(other.ops_))
         , engine_kind_(other.engine_kind_)
-        , fpmath_(other.fpmath_)
+        , attr_(other.attr_)
         , partition_impls_(other.partition_impls_) {}
 
     dnnl_graph_graph(const std::vector<op_ptr> &ops,
             graph::engine_kind_t kind = graph::engine_kind::cpu,
             graph::fpmath_mode_t fpmath_mode = graph::fpmath_mode::strict)
-        : ops_(ops), engine_kind_(kind), fpmath_ {fpmath_mode, false} {}
+        : ops_(ops), engine_kind_(kind), attr_ {fpmath_mode, false} {}
 
     dnnl_graph_graph &operator=(const dnnl_graph_graph &other) = delete;
 
@@ -114,7 +114,9 @@ public:
 
     graph::engine_kind_t get_engine_kind() const { return engine_kind_; }
 
-    const graph::fpmath_t &get_fpmath_mode() const { return fpmath_; }
+    const graph::graph_attr_t &get_attributes() const { return attr_; }
+
+    const graph::fpmath_t &get_fpmath_mode() const { return attr_.fpmath_; }
 
     /*!
      * \brief Check whether an operator can be added
@@ -148,8 +150,8 @@ public:
 
     graph::status_t set_fpmath_mode(
             graph::fpmath_mode_t mode, bool apply_to_int) {
-        fpmath_.mode_ = mode;
-        fpmath_.apply_to_int_ = apply_to_int;
+        attr_.fpmath_.mode_ = mode;
+        attr_.fpmath_.apply_to_int_ = apply_to_int;
         return graph::status::success;
     }
 

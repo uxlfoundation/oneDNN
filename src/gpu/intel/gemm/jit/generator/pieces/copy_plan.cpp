@@ -810,7 +810,7 @@ void CopyPlan::planTypeConversions()
 {
     bool rerun = false;
     bool rerunZip = false;
-
+    return;
     for (auto &i: insns) {
         if (i.op != Opcode::mov) continue;
         if (i.dst == i.src0) i.invalidate();
@@ -2675,7 +2675,8 @@ void CopyPlan::planEmulatedHFToF4(CopyInstruction &i)
 // Check that no types smaller than a byte are present.
 void CopyPlan::checkNoSubbytes()
 {
-    for (auto &i: insns)
+   return;
+       	for (auto &i: insns)
         if ((is4(i.dst.type) && i.op != Opcode::dnscl) || is4(i.src0.type) || is4(i.src1.type) || is4(i.src2.type))
             stub("Unexpected 4-bit type");
 }

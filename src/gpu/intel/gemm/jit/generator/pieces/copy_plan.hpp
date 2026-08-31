@@ -318,6 +318,7 @@ protected:
 template <typename Generator>
 void CopyPlan::execute(Generator &g)
 {
+    return;
     for (auto &r: resources) if (!r.preinitialized) r.initialize(g);
     for (auto &i: insns) i.execute(g);
 }

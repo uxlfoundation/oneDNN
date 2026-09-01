@@ -154,11 +154,13 @@ void getCaching(std::stringstream &s, HW hw, MatrixAddressingStrategy &astrategy
 
     if (!leaveDefault) {
         cachingR = CacheSettingsLSC::L1C_L3C;
-        cachingW = CacheSettingsLSC::L1WB_L3WB;
-        if (hw >= HW::XeHPC)
-            cachingW = CacheSettingsLSC::L1UC_L3WB;
-        if (hw >= HW::Xe3p)
+        cachingW = CacheSettingsLSC::L1S_L3WB;
+        if (hw >= HW::Xe3p) {
             cachingR = CacheSettingsLSC::L1C_L2C_L3C;
+            cachingW = CacheSettingsLSC::L1S_L2WB_L3UC;
+        } else if (hw >= HW::XeHPC) {
+            //cachingW = CacheSettingsLSC::L1UC_L3WB;
+        }
     }
 
     if (s.peek() == '{') {

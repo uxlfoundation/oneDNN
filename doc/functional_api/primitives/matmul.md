@@ -191,6 +191,7 @@ run-time attributes in use.
 3. **CPU**
    - Configurations with `s8`/`u8` source data type, `s8` weight data type and `f16`
      destination data type aren't supported.
+   - Static destination scales with a per-N mask (`1 << (ndims - 1)`) aren't supported.
    - Configurations with floating point source data type, integer weights data
      type and floating point destination data type are not optimized.
    - The layout of dropout mask has to be exactly the same as that of dst.

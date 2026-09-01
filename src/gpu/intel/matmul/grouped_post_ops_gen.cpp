@@ -150,8 +150,8 @@ std::string generate_post_ops_microgemm_header(
     std::string s = R"(
 inline void apply_post_ops_chain(ugemm_grouped_c_type *c_tile, long n, long m, long lddst,
     off_t sg_i0, off_t sg_j0, off_t src_offset, off_t batch,
-    const global BINARY_SCALE_GROUPED_TILE_DATA_T *grouped_scale,
-    const global BINARY_SCALE_DENSE_TILE_DATA_T *dense_scale,
+    const global binary_scale_grouped_tile_data_t *grouped_scale,
+    const global binary_scale_dense_tile_data_t *dense_scale,
     const global float *nvfp4_scale) {
 )";
     const auto &po = attr.post_ops_;
@@ -171,7 +171,7 @@ inline void apply_post_ops_chain(ugemm_grouped_c_type *c_tile, long n, long m, l
             if (po_chain[i] == po_kind_t::binary_grouped_scale) {
                 s += R"(
     {
-        const global BINARY_SCALE_GROUPED_TILE_DATA_T *group_scale_ptr
+        const global binary_scale_grouped_tile_data_t *group_scale_ptr
                 = grouped_scale + src_offset * lddst;
 #define GRP_BC ugemm_grouped_c_type_block1
 #define GRP_NBR ugemm_grouped_c_type_nblock0
@@ -202,7 +202,7 @@ inline void apply_post_ops_chain(ugemm_grouped_c_type *c_tile, long n, long m, l
                 s += utils::format(
                         R"(
 #define CONCAT_I(var) var##_%d
-    const global BINARY_SCALE_DENSE_TILE_DATA_T *CONCAT_I(dense_scale_ptr) = dense_scale + src_offset;
+    const global binary_scale_dense_tile_data_t *CONCAT_I(dense_scale_ptr) = dense_scale + src_offset;
     binary_dense_tile_type CONCAT_I(dense_scale_tile);
 #if BINARY_SCALE_DENSE_DT_F32
     tile_load(&CONCAT_I(dense_scale_tile), CONCAT_I(dense_scale_ptr), m, 1, 0, sg_j0, 0);

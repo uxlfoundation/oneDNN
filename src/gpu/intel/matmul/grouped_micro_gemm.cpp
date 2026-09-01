@@ -651,11 +651,8 @@ status_t grouped_micro_gemm_t::pd_t::init_kernel_ctx_m_axis() {
     kernel_ctx_.define_int("WITH_BINARY_NVFP4_SCALE", with_binary_nvfp4_scale);
     kernel_ctx_.add_custom_header("grouped_post_ops.h",
             generate_post_ops_microgemm_header(*attr(), po_chain_));
-    if (with_binary_grouped_scale || with_binary_dense_scale) {
-        def_data_type(
-                kernel_ctx_, binary_scale_dts_[0], "BINARY_SCALE_GROUPED");
-        def_data_type(kernel_ctx_, binary_scale_dts_[1], "BINARY_SCALE_DENSE");
-    }
+    def_data_type(kernel_ctx_, binary_scale_dts_[0], "BINARY_SCALE_GROUPED");
+    def_data_type(kernel_ctx_, binary_scale_dts_[1], "BINARY_SCALE_DENSE");
 
     return status::success;
 }

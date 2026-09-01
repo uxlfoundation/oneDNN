@@ -23,6 +23,9 @@
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
+#define DST_TILE_DATA_T NATIVE_LAYOUT_TYPE(DST_DATA_T)
+#define BIA_TILE_DATA_T NATIVE_LAYOUT_TYPE(BIA_DATA_T)
+
 #if WITH_BIAS
 #define bias_br ugemm_grouped_sg_tile_m
 #define bias_bc 1
@@ -36,15 +39,7 @@ DECLARE_2D_TILE_VREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
         bias_tile_type, SUBGROUP_SIZE, bias_br, bias_bc, bias_nbr, bias_nbc)
 
-/* When BIA_DATA_T is a struct it cannot be used as an ext_vector_type
- * element. Use the underlying scalar type for tile storage. */
-#ifdef BIA_DT_BF16
-#define BIA_TILE_DATA_T ushort
-#define BIA_TILE_TO_REF(v) into_float(as_bf16(v))
-#else
-#define BIA_TILE_DATA_T BIA_DATA_T
-#define BIA_TILE_TO_REF BIA_TO_REF
-#endif
+#define BIA_TILE_TO_REF(v) into_float(AS_NATIVE_LAYOUT_TYPE(BIA_DATA_T, v))
 
 #ifndef BIA_DT_F32
 DECLARE_2D_TILE(bias_in_tile_type, BIA_TILE_DATA_T, SUBGROUP_SIZE, bias_br,
@@ -64,38 +59,15 @@ void load_bias(
 }
 #endif
 
-/* Binary scale pointer types: always defined so kernel params compile.
- * BINARY_SCALE_GROUPED_DT_* / BINARY_SCALE_DENSE_DT_* are set only when the
- * corresponding binary scale post-op is active. */
-#if BINARY_SCALE_GROUPED_DT_F16
-#define BINARY_SCALE_GROUPED_TILE_DATA_T half
-#define BINARY_SCALE_GROUPED_TO_FLOAT(v) convert_float(v)
-#elif BINARY_SCALE_GROUPED_DT_BF16
-#define BINARY_SCALE_GROUPED_TILE_DATA_T ushort
-#define BINARY_SCALE_GROUPED_TO_FLOAT(v) into_float(as_bf16(v))
-#elif BINARY_SCALE_GROUPED_DT_F32
-#define BINARY_SCALE_GROUPED_TILE_DATA_T float
-#define BINARY_SCALE_GROUPED_TO_FLOAT(v) (v)
-#else
-// No grouped binary scale active; keep kernel args and helpers well-typed.
-#define BINARY_SCALE_GROUPED_TILE_DATA_T float
-#define BINARY_SCALE_GROUPED_TO_FLOAT(v) (v)
-#endif
+typedef NATIVE_LAYOUT_TYPE(
+        BINARY_SCALE_GROUPED_DATA_T) binary_scale_grouped_tile_data_t;
+#define BINARY_SCALE_GROUPED_TO_FLOAT(value) \
+    into_float(AS_NATIVE_LAYOUT_TYPE(BINARY_SCALE_GROUPED_DATA_T, value))
 
-#if BINARY_SCALE_DENSE_DT_F16
-#define BINARY_SCALE_DENSE_TILE_DATA_T half
-#define BINARY_SCALE_DENSE_TO_FLOAT(v) convert_float(v)
-#elif BINARY_SCALE_DENSE_DT_BF16
-#define BINARY_SCALE_DENSE_TILE_DATA_T ushort
-#define BINARY_SCALE_DENSE_TO_FLOAT(v) into_float(as_bf16(v))
-#elif BINARY_SCALE_DENSE_DT_F32
-#define BINARY_SCALE_DENSE_TILE_DATA_T float
-#define BINARY_SCALE_DENSE_TO_FLOAT(v) (v)
-#else
-// No dense binary scale active; keep kernel args and helpers well-typed.
-#define BINARY_SCALE_DENSE_TILE_DATA_T float
-#define BINARY_SCALE_DENSE_TO_FLOAT(v) (v)
-#endif
+typedef NATIVE_LAYOUT_TYPE(
+        BINARY_SCALE_DENSE_DATA_T) binary_scale_dense_tile_data_t;
+#define BINARY_SCALE_DENSE_TO_FLOAT(value) \
+    into_float(AS_NATIVE_LAYOUT_TYPE(BINARY_SCALE_DENSE_DATA_T, value))
 
 #if WITH_POST_OP
 #define ELTWISE_VECTOR_API
@@ -107,7 +79,7 @@ DECLARE_2D_TILE(binary_group_chunk_type, float, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, 1)
 #if !BINARY_SCALE_GROUPED_DT_F32
-DECLARE_2D_TILE(binary_group_chunk_in_type, BINARY_SCALE_GROUPED_TILE_DATA_T,
+DECLARE_2D_TILE(binary_group_chunk_in_type, binary_scale_grouped_tile_data_t,
         SUBGROUP_SIZE, ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, 1)
 #endif
@@ -123,7 +95,7 @@ DECLARE_2D_TILE(binary_dense_tile_type, float, SUBGROUP_SIZE,
         binary_dense_scale_nbc)
 #if !BINARY_SCALE_DENSE_DT_F32
 // Intermediate tile for loading non-float binary dense scale before converting
-DECLARE_2D_TILE(binary_dense_in_tile_type, BINARY_SCALE_DENSE_TILE_DATA_T,
+DECLARE_2D_TILE(binary_dense_in_tile_type, binary_scale_dense_tile_data_t,
         SUBGROUP_SIZE, binary_dense_scale_br, binary_dense_scale_bc,
         binary_dense_scale_nbr, binary_dense_scale_nbc)
 #endif
@@ -201,26 +173,12 @@ void find_sparse_batch(off_t *batch, int2 *src_range,
 #define slm_sparse_total_size 0
 #endif
 
-/* When DST_DATA_T is a struct it cannot be used as an ext_vector_type
- * element. Use the underlying scalar type for tile storage. */
-#ifdef DST_DT_BF16
-#define DST_TILE_DATA_T ushort
-#define CONVERT_TILE_DATA_T(v) (into_bf16(convert_float(v)).data)
-#else
-#define DST_TILE_DATA_T DST_DATA_T
-#define CONVERT_TILE_DATA_T CONVERT_DATA_T
-#endif
+#define CONVERT_TILE_DATA_T(v) as_native_layout(CONVERT_DATA_T(v))
 
 #ifndef DST_DT_F32
 DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
-#endif
-
-/* FMA_TYPE: scalar type used by ugemm microkernels for bf16 matrix operands.
- * bf16 is a struct in OpenCL C; the microkernel uses its punned ushort representation. */
-#if defined(WEI_DT_BF16) || defined(SRC_DT_BF16)
-#define FMA_TYPE ushort
 #endif
 
 /* Optional quantization parameters */
@@ -324,8 +282,8 @@ grouped_micro_gemm_m_axis(const global SRC_DATA_T *src, long ldsrc,
         const global WEI_SCALES_DATA_T *wei_attr_scales,
         const global WEI_ZP_DATA_T *wei_attr_zp, const long ldweiq,
         const long n, const long k, const global BIA_DATA_T *bias,
-        const global BINARY_SCALE_GROUPED_TILE_DATA_T *binary_grouped_scale,
-        const global BINARY_SCALE_DENSE_TILE_DATA_T *binary_dense_scale,
+        const global binary_scale_grouped_tile_data_t *binary_grouped_scale,
+        const global binary_scale_dense_tile_data_t *binary_dense_scale,
         const global float *binary_nvfp4_scale) {
 #if WITH_SLM
     local char slm[MAX(ugemm_grouped_slm_size, slm_sparse_total_size)];

@@ -129,10 +129,10 @@ struct gen_t : public primitive_t {
             swap_ab_ = (d->m() == 1 && d->ldc() == 1 && check_lda)
                     || d->transc() == dnnl_trans;
 
-            // We cannot swap A/B if we don't have kernels to support the
-            // swapped data type/alignment requirements. Currently mostly affects
-            // weights-only compression cases, since A/B have different data types
-            swap_ab_ &= !wei_decomp_;
+            // Mixed-width kernels exist only with the narrower type in A,
+            // swapping would put it in B, where the catalog has no coverage.
+            swap_ab_ &= types::data_type_bits(d->a_type())
+                    >= types::data_type_bits(d->b_type());
 
             // No kernels with transposed C, if swap_ab is disabled (e.g. due
             // to wei_decomp_) - this case cannot be handled.

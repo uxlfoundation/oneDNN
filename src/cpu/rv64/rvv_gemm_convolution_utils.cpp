@@ -690,8 +690,11 @@ void im2col_dt(const conv_gemm_conf_t &jcp, const im2col_addr_cache_t *cache,
                 const ptrdiff_t imtr_idx_oh = imtr_idx_ic + oh * iwb;
                 for (dim_t ow = 0; ow < ow_start; ++ow)
                     col[col_idx_oh + ow] = shift;
-                // Vectorized data copy for contiguous regions
-                if (ow_end - ow_start >= 4) {
+                // Vectorized data copy for contiguous regions.
+                // Only apply for float(4 bytes) type to ensure correctness:
+                // the copy kernel is f32-only and does not add `shift`.
+                if (sizeof(im_dt) == 4 && sizeof(col_dt) == 4
+                        && ow_end - ow_start >= 4) {
                     jit_rvv_gemm_convolution_copy_f32(
                             reinterpret_cast<const float *>(
                                     imtr + imtr_idx_oh + ow_start),

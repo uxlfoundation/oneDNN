@@ -577,6 +577,10 @@ TEST_F(attr_quantization_test_t, TestMatmul) {
         memory::desc b_md {{64, 20}, b_dt, tag::ba};
         memory::desc c_md {{10, 20}, data_type::u8, tag::ab};
 
+        // Static per-N destination scales are not supported.
+        CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                gen_attr_with_scales(DNNL_ARG_DST, 1 << 1)));
+
         for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
             if (impl::utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DST)) {
                 CHECK_INVALID(matmul::primitive_desc(
@@ -629,6 +633,9 @@ CPU_TEST_F(attr_quantization_test_t, TestMatmulBatch) {
             const auto per_oc_mask = 1 << (ndims - 1);
             if (arg == DNNL_ARG_WEIGHTS) {
                 CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                        gen_attr_with_scales(arg, per_oc_mask)));
+            } else if (arg == DNNL_ARG_DST) {
+                CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
                         gen_attr_with_scales(arg, per_oc_mask)));
             }
 

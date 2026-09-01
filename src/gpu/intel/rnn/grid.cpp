@@ -830,22 +830,20 @@ status_t simple_common_t<aprop>::pd_t::init(const impl::engine_t *engine) {
         }
         if (!conf.cell_fusion.gemm_iter) {
             if (conf.is_vanilla_gru) {
-                VDISPATCH_RNN_SC(
-                        create_matmul(matmul_iter_fwd_pd_, batch,
-                                (n_gates - 1) * dhc, sic,
-                                {conf.states_ws_ld, 1},
-                                wei_strides(off.weights_iter),
-                                {conf.scratch_gates_ld, 1}, src_type,
-                                weights_type, conf.acc_data_type,
-                                matmul_iter_fwd_beta),
+                VDISPATCH_RNN_SC(create_matmul(matmul_iter_fwd_pd_, batch,
+                                         (n_gates - 1) * dhc, sic,
+                                         {conf.states_ws_ld, 1},
+                                         wei_strides(off.weights_iter),
+                                         {conf.scratch_gates_ld, 1}, src_type,
+                                         weights_type, conf.acc_data_type,
+                                         matmul_iter_fwd_beta),
                         "create_matmul(matmul_iter_fwd_pd_)");
-                VDISPATCH_RNN_SC(
-                        create_matmul(matmul_iter_fwd_2_pd_, batch, dhc, sic,
-                                {conf.states_ws_ld, 1},
-                                wei_strides(off.weights_iter),
-                                {conf.scratch_gates_ld, 1}, src_type,
-                                weights_type, conf.acc_data_type,
-                                matmul_iter_fwd_beta),
+                VDISPATCH_RNN_SC(create_matmul(matmul_iter_fwd_2_pd_, batch,
+                                         dhc, sic, {conf.states_ws_ld, 1},
+                                         wei_strides(off.weights_iter),
+                                         {conf.scratch_gates_ld, 1}, src_type,
+                                         weights_type, conf.acc_data_type,
+                                         matmul_iter_fwd_beta),
                         "create_matmul(matmul_iter_fwd_2_pd_)");
             } else {
                 VDISPATCH_RNN_SC(
@@ -879,15 +877,15 @@ status_t simple_common_t<aprop>::pd_t::init(const impl::engine_t *engine) {
                             (n_gates - 1) * dhc, iter_merged_size,
                             {1, conf.states_ws_ld},
                             {conf.scratch_diff_gates_ld, 1},
-                            wei_strides(off.diff_weights_iter),
-                            src_type, weights_type, conf.acc_data_type, 1.0f),
+                            wei_strides(off.diff_weights_iter), src_type,
+                            weights_type, conf.acc_data_type, 1.0f),
                     "create_matmul(matmul_diff_wei_iter_pd_)");
             VDISPATCH_RNN_SC(
                     create_matmul(matmul_diff_wei_iter_2_pd_, sic, dhc,
                             iter_merged_size, {1, conf.states_ws_ld},
                             {conf.scratch_diff_gates_ld, 1},
-                            wei_strides(off.diff_weights_iter),
-                            src_type, weights_type, conf.acc_data_type, 1.0f),
+                            wei_strides(off.diff_weights_iter), src_type,
+                            weights_type, conf.acc_data_type, 1.0f),
                     "create_matmul(matmul_diff_wei_iter_2_pd_)");
         } else {
             VDISPATCH_RNN_SC(
@@ -902,8 +900,8 @@ status_t simple_common_t<aprop>::pd_t::init(const impl::engine_t *engine) {
                     create_matmul(matmul_diff_wei_iter_pd_, sic, n_gates * dhc,
                             iter_merged_size, {1, conf.states_ws_ld},
                             {conf.scratch_diff_gates_ld, 1},
-                            wei_strides(off.diff_weights_iter),
-                            src_type, weights_type, conf.acc_data_type, 1.0f),
+                            wei_strides(off.diff_weights_iter), src_type,
+                            weights_type, conf.acc_data_type, 1.0f),
                     "create_matmul(matmul_diff_wei_iter_pd_)");
         }
         VDISPATCH_RNN_SC(
@@ -930,18 +928,18 @@ status_t simple_common_t<aprop>::pd_t::init(const impl::engine_t *engine) {
                 create_matmul(matmul_diff_wei_layer_pd_, slc, n_gates * dhc,
                         layer_merged_size, {1, conf.states_ws_ld},
                         {conf.scratch_diff_gates_ld, 1},
-                        wei_strides(off.diff_weights_layer),
-                        src_type, weights_type, conf.acc_data_type, 1.0f),
+                        wei_strides(off.diff_weights_layer), src_type,
+                        weights_type, conf.acc_data_type, 1.0f),
                 "create_matmul(matmul_diff_wei_layer_pd_)");
         if (!conf.copy_src_layer) {
             if (off.src_layer[1] != conf.states_ws_ld)
-                VDISPATCH_RNN_SC(create_matmul(matmul_diff_wei_layer_src_pd_,
-                                         slc, n_gates * dhc, layer_merged_size,
-                                         {off.src_layer[2], off.src_layer[1]},
-                                         {conf.scratch_diff_gates_ld, 1},
-                                         wei_strides(off.diff_weights_layer),
-                                         src_type, weights_type,
-                                         conf.acc_data_type, 1.0f),
+                VDISPATCH_RNN_SC(
+                        create_matmul(matmul_diff_wei_layer_src_pd_, slc,
+                                n_gates * dhc, layer_merged_size,
+                                {off.src_layer[2], off.src_layer[1]},
+                                {conf.scratch_diff_gates_ld, 1},
+                                wei_strides(off.diff_weights_layer), src_type,
+                                weights_type, conf.acc_data_type, 1.0f),
                         "create_matmul(matmul_diff_wei_layer_src_pd_)");
             else
                 matmul_diff_wei_layer_src_pd_ = matmul_diff_wei_layer_pd_;

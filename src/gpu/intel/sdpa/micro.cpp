@@ -18,6 +18,7 @@
 #include "gpu/intel/sdpa/configs.hpp"
 
 #include "common/c_types_map.hpp"
+#include "common/math_utils.hpp"
 #include "common/sdpa_utils.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
@@ -60,6 +61,25 @@ using namespace gemmstone;
 ///   |  8 (0001) | false   |
 bool with_quantize_common(const quant_entry_t &entry) {
     return !entry.has_default_values() && ((entry.get_mask() & 12) == 0);
+}
+
+// Alignment of any address a microkernel can form from this tensor, the largest
+// power of two dividing the leading dimension and every outer stride
+int alignment_for_md(const memory_desc_wrapper &mdw, dim_t ld_bytes) {
+    const int ld_align
+            = gemmstone::microkernel::alignmentForLD(int(ld_bytes & 0xffff));
+    const auto &strides = mdw.blocking_desc().strides;
+    const auto dt_size = static_cast<dim_t>(mdw.data_type_size());
+    dim_t stride_gcd = 0;
+    for (int i = 0; i < mdw.ndims(); i++) {
+        const dim_t stride_bytes = strides[i] * dt_size;
+        // Broadcast dims are never stepped, the innermost stride is one element
+        if (mdw.dims()[i] <= 1 || stride_bytes <= dt_size) continue;
+        stride_gcd = math::gcd(stride_gcd, stride_bytes);
+    }
+    if (stride_gcd == 0) return ld_align;
+    return std::min(ld_align,
+            gemmstone::microkernel::alignmentForLD(int(stride_gcd & 0xffff)));
 }
 
 // micro_sdpa/micro_sdpa_bwd cross-thread argument bytes, plus headroom.
@@ -331,7 +351,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(
     const memory_desc_wrapper key_mdw(desc()->key_md());
     auto ldk = static_cast<int>(
             gemm_desc_t::get_ld(*desc()->key_md()) * key_mdw.data_type_size());
-    problem_kq.A.setAlignment(micro::alignmentForLD(int(ldk)));
+    problem_kq.A.setAlignment(alignment_for_md(key_mdw, ldk));
     problem_kq.B.setAlignment(64); // Q is packed in VNNI format in SLM
     if (use_systolic_ukernel()) {
         problem_kq.B.crosspack = 2;
@@ -408,7 +428,7 @@ status_t micro_fwd_t::pd_t::init_conf_microkernels(
     const memory_desc_wrapper val_mdw(desc()->val_md());
     auto ldv = static_cast<int>(
             gemm_desc_t::get_ld(*desc()->val_md()) * val_mdw.data_type_size());
-    problem_vs.A.setAlignment(micro::alignmentForLD(int(ldv)));
+    problem_vs.A.setAlignment(alignment_for_md(val_mdw, ldv));
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
 
@@ -627,9 +647,9 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
         }
     } else {
         problem_kq.A.layout = convert_dnnl_to_kernel_layout(desc()->key_md());
-        problem_kq.A.setAlignment(micro::alignmentForLD(int(ldk)));
+        problem_kq.A.setAlignment(alignment_for_md(key_mdw, ldk));
     }
-    problem_kq.B.setAlignment(micro::alignmentForLD(int(ldq)));
+    problem_kq.B.setAlignment(alignment_for_md(qry_mdw, ldq));
 
     ukernel_params.problem_kq = {problem_kq};
 
@@ -664,7 +684,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
     const memory_desc_wrapper diff_dst_mdw(diff_dst_md());
     auto lda = static_cast<int>(gemm_desc_t::get_ld(*diff_dst_md())
             * diff_dst_mdw.data_type_size());
-    problem_vs.A.setAlignment(micro::alignmentForLD(int(lda)));
+    problem_vs.A.setAlignment(alignment_for_md(diff_dst_mdw, lda));
     problem_vs.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_vs.B.crosspack = 16; }
 
@@ -698,8 +718,8 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
     const memory_desc_wrapper val_mdw(desc()->val_md());
     auto ldv
             = gemm_desc_t::get_ld(*desc()->val_md()) * val_mdw.data_type_size();
-    problem_vtdA.A.setAlignment(micro::alignmentForLD(int(ldv)));
-    problem_vtdA.B.setAlignment(micro::alignmentForLD(int(lda)));
+    problem_vtdA.A.setAlignment(alignment_for_md(val_mdw, ldv));
+    problem_vtdA.B.setAlignment(alignment_for_md(diff_dst_mdw, lda));
 
     ukernel_params.problem_vtdA = {problem_vtdA};
 
@@ -726,7 +746,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
     problem_qdSt.C.layout = MatrixLayout::N;
 
     problem_qdSt.A.setAlignment(64);
-    problem_qdSt.B.setAlignment(micro::alignmentForLD(int(ldq)));
+    problem_qdSt.B.setAlignment(alignment_for_md(qry_mdw, ldq));
     if (use_systolic_ukernel()) {
         problem_qdSt.A.crosspack = 2;
         problem_qdSt.A.tileR = into<uint16_t>(
@@ -759,11 +779,7 @@ status_t micro_bwd_t::pd_t::init_conf_microkernels(
     problem_ktq.B.layout = MatrixLayout::Pr;
     problem_ktq.C.layout = MatrixLayout::N;
 
-    constexpr int ktq_nondense_align = 2;
-    problem_ktq.A.setAlignment(key_mdw.is_dense()
-                    ? micro::alignmentForLD(int(ldk))
-                    : std::min(ktq_nondense_align,
-                              micro::alignmentForLD(int(ldk))));
+    problem_ktq.A.setAlignment(alignment_for_md(key_mdw, ldk));
     problem_ktq.B.setAlignment(64); // S is packed in SLM
     if (use_systolic_ukernel()) { problem_ktq.B.crosspack = 16; }
 
@@ -845,10 +861,10 @@ static void init_conf_common(conf_t &conf, pd_type *pd) {
             * val_mdw.data_type_size();
     auto lda = gemm_desc_t::get_ld(*pd->dst_md()) * dst_mdw.data_type_size();
 
-    conf.q_align = micro::alignmentForLD(int(ldq));
-    conf.k_align = micro::alignmentForLD(int(ldk));
-    conf.v_align = micro::alignmentForLD(int(ldv));
-    conf.a_align = micro::alignmentForLD(int(lda));
+    conf.q_align = alignment_for_md(qry_mdw, ldq);
+    conf.k_align = alignment_for_md(key_mdw, ldk);
+    conf.v_align = alignment_for_md(val_mdw, ldv);
+    conf.a_align = alignment_for_md(dst_mdw, lda);
 
     conf.transpose_k
             = gemm_desc_t::get_trans(*pd->desc()->key_md()) == dnnl_trans;

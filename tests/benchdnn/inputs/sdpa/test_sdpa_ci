@@ -51,6 +51,3 @@
 # --mask=causal_top_left
 # --dt=f16
 # --batch=shapes_bwd
-
-# fwks
---batch=option_set_fwks_key_gpu

@@ -135,6 +135,8 @@
 --batch=option_set_fwks_key_gpu
 --reset
 --batch=option_set_fwks_ext_gpu
+--reset
+--batch=option_set_fwks_key_01_gpu
 
 # precomputed reductions for zero points
 --reset

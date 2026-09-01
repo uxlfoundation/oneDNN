@@ -24,6 +24,3 @@
 --attr-post-ops=select:f32:common
 1x16x32x256:1x16x256x33n"sdpa_cond_bcast"
 1x16x33x257:1x16x257x37n"sdpa_cond_bcast_tail"
-
-# fwks_01
---batch=option_set_fwks_key_01_gpu

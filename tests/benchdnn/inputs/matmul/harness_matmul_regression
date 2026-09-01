@@ -59,3 +59,5 @@
 --reset --dt=s8:s8:f32 --stag=ab --wtag=ab --dtag=ab --attr-scales=dst:common:1 --attr-post-ops=gelu_erf 8x8:8x8
 --reset --dt=f32:s4:f32 --stag=ab --wtag=ab --dtag=ba --attr-fpmath=strict:true 2x2:2x2_n"woq_with_transposed_dst"
 --reset --dt=s8:u8:f16 --attr-scales=src:common:2:f16+wei:per_oc 3x6x1x2x4:1x6x7x4x1_n"non-f32_src_scale"
+# int4 weights + dynamic quant with N=1: must not swap A/B into an unsupported swapped kernel (must dispatch to jit)
+--reset --dt=s8:u4:f16 --stag=ab --wtag=ba --dtag=ab --attr-scales=wei:per_ocic:f16:64x1 --attr-zero-points=wei:per_ocic:u8:64x1 16x64:64x1

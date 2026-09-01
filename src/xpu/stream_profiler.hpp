@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "common/c_types_map.hpp"
+#include "common/verbose_profiler.hpp"
 
 #include "xpu/context.hpp"
 
@@ -121,28 +122,13 @@ protected:
     void (*callback_)(uint64_t, uint64_t) = nullptr;
 };
 
-// The verbose profiler logs primitive profiling information using device-
-// measured execution times without host-to-device synchronization overhead or
-// blocking stream.wait() calls. It operates asynchronously by polling device
-// events to track primitive completion status.
-// During primitive execution, the profiler groups and registers kernel events
-// for each primitive with the associated profiling metadata. During each
-// primitive post-exec hook, it polls previously registered events to identify
-// completed primitives and logs their timing info. Pending primitives remain
-// in the profiling_data_ list until detected as complete in subsequent
-// polling cycles.
-// During profiler destruction, any remaining primitives are checked and
-// waited for to ensure no executions are left unlogged.
-// This profiler is intended to be thread-local via thread_local_storage_t,
-// ensuring thread-safety for multi-threaded execution environments. Each
-// thread maintains its own profiler instance and event tracking state,
-// operating independently from other stream profilers during primitive
-// execution.
-struct verbose_profiler_t {
-    verbose_profiler_t(const stream_t *stream)
-        : stream_(stream), active_(true) {}
-
-    virtual ~verbose_profiler_t() = default;
+// XPU (OpenCL/SYCL/L0) specialization of verbose_profiler_t.
+// Tracks primitive completion using device-side xpu::event_t handles.
+// Device-measured execution times are retrieved via get_aggregate_exec_time()
+// using runtime-specific event timestamp queries.
+// Instantiated per-thread via thread_local_storage_t on the GPU stream.
+struct verbose_profiler_t : public impl::verbose_profiler_t {
+    using impl::verbose_profiler_t::verbose_profiler_t;
 
     struct prim_profile_data_t {
         uint64_t component_kind_ = 0;
@@ -150,33 +136,8 @@ struct verbose_profiler_t {
         std::string pd_info_;
         std::vector<std::shared_ptr<xpu::event_t>> prim_events_;
     };
-    // Pausing capabilities are added to allow skipping event profiling
-    // queries when they are temporarily unavailable (example:
-    // SYCL graph execution or when queue does not have profiling enabled).
-    // These methods check and update profiler status where such force-pausing
-    // is required. Pausing action is localized to each thread for multi-
-    // threaded execution
-    bool is_active() const { return true; }
-    void start_profiling() { active_ = true; }
-    void pause_profiling() { active_ = false; }
 
-    // The profiler operates through a multi-step event tracking workflow:
-    // 1. stream->before_exec_hook() calls update_event_list()
-    //    to add a new entry for the current primitive. Since there can be
-    //    multiple `register_event` calls, this spot is a guaranteed single
-    //    call for the coming primitive.
-    // 2. During primitive execution, register_event() adds device
-    //    events to the latest primitive entry corresponding to the number of
-    //    invoked kernels.
-    // 3. add_to_pending_primitive_list() stores profiling metadata
-    //    (start_ms_, pd_info_) for the registered primitive
-    // 4. stream->after_exec_hook() calls check_for_completed_primitives()
-    //    to poll events and log completed primitives
-    // 5. Incomplete primitives remain in profiling_data_ until detected as
-    //    complete in future polling cycles
-    // This asynchronous workflow allows tracking multiple concurrent
-    // primitives without blocking execution.
-    void update_event_list() { profiling_data_.emplace_back(); }
+    void update_event_list() override { profiling_data_.emplace_back(); }
 
     // appends primitive event to the last primitive entry in profiling_data_
     void register_event(const std::shared_ptr<xpu::event_t> &event) {
@@ -186,29 +147,27 @@ struct verbose_profiler_t {
 
     // populates profiling metadata for the last primitive entry in
     // profiling_data_
-    void add_to_pending_primitive_list(
-            double start_ms, const std::string &pd_info, uint64_t component);
+    void add_to_pending_primitive_list(double start_ms,
+            const std::string &pd_info, uint64_t component) override;
 
     // Completed primitive executions are periodically checked and logged
     // during after_exec_hook() calls and during stream destruction.
     // The profiler does not wait for pending events to complete
     // and instead prints them at the next concurrent after_exec_hook()
     // call.
-    void check_for_completed_primitives();
+    void check_for_completed_primitives() override;
 
 protected:
-    const stream_t *stream_;
     std::vector<prim_profile_data_t> profiling_data_;
-    bool active_;
 
     // destructor logic to check for unlogged primitives before
     // stream destruction
     void cleanup();
 
 private:
-    // This is invoked during profiler destruction or blocking wait calls
-    //  to account for any pending primitives that have not yet been logged.
-    void wait_for_pending_primitives();
+    // This is invoked during profiler destruction to account for any
+    // pending primitives that have not yet been logged.
+    void wait_for_pending_primitives() override;
 
     void reset() { profiling_data_.clear(); }
 

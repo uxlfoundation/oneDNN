@@ -98,47 +98,29 @@ inline void apply_dropout_dP_tile(p_tile_type *tile, int tile_offset_r,
 #undef dropout_predicate
 #endif
 
-#ifdef QRY_DT_F32
-#define FMA_TYPE float
-#elif QRY_DT_F16
+#ifdef QRY_DT_F16
 #define VEC_TYPE2 half2
-#define FMA_TYPE half
 #elif defined(QRY_DT_BF16)
 #define VEC_TYPE2 ushort2
-#define FMA_TYPE ushort
-#else
+#elif !defined(QRY_DT_F32)
 #error "Data type not supported for VEC_TYPE2"
 #endif
 
-#ifdef SCALE_DT_BF16
-#define SCALES_TO_FLOAT into_float
-#else
-#define SCALES_TO_FLOAT convert_float
-#endif
+typedef NATIVE_LAYOUT_TYPE(DST_DATA_T) dst_tile_data_t;
+typedef NATIVE_LAYOUT_TYPE(MSK_DATA_T) msk_tile_data_t;
+#define FMA_TYPE NATIVE_LAYOUT_TYPE(QRY_DATA_T)
 
-#ifdef DST_DT_BF16
-#define DST_TILE_DATA_T ushort
-#define CONVERT_TILE_DATA_T(v) into_bf16(convert_float(v)).data
-#else
-#define DST_TILE_DATA_T DST_DATA_T
-#define CONVERT_TILE_DATA_T CONVERT_DATA_T
-#endif
+#define CONVERT_TILE_DATA_T(v) as_native_layout(CONVERT_DATA_T(v))
 
-#ifdef MSK_DT_BF16
-#define MSK_TILE_DATA_T ushort
-#define CONVERT_TILE_FLOAT_MSK_T(v) into_float(as_bf16(v))
-#else
-#define MSK_TILE_DATA_T MSK_DATA_T
-#define CONVERT_TILE_FLOAT_MSK_T CONVERT_FLOAT_T
-#endif
+#define CONVERT_TILE_FLOAT_MSK_T(v) \
+    into_float(AS_NATIVE_LAYOUT_TYPE(MSK_DATA_T, v))
 
-#if defined(QRY_DT_BF16)
-#define CONVERT_TILE_FMA_T(v) into_bf16(convert_float(v)).data
-#define CONVERT_TILE_FLOAT_FMA_T(v) into_float(as_bf16(v))
-#else
-#define CONVERT_TILE_FMA_T CONVERT_DATA_T
-#define CONVERT_TILE_FLOAT_FMA_T CONVERT_FLOAT_T
-#endif
+/* FMA tile storage, which follows the query type rather than the ambient dst
+ * type -- see FMA_TYPE above. */
+#define CONVERT_TILE_FMA_T(v) \
+    as_native_layout(CONCAT2(into_, QRY_DATA_T)(convert_float(v)))
+#define CONVERT_TILE_FLOAT_FMA_T(v) \
+    into_float(AS_NATIVE_LAYOUT_TYPE(QRY_DATA_T, v))
 
 DECLARE_2D_TILE(q_tile_type, FMA_TYPE, SUBGROUP_SIZE, D_MAX, 1, 1, q_tile_sg_n)
 
@@ -218,11 +200,11 @@ DECLARE_2D_TILE(kmask_tile_type_float, float, SUBGROUP_SIZE, ugemm_kq_sg_tile_m,
         1, 1, 1)
 
 #if WITH_ATTN_MASK
-DECLARE_2D_TILE(mask_tile_type, MSK_TILE_DATA_T, SUBGROUP_SIZE, mask_br,
+DECLARE_2D_TILE(mask_tile_type, msk_tile_data_t, SUBGROUP_SIZE, mask_br,
         mask_bc, mask_nbr, mask_nbc)
 
 #if BROADCAST_MASK_Q
-DECLARE_2D_TILE_BLOCK_OPS(mask_tile_type, MSK_TILE_DATA_T, SUBGROUP_SIZE,
+DECLARE_2D_TILE_BLOCK_OPS(mask_tile_type, msk_tile_data_t, SUBGROUP_SIZE,
         mask_br, mask_bc, mask_nbr, mask_nbc)
 #endif
 DECLARE_2D_TILE(mask_tile_type_float, float, SUBGROUP_SIZE, mask_br, mask_bc,
@@ -232,9 +214,9 @@ DECLARE_2D_TILE_COPY_REBLOCK(mask_tile_type, SUBGROUP_SIZE, mask_br, mask_bc,
         mask_bc, mask_nbr, mask_nbc, CONVERT_TILE_FLOAT_MSK_T)
 #endif
 
-DECLARE_2D_TILE(a_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
+DECLARE_2D_TILE(a_tile_type_dst, dst_tile_data_t, SUBGROUP_SIZE,
         ugemm_qdSt_sg_tile_m, 1, 1, ugemm_qdSt_sg_tile_n)
-DECLARE_2D_TILE_BLOCK_OPS(a_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
+DECLARE_2D_TILE_BLOCK_OPS(a_tile_type_dst, dst_tile_data_t, SUBGROUP_SIZE,
         ugemm_qdSt_sg_tile_m, 1, 1, ugemm_qdSt_sg_tile_n)
 DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE,
         ugemm_qdSt_c_type_block0, ugemm_qdSt_c_type_block1,
@@ -242,18 +224,18 @@ DECLARE_2D_TILE_COPY_REBLOCK(a_tile_type, SUBGROUP_SIZE,
         SUBGROUP_SIZE, ugemm_qdSt_sg_tile_m, 1, 1, ugemm_qdSt_sg_tile_n,
         CONVERT_TILE_DATA_T)
 
-DECLARE_2D_TILE(dv_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
+DECLARE_2D_TILE(dv_tile_type_dst, dst_tile_data_t, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_m, 1, 1, ugemm_vs_sg_tile_n)
-DECLARE_2D_TILE_BLOCK_OPS(dv_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
+DECLARE_2D_TILE_BLOCK_OPS(dv_tile_type_dst, dst_tile_data_t, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_m, 1, 1, ugemm_vs_sg_tile_n)
 DECLARE_2D_TILE_COPY_REBLOCK(dv_tile_type, SUBGROUP_SIZE,
         ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
         ugemm_vs_c_type_nblock1, dv_tile_type_dst, SUBGROUP_SIZE,
         ugemm_vs_sg_tile_m, 1, 1, ugemm_vs_sg_tile_n, CONVERT_TILE_DATA_T)
 
-DECLARE_2D_TILE(dq_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
+DECLARE_2D_TILE(dq_tile_type_dst, dst_tile_data_t, SUBGROUP_SIZE,
         ugemm_ktq_sg_tile_m, 1, 1, ugemm_ktq_sg_tile_n)
-DECLARE_2D_TILE_BLOCK_OPS(dq_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
+DECLARE_2D_TILE_BLOCK_OPS(dq_tile_type_dst, dst_tile_data_t, SUBGROUP_SIZE,
         ugemm_ktq_sg_tile_m, 1, 1, ugemm_ktq_sg_tile_n)
 DECLARE_2D_TILE_COPY_REBLOCK(ktq_tile_type, SUBGROUP_SIZE,
         ugemm_ktq_c_type_block0, ugemm_ktq_c_type_block1,
@@ -460,10 +442,10 @@ inline void tile_store_dV(dv_tile_type *dV_tile_slm, global DST_DATA_T_DKDV *dV,
     dv_tile_type_dst dV_tile_dst; // convert to half
     tile_copy_reblock(*dV_tile_slm, &dV_tile_dst);
 #if BLOCK_DV
-    tile_store_block_rem_q(dV_tile_dst, (global DST_TILE_DATA_T *)dV, n, ld,
+    tile_store_block_rem_q(dV_tile_dst, (global dst_tile_data_t *)dV, n, ld,
             offset_r, offset_c, rem)
 #else
-    tile_store(dV_tile_dst, (global DST_TILE_DATA_T *)dV, m, n, ld, offset_r,
+    tile_store(dV_tile_dst, (global dst_tile_data_t *)dV, m, n, ld, offset_r,
             offset_c);
 #endif
 #endif
@@ -481,10 +463,10 @@ inline void tile_store_dK_t(dv_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
     dv_tile_type_dst dK_tile_dst;
     tile_copy_reblock(*dK_tile, &dK_tile_dst);
 #if BLOCK_DK
-    tile_store_block_rem_q(dK_tile_dst, (global DST_TILE_DATA_T *)dK, n, ld,
+    tile_store_block_rem_q(dK_tile_dst, (global dst_tile_data_t *)dK, n, ld,
             offset_r, offset_c, rem)
 #else
-    tile_store(dK_tile_dst, (global DST_TILE_DATA_T *)dK, m, n, ld, offset_r,
+    tile_store(dK_tile_dst, (global dst_tile_data_t *)dK, m, n, ld, offset_r,
             offset_c);
 #endif
 #endif
@@ -505,9 +487,9 @@ inline void tile_store_dK(a_tile_type *dK_tile, global DST_DATA_T_DKDV *dK,
     tile_copy_reblock(*dK_tile, &dK_tile_dst);
 #if BLOCK_DK
     tile_store_block(
-            dK_tile_dst, (global DST_TILE_DATA_T *)dK, ld, offset_r, offset_c);
+            dK_tile_dst, (global dst_tile_data_t *)dK, ld, offset_r, offset_c);
 #else
-    tile_store(dK_tile_dst, (global DST_TILE_DATA_T *)dK, m, n, ld, offset_r,
+    tile_store(dK_tile_dst, (global dst_tile_data_t *)dK, m, n, ld, offset_r,
             offset_c);
 #endif
 
@@ -735,10 +717,10 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 #else
 #if INVERT_SCALE
-        iscale = SCALES_TO_FLOAT(*scale_ptr);
+        iscale = into_float(*scale_ptr);
         scale = native_recip(iscale);
 #else
-        scale = SCALES_TO_FLOAT(*scale_ptr);
+        scale = into_float(*scale_ptr);
         iscale = native_recip(scale);
 #endif
 #endif
@@ -810,14 +792,14 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         mask_tile_type mask_tile;
 #if BROADCAST_MASK_Q
         if (block_msk) {
-            tile_load_block(&mask_tile, (const global MSK_TILE_DATA_T *)msk,
+            tile_load_block(&mask_tile, (const global msk_tile_data_t *)msk,
                     MSK_S2, 0, k0 + sg_i0_kq, 0);
         } else {
-            tile_load(&mask_tile, (const global MSK_TILE_DATA_T *)msk, k, 1,
+            tile_load(&mask_tile, (const global msk_tile_data_t *)msk, k, 1,
                     MSK_S2, k0 + sg_i0_kq, 0);
         }
 #else
-        tile_load(&mask_tile, (const global MSK_TILE_DATA_T *)msk, k, q, MSK_S2,
+        tile_load(&mask_tile, (const global msk_tile_data_t *)msk, k, q, MSK_S2,
                 k0 + sg_i0_kq, q0 + sg_j0_kq);
 #endif
 
@@ -1048,7 +1030,7 @@ micro_sdpa_bwd(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
             dq_tile_type_dst dQ_tile_dst;
             tile_copy_reblock(dQ_tile, &dQ_tile_dst);
             if (sg_ij < sg_per_wg_BrD)
-                tile_store(dQ_tile_dst, (global DST_TILE_DATA_T *)dQ, d, q,
+                tile_store(dQ_tile_dst, (global dst_tile_data_t *)dQ, d, q,
                         lddq, sg_i0_dq, sg_j0_dq);
 #else
             if (sg_ij < sg_per_wg_BrD)

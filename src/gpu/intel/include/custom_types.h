@@ -17,6 +17,8 @@
 #ifndef GPU_INTEL_INCLUDE_CUSTOM_TYPES_H
 #define GPU_INTEL_INCLUDE_CUSTOM_TYPES_H
 
+#include "gpu/intel/include/utils.h"
+
 // Fixed to 64 bit per the OpenCL specification to align with same type in C++
 // source code
 typedef long dim_t;
@@ -120,5 +122,22 @@ undef_data as_undef_data(char data) {
     undef_data ret = {0xba};
     return ret;
 }
+
+#define NATIVE_TYPE_CASE(t) t : (0, ((t *)0)->data)
+
+// Returns the native scalar type used to store the punned `type`.
+#define NATIVE_LAYOUT_TYPE(type) \
+    __typeof__(_Generic(*(type *)0, \
+            NATIVE_TYPE_CASE(bf16), \
+            NATIVE_TYPE_CASE(f8_e5m2), \
+            NATIVE_TYPE_CASE(f8_e4m3), \
+            NATIVE_TYPE_CASE(e8m0), \
+            NATIVE_TYPE_CASE(f4_e2m1), \
+            NATIVE_TYPE_CASE(s4), \
+            NATIVE_TYPE_CASE(u4), \
+            default: (0, *(type *)0)))
+
+// Macro to generate as_<type> function call for a given dt
+#define AS_NATIVE_LAYOUT_TYPE(dt, v) CONCAT2(as_, dt)(v)
 
 #endif

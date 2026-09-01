@@ -20,6 +20,37 @@
 #include "gpu/intel/include/generic_vector_ops.h"
 #include "gpu/intel/include/types.h"
 
+#define def_as_native_layout(dt) \
+    NATIVE_LAYOUT_TYPE(dt) \
+    __attribute__((overloadable)) as_native_layout(dt val) { \
+        return val.data; \
+    }
+#define def_identity_native_layout_into(dt) \
+    dt __attribute__((overloadable)) as_native_layout(dt val) { \
+        return val; \
+    }
+
+def_as_native_layout(bf16);
+def_as_native_layout(f8_e5m2);
+def_as_native_layout(f8_e4m3);
+def_as_native_layout(e8m0);
+def_as_native_layout(f4_e2m1);
+def_as_native_layout(s4);
+def_as_native_layout(u4);
+
+def_identity_native_layout_into(float);
+def_identity_native_layout_into(char);
+def_identity_native_layout_into(uchar);
+def_identity_native_layout_into(short);
+def_identity_native_layout_into(ushort);
+def_identity_native_layout_into(int);
+def_identity_native_layout_into(uint);
+IF_DOUBLE_SUPPORTED(def_identity_native_layout_into(double));
+IF_HALF_SUPPORTED(def_identity_native_layout_into(half));
+
+#undef def_as_native_layout
+#undef def_identity_native_layout_into
+
 #define IS_POWER_OF_2(x) (((x) != 0) && (((x) & ((x) - 1)) == 0))
 
 float __builtin_IB_atomic_max_local_f32(__local float *, float);

@@ -21,16 +21,11 @@
 
 #include "gemm_grouped.h"
 
-#ifdef DST_DT_BF16
-#define DST_TILE_DATA_T ushort
-#define CONVERT_TILE_DATA_T(v) (into_bf16(convert_float(v)).data)
-#else
-#define DST_TILE_DATA_T DST_DATA_T
-#define CONVERT_TILE_DATA_T CONVERT_DATA_T
-#endif
+#define CONVERT_TILE_DATA_T(v) as_native_layout(CONVERT_DATA_T(v))
+typedef NATIVE_LAYOUT_TYPE(DST_DATA_T) dst_tile_data_t;
 
 #ifndef DST_DT_F32
-DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
+DECLARE_2D_TILE(c_tile_type_dst, dst_tile_data_t, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
 #endif
@@ -43,7 +38,7 @@ void store_results(ugemm_grouped_c_type *tile, global DST_DATA_T *ptr, int m,
     c_tile_type_dst tile_dst;
     tile_convert((*tile), tile_dst, CONVERT_TILE_DATA_T);
     tile_store(
-            tile_dst, (global DST_TILE_DATA_T *)ptr, m, n, ldc, sg_i0, sg_j0);
+            tile_dst, (global dst_tile_data_t *)ptr, m, n, ldc, sg_i0, sg_j0);
 #endif
 }
 

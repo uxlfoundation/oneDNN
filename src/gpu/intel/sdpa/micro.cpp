@@ -1114,8 +1114,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     def_data_type(kernel_ctx, qry_data_t, "QRY");
     def_data_type(kernel_ctx, val_data_t, "VAL");
     def_data_type(kernel_ctx, dst_data_t, "DST");
-
-    if (with_attn_mask) { def_data_type(kernel_ctx, msk_data_t, "MSK"); }
+    def_data_type(kernel_ctx, msk_data_t, "MSK");
 
     def_data_type(kernel_ctx, key_scales_data_t, "KEY_ATTR_SCALES");
     def_data_type(kernel_ctx, value_scales_data_t, "VAL_ATTR_SCALES");
@@ -1319,8 +1318,7 @@ status_t micro_bwd_params_t::get_kernel_ctx(
     def_data_type(kernel_ctx, qry_data_t, "QRY");
     def_data_type(kernel_ctx, val_data_t, "VAL");
     def_data_type(kernel_ctx, dst_data_t, "DST");
-
-    if (with_attn_mask) { def_data_type(kernel_ctx, msk_data_t, "MSK"); }
+    def_data_type(kernel_ctx, msk_data_t, "MSK");
 
     kernel_ctx.define_int("KV_GROUP_SIZE", kv_group_size);
 

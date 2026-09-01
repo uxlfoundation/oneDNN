@@ -84,11 +84,11 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     Reg64 reg_tmp = r13;
     Reg64 reg_dst_spat_offt = r15;
     Reg64 reg_diff_dst_spat_offt = reg_log_injector_table;
-    Reg64 reg_tmp2 = reg_log_injector_table;
     Reg64 reg_interim = reg_diff_dst;
     Reg64 reg_interim_spat_offt = abi_not_param1;
     Reg64 reg_src_scales = rsi;
     Reg64 reg_dst_scales = rdx;
+    Reg64 reg_dst_zps = reg_log_injector_table;
 
     Opmask injector_mask = Opmask(1);
 
@@ -117,6 +117,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     bool with_eltwise_ = false;
     bool with_src_scales_ = false;
     bool with_dst_scales_ = false;
+    bool with_dst_zps_ = false;
     bool use_ext_aux_vmms_ = false;
 
     int unroll_regs_ = 4;
@@ -208,6 +209,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         }
         mov(reg_src_scales, ptr[reg_param + PARAM_OFF(src_scales)]);
         mov(reg_dst_scales, ptr[reg_param + PARAM_OFF(dst_scales)]);
+        mov(reg_dst_zps, ptr[reg_param + PARAM_OFF(dst_zero_points)]);
     }
 
     Address diff_src_ptr(size_t offt = 0) {
@@ -825,6 +827,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
             for (int i = 0; i < unroll; i++) {
                 Vmm vreg_tmp_src = Vmm(i + 1);
                 Vmm vreg_tmp_scale = get_aux_vmm(vreg_tmp_src, 1 * max_unroll);
+                Vmm vreg_tmp_zp = vreg_tmp_scale;
 
                 if (is_softmax_) uni_vmulps(vreg_tmp_src, vreg_tmp_src, vsum);
                 if (is_logsoftmax_)
@@ -852,6 +855,12 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                 if (with_dst_scales_) {
                     uni_vbroadcastss(vreg_tmp_scale, ptr[reg_dst_scales]);
                     uni_vmulps(vreg_tmp_src, vreg_tmp_src, vreg_tmp_scale);
+                }
+                if (with_dst_zps_) {
+                    // set_breakpoint();
+                    uni_vcvtdq2ps(vreg_tmp_zp, ptr_b[reg_dst_zps]);
+                    // uni_vbroadcastss(vreg_tmp_zp, ptr[reg_dst_zps]);
+                    uni_vaddps(vreg_tmp_src, vreg_tmp_src, vreg_tmp_zp);
                 }
             }
             for (int i = 0; i < unroll; i++) {
@@ -1025,6 +1034,10 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         with_dst_scales_ = is_superset(isa, avx2)
                 && !attr_scales.has_default_values(DNNL_ARG_DST);
 
+        const auto &attr_zps = pd_->attr()->zero_points_;
+        with_dst_zps_ = is_superset(isa, avx512_core)
+                && !attr_zps.has_default_values(DNNL_ARG_DST);
+
         io::io_conf_t io_conf;
         io::io_tail_conf_t io_tail_conf(simd_w_, axis_simd_tail_,
                 tail_opmask_idx_, tail_vmask.getIdx(), reg_tmp);
@@ -1076,7 +1089,6 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     Reg64 reg_interim_spat_offt = rsi;
     Reg64 reg_reverse_n_elems = r12;
     Reg64 reg_tmp = r13;
-    Reg64 reg_tmp2 = reg_log_injector_table;
     Reg64 reg_interim = r14;
     Reg64 reg_reverse_axis_elems = r11;
 
@@ -1699,6 +1711,8 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     const void *dst_scales
             = CTX_IN_MEM(const void *, DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+    const void *dst_zero_points = CTX_IN_MEM(
+            const void *, DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
     auto scratchpad_ptr = scratchpad.template get<char>(
@@ -1797,6 +1811,7 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
         p.interim = interim_ptr;
         p.src_scales = src_scales;
         p.dst_scales = dst_scales_inv_ptr;
+        p.dst_zero_points = dst_zero_points;
         // post-ops
         p.dst_orig = dst_orig_ptr;
         p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();

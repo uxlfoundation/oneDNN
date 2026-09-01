@@ -114,6 +114,7 @@ status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
                 || utils::one_of(dst_dt, s8, u8);
         const bool is_f8 = utils::one_of(dst_dt, f8_e5m2, f8_e4m3);
         if (is_int8 || is_f8) fwd_attr_mask |= smask_t::scales;
+        if (is_int8) fwd_attr_mask |= smask_t::zero_points;
 
         VCHECK_SOFTMAX_UNIMPL(attr->has_default_values(fwd_attr_mask, dst_dt),
                 VERBOSE_UNSUPPORTED_ATTR);
@@ -140,6 +141,28 @@ status_t softmax_attr_check(const softmax_desc_t &desc, const engine_t *engine,
                     IMPLICATION(engine->kind() == engine_kind::gpu,
                             !attr->scales_.has_host_scalars()),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
+        }
+
+        // Check scales
+        if (!attr->zero_points_.has_default_values()) {
+            static const std::vector<int> supported_args {DNNL_ARG_DST};
+            VCHECK_SOFTMAX_UNIMPL(
+                    attr->zero_points_.has_default_values(supported_args),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+
+            for (int arg : supported_args) {
+                if (attr->zero_points_.has_default_values(arg)) continue;
+
+                const int mask = attr->zero_points_.get_mask(arg);
+                VCHECK_SOFTMAX_UNIMPL(mask == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
+            }
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_SOFTMAX_UNIMPL(
+                    IMPLICATION(engine->kind() == engine_kind::gpu,
+                            !attr->zero_points_.has_host_scalars()),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
         }
 
         // Check post-ops

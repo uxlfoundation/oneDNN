@@ -51,6 +51,7 @@ struct jit_softmax_kernel_base_t {
         const void *interim; // scratch memory for intermediate storage
         const void *src_scales; // src_scales defined for all data type cases
         const void *dst_scales; // dst_scales defined for all data type cases
+        const void *dst_zero_points;
         size_t process_n_elems;
 
         // post ops
@@ -138,10 +139,12 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                             is_superset(isa_, avx10_1_512_amx));
             VDISPATCH_SOFTMAX(f8_isa_ok, VERBOSE_ISA_DT_MISMATCH);
 
-            VDISPATCH_SOFTMAX(attr()->has_default_values(skip_mask_t::scales
-                                      | skip_mask_t::post_ops),
+            VDISPATCH_SOFTMAX(
+                    attr()->has_default_values(skip_mask_t::scales
+                            | skip_mask_t::zero_points | skip_mask_t::post_ops),
                     VERBOSE_UNSUPPORTED_ATTR);
             VDISPATCH_SOFTMAX(attr_scales_ok(), VERBOSE_UNSUPPORTED_SCALES_CFG);
+            CHECK(attr_zero_points_ok(engine));
 
             VDISPATCH_SOFTMAX(set_default_formats() == status::success,
                     VERBOSE_UNSUPPORTED_TAG);
@@ -207,6 +210,30 @@ struct jit_uni_softmax_fwd_t : public primitive_t {
                 scratchpad.book(memory_tracking::names::key_softmax_dst_scales,
                         static_cast<size_t>(nthr_) * sizeof(float), 64);
             }
+        }
+
+        status_t attr_zero_points_ok(const engine_t *engine,
+                const std::vector<int> &supported_args = {DNNL_ARG_DST}) const {
+            const auto &zp = attr()->zero_points_;
+            if (zp.has_default_values()) return status::success;
+
+            VDISPATCH_SOFTMAX(zp.has_default_values(supported_args),
+                    VERBOSE_UNSUPPORTED_ZP_CFG);
+
+            for (int arg : supported_args) {
+                if (zp.has_default_values(arg)) { continue; }
+
+                if (arg == DNNL_ARG_DST) {
+                    const auto &mask = zp.get_mask(arg);
+
+                    VDISPATCH_SOFTMAX(mask == 0, VERBOSE_UNSUPPORTED_ZP_CFG);
+                    VDISPATCH_SOFTMAX(zp.get(arg).has_default_groups(),
+                            VERBOSE_UNSUPPORTED_ZP_CFG);
+                } else {
+                    assert(!"Unsupported arg");
+                }
+            }
+            return status::success;
         }
 
         bool post_ops_ok() const {

@@ -25,6 +25,8 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     const dnn_mem_t &dst = args.find(DNNL_ARG_DST);
     const dnn_mem_t &src_scale = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC);
     const dnn_mem_t &dst_scale = args.find(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
+    const dnn_mem_t &dst_zps
+            = args.find(DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST);
     const dnn_mem_t &dropout_mask = args.find(DNNL_ARG_ATTR_DROPOUT_MASK);
 
     float *dst_ptr = (float *)dst;
@@ -41,9 +43,13 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
     assert(IMPLICATION(has_src_scale, src_scale.nelems() == 1));
     assert(IMPLICATION(has_dst_scale, dst_scale.nelems() == 1));
 
+    const bool has_dst_zp = !prb->attr.zero_points.get(DNNL_ARG_DST).is_def();
+    assert(IMPLICATION(has_dst_zp, dst_zps.nelems() == 1));
+
     const float src_scale_val = has_src_scale ? src_scale.get_f32_elem(0) : 1.f;
     const float dst_scale_val = has_dst_scale ? dst_scale.get_f32_elem(0) : 1.f;
     const float r_dst_scale_val = 1.0f / dst_scale_val;
+    const int dst_zp_val = has_dst_zp ? dst_zps.get_elem(0) : 0;
 
     auto v_po_masks = prb->attr.post_ops.get_po_masks(prb->ndims);
 
@@ -94,6 +100,7 @@ void compute_ref_fwd(const prb_t *prb, const args_t &args) {
             maybe_dropout(prb->attr, dst_ptr[idx], idx, dropout_mask);
             maybe_post_ops(prb->attr, dst_ptr[idx], 0.f, v_po_vals);
             dst_ptr[idx] *= r_dst_scale_val;
+            dst_ptr[idx] += dst_zp_val;
         }
     });
 }

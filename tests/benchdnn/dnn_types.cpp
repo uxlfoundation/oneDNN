@@ -2290,6 +2290,17 @@ int sparse_options_t::resolve_profile(dnnl_dim_t total_size) {
     }
     const dnnl_dim_t chosen_hint = user_hint > 0 ? user_hint : max_gen;
 
+    // Dump generated offsets explicitly in a form of valid `--grouped` line
+    if (verbose >= 3) {
+        std::string s("[GROUPED] --grouped="
+                + std::to_string(get_variable_dim_idx(DNNL_ARG_SRC)) + ":"
+                + std::to_string(G) + ":");
+        for (size_t i = 0; i < sizes.size(); i++)
+            s += (i ? "+" : "") + std::to_string(sizes[i]);
+        s += ":" + std::to_string(chosen_hint);
+        BENCHDNN_PRINT(3, "%s\n", s.c_str());
+    }
+
     for (auto &kv : grouped_data_) {
         if (kv.second.profile.kind != grouped_data_t::profile_none) {
             kv.second.group_sizes = sizes;

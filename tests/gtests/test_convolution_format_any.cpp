@@ -49,8 +49,8 @@ protected:
                 "blocked format check is not reliable on GPU");
 #if DNNL_X64
         // Skip this test if the library cannot select blocked format a priori.
-        // Currently blocking is supported only for sse41 and later CPUs.
-        bool implementation_supports_blocking = dnnl::mayiuse(cpu_isa::sse41);
+        // Currently blocking is supported only for avx2 and later CPUs.
+        bool implementation_supports_blocking = dnnl::mayiuse(cpu_isa::avx2);
         if (!implementation_supports_blocking) return;
 #else
         return;

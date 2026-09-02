@@ -1588,10 +1588,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasSumNdx2d) {
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
-    // skip the test on AArch64 or some older machine without avx support
+    // skip the test on AArch64 or some older machine without avx2 support
     SKIP_IF(engine->kind() == graph::engine_kind::cpu
-                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx,
-            "skip on machine without AVX");
+                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2,
+            "skip on machine without AVX2");
 
     std::vector<std::string> qtypes {"per_tensor", "per_channel"};
     std::vector<std::string> other_qtypes = {"symmetric", "asymmetric"};
@@ -1795,10 +1795,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasBinary) {
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
-    // skip the test on AArch64 or some older machine without avx support
+    // skip the test on AArch64 or some older machine without avx2 support
     SKIP_IF(engine->kind() == graph::engine_kind::cpu
-                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx,
-            "skip on machine without AVX");
+                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2,
+            "skip on machine without AVX2");
 
     std::vector<std::string> qtypes {"per_channel"};
     std::vector<graph::op_kind_t> binary_kinds {graph::op_kind::Multiply,
@@ -1975,10 +1975,10 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasAddMul) {
     graph::engine_t *engine = get_engine();
     graph::stream_t *strm = get_stream();
 
-    // skip the test on AArch64 or some older machine without avx support
+    // skip the test on AArch64 or some older machine without avx2 support
     SKIP_IF(engine->kind() == graph::engine_kind::cpu
-                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx,
-            "skip on machine without AVX");
+                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2,
+            "skip on machine without AVX2");
 
     std::vector<std::string> qtypes {"per_tensor", "per_channel"};
     std::vector<std::string> other_qtypes = {"symmetric", "asymmetric"};
@@ -2840,9 +2840,9 @@ TEST(test_matmul_execute_subgraph_int8, MatmulBiasSumGetInplacePair_CPU) {
     graph::engine_t *engine = get_engine();
     SKIP_IF(engine->kind() == graph::engine_kind::gpu,
             "Skip for GPU - no inplace for layout mismatch.");
-    // skip the test on AArch64 or some older machine without avx support
-    SKIP_IF(dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx,
-            "skip on machine without AVX");
+    // skip the test on AArch64 or some older machine without avx2 support
+    SKIP_IF(dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2,
+            "skip on machine without AVX2");
 
     std::vector<std::string> qtypes {"per_tensor", "per_channel"};
     std::vector<std::string> other_qtypes = {"symmetric", "asymmetric"};

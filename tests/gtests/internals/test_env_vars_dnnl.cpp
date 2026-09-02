@@ -58,36 +58,34 @@ TEST(dnnl_max_cpu_isa_env_var_test, TestEnvVars) {
     const bool has_cpu = DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE;
 
     custom_unsetenv("ONEDNN_MAX_CPU_ISA");
-    custom_setenv("DNNL_MAX_CPU_ISA", "SSE41", 1);
+    custom_setenv("DNNL_MAX_CPU_ISA", "AVX2", 1);
     auto got = get_effective_cpu_isa();
     (void)got;
 
 #if defined(DNNL_ENABLE_MAX_CPU_ISA)
-    // Expect env var value to be set when env variable feature is enabled.
-    EXPECT_EQ(got, has_cpu ? cpu_isa::sse41 : cpu_isa::isa_default);
+#if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
+    const auto expected = mayiuse(impl::cpu::x64::avx2) ? cpu_isa::avx2
+                                                        : cpu_isa::isa_default;
+#else
+    const auto expected = cpu_isa::isa_default;
+#endif
+    EXPECT_EQ(got, expected);
 #elif DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    // Native SSE41 will issue an error. Don't check for it.
-    if (mayiuse(impl::cpu::x64::avx)) {
-        // Otherwise, don't expect it to be set.
-        EXPECT_NE(got, cpu_isa::sse41);
-    }
+    if (mayiuse(impl::cpu::x64::avx512_core)) { EXPECT_NE(got, cpu_isa::avx2); }
 #endif
 
     if (has_cpu) {
-        // `get_effective_cpu_isa` freezes the isa value, any call to set
-        // it again results in invalid_arguments.
-        auto st = set_max_cpu_isa(cpu_isa::sse41);
+        auto st = set_max_cpu_isa(cpu_isa::avx2);
         EXPECT_EQ(st, status::invalid_arguments);
     }
-    // Check that second pass of env var doesn't take any effect.
-    custom_setenv("DNNL_MAX_CPU_ISA", "AVX", 1);
+
+    custom_setenv("DNNL_MAX_CPU_ISA", "AVX512_CORE", 1);
     got = get_effective_cpu_isa();
 #if defined(DNNL_ENABLE_MAX_CPU_ISA)
-    EXPECT_EQ(got, has_cpu ? cpu_isa::sse41 : cpu_isa::isa_default);
+    EXPECT_EQ(got, expected);
 #elif DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
-    if (mayiuse(impl::cpu::x64::avx2)) {
-        EXPECT_NE(got, cpu_isa::sse41);
-        EXPECT_NE(got, cpu_isa::avx);
+    if (mayiuse(impl::cpu::x64::avx512_core_vnni)) {
+        EXPECT_NE(got, cpu_isa::avx512_core);
     }
 #endif
 }

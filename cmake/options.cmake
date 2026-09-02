@@ -347,9 +347,10 @@ onednn_option(ENABLE_PRIMITIVE_CPU_ISA "ALL"
     implementations will always be available. Valid values:
     - ALL (the default). Includes all ISA to be enabled.
     - <ISA_NAME>. Includes selected and all \"less\" ISA to be enabled.
-      Possible values are: SSE41, AVX2, AVX512, AMX. The linear order is
-      SSE41 < AVX2 < AVX512 < AMX. It means that if user selects, e.g. AVX2 ISA,
-      SSE41 implementations will also be available at build time.")
+      Possible values are: AVX2, AVX512, AMX. The linear order is
+      AVX2 < AVX512 < AMX. It means that if user selects, e.g. AVX512 ISA,
+      AVX2 implementations will also be available at build time.
+      Legacy values SSE41 and AVX are accepted with a warning and ignored.")
 
 onednn_option(ENABLE_GEMM_KERNELS_ISA "ALL"
     "Specifies an ISA set of GeMM kernels residing in x64/gemm folder to be
@@ -357,9 +358,10 @@ onednn_option(ENABLE_GEMM_KERNELS_ISA "ALL"
     - ALL (the default). Includes all ISA kernels to be enabled.
     - NONE. Removes all kernels and interfaces.
     - <ISA_NAME>. Enables all ISA up to ISA_NAME included.
-      Possible value are: SSE41, AVX2, AVX512. The linear order is
-      SSE41 < AVX2 < AVX512 < AMX (or ALL). It means that if user selects, e.g.
-      AVX2 ISA, SSE41 kernels will also present at build time.")
+      Possible values are: AVX2, AVX512. The linear order is
+      AVX2 < AVX512 < AMX (or ALL). It means that if user selects, e.g.
+      AVX512 ISA, AVX2 kernels will also be present at build time.
+      Legacy values SSE41 and AVX are accepted with a warning and ignored.")
 
 onednn_option(SAFE_RBP OFF
     "Prohibits RBP register clobbering in JIT kernels. Use this option to enable

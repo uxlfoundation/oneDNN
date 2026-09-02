@@ -14,8 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_GEMM_F32_JIT_SSE41_GEMV_N_F32_KERN_HPP
-#define CPU_X64_GEMM_F32_JIT_SSE41_GEMV_N_F32_KERN_HPP
+#ifndef CPU_X64_GEMM_F32_JIT_AVX2_GEMV_N_F32_KERN_HPP
+#define CPU_X64_GEMM_F32_JIT_AVX2_GEMV_N_F32_KERN_HPP
 
 #include "cpu/x64/jit_generator.hpp"
 
@@ -24,16 +24,13 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 
-class jit_sse41_gemv_n_f32_kern_t : public jit_generator_t {
+class jit_avx2_gemv_n_f32_kern_t : public jit_generator_t {
 public:
-    jit_sse41_gemv_n_f32_kern_t();
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_sse41_gemv_n_f32_kern_t);
+    jit_avx2_gemv_n_f32_kern_t();
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_avx2_gemv_n_f32_kern_t);
 
 protected:
     bool has_avx512_;
-    bool has_avx2_;
-    bool has_avx_;
-    bool has_sse41_;
 
     int unroll_m_, unroll_n_;
 
@@ -83,7 +80,7 @@ private:
     Xbyak::Reg64 A1_, A2_, Y1_, LDA3_, I_;
 
     // Vector register assignments
-    Xbyak::Xmm scratch_, alpha_;
+    Xbyak::Xmm alpha_;
     Xbyak::Xmm a_, x_[max_unroll_n_], y_[max_um_vecs_];
     Xbyak::Xmm acc_[max_um_vecs_];
 
@@ -99,4 +96,4 @@ private:
 } // namespace impl
 } // namespace dnnl
 
-#endif // CPU_X64_GEMM_F32_JIT_SSE41_GEMV_N_F32_KERN_HPP
+#endif // CPU_X64_GEMM_F32_JIT_AVX2_GEMV_N_F32_KERN_HPP

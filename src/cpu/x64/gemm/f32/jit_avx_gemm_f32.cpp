@@ -66,8 +66,7 @@ struct xbyak_gemm_t : public jit_generator_t {
         , isTransA(isTransA)
         , isTransB(isTransB)
         , hasBias(hasBias)
-        , is_avx2(mayiuse(avx2))
-        , UNROLL_M(is_avx2 ? 16 : 8)
+        , UNROLL_M(16)
         , UNROLL_N(6)
         , isBeta0(beta == 0.0)
         , isBetaN(!isBeta0 && beta != 1.0)
@@ -79,14 +78,7 @@ struct xbyak_gemm_t : public jit_generator_t {
     void fma(bool useFma, const Ymm &reg0, const Ymm &reg1, const Ymm &reg2,
             bool overWrite = false) {
         if (useFma) {
-            if (is_avx2) {
-                vfmadd231ps(reg2, reg1, reg0);
-            } else {
-                assert(UNROLL_M == 8);
-                auto tent_vreg = overWrite ? reg1 : ymm1;
-                vmulps(tent_vreg, reg1, reg0);
-                vaddps(reg2, reg2, tent_vreg);
-            }
+            vfmadd231ps(reg2, reg1, reg0);
         } else {
             if (!overWrite) {
                 vmulps(ymm15, reg1, reg0);
@@ -1386,7 +1378,7 @@ struct xbyak_gemm_t : public jit_generator_t {
                     vmovups(ptr[AO1 + (unroll_m * 3 + i * 4 - OFFSET) * SIZE],
                             xmm1);
                 }
-            } else if (is_avx2) {
+            } else {
                 for (int i = 0; i < 2; i++) {
                     vmovaps(xmm4, xmm3);
                     vgatherqps(xmm0,
@@ -1428,52 +1420,9 @@ struct xbyak_gemm_t : public jit_generator_t {
                 }
 
                 lea(BO2, ptr[BO2 + LDA * 4]);
-            } else {
-                vxorps(xmm4, xmm4, xmm4);
-                lea(BO2, ptr[BO1 + LDA * 4]);
-
-                auto el_cp = [&](int section, int ld_step) {
-                    RegExp src_addr = section == 0 ? BO1 : BO2;
-                    if (ld_step == 1 || ld_step == 2)
-                        src_addr = src_addr + LDA * ld_step;
-                    else if (ld_step == 3)
-                        src_addr = src_addr + CO1;
-                    src_addr = src_addr - OFFSET * SIZE;
-
-                    vmovups(Xmm(ld_step % 2), ptr[src_addr]);
-                    RegExp dst_addr
-                            = AO1 + (ld_step + section * 4 - OFFSET) * SIZE;
-                    for (int off = 0; off < 4; ++off)
-                        pextrd(ptr[dst_addr + unroll_m * off * SIZE],
-                                Xmm(ld_step % 2), static_cast<uint8_t>(off));
-                };
-
-                el_cp(0, 0);
-                cmp(M, 4 * 0 + 0 + 1);
-                je(labels[4], T_NEAR);
-                el_cp(0, 1);
-                cmp(M, 4 * 0 + 1 + 1);
-                je(labels[4], T_NEAR);
-                el_cp(0, 2);
-                cmp(M, 4 * 0 + 2 + 1);
-                je(labels[4], T_NEAR);
-                el_cp(0, 3);
-                cmp(M, 4 * 0 + 3 + 1);
-                je(labels[4], T_NEAR);
-                el_cp(1, 0);
-                cmp(M, 4 * 1 + 0 + 1);
-                je(labels[4], T_NEAR);
-                el_cp(1, 1);
-                cmp(M, 4 * 1 + 1 + 1);
-                je(labels[4], T_NEAR);
-                el_cp(1, 2);
-                L(labels[4]);
-
-                lea(BO2, ptr[BO2 + LDA * 4]);
             }
 
             if (unroll_m >= 16) {
-                assert(is_avx2);
                 if (isLoad2Unmasked) {
                     for (int i = 0; i < 2; i++) {
                         vmovups(xmm0, ptr[BO2 + (0 * 8 - OFFSET) * SIZE]);
@@ -1614,7 +1563,7 @@ struct xbyak_gemm_t : public jit_generator_t {
                 vunpcklpd(xmm1, xmm1, xmm2);
                 vmovups(ptr[AO1 + (unroll_m * 0 + 1 * 4 - OFFSET) * SIZE],
                         xmm1);
-            } else if (is_avx2) {
+            } else {
                 vmovaps(xmm4, xmm3);
                 vgatherqps(
                         xmm1, ptr[BO1 + ymm7 + (0 * 8 - OFFSET) * SIZE], xmm4);
@@ -1628,50 +1577,9 @@ struct xbyak_gemm_t : public jit_generator_t {
                 lea(BO2, ptr[BO2 + LDA * 4]);
                 vmovups(ptr[AO1 + (unroll_m * 0 + 1 * 4 - OFFSET) * SIZE],
                         xmm1);
-            } else {
-                vxorps(xmm4, xmm4, xmm4);
-                lea(BO2, ptr[BO1 + LDA * 4]);
-
-                auto el_cp = [&](int section, int ld_step) {
-                    RegExp src_addr = section == 0 ? BO1 : BO2;
-                    if (ld_step == 1 || ld_step == 2)
-                        src_addr = src_addr + LDA * ld_step;
-                    else if (ld_step == 3)
-                        src_addr = src_addr + CO1;
-                    src_addr = src_addr - OFFSET * SIZE;
-
-                    vmovss(xmm1, ptr[src_addr]);
-                    RegExp dst_addr
-                            = AO1 + (ld_step + section * 4 - OFFSET) * SIZE;
-                    movss(ptr[dst_addr], xmm1);
-                };
-
-                el_cp(0, 0);
-                cmp(M, 4 * 0 + 0 + 1);
-                je(labels[5], T_NEAR);
-                el_cp(0, 1);
-                cmp(M, 4 * 0 + 1 + 1);
-                je(labels[5], T_NEAR);
-                el_cp(0, 2);
-                cmp(M, 4 * 0 + 2 + 1);
-                je(labels[5], T_NEAR);
-                el_cp(0, 3);
-                cmp(M, 4 * 0 + 3 + 1);
-                je(labels[5], T_NEAR);
-                el_cp(1, 0);
-                cmp(M, 4 * 1 + 0 + 1);
-                je(labels[5], T_NEAR);
-                el_cp(1, 1);
-                cmp(M, 4 * 1 + 1 + 1);
-                je(labels[5], T_NEAR);
-                el_cp(1, 2);
-                L(labels[5]);
-
-                lea(BO2, ptr[BO2 + LDA * 4]);
             }
 
             if (unroll_m >= 16) {
-                assert(is_avx2);
                 if (isLoad2Unmasked) {
                     for (int i = 0; i < 2; i++) {
                         vmovss(Xmm(i + 1), ptr[BO2 + (0 * 8 - OFFSET) * SIZE]);
@@ -1960,7 +1868,7 @@ struct xbyak_gemm_t : public jit_generator_t {
     }
 
     void generate() override {
-        assert(IMPLICATION(!is_avx2, mayiuse(avx)));
+        assert(mayiuse(avx2));
 
         preamble();
 
@@ -2022,7 +1930,7 @@ struct xbyak_gemm_t : public jit_generator_t {
             mov(dword[rsp + 88 + i * 4], i);
         }
 
-        if (isTransA && is_avx2) {
+        if (isTransA) {
             movq(xmm0, LDA);
             vpbroadcastq(ymm1, xmm0);
             vinsertf128(ymm0, ymm0, xmm0, 1);
@@ -2079,17 +1987,7 @@ struct xbyak_gemm_t : public jit_generator_t {
 
         L(labels[3]);
         vbroadcastss(VMASK, M);
-        if (is_avx2) {
-            vpcmpgtd(VMASK, VMASK, MASK);
-        } else {
-            auto xmask = Xmm(VMASK.getIdx());
-            auto xmm_tmp = xmm4;
-
-            vextractf128(xmm_tmp, VMASK, 1);
-            vpcmpgtd(xmask, xmask, MASK);
-            vpcmpgtd(xmm_tmp, xmm_tmp, dword[rsp + 88 + 4 * 4]); // MASK + 4
-            vinsertf128(VMASK, VMASK, xmm_tmp, 1);
-        }
+        vpcmpgtd(VMASK, VMASK, MASK);
         subloop(8, false, false);
         align(16);
 
@@ -2109,7 +2007,6 @@ private:
     const char isTransA;
     const char isTransB;
     const bool hasBias;
-    const bool is_avx2;
     const int UNROLL_M;
     const int UNROLL_N;
     const bool isBeta0;

@@ -289,7 +289,6 @@ void CopyPlan::transform()
     optimizeWriteSpread();
 
     legalizeImmediateTypes();
-    legalizeDstStrides();
 
     sort(SortType::PhaseOnly);
 
@@ -1111,51 +1110,6 @@ void CopyPlan::legalizeShfl()
             i.src0.vs = 1;
         }
     }
-}
-
-void CopyPlan::legalizeDstStrides()
-{
-    for (auto &i: insns) {
-        bool disaggregate = false;
-        if (i.dst.type != DataType::uw)
-            continue;
-        // dst stride can only go up to 4. If 8, switch to ud
-        if (i.dst.stride > 4) {
-            if (i.dst.stride > 8) {
-                disaggregate = true;
-            }
-            if (i.dst.offset % 2 != 0) {
-                disaggregate = true;
-            }
-            if (!i.dst.overwriteStride) {
-                disaggregate = true;
-            }
-            if (!disaggregate) {
-                i.dst.offset /= 2;
-                i.dst.stride /= 2;
-                i.dst.type = DataType::ud;
-            } else {
-                for (int k = 0; k < i.simd; k++) {
-                    auto &i1 = split(i, false);
-                    i1.dst.offset += k * i.dst.stride;
-                    i1.dst.stride = 1;
-                    i1.src0.offset += k * i.src0.stride;
-                    i1.src0.stride = 1;
-                    if (!i1.src1.isNull()) {
-                        i1.src1.offset += k * i.src1.stride;
-                        i1.src1.stride = 1;
-                    }
-                    if (!i1.src2.isNull()) {
-                        i1.src2.offset += k * i.src2.stride;
-                        i1.src2.stride = 1;
-                    }
-                    i1.simd = 1;
-                }
-                i.invalidate();
-            }
-        }
-    }
-    mergeChanges();
 }
 
 // Unpack 4-bit src type into 16 bits (zero extended), used in many conversion sequences.
@@ -2935,6 +2889,42 @@ void CopyPlan::planEmulatedSIMD1(CopyInstruction &i)
     ie[1]->moveToIntegerPipe();
 }
 
+// Make an integer operand twice as wide.
+static void widen(CopyOperand &op, bool zipping = false)
+{
+    switch (op.kind) {
+        case CopyOperand::GRF:
+            op.offset /= 2;
+            if (zipping)
+                op.stride /= 2;
+            break;
+        case CopyOperand::Immediate:
+            op.value |= op.value << getBits(op.type);
+            break;
+        case CopyOperand::Flag: stub();
+        case CopyOperand::Null: return;
+    }
+
+    if (isInt2(op.type)) op.type = DataType::u4;
+    else if (isInt4(op.type)) op.type = DataType::ub;
+    else if (isB(op.type)) op.type = DataType::uw;
+    else if (isW(op.type)) op.type = DataType::ud;
+    else stub();
+    op.range = op.type;
+}
+
+// Check if an integer operand can be widened.
+static bool widenable(const CopyOperand &op, bool zipping = false)
+{
+    if (op.kind == CopyOperand::Flag) return false;
+    if (op.kind != CopyOperand::GRF) return true;
+    if (isFP(op.type) || getBytes(op.type) >= 4) return false;
+    if (zipping && (op.stride & 1)) return false;
+    if (!zipping && (op.stride != 1)) return false;
+    if (op.offset & 1) return false;
+    return true;
+}
+
 // Pass to legalize regions.
 void CopyPlan::legalizeRegions()
 {
@@ -3225,6 +3215,38 @@ void CopyPlan::legalizeRegions()
                 auto &i1 = split(i);
                 i1.dst.offset++;
                 i1.src0.offset++;
+            }
+        }
+
+        /* Check for excessive dst stride */
+        if (dt == DataType::uw && i.dst.stride > 4) {
+            bool disaggregate = !i.dst.overwriteStride;
+            while (i.dst.stride > 4 && !disaggregate) {
+                if (!widenable(i.dst, true)) {
+                    disaggregate = true;
+                } else {
+                    widen(i.dst, true);
+                }
+            }
+            if (disaggregate) {
+                stub("Disaggregation case is not performant");
+                for (int k = 0; k < i.simd; k++) {
+                    auto &i1 = split(i, false);
+                    i1.dst.offset += k * i.dst.stride;
+                    i1.dst.stride = 1;
+                    i1.src0.offset += k * i.src0.stride;
+                    i1.src0.stride = 1;
+                    if (!i1.src1.isNull()) {
+                        i1.src1.offset += k * i.src1.stride;
+                        i1.src1.stride = 1;
+                    }
+                    if (!i1.src2.isNull()) {
+                        i1.src2.offset += k * i.src2.stride;
+                        i1.src2.stride = 1;
+                    }
+                    i1.simd = 1;
+                }
+                i.invalidate();
             }
         }
     }
@@ -3549,42 +3571,6 @@ CopyOperand CopyPlan::zipImmediates(const CopyOperand &o1, const CopyOperand &o2
     op.stride = 1;
     op.type = o1.type;
     return op;
-}
-
-// Make an integer operand twice as wide.
-static void widen(CopyOperand &op, bool zipping = false)
-{
-    switch (op.kind) {
-        case CopyOperand::GRF:
-            op.offset /= 2;
-            if (zipping)
-                op.stride /= 2;
-            break;
-        case CopyOperand::Immediate:
-            op.value |= op.value << getBits(op.type);
-            break;
-        case CopyOperand::Flag: stub();
-        case CopyOperand::Null: return;
-    }
-
-    if (isInt2(op.type)) op.type = DataType::u4;
-    else if (isInt4(op.type)) op.type = DataType::ub;
-    else if (isB(op.type)) op.type = DataType::uw;
-    else if (isW(op.type)) op.type = DataType::ud;
-    else stub();
-    op.range = op.type;
-}
-
-// Check if an integer operand can be widened.
-static bool widenable(const CopyOperand &op, bool zipping = false)
-{
-    if (op.kind == CopyOperand::Flag) return false;
-    if (op.kind != CopyOperand::GRF) return true;
-    if (isFP(op.type) || getBytes(op.type) >= 4) return false;
-    if (zipping && (op.stride & 1)) return false;
-    if (!zipping && (op.stride != 1)) return false;
-    if (op.offset & 1) return false;
-    return true;
 }
 
 // Optimization pass: join adjacent integer operations into larger ones.

@@ -1528,20 +1528,23 @@ void CopyPlan::planInt2Upconversion(CopyInstruction &i)
 
     bool s2 = (i.src0.type == DataType::s2);
 
-    if (i.src0.stride < 4 && i.simd >= 4) {
+    if (i.src0.stride < 4 && i.simd * i.src0.stride >= 4) {
         auto& i0 = i;
-        i0.dst.stride *= 4;
-        i0.src0.stride *= 4;
-        i0.simd /= 4;
+        int factor = 4 / i.src0.stride;
+        i0.dst.stride *= factor;
+        i0.src0.stride *= factor;
+        i0.simd /= factor;
         split(i, false);
-        i0.dst.offset += i0.dst.stride / 4;
-        i0.src0.offset += i0.src0.stride / 4;
-        split(i, false);
-        i0.dst.offset += i0.dst.stride / 4;
-        i0.src0.offset += i0.src0.stride / 4;
-        split(i, false);
-        i0.dst.offset += i0.dst.stride / 4;
-        i0.src0.offset += i0.src0.stride / 4;
+        i0.dst.offset += i0.dst.stride / factor;
+        i0.src0.offset += i0.src0.stride / factor;
+        if (factor == 4) {
+            split(i, false);
+            i0.dst.offset += i0.dst.stride / factor;
+            i0.src0.offset += i0.src0.stride / factor;
+            split(i, false);
+            i0.dst.offset += i0.dst.stride / factor;
+            i0.src0.offset += i0.src0.stride / factor;
+        }
     } else {
         int offset = (i.src0.offset % 4);
         i.src0.stride /= 4;

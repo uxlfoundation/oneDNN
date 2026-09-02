@@ -236,7 +236,7 @@ turn out that those layouts are sub-optimal from the performance perspective.
 In order to achieve better vectorization and cache reuse oneDNN
 introduces blocked layout that splits one or several dimensions into the
 blocks of fixed size. The most popular oneDNN data format is
-**nChw16c** on AVX512+ systems and **nChw8c** on SSE4.1+ systems. As one might
+**nChw16c** on AVX512+ systems and **nChw8c** on AVX2 systems. As one might
 guess from the name the only dimension that is blocked is channels and the
 block size is either 16 in the former case or 8 in the later case.
 

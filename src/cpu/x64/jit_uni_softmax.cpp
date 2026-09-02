@@ -119,6 +119,10 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     bool with_dst_scales_ = false;
     bool with_dst_zps_ = false;
     bool use_ext_aux_vmms_ = false;
+    // When the whole axis fits into vector registers, the source is loaded
+    // once during the max stage and kept resident across the sum and store
+    // stages, avoiding any reloads (and the intermediate exp store).
+    bool data_fits_vmms_ = false;
 
     int unroll_regs_ = 4;
 
@@ -146,6 +150,11 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     const int fp8_emu_kmask_idx_ = 3;
 
     Opmask tail_opmask = Opmask(tail_opmask_idx_);
+
+    // Complement of `tail_opmask`; selects the invalid (padding) lanes of the
+    // resident tail register in the small-axis path. Computed and consumed
+    // within the max stage load, so it may reuse a transient opmask index.
+    Opmask axis_tail_neutral_opmask = Opmask(4);
 
     void operator()(const call_params_t *p) const override {
         return jit_generator_t::operator()(p);
@@ -443,7 +452,199 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         get_horizontal_op(vmax, vtmp = vsum, op_t::max);
     }
 
+    // Number of vector registers required to keep the whole axis resident when
+    // `data_fits_vmms_` is set. The last register is a tail register when the
+    // axis size is not a multiple of `simd_w_`.
+    int n_axis_vmms() const {
+        return static_cast<int>(axis_simd_full_) + (axis_simd_tail_ ? 1 : 0);
+    }
+
+    // Resident register holding the `i`-th axis vector. This path is gated
+    // behind avx512, where `Vmm(0)` (== `tail_vmask`) is unused (opmask is used
+    // for tails instead), so indices can start at 0.
+    Vmm axis_data_vmm(int i) const { return Vmm(i); }
+
+    bool is_axis_tail_vmm(int i) const {
+        return axis_simd_tail_ && i == static_cast<int>(axis_simd_full_);
+    }
+
+    // Number of round-robin accumulators used by the resident max reduction.
+    // They occupy the registers right after the resident data vectors and must
+    // stay below the first fixed state register (`Vmm(21)` == `vzero`).
+    // Multiple accumulators break the reduction dependency chain; a tree
+    // post-reduction combines them, mirroring the general `axis_loop` path.
+    int n_axis_max_acc() const {
+        const int n = n_axis_vmms();
+        return nstl::max(1, nstl::min(nstl::min(4, n), 21 - n));
+    }
+
+    // Same as above for the sum reduction, which additionally reserves
+    // `exp_aux_count` exp-injector aux registers placed above the accumulators.
+    int n_axis_sum_acc(int exp_aux_count) const {
+        const int n = n_axis_vmms();
+        return nstl::max(1, nstl::min(nstl::min(4, n), 21 - n - exp_aux_count));
+    }
+
+    // Tree-reduces the `n_acc` accumulators at `Vmm(base ..)` into `dst`.
+    void reduce_axis_acc(int base, int n_acc, op_t op, const Vmm &dst) {
+        const Vmm a0 = Vmm(base + 0);
+        const Vmm a1 = Vmm(base + 1);
+        const Vmm a2 = Vmm(base + 2);
+        const Vmm a3 = Vmm(base + 3);
+        switch (n_acc) {
+            case 4:
+                perform_op(a0, a0, a1, op);
+                perform_op(a2, a2, a3, op);
+                perform_op(dst, a0, a2, op);
+                break;
+            case 3:
+                perform_op(a0, a0, a1, op);
+                perform_op(dst, a0, a2, op);
+                break;
+            case 2: perform_op(dst, a0, a1, op); break;
+            case 1: uni_vmovups(dst, a0); break;
+            default: assert(!"unexpected accumulator count"); break;
+        }
+    }
+
+    // Loads the `i`-th axis vector into its resident register. For the tail
+    // vector the masked-out (invalid) lanes are set to `-FLT_MAX` so that they
+    // stay neutral for the max reduction and, after `exp`, contribute `0` to
+    // the sum. This lets the resident reductions run without per-op masking.
+    void small_axis_load(int i, bool tail) {
+        const Vmm v = axis_data_vmm(i);
+        io_[src_d_.data_type()]->load(
+                src_ptr(src_next_vreg_stride_ * i), v, tail);
+        if (tail) {
+            // `io_::load` zero-masks the invalid lanes on avx512; overwrite
+            // them with the neutral `-FLT_MAX` via the complement of the tail
+            // opmask.
+            knotw(axis_tail_neutral_opmask, tail_opmask);
+            uni_vmovups(v | axis_tail_neutral_opmask, vneg_flt_max);
+        }
+    }
+
+    // Loads the whole axis into resident registers and reduces the maximum.
+    // The registers stay resident for the subsequent sum and store stages.
+    void small_axis_accumulate_vmax() {
+        // The resident path does not use `axis_loop`, so spatial offsets, which
+        // are added inside the address helpers, must be reset here.
+        xor_(reg_src_spat_offt, reg_src_spat_offt);
+        xor_(reg_dst_spat_offt, reg_dst_spat_offt);
+
+        const int n = n_axis_vmms();
+        const int n_acc = n_axis_max_acc();
+        const int acc_base = n;
+
+        // Flush accumulators to -FLT_MAX before accumulation.
+        for (int a = 0; a < n_acc; a++)
+            uni_vmovups(Vmm(acc_base + a), vneg_flt_max);
+
+        // Load the whole axis once and reduce into the round-robin
+        // accumulators without any tail masking (invalid tail lanes are
+        // neutralized to -FLT_MAX at load time).
+        for (int i = 0; i < n; i++) {
+            small_axis_load(i, is_axis_tail_vmm(i));
+            const Vmm acc = Vmm(acc_base + (i % n_acc));
+            uni_vmaxps(acc, acc, axis_data_vmm(i));
+        }
+        reduce_axis_acc(acc_base, n_acc, op_t::max, vmax);
+        get_horizontal_op(vmax, vtmp = vsum, op_t::max);
+    }
+
+    // Applies exp to the resident registers in place and reduces the sum. No
+    // reload of the source and no intermediate store happen.
+    void small_axis_accumulate_vsum() {
+        // Initialize saturation vector register for the later store stage.
+        io_.init_saturate_f32({dst_d_.data_type()});
+
+        const int n = n_axis_vmms();
+        const auto exp_aux_count
+                = jit_uni_eltwise_injector_t<Vmm>::aux_vecs_count(
+                        isa, alg_kind::eltwise_exp, pd_->is_fwd(), 0.f);
+        const int n_acc = n_axis_sum_acc(exp_aux_count);
+        const int acc_base = n;
+        const int aux_base = n + n_acc;
+
+        injector_utils::vmm_index_set_t exp_aux_indices;
+        for (int j = 0; j < exp_aux_count; j++)
+            exp_aux_indices.insert(aux_base + j);
+
+        // Flush accumulators to zero before accumulation.
+        for (int a = 0; a < n_acc; a++) {
+            const Vmm acc = Vmm(acc_base + a);
+            uni_vpxor(acc, acc, acc);
+        }
+
+        // exp in place and reduce into the round-robin accumulators. Invalid
+        // tail lanes hold -FLT_MAX, so after exp they contribute 0 to the sum.
+        for (int i = 0; i < n; i++) {
+            const Vmm v = axis_data_vmm(i);
+            uni_vsubps(v, v, vmax);
+            exp_injector_->compute_vector(v.getIdx(), exp_aux_indices);
+            const Vmm acc = Vmm(acc_base + (i % n_acc));
+            uni_vaddps(acc, acc, v);
+        }
+        reduce_axis_acc(acc_base, n_acc, op_t::sum, vsum);
+        get_horizontal_op(vsum, vtmp = vmax, op_t::sum);
+
+        if (pd_->alg_kind() == alg_kind::softmax_accurate_inf_as_zero) {
+            Xbyak::Label skip_div;
+            // `vsum` holds the broadcast sum. Test it against zero with an
+            // EVEX-encoded `vptestmd`, which works directly on the high `vsum`
+            // index without needing a low scratch register (unlike the general
+            // path's `vptest` that is limited to VEX-encodable low registers).
+            vptestmd(axis_tail_neutral_opmask, vsum, vsum);
+            kortestw(axis_tail_neutral_opmask, axis_tail_neutral_opmask);
+            jz(skip_div, T_NEAR); // ZF is set when all lanes are zero.
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+            L(skip_div);
+        } else {
+            uni_vdivps(vsum, vone, vsum, vtmp = vmax);
+        }
+    }
+
+    // Scales the resident registers by 1/sum, applies scales/post-ops and
+    // stores them without reloading.
+    void small_axis_compute_dst() {
+        const Vmm vscale = Vmm(n_axis_vmms());
+        for (int i = 0; i < n_axis_vmms(); i++) {
+            const bool tail = is_axis_tail_vmm(i);
+            const Vmm v = axis_data_vmm(i);
+            uni_vmulps(v, v, vsum);
+            if (with_src_scales_) {
+                uni_vbroadcastss(vscale, ptr[reg_src_scales]);
+                uni_vmulps(v, v, vscale);
+            }
+            if (with_postops_) {
+                binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
+                if (with_binary_) {
+                    rhs_arg_params.vmm_idx_to_out_addr.emplace(
+                            v.getIdx(), dst_ptr());
+                    rhs_arg_params.vmm_idx_to_out_elem_off_val.emplace(
+                            v.getIdx(), dst_next_vreg_stride_ * i);
+                    if (tail) rhs_arg_params.vmm_tail_idx_.emplace(v.getIdx());
+                }
+                postops_injector_->compute_vector(v.getIdx(), rhs_arg_params);
+            }
+            if (with_dst_scales_) {
+                uni_vbroadcastss(vscale, ptr[reg_dst_scales]);
+                uni_vmulps(v, v, vscale);
+            }
+            if (with_dst_zps_) {
+                uni_vcvtdq2ps(vscale, ptr_b[reg_dst_zps]);
+                uni_vaddps(v, v, vscale);
+            }
+            store(dst_ptr(dst_next_vreg_stride_ * i), v, dst_d_.data_type(),
+                    tail);
+        }
+    }
+
     void accumulate_vmax() {
+        if (data_fits_vmms_) {
+            small_axis_accumulate_vmax();
+            return;
+        }
         if (is_avx2_ne_xf16_ && is_data_type_xf16(src_d_.data_type())) {
             accumulate_avx2_ne_xf16_vmax();
             return;
@@ -597,6 +798,10 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     }
 
     void accumulate_vsum() {
+        if (data_fits_vmms_) {
+            small_axis_accumulate_vsum();
+            return;
+        }
         if (is_avx2_ne_xf16_ && is_data_type_xf16(src_d_.data_type())) {
             accumulate_avx2_ne_xf16_vsum();
             return;
@@ -806,6 +1011,10 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     }
 
     void compute_dst() {
+        if (data_fits_vmms_) {
+            small_axis_compute_dst();
+            return;
+        }
         if (is_avx2_ne_xf16_ && is_data_type_xf16(dst_d_.data_type())) {
             compute_avx2_ne_xf16_dst();
             return;
@@ -1037,6 +1246,22 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         const auto &attr_zps = pd_->attr()->zero_points_;
         with_dst_zps_ = is_superset(isa, avx512_core)
                 && !attr_zps.has_default_values(DNNL_ARG_DST);
+
+        // Small axes that fit entirely into vector registers are processed by
+        // a resident path that loads the source once and keeps it across the
+        // sum and store stages. Limited to avx512_core (32 vector registers),
+        // forward softmax and an axis of up to 256 elements. The path assumes a
+        // contiguous innermost axis (one vector holds `simd_w_` consecutive
+        // elements with a `simd_w_` stride), so blocked and plain-strided axes
+        // are excluded.
+        const int axis = pd_->axis();
+        const bool axis_is_contiguous = src_d_.blocking_desc().inner_nblks == 0
+                && dst_d_.blocking_desc().inner_nblks == 0
+                && src_d_.blocking_desc().strides[axis] == 1
+                && dst_d_.blocking_desc().strides[axis] == 1;
+        data_fits_vmms_ = is_superset(isa, avx512_core) && !is_avx2_ne_xf16_
+                && pd_->is_fwd() && is_softmax_ && axis_is_contiguous
+                && pd_->axis_size() <= 256;
 
         io::io_conf_t io_conf;
         io::io_tail_conf_t io_tail_conf(simd_w_, axis_simd_tail_,

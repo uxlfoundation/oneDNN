@@ -47,16 +47,16 @@ cpu_isa_t init_max_cpu_isa() {
 #else
     static std::string isa_val;
 #endif
-    if (!isa_val.empty()) {
-
+    if (isa_val == "sse41" || isa_val == "avx") {
+        // Legacy values are retained as reference-only compatibility caps.
+        max_cpu_isa_val = isa_undef;
+    } else if (!isa_val.empty()) {
 #define IF_HANDLE_CASE(cpu_isa) \
     if (isa_val.compare(cpu_isa_traits_t<cpu_isa>::user_option_env) == 0) \
     max_cpu_isa_val = cpu_isa
 #define ELSEIF_HANDLE_CASE(cpu_isa) else IF_HANDLE_CASE(cpu_isa)
 
         IF_HANDLE_CASE(isa_all);
-        ELSEIF_HANDLE_CASE(sse41);
-        ELSEIF_HANDLE_CASE(avx);
         ELSEIF_HANDLE_CASE(avx2);
         ELSEIF_HANDLE_CASE(avx2_vnni);
         ELSEIF_HANDLE_CASE(avx2_vnni_2);
@@ -125,8 +125,6 @@ struct isa_info_t {
             case avx2_vnni_2: return dnnl_cpu_isa_avx2_vnni_2;
             case avx2_vnni: return dnnl_cpu_isa_avx2_vnni;
             case avx2: return dnnl_cpu_isa_avx2;
-            case avx: return dnnl_cpu_isa_avx;
-            case sse41: return dnnl_cpu_isa_sse41;
             default: return dnnl_cpu_isa_default;
         }
     }
@@ -159,8 +157,6 @@ struct isa_info_t {
                        "support";
             case avx2_vnni: return "Intel AVX2 with Intel DL Boost";
             case avx2: return "Intel AVX2";
-            case avx: return "Intel AVX";
-            case sse41: return "Intel SSE4.1";
             default: return "Intel 64";
         }
     }
@@ -192,8 +188,6 @@ static isa_info_t get_isa_info_t(void) {
     HANDLE_CASE(avx2_vnni_2);
     HANDLE_CASE(avx2_vnni);
     HANDLE_CASE(avx2);
-    HANDLE_CASE(avx);
-    HANDLE_CASE(sse41);
 #undef HANDLE_CASE
     return isa_info_t(isa_undef);
 }
@@ -227,8 +221,6 @@ status_t set_max_cpu_isa(dnnl_cpu_isa_t isa) {
         break;
     switch (isa) {
         HANDLE_CASE(isa_all);
-        HANDLE_CASE(sse41);
-        HANDLE_CASE(avx);
         HANDLE_CASE(avx2);
         HANDLE_CASE(avx2_vnni);
         HANDLE_CASE(avx2_vnni_2);
@@ -241,9 +233,14 @@ status_t set_max_cpu_isa(dnnl_cpu_isa_t isa) {
         HANDLE_CASE(avx10_2);
         HANDLE_CASE(avx10_2_amx_2);
         HANDLE_CASE(avx10_2_ace);
+        // Legacy values no longer have optimized implementations. Mapping
+        // them to isa_undef forces reference-only dispatch.
+        case dnnl_cpu_isa_sse41:
+        case dnnl_cpu_isa_avx: break;
         default: return invalid_arguments;
     }
-    assert(isa_to_set != isa_undef);
+    assert(isa_to_set != isa_undef || isa == dnnl_cpu_isa_sse41
+            || isa == dnnl_cpu_isa_avx);
 #undef HANDLE_CASE
 
     if (max_cpu_isa().set(isa_to_set))

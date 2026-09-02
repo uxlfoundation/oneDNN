@@ -217,7 +217,6 @@
 #cmakedefine01 BUILD_SUM
 // Primitives CPU ISA controls
 #cmakedefine01 BUILD_PRIMITIVE_CPU_ISA_ALL
-#cmakedefine01 BUILD_SSE41
 #cmakedefine01 BUILD_AVX2
 #cmakedefine01 BUILD_AVX512
 #cmakedefine01 BUILD_AMX
@@ -231,7 +230,6 @@
 // GeMM kernels ISA controls
 #cmakedefine01 BUILD_GEMM_KERNELS_ALL
 #cmakedefine01 BUILD_GEMM_KERNELS_NONE
-#cmakedefine01 BUILD_GEMM_SSE41
 #cmakedefine01 BUILD_GEMM_AVX2
 #cmakedefine01 BUILD_GEMM_AVX512
 #endif

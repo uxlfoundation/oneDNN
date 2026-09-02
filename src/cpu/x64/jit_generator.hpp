@@ -158,7 +158,16 @@ constexpr Xbyak::Operand::Code abi_not_param_reg =
 
 #endif
 
-class jit_generator_t : public Xbyak::MmapAllocator,
+// Clear Xbyak's sticky thread-local error before CodeGenerator is
+// constructed so that we detect any new error thrown by its constructor.
+// Clearing any prior thread-local error now is safe because any such error
+// should already have been acted on and therefore is now stale.
+struct jit_error_reset_t {
+    jit_error_reset_t() { Xbyak::ClearError(); }
+};
+
+class jit_generator_t : private jit_error_reset_t,
+                        public Xbyak::MmapAllocator,
                         public Xbyak::CodeGenerator {
 private:
     const int xmm_len = 16;

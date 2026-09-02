@@ -139,7 +139,7 @@ dnnl_status_t extended_sgemm(const char *transa, const char *transb,
 #endif
 
 #if DNNL_X64 && !__BUILD_GEMM_NONE
-    if (mayiuse(sse41)) {
+    if (mayiuse(avx2)) {
         float *dummy_ao = nullptr;
         float *dummy_bo = nullptr;
         auto status = gemm_driver(transa, transb, bias ? "C" : nullptr, M, N, K,
@@ -215,7 +215,7 @@ dnnl_status_t gemm_s8u8s32(const char *transa, const char *transb,
     if (status != status::unimplemented) return status;
 
 #if DNNL_X64 && !__BUILD_GEMM_NONE
-    if (mayiuse(sse41)) {
+    if (mayiuse(avx2)) {
         auto status = gemm_driver(transa, transb, offsetc, M, N, K, alpha, A,
                 LDA, ao, B, LDB, bo, beta, C, LDC, co, false);
         if (status != status::unimplemented) return status;
@@ -254,7 +254,7 @@ dnnl_status_t gemm_s8s8s32(const char *transa, const char *transb,
     bool use_jit = mayiuse(avx512_core) && __BUILD_GEMM_AVX512;
     bool use_s8u8 = true
             && utils::everyone_is(0, *ao, *bo) // so far a requirement
-            && IMPLICATION(USE_MKL_IGEMM == 0, mayiuse(sse41));
+            && IMPLICATION(USE_MKL_IGEMM == 0, mayiuse(avx2));
 
     if (use_jit) {
         auto status = gemm_driver(transa, transb, offsetc, M, N, K, alpha, A,

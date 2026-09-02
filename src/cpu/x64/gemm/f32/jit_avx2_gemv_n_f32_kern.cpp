@@ -24,7 +24,7 @@
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/jit_generator.hpp"
 
-#include "cpu/x64/gemm/f32/jit_sse41_gemv_n_f32_kern.hpp"
+#include "cpu/x64/gemm/f32/jit_avx2_gemv_n_f32_kern.hpp"
 
 #ifdef _WIN32
 static const bool is_windows = true;
@@ -58,7 +58,7 @@ static inline int log2_of_pow2(int n) {
 }
 
 // Load vector register data for x, y or A.
-void jit_sse41_gemv_n_f32_kern_t::v_load(
+void jit_avx2_gemv_n_f32_kern_t::v_load(
         const Xmm &dst, const Address &src, int nelems) {
     if (nelems >= v_nelems_) {
         uni_vmovups(dst, src);
@@ -82,7 +82,7 @@ void jit_sse41_gemv_n_f32_kern_t::v_load(
 }
 
 // Store vector register data for x, y or A.
-void jit_sse41_gemv_n_f32_kern_t::v_store(
+void jit_avx2_gemv_n_f32_kern_t::v_store(
         const Address &dst, const Xmm &src, int nelems) {
     if (nelems >= v_nelems_) {
         uni_vmovups(dst, src);
@@ -105,22 +105,13 @@ void jit_sse41_gemv_n_f32_kern_t::v_store(
     }
 }
 
-// Perform Hadamard product of 2 vectors and accumulate.
-// Use FMA instruction, otherwise emulate.
-void jit_sse41_gemv_n_f32_kern_t::dot_product(
+// Perform Hadamard product of 2 vectors and accumulate using FMA.
+void jit_avx2_gemv_n_f32_kern_t::dot_product(
         const Xmm &dst, const Xmm &src1, const Xmm &src2) {
-    if (has_avx2_)
-        vfmadd231ps(dst, src1, src2);
-    else if (has_avx_) {
-        vmulps(scratch_, src1, src2);
-        vaddps(dst, dst, scratch_);
-    } else {
-        mulps(src2, src1);
-        addps(dst, src2);
-    }
+    vfmadd231ps(dst, src1, src2);
 }
 
-void jit_sse41_gemv_n_f32_kern_t::kernel_loop(
+void jit_avx2_gemv_n_f32_kern_t::kernel_loop(
         int unroll_m, int unroll_n, bool fetch, bool last) {
     int um_vecs = utils::div_up(unroll_m, v_nelems_);
 
@@ -168,7 +159,7 @@ void jit_sse41_gemv_n_f32_kern_t::kernel_loop(
 }
 
 // Inner loop for A non-transposed.
-void jit_sse41_gemv_n_f32_kern_t::innerloop(int unroll_m, int unroll_n) {
+void jit_avx2_gemv_n_f32_kern_t::innerloop(int unroll_m, int unroll_n) {
     mov(Y1_, Y_);
 
     // Load x and scale by alpha.
@@ -237,7 +228,7 @@ void jit_sse41_gemv_n_f32_kern_t::innerloop(int unroll_m, int unroll_n) {
     L_aligned(label_m_loop_end);
 }
 
-void jit_sse41_gemv_n_f32_kern_t::outerloop(int unroll_x, int unroll_y,
+void jit_avx2_gemv_n_f32_kern_t::outerloop(int unroll_x, int unroll_y,
         Label *&cur_outerloop_label, Label *&outerloop_end_label) {
     bool is_tail = unroll_y < unroll_n_;
 
@@ -270,7 +261,7 @@ void jit_sse41_gemv_n_f32_kern_t::outerloop(int unroll_x, int unroll_y,
     }
 }
 
-void jit_sse41_gemv_n_f32_kern_t::generate() {
+void jit_avx2_gemv_n_f32_kern_t::generate() {
     // Prologue
     preamble();
 
@@ -313,12 +304,9 @@ void jit_sse41_gemv_n_f32_kern_t::generate() {
 }
 
 // Function signature: gemv(*m, *n, *alpha, *a, *lda, *x, *incx, *y, *incy)
-jit_sse41_gemv_n_f32_kern_t::jit_sse41_gemv_n_f32_kern_t(void)
+jit_avx2_gemv_n_f32_kern_t::jit_avx2_gemv_n_f32_kern_t(void)
     : jit_generator_t(jit_name())
-    , has_avx512_(mayiuse(avx512_core) && __BUILD_GEMM_AVX512)
-    , has_avx2_(mayiuse(avx2) && __BUILD_GEMM_AVX2)
-    , has_avx_(mayiuse(avx) && __BUILD_GEMM_AVX2)
-    , has_sse41_(mayiuse(sse41) && __BUILD_GEMM_SSE41) {
+    , has_avx512_(mayiuse(avx512_core) && __BUILD_GEMM_AVX512) {
 
     int unroll_m = 0;
     int unroll_n = 0;
@@ -328,15 +316,10 @@ jit_sse41_gemv_n_f32_kern_t::jit_sse41_gemv_n_f32_kern_t(void)
         unroll_n = 8;
         v_type = 2;
         fetch_ = true;
-    } else if (has_avx_) {
+    } else {
         unroll_m = 4 * (256 / 32);
         unroll_n = 8;
         v_type = 1;
-        fetch_ = false;
-    } else {
-        unroll_m = 4 * (128 / 32);
-        unroll_n = 8;
-        v_type = 0;
         fetch_ = false;
     }
 
@@ -387,7 +370,6 @@ jit_sse41_gemv_n_f32_kern_t::jit_sse41_gemv_n_f32_kern_t(void)
         x_[i] = Xmm(kind_, rn++);
 
     alpha_ = Xmm(kind_, rn++);
-    scratch_ = Xmm(kind_, rn++);
 
     assert(IMPLICATION(has_avx512_, rn <= 32));
     assert(IMPLICATION(!has_avx512_, rn <= 16));

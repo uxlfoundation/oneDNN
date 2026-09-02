@@ -231,6 +231,15 @@ void prb_t::skip_invalid(res_t *res) const {
 void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
         data_kind_t kind, const args_t &ref_args) {
     const prb_t *prb = prb_t::from(base_prb);
+    if (prb->alg == alg_t::dynamic_quantize) {
+        if (kind == DST_SCALES) {
+            cmp.set_threshold(1e-5f);
+        } else {
+            cmp.set_threshold(1.f);
+        }
+        return;
+    }
+
     // accounts for inaccurate rootn/pow functions in norm algs.
     float scale = is_norm_alg(prb->alg) ? 5.0f : 1.0f;
     cmp.set_threshold(scale * epsilon_dt(prb->ddt));
@@ -244,6 +253,14 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
 }
 
 std::vector<int> prb_t::supported_exec_args(bool) const {
+    if (alg == alg_t::dynamic_quantize) {
+        return {
+                DNNL_ARG_SRC,
+                DNNL_ARG_DST,
+                DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
+        };
+    }
+
     static const std::vector<int> exec_args = {
             DNNL_ARG_SRC,
             DNNL_ARG_DST,
@@ -369,9 +386,11 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
 
     SAFE(run_execution(prim, args, res), WARN);
 
+    std::vector<data_kind_t> kinds {DST};
+    if (prb->alg == alg_t::dynamic_quantize) { kinds.emplace_back(DST_SCALES); }
     check_correctness(
-            prb, {DST}, args, ref_args, compute_ref, setup_cmp, res, prb->dir);
-    SAFE(check_bitwise(prim, {DST}, args, prb->attr, prb->inplace, res), WARN);
+            prb, kinds, args, ref_args, compute_ref, setup_cmp, res, prb->dir);
+    SAFE(check_bitwise(prim, kinds, args, prb->attr, prb->inplace, res), WARN);
 
     return measure_perf(prb->ctx_exe, res, prim, args);
 }

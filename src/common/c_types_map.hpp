@@ -142,6 +142,7 @@ const alg_kind_t reduction_norm_lp_power_p_max
         = dnnl_reduction_norm_lp_power_p_max;
 const alg_kind_t reduction_norm_lp_power_p_sum
         = dnnl_reduction_norm_lp_power_p_sum;
+const alg_kind_t reduction_dynamic_quantize = dnnl_reduction_dynamic_quantize;
 const alg_kind_t softmax_accurate = dnnl_softmax_accurate;
 const alg_kind_t softmax_log = dnnl_softmax_log;
 // Internal only alg kinds.

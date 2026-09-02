@@ -170,9 +170,7 @@ specialized based on Instruction Set Architecture (ISA). The following
 table indicates data types support for every supported ISA:
 
 | ISA                                                  | f64     | f32     | bf16    | f16     | s8/u8   | fp8     | f4_e2m1 | s4/u4   |
-| ---------------------------------------------------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | 
-| Intel SSE4.1                                         |         | `+`     |         |         |         |         |         |         |
-| Intel AVX                                            |         | `+`     |         |         |         |         |         |         |
+| ---------------------------------------------------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- |
 | Intel AVX2                                           |         | `+`     |         |         | `+`(1)  |         |         |         |
 | Intel AVX2 with Intel DL Boost (int8)                |         | `+`     |         |         | `+`     |         |         |         |
 | Intel AVX-512                                        |         | `+`     | `.`(2)  |         | `+`(1)  |         |         |         |

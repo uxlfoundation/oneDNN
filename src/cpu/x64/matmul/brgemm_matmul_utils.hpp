@@ -238,6 +238,7 @@ struct brgemm_matmul_conf_t {
     bool is_amx;
 
     int required_k_granularity;
+    bool force_seq_execution = false;
     bool is_f8 = false;
     bool is_bf32 = false;
     bool is_bf16_with_int_wei = false;

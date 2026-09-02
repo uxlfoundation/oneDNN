@@ -257,6 +257,17 @@ void prb_t::skip_unimplemented(res_t *res) const {
         }
 
         if (prb->is_reorder_with_compensation(FLAG_ANY)) {
+#if defined(DNNL_X64) && DNNL_X64
+            if (dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2) {
+                BENCHDNN_PRINT(2,
+                        "[SKIP][%s:%d]: Compensation is not supported below "
+                        "AVX2.\n",
+                        __FILE__, __LINE__);
+                res->state = SKIPPED;
+                res->reason = reason_t::skip_not_supported;
+                return;
+            }
+#endif
             const bool dt_ok = ddt == dnnl_s8;
             if (!dt_ok) {
                 BENCHDNN_PRINT(2,

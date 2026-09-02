@@ -33,6 +33,9 @@ TEST(isa_test_t, TestISA) {
     // Use soft version of mayiuse that allows resetting the max_cpu_isa
     const bool test_flag = true;
     const cpu_isa cur_isa = get_max_cpu_isa(test_flag);
+    SKIP_IF(cur_isa == cpu_isa::isa_default,
+            "oneDNN does not have an optimized code path supported by this "
+            "CPU.");
 
     status st = set_max_cpu_isa(cur_isa);
     // status::unimplemented if the feature was disabled at compile time

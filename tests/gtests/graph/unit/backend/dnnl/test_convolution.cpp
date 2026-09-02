@@ -2434,7 +2434,7 @@ TEST(test_convolution_execute, ConvBiasEltwise) {
         for (size_t i = 0; i < dst.size(); ++i) {
             if (param.op_kind == graph::op_kind::Mish
                     && eng->kind() == graph::engine_kind::cpu
-                    && dnnl_get_effective_cpu_isa() <= dnnl_cpu_isa_avx)
+                    && dnnl_get_effective_cpu_isa() < dnnl_cpu_isa_avx2)
                 ASSERT_NEAR(dst[i], param.ref_dst[i], 1e-6);
             else
                 ASSERT_FLOAT_EQ(dst[i], param.ref_dst[i]);
@@ -2562,7 +2562,7 @@ TEST(test_convolution_execute, ConvBiasAddEltwise) {
             if (eng->kind() == graph::engine_kind::gpu
                     || (eng->kind() == graph::engine_kind::cpu
                             && dnnl_get_effective_cpu_isa()
-                                    <= dnnl_cpu_isa_avx)) {
+                                    < dnnl_cpu_isa_avx2)) {
                 ASSERT_NEAR(dst[i], param.ref_dst[i], 1e-6);
             } else {
                 ASSERT_FLOAT_EQ(dst[i], param.ref_dst[i]);

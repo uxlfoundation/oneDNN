@@ -25,20 +25,24 @@ namespace dnnl {
 
 class isa_set_once_test_t : public ::testing::Test {};
 TEST(isa_set_once_test, TestISASetOnce) {
-    auto st = set_max_cpu_isa(cpu_isa::sse41);
+    if (!mayiuse(cpu_isa::avx2, true))
+        GTEST_SKIP() << "CPU does not support AVX2.";
+    auto st = set_max_cpu_isa(cpu_isa::avx2);
     ASSERT_TRUE(st == status::success || st == status::unimplemented);
-    ASSERT_TRUE(mayiuse(cpu_isa::sse41));
-    st = set_max_cpu_isa(cpu_isa::sse41);
+    ASSERT_TRUE(mayiuse(cpu_isa::avx2));
+    st = set_max_cpu_isa(cpu_isa::avx2);
     ASSERT_TRUE(st == status::invalid_arguments || st == status::unimplemented);
 }
 
 TEST(isa_set_once_test, TestISAHintsSetOnce) {
+    if (!mayiuse(cpu_isa::avx2, true))
+        GTEST_SKIP() << "CPU does not support AVX2.";
     auto st = set_cpu_isa_hints(cpu_isa_hints::prefer_ymm);
     const bool unimplemented = st == status::unimplemented;
     ASSERT_TRUE(unimplemented || st == status::success);
 
     // mayiuse should disable further changes in CPU ISA hints
-    ASSERT_TRUE(mayiuse(cpu_isa::sse41));
+    ASSERT_TRUE(mayiuse(cpu_isa::avx2));
     ASSERT_TRUE(unimplemented || impl::cpu::platform::prefer_ymm_requested());
 
     st = set_cpu_isa_hints(cpu_isa_hints::no_hints);

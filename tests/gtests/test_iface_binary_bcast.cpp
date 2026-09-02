@@ -87,7 +87,8 @@ HANDLE_EXCEPTIONS_FOR_TEST_P(
     ASSERT_NO_THROW(impl_info_bcast = binary_pd.impl_info_str(););
 
     const auto expect_jit = std::get<2>(GetParam());
-    if (expect_jit)
+    const bool has_avx2 = dnnl_get_effective_cpu_isa() >= dnnl_cpu_isa_avx2;
+    if (expect_jit || !has_avx2)
         ASSERT_EQ(impl_info_no_bcast, impl_info_bcast);
     else
         ASSERT_NE(impl_info_no_bcast, impl_info_bcast);

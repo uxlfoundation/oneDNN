@@ -641,6 +641,14 @@ protected:
         bool pack = (p.pack_params.pack_a || p.pack_params.pack_b);
         SKIP_IF(!DNNL_X64 && pack,
                 "Packed GEMM does not support non-x64 CPUs.");
+#if DNNL_X64
+        const bool is_f32f32f32 = true
+                && data_traits_t<a_dt>::data_type == memory::data_type::f32
+                && data_traits_t<b_dt>::data_type == memory::data_type::f32
+                && data_traits_t<c_dt>::data_type == memory::data_type::f32;
+        SKIP_IF(pack && is_f32f32f32 && !dnnl::mayiuse(cpu_isa::avx2),
+                "Packed f32 GEMM is not supported by this CPU.");
+#endif
         SKIP_IF((p.alpha != 1.f || p.igemm_params.oa() != 0
                         || p.igemm_params.ob() != 0)
                         && pack,

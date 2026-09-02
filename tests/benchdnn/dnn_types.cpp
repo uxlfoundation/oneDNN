@@ -1889,27 +1889,49 @@ std::string normalize_tag(const std::string &tag_, int ndims) {
         return "a";
     }
 
-    // Handle meta-tags (abx, axb, etc).
-    auto pos = tag.find("x");
-    if (pos != std::string::npos) {
-        // Non-grouped tags will start `x` from `c`, but grouped will most of
-        // times start `x` from `d`.
-        char start_x = 'c';
-        for (char c = 'a' + DNNL_MAX_NDIMS - 1; c >= 'b'; c--) {
-            if (tag.find(c) != std::string::npos) {
-                start_x = c + 1;
-                break;
-            }
-        }
-        // Adjust ndims if they are not specified.
-        int meta_ndims = (ndims == -1 ? (start_x - 'a' + 1) : ndims);
-        std::string tail;
-        for (int i = 0; i < meta_ndims - (start_x - 'a'); i++)
-            tail += (start_x + i);
-        return trim_tag(tag.replace(pos, 1, tail), meta_ndims);
+    // Handle meta-tags (abx, axb, aby, etc).
+    auto pos_x = tag.find("x");
+    auto pos_y = tag.find("y");
+    if (pos_x != std::string::npos && pos_y != std::string::npos) {
+        BENCHDNN_PRINTF(0, "%s",
+                "Error: a tag can't have both \'x\' and \'y\' letters "
+                "specified.");
+        return tag;
     }
 
-    return map_tag_letters(tag);
+    if (pos_y != std::string::npos && pos_y != tag.size() - 1) {
+        BENCHDNN_PRINTF(0, "%s",
+                "Error: a tag containing \'y\' must have it at the end.");
+        return tag;
+    }
+
+    if (pos_x == std::string::npos && pos_y == std::string::npos) {
+        return map_tag_letters(tag);
+    }
+
+    auto pos = pos_x != std::string::npos ? pos_x : pos_y;
+    // Non-grouped tags will start `x` from `c`, but grouped will most of
+    // times start `x` from `d`.
+    char start_xy = 'c';
+    for (char c = 'a' + DNNL_MAX_NDIMS - 1; c >= 'b'; c--) {
+        if (tag.find(c) != std::string::npos) {
+            start_xy = c + 1;
+            break;
+        }
+    }
+    // Adjust ndims if they are not specified.
+    int meta_ndims = (ndims == -1 ? (start_xy - 'a' + 1) : ndims);
+    std::string tail;
+    for (int i = 0; i < meta_ndims - (start_xy - 'a'); i++)
+        tail += (start_xy + i);
+    auto trimmed_tag = trim_tag(tag.replace(pos, 1, tail), meta_ndims);
+    // Transpose last two letters if 'y' was requested.
+    if (pos_y != std::string::npos) {
+        assert(trimmed_tag.size() >= 2);
+        const auto sz = trimmed_tag.size();
+        std::swap(trimmed_tag[sz - 1], trimmed_tag[sz - 2]);
+    }
+    return trimmed_tag;
 }
 
 int check_tag(const std::string &tag_, bool check_enum_tags_only) {

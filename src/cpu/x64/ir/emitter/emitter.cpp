@@ -31,7 +31,7 @@ namespace ir {
 template <typename backend_t>
 void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &rc, data_section_t &data,
-        const inject_postops_fn_t &inject) {
+        const inject_postops_fn_t &inject, const eltwise_fn_t &eltwise_fn) {
 
     // The backend holds the generator.
     jit_generator_t &gen = be.gen();
@@ -269,6 +269,18 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 break;
             }
 
+            // Lowers to the external JIT eltwise injector via the builder-
+            // provided callback, applying the algorithm in place. Like
+            // inject_postops, the injector preserves the registers it borrows
+            // and does not participate in register allocation, so the operand
+            // must be in its allocated register (asserted below).
+            case op_kind_t::veltwise: { // reads and writes dst in place
+                JIT_ASSERT(!spilled(op.dst) && "veltwise: operand spilled");
+                JIT_ASSERT(eltwise_fn && "veltwise: missing injector callback");
+                eltwise_fn((alg_kind_t)op.imm, phys(op.dst));
+                break;
+            }
+
             // Lowers to the external JIT injector via the builder-provided
             // callback. The injector does not participate in register
             // allocation, so it is outside the allocation model. Reloading a
@@ -384,13 +396,13 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
 
 void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &reg_cfg, data_section_t &data,
-        const inject_postops_fn_t &inject) {
+        const inject_postops_fn_t &inject, const eltwise_fn_t &eltwise_fn) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
         JIT_ASSERT(!"avx512 emitter is not supported");
     } else {
         avx2_backend_t be(gen, isa);
-        emit(be, ir, alloc, reg_cfg, data, inject);
+        emit(be, ir, alloc, reg_cfg, data, inject, eltwise_fn);
     }
 }
 

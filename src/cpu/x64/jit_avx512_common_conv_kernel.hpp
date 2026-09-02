@@ -191,11 +191,6 @@ struct jit_avx512_common_conv_fwd_kernel_t {
                         jit_avx512_common_conv_fwd_kernel_vmm_t<Xbyak::Ymm>>(
                         ajcp, attr, dst_md);
                 return;
-            case 4:
-                kernel_ = utils::make_unique<
-                        jit_avx512_common_conv_fwd_kernel_vmm_t<Xbyak::Xmm>>(
-                        ajcp, attr, dst_md);
-                return;
             default: assert(!"invalid channel blocking");
         }
     }
@@ -363,11 +358,6 @@ struct jit_avx512_common_conv_bwd_data_kernel_f32_t {
                 kernel_ = utils::make_unique<
                         jit_avx512_common_conv_bwd_data_kernel_f32_vmm_t<
                                 Xbyak::Ymm>>(ajcp);
-                return;
-            case 4:
-                kernel_ = utils::make_unique<
-                        jit_avx512_common_conv_bwd_data_kernel_f32_vmm_t<
-                                Xbyak::Xmm>>(ajcp);
                 return;
             default: assert(!"invalid channel blocking");
         }

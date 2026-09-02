@@ -279,11 +279,9 @@ protected:
                     // add peephole
                     if (rnn_.is_lstm_peephole) {
                         compute_vfmadd231ps(G0, tmp_c_states,
-                                weights_peephole_addr(0, ur_idx), current_vlen,
-                                this->maybe_get_next_tmp_vmm_for_below_avx2_isa());
+                                weights_peephole_addr(0, ur_idx), current_vlen);
                         compute_vfmadd231ps(G1, tmp_c_states,
-                                weights_peephole_addr(1, ur_idx), current_vlen,
-                                this->maybe_get_next_tmp_vmm_for_below_avx2_isa());
+                                weights_peephole_addr(1, ur_idx), current_vlen);
                     }
 
                     vmm_idxs.emplace(G0.getIdx());
@@ -340,8 +338,7 @@ protected:
                         const int cur_g3_idx = G3_idx(ur_idx);
                         compute_vfmadd231ps(Vmm(cur_g3_idx),
                                 Vmm(c_states_idx(ur_idx)),
-                                weights_peephole_addr(2, ur_idx), current_vlen,
-                                this->maybe_get_next_tmp_vmm_for_below_avx2_isa());
+                                weights_peephole_addr(2, ur_idx), current_vlen);
                         vmm_idxs.emplace(cur_g3_idx);
                     }
                     sigmoid_injector_->load_table_addr();

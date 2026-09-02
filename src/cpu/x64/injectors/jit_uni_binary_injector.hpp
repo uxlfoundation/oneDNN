@@ -108,7 +108,7 @@ void extend_binary_args_per_w(const post_ops_t &post_ops,
  * vs. broadcasting limited by tail size (potentially several instructions). In case
  * when user during storing ignores values from vmm above tail size, setting this option to
  * false can result in better performance.
- * @param reg_tail_size - register with loaded size of tail, used in sse41/avx/avx2
+ * @param reg_tail_size - register with loaded size of tail, used in AVX2 and AVX-512
  * for load with tail in runtime.
  */
 struct rhs_arg_static_params_t {
@@ -265,7 +265,7 @@ bool is_supported(cpu_isa_t isa, const dnnl::impl::memory_desc_t &src1_desc,
 
 /*
  * Main mechanism responsible for injecting binary postops supporting various
- * isa: sse41, avx, avx2, avx512 with core, bf16 extensions as well as data
+ * isa: avx2, avx512 with core, bf16 extensions as well as data
  * types: f32, bf16, s32, u8, s8.
  *
  * The ISA to generate for is taken from the host generator, which already
@@ -627,8 +627,6 @@ private:
     const bool has_avx512_core_ = is_superset(isa_, avx512_core);
     const bool has_avx512_core_fp16_ = is_superset(isa_, avx512_core_fp16);
     const bool has_avx2_ = is_superset(isa_, avx2);
-    const bool is_avx_ = is_superset(isa_, avx) && !has_avx2_;
-    const bool is_sse41_ = !is_superset(isa_, avx);
 
     static constexpr int sizeof_reg64 = 8;
     /*

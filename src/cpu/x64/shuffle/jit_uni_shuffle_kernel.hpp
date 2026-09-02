@@ -49,7 +49,7 @@ struct jit_uni_shuffle_kernel_t : public jit_generator_t {
 
     /*
      * Prepare the mask to be used during tail processing.
-     * vmm_tail_mask_ is filled if it is avx and
+     * vmm_tail_mask_ is filled when a vector tail is present and
      * if it is avx512_core at least then k_tail_mask_ is filled.
      */
     void prepare_mask();
@@ -75,7 +75,7 @@ struct jit_uni_shuffle_kernel_t : public jit_generator_t {
     void generate() override;
 
     const Vmm vmm_tail_mask_ = Vmm(0);
-    // Used only for avx
+    // Used for vector tail handling.
     // Vgatherdps always gets data using a conditional mask
     // This register contains all bits set to 1, allowing
     // to get the maximum number of values available to the register

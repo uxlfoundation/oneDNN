@@ -203,11 +203,6 @@ struct jit_uni_x8s8s32x_fwd_kernel_t {
                 } else
                     assert(!"invalid channel blocking for current ISA");
                 return;
-            case 4:
-                kernel_ = utils::make_unique<
-                        jit_uni_x8s8s32x_fwd_kernel_vmm_t<isa, Xbyak::Xmm>>(
-                        ajcp, attr, dst_md);
-                return;
             default: assert(!"invalid channel blocking");
         }
     }

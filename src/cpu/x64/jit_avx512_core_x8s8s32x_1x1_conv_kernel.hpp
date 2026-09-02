@@ -158,11 +158,6 @@ struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_t {
                         jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<
                                 Xbyak::Ymm>>(ajcp, attr, dst_md);
                 return;
-            case 4:
-                kernel_ = utils::make_unique<
-                        jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<
-                                Xbyak::Xmm>>(ajcp, attr, dst_md);
-                return;
             default: assert(!"invalid channel blocking");
         }
     }

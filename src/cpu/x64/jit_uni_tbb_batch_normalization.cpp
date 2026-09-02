@@ -54,9 +54,7 @@ dim_t get_c_padded(const batch_normalization_pd_t *pd) {
 
 template <cpu_isa_t isa>
 int get_vlen(jit_memory_tag_kind_t tag_kind) {
-    return isa == sse41 && tag_kind == jit_memory_tag_kind_t::blocked
-            ? 32
-            : cpu_isa_traits_t<isa>::vlen;
+    return cpu_isa_traits_t<isa>::vlen;
 }
 
 template <cpu_isa_t isa>
@@ -109,7 +107,7 @@ struct jit_bnorm_process_tail_t {
         const memory_desc_wrapper data_d(pd->src_md());
         c_is_padded_ = pd->C() != data_d.padded_dims()[1];
 
-        const int vlen = isa == sse41 ? 32 : cpu_isa_traits_t<isa>::vlen;
+        const int vlen = cpu_isa_traits_t<isa>::vlen;
         tail_ = pd->C() % (int)(vlen / sizeof(float));
     }
 
@@ -322,7 +320,7 @@ struct jit_bnorm_process_relu_t {
         if (isa == avx512_core)
             fwd_process_relu_alpha_avx512_common(vmm_dst);
         else {
-            assert(utils::one_of(isa, avx2, sse41));
+            assert(isa == avx2);
             fwd_process_relu_alpha_avx2(vmm_dst);
         }
     }
@@ -466,9 +464,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_fwd_statistics_t)
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
-    const AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                      ? yword
-                                                 : zword;
+    const AddressFrame &vmmword = (isa == avx2) ? yword : zword;
 
     struct call_params_t {
         size_t N, C, S;
@@ -544,10 +540,6 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
         {
             jit_tail_.uni_vmovups_maybe_tail(
                     vmmword[reg_ptr_stat_ + reg_off_c_], vzero_);
-            if (isa == sse41 && tag_kind_ == jit_memory_tag_kind_t::blocked) {
-                jit_tail_.uni_vmovups_maybe_tail(
-                        vmmword[reg_ptr_stat_ + reg_off_c_ + vlen / 2], vzero_);
-            }
             add(reg_off_c_, simd_w * acc_type_size_);
             dec(reg_C_);
             jnz(label_zeroise);
@@ -737,15 +729,6 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
                     ? compute_nspc(compute_mean)
                     : compute_blocked(compute_mean);
 
-            if (isa == sse41 && tag_kind_ == jit_memory_tag_kind_t::blocked) {
-                xor_(reg_off_dat_save_, reg_off_dat_save_);
-                xor_(reg_off_c_, reg_off_c_);
-                add(reg_off_dat_save_, vlen / 2);
-                add(reg_off_c_, vlen / 2);
-
-                compute_blocked(compute_mean);
-            }
-
             add(reg_ptr_src_, stride_N_ * data_type_size_);
             dec(reg_N_);
             jnz(label_N);
@@ -773,14 +756,6 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
             jit_tail_.uni_vmovups_maybe_tail(
                     vmmword[reg_ptr_stat_ + reg_off_c_], v_);
 
-            if (isa == sse41 && tag_kind_ == jit_memory_tag_kind_t::blocked) {
-                jit_tail_.uni_vmovups_maybe_tail(
-                        v_, vmmword[reg_ptr_stat_ + reg_off_c_ + vlen / 2]);
-                uni_vdivps(v_, v_, vNS_);
-                jit_tail_.uni_vmovups_maybe_tail(
-                        vmmword[reg_ptr_stat_ + reg_off_c_ + vlen / 2], v_);
-            }
-
             add(reg_off_c_, simd_w * acc_type_size_);
             dec(reg_C_);
             jnz(label_normalise);
@@ -803,8 +778,7 @@ struct jit_bnorm_fwd_statistics_t : public jit_generator_t {
         , data_type_size_(static_cast<int>(
                   types::data_type_size(pd->src_md()->data_type)))
         , acc_type_size_(sizeof(acc_data_t)) {
-        static_assert(utils::one_of(isa, sse41, avx2, avx512_core),
-                "unsupported isa");
+        static_assert(utils::one_of(isa, avx2, avx512_core), "unsupported isa");
 
         const auto strides = get_data_strides<isa>(pd_, tag_kind);
         stride_N_ = static_cast<int>(std::get<0>(strides));
@@ -860,9 +834,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_fwd_t)
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
-    const AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                      ? yword
-                                                 : zword;
+    const AddressFrame &vmmword = (isa == avx2) ? yword : zword;
 
     struct call_params_t {
         size_t N, C, S;
@@ -893,7 +865,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
     const Reg64 reg_ptr_src_ = r15;
     const Reg64 reg_alpha_ = reg_ptr_ws_;
 
-    const Vmm vmask = Vmm(0); // required for avx2 and sse41 ReLU computation
+    const Vmm vmask = Vmm(0); // required for AVX2 ReLU computation
     const Vmm vone_ = Vmm(1);
     const Vmm vmean_ = Vmm(2);
     const Vmm vvar_ = Vmm(3);
@@ -975,12 +947,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
             uni_vmovups(vsqrtvar_, vvar_);
             uni_vaddps(vsqrtvar_, vsqrtvar_, veps_);
             uni_vsqrtps(vsqrtvar_, vsqrtvar_);
-            if (isa == sse41) {
-                movups(vtmp_, vone_);
-                divps(vtmp_, vsqrtvar_);
-                movups(vsqrtvar_, vtmp_);
-            } else
-                vdivps(vsqrtvar_, vone_, vsqrtvar_);
+            vdivps(vsqrtvar_, vone_, vsqrtvar_);
         }
 
         if (pd_->use_scale())
@@ -1157,15 +1124,6 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
             is_avx2_ne_xf16_ ? compute_avx2_ne_xf16(stream_store_allowed)
                              : compute_blocked(stream_store_allowed);
 
-            if (isa == sse41 && tag_kind_ == jit_memory_tag_kind_t::blocked) {
-                xor_(reg_off_dat_save_, reg_off_dat_save_);
-                xor_(reg_off_c_, reg_off_c_);
-                add(reg_off_dat_save_, vlen / 2);
-                add(reg_off_c_, vlen / 2);
-
-                compute_blocked(stream_store_allowed);
-            }
-
             add(reg_ptr_src_, stride_N_ * data_type_size_);
             add(reg_ptr_dst_, stride_N_ * data_type_size_);
             if (jit_relu_.with_relu_ && !jit_relu_.with_relu_inf_only_)
@@ -1194,8 +1152,7 @@ struct jit_bnorm_fwd_t : public jit_generator_t {
         , data_type_size_(static_cast<int>(
                   types::data_type_size(pd->src_md()->data_type)))
         , acc_type_size_(sizeof(acc_data_t)) {
-        static_assert(utils::one_of(isa, sse41, avx2, avx512_core),
-                "unsupported isa");
+        static_assert(utils::one_of(isa, avx2, avx512_core), "unsupported isa");
 
         const auto strides = get_data_strides<isa>(pd_, tag_kind);
         stride_N_ = static_cast<int>(std::get<0>(strides));
@@ -1238,9 +1195,7 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_bwd_t)
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
-    const AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                      ? yword
-                                                 : zword;
+    const AddressFrame &vmmword = (isa == avx2) ? yword : zword;
 
     struct call_params_t {
         size_t N, C, S;
@@ -1331,12 +1286,7 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
         uni_vaddps(vsqrtvar_, vsqrtvar_, veps_);
         uni_vsqrtps(vsqrtvar_, vsqrtvar_);
 
-        if (isa == sse41) {
-            movups(vtmp_, vone_);
-            divps(vtmp_, vsqrtvar_);
-            movups(vsqrtvar_, vtmp_);
-        } else
-            vdivps(vsqrtvar_, vone_, vsqrtvar_);
+        vdivps(vsqrtvar_, vone_, vsqrtvar_);
 
         if (pd_->use_scale()) {
             mov(reg_ptr_c_, ptr[PARAM_ADDR(scale)]);
@@ -1448,15 +1398,6 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
                     ? compute_nspc(stream_store_allowed)
                     : compute_blocked(stream_store_allowed);
 
-            if (isa == sse41 && tag_kind_ == jit_memory_tag_kind_t::blocked) {
-                xor_(reg_off_dat_save_, reg_off_dat_save_);
-                xor_(reg_off_c_, reg_off_c_);
-                add(reg_off_dat_save_, vlen / 2);
-                add(reg_off_c_, vlen / 2);
-
-                compute_blocked(stream_store_allowed);
-            }
-
             add(reg_ptr_src_, stride_N_ * data_type_size_);
             add(reg_ptr_diff_src_, stride_N_ * data_type_size_);
             add(reg_ptr_diff_dst_, stride_N_ * data_type_size_);
@@ -1484,8 +1425,7 @@ struct jit_bnorm_bwd_t : public jit_generator_t {
         , data_type_size_(static_cast<int>(
                   types::data_type_size(pd->src_md()->data_type)))
         , acc_type_size_(sizeof(acc_data_t)) {
-        static_assert(utils::one_of(isa, sse41, avx2, avx512_core),
-                "unsupported isa");
+        static_assert(utils::one_of(isa, avx2, avx512_core), "unsupported isa");
 
         const auto strides = get_data_strides<isa>(pd_, tag_kind);
         stride_N_ = static_cast<int>(std::get<0>(strides));
@@ -1527,9 +1467,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_bnorm_bwd_diff_ss_t)
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
 
-    const AddressFrame &vmmword = (isa == sse41) ? xword
-            : (isa == avx2)                      ? yword
-                                                 : zword;
+    const AddressFrame &vmmword = (isa == avx2) ? yword : zword;
 
     struct call_params_t {
         size_t N, C, S;
@@ -1625,14 +1563,6 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
                     vmmword[reg_ptr_diff_gamma_ + reg_off_c_], vzero_);
             jit_tail_.uni_vmovups_maybe_tail(
                     vmmword[reg_ptr_diff_beta_ + reg_off_c_], vzero_);
-            if (isa == sse41 && tag_kind_ == jit_memory_tag_kind_t::blocked) {
-                jit_tail_.uni_vmovups_maybe_tail(
-                        vmmword[reg_ptr_diff_gamma_ + reg_off_c_ + vlen / 2],
-                        vzero_);
-                jit_tail_.uni_vmovups_maybe_tail(
-                        vmmword[reg_ptr_diff_beta_ + reg_off_c_ + vlen / 2],
-                        vzero_);
-            }
             add(reg_off_c_, simd_w * acc_type_size_);
             dec(reg_C_);
             jnz(label_zeroise);
@@ -1690,12 +1620,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
             uni_vaddps(vsqrtvar, vsqrtvar, veps_);
             uni_vsqrtps(vsqrtvar, vsqrtvar);
 
-            if (isa == sse41) {
-                movups(vtmp_, vone_);
-                divps(vtmp_, vsqrtvar);
-                movups(vsqrtvar, vtmp_);
-            } else
-                vdivps(vsqrtvar, vone_, vsqrtvar);
+            vdivps(vsqrtvar, vone_, vsqrtvar);
         }
     }
 
@@ -1852,15 +1777,6 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
             tag_kind_ == jit_memory_tag_kind_t::nspc ? compute_nspc()
                                                      : compute_blocked();
 
-            if (isa == sse41 && tag_kind_ == jit_memory_tag_kind_t::blocked) {
-                xor_(reg_off_dat_save_, reg_off_dat_save_);
-                xor_(reg_off_c_, reg_off_c_);
-                add(reg_off_dat_save_, vlen / 2);
-                add(reg_off_c_, vlen / 2);
-
-                compute_blocked();
-            }
-
             add(reg_ptr_src_, stride_N_ * data_type_size_);
             add(reg_ptr_diff_dst_, stride_N_ * data_type_size_);
             add(reg_ptr_ws_, stride_N_ / bits_per_byte);
@@ -1885,8 +1801,7 @@ struct jit_bnorm_bwd_diff_ss_t : public jit_generator_t {
         , data_type_size_(static_cast<int>(
                   types::data_type_size(pd->src_md()->data_type)))
         , acc_type_size_(sizeof(acc_data_t)) {
-        static_assert(utils::one_of(isa, sse41, avx2, avx512_core),
-                "unsupported isa");
+        static_assert(utils::one_of(isa, avx2, avx512_core), "unsupported isa");
 
         const auto strides = get_data_strides<isa>(pd_, tag_kind);
         stride_N_ = static_cast<int>(std::get<0>(strides));
@@ -2598,7 +2513,6 @@ jit_uni_tbb_batch_normalization_fwd_t<
         isa>::~jit_uni_tbb_batch_normalization_fwd_t()
         = default;
 
-template struct jit_uni_tbb_batch_normalization_fwd_t<sse41>;
 template struct jit_uni_tbb_batch_normalization_fwd_t<avx2>;
 template struct jit_uni_tbb_batch_normalization_fwd_t<avx512_core>;
 
@@ -2722,7 +2636,6 @@ jit_uni_tbb_batch_normalization_bwd_t<
         isa>::~jit_uni_tbb_batch_normalization_bwd_t()
         = default;
 
-template struct jit_uni_tbb_batch_normalization_bwd_t<sse41>;
 template struct jit_uni_tbb_batch_normalization_bwd_t<avx2>;
 template struct jit_uni_tbb_batch_normalization_bwd_t<avx512_core>;
 } // namespace x64

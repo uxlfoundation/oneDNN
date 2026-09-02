@@ -259,6 +259,7 @@ status_t jit_uni_reorder_direct_copy_t::pd_t::init(const engine_t *engine,
 
     VDISPATCH_REORDER(is_dense_format_kind({src_md(), dst_md()}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    VDISPATCH_REORDER(mayiuse(avx2), VERBOSE_UNSUPPORTED_ISA);
     isa_ = get_max_cpu_isa();
 
     const auto src_dt = src_md()->data_type;
@@ -328,6 +329,8 @@ status_t jit_uni_reorder_direct_copy_t::pd_t::init(const engine_t *engine,
             VERBOSE_UNSUPPORTED_MD_FLAG, "src or dst");
 
     VDISPATCH_REORDER(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_REORDER(IMPLICATION(!src_d.is_plain(), blocks_size >= 8),
+            VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     return status::success;
 }
@@ -346,8 +349,6 @@ jit_uni_reorder_direct_copy_t::kernel_base_t::create(
     } else if (is_superset(isa, avx2)
             && IMPLICATION(has_blocks, blocks_size >= 8)) {
         return new direct_copy_kernel_t<Ymm>(pd, isa);
-    } else if (is_superset(isa, sse41)) {
-        return new direct_copy_kernel_t<Xmm>(pd, isa);
     } else {
         assert(!"unexpected");
     }
@@ -404,7 +405,6 @@ status_t jit_uni_reorder_direct_copy_t::execute(const exec_ctx_t &ctx) const {
 
 template struct direct_copy_kernel_t<Zmm>;
 template struct direct_copy_kernel_t<Ymm>;
-template struct direct_copy_kernel_t<Xmm>;
 
 } // namespace x64
 } // namespace cpu

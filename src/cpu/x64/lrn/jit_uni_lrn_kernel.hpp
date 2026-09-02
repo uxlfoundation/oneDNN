@@ -93,10 +93,8 @@ public:
     ~jit_uni_lrn_kernel_t() override;
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_lrn_kernel_t);
-    // TODO: why use double simd for sse41?
     static constexpr int VECTOR_LENGTH
-            = (cpu_isa_traits_t<(isa > sse41 ? isa : avx2)>::vlen
-                    / sizeof(float));
+            = (cpu_isa_traits_t<isa>::vlen / sizeof(float));
 
 protected:
     using Vmm = typename cpu_isa_traits_t<isa>::Vmm;
@@ -180,10 +178,6 @@ private:
     void nchw_body(int tail, int HW, prop_kind_t pk, Xbyak::Ymm ymask,
             Xbyak::Ymm ya, Xbyak::Ymm yb, Xbyak::Ymm yc, Xbyak::Ymm yd,
             Xbyak::Ymm ye, Xbyak::Ymm ysum);
-    void nchw_body_sse41(int tail, int HW, prop_kind_t pk, Xbyak::Xmm xe_lo,
-            Xbyak::Xmm xe_hi, Xbyak::Xmm xsum_lo, Xbyak::Xmm xsum_hi);
-    void nchw_tail_sse41(int tail, Xbyak::Reg64 reg_dst, Xbyak::Xmm xtail_lo,
-            Xbyak::Xmm xtail_hi);
     void move_data_pointers(int pixel_count, prop_kind_t pk);
 
     const Xbyak::Reg64 src_ = this->rax;

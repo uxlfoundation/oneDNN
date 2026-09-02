@@ -106,6 +106,8 @@ struct jit_avx512_core_x8s8s32x_1x1_convolution_fwd_t : public primitive_t {
             CHECK(jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(jcp_,
                     *conv_d, src_d, weights_md_, dst_md_, bias_md_, *attr(),
                     dnnl_get_max_threads(), rtus_.reduce_src_));
+            VDISPATCH_CONV(jcp_.ic_block != 4, VERBOSE_UNSUPPORTED_FEATURE,
+                    "block-4 layout");
             if (jcp_.with_dw_conv) CHECK(depthwise_po_init(engine));
 
             auto scratchpad = scratchpad_registry().registrar();

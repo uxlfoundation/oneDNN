@@ -4811,10 +4811,8 @@ void jit_avx512_core_bf16_conv_bwd_weights_kernel_f32_t::balance(
 
 template struct jit_avx512_core_bf16_fwd_kernel_vmm_t<Xbyak::Zmm>;
 template struct jit_avx512_core_bf16_fwd_kernel_vmm_t<Xbyak::Ymm>;
-template struct jit_avx512_core_bf16_fwd_kernel_vmm_t<Xbyak::Xmm>;
 template struct jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Xbyak::Zmm>;
 template struct jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Xbyak::Ymm>;
-template struct jit_avx512_core_bf16_bwd_data_kernel_vmm_t<Xbyak::Xmm>;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

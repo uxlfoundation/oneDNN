@@ -190,8 +190,7 @@ status_t jit_uni_dw_conv_fwd_kernel_t<isa, kernel_dt>::init_conf(
     } else {
         const size_t max_ch_off
                 = static_cast<size_t>(jcp.nb_ch_blocking - 1) * jcp.ch_block;
-        constexpr size_t max_ex_off
-                = isa == sse41 ? 4 : 0; // extra offset from repeats
+        constexpr size_t max_ex_off = 0; // extra offset from repeats
 
         // check that input offsets fit into s32
         const size_t max_ic_off = max_ch_off * jcp.ih * jcp.iw;
@@ -391,7 +390,7 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
                               || jcp.wei_tag != wei_tag),
             VERBOSE_UNSUPPORTED_TAG);
 
-    // note: sse41 uses 'ch_block = 8' where the value is derived
+    // The channel block is derived from the active vector width.
     // from: 'simd_w_ * reg_repeats_ = 4 * 2'
     jcp.ch_block = isa == avx512_core ? 16 : 8;
 
@@ -433,8 +432,7 @@ status_t jit_uni_dw_conv_bwd_data_kernel_t<isa, kernel_dt>::init_conf(
 
     const size_t max_ch_off
             = static_cast<size_t>(jcp.nb_ch_blocking - 1) * jcp.ch_block;
-    constexpr size_t max_ex_off
-            = isa == sse41 ? 4 : 0; // extra offset from repeats
+    constexpr size_t max_ex_off = 0; // extra offset from repeats
     const size_t sp_step = is_data_layout_nxc ? jcp.ngroups : jcp.ch_block;
 
     // check that input offsets fit into s32
@@ -860,21 +858,18 @@ REG_AVX512_ISA(
 REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core, bf16>);
 REG_AVX512_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx512_core, f32>);
 REG_AVX2_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<avx2, f32>);
-REG_SSE41_ISA(template struct jit_uni_dw_conv_fwd_kernel_t<sse41, f32>);
 
 REG_AVX512_ISA(
         template struct jit_uni_dw_conv_bwd_data_kernel_t<avx512_core, bf16>);
 REG_AVX512_ISA(
         template struct jit_uni_dw_conv_bwd_data_kernel_t<avx512_core, f32>);
 REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_data_kernel_t<avx2, f32>);
-REG_SSE41_ISA(template struct jit_uni_dw_conv_bwd_data_kernel_t<sse41, f32>);
 
 REG_AVX512_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx512_core,
         bf16>);
 REG_AVX512_ISA(
         template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx512_core, f32>);
 REG_AVX2_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<avx2, f32>);
-REG_SSE41_ISA(template struct jit_uni_dw_conv_bwd_weights_kernel_t<sse41, f32>);
 } // namespace x64
 } // namespace cpu
 } // namespace impl

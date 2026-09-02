@@ -154,6 +154,14 @@ bool has_data_type_support(data_type_t data_type) {
     }
 }
 
+bool has_optimized_gemm() {
+#if DNNL_X64
+    return x64::mayiuse(x64::avx2);
+#else
+    return true;
+#endif
+}
+
 bool has_training_support(data_type_t data_type) {
     // TODO: maybe return false for int8, but some primitives like prelu
     // have training support
@@ -359,8 +367,8 @@ int get_vector_register_size() {
 #if DNNL_X64
     using namespace x64;
     if (mayiuse(avx512_core)) return cpu_isa_traits_t<avx512_core>::vlen;
-    if (mayiuse(avx)) return cpu_isa_traits_t<avx>::vlen;
-    if (mayiuse(sse41)) return cpu_isa_traits_t<sse41>::vlen;
+    if (mayiuse(avx2)) return cpu_isa_traits_t<avx2>::vlen;
+    return static_cast<int>(vreg_traits_t<Xbyak::Xmm>::vlen);
 #elif DNNL_AARCH64
     using namespace aarch64;
     if (mayiuse(asimd)) return cpu_isa_traits<asimd>::vlen;

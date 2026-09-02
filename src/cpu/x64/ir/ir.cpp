@@ -114,6 +114,14 @@ void ir_t::vadd(vreg_t dst, vreg_t src) {
     ops_.push_back(op);
 }
 
+void ir_t::vsub(vreg_t dst, vreg_t src) {
+    op_t op;
+    op.kind = op_kind_t::vsub;
+    op.dst = dst;
+    op.s0 = src;
+    ops_.push_back(op);
+}
+
 void ir_t::vmul(vreg_t dst, vreg_t src) {
     op_t op;
     op.kind = op_kind_t::vmul;
@@ -122,9 +130,41 @@ void ir_t::vmul(vreg_t dst, vreg_t src) {
     ops_.push_back(op);
 }
 
+void ir_t::vdiv(vreg_t dst, vreg_t src) {
+    op_t op;
+    op.kind = op_kind_t::vdiv;
+    op.dst = dst;
+    op.s0 = src;
+    ops_.push_back(op);
+}
+
+void ir_t::vmax(vreg_t dst, vreg_t src) {
+    op_t op;
+    op.kind = op_kind_t::vmax;
+    op.dst = dst;
+    op.s0 = src;
+    ops_.push_back(op);
+}
+
+void ir_t::vbcast(vreg_t dst, vreg_t src) {
+    op_t op;
+    op.kind = op_kind_t::vbcast;
+    op.dst = dst;
+    op.s0 = src;
+    ops_.push_back(op);
+}
+
 void ir_t::vhreduce(vreg_t dst, vreg_t workspace) {
     op_t op;
     op.kind = op_kind_t::vhreduce;
+    op.dst = dst;
+    op.s0 = workspace;
+    ops_.push_back(op);
+}
+
+void ir_t::vhreduce_max(vreg_t dst, vreg_t workspace) {
+    op_t op;
+    op.kind = op_kind_t::vhreduce_max;
     op.dst = dst;
     op.s0 = workspace;
     ops_.push_back(op);
@@ -293,12 +333,20 @@ void ir_t::def_use(
             d(op.dst);
             break;
         case op_kind_t::vadd: // read-modify-write
+        case op_kind_t::vsub: // read-modify-write
         case op_kind_t::vmul: // read-modify-write
+        case op_kind_t::vdiv: // read-modify-write
+        case op_kind_t::vmax: // read-modify-write
             u(op.dst);
             u(op.s0);
             d(op.dst);
             break;
+        case op_kind_t::vbcast: // overwrites dst, reads s0
+            u(op.s0);
+            d(op.dst);
+            break;
         case op_kind_t::vhreduce: // dst and workspace are both read and written
+        case op_kind_t::vhreduce_max:
             u(op.dst);
             u(op.s0);
             d(op.dst);

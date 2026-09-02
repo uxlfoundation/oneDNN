@@ -578,20 +578,13 @@ int ref_partition_t::check_partition_total_size(
 
     // Step 2. Check whether the memory is enough.
     if (is_gpu()) {
-        // Align with check_total_size() in dnnl_common.cpp: Mapped host buffers
-        // are live together with device allocations at peak (and on some
-        // runtimes become device-resident while accessed), so account for them
-        // in the device peak used for the device RAM fit check.
         size_t total_gpu_req = graph_mem_req.get_mem_req(GPU_REQ) + new_mem_req;
         const size_t new_mapped_mem_req
                 = has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
                 ? 0
                 : new_mem_req;
-        const size_t total_mapped_mem_req
-                = graph_mem_req.get_mapped_mem_req() + new_mapped_mem_req;
-        const size_t device_peak_req = total_gpu_req + total_mapped_mem_req;
-        const bool fits_device_ram = device_peak_req <= benchdnn_device_limit;
-        SAFE(check_memory_fit(fits_device_ram, device_peak_req,
+        const bool fits_device_ram = total_gpu_req <= benchdnn_device_limit;
+        SAFE(check_memory_fit(fits_device_ram, total_gpu_req,
                      benchdnn_device_limit, GPU_REQ, res),
                 WARN);
 
@@ -663,12 +656,8 @@ int ref_partition_t::check_partition_total_size(
     // GPU mem size check.
     if (is_gpu()) {
         size_t total_gpu_req = graph_mem_req.get_mem_req(GPU_REQ) + new_gpu_req;
-        const size_t total_mapped_mem_req = graph_mem_req.get_mapped_mem_req()
-                + check_mem_size_args.total_size_mapped;
-        const size_t device_peak_req = total_gpu_req + total_mapped_mem_req;
-
-        const bool fits_device_ram = device_peak_req <= benchdnn_device_limit;
-        SAFE(check_memory_fit(fits_device_ram, device_peak_req,
+        const bool fits_device_ram = total_gpu_req <= benchdnn_device_limit;
+        SAFE(check_memory_fit(fits_device_ram, total_gpu_req,
                      benchdnn_device_limit, GPU_REQ, res),
                 WARN);
 

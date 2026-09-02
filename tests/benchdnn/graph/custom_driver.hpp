@@ -90,6 +90,9 @@ void init_memory_args(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
 void init_memory_args_native(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
         const graph::deserialized_op_t &base_op_ref, const engine_t &ref_eng);
 
+void collect_mem_size(
+        check_mem_size_args_t &mem_size_args, const base_prb_t *base_prb);
+
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t prim, const base_prb_t *base_prb, res_t *res,
         dnnl_primitive_t prim_ref = nullptr);

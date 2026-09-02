@@ -78,7 +78,7 @@ inline void rtus_prepare(conv_pd_t *self, const convolution_desc_t *&conv_d,
 
     const bool is_nspc
             = utils::one_of(dat_tag, format_tag::nwc, format_tag::nhwc);
-    if (is_nspc && !mayiuse(sse41)) return;
+    if (is_nspc && !mayiuse(avx2)) return;
 
     // rtus is applicable, configure it.
     self->rtus_.reduce_src_ = true;
@@ -194,7 +194,6 @@ struct rtus_driver_t : public jit_generator_t {
             Xmm res;
             if (is_nspc_) {
                 switch (isa) {
-                    case sse41: res = Xmm(idx); break;
                     case avx2: res = Ymm(idx); break;
                     case avx512_core: res = Zmm(idx); break;
                     default: assert(!"Not supported isa"); res = Xmm(idx);
@@ -202,12 +201,6 @@ struct rtus_driver_t : public jit_generator_t {
                 return res;
             }
             switch (isa) {
-                case sse41:
-                    switch (typesize) {
-                        case 2: res = Xmm(idx); break;
-                        default: assert(!"Not supported typesize");
-                    }
-                    break;
                 case avx2:
                     switch (typesize) {
                         case 4: res = Ymm(idx); break;
@@ -375,9 +368,7 @@ struct rtus_driver_t : public jit_generator_t {
         shl(reg_icb, vlen_shift_);
 
         const dim_t w_step_factor = ic_ * typesize_;
-        const int max_load_store_bytes = isa == sse41 ? typesize_ == 4 ? 16 : 8
-                : typesize_ == 4                      ? 32
-                                                      : 16;
+        const int max_load_store_bytes = typesize_ == 4 ? 32 : 16;
         const int load_store_size
                 = isa == avx512_core ? vlen_ : max_load_store_bytes;
         const int load_store_tail_size = typesize_ == 1
@@ -494,7 +485,7 @@ struct rtus_driver_t : public jit_generator_t {
 
     void generate() override {
         using namespace Xbyak;
-        assert(utils::one_of(isa, sse41, avx2, avx512_core));
+        assert(utils::one_of(isa, avx2, avx512_core));
 
         preamble();
 #define READ_PARAM(what) \

@@ -118,12 +118,10 @@
 #define __BUILD_AMX BUILD_PRIMITIVE_CPU_ISA_ALL || BUILD_AMX
 #define __BUILD_AVX512 __BUILD_AMX || BUILD_AVX512
 #define __BUILD_AVX2 __BUILD_AVX512 || BUILD_AVX2
-#define __BUILD_SSE41 __BUILD_AVX2 || BUILD_SSE41
 #else
 #define __BUILD_AMX 0
 #define __BUILD_AVX512 0
 #define __BUILD_AVX2 0
-#define __BUILD_SSE41 0
 #endif
 
 #if __BUILD_AMX
@@ -144,12 +142,6 @@
 #define REG_AVX2_ISA(...)
 #endif
 
-#if __BUILD_SSE41
-#define REG_SSE41_ISA(...) __VA_ARGS__
-#else
-#define REG_SSE41_ISA(...)
-#endif
-
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -167,6 +159,7 @@ bool DNNL_API prefer_ymm_requested();
 // implementations since these require specific code-path updates.
 bool DNNL_API has_data_type_support(data_type_t data_type);
 bool DNNL_API has_training_support(data_type_t data_type);
+bool DNNL_API has_optimized_gemm();
 float DNNL_API s8s8_weights_scale_factor();
 
 unsigned DNNL_API get_per_core_cache_size(int level);

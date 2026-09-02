@@ -33,7 +33,7 @@ namespace eltwise_injector {
     VCONDCHECK(primitive, create, check, binary_injector, cond, false, msg);
 
 bool is_isa_supported(cpu_isa_t isa) {
-    return is_superset(isa, sse41);
+    return is_superset(isa, avx2);
 }
 
 bool is_alg_supported(alg_kind_t alg) {
@@ -88,18 +88,6 @@ void jit_uni_eltwise_injector_t<Wmm>::injector_preamble(
 
     const auto start_idx = *(vmm_compute_idxs.begin());
     const auto end_idx = *(vmm_compute_idxs.rbegin()) + 1;
-    // For sse41 mask register must be Xmm(0), reserve it unconditionally.
-    if (is_sse41_ && need_vmm_mask_register_) {
-        static constexpr int mask_idx = 0;
-        assert(start_idx > mask_idx);
-        // When external indices come, they must secure first index is 0.
-        assert(IMPLICATION(!vmm_aux_indices.empty(),
-                *(vmm_aux_indices.begin()) == mask_idx));
-        preserved_vmm_tail_indices_[n_vregs_preserved_++] = mask_idx;
-    }
-
-    // `n_vregs_preserved_` is 0 for isa higher than `sse41`.
-    // Note that by happy coincidence, idx=0 is skipped for `sse41`.
     for (int idx = n_vregs_preserved_; idx < n_vregs_; idx++) {
         // Once reserved enough vmm registers, break the loop.
         if (n_vregs_preserved_ >= n_vregs_to_preserve_) break;
@@ -132,7 +120,7 @@ void jit_uni_eltwise_injector_t<Wmm>::injector_preamble(
         // Preserve vmm mask register first. If preserved last, there may not be
         // enough free registers to fit all vmm registers, and an algorithm
         // requiring a mask will fail.
-        // Note: sse41 has it preserved already.
+        // The scalar fallback preserves the accumulator before the call.
         if (need_vmm_mask_register_ && n_vregs_preserved_ == 0)
             preserved_vmm_tail_indices_[n_vregs_preserved_++] = preserve_idx;
         else {
@@ -299,24 +287,6 @@ void jit_uni_eltwise_injector_t<Wmm>::injector_postamble() {
 template <typename Wmm>
 void jit_uni_eltwise_injector_t<Wmm>::assign_regs() {
     vmm_mask_ = Vmm(preserved_vmm_tail_indices_[0]);
-
-    // For avx we need a register to save the upper part of Ymm
-    // Note: the number in `aux_vecs_count` is accounted for here.
-    using namespace alg_kind;
-    const bool preserve_vec_for_avx = is_avx_
-            && utils::one_of(alg_, eltwise_tanh, eltwise_elu, eltwise_abs,
-                    eltwise_soft_relu, eltwise_mish, eltwise_logistic,
-                    eltwise_exp, eltwise_gelu_tanh, eltwise_swish,
-                    eltwise_gelu_erf, eltwise_tanh_use_dst_for_bwd,
-                    eltwise_elu_use_dst_for_bwd,
-                    eltwise_logistic_use_dst_for_bwd,
-                    eltwise_exp_use_dst_for_bwd);
-
-    if (preserve_vec_for_avx) {
-        vmm_tmp_ = Vmm(preserved_vmm_indices_[n_vregs_to_preserve_ - 1]);
-        ymm_tmp_ = Ymm(preserved_vmm_indices_[n_vregs_to_preserve_ - 1]);
-        xmm_tmp_ = Xmm(preserved_vmm_indices_[n_vregs_to_preserve_ - 1]);
-    }
 }
 
 // This function provides vmm aux registers based on indices from
@@ -332,27 +302,10 @@ Wmm jit_uni_eltwise_injector_t<Wmm>::vmm_aux(int idx) {
 template <typename Wmm>
 void jit_uni_eltwise_injector_t<Wmm>::vec_shift(const Vmm &vmm_dst,
         const Vmm &vmm_src, bool shift_left, const int imm) {
-    if (!is_avx_) {
-        if (shift_left)
-            h->uni_vpslld(vmm_dst, vmm_src, imm);
-        else
-            h->uni_vpsrld(vmm_dst, vmm_src, imm);
-    } else {
-        // AVX lacks 256-bit integer shifts, so shift each 128-bit half apart.
-        Xmm xmm_dst = Xmm(vmm_dst.getIdx());
-        Ymm ymm_dst = Ymm(vmm_dst.getIdx());
-        Ymm ymm_src = Ymm(vmm_src.getIdx());
-        if (vmm_dst.getIdx() != vmm_src.getIdx()) h->vmovups(ymm_dst, ymm_src);
-        h->vextractf128(xmm_tmp_, ymm_dst, 1);
-        if (shift_left) {
-            h->uni_vpslld(xmm_dst, xmm_dst, imm);
-            h->uni_vpslld(xmm_tmp_, xmm_tmp_, imm);
-        } else {
-            h->uni_vpsrld(xmm_dst, xmm_dst, imm);
-            h->uni_vpsrld(xmm_tmp_, xmm_tmp_, imm);
-        }
-        h->vinsertf128(ymm_dst, ymm_dst, xmm_tmp_, 1);
-    }
+    if (shift_left)
+        h->uni_vpslld(vmm_dst, vmm_src, imm);
+    else
+        h->uni_vpsrld(vmm_dst, vmm_src, imm);
 }
 
 // Uses injector masks objects: k_mask_ (>= avx512_core) or vmm_mask_ (<= avx2).
@@ -430,16 +383,7 @@ void jit_uni_eltwise_injector_t<Wmm>::exp_compute_vector_fwd(
     // compute 2^(n-1)
     h->uni_vsubps(vmm_src, vmm_src, table_val(one));
     h->uni_vcvtps2dq(vmm_aux(1), vmm_src);
-    if (!is_avx_)
-        h->uni_vpaddd(vmm_aux(1), vmm_aux(1), table_val(exponent_bias));
-    else {
-        Ymm ymm_aux2 = Ymm(vmm_aux(1).getIdx());
-        Xmm xmm_aux2 = Xmm(vmm_aux(1).getIdx());
-        h->vextractf128(xmm_tmp_, ymm_aux2, 1);
-        h->vpaddd(xmm_tmp_, xmm_tmp_, table_val(exponent_bias));
-        h->vpaddd(xmm_aux2, xmm_aux2, table_val(exponent_bias));
-        h->vinsertf128(ymm_aux2, ymm_aux2, xmm_tmp_, 1);
-    }
+    h->uni_vpaddd(vmm_aux(1), vmm_aux(1), table_val(exponent_bias));
     vec_shift(vmm_aux(1), vmm_aux(1), true /*shift_left*/, n_mantissa_bits_);
     // use vmm_src as tmp vmm_zero when applying mask
     h->uni_vxorps(vmm_src, vmm_src, vmm_src);
@@ -493,7 +437,6 @@ void jit_uni_eltwise_injector_t<Wmm>::elu_compute_vector_fwd(
 template <typename Wmm>
 void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
         const Vmm &vmm_src) {
-    // we add a check as the avx2 code cannot be used for avx
     assert(mayiuse(isa_));
 
     using namespace Xbyak::util;
@@ -538,10 +481,6 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
     // - sse4.1: we do it the naive way using vextract/vinsert.
     //           Here we will extract the indices in gpr only once and
     //           reuse them as there are only 4 of them.
-    // - avx: we do the same as for sse4.1 but use half of the 64-bits
-    //           registers to store the idx of second half of YMM and half for
-    //           responding XMM. Halfway through the copy we exchange Xmm and
-    //           higher half of Ymm and we get the expected result.
     // - avx2: we use vpermps and blend for each coefficient.
     //         This needs an extra vmm to store the mask
     // - avx512: because the table fits in 2 registers, we can use vpermi2d.
@@ -552,14 +491,7 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
         return table_val(tanh_pol_table, coeff_off * tanh_n_polynomials + off);
     };
     auto gather_coefficient_init = [&](Vmm vmm_pol_idx, int nelems) {
-        if (is_sse41_) {
-            for (int i = 0; i < XMM_float_elems_count; ++i)
-                h->uni_vpextrd(gpr_idx[i].cvt32(), vmm_pol_idx, i);
-        } else if (is_avx_) {
-            Xmm xmm_pol_idx = Xmm(vmm_pol_idx.getIdx());
-            for (int i = 0; i < XMM_float_elems_count; ++i)
-                h->uni_vpextrd(gpr_idx[i].cvt32(), xmm_pol_idx, i);
-        } else if (has_avx2_ && !has_avx512_core_) {
+        if (has_avx2_ && !has_avx512_core_) {
             // Zero the mask so that the `_cmp_eq_oq` compare in
             // `gather_coefficient` yields all ones. A NaN left over in the
             // register would compare unequal to itself.
@@ -569,20 +501,7 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
     };
     auto gather_coefficient
             = [&](Vmm vmm_coeff, int coeff_idx, Vmm vmm_pol_idx) {
-        if (is_sse41_) {
-            for (int idx = 0; idx < 4; ++idx) {
-                Xbyak::Address coeff_addr = ptr[p_table_ + coeffs_off(coeff_idx)
-                        + gpr_idx[idx] * sizeof(float)];
-                h->uni_vpinsrd(vmm_coeff, vmm_coeff, coeff_addr, idx);
-            }
-        } else if (is_avx_) {
-            Xmm xmm_coeff = Xmm(vmm_coeff.getIdx());
-            for (int idx = 0; idx < 4; ++idx) {
-                Xbyak::Address coeff_addr = ptr[p_table_ + coeffs_off(coeff_idx)
-                        + gpr_idx[idx] * sizeof(float)];
-                h->uni_vpinsrd(xmm_coeff, xmm_coeff, coeff_addr, idx);
-            }
-        } else if (has_avx2_ && !has_avx512_core_) {
+        if (has_avx2_ && !has_avx512_core_) {
             Xbyak::Address idx_addr = ptr[p_table_ + coeffs_off(coeff_idx)
                     + vmm_pol_idx * sizeof(float)];
             // Set the mask to all ones to gather a full register. A
@@ -607,16 +526,7 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
 
     // We compute the indices for the table lookup
     h->uni_vmovups(vmm_indices, vmm_src);
-    if (!is_avx_)
-        h->uni_vpsubd(vmm_indices, vmm_indices, table_val(tanh_idx_bias));
-    else {
-        Ymm ymm_indices = Ymm(vmm_indices.getIdx());
-        Xmm xmm_indices = Xmm(vmm_indices.getIdx());
-        h->vextractf128(xmm_tmp_, ymm_indices, 1);
-        h->vpsubd(xmm_tmp_, xmm_tmp_, table_val(tanh_idx_bias));
-        h->vpsubd(xmm_indices, xmm_indices, table_val(tanh_idx_bias));
-        h->vinsertf128(ymm_indices, ymm_indices, xmm_tmp_, 1);
-    }
+    h->uni_vpsubd(vmm_indices, vmm_indices, table_val(tanh_idx_bias));
     h->uni_vandps(vmm_indices, vmm_indices, table_val(tanh_idx_mask));
     vec_shift(vmm_indices, vmm_indices, false, 22);
 
@@ -631,25 +541,6 @@ void jit_uni_eltwise_injector_t<Wmm>::tanh_compute_vector_fwd(
     for (int deg = 5; deg >= 0; --deg) {
         gather_coefficient(vmm_coeff, deg, vmm_indices);
         h->uni_vfmadd213ps(vmm_pol, vmm_src, vmm_coeff);
-    }
-
-    if (is_avx_) {
-        Ymm ymm_indices = Ymm(vmm_indices.getIdx());
-        Ymm ymm_pol = Ymm(vmm_pol.getIdx());
-        Ymm ymm_src = Ymm(vmm_src.getIdx());
-        Xmm xmm_src = Xmm(vmm_src.getIdx());
-        Xmm xmm_coeff = Xmm(vmm_coeff.getIdx());
-
-        h->vperm2f128(ymm_src, ymm_src, ymm_src, 1);
-        h->vperm2f128(ymm_indices, ymm_indices, ymm_indices, 1);
-        gather_coefficient_init(vmm_indices, vlen_ / sizeof(float));
-        gather_coefficient(vmm_tmp_, 6, vmm_indices);
-        for (int deg = 5; deg >= 0; --deg) {
-            gather_coefficient(vmm_coeff, deg, vmm_indices);
-            h->vmulps(xmm_tmp_, xmm_tmp_, xmm_src);
-            h->vaddps(xmm_tmp_, xmm_tmp_, xmm_coeff);
-        }
-        h->vinsertf128(ymm_pol, ymm_pol, xmm_tmp_, 1);
     }
 
     // we restore src with cleared sign, and keep sign
@@ -841,9 +732,6 @@ void jit_uni_eltwise_injector_t<Wmm>::soft_relu_compute_vector_fwd(
     if (has_avx512_core_) {
         h->vmulps(vmm_aux(1), vmm_src, table_val(minus_one));
         h->vcvtps2dq(vmm_aux(1), vmm_aux(1));
-    } else if (is_avx_) {
-        h->uni_vxorps(vmm_aux(1), vmm_src, table_val(sign_mask));
-        h->uni_vcvtps2dq(vmm_aux(1), vmm_aux(1));
     } else {
         h->uni_vcvtps2dq(vmm_aux(1), vmm_src);
         h->uni_vpsignd(vmm_aux(1), vmm_aux(1), table_val(minus_one));
@@ -851,16 +739,7 @@ void jit_uni_eltwise_injector_t<Wmm>::soft_relu_compute_vector_fwd(
     // restore vmm_src to n
     h->uni_vaddps(vmm_src, vmm_src, table_val(one));
 
-    if (!is_avx_)
-        h->uni_vpaddd(vmm_aux(1), vmm_aux(1), table_val(exponent_bias));
-    else {
-        Ymm ymm_aux1 = Ymm(vmm_aux(1).getIdx());
-        Xmm xmm_aux1 = Xmm(vmm_aux(1).getIdx());
-        h->vextractf128(xmm_tmp_, ymm_aux1, 1);
-        h->vpaddd(xmm_tmp_, xmm_tmp_, table_val(exponent_bias));
-        h->vpaddd(xmm_aux1, xmm_aux1, table_val(exponent_bias));
-        h->vinsertf128(ymm_aux1, ymm_aux1, xmm_tmp_, 1);
-    }
+    h->uni_vpaddd(vmm_aux(1), vmm_aux(1), table_val(exponent_bias));
     vec_shift(vmm_aux(1), vmm_aux(1), true /*shift_left*/, n_mantissa_bits_);
     // calculate ln(1 + y)
     h->uni_vmulps(vmm_aux(3), vmm_aux(3), table_val(two)); // 2*exp(r)
@@ -975,12 +854,6 @@ void jit_uni_eltwise_injector_t<Wmm>::log_compute_vector_fwd(
     // If (x == qnan) result = qnan; (qnan value taken from src)
     // If (x == 1) result = 0;
 
-    // set unused register as tmp for avx
-    if (is_avx_) {
-        ymm_tmp_ = Ymm(vmm_aux(0).getIdx());
-        xmm_tmp_ = Xmm(vmm_aux(0).getIdx());
-    }
-
     // save source on stack to check neg and zero values at the end
     h->uni_vmovups(vmm_aux(4), vmm_src);
 
@@ -995,20 +868,7 @@ void jit_uni_eltwise_injector_t<Wmm>::log_compute_vector_fwd(
 
     // get E, don't care about sign as only positive numbers are considered
     vec_shift(vmm_aux(3), vmm_src, false, n_mantissa_bits_);
-    if (!is_avx_)
-        h->uni_vpaddd(vmm_aux(3), vmm_aux(3), vmm_aux(2));
-    else {
-        Ymm ymm_aux2 = Ymm(vmm_aux(2).getIdx());
-        Ymm ymm_aux3 = Ymm(vmm_aux(3).getIdx());
-        Xmm xmm_aux2 = Xmm(vmm_aux(2).getIdx());
-        Xmm xmm_aux3 = Xmm(vmm_aux(3).getIdx());
-        h->vextractf128(xmm_tmp_, ymm_aux3, 1);
-        h->vpaddd(xmm_aux3, xmm_aux3, xmm_aux2);
-        h->vperm2f128(ymm_aux2, ymm_aux2, ymm_aux2, 1);
-        h->vpaddd(xmm_tmp_, xmm_tmp_, xmm_aux2);
-        h->vperm2f128(ymm_aux2, ymm_aux2, ymm_aux2, 1);
-        h->vinsertf128(ymm_aux3, ymm_aux3, xmm_tmp_, 1);
-    }
+    h->uni_vpaddd(vmm_aux(3), vmm_aux(3), vmm_aux(2));
     h->uni_vcvtdq2ps(vmm_aux(3), vmm_aux(3));
 
     // get m (mantissa)
@@ -1228,10 +1088,8 @@ void jit_uni_eltwise_injector_t<Wmm>::pow_compute_vector_fwd(
                     = h->ptr[reg_vmm_stack_ptr_ + i * sizeof(float)];
             h->uni_vmovss(xmm0, source);
             h->uni_vmovss(xmm1, h->ptr[reg_vmm_stack_ptr_ + vlen_]); // beta
-            h->uni_vzeroupper(); // eliminate performance penalties on avx
+            h->uni_vzeroupper(); // avoid transition penalties around scalar calls
             h->call(h->r12);
-            // eliminate performance penalties on sse isa
-            if (is_sse41_) h->uni_vzeroupper();
             h->uni_vmovss(source, xmm0);
         }
 
@@ -1516,7 +1374,6 @@ void jit_uni_eltwise_injector_t<Wmm>::sqrt_compute_vector_bwd(
     // res = 0.5 / d = 0.5 / sqrt(s)
     if (!use_dst_) sqrt_compute_vector_fwd(vmm_src);
     h->uni_vmovups(vmm_aux(0), table_val(half));
-    // h->uni_vdivps(vmm_src, vmm_aux(0), vmm_src); // bless sse41
     h->uni_vdivps(vmm_aux(0), vmm_aux(0), vmm_src);
     h->uni_vmovups(vmm_src, vmm_aux(0));
 }
@@ -1580,7 +1437,6 @@ void jit_uni_eltwise_injector_t<Wmm>::logistic_compute_vector_bwd(
         const Vmm &vmm_src) {
     // res = d * (1 - d) = d - d * d; d = logistic(s)
     if (!use_dst_) logistic_compute_vector_fwd(vmm_src);
-    // h->uni_vfnmadd231ps(vmm_src, vmm_src, vmm_src); // bless sse41
     h->uni_vmovups(vmm_aux(0), table_val(one));
     h->uni_vsubps(vmm_aux(0), vmm_aux(0), vmm_src);
     h->uni_vmulps(vmm_src, vmm_src, vmm_aux(0));
@@ -1621,7 +1477,6 @@ void jit_uni_eltwise_injector_t<Wmm>::log_compute_vector_bwd(
         const Vmm &vmm_src) {
     // res = 1 / s
     h->uni_vmovups(vmm_aux(0), table_val(one));
-    // h->uni_vdivps(vmm_src, vmm_aux(0), vmm_src); // bless sse41
     h->uni_vdivps(vmm_aux(0), vmm_aux(0), vmm_src);
     h->uni_vmovups(vmm_src, vmm_aux(0));
 }
@@ -1825,8 +1680,6 @@ int jit_uni_eltwise_injector_t<Wmm>::op_vecs_count(
 template <typename Wmm>
 int jit_uni_eltwise_injector_t<Wmm>::aux_vecs_count(
         cpu_isa_t isa, alg_kind_t alg, bool is_fwd, float alpha) {
-    // For avx we need a register to save the upper part of Ymm
-    const bool extra_avx_vmm = is_superset(isa, avx) && !is_superset(isa, avx2);
     int n_vmms = 0;
 
     using namespace alg_kind;
@@ -1835,30 +1688,28 @@ int jit_uni_eltwise_injector_t<Wmm>::aux_vecs_count(
             case eltwise_relu_use_dst_for_bwd:
             case eltwise_relu: n_vmms = (alpha != 0.f); break;
             case eltwise_elu_use_dst_for_bwd:
-            case eltwise_elu: n_vmms = 3 + extra_avx_vmm; break;
+            case eltwise_elu: n_vmms = 3; break;
             case eltwise_tanh_use_dst_for_bwd:
-            case eltwise_tanh: n_vmms = 4 + extra_avx_vmm; break;
+            case eltwise_tanh: n_vmms = 4; break;
             case eltwise_square: n_vmms = 0; break;
-            case eltwise_abs: n_vmms = 0 + extra_avx_vmm; break;
+            case eltwise_abs: n_vmms = 0; break;
             case eltwise_sqrt_use_dst_for_bwd:
             case eltwise_sqrt: n_vmms = 0; break;
             case eltwise_linear: n_vmms = 1; break;
-            case eltwise_soft_relu: n_vmms = 4 + extra_avx_vmm; break;
-            case eltwise_mish: n_vmms = 3 + extra_avx_vmm; break;
+            case eltwise_soft_relu: n_vmms = 4; break;
+            case eltwise_mish: n_vmms = 3; break;
             case eltwise_logistic_use_dst_for_bwd:
-            case eltwise_logistic: n_vmms = 3 + extra_avx_vmm; break;
+            case eltwise_logistic: n_vmms = 3; break;
             case eltwise_exp_use_dst_for_bwd:
-            case eltwise_exp: n_vmms = 2 + extra_avx_vmm; break;
-            case eltwise_gelu_tanh: n_vmms = 4 + extra_avx_vmm; break;
-            case eltwise_swish: n_vmms = 4 + extra_avx_vmm; break;
+            case eltwise_exp: n_vmms = 2; break;
+            case eltwise_gelu_tanh: n_vmms = 4; break;
+            case eltwise_swish: n_vmms = 4; break;
             case eltwise_log: n_vmms = 5; break;
             case eltwise_clip:
             case eltwise_clip_v2_use_dst_for_bwd:
             case eltwise_clip_v2: n_vmms = 0; break;
             case eltwise_pow: n_vmms = 1; break;
-            case eltwise_gelu_erf:
-                n_vmms = 5 + extra_avx_vmm;
-                break; // 4 on avx512+
+            case eltwise_gelu_erf: n_vmms = 5; break; // 4 on avx512+
             case eltwise_round: n_vmms = 0; break;
             case eltwise_hardswish: n_vmms = 1; break;
             case eltwise_hardsigmoid: n_vmms = 0; break;
@@ -1868,33 +1719,29 @@ int jit_uni_eltwise_injector_t<Wmm>::aux_vecs_count(
         switch (alg) {
             case eltwise_relu_use_dst_for_bwd:
             case eltwise_relu: n_vmms = 0; break;
-            case eltwise_elu_use_dst_for_bwd: n_vmms = 0 + extra_avx_vmm; break;
-            case eltwise_elu: n_vmms = 3 + extra_avx_vmm; break;
-            case eltwise_tanh_use_dst_for_bwd:
-                n_vmms = 1 + extra_avx_vmm;
-                break;
-            case eltwise_tanh: n_vmms = 4 + extra_avx_vmm; break;
+            case eltwise_elu_use_dst_for_bwd: n_vmms = 0; break;
+            case eltwise_elu: n_vmms = 3; break;
+            case eltwise_tanh_use_dst_for_bwd: n_vmms = 1; break;
+            case eltwise_tanh: n_vmms = 4; break;
             case eltwise_square: n_vmms = 0; break;
-            case eltwise_abs: n_vmms = 0 + extra_avx_vmm; break;
+            case eltwise_abs: n_vmms = 0; break;
             case eltwise_sqrt_use_dst_for_bwd:
             case eltwise_sqrt: n_vmms = 1; break;
             case eltwise_linear: n_vmms = 0; break;
-            case eltwise_soft_relu: n_vmms = 3 + extra_avx_vmm; break;
-            case eltwise_mish: n_vmms = 3 + extra_avx_vmm; break;
-            case eltwise_logistic_use_dst_for_bwd:
-                n_vmms = 1 + extra_avx_vmm;
-                break;
-            case eltwise_logistic: n_vmms = 3 + extra_avx_vmm; break;
-            case eltwise_exp_use_dst_for_bwd: n_vmms = 0 + extra_avx_vmm; break;
-            case eltwise_exp: n_vmms = 2 + extra_avx_vmm; break;
-            case eltwise_gelu_tanh: n_vmms = 5 + extra_avx_vmm; break;
-            case eltwise_swish: n_vmms = 4 + extra_avx_vmm; break;
+            case eltwise_soft_relu: n_vmms = 3; break;
+            case eltwise_mish: n_vmms = 3; break;
+            case eltwise_logistic_use_dst_for_bwd: n_vmms = 1; break;
+            case eltwise_logistic: n_vmms = 3; break;
+            case eltwise_exp_use_dst_for_bwd: n_vmms = 0; break;
+            case eltwise_exp: n_vmms = 2; break;
+            case eltwise_gelu_tanh: n_vmms = 5; break;
+            case eltwise_swish: n_vmms = 4; break;
             case eltwise_log: n_vmms = 1; break;
             case eltwise_clip:
             case eltwise_clip_v2_use_dst_for_bwd:
             case eltwise_clip_v2: n_vmms = 1; break;
             case eltwise_pow: n_vmms = 2; break;
-            case eltwise_gelu_erf: n_vmms = 6 + extra_avx_vmm; break;
+            case eltwise_gelu_erf: n_vmms = 6; break;
             case eltwise_hardswish: n_vmms = 1; break;
             case eltwise_hardsigmoid: n_vmms = 1; break;
             default: assert(!"unsupported eltwise algorithm");
@@ -2912,7 +2759,6 @@ void jit_uni_eltwise_injector_t<Wmm>::register_table_entries() {
 
 template struct jit_uni_eltwise_injector_t<Zmm>;
 template struct jit_uni_eltwise_injector_t<Ymm>;
-template struct jit_uni_eltwise_injector_t<Xmm>;
 
 } // namespace x64
 } // namespace cpu

@@ -211,11 +211,6 @@ struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t {
                         jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
                                 Xbyak::Ymm>>(ajcp, attr, dst_md);
                 return;
-            case 4:
-                kernel_ = utils::make_unique<
-                        jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<
-                                Xbyak::Xmm>>(ajcp, attr, dst_md);
-                return;
             default: assert(!"invalid channel blocking");
         }
     }
@@ -288,6 +283,10 @@ struct jit_avx512_core_x8s8s32x_deconvolution_fwd_t : public primitive_t {
             CHECK(jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_conf(
                     jcp_, *desc(), src_md_, weights_md_, dst_md_, with_bias(),
                     bias_md_, attr_, dnnl_get_max_threads()));
+            const dim_t ch_block
+                    = jcp_.is_depthwise ? jcp_.ch_block : jcp_.ic_block;
+            VDISPATCH_DECONVOLUTION(ch_block != 4, VERBOSE_UNSUPPORTED_FEATURE,
+                    "block-4 layout");
 
             auto scratchpad = scratchpad_registry().registrar();
             jit_avx512_core_x8s8s32x_deconv_fwd_kernel_vmm_t::init_scratchpad(

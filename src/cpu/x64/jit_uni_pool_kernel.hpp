@@ -72,23 +72,20 @@ private:
     Zmm zreg(int idx) const noexcept { return Zmm(reg_idx(idx)); }
     Vmm vreg(int idx) const noexcept { return Vmm(reg_idx(idx)); }
 
-    // Narrows a small, fixed-range value (SIMD lane index or blend mask) to the
-    // Xbyak 8-bit immediate at the single instruction-emit boundary.
     static uint8_t to_imm_uint8_t(int v) noexcept {
         assert(v >= 0 && v <= UINT8_MAX);
         return static_cast<uint8_t>(v);
     }
 
-    const Xbyak::AddressFrame &vmmword = (isa == sse41)  ? xword
-            : utils::one_of(isa, avx, avx2, avx2_vnni_2) ? yword
-                                                         : zword;
+    const Xbyak::AddressFrame &vmmword
+            = utils::one_of(isa, avx2, avx2_vnni_2) ? yword : zword;
 
     Xmm vmm_mask = Xmm(0);
     Xmm xmm_tmp_1 = Xmm(0);
     Ymm ymm_tmp_1 = Ymm(0);
     Vmm vmm_tmp_1 = Vmm(0);
 
-    // Used only for avx and if c tail is present; is shared with jit_io_multi_dt_helper_t
+    // Used for vector tail processing and shared with jit_io_multi_dt_helper_t.
     Vmm vmm_c_tail_mask = Vmm(2);
 
     Vmm vmm_ker_area_h = Vmm(2);
@@ -142,7 +139,6 @@ private:
     Reg32 reg_shuf_mask = esi;
 
     bool sse_high_half = false;
-    bool disable_postops_when_sse_high_half_processed_ = false;
 
     dim_t prev_kw = 0;
 

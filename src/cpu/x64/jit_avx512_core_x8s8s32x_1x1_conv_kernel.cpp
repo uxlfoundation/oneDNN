@@ -1252,7 +1252,6 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_scratchpad(
 
 template struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Xbyak::Zmm>;
 template struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Xbyak::Ymm>;
-template struct jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Xbyak::Xmm>;
 
 } // namespace x64
 } // namespace cpu

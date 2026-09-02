@@ -737,18 +737,12 @@ void jit_uni_binary_kernel_t<isa, Vmm>::generate() {
 
 template struct jit_uni_binary_kernel_t<avx512_core_fp16, Zmm>;
 template struct jit_uni_binary_kernel_t<avx512_core_fp16, Ymm>;
-template struct jit_uni_binary_kernel_t<avx512_core_fp16, Xmm>;
 template struct jit_uni_binary_kernel_t<avx512_core_bf16, Zmm>;
 template struct jit_uni_binary_kernel_t<avx512_core_bf16, Ymm>;
-template struct jit_uni_binary_kernel_t<avx512_core_bf16, Xmm>;
 template struct jit_uni_binary_kernel_t<avx512_core, Zmm>;
 template struct jit_uni_binary_kernel_t<avx512_core, Ymm>;
-template struct jit_uni_binary_kernel_t<avx512_core, Xmm>;
 template struct jit_uni_binary_kernel_t<avx2_vnni_2, Ymm>;
-template struct jit_uni_binary_kernel_t<avx2_vnni_2, Xmm>;
 template struct jit_uni_binary_kernel_t<avx2, Ymm>;
-template struct jit_uni_binary_kernel_t<avx2, Xmm>;
-template struct jit_uni_binary_kernel_t<sse41, Xmm>;
 
 } // namespace x64
 } // namespace cpu

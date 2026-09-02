@@ -196,15 +196,9 @@ status_t jit_uni_lrn_fwd_t<isa, d_type>::pd_t::init(const engine_t *engine) {
     dat_tag_ = memory_desc_matches_one_of_tag(
             *src_md(), nChw16c, nChw8c, nchw, nhwc);
 
-    const dim_t HW = src_d.dims()[2] * src_d.dims()[3];
-
     const bool args_ok_across = true && desc()->alg_kind == lrn_across_channels
             && desc()->local_size == 5 && one_of(dat_tag_, nChw8c, nchw, nhwc)
             && everyone_is(data_type::f32, src_d.data_type())
-            /* SSE41: prevent loads smaller than the size of xmm registers,
-         * otherwise it will result in an illegal memory read (seg-fault)
-         * due to protected memory. */
-            && IMPLICATION(isa == sse41 && dat_tag_ == nchw, HW >= 4)
             && !is_superset(isa, avx512_core);
 
     const int jit_max_local_size = 5; // bigger size triggers too big code size
@@ -414,7 +408,6 @@ template struct jit_uni_lrn_fwd_t<avx512_core_fp16, data_type::f16>;
 template struct jit_uni_lrn_fwd_t<avx2_vnni_2, data_type::bf16>;
 template struct jit_uni_lrn_fwd_t<avx2_vnni_2, data_type::f16>;
 template struct jit_uni_lrn_fwd_t<avx2, data_type::f32>;
-template struct jit_uni_lrn_fwd_t<sse41, data_type::f32>;
 template struct jit_uni_lrn_bwd_t<avx512_core, data_type::f32>;
 template struct jit_uni_lrn_bwd_t<avx512_core, data_type::bf16>;
 template struct jit_uni_lrn_bwd_t<avx512_core_fp16, data_type::f16>;

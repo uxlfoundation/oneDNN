@@ -140,7 +140,6 @@ void jit_uni_sum_injector_t<Vmm>::prepare_table(bool gen_table) {
 
 template class jit_uni_sum_injector_t<Xbyak::Zmm>;
 template class jit_uni_sum_injector_t<Xbyak::Ymm>;
-template class jit_uni_sum_injector_t<Xbyak::Xmm>;
 
 } // namespace x64
 } // namespace cpu

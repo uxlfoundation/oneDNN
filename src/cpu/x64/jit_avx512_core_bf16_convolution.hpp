@@ -70,6 +70,8 @@ struct jit_avx512_core_bf16_convolution_fwd_t : public primitive_t {
             CHECK(jit_avx512_core_bf16_fwd_kernel_t::init_conf(jcp_, *desc(),
                     src_md_, weights_md_, dst_md_, bias_md_, attr_,
                     dnnl_get_max_threads()));
+            VDISPATCH_CONV(jcp_.oc_block != 4, VERBOSE_UNSUPPORTED_FEATURE,
+                    "block-4 layout");
 
             auto scratchpad = scratchpad_registry().registrar();
             jit_avx512_core_bf16_fwd_kernel_t::init_scratchpad(
@@ -149,6 +151,8 @@ struct jit_avx512_core_bf16_convolution_bwd_data_t : public primitive_t {
             CHECK(jit_avx512_core_bf16_bwd_data_kernel_t::init_conf(jcp_,
                     *desc(), diff_src_md_, weights_md_, diff_dst_md_,
                     dnnl_get_max_threads()));
+            VDISPATCH_CONV(jcp_.ic_block != 4, VERBOSE_UNSUPPORTED_FEATURE,
+                    "block-4 layout");
             return status::success;
         }
 

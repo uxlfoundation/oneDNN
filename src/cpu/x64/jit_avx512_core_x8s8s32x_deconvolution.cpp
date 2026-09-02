@@ -1958,7 +1958,6 @@ status_t jit_avx512_core_x8s8s32x_deconvolution_fwd_t::execute_forward_3d(
 
 template struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Xbyak::Zmm>;
 template struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Xbyak::Ymm>;
-template struct jit_avx512_core_x8s8s32x_deconv_fwd_kernel_t<Xbyak::Xmm>;
 
 } // namespace x64
 } // namespace cpu

@@ -46,11 +46,10 @@ struct jit_uni_rnn_postgemm_t : public jit_generator_t {
         , cstate_dt_size_(
                   static_cast<int>(types::data_type_size(rnn.src_iter_c_dt)))
         , is_avx512(mayiuse(avx512_core))
-        , is_avx2(mayiuse(avx2))
         , weights_scales_reg(r13)
         , qtable(r14)
-        // implementations avoids to preserve Vmm(0) because of potential
-        // conflict with required in injectors usage for masks on sse4.1
+        // implementations avoid preserving Vmm(0) because of potential
+        // conflicts with injector mask usage
         // so it can be used as commong temporal vector register
         , tmp_vector_register_idx(0)
         , qd_reg_idx(tmp_vector_register_idx)
@@ -412,7 +411,7 @@ protected:
                 dshift_off_addr = ptr[qtable + 3 * vlen];
                 ymm_perm_mask_addr = ptr[qtable + 4 * vlen];
                 zmm_perm_mask_addr
-                        = ptr[qtable + 4 * vlen + cpu_isa_traits_t<avx>::vlen];
+                        = ptr[qtable + 4 * vlen + cpu_isa_traits_t<avx2>::vlen];
                 break;
             }
             case data_type::f32: {
@@ -824,18 +823,7 @@ protected:
 
     template <typename Vmm>
     void compute_vfmadd231ps(const Vmm &v1, const Vmm &v2,
-            const Xbyak::Address &addr, int vlen_bytes,
-            /* required for isa below avx2 only */
-            const Vmm &tmp_vmm_for_address_load) {
-        if (!is_avx2) {
-            // to avoid issues with not 16 bytes aligned memory for sse4.1 or
-            // overriding v2 values for avx load values from memory to provided
-            // tmp_vmm_for_address_load and use variant with vmm arguments only
-            load(tmp_vmm_for_address_load, addr, data_type::f32, vlen_bytes);
-            compute_vfmadd231ps(v1, tmp_vmm_for_address_load, v2, vlen_bytes);
-            return;
-        }
-
+            const Xbyak::Address &addr, int vlen_bytes) {
         if (can_do_zmm_masked_tail_processing(v1, vlen_bytes)) {
             Xbyak::Zmm dst_masked
                     = Xbyak::Zmm(v1.getIdx()) | zmm_tail_k_mask | T_z;
@@ -887,7 +875,6 @@ protected:
     const int bias_dt_size_;
     const int cstate_dt_size_;
     const bool is_avx512;
-    const bool is_avx2;
 
 private:
     // registers/Labels used for int8 quantization and conversions

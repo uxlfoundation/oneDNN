@@ -77,7 +77,7 @@ private:
     Xbyak::Opmask k_store_mask = Xbyak::Opmask(5);
     Vmm vreg_unit = Vmm(31);
     Vmm vreg_perm = Vmm(30);
-    Vmm vmm_tail_mask = Vmm(15); // use for avx tail loads
+    Vmm vmm_tail_mask = Vmm(15); // used for vector tail loads
 
     const int n_max_regs_ = 4;
 

@@ -97,7 +97,6 @@ static cpu_isa_t get_supported_isa() {
     if (mayiuse(avx512_core)) return avx512_core;
     if (mayiuse(avx2_vnni_2)) return avx2_vnni_2;
     if (mayiuse(avx2)) return avx2;
-    if (mayiuse(sse41)) return sse41;
 
     return isa_undef;
 }
@@ -106,9 +105,8 @@ static bool data_format_supported(
         const memory_desc_wrapper &mdw, const cpu_isa_t isa) {
     if (mdw.is_plain()) return true;
     const auto blk_size = mdw.blocking_desc().inner_blks[0];
-    return (is_superset(isa, avx512_core) && utils::one_of(blk_size, 16, 8, 4))
-            || (is_superset(isa, avx2) && utils::one_of(blk_size, 8, 4))
-            || (is_superset(isa, sse41) && blk_size == 4);
+    return (is_superset(isa, avx512_core) && utils::one_of(blk_size, 16, 8))
+            || (is_superset(isa, avx2) && blk_size == 8);
 }
 
 status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
@@ -128,6 +126,7 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
 
     conf_.isa = get_supported_isa();
 
+    VDISPATCH_BINARY(mayiuse(avx2), VERBOSE_UNSUPPORTED_ISA);
     VDISPATCH_BINARY(data_type_supported(conf_.dst_type, conf_.isa),
             VERBOSE_ISA_DT_MISMATCH);
     VDISPATCH_BINARY(data_type_supported(conf_.src0_type, conf_.isa),
@@ -257,7 +256,7 @@ status_t jit_uni_binary_t::pd_t::init(const engine_t *engine) {
         conf_.src2_type = src_md(2)->data_type;
         VDISPATCH_BINARY(data_type_supported(conf_.src2_type, conf_.isa),
                 VERBOSE_ISA_DT_MISMATCH);
-        // The kernel does not work for AVX, SSE41
+        // The kernel requires AVX2 or newer.
         VDISPATCH_BINARY(mayiuse(avx2), "unsupported isa for ternary op");
     }
     init_scratchpad();
@@ -569,7 +568,7 @@ bool jit_uni_binary_t::post_ops_ok(const primitive_attr_t *attr,
         /*
          * check blocking_desc consistency, currently when among postops exists
          * per_oc broadcast, binary kernel doesn't support situations when blocked
-         * format size is smaller then vlen. example: sse41 vlen size is 4 and format
+         * format size is smaller than vlen.
          * is nChw8c - not supported, avx2 vlen size is 8 and format is
          * nChw8c - supported.
          */
@@ -638,10 +637,6 @@ binary_kernel_t *create_binary_kernel(
                 using kernel_t
                         = jit_uni_binary_kernel_t<avx512_core_fp16, Xbyak::Ymm>;
                 return new kernel_t(pd, conf, tail_kernel);
-            } else if (blk_size == 4) {
-                using kernel_t
-                        = jit_uni_binary_kernel_t<avx512_core_fp16, Xbyak::Xmm>;
-                return new kernel_t(pd, conf, tail_kernel);
             }
             break;
         }
@@ -664,16 +659,6 @@ binary_kernel_t *create_binary_kernel(
                 } else {
                     using kernel_t = jit_uni_binary_kernel_t<avx512_core_bf16,
                             Xbyak::Ymm>;
-                    return new kernel_t(pd, conf, tail_kernel);
-                }
-            } else if (blk_size == 4) {
-                if (conf.is_i8) {
-                    using kernel_t
-                            = jit_uni_binary_kernel_t<avx512_core, Xbyak::Xmm>;
-                    return new kernel_t(pd, conf, false);
-                } else {
-                    using kernel_t = jit_uni_binary_kernel_t<avx512_core_bf16,
-                            Xbyak::Xmm>;
                     return new kernel_t(pd, conf, tail_kernel);
                 }
             }
@@ -700,16 +685,6 @@ binary_kernel_t *create_binary_kernel(
                             = jit_uni_binary_kernel_t<avx512_core, Xbyak::Ymm>;
                     return new kernel_t(pd, conf, tail_kernel);
                 }
-            } else if (blk_size == 4) {
-                if (conf.is_i8) {
-                    using kernel_t
-                            = jit_uni_binary_kernel_t<avx512_core, Xbyak::Xmm>;
-                    return new kernel_t(pd, conf, false);
-                } else {
-                    using kernel_t
-                            = jit_uni_binary_kernel_t<avx512_core, Xbyak::Xmm>;
-                    return new kernel_t(pd, conf, tail_kernel);
-                }
             }
             break;
         }
@@ -718,26 +693,12 @@ binary_kernel_t *create_binary_kernel(
                 using kernel_t
                         = jit_uni_binary_kernel_t<avx2_vnni_2, Xbyak::Ymm>;
                 return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
-            } else if (blk_size == 4) {
-                using kernel_t
-                        = jit_uni_binary_kernel_t<avx2_vnni_2, Xbyak::Xmm>;
-                return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
             }
             break;
         }
         case avx2: {
             if (blk_size == 8 || is_plain_layout) {
                 using kernel_t = jit_uni_binary_kernel_t<avx2, Xbyak::Ymm>;
-                return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
-            } else if (blk_size == 4) {
-                using kernel_t = jit_uni_binary_kernel_t<avx2, Xbyak::Xmm>;
-                return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
-            }
-            break;
-        }
-        case sse41: {
-            if (blk_size == 4 || is_plain_layout) {
-                using kernel_t = jit_uni_binary_kernel_t<sse41, Xbyak::Xmm>;
                 return new kernel_t(pd, conf, tail_kernel && !conf.is_i8);
             }
             break;

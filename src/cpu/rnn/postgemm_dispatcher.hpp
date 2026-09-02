@@ -252,6 +252,7 @@ protected:
         if (utils::one_of(src_type, data_type::bf16, data_type::f16)
                 && !mayiuse(avx512_core))
             return status::success;
+        if (!mayiuse(avx2)) return status::success;
 
 //NOLINTBEGIN(bugprone-macro-parentheses)
 // Can't put types into `()`:
@@ -261,10 +262,8 @@ protected:
         if (mayiuse(avx512_core)) \
             (k).reset( \
                     new ker_t<avx512_core, src_type, scratch_type>(rnn, pd_)); \
-        else if (mayiuse(avx2)) \
-            (k).reset(new ker_t<avx2, src_type, scratch_type>(rnn, pd_)); \
         else \
-            (k).reset(new ker_t<sse41, src_type, scratch_type>(rnn, pd_)); \
+            (k).reset(new ker_t<avx2, src_type, scratch_type>(rnn, pd_)); \
     } while (0)
 #define CREATE(k, ker_t) \
     do { \

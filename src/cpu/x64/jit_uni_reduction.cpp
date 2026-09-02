@@ -29,8 +29,6 @@ static cpu_isa_t get_supported_isa() {
     if (mayiuse(avx512_core)) return avx512_core;
     if (mayiuse(avx2_vnni_2)) return avx2_vnni_2;
     if (mayiuse(avx2)) return avx2;
-    if (mayiuse(avx)) return avx;
-    if (mayiuse(sse41)) return sse41;
 
     return isa_undef;
 }
@@ -57,6 +55,7 @@ status_t jit_uni_reduction_t::pd_t::init(const engine_t *engine) {
 
     conf_.isa = get_supported_isa();
 
+    VDISPATCH_REDUCTION(mayiuse(avx2), VERBOSE_UNSUPPORTED_ISA);
     conf_.src_type = src_md()->data_type;
     conf_.dst_type = dst_md()->data_type;
     conf_.acc_type
@@ -71,15 +70,17 @@ status_t jit_uni_reduction_t::pd_t::init(const engine_t *engine) {
             impl_supports_datatype(conf_.dst_type), VERBOSE_UNSUPPORTED_DT);
     VDISPATCH_REDUCTION(
             set_default_params() == status::success, VERBOSE_UNSUPPORTED_TAG);
+    const auto src_mdw = memory_desc_wrapper(src_md());
+    const auto dst_mdw = memory_desc_wrapper(dst_md());
+    const bool has_block4 = src_mdw.blk_size() == 4 || dst_mdw.blk_size() == 4;
+    VDISPATCH_REDUCTION(
+            !has_block4, VERBOSE_UNSUPPORTED_FEATURE, "block-4 layouts");
     VDISPATCH_REDUCTION(
             attr()->has_default_values(sm::post_ops), VERBOSE_UNSUPPORTED_ATTR);
     VDISPATCH_REDUCTION(attr_.set_default_formats(dst_md(0)) == status::success,
             VERBOSE_UNSUPPORTED_POSTOP);
     VDISPATCH_REDUCTION(impl::is_dense_format_kind({src_md(), dst_md()}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
-
-    const auto src_mdw = memory_desc_wrapper(src_md());
-    const auto dst_mdw = memory_desc_wrapper(dst_md());
 
     const std::vector<injector::post_op_type> accepted_post_ops
             = {injector::sum, injector::eltwise, injector::binary};
@@ -207,39 +208,15 @@ status_t jit_uni_reduction_t::get_proper_kernel(
     else if (conf.isa == avx512_core)
         return safe_ptr_assign(kernel_,
                 new jit_uni_reduction_kernel_t<avx512_core>(conf, dst_md));
-    else if (is_superset(conf.isa, avx)) {
-        const bool is_src_i8 = utils::one_of(conf.src_type, s8, u8);
-        const bool is_dst_i8 = utils::one_of(conf.dst_type, s8, u8);
+    else if (is_superset(conf.isa, avx2)) {
         if (conf.isa == avx2_vnni_2) {
-            if (is_src_i8 || is_dst_i8)
-                return safe_ptr_assign(kernel_,
-                        new jit_uni_reduction_kernel_t<avx2_vnni_2, Xbyak::Xmm>(
-                                conf, dst_md));
-            else
-                return safe_ptr_assign(kernel_,
-                        new jit_uni_reduction_kernel_t<avx2_vnni_2>(
-                                conf, dst_md));
-        } else if (conf.isa == avx2) {
-            if (is_src_i8 || is_dst_i8)
-                return safe_ptr_assign(kernel_,
-                        new jit_uni_reduction_kernel_t<avx2, Xbyak::Xmm>(
-                                conf, dst_md));
-            else
-                return safe_ptr_assign(kernel_,
-                        new jit_uni_reduction_kernel_t<avx2>(conf, dst_md));
+            return safe_ptr_assign(kernel_,
+                    new jit_uni_reduction_kernel_t<avx2_vnni_2>(conf, dst_md));
         } else {
-            if (is_src_i8 || is_dst_i8)
-                return safe_ptr_assign(kernel_,
-                        new jit_uni_reduction_kernel_t<avx, Xbyak::Xmm>(
-                                conf, dst_md));
-            else
-                return safe_ptr_assign(kernel_,
-                        new jit_uni_reduction_kernel_t<avx>(conf, dst_md));
+            return safe_ptr_assign(kernel_,
+                    new jit_uni_reduction_kernel_t<avx2>(conf, dst_md));
         }
-    } else if (conf.isa == sse41)
-        return safe_ptr_assign(
-                kernel_, new jit_uni_reduction_kernel_t<sse41>(conf, dst_md));
-    else
+    } else
         return status::runtime_error;
 }
 

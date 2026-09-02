@@ -373,11 +373,6 @@ jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::jit_uni_x8s8s32x_deconv_fwd_kernel_t(
                 assert(!"invalid channel blocking for current ISA");
             }
             break;
-        case 4:
-            kernel_ = utils::make_unique<
-                    jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa, Xbyak::Xmm>>(
-                    ajcp, attr, dst_d);
-            return;
         default: assert(!"invalid channel blocking");
     }
 }
@@ -1459,6 +1454,9 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::pd_t::init(
     CHECK(jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_conf(jcp_, *desc(),
             src_md_, weights_md_, dst_md_, with_bias(), bias_md_, attr_,
             dnnl_get_max_threads()));
+    const dim_t ch_block = jcp_.is_depthwise ? jcp_.ch_block : jcp_.ic_block;
+    VDISPATCH_DECONVOLUTION(
+            ch_block != 4, VERBOSE_UNSUPPORTED_FEATURE, "block-4 layout");
 
     auto scratchpad = scratchpad_registry().registrar();
     jit_uni_x8s8s32x_deconv_fwd_kernel_t<isa>::init_scratchpad(
@@ -2066,12 +2064,8 @@ status_t jit_uni_x8s8s32x_deconvolution_fwd_t<isa>::execute_forward_3d(
 
 using namespace data_type;
 template struct jit_uni_x8s8s32x_deconvolution_fwd_t<avx2>;
-template struct jit_uni_x8s8s32x_deconvolution_fwd_t<sse41>;
 template struct jit_uni_x8s8s32x_deconv_fwd_kernel_t<avx2>;
-template struct jit_uni_x8s8s32x_deconv_fwd_kernel_t<sse41>;
 template struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<avx2, Xbyak::Ymm>;
-template struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<avx2, Xbyak::Xmm>;
-template struct jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<sse41, Xbyak::Xmm>;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

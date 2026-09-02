@@ -315,7 +315,6 @@ bool post_ops_ok(const post_ops_ok_args_t &post_ops_ok_args) {
 
 template class jit_uni_postops_injector_t<Xbyak::Zmm>;
 template class jit_uni_postops_injector_t<Xbyak::Ymm>;
-template class jit_uni_postops_injector_t<Xbyak::Xmm>;
 
 #undef VCHECK_PO_INJ_BOOL
 

@@ -25,30 +25,6 @@ namespace x64 {
 namespace regops {
 
 void horizontal_add_ps(
-        jit_generator_t *code, Xbyak::Xmm src, Xbyak::Xmm workspace) {
-    // XMM indices 16-31 can only be encoded with EVEX. vhaddps/haddps have no
-    // EVEX form so for high registers we have to use an EVEX-encodable
-    // vshufps + vaddps reduction.
-    const bool requires_evex = src.getIdx() >= 16 || workspace.getIdx() >= 16;
-
-    if (requires_evex) {
-        assert(code->is_valid_isa(avx512_core));
-        code->vshufps(workspace, src, src, 0xB1); // [1,0,3,2]
-        code->vaddps(src, src, workspace);
-        code->vshufps(workspace, src, src, 0x4E); // [2,3,0,1]
-        code->vaddps(src, src, workspace);
-    } else if (code->is_valid_isa(avx)) {
-        UNUSED(workspace);
-        code->vhaddps(src, src, src);
-        code->vhaddps(src, src, src);
-    } else {
-        UNUSED(workspace);
-        code->haddps(src, src);
-        code->haddps(src, src);
-    }
-}
-
-void horizontal_add_ps(
         jit_generator_t *code, Xbyak::Ymm src, Xbyak::Ymm workspace) {
     const Xbyak::Xmm xmm_ws {workspace.getIdx()};
     const Xbyak::Xmm xmm_src {src.getIdx()};
@@ -62,7 +38,21 @@ void horizontal_add_ps(
         code->vextractf128(xmm_ws, src, 1);
 
     code->vaddps(xmm_src, xmm_src, xmm_ws);
-    horizontal_add_ps(code, xmm_src, xmm_ws);
+
+    // XMM indices 16-31 can only be encoded with EVEX. vhaddps/haddps have no
+    // EVEX form so for high registers we have to use an EVEX-encodable
+    // vshufps + vaddps reduction.
+    if (requires_evex) {
+        assert(code->is_valid_isa(avx512_core));
+        code->vshufps(xmm_ws, xmm_src, xmm_src, 0xB1); // [1,0,3,2]
+        code->vaddps(xmm_src, xmm_src, xmm_ws);
+        code->vshufps(xmm_ws, xmm_src, xmm_src, 0x4E); // [2,3,0,1]
+        code->vaddps(xmm_src, xmm_src, xmm_ws);
+    } else {
+        assert(code->is_valid_isa(avx2));
+        code->vhaddps(xmm_src, xmm_src, xmm_src);
+        code->vhaddps(xmm_src, xmm_src, xmm_src);
+    }
 }
 
 void horizontal_add_ps(

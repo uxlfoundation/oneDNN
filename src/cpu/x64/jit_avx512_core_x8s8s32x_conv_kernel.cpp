@@ -1794,7 +1794,6 @@ void jit_avx512_core_x8s8s32x_fwd_kernel_t::init_scratchpad(
 
 template struct jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Zmm>;
 template struct jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Ymm>;
-template struct jit_avx512_core_x8s8s32x_fwd_kernel_vmm_t<Xmm>;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

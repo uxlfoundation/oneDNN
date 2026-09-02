@@ -4471,10 +4471,8 @@ void jit_avx512_common_conv_bwd_weights_kernel_f32_t::balance(
 
 template struct jit_avx512_common_conv_fwd_kernel_vmm_t<Zmm>;
 template struct jit_avx512_common_conv_fwd_kernel_vmm_t<Ymm>;
-template struct jit_avx512_common_conv_fwd_kernel_vmm_t<Xmm>;
 template struct jit_avx512_common_conv_bwd_data_kernel_f32_vmm_t<Zmm>;
 template struct jit_avx512_common_conv_bwd_data_kernel_f32_vmm_t<Ymm>;
-template struct jit_avx512_common_conv_bwd_data_kernel_f32_vmm_t<Xmm>;
 
 } // namespace x64
 } // namespace cpu

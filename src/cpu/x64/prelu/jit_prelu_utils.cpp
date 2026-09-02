@@ -38,10 +38,6 @@ cpu_isa_t get_supported_isa() {
         return avx2_vnni_2;
     else if (mayiuse(avx2))
         return avx2;
-    else if (mayiuse(avx))
-        return avx;
-    else if (mayiuse(sse41))
-        return sse41;
     return isa_undef;
 }
 
@@ -56,9 +52,7 @@ static int get_vlen(const cpu_isa_t &isa) noexcept {
         return cpu_isa_traits_t<avx2_vnni_2>::vlen;
     else if (isa == avx2)
         return cpu_isa_traits_t<avx2>::vlen;
-    else if (isa == avx)
-        return cpu_isa_traits_t<avx>::vlen;
-    return cpu_isa_traits_t<sse41>::vlen;
+    return cpu_isa_traits_t<avx2>::vlen;
 }
 
 int get_n_vregs(const cpu_isa_t &isa) noexcept {
@@ -72,9 +66,7 @@ int get_n_vregs(const cpu_isa_t &isa) noexcept {
         return cpu_isa_traits_t<avx2_vnni_2>::n_vregs;
     else if (isa == avx2)
         return cpu_isa_traits_t<avx2>::n_vregs;
-    else if (isa == avx)
-        return cpu_isa_traits_t<avx>::n_vregs;
-    return cpu_isa_traits_t<sse41>::n_vregs;
+    return cpu_isa_traits_t<avx2>::n_vregs;
 }
 
 bool is_s8u8(const std::set<data_type_t> &tensor_data_types) noexcept {
@@ -87,9 +79,7 @@ bool is_s8u8(const std::set<data_type_t> &tensor_data_types) noexcept {
 int get_simd_w(const std::set<data_type_t> &tensor_data_types) noexcept {
     const auto &isa = prelu::get_supported_isa();
 
-    return (isa == avx && is_s8u8(tensor_data_types))
-            ? vreg_traits_t<Xbyak::Xmm>::vlen / sizeof(float)
-            : prelu::get_vlen(isa) / sizeof(float);
+    return prelu::get_vlen(isa) / sizeof(float);
 }
 
 static bool dims_equal(

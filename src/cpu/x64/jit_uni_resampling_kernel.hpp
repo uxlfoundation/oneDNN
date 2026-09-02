@@ -104,7 +104,7 @@ private:
 
     void generate() override;
 
-    // Used only for avx and if c tail is present.
+    // Used for vector tail processing when c tail is present.
     const Vmm vmm_tail_mask_ = Vmm(0);
     // Used only for avx2 and if ncsp format is present.
     // Vgatherdps always gets data using a conditional mask.

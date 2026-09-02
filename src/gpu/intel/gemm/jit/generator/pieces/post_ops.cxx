@@ -238,8 +238,12 @@ void Generator<hw>::gemmVectorBinaryOpC(BinaryOp op, bool column, const GRFMulti
             auto nco = (column ? j : i) * crosspack;
             auto offBase = (*offsetsPtr)[nco / ne].sub(nco % ne, Tacc.ngen());
             if (scale.isValid()) {
-                if (op != BinaryOp::Add) stub();
-                mad(nc, C(1), C(1), offBase(stride()), scale);
+                if (op == BinaryOp::Add)
+                    mad(nc, C(1), C(1), offBase(stride()), scale);
+                else if (op == BinaryOp::Sub)
+                    mad(nc, C(1), C(1), offBase(stride()), -scale);
+                else
+                    stub();
             } else if (strategy.dotVL > 0) {
                 // Dot-based kernels pack the C-tile into one register when possible, which results in
                 // register region restriction complications. Split binary operations into execSize=1 pieces.
@@ -867,7 +871,7 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
         // Scalar offset path.
         // TODO: combine C adds into add3 on XeHP+.
         if (aOffset && bOffset) {
-            mul(1, temp, temp, state.inputs.ao);
+            mul(1, temp, temp, -state.inputs.ao);
             map(hw, Tc, state.Bs_regs, state.Bs_layout, strategy, [&](int ne, RegData r) {
                 mad(ne, r, temp, r, state.inputs.ao);
             });
@@ -877,8 +881,8 @@ void Generator<hw>::gemmApplyABOffset(const GEMMProblem &problem, const GEMMStra
         auto As_scale = state.inputs.bo;
         auto Bs_scale = (bOffset) ? Subregister() : state.inputs.ao;
 
-        if (bOffset) gemmVectorBinaryOpC(BinaryOp::Add, false, state.As_regs, As_scale, problem, strategy, state, problem.Tc, state.As_layout);
-        if (aOffset) gemmVectorBinaryOpC(BinaryOp::Add, true,  state.Bs_regs, Bs_scale, problem, strategy, state, problem.Tc, state.Bs_layout);
+        if (bOffset) gemmVectorBinaryOpC(BinaryOp::Sub, false, state.As_regs, As_scale, problem, strategy, state, problem.Tc, state.As_layout);
+        if (aOffset) gemmVectorBinaryOpC(BinaryOp::Sub, true,  state.Bs_regs, Bs_scale, problem, strategy, state, problem.Tc, state.Bs_layout);
     }
 
     state.ra.safeRelease(aoData);

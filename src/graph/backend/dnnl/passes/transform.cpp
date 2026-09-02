@@ -393,7 +393,8 @@ status_t convert_to_runtime_dst_zero_points(std::shared_ptr<subgraph_t> &sg) {
         bool is_output_zps = in_val->has_producer()
                 && impl::utils::one_of(in_val->get_producer().get_kind(),
                         op_kind::_matmul, op_kind::_convolution,
-                        op_kind::_convtranspose, op_kind::_reorder);
+                        op_kind::_convtranspose, op_kind::_softmax,
+                        op_kind::_reorder);
 
         if (!is_output_zps) continue;
 
@@ -1407,9 +1408,9 @@ status_t fuse_dst_scales(std::shared_ptr<subgraph_t> &sg) {
         if (consumers.size() != 1) continue;
         auto &next_op = consumers[0].get_op();
         if (next_op.get_kind() != op_kind::_mul_scales) continue;
-        // For these three ops, the dst zps are not supported
-        if (impl::utils::one_of(cur_op->get_kind(), op_kind::_softmax,
-                    op_kind::_layernorm, op_kind::_groupnorm)) {
+        // For these two ops, the dst zps are not supported
+        if (impl::utils::one_of(cur_op->get_kind(), op_kind::_layernorm,
+                    op_kind::_groupnorm)) {
             out_val = next_op.get_output_value(0);
             consumers = out_val->get_consumers();
             if (consumers.size() == 1) {
@@ -1553,8 +1554,7 @@ status_t convert_to_runtime_dst_scales(std::shared_ptr<subgraph_t> &sg) {
             continue;
 
         if (impl::utils::one_of(cur_op->get_input_op(0)->get_kind(),
-                    op_kind::_softmax, op_kind::_layernorm,
-                    op_kind::_groupnorm)) {
+                    op_kind::_layernorm, op_kind::_groupnorm)) {
             auto out_val = cur_op->get_output_value(0);
             auto consumers = out_val->get_consumers();
             if (consumers.size() == 1) {
@@ -1649,7 +1649,9 @@ status_t fuse_dst_zero_points(std::shared_ptr<subgraph_t> &sg) {
         if (!in_val->has_producer()) continue;
         auto &prv_op = in_val->get_producer();
 
-        if (!has_int8_support(prv_op.get_kind())) continue;
+        if (!has_int8_support(prv_op.get_kind())
+                && prv_op.get_kind() != op_kind::_softmax)
+            continue;
 
         if (!prv_op.has_attr(op_attr::fusion_info)) {
             fusion_info_t fusion_info;

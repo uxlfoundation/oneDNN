@@ -63,6 +63,10 @@ arg_indices_t get_arg_indices_for_siso_op(const op_t *op) {
         args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
                 {indices_t::type_t::input, idx++}});
     }
+    if (fusion_info.with_runtime_zero_points(false, 0)) {
+        args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_DST,
+                {indices_t::type_t::input, idx++}});
+    }
     if (fusion_info.with_dropout()) {
         args.insert({DNNL_ARG_ATTR_DROPOUT_SEED,
                 {indices_t::type_t::input, idx++}});

@@ -104,7 +104,7 @@ struct ref_t : public primitive_t {
             const bool is_f4 = utils::one_of(src_dt_, f4_e2m1, f32, bf16, f16)
                     || utils::one_of(wei_dt_, f4_e2m1);
             const bool is_int8 = utils::one_of(src_dt_, u8, s8)
-                    && utils::one_of(wei_dt_, u8, s8, u4, s4);
+                    && utils::one_of(wei_dt_, u8, s8, u4, s4, u3);
             // Note: fp4 bias will require sub-byte reads in the kernel.
             VDISPATCH_MATMUL(
                     (is_int8

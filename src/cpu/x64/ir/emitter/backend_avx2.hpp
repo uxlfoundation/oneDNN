@@ -64,6 +64,14 @@ struct avx2_backend_t {
         gen().vmovups(gen().ptr[Xbyak::Reg64(base) + (int)disp], Xbyak::Ymm(s));
     }
 
+    // dst[i] = [base + disp] for every i
+    void vbcast(int d, int base, dim_t disp, data_type_t dt) {
+        const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        if (dt == data_type::f32)
+            gen().vbroadcastss(Xbyak::Ymm(d), addr);
+        else { JIT_ASSERT(!"vbcast: dtype not implemented"); }
+    }
+
     void vadd(int d, int s, data_type_t dt) { // dst += s0
         if (dt == data_type::f32)
             gen().vaddps(Xbyak::Ymm(d), Xbyak::Ymm(d), Xbyak::Ymm(s));

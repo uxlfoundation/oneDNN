@@ -132,10 +132,7 @@ struct prb_t : public desc_t, public base_prb_t {
         if (mb) this->mb = mb;
 
         // Broadcast data types if needed
-        if (dt.size() == 1) {
-            const auto val = dt[0]; // Need a copy here.
-            this->dt.assign(2, val);
-        }
+        broadcast_vector(this->dt, dt[0], 2);
 
         repro = set_repro_line(); // must be last in ctor to collect right info
     }

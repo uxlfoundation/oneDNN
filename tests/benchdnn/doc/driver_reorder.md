@@ -7,10 +7,10 @@
 
 where *reorder-knobs* are:
 
- - `--sdt={f32 [default], s32, s8, u8, bf16, f16, f64}` -- src data type.
-            Refer to [data types](knobs_dt.md) for details.
- - `--ddt={f32 [default], s32, s8, u8, bf16, f16, f64}` -- dst data type.
-            Refer to [data types](knobs_dt.md) for details.
+ - `--dt={f32:f32 [default], SRC:DST}` -- source and destination data types.
+            Interface supports broadcasting, when a single input is
+            provided, e.g., `--dt=f32`, and the value will be applied for all
+            tensors. Refer to [data types](knobs_dt.md) for details.
  - `--stag={nchw [default], ...}` -- physical src memory layout.
             Refer to [tags](knobs_tag.md) for details.
  - `--dtag={nchw [default], ...}` -- physical dst memory layout.
@@ -61,9 +61,14 @@ Run two specific reorders with s8 src and dst data type, and specific input and
 output physical memory layouts. First problem without a flag; second problem
 with the `s8s8_comp` flag and mask of `1`:
 ``` sh
-    ./benchdnn --reorder --sdt=s8 --ddt=s8 --stag=hwio --dtag=OIhw4i16o4i \
+    ./benchdnn --reorder --dt=s8:s8 --stag=hwio --dtag=OIhw4i16o4i \
                32x32x3x3 \
                --oflag=s8s8_comp:1 16x32x7x5
+```
+
+Run a reorder from `f32` src to `s8` dst:
+``` sh
+    ./benchdnn --reorder --dt=f32:s8 --stag=abx --dtag=abx 32x32x3x3
 ```
 
 More examples with different driver options can be found at

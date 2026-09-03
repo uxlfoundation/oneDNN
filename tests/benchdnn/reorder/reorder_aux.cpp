@@ -126,10 +126,18 @@ int prb_t::get_compensation_mask(flag_bit_t flag) const {
     return mask;
 }
 
+dnnl_data_type_t prb_t::get_dt(data_kind_t data_kind) const {
+    switch (data_kind) {
+        case SRC: return src_dt();
+        case DST: return dst_dt();
+        default: assert(!"unexpected data kind!"); return dnnl_data_type_undef;
+    }
+}
+
 const dt_conf_t *prb_t::get_conf(data_kind_t kind) const {
     switch (kind) {
-        case SRC: return dt2cfg(sdt);
-        case DST: return dt2cfg(ddt);
+        case SRC: return dt2cfg(src_dt());
+        case DST: return dt2cfg(dst_dt());
         default: assert(!"unexpected data kind!"); SAFE_V(FAIL);
     }
     return dt2cfg(dnnl_f32);
@@ -145,9 +153,9 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> prb_t::get_md(int arg) const {
 
     switch (arg) {
         case DNNL_ARG_SRC:
-            return dnn_mem_t::init_md(ndims, dims.data(), sdt, stag);
+            return dnn_mem_t::init_md(ndims, dims.data(), src_dt(), stag);
         case DNNL_ARG_DST:
-            return dnn_mem_t::init_md(ndims, dims.data(), ddt, dtag);
+            return dnn_mem_t::init_md(ndims, dims.data(), dst_dt(), dtag);
         default:
             assert(!"unsupported arg");
             return make_benchdnn_dnnl_wrapper<dnnl_memory_desc_t>(nullptr);
@@ -158,8 +166,7 @@ std::string prb_t::set_repro_line() {
     stringstream_t s;
     settings_t def;
 
-    s << "--sdt=" << sdt << " ";
-    s << "--ddt=" << ddt << " ";
+    s << "--dt=" << src_dt() << ":" << dst_dt() << " ";
     s << "--stag=" << stag << " ";
     s << "--dtag=" << dtag << " ";
 

@@ -46,7 +46,7 @@ void compute_ref(const base_prb_t *base_prb, dir_t dir, const args_t &args,
             : 0;
     const auto &src_scale_groups = prb->attr.scales.get(DNNL_ARG_SRC).groups;
 
-    const auto dst_dt = prb->ddt;
+    const auto dst_dt = prb->dst_dt();
     const auto nelems = src.nelems();
     // This is native to reorder zero point which comes from reorder attributes.
     const bool has_src_zp = !prb->attr.zero_points.get(DNNL_ARG_SRC).is_def();

@@ -703,7 +703,7 @@ class ReductionConverter(
         return " ".join(args)
 
 
-class ReorderConverter(StridesMixin, CommonDataTypeMixin, Converter):
+class ReorderConverter(StridesMixin, MultiDataTypeMixin, Converter):
     driver: str = "reorder"
 
     def _convert_flag(self, prefix, md: ir.MemoryDescriptor):

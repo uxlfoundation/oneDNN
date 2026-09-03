@@ -193,6 +193,8 @@ run-time attributes in use.
      destination data type aren't supported.
    - Configurations with floating point source data type, integer weights data
      type and floating point destination data type are not optimized.
+   - Block-wise (K-grouped, e.g. `mask = (1 << 0) | (1 << 1)`) weights scales
+     require K group size to be a multiple of 16 elements.
    - The layout of dropout mask has to be exactly the same as that of dst.
 
 ## Performance Tips

@@ -657,6 +657,9 @@ struct brgemm_desc_t {
             sz += get_convert_wsp_buffer_size();
             if (amx_wary_k_tail()) sz += tilesize;
             sz += get_fused_copy_a_wsp_buffer_size();
+        } else {
+            // The non-AMX fp8-via-convert vector kernel upconverts A into f16-VNNI 
+            sz = static_cast<dim_t>(bd_block) * cpu_isa_traits_t<avx512_core>::vlen;
         }
         return sz;
     }

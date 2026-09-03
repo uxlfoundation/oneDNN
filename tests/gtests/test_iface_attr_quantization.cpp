@@ -577,9 +577,25 @@ TEST_F(attr_quantization_test_t, TestMatmul) {
         memory::desc b_md {{64, 20}, b_dt, tag::ba};
         memory::desc c_md {{10, 20}, data_type::u8, tag::ab};
 
-        // Static per-N destination scales are not supported.
+        // Common destination scales are supported.
+        CHECK_OK(matmul::primitive_desc(
+                eng, a_md, b_md, c_md, gen_attr_with_scales(DNNL_ARG_DST)));
+        if (get_test_engine_kind() == engine::kind::cpu) {
+            // CPU does not support non-common static destination scales.
+            CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                    gen_attr_with_scales(DNNL_ARG_DST, 1 << 1)));
+            CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                    gen_attr_with_scales(
+                            DNNL_ARG_DST, (1 << 1) + (1 << 0))));
+        }
+
+        // Groups must apply to dimensions selected by the mask.
         CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
-                gen_attr_with_scales(DNNL_ARG_DST, 1 << 1)));
+                gen_attr_with_scales(
+                        DNNL_ARG_WEIGHTS, 1 << 1, data_type::f32, {32, 1})));
+        CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                gen_attr_with_zp(
+                        DNNL_ARG_WEIGHTS, 1 << 1, data_type::s32, {32, 1})));
 
         for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST}) {
             if (impl::utils::one_of(arg, DNNL_ARG_WEIGHTS, DNNL_ARG_DST)) {
@@ -652,7 +668,7 @@ CPU_TEST_F(attr_quantization_test_t, TestMatmulBatch) {
                         gen_attr_with_scales(
                                 arg, per_ocic_mask, data_type::f32, {1, 32})));
             } else {
-                CHECK_OK(matmul::primitive_desc(eng, a_md, b_md, c_md,
+                CHECK_UNIMPL(matmul::primitive_desc(eng, a_md, b_md, c_md,
                         gen_attr_with_scales(arg, all_dims_mask)));
             }
         }

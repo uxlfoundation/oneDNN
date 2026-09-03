@@ -44,10 +44,11 @@ using registry_key = size_t;
 // TODO: merge with mqa_reorder_t
 struct sdp_reorder_t {
 public:
-    status_t init(const dnnl::reorder::primitive_desc &pd) {
+    status_t init(const dnnl::reorder::primitive_desc &pd,
+            bool allow_inplace = true) {
         auto src_desc = pd.src_desc();
         auto dst_desc = pd.dst_desc();
-        if (src_desc == dst_desc) is_inplace_ = true;
+        is_inplace_ = allow_inplace && src_desc == dst_desc;
         reorder_prim_ = reorder(pd);
         return status::success;
     }
@@ -101,20 +102,17 @@ public:
 
     // Primitives that actually perform calculations
     primitive sub_mm1_prim, sub_softmax_prim, sub_mm2_prim, sub_select_prim;
-    sdp_reorder_t sub_reorder0, sub_reorder1, sub_reorder2, sub_reorder3;
+    sdp_reorder_t sub_reorder1, sub_reorder2;
 
     // Args used in the execution of primitives
-    std::unordered_map<int, memory> sub_reorder0_args, sub_reorder1_args,
-            sub_mm1_args, sub_softmax_args, sub_reorder2_args, sub_mm2_args,
-            sub_reorder3_args, sub_select_args;
+    std::unordered_map<int, memory> sub_reorder1_args, sub_mm1_args,
+            sub_softmax_args, sub_reorder2_args, sub_mm2_args, sub_select_args;
 
     // A map from memory to registry key, used to record the internal memories
     // location inside of the whole buffer.
     std::unordered_map<dnnl_memory_t, registry_key> mem_key_map;
 
     // Internal memory objects for each primitive in each threads.
-    // reorder0
-    memory sub_src1;
     // reorder1
     memory sub_wei1_user, sub_wei1_zp;
     //mm1
@@ -129,8 +127,6 @@ public:
     memory sub_wei2_user, sub_wei2_zp;
     //mm2
     memory sub_mm2_wei, sub_mm2_dst;
-    //reorder3
-    memory sub_dst_user;
     //scratchpad
     memory sub_scratchpad;
     // shared memory

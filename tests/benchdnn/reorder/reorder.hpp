@@ -59,6 +59,7 @@ struct settings_t : public base_settings_t {
 
     prb_dims_t prb_dims;
 
+    std::vector<std::vector<dnnl_data_type_t>> dt;
     std::vector<dnnl_data_type_t> sdt {dnnl_f32}, ddt {dnnl_f32};
     std::vector<std::string> stag {tag::abx}, dtag {tag::abx};
     std::vector<vdims_t> strides {vdims_t(2)};
@@ -74,8 +75,8 @@ struct settings_t : public base_settings_t {
     void reset() { *this = settings_t(perf_template); }
 
     bool has_single_setup() const override {
-        return sdt.size() == 1 && ddt.size() == 1 && stag.size() == 1
-                && dtag.size() == 1 && strides.size() == 1 && oflag.size() == 1
+        return dt.size() == 1 && stag.size() == 1 && dtag.size() == 1
+                && strides.size() == 1 && oflag.size() == 1
                 && runtime_dim_mask.size() == 1 && cross_engine.size() == 1
                 && base_settings_t::has_single_setup();
     }
@@ -84,38 +85,44 @@ struct settings_t : public base_settings_t {
 struct prb_t : public prb_dims_t, public base_prb_t {
     // A ctor with common interface across all drivers.
     prb_t(const settings_t &s)
-        : prb_t(s.prb_dims, s.sdt[0], s.ddt[0], s.stag[0], s.dtag[0],
-                  s.strides[0], s.oflag[0], s.cross_engine[0],
-                  s.runtime_dim_mask[0], s.attributes.front(), s.ctx_init[0],
-                  s.ctx_exe[0], s.impl_filter) {
+        : prb_t(s.prb_dims, s.dt[0], s.stag[0], s.dtag[0], s.strides[0],
+                  s.oflag[0], s.cross_engine[0], s.runtime_dim_mask[0],
+                  s.attributes.front(), s.ctx_init[0], s.ctx_exe[0],
+                  s.impl_filter) {
         SAFE_V(s.has_single_setup() ? OK : FAIL);
     }
 
-    prb_t(const prb_dims_t &prb_dims, dnnl_data_type_t sdt,
-            dnnl_data_type_t ddt, const std::string &stag,
-            const std::string &dtag, const vdims_t &strides,
-            const std::vector<flag_t> &oflag, cross_engine_t cross_engine,
-            unsigned runtime_dim_mask, const attr_t &attr,
-            const thr_ctx_t &ctx_init, const thr_ctx_t &ctx_exe,
-            const impl_filter_t &impl_filter)
+    prb_t(const prb_dims_t &prb_dims, const std::vector<dnnl_data_type_t> &dt,
+            const std::string &stag, const std::string &dtag,
+            const vdims_t &strides, const std::vector<flag_t> &oflag,
+            cross_engine_t cross_engine, unsigned runtime_dim_mask,
+            const attr_t &attr, const thr_ctx_t &ctx_init,
+            const thr_ctx_t &ctx_exe, const impl_filter_t &impl_filter)
         : prb_dims_t(prb_dims)
         , base_prb_t(FLAG_FWD, false, attr, ctx_init, ctx_exe, impl_filter)
-        , sdt(sdt)
-        , ddt(ddt)
+        , dt(dt)
         , stag(stag)
         , dtag(dtag)
         , strides(strides)
         , oflag(oflag)
         , cross_engine(cross_engine)
         , runtime_dim_mask(runtime_dim_mask) {
+
+        broadcast_vector(this->dt, dt[0], 2);
+
         repro = set_repro_line(); // must be last in ctor to collect right info
     }
-    dnnl_data_type_t sdt, ddt;
+    std::vector<dnnl_data_type_t> dt;
     std::string stag, dtag;
     vdims_t strides;
     std::vector<flag_t> oflag;
     cross_engine_t cross_engine;
     unsigned runtime_dim_mask;
+
+    dnnl_data_type_t src_dt() const { return dt[0]; }
+    dnnl_data_type_t dst_dt() const { return dt[1]; }
+    dnnl_data_type_t get_dt(data_kind_t data_kind) const;
+
     bool is_reorder_with_compensation(flag_bit_t flag) const;
     dims_t get_compensation_dims(flag_bit_t flag) const;
     int get_compensation_mask(flag_bit_t flag) const;
@@ -145,7 +152,6 @@ struct perf_report_t : public base_perf_report_t {
     perf_report_t(const base_prb_t *base_prb, const char *perf_template)
         : base_perf_report_t(perf_template)
         , p_(prb_t::from(base_prb))
-        , sdt_({p_->sdt})
         , stag_({normalize_tag(p_->stag, p_->ndims)})
         , dtag_(normalize_tag(p_->dtag, p_->ndims)) {}
 
@@ -167,14 +173,14 @@ struct perf_report_t : public base_perf_report_t {
     const thr_ctx_t *ctx_init() const override { return &p_->ctx_init; }
     const thr_ctx_t *ctx_exe() const override { return &p_->ctx_exe; }
     const std::string *name() const override { return &p_->name; }
-    const std::vector<dnnl_data_type_t> *sdt() const override { return &sdt_; }
-    const dnnl_data_type_t *ddt() const override { return &p_->ddt; }
+    const std::vector<dnnl_data_type_t> *sdt() const override {
+        return &p_->dt;
+    }
     const std::vector<std::string> *stag() const override { return &stag_; }
     const std::string *dtag() const override { return &dtag_; }
 
 private:
     const prb_t *p_;
-    std::vector<dnnl_data_type_t> sdt_;
     std::vector<std::string> stag_;
     std::string dtag_;
 };

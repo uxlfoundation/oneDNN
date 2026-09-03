@@ -29,8 +29,14 @@ TASK_EXECUTOR_DECL_TYPES;
 
 void check_correctness(
         const settings_t &s, driver_task_executor_t &task_executor) {
-    for_(const auto &i_sdt : s.sdt)
-    for_(const auto &i_ddt : s.ddt)
+    std::vector<std::vector<dnnl_data_type_t>> dt = s.dt;
+    if (dt.empty()) {
+        for_(const auto &i_sdt : s.sdt)
+        for (const auto &i_ddt : s.ddt)
+            dt.push_back({i_sdt, i_ddt});
+    }
+
+    for_(const auto &i_dt : dt)
     for_(const auto &i_stag : s.stag)
     for_(const auto &i_dtag : s.dtag)
     for_(const auto &i_strides : s.strides)
@@ -40,9 +46,9 @@ void check_correctness(
     for_(const auto &i_ctx_init : s.ctx_init)
     for_(const auto &i_ctx_exe : s.ctx_exe)
     for (auto i_runtime_dim_mask : s.runtime_dim_mask) {
-        auto prb = std::make_shared<prb_t>(s.prb_dims, i_sdt, i_ddt, i_stag,
-                i_dtag, i_strides, i_oflag, i_cross_engine, i_runtime_dim_mask,
-                i_attr, i_ctx_init, i_ctx_exe, s.impl_filter);
+        auto prb = std::make_shared<prb_t>(s.prb_dims, i_dt, i_stag, i_dtag,
+                i_strides, i_oflag, i_cross_engine, i_runtime_dim_mask, i_attr,
+                i_ctx_init, i_ctx_exe, s.impl_filter);
         if (s.pattern && !match_regex(prb->str(), s.pattern)) return;
 
         task_executor.submit(prb, s.perf_template, createit, checkit, doit);
@@ -50,6 +56,24 @@ void check_correctness(
 }
 
 int verify_input(const settings_t &s, const settings_t &def) {
+    const bool dt_specified = !s.dt.empty();
+    const bool sdt_ddt_specified = s.sdt != def.sdt || s.ddt != def.ddt;
+    if (dt_specified && sdt_ddt_specified) {
+        BENCHDNN_PRINT(0, "%s\n",
+                "ERROR: `--dt` can't be used together with `--sdt` or "
+                "`--ddt`.");
+        return FAIL;
+    }
+
+    for (const auto &i_dt : s.dt) {
+        if (i_dt.size() != 1 && i_dt.size() != 2) {
+            BENCHDNN_PRINT(0, "%s\n",
+                    "ERROR: `--dt` option expects a single data type or a "
+                    "`SRC:DST` pair of data types.");
+            return FAIL;
+        }
+    }
+
     for_(const auto &i_scales : s.scales)
     for (auto arg : {DNNL_ARG_SRC, DNNL_ARG_DST}) {
         if (i_scales.get(arg).policy == policy_t::PER_OC) {
@@ -148,6 +172,7 @@ int bench(int argc, char **argv) {
     for (; argc > 0; --argc, ++argv) {
         const bool parsed_options = parse_bench_settings(argv[0])
                 || parse_batch(bench, argv[0])
+                || parse_multi_dt(s.dt, def.dt, argv[0], "dt")
                 || parse_dt(s.sdt, def.sdt, argv[0], "sdt")
                 || parse_dt(s.ddt, def.ddt, argv[0], "ddt")
                 || parse_tag(s.stag, def.stag, argv[0], "stag")

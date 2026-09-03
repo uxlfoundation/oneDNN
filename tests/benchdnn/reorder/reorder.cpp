@@ -155,9 +155,11 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
         if (prb->runtime_dim_mask & (1 << d)) dims[d] = DNNL_RUNTIME_DIM_VAL;
 
     auto src_d = dnn_mem_t::init_md(prb->ndims, dims.data(),
-            force_f32_dt ? dnnl_f32 : prb->sdt, prb->stag, prb->strides[0]);
+            force_f32_dt ? dnnl_f32 : prb->src_dt(), prb->stag,
+            prb->strides[0]);
     auto dst_d = dnn_mem_t::init_md(prb->ndims, dims.data(),
-            force_f32_dt ? dnnl_f32 : prb->ddt, prb->dtag, prb->strides[1]);
+            force_f32_dt ? dnnl_f32 : prb->dst_dt(), prb->dtag,
+            prb->strides[1]);
 
     // Prepare and assign extra for dst_md.
     auto &extra = static_cast<dnnl_memory_desc_t>(dst_d)->extra;
@@ -207,8 +209,8 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
 
 void prb_t::skip_unimplemented(res_t *res) const {
     const prb_t *prb = this; // Kept to avoid mass update
-    const auto sdt = prb->sdt;
-    const auto ddt = prb->ddt;
+    const auto sdt = prb->src_dt();
+    const auto ddt = prb->dst_dt();
     skip_unimplemented_data_type({sdt, ddt}, prb->dir, res);
     skip_unimplemented_sum_po(prb->attr, res, dnnl_reorder, sdt);
     skip_unimplemented_binary_po(prb->attr, res);
@@ -442,8 +444,8 @@ void prb_t::skip_unimplemented(res_t *res) const {
         };
         // Skip blocked format tags and 4 bit formats for Nvidia/AMD/Generic SYCL backends
         if (is_generic_gpu()) {
-            const bool is_4bit_format
-                    = is_subbyte_type(prb->sdt) || is_subbyte_type(prb->ddt);
+            const bool is_4bit_format = is_subbyte_type(prb->src_dt())
+                    || is_subbyte_type(prb->dst_dt());
 
             // sycl reorder implementation does not support grouped zero points / scales
             bool zero_point_has_groups = !prb->attr.scales.is_def();
@@ -486,9 +488,9 @@ void prb_t::skip_invalid(res_t *res) const {
         return;
     }
 
-    const bool is_src_zp_ok = is_integral_dt(prb->sdt)
+    const bool is_src_zp_ok = is_integral_dt(prb->src_dt())
             || prb->attr.zero_points.is_def(DNNL_ARG_SRC);
-    const bool is_dst_zp_ok = is_integral_dt(prb->ddt)
+    const bool is_dst_zp_ok = is_integral_dt(prb->dst_dt())
             || prb->attr.zero_points.is_def(DNNL_ARG_DST);
     if (!(is_src_zp_ok && is_dst_zp_ok)) {
         BENCHDNN_PRINT(2,
@@ -509,7 +511,7 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
     cmp.set_zero_trust_percent(80.f);
 
     // `f8_e4m3` range is very short which makes inputs convert into NaNs.
-    cmp.set_op_output_has_nans(prb->sdt == dnnl_f8_e4m3);
+    cmp.set_op_output_has_nans(prb->src_dt() == dnnl_f8_e4m3);
 
     // Additional check to avoid false-positive result from f32->s32 conversion
     // in case of sum post-op on GPU happening when two max_dt values

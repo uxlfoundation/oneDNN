@@ -1786,8 +1786,6 @@ void CopyPlan::planInt2Downconversion(CopyInstruction &i)
     auto stmp = newTemp(DataType::uw, simd, 1);
     auto dtmp = newTemp(DataType::uw, simd/4, 1);
     auto sstmp = newTemp(DataType::uw, simd/2 * ddst.stride, 1);
-    int sStride = ssrc.stride * getBytes(ssrc.type) * 4;
-    int dStride = ddst.stride / (getBytes(ssrc.type) * 4);
 
     ie[0]->op = Opcode::mov;
     ie[0]->dst = stmp;

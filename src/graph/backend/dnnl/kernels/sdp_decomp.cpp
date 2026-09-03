@@ -134,14 +134,17 @@ void sdp_decomp_kernel_t<quantized, dt>::prepare_sub_args(
         const grantor_t &var_grantor, const int id, const size_t block_size,
         std::unordered_map<dnnl_memory_t, std::vector<memory>> &mem_map) {
     auto size_offset = id * block_size;
-    mem_map[sdp_cfg_.sub_mm1_wei.get()][id].set_data_handle(
-            var_grantor.get(sdp_cfg_.mem_key_map[sdp_cfg_.sub_mm1_wei.get()])
-            + size_offset);
+    if (!sdp_cfg_.sub_reorder0.is_alias())
+        mem_map[sdp_cfg_.sub_mm1_src.get()][id].set_data_handle(
+                var_grantor.get(
+                        sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_src1_src2.get()])
+                + size_offset);
+    if (!sdp_cfg_.sub_reorder1.is_alias())
+        mem_map[sdp_cfg_.sub_mm1_wei.get()][id].set_data_handle(
+                var_grantor.get(
+                        sdp_cfg_.mem_key_map[sdp_cfg_.sub_mm1_wei.get()])
+                + size_offset);
     // mm1
-    mem_map[sdp_cfg_.sub_mm1_src.get()][id].set_data_handle(
-            var_grantor.get(
-                    sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_src1_src2.get()])
-            + size_offset);
     mem_map[sdp_cfg_.sub_mm1_dst.get()][id].set_data_handle(
             var_grantor.get(
                     sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_dst1_wei2.get()])
@@ -160,13 +163,16 @@ void sdp_decomp_kernel_t<quantized, dt>::prepare_sub_args(
                     sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_src1_src2.get()])
             + size_offset);
     // mm2
-    mem_map[sdp_cfg_.sub_mm2_wei.get()][id].set_data_handle(
-            var_grantor.get(
-                    sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_dst1_wei2.get()])
-            + size_offset);
-    mem_map[sdp_cfg_.sub_mm2_dst.get()][id].set_data_handle(
-            var_grantor.get(sdp_cfg_.mem_key_map[sdp_cfg_.sub_mm2_dst.get()])
-            + size_offset);
+    if (!sdp_cfg_.sub_reorder2.is_alias())
+        mem_map[sdp_cfg_.sub_mm2_wei.get()][id].set_data_handle(
+                var_grantor.get(
+                        sdp_cfg_.mem_key_map[sdp_cfg_.sub_max_dst1_wei2.get()])
+                + size_offset);
+    if (!sdp_cfg_.sub_reorder3.is_alias())
+        mem_map[sdp_cfg_.sub_mm2_dst.get()][id].set_data_handle(
+                var_grantor.get(
+                        sdp_cfg_.mem_key_map[sdp_cfg_.sub_mm2_dst.get()])
+                + size_offset);
     // scratchpad, each thread will have a largest scratchpad.
     mem_map[sdp_cfg_.sub_scratchpad.get()][id].set_data_handle(
             var_grantor.get(sdp_cfg_.mem_key_map[sdp_cfg_.sub_scratchpad.get()])
@@ -344,7 +350,7 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(stream_t *strm,
         auto &sub_wei2_user_tid
                 = res->mem_map[sdp_cfg_.sub_wei2_user.get()][tid];
 
-        //reorder3
+        // reorder3
         auto &sub_dst_user_tid = res->mem_map[sdp_cfg_.sub_dst_user.get()][tid];
 
         // matmul2
@@ -384,11 +390,10 @@ status_t sdp_decomp_kernel_t<quantized, dt>::execute_impl(stream_t *strm,
         // If the last reorder is inplace, it means we don't have to do
         // extra reorder, thus we should set matmul's output to the user's
         // output directly.
-        if (sdp_cfg_.sub_reorder3.get_inplace()) {
+        if (sdp_cfg_.sub_reorder3.is_alias()) {
             sub_mm2_dst_tid.set_data_handle(
                     dst2_user_pointer + sub_dst_user_offset);
         }
-
         // in parallel region - these primitives should use single thread.
         sdp_cfg_.sub_reorder0.execute(p_stream, res->sub_reorder0_args[tid]);
         sdp_cfg_.sub_reorder1.execute(p_stream, res->sub_reorder1_args[tid]);

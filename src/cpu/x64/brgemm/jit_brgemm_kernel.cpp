@@ -1274,7 +1274,7 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
         reg_D_shift_bytes.save();
     }
 
-    if (brg.is_fp8_via_convert_non_amx() && brg.fp8_with_f16_vnni_block) {
+    if (brg.is_fp8_via_convert_non_amx()) {// && brg.fp8_with_f16_vnni_block) {
         mov(reg_buf_A, ptr[param1 + GET_OFF(ptr_buf)]);
         reg_buf_A.save();
     }
@@ -2966,7 +2966,7 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool is_rd_tail,
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_buf_A(
         reg64_t reg_base, const int bd_b, const int bd_e, const int rd_block) {
-    if (!(brg.is_fp8_via_convert_non_amx() && brg.fp8_with_f16_vnni_block))
+    if (!(brg.is_fp8_via_convert_non_amx())) // && brg.fp8_with_f16_vnni_block))
         return;
 
     reg64_savable_guard_t reg_fp8_buf_guard({&reg64_fp8_aux, &reg_buf_A});

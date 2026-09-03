@@ -1742,7 +1742,6 @@ void CopyPlan::planInt2Downconversion(CopyInstruction &i)
         return;
     }
     auto ddst = CopyOperand(i.dst);
-    auto ssrc = CopyOperand(i.src0);
     int tmp_elems = ddst.stride > 4 ? simd * 2 : simd;
     auto tmp = newTemp(DataType::uw, tmp_elems, 1);
 

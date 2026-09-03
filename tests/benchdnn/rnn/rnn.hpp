@@ -331,7 +331,7 @@ struct prb_t : public desc_t, public base_prb_t {
         if (mb) this->mb = mb;
         count_ops();
 
-        broadcast_vector(this->tag, 3);
+        broadcast_vector(this->tag, tag[0], 3);
 
         wei_scales = nullptr;
         wei_proj_scales = nullptr;

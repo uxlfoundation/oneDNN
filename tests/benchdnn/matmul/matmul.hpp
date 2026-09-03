@@ -97,10 +97,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
         , sparse_options(sparse_options) {
 
         // Broadcast data types if needed
-        if (dt.size() == 1) {
-            const auto val = dt[0]; // Need a copy here.
-            this->dt.assign(3, val);
-        }
+        broadcast_vector(this->dt, dt[0], 3);
 
         this->rt_dims_masks.resize(2);
         const auto &srcdims = src_dims();

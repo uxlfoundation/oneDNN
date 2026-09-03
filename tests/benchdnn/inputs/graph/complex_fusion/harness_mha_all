@@ -1,5 +1,9 @@
 # f32 graphs
 --reset --op-kind=1:Multiply,1:Divide --case=complex_fusion/mha/sdpa-plain-simplified-f32.json
+
+# regression
+--reset --case=complex_fusion/mha/sdpa-github-5933.json
+
 --reset --case=complex_fusion/mha/gqa-plain-implicit-causal-mask-fp32-bs1.json
 --reset --case=complex_fusion/mha/sdpa-plain-implicit-causal-mask-fp32-bs1.json
 --reset --case=complex_fusion/mha/JAX-MHA-inf-fp32.json

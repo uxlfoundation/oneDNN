@@ -3559,12 +3559,12 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             } else if (one_of(dt, data_type::s8, data_type::u8)) {
                 uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (one_of(dt, data_type::f8_e5m2, data_type::f8_e4m3)) {
-                if (brg.fp8_with_f16_vnni_block) {
+//                if (brg.fp8_with_f16_vnni_block) {
                     reg_buf_A.restore();
                     const auto buf_offset = buf_A_offset(bd, rd);
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_buf_A + buf_offset]);
-                } else
-                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+//                } else
+//                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (dt == data_type::f16) {
                 if (brg.isa_impl == avx10_2) {
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);

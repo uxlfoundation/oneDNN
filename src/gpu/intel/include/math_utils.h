@@ -711,6 +711,19 @@ int __attribute__((overloadable)) cvt_u4_to_s32(u4 a) {
     return (int)(a.data & 0x0f);
 }
 
+float __attribute__((overloadable)) cvt_s2_to_s32(char a) {
+    char sign = (a & 0x02) ? 0xfc : 0x0;
+    char val = a | sign;
+    return convert_int_sat_rte(val);
+}
+float __attribute__((overloadable)) cvt_s2_to_s32(s2 a) {
+    return cvt_s2_to_s32(a.data);
+}
+
+int __attribute__((overloadable)) cvt_u2_to_s32(u2 a) {
+    return (int)(a.data & 0x03);
+}
+
 #if MATH_UTILS_DECLARE_F4_E2M1
 
 uchar __attribute__((overloadable)) cvt_f32_to_f4_e2m1(float a) {

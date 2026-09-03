@@ -100,6 +100,8 @@ enum class op_kind_t {
     vzero,
     // dst = [base + disp] (load full vector)
     vload,
+    // dst = imm uint8 bytes at [base + disp], each zero-extended to an s32 lane
+    vload_u8,
     // dst += sum_{i=0}^{N-1} (s0[i] * s1[i]), where N is the dot length
     vdot,
     // dst += s0 (vector add)
@@ -209,7 +211,7 @@ struct mem_t {
 //         * mov_imm        -> literal constant
 //         * loop_begin     -> loop trip count
 //         * set_mask_imm   -> active element count
-//         * vload_masked / vstore_masked -> active element count
+//         * vload_u8 / vload_masked / vstore_masked -> active element count
 //         * veltwise       -> eltwise algorithm (alg_kind_t)
 //         * inject_postops -> index into inject_postops_args()
 // mem   - memory address used only by load/store operations.
@@ -320,6 +322,8 @@ struct DNNL_API ir_t {
     // vec
     void vzero(vreg_t dst);
     void vload(vreg_t dst, vreg_t base, dim_t disp);
+    // `n_elems` is the active uint8 byte count (a full vector or a tail).
+    void vload_u8(vreg_t dst, vreg_t base, dim_t disp, int n_elems);
     void vdot(vreg_t dst, vreg_t a, vreg_t b);
     void vadd(vreg_t dst, vreg_t src);
     void vsub(vreg_t dst, vreg_t src);

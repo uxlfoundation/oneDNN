@@ -20,6 +20,7 @@
 
 #include "gemmstone/problem.hpp"
 #include "gemmstone/strategy.hpp"
+#include "state.hpp"
 
 GEMMSTONE_NAMESPACE_START
 
@@ -37,6 +38,16 @@ inline int tempCThreadStride(const GEMMProblem &problem, const GEMMStrategy &str
 // Calculate per-workgroup stride within temporary C memory.
 inline int tempCWGStride(const GEMMProblem &problem, const GEMMStrategy &strategy) {
     return tempCThreadStride(problem, strategy) * strategy.wg[LoopM] * strategy.wg[LoopN];
+}
+
+// Set C write cache policy; layouts hold their own copy of the addressing strategy, so update those too.
+inline void setCCachingW(GEMMStrategy &strategy, GEMMState &state, ngen::CacheSettingsLSC caching, ngen::CacheSettingsLSC cachingExt)
+{
+    strategy.C.cachingW = caching;
+    state.Cext_strategy.cachingW = cachingExt;
+    state.C_layout.addressingStrategy().cachingW = caching;
+    for (auto *l: {&state.C_layoutExt, &state.C_layoutExtUnmasked, &state.C_layoutExtNonatomicUnmasked})
+        l->addressingStrategy().cachingW = cachingExt;
 }
 
 GEMMSTONE_NAMESPACE_END

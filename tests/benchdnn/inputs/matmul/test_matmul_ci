@@ -24,3 +24,5 @@
 --attr-post-ops=select:f32:common
 1x16x32x256:1x16x256x33n"sdpa_cond_bcast"
 1x16x33x257:1x16x257x37n"sdpa_cond_bcast_tail"
+
+--batch=harness_matmul_int2

@@ -78,3 +78,6 @@
 
 # fp8 graphs
 --reset --case=complex_fusion/mha/sdpa-fp8-f32.json
+
+# regression
+--reset --case=complex_fusion/mha/sdpa-github-5933.json

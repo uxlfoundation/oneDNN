@@ -225,8 +225,8 @@ float round_to_nearest_representable(dnnl_data_type_t dt, float value) {
 
 #undef CASE_ALL
 
-bool is_subbyte_type(dnnl_data_type_t type) {
-    return type == dnnl_f4_e2m1 || type == dnnl_u4 || type == dnnl_s4;
+bool is_subbyte_type(dnnl_data_type_t dt) {
+    return bits_dt(dt) < 8;
 }
 
 size_t bits_dt(dnnl_data_type_t dt) {

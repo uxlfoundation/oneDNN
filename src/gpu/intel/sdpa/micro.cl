@@ -639,6 +639,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_store_t_slm_src1(
                 &Q_tile, Q_slm, ugemm_kq_sg_tile_n, D_MAX_KQ, q0_copy, 0);
 
+        /* Initialize S column maxima in SLM to -inf */
+        for (uint c0 = sg_ij * SUBGROUP_SIZE; c0 < ugemm_kq_wg_tile_n;
+                c0 += SUBGROUP_SIZE * sg_per_wg) {
+            const uint c = c0 + get_sub_group_local_id();
+            if (c < ugemm_kq_wg_tile_n) { S_max_slm[c] = -INFINITY; }
+        }
+
 #if Q_ARRIVE_AWAIT_BARRIER
         intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
 #endif
@@ -712,20 +719,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
     }
 #endif
-
-    if (k0end > 0) {
-        /* Initialize S column sums in SLM to -inf */
-        const uint n_col_sg
-                = DIV_UP(ugemm_kq_wg_tile_n, SUBGROUP_SIZE * sg_per_wg);
-        const float neg_inf = -INFINITY;
-
-#pragma unroll
-        for (int q = 0; q < n_col_sg; q++)
-            intel_sub_group_block_write(
-                    (local uint *)&S_max_slm[(q + sg_ij * n_col_sg)
-                            * SUBGROUP_SIZE],
-                    as_uint(neg_inf));
-    }
 
 #if VS_F16_ACC
     a_tile_type_float A_tile;

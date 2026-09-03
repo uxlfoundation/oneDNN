@@ -70,10 +70,7 @@ struct prb_t : public prb_vdims_t, public base_prb_t {
         , sdt(sdt)
         , stag(stag) {
         // Broadcast data types if needed
-        if (sdt.size() == 1) {
-            const auto val = sdt[0]; // Need a copy here.
-            this->sdt.assign(2, val);
-        }
+        broadcast_vector(this->sdt, sdt[0], 2);
 
         repro = set_repro_line(); // must be last in ctor to collect right info
     }

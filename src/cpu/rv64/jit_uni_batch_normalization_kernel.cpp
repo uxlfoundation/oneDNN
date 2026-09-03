@@ -33,6 +33,26 @@ void dispatch_jit_batch_normalization_fwd(
     kernel(p);
 }
 
+// The per-combination kernel lives in a function-local static, so every
+// (dtype, per_elem_params, with_relu) triple needs its own instantiation; these
+// helpers turn the runtime flags into those template arguments.
+template <data_type_t data_type>
+void dispatch_jit_batch_normalization_fwd_dt(
+        const jit_uni_batch_normalization_fwd_kernel_t::call_params_t *p,
+        bool per_elem_params, bool with_relu) {
+    if (per_elem_params) {
+        if (with_relu)
+            dispatch_jit_batch_normalization_fwd<data_type, true, true>(p);
+        else
+            dispatch_jit_batch_normalization_fwd<data_type, true, false>(p);
+    } else {
+        if (with_relu)
+            dispatch_jit_batch_normalization_fwd<data_type, false, true>(p);
+        else
+            dispatch_jit_batch_normalization_fwd<data_type, false, false>(p);
+    }
+}
+
 template <data_type_t data_type, bool per_elem_params>
 void dispatch_jit_batch_normalization_bwd_reduce(
         const jit_uni_batch_normalization_bwd_reduce_kernel_t::call_params_t
@@ -42,6 +62,16 @@ void dispatch_jit_batch_normalization_bwd_reduce(
     kernel(p);
 }
 
+template <data_type_t data_type>
+void dispatch_jit_batch_normalization_bwd_reduce_dt(
+        const jit_uni_batch_normalization_bwd_reduce_kernel_t::call_params_t *p,
+        bool per_elem_params) {
+    if (per_elem_params)
+        dispatch_jit_batch_normalization_bwd_reduce<data_type, true>(p);
+    else
+        dispatch_jit_batch_normalization_bwd_reduce<data_type, false>(p);
+}
+
 template <data_type_t data_type, bool per_elem_params>
 void dispatch_jit_batch_normalization_bwd_apply(
         const jit_uni_batch_normalization_bwd_apply_kernel_t::call_params_t
@@ -49,6 +79,16 @@ void dispatch_jit_batch_normalization_bwd_apply(
     static const jit_uni_batch_normalization_bwd_apply_kernel_t kernel(
             data_type, per_elem_params);
     kernel(p);
+}
+
+template <data_type_t data_type>
+void dispatch_jit_batch_normalization_bwd_apply_dt(
+        const jit_uni_batch_normalization_bwd_apply_kernel_t::call_params_t *p,
+        bool per_elem_params) {
+    if (per_elem_params)
+        dispatch_jit_batch_normalization_bwd_apply<data_type, true>(p);
+    else
+        dispatch_jit_batch_normalization_bwd_apply<data_type, false>(p);
 }
 
 } // namespace
@@ -68,44 +108,41 @@ void jit_uni_batch_normalization_apply(const void *src, void *dst, dim_t len,
         data_type_t dt, bool per_elem_params, bool with_relu) {
     const jit_uni_batch_normalization_fwd_kernel_t::call_params_t p {
             src, dst, len, mean, scale_mul, scale_add};
-    if (dt == data_type::f16) {
-        if (per_elem_params) {
-            if (with_relu)
-                dispatch_jit_batch_normalization_fwd<data_type::f16, true,
-                        true>(&p);
-            else
-                dispatch_jit_batch_normalization_fwd<data_type::f16, true,
-                        false>(&p);
-        } else {
-            if (with_relu)
-                dispatch_jit_batch_normalization_fwd<data_type::f16, false,
-                        true>(&p);
-            else
-                dispatch_jit_batch_normalization_fwd<data_type::f16, false,
-                        false>(&p);
-        }
-    } else {
-        if (per_elem_params) {
-            if (with_relu)
-                dispatch_jit_batch_normalization_fwd<data_type::f32, true,
-                        true>(&p);
-            else
-                dispatch_jit_batch_normalization_fwd<data_type::f32, true,
-                        false>(&p);
-        } else {
-            if (with_relu)
-                dispatch_jit_batch_normalization_fwd<data_type::f32, false,
-                        true>(&p);
-            else
-                dispatch_jit_batch_normalization_fwd<data_type::f32, false,
-                        false>(&p);
-        }
+    switch (dt) {
+        case data_type::f16:
+            dispatch_jit_batch_normalization_fwd_dt<data_type::f16>(
+                    &p, per_elem_params, with_relu);
+            break;
+        case data_type::bf16:
+            dispatch_jit_batch_normalization_fwd_dt<data_type::bf16>(
+                    &p, per_elem_params, with_relu);
+            break;
+        default:
+            dispatch_jit_batch_normalization_fwd_dt<data_type::f32>(
+                    &p, per_elem_params, with_relu);
+            break;
     }
 }
 
 void jit_uni_batch_normalization_fwd_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
-    const bool is_f16 = data_type_ == data_type::f16;
+    // bf16 converts through Zvfbfmin, f16 through Zvfh. Both are issued under
+    // the narrow e16 vtype and only the mnemonics differ, so the two xf16
+    // dtypes share one widen-compute-narrow body.
+    const bool is_bf16 = data_type_ == data_type::bf16;
+    const bool is_xf16 = is_bf16 || data_type_ == data_type::f16;
+    auto widen = [&](const VReg &vd, const VReg &vs) {
+        if (is_bf16)
+            vfwcvtbf16_f_f_v(vd, vs); // e16m1 -> e32m2
+        else
+            vfwcvt_f_f_v(vd, vs);
+    };
+    auto narrow = [&](const VReg &vd, const VReg &vs) {
+        if (is_bf16)
+            vfncvtbf16_f_f_w(vd, vs); // e32m2 -> e16m1
+        else
+            vfncvt_f_f_w(vd, vs);
+    };
     const Reg reg_param = a0;
     const Reg reg_src = a1;
     const Reg reg_dst = a2;
@@ -145,10 +182,10 @@ void jit_uni_batch_normalization_fwd_kernel_t::generate() {
     Label loop, done;
     L(loop);
     beqz(reg_len, done);
-    if (is_f16) {
+    if (is_xf16) {
         vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vle16_v(v_src16, reg_src);
-        vfwcvt_f_f_v(v_src, v_src16);
+        widen(v_src, v_src16);
         vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
     } else {
         vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
@@ -170,15 +207,15 @@ void jit_uni_batch_normalization_fwd_kernel_t::generate() {
         vmflt_vf(v_mask, v_src, f_zero);
         vfmerge_vfm(v_src, v_src, f_zero);
     }
-    if (is_f16) {
+    if (is_xf16) {
         vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        vfncvt_f_f_w(v_src16, v_src);
+        narrow(v_src16, v_src);
         vse16_v(v_src16, reg_dst);
     } else {
         vse32_v(v_src, reg_dst);
     }
 
-    slli(reg_bytes, reg_vl, is_f16 ? 1 : 2);
+    slli(reg_bytes, reg_vl, is_xf16 ? 1 : 2);
     add(reg_src, reg_src, reg_bytes);
     add(reg_dst, reg_dst, reg_bytes);
     if (per_elem_params_) {
@@ -211,27 +248,36 @@ void jit_uni_batch_normalization_bwd_reduce(const void *src,
         float *diff_shift, data_type_t dt, bool per_elem_params) {
     const jit_uni_batch_normalization_bwd_reduce_kernel_t::call_params_t p {
             src, diff_dst, len, mean, diff_scale, diff_shift};
-    if (dt == data_type::f16) {
-        if (per_elem_params)
-            dispatch_jit_batch_normalization_bwd_reduce<data_type::f16, true>(
-                    &p);
-        else
-            dispatch_jit_batch_normalization_bwd_reduce<data_type::f16, false>(
-                    &p);
-    } else {
-        if (per_elem_params)
-            dispatch_jit_batch_normalization_bwd_reduce<data_type::f32, true>(
-                    &p);
-        else
-            dispatch_jit_batch_normalization_bwd_reduce<data_type::f32, false>(
-                    &p);
+    switch (dt) {
+        case data_type::f16:
+            dispatch_jit_batch_normalization_bwd_reduce_dt<data_type::f16>(
+                    &p, per_elem_params);
+            break;
+        case data_type::bf16:
+            dispatch_jit_batch_normalization_bwd_reduce_dt<data_type::bf16>(
+                    &p, per_elem_params);
+            break;
+        default:
+            dispatch_jit_batch_normalization_bwd_reduce_dt<data_type::f32>(
+                    &p, per_elem_params);
+            break;
     }
 }
 
 void jit_uni_batch_normalization_bwd_reduce_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
-    const bool is_f16 = data_type_ == data_type::f16;
-    const LMUL compute_lmul = is_f16 ? LMUL::m2 : LMUL::m1;
+    // bf16 converts through Zvfbfmin, f16 through Zvfh. Both are issued under
+    // the narrow e16 vtype and only the mnemonics differ, so the two xf16
+    // dtypes share one widen-compute-narrow body.
+    const bool is_bf16 = data_type_ == data_type::bf16;
+    const bool is_xf16 = is_bf16 || data_type_ == data_type::f16;
+    auto widen = [&](const VReg &vd, const VReg &vs) {
+        if (is_bf16)
+            vfwcvtbf16_f_f_v(vd, vs); // e16m1 -> e32m2
+        else
+            vfwcvt_f_f_v(vd, vs);
+    };
+    const LMUL compute_lmul = is_xf16 ? LMUL::m2 : LMUL::m1;
 
     const Reg reg_param = a0;
     const Reg reg_src = a1;
@@ -278,12 +324,12 @@ void jit_uni_batch_normalization_bwd_reduce_kernel_t::generate() {
     Label loop, done;
     L(loop);
     beqz(reg_len, done);
-    if (is_f16) {
+    if (is_xf16) {
         vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vle16_v(v_src16, reg_src);
         vle16_v(v_diff_dst16, reg_diff_dst);
-        vfwcvt_f_f_v(v_src, v_src16);
-        vfwcvt_f_f_v(v_diff_dst, v_diff_dst16);
+        widen(v_src, v_src16);
+        widen(v_diff_dst, v_diff_dst16);
         vsetvli(reg_vl, reg_vl, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
     } else {
         vsetvli(reg_vl, reg_len, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
@@ -313,7 +359,7 @@ void jit_uni_batch_normalization_bwd_reduce_kernel_t::generate() {
         fadd_s(f_diff_shift, f_diff_shift, f_reduce);
     }
 
-    slli(reg_data_bytes, reg_vl, is_f16 ? 1 : 2);
+    slli(reg_data_bytes, reg_vl, is_xf16 ? 1 : 2);
     add(reg_src, reg_src, reg_data_bytes);
     add(reg_diff_dst, reg_diff_dst, reg_data_bytes);
     if (per_elem_params_) {
@@ -352,27 +398,42 @@ void jit_uni_batch_normalization_bwd_apply(const void *src,
     const jit_uni_batch_normalization_bwd_apply_kernel_t::call_params_t p {src,
             diff_dst, diff_src, len, mean, scale_mul, diff_scale_mul,
             diff_shift_add};
-    if (dt == data_type::f16) {
-        if (per_elem_params)
-            dispatch_jit_batch_normalization_bwd_apply<data_type::f16, true>(
-                    &p);
-        else
-            dispatch_jit_batch_normalization_bwd_apply<data_type::f16, false>(
-                    &p);
-    } else {
-        if (per_elem_params)
-            dispatch_jit_batch_normalization_bwd_apply<data_type::f32, true>(
-                    &p);
-        else
-            dispatch_jit_batch_normalization_bwd_apply<data_type::f32, false>(
-                    &p);
+    switch (dt) {
+        case data_type::f16:
+            dispatch_jit_batch_normalization_bwd_apply_dt<data_type::f16>(
+                    &p, per_elem_params);
+            break;
+        case data_type::bf16:
+            dispatch_jit_batch_normalization_bwd_apply_dt<data_type::bf16>(
+                    &p, per_elem_params);
+            break;
+        default:
+            dispatch_jit_batch_normalization_bwd_apply_dt<data_type::f32>(
+                    &p, per_elem_params);
+            break;
     }
 }
 
 void jit_uni_batch_normalization_bwd_apply_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
-    const bool is_f16 = data_type_ == data_type::f16;
-    const LMUL compute_lmul = is_f16 ? LMUL::m2 : LMUL::m1;
+    // bf16 converts through Zvfbfmin, f16 through Zvfh. Both are issued under
+    // the narrow e16 vtype and only the mnemonics differ, so the two xf16
+    // dtypes share one widen-compute-narrow body.
+    const bool is_bf16 = data_type_ == data_type::bf16;
+    const bool is_xf16 = is_bf16 || data_type_ == data_type::f16;
+    auto widen = [&](const VReg &vd, const VReg &vs) {
+        if (is_bf16)
+            vfwcvtbf16_f_f_v(vd, vs); // e16m1 -> e32m2
+        else
+            vfwcvt_f_f_v(vd, vs);
+    };
+    auto narrow = [&](const VReg &vd, const VReg &vs) {
+        if (is_bf16)
+            vfncvtbf16_f_f_w(vd, vs); // e32m2 -> e16m1
+        else
+            vfncvt_f_f_w(vd, vs);
+    };
+    const LMUL compute_lmul = is_xf16 ? LMUL::m2 : LMUL::m1;
 
     const Reg reg_param = a0;
     const Reg reg_src = a1;
@@ -422,12 +483,12 @@ void jit_uni_batch_normalization_bwd_apply_kernel_t::generate() {
     Label loop, done;
     L(loop);
     beqz(reg_len, done);
-    if (is_f16) {
+    if (is_xf16) {
         vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
         vle16_v(v_src16, reg_src);
         vle16_v(v_diff_dst16, reg_diff_dst);
-        vfwcvt_f_f_v(v_src, v_src16);
-        vfwcvt_f_f_v(v_diff_dst, v_diff_dst16);
+        widen(v_src, v_src16);
+        widen(v_diff_dst, v_diff_dst16);
         vsetvli(reg_vl, reg_vl, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
     } else {
         vsetvli(reg_vl, reg_len, SEW::e32, compute_lmul, VTA::ta, VMA::ma);
@@ -453,15 +514,15 @@ void jit_uni_batch_normalization_bwd_apply_kernel_t::generate() {
         vfmul_vf(v_diff_dst, v_diff_dst, f_scale_mul);
     }
 
-    if (is_f16) {
+    if (is_xf16) {
         vsetvli(reg_vl, reg_vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        vfncvt_f_f_w(v_diff_src16, v_diff_dst);
+        narrow(v_diff_src16, v_diff_dst);
         vse16_v(v_diff_src16, reg_diff_src);
     } else {
         vse32_v(v_diff_dst, reg_diff_src);
     }
 
-    slli(reg_data_bytes, reg_vl, is_f16 ? 1 : 2);
+    slli(reg_data_bytes, reg_vl, is_xf16 ? 1 : 2);
     add(reg_src, reg_src, reg_data_bytes);
     add(reg_diff_dst, reg_diff_dst, reg_data_bytes);
     add(reg_diff_src, reg_diff_src, reg_data_bytes);

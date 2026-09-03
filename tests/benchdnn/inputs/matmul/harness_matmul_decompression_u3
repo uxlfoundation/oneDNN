@@ -132,3 +132,11 @@
 --attr-zero-points=wei:3:u8:64x1
 --attr-fpmath=f16:true
 64x512:512x2048
+
+# OV Dynamic-quantization path src:s8 by wei:u3 to f16
+--reset
+--dt=s8:u3:f16
+--wtag=ba
+--attr-scales=src:per_tensor:f16:1x128+wei:per_ocic:f16:128x1
+--attr-zero-points=wei:common:1:s8
+16x4096:4096x1024

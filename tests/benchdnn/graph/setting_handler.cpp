@@ -1974,16 +1974,17 @@ bool get_reduction_p(const deserialized_op_t &base_op_ref, float &p) {
 
 namespace reorder {
 
-bool get_reorder_dt(const deserialized_op_t &base_op_ref, dnnl_data_type_t &sdt,
-        dnnl_data_type_t &ddt) {
-    sdt = convert_dt(base_op_ref.in_lts_.front().get_data_type());
-    ddt = convert_dt(base_op_ref.out_lts_.front().get_data_type());
+bool get_reorder_dt(const deserialized_op_t &base_op_ref,
+        std::vector<dnnl_data_type_t> &dt) {
+    auto src_dt = convert_dt(base_op_ref.in_lts_.front().get_data_type());
+    auto dst_dt = convert_dt(base_op_ref.out_lts_.front().get_data_type());
 
     const auto &op_kind = base_op_ref.kind_;
     // As we always use f32 computation in the reference path, to link
     // arguments correctly in the reference path, we need to always create
     // dequantize ops with f32 output.
-    if (op_kind == "DynamicDequantize") { ddt = dnnl_f32; }
+    if (op_kind == "DynamicDequantize") { dst_dt = dnnl_f32; }
+    dt = {src_dt, dst_dt};
     return true;
 }
 
@@ -2135,9 +2136,7 @@ bool get_reorder_attrs(const deserialized_op_t &base_op_ref,
             get_prb_dims(base_op_ref, op_setting.prb_dims), res);
 
     DNN_GRAPH_CHECK_SETTINGS(
-            reorder::get_reorder_dt(base_op_ref, op_setting.sdt.front(),
-                    op_setting.ddt.front()),
-            res);
+            reorder::get_reorder_dt(base_op_ref, op_setting.dt.front()), res);
     DNN_GRAPH_CHECK_SETTINGS(
             reorder::get_reorder_stag_and_dtag(base_op_ref,
                     op_setting.stag.front(), op_setting.dtag.front()),

@@ -229,9 +229,10 @@ DECLARE_2D_TILE_HREDUCE(c_tile_type_float, SUBGROUP_SIZE,
         src_attr_scales_bc, src_attr_scales_nbr, src_attr_scales_nbc)
 
 #ifndef SRC_SCALES_DT_F32
-DECLARE_2D_TILE(src_attr_scales_in_tile_type, SRC_SCALES_DATA_T, SUBGROUP_SIZE,
-        src_attr_scales_br, src_attr_scales_bc, src_attr_scales_nbr,
-        src_attr_scales_nbc)
+typedef NATIVE_LAYOUT_TYPE(SRC_SCALES_DATA_T) src_attr_scales_in_tile_data_t;
+DECLARE_2D_TILE(src_attr_scales_in_tile_type, src_attr_scales_in_tile_data_t,
+        SUBGROUP_SIZE, src_attr_scales_br, src_attr_scales_bc,
+        src_attr_scales_nbr, src_attr_scales_nbc)
 #endif
 
 void load_src_attr_scales(src_attr_scales_tile_type *tile,
@@ -239,9 +240,13 @@ void load_src_attr_scales(src_attr_scales_tile_type *tile,
 #if SRC_SCALES_DT_F32
     tile_load(tile, ptr, m, 1, ldsrcq, sg_j0, 0);
 #else
+#define CONVERT_TILE_SRC_SCALES(v) \
+    into_float(AS_NATIVE_LAYOUT_TYPE(SRC_SCALES_DATA_T, v))
     src_attr_scales_in_tile_type src_attr_scales_in_tile;
-    tile_load(&src_attr_scales_in_tile, ptr, m, 1, ldsrcq, sg_j0, 0);
-    tile_convert(src_attr_scales_in_tile, (*tile), CONVERT_FLOAT_T);
+    tile_load(&src_attr_scales_in_tile,
+            (const global src_attr_scales_in_tile_data_t *)ptr, m, 1, ldsrcq,
+            sg_j0, 0);
+    tile_convert(src_attr_scales_in_tile, (*tile), CONVERT_TILE_SRC_SCALES);
 #endif
 }
 #endif
@@ -261,9 +266,10 @@ DECLARE_2D_TILE_VREDUCE(c_tile_type_float, SUBGROUP_SIZE,
         wei_attr_scales_bc, wei_attr_scales_nbr, wei_attr_scales_nbc)
 
 #ifndef WEI_SCALES_DT_F32
-DECLARE_2D_TILE(wei_attr_scales_in_tile_type, WEI_SCALES_DATA_T, SUBGROUP_SIZE,
-        wei_attr_scales_br, wei_attr_scales_bc, wei_attr_scales_nbr,
-        wei_attr_scales_nbc)
+typedef NATIVE_LAYOUT_TYPE(WEI_SCALES_DATA_T) wei_attr_scales_in_tile_data_t;
+DECLARE_2D_TILE(wei_attr_scales_in_tile_type, wei_attr_scales_in_tile_data_t,
+        SUBGROUP_SIZE, wei_attr_scales_br, wei_attr_scales_bc,
+        wei_attr_scales_nbr, wei_attr_scales_nbc)
 #endif
 
 void load_wei_attr_scales(wei_attr_scales_tile_type *tile,
@@ -271,9 +277,13 @@ void load_wei_attr_scales(wei_attr_scales_tile_type *tile,
 #if WEI_SCALES_DT_F32
     tile_load(tile, ptr, n, 1, ldweiq, sg_i0, 0);
 #else
+#define CONVERT_TILE_WEI_SCALES(v) \
+    into_float(AS_NATIVE_LAYOUT_TYPE(WEI_SCALES_DATA_T, v))
     wei_attr_scales_in_tile_type wei_attr_scales_in_tile;
-    tile_load(&wei_attr_scales_in_tile, ptr, n, 1, ldweiq, sg_i0, 0);
-    tile_convert(wei_attr_scales_in_tile, (*tile), CONVERT_FLOAT_T);
+    tile_load(&wei_attr_scales_in_tile,
+            (const global wei_attr_scales_in_tile_data_t *)ptr, n, 1, ldweiq,
+            sg_i0, 0);
+    tile_convert(wei_attr_scales_in_tile, (*tile), CONVERT_TILE_WEI_SCALES);
 #endif
 }
 #endif

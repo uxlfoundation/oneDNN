@@ -255,7 +255,7 @@ status_t check_isa_with_datatype(
                             || is_superset(isa, avx2_vnni))
             && IMPLICATION(bm_conf_utils.is_bf16(),
                     one_of(isa, avx512_core_amx, avx512_core_bf16, avx2_vnni_2,
-                            avx10_2_ace))
+                            avx10_2, avx10_2_ace))
             && IMPLICATION(bm_conf_utils.is_f16(),
                     one_of(isa, avx10_2, avx10_2_amx_2, avx512_core_amx_fp16,
                             avx512_core_fp16, avx2_vnni_2))
@@ -1181,10 +1181,14 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
     const auto matmul = maybe_swap_mn_params(bgmmc, matmul_);
     const int nthr = bgmmc.nthr;
 
-    const bool need_large_m_blk = bgmmc.ndims == 2 && bm_conf_utils.is_f32()
-            && bgmmc.N <= 14528
+    // The heuristic values are empirical
+    const bool has_small_k_f32 = bm_conf_utils.is_f32() && bgmmc.N <= 14528
             && ((bgmmc.M <= 768 && bgmmc.K <= 128)
                     || bgmmc.K * bgmmc.M <= 49152);
+    const bool has_small_k_avx10_2 = bgmmc.isa == avx10_2 && bgmmc.K < 96
+            && bgmmc.M < 6656 && bgmmc.N < 48;
+    const bool need_large_m_blk
+            = bgmmc.ndims == 2 && (has_small_k_f32 || has_small_k_avx10_2);
     const int max_m_blk = static_cast<int>(
             nstl::min(need_large_m_blk ? (dim_t)512 : (dim_t)256, matmul.M));
     int min_m_blk = static_cast<int>(nstl::min((dim_t)32, matmul.M));
@@ -2627,6 +2631,13 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         //      [n = N / LDB][k = K / wei_k_blk][k = wei_k_blk / vnni][n = LDB][k = vnni]
         bgmmc.LDB2 = rnd_up(bgmmc.K, bgmmc.wei_k_blk) * bgmmc.LDB;
     }
+
+    // enable parallel reduction for small shapes to improve performance
+    // on AVX10.2
+    // The heuristic values are empirical
+    const bool force_seq_execution = bgmmc.ndims == 2 && bgmmc.isa == avx10_2
+            && bgmmc.K < 96 && bgmmc.M * bgmmc.N <= 9216 && bgmmc.M < 2816;
+    bgmmc.force_seq_execution = force_seq_execution;
 
     return status::success;
 }

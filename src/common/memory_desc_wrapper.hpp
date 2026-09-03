@@ -486,7 +486,8 @@ struct memory_desc_wrapper {
         if (utils::one_of(format_kind(), format_kind::undef, format_kind::any))
             return false;
         if (has_runtime_dims_or_strides() || has_broadcast()) return false;
-        return types::elements_to_bytes(data_type(), nelems(with_padding));
+        return types::elements_to_bytes(data_type(), nelems(with_padding))
+                == size(0, /* include_additional_size = */ false);
     }
 
     /** returns true if format is set to `any` */

@@ -18,6 +18,7 @@
 #include <numeric>
 
 #include "alloc_utils.hpp"
+#include "atomic_fusions.hpp"
 #include "gemmstone/generator.hpp"
 #include "generator/pieces/copy_plan.hpp"
 #include "hw_utils.hpp"
@@ -561,10 +562,8 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
 
     checkUC = checkUC && (C_l1UCW != strategy.C.cachingW || Ce_l1UCW != state.Cext_strategy.cachingW);
 
-    if (strategy.altFusedBeta && !checkUC && !strategy.fusePostOps) {
-        strategy.C.cachingW = C_l1UCW;
-        state.Cext_strategy.cachingW = Ce_l1UCW;
-    }
+    if (strategy.altFusedBeta && !checkUC && !strategy.fusePostOps)
+        setCCachingW(strategy, state, C_l1UCW, Ce_l1UCW);
 
     // Generate the various paths needed.
     if (!checkBeta0 && !checkBeta1 && !checkTRMMBeta1 && !checkUC) {
@@ -642,10 +641,8 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
                 stub(); /* need to shift addresses */
             substrategy.C.atomic = substrategy.CO.atomic = false;
             substate.Cext_strategy.atomic = false;
-            if (checkUC) {
-                substrategy.C.cachingW = C_l1UCW;
-                substate.Cext_strategy.cachingW = Ce_l1UCW;
-            }
+            if (checkUC)
+                setCCachingW(substrategy, substate, C_l1UCW, Ce_l1UCW);
 
             if (!gemmUpdateC(subproblem, substrategy, substate)) return false;
         }
@@ -688,10 +685,8 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
 
             subproblem.beta = 0;
             subproblem.removeFinalSumPostOp();
-            if (checkUC) {
-                substrategy.C.cachingW = C_l1UCW;
-                substate.Cext_strategy.cachingW = Ce_l1UCW;
-            }
+            if (checkUC)
+                setCCachingW(substrategy, substate, C_l1UCW, Ce_l1UCW);
 
             substrategy.C.atomic = substrategy.CO.atomic = false;
             substate.Cext_strategy.atomic = false;

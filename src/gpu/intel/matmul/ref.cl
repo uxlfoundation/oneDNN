@@ -277,7 +277,7 @@ __kernel void ref_matmul(__global SRC_DATA_T *A, __global WEI_DATA_T *B,
 
     float dst_data;
 #if WITH_SUM
-    dst_data = SUM_TO_REF(C[dst_off]);
+    dst_data = convert_float(SUM_TO_REF(((__global SUM_DATA_T *)C)[dst_off]));
 #endif // WITH_SUM
 
     float po_acc = convert_float(temp);

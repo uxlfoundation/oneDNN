@@ -70,14 +70,16 @@ status_t jit_uni_reorder_t::pd_t::init(const engine_t *engine,
     status_t prb_init_status = prb_init(prb, *src_md(), *dst_md(), attr());
     if (prb_init_status != status::success) return prb_init_status;
 
-    tr::prb_block_for_cache(prb);
+    int nthr = dnnl_get_max_threads();
+    prb.plain_transpose_tile_size
+            = tr::select_plain_transpose_kernel(prb, nthr);
+    tr::prb_block_for_cache(prb, nthr);
     DEBUG({
         verbose_printf(
                 verbose_t::debuginfo, "cache: %s\n", prb_dump(prb).c_str());
     });
 
     int ndims_ker_max {};
-    int nthr = dnnl_get_max_threads();
     tr::prb_thread_kernel_balance(prb, ndims_ker_max, nthr);
 
     if (prb.is_tail_present) prb_node_dependency(prb);

@@ -235,7 +235,7 @@ post-ops are supported:
 
 | Propagation | Type      | Operation                                                      | Description                                                                   | Restrictions                                                           |
 |:------------|:----------|:---------------------------------------------------------------|:------------------------------------------------------------------------------|:-----------------------------------------------------------------------|
-| forward     | attribute | [Scale](@ref dnnl::primitive_attr::set_scales_mask)            | Scales the result of convolution by given scale factor(s)                     | int8 convolutions only                                                 |
+| forward     | attribute | [Scale](@ref dnnl::primitive_attr::set_scales_mask)            | Scales the result of convolution by given scale factor(s)                     | int8 and fp8 convolutions only                                         |
 | forward     | attribute | [Zero points](@ref dnnl::primitive_attr::set_zero_points_mask) | Sets zero point(s) for the corresponding tensors                              | int8 convolutions only                                                 |
 | forward     | post-op   | [Eltwise](@ref dnnl::post_ops::append_eltwise)                 | Applies an @ref dnnl_api_eltwise operation to the result                      |                                                                        |
 | forward     | post-op   | [Sum](@ref dnnl::post_ops::append_sum)                         | Adds the operation result to the destination tensor instead of overwriting it |                                                                        |
@@ -445,8 +445,6 @@ of Winograd algorithm implementations.
      Xe-HPC and Xe2-LPG, and Xe2-HPG uArch.
 
 4. **CPU**
-   - Only reference support for `f8` data types (`f8_e5m2`, `f8_e4m3`) is
-     is available on CPU.
    - No support is available for `f4_e2m1`.
    - No support is available for `f64`.
 

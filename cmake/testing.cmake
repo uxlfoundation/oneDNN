@@ -27,6 +27,7 @@ include("cmake/options.cmake")
 set(DNNL_TEST_SET_SMOKE "1")
 set(DNNL_TEST_SET_CI "2")
 set(DNNL_TEST_SET_NIGHTLY "3")
+set(DNNL_TEST_SET_WEEKLY "4")
 
 set(DNNL_TEST_SET_COVERAGE "0")
 set(DNNL_TEST_SET_COVERAGE_STR "")
@@ -42,7 +43,11 @@ function(check_consistency entry)
 endfunction()
 
 foreach(entry ${DNNL_TEST_SET})
-    if(entry STREQUAL "NIGHTLY")
+    if(entry STREQUAL "WEEKLY")
+        check_consistency(${entry})
+        set(DNNL_TEST_SET_COVERAGE ${DNNL_TEST_SET_WEEKLY})
+        set(DNNL_TEST_SET_COVERAGE_STR ${entry})
+    elseif(entry STREQUAL "NIGHTLY")
         check_consistency(${entry})
         set(DNNL_TEST_SET_COVERAGE ${DNNL_TEST_SET_NIGHTLY})
         set(DNNL_TEST_SET_COVERAGE_STR ${entry})
@@ -71,7 +76,7 @@ foreach(entry ${DNNL_TEST_SET})
         message(FATAL_ERROR
                 "The DNNL_TEST_SET entry ${entry} is not recognized. "
                 "Supported values are:"
-                "NIGHTLY, CI, SMOKE, NO_CORR, ADD_BITWISE, GRAPH_EXE.")
+                "WEEKLY, NIGHTLY, CI, SMOKE, NO_CORR, ADD_BITWISE, GRAPH_EXE.")
     endif()
 endforeach()
 

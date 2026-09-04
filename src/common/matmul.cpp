@@ -279,6 +279,10 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         attr_mask |= smask_t::zero_points;
     if (src_is_int8) attr_mask |= smask_t::precomputed_reductions;
 
+    // Matmul supports a destination zero point for an integer destination data
+    // type regardless of the source data type.
+    if (types::is_integral_dt(dst_dt)) attr_mask |= smask_t::zero_points;
+
     // Matmul supports zero points for floating point data types as part of
     // weights decompression.
     const bool wei_is_int = utils::one_of(
@@ -516,6 +520,11 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
         }
 
         if (!zp.has_default_values(DNNL_ARG_DST)) {
+            // Zero points are a quantization property and are only meaningful
+            // for an integer destination data type.
+            VCHECK_MATMUL_UNIMPL(
+                    types::is_integral_dt(dst_dt), VERBOSE_UNSUPPORTED_ZP_CFG);
+
             const int mask_dst = zp.get_mask(DNNL_ARG_DST);
 
             VCHECK_MATMUL_UNIMPL(mask_dst == 0
@@ -606,9 +615,11 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
                 po.has_default_values({binary, eltwise, prelu, sum}),
                 VERBOSE_UNSUPPORTED_POSTOP);
 
-        // Check sum
-        VCHECK_MATMUL_UNIMPL(
-                po.check_sum_consistency(dst_dt, src_is_int8, true),
+        // Check sum. A non-zero sum zero-point is a property of a quantized
+        // (integer) destination, which is what the zero-point is applied to,
+        // and is independent of the source data type.
+        VCHECK_MATMUL_UNIMPL(po.check_sum_consistency(dst_dt,
+                                     types::is_integral_dt(dst_dt), true),
                 VERBOSE_UNSUPPORTED_POSTOP);
 
         // Note: verbose support is inside the call.

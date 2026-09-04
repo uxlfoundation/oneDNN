@@ -30,7 +30,6 @@
 #include "graph/interface/tensor.hpp"
 
 #define BACKEND_ID_LENGTH 4
-#define MAX_BACKEND_NUMS (1 << BACKEND_ID_LENGTH)
 #define RESERVED_BACKEND_ID 0 // reserved but not used now
 
 namespace dnnl {

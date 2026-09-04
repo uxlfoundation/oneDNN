@@ -91,17 +91,6 @@ dnnl_status_t gemm_bf16bf16f32(const char *transa, const char *transb,
 #define IGEMM_S8S8S32_IMPL_STR "gemm_s8s8s32:ref"
 #endif
 
-#if !defined(USE_MKL_IGEMM) && defined(DNNL_X64)
-#define IGEMM_S8U8S32_ISA_STR \
-    JIT_IMPL_NAME_HELPER(IGEMM_S8U8S32_IMPL_STR ":", \
-            mayiuse(avx512_core_vnni) \
-                    ? avx512_core_vnni \
-                    : (mayiuse(avx512_core) ? avx512_core : isa_undef), \
-            "")
-#else
-#define IGEMM_S8U8S32_ISA_STR IGEMM_S8U8S32_IMPL_STR
-#endif
-
 } // namespace cpu
 } // namespace impl
 } // namespace dnnl

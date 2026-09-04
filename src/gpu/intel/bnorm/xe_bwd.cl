@@ -34,12 +34,6 @@
         } \
     }
 
-#define LOAD_UINT_Nx16_USING_LOOP(n, dest, src) \
-    { \
-        for (int k = 0; k < n; ++k) { \
-            dest[k] = LOAD_UINT_1x16(&src[k * IC_BLOCK_STRIDE]); \
-        } \
-    }
 
 #define LOAD_CHAR_Nx16_USING_LOOP(n, dest, src) \
     { \
@@ -57,14 +51,6 @@
         } \
     }
 
-#define LOAD_UINT_8x16_USING_LAYOUT(dest, src) \
-    { \
-        if (USE_NHWC) { \
-            LOAD_UINT_Nx16_USING_LOOP(8, dest, src); \
-        } else { \
-            dest = LOAD_UINT_8x16(src); \
-        } \
-    }
 
 #define LOAD_CHAR_8x16_USING_LAYOUT(dest, src) \
     { \

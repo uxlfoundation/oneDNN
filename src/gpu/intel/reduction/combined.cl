@@ -110,16 +110,6 @@ off_t dst_off_w_zero_padding(off_t outer, off_t inner) {
 
 #define _DST_OFF(outer, inner) dst_off_w_zero_padding(outer, inner)
 
-#if NUM_DST_ZPAD == 0
-#define PADDED_NELEMS OUTER_SIZE *INNER_DIM_SIZE
-#elif NUM_DST_ZPAD == 1
-#define PADDED_NELEMS OUTER_SIZE *INNER_DIM_SIZE *DST_Z0_SIZE0 *DST_Z0_SIZE1
-#elif NUM_DST_ZPAD == 2
-#define PADDED_NELEMS \
-    OUTER_SIZE *INNER_DIM_SIZE *DST_Z0_SIZE0 *DST_Z0_SIZE1 *DST_Z1_SIZE0 \
-            *DST_Z1_SIZE1
-#endif
-
 #if WITH_POST_OP
 void reverse_indexing(off_t dst_off, int *res) {
     // Reconstruct dimension indices from dst_off

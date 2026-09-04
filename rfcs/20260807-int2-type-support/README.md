@@ -1,11 +1,17 @@
 # Support for 2-bit integer types
 
-## Introduction
+## Motivation
 
 One of the ways of fitting large models on client devices with limited RAM is
 using low-precision weight representations. oneDNN already has support for
 4-bit integer types (s4/u4), but newest models use int2 compression to further
 reduce their footprint.
+
+U2 quantization support is being driven by Microsoft's local Copilot agent
+initiative, which requires efficient inference of large language models (LLMs)
+on edge devices. The model is expected to be shipped as part of Microsoft's
+Copilot product suite, and further interest in ultra-low precision quantization
+for large language models is expected.
 
 ## Proposal
 
@@ -13,12 +19,10 @@ The proposal is to add new data types, dnnl_s2 and dnnl_u2, to oneDNN.
 
 ### Model support and performance implications
 
-A user interest in shipping models with u2 weights has been recorded. For one
-example model provided to Intel developers, a transition from u4 to u2
+For the LLM models targeted in this initiative, a transition from u4 to u2
 compressed weights reduced peak memory utilization during inference by 14%
 and improved token throughput on a PTL GPU by 33% without breaking model
-conformance. The model in question is expected to be shipped to the public,
-and further interest in ultra-low precisions is expected.
+conformance.
 
 ### Current state: int4
 
@@ -93,7 +97,8 @@ Value ranges are [0; 3] and [-2; 1] for u2 and s2 respectively.
 The following client requirements are driving the initial implementation:
 
 - Weight decompression only in f16:u2:f16 matmul scenarios
-- Optional f16 scale and u2 zero point support
+- Per-channel and per-group quantization with group size of 64
+- fp16 scales and u2 zero-point support
 - "ba" weight layout
 - Main focus is the GPU engine, utilizing existing gemmstone code base
 

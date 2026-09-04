@@ -132,12 +132,12 @@ struct reorder_pd_t : public primitive_desc_t {
 
     const memory_desc_t *src_md(
             int index = 0, bool user_input = false) const override {
-        if (index == 0) return user_input ? desc()->src_md : &src_md_;
+        if (index == 0) return user_input ? &desc()->src_desc : &src_md_;
         return &glob_zero_md;
     }
     const memory_desc_t *dst_md(
             int index = 0, bool user_input = false) const override {
-        if (index == 0) return user_input ? desc()->dst_md : &dst_md_;
+        if (index == 0) return user_input ? &desc()->dst_desc : &dst_md_;
         return &glob_zero_md;
     }
 
@@ -186,8 +186,8 @@ protected:
             bool is_cross_engine) {
         desc_ = reorder_desc_t();
         desc_.primitive_kind = primitive_kind::reorder;
-        desc_.src_md = &src_md_;
-        desc_.dst_md = &dst_md_;
+        desc_.src_desc = src_md_;
+        desc_.dst_desc = dst_md_;
         desc_.src_engine_kind = src_engine_kind;
         desc_.dst_engine_kind = dst_engine_kind;
         desc_.is_cross_engine = is_cross_engine;

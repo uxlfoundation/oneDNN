@@ -20,6 +20,7 @@
 
 #include "cpu/x64/ir/emitter/backend_avx2.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
+#include "cpu/x64/ir/postops_injector.hpp"
 #include "cpu/x64/utils/jit_regops.hpp"
 
 namespace dnnl {
@@ -31,7 +32,7 @@ namespace ir {
 template <typename backend_t>
 void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &rc, data_section_t &data,
-        const inject_postops_fn_t &inject) {
+        postops_injector_t *postops) {
 
     // The backend holds the generator.
     jit_generator_t &gen = be.gen();
@@ -126,6 +127,13 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     //
     // This separation ensures that spilled source and destination values never
     // use the same scratch register.
+
+    // Fixed registers the injector reads are set up once, ahead of the IR,
+    // rather than at every `inject_postops` operation. The pattern does not
+    // change between operations, and an operation inside a loop would otherwise
+    // rebuild it on every iteration.
+    if (postops) postops->init(gen);
+
     for (int i = 0; i < ir.n_ops(); i++) {
         const op_t &op = ir.ops()[i];
         switch (op.kind) {
@@ -247,14 +255,9 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 }
                 JIT_ASSERT(!spilled(args.base_ptr)
                         && "inject_postops: base pointer spilled");
-                const bool has_mask = args.mask != vreg_t::none;
-                JIT_ASSERT(!(has_mask && spilled(args.mask))
-                        && "inject_postops: mask spilled");
-                JIT_ASSERT(
-                        inject && "inject_postops: missing injector callback");
-                const int mask_phys = has_mask ? phys(args.mask) : -1;
-                inject(acc_phys, phys(args.base_ptr), args.out_byte_off,
-                        mask_phys, args.elems);
+                JIT_ASSERT(postops && "inject_postops: missing injector");
+                postops->inject(
+                        acc_phys, phys(args.base_ptr), args.out_byte_off);
                 break;
             }
 
@@ -345,13 +348,13 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
 
 void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &reg_cfg, data_section_t &data,
-        const inject_postops_fn_t &inject) {
+        postops_injector_t *postops) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
         JIT_ASSERT(!"avx512 emitter is not supported");
     } else {
         avx2_backend_t be(gen, isa);
-        emit(be, ir, alloc, reg_cfg, data, inject);
+        emit(be, ir, alloc, reg_cfg, data, postops);
     }
 }
 

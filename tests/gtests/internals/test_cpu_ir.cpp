@@ -243,10 +243,14 @@ protected:
         // irrelevant. Should work fine for AVX2 and AVX-512.
         const int gpr_scratch0 = 10, gpr_scratch1 = 11;
         const int vec_scratch0 = 13, vec_scratch1 = 14, vec_scratch2 = 15;
+        // AVX-512 opmasks reserved for the post-ops injector, which writes both
+        // and restores neither (see `postops_injector_t`).
+        const int eltwise_opmask = 6, binary_tail_opmask = 7;
 
         reg_config_t reg_cfg = make_reg_config(avx2, param_idx, rsp_idx,
                 {gpr_scratch0, gpr_scratch1},
-                {vec_scratch0, vec_scratch1, vec_scratch2});
+                {vec_scratch0, vec_scratch1, vec_scratch2},
+                {eltwise_opmask, binary_tail_opmask});
 
         // Shrink the vector register pool to force spills when requested.
         if (vec_regs_limit_ >= 0) {
@@ -266,18 +270,12 @@ protected:
         // generate(). The injector saves and restores every register it borrows,
         // so it takes no part in the IR register allocation.
         std::unique_ptr<postops_injector_t> injector;
-        inject_postops_fn_t emit_injector;
         if (postops_cfg_.post_ops) {
             injector.reset(new postops_injector_t(*this, avx2,
                     *postops_cfg_.post_ops, *postops_cfg_.dst_md, abi_param1,
                     postops_cfg_.rhs_arg_offset, postops_cfg_.dst_orig_offset,
-                    postops_cfg_.tail_elems));
-            emit_injector = [&](const std::vector<int> &acc_phys, int base_phys,
-                                    const std::vector<dim_t> &out_byte_off,
-                                    int mask_phys, int elems) {
-                injector->apply(
-                        acc_phys, base_phys, out_byte_off, mask_phys, elems);
-            };
+                    postops_cfg_.tail_elems, eltwise_opmask,
+                    binary_tail_opmask));
         }
 
         preamble();
@@ -286,7 +284,7 @@ protected:
         if (frame > 0) sub(rsp, frame);
 
         data_section_t data;
-        emit(*this, ir_, alloc, reg_cfg, data, emit_injector);
+        emit(*this, ir_, alloc, reg_cfg, data, injector.get());
 
         if (frame > 0) add(rsp, frame);
 
@@ -510,16 +508,13 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
 // its variable-length operands in a side table and keeps only the table index,
 // so the test checks that the side table holds exactly what the builder was
 // given. def_use must report each accumulator as read and written in place, and
-// the base pointer and mask as read, or liveness across the injected post-ops
-// would be wrong.
+// the base pointer as read, or liveness across the injected post-ops would be
+// wrong.
 TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
     ir_t ir;
 
     const vreg_t base = ir.new_gpr();
     ir.load_param(base, 0);
-
-    const vreg_t mask = ir.new_mask();
-    ir.set_mask_imm(mask, simd_w - 1);
 
     constexpr int n = 3;
     std::vector<vreg_t> acc(n, vreg_t::none);
@@ -532,7 +527,7 @@ TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
     for (int r = 0; r < n; r++)
         out_byte_off[r] = r * (dim_t)sizeof(float);
 
-    ir.inject_postops(acc, base, out_byte_off, mask, /*elems=*/simd_w - 1);
+    ir.inject_postops(acc, base, out_byte_off);
 
     const int idx = find_op(ir, op_kind_t::inject_postops);
     ASSERT_NE(idx, -1);
@@ -544,11 +539,9 @@ TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
     EXPECT_EQ(args.acc, acc);
     EXPECT_EQ(args.base_ptr, base);
     EXPECT_EQ(args.out_byte_off, out_byte_off);
-    EXPECT_EQ(args.mask, mask);
-    EXPECT_EQ(args.elems, simd_w - 1);
 
     // def_use reports every accumulator as read and written, and the base
-    // pointer and mask as read.
+    // pointer as read.
     std::vector<int> defs, uses;
     ir.def_use(ir.ops()[idx], defs, uses);
 
@@ -559,7 +552,6 @@ TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
                 << "acc " << r << " not read";
     }
     EXPECT_NE(std::find(uses.begin(), uses.end(), (int)base), uses.end());
-    EXPECT_NE(std::find(uses.begin(), uses.end(), (int)mask), uses.end());
 }
 
 // Register config tests
@@ -575,10 +567,11 @@ TEST(RegConfigTests, MapsMaskKindToFilePerIsa) {
     const int param_reg = 0, rsp_reg = 4;
     const std::vector<int> gpr_scratch {10, 11};
     const std::vector<int> vec_scratch {13, 14, 15};
+    const std::vector<int> mask_scratch {6, 7};
 
     {
-        const reg_config_t rc = make_reg_config(
-                avx2, param_reg, rsp_reg, gpr_scratch, vec_scratch);
+        const reg_config_t rc = make_reg_config(avx2, param_reg, rsp_reg,
+                gpr_scratch, vec_scratch, mask_scratch);
 
         ASSERT_EQ(rc.pools.files.size(), 2u);
         EXPECT_EQ(rc.pools.kind_to_file, std::vector<int>({0, 1, 1}));
@@ -587,16 +580,16 @@ TEST(RegConfigTests, MapsMaskKindToFilePerIsa) {
     }
 
     {
-        const reg_config_t rc = make_reg_config(
-                avx512_core, param_reg, rsp_reg, gpr_scratch, vec_scratch);
+        const reg_config_t rc = make_reg_config(avx512_core, param_reg, rsp_reg,
+                gpr_scratch, vec_scratch, mask_scratch);
 
         ASSERT_EQ(rc.pools.files.size(), 3u);
         EXPECT_EQ(rc.pools.kind_to_file, std::vector<int>({0, 1, 2}));
         EXPECT_EQ(rc.pools.files[1].slot_size, 64u);
         EXPECT_EQ(rc.pools.files[1].regs.size(), 32u - vec_scratch.size());
-        // The mask file is k1..k7. k0 cannot encode a write mask.
-        EXPECT_EQ(rc.pools.files[2].regs,
-                std::vector<int>({1, 2, 3, 4, 5, 6, 7}));
+        // The mask file is k1..k7 less the reserved ones. k0 cannot encode a
+        // write mask.
+        EXPECT_EQ(rc.pools.files[2].regs, std::vector<int>({1, 2, 3, 4, 5}));
     }
 }
 
@@ -1107,7 +1100,7 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
     std::vector<dim_t> out_byte_off(n);
     for (int r = 0; r < n; r++)
         out_byte_off[r] = r * (dim_t)sizeof(float);
-    ir.inject_postops(acc, c_ptr, out_byte_off, vreg_t::none, /*elems=*/1);
+    ir.inject_postops(acc, c_ptr, out_byte_off);
 
     for (int r = 0; r < n; r++)
         ir.vstore_masked(

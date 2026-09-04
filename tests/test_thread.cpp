@@ -226,6 +226,60 @@ static tsl::AsyncValueRef<tsl::Chain> OkDoneEventSingleton() {
     return singleton->AsRef();
 }
 
+// Lightweight completion event exposed to oneDNN's verbose profiler.
+// start_ns_ is stamped by the first parallel_for() worker via CAS to avoid
+// races between workers. end_ns_ and complete_ are set by the AndThen
+// callback registered in get_event() when the chain resolves.
+class threadpool_event_t
+    : public dnnl::threadpool_interop::threadpool_event_iface_t {
+public:
+    threadpool_event_t() = default;
+
+    bool is_complete() const override {
+        return complete_.load(std::memory_order_acquire);
+    }
+
+    void wait() const override {
+        while (!is_complete()) {}
+    }
+
+    double exec_time_ms() const override {
+        int64_t start = start_ns_.load(std::memory_order_relaxed);
+        int64_t end = end_ns_.load(std::memory_order_relaxed);
+        return static_cast<double>(end - start) * 1e-6;
+    }
+
+    void stamp_start(int64_t ns) {
+        int64_t expected = 0;
+        start_ns_.compare_exchange_strong(
+                expected, ns, std::memory_order_relaxed);
+    }
+
+    // Called by the AndThen callback registered in get_event() when the
+    // chain resolves. Records the end timestamp and sets complete_.
+    // end_ns_ is written before complete_ to ensure exec_time_ms() is
+    // valid when is_complete() returns true.
+    void mark_complete() {
+        end_ns_.store(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                              std::chrono::high_resolution_clock::now()
+                                      .time_since_epoch())
+                              .count(),
+                std::memory_order_relaxed);
+        complete_.store(true, std::memory_order_release);
+    }
+
+private:
+    // Completion flag set by mark_complete() in the AndThen callback.
+    std::atomic<bool> complete_ {false};
+
+    // Start timestamp in nanoseconds. Stamped by the first worker via CAS.
+    std::atomic<int64_t> start_ns_ {0};
+
+    // End timestamp in nanoseconds. Written by mark_complete() before
+    // complete_ is set.
+    std::atomic<int64_t> end_ns_ {0};
+};
+
 class threadpool_t : public dnnl::threadpool_interop::threadpool_iface {
 private:
     // Original `OneDnnThreadPool` at
@@ -247,6 +301,13 @@ private:
     // ANCHOR: DUMMY_PARALLEL.
     tsl::AsyncValueRef<tsl::Chain> done_event_;
 
+    // Current profiling event created lazily in parallel_for() when
+    // verbose_profiling_ is true. Handed to the verbose profiler via
+    // get_event() after enqueue_primitive() returns.
+    // Null when profiling is disabled or get_event() has already consumed
+    // and moved it.
+    std::shared_ptr<threadpool_event_t> current_event_;
+
 public:
     explicit threadpool_t(int num_threads = 0) {
         if (num_threads <= 0) num_threads = read_num_threads_from_env();
@@ -257,13 +318,32 @@ public:
     bool get_in_parallel() const override { return false; }
     uint64_t get_flags() const override { return ASYNCHRONOUS; }
     void parallel_for(int n, const std::function<void(int, int)> &fn) override {
+
+        // Create a profiling event only when verbose profiling is
+        // enabled and no event is already pending for this primitive.
+        if (!current_event_) {
+            current_event_ = std::make_shared<threadpool_event_t>();
+        }
+
+        // Capture current_event_ by value so the lambda holds a shared_ptr
+        // reference that remains valid for the lifetime of the parallel work.
+        auto event = current_event_;
+
         // If we are using oneDNN with async support, we need to schedule the
         // parallel loop using the done_event_. This allows us to return
         // immediately and not block the caller thread.
-        auto parallelize = [this, n, fn](tsl::Chain) {
+        auto parallelize = [this, n, fn, event](tsl::Chain) {
             return xla::cpu::Worker::Parallelize(thread_pool_.get(),
-                    thread_pool_->NumThreads(), n,
-                    [fn, n](size_t i) { fn(static_cast<int>(i), n); });
+                    thread_pool_->NumThreads(), n, [fn, n, event](size_t i) {
+                if (event) {
+                    event->stamp_start(std::chrono::duration_cast<
+                                       std::chrono::nanoseconds>(
+                            std::chrono::high_resolution_clock::now()
+                                    .time_since_epoch())
+                                               .count());
+                }
+                fn(static_cast<int>(i), n);
+            });
         };
 
         done_event_ = done_event_.FlatMap(parallelize);
@@ -273,6 +353,20 @@ public:
         // notify the user that the output is ready. oneDNN will not call wait()
         // inside the library to avoid deadlock.
         tsl::BlockUntilReady(done_event_);
+    }
+
+    std::shared_ptr<dnnl::threadpool_interop::threadpool_event_iface_t>
+    get_event() override {
+        if (!current_event_) return nullptr;
+        auto event = std::move(current_event_);
+        current_event_ = nullptr;
+
+        // Register the completion callback on the current chain.
+        // AndThen fires when done_event_ resolves, i.e., when all jobs
+        // in the most recent parallel_for() have completed.
+        done_event_.AndThen([event]() { event->mark_complete(); });
+
+        return event;
     }
 
     tsl::AsyncValueRef<tsl::Chain> done_event() const { return done_event_; }

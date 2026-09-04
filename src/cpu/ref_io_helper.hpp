@@ -19,6 +19,7 @@
 
 #include <cassert>
 
+#include "common/bit_pair.hpp"
 #include "common/c_types_map.hpp"
 #include "common/dnnl_traits.hpp"
 #include "common/nibble.hpp"
@@ -54,6 +55,12 @@ inline int load_int_value(data_type_t dt, const void *ptr, dim_t idx) {
             const nibble2_t nibble_pair(
                     reinterpret_cast<const uint8_t *>(ptr)[idx / 2]);
             uint4_t val(nibble_pair.get(idx % 2));
+            return static_cast<int>(val);
+        }
+        case u2: {
+            const bitpair4_t bitpairs(
+                    reinterpret_cast<const uint8_t *>(ptr)[idx / 4]);
+            uint2_t val(bitpairs.get(idx % 4));
             return static_cast<int>(val);
         }
         default: assert(!"bad data_type");
@@ -106,6 +113,12 @@ ALWAYS_INLINE float load_float_value(
             const nibble2_t nibble_pair
                     = reinterpret_cast<const nibble2_t *>(ptr)[idx / 2];
             float4_e2m1_t val(nibble_pair.get(idx % 2), true);
+            return static_cast<float>(val);
+        }
+        case u2: {
+            const bitpair4_t bitpairs(
+                    static_cast<const uint8_t *>(ptr)[idx / 4]);
+            uint2_t val(bitpairs.get(idx % 4));
             return static_cast<float>(val);
         }
         default: assert(!"bad data_type");

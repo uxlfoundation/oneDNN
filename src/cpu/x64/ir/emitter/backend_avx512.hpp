@@ -47,11 +47,7 @@ namespace ir {
 
 struct avx512_backend_t {
     avx512_backend_t(jit_generator_t &gen, cpu_isa_t isa)
-        : gen_(gen), isa(isa) {
-        // `isa` is stored for the dtype dispatch that tells the AVX-512
-        // extensions apart (e.g. avx512_core_bf16) but is not read yet.
-        MAYBE_UNUSED(this->isa);
-    }
+        : gen_(gen), isa(isa) {}
 
     jit_generator_t &gen() { return gen_; }
 
@@ -71,13 +67,22 @@ struct avx512_backend_t {
         gen().vmovups(gen().ptr[Xbyak::Reg64(base) + (int)disp], Xbyak::Zmm(s));
     }
 
-    // Load a full vector.
+    // Load a full vector. The pair of data types selects the form:
+    //   f32  -> f32   plain move
+    //   bf16 -> bf16  plain move
+    //   f16  -> f32   half a register read and widened
     void vload(int d, int base, dim_t disp, data_type_t mem_dt,
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
-        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
+
+        if (mem_dt == reg_dt
+                && utils::one_of(reg_dt, data_type::f32, data_type::bf16)) {
             gen().vmovups(Xbyak::Zmm(d), addr);
-        else { JIT_ASSERT(!"vload: dtype not implemented"); }
+        } else if (mem_dt == data_type::f16 && reg_dt == data_type::f32) {
+            gen().vcvtph2ps(Xbyak::Zmm(d), addr);
+        } else {
+            JIT_ASSERT(!"vload: dtype not implemented");
+        }
     }
 
     // Store a full vector.
@@ -120,12 +125,16 @@ struct avx512_backend_t {
     }
 
     // dst += a * b. The multiplicand dtype `src_dt` selects the instruction.
-    // f32 inputs use `vfmadd231ps`. The accumulator (dst) is always f32.
+    // The accumulator (dst) is always f32. An f16 multiplicand arrives here as
+    // f32, widened by the load (see `vload`).
     void vdot(int d, int a, int b, data_type_t src_dt) {
-        if (src_dt == data_type::f32)
+        if (src_dt == data_type::f32) {
             gen().vfmadd231ps(Xbyak::Zmm(d), Xbyak::Zmm(a), Xbyak::Zmm(b));
-        else {
-            // Only f32 is supported on AVX-512 today.
+        } else if (src_dt == data_type::bf16) {
+            JIT_ASSERT(is_superset(isa, avx512_core_bf16)
+                    && "vdot: bf16 needs avx512_core_bf16");
+            gen().vdpbf16ps(Xbyak::Zmm(d), Xbyak::Zmm(a), Xbyak::Zmm(b));
+        } else {
             JIT_ASSERT(!"vdot: dtype not implemented");
         }
     }
@@ -157,13 +166,20 @@ struct avx512_backend_t {
     // Load the elements selected by `mask` and zero the rest of `dst` (`T_z`).
     // An inactive element has to read as zero, or a tail iteration would
     // accumulate whatever the register happened to hold into the dot product.
+    // The mask counts elements of `mem_dt`, so a converting form masks the
+    // narrow read and widens what is left.
     void vload_masked(int d, int base, dim_t disp, int mask, data_type_t mem_dt,
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        const Xbyak::Opmask k(mask);
 
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
-            gen().vmovups(
-                    Xbyak::Zmm(d) | Xbyak::Opmask(mask) | gen().T_z, addr);
+            gen().vmovups(Xbyak::Zmm(d) | k | gen().T_z, addr);
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::bf16) {
+            gen().vmovdqu16(Xbyak::Zmm(d) | k | gen().T_z, addr);
+        } else if (mem_dt == data_type::f16 && reg_dt == data_type::f32) {
+            gen().vmovdqu16(Xbyak::Ymm(d) | k | gen().T_z, addr);
+            gen().vcvtph2ps(Xbyak::Zmm(d), Xbyak::Ymm(d));
         } else {
             JIT_ASSERT(!"vload_masked: dtype not implemented");
         }

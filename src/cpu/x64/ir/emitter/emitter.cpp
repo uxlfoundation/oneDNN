@@ -19,6 +19,7 @@
 #include <unordered_map>
 
 #include "cpu/x64/ir/emitter/backend_avx2.hpp"
+#include "cpu/x64/ir/emitter/backend_avx512.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/ir/postops_injector.hpp"
 #include "cpu/x64/utils/jit_regops.hpp"
@@ -351,7 +352,8 @@ void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
         postops_injector_t *postops) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
-        JIT_ASSERT(!"avx512 emitter is not supported");
+        avx512_backend_t be(gen, isa);
+        emit(be, ir, alloc, reg_cfg, data, postops);
     } else {
         avx2_backend_t be(gen, isa);
         emit(be, ir, alloc, reg_cfg, data, postops);

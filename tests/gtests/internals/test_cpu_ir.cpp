@@ -46,30 +46,42 @@ using namespace impl::cpu::x64::ir;
 
 // Helpers shared by the tests
 
-constexpr int simd_w = 8;
+// Scratch registers the emitter reserves for spill handling, and the opmasks
+// the post-ops injector writes without restoring. None of them is part of the
+// register pool. The indices are otherwise arbitrary and work for AVX2 and
+// AVX-512 alike.
+constexpr int gpr_scratch0 = 10, gpr_scratch1 = 11;
+constexpr int vec_scratch0 = 13, vec_scratch1 = 14, vec_scratch2 = 15;
+constexpr int eltwise_opmask = 6, binary_tail_opmask = 7;
 
-// Build a register pool with `n_gpr` GPRs plus all available vector registers.
+// ISA the kernel tests generate for. The emitter needs AVX2 as a floor, so the
+// tests run on AVX-512 wherever the machine has it and fall back to AVX2
+// otherwise.
+cpu_isa_t test_isa() {
+    return mayiuse(avx512_core) ? avx512_core : avx2;
+}
+
+// Vector width in f32 elements on `test_isa()`. The tests size their inputs
+// from it.
+int simd_w() {
+    return isa_max_vlen(test_isa()) / (int)sizeof(float);
+}
+
+// Build a register pool for `test_isa()` with the GPR file narrowed to `n_gpr`
+// registers. The vector and mask files come from `make_reg_config()`, so the
+// allocator tests see the same layout the kernel tests do, with only the GPR
+// pressure under the test's control.
 reg_pools_t make_pools(int n_gpr) {
-    reg_pools_t pools {};
+    reg_config_t rc = make_reg_config(test_isa(), /*param_reg=*/0,
+            /*rsp_reg=*/Xbyak::Operand::RSP, /*gpr_scratch=*/ {},
+            /*vec_scratch=*/ {}, /*mask_scratch=*/ {});
 
-    reg_file_t gpr_file {};
-    // Spill slot size for GPR in bytes.
-    gpr_file.slot_size = 8;
+    reg_file_t &gpr_file = rc.pools.files[0];
+    gpr_file.regs.clear();
     for (int i = 0; i < n_gpr; i++)
         gpr_file.regs.push_back(i);
 
-    reg_file_t vec_file {};
-    // Spill slot size for vector registers in bytes. AVX2 only.
-    vec_file.slot_size = 32;
-    for (int i = 0; i < 16; i++)
-        vec_file.regs.push_back(i);
-
-    pools.files = {gpr_file, vec_file};
-    // reg_kind_t order is { gpr, vec, mask }. A mask and vec kinds share the
-    // same register file on AVX2.
-    pools.kind_to_file = {/* gpr */ 0, /*vec*/ 1, /*mask*/ 1};
-
-    return pools;
+    return rc.pools;
 }
 
 // A virtual register's (vreg) live interval. Defined as [start, end]
@@ -181,8 +193,7 @@ float ref_dot(const float *a, const float *b, int n) {
 class ir_kernel_t : public impl::cpu::x64::jit_generator_t {
 public:
     ir_kernel_t(ir_t ir, int vec_regs_limit = -1)
-        // Only AVX2 is currently supported.
-        : jit_generator_t("ir_run_kernel", cpu::x64::avx2)
+        : jit_generator_t("ir_run_kernel", test_isa())
         , ir_(std::move(ir))
         , vec_regs_limit_(vec_regs_limit) {}
 
@@ -238,17 +249,8 @@ protected:
         const int rsp_idx = Xbyak::Operand::RSP;
         const int param_idx = abi_param1.getIdx();
 
-        // Scratch registers the emitter reserves for spill handling. They are
-        // not part of the register pool. The indices of the registers are
-        // irrelevant. Should work fine for AVX2 and AVX-512.
-        const int gpr_scratch0 = 10, gpr_scratch1 = 11;
-        const int vec_scratch0 = 13, vec_scratch1 = 14, vec_scratch2 = 15;
-        // AVX-512 opmasks reserved for the post-ops injector, which writes both
-        // and restores neither (see `postops_injector_t`).
-        const int eltwise_opmask = 6, binary_tail_opmask = 7;
-
-        reg_config_t reg_cfg = make_reg_config(avx2, param_idx, rsp_idx,
-                {gpr_scratch0, gpr_scratch1},
+        reg_config_t reg_cfg = make_reg_config(max_cpu_isa(), param_idx,
+                rsp_idx, {gpr_scratch0, gpr_scratch1},
                 {vec_scratch0, vec_scratch1, vec_scratch2},
                 {eltwise_opmask, binary_tail_opmask});
 
@@ -271,7 +273,7 @@ protected:
         // so it takes no part in the IR register allocation.
         std::unique_ptr<postops_injector_t> injector;
         if (postops_cfg_.post_ops) {
-            injector.reset(new postops_injector_t(*this, avx2,
+            injector.reset(new postops_injector_t(*this, max_cpu_isa(),
                     *postops_cfg_.post_ops, *postops_cfg_.dst_md, abi_param1,
                     postops_cfg_.rhs_arg_offset, postops_cfg_.dst_orig_offset,
                     postops_cfg_.tail_elems, eltwise_opmask,
@@ -326,7 +328,7 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
 
     const vreg_t b = ir.new_vec(data_type::f32);
     // AVX2 only.
-    ir.vload(b, ptr, simd_w * (dim_t)sizeof(float));
+    ir.vload(b, ptr, simd_w() * (dim_t)sizeof(float));
 
     ir.vdot(acc, a, b);
 
@@ -791,7 +793,7 @@ TEST(EmitterTests, EmitsValidCodeForSpilledAllocation) {
 
     for (int r = 0; r < 6; r++) {
         const vreg_t a = ir.new_vec(data_type::f32);
-        ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
+        ir.vload(a, a_ptr, r * simd_w() * (dim_t)sizeof(float));
         ir.vdot(acc[r], a, b);
     }
 
@@ -811,15 +813,16 @@ struct dot_args_t {
     float *c;
 };
 
-// Pipeline test. A dot product over sixteen elements, expressed as a
-// two-iteration loop, is built, allocated, emitted, run, and checked against
-// a reference. Passing it means the whole pipeline computes the right number,
-// including loop control flow and values kept live across the back-edge.
+// Pipeline test. A dot product over two vectors' worth of elements, expressed
+// as a two-iteration loop, is built, allocated, emitted, run, and checked
+// against a reference. Passing it means the whole pipeline computes the right
+// number, including loop control flow and values kept live across the
+// back-edge.
 TEST(IntegrationTests, BuildsLoopReduction) {
     SKIP_IF_NO_AVX2();
 
     constexpr int k_blocks = 2;
-    constexpr int k = k_blocks * simd_w; // 16 elements
+    const int k = k_blocks * simd_w();
 
     ir_t ir;
 
@@ -843,8 +846,8 @@ TEST(IntegrationTests, BuildsLoopReduction) {
         ir.vload(b, b_ptr, 0);
         ir.vdot(acc, a, b);
     }, [&]() {
-        ir.add_imm(a_ptr, simd_w * (dim_t)sizeof(float));
-        ir.add_imm(b_ptr, simd_w * (dim_t)sizeof(float));
+        ir.add_imm(a_ptr, simd_w() * (dim_t)sizeof(float));
+        ir.add_imm(b_ptr, simd_w() * (dim_t)sizeof(float));
     });
 
     const vreg_t ws = ir.new_vec(data_type::f32);
@@ -891,7 +894,7 @@ ir_t build_shared_vector_dot_ir(int n) {
         ir.vzero(acc[r]);
 
         const vreg_t a = ir.new_vec(data_type::f32);
-        ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
+        ir.vload(a, a_ptr, r * simd_w() * (dim_t)sizeof(float));
 
         ir.vdot(acc[r], a, b);
     }
@@ -925,11 +928,11 @@ TEST(IntegrationTests, SpillProducesEquivalentResults) {
     EXPECT_FALSE(full.spilled());
     EXPECT_TRUE(limited.spilled());
 
-    std::vector<float> a(n * simd_w), b(simd_w);
-    for (int i = 0; i < n * simd_w; i++)
+    std::vector<float> a(n * simd_w()), b(simd_w());
+    for (int i = 0; i < n * simd_w(); i++)
         a[i] = (float)(i % 7) - 3.f;
 
-    for (int i = 0; i < simd_w; i++)
+    for (int i = 0; i < simd_w(); i++)
         b[i] = (float)(i - 2);
 
     std::vector<float> c_full(n, 0.f), c_limited(n, 0.f);
@@ -941,7 +944,7 @@ TEST(IntegrationTests, SpillProducesEquivalentResults) {
     limited.run(&args_limited);
 
     for (int r = 0; r < n; r++) {
-        const float expected = ref_dot(&a[r * simd_w], b.data(), simd_w);
+        const float expected = ref_dot(&a[r * simd_w()], b.data(), simd_w());
         EXPECT_FLOAT_EQ(c_full[r], expected) << "row " << r;
         EXPECT_FLOAT_EQ(c_limited[r], expected) << "row " << r;
     }
@@ -999,17 +1002,18 @@ TEST(IntegrationTests, BranchSelectsCorrectValue) {
     //     store b -> c
     //   end:
     ir.jz(cond, lbl_else);
-    ir.vstore_masked(c_ptr, 0, a, vreg_t::none, simd_w); // then: c = a
+    ir.vstore_masked(c_ptr, 0, a, vreg_t::none, simd_w()); // then: c = a
     ir.jmp(lbl_end);
     ir.label(lbl_else);
-    ir.vstore_masked(c_ptr, 0, b, vreg_t::none, simd_w); // else: c = b
+    ir.vstore_masked(c_ptr, 0, b, vreg_t::none, simd_w()); // else: c = b
     ir.label(lbl_end);
 
     ir_kernel_t kernel(ir);
     ASSERT_TRUE(kernel.run_ir_pipeline());
 
-    std::vector<float> a_data(simd_w), b_data(simd_w), c_data(simd_w, 0.f);
-    for (int i = 0; i < simd_w; i++) {
+    std::vector<float> a_data(simd_w()), b_data(simd_w()),
+            c_data(simd_w(), 0.f);
+    for (int i = 0; i < simd_w(); i++) {
         a_data[i] = (float)(10 + i);
         b_data[i] = (float)(100 + i);
     }
@@ -1017,14 +1021,14 @@ TEST(IntegrationTests, BranchSelectsCorrectValue) {
     // cond != 0 selects a.
     select_args_t args_a {1, a_data.data(), b_data.data(), c_data.data()};
     kernel.run(&args_a);
-    for (int i = 0; i < simd_w; i++)
+    for (int i = 0; i < simd_w(); i++)
         EXPECT_FLOAT_EQ(c_data[i], a_data[i]) << "lane " << i;
 
     // cond == 0 selects b.
     std::fill(c_data.begin(), c_data.end(), 0.f);
     select_args_t args_b {0, a_data.data(), b_data.data(), c_data.data()};
     kernel.run(&args_b);
-    for (int i = 0; i < simd_w; i++)
+    for (int i = 0; i < simd_w(); i++)
         EXPECT_FLOAT_EQ(c_data[i], b_data[i]) << "lane " << i;
 }
 
@@ -1087,7 +1091,7 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
         ir.vzero(acc[r]);
 
         const vreg_t a = ir.new_vec(data_type::f32);
-        ir.vload(a, a_ptr, r * simd_w * (dim_t)sizeof(float));
+        ir.vload(a, a_ptr, r * simd_w() * (dim_t)sizeof(float));
         ir.vdot(acc[r], a, b);
     }
 
@@ -1117,10 +1121,10 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
 
     ASSERT_TRUE(kernel.run_ir_pipeline());
 
-    std::vector<float> a(n * simd_w), b_data(simd_w), rhs(n), c(n, 0.f);
-    for (int i = 0; i < n * simd_w; i++)
+    std::vector<float> a(n * simd_w()), b_data(simd_w()), rhs(n), c(n, 0.f);
+    for (int i = 0; i < n * simd_w(); i++)
         a[i] = (float)(i % 5) - 2.f;
-    for (int i = 0; i < simd_w; i++)
+    for (int i = 0; i < simd_w(); i++)
         b_data[i] = (float)(i - 3);
     for (int r = 0; r < n; r++)
         rhs[r] = (float)(10 * (r + 1));
@@ -1131,7 +1135,7 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
 
     for (int r = 0; r < n; r++) {
         const float expected
-                = ref_dot(&a[r * simd_w], b_data.data(), simd_w) + rhs[r];
+                = ref_dot(&a[r * simd_w()], b_data.data(), simd_w()) + rhs[r];
         EXPECT_FLOAT_EQ(c[r], expected) << "row " << r;
     }
 }

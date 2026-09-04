@@ -279,15 +279,36 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
                 // around the matched kernel). Fall back to u4 ('f') kernel
                 // strategies, since both are sub-byte compressed integer
                 // types requiring similar unroll/copy handling.
+                //
+                // u3 can also appear as the external type of a bracketed
+                // mixed-precision tag, e.g. "[kO]", when jit/pd.cpp promotes
+                // a u3 operand paired with an int8 operand to compute
+                // directly as int8 (its mixed s8/s4-DPAS support, used when
+                // native s8/s4 DPAS isn't available/legal). In that case the
+                // generated kernel never dequantizes through u4 at all --
+                // CopyPlan::planInt3Upconvert unpacks u3 straight to the
+                // int8 compute type -- so match plain int8 catalog
+                // strategies directly (using the bracket's compute-type
+                // character) instead of falling back to u4.
+                auto isU3 = [](kcatalog::string str) {
+                    char c = (str[0] == '[') ? str[1] : str[0];
+                    return c && ((c & ~0x20) == 'K');
+                };
+                auto fallbackU3 = [&](kcatalog::string &str) {
+                    if (!isU3(str)) return false;
+                    if (str[0] == '[') {
+                        switch (str[2]) {
+                            case 'O': str = "O"; return true;
+                            case 'o': str = "o"; return true;
+                            default: break;
+                        }
+                    }
+                    str = "f";
+                    return true;
+                };
                 bool u3Fallback = false;
-                if (iequal(p.selector.precisions[0], 'k')) {
-                    p.selector.precisions[0] = "f";
-                    u3Fallback = true;
-                }
-                if (iequal(p.selector.precisions[1], 'k')) {
-                    p.selector.precisions[1] = "f";
-                    u3Fallback = true;
-                }
+                u3Fallback |= fallbackU3(p.selector.precisions[0]);
+                u3Fallback |= fallbackU3(p.selector.precisions[1]);
                 if (u3Fallback) {
                     changed = true;
                     continue;

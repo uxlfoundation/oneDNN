@@ -17,6 +17,7 @@
 
 #include <cassert>
 
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_desc_wrapper.hpp"
 #include "common/type_helpers.hpp"
@@ -571,7 +572,7 @@ status_t jit_uni_prelu_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
         // Full weights are laid out exactly like src/dst. Scalar weights use
         // the same flat work split but always point at weights[0].
-        parallel(0, [=](const int ithr, const int nthr) {
+        parallel(0, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             dim_t start = 0, end = 0;
             balance211(work_chunks, nthr, ithr, start, end);
             start = nstl::min(nelems, start * (dim_t)simd_w);
@@ -603,7 +604,7 @@ status_t jit_uni_prelu_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     if (bcast == broadcasting_strategy_t::per_oc && !kernel->per_oc_blocked()) {
         // NHWC-like case. For each minibatch/spatial position, process the
         // contiguous channel dimension and advance weights alongside channels.
-        parallel_nd(MB, SP, [=](dim_t mb, dim_t sp) {
+        parallel_nd(MB, SP, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t sp) {
             const dim_t offset = mb * nelems_single_mb + sp * C;
 
             jit_prelu_forward_kernel_t::call_params_t params;
@@ -616,7 +617,7 @@ status_t jit_uni_prelu_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
     } else if (bcast == broadcasting_strategy_t::per_oc_spatial) {
         // NCHW-like case. Each kernel call handles one channel's spatial range,
         // so a single scalar weight can be broadcast and reused.
-        parallel_nd(MB, C, [=](dim_t mb, dim_t c) {
+        parallel_nd(MB, C, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t c) {
             const dim_t offset = mb * nelems_single_mb + c * SP;
 
             jit_prelu_forward_kernel_t::call_params_t params;
@@ -632,7 +633,8 @@ status_t jit_uni_prelu_fwd_t<isa>::execute(const exec_ctx_t &ctx) const {
 
         // Blocked channel layout. One vector of channel weights is loaded for a
         // block and reused across every spatial element in that block.
-        parallel_nd(MB, C_blocks, [=](dim_t mb, dim_t c_blk) {
+        parallel_nd(
+                MB, C_blocks, [= COMPAT_THIS_CAPTURE](dim_t mb, dim_t c_blk) {
             const dim_t offset = mb * nelems_single_mb + c_blk * SP * simd_w;
 
             jit_prelu_forward_kernel_t::call_params_t params;

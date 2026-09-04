@@ -18,6 +18,8 @@
 #include "cpu/aarch64/matmul/acl_matmul.hpp"
 #include "cpu/aarch64/acl_utils.hpp"
 
+#include "common/dnnl_thread.hpp"
+
 #include <mutex>
 
 namespace dnnl {
@@ -90,6 +92,9 @@ status_t acl_matmul_t::pd_t::init(const engine_t *engine) {
             && platform::has_data_type_support(data_type::bf16);
     const bool is_gemv = utils::everyone_is(2, src_md()->ndims, dst_md()->ndims)
             && (src_md()->dims[0] == 1 || weights_md()->dims[1] == 1);
+
+    VDISPATCH_MATMUL(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
     // in case of gemv and we have SVE, we leave BRGeMM to handle it
     VDISPATCH_MATMUL(!(is_gemv && arm_compute::CPUInfo::get().has_sve()),

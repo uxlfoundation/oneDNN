@@ -54,26 +54,49 @@ struct avx2_backend_t {
         gen().vxorps(Xbyak::Ymm(d), Xbyak::Ymm(d), Xbyak::Ymm(d));
     }
 
-    void vload(int d, int base, dim_t disp) { // dst = [base + disp]
+    // Move a whole register to or from memory as it is. The emitter uses this
+    // for spill slots, where the bytes come back exactly as they went out, so
+    // there is no data type and never a conversion.
+    void vload_raw(int d, int base, dim_t disp) { // dst = [base + disp]
         gen().vmovups(Xbyak::Ymm(d), gen().ptr[Xbyak::Reg64(base) + (int)disp]);
     }
 
-    void vstore(int base, dim_t disp, int s) { // [base + disp] = src
+    void vstore_raw(int base, dim_t disp, int s) { // [base + disp] = src
         gen().vmovups(gen().ptr[Xbyak::Reg64(base) + (int)disp], Xbyak::Ymm(s));
     }
 
-    // Load one element and zero the rest of `dst`.
-    void vload_scalar(int d, int base, dim_t disp, data_type_t dt) {
+    // Load a full vector.
+    void vload(int d, int base, dim_t disp, data_type_t mem_dt,
+            data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
-        if (dt == data_type::f32)
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
+            gen().vmovups(Xbyak::Ymm(d), addr);
+        else { JIT_ASSERT(!"vload: dtype not implemented"); }
+    }
+
+    // Store a full vector.
+    void vstore(int base, dim_t disp, int s, data_type_t mem_dt,
+            data_type_t reg_dt) {
+        const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
+            gen().vmovups(addr, Xbyak::Ymm(s));
+        else { JIT_ASSERT(!"vstore: dtype not implemented"); }
+    }
+
+    // Load one element and zero the rest of `dst`.
+    void vload_scalar(int d, int base, dim_t disp, data_type_t mem_dt,
+            data_type_t reg_dt) {
+        const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
             gen().vmovss(Xbyak::Xmm(d), addr);
         else { JIT_ASSERT(!"vload_scalar: dtype not implemented"); }
     }
 
     // Store element 0 of `src`.
-    void vstore_scalar(int base, dim_t disp, int s, data_type_t dt) {
+    void vstore_scalar(int base, dim_t disp, int s, data_type_t mem_dt,
+            data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
-        if (dt == data_type::f32)
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
             gen().vmovss(addr, Xbyak::Xmm(s));
         else { JIT_ASSERT(!"vstore_scalar: dtype not implemented"); }
     }
@@ -129,11 +152,11 @@ struct avx2_backend_t {
     }
 
     // Load the elements selected by `mask` and zero the rest of `dst`.
-    void vload_masked(int d, int base, dim_t disp, int mask, data_type_t dt,
-            data_section_t & /*data*/) {
+    void vload_masked(int d, int base, dim_t disp, int mask, data_type_t mem_dt,
+            data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
-        if (dt == data_type::f32) {
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
             gen().vmaskmovps(Xbyak::Ymm(d), Xbyak::Ymm(mask), addr);
         } else {
             // vmaskmovps applies only to f32. Other precisions need a different
@@ -143,11 +166,11 @@ struct avx2_backend_t {
     }
 
     // Store the elements of `src` selected by `mask`.
-    void vstore_masked(int base, dim_t disp, int s, int mask, data_type_t dt,
-            data_section_t & /*data*/) {
+    void vstore_masked(int base, dim_t disp, int s, int mask,
+            data_type_t mem_dt, data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
-        if (dt == data_type::f32) {
+        if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
             gen().vmaskmovps(addr, Xbyak::Ymm(mask), Xbyak::Ymm(s));
         } else {
             JIT_ASSERT(!"vstore_masked: dtype not implemented");

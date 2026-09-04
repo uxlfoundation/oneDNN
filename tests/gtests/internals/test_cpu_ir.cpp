@@ -324,11 +324,11 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
     ir.vzero(acc);
 
     const vreg_t a = ir.new_vec(data_type::f32);
-    ir.vload(a, ptr, 0);
+    ir.vload(a, ptr, 0, data_type::f32);
 
     const vreg_t b = ir.new_vec(data_type::f32);
     // AVX2 only.
-    ir.vload(b, ptr, simd_w() * (dim_t)sizeof(float));
+    ir.vload(b, ptr, simd_w() * (dim_t)sizeof(float), data_type::f32);
 
     ir.vdot(acc, a, b);
 
@@ -428,7 +428,7 @@ TEST(IRBuilderTests, ForwardEdgeControlFlow) {
     const vreg_t base = ir.new_gpr();
 
     ir.load_param(base, sizeof(int));
-    ir.vload(a, base, 0);
+    ir.vload(a, base, 0, data_type::f32);
 
     const label_t lbl_else = ir.new_label();
     const label_t lbl_end = ir.new_label();
@@ -734,10 +734,10 @@ ir_t build_dot_ir() {
     ir.vzero(acc);
 
     const vreg_t a = ir.new_vec(data_type::f32);
-    ir.vload(a, a_ptr, 0);
+    ir.vload(a, a_ptr, 0, data_type::f32);
 
     const vreg_t b = ir.new_vec(data_type::f32);
-    ir.vload(b, b_ptr, 0);
+    ir.vload(b, b_ptr, 0, data_type::f32);
 
     ir.vdot(acc, a, b);
 
@@ -745,7 +745,7 @@ ir_t build_dot_ir() {
     ir.vhreduce(acc, ws);
 
     // store the reduced scalar
-    ir.vstore_scalar(c_ptr, 0, acc);
+    ir.vstore_scalar(c_ptr, 0, acc, data_type::f32);
 
     return ir;
 }
@@ -783,7 +783,7 @@ TEST(EmitterTests, EmitsValidCodeForSpilledAllocation) {
     ir.load_param(b_ptr, sizeof(void *));
 
     const vreg_t b = ir.new_vec(data_type::f32);
-    ir.vload(b, b_ptr, 0);
+    ir.vload(b, b_ptr, 0, data_type::f32);
 
     std::vector<vreg_t> acc(6, vreg_t::none);
     for (int r = 0; r < 6; r++) {
@@ -793,7 +793,7 @@ TEST(EmitterTests, EmitsValidCodeForSpilledAllocation) {
 
     for (int r = 0; r < 6; r++) {
         const vreg_t a = ir.new_vec(data_type::f32);
-        ir.vload(a, a_ptr, r * simd_w() * (dim_t)sizeof(float));
+        ir.vload(a, a_ptr, r * simd_w() * (dim_t)sizeof(float), data_type::f32);
         ir.vdot(acc[r], a, b);
     }
 
@@ -841,9 +841,9 @@ TEST(IntegrationTests, BuildsLoopReduction) {
     // Reduce one simd_w-wide chunk per iteration and advance the pointers.
     emit_loop_imm(ir, k_blocks, [&]() {
         const vreg_t a = ir.new_vec(data_type::f32);
-        ir.vload(a, a_ptr, 0);
+        ir.vload(a, a_ptr, 0, data_type::f32);
         const vreg_t b = ir.new_vec(data_type::f32);
-        ir.vload(b, b_ptr, 0);
+        ir.vload(b, b_ptr, 0, data_type::f32);
         ir.vdot(acc, a, b);
     }, [&]() {
         ir.add_imm(a_ptr, simd_w() * (dim_t)sizeof(float));
@@ -852,7 +852,7 @@ TEST(IntegrationTests, BuildsLoopReduction) {
 
     const vreg_t ws = ir.new_vec(data_type::f32);
     ir.vhreduce(acc, ws);
-    ir.vstore_scalar(c_ptr, 0, acc);
+    ir.vstore_scalar(c_ptr, 0, acc, data_type::f32);
 
     ir_kernel_t kernel(ir);
     ASSERT_TRUE(kernel.run_ir_pipeline());
@@ -896,9 +896,9 @@ TEST(IntegrationTests, MaskedAccessCoversActiveElementsOnly) {
     ir.set_mask_imm(mask, tail);
 
     const vreg_t a = ir.new_vec(data_type::f32);
-    ir.vload_masked(a, a_ptr, 0, mask);
+    ir.vload_masked(a, a_ptr, 0, mask, data_type::f32);
     const vreg_t b = ir.new_vec(data_type::f32);
-    ir.vload_masked(b, b_ptr, 0, mask);
+    ir.vload_masked(b, b_ptr, 0, mask, data_type::f32);
 
     // Reduce first. An inactive element has to read as zero, or the values
     // past `tail` would land in the dot product.
@@ -908,11 +908,11 @@ TEST(IntegrationTests, MaskedAccessCoversActiveElementsOnly) {
 
     const vreg_t ws = ir.new_vec(data_type::f32);
     ir.vhreduce(acc, ws);
-    ir.vstore_scalar(c_ptr, dot_off, acc);
+    ir.vstore_scalar(c_ptr, dot_off, acc, data_type::f32);
 
     // Then the elementwise product, stored under the same mask.
     ir.vmul(a, b);
-    ir.vstore_masked(c_ptr, 0, a, mask);
+    ir.vstore_masked(c_ptr, 0, a, mask, data_type::f32);
 
     ir_kernel_t kernel(ir);
     ASSERT_TRUE(kernel.run_ir_pipeline());
@@ -951,7 +951,7 @@ ir_t build_shared_vector_dot_ir(int n) {
 
     const vreg_t b = ir.new_vec(data_type::f32);
     // Load shared vector.
-    ir.vload(b, b_ptr, 0);
+    ir.vload(b, b_ptr, 0, data_type::f32);
 
     std::vector<vreg_t> acc(n, vreg_t::none);
     for (int r = 0; r < n; r++) {
@@ -959,7 +959,7 @@ ir_t build_shared_vector_dot_ir(int n) {
         ir.vzero(acc[r]);
 
         const vreg_t a = ir.new_vec(data_type::f32);
-        ir.vload(a, a_ptr, r * simd_w() * (dim_t)sizeof(float));
+        ir.vload(a, a_ptr, r * simd_w() * (dim_t)sizeof(float), data_type::f32);
 
         ir.vdot(acc[r], a, b);
     }
@@ -969,7 +969,8 @@ ir_t build_shared_vector_dot_ir(int n) {
         ir.vhreduce(acc[r], ws);
 
     for (int r = 0; r < n; r++)
-        ir.vstore_scalar(c_ptr, r * (dim_t)sizeof(float), acc[r]);
+        ir.vstore_scalar(
+                c_ptr, r * (dim_t)sizeof(float), acc[r], data_type::f32);
 
     return ir;
 }
@@ -1045,10 +1046,10 @@ TEST(IntegrationTests, BranchSelectsCorrectValue) {
     ir.load_param(c_ptr, offsetof(select_args_t, c));
 
     const vreg_t a = ir.new_vec(data_type::f32);
-    ir.vload(a, a_ptr, 0);
+    ir.vload(a, a_ptr, 0, data_type::f32);
 
     const vreg_t b = ir.new_vec(data_type::f32);
-    ir.vload(b, b_ptr, 0);
+    ir.vload(b, b_ptr, 0, data_type::f32);
 
     const label_t lbl_else = ir.new_label();
     const label_t lbl_end = ir.new_label();
@@ -1066,10 +1067,10 @@ TEST(IntegrationTests, BranchSelectsCorrectValue) {
     //     store b -> c
     //   end:
     ir.jz(cond, lbl_else);
-    ir.vstore(c_ptr, 0, a); // then: c = a
+    ir.vstore(c_ptr, 0, a, data_type::f32); // then: c = a
     ir.jmp(lbl_end);
     ir.label(lbl_else);
-    ir.vstore(c_ptr, 0, b); // else: c = b
+    ir.vstore(c_ptr, 0, b, data_type::f32); // else: c = b
     ir.label(lbl_end);
 
     ir_kernel_t kernel(ir);
@@ -1147,7 +1148,7 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
     ir.load_param(c_ptr, offsetof(binary_args_t, c));
 
     const vreg_t b = ir.new_vec(data_type::f32);
-    ir.vload(b, b_ptr, 0);
+    ir.vload(b, b_ptr, 0, data_type::f32);
 
     std::vector<vreg_t> acc(n, vreg_t::none);
     for (int r = 0; r < n; r++) {
@@ -1155,7 +1156,7 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
         ir.vzero(acc[r]);
 
         const vreg_t a = ir.new_vec(data_type::f32);
-        ir.vload(a, a_ptr, r * simd_w() * (dim_t)sizeof(float));
+        ir.vload(a, a_ptr, r * simd_w() * (dim_t)sizeof(float), data_type::f32);
         ir.vdot(acc[r], a, b);
     }
 
@@ -1171,7 +1172,8 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
     ir.inject_postops(acc, c_ptr, out_byte_off);
 
     for (int r = 0; r < n; r++)
-        ir.vstore_scalar(c_ptr, r * (dim_t)sizeof(float), acc[r]);
+        ir.vstore_scalar(
+                c_ptr, r * (dim_t)sizeof(float), acc[r], data_type::f32);
 
     ir_kernel_t kernel(ir);
     ir_kernel_t::postops_cfg_t cfg;

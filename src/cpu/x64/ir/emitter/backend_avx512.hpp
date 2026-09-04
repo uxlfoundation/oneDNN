@@ -35,7 +35,6 @@
 #include <cassert>
 
 #include "common/c_types_map.hpp"
-#include "common/type_helpers.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/jit_generator.hpp"
 #include "cpu/x64/utils/jit_regops.hpp"
@@ -67,6 +66,22 @@ struct avx512_backend_t {
 
     void vstore(int base, dim_t disp, int s) { // [base + disp] = src
         gen().vmovups(gen().ptr[Xbyak::Reg64(base) + (int)disp], Xbyak::Zmm(s));
+    }
+
+    // Load one element and zero the rest of `dst`.
+    void vload_scalar(int d, int base, dim_t disp, data_type_t dt) {
+        const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        if (dt == data_type::f32)
+            gen().vmovss(Xbyak::Xmm(d), addr);
+        else { JIT_ASSERT(!"vload_scalar: dtype not implemented"); }
+    }
+
+    // Store element 0 of `src`.
+    void vstore_scalar(int base, dim_t disp, int s, data_type_t dt) {
+        const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        if (dt == data_type::f32)
+            gen().vmovss(addr, Xbyak::Xmm(s));
+        else { JIT_ASSERT(!"vstore_scalar: dtype not implemented"); }
     }
 
     void vadd(int d, int s, data_type_t dt) { // dst += s0
@@ -116,49 +131,29 @@ struct avx512_backend_t {
         gen().kshiftrq(k, k, (uint8_t)(64 - n_elems));
     }
 
-    // Load `n_elems` f32 elements. The count selects the simplest form:
-    //   n_elems == 1:       vmovss (no mask register needed)
-    //   n_elems == simd_w:  vmovups (no mask register needed)
-    //   otherwise:          vmovups under the write mask in `mask`
-    //
-    // A masked load zeroes (`T_z`). An inactive lane has to read as zero, or a
-    // tail iteration would accumulate whatever the register happened to hold
-    // into the dot product.
-    void vload_masked(int d, int base, dim_t disp, int mask, int n_elems,
-            data_type_t dt, data_section_t & /*data*/) {
-        const int simd_w = vlen / (int)types::data_type_size(dt);
-        assert(n_elems <= simd_w);
+    // Load the elements selected by `mask` and zero the rest of `dst` (`T_z`).
+    // An inactive element has to read as zero, or a tail iteration would
+    // accumulate whatever the register happened to hold into the dot product.
+    void vload_masked(int d, int base, dim_t disp, int mask, data_type_t dt,
+            data_section_t & /*data*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
         if (dt == data_type::f32) {
-            if (n_elems == 1)
-                gen().vmovss(Xbyak::Xmm(d), addr);
-            else if (n_elems == simd_w)
-                gen().vmovups(Xbyak::Zmm(d), addr);
-            else
-                gen().vmovups(
-                        Xbyak::Zmm(d) | Xbyak::Opmask(mask) | gen().T_z, addr);
+            gen().vmovups(
+                    Xbyak::Zmm(d) | Xbyak::Opmask(mask) | gen().T_z, addr);
         } else {
             JIT_ASSERT(!"vload_masked: dtype not implemented");
         }
     }
 
-    // Store `n_elems` f32 elements. Same case split as `vload_masked()`, but a
-    // masked store does not zero, since masking a store is already a merge into
-    // memory.
-    void vstore_masked(int base, dim_t disp, int s, int mask, int n_elems,
-            data_type_t dt, data_section_t & /*data*/) {
-        const int simd_w = vlen / (int)types::data_type_size(dt);
-        assert(n_elems <= simd_w);
+    // Store the elements of `src` selected by `mask`. There is no `T_z` here,
+    // since masking a store is already a merge into memory.
+    void vstore_masked(int base, dim_t disp, int s, int mask, data_type_t dt,
+            data_section_t & /*data*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
         if (dt == data_type::f32) {
-            if (n_elems == 1)
-                gen().vmovss(addr, Xbyak::Xmm(s));
-            else if (n_elems == simd_w)
-                gen().vmovups(addr, Xbyak::Zmm(s));
-            else
-                gen().vmovups(addr | Xbyak::Opmask(mask), Xbyak::Zmm(s));
+            gen().vmovups(addr | Xbyak::Opmask(mask), Xbyak::Zmm(s));
         } else {
             JIT_ASSERT(!"vstore_masked: dtype not implemented");
         }
@@ -172,9 +167,6 @@ private:
     // ISA is used to dispatch ISA-specific instructions (e.g. on
     // avx512_core_bf16).
     cpu_isa_t isa;
-
-    // Vector register width in bytes.
-    const int vlen = cpu_isa_traits_t<avx512_core>::vlen;
 };
 
 } // namespace ir

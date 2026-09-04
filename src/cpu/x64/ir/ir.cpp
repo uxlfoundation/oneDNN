@@ -14,6 +14,8 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include <cassert>
+
 #include "cpu/x64/ir/ir.hpp"
 
 namespace dnnl {
@@ -97,6 +99,33 @@ void ir_t::vload(vreg_t dst, vreg_t base, dim_t disp) {
     ops_.push_back(op);
 }
 
+void ir_t::vstore(vreg_t base, dim_t disp, vreg_t src) {
+    op_t op;
+    op.kind = op_kind_t::vstore;
+    op.s0 = src;
+    op.mem.base = base;
+    op.mem.disp = disp;
+    ops_.push_back(op);
+}
+
+void ir_t::vload_scalar(vreg_t dst, vreg_t base, dim_t disp) {
+    op_t op;
+    op.kind = op_kind_t::vload_scalar;
+    op.dst = dst;
+    op.mem.base = base;
+    op.mem.disp = disp;
+    ops_.push_back(op);
+}
+
+void ir_t::vstore_scalar(vreg_t base, dim_t disp, vreg_t src) {
+    op_t op;
+    op.kind = op_kind_t::vstore_scalar;
+    op.s0 = src;
+    op.mem.base = base;
+    op.mem.disp = disp;
+    ops_.push_back(op);
+}
+
 void ir_t::vdot(vreg_t dst, vreg_t a, vreg_t b) {
     op_t op;
     op.kind = op_kind_t::vdot;
@@ -138,27 +167,25 @@ void ir_t::set_mask_imm(vreg_t mask, int n_elems) {
     ops_.push_back(op);
 }
 
-void ir_t::vload_masked(
-        vreg_t dst, vreg_t base, dim_t disp, vreg_t mask, int elems) {
+void ir_t::vload_masked(vreg_t dst, vreg_t base, dim_t disp, vreg_t mask) {
+    assert(mask != vreg_t::none && "vload_masked: mask is required");
+
     op_t op;
     op.kind = op_kind_t::vload_masked;
     op.dst = dst;
-    // `none` when no mask register is needed
     op.s1 = mask;
-    op.imm = elems;
     op.mem.base = base;
     op.mem.disp = disp;
     ops_.push_back(op);
 }
 
-void ir_t::vstore_masked(
-        vreg_t base, dim_t disp, vreg_t src, vreg_t mask, int elems) {
+void ir_t::vstore_masked(vreg_t base, dim_t disp, vreg_t src, vreg_t mask) {
+    assert(mask != vreg_t::none && "vstore_masked: mask is required");
+
     op_t op;
     op.kind = op_kind_t::vstore_masked;
     op.s0 = src;
-    // `none` when no mask register is needed
     op.s1 = mask;
-    op.imm = elems;
     op.mem.base = base;
     op.mem.disp = disp;
     ops_.push_back(op);
@@ -281,8 +308,14 @@ void ir_t::def_use(
             break;
         case op_kind_t::vzero: d(op.dst); break;
         case op_kind_t::vload:
+        case op_kind_t::vload_scalar:
             u(op.mem.base);
             d(op.dst);
+            break;
+        case op_kind_t::vstore:
+        case op_kind_t::vstore_scalar:
+            u(op.s0);
+            u(op.mem.base);
             break;
         case op_kind_t::vdot:
             u(op.dst);
@@ -317,12 +350,12 @@ void ir_t::def_use(
         case op_kind_t::set_mask_imm: d(op.dst); break;
         case op_kind_t::vload_masked:
             u(op.mem.base);
-            u(op.s1); // mask (-1 -> not counted, dropped by u())
+            u(op.s1); // mask
             d(op.dst);
             break;
         case op_kind_t::vstore_masked:
             u(op.s0);
-            u(op.s1); // mask (-1 -> not counted, dropped by u())
+            u(op.s1); // mask
             u(op.mem.base);
             break;
         case op_kind_t::prefetch: u(op.mem.base); break;

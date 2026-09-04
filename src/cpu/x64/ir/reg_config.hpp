@@ -67,14 +67,21 @@ struct reg_config_t {
 // - `param_reg` (parameter pointer)
 // - `gpr_scratch` registers
 // - `vec_scratch` registers
+// - `mask_scratch` opmasks, on AVX-512 only
 //
-// The emitter uses these scratch registers when loading and storing spilled
-// values.
+// The emitter uses `gpr_scratch` and `vec_scratch` when loading and storing
+// spilled values.
+//
+// `mask_scratch` names the opmasks a kernel hands to code outside the IR that
+// writes them without restoring them. The JIT post-ops injector is the one such
+// consumer today (see `postops_injector_t`). On AVX2* a mask is a vector
+// register, so `mask_scratch` is ignored there.
 //
 // Export for testing.
 reg_config_t DNNL_API make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
         const std::vector<int> &gpr_scratch,
-        const std::vector<int> &vec_scratch);
+        const std::vector<int> &vec_scratch,
+        const std::vector<int> &mask_scratch);
 
 } // namespace ir
 } // namespace x64

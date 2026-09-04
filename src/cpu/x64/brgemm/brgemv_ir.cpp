@@ -473,8 +473,8 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         }
 
         if (cfg.with_injector_postops) {
-            // Each accumulator is horizontally reduced to one scalar, so the
-            // injector sees a single active element with no mask register. Its
+            // Each accumulator is horizontally reduced to one scalar, which is
+            // the active element count `generate()` gives the injector. The
             // output offset matches the store displacement below, so a sum
             // post-op reads each element from the address its result is
             // written to.
@@ -482,8 +482,7 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
             for (int r = 0; r < m_block; r++)
                 out_byte_off[r] = cfg.dt_sz_y * (dim_t)r * cfg.incy;
 
-            ir.inject_postops(acc, regs.advancing.store_ptr, out_byte_off,
-                    ir::vreg_t::none, /*elems=*/1);
+            ir.inject_postops(acc, regs.advancing.store_ptr, out_byte_off);
         }
 
         ir.label(skip_post_ops);
@@ -561,6 +560,9 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         // Scratch registers (2 gpr + 3 vec) reserved for spill code.
         const int gpr_scratch0 = 10, gpr_scratch1 = 11;
         const int vec_scratch0 = 13, vec_scratch1 = 14, vec_scratch2 = 15;
+        // AVX-512 opmasks reserved for the post-ops injector, which writes both
+        // and restores neither (see `postops_injector_t`).
+        const int eltwise_opmask = 6, binary_tail_opmask = 7;
 
         const int rsp_idx = Xbyak::Operand::RSP;
         const int param_idx = abi_param1.getIdx();
@@ -568,7 +570,8 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         // Build register configuration for code emission
         const ir::reg_config_t reg_cfg = ir::make_reg_config(brg_.isa_impl,
                 param_idx, rsp_idx, {gpr_scratch0, gpr_scratch1},
-                {vec_scratch0, vec_scratch1, vec_scratch2});
+                {vec_scratch0, vec_scratch1, vec_scratch2},
+                {eltwise_opmask, binary_tail_opmask});
 
         // Register allocation
         ir::reg_alloc_result_t alloc = allocate_registers(ir, reg_cfg.pools);
@@ -576,10 +579,8 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         // The injector is created here, not in the emitter, because it spans
         // the whole codegen flow (emits during `emit()`, writes its table after
         // the postamble) and needs descriptor inputs the generic emitter lacks.
-        // The emitter drives it through the `inject_postops` operation and the
-        // callback below.
+        // The emitter drives it through the `inject_postops` operation.
         std::unique_ptr<ir::postops_injector_t> postops_injector;
-        ir::inject_postops_fn_t emit_injector;
 
         if (brg_.with_eltwise || brg_.with_binary || brg_.with_sum) {
             // A partial right-hand-side load reads the vector tail, or one
@@ -590,14 +591,8 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
             postops_injector.reset(new ir::postops_injector_t(*this,
                     brg_.isa_impl, brg_.attr()->post_ops_, *brg_.dst_md(),
                     abi_param1, GET_OFF(post_ops_binary_rhs_arg_vec),
-                    GET_OFF(data_C_ptr_), postops_tail_elems));
-
-            emit_injector = [&](const std::vector<int> &acc_phys, int base_phys,
-                                    const std::vector<dim_t> &out_byte_off,
-                                    int mask_phys, int elems) {
-                postops_injector->apply(
-                        acc_phys, base_phys, out_byte_off, mask_phys, elems);
-            };
+                    GET_OFF(data_C_ptr_), postops_tail_elems, eltwise_opmask,
+                    binary_tail_opmask));
         }
 
         preamble();
@@ -610,7 +605,7 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         // The emitter may accumulate static data (e.g. the mask table) that we
         // need to write down after the postamble.
         ir::data_section_t data;
-        ir::emit(*this, ir, alloc, reg_cfg, data, emit_injector);
+        ir::emit(*this, ir, alloc, reg_cfg, data, postops_injector.get());
 
         // Stack cleanup
         if (alloc.frame_bytes > 0) add(rsp, (uint32_t)alloc.frame_bytes);

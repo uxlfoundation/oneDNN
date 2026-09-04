@@ -26,7 +26,8 @@ namespace ir {
 
 reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
         const std::vector<int> &gpr_scratch,
-        const std::vector<int> &vec_scratch) {
+        const std::vector<int> &vec_scratch,
+        const std::vector<int> &mask_scratch) {
     reg_config_t rc;
     rc.param_reg = param_reg;
     rc.gpr_scratch = gpr_scratch;
@@ -69,14 +70,15 @@ reg_config_t make_reg_config(cpu_isa_t isa, int param_reg, int rsp_reg,
     //  * mask: file 1 on AVX2*, where a mask is a vector register, and file 2
     //    on AVX-512, which has a dedicated k-register file.
     if (is_superset(isa, avx512_core)) {
-        // Mask file holds `k1` to `k7`. `k0` is excluded because it cannot
-        // encode a write mask. A spill slot is 8 bytes, the width of an opmask,
-        // although the emitter never spills a mask (see `set_mask_imm` in
-        // `emitter.cpp`).
+        // Mask file holds `k1` to `k7` minus `mask_scratch`. `k0` is excluded
+        // because it cannot encode a write mask. A spill slot is 8 bytes, the
+        // width of an opmask, although the emitter never spills a mask (see
+        // `set_mask_imm` in `emitter.cpp`).
         reg_file_t mask_file;
         mask_file.slot_size = 8;
-        for (int i = 1; i < 8; i++)
-            mask_file.regs.push_back(i);
+        for (int i = 1; i < 8; i++) {
+            if (!contains(mask_scratch, i)) mask_file.regs.push_back(i);
+        }
 
         rc.pools.files.push_back(mask_file);
         rc.pools.kind_to_file = {0, 1, 2};

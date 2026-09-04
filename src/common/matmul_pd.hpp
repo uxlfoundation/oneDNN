@@ -206,6 +206,14 @@ struct matmul_pd_t : public primitive_desc_t {
 
     int dst_qmask_M() const { return src_qmask_M(); }
 
+    bool groups_mask_ok(const quant_entry_t &entry, int mask, int dim0_mask,
+            int dim1_mask) const {
+        if (entry.has_default_groups()) return true;
+        // Unit groups do not introduce an additional quantization dimension.
+        return IMPLICATION(entry.get_group(0) > 1, mask & dim0_mask)
+                && IMPLICATION(entry.get_group(1) > 1, mask & dim1_mask);
+    }
+
     virtual status_t attr_scales_ok(const engine_t *engine,
             const std::vector<int> &supported_args
             = {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},
@@ -240,6 +248,11 @@ struct matmul_pd_t : public primitive_desc_t {
 
             const auto &mask = scales.get_mask(arg);
             if (arg == DNNL_ARG_WEIGHTS) {
+                VDISPATCH_MATMUL(
+                        groups_mask_ok(scales.get(arg), mask, wei_qmask_K(),
+                                wei_qmask_N()),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+
                 const auto &g0 = scales.get_group(arg, 0);
                 const auto &g1 = scales.get_group(arg, 1);
                 const bool wei_k_group_ok = IMPLICATION(g0 > 1, K() % g0 == 0);
@@ -264,6 +277,11 @@ struct matmul_pd_t : public primitive_desc_t {
                             VERBOSE_UNSUPPORTED_SCALES_CFG);
                 }
             } else if (arg == DNNL_ARG_SRC) {
+                VDISPATCH_MATMUL(
+                        groups_mask_ok(scales.get(arg), mask, src_qmask_M(),
+                                src_qmask_K()),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+
                 // Masks supported across all implementations. Implementation
                 // specific masks can be passed through `extra_masks`.
                 VDISPATCH_MATMUL(utils::one_of(mask, 0, src_qmask_K(),
@@ -286,6 +304,11 @@ struct matmul_pd_t : public primitive_desc_t {
                                          scales.get(arg).has_default_groups()),
                         VERBOSE_UNSUPPORTED_SCALES_CFG);
             } else if (arg == DNNL_ARG_DST) {
+                VDISPATCH_MATMUL(
+                        groups_mask_ok(scales.get(arg), mask, dst_qmask_M(),
+                                dst_qmask_N()),
+                        VERBOSE_UNSUPPORTED_SCALES_CFG);
+
                 // Masks supported across all implementations. Implementation
                 // specific masks can be passed through `extra_masks`.
                 VDISPATCH_MATMUL(utils::one_of(mask, 0, dst_qmask_N(),
@@ -347,6 +370,11 @@ struct matmul_pd_t : public primitive_desc_t {
             VDISPATCH_MATMUL(is_qmode_supported, VERBOSE_UNSUPPORTED_ZP_CFG);
 
             if (arg == DNNL_ARG_WEIGHTS) {
+                VDISPATCH_MATMUL(
+                        groups_mask_ok(zp.get(arg), zp.get_mask(arg),
+                                wei_qmask_K(), wei_qmask_N()),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+
                 if (!zp.get(arg).has_default_groups()) {
                     const auto gK = zp.get_group(arg, -2);
                     VDISPATCH_MATMUL(IMPLICATION(gK > 1, K() % gK == 0),
@@ -361,6 +389,11 @@ struct matmul_pd_t : public primitive_desc_t {
                             VERBOSE_UNSUPPORTED_ZP_CFG);
                 }
             } else if (arg == DNNL_ARG_SRC) {
+                VDISPATCH_MATMUL(
+                        groups_mask_ok(zp.get(arg), zp.get_mask(arg),
+                                src_qmask_M(), src_qmask_K()),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+
                 const int bcast_mask = broadcast_mask(*src_md());
                 const auto &mask = zp.get_mask(arg) & ~bcast_mask;
 
@@ -379,6 +412,11 @@ struct matmul_pd_t : public primitive_desc_t {
                             VERBOSE_UNSUPPORTED_ZP_CFG);
                 }
             } else if (arg == DNNL_ARG_DST) {
+                VDISPATCH_MATMUL(
+                        groups_mask_ok(zp.get(arg), zp.get_mask(arg),
+                                dst_qmask_M(), dst_qmask_N()),
+                        VERBOSE_UNSUPPORTED_ZP_CFG);
+
                 const int bcast_mask = broadcast_mask(*dst_md());
                 const auto &mask = zp.get_mask(arg) & ~bcast_mask;
 

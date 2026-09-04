@@ -180,7 +180,8 @@ A value of `1` means no sub-blocking, and a value of `G > 1` means every `G`
 consecutive elements share one value.
 
 - Groups require `mask > 0`.
-- The mask bits for the last two dimensions must be set when groups are used.
+- A non-unit group (`G > 1`) requires the corresponding dimension's mask bit
+  to be set.
 - Each group size must evenly divide the corresponding dimension.
 
 #### Common Masks and Groups Examples

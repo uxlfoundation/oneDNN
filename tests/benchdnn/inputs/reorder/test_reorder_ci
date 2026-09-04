@@ -61,6 +61,9 @@
 --reset
 --batch=test_reorder_fp4
 
+# u2 cases
+--batch=harness_reorder_int2
+
 # plain transpose cases
 --reset
 --sdt=f32 --ddt=f32

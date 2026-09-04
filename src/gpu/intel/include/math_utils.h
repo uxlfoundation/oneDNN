@@ -688,6 +688,11 @@ char __attribute__((overloadable)) cvt_f32_to_s4(float a) {
     return convert_char_sat_rte(min(max(a, -8.0f), 7.0f)) & 0x0F;
 }
 
+uchar __attribute__((overloadable)) cvt_f32_to_u2(float a) {
+    uchar i = convert_uchar_sat_rte(a);
+    return (i & 0xfc) ? 0x03 : i & 0x03;
+}
+
 float __attribute__((overloadable)) cvt_s4_to_f32(char a) {
     char sign = (a & 0x08) ? 0xf0 : 0x0;
     char val = a | sign;
@@ -709,6 +714,10 @@ float __attribute__((overloadable)) cvt_s4_to_s32(s4 a) {
 
 int __attribute__((overloadable)) cvt_u4_to_s32(u4 a) {
     return (int)(a.data & 0x0f);
+}
+
+int __attribute__((overloadable)) cvt_u2_to_s32(u2 a) {
+    return (int)(a.data & 0x03);
 }
 
 #if MATH_UTILS_DECLARE_F4_E2M1
@@ -757,6 +766,24 @@ float __attribute__((overloadable)) cvt_f4_e2m1_to_f32(uchar a) {
 }
 
 #endif
+
+#define GET_QUARTER_BYTE(x, y) get_quarter_byte(x, y)
+
+uchar __attribute__((overloadable)) get_quarter_byte(
+        const __global uchar *x, off_t y) {
+    uchar ret = 0;
+    if (y % 4) {
+        ret = (uchar)(((uchar)x[y / 4] >> (2 * (y % 4))) & 0x03);
+    } else {
+        ret = (uchar)(x[y / 4] & 0x03);
+    }
+    return ret;
+}
+
+u2 __attribute__((overloadable)) get_quarter_byte(
+        const __global u2 *x, off_t y) {
+    return as_u2(get_quarter_byte((__global const uchar *)x, y));
+}
 
 #define GET_HALF_BYTE(x, y) get_half_byte(x, y)
 

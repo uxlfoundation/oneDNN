@@ -2170,7 +2170,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any && type_i == data_type::f32
                         && utils::one_of(type_o, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1),
+                                data_type::f4_e2m1, data_type::u2),
                 spec::reference>::type> {
     static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {
@@ -2253,26 +2253,78 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         // dims=[7, 4], strides=[1, 8]. To make a trick with transform, padded
         // point gets counted in `work_amount` but its value shouldn't affect
         // anything.
-        const dim_t work_amount
-                = get_scratchpad_size(input_d, output_d) / (2 * sizeof(float));
+        int nibble_nelems = -1;
+        switch (type_o) {
+            case data_type::u4:
+            case data_type::s4:
+            case data_type::f4_e2m1: nibble_nelems = nibble2_t::nelems(); break;
+            case data_type::u2: nibble_nelems = nibble4_t::nelems(); break;
+            default: assert(!"unsupported data type"); break;
+        }
+        if (nibble_nelems < 0) return status::runtime_error;
+
+        const dim_t work_amount = get_scratchpad_size(input_d, output_d)
+                / (nibble_nelems * sizeof(float));
 
         parallel(0, [=](const int ithr, const int nthr) {
             dim_t start {0}, end {0};
             balance211(work_amount, nthr, ithr, start, end);
             PRAGMA_OMP_SIMD()
             for (dim_t j = start; j < end; j++) {
-                const auto idx = 2 * j;
+                switch (type_o) {
+                    case data_type::u4:
+                    case data_type::s4:
+                    case data_type::f4_e2m1: {
+                        const auto idx = nibble2_t::nelems() * j;
+                        const auto o_off
+                                = need_transform ? idx : output_d.off_l(idx);
+                        const auto i0_off
+                                = need_transform ? idx : input_d.off_l(idx);
+                        auto val0 = _qz_a1b0<data_type::f32, type_o>()(
+                                wspace[i0_off]);
+                        const auto i1_off = need_transform
+                                ? idx + 1
+                                : input_d.off_l(idx + 1);
+                        auto val1 = _qz_a1b0<data_type::f32, type_o>()(
+                                wspace[i1_off]);
 
-                const auto i0_off = need_transform ? idx : input_d.off_l(idx);
-                auto val0 = _qz_a1b0<data_type::f32, type_o>()(wspace[i0_off]);
+                        nibble2_t o_val(val0.raw_bits_, val1.raw_bits_);
+                        reinterpret_cast<uint8_t *>(
+                                output)[o_off / nibble2_t::nelems()]
+                                = o_val.get();
+                    } break;
+                    case data_type::u2: {
+                        const auto idx = nibble4_t::nelems() * j;
+                        const auto o_off
+                                = need_transform ? idx : output_d.off_l(idx);
+                        const auto i0_off
+                                = need_transform ? idx : input_d.off_l(idx);
+                        auto val0 = _qz_a1b0<data_type::f32, type_o>()(
+                                wspace[i0_off]);
+                        const auto i1_off = need_transform
+                                ? idx + 1
+                                : input_d.off_l(idx + 1);
+                        auto val1 = _qz_a1b0<data_type::f32, type_o>()(
+                                wspace[i1_off]);
+                        const auto i2_off = need_transform
+                                ? idx + 2
+                                : input_d.off_l(idx + 2);
+                        auto val2 = _qz_a1b0<data_type::f32, type_o>()(
+                                wspace[i2_off]);
+                        const auto i3_off = need_transform
+                                ? idx + 3
+                                : input_d.off_l(idx + 3);
+                        auto val3 = _qz_a1b0<data_type::f32, type_o>()(
+                                wspace[i3_off]);
 
-                const auto i1_off
-                        = need_transform ? idx + 1 : input_d.off_l(idx + 1);
-                auto val1 = _qz_a1b0<data_type::f32, type_o>()(wspace[i1_off]);
-
-                const auto o_off = need_transform ? idx : output_d.off_l(idx);
-                nibble2_t o_val(val0.raw_bits_, val1.raw_bits_);
-                reinterpret_cast<uint8_t *>(output)[o_off / 2] = o_val.get();
+                        nibble4_t o_val(val0.raw_bits_, val1.raw_bits_,
+                                val2.raw_bits_, val3.raw_bits_);
+                        reinterpret_cast<uint8_t *>(
+                                output)[o_off / nibble4_t::nelems()]
+                                = o_val.get();
+                    } break;
+                    default: assert(!"unsupported data type"); break;
+                }
             }
         });
 
@@ -2285,7 +2337,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         typename utils::enable_if<tag_i == format_tag::any
                         && tag_o == format_tag::any
                         && utils::one_of(type_i, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1)
+                                data_type::f4_e2m1, data_type::u2)
                         && utils::one_of(type_o, data_type::f32,
                                 data_type::bf16, data_type::f16),
                 spec::reference>::type> {
@@ -2356,6 +2408,14 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                     const nibble2_t in_nibble(pack);
                     src_val = static_cast<data_t<type_i>>(
                             in_nibble.get(i_off % nibble2_t::nelems()));
+                } break;
+                case data_type::u2: {
+                    const auto i_nibble = i_off / nibble4_t::nelems();
+                    const auto i_nibble_off = i_nibble * nibble4_t::size();
+                    const uint8_t pack = u8_input[i_nibble_off];
+                    const nibble4_t in_nibble(pack);
+                    src_val = static_cast<data_t<type_i>>(
+                            in_nibble.get(i_off % nibble4_t::nelems()));
                 } break;
                 default: assert(!"unsupported data type!");
             }
@@ -2536,9 +2596,9 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
                         && order_keep == fmt_order::any
                         // u4/s4 requires a special implementation
                         && !utils::one_of(type_i, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1)
+                                data_type::f4_e2m1, data_type::u2)
                         && !utils::one_of(type_o, data_type::s4, data_type::u4,
-                                data_type::f4_e2m1),
+                                data_type::f4_e2m1, data_type::u2),
                 spec::reference>::type> {
     static status_t is_applicable(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d, const primitive_attr_t *attr) {

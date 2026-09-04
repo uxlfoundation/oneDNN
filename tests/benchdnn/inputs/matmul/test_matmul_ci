@@ -33,3 +33,5 @@
 --reset --dt=f16 --stag=abx --wtag=abdc --dtag=abx --attr-post-ops=mul_inplace:f16 7x5x420x100:1x1x100x1
 --reset --dt=f16 --stag=abx --wtag=ba   --dtag=ba  --attr-post-ops=relu+mul_inplace:f16 256x1868:1868x592
 --reset --dt=f16 --stag=abx --wtag=ba   --dtag=abx --attr-post-ops=mul_inplace:f16 1956x333:333x608
+
+--batch=harness_matmul_int2

@@ -235,8 +235,20 @@ u4 __attribute__((overloadable)) into_u4(float f) {
     return res;
 }
 
+u2 __attribute__((overloadable)) into_u2(u2 val) { return val; }
+
+u2 __attribute__((overloadable)) into_u2(float f) {
+    u2 res;
+    res.data = cvt_f32_to_u2(f);
+    return res;
+}
+
 float __attribute__((overloadable)) into_float(u4 b) {
     return convert_float(b.data & 0x0f);
+}
+
+float __attribute__((overloadable)) into_float(u2 b) {
+    return convert_float(b.data & 0x03);
 }
 
 #ifdef cl_khr_fp16

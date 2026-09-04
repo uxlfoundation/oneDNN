@@ -1,0 +1,27 @@
+# Focused coverage for the direct scalar f32 binary post-op pointer path in
+# x64 BRGEMM matmul kernels.
+
+--reset
+--dt=f32
+--stag=ab --wtag=ab --dtag=ab
+
+# Common scalar arithmetic, including N and M tails.
+--attr-post-ops=mul:f32:common
+32x64:64x37 7x127:127x65 2x63:63x17
+--attr-post-ops=add:f32:common
+32x64:64x37 7x127:127x65
+
+# Multiple scalar post-ops must keep RHS pointers distinct or reload them
+# sequentially without changing RHS argument ordering.
+--attr-post-ops=mul:f32:common+add:f32:common
+32x64:64x37 7x127:127x65
+
+# Eligible f32 direct arithmetic mixed with an ineligible scalar s32 op.
+--attr-post-ops=mul:f32:common+add:s32:common
+32x64:64x37 7x127:127x65
+
+# Non-scalar and unsupported-dtype RHS operations remain on the generic path.
+--attr-post-ops=add:f32:per_oc
+32x64:64x37
+--attr-post-ops=add:s32:common
+32x64:64x37

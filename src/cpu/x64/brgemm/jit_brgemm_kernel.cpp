@@ -237,6 +237,10 @@ private:
     const reg64_savable_t reg_do_comp {regscratchpad_, rbx};
     const reg64_savable_t reg_skip_accm {regscratchpad_, rbx};
     const reg64_t reg_tmp_gpr = rbx;
+    // The direct scalar RHS path borrows rbx only for the post-op region.
+    // Save/restore through the kernel scratchpad because rbx aliases several
+    // loop-state registers elsewhere in this kernel.
+    const reg64_savable_t reg_scalar_rhs {regscratchpad_, rbx};
     const reg64_savable_t reg_zp_a_val {regscratchpad_, rbx};
     const reg64_savable_t reg_buf {regscratchpad_, rbx, r26};
     const reg64_savable_t reg_dynamic_C_offset {regscratchpad_, rbx};
@@ -1781,6 +1785,31 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(int bd_block, int ld_block2,
 
     if (brg.with_binary) param1.restore();
 
+    bool direct_scalar_rhs = false;
+    if (brg.with_binary && is_superset(brg.isa_impl, avx512_core)
+            && binary_injector::all_simple_scalar_f32_binary_postops(
+                    brg.attr()->post_ops_, memory_desc_wrapper(brg.dst_md()),
+                    binary_injector::get_all_strategies_supported_by_injector())) {
+        int rhs_arg_idx = 0;
+        const auto dst_d = memory_desc_wrapper(brg.dst_md());
+        const auto supported_bcast
+                = binary_injector::get_all_strategies_supported_by_injector();
+        for (const auto &post_op : brg.attr()->post_ops_.entry_) {
+            if (binary_injector::is_simple_scalar_f32_binary_postop(
+                        post_op, dst_d, supported_bcast)) {
+                rhs_arg_params.rhs_arg_idx_to_scalar_ptr_reg.emplace(
+                        rhs_arg_idx, reg_scalar_rhs);
+                direct_scalar_rhs = true;
+            }
+            if (post_op.is_like_binary()) {
+                ++rhs_arg_idx;
+                if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
+            }
+        }
+        rhs_arg_params.load_scalar_rhs_ptrs = direct_scalar_rhs;
+        if (direct_scalar_rhs) reg_scalar_rhs.save();
+    }
+
     const int bd_block_shift = brg.is_runtime_ldd ? 1 : bd_block;
     for (int bd_block_idx = 0; bd_block_idx < bd_block;
             bd_block_idx += bd_block_shift) {
@@ -1821,6 +1850,8 @@ void jit_brgemm_kernel_t<Wmm>::apply_post_ops(int bd_block, int ld_block2,
         if (brg.is_runtime_ldd && bd_block > 1)
             reg_D_shift_bytes.addTo(reg_aux_D);
     }
+
+    if (direct_scalar_rhs) reg_scalar_rhs.restore();
 }
 
 template <typename Wmm>

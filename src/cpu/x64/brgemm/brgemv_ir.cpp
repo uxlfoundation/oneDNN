@@ -309,11 +309,11 @@ void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     const ir::vreg_t x = ir.new_vec(cfg.dt_x);
     const ir::vreg_t a = ir.new_vec(cfg.dt_a);
     ir.prefetch(x_ptr, gemv_pf_dist);
-    ir.vload(x, x_ptr, 0);
+    ir.vload(x, x_ptr, 0, cfg.dt_x);
     for (int i = 0; i < (int)acc.size(); i++) {
         const dim_t a_off = cfg.dt_sz_a * (dim_t)i * cfg.lda;
         ir.prefetch(a_ptr, a_off + gemv_pf_dist);
-        ir.vload(a, a_ptr, a_off);
+        ir.vload(a, a_ptr, a_off, cfg.dt_a);
         ir.vdot(acc[i], a, x);
     }
 }
@@ -326,9 +326,10 @@ void emit_microkernel_tail(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         ir::vreg_t mask) {
     const ir::vreg_t x = ir.new_vec(cfg.dt_x);
     const ir::vreg_t a = ir.new_vec(cfg.dt_a);
-    ir.vload_masked(x, x_ptr, 0, mask);
+    ir.vload_masked(x, x_ptr, 0, mask, cfg.dt_x);
     for (int i = 0; i < (int)acc.size(); i++) {
-        ir.vload_masked(a, a_ptr, cfg.dt_sz_a * (dim_t)i * cfg.lda, mask);
+        ir.vload_masked(
+                a, a_ptr, cfg.dt_sz_a * (dim_t)i * cfg.lda, mask, cfg.dt_a);
         ir.vdot(acc[i], a, x);
     }
 }
@@ -393,7 +394,7 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
             ir.vzero(acc[r]);
         else
             ir.vload_scalar(acc[r], regs.advancing.y_ptr,
-                    cfg.dt_sz_y * (dim_t)r * cfg.incy);
+                    cfg.dt_sz_y * (dim_t)r * cfg.incy, cfg.dt_y);
     }
 
     // Batch reduction over bs dimension
@@ -431,7 +432,8 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         if (cfg.with_src_scales) {
             // Loaded once and applied to every output.
             const ir::vreg_t sc = ir.new_vec(cfg.dt_src_scales);
-            ir.vload_scalar(sc, regs.invariant.src_scale_ptr, 0);
+            ir.vload_scalar(
+                    sc, regs.invariant.src_scale_ptr, 0, cfg.dt_src_scales);
 
             for (int r = 0; r < m_block; r++)
                 ir.vmul(acc[r], sc);
@@ -442,12 +444,13 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
             // loop. The per-N case loads a separate scale per output element.
             const ir::vreg_t sc = ir.new_vec(cfg.dt_wei_scales);
             if (cfg.single_wei_scale)
-                ir.vload_scalar(sc, regs.advancing.wei_scale_ptr, 0);
+                ir.vload_scalar(
+                        sc, regs.advancing.wei_scale_ptr, 0, cfg.dt_wei_scales);
 
             for (int r = 0; r < m_block; r++) {
                 if (!cfg.single_wei_scale)
                     ir.vload_scalar(sc, regs.advancing.wei_scale_ptr,
-                            cfg.dt_sz_wei_scales * (dim_t)r);
+                            cfg.dt_sz_wei_scales * (dim_t)r, cfg.dt_wei_scales);
                 ir.vmul(acc[r], sc);
             }
         }
@@ -457,12 +460,12 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
             // loop. A row output loads a separate bias per output element.
             const ir::vreg_t bias = ir.new_vec(cfg.dt_bias);
             if (!cfg.treat_y_as_row)
-                ir.vload_scalar(bias, regs.advancing.bias_ptr, 0);
+                ir.vload_scalar(bias, regs.advancing.bias_ptr, 0, cfg.dt_bias);
 
             for (int r = 0; r < m_block; r++) {
                 if (cfg.treat_y_as_row)
                     ir.vload_scalar(bias, regs.advancing.bias_ptr,
-                            cfg.dt_sz_bias * (dim_t)r);
+                            cfg.dt_sz_bias * (dim_t)r, cfg.dt_bias);
                 ir.vadd(acc[r], bias);
             }
         }
@@ -485,7 +488,7 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 
     for (int r = 0; r < m_block; r++)
         ir.vstore_scalar(regs.advancing.store_ptr,
-                cfg.dt_sz_y * (dim_t)r * cfg.incy, acc[r]);
+                cfg.dt_sz_y * (dim_t)r * cfg.incy, acc[r], cfg.dt_y);
 
     // Advance to next M block
     ir.add_imm(regs.advancing.a_off, cfg.mblk_a_off);

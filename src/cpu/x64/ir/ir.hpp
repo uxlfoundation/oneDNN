@@ -119,9 +119,8 @@ enum class op_kind_t {
     // Post-ops
     //
     // Apply post-ops via an injector to a set of accumulators. The injector is
-    // not IR-based, so lowering to it needs interoperability code (see the
-    // emitter's `postops_lowering_t`). Operands are in
-    // `inject_postops_args_t`.
+    // not IR-based, so lowering to it needs interoperability code (see
+    // `postops_injector_t`). Operands are in `inject_postops_args_t`.
     inject_postops,
 
     // Mask operations
@@ -236,8 +235,8 @@ struct vreg_info_t {
 // How many elements of an accumulator are active is not recorded here. That is
 // a detail of hooking the Xbyak injector up to the IR, not of the IR itself.
 // The count is fixed for a kernel, so the lowering takes it once instead (see
-// the emitter's `postops_lowering_t`), and the register that carries the
-// pattern is ISA-specific. Neither belongs in a target-neutral IR.
+// `postops_injector_t`), and the register that carries the pattern is
+// ISA-specific. Neither belongs in a target-neutral IR.
 struct inject_postops_args_t {
     std::vector<vreg_t> acc;
     vreg_t base_ptr = vreg_t::none;

@@ -503,20 +503,20 @@ gen_nocopy_desc_t::select_kernel(const compute::device_info_t &dev_info,
 
     add_mode_matches(fpmath_bf16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SB]"; }
-        if (dt.isInt8() || dt.isInt4()) return "[OB]";
+        if (dt.isInt8() || dt.isInt4() || dt.is3()) return "[OB]";
         if (dt.isF4()) return "F";
         return nullptr;
     });
 
     add_mode_matches(fpmath_f16, [](Type dt) -> const char * {
         if (dt == Type::f32) { return "[SH]"; }
-        if (dt.isInt8() || dt.isInt4()) return "[OH]";
+        if (dt.isInt8() || dt.isInt4() || dt.is3()) return "[OH]";
         if (dt.isF4()) return "F";
         return nullptr;
     });
 
     add_mode_matches(!(fpmath_f16 || fpmath_bf16), [](Type dt) -> const char * {
-        if (dt.isInt4()) return "[FO]";
+        if (dt.isInt4() || dt.is3()) return "[FO]";
         return nullptr;
     });
 

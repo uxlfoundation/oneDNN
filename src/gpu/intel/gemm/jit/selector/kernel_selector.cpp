@@ -287,9 +287,9 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
                 // native s8/s4 DPAS isn't available/legal). In that case the
                 // generated kernel never dequantizes through u4 at all --
                 // CopyPlan::planInt3Upconvert unpacks u3 straight to the
-                // int8 compute type -- so match plain int8 catalog
-                // strategies directly (using the bracket's compute-type
-                // character) instead of falling back to u4.
+                // int8 compute type -- so match the "[FO]"-bracketed int8
+                // catalog strategies directly (using the bracket's
+                // compute-type character) instead of falling back to u4.
                 auto isU3 = [](kcatalog::string str) {
                     char c = (str[0] == '[') ? str[1] : str[0];
                     return c && ((c & ~0x20) == 'K');
@@ -298,8 +298,14 @@ const std::vector<const kcatalog::Entry *> select(const kcatalog::Catalog &catal
                     if (!isU3(str)) return false;
                     if (str[0] == '[') {
                         switch (str[2]) {
-                            case 'O': str = "O"; return true;
-                            case 'o': str = "o"; return true;
+                            // Prefer the dedicated int4-as-int8 bracketed
+                            // strategies (e.g. "[FO]") over plain "O"/"o":
+                            // they cover a much larger, more specifically
+                            // tuned pool of mixed sub-byte/int8 catalog
+                            // entries, and u3 unpacks to int8 the same way
+                            // int4 does in this path.
+                            case 'O': str = "[FO]"; return true;
+                            case 'o': str = "[Fo]"; return true;
                             default: break;
                         }
                     }

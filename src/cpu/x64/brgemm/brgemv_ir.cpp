@@ -66,8 +66,11 @@ namespace {
 //   m_block      - M rows per full block
 //   k_block      - K elements reduced per K block
 //   dt_sz_a/x/y  - element size in bytes of A, x, and y
-//   dt_a/x/y     - element data type of A, x, and y. Tags the vec vregs so the
-//                  emitter lowers each op to its dtype-specific instruction.
+//   dt_a/x/y     - element data type of A, x, and y in memory
+//   dt_a_reg / dt_x_reg - data type of the vec vreg holding A and x. It is the
+//                  memory type when the reduction consumes it as it is, and
+//                  f32 when the load converts. Paired with `k_block`, which is
+//                  the element count that follows from the same choice.
 //   dt_acc       - accumulation data type
 //   beta         - output scaling: 0 overwrites y, 1 accumulates into y
 //   m_blocks     - number of full M blocks
@@ -109,6 +112,8 @@ struct brgemv_ir_conf_t {
         , dt_a(brg.dt_a)
         , dt_x(brg.dt_b)
         , dt_y(brg.dt_c)
+        , dt_a_reg(brg.gemv_use_vdpbf16ps() ? brg.dt_a : data_type::f32)
+        , dt_x_reg(brg.gemv_use_vdpbf16ps() ? brg.dt_b : data_type::f32)
         , dt_acc(data_type::f32)
         , beta(brg.beta)
         , m_blocks(m / m_block)
@@ -140,7 +145,9 @@ struct brgemv_ir_conf_t {
     const dim_t max_bs;
     const int m_block, k_block;
     const int dt_sz_a, dt_sz_x, dt_sz_y;
-    const data_type_t dt_a, dt_x, dt_y, dt_acc;
+    const data_type_t dt_a, dt_x, dt_y;
+    const data_type_t dt_a_reg, dt_x_reg;
+    const data_type_t dt_acc;
     const float beta;
     const dim_t m_blocks, m_tail, k_blocks, k_tail;
     const dim_t mblk_a_off, mblk_y_off;
@@ -204,8 +211,8 @@ struct invariant_regs_t {
     ir::vreg_t batch = ir::vreg_t::none;
     // Batch size loop count. `none` when max_bs == 1 (single batch element).
     ir::vreg_t bs = ir::vreg_t::none;
-    // K-tail mask, shared by every masked tail load. It's only required when
-    // `k_tail` is greater than 1.
+    // K-tail mask, shared by every masked tail load. `none` when `k_tail` is
+    // zero, which is when there is no tail load to mask.
     ir::vreg_t k_tail_mask = ir::vreg_t::none;
     // Post-ops flag (params.do_post_ops). Non-zero applies the post-ops, zero
     // stores the raw accumulator. `none` unless the kernel has a post-op to
@@ -248,7 +255,7 @@ m_loop_input_regs_t init_m_loop_input_regs(
     regs.advancing.a_off = ir.new_gpr();
     ir.mov_imm(regs.advancing.a_off, 0);
 
-    if (cfg.k_tail > 1) {
+    if (cfg.k_tail > 0) {
         // We only need to set the mask once per kernel. It's lifetime is
         // managed automatically by the allocator.
         regs.invariant.k_tail_mask = ir.new_mask();
@@ -306,14 +313,14 @@ void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     // once and every A row. The distance is empirically tuned.
     constexpr dim_t gemv_pf_dist = 512; // bytes = 8 cache lines
 
-    const ir::vreg_t x = ir.new_vec(cfg.dt_x);
-    const ir::vreg_t a = ir.new_vec(cfg.dt_a);
+    const ir::vreg_t x = ir.new_vec(cfg.dt_x_reg);
+    const ir::vreg_t a = ir.new_vec(cfg.dt_a_reg);
     ir.prefetch(x_ptr, gemv_pf_dist);
-    ir.vload(x, x_ptr, 0);
+    ir.vload(x, x_ptr, 0, cfg.dt_x);
     for (int i = 0; i < (int)acc.size(); i++) {
         const dim_t a_off = cfg.dt_sz_a * (dim_t)i * cfg.lda;
         ir.prefetch(a_ptr, a_off + gemv_pf_dist);
-        ir.vload(a, a_ptr, a_off);
+        ir.vload(a, a_ptr, a_off, cfg.dt_a);
         ir.vdot(acc[i], a, x);
     }
 }
@@ -324,12 +331,12 @@ void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 void emit_microkernel_tail(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         const std::vector<ir::vreg_t> &acc, ir::vreg_t a_ptr, ir::vreg_t x_ptr,
         ir::vreg_t mask) {
-    const ir::vreg_t x = ir.new_vec(cfg.dt_x);
-    const ir::vreg_t a = ir.new_vec(cfg.dt_a);
-    ir.vload_masked(x, x_ptr, 0, mask, (int)cfg.k_tail);
+    const ir::vreg_t x = ir.new_vec(cfg.dt_x_reg);
+    const ir::vreg_t a = ir.new_vec(cfg.dt_a_reg);
+    ir.vload_masked(x, x_ptr, 0, mask, cfg.dt_x);
     for (int i = 0; i < (int)acc.size(); i++) {
-        ir.vload_masked(a, a_ptr, cfg.dt_sz_a * (dim_t)i * cfg.lda, mask,
-                (int)cfg.k_tail);
+        ir.vload_masked(
+                a, a_ptr, cfg.dt_sz_a * (dim_t)i * cfg.lda, mask, cfg.dt_a);
         ir.vdot(acc[i], a, x);
     }
 }
@@ -393,8 +400,8 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         if (cfg.beta == 0.0f)
             ir.vzero(acc[r]);
         else
-            ir.vload_masked(acc[r], regs.advancing.y_ptr,
-                    cfg.dt_sz_y * (dim_t)r * cfg.incy, ir::vreg_t::none, 1);
+            ir.vload_scalar(acc[r], regs.advancing.y_ptr,
+                    cfg.dt_sz_y * (dim_t)r * cfg.incy, cfg.dt_y);
     }
 
     // Batch reduction over bs dimension
@@ -432,8 +439,8 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         if (cfg.with_src_scales) {
             // Loaded once and applied to every output.
             const ir::vreg_t sc = ir.new_vec(cfg.dt_src_scales);
-            ir.vload_masked(
-                    sc, regs.invariant.src_scale_ptr, 0, ir::vreg_t::none, 1);
+            ir.vload_scalar(
+                    sc, regs.invariant.src_scale_ptr, 0, cfg.dt_src_scales);
 
             for (int r = 0; r < m_block; r++)
                 ir.vmul(acc[r], sc);
@@ -444,14 +451,13 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
             // loop. The per-N case loads a separate scale per output element.
             const ir::vreg_t sc = ir.new_vec(cfg.dt_wei_scales);
             if (cfg.single_wei_scale)
-                ir.vload_masked(sc, regs.advancing.wei_scale_ptr, 0,
-                        ir::vreg_t::none, 1);
+                ir.vload_scalar(
+                        sc, regs.advancing.wei_scale_ptr, 0, cfg.dt_wei_scales);
 
             for (int r = 0; r < m_block; r++) {
                 if (!cfg.single_wei_scale)
-                    ir.vload_masked(sc, regs.advancing.wei_scale_ptr,
-                            cfg.dt_sz_wei_scales * (dim_t)r, ir::vreg_t::none,
-                            1);
+                    ir.vload_scalar(sc, regs.advancing.wei_scale_ptr,
+                            cfg.dt_sz_wei_scales * (dim_t)r, cfg.dt_wei_scales);
                 ir.vmul(acc[r], sc);
             }
         }
@@ -461,20 +467,19 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
             // loop. A row output loads a separate bias per output element.
             const ir::vreg_t bias = ir.new_vec(cfg.dt_bias);
             if (!cfg.treat_y_as_row)
-                ir.vload_masked(
-                        bias, regs.advancing.bias_ptr, 0, ir::vreg_t::none, 1);
+                ir.vload_scalar(bias, regs.advancing.bias_ptr, 0, cfg.dt_bias);
 
             for (int r = 0; r < m_block; r++) {
                 if (cfg.treat_y_as_row)
-                    ir.vload_masked(bias, regs.advancing.bias_ptr,
-                            cfg.dt_sz_bias * (dim_t)r, ir::vreg_t::none, 1);
+                    ir.vload_scalar(bias, regs.advancing.bias_ptr,
+                            cfg.dt_sz_bias * (dim_t)r, cfg.dt_bias);
                 ir.vadd(acc[r], bias);
             }
         }
 
         if (cfg.with_injector_postops) {
-            // Each accumulator is horizontally reduced to one scalar, so the
-            // injector sees a single active element with no mask register. Its
+            // Each accumulator is horizontally reduced to one scalar, which is
+            // the active element count `generate()` gives the injector. The
             // output offset matches the store displacement below, so a sum
             // post-op reads each element from the address its result is
             // written to.
@@ -482,16 +487,15 @@ void emit_m_block(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
             for (int r = 0; r < m_block; r++)
                 out_byte_off[r] = cfg.dt_sz_y * (dim_t)r * cfg.incy;
 
-            ir.inject_postops(acc, regs.advancing.store_ptr, out_byte_off,
-                    ir::vreg_t::none, /*elems=*/1);
+            ir.inject_postops(acc, regs.advancing.store_ptr, out_byte_off);
         }
 
         ir.label(skip_post_ops);
     }
 
     for (int r = 0; r < m_block; r++)
-        ir.vstore_masked(regs.advancing.store_ptr,
-                cfg.dt_sz_y * (dim_t)r * cfg.incy, acc[r], ir::vreg_t::none, 1);
+        ir.vstore_scalar(regs.advancing.store_ptr,
+                cfg.dt_sz_y * (dim_t)r * cfg.incy, acc[r], cfg.dt_y);
 
     // Advance to next M block
     ir.add_imm(regs.advancing.a_off, cfg.mblk_a_off);
@@ -561,6 +565,9 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         // Scratch registers (2 gpr + 3 vec) reserved for spill code.
         const int gpr_scratch0 = 10, gpr_scratch1 = 11;
         const int vec_scratch0 = 13, vec_scratch1 = 14, vec_scratch2 = 15;
+        // AVX-512 opmasks reserved for the post-ops injector, which writes both
+        // and restores neither (see `postops_injector_t`).
+        const int eltwise_opmask = 6, binary_tail_opmask = 7;
 
         const int rsp_idx = Xbyak::Operand::RSP;
         const int param_idx = abi_param1.getIdx();
@@ -568,7 +575,8 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         // Build register configuration for code emission
         const ir::reg_config_t reg_cfg = ir::make_reg_config(brg_.isa_impl,
                 param_idx, rsp_idx, {gpr_scratch0, gpr_scratch1},
-                {vec_scratch0, vec_scratch1, vec_scratch2});
+                {vec_scratch0, vec_scratch1, vec_scratch2},
+                {eltwise_opmask, binary_tail_opmask});
 
         // Register allocation
         ir::reg_alloc_result_t alloc = allocate_registers(ir, reg_cfg.pools);
@@ -576,10 +584,8 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         // The injector is created here, not in the emitter, because it spans
         // the whole codegen flow (emits during `emit()`, writes its table after
         // the postamble) and needs descriptor inputs the generic emitter lacks.
-        // The emitter drives it through the `inject_postops` operation and the
-        // callback below.
+        // The emitter drives it through the `inject_postops` operation.
         std::unique_ptr<ir::postops_injector_t> postops_injector;
-        ir::inject_postops_fn_t emit_injector;
 
         if (brg_.with_eltwise || brg_.with_binary || brg_.with_sum) {
             // A partial right-hand-side load reads the vector tail, or one
@@ -590,14 +596,8 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
             postops_injector.reset(new ir::postops_injector_t(*this,
                     brg_.isa_impl, brg_.attr()->post_ops_, *brg_.dst_md(),
                     abi_param1, GET_OFF(post_ops_binary_rhs_arg_vec),
-                    GET_OFF(data_C_ptr_), postops_tail_elems));
-
-            emit_injector = [&](const std::vector<int> &acc_phys, int base_phys,
-                                    const std::vector<dim_t> &out_byte_off,
-                                    int mask_phys, int elems) {
-                postops_injector->apply(
-                        acc_phys, base_phys, out_byte_off, mask_phys, elems);
-            };
+                    GET_OFF(data_C_ptr_), postops_tail_elems, eltwise_opmask,
+                    binary_tail_opmask));
         }
 
         preamble();
@@ -610,7 +610,7 @@ struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
         // The emitter may accumulate static data (e.g. the mask table) that we
         // need to write down after the postamble.
         ir::data_section_t data;
-        ir::emit(*this, ir, alloc, reg_cfg, data, emit_injector);
+        ir::emit(*this, ir, alloc, reg_cfg, data, postops_injector.get());
 
         // Stack cleanup
         if (alloc.frame_bytes > 0) add(rsp, (uint32_t)alloc.frame_bytes);
@@ -660,9 +660,18 @@ private:
 status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     using namespace data_type;
 
-    VCONDCHECK_BRGEMV_IR(utils::everyone_is(f32, brg.dt_a, brg.dt_b, brg.dt_c),
-            VERBOSE_UNSUPPORTED_DT);
-    VCONDCHECK_BRGEMV_IR(brg.isa_impl == avx2, VERBOSE_UNSUPPORTED_ISA);
+    // Accepted input data type and the ISA it is built at:
+    //   f32  - avx2
+    //   bf16 - avx512_core_bf16
+    //   f16  - avx512_core_fp16
+    // GEMV blocking permits no other ISA (see `brgemm_blocking_vmm_gemv`).
+    const bool dt_isa_ok = (brg.dt_a == f32 && brg.isa_impl == avx2)
+            || (brg.dt_a == bf16 && brg.isa_impl == avx512_core_bf16)
+            || (brg.dt_a == f16 && brg.isa_impl == avx512_core_fp16);
+    VCONDCHECK_BRGEMV_IR(dt_isa_ok, VERBOSE_UNSUPPORTED_ISA);
+    VCONDCHECK_BRGEMV_IR(brg.dt_b == brg.dt_a, VERBOSE_UNSUPPORTED_DT);
+    // The kernel accumulates in f32 and has no conversion on the way out.
+    VCONDCHECK_BRGEMV_IR(brg.dt_c == f32, VERBOSE_UNSUPPORTED_DT);
     VCONDCHECK_BRGEMV_IR(
             !brg.transA, VERBOSE_UNSUPPORTED_FEATURE, "transposed A");
 

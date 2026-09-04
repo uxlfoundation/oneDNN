@@ -36,10 +36,10 @@ namespace {
 // from the host generator.
 template <typename Vmm>
 std::shared_ptr<void> create_injector(jit_generator_t &gen,
-        const post_ops_t &post_ops,
-        const binary_injector::static_params_t &bsp) {
+        const post_ops_t &post_ops, const binary_injector::static_params_t &bsp,
+        const eltwise_injector::static_params_t &esp) {
     return std::make_shared<injector_t<Vmm>>(
-            &gen, post_ops, bsp, /* inject_sum = */ true);
+            &gen, post_ops, bsp, esp, /* inject_sum = */ true);
 }
 
 template <typename Vmm>
@@ -52,9 +52,19 @@ injector_t<Vmm> *cast2tgt(void *injector) {
 postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
         const post_ops_t &post_ops, const memory_desc_t &dst_md,
         const Xbyak::Reg64 &param_reg, int rhs_arg_offset, dim_t dst_orig_off,
-        int tail_elems)
-    : is_zmm_(is_superset(isa, avx512_core)), tail_elems_(tail_elems) {
+        int tail_elems, int eltwise_opmask, int binary_tail_opmask)
+    : is_zmm_(is_superset(isa, avx512_core))
+    , tail_elems_(tail_elems)
+    , binary_tail_opmask_(binary_tail_opmask) {
     const memory_desc_wrapper dst_d(dst_md);
+
+    // The eltwise injector overwrites its mask and the binary injector reads
+    // its own across the same call, so sharing one register would destroy the
+    // tail pattern.
+    JIT_ASSERT(eltwise_opmask != binary_tail_opmask
+            && "postops_injector: eltwise and binary opmask must differ");
+    // `init()` builds the tail pattern with a 64-bit shift.
+    JIT_ASSERT(tail_elems < 64 && "postops_injector: tail is too wide");
 
     // The injector preserves the state of the gpr and vec registers it borrows.
     static constexpr bool preserve_gpr = true;
@@ -68,19 +78,26 @@ postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
     // `rhs_arg_offset` locates the argument pointer array in the parameter
     // struct. `dst_orig_off` locates the destination origin, used to turn an
     // accumulator address into its destination position. `tail_elems` is the
-    // element count a partial load reads on avx2. The avx512 opmask path is not
-    // enabled yet.
+    // element count a partial load reads, as an integer on avx2 and through
+    // `binary_tail_opmask` on avx512.
     const binary_injector::rhs_arg_static_params_t rhs_sp {
             rhs_dt_helper_vmm_idx, gen.r14, gen.r15, gen.r13, preserve_gpr,
             preserve_vmm, rhs_arg_offset, dst_orig_off, dst_d, tail_elems,
-            use_exact_tail_scalar_bcast};
+            Xbyak::Opmask(binary_tail_opmask), use_exact_tail_scalar_bcast};
 
     const binary_injector::static_params_t bsp {param_reg,
             binary_injector::get_all_strategies_supported_by_injector(),
             rhs_sp};
 
-    injector_ = is_zmm_ ? create_injector<Xbyak::Zmm>(gen, post_ops, bsp)
-                        : create_injector<Xbyak::Ymm>(gen, post_ops, bsp);
+    // Everything but the mask keeps the eltwise injector's own defaults. The
+    // mask has to be named because its default, `k1`, is a register the IR
+    // allocator hands out.
+    const eltwise_injector::static_params_t esp {/*save_state=*/true,
+            /*p_table=*/Xbyak::Reg64(Xbyak::Operand::RAX),
+            Xbyak::Opmask(eltwise_opmask)};
+
+    injector_ = is_zmm_ ? create_injector<Xbyak::Zmm>(gen, post_ops, bsp, esp)
+                        : create_injector<Xbyak::Ymm>(gen, post_ops, bsp, esp);
     assert(injector_ && "ir post-ops injector creation failed");
 
     with_eltwise_ = post_ops.find(primitive_kind::eltwise) != -1;
@@ -92,8 +109,22 @@ postops_injector_t::postops_injector_t(jit_generator_t &gen, cpu_isa_t isa,
             || post_ops.find(primitive_kind::prelu) != -1 || with_sum_;
 }
 
-void postops_injector_t::apply(const std::vector<int> &acc_phys, int base_phys,
-        const std::vector<dim_t> &out_byte_off, int mask_phys, int elems) {
+void postops_injector_t::init(jit_generator_t &gen) const {
+    // The tail opmask is read only by the binary injector. An eltwise-only
+    // chain never reaches it, and on avx2* the tail is an integer inside the
+    // injector, so neither case has anything to set up.
+    if (!is_zmm_ || !needs_rhs_args_ || tail_elems_ <= 0) return;
+
+    // `kxnorq` sets all 64 bits and `kshiftrq` keeps the low `tail_elems_` of
+    // them. Building the mask in the k-register file keeps it independent of
+    // the gpr scratch registers.
+    const Xbyak::Opmask k(binary_tail_opmask_);
+    gen.kxnorq(k, k, k);
+    gen.kshiftrq(k, k, (uint8_t)(64 - tail_elems_));
+}
+
+void postops_injector_t::inject(const std::vector<int> &acc_phys, int base_phys,
+        const std::vector<dim_t> &out_byte_off) {
     injector_utils::vmm_index_set_t vmm_idxs;
     for (int idx : acc_phys)
         vmm_idxs.insert((size_t)idx);
@@ -110,17 +141,10 @@ void postops_injector_t::apply(const std::vector<int> &acc_phys, int base_phys,
         return;
     }
 
-    // `mask_phys` is a K register (avx512 opmask). The avx512 emitter is not
-    // enabled yet, so it is currently unused.
-    MAYBE_UNUSED(mask_phys);
-
-    // `elems == -1` is a full vector. A positive count is a partial load of
-    // `elems` right-hand-side elements and must match `tail_elems_`.
-    JIT_ASSERT((elems == -1 || elems > 0)
-            && "inject_postops: elems must be -1 or a positive count");
-    const bool is_tail = elems > 0;
-    JIT_ASSERT((!is_tail || elems == tail_elems_)
-            && "inject_postops: tail count does not match the injector");
+    // A positive `tail_elems_` means an accumulator holds fewer valid elements
+    // than a full vector, so a right-hand-side load has to stop at that count
+    // to stay in bounds. `init()` has put that pattern in the tail opmask.
+    const bool is_tail = tail_elems_ > 0;
 
     // Map each accumulator to its destination address. A binary post-op uses it
     // to locate the corresponding right-hand-side slice, and the sum operation

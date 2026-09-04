@@ -19,7 +19,9 @@
 #include <unordered_map>
 
 #include "cpu/x64/ir/emitter/backend_avx2.hpp"
+#include "cpu/x64/ir/emitter/backend_avx512.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
+#include "cpu/x64/ir/postops_injector.hpp"
 #include "cpu/x64/utils/jit_regops.hpp"
 
 namespace dnnl {
@@ -31,7 +33,7 @@ namespace ir {
 template <typename backend_t>
 void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &rc, data_section_t &data,
-        const inject_postops_fn_t &inject) {
+        postops_injector_t *postops) {
 
     // The backend holds the generator.
     jit_generator_t &gen = be.gen();
@@ -69,9 +71,10 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     // as a vector load/store against the stack frame (rsp).
     const int rsp_idx = gen.rsp.getIdx();
     auto spill_reload
-            = [&](vreg_t vr, int p) { be.vload(p, rsp_idx, slot_off(vr)); };
-    auto spill_store
-            = [&](vreg_t vr, int p) { be.vstore(rsp_idx, slot_off(vr), p); };
+            = [&](vreg_t vr, int p) { be.vload_raw(p, rsp_idx, slot_off(vr)); };
+    auto spill_store = [&](vreg_t vr, int p) {
+        be.vstore_raw(rsp_idx, slot_off(vr), p);
+    };
 
     // Resolve a virtual register that an instruction READS (use) to a
     // concrete physical register, hiding whether the allocator spilled it:
@@ -126,6 +129,13 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     //
     // This separation ensures that spilled source and destination values never
     // use the same scratch register.
+
+    // Fixed registers the injector reads are set up once, ahead of the IR,
+    // rather than at every `inject_postops` operation. The pattern does not
+    // change between operations, and an operation inside a loop would otherwise
+    // rebuild it on every iteration.
+    if (postops) postops->init(gen);
+
     for (int i = 0; i < ir.n_ops(); i++) {
         const op_t &op = ir.ops()[i];
         switch (op.kind) {
@@ -192,8 +202,27 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             case op_kind_t::vload: { // overwrites dst
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                be.vload(d, base, op.mem.disp);
+                be.vload(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vstore: {
+                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
+                int s = vec_use(op.s0, vec_scratch0);
+                be.vstore(base, op.mem.disp, s, op.mem_dt, dt_of(op.s0));
+                break;
+            }
+            case op_kind_t::vload_scalar: { // overwrites dst
+                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                be.vload_scalar(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vstore_scalar: {
+                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
+                int s = vec_use(op.s0, vec_scratch0);
+                be.vstore_scalar(base, op.mem.disp, s, op.mem_dt, dt_of(op.s0));
                 break;
             }
             case op_kind_t::vdot: { // rmw: reads and writes dst
@@ -247,14 +276,9 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 }
                 JIT_ASSERT(!spilled(args.base_ptr)
                         && "inject_postops: base pointer spilled");
-                const bool has_mask = args.mask != vreg_t::none;
-                JIT_ASSERT(!(has_mask && spilled(args.mask))
-                        && "inject_postops: mask spilled");
-                JIT_ASSERT(
-                        inject && "inject_postops: missing injector callback");
-                const int mask_phys = has_mask ? phys(args.mask) : -1;
-                inject(acc_phys, phys(args.base_ptr), args.out_byte_off,
-                        mask_phys, args.elems);
+                JIT_ASSERT(postops && "inject_postops: missing injector");
+                postops->inject(
+                        acc_phys, phys(args.base_ptr), args.out_byte_off);
                 break;
             }
 
@@ -269,22 +293,18 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             case op_kind_t::vload_masked: { // overwrites dst
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                assert((op.s1 == vreg_t::none || !spilled(op.s1))
-                        && "vload_masked: mask spilled");
-                int mask = (op.s1 != vreg_t::none) ? phys(op.s1) : -1;
-                be.vload_masked(d, base, op.mem.disp, mask, (int)op.imm,
-                        dt_of(op.dst), data);
+                assert(!spilled(op.s1) && "vload_masked: mask spilled");
+                be.vload_masked(d, base, op.mem.disp, phys(op.s1), op.mem_dt,
+                        dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vstore_masked: {
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int s = vec_use(op.s0, vec_scratch0);
-                assert((op.s1 == vreg_t::none || !spilled(op.s1))
-                        && "vstore_masked: mask spilled");
-                int mask = (op.s1 != vreg_t::none) ? phys(op.s1) : -1;
-                be.vstore_masked(base, op.mem.disp, s, mask, (int)op.imm,
-                        dt_of(op.s0), data);
+                assert(!spilled(op.s1) && "vstore_masked: mask spilled");
+                be.vstore_masked(base, op.mem.disp, s, phys(op.s1), op.mem_dt,
+                        dt_of(op.s0));
                 break;
             }
 
@@ -345,13 +365,14 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
 
 void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &reg_cfg, data_section_t &data,
-        const inject_postops_fn_t &inject) {
+        postops_injector_t *postops) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
-        JIT_ASSERT(!"avx512 emitter is not supported");
+        avx512_backend_t be(gen, isa);
+        emit(be, ir, alloc, reg_cfg, data, postops);
     } else {
         avx2_backend_t be(gen, isa);
-        emit(be, ir, alloc, reg_cfg, data, inject);
+        emit(be, ir, alloc, reg_cfg, data, postops);
     }
 }
 

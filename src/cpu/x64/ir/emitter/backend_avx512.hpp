@@ -14,20 +14,25 @@
 * limitations under the License.
 *******************************************************************************/
 
-#ifndef CPU_X64_IR_EMITTER_BACKEND_AVX2_HPP
-#define CPU_X64_IR_EMITTER_BACKEND_AVX2_HPP
+#ifndef CPU_X64_IR_EMITTER_BACKEND_AVX512_HPP
+#define CPU_X64_IR_EMITTER_BACKEND_AVX512_HPP
 
-// AVX2-family backend for the emitter (see `emit()` in `emitter.cpp`).
+// AVX-512 backend for the emitter (see `emit()` in `emitter.cpp`).
 //
 // This backend contains every vector and mask instruction for one ISA family
-// and covers all AVX2 extensions (avx2, avx2_vnni, avx2_vnni_2, and so on). The
-// generic emitter iterates over the IR and resolves each virtual register to a
-// physical register index. The backend is the only code on this path that
-// constructs Xbyak `Ymm` registers, so each operation builds its own registers
-// from the indices it is given.
+// and covers all AVX-512 extensions (avx512_core, avx512_core_bf16,
+// avx512_core_fp16, and so on). The generic emitter iterates over the IR and
+// resolves each virtual register to a physical register index. The backend is
+// the only code on this path that constructs Xbyak `Zmm` and `Opmask`
+// registers, so each operation builds its own registers from the indices it is
+// given.
+//
+// A mask is a k-register, and a masked access is an EVEX write mask on the
+// access instruction itself rather than a separate instruction. A mask
+// therefore allocates from a register file of its own (see
+// `make_reg_config()`).
 
-#include <utility>
-#include <vector>
+#include <cassert>
 
 #include "common/c_types_map.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
@@ -40,38 +45,44 @@ namespace cpu {
 namespace x64 {
 namespace ir {
 
-struct avx2_backend_t {
-    avx2_backend_t(jit_generator_t &gen, cpu_isa_t isa) : gen_(gen), isa(isa) {
-        // `isa` is stored for future ISA-specific dispatch (e.g. avx2_vnni_2)
-        // but is not read yet.
-        MAYBE_UNUSED(this->isa);
-    }
+struct avx512_backend_t {
+    avx512_backend_t(jit_generator_t &gen, cpu_isa_t isa)
+        : gen_(gen), isa(isa) {}
 
     jit_generator_t &gen() { return gen_; }
 
     // Plain vector ops.
     void vzero(int d) { // dst = 0
-        gen().vxorps(Xbyak::Ymm(d), Xbyak::Ymm(d), Xbyak::Ymm(d));
+        gen().vpxord(Xbyak::Zmm(d), Xbyak::Zmm(d), Xbyak::Zmm(d));
     }
 
     // Move a whole register to or from memory as it is. The emitter uses this
     // for spill slots, where the bytes come back exactly as they went out, so
     // there is no data type and never a conversion.
     void vload_raw(int d, int base, dim_t disp) { // dst = [base + disp]
-        gen().vmovups(Xbyak::Ymm(d), gen().ptr[Xbyak::Reg64(base) + (int)disp]);
+        gen().vmovups(Xbyak::Zmm(d), gen().ptr[Xbyak::Reg64(base) + (int)disp]);
     }
 
     void vstore_raw(int base, dim_t disp, int s) { // [base + disp] = src
-        gen().vmovups(gen().ptr[Xbyak::Reg64(base) + (int)disp], Xbyak::Ymm(s));
+        gen().vmovups(gen().ptr[Xbyak::Reg64(base) + (int)disp], Xbyak::Zmm(s));
     }
 
-    // Load a full vector.
+    // Load a full vector. The pair of data types selects the form:
+    //   f32  -> f32   plain move
+    //   bf16 -> bf16  plain move
+    //   f16  -> f32   half a register read and widened
     void vload(int d, int base, dim_t disp, data_type_t mem_dt,
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
-        if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
-            gen().vmovups(Xbyak::Ymm(d), addr);
-        else { JIT_ASSERT(!"vload: dtype not implemented"); }
+
+        if (mem_dt == reg_dt
+                && utils::one_of(reg_dt, data_type::f32, data_type::bf16)) {
+            gen().vmovups(Xbyak::Zmm(d), addr);
+        } else if (mem_dt == data_type::f16 && reg_dt == data_type::f32) {
+            gen().vcvtph2ps(Xbyak::Zmm(d), addr);
+        } else {
+            JIT_ASSERT(!"vload: dtype not implemented");
+        }
     }
 
     // Store a full vector.
@@ -79,7 +90,7 @@ struct avx2_backend_t {
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32)
-            gen().vmovups(addr, Xbyak::Ymm(s));
+            gen().vmovups(addr, Xbyak::Zmm(s));
         else { JIT_ASSERT(!"vstore: dtype not implemented"); }
     }
 
@@ -103,75 +114,85 @@ struct avx2_backend_t {
 
     void vadd(int d, int s, data_type_t dt) { // dst += s0
         if (dt == data_type::f32)
-            gen().vaddps(Xbyak::Ymm(d), Xbyak::Ymm(d), Xbyak::Ymm(s));
+            gen().vaddps(Xbyak::Zmm(d), Xbyak::Zmm(d), Xbyak::Zmm(s));
         else { JIT_ASSERT(!"vadd: dtype not implemented"); }
     }
 
     void vmul(int d, int s, data_type_t dt) { // dst *= s0
         if (dt == data_type::f32)
-            gen().vmulps(Xbyak::Ymm(d), Xbyak::Ymm(d), Xbyak::Ymm(s));
+            gen().vmulps(Xbyak::Zmm(d), Xbyak::Zmm(d), Xbyak::Zmm(s));
         else { JIT_ASSERT(!"vmul: dtype not implemented"); }
     }
 
     // dst += a * b. The multiplicand dtype `src_dt` selects the instruction.
-    // f32 inputs use `vfmadd231ps`. The accumulator (dst) is always f32.
+    // The accumulator (dst) is always f32. An f16 multiplicand arrives here as
+    // f32, widened by the load (see `vload`).
     void vdot(int d, int a, int b, data_type_t src_dt) {
-        if (src_dt == data_type::f32)
-            gen().vfmadd231ps(Xbyak::Ymm(d), Xbyak::Ymm(a), Xbyak::Ymm(b));
-        else {
-            // Only f32 is supported on AVX2 today.
+        if (src_dt == data_type::f32) {
+            gen().vfmadd231ps(Xbyak::Zmm(d), Xbyak::Zmm(a), Xbyak::Zmm(b));
+        } else if (src_dt == data_type::bf16) {
+            JIT_ASSERT(is_superset(isa, avx512_core_bf16)
+                    && "vdot: bf16 needs avx512_core_bf16");
+            gen().vdpbf16ps(Xbyak::Zmm(d), Xbyak::Zmm(a), Xbyak::Zmm(b));
+        } else {
             JIT_ASSERT(!"vdot: dtype not implemented");
         }
     }
 
     void vhreduce(int d, int ws, data_type_t dt) {
         if (dt == data_type::f32)
-            regops::horizontal_add_ps(&gen(), Xbyak::Ymm(d), Xbyak::Ymm(ws));
+            regops::horizontal_add_ps(&gen(), Xbyak::Zmm(d), Xbyak::Zmm(ws));
         else { JIT_ASSERT(!"vhreduce: dtype not implemented"); }
     }
 
-    // Masked vector ops. On AVX2 a mask is a vector.
+    // Masked vector ops.
     //
-    // Create a mask for `n_elems` active elements. The mask bytes are written
-    // to the data section and loaded once. A vector mask is a constant, so the
-    // builder emits `set_mask_imm` a single time and the mask is reused across
-    // all masked ops.
-    void set_mask_imm(int d, int n_elems, data_section_t &data) {
-        const int elem_bytes = (int)sizeof(float);
-        const unsigned char active_byte = 0xff;
-
-        std::vector<unsigned char> bytes((size_t)vlen, 0);
-        const int active_bytes = n_elems * elem_bytes;
-        for (int i = 0; i < active_bytes; i++)
-            bytes[i] = active_byte;
-
-        // This label is the memory location of the mask in the data section.
-        data.constants.emplace_back(std::move(bytes), Xbyak::Label());
-        Xbyak::Label &lbl = data.constants.back().second;
-        gen().vmovups(Xbyak::Ymm(d), gen().ptr[gen().rip + lbl]);
+    // Create a mask with `n_elems` active elements. The mask is built inside
+    // the k-register file: `kxnorq` sets all 64 bits and `kshiftrq` keeps the
+    // low `n_elems` of them. The alternative, `kmov` from an immediate in a
+    // gpr, would put mask setup on the scratch registers, and those are meant
+    // to go away. `data` is unused for the same reason.
+    //
+    // The number of active bits is `n_elems` for every element size. A widening
+    // load preserves the element count, so a narrower element type changes what
+    // one bit masks, not how many bits are set (see `vload_masked`).
+    void set_mask_imm(int d, int n_elems, data_section_t & /*data*/) {
+        assert(n_elems > 0 && n_elems < 64);
+        const Xbyak::Opmask k(d);
+        gen().kxnorq(k, k, k);
+        gen().kshiftrq(k, k, (uint8_t)(64 - n_elems));
     }
 
-    // Load the elements selected by `mask` and zero the rest of `dst`.
+    // Load the elements selected by `mask` and zero the rest of `dst` (`T_z`).
+    // An inactive element has to read as zero, or a tail iteration would
+    // accumulate whatever the register happened to hold into the dot product.
+    // The mask counts elements of `mem_dt`, so a converting form masks the
+    // narrow read and widens what is left.
     void vload_masked(int d, int base, dim_t disp, int mask, data_type_t mem_dt,
             data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        const Xbyak::Opmask k(mask);
 
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
-            gen().vmaskmovps(Xbyak::Ymm(d), Xbyak::Ymm(mask), addr);
+            gen().vmovups(Xbyak::Zmm(d) | k | gen().T_z, addr);
+        } else if (mem_dt == data_type::bf16 && reg_dt == data_type::bf16) {
+            gen().vmovdqu16(Xbyak::Zmm(d) | k | gen().T_z, addr);
+        } else if (mem_dt == data_type::f16 && reg_dt == data_type::f32) {
+            gen().vmovdqu16(Xbyak::Ymm(d) | k | gen().T_z, addr);
+            gen().vcvtph2ps(Xbyak::Zmm(d), Xbyak::Ymm(d));
         } else {
-            // vmaskmovps applies only to f32. Other precisions need a different
-            // mechanism here.
             JIT_ASSERT(!"vload_masked: dtype not implemented");
         }
     }
 
-    // Store the elements of `src` selected by `mask`.
+    // Store the elements of `src` selected by `mask`. There is no `T_z` here,
+    // since masking a store is already a merge into memory.
     void vstore_masked(int base, dim_t disp, int s, int mask,
             data_type_t mem_dt, data_type_t reg_dt) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
         if (mem_dt == data_type::f32 && reg_dt == data_type::f32) {
-            gen().vmaskmovps(addr, Xbyak::Ymm(mask), Xbyak::Ymm(s));
+            gen().vmovups(addr | Xbyak::Opmask(mask), Xbyak::Zmm(s));
         } else {
             JIT_ASSERT(!"vstore_masked: dtype not implemented");
         }
@@ -182,11 +203,9 @@ private:
     // IR-based kernel during kernel generation. The kernel owns `gen_`.
     jit_generator_t &gen_;
 
-    // ISA is used to dispatch ISA-specific instructions (e.g. on avx2_vnni_2).
+    // ISA is used to dispatch ISA-specific instructions (e.g. on
+    // avx512_core_bf16).
     cpu_isa_t isa;
-
-    // Vector register width in bytes.
-    const int vlen = cpu_isa_traits_t<avx2>::vlen;
 };
 
 } // namespace ir

@@ -55,7 +55,9 @@ step. They are omitted above for clarity.
 * **IR.** A linear list of operations over *virtual registers*. One fixed
   struct represents every operation, and an `op` kind selects which fields it
   uses. Every virtual register has a kind (`gpr`, `vec`, or `mask`), and a `vec`
-  register also carries the element data type of the values it holds.
+  register also carries the element data type it holds. A vector load or store
+  carries a second data type, `mem_dt`, for what memory holds. The two differ
+  when the access converts.
 * **Register configuration.** An ISA-aware step that produces ISA-agnostic
   register pools (integer indices per register kind) plus the reserved registers:
   the stack pointer, the kernel-argument pointer, and a few scratch registers the
@@ -83,10 +85,10 @@ step. They are omitted above for clarity.
   plugged in as a single `inject_postops` operation. Its variable-length arguments
   live in a side table indexed from the operation's immediate field, so the
   operation itself carries only that index. The table also holds each
-  accumulator's output offset and active-element count, which a binary post-op
-  needs to address its right-hand-side argument and a sum post-op needs to read
-  the previous destination value. The injector saves and restores its own
-  registers and does not participate in IR allocation.
+  accumulator's output offset, which a binary post-op needs to address its
+  right-hand-side argument and a sum post-op needs to read the previous
+  destination value. The injector saves and restores its own registers and does
+  not participate in IR allocation.
 
 ### Control and Data Flow
 
@@ -137,8 +139,9 @@ today. A shared runner for the fixed part is a follow-up.
   the spill frame.
 * `emitter/emitter.hpp`, `emitter/emitter.cpp`: the lowering pass, which walks the
   allocated IR, dispatches by ISA family, and manages the static-data section.
-* `emitter/backend_avx2.hpp`: the AVX2-family backend, the reference example of
-  per-operation instruction selection.
+* `emitter/backend_avx2.hpp`, `emitter/backend_avx512.hpp`: the per-ISA-family
+  backends, which do the per-operation instruction selection. They are peers,
+  each self-contained.
 * `postops_injector.hpp`, `postops_injector.cpp`: the driver for the JIT post-ops
   injector, which lowers the `inject_postops` operation.
 
@@ -152,21 +155,22 @@ New functionality maps to a specific layer. The IR infrastructure grows by addin
 data types, ISAs, and the fused instructions each ISA supports, and each kind of
 change belongs in one place.
 
-1. **A new data type** is a tag on a `vec` register. The builder stays the same,
-   and the emitter maps the operation and data type to the right instruction.
+1. **A new data type** is a tag on a `vec` register, plus the `mem_dt` on the
+   loads and stores that reach it. The builder stays the same, and the emitter
+   maps the operation and the data types to the right instruction.
 2. **A new ISA** adds a new emitter backend or extends an existing one, along with
    the matching register-configuration facts.
 3. **A new variant of an existing instruction** is a lowering rule in the emitter,
    not a new IR operation, and is invisible to the builder. For example,
-   `vload_masked` already lowers to `vmovss`, `vmovups`, or `vmaskmovps` depending
-   on how many elements are active.
+   `vload_masked` already lowers to `vmaskmovps` on AVX2 and to `vmovups` under
+   an EVEX write mask on AVX-512.
 4. **A new behavior** that no existing operation can express becomes a new IR
    operation, with its own definition, `def_use()` entry, and lowering.
 
 To tell the third from the fourth, look at `def_use()`. If the reads and writes
-stay the same and only the emitted instructions differ (by data type, element
-count, or ISA), it is a lowering rule. If the behavior needs different reads or
-writes, it is a new operation. This keeps the set of operations target-neutral.
+stay the same and only the emitted instructions differ (by data type or ISA), it
+is a lowering rule. If the behavior needs different reads or writes, it is a new
+operation. This keeps the set of operations target-neutral.
 
 Additional rules to follow.
 

@@ -30,6 +30,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <type_traits>
 
 #include <memory>
 #include <string>
@@ -802,17 +803,51 @@ static constexpr bool is_dev_mode() {
 template <typename T>
 struct setting_t {
 private:
-    T value_;
-    bool initialized_;
+    static_assert(std::is_trivially_copyable<T>::value,
+            "std::atomic<T> value_ requires T to be trivially copyable. Use "
+            "atomic-free specialization and secure thread-safety for it.");
+    // Use the default initialization to work around the bug in std::atomic
+    // which was fixed in C++20 only:
+    // https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0883r2.pdf
+    std::atomic<T> value_ {};
+    std::atomic<bool> initialized_ {false};
 
 public:
-    constexpr setting_t() : value_ {}, initialized_ {false} {}
-    constexpr setting_t(const T init) : value_ {init}, initialized_ {false} {}
-    bool initialized() { return initialized_; }
-    T get() { return value_; }
+    constexpr setting_t() = default;
+    // Keep `initialized_` value `false` to let the env var overwrite the
+    // default value.
+    constexpr setting_t(const T def_val) : value_ {def_val} {}
+
+    bool initialized() const {
+        return initialized_.load(std::memory_order_acquire);
+    }
+    T get() const { return value_.load(std::memory_order_relaxed); }
     void set(const T &new_value) {
+        value_.store(new_value, std::memory_order_relaxed);
+        initialized_.store(true, std::memory_order_release);
+    }
+    DNNL_DISALLOW_COPY_AND_ASSIGN(setting_t);
+};
+
+// std::string is not trivially_copyable, thus, can't be used in a general
+// template class. The usage of an instance of this specialization is guarded
+// with mutex.
+template <>
+struct setting_t<std::string> {
+private:
+    std::string value_;
+    std::atomic<bool> initialized_ {false};
+
+public:
+    setting_t() = default;
+
+    bool initialized() const {
+        return initialized_.load(std::memory_order_acquire);
+    }
+    std::string get() const { return value_; }
+    void set(const std::string &new_value) {
         value_ = new_value;
-        initialized_ = true;
+        initialized_.store(true, std::memory_order_release);
     }
     DNNL_DISALLOW_COPY_AND_ASSIGN(setting_t);
 };

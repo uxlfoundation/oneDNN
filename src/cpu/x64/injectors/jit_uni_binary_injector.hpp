@@ -42,6 +42,7 @@ namespace x64 {
 namespace binary_injector {
 using dnnl::impl::cpu::binary_injector_utils::get_src1_desc;
 using dnnl::impl::cpu::binary_injector_utils::get_src2_desc;
+using dnnl::impl::cpu::binary_injector_utils::prepare_scalar_binary_arg;
 using dnnl::impl::cpu::binary_injector_utils::prepare_binary_args;
 
 bcast_set_t get_all_strategies_supported_by_injector();
@@ -66,6 +67,12 @@ bool all_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
         const std::function<bool(const memory_desc_wrapper &)> &predicate);
 
 bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set);
+bool is_simple_scalar_f32_binary_postop(const post_ops_t::entry_t &post_op,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set);
+bool all_simple_scalar_f32_binary_postops(const post_ops_t &post_ops,
         const memory_desc_wrapper &dst_d,
         const bcast_set_t &supported_strategy_set);
 
@@ -239,6 +246,14 @@ struct rhs_arg_dynamic_params_t {
     std::map<int, Xbyak::Address> vmm_idx_to_out_addr;
     std::map<int, Xbyak::Reg64> vmm_idx_to_out_reg;
     std::map<int, dim_t> vmm_idx_to_out_elem_off_val;
+    // Caller-owned registers containing preloaded RHS pointers. The values
+    // must remain valid while the generated code executes.
+    std::map<int, Xbyak::Reg64> rhs_arg_idx_to_scalar_ptr_reg;
+    // When set, the injector reloads each direct scalar pointer from the
+    // runtime RHS argument table immediately before applying that post-op.
+    // This permits one caller-owned register to be reused sequentially by a
+    // chain containing multiple eligible scalar post-ops.
+    bool load_scalar_rhs_ptrs = false;
 
     std::unordered_set<int> vmm_tail_idx_;
     tail_lode_mode_t tail_load_mode = tail_lode_mode_t::DEFAULT;
@@ -429,6 +444,11 @@ private:
     void calculate_mb_sp_blocked_partial(const dim_t *strides,
             const dim_t offset, const Xbyak::Reg64 &tmp_reg,
             dim_t elem_size_bytes) const;
+
+    bool use_direct_scalar_rhs(int rhs_arg_idx,
+            const dnnl_post_ops::entry_t &post_op,
+            const rhs_arg_dynamic_params_t &rhs_arg_params,
+            Xbyak::Reg64 *rhs_ptr_reg) const;
     void calculate_mb_sp_nspc_base(
             const dim_t *strides, const Xbyak::Reg64 &tmp_reg) const;
     void calculate_mb_sp_nspc_partial(const dim_t *strides, const dim_t offset,

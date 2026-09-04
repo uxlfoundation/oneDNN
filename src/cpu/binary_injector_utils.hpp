@@ -30,6 +30,26 @@ namespace impl {
 namespace cpu {
 namespace binary_injector_utils {
 /*
+ * Fills caller-owned storage with pointers to binary post-op RHS tensors.
+ *
+ * Keeping the storage owned by the caller lets hot execution paths reuse its
+ * capacity. The stored pointers have the same ordering and offset0 adjustment
+ * as the value-returning overload.
+ *
+ * The existing kernel ABI still carries a table of RHS pointers, so this
+ * helper deliberately preserves that table for compatibility. It removes
+ * avoidable shrink-to-fit churn and provides the safe boundary for future
+ * caller-owned small-buffer storage without changing nontrivial chains.
+ */
+void prepare_binary_args(const post_ops_t &post_ops,
+        const dnnl::impl::exec_ctx_t &ctx,
+        std::vector<const void *> &post_ops_binary_rhs_arg_vec,
+        const unsigned first_arg_idx_offset = 0);
+
+const void *prepare_scalar_binary_arg(const post_ops_t::entry_t &post_op,
+        const dnnl::impl::exec_ctx_t &ctx, unsigned post_op_idx);
+
+/*
  * Extracts pointers to tensors passed by user as binary postops rhs
  * (right-hand-side) arguments from execution context and advances them to
  * their memory descriptors' logical origins. Those pointers are placed in a

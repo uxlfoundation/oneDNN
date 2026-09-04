@@ -745,7 +745,7 @@ ir_t build_dot_ir() {
     ir.vhreduce(acc, ws);
 
     // store the reduced scalar
-    ir.vstore_masked(c_ptr, 0, acc, vreg_t::none, 1);
+    ir.vstore_scalar(c_ptr, 0, acc);
 
     return ir;
 }
@@ -852,7 +852,7 @@ TEST(IntegrationTests, BuildsLoopReduction) {
 
     const vreg_t ws = ir.new_vec(data_type::f32);
     ir.vhreduce(acc, ws);
-    ir.vstore_masked(c_ptr, 0, acc, vreg_t::none, 1);
+    ir.vstore_scalar(c_ptr, 0, acc);
 
     ir_kernel_t kernel(ir);
     ASSERT_TRUE(kernel.run_ir_pipeline());
@@ -868,6 +868,71 @@ TEST(IntegrationTests, BuildsLoopReduction) {
     kernel.run(&args);
 
     EXPECT_FLOAT_EQ(c, ref_dot(a.data(), b.data(), k));
+}
+
+// Validates masked access end to end. A mask covering `tail` elements is built
+// once and drives both a load and a store. The inputs hold large values past
+// `tail`, so a load that reads them or a store that writes them changes the
+// result.
+TEST(IntegrationTests, MaskedAccessCoversActiveElementsOnly) {
+    SKIP_IF_NO_AVX2();
+
+    const int tail = simd_w() - 3;
+    const float sentinel = -1.f;
+    const dim_t dot_off = simd_w() * (dim_t)sizeof(float);
+
+    ir_t ir;
+
+    const vreg_t a_ptr = ir.new_gpr();
+    ir.load_param(a_ptr, offsetof(dot_args_t, a));
+
+    const vreg_t b_ptr = ir.new_gpr();
+    ir.load_param(b_ptr, offsetof(dot_args_t, b));
+
+    const vreg_t c_ptr = ir.new_gpr();
+    ir.load_param(c_ptr, offsetof(dot_args_t, c));
+
+    const vreg_t mask = ir.new_mask();
+    ir.set_mask_imm(mask, tail);
+
+    const vreg_t a = ir.new_vec(data_type::f32);
+    ir.vload_masked(a, a_ptr, 0, mask);
+    const vreg_t b = ir.new_vec(data_type::f32);
+    ir.vload_masked(b, b_ptr, 0, mask);
+
+    // Reduce first. An inactive element has to read as zero, or the values
+    // past `tail` would land in the dot product.
+    const vreg_t acc = ir.new_vec(data_type::f32);
+    ir.vzero(acc);
+    ir.vdot(acc, a, b);
+
+    const vreg_t ws = ir.new_vec(data_type::f32);
+    ir.vhreduce(acc, ws);
+    ir.vstore_scalar(c_ptr, dot_off, acc);
+
+    // Then the elementwise product, stored under the same mask.
+    ir.vmul(a, b);
+    ir.vstore_masked(c_ptr, 0, a, mask);
+
+    ir_kernel_t kernel(ir);
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+
+    std::vector<float> a_buf(simd_w()), b_buf(simd_w());
+    for (int i = 0; i < simd_w(); i++) {
+        const bool active = i < tail;
+        a_buf[i] = active ? (float)(i + 1) : 1e6f;
+        b_buf[i] = active ? (float)(2 * i - 3) : 1e6f;
+    }
+
+    std::vector<float> c_buf(simd_w() + 1, sentinel);
+    dot_args_t args {a_buf.data(), b_buf.data(), c_buf.data()};
+    kernel.run(&args);
+
+    EXPECT_FLOAT_EQ(c_buf[simd_w()], ref_dot(a_buf.data(), b_buf.data(), tail));
+    for (int i = 0; i < tail; i++)
+        EXPECT_FLOAT_EQ(c_buf[i], a_buf[i] * b_buf[i]) << " at element " << i;
+    for (int i = tail; i < simd_w(); i++)
+        EXPECT_FLOAT_EQ(c_buf[i], sentinel) << " at element " << i;
 }
 
 // Computes a dot product where one vector is multiplied by n vectors into
@@ -904,8 +969,7 @@ ir_t build_shared_vector_dot_ir(int n) {
         ir.vhreduce(acc[r], ws);
 
     for (int r = 0; r < n; r++)
-        ir.vstore_masked(
-                c_ptr, r * (dim_t)sizeof(float), acc[r], vreg_t::none, 1);
+        ir.vstore_scalar(c_ptr, r * (dim_t)sizeof(float), acc[r]);
 
     return ir;
 }
@@ -1002,10 +1066,10 @@ TEST(IntegrationTests, BranchSelectsCorrectValue) {
     //     store b -> c
     //   end:
     ir.jz(cond, lbl_else);
-    ir.vstore_masked(c_ptr, 0, a, vreg_t::none, simd_w()); // then: c = a
+    ir.vstore(c_ptr, 0, a); // then: c = a
     ir.jmp(lbl_end);
     ir.label(lbl_else);
-    ir.vstore_masked(c_ptr, 0, b, vreg_t::none, simd_w()); // else: c = b
+    ir.vstore(c_ptr, 0, b); // else: c = b
     ir.label(lbl_end);
 
     ir_kernel_t kernel(ir);
@@ -1107,8 +1171,7 @@ TEST(IntegrationTests, BinaryPostOpAddsPerElementRhs) {
     ir.inject_postops(acc, c_ptr, out_byte_off);
 
     for (int r = 0; r < n; r++)
-        ir.vstore_masked(
-                c_ptr, r * (dim_t)sizeof(float), acc[r], vreg_t::none, 1);
+        ir.vstore_scalar(c_ptr, r * (dim_t)sizeof(float), acc[r]);
 
     ir_kernel_t kernel(ir);
     ir_kernel_t::postops_cfg_t cfg;

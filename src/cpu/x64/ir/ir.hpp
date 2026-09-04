@@ -100,6 +100,12 @@ enum class op_kind_t {
     vzero,
     // dst = [base + disp] (load full vector)
     vload,
+    // [base + disp] = s0 (store full vector)
+    vstore,
+    // dst = [base + disp] (load one element, the rest of dst reads as zero)
+    vload_scalar,
+    // [base + disp] = s0 (store one element)
+    vstore_scalar,
     // dst += sum_{i=0}^{N-1} (s0[i] * s1[i]), where N is the dot length
     vdot,
     // dst += s0 (vector add)
@@ -125,9 +131,10 @@ enum class op_kind_t {
 
     // Masked vector load/store
     //
-    // loads `imm` elements. Mask vreg = s1 or -1.
+    // dst = [base + disp] under the mask vreg s1. Masked-out elements read as
+    // zero.
     vload_masked,
-    // stores `imm` elements. Mmask vreg = s1 or -1.
+    // [base + disp] = s0 under the mask vreg s1.
     vstore_masked,
 
     // prefetch [base + disp] into cache. Reads base, writes nothing.
@@ -183,7 +190,6 @@ struct mem_t {
 //         * mov_imm        -> literal constant
 //         * loop_begin     -> loop trip count
 //         * set_mask_imm   -> active element count
-//         * vload_masked / vstore_masked -> active element count
 //         * inject_postops -> index into inject_postops_args()
 // mem   - memory address used only by load/store operations.
 // match - for loop_end, index of matching loop_begin operation.
@@ -289,6 +295,9 @@ struct DNNL_API ir_t {
     // vec
     void vzero(vreg_t dst);
     void vload(vreg_t dst, vreg_t base, dim_t disp);
+    void vstore(vreg_t base, dim_t disp, vreg_t src);
+    void vload_scalar(vreg_t dst, vreg_t base, dim_t disp);
+    void vstore_scalar(vreg_t base, dim_t disp, vreg_t src);
     void vdot(vreg_t dst, vreg_t a, vreg_t b);
     void vadd(vreg_t dst, vreg_t src);
     void vmul(vreg_t dst, vreg_t src);
@@ -297,15 +306,11 @@ struct DNNL_API ir_t {
     void vhreduce(vreg_t dst, vreg_t workspace);
 
     // vec (masked)
-    // `elems` is the number of active elements. `mask` is the mask register
-    // holding that pattern (from `set_mask_imm`), or `vreg_t::none` for a
-    // single element or a full vector, where no mask register is needed.
-    void vload_masked(
-            vreg_t dst, vreg_t base, dim_t disp, vreg_t mask, int elems);
-    // Same shape as `vload_masked`, but stores `src` to [base + disp] instead
-    // of loading.
-    void vstore_masked(
-            vreg_t base, dim_t disp, vreg_t src, vreg_t mask, int elems);
+    // `mask` comes from `set_mask_imm` and is required. Use `vload`/`vstore`
+    // for a full vector and `vload_scalar`/`vstore_scalar` for one element,
+    // since neither needs a mask register.
+    void vload_masked(vreg_t dst, vreg_t base, dim_t disp, vreg_t mask);
+    void vstore_masked(vreg_t base, dim_t disp, vreg_t src, vreg_t mask);
 
     void prefetch(vreg_t base, dim_t disp);
 

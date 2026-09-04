@@ -205,6 +205,25 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
+            case op_kind_t::vstore: {
+                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
+                int s = vec_use(op.s0, vec_scratch0);
+                be.vstore(base, op.mem.disp, s);
+                break;
+            }
+            case op_kind_t::vload_scalar: { // overwrites dst
+                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                be.vload_scalar(d, base, op.mem.disp, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vstore_scalar: {
+                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
+                int s = vec_use(op.s0, vec_scratch0);
+                be.vstore_scalar(base, op.mem.disp, s, dt_of(op.s0));
+                break;
+            }
             case op_kind_t::vdot: { // rmw: reads and writes dst
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
                 if (spilled(op.dst)) spill_reload(op.dst, d);
@@ -273,22 +292,18 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             case op_kind_t::vload_masked: { // overwrites dst
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                assert((op.s1 == vreg_t::none || !spilled(op.s1))
-                        && "vload_masked: mask spilled");
-                int mask = (op.s1 != vreg_t::none) ? phys(op.s1) : -1;
-                be.vload_masked(d, base, op.mem.disp, mask, (int)op.imm,
-                        dt_of(op.dst), data);
+                assert(!spilled(op.s1) && "vload_masked: mask spilled");
+                be.vload_masked(
+                        d, base, op.mem.disp, phys(op.s1), dt_of(op.dst), data);
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vstore_masked: {
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int s = vec_use(op.s0, vec_scratch0);
-                assert((op.s1 == vreg_t::none || !spilled(op.s1))
-                        && "vstore_masked: mask spilled");
-                int mask = (op.s1 != vreg_t::none) ? phys(op.s1) : -1;
-                be.vstore_masked(base, op.mem.disp, s, mask, (int)op.imm,
-                        dt_of(op.s0), data);
+                assert(!spilled(op.s1) && "vstore_masked: mask spilled");
+                be.vstore_masked(
+                        base, op.mem.disp, s, phys(op.s1), dt_of(op.s0), data);
                 break;
             }
 

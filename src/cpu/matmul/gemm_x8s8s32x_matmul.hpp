@@ -57,18 +57,21 @@ struct gemm_x8s8s32x_matmul_t : public primitive_t {
             const bool has_runtime_dims
                     = memory_desc_wrapper(pd()->dst_md()).has_runtime_dims();
             const int nthr = pd()->nthr_;
-            const dim_t batch = pd()->batch();
             const dim_t M = pd()->M();
 
             // mb value is calculated based on work-sharing using
             // balance211 in execute()
             auto mb = runtime_value_for<dim_t>();
-            if (!has_runtime_dims && ((batch * M) % nthr == 0)) {
-                const dim_t m_per_thr = nstl::max<dim_t>(1, (batch * M) / nthr);
-                if (m_per_thr >= M && m_per_thr % M == 0) {
-                    mb = M;
-                } else if (m_per_thr < M && M % m_per_thr == 0) {
-                    mb = m_per_thr;
+            if (!has_runtime_dims) {
+                const dim_t batch = pd()->batch();
+                if ((batch * M) % nthr == 0) {
+                    const dim_t m_per_thr
+                            = nstl::max<dim_t>(1, (batch * M) / nthr);
+                    if (m_per_thr >= M && m_per_thr % M == 0) {
+                        mb = M;
+                    } else if (m_per_thr < M && M % m_per_thr == 0) {
+                        mb = m_per_thr;
+                    }
                 }
             }
 

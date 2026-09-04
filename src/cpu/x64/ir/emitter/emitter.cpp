@@ -31,7 +31,7 @@ namespace ir {
 template <typename backend_t>
 void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &rc, data_section_t &data,
-        const inject_postops_fn_t &inject) {
+        const inject_postops_fn_t &inject, const eltwise_fn_t &eltwise_fn) {
 
     // The backend holds the generator.
     jit_generator_t &gen = be.gen();
@@ -196,6 +196,13 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
+            case op_kind_t::vload_u8: { // overwrites dst
+                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                be.vload_u8(d, base, op.mem.disp, (int)op.imm, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
             case op_kind_t::vdot: { // rmw: reads and writes dst
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
                 if (spilled(op.dst)) spill_reload(op.dst, d);
@@ -213,11 +220,59 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
+            case op_kind_t::vsub: { // rmw: reads and writes dst
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                if (spilled(op.dst)) spill_reload(op.dst, d);
+                int s = vec_use(op.s0, vec_scratch1);
+                be.vsub(d, s, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
             case op_kind_t::vmul: { // rmw: reads and writes dst
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
                 if (spilled(op.dst)) spill_reload(op.dst, d);
                 int s = vec_use(op.s0, vec_scratch1);
                 be.vmul(d, s, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vdiv: { // rmw: reads and writes dst
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                if (spilled(op.dst)) spill_reload(op.dst, d);
+                int s = vec_use(op.s0, vec_scratch1);
+                be.vdiv(d, s, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vmax: { // rmw: reads and writes dst
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                if (spilled(op.dst)) spill_reload(op.dst, d);
+                int s = vec_use(op.s0, vec_scratch1);
+                be.vmax(d, s, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vblend: { // rmw: dst = mask ? s0 : dst
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                if (spilled(op.dst)) spill_reload(op.dst, d);
+                int s = vec_use(op.s0, vec_scratch1);
+                int m = vec_use(op.s1, vec_scratch2);
+                be.vblend(d, s, m, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vbcast: { // overwrites dst, reads s0
+                int s = vec_use(op.s0, vec_scratch1);
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                be.vbcast(d, s, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vcmp_ne_zero: { // overwrites dst, reads s0
+                int s = vec_use(op.s0, vec_scratch1);
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                // vec_scratch2 supplies the zero compare operand.
+                be.vcmp_ne_zero(d, s, vec_scratch2, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
@@ -227,6 +282,26 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 int ws = vec_use(op.s0, vec_scratch1);
                 be.vhreduce(d, ws, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+            case op_kind_t::vhreduce_max: { // reads and writes dst
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                if (spilled(op.dst)) spill_reload(op.dst, d);
+                int ws = vec_use(op.s0, vec_scratch1);
+                be.vhreduce_max(d, ws, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
+
+            // Lowers to the external JIT eltwise injector via the builder-
+            // provided callback, applying the algorithm in place. Like
+            // inject_postops, the injector preserves the registers it borrows
+            // and does not participate in register allocation, so the operand
+            // must be in its allocated register (asserted below).
+            case op_kind_t::veltwise: { // reads and writes dst in place
+                JIT_ASSERT(!spilled(op.dst) && "veltwise: operand spilled");
+                JIT_ASSERT(eltwise_fn && "veltwise: missing injector callback");
+                eltwise_fn((alg_kind_t)op.imm, phys(op.dst));
                 break;
             }
 
@@ -345,13 +420,13 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
 
 void emit(jit_generator_t &gen, const ir_t &ir, const reg_alloc_result_t &alloc,
         const reg_config_t &reg_cfg, data_section_t &data,
-        const inject_postops_fn_t &inject) {
+        const inject_postops_fn_t &inject, const eltwise_fn_t &eltwise_fn) {
     const cpu_isa_t isa = gen.max_cpu_isa();
     if (is_superset(isa, avx512_core)) {
         JIT_ASSERT(!"avx512 emitter is not supported");
     } else {
         avx2_backend_t be(gen, isa);
-        emit(be, ir, alloc, reg_cfg, data, inject);
+        emit(be, ir, alloc, reg_cfg, data, inject, eltwise_fn);
     }
 }
 

@@ -90,39 +90,45 @@ void ir_t::vzero(vreg_t dst) {
     ops_.push_back(op);
 }
 
-void ir_t::vload(vreg_t dst, vreg_t base, dim_t disp) {
+void ir_t::vload(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt) {
     op_t op;
     op.kind = op_kind_t::vload;
     op.dst = dst;
     op.mem.base = base;
     op.mem.disp = disp;
+    op.mem_dt = mem_dt;
     ops_.push_back(op);
 }
 
-void ir_t::vstore(vreg_t base, dim_t disp, vreg_t src) {
+void ir_t::vstore(vreg_t base, dim_t disp, vreg_t src, data_type_t mem_dt) {
     op_t op;
     op.kind = op_kind_t::vstore;
     op.s0 = src;
     op.mem.base = base;
     op.mem.disp = disp;
+    op.mem_dt = mem_dt;
     ops_.push_back(op);
 }
 
-void ir_t::vload_scalar(vreg_t dst, vreg_t base, dim_t disp) {
+void ir_t::vload_scalar(
+        vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt) {
     op_t op;
     op.kind = op_kind_t::vload_scalar;
     op.dst = dst;
     op.mem.base = base;
     op.mem.disp = disp;
+    op.mem_dt = mem_dt;
     ops_.push_back(op);
 }
 
-void ir_t::vstore_scalar(vreg_t base, dim_t disp, vreg_t src) {
+void ir_t::vstore_scalar(
+        vreg_t base, dim_t disp, vreg_t src, data_type_t mem_dt) {
     op_t op;
     op.kind = op_kind_t::vstore_scalar;
     op.s0 = src;
     op.mem.base = base;
     op.mem.disp = disp;
+    op.mem_dt = mem_dt;
     ops_.push_back(op);
 }
 
@@ -167,7 +173,8 @@ void ir_t::set_mask_imm(vreg_t mask, int n_elems) {
     ops_.push_back(op);
 }
 
-void ir_t::vload_masked(vreg_t dst, vreg_t base, dim_t disp, vreg_t mask) {
+void ir_t::vload_masked(
+        vreg_t dst, vreg_t base, dim_t disp, vreg_t mask, data_type_t mem_dt) {
     assert(mask != vreg_t::none && "vload_masked: mask is required");
 
     op_t op;
@@ -176,10 +183,12 @@ void ir_t::vload_masked(vreg_t dst, vreg_t base, dim_t disp, vreg_t mask) {
     op.s1 = mask;
     op.mem.base = base;
     op.mem.disp = disp;
+    op.mem_dt = mem_dt;
     ops_.push_back(op);
 }
 
-void ir_t::vstore_masked(vreg_t base, dim_t disp, vreg_t src, vreg_t mask) {
+void ir_t::vstore_masked(
+        vreg_t base, dim_t disp, vreg_t src, vreg_t mask, data_type_t mem_dt) {
     assert(mask != vreg_t::none && "vstore_masked: mask is required");
 
     op_t op;
@@ -188,6 +197,7 @@ void ir_t::vstore_masked(vreg_t base, dim_t disp, vreg_t src, vreg_t mask) {
     op.s1 = mask;
     op.mem.base = base;
     op.mem.disp = disp;
+    op.mem_dt = mem_dt;
     ops_.push_back(op);
 }
 

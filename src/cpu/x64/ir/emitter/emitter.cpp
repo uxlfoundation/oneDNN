@@ -71,9 +71,10 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     // as a vector load/store against the stack frame (rsp).
     const int rsp_idx = gen.rsp.getIdx();
     auto spill_reload
-            = [&](vreg_t vr, int p) { be.vload(p, rsp_idx, slot_off(vr)); };
-    auto spill_store
-            = [&](vreg_t vr, int p) { be.vstore(rsp_idx, slot_off(vr), p); };
+            = [&](vreg_t vr, int p) { be.vload_raw(p, rsp_idx, slot_off(vr)); };
+    auto spill_store = [&](vreg_t vr, int p) {
+        be.vstore_raw(rsp_idx, slot_off(vr), p);
+    };
 
     // Resolve a virtual register that an instruction READS (use) to a
     // concrete physical register, hiding whether the allocator spilled it:
@@ -201,27 +202,27 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
             case op_kind_t::vload: { // overwrites dst
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                be.vload(d, base, op.mem.disp);
+                be.vload(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vstore: {
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int s = vec_use(op.s0, vec_scratch0);
-                be.vstore(base, op.mem.disp, s);
+                be.vstore(base, op.mem.disp, s, op.mem_dt, dt_of(op.s0));
                 break;
             }
             case op_kind_t::vload_scalar: { // overwrites dst
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
-                be.vload_scalar(d, base, op.mem.disp, dt_of(op.dst));
+                be.vload_scalar(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
             case op_kind_t::vstore_scalar: {
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int s = vec_use(op.s0, vec_scratch0);
-                be.vstore_scalar(base, op.mem.disp, s, dt_of(op.s0));
+                be.vstore_scalar(base, op.mem.disp, s, op.mem_dt, dt_of(op.s0));
                 break;
             }
             case op_kind_t::vdot: { // rmw: reads and writes dst
@@ -293,8 +294,8 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
                 assert(!spilled(op.s1) && "vload_masked: mask spilled");
-                be.vload_masked(
-                        d, base, op.mem.disp, phys(op.s1), dt_of(op.dst), data);
+                be.vload_masked(d, base, op.mem.disp, phys(op.s1), op.mem_dt,
+                        dt_of(op.dst));
                 if (spilled(op.dst)) spill_store(op.dst, d);
                 break;
             }
@@ -302,8 +303,8 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
                 int s = vec_use(op.s0, vec_scratch0);
                 assert(!spilled(op.s1) && "vstore_masked: mask spilled");
-                be.vstore_masked(
-                        base, op.mem.disp, s, phys(op.s1), dt_of(op.s0), data);
+                be.vstore_masked(base, op.mem.disp, s, phys(op.s1), op.mem_dt,
+                        dt_of(op.s0));
                 break;
             }
 

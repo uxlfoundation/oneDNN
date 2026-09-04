@@ -192,6 +192,9 @@ struct mem_t {
 //         * set_mask_imm   -> active element count
 //         * inject_postops -> index into inject_postops_args()
 // mem   - memory address used only by load/store operations.
+// mem_dt - element data type in memory, set by every vector load and store. It
+//        is the data type of the vreg when the access moves the value as it
+//        is, and a different one when the access converts.
 // match - for loop_end, index of matching loop_begin operation.
 // label_id - target label id for label/jmp/jz. When unused it's `none`.
 // init_is_reg - for loop_begin, if true, initialize loop counter from s0
@@ -202,6 +205,7 @@ struct op_t {
     vreg_t s0 = vreg_t::none, s1 = vreg_t::none;
     dim_t imm = 0;
     mem_t mem;
+    data_type_t mem_dt = data_type::undef;
     int match = -1;
     label_t label_id = label_t::none;
     bool init_is_reg = false;
@@ -293,11 +297,13 @@ struct DNNL_API ir_t {
     void load(vreg_t dst, vreg_t base, dim_t disp);
 
     // vec
+    // `mem_dt` is the element data type in memory. Pass the data type of the
+    // vreg to move the value as it is, or a different one to convert it.
     void vzero(vreg_t dst);
-    void vload(vreg_t dst, vreg_t base, dim_t disp);
-    void vstore(vreg_t base, dim_t disp, vreg_t src);
-    void vload_scalar(vreg_t dst, vreg_t base, dim_t disp);
-    void vstore_scalar(vreg_t base, dim_t disp, vreg_t src);
+    void vload(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt);
+    void vstore(vreg_t base, dim_t disp, vreg_t src, data_type_t mem_dt);
+    void vload_scalar(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt);
+    void vstore_scalar(vreg_t base, dim_t disp, vreg_t src, data_type_t mem_dt);
     void vdot(vreg_t dst, vreg_t a, vreg_t b);
     void vadd(vreg_t dst, vreg_t src);
     void vmul(vreg_t dst, vreg_t src);
@@ -309,8 +315,10 @@ struct DNNL_API ir_t {
     // `mask` comes from `set_mask_imm` and is required. Use `vload`/`vstore`
     // for a full vector and `vload_scalar`/`vstore_scalar` for one element,
     // since neither needs a mask register.
-    void vload_masked(vreg_t dst, vreg_t base, dim_t disp, vreg_t mask);
-    void vstore_masked(vreg_t base, dim_t disp, vreg_t src, vreg_t mask);
+    void vload_masked(vreg_t dst, vreg_t base, dim_t disp, vreg_t mask,
+            data_type_t mem_dt);
+    void vstore_masked(vreg_t base, dim_t disp, vreg_t src, vreg_t mask,
+            data_type_t mem_dt);
 
     void prefetch(vreg_t base, dim_t disp);
 

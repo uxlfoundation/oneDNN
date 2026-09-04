@@ -1,0 +1,61 @@
+# Regression coverage for the direct scalar binary post-op pointer path
+# (MFDNN-15529). The x64 softmax kernels preload a common f32 binary RHS
+# pointer into a caller-owned GPR for the repeated post-op region.
+#
+# These cases are NOT covered by test_softmax_all: there a scalar binary
+# post-op only ever appears together with an eltwise (linear). The additional
+# cases below exercise direct f32 arithmetic, generic s32 and mixed chains,
+# tails, and unsupported/fallback broadcasts.
+
+--reset
+--dir=FWD_I
+--sdt=f32
+--ddt=f32
+--alg=SOFTMAX,LOGSOFTMAX
+
+# Dense kernel: direct f32 scalar, generic s32, mixed chains, and fallback
+# broadcasts.
+--stag=ab --dtag=ab
+--attr-post-ops=mul:f32:common
+--axis=1 32x131 16x257 5x16 8x33
+--attr-post-ops=add:f32:common
+--axis=1 32x131 8x33
+--attr-post-ops=add:s32:common
+--axis=1 32x131 16x257 8x33
+--attr-post-ops=sub:s32:common
+--axis=1 32x131 8x33
+--attr-post-ops=mul:f32:common+add:s32:common
+--axis=1 32x131 16x257 8x33
+--attr-post-ops=mul:f32:common+add:f32:common
+--axis=1 32x131 8x33
+# Non-scalar broadcast must stay on the generic path.
+--attr-post-ops=add:f32:per_oc
+--axis=1 32x131
+# An eltwise chain stays on the generic path.
+--alg=SOFTMAX
+--attr-post-ops=relu+mul:f32:common
+--axis=1 32x131
+
+# Strided kernel: axis is not the dense dimension.
+--reset
+--dir=FWD_I
+--sdt=f32
+--ddt=f32
+--alg=SOFTMAX
+--stag=ba --dtag=ba
+--attr-post-ops=mul:f32:common
+--axis=1 32x131 8x33
+--attr-post-ops=add:s32:common
+--axis=1 32x131
+--attr-post-ops=mul:f32:common+add:s32:common
+--axis=1 32x131
+
+# f32 -> low precision destination still applies the scalar post-op first.
+--reset
+--dir=FWD_I
+--sdt=f32
+--ddt=bf16
+--alg=SOFTMAX
+--stag=ab --dtag=ab
+--attr-post-ops=mul:f32:common,add:s32:common
+--axis=1 32x131 8x33

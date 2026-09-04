@@ -1189,6 +1189,30 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
     const auto ldb_pos = bi.ldi->pos(ldb);
     const auto is_ld_tail = bi.ldi->is_tail(ldb);
 
+    if (brg.with_binary
+            && binary_injector::all_simple_scalar_f32_binary_postops(
+                    brg.attr()->post_ops_, memory_desc_wrapper(brg.dst_md()),
+                    binary_injector::get_all_strategies_supported_by_injector())) {
+        int rhs_arg_idx = 0;
+        bool direct_scalar_rhs = false;
+        const auto dst_d = memory_desc_wrapper(brg.dst_md());
+        const auto supported_bcast
+                = binary_injector::get_all_strategies_supported_by_injector();
+        for (const auto &post_op : brg.attr()->post_ops_.entry_) {
+            if (binary_injector::is_simple_scalar_f32_binary_postop(
+                        post_op, dst_d, supported_bcast)) {
+                rhs_arg_params.rhs_arg_idx_to_scalar_ptr_reg.emplace(
+                        rhs_arg_idx, reg_tmp_gpr);
+                direct_scalar_rhs = true;
+            }
+            if (post_op.is_like_binary()) {
+                ++rhs_arg_idx;
+                if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
+            }
+        }
+        rhs_arg_params.load_scalar_rhs_ptrs = direct_scalar_rhs;
+    }
+
     // Sum post-op requires binary parameters to be set.
     const bool set_for_binary = brg.with_binary && handle_binary_po_offset_;
     if (set_for_binary || brg.with_sum) {

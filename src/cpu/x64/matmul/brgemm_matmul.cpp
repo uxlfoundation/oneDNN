@@ -868,7 +868,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
             = brgmm_ctx.get_zp_a_compensation_ptr(ithr, b_idx, n_blk_idx);
     const auto zp_comp_b
             = brgmm_ctx.get_zp_b_compensation_result_ptr(ithr, m_blk_idx);
-    const auto &post_ops_binary_rhs_arg_vec
+    const void *post_ops_binary_rhs_arg_vec
             = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
     const bool post_ops_applicable = bgmmc.post_ops_applicable
             && (brgmm_ctx.get_num_threads_for_k() <= 1 || bgmmc.K_chunks == 1);
@@ -970,7 +970,7 @@ void brgemm_matmul_t<isa>::compute_kernel(
 
         const brgemm_post_ops_data_t post_ops_data {
                 /*bias=*/static_cast<const void *>(ptr_bias),
-                /*binary_post_ops_rhs=*/post_ops_binary_rhs_arg_vec.data(),
+                /*binary_post_ops_rhs=*/post_ops_binary_rhs_arg_vec,
                 /*oc_logical_off=*/static_cast<size_t>(n), dst_row_logical_off,
                 /*data_C_ptr_=*/brgmm_ctx.get_data_C_ptr(0, 0, 0),
                 first_mb_matrix_addr_off,
@@ -1440,7 +1440,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                     const auto zp_comp_b
                             = brgmm_ctx.get_zp_b_compensation_result_ptr(
                                     ithr, mb);
-                    const auto &post_ops_binary_rhs_arg_vec
+                    const void *post_ops_binary_rhs_arg_vec
                             = brgmm_ctx.get_post_ops_binary_rhs_arg_vec();
 
                     const size_t dst_row_logical_off
@@ -1457,7 +1457,7 @@ void brgemm_matmul_t<isa>::maybe_reduce_partial_results_and_apply_postops(
                             = brgmm_ctx.get_data_C_ptr(0, 0, 0);
                     const brgemm_post_ops_data_t post_ops_data {
                             static_cast<const void *>(ptr_bias),
-                            post_ops_binary_rhs_arg_vec.data(),
+                            post_ops_binary_rhs_arg_vec,
                             static_cast<size_t>(n), dst_row_logical_off,
                             dst_anchor_point, first_mb_matrix_addr_off,
                             static_cast<const void *>(zp_comp_a),
@@ -1787,8 +1787,20 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                           key_brgemm_primitive_per_mn_comp)
                 : nullptr;
 
-        post_ops_binary_rhs_arg_vec_ = binary_injector::prepare_binary_args(
-                pd->attr()->post_ops_, ctx);
+        const auto &post_ops = pd->attr()->post_ops_;
+        if (post_ops.len() == 1
+                && binary_injector::is_simple_scalar_f32_binary_postop(
+                        post_ops.entry_[0], dst_d_,
+                        binary_injector::
+                                get_all_strategies_supported_by_injector())) {
+            direct_scalar_rhs_arg_vec_[0]
+                    = binary_injector::prepare_scalar_binary_arg(
+                            post_ops.entry_[0], ctx, 0);
+            use_direct_scalar_rhs_ = true;
+        } else {
+            binary_injector::prepare_binary_args(
+                    post_ops, ctx, post_ops_binary_rhs_arg_vec_);
+        }
         base_brg_ker_idx_
                 = pd->get_brg_kernel_idx(false, true, 0, 0, false, false);
         vnni_factor = data_type_vnni_granularity(bgmmc.wei_dt);
@@ -2626,8 +2638,9 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
                        : nullptr;
     }
 
-    const std::vector<const void *> &get_post_ops_binary_rhs_arg_vec() const {
-        return post_ops_binary_rhs_arg_vec_;
+    const void *get_post_ops_binary_rhs_arg_vec() const {
+        return use_direct_scalar_rhs_ ? direct_scalar_rhs_arg_vec_
+                                      : post_ops_binary_rhs_arg_vec_.data();
     }
 
     int get_base_brgemm_kernel_idx() const { return base_brg_ker_idx_; }
@@ -2913,6 +2926,8 @@ private:
     const void *wei_zp_ptr_;
     const void *dst_zp_ptr_;
     std::vector<const void *> post_ops_binary_rhs_arg_vec_;
+    const void *direct_scalar_rhs_arg_vec_[1] = {nullptr};
+    bool use_direct_scalar_rhs_ = false;
 
     int base_brg_ker_idx_;
     dim_t vnni_factor;

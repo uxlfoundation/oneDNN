@@ -23,10 +23,11 @@ namespace impl {
 namespace cpu {
 namespace binary_injector_utils {
 
-std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
-        const exec_ctx_t &ctx, const unsigned first_arg_idx_offset) {
-    std::vector<const void *> post_ops_binary_rhs_arg_vec;
-    if (post_ops.len() == 0) return post_ops_binary_rhs_arg_vec;
+void prepare_binary_args(const post_ops_t &post_ops, const exec_ctx_t &ctx,
+        std::vector<const void *> &post_ops_binary_rhs_arg_vec,
+        const unsigned first_arg_idx_offset) {
+    post_ops_binary_rhs_arg_vec.clear();
+    if (post_ops.len() == 0) return;
     post_ops_binary_rhs_arg_vec.reserve(post_ops.entry_.size());
 
     unsigned idx = first_arg_idx_offset;
@@ -54,8 +55,23 @@ std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
         ++idx;
     }
 
-    post_ops_binary_rhs_arg_vec.shrink_to_fit();
+}
 
+const void *prepare_scalar_binary_arg(const post_ops_t::entry_t &post_op,
+        const exec_ctx_t &ctx, const unsigned post_op_idx) {
+    assert(post_op.is_binary() && !post_op.is_binary_with_ternary_op());
+
+    const auto *base = CTX_IN_MEM(const char *,
+            DNNL_ARG_ATTR_MULTIPLE_POST_OP(post_op_idx) | DNNL_ARG_SRC_1);
+    const memory_desc_wrapper mdw(post_op.binary.src1_desc);
+    return base + mdw.offset0() * mdw.data_type_size();
+}
+
+std::vector<const void *> prepare_binary_args(const post_ops_t &post_ops,
+        const exec_ctx_t &ctx, const unsigned first_arg_idx_offset) {
+    std::vector<const void *> post_ops_binary_rhs_arg_vec;
+    prepare_binary_args(post_ops, ctx, post_ops_binary_rhs_arg_vec,
+            first_arg_idx_offset);
     return post_ops_binary_rhs_arg_vec;
 }
 

@@ -271,6 +271,36 @@ bool any_binary_postop_rhs_per_w_broadcast(const post_ops_t &post_ops,
     });
 }
 
+bool is_simple_scalar_f32_binary_postop(
+        const post_ops_t::entry_t &post_op,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set) {
+    if (!post_op.is_binary() || post_op.is_binary_with_ternary_op()
+            || post_op.is_prelu())
+        return false;
+
+    const auto src1_desc = get_src1_desc(post_op, dst_d);
+    return src1_desc.data_type == data_type::f32
+            && get_rhs_arg_broadcasting_strategy(
+                       src1_desc, dst_d, supported_strategy_set)
+                    == broadcasting_strategy_t::scalar
+            && utils::one_of(post_op.binary.alg, alg_kind::binary_add,
+                    alg_kind::binary_sub, alg_kind::binary_mul,
+                    alg_kind::binary_div, alg_kind::binary_max,
+                    alg_kind::binary_min);
+}
+
+bool all_simple_scalar_f32_binary_postops(const post_ops_t &post_ops,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set) {
+    return post_ops.len() > 0
+            && std::all_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
+                    [&](const dnnl_post_ops::entry_t &post_op) {
+                        return is_simple_scalar_f32_binary_postop(
+                                post_op, dst_d, supported_strategy_set);
+                    });
+}
+
 void extend_binary_args_per_w(const post_ops_t &post_ops,
         const std::vector<const void *> &orig_post_ops_binary_rhs_arg_vec,
         std::vector<const void *> &post_ops_binary_rhs_arg_vec,
@@ -506,6 +536,41 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(int start_idx,
 }
 
 template <typename Vmm>
+bool jit_uni_binary_injector_t<Vmm>::use_direct_scalar_rhs(int rhs_arg_idx,
+        const dnnl_post_ops::entry_t &post_op,
+        const rhs_arg_dynamic_params_t &rhs_arg_params,
+        Xbyak::Reg64 *rhs_ptr_reg) const {
+    if (!has_avx512_core_
+            || !is_simple_scalar_f32_binary_postop(
+                    post_op, rhs_arg_static_params_.dst_d,
+                    supported_strategy_set_))
+        return false;
+
+    const auto it = rhs_arg_params.rhs_arg_idx_to_scalar_ptr_reg.find(
+            rhs_arg_idx);
+    if (it == rhs_arg_params.rhs_arg_idx_to_scalar_ptr_reg.end())
+        return false;
+
+    const auto &reg = it->second;
+    if (utils::one_of(reg.getIdx(), param1_.getIdx(),
+                rhs_arg_static_params_.rhs_addr_reg.getIdx(),
+                rhs_arg_static_params_.rhs_helper_reg.getIdx(),
+                rhs_arg_static_params_.rhs_addr_cache_reg.getIdx(),
+                host_->rsp.getIdx()))
+        return false;
+
+    for (const auto &out_reg : rhs_arg_params.vmm_idx_to_out_reg)
+        if (out_reg.second.getIdx() == reg.getIdx()) return false;
+
+    if (rhs_arg_static_params_.is_tail
+            && !rhs_arg_static_params_.is_opmask_set())
+        return false;
+
+    *rhs_ptr_reg = reg;
+    return true;
+}
+
+template <typename Vmm>
 void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
         const injector_utils::vmm_index_set_t &vmm_idxs, int rhs_arg_idx,
         const dnnl_post_ops::entry_t &post_op,
@@ -576,9 +641,13 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
             = should_preserve_oc_offset_conversion_regs
             || should_preserve_w_offset_conversion_regs
             || should_preserve_spatial_offset_conversion_regs;
+    Xbyak::Reg64 direct_scalar_rhs_reg;
+    const bool use_direct_scalar_rhs_mode = use_direct_scalar_rhs(
+            rhs_arg_idx, post_op, rhs_arg_params, &direct_scalar_rhs_reg);
 
     // Phase 2 Protect temporary registers content.
-    const injector_utils::register_preserve_guard_t register_guard {host_,
+    const injector_utils::conditional_register_preserve_guard_t register_guard {
+            !use_direct_scalar_rhs_mode, host_,
             (rhs_arg_static_params_.preserve_gpr_helpers
                                     && should_preserve_w_or_oc_offset_conversion_regs
                             ? std::initializer_list<
@@ -640,6 +709,17 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
     Xbyak::Address rhs1_arg_addr {};
     Xbyak::Address rhs2_arg_addr {};
 
+    if (use_direct_scalar_rhs_mode
+            && rhs_arg_params.load_scalar_rhs_ptrs) {
+        host_->mov(direct_scalar_rhs_reg,
+                host_->ptr[param1_
+                        + rhs_arg_static_params_.abi_param_offset]);
+        host_->mov(direct_scalar_rhs_reg,
+                host_->ptr[direct_scalar_rhs_reg
+                        + rhs_arg_idx * static_cast<int>(
+                                  sizeof(const void *))]);
+    }
+
     // Phase 3 Apply binary post-op over all vmms.
     for (const auto vmm_idx : vmm_idxs) {
         const bool is_start_idx = vmm_idx == start_idx;
@@ -683,7 +763,7 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
         const bool params_differ = rhs_arg_params_differ(vmm_idx, vmm_idx - 1,
                 rhs_arg_params, rhs_broadcasting_strategy);
         const bool need_new_addr = is_start_idx || params_differ || load_addr;
-        if (need_new_addr) {
+        if (need_new_addr && !use_direct_scalar_rhs_mode) {
             const bool is_baddr_loop_invariant
                     = utils::one_of(rhs_broadcasting_strategy,
                             broadcasting_strategy_t::no_broadcast,
@@ -694,6 +774,8 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
             rhs1_arg_addr = prepare_rhs_arg_addr(vmm_idx, rhs_arg_idx, post_op,
                     rhs_arg_params, rhs_broadcasting_strategy, is_first, false);
         }
+        if (use_direct_scalar_rhs_mode)
+            rhs1_arg_addr = host_->ptr_b[direct_scalar_rhs_reg];
 
         if (vmm_preservation_needed) {
             const Vmm vmm_to_preserve(local_vmm_preservation.second);

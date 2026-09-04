@@ -115,6 +115,8 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
     bool with_eltwise_ = false;
     bool with_src_scales_ = false;
     bool with_dst_scales_ = false;
+    std::vector<int> direct_scalar_rhs_arg_idxs_;
+    bool direct_scalar_rhs_load_ = false;
     bool use_ext_aux_vmms_ = false;
 
     int unroll_regs_ = 4;
@@ -206,6 +208,43 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         }
         mov(reg_src_scales, ptr[reg_param + PARAM_OFF(src_scales)]);
         mov(reg_dst_scales, ptr[reg_param + PARAM_OFF(dst_scales)]);
+    }
+
+    void prepare_direct_scalar_rhs() {
+        const auto &post_ops = pd_->attr()->post_ops_;
+        if (!pd_->is_fwd() || !is_softmax_
+                || !is_superset(isa, avx512_core)
+                || !binary_injector::all_simple_scalar_f32_binary_postops(
+                        pd_->attr()->post_ops_, dst_d_,
+                        get_supported_bcast_strategies()))
+            return;
+
+        int rhs_arg_idx = 0;
+        for (const auto &post_op : post_ops.entry_) {
+            if (binary_injector::is_simple_scalar_f32_binary_postop(
+                        post_op, dst_d_, get_supported_bcast_strategies()))
+                direct_scalar_rhs_arg_idxs_.push_back(rhs_arg_idx);
+            if (post_op.is_like_binary()) {
+                ++rhs_arg_idx;
+                if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
+            }
+        }
+
+        if (direct_scalar_rhs_arg_idxs_.empty()) return;
+        direct_scalar_rhs_load_
+                = post_ops.len() != 1
+                || direct_scalar_rhs_arg_idxs_.size() != 1;
+        if (!direct_scalar_rhs_load_) {
+            const auto rhs_arg_idx = direct_scalar_rhs_arg_idxs_.front();
+            mov(reg_tmp2,
+                    ptr[reg_param
+                            + offsetof(call_params_t,
+                                    post_ops_binary_rhs_arg_vec)]);
+            mov(reg_tmp2,
+                    ptr[reg_tmp2
+                            + rhs_arg_idx * static_cast<int>(
+                                      sizeof(const void *))]);
+        }
     }
 
     Address diff_src_ptr(size_t offt = 0) {
@@ -766,6 +805,11 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                     if (with_postops_) {
                         binary_injector::rhs_arg_dynamic_params_t
                                 rhs_arg_params;
+                        for (const auto rhs_arg_idx : direct_scalar_rhs_arg_idxs_)
+                            rhs_arg_params.rhs_arg_idx_to_scalar_ptr_reg.emplace(
+                                    rhs_arg_idx, reg_tmp2);
+                        rhs_arg_params.load_scalar_rhs_ptrs
+                                = direct_scalar_rhs_load_;
                         if (with_binary_) {
                             rhs_arg_params.vmm_idx_to_out_addr.emplace(
                                     vreg_tmp_src.getIdx(), dst_ptr());
@@ -829,6 +873,11 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
                 }
                 if (with_postops_) {
                     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
+                    for (const auto rhs_arg_idx : direct_scalar_rhs_arg_idxs_)
+                        rhs_arg_params.rhs_arg_idx_to_scalar_ptr_reg.emplace(
+                                rhs_arg_idx, reg_tmp2);
+                    rhs_arg_params.load_scalar_rhs_ptrs
+                            = direct_scalar_rhs_load_;
                     if (with_binary_) {
                         rhs_arg_params.vmm_idx_to_out_addr.emplace(
                                 vreg_tmp_src.getIdx(), dst_ptr());
@@ -973,6 +1022,7 @@ struct jit_softmax_dense_kernel_t : jit_softmax_kernel_base_t,
         if (log_injector_) log_injector_->load_table_addr();
         if (axis_simd_tail_) io_.prepare_tail_mask();
         load_common_params();
+        prepare_direct_scalar_rhs();
         if (pd_->is_fwd())
             forward();
         else
@@ -1093,6 +1143,8 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
     bool with_eltwise_ = false;
     bool with_src_scales_ = false;
     bool with_dst_scales_ = false;
+    std::vector<int> direct_scalar_rhs_arg_idxs_;
+    bool direct_scalar_rhs_load_ = false;
 
     int unroll_inner_size_ = 4;
     int unroll_axis_size_ = 8;
@@ -1170,6 +1222,43 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         if (with_dst_scales_) {
             mov(reg_tmp, ptr[reg_param + PARAM_OFF(dst_scales)]);
             uni_vbroadcastss(vdst_scale, ptr[reg_tmp]);
+        }
+    }
+
+    void prepare_direct_scalar_rhs() {
+        const auto &post_ops = pd_->attr()->post_ops_;
+        if (!pd_->is_fwd() || !is_softmax_
+                || !is_superset(isa, avx512_core)
+                || !binary_injector::all_simple_scalar_f32_binary_postops(
+                        pd_->attr()->post_ops_, dst_d_,
+                        get_supported_bcast_strategies()))
+            return;
+
+        int rhs_arg_idx = 0;
+        for (const auto &post_op : post_ops.entry_) {
+            if (binary_injector::is_simple_scalar_f32_binary_postop(
+                        post_op, dst_d_, get_supported_bcast_strategies()))
+                direct_scalar_rhs_arg_idxs_.push_back(rhs_arg_idx);
+            if (post_op.is_like_binary()) {
+                ++rhs_arg_idx;
+                if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
+            }
+        }
+
+        if (direct_scalar_rhs_arg_idxs_.empty()) return;
+        direct_scalar_rhs_load_
+                = post_ops.len() != 1
+                || direct_scalar_rhs_arg_idxs_.size() != 1;
+        if (!direct_scalar_rhs_load_) {
+            const auto rhs_arg_idx = direct_scalar_rhs_arg_idxs_.front();
+            mov(reg_tmp2,
+                    ptr[reg_param
+                            + offsetof(call_params_t,
+                                    post_ops_binary_rhs_arg_vec)]);
+            mov(reg_tmp2,
+                    ptr[reg_tmp2
+                            + rhs_arg_idx * static_cast<int>(
+                                      sizeof(const void *))]);
         }
     }
 
@@ -1368,6 +1457,11 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
                 }
                 if (with_postops_) {
                     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
+                    for (const auto rhs_arg_idx : direct_scalar_rhs_arg_idxs_)
+                        rhs_arg_params.rhs_arg_idx_to_scalar_ptr_reg.emplace(
+                                rhs_arg_idx, reg_tmp2);
+                    rhs_arg_params.load_scalar_rhs_ptrs
+                            = direct_scalar_rhs_load_;
                     if (with_binary_) {
                         rhs_arg_params.vmm_idx_to_out_addr.emplace(
                                 vreg_tmp_src.getIdx(), dst_ptr());
@@ -1557,6 +1651,7 @@ struct jit_softmax_strided_kernel_t : jit_softmax_kernel_base_t,
         if (log_injector_) log_injector_->load_table_addr();
         if (axis_simd_tail_) io_.prepare_tail_mask();
         load_common_params();
+        prepare_direct_scalar_rhs();
         if (pd_->is_fwd()) forward();
         postamble();
         if (exp_injector_) exp_injector_->prepare_table();
@@ -1689,12 +1784,23 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
     auto scratchpad_ptr = scratchpad.template get<char>(
             memory_tracking::names::key_softmax_interim_store);
 
-    const auto post_ops_binary_rhs_arg_vec
-            = binary_injector::prepare_binary_args(
-                    pd()->attr()->post_ops_, ctx);
+    const auto &post_ops = pd()->attr()->post_ops_;
+    const memory_desc_wrapper dst_d(pd()->dst_md());
+    const bool use_direct_scalar_rhs
+            = post_ops.len() == 1
+            && binary_injector::is_simple_scalar_f32_binary_postop(
+                    post_ops.entry_[0], dst_d,
+                    softmax_impl::get_supported_bcast_strategies());
+    const void *direct_scalar_rhs = use_direct_scalar_rhs
+            ? binary_injector::prepare_scalar_binary_arg(
+                      post_ops.entry_[0], ctx, 0)
+            : nullptr;
+    std::vector<const void *> post_ops_binary_rhs_arg_vec;
+    if (!use_direct_scalar_rhs)
+        binary_injector::prepare_binary_args(
+                post_ops, ctx, post_ops_binary_rhs_arg_vec);
 
     const memory_desc_wrapper src_d(pd()->src_md());
-    const memory_desc_wrapper dst_d(pd()->dst_md());
     const auto src_data_type_size = src_d.data_type_size();
     const auto dst_data_type_size = dst_d.data_type_size();
     const auto &bd = src_d.blocking_desc();
@@ -1784,7 +1890,10 @@ status_t jit_uni_softmax_fwd_t::execute(const exec_ctx_t &ctx) const {
         p.dst_scales = dst_scales_inv_ptr;
         // post-ops
         p.dst_orig = dst_orig_ptr;
-        p.post_ops_binary_rhs_arg_vec = post_ops_binary_rhs_arg_vec.data();
+        const void *direct_scalar_rhs_arg_vec[1] = {direct_scalar_rhs};
+        p.post_ops_binary_rhs_arg_vec = use_direct_scalar_rhs
+                ? direct_scalar_rhs_arg_vec
+                : post_ops_binary_rhs_arg_vec.data();
         (*ker_)(&p);
     });
 

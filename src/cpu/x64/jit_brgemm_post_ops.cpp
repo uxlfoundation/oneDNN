@@ -189,6 +189,30 @@ void dnnl::impl::cpu::x64::jit_brgemm_kernel_post_ops_t<
         Vmm>::inject_attr_postops(int m_block, int n_block, int tail /*= 0*/) {
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
 
+    if (brg_.with_binary && is_superset(brg_.isa_impl, avx512_core)
+            && binary_injector::all_simple_scalar_f32_binary_postops(
+                    attr_.post_ops_, memory_desc_wrapper(brg_.dst_md()),
+                    binary_injector::get_all_strategies_supported_by_injector())) {
+        int rhs_arg_idx = 0;
+        bool direct_scalar_rhs = false;
+        const auto dst_d = memory_desc_wrapper(brg_.dst_md());
+        const auto supported_bcast
+                = binary_injector::get_all_strategies_supported_by_injector();
+        for (const auto &post_op : attr_.post_ops_.entry_) {
+            if (binary_injector::is_simple_scalar_f32_binary_postop(
+                        post_op, dst_d, supported_bcast)) {
+                rhs_arg_params.rhs_arg_idx_to_scalar_ptr_reg.emplace(
+                        rhs_arg_idx, reg_tmp);
+                direct_scalar_rhs = true;
+            }
+            if (post_op.is_like_binary()) {
+                ++rhs_arg_idx;
+                if (post_op.is_binary_with_ternary_op()) ++rhs_arg_idx;
+            }
+        }
+        rhs_arg_params.load_scalar_rhs_ptrs = direct_scalar_rhs;
+    }
+
     // Sum post-op requires binary parameters to be set.
     if (with_binary_non_scalar_bcast_ || brg_.with_sum) {
         for_(int m = 0; m < m_block; m++)

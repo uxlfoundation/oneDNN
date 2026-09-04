@@ -562,6 +562,44 @@ TEST(IRBuilderTests, InjectPostopsRecordsArgsAndDefUse) {
     EXPECT_NE(std::find(uses.begin(), uses.end(), (int)mask), uses.end());
 }
 
+// Register config tests
+//
+// Checks the register files `make_reg_config()` builds for each ISA. A mask is
+// a vector register on AVX2*, so the mask and vec kinds share one file. AVX-512
+// masks with k-registers, so the mask kind gets a file of its own.
+//
+// No `mayiuse` guard is needed. `make_reg_config()` reads the ISA through the
+// `cpu_isa_traits_t` tables only and generates no code, so both layouts are
+// checkable on any machine.
+TEST(RegConfigTests, MapsMaskKindToFilePerIsa) {
+    const int param_reg = 0, rsp_reg = 4;
+    const std::vector<int> gpr_scratch {10, 11};
+    const std::vector<int> vec_scratch {13, 14, 15};
+
+    {
+        const reg_config_t rc = make_reg_config(
+                avx2, param_reg, rsp_reg, gpr_scratch, vec_scratch);
+
+        ASSERT_EQ(rc.pools.files.size(), 2u);
+        EXPECT_EQ(rc.pools.kind_to_file, std::vector<int>({0, 1, 1}));
+        EXPECT_EQ(rc.pools.files[1].slot_size, 32u);
+        EXPECT_EQ(rc.pools.files[1].regs.size(), 16u - vec_scratch.size());
+    }
+
+    {
+        const reg_config_t rc = make_reg_config(
+                avx512_core, param_reg, rsp_reg, gpr_scratch, vec_scratch);
+
+        ASSERT_EQ(rc.pools.files.size(), 3u);
+        EXPECT_EQ(rc.pools.kind_to_file, std::vector<int>({0, 1, 2}));
+        EXPECT_EQ(rc.pools.files[1].slot_size, 64u);
+        EXPECT_EQ(rc.pools.files[1].regs.size(), 32u - vec_scratch.size());
+        // The mask file is k1..k7. k0 cannot encode a write mask.
+        EXPECT_EQ(rc.pools.files[2].regs,
+                std::vector<int>({1, 2, 3, 4, 5, 6, 7}));
+    }
+}
+
 // Allocator tests
 //
 // Checks that there are no register collisions. If all values are live at the

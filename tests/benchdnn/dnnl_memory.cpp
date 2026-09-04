@@ -171,7 +171,7 @@ int execute_reorder(const dnn_mem_t &src, dnn_mem_t &dst, res_t *res,
         // mds.
         //
         // Notes:
-        // - For unknown reason using memcpy with int4 data types leads to
+        // - For unknown reason using memcpy with sub-byte data types leads to
         //   the double corruption error. Stick for per element copy for now.
         // - For grouped to plain and plain to grouped,
         //   values reside in buffer 0 only.

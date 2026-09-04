@@ -635,8 +635,8 @@ size_t get_desc_hash(const reorder_desc_t &desc) {
     // Kinds
     seed = hash_combine(seed, static_cast<size_t>(desc.primitive_kind));
     // Memory descriptors
-    seed = hash_combine(seed, get_md_hash(*desc.src_md));
-    seed = hash_combine(seed, get_md_hash(*desc.dst_md));
+    seed = hash_combine(seed, get_md_hash(desc.src_desc));
+    seed = hash_combine(seed, get_md_hash(desc.dst_desc));
     // Kinds of source and destination engines
     seed = hash_combine(seed, static_cast<size_t>(desc.src_engine_kind));
     seed = hash_combine(seed, static_cast<size_t>(desc.dst_engine_kind));

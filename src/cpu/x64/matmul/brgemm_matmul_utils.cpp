@@ -2141,14 +2141,18 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.is_wei_scale_per_k = false;
     }
 
-    // Per-K weight scales are only applied for weight decompression (integer
-    // weights) and int8 grouped quantization. Other types (e.g. fp8) pass the
-    // check above (per_ocic/per_tensor also set the per-N bit) but the
-    // K-grouping would be ignored, so reject them here. A per-K group
-    // spanning all of K was already downgraded to per-N above.
+    // Per-K (block-wise) weight scales are applied at accumulation time by the
+    // brgemm epilogue, which requires an f32 accumulator. Plain int8 (s32
+    // accumulator) is therefore only supported through the grouped
+    // quantization path. A per-K group spanning all of K was already
+    // downgraded to per-N above.
+    const bool is_wei_scale_per_k_grouped
+            = bgmmc.is_wei_scale_per_k && !wei_scales.has_default_groups();
     VCONDCHECK_BG(IMPLICATION(bgmmc.is_wei_scale_per_k,
                           bgmmc.with_wei_decompression
-                                  || bgmmc.with_int8_grouped_quantization),
+                                  || bgmmc.with_int8_grouped_quantization
+                                  || (is_wei_scale_per_k_grouped
+                                          && bgmmc.acc_dt == f32)),
             VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     // Batched (3D/4D) per-batch scales/ZP have batch bits set in the mask.
@@ -2281,6 +2285,14 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             : 1;
 
     VCONDCHECK_BG(bgmmc.required_k_granularity > 0, VERBOSE_BLOCKING_FAIL, "");
+
+    // Grouped per-K quantization parameters are applied in between brgemm
+    // calls, so a K-group must be expressible as a whole number of brgemm
+    // K blocks, which are themselves multiples of the VNNI granularity.
+    const dim_t per_k_group = compute_k_group(bgmmc);
+    VCONDCHECK_BG(IMPLICATION(per_k_group > 0 && per_k_group < bgmmc.K,
+                          per_k_group % bgmmc.required_k_granularity == 0),
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
 
     bgmmc.wei_k_blk = get_wei_k_blk(bgmmc.wei_dt);
 

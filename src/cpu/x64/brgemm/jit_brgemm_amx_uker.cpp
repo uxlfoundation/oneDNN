@@ -1688,9 +1688,11 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
 
         // For K-scales (wei and/or src), convert int32->float (if not
         // already done by per-MN compensation) and apply the current
-        // K-group's scales BEFORE alpha_beta accumulation.
+        // K-group's scales BEFORE alpha_beta accumulation. Non-integer
+        // accumulators (e.g. fp8/bf16 TMUL) are already f32.
         if (brg.has_per_k_scales() && !bi.skip_accumulation) {
-            if (!brg.with_per_mn_compensation) vcvtdq2ps(zmm, zmm);
+            if (brg.is_int8 && !brg.with_per_mn_compensation)
+                vcvtdq2ps(zmm, zmm);
 
             const Xbyak::Zmm scaled_zmm = vmm_mask(zmm, true, false, k_mask);
             // Apply K-wei_scales if present (pre-loaded per-ldb vector).
@@ -3546,8 +3548,12 @@ void jit_brgemm_amx_uker_base_t::generate() {
     // if beta == 1 and C datatype is f32 it is better to perform addition by
     // reading tiles directly from C instead of by reading/writing by vectors
     // ACE palette does not support tileloadd, so we must use vector path
+    // Per-K scales / per-(M,N) compensation must be applied to the current
+    // K-block's partial result only, so previous results must not be
+    // pre-loaded into the tile accumulators.
     may_load_accumulators_ = one_of(brg.alpha, 0.f, 1.f) && brg.beta == 1.f
-            && !brg.is_ace() && brg.dt_c == brg.dt_d
+            && !brg.is_ace() && brg.dt_c == brg.dt_d && !brg.has_per_k_scales()
+            && !brg.with_per_mn_compensation
             && IMPLICATION(brg.is_input_convert(), brg.is_fp8_via_convert())
             && IMPLICATION(
                     brg.is_f32 || brg.is_bf16, brg.dt_c == data_type::f32)

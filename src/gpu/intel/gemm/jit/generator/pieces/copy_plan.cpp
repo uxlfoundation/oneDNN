@@ -1545,14 +1545,22 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
 
     // Lane pairs (0,1) and (6,7) are non-straddling lanes that read the
     // *same* row (byte 0/2 respectively) and differ only in their shift
-    // amount; each such pair is handled as a single merged SIMD-2n shr
-    // sequence (1 op) instead of two separate SIMD-n sequences. The
-    // middle pair (3, 4 / row 1) is left unmerged, and lanes 2 and 5
-    // straddle two rows; all four are processed individually (1 op for
-    // non-straddling, 3 ops for straddling). Total: 2 merged pairs x 1 op
-    // + 2 unmerged lanes x 1 op + 2 straddling lanes x 3 op = 10 ops, plus
-    // 1 final and_ 0x7 applied across the whole destination block.
-    constexpr int totalOps = 10 + 1;
+    // amount; each such pair can be handled as a single merged SIMD-2n shr
+    // sequence (1 op) instead of two separate SIMD-n sequences -- but only
+    // when dstStride == 2: mergeRowPair's merged destination region uses a
+    // single hstride between the pair's two lanes, which cannot represent
+    // the two independent within-pair gaps that a crosspack-4 (dstStride
+    // == 4) interleaving requires, so merging is skipped there and lanes
+    // 0, 1, 6, 7 are processed individually instead (see canMergePairs
+    // below). The middle pair (3, 4 / row 1) is always left unmerged, and
+    // lanes 2 and 5 always straddle two rows and are always processed
+    // individually (1 op for non-straddling, 3 ops for straddling: shr,
+    // shl, or_). Total, worst case (no merging): 6 non-straddling lanes
+    // (0,1,3,4,6,7) x 1 op + 2 straddling lanes (2,5) x 3 ops = 12 ops,
+    // plus 1 final and_ 0x7 applied across the whole destination block.
+    // When merging is used, 2 fewer lanes go through the solo path and the
+    // corresponding trailing slots are invalidated.
+    constexpr int totalOps = 12 + 1;
     // When the destination isn't directly writable (!directWrite), one
     // additional bulk mov converts the whole n*8-element masked block to
     // the real destination type in a single shot.
@@ -1580,6 +1588,17 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     // strictly write-then-read within a single lane, so a pair of
     // full-width temporaries (holding lo/hi scratch) suffices for both
     // straddling lanes instead of allocating a fresh temporary each time.
+    // Fixed as raw uw (stride 2): only straddling lanes route through
+    // these, so they never need to match finalDst's own element size.
+    int type_size = getBytes(finalDst.type);
+    int dstStride = finalDst.stride;
+    switch (type_size) {
+        case 1:
+        case 2:
+        case 4: break;
+        default: stub("Unsupported dst type size for u3 upconversion.");
+    }
+
     auto tmp = newTemp(DataType::uw, n, 2);
     auto tmpHi = newTemp(DataType::uw, n, 2);
 
@@ -1598,14 +1617,15 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
 
     int next = 0;
 
-    // Explicit crosspack-2 interleaving: each lane's row (all n columns) is
-    // unpacked in one shot, but its columns are not written densely on
-    // their own -- they are interleaved, column by column, with the row
-    // belonging to its pair partner (lanes 0&1, 2&3, 4&5, 6&7 -- the second
-    // element of each pair in the 8-lane group). The addressing stride
-    // used to place a lane's columns is always dstStride (the pair pitch).
-    int dstStride = finalDst.stride;
-    int type_size = 2;
+    // Explicit crosspack interleaving (crosspack * type_size == 4 bytes,
+    // i.e. crosspack-4 for a byte-sized (ub/b) destination, crosspack-2 for
+    // a word-sized (uw and other 2-byte) destination -- see finalDst.stride
+    // above): each lane's row (all n columns) is unpacked in one shot, but
+    // its columns are not written densely on their own -- they are
+    // interleaved, column by column, with the row belonging to its pair
+    // partner (lanes 0&1, 2&3, 4&5, 6&7 -- the second element of each pair
+    // in the 8-lane group). The addressing stride used to place a lane's
+    // columns is always dstStride (the pair pitch).
 
     // Compute the final (GRF-normalized) destination region for a single
     // lane's n columns, given its position (pairIdx/parity) in the
@@ -1671,18 +1691,27 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         setOp(shrOp, Opcode::shr, 2 * n, dstMerged, rowDup, packedShift);
     };
 
-    // Lanes 0&1 (row 0) and 6&7 (row 2) each merge into one SIMD-2n shr.
-    // The middle pair (3, 4 / row 1) is left unmerged and processed
-    // individually below, alongside the straddling lanes.
-    static const int mergePairs[2][2] = {{0, 1}, {6, 7}};
-    for (auto &pr : mergePairs)
-        mergeRowPair(pr[0], pr[1], allOps[next++]);
+    // Lanes 0&1 (row 0) and 6&7 (row 2) each merge into one SIMD-2n shr,
+    // when merging is applicable (dstStride == 2). The middle pair (3, 4 /
+    // row 1) is always left unmerged and processed individually below,
+    // alongside the straddling lanes.
+    bool canMergePairs = (dstStride == 2);
+    if (canMergePairs) {
+        static const int mergePairs[2][2] = {{0, 1}, {6, 7}};
+        for (auto &pr : mergePairs)
+            mergeRowPair(pr[0], pr[1], allOps[next++]);
+    }
 
-    // Lanes 2, 3, 4, and 5 are processed individually: 2 and 5 straddle two
-    // rows (shr/shl/or_, 3 ops each), while 3 and 4 (the middle row-1 pair)
-    // are left unmerged (a single shr, like any other non-straddling
-    // lane).
-    for (int lane : {2, 3, 4, 5}) {
+    // Lanes 2, 3, 4, and 5 are always processed individually: 2 and 5
+    // straddle two rows (shr/shl/or_, 3 ops each), while 3 and 4 (the
+    // middle row-1 pair) are left unmerged (a single shr, like any other
+    // non-straddling lane). When pair merging isn't applicable (dstStride
+    // != 2), lanes 0, 1, 6, 7 are processed the same way, individually,
+    // instead of being handled by mergeRowPair above.
+    std::vector<int> soloLanes = {2, 3, 4, 5};
+    if (!canMergePairs)
+        soloLanes = {0, 1, 2, 3, 4, 5, 6, 7};
+    for (int lane : soloLanes) {
         const auto &L = lanes[lane];
         auto finalDstLane = computeFinalDstLane(lane);
         const auto &rowLo = rows[L.byte];
@@ -1691,22 +1720,26 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
             setOp(allOps[next++], Opcode::shr, n, finalDstLane, rowLo, CopyOperand(int(L.shift)));
         } else {
             const auto &rowHi = rows[L.hiByte];
-            tmp.offset = finalDstLane.offset;
-            tmpHi.offset = finalDstLane.offset;
             setOp(allOps[next++], Opcode::shr, n, tmp, rowLo, CopyOperand(int(L.shift)));
             setOp(allOps[next++], Opcode::shl, n, tmpHi, rowHi, CopyOperand(int(L.hiShift)));
             setOp(allOps[next++], Opcode::or_, n, finalDstLane, tmp, tmpHi);
         }
     }
 
-    // Every lane above wrote its unmasked shr/or_ result straight to its
-    // final destination slot -- reinterpreted in place as raw uw when
-    // !directWrite -- and, between all 8 lanes, every element of the
-    // n*8-element destination block gets written exactly once. Apply the
-    // 0x7 mask once here, in a single and_ spanning the whole block --
-    // legalizeSIMD() will later fracture this into hardware-legal SIMD
-    // chunks (e.g. SIMD32) as needed, so there's no need to chunk it
-    // manually here.
+    // When pair merging was used (canMergePairs), fewer ops were needed
+    // than the worst-case totalOps above; invalidate the unused trailing
+    // slots so they don't emit as stray instructions, and so the final
+    // and_/mov below always land at their fixed (worst-case) indices.
+    while (next < totalOps - 1)
+        allOps[next++]->invalidate();
+
+    // Every lane above lands its unmasked result directly in finalDst --
+    // reinterpreted in place as raw uw when !directWrite. Between all 8
+    // lanes, every element of the n*8-element destination block gets
+    // written exactly once. Apply the 0x7 mask once here, in a single and_
+    // spanning the whole block -- legalizeSIMD() will later fracture this
+    // into hardware-legal SIMD chunks (e.g. SIMD32) as needed, so there's
+    // no need to chunk it manually here.
     auto finalDstFlat = finalDst;
     finalDstFlat.stride = 1;
     if (!directWrite) finalDstFlat.type = DataType::uw;

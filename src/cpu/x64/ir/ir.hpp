@@ -114,7 +114,8 @@ enum class op_kind_t {
     //
     // Apply post-ops via an injector to a set of accumulators. The injector is
     // not IR-based, so lowering to it needs interoperability code (see the
-    // emitter's `inject_postops_fn_t`). Operands are in `inject_postops_args_t`.
+    // emitter's `postops_lowering_t`). Operands are in
+    // `inject_postops_args_t`.
     inject_postops,
 
     // Mask operations
@@ -219,22 +220,18 @@ struct vreg_info_t {
 //                  parallel to `acc`. Locates each accumulator in the
 //                  destination tensor so binary post-ops address the matching
 //                  right-hand-side slice
-//   mask, elems  - active-element descriptor of the accumulators, the same
-//                  `mask` and `elems` that `vload_masked` / `vstore_masked`
-//                  take. `elems` is the active element count and `mask` holds
-//                  that pattern, or `vreg_t::none` for a single element or a
-//                  full vector. `elems == -1` marks a full vector, every element
-//                  valid. A binary post-op reads `elems` right-hand-side
-//                  elements per accumulator, keeping the read in bounds
 //
-// `base_ptr`, `out_byte_off`, `mask`, and `elems` are unused by an eltwise-only
-// chain.
+// `base_ptr` and `out_byte_off` are unused by an eltwise-only chain.
+//
+// How many elements of an accumulator are active is not recorded here. That is
+// a detail of hooking the Xbyak injector up to the IR, not of the IR itself.
+// The count is fixed for a kernel, so the lowering takes it once instead (see
+// the emitter's `postops_lowering_t`), and the register that carries the
+// pattern is ISA-specific. Neither belongs in a target-neutral IR.
 struct inject_postops_args_t {
     std::vector<vreg_t> acc;
     vreg_t base_ptr = vreg_t::none;
     std::vector<dim_t> out_byte_off;
-    vreg_t mask = vreg_t::none;
-    int elems = -1;
 };
 
 // An `ir_t` is the operation list plus, for each virtual register, its info
@@ -316,11 +313,11 @@ struct DNNL_API ir_t {
     void set_mask_imm(vreg_t mask, int n_elems);
 
     // post-ops
-    // Apply post-ops to `acc` in place. `base_ptr`, `out_byte_off`, `mask`, and
-    // `elems` describe where each accumulator lands in the output and how many
-    // elements are active (see `inject_postops_args_t`).
+    // Apply post-ops to `acc` in place. `base_ptr` and `out_byte_off` describe
+    // where each accumulator lands in the output (see
+    // `inject_postops_args_t`).
     void inject_postops(const std::vector<vreg_t> &acc, vreg_t base_ptr,
-            const std::vector<dim_t> &out_byte_off, vreg_t mask, int elems);
+            const std::vector<dim_t> &out_byte_off);
 
     // control flow
     // Pass the returned op index to `loop_end` to close the loop.

@@ -21,7 +21,6 @@
 // using a `jit_generator`.
 
 #include <deque>
-#include <functional>
 #include <utility>
 #include <vector>
 
@@ -66,29 +65,25 @@ struct data_section_t {
 // emitter appends to it and references each entry rip-relative. The caller
 // then emits the bytes with `emit_data_section()` after the `postamble()`.
 //
+// Lowers the `inject_postops` operation onto the JIT post-ops injector, which
+// is not IR-based (see `postops_injector.hpp`). Only `emit()` needs it, so a
+// forward declaration keeps this header free of post-ops specifics.
+struct postops_injector_t;
+
 // This is the main entry point for the emitter. It dispatches by ISA family to
 // the matching backend.
 //
-// `inject` lowers the `inject_postops` operation to the JIT post-ops injector.
-// It is the interoperability layer between the IR and the non-IR injector. When
-// the IR has no `inject_postops` op it is unused and may be left empty.
+// `postops` is the interoperability layer between the IR and the non-IR
+// injector, so everything specific to hooking Xbyak code up to the IR lives
+// there, including the fixed registers the injector reads. Those are
+// ISA-specific (an AVX-512 tail opmask has no AVX2 counterpart), which is why
+// neither the IR builder nor the emitter names them. It is null when the kernel
+// has no post-ops, which is also when the IR has no `inject_postops` operation.
 //
-//   acc_phys     - physical vec register indices of the accumulators, in the
-//                  order passed to `ir_t::inject_postops()`
-//   base_phys    - physical gpr index of the base (output) pointer
-//   out_byte_off - output byte offset of each accumulator from the base pointer,
-//                  parallel to `acc_phys`
-//   mask_phys    - physical register index of the active-element mask, or `-1`
-//                  when there is none
-//   elems        - active element count per accumulator, `-1` for a full vector
-using inject_postops_fn_t = std::function<void(const std::vector<int> &acc_phys,
-        int base_phys, const std::vector<dim_t> &out_byte_off, int mask_phys,
-        int elems)>;
-
 // Export for testing.
 void DNNL_API emit(jit_generator_t &gen, const ir_t &ir,
         const reg_alloc_result_t &alloc, const reg_config_t &reg_cfg,
-        data_section_t &data, const inject_postops_fn_t &inject = {});
+        data_section_t &data, postops_injector_t *postops = nullptr);
 
 // Emit the accumulated static data after the kernel's postamble. It aligns,
 // binds each label and then write the data bytes with `db`.

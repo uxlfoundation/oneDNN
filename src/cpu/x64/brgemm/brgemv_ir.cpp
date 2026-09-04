@@ -204,8 +204,8 @@ struct invariant_regs_t {
     ir::vreg_t batch = ir::vreg_t::none;
     // Batch size loop count. `none` when max_bs == 1 (single batch element).
     ir::vreg_t bs = ir::vreg_t::none;
-    // K-tail mask, shared by every masked tail load. It's only required when
-    // `k_tail` is greater than 1.
+    // K-tail mask, shared by every masked tail load. `none` when `k_tail` is
+    // zero, which is when there is no tail load to mask.
     ir::vreg_t k_tail_mask = ir::vreg_t::none;
     // Post-ops flag (params.do_post_ops). Non-zero applies the post-ops, zero
     // stores the raw accumulator. `none` unless the kernel has a post-op to
@@ -248,7 +248,7 @@ m_loop_input_regs_t init_m_loop_input_regs(
     regs.advancing.a_off = ir.new_gpr();
     ir.mov_imm(regs.advancing.a_off, 0);
 
-    if (cfg.k_tail > 1) {
+    if (cfg.k_tail > 0) {
         // We only need to set the mask once per kernel. It's lifetime is
         // managed automatically by the allocator.
         regs.invariant.k_tail_mask = ir.new_mask();

@@ -93,14 +93,27 @@ status_t stream_t::init() {
     if (is_verbose_profiler_enabled()) {
         verbose_profiler_.set(
                 utils::make_unique<xpu::sycl::verbose_profiler_t>(this));
+
+        auto *vp = utils::downcast<xpu::sycl::verbose_profiler_t *>(
+                verbose_profiler());
+
         // Check if the queue has profiling enabled and pause the verbose
         // profiler if it does not. Verbose lines are still emitted during
         // logging, but without execution timing information.
         const bool queue_has_profiling = queue().has_property<
                 ::sycl::property::queue::enable_profiling>();
-        if (!queue_has_profiling) {
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+        const bool use_tag = !queue_has_profiling
+                && queue().get_device().has(
+                        ::sycl::aspect::ext_oneapi_queue_profiling_tag);
+#else
+        const bool use_tag = false;
+#endif
+        vp->set_use_ext_oneapi_tag(use_tag);
+        if (!queue_has_profiling && !use_tag) {
             VWARN(primitive, exec,
-                    "SYCL queue does not have profiling enabled. "
+                    "SYCL queue does not have profiling enabled and "
+                    "sycl_ext_oneapi_profiling_tag is not supported. "
                     "Verbose profiling is paused and execution times "
                     "will not be reported.");
             verbose_profiler()->pause_profiling();

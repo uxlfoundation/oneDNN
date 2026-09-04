@@ -65,3 +65,7 @@
 
 # CI tests
 --batch=test_sdpa_ci
+
+# fwks
+--reset
+--batch=option_set_fwks_key_gpu

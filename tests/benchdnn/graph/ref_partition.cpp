@@ -25,16 +25,36 @@ namespace graph {
 
 namespace {
 
-void check_memory_fit(
-        bool fits_ram, size_t mem_req, size_t mem_limit, res_t *res) {
+int check_memory_fit(bool fits_ram, size_t mem_req, size_t mem_limit,
+        mem_platform_t memory_kind, res_t *res) {
+    const bool is_device = memory_kind == GPU_REQ;
+    const char *memory_kind_str = is_device ? "GPU" : "CPU";
     if (!fits_ram) {
-        BENCHDNN_PRINT(2,
-                "[CHECK_MEM]: Not enough %s RAM for a problem. Allocation of "
-                "size %g GB doesn't fit allocation limit of %g GB. \n",
-                (is_cpu() ? "CPU" : "GPU"), GB(mem_req), GB(mem_limit));
+        BENCHDNN_PRINT(1, "[CHECK_MEM]: Not enough %s RAM for a problem.\n",
+                memory_kind_str);
         res->state = SKIPPED;
         res->reason = reason_t::skip_not_enough_ram;
     }
+
+    size_t memory_capacity = get_cpu_ram_size();
+    size_t max_alloc_capacity = 0;
+    if (is_device) {
+        SAFE(get_gpu_ram_sizes(memory_capacity, max_alloc_capacity), WARN);
+        // verbose level is aligned with check_total_size() in dnnl_common.cpp.
+        BENCHDNN_PRINT((!fits_ram ? 1 : 6),
+                "[CHECK_MEM]: Requested: %s; graph_device_limit: %s; "
+                "device_RAM_capacity: %s; gpu_max_alloc: %s;\n",
+                smart_bytes(mem_req).c_str(), smart_bytes(mem_limit).c_str(),
+                smart_bytes(memory_capacity).c_str(),
+                smart_bytes(max_alloc_capacity).c_str());
+    } else {
+        BENCHDNN_PRINT((!fits_ram ? 1 : 6),
+                "[CHECK_MEM]: Requested: %s; graph_CPU_limit: %s; "
+                "CPU_RAM_capacity: %s;\n",
+                smart_bytes(mem_req).c_str(), smart_bytes(mem_limit).c_str(),
+                smart_bytes(memory_capacity).c_str());
+    }
+    return OK;
 }
 
 } // namespace
@@ -552,21 +572,38 @@ int ref_partition_t::check_partition_total_size(
     const auto partition_in_out_lts = get_in_out_lt_ids(op);
     for (const auto &lt_id : partition_in_out_lts) {
         if (lt_id_2_lt_.find(lt_id) == lt_id_2_lt_.end()) return FAIL;
+        if (!accounted_graph_lt_ids_.insert(lt_id).second) continue;
         new_mem_req += lt_id_2_lt_.at(lt_id).create().get_mem_size();
     }
 
-    // Step 2. Check whether the memory is enough
+    // Step 2. Check whether the memory is enough.
     if (is_gpu()) {
         size_t total_gpu_req = graph_mem_req.get_mem_req(GPU_REQ) + new_mem_req;
+        const size_t new_mapped_mem_req
+                = has_bench_mode_modifier(mode_modifier_t::no_ref_memory)
+                ? 0
+                : new_mem_req;
         const bool fits_device_ram = total_gpu_req <= benchdnn_device_limit;
-        check_memory_fit(
-                fits_device_ram, total_gpu_req, benchdnn_device_limit, res);
+        SAFE(check_memory_fit(fits_device_ram, total_gpu_req,
+                     benchdnn_device_limit, GPU_REQ, res),
+                WARN);
+
+        const size_t combined_cpu_req = graph_mem_req.get_mem_req(CPU_REQ)
+                + new_mapped_mem_req + total_gpu_req;
+        const bool fits_cpu_ram = combined_cpu_req <= benchdnn_cpu_limit;
+        SAFE(check_memory_fit(fits_cpu_ram, combined_cpu_req,
+                     benchdnn_cpu_limit, CPU_REQ, res),
+                WARN);
 
         graph_mem_req.increase_mem_req(GPU_REQ, GRAPH_USER, new_mem_req);
+        graph_mem_req.increase_mem_req(CPU_REQ, GRAPH_USER, new_mapped_mem_req);
+        graph_mem_req.increase_mapped_mem_req(GRAPH_USER, new_mapped_mem_req);
     } else {
         size_t total_cpu_req = graph_mem_req.get_mem_req(CPU_REQ) + new_mem_req;
         bool fits_cpu_ram = total_cpu_req <= benchdnn_cpu_limit;
-        check_memory_fit(fits_cpu_ram, total_cpu_req, benchdnn_cpu_limit, res);
+        SAFE(check_memory_fit(fits_cpu_ram, total_cpu_req, benchdnn_cpu_limit,
+                     CPU_REQ, res),
+                WARN);
 
         graph_mem_req.increase_mem_req(CPU_REQ, GRAPH_USER, new_mem_req);
     }
@@ -587,17 +624,14 @@ int ref_partition_t::check_partition_total_size(
     const bool is_corr = has_bench_mode_bit(mode_bit_t::corr);
     const bool is_bitwise = has_bench_mode_bit(mode_bit_t::bitwise);
 
-    // The size of reference memory with tag abx and f32.
-    size_t input_ref_mem_size = 0, output_ref_mem_size = 0;
-    if (is_corr || is_bitwise) {
-        input_ref_mem_size = check_mem_size_args.total_ref_md_size[0];
-        output_ref_mem_size = check_mem_size_args.total_ref_md_size[1];
-    }
+    // The size of output reference memory with tag abx and f32.
+    const size_t output_ref_mem_size = (is_corr || is_bitwise)
+            ? check_mem_size_args.total_ref_md_size[1]
+            : 0;
 
     // total size cpu includes:
     // 1. Memory allocated for a test obj( such as the memory for input and outputs, saved in total_size_device )
-    // 2. Memory allocated for reference computation, which will be released
-    // after reference path data filling(`C` mode only)
+    // 2. Memory allocated for reference computation (`C` mode only)
     // 3. Memory to be allocated for comparing results(`C` mode only)
     // 4. Memory to be allocated for mapping device memory(GPU backend only)
     size_t new_cpu_req = check_mem_size_args.total_size_ref
@@ -618,27 +652,31 @@ int ref_partition_t::check_partition_total_size(
 
     // STEP 2: Check whether the memory is enough
     size_t total_cpu_req = graph_mem_req.get_mem_req(CPU_REQ) + new_cpu_req;
-    bool fits_cpu_ram = total_cpu_req <= benchdnn_cpu_limit;
-    check_memory_fit(fits_cpu_ram, total_cpu_req, benchdnn_cpu_limit, res);
 
     // GPU mem size check.
     if (is_gpu()) {
         size_t total_gpu_req = graph_mem_req.get_mem_req(GPU_REQ) + new_gpu_req;
-
         const bool fits_device_ram = total_gpu_req <= benchdnn_device_limit;
-        check_memory_fit(
-                fits_device_ram, total_gpu_req, benchdnn_device_limit, res);
+        SAFE(check_memory_fit(fits_device_ram, total_gpu_req,
+                     benchdnn_device_limit, GPU_REQ, res),
+                WARN);
+
+        const size_t combined_cpu_req = total_cpu_req + total_gpu_req;
+        const bool fits_cpu_ram = combined_cpu_req <= benchdnn_cpu_limit;
+        SAFE(check_memory_fit(fits_cpu_ram, combined_cpu_req,
+                     benchdnn_cpu_limit, CPU_REQ, res),
+                WARN);
         graph_mem_req.increase_mem_req(GPU_REQ, REF, new_gpu_req);
+        graph_mem_req.increase_mapped_mem_req(
+                REF, check_mem_size_args.total_size_mapped);
+    } else {
+        const bool fits_cpu_ram = total_cpu_req <= benchdnn_cpu_limit;
+        SAFE(check_memory_fit(fits_cpu_ram, total_cpu_req, benchdnn_cpu_limit,
+                     CPU_REQ, res),
+                WARN);
     }
 
-    // STEP 3: Temprorary memory release stage
-    if (is_corr) {
-        // Release reference path memory for `C` mode
-        total_cpu_req -= input_ref_mem_size;
-        total_cpu_req -= output_ref_mem_size;
-    }
-
-    // Update the required memory size
+    // STEP 3: Update the required memory size
     graph_mem_req.increase_mem_req(CPU_REQ, REF, new_cpu_req);
 
     return res->state == FAILED ? FAIL : OK;

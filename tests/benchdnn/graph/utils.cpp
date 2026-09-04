@@ -1286,14 +1286,10 @@ engine_t make_graph_engine(bool use_host) {
         return engine_t(make_engine_with_allocator(dnnl::engine::kind::cpu,
                 static_cast<size_t>(engine_index), alloc));
     } else {
-#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL
+#if DNNL_GPU_RUNTIME == DNNL_RUNTIME_SYCL \
+        || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
         return engine_t(make_engine_with_allocator(dnnl::engine::kind::gpu,
                 static_cast<size_t>(engine_index), alloc));
-#elif DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL
-        // needs to prepare ocl_malloc_wrapper and ocl_free_wrapper and call
-        // make_engine_with_allocator instead.
-        return engine_t(dnnl::engine(
-                dnnl::engine::kind::gpu, static_cast<size_t>(engine_index)));
 #else
         assert(!"unsupported gpu runtime");
         return engine_t(dnnl::engine {});

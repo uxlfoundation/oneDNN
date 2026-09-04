@@ -177,7 +177,10 @@ int ref_primitive_t::init_prb(res_t *res) {
 int ref_primitive_t::init_prim(
         const engine_t &ref_eng, res_t *res, bool force_override) {
     // The custom driver does not contain a primitive, skip this step.
-    if (driver_ == dnnl_driver_t::custom) return OK;
+    if (driver_ == dnnl_driver_t::custom) {
+        ::custom::collect_mem_size(res->mem_size_args, prb_.get());
+        return OK;
+    }
 
     const bool is_quant_or_dequant = kind_ == dnnl::graph::op::kind::Dequantize
             || kind_ == dnnl::graph::op::kind::Quantize

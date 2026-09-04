@@ -18,6 +18,7 @@
 #define BENCHDNN_GRAPH_MEMORY_HPP
 
 #include <mutex>
+#include <numeric>
 #include <tuple>
 #include "common.hpp"
 #include "deserialize.hpp"
@@ -93,29 +94,45 @@ public:
         return total_req;
     }
 
+    void increase_mapped_mem_req(mem_path_t path, size_t mem_req) {
+        if (path < 0 || path >= mapped_req_.size()) return;
+
+        std::lock_guard<std::mutex> guard(mutex_);
+        mapped_req_[path] += mem_req;
+    }
+
+    size_t get_mapped_mem_req() {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return std::accumulate(mapped_req_.begin(), mapped_req_.end(), 0ULL);
+    }
+
     // Reset the memory request for the specific path.
     void reset_path(mem_path_t path) {
-        if (path < 0 || path > req_.front().size()) return;
+        if (path < 0 || path >= req_.front().size()) return;
 
         std::lock_guard<std::mutex> guard(mutex_);
         req_[CPU_REQ][path] = 0;
         req_[GPU_REQ][path] = 0;
+        mapped_req_[path] = 0;
     }
 
     // Reset the memory size args for both paths on all devices
     void reset_all() {
         req_ = std::vector<std::vector<size_t>>(2, std::vector<size_t>(3, 0));
+        mapped_req_ = std::vector<size_t>(3, 0);
     }
 
 private:
     graph_memory_req_args_t() {
         req_ = std::vector<std::vector<size_t>>(2, std::vector<size_t>(3, 0));
+        mapped_req_ = std::vector<size_t>(3, 0);
     }
     ~graph_memory_req_args_t() = default;
     BENCHDNN_DISALLOW_COPY_AND_ASSIGN(graph_memory_req_args_t);
 
     // The detailed memory size requrest for specific path and devices.
     std::vector<std::vector<size_t>> req_;
+    std::vector<size_t> mapped_req_;
     std::mutex mutex_;
 };
 

@@ -285,6 +285,55 @@ void init_memory_args_native(dnn_mem_map_t &mem_map, const base_prb_t *base_prb,
             nullptr, ref_eng);
 }
 
+// Account for the test allocation and its mapped, reference, and comparison
+// buffers. Custom operations provide dimensions separately because they do not
+// have a primitive descriptor from which the reference layout can be queried.
+void add_md_size(const_dnnl_memory_desc_t md, const dims_t &dims,
+        check_mem_size_args_t &mem_size_args) {
+    const auto mem_size = dnnl_memory_desc_get_size(md);
+    if (mem_size == 0 || mem_size == DNNL_RUNTIME_SIZE_VAL) return;
+
+    mem_size_args.sizes.push_back(mem_size);
+    mem_size_args.total_size_device += mem_size;
+
+    const bool mapped_mem_factor = !is_cpu()
+            && !has_bench_mode_modifier(mode_modifier_t::no_ref_memory);
+    mem_size_args.total_size_mapped += mapped_mem_factor * mem_size;
+
+    const auto ref_md = dnn_mem_t::init_md(
+            static_cast<int>(dims.size()), dims.data(), dnnl_f32, tag::abx);
+    const auto ref_md_size = dnnl_memory_desc_get_size(ref_md);
+    const size_t ref_mem_idx = mem_size_args.want_input ? 0 : 1;
+    mem_size_args.total_ref_md_size[ref_mem_idx] = ref_md_size;
+
+    const bool is_corr = has_bench_mode_bit(mode_bit_t::corr);
+    const bool is_bitwise = has_bench_mode_bit(mode_bit_t::bitwise);
+    mem_size_args.total_size_ref += is_corr * ref_md_size;
+
+    const bool is_output = !mem_size_args.want_input;
+    mem_size_args.total_size_compare
+            += is_output * ((is_corr || is_bitwise) + is_bitwise) * ref_md_size;
+}
+
+// Rebuild memory estimates from custom operation arguments. Unlike regular
+// drivers, custom operations do not create a primitive whose descriptors can be
+// collected by the common memory accounting path.
+void collect_mem_size(
+        check_mem_size_args_t &mem_size_args, const base_prb_t *base_prb) {
+    mem_size_args = {};
+    const auto *prb = prb_t::from(base_prb);
+    for (const auto exec_arg : prb->supported_exec_args(false)) {
+        const auto &arg_md = prb->arg_mds_.at(exec_arg);
+        const auto &tag = std::get<0>(arg_md);
+        const auto &dims = std::get<1>(arg_md);
+        const auto dt = std::get<2>(arg_md);
+        const auto md = dnn_mem_t::init_md(
+                static_cast<int>(dims.size()), dims.data(), dt, tag);
+        mem_size_args.want_input = exec_arg != DNNL_ARG_DST;
+        add_md_size(md, dims, mem_size_args);
+    }
+}
+
 int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
         dnnl_primitive_t, const base_prb_t *base_prb, res_t *res,
         dnnl_primitive_t) {

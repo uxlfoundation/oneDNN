@@ -81,6 +81,22 @@ private:
     simple_memory_pool_t mem_pool_;
 };
 
+class graph_mem_check_guard_t {
+public:
+    explicit graph_mem_check_guard_t(graph_mem_manager_t &manager)
+        : manager_(manager) {
+        manager_.start_graph_mem_check();
+    }
+    ~graph_mem_check_guard_t() { manager_.stop_graph_mem_check(); }
+
+    graph_mem_check_guard_t(const graph_mem_check_guard_t &) = delete;
+    graph_mem_check_guard_t &operator=(const graph_mem_check_guard_t &)
+            = delete;
+
+private:
+    graph_mem_manager_t &manager_;
+};
+
 dnnl::graph::allocator &get_graph_allocator(bool use_host = false);
 
 } // namespace graph

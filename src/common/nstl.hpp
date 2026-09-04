@@ -29,6 +29,7 @@
 #include "float16.hpp"
 #include "float4.hpp"
 #include "float8.hpp"
+#include "int2.hpp"
 #include "int4.hpp"
 #include "internal_defs.hpp"
 #include "z_magic.hpp"
@@ -239,6 +240,28 @@ struct numeric_limits<int4_t> {
     static constexpr int4_t epsilon() { return int4_t(0); }
 };
 
+template <>
+struct numeric_limits<uint2_t> {
+    static constexpr uint2_t lowest() { return uint2_t(0); }
+    static constexpr uint2_t min() { return lowest(); }
+    static constexpr uint2_t max() { return uint2_t(3); }
+
+    static constexpr int digits = 2;
+
+    static constexpr uint2_t epsilon() { return uint2_t(0); }
+};
+
+template <>
+struct numeric_limits<int2_t> {
+    static constexpr int2_t lowest() { return int2_t(-2); }
+    static constexpr int2_t min() { return lowest(); }
+    static constexpr int2_t max() { return int2_t(1); }
+
+    static constexpr int digits = 2;
+
+    static constexpr int2_t epsilon() { return int2_t(0); }
+};
+
 template <typename T>
 struct is_integral { // NOLINT(readability-identifier-naming)
     static constexpr bool value = false;
@@ -265,6 +288,14 @@ struct is_integral<int4_t> {
 };
 template <>
 struct is_integral<uint4_t> {
+    static constexpr bool value = true;
+};
+template <>
+struct is_integral<int2_t> {
+    static constexpr bool value = true;
+};
+template <>
+struct is_integral<uint2_t> {
     static constexpr bool value = true;
 };
 

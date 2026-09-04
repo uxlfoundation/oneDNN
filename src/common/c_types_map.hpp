@@ -174,6 +174,8 @@ const data_type_t s8 = dnnl_s8;
 const data_type_t u8 = dnnl_u8;
 const data_type_t s4 = dnnl_s4;
 const data_type_t u4 = dnnl_u4;
+const data_type_t s2 = dnnl_s2;
+const data_type_t u2 = dnnl_u2;
 const data_type_t boolean = dnnl_boolean;
 const data_type_t data_type_max = dnnl_data_type_max;
 

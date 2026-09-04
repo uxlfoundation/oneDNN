@@ -652,8 +652,8 @@ void jit_uni_x8s8s32x_deconv_fwd_kernel_vmm_t<isa,
     if (jcp_.ndims > 3) {
         if (!base_comp_addr_loaded) load_base_zp_src_pad_comp_addr();
 
-        const auto kh_offset = jcp_.kw * jcp_.oc_without_padding * jcp_.ngroups
-                * sizeof(int32_t);
+        const dim_t kh_offset = jcp_.kw * jcp_.oc_without_padding * jcp_.ngroups
+                * static_cast<dim_t>(sizeof(int32_t));
 
         add(reg_zp_src_pad_comp, kh_offset);
         mov(zp_src_pad_comp_addr_, reg_zp_src_pad_comp);

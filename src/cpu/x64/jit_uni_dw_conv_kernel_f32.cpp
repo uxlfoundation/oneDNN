@@ -244,12 +244,14 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::apply_filter_unrolled(
             }
         }
 
-        add(aux_reg_kernel, jcp.kw * ch_blk * sizeof(float));
+        add(aux_reg_kernel,
+                jcp.kw * ch_blk * static_cast<dim_t>(sizeof(float)));
         if (jcp.is_fused_conv) {
             // Move to next row pointer in the buffer
             add(aux_reg_input_buffer_ptr, sizeof(void *));
         } else {
-            add(aux_reg_input, ih_stride * dilate_h * sizeof(float));
+            add(aux_reg_input,
+                    ih_stride * dilate_h * static_cast<dim_t>(sizeof(float)));
         }
 
         dec(iter_kh);
@@ -429,14 +431,14 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::compute_loop(
     const bool ch_loop = ur_ch_blocks > jcp.nb_ch_blocking;
     // ch_loop currently happen only when data layout is nxc. The strides are
     // calculated for this layout only.
-    const size_t wei_ch_stride = (size_t)jcp.nb_ch_blocking * jcp.kh * jcp.kw
-            * jcp.ch_block * jcp.typesize_in;
-    const size_t inp_ch_stride
-            = (size_t)jcp.nb_ch_blocking * jcp.ch_block * jcp.typesize_in;
-    const size_t out_ch_stride
-            = (size_t)jcp.nb_ch_blocking * jcp.ch_block * jcp.typesize_out;
-    const size_t bias_stride
-            = (size_t)jcp.nb_ch_blocking * jcp.ch_block * sizeof(float);
+    const dim_t nb_ch_blocking = jcp.nb_ch_blocking;
+    const dim_t wei_ch_stride
+            = nb_ch_blocking * jcp.kh * jcp.kw * jcp.ch_block * jcp.typesize_in;
+    const dim_t inp_ch_stride = nb_ch_blocking * jcp.ch_block * jcp.typesize_in;
+    const dim_t out_ch_stride
+            = nb_ch_blocking * jcp.ch_block * jcp.typesize_out;
+    const dim_t bias_stride
+            = nb_ch_blocking * jcp.ch_block * static_cast<dim_t>(sizeof(float));
 
     auto compute = [&](int ur_ch_blocks, bool is_ch_tail) {
         if (jcp.is_fused_conv) {
@@ -515,8 +517,8 @@ void jit_uni_dw_conv_fwd_kernel_f32_t<isa>::ow_loop(int ur_ch_blocks) {
 
     const auto src_layout_nxc = is_src_layout_nxc();
     const auto dat_c_stride = src_layout_nxc ? jcp.ngroups : jcp.ch_block;
-    size_t inp_shift = (size_t)jcp.typesize_in * ur_w * stride_w * dat_c_stride;
-    size_t out_shift = (size_t)jcp.typesize_out * ur_w * dat_c_stride;
+    dim_t inp_shift = jcp.typesize_in * ur_w * stride_w * dat_c_stride;
+    dim_t out_shift = jcp.typesize_out * ur_w * dat_c_stride;
 
     const dim_t inp_shift_pad
             = jcp.typesize_in * (ur_w * stride_w - l_pad) * dat_c_stride;
@@ -714,8 +716,8 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::apply_filter(
     const dim_t stride_w = jcp.stride_w;
 
     const bool ddst_layout_nxc = is_ddst_layout_nxc();
-    const size_t ch_block_step = ch_blk * (ddst_layout_nxc ? 1 : oh * ow);
-    const size_t sp_step = ddst_layout_nxc ? jcp.ngroups : ch_blk;
+    const dim_t ch_block_step = ch_blk * (ddst_layout_nxc ? 1 : oh * ow);
+    const dim_t sp_step = ddst_layout_nxc ? jcp.ngroups : ch_blk;
 
     Label iter_exit_label;
 
@@ -748,11 +750,10 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::apply_filter(
                             masked_load);
 
                     for (int w = 0; w < ur_str_w; w++) {
-                        size_t sp_offset = w * sp_step;
-                        size_t ch_offset = ch * ch_block_step;
-                        size_t ddst_off = static_cast<size_t>(
-                                (sp_offset + ch_offset + r * simd_w_)
-                                * sizeof(float));
+                        dim_t sp_offset = w * sp_step;
+                        dim_t ch_offset = ch * ch_block_step;
+                        dim_t ddst_off = (sp_offset + ch_offset + r * simd_w_)
+                                * static_cast<dim_t>(sizeof(float));
 
                         Vmm vmm_ddst = get_ddst_reg(0);
                         load_vmm(vmm_ddst, ptr[aux1_reg_ddst + ddst_off],
@@ -765,16 +766,18 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::apply_filter(
                 }
             }
 
-            add(aux1_reg_kernel, ch_blk * stride_w * sizeof(float));
-            sub(aux1_reg_ddst, sp_step * sizeof(float));
+            add(aux1_reg_kernel,
+                    ch_blk * stride_w * static_cast<dim_t>(sizeof(float)));
+            sub(aux1_reg_ddst, sp_step * static_cast<dim_t>(sizeof(float)));
 
             sub(iter_kw, stride_w);
             cmp(iter_kw, 0);
             jg(kw_label, T_NEAR);
         }
 
-        add(aux_reg_kernel, kw * ch_blk * stride_h * sizeof(float));
-        sub(aux_reg_ddst, ow * sp_step * sizeof(float));
+        add(aux_reg_kernel,
+                kw * ch_blk * stride_h * static_cast<dim_t>(sizeof(float)));
+        sub(aux_reg_ddst, ow * sp_step * static_cast<dim_t>(sizeof(float)));
 
         sub(iter_kh, stride_h);
         cmp(iter_kh, 0);
@@ -793,8 +796,8 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::store_dsrc(
     const dim_t stride_w = jcp.stride_w;
 
     const auto dsrc_layout_nxc = is_dsrc_layout_nxc();
-    const size_t ch_block_step = ch_block * (dsrc_layout_nxc ? 1 : ih * iw);
-    const size_t sp_step
+    const dim_t ch_block_step = ch_block * (dsrc_layout_nxc ? 1 : ih * iw);
+    const dim_t sp_step
             = dsrc_layout_nxc ? jcp.ngroups : ch_block; // spatial step
 
     for (int r = 0; r < reg_repeats_; r++) {
@@ -806,10 +809,10 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::store_dsrc(
             if (last_block && tail_simd_overlap(r)) break;
 
             for (int w = 0; w < ur_str_w; w++) {
-                size_t sp_offset = w * stride_w * sp_step;
-                size_t ch_offset = ch * ch_block_step + r * simd_w_;
-                size_t dsrc_off = static_cast<size_t>(
-                        (sp_offset + ch_offset) * sizeof(float));
+                dim_t sp_offset = w * stride_w * sp_step;
+                dim_t ch_offset = ch * ch_block_step + r * simd_w_;
+                dim_t dsrc_off = (sp_offset + ch_offset)
+                        * static_cast<dim_t>(sizeof(float));
 
                 Vmm vmm_acc
                         = get_acc_reg((r * ur_ch_blocks + ch) * ur_str_w + w);
@@ -843,10 +846,10 @@ inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::ch_loop_body(
                 jcp.nb_ch - (utils::rnd_dn(nb_oc, jcp.nb_ch_blocking)));
         const int ch_step = jcp.nb_ch_blocking * jcp.ch_block;
 
-        const size_t wei_ch_stride = (size_t)jcp.nb_ch_blocking * jcp.kh
-                * jcp.kw * jcp.ch_block * sizeof(float);
-        const size_t data_ch_stride
-                = (size_t)jcp.nb_ch_blocking * jcp.ch_block * sizeof(float);
+        const dim_t wei_ch_stride = jcp.nb_ch_blocking * jcp.kh * jcp.kw
+                * jcp.ch_block * static_cast<dim_t>(sizeof(float));
+        const dim_t data_ch_stride = static_cast<dim_t>(jcp.nb_ch_blocking)
+                * jcp.ch_block * sizeof(float);
 
         mov(aux_reg_ch_blocks, reg_ch_blocks);
         push(reg_dsrc);
@@ -895,7 +898,7 @@ template <cpu_isa_t isa>
 inline void jit_uni_dw_conv_bwd_data_kernel_f32_t<isa>::unroll_width_body(
         int ur_ch_blocks) {
     assert(is_dsrc_layout_nxc() == is_ddst_layout_nxc());
-    const size_t ch_step = sizeof(float)
+    const dim_t ch_step = static_cast<dim_t>(sizeof(float))
             * (is_ddst_layout_nxc() ? jcp.ngroups : jcp.ch_block);
 
     auto unroll_width_loop = [&](int unroll_w) {
@@ -1362,8 +1365,8 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_spatial_loop_bias(
     const int unroll_w_trips = static_cast<int>(jcp.ow / unroll_w);
     const int tail_w = jcp.ow > max_unroll_w_ ? jcp.ow % max_unroll_w_ : 0;
 
-    const size_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
-    const size_t ch_offset = ch_step * sizeof(float);
+    const dim_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
+    const dim_t ch_offset = ch_step * static_cast<dim_t>(sizeof(float));
 
     mov(reg_oh, ptr[this->param1 + GET_OFF(oh_index)]);
     mov(reg_oh_worksize, ptr[this->param1 + GET_OFF(oh_count)]);
@@ -1525,8 +1528,9 @@ template <cpu_isa_t isa>
 inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::zero_filter_kh_loop(
         int nb_ch_blocking) {
 
-    const size_t filter_offset_kw = jcp.kw * jcp.ch_block * sizeof(float);
-    const size_t filter_offset_kh = jcp.kh * filter_offset_kw;
+    const dim_t filter_offset_kw
+            = jcp.kw * jcp.ch_block * static_cast<dim_t>(sizeof(float));
+    const dim_t filter_offset_kh = jcp.kh * filter_offset_kw;
 
     Label kh_loop_label;
 
@@ -1601,9 +1605,11 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_kh_step(
         int unroll_w, int l_pad, int pad_offset, int ow_block,
         int nb_ch_blocking, bool is_last_ch) {
 
-    const size_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
-    const size_t input_offset = jcp.iw * ch_step * sizeof(float);
-    const size_t filter_offset = jcp.kw * jcp.ch_block * sizeof(float);
+    const dim_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
+    const dim_t input_offset
+            = jcp.iw * ch_step * static_cast<dim_t>(sizeof(float));
+    const dim_t filter_offset
+            = jcp.kw * jcp.ch_block * static_cast<dim_t>(sizeof(float));
 
     Label kh_loop_label, skip_loop_label;
 
@@ -1692,11 +1698,11 @@ inline void jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_h_loop(
     const dim_t input_bottom_padding_overlap
             = div_up(jcp.ih + jcp.t_pad - (jcp.kh - 1), jcp.stride_h);
 
-    const size_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
-    const size_t typesize = sizeof(float);
-    const size_t input_shift = typesize * jcp.iw * ch_step;
-    const size_t output_shift = typesize * jcp.ow * ch_step;
-    const size_t filter_shift = typesize * jcp.kw * jcp.ch_block;
+    const dim_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
+    const dim_t typesize = sizeof(float);
+    const dim_t input_shift = typesize * jcp.iw * ch_step;
+    const dim_t output_shift = typesize * jcp.ow * ch_step;
+    const dim_t filter_shift = typesize * jcp.kw * jcp.ch_block;
 
     Label loop_begin_label, loop_end_label, common_block_label,
             top_padding_end_label, bottom_padding_end_label,
@@ -1830,8 +1836,9 @@ jit_uni_dw_conv_bwd_weights_kernel_f32_t<isa>::compute_ow_block_unroll() {
     int unroll_trips = 0;
     calculate_w_unrolling(unroll_trips, unroll_w, unroll_w_tail);
 
-    const size_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
-    const size_t data_offset = unroll_w * ch_step * sizeof(float);
+    const dim_t ch_step = is_layout_nxc() ? jcp.ngroups : jcp.ch_block;
+    const dim_t data_offset
+            = unroll_w * ch_step * static_cast<dim_t>(sizeof(float));
 
     if (jcp.with_bias) compute_bias();
 

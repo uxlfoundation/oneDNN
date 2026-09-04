@@ -270,8 +270,8 @@ protected:
         if (postops_cfg_.post_ops) {
             injector.reset(new postops_injector_t(*this, avx2,
                     *postops_cfg_.post_ops, *postops_cfg_.dst_md, abi_param1,
-                    postops_cfg_.rhs_arg_offset, postops_cfg_.dst_orig_offset,
-                    postops_cfg_.tail_elems));
+                    static_cast<int>(postops_cfg_.rhs_arg_offset),
+                    postops_cfg_.dst_orig_offset, postops_cfg_.tail_elems));
             emit_injector = [&](const std::vector<int> &acc_phys, int base_phys,
                                     const std::vector<dim_t> &out_byte_off,
                                     int mask_phys, int elems) {

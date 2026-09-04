@@ -728,14 +728,16 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
         if (jcp.signed_input) {
             mov(reg_comp_data, EVEX_compress_addr(rsp, reg_comp_data_off));
             add(reg_comp_data,
-                    load_loop_blk * jcp.load_block * sizeof(int32_t));
+                    static_cast<uint32_t>(
+                            load_loop_blk * jcp.load_block * sizeof(int32_t)));
             mov(EVEX_compress_addr(rsp, reg_comp_data_off), reg_comp_data);
         }
         if (jcp.src_zero_point) {
             mov(reg_zp_compensation,
                     EVEX_compress_addr(rsp, reg_zp_compensation_off));
             add(reg_zp_compensation,
-                    load_loop_blk * jcp.load_block * sizeof(int32_t));
+                    static_cast<uint32_t>(
+                            load_loop_blk * jcp.load_block * sizeof(int32_t)));
             mov(EVEX_compress_addr(rsp, reg_zp_compensation_off),
                     reg_zp_compensation);
         }
@@ -743,8 +745,8 @@ void jit_avx512_core_x8s8s32x_1x1_conv_kernel_vmm_t<Vmm>::generate() {
         if (jcp.with_wei_scales) {
             mov(reg_wei_scales, EVEX_compress_addr(rsp, reg_wei_scales_off));
             add(reg_wei_scales,
-                    jcp.is_oc_scale * load_loop_blk * jcp.load_block
-                            * sizeof(float));
+                    static_cast<uint32_t>(jcp.is_oc_scale * load_loop_blk
+                            * jcp.load_block * sizeof(float)));
             mov(EVEX_compress_addr(rsp, reg_wei_scales_off), reg_wei_scales);
         }
         mov(reg_bcast_data, EVEX_compress_addr(rsp, reg_bcast_data_off));
@@ -1032,8 +1034,8 @@ status_t jit_avx512_core_x8s8s32x_1x1_conv_kernel_t::init_conf(
     jcp.load_grp_count = 1;
     jcp.use_vmovntps = false;
 
-    const int L2_size
-            = platform::get_per_core_cache_size(2) / sizeof(jcp.typesize_in);
+    const int L2_size = static_cast<int>(
+            platform::get_per_core_cache_size(2) / sizeof(jcp.typesize_in));
     const int L2_capacity = (L2_size * 3) / 4;
 
     const bool req_extra_bf16_regs

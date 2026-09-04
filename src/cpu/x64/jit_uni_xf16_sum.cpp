@@ -165,7 +165,9 @@ void jit_avx512_core_bf16_sum_kernel_t::tail_iteration() {
 
     for (int s = 0; s < jsp.num_srcs; s++)
         add(reg_src[s], bf16_half_reg * jsp.typesize_in);
-    add(reg_dst, (vreg_traits_t<Zmm>::vlen / 4) * jsp.typesize_out);
+    add(reg_dst,
+            static_cast<uint32_t>(
+                    (vreg_traits_t<Zmm>::vlen / 4) * jsp.typesize_out));
 
     jmp(tail_label, T_NEAR);
 }

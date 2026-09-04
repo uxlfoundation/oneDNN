@@ -1817,8 +1817,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.acc_dsz = types::data_type_size(jcp.acc_dt);
     jcp.bia_dsz = jcp.with_bias ? types::data_type_size(jcp.bia_dt) : 0;
 
-    jcp.simd_w = isa_max_vlen(isa) / jcp.src_dsz;
-    jcp.acc_simd_w = isa_max_vlen(isa) / jcp.acc_dsz;
+    jcp.simd_w = static_cast<int>(isa_max_vlen(isa) / jcp.src_dsz);
+    jcp.acc_simd_w = static_cast<int>(isa_max_vlen(isa) / jcp.acc_dsz);
     jcp.is_bf32 = everyone_is(f32, jcp.src_dt, jcp.wei_dt)
             && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
             && isa == avx512_core_amx;
@@ -1960,7 +1960,8 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             VERBOSE_ISA_DT_MISMATCH);
 
     jcp.amx_h = 16;
-    jcp.amx_w = 64 / (jcp.is_bf32 ? types::data_type_size(bf16) : jcp.src_dsz);
+    jcp.amx_w = static_cast<int>(
+            64 / (jcp.is_bf32 ? types::data_type_size(bf16) : jcp.src_dsz));
 
     const auto &p = attr.post_ops_;
     jcp.with_sum = p.find(primitive_kind::sum) != -1;

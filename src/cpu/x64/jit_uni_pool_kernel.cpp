@@ -1212,12 +1212,13 @@ void jit_uni_pool_kernel_t<isa>::zero_diff_src(
         mov(aux_reg_zero_ih, reg_zero_ih);
         L(l_ih_loop);
         {
-            const int step = c_off * dt_size;
+            const int step = static_cast<int>(c_off * dt_size);
 
             // TODO: maybe a big code generated here
             for_(dim_t i = 0; i < width_size; i += step)
             for (int bci = 0; bci < ur_bc; bci++) {
-                const int offs = i + bci * jpp.c_block * dt_size;
+                const int offs
+                        = static_cast<int>(i + bci * jpp.c_block * dt_size);
                 store(src_dt, vzero.getIdx(), reg_zero_ptr, offs,
                         is_tail_processing(bci));
             }

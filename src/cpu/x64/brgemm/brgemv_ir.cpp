@@ -66,8 +66,11 @@ namespace {
 //   m_block      - M rows per full block
 //   k_block      - K elements reduced per K block
 //   dt_sz_a/x/y  - element size in bytes of A, x, and y
-//   dt_a/x/y     - element data type of A, x, and y. Tags the vec vregs so the
-//                  emitter lowers each op to its dtype-specific instruction.
+//   dt_a/x/y     - element data type of A, x, and y in memory
+//   dt_a_reg / dt_x_reg - data type of the vec vreg holding A and x. It is the
+//                  memory type when the reduction consumes it as it is, and
+//                  f32 when the load converts. Paired with `k_block`, which is
+//                  the element count that follows from the same choice.
 //   dt_acc       - accumulation data type
 //   beta         - output scaling: 0 overwrites y, 1 accumulates into y
 //   m_blocks     - number of full M blocks
@@ -109,6 +112,8 @@ struct brgemv_ir_conf_t {
         , dt_a(brg.dt_a)
         , dt_x(brg.dt_b)
         , dt_y(brg.dt_c)
+        , dt_a_reg(brg.gemv_use_vdpbf16ps() ? brg.dt_a : data_type::f32)
+        , dt_x_reg(brg.gemv_use_vdpbf16ps() ? brg.dt_b : data_type::f32)
         , dt_acc(data_type::f32)
         , beta(brg.beta)
         , m_blocks(m / m_block)
@@ -140,7 +145,9 @@ struct brgemv_ir_conf_t {
     const dim_t max_bs;
     const int m_block, k_block;
     const int dt_sz_a, dt_sz_x, dt_sz_y;
-    const data_type_t dt_a, dt_x, dt_y, dt_acc;
+    const data_type_t dt_a, dt_x, dt_y;
+    const data_type_t dt_a_reg, dt_x_reg;
+    const data_type_t dt_acc;
     const float beta;
     const dim_t m_blocks, m_tail, k_blocks, k_tail;
     const dim_t mblk_a_off, mblk_y_off;
@@ -306,8 +313,8 @@ void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
     // once and every A row. The distance is empirically tuned.
     constexpr dim_t gemv_pf_dist = 512; // bytes = 8 cache lines
 
-    const ir::vreg_t x = ir.new_vec(cfg.dt_x);
-    const ir::vreg_t a = ir.new_vec(cfg.dt_a);
+    const ir::vreg_t x = ir.new_vec(cfg.dt_x_reg);
+    const ir::vreg_t a = ir.new_vec(cfg.dt_a_reg);
     ir.prefetch(x_ptr, gemv_pf_dist);
     ir.vload(x, x_ptr, 0, cfg.dt_x);
     for (int i = 0; i < (int)acc.size(); i++) {
@@ -324,8 +331,8 @@ void emit_microkernel(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
 void emit_microkernel_tail(ir::ir_t &ir, const brgemv_ir_conf_t &cfg,
         const std::vector<ir::vreg_t> &acc, ir::vreg_t a_ptr, ir::vreg_t x_ptr,
         ir::vreg_t mask) {
-    const ir::vreg_t x = ir.new_vec(cfg.dt_x);
-    const ir::vreg_t a = ir.new_vec(cfg.dt_a);
+    const ir::vreg_t x = ir.new_vec(cfg.dt_x_reg);
+    const ir::vreg_t a = ir.new_vec(cfg.dt_a_reg);
     ir.vload_masked(x, x_ptr, 0, mask, cfg.dt_x);
     for (int i = 0; i < (int)acc.size(); i++) {
         ir.vload_masked(
@@ -653,9 +660,18 @@ private:
 status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     using namespace data_type;
 
-    VCONDCHECK_BRGEMV_IR(utils::everyone_is(f32, brg.dt_a, brg.dt_b, brg.dt_c),
-            VERBOSE_UNSUPPORTED_DT);
-    VCONDCHECK_BRGEMV_IR(brg.isa_impl == avx2, VERBOSE_UNSUPPORTED_ISA);
+    // Accepted input data type and the ISA it is built at:
+    //   f32  - avx2
+    //   bf16 - avx512_core_bf16
+    //   f16  - avx512_core_fp16
+    // GEMV blocking permits no other ISA (see `brgemm_blocking_vmm_gemv`).
+    const bool dt_isa_ok = (brg.dt_a == f32 && brg.isa_impl == avx2)
+            || (brg.dt_a == bf16 && brg.isa_impl == avx512_core_bf16)
+            || (brg.dt_a == f16 && brg.isa_impl == avx512_core_fp16);
+    VCONDCHECK_BRGEMV_IR(dt_isa_ok, VERBOSE_UNSUPPORTED_ISA);
+    VCONDCHECK_BRGEMV_IR(brg.dt_b == brg.dt_a, VERBOSE_UNSUPPORTED_DT);
+    // The kernel accumulates in f32 and has no conversion on the way out.
+    VCONDCHECK_BRGEMV_IR(brg.dt_c == f32, VERBOSE_UNSUPPORTED_DT);
     VCONDCHECK_BRGEMV_IR(
             !brg.transA, VERBOSE_UNSUPPORTED_FEATURE, "transposed A");
 

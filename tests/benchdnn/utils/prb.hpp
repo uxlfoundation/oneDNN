@@ -79,6 +79,21 @@ struct base_prb_t {
     const char *str() const { return repro.c_str(); }
 
 protected:
+    // Broadcasts a single-element vector `v` to `n_inputs` copies of `val`. If
+    // `v` already contains more than one element, it is left untouched.
+    // TODO: make `n_inputs` a `prb_t` method and drop it from the signature.
+    template <typename T>
+    void broadcast_vector(std::vector<T> &v, const T &val, const int n_inputs) {
+        // If it's not a single element in vector, nothing to broadcast.
+        if (v.size() != 1) return;
+
+        // std::vector<T>::assign invalidates all iterators and references.
+        // `this->stag.assign(prb_vdims.n_inputs(), stag[0]);` line can
+        // crash depending on the implementation whether it saves `stag[0]`
+        // before invalidating or not. Windows crashed.
+        v.assign(n_inputs, val);
+    }
+
     // Collects driver-specific reproducer information into a single line. Each
     // driver provides its own implementation and must call it last in the ctor
     // to assign the result to `repro`.

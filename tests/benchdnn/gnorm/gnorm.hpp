@@ -102,8 +102,8 @@ struct prb_t : public desc_t, public base_prb_t {
 
         if (mb) this->mb = mb;
 
-        broadcast_vector(this->dt, 2);
-        broadcast_vector(this->tag, 2);
+        broadcast_vector(this->dt, dt[0], 2);
+        broadcast_vector(this->tag, tag[0], 2);
 
         repro = set_repro_line(); // must be last in ctor to collect right info
     }

@@ -142,19 +142,4 @@ struct base_settings_t {
     }
 };
 
-// TODO: move to prb.hpp when it appears.
-template <typename T>
-void broadcast_vector(std::vector<T> &v, const int n_inputs) {
-    // If it's not a single element in vector, nothing to broadcast.
-    if (v.size() != 1) return;
-
-    // std::vector<T>::assign invalidates all iterators and references.
-    // `this->stag.assign(prb_vdims.n_inputs(), stag[0]);` line can
-    // crash depending on the implementation whether it saves `stag[0]`
-    // before invalidating or not. Windows didn't.
-    //NOLINTNEXTLINE(performance-unnecessary-copy-initialization)
-    const auto val = v[0];
-    v.assign(n_inputs, val);
-}
-
 #endif

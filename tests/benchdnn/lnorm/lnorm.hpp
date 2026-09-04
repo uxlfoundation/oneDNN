@@ -108,10 +108,7 @@ struct prb_t : public prb_dims_t, public base_prb_t {
             n *= dims[d];
 
         // Broadcast data types if needed
-        if (dt.size() == 1) {
-            const auto val = dt[0]; // Need a copy here.
-            this->dt.assign(2, val);
-        }
+        broadcast_vector(this->dt, dt[0], 2);
         if (tag.size() == 1) { this->tag.emplace_back(tag::any); }
         repro = set_repro_line(); // must be last in ctor to collect right info
     }

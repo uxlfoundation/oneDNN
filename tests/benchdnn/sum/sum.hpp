@@ -78,13 +78,10 @@ struct prb_t : public prb_dims_t, public base_prb_t {
         , dtag(dtag)
         , input_scales(input_scales) {
 
-        broadcast_vector(this->stag, n_inputs());
+        broadcast_vector(this->stag, stag[0], n_inputs());
 
         // Broadcast input_scale if needed
-        if (input_scales.size() == 1) {
-            const auto val = input_scales[0]; // Need a copy here.
-            this->input_scales.assign(n_inputs(), val);
-        }
+        broadcast_vector(this->input_scales, input_scales[0], n_inputs());
 
         repro = set_repro_line(); // must be last in ctor to collect right info
     }

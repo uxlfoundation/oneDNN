@@ -217,10 +217,50 @@ bool any_binary_postop_rhs_with_ternary_scalar_bcast(
     });
 }
 
-bool is_ternary_bcast_supported(
+bool any_binary_postop_rhs_with_ternary_bcast_cond(
+        const post_ops_t &post_ops, const memory_desc_wrapper &dst_d) {
+    return std::any_of(post_ops.entry_.cbegin(), post_ops.entry_.cend(),
+            [&](const post_ops_t::entry_t &entry) -> bool {
+        return entry.is_binary_with_ternary_op()
+                && !is_ternary_cond_no_broadcast(
+                        get_src2_desc(entry, dst_d), dst_d);
+    });
+}
+
+bool is_ternary_cond_no_broadcast(
         const memory_desc_t &src2_md, const memory_desc_wrapper &dst_d) {
+    return src2_md.ndims == dst_d.ndims()
+            && utils::array_cmp(src2_md.dims, dst_d.dims(), dst_d.ndims());
+}
+
+bool is_ternary_bcast_strategy_supported(broadcasting_strategy_t strategy) {
+    // ptr_b[] based strategies would need a broadcast capable load first: the
+    // bf16 (vpmovzxwd) and s8 (vpmovsxbd) condition loads have no such encoding.
+    return utils::one_of(strategy, broadcasting_strategy_t::per_hw,
+            broadcasting_strategy_t::per_mb_spatial);
+}
+
+bool is_ternary_bcast_supported(const memory_desc_t &src2_md,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set) {
     if (src2_md.ndims != dst_d.ndims()) return false;
-    return utils::array_cmp(src2_md.dims, dst_d.dims(), dst_d.ndims());
+    if (is_ternary_cond_no_broadcast(src2_md, dst_d)) return true;
+    return is_ternary_bcast_strategy_supported(
+            get_rhs_arg_broadcasting_strategy(
+                    src2_md, dst_d, supported_strategy_set));
+}
+
+broadcasting_strategy_t get_ternary_bcast_strategy(
+        const dnnl_post_ops::entry_t &post_op, const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set) {
+    if (!post_op.is_binary_with_ternary_op())
+        return broadcasting_strategy_t::no_broadcast;
+    const auto strategy = get_rhs_arg_broadcasting_strategy(
+            get_src2_desc(post_op, dst_d), dst_d, supported_strategy_set);
+    // Unsupported strategies keep reading the condition at the full dst shape.
+    return is_ternary_bcast_strategy_supported(strategy)
+            ? strategy
+            : broadcasting_strategy_t::no_broadcast;
 }
 
 bool any_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
@@ -526,6 +566,8 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
             src1_desc, rhs_arg_static_params_.dst_d, supported_strategy_set_);
     const auto rhs_arg_data_type = src1_desc.data_type;
     const auto needs_ternary_input = post_op.is_binary_with_ternary_op();
+    const auto ternary_broadcasting_strategy = get_ternary_bcast_strategy(
+            post_op, dst_d, supported_strategy_set_);
     const auto &vmm_tail_idx = rhs_arg_params.vmm_tail_idx_;
     const bool tail_exists_in_range = !vmm_tail_idx.empty();
     const bool bcast_f32_non_avx512 = !has_avx512_core_
@@ -559,14 +601,19 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
     const bool shoud_preserve_oc_d_offset_conversion_regs
             = use_offset_conversions
             && rhs_broadcasting_strategy == broadcasting_strategy_t::per_oc_d;
+    const auto strategy_needs_mb_sp_regs
+            = [](broadcasting_strategy_t strategy) {
+        return utils::one_of(strategy, broadcasting_strategy_t::per_mb_spatial,
+                broadcasting_strategy_t::per_mb_w,
+                broadcasting_strategy_t::per_mb,
+                broadcasting_strategy_t::per_hw,
+                broadcasting_strategy_t::batch);
+    };
     const bool should_preserve_mb_sp_offset_conversion_regs
             = use_offset_conversions
-            && utils::one_of(rhs_broadcasting_strategy,
-                    broadcasting_strategy_t::per_mb_spatial,
-                    broadcasting_strategy_t::per_mb_w,
-                    broadcasting_strategy_t::per_mb,
-                    broadcasting_strategy_t::per_hw,
-                    broadcasting_strategy_t::batch);
+            && (strategy_needs_mb_sp_regs(rhs_broadcasting_strategy)
+                    || strategy_needs_mb_sp_regs(
+                            ternary_broadcasting_strategy));
     const bool should_preserve_w_offset_conversion_regs = use_offset_conversions
             && rhs_broadcasting_strategy == broadcasting_strategy_t::per_w;
     const bool should_preserve_spatial_offset_conversion_regs
@@ -660,8 +707,8 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
             const auto rhs2_arg_data_type
                     = get_src2_desc(post_op, dst_d).data_type;
             rhs2_arg_addr = prepare_rhs_arg_addr(vmm_idx, rhs_arg_idx + 1,
-                    post_op, rhs_arg_params,
-                    broadcasting_strategy_t::no_broadcast, true, true);
+                    post_op, rhs_arg_params, ternary_broadcasting_strategy,
+                    true, true);
 
             const bool ternary_with_tail = rhs_arg_static_params_.is_tail
                     && vmm_tail_idx.find(vmm_idx) != vmm_tail_idx.cend();
@@ -758,12 +805,6 @@ Xbyak::Address jit_uni_binary_injector_t<Vmm>::prepare_rhs_arg_addr(int vmm_idx,
             // can slow down the operation. For faster computation,
             // additional cache registers can be introduced to handle
             // the ternary operations.
-            // TODO: Currently, there is no broadcasting support for the
-            // ternary tensor, hence the address calculation can be carried out
-            // within the injector. As the support is extended to include
-            // broadcasting strategies like per_oc, it will be beneficial to
-            // move the calculation outside to allow iteration over multiple
-            // kernels.
             append_no_broadcast_offset(rhs_arg_params.vmm_idx_to_out_addr,
                     rhs_arg_params.vmm_idx_to_out_reg,
                     rhs_arg_params.vmm_idx_to_out_elem_off_val, vmm_idx,
@@ -2909,7 +2950,9 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
         // blending the tensors, the current approach reserves
         // fewer registers for operation.
         if (is_superset(isa_, avx512_core)) {
-            const auto &cmp_mask = rhs_arg_static_params_.tail_opmask;
+            // Not tail_opmask: the scalar-broadcast src1 load below reads it
+            // (execute_broadcast_*_with_opmask), so keep the two separate.
+            const auto cmp_mask = get_aux_kmask();
             push_opmask(host_, cmp_mask);
             push_vmm(host_, dst);
             host_->vxorps(dst, dst, dst);
@@ -2919,7 +2962,6 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
             host_->vblendmps(dst | cmp_mask, tmp_vmm, dst);
             host_->knotw(cmp_mask, cmp_mask);
             host_->vpmovm2b(tmp_vmm, cmp_mask);
-            pop_opmask(host_, cmp_mask);
             push_vmm(host_, dst);
 
             if (rhs_addr.isBroadcast())
@@ -2930,14 +2972,13 @@ void jit_uni_binary_injector_t<Vmm>::inject_binary_with_ternary_op(
                         with_tail);
             if (types::is_integral_dt(rhs_arg_data_type)) cvt_to_f32(dst);
 
-            push_opmask(host_, cmp_mask);
             host_->vpmovb2m(cmp_mask, tmp_vmm);
 
             host_->vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
             host_->vblendmps(tmp_vmm | cmp_mask, tmp_vmm, dst);
-            pop_opmask(host_, cmp_mask);
             pop_vmm(host_, dst);
             host_->vpaddd(dst, dst, tmp_vmm);
+            pop_opmask(host_, cmp_mask);
         } else {
             push_vmm(host_, dst);
             host_->vxorps(dst, dst, dst);

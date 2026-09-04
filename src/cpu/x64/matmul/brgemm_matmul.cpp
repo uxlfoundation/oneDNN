@@ -322,9 +322,13 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
     VDISPATCH_MATMUL(po.check_sum_consistency(dst_dt, is_int8),
             VERBOSE_UNSUPPORTED_POSTOP);
 
+    const bool with_bcast_ternary_po
+            = binary_injector::any_binary_postop_rhs_with_ternary_scalar_bcast(
+                      po, dst_d)
+            || binary_injector::any_binary_postop_rhs_with_ternary_bcast_cond(
+                    po, dst_d);
     VDISPATCH_MATMUL(
-            !binary_injector::any_binary_postop_rhs_with_ternary_scalar_bcast(
-                    po, dst_d),
+            !(is_superset(isa, avx512_core_amx) && with_bcast_ternary_po),
             VERBOSE_UNSUPPORTED_POSTOP);
 
     CHECK(check_attr_scales());

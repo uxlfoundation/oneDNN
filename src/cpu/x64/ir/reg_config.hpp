@@ -59,6 +59,9 @@ struct reg_config_t {
 // 32-byte spill slots, while AVX-512 uses 32 vector registers with 64-byte
 // spill slots.
 //
+// A mask allocates from the vector file on AVX2*, where a mask is a vector
+// register, and from a dedicated k-register file on AVX-512.
+//
 // Some registers are reserved and are not included in the allocatable pools:
 // - `rsp_reg` (stack pointer)
 // - `param_reg` (parameter pointer)

@@ -158,8 +158,8 @@ change belongs in one place.
    the matching register-configuration facts.
 3. **A new variant of an existing instruction** is a lowering rule in the emitter,
    not a new IR operation, and is invisible to the builder. For example,
-   `vload_masked` already lowers to `vmovss`, `vmovups`, or `vmaskmovps` depending
-   on how many elements are active.
+   `vload_masked` already lowers to `vmaskmovps` on AVX2 and to `vmovups` under
+   an EVEX write mask on AVX-512.
 4. **A new behavior** that no existing operation can express becomes a new IR
    operation, with its own definition, `def_use()` entry, and lowering.
 

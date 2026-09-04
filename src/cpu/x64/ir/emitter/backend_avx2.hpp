@@ -26,12 +26,10 @@
 // constructs Xbyak `Ymm` registers, so each operation builds its own registers
 // from the indices it is given.
 
-#include <cassert>
 #include <utility>
 #include <vector>
 
 #include "common/c_types_map.hpp"
-#include "common/type_helpers.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/jit_generator.hpp"
 #include "cpu/x64/utils/jit_regops.hpp"
@@ -62,6 +60,22 @@ struct avx2_backend_t {
 
     void vstore(int base, dim_t disp, int s) { // [base + disp] = src
         gen().vmovups(gen().ptr[Xbyak::Reg64(base) + (int)disp], Xbyak::Ymm(s));
+    }
+
+    // Load one element and zero the rest of `dst`.
+    void vload_scalar(int d, int base, dim_t disp, data_type_t dt) {
+        const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        if (dt == data_type::f32)
+            gen().vmovss(Xbyak::Xmm(d), addr);
+        else { JIT_ASSERT(!"vload_scalar: dtype not implemented"); }
+    }
+
+    // Store element 0 of `src`.
+    void vstore_scalar(int base, dim_t disp, int s, data_type_t dt) {
+        const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
+        if (dt == data_type::f32)
+            gen().vmovss(addr, Xbyak::Xmm(s));
+        else { JIT_ASSERT(!"vstore_scalar: dtype not implemented"); }
     }
 
     void vadd(int d, int s, data_type_t dt) { // dst += s0
@@ -114,23 +128,13 @@ struct avx2_backend_t {
         gen().vmovups(Xbyak::Ymm(d), gen().ptr[gen().rip + lbl]);
     }
 
-    // Load `n_elems` f32 elements. The count selects the simplest form:
-    //   n_elems == 1:       vmovss (no mask register needed)
-    //   n_elems == simd_w:  vmovups (no mask register needed)
-    //   otherwise:          vmaskmovps with the mask in `mask`
-    void vload_masked(int d, int base, dim_t disp, int mask, int n_elems,
-            data_type_t dt, data_section_t & /*data*/) {
-        const int simd_w = vlen / (int)types::data_type_size(dt);
-        assert(n_elems <= simd_w);
+    // Load the elements selected by `mask` and zero the rest of `dst`.
+    void vload_masked(int d, int base, dim_t disp, int mask, data_type_t dt,
+            data_section_t & /*data*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
         if (dt == data_type::f32) {
-            if (n_elems == 1)
-                gen().vmovss(Xbyak::Xmm(d), addr);
-            else if (n_elems == simd_w)
-                gen().vmovups(Xbyak::Ymm(d), addr);
-            else
-                gen().vmaskmovps(Xbyak::Ymm(d), Xbyak::Ymm(mask), addr);
+            gen().vmaskmovps(Xbyak::Ymm(d), Xbyak::Ymm(mask), addr);
         } else {
             // vmaskmovps applies only to f32. Other precisions need a different
             // mechanism here.
@@ -138,20 +142,13 @@ struct avx2_backend_t {
         }
     }
 
-    // Store `n_elems` f32 elements. Same case split as `vload_masked()`.
-    void vstore_masked(int base, dim_t disp, int s, int mask, int n_elems,
-            data_type_t dt, data_section_t & /*data*/) {
-        const int simd_w = vlen / (int)types::data_type_size(dt);
-        assert(n_elems <= simd_w);
+    // Store the elements of `src` selected by `mask`.
+    void vstore_masked(int base, dim_t disp, int s, int mask, data_type_t dt,
+            data_section_t & /*data*/) {
         const auto addr = gen().ptr[Xbyak::Reg64(base) + (int)disp];
 
         if (dt == data_type::f32) {
-            if (n_elems == 1)
-                gen().vmovss(addr, Xbyak::Xmm(s));
-            else if (n_elems == simd_w)
-                gen().vmovups(addr, Xbyak::Ymm(s));
-            else
-                gen().vmaskmovps(addr, Xbyak::Ymm(mask), Xbyak::Ymm(s));
+            gen().vmaskmovps(addr, Xbyak::Ymm(mask), Xbyak::Ymm(s));
         } else {
             JIT_ASSERT(!"vstore_masked: dtype not implemented");
         }

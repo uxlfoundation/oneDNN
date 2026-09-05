@@ -307,15 +307,19 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
     if(!reqs.empty())
         entries.push_back(nullptr); // Try heuristics if no kernel found
     if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 4) {
+        auto problemVerbose = problemMatch;
         for(const kcatalog::Entry *e : entries) {
             if(e) {
                 GEMMStrategy strategy(hw, stepping);
                 strategy.unroll[LoopM] = e->driverInfo.unroll[LoopM];
                 strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
-                parseStrategy(e->strategy, hw, problem, strategy);
+                problemVerbose.A.setAlignment(e->driverInfo.alignment[0]);
+                problemVerbose.B.setAlignment(e->driverInfo.alignment[1]);
+                parseStrategy(e->strategy, hw, problemVerbose, strategy);
                 std::cout << "entry candidate: "
+                          << gemmstone::evaluate(*e, evalParams, auxParams) << " "
                           << e->selector.hw << " "
-                          << strategyToString(hw, problem, strategy) << std::endl;
+                          << strategyToString(hw, problemVerbose, strategy) << std::endl;
             } else {
                 if(!reqs.empty())
                     std::cout << "entry candidate: heuristics\n";

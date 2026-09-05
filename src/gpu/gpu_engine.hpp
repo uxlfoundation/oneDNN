@@ -38,10 +38,8 @@ public:
     using dnnl::impl::engine_t::engine_t;
 
     const impl_list_item_t *get_reorder_implementation_list(
-            const memory_desc_t *src_md,
-            const memory_desc_t *dst_md) const override {
-        return gpu::gpu_impl_list_t::get_reorder_implementation_list(
-                src_md, dst_md);
+            const op_desc_t *op_desc) const override {
+        return gpu::gpu_impl_list_t::get_reorder_implementation_list(op_desc);
     }
 
     const impl_list_item_t *get_concat_implementation_list() const override {

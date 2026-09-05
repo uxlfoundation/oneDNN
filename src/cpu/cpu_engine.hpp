@@ -86,7 +86,7 @@ class cpu_engine_impl_list_t {
 public:
     static const impl_list_item_t *get_concat_implementation_list();
     static const impl_list_item_t *get_reorder_implementation_list(
-            const memory_desc_t *src_md, const memory_desc_t *dst_md);
+            const op_desc_t *op_desc);
     static const impl_list_item_t *get_sum_implementation_list();
 
     static const impl_list_item_t *get_implementation_list(
@@ -141,10 +141,8 @@ public:
     }
 
     const impl_list_item_t *get_reorder_implementation_list(
-            const memory_desc_t *src_md,
-            const memory_desc_t *dst_md) const override {
-        return cpu_engine_impl_list_t::get_reorder_implementation_list(
-                src_md, dst_md);
+            const op_desc_t *op_desc) const override {
+        return cpu_engine_impl_list_t::get_reorder_implementation_list(op_desc);
     }
     const impl_list_item_t *get_sum_implementation_list() const override {
         return cpu_engine_impl_list_t::get_sum_implementation_list();

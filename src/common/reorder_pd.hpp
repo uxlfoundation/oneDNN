@@ -108,6 +108,11 @@ private:
 
 // NOLINTBEGIN(google-default-arguments)
 struct reorder_pd_t : public primitive_desc_t {
+    static constexpr auto base_pkind = primitive_kind::reorder;
+
+    using base_class = reorder_pd_t;
+    using hint_class = reorder_pd_t;
+
     const reorder_desc_t *desc() const { return &desc_; }
     const op_desc_t *op_desc() const override {
         return reinterpret_cast<const op_desc_t *>(this->desc());
@@ -149,49 +154,30 @@ struct reorder_pd_t : public primitive_desc_t {
         return sum_idx == -1 ? 0 : attr()->post_ops_.entry_[sum_idx].sum.scale;
     }
 
+    // Builds a reorder op descriptor to be passed to the pd constructor.
+    static reorder_desc_t create_desc(const memory_desc_t *src_md,
+            const memory_desc_t *dst_md, engine_kind_t src_engine_kind,
+            engine_kind_t dst_engine_kind, bool is_cross_engine = false) {
+        reorder_desc_t desc;
+        desc.src_desc = *src_md;
+        desc.dst_desc = *dst_md;
+        desc.src_engine_kind = src_engine_kind;
+        desc.dst_engine_kind = dst_engine_kind;
+        desc.is_cross_engine = is_cross_engine;
+        return desc;
+    }
+
 protected:
     reorder_desc_t desc_;
     memory_desc_t src_md_;
     memory_desc_t dst_md_;
 
-    reorder_pd_t(const primitive_attr_t *attr, engine_kind_t src_engine_kind,
-            const memory_desc_t *src_md, engine_kind_t dst_engine_kind,
-            const memory_desc_t *dst_md)
-        : primitive_desc_t(attr, primitive_kind::reorder)
-        , src_md_(*src_md)
-        , dst_md_(*dst_md) {
-
-        init_desc(src_engine_kind, dst_engine_kind, false);
-    }
-
-    reorder_pd_t(const reorder_pd_t &other)
-        : primitive_desc_t(other)
-        , src_md_(other.src_md_)
-        , dst_md_(other.dst_md_) {
-        init_desc(other.desc_.src_engine_kind, other.desc_.dst_engine_kind,
-                other.desc_.is_cross_engine);
-    }
-
-    reorder_pd_t &operator=(const reorder_pd_t &other) {
-        DNNL_SHORT_CIRCUIT_SELF_ASSIGN(other);
-        src_md_ = other.src_md_;
-        dst_md_ = other.dst_md_;
-
-        init_desc(other.desc_.src_engine_kind, other.desc_.dst_engine_kind,
-                other.desc_.is_cross_engine);
-        return *this;
-    }
-
-    void init_desc(engine_kind_t src_engine_kind, engine_kind_t dst_engine_kind,
-            bool is_cross_engine) {
-        desc_ = reorder_desc_t();
-        desc_.primitive_kind = primitive_kind::reorder;
-        desc_.src_desc = src_md_;
-        desc_.dst_desc = dst_md_;
-        desc_.src_engine_kind = src_engine_kind;
-        desc_.dst_engine_kind = dst_engine_kind;
-        desc_.is_cross_engine = is_cross_engine;
-    }
+    reorder_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
+            const reorder_pd_t *hint_fwd_pd)
+        : primitive_desc_t(attr, base_pkind)
+        , desc_(*op_desc_t::to_desc<reorder_desc_t>(adesc))
+        , src_md_(desc_.src_desc)
+        , dst_md_(desc_.dst_desc) {}
 };
 // NOLINTEND(google-default-arguments)
 

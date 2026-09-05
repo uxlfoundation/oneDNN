@@ -78,8 +78,9 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     VDISPATCH_REORDER_IC(ok, "unsupported datatype");
 
     // Create and check primitive descriptor
-    auto _pd = make_unique_pd<pd_t>(
-            attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md);
+    auto desc = reorder_pd_t::create_desc(
+            src_md, dst_md, src_engine->kind(), dst_engine->kind());
+    auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
     if (_pd == nullptr) return status::out_of_memory;
     VDISPATCH_REORDER_IC(
             _pd->init(engine, src_engine, dst_engine) == status::success,

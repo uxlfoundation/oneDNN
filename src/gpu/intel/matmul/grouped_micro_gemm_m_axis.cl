@@ -26,6 +26,14 @@
 #define DST_TILE_DATA_T NATIVE_LAYOUT_TYPE(DST_DATA_T)
 #define BIA_TILE_DATA_T NATIVE_LAYOUT_TYPE(BIA_DATA_T)
 
+#ifdef UGEMM_RESULT_DT_S32
+DECLARE_2D_TILE(c_tile_type_float, float, SUBGROUP_SIZE,
+        ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
+        ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1)
+#else
+#define c_tile_type_float ugemm_grouped_c_type
+#endif
+
 #if WITH_BIAS
 #define bias_br ugemm_grouped_sg_tile_m
 #define bias_bc 1
@@ -34,7 +42,7 @@
 
 DECLARE_2D_TILE(bias_tile_type, float, SUBGROUP_SIZE, bias_br, bias_bc,
         bias_nbr, bias_nbc)
-DECLARE_2D_TILE_VREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
+DECLARE_2D_TILE_VREDUCE(c_tile_type_float, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
         bias_tile_type, SUBGROUP_SIZE, bias_br, bias_bc, bias_nbr, bias_nbc)
@@ -99,7 +107,7 @@ DECLARE_2D_TILE(binary_dense_in_tile_type, binary_scale_dense_tile_data_t,
         SUBGROUP_SIZE, binary_dense_scale_br, binary_dense_scale_bc,
         binary_dense_scale_nbr, binary_dense_scale_nbc)
 #endif
-DECLARE_2D_TILE_HREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
+DECLARE_2D_TILE_HREDUCE(c_tile_type_float, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
         binary_dense_tile_type, SUBGROUP_SIZE, binary_dense_scale_br,
@@ -192,7 +200,7 @@ DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
 #define WEI_LD_ARGS OPTIONAL(OR(WITH_WEI_ZP, WEI_SCALES_GROUPED), ldweiq)
 #define K_PARALLEL_LOCAL_ARGS OPTIONAL(K_PARALLEL_LOCAL, sg_k)
 
-void store_results(ugemm_grouped_c_type *tile, global DST_DATA_T *ptr, int n,
+void store_results(c_tile_type_float *tile, global DST_DATA_T *ptr, int n,
         int m, int lddst, int sg_i0, int sg_j0) {
 #if DST_DT_F32
     tile_store(*tile, ptr, n, m, lddst, sg_i0, sg_j0);
@@ -214,16 +222,17 @@ void store_results(ugemm_grouped_c_type *tile, global DST_DATA_T *ptr, int n,
 DECLARE_2D_TILE(src_attr_scales_tile_type, float, SUBGROUP_SIZE,
         src_attr_scales_br, src_attr_scales_bc, src_attr_scales_nbr,
         src_attr_scales_nbc)
-DECLARE_2D_TILE_HREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
+DECLARE_2D_TILE_HREDUCE(c_tile_type_float, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
         src_attr_scales_tile_type, SUBGROUP_SIZE, src_attr_scales_br,
         src_attr_scales_bc, src_attr_scales_nbr, src_attr_scales_nbc)
 
 #ifndef SRC_SCALES_DT_F32
-DECLARE_2D_TILE(src_attr_scales_in_tile_type, SRC_SCALES_DATA_T, SUBGROUP_SIZE,
-        src_attr_scales_br, src_attr_scales_bc, src_attr_scales_nbr,
-        src_attr_scales_nbc)
+typedef NATIVE_LAYOUT_TYPE(SRC_SCALES_DATA_T) src_attr_scales_in_tile_data_t;
+DECLARE_2D_TILE(src_attr_scales_in_tile_type, src_attr_scales_in_tile_data_t,
+        SUBGROUP_SIZE, src_attr_scales_br, src_attr_scales_bc,
+        src_attr_scales_nbr, src_attr_scales_nbc)
 #endif
 
 void load_src_attr_scales(src_attr_scales_tile_type *tile,
@@ -231,9 +240,13 @@ void load_src_attr_scales(src_attr_scales_tile_type *tile,
 #if SRC_SCALES_DT_F32
     tile_load(tile, ptr, m, 1, ldsrcq, sg_j0, 0);
 #else
+#define CONVERT_TILE_SRC_SCALES(v) \
+    into_float(AS_NATIVE_LAYOUT_TYPE(SRC_SCALES_DATA_T, v))
     src_attr_scales_in_tile_type src_attr_scales_in_tile;
-    tile_load(&src_attr_scales_in_tile, ptr, m, 1, ldsrcq, sg_j0, 0);
-    tile_convert(src_attr_scales_in_tile, (*tile), CONVERT_FLOAT_T);
+    tile_load(&src_attr_scales_in_tile,
+            (const global src_attr_scales_in_tile_data_t *)ptr, m, 1, ldsrcq,
+            sg_j0, 0);
+    tile_convert(src_attr_scales_in_tile, (*tile), CONVERT_TILE_SRC_SCALES);
 #endif
 }
 #endif
@@ -246,16 +259,17 @@ void load_src_attr_scales(src_attr_scales_tile_type *tile,
 DECLARE_2D_TILE(wei_attr_scales_tile_type, float, SUBGROUP_SIZE,
         wei_attr_scales_br, wei_attr_scales_bc, wei_attr_scales_nbr,
         wei_attr_scales_nbc)
-DECLARE_2D_TILE_VREDUCE(ugemm_grouped_c_type, SUBGROUP_SIZE,
+DECLARE_2D_TILE_VREDUCE(c_tile_type_float, SUBGROUP_SIZE,
         ugemm_grouped_c_type_block0, ugemm_grouped_c_type_block1,
         ugemm_grouped_c_type_nblock0, ugemm_grouped_c_type_nblock1,
         wei_attr_scales_tile_type, SUBGROUP_SIZE, wei_attr_scales_br,
         wei_attr_scales_bc, wei_attr_scales_nbr, wei_attr_scales_nbc)
 
 #ifndef WEI_SCALES_DT_F32
-DECLARE_2D_TILE(wei_attr_scales_in_tile_type, WEI_SCALES_DATA_T, SUBGROUP_SIZE,
-        wei_attr_scales_br, wei_attr_scales_bc, wei_attr_scales_nbr,
-        wei_attr_scales_nbc)
+typedef NATIVE_LAYOUT_TYPE(WEI_SCALES_DATA_T) wei_attr_scales_in_tile_data_t;
+DECLARE_2D_TILE(wei_attr_scales_in_tile_type, wei_attr_scales_in_tile_data_t,
+        SUBGROUP_SIZE, wei_attr_scales_br, wei_attr_scales_bc,
+        wei_attr_scales_nbr, wei_attr_scales_nbc)
 #endif
 
 void load_wei_attr_scales(wei_attr_scales_tile_type *tile,
@@ -263,9 +277,13 @@ void load_wei_attr_scales(wei_attr_scales_tile_type *tile,
 #if WEI_SCALES_DT_F32
     tile_load(tile, ptr, n, 1, ldweiq, sg_i0, 0);
 #else
+#define CONVERT_TILE_WEI_SCALES(v) \
+    into_float(AS_NATIVE_LAYOUT_TYPE(WEI_SCALES_DATA_T, v))
     wei_attr_scales_in_tile_type wei_attr_scales_in_tile;
-    tile_load(&wei_attr_scales_in_tile, ptr, n, 1, ldweiq, sg_i0, 0);
-    tile_convert(wei_attr_scales_in_tile, (*tile), CONVERT_FLOAT_T);
+    tile_load(&wei_attr_scales_in_tile,
+            (const global wei_attr_scales_in_tile_data_t *)ptr, n, 1, ldweiq,
+            sg_i0, 0);
+    tile_convert(wei_attr_scales_in_tile, (*tile), CONVERT_TILE_WEI_SCALES);
 #endif
 }
 #endif
@@ -351,10 +369,16 @@ grouped_micro_gemm_m_axis(const global SRC_DATA_T *src, long ldsrc,
     wei_attr_zp += batch * n * (k / WEI_GROUP_SIZE) / WEI_ZP_ELEMS_PER_BYTE;
 #endif
 
-    ugemm_grouped_c_type c_tile = ugemm_grouped(wei, ldwei, src, ldsrc, n, m, k,
-            wg_i0, wg_j0, 0, sg_i, sg_j K_PARALLEL_LOCAL_ARGS,
+    ugemm_grouped_c_type c_tile_result = ugemm_grouped(wei, ldwei, src, ldsrc,
+            n, m, k, wg_i0, wg_j0, 0, sg_i, sg_j K_PARALLEL_LOCAL_ARGS,
             slm WEI_SCALE_ARGS WEI_ZP_ARGS WEI_LD_ARGS SRC_SCALE_ARGS
                     SRC_ZP_ARGS SRC_LD_ARGS);
+#ifdef UGEMM_RESULT_DT_S32
+    c_tile_type_float c_tile;
+    tile_convert(c_tile_result, c_tile, convert_float);
+#else
+#define c_tile c_tile_result
+#endif
 
 #if K_PARALLEL_LOCAL
     if (sg_k > 0) return;

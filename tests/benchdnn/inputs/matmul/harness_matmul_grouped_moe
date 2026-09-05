@@ -11,7 +11,6 @@
 # mat2 row-major
 --dt=f16:f16:f16,bf16:bf16:bf16
 --wtag=abc
---attr-fpmath=f16:true
 --batch=shapes_grouped_moe
 --batch=shapes_grouped_moe_large
 
@@ -19,7 +18,6 @@
 --reset
 --dt=f16:f16:f16,bf16:bf16:bf16
 --wtag=acb
---attr-fpmath=f16:true
 --batch=shapes_grouped_moe
 --batch=shapes_grouped_moe_large
 
@@ -33,8 +31,8 @@
 --dt=f8_e5m2:f8_e5m2:bf16,f8_e4m3:f8_e4m3:bf16
 --wtag=acb
 --attr-scales=src:1:f32+wei:5:f32
---attr-fpmath=f16:true
 --batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_k_axis
 --batch=shapes_grouped_moe_large
 
 ########################################
@@ -47,7 +45,6 @@
 --dt=f8_e4m3:f8_e4m3:bf16
 --wtag=acb
 --attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
---attr-fpmath=f16:true
 --batch=shapes_grouped_moe
 --batch=shapes_grouped_moe_large
 
@@ -61,7 +58,6 @@
 --dt=f4_e2m1:f4_e2m1:bf16
 --wtag=acb
 --attr-scales=src:3:e8m0:1x32+wei:7:e8m0:32x1
---attr-fpmath=f16:true
 --batch=shapes_grouped_moe
 
 ########################################
@@ -76,7 +72,6 @@
 --wtag=acb
 --attr-scales=src:3:f8_e4m3:1x16+wei:7:f8_e4m3:16x1
 --attr-post-ops=mul:f32:0
---attr-fpmath=f16:true
 --batch=shapes_grouped_moe
 
 ########################################
@@ -111,4 +106,5 @@
 --attr-fpmath=f16:true
 --wtag=acb
 --batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_k_axis
 --batch=shapes_grouped_moe_large

@@ -1,0 +1,29 @@
+# MoE shapes for grouped GEMM, k_axis workload (backward wrt weights)
+#
+# Companions to the forward shapes in shapes_grouped_moe. For expert e the
+# weight gradient is dW_e = X_e^T @ dY_e, contracted over the tokens routed to
+# e, so the token count becomes the variable (k) axis:
+#
+#   forward   total_M x K : G x K x N   with per-expert token counts as M_g
+#   backward  K x total_M : total_M x N with the same counts as K_g
+#             -> dst is the dense weight-gradient stack [G, K, N]
+
+# ── Llama4 Scout: M=5120, N=8192 (E=16 exact) ────────────
+--grouped=1:16:balanced
+5120x512:512x8192nLlama4-Scout-gate/up-proj-gs128-bwd
+8192x512:512x5120nLlama4-Scout-down-proj-gs128-bwd
+
+# ── Qwen2-57B-A14B: M=3584, N=2560 (E=64 exact) ──────────
+--grouped=1:64:balanced
+3584x2048:2048x2560nQwen2-57B-A14B-gate/up-proj-gs128-bwd
+2560x2048:2048x3584nQwen2-57B-A14B-down-proj-gs128-bwd
+
+# ── Qwen3-30B-A3B: M=2048, N=768 (E=128 exact) ───────────
+--grouped=1:128:balanced
+2048x2048:2048x768nQwen3-30B-A3B-gate/up-proj-gs128-bwd
+768x2048:2048x2048nQwen3-30B-A3B-down-proj-gs128-bwd
+
+# ── GPT-OSS-20b: M=2880, N=2880 (E=32) ──────────────────
+--grouped=1:balanced
+2880x1024:1024x2880nGPT-OSS-20b-gate/up-proj-bwd
+2880x1024:1024x2880nGPT-OSS-20b-down-proj-bwd

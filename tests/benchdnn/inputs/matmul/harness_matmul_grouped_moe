@@ -8,19 +8,10 @@
 # grouped_mm: BF16/FP16                #
 ########################################
 
-# mat2 row-major
 --dt=f16:f16:f16,bf16:bf16:bf16
---wtag=abc
---attr-fpmath=f16:true
+--wtag=abc,acb
 --batch=shapes_grouped_moe
---batch=shapes_grouped_moe_large
-
-# mat2 col-major
---reset
---dt=f16:f16:f16,bf16:bf16:bf16
---wtag=acb
---attr-fpmath=f16:true
---batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_k_axis
 --batch=shapes_grouped_moe_large
 
 ########################################

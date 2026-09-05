@@ -240,6 +240,7 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
     auto stepping = hwInfo.gmdid & 0xFF;
 
     problem.product = product;
+    problem.autoTypeConversions(hwInfo.systolicAvailable);
     /* Strip internal upconversions */
     auto problemMatch = problem;
     if (problemMatch.Ta_ext.bits() < problemMatch.Ta.bits()) problemMatch.Ta = problemMatch.Ta_ext;

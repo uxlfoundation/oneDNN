@@ -53,7 +53,9 @@ struct jit_uni_batch_normalization_fwd_t : public primitive_t {
 
             const data_type_t dtsrc = src_md()->data_type;
             const data_type_t dtdst = dst_md()->data_type;
-            const data_type_t expected_dt = isa == zvfh ? f16 : f32;
+            const data_type_t expected_dt = isa == zvfh ? f16
+                    : isa == zvfbfwma                   ? bf16
+                                                        : f32;
             const bool types_ok = dtsrc == expected_dt && dtdst == dtsrc
                     && platform::has_data_type_support(dtsrc)
                     && IMPLICATION(is_training(),
@@ -161,7 +163,9 @@ struct jit_uni_batch_normalization_bwd_t : public primitive_t {
             VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
             const data_type_t dt = src_md()->data_type;
-            const data_type_t expected_dt = isa == zvfh ? f16 : f32;
+            const data_type_t expected_dt = isa == zvfh ? f16
+                    : isa == zvfbfwma                   ? bf16
+                                                        : f32;
             VDISPATCH_BNORM(dt == expected_dt
                             && utils::everyone_is(dt, diff_dst_md()->data_type,
                                     diff_src_md()->data_type)

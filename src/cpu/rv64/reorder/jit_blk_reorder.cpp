@@ -485,8 +485,9 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
     if (!is_plain_blocked || !is_transpose_16c_profitable(*src_md, desc))
         return status::unimplemented;
 
-    auto _pd = make_unique_pd<pd_t>(
-            attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md);
+    auto desc = reorder_pd_t::create_desc(
+            src_md, dst_md, src_engine->kind(), dst_engine->kind());
+    auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
     if (_pd == nullptr) return status::out_of_memory;
     _pd->prb_ = prb;
     CHECK(_pd->init(engine, src_engine, dst_engine));

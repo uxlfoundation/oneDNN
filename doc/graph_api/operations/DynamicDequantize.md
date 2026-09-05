@@ -32,7 +32,12 @@ On other dimensions:
 |:-------------------------------------------|:---------------------------------------------------------------------|:-----------|:------------------------------------------------------------------------------------------------------------------------------------------------|:---------------------|
 | [qtype](@ref dnnl::graph::op::attr::qtype) | Specifies which de-quantization type is used.                        | string     | `per_tensor` (default), `per_channel`                                                                                                           | Optional             |
 | [axis](@ref dnnl::graph::op::attr::axis)   | Specifies dimension on which per-channel de-quantization is applied. | s64        | An s64 value in the range of [-r, r-1] where r = rank(src), `1` by default. Negative values mean counting the dimension backwards from the end.  | Optional             |
+| [mask](@ref dnnl::graph::op::attr::mask)   | Specifies which dimensions the scales/zps vary over. Bit `i` set means scales vary on dimension `i`. When set, `qtype` must be not set or set to default. | s64 | A non-negative integer where set bits index source dimensions. | Optional |
 | [group_shape](@ref dnnl::graph::op::attr::group_shape)   | Specifies the group shape of an operation. | s64        | An s64 list indicates the group size on the dimensions where grouped quantization is adopted.  | Optional             |
+
+@note The `mask` attribute is the recommended way to specify quantization
+granularity. The `qtype` and `axis` attributes are retained for backward
+compatibility and will be deprecated in the future.
 
 ## Execution arguments
 
@@ -55,6 +60,11 @@ to the element number of the src tensor along the dimension axis. For
 dimension as the `src` tensor. On the dimensions where grouped quantization is
 applied, the dimension should be the number of groups, which equals to
 `src_dim` / `group_size`, while other dimensions should match the `src` tensor.
+When `mask` is specified, the `scales` tensor is a packed tensor whose dimensions
+correspond to the source dimensions selected by the mask bits. For each bit `i`
+set in `mask`, there is one dimension in `scales` with size equal to
+`src_dims[i]` (or `src_dims[i] / group_shape[i]` when `group_shape` is also
+specified).
 
 @note `zps` is a tensor with offset values that map to zero. For `qtype` =
 `per-tensor`, there should be only one element in the `zps` tensor. For `qtype` =
@@ -63,7 +73,8 @@ tensor along the dimension axis. For `qtype` = `per-group`, the `zps` tensor
 should have the same number of dimensions as the `src` tensor. On the dimensions
 where grouped quantization is applied, the dimension should be the number of
 groups, which equals to `src_dim` / `group_size`, while other dimensions should
-match the `src` tensor. If omitted, the `zps` values are assumed to be zero.
+match the `src` tensor. When `mask` is specified, `zps` must have the same shape
+as `scales`. If omitted, the `zps` values are assumed to be zero.
 
 ### Outputs
 

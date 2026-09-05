@@ -122,7 +122,7 @@ DECLARE_2D_TILE(binary_group_chunk_in_type, BINARY_SCALE_GROUPED_TILE_DATA_T,
 #endif
 
 #if WITH_BINARY_DENSE_SCALE
-#define binary_dense_scale_br MAX(SUBGROUP_SIZE, ugemm_grouped_sg_tile_n)
+#define binary_dense_scale_br ugemm_grouped_sg_tile_m
 #define binary_dense_scale_bc 1
 #define binary_dense_scale_nbr 1
 #define binary_dense_scale_nbc 1
@@ -306,9 +306,12 @@ void store_results(c_tile_type_float *tile, global DST_DATA_T *ptr, int n,
 }
 
 #if WITH_SRC_SCALES && !SRC_SCALES_GROUPED
-#define src_attr_scales_br MAX(SUBGROUP_SIZE, ugemm_grouped_sg_tile_n)
+#define src_attr_scales_br ugemm_grouped_sg_tile_m
 #define src_attr_scales_bc 1
-#define src_attr_scales_nbr 1
+#define src_attr_scales_nbr \
+    MAX(1, \
+            (ugemm_grouped_wg_tile_n + ugemm_grouped_sg_tile_n - 1) \
+                    / ugemm_grouped_sg_tile_m)
 #define src_attr_scales_nbc 1
 DECLARE_2D_TILE(src_attr_scales_tile_type, float, SUBGROUP_SIZE,
         src_attr_scales_br, src_attr_scales_bc, src_attr_scales_nbr,

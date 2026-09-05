@@ -35,6 +35,7 @@
 --attr-scales=src:1:f32+wei:5:f32
 --attr-fpmath=f16:true
 --batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_k_axis
 --batch=shapes_grouped_moe_large
 
 ########################################
@@ -111,4 +112,5 @@
 --attr-fpmath=f16:true
 --wtag=acb
 --batch=shapes_grouped_moe
+--batch=shapes_grouped_moe_k_axis
 --batch=shapes_grouped_moe_large

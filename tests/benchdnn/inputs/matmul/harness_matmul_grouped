@@ -92,10 +92,16 @@
 --reset
 --dt=u8:s8:f32,s8:s8:f32
 --wtag=abc,acb
+--attr-scales=,wei:5:f32,wei:5:f16
+--attr-zero-points=,wei:5:s8,wei:5:s32
 --grouped=0:4:balanced
---attr-scales=wei:5:f32
---attr-zero-points=wei:5:s8,wei:5:s32
 32x64:4x64x32
+--grouped=0:256:hot.100
+255x64:256x64x512
+--grouped=0:32:hot,0:32:balanced
+512x64:32x64x512
+--grouped=0:256:decode
+1x64:256x64x512
 
 # int src + int wei with blocked scales and ZPs
 --reset

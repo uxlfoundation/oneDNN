@@ -81,8 +81,7 @@ status_t cross_engine_reorder_t::pd_t::init(const impl::engine_t *engine,
                     &clean_src_md, &clean_dst_md, &r_attr),
             VERBOSE_PRIMITIVE_CREATION_FAIL, "reorder");
 
-    reorder_pd_t::init_desc(
-            src_engine->kind(), dst_engine->kind(), true /* is_cross_engine */);
+    desc_.is_cross_engine = true;
 
     VDISPATCH_REORDER_SC(maybe_create_zp_precompute_conv_pd(dst_engine),
             "failed to create nested zp precompute convolution");

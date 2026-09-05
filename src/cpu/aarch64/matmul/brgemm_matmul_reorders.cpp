@@ -140,8 +140,9 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
         const engine_t *dst_engine, const memory_desc_t *dst_md) {
     using namespace status;
 
-    auto _pd = std::unique_ptr<pd_t>(new pd_t(
-            attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md));
+    auto desc = reorder_pd_t::create_desc(
+            src_md, dst_md, src_engine->kind(), dst_engine->kind());
+    auto _pd = std::unique_ptr<pd_t>(new pd_t(&desc, attr, nullptr));
     if (_pd == nullptr) return out_of_memory;
     CHECK(_pd->init(engine, src_engine, dst_engine));
     CHECK(_pd->init_scratchpad_md());

@@ -225,8 +225,9 @@ struct rnn_data_reorder_t : public primitive_t {
 #undef PD_CHECK_ARG
             if (!args_ok) return invalid_arguments;
 
-            auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
-                    dst_engine->kind(), dst_md);
+            auto desc = reorder_pd_t::create_desc(
+                    src_md, dst_md, src_engine->kind(), dst_engine->kind());
+            auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
             if (_pd == nullptr) return out_of_memory;
             CHECK(_pd->init(engine, src_engine, dst_engine));
             CHECK(_pd->init_scratchpad_md());
@@ -390,8 +391,9 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
                             attr->rnn_weights_projection_qparams_.mask_, 0, 8))
                 return unimplemented;
 
-            auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
-                    dst_engine->kind(), dst_md);
+            auto desc = reorder_pd_t::create_desc(
+                    src_md, dst_md, src_engine->kind(), dst_engine->kind());
+            auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
             if (_pd == nullptr) return out_of_memory;
             _pd->itag_ = itag;
             CHECK(_pd->init(engine, src_engine, dst_engine));
@@ -582,8 +584,9 @@ struct rnn_weights_reorder_t : public primitive_t {
             format_tag_t itag = id.matches_one_of_tag(ldigo, ldgoi, ldio, ldoi);
             if (itag == format_tag::undef) return invalid_arguments;
 
-            auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
-                    dst_engine->kind(), dst_md);
+            auto desc = reorder_pd_t::create_desc(
+                    src_md, dst_md, src_engine->kind(), dst_engine->kind());
+            auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
             if (_pd == nullptr) return out_of_memory;
             CHECK(_pd->init(engine, src_engine, dst_engine));
             _pd->itag_ = itag;
@@ -794,8 +797,9 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
                     && od.extra().compensation_mask == 0;
             if (!(check_u8s8 || check_s8s8)) return invalid_arguments;
 
-            auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
-                    dst_engine->kind(), dst_md);
+            auto desc = reorder_pd_t::create_desc(
+                    src_md, dst_md, src_engine->kind(), dst_engine->kind());
+            auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
             if (_pd == nullptr) return out_of_memory;
             CHECK(_pd->init(engine, src_engine, dst_engine));
 

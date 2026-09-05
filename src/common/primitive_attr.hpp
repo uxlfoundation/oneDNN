@@ -392,6 +392,12 @@ struct dnnl_post_ops {
                     && (binary.alg == dnnl::impl::alg_kind::binary_select);
         }
 
+        bool is_inplace_binary() const {
+            return is_binary()
+                    && dnnl::impl::utils::one_of(binary.alg,
+                            dnnl::impl::alg_kind::binary_mul_inplace);
+        }
+
         dnnl::impl::status_t validate_binary(
                 dnnl::impl::engine_kind_t engine_kind,
                 const dnnl::impl::memory_desc_t *dst_desc) const;
@@ -500,6 +506,12 @@ struct dnnl_post_ops {
             return false;
         }
         return true;
+    }
+
+    bool has_inplace_binary() const {
+        for (auto &e : entry_)
+            if (e.is_inplace_binary()) return true;
+        return false;
     }
 
     dnnl::impl::status_t set_default_formats(
@@ -645,6 +657,7 @@ struct dnnl_primitive_attr {
         dropout = 1u << 16,
         rounding_mode = 1u << 17,
         precomputed_reductions = 1u << 18,
+        post_ops_inplace = (unsigned)post_ops | (1u << 19),
     };
 
     /** Returns true if the attributes have default values.

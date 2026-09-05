@@ -303,6 +303,17 @@ The binary post-op thus becomes:
 
 There is no broadcasting support for the conditional tensor.
 
+There is also a special algorithm kind called `binary_mul_inplace`, which is a
+regular binary multiplication post-op in all aspects but one: the buffer it is
+given can alias the destination buffer from the parent primitive. Naturally, the
+shape and type of the MD need to match that of DST exactly.
+Other Binary post-ops, if given DST, may behave unpredictably — depending on the
+primitive kind and the implementation. As of now `binary_mul_inplace` is only
+available for Matmul, both CPU and GPU, but it can be extended to many other
+primitives, and the concept itself (Binary post-ops that read from DST like the
+Sum post-op) can, in theory, cover all Binary post-op kinds that take a single
+right-hand-side buffer if need be.
+
 @anchor dev_guide_attributes_post_ops_prelu
 ### Prelu Post-op
 

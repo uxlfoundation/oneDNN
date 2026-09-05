@@ -156,6 +156,9 @@ The following attributes and post-ops are supported:
 | Post-op   | [Binary](@ref dnnl::post_ops::append_binary)                   | Applies a @ref dnnl_api_binary operation to the result                        | General binary post-op restrictions |
 | Post-op   | [Prelu](@ref dnnl::post_ops::append_prelu)                     | Applies an @ref dnnl_api_prelu operation to the result                        |                                     |
 
+NB: Matmul can use the special Binary post-op kind, `binary_mul_inplace`; see
+[Binary](@ref dnnl::post_ops::append_binary) for more information.
+
 The `mask` and `groups` parameters for scales and zero-points follow the
 conventions described in the
 [quantization guide](@ref dgaq_constructing_mask_and_groups).

@@ -67,7 +67,8 @@ struct ref_t : public primitive_t {
                             | smask_t::zero_points_groups | smask_t::post_ops
                             | smask_t::sum_dt | smask_t::accumulation_mode
                             | smask_t::fpmath_mode | smask_t::rounding_mode
-                            | smask_t::precomputed_reductions),
+                            | smask_t::precomputed_reductions
+                            | smask_t::post_ops_inplace),
                     VERBOSE_UNSUPPORTED_ATTR);
             CHECK(attr_scales_ok(engine,
                     {DNNL_ARG_SRC, DNNL_ARG_WEIGHTS, DNNL_ARG_DST},

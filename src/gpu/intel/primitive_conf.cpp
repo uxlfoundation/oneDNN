@@ -402,6 +402,8 @@ bool post_ops_with_binary_ok(const primitive_attr_t *attr,
     auto is_eltwise = [&](int idx) { return p.entry_[idx].is_eltwise(false); };
     auto is_sum = [&](int idx) { return p.entry_[idx].is_sum(false, false); };
     auto is_binary = [&](int idx) { return p.entry_[idx].is_binary(); };
+    auto is_inplace_binary
+            = [&](int idx) { return p.entry_[idx].is_inplace_binary(); };
     auto is_prelu = [&](int idx) { return p.entry_[idx].is_prelu(); };
 
     bool is_po_ok = true;
@@ -428,6 +430,10 @@ bool post_ops_with_binary_ok(const primitive_attr_t *attr,
             // Only 1D runtime dimensions are supported
             if (has_runtime_dims && num_size_one_dims != dst_md.ndims - 1)
                 is_po_ok = false;
+        }
+        if (is_inplace_binary(po_idx)) {
+            if (p.entry_[po_idx].binary.src1_desc.data_type != dst_dt)
+                return false;
         }
         if (is_sum(po_idx)) {
             if (p.entry_[po_idx].sum.dt != dnnl_data_type_undef
@@ -695,9 +701,11 @@ bool post_ops_preserves_zeroes(
     for (int idx = 0; idx < post_ops.len(); ++idx) {
         const post_ops_t::entry_t &po_entry = post_ops.entry_[idx];
         if (po_entry.is_binary()) {
-            // only binary mul is preserving zeroes
-            preserve_zeroes &= po_entry.binary.alg
-                    == dnnl::impl::alg_kind_t::dnnl_binary_mul;
+            // only binary mul and div preserve zeroes
+            preserve_zeroes &= utils::one_of(po_entry.binary.alg,
+                    dnnl::impl::alg_kind_t::dnnl_binary_mul_inplace,
+                    dnnl::impl::alg_kind_t::dnnl_binary_mul,
+                    dnnl::impl::alg_kind_t::dnnl_binary_div);
         }
         if (po_entry.is_eltwise(false)) {
             preserve_zeroes &= gpu_eltwise_fwd_pd_t::eltwise_preserves_zero(

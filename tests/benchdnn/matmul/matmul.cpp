@@ -682,6 +682,8 @@ void prb_t::skip_unimplemented(res_t *res) const {
 
 void prb_t::skip_invalid(res_t *res) const {
     const prb_t *prb = this; // Kept to avoid mass update
+    if (res->state == SKIPPED) return;
+
     auto src_rt_mask = prb->src_runtime_dim_mask();
     auto wei_rt_mask = prb->weights_runtime_dim_mask();
     auto dst_rt_mask = prb->dst_runtime_dim_mask();
@@ -929,11 +931,14 @@ int init_ref_memory_args(dnn_mem_map_t &ref_mem_map, dnn_mem_map_t &mem_map,
                 }
                 const auto &po = prb->attr.post_ops;
                 const int sum_idx = po.find(attr_t::post_ops_t::SUM);
-                if (sum_idx >= 0) {
+                const int mul_inplace_idx
+                        = po.find(attr_t::post_ops_t::MUL_INPLACE);
+                if ((sum_idx >= 0) || (mul_inplace_idx >= 0)) {
                     SAFE(fill_data(DST, exec_arg, prb, cfg, mem, ref_mem, res),
                             WARN);
-                    // Bitwise mode for sum requires a copy due to data for
-                    // post-op will be overwritten and it must be refreshed.
+                    // Bitwise mode for sum and in-place binary post-ops
+                    // requires a copy due to data for post-op will be
+                    // overwritten and it must be refreshed.
                     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
                         SAFE(mem_map.at(-exec_arg).reorder(ref_mem, res), WARN);
                     }

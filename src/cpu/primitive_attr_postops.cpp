@@ -42,6 +42,7 @@ float compute_binary_scalar(alg_kind_t alg, float x, float y, bool c) {
         case binary_eq: return x == y;
         case binary_ne: return x != y;
         case binary_select: return c ? x : y;
+        case binary_mul_inplace: return x * y;
         default: assert(!"unsupported operation!"); return NAN;
     }
 }
@@ -138,7 +139,8 @@ ref_binary_scalar_t::ref_binary_scalar_t(alg_kind_t alg) : alg_(alg) {
             alg_kind::binary_min, alg_kind::binary_mul, alg_kind::binary_div,
             alg_kind::binary_sub, alg_kind::binary_ge, alg_kind::binary_gt,
             alg_kind::binary_le, alg_kind::binary_lt, alg_kind::binary_eq,
-            alg_kind::binary_ne, alg_kind::binary_select));
+            alg_kind::binary_ne, alg_kind::binary_select,
+            alg_kind::binary_mul_inplace));
 }
 
 ref_binary_scalar_t::ref_binary_scalar_t(
@@ -283,6 +285,7 @@ status_t ref_post_ops_t::init(const memory_desc_t *dst_md) {
     for (auto idx = 0; idx < po_.len(); ++idx) {
         const auto &e = po_.entry_[idx];
 
+        if (e.is_binary()) { CHECK(e.validate_binary(dnnl_cpu, dst_md)); }
         if (e.is_prelu()) {
             memory_desc_t weights_md;
             CHECK(get_prelu_memory_desc(
@@ -353,7 +356,7 @@ void ref_post_ops_t::execute(float &res, const args_t &args) const {
                     src2_val = static_cast<bool>(io::load_int_value(
                             src2_desc.data_type, src2_binary_po, src2_off));
                 }
-
+                if (e.is_inplace_binary()) { assert(args.l_offset == off); }
                 const float val_po = io::load_float_value(
                         src1_desc.data_type, src1_binary_po, off);
 

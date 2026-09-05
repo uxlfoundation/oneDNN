@@ -161,7 +161,7 @@ status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
     pd = primitive_cache().get_pd(key);
     if (pd) return success;
 
-    for (auto r = engine->get_reorder_implementation_list(src_md, dst_md); *r;
+    for (auto r = engine->get_reorder_implementation_list(&reorder_desc); *r;
             ++r) {
         reorder_pd_t *reorder_pd = nullptr;
         if ((*r)(&reorder_pd, engine, attr, src_engine, src_md, dst_engine,

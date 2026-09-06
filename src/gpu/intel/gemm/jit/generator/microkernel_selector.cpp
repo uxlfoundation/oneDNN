@@ -24,6 +24,7 @@
 #include "gemmstone/strategy_parser.hpp"
 #include "ngen_decoder.hpp"
 #include "npack/neo_packager.hpp"
+#include "pieces/compute_utils.hpp"
 #include "pieces/hw_utils.hpp"
 
 GEMMSTONE_NAMESPACE_START
@@ -240,6 +241,7 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
     auto stepping = hwInfo.gmdid & 0xFF;
 
     problem.product = product;
+    problem.autoTypeConversions(hwInfo.systolicAvailable);
     /* Strip internal upconversions */
     auto problemMatch = problem;
     if (problemMatch.Ta_ext.bits() < problemMatch.Ta.bits()) problemMatch.Ta = problemMatch.Ta_ext;
@@ -307,15 +309,19 @@ Package selectGEMM(const GEMMOptions &options, HostPayload host, HWInformation h
     if(!reqs.empty())
         entries.push_back(nullptr); // Try heuristics if no kernel found
     if (getVerbose(gemmstone::GEMMVerbose::DebugInfo) >= 4) {
+        auto problemVerbose = problemMatch;
         for(const kcatalog::Entry *e : entries) {
             if(e) {
                 GEMMStrategy strategy(hw, stepping);
                 strategy.unroll[LoopM] = e->driverInfo.unroll[LoopM];
                 strategy.unroll[LoopN] = e->driverInfo.unroll[LoopN];
-                parseStrategy(e->strategy, hw, problem, strategy);
+                problemVerbose.A.setAlignment(e->driverInfo.alignment[0]);
+                problemVerbose.B.setAlignment(e->driverInfo.alignment[1]);
+                parseStrategy(e->strategy, hw, problemVerbose, strategy);
                 std::cout << "entry candidate: "
+                          << gemmstone::evaluate(*e, evalParams, auxParams) << " "
                           << e->selector.hw << " "
-                          << strategyToString(hw, problem, strategy) << std::endl;
+                          << strategyToString(hw, problemVerbose, strategy) << std::endl;
             } else {
                 if(!reqs.empty())
                     std::cout << "entry candidate: heuristics\n";
@@ -481,6 +487,14 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     int min2DAlignmentB = block2DMinAlignment(hw, problem.B, strategy.B, /* asIfBlock2D */ true);
 
     bool systolic = hwInfo.systolicAvailable;
+    // Non-systolic integer dot products require byte operands. Keep the
+    // external int4 format and let the generator unpack it for computation.
+    if (!systolic) {
+        if (problem.Ta.isInt4())
+            problem.Ta = problem.Ta.isSigned() ? Type::s8 : Type::u8;
+        if (problem.Tb.isInt4())
+            problem.Tb = problem.Tb.isSigned() ? Type::s8 : Type::u8;
+    }
     bool block2DA = (hw >= HW::XeHPC) && systolic && (problem.A.alignment % min2DAlignmentA) == 0;
     bool block2DB = (hw >= HW::XeHPC) && systolic && (problem.B.alignment % min2DAlignmentB) == 0;
     bool useNewDP = (hw >= HW::XeHP);
@@ -488,16 +502,15 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     auto &s = strategy;
     s.ka_load = s.kb_load = 16;
     if (!systolic) {
-        s.ka_load = s.kb_load = 4;
-        if (problem.Ta_ext.isInt4() || problem.Tb_ext.isInt4()){
-            s.ka_load *= 2;
-            s.kb_load *= 2;
-        }
+        // Keep eight bytes per integer operand without enlarging the other
+        // operand's load for mixed-precision inputs. Preserve floating-point defaults.
+        s.ka_load = problem.Ta_ext.isInteger() ? 8 / problem.Ta_ext : 4;
+        s.kb_load = problem.Tb_ext.isInteger() ? 8 / problem.Tb_ext : 4;
     }
 
     if (problem.A.layout == MatrixLayout::Pc) {
         s.A.accessType = AccessType::Block;
-        s.A_copies = 2;
+        s.A_copies = 4 / problem.Ta_ext;
         s.A.padded = true;
     } else if (!block2DA) {
         s.A.accessType = AccessType::Block;
@@ -510,19 +523,14 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
                                 (problem.aOffset2D() ? (1.f * problem.Tao) : 0)));
         s.ka_load = utils::roundup_pow2(s.ka_load);
     } else if (problem.A.layout == MatrixLayout::N) {
-        if(problem.Ta.isInt4()) {
-            s.A.accessType = AccessType::Block2D;
-            s.A_copies = 2;
-        } else {
-            s.A.accessType = AccessType::Block2DVNNI;
-            s.A_copies = 2;
-        }
+        s.A.accessType = AccessType::Block2DVNNI;
+        s.A_copies = 4 / problem.Ta_ext;
     }
 
     if (problem.B.layout == MatrixLayout::Pr) {
         s.B.accessType = AccessType::Block;
         s.B.padded = true;
-        s.B_copies = 2;
+        s.B_copies = 4 / problem.Tb_ext;
     } else if (!block2DB) {
         s.B.accessType = AccessType::Block;
         if (systolic) {
@@ -625,6 +633,17 @@ static inline bool getStrategyByHeuristics(HW hw, GEMMStrategy &strategy, bool l
     if (s.slmA || s.slmB) {
         s.slmBuffers = 1;
         s.unrollKSLM = std::max(int(s.slmA) * s.ka_load, int(s.slmB) * s.kb_load);
+
+        // Remainder handling can change an MN copy split to a K split. Keep
+        // complete integer crosspacks in each thread's SLM copy in either case.
+        // Use compute types: packed int4 inputs may have been upconverted.
+        auto slmCP = targetSLMCrosspack(problem, s);
+        if (s.slmA && problem.Ta.isInteger())
+            s.unrollKSLM = lcm(s.unrollKSLM,
+                    std::get<0>(slmCP) * s.wg[LoopN]);
+        if (s.slmB && problem.Tb.isInteger())
+            s.unrollKSLM = lcm(s.unrollKSLM,
+                    std::get<1>(slmCP) * s.wg[LoopM]);
     }
 
     if (hw == HW::Xe2 || hw == HW::Xe3)

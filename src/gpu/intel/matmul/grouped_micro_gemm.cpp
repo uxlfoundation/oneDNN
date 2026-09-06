@@ -298,14 +298,14 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
                 auto product = dev_info->product();
                 bool is_xelpg = (product.family == ngen::ProductFamily::ARL
                         || product.family == ngen::ProductFamily::MTL);
-                if (!dev_info->mayiuse_systolic()) max_wg_n = 2;
                 max_n_unroll = (problem.Ta_ext.bits() <= 8
                                        && problem.Ta_ext.isInteger())
                         ? sg_size_ * problem.Ta_ext
                         : 16;
-                if (is_xelpg && problem.Ta_ext.bits() <= 8
-                        && problem.Ta_ext.isFP())
-                    min_n_unroll = sg_size_;
+                if (is_xelpg && problem.Ta_ext.bits() <= 8) {
+                    min_n_unroll = (opts.scaleA || opts.scaleB) ? sg_size_ : 4;
+                }
+                if (!dev_info->mayiuse_systolic()) max_wg_n = 2;
                 if (problem.Ta_ext.bits() <= 8) min_wg_n = 2;
             } break;
             case compute::gpu_arch_t::xe_hpc: max_n_unroll = 32; break;

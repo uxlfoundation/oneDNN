@@ -115,6 +115,30 @@ u4 as_u4(uchar data) {
 /*****************************/
 
 typedef struct {
+    char data;
+} s2;
+
+s2 as_s2(uchar data) {
+    s2 res;
+    res.data = (char)data;
+    return res;
+}
+
+/*****************************/
+
+typedef struct {
+    uchar data;
+} u2;
+
+u2 as_u2(uchar data) {
+    u2 res;
+    res.data = data;
+    return res;
+}
+
+/*****************************/
+
+typedef struct {
     char invalid_data;
 } undef_data;
 

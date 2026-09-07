@@ -53,11 +53,13 @@ enum class scalar_type_t {
     _half,
     _int,
     _int4,
+    _int2,
     _long,
     _short,
     _uchar,
     _uint,
     _uint4,
+    _uint2,
     _ulong,
     _ushort,
     _zero_pad_mask_t,
@@ -86,11 +88,13 @@ inline std::string to_string(scalar_type_t type) {
         CASE(_half);
         CASE(_int);
         CASE(_int4);
+        CASE(_int2);
         CASE(_long);
         CASE(_short);
         CASE(_uchar);
         CASE(_uint);
         CASE(_uint4);
+        CASE(_uint2);
         CASE(_ulong);
         CASE(_ushort);
         CASE(_zero_pad_mask_t);

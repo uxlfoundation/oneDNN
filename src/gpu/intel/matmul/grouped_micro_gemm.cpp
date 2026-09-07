@@ -85,12 +85,11 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(impl::engine_t *engine) {
 
     problem.Ta = problem.Ta_ext;
     problem.Tb = problem.Tb_ext;
-
     problem.A.setAlignment(
-            alignmentForLD(static_cast<int>(gemm_desc_t::get_ld(*wei_mdw.md_))
-                    * problem.Ta_ext));
-    problem.B.setAlignment(
-            alignmentForLD(static_cast<int>(K()) * problem.Tb_ext));
+            alignmentForLD(static_cast<int>(types::elements_to_bytes(
+                    wei_mdw.data_type(), gemm_desc_t::get_ld(*wei_mdw.md_)))));
+    problem.B.setAlignment(alignmentForLD(static_cast<int>(
+            types::elements_to_bytes(src_mdw.data_type(), K()))));
     problem.C.setAlignment(problem.Tc.size());
 
     problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);

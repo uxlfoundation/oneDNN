@@ -158,25 +158,15 @@ impl::status_t sdp_decomp_config_t::construct_params(
     // intermediate md used to create primitives
     memory::desc sub_src1_md, sub_wei1_user_md, sub_wei1_md, sub_mm1_src_md,
             sub_mm1_wei_md, sub_mm1_dst_md, sub_softmax_dst_md,
-            sub_wei2_user_md, sub_mm2_wei_md, sub_mm2_dst_md, sub_dst_md,
-            sub_dst_user_md, sub_select_cond_md, sub_select_src_md;
+            sub_wei2_user_md, sub_mm2_wei_md, sub_mm2_dst_md,
+            sub_select_cond_md, sub_select_src_md;
     std::vector<memory::desc> sub_mm1_post_md, sub_softmax_post_md;
 
-    // must use user mode to support concurrent execution
-    primitive_attr sub_reorder0_attr;
-    sub_reorder0_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-
-    // per-head: reorder src1 to dense, for first matmul
+    // per-head source view for first matmul
     dims sub_src1_dims = {seq_len_q, head_size_qk};
     src1_strides = ltw(inputs[graph_inport[mm1_src]]).vstrides();
     sub_src1_md = memory::desc(sub_src1_dims, dt_src_user,
             {src1_strides[second_last_dim], src1_strides[last_dim]});
-    auto sub_src1_d_md
-            = memory::desc(sub_src1_dims, dt_src_user, format_tag::ab);
-    auto sub_reorder0_pd = reorder::primitive_desc(
-            p_engine, sub_src1_md, p_engine, sub_src1_d_md, sub_reorder0_attr);
-    sub_reorder0.init(sub_reorder0_pd);
-
     // per-head: reorder u8->s8 wei for first matmul
     // create reorder1 primitive attr
     dnnl::primitive_attr sub_reorder1_attr = make_primitive_attr(sdp_op[0]);
@@ -185,22 +175,24 @@ impl::status_t sdp_decomp_config_t::construct_params(
     wei1_strides = wei_md.get_strides();
     sub_wei1_user_md = memory::desc(sub_wei1_dims, dt_wei_user,
             {wei1_strides[second_last_dim], wei1_strides[last_dim]});
-    // Flip the format to have `ba` weights MBI item in per thread loop.
-    sub_wei1_md = memory::desc(sub_wei1_dims, dt_wei, format_tag::ba);
+    const bool use_direct_wei1 = !sdp_op[0] && dt_wei_user == dt_wei
+            && (wei1_strides[second_last_dim] == 1
+                    || wei1_strides[last_dim] == 1);
+    sub_wei1_md = use_direct_wei1
+            ? sub_wei1_user_md
+            : memory::desc(sub_wei1_dims, dt_wei, format_tag::ba);
     auto sub_reorder1_pd = reorder::primitive_desc(p_engine, sub_wei1_user_md,
             p_engine, sub_wei1_md, sub_reorder1_attr);
-    sub_reorder1.init(sub_reorder1_pd);
+    sub_reorder1.init(sub_reorder1_pd, use_direct_wei1);
 
     // first matmul
     // create first matmul primitive attr
     dnnl::primitive_attr sub_matmul1_attr = make_primitive_attr(sdp_op[1]);
-    dims sub_mm1_src_dims = {seq_len_q, head_size_qk};
     dims sub_mm1_wei_dims = {head_size_qk, seq_len_kv};
     dims sub_mm1_dst_dims = {seq_len_q, seq_len_kv};
 
-    sub_mm1_src_md
-            = memory::desc(sub_mm1_src_dims, dt_src_user, format_tag::ab);
-    sub_mm1_wei_md = memory::desc(sub_mm1_wei_dims, dt_wei, format_tag::ba);
+    sub_mm1_src_md = sub_src1_md;
+    sub_mm1_wei_md = sub_wei1_md;
     sub_mm1_dst_md = memory::desc(sub_mm1_dst_dims, dt_inter, format_tag::ab);
     dnnl::post_ops dnnl_pops;
     auto mm1_ori_dnnl_pops = sub_matmul1_attr.get_post_ops();
@@ -327,11 +319,15 @@ impl::status_t sdp_decomp_config_t::construct_params(
     wei2_strides = ltw(inputs[graph_inport[mm2_wei]]).vstrides();
     sub_wei2_user_md = memory::desc(sub_wei2_dims, dt_wei_user,
             {wei2_strides[second_last_dim], wei2_strides[last_dim]});
-    // The format is `ab` due to performance of reorder to `ba` is low.
-    auto sub_wei2_md = memory::desc(sub_wei2_dims, dt_wei, format_tag::ab);
+    const bool use_direct_wei2 = !sdp_op[3] && dt_wei_user == dt_wei
+            && (wei2_strides[second_last_dim] == 1
+                    || wei2_strides[last_dim] == 1);
+    auto sub_wei2_md = use_direct_wei2
+            ? sub_wei2_user_md
+            : memory::desc(sub_wei2_dims, dt_wei, format_tag::ab);
     auto sub_reorder2_pd = reorder::primitive_desc(p_engine, sub_wei2_user_md,
             p_engine, sub_wei2_md, sub_reorder2_attr);
-    sub_reorder2.init(sub_reorder2_pd);
+    sub_reorder2.init(sub_reorder2_pd, use_direct_wei2);
 
     // second matmul
     // create second matmul primitive attr
@@ -341,25 +337,14 @@ impl::status_t sdp_decomp_config_t::construct_params(
     dims sub_mm2_dst_dims = {seq_len_q, head_size_v};
     auto sub_mm2_src_md
             = memory::desc(sub_mm2_src_dims, dt_src_user, format_tag::ab);
-    sub_mm2_wei_md = memory::desc(sub_mm2_wei_dims, dt_wei, format_tag::ab);
-    sub_mm2_dst_md
-            = memory::desc(sub_mm2_dst_dims, dt_src_user, format_tag::ab);
+    sub_mm2_wei_md = sub_wei2_md;
+    auto out_lt = sdp_op[4]->get_output_logical_tensor(0);
+    dst_strides = ltw(out_lt).vstrides();
+    sub_mm2_dst_md = memory::desc(sub_mm2_dst_dims, dt_src_user,
+            {dst_strides[second_last_dim], dst_strides[last_dim]});
     auto sub_mm2_pd = matmul::primitive_desc(p_engine, sub_mm2_src_md,
             sub_mm2_wei_md, sub_mm2_dst_md, sub_matmul2_attr);
     sub_mm2_prim = matmul(sub_mm2_pd);
-
-    // per-head: reorder dst2 from dense to strided
-    primitive_attr sub_reorder3_attr;
-    sub_reorder3_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-    dims sub_dst_dims = {seq_len_q, head_size_v};
-    auto out_lt = sdp_op[4]->get_output_logical_tensor(0);
-    dst_strides = ltw(out_lt).vstrides();
-    sub_dst_md = memory::desc(sub_dst_dims, dt_src_user, format_tag::ab);
-    sub_dst_user_md = memory::desc(sub_dst_dims, dt_src_user,
-            {dst_strides[second_last_dim], dst_strides[last_dim]});
-    auto sub_reorder3_pd = reorder::primitive_desc(
-            p_engine, sub_dst_md, p_engine, sub_dst_user_md, sub_reorder3_attr);
-    sub_reorder3.init(sub_reorder3_pd);
     ////////////////////////////////////////////////////////////////////////
     /////////////// End Creating primitives ////////////////////////////////
     ////////////////////////////////////////////////////////////////////////
@@ -371,10 +356,9 @@ impl::status_t sdp_decomp_config_t::construct_params(
     size_t max_scratchpad_size = 0;
     // all the scratchpads required by the primitives.
     const std::vector<memory::desc> scratchpads {
-            sub_reorder0_pd.scratchpad_desc(),
             sub_reorder1_pd.scratchpad_desc(), sub_mm1_pd.scratchpad_desc(),
             sub_softmax_pd.scratchpad_desc(), sub_reorder2_pd.scratchpad_desc(),
-            sub_mm2_pd.scratchpad_desc(), sub_reorder3_pd.scratchpad_desc()};
+            sub_mm2_pd.scratchpad_desc()};
 
     for (auto &sp : scratchpads) {
         const size_t size = sp.get_size();
@@ -384,21 +368,18 @@ impl::status_t sdp_decomp_config_t::construct_params(
         }
     }
 
-    auto sub_src1_size = sub_src1_d_md.get_size();
-    auto sub_src2_size = sub_softmax_dst_md.get_size();
-    sub_max_src1_src2_md = sub_src1_size > sub_src2_size ? sub_src1_d_md
-                                                         : sub_softmax_dst_md;
+    sub_max_src1_src2_md = sub_softmax_dst_md;
 
     auto sub_dst1_size = sub_mm1_dst_md.get_size();
     auto sub_wei2_size = sub_mm2_wei_md.get_size();
     sub_max_dst1_wei2_md
-            = sub_dst1_size > sub_wei2_size ? sub_mm1_dst_md : sub_mm2_wei_md;
+            = !sub_reorder2.get_inplace() && sub_wei2_size > sub_dst1_size
+            ? sub_mm2_wei_md
+            : sub_mm1_dst_md;
 
     // Initialize memory object with empty buffer
     sub_max_src1_src2 = memory(sub_max_src1_src2_md, p_engine, nullptr);
     sub_max_dst1_wei2 = memory(sub_max_dst1_wei2_md, p_engine, nullptr);
-    // reorder0: 2d strided -> 2d ab
-    sub_src1 = memory(sub_src1_md, p_engine, nullptr);
     // reorder1: 2d strided u8 -> 2d ba s8
     sub_wei1_user = memory(sub_wei1_user_md, p_engine, nullptr);
     // mm1
@@ -439,14 +420,8 @@ impl::status_t sdp_decomp_config_t::construct_params(
     // mm2
     sub_mm2_wei = memory(sub_mm2_wei_md, p_engine, nullptr);
     sub_mm2_dst = memory(sub_mm2_dst_md, p_engine, nullptr);
-    //reorder3
-    sub_dst_user = memory(sub_dst_user_md, p_engine, nullptr);
-
     // scratchpad, each thread will have a largest scratchpad.
     sub_scratchpad = memory(max_scratchpad_md, p_engine, nullptr);
-
-    sub_reorder0_args = {{DNNL_ARG_SRC, sub_src1}, {DNNL_ARG_DST, sub_mm1_src},
-            {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
 
     sub_reorder1_args = {{DNNL_ARG_SRC, sub_wei1_user},
             {DNNL_ARG_DST, sub_mm1_wei}, {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
@@ -501,10 +476,6 @@ impl::status_t sdp_decomp_config_t::construct_params(
     sub_mm2_args = {{DNNL_ARG_SRC, sub_softmax_dst},
             {DNNL_ARG_WEIGHTS, sub_mm2_wei}, {DNNL_ARG_DST, sub_mm2_dst},
             {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
-
-    sub_reorder3_args
-            = {{DNNL_ARG_SRC, sub_mm2_dst}, {DNNL_ARG_DST, sub_dst_user},
-                    {DNNL_ARG_SCRATCHPAD, sub_scratchpad}};
 
     // add scales and zps for mm1, softmax, mm2
     prepare_sdp_scales_zps(sdp_op[0], 1, sub_reorder1_args, p_engine);
@@ -757,18 +728,17 @@ void sdp_decomp_config_t::memory_planning(registry_t &sdp_registry) {
     // memories(mds) who share the same buffer have the same registar key in
     // this map. So if we want to change the memory reuse logic, we need to
     // change the value of map here.
-    mem_key_map = {{sub_max_src1_src2.get(), 0}, {sub_mm1_wei.get(), 1},
-            {sub_max_dst1_wei2.get(), 2}, {sub_softmax_dst.get(), 0},
-            {sub_mm2_dst.get(), 3}, {sub_scratchpad.get(), 4}};
+    mem_key_map = {{sub_max_src1_src2.get(), 0}, {sub_max_dst1_wei2.get(), 2},
+            {sub_softmax_dst.get(), 0}, {sub_scratchpad.get(), 3}};
+    if (!sub_reorder1.get_inplace()) mem_key_map[sub_mm1_wei.get()] = 1;
 
     temporary_registrar.book(mem_key_map[sub_max_src1_src2.get()],
             sub_max_src1_src2.get_desc().get_size());
-    temporary_registrar.book(
-            mem_key_map[sub_mm1_wei.get()], sub_mm1_wei.get_desc().get_size());
+    if (!sub_reorder1.get_inplace())
+        temporary_registrar.book(mem_key_map[sub_mm1_wei.get()],
+                sub_mm1_wei.get_desc().get_size());
     temporary_registrar.book(mem_key_map[sub_max_dst1_wei2.get()],
             sub_max_dst1_wei2.get_desc().get_size());
-    temporary_registrar.book(
-            mem_key_map[sub_mm2_dst.get()], sub_mm2_dst.get_desc().get_size());
     if (has_select && !select_fusiable)
         temporary_registrar.book(mem_key_map[sub_select_dst.get()],
                 sub_select_dst.get_desc().get_size());

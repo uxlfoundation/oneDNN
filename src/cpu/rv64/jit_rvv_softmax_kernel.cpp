@@ -41,6 +41,9 @@ using namespace Xbyak_riscv;
 #define XF16_REDUCE_MAX_OFF(field) \
     static_cast<int32_t>(offsetof( \
             jit_rvv_softmax_xf16_reduce_max_kernel_t::call_params_t, field))
+#define F32_REDUCE_MAX_OFF(field) \
+    static_cast<int32_t>(offsetof( \
+            jit_rvv_softmax_f32_reduce_max_kernel_t::call_params_t, field))
 
 namespace {
 
@@ -76,6 +79,12 @@ template <data_type_t dt>
 void dispatch_xf16_reduce_max(
         const jit_rvv_softmax_xf16_reduce_max_kernel_t::call_params_t *p) {
     static const jit_rvv_softmax_xf16_reduce_max_kernel_t kernel(dt);
+    kernel(p);
+}
+
+void dispatch_f32_reduce_max(
+        const jit_rvv_softmax_f32_reduce_max_kernel_t::call_params_t *p) {
+    static const jit_rvv_softmax_f32_reduce_max_kernel_t kernel;
     kernel(p);
 }
 
@@ -207,6 +216,13 @@ void jit_rvv_softmax_xf16_reduce_max(data_type_t dt, const void *src, dim_t len,
         dispatch_xf16_reduce_max<data_type::f16>(&p);
 }
 
+void jit_rvv_softmax_f32_reduce_max(
+        const float *src, dim_t len, float *max_val) {
+    const jit_rvv_softmax_f32_reduce_max_kernel_t::call_params_t p {
+            src, len, max_val};
+    dispatch_f32_reduce_max(&p);
+}
+
 void jit_rvv_softmax_xf16_reduce_max_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
@@ -299,6 +315,80 @@ void jit_rvv_softmax_xf16_reduce_max_kernel_t::generate() {
     slti(reg_has, reg_tmp, 0);
     xori(reg_has, reg_has, 1);
     sw(reg_has, reg_nan_ptr, 0);
+    ret();
+#else
+    ret();
+#endif
+}
+
+jit_rvv_softmax_f32_reduce_max_kernel_t::
+        jit_rvv_softmax_f32_reduce_max_kernel_t()
+    : jit_generator_t("jit_rvv_softmax_f32_reduce_max_kernel") {
+    create_kernel();
+}
+
+// f32 Stage-1 max reduction, mirroring jit_rvv_softmax_xf16_reduce_max. The
+// scalar loop seeds max_val with -INFINITY and only ever replaces it under
+// `val > max_val`; a NaN never wins. vfredmax_vs therefore needs its own
+// -INFINITY seed, and NaN lanes must be merged to that seed before the
+// reduction so they cannot displace a valid maximum (vfredmax alone would
+// propagate a NaN). vfredmax_vs reduces only the vl active elements, so a
+// short final chunk needs no explicit tail handling.
+void jit_rvv_softmax_f32_reduce_max_kernel_t::generate() {
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const Reg reg_param = a0;
+    const Reg reg_src = a1;
+    const Reg reg_len = a2;
+    const Reg reg_max_ptr = a3;
+    const Reg reg_vl = t0;
+    const Reg reg_bytes = t1;
+    const Reg reg_imm = t4;
+
+    const FReg f_seed = ft1;
+    const FReg f_max = ft2;
+
+    const VReg v_x(8);
+    const VReg v_red(28);
+
+    auto load_f32_bits = [&](const FReg &freg, uint32_t bits) {
+        li(reg_imm, static_cast<int64_t>(bits));
+        fmv_w_x(freg, reg_imm);
+    };
+
+    ld(reg_src, reg_param, F32_REDUCE_MAX_OFF(src));
+    ld(reg_len, reg_param, F32_REDUCE_MAX_OFF(len));
+    ld(reg_max_ptr, reg_param, F32_REDUCE_MAX_OFF(max_val));
+
+    // Seed for the max reduction: -INFINITY (0xFF800000), matching the scalar
+    // `> max_val` loop. It only ever wins when every element is -Inf or NaN.
+    load_f32_bits(f_seed, 0xFF800000u);
+
+    // Seed the vector max accumulator with -INFINITY.
+    vsetvli(reg_vl, x0, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+    vfmv_v_f(v_red, f_seed);
+
+    Label loop, finish;
+    L(loop);
+    beqz(reg_len, finish);
+
+    vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
+    vle32_v(v_x, reg_src);
+    slli(reg_bytes, reg_vl, 2);
+    add(reg_src, reg_src, reg_bytes);
+
+    // Exclude NaN lanes from the max: a NaN is x != x, and merging it to the
+    // -INFINITY seed reproduces the scalar `val > max_val` contract under
+    // which a NaN never updates max_val.
+    vmfne_vv(v0, v_x, v_x);
+    vfmerge_vfm(v_x, v_x, f_seed);
+    vfredmax_vs(v_red, v_x, v_red);
+
+    sub(reg_len, reg_len, reg_vl);
+    j_(loop);
+
+    L(finish);
+    vfmv_f_s(f_max, v_red);
+    fsw(f_max, reg_max_ptr, 0);
     ret();
 #else
     ret();

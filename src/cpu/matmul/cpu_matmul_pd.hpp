@@ -29,6 +29,7 @@ namespace matmul {
 
 struct cpu_matmul_pd_t : public matmul_pd_t {
     using matmul_pd_t::matmul_pd_t;
+
     // NOLINTBEGIN(google-default-arguments)
     status_t attr_scales_ok(const engine_t *engine,
             const std::vector<int> &supported_args
@@ -39,6 +40,17 @@ struct cpu_matmul_pd_t : public matmul_pd_t {
             = {}) const override {
         CHECK(matmul_pd_t::attr_scales_ok(
                 engine, supported_args, supported_qmodes, extra_masks));
+
+        const auto &scales = attr()->scales_;
+        if (!scales.has_default_values(DNNL_ARG_DST)
+                && !scales.get(DNNL_ARG_DST).is_dynamic()) {
+            // CPU matmul currently supports only common static destination
+            // scales. Keep this backend-specific restriction out of common
+            // matmul validation.
+            VDISPATCH_MATMUL(scales.get_mask(DNNL_ARG_DST) == 0,
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+        }
+
         return status::success;
     }
     // NOLINTEND(google-default-arguments)

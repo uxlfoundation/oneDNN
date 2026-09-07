@@ -158,7 +158,11 @@ The following attributes and post-ops are supported:
 
 The `mask` and `groups` parameters for scales and zero-points follow the
 conventions described in the
-[quantization guide](@ref dgaq_constructing_mask_and_groups).
+[quantization guide](@ref dgaq_constructing_mask_and_groups). The set of
+destination-scale masks that is accepted is implementation-specific; see the
+[Implementation Limitations](#implementation-limitations) below. Dynamic
+destination scaling (see @ref dev_guide_attributes_quantization) is accepted
+only when the destination data type is `f8` or `f4`.
 
 Scales, zero-points, and dropout require additional memory arguments at
 execution time. See the
@@ -191,6 +195,9 @@ run-time attributes in use.
 3. **CPU**
    - Configurations with `s8`/`u8` source data type, `s8` weight data type and `f16`
      destination data type aren't supported.
+   - Static destination scales are supported only with the common mask
+     (`mask == 0`), which provides one scale for the entire destination tensor;
+     non-common static destination scale masks aren't supported.
    - Configurations with floating point source data type, integer weights data
      type and floating point destination data type are not optimized.
    - The layout of dropout mask has to be exactly the same as that of dst.

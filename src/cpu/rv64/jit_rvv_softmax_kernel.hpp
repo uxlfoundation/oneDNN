@@ -178,6 +178,29 @@ private:
     data_type_t dt_;
 };
 
+// f32 value-only max reduction for softmax Stage 1. Computes max(src[0..len))
+// with the scalar `val > max_val` semantics: seeded with -INFINITY and NaN
+// lanes merged to the seed so a NaN never wins the reduction. The caller keeps
+// the scalar loop for reductions shorter than one LMUL=4 e32 vector.
+struct jit_rvv_softmax_f32_reduce_max_kernel_t : public jit_generator_t {
+    struct call_params_t {
+        const float *src;
+        dim_t len;
+        float *max_val;
+    };
+
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_rvv_softmax_f32_reduce_max_kernel_t)
+
+    jit_rvv_softmax_f32_reduce_max_kernel_t();
+
+    void operator()(const call_params_t *p) const {
+        jit_generator_t::operator()(p);
+    }
+
+protected:
+    void generate() override;
+};
+
 void jit_rvv_softmax_xf16_affine_from_xf16(data_type_t dt, const void *src,
         void *dst, dim_t len, float sub, float mul);
 
@@ -198,6 +221,9 @@ void jit_rvv_softmax_f32_exp_sub_sum(const float *src, float *dst, dim_t len,
 
 void jit_rvv_softmax_xf16_reduce_max(data_type_t dt, const void *src, dim_t len,
         float *max_val, uint32_t *has_nan);
+
+void jit_rvv_softmax_f32_reduce_max(
+        const float *src, dim_t len, float *max_val);
 
 } // namespace rv64
 } // namespace cpu

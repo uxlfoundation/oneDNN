@@ -43,9 +43,22 @@ namespace {
 void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
         bool is_logsoftmax, bool is_softmax_inf_as_zero,
         const jit_rvv_softmax_affine_kernel_t *affine_kernel, bool jit_exp) {
+    // Stage 1: max reduction. Use the vector vfredmax path for reductions that
+    // fill at least one LMUL=4 e32 vector (16 elements at VLEN=128), mirroring
+    // the f16 reduce-max kernel; below that the vsetvli/vfredmax setup overhead
+    // exceeds the scalar loop. The kernel seeds -INFINITY and merges NaN lanes
+    // to the seed to reproduce the scalar `val > max_val` contract.
+    constexpr dim_t reduce_max_jit_min_len = 16;
     float max_val = -INFINITY;
-    for (dim_t i = 0; i < len; ++i)
-        max_val = src[i] > max_val ? src[i] : max_val;
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    if (len >= reduce_max_jit_min_len) {
+        jit_rvv_softmax_f32_reduce_max(src, len, &max_val);
+    } else
+#endif
+    {
+        for (dim_t i = 0; i < len; ++i)
+            max_val = src[i] > max_val ? src[i] : max_val;
+    }
 
     if (is_logsoftmax) {
         float sum_exp = 0.f;

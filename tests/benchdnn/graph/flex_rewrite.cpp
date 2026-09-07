@@ -262,17 +262,22 @@ int flex_rewrite_t::linked_shape_and_attr_rewrite(
     for (auto &aop : dgraph.ops_) {
         if (aop.kind_ == "DynamicDequantize") {
             auto &attr = aop.attrs_;
-            if (attr.find("qtype") == attr.end()
-                    || attr["qtype"].str_value_ != "per_group")
-                continue;
-            if (attr.find("group_shape") == attr.end()) {
+            // Keep the check for legacy attributes: if qtype is per_group, the
+            // group_shape must be specified. But now, the user can also specify
+            // mask + group_shape. So once group_shape is provided, we think
+            // it's per-group quantization and proceed the rewrite.
+            const bool legacy_per_group = attr.find("qtype") != attr.end()
+                    && attr["qtype"].str_value_ == "per_group";
+            const bool has_group_shape = attr.find("group_shape") != attr.end()
+                    && !attr["group_shape"].s64_vector_.empty();
+            if (legacy_per_group && !has_group_shape) {
                 BENCHDNN_PRINT(0,
                         "Error: missed `group-shape` attribute for "
                         "per-group quantization for op with id=\'%zu\'\n",
                         aop.id_);
                 SAFE(FAIL, WARN);
             }
-
+            if (!has_group_shape) continue;
             bool input_shape_rewrite = std::any_of(aop.in_lts_.begin(),
                     aop.in_lts_.end(), [&](const deserialized_lt_t &in_lt) {
                 return in_shapes_.count(in_lt.id_)

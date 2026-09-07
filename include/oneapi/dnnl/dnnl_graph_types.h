@@ -319,6 +319,8 @@ typedef enum {
     dnnl_graph_op_attr_begin_norm_axis,
     /// Specifies a groups attribute to an op.
     dnnl_graph_op_attr_groups,
+    /// Specifies a quantization scale mask attribute to an op.
+    dnnl_graph_op_attr_mask,
 
     // int64_t vector attributes. The value of these attributes can be a vector
     // of int64 numbers.

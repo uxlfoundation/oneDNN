@@ -428,9 +428,6 @@ static status_t squared_difference_handler(
 static status_t static_quant_handler(
         const std::shared_ptr<op_t> &op, subgraph_rewriter_t &rewriter) {
     const auto &scales = op->get_attr<std::vector<float>>(op_attr::scales);
-    const auto &qtype = op->get_attr<std::string>(op_attr::qtype);
-    const auto &axis = op->get_attr<int64_t>(op_attr::axis);
-
     std::vector<int64_t> zps(scales.size(), 0);
     if (op->has_attr(op_attr::zps)) {
         zps = op->get_attr<std::vector<int64_t>>(op_attr::zps);
@@ -454,10 +451,9 @@ static status_t static_quant_handler(
     mul_scales_op->set_attr<std::vector<float>>(op_attr::scales, inv_scales);
     add_zps_op->set_attr<std::vector<int64_t>>(op_attr::zps, zps);
 
-    mul_scales_op->set_attr<int64_t>(op_attr::axis, axis);
-    mul_scales_op->set_attr<std::string>(op_attr::qtype, qtype);
-    add_zps_op->set_attr<int64_t>(op_attr::axis, axis);
-    add_zps_op->set_attr<std::string>(op_attr::qtype, qtype);
+    const int64_t mask = get_quant_mask(op.get());
+    mul_scales_op->set_attr<int64_t>(op_attr::mask, mask);
+    add_zps_op->set_attr<int64_t>(op_attr::mask, mask);
 
     // reconnect
     in_vals[0]->remove_consumer(*op, 0);
@@ -485,9 +481,6 @@ static status_t static_quant_handler(
 static status_t static_dequant_handler(
         const std::shared_ptr<op_t> &cur_op, subgraph_rewriter_t &rewriter) {
     const auto &scales = cur_op->get_attr<std::vector<float>>(op_attr::scales);
-    const auto &qtype = cur_op->get_attr<std::string>(op_attr::qtype);
-    const auto &axis = cur_op->get_attr<int64_t>(op_attr::axis);
-
     std::vector<int64_t> zps(scales.size(), 0);
     if (cur_op->has_attr(op_attr::zps)) {
         zps = cur_op->get_attr<std::vector<int64_t>>(op_attr::zps);
@@ -507,10 +500,9 @@ static status_t static_dequant_handler(
     sub_zps_op->set_attr<std::vector<int64_t>>(op_attr::zps, zps);
     mul_scales_op->set_attr<std::vector<float>>(op_attr::scales, scales);
 
-    sub_zps_op->set_attr<int64_t>(op_attr::axis, axis);
-    sub_zps_op->set_attr<std::string>(op_attr::qtype, qtype);
-    mul_scales_op->set_attr<int64_t>(op_attr::axis, axis);
-    mul_scales_op->set_attr<std::string>(op_attr::qtype, qtype);
+    const int64_t mask = get_quant_mask(cur_op.get());
+    sub_zps_op->set_attr<int64_t>(op_attr::mask, mask);
+    mul_scales_op->set_attr<int64_t>(op_attr::mask, mask);
 
     // reconnect
     in_vals[0]->remove_consumer(*cur_op, 0);
@@ -537,9 +529,6 @@ static status_t static_dequant_handler(
 
 static status_t dynamic_quant_handler(
         const std::shared_ptr<op_t> &cur_op, subgraph_rewriter_t &rewriter) {
-    const auto &qtype = cur_op->get_attr<std::string>(op_attr::qtype);
-    const auto &axis = cur_op->get_attr<int64_t>(op_attr::axis);
-
     auto &in_vals = cur_op->get_input_values();
     auto &out_vals = cur_op->get_output_values();
     VCHECK_INVALID_ARGUMENT((in_vals.size() == 3 || in_vals.size() == 2)
@@ -554,13 +543,14 @@ static status_t dynamic_quant_handler(
     value_ptr src = in_vals[0], scales = in_vals[1], dst = out_vals[0], zps;
     if (has_zps) zps = in_vals[2];
 
+    int64_t mask = get_quant_mask(cur_op.get());
+
     // int8 = f32 / scales + zps
     op_ptr mul_scales = std::make_shared<op_t>(op_kind::_mul_scales);
 
     mul_scales->connect_input(1, scales);
     scales->remove_consumer(*cur_op, 1);
-    mul_scales->set_attr<int64_t>(op_attr::axis, axis);
-    mul_scales->set_attr<std::string>(op_attr::qtype, qtype);
+    mul_scales->set_attr<int64_t>(op_attr::mask, mask);
     mul_scales->set_attr<bool>(op_attr::with_runtime_scales, true);
 
     // connect mul_scales to subgraph
@@ -583,8 +573,7 @@ static status_t dynamic_quant_handler(
         op_ptr add_zps = std::make_shared<op_t>(op_kind::_add_zps);
         add_zps->connect_input(1, zps);
         zps->remove_consumer(*cur_op, 2);
-        add_zps->set_attr<int64_t>(op_attr::axis, axis);
-        add_zps->set_attr<std::string>(op_attr::qtype, qtype);
+        add_zps->set_attr<int64_t>(op_attr::mask, mask);
         add_zps->set_attr<bool>(op_attr::with_runtime_zps, true);
 
         // connect add_zps to subgraph
@@ -598,45 +587,38 @@ static status_t dynamic_quant_handler(
 
 static status_t dynamic_dequant_handler(
         const std::shared_ptr<op_t> &cur_op, subgraph_rewriter_t &rewriter) {
-    const auto &qtype = cur_op->get_attr<std::string>(op_attr::qtype);
-    const auto &axis = cur_op->get_attr<int64_t>(op_attr::axis);
-
     auto &in_vals = cur_op->get_input_values();
     auto &out_vals = cur_op->get_output_values();
     VCHECK_INVALID_ARGUMENT((in_vals.size() == 3 || in_vals.size() == 2)
                     && out_vals.size() == 1,
-            "dynamic dequantize must have 2 or 3 inputs and 1 output, but "
-            "got %zu input and %zu output",
+            "DynamicDequantize must have 2 or 3 inputs and 1 output, but got "
+            "%zu input and %zu output",
             in_vals.size(), out_vals.size());
 
-    // DynamicDequantize has optional zps
-    bool has_zps = in_vals.size() == 3;
-    bool is_group_quantization = (qtype == "per_group");
+    const bool has_zps = in_vals.size() == 3;
+    const bool has_valid_groups = utils::has_group_shape(cur_op.get());
 
-    value_ptr src = in_vals[0], scales = in_vals[1], dst = out_vals[0], zps;
-    if (has_zps) zps = in_vals[2];
+    value_ptr src = in_vals[0];
+    value_ptr scl = in_vals[1];
+    value_ptr zps = has_zps ? in_vals[2] : nullptr;
+    value_ptr dst = out_vals[0];
 
-    int64_t group_mask = 0;
-    if (is_group_quantization) {
+    const int64_t mask = get_quant_mask(cur_op.get());
 
-        const auto &group_shape
+    std::vector<int64_t> group_shape;
+    if (has_valid_groups) {
+        group_shape
                 = cur_op->get_attr<std::vector<int64_t>>(op_attr::group_shape);
         const auto src_lt = src->get_logical_tensor();
-        const auto scale_lt = scales->get_logical_tensor();
-
+        const auto scale_lt = scl->get_logical_tensor();
         const auto ndims = ltw(src_lt).ndims();
+        const auto &src_dims = ltw(src_lt).vdims();
+        const auto &scale_dims = ltw(scale_lt).vdims();
+
         VCHECK_INVALID_ARGUMENT(
                 (static_cast<size_t>(ndims) == group_shape.size()),
                 "group shape size should match the number of dimensions of "
                 "src");
-        const auto &src_dims = ltw(src_lt).vdims();
-        const auto &scale_dims = ltw(scale_lt).vdims();
-
-        for (int idx = 0; idx < ndims - 2; ++idx) {
-            VCHECK_INVALID_ARGUMENT((src_dims[idx] == scale_dims[idx]),
-                    "the scale shape should match the input shape on the "
-                    "dimensions where no quantization is applied");
-        }
 
         for (int idx = 0; idx < ndims; ++idx) {
             VCHECK_INVALID_ARGUMENT(
@@ -646,33 +628,23 @@ static status_t dynamic_dequant_handler(
                     idx, static_cast<int>(src_dims[idx]),
                     static_cast<int>(scale_dims[idx]),
                     static_cast<int>(group_shape[idx]));
-
-            if (group_shape[idx] != 1) {
-                group_mask += 1ULL << idx;
-                //Currently group quantization only happens on one dimension
-            }
         }
     }
 
-    const int64_t scales_data_type = scales->get_logical_tensor().data_type;
+    const int64_t scales_data_type = scl->get_logical_tensor().data_type;
+
     // f32 = scales * (int8 - zps)
-    // connect scales to mul_scales op
     op_ptr mul_scales = std::make_shared<op_t>(op_kind::_mul_scales);
-    mul_scales->connect_input(1, scales);
-    scales->remove_consumer(*cur_op, 1);
-    mul_scales->set_attr<int64_t>(op_attr::axis, axis);
-    mul_scales->set_attr<std::string>(op_attr::qtype, qtype);
-    if (is_group_quantization) {
-        const auto &group_shape
-                = cur_op->get_attr<std::vector<int64_t>>(op_attr::group_shape);
+    mul_scales->connect_input(1, scl);
+    scl->remove_consumer(*cur_op, 1);
+    mul_scales->set_attr<int64_t>(op_attr::mask, mask);
+    if (has_valid_groups) {
         mul_scales->set_attr<std::vector<int64_t>>(
                 op_attr::group_shape, group_shape);
-        mul_scales->set_attr<int64_t>(op_attr::group_mask, group_mask);
     }
     mul_scales->set_attr<int64_t>(op_attr::data_type, scales_data_type);
     mul_scales->set_attr<bool>(op_attr::with_runtime_scales, true);
 
-    // connect mul_scales op to subgraph
     mul_scales->connect_input(0, src);
     src->remove_consumer(*cur_op, 0);
     mul_scales->add_output(dst);
@@ -683,22 +655,18 @@ static status_t dynamic_dequant_handler(
         op_ptr sub_zps = std::make_shared<op_t>(op_kind::_sub_zps);
         sub_zps->connect_input(1, zps);
         zps->remove_consumer(*cur_op, 2);
-        sub_zps->set_attr<int64_t>(op_attr::axis, axis);
-        sub_zps->set_attr<std::string>(op_attr::qtype, qtype);
+        sub_zps->set_attr<int64_t>(op_attr::mask, mask);
         sub_zps->set_attr<int64_t>(op_attr::data_type, zps_data_type);
-        if (is_group_quantization) {
-            const auto &scale_dims = ltw(scales->get_logical_tensor()).vdims();
+        if (has_valid_groups) {
+            const auto &scale_dims = ltw(scl->get_logical_tensor()).vdims();
             const auto &zp_dims = ltw(zps->get_logical_tensor()).vdims();
             for (size_t idx = 0; idx < scale_dims.size(); ++idx) {
                 VCHECK_INVALID_ARGUMENT((scale_dims[idx] == zp_dims[idx]),
                         "scale and zero point tensors should have the same "
                         "shape");
             }
-            const auto &group_shape = cur_op->get_attr<std::vector<int64_t>>(
-                    op_attr::group_shape);
             sub_zps->set_attr<std::vector<int64_t>>(
                     op_attr::group_shape, group_shape);
-            sub_zps->set_attr<int64_t>(op_attr::group_mask, group_mask);
         }
         sub_zps->set_attr<bool>(op_attr::with_runtime_zps, true);
         // connect sub_zps op to subgraph

@@ -84,6 +84,7 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     problem.Tb = problem.Tb_ext;
 
     dim_t lda, ldb;
+    data_type_t adt, bdt;
     SizeParams sizes;
 
     switch (grouped_axis_) {
@@ -98,6 +99,8 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
             ldb = K();
             problem.A.layout = convert_dnnl_to_kernel_layout(wei_mdw.md_);
             problem.B.layout = MatrixLayout::N;
+            adt = wei_mdw.data_type();
+            bdt = src_mdw.data_type();
             break;
         case grouped_axis_t::k_axis: {
             // The C tile is col-major, so the operand order follows the
@@ -107,12 +110,19 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
             // Both operands are k-major, hence A layout N and B layout T either
             // way; only the leading dimensions and extents swap.
             const bool trans_c = transc();
-            sizes.m = static_cast<uint16_t>(trans_c ? M() : N());
-            sizes.n = static_cast<uint16_t>(trans_c ? N() : M());
+            if (trans_c) {
+                lda = sizes.m = static_cast<uint16_t>(M());
+                ldb = sizes.n = static_cast<uint16_t>(N());
+                adt = src_mdw.data_type();
+                bdt = wei_mdw.data_type();
+            } else {
+                lda = sizes.m = static_cast<uint16_t>(N());
+                ldb = sizes.n = static_cast<uint16_t>(M());
+                adt = wei_mdw.data_type();
+                bdt = src_mdw.data_type();
+            }
             // use the average k size to avoid unnecessary unrolls
             sizes.k = static_cast<uint16_t>(utils::div_up(K(), ngroups_));
-            lda = sizes.m;
-            ldb = sizes.n;
             problem.A.layout = MatrixLayout::N;
             problem.B.layout = MatrixLayout::T;
         } break;
@@ -122,11 +132,10 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     }
 
     problem.C.layout = MatrixLayout::N;
-
-    problem.A.setAlignment(
-            alignmentForLD(static_cast<int>(lda) * problem.Ta_ext));
-    problem.B.setAlignment(
-            alignmentForLD(static_cast<int>(ldb) * problem.Tb_ext));
+    problem.A.setAlignment(alignmentForLD(
+            static_cast<int>(types::elements_to_bytes(adt, lda))));
+    problem.B.setAlignment(alignmentForLD(
+            static_cast<int>(types::elements_to_bytes(bdt, ldb))));
     problem.C.setAlignment(problem.Tc.size());
 
     GEMMOptions opts;

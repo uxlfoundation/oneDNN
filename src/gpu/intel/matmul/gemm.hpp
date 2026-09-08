@@ -70,12 +70,11 @@ struct gemm_t : public primitive_t {
             auto maybe_reshape = [&]() -> status_t {
                 // reduce output is not handled by the reshape logic.
                 if (with_reduce()) return status::success;
-                dim_t batch_b_dims = 1;
-                for (int i = 0; i < b_md->ndims - 2; i++) {
-                    batch_b_dims *= b_md->dims[i];
+                bool reshape_2d = (b_md->ndims > 2);
+                for (int i = 0; reshape_2d && i < b_md->ndims - 2; i++) {
+                    reshape_2d &= (b_md->dims[i] == 1);
                 }
                 // for batch dim can map broadcast to 2d: eg. 4x1x4096:1x4096x16 -> 4x4096:4096x16
-                bool reshape_2d = (batch_b_dims == 1 && b_md->ndims > 2);
                 bool reshape_3d = (a_md->ndims > 3);
                 bool allow_reshape
                         = gpu_utils::dev_getenv("GEMM_ALLOW_RESHAPE", true);

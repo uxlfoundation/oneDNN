@@ -557,6 +557,8 @@ static std::vector<fwd_config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 256, fma }, { 16, 16, 32, 16,  8, 2,  8, 2 }},
         {{compute::gpu_arch_t::xe2, 512, fma }, { 16, 16, 32, 16, 16, 2, 16, 2 }},
 
+        {{compute::gpu_arch_t::xe2,  16,  16, f32 | fma | second_token }, { 16, 16, 16, 16,  1, 1,  1, 1 }},
+        {{compute::gpu_arch_t::xe2,  16,  16, second_token },             { 16, 16, 16, 16,  1, 1,  1, 1 }},
         {{compute::gpu_arch_t::xe2,  32, 385, fma | second_token }, { 16, 16, 16, 16,  8, 2,  8, 2 }},
         {{compute::gpu_arch_t::xe2,  64, 385, fma | second_token }, { 32, 16, 16, 16,  8, 4,  8, 4 }},
         {{compute::gpu_arch_t::xe2, 128, 385, fma | second_token }, { 16, 16, 32, 16, 16, 1, 16, 1 }},
@@ -607,6 +609,8 @@ static std::vector<fwd_config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 128, f32 | fma | second_token | integrated }, { 16, 16, 32, 16, 4, 2, 4, 2 }},
         {{compute::gpu_arch_t::xe2, 256, fma | second_token | integrated }, { 16, 16, 32, 16, 8, 2, 8, 2 }},
 
+        {{compute::gpu_arch_t::xe3p,  16,  16, f32 | fma | second_token }, { 16, 16, 16, 16,  1, 1,  1, 1 }},
+        {{compute::gpu_arch_t::xe3p,  16,  16, second_token },             { 16, 16, 16, 16,  1, 1,  1, 1 }},
         {{compute::gpu_arch_t::xe3p,  32, fma },                            { 16, 16, 16, 16,  2, 2,  2, 2}},
         {{compute::gpu_arch_t::xe3p,  64, fma | second_token },             { 16, 16, 16, 16,  8, 4,  8, 4}},
         {{compute::gpu_arch_t::xe3p,  32, fma | second_token | quantized }, { 16, 16, 16, 16,  2, 2,  2, 2}},

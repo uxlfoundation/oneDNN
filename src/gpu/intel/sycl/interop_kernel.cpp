@@ -123,6 +123,20 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
     CHECK(check_scalar_arguments(arg_list));
     CHECK(check_alignment(arg_list));
 
+    xpu::sycl::verbose_profiler_t *vp = nullptr;
+    if (stream.is_verbose_profiler_enabled()) {
+        vp = utils::downcast<xpu::sycl::verbose_profiler_t *>(
+                gpu_stream->verbose_profiler());
+    }
+
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+    const bool use_tag = vp && vp->use_ext_oneapi_tag();
+    ::sycl::event start_tag, end_tag;
+    if (use_tag)
+        start_tag = ::sycl::ext::oneapi::experimental::submit_profiling_tag(
+                queue);
+#endif
+
     auto event = queue.submit([&](::sycl::handler &cgh) {
         cgh.depends_on(xpu::sycl::event_t::from(deps).events);
         for (int i = 0; i < arg_list.nargs(); ++i) {
@@ -179,6 +193,12 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
         }
     });
 
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+    if (use_tag)
+        end_tag = ::sycl::ext::oneapi::experimental::submit_profiling_tag(
+                queue);
+#endif
+
     // Event registration for profilers - carried out separately for each
     // profiler
     if (stream.is_profiling_enabled()) {
@@ -187,10 +207,16 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
                         std::vector<::sycl::event> {event}));
     }
 
-    if (stream.is_verbose_profiler_enabled()) {
-        gpu_stream->verbose_profiler()->register_event(
-                std::make_shared<xpu::sycl::event_t>(
-                        std::vector<::sycl::event> {event}));
+    if (vp) {
+        auto ev = std::make_shared<xpu::sycl::event_t>(
+                std::vector<::sycl::event> {event});
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+        if (use_tag) {
+            ev->start_tag_ = start_tag;
+            ev->end_tag_ = end_tag;
+        }
+#endif
+        vp->register_event(ev);
     }
 
     xpu::sycl::event_t::from(out_dep).events = {std::move(event)};

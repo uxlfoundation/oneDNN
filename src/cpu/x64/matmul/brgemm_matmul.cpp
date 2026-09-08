@@ -792,7 +792,7 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                         const bool skip_copy_a = mc_prev == mc && kc_prev == kc
                                 && (b_prev == b
                                         || bgmmc.bcast_A_desc
-                                                   .bcast_across_all_batch_dims);
+                                                .bcast_across_all_batch_dims);
                         bool prefetch = determine_prefetch(
                                 mb, m_end, nb, n_end, bgmmc, brgmm_ctx);
                         for (dim_t kb = kb_start; kb < kb_end; kb++) {
@@ -2091,6 +2091,13 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
     }
 
     dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
+        if (bgmmc_.is_f32_with_f4_wei && bgmmc_.blocked_B) {
+            // The source has K2 packing, while the FP32 buffer has no VNNI.
+            return (B_strides_[1] * (k / 32)
+                           + B_strides_[0] * (n / bgmmc_.wei_n_blk))
+                    / 2
+                    + (k % 32 / 2) * bgmmc_.wei_n_blk + n % bgmmc_.wei_n_blk;
+        }
         const dim_t wei_k_blk = bgmmc_.is_bf32 || bgmmc_.is_xf16_fp8
                 ? get_wei_k_blk(bgmmc_.orig_wei_dt)
                 : bgmmc_.wei_k_blk;

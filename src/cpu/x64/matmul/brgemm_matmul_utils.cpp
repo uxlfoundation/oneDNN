@@ -395,11 +395,11 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
               && (utils::one_of(bgmmc.wei_dt, s4, u4)
                       || !attr.scales_.get(DNNL_ARG_SRC).has_default_groups()
                       || !attr.scales_.get(DNNL_ARG_WEIGHTS)
-                                  .has_default_groups()
+                              .has_default_groups()
                       || !attr.zero_points_.get(DNNL_ARG_SRC)
-                                  .has_default_groups()
+                              .has_default_groups()
                       || !attr.zero_points_.get(DNNL_ARG_WEIGHTS)
-                                  .has_default_groups()))
+                              .has_default_groups()))
     , bf16_fp8_dt(bgmmc.src_dt == bf16 && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
               && one_of(bgmmc.dst_dt, f16, f32, bf16, f8_e5m2, f8_e4m3))
     , f16_fp8_dt(bgmmc.src_dt == f16 && one_of(bgmmc.wei_dt, f8_e5m2, f8_e4m3)
@@ -637,8 +637,11 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
             const int default_n_block = init_n_tag
                     ? get_default_n_block(format_tag::undef)
                     : static_cast<int>(bgmmc.N_blk);
+            // Do not switch a small-M input to packed after batch merging.
             bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
-                            && bgmmc.wei_packed_elems_per_byte == 1
+                            && (bgmmc.wei_packed_elems_per_byte == 1
+                                    || (f4_packed_B_layout_allowed()
+                                            && (init_n_tag || bgmmc.blocked_B)))
                     ? this->pick_blocked_B_layout(default_n_block)
                     : bgmmc.wei_packed_elems_per_byte > 1 && bgmmc.N % 2 != 0
                     ? transposed_tensor_layout_tag
@@ -652,7 +655,8 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
 
             // Plain copy-B kernel does not support odd sizes for subbyte types.
             // Using transposed version for these cases.
-            if (bgmmc.wei_packed_elems_per_byte > 1 && bgmmc.N % 2 != 0) {
+            if (bgmmc.wei_packed_elems_per_byte > 1 && bgmmc.N % 2 != 0
+                    && !check_b_layout_blocked_by_n(bgmmc.wei_tag)) {
                 bgmmc.wei_tag = transposed_tensor_layout_tag;
             }
         }
@@ -678,7 +682,8 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                     blocked_32n_B_layout_tag, blocked_16n_B_layout_tag);
         } else {
             bgmmc.wei_tag = blocked_B_layouts_allowed && !bgmmc.is_runtime_N
-                            && bgmmc.wei_packed_elems_per_byte == 1
+                            && (bgmmc.wei_packed_elems_per_byte == 1
+                                    || f4_packed_B_layout_allowed())
                     ? memory_desc_matches_one_of_tag(B_md,
                               plain_tensor_layout_tag,
                               transposed_tensor_layout_tag,
@@ -690,6 +695,10 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
                               plain_tensor_layout_tag,
                               transposed_tensor_layout_tag, acbd, adbc);
 
+            if (bgmmc.wei_packed_elems_per_byte > 1 && !B_d.is_plain())
+                VCONDCHECK_BG(check_b_layout_blocked_by_n(bgmmc.wei_tag),
+                        VERBOSE_UNSUPPORTED_TAG);
+
             // For N == 1 force transposed layout because copy-B kernel is
             // significantly faster.
             if (bgmmc.wei_tag == plain_tensor_layout_tag && bgmmc.N == 1) {
@@ -698,7 +707,8 @@ status_t brgemm_matmul_conf_utils_t::set_or_check_B_tag(memory_desc_t &B_md,
 
             // Plain copy-B kernel does not support odd sizes for subbyte types.
             // Using transposed version for these cases.
-            if (bgmmc.wei_packed_elems_per_byte > 1 && bgmmc.N % 2 != 0) {
+            if (bgmmc.wei_packed_elems_per_byte > 1 && bgmmc.N % 2 != 0
+                    && !check_b_layout_blocked_by_n(bgmmc.wei_tag)) {
                 bgmmc.wei_tag = transposed_tensor_layout_tag;
             }
 
@@ -875,7 +885,8 @@ format_tag_t brgemm_matmul_conf_utils_t::pick_blocked_B_layout(
             || is_f32_with_f4_wei();
 
     if ((prefer_amx_or_avx2_vnni_2 && is_amx_or_avx2_vnni_2) || is_bf16()
-            || is_bf16_with_int_wei() || (is_f8() && bgmmc.isa == avx10_2)) {
+            || is_bf16_with_int_wei() || (is_f8() && bgmmc.isa == avx10_2)
+            || is_f32_with_f4_wei()) {
         switch (n_blk) {
             case 64: return bgmmc.ndims == 3 ? aCB16b64c2b : BA16a64b2a;
             case 48: return bgmmc.ndims == 3 ? aCB16b48c2b : BA16a48b2a;
@@ -1393,8 +1404,7 @@ float compute_blocking_heuristic_avx512(brgemm_matmul_conf_t &bgmmc,
                     const auto work_amount
                             = matmul.batch * m_chunks * num_n_chunks;
                     const bool skip_config = work_amount < nthr_bmn * 3
-                            && work_amount % nthr_bmn != 0
-                            && start_nthr_k == 1;
+                            && work_amount % nthr_bmn != 0 && start_nthr_k == 1;
                     if (skip_config) continue;
 
                     const float cur_imbalance = cur_params.get_imbalance();
@@ -2411,6 +2421,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.wei_n_blk = bm_conf_utils.get_default_n_block(bgmmc.wei_tag);
 
     bgmmc.blocked_B = bm_conf_utils.get_blocked_B();
+    if (bgmmc.is_f32_with_f4_wei && bgmmc.blocked_B)
+        bgmmc.required_k_granularity = 2;
     bgmmc.transposed_B = bm_conf_utils.check_is_transposed(bgmmc.wei_tag)
             || bgmmc.wei_tag == adbc;
     bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b();
@@ -2430,12 +2442,11 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
         bgmmc.tr_b_dt_sz = types::data_type_size(f32);
     }
 
-    // 4-bit weights decompression only supports plain and transpose layouts
-    // TODO: enable 4-bit reorder and extend support to blocked weights
-    // layout when needed
     if (bgmmc.with_wei_decompression && bgmmc.wei_packed_elems_per_byte > 1)
         VCONDCHECK_BG(bm_conf_utils.check_is_plain(bgmmc.wei_tag)
-                        || bm_conf_utils.check_is_transposed(bgmmc.wei_tag),
+                        || bm_conf_utils.check_is_transposed(bgmmc.wei_tag)
+                        || (bm_conf_utils.f4_packed_B_layout_allowed()
+                                && bgmmc.blocked_B),
                 VERBOSE_UNSUPPORTED_TAG);
 
     const bool transposed_A = bm_conf_utils.check_is_transposed(bgmmc.src_tag);

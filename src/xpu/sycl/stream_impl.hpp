@@ -22,7 +22,7 @@
 #include "common/utils.hpp"
 
 #include "xpu/context.hpp"
-#include "xpu/stream_profiler.hpp"
+#include "xpu/sycl/stream_profiler.hpp"
 
 #include "xpu/sycl/compat.hpp"
 #include "xpu/sycl/context.hpp"

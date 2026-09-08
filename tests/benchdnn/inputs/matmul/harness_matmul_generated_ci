@@ -5001,3 +5001,7 @@
 --reset --dt=f4_e2m1:f4_e2m1:bf16 --stag=ba --dtag=abx --strides=:64x1: --attr-scales=src:per_tensor:f8_e4m3:1x16+wei:per_oc:f16 --attr-post-ops=square 2x704:704x2
 --reset --dt=s8:u8:f16 --stag=abx --wtag=acb --dtag=abx --attr-scales=src:per_tensor:f16:1x256+wei:per_tensor:bf16:64x1 --attr-post-ops=ge:u8:common --bia-dt=f32 --bia_mask=2 2x120x1280:1x1280x1708
 --reset --dt=bf16:bf16:f32 --stag=abx --wtag=abx --dtag=abx --attr-post-ops=ge:s32:per_oc 636x308:308x700
+--reset --dt=f8_e5m2:f8_e4m3:bf16 --stag=abx --dtag=abx --attr-scales=src:host_scalar:4:f32+wei:per_oc:f32 --bia-dt=bf16 2048x4096:4096x24
+--reset --dt=f8_e5m2:f8_e5m2:f32 --stag=abx --wtag=ba --dtag=abx --attr-scales=src:common:4:f32+wei:per_tensor:f16:256x1 --attr-post-ops=ge:s8:per_oc 15x256:256x1764
+--reset --dt=f8_e5m2:f8_e4m3:f32 --stag=abx --strides=::32768x512x16x1 --attr-scales=src:host_scalar:4:f16+wei:per_oc:bf16 2x1x4x128:1x3x128x4
+--reset --dt=f8_e5m2:f8_e4m3:f32 --stag=abx --wtag=abx --dtag=abx --attr-scales=src:common:4:bf16+wei:per_tensor:f32:32x1 8x128:128x2048

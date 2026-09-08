@@ -1018,8 +1018,7 @@ status_t brgemm_blocking_vmm(brgemm_desc_t *brg) {
             && IMPLICATION(brg->is_fp8, brg->fp8_with_f16_vnni_block);
     const data_type_t rd_block_dt = brg->is_f4_fused_decompress
             ? data_type::f32
-            : get_mac_emu_data_type(
-                      brg->dt_a, brg->isa_impl, req_emulation);
+            : get_mac_emu_data_type(brg->dt_a, brg->isa_impl, req_emulation);
     if (rd_block_dt == dnnl_data_type_undef) return status::unimplemented;
     const int vnni_granularity
             = static_cast<int>(data_type_vnni_granularity(rd_block_dt));
@@ -1050,10 +1049,10 @@ status_t brgemm_blocking(brgemm_desc_t *brg) {
         brg->ld_step = brg->is_f16_b_non_amx_vnni()
                 ? 2
                 : static_cast<int>(
-                        data_type_vnni_granularity(ld_step_compute_dt));
-        const data_type_t rd_step_compute_dt = get_mac_emu_data_type(
-                brg->dt_b, brg->isa_impl,
-                IMPLICATION(brg->is_fp8, brg->fp8_with_f16_vnni_block));
+                          data_type_vnni_granularity(ld_step_compute_dt));
+        const data_type_t rd_step_compute_dt
+                = get_mac_emu_data_type(brg->dt_b, brg->isa_impl,
+                        IMPLICATION(brg->is_fp8, brg->fp8_with_f16_vnni_block));
         brg->rd_step = static_cast<int>(
                 data_type_vnni_granularity(rd_step_compute_dt));
     }

@@ -1274,7 +1274,7 @@ void jit_brgemm_kernel_t<Wmm>::read_params() {
         reg_D_shift_bytes.save();
     }
 
-    if (brg.is_fp8_via_convert_non_amx() && brg.fp8_with_f16_vnni_block) {
+    if (brg.is_fp8_via_convert_non_amx()) { // && brg.fp8_with_f16_vnni_block) {
         mov(reg_buf_A, ptr[param1 + GET_OFF(ptr_buf)]);
         reg_buf_A.save();
     }
@@ -2966,7 +2966,7 @@ bool jit_brgemm_kernel_t<Wmm>::maybe_pre_process_k_tail(bool is_rd_tail,
 template <typename Wmm>
 void jit_brgemm_kernel_t<Wmm>::maybe_pre_process_buf_A(
         reg64_t reg_base, const int bd_b, const int bd_e, const int rd_block) {
-    if (!(brg.is_fp8_via_convert_non_amx() && brg.fp8_with_f16_vnni_block))
+    if (!(brg.is_fp8_via_convert_non_amx())) // && brg.fp8_with_f16_vnni_block))
         return;
 
     reg64_savable_guard_t reg_fp8_buf_guard({&reg64_fp8_aux, &reg_buf_A});
@@ -3559,12 +3559,12 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
             } else if (one_of(dt, data_type::s8, data_type::u8)) {
                 uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (one_of(dt, data_type::f8_e5m2, data_type::f8_e4m3)) {
-                if (brg.fp8_with_f16_vnni_block) {
-                    reg_buf_A.restore();
-                    const auto buf_offset = buf_A_offset(bd, rd);
-                    uni_vpbroadcastd(vmm_bcast, ptr[reg_buf_A + buf_offset]);
-                } else
-                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
+                //                if (brg.fp8_with_f16_vnni_block) {
+                reg_buf_A.restore();
+                const auto buf_offset = buf_A_offset(bd, rd);
+                uni_vpbroadcastd(vmm_bcast, ptr[reg_buf_A + buf_offset]);
+                //                } else
+                //                    uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
             } else if (dt == data_type::f16) {
                 if (brg.isa_impl == avx10_2) {
                     uni_vpbroadcastd(vmm_bcast, ptr[reg_aux_A + offset]);
@@ -3694,8 +3694,9 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                         if (brg.is_fp8_via_convert_non_amx()
                                 && !brg.fp8_with_f16_vnni_block) {
                             broadcast_A(bcst(bd), bd, rd);
-                            maybe_pre_process_data(
-                                    brg.dt_a, bcst(bd), vmm_fp8_bcst());
+                            broadcast_A(vmm_fp8_bcst(), bd, rd + 2);
+                            //maybe_pre_process_data(
+                            //        brg.dt_a, bcst(bd), vmm_fp8_bcst());
                             dot_product(vmm, load(), bcst(bd));
                             dot_product(vmm, vmm_fp8_load(), vmm_fp8_bcst());
                         } else
@@ -3714,7 +3715,8 @@ void jit_brgemm_kernel_t<Wmm>::gemm_microkernel(int bd_block2, bool is_bdb_tail,
                 if (!is_emdbd) broadcast_A(bcst(), bd, rd);
                 if (brg.is_fp8_via_convert_non_amx()
                         && !brg.fp8_with_f16_vnni_block)
-                    maybe_pre_process_data(brg.dt_a, bcst(), vmm_fp8_bcst());
+                    broadcast_A(vmm_fp8_bcst(), bd, rd + 2);
+                //maybe_pre_process_data(brg.dt_a, bcst(), vmm_fp8_bcst());
                 if (prefetch_count_B < ld_block2) {
                     const dim_t prefetch_offset
                             = B_offset(prefetch_count_B++, rd)

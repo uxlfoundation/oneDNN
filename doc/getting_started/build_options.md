@@ -72,11 +72,11 @@ On Linux, user can specify a GNU C++ compiler as the host compiler.
 
 @warning
 oneAPI DPC++/C++ Compiler requires host compiler to be compatible. The minimum
-allowed GNU C++ compiler version is 7.4.0. See [GCC* Compatibility and Interoperability](https://www.intel.com/content/www/us/en/docs/dpcpp-cpp-compiler/developer-guide-reference/current/gcc-compatibility-and-interoperability.html)
+allowed GNU C++ compiler version is 8.0.0. See [GCC* Compatibility and Interoperability](https://www.intel.com/content/www/us/en/docs/dpcpp-cpp-compiler/developer-guide-reference/current/gcc-compatibility-and-interoperability.html)
 section in oneAPI DPC++/C++ Compiler Developer Guide.
 
 @warning
-The minimum allowed Clang C++ compiler version is 8.0.0.
+The minimum allowed Clang C++ compiler version is 11.0.0.
 
 ### Functionality
 
@@ -109,7 +109,7 @@ dependencies for forward propagation kind part.
 
 This option supports several values: `ALL` (the default) which enables all
 primitives implementations or any subset of the following list: `BATCH_NORMALIZATION`,
-`BINARY`, `CONCAT`, `CONVOLUTION`, `DECONVOLUTION`, `ELTWISE`, `GROUP_NORMALIZATION`,
+`BINARY`, `CONCAT`, `CONVOLUTION`, `DECONVOLUTION`, `ELTWISE`, `GATED_MLP`, `GROUP_NORMALIZATION`,
 `INNER_PRODUCT`, `LAYER_NORMALIZATION`, `LRN`, `MATMUL`, `POOLING`, `PRELU`,
 `REDUCTION`, `REORDER`, `RESAMPLING`, `RNN`, `SDPA`, `SHUFFLE`, `SOFTMAX`,
 `SUM`. When a set is used, only those selected primitives implementations will
@@ -285,7 +285,7 @@ Threadpool threading support has the same limitations as TBB plus more:
   balancing this decomposition across available worker threads.
 
 ###### Threadpool validation
-The `_ONEDNN_TEST_THREADPOOL_IMPL` CMake variable controls which of the three
+The `_DNNL_TEST_THREADPOOL_IMPL` CMake variable controls which of the four
 threadpool implementations would be used for testing: `STANDALONE`, `TBB`,
 `EIGEN`, `EIGEN_ASYNC`.
 
@@ -443,7 +443,7 @@ For a debug build of oneDNN it is advisable to specify a Compute Library build
 which has also been built with debug enabled.
 
 @warning
-oneDNN only supports builds with Compute Library v23.11 or later.
+oneDNN only supports builds with Compute Library v53.1 or later.
 
 [Arm Compute Library]: https://github.com/ARM-software/ComputeLibrary
 
@@ -452,10 +452,10 @@ oneDNN only supports builds with Compute Library v23.11 or later.
 
 ### Common GPU options
 
-| CMake Option         | Default   | Supported values     | Description                                                                   |
-|:---------------------|:----------|:---------------------|:------------------------------------------------------------------------------|
-| [ONEDNN_GPU_RUNTIME] | **NONE**  | SYCL, OCL, ZE        | Defines the offload runtime for GPU engines                                   |
-| ONEDNN_GPU_VENDOR    | **INTEL** | NVIDIA, AMD, GENERIC | Specifies target GPU vendor for GPU engines when DNNL_GPU_RUNTIME is not NONE |
+| CMake Option         | Default   | Supported values     | Description                                                                     |
+|:---------------------|:----------|:---------------------|:--------------------------------------------------------------------------------|
+| [ONEDNN_GPU_RUNTIME] | **NONE**  | SYCL, OCL, ZE        | Defines the offload runtime for GPU engines                                     |
+| ONEDNN_GPU_VENDOR    | **INTEL** | NVIDIA, AMD, GENERIC | Specifies target GPU vendor for GPU engines when ONEDNN_GPU_RUNTIME is not NONE |
 
 [ONEDNN_GPU_RUNTIME]: @ref opt_gpu_runtime
 

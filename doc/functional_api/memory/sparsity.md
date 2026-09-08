@@ -47,7 +47,7 @@ underlying handles.
     // A sparse matrix represented in the CSR format.
     std::vector<float> csr_values = {2.5f, 1.5f, 1.5f, 2.5f, 2.0f};
     std::vector<int32_t> csr_indices = {0, 2, 0, 5, 1};
-    std::vector<int32_t> csr_pointers = {0, 1, 2, 4, 5, 5};
+    std::vector<int32_t> csr_pointers = {0, 1, 2, 4, 5};
 
     // Create a memory object for the given buffers with values and metadata.
     memory csr_mem(csr_md, engine, {

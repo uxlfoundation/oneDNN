@@ -49,6 +49,7 @@ when constructing an operation.
 | Index | Argument Name | Description                | Required or Optional |
 |:------|:--------------|:---------------------------|:---------------------|
 | 0     | `dst`         | Output tensor              | Required             |
+| 1     | `mask`        | Dropout mask               | Optional             |
 
 ## Supported data types
 
@@ -56,6 +57,6 @@ Dropout operation supports the following data type combinations.
 
 | src   | dst   | mask | seed  | offset | probability |
 |:------|:------|:-----|:------|:-------|:------------|
-| f32   | f32   | u8   | u64   | u64    | f32         |
-| bf16  | bf16  | u8   | u64   | u64    | f32         |
-| f16   | f16   | u8   | u64   | u64    | f32         |
+| f32   | f32   | u8   | s64   | s64    | f32         |
+| bf16  | bf16  | u8   | s64   | s64    | f32         |
+| f16   | f16   | u8   | s64   | s64    | f32         |

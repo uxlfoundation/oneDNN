@@ -342,8 +342,8 @@ attr.set_scales(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
 ~~~
 
 See examples:
-- [Matmul with Advanced Quantization](#matmul-with-advanced-quantization)
-- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
+- [Matrix Multiplication with Weight-only Quantization (WoQ)](#matrix-multiplication-with-weight-only-quantization-woq)
+- [Matrix Multiplication with Precomputed Reductions and Advanced Quantization](#matrix-multiplication-with-precomputed-reductions-and-advanced-quantization)
 - @ref matmul_with_weight_only_quantization_cpp
 
 ##### Special Case: Dynamic Block Scaling (MXFP8 and NVFP4-compatible)
@@ -402,8 +402,8 @@ attr.set_scales(DNNL_ARG_SRC, (1 << 0) + (1 << 1), {},
 ~~~
 
 See examples:
-- [Matmul with Advanced Quantization](#matmul-with-advanced-quantization)
-- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
+- [Matrix Multiplication with Weight-only Quantization (WoQ)](#matrix-multiplication-with-weight-only-quantization-woq)
+- [Matrix Multiplication with Precomputed Reductions and Advanced Quantization](#matrix-multiplication-with-precomputed-reductions-and-advanced-quantization)
 - @ref matmul_with_weight_only_quantization_cpp
 
 @anchor dgaq_zps
@@ -476,7 +476,7 @@ attr.set_zero_points(DNNL_ARG_WEIGHTS, (1 << 0) + (1 << 1), groups,
 
 See examples:
 - [Convolution with Per-output-channel Quantization](#convolution-with-per-output-channel-quantization)
-- [Matmul with Precomputed Reductions and Advanced Quantization](#matmul-with-precomputed-reductions-and-advanced-quantization)
+- [Matrix Multiplication with Precomputed Reductions and Advanced Quantization](#matrix-multiplication-with-precomputed-reductions-and-advanced-quantization)
 - @ref inference_int8_matmul_cpp
 - @ref matmul_with_weight_only_quantization_cpp
 
@@ -756,13 +756,13 @@ weight scaling with global source and destination scaling.
 
    // create a convolution primitive descriptor
    auto conv_pd = dnnl::convolution_forward::primitive_desc(
+           engine,
            dnnl::prop_kind::forward_inference,
            dnnl::algorithm::convolution_direct,
            src_conv_s8_any_md,                     // what's important is that
            wei_conv_s8_any_md,                     // we specified that we want
            dst_conv_s8_any_md,                     // computations in s8
            strides, padding_l, padding_r,
-           dnnl::padding_kind::zero
            attr);   // the attributes describe the quantization flow
 // ...
 ~~~
@@ -891,7 +891,7 @@ as applying them during computations would cause accuracy loss.
    // elements.
    std::vector<half> src_prs(M, pr_gK) = {...};
 
-   attr.set_precomputed_reductions(DNNL_ARG_SRC, src_tensor_mask,
+   attr.set_precomputed_reductions(DNNL_ARG_SRC, wei_mask,
            src_pr_groups);
 
    // fpmath mode is not required in case of dynamic quantization as it's
@@ -900,7 +900,7 @@ as applying them during computations would cause accuracy loss.
    // create a matmul primitive descriptor
    auto matmul_pd = dnnl::matmul::primitive_desc(
            engine,
-           src_s8_any_md,
+           src_u8_any_md,
            wei_s8_any_md,
            dst_f16_any_md,
            attr);   // the attributes describe the quantization flow

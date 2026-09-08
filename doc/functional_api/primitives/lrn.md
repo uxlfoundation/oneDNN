@@ -30,7 +30,7 @@ LRN within a single channel:
 
 \f[
     \dst(n, c, h, w) =
-        \left\{k + \frac{\alpha}{n_{l}}
+        \left\{k + \frac{\alpha}{n_{l}^2}
             \sum\limits_{i=-(n_{l}-1)/2}^{(n_{l}+1)/2-1}
             \sum\limits_{j=-(n_{l}-1)/2}^{(n_{l}+1)/2-1}
                 (\src(n, c, h+i, w+j))^2

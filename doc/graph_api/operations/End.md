@@ -27,10 +27,5 @@ End operation does not support output tensor.
 
 ## Supported data types
 
-End operation supports the following data type combinations.
-
-| Src  | Dst  |
-|:-----|:-----|
-| f32  | f32  |
-| f16  | f16  |
-| bf16 | bf16 |
+End operation supports the following data types for `src`: f32, f16, bf16, s8,
+u8, s32.

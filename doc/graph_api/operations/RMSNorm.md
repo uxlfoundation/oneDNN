@@ -9,13 +9,13 @@ on the input tensor using the root mean square statistic.
 The RMSNorm operation performs the following transformation of the input tensor:
 
 \f[
-    y = \gamma \cdot \frac{x}{\sqrt{\text{RMS}(x) + \epsilon}},
+    y = \gamma \cdot \frac{x}{\text{RMS}(x)},
 \f]
 
 where
 
 \f[
-    \text{RMS}(x) = \sqrt{\frac{1}{n} \sum_{i=1}^{n} x_i^2}
+    \text{RMS}(x) = \sqrt{\frac{1}{n} \sum_{i=1}^{n} x_i^2 + \epsilon}
 \f]
 
 ## Operation attributes

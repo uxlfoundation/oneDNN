@@ -54,7 +54,7 @@ where \f$t,l\f$ are the indices of the timestamp and the layer of the cell being
 
 ## Cell Functions
 
-The RNN API provides four cell functions:
+The RNN API provides six cell functions:
 
 -   [Vanilla RNN](#vanilla-rnn), a single-gate recurrent cell,
 -   [LSTM](#lstm), a four-gate long short-term memory cell,
@@ -353,7 +353,7 @@ argument index as specified by the following table.
 | Argument               | Index                             | Type         |
 |------------------------|-----------------------------------|--------------|
 | \srclayer              | DNNL_ARG_SRC_LAYER                | Input        |
-| \srclayerattention     | DNNL_ARG_SRC_LAYER_ATTENTION      | Input        |
+| \srclayerattention     | DNNL_ARG_AUGRU_ATTENTION          | Input        |
 | \srciter               | DNNL_ARG_SRC_ITER                 | Input        |
 | \srciterc              | DNNL_ARG_SRC_ITER_C               | Input        |
 | \weightslayer          | DNNL_ARG_WEIGHTS_LAYER            | Input        |
@@ -364,9 +364,9 @@ argument index as specified by the following table.
 | \dstlayer              | DNNL_ARG_DST_LAYER                | Output       |
 | \dstiter               | DNNL_ARG_DST_ITER                 | Output       |
 | \dstiterc              | DNNL_ARG_DST_ITER_C               | Output       |
-| \workspace             | DNNL_WORKSPACE                    | Input/Output |
+| \workspace             | DNNL_ARG_WORKSPACE                | Input/Output |
 | \diffsrclayer          | DNNL_ARG_DIFF_SRC_LAYER           | Output       |
-| \diffsrclayerattention | DNNL_ARG_DIFF_SRC_LAYER_ATTENTION | Output       |
+| \diffsrclayerattention | DNNL_ARG_DIFF_AUGRU_ATTENTION     | Output       |
 | \diffsrciter           | DNNL_ARG_DIFF_SRC_ITER            | Output       |
 | \diffsrciterc          | DNNL_ARG_DIFF_SRC_ITER_C          | Output       |
 | \diffweightslayer      | DNNL_ARG_DIFF_WEIGHTS_LAYER       | Output       |

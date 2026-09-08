@@ -16,7 +16,7 @@ in comparison to `f32`.
 | f16       | [IEEE half precision floating-point](https://en.wikipedia.org/wiki/Half-precision_floating-point_format#IEEE_754_half-precision_binary_floating-point_format:_binary16)                 |
 | s8/u8     | signed/unsigned 8-bit integer                                                                                                                                                           |
 | s4/u4     | signed/unsigned 4-bit integer                                                                                                                                                           |
-| s32       | signed/unsigned 32-bit integer                                                                                                                                                          |
+| s32       | signed 32-bit integer                                                                                                                                                          |
 | f64       | [IEEE double precision floating-point](https://en.wikipedia.org/wiki/Double-precision_floating-point_format#IEEE_754_double-precision_binary_floating-point_format:_binary64)           |
 | f8\_e5m2  | [OFP8 standard 8-bit floating-point](https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-06-20-pdf) with 5 exponent and 2 mantissa bits |
 | f8\_e4m3  | [OFP8 standard 8-bit floating-point](https://www.opencompute.org/documents/ocp-8-bit-floating-point-specification-ofp8-revision-1-0-2023-06-20-pdf) with 4 exponent and 3 mantissa bits |
@@ -228,7 +228,7 @@ have specialized optimizations in the library:
 
 The following table indicates the data types support for each uArch supported by oneDNN.
 
-| ISA      | f64     | f32     | bf16    | f16     | s8/u8   | f8      | f4_e2m1 | s4/u4   |
+| uArch    | f64     | f32     | bf16    | f16     | s8/u8   | f8      | f4_e2m1 | s4/u4   |
 | -------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- | ------- |
 | Xe-LPG   |         | `+`     | `.`     | `+`(1)  | `+`     |         |         |         |
 | Xe-LPG+  |         | `+`     | `+`     | `+`     | `+`     |         |         |         |

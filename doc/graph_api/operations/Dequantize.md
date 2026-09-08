@@ -11,7 +11,7 @@ dequantization.
 
 For per-tensor de-quantization:
 
-  \f[ \dst_{i} = round((\src_{i} - zps) \times scale) \f]
+  \f[ \dst_{i} = (\src_{i} - zps) \times scale \f]
 
 For per-channel de-quantization, taking channel axis = 1 as an example:
 

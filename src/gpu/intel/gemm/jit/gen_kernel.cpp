@@ -36,6 +36,9 @@
 #include "gpu/intel/logging.hpp"
 #include "gpu/intel/utils.hpp"
 
+#include <sstream>
+#include <string>
+
 namespace dnnl {
 namespace impl {
 namespace gpu {
@@ -88,114 +91,295 @@ compute::scalar_type_t gen_desc_t::scalar_type() const {
     }
 }
 
+namespace {
+
 #ifdef DNNL_DEV_MODE
-static gemmstone::Scalar stringToScalar(std::string val) {
-    using namespace gemmstone;
+// Tokenizes the GEMM_KERNEL override string.
+class token_stream_t {
+public:
+    explicit token_stream_t(const std::string &str) : ss_(str) {}
+
+    std::string next() {
+        std::string val;
+        ss_ >> val;
+        return val;
+    }
+
+    template <typename T>
+    T next_as() {
+        T val {};
+        ss_ >> val;
+        return val;
+    }
+
+    // Remaining unread text (the trailing strategy string).
+    std::string remainder() { return ss_.str().substr(ss_.tellg()); }
+
+private:
+    std::stringstream ss_;
+};
+
+gemmstone::Scalar stringToScalar(const std::string &val) {
     switch (val.c_str()[0]) {
         case '-': return Scalar(Scalar::Variable);
         default: return Scalar(std::stoi(val));
     }
 }
+
+// Parses a GEMM_KERNEL override string (forces a hand-written strategy
+// instead of the catalog-selected one). Format:
+//   gemm <ext_precisions>[<c_precision>] <layout> <unroll_m> <unroll_n> \
+//        <alpha> <beta> <strategy...>
+void parseGemmKernelOverride(const std::string &ovr_strategy, ngen::HW hw,
+        int stepping, dim_t k, gemmstone::GEMMProblem &problem,
+        gemmstone::GEMMStrategy &strategy,
+        gemmstone::EvaluateAuxOutput &aux_params) {
+    token_stream_t ts(ovr_strategy);
+
+    gpu_assert(ts.next() == "gemm");
+
+    std::string val = ts.next();
+    const char *pstr = val.c_str();
+    // Cannot modify external data types
+    Type ext_dt;
+    pstr = parsePrecisions(pstr, ext_dt, problem.Ta);
+    gpu_assert(ext_dt == problem.Ta_ext) << "Invalid external A data type";
+    pstr = parsePrecisions(pstr, ext_dt, problem.Tb);
+    gpu_assert(ext_dt == problem.Tb_ext) << "Invalid external B data type";
+    if (*pstr == '[') {
+        pstr = parsePrecisions(pstr, problem.Tc, ext_dt);
+        gpu_assert(ext_dt == problem.Tc_ext) << "Invalid external C data type";
+    } else {
+        pstr = parsePrecision(pstr, problem.Tc);
+    }
+
+    val = ts.next();
+    pstr = val.c_str();
+    pstr = parseLayout(pstr, problem.A);
+    pstr = parseLayout(pstr, problem.B);
+    pstr = parseLayout(pstr, problem.C);
+
+    if (problem.A.alignment == 0)
+        problem.A.setAlignment(problem.A.defaultAlignment(problem.Ta_ext));
+    if (problem.B.alignment == 0)
+        problem.B.setAlignment(problem.B.defaultAlignment(problem.Tb_ext));
+    if (problem.C.alignment == 0)
+        problem.C.setAlignment(problem.C.defaultAlignment(problem.Tc_ext));
+
+    strategy = GEMMStrategy(hw, stepping);
+    strategy.unroll[LoopM] = ts.next_as<int>();
+    strategy.unroll[LoopN] = ts.next_as<int>();
+
+    problem.alpha = stringToScalar(ts.next());
+    problem.beta = stringToScalar(ts.next());
+
+    parseStrategy(ts.remainder(), hw, problem, strategy);
+
+    // TODO: override derived values in aux_params in a way that's
+    // consistent with the kernel evaluator (assumes the W model for now).
+    if (strategy.kParallelLocal) {
+        aux_params.k0 = utils::rnd_up(
+                utils::div_up(k, strategy.wg[LoopK]), strategy.unroll[LoopK]);
+        aux_params.wgK = std::max(1,
+                std::min(strategy.wg[LoopK],
+                        int(utils::div_up(k, aux_params.k0))));
+    } else {
+        aux_params.k0 = EvaluateAuxOutput().k0;
+        aux_params.wgK = EvaluateAuxOutput().wgK;
+    }
+}
 #endif
+
+// Updates A/B/C/CO alignments to match the catalog entry.
+void applyCatalogAlignments(
+        const kcatalog::Entry &entry, GEMMProblem &problem) {
+    auto updateExternalAlignment
+            = [](MatrixAddressing &mat, Type Text, Type T, int catalogAlign) {
+        if (!isPacked(mat.layout) && Text.paddedSize() >= T.paddedSize())
+            mat.setAlignment(std::max(Text.paddedSize(), catalogAlign));
+    };
+    updateExternalAlignment(problem.A, problem.Ta_ext, problem.Ta,
+            entry.driverInfo.alignment[0]);
+    updateExternalAlignment(problem.B, problem.Tb_ext, problem.Tb,
+            entry.driverInfo.alignment[1]);
+
+    if (!isPacked(problem.C.layout))
+        problem.C.setAlignment(std::max(
+                problem.Tc_ext.paddedSize(), entry.restrictions.alignment[2]));
+
+    problem.CO.setAlignment(problem.Tco.paddedSize());
+}
+
+// Xe2/Xe3/Xe3p-specific strategy workarounds.
+void applyHwGenerationWorkarounds(ngen::HW hw, const char *tags,
+        bool efficient_64b, GEMMProblem &problem, GEMMStrategy &strategy) {
+    if (hw == ngen::HW::Xe2 || hw == ngen::HW::Xe3) {
+        // Reuse XeHPC register banking.
+        if (strategy.raHW == hw) strategy.raHW = ngen::HW::XeHPC;
+
+        // Bump alignment to 16 bytes for block 2D.
+        bool block_2d_a = false, block_2d_b = false;
+        for (auto c = tags; *c; c++) {
+            block_2d_a |= (*c == kcatalog::ReqBlock2DA);
+            block_2d_b |= (*c == kcatalog::ReqBlock2DB);
+        }
+        auto bump2DAlignment = [](MatrixAddressing &mat) {
+            mat.setAlignment(nstl::max<int>(mat.alignment, 16));
+        };
+        if (block_2d_a && strategy.legalAAlignment(problem, 16))
+            bump2DAlignment(problem.A);
+        if (block_2d_b && strategy.legalBAlignment(problem, 16))
+            bump2DAlignment(problem.B);
+    }
+
+    if (hw == ngen::HW::Xe3p) {
+        // Legacy mode: reuse XeHPC banking.
+        if (!efficient_64b && strategy.raHW == hw)
+            strategy.raHW = ngen::HW::XeHPC;
+
+        // Avoid simulator errors; fall back to pvc strategies.
+        strategy.namedBarriers[0] = 0;
+        strategy.namedBarriers[1] = 0;
+    }
+}
+
+// Restricts k-parallel/barrier settings not worthwhile for small k.
+void restrictStrategyForSmallK(dim_t k, const EvaluateAuxOutput &aux_params,
+        GEMMProblem &problem, GEMMStrategy &strategy) {
+    // Disable global k parallelization if unused.
+    if (strategy.kParallel && k >= 0) {
+        auto k_min = aux_params.k0 * aux_params.wgK;
+        if (k <= k_min) {
+            strategy.kParallel = false;
+            strategy.C.atomic = false;
+            strategy.CO.atomic = false;
+        }
+    }
+
+    // Force variable beta for k-parallel kernels.
+    if (strategy.kParallel && !strategy.fuseBeta) problem.beta = Scalar();
+
+    // Omit periodic barriers when k is small.
+    if (strategy.barrierFreq > 0 && k >= 0 && k < 2 * strategy.barrierFreq)
+        strategy.barrierFreq = 0;
+}
+
+// Chooses C walk order/loop order/persistence based on GPU occupancy.
+void chooseCWalkOrder(dim_t m, dim_t n, int eu_count, ngen::Product product,
+        GEMMStrategy &strategy) {
+    // Fixed systolic kernels always use 256 GRFs.
+    if (strategy.fixedSystolic) strategy.GRFs = 256;
+
+    if (m < 0 || n < 0 || eu_count < 0) return;
+
+    int wg_tile_m = strategy.wg[LoopM] * strategy.unroll[LoopM];
+    int wg_tile_n = strategy.wg[LoopN] * strategy.unroll[LoopN];
+    if (wg_tile_m <= 0 || wg_tile_n <= 0) return;
+
+    dim_t m_tiles = dim_t(utils::div_up(m, wg_tile_m));
+    dim_t n_tiles = dim_t(utils::div_up(n, wg_tile_n));
+    dim_t thread_per_tg = strategy.wg[LoopM] * strategy.wg[LoopN];
+    if (!strategy.kParallelVariable)
+        thread_per_tg *= std::max(strategy.wg[LoopK], 1);
+    dim_t thread_gpu = eu_count
+            * compute::device_info_t::threads_per_eu(product, strategy.GRFs);
+    dim_t tiles_gpu = thread_gpu / thread_per_tg;
+
+    bool use_linear = (m_tiles * n_tiles <= tiles_gpu);
+    bool use_linear_m = (m_tiles * m_tiles <= 2 * tiles_gpu);
+    bool use_linear_n = (n_tiles * n_tiles <= 2 * tiles_gpu);
+
+    if (strategy.fused)
+        if (strategy.wg[LoopM] % 2 || strategy.wg[LoopN] % 2)
+            use_linear_m = use_linear_n = false; /* cannot swap */
+
+    if (use_linear) {
+        if (strategy.kParallelVariable)
+            strategy.cWalkOrder = WalkOrder::SimpleLinear;
+        else if (strategy.kParallel
+                && (strategy.fuseBeta || strategy.fusePostOps)) {
+            strategy.persistent = false;
+            strategy.cWalkOrder = WalkOrder::SimpleLinear;
+        } else {
+            strategy.persistent = false;
+            strategy.cWalkOrder = WalkOrder::HW2D;
+            strategy.blocking[LoopM] = 16777216;
+            strategy.blocking[LoopN] = 16777216;
+        }
+    } else if (use_linear_m || use_linear_n) {
+        if (use_linear_n && !use_linear_m) {
+            strategy.loopOrder[0] = LoopN;
+            strategy.loopOrder[1] = LoopM;
+        } else if (use_linear_m && !use_linear_n) {
+            strategy.loopOrder[0] = LoopM;
+            strategy.loopOrder[1] = LoopN;
+        }
+        strategy.cWalkOrder = WalkOrder::SimpleLinear;
+    }
+}
+
+// Validates 2D quantization group sizes for the strategy.
+status_t checkQuantizationGroupConstraints(
+        const GEMMProblem &problem, const GEMMStrategy &strategy) {
+    int minOPC = minOuterProductCount(problem, strategy);
+    auto legalGroupK
+            = [&](bool offset2D, bool scale2D, int groupK, int granularity) {
+        if ((offset2D || scale2D) && (groupK % granularity)) return false;
+        if (scale2D && (groupK % minOPC != 0)
+                && (!problem.Ta.isF4() || !problem.Tb.isF4()))
+            return false;
+        return true;
+    };
+    if (!legalGroupK(problem.aOffset2D(), problem.aScale2D(), problem.aqGroupK,
+                strategy.aqGroupKGranularity()))
+        return status::unimplemented;
+    if (!legalGroupK(problem.bOffset2D(), problem.bScale2D(), problem.bqGroupK,
+                strategy.bqGroupKGranularity()))
+        return status::unimplemented;
+    return status::success;
+}
+
+// If the M/N group size equals M/N, round up to a multiple of unroll size.
+// XXX: Bump group size up before aligning, to increase reusability.
+// TODO: Refactor M/N groups/thread setting to preserve MN group count.
+void alignQuantizationGroupSizes(
+        dim_t m, dim_t n, GEMMProblem &problem, const GEMMStrategy &strategy) {
+    constexpr int perMNGroupSize = 1 << 24;
+    auto alignGroupSize = [](int &groupSize, dim_t dim, bool hasGroupSums,
+                                  bool preferBDPAS, int unroll) {
+        if (groupSize == dim && ((!hasGroupSums && !preferBDPAS) || dim > 1)) {
+            groupSize = std::max(groupSize, perMNGroupSize);
+            groupSize = utils::rnd_up(groupSize, unroll);
+        }
+    };
+    alignGroupSize(problem.aqGroupM, m, problem.hasGroupSumsA,
+            problem.preferBDPAS(), strategy.unroll[LoopM]);
+    alignGroupSize(problem.bqGroupN, n, problem.hasGroupSumsB,
+            problem.preferBDPAS(), strategy.unroll[LoopN]);
+}
+
+} // anonymous namespace
 
 status_t gen_desc_t::finalize(const char *tags) {
     // Update problem alignments to match catalog entry.
-    if (!isPacked(problem_.A.layout)
-            && problem_.Ta_ext.paddedSize() >= problem_.Ta.paddedSize()) {
-        problem_.A.setAlignment(std::max(
-                problem_.Ta_ext.paddedSize(), entry_->driverInfo.alignment[0]));
-    }
-
-    if (!isPacked(problem_.B.layout)
-            && problem_.Tb_ext.paddedSize() >= problem_.Tb.paddedSize()) {
-        problem_.B.setAlignment(std::max(
-                problem_.Tb_ext.paddedSize(), entry_->driverInfo.alignment[1]));
-    }
-
-    if (!isPacked(problem_.C.layout)) {
-        problem_.C.setAlignment(std::max(problem_.Tc_ext.paddedSize(),
-                entry_->restrictions.alignment[2]));
-    }
-
-    problem_.CO.setAlignment(problem_.Tco.paddedSize());
+    applyCatalogAlignments(*entry_, problem_);
 
     // Parse strategy string.
     strategy_ = GEMMStrategy(hw_, stepping_);
 #ifdef DNNL_DEV_MODE
-    std::string ovr_strategy;
-    ovr_strategy = gpu_utils::dev_getenv("GEMM_KERNEL", ovr_strategy);
+    std::string ovr_strategy
+            = gpu_utils::dev_getenv("GEMM_KERNEL", std::string());
     if (!ovr_strategy.empty()) {
         entry_ = nullptr;
-        std::stringstream ss(ovr_strategy);
-        std::string val;
-        ss >> val;
-        gpu_assert(val == "gemm");
-        ss >> val;
-        const char *pstr = val.c_str();
-        // Cannot modify external data types
-        Type ext_dt;
-        pstr = parsePrecisions(pstr, ext_dt, problem_.Ta);
-        gpu_assert(ext_dt == problem_.Ta_ext) << "Invalid external A data type";
-        pstr = parsePrecisions(pstr, ext_dt, problem_.Tb);
-        gpu_assert(ext_dt == problem_.Tb_ext) << "Invalid external B data type";
-        if (*pstr == '[') {
-            pstr = parsePrecisions(pstr, problem_.Tc, ext_dt);
-            gpu_assert(ext_dt == problem_.Tc_ext)
-                    << "Invalid external C data type";
-        } else {
-            pstr = parsePrecision(pstr, problem_.Tc);
-        }
-        ss >> val;
-        pstr = val.c_str();
-        pstr = parseLayout(pstr, problem_.A);
-        pstr = parseLayout(pstr, problem_.B);
-        pstr = parseLayout(pstr, problem_.C);
-
-        if (problem_.A.alignment == 0)
-            problem_.A.setAlignment(
-                    problem_.A.defaultAlignment(problem_.Ta_ext));
-        if (problem_.B.alignment == 0)
-            problem_.B.setAlignment(
-                    problem_.B.defaultAlignment(problem_.Tb_ext));
-        if (problem_.C.alignment == 0)
-            problem_.C.setAlignment(
-                    problem_.C.defaultAlignment(problem_.Tc_ext));
-
-        strategy_ = GEMMStrategy(hw_, stepping_);
-        ss >> strategy_.unroll[LoopM];
-        ss >> strategy_.unroll[LoopN];
-
-        ss >> val;
-        problem_.alpha = stringToScalar(val);
-        ss >> val;
-        problem_.beta = stringToScalar(val);
-
-        ovr_strategy = ss.str().substr(ss.tellg()); // remaining string
-        parseStrategy(ovr_strategy, hw_, problem_, strategy_);
-
-        // TODO: override derived values in aux_params_ in a way that's
-        // consistent with the kernel evaluator (typically requires extra
-        // benchmarking data not supplied with the kernel override string)
-        // Currently: assume the W model because it's simple
-        if (strategy_.kParallelLocal) {
-            aux_params_.k0
-                    = utils::rnd_up(utils::div_up(k_, strategy_.wg[LoopK]),
-                            strategy_.unroll[LoopK]);
-            aux_params_.wgK = std::max(1,
-                    std::min(strategy_.wg[LoopK],
-                            int(utils::div_up(k_, aux_params_.k0))));
-        } else {
-            aux_params_.k0 = EvaluateAuxOutput().k0;
-            aux_params_.wgK = EvaluateAuxOutput().wgK;
-        }
-    } else {
+        parseGemmKernelOverride(ovr_strategy, hw_, stepping_, k_, problem_,
+                strategy_, aux_params_);
+    } else
 #endif
+    {
         strategy_.unroll[LoopM] = entry_->driverInfo.unroll[LoopM];
         strategy_.unroll[LoopN] = entry_->driverInfo.unroll[LoopN];
         parseStrategy(entry_->strategy, hw_, problem_, strategy_);
-#ifdef DNNL_DEV_MODE
     }
-#endif
     modifyStrategy(strategy_, aux_params_);
     strategy_.panelCheck
             |= (isPacked(problem_.A.layout) || isPacked(problem_.B.layout));
@@ -204,107 +388,20 @@ status_t gen_desc_t::finalize(const char *tags) {
 
     // Align k slice size and quantization group size
     if (strategy_.kParallelLocal) {
-        if (problem_.quantized2DA())
-            aux_params_.k0 = utils::rnd_up(aux_params_.k0, problem_.aqGroupK);
-        if (problem_.quantized2DB())
-            aux_params_.k0 = utils::rnd_up(aux_params_.k0, problem_.bqGroupK);
+        auto alignK0ToGroupK = [&](bool quantized2D, int groupK) {
+            if (quantized2D)
+                aux_params_.k0 = utils::rnd_up(aux_params_.k0, groupK);
+        };
+        alignK0ToGroupK(problem_.quantized2DA(), problem_.aqGroupK);
+        alignK0ToGroupK(problem_.quantized2DB(), problem_.bqGroupK);
     }
 
-    if (hw_ == ngen::HW::Xe2 || hw_ == ngen::HW::Xe3) {
-        // Use XeHPC register banking on Xe2/Xe3, in order
-        // to successfully reuse XeHPC strategies.
-        if (strategy_.raHW == hw_) strategy_.raHW = ngen::HW::XeHPC;
+    applyHwGenerationWorkarounds(
+            hw_, tags, efficient_64b_, problem_, strategy_);
 
-        // Bump up alignments to 16 bytes for block 2D if available.
-        bool block_2d_a = false, block_2d_b = false;
-        for (auto c = tags; *c; c++) {
-            block_2d_a |= (*c == kcatalog::ReqBlock2DA);
-            block_2d_b |= (*c == kcatalog::ReqBlock2DB);
-        }
-        if (block_2d_a && strategy_.legalAAlignment(problem_, 16))
-            problem_.A.setAlignment(nstl::max<int>(problem_.A.alignment, 16));
-        if (block_2d_b && strategy_.legalBAlignment(problem_, 16))
-            problem_.B.setAlignment(nstl::max<int>(problem_.B.alignment, 16));
-    }
+    restrictStrategyForSmallK(k_, aux_params_, problem_, strategy_);
 
-    if (hw_ == ngen::HW::Xe3p) {
-        // Use XeHPC banking if reusing XeHPC strategies (legacy mode)
-        if (!efficient_64b_ && strategy_.raHW == hw_)
-            strategy_.raHW = ngen::HW::XeHPC;
-
-        // Disable named barriers to avoid simulator errors, allow fallback to pvc strategies.
-        strategy_.namedBarriers[0] = 0;
-        strategy_.namedBarriers[1] = 0;
-    }
-
-    // Disable global k parallelization if it wouldn't be used.
-    if (strategy_.kParallel && k_ >= 0) {
-        auto k_min = aux_params_.k0 * aux_params_.wgK;
-        if (k_ <= k_min) {
-            strategy_.kParallel = false;
-            strategy_.C.atomic = false;
-            strategy_.CO.atomic = false;
-        }
-    }
-
-    // Always use variable beta for global k-parallel kernels.
-    if (strategy_.kParallel && !strategy_.fuseBeta) problem_.beta = Scalar();
-
-    // Omit periodic barriers when k is small.
-    if (strategy_.barrierFreq > 0 && k_ >= 0 && k_ < 2 * strategy_.barrierFreq)
-        strategy_.barrierFreq = 0;
-
-    // Correct GRF count in following calculations for fixed systolic kernels.
-    if (strategy_.fixedSystolic) strategy_.GRFs = 256;
-
-    // Disable linear ordering and persistent threads if the GEMM doesn't fill the GPU.
-    if (m_ >= 0 && n_ >= 0 && eu_count_ >= 0) {
-        int wg_tile_m = strategy_.wg[LoopM] * strategy_.unroll[LoopM];
-        int wg_tile_n = strategy_.wg[LoopN] * strategy_.unroll[LoopN];
-        if (wg_tile_m > 0 && wg_tile_n > 0) {
-            dim_t m_tiles = dim_t(utils::div_up(m_, wg_tile_m));
-            dim_t n_tiles = dim_t(utils::div_up(n_, wg_tile_n));
-            dim_t thread_per_tg = strategy_.wg[LoopM] * strategy_.wg[LoopN];
-            if (!strategy_.kParallelVariable)
-                thread_per_tg *= std::max(strategy_.wg[LoopK], 1);
-            dim_t thread_gpu = eu_count_
-                    * compute::device_info_t::threads_per_eu(
-                            product_, strategy_.GRFs);
-            dim_t tiles_gpu = thread_gpu / thread_per_tg;
-
-            bool use_linear = (m_tiles * n_tiles <= tiles_gpu);
-            bool use_linear_m = (m_tiles * m_tiles <= 2 * tiles_gpu);
-            bool use_linear_n = (n_tiles * n_tiles <= 2 * tiles_gpu);
-
-            if (strategy_.fused)
-                if (strategy_.wg[LoopM] % 2 || strategy_.wg[LoopN] % 2)
-                    use_linear_m = use_linear_n = false; /* cannot swap */
-
-            if (use_linear) {
-                if (strategy_.kParallelVariable)
-                    strategy_.cWalkOrder = WalkOrder::SimpleLinear;
-                else if (strategy_.kParallel
-                        && (strategy_.fuseBeta || strategy_.fusePostOps)) {
-                    strategy_.persistent = false;
-                    strategy_.cWalkOrder = WalkOrder::SimpleLinear;
-                } else {
-                    strategy_.persistent = false;
-                    strategy_.cWalkOrder = WalkOrder::HW2D;
-                    strategy_.blocking[LoopM] = 16777216;
-                    strategy_.blocking[LoopN] = 16777216;
-                }
-            } else if (use_linear_m || use_linear_n) {
-                if (use_linear_n && !use_linear_m) {
-                    strategy_.loopOrder[0] = LoopN;
-                    strategy_.loopOrder[1] = LoopM;
-                } else if (use_linear_m && !use_linear_n) {
-                    strategy_.loopOrder[0] = LoopM;
-                    strategy_.loopOrder[1] = LoopN;
-                }
-                strategy_.cWalkOrder = WalkOrder::SimpleLinear;
-            }
-        }
-    }
+    chooseCWalkOrder(m_, n_, eu_count_, product_, strategy_);
 
     strategy_.relaxedAccumulation |= relaxed_acc_;
     strategy_.systolicAvailable &= !disable_systolic_;
@@ -315,44 +412,9 @@ status_t gen_desc_t::finalize(const char *tags) {
         strategy_.preflight(hw_, problem_);
     } catch (...) { return status::unimplemented; }
 
-    // Check for legal 2D quantization group size.
-    if (problem_.aOffset2D() || problem_.aScale2D())
-        if (problem_.aqGroupK % strategy_.aqGroupKGranularity())
-            return status::unimplemented;
-    if (problem_.bOffset2D() || problem_.bScale2D())
-        if (problem_.bqGroupK % strategy_.bqGroupKGranularity())
-            return status::unimplemented;
-    if (problem_.aScale2D()
-            && problem_.aqGroupK % minOuterProductCount(problem_, strategy_)
-                    != 0) {
-        if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
-            return status::unimplemented;
-    }
-    if (problem_.bScale2D()
-            && problem_.bqGroupK % minOuterProductCount(problem_, strategy_)
-                    != 0) {
-        if (!problem_.Ta.isF4() || !problem_.Tb.isF4())
-            return status::unimplemented;
-    }
+    CHECK(checkQuantizationGroupConstraints(problem_, strategy_));
 
-    // If the M/N group size is equal to M or N, align up to a multiple of unroll size
-    // XXX: Increase group size to a large value before aligning to increase reusability
-    // TODO: Refactor M/N groups/thread setting to preserve MN group count.
-    constexpr int perMNGroupSize = 1 << 24;
-    if (problem_.aqGroupM == m_
-            && ((!problem_.hasGroupSumsA && !problem_.preferBDPAS())
-                    || m_ > 1)) {
-        problem_.aqGroupM = std::max(problem_.aqGroupM, perMNGroupSize);
-        problem_.aqGroupM
-                = utils::rnd_up(problem_.aqGroupM, strategy_.unroll[LoopM]);
-    }
-    if (problem_.bqGroupN == n_
-            && ((!problem_.hasGroupSumsB && !problem_.preferBDPAS())
-                    || n_ > 1)) {
-        problem_.bqGroupN = std::max(problem_.bqGroupN, perMNGroupSize);
-        problem_.bqGroupN
-                = utils::rnd_up(problem_.bqGroupN, strategy_.unroll[LoopN]);
-    }
+    alignQuantizationGroupSizes(m_, n_, problem_, strategy_);
 
     strategy_.kInterleaveChunk
             = std::min(strategy_.kInterleaveChunk, (int)aux_params_.k0);

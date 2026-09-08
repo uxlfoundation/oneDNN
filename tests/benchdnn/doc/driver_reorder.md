@@ -27,7 +27,7 @@ where *reorder-knobs* are:
  - `--cross-engine={none [default], cpu2gpu, gpu2cpu}` -- defines what kind of
             cross-engine reorder will be used. If `--engine` is set to `cpu`,
             `none` is the only supported value.
- - `--runtime_dim_mask=INT` -- a bit-mask that indicates whether a dimension is
+ - `--runtime-dim-mask=INT` -- a bit-mask that indicates whether a dimension is
             `DNNL_RUNTIME_DIM_VAL` (indicated as 1-bit in the corresponding
             dimension position). The default is `0`, meaning all tensor
             dimensions are fully defined at primitive creation.

@@ -105,7 +105,7 @@ place immediately after the parsing and subsequent attempts to set the hints
 result in a runtime error.
 
 ### --ctx-init
-`--ctx-init=MAX_CONCURENCY[:CORE_TYPE[:THREADS_PER_CORE]]` specifies the
+`--ctx-init=MAX_CONCURRENCY[:CORE_TYPE[:THREADS_PER_CORE]]` specifies the
 threading context for a testing object creation.
 * `MAX_CONCURRENCY` is a
   positive integer value or `auto` (default) and specifies the maximum number of
@@ -117,7 +117,7 @@ threading context for a testing object creation.
   enable (value `2`) or disable (value `1`) hyper-threading (TBB runtime only).
 
 ### --ctx-exe
-`--ctx-exe=MAX_CONCURENCY[:CORE_TYPE[:THREADS_PER_CORE]]` specifies the
+`--ctx-exe=MAX_CONCURRENCY[:CORE_TYPE[:THREADS_PER_CORE]]` specifies the
 threading context for a testing object execution. The setting values follow ones
 from the `ctx-init` option.
 
@@ -170,7 +170,7 @@ Refer to [modes](benchdnn_general_info.md) for details.
 `MODIFIER` values can be:
   - empty for no modifiers (the default)
   - `P` or `p` for parallel backend object creation
-  - `M` or `m` for disabling usage of reference memory (GPU only)
+  - `M` or `m` for disabling usage of reference memory
 
 Refer to [mode modifiers](benchdnn_general_info.md) for details.
 

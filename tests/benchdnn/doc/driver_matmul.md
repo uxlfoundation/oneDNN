@@ -11,11 +11,11 @@ where *matmul-knobs* are:
             types. Interface supports broadcasting, when a single input is
             provided, e.g., `--dt=f32`, and the value will be applied for all
             tensors. Refer to [data types](knobs_dt.md) for details.
- - `--stag={ab [default], any, ...}` -- memory format of the source memory.
+ - `--stag={any [default], ...}` -- memory format of the source memory.
             Refer to [tags](knobs_tag.md) for details.
- - `--wtag={ab [default], any, ...}` -- memory format of the weights memory.
+ - `--wtag={any [default], ...}` -- memory format of the weights memory.
             Refer to [tags](knobs_tag.md) for details.
- - `--dtag={ab [default], any, ...}` -- memory format of the destination memory.
+ - `--dtag={any [default], ...}` -- memory format of the destination memory.
             Refer to [tags](knobs_tag.md) for details.
  - `--strides=SRC_STRIDES:WEI_STRIDES:DST_STRIDES` -- physical memory layout
             specification for `src`, `weights`, and `dst` tensors through

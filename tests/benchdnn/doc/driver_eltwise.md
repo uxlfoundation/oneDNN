@@ -57,7 +57,7 @@ the problem will be silently skipped. For instance:
 This behavior allows using `,` (comma) operator to run multiple configurations
 without dealing with the corner cases.
 
-The default set for `alpha` and `beta` is {0, 0.25, -0.25}.
+The default value for `alpha` and `beta` is `0`.
 
 
 ## Essence of Testing

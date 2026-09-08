@@ -28,7 +28,7 @@ where *rnn-knobs* are:
             Especially relevant for int8 computations. For LSTM, GRU and AUGRU
             flows changes internal implementation since there is no external
             control over pre-defined activations in a cell.
- - `--trivial-strides={true, false [default]}` -- specify if input tensors
+ - `--trivial-strides={true [default], false}` -- specify if input tensors
             should have trivial strides or not. Each tensor stride is the
             product of previous dimensions.
  - `--with-peephole={true, false [default]}` -- LSTM extension. Specify if LSTM

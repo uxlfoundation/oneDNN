@@ -2310,12 +2310,16 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         return status::success;
     }
 
+    static bool can_use_direct_copy(const memory_desc_wrapper &input_d,
+            const memory_desc_wrapper &output_d) {
+        return input_d.is_dense() && output_d.is_dense()
+                && input_d.offset0() % 2 == 0
+                && input_d.similar_to(output_d, true, false, 0);
+    }
+
     static size_t get_scratchpad_size(const memory_desc_wrapper &input_d,
             const memory_desc_wrapper &output_d) {
-        if (input_d.is_dense() && output_d.is_dense()
-                && input_d.offset0() % 2 == 0
-                && input_d.similar_to(output_d, true, false, 0))
-            return 0;
+        if (can_use_direct_copy(input_d, output_d)) return 0;
         return output_d.size() * nibble2_t::nelems();
     }
 
@@ -2327,7 +2331,7 @@ struct simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
         auto u8_output
                 = reinterpret_cast<uint8_t *>(output) + output_d.offset0() / 2;
 
-        if (get_scratchpad_size(input_d, output_d) == 0) {
+        if (can_use_direct_copy(input_d, output_d)) {
             const size_t sz = input_d.size();
             parallel(0, [=](const int ithr, const int nthr) {
                 size_t start {0}, end {0};

@@ -23,6 +23,7 @@
 #include "common/utils.hpp"
 
 #include "cpu/platform.hpp"
+#include "cpu/x64/brgemm/brgemm_ir.hpp"
 #include "cpu/x64/brgemm/brgemv_ir.hpp"
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
@@ -696,11 +697,15 @@ status_t brgemm_kernel_create(
                 brg.dt_bias, brg.sum_dt))
         return status::unimplemented;
 
-    // Try the IR-based GEMV kernel first. If the IR kernel is unsupported i.e.
-    // `create_brgemv_ir_kernel(brg)` returns `nullptr` then fall back to the
-    // brgemm implementation below.
-    if (brg.is_gemv) {
-        std::unique_ptr<brgemm_kernel_t> ir_ker(create_brgemv_ir_kernel(brg));
+    // Try the IR-based kernels first. `is_gemv` goes to
+    // `create_brgemv_ir_kernel()`, everything else to
+    // `create_brgemm_ir_kernel()`. Either returns `nullptr` when the IR kernel
+    // is unsupported, and then the Xbyak-based brgemm implementations below
+    // take over.
+    {
+        std::unique_ptr<brgemm_kernel_t> ir_ker(brg.is_gemv
+                        ? create_brgemv_ir_kernel(brg)
+                        : create_brgemm_ir_kernel(brg));
         if (ir_ker && ir_ker->create_kernel() == status::success) {
             *brg_kernel = ir_ker.release();
             return status::success;

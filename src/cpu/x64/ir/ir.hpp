@@ -100,15 +100,44 @@ enum class op_kind_t {
     vzero,
     // dst = [base + disp] (load full vector)
     vload,
+    // dst = imm uint8 bytes at [base + disp], each zero-extended to an s32 lane
+    vload_u8,
     // dst += sum_{i=0}^{N-1} (s0[i] * s1[i]), where N is the dot length
     vdot,
     // dst += s0 (vector add)
     vadd,
+    // dst -= s0 (vector subtract)
+    vsub,
     // dst *= s0 (vector multiply)
     vmul,
+    // dst /= s0 (vector divide)
+    vdiv,
+    // dst = max(dst, s0) (vector elementwise max)
+    vmax,
+    // dst = (s0 != 0) ? all-ones : 0, per lane. Builds a boolean mask from a
+    // loaded condition for a later `vblend` to select between two vectors.
+    vcmp_ne_zero,
+    // dst = mask ? s0 : dst, per-lane select in place. The mask vreg (from
+    // set_mask_imm) is held in s1: active lanes take s0, inactive lanes keep
+    // dst. Used to neutralize a masked tail's unused lanes before a reduction
+    // (seed dst with the reduction's identity), and to apply a where/select
+    // mask.
+    vblend,
+    // dst = broadcast of s0's element 0 across all lanes (overwrites dst)
+    vbcast,
     // horizontal reduction of dst; result in element 0. s0 is scratch
     // (overwritten).
     vhreduce,
+    // horizontal max reduction of dst; result in element 0. s0 is scratch
+    // (overwritten).
+    vhreduce_max,
+
+    // dst = alg(dst), elementwise, in place. `alg` is an eltwise algorithm
+    // (e.g. eltwise_exp), held in `imm`. Lowered through the eltwise injector
+    // (like inject_postops: outside the emitter backend and the register
+    // allocator), not a backend instruction. One op serves every eltwise
+    // algorithm, so a new one needs no new op, emitter case or callback.
+    veltwise,
 
     // Post-ops
     //
@@ -182,7 +211,8 @@ struct mem_t {
 //         * mov_imm        -> literal constant
 //         * loop_begin     -> loop trip count
 //         * set_mask_imm   -> active element count
-//         * vload_masked / vstore_masked -> active element count
+//         * vload_u8 / vload_masked / vstore_masked -> active element count
+//         * veltwise       -> eltwise algorithm (alg_kind_t)
 //         * inject_postops -> index into inject_postops_args()
 // mem   - memory address used only by load/store operations.
 // match - for loop_end, index of matching loop_begin operation.
@@ -292,12 +322,26 @@ struct DNNL_API ir_t {
     // vec
     void vzero(vreg_t dst);
     void vload(vreg_t dst, vreg_t base, dim_t disp);
+    // `n_elems` is the active uint8 byte count (a full vector or a tail).
+    void vload_u8(vreg_t dst, vreg_t base, dim_t disp, int n_elems);
     void vdot(vreg_t dst, vreg_t a, vreg_t b);
     void vadd(vreg_t dst, vreg_t src);
+    void vsub(vreg_t dst, vreg_t src);
     void vmul(vreg_t dst, vreg_t src);
+    void vdiv(vreg_t dst, vreg_t src);
+    void vmax(vreg_t dst, vreg_t src);
+    void vcmp_ne_zero(vreg_t dst, vreg_t src);
+    // `mask` is a mask vreg from set_mask_imm.
+    void vblend(vreg_t dst, vreg_t src, vreg_t mask);
+    void vbcast(vreg_t dst, vreg_t src);
     // `workspace` is scratch. It is overwritten by this call, so pass a vreg
     // whose value is not needed afterwards.
     void vhreduce(vreg_t dst, vreg_t workspace);
+    void vhreduce_max(vreg_t dst, vreg_t workspace);
+    // `alg` selects the elementwise function applied to `dst` in place.
+    void veltwise(alg_kind_t alg, vreg_t dst);
+    // Convenience wrapper for the common exp case.
+    void vexp(vreg_t dst) { veltwise(alg_kind::eltwise_exp, dst); }
 
     // vec (masked)
     // `elems` is the number of active elements. `mask` is the mask register

@@ -146,8 +146,7 @@ const char *typeName(
                 return (language == HostLanguage::None) ? "bfloat8" : "f8_e5m2";
             case StructuredType::hf8:
                 return (language == HostLanguage::None) ? "hfloat8" : "f8_e4m3";
-            case StructuredType::f8_e8m0:
-                return (language == HostLanguage::None) ? "e8m0" : "e8m0";
+            case StructuredType::f8_e8m0: return "e8m0";
             case StructuredType::f4_e2m1:
                 return (language == HostLanguage::None) ? "e2m1" : "f4_e2m1";
             default: return "char";

@@ -464,7 +464,7 @@ void Generator<hw>::outerProductSystolic(int h, int ha_period, int hb_period, in
                 if (rc != 8 && strategy.extendedAtomicFMA) hw_unsupported();
             }
 
-            bool canFwd = (hw == ngen::HW::Xe3p)
+            const bool canFwd = (hw == ngen::HW::Xe3p)
                 && (getProductFamily() >= ngen::ProductFamily::CRI)
                 && (rc == 8)
                 && mod.isAtomic()

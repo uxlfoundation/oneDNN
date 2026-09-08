@@ -828,9 +828,9 @@ bwd_config_t *choose_bwd_config(compute::gpu_arch_t arch, dim_t head_size,
         static constexpr dim_t xe_hpc_bwd_min_main_wgs = 2048;
         if (arch == compute::gpu_arch_t::xe_hpc && head_size > 32) {
             const auto &config = it->config;
-            const dim_t tile_k = config.unroll_m_BcBr * config.wg_m_BcBr;
-            const dim_t tile_q = config.unroll_n_BcBr * config.wg_n_BcBr;
-            const dim_t tile_d = config.unroll_m_DBc * config.wg_m_DBc;
+            const dim_t tile_k = (dim_t)config.unroll_m_BcBr * config.wg_m_BcBr;
+            const dim_t tile_q = (dim_t)config.unroll_n_BcBr * config.wg_n_BcBr;
+            const dim_t tile_d = (dim_t)config.unroll_m_DBc * config.wg_m_DBc;
             const bool large_problem = qry * seq >= xe_hpc_bwd_min_fused_area;
             const bool full_d64 = head_size <= 64 && head_size == tile_d;
             const bool efficient_direct_dq = full_d64 && !is_thin_q

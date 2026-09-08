@@ -82,6 +82,16 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
     bool usm_dst = sycl_dst->memory_kind() == xpu::sycl::memory_kind::usm;
     ::sycl::event e;
 
+    auto *vp = static_cast<xpu::sycl::verbose_profiler_t *>(verbose_profiler);
+
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+    const bool use_tag = vp && vp->use_ext_oneapi_tag();
+    ::sycl::event start_tag, end_tag;
+    if (use_tag)
+        start_tag = ::sycl::ext::oneapi::experimental::submit_profiling_tag(
+                *queue());
+#endif
+
     if (usm_src && usm_dst) {
         auto *usm_src
                 = utils::downcast<const xpu::sycl::usm_memory_storage_t *>(
@@ -137,6 +147,12 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
         });
     }
 
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+    if (use_tag)
+        end_tag = ::sycl::ext::oneapi::experimental::submit_profiling_tag(
+                *queue());
+#endif
+
     // Event registration for profilers is managed to allow the
     // verbose_profiler_t operate independently from other profilers without
     // forced profiling flags or double-move issues.
@@ -149,6 +165,12 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
     if (verbose_profiler) {
         auto verbose_event = std::make_shared<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {e});
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+        if (use_tag) {
+            verbose_event->start_tag_ = start_tag;
+            verbose_event->end_tag_ = end_tag;
+        }
+#endif
         verbose_profiler->register_event(verbose_event);
     }
 
@@ -166,6 +188,16 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
     bool usm = sycl_dst->memory_kind() == xpu::sycl::memory_kind::usm;
 
     ::sycl::event out_event;
+
+    auto *vp = static_cast<xpu::sycl::verbose_profiler_t *>(verbose_profiler);
+
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+    const bool use_tag = vp && vp->use_ext_oneapi_tag();
+    ::sycl::event start_tag, end_tag;
+    if (use_tag)
+        start_tag = ::sycl::ext::oneapi::experimental::submit_profiling_tag(
+                *queue());
+#endif
 
     if (usm) {
         auto *usm_dst
@@ -193,6 +225,12 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
         });
     }
 
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+    if (use_tag)
+        end_tag = ::sycl::ext::oneapi::experimental::submit_profiling_tag(
+                *queue());
+#endif
+
     // Event registration for profilers is managed to allow the
     // verbose_profiler_t operate independently from other profilers without
     // forced profiling flags or double-move issues.
@@ -205,6 +243,12 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
     if (verbose_profiler) {
         auto verbose_event = std::make_shared<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {out_event});
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+        if (use_tag) {
+            verbose_event->start_tag_ = start_tag;
+            verbose_event->end_tag_ = end_tag;
+        }
+#endif
         verbose_profiler->register_event(verbose_event);
     }
     xpu::sycl::event_t::from(out_dep).events = {out_event};

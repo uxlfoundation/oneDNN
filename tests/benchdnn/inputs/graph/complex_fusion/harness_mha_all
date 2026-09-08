@@ -151,7 +151,7 @@
 --reset --dt=15:f32+4:f32+16:f32+18:f32 --case=complex_fusion/mha/sdpa-compressed-v-int8-gs32.json
 
 # per-tensor quantization
---reset --dt=15:f32+4:f32+18:f32+16:f32 --op-attrs=34107656704:qtype:per_tensor --in-shapes=1:1+2:1 --case=complex_fusion/mha/sdpa-compressed-k-int8-gs32.json
+--reset --dt=15:f32+4:f32+18:f32+16:f32 --op-attrs=34107656704:qtype:per_tensor*group_shape:- --in-shapes=1:1+2:1 --case=complex_fusion/mha/sdpa-compressed-k-int8-gs32.json
 
 # phi3-mini-4k-instruct, group size=96
 --reset
@@ -207,7 +207,7 @@
 
 # reference implementation test
 --reset --op-attrs=34107656704:group_shape:1x1x1x32+34107654464:transpose_b:1 --in-shapes=0:1x32x32x128+1:1x32x32x4+2:1x32x32x4 --case=complex_fusion/mha/sdpa-compressed-k-int8-gs32.json
---reset --op-attrs=34107656704:qtype:per_channel*axis:3 --in-shapes=1:32+2:1 --case=complex_fusion/mha/sdpa-compressed-k-int8-gs32.json
+--reset --op-attrs=34107656704:qtype:per_channel*axis:3*group_shape:- --in-shapes=1:32+2:1 --case=complex_fusion/mha/sdpa-compressed-k-int8-gs32.json
 
 # d_qk != d_v
 --reset --in-shapes=8:1x16x384x32,8:1x16x384x64,8:1x16x384x128 --tensor-property=3:undef,3:host_scalar --case=complex_fusion/mha/sdpa-plain-simplified-f32.json

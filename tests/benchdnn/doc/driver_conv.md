@@ -27,7 +27,7 @@ where *conv-knobs* are:
             strides values. Refer to [option documentation](knob_strides.md)
             for details.
  - `--bia-dt={undef [default], f32, bf16, f16, ...}` -- bias data type.
-            To run Inner Product without bias, use `undef` data type (default).
+            To run Convolution without bias, use `undef` data type (default).
             `--dir=FWD_B|BWD_WB` will set `--bia-dt` to `f32` to preserve
             compatibility with the former behavior.
             Refer to [data types](knobs_dt.md) for details.

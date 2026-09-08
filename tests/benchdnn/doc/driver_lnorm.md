@@ -14,7 +14,7 @@ where *lnorm-knobs* are:
  - `--tag={tnc:any [default], ...}` -- physical src and dst memory format.
             If only src memory format is provided, dst memory format will be set
             to `any`. Refer to [tags](knobs_tag.md) for details.
- - `--stat_tag={tn [default], ...}` -- physical mean and variance memory format.
+ - `--stat_tag={any [default], ...}` -- physical mean and variance memory format.
             Refer to [tags](knobs_tag.md) for details.
  - `--ss_dt={f32 [default], ...}` -- data type of scale and shift.
  - `--flags=[|G|C|H|M]` -- layer normalization flags, default `none`; where

@@ -13,8 +13,6 @@ where *pool-knobs* are:
             types. Interface supports broadcasting, when a single input is
             provided, e.g., `--dt=f32`, and the value will be applied for all
             tensors. Refer to [data types](knobs_dt.md) for details.
- - `--cfg={f32 [default], ...}` -- Deprecated setting.
-            Refer to ``Configurations`` below.
  - `--tag={nchw [default], ...}` -- physical src and dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
  - `--alg={max [default], avg_np, avg_p}` -- pooling algorithm.

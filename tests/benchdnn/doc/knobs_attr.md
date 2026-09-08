@@ -47,8 +47,6 @@ for details.
 `--attr-rounding-mode` specifies the rounding mode to be used for benchmarking.
 `ARG` specifies which memory argument will be modified. Supported values are:
   - `dst` corresponds to `DNNL_ARG_DST`.
-  - `diff_src` corresponds to `DNNL_ARG_DIFF_SRC`.
-  - `diff_weights` corresponds to `DNNL_ARG_DIFF_WEIGHTS`.
 `MODE` specifies which mode to apply to the corresponding memory
 argument. Supported values are: `environment` (default) and `stochastic`.  Refer
 to [rounding mode primitive attribute](https://uxlfoundation.github.io/oneDNN/dev_guide_attributes_rounding_mode.html)
@@ -120,7 +118,7 @@ as host_scalars (`true`) or as device memory objects (`false`, default).
                      same as `per_dim_01` for non-batched case,
                      corresponds to `mask = (1 << batch_ndims) + (1 << batch_ndims + 1)`
                      for batched case.
-  - `per_dim_2`      corresponds to `mask = 1 << 2` and means elements of dim3
+  - `per_dim_2`      corresponds to `mask = 1 << 2` and means elements of dim2
                      will be multiplied by scale factors different for each
                      point. Number of scale factors is equal to dims[2].
                      Currently supported only in matmul primitive for 3D tensors.
@@ -167,10 +165,18 @@ attribute. This attribute is supported only for integer data types as of now.
 
 `MASK_INPUT` has the same semantics and meaning as for `--attr-scales`.
 
-Supported string literal values (with same semantics) are:
+Supported string literal values (with same semantics) are the same as for
+`--attr-scales`, except `mx` and `dynamic_fp` which apply to scales only:
   - `common`
   - `host_scalar`
+  - `per_dim_0`
   - `per_dim_1`
+  - `per_dim_01`
+  - `per_oc`
+  - `per_ocic`
+  - `per_dim_2`
+  - `per_dim_3`
+  - `per_tensor`
 
 `ZEROPOINT` is required for the `common`, or `mask = 0` value only, and
 specifies an integer value which is passed for execution at runtime. Specifying
@@ -378,7 +384,7 @@ relu post-op. The final dst datatype after the fusion in the example below is
 and bf16 convolutions respectively.
 ``` sh
   ./benchdnn --conv --cfg=u8s8u8 --attr-scales=dst:per_oc \
-             --attr-post-ops=relu+dw_k3s1p1:s8+relu \
+             --attr-post-ops=relu+dw:k3s1p1:s8+relu \
              ic16oc16ih4oh4kh1ph0
 ```
 

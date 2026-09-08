@@ -17,9 +17,11 @@ where *softmax-knobs* are:
             Refer to [tags](knobs_tag.md) for details.
  - `--dtag={any [default], ...}` -- physical dst memory layout.
             Refer to [tags](knobs_tag.md) for details.
- - `--alg={SOFTMAX [default], LOGSOFTMAX}` -- softmax algorithm.
+ - `--alg={SOFTMAX [default], LOGSOFTMAX, SOFTMAX_INF_AS_ZERO}` -- softmax algorithm.
             `SOFTMAX` or `softmax_accurate` is `dnnl_softmax_accurate`;
             `LOGSOFTMAX` or `softmax_log` is `dnnl_softmax_log`;
+            `SOFTMAX_INF_AS_ZERO` or `softmax_accurate_inf_as_zero` is the
+            accurate softmax with `-inf` inputs treated as zero probability;
             Refer to [softmax primitive](https://uxlfoundation.github.io/oneDNN/dev_guide_softmax.html)
             for details.
  - `--axis=INT` -- dimension on which operation will be performed.

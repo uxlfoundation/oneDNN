@@ -11,8 +11,8 @@ values that results in a single state for a given problem descriptor.
 
 ## Return status
 
-Returns `1` if any submitted tests returned status `FAILED` or `UNIMPLEMENTED`,
-`0` otherwise.
+Returns `1` if any submitted test returned a failure status (for example
+`FAILED`, `UNIMPLEMENTED`, `UNTESTED`, or `INVALID_ARGUMENTS`), `0` otherwise.
 
 ## Running Tests
 
@@ -69,7 +69,7 @@ following steps to execute any flow:
 9. Report a test case status and repro line.
    * If performance validation was requested, print a performance report output
      based on selected options and collected statistics.
-10. Repeat steps 2-7 until all setups are validated.
+10. Repeat steps 2-9 until all setups are validated.
 11. Report the summary and return the status.
 
 Each mode is standalone since most of them include one another, unless specified
@@ -119,7 +119,7 @@ following modifiers are supported:
   creation overhead. Applicable for both CPU and GPU and for all modes but
   listing.
   Note: this modifier changes the default scratchpad mode from `library` to
-  `mode` because of thread-safety issue. The library scratchpad mode can't be
+  `user` because of thread-safety issue. The library scratchpad mode can't be
   used  unless "-DDNNL_ENABLE_CONCURRENT_EXEC=ON" is enabled at the build time.
   Otherwise scratchpad pointers are invalidated due to threads used for creation
   are no longer alive at the point when execution time comes.

@@ -56,7 +56,7 @@ RoundNearestEven).
 When the destination value is stored as a signed 32-bit integer, the result is
 bound to the same quantization **scaling factors**:
 
-+ \f$X_{s32} = W_{s8} \cdot \alpha_{u8} \approx Q_{\alpha} Q_{\omega} X_{f32}\f$,
++ \f$X_{s32} = W_{s8} \cdot \alpha_{u8} \approx Q_{\alpha} Q_{w} X_{f32}\f$,
 
 + where \f$X_{f32} = W_{f32} \cdot \alpha_{f32}\f$.
 
@@ -64,7 +64,7 @@ Here the approximation is used to denote rounding.
 
 The dequantized value is calculated as
 
-+ \f$X_{f32} \approx \frac{1}{Q_{\alpha} Q_{\omega}} X_{s32} \f$.
++ \f$X_{f32} \approx \frac{1}{Q_{\alpha} Q_{w}} X_{s32} \f$.
 
 @note bias does not support quantization as it is applied to dequantized output.
 
@@ -93,7 +93,7 @@ Finally, the quantized input values for the `int8` operation are calculated as:
 
 + \f$W_{s8} = \lceil Q_{w} W_{f32} \rceil
     = \Bigl \lceil 12.96 \cdot [-5.1 , 6.8, \ldots, -1.2, 9.8 ] \Bigr \rceil
-    = [-66, 88, \ldots, -15, 127] \f$
+    = [-66, 88, \ldots, -16, 127] \f$
 
 These arrays are the new inputs for the `int8` net.
 

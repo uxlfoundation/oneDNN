@@ -204,7 +204,7 @@ A user can initialize a memory descriptor with strides:
     dnnl_dims_t strides = {stride_n, stride_c, stride_h, stride_w};
 
     dnnl_memory_desc_t md;
-    dnnl_memory_desc_init_by_strides(&md, 4, dims, dnnl_f32, strides);
+    dnnl_memory_desc_create_with_strides(&md, 4, dims, dnnl_f32, strides);
 ~~~
 
 

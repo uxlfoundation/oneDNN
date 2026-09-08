@@ -48,7 +48,7 @@ constructing an operation.
 
 ## Supported data types
 
-BatchNormInference operation supports the following data type combinations.
+BatchNormForwardTraining operation supports the following data type combinations.
 
 | Src / Dst | Gamma / Beta / Mean / Variance / Batch_mean / Batch_variance / Running_mean / Running_variance |
 |:----------|:-----------------------------------------------------------------------------------------------|

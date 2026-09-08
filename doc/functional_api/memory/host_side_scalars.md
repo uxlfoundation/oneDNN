@@ -41,5 +41,5 @@ float alpha_value = alpha_mem.get_host_scalar_value();
 
 float new_alpha_value = 2.0f;
 // Update the scalar value in the memory object
-alpha_mem.set_host_scalar_value(&new_alpha_value);
+alpha_mem.set_host_scalar_value(new_alpha_value);
 ```

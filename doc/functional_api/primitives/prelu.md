@@ -56,7 +56,7 @@ The backward propagation computes \f$\diffsrc\f$ and \f$\diffweights\f$.
 For no broadcast case, results are calculated using formula:
 
 \f[
-    \diffdst(n, c, h, w) &=
+    \diffsrc(n, c, h, w) &=
         \begin{cases}
         \diffdst(n, c, h, w)  & \mbox{if } \src(n, c, h, w) > 0 \\
         \diffdst(n, c, h, w) \cdot \weights(n, c, h, w) &

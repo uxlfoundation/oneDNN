@@ -20,7 +20,7 @@ where
 
 - \f$\gamma(c), \beta(c)\f$ are optional scale and shift for a channel
 
-- \f$\mu(t, n), \sigma^2(t, n)\f$ are mean and variance (see
+- \f$\mu(t, n), \sigma^2(t, n)\f$ are mean and variance
 
 - \f$\epsilon\f$ is a constant to improve numerical stability.
 

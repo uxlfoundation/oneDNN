@@ -29,7 +29,7 @@ public:
     bool get_in_parallel() const override {
         return tp_->CurrentThreadId() != -1;
     }
-    uint64_t get_flags() override { return ASYNCHRONOUS; }
+    uint64_t get_flags() const override { return ASYNCHRONOUS; }
     void parallel_for(int n, const std::function<void(int, int)> &fn) override {
         int nthr = get_num_threads();
         int njobs = std::min(n, nthr);

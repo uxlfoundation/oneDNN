@@ -151,7 +151,7 @@ For the specified logfile path, the logger creates the base directory and the
 logfile if they do not already exist.
 When the specified logfile already exists, the output is appended to the
 existing file until it reaches the maximum file size.
-**Note:** Multiple instances using the same filepath for `DNNL_VERBOSE_LOGFILE`
+**Note:** Multiple instances using the same filepath for `ONEDNN_VERBOSE_LOGFILE`
 will write to the same file during the API run.
 The spdlog mechanism supports handling multiple instances concurrently
 if they write to the same logfile but the expectation is to specify different

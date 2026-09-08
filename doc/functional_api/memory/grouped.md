@@ -73,7 +73,7 @@ For instance, 2D grouped tensor `[total_M, K]` with `variable_dim_idx = 0`:
 // Offsets: {800, 1400, 2100, 2600, 3250, 3700, 4250, 5000}
 
 const int num_groups = 8;       // Number of expert networks
-const int total_tokens = 5000;  // Total tokens across all experts
+const int total_M = 5000;       // Total tokens across all experts
 const int K = 512;              // Feature dimension (hidden size)
 
 // Create grouped memory descriptor

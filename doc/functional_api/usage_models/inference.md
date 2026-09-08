@@ -139,7 +139,7 @@ as a demonstration below. The steps are
 Create a `post_op` for fused ReLU
 ~~~cpp
 post_ops ops;
-ops.append_eltwise(..., algorithm::eltwise_relu);
+ops.append_eltwise(algorithm::eltwise_relu, ...);
 ~~~
 
 Create **primitive attribute** and add the `post_op`
@@ -151,7 +151,7 @@ attr.set_post_ops(ops);
 Create a convolution **primitive descriptor**, passing the post-op infused
 `attrs` as an argument
 ~~~cpp
-auto conv_prim_descr = convolution_forward::primitive_desc(..., attrs, engine);
+auto conv_prim_descr = convolution_forward::primitive_desc(engine, ..., attrs);
 ~~~
 
 ## int8 Inference

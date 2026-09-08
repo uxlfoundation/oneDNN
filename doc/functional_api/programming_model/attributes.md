@@ -10,7 +10,7 @@ A quick recap of the primitive creation step, which consists of the following:
 
 Details on why all these steps are required can be found in
 @ref dev_guide_basic_concepts. The fact that is important for us now is that
-a primitive descriptor created at step 2 fully defines the operation that the
+a primitive descriptor created at step 1 fully defines the operation that the
 corresponding primitive will execute. Once the primitive descriptor is created,
 it cannot be changed.
 

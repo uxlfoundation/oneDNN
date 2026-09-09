@@ -603,6 +603,21 @@ status_t brgemm_desc_set_attr(
         get_env_value("MKLDNN_USE_UKER", brg->brgattr.use_uker);
         brg->brgattr.use_interleave_stores
                 = brg->brgattr.use_interleave_stores && brg->brgattr.use_uker;
+        // Tile decomposition overrides. These control how many A and B tiles
+        // are loaded back to back inside one unrolled body, i.e. the size of
+        // the TILELOADD burst. Consumed by brgemm_blocking_tmm() through the
+        // hint_* path, so they must be set before brgemm_desc_finalize().
+        get_env_value("MKLDNN_BD_BLOCK2", brg->brgattr.hint_bd_block2);
+        get_env_value("MKLDNN_LD_BLOCK2", brg->brgattr.hint_ld_block2);
+        // Non temporal tile loads (TILELOADDT1). -1 keeps the derived value,
+        // 0 forces plain TILELOADD, 1 forces TILELOADDT1.
+        int load_nt = -1;
+        get_env_value("MKLDNN_LOAD_NT", load_nt);
+        if (load_nt >= 0) {
+            const auto h = load_nt ? brgemm_hint_nt_true : brgemm_hint_nt_false;
+            brg->brgattr.hint_load_nt_A = h;
+            brg->brgattr.hint_load_nt_B = h;
+        }
     }
 #endif
 
@@ -676,6 +691,22 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
         CHECK(brdgmm_blocking(brg));
     else
         CHECK(brgemm_blocking(brg));
+
+#ifdef MY_DEBUG
+    {
+        int blk_print = 0;
+        my_utils::get_env_value("MKLDNN_BLK_PRINT", blk_print);
+        if (blk_print && brg->is_tmm)
+            printf(">>>BLK: M=%ld N=%ld K=%ld uker=%d bd_block=%d bdb=%ld "
+                   "bd_block2=%d ld_block=%d ldb=%ld ld_block2=%d "
+                   "rd_block=%d rdb=%ld burst=%d inner=%d nt_A=%d nt_B=%d\n",
+                    brg->bcast_dim, brg->load_dim, brg->reduce_dim,
+                    brg->brgattr.use_uker, brg->bd_block, brg->bdb,
+                    brg->bd_block2, brg->ld_block, brg->ldb, brg->ld_block2,
+                    brg->rd_block, brg->rdb, brg->bd_block2 + brg->ld_block2,
+                    (int)brg->innermost_loop, brg->load_nt_A, brg->load_nt_B);
+    }
+#endif
 
     if (!brg->is_dgmm) {
         // virtual padding is restricted by bd_block size due to

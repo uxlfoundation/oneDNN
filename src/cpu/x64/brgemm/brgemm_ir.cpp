@@ -76,6 +76,7 @@ struct out_block_t {
 //
 //   lda/ldb/ldc  - leading dimensions of A, B, and C, in elements
 //   max_bs       - maximum batch size known at IR generation time
+//   batch_kind   - how a batch element gives the address of its A and B
 //   bd_block     - M rows per block
 //   ld_block     - N elements per vector register
 //   ld_block2    - vector registers of N per block
@@ -105,6 +106,7 @@ struct brgemm_ir_conf_t {
         , ldb(brg.LDB)
         , ldc(brg.LDC)
         , max_bs(brg.brgattr.max_bs)
+        , batch_kind(brg.type)
         , bd_block(brg.bd_block)
         , ld_block(brg.ld_block)
         , ld_block2(brg.ld_block2)
@@ -134,6 +136,7 @@ struct brgemm_ir_conf_t {
 
     const dim_t lda, ldb, ldc;
     const dim_t max_bs;
+    const brgemm_batch_kind_t batch_kind;
     const int bd_block, ld_block, ld_block2, ldb_ld_elems, rd_block;
     const int dt_sz_a, dt_sz_b, dt_sz_c;
     const data_type_t dt_a, dt_b, dt_c, dt_acc;
@@ -236,6 +239,11 @@ struct invariant_regs_t {
     ir::vreg_t batch = ir::vreg_t::none;
     // Batch size loop count. `none` when max_bs == 1 (single batch element).
     ir::vreg_t bs = ir::vreg_t::none;
+    // A and B base pointers, the `ptr_A` and `ptr_B` kernel arguments, which
+    // `brgemm_offs` adds the byte offsets of each batch element to. `none` for
+    // `brgemm_addr`, where each element holds its own pointers.
+    ir::vreg_t a_base = ir::vreg_t::none;
+    ir::vreg_t b_base = ir::vreg_t::none;
 };
 
 // Complete input register set for the M loop, partitioned by whether values
@@ -262,6 +270,13 @@ m_loop_input_regs_t init_m_loop_input_regs(
     if (cfg.max_bs > 1) {
         regs.invariant.bs = ir.new_gpr();
         ir.load_param(regs.invariant.bs, GET_OFF(BS));
+    }
+
+    if (cfg.batch_kind == brgemm_offs) {
+        regs.invariant.a_base = ir.new_gpr();
+        ir.load_param(regs.invariant.a_base, GET_OFF(ptr_A));
+        regs.invariant.b_base = ir.new_gpr();
+        ir.load_param(regs.invariant.b_base, GET_OFF(ptr_B));
     }
 
     regs.advancing.a_off = ir.new_gpr();
@@ -312,8 +327,8 @@ void emit_microkernel(ir::ir_t &ir, const brgemm_ir_conf_t &cfg,
 
 // One batch element.
 //
-// Reads the A and B pointers of the element, shifts them to the current M and N
-// block, then runs the reduction loop over K.
+// Derives the A and B pointers of the element, shifts them to the current M and
+// N block, then runs the reduction loop over K.
 void emit_bs_body(ir::ir_t &ir, const brgemm_ir_conf_t &cfg,
         const m_loop_input_regs_t &regs, const out_block_t &blk,
         const std::vector<ir::vreg_t> &acc, const std::vector<ir::vreg_t> &b,
@@ -322,16 +337,33 @@ void emit_bs_body(ir::ir_t &ir, const brgemm_ir_conf_t &cfg,
     const ir::vreg_t a_ptr = ir.new_gpr();
     const ir::vreg_t b_ptr = ir.new_gpr();
 
-    ir.load(a_ptr, batch_ptr, GET_OFF_BATCH_ELEMENT(ptr.A));
+    // Where this element's A and B start. Mirrors `set_A_B_matrices()` in
+    // `jit_brgemm_kernel.cpp`.
+    switch (cfg.batch_kind) {
+        case brgemm_addr:
+            ir.load(a_ptr, batch_ptr, GET_OFF_BATCH_ELEMENT(ptr.A));
+            ir.load(b_ptr, batch_ptr, GET_OFF_BATCH_ELEMENT(ptr.B));
+            break;
+        case brgemm_offs:
+            ir.load(a_ptr, batch_ptr, GET_OFF_BATCH_ELEMENT(offset.A));
+            ir.add_reg(a_ptr, regs.invariant.a_base);
+            ir.load(b_ptr, batch_ptr, GET_OFF_BATCH_ELEMENT(offset.B));
+            ir.add_reg(b_ptr, regs.invariant.b_base);
+            break;
+        default: assert(!"unsupported batch kind"); break;
+    }
+
+    // Shift to the current M and N block.
     ir.add_reg(a_ptr, regs.advancing.a_off);
-    ir.load(b_ptr, batch_ptr, GET_OFF_BATCH_ELEMENT(ptr.B));
     ir.add_reg(b_ptr, regs.advancing.b_off);
 
-    // Advance to the next batch element and prefetch it. A single batch element
-    // has no next one, so neither is emitted then.
+    // Advance to the next batch element. A single batch element has no next
+    // one, so nothing is emitted then.
     if (cfg.max_bs > 1) {
         ir.add_imm(batch_ptr, sizeof(brgemm_batch_element_t));
-        ir.prefetch(batch_ptr, 0);
+        // The classic kernel prefetches the next element for the address kind
+        // only.
+        if (cfg.batch_kind == brgemm_addr) ir.prefetch(batch_ptr, 0);
     }
 
     // Advance the A and B pointers by one K block.
@@ -491,6 +523,16 @@ void build_brgemm(const brgemm_desc_t &brg, ir::ir_t &ir) {
     }
 }
 
+#ifndef NDEBUG
+bool any_vector_spill(const ir::ir_t &ir, const ir::reg_alloc_result_t &alloc) {
+    for (int v = 0; v < ir.n_vregs(); v++) {
+        if (ir.vreg_info()[v].kind == ir::reg_kind_t::gpr) continue;
+        if (alloc.assignments[v].spilled) return true;
+    }
+    return false;
+}
+#endif
+
 } // namespace
 
 // generate() runs the full IR pipeline:
@@ -535,11 +577,12 @@ struct jit_brgemm_ir_kernel_t : public jit_base_brgemm_kernel_t {
         const ir::reg_alloc_result_t alloc
                 = allocate_registers(ir, reg_cfg.pools);
 
-        // `brgemm_ir_supported()` allows only a blocking that fits the pools,
-        // so a spill means that check and the builder disagree about how many
-        // registers the kernel needs. The code stays correct, but it is slower
-        // than the kernel it replaced.
-        assert(!alloc.any_spill && "brgemm_ir: unexpected spill");
+        // `brgemm_ir_supported()` allows only a blocking that fits the vector
+        // pool, so a vector spill means that check and the builder disagree
+        // about how many registers the kernel needs. The code stays correct,
+        // but it is slower than the kernel it replaced.
+        assert(!any_vector_spill(ir, alloc)
+                && "brgemm_ir: unexpected vector spill");
 
         preamble();
 
@@ -606,8 +649,8 @@ status_t brgemm_ir_supported(const brgemm_desc_t &brg) {
             everyone_is(f32, brg.dt_a, brg.dt_b, brg.dt_c, brg.dt_d),
             VERBOSE_UNSUPPORTED_DT);
 
-    VCONDCHECK_BRGEMM_IR(brg.type == brgemm_addr, VERBOSE_UNSUPPORTED_FEATURE,
-            "batch kind other than address");
+    VCONDCHECK_BRGEMM_IR(one_of(brg.type, brgemm_addr, brgemm_offs),
+            VERBOSE_UNSUPPORTED_FEATURE, "batch kind");
     VCONDCHECK_BRGEMM_IR(brg.layout == brgemm_row_major,
             VERBOSE_UNSUPPORTED_FEATURE, "column-major layout");
 

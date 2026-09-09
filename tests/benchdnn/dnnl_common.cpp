@@ -48,6 +48,7 @@
 #include "dnnl_common.hpp"
 #include "dnnl_memory.hpp"
 
+#include "utils/check.hpp"
 #include "utils/cold_cache.hpp"
 #include "utils/dnnl_query.hpp"
 #include "utils/execution_mode.hpp"
@@ -1015,23 +1016,6 @@ int check_same_pd(const dnnl_primitive_desc_t &pd_no_attr, res_t *res) {
             "ERROR: attributes caused impl fallback from [%s] to [%s]\n",
             pd_no_attr_name.c_str(), res->impl_name.c_str());
     return FAIL;
-}
-
-// Checks if unexpected reference implementation was hit.
-int check_ref_impl_hit(res_t *res) {
-    if (!check_ref_impl) return OK;
-
-    // Nvidia, AMD and Generic backends use reference implementations to fill
-    // gaps in feature support.
-    if (is_nvidia_gpu() || is_amd_gpu() || is_generic_gpu()) return OK;
-
-    const auto &impl_name = res->impl_name;
-    if (impl_name.find("ref") != std::string::npos) {
-        res->state = FAILED;
-        res->reason = reason_t::failed_ref_not_expected;
-        return FAIL;
-    }
-    return OK;
 }
 
 bool is_f64_supported(const engine_t &engine) {

@@ -19,6 +19,7 @@
 #include <map>
 #include <unordered_map>
 
+#include "utils/check.hpp"
 #include "utils/cold_cache.hpp"
 #include "utils/fill.hpp"
 #include "utils/parser.hpp"
@@ -175,6 +176,23 @@ size_t compute_distance(const std::string &in, const std::string &opt,
     return std::min(std::min(shift_in_dist, shift_opt_dist), shift_both_dist)
             + 1;
 }
+
+// A safe version of str2bool that doesn't exit and sets @parsed to `true` if
+// the content was valid, and `false`, otherwise.
+bool str2bool_safe(const std::string &str, bool &parsed) {
+    auto s = utils::lowercase(str);
+    if (s == "1" || s == "true") {
+        parsed = true;
+        return true;
+    } else if (s == "0" || s == "false") {
+        parsed = true;
+        return false;
+    }
+
+    parsed = false;
+    return false;
+}
+
 } // namespace utils
 
 namespace parsers {
@@ -703,6 +721,26 @@ execution_mode_t str2execution_mode(const std::string &str) {
         SAFE_V(FAIL);
     }
     return execution_mode_t::direct;
+}
+
+runtime_kind_t str2runtime_kind(const std::string &str) {
+    auto s = utils::lowercase(str);
+    if (s == "cpu") {
+        return runtime_kind_t::cpu;
+    } else if (s == "gpu") {
+        return runtime_kind_t::gpu;
+    } else {
+        bool parsed = false;
+        bool val = utils::str2bool_safe(str, parsed);
+        if (!parsed) {
+            BENCHDNN_PRINTF(0, "%s \'%s\' %s", "Error: parsed value", s.c_str(),
+                    "is expected to be a boolean value, or 0/1 integer value, "
+                    "or \'cpu|gpu\' string literals");
+            SAFE_V(FAIL);
+        }
+        if (val) return runtime_kind_t::all;
+    }
+    return runtime_kind_t::undefined;
 }
 
 } // namespace parsers
@@ -1461,12 +1499,14 @@ static bool parse_canonical(
 static bool parse_check_ref_impl(
         const char *str, const std::string &option_name = "check-ref-impl") {
     static const std::string help
-            = "BOOL    (Default: `false`)\n    Instructs the driver to compare "
+            = "STR    (Default: `false`)\n    Instructs the driver to compare "
               "an implementation name against the \'ref\' string pattern.\n    "
-              "When set to `true`, the check would return an error if the "
-              "implementation name contains such pattern.\n";
-    return parse_single_value_option(
-            check_ref_impl, false, parsers::str2bool, str, option_name, help);
+              "When `STR` is set to `true`, the check would return an error if "
+              "the implementation name contains such pattern for CPU and GPU "
+              "backends.\n    To specify the backend to apply the check for, "
+              "set `STR` to `cpu` or `gpu`.\n";
+    return parse_single_value_option(check_ref_impl, default_runtime_kind,
+            parsers::str2runtime_kind, str, option_name, help);
 }
 
 static bool parse_cold_cache(

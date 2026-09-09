@@ -37,6 +37,7 @@
 #include "dnnl_common.hpp"
 #include "dnnl_debug.hpp"
 #include "dnnl_memory.hpp"
+#include "utils/check.hpp"
 #include "utils/cold_cache.hpp"
 #include "utils/dims.hpp"
 #include "utils/dnnl_query.hpp"
@@ -1229,8 +1230,8 @@ std::ostream &dump_global_params(std::ostream &s) {
         s << "--cpu-isa-hints=" << isa_hints_t::hints2str(hints) << " ";
     if (canonical || attr_same_pd_check != false)
         s << "--attr-same-pd-check=" << bool2str(attr_same_pd_check) << " ";
-    if (canonical || check_ref_impl != false)
-        s << "--check-ref-impl=" << bool2str(check_ref_impl) << " ";
+    if (canonical || check_ref_impl != default_runtime_kind)
+        s << "--check-ref-impl=" << check_ref_impl << " ";
 #if defined(DNNL_WITH_SYCL) || DNNL_GPU_RUNTIME == DNNL_RUNTIME_OCL \
         || DNNL_GPU_RUNTIME == DNNL_RUNTIME_ZE
     if (canonical || memory_kind != default_memory_kind)

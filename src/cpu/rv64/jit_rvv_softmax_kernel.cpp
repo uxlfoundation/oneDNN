@@ -327,7 +327,7 @@ jit_rvv_softmax_f32_reduce_max_kernel_t::
     create_kernel();
 }
 
-// f32 Stage-1 max reduction, mirroring jit_rvv_softmax_xf16_reduce_max. The
+// f32 Stage-1 max reduction, mirroring jit_rvv_softmax_f16_reduce_max. The
 // scalar loop seeds max_val with -INFINITY and only ever replaces it under
 // `val > max_val`; a NaN never wins. vfredmax_vs therefore needs its own
 // -INFINITY seed, and NaN lanes must be merged to that seed before the

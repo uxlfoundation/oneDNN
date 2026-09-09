@@ -548,10 +548,43 @@ void jit_uni_reorder_kernel_f32_t::emit_pure_copy_core() {
             : itype_sz_ == 2       ? SEW::e16
                                    : SEW::e8;
 
+    // Select the vector register group size from the runtime VLEN (vlenb, in
+    // bytes) and the innermost node extent so that a single vsetvli/vle/vse
+    // step covers the whole row when the register budget allows:
+    //     VLMAX = LMUL * vlenb / itype_sz_   (elements per group)
+    // must reach node[0].n. The pure-copy core keeps exactly one live vector
+    // group (vreg_data_ = v8) plus load/store transients, so
+    // LMUL * peak_live_groups(1) <= 32 holds for m1..m8, and v8 is
+    // group-aligned for every power-of-two LMUL. Fall back to m1 when RVV is
+    // unavailable, the runtime VLEN is unknown / too small (vlenb < 16), or
+    // node[0] is empty. This keeps the kernel vector-length-agnostic: the
+    // loop below still strip-mines any remainder with the returned `vl`.
+    const uint32_t vlenb = get_platform_vlen() / 8; // runtime VLEN in bytes
+    const uint32_t n0 = (uint32_t)prb_.nodes[0].n;
+    LMUL lmul = LMUL::m1;
+    if (mayiuse(v) && vlenb >= 16 && n0 > 0) {
+        const uint32_t vlmax_m1 = vlenb / (uint32_t)itype_sz_;
+        uint32_t lmul_val = 1;
+        while (lmul_val < 8 && lmul_val * vlmax_m1 < n0)
+            lmul_val *= 2;
+        // Reject any candidate beyond LMUL * peak_live_vectors <= 32
+        // (peak live vectors == 1 here: only vreg_data_ is live).
+        if (lmul_val * 1u <= 32u) {
+            // m2/m4/m8 occupy 2/4/8 consecutive vector registers: the group
+            // start (vreg_data_ == v8) must be aligned to the group size.
+            const uint32_t vreg_idx = (uint32_t)vreg_data_.getIdx();
+            if (vreg_idx % lmul_val != 0) lmul_val = 1;
+            lmul = lmul_val == 8    ? LMUL::m8
+                    : lmul_val == 4 ? LMUL::m4
+                    : lmul_val == 2 ? LMUL::m2
+                                    : LMUL::m1;
+        }
+    }
+
     Label vloop, vend;
     L(vloop);
     beqz(reg_rem_, vend);
-    vsetvli(reg_vl_, reg_rem_, sew, LMUL::m1, VTA::ta, VMA::ma);
+    vsetvli(reg_vl_, reg_rem_, sew, lmul, VTA::ta, VMA::ma);
 
     if (sew == SEW::e32) {
         if (in_unit)

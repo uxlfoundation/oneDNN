@@ -2883,8 +2883,16 @@ void jit_brgemm_kernel_t<Wmm>::maybe_tileloadd_nt(matrix_kind_t matrix_kind,
                         * brg.brgattr.hint_expected_B_size
                 + static_cast<size_t>(brg.typesize_C)
                         * brg.brgattr.hint_expected_C_size;
+        // Base kernel tile loads use TILELOADDT1 (non-temporal hint) here.
+        // Same mechanism as brgemm_blocking_tmm()'s nt_load_allowed for uker:
+        // on an L3 with 10-way associativity or less this hint thrashes
+        // (measured 25-36% slower and far less stable on such hardware; a
+        // no-op on 16-way L3 parts), so it is only allowed above 10 ways.
+        const bool nt_load_allowed_base
+                = platform::get_num_ways_in_cache(3) > 10;
         if (try_load_nt
-                && cache_footprint >= platform::get_per_core_cache_size(1))
+                && cache_footprint >= platform::get_per_core_cache_size(1)
+                && nt_load_allowed_base)
             tileloaddt1(t1, ptr[reg_base + offset + reg_stride]);
         else
             tileloadd(t1, ptr[reg_base + offset + reg_stride]);

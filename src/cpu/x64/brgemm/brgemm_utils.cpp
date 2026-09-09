@@ -25,6 +25,11 @@
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
+#define MY_DEBUG
+#ifdef MY_DEBUG
+#include "cpu/my_utils.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -397,8 +402,20 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     // across 24 MB - 1440 MB footprints on such hardware; a no-op on 16-way
     // L3 parts). Computed once and folded into every place load_nt_A/B is
     // decided below, instead of being cleared again after the fact.
-    const bool nt_load_allowed
+    bool nt_load_allowed
             = !brg->brgattr.use_uker || platform::get_num_ways_in_cache(3) > 10;
+#ifdef MY_DEBUG
+    // Temporary investigation override: MKLDNN_FORCE_NT_ALLOWED = 0/1 forces
+    // nt_load_allowed regardless of measured L3 associativity, so both NT
+    // regimes can be exercised on hardware whose real associativity would
+    // otherwise only ever allow one of them.
+    dnnl::impl::cpu::my_utils::get_env_value(
+            "MKLDNN_FORCE_NT_ALLOWED", nt_load_allowed);
+    printf("DEBUG brgemm_blocking_tmm: use_uker=%d ways_l3=%u "
+           "nt_load_allowed=%d\n",
+            brg->brgattr.use_uker, platform::get_num_ways_in_cache(3),
+            nt_load_allowed);
+#endif
 
     // Blocking configuration for AMX
     const auto BD = brg->bcast_dim;

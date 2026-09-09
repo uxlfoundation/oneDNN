@@ -618,6 +618,17 @@ status_t brgemm_desc_set_attr(
             brg->brgattr.hint_load_nt_A = h;
             brg->brgattr.hint_load_nt_B = h;
         }
+        // Per-tensor overrides, applied after MKLDNN_LOAD_NT above, so A and B
+        // can be set independently (e.g. A=TILELOADD, B=TILELOADDT1).
+        int load_nt_a = -1, load_nt_b = -1;
+        get_env_value("MKLDNN_LOAD_NT_A", load_nt_a);
+        get_env_value("MKLDNN_LOAD_NT_B", load_nt_b);
+        if (load_nt_a >= 0)
+            brg->brgattr.hint_load_nt_A
+                    = load_nt_a ? brgemm_hint_nt_true : brgemm_hint_nt_false;
+        if (load_nt_b >= 0)
+            brg->brgattr.hint_load_nt_B
+                    = load_nt_b ? brgemm_hint_nt_true : brgemm_hint_nt_false;
     }
 #endif
 

@@ -138,6 +138,22 @@ void mem_advice_init(brgemm_matmul_conf_t &bgmmc) {
             bgmmc.mem_advice = brgemm_kernel_hint_mem_advice_t::
                     brgemm_hint_mem_advice_A_B;
     }
+#ifdef MY_DEBUG
+    // Temporary investigation override: MKLDNN_FORCE_MEM_ADVICE lets the
+    // heuristic result above be overridden, e.g. to force A/A_B and thus
+    // force tileloaddrs/tileloaddrst1 to be used for A-tile loads too.
+    // Values match brgemm_kernel_hint_mem_advice_t: 0=undef 1=A 2=B 3=A_B.
+    int mem_advice_dbg = (int)bgmmc.mem_advice;
+    if (dnnl::impl::cpu::my_utils::get_env_value(
+                "MKLDNN_FORCE_MEM_ADVICE", mem_advice_dbg))
+        bgmmc.mem_advice = (brgemm_kernel_hint_mem_advice_t)mem_advice_dbg;
+    printf("DEBUG mem_advice_init: is_amx=%d horizontal=%d "
+           "nchunks_per_thread=%ld N_chunks=%ld M_chunks=%ld "
+           "nthr_bmn=%d mem_advice=%d\n",
+            bgmmc.is_amx, bgmmc.is_thread_chunks_exec_order_horizontal,
+            (long)nchunks_per_thread, (long)N_chunks, (long)M_chunks, nthr_bmn,
+            (int)bgmmc.mem_advice);
+#endif
 }
 
 // TODO: add support of post-ops with multiple binary and eltwise execution
@@ -2608,6 +2624,10 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     }
 
     // init mem advice heuristic based on bmn threads and excution scan order
+#ifdef MY_DEBUG
+    printf("DEBUG init_brgemm_matmul_conf: is_superset(isa, avx10_2)=%d\n",
+            is_superset(isa, avx10_2));
+#endif
     if (is_superset(isa, avx10_2)) mem_advice_init(bgmmc);
 
     // Dispatch small shapes to VNNI for better performance

@@ -658,10 +658,13 @@ struct brgemm_desc_t {
             if (amx_wary_k_tail()) sz += tilesize;
             sz += get_fused_copy_a_wsp_buffer_size();
         } else if (is_fp8_via_convert_non_amx()) {
-            // holds the f16-vnni upconverted A block (see `reg_buf_A` in
-            // the non-AMX fp8 kernel)
+            // holds the f16-vnni upconverted A block, followed by the
+            // current rd-chunk's upconverted B block (see `reg_buf_A` and
+            // `maybe_pre_process_buf_B` in the non-AMX fp8 kernel)
             sz = static_cast<dim_t>(nstl::max(bd_block, bdb_tail))
                     * cpu_isa_traits_t<avx512_core>::vlen;
+            //            sz = static_cast<dim_t>(ld_block2) * 2
+            //                    * cpu_isa_traits_t<avx512_core>::vlen;
         }
         return sz;
     }

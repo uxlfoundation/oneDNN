@@ -21,6 +21,7 @@
 #include "common/float16.hpp"
 #include "common/nstl.hpp"
 
+#include "cpu/rv64/cpu_isa_traits.hpp"
 #include "cpu/rv64/jit_rvv_softmax_kernel.hpp"
 #include "cpu/rv64/rvv_softmax.hpp"
 
@@ -42,18 +43,15 @@ namespace {
 // or memory-bound (large-stride) reductions keep the scalar exp path.
 void compute_softmax_f32_rvv(const float *src, float *dst, dim_t len,
         bool is_logsoftmax, bool is_softmax_inf_as_zero,
-        const jit_rvv_softmax_affine_kernel_t *affine_kernel, bool jit_exp) {
-    // Stage 1: max reduction. Use the vector vfredmax path for reductions that
-    // fill at least one LMUL=4 e32 vector (16 elements at VLEN=128), mirroring
-    // the f16 reduce-max kernel; below that the vsetvli/vfredmax setup overhead
-    // exceeds the scalar loop. The kernel seeds -INFINITY and merges NaN lanes
-    // to the seed to reproduce the scalar `val > max_val` contract.
-    constexpr dim_t reduce_max_jit_min_len = 16;
+        const jit_rvv_softmax_affine_kernel_t *affine_kernel, bool jit_exp,
+        bool jit_reduce_max) {
     float max_val = -INFINITY;
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
-    if (len >= reduce_max_jit_min_len) {
+    if (jit_reduce_max) {
         jit_rvv_softmax_f32_reduce_max(src, len, &max_val);
     } else
+#else
+    MAYBE_UNUSED(jit_reduce_max);
 #endif
     {
         for (dim_t i = 0; i < len; ++i)
@@ -297,13 +295,22 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                     && rsp.axis_size >= exp_jit_min_len
                     && rsp.inner_size <= exp_jit_max_inner;
 
+            // Stage 1 max reduction. Measurements show a stable RVV benefit
+            // from 15 elements on VLEN=256, while the tested VLEN=128 system
+            // regresses even for long reductions. Query VLEN once per
+            // execution, not once per row in the hot loop. The cutoff is not
+            // VLMAX: a reduction need not fill an LMUL=4 group to be
+            // profitable.
+            const bool jit_reduce_max
+                    = get_platform_vlen() >= 256 && rsp.axis_size >= 15;
+
             if (rsp.inner_size == 1) {
                 parallel_nd(rsp.outer_size, [&](dim_t outer) {
                     const dim_t base = outer * outer_stride;
                     compute_softmax_f32_rvv(src_f32 + base, dst_f32 + base,
                             rsp.axis_size, rsp.is_logsoftmax,
                             is_softmax_inf_as_zero, affine_kernel_.get(),
-                            jit_exp);
+                            jit_exp, jit_reduce_max);
                 });
             } else {
                 auto scratch = ctx.get_scratchpad_grantor().template get<char>(
@@ -329,7 +336,7 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
                         // contiguous kernel (in-place)
                         compute_softmax_f32_rvv(tmp, tmp, rsp.axis_size,
                                 rsp.is_logsoftmax, is_softmax_inf_as_zero,
-                                affine_kernel_.get(), jit_exp);
+                                affine_kernel_.get(), jit_exp, jit_reduce_max);
 
                         // write back
                         for (dim_t a = 0; a < rsp.axis_size; ++a)

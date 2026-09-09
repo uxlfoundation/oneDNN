@@ -180,8 +180,8 @@ private:
 
 // f32 value-only max reduction for softmax Stage 1. Computes max(src[0..len))
 // with the scalar `val > max_val` semantics: seeded with -INFINITY and NaN
-// lanes merged to the seed so a NaN never wins the reduction. The caller keeps
-// the scalar loop for reductions shorter than one LMUL=4 e32 vector.
+// lanes merged to the seed so a NaN never wins the reduction. The caller uses
+// a platform-tuned crossover to choose between this kernel and the scalar loop.
 struct jit_rvv_softmax_f32_reduce_max_kernel_t : public jit_generator_t {
     struct call_params_t {
         const float *src;

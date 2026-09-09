@@ -169,6 +169,15 @@ private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<jit_rvv_softmax_affine_kernel_t> affine_kernel_;
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    // Strided xf16 gather/scatter kernels are constructed once during primitive
+    // creation (single-threaded) and are immutable afterwards, so the per-block
+    // hot path can call them directly without the thread-safe-static guard and
+    // fence sequence that the jit_rvv_softmax_xf16_gather/scatter free
+    // functions execute on every block.
+    std::unique_ptr<jit_rvv_softmax_xf16_strided_kernel_t> gather_kernel_;
+    std::unique_ptr<jit_rvv_softmax_xf16_strided_kernel_t> scatter_kernel_;
+#endif
 };
 
 } // namespace rv64

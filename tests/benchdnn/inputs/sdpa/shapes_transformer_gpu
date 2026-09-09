@@ -27,3 +27,23 @@
 
 # Batch > 1
 2x8x384x64:2x8x64x384:2x8x384x64
+
+# Small head sizes (<= 16) with a short sequence. These select the
+# head_size=16 configs; without them the work-group tile is several times
+# larger than the whole problem. head_size=6 mirrors tnt_s_patch16_224.
+1x4x16x6:1x4x6x16:1x4x16x6
+2x4x16x6:2x4x6x16:2x4x16x6
+1x16x16x8:1x16x8x16:1x16x16x8
+1x32x16x16:1x32x16x16:1x32x16x16
+
+# Same, with a thin Q (second-token decode)
+1x4x1x6:1x4x6x16:1x4x16x6
+1x16x1x8:1x16x8x8:1x16x8x8
+1x32x1x16:1x32x16x16:1x32x16x16
+
+# GQA with a small head size and a thin Q
+1x16x1x16:1x4x16x16:1x4x16x16
+
+# Small head size with a long sequence: stays on the non-thin-Q config,
+# guarding the head_size=16 rows against capturing long sequences.
+1x16x384x16:1x16x16x384:1x16x384x16

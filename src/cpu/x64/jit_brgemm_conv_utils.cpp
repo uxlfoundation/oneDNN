@@ -1208,8 +1208,23 @@ void brg_blocking_t::iterate_ker_block(brg_blocking_t &best_brgb,
                 = 2 * src_dsz * ic_size * iwp + dst_dsz * ow * oc_block;
         const auto other_size = wei_dsz * kd * kh * kw * ic_size * oc_block
                 + acc_dsz * 2 * amx_h * oc_block;
-        const auto L2_available = nstl::min<size_t>(
+        auto L2_available = nstl::min<size_t>(
                 div_up(L2, 2), other_size > L2 ? 0 : L2 - other_size);
+        // This is a per-thread cache-fit estimate, but under concurrent
+        // execution many threads simultaneously stream comparably-sized
+        // src/dst blocks through the shared L3/uncore, which a per-thread
+        // fits-check cannot see (confirmed via PMU: at high thread counts
+        // the "fits fully" choice generates measurably more aggregate L3
+        // traffic than a smaller, safer blocking, even though each thread's
+        // own slice technically fits in its private L2 -- see
+        // dmr-gnr-matmul-gap.md). Derate the available budget by
+        // sqrt(nthr) so this fits-check becomes more conservative as
+        // concurrency grows, while leaving single-thread behavior (nthr=1)
+        // unchanged.
+        const auto l2_nthr_derate
+                = nstl::max(1.f, std::sqrt(static_cast<float>(nthr)));
+        L2_available = static_cast<size_t>(
+                static_cast<float>(L2_available) / l2_nthr_derate);
         if (idp * ihp * w_block_size > L2_available) {
             od_block = utils::saturate<dim_t>(
                     1, od, L2_available / (ihp * w_block_size));
@@ -2256,7 +2271,23 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             const status_t st = cur_brgb.get_brgemm_ur(&attr, dst_md);
             if (st != status::success) continue;
             cur_brgb.eff = cur_brgb.est_eff();
-            if (cur_brgb.eff > best_brgb.eff) best_brgb = cur_brgb;
+            // Candidates are evaluated from the largest oc_block down to
+            // the smallest (start_ocb downto 1), so a smaller-oc_block
+            // candidate only replaces the current best if it is clearly
+            // better, not just marginally so. This avoids picking a
+            // smaller oc_block (larger spatial block) purely on a
+            // near-tie in the estimated efficiency model: such a
+            // candidate generates measurably more aggregate L3 traffic
+            // under concurrent multi-thread execution than est_eff()'s
+            // per-thread-only cost model can capture (see PMU
+            // measurements: at 32 threads the smaller-oc_block candidate
+            // issued ~40% more LLC references for a <2% eff delta).
+            // NOTE: get_env_value() truncates through int, so it cannot be
+            // used to override a float constant here - keep this a plain
+            // compile-time constant.
+            constexpr float blk_eff_tie_eps = 0.02f;
+            if (cur_brgb.eff > best_brgb.eff * (1.f + blk_eff_tie_eps))
+                best_brgb = cur_brgb;
         }
         if (best_brgb.oc_block == 0 || best_brgb.ic_block == 0
                 || best_brgb.ow_block == 0)

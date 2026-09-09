@@ -516,6 +516,13 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
                 get_env_value("MKLDNN_USE_UKER", brgattr.use_uker);
                 brgattr.use_interleave_stores
                         = brgattr.use_interleave_stores && brgattr.use_uker;
+                // Roll the bd loop back up instead of fully unrolling it. The
+                // matmul path never sets this hint (only conv does), so the
+                // uker body is emitted fully unrolled and the generated code
+                // grows past L1I. This isolates code footprint from the rest
+                // of the uker/base differences: the kernel flavour stays the
+                // same, only the unrolling changes.
+                get_env_value("MKLDNN_UNUNROLL", brgattr.hint_ununroll_bd_loop);
             }
 #endif
             if (bgmmc_.LDB2 != 0) brgattr.LDB2 = bgmmc_.LDB2;
@@ -787,6 +794,25 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
         const char *a_batch_ptr = nullptr;
         const char *b_batch_ptr = nullptr;
 
+#ifdef MY_DEBUG
+        // MKLDNN_BATCH_TIMING = 1 -> dump per-batch-item (per "b" index)
+        // rdtsc cycle counts for this execute_body() call, as CSV lines
+        // "BATCHCYC,<ithr>,<b>,<cycles>". Off by default, zero overhead when
+        // unset. Diagnostic only, not to be left enabled in production.
+        int batch_timing = 0;
+        dnnl::impl::cpu::my_utils::get_env_value(
+                "MKLDNN_BATCH_TIMING", batch_timing);
+        std::vector<uint64_t> batch_cycles;
+        dim_t batch_timing_prev_b = -1;
+        uint64_t batch_timing_start = 0;
+        auto rdtsc_now = []() -> uint64_t {
+            uint32_t hi, lo;
+            asm volatile("rdtsc" : "=a"(lo), "=d"(hi));
+            return (((uint64_t)hi) << 32) | lo;
+        };
+        if (batch_timing) batch_cycles.assign(bgmmc.batch, 0);
+#endif
+
         while (start < end) {
             if (mc >= M_chunks || nc >= N_chunks || b >= bgmmc.batch) {
                 advance_func();
@@ -802,6 +828,16 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
                     + (n_chunk_tail ? N_chunk_tail : bgmmc.N_chunk_size);
             dim_t kc_prev = -1;
             if (b != b_prev) {
+#ifdef MY_DEBUG
+                if (batch_timing) {
+                    const auto now = rdtsc_now();
+                    if (batch_timing_prev_b >= 0)
+                        batch_cycles[batch_timing_prev_b]
+                                += now - batch_timing_start;
+                    batch_timing_start = now;
+                    batch_timing_prev_b = b;
+                }
+#endif
                 a_batch_ptr = brgmm_ctx.get_data_A_batch_ptr(b);
                 b_batch_ptr = brgmm_ctx.get_data_B_batch_ptr(b);
             }
@@ -855,6 +891,16 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
 
             advance_func();
         }
+#ifdef MY_DEBUG
+        if (batch_timing) {
+            if (batch_timing_prev_b >= 0)
+                batch_cycles[batch_timing_prev_b]
+                        += rdtsc_now() - batch_timing_start;
+            for (dim_t bi = 0; bi < bgmmc.batch; bi++)
+                printf("BATCHCYC,%d,%lld,%llu\n", ithr, (long long)bi,
+                        (unsigned long long)batch_cycles[bi]);
+        }
+#endif
         if (is_amx) { amx_tile_release(); }
     });
 

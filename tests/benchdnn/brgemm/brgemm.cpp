@@ -635,7 +635,7 @@ void init_memory_args(
     const int dt_multiplier
             = prb->wei_dt() == dnnl_f16 && !kernel_args.need_pack_
             ? 1
-            : 4 / dnnl_data_type_size(prb->wei_dt());
+            : static_cast<int>(4 / dnnl_data_type_size(prb->wei_dt()));
 
     int multiplier = 1;
     if (kernel_args.need_pack_) {

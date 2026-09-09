@@ -260,7 +260,7 @@ status_t check_isa_with_datatype(
                             || is_superset(isa, avx2_vnni))
             && IMPLICATION(bm_conf_utils.is_bf16(),
                     one_of(isa, avx512_core_amx, avx512_core_bf16, avx2_vnni_2,
-                            avx10_2, avx10_2_ace))
+                            avx10_2, avx10_2_ace, avx10_2_amx_2))
             && IMPLICATION(bm_conf_utils.is_f16(),
                     one_of(isa, avx10_2, avx10_2_amx_2, avx512_core_amx_fp16,
                             avx512_core_fp16, avx2_vnni_2))

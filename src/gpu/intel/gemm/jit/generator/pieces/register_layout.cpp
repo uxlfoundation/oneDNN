@@ -138,8 +138,69 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
         case AccessType::ChannelScattered:
         case AccessType::Scattered:
         {
-            if (T.is3())
-                stub("u3 is only supported with Block2DTranspose access.");
+            if (T.is3() && !prefetch) {
+                // u3 (3-bit) scattered access.
+                // Prefetch messages don't need precise per-element addressing/
+                // masking, so they unconditionally fall through to the default
+                // (generic) scattered-access path below instead of using this
+                // dedicated u3 layout.
+                //
+                // u3 packs 8 elements into exactly 3 bytes (no native register type).
+                // The LSC scattered message vector count (V-count) is one of
+                // {1,2,3,4,8,16,32,64}; combined with a D32 (4-byte) or D64 (8-byte)
+                // unit size, the per-lane transfer size is a multiple of 3 bytes
+                // (matching u3's 8-elements/3-bytes packing) only for V3:
+                //   D32 x V3 = 12 bytes/lane = 32 elements (4 groups of 8)
+                //   D64 x V3 = 24 bytes/lane = 64 elements (8 groups of 8)
+                // No other {D8,D16,D32,D64} x {valid V-count} combination gives a
+                // multiple of 3 bytes, so all other configurations must stub.
+                //
+                // This reuses the existing Block2DTranspose is3 addressing formula
+                // in find()/blockRegion() unmodified. That formula requires
+                // colMajor = true, with the c (column) dimension carrying whole
+                // groups-of-8 elements and the r (row) dimension mapping to SIMD
+                // lanes -- only realizable when the matrix's physically-contiguous
+                // dimension is c, i.e. a row-major layout. No remainder/masking
+                // support is implemented: the block must fit r/c exactly, else stub.
+                bool channelScattered = (accessType == AccessType::ChannelScattered);
+
+                if (channelScattered || atomic || !astrategy.newDP || isColMajor(atype.layout)
+                        || remainderR || remainderC)
+                    ; /* stub("u3 scattered access requires newDP, non-atomic, non-channel-scattered, "
+                         "row-major layout, and no remainder masking."); */
+
+                auto maxSIMD = maxScatteredSIMD(hw, astrategy);
+                auto minSIMD = minScatteredSIMD(hw, astrategy);
+
+                int simd = rounddown_pow2(std::min({r, maxRBlock, maxSIMD}));
+                if (simd < minSIMD) simd = std::min(maxSIMD, minSIMD);
+                if (simd <= 0 || r % simd)
+                    stub("u3 scattered access: row count does not fit an exact SIMD width.");
+
+                // Prefer the larger D64xV3 (64-element) group when it fits exactly;
+                // fall back to the smaller D32xV3 (32-element) group otherwise.
+                int ebytesChoice = 0, elemsPerLane = 0;
+                for (auto cand : {std::make_pair(8, 64), std::make_pair(4, 32)}) {
+                    int eb = cand.first, epl = cand.second;
+                    if (epl > maxCBlock || epl > c) continue;
+                    if (c % epl == 0) { ebytesChoice = eb; elemsPerLane = epl; break; }
+                }
+                if (ebytesChoice == 0)
+                    stub("u3 scattered access: no groups-of-8 message (D32xV3/D64xV3) exactly fits the column block.");
+
+                rblock = simd;
+                cblock = elemsPerLane;
+                colMajor = true;
+                ebytes = ebytesChoice;
+                crosspack = ebytesChoice;      // power-of-2 unit width (D32 = 4 / D64 = 8 bytes)
+                count = 3;                     // LSC vector count V3 -- the multiple-of-3-bytes vcount
+                simdSize = rblock;
+                ld = roundup_pow2(rblock);
+                extra = 1;                     // "consecutive" elements/address; u3 groups are addressed as 1 unit
+                addrShift = 0;
+
+                break;
+            }
 
             bool channelScattered = (accessType == AccessType::ChannelScattered);
 

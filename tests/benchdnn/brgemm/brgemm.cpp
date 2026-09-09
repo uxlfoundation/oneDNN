@@ -227,11 +227,12 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
 
     assert(mem_dt.nelems() == mem_fp.nelems());
 
-    if (has_bench_mode_bit(mode_bit_t::perf)) {
-        return fill_random_real(
-                mem_dt, mem_fp, res, get_perf_fill_cfg(mem_dt.dt()));
-    }
+    //    if (has_bench_mode_bit(mode_bit_t::perf)) {
+    //        return fill_random_real(
+    //                mem_dt, mem_fp, res, get_perf_fill_cfg(mem_dt.dt()));
+    //    }
 
+#if 1
     cfg_t::density_args_t density_args;
     density_args.data_kind = kind;
     density_args.n_acc = prb->k;
@@ -278,6 +279,41 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
                     idx, round_to_nearest_representable(cfg.get_dt(kind), val));
         }
     });
+#else
+    /* Do fixed partitioning to have same filling for any number of threads */
+    const int64_t chunk_size = 64;
+    const int64_t n_chunks = div_up(nelems, chunk_size);
+
+    benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
+        int64_t idx_start = idx_chunk * chunk_size;
+        int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
+        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+            float val = 0;
+            switch (kind) {
+                case SRC: {
+                    // A matrix is M*K
+                    const auto m = idx / prb->k;
+                    const auto k = idx % prb->k;
+                    (void)m; // MAYBE_UNUSED
+                    (void)k; // MAYBE_UNUSED
+                    val = (m + 1) * 10 + (k + 1);
+                } break;
+                case WEI: {
+                    // B matrix is K*N
+                    const auto n = idx % prb->n;
+                    const auto k = idx / prb->n;
+                    (void)n; // MAYBE_UNUSED
+                    (void)k; // MAYBE_UNUSED
+                    val = 1; //(n + 1) * 10 + (k + 1);
+                } break;
+                case BIA: val = 1; break;
+                case DST: val = 37; break;
+                default: val = 1; break;
+            }
+            mem_fp.set_elem(idx, val);
+        }
+    });
+#endif
 
     SAFE(mem_dt.reorder(mem_fp, res), WARN);
 

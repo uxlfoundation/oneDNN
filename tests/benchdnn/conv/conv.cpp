@@ -150,6 +150,7 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
     if (nelems == 0) return OK;
     if (fill_from_file(exec_arg, mem_dt, mem_fp, res)) return OK;
 
+#if 1
     // Refer to modes documentation for filling principles.
     if (has_bench_mode_bit(mode_bit_t::bitwise)) {
         return fill_random_real(mem_dt, mem_fp, res);
@@ -228,6 +229,55 @@ int fill_data(data_kind_t kind, int exec_arg, const prb_t *prb,
             mem_fp.set_f32_elem(
                     idx, round_to_nearest_representable(cfg.get_dt(kind), val));
         }
+#else
+    /* Do fixed partitioning to have same filling for any number of threads */
+    const int64_t chunk_size = 64;
+    const int64_t n_chunks = div_up(nelems, chunk_size);
+
+    benchdnn_parallel_nd(n_chunks, [&](int64_t idx_chunk) {
+        int64_t idx_start = idx_chunk * chunk_size;
+        int64_t idx_end = MIN2(idx_start + chunk_size, nelems);
+        for (int64_t idx = idx_start; idx < idx_end; ++idx) {
+            float val = 0;
+            switch (kind) {
+                case SRC: {
+                    // original data layout (for 2d): nchw ?
+                    const auto iw = idx % prb->iw;
+                    const auto ic = idx / prb->iw;
+                    (void)iw; // MAYBE_UNUSED
+                    (void)ic; // MAYBE_UNUSED
+
+                    val = 1; //(iw + 1) * 100 + (ic + 1);
+                } break;
+                case WEI: {
+                    // original data layout (for 2d): oihw ?
+                    const auto kw = idx % prb->kw;
+                    const auto kh = (idx / prb->kw) % prb->kh;
+                    const auto ic = (idx / (prb->kw * prb->kh)) % prb->ic;
+                    const auto oc = idx / (prb->kw * prb->kh * prb->ic);
+                    (void)kw; // MAYBE_UNUSED
+                    (void)kh; // MAYBE_UNUSED
+                    (void)ic; // MAYBE_UNUSED
+                    (void)oc; // MAYBE_UNUSED
+
+                    val = 1; //(oc + 1) * 10 + (kw + 1); //((idx % (prb->ic * prb->kw)) / prb->kw) / 16;
+                } break;
+                case BIA: val = 1; break;
+                case DST: {
+                    // original data layout (for 2d): nchw ?
+                    const auto ow = idx % prb->ow;
+                    const auto oc = idx / prb->ow;
+                    (void)ow; // MAYBE_UNUSED
+                    (void)oc; // MAYBE_UNUSED
+
+                    val = (ow + 1) * 100 + (oc + 1);
+                } break;
+                default: assert(!"unsupported data kind");
+            }
+
+            mem_fp.set_elem(idx, val);
+        }
+#endif
     });
 
     SAFE(mem_dt.reorder(mem_fp, res, cfg.get_swapped_dt(kind)), WARN);

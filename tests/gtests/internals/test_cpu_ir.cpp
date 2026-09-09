@@ -1039,6 +1039,56 @@ TEST(IntegrationTests, BroadcastScalesWholeVector) {
         EXPECT_FLOAT_EQ(output_data[index], input_data[index] * scales[1]);
 }
 
+TEST(IntegrationTests, NarrowBroadcastAndWideningLoads) {
+    if (!mayiuse(avx512_core)) GTEST_SKIP() << "Requires AVX-512";
+
+    struct narrow_args_t {
+        const uint16_t *input;
+        const uint16_t *scale;
+        float *output;
+    };
+
+    for (data_type_t mem_dt : {data_type::bf16, data_type::f16}) {
+        for (int elems : {1, 15, 16}) {
+            ir_t ir;
+            const vreg_t input_ptr = ir.new_gpr();
+            ir.load_param(input_ptr, offsetof(narrow_args_t, input));
+            const vreg_t scale_ptr = ir.new_gpr();
+            ir.load_param(scale_ptr, offsetof(narrow_args_t, scale));
+            const vreg_t output_ptr = ir.new_gpr();
+            ir.load_param(output_ptr, offsetof(narrow_args_t, output));
+            const vreg_t input = ir.new_vec(data_type::f32);
+            if (elems == 16) {
+                ir.vload(input, input_ptr, sizeof(uint16_t), mem_dt);
+            } else {
+                const vreg_t mask = ir.new_mask();
+                ir.set_mask_imm(mask, elems);
+                ir.vload_masked(
+                        input, input_ptr, sizeof(uint16_t), mask, mem_dt);
+            }
+            const vreg_t scale = ir.new_vec(data_type::f32);
+            ir.vload_bcast(scale, scale_ptr, sizeof(uint16_t), mem_dt);
+            ir.vmul(input, scale);
+            ir.vstore(output_ptr, 0, input, data_type::f32);
+
+            ir_kernel_t kernel(ir);
+            ASSERT_TRUE(kernel.run_ir_pipeline());
+            std::vector<uint16_t> input_data(17, 0x7bff);
+            for (int index = 1; index <= elems; index++)
+                input_data[index] = 0x4000;
+            const uint16_t scales[] = {0x4000, 0xc000};
+            std::vector<float> output_data(17, -12345.f);
+            narrow_args_t args {input_data.data(), scales, output_data.data()};
+            kernel.run(&args);
+            for (int index = 0; index < 16; index++)
+                EXPECT_FLOAT_EQ(output_data[index], index < elems ? -4.f : 0.f)
+                        << "datatype " << mem_dt << " tail " << elems
+                        << " element " << index;
+            EXPECT_FLOAT_EQ(output_data[16], -12345.f);
+        }
+    }
+}
+
 // Computes a dot product where one vector is multiplied by n vectors into
 // n independent accumulators, each of which is reduced and stored.
 ir_t build_shared_vector_dot_ir(int n) {

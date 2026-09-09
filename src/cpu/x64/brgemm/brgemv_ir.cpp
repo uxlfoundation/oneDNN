@@ -557,6 +557,8 @@ struct jit_brgemv_ir_kernel_t : public brgemm_kernel_t {
     jit_brgemv_ir_kernel_t(const brgemm_desc_t &abrg)
         : brgemm_kernel_t(jit_name(), abrg.isa_impl), brg_(abrg) {}
 
+    const void debug() const override { return; }
+
     void generate() override {
         // Build IR for non-transposed GEMV kernel
         ir::ir_t ir;

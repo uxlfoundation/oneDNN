@@ -732,6 +732,8 @@ status_t brgemm_kernel_create(
     CHECK(ker->create_kernel());
 
     *brg_kernel = ker.release();
+    brg.debug();
+    (*brg_kernel)->debug();
     return status::success;
 }
 
@@ -959,6 +961,129 @@ bool brgemm_desc_t::operator==(const brgemm_desc_t &rhs) const {
 
 bool brgemm_desc_t::operator<(const brgemm_desc_t &rhs) const {
     return (brgemm_cmp(*this, rhs) < 0);
+}
+
+DNNL_API void brgemm_desc_t::debug() const {
+#if 1 && defined(__linux__)
+    printf(">>>DEBUG: brgemm_t : bcast_dim = %ld load_dim = %ld reduce_dim = "
+           "%ld \n",
+            bcast_dim, load_dim, reduce_dim);
+    printf(">>>DEBUG: brgemm_t : LDA = %ld LDB = %ld LDC = %ld LDD = %ld\n",
+            LDA, LDB, LDC, LDD);
+    printf(">>>DEBUG: brgemm_t : isa_user = %d isa_impl = %d\n", isa_user,
+            isa_impl);
+    printf(">>>DEBUG: brgemm_t : alpha = %f beta = %f\n", alpha, beta);
+    printf(">>>DEBUG: brgemm_t : dt_a = %d dt_c = %d dt_b = %d dt_d = %d "
+           "dt_bias = %d\n",
+            dt_a, dt_c, dt_b, dt_d, dt_bias);
+    printf(">>>DEBUG: brgemm_t : stride_b = %ld\n", stride_b);
+    printf(">>>DEBUG: brgemm_t : layout = %d\n", layout);
+    printf(">>>DEBUG: brgemm_t : type = %d\n", type);
+    printf(">>>DEBUG: brgemm_t : with_sum = %d req_cal_comp_pads = %d "
+           "req_comp_pads_with_bcast = %d\n",
+            with_sum, req_cal_comp_pads, req_comp_pads_with_bcast);
+    printf(">>>DEBUG: brgemm_t : sum_scale = %f\n", sum_scale);
+    printf(">>>DEBUG: brgemm_t : sum_zp = %d\n", sum_zp);
+    printf(">>>DEBUG: brgemm_t : sum_dt = %d\n", sum_dt);
+    printf(">>>DEBUG: brgemm_t : with_eltwise = %d with_binary = %d "
+           "with_src_scales = %d with_wei_scales = %d\n",
+            with_eltwise, with_binary, with_src_scales, with_wei_scales);
+    printf(">>>DEBUG: brgemm_t : zp_type_a = %d zp_type_b = %d zp_type_c = "
+           "%d\n",
+            zp_type_a, zp_type_b, zp_type_c);
+    printf(">>>DEBUG: brgemm_t : is_per_n_wei_scales = %d\n",
+            is_per_n_wei_scales);
+    printf(">>>DEBUG: brgemm_t : with_dst_scales = %d\n", with_dst_scales);
+    // printf(">>>DEBUG: brgemm_t : brgattr = %\n" , brgattr);
+    printf(">>>DEBUG: brgemm_t : LDA2 = %ld LDB2 = %ld LDC2_M = %ld LDC2_N = "
+           "%ld\n",
+            LDA2, LDB2, LDC2_M, LDC2_N);
+    printf(">>>DEBUG: brgemm_t : is_blocked = %d\n", is_blocked);
+    printf(">>>DEBUG: brgemm_t : bdb = %ld bd_block = %d bdb_tail = %d bdb2 = "
+           "%ld bd_block2 = %d bdb2_tail = %d ldb = %ld ld_block = %d "
+           "ldb_tail = %d ldb2 = %ld ld_block2 = %d ldb2_tail = %d\n",
+            bdb, bd_block, bdb_tail, bdb2, bd_block2, bdb2_tail, ldb, ld_block,
+            ldb_tail, ldb2, ld_block2, ldb2_tail);
+    printf(">>>DEBUG: brgemm_t : rdb = %ld rd_block = %d rdb_tail = %d rd_step "
+           "= %d ld_step = %d typesize_A = %d typesize_B = %d typesize_C = %d "
+           "typesize_D = %d typesize_bias = %d\n",
+            rdb, rd_block, rdb_tail, rd_step, ld_step, typesize_A, typesize_B,
+            typesize_C, typesize_D, typesize_bias);
+    printf(">>>DEBUG: brgemm_t : is_ymm = %d is_zmm = %d is_tmm = %d is_int8 = "
+           "%d is_int8_tmm = %d "
+           "is_ace = %d "
+           "is_fp8 = %d "
+           "is_fp8_tmm = %d is_fp8 = %d is_fp8_tmm = %d is_bf16 = %d "
+           "is_bf16_tmm = %d "
+           "is_bf16_emu = %d is_f16 = %d is_f16_tmm = %d\n",
+            is_ymm, is_zmm, is_tmm, is_int8, is_int8_tmm, is_ace(), is_fp8,
+            is_fp8_tmm, is_fp8, is_fp8_tmm, is_bf16, is_bf16_tmm, is_bf16_emu,
+            is_f16, is_f16_tmm);
+    printf(">>>DEBUG: brgemm_t : is_f32 = %d is_bf32 = %d has_int8_vnni = %d "
+           "load_nt_A = %d load_nt_B = %d embd_bcst = %d with_bias = %d "
+           "req_s8s8_compensation = %d with_weights_scale_adjust = %d\n",
+            is_f32, is_bf32, has_int8_vnni, load_nt_A, load_nt_B, embd_bcst,
+            with_bias, req_s8s8_compensation, with_weights_scale_adjust);
+    printf(">>>DEBUG: brgemm_t : innermost_loop = %d\n", innermost_loop);
+    printf(">>>DEBUG: brgemm_t : is_M_tail = %d\n", is_M_tail);
+    printf(">>>DEBUG: brgemm_t : interleave_tilestores_ = %d\n",
+            interleave_tilestores_);
+    printf("DEBUG: brgemm:debug :  is_runtime_lda = %d is_runtime_ldb = %d "
+           "is_runtime_ldc = %d is_runtime_ldd = %d \n",
+            is_runtime_lda, is_runtime_ldb, is_runtime_ldc, is_runtime_ldd);
+// printf(">>>DEBUG: brgemm_t : prfA = % prfB = % prfC = %\n" , prfA, prfB, prfC);
+#if 1 && defined(__linux__)
+    printf(">>>DEBUG: brgemm_t.brgattr : max_bs = %ld max_top_vpad = %d "
+           "max_bottom_vpad = %d max_top_bpad = %d max_bottom_bpad = %d\n",
+            brgattr.max_bs, brgattr.max_top_vpad, brgattr.max_bottom_vpad,
+            brgattr.max_top_bpad, brgattr.max_bottom_bpad);
+    printf(">>>DEBUG: brgemm_t.brgattr : hint_expected_A_size = %ld "
+           "hint_expected_B_size = %ld hint_expected_C_size = %ld\n",
+            brgattr.hint_expected_A_size, brgattr.hint_expected_B_size,
+            brgattr.hint_expected_C_size);
+    printf(">>>DEBUG: brgemm_t.brgattr : hint_innermost_loop = %d\n",
+            brgattr.hint_innermost_loop);
+    printf(">>>DEBUG: brgemm_t.brgattr : hint_loop_order = %d\n",
+            brgattr.hint_loop_order);
+    printf(">>>DEBUG: brgemm_t.brgattr : hint_prefetching = %d\n",
+            brgattr.hint_prefetching);
+    // printf(">>>DEBUG: brgemm_t.brgattr : hint_prfA = % hint_prfB = % hint_prfC = %\n" , brgattr.hint_prfA, brgattr.hint_prfB, brgattr.hint_prfC);
+    printf(">>>DEBUG: brgemm_t.brgattr : wary_A_k_tail_read = %d "
+           "generate_skip_accumulation = %d\n",
+            brgattr.wary_A_k_tail_read, brgattr.generate_skip_accumulation);
+    printf(">>>DEBUG: brgemm_t.brgattr : bd_mask_level = %d\n",
+            brgattr.bd_mask_level);
+    printf(">>>DEBUG: brgemm_t.brgattr : use_uker = %d use_interleave_stores = "
+           "%d\n",
+            brgattr.use_uker, brgattr.use_interleave_stores);
+    printf(">>>DEBUG: brgemm_t.brgattr : fpmath_mode = %d\n",
+            brgattr.fpmath_mode);
+    printf(">>>DEBUG: brgemm_t.brgattr : LDA2 = %ld LDB2 = %ld LDC2_M = %ld "
+           "LDC2_N = %ld\n",
+            brgattr.LDA2, brgattr.LDB2, brgattr.LDC2_M, brgattr.LDC2_N);
+    printf(">>>DEBUG: brgemm_t.brgattr : var_bs = %d postops_only = %d\n",
+            brgattr.var_bs, brgattr.postops_only);
+    printf(">>>DEBUG: brgemm_t.brgattr : hint_bs_group = %d bs_group = %d "
+           "hint_bd_block = %d "
+           "hint_ld_block = %d hint_bd_block2 = %d hint_ld_block2 = %d\n",
+            brgattr.hint_bs_group, bs_group, brgattr.hint_bd_block,
+            brgattr.hint_ld_block, brgattr.hint_bd_block2,
+            brgattr.hint_ld_block2);
+    printf(">>>DEBUG: brgemm_t.brgattr : hint_ununroll_bd_loop = %d\n",
+            brgattr.hint_ununroll_bd_loop);
+    printf(">>>DEBUG: brgemm_t.brgattr : hint_load_nt_A = %d hint_load_nt_B = "
+           "%d\n",
+            brgattr.hint_load_nt_A, brgattr.hint_load_nt_B);
+    printf(">>>DEBUG: brgemm_t.brgattr : K_koef = %f\n", brgattr.K_koef);
+    printf(">>>DEBUG: brgemm_t.brgattr : test_call = %d\n", brgattr.test_call);
+    printf(">>>DEBUG: brgemm_t.brgattr : use_ace = %d\n", brgattr.use_ace);
+    printf(">>>DEBUG: brgemm_t : is_dgmm (brdgmm) = %d\n", is_dgmm);
+    printf(">>>DEBUG: brgemm_t : real_uker = %d\n", can_dispatch_uker());
+// printf(">>>DEBUG: brgemm_t.brgattr : bd_mask = %\n" , brgattr.bd_mask);
+// printf(">>>DEBUG: brgemm_t.brgattr : static_offsets = %\n" , brgattr.static_offsets);
+#endif
+
+#endif
 }
 
 } // namespace x64

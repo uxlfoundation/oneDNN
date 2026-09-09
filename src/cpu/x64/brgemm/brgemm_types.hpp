@@ -766,6 +766,8 @@ struct brgemm_desc_t {
     bool operator==(const brgemm_desc_t &rhs) const;
     bool operator<(const brgemm_desc_t &rhs) const;
 
+    DNNL_API void debug() const; //!!!????
+
 private:
     primitive_attr_t *attr_ {nullptr};
     memory_desc_t *dst_md_ {nullptr};
@@ -849,6 +851,9 @@ struct brgemm_kernel_t : public jit_generator_t {
     void operator()(const brgemm_kernel_params_t *params) const {
         jit_generator_t::operator()(params);
     }
+
+    // Diagnostic hook; overridden by kernels that print internal state.
+    virtual const void debug() const {}
 };
 
 /// @param bias Vector of bias (vector length is N)

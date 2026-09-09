@@ -154,6 +154,8 @@ struct jit_brdgmm_kernel_t : public brgemm_kernel_t {
         return vmm_alloc.get_compute_vmm_count();
     }
 
+    const void debug() const override { return; }
+
 private:
     // note: this kernel doesn't yet support TMM's. We differentiate Wmm and Vmm
     // just to follow same template style as brgemm_kernel.

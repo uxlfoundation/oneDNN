@@ -28,6 +28,8 @@
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_avx512_core_fp8cvt.hpp"
 
+#include "cpu/my_utils.hpp"
+
 #define GET_OFF(field) offsetof(brgemm_kernel_params_t, field)
 #define GET_OFF_BATCH_ELEMENT(field) offsetof(brgemm_batch_element_t, field)
 
@@ -141,6 +143,18 @@ struct jit_brgemm_amx_uker_t : public brgemm_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_amx_uker_t)
 
     brgemm_desc_t brg;
+
+    const void debug() const override {
+        printf("brgemm_amx_uker_base_t::init: ununroll_bd_loop=%d\n",
+                ununroll_bd_loop);
+        printf("DEBUG: brgemm_kernel_size: %ld, %ld, %ld, %ld \n",
+                brg.bcast_dim, brg.load_dim, brg.reduce_dim, getSize());
+        printf("DEBUG: brg.save_transform_A() = %d brg.save_transform_B() = %d "
+               "\n",
+                brg.save_transform_A(), brg.save_transform_B());
+
+        return;
+    }
 
 private:
     using po_injector_t = injector::jit_uni_postops_injector_t<Zmm>;
@@ -2732,6 +2746,7 @@ void jit_brgemm_amx_uker_t::ace_load_A(
     };
 
     if (brg.save_transform_A() && bi.ldi->idx > 0) {
+        //        printf("ace_load_A: reuse transformed data for bdb=%d ldi=%ld (ace_reserved_buf_size = %d, get_wsp_buffer_size = %d)\n", bdb, bi.ldi->idx, brg.ace_reserved_buf_size(), brg.get_wsp_buffer_size());
 
         vmovups(a_zmm1, transf_addr(0));
         vmovups(a_zmm2, transf_addr(1));
@@ -2784,6 +2799,7 @@ void jit_brgemm_amx_uker_t::ace_load_A(
     vpunpckhqdq(a_zmm4, tmp_zmm2, tmp_zmm4);
 
     if (brg.save_transform_A() && bi.ldi->idx == 0) {
+        //        printf("DEBUG: saving transformed A\n");
 
         vmovups(transf_addr(0), a_zmm1);
         vmovups(transf_addr(1), a_zmm2);
@@ -2881,6 +2897,9 @@ void jit_brgemm_amx_uker_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
         }
 
         for (int bdb = 0; bdb < bi.bdi->block2(); bdb++) {
+#ifndef NDEBUG
+            if (my_utils::is_debugged()) int3(); //!!!!!!!!!!!!!!
+#endif
             ace_load_A(bi, bdb, A_offset(bi, bdb));
             for (int ldb = 0; ldb < bi.ldi->block2(); ldb++) {
                 const auto &accm = Tmm(get_C_tensor(bi, bdb, ldb));
@@ -2888,6 +2907,9 @@ void jit_brgemm_amx_uker_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
                     outer_product(
                             ace_zmm_A(bdb, rds), ace_zmm_B(ldb, rds), accm);
             }
+#ifndef NDEBUG
+            if (my_utils::is_debugged()) int3(); //!!!!!!!!!!!!!!
+#endif
         }
     }
 }
@@ -3482,6 +3504,9 @@ void jit_brgemm_amx_uker_t::init(brgemm_iteration_t &bi) {
 
 void jit_brgemm_amx_uker_t::generate() {
     preamble();
+#ifndef NDEBUG
+    if (my_utils::is_debugged()) int3(); //!!!!!!!!!!!!!!
+#endif
 
     sub(rsp, regscratchpad_.Size());
 

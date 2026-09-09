@@ -144,6 +144,8 @@ struct jit_brgemm_kernel_t : public brgemm_kernel_t {
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_t)
 
+    const void debug() const override { return; }
+
 private:
     brgemm_desc_t brg;
 

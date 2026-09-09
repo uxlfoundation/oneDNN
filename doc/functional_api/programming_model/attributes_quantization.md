@@ -101,10 +101,17 @@ following the [OCP MX Formats Specification][mx-spec], namely \f$scale_{x}\f$:
   \f$E8M0(amax(x_{quant}[:])) / E8M0(MAX\_QUANT\_DT)\f$.
 
 When using `quantization_mode::dynamic_fp`, \f$scale_{x}\f$ is computed in
-`f32` first and then converted to a scale datatype, namely \f$scale_{x}\f$:
-- has `f8_e4m3` datatype,
-- is computed for each group of size `16`,
-- is computed as \f$SCALE\_DT(amax(x_{quant}[:]) / MAX\_QUANT\_DT)\f$.
+`f32` first and then converted to the configured scale datatype. The exact
+destination datatype and supported grouping are primitive-specific:
+- NVFP4 matmul uses `f8_e4m3` scales, groups of size `16`, and
+  \f$SCALE\_DT(amax(x_{quant}[:]) / MAX\_QUANT\_DT)\f$;
+- the `reduction_dynamic_quantize` algorithm uses `f32` output scales with
+  `scale = amax / 127` and an `s8` destination. It supports per-tensor,
+  per-row, per-column, grouped-row, and grouped-column quantization. An empty
+  destination memory descriptor selects compute-only mode and returns only the
+  scales.
+
+Dynamic scales are execution outputs.
 
 ## General Numerical Behavior Notes
 

@@ -543,8 +543,9 @@ dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_v2(
 ///     NULL when @p ndims is 0.
 /// @param data_type Scaling factors data_type.
 /// @param is_on_host Indicates whether the scale is a host-side scalar.
-/// @param qmode Quantization mode, can be #dnnl_quantization_mode_static_sazp
-///     or #dnnl_quantization_mode_dynamic_mx
+/// @param qmode Quantization mode, can be #dnnl_quantization_mode_static_sazp,
+///     #dnnl_quantization_mode_dynamic_mx, or
+///     #dnnl_quantization_mode_dynamic_fp.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_primitive_attr_set_scales_v3(
@@ -3849,13 +3850,21 @@ dnnl_status_t DNNL_API dnnl_resampling_backward_primitive_desc_create(
 ///     #dnnl_reduction_max, #dnnl_reduction_min, #dnnl_reduction_sum,
 ///     #dnnl_reduction_mul, #dnnl_reduction_mean, #dnnl_reduction_norm_lp_max,
 ///     #dnnl_reduction_norm_lp_sum, #dnnl_reduction_norm_lp_power_p_max,
-///     #dnnl_reduction_norm_lp_power_p_sum.
+///     #dnnl_reduction_norm_lp_power_p_sum, or
+///     #dnnl_reduction_dynamic_quantize.
 /// @param p Algorithm specific parameter. For Lp-norm algorithms, must be a
-///     finite value >= 1.0.
-/// @param eps Algorithm specific parameter.
+///     finite value >= 1.0. Must be zero for
+///     #dnnl_reduction_dynamic_quantize.
+/// @param eps Algorithm specific parameter. Must be zero for
+///     #dnnl_reduction_dynamic_quantize.
 /// @param src_desc Source memory descriptor.
-/// @param dst_desc Destination memory descriptor.
-/// @param attr Primitive attributes (can be NULL).
+/// @param dst_desc Destination memory descriptor. For
+///     #dnnl_reduction_dynamic_quantize, the descriptor has the same dimensions
+///     as @p src_desc, or may be NULL for compute-only mode.
+/// @param attr Primitive attributes (can be NULL). For
+///     #dnnl_reduction_dynamic_quantize, dynamic `f32` destination scales are
+///     required and are execution outputs computed as `amax / 127`; the
+///     full-mode destination data type is `s8`.
 /// @returns #dnnl_success on success and a status describing the error
 ///     otherwise.
 dnnl_status_t DNNL_API dnnl_reduction_primitive_desc_create(

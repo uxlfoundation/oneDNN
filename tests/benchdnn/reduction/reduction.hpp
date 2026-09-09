@@ -39,6 +39,7 @@ enum alg_t {
     norm_lp_sum,
     norm_lp_power_p_max,
     norm_lp_power_p_sum,
+    dynamic_quantize,
     reduction_min = min,
     reduction_max = max,
     reduction_mul = mul,
@@ -48,6 +49,7 @@ enum alg_t {
     reduction_norm_lp_sum = norm_lp_sum,
     reduction_norm_lp_power_p_max = norm_lp_power_p_max,
     reduction_norm_lp_power_p_sum = norm_lp_power_p_sum,
+    reduction_dynamic_quantize = dynamic_quantize,
 };
 
 alg_t str2alg(const char *str);

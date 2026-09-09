@@ -335,7 +335,9 @@ enum class quantization_mode {
     dynamic_mx = dnnl_quantization_mode_dynamic_mx,
     /// dynamic quantization mode where quantization parameter is computed by
     /// oneDNN as \f$scale\_dt(amax(X) / max(dst\_dt))\f$ in `f32` then
-    /// converted to a scale type and written as an output.
+    /// converted to a scale type and written as an output. For
+    /// #algorithm::reduction_dynamic_quantize, the `f32` output scale is
+    /// \f$amax(X) / 127\f$ and the destination data type is `s8`.
     dynamic_fp = dnnl_quantization_mode_dynamic_fp,
 };
 
@@ -524,6 +526,9 @@ enum class algorithm {
     reduction_norm_lp_power_p_max = dnnl_reduction_norm_lp_power_p_max,
     /// Reduction using norm_lp_power_p_sum operation
     reduction_norm_lp_power_p_sum = dnnl_reduction_norm_lp_power_p_sum,
+    /// Fused symmetric dynamic quantization with an `s8` destination and
+    /// `f32` scale output.
+    reduction_dynamic_quantize = dnnl_reduction_dynamic_quantize,
     /// Softmax, numerically stable
     softmax_accurate = dnnl_softmax_accurate,
     /// LogSoftmax, numerically stable
@@ -4368,8 +4373,9 @@ struct primitive_attr : public handle<dnnl_primitive_attr_t> {
     ///     Use `1` for no sub-blocking. `{}` indicates no grouping.
     /// @param data_type Scaling factors data_type.
     /// @param is_on_host Indicates whether the scaling factor is a host-side scalar.
-    /// @param qmode Quantization mode, can be #quantization_mode::static_sazp
-    ///     or #quantization_mode::dynamic_mx
+    /// @param qmode Quantization mode, can be #quantization_mode::static_sazp,
+    ///     #quantization_mode::dynamic_mx, or
+    ///     #quantization_mode::dynamic_fp.
     void set_scales(int arg, int mask, const memory::dims &groups,
             memory::data_type data_type = memory::data_type::f32,
             bool is_on_host = false,
@@ -13969,7 +13975,8 @@ struct prelu_backward : public primitive {
 /// @addtogroup dnnl_api_cpp_reduction Reduction
 ///
 /// A primitive to compute reduction operation on data tensor
-/// using min, max, mul, sum, mean and norm_lp operations.
+/// using min, max, mul, sum, mean, norm_lp, and fused dynamic quantization
+/// operations.
 ///
 /// @sa @ref dev_guide_reduction in developer guide
 ///
@@ -13996,14 +14003,22 @@ struct reduction : public primitive {
         ///     #dnnl_reduction_mul, #dnnl_reduction_mean,
         ///     #dnnl_reduction_norm_lp_max, #dnnl_reduction_norm_lp_sum,
         ///     #dnnl_reduction_norm_lp_power_p_max,
-        ///     #dnnl_reduction_norm_lp_power_p_sum.
+        ///     #dnnl_reduction_norm_lp_power_p_sum, or
+        ///     #dnnl_reduction_dynamic_quantize.
         /// @param p algorithm specific parameter. For Lp-norm algorithms,
-        ///     must be a finite value >= 1.0.
-        /// @param eps algorithm specific parameter.
+        ///     must be a finite value >= 1.0. Must be zero for
+        ///     #dnnl_reduction_dynamic_quantize.
+        /// @param eps algorithm specific parameter. Must be zero for
+        ///     #dnnl_reduction_dynamic_quantize.
         /// @param src_desc Source memory descriptor.
-        /// @param dst_desc Destination memory descriptor.
+        /// @param dst_desc Destination memory descriptor. For
+        ///     #dnnl_reduction_dynamic_quantize, it has the same dimensions as
+        ///     @p src_desc, or is empty for compute-only mode.
         /// @param attr Primitive attributes to use. Attributes are optional
-        ///     and default to empty attributes.
+        ///     and default to empty attributes for regular reductions. For
+        ///     #dnnl_reduction_dynamic_quantize, dynamic `f32` destination
+        ///     scales are required and are outputs computed as `amax / 127`;
+        ///     the full-mode destination data type is `s8`.
         /// @param allow_empty A flag signifying whether construction is
         ///     allowed to fail without throwing an exception. In this case an
         ///     empty object will be produced. This flag is optional and

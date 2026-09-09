@@ -17,3 +17,6 @@
 
 --sdt=u8 --ddt=u8,s32,f32
 --batch=option_set_all_algs_int8_ci
+
+--reset
+--batch=test_reduction_dynamic_quantize_ci

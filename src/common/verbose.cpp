@@ -1389,7 +1389,10 @@ std::string init_info_reduction(const engine_t *e, const pd_t *pd) {
 
     ss << md2fmt_str("src", src_md, pd->invariant_src_user_format_kind())
        << " ";
-    ss << md2fmt_str("dst", dst_md, pd->invariant_dst_user_format_kind());
+    if (!pd->is_compute_only())
+        ss << md2fmt_str("dst", dst_md, pd->invariant_dst_user_format_kind());
+    if (pd->is_dynamic_quantize())
+        ss << " " << md2fmt_str("scale", pd->scale_md(), format_kind::undef);
 
     ss << "," << pd->attr() << ",";
     ss << "alg:" << pd->desc()->alg_kind << " p:" << pd->desc()->p

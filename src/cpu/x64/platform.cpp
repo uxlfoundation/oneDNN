@@ -17,6 +17,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
+#include "common/nstl.hpp"
 #include "common/verbose.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/platform.hpp"
@@ -254,6 +256,101 @@ hybrid_core_cache_sizes_t &get_hybrid_core_cache_sizes() {
     return result;
 }
 
+#if defined(__linux__)
+// Number of logical CPUs listed in a sysfs cpu list such as "0-1" or "0,192".
+unsigned count_sysfs_cpu_list(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char buf[1024] = {};
+    const bool ok = fgets(buf, sizeof(buf), f) != nullptr;
+    fclose(f);
+    if (!ok) return 0;
+
+    unsigned count = 0;
+    const char *p = buf;
+    while (*p) {
+        char *end = nullptr;
+        const long lo = strtol(p, &end, 10);
+        if (end == p) break;
+        long hi = lo;
+        if (*end == '-') {
+            p = end + 1;
+            hi = strtol(p, &end, 10);
+            if (end == p) break;
+        }
+        if (hi >= lo) count += (unsigned)(hi - lo + 1);
+        p = (*end == ',') ? end + 1 : end;
+    }
+    return count;
+}
+
+// Actual number of physical cores sharing the cache at `level` (1-based), as
+// enumerated by the kernel. Returns 0 when the information is unavailable.
+unsigned get_sysfs_cores_sharing_cache(int level) {
+    char path[128];
+    // SMT width: L1d is private to a physical core, so the number of logical
+    // CPUs sharing it is the number of hardware threads per core.
+    unsigned smt = 0, logical = 0;
+
+    for (int idx = 0; idx < 8; idx++) {
+        snprintf(path, sizeof(path),
+                "/sys/devices/system/cpu/cpu0/cache/index%d/level", idx);
+        FILE *f = fopen(path, "r");
+        if (!f) break;
+        int lvl = 0;
+        const bool got_level = fscanf(f, "%d", &lvl) == 1;
+        fclose(f);
+        if (!got_level) continue;
+
+        snprintf(path, sizeof(path),
+                "/sys/devices/system/cpu/cpu0/cache/index%d/type", idx);
+        f = fopen(path, "r");
+        if (!f) continue;
+        char type[32] = {};
+        const bool got_type = fgets(type, sizeof(type), f) != nullptr;
+        fclose(f);
+        // Skip instruction caches; data and unified caches both count.
+        if (!got_type || type[0] == 'I') continue;
+
+        snprintf(path, sizeof(path),
+                "/sys/devices/system/cpu/cpu0/cache/index%d/shared_cpu_list",
+                idx);
+        const unsigned shared = count_sysfs_cpu_list(path);
+        if (shared == 0) continue;
+
+        if (lvl == 1) smt = shared;
+        if (lvl == level) logical = shared;
+    }
+
+    if (logical == 0 || smt == 0) return 0;
+    // shared_cpu_list counts logical CPUs; convert to physical cores.
+    return nstl::max(1u, logical / smt);
+}
+#endif
+
+// Number of physical cores sharing the data/unified cache at 0-based index `l`.
+//
+// CPUID leaf 4 EAX[25:14] reports the *maximum addressable* number of logical
+// processors sharing a cache, rounded up to a power of two. It is
+// architecturally allowed to exceed the real sharing count, and on some parts
+// it does: a DMR part reports 8 for an L2 that is physically shared by 2 cores,
+// which makes the per-core L2 budget come out 4x too small and shrinks every
+// cache-driven blocking decision. The kernel-enumerated topology in sysfs is
+// exact, so prefer it whenever it is available and fall back to CPUID otherwise.
+unsigned cores_sharing_cache(unsigned l) {
+#if defined(__linux__)
+    if (l < 3) {
+        static const unsigned sysfs_sharing[3]
+                = {get_sysfs_cores_sharing_cache(1),
+                        get_sysfs_cores_sharing_cache(2),
+                        get_sysfs_cores_sharing_cache(3)};
+        if (sysfs_sharing[l] > 0) return sysfs_sharing[l];
+    }
+#endif
+    const unsigned sharing = cpu().getCoresSharingDataCache(l);
+    return sharing > 0 ? sharing : 1;
+}
+
 // Print per-core cache sizes once (CPUID path, no CpuTopology init).
 // Format mirrors the hybrid path: shared levels show total, sharing count, and
 // per-core budget; private levels show just the total. smt field is appended.
@@ -273,7 +370,7 @@ void print_cache_debuginfo_once() {
             "cpu,debuginfo,platform,cache");
     for (unsigned li = 0; li < nlevels && li < 3; li++) {
         uint32_t total_kb = cpu().getDataCacheSize(li) / 1024;
-        uint32_t sharing = cpu().getCoresSharingDataCache(li);
+        uint32_t sharing = cores_sharing_cache(li);
         if (sharing == 0) sharing = 1;
         uint32_t per_core_kb = total_kb / sharing;
         const char *label = (li == 0) ? "L1d" : (li == 1) ? "L2" : "L3";
@@ -320,7 +417,7 @@ bool is_hybrid() {
 unsigned get_per_core_cache_size_cpuid(int level) {
     if (level > 0 && (unsigned)level <= cpu().getDataCacheLevels()) {
         unsigned l = level - 1;
-        return cpu().getDataCacheSize(l) / cpu().getCoresSharingDataCache(l);
+        return cpu().getDataCacheSize(l) / cores_sharing_cache(l);
     }
     return 0;
 }

@@ -238,12 +238,14 @@ changes the implementation dispatching which is an undesired behavior. When
 `BOOL` is `false` (the default), the check is disabled.
 
 ### --check-ref-impl
-`--check-ref-impl=BOOL` instructs the driver to compare the implementation name
-string against the `ref` string pattern. When `BOOL` is set to `true`, the check
-returns an error if the name matches the reference pattern. By default, the
-check is disabled. It's useful to catch unexpected fallbacks to slow reference
-implementations from a big batch of problems. This option is always disabled on
-NVIDIA, AMD, and Generic vendors.
+`--check-ref-impl=STR` instructs the driver to compare the implementation name
+string against the `ref` string pattern. When the setting is enabled, the check
+returns an error if the name matches the reference pattern. `STR` specifies
+which runtime is affected by the setting. If `STR` is a boolean value `true/1`,
+both CPU and GPU runtimes are affected. Other possible values include `cpu`,
+`gpu` and `false/0`. By default, the check is disabled. It's useful to catch
+unexpected fallbacks to slow reference implementations from a big batch of
+problems. This option is always disabled on NVIDIA, AMD, and Generic vendors.
 
 ### --fast-ref
 `--fast-ref=BOOL` instructs the driver to use an optimized implementation

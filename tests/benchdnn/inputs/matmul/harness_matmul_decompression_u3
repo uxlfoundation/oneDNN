@@ -133,10 +133,16 @@
 --attr-fpmath=f16:true
 64x512:512x2048
 
-# OV Dynamic-quantization path src:s8 by wei:u3 to f16
---reset
---dt=s8:u3:f16
---wtag=ba
---attr-scales=src:per_tensor:f16:1x128+wei:per_ocic:f16:128x1
---attr-zero-points=wei:common:1:s8
-16x4096:4096x1024
+# s8:u3 dynamic-quantization path from the OpenVINO u4 GPU workload
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=abc --wtag=cab --dtag=abc --attr-scales=src:7:f16:1x64+wei:7:f16:64x1 --attr-zero-points=wei:7:u8:64x1 --attr-precomputed-reductions=src:7:s32:1x64 1024x1x2048:1x2048x4096
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=abc --wtag=cab --dtag=abc --attr-post-ops=eltwise_logistic --attr-scales=src:7:f16:1x64+wei:7:f16:64x1 --attr-zero-points=wei:7:u8:64x1 --attr-precomputed-reductions=src:7:s32:1x64 1024x1x2048:1x2048x32
+--reset --allow-enum-tags-only=0 --bia_mask=4 --dt=s8:u3:f16 --bia-dt=f16 --stag=abc --wtag=cab --dtag=abc --attr-scales=src:7:f16:1x64+wei:7:f16:64x1 --attr-zero-points=wei:7:u8:64x1 --attr-precomputed-reductions=src:7:s32:1x64 1024x1x2048:1x2048x32
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=abc --wtag=cab --dtag=abc --attr-scales=src:7:f16:1x64+wei:7:f16:64x1 --attr-zero-points=wei:7:u8:64x1 --attr-precomputed-reductions=src:7:s32:1x64 1024x1x2048:1x2048x8192
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=abc --wtag=cab --dtag=abc --attr-post-ops=binary_add:f16:6:abc --attr-scales=src:7:f16:1x64+wei:7:f16:64x1 --attr-zero-points=wei:7:u8:64x1 --attr-precomputed-reductions=src:7:s32:1x64 1x1024x4096:1x4096x2048
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=ab --wtag=ba --dtag=ab --attr-post-ops=eltwise_logistic --attr-scales=src:3:f16:1x64+wei:3:f16:64x1 --attr-zero-points=wei:3:u8:64x1 --attr-precomputed-reductions=src:3:s32:1x64 1024x2048:2048x1
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=ab --wtag=ba --dtag=ab --attr-scales=src:3:f16:1x64+wei:3:f16:64x1 --attr-zero-points=wei:3:u8:64x1 --attr-precomputed-reductions=src:3:s32:1x64 1024x2048:2048x512
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=ab --wtag=ba --dtag=ab --attr-post-ops=eltwise_swish:1.0+binary_mul:f16:3:ab --attr-scales=src:3:f16:1x64+wei:3:f16:64x1 --attr-zero-points=wei:3:u8:64x1 --attr-precomputed-reductions=src:3:s32:1x64 1024x2048:2048x512
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=ab --wtag=ba --dtag=ab --attr-scales=src:3:f16:1x64+wei:3:f16:64x1 --attr-zero-points=wei:3:u8:64x1 --attr-precomputed-reductions=src:3:s32:1x64 1024x2048:2048x256
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=ab --wtag=ba --dtag=ab --attr-post-ops=binary_mul:f16:1 --attr-scales=src:3:f16:1x64+wei:3:f16:64x1 --attr-zero-points=wei:3:u8:64x1 --attr-precomputed-reductions=src:3:s32:1x64 1024x512:512x2048
+--reset --allow-enum-tags-only=0 --dt=s8:u3:f16 --stag=abc --wtag=cab --dtag=abc --attr-scales=src:7:f16:1x64+wei:7:f16:64x1 --attr-zero-points=wei:7:u8:64x1 --attr-precomputed-reductions=src:7:s32:1x64 1024x1x2048:1x2048x9216
+--reset --dt=s8:u3:f16 --wtag=ba --attr-scales=src:per_tensor:f16:1x128+wei:per_ocic:f16:128x1 --attr-zero-points=wei:common:1:s8 16x4096:4096x1024

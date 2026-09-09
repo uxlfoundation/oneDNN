@@ -2271,6 +2271,20 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             const status_t st = cur_brgb.get_brgemm_ur(&attr, dst_md);
             if (st != status::success) continue;
             cur_brgb.eff = cur_brgb.est_eff();
+#ifdef MY_DEBUG
+            {
+                int blk_print = 0;
+                get_env_value("MKLDNN_BLK_PRINT", blk_print);
+                if (blk_print)
+                    printf("DEBUG: blkcand oc_block=%d ic_block=%d "
+                           "nb_ic_blocking=%d ow_block=%d sp_block=%d "
+                           "eff=%f\n",
+                            (int)cur_brgb.oc_block, (int)cur_brgb.ic_block,
+                            (int)cur_brgb.nb_ic_blocking,
+                            (int)cur_brgb.ow_block, (int)cur_brgb.sp_block,
+                            cur_brgb.eff);
+            }
+#endif
             // Candidates are evaluated from the largest oc_block down to
             // the smallest (start_ocb downto 1), so a smaller-oc_block
             // candidate only replaces the current best if it is clearly
@@ -2294,6 +2308,18 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             return false;
         best_brgb.save_to_jcp(jcp);
         selected_ur = best_brgb.ur;
+#ifdef MY_DEBUG
+        {
+            int blk_print = 0;
+            get_env_value("MKLDNN_BLK_PRINT", blk_print);
+            if (blk_print)
+                printf("DEBUG: blkchosen oc_block=%d ic_block=%d "
+                       "nb_ic_blocking=%d ow_block=%d sp_block=%d eff=%f\n",
+                        (int)best_brgb.oc_block, (int)best_brgb.ic_block,
+                        (int)best_brgb.nb_ic_blocking, (int)best_brgb.ow_block,
+                        (int)best_brgb.sp_block, best_brgb.eff);
+        }
+#endif
         return true;
     };
 

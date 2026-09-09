@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include "common/nstl.hpp"
 #include "common/verbose.hpp"
+#include "cpu/my_utils.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/platform.hpp"
 #include "xbyak/xbyak_util.h"
@@ -339,7 +340,14 @@ unsigned get_sysfs_cores_sharing_cache(int level) {
 // exact, so prefer it whenever it is available and fall back to CPUID otherwise.
 unsigned cores_sharing_cache(unsigned l) {
 #if defined(__linux__)
-    if (l < 3) {
+    // Debug override: MKLDNN_NO_SYSFS_CACHE=1 falls back to the raw CPUID
+    // sharing count, i.e. reproduces the pre-fix per-core cache budget.
+    static const bool no_sysfs = [] {
+        int v = 0;
+        my_utils::get_env_value("MKLDNN_NO_SYSFS_CACHE", v);
+        return v != 0;
+    }();
+    if (l < 3 && !no_sysfs) {
         static const unsigned sysfs_sharing[3]
                 = {get_sysfs_cores_sharing_cache(1),
                         get_sysfs_cores_sharing_cache(2),
@@ -424,6 +432,26 @@ unsigned get_per_core_cache_size_cpuid(int level) {
 
 unsigned get_per_core_cache_size(int level) {
     if (level < 1 || level > 3) { return 0; }
+
+    // Debug override: MKLDNN_L1_KB / MKLDNN_L2_KB / MKLDNN_L3_KB force the
+    // reported per-core cache size (in KB) to study blocking sensitivity.
+    {
+        static const int forced_kb[3] = {[] {
+            int v = 0;
+            my_utils::get_env_value("MKLDNN_L1_KB", v);
+            return v;
+        }(), [] {
+            int v = 0;
+            my_utils::get_env_value("MKLDNN_L2_KB", v);
+            return v;
+        }(), [] {
+            int v = 0;
+            my_utils::get_env_value("MKLDNN_L3_KB", v);
+            return v;
+        }()};
+        if (forced_kb[level - 1] > 0)
+            return (unsigned)forced_kb[level - 1] * 1024;
+    }
 
 #ifdef __APPLE__
     return get_per_core_cache_size_cpuid(level);

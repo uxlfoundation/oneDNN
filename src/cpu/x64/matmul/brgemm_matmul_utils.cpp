@@ -1040,6 +1040,13 @@ struct matmul_avx512_blocking_params_t {
         bgmmc.nthr_k = nthr_k;
 
         bgmmc.use_buffer_c = is_buffer_c_required(bgmmc);
+        // Debug override: MKLDNN_BUF_C = 0/1 forces use_buffer_c to study the
+        // impact of the direct-to-dst store path.
+        {
+            int forced_buf_c = -1;
+            my_utils::get_env_value("MKLDNN_BUF_C", forced_buf_c);
+            if (forced_buf_c >= 0) bgmmc.use_buffer_c = forced_buf_c != 0;
+        }
 
         if (!bgmmc.is_gemv) {
             bgmmc.LDA = bgmmc.adjust_a_strides || bgmmc.use_buffer_a

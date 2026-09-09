@@ -528,6 +528,30 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
             brgattr.hint_prfA.sprinkled = bgmmc_.need_prefetch_a && prefetching;
             brgattr.hint_prfB.sprinkled = bgmmc_.need_prefetch_b && prefetching;
             brgattr.hint_fused_copy_a = bgmmc_.use_fused_copy_a;
+#ifdef MY_DEBUG
+            {
+                using namespace dnnl::impl::cpu::my_utils;
+                // Research overrides to bisect the AMX uker behaviour:
+                //   MKLDNN_ILV = 0/1 -> use_interleave_stores
+                //   MKLDNN_PRF = bitmask, default 7:
+                //     bit0 -> keep hint_prefetching = prf0 (prefetchw on C)
+                //     bit1 -> keep hint_prfA.sprinkled
+                //     bit2 -> keep hint_prfB.sprinkled
+                int ilv = -1;
+                get_env_value("MKLDNN_ILV", ilv);
+                if (ilv >= 0) brgattr.use_interleave_stores = ilv != 0;
+
+                int prf = -1;
+                get_env_value("MKLDNN_PRF", prf);
+                if (prf >= 0) {
+                    if (!(prf & 1))
+                        brgattr.hint_prefetching = brgemm_kernel_prefetching_t::
+                                brgemm_prf_default;
+                    if (!(prf & 2)) brgattr.hint_prfA.sprinkled = false;
+                    if (!(prf & 4)) brgattr.hint_prfB.sprinkled = false;
+                }
+            }
+#endif
 
             if (bgmmc_.set_nt) {
                 brgattr.hint_load_nt_A = bgmmc_.is_a_nt ? brgemm_hint_nt_true

@@ -2165,7 +2165,21 @@ void jit_brgemm_amx_uker_t::maybe_sprinkle_prefetches() {
                 i++) {
             const auto ptr = EVEX_compress_addr(
                     base, prf_sprinkled.prefetch_offsets[i]);
-            uni_prefetch(ptr, brgemm_prf1, false);
+            // Research overrides:
+            //   MKLDNN_SPRF_LVL    -> prefetch level (2 == prf1, the default)
+            //   MKLDNN_SPRF_STRIDE -> emit only every Nth prefetch
+            static const int sprf_lvl = [] {
+                int v = brgemm_prf1;
+                my_utils::get_env_value("MKLDNN_SPRF_LVL", v);
+                return v;
+            }();
+            static const int sprf_stride = [] {
+                int v = 1;
+                my_utils::get_env_value("MKLDNN_SPRF_STRIDE", v);
+                return nstl::max(1, v);
+            }();
+            if (i % sprf_stride != 0) continue;
+            uni_prefetch(ptr, (brgemm_kernel_prefetching_t)sprf_lvl, false);
         }
 
         // Update idx of last prefetched line

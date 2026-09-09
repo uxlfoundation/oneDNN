@@ -390,6 +390,16 @@ static void recalc_blocking(brgemm_desc_t *brg, int new_bd_block,
 status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
     const auto L1 = platform::get_per_core_cache_size(1);
 
+    // AMX uker tile loads use TILELOADDT1 (non-temporal hint). On an L3 with
+    // 10-way associativity or less this hint thrashes: the deprioritized way
+    // gets evicted before the AMX pipe reads it, forcing a reload from a
+    // farther cache level or a remote L3 domain (measured 1.07x-4.81x slower
+    // across 24 MB - 1440 MB footprints on such hardware; a no-op on 16-way
+    // L3 parts). Computed once and folded into every place load_nt_A/B is
+    // decided below, instead of being cleared again after the fact.
+    const bool nt_load_allowed
+            = !brg->brgattr.use_uker || platform::get_num_ways_in_cache(3) > 10;
+
     // Blocking configuration for AMX
     const auto BD = brg->bcast_dim;
     const auto BD_R16 = rnd_up(BD, 16);
@@ -515,8 +525,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                       brgemm_kernel_innermost_loop_t innermost_loop) {
         recalc_blocking(
                 brg, new_bd_block, new_ld_block, new_bd_block2, new_ld_block2);
-        brg->load_nt_A = load_nt_A;
-        brg->load_nt_B = load_nt_B;
+        brg->load_nt_A = load_nt_A && nt_load_allowed;
+        brg->load_nt_B = load_nt_B && nt_load_allowed;
         brg->innermost_loop = innermost_loop;
     };
 
@@ -550,8 +560,8 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                       + static_cast<size_t>(brg->typesize_C)
                               * brg->brgattr.hint_expected_C_size)
             >= L1;
-    brg->load_nt_A = try_load_nt_A && try_load_nt;
-    brg->load_nt_B = try_load_nt_B && try_load_nt;
+    brg->load_nt_A = try_load_nt_A && try_load_nt && nt_load_allowed;
+    brg->load_nt_B = try_load_nt_B && try_load_nt && nt_load_allowed;
 
     recalc_blocking(
             brg, brg->bd_block, brg->ld_block, brg->bd_block2, brg->ld_block2);
@@ -675,9 +685,11 @@ status_t brgemm_blocking_tmm(brgemm_desc_t *brg) {
                                         : brg->ld_block2);
 
     if (brg->brgattr.hint_load_nt_A != brgemm_hint_nt_undef)
-        brg->load_nt_A = (brg->brgattr.hint_load_nt_A == brgemm_hint_nt_true);
+        brg->load_nt_A = (brg->brgattr.hint_load_nt_A == brgemm_hint_nt_true)
+                && nt_load_allowed;
     if (brg->brgattr.hint_load_nt_B != brgemm_hint_nt_undef)
-        brg->load_nt_B = (brg->brgattr.hint_load_nt_B == brgemm_hint_nt_true);
+        brg->load_nt_B = (brg->brgattr.hint_load_nt_B == brgemm_hint_nt_true)
+                && nt_load_allowed;
 
     // TODO: if rd_block calculated is very small then maybe it makes
     // sense to use 1x2 or 2x1 blocking with supporting rd_block

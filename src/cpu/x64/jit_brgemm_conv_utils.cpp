@@ -33,6 +33,11 @@
 
 #include <set>
 
+#define MY_DEBUG
+#ifdef MY_DEBUG
+#include "cpu/my_utils.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -424,6 +429,65 @@ float brg_blocking_t::L2_k;
 float brg_blocking_t::L3_k;
 float brg_blocking_t::mem_k;
 
+#ifdef MY_DEBUG
+bool get_env_type(const char *vname, conv_brgemm_exec_type_t &value) {
+    bool res = false;
+    conv_brgemm_exec_type_t new_value = value;
+    if (my_utils::get_env_value(vname, new_value)) {
+        res = new_value != value; // true only if value really changed
+        value = new_value;
+    }
+    return res;
+}
+#define GET_ENV_VALUE(BRGB, VARIABLE) \
+    { \
+        if (bool(fl_brgb.VARIABLE) == true) \
+            ((BRGB).VARIABLE) = (d_brgb.VARIABLE); \
+    }
+brg_blocking_t d_brgb, fl_brgb;
+static void read_env_vars() {
+    using namespace dnnl::impl::cpu::my_utils;
+    fl_brgb.ic_block = get_env_value("MKLDNN_IC_BLOCK", d_brgb.ic_block);
+    fl_brgb.nb_ic_blocking
+            = get_env_value("MKLDNN_NB_IC_BLOCKING", d_brgb.nb_ic_blocking);
+    fl_brgb.oc_block = get_env_value("MKLDNN_OC_BLOCK", d_brgb.oc_block);
+    fl_brgb.ow_block = get_env_value("MKLDNN_OW_BLOCK", d_brgb.ow_block);
+    fl_brgb.brgM = get_env_value("MKLDNN_BRGEMM_M", d_brgb.brgM);
+    if ((bool)fl_brgb.ow_block) {
+        fl_brgb.os_block = fl_brgb.sp_block = true;
+        d_brgb.os_block = d_brgb.sp_block = d_brgb.ow_block;
+    } else {
+        fl_brgb.os_block = get_env_value("MKLDNN_OS_BLOCK", d_brgb.os_block);
+        if ((bool)fl_brgb.os_block) {
+            fl_brgb.ow_block = fl_brgb.sp_block = true;
+            d_brgb.ow_block = d_brgb.sp_block = d_brgb.os_block;
+        } else {
+            fl_brgb.sp_block
+                    = get_env_value("MKLDNN_SP_BLOCK", d_brgb.sp_block);
+            if ((bool)fl_brgb.sp_block) {
+                fl_brgb.ow_block = fl_brgb.os_block = true;
+                d_brgb.ow_block = d_brgb.os_block = d_brgb.sp_block;
+            }
+        }
+    }
+    fl_brgb.nb_os_blocking
+            = false; //  get_env_num("MKLDNN_NB_OS_BLOCKING", d_brgb.nb_os_blocking);
+    fl_brgb.od_block = get_env_value("MKLDNN_OD_BLOCK", d_brgb.od_block);
+    fl_brgb.oh_block = get_env_value("MKLDNN_OH_BLOCK", d_brgb.oh_block);
+    fl_brgb.kd_block = get_env_value("MKLDNN_KD_BLOCK", d_brgb.kd_block);
+    fl_brgb.kd_block_pad
+            = get_env_value("MKLDNN_KD_BLOCK_PAD", d_brgb.kd_block_pad);
+    fl_brgb.kh_block = get_env_value("MKLDNN_KH_BLOCK", d_brgb.kh_block);
+    fl_brgb.kh_block_pad
+            = get_env_value("MKLDNN_KH_BLOCK_PAD", d_brgb.kh_block_pad);
+    fl_brgb.kw_block = get_env_value("MKLDNN_KW_BLOCK", d_brgb.kw_block);
+    fl_brgb.kw_block_pad
+            = get_env_value("MKLDNN_KW_BLOCK_PAD", d_brgb.kw_block_pad);
+    fl_brgb.use_buffer = get_env_value("MKLDNN_USE_BUFFER", d_brgb.use_buffer);
+}
+#else
+#define GET_ENV_VALUE(BRGB, VARIABLE)
+#endif
 float brg_blocking_t::io_k(dim_t src, dim_t wei, dim_t dst, float n, float pk,
         bool is_broadcast, bool is_shared) const {
     if (n < 1) return 0;
@@ -456,7 +520,9 @@ void brg_blocking_t::select_ic_block() {
         // in incorrect output.
         ic_block = is_bf32 && (!is_rtus) ? nstl::min<dim_t>(64, ic) : ic;
         nb_ic = utils::div_up(ic, ic_block); // trivially 1 for now
+        GET_ENV_VALUE(*this, ic_block); // 1x1: MKLDNN_IC_BLOCK: ic_block
         inp_ic_block = ic_block;
+        nb_ic = utils::div_up(ic, ic_block); // trivially 1 for now
         return;
     }
     auto nb_simd = utils::div_up(ic, simd_w);
@@ -550,6 +616,7 @@ void brg_blocking_t::select_ic_block() {
                 simd_blocks * simd_w);
     }
 
+    GET_ENV_VALUE(*this, ic_block);
     if (is_relo()) {
         inp_ic_block = ic;
         if (ic_block < inp_ic_block) ic_block = inp_ic_block;
@@ -619,6 +686,7 @@ status_t brg_blocking_t::estimate_brgemm_ur() {
             brgM = rnd_up(brgM, amx_h);
             brgM_tail = rnd_up(brgM_tail, amx_h);
         }
+        GET_ENV_VALUE(*this, brgM);
     }
 
     N = oc >= oc_block ? oc_block : 0;
@@ -1289,13 +1357,24 @@ status_t brg_blocking_t::calc_blocks() {
     VDISPATCH_CONV_IC(IMPLICATION(!is_os_blocking, sp_block > 0),
             VERBOSE_BLOCKING_FAIL, "bad blocking parameters");
 
+    GET_ENV_VALUE(*this, kd_block);
+    GET_ENV_VALUE(*this, kd_block_pad);
+    GET_ENV_VALUE(*this, kh_block);
+    GET_ENV_VALUE(*this, kh_block_pad);
+    GET_ENV_VALUE(*this, kw_block);
+    GET_ENV_VALUE(*this, kw_block_pad);
+    GET_ENV_VALUE(*this, sp_block);
+    GET_ENV_VALUE(*this, od_block);
+    GET_ENV_VALUE(*this, oh_block);
     if (is_os_blocking) {
         ow_block = ow;
+        GET_ENV_VALUE(*this, ow_block);
         os_block = ow_block * oh_block;
         sp_block = os_block;
         ow_tail = 0;
     } else {
         ow_block = os_block = sp_block;
+        GET_ENV_VALUE(*this, ow_block);
         os_block = sp_block = ow_block;
         ow_tail = ow % ow_block;
     }
@@ -1688,6 +1767,8 @@ void brg_blocking_t::calc_blocks_1x1() {
         if (eff > best_brgb.eff || best_brgb.eff == 0) best_brgb = *this;
     }
     *this = best_brgb;
+    GET_ENV_VALUE(*this,
+            sp_block); // 1x1, non-1x1: MKLDNN_OS_BLOCK, MKLDNN_SP_BLOCK: os_block
     os_block = ow_block = sp_block;
     update_blocks();
 }
@@ -1718,6 +1799,18 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     // the L1/L2. Need to take into account the difference between the L3 and
     // memory.
     brg_blocking_t::mem_k = 17.f;
+    printf("DEBUG: jit_brgemm_conv_utils:init_jcp :  L1 = %d L2 = %d \n",
+            brg_blocking_t::L1 / 1024, brg_blocking_t::L2 / 1024);
+#ifdef MY_DEBUG
+    using namespace dnnl::impl::cpu::my_utils;
+    get_env_value("MKLDNN_L2", brg_blocking_t::L2);
+    printf("DEBUG: jit_brgemm_conv_utils:init_jcp :  L1 = %d L2 = %d \n",
+            brg_blocking_t::L1 / 1024, brg_blocking_t::L2 / 1024);
+
+    int enable_brgemm = 1;
+    get_env_value("MKLDNN_ENABLE_BRGEMM", enable_brgemm);
+    if (enable_brgemm == 0) return status::unimplemented;
+#endif
 
     const memory_desc_wrapper src_d(&src_md);
     const memory_desc_wrapper weights_d(&weights_md);
@@ -1836,6 +1929,13 @@ status_t init_jcp(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     jcp.is_ace = is_superset(isa, avx10_2_ace)
             && brgemm_utils::ace_dt_ok(
                     jcp.src_dt, is_bwd_w ? jcp.dst_dt : jcp.wei_dt);
+
+#ifdef MY_DEBUG
+    using namespace dnnl::impl::cpu::my_utils;
+    get_env_value("MKLDNN_ACE", jcp.is_ace);
+    printf("DEBUG: jit_brgemm_conv_utils:init_jcp :  jcp.is_ace = %d \n",
+            jcp.is_ace);
+#endif
 
     const bool req_emulation = utils::one_of(isa, avx10_1_512, avx10_2);
     const data_type_t vnni_block_dt
@@ -2100,6 +2200,11 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     auto wei_amount = static_cast<size_t>(jcp.oc) * jcp.kd * jcp.kh * jcp.kw
             * jcp.wei_dsz * jcp.ic;
 
+#ifdef MY_DEBUG
+    using namespace dnnl::impl::cpu::my_utils;
+    read_env_vars();
+#endif
+
     jcp.loop_order
             = (one_of(isa, avx2, avx2_vnni, avx2_vnni_2) && jcp.mb > jcp.nthr
                       && bcast_amount > brg_blocking_t::L2
@@ -2108,6 +2213,9 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             : ((bcast_amount < wei_amount) ? loop_ngcdhw : loop_ndhwgc);
     jcp.brgemm_kernel_loop_order
             = brgemm_kernel_loop_order_t::brgemm_lo_default;
+#ifdef MY_DEBUG
+    get_env_value("MKLDNN_LO", jcp.loop_order);
+#endif
 
     const int min_oc_block = jcp.acc_simd_w;
 
@@ -2138,6 +2246,7 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             brg_blocking_t cur_brgb = zero<decltype(best_brgb)>();
             cur_brgb.get_from_jcp(jcp);
             cur_brgb.oc_block = ocb * jcp.acc_simd_w;
+            GET_ENV_VALUE(cur_brgb, oc_block);
             cur_brgb.nb_oc = utils::div_up(jcp.oc, cur_brgb.oc_block);
             if (!cur_brgb.fast_check_oc_block()) continue;
 
@@ -2297,6 +2406,31 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     }
 
     bool must_exec_vpad = false;
+#ifdef MY_DEBUG
+    printf("DEBUG: init_conf:  try_exec_vpad = %d try_exec_trans = %d "
+           "try_exec_base = %d\n",
+            try_exec_vpad, try_exec_trans, try_exec_base);
+    conv_brgemm_exec_type_t env_exec_type = exec_undefined;
+    get_env_type("MKLDNN_BRGEMM_EXEC_TYPE", env_exec_type);
+    if (env_exec_type != exec_undefined) {
+        if (env_exec_type == exec_vpad) {
+            try_exec_trans = false;
+            try_exec_base = false;
+            must_exec_vpad = true;
+        } else if (env_exec_type == exec_trans) {
+            try_exec_vpad = false;
+            try_exec_trans = true;
+            try_exec_base = false;
+        } else if (env_exec_type == exec_base) {
+            try_exec_vpad = false;
+            try_exec_trans = false;
+            try_exec_base = true;
+        }
+    }
+    printf("DEBUG: init_conf:  try_exec_vpad = %d try_exec_trans = %d "
+           "try_exec_base = %d\n",
+            try_exec_vpad, try_exec_trans, try_exec_base);
+#endif
 
     // TODO: in future use (kd/kh/kw) and (kd/kh/kw)_pad blocks for more
     // precise calculation of jcp.max_batch
@@ -2364,6 +2498,21 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
                     && (jcp.ow == 1 || jcp.ext_kw <= jcp.stride_w));
         }
 
+#ifdef MY_DEBUG
+        get_env_value("MKLDNN_COPY_BLOCK_ONLY", jcp.copy_block_only);
+        get_env_value("MKLDNN_TILE_LOAD_XX", jcp.amx_tile_load_xx);
+        get_env_value("MKLDNN_BRGEMM_BD_LOOP_INNERMOST",
+                jcp.brgemm_bd_loop_innermost);
+        get_env_value("MKLDNN_USE_UKER", jcp.use_uker);
+        if (!jcp.use_uker) {
+            jcp.use_interleave_stores = false;
+            jcp.use_M_mask = 0;
+            jcp.is_os_blocking = (jcp.is_os_blocking && jcp.stride_h == 1
+                    && (jcp.ow == 1 || jcp.ext_kw <= jcp.stride_w));
+        }
+        get_env_value("MKLDNN_USE_ILS", jcp.use_interleave_stores);
+        get_env_value("MKLDNN_PREFETCH", jcp.hint_prefetching);
+#endif
         try_exec_type_res = try_exec_type();
     }
     if (try_exec_type_res == false && try_exec_vpad) {
@@ -2382,6 +2531,27 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             jcp.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
         }
 
+#ifdef MY_DEBUG
+        get_env_value("MKLDNN_COPY_BLOCK_ONLY", jcp.copy_block_only);
+        get_env_value("MKLDNN_TILE_LOAD_XX", jcp.amx_tile_load_xx);
+        get_env_value("MKLDNN_BRGEMM_BD_LOOP_INNERMOST",
+                jcp.brgemm_bd_loop_innermost);
+        get_env_value("MKLDNN_IS_OS_BLOCKING", jcp.is_os_blocking);
+        if (jcp.is_os_blocking) {
+            const auto adj_iwp = rnd_up(jcp.iwp, jcp.stride_w);
+            jcp.r_pad += adj_iwp - jcp.iwp;
+            jcp.iwp = adj_iwp;
+            get_env_value("MKLDNN_USE_M_MASK", jcp.use_M_mask);
+            if (!one_of(jcp.use_M_mask, 1, 2)) jcp.use_M_mask = 2;
+        } else
+            jcp.use_M_mask = 0;
+        get_env_value("MKLDNN_USE_UKER", jcp.use_uker);
+        if (!jcp.use_uker) {
+            jcp.use_interleave_stores = false;
+            jcp.use_M_mask = 0;
+        }
+        get_env_value("MKLDNN_USE_ILS", jcp.use_interleave_stores);
+#endif
         try_exec_type_res = try_exec_type();
     }
 
@@ -2538,6 +2708,61 @@ status_t init_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
     VDISPATCH_CONV_IC(IMPLICATION(jcp.is_bf32, jcp.use_uker),
             "cannot use unrolled kernel for current datatype configuration");
 
+#if defined(MY_DEBUG) && defined(__linux__)
+    printf("@@@ debug:  isa = %d\n", isa);
+
+    printf("@@@ debug: jcp.idp = %ld jcp.ihp = %ld jcp.t_pad= %ld jcp.b_pad= "
+           "%ld jcp.iwp = %ld jcp.icp = %ld "
+           "orig_inp_buffer_size = %ld jcp.inp_buffer_size = %ld \n",
+            jcp.idp, jcp.ihp, jcp.t_pad, jcp.b_pad, jcp.iwp, jcp.icp,
+            (dim_t)jcp.idp * jcp.ihp * jcp.iwp * jcp.ngroups * jcp.nb_ic
+                    * jcp.ic_block,
+            jcp.inp_buffer_size);
+    printf("@@@ debug: nthreads = %d, IC = %ld, OC = %ld, OD = %ld, OH = %ld, "
+           "OW = %ld, KD = %ld, KH = %ld, KW = %ld\n",
+            nthreads, jcp.ic, jcp.oc, jcp.od, jcp.oh, jcp.ow, jcp.kd, jcp.kh,
+            jcp.kw);
+    printf("@@@ debug: l_pad = %ld, r_pad = %ld\n", (long)jcp.l_pad,
+            (long)jcp.r_pad);
+    printf("@@@ debug: blocking: ic_block = %ld, nb_ic_blocking = %ld, "
+           "oc_block = %ld, kd_block = %ld, kh_block = %ld, kw_block = %ld, "
+           "kd_block_pad = %ld, kh_block_pad = %ld, kw_block_pad = %ld, "
+           "loop_order = %d, wei_plain = %d, wei_tag = %d  "
+           "copy_block_only = %d amx_tile_load_xx = %d "
+           "brgemm_bd_loop_innermost = %d\n",
+            (long)jcp.ic_block, (long)jcp.nb_ic_blocking, (long)jcp.oc_block,
+            (long)jcp.kd_block, (long)jcp.kh_block, (long)jcp.kw_block,
+            (long)jcp.kd_block_pad, (long)jcp.kh_block_pad,
+            (long)jcp.kw_block_pad, jcp.loop_order, jcp.wei_plain, jcp.wei_tag,
+            jcp.copy_block_only, jcp.amx_tile_load_xx,
+            jcp.brgemm_bd_loop_innermost);
+    printf("@@@ debug: Matrix configuration: M = %ld, brgM = %ld N = %ld, K = "
+           "%ld, M_tail = %ld, brgnM_tail = %ld, N_tail = %ld, K_tail = %ld, "
+           "LDA = %ld, LDB = %ld, LDC = %ld ur = %ld\n",
+            (long)jcp.M, (long)jcp.brgM, (long)jcp.N, (long)jcp.K,
+            (long)jcp.M_tail, (long)jcp.brgM_tail, (long)jcp.N_tail,
+            (long)jcp.K_tail, (long)jcp.LDA, (long)jcp.LDB, (long)jcp.LDC,
+            (long)selected_ur);
+    printf("@@@ debug: brg_type = %d exec_type = %d relo_type = %d od_block = "
+           "%ld oh_block = "
+           "%ld ow_block = %ld iw_block = %ld os_block = %ld use_buffer = %d "
+           "is_rd_padded_to_block = %d is_os_blocking = %d use_M_mask = %d "
+           "use_uker = "
+           "%d use_interleave_stores = %d adjusted_batch_size = %ld "
+           "relo_conv_weights = %d copy_input = %d trans_dim_koef = %d\n",
+            jcp.brg_type, jcp.exec_type, (int)jcp.relo_type, (long)jcp.od_block,
+            (long)jcp.oh_block, (long)jcp.ow_block, (long)jcp.iw_block,
+            (long)jcp.os_block, jcp.use_buffer, jcp.is_rd_padded_to_block,
+            jcp.is_os_blocking, jcp.use_M_mask, jcp.use_uker,
+            jcp.use_interleave_stores, (long)jcp.adjusted_batch_size,
+            jcp.relo_conv_weights, jcp.copy_input, jcp.trans_dim_koef);
+    printf("@@@ debug:  jcp.mb = %ld jcp.ngroups = %ld "
+           "jcp.nb_oc = %ld jcp.nb_od = %ld jcp.nb_oh = %ld jcp.nb_ow = %ld \n",
+            (long)jcp.mb, (long)jcp.ngroups, (long)jcp.nb_oc, (long)jcp.nb_od,
+            (long)jcp.nb_oh, (long)jcp.nb_ow);
+    printf("@@@ debug:  jcp.is_ace = %d\n", jcp.is_ace);
+    fflush(nullptr);
+#endif
     return status::success;
 }
 
@@ -2562,6 +2787,10 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
 
     using namespace data_type;
     // ===================== blocking =================================
+#ifdef MY_DEBUG
+    using namespace dnnl::impl::cpu::my_utils;
+    read_env_vars();
+#endif
 
     auto bcast_amount
             = static_cast<size_t>(jcp.id) * jcp.ih * jcp.iw * jcp.src_dsz;
@@ -2602,6 +2831,9 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             jcp.use_interleave_stores = false;
         }
     }
+#ifdef MY_DEBUG
+    get_env_value("MKLDNN_LO", jcp.loop_order); // 1x1: MKLDNN_LO: loop_order
+#endif
 
     const auto min_oc_block = jcp.acc_simd_w;
 
@@ -2628,6 +2860,7 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         brg_blocking_t cur_brgb = zero<decltype(cur_brgb)>();
         cur_brgb.get_from_jcp(jcp);
         cur_brgb.oc_block = ocb * min_oc_block;
+        GET_ENV_VALUE(cur_brgb, oc_block); // 1x1: MKLDNN_OC_BLOCK: oc_block
         cur_brgb.nb_oc = utils::div_up(jcp.oc, cur_brgb.oc_block);
 
         if (!cur_brgb.fast_check_oc_block_1x1()) continue;
@@ -2698,6 +2931,14 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
         jcp.hint_prefetching = brgemm_kernel_prefetching_t::brgemm_prf0;
     if (!jcp.wei_plain)
         CHECK(pick_tags(jcp, src_md, weights_md, dst_md, bias_md));
+#ifdef MY_DEBUG
+    get_env_value("MKLDNN_TILE_LOAD_XX", jcp.amx_tile_load_xx);
+    get_env_value("MKLDNN_USE_UKER", jcp.use_uker);
+    get_env_value("MKLDNN_USE_ILS", jcp.use_interleave_stores);
+
+    get_env_value("MKLDNN_PREFETCH", jcp.hint_prefetching);
+#endif
+
     CHECK(attr.set_default_formats(&dst_md));
 
     const bool with_groups = weights_d.ndims() == src_d.ndims() + 1;
@@ -2778,6 +3019,40 @@ status_t init_1x1_conf(jit_brgemm_conv_conf_t &jcp, cpu_isa_t isa,
             * nstl::max(
                     static_cast<dim_t>(isa_num_vregs(jcp.isa)), jcp.ow_block);
 
+#if defined(MY_DEBUG) && defined(__linux__)
+
+    printf("@@@ debug:  isa = %d\n", isa);
+
+    printf("@@@ debug: nthreads = %d, MB = %ld, IC = %ld, OC = %ld, ID = %ld, "
+           "IH = %ld, IW = %ld, OD = %ld, OH = %ld, OW = %ld, KD = %ld, "
+           "KH = %ld, KW = %ld\n",
+            nthreads, (long)jcp.mb, (long)jcp.ic, (long)jcp.oc, (long)jcp.id,
+            (long)jcp.ih, (long)jcp.iw, (long)jcp.od, (long)jcp.oh,
+            (long)jcp.ow, (long)jcp.kd, (long)jcp.kh, (long)jcp.kw);
+
+    printf("@@@ debug: blocking: ic_block = %ld, nb_ic_blocking = %ld, "
+           "oc_block = %ld, os_block = %ld, ow_block = %ld, nb_os_blocking = "
+           "%ld, loop_order = %d, "
+           "wei_plain = %d, wei_tag = %d \n",
+            (long)jcp.ic_block, (long)jcp.nb_ic_blocking, (long)jcp.oc_block,
+            (long)jcp.os_block, (long)jcp.ow_block, (long)jcp.nb_os_blocking,
+            jcp.loop_order, jcp.wei_plain, jcp.wei_tag);
+
+    printf("@@@ debug: Matrix configuration: M = %ld, N = %ld, K = "
+           "%ld, M_tail = %ld, N_tail = %ld, K_tail = %ld, LDA = %ld, LDB = "
+           "%ld, LDC = %ld ur = %ld\n",
+            (long)jcp.M, (long)jcp.N, (long)jcp.K, (long)jcp.M_tail,
+            (long)jcp.N_tail, (long)jcp.K_tail, (long)jcp.LDA, (long)jcp.LDB,
+            (long)jcp.LDC, (long)best_brgb.ur);
+    printf("@@@ debug: brg_type = %d use_buffer = %d use_uker = %d "
+           "use_interleave_stores = %d brgemm_bd_loop_innermost = %d "
+           "ununroll_bd_loop = %d\n",
+            jcp.brg_type, jcp.use_buffer, jcp.use_uker,
+            jcp.use_interleave_stores, jcp.brgemm_bd_loop_innermost,
+            jcp.ununroll_bd_loop);
+    printf("@@@ debug:  jcp.is_ace = %d\n", jcp.is_ace);
+    fflush(nullptr);
+#endif
     return status::success;
 }
 
@@ -3216,6 +3491,15 @@ void balance_bwd_w(jit_brgemm_conv_conf_t &jcp) {
         nthr = nthr_mb * nthr_g * nthr_oc_b * nthr_ic_b;
     }
 
+#ifdef MY_DEBUG
+    using namespace dnnl::impl::cpu::my_utils;
+    //    if (jcp.ic == 256 && jcp.oc == 256 && jcp.kh == 3  && jcp.ih == 14)
+    get_env_value("MKLDNN_NTHR_MB", nthr_mb);
+    get_env_value("MKLDNN_NTHR_OCB", nthr_oc_b);
+    get_env_value("MKLDNN_NTHR_ICB", nthr_ic_b);
+    nthr = nthr_mb * nthr_g * nthr_oc_b * nthr_ic_b;
+#endif
+
     jcp.nthr = nthr;
     jcp.nthr_mb = nthr_mb;
     jcp.nthr_g = nthr_g;
@@ -3572,6 +3856,43 @@ status_t init_conf_bwd_w(jit_brgemm_conv_conf_t &jcp,
     jcp.adjusted_batch_size
             = div_up(rnd_up(jcp.gemm_batch_size * sc_size, P4K), sc_size);
 
+#if defined(MY_DEBUG) && defined(__linux__)
+
+    printf("@@@ debug: nthreads = %d, IC = %ld, OC = %ld, ID = %ld, IH = %ld, "
+           "IW = %ld, OD = %ld, OH = %ld, OW = %ld, KD = %ld, "
+           "KH = %ld, KW = %ld\n",
+            nthreads, (long)jcp.ic, (long)jcp.oc, (long)jcp.id, (long)jcp.ih,
+            (long)jcp.iw, (long)jcp.od, (long)jcp.oh, (long)jcp.ow,
+            (long)jcp.kd, (long)jcp.kh, (long)jcp.kw);
+    printf("@@@ debug: blocking: ic_block = %ld, nb_ic_blocking = %ld, "
+           "oc_block = %ld, nb_oc_blocking = %ld, os_block = %ld, ow_block = "
+           "%ld, nb_os_blocking = %ld, "
+           "loop_order = %d, wei_plain = %d, wei_tag = %d oh_block = %ld "
+           "od_block = %ld\n",
+            (long)jcp.ic_block, (long)jcp.nb_ic_blocking, (long)jcp.oc_block,
+            (long)jcp.nb_oc_blocking, (long)jcp.os_block, (long)jcp.ow_block,
+            (long)jcp.nb_os_blocking, jcp.loop_order, jcp.wei_plain,
+            jcp.wei_tag, (long)jcp.oh_block, (long)jcp.od_block);
+    printf("@@@ debug: Matrix configuration: M = %ld, N = %ld, K = "
+           "%ld, M_tail = %ld, N_tail = %ld, K_tail = %ld, LDA = %ld, LDB = "
+           "%ld, LDC = %ld \n",
+            (long)jcp.M, (long)jcp.N, (long)jcp.K, (long)jcp.M_tail,
+            (long)jcp.N_tail, (long)jcp.K_tail, (long)jcp.LDA, (long)jcp.LDB,
+            (long)jcp.LDC);
+    printf("@@@ debug: jcp.use_uker = %d jcp.var_bs = %d\n", jcp.use_uker,
+            jcp.var_bs);
+    printf("@@@ debug: brg_type = %d use_buffer = %d global_transpose = %d "
+           "transform_to_vnni = %d use_interleave_stores = %d\n",
+            jcp.brg_type, jcp.use_buffer, jcp.global_transpose,
+            jcp.transform_to_vnni, jcp.use_interleave_stores);
+    printf("@@@ debug: harness = %d tr_iw = %ld tr_ow = %ld nthr_mb = %d "
+           "nthr_g = %d "
+           "nthr_oc_b = %d nthr_ic_b = %d tr_src_num_guard_elems = %ld\n",
+            jcp.harness, (long)jcp.tr_iw, (long)jcp.tr_ow, jcp.nthr_mb,
+            jcp.nthr_g, jcp.nthr_oc_b, jcp.nthr_ic_b,
+            (long)jcp.tr_src_num_guard_elems);
+    fflush(nullptr);
+#endif
     return status::success;
 }
 

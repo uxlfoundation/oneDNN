@@ -38,6 +38,11 @@
 #define VCHECK_BG(f, msg, ...) \
     VCHECK(primitive, create, dispatch, brgemm_matmul, f, msg, ##__VA_ARGS__);
 
+#define MY_DEBUG
+#ifdef MY_DEBUG
+#include "cpu/my_utils.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -1856,6 +1861,12 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.is_ace = is_superset(isa, avx10_2_ace)
             && brgemm_utils::ace_dt_ok(bgmmc.src_dt, bgmmc.wei_dt);
 
+#ifdef MY_DEBUG
+    using namespace dnnl::impl::cpu::my_utils;
+    get_env_value("MKLDNN_ACE", bgmmc.is_ace);
+    printf("DEBUG: init_brgemm_matmul_conf :  bgmmc.is_ace = %d \n",
+            bgmmc.is_ace);
+#endif
     brgemm_matmul_conf_utils_t bm_conf_utils(bgmmc, isa, attr,
             src_d.format_kind() == format_kind::any, is_wei_any,
             dst_d.format_kind() == format_kind::any,
@@ -2606,6 +2617,107 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     // case therefore there is no fallback for it.
     allow_small_shape_fallback
             = allow_small_shape_fallback && !bgmmc.packed_sparse_weights;
+#if 1 && defined(__linux__)
+    printf("bgmmc : ndims = %d batch_ndims = %d\n", bgmmc.ndims,
+            bgmmc.batch_ndims);
+    printf("bgmmc : M = %ld N = %ld K = %ld batch = %ld "
+           "batch_without_first_dim = %ld\n",
+            bgmmc.M, bgmmc.N, bgmmc.K, bgmmc.batch,
+            bgmmc.batch_without_first_dim);
+    printf("bgmmc : M_blk = %ld N_blk = %ld K_blk = %ld M_tail = %ld N_tail = "
+           "%ld K_tail = %ld\n",
+            bgmmc.M_blk, bgmmc.N_blk, bgmmc.K_blk, bgmmc.M_tail, bgmmc.N_tail,
+            bgmmc.K_tail);
+    printf("bgmmc : M_chunk_size = %d N_chunk_size = %d\n", bgmmc.M_chunk_size,
+            bgmmc.N_chunk_size);
+    printf("bgmmc : LDA = %ld LDB = %ld LDC = %ld LDD = %ld\n", bgmmc.LDA,
+            bgmmc.LDB, bgmmc.LDC, bgmmc.LDD);
+    printf("bgmmc : brgemm_batch_size = %d brgemm_batch_tail_size = %d\n",
+            bgmmc.brgemm_batch_size, bgmmc.brgemm_batch_tail_size);
+    printf("bgmmc : wei_n_blk = %d wei_k_blk = %d\n", bgmmc.wei_n_blk,
+            bgmmc.wei_k_blk);
+    printf("bgmmc : brg_type = %d isa = %d\n", bgmmc.brg_type, bgmmc.isa);
+    printf("bgmmc : src_tag = %d wei_tag = %d dst_tag = %d bia_tag = %d\n",
+            bgmmc.src_tag, bgmmc.wei_tag, bgmmc.dst_tag, bgmmc.bia_tag);
+    printf("bgmmc : with_bias = %d with_sum = %d with_eltwise = %d with_binary "
+           "= %d with_src_scales = %d with_wei_scales = %d with_dst_scales = "
+           "%d\n",
+            bgmmc.with_bias, bgmmc.with_sum, bgmmc.with_eltwise,
+            bgmmc.with_binary, bgmmc.with_src_scales, bgmmc.with_wei_scales,
+            bgmmc.with_dst_scales);
+    printf("bgmmc : s8s8_compensation_required = %d is_wei_scale_per_n = %d\n",
+            bgmmc.s8s8_compensation_required, bgmmc.is_wei_scale_per_n);
+    printf("bgmmc : src_zp_type = %d wei_zp_type = %d dst_zp_type = %d\n",
+            bgmmc.src_zp_type, bgmmc.wei_zp_type, bgmmc.dst_zp_type);
+    printf("bgmmc : use_buffer_a = %d use_buffer_a_tail_only = %d use_buffer_b "
+           "= %d use_buffer_c = %d\n",
+            bgmmc.use_buffer_a, bgmmc.use_buffer_a_tail_only,
+            bgmmc.use_buffer_b, bgmmc.use_buffer_c);
+    // printf("bgmmc : bcast_A_desc = %\n" , bgmmc.bcast_A_desc);
+    // printf("bgmmc : bcast_B_desc = %\n" , bgmmc.bcast_B_desc);
+    printf("bgmmc : src_dt = %d dst_dt = %d wei_dt = %d acc_dt = %d bia_dt = "
+           "%d\n",
+            bgmmc.src_dt, bgmmc.dst_dt, bgmmc.wei_dt, bgmmc.acc_dt,
+            bgmmc.bia_dt);
+    printf("bgmmc : nthr = %d nthr_k = %d\n", bgmmc.nthr, bgmmc.nthr_k);
+    printf("bgmmc : a_dt_sz = %ld b_dt_sz = %ld c_dt_sz = %ld acc_dt_sz = %ld "
+           "bias_dt_sz = %ld tr_a_dt_sz = %ld tr_b_dt_sz = %ld\n",
+            bgmmc.a_dt_sz, bgmmc.b_dt_sz, bgmmc.c_dt_sz, bgmmc.acc_dt_sz,
+            bgmmc.bias_dt_sz, bgmmc.tr_a_dt_sz, bgmmc.tr_b_dt_sz);
+    printf("bgmmc : M_chunks = %ld N_chunks = %ld K_chunks = %ld M_chunk_elems "
+           "= %ld N_chunk_elems = %ld K_chunk_elems = %ld\n",
+            bgmmc.M_chunks, bgmmc.N_chunks, bgmmc.K_chunks, bgmmc.M_chunk_elems,
+            bgmmc.N_chunk_elems, bgmmc.K_chunk_elems);
+    printf("bgmmc : num_M_blocks = %ld num_N_blocks = %ld\n",
+            bgmmc.num_M_blocks, bgmmc.num_N_blocks);
+    printf("bgmmc : A_strides[0] = %ld A_strides[1] = %ld A_strides[2] = %ld\n",
+            bgmmc.A_strides[0], bgmmc.A_strides[1], bgmmc.A_strides[2]);
+    printf("bgmmc : B_strides[0] = %ld B_strides[1] = %ld B_strides[2] = %ld\n",
+            bgmmc.B_strides[0], bgmmc.B_strides[1], bgmmc.B_strides[2]);
+    printf("bgmmc : C_strides[0] = %ld C_strides[1] = %ld C_strides[2] = %ld\n",
+            bgmmc.C_strides[0], bgmmc.C_strides[1], bgmmc.C_strides[2]);
+    printf("bgmmc : buffer_c_chunk_sz = %ld buffer_c_per_thread_sz = %ld\n",
+            bgmmc.buffer_c_chunk_sz, bgmmc.buffer_c_per_thread_sz);
+    printf("bgmmc : A_ptr_shift_b = %ld B_ptr_shift_b = %ld C_ptr_shift_b = "
+           "%ld\n",
+            bgmmc.A_ptr_shift_b, bgmmc.B_ptr_shift_b, bgmmc.C_ptr_shift_b);
+    printf("bgmmc : copy_A_src_stride = %ld copy_B_wei_stride = %ld\n",
+            bgmmc.copy_A_src_stride, bgmmc.copy_B_wei_stride);
+    printf("bgmmc : buffer_a_per_thread_sz = %ld\n",
+            bgmmc.buffer_a_per_thread_sz);
+    printf("bgmmc : buffer_b_per_thread_sz = %ld\n",
+            bgmmc.buffer_b_per_thread_sz);
+    printf("bgmmc : s8s8_comp_ithr_str = %ld s8s8_comp_b_str = %ld "
+           "s8s8_comp_n_str = %ld\n",
+            bgmmc.s8s8_comp_ithr_str, bgmmc.s8s8_comp_b_str,
+            bgmmc.s8s8_comp_n_str);
+    printf("bgmmc : has_zero_point_a = %d has_zero_point_b = %d "
+           "has_zero_point_c = %d\n",
+            bgmmc.has_zero_point_a, bgmmc.has_zero_point_b,
+            bgmmc.has_zero_point_c);
+    printf("bgmmc : post_ops_applicable = %d\n", bgmmc.post_ops_applicable);
+    printf("bgmmc : transposed_A = %d blocked_B = %d\n", bgmmc.transposed_A,
+            bgmmc.blocked_B);
+    printf("bgmmc : zp_a_comp_shift_n = %ld\n", bgmmc.zp_a_comp_shift_n);
+    printf("bgmmc : zp_a_comp_elems_per_thr = %ld zp_b_comp_result_shift_m = "
+           "%ld zp_b_comp_buffer_start = %ld zp_b_comp_buffer_shift_m = %ld "
+           "zp_b_comp_elems_per_thr = %ld\n",
+            bgmmc.zp_a_comp_elems_per_thr, bgmmc.zp_b_comp_result_shift_m,
+            bgmmc.zp_b_comp_buffer_start, bgmmc.zp_b_comp_buffer_shift_m,
+            bgmmc.zp_b_comp_elems_per_thr);
+    printf("bgmmc : wsp_tile_per_thr_bytes = %ld "
+           "brgemm_batch_element_per_thr_sz = %d\n",
+            (long)bgmmc.wsp_tile_per_thr_bytes,
+            bgmmc.brgemm_batch_element_per_thr_sz);
+    printf("bgmmc : is_amx = %d\n", bgmmc.is_amx);
+    printf("bgmmc : required_k_granularity = %d req_wei_vnni_downconvert = "
+           "%d\n",
+            bgmmc.required_k_granularity, bgmmc.req_wei_vnni_downconvert);
+    printf("bgmmc : is_bf32 = %d\n", bgmmc.is_bf32);
+    printf("bgmmc : is_runtime_M = %d is_runtime_N = %d is_runtime_K = %d\n",
+            bgmmc.is_runtime_M, bgmmc.is_runtime_N, bgmmc.is_runtime_K);
+    printf("bgmmc : is_ace = %d\n", bgmmc.is_ace);
+#endif
 
     // avx512 doesn’t support native s8s8, but amx does so falling back to avx512 is not supported.
     bool is_s8s8_matmul = bgmmc.src_dt == s8 && bgmmc.wei_dt == s8;

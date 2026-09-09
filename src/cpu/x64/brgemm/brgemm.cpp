@@ -31,6 +31,11 @@
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 
+#define MY_DEBUG
+#ifdef MY_DEBUG
+#include "cpu/my_utils.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -587,6 +592,19 @@ status_t brgemm_desc_set_attr(
 
     brg->brgattr = brgattr;
     brg->bs_group = brgattr.hint_bs_group;
+
+#ifdef MY_DEBUG
+    // Central override so that every primitive is covered, the per primitive
+    // knobs are read before use_uker is derived and so may be overwritten.
+    // Descriptors with a bd mask need the unrolled kernel to skip rows, so they
+    // are left alone.
+    if (brg->brgattr.bd_mask_level == 0) {
+        using namespace dnnl::impl::cpu::my_utils;
+        get_env_value("MKLDNN_USE_UKER", brg->brgattr.use_uker);
+        brg->brgattr.use_interleave_stores
+                = brg->brgattr.use_interleave_stores && brg->brgattr.use_uker;
+    }
+#endif
 
     if (brgattr.fpmath_mode != fpmath_mode::strict) maybe_try_bf32(brg);
 

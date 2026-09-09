@@ -30,6 +30,11 @@
 #include "cpu/x64/jit_brgemm_conv_bwd_utils.hpp"
 #include "cpu/x64/jit_generator.hpp"
 
+#define MY_DEBUG
+#ifdef MY_DEBUG
+#include "cpu/my_utils.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {

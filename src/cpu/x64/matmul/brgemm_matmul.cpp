@@ -31,6 +31,11 @@
 #include "cpu/x64/matmul/brgemm_matmul.hpp"
 #include "cpu/x64/matmul/jit_brgemm_matmul_reduce.hpp"
 
+#define MY_DEBUG
+#ifdef MY_DEBUG
+#include "cpu/my_utils.hpp"
+#endif
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -505,6 +510,14 @@ status_t brgemm_matmul_t<isa>::pd_t::init(const engine_t *engine) {
             brgattr.hint_expected_A_size = vM * vK * bs;
             brgattr.hint_expected_B_size = vN * vK * bs;
             brgattr.hint_expected_C_size = vM * vN * bs;
+#ifdef MY_DEBUG
+            {
+                using namespace dnnl::impl::cpu::my_utils;
+                get_env_value("MKLDNN_USE_UKER", brgattr.use_uker);
+                brgattr.use_interleave_stores
+                        = brgattr.use_interleave_stores && brgattr.use_uker;
+            }
+#endif
             if (bgmmc_.LDB2 != 0) brgattr.LDB2 = bgmmc_.LDB2;
 
             brgattr.LDC2_N = bgmmc_.M_blk * bgmmc_.LDC;

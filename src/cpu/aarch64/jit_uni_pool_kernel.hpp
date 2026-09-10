@@ -20,7 +20,6 @@
 #ifndef CPU_AARCH64_JIT_UNI_POOL_KERNEL_HPP
 #define CPU_AARCH64_JIT_UNI_POOL_KERNEL_HPP
 
-#include <cfloat>
 #include <functional>
 #include <memory>
 
@@ -60,27 +59,18 @@ private:
 
     int reg_idx(int idx) const noexcept { return vmm_idx_upper_bound() - idx; }
 
-    VReg xreg(int idx) const noexcept { return VReg(reg_idx(idx)); }
-    ZReg yreg(int idx) const noexcept { return ZReg(reg_idx(idx)); }
-    ZReg zreg(int idx) const noexcept { return ZReg(reg_idx(idx)); }
-    TReg vreg(int idx) const noexcept { return TReg(reg_idx(idx)); }
+    TReg treg(int idx) const noexcept { return TReg(reg_idx(idx)); }
 
-    VReg vmm_mask = VReg(0);
-    ZReg ymm_tmp_1 = ZReg(0);
-    TRegS vmm_tmp_1 = TRegS(0);
+    TReg vmm_tmp_1 = TReg(0);
 
-    TReg vmm_c_tail_mask = TReg(2);
+    // u8 index saturation bounds
+    TReg sat_lbound = TReg(0);
+    TReg sat_ubound = TReg(1);
 
-    VReg xmm_ker_area_h = VReg(2);
-    VReg xmm_one = VReg(2);
-    VReg xmm_tmp = VReg(3);
-
+    TRegS vmm_k_offset = TRegS(1);
     TRegS vmm_ker_area_h = TRegS(2);
     TRegS vmm_one = TRegS(2);
     TReg vmm_tmp = TReg(3);
-    ZReg ymm_tmp = ZReg(3);
-
-    TRegS vmm_k_offset = TRegS(1);
 
     inline uint32_t reg_idx() {
         if (!jpp.is_backward) {
@@ -129,18 +119,10 @@ private:
     void prepare_tail_mask();
     void push_vmm_val(const int idx);
     void pop_vmm_val(const int idx);
-    void load(const int idx, const xreg_t &reg_ptr, const int offset,
+    void load(const TReg &vec, const xreg_t &reg_ptr, const int offset,
             const bool is_c_tail_proccessing);
-    void load_impl(const Xbyak_aarch64::VReg4S &vmm, const xreg_t &reg_ptr,
-            const int offset, const bool is_c_tail_processing);
-    void load_impl(const Xbyak_aarch64::ZRegS &vmm, const xreg_t &reg_ptr,
-            const int offset, const bool is_c_tail_processing);
-    void store(const int idx, const xreg_t &reg_ptr, const int offset,
+    void store(const TReg &vec, const xreg_t &reg_ptr, const int offset,
             const bool is_c_tail_proccessing);
-    void store_impl(const Xbyak_aarch64::VReg4S &vmm, const xreg_t &reg_ptr,
-            const int offset, const bool is_c_tail_processing);
-    void store_impl(const Xbyak_aarch64::ZRegS &vmm, const xreg_t &reg_ptr,
-            const int offset, const bool is_c_tail_processing);
     void load_indices_u8(const TReg &vmm, const size_t step_index,
             const bool is_c_tail_processing);
     void store_indices_u8(const TReg &vmm, const size_t step_index,
@@ -194,7 +176,7 @@ private:
 
     std::unique_ptr<injector::jit_uni_postops_injector_t<isa>>
             postops_injector_;
-    std::unique_ptr<io::jit_io_helper_t<TReg>> indices_io_;
+    std::unique_ptr<io::jit_io_helper_t<isa>> io_;
 };
 
 } // namespace aarch64

@@ -211,10 +211,7 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
         auto ev = std::make_shared<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {event});
 #ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
-        if (use_tag) {
-            ev->start_tag_ = start_tag;
-            ev->end_tag_ = end_tag;
-        }
+        if (use_tag) { ev->event_tags_.emplace_back(start_tag, end_tag); }
 #endif
         vp->register_event(ev);
     }

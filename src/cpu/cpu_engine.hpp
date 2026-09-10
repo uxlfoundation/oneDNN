@@ -75,6 +75,7 @@ DECLARE_IMPL_LIST(matmul);
 DECLARE_IMPL_LIST(pooling);
 DECLARE_IMPL_LIST(prelu);
 DECLARE_IMPL_LIST(reduction);
+DECLARE_IMPL_LIST(reorder);
 DECLARE_IMPL_LIST(resampling);
 DECLARE_IMPL_LIST(rnn);
 DECLARE_IMPL_LIST(shuffle);
@@ -85,8 +86,6 @@ DECLARE_IMPL_LIST(softmax);
 class cpu_engine_impl_list_t {
 public:
     static const impl_list_item_t *get_concat_implementation_list();
-    static const impl_list_item_t *get_reorder_implementation_list(
-            const op_desc_t *op_desc);
     static const impl_list_item_t *get_sum_implementation_list();
 
     static const impl_list_item_t *get_implementation_list(
@@ -111,12 +110,11 @@ public:
             CASE(pooling);
             CASE(prelu);
             CASE(reduction);
+            CASE(reorder);
             CASE(resampling);
             CASE(rnn);
             CASE(shuffle);
             CASE(softmax);
-            case primitive_kind::reorder:
-                return get_reorder_implementation_list(desc);
             case primitive_kind::sdpa: return empty_list;
             case primitive_kind::gated_mlp: return empty_list;
             default: assert(!"unknown primitive kind"); return empty_list;

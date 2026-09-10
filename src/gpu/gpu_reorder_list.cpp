@@ -66,7 +66,7 @@ constexpr impl_list_item_t impl_list[] = REG_REORDER_P({
 
 } // namespace
 
-const impl_list_item_t *get_reorder_impl_list(const op_desc_t *) {
+const impl_list_item_t *get_reorder_impl_list(const reorder_desc_t *) {
     return impl_list;
 }
 

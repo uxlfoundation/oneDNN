@@ -44,14 +44,13 @@ const impl_list_item_t *gpu_impl_list_t::get_implementation_list(
             CASE(pooling);
             CASE(prelu);
             CASE(reduction);
+            CASE(reorder);
             CASE(resampling);
             CASE(rnn);
             CASE(sdpa);
             CASE(shuffle);
             CASE(softmax);
             CASE(zero_pad);
-            case primitive_kind::reorder:
-                return get_reorder_implementation_list(desc);
             default: assert(!"unknown primitive kind"); return empty_list;
         }
 #undef CASE
@@ -64,11 +63,6 @@ const impl_list_item_t *gpu_impl_list_t::get_concat_implementation_list() {
 
 const impl_list_item_t *gpu_impl_list_t::get_sum_implementation_list() {
     return get_sum_impl_list();
-}
-
-const impl_list_item_t *gpu_impl_list_t::get_reorder_implementation_list(
-        const op_desc_t *op_desc) {
-    return get_reorder_impl_list(op_desc);
 }
 
 } // namespace gpu

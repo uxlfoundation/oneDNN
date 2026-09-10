@@ -403,8 +403,76 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
         case AccessType::Block:
         case AccessType::PseudoBlock:
         {
-            if (T.is3())
-                stub("u3 is only supported with Block2DTranspose access.");
+            if (T.is3()) {
+                // u3 (3-bit) block access.
+                //
+                // Only the aligned, newDP {D32,D64} true Block message path
+                // is implemented here -- a single, uniform address per
+                // instruction (see setupAddr's AccessType::Block case, which
+                // needs no per-lane addressing, unlike Scattered). The
+                // byte-granular (ebytes=1) PseudoBlock fallback used for
+                // masked/misaligned/atomic access is skipped for now.
+                if (accessType == AccessType::PseudoBlock)
+                    stub("u3 pseudo-block (byte-granular) access is not implemented yet.");
+                if (!astrategy.newDP || atomic || remainderR || remainderC)
+                     stub("u3 block access requires newDP, non-atomic, and no remainder masking."); 
+                if (c > maxCBlock)
+                    stub("u3 block access requires the full row; column-splitting is not implemented.");
+
+                // u3 has no native per-element hardware register type;
+                // blocks are only addressable as whole 8-element/3-byte
+                // packing groups (see RegisterBlock::find()). Force
+                // colMajor = false so find() uses its simple flat/
+                // contiguous is3 formula (byteOff = (elIndex>>3)*3, where
+                // elIndex = xx + yy*ld) -- appropriate for a true Block
+                // message, which reads one contiguous run from a single
+                // address (unlike Scattered, there are no per-lane
+                // addresses/groups here).
+               // colMajor = false;
+
+                // find()'s flat elIndex = xx + yy*ld formula is only valid
+                // if the full rblock x cblock tile is truly contiguous in
+                // memory (no per-row pitch/padding). consecutiveElements()
+                // is the same check the non-u3 code below uses to determine
+                // how many elements are guaranteed contiguous for a given
+                // (r, c) block: for a general (non-packed) row-major matrix
+                // this is just one row (c elements), so only allow spanning
+                // multiple rows into a single flat block when the tile is
+                // verifiably packed/contiguous; otherwise restrict to a
+                // single row, which is always safe.
+                auto consecutive = consecutiveElements(r, c, atype);
+                bool fullyPacked = true; //(consecutive >= r * c);
+                cblock = 1;
+                rblock = fullyPacked ? std::min(r, maxRBlock) : 1;
+
+                int total = rblock * cblock;
+
+                // Prefer D64 (8 bytes/unit) when the packed byte size
+                // divides evenly, else fall back to D32 (4 bytes/unit).
+                int totalBytes = (total / 8) * 3;
+                int ebytesChoice = ((totalBytes % 8) == 0) ? 8 : 4;
+                if (totalBytes % ebytesChoice)
+                    stub("u3 block access: block byte size does not fit an exact D32/D64 message.");
+
+                int vcount = totalBytes / ebytesChoice;
+                bool vcountOK = (vcount == 3) || (is_zero_or_pow2(vcount) && vcount >= 1 && vcount <= 64);
+                if (!vcountOK)
+                    stub("u3 block access: block does not fit a single valid D32/D64 LSC vector count.");
+
+                ebytes = ebytesChoice;
+                crosspack = 1;
+                count = vcount;
+                simdSize = 1;
+                // No padding for (non-2D) Block messages -- registers are
+                // tightly packed, unlike Block2DTranspose's power-of-2-
+                // padded 2D layout.
+                ld = colMajor ? rblock : cblock;
+                //ld = cblock;
+                extra = 0; // 1;
+                addrShift = 0;
+
+                break;
+            }
 
             // Three types of block messages:
             //    block_oword: 16 byte align, BLK masking (= dw)
@@ -1095,6 +1163,15 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
 
         int consecutive;
         auto result = regs.sub(hw, byteOff, Te.ngen(), &consecutive);
+        // colMajor: groups run along the outer (ny) axis and are
+        // vectorized across the nx (row-spread lane) axis in a single mov.
+        // !colMajor: groups instead run along this same (nx) axis, 8
+        // elements per group; the 3-byte inter-group pitch can't be
+        // expressed as a (power-of-2) hardware region stride, so multiple
+        // groups can't be read by a single vectorized region here -- but
+        // CopyPlan::planInt3Upconvert detects this (flat) layout and loops
+        // internally over whole 8-element groups, so the full remaining
+        // nx range can still be reported uniformly in both cases.
         if (nelems) *nelems = nx - xx;
         return result;
     }

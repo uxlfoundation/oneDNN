@@ -120,11 +120,22 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
     CopyPlan plan(hw, strategy.systolicAvailable);
 
     for (auto &sblock : layoutSrc) {
-    // u3 groups 8 consecutive elements of the outer (slow) dimension into a
-    // single packed 3-byte unit (see RegisterBlock::find()); iterate the
-    // outer loop a whole group at a time so each CopyPlan mov operates on
-    // one or more complete groups, matching what planInt3Upconvert expects.
-    for (int eoffY = 0; eoffY < sblock.*ny; eoffY += (Ts.is3() ? 8 : 1)) {
+    // u3 packs 8 consecutive elements into a single 3-byte group (see
+    // RegisterBlock::find()). Which axis those 8-element groups run along
+    // depends on RegisterBlock::colMajor:
+    //  - colMajor: groups run along the outer (ny) axis and are
+    //    vectorized across the inner (nx) axis in a single mov, so the
+    //    outer loop below steps a whole group (8) at a time.
+    //  - !colMajor: groups instead run along the inner (nx) axis (flat,
+    //    sequentially-packed groups -- see find()'s byteOff =
+    //    (elIndex>>3)*3 formula); the outer loop here just steps 1 at a
+    //    time as usual. The 3-byte inter-group pitch can't be vectorized
+    //    into a single hardware region, but CopyPlan::planInt3Upconvert
+    //    detects this (flat) layout and loops internally over whole
+    //    8-element groups, so the inner loop below can still just step by
+    //    the plain (element) count n, as in the non-u3 case.
+    bool u3ColMajorGroups =   Ts.is3() && sblock.crosspack > 1; //colMajor;
+    for (int eoffY = 0; eoffY < sblock.*ny; eoffY += (u3ColMajorGroups ? 8 : 1)) {
     for (int eoffX = 0; eoffX < sblock.*nx;) {
         auto eoffR = sblock.colMajor ? eoffX : eoffY;
         auto eoffC = sblock.colMajor ? eoffY : eoffX;

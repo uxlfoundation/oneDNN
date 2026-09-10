@@ -988,9 +988,26 @@ void eltwise_injector_f32_t<ngen_generator_t>::compute(const int *grfs,
 
                 int simd = nreg * GRF::bytes(hw()) / sizeof(float);
 
-                auto grf0_t = grfs[idx0 + (ii / 2)];
-                auto base_t = GRF(grf0_t).f();
-                auto grf1 = grfs[idx0 + off + (ii / 2)];
+                // MX-scale group pairing: for the GEMM C register layout in
+                // use here, each GRF holds 16 gemm-M values of a single
+                // gemm-N column, with adjacent GRFs holding *different*
+                // columns. A 32-wide (cqGroupM=32) MX group therefore spans
+                // GRFs `off` apart (`off` = unrollN = #GRFs covering one
+                // 16-wide gemm-M block), in blocks of 2*off GRFs:
+                //   group g_idx: lo = grfs[g_idx + off * (g_idx / off)],
+                //                hi = lo + off
+                // grf0_t/grf1 are only consumed by mx_scale_compute_fwd;
+                // other algorithms (where `off` has different semantics or
+                // is 0) leave them unused.
+                auto base_t = base;
+                int grf1 = grf0;
+                if (alg_ == eltwise_mx_scale) {
+                    gpu_assert(off > 0 && batch % (2 * off) == 0);
+                    int g_idx = ii / 2;
+                    int lo = idx0 + g_idx + off * (g_idx / off);
+                    base_t = GRF(grfs[lo]).f();
+                    grf1 = grfs[lo + off];
+                }
                 if (is_fwd_) {
                     switch ((int)alg_) {
                         case eltwise_elu:

@@ -16,7 +16,6 @@
 
 #include "graph/backend/dnnl/kernels/sdp_decomp_config.hpp"
 #include "graph/interface/shape_infer.hpp"
-#include "graph/utils/utils.hpp"
 
 #define VCHECK_SDP_DECOMP(cond, status, msg, ...) \
     VCONDCHECK(graph, create, check, sdp_decomp_kernel_t, (cond), status, msg, \
@@ -26,41 +25,6 @@ namespace dnnl {
 namespace impl {
 namespace graph {
 namespace dnnl_impl {
-
-status_t sdp_decomp_reorder_t::init(const dnnl::engine &engine,
-        const memory::desc &src_md, const memory::desc &dst_md,
-        const primitive_attr &attr, matmul_arg_t matmul_arg) {
-    // eg. from u8->s8 or f32->f32 with non-default attributes.
-    const bool has_value_transform
-            = src_md.get_data_type() != dst_md.get_data_type()
-            || !attr.get()->has_default_values();
-    const auto &user_md = matmul_arg == matmul_arg_t::dst ? dst_md : src_md;
-    const auto strides = user_md.get_strides();
-    // limitations of matmul primitive
-    const bool direct_layout_supported = matmul_arg == matmul_arg_t::dst
-            ? strides.back() == 1
-            : strides[strides.size() - 1] == 1
-                    || strides[strides.size() - 2] == 1;
-
-    // Setting the internal testing control to 1 restores the legacy policy,
-    // which aliases only when the source and destination descriptors match.
-    const bool use_legacy_policy = graph::utils::getenv_int_internal(
-                                           "GRAPH_SDPA_DECOMP_FORCE_DENSIFY", 0)
-            == 1;
-    const bool densify = has_value_transform || !direct_layout_supported
-            || (use_legacy_policy && src_md != dst_md);
-
-    is_alias_ = !densify;
-    if (is_alias_) return status::success;
-
-    primitive_attr reorder_attr = attr;
-    reorder_attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
-    auto pd = reorder::primitive_desc(
-            engine, src_md, engine, dst_md, reorder_attr);
-    reorder_prim_ = reorder(pd);
-    scratchpad_md_ = pd.scratchpad_desc();
-    return status::success;
-}
 
 bool sdp_decomp_config_t::initial_check(const std::shared_ptr<subgraph_t> &sg,
         const std::vector<logical_tensor_t> &inputs,
@@ -206,7 +170,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     auto sub_src1_d_md
             = memory::desc(sub_src1_dims, dt_src_user, format_tag::ab);
     CHECK(sub_reorder0.init(p_engine, sub_src1_md, sub_src1_d_md,
-            primitive_attr {}, matmul_arg_t::src));
+            primitive_attr {}, sdp_reorder_hint_t::matmul_src));
     sub_mm1_src_md = sub_reorder0.is_alias() ? sub_src1_md : sub_src1_d_md;
 
     // per-head: reorder u8->s8 wei for first matmul
@@ -218,7 +182,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     auto sub_wei1_d_md = memory::desc(sub_wei1_dims, dt_wei, format_tag::ba);
     dnnl::primitive_attr sub_reorder1_attr = make_primitive_attr(sdp_op[0]);
     CHECK(sub_reorder1.init(p_engine, sub_wei1_user_md, sub_wei1_d_md,
-            sub_reorder1_attr, matmul_arg_t::weights));
+            sub_reorder1_attr, sdp_reorder_hint_t::matmul_weights));
     sub_wei1_md = sub_reorder1.is_alias() ? sub_wei1_user_md : sub_wei1_d_md;
 
     // first matmul
@@ -355,7 +319,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     auto sub_wei2_d_md = memory::desc(sub_wei2_dims, dt_wei, format_tag::ab);
     dnnl::primitive_attr sub_reorder2_attr = make_primitive_attr(sdp_op[3]);
     CHECK(sub_reorder2.init(p_engine, sub_wei2_user_md, sub_wei2_d_md,
-            sub_reorder2_attr, matmul_arg_t::weights));
+            sub_reorder2_attr, sdp_reorder_hint_t::matmul_weights));
     auto sub_wei2_md
             = sub_reorder2.is_alias() ? sub_wei2_user_md : sub_wei2_d_md;
 
@@ -375,7 +339,7 @@ impl::status_t sdp_decomp_config_t::construct_params(
     auto sub_dst_dense_md
             = memory::desc(sub_mm2_dst_dims, dt_src_user, format_tag::ab);
     CHECK(sub_reorder3.init(p_engine, sub_dst_dense_md, sub_dst_user_md,
-            primitive_attr {}, matmul_arg_t::dst));
+            primitive_attr {}, sdp_reorder_hint_t::matmul_dst));
     sub_mm2_dst_md
             = sub_reorder3.is_alias() ? sub_dst_user_md : sub_dst_dense_md;
     auto sub_mm2_pd = matmul::primitive_desc(p_engine, sub_mm2_src_md,

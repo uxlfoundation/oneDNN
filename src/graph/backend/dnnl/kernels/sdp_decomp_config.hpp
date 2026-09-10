@@ -30,6 +30,7 @@
 
 #include "graph/interface/c_types_map.hpp"
 
+#include "graph/backend/dnnl/kernels/sdp_decomp_reorder.hpp"
 #include "graph/backend/dnnl/scratchpad.hpp"
 #include "graph/backend/dnnl/subgraph.hpp"
 
@@ -40,39 +41,6 @@ namespace dnnl_impl {
 using ltw = logical_tensor_wrapper_t;
 using op_ptr = std::shared_ptr<op_t>;
 using registry_key = size_t;
-
-enum class matmul_arg_t { src, weights, dst };
-
-// Selects between aliasing and a real SDPA reorder based on descriptor and
-// attribute semantics, matmul layout support, and the SDPA densification
-// policy. A real reorder primitive is created only when required.
-struct sdp_decomp_reorder_t {
-public:
-    status_t init(const dnnl::engine &engine, const memory::desc &src_md,
-            const memory::desc &dst_md, const primitive_attr &attr,
-            matmul_arg_t matmul_arg);
-
-    bool is_alias() const { return is_alias_; }
-    const memory::desc &scratchpad_desc() const { return scratchpad_md_; }
-
-    status_t execute(const dnnl::stream &astream,
-            const std::unordered_map<int, dnnl::memory> &args) const {
-        if (is_alias_) {
-            void *handle = args.at(DNNL_ARG_SRC).get_data_handle();
-            args.at(DNNL_ARG_DST).set_data_handle(handle);
-
-            return status::success;
-        } else {
-            return dnnl_primitive_execute_without_tp_hook(
-                    reorder_prim_, astream, args);
-        }
-    }
-
-private:
-    dnnl::primitive reorder_prim_;
-    memory::desc scratchpad_md_;
-    bool is_alias_ = false;
-};
 
 struct sdp_decomp_config_t {
 public:

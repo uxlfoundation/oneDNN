@@ -278,6 +278,9 @@ struct jit_blk_reorder_t : public primitive_t {
 
         tr::prb_t prb_;
 
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine);
+
     private:
         static status_t create(reorder_pd_t **reorder_pd,
                 const engine_t *engine, const primitive_attr_t *attr,

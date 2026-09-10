@@ -69,6 +69,10 @@ struct acl_reorder_fwd_t : public primitive_t {
                 const engine_t *dst_engine, const memory_desc_t *dst_md);
 
         friend dnnl::impl::impl_list_item_t;
+
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine);
+
         acl_reorder_conf_t app_;
 
     }; // pd_t

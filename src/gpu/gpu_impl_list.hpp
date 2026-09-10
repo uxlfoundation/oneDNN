@@ -174,6 +174,7 @@ DECLARE_IMPL_LIST(matmul);
 DECLARE_IMPL_LIST(pooling);
 DECLARE_IMPL_LIST(prelu);
 DECLARE_IMPL_LIST(reduction);
+DECLARE_IMPL_LIST(reorder);
 DECLARE_IMPL_LIST(resampling);
 DECLARE_IMPL_LIST(rnn);
 DECLARE_IMPL_LIST(sdpa);
@@ -185,7 +186,6 @@ DECLARE_IMPL_LIST(zero_pad);
 
 const impl_list_item_t *get_concat_impl_list();
 const impl_list_item_t *get_sum_impl_list();
-const impl_list_item_t *get_reorder_impl_list(const op_desc_t *);
 
 class gpu_impl_list_t {
 public:
@@ -193,8 +193,6 @@ public:
             const op_desc_t *desc);
     static const impl_list_item_t *get_concat_implementation_list();
     static const impl_list_item_t *get_sum_implementation_list();
-    static const impl_list_item_t *get_reorder_implementation_list(
-            const op_desc_t *op_desc);
 };
 
 } // namespace gpu

@@ -162,13 +162,12 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
         stream_profiler->register_event(std::move(profiler_event));
     }
 
-    if (verbose_profiler) {
+    if (vp) {
         auto verbose_event = std::make_shared<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {e});
 #ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
         if (use_tag) {
-            verbose_event->start_tag_ = start_tag;
-            verbose_event->end_tag_ = end_tag;
+            verbose_event->event_tags_.emplace_back(start_tag, end_tag);
         }
 #endif
         verbose_profiler->register_event(verbose_event);
@@ -240,13 +239,12 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
         stream_profiler->register_event(std::move(profiler_event));
     }
 
-    if (verbose_profiler) {
+    if (vp) {
         auto verbose_event = std::make_shared<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {out_event});
 #ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
         if (use_tag) {
-            verbose_event->start_tag_ = start_tag;
-            verbose_event->end_tag_ = end_tag;
+            verbose_event->event_tags_.emplace_back(start_tag, end_tag);
         }
 #endif
         verbose_profiler->register_event(verbose_event);

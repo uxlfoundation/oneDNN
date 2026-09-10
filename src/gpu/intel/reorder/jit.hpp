@@ -44,9 +44,6 @@ public:
 
         std::shared_ptr<jit::config_t> cfg;
         std::shared_ptr<jit::kernel_info_t> kernel_info;
-
-    private:
-        DECLARE_GPU_REORDER_CREATE();
     };
 
     using primitive_t::primitive_t;

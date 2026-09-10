@@ -225,21 +225,6 @@ struct rnn_data_reorder_t : public primitive_t {
             CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
             return status::success;
         }
-
-    private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md) {
-            auto desc = reorder_pd_t::create_desc(
-                    src_md, dst_md, src_engine->kind(), dst_engine->kind());
-            auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
-            if (_pd == nullptr) return status::out_of_memory;
-            CHECK(_pd->init(engine, src_engine, dst_engine));
-            CHECK(_pd->init_scratchpad_md());
-            return safe_ptr_assign(*reorder_pd, _pd.release());
-        }
-        friend dnnl::impl::impl_list_item_t;
     };
 
     rnn_data_reorder_t(const pd_t *apd) : primitive_t(apd) {}
@@ -400,19 +385,6 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
         gemm_pack_f gemm_pack;
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md) {
-            auto desc = reorder_pd_t::create_desc(
-                    src_md, dst_md, src_engine->kind(), dst_engine->kind());
-            auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
-            if (_pd == nullptr) return status::out_of_memory;
-            CHECK(_pd->init(engine, src_engine, dst_engine));
-            CHECK(_pd->init_scratchpad_md());
-            return safe_ptr_assign(*reorder_pd, _pd.release());
-        }
-
         void init_scratchpad() {
             using namespace format_tag;
 
@@ -437,8 +409,6 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
             scratchpad.template book<int32_t>(
                     key_reorder_rnn_weights_reduction, reduction_size);
         }
-
-        friend dnnl::impl::impl_list_item_t;
     };
 
     rnn_weights_reorder_s8_t(const pd_t *apd) : primitive_t(apd) {}
@@ -587,19 +557,6 @@ struct rnn_weights_reorder_t : public primitive_t {
         }
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md) {
-            auto desc = reorder_pd_t::create_desc(
-                    src_md, dst_md, src_engine->kind(), dst_engine->kind());
-            auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
-            if (_pd == nullptr) return status::out_of_memory;
-            CHECK(_pd->init(engine, src_engine, dst_engine));
-            CHECK(_pd->init_scratchpad_md());
-            return safe_ptr_assign(*reorder_pd, _pd.release());
-        }
-
         void init_scratchpad() {
             using namespace format_tag;
             using namespace rnn_packed_format;
@@ -625,7 +582,6 @@ struct rnn_weights_reorder_t : public primitive_t {
             scratchpad.template book<out_data_t>(
                     key_reorder_rnn_weights_xf16_cvt, dt_cross_case ? sz : 0);
         }
-        friend dnnl::impl::impl_list_item_t;
     };
 
     rnn_weights_reorder_t(const pd_t *apd) : primitive_t(apd) {}
@@ -815,19 +771,6 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
         }
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md) {
-            auto desc = reorder_pd_t::create_desc(
-                    src_md, dst_md, src_engine->kind(), dst_engine->kind());
-            auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
-            if (_pd == nullptr) return status::out_of_memory;
-            CHECK(_pd->init(engine, src_engine, dst_engine));
-            CHECK(_pd->init_scratchpad_md());
-            return safe_ptr_assign<reorder_pd_t>(*reorder_pd, _pd.release());
-        }
-
         void init_scratchpad() {
             using namespace format_tag;
 
@@ -851,7 +794,6 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
             scratchpad.template book<int32_t>(
                     key_reorder_rnn_weights_reduction, reduction_size);
         }
-        friend dnnl::impl::impl_list_item_t;
     };
 
     rnn_brgemm_weights_reorder_s8_t(const pd_t *apd) : primitive_t(apd) {}

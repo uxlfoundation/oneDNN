@@ -115,6 +115,8 @@ public:
             CASE(rnn);
             CASE(shuffle);
             CASE(softmax);
+            case primitive_kind::reorder:
+                return get_reorder_implementation_list(desc);
             case primitive_kind::sdpa: return empty_list;
             case primitive_kind::gated_mlp: return empty_list;
             default: assert(!"unknown primitive kind"); return empty_list;
@@ -140,10 +142,6 @@ public:
         return cpu_engine_impl_list_t::get_concat_implementation_list();
     }
 
-    const impl_list_item_t *get_reorder_implementation_list(
-            const op_desc_t *op_desc) const override {
-        return cpu_engine_impl_list_t::get_reorder_implementation_list(op_desc);
-    }
     const impl_list_item_t *get_sum_implementation_list() const override {
         return cpu_engine_impl_list_t::get_sum_implementation_list();
     }

@@ -75,8 +75,6 @@ struct ref_reorder_t : public gpu::generic::sycl::primitive_t {
         sycl_reorder_conf_t conf_;
 
     private:
-        DECLARE_GPU_REORDER_CREATE();
-
         status_t init_conf();
 
         static bool check_data_types(const memory_desc_wrapper &src,

@@ -80,8 +80,6 @@ struct weights_reorder_t : public primitive_t {
         reorder_conf_t conf;
 
     private:
-        DECLARE_GPU_REORDER_CREATE();
-
         void init_scratchpad() {
             auto scratchpad = scratchpad_registry().registrar();
 

@@ -63,19 +63,6 @@ status_t acl_reorder_resource_t::configure(const acl_reorder_conf_t &app) {
     return status::success;
 }
 
-status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
-        const engine_t *engine, const primitive_attr_t *attr,
-        const engine_t *src_engine, const memory_desc_t *src_md,
-        const engine_t *dst_engine, const memory_desc_t *dst_md) {
-    auto desc = reorder_pd_t::create_desc(
-            src_md, dst_md, src_engine->kind(), dst_engine->kind());
-    auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
-    if (_pd == nullptr) return status::out_of_memory;
-    CHECK(_pd->init(engine, src_engine, dst_engine));
-    CHECK(_pd->init_scratchpad_md());
-    return safe_ptr_assign(*reorder_pd, _pd.release());
-}
-
 status_t acl_reorder_fwd_t::pd_t::init(const engine_t *engine,
         const engine_t *src_engine, const engine_t *dst_engine) {
     using namespace acl_utils;

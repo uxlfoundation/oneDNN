@@ -247,9 +247,6 @@ struct cudnn_reorder_lt_t : public gpu::primitive_t {
         format_tag_t src_tag_;
         format_tag_t dst_tag_;
         std::shared_ptr<impl::primitive_desc_t> generic_reorder_desc_;
-
-    private:
-        DECLARE_GPU_REORDER_CREATE();
     };
 
     status_t init(impl::engine_t *engine) override {

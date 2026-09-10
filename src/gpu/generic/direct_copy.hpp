@@ -85,7 +85,6 @@ struct direct_copy_t : public primitive_t {
         }
 
     private:
-        DECLARE_GPU_REORDER_CREATE();
         using block_t = std::pair<dim_t, dim_t>;
 
         status_t normalize(

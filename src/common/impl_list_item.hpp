@@ -113,7 +113,7 @@ struct impl_list_item_t {
     }
 
     // Currently, this only supports iterator friendly primitives. Can be
-    // extended to sum, concat and reorder if needed.
+    // extended to sum and concat if needed.
     template <typename pd_t>
     static int find(const impl_list_item_t *list) {
         int idx = 0;

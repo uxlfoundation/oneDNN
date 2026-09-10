@@ -22,6 +22,7 @@
 #include "primitive_desc_iface.hpp"
 #include "primitive_desc_iterator.hpp"
 #include "primitive_iface.hpp"
+#include "reorder_primitive_desc_iface.hpp"
 
 using namespace dnnl::impl;
 using namespace dnnl::impl::status;
@@ -31,8 +32,8 @@ namespace impl {
 
 status_t primitive_desc_create(primitive_desc_iface_t **primitive_desc_iface,
         engine_t *engine, const op_desc_t *op_desc,
-        const primitive_desc_iface_t *hint_fwd_pd,
-        const primitive_attr_t *attr) {
+        const primitive_desc_iface_t *hint_fwd_pd, const primitive_attr_t *attr,
+        engine_t *src_engine, engine_t *dst_engine) {
     using namespace primitive_kind;
 
     if (!primitive_desc_iface) return invalid_arguments;
@@ -41,11 +42,20 @@ status_t primitive_desc_create(primitive_desc_iface_t **primitive_desc_iface,
             batch_normalization, binary, convolution, deconvolution, eltwise,
             gated_mlp, gemm, group_normalization, inner_product,
             layer_normalization, lrn, matmul, pooling, prelu, reduction,
-            resampling, rnn, sdpa, shuffle, softmax);
+            reorder, resampling, rnn, sdpa, shuffle, softmax);
     if (!known_primitive_kind) return invalid_arguments;
 
-    auto pd_iface = utils::make_unique<primitive_desc_iface_t>(engine, op_desc,
-            attr, hint_fwd_pd ? hint_fwd_pd->impl().get() : nullptr);
+    std::unique_ptr<primitive_desc_iface_t> pd_iface;
+    // Reorder is the only kind that dispatches over two engines. It relies on a
+    // dedicated iface subclass to thread `src_engine` and `dst_engine` to both
+    // the iterator and the created primitive.
+    if (op_desc->primitive_kind == reorder) {
+        pd_iface = utils::make_unique<reorder_primitive_desc_iface_t>(
+                engine, op_desc, attr, src_engine, dst_engine);
+    } else {
+        pd_iface = utils::make_unique<primitive_desc_iface_t>(engine, op_desc,
+                attr, hint_fwd_pd ? hint_fwd_pd->impl().get() : nullptr);
+    }
     if (pd_iface == nullptr) return out_of_memory;
     CHECK(pd_iface->init());
 
@@ -63,10 +73,12 @@ dnnl_primitive_desc::dnnl_primitive_desc(
 
 dnnl_primitive_desc::dnnl_primitive_desc(const engine_t *engine,
         const op_desc_t *op_desc, const primitive_attr_t *attr,
-        const primitive_desc_t *hint_fwd_pd) {
+        const primitive_desc_t *hint_fwd_pd, const engine_t *src_engine,
+        const engine_t *dst_engine) {
 
-    pd_iterator_ = utils::make_unique<primitive_desc_iterator_t>(
-            engine, op_desc, attr, hint_fwd_pd);
+    pd_iterator_ = utils::make_unique<primitive_desc_iterator_t>(engine,
+            op_desc, attr, hint_fwd_pd, /* skip_idx = */ -1, src_engine,
+            dst_engine);
 }
 
 status_t dnnl_primitive_desc::init() {

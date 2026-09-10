@@ -93,14 +93,30 @@ status_t stream_t::init() {
     if (is_verbose_profiler_enabled()) {
         verbose_profiler_.set(
                 utils::make_unique<xpu::sycl::verbose_profiler_t>(this));
-        // Check if the queue has profiling enabled and pause the verbose
-        // profiler if it does not. Verbose lines are still emitted during
-        // logging, but without execution timing information.
+
+        auto *vp = utils::downcast<xpu::sycl::verbose_profiler_t *>(
+                verbose_profiler());
+
         const bool queue_has_profiling = queue().has_property<
                 ::sycl::property::queue::enable_profiling>();
-        if (!queue_has_profiling) {
+#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+        const bool use_tag = queue().get_device().has(
+                ::sycl::aspect::ext_oneapi_queue_profiling_tag);
+#else
+        const bool use_tag = false;
+#endif
+        vp->set_use_ext_oneapi_tag(use_tag);
+        // Verbose profiling relies on SYCL profiling tags to query profiling
+        // info from queued events for exec time computation.
+        // If the sycl_ext_oneapi_profiling_tag is not supported, the profiler
+        // falls back to using a profiling-enabled queue for the same purpose.
+        // If neither are available, the profiling is paused - verbose lines
+        // are still emitted during logging, but without execution timing
+        // information.
+        if (!queue_has_profiling && !use_tag) {
             VWARN(primitive, exec,
-                    "SYCL queue does not have profiling enabled. "
+                    "SYCL queue does not have profiling enabled and "
+                    "sycl_ext_oneapi_profiling_tag is not supported. "
                     "Verbose profiling is paused and execution times "
                     "will not be reported.");
             verbose_profiler()->pause_profiling();
@@ -126,7 +142,15 @@ void stream_t::before_exec_hook() {
                         .get());
         const bool queue_has_profiling = queue().has_property<
                 ::sycl::property::queue::enable_profiling>();
-        if (!queue_has_profiling) { profiler->pause_profiling(); }
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
+        const bool use_tag = queue().get_device().has(
+                ::sycl::aspect::ext_oneapi_queue_profiling_tag);
+#else
+        const bool use_tag = false;
+#endif
+        profiler->set_use_ext_oneapi_tag(use_tag);
+        const bool use_profiler = (queue_has_profiling || use_tag);
+        if (!use_profiler) { profiler->pause_profiling(); }
 
         // Device event profiling and SYCL graph recording are incompatible
         // because the graph execution creates a different execution context
@@ -140,10 +164,10 @@ void stream_t::before_exec_hook() {
         // graph is recording and resume thereafter to avoid runtime exceptions.
         // In this scenario, the profiler will report zero execution time for
         // the logged primitives.
-        if (!recording() && queue_has_profiling) {
+        if (!recording() && use_profiler) {
             profiler->start_profiling();
         } else {
-            if (profiler->is_active() && queue_has_profiling) {
+            if (profiler->is_active() && use_profiler) {
                 VWARN(primitive, exec,
                         "SYCL graph recording active - verbose profiling will "
                         "show zero "

@@ -164,14 +164,14 @@ bool is_heavy_tail_byte_plain_blocked_16c_reorder(
 
 status_t jit_uni_reorder_t::pd_t::init(const engine_t *engine,
         const engine_t *src_engine, const engine_t *dst_engine) {
-    VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md(), dst_md()}),
+    VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
     const auto &zp = attr()->zero_points_;
     const auto scalar_or_default_zp = [&](int arg) {
         return zp.has_default_values(arg) || zp.get_mask(arg) == 0;
     };
-    VDISPATCH_REORDER_IC(scalar_or_default_zp(DNNL_ARG_SRC)
+    VDISPATCH_REORDER(scalar_or_default_zp(DNNL_ARG_SRC)
                     && scalar_or_default_zp(DNNL_ARG_DST),
             VERBOSE_UNSUPPORTED_ZP_CFG);
 
@@ -180,16 +180,18 @@ status_t jit_uni_reorder_t::pd_t::init(const engine_t *engine,
     status_t prb_init_status = prb_init(prb, *src_md(), *dst_md(), attr());
     if (prb_init_status != status::success) return prb_init_status;
 
-    if (tr::prb_is_f32_default_plain_blocked_reorder(prb))
-        return status::unimplemented;
+    VDISPATCH_REORDER(!tr::prb_is_f32_default_plain_blocked_reorder(prb),
+            VERBOSE_UNSUPPORTED_DT_CFG);
 
-    if (is_heavy_tail_byte_plain_blocked_16c_reorder(prb, src_md()))
-        return status::unimplemented;
+    VDISPATCH_REORDER(
+            !is_heavy_tail_byte_plain_blocked_16c_reorder(prb, src_md()),
+            VERBOSE_UNSUPPORTED_DT_CFG);
 
     // A huge-prime dimension cannot be split for cache/thread blocking and would
     // stall prb_thread_kernel_balance's linear factor search, so bail out to the
     // reference reorder before that runs.
-    if (prb_has_huge_prime_number(prb)) return status::unimplemented;
+    VDISPATCH_REORDER(
+            !prb_has_huge_prime_number(prb), VERBOSE_OUT_OF_RANGE_DIMS, "src");
 
     prb_block_for_cache(prb);
     DEBUG({
@@ -209,7 +211,7 @@ status_t jit_uni_reorder_t::pd_t::init(const engine_t *engine,
     if (ker_init_status != status::success) return ker_init_status;
 
     const int ndims_driver = prb.ndims - ker_desc.prb.ndims;
-    VDISPATCH_REORDER_IC(ndims_driver <= jit_uni_reorder_t::ndims_driver_max,
+    VDISPATCH_REORDER(ndims_driver <= jit_uni_reorder_t::ndims_driver_max,
             VERBOSE_BAD_NDIMS, "driver", ndims_driver);
 
     DEBUG({

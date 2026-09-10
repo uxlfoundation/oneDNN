@@ -136,6 +136,35 @@ void Generator<hw>::loadMask(MaskAssignment assignment, Subregister index, const
         auto flagType = flag.getType();
         auto mask0Type = getBytes(flagType) >= 4 ? DataType::uq : flagType;
 
+        if (vmask.bitRep == 3) {
+            // u3-specific mask mode (see the u3 pseudo-block fallback in
+            // register_layout.cpp): vmask.rsize holds the maximum valid
+            // *row* (element) count for this mask (always a multiple of
+            // 8), while each mask bit represents one valid *byte* of the
+            // packed u3 data. Convert the runtime valid row count (index)
+            // into the corresponding valid byte count via the fixed
+            // 8-element/3-byte packing ratio, then build a mask with
+            // exactly that many low bits set (rounded up to the message's
+            // actual, power-of-2 SIMD width, matching the fixed padding
+            // mask this replaces when there's no real remainder).
+            auto temp  = state.ra.alloc_sub(flagType, getHint(HintType::Bank0));
+            auto temp2 = state.ra.alloc_sub(flagType, getHint(HintType::Bank0));
+            uint32_t totalBytes = vmask.rsize * 3 / 8;
+            uint32_t maskSize = roundup_pow2(totalBytes);
+            uint64_t rep1MaskU3 = (uint64_t(1) << maskSize) - 1;
+
+            add(1 | sat, temp, -index, uint16_t(vmask.rsize + assignment.offset + offset));
+            mulConstant(1, temp, temp, 3);
+            shr(1, temp, temp, uint16_t(3));
+            add(1, temp, temp, uint16_t(maskSize - totalBytes));
+            mov(1, temp2, rep1MaskU3);
+            shr(1, flag, temp2, temp);
+
+            state.ra.safeRelease(temp);
+            state.ra.safeRelease(temp2);
+            return;
+        }
+
         if (vmask.rsize == 1) {
             // Simple threshold comparison.
             offset += assignment.offset;

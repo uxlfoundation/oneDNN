@@ -20,13 +20,11 @@
 #include "c_types_map.hpp"
 #include "engine.hpp"
 #include "impl_list_item.hpp"
-#include "primitive_cache.hpp"
+#include "opdesc.hpp"
+#include "primitive_desc_iface.hpp"
 #include "primitive_desc_iterator.hpp"
-#include "primitive_hashing.hpp"
 #include "type_helpers.hpp"
 #include "utils.hpp"
-
-#include "reorder_pd.hpp"
 
 using namespace dnnl::impl;
 using namespace dnnl::impl::utils;
@@ -200,13 +198,17 @@ status_t dnnl_reorder_primitive_desc_create(
     if (any_null(reorder_pd_iface, src_engine, src_md, dst_engine, dst_md))
         return invalid_arguments;
 
-    std::shared_ptr<primitive_desc_t> pd;
-    auto e = get_reorder_engine(src_engine, dst_engine);
-    CHECK(reorder_primitive_desc_create(
-            pd, e, src_md, src_engine, dst_md, dst_engine, attr));
+    if (attr == nullptr) attr = &default_attr();
 
-    return safe_ptr_assign(*reorder_pd_iface,
-            new reorder_primitive_desc_iface_t(pd, e, src_engine, dst_engine));
+    reorder_desc_t reorder_desc;
+    CHECK(reorder_desc_init(
+            &reorder_desc, src_md, src_engine, dst_md, dst_engine, attr));
+
+    auto *e = const_cast<engine_t *>(
+            get_reorder_engine(src_engine, dst_engine));
+    return primitive_desc_create(reorder_pd_iface, e,
+            reinterpret_cast<const op_desc_t *>(&reorder_desc), nullptr, attr,
+            src_engine, dst_engine);
 }
 
 // vim: et ts=4 sw=4 cindent cino+=l0,\:4,N-s

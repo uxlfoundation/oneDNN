@@ -27,7 +27,7 @@
 #include "primitive_exec_types.hpp"
 #include "primitive_iface.hpp"
 #include "profiler.hpp"
-#include "reorder_pd.hpp"
+#include "reorder_primitive_desc_iface.hpp"
 #include "scratchpad_debug.hpp"
 #include "stack_checker.hpp"
 #include "stream.hpp"

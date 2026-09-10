@@ -22,7 +22,7 @@
 
 namespace dnnl {
 
-const dnnl_status_t ok = dnnl_success;
+constexpr dnnl_status_t ok = dnnl_success;
 
 class pd_iter_test_t : public ::testing::Test {
 protected:
@@ -66,6 +66,40 @@ TEST_F(pd_iter_test_t, TestReLUImpls) {
     ASSERT_EQ(rc, ok);
 }
 
+TEST_F(pd_iter_test_t, TestReorder) {
+    dnnl_memory_desc_t mds[2];
+
+    dnnl_dims_t dims = {1, 16, 16, 16};
+    ASSERT_EQ(dnnl_memory_desc_create_with_tag(
+                      &mds[0], 4, dims, dnnl_f32, dnnl_nchw),
+            ok);
+    ASSERT_EQ(dnnl_memory_desc_create_with_tag(
+                      &mds[1], 4, dims, dnnl_f32, dnnl_nchw),
+            ok);
+
+    dnnl_primitive_desc_t reorder_pd;
+    dnnl_status_t rc = dnnl_reorder_primitive_desc_create(
+            &reorder_pd, mds[0], engine, mds[1], engine, nullptr);
+    ASSERT_EQ(rc, ok); /* there should be at least one impl */
+    while ((rc = dnnl_primitive_desc_next_impl(reorder_pd)) == ok)
+        ;
+    ASSERT_EQ(rc, dnnl_last_impl_reached);
+
+    // Primitive descriptor has to be valid when the iterator
+    // reaches the end.
+    dnnl_primitive_t p;
+    rc = dnnl_primitive_create(&p, reorder_pd);
+    ASSERT_EQ(rc, ok);
+
+    rc = dnnl_primitive_desc_destroy(reorder_pd);
+    ASSERT_EQ(rc, ok);
+    rc = dnnl_primitive_destroy(p);
+    ASSERT_EQ(rc, ok);
+
+    ASSERT_EQ(dnnl_memory_desc_destroy(mds[0]), ok);
+    ASSERT_EQ(dnnl_memory_desc_destroy(mds[1]), ok);
+}
+
 TEST_F(pd_iter_test_t, UnsupportedPrimitives) {
     const float scales[2] = {1.0f, 1.0f};
     dnnl_memory_desc_t mds[2];
@@ -78,16 +112,8 @@ TEST_F(pd_iter_test_t, UnsupportedPrimitives) {
                       &mds[1], 4, dims, dnnl_f32, dnnl_nchw),
             ok);
 
-    dnnl_primitive_desc_t reorder_pd;
     dnnl_primitive_desc_t concat_pd;
     dnnl_primitive_desc_t sum_pd;
-
-    ASSERT_EQ(dnnl_reorder_primitive_desc_create(
-                      &reorder_pd, mds[0], engine, mds[1], engine, nullptr),
-            ok);
-    ASSERT_EQ(
-            dnnl_primitive_desc_next_impl(reorder_pd), dnnl_last_impl_reached);
-    ASSERT_EQ(dnnl_primitive_desc_destroy(reorder_pd), ok);
 
     // concat and sum operator are not supported for HIP
     if (!is_amd_gpu(get_test_engine())) {

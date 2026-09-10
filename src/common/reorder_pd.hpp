@@ -154,19 +154,6 @@ struct reorder_pd_t : public primitive_desc_t {
         return sum_idx == -1 ? 0 : attr()->post_ops_.entry_[sum_idx].sum.scale;
     }
 
-    // Builds a reorder op descriptor to be passed to the pd constructor.
-    static reorder_desc_t create_desc(const memory_desc_t *src_md,
-            const memory_desc_t *dst_md, engine_kind_t src_engine_kind,
-            engine_kind_t dst_engine_kind, bool is_cross_engine = false) {
-        reorder_desc_t desc;
-        desc.src_desc = *src_md;
-        desc.dst_desc = *dst_md;
-        desc.src_engine_kind = src_engine_kind;
-        desc.dst_engine_kind = dst_engine_kind;
-        desc.is_cross_engine = is_cross_engine;
-        return desc;
-    }
-
 protected:
     reorder_desc_t desc_;
     memory_desc_t src_md_;

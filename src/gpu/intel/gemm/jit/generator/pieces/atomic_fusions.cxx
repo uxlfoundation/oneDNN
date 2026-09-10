@@ -114,11 +114,7 @@ void Generator<hw>::gemmStoreZeroC(GEMMProblem problem, GEMMStrategy strategy, G
 
     if (state.useTempC) {
         gemmRedirectToTempC(problem, strategy, state);
-        for (auto *s: {&strategy.C, &strategy.CO, &state.Cext_strategy}) {
-            s->atomic = false;
-            s->cachingW = CacheSettingsLSC::L1UC_L3WB;
-        }
-        setCCachingW(strategy, state, CacheSettingsLSC::L1UC_L3WB, CacheSettingsLSC::L1UC_L3WB);
+        setCCachingW(strategy, state, CacheSettingsLSC::L1UC_L3WB, CacheSettingsLSC::L1UC_L3WB, false);
     }
 
     auto collapse = [&](RegisterLayout &layout) {
@@ -203,11 +199,7 @@ void Generator<hw>::gemmFusedBetaScale(GEMMProblem problem, GEMMStrategy strateg
     auto &beta = problem.beta;
     bool checkBeta0 = !beta.fixed();
 
-    for (auto *s: {&strategy.C, &strategy.CO, &state.Cext_strategy}) {
-        s->atomic = false;
-        s->cachingW = CacheSettingsLSC::L1UC_L3WB;
-    }
-    setCCachingW(strategy, state, CacheSettingsLSC::L1UC_L3WB, CacheSettingsLSC::L1UC_L3WB);
+    setCCachingW(strategy, state, CacheSettingsLSC::L1UC_L3WB, CacheSettingsLSC::L1UC_L3WB, false);
 
     bool nested = true;
     std::swap(nested, state.isNested);
@@ -468,11 +460,7 @@ bool Generator<hw>::gemmFusedPostOpsFinalize(Label &labelLateExit, GEMMProblem &
 
         and_(1 | nz | state.flagAP, null.ud(), state.inputs.flags, FlagDidBeta);
         jmpi(1 | ~state.flagAP, lTileAccumulate);
-        for (auto *s: {&strategy0.C, &strategy0.CO, &state0.Cext_strategy}) {
-            s->atomic = false;
-            s->cachingW = CacheSettingsLSC::L1UC_L3WB;
-        }
-        setCCachingW(strategy0, state0, CacheSettingsLSC::L1UC_L3WB, CacheSettingsLSC::L1UC_L3WB);
+        setCCachingW(strategy0, state0, CacheSettingsLSC::L1UC_L3WB, CacheSettingsLSC::L1UC_L3WB, false);
         if (!gemmAccessC(COperation::Store, modProblem, strategy0, state0)) return false;
         jmpi(1, labelSkipCUpdate);
         mark(lTileAccumulate);

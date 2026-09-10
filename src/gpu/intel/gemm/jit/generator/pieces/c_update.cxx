@@ -563,7 +563,7 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
     checkUC = checkUC && (C_l1UCW != strategy.C.cachingW || Ce_l1UCW != state.Cext_strategy.cachingW);
 
     if (strategy.altFusedBeta && !checkUC && !strategy.fusePostOps)
-        setCCachingW(strategy, state, C_l1UCW, Ce_l1UCW);
+        setCCachingW(strategy, state, C_l1UCW, Ce_l1UCW, strategy.C.atomic);
 
     // Generate the various paths needed.
     if (!checkBeta0 && !checkBeta1 && !checkTRMMBeta1 && !checkUC) {
@@ -642,7 +642,7 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
             substrategy.C.atomic = substrategy.CO.atomic = false;
             substate.Cext_strategy.atomic = false;
             if (checkUC)
-                setCCachingW(substrategy, substate, C_l1UCW, Ce_l1UCW);
+                setCCachingW(substrategy, substate, C_l1UCW, Ce_l1UCW, false);
 
             if (!gemmUpdateC(subproblem, substrategy, substate)) return false;
         }
@@ -686,7 +686,7 @@ bool Generator<hw>::gemmUpdateCDispatch(GEMMProblem &problem, GEMMStrategy &stra
             subproblem.beta = 0;
             subproblem.removeFinalSumPostOp();
             if (checkUC)
-                setCCachingW(substrategy, substate, C_l1UCW, Ce_l1UCW);
+                setCCachingW(substrategy, substate, C_l1UCW, Ce_l1UCW, false);
 
             substrategy.C.atomic = substrategy.CO.atomic = false;
             substate.Cext_strategy.atomic = false;

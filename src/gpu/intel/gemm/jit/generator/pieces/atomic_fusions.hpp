@@ -40,9 +40,10 @@ inline int tempCWGStride(const GEMMProblem &problem, const GEMMStrategy &strateg
     return tempCThreadStride(problem, strategy) * strategy.wg[LoopM] * strategy.wg[LoopN];
 }
 
-// Set C write cache policy; layouts hold their own copy of the addressing strategy, so update those too.
-inline void setCCachingW(GEMMStrategy &strategy, GEMMState &state, ngen::CacheSettingsLSC caching, ngen::CacheSettingsLSC cachingExt)
+// Set C atomic/write cache policy; layouts hold their own copy of the addressing strategy, so update those too.
+inline void setCCachingW(GEMMStrategy &strategy, GEMMState &state, ngen::CacheSettingsLSC caching, ngen::CacheSettingsLSC cachingExt, bool atomic)
 {
+    strategy.C.atomic = strategy.CO.atomic = state.Cext_strategy.atomic = atomic;
     strategy.C.cachingW = caching;
     state.Cext_strategy.cachingW = cachingExt;
     state.C_layout.addressingStrategy().cachingW = caching;

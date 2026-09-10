@@ -117,10 +117,13 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
         // moment the end tag began executing, which tightly bounds the
         // kernel execution time.
         if (use_ext_oneapi_tag()) {
-            uint64_t ev_start = sycl_ev.start_tag_.get_profiling_info<
-                    event_profiling::command_end>();
-            uint64_t ev_end = sycl_ev.end_tag_.get_profiling_info<
-                    event_profiling::command_start>();
+            assert(sycl_ev.event_tags_.size() == sycl_ev.events.size());
+            uint64_t ev_start = sycl_ev.event_tags_[0]
+                                        .first.get_profiling_info<
+                                                event_profiling::command_end>();
+            uint64_t ev_end = sycl_ev.event_tags_[last_idx]
+                                      .second.get_profiling_info<
+                                              event_profiling::command_start>();
             agg_start = std::min(agg_start, ev_start);
             agg_end = std::max(agg_end, ev_end);
         } else

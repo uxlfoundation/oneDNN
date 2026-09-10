@@ -29,6 +29,34 @@ namespace dnnl {
 namespace impl {
 namespace cpu {
 namespace binary_injector_utils {
+// The mode is fixed at kernel generation, not encoded in the runtime pointer.
+// Legacy kernels retain array mode even for one operand.
+enum class rhs_arg_mode_t { array, single };
+
+// Count RHS operands: binary = 1, select = 2, PReLU = 1, other post-ops = 0.
+rhs_arg_mode_t get_rhs_arg_mode(const post_ops_t &post_ops);
+
+// Own one execution's pointer storage, not the tensors. data() remains valid
+// until preparation is repeated or the owner is destroyed.
+class rhs_arg_storage_t {
+public:
+    void prepare(const post_ops_t &post_ops, const exec_ctx_t &ctx,
+            rhs_arg_mode_t mode, unsigned first_arg_idx_offset = 0);
+    const void *data() const {
+        return array_.empty() ? single_ : array_.data();
+    }
+
+private:
+    const void *single_ = nullptr;
+    std::vector<const void *> array_;
+};
+
+// Compatibility overloads always produce an array, including for one RHS.
+void prepare_binary_args(const post_ops_t &post_ops,
+        const dnnl::impl::exec_ctx_t &ctx,
+        std::vector<const void *> &post_ops_binary_rhs_arg_vec,
+        const unsigned first_arg_idx_offset = 0);
+
 /*
  * Extracts pointers to tensors passed by user as binary postops rhs
  * (right-hand-side) arguments from execution context and advances them to

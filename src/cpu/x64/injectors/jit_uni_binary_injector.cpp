@@ -576,7 +576,6 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
             = should_preserve_oc_offset_conversion_regs
             || should_preserve_w_offset_conversion_regs
             || should_preserve_spatial_offset_conversion_regs;
-
     // Phase 2 Protect temporary registers content.
     const injector_utils::register_preserve_guard_t register_guard {host_,
             (rhs_arg_static_params_.preserve_gpr_helpers
@@ -744,8 +743,11 @@ Xbyak::Address jit_uni_binary_injector_t<Vmm>::prepare_rhs_arg_addr(int vmm_idx,
 
     if (is_first || is_ternary_input) {
         host_->mov(rhs_addr_reg, host_->ptr[param1_ + abi_param_offset]);
-        host_->mov(rhs_addr_reg,
-                host_->ptr[rhs_addr_reg + rhs_arg_idx * rhs_arg_ptr_size]);
+        if (rhs_arg_static_params_.rhs_arg_mode == rhs_arg_mode_t::array)
+            host_->mov(rhs_addr_reg,
+                    host_->ptr[rhs_addr_reg + rhs_arg_idx * rhs_arg_ptr_size]);
+        else
+            assert(rhs_arg_idx == 0 && !is_ternary_input);
     }
 
     switch (rhs_broadcasting_strategy) {

@@ -38,6 +38,7 @@ using namespace dnnl::impl::utils;
 using namespace prop_kind;
 using namespace data_type;
 using namespace brgemm_utils;
+using binary_injector_utils::rhs_arg_mode_t;
 
 brgemm_desc_t::brgemm_desc_t(const brgemm_desc_t &other) {
     *this = other;
@@ -159,7 +160,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
     brgemm_p.skip_accm = post_ops_data.skip_accumulation ? 1 : 0;
     brgemm_p.BS = bs;
     brgemm_p.zp_a_val = post_ops_data.zp_a_val;
-    brgemm_p.post_ops_binary_rhs_arg_vec = post_ops_data.binary_post_ops_rhs;
+    brgemm_p.post_ops_binary_rhs = post_ops_data.binary_post_ops_rhs;
     brgemm_p.oc_logical_off = post_ops_data.oc_logical_off;
     brgemm_p.dst_row_logical_off = post_ops_data.dst_row_logical_off;
     brgemm_p.data_C_ptr_ = post_ops_data.data_C_ptr_;
@@ -203,7 +204,7 @@ void brgemm_kernel_execute_postops(const brgemm_kernel_t *brg_kernel, dim_t bs,
     brgemm_p.skip_accm = post_ops_data.skip_accumulation ? 1 : 0;
     brgemm_p.BS = bs;
     brgemm_p.zp_a_val = post_ops_data.zp_a_val;
-    brgemm_p.post_ops_binary_rhs_arg_vec = post_ops_data.binary_post_ops_rhs;
+    brgemm_p.post_ops_binary_rhs = post_ops_data.binary_post_ops_rhs;
     brgemm_p.oc_logical_off = post_ops_data.oc_logical_off;
     brgemm_p.dst_row_logical_off = post_ops_data.dst_row_logical_off;
     brgemm_p.data_C_ptr_ = post_ops_data.data_C_ptr_;
@@ -685,6 +686,13 @@ status_t brgemm_kernel_create(
     if (!brg_kernel) return status::invalid_arguments;
     *brg_kernel = nullptr;
 
+    // BRDGMM and IR GEMV retain array-only call contracts.
+    if (brg.binary_post_ops_rhs_mode == rhs_arg_mode_t::single
+            && (brg.is_dgmm || brg.is_gemv || !brg.attr()
+                    || binary_injector::get_rhs_arg_mode(brg.attr()->post_ops_)
+                            != rhs_arg_mode_t::single))
+        return status::invalid_arguments;
+
     if (utils::one_of(data_type::f64, brg.dt_a, brg.dt_b, brg.dt_c, brg.dt_d,
                 brg.dt_bias, brg.sum_dt))
         return status::unimplemented;
@@ -873,6 +881,9 @@ int brgemm_cmp(const brgemm_desc_t &lhs, const brgemm_desc_t &rhs) {
     CMP_BRGEMM_FIELD(sum_dt);
     CMP_BRGEMM_FIELD(with_eltwise);
     CMP_BRGEMM_FIELD(with_binary);
+    if (lhs.binary_post_ops_rhs_mode != rhs.binary_post_ops_rhs_mode)
+        return lhs.binary_post_ops_rhs_mode < rhs.binary_post_ops_rhs_mode ? -1
+                                                                          : 1;
 
     CMP_BRGEMM_FIELD(zp_type_a);
     CMP_BRGEMM_FIELD(zp_type_b);

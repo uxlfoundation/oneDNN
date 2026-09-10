@@ -40,9 +40,11 @@ namespace impl {
 namespace cpu {
 namespace x64 {
 namespace binary_injector {
+using dnnl::impl::cpu::binary_injector_utils::get_rhs_arg_mode;
 using dnnl::impl::cpu::binary_injector_utils::get_src1_desc;
 using dnnl::impl::cpu::binary_injector_utils::get_src2_desc;
 using dnnl::impl::cpu::binary_injector_utils::prepare_binary_args;
+using dnnl::impl::cpu::binary_injector_utils::rhs_arg_mode_t;
 
 bcast_set_t get_all_strategies_supported_by_injector();
 
@@ -95,8 +97,10 @@ void extend_binary_args_per_w(const post_ops_t &post_ops,
  * compute_vector_range calls.
  * @param preserve_vmm_helper - determines whether vmm helper register specified
  * above should be preserved between compute_vector_range calls.
- * @param abi_param_offset - offset to rhs tensor from first binary post-op operation
- * specified by user from runtime structure passed to kernel as abi param 1.
+ * @param abi_param_offset - offset to the RHS transport value in the runtime
+ * structure passed to kernel as abi param 1.
+ * @param rhs_arg_mode - fixed interpretation of that value: a raw RHS pointer
+ * for single mode or a pointer array for array mode (the legacy default).
  * @param dst_orig_offset - offset 0 to destination tensor
  * @param dst_d - descriptor of destination tensor (result after applying all post-ops
  * operations).
@@ -146,6 +150,7 @@ struct rhs_arg_static_params_t {
     bool preserve_gpr_helpers;
     bool preserve_vmm_helper;
     int abi_param_offset;
+    rhs_arg_mode_t rhs_arg_mode = rhs_arg_mode_t::array;
     dim_t dst_orig_offset;
     memory_desc_wrapper dst_d;
     int tail_size;

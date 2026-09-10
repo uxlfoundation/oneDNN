@@ -26,6 +26,7 @@
 
 #include "graph/interface/c_types_map.hpp"
 
+#include "graph/backend/dnnl/kernels/sdp_decomp_reorder.hpp"
 #include "graph/backend/dnnl/scratchpad.hpp"
 #include "graph/backend/dnnl/subgraph.hpp"
 
@@ -37,34 +38,6 @@ namespace dnnl_impl {
 using ltw = logical_tensor_wrapper_t;
 using op_ptr = std::shared_ptr<op_t>;
 using registry_key = size_t;
-
-struct sdp_reorder_t {
-public:
-    status_t init(const dnnl::reorder::primitive_desc &pd) {
-        auto src_desc = pd.src_desc();
-        auto dst_desc = pd.dst_desc();
-        if (src_desc == dst_desc) is_inplace_ = true;
-        reorder_prim_ = reorder(pd);
-        return status::success;
-    }
-
-    bool get_inplace() const { return is_inplace_; }
-
-    status_t execute(const dnnl::stream &astream,
-            const std::unordered_map<int, dnnl::memory> &args) const {
-        if (is_inplace_) {
-            void *handle = args.at(DNNL_ARG_SRC).get_data_handle();
-            args.at(DNNL_ARG_DST).set_data_handle(handle);
-        } else
-            dnnl_primitive_execute_without_tp_hook(
-                    reorder_prim_, astream, args);
-        return status::success;
-    }
-
-private:
-    dnnl::primitive reorder_prim_;
-    bool is_inplace_ = false;
-};
 
 struct sdp_decomp_training_config_t {
 public:
@@ -92,19 +65,19 @@ public:
     };
 
     // Primitives for the execution pipeline
-    sdp_reorder_t sub_reorder0, sub_reorder1, sub_reorder2, sub_reorder3;
+    sdp_decomp_reorder_t sub_reorder0, sub_reorder1, sub_reorder2, sub_reorder3;
     primitive sub_mm1_prim, sub_mm2_prim;
 
     // Softmax primitive: scores -> P (f32)
     primitive sub_softmax_prim;
     // f32 softmax_out -> xf16 for mm2
-    sdp_reorder_t sub_reorder_softmax;
+    sdp_decomp_reorder_t sub_reorder_softmax;
 
     // Stats computation primitives (logsumexp = max(src) - log(max(P)))
     primitive sub_reduce_max_P_prim;
     primitive sub_reduce_max_src_prim;
     // dense stats -> user layout
-    sdp_reorder_t sub_reorder_stats;
+    sdp_decomp_reorder_t sub_reorder_stats;
 
     // Args used in execution of primitives
     std::unordered_map<int, memory> sub_reorder0_args, sub_reorder1_args,

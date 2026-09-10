@@ -139,10 +139,12 @@ private:
     status_t operator()(primitive_desc_t **pd, const op_desc_t *adesc,
             const primitive_attr_t *attr, const engine_t *engine,
             const primitive_desc_t *hint_fwd, int pd_iterator_offset,
-            int skip_idx) const {
+            int skip_idx, const engine_t *src_engine = nullptr,
+            const engine_t *dst_engine = nullptr) const {
         assert(create_pd_func_);
         if (!create_pd_func_) return status::runtime_error;
-        auto status = create_pd_func_(pd, adesc, attr, engine, hint_fwd);
+        auto status = create_pd_func_(
+                pd, adesc, attr, engine, hint_fwd, src_engine, dst_engine);
         if (status == status::success) {
             (*pd)->init_pd_iterator_offset(pd_iterator_offset);
             (*pd)->init_skip_idx(skip_idx);
@@ -179,7 +181,7 @@ private:
 
     using create_pd_func_t = status_t (*)(primitive_desc_t **,
             const op_desc_t *, const primitive_attr_t *, const engine_t *,
-            const primitive_desc_t *);
+            const primitive_desc_t *, const engine_t *, const engine_t *);
 
     using create_concat_pd_func_t = status_t (*)(concat_pd_t **,
             const engine_t *, const primitive_attr_t *, const memory_desc_t *,

@@ -115,12 +115,13 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
                     : (brg.gemv_acc_is_vector() ? brg.gemv_tail : 1);
             const auto k_mask = !brg.is_gemv ? ld_tail_mask : gemv_partial_mask;
 
-            const binary_injector::rhs_arg_static_params_t rhs_sp {
+            binary_injector::rhs_arg_static_params_t rhs_sp {
                     vmm_tmp(0).getIdx(), this->r14, this->r15, this->r13,
                     preserve_gpr, preserve_vmm,
-                    GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(data_C_ptr_),
+                    GET_OFF(post_ops_binary_rhs), GET_OFF(data_C_ptr_),
                     dst_md_wrapper, tail_size, k_mask,
                     use_exact_tail_scalar_bcast};
+            rhs_sp.rhs_arg_mode = brg.binary_post_ops_rhs_mode;
 
             const binary_injector::static_params_t bsp {this->param1,
                     binary_injector::get_all_strategies_supported_by_injector(),

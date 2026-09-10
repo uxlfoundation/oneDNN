@@ -88,12 +88,13 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
             static constexpr bool use_exact_tail_scalar_bcast = false;
             const auto dst_md_wrapper = memory_desc_wrapper(brg.dst_md());
 
-            const binary_injector::rhs_arg_static_params_t rhs_sp {
+            binary_injector::rhs_arg_static_params_t rhs_sp {
                     Xbyak::Zmm(1).getIdx(), this->r14, this->r15, this->r13,
                     preserve_gpr, preserve_vmm,
-                    GET_OFF(post_ops_binary_rhs_arg_vec), GET_OFF(data_C_ptr_),
+                    GET_OFF(post_ops_binary_rhs), GET_OFF(data_C_ptr_),
                     dst_md_wrapper, brg.ldb_tail, ld_tail_mask,
                     use_exact_tail_scalar_bcast};
+            rhs_sp.rhs_arg_mode = brg.binary_post_ops_rhs_mode;
 
             const binary_injector::static_params_t bsp(this->param1,
                     binary_injector::get_all_strategies_supported_by_injector(),

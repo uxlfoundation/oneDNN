@@ -55,7 +55,8 @@ struct jit_softmax_kernel_base_t {
 
         // post ops
         const void *dst_orig;
-        const void *post_ops_binary_rhs_arg_vec;
+        // Raw pointer for one RHS operand, pointer array otherwise.
+        const void *post_ops_binary_rhs;
     };
 
     virtual void operator()(const call_params_t *p) const = 0;

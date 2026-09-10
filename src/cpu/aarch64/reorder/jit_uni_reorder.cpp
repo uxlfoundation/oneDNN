@@ -51,8 +51,8 @@ namespace aarch64 {
 
 status_t jit_uni_reorder_t::pd_t::init(const engine_t *engine,
         const engine_t *src_engine, const engine_t *dst_engine) {
-    if (!impl::is_dense_format_kind({src_md(), dst_md()}))
-        return status::unimplemented;
+    VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
     auto prb = tr::prb_t();
 
     status_t prb_init_status = prb_init(prb, *src_md(), *dst_md(), attr());
@@ -76,8 +76,8 @@ status_t jit_uni_reorder_t::pd_t::init(const engine_t *engine,
     if (ker_init_status != status::success) return ker_init_status;
 
     const int ndims_driver = prb.ndims - ker_desc.prb.ndims;
-    if (ndims_driver > jit_uni_reorder_t::ndims_driver_max)
-        return status::unimplemented;
+    VDISPATCH_REORDER(ndims_driver <= jit_uni_reorder_t::ndims_driver_max,
+            VERBOSE_BAD_NDIMS, "driver", ndims_driver);
 
     DEBUG({
         verbose_printf(verbose_t::debuginfo, "ker  : %s\n",

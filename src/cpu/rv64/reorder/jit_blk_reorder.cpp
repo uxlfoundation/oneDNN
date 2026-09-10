@@ -477,7 +477,7 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
 
 status_t jit_blk_reorder_t::pd_t::init(const engine_t *engine,
         const engine_t *src_engine, const engine_t *dst_engine) {
-    VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md(), dst_md()}),
+    VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
     auto prb = tr::prb_t();
 
@@ -491,11 +491,12 @@ status_t jit_blk_reorder_t::pd_t::init(const engine_t *engine,
     const bool is_plain_blocked
             = tr::prb_is_f32_default_plain_blocked_reorder(prb, &desc);
 
-    if (!tr::jit_single_blk_kernel_t::applicable(prb))
-        return status::unimplemented;
+    VDISPATCH_REORDER(tr::jit_single_blk_kernel_t::applicable(prb),
+            "applicable() call failed");
 
-    if (!is_plain_blocked || !is_transpose_16c_profitable(*src_md(), desc))
-        return status::unimplemented;
+    VDISPATCH_REORDER(
+            is_plain_blocked && is_transpose_16c_profitable(*src_md(), desc),
+            VERBOSE_UNSUPPORTED_TAG);
 
     prb_ = prb;
     CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));

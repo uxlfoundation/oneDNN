@@ -115,7 +115,7 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::init(const engine_t *engine,
             = matmul_conf_for_reorder_.src_zp_type != brgemm_broadcast_t::none;
 
     // asimd not supported, so we need >sve_128
-    if (!mayiuse(sve_128)) return status::unimplemented;
+    VDISPATCH_REORDER(mayiuse(sve_128), VERBOSE_UNSUPPORTED_ISA);
     matmul_conf_for_reorder_.isa = get_max_cpu_isa();
 
     auto mask_ok = [&](bool check, int mask) {

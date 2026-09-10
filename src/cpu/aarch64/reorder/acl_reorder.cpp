@@ -87,18 +87,18 @@ status_t acl_reorder_fwd_t::pd_t::init(const engine_t *engine,
                     dst_md()->data_type, data_type::f32, data_type::bf16)
             && attr()->has_default_values();
 
-    VDISPATCH_REORDER_IC(ok, "unsupported datatype");
+    VDISPATCH_REORDER(ok, "unsupported datatype");
 
     CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
     // In case we have two or four dimensions, we can't have one of the
     // two first dimensions as 1. This is valid for f32->f32 and f32->bf16.
-    VDISPATCH_REORDER_IC(dst_md()->dims[0] != 1 && dst_md()->dims[1] != 1,
+    VDISPATCH_REORDER(dst_md()->dims[0] != 1 && dst_md()->dims[1] != 1,
             "first two dimensions of the reorder being 1 is not supported");
 
     auto src_tag = memory_desc_matches_one_of_tag(
             *src_md(), format_tag::ab, format_tag::ba, format_tag::cdba);
-    VDISPATCH_REORDER_IC(format_tag::undef != src_tag,
+    VDISPATCH_REORDER(format_tag::undef != src_tag,
             "Only ab, ba or cdba source formats supported");
 
     auto dst_tag = memory_desc_matches_one_of_tag(*dst_md(), format_tag::BA8b4a,
@@ -111,13 +111,13 @@ status_t acl_reorder_fwd_t::pd_t::init(const engine_t *engine,
     auto &transpose = app_.transpose;
     auto &dst_blocking = dst_md()->format_desc.blocking;
 
-    VDISPATCH_REORDER_IC(src_md()->ndims == dst_md()->ndims,
+    VDISPATCH_REORDER(src_md()->ndims == dst_md()->ndims,
             "Number of dimensions in src and dst do not match");
-    VDISPATCH_REORDER_IC((dst_md()->ndims == 2 || dst_md()->ndims == 4),
+    VDISPATCH_REORDER((dst_md()->ndims == 2 || dst_md()->ndims == 4),
             "ACL only supports 2D and 4D reorders");
     // Check if a transpose is needed during the reorder
     if (src_md()->ndims == 4) {
-        VDISPATCH_REORDER_IC(
+        VDISPATCH_REORDER(
                 memory_desc_matches_tag(*src_md(), dnnl::impl::format_tag::cdba)
                         && (memory_desc_matches_one_of_tag(*dst_md(),
                                     dnnl::impl::format_tag::Acdb4a,
@@ -134,11 +134,10 @@ status_t acl_reorder_fwd_t::pd_t::init(const engine_t *engine,
 
     // Return unimplemented for non-transposed reorders for now
     // as they are faster in JIT for most cases.
-    VDISPATCH_REORDER_IC(
-            transpose, "non-transposed reorders are not supported");
+    VDISPATCH_REORDER(transpose, "non-transposed reorders are not supported");
 
     // Optimised f32:bf16 ab->BA8b4a SVE-256 JIT reorder available
-    VDISPATCH_REORDER_IC(
+    VDISPATCH_REORDER(
             !(mayiuse(sve_256),
                     transpose && src_md()->ndims == 2
                             && src_md()->data_type == data_type::f32
@@ -149,8 +148,7 @@ status_t acl_reorder_fwd_t::pd_t::init(const engine_t *engine,
 
     auto &dst_wf = app_.dst_wf;
 
-    VDISPATCH_REORDER_IC(
-            dst_blocking.inner_nblks <= 2, VERBOSE_UNSUPPORTED_TAG);
+    VDISPATCH_REORDER(dst_blocking.inner_nblks <= 2, VERBOSE_UNSUPPORTED_TAG);
     // Offsets to calculate the enum for ComputeLibrary weight formats
     // defined in arm_compute/core/CoreTypes.h
     const auto interleave_offset = 0x000100;
@@ -195,8 +193,7 @@ status_t acl_reorder_fwd_t::pd_t::init(const engine_t *engine,
         } break;
         case 4: {
             // Currently only supporting AxBx1x1 cases
-            VDISPATCH_REORDER_IC(
-                    dst_md()->dims[2] == 1 && dst_md()->dims[3] == 1,
+            VDISPATCH_REORDER(dst_md()->dims[2] == 1 && dst_md()->dims[3] == 1,
                     "currently only AxBx1x1 4d reorders are supported");
 
             acl_tensor_shape_in = arm_compute::TensorShape(src_md()->dims[3],

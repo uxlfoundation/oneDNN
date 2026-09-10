@@ -2695,12 +2695,11 @@ struct simple_reorder_t : public primitive_t {
                     && dst_md()->data_type == type_o;
             if (!ok) return status::invalid_arguments;
 
-            VDISPATCH_REORDER_IC(
-                    impl::is_dense_format_kind({src_md(), dst_md()}),
+            VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             using skip_mask_t = primitive_attr_t::skip_mask_t;
-            VDISPATCH_REORDER_IC(
+            VDISPATCH_REORDER(
                     attr()->has_default_values(skip_mask_t::scales_data_type
                             | skip_mask_t::scales_groups
                             | skip_mask_t::zero_points_data_type

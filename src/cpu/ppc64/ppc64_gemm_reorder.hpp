@@ -56,13 +56,7 @@ struct ppc64_matrixA_reorder_t : public primitive_t {
                 const engine_t *dst_engine);
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md);
-
         void init_scratchpad() {}
-        friend dnnl::impl::impl_list_item_t;
     };
     ppc64_matrixA_reorder_t(const pd_t *apd) : primitive_t(apd) {}
 

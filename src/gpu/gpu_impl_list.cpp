@@ -50,6 +50,8 @@ const impl_list_item_t *gpu_impl_list_t::get_implementation_list(
             CASE(shuffle);
             CASE(softmax);
             CASE(zero_pad);
+            case primitive_kind::reorder:
+                return get_reorder_implementation_list(desc);
             default: assert(!"unknown primitive kind"); return empty_list;
         }
 #undef CASE

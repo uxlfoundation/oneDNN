@@ -37,11 +37,6 @@ class engine_t : public impl::engine_t {
 public:
     using dnnl::impl::engine_t::engine_t;
 
-    const impl_list_item_t *get_reorder_implementation_list(
-            const op_desc_t *op_desc) const override {
-        return gpu::gpu_impl_list_t::get_reorder_implementation_list(op_desc);
-    }
-
     const impl_list_item_t *get_concat_implementation_list() const override {
         return gpu::gpu_impl_list_t::get_concat_implementation_list();
     }

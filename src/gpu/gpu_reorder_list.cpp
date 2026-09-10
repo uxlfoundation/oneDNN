@@ -49,17 +49,17 @@ using namespace dnnl::impl::data_type;
 
 // clang-format off
 constexpr impl_list_item_t impl_list[] = REG_REORDER_P({
-        GPU_REORDER_INSTANCE_INTEL(intel::rnn::weights_reorder_t::pd_t)
-        GPU_REORDER_INSTANCE_GENERIC(generic::direct_copy_t::pd_t)
-        GPU_REORDER_INSTANCE_INTEL(intel::reorder::gen_t::pd_t)
-        GPU_REORDER_INSTANCE_INTEL(intel::reorder::custom_t::pd_t) // for specific tensor shapes
-        GPU_REORDER_INSTANCE_INTEL(intel::reorder::generic_t::pd_t)// fast and quite generic
-        GPU_REORDER_INSTANCE_INTEL(intel::reorder::ref_t::pd_t)    // slow but fits every use case
-        GPU_REORDER_INSTANCE_NVIDIA(nvidia::cudnn_reorder_lt_t::pd_t)
-        GPU_REORDER_INSTANCE_NVIDIA(nvidia::cudnn_reorder_t::pd_t)
-        GPU_REORDER_INSTANCE_AMD(amd::miopen_reorder_t::pd_t)
-        GPU_REORDER_INSTANCE_GENERIC(generic::cross_engine_reorder_t::pd_t)
-        GPU_REORDER_INSTANCE_GENERIC_SYCL(generic::sycl::ref_reorder_t::pd_t)
+        GPU_INSTANCE_INTEL(intel::rnn::weights_reorder_t)
+        GPU_INSTANCE_GENERIC(generic::direct_copy_t)
+        GPU_INSTANCE_INTEL(intel::reorder::gen_t)
+        GPU_INSTANCE_INTEL(intel::reorder::custom_t) // for specific tensor shapes
+        GPU_INSTANCE_INTEL(intel::reorder::generic_t)// fast and quite generic
+        GPU_INSTANCE_INTEL(intel::reorder::ref_t)    // slow but fits every use case
+        GPU_INSTANCE_NVIDIA(nvidia::cudnn_reorder_lt_t)
+        GPU_INSTANCE_NVIDIA(nvidia::cudnn_reorder_t)
+        GPU_INSTANCE_AMD(amd::miopen_reorder_t)
+        GPU_INSTANCE_GENERIC(generic::cross_engine_reorder_t)
+        GPU_INSTANCE_GENERIC_SYCL(generic::sycl::ref_reorder_t)
         nullptr,
 });
 // clang-format on

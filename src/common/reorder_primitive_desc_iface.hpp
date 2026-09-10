@@ -31,6 +31,15 @@ struct reorder_primitive_desc_iface_t : public dnnl_primitive_desc {
         , dst_engine_(dst_engine)
         , scratchpad_engine_(nullptr) {}
 
+    reorder_primitive_desc_iface_t(const engine_t *engine,
+            const op_desc_t *op_desc, const primitive_attr_t *attr,
+            engine_t *src_engine, engine_t *dst_engine)
+        : dnnl_primitive_desc(
+                  engine, op_desc, attr, nullptr, src_engine, dst_engine)
+        , src_engine_(src_engine)
+        , dst_engine_(dst_engine)
+        , scratchpad_engine_(nullptr) {}
+
     dnnl::impl::engine_t *src_engine() const override { return src_engine_; }
     dnnl::impl::engine_t *dst_engine() const override { return dst_engine_; }
 

@@ -52,6 +52,29 @@ static int po_inputs(const post_ops_t &post_ops, const primitive_kind_t kind) {
 
 struct impl_list_item_t;
 struct primitive_t;
+
+// This dispatcher picks the right `init` signature based on the primitive kind,
+// keeping `primitive_desc_t::create` a single, non-duplicated function.
+// It allows to avoid massive changes in `init()` signature across all
+// implementations.
+template <primitive_kind_t pkind>
+struct pd_init_t {
+    template <typename pd_t>
+    static status_t call(pd_t *pd, const engine_t *engine, const engine_t *,
+            const engine_t *) {
+        return pd->init(engine);
+    }
+};
+
+template <>
+struct pd_init_t<primitive_kind::reorder> {
+    template <typename pd_t>
+    static status_t call(pd_t *pd, const engine_t *engine,
+            const engine_t *src_engine, const engine_t *dst_engine) {
+        return pd->init(engine, src_engine, dst_engine);
+    }
+};
+
 // Primitive descriptor implementation
 // NOLINTBEGIN(google-default-arguments)
 struct primitive_desc_t {
@@ -562,7 +585,8 @@ protected:
     template <typename pd_t>
     static status_t create(primitive_desc_t **pd, const op_desc_t *adesc,
             const primitive_attr_t *attr, const engine_t *engine,
-            const primitive_desc_t *hint_fwd) {
+            const primitive_desc_t *hint_fwd, const engine_t *src_engine,
+            const engine_t *dst_engine) {
         using namespace dnnl::impl::status;
         if (adesc->primitive_kind != pd_t::base_pkind) return invalid_arguments;
         assert(hint_fwd ? hint_fwd->kind() == pd_t::base_pkind : true);
@@ -571,7 +595,9 @@ protected:
         auto _pd = make_unique_pd<pd_t>(adesc, attr, hint);
         if (_pd == nullptr) return out_of_memory;
         if (!_pd->is_initialized()) return out_of_memory;
-        CHECK(_pd->init(engine));
+        // Dispatch to proper pd->init(...) happens through `pd_init_t`.
+        CHECK(pd_init_t<pd_t::base_pkind>::call(
+                _pd.get(), engine, src_engine, dst_engine));
         CHECK(_pd->init_scratchpad_md());
         return safe_ptr_assign(*pd, _pd.release());
     }
@@ -608,11 +634,10 @@ inline bool is_ref_impl(const primitive_desc_t *pd) {
     const char *name() const override { \
         return impl_name; \
     } \
-    template <typename pd_t> \
-    friend status_t primitive_desc_t::create(primitive_desc_t **pd, \
-            const op_desc_t *adesc, const primitive_attr_t *attr, \
-            const dnnl::impl::engine_t *engine, \
-            const primitive_desc_t *hint_fwd);
+    /* `primitive_desc_t::create` reaches the derived `init` through the \
+     * `pd_init_t` dispatcher; befriend it to grant that access. */ \
+    template <dnnl::impl::primitive_kind_t> \
+    friend struct dnnl::impl::pd_init_t;
 
 #define DECLARE_COMMON_PD_T_USE_GLOBAL_SCRATCHPAD(impl_name, impl_type) \
     DECLARE_COMMON_PD_t(impl_name, impl_type, true)

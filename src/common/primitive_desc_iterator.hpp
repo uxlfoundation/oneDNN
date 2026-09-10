@@ -35,7 +35,8 @@ struct primitive_desc_t;
 struct primitive_desc_iterator_t {
     primitive_desc_iterator_t(const engine_t *engine, const op_desc_t *op_desc,
             const primitive_attr_t *attr, const primitive_desc_t *hint_fwd_pd,
-            int skip_idx = -1)
+            int skip_idx = -1, const engine_t *src_engine = nullptr,
+            const engine_t *dst_engine = nullptr)
         : idx_(-1)
         , engine_(engine)
         , op_desc_(op_desc->clone())
@@ -44,7 +45,9 @@ struct primitive_desc_iterator_t {
         , impl_list_(engine_->get_implementation_list(op_desc_.get()))
         , last_idx_(0)
         , skip_idx_(skip_idx)
-        , offset_(-1) {
+        , offset_(-1)
+        , src_engine_(src_engine)
+        , dst_engine_(dst_engine) {
 
         while (impl_list_[last_idx_])
             ++last_idx_;
@@ -83,7 +86,8 @@ struct primitive_desc_iterator_t {
             if (idx_ == skip_idx_) continue;
             primitive_desc_t *candidate_pd = nullptr;
             auto s = impl_list_[idx_](&candidate_pd, op_desc_.get(), &attr_,
-                    engine_, hint_fwd_pd_, offset_, skip_idx_);
+                    engine_, hint_fwd_pd_, offset_, skip_idx_, src_engine_,
+                    dst_engine_);
             if (s == status::success) {
                 pd_.reset(candidate_pd);
                 break;
@@ -111,6 +115,8 @@ protected:
     int last_idx_;
     int skip_idx_;
     int offset_;
+    const engine_t *src_engine_;
+    const engine_t *dst_engine_;
 
 private:
     primitive_desc_iterator_t(const engine_t *engine, int last_idx)
@@ -120,7 +126,9 @@ private:
         , impl_list_(nullptr)
         , last_idx_(last_idx)
         , skip_idx_(-1)
-        , offset_(-1) {}
+        , offset_(-1)
+        , src_engine_(engine)
+        , dst_engine_(engine) {}
 
     primitive_desc_iterator_t(primitive_desc_iterator_t &&other)
         : idx_(other.idx_)
@@ -131,7 +139,9 @@ private:
         , hint_fwd_pd_(other.hint_fwd_pd_)
         , impl_list_(other.impl_list_)
         , skip_idx_(other.skip_idx_)
-        , offset_(other.offset_) {}
+        , offset_(other.offset_)
+        , src_engine_(other.src_engine_)
+        , dst_engine_(other.dst_engine_) {}
 
     DNNL_DISALLOW_COPY_AND_ASSIGN(primitive_desc_iterator_t);
 };

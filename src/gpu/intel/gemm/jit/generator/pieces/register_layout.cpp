@@ -166,8 +166,8 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
 
                 if (channelScattered || atomic || !astrategy.newDP || isColMajor(atype.layout)
                         || remainderR || remainderC)
-                    ; /* stub("u3 scattered access requires newDP, non-atomic, non-channel-scattered, "
-                         "row-major layout, and no remainder masking."); */
+                         stub("u3 scattered access requires newDP, non-atomic, non-channel-scattered, "
+                         "row-major layout, and no remainder masking."); 
 
                 auto maxSIMD = maxScatteredSIMD(hw, astrategy);
                 auto minSIMD = minScatteredSIMD(hw, astrategy);
@@ -406,29 +406,38 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
             if (T.is3()) {
                 // u3 (3-bit) block access.
                 //
-                // Only the aligned, newDP {D32,D64} true Block message path
-                // is implemented here -- a single, uniform address per
+                // The common case is the aligned, newDP {D32,D64} true Block
+                // message path below -- a single, uniform address per
                 // instruction (see setupAddr's AccessType::Block case, which
-                // needs no per-lane addressing, unlike Scattered). The
-                // byte-granular (ebytes=1) PseudoBlock fallback used for
-                // masked/misaligned/atomic access is skipped for now.
-                if (accessType == AccessType::PseudoBlock)
-                    stub("u3 pseudo-block (byte-granular) access is not implemented yet.");
-                if (!astrategy.newDP || atomic || remainderR || remainderC)
-                     stub("u3 block access requires newDP, non-atomic, and no remainder masking."); 
+                // needs no per-lane addressing, unlike Scattered). This only
+                // covers block sizes whose byte count divides evenly into a
+                // single valid D32/D64 LSC vector count (V3, or a power of 2
+                // from 1-64), which restricts total to specific multiples of
+                // 32 or 64 elements.
+                //
+                // When that exact fit isn't available (e.g. maxRBlock isn't
+                // itself a multiple of 32/64 elements), AccessType::PseudoBlock
+                // falls back to a byte-granular (D8xV1) message: one SIMD
+                // lane per raw packed byte (not per element/group -- a plain
+                // byte-for-byte copy reproduces the exact same packed bit
+                // pattern in registers as the single-message case, so
+                // find()'s existing group-aligned addressing formula is
+                // unaffected and needs no u3-pseudo-block-specific case).
+                // This works for any total byte count, at the cost of a
+                // fixed lane mask to disable any padding lanes introduced by
+                // rounding the byte count up to a supported SIMD width.
+                //
+                // Row/column counts must be exact multiples of the 8-element
+                // group size: u3 tensors passed to the jit gemm kernel are
+                // required (see jit.hpp) to have an inner (packed) dimension
+                // divisible by 8; shapes that don't meet this are simply
+                // unsupported by the jit path (falls back to the reference
+                // implementation), rather than being handled via remainder
+                // masking here.
+                if (!astrategy.newDP || atomic || remainderC)
+                     stub("u3 block access requires newDP, non-atomic, and no column remainder masking.");
                 if (c > maxCBlock)
                     stub("u3 block access requires the full row; column-splitting is not implemented.");
-
-                // u3 has no native per-element hardware register type;
-                // blocks are only addressable as whole 8-element/3-byte
-                // packing groups (see RegisterBlock::find()). Force
-                // colMajor = false so find() uses its simple flat/
-                // contiguous is3 formula (byteOff = (elIndex>>3)*3, where
-                // elIndex = xx + yy*ld) -- appropriate for a true Block
-                // message, which reads one contiguous run from a single
-                // address (unlike Scattered, there are no per-lane
-                // addresses/groups here).
-               // colMajor = false;
 
                 // find()'s flat elIndex = xx + yy*ld formula is only valid
                 // if the full rblock x cblock tile is truly contiguous in
@@ -446,30 +455,83 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                 rblock = fullyPacked ? std::min(r, maxRBlock) : 1;
 
                 int total = rblock * cblock;
+                int totalBytes = (total / 8) * 3;
 
                 // Prefer D64 (8 bytes/unit) when the packed byte size
                 // divides evenly, else fall back to D32 (4 bytes/unit).
-                int totalBytes = (total / 8) * 3;
                 int ebytesChoice = ((totalBytes % 8) == 0) ? 8 : 4;
-                if (totalBytes % ebytesChoice)
-                    stub("u3 block access: block byte size does not fit an exact D32/D64 message.");
+                int vcount = (totalBytes % ebytesChoice == 0) ? (totalBytes / ebytesChoice) : -1;
+                bool vcountOK = (vcount >= 0) && ((vcount == 3) || (is_zero_or_pow2(vcount) && vcount >= 1 && vcount <= 64));
 
-                int vcount = totalBytes / ebytesChoice;
-                bool vcountOK = (vcount == 3) || (is_zero_or_pow2(vcount) && vcount >= 1 && vcount <= 64);
-                if (!vcountOK)
-                    stub("u3 block access: block does not fit a single valid D32/D64 LSC vector count.");
+                if (vcountOK) {
+                    ebytes = ebytesChoice;
+                    crosspack = 1;
+                    count = vcount;
+                    simdSize = 1;
+                    // No padding for (non-2D) Block messages -- registers are
+                    // tightly packed, unlike Block2DTranspose's power-of-2-
+                    // padded 2D layout.
+                    ld = colMajor ? rblock : cblock;
+                    extra = 0;
+                    addrShift = 0;
+                } else {
+                    // No single-address D32/D64xV3 message exactly fits this
+                    // block's byte size (e.g. maxRBlock isn't itself a
+                    // multiple of 32/64 elements). Fall back to a byte-
+                    // granular D8xV1 *pseudo*-block message: one SIMD lane
+                    // per packed byte (ebytes < 16 with extra != 0 makes
+                    // effectiveAccessType() treat this block as
+                    // AccessType::PseudoBlock automatically, which
+                    // setupAddr() handles via per-lane index-vector
+                    // addressing -- for a fully-packed matrix layout, the
+                    // per-lane address stride collapses to exactly 1 byte,
+                    // matching a simple byte-sequential scatter).
+                    auto maxSIMD = maxScatteredSIMD(hw, astrategy);
+                    int simd = std::min(roundup_pow2(totalBytes), maxSIMD);
+                    if (simd <= 0 || totalBytes > simd)
+                        stub("u3 pseudo-block access: block byte size does not fit any supported SIMD width.");
 
-                ebytes = ebytesChoice;
-                crosspack = 1;
-                count = vcount;
-                simdSize = 1;
-                // No padding for (non-2D) Block messages -- registers are
-                // tightly packed, unlike Block2DTranspose's power-of-2-
-                // padded 2D layout.
-                ld = colMajor ? rblock : cblock;
-                //ld = cblock;
-                extra = 0; // 1;
-                addrShift = 0;
+                    ebytes = 1;
+                    crosspack = 1;
+                    count = 1;
+                    simdSize = simd;
+                    ld = colMajor ? rblock : cblock;
+                    extra = 1;
+                    addrShift = 0;
+                    // Each byte scattered by a D8xV1 message lands in its
+                    // own 4-byte (DWORD) register slot rather than being
+                    // packed back-to-back; find()/blockRegion() special-
+                    // case this (byteGlue) to report/derive the correct
+                    // (x4) register byte offsets.
+                    byteGlue = true;
+
+                    // Mask off any padding lanes beyond the true byte count
+                    // (introduced by rounding totalBytes up to a supported
+                    // SIMD width), as well as any real row remainder
+                    // (remainderR, permitted since u3's inner/packed
+                    // dimension is only required to be a multiple of 8, not
+                    // of this block's full rblock): a single *variable* mask
+                    // handles both uniformly. vrmask.bitRep == 3 is a
+                    // dedicated u3 mask mode (see masks.cxx::loadMask()):
+                    // given a runtime valid-row count (index, supplied by
+                    // the same generic remainder-masking machinery used for
+                    // any other type's row masks) it computes the
+                    // corresponding valid *byte* count via the fixed 8
+                    // elements/3 bytes packing ratio, and masks off exactly
+                    // the invalid trailing lanes -- when the row count is
+                    // full (index == rblock, the common non-remainder
+                    // case), this naturally reduces to masking only the
+                    // rounded-up padding lanes (index==rblock is a multiple
+                    // of 8, so remaining bytes == totalBytes exactly).
+                    if (simd > totalBytes || remainderR) {
+                        auto &vmask = rowMask.variable;
+                        vmask.isFixed = false;
+                        vmask.rsize = rblock;
+                        vmask.bitRep = 3;
+                        vmask.maskRep = cblock;
+                        vmask.rshift = 0;
+                    }
+                }
 
                 break;
             }
@@ -1147,7 +1209,20 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
             stub("u3 element index must be aligned to an 8-element (3-byte) group boundary.");
 
         int byteOff;
-        if (colMajor) {
+        if (byteGlue) {
+            // The u3 pseudo-block (D8xV1 byte-scatter) fallback always
+            // addresses bytes in flat, byte-sequential order -- this
+            // fallback's block is always cblock == 1 (see the Block/
+            // PseudoBlock is3 branch above), so elIndex already reduces
+            // to a flat row index regardless of colMajor (which here only
+            // reflects the tensor's logical orientation, not the actual
+            // per-lane hardware scatter pattern -- address_setup.cxx's
+            // per-lane address stride collapses to a flat 1-byte-per-lane
+            // scatter for any packed matrix layout, irrespective of
+            // colMajor). Each scattered byte is padded to its own 4-byte
+            // register slot, so a group's 3 bytes end up 4 bytes apart.
+            byteOff = (elIndex >> 3) * 3 * 4;
+        } else if (colMajor) {
             // Groups of 8 rows are packed into 3 bytes per column, and
             // those 3-byte columns are laid out in crosspack-byte quads
             // down the ld dimension (crosspack holds the column pitch, in
@@ -1212,10 +1287,16 @@ static RegisterRegion blockRegion(Type T, const Subregister &reg, const Register
     // (tagged with the ngen_u3() pseudo-type); return them with the region
     // matching that layout -- a <ld;0,cp> region for colMajor (row-spread
     // packing, cp == crosspack == the packed group's column pitch in
-    // bytes), or a plain stride of 1 otherwise -- which is what
-    // CopyPlan::planInt3Upconvert expects as its only legal source region.
-    if (T.is3())
-        return block.colMajor ? reg(block.ld, 0, cp) : reg(1);
+    // bytes); a <0;0,4> region for the byte-glued (D8xV1 pseudo-block)
+    // layout, signaling the group's bytes are 4 bytes apart in registers
+    // (see find() and CopyPlan::planInt3Upconvert); or a plain stride of 1
+    // otherwise -- which is what CopyPlan::planInt3Upconvert expects as
+    // its only legal source region.
+    if (T.is3()) {
+        if (block.byteGlue)      return reg(0, 0, 4);
+        if (block.colMajor)      return reg(block.ld, 0, cp);
+        return reg(1);
+    }
 
     if (block.byteGlue && allow2D && T.bits() < 8) {
         if (nelems)

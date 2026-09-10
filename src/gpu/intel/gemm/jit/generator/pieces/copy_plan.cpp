@@ -1529,24 +1529,44 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     //    the code below loops over each of the n/8 groups individually,
     //    manually rebasing srcBase/finalDst by 3/8 bytes-or-elements per
     //    group instead of relying on region vectorization.
-    bool flatU3 = (srcBase.stride == 1);
-    if (flatU3 && (n % 8) != 0)
+    bool flatU3 = (srcBase.vs == 0) && (srcBase.stride == 1);
+    // A separate "glued" flat layout used by the u3 pseudo-block (D8xV1
+    // byte-scatter) access path (see RegisterBlock's Block/PseudoBlock
+    // is3 branch): the hardware pads each individually-scattered byte to
+    // its own 4-byte (DWORD) register slot instead of packing bytes back-
+    // to-back, so a group's 3 bytes live 4 bytes apart (at +0, +4, +8)
+    // rather than +0, +1, +2. blockRegion() signals this with a plain
+    // (non-colMajor, i.e. vs == 0) stride-4 region -- distinct from both
+    // the tightly-packed flatU3 stride-1 region and the row-spread
+    // colMajor region (which always has vs == block.ld != 0).
+    bool flatGlueU3 = (srcBase.vs == 0) && (srcBase.stride == 4);
+    bool flatFamily = flatU3 || flatGlueU3;
+    if (flatFamily && (n % 8) != 0)
         stub("u3 flat (non-transposed) block layout requires a SIMD width that's a multiple of 8.");
 
-    int groups = flatU3 ? (n / 8) : 1;
-    int nLocal = flatU3 ? 1 : n;
+    int groups = flatFamily ? (n / 8) : 1;
+    int nLocal = flatFamily ? 1 : n;
 
     // Column pitch, in bytes: the width of the packed column quad within a
     // row (see blockRegion(): u3 sources use a <ld;0,colPitchBytes> region,
-    // so srcBase.stride already holds this column pitch). For the flat
-    // layout, this is simply the 3-byte group size (the group's own 3
-    // bytes are the only "column" positions ever added below).
-    int colPitchBytes = flatU3 ? 3 : srcBase.stride;
+    // so srcBase.stride already holds this column pitch). For the plain
+    // flat layout, this is simply the 3-byte group size (the group's own 3
+    // bytes are the only "column" positions ever added below); for the
+    // glued flat layout, it's the full 12-byte span of one 4-byte-padded
+    // group (3 bytes x 4-byte stride) -- deliberately larger than any
+    // single byteStep added below, so the (row-spread-only) wraparound
+    // branch of addByteOffset is never taken here.
+    int colPitchBytes = flatGlueU3 ? 12 : (flatU3 ? 3 : srcBase.stride);
+
+    // Raw byte spacing between consecutive bytes of the same group: 1 for
+    // the plain flat layout, 4 for the glued flat layout (see flatGlueU3
+    // above).
+    int byteStep = flatGlueU3 ? 4 : 1;
 
     // Row stride, in bytes: the distance from a column's byte0 to the next
     // row's byte0 for the same column (srcBase.vs holds this row pitch).
-    // Always 0 for the flat layout (no rows to wrap into).
-    int rowStrideBytes = flatU3 ? 0 : srcBase.vs * colPitchBytes;
+    // Always 0 for the flat layouts (no rows to wrap into).
+    int rowStrideBytes = flatFamily ? 0 : srcBase.vs * colPitchBytes;
 
     // Add a literal (compile-time-known) raw byte offset to a scalar ub
     // operand, handling overflow of the column quad (carried into the next
@@ -1629,10 +1649,12 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     CopyInstruction seedTemplate = i;
 
     for (int g = 0; g < groups; g++) {
-        // Rebase this group's source (by 3 bytes) and destination (by 8
-        // columns) from the base (g == 0) operands. This is a plain linear
-        // advance (no row-wrap): each group is entirely independent of the
-        // others, unlike the +1/+2 byte offsets within a group (handled by
+        // Rebase this group's source (by one full group's byte span --
+        // colPitchBytes, i.e. 3 bytes for the plain flat layout or 12
+        // bytes for the glued flat layout) and destination (by 8 columns)
+        // from the base (g == 0) operands. This is a plain linear advance
+        // (no row-wrap): each group is entirely independent of the others,
+        // unlike the intra-group byteStep offsets (handled by
         // addByteOffset above). On the destination side, each source
         // column advances the physical offset by dstStride (crosspack)
         // raw elements, not 1 -- computeFinalDstLane's pairIdx/parity
@@ -1643,7 +1665,7 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         CopyOperand srcBaseG = srcBase;
         CopyOperand finalDstG = finalDst;
         if (g > 0) {
-            int off = srcBaseG.offset + 3 * g;
+            int off = srcBaseG.offset + colPitchBytes * g;
             int grfOff = off / grfBytes;
             srcBaseG.grf += grfOff;
             srcBaseG.offset = off - grfOff * grfBytes;
@@ -1656,14 +1678,15 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
 
         CopyOperand rows[3];
         rows[0] = srcBaseG;
-        rows[1] = addByteOffset(srcBaseG, 1);
-        rows[2] = addByteOffset(srcBaseG, 2);
-        // colPitchBytes (3, for the flat layout) isn't a valid hardware
-        // region stride (non-power-of-2), but since nLocal == 1 in that
-        // case, rows[].stride is never actually used to vectorize across
-        // lanes -- leave it at its inherited (valid, power-of-2) value
-        // from srcBaseG instead of overwriting it.
-        if (!flatU3)
+        rows[1] = addByteOffset(srcBaseG, byteStep);
+        rows[2] = addByteOffset(srcBaseG, 2 * byteStep);
+        // colPitchBytes (3 or 12, for the flat layouts) isn't a valid
+        // hardware region stride (non-power-of-2 or larger than needed),
+        // but since nLocal == 1 in that case, rows[].stride is never
+        // actually used to vectorize across lanes -- leave it at its
+        // inherited (valid, power-of-2) value from srcBaseG instead of
+        // overwriting it.
+        if (!flatFamily)
             for (auto &r : rows) r.stride = colPitchBytes;
 
         // Scratch rows for the shift/or sequence of straddling lanes are
@@ -1724,7 +1747,7 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
             // In the flat layout (nLocal == 1, one column per group), the
             // pairIdx/parity split doesn't apply -- each lane addresses
             // its own single raw element directly.
-            if (flatU3)
+            if (flatFamily)
                 fd.offset += lane * fd.stride;
             else
                 fd.offset += pairIdx * nLocal * fd.stride + parity;
@@ -1793,7 +1816,7 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         // replaces, but with extra addressing complexity (packed shift
         // immediate, explicit merged region). Skip merging in the flat
         // case and always process lanes individually.
-        bool canMergePairs = (dstStride == 2) && !flatU3;
+        bool canMergePairs = (dstStride == 2) && !flatFamily;
         if (canMergePairs) {
             static const int mergePairs[2][2] = {{0, 1}, {6, 7}};
             for (auto &pr : mergePairs)
@@ -1849,7 +1872,7 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         // here.
         if (g == groups - 1) {
             int totalElemsAll = groups * nLocal * 8;
-            int finalStride = flatU3 ? dstStride : 1;
+            int finalStride = flatFamily ? dstStride : 1;
 
             auto finalDstFlat = finalDst;
             finalDstFlat.stride = finalStride;

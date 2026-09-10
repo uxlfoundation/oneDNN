@@ -173,6 +173,10 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
 #if !DNNL_X64_USE_ZEN
     return status::unimplemented;
 #else
+
+    VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
     CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
     VDISPATCH_REORDER_IC(src_engine->kind() == engine_kind::cpu
@@ -363,8 +367,6 @@ status_t zen_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
         const engine_t *dst_engine, const memory_desc_t *dst_md) {
     using namespace status;
 
-    VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
-            VERBOSE_UNSUPPORTED_SPARSE_CFG);
     auto desc = reorder_pd_t::create_desc(
             src_md, dst_md, src_engine->kind(), dst_engine->kind());
     auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);

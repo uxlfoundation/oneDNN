@@ -67,62 +67,67 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
         const engine_t *engine, const primitive_attr_t *attr,
         const engine_t *src_engine, const memory_desc_t *src_md,
         const engine_t *dst_engine, const memory_desc_t *dst_md) {
-    using namespace acl_utils;
-    using namespace dnnl::impl;
-
-    // ComputeLibrary reorders support f32->f32 and f32->bf16
-    bool ok = src_md->data_type == data_type::f32
-            && utils::one_of(dst_md->data_type, data_type::f32, data_type::bf16)
-            && attr->has_default_values();
-
-    VDISPATCH_REORDER_IC(ok, "unsupported datatype");
-
-    // Create and check primitive descriptor
     auto desc = reorder_pd_t::create_desc(
             src_md, dst_md, src_engine->kind(), dst_engine->kind());
     auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
     if (_pd == nullptr) return status::out_of_memory;
-    VDISPATCH_REORDER_IC(
-            _pd->init(engine, src_engine, dst_engine) == status::success,
-            "pd initialization failed");
+    CHECK(_pd->init(engine, src_engine, dst_engine));
+    CHECK(_pd->init_scratchpad_md());
+    return safe_ptr_assign(*reorder_pd, _pd.release());
+}
+
+status_t acl_reorder_fwd_t::pd_t::init(const engine_t *engine,
+        const engine_t *src_engine, const engine_t *dst_engine) {
+    using namespace acl_utils;
+    using namespace dnnl::impl;
+
+    // ComputeLibrary reorders support f32->f32 and f32->bf16
+    bool ok = src_md()->data_type == data_type::f32
+            && utils::one_of(
+                    dst_md()->data_type, data_type::f32, data_type::bf16)
+            && attr()->has_default_values();
+
+    VDISPATCH_REORDER_IC(ok, "unsupported datatype");
+
+    CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
     // In case we have two or four dimensions, we can't have one of the
     // two first dimensions as 1. This is valid for f32->f32 and f32->bf16.
-    VDISPATCH_REORDER_IC(dst_md->dims[0] != 1 && dst_md->dims[1] != 1,
+    VDISPATCH_REORDER_IC(dst_md()->dims[0] != 1 && dst_md()->dims[1] != 1,
             "first two dimensions of the reorder being 1 is not supported");
 
     auto src_tag = memory_desc_matches_one_of_tag(
-            *src_md, format_tag::ab, format_tag::ba, format_tag::cdba);
+            *src_md(), format_tag::ab, format_tag::ba, format_tag::cdba);
     VDISPATCH_REORDER_IC(format_tag::undef != src_tag,
             "Only ab, ba or cdba source formats supported");
 
-    auto dst_tag = memory_desc_matches_one_of_tag(*dst_md, format_tag::BA8b4a,
+    auto dst_tag = memory_desc_matches_one_of_tag(*dst_md(), format_tag::BA8b4a,
             format_tag::BA4b4a, format_tag::Ab4a, format_tag::Ab8a,
             format_tag::Acdb8a, format_tag::Acdb4a);
     ACL_CHECK_SUPPORT(format_tag::undef == dst_tag,
             "Only Ab4a/Ab8a, BA8b4a/BA4b4a and Acdb8a/Acdb4a "
             "destination formats supported");
 
-    auto &transpose = _pd->app_.transpose;
-    auto &dst_blocking = dst_md->format_desc.blocking;
+    auto &transpose = app_.transpose;
+    auto &dst_blocking = dst_md()->format_desc.blocking;
 
-    VDISPATCH_REORDER_IC(src_md->ndims == dst_md->ndims,
+    VDISPATCH_REORDER_IC(src_md()->ndims == dst_md()->ndims,
             "Number of dimensions in src and dst do not match");
-    VDISPATCH_REORDER_IC((dst_md->ndims == 2 || dst_md->ndims == 4),
+    VDISPATCH_REORDER_IC((dst_md()->ndims == 2 || dst_md()->ndims == 4),
             "ACL only supports 2D and 4D reorders");
     // Check if a transpose is needed during the reorder
-    if (src_md->ndims == 4) {
+    if (src_md()->ndims == 4) {
         VDISPATCH_REORDER_IC(
-                memory_desc_matches_tag(*src_md, dnnl::impl::format_tag::cdba)
-                        && (memory_desc_matches_one_of_tag(*dst_md,
+                memory_desc_matches_tag(*src_md(), dnnl::impl::format_tag::cdba)
+                        && (memory_desc_matches_one_of_tag(*dst_md(),
                                     dnnl::impl::format_tag::Acdb4a,
                                     dnnl::impl::format_tag::Acdb8a)
                                 != format_tag::undef),
                 VERBOSE_UNSUPPORTED_TAG);
         transpose = true;
     } else {
-        int src_dense_idx = find_innermost_dense_idx(src_md);
-        int dst_dense_idx = find_innermost_dense_idx(dst_md);
+        int src_dense_idx = find_innermost_dense_idx(src_md());
+        int dst_dense_idx = find_innermost_dense_idx(dst_md());
 
         transpose = src_dense_idx != dst_dense_idx;
     }
@@ -135,14 +140,14 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     // Optimised f32:bf16 ab->BA8b4a SVE-256 JIT reorder available
     VDISPATCH_REORDER_IC(
             !(mayiuse(sve_256),
-                    transpose && src_md->ndims == 2
-                            && src_md->data_type == data_type::f32
-                            && dst_md->data_type == data_type::bf16
-                            && memory_desc_matches_one_of_tag(*dst_md,
+                    transpose && src_md()->ndims == 2
+                            && src_md()->data_type == data_type::f32
+                            && dst_md()->data_type == data_type::bf16
+                            && memory_desc_matches_one_of_tag(*dst_md(),
                                     format_tag::BA8b4a, format_tag::AB8a4b)),
             "skipping in favour of optimised JIT implementation");
 
-    auto &dst_wf = _pd->app_.dst_wf;
+    auto &dst_wf = app_.dst_wf;
 
     VDISPATCH_REORDER_IC(
             dst_blocking.inner_nblks <= 2, VERBOSE_UNSUPPORTED_TAG);
@@ -168,20 +173,20 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     arm_compute::TensorShape acl_tensor_shape_out;
 
     // Switch for 2 or 4 dim tensors
-    switch (src_md->ndims) {
+    switch (src_md()->ndims) {
         case 2: {
             if ((src_tag == format_tag::ab && transpose)
                     || (src_tag == format_tag::ba && !transpose)) {
                 acl_tensor_shape_in = arm_compute::TensorShape(
-                        src_md->dims[0], src_md->dims[1]);
+                        src_md()->dims[0], src_md()->dims[1]);
                 acl_tensor_shape_out = arm_compute::TensorShape(
-                        dst_md->padded_dims[0], dst_md->padded_dims[1]);
+                        dst_md()->padded_dims[0], dst_md()->padded_dims[1]);
             } else if ((src_tag == format_tag::ba && transpose)
                     || (src_tag == format_tag::ab && !transpose)) {
                 acl_tensor_shape_in = arm_compute::TensorShape(
-                        src_md->dims[1], src_md->dims[0]);
+                        src_md()->dims[1], src_md()->dims[0]);
                 acl_tensor_shape_out = arm_compute::TensorShape(
-                        dst_md->padded_dims[1], dst_md->padded_dims[0]);
+                        dst_md()->padded_dims[1], dst_md()->padded_dims[0]);
             } else {
                 VINFO(primitive, create, dispatch, reorder,
                         "Unsupported source tag for 2D reorder");
@@ -190,14 +195,15 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
         } break;
         case 4: {
             // Currently only supporting AxBx1x1 cases
-            VDISPATCH_REORDER_IC(dst_md->dims[2] == 1 && dst_md->dims[3] == 1,
+            VDISPATCH_REORDER_IC(
+                    dst_md()->dims[2] == 1 && dst_md()->dims[3] == 1,
                     "currently only AxBx1x1 4d reorders are supported");
 
-            acl_tensor_shape_in = arm_compute::TensorShape(src_md->dims[3],
-                    src_md->dims[2], src_md->dims[1], src_md->dims[0]);
+            acl_tensor_shape_in = arm_compute::TensorShape(src_md()->dims[3],
+                    src_md()->dims[2], src_md()->dims[1], src_md()->dims[0]);
             acl_tensor_shape_out = arm_compute::TensorShape(
-                    dst_md->padded_dims[3], dst_md->padded_dims[2],
-                    dst_md->padded_dims[1], dst_md->padded_dims[0]);
+                    dst_md()->padded_dims[3], dst_md()->padded_dims[2],
+                    dst_md()->padded_dims[1], dst_md()->padded_dims[0]);
             break;
         }
         default: {
@@ -211,26 +217,23 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     const auto acl_layout = arm_compute::DataLayout::NCHW;
 
     // Set Source WeightFormat
-    _pd->app_.src_wf = arm_compute::WeightFormat::OHWI;
+    app_.src_wf = arm_compute::WeightFormat::OHWI;
 
     // Create ACL tensor infos
     const arm_compute::DataType src_acl_data_t
-            = acl_utils::get_acl_data_t(src_md->data_type);
-    _pd->app_.src_info = arm_compute::TensorInfo(
+            = acl_utils::get_acl_data_t(src_md()->data_type);
+    app_.src_info = arm_compute::TensorInfo(
             acl_tensor_shape_in, 1, src_acl_data_t, acl_layout);
 
     const arm_compute::DataType dst_acl_data_t
-            = acl_utils::get_acl_data_t(dst_md->data_type);
-    _pd->app_.dst_info = arm_compute::TensorInfo(
+            = acl_utils::get_acl_data_t(dst_md()->data_type);
+    app_.dst_info = arm_compute::TensorInfo(
             acl_tensor_shape_out, 1, dst_acl_data_t, acl_layout);
 
-    ACL_CHECK_VALID(arm_compute::NEReorderLayer::validate(&_pd->app_.src_info,
-            &_pd->app_.dst_info, _pd->app_.src_wf, dst_wf,
-            _pd->app_.transpose));
-    // Init scratch memory, not used so 0 in this implementation
-    _pd->init_scratchpad_md();
+    ACL_CHECK_VALID(arm_compute::NEReorderLayer::validate(&app_.src_info,
+            &app_.dst_info, app_.src_wf, dst_wf, app_.transpose));
 
-    return safe_ptr_assign(*reorder_pd, _pd.release());
+    return status::success;
 }
 
 status_t acl_reorder_fwd_t::create_resource(

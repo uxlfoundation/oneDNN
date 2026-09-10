@@ -63,36 +63,42 @@ const engine_t *get_reorder_engine(
     assert(d_ek == engine_kind::gpu);
     return src_engine;
 }
-} // namespace
 
-status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
-        const engine_t *engine, const memory_desc_t *src_md,
-        const engine_t *src_engine, const memory_desc_t *dst_md,
-        const engine_t *dst_engine, const primitive_attr_t *attr) {
-    pd.reset();
+// `attr` must be resolved (non-null) by the caller to keep the two public
+// entries the single owner of the default-attributes fallback.
+status_t reorder_desc_init(reorder_desc_t *reorder_desc,
+        const memory_desc_t *src_md, const engine_t *src_engine,
+        const memory_desc_t *dst_md, const engine_t *dst_engine,
+        const primitive_attr_t *attr) {
+    reorder_desc_t desc;
 
     auto s_ek = src_engine->kind();
     auto d_ek = dst_engine->kind();
-
+    VCHECK_REORDER(IMPLICATION(s_ek != d_ek,
+                           utils::one_of(engine_kind::cpu, s_ek, d_ek)),
+            VERBOSE_BAD_ENGINE_KIND);
     // There are no sparse reorders for GPU engine.
     if (utils::one_of(engine_kind::gpu, s_ek, d_ek)
             && !impl::is_dense_format_kind({src_md, dst_md}))
         return status::unimplemented;
 
+    desc.src_engine_kind = s_ek;
+    desc.dst_engine_kind = d_ek;
+    desc.is_cross_engine = src_engine != dst_engine
+            && utils::one_of(engine_kind::gpu, s_ek, d_ek);
+
     VCHECK_REORDER(!memory_desc_wrapper(src_md).format_any(),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    desc.src_desc = *src_md;
+
     VCHECK_REORDER(!memory_desc_wrapper(dst_md).format_any(),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
-    VCHECK_REORDER(IMPLICATION(s_ek != d_ek,
-                           utils::one_of(engine_kind::cpu, s_ek, d_ek)),
-            VERBOSE_BAD_ENGINE_KIND);
+    desc.dst_desc = *dst_md;
 
     auto s_mdw = memory_desc_wrapper(*src_md);
     auto d_mdw = memory_desc_wrapper(*dst_md);
     VCHECK_REORDER(s_mdw.consistent_with(d_mdw), VERBOSE_INCONSISTENT_MDS,
             "src", "dst");
-
-    if (attr == nullptr) attr = &default_attr();
 
     // Zero points are only allowed for integral data types
     const auto &zero_points = attr->zero_points_;
@@ -146,12 +152,22 @@ status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
-    bool is_cross_engine = src_engine != dst_engine
-            && utils::one_of(
-                    engine_kind::gpu, src_engine->kind(), dst_engine->kind());
+    *reorder_desc = desc;
+    return status::success;
+}
+} // namespace
 
-    auto reorder_desc = reorder_pd_t::create_desc(
-            src_md, dst_md, s_ek, d_ek, is_cross_engine);
+status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
+        const engine_t *engine, const memory_desc_t *src_md,
+        const engine_t *src_engine, const memory_desc_t *dst_md,
+        const engine_t *dst_engine, const primitive_attr_t *attr) {
+    pd.reset();
+
+    if (attr == nullptr) attr = &default_attr();
+
+    reorder_desc_t reorder_desc;
+    CHECK(reorder_desc_init(
+            &reorder_desc, src_md, src_engine, dst_md, dst_engine, attr));
 
     primitive_desc_iterator_t it(engine,
             reinterpret_cast<const op_desc_t *>(&reorder_desc), attr, nullptr,

@@ -465,11 +465,23 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
         const engine_t *engine, const primitive_attr_t *attr,
         const engine_t *src_engine, const memory_desc_t *src_md,
         const engine_t *dst_engine, const memory_desc_t *dst_md) {
-    VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
+    auto desc = reorder_pd_t::create_desc(
+            src_md, dst_md, src_engine->kind(), dst_engine->kind());
+    auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
+    if (_pd == nullptr) return status::out_of_memory;
+    CHECK(_pd->init(engine, src_engine, dst_engine));
+    CHECK(_pd->init_scratchpad_md());
+
+    return safe_ptr_assign(*reorder_pd, _pd.release());
+}
+
+status_t jit_blk_reorder_t::pd_t::init(const engine_t *engine,
+        const engine_t *src_engine, const engine_t *dst_engine) {
+    VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md(), dst_md()}),
             VERBOSE_UNSUPPORTED_SPARSE_CFG);
     auto prb = tr::prb_t();
 
-    status_t prb_init_status = prb_init(prb, *src_md, *dst_md, attr);
+    status_t prb_init_status = prb_init(prb, *src_md(), *dst_md(), attr());
     if (prb_init_status != status::success) return prb_init_status;
 
     prb_tile_normalize(prb);
@@ -482,18 +494,13 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
     if (!tr::jit_single_blk_kernel_t::applicable(prb))
         return status::unimplemented;
 
-    if (!is_plain_blocked || !is_transpose_16c_profitable(*src_md, desc))
+    if (!is_plain_blocked || !is_transpose_16c_profitable(*src_md(), desc))
         return status::unimplemented;
 
-    auto desc = reorder_pd_t::create_desc(
-            src_md, dst_md, src_engine->kind(), dst_engine->kind());
-    auto _pd = make_unique_pd<pd_t>(&desc, attr, nullptr);
-    if (_pd == nullptr) return status::out_of_memory;
-    _pd->prb_ = prb;
-    CHECK(_pd->init(engine, src_engine, dst_engine));
-    CHECK(_pd->init_scratchpad_md());
+    prb_ = prb;
+    CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
-    return safe_ptr_assign(*reorder_pd, _pd.release());
+    return status::success;
 }
 
 void jit_blk_reorder_t::pd_t::prb_tile_normalize(tr::prb_t &p) {

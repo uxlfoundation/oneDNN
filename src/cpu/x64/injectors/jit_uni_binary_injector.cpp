@@ -233,34 +233,52 @@ bool is_ternary_cond_no_broadcast(
             && utils::array_cmp(src2_md.dims, dst_d.dims(), dst_d.ndims());
 }
 
-bool is_ternary_bcast_strategy_supported(broadcasting_strategy_t strategy) {
-    // ptr_b[] based strategies would need a broadcast capable load first: the
-    // bf16 (vpmovzxwd) and s8 (vpmovsxbd) condition loads have no such encoding.
-    return utils::one_of(strategy, broadcasting_strategy_t::per_hw,
-            broadcasting_strategy_t::per_mb_spatial);
+// Only ptr[]-addressed patterns are supported here: ptr_b[] broadcast loads
+// have no bf16/s8 encoding, so per_hw/per_mb_spatial are the only two
+// currently addressable.
+bool is_ternary_cond_per_hw_bcast(
+        const memory_desc_t &src2_md, const memory_desc_wrapper &dst_d) {
+    if (!dst_d.is_plain() || dst_d.ndims() != 4) return false;
+    // per_hw: batch and channel are broadcast, spatial dims (h, w) are not.
+    return src2_md.dims[0] == 1 && src2_md.dims[1] == 1
+            && src2_md.dims[2] == dst_d.dims()[2]
+            && src2_md.dims[3] == dst_d.dims()[3];
 }
 
-bool is_ternary_bcast_supported(const memory_desc_t &src2_md,
-        const memory_desc_wrapper &dst_d,
-        const bcast_set_t &supported_strategy_set) {
+bool is_ternary_cond_per_mb_spatial_bcast(
+        const memory_desc_t &src2_md, const memory_desc_wrapper &dst_d) {
+    if (!dst_d.is_plain()) return false;
+    // per_mb_spatial: only the channel dim is broadcast; every other dim
+    // either matches dst or is already 1 on both sides.
+    if (src2_md.dims[1] != 1) return false;
+    for (int d = 0; d < src2_md.ndims; d++) {
+        if (d == 1) continue;
+        if (src2_md.dims[d] != dst_d.dims()[d] && dst_d.dims()[d] != 1)
+            return false;
+    }
+    return true;
+}
+
+bool is_ternary_bcast_supported(
+        const memory_desc_t &src2_md, const memory_desc_wrapper &dst_d) {
     if (src2_md.ndims != dst_d.ndims()) return false;
-    if (is_ternary_cond_no_broadcast(src2_md, dst_d)) return true;
-    return is_ternary_bcast_strategy_supported(
-            get_rhs_arg_broadcasting_strategy(
-                    src2_md, dst_d, supported_strategy_set));
+    return is_ternary_cond_no_broadcast(src2_md, dst_d)
+            || is_ternary_cond_per_hw_bcast(src2_md, dst_d)
+            || is_ternary_cond_per_mb_spatial_bcast(src2_md, dst_d);
 }
 
 broadcasting_strategy_t get_ternary_bcast_strategy(
-        const dnnl_post_ops::entry_t &post_op, const memory_desc_wrapper &dst_d,
-        const bcast_set_t &supported_strategy_set) {
+        const dnnl_post_ops::entry_t &post_op,
+        const memory_desc_wrapper &dst_d) {
     if (!post_op.is_binary_with_ternary_op())
         return broadcasting_strategy_t::no_broadcast;
-    const auto strategy = get_rhs_arg_broadcasting_strategy(
-            get_src2_desc(post_op, dst_d), dst_d, supported_strategy_set);
-    // Unsupported strategies keep reading the condition at the full dst shape.
-    return is_ternary_bcast_strategy_supported(strategy)
-            ? strategy
-            : broadcasting_strategy_t::no_broadcast;
+    const auto src2_md = get_src2_desc(post_op, dst_d);
+    // Unsupported patterns keep reading the condition at the full dst shape.
+    if (is_ternary_cond_per_hw_bcast(src2_md, dst_d))
+        return broadcasting_strategy_t::per_hw;
+    if (is_ternary_cond_per_mb_spatial_bcast(src2_md, dst_d))
+        return broadcasting_strategy_t::per_mb_spatial;
+    return broadcasting_strategy_t::no_broadcast;
 }
 
 bool any_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
@@ -566,8 +584,8 @@ void jit_uni_binary_injector_t<Vmm>::compute_vector_range(
             src1_desc, rhs_arg_static_params_.dst_d, supported_strategy_set_);
     const auto rhs_arg_data_type = src1_desc.data_type;
     const auto needs_ternary_input = post_op.is_binary_with_ternary_op();
-    const auto ternary_broadcasting_strategy = get_ternary_bcast_strategy(
-            post_op, dst_d, supported_strategy_set_);
+    const auto ternary_broadcasting_strategy
+            = get_ternary_bcast_strategy(post_op, dst_d);
     const auto &vmm_tail_idx = rhs_arg_params.vmm_tail_idx_;
     const bool tail_exists_in_range = !vmm_tail_idx.empty();
     const bool bcast_f32_non_avx512 = !has_avx512_core_

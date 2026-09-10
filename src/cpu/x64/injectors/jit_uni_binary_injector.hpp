@@ -54,8 +54,17 @@ bool any_binary_postop_rhs_non_scalar_broadcast(
         const post_ops_t &post_ops, const memory_desc_wrapper &dst_d);
 bool any_binary_postop_rhs_with_ternary_scalar_bcast(
         const post_ops_t &post_ops, const memory_desc_wrapper &dst_d);
-bool is_ternary_bcast_supported(
+bool any_binary_postop_rhs_with_ternary_bcast_cond(
+        const post_ops_t &post_ops, const memory_desc_wrapper &dst_d);
+bool is_ternary_cond_no_broadcast(
         const memory_desc_t &src2_md, const memory_desc_wrapper &dst_d);
+bool is_ternary_bcast_strategy_supported(broadcasting_strategy_t strategy);
+bool is_ternary_bcast_supported(const memory_desc_t &src2_md,
+        const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set);
+broadcasting_strategy_t get_ternary_bcast_strategy(
+        const dnnl_post_ops::entry_t &post_op, const memory_desc_wrapper &dst_d,
+        const bcast_set_t &supported_strategy_set);
 bool any_binary_postop_rhs_per_oc_broadcast(const post_ops_t &post_ops,
         const memory_desc_wrapper &dst_d,
         const bcast_set_t &supported_strategy_set);

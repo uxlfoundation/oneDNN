@@ -225,6 +225,13 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 be.vstore_scalar(base, op.mem.disp, s, op.mem_dt, dt_of(op.s0));
                 break;
             }
+            case op_kind_t::vbcast: { // overwrites dst
+                int base = gpr_use(op.mem.base, gpr_scratch0).getIdx();
+                int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
+                be.vbcast(d, base, op.mem.disp, op.mem_dt, dt_of(op.dst));
+                if (spilled(op.dst)) spill_store(op.dst, d);
+                break;
+            }
             case op_kind_t::vdot: { // rmw: reads and writes dst
                 int d = spilled(op.dst) ? vec_scratch0 : phys(op.dst);
                 if (spilled(op.dst)) spill_reload(op.dst, d);
@@ -277,8 +284,8 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
                 JIT_ASSERT(!spilled(args.base_ptr)
                         && "inject_postops: base pointer spilled");
                 JIT_ASSERT(postops && "inject_postops: missing injector");
-                postops->inject(
-                        acc_phys, phys(args.base_ptr), args.out_byte_off);
+                postops->inject(acc_phys, phys(args.base_ptr),
+                        args.out_byte_off, args.is_tail);
                 break;
             }
 

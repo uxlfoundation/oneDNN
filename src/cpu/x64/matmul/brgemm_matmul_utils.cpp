@@ -302,11 +302,11 @@ status_t check_isa_with_datatype(
 status_t gemv_check_isa_with_datatype(
         const cpu_isa_t isa, const brgemm_matmul_conf_utils_t &bm_conf_utils) {
     // Valid GEMV (dt, isa) combinations:
-    // - f32  -> avx2
+    // - f32  -> avx2 or avx512_core
     // - bf16 -> avx512_core_bf16
     // - f16  -> avx512_core_fp16
     // Any other data type or isa is unsupported.
-    const bool ok = (bm_conf_utils.is_f32() && isa == avx2)
+    const bool ok = (bm_conf_utils.is_f32() && one_of(isa, avx2, avx512_core))
             || (bm_conf_utils.is_bf16() && isa == avx512_core_bf16)
             || (bm_conf_utils.is_f16() && isa == avx512_core_fp16);
 

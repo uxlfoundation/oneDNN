@@ -132,6 +132,16 @@ void ir_t::vstore_scalar(
     ops_.push_back(op);
 }
 
+void ir_t::vbcast(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt) {
+    op_t op;
+    op.kind = op_kind_t::vbcast;
+    op.dst = dst;
+    op.mem.base = base;
+    op.mem.disp = disp;
+    op.mem_dt = mem_dt;
+    ops_.push_back(op);
+}
+
 void ir_t::vdot(vreg_t dst, vreg_t a, vreg_t b) {
     op_t op;
     op.kind = op_kind_t::vdot;
@@ -210,11 +220,12 @@ void ir_t::prefetch(vreg_t base, dim_t disp) {
 }
 
 void ir_t::inject_postops(const std::vector<vreg_t> &acc, vreg_t base_ptr,
-        const std::vector<dim_t> &out_byte_off) {
+        const std::vector<dim_t> &out_byte_off, bool is_tail) {
     inject_postops_args_t args;
     args.acc = acc;
     args.base_ptr = base_ptr;
     args.out_byte_off = out_byte_off;
+    args.is_tail = is_tail;
     inject_postops_args_.push_back(args);
 
     op_t op;
@@ -319,6 +330,7 @@ void ir_t::def_use(
         case op_kind_t::vzero: d(op.dst); break;
         case op_kind_t::vload:
         case op_kind_t::vload_scalar:
+        case op_kind_t::vbcast:
             u(op.mem.base);
             d(op.dst);
             break;

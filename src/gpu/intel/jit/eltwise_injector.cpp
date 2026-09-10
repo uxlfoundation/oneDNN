@@ -988,9 +988,15 @@ void eltwise_injector_f32_t<ngen_generator_t>::compute(const int *grfs,
 
                 int simd = nreg * GRF::bytes(hw()) / sizeof(float);
 
-                auto grf0_t = grfs[idx0 + (ii / 2)];
-                auto base_t = GRF(grf0_t).f();
-                auto grf1 = grfs[idx0 + off + (ii / 2)];
+                auto base_t = base;
+                int grf1 = grf0;
+                if (alg_ == eltwise_mx_scale) {
+                    gpu_assert(off > 0 && batch % (2 * off) == 0);
+                    int g_idx = ii / 2;
+                    int lo = idx0 + g_idx + off * (g_idx / off);
+                    base_t = GRF(grfs[lo]).f();
+                    grf1 = grfs[lo + off];
+                }
                 if (is_fwd_) {
                     switch ((int)alg_) {
                         case eltwise_elu:

@@ -285,13 +285,22 @@ void setup_cmp(compare::compare_t &cmp, const base_prb_t *base_prb,
     // The small-magnitude points are instead validated against an absolute floor
     if (!is_bwd) {
         const dnn_mem_t &absmag = ref_args.find(SDPA_REF_ARG_OUT_ABSMAG);
-        const float eps_dst = epsilon_dt(prb->dst_dt());
+        // An all-fp8 problem may quantize the probabilities to f8_e4m3 before
+        // the P*V matmul, which the reference does not model, so the floor
+        // follows e4m3 rounding rather than dst rounding
+        const auto is_fp8 = [](dnnl_data_type_t dt) {
+            return dt == dnnl_f8_e4m3 || dt == dnnl_f8_e5m2;
+        };
+        const bool fp8_probs = is_fp8(prb->q_dt()) && is_fp8(prb->k_dt())
+                && is_fp8(prb->v_dt());
+        const float eps_floor = fp8_probs ? epsilon_dt(dnnl_f8_e4m3)
+                                          : epsilon_dt(prb->dst_dt());
         const dnn_mem_t *mag = &absmag;
         cmp.set_driver_check_function(
-                [eps_dst, mag](
+                [eps_floor, mag](
                         const compare::compare_t::driver_check_func_args_t &a)
                         -> bool {
-            return a.diff <= eps_dst * mag->get_f32_elem(a.idx);
+            return a.diff <= eps_floor * mag->get_f32_elem(a.idx);
         });
     } else {
         // Backward chains more matmuls/softmax_bwd and produces element diffs up

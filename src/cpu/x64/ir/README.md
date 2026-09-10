@@ -154,12 +154,15 @@ The kernel-specific builders live outside this directory. For example,
 ### GEMV Coverage
 
 The GEMV builder supports transposed and nontransposed A with matching f32,
-bf16, or f16 inputs and f32 accumulation and output. Existing GEMV ISA selection
-is unchanged: f32 uses AVX2, bf16 uses AVX-512 BF16, and f16 uses AVX-512 FP16.
+bf16, or f16 inputs and f32 accumulation and output. f32 prefers AVX-512 Core
+where available and otherwise uses AVX2; bf16 uses AVX-512 BF16, and f16 uses
+AVX-512 FP16.
 Nontransposed bf16 retains its native dot-product path. Transposed bf16 and f16
 widen inputs to f32 before FMA, with one broadcast input per reduction step.
 Output conversions and unsupported attributes continue to use the existing
-non-IR fallback. Vector accumulators require contiguous output elements.
+non-IR fallback, except f32 AVX-512 GEMV, which is IR-only and returns
+unimplemented when the IR kernel is unsupported. Vector accumulators require
+contiguous output elements.
 
 `vbcast` carries both a memory datatype and a destination-register datatype,
 like a vector load. AVX-512 can widen a bf16 or f16 scalar while broadcasting it.

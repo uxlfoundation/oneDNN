@@ -25,6 +25,8 @@
 
 #include "common/c_types_map.hpp"
 
+#include "cpu/x64/brgemm/brgemm.hpp"
+#include "cpu/x64/brgemm/brgemv_ir.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/ir/ir.hpp"
 #include "cpu/x64/ir/postops_injector.hpp"
@@ -834,6 +836,79 @@ struct dot_args_t {
     const float *b;
     float *c;
 };
+
+TEST(GemvIRTests, F32IsaAndTails) {
+    SKIP_IF_NO_AVX2();
+    for (const auto isa : {avx2, avx512_core}) {
+        if (!mayiuse(isa)) continue;
+        for (bool transposed : {false, true})
+            for (int outputs : {1, 15, 16, 17, 127, 128, 129})
+                for (int reduction : {1, 15, 16, 17, 33})
+                    for (int batches : {1, 3})
+                        for (float beta : {0.f, 1.f}) {
+                            SCOPED_TRACE(::testing::Message()
+                                    << "isa=" << isa << " transA=" << transposed
+                                    << " outputs=" << outputs << " reduction="
+                                    << reduction << " batches=" << batches
+                                    << " beta=" << beta);
+                            brgemm_desc_t descriptor;
+                            ASSERT_EQ(impl::status::success,
+                                    brgemv_desc_init(&descriptor, isa,
+                                            brgemm_addr, data_type::f32,
+                                            data_type::f32, transposed, 1.f,
+                                            beta,
+                                            transposed ? outputs : reduction, 1,
+                                            outputs, reduction, true));
+                            ASSERT_EQ(isa, descriptor.isa_impl);
+                            brgemm_attr_t attributes;
+                            attributes.max_bs = batches;
+                            ASSERT_EQ(impl::status::success,
+                                    brgemm_desc_set_attr(
+                                            &descriptor, attributes));
+                            ASSERT_EQ(impl::status::success,
+                                    brgemm_desc_finalize(&descriptor));
+                            std::unique_ptr<brgemm_kernel_t> kernel(
+                                    create_brgemv_ir_kernel(descriptor));
+                            ASSERT_NE(nullptr, kernel);
+                            ASSERT_EQ(impl::status::success,
+                                    kernel->create_kernel());
+                            std::vector<float> matrix(
+                                    batches * outputs * reduction, 2.f);
+                            std::vector<float> vector(
+                                    batches * reduction, -3.f);
+                            std::vector<float> output(outputs + 1, 5.f);
+                            std::vector<brgemm_batch_element_t> batch(batches);
+                            for (int index = 0; index < batches; index++) {
+                                batch[index].ptr.A = matrix.data()
+                                        + index * outputs * reduction;
+                                batch[index].ptr.B
+                                        = vector.data() + index * reduction;
+                            }
+                            brgemm_kernel_execute(kernel.get(), batches,
+                                    batch.data(), output.data());
+                            for (int index = 0; index < outputs; index++)
+                                ASSERT_FLOAT_EQ(
+                                        -6.f * batches * reduction + beta * 5.f,
+                                        output[index]);
+                            ASSERT_FLOAT_EQ(5.f, output[outputs]);
+                        }
+    }
+}
+
+TEST(GemvIRTests, F32Avx512RejectsUnsupportedIR) {
+    if (!mayiuse(avx512_core)) GTEST_SKIP() << "Requires AVX-512 Core";
+    brgemm_desc_t descriptor;
+    ASSERT_EQ(impl::status::success,
+            brgemv_desc_init(&descriptor, avx512_core, brgemm_addr,
+                    data_type::f32, data_type::f32, true, 1.f, 0.5f, 17, 1, 17,
+                    33, true));
+    ASSERT_EQ(impl::status::success, brgemm_desc_finalize(&descriptor));
+    brgemm_kernel_t *kernel = nullptr;
+    const auto result = brgemm_kernel_create(&kernel, descriptor);
+    std::unique_ptr<brgemm_kernel_t> guard(kernel);
+    EXPECT_EQ(impl::status::unimplemented, result);
+    EXPECT_EQ(nullptr, kernel);
+}
 
 // Pipeline test. A dot product over two vectors' worth of elements, expressed
 // as a two-iteration loop, is built, allocated, emitted, run, and checked

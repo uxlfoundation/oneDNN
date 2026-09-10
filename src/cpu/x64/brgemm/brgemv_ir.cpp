@@ -866,11 +866,13 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
     using namespace data_type;
 
     // Accepted input data type and the ISA it is built at:
-    //   f32  - avx2
+    //   f32  - avx2 or avx512_core
     //   bf16 - avx512_core_bf16
     //   f16  - avx512_core_fp16
     // GEMV blocking permits no other ISA (see `brgemm_blocking_vmm_gemv`).
-    const bool dt_isa_ok = (brg.dt_a == f32 && brg.isa_impl == avx2)
+    const bool dt_isa_ok
+            = (brg.dt_a == f32
+                      && utils::one_of(brg.isa_impl, avx2, avx512_core))
             || (brg.dt_a == bf16 && brg.isa_impl == avx512_core_bf16)
             || (brg.dt_a == f16 && brg.isa_impl == avx512_core_fp16);
     VCONDCHECK_BRGEMV_IR(dt_isa_ok, VERBOSE_UNSUPPORTED_ISA);

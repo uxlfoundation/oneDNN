@@ -87,6 +87,7 @@ int typeSize(StructuredType::Type type) {
         case StructuredType::bf16: return 2;
         case StructuredType::s8:
         case StructuredType::u8:
+        case StructuredType::u3:
         case StructuredType::bf8:
         case StructuredType::hf8:
         case StructuredType::f8_e8m0:
@@ -106,15 +107,17 @@ int typeSize(StructuredType stype) {
 
 const char *typeName(
         StructuredType::Type type, HostLanguage language = HostLanguage::None) {
-    if (language == HostLanguage::vISA) switch (type) {
-            case StructuredType::s64: return "q";
-            case StructuredType::s32: return "d";
-            case StructuredType::s16: return "w";
-            case StructuredType::s8: return "b";
+    if (language == HostLanguage::vISA)
+        switch (type) {
             case StructuredType::u64: return "uq";
+            case StructuredType::s64: return "q";
             case StructuredType::u32: return "ud";
+            case StructuredType::s32: return "d";
             case StructuredType::u16: return "uw";
+            case StructuredType::s16: return "w";
             case StructuredType::u8: return "ub";
+            case StructuredType::s8: return "b";
+            case StructuredType::u3: return "k";
             case StructuredType::f64: return "df";
             case StructuredType::f32: return "f";
             case StructuredType::f16: return "hf";
@@ -127,16 +130,17 @@ const char *typeName(
         }
     else
         switch (type) {
-            case StructuredType::s64: return "long";
-            case StructuredType::s32: return "int";
-            case StructuredType::s16: return "short";
-            case StructuredType::s8: return "char";
             case StructuredType::u64: return "ulong";
+            case StructuredType::s64: return "long";
             case StructuredType::u32: return "uint";
+            case StructuredType::s32: return "int";
             case StructuredType::u16: return "ushort";
+            case StructuredType::s16: return "short";
             case StructuredType::u8: return "uchar";
-            case StructuredType::s4: return "s4";
+            case StructuredType::s8: return "char";
             case StructuredType::u4: return "u4";
+            case StructuredType::s4: return "s4";
+            case StructuredType::u3: return  "u3";
             case StructuredType::f64: return "double";
             case StructuredType::f32: return "float";
             case StructuredType::f16: return "half";

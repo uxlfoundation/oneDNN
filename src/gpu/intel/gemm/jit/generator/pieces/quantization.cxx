@@ -90,7 +90,7 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
         Txs_int = problem.Tc;
     }
 
-    bool int4SpecialPath = Tx_ext.isInt4() && one_of(Tx, {Type::f16, Type::f32});
+    bool int4SpecialPath = Tx_ext.isIntSubByte() && one_of(Tx, {Type::f16, Type::f32});
     if (int4SpecialPath) {
         Txo_int = Type::f16;
         Txs_int = Tx;
@@ -301,7 +301,7 @@ void Generator<hw>::gemmRepack2DOffsetData(Type Text, const RegisterLayout &layo
     bool s8 = (Ts == Type::s8);
     bool u8 = (Ts == Type::u8);
 
-    bool int4SpecialPath = Text.isInt4() && Td == Type::f16;
+    bool int4SpecialPath = (Text.isInt4() || Text.is3()) && Td == Type::f16;
     auto tmpType = Td;
 
     if (int4SpecialPath) {
@@ -466,7 +466,7 @@ void Generator<hw>::dequantizeInt4Shift(Type Tsrc, GRFMultirange src, const Comm
     });
 }
 
-// Optimized int4 -> f16/bf16/f32 dequantization sequence.
+// Optimized int4/int3 -> f16/bf16/f32 dequantization sequence.
 template <HW hw>
 void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, const RegisterLayout &layoutDst,
                                    const RegisterLayout &layoutOffset, const RegisterLayout &layoutScale,
@@ -501,8 +501,9 @@ void Generator<hw>::dequantizeInt4(bool doA, const RegisterLayout &layoutSrc, co
     if (s4 && s4Shift)
         dequantizeInt4Shift(Tsrc, src, strategy);
 
-    // 2) Copy u4 -> u16 data.
-    copyRegisters(Type::u4, Type::u16, layoutSrc, *effLayoutDst, src, *effDst, offR, offC, false, strategy, state);
+    // 2) Copy u4/u3 -> u16 data.
+    auto TsrcU = Tsrc.isInt3() ? Type::u3 : Type::u4;
+    copyRegisters(TsrcU, Type::u16, layoutSrc, *effLayoutDst, src, *effDst, offR, offC, false, strategy, state);
 
     // 3) Reinterpret u16 data as denormal f16, scale into normal range and subtract (rescaled) offsets if available.
     //     The required rescaling factor (2^24) is necessarily outside f16 range,

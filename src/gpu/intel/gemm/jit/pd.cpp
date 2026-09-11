@@ -235,7 +235,7 @@ bool pd_t::wei_decomp() const {
     const auto d = desc();
     using namespace data_type;
     return (utils::one_of(d->c_type(), f32, f16, bf16, f8_e5m2, f8_e4m3)
-                   && utils::one_of(d->a_type(), u8, s8, s4, u4, f8_e4m3,
+                   && utils::one_of(d->a_type(), u8, s8, s4, u4, u3, f8_e4m3,
                            f8_e5m2, f4_e2m1)
                    && utils::one_of(
                            d->b_type(), f16, f32, bf16, f8_e5m2, f8_e4m3))
@@ -771,12 +771,18 @@ status_t pd_t::init_GEMMProblem(
     // Mixed s8/s4 DPAS support:
     // - Xe3p: Not supported, require s4->s8 upconversion
     // - pre-Xe3p: supported, but only when s4 matrix doesn't have zero points
+    // There is no native s8/s3 DPAS support, so int3 is unconditionally
+    // upconverted to s8 when paired with an int8 matrix.
     bool has_s8s4_dpas = getCore(problem.product.family) != ngen::HW::Xe3p;
-    if (problem.Ta_ext.isInt4() && problem.Tb_ext.isInt8()) {
+    if (problem.Ta_ext.is3() && problem.Tb_ext.isInt8()) {
+        problem.Ta = Type::s8;
+    } else if (problem.Ta_ext.isInt4() && problem.Tb_ext.isInt8()) {
         bool s8s4_dpas_ok = has_s8s4_dpas && (a_quant.zp_ndims < 0);
         if (!s8s4_dpas_ok) problem.Ta = Type::s8;
     }
-    if (problem.Tb_ext.isInt4() && problem.Ta_ext.isInt8()) {
+    if (problem.Tb_ext.is3() && problem.Ta_ext.isInt8()) {
+        problem.Tb = Type::s8;
+    } else if (problem.Tb_ext.isInt4() && problem.Ta_ext.isInt8()) {
         bool s8s4_dpas_ok = has_s8s4_dpas && (b_quant.zp_ndims < 0);
         if (!s8s4_dpas_ok) problem.Tb = Type::s8;
     }

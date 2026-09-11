@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 namespace dnnl {
 
@@ -36,6 +37,23 @@ namespace dnnl {
 /// @{
 
 namespace threadpool_interop {
+
+/// Completion event interface for async threadpool work. oneDNN's verbose
+/// profiler polls these to determine when deferred execution has finished
+/// and to extract timing information.
+struct threadpool_event_iface_t {
+    virtual ~threadpool_event_iface_t() = default;
+    /// Returns true if the associated work has completed.
+    virtual bool is_complete() const = 0;
+    /// Blocks until completion.
+    virtual void wait() const = 0;
+    /// Measured execution time in milliseconds. Valid only after completion.
+    /// Should reflect wall-clock duration from when the first worker begins
+    /// to when the last worker finishes. Use a CAS to stamp the start time
+    /// so only the first worker records it, and record the end time in the
+    /// async completion callback once all workers have resolved.
+    virtual double exec_time_ms() const = 0;
+};
 
 /// Abstract threadpool interface. The users are expected to subclass this
 /// interface and pass an object to the library during CPU stream creation or
@@ -59,6 +77,19 @@ struct threadpool_iface {
 
     // Does nothing if SYNCHRONOUS, waits for all jobs for ASYNCHRONOUS
     virtual void wait() = 0;
+
+    /// Returns a single completion event for the most recently submitted
+    /// primitive dispatch, or nullptr if profiling is disabled or
+    /// unsupported. oneDNN calls this once per primitive immediately after
+    /// enqueue_primitive() returns.
+    ///
+    /// Implementations should lazily create the event in parallel_for() and
+    /// move it out here, registering an async completion callback (e.g.
+    /// AndThen) that calls mark_complete() once all workers have finished.
+    /// This ensures exec_time_ms() is valid when is_complete() returns true.
+    virtual std::shared_ptr<threadpool_event_iface_t> get_event() {
+        return nullptr;
+    }
 
     /// If set, parallel_for() returns immediately and oneDNN needs implement
     /// waiting for the submitted closures to finish execution on its own.

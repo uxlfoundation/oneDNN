@@ -21,10 +21,13 @@
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
+#include "common/verbose.hpp"
 
 namespace dnnl {
 namespace impl {
 
+// TODO: introduce a stream_impl_t subclass for CPU streams to separate general
+// and CPU-specific attributes.
 class stream_impl_t {
 public:
     stream_impl_t() = delete;
@@ -47,16 +50,41 @@ public:
 
     bool is_verbose_profiler_enabled() const { return use_verbose_profiler_; }
 
+#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
+    bool is_async_threadpool() const {
+        if (!threadpool_) return false;
+        return threadpool_->get_flags()
+                & threadpool_interop::threadpool_iface::ASYNCHRONOUS;
+    }
+
     // Checks and initializes profiler for supported runtime configs
-    virtual status_t init_verbose_profiler(engine_kind_t) {
+    virtual status_t init_verbose_profiler(engine_kind_t engine_kind) {
         use_verbose_profiler_ = false;
+
+        // The checks are only relevant for a CPU engine
+        if (engine_kind != engine_kind::cpu) return status::success;
+
+        if (!dnnl::impl::get_verbose(dnnl::impl::verbose_t::exec_profile))
+            return status::success;
+
+        // CPU stream must be backed by an async threadpool to support
+        // profiling
+        if (!is_async_threadpool()) return status::success;
+
+        use_verbose_profiler_ = true;
         return status::success;
     }
 
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
     status_t get_threadpool(
             threadpool_interop::threadpool_iface **threadpool) const {
         *threadpool = threadpool_;
+        return status::success;
+    }
+#else
+    bool is_async_threadpool() const { return false; }
+
+    virtual status_t init_verbose_profiler(engine_kind_t) {
+        use_verbose_profiler_ = false;
         return status::success;
     }
 #endif

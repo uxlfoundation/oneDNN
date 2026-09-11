@@ -1,6 +1,6 @@
 /*******************************************************************************
 * Copyright 2020 Intel Corporation
-* Copyright 2022 Arm Ltd. and affiliates
+* Copyright 2022, 2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -174,7 +174,8 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
             return convolution_fwd_pd_t::arg_usage(arg);
         }
 
-        size_t user_scratchpad_size_;
+        std::vector<size_t> op_scratchpad_offsets_;
+        std::vector<size_t> op_scratchpad_sizes_;
         std::vector<std::shared_ptr<primitive_desc_t>> op_pds_;
         std::vector<arg_cache_t> args_;
 
@@ -203,15 +204,9 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
                 // Increment scratchpad offsets
                 sp_begin = sp_end;
                 sp_end += memory_desc_wrapper(to_md).size();
-
-                user_scratchpad_size_ = nstl::max<size_t>(user_scratchpad_size_,
-                        op_pds_.back()->scratchpad_size(
-                                attr()->scratchpad_mode_));
             }
 
             op_pds_.emplace_back(std::move(op_pd));
-            user_scratchpad_size_ = nstl::max<size_t>(user_scratchpad_size_,
-                    op_pds_.back()->scratchpad_size(attr()->scratchpad_mode_));
             return status::success;
         }
 
@@ -244,8 +239,6 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
             // computation can be avoided during execution.
             size_t inout_sp_offset_begin = 0;
             size_t inout_sp_offset_end = 0;
-            user_scratchpad_size_
-                    = root_pd->scratchpad_size(attr()->scratchpad_mode_);
 
             // Create arg cache for the root pd
             {
@@ -367,9 +360,22 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
 
             scratchpad.book(memory_tracking::names::key_fusion_inout_buffer,
                     inout_buffer_size, 1, 16);
+            size_t forward_scratchpad_size = 0;
+            const size_t nested_scratchpad_alignment
+                    = memory_tracking::default_alignment;
+            op_scratchpad_offsets_.resize(op_pds_.size());
+            op_scratchpad_sizes_.resize(op_pds_.size());
+            for (size_t i = 0; i < op_pds_.size(); ++i) {
+                forward_scratchpad_size = utils::rnd_up(
+                        forward_scratchpad_size, nested_scratchpad_alignment);
+                op_scratchpad_offsets_[i] = forward_scratchpad_size;
+                op_scratchpad_sizes_[i]
+                        = op_pds_[i]->scratchpad_size(attr()->scratchpad_mode_);
+                forward_scratchpad_size += op_scratchpad_sizes_[i];
+            }
             scratchpad.book(
                     memory_tracking::names::key_fusion_forward_scratchpad,
-                    user_scratchpad_size_, 1, 16);
+                    forward_scratchpad_size, 1, nested_scratchpad_alignment);
             return status::success;
         }
 
@@ -409,6 +415,8 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
 
         const auto inout_buffer = scratchpad.get_memory_storage(
                 memory_tracking::names::key_fusion_inout_buffer);
+        const auto forward_scratchpad = scratchpad.get_memory_storage(
+                memory_tracking::names::key_fusion_forward_scratchpad);
 
         const auto &ctx_args = ctx.args();
         const auto op_count = primitives_.size();
@@ -434,10 +442,17 @@ struct ref_fused_convolution_fwd_t : public primitive_t {
 
             exec_ctx_t op_ctx(ctx, std::move(exec_args));
 
-            auto *nested_grantor = create_nested_grantor(
-                    ctx.get_scratchpad_grantor(),
-                    memory_tracking::names::key_fusion_forward_scratchpad,
-                    op->pd()->scratchpad_registry());
+            std::unique_ptr<memory_storage_t> op_scratchpad;
+            if (forward_scratchpad && pd()->op_scratchpad_sizes_[i] > 0) {
+                op_scratchpad = forward_scratchpad->get_sub_storage(
+                        pd()->op_scratchpad_offsets_[i],
+                        pd()->op_scratchpad_sizes_[i]);
+            }
+            auto *nested_grantor = new memory_tracking::grantor_t(
+                    op->pd()->scratchpad_registry(), op_scratchpad.release(),
+                    ctx.get_scratchpad_grantor()
+                            .get_base_mem_storage_host_ptr(),
+                    /* take_storage_ownership = */ true);
             op_ctx.set_scratchpad_grantor(nested_grantor);
             CHECK(op->execute(op_ctx));
         }

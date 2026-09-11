@@ -15,8 +15,7 @@
 * See the License for the specific language governing permissions and
 * limitations under the License.
 *******************************************************************************/
-#include <assert.h>
-#include <float.h>
+#include <cassert>
 
 #include "common/c_types_map.hpp"
 #include "common/memory_tracking.hpp"
@@ -25,6 +24,7 @@
 
 #include "cpu/platform.hpp"
 
+#include "cpu/aarch64/cpu_barrier.hpp"
 #include "cpu/aarch64/injectors/injector_utils.hpp"
 #include "cpu/aarch64/injectors/jit_uni_binary_injector.hpp"
 #include "cpu/aarch64/injectors/jit_uni_postops_injector.hpp"
@@ -1361,6 +1361,10 @@ void jit_sve_1x1_conv_kernel_t<isa>::init_scratchpad(
                 * rnd_up(jcp.oc, jcp.oc_block) * rnd_up(jcp.ic, jcp.ic_block);
         scratchpad.book(key_conv_wei_reduction, wei_size * (jcp.nthr_mb - 1),
                 jcp.typesize_out);
+    }
+
+    if (dnnl_thr_syncable() && jcp.nthr_mb > 1) {
+        scratchpad.book<simple_barrier::ctx_t>(key_conv_wei_reduction_bctx, 1);
     }
 }
 

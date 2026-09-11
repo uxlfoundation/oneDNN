@@ -17,6 +17,7 @@
 *******************************************************************************/
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 
@@ -82,7 +83,7 @@ void jit_uni_dw_convolution_fwd_t<isa, src_type, dst_type>::execute_forward(
     const int work_amount = jcp.mb * chb_work * jcp.oh;
     const auto nthr = jcp.nthr;
 
-    parallel(nthr, [&](const int ithr, const int nthr) {
+    parallel(nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         int start {0}, end {0};
         balance211(work_amount, nthr, ithr, start, end);
 
@@ -180,7 +181,7 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
 
     const auto &jcp = pd()->jcp_;
 
-    auto kernel_params = [&](int ur_str_w, int iw, int oh, int ih,
+    auto kernel_params = [=](int ur_str_w, int iw, int oh, int ih,
                                  int i_t_overflow, int i_b_overflow,
                                  int stride_off_h, int ch, int ch_num, int n) {
         auto par_conv = jit_conv_args_t();
@@ -219,7 +220,8 @@ void jit_uni_dw_convolution_bwd_data_t<isa, diff_dst_type,
     const int aux_w
             = nstl::min(jcp.iw, jcp.iw - ext_kw + jcp.r_pad + jcp.stride_w);
     const int chb_work = utils::div_up(jcp.nb_ch, jcp.nb_ch_blocking);
-    parallel_nd(jcp.mb, chb_work, jcp.ih, [&](int n, int chb, int ih) {
+    parallel_nd(jcp.mb, chb_work, jcp.ih,
+            [= COMPAT_THIS_CAPTURE](int n, int chb, int ih) {
         int ch = chb * jcp.nb_ch_blocking;
         int ch_num = jcp.nb_ch_blocking;
 
@@ -283,9 +285,9 @@ jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::
     : primitive_t(apd), acc_ker_(nullptr), kernel_(nullptr) {}
 
 template <cpu_isa_t isa, data_type_t src_type, data_type_t diff_weights_type>
-void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
-        diff_weights_type>::execute_backward_weights(const exec_ctx_t &ctx)
-        const {
+status_t
+jit_uni_dw_convolution_bwd_weights_t<isa, src_type, diff_weights_type>::execute(
+        const exec_ctx_t &ctx) const {
     auto diff_dst = CTX_IN_MEM(const diff_dst_data_t *, DNNL_ARG_DIFF_DST);
     auto src = CTX_IN_MEM(const src_data_t *, DNNL_ARG_SRC);
     auto diff_weights
@@ -314,7 +316,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
     const int ch_block = jcp.ch_block;
 
     auto set_kernel_params
-            = [&](jit_dw_conv_args_t *conv_params, const int batch,
+            = [=](jit_dw_conv_args_t *conv_params, const int batch,
                       const int group, const int oh_start, const int work_size,
                       const unsigned char exec_flag, const size_t kh_padding,
                       const size_t filter_off) {
@@ -345,7 +347,7 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
         conv_params->input = &src[src_off * ch_block];
     };
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         assert(nthr == jcp.nthr);
 
         auto conv_params = jit_dw_conv_args_t();
@@ -408,6 +410,12 @@ void jit_uni_dw_convolution_bwd_weights_t<isa, src_type,
             }
         }
     });
+
+    // The single-thread parallel region is to ensure ordering between the
+    // backward pass and reduction under async-runtimes
+    parallel(1, [= COMPAT_THIS_CAPTURE](int, int) { execute_reduction(ctx); });
+
+    return status::success;
 }
 
 /* TODO: Performing a Parallel Reduction could potentially improve performance;

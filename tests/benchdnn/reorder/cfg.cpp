@@ -47,7 +47,7 @@ REG(f4_e2m1, -f16_max_exact, f16_max_exact);
 REG(s32, -BENCHDNN_S32_TO_F32_SAT_CONST, BENCHDNN_S32_TO_F32_SAT_CONST);
 REG(s8, INT8_MIN, INT8_MAX);
 REG(u8, 0, UINT8_MAX);
-REG(s4, -7, 8);
+REG(s4, -8, 7);
 REG(u4, 0, 15);
 
 #undef REG

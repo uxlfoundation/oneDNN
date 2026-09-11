@@ -2,7 +2,7 @@
 
 **Benchdnn** supports three kinds of memory format tags:
 - Meta-tags (benchdnn abstraction).
-    - Examples: `abx`, `aBx16b`
+    - Examples: `abx`, `axb`, `aBx16b`, `aby`
 - Library tags (refer to `dnnl::memory::format_tag` enum).
     - Examples: `nchw`, `acdb`, `nChw8c`
 - Other valid tags not presented in `dnnl::memory::format_tag` enum (controlled
@@ -12,14 +12,24 @@
 If an unsupported tag is specified, an error will be reported. The list of
 library supported tags can be found in dnnl.hpp header file. Meta-tags are
 xD-spatial tags which adapt to the number of dimensions specified by a problem
-descriptor (for descriptor-based drivers) or dimensions. Below are examples of
-plain and blocked meta-tags:
+descriptor (for descriptor-based drivers) or dimensions.
+A typical use of a meta-tag expands the spatial dimensions, whose count varies
+with the problem's dimensionality. A letter 'x' is used to denote concatenated
+spatial dimensions. In most scenarios it will be replaced with 'c', 'cd', or
+'cde'. In case of (de-)convolutions with groups, it will be replaced with 'd',
+'de', or 'def'. There's a dedicated matmul case where the last two dimensions
+should be transposed. To support this case, letter 'y' is supported. It replaces
+'x' and denotes that last two dimensions will be transposed. The resulting tags
+are listed in the table below.
+
+Here are examples of plain and blocked meta-tags:
 
 | Plain tags   | Description
 | :---         | :---
 | abx          | Includes `a`, `ab`, `abc`, `abcd`, `abcde`, `abcdef` tags and their former names for activations and weights.
 | axb          | Includes `a`, `ab`, `acb`, `acdb`, `acdeb` tags and their former names for activations.
 | xba          | Includes `a`, `ba`, `cba`, `cdba`, `cdeba` tags and their former names for weights.
+| aby          | Includes `ba`, `acb`, `abdc`, `abced`, `abcdfe` tags and their former names for activations and weights.
 | ...          | Other plain meta-tags following the same rules.
 
 | Blocked tags | Description

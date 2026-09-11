@@ -30,6 +30,7 @@
 
 #include "graph/interface/c_types_map.hpp"
 
+#include "graph/backend/dnnl/kernels/sdp_decomp_reorder.hpp"
 #include "graph/backend/dnnl/scratchpad.hpp"
 #include "graph/backend/dnnl/subgraph.hpp"
 
@@ -40,35 +41,6 @@ namespace dnnl_impl {
 using ltw = logical_tensor_wrapper_t;
 using op_ptr = std::shared_ptr<op_t>;
 using registry_key = size_t;
-
-// TODO: merge with mqa_reorder_t
-struct sdp_reorder_t {
-public:
-    status_t init(const dnnl::reorder::primitive_desc &pd) {
-        auto src_desc = pd.src_desc();
-        auto dst_desc = pd.dst_desc();
-        if (src_desc == dst_desc) is_inplace_ = true;
-        reorder_prim_ = reorder(pd);
-        return status::success;
-    }
-
-    bool get_inplace() const { return is_inplace_; }
-
-    status_t execute(const dnnl::stream &astream,
-            const std::unordered_map<int, dnnl::memory> &args) const {
-        if (is_inplace_) {
-            void *handle = args.at(DNNL_ARG_SRC).get_data_handle();
-            args.at(DNNL_ARG_DST).set_data_handle(handle);
-        } else
-            dnnl_primitive_execute_without_tp_hook(
-                    reorder_prim_, astream, args);
-        return status::success;
-    }
-
-private:
-    dnnl::primitive reorder_prim_;
-    bool is_inplace_ = false;
-};
 
 struct sdp_decomp_config_t {
 public:
@@ -101,7 +73,7 @@ public:
 
     // Primitives that actually perform calculations
     primitive sub_mm1_prim, sub_softmax_prim, sub_mm2_prim, sub_select_prim;
-    sdp_reorder_t sub_reorder0, sub_reorder1, sub_reorder2, sub_reorder3;
+    sdp_decomp_reorder_t sub_reorder0, sub_reorder1, sub_reorder2, sub_reorder3;
 
     // Args used in the execution of primitives
     std::unordered_map<int, memory> sub_reorder0_args, sub_reorder1_args,
@@ -129,7 +101,7 @@ public:
     memory sub_wei2_user, sub_wei2_zp;
     //mm2
     memory sub_mm2_wei, sub_mm2_dst;
-    //reorder3
+    // reorder3
     memory sub_dst_user;
     //scratchpad
     memory sub_scratchpad;

@@ -36,6 +36,11 @@
 
 namespace reorder {
 
+static bool is_raw_fp4_reorder(const prb_t *prb) {
+    return is_cpu() && prb->sdt == dnnl_f4_e2m1 && prb->ddt == dnnl_f4_e2m1
+            && prb->attr.is_def();
+}
+
 int fill_mem(int exec_arg, const prb_t *prb, data_kind_t kind,
         dnn_mem_t &mem_dt, dnn_mem_t &mem_fp, res_t *res) {
     const auto nelems = mem_fp.nelems();
@@ -49,6 +54,21 @@ int fill_mem(int exec_arg, const prb_t *prb, data_kind_t kind,
     if (has_bench_mode_bit(mode_bit_t::perf)) {
         return fill_random_real(
                 mem_dt, mem_fp, nullptr, get_perf_fill_cfg(mem_dt.dt()));
+    }
+
+    if (kind == SRC && is_raw_fp4_reorder(prb)) {
+        // Exercise all encodings, including negative zero, without a floating
+        // point reorder that could canonicalize the source bits.
+        auto raw = static_cast<uint8_t *>(mem_dt);
+        std::memset(raw, 0, mem_dt.size());
+        for (int64_t i = 0; i < nelems; ++i) {
+            const auto pos = off2dims_idx(prb->dims, i);
+            const auto off = md_off_v(mem_dt, pos.data());
+            const auto bits = static_cast<uint8_t>((i + i / 16 + 1) % 16);
+            raw[off / 2] |= bits << (4 * (off % 2));
+            mem_fp.set_f32_elem(i, mem_dt.get_elem(off));
+        }
+        return OK;
     }
 
     const auto conf = prb->get_conf(kind);
@@ -143,6 +163,35 @@ int compare_compensation(const prb_t *prb, dnn_mem_map_t &mem_map,
                 WARN);
 
     return res->state == FAILED ? FAIL : OK;
+}
+
+static void compare_fp4_bits(const prb_t *prb, const dnn_mem_t &src,
+        const dnn_mem_t &dst, res_t *res) {
+    const auto src_raw = static_cast<const uint8_t *>(src);
+    const auto dst_raw = static_cast<const uint8_t *>(dst);
+    std::vector<uint8_t> expected(dst.size(), 0);
+    for (int64_t i = 0; i < src.nelems(); ++i) {
+        const auto pos = off2dims_idx(prb->dims, i);
+        const auto src_off = md_off_v(src, pos.data());
+        const auto dst_off = md_off_v(dst, pos.data());
+        const uint8_t bits
+                = (src_raw[src_off / 2] >> (4 * (src_off % 2))) & 0xf;
+        expected[dst_off / 2] |= bits << (4 * (dst_off % 2));
+    }
+
+    // Check physical bytes as well as values: numeric comparison cannot detect
+    // lost negative-zero bits or nonzero padding in the unused tail nibble.
+    res->total += expected.size();
+    for (size_t i = 0; i < expected.size(); ++i) {
+        if (dst_raw[i] == expected[i]) continue;
+        if (res->errors < 10 || verbose >= 10) {
+            BENCHDNN_PRINT(0, "FP4 byte %zu: expected 0x%02x, got 0x%02x\n", i,
+                    static_cast<unsigned>(expected[i]),
+                    static_cast<unsigned>(dst_raw[i]));
+        }
+        ++res->errors;
+        res->state = FAILED;
+    }
 }
 
 dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
@@ -642,6 +691,8 @@ int doit(const std::vector<benchdnn_dnnl_wrapper_t<dnnl_primitive_t>> &v_prim,
         // Validate main reorder part.
         check_correctness(prb, {DST}, args, ref_args, compute_ref, setup_cmp,
                 res, prb->dir);
+        if (is_raw_fp4_reorder(prb))
+            compare_fp4_bits(prb, mem_map[DNNL_ARG_SRC], dst_dt, res);
 
         // Restore extra for compensation comparison and performance mode.
         dst_dt.md_->extra = orig_dst_extra;

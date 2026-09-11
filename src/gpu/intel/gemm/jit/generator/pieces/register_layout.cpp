@@ -1231,12 +1231,22 @@ Subregister RegisterBlock::find(Type T, int ii, int jj, const GRFMultirange &reg
             // colMajor). Each scattered byte is padded to its own 4-byte
             // register slot, so a group's 3 bytes end up 4 bytes apart.
             byteOff = (elIndex >> 3) * 3 * 4;
-        } else if (colMajor) {
+        } else if (colMajor && nc > 1) {
             // Groups of 8 rows are packed into 3 bytes per column, and
             // those 3-byte columns are laid out in crosspack-byte quads
             // down the ld dimension (crosspack holds the column pitch, in
             // bytes, of this packing -- see Block2D bytes/ebytes
             // calculation above).
+            //
+            // This formula groups along yy (the column axis under
+            // colMajor), so it only applies when there's more than one
+            // column (nc > 1) to group over. For a single-column block
+            // (nc == 1, e.g. the u3 PseudoBlock access, which always
+            // forces cblock == 1), yy is always 0 and this formula
+            // degenerates to byteOff == xx, discarding the row-grouping
+            // entirely -- the flat formula below (which reduces to the
+            // same elIndex regardless of colMajor when nc == 1) must be
+            // used instead.
             int group = yy / 8;
             byteOff = (group * 3 / crosspack) * (ld * crosspack)
                     + (group * 3 % crosspack) + xx * crosspack;
@@ -1303,7 +1313,14 @@ static RegisterRegion blockRegion(Type T, const Subregister &reg, const Register
     // its only legal source region.
     if (T.is3()) {
         if (block.byteGlue)      return reg(0, 0, 4);
-        if (block.colMajor && block.ebytes > 0)      return reg(block.ld, 0, cp);
+        // The row-spread <ld;0,cp> region groups elements along the
+        // column (nc) axis (see find()'s colMajor formula); it's only
+        // valid when there's more than one column to group over. For a
+        // single-column block (nc == 1 -- e.g. the u3 PseudoBlock access,
+        // which always forces cblock == 1), find() falls back to its flat
+        // byte-sequential addressing, so the region must match: a plain
+        // stride-1 region over consecutive packed bytes.
+        if (block.colMajor && block.ebytes > 0 && block.nc > 1)      return reg(block.ld, 0, cp);
         return reg(1);
     }
 

@@ -337,7 +337,6 @@ __kernel void custom_reorder(__global SRC_DATA_T *restrict src,
 
 #define SRC_D3_ALIGNED (SRC_D3 % SUB_GROUP_SIZE == 0)
 #define IS_SRC_ABCD_LAYOUT (SRC_S3_0 == 1)
-#define IS_SRC_ACDB_LAYOUT (SRC_S3_0 != 1)
 
     const int d0 = GWS_GET_D0();
     const int d1 = GWS_GET_D1();

@@ -23,7 +23,6 @@
 #define DST_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(DST, x0, x1, x2, x3, x4, x5)
 #define STAT_OFF(x0, x1, x2, x3, x4, x5) OFF_MD(STAT, x0, x1, x2, x3, x4, x5)
 
-#define VLEN_C (C / (SUB_GROUP_SIZE * VECT_DT_N))
 #define VLEN_C_BLOCK ((C / NUM_NORM_BLOCKS) / (SUB_GROUP_SIZE * VECT_DT_N))
 #define C_BLOCK (C / NUM_NORM_BLOCKS)
 

@@ -75,8 +75,6 @@ static inline int format_type_checker(const char *, ...) {
     return 0;
 }
 
-#define UTILITY_CONST_EXPR_VALUE(exp) \
-    dnnl::impl::utility::const_expr_value_t<decltype(exp), exp>::value
 
 #define __FILENAME__ \
     (&__FILE__[dnnl::impl::utility::get_file_name_offset(__FILE__)])

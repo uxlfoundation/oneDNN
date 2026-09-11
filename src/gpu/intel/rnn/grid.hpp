@@ -27,9 +27,6 @@
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/rnn/utils.hpp"
 
-// TODO just to debug
-#define WS_NAN_FILLING 0
-
 namespace dnnl {
 namespace impl {
 namespace gpu {

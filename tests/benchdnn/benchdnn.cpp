@@ -58,6 +58,7 @@
 int verbose {0};
 bool canonical {false};
 bool mem_check {true};
+bool concise {false};
 std::string skip_impl;
 stat_t benchdnn_stat {0};
 std::string driver_name;
@@ -161,12 +162,14 @@ int main(int argc, char **argv) {
 
     total_time.stamp();
 
+    maybe_clear_heartbeat();
+
     print_impl_names_summary();
     print_impl_names_csv_summary();
 
     // Failed cases summary.
-    if (!has_bench_mode_bit(mode_bit_t::perf) && summary.failed_cases
-            && !benchdnn_stat.failed_cases.empty()) {
+    if (!concise && !has_bench_mode_bit(mode_bit_t::perf)
+            && summary.failed_cases && !benchdnn_stat.failed_cases.empty()) {
         printf("===========================================================\n");
         printf("= Failed cases summary (--summary=no-failures to disable) =\n");
         printf("===========================================================\n");

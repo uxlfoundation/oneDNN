@@ -98,6 +98,7 @@ extern bool attr_same_pd_check;
 extern bool check_ref_impl;
 extern std::string skip_impl; /* empty or "" means skip nothing */
 extern std::string driver_name;
+extern bool concise;
 
 // This is a safeguard for BENCHDNN_PRINTF macro against mismatches between
 // format specifiers and passed arguments that could lead to runtime failures.
@@ -202,6 +203,8 @@ const char *state2str(res_state_t state);
 
 dir_t str2dir(const char *str);
 void parse_result(res_t &res, const char *pstr);
+
+void maybe_clear_heartbeat();
 
 /* misc */
 void init_fp_mode();

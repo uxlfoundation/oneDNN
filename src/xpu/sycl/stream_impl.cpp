@@ -84,7 +84,7 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
 
     auto *vp = static_cast<xpu::sycl::verbose_profiler_t *>(verbose_profiler);
 
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
     const bool use_tag = vp && vp->use_ext_oneapi_tag();
     ::sycl::event start_tag, end_tag;
     if (use_tag)
@@ -147,7 +147,7 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
         });
     }
 
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
     if (use_tag)
         end_tag = ::sycl::ext::oneapi::experimental::submit_profiling_tag(
                 *queue());
@@ -165,7 +165,7 @@ status_t stream_impl_t::copy(impl::stream_t *stream,
     if (vp) {
         auto verbose_event = std::make_shared<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {e});
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
         if (use_tag) {
             verbose_event->event_tags_.emplace_back(start_tag, end_tag);
         }
@@ -190,7 +190,7 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
 
     auto *vp = static_cast<xpu::sycl::verbose_profiler_t *>(verbose_profiler);
 
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
     const bool use_tag = vp && vp->use_ext_oneapi_tag();
     ::sycl::event start_tag, end_tag;
     if (use_tag)
@@ -224,7 +224,7 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
         });
     }
 
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
     if (use_tag)
         end_tag = ::sycl::ext::oneapi::experimental::submit_profiling_tag(
                 *queue());
@@ -242,7 +242,7 @@ status_t stream_impl_t::fill(const memory_storage_t &dst, uint8_t pattern,
     if (vp) {
         auto verbose_event = std::make_shared<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {out_event});
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
         if (use_tag) {
             verbose_event->event_tags_.emplace_back(start_tag, end_tag);
         }

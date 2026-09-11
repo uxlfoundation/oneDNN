@@ -117,6 +117,10 @@ if(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER)
     message(STATUS "Experimental SYCL OpenCL kernel compiler is enabled")
 endif()
 
+if(DNNL_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG)
+    message(STATUS "Experimental SYCL profiling tag extension is enabled for verbose profiling")
+endif()
+
 if(DNNL_ENABLE_ITT_TASKS AND NOT DNNL_CPU_RUNTIME STREQUAL "NONE")
     # Only supported for certain architectures (see src/common/CMakeLists.txt)
     if(DNNL_TARGET_ARCH STREQUAL "AARCH64" OR DNNL_TARGET_ARCH STREQUAL "X64")

@@ -129,7 +129,7 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
                 gpu_stream->verbose_profiler());
     }
 
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
     const bool use_tag = vp && vp->use_ext_oneapi_tag();
     ::sycl::event start_tag, end_tag;
     if (use_tag)
@@ -193,7 +193,7 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
         }
     });
 
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
     if (use_tag)
         end_tag = ::sycl::ext::oneapi::experimental::submit_profiling_tag(
                 queue);
@@ -210,7 +210,7 @@ status_t interop_kernel_t::parallel_for(impl::stream_t &stream,
     if (vp) {
         auto ev = std::make_shared<xpu::sycl::event_t>(
                 std::vector<::sycl::event> {event});
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
         if (use_tag) { ev->event_tags_.emplace_back(start_tag, end_tag); }
 #endif
         vp->register_event(ev);

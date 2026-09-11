@@ -86,6 +86,14 @@ template <>
 struct prec_traits<dnnl_u4> {
     using type = dnnl::impl::uint4_t;
 };
+template <>
+struct prec_traits<dnnl_s2> {
+    using type = dnnl::impl::int2_t;
+};
+template <>
+struct prec_traits<dnnl_u2> {
+    using type = dnnl::impl::uint2_t;
+};
 #define CASE_ALL(dt) \
     switch (dt) { \
         CASE(dnnl_f4_e2m1); \
@@ -101,6 +109,8 @@ struct prec_traits<dnnl_u4> {
         CASE(dnnl_u8); \
         CASE(dnnl_s4); \
         CASE(dnnl_u4); \
+        CASE(dnnl_s2); \
+        CASE(dnnl_u2); \
         default: assert(!"bad data_type"); SAFE_V(FAIL); \
     }
 
@@ -168,7 +178,7 @@ float saturate_and_round(float value) {
 
 bool is_integral_dt(dnnl_data_type_t dt) {
     return dt == dnnl_s32 || dt == dnnl_s8 || dt == dnnl_u8 || dt == dnnl_s4
-            || dt == dnnl_u4;
+            || dt == dnnl_u4 || dt == dnnl_s2 || dt == dnnl_u2;
 }
 
 template <dnnl_data_type_t dt>
@@ -207,7 +217,9 @@ float round_to_nearest_representable_templ(float value) {
         case dnnl_s8:
         case dnnl_u8:
         case dnnl_s4:
-        case dnnl_u4: value = maybe_saturate_templ<dt>(value); break;
+        case dnnl_u4:
+        case dnnl_s2:
+        case dnnl_u2: value = maybe_saturate_templ<dt>(value); break;
         default: SAFE_V(FAIL);
     }
 
@@ -226,7 +238,8 @@ float round_to_nearest_representable(dnnl_data_type_t dt, float value) {
 #undef CASE_ALL
 
 bool is_subbyte_type(dnnl_data_type_t type) {
-    return type == dnnl_f4_e2m1 || type == dnnl_u4 || type == dnnl_s4;
+    return type == dnnl_f4_e2m1 || type == dnnl_u4 || type == dnnl_s4
+            || type == dnnl_u2 || type == dnnl_s2;
 }
 
 size_t bits_dt(dnnl_data_type_t dt) {
@@ -245,6 +258,8 @@ size_t bits_dt(dnnl_data_type_t dt) {
         case dnnl_f4_e2m1:
         case dnnl_s4:
         case dnnl_u4: return 4;
+        case dnnl_s2:
+        case dnnl_u2: return 2;
         case dnnl_boolean: return 1;
         default: assert(!"unsupported data type"); SAFE_V(FAIL);
     }

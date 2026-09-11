@@ -688,10 +688,10 @@ status_t dnnl_primitive_attr_set_zero_points_v2(dnnl_primitive_attr_t attr,
 
     VCHECK_ATTR(attr, VERBOSE_NULL_ARG);
     VCHECK_ATTR(arg >= 0, VERBOSE_BAD_PARAM, "arg");
-    VCHECK_ATTR(utils::one_of(data_type, s32, s8, u8, s4, u4),
+    VCHECK_ATTR(utils::one_of(data_type, s32, s8, u8, s4, u4, s2, u2),
             VERBOSE_INVALID_DATATYPE, "zero points");
-    VCHECK_ATTR(IMPLICATION(utils::one_of(data_type, s4, u4), mask > 0),
-            VERBOSE_BAD_PARAM, "mask with int4 data type");
+    VCHECK_ATTR(IMPLICATION(utils::one_of(data_type, s4, u4, s2, u2), mask > 0),
+            VERBOSE_BAD_PARAM, "mask with sub-byte data type");
     VCHECK_ATTR(IMPLICATION(!utils::one_of(arg, DNNL_ARG_SRC, DNNL_ARG_WEIGHTS,
                                     DNNL_ARG_WEIGHTS_1, DNNL_ARG_WEIGHTS_2),
                         data_type == s32 && group_ndims == 0),

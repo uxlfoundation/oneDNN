@@ -49,6 +49,8 @@ REG(s8, INT8_MIN, INT8_MAX);
 REG(u8, 0, UINT8_MAX);
 REG(s4, -7, 8);
 REG(u4, 0, 15);
+REG(s2, -2, 1);
+REG(u2, 0, 3);
 
 #undef REG
 
@@ -67,6 +69,8 @@ const dt_conf_t *dt2cfg(dnnl_data_type_t dt) {
     CASE(u8);
     CASE(s4);
     CASE(u4);
+    CASE(s2);
+    CASE(u2);
 #undef CASE
     SAFE_V(FAIL);
     return conf_f32;
@@ -87,6 +91,8 @@ dnnl_data_type_t cfg2dt(const dt_conf_t *cfg) {
     CASE(u8);
     CASE(s4);
     CASE(u4);
+    CASE(s2);
+    CASE(u2);
 #undef CASE
     SAFE_V(FAIL);
     return dnnl_f32;

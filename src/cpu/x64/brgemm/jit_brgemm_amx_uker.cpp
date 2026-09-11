@@ -1657,7 +1657,8 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
         if (bi.skip_accumulation) {
             vpxord(vreg_acc, vreg_acc, vreg_acc);
         } else if (brg.is_ace()) {
-            tilemovrow(vreg_acc, Tmm(get_C_tensor(bi, bdb, ldb)), bd);
+            tilemovrow(vreg_acc, Tmm(get_C_tensor(bi, bdb, ldb)),
+                    static_cast<uint8_t>(bd));
         } else {
             vreg_acc = bi.ldi->is_tail(ldb) ? vreg_acc | ld_tail_mask | T_z
                                             : vreg_acc;
@@ -2703,7 +2704,7 @@ void jit_brgemm_amx_uker_base_t::ace_load_A_4x16bytes(
             mov(reg_tmp_gpr, cur_mask);
             kmovq(ace_load_A_mask, reg_tmp_gpr);
             vmovdqu8(xmm_tmp | ace_load_A_mask | T_z, ptr[reg_A + cur_offset]);
-            vinserti64x2(zmm, zmm, xmm_tmp, i);
+            vinserti64x2(zmm, zmm, xmm_tmp, static_cast<uint8_t>(i));
         } else {
             // Note: bind by value; assigning through a reference to
             // ace_load_A_mask would clobber the member used above.

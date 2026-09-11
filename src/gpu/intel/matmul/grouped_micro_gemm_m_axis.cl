@@ -192,6 +192,17 @@ DECLARE_2D_TILE(c_tile_type_dst, DST_TILE_DATA_T, SUBGROUP_SIZE,
 #define WEI_LD_ARGS OPTIONAL(OR(WITH_WEI_ZP, WEI_SCALES_GROUPED), ldweiq)
 #define K_PARALLEL_LOCAL_ARGS OPTIONAL(K_PARALLEL_LOCAL, sg_k)
 
+// u3 packs 8 elements into 3 bytes, so a plain elements-per-byte division
+// (as used for the other, integral-elements-per-byte zero-point types)
+// would truncate to zero. Convert element counts to byte offsets with the
+// same ceil(count * 3 / 8) formula used on the host side (see
+// types::elements_to_bytes()).
+#if WEI_ZP_DT_U3
+#define WEI_ZP_ELEM_OFFSET(count) ((3 * (count) + 7) / 8)
+#else
+#define WEI_ZP_ELEM_OFFSET(count) ((count) / WEI_ZP_ELEMS_PER_BYTE)
+#endif
+
 void store_results(ugemm_grouped_c_type *tile, global DST_DATA_T *ptr, int n,
         int m, int lddst, int sg_i0, int sg_j0) {
 #if DST_DT_F32
@@ -348,7 +359,7 @@ grouped_micro_gemm_m_axis(const global SRC_DATA_T *src, long ldsrc,
     wei_attr_scales += batch * n * (k / WEI_GROUP_SIZE);
 #endif
 #if WITH_WEI_ZP
-    wei_attr_zp += batch * n * (k / WEI_GROUP_SIZE) / WEI_ZP_ELEMS_PER_BYTE;
+    wei_attr_zp += WEI_ZP_ELEM_OFFSET(batch * n * (k / WEI_GROUP_SIZE));
 #endif
 
     ugemm_grouped_c_type c_tile = ugemm_grouped(wei, ldwei, src, ldsrc, n, m, k,

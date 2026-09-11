@@ -539,7 +539,7 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
         VDISPATCH_MATMUL(utils::one_of(wei_zp_mask, 7, 5),
                 VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points mask(%d)",
                 wei_zp_mask);
-        VDISPATCH_MATMUL(utils::one_of(wei_quant_.zp_dt(), u8, s8, u4, s4),
+        VDISPATCH_MATMUL(utils::one_of(wei_quant_.zp_dt(), u8, s8, u3, u4, s4),
                 VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points dt(%s)",
                 dnnl_dt2str(wei_quant_.zp_dt()));
     }
@@ -599,6 +599,8 @@ status_t grouped_micro_gemm_t::pd_t::init_kernel_ctx_m_axis() {
 
     def_data_type(kernel_ctx_, src_dt, "SRC");
     def_data_type(kernel_ctx_, wei_dt, "WEI");
+    kernel_ctx_.define_int(
+            "U3_CONTIGUOUS_LAYOUT", DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT);
     kernel_ctx_.define_int(
             "SRC_ELEMS_PER_BYTE", types::bytes_to_elements(src_dt, 1));
     switch (wei_dt) {

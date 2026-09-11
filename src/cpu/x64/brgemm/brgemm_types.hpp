@@ -834,63 +834,21 @@ struct brgemm_kernel_params_t {
     dim_t dynamic_LDD = 0;
 };
 
-template <typename Vmm>
-struct jit_brgemm_kernel_t;
-struct jit_brgemm_amx_uker_base_t;
-template <typename Vmm>
-struct jit_brdgmm_kernel_base_t;
-class jit_generator_t;
+// Base class for all BRGEMM kernels.
+//
+// A BRGEMM kernel is both the code generator that creates the kernel and the
+// handle returned by the `brgemm_kernel_*()` functions in `brgemm.hpp`.
+//
+// Each kernel is created by its own `create_*()` factory, keeping the kernel
+// definitions out of this header.
+struct brgemm_kernel_t : public jit_generator_t {
+    brgemm_kernel_t(const char *impl_name, cpu_isa_t isa_impl)
+        : jit_generator_t(impl_name, isa_impl) {}
+    ~brgemm_kernel_t() override = default;
 
-struct brgemm_kernel_t {
-    brgemm_kernel_t() = default;
-    virtual ~brgemm_kernel_t() = default;
-    virtual status_t create_kernel() = 0;
-    virtual void operator()(const brgemm_kernel_params_t *) const = 0;
-    virtual const jit_generator_t *get_jit_generator() const = 0;
-};
-
-template <typename Vmm>
-struct brgemm_kernel_common_t : public brgemm_kernel_t {
-    brgemm_kernel_common_t(const brgemm_desc_t &abrd);
-    ~brgemm_kernel_common_t() override;
-
-    status_t create_kernel() override;
-    void operator()(const brgemm_kernel_params_t *) const override;
-    const jit_generator_t *get_jit_generator() const override;
-
-private:
-    jit_brgemm_kernel_t<Vmm> *brgemm_kernel_ = nullptr;
-
-    DNNL_DISALLOW_COPY_AND_ASSIGN(brgemm_kernel_common_t);
-};
-
-struct brgemm_amx_uker_t : public brgemm_kernel_t {
-    brgemm_amx_uker_t(const brgemm_desc_t &abrd);
-    ~brgemm_amx_uker_t() override;
-
-    status_t create_kernel() override;
-    void operator()(const brgemm_kernel_params_t *) const override;
-    const jit_generator_t *get_jit_generator() const override;
-
-private:
-    jit_brgemm_amx_uker_base_t *brgemm_kernel_ = nullptr;
-
-    DNNL_DISALLOW_COPY_AND_ASSIGN(brgemm_amx_uker_t);
-};
-
-template <typename Vmm>
-struct brdgmm_kernel_t : public brgemm_kernel_t {
-    brdgmm_kernel_t(const brgemm_desc_t &abrd);
-    ~brdgmm_kernel_t() override;
-
-    status_t create_kernel() override;
-    void operator()(const brgemm_kernel_params_t *) const override;
-    const jit_generator_t *get_jit_generator() const override;
-
-private:
-    jit_brdgmm_kernel_base_t<Vmm> *brgemm_kernel_ = nullptr;
-
-    DNNL_DISALLOW_COPY_AND_ASSIGN(brdgmm_kernel_t);
+    void operator()(const brgemm_kernel_params_t *params) const {
+        jit_generator_t::operator()(params);
+    }
 };
 
 /// @param bias Vector of bias (vector length is N)

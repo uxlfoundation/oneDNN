@@ -23,6 +23,7 @@
 #include "cpu/platform.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
 #include "cpu/x64/brgemm/brgemm_types.hpp"
+#include "cpu/x64/brgemm/jit_brgemm_amx_uker.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_avx512_core_fp8cvt.hpp"
@@ -39,9 +40,9 @@ using namespace dnnl::impl::utils;
 using namespace injector_utils;
 using namespace Xbyak;
 
-struct jit_brgemm_amx_uker_base_t : public jit_generator_t {
+struct jit_brgemm_amx_uker_base_t : public brgemm_kernel_t {
     jit_brgemm_amx_uker_base_t(const brgemm_desc_t &abrg)
-        : jit_generator_t(jit_name(), abrg.isa_impl)
+        : brgemm_kernel_t(jit_name(), abrg.isa_impl)
         , brg(abrg)
         , postops_injector_(nullptr) {
 
@@ -3634,23 +3635,8 @@ void jit_brgemm_amx_uker_base_t::generate() {
     }
 }
 
-brgemm_amx_uker_t::brgemm_amx_uker_t(const brgemm_desc_t &abrd)
-    : brgemm_kernel_(new jit_brgemm_amx_uker_base_t(abrd)) {}
-
-status_t brgemm_amx_uker_t::create_kernel() {
-    return brgemm_kernel_->create_kernel();
-}
-
-void brgemm_amx_uker_t::operator()(const brgemm_kernel_params_t *params) const {
-    (*brgemm_kernel_)(params);
-}
-
-const jit_generator_t *brgemm_amx_uker_t::get_jit_generator() const {
-    return brgemm_kernel_;
-}
-
-brgemm_amx_uker_t::~brgemm_amx_uker_t() {
-    delete brgemm_kernel_;
+brgemm_kernel_t *create_brgemm_amx_uker_kernel(const brgemm_desc_t &brg) {
+    return new jit_brgemm_amx_uker_base_t(brg);
 }
 
 } // namespace x64

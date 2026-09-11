@@ -39,7 +39,7 @@ using namespace injector_utils;
 template <typename Wmm>
 jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
         const brgemm_desc_t &abrd)
-    : jit_generator_t(jit_name(), abrd.isa_impl)
+    : brgemm_kernel_t(jit_name(), abrd.isa_impl)
     , brg(abrd)
     , simd_w_(vreg_traits_t<Vmm>::vlen / brg.typesize_C)
     , max_vmms_(isa_num_vregs(brg.isa_impl))
@@ -1441,33 +1441,13 @@ void jit_brdgmm_kernel_base_t<Wmm>::generate() {
     }
 }
 
-template <typename Wmm>
-brdgmm_kernel_t<Wmm>::brdgmm_kernel_t(const brgemm_desc_t &abrd)
-    : brgemm_kernel_(new jit_brdgmm_kernel_base_t<Wmm>(abrd)) {}
+brgemm_kernel_t *create_brdgmm_kernel(const brgemm_desc_t &brg) {
+    if (brg.type == brgemm_static_offs) return nullptr;
 
-template <typename Wmm>
-status_t brdgmm_kernel_t<Wmm>::create_kernel() {
-    return brgemm_kernel_->create_kernel();
+    if (brg.is_zmm) return new jit_brdgmm_kernel_base_t<Xbyak::Zmm>(brg);
+    if (brg.is_ymm) return new jit_brdgmm_kernel_base_t<Xbyak::Ymm>(brg);
+    return nullptr;
 }
-
-template <typename Wmm>
-void brdgmm_kernel_t<Wmm>::operator()(
-        const brgemm_kernel_params_t *params) const {
-    (*brgemm_kernel_)(params);
-}
-
-template <typename Wmm>
-const jit_generator_t *brdgmm_kernel_t<Wmm>::get_jit_generator() const {
-    return brgemm_kernel_;
-}
-
-template <typename Wmm>
-brdgmm_kernel_t<Wmm>::~brdgmm_kernel_t() {
-    delete brgemm_kernel_;
-}
-
-template struct brdgmm_kernel_t<Xbyak::Zmm>;
-template struct brdgmm_kernel_t<Xbyak::Ymm>;
 
 } // namespace x64
 } // namespace cpu

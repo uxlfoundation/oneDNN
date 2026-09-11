@@ -116,10 +116,10 @@ struct ref_grouped_t : public primitive_t {
             VDISPATCH_MATMUL(IMPLICATION(is_int_src, is_int_wei),
                     VERBOSE_UNSUPPORTED_DT_CFG);
             // WOQ requires weight scales and fpmath with apply_to_int
-            VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
+        /*    VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
                                      !attr()->scales_.has_default_values(
                                              DNNL_ARG_WEIGHTS)),
-                    VERBOSE_UNSUPPORTED_DT_CFG);
+                    VERBOSE_UNSUPPORTED_DT_CFG);*/
             VDISPATCH_MATMUL(IMPLICATION(is_fp_src && is_int_wei,
                                      attr()->fpmath_.apply_to_int_),
                     VERBOSE_UNSUPPORTED_DT_CFG);

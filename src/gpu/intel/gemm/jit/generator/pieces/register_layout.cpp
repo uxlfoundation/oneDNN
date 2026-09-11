@@ -461,7 +461,16 @@ RegisterBlock::RegisterBlock(HW hw_, Type T, int r, int c, const MatrixAddressin
                 // divides evenly, else fall back to D32 (4 bytes/unit).
                 int ebytesChoice = ((totalBytes % 8) == 0) ? 8 : 4;
                 int vcount = (totalBytes % ebytesChoice == 0) ? (totalBytes / ebytesChoice) : -1;
-                bool vcountOK = (vcount >= 0) && ((vcount == 3) || (is_zero_or_pow2(vcount) && vcount >= 1 && vcount <= 64));
+                // A true Block message reads/writes the whole fixed-size
+                // block unconditionally -- it has no way to mask off
+                // partially-valid lanes. Whenever this block might see a
+                // row remainder (a real short tail, or a conservative
+                // last-iteration flag from the surrounding K-loop), it must
+                // use the byte-granular pseudo-block fallback below
+                // instead, since that path sets up proper (variable)
+                // masking.
+                bool vcountOK = !remainderR && (vcount >= 0)
+                        && ((vcount == 3) || (is_zero_or_pow2(vcount) && vcount >= 1 && vcount <= 64));
 
                 if (vcountOK) {
                     ebytes = ebytesChoice;
@@ -1294,7 +1303,7 @@ static RegisterRegion blockRegion(Type T, const Subregister &reg, const Register
     // its only legal source region.
     if (T.is3()) {
         if (block.byteGlue)      return reg(0, 0, 4);
-        if (block.colMajor)      return reg(block.ld, 0, cp);
+        if (block.colMajor && block.ebytes > 0)      return reg(block.ld, 0, cp);
         return reg(1);
     }
 

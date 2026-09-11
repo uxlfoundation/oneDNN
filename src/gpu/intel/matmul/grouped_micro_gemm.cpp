@@ -569,11 +569,12 @@ status_t grouped_micro_gemm_t::pd_t::init_m_axis(const impl::engine_t *engine) {
                 wei_zp_mask);
         if (wei_zp_mask == 5) {
             VDISPATCH_MATMUL(
-                    utils::one_of(wei_quant_.zp_dt(), s32, u8, s8, u4, s4),
+                    utils::one_of(wei_quant_.zp_dt(), s32, u8, s8, u3, u4, s4),
                     VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points dt(%s)",
                     dnnl_dt2str(wei_quant_.zp_dt()));
         } else {
-            VDISPATCH_MATMUL(utils::one_of(wei_quant_.zp_dt(), u8, s8, u4, s4),
+            VDISPATCH_MATMUL(
+                    utils::one_of(wei_quant_.zp_dt(), u8, s8, u3, u4, s4),
                     VERBOSE_UNSUPPORTED_ZP_CFG ": wei zero points dt(%s)",
                     dnnl_dt2str(wei_quant_.zp_dt()));
         }

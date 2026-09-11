@@ -106,6 +106,8 @@ enum class op_kind_t {
     vload_scalar,
     // [base + disp] = s0 (store one element)
     vstore_scalar,
+    // dst = broadcast([base + disp]) (load one element, replicated across dst)
+    vload_bcast,
     // dst += sum_{i=0}^{N-1} (s0[i] * s1[i]), where N is the dot length
     vdot,
     // dst += s0 (vector add)
@@ -303,6 +305,7 @@ struct DNNL_API ir_t {
     void vstore(vreg_t base, dim_t disp, vreg_t src, data_type_t mem_dt);
     void vload_scalar(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt);
     void vstore_scalar(vreg_t base, dim_t disp, vreg_t src, data_type_t mem_dt);
+    void vload_bcast(vreg_t dst, vreg_t base, dim_t disp, data_type_t mem_dt);
     void vdot(vreg_t dst, vreg_t a, vreg_t b);
     void vadd(vreg_t dst, vreg_t src);
     void vmul(vreg_t dst, vreg_t src);

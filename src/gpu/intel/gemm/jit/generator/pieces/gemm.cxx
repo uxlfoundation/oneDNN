@@ -1118,8 +1118,16 @@ void Generator<hw>::gemmOOBExit(Label &target, const GEMMStrategy &strategy, GEM
 template <HW hw>
 bool Generator<hw>::wgRemCheck(const GEMMProblem &problem, const GEMMStrategy &strategy)
 {
-    return (strategy.slmA && (effCoopSplitA(problem, strategy) == CoopSplit::MN) && (strategy.remHandling[LoopM] != RemainderHandling::Ignore) && !strategy.A.padded)
-        || (strategy.slmB && (effCoopSplitB(problem, strategy) == CoopSplit::MN) && (strategy.remHandling[LoopN] != RemainderHandling::Ignore) && !strategy.B.padded)
+    bool mnSplitNeedsWGRem
+            = (strategy.slmA && (effCoopSplitA(problem, strategy) == CoopSplit::MN) && (strategy.remHandling[LoopM] != RemainderHandling::Ignore) && !strategy.A.padded)
+           || (strategy.slmB && (effCoopSplitB(problem, strategy) == CoopSplit::MN) && (strategy.remHandling[LoopN] != RemainderHandling::Ignore) && !strategy.B.padded);
+
+    bool splitBranchNeedsUniformRem
+            = (strategy.slmA && (strategy.remHandling[LoopM] == RemainderHandling::Split) && (strategy.wg[LoopM] > 1) && !strategy.A.padded)
+           || (strategy.slmB && (strategy.remHandling[LoopN] == RemainderHandling::Split) && (strategy.wg[LoopN] > 1) && !strategy.B.padded);
+
+    return mnSplitNeedsWGRem
+        || splitBranchNeedsUniformRem
         || strategy.kParallelLocal
         || ((strategy.barrierFreq > 0 || strategy.cooperativePF) && (strategy.prefetchA || strategy.prefetchB || strategy.prefetchC))
         || (strategy.coopA == CoopSplit::FullK)

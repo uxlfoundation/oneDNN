@@ -35,14 +35,12 @@ rvv_softmax_fwd_t::rvv_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {
         affine_kernel_.reset(new jit_rvv_softmax_affine_kernel_t());
     }
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
-    // Construct the strided xf16 JIT kernels once, single-threaded, before any
-    // parallel execution. The kernel objects are immutable after construction,
-    // so execute_forward can invoke them per block without the thread-safe
-    // static-local guard (lb; fence r,rw; zext.b; beqz) that the
-    // jit_rvv_softmax_xf16_gather/scatter free functions pay on every call.
-    if (utils::one_of(pd()->rsp_.data_type, data_type::f16, data_type::bf16)) {
-        gather_kernel_.reset(new jit_rvv_softmax_xf16_strided_kernel_t(true));
-        scatter_kernel_.reset(new jit_rvv_softmax_xf16_strided_kernel_t(false));
+    // Resolve the process-wide kernels during primitive creation so the
+    // strided hot path can bypass the function-local static guards.
+    if (utils::one_of(pd()->rsp_.data_type, data_type::f16, data_type::bf16)
+            && pd()->rsp_.inner_size > 1) {
+        gather_kernel_ = &get_xf16_strided_kernel<true>();
+        scatter_kernel_ = &get_xf16_strided_kernel<false>();
     }
 #endif
 }
@@ -266,10 +264,6 @@ void execute_xf16(const void *src, void *dst, const rvv_softmax_conf_t &rsp,
             const dim_t i = idx % rsp.inner_size;
             const dim_t base = outer * outer_stride + i;
 
-            // Invoke the pre-constructed strided kernels directly (no
-            // per-block thread-safe-static guard or fence); the kernel objects
-            // were built once in the constructor and are immutable during
-            // parallel execution.
             jit_rvv_softmax_xf16_strided_kernel_t::call_params_t gp {
                     src_p + base, tmp, rsp.axis_size, stride_bytes};
             (*gather_kernel)(&gp);
@@ -379,13 +373,11 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             if (rsp.data_type == data_type::bf16)
                 execute_xf16<dnnl::impl::bfloat16_t, data_type::bf16>(src, dst,
                         rsp, outer_stride, nthr, is_softmax_inf_as_zero,
-                        reduction, scratch, gather_kernel_.get(),
-                        scatter_kernel_.get());
+                        reduction, scratch, gather_kernel_, scatter_kernel_);
             else
                 execute_xf16<dnnl::impl::float16_t, data_type::f16>(src, dst,
                         rsp, outer_stride, nthr, is_softmax_inf_as_zero,
-                        reduction, scratch, gather_kernel_.get(),
-                        scatter_kernel_.get());
+                        reduction, scratch, gather_kernel_, scatter_kernel_);
         } break;
 #endif
         default: return status::unimplemented;

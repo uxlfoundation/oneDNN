@@ -103,6 +103,9 @@ private:
     bool gather_;
 };
 
+template <bool gather>
+const jit_rvv_softmax_xf16_strided_kernel_t &get_xf16_strided_kernel();
+
 struct jit_rvv_softmax_xf16_exp_sub_sum_kernel_t : public jit_generator_t {
     struct call_params_t {
         const void *src;

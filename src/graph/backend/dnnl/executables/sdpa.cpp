@@ -46,8 +46,16 @@ status_t create_sdpa_pd(std::unique_ptr<dnnl_primitive_desc, pd_deleter_t> &pd,
 
     dnnl::memory::desc md_mask;
     const bool with_explicit_mask = mask_type == attn_mask_type::buffer;
-    if (with_explicit_mask)
+    const bool with_select_mask = mask_type == attn_mask_type::select
+            || mask_type == attn_mask_type::select_fusiable;
+    if (with_explicit_mask) {
         md_mask = make_dnnl_memory_desc(op->get_input_logical_tensor(idx++));
+    } else if (with_select_mask) {
+        // The select condition tensor is carried in the attn-mask slot; the
+        // scalar fill follows it as a separate input (read at execute time).
+        md_mask = make_dnnl_memory_desc(op->get_input_logical_tensor(idx++));
+        idx++; // skip the fill logical tensor
+    }
 
     dnnl::primitive_attr attr, qk_attr, vs_attr;
     attr.set_scratchpad_mode(dnnl::scratchpad_mode::user);
@@ -200,6 +208,14 @@ arg_indices_t sdpa_executable_t::get_arg_indices(const op_t *op) {
     if (op->get_attr<int64_t>(op_attr::mask_type)
             == static_cast<int64_t>(attn_mask_type::buffer)) {
         args.insert({DNNL_ARG_ATTN_MASK, {indices_t::type_t::input, idx++}});
+    } else if (op->get_attr<int64_t>(op_attr::mask_type)
+                    == static_cast<int64_t>(attn_mask_type::select)
+            || op->get_attr<int64_t>(op_attr::mask_type)
+                    == static_cast<int64_t>(attn_mask_type::select_fusiable)) {
+        // Select mask: condition tensor followed by the scalar fill value.
+        args.insert({DNNL_ARG_ATTN_MASK, {indices_t::type_t::input, idx++}});
+        args.insert(
+                {DNNL_ARG_ATTN_MASK_FILL, {indices_t::type_t::input, idx++}});
     }
 
     if (op->get_attr<bool>(op_attr::with_dropout)) {

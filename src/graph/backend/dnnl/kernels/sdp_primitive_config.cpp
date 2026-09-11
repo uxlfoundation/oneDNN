@@ -63,6 +63,10 @@ status_t sdp_primitive_config_t::initial_check(
                     graph::op_kind::SoftMax};
     op_ptr mm1 = nullptr, mm2 = nullptr, scale = nullptr;
     bool f32_inter = true;
+    // A select mask is folded into the softmax epilogue by the CPU sdpa
+    // primitive; the GPU ukernel has no such path.
+    const bool is_cpu = sg->p_engine_
+            && sg->p_engine_->get_kind() == dnnl::engine::kind::cpu;
 
     for (const auto &cur_op : sg->get_ops()) {
         const auto &op_kind = cur_op->get_kind();
@@ -117,24 +121,26 @@ status_t sdp_primitive_config_t::initial_check(
                             && (ltw(lt_ms).data_type() == data_type::f32);
                     post_op = get_post_op(post_op);
                 }
-                // Not support select after scale(optional) and mask(optional)
-                // Distill-Bert:[mm1] --> [scale]* --> [mask]* --> [select] --> ...
-                VCHECK_SDP_PRIMITIVE(post_op
-                                && post_op->get_kind()
-                                        != graph::op_kind::Select,
-                        status::unimplemented,
-                        "Not support select after scale(optional) and "
-                        "mask(optional)");
-            }
-
-            if (post_op) {
-                if (post_op->get_kind() == graph::op_kind::SoftMax) {
-                    const auto &softmax = post_op;
-                    softmax_mode_
-                            = softmax->get_attr<std::string>(op_attr::mode);
+                // A select mask between the scale/mask and softmax
+                // ([mm1] -> [scale]* -> [mask]* -> [select] -> [softmax]) is
+                // supported on CPU when its fill is a single scalar value: the
+                // primitive folds `cond ? fill : score` (or its inverse) into
+                // the softmax epilogue. It is unsupported on GPU, and other
+                // select positions (e.g. between mm1 and the scale) are not
+                // supported at all.
+                // Distill-Bert:[mm1] --> [scale]* --> [mask]* --> [select]
+                if (post_op && post_op->get_kind() == graph::op_kind::Select) {
+                    VCHECK_SDP_PRIMITIVE(is_cpu, status::unimplemented,
+                            "Select mask is only supported on CPU");
+                    const auto &then_lt = post_op->get_input_logical_tensor(1);
+                    const auto &else_lt = post_op->get_input_logical_tensor(2);
+                    VCHECK_SDP_PRIMITIVE(ltw(then_lt).nelems() == 1
+                                    || ltw(else_lt).nelems() == 1,
+                            status::unimplemented,
+                            "Select mask requires a scalar fill value");
+                    post_op = get_post_op(post_op);
                 }
             }
-        } else {
             mm2 = cur_op;
         }
     }

@@ -32,6 +32,9 @@ namespace impl {
 #define DNNL_ARG_KEYS DNNL_ARG_SRC_1
 #define DNNL_ARG_VALUES DNNL_ARG_SRC_2
 #define DNNL_ARG_ATTN_MASK DNNL_ARG_SHIFT
+// Scalar fill value for a select attention mask (see dnnl_attn_mask_select).
+// Delivered as a runtime f32 buffer; SRC_3 is otherwise unused in fwd SDPA.
+#define DNNL_ARG_ATTN_MASK_FILL DNNL_ARG_SRC_3
 
 #define DNNL_ARG_DIFF_QUERIES DNNL_ARG_DIFF_SRC_0
 #define DNNL_ARG_DIFF_KEYS DNNL_ARG_DIFF_SRC_1
@@ -52,6 +55,15 @@ typedef enum {
     /// causal mask with the diagonal starting from the bottom right hand side
     /// of the mask tensor
     dnnl_attn_mask_bottom_right = 3,
+
+    /// select mask: a boolean/int8 condition tensor chooses between the score
+    /// and a scalar fill value per element. Non-fusiable variant computes
+    /// `cond ? fill : score` (masked-out lanes, where cond != 0, take fill).
+    dnnl_attn_mask_select = 4,
+
+    /// select mask, fusiable variant: `cond ? score : fill` (lanes where
+    /// cond != 0 keep the score, the rest take fill).
+    dnnl_attn_mask_select_fusiable = 5,
 } dnnl_attn_mask_type_t;
 // NOLINTEND(modernize-use-using)
 
@@ -61,6 +73,8 @@ const attn_mask_type_t undef = dnnl_attn_mask_undef;
 const attn_mask_type_t buffer = dnnl_attn_mask_buffer;
 const attn_mask_type_t top_left = dnnl_attn_mask_top_left;
 const attn_mask_type_t bottom_right = dnnl_attn_mask_bottom_right;
+const attn_mask_type_t select = dnnl_attn_mask_select;
+const attn_mask_type_t select_fusiable = dnnl_attn_mask_select_fusiable;
 } // namespace attn_mask_type
 
 // A descriptor for a scaled dot product attention (SDPA) operation.

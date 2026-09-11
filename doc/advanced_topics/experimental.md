@@ -44,13 +44,14 @@ Both kinds of experimental features can be enabled simultaneously.
 | ONEDNN_EXPERIMENTAL_BNORM_STATS_ONE_PASS | Calculate mean and variance in batch normalization(BN) in single pass ([RFC](https://github.com/uxlfoundation/oneDNN/tree/rfcs/rfcs/20210519-single-pass-bnorm)). |
 | ONEDNN_EXPERIMENTAL_GPU_CONV_V2          | Enable shapeless GPU convolution implementation (the feature is under development).                                                                            |
 
-| Build time option                        | Description                                                      |
-|:-----------------------------------------|:-----------------------------------------------------------------|
-| ONEDNN_EXPERIMENTAL_UKERNEL              | Enable experimental microkernel APIs and functionalities.        |
-| ONEDNN_EXPERIMENTAL_PROFILING            | Enable experimental profiling API.                               |
-| ONEDNN_EXPERIMENTAL_LOGGING              | Enable experimental logging support for oneDNN verbose mode.     |
-| ONEDNN_EXPERIMENTAL_SYCL_KERNEL_COMPILER | Enable SYCL OpenCL online kernel compiler extension.             |
-| ONEDNN_EXPERIMENTAL_GROUPED_MEMORY       | Enable grouped memory format and grouped GEMM for MoE workloads. |
+| Build time option                             | Description                                                      |
+|:----------------------------------------------|:-----------------------------------------------------------------|
+| ONEDNN_EXPERIMENTAL_UKERNEL                   | Enable experimental microkernel APIs and functionalities.        |
+| ONEDNN_EXPERIMENTAL_PROFILING                 | Enable experimental profiling API.                               |
+| ONEDNN_EXPERIMENTAL_LOGGING                   | Enable experimental logging support for oneDNN verbose mode.     |
+| ONEDNN_EXPERIMENTAL_SYCL_KERNEL_COMPILER      | Enable SYCL OpenCL online kernel compiler extension.             |
+| ONEDNN_EXPERIMENTAL_GROUPED_MEMORY            | Enable grouped memory format and grouped GEMM for MoE workloads. |
+| ONEDNN_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG | Enable use of SYCL profiling tags with asynchronous verbose mode |
 
 ## Features details
 
@@ -177,3 +178,28 @@ The runtime controls for oneDNN logging are listed as follows:
 This option enables the experimental SYCL OpenCL online kernel compiler,
 allowing OpenCL kernels to be compiled without directly invoking the OpenCL
 runtime.
+
+### ONEDNN_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG
+
+This build-time option enables asynchronous verbose profiling for oneDNN
+with SYCL runtimes using the [``sycl_ext_oneapi_profiling_tag()``](
+https://github.com/intel/llvm/blob/sycl/sycl/doc/extensions/experimental/sycl_ext_oneapi_profiling_tag.asciidoc) 
+extension.
+
+By default, asynchronous verbose profiling relies on a profiling-enabled
+SYCL queue (created with ``sycl::property::queue::enable_profiling``) to
+query timing information from queued SYCL events.
+
+The ``sycl_ext_oneapi_profiling_tag`` extension removes this requirement,
+allowing verbose profiling to function seamlessly even when queue profiling
+is not enabled, by submitting lightweight profiling tags to bracket kernel
+execution.
+
+When this option is active, the verbose profiler behaves as follows:
+
+- If the ``sycl_ext_oneapi_profiling_tag`` extension is available, SYCL
+  profiling tags are used to measure and log kernel execution times.
+- If the extension is not available but the queue has profiling enabled,
+  the profiler falls back to standard queue-based profiling.
+- If neither mechanism is available, the profiler is disabled with a
+  warning and execution times will not be reported in verbose output.

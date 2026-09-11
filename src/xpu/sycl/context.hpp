@@ -63,6 +63,10 @@ struct event_t : public xpu::event_t {
     }
 
     std::vector<::sycl::event> events;
+
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
+    std::vector<std::pair<::sycl::event, ::sycl::event>> event_tags_;
+#endif
 };
 
 struct context_t final : public xpu::context_t {

@@ -74,7 +74,6 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
         size_t index, double &duration_ms) const {
     if (!active_) return status::success;
 
-    using namespace ::sycl::info;
     if (index >= profiling_data_.size()) {
         VERROR(primitive, exec,
                 "profiling error: invalid index %zu, profiling_data size is "
@@ -98,19 +97,48 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
     // and the end time of the last primitive event
     for (const auto &ev : evts) {
         if (!ev) continue;
+        const auto &sycl_ev = xpu::sycl::event_t::from(*ev);
+        assert(sycl_ev.size() > 0);
+        size_t last_idx = sycl_ev.size() - 1;
 
-        const auto &sycl_event = xpu::sycl::event_t::from(*ev);
-        assert(sycl_event.size() > 0);
-        size_t last_idx = sycl_event.size() - 1;
-
-        auto evbeg
-                = sycl_event[0]
-                          .get_profiling_info<event_profiling::command_start>();
-        auto evend
-                = sycl_event[last_idx]
-                          .get_profiling_info<event_profiling::command_end>();
-        agg_start = std::min(agg_start, evbeg);
-        agg_end = std::max(agg_end, evend);
+        using namespace ::sycl::info;
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
+        // When using the SYCL profiling tags, elapsed time is measured
+        // between two bracketing tag events that wrap all kernels:
+        // - a "start" tag submitted just before the first kernel
+        // - an "end" tag submitted just after the last kernel.
+        //
+        // event queue: ... |start_tag| |kernel| |end_tag| ...
+        //
+        // Per the sycl_ext_oneapi_profiling_tag spec, the time for the
+        // kernel event completion is calculated from:
+        // (start_tag.command_end - end_tag.command_start)
+        // i.e. from the moment the start tag finished executing to the
+        // moment the end tag began executing, which tightly bounds the
+        // kernel execution time.
+        if (use_ext_oneapi_tag()) {
+            assert(sycl_ev.event_tags_.size() == sycl_ev.events.size());
+            uint64_t ev_start = sycl_ev.event_tags_[0]
+                                        .first.get_profiling_info<
+                                                event_profiling::command_end>();
+            uint64_t ev_end = sycl_ev.event_tags_[last_idx]
+                                      .second.get_profiling_info<
+                                              event_profiling::command_start>();
+            agg_start = std::min(agg_start, ev_start);
+            agg_end = std::max(agg_end, ev_end);
+        } else
+#endif
+        {
+            uint64_t ev_start
+                    = sycl_ev.events[0]
+                              .get_profiling_info<
+                                      event_profiling::command_start>();
+            uint64_t ev_end = sycl_ev.events[last_idx]
+                                      .get_profiling_info<
+                                              event_profiling::command_end>();
+            agg_start = std::min(agg_start, ev_start);
+            agg_end = std::max(agg_end, ev_end);
+        }
     }
 
     if (agg_end < agg_start) { return status::runtime_error; }

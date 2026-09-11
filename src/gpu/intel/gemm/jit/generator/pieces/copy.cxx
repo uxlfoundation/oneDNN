@@ -135,6 +135,9 @@ void Generator<hw>::copyRegisters(Type Ts, Type Td, const RegisterLayout &layout
     //    8-element groups, so the inner loop below can still just step by
     //    the plain (element) count n, as in the non-u3 case.
     bool u3ColMajorGroups =   Ts.is3() && sblock.crosspack > 1; //colMajor;
+    if (u3ColMajorGroups
+            && ((dCM ? layoutDst[0].nc : layoutDst[0].nr) % 8))
+        stub();
     for (int eoffY = 0; eoffY < sblock.*ny; eoffY += (u3ColMajorGroups ? 8 : 1)) {
     for (int eoffX = 0; eoffX < sblock.*nx;) {
         auto eoffR = sblock.colMajor ? eoffX : eoffY;

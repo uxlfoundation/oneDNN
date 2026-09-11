@@ -2033,16 +2033,25 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             A_offsetLayout = state.Ar_offsetLayout;
             A_offsetLayout.cast(problem.Tao);
         } else {
-            mov(1, state.inputs.ao, -state.inputs.ao);
-            GRF grf{state.inputs.ao.getBase()};
+            // Negate into a temporary: state.inputs.ao is a live kernel
+            // argument register, and this setup re-executes on every
+            // persistent-thread loop iteration, so in-place negation
+            // would flip the offset's sign on each iteration.
+            auto aoNeg = state.ra.alloc_sub(state.inputs.ao.getType());
+            mov(1, aoNeg, -state.inputs.ao);
+            GRF grf{aoNeg.getBase()};
             aoLoad = grf-grf;
             releaseAOLoad = false;
             A_offsetLayout = state.Ar_offsetLayout;
             A_offsetLayout.cast(problem.Tao);
-            A_offsetLayout[0].offsetBytes = state.inputs.ao.getByteOffset();
+            A_offsetLayout[0].offsetBytes = aoNeg.getByteOffset();
+            gemmRepack2DOffsetData(problem.Ta_ext, A_offsetLayout, state.Ar_offsetLayout, aoLoad, state.Ar_offsetRegs, problem, strategy, state);
+            state.ra.safeRelease(aoNeg);
         }
-        gemmRepack2DOffsetData(problem.Ta_ext, A_offsetLayout, state.Ar_offsetLayout, aoLoad, state.Ar_offsetRegs, problem, strategy, state);
-        if (releaseAOLoad) state.ra.safeRelease(aoLoad);
+        if (releaseAOLoad) {
+            gemmRepack2DOffsetData(problem.Ta_ext, A_offsetLayout, state.Ar_offsetLayout, aoLoad, state.Ar_offsetRegs, problem, strategy, state);
+            state.ra.safeRelease(aoLoad);
+        }
         if (!strategy.persistentLoop())
             state.ra.safeRelease(state.inputs.aoPtr);
     }
@@ -2071,16 +2080,22 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             B_offsetLayout = state.Br_offsetLayout;
             B_offsetLayout.cast(problem.Tbo);
         } else {
-            mov(1, state.inputs.bo, -state.inputs.bo);
-            GRF grf{state.inputs.bo.getBase()};
+            // Negate into a temporary (see A-offset comment above).
+            auto boNeg = state.ra.alloc_sub(state.inputs.bo.getType());
+            mov(1, boNeg, -state.inputs.bo);
+            GRF grf{boNeg.getBase()};
             boLoad = grf-grf;
             releaseBOLoad = false;
             B_offsetLayout = state.Br_offsetLayout;
             B_offsetLayout.cast(problem.Tbo);
-            B_offsetLayout[0].offsetBytes = state.inputs.bo.getByteOffset();
+            B_offsetLayout[0].offsetBytes = boNeg.getByteOffset();
+            gemmRepack2DOffsetData(problem.Tb_ext, B_offsetLayout, state.Br_offsetLayout, boLoad, state.Br_offsetRegs, problem, strategy, state);
+            state.ra.safeRelease(boNeg);
         }
-        gemmRepack2DOffsetData(problem.Tb_ext, B_offsetLayout, state.Br_offsetLayout, boLoad, state.Br_offsetRegs, problem, strategy, state);
-        if (releaseBOLoad) state.ra.safeRelease(boLoad);
+        if (releaseBOLoad) {
+            gemmRepack2DOffsetData(problem.Tb_ext, B_offsetLayout, state.Br_offsetLayout, boLoad, state.Br_offsetRegs, problem, strategy, state);
+            state.ra.safeRelease(boLoad);
+        }
         if (!strategy.persistentLoop())
             state.ra.safeRelease(state.inputs.boPtr);
     }

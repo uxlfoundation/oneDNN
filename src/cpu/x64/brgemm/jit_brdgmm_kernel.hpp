@@ -34,7 +34,7 @@ namespace cpu {
 namespace x64 {
 
 template <typename Wmm>
-struct jit_brdgmm_kernel_base_t : public jit_generator_t {
+struct jit_brdgmm_kernel_base_t : public brgemm_kernel_t {
     jit_brdgmm_kernel_base_t(const brgemm_desc_t &abrd);
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brdgmm_kernel_base_t)
@@ -398,6 +398,8 @@ private:
 
     void generate() override;
 };
+
+brgemm_kernel_t *create_brdgmm_kernel(const brgemm_desc_t &brg);
 
 } // namespace x64
 } // namespace cpu

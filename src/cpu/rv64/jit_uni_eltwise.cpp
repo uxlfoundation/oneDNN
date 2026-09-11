@@ -89,10 +89,19 @@ namespace {
 // fa0/fa1 = injector FP scratch (fa0 is reused to materialize the integer
 // saturation bounds after the injector is done). The injector's 4th/5th aux
 // (gelu_erf fwd, gelu_tanh bwd) are v20/v24 in forward (diff_dst absent) and
-// v24/v28 in backward (v20 holds diff_dst). The compute LMUL is m1 for f32,
-// m2 for f16 (e16/m1 widening pair), and m4 for s32 and s8/u8 (e8/m1 widening
-// pair); every group used (v4, v8, v12, v16, v20, v24) is 4-aligned, so the
-// layout is legal at each of these LMULs.
+// v24/v28 in backward (v20 holds diff_dst). The compute LMUL is m2 for f32,
+// m4 for f16 (e16/m2 widening pair), and m4 for s32 and s8/u8 (e8/m1 widening
+// pair); every group used (v4, v8, v12, v16, v20, v24, v28) is 4-aligned, so
+// the layout is legal at each of these LMULs. The widest live set is the
+// backward case: seven LMUL-sized data groups (vmm_src, aux0..2,
+// vmm_diff_dst, aux3, and aux4) plus the v0 mask. At m4 these occupy v4-v31
+// and v0, so both raised candidates fit in the 32-register file without
+// spilling. The raised LMUL amortizes the fixed
+// per-iteration vsetvli / pointer-update / back-branch cost over 8 f32 lanes
+// (m2) and 16 f16 lanes (m4) on VLEN=128; the widened f16 group (e16/m2 ->
+// e32/m4) is a legal whole-LMUL widening (no fractional-LMUL, vlmul_ext/trunc,
+// or extra conversion), and strip-mined tail chunks keep the vsetvli
+// VTA=ta/VMA=ma semantics unchanged.
 struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_uni_kernel)
 
@@ -113,18 +122,18 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     void load_vector() {
         const data_type_t dt = data_type();
         if (dt == data_type::f32) {
-            vsetvli(reg_vl, reg_work_amount, SEW::e32, LMUL::m1, VTA::ta,
+            vsetvli(reg_vl, reg_work_amount, SEW::e32, LMUL::m2, VTA::ta,
                     VMA::ma);
             vle32_v(vmm_src, reg_src);
             if (!is_fwd_) vle32_v(vmm_diff_dst, reg_diff_dst);
         } else if (dt == data_type::f16 || dt == data_type::bf16) {
-            vsetvli(reg_vl, reg_work_amount, SEW::e16, LMUL::m1, VTA::ta,
+            vsetvli(reg_vl, reg_work_amount, SEW::e16, LMUL::m2, VTA::ta,
                     VMA::ma);
             vle16_v(vmm_tmp, reg_src);
             if (dt == data_type::bf16)
-                vfwcvtbf16_f_f_v(vmm_src, vmm_tmp); // Zvfbfmin: e16m1 -> e32m2
+                vfwcvtbf16_f_f_v(vmm_src, vmm_tmp); // Zvfbfmin: e16m2 -> e32m4
             else
-                vfwcvt_f_f_v(vmm_src, vmm_tmp); // Zvfh: e16m1 -> e32m2
+                vfwcvt_f_f_v(vmm_src, vmm_tmp); // Zvfh: e16m2 -> e32m4
             if (!is_fwd_) {
                 vle16_v(vmm_tmp, reg_diff_dst);
                 if (dt == data_type::bf16)
@@ -132,7 +141,7 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
                 else
                     vfwcvt_f_f_v(vmm_diff_dst, vmm_tmp);
             }
-            vsetvli(x0, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+            vsetvli(x0, reg_vl, SEW::e32, LMUL::m4, VTA::ta, VMA::ma);
         } else if (dt == data_type::s32) {
             vsetvli(reg_vl, reg_work_amount, SEW::e32, LMUL::m4, VTA::ta,
                     VMA::ma);
@@ -163,11 +172,11 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         if (dt == data_type::f32) {
             vse32_v(vmm_src, reg_dst);
         } else if (dt == data_type::f16 || dt == data_type::bf16) {
-            vsetvli(x0, reg_vl, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+            vsetvli(x0, reg_vl, SEW::e16, LMUL::m2, VTA::ta, VMA::ma);
             if (dt == data_type::bf16)
-                vfncvtbf16_f_f_w(vmm_tmp, vmm_src); // Zvfbfmin: e32m2 -> e16m1
+                vfncvtbf16_f_f_w(vmm_tmp, vmm_src); // Zvfbfmin: e32m4 -> e16m2
             else
-                vfncvt_f_f_w(vmm_tmp, vmm_src); // Zvfh: e32m2 -> e16m1
+                vfncvt_f_f_w(vmm_tmp, vmm_src); // Zvfh: e32m4 -> e16m2
             vse16_v(vmm_tmp, reg_dst);
         } else if (dt == data_type::s32) {
             load_f32_const(freg_tmp, -2147483648.0f);
@@ -204,12 +213,11 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     void compute_dst() {
         load_vector();
         // load_vector() leaves the vtype at e32 / the dtype's compute LMUL:
-        // f32 -> m1, f16 -> m2 (widened), s32/s8/u8 -> m4. The eltwise injector
-        // is LMUL-agnostic, but pass the matching stride so its interface can
-        // validate the accumulator group.
+        // f32 -> m2, f16/bf16 -> m4 (widened), s32/s8/u8 -> m4. The eltwise
+        // injector is LMUL-agnostic, but pass the matching stride so its
+        // interface can validate the accumulator group.
         const data_type_t dt = data_type();
-        const size_t group_stride
-                = dt == data_type::f32 ? 1 : (dt == data_type::f16 ? 2 : 4);
+        const size_t group_stride = dt == data_type::f32 ? 2 : 4;
         eltwise_injector_->compute_vector(vmm_src.getIdx(), group_stride);
         if (!is_fwd_) vfmul_vv(vmm_src, vmm_src, vmm_diff_dst);
         store_vector();

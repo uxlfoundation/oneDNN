@@ -747,6 +747,16 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
     auto fpmath_mode = this->attr()->fpmath_.mode_;
     int grf_per_thread = 0;
 
+    // The gemms below fold the weights gates and channels into a single
+    // axis. Its stride is off[4], except for dhc == 1 where off[4] is a size-1
+    // dimension carrying no layout information and off[3] is used instead.
+    auto wei_strides = [dhc](const strides_t<5> &w) -> strides_t<2> {
+        return {w[2], dhc > 1 ? w[4] : w[3]};
+    };
+    auto wei_strides_trans = [dhc](const strides_t<5> &w) -> strides_t<2> {
+        return {dhc > 1 ? w[4] : w[3], w[2]};
+    };
+
     // The inputs of create_gemm_pd describe a gemm in column major.
     // Below, we have to transpose the a and b descriptor to describe
     // the GEMM as a row major problem.
@@ -794,7 +804,7 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
             VDISPATCH_RNN_SC(
                     create_gemm_pd(gemm_layer_fwd_pd_, n_gates * dhc,
                             layer_merged_size, slc, {conf.states_ws_ld, 1},
-                            {off.weights_layer[2], off.weights_layer[4]},
+                            wei_strides(off.weights_layer),
                             {conf.scratch_gates_ld, 1}, weights_type, src_type,
                             conf.acc_data_type, 0.0),
                     "create_gemm_pd(gemm_layer_fwd_pd_)");
@@ -804,8 +814,7 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                             create_gemm_pd(gemm_layer_fwd_src_pd_,
                                     n_gates * dhc, layer_merged_size, slc,
                                     {off.src_layer[1], off.src_layer[2]},
-                                    {off.weights_layer[2],
-                                            off.weights_layer[4]},
+                                    wei_strides(off.weights_layer),
                                     {conf.scratch_gates_ld, 1}, weights_type,
                                     src_type, conf.acc_data_type, 0.0),
                             "create_gemm_pd(gemm_layer_fwd_src_pd_)");
@@ -818,7 +827,7 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                 VDISPATCH_RNN_SC(
                         create_gemm_pd(gemm_iter_fwd_pd_, (n_gates - 1) * dhc,
                                 batch, sic, {conf.states_ws_ld, 1},
-                                {off.weights_iter[2], off.weights_iter[4]},
+                                wei_strides(off.weights_iter),
                                 {conf.scratch_gates_ld, 1}, weights_type,
                                 src_type, conf.acc_data_type,
                                 gemm_iter_fwd_beta),
@@ -826,7 +835,7 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                 VDISPATCH_RNN_SC(
                         create_gemm_pd(gemm_iter_fwd_2_pd_, dhc, batch, sic,
                                 {conf.states_ws_ld, 1},
-                                {off.weights_iter[2], off.weights_iter[4]},
+                                wei_strides(off.weights_iter),
                                 {conf.scratch_gates_ld, 1}, weights_type,
                                 src_type, conf.acc_data_type,
                                 gemm_iter_fwd_beta),
@@ -835,7 +844,7 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                 VDISPATCH_RNN_SC(
                         create_gemm_pd(gemm_iter_fwd_pd_, n_gates * dhc, batch,
                                 sic, {conf.states_ws_ld, 1},
-                                {off.weights_iter[2], off.weights_iter[4]},
+                                wei_strides(off.weights_iter),
                                 {conf.gates_ws_ld, 1}, weights_type, src_type,
                                 conf.acc_data_type, gemm_iter_fwd_beta),
                         "create_gemm_pd(gemm_iter_fwd_pd_)");
@@ -849,14 +858,14 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                     create_gemm_pd(gemm_iter_bwd_pd_, sic, batch,
                             (n_gates - 1) * dhc,
                             {conf.scratch_diff_gates_ld, 1},
-                            {off.weights_iter[4], off.weights_iter[2]},
+                            wei_strides_trans(off.weights_iter),
                             {conf.scratch_diff_states_ld, 1}, weights_type,
                             src_type, conf.acc_data_type, 1.0f),
                     "create_gemm_pd(gemm_iter_bwd_pd_)");
             VDISPATCH_RNN_SC(
                     create_gemm_pd(gemm_iter_bwd_2_pd_, sic, batch, dhc,
                             {conf.scratch_diff_gates_ld, 1},
-                            {off.weights_iter[4], off.weights_iter[2]},
+                            wei_strides_trans(off.weights_iter),
                             {conf.scratch_diff_states_ld, 1}, weights_type,
                             src_type, conf.acc_data_type, 0.0f),
                     "create_gemm_pd(gemm_iter_bwd_2_pd_)");
@@ -864,23 +873,21 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                     create_gemm_pd(gemm_diff_wei_iter_pd_, (n_gates - 1) * dhc,
                             sic, iter_merged_size, {1, conf.states_ws_ld},
                             {conf.scratch_diff_gates_ld, 1},
-                            {off.diff_weights_iter[2],
-                                    off.diff_weights_iter[4]},
-                            weights_type, src_type, conf.acc_data_type, 1.0f),
+                            wei_strides(off.diff_weights_iter), weights_type,
+                            src_type, conf.acc_data_type, 1.0f),
                     "create_gemm_pd(gemm_diff_wei_iter_pd_)");
             VDISPATCH_RNN_SC(
                     create_gemm_pd(gemm_diff_wei_iter_2_pd_, dhc, sic,
                             iter_merged_size, {1, conf.states_ws_ld},
                             {conf.scratch_diff_gates_ld, 1},
-                            {off.diff_weights_iter[2],
-                                    off.diff_weights_iter[4]},
-                            weights_type, src_type, conf.acc_data_type, 1.0f),
+                            wei_strides(off.diff_weights_iter), weights_type,
+                            src_type, conf.acc_data_type, 1.0f),
                     "create_gemm_pd(gemm_diff_wei_iter_2_pd_)");
         } else {
             VDISPATCH_RNN_SC(
                     create_gemm_pd(gemm_iter_bwd_pd_, sic, batch, n_gates * dhc,
                             {conf.scratch_diff_gates_ld, 1},
-                            {off.weights_iter[4], off.weights_iter[2]},
+                            wei_strides_trans(off.weights_iter),
                             {conf.scratch_diff_states_ld, 1}, weights_type,
                             src_type, conf.acc_data_type, gemm_iter_bwd_beta),
                     "create_gemm_pd(gemm_iter_bwd_pd_)");
@@ -888,15 +895,14 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                     create_gemm_pd(gemm_diff_wei_iter_pd_, n_gates * dhc, sic,
                             iter_merged_size, {1, conf.states_ws_ld},
                             {conf.scratch_diff_gates_ld, 1},
-                            {off.diff_weights_iter[2],
-                                    off.diff_weights_iter[4]},
-                            weights_type, src_type, conf.acc_data_type, 1.0f),
+                            wei_strides(off.diff_weights_iter), weights_type,
+                            src_type, conf.acc_data_type, 1.0f),
                     "create_gemm_pd(gemm_diff_wei_iter_pd_)");
         }
         VDISPATCH_RNN_SC(
                 create_gemm_pd(gemm_layer_bwd_pd_, slc, layer_merged_size,
                         n_gates * dhc, {conf.scratch_diff_gates_ld, 1},
-                        {off.weights_layer[4], off.weights_layer[2]},
+                        wei_strides_trans(off.weights_layer),
                         {conf.scratch_diff_states_ld, 1}, weights_type,
                         src_type, conf.acc_data_type, 0.0f),
                 "create_gemm_pd(gemm_layer_bwd_pd_)");
@@ -906,7 +912,7 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                         create_gemm_pd(gemm_layer_bwd_src_pd_, slc,
                                 layer_merged_size, n_gates * dhc,
                                 {conf.scratch_diff_gates_ld, 1},
-                                {off.weights_layer[4], off.weights_layer[2]},
+                                wei_strides_trans(off.weights_layer),
                                 {off.diff_src_layer[1], 1}, weights_type,
                                 src_type, conf.acc_data_type, 0.0f),
                         "create_gemm_pd(gemm_layer_bwd_src_pd_)");
@@ -917,8 +923,8 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                 create_gemm_pd(gemm_diff_wei_layer_pd_, n_gates * dhc, slc,
                         layer_merged_size, {1, conf.states_ws_ld},
                         {conf.scratch_diff_gates_ld, 1},
-                        {off.diff_weights_layer[2], off.diff_weights_layer[4]},
-                        weights_type, src_type, conf.acc_data_type, 1.0f),
+                        wei_strides(off.diff_weights_layer), weights_type,
+                        src_type, conf.acc_data_type, 1.0f),
                 "create_gemm_pd(gemm_diff_wei_layer_pd_)");
         if (!conf.copy_src_layer) {
             if (off.src_layer[1] != conf.states_ws_ld)
@@ -926,8 +932,7 @@ status_t simple_common_t<aprop>::pd_t::init(impl::engine_t *engine) {
                                          n_gates * dhc, slc, layer_merged_size,
                                          {off.src_layer[2], off.src_layer[1]},
                                          {conf.scratch_diff_gates_ld, 1},
-                                         {off.diff_weights_layer[2],
-                                                 off.diff_weights_layer[4]},
+                                         wei_strides(off.diff_weights_layer),
                                          weights_type, src_type,
                                          conf.acc_data_type, 1.0f),
                         "create_gemm_pd(gemm_diff_wei_layer_src_pd_)");

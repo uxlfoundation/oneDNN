@@ -1,0 +1,241 @@
+//
+// SPDX-FileCopyrightText: Copyright 2019-2021, 2023, 2025-2026 Arm Limited and/or its affiliates <open-source-office@arm.com>
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+
+// clang-format off
+
+#ifdef __aarch64__
+
+#include <cstddef>
+#include <cstdint>
+
+namespace kai {
+namespace ops {
+
+void sve_interleaved_u8u32_dot_8x3VL(
+    const uint8_t *Apanel,
+    const uint8_t *Bpanel,
+    uint32_t *Cpanel,
+    int ablocks,
+    int bblocks,
+    int K)
+{
+
+    struct KernelArgs {
+        size_t K = {};
+        const uint8_t *Bpanel = {};
+        size_t bblocks = {};
+    } ka;
+
+    ka.K = (K/4) - 1;
+    ka.Bpanel = Bpanel;
+    ka.bblocks = bblocks;
+
+    __asm__ __volatile__(
+      "ptrue p0.b\n"
+      "cbz %x[ablocks], 6f\n"
+      "1:"  // Height loop
+      "ldr x23, [%x[args_ptr], %[offsetof_bblocks]]\n"
+      "ldr x22, [%x[args_ptr], %[offsetof_Bpanel]]\n"
+      "mov x21, %x[Apanel]\n"
+      "2:"  // Width loop
+      "ldr x20, [%x[args_ptr], %[offsetof_K]]\n"
+      "mov %x[Apanel], x21\n"
+      "mov z8.s, #0\n"
+      "mov z9.s, #0\n"
+      "mov z10.s, #0\n"
+      "ld1b { z4.b }, p0/Z, [x22]\n"
+      "mov z11.s, #0\n"
+      "mov z12.s, #0\n"
+      "ld1b { z5.b }, p0/Z, [x22, #1, MUL VL]\n"
+      "cmp x20, #0x2\n"
+      "mov z13.s, #0\n"
+      "mov z14.s, #0\n"
+      "mov z15.s, #0\n"
+      "mov z16.s, #0\n"
+      "ld1rqb { z0.b }, p0/Z, [%x[Apanel]]\n"
+      "mov z17.s, #0\n"
+      "mov z18.s, #0\n"
+      "ld1rqb { z1.b }, p0/Z, [%x[Apanel], #16]\n"
+      "mov z19.s, #0\n"
+      "mov z20.s, #0\n"
+      "ld1b { z6.b }, p0/Z, [x22, #2, MUL VL]\n"
+      "mov z21.s, #0\n"
+      "mov z22.s, #0\n"
+      "mov z23.s, #0\n"
+      "mov z24.s, #0\n"
+      "mov z25.s, #0\n"
+      "mov z26.s, #0\n"
+      "mov z27.s, #0\n"
+      "mov z28.s, #0\n"
+      "mov z29.s, #0\n"
+      "mov z30.s, #0\n"
+      "mov z31.s, #0\n"
+      "blt 4f\n"
+      "3:"  // main loop head
+      "udot z8.s, z4.b, z0.b[0]\n"
+      "udot z11.s, z4.b, z0.b[1]\n"
+      "ld1rqb { z2.b }, p0/Z, [%x[Apanel], #32]\n"
+      "udot z14.s, z4.b, z0.b[2]\n"
+      "udot z17.s, z4.b, z0.b[3]\n"
+      "ld1rqb { z3.b }, p0/Z, [%x[Apanel], #48]\n"
+      "udot z20.s, z4.b, z1.b[0]\n"
+      "udot z23.s, z4.b, z1.b[1]\n"
+      "sub x20, x20, #0x2\n"
+      "udot z26.s, z4.b, z1.b[2]\n"
+      "udot z29.s, z4.b, z1.b[3]\n"
+      "ld1b { z4.b }, p0/Z, [x22, #3, MUL VL]\n"
+      "udot z9.s, z5.b, z0.b[0]\n"
+      "udot z12.s, z5.b, z0.b[1]\n"
+      "cmp x20, #0x2\n"
+      "udot z15.s, z5.b, z0.b[2]\n"
+      "udot z18.s, z5.b, z0.b[3]\n"
+      "add %x[Apanel], %x[Apanel], #0x40\n"
+      "udot z21.s, z5.b, z1.b[0]\n"
+      "udot z24.s, z5.b, z1.b[1]\n"
+      "udot z27.s, z5.b, z1.b[2]\n"
+      "udot z30.s, z5.b, z1.b[3]\n"
+      "ld1b { z5.b }, p0/Z, [x22, #4, MUL VL]\n"
+      "udot z10.s, z6.b, z0.b[0]\n"
+      "udot z13.s, z6.b, z0.b[1]\n"
+      "udot z16.s, z6.b, z0.b[2]\n"
+      "udot z19.s, z6.b, z0.b[3]\n"
+      "ld1rqb { z0.b }, p0/Z, [%x[Apanel]]\n"
+      "udot z22.s, z6.b, z1.b[0]\n"
+      "udot z25.s, z6.b, z1.b[1]\n"
+      "udot z28.s, z6.b, z1.b[2]\n"
+      "udot z31.s, z6.b, z1.b[3]\n"
+      "ld1b { z6.b }, p0/Z, [x22, #5, MUL VL]\n"
+      "addvl x22, x22, #6\n"
+      "udot z8.s, z4.b, z2.b[0]\n"
+      "udot z11.s, z4.b, z2.b[1]\n"
+      "ld1rqb { z1.b }, p0/Z, [%x[Apanel], #16]\n"
+      "udot z14.s, z4.b, z2.b[2]\n"
+      "udot z17.s, z4.b, z2.b[3]\n"
+      "udot z20.s, z4.b, z3.b[0]\n"
+      "udot z23.s, z4.b, z3.b[1]\n"
+      "udot z26.s, z4.b, z3.b[2]\n"
+      "udot z29.s, z4.b, z3.b[3]\n"
+      "ld1b { z4.b }, p0/Z, [x22]\n"
+      "udot z9.s, z5.b, z2.b[0]\n"
+      "udot z12.s, z5.b, z2.b[1]\n"
+      "udot z15.s, z5.b, z2.b[2]\n"
+      "udot z18.s, z5.b, z2.b[3]\n"
+      "udot z21.s, z5.b, z3.b[0]\n"
+      "udot z24.s, z5.b, z3.b[1]\n"
+      "udot z27.s, z5.b, z3.b[2]\n"
+      "udot z30.s, z5.b, z3.b[3]\n"
+      "ld1b { z5.b }, p0/Z, [x22, #1, MUL VL]\n"
+      "udot z10.s, z6.b, z2.b[0]\n"
+      "udot z13.s, z6.b, z2.b[1]\n"
+      "udot z16.s, z6.b, z2.b[2]\n"
+      "udot z19.s, z6.b, z2.b[3]\n"
+      "udot z22.s, z6.b, z3.b[0]\n"
+      "udot z25.s, z6.b, z3.b[1]\n"
+      "udot z28.s, z6.b, z3.b[2]\n"
+      "udot z31.s, z6.b, z3.b[3]\n"
+      "ld1b { z6.b }, p0/Z, [x22, #2, MUL VL]\n"
+      "bge 3b\n"
+      "4:"  // main loop skip
+      "add %x[Apanel], %x[Apanel], #0x20\n"
+      "addvl x22, x22, #3\n"
+      "udot z8.s, z4.b, z0.b[0]\n"
+      "udot z11.s, z4.b, z0.b[1]\n"
+      "udot z14.s, z4.b, z0.b[2]\n"
+      "udot z17.s, z4.b, z0.b[3]\n"
+      "udot z20.s, z4.b, z1.b[0]\n"
+      "udot z23.s, z4.b, z1.b[1]\n"
+      "udot z26.s, z4.b, z1.b[2]\n"
+      "udot z29.s, z4.b, z1.b[3]\n"
+      "udot z9.s, z5.b, z0.b[0]\n"
+      "udot z12.s, z5.b, z0.b[1]\n"
+      "udot z15.s, z5.b, z0.b[2]\n"
+      "udot z18.s, z5.b, z0.b[3]\n"
+      "udot z21.s, z5.b, z1.b[0]\n"
+      "udot z24.s, z5.b, z1.b[1]\n"
+      "udot z27.s, z5.b, z1.b[2]\n"
+      "udot z30.s, z5.b, z1.b[3]\n"
+      "udot z10.s, z6.b, z0.b[0]\n"
+      "udot z13.s, z6.b, z0.b[1]\n"
+      "udot z16.s, z6.b, z0.b[2]\n"
+      "udot z19.s, z6.b, z0.b[3]\n"
+      "udot z22.s, z6.b, z1.b[0]\n"
+      "udot z25.s, z6.b, z1.b[1]\n"
+      "udot z28.s, z6.b, z1.b[2]\n"
+      "udot z31.s, z6.b, z1.b[3]\n"
+      "cbz x20, 5f\n"
+      "ld1rqb { z0.b }, p0/Z, [%x[Apanel]]\n"
+      "ld1rqb { z1.b }, p0/Z, [%x[Apanel], #16]\n"
+      "add %x[Apanel], %x[Apanel], #0x20\n"
+      "ld1b { z7.b }, p0/Z, [x22]\n"
+      "ld1b { z4.b }, p0/Z, [x22, #1, MUL VL]\n"
+      "ld1b { z5.b }, p0/Z, [x22, #2, MUL VL]\n"
+      "addvl x22, x22, #3\n"
+      "udot z8.s, z7.b, z0.b[0]\n"
+      "udot z11.s, z7.b, z0.b[1]\n"
+      "udot z14.s, z7.b, z0.b[2]\n"
+      "udot z17.s, z7.b, z0.b[3]\n"
+      "udot z20.s, z7.b, z1.b[0]\n"
+      "udot z23.s, z7.b, z1.b[1]\n"
+      "udot z26.s, z7.b, z1.b[2]\n"
+      "udot z29.s, z7.b, z1.b[3]\n"
+      "udot z9.s, z4.b, z0.b[0]\n"
+      "udot z12.s, z4.b, z0.b[1]\n"
+      "udot z15.s, z4.b, z0.b[2]\n"
+      "udot z18.s, z4.b, z0.b[3]\n"
+      "udot z21.s, z4.b, z1.b[0]\n"
+      "udot z24.s, z4.b, z1.b[1]\n"
+      "udot z27.s, z4.b, z1.b[2]\n"
+      "udot z30.s, z4.b, z1.b[3]\n"
+      "udot z10.s, z5.b, z0.b[0]\n"
+      "udot z13.s, z5.b, z0.b[1]\n"
+      "udot z16.s, z5.b, z0.b[2]\n"
+      "udot z19.s, z5.b, z0.b[3]\n"
+      "udot z22.s, z5.b, z1.b[0]\n"
+      "udot z25.s, z5.b, z1.b[1]\n"
+      "udot z28.s, z5.b, z1.b[2]\n"
+      "udot z31.s, z5.b, z1.b[3]\n"
+      "5:"  // multiply loop done
+      "st1w { z8.s }, p0, [%x[Cpanel]]\n"
+      "subs x23, x23, #0x1\n"
+      "st1w { z9.s }, p0, [%x[Cpanel], #1, MUL VL]\n"
+      "st1w { z10.s }, p0, [%x[Cpanel], #2, MUL VL]\n"
+      "st1w { z11.s }, p0, [%x[Cpanel], #3, MUL VL]\n"
+      "st1w { z12.s }, p0, [%x[Cpanel], #4, MUL VL]\n"
+      "st1w { z13.s }, p0, [%x[Cpanel], #5, MUL VL]\n"
+      "st1w { z14.s }, p0, [%x[Cpanel], #6, MUL VL]\n"
+      "st1w { z15.s }, p0, [%x[Cpanel], #7, MUL VL]\n"
+      "addvl %x[Cpanel], %x[Cpanel], #16\n"
+      "st1w { z16.s }, p0, [%x[Cpanel], #-8, MUL VL]\n"
+      "st1w { z17.s }, p0, [%x[Cpanel], #-7, MUL VL]\n"
+      "st1w { z18.s }, p0, [%x[Cpanel], #-6, MUL VL]\n"
+      "st1w { z19.s }, p0, [%x[Cpanel], #-5, MUL VL]\n"
+      "st1w { z20.s }, p0, [%x[Cpanel], #-4, MUL VL]\n"
+      "st1w { z21.s }, p0, [%x[Cpanel], #-3, MUL VL]\n"
+      "st1w { z22.s }, p0, [%x[Cpanel], #-2, MUL VL]\n"
+      "st1w { z23.s }, p0, [%x[Cpanel], #-1, MUL VL]\n"
+      "st1w { z24.s }, p0, [%x[Cpanel]]\n"
+      "st1w { z25.s }, p0, [%x[Cpanel], #1, MUL VL]\n"
+      "st1w { z26.s }, p0, [%x[Cpanel], #2, MUL VL]\n"
+      "st1w { z27.s }, p0, [%x[Cpanel], #3, MUL VL]\n"
+      "st1w { z28.s }, p0, [%x[Cpanel], #4, MUL VL]\n"
+      "st1w { z29.s }, p0, [%x[Cpanel], #5, MUL VL]\n"
+      "st1w { z30.s }, p0, [%x[Cpanel], #6, MUL VL]\n"
+      "st1w { z31.s }, p0, [%x[Cpanel], #7, MUL VL]\n"
+      "addvl %x[Cpanel], %x[Cpanel], #8\n"
+      "bgt 2b\n"
+      "subs %x[ablocks], %x[ablocks], #0x1\n"
+      "bgt 1b\n"
+      "6:"  // Exit
+      : [Apanel] "+&r" (Apanel), [Cpanel] "+&r" (Cpanel), [ablocks] "+&r" (ablocks)
+      : [args_ptr] "r" (&ka), [offsetof_Bpanel] "I" (offsetof(KernelArgs, Bpanel)), [offsetof_K] "I" (offsetof(KernelArgs, K)), [offsetof_bblocks] "I" (offsetof(KernelArgs, bblocks))
+      : "cc", "memory", "p0", "x20", "x21", "x22", "x23", "z0", "z1", "z2", "z3", "z4", "z5", "z6", "z7", "z8", "z9", "z10", "z11", "z12", "z13", "z14", "z15", "z16", "z17", "z18", "z19", "z20", "z21", "z22", "z23", "z24", "z25", "z26", "z27", "z28", "z29", "z30", "z31"
+    );
+}
+
+} // namespace ops
+} // namespace kai
+
+#endif // __aarch64__

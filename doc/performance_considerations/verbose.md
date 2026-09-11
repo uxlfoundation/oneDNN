@@ -146,8 +146,19 @@ synchronization on entry and on exit in the `dnnl::primitive::execute()` call.
 To ensure accurate tracking of timing information for GPU runtimes, the verbose
 mode uses a non-blocking approach which prints device-measured
 times for primitive execution instead of relying on the wall time
-measurements. Asynchronous profiling is currently supported only for OpenCL
-and SYCL runtimes on Intel GPUs.
+measurements. Asynchronous profiling is currently supported for OpenCL, SYCL 
+and L0 runtimes on Intel GPUs.
+
+@note
+For OpenCL and SYCL runtimes, asynchronous verbose profiling requires queue
+profiling to be enabled on the stream's queue. If queue profiling is not
+enabled, verbose profiling is silently disabled for the stream and no profiling
+logs are emitted. For SYCL, this restriction can be lifted by building with
+`-DDNNL_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG=ON`, which uses the experimental
+`sycl_ext_oneapi_profiling_tag` extension to enable profiling on any SYCL queue
+regardless of whether queue profiling was enabled at queue creation time. Note
+that this extension is experimental and its availability is not guaranteed
+across all SYCL toolkit versions.
 
 ### Understanding why a given implementation is dispatched
 

@@ -1735,7 +1735,7 @@ status_t compute_blocking_heuristic_amx(brgemm_matmul_conf_t &bgmmc,
 status_t compute_blocking_heuristic(brgemm_matmul_conf_t &bgmmc,
         const brgemm_matmul_conf_utils_t &bm_conf_utils,
         const memory_desc_wrapper &dst_d, const primitive_attr_t &attr) {
-    const dim_t actual_ldd = dst_d.ndims() == 2 && bgmmc.M == 1
+    const dim_t actual_ldd = bgmmc.M == 1
             ? bgmmc.N
             : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
     // Loop-invariant across every blocking candidate, so set it once here.

@@ -2087,10 +2087,29 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
         return batch_ptr + A_strides_[1] * m + A_strides_[0] * k;
     }
 
+    dim_t get_data_B_k_blk() const {
+        if (!bgmmc_.blocked_B) return bgmmc_.wei_k_blk;
+
+        const auto &blocking = wei_d_.blocking_desc();
+        const int k_dim = bgmmc_.ndims - 2;
+        dim_t k_blk = 1;
+        bool has_k_block = false;
+        for (int iblk = 0; iblk < blocking.inner_nblks; ++iblk) {
+            if (blocking.inner_idxs[iblk] == k_dim) {
+                k_blk *= blocking.inner_blks[iblk];
+                has_k_block = true;
+            }
+        }
+        return has_k_block ? k_blk : bgmmc_.wei_k_blk;
+    }
+
+    dim_t get_data_B_vnni_factor() const {
+        if (!bgmmc_.blocked_B) return vnni_factor;
+        return get_data_B_k_blk() / get_wei_k_blk(f32);
+    }
+
     dim_t get_data_B_kn_off(dim_t k, dim_t n) const {
-        const int wei_k_blk = bgmmc_.is_bf32 || bgmmc_.is_xf16_fp8
-                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
-                : bgmmc_.wei_k_blk;
+        const dim_t wei_k_blk = get_data_B_k_blk();
         const dim_t k_idx = bgmmc_.blocked_B ? k / wei_k_blk : k;
         const dim_t n_idx = bgmmc_.blocked_B ? n / bgmmc_.wei_n_blk : n;
         const int int4_fac = bgmmc_.is_int4_weights ? 2 : 1;
@@ -2327,17 +2346,13 @@ struct brgemm_matmul_t<isa>::brg_matmul_exec_ctx_t {
 
         if (!bgmmc_.blocked_B) return 0;
 
-        const int orig_wei_k_blk = bgmmc_.is_xf16_fp8
-                ? get_wei_k_blk(bgmmc_.orig_wei_dt)
-                : bgmmc_.wei_k_blk;
-        dim_t x0 = k % orig_wei_k_blk;
+        const dim_t wei_k_blk = get_data_B_k_blk();
+        dim_t x0 = k % wei_k_blk;
         dim_t x1 = n % bgmmc_.wei_n_blk;
-        const dim_t orig_vnni_factor = bgmmc_.is_xf16_fp8
-                ? data_type_vnni_granularity(bgmmc_.orig_wei_dt)
-                : vnni_factor;
+        const dim_t b_vnni_factor = get_data_B_vnni_factor();
         dim_t offset
-                = (x0 / orig_vnni_factor) * orig_vnni_factor * bgmmc_.wei_n_blk
-                + x1 * orig_vnni_factor + x0 % orig_vnni_factor;
+                = (x0 / b_vnni_factor) * b_vnni_factor * bgmmc_.wei_n_blk
+                + x1 * b_vnni_factor + x0 % b_vnni_factor;
         return bgmmc_.b_dt_sz * offset;
     }
 

@@ -92,11 +92,11 @@ namespace {
 // v24/v28 in backward (v20 holds diff_dst). The compute LMUL is m2 for f32,
 // m4 for f16 (e16/m2 widening pair), and m4 for s32 and s8/u8 (e8/m1 widening
 // pair); every group used (v4, v8, v12, v16, v20, v24, v28) is 4-aligned, so
-// the layout is legal at each of these LMULs. Register budget:
-// LMUL * peak_live_groups <= 32. The widest live set is the backward case
-// (vmm_src + aux0..2 + vmm_diff_dst + aux3 + aux4 + mask v0 = 8 groups),
-// which at m4 occupies exactly 8 * 4 = 32 of the 32 vector registers, so both
-// raised candidates are spill-free. The raised LMUL amortizes the fixed
+// the layout is legal at each of these LMULs. The widest live set is the
+// backward case: seven LMUL-sized data groups (vmm_src, aux0..2,
+// vmm_diff_dst, aux3, and aux4) plus the v0 mask. At m4 these occupy v4-v31
+// and v0, so both raised candidates fit in the 32-register file without
+// spilling. The raised LMUL amortizes the fixed
 // per-iteration vsetvli / pointer-update / back-branch cost over 8 f32 lanes
 // (m2) and 16 f16 lanes (m4) on VLEN=128; the widened f16 group (e16/m2 ->
 // e32/m4) is a legal whole-LMUL widening (no fractional-LMUL, vlmul_ext/trunc,
@@ -213,12 +213,11 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
     void compute_dst() {
         load_vector();
         // load_vector() leaves the vtype at e32 / the dtype's compute LMUL:
-        // f32 -> m1, f16 -> m2 (widened), s32/s8/u8 -> m4. The eltwise injector
-        // is LMUL-agnostic, but pass the matching stride so its interface can
-        // validate the accumulator group.
+        // f32 -> m2, f16/bf16 -> m4 (widened), s32/s8/u8 -> m4. The eltwise
+        // injector is LMUL-agnostic, but pass the matching stride so its
+        // interface can validate the accumulator group.
         const data_type_t dt = data_type();
-        const size_t group_stride
-                = dt == data_type::f32 ? 1 : (dt == data_type::f16 ? 2 : 4);
+        const size_t group_stride = dt == data_type::f32 ? 2 : 4;
         eltwise_injector_->compute_vector(vmm_src.getIdx(), group_stride);
         if (!is_fwd_) vfmul_vv(vmm_src, vmm_src, vmm_diff_dst);
         store_vector();

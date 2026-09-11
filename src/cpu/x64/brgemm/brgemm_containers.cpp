@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 #include "cpu/x64/brgemm/brgemm_containers.hpp"
-#include "cpu/x64/brgemm/jit_brdgmm_kernel.hpp"
 
 namespace dnnl {
 namespace impl {

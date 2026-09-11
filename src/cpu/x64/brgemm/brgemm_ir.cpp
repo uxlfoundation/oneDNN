@@ -546,13 +546,11 @@ bool any_vector_spill(const ir::ir_t &ir, const ir::reg_alloc_result_t &alloc) {
 // while allowing different builder implementations to plug into the same
 // fixed sequence:
 // IR build -> register allocation -> preamble -> codegen -> postamble).
-struct jit_brgemm_ir_kernel_t : public jit_base_brgemm_kernel_t {
+struct jit_brgemm_ir_kernel_t : public jit_generator_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_ir_kernel_t)
 
     jit_brgemm_ir_kernel_t(const brgemm_desc_t &abrg)
-        : jit_base_brgemm_kernel_t(jit_name(), abrg.isa_impl), brg_(abrg) {}
-
-    const brgemm_desc_t &get_brg() const override { return brg_; }
+        : jit_generator_t(jit_name(), abrg.isa_impl), brg_(abrg) {}
 
     void generate() override {
         ir::ir_t ir;
@@ -620,8 +618,6 @@ struct brgemm_ir_kernel_t : public brgemm_kernel_t {
     const jit_generator_t *get_jit_generator() const override {
         return kernel_.get();
     }
-
-    const brgemm_desc_t &get_brg() const override { return kernel_->get_brg(); }
 
 private:
     std::unique_ptr<jit_brgemm_ir_kernel_t> kernel_;

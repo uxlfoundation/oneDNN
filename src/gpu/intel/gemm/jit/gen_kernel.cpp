@@ -100,16 +100,24 @@ static gemmstone::Scalar stringToScalar(std::string val) {
 
 status_t gen_desc_t::finalize(const char *tags) {
     // Update problem alignments to match catalog entry.
+    // Do not raise an alignment above the actual buffer alignment: catalog
+    // entries may accept lower alignments than driverInfo.alignment via
+    // unaligned access fallbacks, and overstating the alignment can cause
+    // illegal accesses (e.g. 2D block loads on a sub-DWord pitch).
     if (!isPacked(problem_.A.layout)
             && problem_.Ta_ext.paddedSize() >= problem_.Ta.paddedSize()) {
-        problem_.A.setAlignment(std::max(
-                problem_.Ta_ext.paddedSize(), entry_->driverInfo.alignment[0]));
+        problem_.A.setAlignment(
+                std::max(problem_.Ta_ext.paddedSize(),
+                        std::min(entry_->driverInfo.alignment[0],
+                                int(problem_.A.alignment))));
     }
 
     if (!isPacked(problem_.B.layout)
             && problem_.Tb_ext.paddedSize() >= problem_.Tb.paddedSize()) {
-        problem_.B.setAlignment(std::max(
-                problem_.Tb_ext.paddedSize(), entry_->driverInfo.alignment[1]));
+        problem_.B.setAlignment(
+                std::max(problem_.Tb_ext.paddedSize(),
+                        std::min(entry_->driverInfo.alignment[1],
+                                int(problem_.B.alignment))));
     }
 
     if (!isPacked(problem_.C.layout)) {

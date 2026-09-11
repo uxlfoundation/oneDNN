@@ -126,6 +126,10 @@
 --reset
 --batch=test_matmul_ci
 
+# u3 weights decompression
+--reset
+--batch=harness_matmul_decompression_u3
+
 # Test mixed fp8
 --reset
 --batch=option_set_fp8_mixed

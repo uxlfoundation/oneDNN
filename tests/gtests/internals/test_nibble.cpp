@@ -18,9 +18,11 @@
 #include "gtest/gtest.h"
 
 #include "src/common/float4.hpp"
+#include "src/common/int3.hpp"
 #include "src/common/int4.hpp"
 #include "src/common/nibble.hpp"
 #include "src/common/nstl.hpp"
+#include "src/common/type_helpers.hpp"
 
 namespace dnnl {
 
@@ -39,6 +41,10 @@ TEST(test_limits, int4) {
 
 TEST(test_limits, uint4) {
     test_limits<impl::uint4_t>(15.f, 0.f, 0.f);
+}
+
+TEST(test_limits, uint3) {
+    test_limits<impl::uint3_t>(7.f, 0.f, 0.f);
 }
 
 TEST(test_limits, f4_e2m1) {
@@ -85,6 +91,41 @@ TEST(test_int4_conversion, uint4) {
 
 TEST(test_e2m1_conversion, f4_e2m1) {
     test_conversions<impl::float4_e2m1_t>();
+}
+
+TEST(test_uint3_conversion, uint3) {
+    for (int v = 0; v <= 7; ++v)
+        ASSERT_EQ(static_cast<float>(impl::uint3_t(v)), static_cast<float>(v));
+
+    ASSERT_EQ(static_cast<float>(impl::uint3_t(8.f)), 0.f);
+    ASSERT_EQ(static_cast<float>(impl::uint3_t(9.f)), 1.f);
+}
+
+TEST(test_uint3_sizing, byte_conversions) {
+    using namespace impl;
+    const auto u3 = data_type::u3;
+#if DNNL_TEMPORARY_U3_CONTIGUOUS_LAYOUT
+    // contiguous packing
+    EXPECT_EQ(types::elements_to_bytes(u3, 1), size_t(1));
+    EXPECT_EQ(types::elements_to_bytes(u3, 8), size_t(3));
+    EXPECT_EQ(types::elements_to_bytes(u3, 9), size_t(4));
+    EXPECT_EQ(types::elements_to_bytes(u3, 16), size_t(6));
+    // a partial byte still holds whole 3-bit elements
+    EXPECT_EQ(types::bytes_to_elements(u3, 1), size_t(2));
+    EXPECT_EQ(types::bytes_to_elements(u3, 2), size_t(5));
+    EXPECT_EQ(types::bytes_to_elements(u3, 3), size_t(8));
+#else
+    // transposed (OV) packing: whole 3-byte groups only (MSB plane in byte 2)
+    EXPECT_EQ(types::elements_to_bytes(u3, 1), size_t(3));
+    EXPECT_EQ(types::elements_to_bytes(u3, 8), size_t(3));
+    EXPECT_EQ(types::elements_to_bytes(u3, 9), size_t(6));
+    EXPECT_EQ(types::elements_to_bytes(u3, 16), size_t(6));
+    // fewer than a full 3-byte group cannot decode any element
+    EXPECT_EQ(types::bytes_to_elements(u3, 1), size_t(0));
+    EXPECT_EQ(types::bytes_to_elements(u3, 2), size_t(0));
+    EXPECT_EQ(types::bytes_to_elements(u3, 3), size_t(8));
+#endif
+    EXPECT_EQ(types::data_type_bits(u3), size_t(3));
 }
 
 } // namespace dnnl

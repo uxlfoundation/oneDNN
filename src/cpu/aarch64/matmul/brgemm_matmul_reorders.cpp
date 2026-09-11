@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2022 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -16,9 +16,10 @@
 * limitations under the License.
 *******************************************************************************/
 
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
-#include "cpu/aarch64/cpu_isa_traits.hpp"
 
+#include "cpu/aarch64/cpu_isa_traits.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul_reorders.hpp"
 
 namespace dnnl {
@@ -182,7 +183,7 @@ status_t brgemm_matmul_copy_reorder_t::execute_body(
                 : (dt_sz) * (md).blk_off((d0), (d1)))
 
     parallel_nd(kernel_conf.batch, div_up(kernel_conf.N, kernel_conf.N_blk),
-            [&](dim_t batch, dim_t n_blk_idx) {
+            [= COMPAT_THIS_CAPTURE](dim_t batch, dim_t n_blk_idx) {
         const auto n = n_blk_idx * kernel_conf.N_blk;
         const bool is_N_tail = (kernel_conf.N - n < kernel_conf.N_blk);
         auto ker_exec_ctx = matmul::jit_brgemm_matmul_copy_b_t::ctx_t();

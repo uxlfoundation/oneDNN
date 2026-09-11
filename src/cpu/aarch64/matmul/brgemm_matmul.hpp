@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2024 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
@@ -18,15 +18,13 @@
 #ifndef CPU_AARCH64_MATMUL_BRGEMM_MATMUL_HPP
 #define CPU_AARCH64_MATMUL_BRGEMM_MATMUL_HPP
 
+#include <memory>
+
 #include "common/c_types_map.hpp"
 #include "common/primitive.hpp"
-#include "common/type_helpers.hpp"
 
 #include "cpu/matmul/cpu_matmul_pd.hpp"
 
-#include "cpu/aarch64/brgemm/brgemm.hpp"
-#include "cpu/aarch64/brgemm/brgemm_containers.hpp"
-#include "cpu/aarch64/brgemm/brgemm_utils.hpp"
 #include "cpu/aarch64/cpu_reducer.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul_copy_utils.hpp"
 #include "cpu/aarch64/matmul/brgemm_matmul_utils.hpp"
@@ -88,7 +86,7 @@ private:
     void copy_b_chunk_in_buffer(const brg_matmul_exec_ctx_t &brgmm_ctx,
             int ithr, int b_idx, int n_blk_idx, int k_blk_idx) const;
     void maybe_reduce_partial_results_and_apply_postops(
-            const brg_matmul_exec_ctx_t &brgmm_ctx) const;
+            const std::shared_ptr<brg_matmul_exec_ctx_t> &brgmm_ctx_ptr) const;
     void accumulate(
             char *result_ptr, const char *reduce_ptr, size_t size) const;
 

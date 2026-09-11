@@ -673,7 +673,7 @@ status_t brgemm_desc_finalize(brgemm_desc_t *brg) {
         return status::unimplemented;
 
     // Required for EVEX encoding for offsets
-    // The kernel jit_brgemm_amx_uker_base_t has support of large offsets in
+    // The kernel jit_brgemm_amx_uker_t has support of large offsets in
     // post-ops
     if (!brg->can_dispatch_uker()) {
         const dim_t max_d_stride

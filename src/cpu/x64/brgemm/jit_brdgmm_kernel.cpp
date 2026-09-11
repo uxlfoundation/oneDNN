@@ -37,8 +37,7 @@ using namespace Xbyak;
 using namespace injector_utils;
 
 template <typename Wmm>
-jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
-        const brgemm_desc_t &abrd)
+jit_brdgmm_kernel_t<Wmm>::jit_brdgmm_kernel_t(const brgemm_desc_t &abrd)
     : brgemm_kernel_t(jit_name(), abrd.isa_impl)
     , brg(abrd)
     , simd_w_(vreg_traits_t<Vmm>::vlen / brg.typesize_C)
@@ -87,14 +86,14 @@ jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
 
 template <typename Wmm>
 template <typename U>
-U jit_brdgmm_kernel_base_t<Wmm>::maybe_mask(
+U jit_brdgmm_kernel_t<Wmm>::maybe_mask(
         const U umm_in, bool mask_flag, bool store) {
     return mask_flag ? (store ? umm_in | k_mask : umm_in | k_mask | T_z)
                      : umm_in;
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::read_params() {
+void jit_brdgmm_kernel_t<Wmm>::read_params() {
     Label label_done;
 
     mov(reg_BS, ptr[param1 + GET_OFF(BS)]);
@@ -161,7 +160,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::read_params() {
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::load_permute_vmm() {
+void jit_brdgmm_kernel_t<Wmm>::load_permute_vmm() {
     if (is_fast_vnni_int8()) {
         // load permute indices from data section
         vmovdqu32(vmm_permute(), ptr[rip + permute_index_table]);
@@ -169,8 +168,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_permute_vmm() {
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::load_accumulators(
-        int m_blocks, int n_blocks) {
+void jit_brdgmm_kernel_t<Wmm>::load_accumulators(int m_blocks, int n_blocks) {
     const int v_substep = vnni_substep();
     for_(int v = 0; v < v_substep; ++v)
     for_(int m = 0; m < m_blocks; ++m)
@@ -191,7 +189,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_accumulators(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::restore_A_B_matrices() {
+void jit_brdgmm_kernel_t<Wmm>::restore_A_B_matrices() {
     if (brg.brgattr.max_bs > 1
             && (one_of(brg.type, brgemm_addr, brgemm_offs) || has_vpad_))
         reg_aux_batch_addr.restore();
@@ -203,7 +201,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::restore_A_B_matrices() {
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::set_A_B_matrices() {
+void jit_brdgmm_kernel_t<Wmm>::set_A_B_matrices() {
 
     if (brg.type == brgemm_addr) {
         mov(reg_aux_A, ptr[reg_aux_batch_addr + GET_OFF_BATCH_ELEMENT(ptr.A)]);
@@ -229,16 +227,15 @@ void jit_brdgmm_kernel_base_t<Wmm>::set_A_B_matrices() {
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::advance_A_B_matrices() {
+void jit_brdgmm_kernel_t<Wmm>::advance_A_B_matrices() {
     if (brg.brgattr.max_bs > 1
             && (one_of(brg.type, brgemm_addr, brgemm_offs) || has_vpad_))
         add(reg_aux_batch_addr, sizeof(brgemm_batch_element_t));
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::cvt2ps(data_type_t type_in,
-        const Vmm vmm_in, const Xbyak::Operand &op, bool mask_flag,
-        bool store) {
+void jit_brdgmm_kernel_t<Wmm>::cvt2ps(data_type_t type_in, const Vmm vmm_in,
+        const Xbyak::Operand &op, bool mask_flag, bool store) {
     const int tail_size = tail_length();
     const bool is_load_tail = op.isMEM() && mask_flag && tail_size > 0
             && (tail_size < static_cast<int>(
@@ -264,7 +261,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::cvt2ps(data_type_t type_in,
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
+void jit_brdgmm_kernel_t<Wmm>::apply_post_ops(
         int m_blocks, int n_blocks, bool has_n_tail) {
 
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
@@ -308,7 +305,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::apply_post_ops(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
+void jit_brdgmm_kernel_t<Wmm>::store_accumulators_apply_post_ops(
         int m_blocks, int n_blocks, bool has_n_tail) {
 
     const bool dq2ps_required = brg.is_int8;
@@ -556,7 +553,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_apply_post_ops(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_without_post_ops(
+void jit_brdgmm_kernel_t<Wmm>::store_accumulators_without_post_ops(
         int m_blocks, int n_blocks, bool has_n_tail) {
 
     const bool dt_requires_saturation
@@ -595,7 +592,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators_without_post_ops(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::maybe_transpose_interleaved_vnni_to_plain(
+void jit_brdgmm_kernel_t<Wmm>::maybe_transpose_interleaved_vnni_to_plain(
         int m_blocks, int n_blocks, bool has_n_tail) {
 
     if (vnni_substep() == 1) return;
@@ -620,7 +617,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::maybe_transpose_interleaved_vnni_to_plain(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::load_src_zp() {
+void jit_brdgmm_kernel_t<Wmm>::load_src_zp() {
     reg_src_zero_point.restoreTo(reg_aux_src_zp);
     lea(reg_aux_src_zp,
             is_src_zp_bcast_
@@ -631,7 +628,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_src_zp() {
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
+void jit_brdgmm_kernel_t<Wmm>::compute_int8_compensation(
         int m_blocks, int n_blocks, bool has_n_tail) {
 
     const int v_substep = vnni_substep();
@@ -699,7 +696,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_int8_compensation(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators(
+void jit_brdgmm_kernel_t<Wmm>::store_accumulators(
         int m_blocks, int n_blocks, bool has_n_tail) {
 
     maybe_transpose_interleaved_vnni_to_plain(m_blocks, n_blocks, has_n_tail);
@@ -729,7 +726,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::store_accumulators(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::load_a(
+void jit_brdgmm_kernel_t<Wmm>::load_a(
         Vmm vmma, int m_i, int n_i, int v_i, bool has_n_tail) {
     const int n_blocks
             = has_n_tail && n_block2_tail() > 0 ? n_block2_tail() : n_block2();
@@ -781,7 +778,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_a(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::load_b(
+void jit_brdgmm_kernel_t<Wmm>::load_b(
         Vmm vmmb, int n_i, int v_i, bool has_n_tail, bool wei_zp) {
     assert(IMPLICATION(wei_zp, brg.is_int8 && compute_src_zp_));
     // for B matrix we assume memory is padded and it is safe to load simd
@@ -833,7 +830,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::load_b(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
+void jit_brdgmm_kernel_t<Wmm>::comp_dot_product(
         compute_pad_kernel_t kernel_type, Vmm vmm_acc, Vmm vmmb, int n,
         bool is_tail_block) {
     switch (kernel_type) {
@@ -878,9 +875,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::comp_dot_product(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::pad_comp_kernel(
-        compute_pad_kernel_t kernel_type, int m_blocks, int n_blocks,
-        int padding, const Xbyak::Reg64 reg_pad,
+void jit_brdgmm_kernel_t<Wmm>::pad_comp_kernel(compute_pad_kernel_t kernel_type,
+        int m_blocks, int n_blocks, int padding, const Xbyak::Reg64 reg_pad,
         const std::function<int(int)> &get_mi, bool has_tail) {
     assert(vnni_substep() == 1);
     const int max_m_unroll = padding;
@@ -939,7 +935,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::pad_comp_kernel(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::batch_pad_kernel(
+void jit_brdgmm_kernel_t<Wmm>::batch_pad_kernel(
         int m_blocks, int n_blocks, bool has_tail) {
 
     assert(vnni_substep() == 1);
@@ -978,9 +974,9 @@ void jit_brdgmm_kernel_base_t<Wmm>::batch_pad_kernel(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
-        int n_blocks, bool has_top_padding, bool has_bottom_padding,
-        bool has_tail, int shift_a) {
+void jit_brdgmm_kernel_t<Wmm>::brdgmm_microkernel(int m_blocks, int n_blocks,
+        bool has_top_padding, bool has_bottom_padding, bool has_tail,
+        int shift_a) {
 
     const bool has_padding = has_top_padding || has_bottom_padding;
     const int max_bvmms
@@ -1127,7 +1123,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::brdgmm_microkernel(int m_blocks,
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(int m_blocks) {
+void jit_brdgmm_kernel_t<Wmm>::get_vertical_padding_info(int m_blocks) {
     const bool do_check_effective_padding = check_effective_padding();
     Label no_top_padding;
 
@@ -1168,14 +1164,14 @@ void jit_brdgmm_kernel_base_t<Wmm>::get_vertical_padding_info(int m_blocks) {
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::get_batch_padding_info() {
+void jit_brdgmm_kernel_t<Wmm>::get_batch_padding_info() {
     mov(reg_total_padding,
             ptr[reg_aux_batch_addr
                     + GET_OFF_BATCH_ELEMENT(has_s8s8_comp_batch_pad)]);
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::vertical_pad_kernel(
+void jit_brdgmm_kernel_t<Wmm>::vertical_pad_kernel(
         int m_blocks, int n_blocks, bool has_n_tail) {
     const int tpad = brg.brgattr.max_top_vpad;
     const int bpad = brg.brgattr.max_bottom_vpad;
@@ -1204,7 +1200,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::vertical_pad_kernel(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::call_brdgmm_microkernel(
+void jit_brdgmm_kernel_t<Wmm>::call_brdgmm_microkernel(
         int m_blocks, int n_blocks, bool has_n_tail, int shift_a) {
 
     // padding for vertical dimensions
@@ -1234,7 +1230,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::call_brdgmm_microkernel(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::batch_loop(
+void jit_brdgmm_kernel_t<Wmm>::batch_loop(
         int m_blocks, int n_blocks, bool has_n_tail) {
 
     Label bs_loop_label, done_bs_loop;
@@ -1278,7 +1274,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::batch_loop(
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
+void jit_brdgmm_kernel_t<Wmm>::compute_loop() {
 
     const bool has_m_block2_tail = m_block2_tail() > 0;
     const dim_t loop_m = nb_m_block2() - has_m_block2_tail;
@@ -1385,7 +1381,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::compute_loop() {
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::init_masks() {
+void jit_brdgmm_kernel_t<Wmm>::init_masks() {
     if (!isa_has_masks(brg.isa_impl)) return;
 
     if (is_fast_vnni_int8()) {
@@ -1413,7 +1409,7 @@ void jit_brdgmm_kernel_base_t<Wmm>::init_masks() {
 }
 
 template <typename Wmm>
-void jit_brdgmm_kernel_base_t<Wmm>::generate() {
+void jit_brdgmm_kernel_t<Wmm>::generate() {
 
     preamble();
     sub(rsp, regscratchpad_.Size());
@@ -1444,8 +1440,8 @@ void jit_brdgmm_kernel_base_t<Wmm>::generate() {
 brgemm_kernel_t *create_brdgmm_kernel(const brgemm_desc_t &brg) {
     if (brg.type == brgemm_static_offs) return nullptr;
 
-    if (brg.is_zmm) return new jit_brdgmm_kernel_base_t<Xbyak::Zmm>(brg);
-    if (brg.is_ymm) return new jit_brdgmm_kernel_base_t<Xbyak::Ymm>(brg);
+    if (brg.is_zmm) return new jit_brdgmm_kernel_t<Xbyak::Zmm>(brg);
+    if (brg.is_ymm) return new jit_brdgmm_kernel_t<Xbyak::Ymm>(brg);
     return nullptr;
 }
 

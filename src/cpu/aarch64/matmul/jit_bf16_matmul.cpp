@@ -287,6 +287,8 @@ status_t jit_bf16_matmul_t::pd_t::init(const engine_t *engine) {
 
     VDISPATCH_MATMUL(
             no_runtime_dims_or_strides, VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    VDISPATCH_MATMUL(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
     const auto src_type = src_md(0)->data_type;
     const auto wei_type = weights_md(0)->data_type;

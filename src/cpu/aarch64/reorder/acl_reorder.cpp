@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2023, 2025 Arm Ltd. and affiliates
+* Copyright 2023, 2025-2026 Arm Ltd. and affiliates
 * Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,8 @@
 
 #include "cpu/aarch64/reorder/acl_reorder.hpp"
 #include "cpu/aarch64/cpu_isa_traits.hpp"
+
+#include "common/dnnl_thread.hpp"
 
 namespace {
 /*
@@ -71,6 +73,9 @@ status_t acl_reorder_fwd_t::pd_t::create(reorder_pd_t **reorder_pd,
     using namespace dnnl::impl;
 
     // ComputeLibrary reorders support f32->f32 and f32->bf16
+    VDISPATCH_REORDER_IC(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
     bool ok = src_md->data_type == data_type::f32
             && utils::one_of(dst_md->data_type, data_type::f32, data_type::bf16)
             && attr->has_default_values();

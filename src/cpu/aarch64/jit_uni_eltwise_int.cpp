@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2021 Intel Corporation
 * Copyright 2021 FUJITSU LIMITED
-* Copyright 2025 Arm Ltd. and affiliates
+* Copyright 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -349,6 +349,9 @@ void jit_uni_subkernel_int_t<sve_512>::store_8bit(const bool vectorize,
 template <cpu_isa_t isa, data_type_t d_type>
 status_t jit_uni_eltwise_int_fwd_t<isa, d_type>::pd_t::init(
         const engine_t *engine) {
+    VDISPATCH_ELTWISE(DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+            VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
+
     bool ok = is_fwd() && mayiuse(isa)
             && utils::everyone_is(
                     d_type, src_md()->data_type, dst_md()->data_type)

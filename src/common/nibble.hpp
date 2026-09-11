@@ -66,6 +66,62 @@ private:
 static_assert(sizeof(nibble2_t) == 1, "nibble2_t must be 1 byte");
 static_assert(nibble2_t::size() == 1, "nibble2_t must be 1 byte");
 
+// An abstraction to manipulate with bits as bytes. `4` means there are four
+// elements in it.
+struct nibble4_t {
+    // constructs a nibble quartet from a quartet of uint8_t values
+    nibble4_t(uint8_t e0, uint8_t e1, uint8_t e2, uint8_t e3)
+        : e0_(e0), e1_(e1), e2_(e2), e3_(e3) {}
+
+    // constructs a nibble quartet from an uin8_t
+    nibble4_t(uint8_t pack)
+        : e0_((pack >> 0) & 0x3)
+        , e1_((pack >> 2) & 0x3)
+        , e2_((pack >> 4) & 0x3)
+        , e3_((pack >> 6) & 0x3) {}
+
+    // sets an element @val in the nibble according to the @idx.
+    inline void set(uint8_t val, int idx) {
+        switch (idx) {
+            case 0: e0_ = val; return;
+            case 1: e1_ = val; return;
+            case 2: e2_ = val; return;
+            case 3: e3_ = val; return;
+            default: assert(!"Out of range index"); return;
+        }
+    }
+
+    // returns an element from the nibble according to the @idx.
+    inline uint8_t get(int idx) const {
+        switch (idx) {
+            case 0: return e0_;
+            case 1: return e1_;
+            case 2: return e2_;
+            case 3: return e3_;
+            default: assert(!"out of range index"); return 0;
+        }
+    }
+
+    // returns a quartet of nibbles as uint8_t
+    inline uint8_t get() const {
+        return static_cast<uint8_t>(e3_ << 6 | e2_ << 4 | e1_ << 2 | e0_);
+    }
+
+    // Returns a size of a nibble object in bytes.
+    static constexpr size_t size() { return 1; }
+
+    // Returns the number of elements in this type of nibble.
+    static constexpr int nelems() { return 4; }
+
+private:
+    uint8_t e0_ : 2;
+    uint8_t e1_ : 2;
+    uint8_t e2_ : 2;
+    uint8_t e3_ : 2;
+};
+static_assert(sizeof(nibble4_t) == 1, "nibble2_t must be 1 byte");
+static_assert(nibble4_t::size() == 1, "nibble2_t must be 1 byte");
+
 } // namespace impl
 } // namespace dnnl
 

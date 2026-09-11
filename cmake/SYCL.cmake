@@ -190,3 +190,28 @@ if(DNNL_EXPERIMENTAL_SYCL_KERNEL_COMPILER)
 "SYCL implementation does not support OpenCL kernel compiler extension. Make sure that SYCL and OCLOC are correctly installed.")
     endif()
 endif()
+
+if(DNNL_EXPERIMENTAL_ENABLE_SYCL_PROFILING_TAG AND DNNL_VERBOSE AND DNNL_GPU_SYCL)
+    include(CheckCXXSourceCompiles)
+    set(CHECK_DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG_SOURCE
+    "
+        #include <sycl/sycl.hpp>
+        #ifndef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
+        #error sycl_ext_oneapi_profiling_tag not supported
+        #endif
+        int main() {
+            sycl::queue q;
+            sycl::ext::oneapi::experimental::submit_profiling_tag(q);
+            return 0;
+        }
+    ")
+    CHECK_CXX_SOURCE_COMPILES(
+        "${CHECK_DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG_SOURCE}"
+        DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG)
+    if(DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG)
+        add_definitions(-DDNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG)
+    else()
+        message(STATUS "sycl_ext_oneapi_profiling_tag extension is not available 
+        - verbose profiler will be paused without a profiling-enabled SYCL queue")
+    endif()
+endif()

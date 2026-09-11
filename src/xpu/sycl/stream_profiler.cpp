@@ -102,8 +102,8 @@ status_t verbose_profiler_t::get_aggregate_exec_time(
         size_t last_idx = sycl_ev.size() - 1;
 
         using namespace ::sycl::info;
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
-        // When using the SYCL profiling trags, elapsed time is measured
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
+        // When using the SYCL profiling tags, elapsed time is measured
         // between two bracketing tag events that wrap all kernels:
         // - a "start" tag submitted just before the first kernel
         // - an "end" tag submitted just after the last kernel.

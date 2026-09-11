@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -118,9 +118,14 @@ struct prb_t {
     bool req_asymmetric_comp = false;
     bool req_src_zp = false;
     bool req_dst_zp = false;
+    int plain_transpose_tile_size = 0;
 };
 
 bool prb_has_small_strides(const prb_t &prb);
+
+/** Selects an ASIMD plain-transpose kernel and returns its tile size, or zero
+ * to use the generic kernel. */
+int select_plain_transpose_kernel(const prb_t &prb, int nthr);
 
 status_t prb_init(prb_t &prb, const memory_desc_t &imd,
         const memory_desc_t &omd, const primitive_attr_t *attr);
@@ -151,7 +156,7 @@ bool prb_has_small_strides(const prb_t &prb);
 /** dumps the problem to a string */
 std::string prb_dump(const prb_t &p);
 
-void prb_block_for_cache(prb_t &prb);
+void prb_block_for_cache(prb_t &prb, int nthr);
 
 /** finds the maximum number of dimension the kernel should process and
  * optionally splits one of the dimension to achieve better balance between

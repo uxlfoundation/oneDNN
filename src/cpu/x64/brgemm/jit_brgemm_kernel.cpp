@@ -24,6 +24,7 @@
 #include "cpu/platform.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
 #include "cpu/x64/brgemm/brgemm_types.hpp"
+#include "cpu/x64/brgemm/jit_brgemm_kernel.hpp"
 #include "cpu/x64/cpu_barrier.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
@@ -45,9 +46,9 @@ using namespace Xbyak;
 using namespace injector_utils;
 
 template <typename Wmm>
-struct jit_brgemm_kernel_t : public jit_generator_t {
+struct jit_brgemm_kernel_t : public brgemm_kernel_t {
     jit_brgemm_kernel_t(const brgemm_desc_t &abrg)
-        : jit_generator_t(jit_name(), abrg.isa_impl)
+        : brgemm_kernel_t(jit_name(), abrg.isa_impl)
         , brg(abrg)
         , postops_injector_(nullptr)
         , max_effective_vregs(get_max_effective_vregs(brg)) {
@@ -4382,35 +4383,15 @@ brgemm_attr_t::brgemm_attr_t()
     , bd_mask(nullptr)
     , static_offsets(nullptr) {}
 
-template <typename Wmm>
-brgemm_kernel_common_t<Wmm>::brgemm_kernel_common_t(const brgemm_desc_t &abrd)
-    : brgemm_kernel_(new jit_brgemm_kernel_t<Wmm>(abrd)) {}
+brgemm_kernel_t *create_brgemm_kernel(const brgemm_desc_t &brg) {
+    if (brg.type == brgemm_static_offs) return nullptr;
 
-template <typename Wmm>
-status_t brgemm_kernel_common_t<Wmm>::create_kernel() {
-    if (brgemm_kernel_) return brgemm_kernel_->create_kernel();
-    return status::out_of_memory;
+    if (brg.is_tmm) return new jit_brgemm_kernel_t<Xbyak::Tmm>(brg);
+    if (brg.is_zmm) return new jit_brgemm_kernel_t<Xbyak::Zmm>(brg);
+    if (brg.is_ymm) return new jit_brgemm_kernel_t<Xbyak::Ymm>(brg);
+    return nullptr;
 }
 
-template <typename Wmm>
-void brgemm_kernel_common_t<Wmm>::operator()(
-        const brgemm_kernel_params_t *params) const {
-    (*brgemm_kernel_)(params);
-}
-
-template <typename Wmm>
-const jit_generator_t *brgemm_kernel_common_t<Wmm>::get_jit_generator() const {
-    return brgemm_kernel_;
-}
-
-template <typename Wmm>
-brgemm_kernel_common_t<Wmm>::~brgemm_kernel_common_t() {
-    delete brgemm_kernel_;
-}
-
-template struct brgemm_kernel_common_t<Xbyak::Tmm>;
-template struct brgemm_kernel_common_t<Xbyak::Zmm>;
-template struct brgemm_kernel_common_t<Xbyak::Ymm>;
 } // namespace x64
 } // namespace cpu
 } // namespace impl

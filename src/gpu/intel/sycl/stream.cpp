@@ -99,7 +99,7 @@ status_t stream_t::init() {
 
         const bool queue_has_profiling = queue().has_property<
                 ::sycl::property::queue::enable_profiling>();
-#ifdef SYCL_EXT_ONEAPI_PROFILING_TAG
+#ifdef DNNL_USE_SYCL_EXT_ONEAPI_PROFILING_TAG
         const bool use_tag = queue().get_device().has(
                 ::sycl::aspect::ext_oneapi_queue_profiling_tag);
 #else

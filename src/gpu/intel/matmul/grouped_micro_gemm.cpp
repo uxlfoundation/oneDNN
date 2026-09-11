@@ -25,6 +25,7 @@
 #include "gpu/intel/compute/ukernels.hpp"
 #include "gpu/intel/compute/utils.hpp"
 #include "gpu/intel/gemm/jit/gen_kernel.hpp"
+#include "gpu/intel/jit/ir/block_2d_utils.hpp"
 
 #include <algorithm>
 #include <iomanip>
@@ -63,6 +64,9 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     hw_info.gmdid = dev_info->ip_version();
     hw_info.systolicAvailable = use_systolic_ukernel;
     hw_info.isEfficient64Bit = dev_info->is_efficient_64bit();
+    auto product = dev_info->product();
+    auto hw = getCore(product.family);
+    auto stepping = hw_info.gmdid & 0xFF;
 
     if (hw_info.gmdid == 0) return status::unimplemented;
 
@@ -134,8 +138,14 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
     problem.C.layout = MatrixLayout::N;
     problem.A.setAlignment(alignmentForLD(
             static_cast<int>(types::elements_to_bytes(adt, lda))));
-    problem.B.setAlignment(alignmentForLD(
-            static_cast<int>(types::elements_to_bytes(bdt, ldb))));
+
+    auto ldb_bytes = types::elements_to_bytes(bdt, ldb);
+    if (ldb_bytes % block_2d_base_alignment(hw) == 0) {
+        problem.B.setAlignment(static_cast<int>(ldb_bytes));
+    } else {
+        problem.B.setAlignment(alignmentForLD(static_cast<int>(ldb)));
+    }
+
     problem.C.setAlignment(problem.Tc.size());
 
     GEMMOptions opts;
@@ -250,9 +260,6 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
         if (!newStrat.empty()) {
             // Example: 16 16 1 0 aT32 aM32 aB wg 2x4 sys
             printf("GRPGEMM_USTRATEGY: %s\n", newStrat.c_str());
-            auto product = ngen::npack::decodeHWIPVersion(hw_info.gmdid);
-            auto hw = getCore(product.family);
-            auto stepping = hw_info.gmdid & 0xFF;
             strat = GEMMStrategy(hw, stepping);
             std::stringstream ss(newStrat);
             ss >> strat.unroll[0];
@@ -304,7 +311,6 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
                         : 16;
                 break;
             case compute::gpu_arch_t::xe_hpg: {
-                auto product = dev_info->product();
                 bool is_xelpg = (product.family == ngen::ProductFamily::ARL
                         || product.family == ngen::ProductFamily::MTL);
                 max_n_unroll = (problem.Ta_ext.bits() <= 8

@@ -120,6 +120,15 @@ void GEMMStrategy::preflight(HW hw, const GEMMProblem &problem)
     if (kParallelVariable && problem.batch != BatchMode::None)
         C.atomic = CO.atomic = kParallelVariable = kParallelLocal = false;
 
+    // Stream-K combines per-workgroup partial C via atomic add, which is
+    // safe for plain grouped scaling (no cross-workgroup shared state) but
+    // not late 2D scaling.
+    bool aLateScale = usesLateScale(problem, *this, /*isA=*/true);
+    bool bLateScale = usesLateScale(problem, *this, /*isA=*/false);
+    bool lateScaleHazard = (aLateScale || bLateScale) && problem.Tc_ext.isInteger();
+    if (kParallelVariable && lateScaleHazard)
+        C.atomic = CO.atomic = kParallelVariable = kParallelLocal = false;
+
     C.atomic |= useAutoAtomic(hw, problem, *this);
 
     if (C.atomic && !C.base.isStateless() && !C.newDP)

@@ -39,9 +39,9 @@ using namespace dnnl::impl::utils;
 using namespace injector_utils;
 using namespace Xbyak;
 
-struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
+struct jit_brgemm_amx_uker_base_t : public jit_generator_t {
     jit_brgemm_amx_uker_base_t(const brgemm_desc_t &abrg)
-        : jit_base_brgemm_kernel_t(jit_name(), abrg.isa_impl)
+        : jit_generator_t(jit_name(), abrg.isa_impl)
         , brg(abrg)
         , postops_injector_(nullptr) {
 
@@ -140,8 +140,6 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_amx_uker_base_t)
 
     brgemm_desc_t brg;
-
-    const brgemm_desc_t &get_brg() const override { return brg; }
 
 private:
     using po_injector_t = injector::jit_uni_postops_injector_t<Zmm>;

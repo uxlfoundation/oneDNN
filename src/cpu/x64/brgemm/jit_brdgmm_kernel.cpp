@@ -39,7 +39,7 @@ using namespace injector_utils;
 template <typename Wmm>
 jit_brdgmm_kernel_base_t<Wmm>::jit_brdgmm_kernel_base_t(
         const brgemm_desc_t &abrd)
-    : jit_base_brgemm_kernel_t(jit_name(), abrd.isa_impl)
+    : jit_generator_t(jit_name(), abrd.isa_impl)
     , brg(abrd)
     , simd_w_(vreg_traits_t<Vmm>::vlen / brg.typesize_C)
     , max_vmms_(isa_num_vregs(brg.isa_impl))

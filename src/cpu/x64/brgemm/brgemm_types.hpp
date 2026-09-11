@@ -847,13 +847,6 @@ struct brgemm_kernel_t {
     virtual status_t create_kernel() = 0;
     virtual void operator()(const brgemm_kernel_params_t *) const = 0;
     virtual const jit_generator_t *get_jit_generator() const = 0;
-    virtual const brgemm_desc_t &get_brg() const = 0;
-};
-
-struct jit_base_brgemm_kernel_t : public jit_generator_t {
-    jit_base_brgemm_kernel_t(const char *impl_name, cpu_isa_t isa_impl)
-        : jit_generator_t(impl_name, isa_impl) {}
-    virtual const brgemm_desc_t &get_brg() const = 0;
 };
 
 template <typename Vmm>
@@ -864,9 +857,6 @@ struct brgemm_kernel_common_t : public brgemm_kernel_t {
     status_t create_kernel() override;
     void operator()(const brgemm_kernel_params_t *) const override;
     const jit_generator_t *get_jit_generator() const override;
-    const brgemm_desc_t &get_brg() const override {
-        return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
-    }
 
 private:
     jit_brgemm_kernel_t<Vmm> *brgemm_kernel_ = nullptr;
@@ -881,9 +871,6 @@ struct brgemm_amx_uker_t : public brgemm_kernel_t {
     status_t create_kernel() override;
     void operator()(const brgemm_kernel_params_t *) const override;
     const jit_generator_t *get_jit_generator() const override;
-    const brgemm_desc_t &get_brg() const override {
-        return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
-    }
 
 private:
     jit_brgemm_amx_uker_base_t *brgemm_kernel_ = nullptr;
@@ -899,9 +886,6 @@ struct brdgmm_kernel_t : public brgemm_kernel_t {
     status_t create_kernel() override;
     void operator()(const brgemm_kernel_params_t *) const override;
     const jit_generator_t *get_jit_generator() const override;
-    const brgemm_desc_t &get_brg() const override {
-        return ((jit_base_brgemm_kernel_t *)brgemm_kernel_)->get_brg();
-    }
 
 private:
     jit_brdgmm_kernel_base_t<Vmm> *brgemm_kernel_ = nullptr;

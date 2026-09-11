@@ -45,9 +45,9 @@ using namespace Xbyak;
 using namespace injector_utils;
 
 template <typename Wmm>
-struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
+struct jit_brgemm_kernel_t : public jit_generator_t {
     jit_brgemm_kernel_t(const brgemm_desc_t &abrg)
-        : jit_base_brgemm_kernel_t(jit_name(), abrg.isa_impl)
+        : jit_generator_t(jit_name(), abrg.isa_impl)
         , brg(abrg)
         , postops_injector_(nullptr)
         , max_effective_vregs(get_max_effective_vregs(brg)) {
@@ -142,8 +142,6 @@ struct jit_brgemm_kernel_t : public jit_base_brgemm_kernel_t {
     }
 
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_kernel_t)
-
-    const brgemm_desc_t &get_brg() const override { return brg; }
 
 private:
     brgemm_desc_t brg;

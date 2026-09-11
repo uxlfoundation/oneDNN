@@ -67,6 +67,12 @@ public:
         return type_t(kind_t::_bool, elems, attr);
     }
 
+    static type_t u2(int elems = 1, attr_t attr = attr_t::undef) {
+        return type_t(kind_t::u2, elems, attr);
+    }
+    static type_t s2(int elems = 1, attr_t attr = attr_t::undef) {
+        return type_t(kind_t::s2, elems, attr);
+    }
     static type_t u4(int elems = 1, attr_t attr = attr_t::undef) {
         return type_t(kind_t::u4, elems, attr);
     }
@@ -101,6 +107,7 @@ public:
     // Returns unsigned integer type.
     static type_t u(int bits, int elems = 1, attr_t attr = attr_t::undef) {
         switch (bits) {
+            case 2: return u2(elems, attr);
             case 4: return u4(elems, attr);
             case 8: return u8(elems, attr);
             case 16: return u16(elems, attr);
@@ -114,6 +121,7 @@ public:
     // Returns signed integer type.
     static type_t s(int bits, int elems = 1, attr_t attr = attr_t::undef) {
         switch (bits) {
+            case 2: return s2(elems, attr);
             case 4: return s4(elems, attr);
             case 8: return s8(elems, attr);
             case 16: return s16(elems, attr);
@@ -174,6 +182,8 @@ public:
     template <typename T>
     T max() const {
         switch (kind()) {
+            case kind_t::u2:
+            case kind_t::s2:
             case kind_t::u4:
             case kind_t::s4:
             case kind_t::u8:
@@ -197,6 +207,8 @@ public:
     template <typename T>
     T min() const {
         switch (kind()) {
+            case kind_t::u2:
+            case kind_t::s2:
             case kind_t::u4:
             case kind_t::s4:
             case kind_t::u8:
@@ -261,8 +273,13 @@ public:
     bool is_fp8() const { return is_bf8() || is_hf8(); }
 
     bool is_int() const {
-        return is_x4() || is_x8() || is_x16() || is_x32() || is_x64();
+        return is_x2() || is_x4() || is_x8() || is_x16() || is_x32()
+                || is_x64();
     }
+
+    bool is_s2() const { return kind() == kind_t::s2; }
+    bool is_u2() const { return kind() == kind_t::u2; }
+    bool is_x2() const { return is_s2() || is_u2(); }
 
     bool is_s4() const { return kind() == kind_t::s4; }
     bool is_u4() const { return kind() == kind_t::u4; }
@@ -292,12 +309,14 @@ public:
 
     bool is_signed(int elems = -1) const {
         if (elems != -1 && elems_ != elems) return false;
-        return is_s4() || is_s8() || is_s16() || is_s32() || is_s64();
+        return is_s2() || is_s4() || is_s8() || is_s16() || is_s32()
+                || is_s64();
     }
 
     bool is_unsigned(int elems = -1) const {
         if (elems != -1 && elems_ != elems) return false;
-        return is_u4() || is_u8() || is_u16() || is_u32() || is_u64();
+        return is_u2() || is_u4() || is_u8() || is_u16() || is_u32()
+                || is_u64();
     }
 
     bool is_scalar() const { return elems() == 1; }
@@ -374,6 +393,8 @@ protected:
         _bool,
 
         // Integer types.
+        u2,
+        s2,
         u4,
         s4,
         u8,

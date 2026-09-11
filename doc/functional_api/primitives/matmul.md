@@ -104,7 +104,7 @@ types for source, destination, weights, and bias tensors:
 | f64                 | f64                                    | f64                                 | f64, f32, f16, bf16, s8, u8 |
 | f32                 | f32, u8, s8, u4, s4                    | f32                                 | f32, bf16, f16, u8, s8      |
 | f16                 | f16, u8, s8, u4, s4                    | f16, u8, s8                         | f32                         |
-| f16                 | f16, u8, s8, u4, s4                    | f32, f16                            | f32, f16                    |
+| f16                 | f16, u8, s8, u4, s4, u2                | f32, f16                            | f32, f16                    |
 | bf16                | bf16, u8, s8, u4, s4                   | f32, bf16                           | f32, bf16                   |
 | f32, bf16, f16      | u8, s8, u4, s4                         | f32, bf16, f16                      | f32, bf16, f16              |
 | bf16, f16           | f8_e5m2, f8_e4m3, f4_e2m1              | f32, f16, bf16                      | f32, bf16, f16              |

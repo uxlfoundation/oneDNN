@@ -556,13 +556,14 @@ void jit_uni_reorder_kernel_f32_t::emit_pure_copy_core() {
     // group (vreg_data_ = v8) plus load/store transients, so
     // LMUL * peak_live_groups(1) <= 32 holds for m1..m8, and v8 is
     // group-aligned for every power-of-two LMUL. Fall back to m1 when RVV is
-    // unavailable, the runtime VLEN is unknown / too small (vlenb < 16), or
-    // node[0] is empty. This keeps the kernel vector-length-agnostic: the
+    // unavailable, the runtime VLEN is unknown or below 256 bits, or node[0]
+    // is empty. This keeps the kernel vector-length-agnostic: the
     // loop below still strip-mines any remainder with the returned `vl`.
-    const uint32_t vlenb = get_platform_vlen() / 8; // runtime VLEN in bytes
+    const uint32_t vlen = get_platform_vlen(); // runtime VLEN in bits
+    const uint32_t vlenb = vlen / 8;
     const uint32_t n0 = (uint32_t)prb_.nodes[0].n;
     LMUL lmul = LMUL::m1;
-    if (mayiuse(v) && vlenb >= 16 && n0 > 0) {
+    if (mayiuse(v) && vlen >= 256 && n0 > 0) {
         const uint32_t vlmax_m1 = vlenb / (uint32_t)itype_sz_;
         uint32_t lmul_val = 1;
         while (lmul_val < 8 && lmul_val * vlmax_m1 < n0)

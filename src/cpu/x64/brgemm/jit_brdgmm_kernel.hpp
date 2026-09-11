@@ -34,10 +34,10 @@ namespace cpu {
 namespace x64 {
 
 template <typename Wmm>
-struct jit_brdgmm_kernel_base_t : public brgemm_kernel_t {
-    jit_brdgmm_kernel_base_t(const brgemm_desc_t &abrd);
+struct jit_brdgmm_kernel_t : public brgemm_kernel_t {
+    jit_brdgmm_kernel_t(const brgemm_desc_t &abrd);
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brdgmm_kernel_base_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brdgmm_kernel_t)
 
     brgemm_desc_t brg;
 

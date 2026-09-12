@@ -533,8 +533,6 @@ bool any_vector_spill(const ir::ir_t &ir, const ir::reg_alloc_result_t &alloc) {
 }
 #endif
 
-} // namespace
-
 // generate() runs the full IR pipeline:
 //
 // - Build IR for the given `brgemm_desc_t` descriptor
@@ -599,6 +597,8 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
 private:
     brgemm_desc_t brg_;
 };
+
+} // namespace
 
 // Returns `status::success` if the descriptor is supported by the GEMM IR
 // kernel, otherwise `status::unimplemented`.

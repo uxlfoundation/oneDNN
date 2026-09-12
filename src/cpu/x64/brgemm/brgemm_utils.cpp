@@ -1114,9 +1114,9 @@ status_t brdgmm_blocking(brgemm_desc_t *brg) {
     n_block2 = static_cast<int>(nstl::min<dim_t>(max_n_block2, nb_n_block1));
 
     const int aux_vregs
-            = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_aux_vmm_count(*brg);
+            = jit_brdgmm_kernel_t<Xbyak::Zmm>::get_aux_vmm_count(*brg);
     const int compute_vregs
-            = jit_brdgmm_kernel_base_t<Xbyak::Zmm>::get_compute_vmm_count(*brg);
+            = jit_brdgmm_kernel_t<Xbyak::Zmm>::get_compute_vmm_count(*brg);
     const int bf16_emu_vregs = brg->is_bf16_emu * 4;
     const int postops_regs = brg->attr()
             ? injector::aux_vec_count(

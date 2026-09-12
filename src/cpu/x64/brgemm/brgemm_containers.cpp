@@ -15,7 +15,6 @@
 *******************************************************************************/
 
 #include "cpu/x64/brgemm/brgemm_containers.hpp"
-#include "cpu/x64/brgemm/jit_brdgmm_kernel.hpp"
 
 namespace dnnl {
 namespace impl {
@@ -92,11 +91,11 @@ int brgemm_desc_container_t::insert(brgemm_desc_t &brg,
 bool brgemm_kernel_container_t::brgemm_kernel_cmp(
         const std::shared_ptr<brgemm_kernel_t> &lhs,
         const std::shared_ptr<brgemm_kernel_t> &rhs) {
-    const auto lsz = lhs->get_jit_generator()->getSize();
-    const auto rsz = rhs->get_jit_generator()->getSize();
+    const auto lsz = lhs->getSize();
+    const auto rsz = rhs->getSize();
     if (lsz != rsz) return (lsz < rsz);
-    const auto lcode = lhs->get_jit_generator()->CodeGenerator::getCode();
-    const auto rcode = rhs->get_jit_generator()->CodeGenerator::getCode();
+    const auto lcode = lhs->CodeGenerator::getCode();
+    const auto rcode = rhs->CodeGenerator::getCode();
     return (std::memcmp(lcode, rcode, lsz) < 0);
 }
 

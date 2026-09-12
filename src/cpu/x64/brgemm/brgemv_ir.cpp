@@ -538,6 +538,8 @@ void build_gemv(const brgemm_desc_t &brg, ir::ir_t &ir) {
 
 } // namespace nontrans
 
+namespace {
+
 // generate() runs the full IR pipeline:
 //
 // - Build IR for the given `brgemm_desc_t` descriptor
@@ -549,13 +551,11 @@ void build_gemv(const brgemm_desc_t &brg, ir::ir_t &ir) {
 // while allowing different builder implementations to plug into the same
 // fixed sequence:
 // IR build -> register allocation -> preamble -> codegen -> postamble).
-struct jit_brgemv_ir_kernel_t : public jit_base_brgemm_kernel_t {
+struct jit_brgemv_ir_kernel_t : public brgemm_kernel_t {
     DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemv_ir_kernel_t)
 
     jit_brgemv_ir_kernel_t(const brgemm_desc_t &abrg)
-        : jit_base_brgemm_kernel_t(jit_name(), abrg.isa_impl), brg_(abrg) {}
-
-    const brgemm_desc_t &get_brg() const override { return brg_; }
+        : brgemm_kernel_t(jit_name(), abrg.isa_impl), brg_(abrg) {}
 
     void generate() override {
         // Build IR for non-transposed GEMV kernel
@@ -629,31 +629,7 @@ private:
     brgemm_desc_t brg_;
 };
 
-// TODO: Reorganize `brgemm_kernel_t` to avoid redundant inheritance.
-struct brgemv_ir_kernel_t : public brgemm_kernel_t {
-    brgemv_ir_kernel_t(const brgemm_desc_t &abrd)
-        : kernel_(new jit_brgemv_ir_kernel_t(abrd)) {}
-    ~brgemv_ir_kernel_t() override = default;
-
-    status_t create_kernel() override {
-        if (!kernel_) return status::out_of_memory;
-        return kernel_->create_kernel();
-    }
-
-    void operator()(const brgemm_kernel_params_t *params) const override {
-        (*kernel_)(params);
-    }
-
-    const jit_generator_t *get_jit_generator() const override {
-        return kernel_.get();
-    }
-
-    const brgemm_desc_t &get_brg() const override { return kernel_->get_brg(); }
-
-private:
-    std::unique_ptr<jit_brgemv_ir_kernel_t> kernel_;
-    DNNL_DISALLOW_COPY_AND_ASSIGN(brgemv_ir_kernel_t);
-};
+} // namespace
 
 // Returns `status::success` if the descriptor is supported by the GEMV IR
 // kernel, otherwise `status::unimplemented`.
@@ -750,7 +726,7 @@ status_t brgemv_ir_supported(const brgemm_desc_t &brg) {
 
 brgemm_kernel_t *create_brgemv_ir_kernel(const brgemm_desc_t &brg) {
     if (brgemv_ir_supported(brg) != status::success) return nullptr;
-    return new brgemv_ir_kernel_t(brg);
+    return new jit_brgemv_ir_kernel_t(brg);
 }
 
 } // namespace x64

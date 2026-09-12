@@ -23,6 +23,7 @@
 #include "cpu/platform.hpp"
 #include "cpu/x64/brgemm/brgemm.hpp"
 #include "cpu/x64/brgemm/brgemm_types.hpp"
+#include "cpu/x64/brgemm/jit_brgemm_amx_uker.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/injectors/jit_uni_postops_injector.hpp"
 #include "cpu/x64/jit_avx512_core_fp8cvt.hpp"
@@ -39,9 +40,9 @@ using namespace dnnl::impl::utils;
 using namespace injector_utils;
 using namespace Xbyak;
 
-struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
-    jit_brgemm_amx_uker_base_t(const brgemm_desc_t &abrg)
-        : jit_base_brgemm_kernel_t(jit_name(), abrg.isa_impl)
+struct jit_brgemm_amx_uker_t : public brgemm_kernel_t {
+    jit_brgemm_amx_uker_t(const brgemm_desc_t &abrg)
+        : brgemm_kernel_t(jit_name(), abrg.isa_impl)
         , brg(abrg)
         , postops_injector_(nullptr) {
 
@@ -137,11 +138,9 @@ struct jit_brgemm_amx_uker_base_t : public jit_base_brgemm_kernel_t {
         use_ils_ = brg.brgattr.use_interleave_stores && !brg.is_ace();
     }
 
-    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_amx_uker_base_t)
+    DECLARE_CPU_JIT_AUX_FUNCTIONS(jit_brgemm_amx_uker_t)
 
     brgemm_desc_t brg;
-
-    const brgemm_desc_t &get_brg() const override { return brg; }
 
 private:
     using po_injector_t = injector::jit_uni_postops_injector_t<Zmm>;
@@ -719,12 +718,11 @@ private:
 
     void fill_imap();
     void copy_k_tail_to_wsp(const Tmm &t1,
-            jit_brgemm_amx_uker_base_t::reg64_t &reg_base, dim_t src_offset,
-            jit_brgemm_amx_uker_base_t::reg64_t &reg_src_stride,
-            bool use_memadvice);
+            jit_brgemm_amx_uker_t::reg64_t &reg_base, dim_t src_offset,
+            jit_brgemm_amx_uker_t::reg64_t &reg_src_stride, bool use_memadvice);
 };
 
-bool jit_brgemm_amx_uker_base_t::bi_shift_output(
+bool jit_brgemm_amx_uker_t::bi_shift_output(
         brgemm_iteration_t &bi, int shift, brgemm_iteration_t &res_bi) {
     res_bi = bi;
     if (shift == 0) return true;
@@ -754,7 +752,7 @@ bool jit_brgemm_amx_uker_base_t::bi_shift_output(
     return true;
 }
 
-bool jit_brgemm_amx_uker_base_t::bi_shift_A(
+bool jit_brgemm_amx_uker_t::bi_shift_A(
         brgemm_iteration_t &bi, int shift, brgemm_iteration_t &res_bi) {
     res_bi = bi;
     const auto &tloop = imap_[bi.apply_postops];
@@ -774,7 +772,7 @@ bool jit_brgemm_amx_uker_base_t::bi_shift_A(
     return true;
 }
 
-bool jit_brgemm_amx_uker_base_t::bi_shift_B(
+bool jit_brgemm_amx_uker_t::bi_shift_B(
         brgemm_iteration_t &bi, int shift, brgemm_iteration_t &res_bi) {
     res_bi = bi;
     const auto &tloop = imap_[bi.apply_postops];
@@ -794,12 +792,12 @@ bool jit_brgemm_amx_uker_base_t::bi_shift_B(
     return true;
 }
 
-int jit_brgemm_amx_uker_base_t::get_C_tensor(
+int jit_brgemm_amx_uker_t::get_C_tensor(
         brgemm_iteration_t &bi, int m, int n) const noexcept {
     return brg.get_C_tensor(m, n, bi.bdi->is_tail(m), bi.ldi->is_tail(n));
 }
 
-void jit_brgemm_amx_uker_base_t::prepare_bd_mask() noexcept {
+void jit_brgemm_amx_uker_t::prepare_bd_mask() noexcept {
     if (!brg.brgattr.bd_mask_level) return;
     bd_mask_buffer_ptr_ = brg.brgattr.bd_mask;
     const auto bd_mask_size = brg.bcast_dim;
@@ -822,14 +820,14 @@ void jit_brgemm_amx_uker_base_t::prepare_bd_mask() noexcept {
         assert(!"struct nullptr error");
 }
 
-dim_t jit_brgemm_amx_uker_base_t::skipped_bd_mask(dim_t inp_bd) noexcept {
+dim_t jit_brgemm_amx_uker_t::skipped_bd_mask(dim_t inp_bd) noexcept {
     if (brg.brgattr.bd_mask_level != 2)
         return inp_bd;
     else
         return skipped_bd_mask_buffer_[inp_bd];
 }
 
-dim_t jit_brgemm_amx_uker_base_t::A_offset_wsp(
+dim_t jit_brgemm_amx_uker_t::A_offset_wsp(
         const brgemm_iteration_t &bi, int bdb, int rdb) const noexcept {
     // Full WSP buffer layout:
     //   1. partial C results.
@@ -849,7 +847,7 @@ dim_t jit_brgemm_amx_uker_base_t::A_offset_wsp(
     return transform_offset + bs_offs + bdb_offs + rdb_offs;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::A_offset(
+dim_t jit_brgemm_amx_uker_t::A_offset(
         const brgemm_iteration_t &bi, int bdb, int rdb) const noexcept {
     const auto bs_offs = (brg.type == brgemm_static_offs)
             ? brg.brgattr.static_offsets[bi.bsi->idx].offset.A
@@ -860,12 +858,12 @@ dim_t jit_brgemm_amx_uker_base_t::A_offset(
             + bi.rdi->pos(rdb) * brg.rd_block_A_size();
 }
 
-dim_t jit_brgemm_amx_uker_base_t::A_offset_line(const brgemm_iteration_t &bi,
+dim_t jit_brgemm_amx_uker_t::A_offset_line(const brgemm_iteration_t &bi,
         int bdb, int rdb, int bd_elem_idx) const noexcept {
     return A_offset(bi, bdb, rdb) + bd_elem_idx * LDA2_size_;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::B_offset(
+dim_t jit_brgemm_amx_uker_t::B_offset(
         const brgemm_iteration_t &bi, int ldb, int rdb) const noexcept {
     const auto bs_offs = (brg.type == brgemm_static_offs)
             ? brg.brgattr.static_offsets[bi.bsi->idx].offset.B
@@ -881,13 +879,13 @@ dim_t jit_brgemm_amx_uker_base_t::B_offset(
     return rdb_B_offset + ldb_B_offset + bs_offs;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::B_offset_line(const brgemm_iteration_t &bi,
+dim_t jit_brgemm_amx_uker_t::B_offset_line(const brgemm_iteration_t &bi,
         int ldb, int rdb, int rd_elem_idx) const noexcept {
     return B_offset(bi, ldb, rdb) + rd_elem_idx * LDB_size_;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::C_offset(const brgemm_iteration_t &bi,
-        int bdb, int inp_bd, dim_t ldb) const noexcept {
+dim_t jit_brgemm_amx_uker_t::C_offset(const brgemm_iteration_t &bi, int bdb,
+        int inp_bd, dim_t ldb) const noexcept {
     const auto bi_bd_start = get_out_bd(bi.bdi, 0, 0);
     const auto bd = get_out_bd(bi.bdi, bdb, inp_bd);
     const auto bd_shift = bd - (ununroll_bd_loop ? bi_bd_start : 0);
@@ -902,8 +900,8 @@ dim_t jit_brgemm_amx_uker_base_t::C_offset(const brgemm_iteration_t &bi,
 // ACE stores accumulators one row at a time, so the bd stride within a block is
 // LDC_size_ and not LDC2_size_M_, which matters when LDC2_M != LDC. The offset
 // between bdb blocks still uses LDC2_size_M_, as legacy AMX tilestored does.
-dim_t jit_brgemm_amx_uker_base_t::C_offset_row(const brgemm_iteration_t &bi,
-        int bdb, int inp_bd, dim_t ldb) const noexcept {
+dim_t jit_brgemm_amx_uker_t::C_offset_row(const brgemm_iteration_t &bi, int bdb,
+        int inp_bd, dim_t ldb) const noexcept {
     const auto bi_bd_start = get_out_bd(bi.bdi, 0, 0);
     const auto bdb_start = get_out_bd(bi.bdi, bdb, 0);
     const auto bdb_start_shift
@@ -916,37 +914,36 @@ dim_t jit_brgemm_amx_uker_base_t::C_offset_row(const brgemm_iteration_t &bi,
             + (dim_t)bloc_idx * LDC2_size_N_ + in_block * brg.typesize_C;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::D_offset(const brgemm_iteration_t &bi,
-        int bdb, int inp_bd, dim_t ldb) const noexcept {
+dim_t jit_brgemm_amx_uker_t::D_offset(const brgemm_iteration_t &bi, int bdb,
+        int inp_bd, dim_t ldb) const noexcept {
     const auto bi_bd_start = get_out_bd(bi.bdi, 0, 0);
     const auto bd = get_out_bd(bi.bdi, bdb, inp_bd);
     const auto bd_shift = bd - (ununroll_bd_loop ? bi_bd_start : 0);
     return (dim_t)bd_shift * LDD_size_ + (dim_t)ldb * ld_block_D_size_;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::lda() const noexcept {
+dim_t jit_brgemm_amx_uker_t::lda() const noexcept {
     return LDA_size_;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::ldb() const noexcept {
+dim_t jit_brgemm_amx_uker_t::ldb() const noexcept {
     return LDB_size_ * brg.rd_step;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::bias_offset(dim_t ldb) const noexcept {
+dim_t jit_brgemm_amx_uker_t::bias_offset(dim_t ldb) const noexcept {
     return ldb * ld_block_bias_size_;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::scales_offset(dim_t ldb) const noexcept {
+dim_t jit_brgemm_amx_uker_t::scales_offset(dim_t ldb) const noexcept {
     return brg.is_per_n_wei_scales * ldb * ld_block_scales_size_;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::zp_comp_a_offset(dim_t ldb) const noexcept {
+dim_t jit_brgemm_amx_uker_t::zp_comp_a_offset(dim_t ldb) const noexcept {
     return ldb * ld_block_zp_size_;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::zp_comp_pad_a_offset(
-        const brgemm_iteration_t &bi, int bdb, int inp_bd,
-        dim_t ldb) const noexcept {
+dim_t jit_brgemm_amx_uker_t::zp_comp_pad_a_offset(const brgemm_iteration_t &bi,
+        int bdb, int inp_bd, dim_t ldb) const noexcept {
     const auto bi_bd_start = get_out_bd(bi.bdi, 0, 0);
     const auto bd = get_out_bd(bi.bdi, bdb, inp_bd);
     const auto bd_shift = bd - (ununroll_bd_loop ? bi_bd_start : 0);
@@ -954,11 +951,11 @@ dim_t jit_brgemm_amx_uker_base_t::zp_comp_pad_a_offset(
             + (dim_t)ldb * ld_block_zp_size_;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::zp_comp_b_offset(dim_t bd) const noexcept {
+dim_t jit_brgemm_amx_uker_t::zp_comp_b_offset(dim_t bd) const noexcept {
     return sizeof(int32_t) * bd;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::zp_c_values_offset(
+dim_t jit_brgemm_amx_uker_t::zp_c_values_offset(
         brgemm_iteration_t &bi, int ldb) const noexcept {
     if (brg.zp_type_c == brgemm_broadcast_t::per_n) {
         return (bi.ldi->is_tail(ldb)) ? ldb_tail_zp_size_
@@ -968,9 +965,8 @@ dim_t jit_brgemm_amx_uker_base_t::zp_c_values_offset(
     return 0;
 }
 
-dim_t jit_brgemm_amx_uker_base_t::per_mn_comp_offset(
-        const brgemm_iteration_t &bi, int bdb, int inp_bd,
-        dim_t ldb) const noexcept {
+dim_t jit_brgemm_amx_uker_t::per_mn_comp_offset(const brgemm_iteration_t &bi,
+        int bdb, int inp_bd, dim_t ldb) const noexcept {
     const auto bi_bd_start = get_out_bd(bi.bdi, 0, 0);
     const auto bd = get_out_bd(bi.bdi, bdb, inp_bd);
     assert(bd >= 0);
@@ -983,14 +979,14 @@ dim_t jit_brgemm_amx_uker_base_t::per_mn_comp_offset(
                     + in_block);
 }
 
-bool jit_brgemm_amx_uker_base_t::is_out_bd(
+bool jit_brgemm_amx_uker_t::is_out_bd(
         const bd_iteration_t *bdi, int bdb, int inp_bd) const {
     const auto bd = bdi->pos(bdb) + inp_bd;
     return IMPLICATION(
             brg.brgattr.bd_mask_level, bdi->bd_mask[bd - bdi->pos(0)] != 0);
 }
 
-dim_t jit_brgemm_amx_uker_base_t::get_out_bd(
+dim_t jit_brgemm_amx_uker_t::get_out_bd(
         const bd_iteration_t *bdi, int bdb, int inp_bd) const {
     if (!is_out_bd(bdi, bdb, inp_bd)) return -1;
     const auto bd = bdi->pos(bdb) + inp_bd;
@@ -1002,13 +998,13 @@ dim_t jit_brgemm_amx_uker_base_t::get_out_bd(
 }
 
 template <typename U>
-U jit_brgemm_amx_uker_base_t::vmm_mask(const U &vmm_in, bool mask_flag,
-        bool store, Xbyak::Opmask ktail_mask) const {
+U jit_brgemm_amx_uker_t::vmm_mask(const U &vmm_in, bool mask_flag, bool store,
+        Xbyak::Opmask ktail_mask) const {
     return mask_flag ? (store ? vmm_in | ktail_mask : vmm_in | ktail_mask | T_z)
                      : vmm_in;
 }
 
-void jit_brgemm_amx_uker_base_t::cvt2ps(data_type_t type_in,
+void jit_brgemm_amx_uker_t::cvt2ps(data_type_t type_in,
         const Xbyak::Zmm &zmm_in, const Xbyak::Operand &op, bool mask_flag,
         bool store, Xbyak::Opmask ktail_mask) {
     const Xbyak::Zmm zmm = vmm_mask(zmm_in, mask_flag, store, ktail_mask);
@@ -1029,7 +1025,7 @@ void jit_brgemm_amx_uker_base_t::cvt2ps(data_type_t type_in,
     if (types::is_integral_dt(type_in)) vcvtdq2ps(zmm_in, zmm_in);
 }
 
-void jit_brgemm_amx_uker_base_t::read_params() {
+void jit_brgemm_amx_uker_t::read_params() {
     Label label_done;
 
     mov(reg_BS, ptr[param1 + GET_OFF(BS)]);
@@ -1103,7 +1099,7 @@ void jit_brgemm_amx_uker_base_t::read_params() {
     reg_D.save();
 }
 
-void jit_brgemm_amx_uker_base_t::load_accumulators(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::load_accumulators(brgemm_iteration_t &bi) {
     dim_t ils_shift = 0;
     if (may_load_accumulators_) {
         mov(reg_stride_ld_block, LDC_size_);
@@ -1135,7 +1131,7 @@ void jit_brgemm_amx_uker_base_t::load_accumulators(brgemm_iteration_t &bi) {
     }
 }
 
-void jit_brgemm_amx_uker_base_t::apply_alpha_beta_to_vector(
+void jit_brgemm_amx_uker_t::apply_alpha_beta_to_vector(
         int idx, const Address &addr, bool is_ld_tail) {
     auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
     auto zmm = Zmm(idx);
@@ -1183,7 +1179,7 @@ void jit_brgemm_amx_uker_base_t::apply_alpha_beta_to_vector(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
+void jit_brgemm_amx_uker_t::apply_post_ops_to_range(
         brgemm_iteration_t &bi, int bd_start, int bd_finish, int bdb, int ldb) {
     binary_injector::rhs_arg_dynamic_params_t rhs_arg_params;
     const auto ldb_pos = bi.ldi->pos(ldb);
@@ -1218,7 +1214,7 @@ void jit_brgemm_amx_uker_base_t::apply_post_ops_to_range(
             start_idx, finish_idx, rhs_arg_params);
 }
 
-void jit_brgemm_amx_uker_base_t::maybe_saturation(Xbyak::Zmm &zmm) {
+void jit_brgemm_amx_uker_t::maybe_saturation(Xbyak::Zmm &zmm) {
     if (!dt_requires_saturation_) return;
     // For ACE, zmm_lbound/zmm_ubound (zmm8/zmm9) are reused as ace_zmm_B
     // registers and clobbered during computation, so restore the saturation
@@ -1230,7 +1226,7 @@ void jit_brgemm_amx_uker_base_t::maybe_saturation(Xbyak::Zmm &zmm) {
             zmm, zmm_lbound, zmm_ubound, brg.dt_d, false, use_sat_cvt_);
 }
 
-void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers_ldb(
+void jit_brgemm_amx_uker_t::prepare_post_ops_registers_ldb(
         brgemm_iteration_t &bi, int ldb) {
     if (!bi.apply_postops) return;
     auto k_mask = (!bi.ldi->is_tail(ldb)) ? ld_full_mask : ld_tail_mask;
@@ -1264,8 +1260,7 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers_ldb(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
-        brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::prepare_post_ops_registers(brgemm_iteration_t &bi) {
     const auto ldi = bi.ldi;
 
     // Load wei_scales for per K-block application (is_per_k_wei_scales).
@@ -1432,7 +1427,7 @@ void jit_brgemm_amx_uker_base_t::prepare_post_ops_registers(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::uni_prefetch(
+void jit_brgemm_amx_uker_t::uni_prefetch(
         const Address &addr, brgemm_kernel_prefetching_t pft, bool for_write) {
     if (for_write) {
         switch (pft) {
@@ -1450,7 +1445,7 @@ void jit_brgemm_amx_uker_base_t::uni_prefetch(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::prefetch_CD_range(brgemm_iteration_t &bi,
+void jit_brgemm_amx_uker_t::prefetch_CD_range(brgemm_iteration_t &bi,
         brgemm_kernel_prefetching_t pft, int bd_start, int bd_finish, int bdb,
         int ldb) {
     const auto ldb_pos = bi.ldi->pos(ldb);
@@ -1477,14 +1472,14 @@ void jit_brgemm_amx_uker_base_t::prefetch_CD_range(brgemm_iteration_t &bi,
     }
 }
 
-dim_t jit_brgemm_amx_uker_base_t::calc_ops_CD(
+dim_t jit_brgemm_amx_uker_t::calc_ops_CD(
         brgemm_iteration_t &bi) const noexcept {
     const auto &tloop = imap_[bi.apply_postops];
     return static_cast<dim_t>(tloop.rdis.size()) * bi.ldi->block2()
             * bi.bdi->block2() * (brg.brgattr.var_bs ? 1 : brg.brgattr.max_bs);
 }
 
-void jit_brgemm_amx_uker_base_t::prefetch_CD(brgemm_iteration_t &bi,
+void jit_brgemm_amx_uker_t::prefetch_CD(brgemm_iteration_t &bi,
         brgemm_iteration_t &pfo_bi, prf_t &prf, bool prefetch_all) {
 
     const auto calc_ops = calc_ops_CD(bi);
@@ -1513,7 +1508,7 @@ void jit_brgemm_amx_uker_base_t::prefetch_CD(brgemm_iteration_t &bi,
     }
 }
 
-void jit_brgemm_amx_uker_base_t::prefetch_A(brgemm_iteration_t &bi,
+void jit_brgemm_amx_uker_t::prefetch_A(brgemm_iteration_t &bi,
         brgemm_iteration_t &pfo_bi, prf_t &prf, bool prefetch_all) {
 
     const auto calc_ops = bi.ldi->block2() * bi.bdi->block2();
@@ -1536,7 +1531,7 @@ void jit_brgemm_amx_uker_base_t::prefetch_A(brgemm_iteration_t &bi,
     }
 }
 
-void jit_brgemm_amx_uker_base_t::prefetch_B(brgemm_iteration_t &bi,
+void jit_brgemm_amx_uker_t::prefetch_B(brgemm_iteration_t &bi,
         brgemm_iteration_t &pfo_bi, prf_t &prf, bool prefetch_all) {
 
     const auto calc_ops = bi.ldi->block2() * bi.bdi->block2();
@@ -1561,7 +1556,7 @@ void jit_brgemm_amx_uker_base_t::prefetch_B(brgemm_iteration_t &bi,
     }
 }
 
-void jit_brgemm_amx_uker_base_t::prefetching(
+void jit_brgemm_amx_uker_t::prefetching(
         brgemm_iteration_t &bi, bool prefetch_all) {
     // for var_bs we do prefetch on last iteration by bs only
     if (brg.brgattr.var_bs && !bi.last_bsi) return;
@@ -1610,7 +1605,7 @@ void jit_brgemm_amx_uker_base_t::prefetching(
     if (!prefetch_all) maybe_sprinkle_prefetches();
 }
 
-void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
+void jit_brgemm_amx_uker_t::apply_comp_pad_to_vector(
         brgemm_iteration_t &bi, int bdb, int inp_bd, int ldb, const int idx) {
     const auto is_ld_tail = bi.ldi->is_tail(ldb);
     auto k_mask = (!is_ld_tail) ? ld_full_mask : ld_tail_mask;
@@ -1632,7 +1627,7 @@ void jit_brgemm_amx_uker_base_t::apply_comp_pad_to_vector(
     vaddps(zmm_masked, zmm, zmm_zp_comp_a);
 }
 
-void jit_brgemm_amx_uker_base_t::process_output_range(
+void jit_brgemm_amx_uker_t::process_output_range(
         brgemm_iteration_t &bi, int bd_start, int bd_finish, int bdb, int ldb) {
 
     const auto k_mask = bi.ldi->is_tail(ldb) ? ld_tail_mask : ld_full_mask;
@@ -1840,7 +1835,7 @@ void jit_brgemm_amx_uker_base_t::process_output_range(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
+void jit_brgemm_amx_uker_t::store_vector_with_post_ops(
         int idx, const Address &addr, bool is_ld_tail) {
     auto zmm = Zmm(idx);
 
@@ -1885,7 +1880,7 @@ void jit_brgemm_amx_uker_base_t::store_vector_with_post_ops(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::store_vector_without_post_ops(
+void jit_brgemm_amx_uker_t::store_vector_without_post_ops(
         int idx, const Address &addr, bool is_ld_tail, data_type_t dst_dt) {
     auto zmm = Zmm(idx);
 
@@ -1910,7 +1905,7 @@ void jit_brgemm_amx_uker_base_t::store_vector_without_post_ops(
         vmovups(addr, zmm);
 }
 
-void jit_brgemm_amx_uker_base_t::store_vector(
+void jit_brgemm_amx_uker_t::store_vector(
         brgemm_iteration_t &bi, int bdb, int inp_bd, int ldb) {
 
     if (!is_out_bd(bi.bdi, bdb, inp_bd)) return;
@@ -1941,7 +1936,7 @@ void jit_brgemm_amx_uker_base_t::store_vector(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::interleave_store(
+void jit_brgemm_amx_uker_t::interleave_store(
         brgemm_iteration_t &bi, bool store_all) {
 
     if (store_all) { prev_bi_ = bi; }
@@ -2002,7 +1997,7 @@ void jit_brgemm_amx_uker_base_t::interleave_store(
     ils_bdb_ = cur_bdb;
 }
 
-void jit_brgemm_amx_uker_base_t::store_accumulators(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::store_accumulators(brgemm_iteration_t &bi) {
 
     const auto store_by_vectors = get_store_by_vectors(bi.apply_postops);
 
@@ -2063,7 +2058,7 @@ void jit_brgemm_amx_uker_base_t::store_accumulators(brgemm_iteration_t &bi) {
     }
 }
 
-void jit_brgemm_amx_uker_base_t::set_A_B_matrices(dim_t bs) {
+void jit_brgemm_amx_uker_t::set_A_B_matrices(dim_t bs) {
     if (one_of(brg.type, brgemm_static_offs)) return;
     assert(one_of(brg.type, brgemm_addr, brgemm_offs));
     if (brg.brgattr.max_bs == 1) return;
@@ -2105,7 +2100,7 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices(dim_t bs) {
     }
 }
 
-void jit_brgemm_amx_uker_base_t::set_A_B_matrices() {
+void jit_brgemm_amx_uker_t::set_A_B_matrices() {
     if (one_of(brg.type, brgemm_static_offs)) return;
     assert(one_of(brg.type, brgemm_addr, brgemm_offs));
     assert(brg.brgattr.var_bs);
@@ -2136,7 +2131,7 @@ void jit_brgemm_amx_uker_base_t::set_A_B_matrices() {
     }
 }
 
-void jit_brgemm_amx_uker_base_t::maybe_sprinkle_prefetches() {
+void jit_brgemm_amx_uker_t::maybe_sprinkle_prefetches() {
     auto jit_prefetches
             = [&](prf_sprinkled_t &prf_sprinkled, Xbyak::Reg64 base) {
         // Calculate the number of cache lines to jit
@@ -2168,7 +2163,7 @@ void jit_brgemm_amx_uker_base_t::maybe_sprinkle_prefetches() {
 
     current_num_amx_ops++;
 }
-void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
+void jit_brgemm_amx_uker_t::maybe_tileloadd_nt(
         brgemm_iteration_t &bi, matrix_kind_t mk, int xdb, dim_t offset) {
 
     const bool is_A = mk == matrix_kind_t::matrix_A;
@@ -2209,7 +2204,7 @@ void jit_brgemm_amx_uker_base_t::maybe_tileloadd_nt(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::maybe_fused_copy_A_nt_load(
+void jit_brgemm_amx_uker_t::maybe_fused_copy_A_nt_load(
         brgemm_iteration_t &bi, int bdb) {
     auto t1 = Tmm(brg.get_A_tensor(bdb, bi.bdi->is_tail(bdb)));
 
@@ -2249,9 +2244,8 @@ void jit_brgemm_amx_uker_base_t::maybe_fused_copy_A_nt_load(
         load_a_tile_from_wsp();
     };
 }
-void jit_brgemm_amx_uker_base_t::maybe_tilestore(brgemm_iteration_t &bi,
-        int bdb_idx, int ldb_idx, bool do_pre_tilestore,
-        bool do_post_tilestore) {
+void jit_brgemm_amx_uker_t::maybe_tilestore(brgemm_iteration_t &bi, int bdb_idx,
+        int ldb_idx, bool do_pre_tilestore, bool do_post_tilestore) {
     if (bi.skip_accumulation) return;
     auto current_tensor_idx = get_C_tensor(bi, bdb_idx, ldb_idx);
 
@@ -2295,7 +2289,7 @@ void jit_brgemm_amx_uker_base_t::maybe_tilestore(brgemm_iteration_t &bi,
     tilezero(acc);
 }
 
-void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
+void jit_brgemm_amx_uker_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
         int ldb_idx, bool do_pre_tilestore, bool do_post_tilestore) {
     prefetching(bi, false);
     maybe_tilestore(bi, bdb_idx, ldb_idx, do_pre_tilestore, false);
@@ -2336,7 +2330,7 @@ void jit_brgemm_amx_uker_base_t::tdpbxxd(brgemm_iteration_t &bi, int bdb_idx,
 
 // This method up-converts the data from bf8 to f16 and saves at reg_buf.
 // Generally used by matrix_A, where no vnni transformation of data is needed.
-void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert(brgemm_iteration_t &bi,
+void jit_brgemm_amx_uker_t::fp8_to_f16_upconvert(brgemm_iteration_t &bi,
         int num_rows, int tile_num_col_bytes, reg64_t reg_data, dim_t offset,
         reg64_t reg_data_stride, reg64_t reg_buf, data_type_t dt) {
     const auto rd_block = bi.rdi->block(0);
@@ -2373,7 +2367,7 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert(brgemm_iteration_t &bi,
 
 // This method down-converts the data from f32 to bf16 and saves at reg_buf.
 // Generally used by matrix_A, where no vnni transformation of data is needed.
-void jit_brgemm_amx_uker_base_t::bf32_downconvert(brgemm_iteration_t &bi,
+void jit_brgemm_amx_uker_t::bf32_downconvert(brgemm_iteration_t &bi,
         int num_rows, int tile_num_col_bytes, reg64_t reg_data, dim_t offset,
         reg64_t reg_data_stride, reg64_t reg_buf) {
     const auto rd_block = bi.rdi->block(0);
@@ -2416,10 +2410,9 @@ void jit_brgemm_amx_uker_base_t::bf32_downconvert(brgemm_iteration_t &bi,
 
 // This method up-converts and transforms the data from fp8_vnni to f16_vnni
 // format. Generally used by matrix_B.
-void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert_to_vnni(
-        brgemm_iteration_t &bi, int num_rows, int tile_num_col_bytes,
-        reg64_t reg_data, dim_t offset, reg64_t reg_data_stride,
-        reg64_t reg_buf, data_type_t dt) {
+void jit_brgemm_amx_uker_t::fp8_to_f16_upconvert_to_vnni(brgemm_iteration_t &bi,
+        int num_rows, int tile_num_col_bytes, reg64_t reg_data, dim_t offset,
+        reg64_t reg_data_stride, reg64_t reg_buf, data_type_t dt) {
     const int num_cols_ele = tile_num_col_bytes / 2; // 32 for full tile
     const int num_N = num_cols_ele / 2; // 16 for full tile
     const auto zmm_2 = zmm_tmp_2();
@@ -2454,10 +2447,9 @@ void jit_brgemm_amx_uker_base_t::fp8_to_f16_upconvert_to_vnni(
 
 // This method down-converts and transforms the data from f32 to bf16_vnni
 // format. Generally used by matrix_B.
-void jit_brgemm_amx_uker_base_t::bf32_downconvert_to_vnni(
-        brgemm_iteration_t &bi, int num_rows, int tile_num_col_bytes,
-        reg64_t reg_data, dim_t offset, reg64_t reg_data_stride,
-        reg64_t reg_buf) {
+void jit_brgemm_amx_uker_t::bf32_downconvert_to_vnni(brgemm_iteration_t &bi,
+        int num_rows, int tile_num_col_bytes, reg64_t reg_data, dim_t offset,
+        reg64_t reg_data_stride, reg64_t reg_buf) {
     const auto num_cols_ele = tile_num_col_bytes / sizeof(bfloat16_t);
     const auto num_N = num_cols_ele / sizeof(bfloat16_t);
     const auto col_tail = num_N % simd_w;
@@ -2515,7 +2507,7 @@ void jit_brgemm_amx_uker_base_t::bf32_downconvert_to_vnni(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
+void jit_brgemm_amx_uker_t::maybe_pre_process_data(brgemm_iteration_t &bi,
         const Tmm &t1, reg64_t reg_base, dim_t offset, reg64_t reg_stride,
         matrix_kind_t mk) {
 
@@ -2591,7 +2583,7 @@ void jit_brgemm_amx_uker_base_t::maybe_pre_process_data(brgemm_iteration_t &bi,
     if (buf_offt) sub(reg_buf, buf_offt);
 }
 
-void jit_brgemm_amx_uker_base_t::pre_process_k_tail_fused_copy_a(
+void jit_brgemm_amx_uker_t::pre_process_k_tail_fused_copy_a(
         brgemm_iteration_t &bi, int bdb, const Tmm &t1, reg64_t reg_base,
         dim_t offset_src, dim_t offset_dst, bool mem_advice_A) {
     if (offset_dst) add(reg_buf, offset_dst);
@@ -2599,9 +2591,9 @@ void jit_brgemm_amx_uker_base_t::pre_process_k_tail_fused_copy_a(
     if (offset_dst) sub(reg_buf, offset_dst);
 }
 
-bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
-        brgemm_iteration_t &bi, const Tmm &t1, reg64_t reg_base, dim_t offset,
-        reg64_t reg_stride, matrix_kind_t mk, bool use_memadvice) {
+bool jit_brgemm_amx_uker_t::maybe_pre_process_k_tail(brgemm_iteration_t &bi,
+        const Tmm &t1, reg64_t reg_base, dim_t offset, reg64_t reg_stride,
+        matrix_kind_t mk, bool use_memadvice) {
     const auto &tloop = imap_[bi.apply_postops];
 
     // With the extendable_k strategy matrix B is zero-padded along the K
@@ -2632,10 +2624,9 @@ bool jit_brgemm_amx_uker_base_t::maybe_pre_process_k_tail(
     if (transform_offset) sub(reg_buf, transform_offset);
     return true;
 }
-void jit_brgemm_amx_uker_base_t::copy_k_tail_to_wsp(const Tmm &t1,
-        jit_brgemm_amx_uker_base_t::reg64_t &reg_base, dim_t src_offset,
-        jit_brgemm_amx_uker_base_t::reg64_t &reg_src_stride,
-        bool use_memadvice) {
+void jit_brgemm_amx_uker_t::copy_k_tail_to_wsp(const Tmm &t1,
+        jit_brgemm_amx_uker_t::reg64_t &reg_base, dim_t src_offset,
+        jit_brgemm_amx_uker_t::reg64_t &reg_src_stride, bool use_memadvice) {
     const int max_tiles = amx::get_max_palette_size();
     JIT_ASSERT(t1.getIdx() >= 0 && t1.getIdx() < max_tiles);
     const auto num_rows = palette_.rows[t1.getIdx()];
@@ -2683,7 +2674,7 @@ void jit_brgemm_amx_uker_base_t::copy_k_tail_to_wsp(const Tmm &t1,
     }
 }
 
-void jit_brgemm_amx_uker_base_t::ace_load_A_4x16bytes(
+void jit_brgemm_amx_uker_t::ace_load_A_4x16bytes(
         const Zmm &zmm, size_t mask, const Reg64 &reg_A, dim_t offset) {
     constexpr size_t full_mask = 0xFFFF;
     constexpr size_t all_full_mask = 0xFFFFFFFFFFFFFFFF;
@@ -2715,7 +2706,7 @@ void jit_brgemm_amx_uker_base_t::ace_load_A_4x16bytes(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::ace_load_A(
+void jit_brgemm_amx_uker_t::ace_load_A(
         brgemm_iteration_t &bi, int bdb, dim_t offset) {
 
     // ACE inputs are fetched through ZMMs rather than TILELOADD/TILELOADDT1.
@@ -2801,7 +2792,7 @@ void jit_brgemm_amx_uker_base_t::ace_load_A(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::ace_load_B(
+void jit_brgemm_amx_uker_t::ace_load_B(
         brgemm_iteration_t &bi, int ldb, dim_t offset, int rdstep) {
     // if rdstep is -1, then we load all registers for this ldb
     const auto start_rdstep = (rdstep == -1) ? 0 : rdstep;
@@ -2839,7 +2830,7 @@ void jit_brgemm_amx_uker_base_t::ace_load_B(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::outer_product(
+void jit_brgemm_amx_uker_t::outer_product(
         const Zmm &zmm_a, const Zmm &zmm_b, const Tmm &accm) {
     using namespace data_type;
     if (brg.dt_a == bf16 && brg.dt_b == bf16) {
@@ -2857,7 +2848,7 @@ void jit_brgemm_amx_uker_base_t::outer_product(
     }
 }
 
-void jit_brgemm_amx_uker_base_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
     prf0A.reset();
     prf1A.reset();
     prf2A.reset();
@@ -2901,7 +2892,7 @@ void jit_brgemm_amx_uker_base_t::gemm_microkernel_ace(brgemm_iteration_t &bi) {
     }
 }
 
-void jit_brgemm_amx_uker_base_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
     prf0A.reset();
     prf1A.reset();
     prf2A.reset();
@@ -2949,14 +2940,14 @@ void jit_brgemm_amx_uker_base_t::gemm_microkernel_amx(brgemm_iteration_t &bi) {
             do_post_tilestore);
 }
 
-void jit_brgemm_amx_uker_base_t::rdb_loop_body(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::rdb_loop_body(brgemm_iteration_t &bi) {
     if (brg.is_ace())
         gemm_microkernel_ace(bi);
     else
         gemm_microkernel_amx(bi);
 }
 
-void jit_brgemm_amx_uker_base_t::rdb_loop(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::rdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];
     for (auto &rdi : tloop.rdis) {
         bi.rdi = &rdi;
@@ -2964,7 +2955,7 @@ void jit_brgemm_amx_uker_base_t::rdb_loop(brgemm_iteration_t &bi) {
     }
 }
 
-void jit_brgemm_amx_uker_base_t::bs_loop_body(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::bs_loop_body(brgemm_iteration_t &bi) {
     if (brg.brgattr.var_bs) {
         set_A_B_matrices();
         reg_aux1_batch.restore();
@@ -2978,7 +2969,7 @@ void jit_brgemm_amx_uker_base_t::bs_loop_body(brgemm_iteration_t &bi) {
     rdb_loop(bi);
 }
 
-void jit_brgemm_amx_uker_base_t::bs_loop(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::bs_loop(brgemm_iteration_t &bi) {
     if (ununroll_bd_loop && bi.bdi->similar != nullptr) {
         // there is code for this iteration already, so we need to store
         // prev_bi_ only
@@ -3078,7 +3069,7 @@ void jit_brgemm_amx_uker_base_t::bs_loop(brgemm_iteration_t &bi) {
     }
 }
 
-void jit_brgemm_amx_uker_base_t::ldb_loop_body(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::ldb_loop_body(brgemm_iteration_t &bi) {
     if (brg.innermost_loop == brgemm_bd_loop_innermost)
         bdb_loop(bi);
     else if (brg.innermost_loop == brgemm_ld_loop_innermost)
@@ -3087,7 +3078,7 @@ void jit_brgemm_amx_uker_base_t::ldb_loop_body(brgemm_iteration_t &bi) {
         assert(!"Unknown loop order!");
 }
 
-void jit_brgemm_amx_uker_base_t::ldb_loop(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::ldb_loop(brgemm_iteration_t &bi) {
     // clear the transform cache for A, as the existing data is invalid as
     // we move to next bdb2 block.
     const auto &tloop = imap_[bi.apply_postops];
@@ -3098,8 +3089,7 @@ void jit_brgemm_amx_uker_base_t::ldb_loop(brgemm_iteration_t &bi) {
     }
 }
 
-jit_brgemm_amx_uker_base_t::bd_iteration_t *
-jit_brgemm_amx_uker_base_t::find_similar(
+jit_brgemm_amx_uker_t::bd_iteration_t *jit_brgemm_amx_uker_t::find_similar(
         const bd_iteration_t *bdi, bool apply_postops) {
     auto &tloop = imap_[apply_postops];
     const auto cidx = bdi->idx;
@@ -3118,7 +3108,7 @@ jit_brgemm_amx_uker_base_t::find_similar(
     return nullptr;
 }
 
-void jit_brgemm_amx_uker_base_t::bdb_loop_body(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::bdb_loop_body(brgemm_iteration_t &bi) {
     auto &tloop = imap_[bi.apply_postops];
     if (ununroll_bd_loop) {
         const auto cidx = bi.bdi->idx;
@@ -3143,7 +3133,7 @@ void jit_brgemm_amx_uker_base_t::bdb_loop_body(brgemm_iteration_t &bi) {
     if (ununroll_bd_loop) { jmp(reg_iter_label); }
 }
 
-void jit_brgemm_amx_uker_base_t::bdb_loop(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::bdb_loop(brgemm_iteration_t &bi) {
     const auto &tloop = imap_[bi.apply_postops];
     Label iteration_pointers;
     if (ununroll_bd_loop) {
@@ -3171,7 +3161,7 @@ void jit_brgemm_amx_uker_base_t::bdb_loop(brgemm_iteration_t &bi) {
     }
 }
 
-void jit_brgemm_amx_uker_base_t::top_loop(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::top_loop(brgemm_iteration_t &bi) {
     reg_C.restore();
     reg_D.restore();
     init(bi);
@@ -3204,7 +3194,7 @@ void jit_brgemm_amx_uker_base_t::top_loop(brgemm_iteration_t &bi) {
     interleave_store(bi, true);
 }
 
-void jit_brgemm_amx_uker_base_t::fill_imap() {
+void jit_brgemm_amx_uker_t::fill_imap() {
     for (bool apply_postops : {false, true}) {
         auto &tloop = imap_[apply_postops];
 
@@ -3391,7 +3381,7 @@ void jit_brgemm_amx_uker_base_t::fill_imap() {
     }
 }
 
-void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
+void jit_brgemm_amx_uker_t::init(brgemm_iteration_t &bi) {
     was_prev_bi_ = false;
     const auto bdb2_to_unroll = nstl::max<dim_t>(0,
             brg.bdb2
@@ -3490,7 +3480,7 @@ void jit_brgemm_amx_uker_base_t::init(brgemm_iteration_t &bi) {
     prf1C.set(brgemm_prf1, brg.prfC.dist1);
 }
 
-void jit_brgemm_amx_uker_base_t::generate() {
+void jit_brgemm_amx_uker_t::generate() {
     preamble();
 
     sub(rsp, regscratchpad_.Size());
@@ -3642,23 +3632,8 @@ void jit_brgemm_amx_uker_base_t::generate() {
     }
 }
 
-brgemm_amx_uker_t::brgemm_amx_uker_t(const brgemm_desc_t &abrd)
-    : brgemm_kernel_(new jit_brgemm_amx_uker_base_t(abrd)) {}
-
-status_t brgemm_amx_uker_t::create_kernel() {
-    return brgemm_kernel_->create_kernel();
-}
-
-void brgemm_amx_uker_t::operator()(const brgemm_kernel_params_t *params) const {
-    (*brgemm_kernel_)(params);
-}
-
-const jit_generator_t *brgemm_amx_uker_t::get_jit_generator() const {
-    return brgemm_kernel_;
-}
-
-brgemm_amx_uker_t::~brgemm_amx_uker_t() {
-    delete brgemm_kernel_;
+brgemm_kernel_t *create_brgemm_amx_uker_kernel(const brgemm_desc_t &brg) {
+    return new jit_brgemm_amx_uker_t(brg);
 }
 
 } // namespace x64

@@ -45,6 +45,17 @@ using namespace Xbyak_riscv;
     static_cast<int32_t>(offsetof( \
             jit_rvv_softmax_f32_reduce_max_kernel_t::call_params_t, field))
 
+template <bool gather>
+const jit_rvv_softmax_xf16_strided_kernel_t &get_xf16_strided_kernel() {
+    static const jit_rvv_softmax_xf16_strided_kernel_t kernel(gather);
+    return kernel;
+}
+
+template const jit_rvv_softmax_xf16_strided_kernel_t &
+get_xf16_strided_kernel<true>();
+template const jit_rvv_softmax_xf16_strided_kernel_t &
+get_xf16_strided_kernel<false>();
+
 namespace {
 
 template <bool src_f32, data_type_t dt>
@@ -57,8 +68,7 @@ void dispatch_xf16_affine(
 template <bool gather>
 void dispatch_xf16_strided(
         const jit_rvv_softmax_xf16_strided_kernel_t::call_params_t *p) {
-    static const jit_rvv_softmax_xf16_strided_kernel_t kernel(gather);
-    kernel(p);
+    get_xf16_strided_kernel<gather>()(p);
 }
 
 template <data_type_t dt>

@@ -169,6 +169,10 @@ private:
     status_t execute_forward(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
     std::unique_ptr<jit_rvv_softmax_affine_kernel_t> affine_kernel_;
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    const jit_rvv_softmax_xf16_strided_kernel_t *gather_kernel_ = nullptr;
+    const jit_rvv_softmax_xf16_strided_kernel_t *scatter_kernel_ = nullptr;
+#endif
 };
 
 } // namespace rv64

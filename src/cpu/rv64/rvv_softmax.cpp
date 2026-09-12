@@ -34,6 +34,15 @@ rvv_softmax_fwd_t::rvv_softmax_fwd_t(const pd_t *apd) : primitive_t(apd) {
     if (pd()->use_jit_) {
         affine_kernel_.reset(new jit_rvv_softmax_affine_kernel_t());
     }
+#if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
+    // Resolve the process-wide kernels during primitive creation so the
+    // strided hot path can bypass the function-local static guards.
+    if (utils::one_of(pd()->rsp_.data_type, data_type::f16, data_type::bf16)
+            && pd()->rsp_.inner_size > 1) {
+        gather_kernel_ = &get_xf16_strided_kernel<true>();
+        scatter_kernel_ = &get_xf16_strided_kernel<false>();
+    }
+#endif
 }
 
 namespace {
@@ -213,7 +222,9 @@ void compute_softmax_xf16_rvv(const T *src, T *dst, dim_t len,
 template <typename T, data_type_t dt>
 void execute_xf16(const void *src, void *dst, const rvv_softmax_conf_t &rsp,
         dim_t outer_stride, int nthr, bool is_softmax_inf_as_zero,
-        float *reduction, char *scratch) {
+        float *reduction, char *scratch,
+        const jit_rvv_softmax_xf16_strided_kernel_t *gather_kernel,
+        const jit_rvv_softmax_xf16_strided_kernel_t *scatter_kernel) {
     const T *src_p = static_cast<const T *>(src);
     T *dst_p = static_cast<T *>(dst);
 
@@ -253,14 +264,16 @@ void execute_xf16(const void *src, void *dst, const rvv_softmax_conf_t &rsp,
             const dim_t i = idx % rsp.inner_size;
             const dim_t base = outer * outer_stride + i;
 
-            jit_rvv_softmax_xf16_gather(
-                    src_p + base, tmp, rsp.axis_size, stride_bytes);
+            jit_rvv_softmax_xf16_strided_kernel_t::call_params_t gp {
+                    src_p + base, tmp, rsp.axis_size, stride_bytes};
+            (*gather_kernel)(&gp);
 
             compute_softmax_xf16_rvv<T, dt>(tmp, tmp, rsp.axis_size,
                     rsp.is_logsoftmax, is_softmax_inf_as_zero, reduction_tmp);
 
-            jit_rvv_softmax_xf16_scatter(
-                    tmp, dst_p + base, rsp.axis_size, stride_bytes);
+            jit_rvv_softmax_xf16_strided_kernel_t::call_params_t sp {
+                    tmp, dst_p + base, rsp.axis_size, stride_bytes};
+            (*scatter_kernel)(&sp);
         }
     });
 }
@@ -360,11 +373,11 @@ status_t rvv_softmax_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             if (rsp.data_type == data_type::bf16)
                 execute_xf16<dnnl::impl::bfloat16_t, data_type::bf16>(src, dst,
                         rsp, outer_stride, nthr, is_softmax_inf_as_zero,
-                        reduction, scratch);
+                        reduction, scratch, gather_kernel_, scatter_kernel_);
             else
                 execute_xf16<dnnl::impl::float16_t, data_type::f16>(src, dst,
                         rsp, outer_stride, nthr, is_softmax_inf_as_zero,
-                        reduction, scratch);
+                        reduction, scratch, gather_kernel_, scatter_kernel_);
         } break;
 #endif
         default: return status::unimplemented;

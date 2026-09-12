@@ -538,6 +538,8 @@ void build_gemv(const brgemm_desc_t &brg, ir::ir_t &ir) {
 
 } // namespace nontrans
 
+namespace {
+
 // generate() runs the full IR pipeline:
 //
 // - Build IR for the given `brgemm_desc_t` descriptor
@@ -626,6 +628,8 @@ struct jit_brgemv_ir_kernel_t : public brgemm_kernel_t {
 private:
     brgemm_desc_t brg_;
 };
+
+} // namespace
 
 // Returns `status::success` if the descriptor is supported by the GEMV IR
 // kernel, otherwise `status::unimplemented`.

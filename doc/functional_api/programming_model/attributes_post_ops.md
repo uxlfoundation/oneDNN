@@ -303,6 +303,33 @@ The binary post-op thus becomes:
 
 There is no broadcasting support for the conditional tensor.
 
+@anchor dev_guide_attributes_post_ops_binary_inplace
+#### In-place binary post-ops
+
+In-place binary post-ops are a subclass of the binary post-op algorithms. An
+algorithm of this subclass behaves exactly like its regular counterpart, with a
+single exception: its \f$Source\_1\f$ memory object is allowed to alias the
+destination memory object of the primitive the post-op is attached to. In that
+case the post-op reads the data the destination holds on entry, the same way
+the [Sum](@ref dev_guide_attributes_post_ops_sum) post-op does. Aliasing is
+defined for this subclass only; handing the destination to a regular binary
+post-op as \f$Source\_1\f$ is undefined behavior.
+
+At the moment the subclass contains a single algorithm,
+#dnnl::algorithm::binary_mul_inplace.
+
+The subclass carries the following limitations:
+* Algorithms of this subclass are meant for post-ops only. In particular, the
+  standalone @ref dev_guide_binary primitive does not accept them.
+* Only the matmul primitive supports in-place binary post-ops, on both the CPU
+  and the GPU engines.
+* The \f$Source\_1\f$ memory descriptor must have the same data type and the
+  same dimensions as the destination memory descriptor; broadcasting is not
+  supported.
+* The \f$Source\_1\f$ memory descriptor must either describe the same format as
+  the destination memory descriptor or be created with
+  #dnnl::memory::format_tag::any.
+
 @anchor dev_guide_attributes_post_ops_prelu
 ### Prelu Post-op
 

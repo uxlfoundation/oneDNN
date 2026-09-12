@@ -269,6 +269,8 @@ status_t matmul_attr_check(const matmul_desc_t &desc, const engine_t *engine,
             | smask_t::rounding_mode;
     // Matmul supports scales for floating point data types
     attr_mask |= smask_t::scales_data_type;
+    // Matmul supports in-place post-ops, both on CPU and on GPU
+    attr_mask |= smask_t::post_ops_inplace;
 
     const bool src_is_int8
             = utils::one_of(src_dt, data_type::s8, data_type::u8);

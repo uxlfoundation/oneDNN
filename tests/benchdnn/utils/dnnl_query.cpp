@@ -124,11 +124,21 @@ bool query_post_ops_has_kind(
 }
 
 bool query_post_ops_has_binary_alg_kind(
-        const_dnnl_post_ops_t post_ops, int idx, dnnl_alg_kind_t alg) {
-    dnnl_alg_kind_t po_alg = dnnl_alg_kind_undef;
-    const auto status = dnnl_post_ops_get_params_binary_v2(
-            post_ops, idx, &po_alg, nullptr, nullptr);
-    return (status == dnnl_success && po_alg == alg);
+        const_dnnl_post_ops_t post_ops, dnnl_alg_kind_t alg, int idx) {
+    int bgn = (idx >= 0) ? idx : 0;
+    int end = (idx >= 0) ? idx + 1 : dnnl_post_ops_len(post_ops);
+    for (int idx_ = bgn; idx_ < end; idx_++) {
+        dnnl_alg_kind_t po_alg = dnnl_alg_kind_undef;
+        const auto status = dnnl_post_ops_get_params_binary_v2(
+                post_ops, idx_, &po_alg, nullptr, nullptr);
+        if ((status == dnnl_success) && (po_alg == alg)) return true;
+    }
+    return false;
+}
+bool query_post_ops_has_binary_alg_kind(
+        dnnl_primitive_t prim, dnnl_alg_kind_t alg, int idx) {
+    return query_post_ops_has_binary_alg_kind(
+            query_post_ops(query_pd(prim)), alg, idx);
 }
 
 dnnl_scratchpad_mode_t query_scratchpad_mode(const_dnnl_primitive_attr_t attr) {

@@ -369,6 +369,7 @@ struct attr_t {
             MAX,
             MIN,
             MUL,
+            MUL_INPLACE,
             NE,
             SELECT,
             SUB,
@@ -439,6 +440,7 @@ struct attr_t {
             bool is_eltwise_kind() const;
             bool is_binary_kind() const;
             bool is_binary_kind_with_ternary_op() const;
+            bool is_binary_kind_inplace() const;
             bool is_prelu_kind() const;
         };
 
@@ -452,6 +454,8 @@ struct attr_t {
         int convolution_index() const;
         int binary_index() const;
         int prelu_index() const;
+
+        bool has_inplace_binary() const;
 
         // Note: this function is used only in reference compute paths.
         //

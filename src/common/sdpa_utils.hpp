@@ -185,7 +185,22 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
     if (kq_attr && !kq_attr->has_default_values()) {
         const auto &sc = kq_attr->scales_;
         const auto &zp = kq_attr->zero_points_;
-        if (!sc.has_default_values()) {
+        // Scales under DNNL_ARG_SRC dequantize Q; those under DNNL_ARG_WEIGHTS
+        // dequantize K. Both ride in on the KQ attribute
+        if (!sc.has_default_values(DNNL_ARG_SRC)) {
+            const auto &scale_dt = sc.get_data_type(DNNL_ARG_SRC);
+            VCHECK_SDPA_ATTR_TYPE(utils::one_of(scale_dt, f16, bf16, f32),
+                    kq_attr, "scales", "f16, bf16, or f32");
+
+            // By default, host scalar scales are not supported for GPU
+            // as the value should be accessed differently in the kernel
+            VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                       !sc.get(DNNL_ARG_SRC).is_host_scalar()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+        }
+        VCHECK_SDPA_UNIMPL(zp.has_default_values(DNNL_ARG_SRC),
+                "zero points are not supported for the Q tensor");
+        if (!sc.has_default_values(DNNL_ARG_WEIGHTS)) {
             const auto &scale_dt = sc.get_data_type(DNNL_ARG_WEIGHTS);
             VCHECK_SDPA_ATTR_TYPE(utils::one_of(scale_dt, f16, bf16, f32),
                     kq_attr, "scales", "f16, bf16, or f32");
@@ -260,6 +275,28 @@ static inline status_t sdpa_attr_check(const memory_desc_t *dst_desc,
     return status::success;
 }
 
+static inline status_t sdpa_q_scales_check(const memory_desc_t *q_md,
+        dim_t kv_head_number, dim_t q_scale_head_number,
+        const primitive_attr_t *kq_attr) {
+    const bool with_q_scales
+            = kq_attr && !kq_attr->scales_.has_default_values(DNNL_ARG_SRC);
+
+    VCHECK_SDPA_COND(IMPLICATION(q_scale_head_number != 0, with_q_scales),
+            "q_scale_head_number(%ld) was set but no query scales were "
+            "provided",
+            static_cast<long int>(q_scale_head_number));
+
+    if (q_scale_head_number == 0) return status::success;
+    VCHECK_SDPA_COND(
+            utils::one_of(q_scale_head_number, q_md->dims[1], kv_head_number),
+            "q_scale_head_number(%ld) must be either the number of query "
+            "heads(%ld) or the number of KV heads(%ld)",
+            static_cast<long int>(q_scale_head_number),
+            static_cast<long int>(q_md->dims[1]),
+            static_cast<long int>(kv_head_number));
+    return status::success;
+}
+
 static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         const memory_desc_t *k_md, const memory_desc_t *v_md,
         const memory_desc_t *dst_md, const memory_desc_t *attn_mask_md,
@@ -267,14 +304,18 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         bool invert_scale, dim_t kv_head_number,
         attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
         prop_kind_t prop, const primitive_attr_t *kq_attr,
-        const primitive_attr_t *vs_attr) {
+        const primitive_attr_t *vs_attr, dim_t q_scale_head_number = 0) {
     auto sdpa_desc = sdpa_desc_t();
     sdpa_desc.primitive_kind = primitive_kind::sdpa;
     sdpa_desc.q_desc = *q_md;
     sdpa_desc.k_desc = *k_md;
     sdpa_desc.kq_acc_dt = data_type::f32;
     sdpa_desc.vs_acc_dt = data_type::f32;
+    sdpa_desc.q_scale_head_number = q_scale_head_number;
     if (kq_attr) {
+        // Q and K dequantization both arrive on the KQ attribute, keyed by
+        // DNNL_ARG_SRC and DNNL_ARG_WEIGHTS respectively
+        sdpa_desc.q_scales = kq_attr->scales_.get(DNNL_ARG_SRC);
         sdpa_desc.kq_scales = kq_attr->scales_.get(DNNL_ARG_WEIGHTS);
         sdpa_desc.kq_zero_points = kq_attr->zero_points_.get(DNNL_ARG_WEIGHTS);
         if (kq_attr->acc_mode_ == accumulation_mode::f16) {
@@ -343,15 +384,19 @@ static inline status_t create_sdpa_pd(
         attn_mask_type_t attn_mask_type, alg_kind_t softmax_alg,
         prop_kind_t prop, const primitive_attr_t *attr,
         const primitive_attr_t *kq_attr = nullptr,
-        const primitive_attr_t *vs_attr = nullptr) {
+        const primitive_attr_t *vs_attr = nullptr,
+        dim_t q_scale_head_number = 0) {
     CHECK(sdpa_attr_check(
             q_md, k_md, v_md, dst_md, engine, attr, kq_attr, vs_attr));
     CHECK(sdpa_desc_check(q_md, k_md, v_md, dst_md, attn_mask_md, engine, attr,
             kq_attr, vs_attr));
+    CHECK(sdpa_q_scales_check(
+            q_md, kv_head_number, q_scale_head_number, kq_attr));
 
     auto sdpa_desc = create_sdpa_desc(q_md, k_md, v_md, dst_md, attn_mask_md,
             scale_md, /* stats_md = */ nullptr, invert_scale, kv_head_number,
-            attn_mask_type, softmax_alg, prop, kq_attr, vs_attr);
+            attn_mask_type, softmax_alg, prop, kq_attr, vs_attr,
+            q_scale_head_number);
 
     primitive_attr_t sdpa_attr = attr ? *attr : default_attr();
 

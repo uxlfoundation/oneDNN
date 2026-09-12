@@ -79,6 +79,7 @@ struct sdpa_desc_t : public op_desc_t {
 
     // primitive_attr_t can't be used because of deleted copy-ctor, but desc_t
     // must be copyable.
+    quant_entry_t q_scales;
     quant_entry_t kq_scales;
     quant_entry_t kq_zero_points;
     quant_entry_t vs_scales;
@@ -100,6 +101,7 @@ struct sdpa_desc_t : public op_desc_t {
     // invert_scale = true:  divide by scale
     bool invert_scale {};
     dim_t kv_head_number {};
+    dim_t q_scale_head_number {};
 
     attn_mask_type_t mask_type = attn_mask_type::undef;
     alg_kind_t softmax_alg = alg_kind::softmax_accurate;
@@ -114,6 +116,10 @@ struct sdpa_desc_t : public op_desc_t {
     dnnl_dim_t values() const { return v_desc.dims[v_desc.ndims - 1]; }
     dim_t num_q_heads() const { return q_desc.dims[1]; }
     dim_t num_kv_heads() const { return kv_head_number; }
+    // Number of entries along the head dimension of the Q scales tensor
+    dim_t num_q_scale_heads() const {
+        return q_scale_head_number != 0 ? q_scale_head_number : num_q_heads();
+    }
     // Batch size (outer batch dimension, excluding heads).
     dnnl_dim_t batch() const { return dst_desc.dims[0]; }
 

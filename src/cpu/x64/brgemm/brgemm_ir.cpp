@@ -86,6 +86,9 @@ struct out_block_t {
 //   dt_a/b/c     - element data type of A, B, and C in memory
 //   dt_acc       - accumulation data type
 //   beta         - output scaling: 0 overwrites C, 1 accumulates into C
+//   with_bias    - whether a bias is added to the output
+//   dt_bias      - element data type of the bias
+//   dt_sz_bias   - element size in bytes of the bias
 //   bdb          - number of full M blocks
 //   ldb2         - number of full N blocks
 //   rdb          - number of full K blocks
@@ -98,6 +101,7 @@ struct out_block_t {
 //                  distance a B load prefetches ahead, one K block of B rows
 //   ldb_b_off    - byte offset to advance B between N blocks
 //   ldb_c_off    - byte offset to advance C between N blocks
+//   ldb_bias_off - byte offset to advance the bias between N blocks
 //   bdb_a_off    - byte offset to advance A between M blocks
 //   bdb_c_off    - byte offset to advance C between M blocks
 struct brgemm_ir_conf_t {
@@ -120,6 +124,9 @@ struct brgemm_ir_conf_t {
         , dt_c(brg.dt_c)
         , dt_acc(data_type::f32)
         , beta(brg.beta)
+        , with_bias(brg.with_bias)
+        , dt_bias(brg.dt_bias)
+        , dt_sz_bias(brg.typesize_bias)
         , bdb(brg.bdb)
         , ldb2(brg.ldb2)
         , rdb(brg.rdb)
@@ -131,6 +138,7 @@ struct brgemm_ir_conf_t {
         , rdb_b_off(dt_sz_b * rd_block * ldb)
         , ldb_b_off(dt_sz_b * ldb_ld_elems)
         , ldb_c_off(dt_sz_c * ldb_ld_elems)
+        , ldb_bias_off(dt_sz_bias * ldb_ld_elems)
         , bdb_a_off(dt_sz_a * bd_block * lda)
         , bdb_c_off(dt_sz_c * bd_block * ldc) {}
 
@@ -141,10 +149,13 @@ struct brgemm_ir_conf_t {
     const int dt_sz_a, dt_sz_b, dt_sz_c;
     const data_type_t dt_a, dt_b, dt_c, dt_acc;
     const float beta;
+    const bool with_bias;
+    const data_type_t dt_bias;
+    const int dt_sz_bias;
     const dim_t bdb, ldb2, rdb;
     const int bdb_tail, ldb2_tail, ldb_tail, rdb_tail;
     const dim_t rdb_a_off, rdb_b_off;
-    const dim_t ldb_b_off, ldb_c_off;
+    const dim_t ldb_b_off, ldb_c_off, ldb_bias_off;
     const dim_t bdb_a_off, bdb_c_off;
 
     // Displacements of one element of A, one vector of B, and one accumulator
@@ -172,6 +183,11 @@ struct brgemm_ir_conf_t {
         return dt_sz_c * ((dim_t)bd * ldc + ld_pos(blk, ld));
     }
 
+    // One bias value per output column, so the offset has no row term.
+    dim_t bias_off(const out_block_t &blk, int ld) const {
+        return dt_sz_bias * ld_pos(blk, ld);
+    }
+
     // Load-dimension element the vector `ld` of the block starts at, counted
     // from where the B and C pointers stand. B and C differ only in the
     // element size they scale it by.
@@ -184,6 +200,7 @@ struct brgemm_ir_conf_t {
     // iteration without its step, so a one-block N loop advances nothing.
     dim_t ldb_loop_ld_adv() const { return ldb2 > 1 ? ldb2 * ldb_ld_elems : 0; }
     dim_t ldb_loop_c_adv() const { return dt_sz_c * ldb_loop_ld_adv(); }
+    dim_t ldb_loop_bias_adv() const { return dt_sz_bias * ldb_loop_ld_adv(); }
 
     // First load-dimension element of each N tail block, counted from where
     // the N loop left the pointers.
@@ -199,6 +216,9 @@ struct brgemm_ir_conf_t {
     dim_t ldb_tail_ld_start() const {
         return ldb2_tail_ld_start() + (dim_t)ldb2_tail * ld_block;
     }
+
+    // True if the kernel has a post-op to apply. Bias is the only one so far.
+    bool has_post_ops() const { return with_bias; }
 };
 
 // M-loop input register classification
@@ -225,12 +245,23 @@ struct advancing_regs_t {
     // pointer for this instead. One running pointer saves the general-purpose
     // register.
     ir::vreg_t c_ptr = ir::vreg_t::none;
+    // Pointer the finished block is stored through. It holds the `ptr_D`
+    // kernel argument on a post-ops call and `ptr_C` otherwise, and can be the
+    // same register as `c_ptr` (see `init_m_loop_input_regs()`). C and D have
+    // the same data type and leading dimension (`brgemm_ir_supported()`), so it
+    // advances like `c_ptr`.
+    ir::vreg_t store_ptr = ir::vreg_t::none;
     // Byte offset into A of the current M block. Starts at 0 and advances by
     // `bdb_a_off` per M block.
     ir::vreg_t a_off = ir::vreg_t::none;
     // Byte offset into B of the current N block. Advances by `ldb_b_off` per N
     // block and returns to 0 for the next M block.
     ir::vreg_t b_off = ir::vreg_t::none;
+    // Current bias pointer. The bias is indexed by the load dimension only, so
+    // it advances by `ldb_bias_off` per N block and rewinds for the next M
+    // block.
+    // `none` unless `with_bias`.
+    ir::vreg_t bias_ptr = ir::vreg_t::none;
 };
 
 // Registers that hold the same value for the entire M loop.
@@ -244,6 +275,9 @@ struct invariant_regs_t {
     // `brgemm_addr`, where each element holds its own pointers.
     ir::vreg_t a_base = ir::vreg_t::none;
     ir::vreg_t b_base = ir::vreg_t::none;
+    // The `do_post_ops` kernel argument. Non-zero applies the post-ops and
+    // stores to D, zero stores to C. `none` when the kernel has no post-op.
+    ir::vreg_t do_post_ops = ir::vreg_t::none;
 };
 
 // Complete input register set for the M loop, partitioned by whether values
@@ -284,6 +318,37 @@ m_loop_input_regs_t init_m_loop_input_regs(
 
     regs.advancing.b_off = ir.new_gpr();
     ir.mov_imm(regs.advancing.b_off, 0);
+
+    if (cfg.with_bias) {
+        regs.advancing.bias_ptr = ir.new_gpr();
+        ir.load_param(regs.advancing.bias_ptr, GET_OFF(ptr_bias));
+    }
+
+    // The block goes to `ptr_D` when `do_post_ops` is set, and to `ptr_C`
+    // otherwise. Resolve that once here so that the stores do not branch.
+    //
+    // A post-ops call with `beta == 1` reads C for the accumulators and writes
+    // D, so the two pointers need separate registers. C is never read when
+    // `beta == 0`, so one register is enough and it holds `ptr_D` on a post-ops
+    // call.
+    if (cfg.has_post_ops()) {
+        regs.invariant.do_post_ops = ir.new_gpr();
+        ir.load_param(regs.invariant.do_post_ops, GET_OFF(do_post_ops));
+
+        if (cfg.beta == 0.0f) {
+            regs.advancing.store_ptr = regs.advancing.c_ptr;
+        } else {
+            regs.advancing.store_ptr = ir.new_gpr();
+            ir.mov_reg(regs.advancing.store_ptr, regs.advancing.c_ptr);
+        }
+
+        const ir::label_t store_ptr_done = ir.new_label();
+        ir.jz(regs.invariant.do_post_ops, store_ptr_done);
+        ir.load_param(regs.advancing.store_ptr, GET_OFF(ptr_D));
+        ir.label(store_ptr_done);
+    } else {
+        regs.advancing.store_ptr = regs.advancing.c_ptr;
+    }
 
     return regs;
 }
@@ -395,7 +460,7 @@ void emit_bs_body(ir::ir_t &ir, const brgemm_ir_conf_t &cfg,
 // One N block.
 //
 // Holds one accumulator per (M row, N register), reduces them over the batch,
-// and stores them to C.
+// and stores them to C, or to D on a post-ops call.
 void emit_n_block(ir::ir_t &ir, const brgemm_ir_conf_t &cfg,
         const m_loop_input_regs_t &regs, const out_block_t &blk) {
 
@@ -436,16 +501,45 @@ void emit_n_block(ir::ir_t &ir, const brgemm_ir_conf_t &cfg,
     else
         ir::emit_loop_imm(ir, 1, bs_body);
 
+    if (cfg.has_post_ops()) {
+        const ir::label_t skip_post_ops = ir.new_label();
+        ir.jz(regs.invariant.do_post_ops, skip_post_ops);
+
+        if (cfg.with_bias) {
+            // One bias vector per N register, shared by every M row of the
+            // block.
+            for (int ld = 0; ld < blk.ld_block2; ld++) {
+                const ir::vreg_t bias = ir.new_vec(cfg.dt_bias);
+                if (blk.ld_tail_mask == ir::vreg_t::none)
+                    ir.vload(bias, regs.advancing.bias_ptr,
+                            cfg.bias_off(blk, ld), cfg.dt_bias);
+                else
+                    ir.vload_masked(bias, regs.advancing.bias_ptr,
+                            cfg.bias_off(blk, ld), blk.ld_tail_mask,
+                            cfg.dt_bias);
+
+                for (int bd = 0; bd < blk.bd_block; bd++)
+                    ir.vadd(acc[bd * blk.ld_block2 + ld], bias);
+            }
+        }
+
+        ir.label(skip_post_ops);
+    }
+
+    // `store_ptr` already points at C or D, so the stores do not branch. Their
+    // memory data type is fixed when the IR is built, which is why C and D must
+    // share one.
     for (int bd = 0; bd < blk.bd_block; bd++) {
         for (int ld = 0; ld < blk.ld_block2; ld++) {
             const ir::vreg_t src = acc[bd * blk.ld_block2 + ld];
 
             if (blk.ld_tail_mask == ir::vreg_t::none) {
-                ir.vstore(regs.advancing.c_ptr, cfg.c_off(blk, bd, ld), src,
+                ir.vstore(regs.advancing.store_ptr, cfg.c_off(blk, bd, ld), src,
                         cfg.dt_c);
             } else {
-                ir.vstore_masked(regs.advancing.c_ptr, cfg.c_off(blk, bd, ld),
-                        src, blk.ld_tail_mask, cfg.dt_c);
+                ir.vstore_masked(regs.advancing.store_ptr,
+                        cfg.c_off(blk, bd, ld), src, blk.ld_tail_mask,
+                        cfg.dt_c);
             }
         }
     }
@@ -463,6 +557,10 @@ void emit_m_block(ir::ir_t &ir, const brgemm_ir_conf_t &cfg,
     auto advance_ptrs = [&]() {
         ir.add_imm(regs.advancing.b_off, cfg.ldb_b_off);
         ir.add_imm(regs.advancing.c_ptr, cfg.ldb_c_off);
+        if (regs.advancing.store_ptr != regs.advancing.c_ptr)
+            ir.add_imm(regs.advancing.store_ptr, cfg.ldb_c_off);
+        if (cfg.with_bias)
+            ir.add_imm(regs.advancing.bias_ptr, cfg.ldb_bias_off);
     };
     const out_block_t full {bd_block, cfg.ld_block2, 0, ir::vreg_t::none};
     ir::emit_loop_imm(ir, cfg.ldb2,
@@ -489,6 +587,9 @@ void emit_m_block(ir::ir_t &ir, const brgemm_ir_conf_t &cfg,
 //   C[i][j] = beta * C[i][j] + sum_bs sum_k A[i][k] * B[k][j]
 //   (m = brg.bcast_dim, n = brg.load_dim, k = brg.reduce_dim)
 //
+// A call that asks for post-ops adds the bias and stores to D instead of C:
+//   D[i][j] = C[i][j] + bias[j]
+//
 // The output is partitioned into M blocks of `bd_block` rows, each split into
 // N blocks of `ld_block2 * ld_block` columns. Each block keeps its result in
 // registers across the whole batch and K reduction, then stores it once.
@@ -505,9 +606,17 @@ void build_brgemm(const brgemm_desc_t &brg, ir::ir_t &ir) {
         ir.set_mask_imm(ld_tail_mask, cfg.ldb_tail);
     }
 
+    // `store_ptr` is a separate register only when `beta == 1` and the kernel
+    // has a post-op, so it needs its own advance only then. The bias does not
+    // depend on M, so it only rewinds what the N loop added.
     auto advance_ptrs = [&]() {
         ir.add_imm(regs.advancing.a_off, cfg.bdb_a_off);
         ir.add_imm(regs.advancing.c_ptr, cfg.bdb_c_off - cfg.ldb_loop_c_adv());
+        if (regs.advancing.store_ptr != regs.advancing.c_ptr)
+            ir.add_imm(regs.advancing.store_ptr,
+                    cfg.bdb_c_off - cfg.ldb_loop_c_adv());
+        if (cfg.with_bias && cfg.ldb_loop_bias_adv() != 0)
+            ir.add_imm(regs.advancing.bias_ptr, -cfg.ldb_loop_bias_adv());
         if (cfg.ldb_loop_ld_adv() != 0) ir.mov_imm(regs.advancing.b_off, 0);
     };
     ir::emit_loop_imm(ir, cfg.bdb, [&]() {
@@ -563,8 +672,9 @@ struct jit_brgemm_ir_kernel_t : public brgemm_kernel_t {
 
         // Build register configuration for code emission.
         //
-        // No post-ops reach this kernel, so no opmask is handed out and the
-        // allocator gets the whole mask file.
+        // The bias is applied by the IR, so no post-ops injector runs here and
+        // no opmask is reserved for one. The allocator gets the whole mask
+        // file.
         const ir::reg_config_t reg_cfg = ir::make_reg_config(brg_.isa_impl,
                 param_idx, rsp_idx, {gpr_scratch0, gpr_scratch1},
                 {vec_scratch0, vec_scratch1, vec_scratch2},
@@ -632,7 +742,20 @@ status_t brgemm_ir_supported(const brgemm_desc_t &brg) {
             VERBOSE_UNSUPPORTED_FEATURE, "beta != 0 && beta != 1");
 
     VCONDCHECK_BRGEMM_IR(
-            !brg.are_post_ops_applicable(), VERBOSE_UNSUPPORTED_POSTOP);
+            everyone_is(false, brg.with_eltwise, brg.with_binary, brg.with_sum,
+                    brg.req_s8s8_compensation, brg.with_src_scales,
+                    brg.with_wei_scales, brg.with_dst_scales,
+                    brg.brgattr.use_intermediate_c_buffer),
+            VERBOSE_UNSUPPORTED_POSTOP);
+    VCONDCHECK_BRGEMM_IR(everyone_is(brgemm_broadcast_t::none, brg.zp_type_a,
+                                 brg.zp_type_b, brg.zp_type_c),
+            VERBOSE_UNSUPPORTED_POSTOP);
+
+    VCONDCHECK_BRGEMM_IR(IMPLICATION(brg.with_bias, brg.dt_bias == f32),
+            VERBOSE_UNSUPPORTED_BIAS_CFG);
+
+    VCONDCHECK_BRGEMM_IR(IMPLICATION(brg.with_bias, brg.LDC == brg.LDD),
+            VERBOSE_UNSUPPORTED_FEATURE, "LDC != LDD");
 
     VCONDCHECK_BRGEMM_IR(brg.brgattr.hint_prefetchw == brgemm_prfw_default,
             VERBOSE_UNSUPPORTED_FEATURE, "store prefetch hint");
@@ -690,11 +813,15 @@ status_t brgemm_ir_supported(const brgemm_desc_t &brg) {
             VERBOSE_UNSUPPORTED_FEATURE, "B displacement overflows int32");
     VCONDCHECK_BRGEMM_IR(fits(cfg.c_off(last_col, max_bd_block - 1, 0)),
             VERBOSE_UNSUPPORTED_FEATURE, "C displacement overflows int32");
+    VCONDCHECK_BRGEMM_IR(fits(cfg.bias_off(last_col, 0)),
+            VERBOSE_UNSUPPORTED_FEATURE, "bias displacement overflows int32");
     VCONDCHECK_BRGEMM_IR(fits(cfg.bdb_c_off - cfg.ldb_loop_c_adv()),
             VERBOSE_UNSUPPORTED_FEATURE, "C rewind overflows int32");
+    VCONDCHECK_BRGEMM_IR(fits(cfg.ldb_loop_bias_adv()),
+            VERBOSE_UNSUPPORTED_FEATURE, "bias rewind overflows int32");
     VCONDCHECK_BRGEMM_IR(fits(cfg.bdb_a_off) && fits(cfg.rdb_a_off)
                     && fits(cfg.rdb_b_off) && fits(cfg.ldb_b_off)
-                    && fits(cfg.ldb_c_off),
+                    && fits(cfg.ldb_c_off) && fits(cfg.ldb_bias_off),
             VERBOSE_UNSUPPORTED_FEATURE, "pointer advance overflows int32");
 
     return status::success;

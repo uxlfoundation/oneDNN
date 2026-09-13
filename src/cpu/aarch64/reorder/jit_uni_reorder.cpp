@@ -51,7 +51,46 @@ namespace aarch64 {
 
 status_t jit_uni_reorder_t::pd_t::init(const engine_t *engine,
         const engine_t *src_engine, const engine_t *dst_engine) {
+    VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+    auto prb = tr::prb_t();
+
+    status_t prb_init_status = prb_init(prb, *src_md(), *dst_md(), attr());
+    if (prb_init_status != status::success) return prb_init_status;
+
+    tr::prb_block_for_cache(prb);
+    DEBUG({
+        verbose_printf(
+                verbose_t::debuginfo, "cache: %s\n", prb_dump(prb).c_str());
+    });
+
+    int ndims_ker_max {};
+    int nthr = dnnl_get_max_threads();
+    tr::prb_thread_kernel_balance(prb, ndims_ker_max, nthr);
+
+    if (prb.is_tail_present) prb_node_dependency(prb);
+
+    tr::kernel_t::desc_t ker_desc;
+    status_t ker_init_status
+            = tr::kernel_t::desc_init(ker_desc, prb, ndims_ker_max);
+    if (ker_init_status != status::success) return ker_init_status;
+
+    const int ndims_driver = prb.ndims - ker_desc.prb.ndims;
+    VDISPATCH_REORDER(ndims_driver <= jit_uni_reorder_t::ndims_driver_max,
+            VERBOSE_BAD_NDIMS, "driver", ndims_driver);
+
+    DEBUG({
+        verbose_printf(verbose_t::debuginfo, "ker  : %s\n",
+                prb_dump(ker_desc.prb).c_str());
+    });
+
+    nthr_ = nthr;
+    prb_ = prb;
+    with_groups_ = prb.compensation_mask == tr::prb_t::comp_mask_with_groups;
+
     CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
+
+    ker_desc_ = ker_desc;
 
     CHECK(init_scratchpad());
 
@@ -91,58 +130,6 @@ status_t jit_uni_reorder_t::pd_t::init_scratchpad() {
     }
 
     return status::success;
-}
-
-status_t jit_uni_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
-        const engine_t *engine, const primitive_attr_t *attr,
-        const engine_t *src_engine, const memory_desc_t *src_md,
-        const engine_t *dst_engine, const memory_desc_t *dst_md) {
-    if (!impl::is_dense_format_kind({src_md, dst_md}))
-        return status::unimplemented;
-    auto prb = tr::prb_t();
-
-    status_t prb_init_status = prb_init(prb, *src_md, *dst_md, attr);
-    if (prb_init_status != status::success) return prb_init_status;
-
-    tr::prb_block_for_cache(prb);
-    DEBUG({
-        verbose_printf(
-                verbose_t::debuginfo, "cache: %s\n", prb_dump(prb).c_str());
-    });
-
-    int ndims_ker_max {};
-    int nthr = dnnl_get_max_threads();
-    tr::prb_thread_kernel_balance(prb, ndims_ker_max, nthr);
-
-    if (prb.is_tail_present) prb_node_dependency(prb);
-
-    tr::kernel_t::desc_t ker_desc;
-    status_t ker_init_status
-            = tr::kernel_t::desc_init(ker_desc, prb, ndims_ker_max);
-    if (ker_init_status != status::success) return ker_init_status;
-
-    const int ndims_driver = prb.ndims - ker_desc.prb.ndims;
-    if (ndims_driver > jit_uni_reorder_t::ndims_driver_max)
-        return status::unimplemented;
-
-    DEBUG({
-        verbose_printf(verbose_t::debuginfo, "ker  : %s\n",
-                prb_dump(ker_desc.prb).c_str());
-    });
-
-    auto _pd = make_unique_pd<pd_t>(
-            attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md);
-    if (_pd == nullptr) return status::out_of_memory;
-
-    _pd->nthr_ = nthr;
-    _pd->prb_ = prb;
-    _pd->with_groups_
-            = prb.compensation_mask == tr::prb_t::comp_mask_with_groups;
-    CHECK(_pd->init(engine, src_engine, dst_engine));
-    _pd->ker_desc_ = ker_desc;
-    CHECK(_pd->init_scratchpad_md());
-
-    return safe_ptr_assign(*reorder_pd, _pd.release());
 }
 
 void jit_uni_reorder_t::omp_driver_0d(int off, const char *in, char *out,

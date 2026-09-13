@@ -2687,23 +2687,20 @@ struct simple_reorder_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("simple:any", simple_reorder_t);
 
-    private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md) {
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine) {
             // Since `type_i` and `type_o` are templated arguments, no need
             // to put them under verbose_dispatch logic.
-            bool ok = src_md->data_type == type_i
-                    && dst_md->data_type == type_o;
+            bool ok = src_md()->data_type == type_i
+                    && dst_md()->data_type == type_o;
             if (!ok) return status::invalid_arguments;
 
-            VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
+            VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
                     VERBOSE_UNSUPPORTED_SPARSE_CFG);
 
             using skip_mask_t = primitive_attr_t::skip_mask_t;
-            VDISPATCH_REORDER_IC(
-                    attr->has_default_values(skip_mask_t::scales_data_type
+            VDISPATCH_REORDER(
+                    attr()->has_default_values(skip_mask_t::scales_data_type
                             | skip_mask_t::scales_groups
                             | skip_mask_t::zero_points_data_type
                             | skip_mask_t::zero_points_groups
@@ -2711,27 +2708,19 @@ struct simple_reorder_t : public primitive_t {
                     VERBOSE_UNSUPPORTED_ATTR);
 
             auto status = simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
-                    spec>::is_applicable(src_md, dst_md, attr);
+                    spec>::is_applicable(src_md(), dst_md(), attr());
             if (status != status::success) return status;
 
-            const memory_desc_wrapper input_d(src_md);
-
-            auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
-                    dst_engine->kind(), dst_md);
-            if (_pd == nullptr) return status::out_of_memory;
-            CHECK(_pd->init(engine, src_engine, dst_engine));
+            CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
             const size_t scratchpad_sz_
                     = simple_reorder_impl_t<SIMPLE_REORDER_TEMPL_CALL,
-                            spec>::get_scratchpad_size(src_md, dst_md);
-            auto scratchpad = _pd->scratchpad_registry().registrar();
+                            spec>::get_scratchpad_size(src_md(), dst_md());
+            auto scratchpad = scratchpad_registry().registrar();
             scratchpad.book(memory_tracking::names::key_reorder_space,
                     scratchpad_sz_, 1, 16);
-
-            CHECK(_pd->init_scratchpad_md());
-            return safe_ptr_assign(*reorder_pd, _pd.release());
+            return status::success;
         }
-        friend dnnl::impl::impl_list_item_t;
     };
 
     simple_reorder_t(const pd_t *apd) : primitive_t(apd) {}

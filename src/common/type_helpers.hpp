@@ -947,8 +947,8 @@ inline bool operator==(
 
 inline bool operator==(const reorder_desc_t &lhs, const reorder_desc_t &rhs) {
     bool ret = COMPARE_DESC_MEMBERS(primitive_kind)
-            && DEREF_AND_COMPARE_DESC_MEMBERS(src_md)
-            && DEREF_AND_COMPARE_DESC_MEMBERS(dst_md)
+            && COMPARE_DESC_MEMBERS(src_desc)
+            && COMPARE_DESC_MEMBERS(dst_desc)
             && COMPARE_DESC_MEMBERS(src_engine_kind)
             && COMPARE_DESC_MEMBERS(dst_engine_kind)
             && COMPARE_DESC_MEMBERS(is_cross_engine);

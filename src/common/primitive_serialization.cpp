@@ -505,8 +505,8 @@ void serialize(serialization_stream_t &sstream, const reorder_desc_t &desc) {
     // Kinds
     sstream.append(desc.primitive_kind);
     // Memory descriptors
-    serialize(sstream, *desc.src_md);
-    serialize(sstream, *desc.dst_md);
+    serialize(sstream, desc.src_desc);
+    serialize(sstream, desc.dst_desc);
     // Kinds of source and destination engines
     sstream.append(desc.src_engine_kind);
     sstream.append(desc.dst_engine_kind);

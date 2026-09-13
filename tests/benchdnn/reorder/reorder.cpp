@@ -197,7 +197,6 @@ dnnl_status_t init_pd(init_pd_args_t &init_pd_args) {
     auto dnnl_attr = make_benchdnn_dnnl_wrapper(
             create_dnnl_attr(prb->attr, attr_args_t(), prb->ndims));
 
-    init_pd_args.is_iterator_supported = false;
     TIME_C_PD(DNN_SAFE_STATUS(dnnl_reorder_primitive_desc_create(
             &init_pd_args.pd, init_pd_args.src_md ? init_pd_args.src_md : src_d,
             src_engine, dst_d, dst_engine, dnnl_attr)));

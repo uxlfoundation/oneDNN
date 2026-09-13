@@ -29,8 +29,8 @@ namespace impl {
 
 status_t primitive_desc_create(primitive_desc_iface_t **primitive_desc_iface,
         engine_t *engine, const op_desc_t *op_desc,
-        const primitive_desc_iface_t *hint_fwd_pd,
-        const primitive_attr_t *attr);
+        const primitive_desc_iface_t *hint_fwd_pd, const primitive_attr_t *attr,
+        engine_t *src_engine = nullptr, engine_t *dst_engine = nullptr);
 }
 } // namespace dnnl
 
@@ -48,7 +48,9 @@ struct dnnl_primitive_desc {
     dnnl_primitive_desc(const dnnl::impl::engine_t *engine,
             const dnnl::impl::op_desc_t *op_desc,
             const dnnl::impl::primitive_attr_t *attr,
-            const dnnl::impl::primitive_desc_t *hint_fwd_pd);
+            const dnnl::impl::primitive_desc_t *hint_fwd_pd,
+            const dnnl::impl::engine_t *src_engine = nullptr,
+            const dnnl::impl::engine_t *dst_engine = nullptr);
 
     virtual ~dnnl_primitive_desc() = default;
 
@@ -78,7 +80,7 @@ struct dnnl_primitive_desc {
 
 protected:
     std::unique_ptr<dnnl::impl::primitive_desc_iterator_t> pd_iterator_;
-    // TODO: Extend iterator to support concat, sum and reorder primitives.
+    // TODO: Extend iterator to support concat and sum primitives.
     // Until it's done we need to have primitive descriptor (`pd_`) and
     // engine (engine_) here.
     std::shared_ptr<dnnl::impl::primitive_desc_t> pd_;

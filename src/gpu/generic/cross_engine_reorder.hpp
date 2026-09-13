@@ -55,7 +55,6 @@ struct cross_engine_reorder_t : public gpu::primitive_t {
 
     private:
         void init_scratchpad(const impl::engine_t *engine);
-        DECLARE_GPU_REORDER_CREATE();
     };
 
     status_t init(impl::engine_t *engine) override;

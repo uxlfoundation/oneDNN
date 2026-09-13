@@ -19,6 +19,7 @@
 
 #include <cstring>
 #include <typeindex>
+#include <type_traits>
 
 #include "oneapi/dnnl/dnnl.h"
 
@@ -559,10 +560,39 @@ protected:
         return utils::make_unique<pd_compat_t>(std::forward<Args>(args)...);
     }
 
-    template <typename pd_t>
+    // Reorder implementations consume source and destination engines in their
+    // `init`, while every other primitive only takes the dispatch engine.
+    // C++11 has no `if constexpr`, so the reorder prim_kind branch is expressed
+    // as two `enable_if` overloads of `create` rather than a runtime `if`.
+    template <typename pd_t,
+            typename std::enable_if<pd_t::base_pkind == primitive_kind::reorder,
+                    int>::type
+            = 0>
     static status_t create(primitive_desc_t **pd, const op_desc_t *adesc,
             const primitive_attr_t *attr, const engine_t *engine,
-            const primitive_desc_t *hint_fwd) {
+            const primitive_desc_t *hint_fwd, const engine_t *src_engine,
+            const engine_t *dst_engine) {
+        using namespace dnnl::impl::status;
+        if (adesc->primitive_kind != pd_t::base_pkind) return invalid_arguments;
+        assert(hint_fwd ? hint_fwd->kind() == pd_t::base_pkind : true);
+        auto hint
+                = reinterpret_cast<const typename pd_t::hint_class *>(hint_fwd);
+        auto _pd = make_unique_pd<pd_t>(adesc, attr, hint);
+        if (_pd == nullptr) return out_of_memory;
+        if (!_pd->is_initialized()) return out_of_memory;
+        CHECK(_pd->init(engine, src_engine, dst_engine));
+        CHECK(_pd->init_scratchpad_md());
+        return safe_ptr_assign(*pd, _pd.release());
+    }
+
+    template <typename pd_t,
+            typename std::enable_if<pd_t::base_pkind != primitive_kind::reorder,
+                    int>::type
+            = 0>
+    static status_t create(primitive_desc_t **pd, const op_desc_t *adesc,
+            const primitive_attr_t *attr, const engine_t *engine,
+            const primitive_desc_t *hint_fwd, const engine_t *src_engine,
+            const engine_t *dst_engine) {
         using namespace dnnl::impl::status;
         if (adesc->primitive_kind != pd_t::base_pkind) return invalid_arguments;
         assert(hint_fwd ? hint_fwd->kind() == pd_t::base_pkind : true);
@@ -608,11 +638,12 @@ inline bool is_ref_impl(const primitive_desc_t *pd) {
     const char *name() const override { \
         return impl_name; \
     } \
-    template <typename pd_t> \
-    friend status_t primitive_desc_t::create(primitive_desc_t **pd, \
-            const op_desc_t *adesc, const primitive_attr_t *attr, \
-            const dnnl::impl::engine_t *engine, \
-            const primitive_desc_t *hint_fwd);
+    /* `primitive_desc_t::create` is split into two SFINAE overloads (see \
+     * the definition above). MSVC (C2245) cannot match a templated \
+     * member-function overload disambiguated solely by a SFINAE non-type \
+     * template parameter in a friend declaration, so befriend the whole \
+     * class to grant `create` access to the derived pd_t. */ \
+    friend struct dnnl::impl::primitive_desc_t;
 
 #define DECLARE_COMMON_PD_T_USE_GLOBAL_SCRATCHPAD(impl_name, impl_type) \
     DECLARE_COMMON_PD_t(impl_name, impl_type, true)

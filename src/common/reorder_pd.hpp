@@ -45,69 +45,13 @@
 namespace dnnl {
 namespace impl {
 
-struct reorder_primitive_desc_iface_t : public dnnl_primitive_desc {
-    reorder_primitive_desc_iface_t(const std::shared_ptr<primitive_desc_t> &pd,
-            const engine_t *engine, engine_t *src_engine, engine_t *dst_engine)
-        : dnnl_primitive_desc(pd, engine)
-        , src_engine_(src_engine)
-        , dst_engine_(dst_engine)
-        , scratchpad_engine_(nullptr) {}
-
-    dnnl::impl::engine_t *src_engine() const override { return src_engine_; }
-    dnnl::impl::engine_t *dst_engine() const override { return dst_engine_; }
-
-    dnnl::impl::engine_t *scratchpad_engine() const override {
-        return scratchpad_engine_;
-    }
-
-    dnnl::impl::status_t query(
-            dnnl::impl::query_t what, int idx, void *result) const override {
-        auto status = dnnl::impl::status::success;
-        switch (what) {
-            case dnnl::impl::query::reorder_src_engine:
-                *(dnnl::impl::engine_t **)result = src_engine();
-                break;
-            case dnnl::impl::query::reorder_dst_engine:
-                *(dnnl::impl::engine_t **)result = dst_engine();
-                break;
-            default: status = dnnl_primitive_desc::query(what, idx, result);
-        }
-        return status;
-    }
-
-    status_t create_primitive_iface(
-            std::pair<primitive_iface_t *, cache_state_t> &primitive_iface,
-            const cache_blob_t &cache_blob) const override {
-        // Step 1: create impl::primitive_t or get it from primitive cache
-        std::pair<std::shared_ptr<primitive_t>, cache_state_t> p;
-        // Top level primitive can be fetched from the primitive cache since
-        // it's fetching it faster.
-        constexpr bool force_create_from_blob = false;
-        auto status = pd_->create_primitive(
-                p, engine(), cache_blob, force_create_from_blob);
-        if (status != status::success) return status;
-        // Step 2: create primitive_iface_t, init and return it to user
-        primitive_iface_t *p_iface = nullptr;
-        CHECK(safe_ptr_assign(p_iface,
-                new primitive_iface_t(
-                        p.first, engine(), src_engine_, dst_engine_)));
-        status = p_iface->init();
-        if (status != status::success) {
-            p_iface->release();
-            return status;
-        }
-        primitive_iface = std::make_pair(p_iface, p.second);
-        return status::success;
-    }
-
-private:
-    dnnl::impl::engine_t *src_engine_;
-    dnnl::impl::engine_t *dst_engine_;
-    dnnl::impl::engine_t *scratchpad_engine_;
-};
-
 // NOLINTBEGIN(google-default-arguments)
 struct reorder_pd_t : public primitive_desc_t {
+    static constexpr auto base_pkind = primitive_kind::reorder;
+
+    using base_class = reorder_pd_t;
+    using hint_class = reorder_pd_t;
+
     const reorder_desc_t *desc() const { return &desc_; }
     const op_desc_t *op_desc() const override {
         return reinterpret_cast<const op_desc_t *>(this->desc());
@@ -132,12 +76,12 @@ struct reorder_pd_t : public primitive_desc_t {
 
     const memory_desc_t *src_md(
             int index = 0, bool user_input = false) const override {
-        if (index == 0) return user_input ? desc()->src_md : &src_md_;
+        if (index == 0) return user_input ? &desc()->src_desc : &src_md_;
         return &glob_zero_md;
     }
     const memory_desc_t *dst_md(
             int index = 0, bool user_input = false) const override {
-        if (index == 0) return user_input ? desc()->dst_md : &dst_md_;
+        if (index == 0) return user_input ? &desc()->dst_desc : &dst_md_;
         return &glob_zero_md;
     }
 
@@ -154,44 +98,12 @@ protected:
     memory_desc_t src_md_;
     memory_desc_t dst_md_;
 
-    reorder_pd_t(const primitive_attr_t *attr, engine_kind_t src_engine_kind,
-            const memory_desc_t *src_md, engine_kind_t dst_engine_kind,
-            const memory_desc_t *dst_md)
-        : primitive_desc_t(attr, primitive_kind::reorder)
-        , src_md_(*src_md)
-        , dst_md_(*dst_md) {
-
-        init_desc(src_engine_kind, dst_engine_kind, false);
-    }
-
-    reorder_pd_t(const reorder_pd_t &other)
-        : primitive_desc_t(other)
-        , src_md_(other.src_md_)
-        , dst_md_(other.dst_md_) {
-        init_desc(other.desc_.src_engine_kind, other.desc_.dst_engine_kind,
-                other.desc_.is_cross_engine);
-    }
-
-    reorder_pd_t &operator=(const reorder_pd_t &other) {
-        DNNL_SHORT_CIRCUIT_SELF_ASSIGN(other);
-        src_md_ = other.src_md_;
-        dst_md_ = other.dst_md_;
-
-        init_desc(other.desc_.src_engine_kind, other.desc_.dst_engine_kind,
-                other.desc_.is_cross_engine);
-        return *this;
-    }
-
-    void init_desc(engine_kind_t src_engine_kind, engine_kind_t dst_engine_kind,
-            bool is_cross_engine) {
-        desc_ = reorder_desc_t();
-        desc_.primitive_kind = primitive_kind::reorder;
-        desc_.src_md = &src_md_;
-        desc_.dst_md = &dst_md_;
-        desc_.src_engine_kind = src_engine_kind;
-        desc_.dst_engine_kind = dst_engine_kind;
-        desc_.is_cross_engine = is_cross_engine;
-    }
+    reorder_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
+            const reorder_pd_t *hint_fwd_pd)
+        : primitive_desc_t(attr, base_pkind)
+        , desc_(*op_desc_t::to_desc<reorder_desc_t>(adesc))
+        , src_md_(desc_.src_desc)
+        , dst_md_(desc_.dst_desc) {}
 };
 // NOLINTEND(google-default-arguments)
 

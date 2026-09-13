@@ -176,6 +176,8 @@ bool has_training_support(data_type_t data_type) {
 #endif
 #elif defined(DNNL_AARCH64_USE_ACL)
             return arm_compute::CPUInfo::get().has_bf16();
+#elif DNNL_RV64
+            return rv64::mayiuse(rv64::zvfbfwma);
 #else
             return false;
 #endif

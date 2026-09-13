@@ -57,7 +57,8 @@ status_t jit_uni_resampling_kernel_t<isa, d_type>::init_conf(
     const memory_desc_wrapper dst_d(pd->dst_md());
     const int ndims = pd->ndims();
 
-    // The template dtype (f32 for isa v, f16 for isa zvfh) must match src/dst.
+    // The template dtype (f32 for isa v, f16 for isa zvfh, bf16 for isa
+    // zvfbfwma) must match src/dst.
     if (src_d.data_type() != d_type || dst_d.data_type() != d_type)
         return status::unimplemented;
     const alg_kind_t alg = pd->desc()->alg_kind;
@@ -158,8 +159,8 @@ status_t jit_uni_resampling_kernel_t<isa, d_type>::init_conf(
 
 template <cpu_isa_t isa, data_type_t d_type>
 void jit_uni_resampling_kernel_t<isa, d_type>::generate() {
-    if (d_type == data_type::f16)
-        generate_f16();
+    if (utils::one_of(d_type, data_type::f16, data_type::bf16))
+        generate_xf16();
     else
         generate_f32();
 }
@@ -382,16 +383,33 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f32() {
 }
 
 template <cpu_isa_t isa, data_type_t d_type>
-void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
+void jit_uni_resampling_kernel_t<isa, d_type>::generate_xf16() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
     const Reg reg_param = a0;
-    // f16 loads (m1) widened to an f32 accumulator (m2); the weighted sum and
-    // any eltwise post-op run at f32; the result is narrowed back to f16.
-    const VReg v_f16(2); // f16 load buffer (m1)
+    // xf16 loads (m1) widened to an f32 accumulator (m2); the weighted sum and
+    // any eltwise post-op run at f32; the result is narrowed back to xf16.
+    const VReg v_xf16(2); // xf16 load buffer (m1)
     const VReg v_acc(4); // f32 accumulator (m2: v4-v5)
     const VReg v_wide(8); // f32 widened corner (m2: v8-v9)
     const int n = conf_.num_corners;
-    const bool po = conf_.fuse_eltwise; // binary is f32-only (rejected for f16)
+    // The binary post-op is f32-only, so it is rejected for xf16.
+    const bool po = conf_.fuse_eltwise;
+
+    // bf16 converts through Zvfbfmin, f16 through Zvfh. Both are read under the
+    // narrow e16 vtype, so the surrounding vsetvli sequence is identical.
+    constexpr bool is_bf16 = d_type == data_type::bf16;
+    auto widen = [&](const VReg &vd, const VReg &vs) {
+        if (is_bf16)
+            vfwcvtbf16_f_f_v(vd, vs); // e16m1 -> e32m2
+        else
+            vfwcvt_f_f_v(vd, vs);
+    };
+    auto narrow = [&](const VReg &vd, const VReg &vs) {
+        if (is_bf16)
+            vfncvtbf16_f_f_w(vd, vs); // e32m2 -> e16m1
+        else
+            vfncvt_f_f_w(vd, vs);
+    };
 
     const Reg corner_reg[8] = {s1, s2, s3, s4, s5, s6, s7, s8};
     const FReg wei_reg[8] = {fa0, fa1, fa2, fa3, fa4, fa5, fa6, fa7};
@@ -424,13 +442,13 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
     ld(s11, reg_param, static_cast<int>(offsetof(p_t, src_vec_byte_stride)));
     ld(a1, reg_param, static_cast<int>(offsetof(p_t, dst_vec_byte_stride)));
 
-    addi(t2, x0, 2); // f16 element size (2 bytes) for the unit-stride fast path
+    addi(t2, x0, 2); // xf16 element size (2 bytes) for the unit-stride path
 
-    // Eltwise-only injector for f16 (computed at f32 on the m2 accumulator).
+    // Eltwise-only injector for xf16 (computed at f32 on the m2 accumulator).
     injector::jit_uni_postops_injector_t<isa> *po_inj = nullptr;
     eltwise_injector::static_params_t esp(VReg(12), VReg(16), VReg(20),
             VReg(24), VReg(24), ft0, ft1, t3, /*is_fwd=*/true);
-    // The pd rejects a binary for f16, so the (mandatory) binary static params
+    // The pd rejects a binary for xf16, so the (mandatory) binary static params
     // are never consumed; pass placeholder scratch.
     binary_injector::rhs_arg_static_params_t rhs_arg_bsp(VReg(24).getIdx(), x0,
             x0, x0, false /*preserve gpr*/, false /*preserve vmm*/,
@@ -446,12 +464,12 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
             vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
             Label sum_strided, sum_done;
             bne(a1, t2, sum_strided);
-            vle16_v(v_f16, s9);
+            vle16_v(v_xf16, s9);
             j_(sum_done);
             L(sum_strided);
-            vlse16_v(v_f16, s9, a1);
+            vlse16_v(v_xf16, s9, a1);
             L(sum_done);
-            vfwcvt_f_f_v(v_wide, v_f16); // f16 m1 -> f32 m2
+            widen(v_wide, v_xf16); // xf16 m1 -> f32 m2
             vsetvli(t0, s10, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
             if (conf_.sum_scale == 1.f)
                 vfadd_vv(v_acc, v_acc, v_wide);
@@ -467,23 +485,23 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
     // Eltwise-only here: no binary rhs to address.
     binary_injector::rhs_arg_dynamic_params_t rhs_dyn;
 
-    // Load an f16 channel vector (unit-stride vle16 for nspc/blocked, strided
-    // vlse16 for ncsp) into v_f16 under the current e16 vtype.
-    auto load_f16 = [&](const Reg &ptr) {
+    // Load an xf16 channel vector (unit-stride vle16 for nspc/blocked, strided
+    // vlse16 for ncsp) into v_xf16 under the current e16 vtype.
+    auto load_xf16 = [&](const Reg &ptr) {
         Label strided, done;
         bne(s11, t2, strided);
-        vle16_v(v_f16, ptr);
+        vle16_v(v_xf16, ptr);
         j_(done);
         L(strided);
-        vlse16_v(v_f16, ptr, s11);
+        vlse16_v(v_xf16, ptr, s11);
         L(done);
     };
 
     // Apply the chain to the f32 accumulator; entered and left at e32/m2. The
-    // sum reads dst back as f16 and widens it (same access form as the store).
+    // sum reads dst back as xf16 and widens it (same access form as the store).
     const bool need_f32 = po || conf_.fuse_sum;
     auto apply_chain = [&]() {
-        // The f16 path computes at e32/m2 (group_stride 2); the sum lands in
+        // The xf16 path computes at e32/m2 (group_stride 2); the sum lands in
         // attribute order via its lambda injector.
         po_inj->compute_vector(v_acc.getIdx(), rhs_dyn, 2 /*group_stride*/);
     };
@@ -493,44 +511,44 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
     beqz(s10, ch_done);
 
     if (n == 1) {
-        // Nearest: copy the single f16 corner. With a fused eltwise post-op,
+        // Nearest: copy the single xf16 corner. With a fused eltwise post-op,
         // widen to f32, apply the chain, narrow back.
         vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        load_f16(corner_reg[0]);
+        load_xf16(corner_reg[0]);
         if (need_f32) {
-            vfwcvt_f_f_v(v_acc, v_f16); // f16 m1 -> f32 m2
+            widen(v_acc, v_xf16); // xf16 m1 -> f32 m2
             vsetvli(t0, s10, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
             apply_chain();
             vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-            vfncvt_f_f_w(v_f16, v_acc); // f32 m2 -> f16 m1
+            narrow(v_xf16, v_acc); // f32 m2 -> xf16 m1
         }
     } else {
-        // Linear: widen each f16 corner to f32, weighted-accumulate at f32.
+        // Linear: widen each xf16 corner to f32, weighted-accumulate at f32.
         vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        load_f16(corner_reg[0]);
-        vfwcvt_f_f_v(v_acc, v_f16);
+        load_xf16(corner_reg[0]);
+        widen(v_acc, v_xf16);
         vsetvli(t0, s10, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
         vfmul_vf(v_acc, v_acc, wei_reg[0]);
         for (int i = 1; i < n; i++) {
             vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-            load_f16(corner_reg[i]);
-            vfwcvt_f_f_v(v_wide, v_f16);
+            load_xf16(corner_reg[i]);
+            widen(v_wide, v_xf16);
             vsetvli(t0, s10, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
             vfmacc_vf(v_acc, wei_reg[i], v_wide);
         }
         if (need_f32) apply_chain();
         vsetvli(t0, s10, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        vfncvt_f_f_w(v_f16, v_acc); // narrow result to f16
+        narrow(v_xf16, v_acc); // narrow result to xf16
     }
 
-    // Store the f16 result (unit-stride for nspc/blocked, strided for ncsp).
+    // Store the xf16 result (unit-stride for nspc/blocked, strided for ncsp).
     {
         Label strided_dst, dst_done;
         bne(a1, t2, strided_dst);
-        vse16_v(v_f16, s9);
+        vse16_v(v_xf16, s9);
         j_(dst_done);
         L(strided_dst);
-        vsse16_v(v_f16, s9, a1);
+        vsse16_v(v_xf16, s9, a1);
         L(dst_done);
     }
 
@@ -538,7 +556,7 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
     {
         Label strided_adv, adv_done;
         bne(s11, t2, strided_adv);
-        slli(t1, t0, 1); // vl * 2 (f16)
+        slli(t1, t0, 1); // vl * 2 (xf16)
         j_(adv_done);
         L(strided_adv);
         mul(t1, t0, s11);
@@ -581,6 +599,7 @@ void jit_uni_resampling_kernel_t<isa, d_type>::generate_f16() {
 
 template struct jit_uni_resampling_kernel_t<v, data_type::f32>;
 template struct jit_uni_resampling_kernel_t<zvfh, data_type::f16>;
+template struct jit_uni_resampling_kernel_t<zvfbfwma, data_type::bf16>;
 
 } // namespace rv64
 } // namespace cpu

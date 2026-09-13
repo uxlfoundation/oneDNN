@@ -288,8 +288,10 @@ status_t jit_uni_batch_normalization_bwd_t<isa>::execute_backward(
 
 template struct jit_uni_batch_normalization_fwd_t<v>;
 template struct jit_uni_batch_normalization_fwd_t<zvfh>;
+template struct jit_uni_batch_normalization_fwd_t<zvfbfwma>;
 template struct jit_uni_batch_normalization_bwd_t<v>;
 template struct jit_uni_batch_normalization_bwd_t<zvfh>;
+template struct jit_uni_batch_normalization_bwd_t<zvfbfwma>;
 
 } // namespace rv64
 } // namespace cpu

@@ -191,6 +191,7 @@ status_t jit_uni_resampling_fwd_t<isa>::execute_forward(
 
 template struct jit_uni_resampling_fwd_t<v>;
 template struct jit_uni_resampling_fwd_t<zvfh>;
+template struct jit_uni_resampling_fwd_t<zvfbfwma>;
 
 } // namespace rv64
 } // namespace cpu

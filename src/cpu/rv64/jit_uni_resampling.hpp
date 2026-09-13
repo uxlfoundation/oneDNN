@@ -35,8 +35,9 @@ namespace rv64 {
 
 template <cpu_isa_t isa>
 struct jit_uni_resampling_fwd_t : public primitive_t {
-    static constexpr data_type_t d_type
-            = (isa == zvfh) ? data_type::f16 : data_type::f32;
+    static constexpr data_type_t d_type = (isa == zvfh) ? data_type::f16
+            : (isa == zvfbfwma)                         ? data_type::bf16
+                                                        : data_type::f32;
     using data_t = typename prec_traits_t<d_type>::type;
 
     struct pd_t : public cpu_resampling_fwd_pd_t {
@@ -93,7 +94,7 @@ struct jit_uni_resampling_fwd_t : public primitive_t {
         }
 
         // Any number of eltwise ops, at most one binary and one sum. The
-        // binary is f32-only (there is no f16 binary path) and limited to the
+        // binary is f32-only (there is no xf16 binary path) and limited to the
         // broadcasts the driver positions host-side: scalar, per-oc and
         // full-dst. Anything else falls back to simple/ref_resampling.
         bool post_ops_ok() const {

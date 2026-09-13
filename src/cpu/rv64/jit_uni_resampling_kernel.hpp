@@ -50,7 +50,9 @@ protected:
 
 private:
     void generate_f32();
-    void generate_f16();
+    // f16 (Zvfh) and bf16 (Zvfbfmin) share one widen-compute-narrow body; only
+    // the convert mnemonics differ.
+    void generate_xf16();
 
     jit_resampling_conf_t conf_;
 };

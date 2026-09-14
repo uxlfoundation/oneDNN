@@ -549,37 +549,21 @@ void jit_uni_reorder_kernel_f32_t::emit_pure_copy_core() {
                                    : SEW::e8;
 
     // Select the vector register group size from the runtime VLEN (vlenb, in
-    // bytes) and the innermost node extent so that a single vsetvli/vle/vse
-    // step covers the whole row when the register budget allows:
+    // bytes) and the innermost node extent for contiguous copies:
     //     VLMAX = LMUL * vlenb / itype_sz_   (elements per group)
-    // must reach node[0].n. The pure-copy core keeps exactly one live vector
-    // group (vreg_data_ = v8) plus load/store transients, so
-    // LMUL * peak_live_groups(1) <= 32 holds for m1..m8, and v8 is
-    // group-aligned for every power-of-two LMUL. Fall back to m1 when RVV is
-    // unavailable, the runtime VLEN is unknown or below 256 bits, or node[0]
-    // is empty. This keeps the kernel vector-length-agnostic: the
-    // loop below still strip-mines any remainder with the returned `vl`.
+    // Wider groups amortize loop overhead when both accesses are unit-stride.
+    // Strided loads or stores retain LMUL=m1 because a larger register group
+    // also increases indexed-memory and tail costs. Cap the contiguous path at
+    // m2, and keep m1 below VLEN=1024 where doubling the group does not
+    // consistently amortize that cost. The loop remains vector-length-agnostic
+    // and strip-mines any remainder with the returned `vl`.
     const uint32_t vlen = get_platform_vlen(); // runtime VLEN in bits
     const uint32_t vlenb = vlen / 8;
     const uint32_t n0 = (uint32_t)prb_.nodes[0].n;
     LMUL lmul = LMUL::m1;
-    if (mayiuse(v) && vlen >= 256 && n0 > 0) {
+    if (mayiuse(v) && vlen >= 1024 && in_unit && out_unit) {
         const uint32_t vlmax_m1 = vlenb / (uint32_t)itype_sz_;
-        uint32_t lmul_val = 1;
-        while (lmul_val < 8 && lmul_val * vlmax_m1 < n0)
-            lmul_val *= 2;
-        // Reject any candidate beyond LMUL * peak_live_vectors <= 32
-        // (peak live vectors == 1 here: only vreg_data_ is live).
-        if (lmul_val * 1u <= 32u) {
-            // m2/m4/m8 occupy 2/4/8 consecutive vector registers: the group
-            // start (vreg_data_ == v8) must be aligned to the group size.
-            const uint32_t vreg_idx = (uint32_t)vreg_data_.getIdx();
-            if (vreg_idx % lmul_val != 0) lmul_val = 1;
-            lmul = lmul_val == 8    ? LMUL::m8
-                    : lmul_val == 4 ? LMUL::m4
-                    : lmul_val == 2 ? LMUL::m2
-                                    : LMUL::m1;
-        }
+        if (n0 > vlmax_m1) lmul = LMUL::m2;
     }
 
     Label vloop, vend;

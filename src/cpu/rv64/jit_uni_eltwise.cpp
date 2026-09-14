@@ -110,8 +110,20 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         const auto &desc = *pd_->desc();
         const VReg vmm_aux3 = is_fwd_ ? VReg(20) : VReg(24);
         const VReg vmm_aux4 = is_fwd_ ? VReg(24) : VReg(28);
+        // Dedicated FP registers for the injector's loop-invariant FP
+        // coefficients. All are caller-saved and unused by the rest of the
+        // kernel (fa0/fa1 are the injector's FP scratch), so the constants can
+        // be materialized once before the fixed-VL main loop and stay live
+        // across the backedge. ft0-ft7/f28-f31 and fa2-fa7 cover the exp-family
+        // (~15 distinct coefficients); any overflow falls back to inline
+        // materialization inside load_f32_const().
+        static const FReg hoist_fregs[] = {ft0, ft1, ft2, ft3, ft4, ft5, ft6,
+                ft7, fa2, fa3, fa4, fa5, fa6, fa7, ft8, ft9, ft10, ft11};
+        static constexpr size_t hoist_fregs_count
+                = sizeof(hoist_fregs) / sizeof(hoist_fregs[0]);
         eltwise_injector::static_params_t sp(VReg(8), VReg(12), VReg(16),
-                vmm_aux3, vmm_aux4, fa0, fa1, reg_tmp, is_fwd_);
+                vmm_aux3, vmm_aux4, fa0, fa1, reg_tmp, is_fwd_, hoist_fregs,
+                hoist_fregs_count);
         eltwise_injector_.reset(new jit_uni_eltwise_injector_t<v>(
                 this, desc.alg_kind, desc.alpha, desc.beta, 1.f, sp));
     }
@@ -257,6 +269,17 @@ struct jit_uni_kernel_t : public jit_uni_eltwise_kernel_t {
         ld(reg_dst, param, GET_OFF(dst));
         if (!is_fwd_) ld(reg_diff_dst, param, GET_OFF(diff_dst));
         ld(reg_work_amount, param, GET_OFF(work_amount));
+
+        // Hoist the injector's loop-invariant FP coefficients out of the
+        // fixed-VL main loop. The eltwise coefficients (log2e, C1/C2, the
+        // exp/log polynomial terms, 0.5/1/2, etc.) are compile-time constants,
+        // so instead of re-emitting their lui/addiw/fmv.w.x materialization on
+        // every iteration (the ~15 constant sites that dominate the hot
+        // interval), we emit them once here, before the loop, into dedicated
+        // FP registers that stay live across the backedge; the loop body then
+        // references those registers directly (see load_f32_const()).
+        eltwise_injector_->collect_hoisted_constants(vmm_src);
+        eltwise_injector_->emit_hoisted_constants();
 
         // TODO: consider improving.
         // This piece of code is responsible for the preserve_zero function

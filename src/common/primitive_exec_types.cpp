@@ -139,6 +139,14 @@ status_t cvt_primitive_args(const primitive_desc_t *pd, int nargs,
         }
     }
 
+    for (const auto &entry : pd->attr()->scales_.get_entries()) {
+        const int arg = DNNL_ARG_ATTR_SCALES | entry.first;
+        if (pd->arg_usage(arg) != primitive_desc_t::arg_usage_t::output)
+            continue;
+        VCONDCHECK(primitive, exec, check, primitive, args.count(arg) == 1,
+                invalid_arguments, "required output argument %d is missing",
+                arg);
+    }
     VCONDCHECK(primitive, exec, check, primitive,
             (n_inputs == pd->n_inputs() + extra_inputs), invalid_arguments,
             "bad number of inputs (expected %d got %d)",

@@ -19,6 +19,7 @@
 
 #include "c_types_map.hpp"
 #include "primitive_desc.hpp"
+#include "type_helpers.hpp"
 #include "utils.hpp"
 
 #define VDISPATCH_REDUCTION(cond, msg, ...) \
@@ -64,10 +65,29 @@ struct reduction_pd_t : public primitive_desc_t {
         return status::success;
     }
 
+    bool is_dynamic_quantize() const {
+        return desc()->alg_kind == alg_kind::reduction_dynamic_quantize;
+    }
+
+    bool is_compute_only() const {
+        return is_dynamic_quantize() && types::is_zero_md(&dst_md_);
+    }
+
+    const memory_desc_t *scale_md() const {
+        return is_dynamic_quantize() ? &scale_md_ : &glob_zero_md;
+    }
+
     arg_usage_t arg_usage(int arg) const override {
+        if (is_dynamic_quantize()) {
+            if (arg == (DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST))
+                return arg_usage_t::output;
+        }
+
         switch (arg) {
             case DNNL_ARG_SRC: return arg_usage_t::input;
-            case DNNL_ARG_DST: return arg_usage_t::output;
+            case DNNL_ARG_DST:
+                return is_compute_only() ? arg_usage_t::unused
+                                         : arg_usage_t::output;
             default: return primitive_desc_t::arg_usage(arg);
         }
     }
@@ -77,6 +97,7 @@ struct reduction_pd_t : public primitive_desc_t {
         switch (arg) {
             case DNNL_ARG_SRC: return src_md(0);
             case DNNL_ARG_DST: return dst_md(0, user_input);
+            case DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST: return scale_md();
             default: return primitive_desc_t::arg_md(arg);
         }
     }
@@ -92,8 +113,10 @@ struct reduction_pd_t : public primitive_desc_t {
         return &glob_zero_md;
     }
 
-    int n_inputs() const override { return 1 + n_binary_po_inputs(); }
-    int n_outputs() const override { return 1; }
+    int n_inputs() const override {
+        return is_dynamic_quantize() ? 1 : 1 + n_binary_po_inputs();
+    }
+    int n_outputs() const override { return is_compute_only() ? 0 : 1; }
 
     static void memory_desc_reduce_dim(memory_desc_t &md, int dim) {
         if (md.format_kind != format_kind::blocked) return;
@@ -145,13 +168,23 @@ protected:
 
     memory_desc_t src_md_;
     memory_desc_t dst_md_;
+    memory_desc_t scale_md_;
 
     reduction_pd_t(const op_desc_t *adesc, const primitive_attr_t *attr,
             const hint_class *hint_fwd)
         : primitive_desc_t(attr, base_pkind)
         , desc_(*op_desc_t::to_desc<reduction_desc_t>(adesc))
         , src_md_(desc_.src_desc)
-        , dst_md_(desc_.dst_desc) {}
+        , dst_md_(desc_.dst_desc)
+        , scale_md_(types::zero_md()) {
+        if (is_dynamic_quantize()) {
+            auto st = this->attr()
+                              ->scales_.get(DNNL_ARG_DST)
+                              .get_md(scale_md_, src_md_);
+            assert(st == status::success);
+            UNUSED(st);
+        }
+    }
 
     status_t set_default_params() {
         if (dst_md_.format_kind != format_kind::any) return status::success;

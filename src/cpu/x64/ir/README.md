@@ -167,10 +167,33 @@ change belongs in one place.
 4. **A new behavior** that no existing operation can express becomes a new IR
    operation, with its own definition, `def_use()` entry, and lowering.
 
-To tell the third from the fourth, look at `def_use()`. If the reads and writes
-stay the same and only the emitted instructions differ (by data type or ISA), it
-is a lowering rule. If the behavior needs different reads or writes, it is a new
-operation. This keeps the set of operations target-neutral.
+When adding new operations conform to the following rules:
+
+* **Keep parameters out of the name.** An operation takes its data types as
+  parameters, so the name must not mention a data type. There is one `vdot`,
+  not `vdot_f32` and `vdot_bf16`, and the emitter selects `vfmadd231ps` or
+  `vdpbf16ps` from the operand's `dt`. The same applies to the ISA. If the
+  operation cannot be named without naming a data type, it is a lowering rule
+  for an existing operation, not a new operation.
+* **Decide how many operations the family needs.** Related forms can be one
+  operation whose parameters select the form, or one operation per form. A
+  single load taking an element count and an optional mask would cover the
+  full-vector, single-element, and masked cases, and it would work. The cost
+  is that the meaning of a call depends on the combination of arguments, and
+  some arguments are unused in some combinations. This IR uses separate
+  operations: `vload`, `vload_scalar`, `vload_bcast`, and `vload_masked`. Each
+  signature takes only the arguments its form needs. Both options are valid.
+  Prefer separate operations, because they are harder to call incorrectly.
+* **Check that the operation works for other data types and ISAs.** A new
+  operation usually has one lowering at first, and it is tempting to name it
+  after that instruction. `fma` would have been a reasonable name while the
+  only lowering was `vfmadd231ps`. That name does not work for bf16, where
+  `vdpbf16ps` adds two products per f32 lane, or for int8, where VNNI adds
+  four. The operation is named `vdot` because all of these compute a dot
+  product, and the length depends on the data type. Before adding an
+  operation, look up the instruction you would emit for every ISA and data
+  type you expect to support, and define the operation at the level where they
+  agree. If they do not agree at any level, these are two operations.
 
 Additional rules to follow.
 

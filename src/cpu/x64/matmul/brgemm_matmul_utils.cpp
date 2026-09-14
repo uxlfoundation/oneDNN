@@ -2298,9 +2298,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             VERBOSE_BLOCKING_FAIL, "");
 
     auto get_actual_ldd = [&]() {
-        return dst_d.ndims() == 2 && bgmmc.M == 1
-                ? bgmmc.N
-                : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
+        return bgmmc.M == 1 ? bgmmc.N
+                            : dst_d.blocking_desc().strides[bgmmc.ndims - 2];
     };
 
     // Per-K (grouped) scales/ZP applied at kernel time (i.e. not folded into

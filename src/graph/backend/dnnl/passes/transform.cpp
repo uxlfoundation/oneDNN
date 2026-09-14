@@ -1323,29 +1323,6 @@ status_t fuse_src_scales(std::shared_ptr<subgraph_t> &sg) {
         auto &next_op = consumers[0].get_op();
         auto offset = consumers[0].get_offset();
         if (offset == 0 || offset == 1) {
-            // Matmul only support applying scale per channel along the last
-            // dimension for DNNL_ARG_WEIGHTS.
-            const bool is_per_channel = scale_op->has_attr(op_attr::mask)
-                    && scale_op->get_attr<int64_t>(op_attr::mask) != 0;
-            const bool is_per_group = utils::has_group_shape(scale_op);
-            if (offset == 1 && next_op.get_kind() == op_kind::_matmul
-                    && is_per_channel && !is_per_group) {
-                int64_t mask = scale_op->get_attr<int64_t>(op_attr::mask);
-                bool trans_flag = next_op.has_attr(op_attr::transpose_b)
-                        ? next_op.get_attr<bool>(op_attr::transpose_b)
-                        : false;
-                int ndims = scale_op->get_input_value(0)
-                                    ->get_logical_tensor()
-                                    .ndims;
-                const int64_t expected_mask = trans_flag ? (1LL << (ndims - 2))
-                                                         : (1LL << (ndims - 1));
-                VCHECK_TRANSFORM(mask == expected_mask, status::unimplemented,
-                        "Matmul only support applying per channel scale "
-                        "along the last dimension for DNNL_ARG_WEIGHTS. "
-                        "mask: %ld, expected: %ld, ndims: %d",
-                        static_cast<long int>(mask),
-                        static_cast<long int>(expected_mask), ndims);
-            }
             if (!next_op.has_attr(op_attr::fusion_info)) {
                 fusion_info_t fusion_info;
                 next_op.set_attr<fusion_info_t>(

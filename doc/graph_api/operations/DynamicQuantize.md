@@ -3,10 +3,11 @@ DynamicQuantize {#dev_guide_op_dynamicquantize}
 
 ## General
 
-DynamicQuantize operation converts an `f32` tensor to a quantized (`s8` or `u8`)
-tensor. It supports both per-tensor and per-channel asymmetric linear
-quantization. The target quantized data type is specified via the data type of
-dst logical tensor. Rounding mode is library-implementation defined.
+DynamicQuantize operation converts an `f32` tensor to a quantized (`s4`, `u4`,
+`s8`, `u8`, `f8_e4m3`, or `f8_e5m2`) tensor. It supports per-tensor,
+per-channel, and mask-based linear quantization. The target quantized data type
+is specified via the data type of the dst logical tensor. Rounding mode is
+library-implementation defined.
 
 For per-tensor quantization
 
@@ -41,18 +42,19 @@ constructing an operation.
 | 1     | `scales`      | Required             |
 | 2     | `zps`         | Optional             |
 
-@note `scales` is an `f32` 1D tensor to be applied to the quantization formula. For
+@note `scales` is an `f32` tensor to be applied to the quantization formula. For
 `qtype` = `per-tensor`, there should be only one element in the scales tensor.
 For `qtype` = `per-channel`, the element number should be equal to the element
 number of src tensor along the dimension axis. When `mask` is specified, the
 `scales` tensor is a packed tensor whose dimensions correspond to the source
 dimensions selected by the mask bits.
 
-@note `zps` is a 1D tensor with offset values that map to zero. For `qtype` =
+@note `zps` is a tensor with offset values that map to zero. For `qtype` =
 `per-tensor`, there should be only one element in the zps tensor. For `qtype` =
 `per-channel`, the element number should be equal to the element number of input
 tensor along the dimension axis. When `mask` is specified, `zps` must have the
-same shape as `scales`. If omitted, zps values are assumed to be zero.
+same shape as `scales`. If omitted, zps values are assumed to be zero. The
+`zps` input must be omitted when `dst` has an `f8_e4m3` or `f8_e5m2` data type.
 
 ### Outputs
 
@@ -68,3 +70,7 @@ DynamicQuantize operation supports the following data type combinations.
 |:----|:-------|:------------|:----|
 | f32 | f32    | s8, u8, s32 | s8  |
 | f32 | f32    | s8, u8, s32 | u8  |
+| f32 | f32    | s8, u8, s32 | s4  |
+| f32 | f32    | s8, u8, s32 | u4  |
+| f32 | f32    | N/A         | f8_e4m3 |
+| f32 | f32    | N/A         | f8_e5m2 |

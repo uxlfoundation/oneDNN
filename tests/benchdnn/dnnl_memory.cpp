@@ -693,10 +693,12 @@ benchdnn_dnnl_wrapper_t<dnnl_memory_desc_t> dnn_mem_t::init_md(int ndims,
     }
 
     auto tag = normalize_tag(tag_, ndims);
-    if (tag == tag::undef || tag == tag::any || ndims == 0) {
+    if (tag == tag::undef || tag == tag::any || ndims == 0
+            || is_enum_tag(tag)) {
         dnnl_format_tag_t enum_tag = (tag == tag::undef || ndims == 0)
                 ? dnnl_format_tag_undef
-                : dnnl_format_tag_any;
+                : tag == tag::any ? dnnl_format_tag_any
+                                  : str2fmt_tag(tag.c_str());
         DNN_SAFE_V(dnnl_memory_desc_create_with_tag(
                 &md, ndims, dims, data_type, enum_tag));
         return md;

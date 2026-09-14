@@ -14,3 +14,7 @@
 --stag=ab,ba --wtag=ab,ba --dtag=ba
 --attr-post-ops=linear:1.2+add:f16:3:ab+linear:1,linear:1.2+add:f16:3:ba+linear:1
 10x50:50x25
+
+# xf16 binary post-op per-OC broadcasts must not read past the scalar RHS on N tails.
+--reset --dt=f16 --attr-post-ops=max:bf16:per_oc 1x8x2:1x2x5_n"xf16_per_oc_bf16_n_tail"
+--reset --dt=f16 --attr-post-ops=max:f16:per_oc 1x8x2:1x2x5_n"xf16_per_oc_f16_n_tail"

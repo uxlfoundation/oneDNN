@@ -83,7 +83,7 @@ int alignment_for_md(const memory_desc_wrapper &mdw, dim_t ld_bytes) {
 }
 
 // micro_sdpa/micro_sdpa_bwd cross-thread argument bytes, plus headroom.
-constexpr int host_argument_bytes_fwd = 320;
+constexpr int host_argument_bytes_fwd = 328;
 constexpr int host_argument_bytes_bwd = 256;
 
 // XXX: Use the adjusted argument base as a workaround to avoid performance

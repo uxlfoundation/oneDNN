@@ -3257,15 +3257,16 @@ void jit_uni_binary_injector_t<Vmm>::execute_broadcast_tail_statically(
 
     if (is_superset(isa_, avx2_vnni_2)
             && utils::one_of(data_type, data_type::bf16, data_type::f16)) {
-        const auto tmp_lower_vmm =
-                typename vreg_traits_t<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
-        host_->load_bytes(tmp_lower_vmm, rhs_addr,
-                static_cast<int>(tail_size * types::data_type_size(data_type)));
+        const auto tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
+        host_->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
+        // The RHS is a scalar broadcast; repeat the one source element.
+        for (int i = 0; i < tail_size; ++i)
+            host_->vpinsrw(tmp_xmm, tmp_xmm, rhs_addr, i);
         if (data_type == data_type::bf16) {
-            host_->vpmovzxwd(tmp_vmm, tmp_lower_vmm);
+            host_->vpmovzxwd(tmp_vmm, tmp_xmm);
             host_->vpslld(tmp_vmm, tmp_vmm, 16);
         } else {
-            host_->vcvtph2ps(tmp_vmm, tmp_lower_vmm);
+            host_->vcvtph2ps(tmp_vmm, tmp_xmm);
         }
         return;
     }

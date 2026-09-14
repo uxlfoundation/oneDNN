@@ -83,16 +83,8 @@ int alignment_for_md(const memory_desc_wrapper &mdw, dim_t ld_bytes) {
 }
 
 // micro_sdpa/micro_sdpa_bwd cross-thread argument bytes, plus headroom.
-constexpr int host_argument_bytes_fwd = 320;
+constexpr int host_argument_bytes_fwd = 328;
 constexpr int host_argument_bytes_bwd = 256;
-
-// XXX: Use the adjusted argument base as a workaround to avoid performance
-// regressions in some cases.
-int host_argument_bytes_fwd_for(const micro::HWInformation &hw_info) {
-    auto family = ngen::npack::decodeHWIPVersion(hw_info.gmdid).family;
-    if (family == ngen::ProductFamily::NVLP) return 256;
-    return host_argument_bytes_fwd;
-}
 
 compute::gpu_arch_t gpu_arch(const micro::HWInformation &hw_info) {
     return jit::convert_ngen_arch_to_dnnl(
@@ -1217,8 +1209,8 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             = 3 * ukernel_config.unroll_n_kq * int(sizeof(float));
     const int host_live_bytes = kq_c_bytes + vs_c_bytes + softmax_bytes;
 
-    const micro::HostPayload host {subgroup_size,
-            host_argument_bytes_fwd_for(hw_info), host_live_bytes};
+    const micro::HostPayload host {
+            subgroup_size, host_argument_bytes_fwd, host_live_bytes};
     const auto hw_arch = gpu_arch(hw_info);
 
     micro::Package gemm_kq, gemm_vs;

@@ -85,11 +85,13 @@ Xbyak_riscv::FReg jit_uni_eltwise_injector_t<isa>::load_f32_const(
         // lui/addiw/fmv.w.x on every iteration. If the pool is exhausted,
         // fall back to inline materialization into the caller scratch (still
         // correct, just not hoisted).
-        auto it = hoisted_fregs_.find(bits);
-        if (it != hoisted_fregs_.end()) return it->second;
-        if (hoist_fregs_next_ < hoist_fregs_count_) {
-            const FReg r = hoist_fregs_[hoist_fregs_next_++];
-            hoisted_fregs_.emplace(bits, r);
+        for (size_t i = 0; i < hoisted_count_; ++i) {
+            if (hoisted_bits_[i] == bits) return hoist_fregs_[i];
+        }
+        if (hoisted_count_ < hoist_fregs_count_
+                && hoisted_count_ < max_hoisted_constants) {
+            const FReg r = hoist_fregs_[hoisted_count_];
+            hoisted_bits_[hoisted_count_++] = bits;
             h_->li(gpr_aux0_, bits);
             h_->fmv_w_x(r, gpr_aux0_);
             return r;
@@ -108,24 +110,27 @@ Xbyak_riscv::FReg jit_uni_eltwise_injector_t<isa>::load_f32_const(
 
 // Discover the distinct FP coefficients the algorithm needs by emitting the
 // body once into a scratch generator (whose bytes are discarded); the
-// value -> pool-register mapping is kept in hoisted_fregs_. The host then
-// calls emit_hoisted_constants() before the loop.
+// bit-pattern table and register count are retained. The host then calls
+// emit_hoisted_constants() before the loop.
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::collect_hoisted_constants(
         const Vmm &vmm_src) {
     if (!hoisting_enabled()) return;
-    // Minimal scratch generator the discovery pass emits into.
-    struct scratch_gen_t : public jit_generator_t {
-        scratch_gen_t() : jit_generator_t("eltwise_scratch") {}
-        const char *name() const override { return "eltwise_scratch"; }
-        const char *source_file() const override { return __FILE__; }
-        void generate() override {}
-    };
-    scratch_gen_t scratch;
-    jit_generator_t *const saved_host = h_;
-    h_ = &scratch;
-    compute_body(vmm_src);
-    h_ = saved_host;
+    // A selected algorithm body is small. Emit its discovery pass into a
+    // fixed stack buffer: these bytes are discarded and never made executable.
+    // This avoids allocating a full 256 KiB JIT code buffer for every
+    // primitive solely to collect constants.
+    alignas(16) std::array<uint8_t, 8 * 1024> scratch_code {};
+    Xbyak_riscv::CodeGenerator scratch(
+            scratch_code.size(), scratch_code.data());
+    const eltwise_injector::static_params_t scratch_sp(v_aux0_, v_aux1_,
+            v_aux2_, v_aux3_, v_aux4_, f_aux0_, f_aux1_, gpr_aux0_, is_fwd_,
+            hoist_fregs_, hoist_fregs_count_);
+    jit_uni_eltwise_injector_t<isa> collector(
+            &scratch, alg_, alpha_, beta_, scale_, scratch_sp);
+    collector.compute_body(vmm_src);
+    hoisted_bits_ = collector.hoisted_bits_;
+    hoisted_count_ = collector.hoisted_count_;
 }
 
 // Emit the li+fmv.w.x setup for every discovered coefficient into the current
@@ -134,20 +139,14 @@ void jit_uni_eltwise_injector_t<isa>::collect_hoisted_constants(
 template <cpu_isa_t isa>
 void jit_uni_eltwise_injector_t<isa>::emit_hoisted_constants() {
     if (!hoisting_enabled()) return;
-    for (const auto &kv : hoisted_fregs_) {
-        if (kv.first == 0) {
-            h_->fmv_w_x(kv.second, x0);
+    for (size_t i = 0; i < hoisted_count_; ++i) {
+        if (hoisted_bits_[i] == 0) {
+            h_->fmv_w_x(hoist_fregs_[i], x0);
         } else {
-            h_->li(gpr_aux0_, kv.first);
-            h_->fmv_w_x(kv.second, gpr_aux0_);
+            h_->li(gpr_aux0_, hoisted_bits_[i]);
+            h_->fmv_w_x(hoist_fregs_[i], gpr_aux0_);
         }
     }
-}
-
-template <cpu_isa_t isa>
-void jit_uni_eltwise_injector_t<isa>::reset_hoisted_constants() {
-    hoisted_fregs_.clear();
-    hoist_fregs_next_ = 0;
 }
 
 // NaN-preserving clamp(v, lo, hi). Comparisons with NaN are false, so NaN lanes
@@ -199,7 +198,8 @@ void jit_uni_eltwise_injector_t<isa>::log_compute_vector(const Vmm &vmm_src) {
     h_->vmerge_vvm(e, e, tmp); // e := mask ? e-1 : e
     h_->vfadd_vv(tmp, vmm_src, vmm_src); // 2m
     h_->vmerge_vvm(vmm_src, vmm_src, tmp); // m := mask ? 2m : m
-    h_->vfsub_vf(vmm_src, vmm_src, c_one); // m := m - 1 (== 2m-1 on masked)
+    const FReg c_one_sub = load_f32_const(f_aux0_, 1.f);
+    h_->vfsub_vf(vmm_src, vmm_src, c_one_sub); // m := m - 1 (== 2m-1 on masked)
 
     // poly = m^3 * P(m); P is Horner over the Cephes logf coefficients.
     const FReg c_p0 = load_f32_const(f_aux0_, 7.0376836292e-2f);
@@ -251,7 +251,8 @@ void jit_uni_eltwise_injector_t<isa>::erf_compute_vector(const Vmm &vmm_src) {
     h_->vfmul_vv(t, t, ax);
     const FReg c_one = load_f32_const(f_aux0_, 1.f);
     h_->vfadd_vf(t, t, c_one);
-    h_->vfrdiv_vf(t, t, c_one); // t = 1/(1+p|x|)
+    const FReg c_one_div = load_f32_const(f_aux0_, 1.f);
+    h_->vfrdiv_vf(t, t, c_one_div); // t = 1/(1+p|x|)
 
     // poly = ((((a5*t + a4)*t + a3)*t + a2)*t + a1) * t   (in v)
     const FReg c_a5 = load_f32_const(f_aux0_, 1.061405429f);
@@ -407,8 +408,7 @@ void jit_uni_eltwise_injector_t<isa>::tanh_compute_vector_fwd(
     h_->vfmul_vv(v_aux2_, v_aux1_, v_aux1_); // v_aux2 = x^2
     const FReg c_t2sq = load_f32_const(f_aux0_, t2 * t2);
     h_->vfrsub_vf(v_aux2_, v_aux2_, c_t2sq); // t2^2 - x^2
-    const FReg c_wscale
-            = load_f32_const(f_aux0_, 1.f / (t2 * t2 - t1 * t1));
+    const FReg c_wscale = load_f32_const(f_aux0_, 1.f / (t2 * t2 - t1 * t1));
     h_->vfmul_vf(v_aux2_, v_aux2_, c_wscale); // w (unclamped)
     clamp(v_aux2_, 0.f, 1.f); // w in [0,1]
     h_->vfmacc_vv(vmm_src, v_aux2_, v_aux0_); // v = t + w*(x - t)
@@ -496,7 +496,8 @@ void jit_uni_eltwise_injector_t<isa>::mish_compute_vector_fwd(
     const FReg c_one = load_f32_const(f_aux0_, 1.f);
     h_->vfadd_vf(vmm_src, vmm_src, c_one); // w = 1 + exp(x)
     h_->vfmul_vv(vmm_src, vmm_src, vmm_src); // w^2
-    h_->vfadd_vf(vmm_src, vmm_src, c_one); // w^2 + 1
+    const FReg c_one_square = load_f32_const(f_aux0_, 1.f);
+    h_->vfadd_vf(vmm_src, vmm_src, c_one_square); // w^2 + 1
     const FReg c_two = load_f32_const(f_aux0_, 2.f);
     h_->vfrdiv_vf(vmm_src, vmm_src, c_two); // 2 / (w^2 + 1)
     const FReg c_one_sub = load_f32_const(f_aux0_, 1.f);
@@ -512,7 +513,8 @@ void jit_uni_eltwise_injector_t<isa>::logistic_compute_vector_fwd(
     exp_compute_vector_fwd(vmm_src); // exp(-x)
     const FReg c_one = load_f32_const(f_aux0_, 1.f);
     h_->vfadd_vf(vmm_src, vmm_src, c_one); // 1 + exp(-x)
-    h_->vfrdiv_vf(vmm_src, vmm_src, c_one); // 1 / (1 + exp(-x))
+    const FReg c_one_div = load_f32_const(f_aux0_, 1.f);
+    h_->vfrdiv_vf(vmm_src, vmm_src, c_one_div); // 1 / (1 + exp(-x))
 }
 
 template <cpu_isa_t isa>
@@ -974,11 +976,13 @@ void jit_uni_eltwise_injector_t<isa>::hardswish_compute_vector_bwd(
     h_->vfadd_vf(vmm_src, vmm_src, c_beta); // v = w
     const FReg c_one = load_f32_const(f_aux1_, 1.f);
     h_->vfmv_v_f(a1, c_one); // 1
-    h_->vmfge_vf(vmm_mask_, a0, c_one);
+    const FReg c_one_cmp = load_f32_const(f_aux0_, 1.f);
+    h_->vmfge_vf(vmm_mask_, a0, c_one_cmp);
     h_->vmerge_vvm(vmm_src, vmm_src, a1); // v>=1 -> 1
     const FReg c_zero = load_f32_const(f_aux1_, 0.f);
     h_->vfmv_v_f(a1, c_zero); // 0
-    h_->vmfle_vf(vmm_mask_, a0, c_zero);
+    const FReg c_zero_cmp = load_f32_const(f_aux0_, 0.f);
+    h_->vmfle_vf(vmm_mask_, a0, c_zero_cmp);
     h_->vmerge_vvm(vmm_src, vmm_src, a1); // v<=0 -> 0
 }
 
@@ -999,7 +1003,8 @@ void jit_uni_eltwise_injector_t<isa>::hardsigmoid_compute_vector_bwd(
     const FReg c_one = load_f32_const(f_aux0_, 1.f);
     h_->vmfge_vf(vmm_mask_, a0, c_one);
     h_->vmerge_vvm(vmm_src, vmm_src, a1); // v>=1 -> 0
-    h_->vmfle_vf(vmm_mask_, a0, c_zero);
+    const FReg c_zero_cmp = load_f32_const(f_aux0_, 0.f);
+    h_->vmfle_vf(vmm_mask_, a0, c_zero_cmp);
     h_->vmerge_vvm(vmm_src, vmm_src, a1); // v<=0 -> 0
 }
 

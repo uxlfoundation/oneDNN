@@ -17,8 +17,8 @@
 #ifndef CPU_RV64_INJECTORS_JIT_UNI_ELTWISE_INJECTOR_HPP
 #define CPU_RV64_INJECTORS_JIT_UNI_ELTWISE_INJECTOR_HPP
 
+#include <array>
 #include <cstdint>
-#include <map>
 #include <vector>
 
 #include "common/c_types_map.hpp"
@@ -136,7 +136,7 @@ struct jit_uni_eltwise_injector_t {
     //   spilling, and the mask register is architecturally v0).
     // use_dst is derived from alg: backward descriptors carry the
     //   *_use_dst_for_bwd kinds (x64 receives it as a constructor argument).
-    jit_uni_eltwise_injector_t(jit_generator_t *host, alg_kind_t alg,
+    jit_uni_eltwise_injector_t(Xbyak_riscv::CodeGenerator *host, alg_kind_t alg,
             float alpha, float beta, float scale,
             const eltwise_injector::static_params_t &sp)
         : alg_(alg)
@@ -175,7 +175,7 @@ struct jit_uni_eltwise_injector_t {
                         v_aux1_.getIdx(), v_aux2_.getIdx(), v_aux3_.getIdx())));
     }
 
-    jit_uni_eltwise_injector_t(jit_generator_t *host,
+    jit_uni_eltwise_injector_t(Xbyak_riscv::CodeGenerator *host,
             const post_ops_t::entry_t::eltwise_t &e,
             const eltwise_injector::static_params_t &sp)
         : jit_uni_eltwise_injector_t(
@@ -216,7 +216,6 @@ struct jit_uni_eltwise_injector_t {
     bool hoisting_enabled() const { return hoist_fregs_count_ > 0; }
     void collect_hoisted_constants(const Vmm &vmm_src);
     void emit_hoisted_constants();
-    void reset_hoisted_constants();
 
     // This call is `static` and `public` so a host can size its
     // static_params_t before constructing the injector. Unlike x64 (which
@@ -232,7 +231,7 @@ private:
     const float beta_;
     const float scale_;
 
-    jit_generator_t *h_;
+    Xbyak_riscv::CodeGenerator *const h_;
 
     const bool is_fwd_;
     const bool use_dst_;
@@ -251,10 +250,11 @@ private:
     // Loop-invariant FP coefficient hoisting state (empty pool = disabled).
     const Xbyak_riscv::FReg *hoist_fregs_;
     size_t hoist_fregs_count_;
-    size_t hoist_fregs_next_ = 0;
-    // Maps the IEEE-754 bit pattern of a coefficient to the pool register that
-    // holds it (live across the loop backedge after emit_hoisted_constants()).
-    std::map<uint32_t, Xbyak_riscv::FReg> hoisted_fregs_;
+    size_t hoisted_count_ = 0;
+    // The register for entry i is hoist_fregs_[i]. A fixed-capacity table keeps
+    // primitive creation free of per-coefficient heap allocations.
+    static constexpr size_t max_hoisted_constants = 32;
+    std::array<uint32_t, max_hoisted_constants> hoisted_bits_ {};
 
     // Worker: applies the op to one register group, dispatching on
     // alg_/is_fwd_.

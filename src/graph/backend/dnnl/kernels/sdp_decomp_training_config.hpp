@@ -22,8 +22,6 @@
 
 #include "oneapi/dnnl/dnnl.hpp"
 
-#include "common/dnnl_thread.hpp"
-
 #include "graph/interface/c_types_map.hpp"
 
 #include "graph/backend/dnnl/kernels/sdp_decomp_reorder.hpp"

@@ -15,7 +15,11 @@
 *******************************************************************************/
 
 #include "graph/backend/dnnl/kernels/sdp_decomp_config.hpp"
-#include "graph/interface/shape_infer.hpp"
+
+#include "graph/backend/dnnl/common.hpp"
+#include "graph/backend/dnnl/fusion_info.hpp"
+
+#include "common/dnnl_thread.hpp"
 
 #define VCHECK_SDP_DECOMP(cond, status, msg, ...) \
     VCONDCHECK(graph, create, check, sdp_decomp_kernel_t, (cond), status, msg, \

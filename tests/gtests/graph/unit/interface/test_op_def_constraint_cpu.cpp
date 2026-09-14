@@ -703,3 +703,18 @@ TEST(test_interface_op_def_constraint, DynamicDequantizeZpsBroadcast) {
     EXPECT_TRUE(check({3})); // matches scales
     EXPECT_FALSE(check({2})); // mismatched
 }
+
+TEST(test_interface_op_def_constraint, DynamicF8QuantizationRejectsZps) {
+    for (const auto op_kind : {DynamicQuantize, DynamicDequantize}) {
+        graph::op_t op(op_kind);
+        const auto src_dt = op_kind == DynamicQuantize ? f32 : f8_e4m3;
+        const auto dst_dt = op_kind == DynamicQuantize ? f8_e4m3 : f32;
+        op.add_input(utils::logical_tensor_init(0, {1, 3, 4, 4}, src_dt));
+        op.add_input(
+                utils::logical_tensor_init(1, {DNNL_GRAPH_UNKNOWN_DIM}, f32));
+        op.add_input(utils::logical_tensor_init(2, {1}, s8));
+        op.add_output(utils::logical_tensor_init(3, {1, 3, 4, 4}, dst_dt));
+
+        EXPECT_FALSE(graph::check_dyn_quant_dequant_scales_zps(&op));
+    }
+}

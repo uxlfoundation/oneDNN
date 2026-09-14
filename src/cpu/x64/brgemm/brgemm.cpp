@@ -705,6 +705,8 @@ status_t brgemm_kernel_create(
             *brg_kernel = ir_ker.release();
             return status::success;
         }
+        if (brg.dt_a == data_type::f32 && brg.isa_impl == avx512_core)
+            return status::unimplemented;
     }
 
     if (brg.is_dgmm) {

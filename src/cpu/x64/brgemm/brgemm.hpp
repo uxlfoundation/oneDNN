@@ -102,7 +102,7 @@ status_t DNNL_API brgemm_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
 ///
 /// @return status::success on success and a status describing the error
 ///     otherwise.
-status_t brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
+status_t DNNL_API brgemv_desc_init(brgemm_desc_t *brg, cpu_isa_t isa,
         brgemm_batch_kind_t type, impl::data_type_t dt_a,
         impl::data_type_t dt_x, bool transA, float alpha, float beta, dim_t LDA,
         dim_t INCY, dim_t M, dim_t N, bool treat_y_as_row);

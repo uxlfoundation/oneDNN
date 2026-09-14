@@ -25,6 +25,8 @@
 
 #include "common/c_types_map.hpp"
 
+#include "cpu/x64/brgemm/brgemm.hpp"
+#include "cpu/x64/brgemm/brgemv_ir.hpp"
 #include "cpu/x64/ir/emitter/emitter.hpp"
 #include "cpu/x64/ir/ir.hpp"
 #include "cpu/x64/ir/postops_injector.hpp"
@@ -373,6 +375,28 @@ TEST(IRBuilderTests, OperationOrderMetadataAndDefUse) {
     EXPECT_NE(std::find(uses.begin(), uses.end(), (int)a), uses.end());
     EXPECT_NE(std::find(uses.begin(), uses.end(), (int)b), uses.end());
     EXPECT_NE(std::find(uses.begin(), uses.end(), (int)acc), uses.end());
+}
+
+// A broadcast reads the base pointer and overwrites its destination. Unlike an
+// accumulator it must not be reported as reading the destination, otherwise the
+// allocator would keep a dead value alive.
+TEST(IRBuilderTests, BroadcastDefUse) {
+    ir_t ir;
+    const vreg_t ptr = ir.new_gpr();
+    ir.load_param(ptr, 0);
+
+    const vreg_t b = ir.new_vec(data_type::f32);
+    ir.vbcast(b, ptr, (dim_t)sizeof(float), data_type::f32);
+
+    ASSERT_EQ(ir.n_ops(), 2);
+    EXPECT_EQ(ir.ops()[1].kind, op_kind_t::vbcast);
+    EXPECT_EQ(ir.ops()[1].mem.base, ptr);
+    EXPECT_EQ(ir.ops()[1].mem.disp, (dim_t)sizeof(float));
+
+    std::vector<int> defs, uses;
+    ir.def_use(ir.ops()[1], defs, uses);
+    EXPECT_EQ(defs, std::vector<int>({(int)b}));
+    EXPECT_EQ(uses, std::vector<int>({(int)ptr}));
 }
 
 // Validates loop construction. A real loop links its end back to its begin and
@@ -813,6 +837,79 @@ struct dot_args_t {
     float *c;
 };
 
+TEST(GemvIRTests, F32IsaAndTails) {
+    SKIP_IF_NO_AVX2();
+    for (const auto isa : {avx2, avx512_core}) {
+        if (!mayiuse(isa)) continue;
+        for (bool transposed : {false, true})
+            for (int outputs : {1, 15, 16, 17, 127, 128, 129})
+                for (int reduction : {1, 15, 16, 17, 33})
+                    for (int batches : {1, 3})
+                        for (float beta : {0.f, 1.f}) {
+                            SCOPED_TRACE(::testing::Message()
+                                    << "isa=" << isa << " transA=" << transposed
+                                    << " outputs=" << outputs << " reduction="
+                                    << reduction << " batches=" << batches
+                                    << " beta=" << beta);
+                            brgemm_desc_t descriptor;
+                            ASSERT_EQ(impl::status::success,
+                                    brgemv_desc_init(&descriptor, isa,
+                                            brgemm_addr, data_type::f32,
+                                            data_type::f32, transposed, 1.f,
+                                            beta,
+                                            transposed ? outputs : reduction, 1,
+                                            outputs, reduction, true));
+                            ASSERT_EQ(isa, descriptor.isa_impl);
+                            brgemm_attr_t attributes;
+                            attributes.max_bs = batches;
+                            ASSERT_EQ(impl::status::success,
+                                    brgemm_desc_set_attr(
+                                            &descriptor, attributes));
+                            ASSERT_EQ(impl::status::success,
+                                    brgemm_desc_finalize(&descriptor));
+                            std::unique_ptr<brgemm_kernel_t> kernel(
+                                    create_brgemv_ir_kernel(descriptor));
+                            ASSERT_NE(nullptr, kernel);
+                            ASSERT_EQ(impl::status::success,
+                                    kernel->create_kernel());
+                            std::vector<float> matrix(
+                                    batches * outputs * reduction, 2.f);
+                            std::vector<float> vector(
+                                    batches * reduction, -3.f);
+                            std::vector<float> output(outputs + 1, 5.f);
+                            std::vector<brgemm_batch_element_t> batch(batches);
+                            for (int index = 0; index < batches; index++) {
+                                batch[index].ptr.A = matrix.data()
+                                        + index * outputs * reduction;
+                                batch[index].ptr.B
+                                        = vector.data() + index * reduction;
+                            }
+                            brgemm_kernel_execute(kernel.get(), batches,
+                                    batch.data(), output.data());
+                            for (int index = 0; index < outputs; index++)
+                                ASSERT_FLOAT_EQ(
+                                        -6.f * batches * reduction + beta * 5.f,
+                                        output[index]);
+                            ASSERT_FLOAT_EQ(5.f, output[outputs]);
+                        }
+    }
+}
+
+TEST(GemvIRTests, F32Avx512RejectsUnsupportedIR) {
+    if (!mayiuse(avx512_core)) GTEST_SKIP() << "Requires AVX-512 Core";
+    brgemm_desc_t descriptor;
+    ASSERT_EQ(impl::status::success,
+            brgemv_desc_init(&descriptor, avx512_core, brgemm_addr,
+                    data_type::f32, data_type::f32, true, 1.f, 0.5f, 17, 1, 17,
+                    33, true));
+    ASSERT_EQ(impl::status::success, brgemm_desc_finalize(&descriptor));
+    brgemm_kernel_t *kernel = nullptr;
+    const auto result = brgemm_kernel_create(&kernel, descriptor);
+    std::unique_ptr<brgemm_kernel_t> guard(kernel);
+    EXPECT_EQ(impl::status::unimplemented, result);
+    EXPECT_EQ(nullptr, kernel);
+}
+
 // Pipeline test. A dot product over two vectors' worth of elements, expressed
 // as a two-iteration loop, is built, allocated, emitted, run, and checked
 // against a reference. Passing it means the whole pipeline computes the right
@@ -933,6 +1030,85 @@ TEST(IntegrationTests, MaskedAccessCoversActiveElementsOnly) {
         EXPECT_FLOAT_EQ(c_buf[i], a_buf[i] * b_buf[i]) << " at element " << i;
     for (int i = tail; i < simd_w(); i++)
         EXPECT_FLOAT_EQ(c_buf[i], sentinel) << " at element " << i;
+}
+
+TEST(IntegrationTests, BroadcastScalesWholeVector) {
+    SKIP_IF_NO_AVX2();
+
+    ir_t ir;
+    const vreg_t input_ptr = ir.new_gpr();
+    ir.load_param(input_ptr, offsetof(dot_args_t, a));
+    const vreg_t scale_ptr = ir.new_gpr();
+    ir.load_param(scale_ptr, offsetof(dot_args_t, b));
+    const vreg_t output_ptr = ir.new_gpr();
+    ir.load_param(output_ptr, offsetof(dot_args_t, c));
+    const vreg_t input = ir.new_vec(data_type::f32);
+    ir.vload(input, input_ptr, 0, data_type::f32);
+    const vreg_t scale = ir.new_vec(data_type::f32);
+    ir.vbcast(scale, scale_ptr, sizeof(float), data_type::f32);
+    ir.vmul(input, scale);
+    ir.vstore(output_ptr, 0, input, data_type::f32);
+
+    ir_kernel_t kernel(ir);
+    ASSERT_TRUE(kernel.run_ir_pipeline());
+    std::vector<float> input_data(simd_w()), output_data(simd_w(), -12345.f);
+    const float scales[] = {100.f, 3.f};
+    for (int index = 0; index < simd_w(); index++)
+        input_data[index] = (float)(index + 1);
+    dot_args_t args {input_data.data(), scales, output_data.data()};
+    kernel.run(&args);
+    for (int index = 0; index < simd_w(); index++)
+        EXPECT_FLOAT_EQ(output_data[index], input_data[index] * scales[1]);
+}
+
+TEST(IntegrationTests, NarrowBroadcastAndWideningLoads) {
+    if (!mayiuse(avx512_core)) GTEST_SKIP() << "Requires AVX-512";
+
+    struct narrow_args_t {
+        const uint16_t *input;
+        const uint16_t *scale;
+        float *output;
+    };
+
+    for (data_type_t mem_dt : {data_type::bf16, data_type::f16}) {
+        for (int elems : {1, 15, 16}) {
+            ir_t ir;
+            const vreg_t input_ptr = ir.new_gpr();
+            ir.load_param(input_ptr, offsetof(narrow_args_t, input));
+            const vreg_t scale_ptr = ir.new_gpr();
+            ir.load_param(scale_ptr, offsetof(narrow_args_t, scale));
+            const vreg_t output_ptr = ir.new_gpr();
+            ir.load_param(output_ptr, offsetof(narrow_args_t, output));
+            const vreg_t input = ir.new_vec(data_type::f32);
+            if (elems == 16) {
+                ir.vload(input, input_ptr, sizeof(uint16_t), mem_dt);
+            } else {
+                const vreg_t mask = ir.new_mask();
+                ir.set_mask_imm(mask, elems);
+                ir.vload_masked(
+                        input, input_ptr, sizeof(uint16_t), mask, mem_dt);
+            }
+            const vreg_t scale = ir.new_vec(data_type::f32);
+            ir.vbcast(scale, scale_ptr, sizeof(uint16_t), mem_dt);
+            ir.vmul(input, scale);
+            ir.vstore(output_ptr, 0, input, data_type::f32);
+
+            ir_kernel_t kernel(ir);
+            ASSERT_TRUE(kernel.run_ir_pipeline());
+            std::vector<uint16_t> input_data(17, 0x7bff);
+            for (int index = 1; index <= elems; index++)
+                input_data[index] = 0x4000;
+            const uint16_t scales[] = {0x4000, 0xc000};
+            std::vector<float> output_data(17, -12345.f);
+            narrow_args_t args {input_data.data(), scales, output_data.data()};
+            kernel.run(&args);
+            for (int index = 0; index < 16; index++)
+                EXPECT_FLOAT_EQ(output_data[index], index < elems ? -4.f : 0.f)
+                        << "datatype " << mem_dt << " tail " << elems
+                        << " element " << index;
+            EXPECT_FLOAT_EQ(output_data[16], -12345.f);
+        }
+    }
 }
 
 // Computes a dot product where one vector is multiplied by n vectors into

@@ -27,10 +27,11 @@ namespace reorder {
 
 TASK_EXECUTOR_DECL_TYPES;
 
-void check_correctness(
-        const settings_t &s, driver_task_executor_t &task_executor) {
+void check_correctness(const settings_t &s, const settings_t &def,
+        driver_task_executor_t &task_executor) {
     std::vector<std::vector<dnnl_data_type_t>> dt = s.dt;
-    if (dt.empty()) {
+    if (dt == def.dt) {
+        dt.clear();
         for_(const auto &i_sdt : s.sdt)
         for (const auto &i_ddt : s.ddt)
             dt.push_back({i_sdt, i_ddt});
@@ -194,7 +195,7 @@ int bench(int argc, char **argv) {
 
             SAFE(verify_input(s, def), WARN);
             s.finalize();
-            check_correctness(s, task_executor);
+            check_correctness(s, def, task_executor);
         }
     }
 

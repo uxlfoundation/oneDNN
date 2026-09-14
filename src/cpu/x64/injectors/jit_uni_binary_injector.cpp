@@ -3385,17 +3385,27 @@ struct helper_bcast_tail_t<avx2_vnni_2, Vmm> {
             fp8_conversion_e4m3_t *f8_e4m3_cvt) {
         if (utils::one_of(data_type, data_type::bf16, data_type::f16,
                     data_type::f8_e5m2, data_type::f8_e4m3)) {
-            const auto tmp_lower_vmm =
-                    typename vreg_traits_t<Vmm>::Vmm_lower_t(tmp_vmm.getIdx());
-            host->load_bytes(tmp_lower_vmm, rhs_addr,
-                    tail_size * types::data_type_size(data_type));
-            if (data_type == data_type::bf16) {
-                host->vpmovzxwd(tmp_vmm, tmp_lower_vmm);
-                host->vpslld(tmp_vmm, tmp_vmm, 16);
-            } else if (data_type == data_type::f16) {
-                host->vcvtph2ps(tmp_vmm, tmp_lower_vmm);
-            } else
+            if (utils::one_of(data_type, data_type::bf16, data_type::f16)) {
+                const auto tmp_xmm = Xbyak::Xmm(tmp_vmm.getIdx());
+                host->uni_vxorps(tmp_vmm, tmp_vmm, tmp_vmm);
+                // The RHS is a scalar broadcast; repeat the one source element.
+                for (int i = 0; i < tail_size; ++i)
+                    host->vpinsrw(tmp_xmm, tmp_xmm, rhs_addr,
+                            static_cast<uint8_t>(i));
+                if (data_type == data_type::bf16) {
+                    host->vpmovzxwd(tmp_vmm, tmp_xmm);
+                    host->vpslld(tmp_vmm, tmp_vmm, 16);
+                } else {
+                    host->vcvtph2ps(tmp_vmm, tmp_xmm);
+                }
+            } else {
+                const auto tmp_lower_vmm =
+                        typename vreg_traits_t<Vmm>::Vmm_lower_t(
+                                tmp_vmm.getIdx());
+                host->load_bytes(tmp_lower_vmm, rhs_addr,
+                        tail_size * types::data_type_size(data_type));
                 assert(!"Unsupported data type");
+            }
 
         } else {
             helper_bcast_tail_t<avx2, Vmm>::execute_broadcast_tail_statically(

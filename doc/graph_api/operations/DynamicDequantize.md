@@ -3,11 +3,12 @@ DynamicDequantize {#dev_guide_op_dynamicdequantize}
 
 ## General
 
-The Dynamic Dequantize operation converts a quantized (`s4`, `u4`, `s8`, or `u8`) tensor
-to a `bf16`, `f16` or `f32` tensor. It supports per-tensor, per-channel, and per-group asymmetric
-linear de-quantization. The rounding mode is defined by the library
-implementation. Unlike the @ref dev_guide_op_dequantize, Dynamic Dequantize takes
-scales and zero-points as operator src tensors.
+The DynamicDequantize operation converts a quantized (`s4`, `u4`, `s8`, `u8`,
+`f8_e4m3`, or `f8_e5m2`) tensor to a `bf16`, `f16`, or `f32` tensor. It supports
+per-tensor, per-channel, per-group, and mask-based linear de-quantization. The
+rounding mode is defined by the library implementation. Unlike the
+@ref dev_guide_op_dequantize, DynamicDequantize takes scales and zero-points as
+operator source tensors.
 
 For per-tensor de-quantization
 
@@ -74,7 +75,8 @@ should have the same number of dimensions as the `src` tensor. On the dimensions
 where grouped quantization is applied, the dimension should be the number of
 groups, which equals to `src_dim` / `group_size`, while other dimensions should
 match the `src` tensor. When `mask` is specified, `zps` must have the same shape
-as `scales`. If omitted, the `zps` values are assumed to be zero.
+as `scales`. If omitted, the `zps` values are assumed to be zero. The `zps`
+input must be omitted when `src` has an `f8_e4m3` or `f8_e5m2` data type.
 
 ### Outputs
 
@@ -92,5 +94,7 @@ DynamicDequantize operation supports the following data type combinations.
 | u8  | f16, bf16, f32 | f16, bf16, f32 | s8, u8, s32 |
 | s4  | f16, bf16, f32 | f16, bf16, f32 | s4, u4, s32 |
 | u4  | f16, bf16, f32 | f16, bf16, f32 | s4, u4, s32 |
+| f8_e4m3 | f16, bf16, f32 | f16, bf16, f32 | N/A |
+| f8_e5m2 | f16, bf16, f32 | f16, bf16, f32 | N/A |
 
 It's expected that the data types of scales and dst should be the same.

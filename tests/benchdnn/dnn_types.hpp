@@ -853,6 +853,9 @@ std::ostream &dump_global_params(std::ostream &s);
 // Validates a tag/meta-tag.
 int check_tag(const std::string &tag_, bool check_enum_tags_only = false);
 
+// Checks if the tag is present in the dnnl_format_tag_t enum.
+bool is_enum_tag(const std::string &tag);
+
 // Validates a tag in abc notation.
 int check_abc_tag(const std::string &tag, bool check_enum_tags_only = false);
 

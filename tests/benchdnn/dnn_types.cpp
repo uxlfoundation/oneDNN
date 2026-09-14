@@ -26,6 +26,7 @@
 #include <iostream>
 #include <random>
 #include <sstream>
+#include <unordered_set>
 
 #include "oneapi/dnnl/dnnl.h"
 
@@ -1707,11 +1708,24 @@ static bool is_abc_tag(const std::string &tag) {
     return true;
 }
 
+bool is_enum_tag(const std::string &tag) {
+    // Relies on a hash-set lookup over a linear chain calls for each tag.
+    // The set is derived from the contiguous enum range via `fmt_tag2str` so it
+    // stays in sync automatically when tags are added.
+    static const std::unordered_set<std::string> enum_tags = []() {
+        std::unordered_set<std::string> tags;
+        for (int t = dnnl_format_tag_undef; t < dnnl_format_tag_last; t++)
+            tags.insert(fmt_tag2str(static_cast<dnnl_format_tag_t>(t)));
+        return tags;
+    }();
+    return enum_tags.find(tag) != enum_tags.end();
+}
+
 int check_abc_tag(const std::string &tag_, bool check_enum_tags_only) {
     if (tag_.empty()) return FAIL;
     if (!is_abc_tag(tag_)) return FAIL;
     if (check_enum_tags_only) {
-        if (str2fmt_tag(tag_.c_str()) == dnnl_format_tag_last) return FAIL;
+        if (!is_enum_tag(tag_)) return FAIL;
         return OK;
     }
 

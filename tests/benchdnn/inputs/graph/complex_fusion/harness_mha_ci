@@ -76,3 +76,4 @@
 
 # fp8 graphs
 --reset --case=complex_fusion/mha/sdpa-fp8-f32.json
+--reset --case=complex_fusion/mha/sdpa-dynamic-fp8-bf16.json

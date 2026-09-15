@@ -69,6 +69,24 @@ struct sdpa_pd_t : public primitive_desc_t {
         return (desc()->attn_mask_md()->data_type != data_type::undef);
     }
 
+    /// If true, the attention mask is an explicit additive buffer mask.
+    bool with_buffer_mask() const {
+        return desc_.mask_type == attn_mask_type::buffer;
+    }
+
+    /// If true, the attention mask is a select mask: a condition tensor
+    /// (carried in attn_mask_desc) chooses between the score and a scalar fill.
+    bool with_select_mask() const {
+        return desc_.mask_type == attn_mask_type::select
+                || desc_.mask_type == attn_mask_type::select_fusiable;
+    }
+
+    /// For a select mask, true iff lanes where cond != 0 keep the score
+    /// (`cond ? score : fill`); false is the inverse (`cond ? fill : score`).
+    bool select_fusiable() const {
+        return desc_.mask_type == attn_mask_type::select_fusiable;
+    }
+
     /// Returns the accumulation data type of the KQ matmul
     data_type_t kq_acc_dt() const { return desc()->kq_acc_dt; }
 
@@ -209,6 +227,9 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
                     DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES))
             return arg_usage_t::input;
 
+        if (arg == DNNL_ARG_ATTN_MASK_FILL && with_select_mask())
+            return arg_usage_t::input;
+
         if (arg == DNNL_ARG_DST) return arg_usage_t::output;
 
         if (arg == DNNL_ARG_WORKSPACE)
@@ -250,7 +271,8 @@ struct sdpa_fwd_pd_t : public sdpa_pd_t {
     }
 
     int n_inputs() const override {
-        return 3 + int(with_attn_mask()) + int(with_attn_scale());
+        return 3 + int(with_attn_mask()) + int(with_attn_scale())
+                + int(with_select_mask());
     }
     int n_outputs() const override {
         return 1 + (!types::is_zero_md(workspace_md()));

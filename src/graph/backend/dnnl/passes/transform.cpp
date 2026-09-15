@@ -4722,6 +4722,29 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
                 sdpa_op->set_attr(op_attr::mask_type,
                         static_cast<int64_t>(attn_mask_type::buffer));
             }
+            // handle select mask (lowered graph Select -> binary_select):
+            // dst = cond ? src0 : src1, with cond at input 2. One of src0/src1
+            // is the running score fed by the previous chain op, the other is
+            // the scalar fill. Wire the condition then the fill as the sdpa
+            // inputs (DNNL_ARG_ATTN_MASK / DNNL_ARG_ATTN_MASK_FILL).
+            else if (alg == dnnl::algorithm::binary_select) {
+                const auto &prev_out = candidates[i - 1]->get_output_value(0);
+                const bool score_is_src0
+                        = op->get_input_value(0).get() == prev_out.get();
+                const size_t fill_in = score_is_src0 ? 1 : 0;
+                auto fill_val = op->get_input_value(fill_in);
+                fill_val->remove_consumer(*op, fill_in);
+                auto cond_val = op->get_input_value(2);
+                cond_val->remove_consumer(*op, 2);
+                sdpa_op->connect_input(input_idx++, cond_val);
+                sdpa_op->connect_input(input_idx++, fill_val);
+                // score at src0 => dst = cond ? score : fill (fusiable, p2);
+                // score at src1 => dst = cond ? fill : score (non-fusiable, p1).
+                sdpa_op->set_attr(op_attr::mask_type,
+                        static_cast<int64_t>(score_is_src0
+                                        ? attn_mask_type::select_fusiable
+                                        : attn_mask_type::select));
+            }
         }
         // handle implicit dnnl_mask
         else if (op->get_kind() == op_kind::_mask) {

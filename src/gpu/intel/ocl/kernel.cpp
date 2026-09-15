@@ -96,6 +96,7 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
             = utils::downcast<engine_t *>(stream.engine())->device_info();
     const size_t pointer_size
             = stream_ocl_device_info->device_address_bits() / 8;
+
     size_t param_bytes = 0;
     for (int i = 0; i < arg_list.nargs(); ++i) {
         auto &arg = arg_list.get(i);
@@ -142,14 +143,9 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                     default: assert(!"not expected");
                 }
             } else {
-                if (xpu::ocl::usm::is_usm_supported(stream.engine())) {
-                    CHECK(set_usm_arg(stream.engine(), kernel, i, nullptr));
-                    param_bytes += pointer_size;
-                } else {
-                    cl_mem null_mem = nullptr;
-                    CHECK(set_arg(kernel, i, sizeof(cl_mem), &null_mem));
-                    param_bytes += pointer_size;
-                }
+                cl_mem null_mem = nullptr;
+                CHECK(set_arg(kernel, i, sizeof(cl_mem), &null_mem));
+                param_bytes += pointer_size;
             }
         } else if (arg.is_local()) {
             CHECK(set_arg(kernel, i, arg.size(), arg.value()));

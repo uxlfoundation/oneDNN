@@ -163,32 +163,23 @@ status_t primitive_execute(
             pd_info = pd->info();
         }
 
-        if (!stream->is_verbose_profiler_enabled()) {
-            bool block_on_wait = true;
-#if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL
-            dnnl::threadpool_interop::threadpool_iface *tp;
-            auto st = stream->get_threadpool(&tp);
-            const bool is_async_cpu = st == status::success && tp
-                    && (tp->get_flags()
-                            & dnnl::threadpool_interop::threadpool_iface::
-                                    ASYNCHRONOUS)
-                    && stream->engine()->kind() == engine_kind::cpu;
-            block_on_wait = !is_async_cpu;
-#endif
+        // Block around execution to measure host-side timing, unless the runtime
+        // supports non-blocking device-measured profiling (GPU runtimes and
+        // async threadpool CPU).
+        const bool block_on_wait = !stream->is_verbose_profiler_enabled()
+                && !stream->impl()->is_async_threadpool();
 
-            if (block_on_wait) stream->wait();
-            double start_ms = get_msec();
-            status = stream->enqueue_primitive(primitive_iface, ctx);
-            if (block_on_wait) stream->wait();
+        if (block_on_wait) stream->wait();
+        double start_ms = get_msec();
+        status = stream->enqueue_primitive(primitive_iface, ctx);
+        if (block_on_wait) stream->wait();
+
+        if (stream->is_verbose_profiler_enabled()) {
+            CHECK(stream->run_verbose_profiler(pd_info, start_ms, 0));
+        } else {
             double duration_ms = get_msec() - start_ms;
             VPROF(start_ms, primitive, exec, VERBOSE_profile, pd_info.c_str(),
                     duration_ms);
-        } else {
-            // For OpenCL/SYCL GPU streams, the verbose logs print device-
-            // measured execution times in a non-blocking manner.
-            double start_ms = get_msec();
-            status = stream->enqueue_primitive(primitive_iface, ctx);
-            CHECK(stream->run_verbose_profiler(pd_info, start_ms, 0));
         }
     } else {
         status = stream->enqueue_primitive(primitive_iface, ctx);

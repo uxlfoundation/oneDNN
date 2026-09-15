@@ -249,6 +249,10 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
             parseStrategy(strategyString, hw, problem, strat);
             adjustStrategy(hw, problem, strat);
         }
+        if (newStrat.empty()
+                && (problem.Ta_ext.isInt3() || problem.Ta_ext.isInt4())
+                && strat.unroll[LoopN] == 48)
+            strat.unroll[LoopN] = 32;
         strategyGRFs_ = strat.GRFs;
     };
 

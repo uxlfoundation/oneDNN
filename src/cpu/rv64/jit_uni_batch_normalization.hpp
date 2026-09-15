@@ -67,11 +67,8 @@ struct jit_uni_batch_normalization_fwd_t : public primitive_t {
 
             VDISPATCH_BNORM(!has_zero_dim_memory(), VERBOSE_EMPTY_TENSOR, "");
 
-            // Require global stats (G). Flags C/H/R(inference) are optional. Disallow none and A.
             VDISPATCH_BNORM(!fuse_norm_add_relu(), VERBOSE_UNSUPPORTED_FEATURE,
                     "fuse_norm_add_relu not supported");
-            VDISPATCH_BNORM(use_global_stats(), VERBOSE_UNSUPPORTED_FEATURE,
-                    "stats must already have been computed (use global stats)");
             using smask_t = primitive_attr_t::skip_mask_t;
             VDISPATCH_BNORM(!(fuse_norm_relu()
                                     && desc()->prop_kind

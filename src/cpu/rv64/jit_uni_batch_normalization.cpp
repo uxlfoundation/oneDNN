@@ -60,8 +60,6 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::execute_forward(
 
     void *dst = CTX_OUT_MEM(void *, DNNL_ARG_DST);
     const void *src = CTX_IN_MEM(const void *, DNNL_ARG_SRC);
-    const float *mean = CTX_IN_MEM(const float *, DNNL_ARG_MEAN);
-    const float *var = CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE);
     const float *scale = pd()->use_scale()
             ? CTX_IN_MEM(const float *, DNNL_ARG_SCALE)
             : nullptr;
@@ -82,6 +80,44 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::execute_forward(
     };
 
     const bool channels_dense = data_d.blocking_desc().strides[1] == 1;
+
+    // Mean/variance: either global (inference) or computed here (training).
+    const float *mean, *var;
+    if (pd()->use_global_stats()) {
+        mean = CTX_IN_MEM(const float *, DNNL_ARG_MEAN);
+        var = CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE);
+    } else {
+        auto &grantor = ctx.get_scratchpad_grantor();
+        float *mean_buf = grantor.template get<float>(
+                memory_tracking::names::key_bnorm_tmp_mean);
+        float *var_buf = grantor.template get<float>(
+                memory_tracking::names::key_bnorm_tmp_var);
+        mean = mean_buf;
+        var = var_buf;
+
+        const dim_t SP = D * H * W;
+        const dim_t count = N * SP;
+        parallel_nd(C, [&](dim_t c) {
+            float sum = 0.f, sumsq = 0.f;
+            for (dim_t n = 0; n < N; ++n) {
+                const size_t base = channels_dense ? (n * C + c) * SP
+                                                   : off(n, c, 0, 0, 0);
+                jit_uni_batch_normalization_fwd_stat(
+                        static_cast<const char *>(src) + base * data_size, SP,
+                        &sum, &sumsq, dtsrc);
+            }
+            const float m = sum / static_cast<float>(count);
+            mean_buf[c] = m;
+            var_buf[c] = sumsq / static_cast<float>(count) - m * m;
+        });
+
+        float *mean_out = CTX_OUT_MEM(float *, DNNL_ARG_MEAN);
+        float *var_out = CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE);
+        for (dim_t c = 0; c < C; ++c) {
+            mean_out[c] = mean_buf[c];
+            var_out[c] = var_buf[c];
+        }
+    }
 
     if (!channels_dense) {
         // abx data tag: vectorize over W for fixed channel

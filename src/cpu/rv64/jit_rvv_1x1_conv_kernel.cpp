@@ -201,6 +201,11 @@ status_t jit_rvv_1x1_conv_kernel_t::init_conf(jit_1x1_conv_conf_t &jcp,
     jcp.nb_load_blocking = jcp.nb_load;
     jcp.nb_load_blocking_max = jcp.nb_load;
 
+    // A low-precision destination cannot hold an intermediate f32 partial
+    // sum. Keep the complete reduction in one kernel invocation so narrowing
+    // happens only after the final accumulation.
+    assert(jcp.nb_reduce_blocking == jcp.nb_reduce);
+
     // Spatial dimension blocking (in ur units)
     int target_bcast_blocking = 735;
     jcp.nb_bcast_blocking
@@ -478,9 +483,11 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
                     VMA::ma);
     };
     auto sew_accum = [=]() {
-        if (is_lowp)
-            vsetvli(reg_tmp_imm, reg_blk_vl, SEW::e32, LMUL::m2, VTA::ta,
+        if (is_lowp || jcp.dst_dt == data_type::f16) {
+            const auto accum_lmul = is_lowp ? LMUL::m2 : LMUL::m1;
+            vsetvli(reg_tmp_imm, reg_blk_vl, SEW::e32, accum_lmul, VTA::ta,
                     VMA::ma);
+        }
     };
 
     auto init = [=]() {
@@ -555,8 +562,8 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
         // destination LMUL is half the accumulator LMUL, keeping VL unchanged.
         const bool narrow_dst = jcp.dst_dt == data_type::f16;
         if (narrow_dst) {
-            const auto narrow_lmul = is_lowp ? Xbyak_riscv::LMUL::m1
-                                             : Xbyak_riscv::LMUL::mf2;
+            const auto narrow_lmul
+                    = is_lowp ? Xbyak_riscv::LMUL::m1 : Xbyak_riscv::LMUL::mf2;
             vsetvli(reg_tmp_imm, reg_blk_vl, SEW::e16, narrow_lmul, VTA::ta,
                     VMA::ma);
         }
@@ -564,9 +571,8 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
         for (int i_ur = 0; i_ur < ur; ++i_ur) {
             for (int i_load = 0; i_load < load_loop_blk; ++i_load) {
                 if (narrow_dst) {
-                    vfncvt_f_f_w(vreg_accum(i_load, i_ur),
-                            vreg_accum(i_load, i_ur));
-                    vse16_v(vreg_accum(i_load, i_ur), reg_tmp_addr);
+                    vfncvt_f_f_w(vreg_load(0), vreg_accum(i_load, i_ur));
+                    vse16_v(vreg_load(0), reg_tmp_addr);
                 } else {
                     vse32_v(vreg_accum(i_load, i_ur), reg_tmp_addr);
                 }
@@ -580,6 +586,7 @@ void jit_rvv_1x1_conv_kernel_t::reduce_loop(int load_loop_blk, int ur) {
                                     * jcp.typesize_out);
             add(reg_tmp_addr, reg_tmp_addr, reg_tmp_imm);
         }
+        if (narrow_dst) sew_accum();
     };
 
     auto fma_block = [=](int current_unroll, bool last_block) {

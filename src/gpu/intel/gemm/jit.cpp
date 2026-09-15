@@ -533,8 +533,9 @@ status_t gen_t::execute(const exec_ctx_t &ctx) const {
             CHECK(maybe_get_host_scalar_value(*ao, a_host_scalar_val));
         if (bo->is_host_scalar())
             CHECK(maybe_get_host_scalar_value(*bo, b_host_scalar_val));
-        ao_host_scalar = static_cast<int16_t>(-1 * a_host_scalar_val);
-        bo_host_scalar = static_cast<int16_t>(-1 * b_host_scalar_val);
+
+        ao_host_scalar = static_cast<int16_t>(a_host_scalar_val);
+        bo_host_scalar = static_cast<int16_t>(b_host_scalar_val);
     }
 
     // Convert host scalar scales to Alpha

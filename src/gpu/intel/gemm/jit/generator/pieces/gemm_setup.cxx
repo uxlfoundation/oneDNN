@@ -2033,7 +2033,6 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             A_offsetLayout = state.Ar_offsetLayout;
             A_offsetLayout.cast(problem.Tao);
         } else {
-            mov(1, state.inputs.ao, -state.inputs.ao);
             GRF grf{state.inputs.ao.getBase()};
             aoLoad = grf-grf;
             releaseAOLoad = false;
@@ -2071,7 +2070,6 @@ bool Generator<hw>::gemmAccumulateCSetup(GEMMProblem &problem, GEMMStrategy &str
             B_offsetLayout = state.Br_offsetLayout;
             B_offsetLayout.cast(problem.Tbo);
         } else {
-            mov(1, state.inputs.bo, -state.inputs.bo);
             GRF grf{state.inputs.bo.getBase()};
             boLoad = grf-grf;
             releaseBOLoad = false;

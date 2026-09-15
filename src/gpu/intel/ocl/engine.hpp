@@ -73,12 +73,6 @@ public:
         return gpu_impl_list_t::get_concat_implementation_list();
     }
 
-    const impl_list_item_t *get_reorder_implementation_list(
-            const memory_desc_t *src_md,
-            const memory_desc_t *dst_md) const override {
-        return gpu_impl_list_t::get_reorder_implementation_list(src_md, dst_md);
-    }
-
     const impl_list_item_t *get_sum_implementation_list() const override {
         return gpu_impl_list_t::get_sum_implementation_list();
     }

@@ -49,7 +49,7 @@ namespace gpu {
 //            based on reorders.
 // - GENERIC_SYCL: SYCL generic implementations (written in generic SYCL).
 //
-// The concat, sum and reorder primitives require specialized versions of the
+// The concat and sum primitives require specialized versions of the
 // macros because their `pd_t::create` functions have unique signatures.
 
 // Conditional macros for different vendors.
@@ -87,7 +87,7 @@ namespace gpu {
     impl_list_item_t( \
             impl_list_item_t::type_deduction_helper_t<__VA_ARGS__::pd_t>()),
 
-// Specializations of the primary instance macro for concat, sum and reorder
+// Specializations of the primary instance macro for concat and sum
 // primitives.
 #define GPU_CONCAT_INSTANCE(...) \
     impl_list_item_t(impl_list_item_t::concat_type_deduction_helper_t< \
@@ -95,9 +95,6 @@ namespace gpu {
 #define GPU_SUM_INSTANCE(...) \
     impl_list_item_t(impl_list_item_t::sum_type_deduction_helper_t< \
             __VA_ARGS__::pd_t>()),
-#define GPU_REORDER_INSTANCE(...) \
-    impl_list_item_t( \
-            impl_list_item_t::reorder_type_deduction_helper_t<__VA_ARGS__>()),
 
 // Vendor specific instance macros.
 #define GPU_INSTANCE_INTEL(...) DNNL_GPU_INTEL_ONLY(GPU_INSTANCE(__VA_ARGS__))
@@ -107,8 +104,8 @@ namespace gpu {
     DNNL_GPU_GENERIC_SYCL_ONLY(GPU_INSTANCE(__VA_ARGS__))
 #define GPU_INSTANCE_GENERIC(...) GPU_INSTANCE(__VA_ARGS__)
 
-// Specializations of the vendor specific instance macros for concat, sum
-// and reorder primitives.
+// Specializations of the vendor specific instance macros for concat and sum
+// primitives.
 #define GPU_CONCAT_INSTANCE_INTEL(...) \
     DNNL_GPU_INTEL_ONLY(GPU_CONCAT_INSTANCE(__VA_ARGS__))
 #define GPU_CONCAT_INSTANCE_NVIDIA(...) \
@@ -128,16 +125,6 @@ namespace gpu {
 #define GPU_SUM_INSTANCE_GENERIC_SYCL(...) \
     DNNL_GPU_GENERIC_SYCL_ONLY(GPU_SUM_INSTANCE(__VA_ARGS__))
 #define GPU_SUM_INSTANCE_GENERIC(...) GPU_SUM_INSTANCE(__VA_ARGS__)
-
-#define GPU_REORDER_INSTANCE_INTEL(...) \
-    DNNL_GPU_INTEL_ONLY(GPU_REORDER_INSTANCE(__VA_ARGS__))
-#define GPU_REORDER_INSTANCE_NVIDIA(...) \
-    DNNL_GPU_NVIDIA_ONLY(GPU_REORDER_INSTANCE(__VA_ARGS__))
-#define GPU_REORDER_INSTANCE_AMD(...) \
-    DNNL_GPU_AMD_ONLY(GPU_REORDER_INSTANCE(__VA_ARGS__))
-#define GPU_REORDER_INSTANCE_GENERIC_SYCL(...) \
-    DNNL_GPU_GENERIC_SYCL_ONLY(GPU_REORDER_INSTANCE(__VA_ARGS__))
-#define GPU_REORDER_INSTANCE_GENERIC(...) GPU_REORDER_INSTANCE(__VA_ARGS__)
 
 // Instance macros that are enabled only in the DEV_MODE.
 #ifdef DNNL_DEV_MODE
@@ -187,6 +174,7 @@ DECLARE_IMPL_LIST(matmul);
 DECLARE_IMPL_LIST(pooling);
 DECLARE_IMPL_LIST(prelu);
 DECLARE_IMPL_LIST(reduction);
+DECLARE_IMPL_LIST(reorder);
 DECLARE_IMPL_LIST(resampling);
 DECLARE_IMPL_LIST(rnn);
 DECLARE_IMPL_LIST(sdpa);
@@ -198,8 +186,6 @@ DECLARE_IMPL_LIST(zero_pad);
 
 const impl_list_item_t *get_concat_impl_list();
 const impl_list_item_t *get_sum_impl_list();
-const impl_list_item_t *get_reorder_impl_list(
-        const memory_desc_t *, const memory_desc_t *);
 
 class gpu_impl_list_t {
 public:
@@ -207,8 +193,6 @@ public:
             const op_desc_t *desc);
     static const impl_list_item_t *get_concat_implementation_list();
     static const impl_list_item_t *get_sum_implementation_list();
-    static const impl_list_item_t *get_reorder_implementation_list(
-            const memory_desc_t *, const memory_desc_t *);
 };
 
 } // namespace gpu

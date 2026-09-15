@@ -75,6 +75,7 @@ DECLARE_IMPL_LIST(matmul);
 DECLARE_IMPL_LIST(pooling);
 DECLARE_IMPL_LIST(prelu);
 DECLARE_IMPL_LIST(reduction);
+DECLARE_IMPL_LIST(reorder);
 DECLARE_IMPL_LIST(resampling);
 DECLARE_IMPL_LIST(rnn);
 DECLARE_IMPL_LIST(shuffle);
@@ -85,8 +86,6 @@ DECLARE_IMPL_LIST(softmax);
 class cpu_engine_impl_list_t {
 public:
     static const impl_list_item_t *get_concat_implementation_list();
-    static const impl_list_item_t *get_reorder_implementation_list(
-            const memory_desc_t *src_md, const memory_desc_t *dst_md);
     static const impl_list_item_t *get_sum_implementation_list();
 
     static const impl_list_item_t *get_implementation_list(
@@ -111,6 +110,7 @@ public:
             CASE(pooling);
             CASE(prelu);
             CASE(reduction);
+            CASE(reorder);
             CASE(resampling);
             CASE(rnn);
             CASE(shuffle);
@@ -140,12 +140,6 @@ public:
         return cpu_engine_impl_list_t::get_concat_implementation_list();
     }
 
-    const impl_list_item_t *get_reorder_implementation_list(
-            const memory_desc_t *src_md,
-            const memory_desc_t *dst_md) const override {
-        return cpu_engine_impl_list_t::get_reorder_implementation_list(
-                src_md, dst_md);
-    }
     const impl_list_item_t *get_sum_implementation_list() const override {
         return cpu_engine_impl_list_t::get_sum_implementation_list();
     }

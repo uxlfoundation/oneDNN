@@ -273,6 +273,9 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::init(const engine_t *engine,
         const engine_t *src_engine, const engine_t *dst_engine) {
     using namespace status;
 
+    VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
     CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
     const memory_desc_wrapper id(src_md_), od(dst_md_);
@@ -297,17 +300,16 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::init(const engine_t *engine,
             // adding other datatypes for potential performance improvement.
             && IMPLICATION(is_plain,
                     type_i == data_type::f32 && type_o == data_type::f32);
-    VDISPATCH_REORDER_IC(dt_ok, VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_REORDER(dt_ok, VERBOSE_UNSUPPORTED_DT);
 
-    VDISPATCH_REORDER_IC(
-            id.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
+    VDISPATCH_REORDER(id.is_dense(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
 
     // plain transpose reorder works for all shapes.
-    VDISPATCH_REORDER_IC(is_plain ? ndims >= 2 : utils::one_of(ndims, 2, 3),
+    VDISPATCH_REORDER(is_plain ? ndims >= 2 : utils::one_of(ndims, 2, 3),
             VERBOSE_BAD_NDIMS, "src", ndims);
 
     // plain transpose does not support postops
-    VDISPATCH_REORDER_IC(IMPLICATION(is_plain, attr()->post_ops_.len() == 0),
+    VDISPATCH_REORDER(IMPLICATION(is_plain, attr()->post_ops_.len() == 0),
             VERBOSE_UNSUPPORTED_POSTOP);
 
     const bool is_f16 = utils::one_of(data_type::f16, type_i, type_o);
@@ -319,23 +321,22 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::init(const engine_t *engine,
             && IMPLICATION(is_f16, mayiuse(avx512_core_fp16))
             && IMPLICATION(!is_f16, mayiuse(avx512_core))
             && IMPLICATION(is_s8s8, mayiuse(avx512_core_vnni));
-    VDISPATCH_REORDER_IC(isa_ok, VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_REORDER(isa_ok, VERBOSE_UNSUPPORTED_ISA);
 
     const bool has_adj_scale
             = od.extra().flags & memory_extra_flags::scale_adjust;
-    VDISPATCH_REORDER_IC(
+    VDISPATCH_REORDER(
             !has_adj_scale, VERBOSE_UNSUPPORTED_MD_FLAG, "dst:scale_adjust");
 
-    VDISPATCH_REORDER_IC(
-            attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_REORDER(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
-    VDISPATCH_REORDER_IC(
+    VDISPATCH_REORDER(
             od.is_blocking_desc(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "dst");
 
-    VDISPATCH_REORDER_IC(
+    VDISPATCH_REORDER(
             !od.has_runtime_dims_or_strides(), VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-    VDISPATCH_REORDER_IC(!od.has_zero_dim(), VERBOSE_BAD_DIM, "dst", 0);
+    VDISPATCH_REORDER(!od.has_zero_dim(), VERBOSE_BAD_DIM, "dst", 0);
 
     CHECK(init_conf(matmul_conf_for_reorder_, src_md_, dst_md_));
 
@@ -355,22 +356,6 @@ status_t brgemm_matmul_copy_reorder_t::pd_t::init(const engine_t *engine,
     init_scratchpad();
 
     return status::success;
-}
-
-status_t brgemm_matmul_copy_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
-        const engine_t *engine, const primitive_attr_t *attr,
-        const engine_t *src_engine, const memory_desc_t *src_md,
-        const engine_t *dst_engine, const memory_desc_t *dst_md) {
-    using namespace status;
-
-    VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
-            VERBOSE_UNSUPPORTED_SPARSE_CFG);
-    auto _pd = make_unique_pd<pd_t>(
-            attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md);
-    if (_pd == nullptr) return out_of_memory;
-    CHECK(_pd->init(engine, src_engine, dst_engine));
-    CHECK(_pd->init_scratchpad_md());
-    return safe_ptr_assign<reorder_pd_t>(*reorder_pd, _pd.release());
 }
 
 status_t brgemm_matmul_copy_reorder_t::execute_body(

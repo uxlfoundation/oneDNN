@@ -49,36 +49,33 @@ namespace impl {
 namespace cpu {
 namespace aarch64 {
 
-status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
-        const engine_t *engine, const primitive_attr_t *attr,
-        const engine_t *src_engine, const memory_desc_t *src_md,
-        const engine_t *dst_engine, const memory_desc_t *dst_md) {
-    if (!impl::is_dense_format_kind({src_md, dst_md}))
-        return status::unimplemented;
+status_t jit_blk_reorder_t::pd_t::init(const engine_t *engine,
+        const engine_t *src_engine, const engine_t *dst_engine) {
+    VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
     auto prb = tr::prb_t();
     // For shapes with dimension greater than thres it is found that jit:uni is better that jit:blk
     auto upper_thres = 1920 * 4096;
-    auto src_d = memory_desc_wrapper(src_md);
+    auto src_d = memory_desc_wrapper(src_md());
     auto prd = 1;
 
     for (int d = 0; d < src_d.ndims(); ++d) {
         const auto dim = src_d.dims()[d];
         prd *= dim;
-        if (prd > upper_thres) return status::unimplemented;
+        VDISPATCH_REORDER(prd <= upper_thres, "perf condition is not met");
     }
 
     // Very small shapes are faster on jit uni for SVE-128
     auto lower_thres = 128 * 128;
 
-    if (get_max_cpu_isa() == sve_128 && prd < lower_thres) {
-        return status::unimplemented;
-    }
+    VDISPATCH_REORDER(!(get_max_cpu_isa() == sve_128 && prd < lower_thres),
+            "perf condition is not met");
 
-    status_t prb_init_status = prb_init(prb, *src_md, *dst_md, attr);
+    status_t prb_init_status = prb_init(prb, *src_md(), *dst_md(), attr());
     if (prb_init_status != status::success) return prb_init_status;
     // only uni_reorder supports tail processing now
     // TODO: Add tail processing support in blk_reorder
-    if (prb.is_tail_present) return status::unimplemented;
+    VDISPATCH_REORDER(!prb.is_tail_present, "tail processing is not supported");
 
     prb_tile_normalize(prb);
     DEBUG({
@@ -86,18 +83,13 @@ status_t jit_blk_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
                 verbose_t::debuginfo, "tile : %s\n", prb_dump(prb).c_str());
     });
 
-    if (!tr::jit_single_blk_kernel_t::applicable(prb)) {
-        return status::unimplemented;
-    }
+    VDISPATCH_REORDER(tr::jit_single_blk_kernel_t::applicable(prb),
+            "applicable() call failed");
 
-    auto _pd = make_unique_pd<pd_t>(
-            attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md);
-    if (_pd == nullptr) return status::out_of_memory;
-    _pd->prb_ = prb;
-    CHECK(_pd->init(engine, src_engine, dst_engine));
-    CHECK(_pd->init_scratchpad_md());
+    prb_ = prb;
+    CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
-    return safe_ptr_assign(*reorder_pd, _pd.release());
+    return status::success;
 }
 
 void jit_blk_reorder_t::pd_t::prb_tile_normalize(tr::prb_t &p) {

@@ -198,16 +198,13 @@ struct rnn_data_reorder_t : public primitive_t {
 
         DECLARE_COMMON_PD_T("rnn_data_reorder", rnn_data_reorder_t);
 
-    private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md) {
+        status_t init(const engine_t *engine, const engine_t *src_engine,
+                const engine_t *dst_engine) {
             using namespace format_tag;
             using namespace status;
-            const memory_desc_wrapper id(src_md), od(dst_md);
+            const memory_desc_wrapper id(src_md()), od(dst_md());
 
-            bool args_ok = impl::is_dense_format_kind({src_md, dst_md});
+            bool args_ok = impl::is_dense_format_kind({src_md(), dst_md()});
 #define PD_CHECK_ARG(x) args_ok = args_ok && (x)
             PD_CHECK_ARG(id.data_type() == type_i);
             PD_CHECK_ARG(od.data_type() == type_o);
@@ -217,7 +214,7 @@ struct rnn_data_reorder_t : public primitive_t {
                     | primitive_attr_t::skip_mask_t::rnn_weights_qparams
                     | primitive_attr_t::skip_mask_t::
                             rnn_weights_projection_qparams;
-            PD_CHECK_ARG(attr->has_default_values(skip_mask));
+            PD_CHECK_ARG(attr()->has_default_values(skip_mask));
             PD_CHECK_ARG(IMPLICATION(id.ndims() == 3,
                     id.matches_tag(tnc) && od.matches_tag(tnc)));
             PD_CHECK_ARG(IMPLICATION(id.ndims() == 4,
@@ -225,14 +222,9 @@ struct rnn_data_reorder_t : public primitive_t {
 #undef PD_CHECK_ARG
             if (!args_ok) return invalid_arguments;
 
-            auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
-                    dst_engine->kind(), dst_md);
-            if (_pd == nullptr) return out_of_memory;
-            CHECK(_pd->init(engine, src_engine, dst_engine));
-            CHECK(_pd->init_scratchpad_md());
-            return safe_ptr_assign(*reorder_pd, _pd.release());
+            CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
+            return status::success;
         }
-        friend dnnl::impl::impl_list_item_t;
     };
 
     rnn_data_reorder_t(const pd_t *apd) : primitive_t(apd) {}
@@ -328,33 +320,12 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
 
         status_t init(const engine_t *engine, const engine_t *src_engine,
                 const engine_t *dst_engine) {
-            status_t status
-                    = cpu_reorder_pd_t::init(engine, src_engine, dst_engine);
-            if (status != status::success) return status;
-
-            nthr_ = dnnl_get_max_threads();
-            init_scratchpad();
-
-            return status::success;
-        }
-
-        format_tag_t itag_ = format_tag::undef;
-        format_tag_t otag_ = format_tag::undef;
-        size_t thr_scratch_comp_sz_ = 0;
-        int nthr_; // To not exceed the limit in execute used for set up.
-        gemm_pack_f gemm_pack;
-
-    private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md) {
             using namespace format_tag;
             using namespace rnn_packed_format;
             using namespace status;
-            const memory_desc_wrapper id(src_md), od(dst_md);
+            const memory_desc_wrapper id(src_md()), od(dst_md());
 
-            bool args_ok = impl::is_dense_format_kind({src_md, dst_md});
+            bool args_ok = impl::is_dense_format_kind({src_md(), dst_md()});
 #define PD_CHECK_ARG(x) args_ok = args_ok && (x)
             // Fast checks
             PD_CHECK_ARG(id.data_type() == type_i);
@@ -369,7 +340,7 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
                     | primitive_attr_t::skip_mask_t::rnn_weights_qparams
                     | primitive_attr_t::skip_mask_t::
                             rnn_weights_projection_qparams;
-            PD_CHECK_ARG(attr->has_default_values(skip_mask));
+            PD_CHECK_ARG(attr()->has_default_values(skip_mask));
             if (!args_ok) return invalid_arguments;
 
             // Slower checks
@@ -382,28 +353,38 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
             // TODO: add support for layer and direction dimensions
             // weights_layer and weights_iter
             if (id.ndims() == 5
-                    && !utils::one_of(attr->rnn_weights_qparams_.mask_, 0, 24))
+                    && !utils::one_of(
+                            attr()->rnn_weights_qparams_.mask_, 0, 24))
                 return unimplemented;
             // weights_projection
             if (id.ndims() == 4
                     && !utils::one_of(
-                            attr->rnn_weights_projection_qparams_.mask_, 0, 8))
+                            attr()->rnn_weights_projection_qparams_.mask_, 0,
+                            8))
                 return unimplemented;
-
-            auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
-                    dst_engine->kind(), dst_md);
-            if (_pd == nullptr) return out_of_memory;
-            _pd->itag_ = itag;
-            CHECK(_pd->init(engine, src_engine, dst_engine));
-            CHECK(_pd->init_scratchpad_md());
-            const bool is_s8s8 = dst_md->extra.flags
-                    & memory_extra_flags::rnn_s8s8_compensation;
-            _pd->gemm_pack = is_s8s8 ? &gemm_s8s8s32_pack : &gemm_s8u8s32_pack;
-
-            return safe_ptr_assign(*reorder_pd, _pd.release());
 #undef PD_CHECK_ARG
+
+            itag_ = itag;
+
+            CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
+
+            nthr_ = dnnl_get_max_threads();
+            init_scratchpad();
+
+            const bool is_s8s8 = dst_md()->extra.flags
+                    & memory_extra_flags::rnn_s8s8_compensation;
+            gemm_pack = is_s8s8 ? &gemm_s8s8s32_pack : &gemm_s8u8s32_pack;
+
+            return status::success;
         }
 
+        format_tag_t itag_ = format_tag::undef;
+        format_tag_t otag_ = format_tag::undef;
+        size_t thr_scratch_comp_sz_ = 0;
+        int nthr_; // To not exceed the limit in execute used for set up.
+        gemm_pack_f gemm_pack;
+
+    private:
         void init_scratchpad() {
             using namespace format_tag;
 
@@ -428,8 +409,6 @@ struct rnn_weights_reorder_s8_t : public primitive_t {
             scratchpad.template book<int32_t>(
                     key_reorder_rnn_weights_reduction, reduction_size);
         }
-
-        friend dnnl::impl::impl_list_item_t;
     };
 
     rnn_weights_reorder_s8_t(const pd_t *apd) : primitive_t(apd) {}
@@ -549,9 +528,28 @@ struct rnn_weights_reorder_t : public primitive_t {
 
         status_t init(const engine_t *engine, const engine_t *src_engine,
                 const engine_t *dst_engine) {
-            status_t status
-                    = cpu_reorder_pd_t::init(engine, src_engine, dst_engine);
-            if (status != status::success) return status;
+            using namespace format_tag;
+            using namespace rnn_packed_format;
+            using namespace status;
+
+            const memory_desc_wrapper id(src_md()), od(dst_md());
+            bool args_ok = impl::is_dense_format_kind({src_md(), dst_md()});
+#define PD_CHECK_ARG(x) args_ok = args_ok && (x)
+            PD_CHECK_ARG(id.data_type() == type_i);
+            PD_CHECK_ARG(od.data_type() == type_o);
+            PD_CHECK_ARG(od.format_kind() == format_kind::rnn_packed);
+            PD_CHECK_ARG(utils::one_of(
+                    od.rnn_packed_desc().format, ldigo_p, ldgoi_p, ldio_p));
+            PD_CHECK_ARG(attr()->has_default_values());
+#undef PD_CHECK_ARG
+            if (!args_ok) return invalid_arguments;
+
+            format_tag_t itag = id.matches_one_of_tag(ldigo, ldgoi, ldio, ldoi);
+            if (itag == format_tag::undef) return invalid_arguments;
+
+            itag_ = itag;
+
+            CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
             init_scratchpad();
 
@@ -559,38 +557,6 @@ struct rnn_weights_reorder_t : public primitive_t {
         }
 
     private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md) {
-            using namespace format_tag;
-            using namespace rnn_packed_format;
-            using namespace status;
-
-            const memory_desc_wrapper id(src_md), od(dst_md);
-            bool args_ok = impl::is_dense_format_kind({src_md, dst_md});
-#define PD_CHECK_ARG(x) args_ok = args_ok && (x)
-            PD_CHECK_ARG(id.data_type() == type_i);
-            PD_CHECK_ARG(od.data_type() == type_o);
-            PD_CHECK_ARG(od.format_kind() == format_kind::rnn_packed);
-            PD_CHECK_ARG(utils::one_of(
-                    od.rnn_packed_desc().format, ldigo_p, ldgoi_p, ldio_p));
-            PD_CHECK_ARG(attr->has_default_values());
-#undef PD_CHECK_ARG
-            if (!args_ok) return invalid_arguments;
-
-            format_tag_t itag = id.matches_one_of_tag(ldigo, ldgoi, ldio, ldoi);
-            if (itag == format_tag::undef) return invalid_arguments;
-
-            auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
-                    dst_engine->kind(), dst_md);
-            if (_pd == nullptr) return out_of_memory;
-            CHECK(_pd->init(engine, src_engine, dst_engine));
-            _pd->itag_ = itag;
-            CHECK(_pd->init_scratchpad_md());
-            return safe_ptr_assign(*reorder_pd, _pd.release());
-        }
-
         void init_scratchpad() {
             using namespace format_tag;
             using namespace rnn_packed_format;
@@ -616,7 +582,6 @@ struct rnn_weights_reorder_t : public primitive_t {
             scratchpad.template book<out_data_t>(
                     key_reorder_rnn_weights_xf16_cvt, dt_cross_case ? sz : 0);
         }
-        friend dnnl::impl::impl_list_item_t;
     };
 
     rnn_weights_reorder_t(const pd_t *apd) : primitive_t(apd) {}
@@ -741,28 +706,14 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
 
         status_t init(const engine_t *engine, const engine_t *src_engine,
                 const engine_t *dst_engine) {
-            status_t status
-                    = cpu_reorder_pd_t::init(engine, src_engine, dst_engine);
-            if (status != status::success) return status;
-
-            nthr_ = dnnl_get_max_threads();
-            init_scratchpad();
-
-            return status::success;
-        }
-
-    private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md) {
             using namespace status;
             using namespace format_tag;
             using namespace memory_extra_flags;
 
-            const memory_desc_wrapper id(src_md), od(dst_md);
+            const memory_desc_wrapper id(src_md()), od(dst_md());
 
-            const bool args_ok = impl::is_dense_format_kind({src_md, dst_md})
+            const bool args_ok
+                    = impl::is_dense_format_kind({src_md(), dst_md()})
                     && id.data_type() == type_i
                     && od.data_type() == data_type::s8 && id.is_dense();
             if (!args_ok) return invalid_arguments;
@@ -772,17 +723,20 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
                     | primitive_attr_t::skip_mask_t::rnn_weights_qparams
                     | primitive_attr_t::skip_mask_t::
                             rnn_weights_projection_qparams;
-            if (!attr->has_default_values(skip_mask)) return invalid_arguments;
+            if (!attr()->has_default_values(skip_mask))
+                return invalid_arguments;
 
             // TODO: add support for layer and direction dimensions
             // weights_layer and weights_iter
             if (id.ndims() == 5
-                    && !utils::one_of(attr->rnn_weights_qparams_.mask_, 0, 24))
+                    && !utils::one_of(
+                            attr()->rnn_weights_qparams_.mask_, 0, 24))
                 return unimplemented;
             // weights_projection
             if (id.ndims() == 4
                     && !utils::one_of(
-                            attr->rnn_weights_projection_qparams_.mask_, 0, 8))
+                            attr()->rnn_weights_projection_qparams_.mask_, 0,
+                            8))
                 return unimplemented;
 
             // Check the proper memory desc has been passed to u8s8 and s8s8
@@ -794,12 +748,7 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
                     && od.extra().compensation_mask == 0;
             if (!(check_u8s8 || check_s8s8)) return invalid_arguments;
 
-            auto _pd = make_unique_pd<pd_t>(attr, src_engine->kind(), src_md,
-                    dst_engine->kind(), dst_md);
-            if (_pd == nullptr) return out_of_memory;
-            CHECK(_pd->init(engine, src_engine, dst_engine));
-
-            _pd->itag_ = format_tag::undef;
+            itag_ = format_tag::undef;
 
             format_tag_t otag, itag;
 
@@ -807,15 +756,21 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
             otag = od.matches_one_of_tag(
                     ldgOI64o4i, ldgOI32o4i, ldgOI16o4i, ldOI32o4i, ldOI16o4i);
             if (itag != format_tag::undef && otag != format_tag::undef) {
-                _pd->itag_ = itag;
-                _pd->otag_ = otag;
+                itag_ = itag;
+                otag_ = otag;
             } else {
                 return invalid_arguments;
             }
-            CHECK(_pd->init_scratchpad_md());
-            return safe_ptr_assign<reorder_pd_t>(*reorder_pd, _pd.release());
+
+            CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
+
+            nthr_ = dnnl_get_max_threads();
+            init_scratchpad();
+
+            return status::success;
         }
 
+    private:
         void init_scratchpad() {
             using namespace format_tag;
 
@@ -839,7 +794,6 @@ struct rnn_brgemm_weights_reorder_s8_t : public primitive_t {
             scratchpad.template book<int32_t>(
                     key_reorder_rnn_weights_reduction, reduction_size);
         }
-        friend dnnl::impl::impl_list_item_t;
     };
 
     rnn_brgemm_weights_reorder_s8_t(const pd_t *apd) : primitive_t(apd) {}

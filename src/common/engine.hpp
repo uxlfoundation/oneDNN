@@ -109,13 +109,6 @@ struct dnnl_engine {
 
     /* implementation section */
 
-    /** return the list of reorder implementations. engine guarantees to return
-     * a NULL-terminated list */
-    virtual const dnnl::impl::impl_list_item_t *get_reorder_implementation_list(
-            const dnnl::impl::memory_desc_t *src_md,
-            const dnnl::impl::memory_desc_t *dst_md) const
-            = 0;
-
     /** return the list of concat implementations. engine guarantees to return
      * a NULL-terminated list */
     virtual const dnnl::impl::impl_list_item_t *

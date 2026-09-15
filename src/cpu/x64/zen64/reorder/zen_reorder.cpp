@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 Advanced Micro Devices, Inc.
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -172,23 +173,26 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
 #if !DNNL_X64_USE_ZEN
     return status::unimplemented;
 #else
+
+    VDISPATCH_REORDER(impl::is_dense_format_kind({src_md(), dst_md()}),
+            VERBOSE_UNSUPPORTED_SPARSE_CFG);
+
     CHECK(cpu_reorder_pd_t::init(engine, src_engine, dst_engine));
 
-    VDISPATCH_REORDER_IC(src_engine->kind() == engine_kind::cpu
+    VDISPATCH_REORDER(src_engine->kind() == engine_kind::cpu
                     && dst_engine->kind() == engine_kind::cpu,
             VERBOSE_UNSUPPORTED_FEATURE, "non-CPU engine");
 
-    VDISPATCH_REORDER_IC(
-            ::dnnl::impl::cpu::x64::cpu().has(Xbyak::util::Cpu::tAMD),
+    VDISPATCH_REORDER(::dnnl::impl::cpu::x64::cpu().has(Xbyak::util::Cpu::tAMD),
             "This implementation only supports AMD CPUs");
 
     // Zen weight prepack requires AVX-512 core support regardless of data type.
-    VDISPATCH_REORDER_IC(mayiuse(avx512_core), VERBOSE_UNSUPPORTED_ISA);
+    VDISPATCH_REORDER(mayiuse(avx512_core), VERBOSE_UNSUPPORTED_ISA);
 
     const memory_desc_wrapper id(src_md_), od(dst_md_);
 
     // 2D weight slice, or 3D batched weights (one (K, N) slice per batch).
-    VDISPATCH_REORDER_IC(
+    VDISPATCH_REORDER(
             utils::one_of(id.ndims(), 2, 3) && id.ndims() == od.ndims(),
             VERBOSE_BAD_NDIMS, "src/dst", id.ndims());
 
@@ -219,32 +223,30 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
             || (type_i == data_type::u4 && type_o == data_type::u4)
             || (type_i == data_type::f32
                     && utils::one_of(type_o, data_type::s4, data_type::u4));
-    VDISPATCH_REORDER_IC(dt_ok, VERBOSE_UNSUPPORTED_DT);
+    VDISPATCH_REORDER(dt_ok, VERBOSE_UNSUPPORTED_DT);
 
     // Dispatch trigger: only fire when the dst uses the dedicated opaque
     // Zen packed format; otherwise let the regular reorder list handle it.
-    VDISPATCH_REORDER_IC(
-            is_zen_packed(dst_md_), VERBOSE_UNSUPPORTED_FORMAT_KIND);
+    VDISPATCH_REORDER(is_zen_packed(dst_md_), VERBOSE_UNSUPPORTED_FORMAT_KIND);
 
     // The dst is the opaque packed format (no oneDNN blocked layout), so there
     // is no blocked-layout / K-alignment / zero-padding requirement to validate
     // here. The recorded buffer size is cross-checked against the backend's
     // packed size further below.
 
-    VDISPATCH_REORDER_IC(
-            attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
+    VDISPATCH_REORDER(attr()->has_default_values(), VERBOSE_UNSUPPORTED_ATTR);
 
     // The src is a plain blocked layout; the dst is the opaque packed format
     // (not a blocking_desc).
-    VDISPATCH_REORDER_IC(
+    VDISPATCH_REORDER(
             id.is_blocking_desc(), VERBOSE_UNSUPPORTED_TENSOR_LAYOUT, "src");
 
-    VDISPATCH_REORDER_IC(!id.has_runtime_dims_or_strides()
+    VDISPATCH_REORDER(!id.has_runtime_dims_or_strides()
                     && !od.has_runtime_dims_or_strides(),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
 
-    VDISPATCH_REORDER_IC(!id.has_zero_dim() && !od.has_zero_dim(),
-            VERBOSE_BAD_DIM, "src/dst", 0);
+    VDISPATCH_REORDER(!id.has_zero_dim() && !od.has_zero_dim(), VERBOSE_BAD_DIM,
+            "src/dst", 0);
 
     // Each (K, N) slice of src must be plain row-major (`ab`/`abc`) or
     // col-major (`ba`/`acb`). The packer takes an explicit leading dim (derived
@@ -260,9 +262,9 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     bool no_zero_stride = true;
     for (int i = 0; i < ndims; i++)
         no_zero_stride = no_zero_stride && src_strides[i] != 0;
-    VDISPATCH_REORDER_IC(id.is_plain() && inner_contig && no_zero_stride,
+    VDISPATCH_REORDER(id.is_plain() && inner_contig && no_zero_stride,
             VERBOSE_UNSUPPORTED_TAG_S, "src");
-    VDISPATCH_REORDER_IC(!batched
+    VDISPATCH_REORDER(!batched
                     || (src_strides[0] >= src_strides[1]
                             && src_strides[0] >= src_strides[2]),
             VERBOSE_UNSUPPORTED_TAG_S, "src");
@@ -271,7 +273,7 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     // stride starts the next slice in the high nibble, which this direct
     // prepack interface cannot represent.
     const size_t src_sub_byte_multiplier = id.sub_byte_data_type_multiplier();
-    VDISPATCH_REORDER_IC(!batched || src_sub_byte_multiplier == 1
+    VDISPATCH_REORDER(!batched || src_sub_byte_multiplier == 1
                     || static_cast<size_t>(src_strides[0])
                                     % src_sub_byte_multiplier
                             == 0,
@@ -279,7 +281,7 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
 
     // src and dst logical dims must agree (oneDNN reorder API contract).
     for (int i = 0; i < ndims; i++)
-        VDISPATCH_REORDER_IC(id.dims()[i] == od.dims()[i],
+        VDISPATCH_REORDER(id.dims()[i] == od.dims()[i],
                 VERBOSE_INCONSISTENT_DIM, "src", i, "dst", i);
 
     // Logical (K, N) of one slice and the batch count. The packed dst records
@@ -295,14 +297,14 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     // execute() collapses a K==1 slice to contiguous row-major since a dense
     // single row is layout-agnostic; that assumption needs the N axis
     // contiguous. A padded (non-contiguous) K==1 row is declined here.
-    VDISPATCH_REORDER_IC(
+    VDISPATCH_REORDER(
             K != 1 || src_strides[ndim] == 1, VERBOSE_UNSUPPORTED_TAG_S, "src");
 
     // zen_weight_prepack takes int64_t K/N/ldb but the matmul that consumes the
     // packed buffer drives them through the int Zen API; reject oversized slices
     // up front so packing and matmul agree on what is representable.
     const dim_t int_max = std::numeric_limits<int>::max();
-    VDISPATCH_REORDER_IC(K <= int_max && N <= int_max && batch <= int_max,
+    VDISPATCH_REORDER(K <= int_max && N <= int_max && batch <= int_max,
             VERBOSE_UNSUPPORTED_FEATURE,
             "dimension > INT_MAX is not supported");
 
@@ -315,7 +317,7 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     // (wei=type_o, src=gemm_src_dt) -- for f32/bf16 gemm_src_dt == type_o.
     const dim_t expected_per_slice
             = zen_prepack_size(type_o, zpd.gemm_src_dt, K, N);
-    VDISPATCH_REORDER_IC(expected_per_slice > 0
+    VDISPATCH_REORDER(expected_per_slice > 0
                     && zpd.per_slice_size
                             == static_cast<size_t>(expected_per_slice),
             VERBOSE_INCONSISTENT_MDS, "dst", "packed-slice-size");
@@ -325,9 +327,9 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
     // a wrap could otherwise make an undersized buffer pass this check and lead
     // to out-of-bounds writes during packing. Mirrors init_zen_packed_md().
     const size_t batch_sz = static_cast<size_t>(batch);
-    VDISPATCH_REORDER_IC(zpd.per_slice_size <= SIZE_MAX / batch_sz,
+    VDISPATCH_REORDER(zpd.per_slice_size <= SIZE_MAX / batch_sz,
             VERBOSE_INCONSISTENT_MDS, "dst", "packed-size-overflow");
-    VDISPATCH_REORDER_IC(
+    VDISPATCH_REORDER(
             zpd.size == zpd.per_slice_size * batch_sz && od.size() == zpd.size,
             VERBOSE_INCONSISTENT_MDS, "dst", "packed-size");
 
@@ -354,22 +356,6 @@ status_t zen_reorder_t::pd_t::init(const engine_t *engine,
 
     return status::success;
 #endif
-}
-
-status_t zen_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
-        const engine_t *engine, const primitive_attr_t *attr,
-        const engine_t *src_engine, const memory_desc_t *src_md,
-        const engine_t *dst_engine, const memory_desc_t *dst_md) {
-    using namespace status;
-
-    VDISPATCH_REORDER_IC(impl::is_dense_format_kind({src_md, dst_md}),
-            VERBOSE_UNSUPPORTED_SPARSE_CFG);
-    auto _pd = make_unique_pd<pd_t>(
-            attr, src_engine->kind(), src_md, dst_engine->kind(), dst_md);
-    if (_pd == nullptr) return out_of_memory;
-    CHECK(_pd->init(engine, src_engine, dst_engine));
-    CHECK(_pd->init_scratchpad_md());
-    return safe_ptr_assign<reorder_pd_t>(*reorder_pd, _pd.release());
 }
 
 status_t zen_reorder_t::execute(const exec_ctx_t &ctx) const {

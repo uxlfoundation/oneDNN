@@ -1,5 +1,6 @@
 /*******************************************************************************
 * Copyright 2026 Advanced Micro Devices, Inc.
+* Copyright 2026 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -58,14 +59,6 @@ struct zen_reorder_t : public primitive_t {
 
         status_t init(const engine_t *engine, const engine_t *src_engine,
                 const engine_t *dst_engine);
-
-    private:
-        static status_t create(reorder_pd_t **reorder_pd,
-                const engine_t *engine, const primitive_attr_t *attr,
-                const engine_t *src_engine, const memory_desc_t *src_md,
-                const engine_t *dst_engine, const memory_desc_t *dst_md);
-
-        friend dnnl::impl::impl_list_item_t;
     };
 
     zen_reorder_t(const pd_t *apd) : primitive_t(apd) {}

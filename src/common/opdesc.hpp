@@ -67,21 +67,12 @@ protected:
 
 // A descriptor of a reorder operation.
 struct reorder_desc_t : public op_desc_t {
-    reorder_desc_t() = default;
-    reorder_desc_t(primitive_kind_t primitive_kind, const memory_desc_t *src_md,
-            const memory_desc_t *dst_md, engine_kind_t src_engine_kind,
-            engine_kind_t dst_engine_kind, bool is_cross_engine)
-        : op_desc_t(primitive_kind)
-        , src_md(src_md)
-        , dst_md(dst_md)
-        , src_engine_kind(src_engine_kind)
-        , dst_engine_kind(dst_engine_kind)
-        , is_cross_engine(is_cross_engine) {}
+    reorder_desc_t() : op_desc_t(primitive_kind::reorder) {}
 
     DECLARE_COMMON_OP_DESC_CLONE(reorder_desc_t);
 
-    const memory_desc_t *src_md {};
-    const memory_desc_t *dst_md {};
+    memory_desc_t src_desc;
+    memory_desc_t dst_desc;
     engine_kind_t src_engine_kind {};
     engine_kind_t dst_engine_kind {};
     bool is_cross_engine {};

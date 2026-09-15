@@ -20,12 +20,11 @@
 #include "c_types_map.hpp"
 #include "engine.hpp"
 #include "impl_list_item.hpp"
-#include "primitive_cache.hpp"
-#include "primitive_hashing.hpp"
+#include "opdesc.hpp"
+#include "primitive_desc_iface.hpp"
+#include "primitive_desc_iterator.hpp"
 #include "type_helpers.hpp"
 #include "utils.hpp"
-
-#include "reorder_pd.hpp"
 
 using namespace dnnl::impl;
 using namespace dnnl::impl::utils;
@@ -62,36 +61,42 @@ const engine_t *get_reorder_engine(
     assert(d_ek == engine_kind::gpu);
     return src_engine;
 }
-} // namespace
 
-status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
-        const engine_t *engine, const memory_desc_t *src_md,
-        const engine_t *src_engine, const memory_desc_t *dst_md,
-        const engine_t *dst_engine, const primitive_attr_t *attr) {
-    pd.reset();
+// `attr` must be resolved (non-null) by the caller to keep the two public
+// entries the single owner of the default-attributes fallback.
+status_t reorder_desc_init(reorder_desc_t *reorder_desc,
+        const memory_desc_t *src_md, const engine_t *src_engine,
+        const memory_desc_t *dst_md, const engine_t *dst_engine,
+        const primitive_attr_t *attr) {
+    reorder_desc_t desc;
 
     auto s_ek = src_engine->kind();
     auto d_ek = dst_engine->kind();
-
+    VCHECK_REORDER(IMPLICATION(s_ek != d_ek,
+                           utils::one_of(engine_kind::cpu, s_ek, d_ek)),
+            VERBOSE_BAD_ENGINE_KIND);
     // There are no sparse reorders for GPU engine.
     if (utils::one_of(engine_kind::gpu, s_ek, d_ek)
             && !impl::is_dense_format_kind({src_md, dst_md}))
         return status::unimplemented;
 
+    desc.src_engine_kind = s_ek;
+    desc.dst_engine_kind = d_ek;
+    desc.is_cross_engine = src_engine != dst_engine
+            && utils::one_of(engine_kind::gpu, s_ek, d_ek);
+
     VCHECK_REORDER(!memory_desc_wrapper(src_md).format_any(),
             VERBOSE_RUNTIMEDIM_UNSUPPORTED);
+    desc.src_desc = *src_md;
+
     VCHECK_REORDER(!memory_desc_wrapper(dst_md).format_any(),
             VERBOSE_UNSUPPORTED_TAG_S, "dst");
-    VCHECK_REORDER(IMPLICATION(s_ek != d_ek,
-                           utils::one_of(engine_kind::cpu, s_ek, d_ek)),
-            VERBOSE_BAD_ENGINE_KIND);
+    desc.dst_desc = *dst_md;
 
     auto s_mdw = memory_desc_wrapper(*src_md);
     auto d_mdw = memory_desc_wrapper(*dst_md);
     VCHECK_REORDER(s_mdw.consistent_with(d_mdw), VERBOSE_INCONSISTENT_MDS,
             "src", "dst");
-
-    if (attr == nullptr) attr = &default_attr();
 
     // Zero points are only allowed for integral data types
     const auto &zero_points = attr->zero_points_;
@@ -145,24 +150,31 @@ status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
                 VERBOSE_UNSUPPORTED_SCALES_CFG);
     }
 
-    bool is_cross_engine = src_engine != dst_engine
-            && utils::one_of(
-                    engine_kind::gpu, src_engine->kind(), dst_engine->kind());
+    *reorder_desc = desc;
+    return status::success;
+}
+} // namespace
 
-    reorder_desc_t desc = {primitive_kind::reorder, src_md, dst_md, s_ek, d_ek,
-            is_cross_engine};
-    primitive_hashing::key_t key(
-            engine, reinterpret_cast<op_desc_t *>(&desc), attr, 0, {}, -1);
-    pd = primitive_cache().get_pd(key);
-    if (pd) return success;
+status_t reorder_primitive_desc_create(std::shared_ptr<primitive_desc_t> &pd,
+        const engine_t *engine, const memory_desc_t *src_md,
+        const engine_t *src_engine, const memory_desc_t *dst_md,
+        const engine_t *dst_engine, const primitive_attr_t *attr) {
+    pd.reset();
 
-    for (auto r = engine->get_reorder_implementation_list(src_md, dst_md); *r;
-            ++r) {
-        reorder_pd_t *reorder_pd = nullptr;
-        if ((*r)(&reorder_pd, engine, attr, src_engine, src_md, dst_engine,
-                    dst_md)
-                == success) {
-            pd.reset(reorder_pd);
+    if (attr == nullptr) attr = &default_attr();
+
+    reorder_desc_t reorder_desc;
+    CHECK(reorder_desc_init(
+            &reorder_desc, src_md, src_engine, dst_md, dst_engine, attr));
+
+    primitive_desc_iterator_t it(engine,
+            reinterpret_cast<const op_desc_t *>(&reorder_desc), attr, nullptr,
+            /* skip_idx = */ -1, src_engine, dst_engine);
+    if (!it.is_initialized()) return out_of_memory;
+
+    while (++it != it.end()) {
+        if (*it) {
+            pd = *it;
             return success;
         }
     }
@@ -186,13 +198,17 @@ status_t dnnl_reorder_primitive_desc_create(
     if (any_null(reorder_pd_iface, src_engine, src_md, dst_engine, dst_md))
         return invalid_arguments;
 
-    std::shared_ptr<primitive_desc_t> pd;
-    auto e = get_reorder_engine(src_engine, dst_engine);
-    CHECK(reorder_primitive_desc_create(
-            pd, e, src_md, src_engine, dst_md, dst_engine, attr));
+    if (attr == nullptr) attr = &default_attr();
 
-    return safe_ptr_assign(*reorder_pd_iface,
-            new reorder_primitive_desc_iface_t(pd, e, src_engine, dst_engine));
+    reorder_desc_t reorder_desc;
+    CHECK(reorder_desc_init(
+            &reorder_desc, src_md, src_engine, dst_md, dst_engine, attr));
+
+    auto *e = const_cast<engine_t *>(
+            get_reorder_engine(src_engine, dst_engine));
+    return primitive_desc_create(reorder_pd_iface, e,
+            reinterpret_cast<const op_desc_t *>(&reorder_desc), nullptr, attr,
+            src_engine, dst_engine);
 }
 
 // vim: et ts=4 sw=4 cindent cino+=l0,\:4,N-s

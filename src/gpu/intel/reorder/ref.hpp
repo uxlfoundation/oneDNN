@@ -120,9 +120,6 @@ struct ref_t : public primitive_t {
         status_t init_kernel_ctx(compute::kernel_ctx_t &kernel_ctx) const;
 
         conf_t conf;
-
-    private:
-        DECLARE_GPU_REORDER_CREATE();
     };
 
     status_t init(impl::engine_t *engine) override {

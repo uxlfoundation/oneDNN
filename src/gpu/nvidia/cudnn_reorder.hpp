@@ -123,9 +123,6 @@ struct cudnn_reorder_t : public gpu::primitive_t {
             return reorder_->init(this);
         }
         std::shared_ptr<cudnn_reorder_generic_t> reorder_;
-
-    private:
-        DECLARE_GPU_REORDER_CREATE();
     };
 
     status_t execute(const exec_ctx_t &ctx) const override;

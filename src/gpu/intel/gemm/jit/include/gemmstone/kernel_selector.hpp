@@ -49,6 +49,7 @@ struct MatchParamsBase
     bool ignoreSizes = false;
     bool ignoreCase = false;
     bool ReqBDPASDims = false;
+    bool preferSmallGRF = false;
     int stepping = 0;
     int alignment[3] = {0, 0, 0};
     int unrollReq[3] = {1, 1, 1};

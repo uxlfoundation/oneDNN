@@ -225,7 +225,9 @@ void eltwise_injector_f32_t<ngen_generator_t>::soft_relu_compute_fwd_inner(
     const float reciproc_log2e = 1.f / log2e; // 1 / log_2(e)
     switch (phase) {
         case 0: h->mul(simd, temp, input, alpha); break;
-        case 1: h->add(simd, dest, input, -exp_overflow_bound); break;
+        // Compare alpha * input (the value passed to exp) against the
+        // overflow bound, not the raw input.
+        case 1: h->add(simd, dest, temp, -exp_overflow_bound); break;
         case 2: h->csel(simd | le | f0[0], dest, dest, temp, dest); break;
         case 3: h->mul(simd, temp, temp, log2e); break;
         case 4: h->exp(simd, temp, temp); break;

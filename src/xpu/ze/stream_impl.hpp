@@ -65,6 +65,10 @@ public:
 
     ze_event_handle_t create_event();
 
+    void reset_events();
+
+    static constexpr uint32_t event_pool_count_ = 16 * 1024;
+
     ze_command_list_handle_t list() const { return list_; }
 
     std::mutex &list_mutex() { return list_mutex_; }
@@ -73,15 +77,17 @@ public:
             unsigned *flags, ze_command_list_handle_t list, bool profiling);
 
 private:
+    status_t add_event_pool();
+
     xpu::ze::wrapper_t<ze_command_list_handle_t> list_;
     // Mutex secures all non-thread-safe operations over the `list_` are
     // serialized. Lives in stream to ensure each list comes with its own mutex,
     // as the requirement applies to the same command list during submission.
     std::mutex list_mutex_;
-    // TODO: `event_pool_` seems to belong to `ctx_` as events can't be created
+    // TODO: `event_pools_` seem to belong to `ctx_` as events can't be created
     // in multithreaded scenario and having a thread_local event pool should
     // address it.
-    xpu::ze::wrapper_t<ze_event_pool_handle_t> event_pool_;
+    std::list<xpu::ze::wrapper_t<ze_event_pool_handle_t>> event_pools_;
     // TODO: additionally, the management of event should be probably done in
     // `event_t` struct as well and not stored in the stream as a list. However,
     // it seems there's a challenge to keep track of event lifetime if it's

@@ -736,6 +736,10 @@ status_t brgemm_ir_supported(const brgemm_desc_t &brg) {
     VCONDCHECK_BRGEMM_IR(brg.layout == brgemm_row_major,
             VERBOSE_UNSUPPORTED_FEATURE, "column-major layout");
 
+    VCONDCHECK_BRGEMM_IR(everyone_is(0, brg.brgattr.max_top_vpad,
+                                 brg.brgattr.max_bottom_vpad),
+            VERBOSE_UNSUPPORTED_PAD_FEATURE, "virtual padding");
+
     VCONDCHECK_BRGEMM_IR(
             brg.alpha == 1.0f, VERBOSE_UNSUPPORTED_FEATURE, "alpha != 1");
     VCONDCHECK_BRGEMM_IR(brg.beta == 0.0f || brg.beta == 1.0f,

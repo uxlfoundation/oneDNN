@@ -207,7 +207,7 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
 private:
     void execute_forward(const exec_ctx_t &ctx) const;
     void execute_forward_thr(const int ithr, const int nthr, const char *src,
-            const char *weights, const float *bias, float *dst,
+            const char *weights, const char *bias, char *dst,
             const memory_tracking::grantor_t &scratchpad) const;
 
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }

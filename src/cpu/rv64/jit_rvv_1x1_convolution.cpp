@@ -31,11 +31,12 @@ using namespace dnnl::impl::utils;
 
 void jit_rvv_1x1_convolution_fwd_t::execute_forward(
         const exec_ctx_t &ctx) const {
-    // src/weights addressed by byte offset (2B for bf16/f16); dst/bias f32.
+    // Address tensors as bytes because their element sizes are runtime
+    // configuration parameters.
     auto src = CTX_IN_MEM(const char *, DNNL_ARG_SRC);
     auto weights = CTX_IN_MEM(const char *, DNNL_ARG_WEIGHTS);
-    auto bias = CTX_IN_MEM(const float *, DNNL_ARG_BIAS);
-    auto dst = CTX_OUT_MEM(float *, DNNL_ARG_DST);
+    auto bias = CTX_IN_MEM(const char *, DNNL_ARG_BIAS);
+    auto dst = CTX_OUT_MEM(char *, DNNL_ARG_DST);
 
     const auto &scratchpad = ctx.get_scratchpad_grantor();
 
@@ -45,8 +46,8 @@ void jit_rvv_1x1_convolution_fwd_t::execute_forward(
 }
 
 void jit_rvv_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
-        const int nthr, const char *src, const char *weights, const float *bias,
-        float *dst, const memory_tracking::grantor_t &scratchpad) const {
+        const int nthr, const char *src, const char *weights, const char *bias,
+        char *dst, const memory_tracking::grantor_t &scratchpad) const {
 
     const memory_desc_wrapper src_d(pd()->src_md());
     const memory_desc_wrapper dst_d(pd()->dst_md());
@@ -82,8 +83,8 @@ void jit_rvv_1x1_convolution_fwd_t::execute_forward_thr(const int ithr,
                         * jcp.oc_without_padding
                 + oc_off;
 
-        p.output_data = &dst[dst_off];
-        p.bias_data = bias ? &bias[oc_off] : nullptr;
+        p.output_data = dst + dst_off * jcp.typesize_out;
+        p.bias_data = bias ? bias + oc_off * jcp.typesize_bia : nullptr;
 
         const size_t wei_off = (size_t)g * jcp.oc * jcp.ic_without_padding
                 + (size_t)ocb * jcp.ic_without_padding * jcp.oc_block

@@ -59,19 +59,28 @@ status_t stream_impl_t::init(ze_context_handle_t context,
         return status::invalid_arguments;
     } else if ((flags() & stream_flags::out_of_order) || is_profiling_enabled()
             || is_verbose_profiler_enabled()) {
-        ze_event_pool_desc_t event_pool_desc {};
-        event_pool_desc.stype = ZE_STRUCTURE_TYPE_EVENT_POOL_DESC;
-        event_pool_desc.flags = ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
-        if (is_profiling_enabled() || is_verbose_profiler_enabled())
-            event_pool_desc.flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
-        // Note: 16K number is taken randomly as big enough to fit mode=F perf
-        // validation or a single model profiling.
-        event_pool_desc.count = 16 * 1024;
-
-        ZE_CHECK(ze::zeEventPoolCreate(
-                context, &event_pool_desc, 0, nullptr, &event_pool_.unwrap()));
+        CHECK(add_event_pool());
     }
 
+    return status::success;
+}
+
+status_t stream_impl_t::add_event_pool() {
+    ze_context_handle_t context;
+    ZE_CHECK(ze::zeCommandListGetContextHandle(list_, &context));
+
+    ze_event_pool_flags_t flags = ZE_EVENT_POOL_FLAG_HOST_VISIBLE;
+    if (is_profiling_enabled() || is_verbose_profiler_enabled())
+        flags |= ZE_EVENT_POOL_FLAG_KERNEL_TIMESTAMP;
+
+    ze_event_pool_desc_t event_pool_desc {};
+    event_pool_desc.stype = ZE_STRUCTURE_TYPE_EVENT_POOL_DESC;
+    event_pool_desc.flags = flags;
+    event_pool_desc.count = event_pool_count_;
+
+    event_pools_.emplace_back();
+    ZE_CHECK(ze::zeEventPoolCreate(context, &event_pool_desc, 0, nullptr,
+            &event_pools_.back().unwrap()));
     return status::success;
 }
 
@@ -100,17 +109,24 @@ ze_event_handle_t stream_impl_t::get_output_event() const {
 }
 
 ze_event_handle_t stream_impl_t::create_event() {
-    if (!event_pool_) return xpu::ze::wrapper_t<ze_event_handle_t>();
+    if (event_pools_.empty()) return nullptr;
+
+    uint32_t index = static_cast<uint32_t>(events_.size() % event_pool_count_);
+    size_t needed_pools = events_.size() / event_pool_count_ + 1;
+    if (event_pools_.size() < needed_pools) {
+        if (add_event_pool() != status::success) return nullptr;
+    }
 
     ze_event_desc_t event_desc = {};
     event_desc.stype = ZE_STRUCTURE_TYPE_EVENT_DESC;
     event_desc.pNext = nullptr;
-    event_desc.index = static_cast<uint32_t>(events_.size());
+    event_desc.index = index;
     event_desc.signal = ZE_EVENT_SCOPE_FLAG_HOST;
     event_desc.wait = ZE_EVENT_SCOPE_FLAG_HOST;
 
     ze_event_handle_t event;
-    auto ze_status = ze::zeEventCreate(event_pool_, &event_desc, &event);
+    auto ze_status
+            = ze::zeEventCreate(event_pools_.back(), &event_desc, &event);
     if (ze_status != ZE_RESULT_SUCCESS) return nullptr;
 
     events_.emplace_back(event);

@@ -548,10 +548,28 @@ void jit_uni_reorder_kernel_f32_t::emit_pure_copy_core() {
             : itype_sz_ == 2       ? SEW::e16
                                    : SEW::e8;
 
+    // Select the vector register group size from the runtime VLEN (vlenb, in
+    // bytes) and the innermost node extent for contiguous copies:
+    //     VLMAX = LMUL * vlenb / itype_sz_   (elements per group)
+    // Wider groups amortize loop overhead when both accesses are unit-stride.
+    // Strided loads or stores retain LMUL=m1 because a larger register group
+    // also increases indexed-memory and tail costs. Cap the contiguous path at
+    // m2, and keep m1 below VLEN=1024 where doubling the group does not
+    // consistently amortize that cost. The loop remains vector-length-agnostic
+    // and strip-mines any remainder with the returned `vl`.
+    const uint32_t vlen = get_platform_vlen(); // runtime VLEN in bits
+    const uint32_t vlenb = vlen / 8;
+    const uint32_t n0 = (uint32_t)prb_.nodes[0].n;
+    LMUL lmul = LMUL::m1;
+    if (mayiuse(v) && vlen >= 1024 && in_unit && out_unit) {
+        const uint32_t vlmax_m1 = vlenb / (uint32_t)itype_sz_;
+        if (n0 > vlmax_m1) lmul = LMUL::m2;
+    }
+
     Label vloop, vend;
     L(vloop);
     beqz(reg_rem_, vend);
-    vsetvli(reg_vl_, reg_rem_, sew, LMUL::m1, VTA::ta, VMA::ma);
+    vsetvli(reg_vl_, reg_rem_, sew, lmul, VTA::ta, VMA::ma);
 
     if (sew == SEW::e32) {
         if (in_unit)

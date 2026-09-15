@@ -186,7 +186,11 @@ status_t stream_impl_t::copy(const impl::memory_storage_t &src,
     if (size == 0) return status::success;
 
     const auto &ze_deps = event_t::from(deps);
-    ze_event_handle_t out_event = create_event();
+    ze_event_handle_t out_event;
+    {
+        std::lock_guard<std::mutex> guard(list_mutex());
+        out_event = create_event();
+    }
     CHECK(append_memory_copy(list(), list_mutex(), dst.data_handle(),
             src.data_handle(), size, out_event, ze_deps.size(),
             ze_deps.data()));
@@ -200,7 +204,11 @@ status_t stream_impl_t::fill(const impl::memory_storage_t &dst, uint8_t pattern,
     if (size == 0) return status::success;
 
     const auto &ze_deps = event_t::from(deps);
-    ze_event_handle_t out_event = create_event();
+    ze_event_handle_t out_event;
+    {
+        std::lock_guard<std::mutex> guard(list_mutex());
+        out_event = create_event();
+    }
     CHECK(append_memory_fill(list(), list_mutex(), dst.data_handle(), &pattern,
             sizeof(pattern), size, out_event, ze_deps.size(), ze_deps.data()));
     if (out_event) event_t::from(out_dep).append(out_event);

@@ -312,10 +312,14 @@ inline U exp_bwd_use_dst(T dd, T d) {
 
 template <typename T, typename U = typename utils::remove_reference<T>::type>
 inline U gelu_tanh_fwd(T s) {
-    const float sqrt_2_over_pi = 0.79788458347320556640625f;
-    const float fitting_const = 0.044715f;
-    float v = tanh_fwd(sqrt_2_over_pi * s * (1 + fitting_const * s * s));
-    return (U)(0.5 * s * (1. + v));
+    // Compute in double via the sigmoid form s * sigmoid(2*g) to avoid f32
+    // tanhf saturation to +/-1 and the catastrophic cancellation in
+    // (1 + tanh(g)) for large negative inputs.
+    const double sqrt_2_over_pi = 0.797884560802865355879892119869;
+    const double fitting_const = 0.044715;
+    double sd = (double)s;
+    double g = sqrt_2_over_pi * sd * (1. + fitting_const * sd * sd);
+    return (U)(sd / (1. + ::exp(-2. * g)));
 }
 template <typename T, typename U = typename utils::remove_reference<T>::type>
 inline U gelu_tanh_bwd(T dd, T s) {
@@ -381,9 +385,12 @@ inline U pow_bwd(T dd, T s, A alpha, A beta) {
 
 template <typename T, typename U = typename utils::remove_reference<T>::type>
 inline U gelu_erf_fwd(T s) {
-    const float sqrt_2_over_2 = 0.707106769084930419921875f;
-    float v = s * sqrt_2_over_2;
-    return (U)(0.5f * s * (1.f + ::erff(v)));
+    // Compute in double via erfc to avoid f32 erff saturation to +/-1 and the
+    // catastrophic cancellation in (1 + erf(v)) for large negative inputs;
+    // 0.5*s*(1+erf(v)) == 0.5*s*erfc(-v).
+    const double sqrt_2_over_2 = 0.707106781186547524400844;
+    double v = (double)s * sqrt_2_over_2;
+    return (U)(0.5 * (double)s * ::erfc(-v));
 }
 template <typename T, typename U = typename utils::remove_reference<T>::type>
 inline U gelu_erf_bwd(T dd, T s) {

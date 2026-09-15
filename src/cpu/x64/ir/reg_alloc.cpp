@@ -94,18 +94,68 @@
 //     v3           |=====|     (5..8)
 //        0 1 2 3 4 5 6 7 8 9
 //
-// Free a register when its interval ends. When none is free, spill the interval
-// whose end is furthest away. In the picture, at t=5 both registers are taken
-// by v0 and v2. v0 ends at 9 and v2 ends at 8, so spill v0 and give its
-// register to the newcomer. If the newcomer itself ends furthest, it is the one
-// spilled. Furthest-end frees a register for the longest stretch. A heavier
-// kernel will want to weight this by loop depth so hot values stay put. The
-// mechanism stays the same.
+// Free a register when its interval ends. When none is free, one of the
+// overlapping intervals has to go to the stack. In the picture, at t=5 both
+// registers are taken by v0 and v2, so one of v0, v2, and the newcomer v3 is
+// spilled.
 //
-// TODO: Enable weights based on the loop depth.
+// 4. Spill Weights
+//
+// Which one to spill is decided by weight. The weight of a value estimates how
+// much code it costs to keep that value on the stack instead of in a register.
+//
+// Every operation that reads or writes a value adds to that value's weight. How
+// much it adds depends on how many loops enclose the operation, because the
+// operation runs once per iteration of every loop around it. The iteration
+// counts are run-time values, so the allocator assumes `loop_weight` iterations
+// for every loop. An operation outside every loop then adds 1, one loop deep
+// adds `loop_weight`, and two loops deep adds `loop_weight` squared.
+//
+// `loop_weight` is 10. It does not model the real iteration count. It only has
+// to keep a value that the loop nest references ahead of one referenced only
+// outside the nest. At 10 it takes ten references outside the nest to match a
+// single reference inside it, so a value can be referenced several times
+// outside and still rank below a value the nest touches once. 10 is a starting
+// point that looks reasonable for that, and it can be adjusted as needed.
+//
+// Below is a kernel that walks a block row by row, with `m` counting the rows
+// and `n` the elements in a row. Both counters are ordinary values that occupy
+// registers. The three columns are the operation's loop depth, what it adds
+// with `loop_weight` at 10, and the values it reads or writes:
+//
+//                                       depth  adds  to
+//     0  load_param ptr_a                  0      1  ptr_a
+//     1  loop_begin m                      0      1  m
+//     2    load_param ptr_b                1     10  ptr_b
+//     3    loop_begin n                    1     10  n
+//     4      v = load [ptr_b]              2    100  ptr_b, v
+//     5      store [ptr_a], v              2    100  ptr_a, v
+//     6    loop_end n                      2    100  n
+//     7    ptr_a += stride                 1     10  ptr_a
+//     8  loop_end m                        1     10  m
+//
+// A `loop_begin` sets its counter once on entry, so it sits outside its own
+// loop. A `loop_end` tests the counter on every turn, so it sits inside. That
+// is why rows 1 and 8 differ in depth.
+//
+// The totals are `v` at 200, `ptr_a` at 111, `ptr_b` at 110, `n` at 110, and
+// `m` at 11. The interval with the smallest total is the one spilled, so `m`
+// goes first. It is the only value here that is never touched two loops deep.
+//
+// Weight counts references, the reads and writes of a value. It does not count
+// live range. A pointer that is live across a loop but never touched inside it
+// adds nothing for that loop. A pointer read by every store in the loop body
+// adds once per store. Both have the same live range, and only the reference
+// count separates them.
+//
+// When two values have the same weight, the end of the live interval decides.
+// The value whose interval ends last is spilled, because among the tied values
+// it is the one that would otherwise occupy a register the longest.
 
 #include <algorithm>
+#include <cassert>
 #include <climits>
+#include <cstdint>
 
 #include "cpu/x64/ir/reg_alloc.hpp"
 
@@ -236,6 +286,57 @@ void compute_liveness(
     }
 }
 
+// Compute the loop nesting depth of each operation. `compute_spill_weights()`
+// later turns each depth into a weight.
+std::vector<int> compute_loop_depth(const ir_t &ir) {
+    const int n_ops = ir.n_ops();
+    std::vector<int> depth(n_ops, 0);
+
+    int d = 0;
+    for (int i = 0; i < n_ops; i++) {
+        switch (ir.ops()[i].kind) {
+            case op_kind_t::loop_begin: depth[i] = d++; break;
+            case op_kind_t::loop_end:
+                assert(d > 0 && "loop_end without loop_begin");
+                depth[i] = d--;
+                break;
+            default: depth[i] = d; break;
+        }
+    }
+    assert(d == 0 && "unbalanced loop nest");
+
+    return depth;
+}
+
+// Compute the spill weight of each virtual register. A read and a write in the
+// same operation count separately, because a spilled value needs a reload for
+// the read and a store for the write.
+std::vector<int64_t> compute_spill_weights(
+        const ir_t &ir, const std::vector<int> &depth) {
+    // Assumed number of iterations of one loop level.
+    constexpr int64_t loop_weight = 10;
+    // Depth past which the weight stops growing, which keeps the sum in range.
+    // References deeper than this all count the same.
+    constexpr int max_weighted_depth = 8;
+
+    std::vector<int64_t> weight(ir.n_vregs(), 0);
+    std::vector<int> def_vregs, use_vregs;
+
+    for (int i = 0; i < ir.n_ops(); i++) {
+        int64_t op_weight = 1;
+        for (int d = std::min(depth[i], max_weighted_depth); d > 0; d--)
+            op_weight *= loop_weight;
+
+        ir.def_use(ir.ops()[i], def_vregs, use_vregs);
+        for (int v : def_vregs)
+            weight[v] += op_weight;
+        for (int v : use_vregs)
+            weight[v] += op_weight;
+    }
+
+    return weight;
+}
+
 // Assign physical registers to virtual registers within a single physical
 // register file using linear-scan register allocation. A file may serve more
 // than one register kind (e.g. vec and mask on AVX2*).
@@ -253,15 +354,16 @@ void compute_liveness(
 //      If a register is free, assign it to `v`.
 //
 //   3. Spill if necessary:
-//      Otherwise select the active interval with the latest end
-//      (the `farthest live` interval).
-//      If end[victim] > end[v], spill victim and reuse its register for `v`,
-//      otherwise spill `v`.
+//      Otherwise the lowest-weight interval among `v` and the active intervals
+//      that still hold a register goes to the stack, with ties broken on the
+//      latest end. If it is an active interval, `v` takes over its register.
+//      If it is `v`, then `v` gets no register.
 //
 // Spilled values are assigned stack slots starting at `frame`, increasing by
 // `slot_size` per spill.
 //
-// Example (2 registers: r0, r1):
+// Example (2 registers: r0, r1), with every value referenced equally often so
+// that the ends decide:
 //
 //   v0 [0..9]   v1 [1..3]   v2 [4..8]   v3 [5..8]
 //
@@ -271,12 +373,18 @@ void compute_liveness(
 //   v2: v1 expires (3 < 4), r1 is free, so v2 -> r1
 //
 //   v3: no free registers.
-//       active ends: v0=9, v2=8 -> victim = v0
+//       active ends: v0=9, v2=8 -> v0 spills first
 //       since 9 > 8, spill v0 and assign r0 to v3
+//
+// Now let a loop cover 4..8 and let v0 and v3 be read inside it while v2 is
+// only read on the way out. v2 is then the lightest of the three, so it gives
+// up its register to v3 and v0 keeps the one it has, which is the opposite of
+// what the ends alone would have said.
 void alloc_file(const ir_t &ir, int file_idx,
         const std::vector<int> &kind_to_file, const std::vector<int> &pool,
         const std::vector<int> &start, const std::vector<int> &end,
-        size_t slot_size, reg_alloc_result_t &res, size_t &frame) {
+        const std::vector<int64_t> &weight, size_t slot_size,
+        reg_alloc_result_t &res, size_t &frame) {
 
     const int n_vregs = ir.n_vregs();
 
@@ -320,26 +428,32 @@ void alloc_file(const ir_t &ir, int file_idx,
             res.assignments[v].phys = free_regs.back();
             free_regs.pop_back();
         } else {
-            // No free register so choose a spill candidate
-            // (farthest-live interval).
-            int victim = -1;
+            // No free register, so one of the intervals overlapping here goes
+            // to the stack.
+            auto spills_before = [&](int lhs, int rhs) {
+                if (weight[lhs] != weight[rhs])
+                    return weight[lhs] < weight[rhs];
+                return end[lhs] > end[rhs];
+            };
+
+            int to_spill = -1;
             for (int a : active) {
                 if (!res.assignments[a].spilled
-                        && (victim < 0 || end[a] > end[victim])) {
-                    victim = a;
+                        && (to_spill < 0 || spills_before(a, to_spill))) {
+                    to_spill = a;
                 }
             }
 
-            if (victim >= 0 && end[victim] > end[v]) {
-                // Victim outlives `v` so spill victim and reuse its register.
-                res.assignments[v].phys = res.assignments[victim].phys;
-                res.assignments[victim].spilled = true;
-                res.assignments[victim].slot = frame;
+            if (to_spill >= 0 && spills_before(to_spill, v)) {
+                // `to_spill` spills before `v`, so it gives up its register.
+                res.assignments[v].phys = res.assignments[to_spill].phys;
+                res.assignments[to_spill].spilled = true;
+                res.assignments[to_spill].slot = frame;
                 frame += slot_size;
                 res.any_spill = true;
             } else {
-                // `v` itself ends furthest so spill `v`. It lives on the stack
-                // and is not added to the active set.
+                // No active interval spills before `v`, so `v` lives on the
+                // stack and is not added to the active set.
                 res.assignments[v].spilled = true;
                 res.assignments[v].slot = frame;
                 frame += slot_size;
@@ -366,7 +480,9 @@ void alloc_file(const ir_t &ir, int file_idx,
 //   2. Convert liveness into a single interval per virtual register:
 //        start[v] = first operation where `v` is defined, used, or live_in
 //        end[v]   = last such operation
-//   3. Run linear-scan allocation per physical register file, sharing a single
+//   3. Weight each virtual register by how often it is referenced, so that the
+//      scan spills the lowest-weight value rather than the longest-lived one.
+//   4. Run linear-scan allocation per physical register file, sharing a single
 //      stack frame across all files.
 //
 // Interval construction is intentionally conservative. If a value is live in
@@ -380,18 +496,11 @@ void alloc_file(const ir_t &ir, int file_idx,
 // appears when a value has a true dead region while registers are scarce,
 // where the gap could otherwise be reused.
 //
-// TODO: improve allocation quality in two stages (in order):
-//
-//   1. Add loop-depth spill weighting.
-//      The current `farthest end wins` rule may incorrectly spill hot values
-//      (e.g. loop-invariant pointers) simply because they live long.
-//      Weighting by loop nesting depth biases spills toward cold values.
-//      This is a local change to alloc_kind.
-//
-//   2. Add hole-aware live-range splitting.
-//      Required only under register pressure when intervals cannot all fit.
-//      Splits must respect spill weights and must not break hot loop-carried
-//      values inside loops.
+// Hole-aware live-range splitting would recover that reuse. It is not planned,
+// because the weights already keep the values that matter in registers, and
+// splitting adds interval bookkeeping and reload placement. Recorded here in
+// case pressure ever makes it worthwhile. Such splits would have to respect
+// the weights and must not split a value inside a loop that carries it.
 reg_alloc_result_t allocate_registers(
         const ir_t &ir, const reg_pools_t &pools) {
     const int n_ops = ir.n_ops();
@@ -428,7 +537,12 @@ reg_alloc_result_t allocate_registers(
             if (live_in[i][v]) extend_interval(v);
     }
 
-    // Step 3: run linear-scan register allocation per physical register file,
+    // Step 3: weight each virtual register by how often it is referenced and
+    // how deep in the loop nest those references sit.
+    const std::vector<int64_t> weight
+            = compute_spill_weights(ir, compute_loop_depth(ir));
+
+    // Step 4: run linear-scan register allocation per physical register file,
     // sharing a single stack frame so spill slots do not overlap across files.
     reg_alloc_result_t res;
     res.assignments.assign(n_vregs, assignment_t());
@@ -436,7 +550,7 @@ reg_alloc_result_t allocate_registers(
     size_t frame = 0;
     for (int f = 0; f < (int)pools.files.size(); f++) {
         alloc_file(ir, f, pools.kind_to_file, pools.files[f].regs, start, end,
-                pools.files[f].slot_size, res, frame);
+                weight, pools.files[f].slot_size, res, frame);
     }
 
     constexpr size_t stack_alignment = 16;

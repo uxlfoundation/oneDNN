@@ -691,6 +691,59 @@ TEST(AllocatorTests, SpillsUnderRegisterPressure) {
             << "two spilled values were given the same stack slot";
 }
 
+// Checks which value the allocator sends to the stack. A value referenced
+// inside a loop weighs more than one referenced only outside it, so it keeps
+// its register even when it is the longest-lived candidate. Values of equal
+// weight fall back to the end of the interval.
+TEST(AllocatorTests, SpillsByWeightAndBreaksTiesByEnd) {
+    {
+        ir_t ir;
+        const vreg_t in_loop = ir.new_gpr();
+        ir.mov_imm(in_loop, 1);
+        const vreg_t out_of_loop = ir.new_gpr();
+        ir.mov_imm(out_of_loop, 2);
+
+        const vreg_t counter = ir.new_gpr();
+        const int begin = ir.loop_begin_imm(counter, 4);
+        ir.add_imm(in_loop, 1);
+        ir.loop_end(counter, begin);
+
+        ir.add_reg(in_loop, out_of_loop); // `out_of_loop` dies here
+        ir.add_imm(in_loop, 1); // `in_loop` outlives every other value
+
+        // Two registers for three values live at the loop, so one is spilled.
+        const reg_alloc_result_t res
+                = allocate_registers(ir, make_pools(/*n_gpr=*/2));
+
+        // `in_loop` has the latest end, so choosing by end alone would pick it.
+        EXPECT_TRUE(res.assignments[(int)out_of_loop].spilled);
+        EXPECT_FALSE(res.assignments[(int)in_loop].spilled);
+        EXPECT_FALSE(res.assignments[(int)counter].spilled);
+    }
+
+    {
+        ir_t ir;
+        // `early` and `late` are each defined once and used once, so they carry
+        // the same weight. `late` is used last.
+        const vreg_t early = ir.new_gpr();
+        ir.mov_imm(early, 1);
+        const vreg_t late = ir.new_gpr();
+        ir.mov_imm(late, 2);
+        const vreg_t acc = ir.new_gpr();
+        ir.mov_imm(acc, 3);
+
+        ir.add_reg(acc, early);
+        ir.add_reg(acc, late);
+
+        const reg_alloc_result_t res
+                = allocate_registers(ir, make_pools(/*n_gpr=*/2));
+
+        EXPECT_TRUE(res.assignments[(int)late].spilled);
+        EXPECT_FALSE(res.assignments[(int)early].spilled);
+        EXPECT_FALSE(res.assignments[(int)acc].spilled);
+    }
+}
+
 // Checks that allocation depends only on its inputs. The same IR and register
 // pool produces identical register assignments, spill decisions, and stack
 // size, which makes the emitted code reproducible.

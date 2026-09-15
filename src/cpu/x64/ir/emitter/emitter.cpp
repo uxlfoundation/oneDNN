@@ -90,10 +90,6 @@ void emit(backend_t &be, const ir_t &ir, const reg_alloc_result_t &alloc,
     // a spilled result back is done by the defining instruction (compute into
     // scratch, then store to the slot).
     //
-    // TODO: introduce loop-depth spill weights to optimize spills. Currently,
-    // the spilling strategy is naive and is only good for low pressure kernels
-    // (e.g. GEMV).
-    //
     // gpr reloads are ISA-neutral (a plain `mov`), so `gpr_use` emits them
     // directly. A spilled vec source is reloaded through the backend, since the
     // reload instruction is ISA-specific. The `vec_use` returns a physical

@@ -17,11 +17,18 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include "common/nstl.hpp"
 #include "common/verbose.hpp"
 #include "cpu/x64/cpu_isa_traits.hpp"
 #include "cpu/x64/platform.hpp"
 #include "xbyak/xbyak_util.h"
+
+#if defined(_WIN32)
+#include <vector>
+#include <windows.h>
+#endif
 
 namespace dnnl {
 namespace impl {
@@ -255,6 +262,172 @@ hybrid_core_cache_sizes_t &get_hybrid_core_cache_sizes() {
     return result;
 }
 
+#if defined(__linux__)
+// Number of logical CPUs listed in a sysfs cpu list such as "0-1" or "0,192".
+// Returns 0 (unavailable) if the value is truncated by the buffer: sysfs
+// terminates every value with '\n', so a missing newline means more data.
+unsigned count_sysfs_cpu_list(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    char buf[1024] = {};
+    const bool ok = fgets(buf, sizeof(buf), f) != nullptr;
+    fclose(f);
+    if (!ok || strchr(buf, '\n') == nullptr) return 0;
+
+    unsigned count = 0;
+    const char *p = buf;
+    while (*p) {
+        char *end = nullptr;
+        const long lo = strtol(p, &end, 10);
+        if (end == p) break;
+        long hi = lo;
+        if (*end == '-') {
+            p = end + 1;
+            hi = strtol(p, &end, 10);
+            if (end == p) break;
+        }
+        if (hi >= lo) count += (unsigned)(hi - lo + 1);
+        p = (*end == ',') ? end + 1 : end;
+    }
+    return count;
+}
+
+// Actual number of physical cores sharing L1d/L2/L3, as enumerated by the
+// kernel. counts[0]=L1d, counts[1]=L2, counts[2]=L3; 0 means unavailable.
+// Not built on Xbyak::util::CpuTopology: that enumerates every logical CPU
+// (probing core type on hybrid parts), far more work than this needs.
+struct os_cache_sharing_t {
+    unsigned counts[3];
+};
+
+// Formats "/sys/devices/system/cpu/cpu0/cache/index<idx>/<suffix>" into buf.
+void format_cache_index_path(
+        char *buf, size_t bufsize, int idx, const char *suffix) {
+    snprintf(buf, bufsize, "/sys/devices/system/cpu/cpu0/cache/index%d/%s", idx,
+            suffix);
+}
+
+os_cache_sharing_t get_os_cores_sharing_cache_all() {
+    os_cache_sharing_t result {{0, 0, 0}};
+    char path[128];
+    // SMT width: L1d is private to a physical core, so the number of logical
+    // CPUs sharing it is the number of hardware threads per core.
+    unsigned smt = 0;
+    unsigned logical[3] = {0, 0, 0};
+
+    for (int idx = 0; idx < 8; idx++) {
+        format_cache_index_path(path, sizeof(path), idx, "level");
+        FILE *f = fopen(path, "r");
+        if (!f) break;
+        int lvl = 0;
+        const bool got_level = fscanf(f, "%d", &lvl) == 1;
+        fclose(f);
+        if (!got_level || lvl < 1 || lvl > 3) continue;
+
+        format_cache_index_path(path, sizeof(path), idx, "type");
+        f = fopen(path, "r");
+        if (!f) continue;
+        char type[32] = {};
+        const bool got_type = fgets(type, sizeof(type), f) != nullptr;
+        fclose(f);
+        // Skip instruction caches; data and unified caches both count.
+        if (!got_type || type[0] == 'I') continue;
+
+        format_cache_index_path(path, sizeof(path), idx, "shared_cpu_list");
+        const unsigned shared = count_sysfs_cpu_list(path);
+        if (shared == 0) continue;
+
+        if (lvl == 1) smt = shared;
+        logical[lvl - 1] = shared;
+    }
+
+    if (smt == 0) return result;
+    // shared_cpu_list counts logical CPUs; convert to physical cores.
+    for (int l = 0; l < 3; l++) {
+        if (logical[l] == 0) continue;
+        const unsigned cores = logical[l] / smt;
+        result.counts[l] = cores > 0 ? cores : 1;
+    }
+    return result;
+}
+#elif defined(_WIN32)
+// GroupMasks[]/GroupCount on CACHE_RELATIONSHIP are absent from older SDKs.
+// Gate on NTDDI_WIN10_NI, the same threshold Xbyak uses, and treat them as
+// unavailable when NTDDI_VERSION isn't defined.
+#if defined(NTDDI_VERSION) && defined(NTDDI_WIN10_NI) \
+        && NTDDI_VERSION >= NTDDI_WIN10_NI
+#define ONEDNN_WINSDK_HAS_CACHE_RELATIONSHIP_GROUPMASKS 1
+#else
+#define ONEDNN_WINSDK_HAS_CACHE_RELATIONSHIP_GROUPMASKS 0
+#endif
+
+// Actual number of physical cores sharing L1d/L2/L3, as enumerated by the OS.
+// GetLogicalProcessorInformationEx(RelationCache, ...) reports the exact
+// GROUP_AFFINITY mask(s) of logical processors sharing each cache instance.
+struct os_cache_sharing_t {
+    unsigned counts[3];
+};
+
+os_cache_sharing_t get_os_cores_sharing_cache_all() {
+    os_cache_sharing_t result {{0, 0, 0}};
+
+    DWORD len = 0;
+    GetLogicalProcessorInformationEx(RelationCache, nullptr, &len);
+    if (len == 0) return result;
+
+    std::vector<char> buf(len);
+    auto *base = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *>(
+            buf.data());
+    if (!GetLogicalProcessorInformationEx(RelationCache, base, &len))
+        return result;
+
+    // SMT width: L1d is private to a physical core, so the number of logical
+    // CPUs sharing it is the number of hardware threads per core.
+    unsigned smt = 0;
+    unsigned logical[3] = {0, 0, 0};
+
+    for (DWORD off = 0; off < len;) {
+        auto *entry
+                = reinterpret_cast<SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *>(
+                        buf.data() + off);
+        off += entry->Size;
+        if (entry->Relationship != RelationCache) continue;
+
+        const auto &cache = entry->Cache;
+        // Skip instruction caches; data and unified caches both count.
+        if (cache.Type == CacheInstruction) continue;
+        if (cache.Level < 1 || cache.Level > 3) continue;
+
+        unsigned shared = 0;
+#if ONEDNN_WINSDK_HAS_CACHE_RELATIONSHIP_GROUPMASKS
+        for (WORD gi = 0; gi < cache.GroupCount; gi++) {
+            for (KAFFINITY m = cache.GroupMasks[gi].Mask; m; m &= m - 1)
+                shared++;
+        }
+#else
+        for (KAFFINITY m = cache.GroupMask.Mask; m; m &= m - 1)
+            shared++;
+#endif
+        if (shared == 0) continue;
+
+        if (cache.Level == 1) smt = smt > shared ? smt : shared;
+        logical[cache.Level - 1] = logical[cache.Level - 1] > shared
+                ? logical[cache.Level - 1]
+                : shared;
+    }
+
+    if (smt == 0) return result;
+    // The mask counts logical CPUs; convert to physical cores.
+    for (int l = 0; l < 3; l++) {
+        if (logical[l] == 0) continue;
+        const unsigned cores = logical[l] / smt;
+        result.counts[l] = cores > 0 ? cores : 1;
+    }
+    return result;
+}
+#undef ONEDNN_WINSDK_HAS_CACHE_RELATIONSHIP_GROUPMASKS
+#endif
+
 // Smallest `width` such that `(1u << width) >= n`, for n > 0.
 unsigned ceil_log2(unsigned n) {
     unsigned width = 0;
@@ -351,14 +524,20 @@ unsigned get_topology_cores_sharing_cache(unsigned level) {
 
 // Number of physical cores sharing the data/unified cache at 0-based index `l`.
 // Leaf 4's EAX[25:14]+1 is an ID reservation that can overstate the true
-// sharing count; prefer leaf 0x1F/0xB's real count when a topology level
-// maps exactly onto the cache's ID width, else raw CPUID.
+// sharing count; prefer leaf 0x1F/0xB, then the OS-enumerated topology
+// (sysfs/GetLogicalProcessorInformationEx), and fall back to raw CPUID.
 unsigned compute_cores_sharing_cache(unsigned l) {
     // Absent level (e.g. no L3 exposed under a hypervisor): Xbyak's getter
     // would record a sticky ERR_BAD_PARAMETER that fails every later JIT.
     if (l >= cpu().getDataCacheLevels()) return 1;
     const unsigned topo_sharing = get_topology_cores_sharing_cache(l + 1);
     if (topo_sharing > 0) return topo_sharing;
+
+#if defined(__linux__) || defined(_WIN32)
+    static const os_cache_sharing_t os_sharing
+            = get_os_cores_sharing_cache_all();
+    if (os_sharing.counts[l] > 0) return os_sharing.counts[l];
+#endif
     const unsigned sharing = cpu().getCoresSharingDataCache(l);
     return sharing > 0 ? sharing : 1;
 }

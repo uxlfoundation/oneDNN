@@ -81,42 +81,49 @@ status_t jit_uni_batch_normalization_fwd_t<isa>::execute_forward(
 
     const bool channels_dense = data_d.blocking_desc().strides[1] == 1;
 
-    // Mean/variance: either global (inference) or computed here (training).
+    // Mean/variance: either supplied by the user or computed for training.
     const float *mean, *var;
     if (pd()->use_global_stats()) {
         mean = CTX_IN_MEM(const float *, DNNL_ARG_MEAN);
         var = CTX_IN_MEM(const float *, DNNL_ARG_VARIANCE);
     } else {
-        auto &grantor = ctx.get_scratchpad_grantor();
-        float *mean_buf = grantor.template get<float>(
-                memory_tracking::names::key_bnorm_tmp_mean);
-        float *var_buf = grantor.template get<float>(
-                memory_tracking::names::key_bnorm_tmp_var);
-        mean = mean_buf;
-        var = var_buf;
-
+        assert(dtsrc == data_type::f16 && !channels_dense);
         const dim_t SP = D * H * W;
         const dim_t count = N * SP;
-        parallel_nd(C, [&](dim_t c) {
-            float sum = 0.f, sumsq = 0.f;
-            for (dim_t n = 0; n < N; ++n) {
-                const size_t base = channels_dense ? (n * C + c) * SP
-                                                   : off(n, c, 0, 0, 0);
-                jit_uni_batch_normalization_fwd_stat(
-                        static_cast<const char *>(src) + base * data_size, SP,
-                        &sum, &sumsq, dtsrc);
-            }
-            const float m = sum / static_cast<float>(count);
-            mean_buf[c] = m;
-            var_buf[c] = sumsq / static_cast<float>(count) - m * m;
-        });
-
         float *mean_out = CTX_OUT_MEM(float *, DNNL_ARG_MEAN);
         float *var_out = CTX_OUT_MEM(float *, DNNL_ARG_VARIANCE);
-        for (dim_t c = 0; c < C; ++c) {
-            mean_out[c] = mean_buf[c];
-            var_out[c] = var_buf[c];
-        }
+        const auto &mean_kernel
+                = get_jit_uni_batch_normalization_fwd_stat_kernel(
+                        /*calculate_variance=*/false);
+        const auto &variance_kernel
+                = get_jit_uni_batch_normalization_fwd_stat_kernel(
+                        /*calculate_variance=*/true);
+
+        parallel_nd(C, [&](dim_t c) {
+            auto reduce
+                    = [&](const jit_uni_batch_normalization_fwd_stat_kernel_t
+                                      &kernel,
+                              float reduction_mean, float &result) {
+                for (dim_t n = 0; n < N; ++n) {
+                    const size_t base = off(n, c, 0, 0, 0);
+                    const jit_uni_batch_normalization_fwd_stat_kernel_t::
+                            call_params_t p {static_cast<const char *>(src)
+                                            + base * data_size,
+                                    SP, &result, reduction_mean};
+                    kernel(&p);
+                }
+            };
+
+            float sum = 0.f;
+            reduce(mean_kernel, 0.f, sum);
+            mean_out[c] = sum / static_cast<float>(count);
+
+            float squared_difference_sum = 0.f;
+            reduce(variance_kernel, mean_out[c], squared_difference_sum);
+            var_out[c] = squared_difference_sum / static_cast<float>(count);
+        });
+        mean = mean_out;
+        var = var_out;
     }
 
     if (!channels_dense) {

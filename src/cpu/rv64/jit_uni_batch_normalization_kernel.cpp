@@ -91,98 +91,82 @@ void dispatch_jit_batch_normalization_bwd_apply_dt(
         dispatch_jit_batch_normalization_bwd_apply<data_type, false>(p);
 }
 
-template <data_type_t data_type>
-void dispatch_jit_batch_normalization_fwd_stat(
-        const jit_uni_batch_normalization_fwd_stat_kernel_t::call_params_t *p) {
+template <bool calculate_variance>
+const jit_uni_batch_normalization_fwd_stat_kernel_t &
+get_jit_batch_normalization_fwd_stat_kernel() {
     static const jit_uni_batch_normalization_fwd_stat_kernel_t kernel(
-            data_type);
-    kernel(p);
+            calculate_variance);
+    return kernel;
 }
 
 } // namespace
 
 jit_uni_batch_normalization_fwd_stat_kernel_t::
-        jit_uni_batch_normalization_fwd_stat_kernel_t(data_type_t data_type)
+        jit_uni_batch_normalization_fwd_stat_kernel_t(bool calculate_variance)
     : jit_generator_t("jit_uni_batch_normalization_fwd_stat_kernel")
-    , data_type_(data_type) {
+    , calculate_variance_(calculate_variance) {
     create_kernel();
 }
 
-void jit_uni_batch_normalization_fwd_stat(const void *src, dim_t len,
-        float *sum, float *sumsq, data_type_t dt) {
-    const jit_uni_batch_normalization_fwd_stat_kernel_t::call_params_t p {
-            src, len, sum, sumsq};
-    if (dt == data_type::f16)
-        dispatch_jit_batch_normalization_fwd_stat<data_type::f16>(&p);
-    else
-        dispatch_jit_batch_normalization_fwd_stat<data_type::f32>(&p);
+const jit_uni_batch_normalization_fwd_stat_kernel_t &
+get_jit_uni_batch_normalization_fwd_stat_kernel(bool calculate_variance) {
+    if (calculate_variance)
+        return get_jit_batch_normalization_fwd_stat_kernel<true>();
+    return get_jit_batch_normalization_fwd_stat_kernel<false>();
 }
 
 void jit_uni_batch_normalization_fwd_stat_kernel_t::generate() {
 #if defined(XBYAK_RISCV_V) && XBYAK_RISCV_V == 1
-    const bool is_f16 = data_type_ == data_type::f16;
-
     const Reg reg_param = a0;
     const Reg reg_src = a1;
     const Reg reg_len = a2;
-    const Reg reg_sum = a3;
-    const Reg reg_sumsq = a4;
+    const Reg reg_result = a3;
     const Reg reg_vl = t0;
     const Reg reg_bytes = t1;
 
-    const FReg f_sum = fa0;
-    const FReg f_sumsq = fa1;
+    const FReg f_mean = fa0;
+    const FReg f_result = fa1;
 
     const VReg v_src16(2);
     const VReg v_src(4);
-    const VReg v_sq(8);
-    const VReg v_red_sum(12);
-    const VReg v_red_sq(14);
+    const VReg v_reduction(8);
 
     ld(reg_src, reg_param, 0);
     ld(reg_len, reg_param, 8);
-    ld(reg_sum, reg_param, 16);
-    ld(reg_sumsq, reg_param, 24);
+    ld(reg_result, reg_param, 16);
+    if (calculate_variance_) flw(f_mean, reg_param, 24);
 
-    // Seed the running sum/sumsq from the caller-provided scalars.
-    flw(f_sum, reg_sum, 0);
-    flw(f_sumsq, reg_sumsq, 0);
+    // Seed the reduction from the caller-provided scalar. This permits an ncsp
+    // channel to be accumulated across its non-contiguous minibatch slices.
+    flw(f_result, reg_result, 0);
 
     Label loop, done;
     L(loop);
     beqz(reg_len, done);
 
-    if (is_f16) {
-        vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
-        vle16_v(v_src16, reg_src);
-        vfwcvt_f_f_v(v_src, v_src16);
-        vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
-    } else {
-        vsetvli(reg_vl, reg_len, SEW::e32, LMUL::m1, VTA::ta, VMA::ma);
-        vle32_v(v_src, reg_src);
+    vsetvli(reg_vl, reg_len, SEW::e16, LMUL::m1, VTA::ta, VMA::ma);
+    vle16_v(v_src16, reg_src);
+    vfwcvt_f_f_v(v_src, v_src16);
+    vsetvli(reg_vl, reg_vl, SEW::e32, LMUL::m2, VTA::ta, VMA::ma);
+    if (calculate_variance_) {
+        vfsub_vf(v_src, v_src, f_mean);
+        vfmul_vv(v_src, v_src, v_src);
     }
-    vfmul_vv(v_sq, v_src, v_src);
 
-    // per-chunk ordered reduction folded into the scalar seed.
-    vfmv_v_f(v_red_sum, f_sum);
-    vfredosum_vs(v_red_sum, v_src, v_red_sum);
-    vfmv_f_s(f_sum, v_red_sum);
+    // Use an ordered reduction so each chunk is folded into the scalar seed in
+    // input order. Variance is a separate pass to avoid E[x^2] - E[x]^2
+    // cancellation for inputs with a large mean and small variance.
+    vfmv_v_f(v_reduction, f_result);
+    vfredosum_vs(v_reduction, v_src, v_reduction);
+    vfmv_f_s(f_result, v_reduction);
 
-    vfmv_v_f(v_red_sq, f_sumsq);
-    vfredosum_vs(v_red_sq, v_sq, v_red_sq);
-    vfmv_f_s(f_sumsq, v_red_sq);
-
-    if (is_f16)
-        slli(reg_bytes, reg_vl, 1);
-    else
-        slli(reg_bytes, reg_vl, 2);
+    slli(reg_bytes, reg_vl, 1);
     add(reg_src, reg_src, reg_bytes);
     sub(reg_len, reg_len, reg_vl);
     j_(loop);
 
     L(done);
-    fsw(f_sum, reg_sum, 0);
-    fsw(f_sumsq, reg_sumsq, 0);
+    fsw(f_result, reg_result, 0);
     ret();
 #else
     ret();

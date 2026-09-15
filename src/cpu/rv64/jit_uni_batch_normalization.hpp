@@ -69,6 +69,9 @@ struct jit_uni_batch_normalization_fwd_t : public primitive_t {
 
             VDISPATCH_BNORM(!fuse_norm_add_relu(), VERBOSE_UNSUPPORTED_FEATURE,
                     "fuse_norm_add_relu not supported");
+            VDISPATCH_BNORM(use_global_stats() || is_training(),
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "statistics must be inputs or training outputs");
             using smask_t = primitive_attr_t::skip_mask_t;
             VDISPATCH_BNORM(!(fuse_norm_relu()
                                     && desc()->prop_kind
@@ -97,6 +100,11 @@ struct jit_uni_batch_normalization_fwd_t : public primitive_t {
             const memory_desc_wrapper dst_d(dst_md());
             VDISPATCH_BNORM(
                     check_layouts(src_d, dst_d), VERBOSE_UNSUPPORTED_TAG);
+            const bool channels_dense = src_d.blocking_desc().strides[1] == 1;
+            VDISPATCH_BNORM(IMPLICATION(!use_global_stats(),
+                                    dtsrc == f16 && !channels_dense),
+                    VERBOSE_UNSUPPORTED_FEATURE,
+                    "computed statistics require f16 ncx data");
 
             fused_relu_in_kernel_ = fuse_norm_relu();
             init_scratchpad();

@@ -1,0 +1,16 @@
+--reset
+
+--dt=bf16,bf16:bf16:f32
+--bia_dt=undef,f32,bf16
+--alpha=1,2
+--beta=0,1
+--attr-post-ops=,sum:2,relu
+--brgemm-attr=use_mmla:1,use_mmla:1+use_mmla_packed_a:1
+--batch=shapes_2d_no_tail_bf16
+--batch=shapes_2d_tail_n_bf16
+
+--batch=shapes_2d_tail_k_bf16
+--batch=shapes_2d_big_k_bf16
+
+--batch=shapes_2d_tail_k_tail_n_bf16
+--batch=shapes_2d_big_k_tail_n_bf16

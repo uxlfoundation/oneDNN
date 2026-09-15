@@ -17,12 +17,12 @@
 *******************************************************************************/
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
 #include "common/dnnl_thread.hpp"
 #include "common/type_helpers.hpp"
 #include "common/utils.hpp"
 
 #include "cpu/aarch64/jit_generator.hpp"
-
 #include "cpu/aarch64/jit_sve_1x1_convolution.hpp"
 
 namespace dnnl {
@@ -72,7 +72,7 @@ void jit_sve_1x1_convolution_fwd_t<src_type, wei_type, dst_type,
         bias = padded_bias;
     }
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         execute_forward_thr(ithr, nthr, src, weights, bias, weights_dw, bias_dw,
                 dst, scratchpad, post_ops_binary_rhs_arg_vec.data(),
                 post_ops_binary_rhs_arg_vec_dw.data());
@@ -486,7 +486,7 @@ void jit_sve_1x1_convolution_bwd_data_t<diff_dst_type, wei_type, diff_src_type,
         return remaining < tail_step ? remaining : default_step;
     };
 
-    parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+    parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         auto p = jit_1x1_conv_args_t();
         auto rp = typename rtus_driver_t<isa_>::call_params_t();
 
@@ -658,8 +658,12 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
     const int wei_size = jcp.ngroups * rnd_up(jcp.oc, jcp.oc_block)
             * rnd_up(jcp.ic, jcp.ic_block);
 
-    simple_barrier::ctx_t reduction_barrier;
-    simple_barrier::ctx_init(&reduction_barrier);
+    simple_barrier::ctx_t *reduction_barrier
+            = scratchpad.template get<simple_barrier::ctx_t>(
+                    key_conv_wei_reduction_bctx);
+    if (dnnl_thr_syncable() && jcp.nthr_mb > 1) {
+        simple_barrier::ctx_init(reduction_barrier);
+    }
 
     memory_tracking::grantor_t reducer_bia_scratchpad(
             scratchpad, prefix_reducer_bia);
@@ -692,8 +696,9 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
     const bool is_ddst_layout_nxc = utils::one_of(
             jcp.dst_tag, format_tag::nwc, format_tag::nhwc, format_tag::ndhwc);
 
-    auto maybe_zero_icpad = [&](const int g_start, const int g_end,
-                                    const int ocb_start, const int ocb_end) {
+    auto maybe_zero_icpad
+            = [= COMPAT_THIS_CAPTURE](const int g_start, const int g_end,
+                      const int ocb_start, const int ocb_end) {
         // write zeros to IC padded region.
         const int ic_tail = jcp.ic_without_padding % jcp.ic_block;
         if (is_ddst_layout_nxc && ic_tail != 0) {
@@ -714,7 +719,7 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
         }
     };
 
-    auto ker = [&](const int ithr, const int nthr) {
+    auto ker = [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
         assert(nthr == jcp.nthr);
 
         const int ithr_ic_b = ithr % jcp.nthr_ic_b;
@@ -866,7 +871,7 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
 
         /* diff_weights[:] += sum(wei_reduction[thr_mb][:]) */
         if (dnnl_thr_syncable() && jcp.nthr_mb > 1) {
-            simple_barrier::barrier(&reduction_barrier, jcp.nthr);
+            simple_barrier::barrier(reduction_barrier, jcp.nthr);
             const int work = g_work * oc_b_work * ic_b_work;
             int start {0}, end {0};
             balance211(work, jcp.nthr_mb, ithr_mb, start, end);
@@ -904,7 +909,7 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
         }
     };
 
-    auto ker_bias = [&](int ithr, int nthr) {
+    auto ker_bias = [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
         assert(nthr == rb->balancer().nthr_);
 
         const int b_job_start = rb->balancer().ithr_job_off(ithr);
@@ -959,14 +964,15 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
     };
 
     if (dnnl_thr_syncable()) {
-        parallel(jcp.nthr, [&](const int ithr, const int nthr) {
+        parallel(jcp.nthr,
+                [= COMPAT_THIS_CAPTURE](const int ithr, const int nthr) {
             ker(ithr, jcp.nthr);
             if (pd()->with_bias()) ker_bias(ithr, jcp.nthr);
         });
     } else {
-        parallel(jcp.nthr, [&](int ithr, int nthr) { ker(ithr, nthr); });
+        parallel(jcp.nthr, [=](int ithr, int nthr) { ker(ithr, nthr); });
         if (jcp.nthr_mb > 1)
-            parallel(jcp.nthr, [&](int ithr, int nthr) {
+            parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
                 assert(nthr == jcp.nthr);
 
                 const int ithr_ic_b = ithr % jcp.nthr_ic_b;
@@ -1029,8 +1035,8 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
             });
         if (pd()->with_bias()) {
             parallel(jcp.nthr,
-                    [&](int ithr, int nthr) { ker_bias(ithr, nthr); });
-            parallel(jcp.nthr, [&](int ithr, int nthr) {
+                    [=](int ithr, int nthr) { ker_bias(ithr, nthr); });
+            parallel(jcp.nthr, [= COMPAT_THIS_CAPTURE](int ithr, int nthr) {
                 assert(nthr == rb->balancer().nthr_);
                 MAYBE_UNUSED(nthr);
                 if (rb->balancer().ithr_njobs(ithr) == 0) return;
@@ -1039,16 +1045,18 @@ void jit_sve_1x1_convolution_bwd_weights_t<diff_dst_type, wei_type,
         }
     }
 
-    /* TODO: put this in ker_bias */
-    if (is_bias_padded) {
-        assert(IMPLICATION(!is_ddst_layout_nxc, jcp.ngroups == 1));
-        const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
-        const int stride = jcp.oc_without_padding;
-        for (int g = 0; g < jcp.ngroups; ++g) {
-            utils::array_copy(diff_bias_in + g * stride,
-                    diff_bias + g * padded_stride, stride);
+    parallel(1, [=](const int, const int) {
+        /* TODO: put this in ker_bias */
+        if (is_bias_padded) {
+            assert(IMPLICATION(!is_ddst_layout_nxc, jcp.ngroups == 1));
+            const int padded_stride = rnd_up(jcp.oc, jcp.oc_block);
+            const int stride = jcp.oc_without_padding;
+            for (int g = 0; g < jcp.ngroups; ++g) {
+                utils::array_copy(diff_bias_in + g * stride,
+                        diff_bias + g * padded_stride, stride);
+            }
         }
-    }
+    });
 }
 
 // SVE128 BWD_W is currently not selected due to observed 1x1

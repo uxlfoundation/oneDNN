@@ -20,10 +20,11 @@
 #define CPU_AARCH64_JIT_UNI_DW_CONVOLUTION_HPP
 
 #include "common/c_types_map.hpp"
+#include "common/compiler_workarounds.hpp"
+#include "common/dnnl_thread.hpp"
 #include "common/memory_tracking.hpp"
 #include "common/primitive.hpp"
 
-#include "cpu/aarch64/cpu_barrier.hpp"
 #include "cpu/aarch64/cpu_reducer.hpp"
 #include "cpu/cpu_convolution_pd.hpp"
 
@@ -279,14 +280,9 @@ struct jit_uni_dw_convolution_bwd_weights_t : public primitive_t {
         return status::success;
     }
 
-    status_t execute(const exec_ctx_t &ctx) const override {
-        execute_backward_weights(ctx);
-        execute_reduction(ctx);
-        return status::success;
-    }
+    status_t execute(const exec_ctx_t &ctx) const override;
 
 private:
-    void execute_backward_weights(const exec_ctx_t &ctx) const;
     void execute_reduction(const exec_ctx_t &ctx) const;
     const pd_t *pd() const { return (const pd_t *)primitive_t::pd().get(); }
 

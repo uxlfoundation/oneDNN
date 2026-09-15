@@ -679,7 +679,12 @@ void Generator<hw>::gemmApplyMXScale(const GEMMProblem &problem, const GEMMStrat
     // tile stores its out-of-range group rows past the end of the scale
     // row, corrupting the next column's first scale entries. Mask rows
     // using the M remainder converted to group units.
-    bool maskM = state.remainders[LoopM].isValid();
+    // Only request the row mask when the layout has multiple group rows:
+    // with a single row there are no out-of-range rows to suppress (any
+    // partial group still requires its scale), and the extra flag would
+    // needlessly force the double-masked (if/endif) store path.
+    bool maskM = state.remainders[LoopM].isValid()
+            && (unrollM > problem.cqGroupM);
     if (maskM && !ngen::utils::is_zero_or_pow2(problem.cqGroupM)) stub();
     assignMasks(state.C_scaleLayout, maskM ? LoopM : LoopNone, LoopN, masks, strategy, state);
     if (maskM) {

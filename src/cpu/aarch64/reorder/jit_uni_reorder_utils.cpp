@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -68,6 +68,43 @@ bool prb_has_small_strides(const prb_t &prb) {
         if (!small_strides) return false;
     }
     return true;
+}
+
+int select_plain_transpose_kernel(const prb_t &prb, int nthr) {
+    if (!mayiuse(asimd) || prb.ndims != 2 || prb.itype != prb.otype
+            || prb.is_tail_present || prb.req_src_zp || prb.req_dst_zp
+            || prb.req_s8s8_comp || prb.req_asymmetric_comp
+            || prb.src_scale_type != scale_type_t::NONE
+            || prb.dst_scale_type != scale_type_t::NONE || prb.beta != 0.f
+            || !utils::everyone_is<ptrdiff_t>(
+                    1, prb.nodes[0].os, prb.nodes[1].is))
+        return 0;
+
+    const int tile_size = data_type_size(prb.itype) == 4 ? 8
+            : data_type_size(prb.itype) == 2             ? 4
+                                                         : 0;
+    if (tile_size == 0 || prb.nodes[0].n % tile_size != 0
+            || prb.nodes[1].n % tile_size != 0)
+        return 0;
+    // The 16-bit transpose kernel is not safe when its problem is split
+    // between multiple driver threads. Keep using the generic JIT kernel
+    // until it can support that execution model.
+    if (tile_size == 4) return 0;
+    if (tile_size == 8 && (prb.nodes[0].n < 32 || prb.nodes[1].n < 32))
+        return 0;
+    // The 8x8 kernel is exposed to the parallel driver through 32-element
+    // cache blocks. Keeping a dimension that is not a multiple of 32 in the
+    // kernel problem can make the driver start a tile outside that problem.
+    if (tile_size == 8
+            && (prb.nodes[0].n % 32 != 0 || prb.nodes[1].n % 32 != 0))
+        return 0;
+
+    // In this orientation, a strongly asymmetric problem is faster with the
+    // generic kernel's linear traversal. The opposite orientation benefits
+    // from the tiled kernel even for extreme aspect ratios.
+    if (nthr <= 8 && prb.nodes[0].n > 8 * prb.nodes[1].n) return 0;
+
+    return tile_size;
 }
 
 /** ad-hoc structure to describe blocked memory layout */
@@ -641,7 +678,38 @@ std::string prb_dump(const prb_t &p) {
     return ss.str();
 }
 
-void prb_block_for_cache(prb_t &prb) {
+namespace {
+
+bool prb_block_for_specialized_kernel(prb_t &prb, int nthr) {
+    // Give the 32-bit transpose kernel a cache-sized 2D region so its loops
+    // amortize driver and kernel-entry overhead. Expose the outer regions to
+    // the parallel driver.
+    const bool plain_transpose
+            = prb.ndims == 2 && prb.plain_transpose_tile_size == 8;
+    if (!plain_transpose) return false;
+    size_t block = 128;
+    while (block > 32) {
+        const bool can_split
+                = prb.nodes[0].n % block == 0 && prb.nodes[1].n % block == 0;
+        const size_t parallel_regions = can_split
+                ? prb.nodes[0].n / block * (prb.nodes[1].n / block)
+                : 0;
+        if (can_split && parallel_regions >= static_cast<size_t>(nthr)) break;
+        block /= 2;
+    }
+
+    prb_node_split(prb, 0, block);
+    prb_node_split(prb, 2, block);
+    prb_node_move(prb, 1, 3);
+    prb_node_dependency(prb);
+    return true;
+}
+
+} // namespace
+
+void prb_block_for_cache(prb_t &prb, int nthr) {
+    if (prb_block_for_specialized_kernel(prb, nthr)) return;
+
     // Performance improvements when doing simple inner blocking of 8 or 4
     // This covers ab->Ba8b, ab->Ba4b, ba->Ab8a, ba->Ab4a and cdba->Acdb8a
     // Split middle node, then swap to improve cache locality
@@ -784,12 +852,15 @@ void prb_thread_kernel_balance(prb_t &prb, int &ndims_ker_max, int nthr) {
     for (int d = 0; d < prb.ndims; ++d)
         size_total *= prb.nodes[d].n;
 
+    const bool plain_32bit_tr8x8 = prb.plain_transpose_tile_size == 8;
+
     /* The general expression for size_drv_thr can be written as
      * size_drv_min = C0 + FC * (nthr > 1 ? 1 : 0) + VC * (nthr - 1)
      * where FC and VC are fixed and variable costs respectively.
      * Though for now, the below heuristic seems to be good enough */
     // Note: direct copy needs only as many kernels as nthr.
     const size_t size_drv_thr = is_direct_copy(prb) ? nthr
+            : plain_32bit_tr8x8                     ? nthr
             : (nthr > 1)                            ? 16 * nthr
                                                     : 1;
 

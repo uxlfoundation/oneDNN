@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2024 FUJITSU LIMITED
-* Copyright 2022-2025 Arm Ltd. and affiliates
+* Copyright 2022-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -104,14 +104,15 @@ status_t jit_uni_reorder_t::pd_t::create(reorder_pd_t **reorder_pd,
     status_t prb_init_status = prb_init(prb, *src_md, *dst_md, attr);
     if (prb_init_status != status::success) return prb_init_status;
 
-    tr::prb_block_for_cache(prb);
+    int nthr = dnnl_get_max_threads();
+    prb.plain_transpose_tile_size = select_plain_transpose_kernel(prb, nthr);
+    tr::prb_block_for_cache(prb, nthr);
     DEBUG({
         verbose_printf(
                 verbose_t::debuginfo, "cache: %s\n", prb_dump(prb).c_str());
     });
 
     int ndims_ker_max {};
-    int nthr = dnnl_get_max_threads();
     tr::prb_thread_kernel_balance(prb, ndims_ker_max, nthr);
 
     if (prb.is_tail_present) prb_node_dependency(prb);

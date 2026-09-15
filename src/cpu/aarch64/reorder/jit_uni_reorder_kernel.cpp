@@ -99,6 +99,9 @@ status_t jit_uni_reorder_kernel_f32_t::create_kernel() {
 bool jit_uni_reorder_kernel_f32_t::simple_impl_desc_init(
         const prb_t &prb, simple_impl_desc_t *desc) {
     const int ndims = prb.ndims;
+    const int transpose_tile_size = prb.plain_transpose_tile_size;
+    const size_t len_unroll_limit
+            = transpose_tile_size == 8 ? 64 * len_unroll_max : len_unroll_max;
 
     int ndims_full_unroll = 0;
     int len_last_dim_unroll = 1;
@@ -120,11 +123,11 @@ bool jit_uni_reorder_kernel_f32_t::simple_impl_desc_init(
     } else {
         for (int d = 0; d < ndims; ++d) {
             const auto &node = prb.nodes[d];
-            if (len_unroll * node.n <= len_unroll_max) {
+            if (len_unroll * node.n <= len_unroll_limit) {
                 ndims_full_unroll++;
                 len_unroll *= node.n;
             } else {
-                len_last_dim_unroll = len_unroll_max / len_unroll;
+                len_last_dim_unroll = len_unroll_limit / len_unroll;
                 while (node.n % len_last_dim_unroll)
                     --len_last_dim_unroll;
                 len_unroll *= len_last_dim_unroll;
@@ -584,6 +587,156 @@ bool jit_uni_reorder_kernel_f32_t::process_unroll_tr8x8(
     for (int off = 0; off < len; off += step_size) {
         step(off, i_off, o_off, i_off, o_off, step_size);
         tr8x8_sve256(i_off, o_off);
+    }
+
+    return true;
+}
+
+void jit_uni_reorder_kernel_f32_t::tr8x8_asimd_32bit(int i_off, int o_off) {
+    constexpr int unroll = 8;
+
+    const int node_0_input_stride = prb_.is(0);
+    for (int i = 0; i < unroll; ++i) {
+        add_imm(X_DEFAULT_ADDR, XReg(x_ptr_in_off),
+                itype_sz_ * (i_off + i * node_0_input_stride), X_TMP_0);
+        ldp(QReg(2 * i), QReg(2 * i + 1), ptr(X_DEFAULT_ADDR));
+    }
+
+    // 2x4 transposes within pairs of rows.
+    trn1(VReg4S(16), VReg4S(0), VReg4S(2));
+    trn2(VReg4S(17), VReg4S(0), VReg4S(2));
+    trn1(VReg4S(18), VReg4S(1), VReg4S(3));
+    trn2(VReg4S(19), VReg4S(1), VReg4S(3));
+    trn1(VReg4S(20), VReg4S(4), VReg4S(6));
+    trn2(VReg4S(21), VReg4S(4), VReg4S(6));
+    trn1(VReg4S(22), VReg4S(5), VReg4S(7));
+    trn2(VReg4S(23), VReg4S(5), VReg4S(7));
+    trn1(VReg4S(24), VReg4S(8), VReg4S(10));
+    trn2(VReg4S(25), VReg4S(8), VReg4S(10));
+    trn1(VReg4S(26), VReg4S(9), VReg4S(11));
+    trn2(VReg4S(27), VReg4S(9), VReg4S(11));
+    trn1(VReg4S(28), VReg4S(12), VReg4S(14));
+    trn2(VReg4S(29), VReg4S(12), VReg4S(14));
+    trn1(VReg4S(30), VReg4S(13), VReg4S(15));
+    trn2(VReg4S(31), VReg4S(13), VReg4S(15));
+
+    // 2x2 transposes across row pairs.
+    trn1(VReg2D(0), VReg2D(16), VReg2D(20));
+    trn2(VReg2D(1), VReg2D(16), VReg2D(20));
+    trn1(VReg2D(2), VReg2D(17), VReg2D(21));
+    trn2(VReg2D(3), VReg2D(17), VReg2D(21));
+    trn1(VReg2D(4), VReg2D(18), VReg2D(22));
+    trn2(VReg2D(5), VReg2D(18), VReg2D(22));
+    trn1(VReg2D(6), VReg2D(19), VReg2D(23));
+    trn2(VReg2D(7), VReg2D(19), VReg2D(23));
+    trn1(VReg2D(8), VReg2D(24), VReg2D(28));
+    trn2(VReg2D(9), VReg2D(24), VReg2D(28));
+    trn1(VReg2D(10), VReg2D(25), VReg2D(29));
+    trn2(VReg2D(11), VReg2D(25), VReg2D(29));
+    trn1(VReg2D(12), VReg2D(26), VReg2D(30));
+    trn2(VReg2D(13), VReg2D(26), VReg2D(30));
+    trn1(VReg2D(14), VReg2D(27), VReg2D(31));
+    trn2(VReg2D(15), VReg2D(27), VReg2D(31));
+
+    const int node_1_output_stride = prb_.os(1);
+    const auto store_col = [&](int col, int lo, int hi) {
+        add_imm(X_DEFAULT_ADDR, XReg(x_ptr_out_off),
+                otype_sz_ * (o_off + col * node_1_output_stride), X_TMP_0);
+        stp(QReg(lo), QReg(hi), ptr(X_DEFAULT_ADDR));
+    };
+
+    store_col(0, 0, 8);
+    store_col(1, 2, 10);
+    store_col(2, 1, 9);
+    store_col(3, 3, 11);
+    store_col(4, 4, 12);
+    store_col(5, 6, 14);
+    store_col(6, 5, 13);
+    store_col(7, 7, 15);
+}
+
+bool jit_uni_reorder_kernel_f32_t::can_do_tr8x8_asimd_32bit() {
+    return prb_.plain_transpose_tile_size == 8 && !compensation_needed_;
+}
+
+bool jit_uni_reorder_kernel_f32_t::process_unroll_tr8x8_asimd_32bit(
+        const int ndims, const int len) {
+    if (!can_do_tr8x8_asimd_32bit()) return false;
+
+    const int step_size = prb_.n(0) * prb_.n(1);
+    if (len != step_size) return false;
+
+    int i_off = 0, o_off = 0;
+    step(0, i_off, o_off, i_off, o_off, step_size);
+
+    // Emit one tile row and loop over rows at runtime. This keeps generated
+    // code compact while avoiding per-tile loop and pointer-update overhead.
+    Label row_loop;
+    mov(X_TMP_2, prb_.n(0) / 8);
+    L(row_loop);
+    mov(X_TMP_3, x_ptr_in_off);
+    mov(X_TMP_4, x_ptr_out_off);
+    for (int j = 0; j < prb_.n(1); j += 8)
+        tr8x8_asimd_32bit(i_off + j * prb_.is(1), o_off + j * prb_.os(1));
+    add_imm(x_ptr_in_off, X_TMP_3, 8 * prb_.is(0) * itype_sz_, X_TMP_0);
+    add_imm(x_ptr_out_off, X_TMP_4, 8 * prb_.os(0) * otype_sz_, X_TMP_0);
+    subs(X_TMP_2, X_TMP_2, 1);
+    b(NE, row_loop);
+
+    add_imm(x_ptr_in_off, x_ptr_in_off, -prb_.n(0) * prb_.is(0) * itype_sz_,
+            X_TMP_0);
+    add_imm(x_ptr_out_off, x_ptr_out_off, -prb_.n(0) * prb_.os(0) * otype_sz_,
+            X_TMP_0);
+
+    return true;
+}
+
+void jit_uni_reorder_kernel_f32_t::tr4x4_asimd_16bit(int i_off, int o_off) {
+    constexpr int unroll = 4;
+
+    const int node_0_input_stride = prb_.is(0);
+    for (int i = 0; i < unroll; ++i) {
+        add_imm(X_DEFAULT_ADDR, XReg(x_ptr_in_off),
+                itype_sz_ * (i_off + i * node_0_input_stride), X_TMP_0);
+        ldr(DReg(i), ptr(X_DEFAULT_ADDR));
+    }
+
+    trn1(VReg4H(4), VReg4H(0), VReg4H(1));
+    trn2(VReg4H(5), VReg4H(0), VReg4H(1));
+    trn1(VReg4H(6), VReg4H(2), VReg4H(3));
+    trn2(VReg4H(7), VReg4H(2), VReg4H(3));
+
+    trn1(VReg2S(0), VReg2S(4), VReg2S(6));
+    trn1(VReg2S(1), VReg2S(5), VReg2S(7));
+    trn2(VReg2S(2), VReg2S(4), VReg2S(6));
+    trn2(VReg2S(3), VReg2S(5), VReg2S(7));
+
+    const int node_1_output_stride = prb_.os(1);
+    for (int i = 0; i < unroll; ++i) {
+        add_imm(X_DEFAULT_ADDR, XReg(x_ptr_out_off),
+                otype_sz_ * (o_off + i * node_1_output_stride), X_TMP_0);
+        str(DReg(i), ptr(X_DEFAULT_ADDR));
+    }
+}
+
+bool jit_uni_reorder_kernel_f32_t::can_do_tr4x4_asimd_16bit() {
+    return prb_.plain_transpose_tile_size == 4 && !compensation_needed_;
+}
+
+bool jit_uni_reorder_kernel_f32_t::process_unroll_tr4x4_asimd_16bit(
+        const int ndims, const int len) {
+    if (!can_do_tr4x4_asimd_16bit()) return false;
+
+    const int step_size = prb_.n(0) * prb_.n(1);
+    if (len != step_size) return false;
+
+    int i_off = 0, o_off = 0;
+    for (int off = 0; off < len; off += step_size) {
+        step(off, i_off, o_off, i_off, o_off, step_size);
+        for (int i = 0; i < prb_.n(0); i += 4)
+            for (int j = 0; j < prb_.n(1); j += 4)
+                tr4x4_asimd_16bit(i_off + i * prb_.is(0) + j * prb_.is(1),
+                        o_off + i * prb_.os(0) + j * prb_.os(1));
     }
 
     return true;
@@ -1469,6 +1622,8 @@ void jit_uni_reorder_kernel_f32_t::compute_ker(
     optimized = optimized || process_direct_copy<sve_256>(ndims, len_unroll)
             || process_direct_copy<asimd>(ndims, len_unroll)
             || process_unroll_tr8x8(ndims, len_unroll)
+            || process_unroll_tr8x8_asimd_32bit(ndims, len_unroll)
+            || process_unroll_tr4x4_asimd_16bit(ndims, len_unroll)
             || process_unroll_tr4x8(ndims, len_unroll);
 
     if (!optimized) process_unroll_generic(ndims, len_unroll, tail_processing);

@@ -1,7 +1,7 @@
 /*******************************************************************************
 * Copyright 2018 Intel Corporation
 * Copyright 2020-2023 FUJITSU LIMITED
-* Copyright 2022, 2025 Arm Ltd. and affiliates
+* Copyright 2022, 2025-2026 Arm Ltd. and affiliates
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -99,6 +99,9 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     using ZReg = Xbyak_aarch64::ZReg;
     using ZRegS = Xbyak_aarch64::ZRegS;
     using VReg = Xbyak_aarch64::VReg;
+    using VReg2D = Xbyak_aarch64::VReg2D;
+    using VReg2S = Xbyak_aarch64::VReg2S;
+    using VReg4H = Xbyak_aarch64::VReg4H;
     using VReg4S = Xbyak_aarch64::VReg4S;
     using PReg = Xbyak_aarch64::PReg;
 
@@ -152,6 +155,18 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator_t {
     bool can_do_tr8x8();
 
     bool process_unroll_tr8x8(const int ndims, const int len);
+
+    void tr8x8_asimd_32bit(int i_off, int o_off);
+
+    bool can_do_tr8x8_asimd_32bit();
+
+    bool process_unroll_tr8x8_asimd_32bit(const int ndims, const int len);
+
+    void tr4x4_asimd_16bit(int i_off, int o_off);
+
+    bool can_do_tr4x4_asimd_16bit();
+
+    bool process_unroll_tr4x4_asimd_16bit(const int ndims, const int len);
 
     template <cpu_isa_t isa>
     bool process_direct_copy(const int ndims, const int len);

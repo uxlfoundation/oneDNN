@@ -41,7 +41,6 @@
 #define STAT_PLAIN_OFF(n) STAT_OFF(0, n, 0, 0, 0, 0)
 #endif
 
-#define VLEN_C (C / (SUB_GROUP_SIZE * VECT_DT_N))
 #define VLEN_C_BLOCK \
     ((C / NUM_NORM_BLOCKS_FUSED) / (SUB_GROUP_SIZE * VECT_DT_N))
 #define C_BLOCK (C / NUM_NORM_BLOCKS_FUSED)

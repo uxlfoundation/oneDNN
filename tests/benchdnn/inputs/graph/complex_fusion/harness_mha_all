@@ -247,6 +247,9 @@
 
 # fp8 graphs
 --reset --case=complex_fusion/mha/sdpa-fp8-f32.json
+--reset --case=complex_fusion/mha/sdpa-dynamic-fp8-bf16.json
+--reset --dt=0:f8_e5m2+4:f8_e5m2+19:f8_e5m2+24:f8_e5m2 --case=complex_fusion/mha/sdpa-dynamic-fp8-bf16.json
+--reset --op-attrs=3:mask:0+7:mask:0+27:mask:0 --in-shapes=1:-+5:-+25:- --case=complex_fusion/mha/sdpa-dynamic-fp8-bf16.json
 
 # torchbench sdpa training
 --reset --in-shapes=0:8x6x1500x64*acbd+1:8x6x1500x64*abcd+2:8x6x1500x64*abcd+3:8x6x1500x64*abcd+4:8x6x1500x64*abcd+5:8x6x1500x1*abcd+9:8x6x1500x64*abcd+10:8x6x1500x64*abcd+11:8x6x1500x64*abcd,\

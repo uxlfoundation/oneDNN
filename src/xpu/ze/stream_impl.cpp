@@ -134,6 +134,11 @@ ze_event_handle_t stream_impl_t::create_event() {
     return event;
 }
 
+void stream_impl_t::reset_events() {
+    events_.clear();
+    event_pools_.resize(1);
+}
+
 status_t stream_impl_t::wait() {
     ZE_CHECK(ze::zeCommandListHostSynchronize(list_, UINT64_MAX));
 

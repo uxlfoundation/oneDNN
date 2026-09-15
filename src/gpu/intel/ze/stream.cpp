@@ -107,6 +107,7 @@ status_t stream_t::reset_profiling() {
     if (!is_profiling_enabled()) return status::invalid_arguments;
 
     profiler_->reset();
+    if (!is_verbose_profiler_enabled()) impl()->reset_events();
 
     return status::success;
 }

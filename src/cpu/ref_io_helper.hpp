@@ -56,6 +56,12 @@ inline int load_int_value(data_type_t dt, const void *ptr, dim_t idx) {
             uint4_t val(nibble_pair.get(idx % 2));
             return static_cast<int>(val);
         }
+        case u2: {
+            const nibble4_t nibble_quartet(
+                    reinterpret_cast<const uint8_t *>(ptr)[idx / 4]);
+            uint2_t val(nibble_quartet.get(idx % 4));
+            return static_cast<int>(val);
+        }
         default: assert(!"bad data_type");
     }
 
@@ -106,6 +112,12 @@ ALWAYS_INLINE float load_float_value(
             const nibble2_t nibble_pair
                     = reinterpret_cast<const nibble2_t *>(ptr)[idx / 2];
             float4_e2m1_t val(nibble_pair.get(idx % 2), true);
+            return static_cast<float>(val);
+        }
+        case u2: {
+            const nibble4_t nibble_quartet(
+                    static_cast<const uint8_t *>(ptr)[idx / 4]);
+            uint2_t val(nibble_quartet.get(idx % 4));
             return static_cast<float>(val);
         }
         default: assert(!"bad data_type");

@@ -1573,7 +1573,9 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
     // row, rowStrideBytes away) as well as overflow into subsequent GRF
     // registers.
     auto addByteOffset = [&](CopyOperand op, int bytes) {
-        if ((op.offset % colPitchBytes + bytes) >= colPitchBytes)
+        if (flatFamily)
+            op.offset += bytes;
+        else if ((op.offset % colPitchBytes + bytes) >= colPitchBytes)
             op.offset = op.offset - (op.offset % colPitchBytes)
                     + (op.offset % colPitchBytes + bytes) % colPitchBytes
                     + rowStrideBytes;
@@ -1798,7 +1800,22 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
 
             CopyOperand shiftLo(int(LA.shift)), shiftHi(int(LB.shift));
             shiftLo.type = shiftHi.type = DataType::uw;
-            auto packedShift = zipImmediates(shiftLo, shiftHi, 1);
+            CopyOperand packedShift;
+            if (flatFamily) {
+                // Flat destinations can be unaligned for vector immediates.
+                // Materialize the shifts as two real uw values instead of
+                // exposing the packed 4-bit vector-immediate encoding to
+                // legalizeImmediateTypes().
+                auto kind = CopyResource::makeConstant32(
+                        (uint32_t(LB.shift) << 16) | uint32_t(LA.shift));
+                packedShift = getResource(kind);
+                packedShift.type = DataType::uw;
+                packedShift.vs = 0;
+                packedShift.width = 2;
+                packedShift.stride = 1;
+            } else {
+                packedShift = zipImmediates(shiftLo, shiftHi, 1);
+            }
             if (!packedShift) stub("Failed to pack u3 shift immediates.");
 
             setOp(shrOp, Opcode::shr, 2 * nLocal, dstMerged, rowDup, packedShift);
@@ -1809,14 +1826,10 @@ void CopyPlan::planInt3Upconvert(CopyInstruction &i)
         // middle pair (3, 4 / row 1) is always left unmerged and processed
         // individually below, alongside the straddling lanes.
         //
-        // For the flat layout, nLocal == 1 (each group is handled one at a
-        // time), so mergeRowPair's SIMD-2*nLocal merge would only ever
-        // combine the pair's 2 individual elements into a single SIMD-2 op
-        // -- no fewer instructions than the 2 individual SIMD-1 ops it
-        // replaces, but with extra addressing complexity (packed shift
-        // immediate, explicit merged region). Skip merging in the flat
-        // case and always process lanes individually.
-        bool canMergePairs = (dstStride == 2) && !flatFamily;
+        // The merge is valid for both row-spread and flat layouts. In the
+        // flat case nLocal == 1, so it combines each pair's two scalar
+        // shifts into one SIMD-2 instruction.
+        bool canMergePairs = (dstStride == 2);
         if (canMergePairs) {
             static const int mergePairs[2][2] = {{0, 1}, {6, 7}};
             for (auto &pr : mergePairs)

@@ -70,6 +70,12 @@ struct gemm_t : public primitive_t {
             auto maybe_reshape = [&]() -> status_t {
                 // reduce output is not handled by the reshape logic.
                 if (with_reduce()) return status::success;
+
+                // Cannot reshape runtime dims
+                for (int i = 0; i < b_md->ndims; i++)
+                    if (b_md->dims[i] == runtime_value_for<dim_t>())
+                        return status::success;
+
                 bool reshape_2d = (b_md->ndims > 2);
                 for (int i = 0; reshape_2d && i < b_md->ndims - 2; i++) {
                     reshape_2d &= (b_md->dims[i] == 1);

@@ -434,6 +434,9 @@ struct jit_1x1_conv_conf_t {
     data_type_t wei_dt;
     // bias dtype: f32, or bf16/f16 (== src_dt) widened to f32 in-kernel.
     data_type_t bia_dt;
+    // destination dtype: f32, or f16 narrowed from the f32 accumulators in
+    // kernel (Zvfh).
+    data_type_t dst_dt;
 
     int typesize_in;
     int typesize_out;

@@ -53,8 +53,9 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
             VDISPATCH_CONV(is_fwd(), VERBOSE_BAD_PROPKIND);
             VDISPATCH_CONV(set_default_alg_kind(alg_kind::convolution_direct),
                     VERBOSE_BAD_ALGORITHM);
-            // Accepted input dtype combos (dst always f32; bf16/f16 widen into
-            // f32 accumulators):
+            // Accepted input dtype combos (bf16/f16 widen into f32
+            // accumulators; dst is f32, or f16 narrowed from the f32
+            // accumulators when Zvfh is available):
             //   f32 /f32  : plain f32.
             //   bf16/bf16 : symmetric bf16, widening FMA (Zvfbfwma).
             //   f16 /f16  : symmetric f16, widening FMA (Zvfh).
@@ -81,7 +82,9 @@ struct jit_rvv_1x1_convolution_fwd_t : public primitive_t {
                     && ((wei_dt == data_type::bf16 && mayiuse(zvfbfwma))
                             || (wei_dt == data_type::f16 && mayiuse(zvfh)));
             VDISPATCH_CONV((all_f32 || sym_lowp || wei_decomp)
-                            && dst_dt == data_type::f32,
+                            && (dst_dt == data_type::f32
+                                    || (dst_dt == data_type::f16
+                                            && mayiuse(zvfh))),
                     VERBOSE_UNSUPPORTED_DT);
             // Bias is added into the f32 accumulators; a bf16/f16 bias (== src)
             // is widened to f32 in-kernel, matching x64/aarch64.

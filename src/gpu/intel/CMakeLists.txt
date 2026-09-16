@@ -53,7 +53,7 @@ gen_gpu_kernel_list(
 
 list(APPEND SOURCES ${kernel_list_src})
 list(FILTER SOURCES EXCLUDE REGEX "conv/jit/v2/planner")
-if (DNNL_EXPERIMENTAL AND DNNL_DEV_MODE)
+if (DNNL_EXPERIMENTAL AND DNNL_DEV_MODE AND DNNL_GPU_RUNTIME STREQUAL "OCL")
 add_subdirectory("conv/jit/v2/planner")
 endif()
 

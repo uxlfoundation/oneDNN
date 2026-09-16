@@ -619,6 +619,8 @@ void serialize(serialization_stream_t &sstream, const sdpa_desc_t &desc) {
     desc.kq_zero_points.serialize(sstream);
     desc.vs_scales.serialize(sstream);
     desc.vs_zero_points.serialize(sstream);
+    desc.probs_quant_scales.serialize(sstream);
+    desc.probs_dequant_scales.serialize(sstream);
     serialize(sstream, desc.dS_desc);
     serialize(sstream, desc.dst_desc);
     serialize(sstream, desc.stats_desc);

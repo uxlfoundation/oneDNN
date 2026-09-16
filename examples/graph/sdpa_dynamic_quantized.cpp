@@ -337,9 +337,9 @@ void bench_quantized_sdpa(engine::kind ekind, const data_type dt,
 }
 
 void bad_args() {
-    std::cerr << "Usage: graph-sdpa-quantized-cpp [cpu|gpu]\n"
-                 "       graph-sdpa-quantized-cpp [cpu|gpu] <mb> <seq_len> "
-                 "<head_num> <head_size>\n\n";
+    std::cerr << "Usage: graph-sdpa-dynamic-quantized-cpp [cpu|gpu]\n"
+                 "       graph-sdpa-dynamic-quantized-cpp [cpu|gpu] <mb> "
+                 "<seq_len> <head_num> <head_size>\n\n";
     throw std::invalid_argument("Incorrect input arguments.");
 }
 

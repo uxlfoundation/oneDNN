@@ -15,6 +15,7 @@
 *******************************************************************************/
 
 #include "common/compiler_workarounds.hpp"
+#include "common/dnnl_thread.hpp"
 
 #include "graph/backend/dnnl/kernels/sdp_decomp_training.hpp"
 
@@ -116,13 +117,13 @@ void sdp_decomp_training_kernel_t::prepare_sub_args(
     };
 
     // Memories used in primitive args
-    set_handle(sdp_cfg_.sub_mm1_src);
-    set_handle(sdp_cfg_.sub_mm1_wei);
+    if (!sdp_cfg_.sub_reorder0.is_alias()) set_handle(sdp_cfg_.sub_mm1_src);
+    if (!sdp_cfg_.sub_reorder1.is_alias()) set_handle(sdp_cfg_.sub_mm1_wei);
     set_handle(sdp_cfg_.sub_mm1_dst);
     set_handle(sdp_cfg_.sub_softmax_out);
     if (sdp_cfg_.needs_softmax_reorder) { set_handle(sdp_cfg_.sub_mm2_src); }
-    set_handle(sdp_cfg_.sub_mm2_wei);
-    set_handle(sdp_cfg_.sub_mm2_dst);
+    if (!sdp_cfg_.sub_reorder2.is_alias()) set_handle(sdp_cfg_.sub_mm2_wei);
+    if (!sdp_cfg_.sub_reorder3.is_alias()) set_handle(sdp_cfg_.sub_mm2_dst);
     set_handle(sdp_cfg_.sub_scratchpad);
 
     set_handle(sdp_cfg_.sub_log_max_P);
@@ -220,7 +221,7 @@ status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
         sub_dst_user_tid.set_data_handle(
                 dst_user_pointer + sub_dst_user_offset);
 
-        if (sdp_cfg_.sub_reorder3.get_inplace()) {
+        if (sdp_cfg_.sub_reorder3.is_alias()) {
             sub_mm2_dst_tid.set_data_handle(
                     dst_user_pointer + sub_dst_user_offset);
         }
@@ -228,8 +229,7 @@ status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
         // Execute pipeline: reorder0 -> reorder1 -> mm1
         sdp_cfg_.sub_reorder0.execute(p_stream, res->sub_reorder0_args[tid]);
         sdp_cfg_.sub_reorder1.execute(p_stream, res->sub_reorder1_args[tid]);
-        dnnl_primitive_execute_without_tp_hook(
-                sdp_cfg_.sub_mm1_prim, p_stream, res->sub_mm1_args[tid]);
+        sdp_cfg_.sub_mm1_prim.execute(p_stream, res->sub_mm1_args[tid]);
 
         // Softmax: scores -> P
         dnnl_primitive_execute_without_tp_hook(sdp_cfg_.sub_softmax_prim,
@@ -244,7 +244,7 @@ status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
                               + bi * sdp_cfg_.stats_dst_strides[1])
                             * sizeof(float));
 
-            if (sdp_cfg_.sub_reorder_stats.get_inplace()) {
+            if (sdp_cfg_.sub_reorder_stats.is_alias()) {
                 auto &sub_stats_tid
                         = res->mem_map[sdp_cfg_.sub_stats.get()][tid];
                 sub_stats_tid.set_data_handle(
@@ -268,8 +268,7 @@ status_t sdp_decomp_training_kernel_t::execute_impl(stream_t *strm,
         }
         // reorder2 -> mm2 -> reorder3
         sdp_cfg_.sub_reorder2.execute(p_stream, res->sub_reorder2_args[tid]);
-        dnnl_primitive_execute_without_tp_hook(
-                sdp_cfg_.sub_mm2_prim, p_stream, res->sub_mm2_args[tid]);
+        sdp_cfg_.sub_mm2_prim.execute(p_stream, res->sub_mm2_args[tid]);
         sdp_cfg_.sub_reorder3.execute(p_stream, res->sub_reorder3_args[tid]);
 
 #if DNNL_CPU_RUNTIME == DNNL_RUNTIME_THREADPOOL

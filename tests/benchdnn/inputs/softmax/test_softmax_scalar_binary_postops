@@ -59,3 +59,16 @@
 --stag=ab --dtag=ab
 --attr-post-ops=mul:f32:common,add:s32:common
 --axis=1 32x131 8x33
+
+# BF16 scalar RHS with full vectors, tails, and separate RHS operands.
+--reset
+--dir=FWD_I
+--sdt=f32
+--ddt=f32
+--alg=SOFTMAX
+--stag=ab --dtag=ab
+--attr-post-ops=mul:bf16:common,mul:bf16:common+add:bf16:common
+--axis=1 5x16 8x33
+--stag=ba --dtag=ba
+--attr-post-ops=mul:bf16:common
+--axis=1 32x131 8x33

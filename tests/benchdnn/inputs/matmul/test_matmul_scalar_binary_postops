@@ -1,5 +1,5 @@
-# Focused coverage for the direct scalar f32 binary post-op pointer path in
-# x64 BRGEMM matmul kernels.
+# Focused correctness/performance coverage for scalar f32/BF16 binary post-ops
+# in x64 BRGEMM matmul kernels. Use --mode=C or --mode=P with this batch.
 
 --reset
 --dt=f32
@@ -41,3 +41,24 @@
 --dt=bf16:bf16:f32
 --attr-post-ops=mul:f32:common,mul:f32:common+add:f32:common,add:s32:common
 32x64:64x37
+
+# BF16 scalar conversion is shared within one injector vector range.
+# Exercise all eligible arithmetic operations, including M/N tails.
+--dt=bf16:bf16:bf16
+--attr-post-ops=mul:bf16:common,add:bf16:common,sub:bf16:common,div:bf16:common,min:bf16:common,max:bf16:common
+32x64:64x32 7x127:127x65
+
+# Distinct BF16 RHS values and mixed operations must be reloaded independently.
+--attr-post-ops=mul:bf16:common+add:bf16:common,mul:bf16:common+add:f32:common,relu+mul:bf16:common
+7x127:127x65
+
+# BF16 non-scalar, comparison and select operations retain generic handling.
+--attr-post-ops=mul:bf16:per_oc,ge:bf16:common,select:bf16:common
+7x127:127x65
+
+# MFDNN-15380: one scalar BF16 RHS, per-head Q/K strides, and AMX N/M tails.
+--reset
+--dt=bf16:bf16:bf16
+--strides=768x1:1x768:
+--attr-post-ops=mul:bf16:0
+197x64:64x197

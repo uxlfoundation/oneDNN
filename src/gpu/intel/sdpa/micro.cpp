@@ -83,7 +83,7 @@ int alignment_for_md(const memory_desc_wrapper &mdw, dim_t ld_bytes) {
 }
 
 // micro_sdpa/micro_sdpa_bwd cross-thread argument bytes, plus headroom.
-constexpr int host_argument_bytes_fwd = 328;
+constexpr int host_argument_bytes_fwd = 332;
 constexpr int host_argument_bytes_bwd = 256;
 
 compute::gpu_arch_t gpu_arch(const micro::HWInformation &hw_info) {
@@ -911,6 +911,16 @@ status_t micro_fwd_t::pd_t::init_conf(const impl::engine_t *engine) {
     conf.q_slm_fp8 = q_slm_fp8();
     conf.pv_fp8 = pv_fp8();
     conf.quantize_probs = quantize_probs();
+    conf.with_probs_quant = with_probs_quant_scales();
+    if (conf.with_probs_quant) {
+        // The row sum must be complete before the probabilities are rounded,
+        // which only holds when all keys land in one workgroup tile
+        // TODO: add support for arbitrary K in kernel
+        const int kq_wg_tile_m
+                = conf.ukernel_config.wg_m_kq * conf.ukernel_config.unroll_m_kq;
+        VDISPATCH_SDPA(desc()->keys() <= kq_wg_tile_m,
+                "softmax output quantization requires a single key block");
+    }
 
     conf.require_stateless_addressing = has_large_buffers();
 
@@ -1166,6 +1176,7 @@ status_t micro_fwd_params_t::get_kernel_ctx(
             data_type::f8_e4m3, key_data_t, qry_data_t, val_data_t);
     if (any_hf8) kernel_ctx.define_int("MATH_UTILS_DECLARE_HF8", 1);
     kernel_ctx.define_int("QRY_SLM_FP8", q_slm_fp8);
+    kernel_ctx.define_int("PROBS_QUANT", with_probs_quant);
     kernel_ctx.define_int("VS_S_FP8", pv_fp8);
     kernel_ctx.define_int("VS_S_QUANT", quantize_probs);
 
@@ -1666,6 +1677,10 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
             = CTX_IN_STORAGE(DNNL_ARG_VALUES | DNNL_ARG_ATTR_SCALES);
     const auto &value_zp
             = CTX_IN_STORAGE(DNNL_ARG_VALUES | DNNL_ARG_ATTR_ZERO_POINTS);
+    const auto &probs_quant_scales
+            = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_PROBABILITIES);
+    const auto &probs_dequant_scales
+            = CTX_IN_STORAGE(DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST);
 
     const int kv_group_size = pd()->conf.kv_group_size;
     const dim_t Q = pd()->desc()->queries();
@@ -1735,6 +1750,8 @@ status_t micro_fwd_t::execute_forward(const exec_ctx_t &ctx) const {
     arg_list.append(key_zp);
     arg_list.append(value_scales);
     arg_list.append(value_zp);
+    arg_list.append(probs_quant_scales);
+    arg_list.append(probs_dequant_scales);
     arg_list.append(mask_type);
     if (pd()->with_attn_mask()) arg_list.append(attn_mask);
 

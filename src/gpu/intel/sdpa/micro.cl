@@ -83,13 +83,22 @@ typedef qry_tile_data_t fma_tile_data_t;
 #endif
 
 #if VS_S_FP8
+#if PROBS_QUANT
+#define CONVERT_TILE_S_FP8_T(v) as_native_layout(into_f8_e4m3(convert_float(v)))
+#else
 #define CONVERT_TILE_S_FP8_T(v) \
     as_native_layout(into_f8_e4m3(convert_float(v) * VS_S_FP8_SCALE))
 #endif
+#endif
 
 #if VS_S_QUANT && !VS_S_FP8
+#if PROBS_QUANT
+#define CONVERT_TILE_FMA_T(v) \
+    as_native_layout(into_half(into_f8_e4m3(convert_float(v))))
+#else
 #define CONVERT_TILE_FMA_T(v) \
     as_native_layout(into_half(into_f8_e4m3(convert_float(v) * VS_S_FP8_SCALE)))
+#endif
 #elif defined(QRY_FP8)
 #define CONVERT_TILE_FMA_T(v) as_native_layout(into_half(convert_float(v)))
 #else
@@ -499,7 +508,9 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         const global KEY_ATTR_SCALES_DATA_T *K_scales,
         const global KEY_ATTR_ZP_DATA_T *K_zp,
         const global VAL_ATTR_SCALES_DATA_T *V_scales,
-        const global VAL_ATTR_ZP_DATA_T *V_zp, const int attn_mask_type
+        const global VAL_ATTR_ZP_DATA_T *V_zp,
+        const global float *P_quant_scales,
+        const global float *P_dequant_scales, const int attn_mask_type
 #if WITH_ATTN_MASK
         ,
         const global msk_tile_data_t *msk
@@ -976,6 +987,37 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         );
 #endif
 
+#if PROBS_QUANT
+        /* Rounding normalized probabilities needs the whole row sum, so it is
+           reduced here instead of after the key loop, single key block only
+           TODO: support arbitrary key sizes */
+        tile_store_full(
+                S_sum_tile1, S_sum_slm, ugemm_kq_wg_tile_n, sg_j0_kq, sg_i_kq);
+        intel_work_group_barrier_arrive(CLK_LOCAL_MEM_FENCE);
+
+        const float p_quant_recip = 1.f / *P_quant_scales;
+        intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
+
+        s_sum_tile_type S_sum_full, S_sum_part;
+        tile_fill(S_sum_full, 0.f);
+#pragma unroll
+        for (uint sg1 = 0; sg1 < ugemm_kq_sg_per_wg_m; sg1++) {
+            tile_load_full(&S_sum_part, S_sum_slm, ugemm_kq_wg_tile_n,
+                    ugemm_kq_sg_tile_n * sg_j_kq, sg1);
+            tile_binary(S_sum_full, S_sum_part, binary_add);
+        }
+
+#if SOFTMAX_INF_AS_ZERO
+#define probs_rescale(x) \
+    (vselect(native_vrecip(x), 1.f, x == 0) * p_quant_recip)
+#else
+#define probs_rescale(x) (native_vrecip(x) * p_quant_recip)
+#endif
+        tile_elementwise(S_sum_full, probs_rescale);
+#undef probs_rescale
+        tile_vbroadcast_mul(&S_tile, S_sum_full);
+#endif
+
 #if USE_SYSTOLIC_UKERNEL
         s_tile_type_packed S_tile_packed;
 #if VS_S_FP8
@@ -1033,10 +1075,12 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_copy(S_max_tile, S_max_tile_old);
 
         /* Last iteration: store column sums in SLM */
+#if !PROBS_QUANT || PROBS_QUANT_2PASS || IS_TRAINING
         if (last) {
             tile_store_full(S_sum_tile, S_sum_slm, ugemm_kq_wg_tile_n, sg_j0_kq,
                     sg_i_kq);
         }
+#endif
 
 #if PREFETCH_K
         /* Prefetch next K tile. */
@@ -1202,6 +1246,19 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         // sg_i0 specified to avoid OOB subgroups from aliasing
 #endif
 
+#if VAL_SCALES == QUANTIZE_COMMON
+#define v_scale_op(x) ((x) * v_scale)
+        tile_elementwise(A_tile, v_scale_op);
+#endif
+
+        /* Rescale by 1 / (column sums) */
+#if PROBS_QUANT
+        /* Per-tensor scale, so the rows share it and no tile is needed */
+        const float p_dequant_scale = *P_dequant_scales;
+#define p_dequant_op(x) ((x) * p_dequant_scale)
+        tile_elementwise(A_tile, p_dequant_op);
+#undef p_dequant_op
+#else
         /* Load column sums from SLM + reduce in registers */
         a_scale_tile_type A_scale_tile, A_scale_tile_load;
         tile_fill(A_scale_tile, 0.0f);
@@ -1212,12 +1269,6 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
                     ugemm_vs_sg_tile_n * sg_j_vs, sg1);
             tile_binary(A_scale_tile, A_scale_tile_load, binary_add);
         }
-#if VAL_SCALES == QUANTIZE_COMMON
-#define v_scale_op(x) ((x) * v_scale)
-        tile_elementwise(A_tile, v_scale_op);
-#endif
-
-        /* Rescale by 1 / (column sums) */
 #if SOFTMAX_INF_AS_ZERO
 #define set_zeros2(v) (vselect(native_vrecip(v), 1.f, v == 0))
         tile_elementwise(A_scale_tile, set_zeros2);
@@ -1230,6 +1281,7 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #undef undo_s_fp8_scale
 #endif
         tile_hbroadcast_mul(&A_tile, A_scale_tile);
+#endif
     }
 
     a_tile_type_dst A_tile_dst;

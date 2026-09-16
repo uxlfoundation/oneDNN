@@ -96,6 +96,38 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
             = utils::downcast<engine_t *>(stream.engine())->device_info();
     const size_t pointer_size
             = stream_ocl_device_info->device_address_bits() / 8;
+
+    // A persistent (thread-local, cloned) `cl_kernel` object may be reused
+    // across many `parallel_for` calls, including calls that belong to
+    // different primitives (e.g. "reusable" kernels are looked up from the
+    // kernel cache by a runtime-agnostic key and thus share the same
+    // underlying `cl_kernel`). Some OpenCL implementations track the
+    // "kind" (regular `cl_mem` buffer vs. USM pointer) that was bound to a
+    // given kernel argument index and get confused (leading to crashes) if
+    // the same argument index is later bound using a different mechanism,
+    // e.g. a real `cl_mem` buffer set via `clSetKernelArg` followed by a
+    // null pointer set via `clSetKernelArgMemPointerINTEL`. To avoid ever
+    // mixing the two mechanisms on the same kernel argument index, null
+    // arguments should use whichever mechanism the *other* (non-null)
+    // global arguments in this call use, matching how the memory objects
+    // for this primitive/engine were actually allocated (buffer vs. USM),
+    // falling back to USM support only when no non-null global argument is
+    // present to infer the memory kind from.
+    bool null_arg_prefers_buffer = false;
+    for (int i = 0; i < arg_list.nargs(); ++i) {
+        auto &arg = arg_list.get(i);
+        if (!arg.is_global()) continue;
+        auto *mem_storage = static_cast<const memory_storage_t *>(arg.value());
+        if (mem_storage->is_null()) continue;
+        auto *ocl_mem_storage
+                = utils::downcast<const xpu::ocl::memory_storage_base_t *>(
+                        mem_storage);
+        if (ocl_mem_storage->memory_kind() == xpu::ocl::memory_kind::buffer) {
+            null_arg_prefers_buffer = true;
+            break;
+        }
+    }
+
     size_t param_bytes = 0;
     for (int i = 0; i < arg_list.nargs(); ++i) {
         auto &arg = arg_list.get(i);
@@ -142,7 +174,8 @@ status_t kernel_t::parallel_for(impl::stream_t &stream,
                     default: assert(!"not expected");
                 }
             } else {
-                if (xpu::ocl::usm::is_usm_supported(stream.engine())) {
+                if (!null_arg_prefers_buffer
+                        && xpu::ocl::usm::is_usm_supported(stream.engine())) {
                     CHECK(set_usm_arg(stream.engine(), kernel, i, nullptr));
                     param_bytes += pointer_size;
                 } else {

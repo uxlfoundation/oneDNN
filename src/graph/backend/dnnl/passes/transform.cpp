@@ -4579,6 +4579,51 @@ impl::status_t fold_post_mul_scale_into_bn(std::shared_ptr<subgraph_t> &sg) {
     return infer_shape(sg);
 }
 
+// The fused kernel views 5D GQA tensors [N, G, Q/G, S, D] as 4D
+// [N, G * Q/G, S, D]. Returns the equivalent 4D quantization mask, or -1 when
+// the parameters vary along only one of the merged dims
+static int64_t merge_gqa_quant_mask(int64_t mask, const dims &d) {
+    const bool vary1 = (mask & 2) && d[1] > 1;
+    const bool vary2 = (mask & 4) && d[2] > 1;
+    if ((vary1 && !vary2 && d[2] > 1) || (vary2 && !vary1 && d[1] > 1))
+        return -1;
+    const bool merged = vary1 || vary2 || ((mask & 6) && d[1] * d[2] == 1);
+    return (mask & 1) | (merged ? 2 : 0) | ((mask >> 3) << 2);
+}
+
+// Rewrites the Q/K/V quantization masks for 5D inputs. Returns false, leaving
+// all masks untouched, if any of them has no 4D equivalent
+static bool merge_gqa_quant_masks(const op_ptr &qk, const op_ptr &vs) {
+    std::vector<std::pair<op_t *, dims>> qparams;
+    const auto collect = [&](const op_ptr &mm, size_t src_idx, size_t idx) {
+        if (!mm->has_attr(op_attr::fusion_info)) return;
+        auto fi = mm->get_attr<fusion_info_t>(op_attr::fusion_info);
+        const dims d = ltw(mm->get_input_logical_tensor(src_idx)).vdims();
+        if (d.size() != 5) return;
+        op_t *scales = fi.get_mutable_scales(true, idx);
+        if (scales && scales->has_attr(op_attr::mask))
+            qparams.emplace_back(scales, d);
+        if (fi.with_runtime_zero_points(true, idx)) {
+            op_t *zps = fi.get_mutable_zero_points(true, idx);
+            if (zps->has_attr(op_attr::mask)) qparams.emplace_back(zps, d);
+        }
+    };
+    collect(qk, 0, 0);
+    collect(qk, 1, 1);
+    collect(vs, 1, 1);
+
+    std::vector<int64_t> masks;
+    for (const auto &p : qparams) {
+        const int64_t mask = merge_gqa_quant_mask(
+                p.first->get_attr<int64_t>(op_attr::mask), p.second);
+        if (mask < 0) return false;
+        masks.push_back(mask);
+    }
+    for (size_t i = 0; i < qparams.size(); ++i)
+        qparams[i].first->set_attr<int64_t>(op_attr::mask, masks[i]);
+    return true;
+}
+
 status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     std::vector<op_ptr> candidates;
     for (auto &cur_op : sg->get_ops()) {
@@ -4651,6 +4696,10 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     }
 
     if (candidates.empty()) return status::success;
+
+    VCHECK_TRANSFORM(merge_gqa_quant_masks(candidates[0], candidates.back()),
+            status::unimplemented,
+            "quantization varies along only one of the merged GQA dims");
 
     subgraph_rewriter_t rewriter(sg);
     op_ptr sdpa_op = std::make_shared<op_t>(op_kind::_sdpa);
@@ -4754,6 +4803,12 @@ status_t fuse_sdpa(std::shared_ptr<subgraph_t> &sg) {
     if (qk->has_attr(op_attr::fusion_info)) {
         auto mm1_fusion_info
                 = qk->get_attr<fusion_info_t>(op_attr::fusion_info);
+        if (mm1_fusion_info.get_mutable_scales(true, 0)) {
+            sdpa_fusion_info.set_runtime_scales(
+                    mm1_fusion_info.get_mutable_scales(true, 0)
+                            ->shared_from_this(),
+                    true, DNNL_ARG_QUERIES);
+        }
         if (mm1_fusion_info.get_mutable_scales(true, 1)) {
             sdpa_fusion_info.set_runtime_scales(
                     mm1_fusion_info.get_mutable_scales(true, 1)

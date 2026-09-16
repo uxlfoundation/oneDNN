@@ -466,6 +466,15 @@ static std::vector<fwd_config_record_t> sorted_configs = []() {
         {{compute::gpu_arch_t::xe2, 64, 384, integrated | second_token | quantized}, {64, 16, 16, 16, 4, 2, 4, 2}},
         {{compute::gpu_arch_t::xe2, 64, 96,  integrated | second_token | quantized}, {16, 16, 16, 16, 8, 2, 4, 2}},
 
+        // MFDNN-15573: tuned with sdpa-tuner on Panther Lake (PTL, Xe3LPG)
+        // for head_size=72, keys<=729. Panther Lake's raw arch is xe3, whose
+        // is_integrated flag is forced to false above (see the TODO a few
+        // lines up), so this row intentionally has no `integrated` bit -
+        // it targets the same non-integrated xe2 query that Xe3 iGPUs are
+        // currently routed through. 1.36x speedup vs. the xe2/128 default
+        // (0.5396ms -> 0.3968ms), correctness-verified (max_rel_err 7.35e-03).
+        {{compute::gpu_arch_t::xe2, 72, 729}, {32, 32, 16, 32, 8, 1, 8, 1}},
+
         {{compute::gpu_arch_t::xe2, 128},               {16, 64, 32, 16, 16, 2, 4, 8}},
         {{compute::gpu_arch_t::xe2, 128, 64},           {16, 32, 32, 32, 4, 2, 4, 2}},
         {{compute::gpu_arch_t::xe2, 128, 32},           {16, 16, 16, 16, 8, 2, 8, 2}},

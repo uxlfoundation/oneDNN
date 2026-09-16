@@ -2767,7 +2767,11 @@ void init_aux_values(brgemm_matmul_conf_t &bgmmc,
                                           wei_stride / factor)
                 * factor;
     } else if (bgmmc.transposed_B) {
-        if (wei_d.strides()[bgmmc.ndims - 1] == 1) {
+        // A transposed md has an N stride of at least K, so an N stride of 1
+        // means the md is actually plain and only got a transposed tag forced
+        // (e.g. N == 1). K == 1 is the exception: the md is both plain and
+        // transposed and its N stride is the valid transposed stride.
+        if (wei_d.strides()[bgmmc.ndims - 1] == 1 && bgmmc.K > 1) {
             const auto b_stride_elems
                     = bgmmc.req_wei_vnni_downconvert ? bgmmc.LDB : bgmmc.N;
             bgmmc.copy_B_wei_stride = b_stride_elems * bgmmc.b_dt_sz;

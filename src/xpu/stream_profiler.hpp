@@ -17,14 +17,17 @@
 #ifndef XPU_STREAM_PROFILER_HPP
 #define XPU_STREAM_PROFILER_HPP
 
+#include <algorithm>
 #include <cassert>
 #include <limits>
 #include <map>
 #include <mutex>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 #include "common/c_types_map.hpp"
+#include "common/utils.hpp"
 
 #include "xpu/context.hpp"
 
@@ -61,6 +64,19 @@ struct stream_profiler_t {
 
     uint64_t stamp() const { return stamp_; }
 
+    status_t count_entries(
+            profiling_data_kind_t data_kind, int *num_entries) const {
+        if (data_kind == profiling_data_kind::time_per_kernel) {
+            *num_entries = (int)events_.size();
+            return status::success;
+        }
+        std::unordered_set<uint64_t> seen;
+        for (auto &ev : events_)
+            seen.insert(ev.stamp);
+        *num_entries = (int)seen.size();
+        return status::success;
+    }
+
     void register_event(std::unique_ptr<xpu::event_t> &&event) {
         events_.emplace_back(std::move(event), stamp_);
     }
@@ -93,6 +109,46 @@ struct stream_profiler_t {
     }
 
 protected:
+    // Per-event start/end in nanoseconds.
+    virtual status_t query_event_time(
+            const xpu::event_t &, uint64_t &, uint64_t &) const {
+        return status::unimplemented;
+    }
+
+    virtual status_t query_event_freq(
+            const xpu::event_t &, double &freq) const {
+        freq = 0.0;
+        return status::success;
+    }
+
+    status_t get_info_generic(profiling_data_kind_t data_kind, int *num_entries,
+            uint64_t *data) const {
+        if (!num_entries) return status::invalid_arguments;
+        bool is_per_kernel
+                = (data_kind == profiling_data_kind::time_per_kernel);
+        if (!data) return count_entries(data_kind, num_entries);
+
+        std::map<uint64_t, entry_t> stamp2entry;
+        int idx = 0;
+        for (auto &ev : events_) {
+            uint64_t beg = 0, end = 0;
+            CHECK(query_event_time(*ev.event, beg, end));
+            if (is_per_kernel) {
+                data[idx++] = end - beg;
+                continue;
+            }
+            double freq = 0.0;
+            CHECK(query_event_freq(*ev.event, freq));
+            auto &entry = stamp2entry[ev.stamp];
+            entry.min_nsec = std::min(entry.min_nsec, beg);
+            entry.max_nsec = std::max(entry.max_nsec, end);
+            entry.freq += freq;
+            entry.kernel_count++;
+        }
+        if (is_per_kernel) return status::success;
+        return get_info_impl(stamp2entry, data_kind, data);
+    }
+
     status_t get_info_impl(const std::map<uint64_t, entry_t> &stamp2entry,
             profiling_data_kind_t data_kind, uint64_t *data) const {
         int idx = 0;

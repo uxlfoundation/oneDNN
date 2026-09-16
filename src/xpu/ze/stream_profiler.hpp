@@ -20,11 +20,7 @@
 #include "xpu/stream_profiler.hpp"
 #include "xpu/ze/context.hpp"
 
-#include <algorithm>
 #include <cassert>
-#include <limits>
-#include <map>
-#include <unordered_set>
 
 namespace dnnl {
 namespace impl {
@@ -74,71 +70,33 @@ public:
         , timestamp_freq_(timestamp_freq)
         , max_timestamp_value_(max_timestamp_value) {}
 
-    // L0 does not reuse get_info_generic because L0 uses raw cycles that wrap
-    // at max_timestamp_value_, needing cycles-to-nsec conversion done here.
     status_t get_info(profiling_data_kind_t data_kind, int *num_entries,
             uint64_t *data) const override {
-        if (!num_entries) return status::invalid_arguments;
+        return get_info_generic(data_kind, num_entries, data);
+    }
 
-        bool is_per_kernel
-                = (data_kind == profiling_data_kind::time_per_kernel);
-        if (!data) {
-            if (is_per_kernel) {
-                *num_entries = (int)events_.size();
-                return status::success;
-            }
-            std::unordered_set<uint64_t> seen;
-            for (auto &ev : events_)
-                seen.insert(ev.stamp);
-            *num_entries = (int)seen.size();
-            return status::success;
-        }
+protected:
+    // L0 reports raw device cycles that wrap at max_timestamp_value_; convert
+    // to monotonic nsec so the generic path can use end - beg.
+    status_t query_event_time(const xpu::event_t &event, uint64_t &beg,
+            uint64_t &end) const override {
+        entry_t entry;
+        CHECK(query_entry(event, entry));
+        beg = static_cast<uint64_t>(timestamp_freq_ * entry.start());
+        end = beg + static_cast<uint64_t>(timestamp_freq_ * entry.get_cycles());
+        return status::success;
+    }
 
-        if (is_per_kernel) {
-            int idx = 0;
-            for (auto &ev : events_) {
-                entry_t entry;
-                CHECK(query_entry(*ev.event, entry));
-                data[idx++] = entry.get_nsec();
-            }
-            return status::success;
-        }
-
-        // A primitive may run multiple kernels sharing one stamp.
-        std::map<uint64_t, span_t> stamp2span;
-        for (auto &ev : events_) {
-            entry_t entry;
-            CHECK(query_entry(*ev.event, entry));
-            auto &s = stamp2span[ev.stamp];
-            s.start = std::min(s.start, entry.start());
-            s.end = std::max(s.end, entry.end());
-        }
-
-        int idx = 0;
-        for (auto &kv : stamp2span) {
-            uint64_t cycles = get_duration(kv.second.start, kv.second.end);
-            uint64_t nsec = static_cast<uint64_t>(timestamp_freq_ * cycles);
-            switch ((int)data_kind) {
-                case profiling_data_kind::time: data[idx] = nsec; break;
-                case profiling_data_kind::cycles:
-                    data[idx] = cycles;
-                    if (callback_) callback_(kv.first, nsec);
-                    break;
-                default: assert(!"unexpected data kind");
-            }
-            idx++;
-        }
+    // Generic cycles formula expects Hz; timestamp_freq_ is nsec per cycle.
+    status_t query_event_freq(
+            const xpu::event_t &, double &freq) const override {
+        freq = 1e9 / timestamp_freq_;
         return status::success;
     }
 
 private:
     stream_profiler_t() = delete;
     DNNL_DISALLOW_COPY_AND_ASSIGN(stream_profiler_t);
-
-    struct span_t {
-        uint64_t start = std::numeric_limits<uint64_t>::max();
-        uint64_t end = 0;
-    };
 
     status_t query_entry(const xpu::event_t &event, entry_t &entry) const {
         const auto &ze_event = xpu::ze::event_t::from(event);
@@ -149,10 +107,6 @@ private:
         entry = entry_t(
                 kernel_timestamp_result, max_timestamp_value_, timestamp_freq_);
         return status::success;
-    }
-
-    uint64_t get_duration(uint64_t start, uint64_t end) const {
-        return duration_cycles(start, end, max_timestamp_value_);
     }
 
     double timestamp_freq_;

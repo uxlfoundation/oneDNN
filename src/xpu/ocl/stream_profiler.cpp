@@ -17,8 +17,6 @@
 #include <CL/cl.h>
 
 #include <limits>
-#include <map>
-#include <unordered_set>
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
@@ -35,44 +33,28 @@ namespace ocl {
 
 status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
         int *num_entries, uint64_t *data) const {
-    if (!num_entries) return status::invalid_arguments;
-    bool is_per_kernel = (data_kind == profiling_data_kind::time_per_kernel);
-    if (!data) {
-        if (is_per_kernel) {
-            *num_entries = (int)events_.size();
-            return status::success;
-        }
-        std::unordered_set<uint64_t> seen;
-        for (auto &ev : events_)
-            seen.insert(ev.stamp);
-        *num_entries = (int)seen.size();
-        return status::success;
-    }
+    return get_info_generic(data_kind, num_entries, data);
+}
 
-    std::map<uint64_t, xpu::stream_profiler_t::entry_t> stamp2entry;
-    int idx = 0;
-    for (auto &ev : events_) {
-        const auto &ocl_event = xpu::ocl::event_t::from(*ev.event);
-        cl_ulong beg, end;
-        assert(ocl_event.size() == 1);
-        OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
-                CL_PROFILING_COMMAND_START, sizeof(beg), &beg, nullptr));
-        OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
-                CL_PROFILING_COMMAND_END, sizeof(end), &end, nullptr));
-        if (is_per_kernel) {
-            data[idx++] = static_cast<uint64_t>(end - beg);
-            continue;
-        }
-        auto &entry = stamp2entry[ev.stamp];
-        entry.min_nsec = std::min(entry.min_nsec, beg);
-        entry.max_nsec = std::max(entry.max_nsec, end);
-        const auto *gpu_stream
-                = utils::downcast<const gpu::stream_t *>(stream_);
-        entry.freq += gpu_stream->get_freq(*ev.event);
-        entry.kernel_count++;
-    }
-    if (is_per_kernel) return status::success;
-    return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
+status_t stream_profiler_t::query_event_time(
+        const xpu::event_t &event, uint64_t &start, uint64_t &end) const {
+    const auto &ocl_event = xpu::ocl::event_t::from(event);
+    assert(ocl_event.size() == 1);
+    cl_ulong beg, e;
+    OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
+            CL_PROFILING_COMMAND_START, sizeof(beg), &beg, nullptr));
+    OCL_CHECK(xpu::ocl::clGetEventProfilingInfo(ocl_event[0].get(),
+            CL_PROFILING_COMMAND_END, sizeof(e), &e, nullptr));
+    start = beg;
+    end = e;
+    return status::success;
+}
+
+status_t stream_profiler_t::query_event_freq(
+        const xpu::event_t &event, double &freq) const {
+    const auto *gpu_stream = utils::downcast<const gpu::stream_t *>(stream_);
+    freq = gpu_stream->get_freq(event);
+    return status::success;
 }
 
 status_t verbose_profiler_t::get_aggregate_exec_time(

@@ -232,8 +232,13 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
 
             // By default, host scalar scales are not supported for GPU
             // as the value should be accessed differently in the kernel
-            VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
-                                       !sc.has_host_scalars()),
+            VCHECK_SDPA_UNIMPL(
+                    IMPLICATION(engine->kind() == engine_kind::gpu,
+                            !sc.get(DNNL_ARG_WEIGHTS).is_host_scalar()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
+
+            // Reserved for quantizing the SDPA output
+            VCHECK_SDPA_UNIMPL(sc.has_default_values(DNNL_ARG_DST),
                     VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
         if (!zp.has_default_values()) {
@@ -246,6 +251,29 @@ static inline status_t sdpa_attr_check(const memory_desc_t *q_desc,
             VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
                                        !zp.has_host_scalars()),
                     VERBOSE_UNSUPPORTED_ZP_CFG);
+        }
+    }
+
+    // Softmax output quantization: P is quantized as the KQ stage output
+    // (KQ dst scale) and dequantized as the VS source (VS src scale). Only a
+    // single f32 scale for each is supported, and both come together.
+    const bool with_probs_quant
+            = kq_attr && !kq_attr->scales_.has_default_values(DNNL_ARG_DST);
+    const bool with_probs_dequant
+            = vs_attr && !vs_attr->scales_.has_default_values(DNNL_ARG_SRC);
+    VCHECK_SDPA_UNIMPL(with_probs_quant == with_probs_dequant,
+            VERBOSE_UNSUPPORTED_SCALES_CFG);
+    if (with_probs_quant) {
+        for (const auto &e : {std::make_pair(kq_attr, DNNL_ARG_DST),
+                     std::make_pair(vs_attr, DNNL_ARG_SRC)}) {
+            const auto &sc = e.first->scales_;
+            VCHECK_SDPA_ATTR_TYPE(sc.get_data_type(e.second) == f32, e.first,
+                    "scales", "f32");
+            VCHECK_SDPA_UNIMPL(
+                    sc.get_mask(e.second) == 0, VERBOSE_UNSUPPORTED_SCALES_CFG);
+            VCHECK_SDPA_UNIMPL(IMPLICATION(engine->kind() == engine_kind::gpu,
+                                       sc.get(e.second).is_host_scalar()),
+                    VERBOSE_UNSUPPORTED_SCALES_CFG);
         }
     }
 
@@ -304,6 +332,8 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
         sdpa_desc.q_scales = kq_attr->scales_.get(DNNL_ARG_SRC);
         sdpa_desc.kq_scales = kq_attr->scales_.get(DNNL_ARG_WEIGHTS);
         sdpa_desc.kq_zero_points = kq_attr->zero_points_.get(DNNL_ARG_WEIGHTS);
+        // The softmax output is the KQ stage's quantized result
+        sdpa_desc.probs_quant_scales = kq_attr->scales_.get(DNNL_ARG_DST);
         if (kq_attr->acc_mode_ == accumulation_mode::f16) {
             sdpa_desc.kq_acc_dt = data_type::f16;
         }
@@ -311,6 +341,8 @@ static inline sdpa_desc_t create_sdpa_desc(const memory_desc_t *q_md,
     if (vs_attr) {
         sdpa_desc.vs_scales = vs_attr->scales_.get(DNNL_ARG_WEIGHTS);
         sdpa_desc.vs_zero_points = vs_attr->zero_points_.get(DNNL_ARG_WEIGHTS);
+        // The quantized softmax output is the VS source
+        sdpa_desc.probs_dequant_scales = vs_attr->scales_.get(DNNL_ARG_SRC);
         if (vs_attr->acc_mode_ == accumulation_mode::f16) {
             sdpa_desc.vs_acc_dt = data_type::f16;
         }

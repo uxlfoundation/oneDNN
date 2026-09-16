@@ -126,6 +126,22 @@ status_t fuse_bias_add(std::shared_ptr<subgraph_t> &sg) {
     return status::success;
 }
 
+static bool is_reciprocal(const op_t *op) {
+    if (op->get_kind() != op_kind::_eltwise
+            || static_cast<dnnl::algorithm>(
+                       op->get_attr<int64_t>(op_attr::alg_kind))
+                    != dnnl::algorithm::eltwise_pow)
+        return false;
+
+    const float alpha = op->has_attr(op_attr::alpha)
+            ? op->get_attr<float>(op_attr::alpha)
+            : 0.f;
+    const float beta = op->has_attr(op_attr::beta)
+            ? op->get_attr<float>(op_attr::beta)
+            : 0.f;
+    return alpha == 1.f && beta == -1.f;
+}
+
 // replace mul_scales and add_zps with binary_mul and binary_add respectively
 status_t replace_quant_data_with_binary_post_op(
         std::shared_ptr<subgraph_t> &sg) {
@@ -175,7 +191,20 @@ status_t replace_quant_data_with_binary_post_op(
 
             // replace quant related op with binary
             op_t *quant_data_op = next_op;
-            auto algo = (quant_data_op->get_kind() == op_kind::_mul_scales)
+            const bool runtime_scales
+                    = quant_data_op->get_kind() == op_kind::_mul_scales
+                    && quant_data_op->has_attr(op_attr::with_runtime_scales)
+                    && quant_data_op->get_attr<bool>(
+                            op_attr::with_runtime_scales);
+            op_t *reciprocal_op = nullptr;
+            if (runtime_scales) {
+                const auto &scale_val = quant_data_op->get_input_value(1);
+                if (scale_val->has_producer()
+                        && is_reciprocal(&scale_val->get_producer()))
+                    reciprocal_op = &scale_val->get_producer();
+            }
+            auto algo = reciprocal_op ? dnnl::algorithm::binary_div
+                    : (quant_data_op->get_kind() == op_kind::_mul_scales)
                     ? dnnl::algorithm::binary_mul
                     : quant_data_op->get_kind() == op_kind::_add_zps
                     ? dnnl::algorithm::binary_add
@@ -192,15 +221,35 @@ status_t replace_quant_data_with_binary_post_op(
             in_val->set_data_type(out_val->get_logical_tensor().data_type);
             insert_empty_scratchpad(bin_op);
 
-            // add quant data as a constant input
             const int64_t mask
                     = quant_data_op->get_attr<int64_t>(op_attr::mask);
             const std::vector<int64_t> out_shape
                     = ltw(out_val->get_logical_tensor()).vdims();
             std::vector<int64_t> new_shape(out_shape.size(), 1);
-
             for (size_t d = 0; d < out_shape.size(); ++d)
                 if (mask & (1LL << d)) new_shape[d] = out_shape[d];
+
+            if (reciprocal_op) {
+                auto scale_val = reciprocal_op->get_input_value(0);
+                scale_val->remove_consumer(*reciprocal_op, 0);
+                bin_op->connect_input(1, scale_val);
+                rewriter.to_insert(bin_op);
+
+                auto reshape_op = std::make_shared<op_t>(op_kind::_reshape);
+                reshape_op->set_attr<bool>(op_attr::special_zero, false);
+                reshape_op->set_attr<std::vector<int64_t>>(
+                        op_attr::shape, new_shape);
+                rewriter.insert_op_before(reshape_op, bin_op, 1);
+
+                rewriter.to_remove(quant_data_op->shared_from_this());
+                rewriter.to_remove(reciprocal_op->shared_from_this());
+
+                visited.insert(next_op);
+                next_op = get_next_op(next_op);
+                continue;
+            }
+
+            // add quant data as a constant input
             op_ptr const_data_op;
             if (quant_data_op->get_kind() == op_kind::_mul_scales) {
                 const auto scales = quant_data_op->get_attr<std::vector<float>>(
@@ -1377,6 +1426,13 @@ status_t fuse_dst_scales(std::shared_ptr<subgraph_t> &sg) {
         if (consumers.size() != 1) continue;
         auto &next_op = consumers[0].get_op();
         if (next_op.get_kind() != op_kind::_mul_scales) continue;
+        // TODO(xxx): unify fusing re-quantization scales into softmax.
+        // Currently, dynamic quantize scales are fused as binary post-ops while
+        // static quantize scales are fused as dst scales.
+        if (cur_op->get_kind() == op_kind::_softmax && next_op.num_inputs() > 1
+                && next_op.get_input_value(1)->has_producer()
+                && is_reciprocal(&next_op.get_input_value(1)->get_producer()))
+            continue;
         // For these three ops, the dst zps are not supported
         if (impl::utils::one_of(cur_op->get_kind(), op_kind::_softmax,
                     op_kind::_layernorm, op_kind::_groupnorm)) {
@@ -2290,28 +2346,7 @@ status_t fuse_reciprocal_mul_to_div(std::shared_ptr<subgraph_t> &sg) {
                 || visited.count(cur_op.get()) != 0)
             continue;
 
-        auto is_reciprocal = [&cur_op]() -> bool {
-            bool ok = static_cast<dnnl::algorithm>(
-                              cur_op->get_attr<int64_t>(op_attr::alg_kind))
-                    == dnnl::algorithm::eltwise_pow;
-            if (!ok) return false;
-
-            // check attribute alpha
-            float alpha = 0.f;
-            if (cur_op->has_attr(op_attr::alpha))
-                alpha = cur_op->get_attr<float>(op_attr::alpha);
-            if (alpha != 1.f) return false;
-
-            // check attribute beta
-            float beta = 0.f;
-            if (cur_op->has_attr(op_attr::beta))
-                beta = cur_op->get_attr<float>(op_attr::beta);
-            if (beta != -1.f) return false;
-
-            return true;
-        };
-
-        if (!is_reciprocal()) continue;
+        if (!is_reciprocal(cur_op.get())) continue;
 
         visited.insert(cur_op.get());
 

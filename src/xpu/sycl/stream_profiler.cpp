@@ -15,8 +15,6 @@
 *******************************************************************************/
 
 #include <limits>
-#include <map>
-#include <unordered_set>
 
 #include "common/c_types_map.hpp"
 #include "common/utils.hpp"
@@ -32,42 +30,17 @@ namespace sycl {
 
 status_t stream_profiler_t::get_info(profiling_data_kind_t data_kind,
         int *num_entries, uint64_t *data) const {
-    using namespace ::sycl::info;
-    if (!num_entries) return status::invalid_arguments;
-    bool is_per_kernel = (data_kind == profiling_data_kind::time_per_kernel);
-    if (!data) {
-        if (is_per_kernel) {
-            *num_entries = (int)events_.size();
-            return status::success;
-        }
-        std::unordered_set<uint64_t> seen;
-        for (auto &ev : events_)
-            seen.insert(ev.stamp);
-        *num_entries = (int)seen.size();
-        return status::success;
-    }
+    return get_info_generic(data_kind, num_entries, data);
+}
 
-    std::map<uint64_t, stream_profiler_t::entry_t> stamp2entry;
-    int idx = 0;
-    for (auto &ev : events_) {
-        const auto &sycl_event = xpu::sycl::event_t::from(*ev.event);
-        assert(sycl_event.size() == 1);
-        auto beg
-                = sycl_event[0]
-                          .get_profiling_info<event_profiling::command_start>();
-        auto end = sycl_event[0]
-                           .get_profiling_info<event_profiling::command_end>();
-        if (is_per_kernel) {
-            data[idx++] = static_cast<uint64_t>(end - beg);
-            continue;
-        }
-        auto &entry = stamp2entry[ev.stamp];
-        entry.min_nsec = std::min(entry.min_nsec, beg);
-        entry.max_nsec = std::max(entry.max_nsec, end);
-        entry.kernel_count++;
-    }
-    if (is_per_kernel) return status::success;
-    return xpu::stream_profiler_t::get_info_impl(stamp2entry, data_kind, data);
+status_t stream_profiler_t::query_event_time(
+        const xpu::event_t &event, uint64_t &start, uint64_t &end) const {
+    using namespace ::sycl::info;
+    const auto &sycl_event = xpu::sycl::event_t::from(event);
+    assert(sycl_event.size() == 1);
+    start = sycl_event[0].get_profiling_info<event_profiling::command_start>();
+    end = sycl_event[0].get_profiling_info<event_profiling::command_end>();
+    return status::success;
 }
 
 status_t verbose_profiler_t::get_aggregate_exec_time(

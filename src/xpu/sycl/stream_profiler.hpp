@@ -32,6 +32,10 @@ struct stream_profiler_t : public xpu::stream_profiler_t {
 
     status_t get_info(profiling_data_kind_t data_kind, int *num_entries,
             uint64_t *data) const override;
+
+protected:
+    status_t query_event_time(const xpu::event_t &event, uint64_t &start,
+            uint64_t &end) const override;
 };
 
 struct verbose_profiler_t : public xpu::verbose_profiler_t {

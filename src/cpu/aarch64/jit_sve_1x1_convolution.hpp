@@ -62,6 +62,9 @@ struct jit_sve_1x1_convolution_fwd_t : public primitive_t {
                 return status::unimplemented;
             }
 #endif
+            VDISPATCH_CONV(
+                    DNNL_CPU_THREADING_RUNTIME != DNNL_RUNTIME_THREADPOOL,
+                    VERBOSE_UNSUPPORTED_THREADPOOL_RUNTIME);
 
             bool ok = true && is_fwd()
                     && set_default_alg_kind(alg_kind::convolution_direct)

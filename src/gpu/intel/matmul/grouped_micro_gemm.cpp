@@ -140,7 +140,8 @@ status_t grouped_micro_gemm_t::pd_t::init_microkernels(
             static_cast<int>(types::elements_to_bytes(adt, lda))));
 
     auto ldb_bytes = types::elements_to_bytes(bdt, ldb);
-    if (ldb_bytes % block_2d_base_alignment(hw) == 0) {
+    if (dev_info->gpu_arch() >= compute::gpu_arch_t::xe_hpc
+            && ldb_bytes % block_2d_base_alignment(hw) == 0) {
         problem.B.setAlignment(static_cast<int>(ldb_bytes));
     } else {
         problem.B.setAlignment(alignmentForLD(static_cast<int>(ldb)));

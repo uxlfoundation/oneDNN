@@ -27,6 +27,7 @@
 #include "common/utils.hpp"
 #include "gpu/intel/compute/device_info.hpp"
 #include "gpu/intel/compute/utils.hpp"
+#include "gpu/intel/engine.hpp"
 #include "gpu/intel/primitive.hpp"
 #include "gpu/intel/reduction/config.hpp"
 #include "gpu/intel/reduction/jit/generator.hpp"
@@ -83,7 +84,7 @@ struct gen_t : public primitive_t {
     };
 
     status_t init(impl::engine_t *engine) override {
-        auto *gpu_engine = utils::downcast<ocl::engine_t *>(engine);
+        auto *gpu_engine = utils::downcast<intel::engine_t *>(engine);
         if (!gpu_engine) return status::runtime_error;
 
         const compute::device_info_t &device_info = *gpu_engine->device_info();

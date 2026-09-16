@@ -105,7 +105,8 @@ struct micro_fwd_params_t : trivially_serializable_t<micro_fwd_params_t> {
     bool q_slm_fp8;
     bool pv_fp8;
     bool quantize_probs;
-    uint8_t padding3[6] = {0};
+    bool with_probs_quant;
+    uint8_t padding3[5] = {0};
 
     micro_fwd_ukernel_params_t ukernel_config;
 };
@@ -281,6 +282,17 @@ struct micro_fwd_t : public primitive_t {
 
             VDISPATCH_SDPA(IMPLICATION(with_fp8, use_systolic_ukernel_),
                     "fp8 requires the systolic microkernel path");
+
+            const bool with_probs_quant
+                    = with_probs_quant_scales() || with_probs_dequant_scales();
+
+            VDISPATCH_SDPA(IMPLICATION(with_probs_quant,
+                                   with_probs_quant_scales()
+                                           && with_probs_dequant_scales()),
+                    "softmax output quantization needs both scales");
+
+            VDISPATCH_SDPA(IMPLICATION(with_probs_quant, quantize_probs()),
+                    "softmax output quantization requires fp8 Q and V");
 
             VDISPATCH_SDPA(IMPLICATION(with_fp8,
                                    desc()->kq_zero_points.has_default_values()

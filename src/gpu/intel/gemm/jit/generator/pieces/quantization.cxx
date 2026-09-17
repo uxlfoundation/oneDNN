@@ -208,14 +208,41 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
     int cpo = lateOffset ? 1 : div_up(crosspack, cpoDiv);
     int cps = lateScale  ? 1 : crosspack;
 
+    // Xe3p+ FP ops need non-scalar sources at the same sub-GRF offset as the destination. If k-rows
+    // of A/B share a GRF, keep one copy of the per-k scale/offset vector per row position within the GRF.
+    auto &qCopies = isA ? state.aqCopies : state.bqCopies;
+    qCopies = 1;
+    int kRow = 0;
+    if (hw >= HW::Xe3p && Tx.isFP() && xqGroupMN > 1 && xqGroupK == 1 && !state.useBDPAS && lsrc[0].crosspack == 1
+            && lsrc[0].colMajor != isA /* k contiguous */) {
+        kRow = isA ? lsrc[0].nc : lsrc[0].nr;
+        int kq = isA ? c : r;
+        int epg = elementsPerGRF(hw, Tx);
+        if (kq % kRow == 0 && kRow < epg && epg % kRow == 0)
+            qCopies = epg / kRow;
+    }
+
     auto makeQRepack = [&, tileR, tileC](Type Txq, Type Txq_int, RegisterLayout &repack, const RegisterLayout &src,
-                                         int m, int n, int cp, bool forceRepack) mutable {
-        if (cp > 1 || (cColMajor && (cp != src[0].crosspack)) || Txq != Txq_int || forceRepack) {
+                                         int m, int n, int cp, bool forceRepack, bool allowBcast) {
+        // Broadcast along M/N: Xe3p+ keeps qCopies per k-row block, packed as [group][copy]
+        // so each GRF holds every copy of one block.
+        int tR = tileR, tC = tileC;
+        int bcast = 1;
+        bool allowPartialRegs = false;
+        auto &mn = isA ? m : n;
+        if (allowBcast && qCopies > 1 && Txq_int == Tx) {
+            bcast = qCopies;
+            (isA ? tR : tC) = qCopies;
+            (isA ? tC : tR) = kRow;
+            allowPartialRegs = true;
+        }
+        mn *= bcast;
+        if (cp > 1 || (cColMajor && (cp != src[0].crosspack)) || Txq != Txq_int || forceRepack || bcast > 1) {
             // Each BDPAS pass reads scales from one half-GRF. When xqGroupK == bdpasBlockK,
             // each group maps to one pass and scales pack naturally as [group0, group1].
             // When xqGroupK > bdpasBlockK, both passes share the same group and scales
             // must be duplicated to the upper half-GRF: [group0, group0].
-            bool allowPartialRegs = state.useBDPAS && xqGroupK == bBlockK;
+            allowPartialRegs |= state.useBDPAS && xqGroupK == bBlockK;
             if (state.useBDPAS && xqGroupK > bBlockK) {
                 // Do not support group sizes that aren't multiples of ksys - this case produces mixed
                 // [group0, group0] and [group0, group1] scales args, which is not currently supported.
@@ -223,13 +250,13 @@ bool Generator<hw>::gemmMake2DQuantizationLayouts(bool isA, const GEMMProblem &p
                 if (xqGroupK % ksys != 0)
                     stub("BDPAS scale group straddling not supported");
             }
-            repack = RegisterLayout(hw, Txq_int, m, n, wantCM, cp, tileR, tileC, allowPartialRegs);
+            repack = RegisterLayout(hw, Txq_int, m, n, wantCM, cp, tR, tC, allowPartialRegs);
         }
     };
 
-    if (xo2D) makeQRepack(Txo, Txo_int, Xr_offsetLayout, X_offsetLayout, ro,     co,     cpo, false);
-    if (xs2D) makeQRepack(Txs, Txs_int, Xr_scaleLayout,  X_scaleLayout,  rs,     cs,     cps, lateScale);
-    if (xg2D) makeQRepack(Txg, Txg_int, Xgr_layout,      Xg_layout,      rNoSLM, cNoSLM, 1,   true);
+    if (xo2D) makeQRepack(Txo, Txo_int, Xr_offsetLayout, X_offsetLayout, ro,     co,     cpo, false,     !lateOffset);
+    if (xs2D) makeQRepack(Txs, Txs_int, Xr_scaleLayout,  X_scaleLayout,  rs,     cs,     cps, lateScale, !lateScale);
+    if (xg2D) makeQRepack(Txg, Txg_int, Xgr_layout,      Xg_layout,      rNoSLM, cNoSLM, 1,   true,      false);
 
     if (xoTo2D) {
         if (xoPtrDims <= 0)
@@ -250,10 +277,29 @@ void Generator<hw>::gemmRepack2DQuantizationData(Type Ts, Type Td, const Registe
 {
     if (layoutDst.empty()) return;
 
-    // Copy, broadcasting 1D to 2D data as needed.
-    for (int doffR = 0; doffR < layoutDst.rows(); doffR += layoutSrc.rows())
-        for (int doffC = 0; doffC < layoutDst.cols(); doffC += layoutSrc.cols())
-            copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, doffR, doffC, false, strategy, state);
+    // Copy, broadcasting 1D to 2D data as needed. If the repacked layout is wider than the loaded one
+    // along a single axis, each loaded value is broadcast to bcast consecutive lanes ([group][copy]).
+    int bcastR = layoutDst.rows() / layoutSrc.rows(), bcastC = layoutDst.cols() / layoutSrc.cols();
+    bool alongR = (bcastR > 1 && bcastC == 1 && layoutDst.rows() % layoutSrc.rows() == 0);
+    bool alongC = (bcastC > 1 && bcastR == 1 && layoutDst.cols() % layoutSrc.cols() == 0);
+    if (alongR || alongC) {
+        int bcast = alongR ? bcastR : bcastC;
+        int srcMN = alongR ? layoutSrc.rows() : layoutSrc.cols();
+        // Compact copy: loaded value g lands in lane g. Then expand each lane over its bcast lanes,
+        // high-to-low so lane g is read before a lower group's expansion overwrites it.
+        copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, 0, 0, false, strategy, state);
+        for (int g = srcMN - 1; g >= 0; g--) {
+            auto lane = layoutDst.slice(alongC, g, g + 1, false);
+            for (int t = (g == 0 ? 1 : 0); t < bcast; t++) {
+                int doff = g * (bcast - 1) + t;
+                copyRegisters(Td, Td, lane, layoutDst, dst, dst, alongR ? doff : 0, alongC ? doff : 0, false, strategy, state);
+            }
+        }
+    } else {
+        for (int doffR = 0; doffR < layoutDst.rows(); doffR += layoutSrc.rows())
+            for (int doffC = 0; doffC < layoutDst.cols(); doffC += layoutSrc.cols())
+                copyRegisters(Ts, Td, layoutSrc, layoutDst, src, dst, doffR, doffC, false, strategy, state);
+    }
 
     // BDPAS: duplicate scale data to the upper half of each GRF for the second pass.
     // When xqGroupK > bBlockK, both passes within a bdpas share the same scale group,
@@ -353,6 +399,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
 {
     int xqGroupK  = doA ? problem.aqGroupK : problem.bqGroupK;
     int xqGroupMN = doA ? problem.aqGroupM : problem.bqGroupN;
+    int qCopies = doA ? state.aqCopies : state.bqCopies;
 
     bool common = (qlayout.rows() * qlayout.cols()) == 1;
     bool colMajor = layout.colMajor();
@@ -408,10 +455,25 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
             // Common scales always load the first element
             if (common) io0 = jo0 = 0;
 
+            // Copied scales/offsets are indexed [group][copy] (see gemmMake2DQuantizationLayouts).
+            bool bcastRep = qCopies > 1 && T.isFP() && T == Tq;
+            if (bcastRep) (doA ? io0 : jo0) *= qCopies;
+
             int ne, neq;
             const RegisterBlock *qblock;
             auto data = block.find(T, ii0, jj0, regs, &ne);
             auto qdata = qlayout.find(io0, jo0, qregs, &neq, &qblock);
+
+            // Select the copy matching the data's sub-GRF offset.
+            if (bcastRep) {
+                int epg = elementsPerGRF(hw, T);
+                int kRow = epg / qCopies;
+                int delta = (data.getOffset() - qdata.getOffset() + epg) % epg;
+                if (delta % kRow == 0 && delta > 0) {
+                    (doA ? io0 : jo0) += delta / kRow;
+                    qdata = qlayout.find(io0, jo0, qregs, &neq, &qblock);
+                }
+            }
 
             if (!qbroadcastX) ne = std::min(ne, neq);
 
@@ -430,6 +492,7 @@ void Generator<hw>::gemmDequantizeOperation(bool doA, Type T, Type Tq, BinaryOp 
             int maxSIMD = (op == BinaryOp::Sub && T.isInt8()) ? 64 : 32;
             if (Tq == Type::f32) maxSIMD = elementsPerGRF(hw, Tq);
             int simd = std::min({ne * crosspack / strided, 2 * elementsPerGRF(hw, T) / strided, maxSIMD});
+
             switch (op) {
                 case BinaryOp::Sub:
                     if (T.isInt8() && strided == 1) {

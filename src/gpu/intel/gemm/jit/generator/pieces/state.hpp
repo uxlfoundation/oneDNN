@@ -162,6 +162,7 @@ struct CommonState {
     ngen::Subregister lid0;
     GRFMultirange indexVec;                         // uw
     int ivEntries = 0;
+    int aqCopies = 1, bqCopies = 1;             // sub-GRF copies of repacked A/B scales/offsets (Xe3p+)
     struct {
         ngen::GRF zero, one;
         ngen::GRFRange src1Storage;

@@ -32,7 +32,6 @@ if [[ "$ONEDNN_TEST_SET" == "SMOKE" ]]; then
     SKIPPED_TESTS+="|cpu-cnn-training-f32-cpp"
     SKIPPED_TESTS+="|cpu-cnn-inference-f32-cpp"
     SKIPPED_TESTS+="|cpu-cnn-training-f32-c"
-    SKIPPED_TESTS+="|cpu-graph-gated-mlp-int4-cpp"
     SKIPPED_TESTS+="|cpu-performance-profiling-cpp"
     SKIPPED_TESTS+="|cpu-rnn-training-f32-cpp"
     SKIPPED_TESTS+="|test_convolution_backward_data_f32"

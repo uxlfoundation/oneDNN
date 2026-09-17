@@ -361,10 +361,14 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
     dnnl::primitive_attr attr;
     std::vector<int64_t> default_groups;
 
+    // The softmax output P is quantized as the KQ stage result and dequantized
+    // as the VS source
     const static std::unordered_map<size_t, size_t> arg_map = {
             {DNNL_ARG_QUERIES, DNNL_ARG_SRC},
             {DNNL_ARG_KEYS, DNNL_ARG_WEIGHTS},
+            {DNNL_ARG_KQ_DST, DNNL_ARG_DST},
             {DNNL_ARG_VALUES, DNNL_ARG_WEIGHTS},
+            {DNNL_ARG_PROBABILITIES, DNNL_ARG_SRC},
     };
 
     // convert input scales
@@ -374,11 +378,15 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
             size_t in_scales_indices = in_scales.first;
             if (attr_type == attr_type_t::QK) {
                 if (in_scales_indices != DNNL_ARG_QUERIES
-                        && in_scales_indices != DNNL_ARG_KEYS) {
+                        && in_scales_indices != DNNL_ARG_KEYS
+                        && in_scales_indices != DNNL_ARG_KQ_DST) {
                     continue;
                 }
             } else if (attr_type == attr_type_t::VS) {
-                if (in_scales_indices != DNNL_ARG_VALUES) { continue; }
+                if (in_scales_indices != DNNL_ARG_VALUES
+                        && in_scales_indices != DNNL_ARG_PROBABILITIES) {
+                    continue;
+                }
             }
             const op_t *in_scales_op = in_scales.second->get_op();
             VCHECK_FUSION_INFO(
@@ -388,6 +396,9 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
                     "runtime src scales",
                     op->get_name().c_str());
             int mask = 0;
+            // fuse_sdpa only fuses host-scalar P scales
+            const bool is_host_scalar = in_scales_indices == DNNL_ARG_KQ_DST
+                    || in_scales_indices == DNNL_ARG_PROBABILITIES;
             if (in_scales_op->has_attr(op_attr::mask)) {
                 const auto scales_data_type
                         = in_scales_op->has_attr(op_attr::data_type)
@@ -409,14 +420,16 @@ dnnl::primitive_attr make_dnnl_sdpa_primitive_attr(
                     mask = get_quant_mask(in_scales_op);
                     attr.set_scales(DNNL_ARG_WEIGHTS, mask, groups,
                             static_cast<dnnl::memory::data_type>(
-                                    scales_data_type));
+                                    scales_data_type),
+                            is_host_scalar);
                 } else {
                     mask = get_quant_mask(in_scales_op);
                     attr.set_scales(
                             static_cast<int>(arg_map.at(in_scales_indices)),
                             mask, default_groups,
                             static_cast<dnnl::memory::data_type>(
-                                    scales_data_type));
+                                    scales_data_type),
+                            is_host_scalar);
                 }
             }
         }

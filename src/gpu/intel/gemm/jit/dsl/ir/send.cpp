@@ -30,7 +30,7 @@ stmt_t send_t::create_offset_store(const expr_t &header_buf,
     if (!is_lsc && is_block() && is_slm()) {
         header_off = 2 * address_type().size();
         // Convert byte offset to dwords/owords/hwords offset.
-        unit_size = type.base().size();
+        unit_size = type.scalar().size();
     }
 
     expr_t mem_off = _mem_off;
@@ -140,7 +140,8 @@ std::vector<func_t> send_t::get_all(const hw_t &hw, send_op_t op,
         if (a.is_block() != b.is_block()) return a.is_block();
         // Prefer messages with a smaller type as they have less strict
         // alignment requirements.
-        if (a_sz == b_sz) return a.type.base().size() < b.type.base().size();
+        if (a_sz == b_sz)
+            return a.type.scalar().size() < b.type.scalar().size();
         return a_sz > b_sz;
     });
 

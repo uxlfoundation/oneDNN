@@ -146,6 +146,8 @@ struct kernel_t {
             const kernel::options_t &options)
         : iface(std::move(iface)), body(std::move(body)), options(options) {}
 
+    explicit operator bool() const { return !body.is_empty(); }
+
     kernel::iface_t iface;
     ir::stmt_t body;
     kernel::options_t options;

@@ -60,7 +60,7 @@ public:
                 return;
             }
         }
-        blocks_.emplace_back(dim, block_size, grid_id);
+        blocks_.emplace_back(dim, into<int>(block_size), grid_id);
     }
 
     const std::vector<block_t> &blocks() const { return blocks_; }
@@ -138,7 +138,7 @@ public:
             for (auto &b : blocks_) {
                 if (b.dim == d) inner_block *= into<int>(b.size);
             }
-            auto outer = into<int>(div_up(grid_tile[d], inner_block));
+            int outer = into<int>(div_up(grid_tile[d], inner_block));
             int id = (inner_block != 1 ? grid_id(d) : 0);
             dim_infos_.emplace_back(d, into<int>(grid_tile[d]));
             if (outer != 1) add(d, outer, id);

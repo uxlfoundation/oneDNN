@@ -228,7 +228,7 @@ layout_t layout_t::with_block(block_t block) const {
 
 template <typename T>
 T layout_t::offset(const coord_t &args, bool ignore_offset) const {
-    if (args.is_empty()) return ir::expr_cast<T>(offset_);
+    if (args.is_empty()) return ir::expr_cast<T>(ignore_offset ? 0 : offset_);
 
     expr_t off = 0;
     auto _args = args;
@@ -318,7 +318,7 @@ layout_t layout_t::sub(const tile_t &tile, const coord_t &start) const {
     }
 
     return layout_t(type(), mapped_blocks,
-            start.is_empty() ? 0 : operator()(start), ndims_);
+            start.is_empty() ? offset_ : operator()(start), ndims_);
 }
 
 layout_t layout_t::split_block(

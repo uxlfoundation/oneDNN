@@ -363,13 +363,13 @@ public:
             copy_plan_t plan(scope.register_allocator(),
                     host->hw_info().systolic_support());
             const auto base_phase = plan.phase;
-            auto src_tile = src_layout_.sub(tile);
-            auto dst_tile = dst_layout_.sub(tile);
+            auto src_sub = src_layout_.sub(tile).with_offset(0);
+            auto dst_sub = dst_layout_.sub(tile).with_offset(0);
             auto emit_tile = [&](const dsl::icoord_t &start) {
                 auto src_off = src_layout_.offset<int>(start);
                 auto dst_off = dst_layout_.offset<int>(start);
-                auto src_op = init_operand(src_tile, from_rd(src, src_off));
-                auto dst_op = init_operand(dst_tile, from_rd(dst, dst_off));
+                auto src_op = init_operand(src_sub, from_rd(src, src_off));
+                auto dst_op = init_operand(dst_sub, from_rd(dst, dst_off));
                 emit(plan, src_op, dst_op);
                 plan.phase = base_phase;
             };

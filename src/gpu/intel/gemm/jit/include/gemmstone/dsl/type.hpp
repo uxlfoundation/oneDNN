@@ -343,6 +343,7 @@ public:
         return copy;
     }
 
+    type_t scalar() const { return type_t(kind()); }
     type_t base() const { return type_t(kind()); }
 
     // Returns size in bytes.

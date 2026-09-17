@@ -1107,6 +1107,22 @@ status_t micro_fwd_params_t::get_kernel_ctx(
     // This is needed to suppress f16 dropout noise seen in the bwd dV path
     kernel_ctx.add_option("-cl-fp32-correctly-rounded-divide-sqrt");
 
+    // NaN-origin debugging: enable in-kernel print_tile() dumps of the S (K^T*Q),
+    // softmax, and A (V*P) tiles by setting ONEDNN_SDPA_DEBUG_PRINT_TILES=1.
+    // Optionally target a single work-group with ONEDNN_SDPA_DBG_WG="x,y,z" or
+    // dump every work-group with ONEDNN_SDPA_DBG_ALL_WG=1.
+    if (gpu_utils::dev_getenv("ONEDNN_SDPA_DEBUG_PRINT_TILES", 0)) {
+        kernel_ctx.add_option("-DDEBUG_PRINT_TILES");
+        if (gpu_utils::dev_getenv("ONEDNN_SDPA_DBG_ALL_WG", 0))
+            kernel_ctx.add_option("-DDBG_ALL_WG");
+        int dbg_wg_x = gpu_utils::dev_getenv("ONEDNN_SDPA_DBG_WG_X", 0);
+        int dbg_wg_y = gpu_utils::dev_getenv("ONEDNN_SDPA_DBG_WG_Y", 1);
+        int dbg_wg_z = gpu_utils::dev_getenv("ONEDNN_SDPA_DBG_WG_Z", 0);
+        kernel_ctx.add_option("-DDBG_WG_X=" + std::to_string(dbg_wg_x));
+        kernel_ctx.add_option("-DDBG_WG_Y=" + std::to_string(dbg_wg_y));
+        kernel_ctx.add_option("-DDBG_WG_Z=" + std::to_string(dbg_wg_z));
+    }
+
     kernel_ctx.define_int("NDIMS", ndims);
     kernel_ctx.set_data_type(data_t);
 

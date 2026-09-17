@@ -1188,8 +1188,9 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
         } \
     }
 
-#define DECLARE_2D_TILE_PRINT(tile_type, element_type, sg, br, bc, nbr, nbc) \
-    __attribute__((overloadable)) void print_tile(tile_type t, \
+#define DECLARE_2D_TILE_PRINT_NAMED( \
+        fname, tile_type, element_type, sg, br, bc, nbr, nbc) \
+    __attribute__((overloadable)) void fname(tile_type t, \
             const __constant char *format, int wg_x, int wg_y, int wg_z, \
             int sg_per_wg_m, int sg_per_wg_n) { \
         if (get_group_id(0) == wg_x && get_group_id(1) == wg_y \
@@ -1227,6 +1228,10 @@ __attribute__((enable_if(sg == 16, "wrong subgroup size"))) {
             } \
         } \
     }
+
+#define DECLARE_2D_TILE_PRINT(tile_type, element_type, sg, br, bc, nbr, nbc) \
+    DECLARE_2D_TILE_PRINT_NAMED( \
+            print_tile, tile_type, element_type, sg, br, bc, nbr, nbc)
 
 #define DECLARE_2D_TILE(tile_type, element_type, sg, br, bc, nbr, nbc) \
     typedef element_type \

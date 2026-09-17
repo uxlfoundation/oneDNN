@@ -151,7 +151,7 @@ inline void apply_dropout_s_tile(
 //                       ugemm_kq_c_type_nblock1)
 //
 // example: Prints the entire S_tile in the (0, 1, 0) work group
-// print_tile(S_tile, "%7.2f", 0, 1, 0, ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
+// dbg_print_s_tile(S_tile, "%7.2f", 0, 1, 0, ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
 
 #ifdef QRY_DT_F32
 #define FMA_TYPE float
@@ -259,6 +259,93 @@ DECLARE_2D_TILE(
 
 DECLARE_2D_TILE(
         a_scale_tile_type, float, SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1, 1, 1)
+
+/* ===========================================================================
+ * NaN-origin debugging (enable with -DDEBUG_PRINT_TILES).
+ *
+ * The Q/K/V input tensors are filled with finite values by the caller, so any
+ * NaN is *produced* during compute. This instrumentation dumps the three tiles
+ * on the compute path so we can localize where a NaN first appears:
+ *     S_tile (raw)   = K^T * Q            -> NaN here  => Q/K (KQ matmul) path
+ *     S_tile (probs) = softmax(S)         -> NaN here  => softmax (max/exp/sum)
+ *     A_tile1        = V   * softmax(S)   -> NaN here  => V (VS matmul) path
+ *
+ * Select the work-group to dump with -DDBG_WG_X/Y/Z (default 0,1,0), or dump
+ * every work-group with -DDBG_ALL_WG (then grep the run output for 'nan'/'inf').
+ * =========================================================================== */
+#ifdef DEBUG_PRINT_TILES
+#ifndef DBG_WG_X
+#define DBG_WG_X 0
+#endif
+#ifndef DBG_WG_Y
+#define DBG_WG_Y 1
+#endif
+#ifndef DBG_WG_Z
+#define DBG_WG_Z 0
+#endif
+#ifdef DBG_ALL_WG
+#define DBG_WGX ((int)get_group_id(0))
+#define DBG_WGY ((int)get_group_id(1))
+#define DBG_WGZ ((int)get_group_id(2))
+#else
+#define DBG_WGX DBG_WG_X
+#define DBG_WGY DBG_WG_Y
+#define DBG_WGZ DBG_WG_Z
+#endif
+
+/* Print a one-line stage label from a single work-item of the selected WG. */
+#define DBG_LABEL(msg) \
+    do { \
+        if ((int)get_group_id(0) == DBG_WGX \
+                && (int)get_group_id(1) == DBG_WGY \
+                && (int)get_group_id(2) == DBG_WGZ && get_local_id(0) == 0 \
+                && get_local_id(1) == 0 && get_local_id(2) == 0) \
+            printf("[DBG] " msg " wg(%d,%d,%d) k0=%d\n", \
+                    (int)get_group_id(0), (int)get_group_id(1), \
+                    (int)get_group_id(2), k0); \
+    } while (0)
+
+/* Epilogue label variant (k0 loop variable is out of scope after the k-loop). */
+#define DBG_LABEL_EPI(msg) \
+    do { \
+        if ((int)get_group_id(0) == DBG_WGX \
+                && (int)get_group_id(1) == DBG_WGY \
+                && (int)get_group_id(2) == DBG_WGZ && get_local_id(0) == 0 \
+                && get_local_id(1) == 0 && get_local_id(2) == 0) \
+            printf("[DBG] " msg " wg(%d,%d,%d) epilogue\n", \
+                    (int)get_group_id(0), (int)get_group_id(1), \
+                    (int)get_group_id(2)); \
+    } while (0)
+
+/* print_tile() instantiations for the (float) S and A accumulator tiles.
+ * Use distinct function names: in some configs s_tile_type and a_tile_type
+ * resolve to the same C type, which would make two `print_tile` overloads
+ * collide (redefinition). */
+#if KQ_F16_ACC
+DECLARE_2D_TILE_PRINT_NAMED(dbg_print_s_tile, s_tile_type_float, float,
+        SUBGROUP_SIZE, ugemm_kq_c_type_block0, ugemm_kq_c_type_block1,
+        ugemm_kq_c_type_nblock0, ugemm_kq_c_type_nblock1)
+#else
+DECLARE_2D_TILE_PRINT_NAMED(dbg_print_s_tile, s_tile_type, float, SUBGROUP_SIZE,
+        ugemm_kq_c_type_block0, ugemm_kq_c_type_block1, ugemm_kq_c_type_nblock0,
+        ugemm_kq_c_type_nblock1)
+#endif
+
+#if VS_F16_ACC
+DECLARE_2D_TILE_PRINT_NAMED(dbg_print_a_tile, a_tile_type_float, float,
+        SUBGROUP_SIZE, ugemm_vs_c_type_block0, ugemm_vs_c_type_block1,
+        ugemm_vs_c_type_nblock0, ugemm_vs_c_type_nblock1)
+#else
+DECLARE_2D_TILE_PRINT_NAMED(dbg_print_a_tile, a_tile_type, float, SUBGROUP_SIZE,
+        ugemm_vs_c_type_block0, ugemm_vs_c_type_block1, ugemm_vs_c_type_nblock0,
+        ugemm_vs_c_type_nblock1)
+#endif
+
+/* Softmax running-denominator (column sums) tile. Distinct name avoids any
+ * collision if a_scale_tile_type aliases another tile's C type. */
+DECLARE_2D_TILE_PRINT_NAMED(dbg_print_scale_tile, a_scale_tile_type, float,
+        SUBGROUP_SIZE, ugemm_vs_sg_tile_n, 1, 1, 1)
+#endif /* DEBUG_PRINT_TILES */
 
 #if BROADCAST_MASK_Q
 #define mask_br ugemm_kq_sg_tile_m
@@ -838,6 +925,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_copy_reblock(S_tile_f16, &S_tile);
 #endif
 
+#ifdef DEBUG_PRINT_TILES
+        /* Raw K^T*Q scores, before scaling/softmax/masking. NaN here => Q/K. */
+        DBG_LABEL("S_tile raw (K^T*Q)");
+        dbg_print_s_tile(S_tile, "%11.3e ", DBG_WGX, DBG_WGY, DBG_WGZ,
+                ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
+#endif
+
 #if KEY_SCALES == QUANTIZE_COMMON
 #define k_scale_op(x) ((x) * k_scale)
         tile_elementwise(S_tile, k_scale_op);
@@ -946,6 +1040,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #define scaled_exp(x) native_vexp2(x *scale * 1.442695f)
         tile_elementwise(S_tile, scaled_exp);
 #undef scaled_exp
+
+#ifdef DEBUG_PRINT_TILES
+        /* Softmax probabilities (exp of shifted scores). NaN here => softmax. */
+        DBG_LABEL("S_tile probs (softmax)");
+        dbg_print_s_tile(S_tile, "%11.3e ", DBG_WGX, DBG_WGY, DBG_WGZ,
+                ugemm_kq_sg_per_wg_m, ugemm_kq_sg_per_wg_n);
+#endif
 
         /* Accumulate sums. S tile is transposed for easy summation. */
         s_sum_tile_type S_sum_tile1;
@@ -1135,7 +1236,13 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_copy_reblock(A_tile1_f16, &A_tile1);
 #endif
 
-        V += ldv * ugemm_kq_wg_tile_m / VAL_ELEMENTS_PER_BYTE;
+#ifdef DEBUG_PRINT_TILES
+        /* Partial output V*softmax(S) for this k-chunk. NaN here => V path. */
+        DBG_LABEL("A_tile1 (V*P)");
+        dbg_print_a_tile(A_tile1, "%11.3e ", DBG_WGX, DBG_WGY, DBG_WGZ,
+                ugemm_vs_sg_per_wg_m, ugemm_vs_sg_per_wg_n);
+#endif
+
 #if VAL_SCALES == QUANTIZE_2D
         V_scales += ldvq * ugemm_kq_wg_tile_m;
 #endif
@@ -1146,6 +1253,34 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
     }
 
     if (k0end > 0) {
+        /* ====================================================================
+         * >>> LIKELY BUG LOCATION (NVL-P / Xe3pLPG, ocl:micro:reusable) <<<
+         *
+         * Evidence (see debug prints added below and at the S/softmax/V stages):
+         *   - The failing case 1x28x384x128:1x4x128x384:1x4x384x128 (f16/bf16)
+         *     produces FINITE-but-wrong output, uniformly ~4-5x inflated
+         *     (NOT NaN). Error is identical every run on HW (errors:269041,
+         *     50/50) => deterministic, not a live timing race.
+         *   - The upstream compute tiles are all correct: K^T*Q (S_tile raw),
+         *     softmax(exp), and V*P (A_tile1) dump finite/valid values.
+         *   - The corruption appears ONLY after this block, in the softmax
+         *     DENOMINATOR normalization: A_scale_tile = 1 / sum(columns), where
+         *     the per-subgroup partial sums are reduced across subgroups out of
+         *     SLM (S_sum_slm). A denominator that is ~5x too small yields exactly
+         *     the observed uniform ~5x inflation.
+         *   - Heisenbug: under the deterministic Xe3P functional sim the case
+         *     PASSES, but adding barriers (print_tile) FLIPS it to the same
+         *     failure => the result is sensitive to barrier/scoreboard placement.
+         *
+         * Root-cause hypothesis: the single work-group barrier below
+         * (need_sum_barrier) is insufficient to order the SLM writes of the
+         * per-subgroup softmax column sums (stored earlier via S_sum_slm) against
+         * the cross-subgroup reduce reads that follow. A missing scoreboard/SWSB
+         * dependency (or a barrier that is skipped when need_sum_barrier==0, i.e.
+         * ugemm_vs_barrier_count != 0) lets the reduce read stale/partial sums,
+         * shrinking the denominator. Audit the S_sum_slm store->load ordering and
+         * the need_sum_barrier condition here and at micro.cl:~1209.
+         * ==================================================================== */
         /* Wait for column sums to be ready */
         if (need_sum_barrier)
             intel_work_group_barrier_wait(CLK_LOCAL_MEM_FENCE);
@@ -1197,6 +1332,14 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
 #endif
 
         /* Rescale by 1 / (column sums) */
+#ifdef DEBUG_PRINT_TILES
+        /* Softmax running denominator (per-column sums accumulated from SLM
+         * across subgroups). NaN/wrong here => softmax-sum normalization
+         * (cross-subgroup SLM reduce / online-rescale) path, i.e. NOT Q/K/V. */
+        DBG_LABEL_EPI("A_scale_tile denom (softmax col-sums)");
+        dbg_print_scale_tile(A_scale_tile, "%11.3e ", DBG_WGX, DBG_WGY, DBG_WGZ,
+                ugemm_vs_sg_per_wg_m, ugemm_vs_sg_per_wg_n);
+#endif
 #if SOFTMAX_INF_AS_ZERO
 #define set_zeros2(v) (vselect(native_vrecip(v), 1.f, v == 0))
         tile_elementwise(A_scale_tile, set_zeros2);
@@ -1204,6 +1347,12 @@ micro_sdpa(const global KEY_DATA_T *K, const global QRY_DATA_T *Q,
         tile_elementwise(A_scale_tile, native_vrecip);
 #endif
         tile_hbroadcast_mul(&A_tile, A_scale_tile);
+#ifdef DEBUG_PRINT_TILES
+        /* Final normalized output (A_tile / denom) = DST for this WG. */
+        DBG_LABEL_EPI("A_tile final (normalized output)");
+        dbg_print_a_tile(A_tile, "%11.3e ", DBG_WGX, DBG_WGY, DBG_WGZ,
+                ugemm_vs_sg_per_wg_m, ugemm_vs_sg_per_wg_n);
+#endif
     }
 
     a_tile_type_dst A_tile_dst;

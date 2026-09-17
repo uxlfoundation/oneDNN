@@ -217,6 +217,15 @@ arg_indices_t sdpa_executable_t::get_arg_indices(const op_t *op) {
         args.insert({DNNL_ARG_ATTR_ZERO_POINTS | DNNL_ARG_VALUES,
                 {indices_t::type_t::input, idx++}});
     }
+    // fuse_sdpa connects the probability quantize scale, then the dequantize
+    if (sdpa_fusion_info.with_runtime_scales(true, DNNL_ARG_KQ_DST)) {
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_KQ_DST,
+                {indices_t::type_t::input, idx++}});
+    }
+    if (sdpa_fusion_info.with_runtime_scales(true, DNNL_ARG_PROBABILITIES)) {
+        args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_PROBABILITIES,
+                {indices_t::type_t::input, idx++}});
+    }
 
     // outputs
     args.insert({DNNL_ARG_DST, {indices_t::type_t::output, 0}});
